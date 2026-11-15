@@ -3,7 +3,7 @@
 \ Reading is strict RFC 8259: no comments, trailing commas or single quotes.
 \ Structure, escapes and Unicode scalar encoding are validated as the cursor
 \ advances; values decode on demand.
-\ Writing goes through the nominal `ptr JSON:writer`, minted only by the typed
+\ Writing goes through the nominal `^JSON:writer`, minted only by the typed
 \ storage definers; one never opened (the definer's zero image) or already
 \ closed refuses every operation with E-JSON-WRITE-STATE.
 \ Every emitter answers its writer and appends all of its bytes or none; a

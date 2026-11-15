@@ -57,9 +57,9 @@ PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD CHECK-WATCH !
 PROCESS:NO-FD FEED-WR !
 
-: TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
-: LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
-: FIFO$ ( -- ptr u8 n )   FIFO FIFO-U @ ;
+: TMP$ ( -- ^u8 n )    TMP TMP-U @ ;
+: LOG$ ( -- ^u8 n )    LOG LOG-U @ ;
+: FIFO$ ( -- ^u8 n )   FIFO FIFO-U @ ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
@@ -78,7 +78,7 @@ PROCESS:NO-FD FEED-WR !
    GT-ROOT s" check.log" LOG FS:JOIN-PATH LOG-U !
    TMP$ FS:MAKE-DIRS ;
 
-: ENTRY+ ( ptr u8 n -- )
+: ENTRY+ ( ^u8 n -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
@@ -99,7 +99,7 @@ PROCESS:NO-FD FEED-WR !
    0 REPORT-U !
    false FIFO-DONE ! ;
 
-: FD-TEXT$ ( n -- ptr u8 n )
+: FD-TEXT$ ( n -- ^u8 n )
    SB-RESET FMT:SB-INT SB$ ;
 
 \ fd within ms: a positive count once it answers one of the poll events, 0 when
@@ -169,7 +169,7 @@ PROCESS:NO-FD FEED-WR !
    log close
    CHECK-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then CHECK-WATCH ! ;
 
-: SUBJECT$ ( -- ptr u8 n )
+: SUBJECT$ ( -- ^u8 n )
    s" test/check-signal-subject.f" ;
 
 \ The subject and its report FIFO, after whatever options check.f is given
@@ -209,8 +209,8 @@ PROCESS:NO-FD FEED-WR !
 \ u bytes at a into check.f's stdin once the pipe has room for them. u is at
 \ most FEED-CHUNK, so the write cannot block. A short write or a failed poll
 \ answers false.
-: FEED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: FEED? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    FEED-WR @ FD:POLLOUT -1 POLL-WITHIN {: ready:n :}
    ready 0 < if false exit then
    FEED-WR @ a u write u = ;
@@ -272,7 +272,7 @@ PROCESS:NO-FD FEED-WR !
 \ CHK-SAY-THROW), and src/lib/process.f a walk of the child's tree it could not
 \ finish (PROCESS:WALK-REPORT).
 : LOG-THREW? ( -- bool )
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:ptr u:n :}
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:^ u:n :}
    a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
 
 \ The ways a stopped check.f can leak, each asserted here:
@@ -329,7 +329,7 @@ PROCESS:NO-FD FEED-WR !
 
 \ The one line check.f ends a run past its deadline with. It names the subject
 \ as given, or canonically under --json-errors, as each of its reports does.
-: LATE-LINE$ ( bool -- ptr u8 n ) {: json:bool :}
+: LATE-LINE$ ( bool -- ^u8 n ) {: json:bool :}
    SB-RESET
    s" check.f: " SB-APPEND
    json if SUBJECT$ SOURCE-ROOT:CANON-OS drop else SUBJECT$ then SB-APPEND

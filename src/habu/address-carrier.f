@@ -25,10 +25,10 @@ private
 
 \ The chain's own instruction word, a private copy as every reader of this
 \ shape keeps one.
-: W32@ ( ptr u8 -- n ) {: p:ptr :}
+: W32@ ( ^u8 -- n ) {: p:^ :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
-: W32! ( n ptr u8 -- ) {: w:n p:ptr :}
+: W32! ( n ^u8 -- ) {: w:n p:^ :}
    w p c!  w 8 rshift p 1+ c!  w 16 rshift p 2 + c!  w 24 rshift p 3 + c! ;
 
 public
@@ -36,7 +36,7 @@ public
 \ The four immediate fields as one value, whatever register the chain names: the
 \ immediate sits just above the destination-register field, which is what
 \ ADDR-RD-BITS is the width of.
-: CHAINV ( ptr u8 -- n ) {: p:ptr :}
+: CHAINV ( ^u8 -- n ) {: p:^ :}
    p W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and
    p 4 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 16 lshift or
    p 8 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 32 lshift or
@@ -44,7 +44,7 @@ public
 
 \ Re-encode a full 64-bit value into an existing chain, keeping each word's
 \ opcode and destination register, so it rewrites a chain in any register.
-: SET-CHAIN ( ptr u8 n -- ) {: p:ptr val:n :}
+: SET-CHAIN ( ^u8 n -- ) {: p:^ val:n :}
    4 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and
       val i 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or
@@ -56,7 +56,7 @@ public
 \ CODE addresses retain the four-half carrier. Only declared address sites
 \ use this grammar: a numeric lookalike never acquires pointer provenance.
 \ Return zero on a truncated or malformed carrier, without reading past end.
-: CHAIN-SIZE ( ptr u8 ptr u8 -- n ) {: p:ptr end:ptr :}
+: CHAIN-SIZE ( ^u8 ^u8 -- n ) {: p:^ end:^ :}
    end p - DATA-CHAIN-BYTES < if 0 exit then
    p W32@ ADDR-RD-MASK and {: rd:n :}
    p W32@ ADDR-OPC-MASK and DATA-MOVZ2 rd or = if
@@ -73,7 +73,7 @@ public
 
 \ Live carriers hold absolute addresses; captured DATA sites hold window
 \ coordinates until the boot rebase. The same fields carry either number.
-: CHAIN-VALUE ( ptr u8 n -- n ) {: p:ptr size:n :}
+: CHAIN-VALUE ( ^u8 n -- n ) {: p:^ size:n :}
    size ADDR-CHAIN-BYTES = if p CHAINV exit then
    size DATA-CHAIN-BYTES <> if s" address chain: invalid size" 74 die then
    0 3 0 ?do
@@ -81,7 +81,7 @@ public
       2 i - 16 * lshift or
    loop ;
 
-: SET-CHAIN-VALUE ( ptr u8 n n -- ) {: p:ptr val:n size:n :}
+: SET-CHAIN-VALUE ( ^u8 n n -- ) {: p:^ val:n size:n :}
    size ADDR-CHAIN-BYTES = if p val SET-CHAIN exit then
    size DATA-CHAIN-BYTES <> if s" address chain: invalid size" 74 die then
    val 0 < val $FFFFFFFFFFFF > or if
@@ -107,11 +107,11 @@ $B8 constant MOVABS-OP
 2 constant MOVABS-IMM-OFF
 8 constant MOVABS-IMM-BYTES
 
-: MOVABS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
+: MOVABS-SITE? ( ^u8 -- bool ) {: p:^ :}
    p c@ MOVABS-REX-MASK and MOVABS-REX-W =
    p 1+ c@ MOVABS-OP-MASK and MOVABS-OP = and ;
 
-: MOVABSV ( ptr u8 -- n ) {: p:ptr :}
+: MOVABSV ( ^u8 -- n ) {: p:^ :}
    0
    MOVABS-IMM-BYTES 0 ?do
       p MOVABS-IMM-OFF + i + c@  i 8 * lshift  or
@@ -119,7 +119,7 @@ $B8 constant MOVABS-OP
 
 \ Re-encode a full 64-bit value into an existing site, keeping the prefix and
 \ the opcode - and so the destination register - exactly as they were.
-: SET-MOVABS ( ptr u8 n -- ) {: p:ptr val:n :}
+: SET-MOVABS ( ^u8 n -- ) {: p:^ val:n :}
    MOVABS-IMM-BYTES 0 ?do
       val i 8 * rshift $FF and  p MOVABS-IMM-OFF + i + c!
    loop ;

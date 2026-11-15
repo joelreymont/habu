@@ -48,13 +48,13 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    scalar $300 >= scalar $36F <= and or
    scalar $203F >= scalar $2040 <= and or ;
 
-: NAME-CONTINUES? ( ptr n -- bool )
+: NAME-CONTINUES? ( ^n -- bool )
    {: state :}
    state EOF? if false exit then
    state INPUT? if state INPUT-SCALAR-ENSURE then
    state SOURCE$ state POSITION + @ SCALAR-AT drop NAME-CHAR? ;
 
-: SCAN-NAME ( ptr n -- n n )
+: SCAN-NAME ( ^n -- n n )
    {: state :}
    state POSITION + @ {: start:n :}
    state SCAN-SCALAR dup NC-INITIAL? swap $3A = or 0= if
@@ -63,7 +63,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    begin state NAME-CONTINUES? while state SCAN-SCALAR drop repeat
    start state POSITION + @ start - ;
 
-: QNAME-CHECK ( ptr n n n -- )
+: QNAME-CHECK ( ^n n n -- )
    {: state start:n size:n :}
    state SOURCE$ start SCALAR-AT drop NC-INITIAL? 0= if
       E-NAMESPACE throw
@@ -87,15 +87,15 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ cost time linear in its attributes and bindings. That is an expectation over
 \ the key, not a worst-case guarantee. A collision costs only time: a full-hash
 \ match is confirmed by comparing the names.
-: KEY@ ( ptr n -- n n )
+: KEY@ ( ^n -- n n )
    {: state :}
    state HASH-K0 + @ state HASH-K1 + @ ;
 
-: BYTES-HASH ( ptr n ptr u8 n -- n )
+: BYTES-HASH ( ^n ^u8 n -- n )
    {: state source size:n :}
    state KEY@ source size SIPHASH:BYTES ;
 
-: HASH-START ( ptr n -- ptr n )
+: HASH-START ( ^n -- ^n )
    {: state :}
    state SIP-STATE + {: sip :}
    sip state KEY@ SIPHASH:INIT
@@ -106,7 +106,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 : QUOTE? ( n -- bool )
    dup $22 = swap $27 = or ;
 
-: SCAN-VALUE ( ptr n -- n n )
+: SCAN-VALUE ( ^n -- n n )
    {: state :}
    state PEEK {: quote:n :}
    quote QUOTE? 0= if E-MALFORMED throw then
@@ -120,7 +120,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    start state POSITION + @ start -
    state ADVANCE ;
 
-: SAVE-ATTRIBUTE ( ptr n n n n n -- )
+: SAVE-ATTRIBUTE ( ^n n n n n -- )
    {: state name:n name-size:n value:n value-size:n :}
    state state ATTR-COUNT + @ 1+ ATTRS-GROW
    state state ATTR-COUNT + @ ATTRIBUTE {: attr :}
@@ -134,7 +134,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    0 attr 7 cells + !
    1 state ATTR-COUNT + +! ;
 
-: SCAN-ATTRIBUTE ( ptr n -- )
+: SCAN-ATTRIBUTE ( ^n -- )
    {: state :}
    state SCAN-NAME {: name:n size:n :}
    state name size QNAME-CHECK
@@ -143,43 +143,43 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state SKIP-WHITE
    state name size state SCAN-VALUE SAVE-ATTRIBUTE ;
 
-: ATTRIBUTE-NAME$ ( ptr n ptr n -- ptr u8 n )
+: ATTRIBUTE-NAME$ ( ^n ^n -- ^u8 n )
    {: state attr :}
    state attr @ attr CELL + @ SPAN$ ;
 
-: ATTRIBUTE-VALUE$ ( ptr n ptr n -- ptr u8 n )
+: ATTRIBUTE-VALUE$ ( ^n ^n -- ^u8 n )
    {: state attr :}
    state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
 
-: PREFIX-SIZE ( ptr u8 n -- n )
+: PREFIX-SIZE ( ^u8 n -- n )
    {: source size:n :}
    size 0 ?do
       source i + c@ $3A = if i unloop exit then
    loop
    0 ;
 
-: NAME-MATCH? ( ptr n ptr n ptr u8 n -- bool )
+: NAME-MATCH? ( ^n ^n ^u8 n -- bool )
    {: state attr expected size:n :}
    state attr ATTRIBUTE-NAME$ expected size BYTES= ;
 
-: NS-ATTRIBUTE? ( ptr n ptr n -- bool )
+: NS-ATTRIBUTE? ( ^n ^n -- bool )
    {: state attr :}
    state attr s" xmlns" NAME-MATCH? if true exit then
    state attr ATTRIBUTE-NAME$ {: name size:n :}
    size 6 < if false exit then
    name 6 s" xmlns:" BYTES= ;
 
-: NS-PREFIX ( ptr n ptr n -- n n )
+: NS-PREFIX ( ^n ^n -- n n )
    {: state attr :}
    state attr s" xmlns" NAME-MATCH? if 0 0 exit then
    attr @ 6 + attr CELL + @ 6 - ;
 
-: RESERVED-URI? ( ptr n ptr n n -- bool )
+: RESERVED-URI? ( ^n ^n n -- bool )
    {: state attr uri:n :}
    state attr ATTRIBUTE-VALUE$
    state uri 0 URI$ NORMAL-EQUAL? ;
 
-: NS-BINDING-CHECK ( ptr n ptr n -- )
+: NS-BINDING-CHECK ( ^n ^n -- )
    {: state attr :}
    state state attr NS-PREFIX SPAN$ {: prefix size:n :}
    prefix size s" xmlns" BYTES= if E-NAMESPACE throw then
@@ -193,7 +193,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 
 \ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
 \ compares, so URIs it calls equal hash equal however they are spelled.
-: URI-HASH ( ptr n ptr u8 n -- n )
+: URI-HASH ( ^n ^u8 n -- n )
    {: state source size:n :}
    state HASH-START {: sip :}
    0
@@ -209,25 +209,25 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ An expanded name hashes its URI's hash, then its local name's bytes. Each
 \ binding keeps its URI's hash, so an attribute costs its local name, not its
 \ URI, and equal expanded names hash equal.
-: EXPANDED-HASH ( ptr n n ptr u8 n -- n )
+: EXPANDED-HASH ( ^n n ^u8 n -- n )
    {: state uri:n local size:n :}
    state HASH-START {: sip :}
    sip uri SIPHASH:ABSORB-WORD
    size 0 ?do sip local i + c@ SIPHASH:ABSORB-BYTE loop
    sip SIPHASH:FINISH ;
 
-: EMPTY-URI-HASH ( ptr n -- n ) s" " URI-HASH ;
+: EMPTY-URI-HASH ( ^n -- n ) s" " URI-HASH ;
 
-: PREFIX-HEAD ( ptr n ptr u8 n -- ptr n )
+: PREFIX-HEAD ( ^n ^u8 n -- ^n )
    {: state prefix size:n :}
    state state prefix size BYTES-HASH state NS-CAP + @ BUCKET
    NAMESPACE NS-HEAD + ;
 
-: BINDING-PREFIX$ ( ptr n ptr n -- ptr u8 n )
+: BINDING-PREFIX$ ( ^n ^n -- ^u8 n )
    {: state binding :}
    state binding @ binding CELL + @ SPAN$ ;
 
-: LINK-BINDING ( ptr n n -- )
+: LINK-BINDING ( ^n n -- )
    {: state index:n :}
    state index NAMESPACE {: binding :}
    state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
@@ -238,7 +238,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ Make room for one more binding. The bucket count is the table's capacity, so
 \ a growth relinks every live binding oldest first, keeping the newest of each
 \ prefix its bucket's head as POP-BINDINGS requires.
-: NS-ENSURE ( ptr n -- )
+: NS-ENSURE ( ^n -- )
    {: state :}
    state NS-COUNT + @ 1+ state NS-CAP + @ <= if exit then
    state state NS-COUNT + @ 1+ NS-GROW
@@ -246,7 +246,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state NS-COUNT + @ 0 ?do state i LINK-BINDING loop ;
 
 
-: SAVE-NAMESPACE ( ptr n ptr n -- )
+: SAVE-NAMESPACE ( ^n ^n -- )
    {: state attr :}
    state attr NS-BINDING-CHECK
    state NS-ENSURE
@@ -261,7 +261,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    1 state NS-COUNT + +! ;
 
 \ Drop the bindings above count, newest first: each is its bucket's head.
-: POP-BINDINGS ( ptr n n -- )
+: POP-BINDINGS ( ^n n -- )
    {: state count:n :}
    begin state NS-COUNT + @ count > while
       -1 state NS-COUNT + +!
@@ -270,11 +270,11 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       state state binding BINDING-PREFIX$ PREFIX-HEAD !
    repeat ;
 
-: CLEAR-ATTR-HEADS ( ptr n -- )
+: CLEAR-ATTR-HEADS ( ^n -- )
    {: state :}
    state ATTR-COUNT + @ 0 ?do -1 state i ATTRIBUTE ATTR-HEAD + ! loop ;
 
-: ATTR-ENTER ( ptr n n n [ ptr n ptr n ptr n -- bool ] -- )
+: ATTR-ENTER ( ^n n n [ ^n ^n ^n -- bool ] -- )
    {: state index:n hash:n same :}
    state index ATTRIBUTE {: attr :}
    hash attr ATTR-HASH + !
@@ -291,11 +291,11 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    head @ attr ATTR-LINK + !
    index head ! ;
 
-: SAME-RAW-NAME? ( ptr n ptr n ptr n -- bool )
+: SAME-RAW-NAME? ( ^n ^n ^n -- bool )
    {: state first second :}
    state first ATTRIBUTE-NAME$ state second ATTRIBUTE-NAME$ BYTES= ;
 
-: COLLECT-NAMESPACES ( ptr n -- )
+: COLLECT-NAMESPACES ( ^n -- )
    {: state :}
    state CLEAR-ATTR-HEADS
    state ATTR-COUNT + @ 0 ?do
@@ -305,7 +305,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       state attr NS-ATTRIBUTE? if state attr SAVE-NAMESPACE then
    loop ;
 
-: BINDING-INDEX ( ptr n ptr u8 n -- n )
+: BINDING-INDEX ( ^n ^u8 n -- n )
    {: state prefix size:n :}
    state prefix size PREFIX-HEAD @
    begin dup 0 >= while
@@ -314,7 +314,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       drop binding NS-LINK + @
    repeat ;
 
-: PREFIX-BINDING ( ptr n ptr u8 n -- n n n bool )
+: PREFIX-BINDING ( ^n ^u8 n -- n n n bool )
    {: state prefix size:n :}
    prefix size s" xml" BYTES= if
       XML-URI 0 state state XML-URI 0 URI$ URI-HASH true exit
@@ -327,23 +327,23 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    then
    0 0 state EMPTY-URI-HASH size 0= ;
 
-: BOUND-URI ( ptr n ptr u8 n -- n n bool )
+: BOUND-URI ( ^n ^u8 n -- n n bool )
    PREFIX-BINDING {: start:n size:n hash:n bound:bool :}
    start size bound ;
 
-: LOOKUP-URI ( ptr n n n -- n n n )
+: LOOKUP-URI ( ^n n n -- n n n )
    {: state prefix:n size:n :}
    state state prefix size SPAN$ PREFIX-BINDING if exit then
    E-NAMESPACE throw ;
 
-: RESOLVE-NAME ( ptr n n n bool -- n n n )
+: RESOLVE-NAME ( ^n n n bool -- n n n )
    {: state name:n size:n attr:bool :}
    state name size SPAN$ PREFIX-SIZE {: prefix-size:n :}
    prefix-size 0= attr and if 0 0 state EMPTY-URI-HASH exit then
    state name prefix-size SPAN$ s" xmlns" BYTES= if E-NAMESPACE throw then
    state name prefix-size LOOKUP-URI ;
 
-: RESOLVE-ATTRIBUTE ( ptr n ptr n -- n )
+: RESOLVE-ATTRIBUTE ( ^n ^n -- n )
    {: state attr :}
    state attr NS-ATTRIBUTE? if
       XMLNS-URI 0 state state XMLNS-URI 0 URI$ URI-HASH
@@ -355,17 +355,17 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    size attr 7 cells + !
    hash ;
 
-: ATTRIBUTE-URI$ ( ptr n ptr n -- ptr u8 n )
+: ATTRIBUTE-URI$ ( ^n ^n -- ^u8 n )
    {: state attr :}
    state attr 6 cells + @ attr 7 cells + @ URI$ ;
 
-: SAME-EXPANDED-NAME? ( ptr n ptr n ptr n -- bool )
+: SAME-EXPANDED-NAME? ( ^n ^n ^n -- bool )
    {: state first second :}
    state first ATTRIBUTE-NAME$ LOCAL-SPAN
    state second ATTRIBUTE-NAME$ LOCAL-SPAN BYTES= 0= if false exit then
    state first ATTRIBUTE-URI$ state second ATTRIBUTE-URI$ NORMAL-EQUAL? ;
 
-: RESOLVE-ATTRIBUTES ( ptr n -- )
+: RESOLVE-ATTRIBUTES ( ^n -- )
    {: state :}
    state CLEAR-ATTR-HEADS
    state ATTR-COUNT + @ 0 ?do
@@ -375,18 +375,18 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       state i hash [: SAME-EXPANDED-NAME? ;] ATTR-ENTER
    loop ;
 
-: RESOLVE-ELEMENT ( ptr n -- )
+: RESOLVE-ELEMENT ( ^n -- )
    {: state :}
    state COLLECT-NAMESPACES
    state state NAME-OFF + @ state NAME-LEN + @ false RESOLVE-NAME drop
    state URI-LEN + ! state URI-OFF + !
    state RESOLVE-ATTRIBUTES ;
 
-: PREFIX-URI-ARGS ( XML:reader ptr u8 n ptr u8 n -- XML:reader ptr n ptr u8 n ptr u8 n )
+: PREFIX-URI-ARGS ( XML:reader ^u8 n ^u8 n -- XML:reader ^n ^u8 n ^u8 n )
    {: prefix size:n destination cap:n :}
    STATE prefix size destination cap ;
 
-: PREFIX-URI-STATE ( ptr n ptr u8 n ptr u8 n -- n bool )
+: PREFIX-URI-STATE ( ^n ^u8 n ^u8 n -- n bool )
    {: state prefix size:n destination cap:n :}
    state LIVE
    state OPEN-DEPTH + @ 0= if E-STATE throw then
@@ -404,7 +404,7 @@ public
 \ without writing, `xml` its implicit URI, the empty prefix the default (zero
 \ bytes when none). Before the root, past its end, at EOF or on a failed reader
 \ it is E-STATE; a short or aliasing output throws and leaves the reader alone.
-: PREFIX-URI ( XML:reader ptr u8 n ptr u8 n -- XML:reader n bool )
+: PREFIX-URI ( XML:reader ^u8 n ^u8 n -- XML:reader n bool )
    PREFIX-URI-ARGS PREFIX-URI-STATE ;
 
 ;package

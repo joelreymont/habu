@@ -2,7 +2,7 @@
 
 package ELF
 public
-: SET-SIGID ( ptr u8 n -- )
+: SET-SIGID ( ^u8 n -- )
    2drop ;
 
 : CODESIG2 ( img -- img ) ;

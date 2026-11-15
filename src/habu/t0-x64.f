@@ -71,7 +71,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    k 4 + >R64 ;
 
 : PUT ( n n n -- ) {: v:n off:n k:n :}
-   SINK BUF:SPAN$ drop off + {: p:ptr :}
+   SINK BUF:SPAN$ drop off + {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
@@ -174,7 +174,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    RAX SINK ENC-JMP-REG
    at ;
 
-: BYTES ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
@@ -438,27 +438,27 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ ---- the return stack --------------------------------------------------------
 \ Each goes through rax. Vreg i of p moved to or from the slot off bytes above
 \ rax.
-: RS-XFER ( ptr vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+: RS-XFER ( ^vreg n n bool -- ) {: p:^ i:n off:n st:bool :}
    p i VREG-AT REG RAX off MEM-OFF SINK
    st if ENC-MOV-MR exit then ENC-MOV-RM ;
 
 : RDEPTH+ ( n -- ) {: k:n :} RAX RAX k MEM-OFF SINK ENC-LEA ;
 
-: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
+: TOR ( ^vreg n -- ) {: p:^ n:n :}
    RAX RDEPTH
    n RDEPTH+
    RAX RDEPTH!
    RAX RTOP
    n 0 ?do p i i n - CELL * true RS-XFER loop ;
 
-: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
+: RFROM ( ^vreg n -- ) {: p:^ n:n :}
    RAX RDEPTH
    n negate RDEPTH+
    RAX RDEPTH!
    RAX RTOP
    n 0 ?do p i i CELL * false RS-XFER loop ;
 
-: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
+: RFETCH ( ^vreg n n -- ) {: p:^ n:n k:n :}
    RAX RDEPTH
    RAX RTOP
    n 0 ?do p i i n - k - CELL * false RS-XFER loop ;

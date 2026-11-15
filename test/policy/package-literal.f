@@ -2,6 +2,6 @@
 \ keyword inside the design span.
 package PDESIGN-NAME
 public
-: NAME ( -- ptr u8 n ) [package] ;
+: NAME ( -- ^u8 n ) [package] ;
 ;package
 PDESIGN-NAME:NAME PDEP:SHOW-NAME

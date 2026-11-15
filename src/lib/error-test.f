@@ -96,7 +96,7 @@ package PB
 
 \ A refusal ends the process, so each fixture runs in a fresh hb: that exit is
 \ the boundary under test.
-: FIXTURE-RUN ( CMD:command ptr u8 n -- CMD:command ) {: path:ptr pathu:n :}
+: FIXTURE-RUN ( CMD:command ^u8 n -- CMD:command ) {: path:^ pathu:n :}
    s" --load" CMD:ARG+ path pathu CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER 70 T-RUN-EXITED= ;
 
@@ -166,11 +166,11 @@ package PB
 
 \ The cut text's row lies where FILL lays its cells, so a head left on it
 \ walks into them.
-: ROLLBACK-TEXT$ ( -- ptr u8 n )
+: ROLLBACK-TEXT$ ( -- ^u8 n )
    s\" -9686 s\" the cut code\" ERROR:CODE E-CUT  1 throw" ;
 
 
-: AFTER-TEXT$ ( -- ptr u8 n )
+: AFTER-TEXT$ ( -- ^u8 n )
    s\" -9687 s\" the code after the cut\" ERROR:CODE E-AFTER" ;
 
 

@@ -65,13 +65,13 @@ create BBUF BBUF-CAP allot   variable BLEN     \ the body
 create PBUF PBUF-CAP allot  variable PBUF-U   \ the full def / the runner
 variable SA  variable SU  variable PJ  variable NJ
 variable RUN-SEED  variable N  variable RI
-: PROP-B+  ( ptr u8 n -- ) {: a:ptr u:n :}
+: PROP-B+  ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u < while
       dup a + c@  BBUF BLEN @ + c!
       BLEN @ 1+ BLEN !
       1+
    repeat drop ;
-: P+  ( ptr u8 n -- ) {: a:ptr u:n :}
+: P+  ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u < while
       dup a + c@  PBUF PBUF-U @ + c!
       PBUF-U @ 1+ PBUF-U !
@@ -108,14 +108,14 @@ variable PERT?                             \ declared out perturbed away from th
    LOCN @ 1+ LOCN ! ;
 \ Named structural (net-0) op texts: PROP-STEP emits them and the alphabet
 \ self-test asserts each one is generated and certifies.
-: OP-LOOP$   ( -- ptr u8 n )  s" 3 0 ?do loop " ;
-: OP-LEAVE$  ( -- ptr u8 n )  s" 3 0 ?do leave loop " ;
-: OP-STR$    ( -- ptr u8 n )  S\" s\" x\" 2drop " ;
-: OP-QUOT0$  ( -- ptr u8 n )  s" [: ;] execute " ;
-: OP-BRANCH$ ( -- ptr u8 n )  s" dup 0= if 1+ else 1- then " ;
-: OP-RSTK$   ( -- ptr u8 n )  s" >r r> " ;
-: OP-RCOPY$  ( -- ptr u8 n )  s" >r r@ drop r> " ;
-: OP-QUOT1$  ( -- ptr u8 n )  s" [: 1+ ;] execute " ;
+: OP-LOOP$   ( -- ^u8 n )  s" 3 0 ?do loop " ;
+: OP-LEAVE$  ( -- ^u8 n )  s" 3 0 ?do leave loop " ;
+: OP-STR$    ( -- ^u8 n )  S\" s\" x\" 2drop " ;
+: OP-QUOT0$  ( -- ^u8 n )  s" [: ;] execute " ;
+: OP-BRANCH$ ( -- ^u8 n )  s" dup 0= if 1+ else 1- then " ;
+: OP-RSTK$   ( -- ^u8 n )  s" >r r> " ;
+: OP-RCOPY$  ( -- ^u8 n )  s" >r r@ drop r> " ;
+: OP-QUOT1$  ( -- ^u8 n )  s" [: 1+ ;] execute " ;
 : PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF
       DEP @ 1 >= IF 9 ELSE 4 THEN RND% K !     \ DEP>=1: ops 0..8; DEP=0: depth-free 0..3
@@ -192,7 +192,7 @@ private
 PTR-VARIABLE SRC-A
 variable SRC-U
 
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-A @ SRC-U @ ;
 
 : COMPILE ( -- )
@@ -204,15 +204,15 @@ PBUF-CAP 55 + constant TBUF-CAP
 TBUF-CAP BUFFER: TBUF
 variable TBUF-U
 
-: TBUF+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TBUF+ ( ^u8 n -- )
+   {: a:^ u:n :}
    TBUF-U @ u + TBUF-CAP > IF  E-STR-CAPACITY throw  THEN
    a TBUF TBUF-U @ + u BYTE-COPY
    TBUF-U @ u + TBUF-U ! ;
 
 \ A program reaches a refused candidate's body only through TRUSTED:, so
 \ COMPILE-TRUSTED compiles `TRUSTED` and its `: G ( ... ) <body> ;` unenforced.
-: COMPILE-TRUSTED ( ptr u8 n -- n )
+: COMPILE-TRUSTED ( ^u8 n -- n )
    0 TBUF-U !  s" TRUSTED" TBUF+  TBUF+
    TBUF TBUF-U @ SRC-U !  SRC-A !
    ['] COMPILE catch ;
@@ -227,7 +227,7 @@ variable TBUF-U
 CHK-DIAG-CAP BUFFER: CHK-DIAG
 \ A refusal is rc 70 with the checker's diagnostic in CHK-DIAG; any other
 \ nonzero rc, an engine refusal after certification among them, is rethrown.
-: CHK  ( ptr u8 n -- )
+: CHK  ( ^u8 n -- )
    SRC-U !
    SRC-A !
    CHK-DIAG CHK-DIAG-CAP REJECTION:BUFFER!
@@ -274,7 +274,7 @@ variable MEAS-OUT
 \ are capped/quiet but the finding is fatal either way: the NSI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD).
 variable SWEEP-QUIET
-: LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
+: LOG-META  ( ^u8 n -- ) {: a:^ u:n :}
    SWEEP-QUIET @ if exit then
    s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
    s" variant: " type PBUF PBUF-U @ type cr
@@ -378,7 +378,7 @@ variable NFC0
    NCMP @ FMT:.INT s"  composition runs; " type
    NSI @ NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
-: BAIT  ( ptr u8 n -- )
+: BAIT  ( ^u8 n -- )
    CHK
    VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" 1 die THEN ;
 : BAITS ( -- )
@@ -397,7 +397,7 @@ variable NFC0
 create ALPHA-SEEN ALPHA-N allot
 variable PH-I  variable PH-J  variable PH-HIT
 variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
-: PROP-HAS? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: PROP-HAS? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
    v 0= IF 0 0= exit THEN
    0 PH-I !
    begin PH-I @ v + u <= while
@@ -408,7 +408,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
       PH-HIT @ IF 0 0= exit THEN
       PH-I @ 1+ PH-I !
    repeat 0 0= 0= ;
-: ALPHA-DET$ ( n -- ptr u8 n ) {: i:n :}   \ the substring PROP-STEP emits for class i
+: ALPHA-DET$ ( n -- ^u8 n ) {: i:n :}   \ the substring PROP-STEP emits for class i
    i 0 = IF OP-LOOP$ exit THEN
    i 1 = IF OP-LEAVE$ exit THEN
    i 2 = IF OP-STR$ exit THEN
@@ -418,7 +418,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    i 6 = IF OP-RCOPY$ exit THEN
    i 7 = IF OP-QUOT1$ exit THEN
    s" {: z" ;
-: ALPHA-CERT$ ( n -- ptr u8 n ) {: i:n :}  \ a minimal certifiable instance of class i
+: ALPHA-CERT$ ( n -- ^u8 n ) {: i:n :}  \ a minimal certifiable instance of class i
    i 8 = IF s" {: z0 :} z0 " exit THEN
    i ALPHA-DET$ ;
 variable CERT-I
@@ -483,7 +483,7 @@ variable CERT-I
    PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
    NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" 1 die THEN ;
 variable ARG-N  variable ARG-I  variable ARG-L
-: ARG>U?  ( ptr u8 -- n bool ) {: z:ptr :}   \ parse a non-empty decimal argv c-string
+: ARG>U?  ( ^u8 -- n bool ) {: z:^ :}   \ parse a non-empty decimal argv c-string
    z ZLEN ARG-L !  ARG-L @ 0= IF 0 0 0= 0= exit THEN
    0 ARG-N !  0 ARG-I !
    begin ARG-I @ ARG-L @ < while
@@ -524,7 +524,7 @@ create BUF 64 allot
    5 DOUT ! OUT-OK? if s" prop-test: output-depth self-test accepted a mismatch" 1 die then
    2 DOUT ! OUT-OK? 0= if s" prop-test: output-depth self-test rejected an exact match" 1 die then ;
 
-: BUILD-CHECK-CASE-RUNNER ( ptr u8 n -- ) {: ops:ptr opsu:n :}
+: BUILD-CHECK-CASE-RUNNER ( ^u8 n -- ) {: ops:^ opsu:n :}
    0 PBUF-U !
    s" CANARY depth BASE ! " P+
    ops opsu P+
@@ -533,7 +533,7 @@ create BUF 64 allot
 PTR-VARIABLE CASE-DEF  variable CASE-DEFU
 PTR-VARIABLE CASE-OPS  variable CASE-OPSU
 variable CASE-EXP
-: CHECK-CASE ( ptr u8 n ptr u8 n n -- )
+: CHECK-CASE ( ^u8 n ^u8 n n -- )
    CASE-EXP !  CASE-OPSU !  CASE-OPS !  CASE-DEFU !  CASE-DEF !
    [: CASE-DEF @ CASE-DEFU @ CHK
    VERD @ -1 <> if
@@ -564,11 +564,11 @@ variable CASE-EXP
    s" : PROP-PC ( a b c d -- c d a b ) 2swap ; " s" 7 7 7 7 " 4 CHECK-CASE
    s" : PROP-PC ( a b c d -- a b c d a b ) 2over ; " s" 7 7 7 7 " 6 CHECK-CASE
    s" : PROP-PC ( n n -- n ) + ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a n -- ptr a ) + ; " s" BUF 7 " 1 CHECK-CASE
-   s" : PROP-PC ( n ptr a -- ptr a ) + ; " s" 7 BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a n -- ^a ) + ; " s" BUF 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n ^a -- ^a ) + ; " s" 7 BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) - ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a n -- ptr a ) - ; " s" BUF 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- n ) - ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a n -- ^a ) - ; " s" BUF 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- n ) - ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) * ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) and ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( bool bool -- bool ) and ; " s" 0 0 " 1 CHECK-CASE
@@ -577,25 +577,25 @@ variable CASE-EXP
    s" : PROP-PC ( n n -- n ) xor ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( bool bool -- bool ) xor ; " s" 0 0 " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) 1+ ; " s" 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a -- ptr a ) 1+ ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a -- ^a ) 1+ ; " s" BUF " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) 1- ; " s" 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a -- ptr a ) 1- ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a -- ^a ) 1- ; " s" BUF " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) negate ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) invert ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( a -- bool ) 0= ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- bool ) 0< ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) = ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) = ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) = ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) < ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) < ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) < ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) > ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) > ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) > ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) <> ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) <> ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) <> ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) <= ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) <= ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) <= ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- bool ) >= ; " s" 7 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a ptr a -- bool ) >= ; " s" BUF BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a ^a -- bool ) >= ; " s" BUF BUF " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) / ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) mod ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n n ) /mod ; " s" 7 7 " 2 CHECK-CASE
@@ -605,14 +605,14 @@ variable CASE-EXP
    s" : PROP-PC ( n n -- n ) lshift ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) rshift ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) cells ; " s" 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a -- ptr a ) cell+ ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a -- ^a ) cell+ ; " s" BUF " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) cell+ ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) chars ; " s" 7 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr a -- ptr a ) char+ ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( ^a -- ^a ) char+ ; " s" BUF " 1 CHECK-CASE
    s" : PROP-PC ( n -- n ) char+ ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- ) . ; " s" 7 " 0 CHECK-CASE
    s" : PROP-PC ( -- n ) depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- ptr n ) here ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- ^n ) here ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) script-argc ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) epoch-seconds ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) mono-ns ; " s" " 1 CHECK-CASE
@@ -622,7 +622,7 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
    \ data-base's pointee is a base address, which no definition may publish
    \ under a type variable; the case is about its arity, so it names a pointee.
-   s" : PROP-PC ( -- ptr n ) data-base ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- ^n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
@@ -636,18 +636,18 @@ variable CASE-EXP
    s" : PROP-PC ( n -- ) u. ; " s" 7 " 0 CHECK-CASE ;
 
 : MEMORY-CASES ( -- )
-   s" : PROP-PC ( ptr a -- a ) @ ; " s" BUF " 1 CHECK-CASE
-   s" : PROP-PC ( a ptr a -- ) ! ; " s" 7 BUF " 0 CHECK-CASE
-   s" : PROP-PC ( ptr a n -- ptr ptr b ) ptr-field ; " s" BUF 0 " 1 CHECK-CASE
-   s" : PROP-PC ( n ptr n -- ) +! ; " s" 7 BUF " 0 CHECK-CASE
-   s" : PROP-PC ( ptr u8 -- u8 ) c@ ; " s" BUF " 1 CHECK-CASE
-   s" : PROP-PC ( u8 ptr u8 -- ) c! ; " s" 7 BUF " 0 CHECK-CASE
-   s" : PROP-PC ( ptr u8 -- ptr u8 n ) count ; " s" BUF " 2 CHECK-CASE
-   s" : PROP-PC ( ptr u8 n -- ) type ; " s" BUF 0 " 0 CHECK-CASE
-   s" : PROP-PC ( ptr u8 n -- bool ) tfam-ctor-word? ; " s" BUF 3 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr u8 n ptr u8 n -- bool ) core-str= ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr u8 n ptr u8 n -- bool ) core-str=ci ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
-   s" : PROP-PC ( ptr u8 -- n ) rd32 ; " s" BUF " 1 CHECK-CASE ;
+   s" : PROP-PC ( ^a -- a ) @ ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( a ^a -- ) ! ; " s" 7 BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ^a n -- ^^b ) ptr-field ; " s" BUF 0 " 1 CHECK-CASE
+   s" : PROP-PC ( n ^n -- ) +! ; " s" 7 BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ^u8 -- u8 ) c@ ; " s" BUF " 1 CHECK-CASE
+   s" : PROP-PC ( u8 ^u8 -- ) c! ; " s" 7 BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ^u8 -- ^u8 n ) count ; " s" BUF " 2 CHECK-CASE
+   s" : PROP-PC ( ^u8 n -- ) type ; " s" BUF 0 " 0 CHECK-CASE
+   s" : PROP-PC ( ^u8 n -- bool ) tfam-ctor-word? ; " s" BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ^u8 n ^u8 n -- bool ) core-str= ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ^u8 n ^u8 n -- bool ) core-str=ci ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ^u8 -- n ) rd32 ; " s" BUF " 1 CHECK-CASE ;
 
 : FLOAT-CASES ( -- )
    s" : PROP-PC ( r r -- r ) f+ ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
@@ -710,7 +710,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 \ The named failure line goes to stdout (fd 2 is muted in shards; `die` writes
 \ stderr, so its message would vanish) and carries the shard seed so any red is
 \ reproducible serially.
-: SHARD-FAIL ( ptr u8 n -- )
+: SHARD-FAIL ( ^u8 n -- )
    type s"  in shard seed " type RUN-SEED @ .
    s" " 1 die ;
 \ Fault-injection seam for the sweep red-path self-test only. Its selected

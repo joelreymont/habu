@@ -11,7 +11,7 @@ T-RESET
 
 STRUCTURE plain-row
    FIELD first n
-   FIELD second ptr u8
+   FIELD second ^u8
 ;STRUCTURE
 
 4096 TYPED-BUFFER PLAIN plain-row

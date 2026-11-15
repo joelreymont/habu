@@ -11,7 +11,7 @@ STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
 : RUN ( -- )
    T-RESET
    s" a raw byte span cannot select an initialized field" T-LABEL
-   s" : FL-RAW ( ptr u8 n -- ptr u8 n ) [: ;] C2-MEM:WITH-FIELD inner ;" 70 SUBJECT:EXITED? TTRUE
+   s" : FL-RAW ( ^u8 n -- ^u8 n ) [: ;] C2-MEM:WITH-FIELD inner ;" 70 SUBJECT:EXITED? TTRUE
    s" a shared view cannot select an initialized field" T-LABEL
    s" : FL-SHARED ( read-view<b,i,u8> -- read-view<b,i,u8> ) [: ;] C2-MEM:WITH-FIELD inner ;" 70 SUBJECT:EXITED? TTRUE
    s" only a member of the committed receiver schema is accepted" T-LABEL

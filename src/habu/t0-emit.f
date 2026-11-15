@@ -179,7 +179,7 @@ ARCHES TYPED-BUFFER EMIT-QUOT-OPEN-XT [ n -- ]
 ARCHES TYPED-BUFFER EMIT-UNIT-OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-RETURN-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-CLOSE-XT [ -- ]
-ARCHES TYPED-BUFFER EMIT-BYTES-XT [ -- ptr u8 n ]
+ARCHES TYPED-BUFFER EMIT-BYTES-XT [ -- ^u8 n ]
 ARCHES TYPED-BUFFER EMIT-PATCH-XT [ n -- ]
 ARCHES TYPED-BUFFER EMIT-SLOT-CLOSE-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-CB-STUB-XT [ -- n ]
@@ -191,7 +191,7 @@ CAST: CALLABLE>N ( [ R -- S ] -- n )
    dup CALLABLE>N 0= if E-T0-UNFILLED throw then ;
 
 \ The finished emission, once the last unit is closed.
-: EMIT-BYTES ( -- ptr u8 n ) CUR @ EMIT-BYTES-XT @ execute ;
+: EMIT-BYTES ( -- ^u8 n ) CUR @ EMIT-BYTES-XT @ execute ;
 
 \ Write every call row's displacement and every quotation address row for the
 \ emission placed at address n.
@@ -443,9 +443,9 @@ ARCHES TYPED-BUFFER EMIT-ENDCASE,-XT [ -- ]
 : EMIT-ENDCASE, ( -- ) CUR @ EMIT-ENDCASE,-XT @ execute ;
 
 \ ---- the return stack --------------------------------------------------------
-ARCHES TYPED-BUFFER EMIT-TOR-XT [ ptr vreg n -- ]
-ARCHES TYPED-BUFFER EMIT-RFROM-XT [ ptr vreg n -- ]
-ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ptr vreg n n -- ]
+ARCHES TYPED-BUFFER EMIT-TOR-XT [ ^vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-RFROM-XT [ ^vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ^vreg n n -- ]
 
 \ The return stack grows up from STACK-ABI:RETURN-BASE-CELL and is RSP-CELL
 \ cells deep. Each operation moves the cells of the n vregs at p, at most
@@ -453,11 +453,11 @@ ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ptr vreg n n -- ]
 \ once: EMIT-TOR stores them in the slots above the top and EMIT-RFROM loads the
 \ top n slots, each writing the depth once; EMIT-RFETCH loads the n slots whose
 \ highest is k under the top and writes nothing.
-: EMIT-TOR ( ptr vreg n -- ) CUR @ EMIT-TOR-XT @ execute ;
-: EMIT-RFROM ( ptr vreg n -- ) CUR @ EMIT-RFROM-XT @ execute ;
-: EMIT-RFETCH ( ptr vreg n n -- ) CUR @ EMIT-RFETCH-XT @ execute ;
+: EMIT-TOR ( ^vreg n -- ) CUR @ EMIT-TOR-XT @ execute ;
+: EMIT-RFROM ( ^vreg n -- ) CUR @ EMIT-RFROM-XT @ execute ;
+: EMIT-RFETCH ( ^vreg n n -- ) CUR @ EMIT-RFETCH-XT @ execute ;
 
-: VREG-AT ( ptr vreg n -- vreg ) cells + @ ;
+: VREG-AT ( ^vreg n -- vreg ) cells + @ ;
 
 \ ---- loops -------------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-LOOP-PUSH-XT [ vreg vreg -- ]

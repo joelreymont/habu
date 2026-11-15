@@ -28,32 +28,32 @@ ROWS-MAX 2 * constant SLOTS          \ a power of two
 
 \ The elaborator stages the arena address as an ordinary integer literal: its
 \ distance from the null pointer.
-: PTR>N ( ptr a -- n ) NULL-PTR - ;
+: PTR>N ( ^a -- n ) NULL-PTR - ;
 
 \ The arena field holds the arena's distance from the field, not an address: a
 \ native build moves the captured window as one block and relocates no raw
 \ cell, and a rewind of DATA has no pointer mark to drop.
-: ARENA-FIELD ( ptr u8 -- ptr n ) CELL-VIEW ;
-: ROWS-FIELD ( ptr u8 -- ptr n ) 1 cells + CELL-VIEW ;
-: USED-FIELD ( ptr u8 -- ptr n ) 2 cells + CELL-VIEW ;
-: OFFSETS ( ptr u8 -- ptr n ) OWNER-BYTES + CELL-VIEW ;
-: LENGTHS ( ptr u8 -- ptr n ) OFFSETS ROWS-MAX cells + ;
+: ARENA-FIELD ( ^u8 -- ^n ) CELL-VIEW ;
+: ROWS-FIELD ( ^u8 -- ^n ) 1 cells + CELL-VIEW ;
+: USED-FIELD ( ^u8 -- ^n ) 2 cells + CELL-VIEW ;
+: OFFSETS ( ^u8 -- ^n ) OWNER-BYTES + CELL-VIEW ;
+: LENGTHS ( ^u8 -- ^n ) OFFSETS ROWS-MAX cells + ;
 
-: LINK@ ( ptr n -- ptr u8 ) {: cell:ptr :}
+: LINK@ ( ^n -- ^u8 ) {: cell:^ :}
    cell BYTE-VIEW cell @ + ;
 
-: LINK! ( ptr u8 ptr n -- ) {: target:ptr cell:ptr :}
+: LINK! ( ^u8 ^n -- ) {: target:^ cell:^ :}
    target PTR>N cell PTR>N - cell ! ;
 
-: ARENA@ ( ptr u8 -- ptr u8 ) ARENA-FIELD LINK@ ;
+: ARENA@ ( ^u8 -- ^u8 ) ARENA-FIELD LINK@ ;
 
 ROWS-MAX cells 2 * OWNER-BYTES + constant OWNER-SIZE
 
-: CLEAR-CELLS ( ptr u8 n -- )
-   {: buf:ptr bytes:n :}
+: CLEAR-CELLS ( ^u8 n -- )
+   {: buf:^ bytes:n :}
    bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
 
-: OWNER-INIT ( ptr u8 ptr u8 -- ) {: owner:ptr arena:ptr :}
+: OWNER-INIT ( ^u8 ^u8 -- ) {: owner:^ arena:^ :}
    \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
    \ this new owner too, and must not retain the build host's scratch values.
    owner OWNER-SIZE CLEAR-CELLS
@@ -69,11 +69,11 @@ BOOT-OWNER BOOT-ARENA OWNER-INIT
 PERSISTED-PTR-VARIABLE WRITE-P       \ the segment that takes new bodies
 BOOT-OWNER WRITE-P !
 
-: STRING-ARENA ( -- ptr u8 ) WRITE-P @ ARENA@ ;
-: R-OFF ( -- ptr n ) WRITE-P @ OFFSETS ;
-: R-LEN ( -- ptr n ) WRITE-P @ LENGTHS ;
-: USED ( -- ptr n ) WRITE-P @ USED-FIELD ;
-: ROWS ( -- ptr n ) WRITE-P @ ROWS-FIELD ;
+: STRING-ARENA ( -- ^u8 ) WRITE-P @ ARENA@ ;
+: R-OFF ( -- ^n ) WRITE-P @ OFFSETS ;
+: R-LEN ( -- ^n ) WRITE-P @ LENGTHS ;
+: USED ( -- ^n ) WRITE-P @ USED-FIELD ;
+: ROWS ( -- ^n ) WRITE-P @ ROWS-FIELD ;
 
 create SLOT SLOTS cells allot       \ the last segment's hash slots: row index plus one
 variable PROBE
@@ -87,13 +87,13 @@ variable PROBE
 : ROW-LEN ( n -- n ) {: k:n :}
    k cells R-LEN + @ ;
 
-: ROW$ ( n -- ptr u8 n ) {: k:n :}
+: ROW$ ( n -- ^u8 n ) {: k:n :}
    STRING-ARENA k ROW-OFF +  k ROW-LEN ;
 
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
 \ into the sign still lands inside the table.
-: HASH ( ptr u8 n -- n ) FNV SLOTS 1- and ;
+: HASH ( ^u8 n -- n ) FNV SLOTS 1- and ;
 
 : PROBE-NEXT ( -- )
    PROBE @ 1+ SLOTS 1- and PROBE ! ;
@@ -101,7 +101,7 @@ variable PROBE
 : SLOT@ ( -- n )
    PROBE @ cells SLOT + @ ;
 
-: ROW-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ROW-FIND ( ^u8 n -- n ) {: a:^ u:n :}
    a u HASH PROBE !
    begin SLOT@ 0<> while
       SLOT@ 1- ROW$ a u STR= if SLOT@ 1- exit then
@@ -111,7 +111,7 @@ variable PROBE
 
 \ Ends at an empty slot: a body is placed only while the segment holds fewer
 \ than ROWS-MAX rows (ROOM?), and SLOTS is twice ROWS-MAX.
-: FREE-SLOT ( ptr u8 n -- n )
+: FREE-SLOT ( ^u8 n -- n )
    HASH PROBE !
    begin SLOT@ 0= 0= while PROBE-NEXT repeat
    PROBE @ ;
@@ -131,9 +131,9 @@ private
 
 \ ---- putting one in ------------------------------------------------------------
 : NEW-SEGMENT ( -- )
-   align here {: owner:ptr :}
+   align here {: owner:^ :}
    OWNER-SIZE allot
-   here {: arena:ptr :}
+   here {: arena:^ :}
    ARENA-CAP CELL + allot
    owner arena OWNER-INIT
    DATA-FLOOR:RAISE
@@ -145,7 +145,7 @@ private
 
 \ A body no segment can hold is refused before anything moves, so the refusal
 \ leaves no trace.
-: ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ADD ( ^u8 n -- n ) {: a:^ u:n :}
    u 0 < if E-NSTR-BODY throw then
    u ARENA-CAP > if E-NSTR-CAP throw then
    u ROOM? 0= if NEW-SEGMENT then
@@ -167,8 +167,8 @@ public
 : WINDOW-OPEN ( -- ) NEW-SEGMENT ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
-: STRING ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: STRING ( ^u8 n -- n )
+   {: a:^ u:n :}
    u 0 < if E-NSTR-BODY throw then
    SPACE? if a u SPACE-STRING exit then
    a u ROW-FIND {: k:n :}
@@ -177,7 +177,7 @@ public
    BASE row ROW-OFF + ;
 
 \ The second result is the origin its callers file beside the address: -1, none.
-: INTERN-SOURCE ( ptr u8 n -- n n )
+: INTERN-SOURCE ( ^u8 n -- n n )
    STRING -1 ;
 
 seal-package

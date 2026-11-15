@@ -23,7 +23,7 @@ variable NFLD       \ total field count across all variants
 variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
-variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
+variable POINTEE    \ resolving the pointee of `^`: the declared family may be named
 
 : ED-RESET ( -- )
    0 TOK !   0 SEEN-VARIANT !   0 POINTEE ! ;
@@ -33,29 +33,29 @@ ED-RESET
 \ asks (the ENUM openers are grammar keywords there): a copy kept here drifted
 \ twice. Case and duplicate are TFAM-DECL's.
 
-: REQUIRE-NAME ( ptr u8 n -- )
+: REQUIRE-NAME ( ^u8 n -- )
    dup 0= IF 2drop s" missing name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ Payload types: n/f/r and con names, letter params within arity, ptr T, and
+\ Payload types: n/f/r and con names, letter params within arity, ^T, and
 \ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
 \ owner included; anything else, TK-EVIDENCE among them, is unresolved.
-: FIELD-FAM? ( ptr u8 n -- n bool )
+: FIELD-FAM? ( ^u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id UNSTORED-REASON IF E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `ptr`
+   id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `^`
       s" payload type cannot recursively name its owner"
       E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id TFAM-ARITY@ 0 <> IF
       s" payload type is parametric and needs type arguments" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n -- n )
+: LETTER-TYPE ( ^u8 n -- n )
    drop c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
@@ -64,15 +64,20 @@ ED-RESET
       drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
-\ The pointee text of a payload type that opens a pointer: the token after
-\ `ptr`, or the rest of a `^T` token, empty for a bare `^`.
-: EN-PTR-TEXT? ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR=CI IF NEXT YES EXIT THEN
+\ The pointee text of a payload type that opens a pointer: the rest of a `^T`
+\ token, empty for a bare `^`. The token `ptr` names no type: it is refused as
+\ an unknown payload type.
+: EN-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+   a u s" ptr" CORE-STR=CI IF
+      s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
    a u NO ;
 
-: RESOLVE-TYPE ( ptr u8 n -- n )
+\ The text resolved is the reject token, so a refused pointee names itself, not
+\ the `^T` token that holds it.
+: RESOLVE-TYPE ( ^u8 n -- n )
    dup 0= IF 2drop s" missing payload type" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup DECL-REJECT:TOKEN!
    EN-PTR-TEXT? IF
       POINTEE @ {: outer:n :}
       -1 POINTEE !
@@ -102,7 +107,7 @@ ED-RESET
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
-: DERIVE-FEATURE? ( ptr u8 n -- bool )
+: DERIVE-FEATURE? ( ^u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -114,10 +119,10 @@ ED-RESET
 \ buffered source, so the prefix is kept as a span and re-read through
 \ DECL-FRONT's token source (HEAD!): registration fixes the kind before any clause
 \ applies, and diagnostics keep their bytes.
-: ED-LOOK-END? ( ptr u8 n -- bool )
+: ED-LOOK-END? ( ^u8 n -- bool )
    dup 0= IF 2drop YES EXIT THEN
    s" ;enum" CORE-STR=CI ;
-: ED-FIRST-VARIANT ( ptr u8 n -- ptr u8 n )
+: ED-FIRST-VARIANT ( ^u8 n -- ^u8 n )
    BEGIN
       2dup s" policy" CORE-STR=CI IF
          2drop SOURCE-NEXT
@@ -135,8 +140,8 @@ ED-RESET
       THEN
    AGAIN ;
 : ED-FULL? ( -- bool )
-   SOURCE-NEXT {: first:ptr size:n :}
-   first size ED-FIRST-VARIANT {: last:ptr lastu:n :}
+   SOURCE-NEXT {: first:^ size:n :}
+   first size ED-FIRST-VARIANT {: last:^ lastu:n :}
    size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )
@@ -144,7 +149,7 @@ ED-RESET
       s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
-: DERIVE-ONE ( ptr u8 n -- )
+: DERIVE-ONE ( ^u8 n -- )
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
@@ -163,7 +168,7 @@ ED-RESET
 \ Full mode: DECL-EVENT:VARIANT registers the SUMV row and pins the current-variant
 \ selector the FIELD events carry; END-VARIANT clears it. Each variant's payload
 \ restarts at slot 0 (VCELLS); the family width is the widest variant (MAXSLOTS).
-: EMIT-FIELD ( ptr u8 n n -- )
+: EMIT-FIELD ( ^u8 n n -- )
    SCHEMA-ROOT+ {: sch:n :}
    sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
@@ -176,24 +181,24 @@ ED-RESET
 : FIELD-CLAUSE ( -- )
    NEXT dup 0= IF
       2drop s" missing field name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   {: na:ptr nu:n :}
+   {: na:^ nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    0 FIELD-MISS !
-   NEXT {: ta:ptr tu:n :}
+   NEXT {: ta:^ tu:n :}
    ta tu RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
       na nu node EMIT-FIELD THEN ;
 
-: VARIANT-NAME ( -- ptr u8 n )
+: VARIANT-NAME ( -- ^u8 n )
    NEXT dup 0= IF
       2drop s" missing variant name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN ;
 \ Records variant NAME, rejected at its token when a word DERIVE generates
 \ takes its name or a variant already has it.
-: VARIANT-START ( ptr u8 n -- ) {: na:ptr nu:n :}
+: VARIANT-START ( ^u8 n -- ) {: na:^ nu:n :}
    na nu DECL-REJECT:TOKEN!
    FAM @ TFAM-DERIVE-ANY? na nu TFAM-DERIVED-TAIL? and IF
       s" variant name collides with a derived word" E-TDECL-NAME
@@ -223,18 +228,18 @@ ED-RESET
 
 \ Compact body: full-mode block keywords always reject; a header after a variant
 \ rejects through HEADER-ORDER.
-: COMPACT-KW? ( ptr u8 n -- bool )
+: COMPACT-KW? ( ^u8 n -- bool )
    2dup s" variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    s" field" CORE-STR=CI ;
-: COMPACT-VARIANT ( ptr u8 n -- )
-   {: na:ptr nu:n :}
+: COMPACT-VARIANT ( ^u8 n -- )
+   {: na:^ nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu VARIANT-START
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
-: COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
+: COMPACT-CLAUSE ( ^u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
    2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
    2dup COMPACT-KW? IF
@@ -255,16 +260,16 @@ ED-RESET
    0 NVAR !   0 NFLD !   0 MAXSLOTS !
    DECL-EVENT:CURRENT TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
-: REGISTER-FULL ( ptr u8 n n -- )
-   {: na:ptr nu:n ar:n :}
+: REGISTER-FULL ( ^u8 n n -- )
+   {: na:^ nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
-: REGISTER-COMPACT ( ptr u8 n -- )
-   {: na:ptr nu:n :}
+: REGISTER-COMPACT ( ^u8 n -- )
+   {: na:^ nu:n :}
    na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
@@ -329,7 +334,7 @@ ED-RESET
    DECL-REJECT:REJECT throw ;
 : FULL-BODY ( -- ) BEGIN FULL-CLAUSE UNTIL ;
 
-: COMPACT-BODY ( ptr u8 n -- )
+: COMPACT-BODY ( ^u8 n -- )
    BEGIN
       dup 0= IF 2drop
          DECL-REJECT:AT-FAMILY
@@ -347,7 +352,7 @@ ED-RESET
    {: ar:n :}
    2dup DECL-REJECT:FAMILY!
    2dup REQUIRE-NAME
-   {: na:ptr nu:n :}
+   {: na:^ nu:n :}
    ED-FULL? ar 0 <> or IF
       na nu ar REGISTER-FULL
       FULL-BODY
@@ -357,7 +362,7 @@ ED-RESET
    THEN
    ED-CLOSE ;
 
-: ED-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )
+: ED-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    s" enum" s" ;enum" [: ED-RESET DRIVE ;] ;
 
 public
@@ -366,9 +371,9 @@ public
 
 \ Registers an ENUM from a body a tool lexed, by ED-RUN's grammar, defining no
 \ word; a body without ;ENUM is refused "missing ;ENUM" (enum-decl-suite 23e).
-: ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+: ED-REPLAY-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
-: ED-REPLAY ( ptr u8 n ptr u8 n -- )
+: ED-REPLAY ( ^u8 n ^u8 n -- )
    ED-FRONT DECL-FRONT:REPLAY ;
 
 ;package

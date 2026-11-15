@@ -33,10 +33,10 @@ PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
 REPORT-CAP BUFFER: REPORT-BUF
 TYPED-VARIABLE REPORT-W JSON:writer
 
-: REPORT-OPEN ( -- ptr JSON:writer )
+: REPORT-OPEN ( -- ^JSON:writer )
    REPORT-W REPORT-BUF REPORT-CAP JSON:WRITE-OPEN ;
 
-: STATE-PTR ( -- ptr state )
+: STATE-PTR ( -- ^state )
    0 STATE-BUF ;
 
 : STATE! ( state -- )
@@ -110,7 +110,7 @@ public
    REQUIRE-COMPLETE
    ELAPSED-VALUE @ ;
 
-: REPORT$ ( -- ptr u8 n )
+: REPORT$ ( -- ^u8 n )
    REPORT-OPEN
    JSON:WRITE-OBJECT-START
    s" schema" s" hb-build-report" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -131,7 +131,7 @@ public
    JSON:WRITE-OBJECT-END
    JSON:WRITTEN$ ;
 
-: PATH-ERROR$ ( -- ptr u8 n )
+: PATH-ERROR$ ( -- ^u8 n )
    REPORT-OPEN
    JSON:WRITE-OBJECT-START
    s" schema" s" hb-build-error" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -140,7 +140,7 @@ public
    JSON:WRITE-OBJECT-END
    JSON:WRITTEN$ ;
 
-: PATH-ERROR-TEXT$ ( -- ptr u8 n )
+: PATH-ERROR-TEXT$ ( -- ^u8 n )
    s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" ;
 
 ;package

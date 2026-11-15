@@ -215,7 +215,7 @@ variable BAD-GATE
    s" BAD-TEARDOWN ( process-pty-teardown -- process-pty-teardown process-pty-teardown ) dup"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: PRIVATE? ( ptr u8 n -- )
+: PRIVATE? ( ^u8 n -- )
    XREF-FIND XREF-FOUND? TFALSE ;
 
 : CHECK-PRIVATE ( -- )

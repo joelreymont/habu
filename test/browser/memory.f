@@ -19,14 +19,14 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 PATH-CAP BUFFER: EXE
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 public
 
 \ The number on the "memory" line host-cli's --memory prints after the
 \ output's other lines; E-PROC-OUTPUT without one.
-: MEMORY ( ptr u8 n -- n )
-   {: out:ptr u:n :}
+: MEMORY ( ^u8 n -- n )
+   {: out:^ u:n :}
    out u s\" \nmemory " FIND-SUB MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF IDX>N ENDOF
@@ -41,8 +41,8 @@ private
 \ The memory after host-cli runs the module at the path with the steps staged
 \ count times; the run's exit is checked under the label, its stderr shown when
 \ it failed.
-: MEMORY-AFTER ( ptr u8 n ptr u8 n [ -- ] n -- n )
-   {: label:ptr lu:n mod:ptr mu:n steps count:n :}
+: MEMORY-AFTER ( ^u8 n ^u8 n [ -- ] n -- n )
+   {: label:^ lu:n mod:^ mu:n steps count:n :}
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+ mod mu ARG+
    count 0 ?do steps execute loop
@@ -57,8 +57,8 @@ private
 
 public
 
-: FREED ( ptr u8 n ptr u8 n [ -- ] -- )
-   {: label:ptr lu:n mod:ptr mu:n steps :}
+: FREED ( ^u8 n ^u8 n [ -- ] -- )
+   {: label:^ lu:n mod:^ mu:n steps :}
    label lu mod mu steps 1 MEMORY-AFTER {: one:n :}
    label lu mod mu steps 4 MEMORY-AFTER {: four:n :}
    label lu T-LABEL four one T= ;

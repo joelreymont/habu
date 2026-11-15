@@ -12,7 +12,7 @@ variable SRC-U
 variable N-CELL
 TYPED-VARIABLE FLAG-CELL bool
 
-: SRC! ( ptr u8 n -- )
+: SRC! ( ^u8 n -- )
    SRC-U !
    SRC-A ! ;
 
@@ -20,7 +20,7 @@ public
 
 \ SRC$, N! and FLAG! are the hooks of the closed texts below, which run in the
 \ caller's scope and so reach them only qualified. Callers use N, FLAG, RC.
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-A @ SRC-U @ ;
 
 : N! ( n -- )
@@ -35,19 +35,19 @@ public
 \ is N!'s underdepth, 70; two or more is the closed residue, E-EVAL-RESIDUE.
 \ SRC$ reads the text before it runs and N! stores after it, so N nests inside
 \ its own text.
-: N ( ptr u8 n -- n )
+: N ( ^u8 n -- n )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:N!" evaluate-closed
    N-CELL @ ;
 
 \ FLAG's text leaves the flag itself, which FLAG! takes as N! takes N's cell.
-: FLAG ( ptr u8 n -- bool )
+: FLAG ( ^u8 n -- bool )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:FLAG!" evaluate-closed
    FLAG-CELL @ ;
 
 \ The text's throw code, 0 when it loaded as a closed program.
-: RC ( ptr u8 n -- n )
+: RC ( ^u8 n -- n )
    SRC!
    [: SRC$ evaluate-closed ;] catch ;
 

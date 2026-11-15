@@ -87,7 +87,7 @@ DATA-START $100 + constant TCB-OFF
       else RAX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-SUB-RI32 then
    RAX ASM-SINK ENC-JMP-REG ;
 
-: BUILD ( n ptr u8 n -- ) {: pushes:n path:ptr pathu:n :}
+: BUILD ( n ^u8 n -- ) {: pushes:n path:^ pathu:n :}
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
    floor code-end X64BOOT:START,

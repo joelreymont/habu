@@ -24,7 +24,7 @@ PATH-CAP SCRATCH-BUFFER: PATH-BUF
 \ The out root in OUT-BUF. HABU_OUT is read through ENV-INPUT:CURRENT$, so its
 \ value is no build input.
 : OUT-ROOT ( -- n )
-   s" HABU_OUT" ENV-INPUT:CURRENT$ {: v:ptr vu:n :}
+   s" HABU_OUT" ENV-INPUT:CURRENT$ {: v:^ vu:n :}
    vu 0= if SOURCE-ROOT:CWD$ s" .out" OUT-BUF FS:JOIN-PATH exit then
    v c@ FS:SLASH <> if SOURCE-ROOT:CWD$ v vu OUT-BUF FS:JOIN-PATH exit then
    vu PATH-CAP > if E-FS-CAPACITY throw then
@@ -33,7 +33,7 @@ PATH-CAP SCRATCH-BUFFER: PATH-BUF
 
 public
 
-: BASE$ ( -- ptr u8 n )
+: BASE$ ( -- ^u8 n )
    OUT-U @ 0= if
       OUT-ROOT {: outu:n :}
       OUT-BUF outu FS:MAKE-DIRS
@@ -41,8 +41,8 @@ public
    then
    OUT-BUF OUT-U @ ;
 
-: OBJ$ ( ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n :}
+: OBJ$ ( ^u8 n -- ^u8 n )
+   {: name:^ nameu:n :}
    nameu 0 <= if E-FS-PATH throw then
    OBJ-U @ 0= if
       BASE$ s" obj" PATH-BUF FS:JOIN-PATH {: obju:n :}

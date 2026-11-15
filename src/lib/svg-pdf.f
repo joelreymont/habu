@@ -36,51 +36,51 @@ private
 
 VERSIONED-LIBRARY rsvg-2 2
 FUNCTION: SVG-OPEN rsvg_handle_new_from_data
-   ( ptr u8 n ptr u8 -- ptr u8 )
+   ( ^u8 n ^u8 -- ^u8 )
 ;FUNCTION
-FUNCTION: SVG-DPI rsvg_handle_set_dpi ( ptr u8 r -- ) ;FUNCTION
+FUNCTION: SVG-DPI rsvg_handle_set_dpi ( ^u8 r -- ) ;FUNCTION
 FUNCTION: SVG-SIZE rsvg_handle_get_intrinsic_size_in_pixels
-   ( ptr u8 ptr u8 ptr u8 -- i32 )
+   ( ^u8 ^u8 ^u8 -- i32 )
 ;FUNCTION
 FUNCTION: SVG-RENDER rsvg_handle_render_document
-   ( ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
+   ( ^u8 ^u8 ^u8 ^u8 -- i32 )
 ;FUNCTION
 
 VERSIONED-LIBRARY glib-2.0 0
-FUNCTION: ERROR-FREE g_error_free ( ptr u8 -- ) ;FUNCTION
+FUNCTION: ERROR-FREE g_error_free ( ^u8 -- ) ;FUNCTION
 
 VERSIONED-LIBRARY gobject-2.0 0
-FUNCTION: SVG-FREE g_object_unref ( ptr u8 -- ) ;FUNCTION
+FUNCTION: SVG-FREE g_object_unref ( ^u8 -- ) ;FUNCTION
 
 VERSIONED-LIBRARY cairo 2
-FUNCTION: PDF-OPEN cairo_pdf_surface_create ( ptr u8 r r -- ptr u8 ) ;FUNCTION
-FUNCTION: PDF-SIZE cairo_pdf_surface_set_size ( ptr u8 r r -- ) ;FUNCTION
-FUNCTION: SURFACE-STATUS cairo_surface_status ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: SURFACE-FINISH cairo_surface_finish ( ptr u8 -- ) ;FUNCTION
-FUNCTION: SURFACE-FREE cairo_surface_destroy ( ptr u8 -- ) ;FUNCTION
-FUNCTION: CONTEXT-OPEN cairo_create ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: CONTEXT-STATUS cairo_status ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: CONTEXT-FREE cairo_destroy ( ptr u8 -- ) ;FUNCTION
-FUNCTION: SHOW-PAGE cairo_show_page ( ptr u8 -- ) ;FUNCTION
-FUNCTION: SCALE cairo_scale ( ptr u8 r r -- ) ;FUNCTION
-FUNCTION: RECTANGLE cairo_rectangle ( ptr u8 r r r r -- ) ;FUNCTION
-FUNCTION: CLIP cairo_clip ( ptr u8 -- ) ;FUNCTION
+FUNCTION: PDF-OPEN cairo_pdf_surface_create ( ^u8 r r -- ^u8 ) ;FUNCTION
+FUNCTION: PDF-SIZE cairo_pdf_surface_set_size ( ^u8 r r -- ) ;FUNCTION
+FUNCTION: SURFACE-STATUS cairo_surface_status ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SURFACE-FINISH cairo_surface_finish ( ^u8 -- ) ;FUNCTION
+FUNCTION: SURFACE-FREE cairo_surface_destroy ( ^u8 -- ) ;FUNCTION
+FUNCTION: CONTEXT-OPEN cairo_create ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: CONTEXT-STATUS cairo_status ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: CONTEXT-FREE cairo_destroy ( ^u8 -- ) ;FUNCTION
+FUNCTION: SHOW-PAGE cairo_show_page ( ^u8 -- ) ;FUNCTION
+FUNCTION: SCALE cairo_scale ( ^u8 r r -- ) ;FUNCTION
+FUNCTION: RECTANGLE cairo_rectangle ( ^u8 r r r r -- ) ;FUNCTION
+FUNCTION: CLIP cairo_clip ( ^u8 -- ) ;FUNCTION
 
 \ Four owned foreign handles and the four-double RsvgRectangle are one
 \ task-local row. Both writers are synchronous and expose no handles.
 4 cells constant VIEWPORT-AT
 32 constant RECT-BYTES
 VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
-: ERROR-CELL ( -- ptr ptr u8 ) 0 STATE 0 ptr-field ;
-: SVG-CELL ( -- ptr ptr u8 ) 1 cells STATE 0 ptr-field ;
-: SURFACE-CELL ( -- ptr ptr u8 ) 2 cells STATE 0 ptr-field ;
-: CONTEXT-CELL ( -- ptr ptr u8 ) 3 cells STATE 0 ptr-field ;
-: VIEWPORT ( -- ptr u8 ) VIEWPORT-AT STATE ;
-: WIDTH-PTR ( -- ptr u8 ) VIEWPORT-AT 16 + STATE ;
-: HEIGHT-PTR ( -- ptr u8 ) VIEWPORT-AT 24 + STATE ;
+: ERROR-CELL ( -- ^^u8 ) 0 STATE 0 ptr-field ;
+: SVG-CELL ( -- ^^u8 ) 1 cells STATE 0 ptr-field ;
+: SURFACE-CELL ( -- ^^u8 ) 2 cells STATE 0 ptr-field ;
+: CONTEXT-CELL ( -- ^^u8 ) 3 cells STATE 0 ptr-field ;
+: VIEWPORT ( -- ^u8 ) VIEWPORT-AT STATE ;
+: WIDTH-PTR ( -- ^u8 ) VIEWPORT-AT 16 + STATE ;
+: HEIGHT-PTR ( -- ^u8 ) VIEWPORT-AT 24 + STATE ;
 : WIDTH ( -- r ) WIDTH-PTR LE:U64@ IEEE754:BITS>F64 ;
 : HEIGHT ( -- r ) HEIGHT-PTR LE:U64@ IEEE754:BITS>F64 ;
-: NULL? ( ptr a -- bool ) NULL-PTR = ;
+: NULL? ( ^a -- bool ) NULL-PTR = ;
 
 : CLEAR ( -- )
    NULL-PTR ERROR-CELL ! NULL-PTR SVG-CELL !
@@ -103,8 +103,8 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    value FMATH:FINITE?
    value 0.0 f> and ;
 
-: OPEN-SVG ( ptr u8 n -- )
-   {: data:ptr size:n :}
+: OPEN-SVG ( ^u8 n -- )
+   {: data:^ size:n :}
    size 0 < if E-OPEN throw then
    data size ERROR-CELL BYTE-VIEW SVG-OPEN SVG-CELL !
    SVG-CELL @ NULL? if E-OPEN throw then
@@ -114,7 +114,7 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    WIDTH 0.75 f* MAX-PAGE-PT s>f f>
    HEIGHT 0.75 f* MAX-PAGE-PT s>f f> or if E-SIZE throw then ;
 
-: OPEN-PDF ( ptr u8 n -- )
+: OPEN-PDF ( ^u8 n -- )
    FS:>PATHZ WIDTH 0.75 f* HEIGHT 0.75 f* PDF-OPEN SURFACE-CELL !
    SURFACE-CELL @ SURFACE-STATUS 0<> if E-RENDER throw then ;
 
@@ -132,17 +132,17 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    SURFACE-CELL @ SURFACE-FINISH
    SURFACE-CELL @ SURFACE-STATUS 0<> if E-FINISH throw then ;
 
-: RENDER-PDF ( ptr u8 n -- ) OPEN-PDF RENDER-PAGE FINISH-PDF ;
+: RENDER-PDF ( ^u8 n -- ) OPEN-PDF RENDER-PAGE FINISH-PDF ;
 
-: PAGE-AT ( ptr SPAN:span<u8> n -- SPAN:span<u8> ) 2 * record-at @ ;
+: PAGE-AT ( ^SPAN:span<u8> n -- SPAN:span<u8> ) 2 * record-at @ ;
 
 : EMIT-PAGE ( -- )
    CONTEXT-CELL @ SHOW-PAGE
    CONTEXT-CELL @ CONTEXT-STATUS 0<>
    SURFACE-CELL @ SURFACE-STATUS 0<> or if E-FINISH throw then ;
 
-: RENDER-PAGES ( ptr SPAN:span<u8> n ptr u8 n -- ptr SPAN:span<u8> n )
-   {: pages:ptr count:n path:ptr pathu:n :}
+: RENDER-PAGES ( ^SPAN:span<u8> n ^u8 n -- ^SPAN:span<u8> n )
+   {: pages:^ count:n path:^ pathu:n :}
    path pathu OPEN-PDF
    count 0 do
       i 0 > if
@@ -159,24 +159,24 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    FINISH-PDF
    pages count ;
 
-: WRITE-BODY ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n data:ptr size:n :}
+: WRITE-BODY ( ^u8 n ^u8 n -- )
+   {: path:^ pathu:n data:^ size:n :}
    data size OPEN-SVG
    path pathu [: RENDER-PDF ;] FS:REPLACE-STAGED ;
 
-: WRITE-PAGES-BODY ( ptr u8 n ptr SPAN:span<u8> n -- )
-   {: path:ptr pathu:n pages:ptr count:n :}
+: WRITE-PAGES-BODY ( ^u8 n ^SPAN:span<u8> n -- )
+   {: path:^ pathu:n pages:^ count:n :}
    count 0 <= if E-OPEN throw then
    pages 0 PAGE-AT SPAN:$ OPEN-SVG
    pages count path pathu [: RENDER-PAGES ;] FS:REPLACE-STAGED 2drop ;
 
 public
 
-: WRITE ( ptr u8 n ptr u8 n -- )
+: WRITE ( ^u8 n ^u8 n -- )
    CLEAR
    [: WRITE-BODY ;] [: RELEASE ;] finally ;
 
-: WRITE-PAGES ( ptr u8 n ptr SPAN:span<u8> n -- )
+: WRITE-PAGES ( ^u8 n ^SPAN:span<u8> n -- )
    CLEAR
    [: WRITE-PAGES-BODY ;] [: RELEASE ;] finally ;
 

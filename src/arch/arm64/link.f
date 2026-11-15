@@ -15,8 +15,8 @@ private
 package ARM64
 
 \ The data address chain at p, inside bytes ending at end, its value through data.
-: DATA-ROW ( ptr u8 ptr u8 [ n -- n ] -- )
-   {: p:ptr end:ptr data :}
+: DATA-ROW ( ^u8 ^u8 [ n -- n ] -- )
+   {: p:^ end:^ data :}
    p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size 0= if s" a64link: a data address row holds no address chain" 74 die then
    p  p size ADDRESS-CARRIER:CHAIN-VALUE data execute  size
@@ -26,16 +26,16 @@ public
 
 \ The word at p, a call site at link-time address at, becomes bl (NEMIT:CALL)
 \ or b (NEMIT:TAIL) to to; ENC-BL and ENC-B throw E-A64EMIT-REACH past reach.
-: CALL! ( n n n ptr u8 -- )
-   {: to:n kind:n at:n p:ptr :}
+: CALL! ( n n n ^u8 -- )
+   {: to:n kind:n at:n p:^ :}
    to at - {: d:n :}
    kind NEMIT:CALL = if d A64ASM:ENC-BL else d A64ASM:ENC-B then  p LE:U32! ;
 
 
 \ The 16-byte chain at p, link-time address at, becomes adrp+add of to and two
 \ nops in its own register; ENC-ADRP throws E-A64EMIT-REACH past adrp's reach.
-: CODE-ADDRESS! ( n n ptr u8 -- )
-   {: to:n at:n p:ptr :}
+: CODE-ADDRESS! ( n n ^u8 -- )
+   {: to:n at:n p:^ :}
    to 12 rshift  at 12 rshift - {: pages:n :}
    p LE:U32@ ADDRESS-CARRIER:ADDR-RD-MASK and {: rd:n :}
    rd pages A64ASM:ENC-ADRP  p LE:U32!
@@ -46,9 +46,9 @@ public
 
 \ Emission e's calls and address chains rewritten in dst, which holds its bytes and runs from
 \ link-time address at: calls and code chains to resolve of their target, data chains through data.
-: PATCH ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:ptr at:n data resolve :}
-   dst e NSHADOW:SIZE + {: end:ptr :}
+: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] -- )
+   {: e:n dst:^ at:n data resolve :}
+   dst e NSHADOW:SIZE + {: end:^ :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
       e i NSHADOW:CALL-TARGET@ resolve execute  e i NSHADOW:CALL-KIND@
@@ -56,7 +56,7 @@ public
    loop
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
-      dst s + {: p:ptr :}
+      dst s + {: p:^ :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
       kind NEMIT:ADDR-DATA = if
          p end data DATA-ROW
@@ -74,8 +74,8 @@ public
 
 
 \ Emission e copied to dst, whose first byte runs at link-time address at, and patched there.
-: PLACE ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:ptr at:n data resolve :}
+: PLACE ( n ^u8 n [ n -- n ] [ n -- n ] -- )
+   {: e:n dst:^ at:n data resolve :}
    e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
    e dst at data resolve PATCH ;
 
@@ -84,8 +84,8 @@ private
 
 \ The size of the chain a row of kind holds at site in emission bytes b, s of them: a code
 \ chain is ADDR-CHAIN-BYTES long, a data chain whole; 0 when no such chain is there.
-: SITE-SIZE ( ptr u8 n n n -- n )
-   {: b:ptr s:n site:n kind:n :}
+: SITE-SIZE ( ^u8 n n n -- n )
+   {: b:^ s:n site:n kind:n :}
    site 0<  site 3 and 0<>  or  site s >=  or if 0 exit then
    b site +  b s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    kind NEMIT:ADDR-CODE = if
@@ -98,8 +98,8 @@ public
 
 \ The address value emission bytes b, s of them, hold at site for a row of kind, and whether
 \ they hold one there.
-: ADDRESS@ ( ptr u8 n n n -- n bool )
-   {: b:ptr s:n site:n kind:n :}
+: ADDRESS@ ( ^u8 n n n -- n bool )
+   {: b:^ s:n site:n kind:n :}
    b s site kind SITE-SIZE {: size:n :}
    size 0= if 0 false exit then
    b site +  size ADDRESS-CARRIER:CHAIN-VALUE  true ;
@@ -107,8 +107,8 @@ public
 
 \ v written as the address value at site of a row of kind in emission bytes b, s of them;
 \ false, with nothing written, where ADDRESS@ answers false.
-: ADDRESS! ( n ptr u8 n n n -- bool )
-   {: v:n b:ptr s:n site:n kind:n :}
+: ADDRESS! ( n ^u8 n n n -- bool )
+   {: v:n b:^ s:n site:n kind:n :}
    b s site kind SITE-SIZE {: size:n :}
    size 0= if false exit then
    b site +  v size ADDRESS-CARRIER:SET-CHAIN-VALUE  true ;

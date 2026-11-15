@@ -15,11 +15,11 @@ variable FD
 PTR-VARIABLE A
 variable U
 
-: A@ ( -- ptr u8 ) A @ ;
-: A! ( ptr u8 -- ) A ! ;
+: A@ ( -- ^u8 ) A @ ;
+: A! ( ^u8 -- ) A ! ;
 
 : LEFT ( -- n ) U @ OFF @ - ;
-: DST ( -- ptr u8 ) A@ OFF @ + ;
+: DST ( -- ^u8 ) A@ OFF @ + ;
 : MORE? ( -- bool ) OFF @ U @ < ;
 
 : STEP ( -- )
@@ -29,7 +29,7 @@ variable U
 
 public
 
-: WALL ( n ptr u8 n -- )
+: WALL ( n ^u8 n -- )
    U !
    A!
    FD !

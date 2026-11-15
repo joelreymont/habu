@@ -173,11 +173,11 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 \ PROF-LIM prints the report and exits PROF-LIMIT-RC.
 78 constant PROF-MAP-RC
 99 constant PROF-LIMIT-RC
-: PROFARNMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
-: PROFARMMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
-: PROFIDMSG$ ( -- ptr u8 n ) S\" hb: profiler profile IDs exhausted\n" ;
-: PROFNAMEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot map name snapshot\n" ;
-: PROFNAMEFREEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot release name snapshot\n" ;
+: PROFARNMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
+: PROFARMMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
+: PROFIDMSG$ ( -- ^u8 n ) S\" hb: profiler profile IDs exhausted\n" ;
+: PROFNAMEMSG$ ( -- ^u8 n ) S\" hb: profiler cannot map name snapshot\n" ;
+: PROFNAMEFREEMSG$ ( -- ^u8 n ) S\" hb: profiler cannot release name snapshot\n" ;
 
 \ prof-rate's refusal, re-registered from src/lib/error.f, which loads after
 \ prof.f. Qualify it: a bare E-PROF-RATE under `using PROF-ABI` meets error.f's.

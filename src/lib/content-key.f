@@ -39,24 +39,24 @@ BYTE-OFF 1+ constant DONE-OFF
 DONE-OFF 1+ constant SCOPE-LEN
 
 \ A fold token is its scope's base; only these rows cross it.
-LINEAR: MINT ( ptr u8 -- CONTENT-KEY:fold )
-LINEAR: ERASE ( CONTENT-KEY:fold -- ptr u8 )
+LINEAR: MINT ( ^u8 -- CONTENT-KEY:fold )
+LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
 
-: STATE ( CONTENT-KEY:fold -- CONTENT-KEY:fold ptr u8 )
+: STATE ( CONTENT-KEY:fold -- CONTENT-KEY:fold ^u8 )
    ERASE dup MINT swap ;
 
-: U8+ ( ptr u8 n -- ) {: st:ptr c:n :}
+: U8+ ( ^u8 n -- ) {: st:^ c:n :}
    c 0 < if E-STR-BOUNDS throw then
    c STR-BYTE-MAX > if E-STR-BOUNDS throw then
    c st BYTE-OFF + c!
    st st BYTE-OFF + 1 SHA256-FEED ;
 
-: BYTES+ ( ptr u8 ptr u8 n -- ) {: st:ptr a:ptr u:n :}
+: BYTES+ ( ^u8 ^u8 n -- ) {: st:^ a:^ u:n :}
    st a u SHA256-FEED ;
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
-: FRAG+ ( ptr u8 n ptr u8 n -- ) {: st:ptr tag:n a:ptr u:n :}
+: FRAG+ ( ^u8 n ^u8 n -- ) {: st:^ tag:n a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    u CK-FRAG-MAX > if E-STR-BOUNDS throw then
    st tag U8+
@@ -64,12 +64,12 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ptr u8 )
    st u 8 rshift U8+
    st a u BYTES+ ;
 
-: DIGEST-FRAG+ ( ptr u8 ptr u8 -- ) {: st:ptr dg:ptr :}
+: DIGEST-FRAG+ ( ^u8 ^u8 -- ) {: st:^ dg:^ :}
    st CK-DIGEST-TAG U8+
    st DIGEST-LEN U8+
    st dg DIGEST-LEN BYTES+ ;
 
-: FILE-DIGEST! ( ptr u8 ptr u8 n -- ) {: st:ptr a:ptr u:n :}
+: FILE-DIGEST! ( ^u8 ^u8 n -- ) {: st:^ a:^ u:n :}
    st FILE-CTX-OFF + a u st FILE-DG-OFF + SHA256-FILE-IN
    dup 0 <> if throw then drop ;
 
@@ -78,11 +78,11 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ptr u8 )
 \ finalizes the outer fold and hands its own back out. The mark tells the two
 \ apart: a body that returns with its own scope unfinalized is refused before
 \ the scope releases the storage the escaped token names.
-: FINAL! ( ptr u8 -- )
+: FINAL! ( ^u8 -- )
    DONE-OFF + 1 swap c! ;
 
-: FOLD-RUN ( R [ R CONTENT-KEY:fold -- S ] ptr u8 NUM:alloc-byte-len -- S )
-   drop {: body st:ptr :}
+: FOLD-RUN ( R [ R CONTENT-KEY:fold -- S ] ^u8 NUM:alloc-byte-len -- S )
+   drop {: body st:^ :}
    st SHA256-BEGIN
    0 st DONE-OFF + c!
    st MINT body execute
@@ -96,33 +96,33 @@ public
 : WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
    SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;
 
-: TEXT+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+: TEXT+ ( CONTENT-KEY:fold ^u8 n -- CONTENT-KEY:fold ) {: a:^ u:n :}
    STATE CK-TEXT-TAG a u FRAG+ ;
 
-: DIGEST+ ( CONTENT-KEY:fold ptr u8 -- CONTENT-KEY:fold ) {: dg:ptr :}
+: DIGEST+ ( CONTENT-KEY:fold ^u8 -- CONTENT-KEY:fold ) {: dg:^ :}
    STATE dg DIGEST-FRAG+ ;
 
 \ Reads the physical path but folds the logical name, so a build naming sources
 \ root-relative shares its key across identical trees in different workspaces.
-: FILE-NAMED+ ( CONTENT-KEY:fold ptr u8 n ptr u8 n -- CONTENT-KEY:fold )
-   {: a:ptr u:n name:ptr size:n :}
-   STATE {: st:ptr :}
+: FILE-NAMED+ ( CONTENT-KEY:fold ^u8 n ^u8 n -- CONTENT-KEY:fold )
+   {: a:^ u:n name:^ size:n :}
+   STATE {: st:^ :}
    st CK-FILE-TAG name size FRAG+
    st a u FILE-DIGEST!
    st st FILE-DG-OFF + DIGEST-FRAG+ ;
 
 \ Digests the file's current bytes on every call.
-: FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+: FILE+ ( CONTENT-KEY:fold ^u8 n -- CONTENT-KEY:fold ) {: a:^ u:n :}
    a u a u FILE-NAMED+ ;
 
-: FINAL ( CONTENT-KEY:fold ptr u8 -- ) {: dst:ptr :}
-   ERASE {: st:ptr :}
+: FINAL ( CONTENT-KEY:fold ^u8 -- ) {: dst:^ :}
+   ERASE {: st:^ :}
    st dst SHA256-END
    st FINAL! ;
 
 \ 64 lower-case hex digits.
-: FINAL-HEX ( CONTENT-KEY:fold ptr u8 -- ) {: hex:ptr :}
-   ERASE {: st:ptr :}
+: FINAL-HEX ( CONTENT-KEY:fold ^u8 -- ) {: hex:^ :}
+   ERASE {: st:^ :}
    st st DG-OFF + SHA256-END
    st DG-OFF + hex SHA256>HEX
    st FINAL! ;

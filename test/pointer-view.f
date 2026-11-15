@@ -11,7 +11,7 @@ CAST: >ITEM ( n -- item )
 CAST: ITEM>N ( item -- n )
 1 LAYOUT-BUFFER ITEMS item
 
-: REJECT ( ptr u8 n -- )
+: REJECT ( ^u8 n -- )
    2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : MAPPED-CELL ( -- )
@@ -29,12 +29,12 @@ CAST: ITEM>N ( item -- n )
    0 ITEMS BYTE-VIEW c@ 17 T=
    0 ITEMS @ ITEM>N 17 T=
    MAPPED-CELL
-   s" BAD-IMPLICIT-VIEW ( ptr a -- ptr u8 ) " REJECT
-   s" BAD-IMPLICIT-FETCH ( ptr a -- n ) @" REJECT
-   s" BAD-BYTE-CELL ( ptr u8 -- n ) @" REJECT
-   s" BAD-NOMINAL-VIEW ( ptr u8 -- ptr item ) CELL-VIEW" REJECT
-   s" BAD-ARRAY-READ ( ptr item len -- n ) ARRAY:A-SUM" REJECT
-   s" BAD-ARRAY-STORE ( ptr item len -- ) ARRAY:A-PREFIX-SUM!" REJECT
+   s" BAD-IMPLICIT-VIEW ( ^a -- ^u8 ) " REJECT
+   s" BAD-IMPLICIT-FETCH ( ^a -- n ) @" REJECT
+   s" BAD-BYTE-CELL ( ^u8 -- n ) @" REJECT
+   s" BAD-NOMINAL-VIEW ( ^u8 -- ^item ) CELL-VIEW" REJECT
+   s" BAD-ARRAY-READ ( ^item len -- n ) ARRAY:A-SUM" REJECT
+   s" BAD-ARRAY-STORE ( ^item len -- ) ARRAY:A-PREFIX-SUM!" REJECT
    T-REPORT ;
 
 RUN

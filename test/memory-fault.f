@@ -15,7 +15,7 @@ private
 : FOREIGN-SIG ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 10 then ;
 
 \ The uncaught line up to the pc's 16 hex digits and its newline.
-: ADDRESS-0$ ( -- ptr u8 n )
+: ADDRESS-0$ ( -- ^u8 n )
    s" E-MEMORY-FAULT habu: memory fault at 0000000000000000 pc " ;
 
 : RUN-BUF ( -- )
@@ -24,7 +24,7 @@ private
 
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.
-: KILLED-BY ( n ptr u8 n -- ) {: sig:n label:ptr labelu:n :}
+: KILLED-BY ( n ^u8 n -- ) {: sig:n label:^ labelu:n :}
    GT-OUTCOME@ MATCH PROCESS:ending
      exited OF drop label labelu GE-FAIL ENDOF
      signaled OF sig <> if label labelu GE-FAIL then ENDOF
@@ -32,7 +32,7 @@ private
    ;MATCH ;
 
 \ fd 2 holds exactly the line: its prefix, the pc and a newline.
-: ONE-LINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: ONE-LINE ( ^u8 n -- ) {: label:^ labelu:n :}
    GT-ERR$ ADDRESS-0$ STARTS-WITH? 0= if label labelu GE-FAIL then
    GT-ERR$ nip ADDRESS-0$ nip 17 + <> if label labelu GE-FAIL then ;
 
@@ -84,7 +84,7 @@ private
 : FOREIGN ( -- )
    GE-SRC-RESET
    s" PROCESS-SYMBOLS" GE-SRC-LINE
-   s" FUNCTION: STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION" GE-SRC-LINE
+   s" FUNCTION: STRLEN$ strlen ( ^u8 -- n ) ;FUNCTION" GE-SRC-LINE
    s" : GUARD-OFF ( -- n ) data-base STACK-ABI:BASE-CELL + @ 8 - ;" GE-SRC-LINE
    s" NULL-PTR BYTE-VIEW GUARD-OFF + STRLEN$ ." GE-SRC-LINE
    RUN-BUF

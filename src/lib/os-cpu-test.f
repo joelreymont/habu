@@ -25,7 +25,7 @@ create ERR OUT-CAP allot
 \ The program's stdout for the argv already staged, newline trimmed; a failed
 \ run answers an empty string, which no number parses from, so the case fails
 \ once.
-: CAPTURE$ ( ptr u8 n -- ptr u8 n )
+: CAPTURE$ ( ^u8 n -- ^u8 n )
    >LEN OUT OUT-CAP >LEN ERR OUT-CAP >LEN
    CAPTURE-MS >MS RUN-ARGV-CAPTURE MATCH result
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
@@ -33,14 +33,14 @@ create ERR OUT-CAP allot
    ;MATCH {: outu:n :}
    OUT outu TRIM ;
 
-: GETCONF$ ( -- ptr u8 n )
+: GETCONF$ ( -- ^u8 n )
    PROC-ARGV-RESET
    s" _NPROCESSORS_ONLN" >LEN PROC-ARGV+
    s" /usr/bin/getconf" CAPTURE$ ;
 
 
 \ macOS prints `{ 1.23 1.10 0.98 }`, Linux `1.23 1.10 0.98 2/345 6789`.
-: HOST-LOAD$ ( -- ptr u8 n )
+: HOST-LOAD$ ( -- ^u8 n )
    PROC-ARGV-RESET
    HB-TARGET-MACOS? if
       s" -n" >LEN PROC-ARGV+  s" vm.loadavg" >LEN PROC-ARGV+
@@ -52,7 +52,7 @@ create ERR OUT-CAP allot
 \ The host's one-minute average, its report's first number; an unreadable
 \ report answers NaN, which no bound holds, so the case fails once.
 : HOST-LOAD ( -- r )
-   HOST-LOAD$ {: text:ptr len:n :}
+   HOST-LOAD$ {: text:^ len:n :}
    text len SPACE-BYTE 0 SPLIT-NEXT drop {: next:n :}
    HB-TARGET-MACOS? if 2drop text len SPACE-BYTE next SPLIT-NEXT drop drop then
    F64-TEXT:PARSE MATCH result

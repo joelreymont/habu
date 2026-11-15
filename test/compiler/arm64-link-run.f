@@ -34,10 +34,10 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 create ROOT-BUF PATH-CAP allot variable ROOT-U
 create PROG-BUF PATH-CAP allot
 
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
-: PROG$ ( ptr u8 n -- ptr u8 n )
-   {: name:ptr name-n:n :}
+: PROG$ ( ^u8 n -- ^u8 n )
+   {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
@@ -51,13 +51,13 @@ create PROG-BUF PATH-CAP allot
    s" : LR-DEEP ( -- ) 0 LR-REC drop ;" evaluate-closed ;
 
 
-: STORE-ENTRY ( ptr u8 n -- )
+: STORE-ENTRY ( ^u8 n -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-: WRITE-PROG ( ptr u8 n ptr u8 n -- )
-   {: word:ptr word-n:n file:ptr file-n:n :}
+: WRITE-PROG ( ^u8 n ^u8 n -- )
+   {: word:^ word-n:n file:^ file-n:n :}
    word word-n STORE-ENTRY
    file file-n PROG$ LINKER:WRITE ;
 
@@ -70,8 +70,8 @@ create PROG-BUF PATH-CAP allot
    s" LR-DEEP" s" deep" WRITE-PROG ;
 
 
-: RUN-PROG ( CMD:command ptr u8 n ptr u8 n n -- CMD:command )
-   {: file:ptr file-n:n out:ptr out-n:n want:n :}
+: RUN-PROG ( CMD:command ^u8 n ^u8 n n -- CMD:command )
+   {: file:^ file-n:n out:^ out-n:n want:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc want =  and 0= if
       s" arm64-link-run: " type file file-n type s"  exited " type rc .
@@ -89,8 +89,8 @@ create PROG-BUF PATH-CAP allot
 
 
 \ An ELF file is at least one PROT-PAGE-MAX text page.
-: SMALLER ( ptr u8 n -- )
-   {: file:ptr file-n:n :}
+: SMALLER ( ^u8 n -- )
+   {: file:^ file-n:n :}
    file file-n PROG$ FS:FILE-SIZE {: size:n :}
    size $20000 < 0= if
       s" arm64-link-run: " type file file-n type s"  has bytes: " type size .
@@ -104,7 +104,7 @@ $20000 BUFFER: HI-BYTES
 \ Texts hi never prints: the profiler's report, and the message laid right after
 \ the uncaught-throw message, which every stripped program reaches.
 : NO-PROFILER ( -- )
-   s" hi" PROG$ {: file:ptr file-n:n :}
+   s" hi" PROG$ {: file:^ file-n:n :}
    file file-n FS:FILE-SIZE $20000 min {: size:n :}
    file file-n 0 HI-BYTES size FS:READ-AT
    s" hi keeps no message it never prints and no profiler code: control never passes from a message into what follows it"
@@ -177,10 +177,10 @@ variable DEPTH-LR                    \ the scan's open loads
    repeat ;
 
 \ LOG-LR with its bytes from the first offset to the second replaced, in EDIT-LR.
-: SPLICE-LR ( n n ptr u8 n -- )
-   {: at0:n at1:n new:ptr newu:n :}
-   0 LOG-LR {: log:ptr :}
-   0 EDIT-LR {: edit:ptr :}
+: SPLICE-LR ( n n ^u8 n -- )
+   {: at0:n at1:n new:^ newu:n :}
+   0 LOG-LR {: log:^ :}
+   0 EDIT-LR {: edit:^ :}
    log edit at0 BYTE-COPY
    new  edit at0 +  newu BYTE-COPY
    log at1 +  edit at0 + newu +  LOG-LR-U @ at1 -  BYTE-COPY
@@ -202,8 +202,8 @@ variable DEPTH-LR                    \ the scan's open loads
    RESUMED-LR @ 8 + {: c:n :}
    c  c FIELD-LR 24 +  0 LOG-LR b +  b FIELD-LR 24 + b -  SPLICE-LR ;
 
-: HOLD-LR ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: HOLD-LR ( ^u8 n -- )
+   {: a:^ u:n :}
    false HELD-LR !
    [: a u LINKER:INPUTS-HOLD? HELD-LR ! ;] catch RC-LR ! ;
 
@@ -211,7 +211,7 @@ variable DEPTH-LR                    \ the scan's open loads
    0 EDIT-LR EDIT-LR-U @ HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TFALSE ;
 
 : READ-LR ( -- )
-   HB-BUILD-CORE:KERNEL-INPUTS$ {: p:ptr pu:n :}
+   HB-BUILD-CORE:KERNEL-INPUTS$ {: p:^ pu:n :}
    p pu FS:FILE-SIZE HEAD-LR - {: u:n :}
    u LOG-LR-U !
    u LOG-LR-RESERVE  u PATH-CAP + 8 + EDIT-LR-RESERVE
@@ -243,7 +243,7 @@ public
    T-RESET
    s" write outside a build is E-COMP-STATE" T-LABEL
    [: s" x" LINKER:WRITE ;] E-COMP-STATE TTHROWSQ
-   s" habu-link-run" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-link-run" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    REPLAY

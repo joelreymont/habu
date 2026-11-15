@@ -65,17 +65,17 @@ ENUM bfam ba bb ;ENUM
 : BI-SEVEN ( -- n ) 7 ;
 
 \ The engine's cell holds INTERPRETER:ITEM-RUN as a raw execution token.
-CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
+CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
 
-: ITEM ( ptr u8 n n n -- )
+: ITEM ( ^u8 n n n -- )
    data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
-: KW ( ptr u8 n -- ) EFFECT:KEYWORD ;
-: OPND ( ptr u8 n -- ) EFFECT:OPERAND ;
+: KW ( ^u8 n -- ) EFFECT:KEYWORD ;
+: OPND ( ^u8 n -- ) EFFECT:OPERAND ;
 : BFAM ( -- EFFECT:type ) s" bitem:bfam" EFFECT:NAMED ;
 : BFAM-ITEM ( -- ) s" bfam" BFAM EFFECT:TYPE-ITEM ;
 
 \ : NAME ( bfam -- n ) match bfam ba of 1 endof X of 2 endof ;match ;
-: MAKE-MATCH ( ptr u8 n ptr u8 n -- ) {: xa:ptr xu:n :}
+: MAKE-MATCH ( ^u8 n ^u8 n -- ) {: xa:^ xu:n :}
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  BFAM-ITEM
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
@@ -85,7 +85,7 @@ CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
 
 \ : NAME ( n -- n )
 \    dup 0 > if begin 1 - dup 3 < until 100 + else drop 20 then ;
-: MAKE-FLOW ( ptr u8 n -- )
+: MAKE-FLOW ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    postpone dup  0 literal  postpone >  s" if" KW
    s" begin" KW  1 literal  postpone -  postpone dup  3 literal  postpone <
@@ -94,13 +94,13 @@ CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
    postpone ; ;
 
 \ : NAME ( -- bfam ) construct bfam bb ;
-: MAKE-CONSTRUCT ( ptr u8 n -- )
+: MAKE-CONSTRUCT ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:OUT define-word
    s" construct" KW  BFAM-ITEM  s" bb" OPND
    postpone ; ;
 
 \ : NAME ( -- n ) X ; with X found by OP.
-: MAKE-CALL ( ptr u8 n ptr u8 n n -- ) {: xa:ptr xu:n op:n :}
+: MAKE-CALL ( ^u8 n ^u8 n n -- ) {: xa:^ xu:n op:n :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    op ITEM-ABI:CALL = if xa xu EFFECT:CALL else xa xu 0 op ITEM then
    postpone ; ;
@@ -144,7 +144,7 @@ s" : BI-BAD-CALL ( -- n ) 4 ;" evaluate-closed
 BI-BAD-CALL 4 T=
 
 \ : NAME ( n n -- n ) {: a:n b:n :} b a - ;
-: MAKE-SUB ( ptr u8 n -- )
+: MAKE-SUB ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
    define-word
    s" {:" KW  EFFECT:N EFFECT:LOCAL  EFFECT:N EFFECT:LOCAL  s" :}" KW
@@ -154,7 +154,7 @@ BI-BAD-CALL 4 T=
 
 \ : NAME ( bfam -- n ) {: x:bfam :}
 \    x match bfam ba of 1 endof bb of 2 endof ;match ;
-: MAKE-LOCAL-MATCH ( ptr u8 n -- )
+: MAKE-LOCAL-MATCH ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
    s" match" KW  BFAM-ITEM
@@ -166,7 +166,7 @@ BI-BAD-CALL 4 T=
 : GROUP ( -- n ) s" {:" KW  EFFECT:N EFFECT:LOCAL  s" :}" KW ;
 
 \ : NAME ( n n -- n ) {: a:n :} {: b:n :} a b - ;
-: MAKE-GROUPS ( ptr u8 n -- )
+: MAKE-GROUPS ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
    define-word
    GROUP GROUP {: a:n b:n :}
@@ -193,7 +193,7 @@ s" BI-GROUPS" MAKE-GROUPS
 10 3 BI-GROUPS 10 3 BI-GROUPS-TEXT T=
 
 \ : NAME ( -- ) l0 ; with the local outside a group.
-: MAKE-STRAY ( ptr u8 n -- )
+: MAKE-STRAY ( ^u8 n -- )
    EFFECT:EMPTY define-word  EFFECT:N EFFECT:LOCAL drop  postpone ; ;
 : BAD-STRAY ( -- n ) [: s" BI-BAD-STRAY" MAKE-STRAY ;] catch ;
 BAD-STRAY 70 T=
@@ -202,9 +202,9 @@ BI-BAD-STRAY 5 T=
 
 \ : NAME ( -- n ) l9 ; with no local declared; UNREAD-OPEN leaves the word
 \ open before its `;`.
-: UNREAD-OPEN ( ptr u8 n -- )
+: UNREAD-OPEN ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@ ;
-: MAKE-UNREAD ( ptr u8 n -- ) UNREAD-OPEN  postpone ; ;
+: MAKE-UNREAD ( ^u8 n -- ) UNREAD-OPEN  postpone ; ;
 : BAD-UNREAD ( -- n ) [: s" BI-BAD-UNREAD" MAKE-UNREAD ;] catch ;
 BAD-UNREAD 70 T=
 s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
@@ -215,7 +215,7 @@ BI-BAD-UNREAD 6 T=
 \ The local's type is the file's fourth parameter, which the effect numbers
 \ first: the local is the first input's type value.
 : NUL ( -- EFFECT:type ) s" nullable" EFFECT:NAMED ;
-: MAKE-KEEP ( ptr u8 n -- )
+: MAKE-KEEP ( ^u8 n -- )
    NUL NUL NUL NUL {: b c d t :}
    EFFECT:EMPTY t EFFECT:IN b EFFECT:IN c EFFECT:IN d EFFECT:IN t EFFECT:OUT
    define-word
@@ -240,7 +240,7 @@ s" Q" drop NULLABLE:SOME NONES BI-KEEP NUL-BYTE 81 T=
 s" Q" drop NULLABLE:SOME NONES BI-KEEP-TEXT NUL-BYTE 81 T=
 
 \ : NAME ( bfam -- n ) {: x:bfam :} x 1 + ;
-: MAKE-WRONG ( ptr u8 n -- )
+: MAKE-WRONG ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
    1 literal  postpone +
@@ -252,26 +252,26 @@ BI-BAD-WRONG 7 T=
 
 \ : NAME ( n bool -- n ) if {: a:n :} a then {: b:n :} a ; with b in the
 \ slot a's block left; ENDED-OPEN leaves the word open before its `;`.
-: ENDED-OPEN ( ptr u8 n -- )
+: ENDED-OPEN ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
    EFFECT:N EFFECT:OUT define-word
    s" if" KW  GROUP {: a:n :}  a EFFECT:LOCAL@  s" then" KW
    GROUP drop  a EFFECT:LOCAL@ ;
-: MAKE-ENDED ( ptr u8 n -- ) ENDED-OPEN  postpone ; ;
+: MAKE-ENDED ( ^u8 n -- ) ENDED-OPEN  postpone ; ;
 : BAD-ENDED ( -- n ) [: s" BI-BAD-ENDED" MAKE-ENDED ;] catch ;
 BAD-ENDED 70 T=
 s" : BI-BAD-ENDED ( -- n ) 8 ;" evaluate-closed
 BI-BAD-ENDED 8 T=
 
 \ : NAME ( n -- n ) {: a:n :} l-1 ; inside a's block.
-: MAKE-LNEG ( ptr u8 n -- )
+: MAKE-LNEG ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    GROUP drop  -1 EFFECT:LOCAL@
    postpone ; ;
 
 \ : NAME ( nullable<a> ... -- ) {: x:nullable<z> :} drop ... ; with 23
 \ inputs, so the local's z is a 24th parameter.
-: MAKE-WIDE ( ptr u8 n -- )
+: MAKE-WIDE ( ^u8 n -- )
    EFFECT:EMPTY  23 0 ?do NUL EFFECT:IN loop  define-word
    s" {:" KW  NUL EFFECT:LOCAL drop  s" :}" KW
    22 0 ?do postpone drop loop
@@ -292,7 +292,7 @@ s" : BI-BAD-TEXT ( -- n ) 9 ;" evaluate-closed
 BI-BAD-TEXT 9 T=
 
 \ TYPED-VARIABLE NAME [ n -- n ]
-: MAKE-QVAR ( ptr u8 n -- )
+: MAKE-QVAR ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT EFFECT:VARIABLE-OF ;
 
 s" BI-QVAR" MAKE-QVAR
@@ -305,7 +305,7 @@ BAD-QSTORE 70 T=
 5 BI-QVAR @ execute 6 T=
 
 \ TYPED-VARIABLE NAME [ n -- option<a> ]
-: MAKE-OVAR ( ptr u8 n -- )
+: MAKE-OVAR ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN s" option" EFFECT:NAMED EFFECT:OUT
    EFFECT:VARIABLE-OF ;
 : BAD-OVAR ( -- n ) [: s" BI-BAD-OVAR" MAKE-OVAR ;] catch ;
@@ -315,12 +315,12 @@ s" '[ n -- option<a> ]'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U
 : KEEP-DIAG ( -- )
-   DECL-DIAG:TEXT$ {: a:ptr u:n :}
+   DECL-DIAG:TEXT$ {: a:^ u:n :}
    a BUILT-DIAG u BYTE-COPY  u BUILT-DIAG-U ! ;
-: BUILT-DIAG$ ( -- ptr u8 n ) BUILT-DIAG BUILT-DIAG-U @ ;
+: BUILT-DIAG$ ( -- ^u8 n ) BUILT-DIAG BUILT-DIAG-U @ ;
 
 \ : NAME ( -- ) C2-MEM:WITH-FIELD inner ; with no view to lend a field of.
-: MAKE-LOAN ( ptr u8 n -- )
+: MAKE-LOAN ( ^u8 n -- )
    EFFECT:EMPTY define-word
    s" C2-MEM:WITH-FIELD" EFFECT:CALL  s" inner" OPND
    postpone ; ;
@@ -334,7 +334,7 @@ BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
 
 \ : NAME ( bfam -- n ) match zz ba of evaluate endof ;match ; whose family
 \ resolves nothing: the call is skipped through `;match` as its text is.
-: MAKE-ABANDONED ( ptr u8 n -- )
+: MAKE-ABANDONED ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" zz" EFFECT:N EFFECT:TYPE-ITEM
    s" ba" OPND  s" of" KW  s" evaluate" EFFECT:CALL  s" endof" KW
@@ -347,7 +347,7 @@ s" unsafe" DECL-DIAG:HAS? TFALSE  DECL-DIAG:OFF
 
 \ : NAME ( bfam -- n ) match BFAM ba of 1 endof bb of 2 endof ;match ;
 \ with BFAM a call: a call names no family, though a family spells it.
-: MAKE-CALL-FAMILY ( ptr u8 n -- )
+: MAKE-CALL-FAMILY ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" BFAM" EFFECT:CALL
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
@@ -360,7 +360,7 @@ s" bad match: unknown type family" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( bfam -- n ) match bfam zz of 1 endof bb of 2 endof ;match ; with
 \ zz a type where the variant belongs: the match's own rejection.
-: MAKE-TYPE-VARIANT ( ptr u8 n -- )
+: MAKE-TYPE-VARIANT ( ^u8 n -- )
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  BFAM-ITEM
    s" zz" BFAM EFFECT:TYPE-ITEM  s" of" KW  1 literal  s" endof" KW
@@ -373,7 +373,7 @@ s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( -- n ) 5 S ; with S an item spelled by the string: an item's
 \ spelling is one token, else it is rejected as define-word's name is, 74.
-: MAKE-SPELLED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n :}
+: MAKE-SPELLED ( ^u8 n ^u8 n -- ) {: sa:^ su:n :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    5 literal  sa su KW
    postpone ; ;
@@ -393,7 +393,7 @@ LINEAR: LTOK>N ( BITEM:ltok -- n )
 : BI-U8-WIDTH ( -- width<u8> ) [type] u8 ;
 
 \ : NAME ( t -- t ) ;
-: MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
+: MAKE-ID ( ^u8 n EFFECT:type -- ) {: t :}
    EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  define-word  postpone ; ;
 
 SUMTYPE blin VARIANT owned BITEM:ltok ;VARIANT ;SUMTYPE
@@ -411,11 +411,11 @@ s" BI-XQ" s" [ xt -- n ]" EFFECT:READ-TYPE MAKE-ID
 : BI-XQ-RUN ( -- n ) ['] type [: drop 7 ;] BI-XQ execute ;
 BI-XQ-RUN 7 T=
 
-: PTR-A ( -- n ) [: s" BI-PTR-A" s" ptr a" EFFECT:READ-TYPE MAKE-ID ;] catch ;
+: PTR-A ( -- n ) [: s" BI-PTR-A" s" ^a" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : VIEW ( -- n )
    [: s" BI-VIEW" s" read-view<p,q,u8>" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : LETTER-FIX ( -- )
-   s" = help: a built definition's types are concrete: write one such as n or ptr u8"
+   s" = help: a built definition's types are concrete: write one such as n or ^u8"
    DECL-DIAG:HAS? TTRUE ;
 : NAMED-BAD ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
@@ -426,7 +426,7 @@ BI-XQ-RUN 7 T=
 : SECRET ( -- EFFECT:type ) s" bitem-own:secret" EFFECT:NAMED ;
 
 \ : NAME ( bitem-own:secret -- n ) match secret hid of endof ;match ;
-: MAKE-PEEK ( ptr u8 n -- )
+: MAKE-PEEK ( ^u8 n -- )
    EFFECT:EMPTY SECRET EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" secret" SECRET EFFECT:TYPE-ITEM
    s" hid" OPND  s" of" KW  s" endof" KW  s" ;match" KW
@@ -438,19 +438,19 @@ BI-XQ-RUN 7 T=
    DECL-DIAG:HAS? TTRUE ;
 
 DECL-DIAG:PROSE  PTR-A 70 T=
-s" error[E-BAD-SIGNATURE]: the type 'ptr a' has the letter 'a', which names no type"
+s" error[E-BAD-SIGNATURE]: the type '^a' has the letter 'a', which names no type"
 DECL-DIAG:HAS? TTRUE
 s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
 s" | DECL-DIAG:PROSE  PTR-A 70 T=" DECL-DIAG:HAS? TTRUE
 s" |                  ^^^^^ the definer was reading here" DECL-DIAG:HAS? TTRUE
-LETTER-FIX  s" ptr u8 in place of 'a'" DECL-DIAG:HAS? TTRUE
+LETTER-FIX  s" ^u8 in place of 'a'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  VIEW 70 T=
 s" error[E-BAD-SIGNATURE]: the type 'read-view<p,q,u8>' has the letter 'p', which names no type"
 DECL-DIAG:HAS? TTRUE
 s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
 s" | DECL-DIAG:PROSE  VIEW 70 T=" DECL-DIAG:HAS? TTRUE
 s" |                  ^^^^ the definer was reading here" DECL-DIAG:HAS? TTRUE
-LETTER-FIX  s" ptr u8 in place of 'p'" DECL-DIAG:HAS? TTRUE
+LETTER-FIX  s" ^u8 in place of 'p'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  NAMED-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'no-such-family'"
 DECL-DIAG:HAS? TTRUE  READING-HERE  FAMILY-FIX
@@ -477,15 +477,15 @@ constant LONG-CALL-CAP
 LONG-TYPE-CAP BUFFER: LONG-TYPE
 LONG-CALL-CAP BUFFER: LONG-CALL
 variable LONG-U
-: LONG+ ( ptr u8 ptr u8 n -- ) {: dst:ptr a:ptr u:n :}
+: LONG+ ( ^u8 ^u8 n -- ) {: dst:^ a:^ u:n :}
    a dst LONG-U @ + u BYTE-COPY  LONG-U @ u + LONG-U ! ;
 \ [ n n … -- ] of LONG-N cells
-: LONG-TYPE$ ( -- ptr u8 n )
+: LONG-TYPE$ ( -- ^u8 n )
    0 LONG-U !  LONG-TYPE s" [ " LONG+
    LONG-N 0 ?do LONG-TYPE s" n " LONG+ loop
    LONG-TYPE s" -- ]" LONG+  LONG-TYPE LONG-U @ ;
 \ : NAME ( -- ) [: drop drop … ;] BI-LONG drop ; of k drops
-: LONG-CALL$ ( ptr u8 n n -- ptr u8 n ) {: na:ptr nu:n k:n :}
+: LONG-CALL$ ( ^u8 n n -- ^u8 n ) {: na:^ nu:n k:n :}
    0 LONG-U !  LONG-CALL s" : " LONG+  LONG-CALL na nu LONG+
    LONG-CALL s"  ( -- ) [: " LONG+
    k 0 ?do LONG-CALL s" drop " LONG+ loop
@@ -498,7 +498,7 @@ s" BI-LONG-NO" LONG-N 1 - LONG-CALL$ TEST-EVAL:RC 70 T=
 s" in bi-long-no: at 'BI-LONG' expected: " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
-: SUB2-OPEN ( ptr u8 n -- )
+: SUB2-OPEN ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
    define-word
    s" {:" KW  EFFECT:N EFFECT:LOCAL  EFFECT:N EFFECT:LOCAL  s" :}" KW
@@ -518,7 +518,7 @@ public
 : LNEG-GO ( -- ) s" BI-LNEG" MAKE-LNEG ;
 \ A read of local -1 names no bind: unbound, never an ended block.
 : LNEG-CHILD ( -- )
-   s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:ptr eu:n exited:bool :}
+   s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" reads built local -1, which no `{:` group bound before it"
    CONTAINS? TTRUE
@@ -528,7 +528,7 @@ public
 \ local by its declared type, not a listing index.
 : PLACED-CHILD ( -- )
    s" include test/fixtures/build-items/placed.f" 70 SUBJECT:REJECTED
-   {: e:ptr eu:n exited:bool :}
+   {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" placed.f:19" CONTAINS? TTRUE
    e eu s" at 'n' reads built local 0" CONTAINS? TTRUE ;
@@ -536,7 +536,7 @@ public
 \ A read pinned after an earlier failure is placed at the definer's call.
 : UNBOUND-CHILD ( -- )
    s" include test/fixtures/build-items/unbound.f" 70 SUBJECT:REJECTED
-   {: e:ptr eu:n exited:bool :}
+   {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" in bi-unbound: reads built local 9, which no `{:` group bound before it"
    CONTAINS? TTRUE
@@ -547,7 +547,7 @@ public
 \ text opened the definition: the string's offsets are not the file's.
 : EVALUATED-CHILD ( -- )
    s" include test/fixtures/build-items/evaluated.f" 70 SUBJECT:REJECTED
-   {: e:ptr eu:n exited:bool :}
+   {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" input underflow" CONTAINS? TTRUE
    e eu S\" evaluated.f:1\n" CONTAINS? TFALSE ;
@@ -555,7 +555,7 @@ public
 \ A read no group bound, in a body text finishes, names the local by its
 \ index, never by its listing token.
 : UNREAD-CHILD ( -- )
-   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:ptr eu:n exited:bool :}
+   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" reads built local 9, which no `{:` group bound before it"
    CONTAINS? TTRUE
@@ -575,14 +575,14 @@ RP-OUT-CAP BUFFER: JSON-PACKET
 : JSON-ON ( -- )  JSON-DIAG 8192 REJECTION:BUFFER!  true REJECTION:JSON ! ;
 : JSON-OFF ( -- )  false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 : UNREAD-JSON ( -- n ) [: s" UNREAD-GO 1 + ;" evaluate-closed ;] catch ;
-: JSON-HAS ( ptr u8 n -- ) REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: JSON-HAS ( ^u8 n -- ) REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : JSON-CONTRACT ( -- )
    REJECTION:BUFFER$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root GJA-DIAG-CONTRACT-ROW
    root s" repair_class" GJA-REQ JSON-CLASS 64 GJA-STRING-INTO
-   {: c:ptr cu:n :}
+   {: c:^ cu:n :}
    REJECTION:BUFFER$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
-   {: pa:ptr pu:n :}
+   {: pa:^ pu:n :}
    pa JSON-PACKET pu BYTE-COPY
    JSON-PACKET pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
    packet c cu GJA-REPAIR-HEAD
@@ -621,8 +621,8 @@ package BITEM-STORED
 private
 PATH-CAP BUFFER: DIR  variable DIR-U
 PATH-CAP BUFFER: APP  variable APP-U
-: DIR$ ( -- ptr u8 n ) DIR DIR-U @ ;
-: APP$ ( -- ptr u8 n ) APP APP-U @ ;
+: DIR$ ( -- ^u8 n ) DIR DIR-U @ ;
+: APP$ ( -- ^u8 n ) APP APP-U @ ;
 
 : BUILD ( CMD:command -- CMD:command n )
    CMD:RESET
@@ -644,7 +644,7 @@ PATH-CAP BUFFER: APP  variable APP-U
 
 public
 : RUN ( -- )
-   s" habu-bitem-stored" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-bitem-stored" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    DIR$ s" app" APP FS:JOIN-PATH APP-U !
    ['] CHECKS ['] REMOVE finally ;

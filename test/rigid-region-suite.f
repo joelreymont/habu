@@ -1,7 +1,7 @@
 \ rigid-region-suite.f - checker fixtures for the rigid host-allocation identity
 \ domains: a host allocation's REGION, EXTENT and GENERATION are fresh atoms
 \ (fresh-region-*, fresh-extent-*, fresh-gen-*) minted per constructor call and
-\ shared across that call's outputs, which `ptr T` and ordinary type variables
+\ shared across that call's outputs, which `^T` and ordinary type variables
 \ cannot name. Two accesses to one allocation certify; two allocations, a
 \ recreated owner or a stale generation reject with a named reason.
 
@@ -119,8 +119,8 @@ create RR-DIAG 16384 allot
 \ The cases read prose, and a run under `tools/check.f --json-errors` starts in
 \ JSON.
 variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
-: RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
-: RR-DIAG? ( ptr u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
+: RR-CHECK ( ^u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
+: RR-DIAG? ( ^u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
 \ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.

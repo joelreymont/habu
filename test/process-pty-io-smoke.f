@@ -28,7 +28,7 @@ variable IN-SCOPE                         \ set by the halted task's body once i
 TASK:MIN-STACK TASK:TASK HALTEE
 
 \ A real short-lived executable available on both OSes.
-: TRUE-PATH ( -- ptr u8 n )
+: TRUE-PATH ( -- ^u8 n )
    s" /usr/bin/true" ;
 
 : SAVE-TGT ( pid -- )
@@ -192,7 +192,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 \ a target is gated, its listing is compared with a baseline listing taken with
 \ no target alive: any pipe or terminal end the scope opened and the probe
 \ inherited would be an extra entry.
-: OPEN-FDS ( ptr u8 -- n ) {: buf:ptr :}
+: OPEN-FDS ( ^u8 -- n ) {: buf:^ :}
    PROC-ARGV-RESET
    s" /dev/fd" >LEN PROC-ARGV+
    s" /bin/ls" >LEN buf FDS-CAP >LEN FDS-ERR FDS-CAP >LEN

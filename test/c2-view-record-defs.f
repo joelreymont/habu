@@ -10,6 +10,6 @@ package C2-VIEW-RECORD-GENERICS
 public
 
 : DROP-ELEM ( t read-view<p,q,t> -- read-view<p,q,t> ) swap drop ;
-: FETCH-DROP ( ptr t read-view<p,q,t> -- read-view<p,q,t> ) swap @ drop ;
+: FETCH-DROP ( ^t read-view<p,q,t> -- read-view<p,q,t> ) swap @ drop ;
 
 ;package

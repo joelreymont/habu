@@ -177,9 +177,9 @@ s" TC17=" type s" TC17 ( model -- model ) {: v:model :} v" CHECK-QUIET-CANDIDATE
 \ it. `lone` and `plain` are both one cell and differ only in owning a linear
 \ value, so the load that certifies for one and rejects the other is answering
 \ linearity and not width. The address is not the resource and still copies.
-s" TC18=" type s" TC18 ( ptr lone -- lone ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC19=" type s" TC19 ( ptr plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TC20=" type s" TC20 ( ptr lone -- ptr lone ptr lone ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC18=" type s" TC18 ( ^lone -- lone ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC19=" type s" TC19 ( ^plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC20=" type s" TC20 ( ^lone -- ^lone ^lone ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
 \ A linear value under a generic layer is a different checker question from
@@ -187,34 +187,34 @@ cr
 \ argument list. opt<lone> and opt<plain> share a width, so refusing one and
 \ certifying the other answers linearity. Two generic layers pin the recursion;
 \ the store rows pin that `!` reaches the guard `@` does. Without the walk, `(
-\ ptr opt<lone> -- opt<lone> ) @` certified.
+\ ^opt<lone> -- opt<lone> ) @` certified.
 ENUM opt<a>
   VARIANT none ;VARIANT
   VARIANT some FIELD v a ;VARIANT
 ;ENUM
-s" TC21=" type s" TC21 ( ptr opt<lone> -- opt<lone> ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC22=" type s" TC22 ( ptr opt<plain> -- opt<plain> ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TC23=" type s" TC23 ( opt<lone> ptr opt<lone> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC24=" type s" TC24 ( opt<plain> ptr opt<plain> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC21=" type s" TC21 ( ^opt<lone> -- opt<lone> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC22=" type s" TC22 ( ^opt<plain> -- opt<plain> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC23=" type s" TC23 ( opt<lone> ^opt<lone> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC24=" type s" TC24 ( opt<plain> ^opt<plain> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 \ two layers: the walk recurses rather than looking one argument deep.
-s" TC25=" type s" TC25 ( ptr opt<opt<lone>> -- opt<opt<lone>> ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC26=" type s" TC26 ( ptr opt<opt<plain>> -- opt<opt<plain>> ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TC27=" type s" TC27 ( opt<opt<lone>> ptr opt<opt<lone>> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC28=" type s" TC28 ( opt<opt<plain>> ptr opt<opt<plain>> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC25=" type s" TC25 ( ^opt<opt<lone>> -- opt<opt<lone>> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC26=" type s" TC26 ( ^opt<opt<plain>> -- opt<opt<plain>> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC27=" type s" TC27 ( opt<opt<lone>> ^opt<opt<lone>> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC28=" type s" TC28 ( opt<opt<plain>> ^opt<opt<plain>> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 \ the store direction for the bare family too, so the pair above is not the only
 \ evidence that `!` consults the same guard `@` does.
-s" TC29=" type s" TC29 ( lone ptr lone -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC30=" type s" TC30 ( plain ptr plain -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC29=" type s" TC29 ( lone ^lone -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC30=" type s" TC30 ( plain ^plain -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
 \ No storage holds a type that may hold a linear value, so no package forges
 \ or drops another's token through a cell.
 : STORAGE-CASES ( -- )
    s" a foreign cell that would forge a token is refused" T-LABEL
-   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINF private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ -- n ] -- n ) public TYPED-VARIABLE HK [ -- TLINQ:tok ] : FORGE ( -- TLINQ:tok ) [: 42 ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) FORGE TLINQ:CLOSE . ; ;package TLINF:SHOW" 70
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINF private CAST: >CELLS ( n -- ^n ) CAST: Q>N ( [ -- n ] -- n ) public TYPED-VARIABLE HK [ -- TLINQ:tok ] : FORGE ( -- TLINQ:tok ) [: 42 ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) FORGE TLINQ:CLOSE . ; ;package TLINF:SHOW" 70
    s" in HK: stored type may hold a linear value '[ -- TLINQ:tok ]'" SUBJECT:REFUSED? TTRUE
    s" a foreign cell that would drop a token is refused" T-LABEL
-   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINL private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ n -- ] -- n ) public TYPED-VARIABLE HK [ TLINQ:tok -- ] : LOSE ( TLINQ:tok -- ) [: drop ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) TLINQ:OPEN LOSE ; ;package TLINL:SHOW" 70
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINL private CAST: >CELLS ( n -- ^n ) CAST: Q>N ( [ n -- ] -- n ) public TYPED-VARIABLE HK [ TLINQ:tok -- ] : LOSE ( TLINQ:tok -- ) [: drop ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) TLINQ:OPEN LOSE ; ;package TLINL:SHOW" 70
    s" in HK: stored type may hold a linear value '[ TLINQ:tok -- ]'" SUBJECT:REFUSED? TTRUE
    s" a cell over an open type variable, unequal row tails or a member is refused" T-LABEL
    s" TYPED-VARIABLE TLIN-QA [ -- a ]" 70
@@ -232,30 +232,30 @@ cr
 \ Atomic memory operations: a closed-surface tripwire, not a linearity proof.
 \ The layout-aware transport step is selected by token name and only `@` and `!`
 \ have it, so every layout value is refused here, the non-linear control too;
-\ the `ptr n` rows prove the four words work. Opening layouts to the atomics
+\ the `^n` rows prove the four words work. Opening layouts to the atomics
 \ turns the controls red; that change must add linearity rows.
-s" TA1=" type s" TA1 ( ptr opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA2=" type s" TA2 ( ptr opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also rejected: surface closed
-s" TA3=" type s" TA3 ( opt<lone> ptr opt<lone> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA4=" type s" TA4 ( opt<plain> ptr opt<plain> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA5=" type s" TA5 ( ptr opt<opt<lone>> -- opt<opt<lone>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA6=" type s" TA6 ( ptr opt<opt<plain>> -- opt<opt<plain>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA7=" type s" TA7 ( opt<lone> opt<lone> ptr opt<lone> -- opt<lone> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA8=" type s" TA8 ( opt<plain> opt<plain> ptr opt<plain> -- opt<plain> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA9=" type s" TA9 ( opt<lone> ptr opt<lone> -- opt<lone> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA10=" type s" TA10 ( opt<plain> ptr opt<plain> -- opt<plain> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA1=" type s" TA1 ( ^opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA2=" type s" TA2 ( ^opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also rejected: surface closed
+s" TA3=" type s" TA3 ( opt<lone> ^opt<lone> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA4=" type s" TA4 ( opt<plain> ^opt<plain> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA5=" type s" TA5 ( ^opt<opt<lone>> -- opt<opt<lone>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA6=" type s" TA6 ( ^opt<opt<plain>> -- opt<opt<plain>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA7=" type s" TA7 ( opt<lone> opt<lone> ^opt<lone> -- opt<lone> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA8=" type s" TA8 ( opt<plain> opt<plain> ^opt<plain> -- opt<plain> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA9=" type s" TA9 ( opt<lone> ^opt<lone> -- opt<lone> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA10=" type s" TA10 ( opt<plain> ^opt<plain> -- opt<plain> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
 \ the bare families close the same way.
-s" TA11=" type s" TA11 ( ptr lone -- lone ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA12=" type s" TA12 ( ptr plain -- plain ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA11=" type s" TA11 ( ^lone -- lone ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA12=" type s" TA12 ( ^plain -- plain ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
 \ and the four words themselves certify over a plain cell, so nothing above is
 \ passing merely because an atomic word went missing.
-s" TA13=" type s" TA13 ( ptr n -- n ) atomic@" CHECK-QUIET-CANDIDATE! -1 T=
-s" TA14=" type s" TA14 ( n ptr n -- ) atomic!" CHECK-QUIET-CANDIDATE! -1 T=
-s" TA15=" type s" TA15 ( n ptr n -- n ) atomic-add" CHECK-QUIET-CANDIDATE! -1 T=
-s" TA16=" type s" TA16 ( n n ptr n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA13=" type s" TA13 ( ^n -- n ) atomic@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA14=" type s" TA14 ( n ^n -- ) atomic!" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA15=" type s" TA15 ( n ^n -- n ) atomic-add" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA16=" type s" TA16 ( n n ^n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ Both unified declarers also refuse `FIELD p ptr <linear>`
+\ Both unified declarers also refuse `FIELD p ^<linear>`
 \ (test/structure-decl-suite.f, test/enum-decl-suite.f); this file covers such a
 \ value once it is on a row.
 

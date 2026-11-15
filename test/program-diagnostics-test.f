@@ -7,7 +7,7 @@ require src/lib/process.f
 
 package PROGRAM-DIAGNOSTICS
 
-: RUN-LOAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: RUN-LOAD ( ^u8 n -- ) {: path:^ pathu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    path pathu GE-ARG+
@@ -15,62 +15,62 @@ package PROGRAM-DIAGNOSTICS
 
 \ The Habu loop reads the file and recovers at `;` (src/habu/interpreter.f
 \ DEF-SEMI?), as it does for RUN-LOAD.
-: RUN-LOAD-HABU ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: RUN-LOAD-HABU ( ^u8 n -- ) {: path:^ pathu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    s" test/interpreter-loop-on.f" GE-ARG+
    path pathu GE-ARG+
    s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
-: EXPECT-MARKER ( ptr u8 n ptr u8 n -- )
-   {: marker:ptr markeru:n label:ptr labelu:n :}
+: EXPECT-MARKER ( ^u8 n ^u8 n -- )
+   {: marker:^ markeru:n label:^ labelu:n :}
    SB-RESET marker markeru SB-APPEND GE-SB-LF
    SB$ label labelu GE-EXPECT-OUT ;
 
-: EXPECT-OK-END ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-OUT$ {: out:ptr outu:n :}
+: EXPECT-OK-END ( ^u8 n -- ) {: label:^ labelu:n :}
+   GT-OUT$ {: out:^ outu:n :}
    outu 3 < if label labelu GE-FAIL then
    out outu 3 - + 2 s" ok" STR= 0= if label labelu GE-FAIL then
    out outu 1- + c@ GE-LF <> if label labelu GE-FAIL then ;
 
-: NEGATIVE ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n rc:n marker:ptr markeru:n needle:ptr needleu:n :}
+: NEGATIVE ( ^u8 n n ^u8 n ^u8 n -- )
+   {: path:^ pathu:n rc:n marker:^ markeru:n needle:^ needleu:n :}
    path pathu RUN-LOAD
    rc path pathu GE-EXPECT-RC
    marker markeru path pathu EXPECT-MARKER
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
-: EXPECT-DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n needle:ptr needleu:n :}
+: EXPECT-DIAGNOSTIC ( ^u8 n ^u8 n -- )
+   {: path:^ pathu:n needle:^ needleu:n :}
    path pathu GE-EXPECT-OK
    path pathu EXPECT-OK-END
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
-: DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n needle:ptr needleu:n :}
+: DIAGNOSTIC ( ^u8 n ^u8 n -- )
+   {: path:^ pathu:n needle:^ needleu:n :}
    path pathu RUN-LOAD
    path pathu needle needleu EXPECT-DIAGNOSTIC ;
 
-: HABU-DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n needle:ptr needleu:n :}
+: HABU-DIAGNOSTIC ( ^u8 n ^u8 n -- )
+   {: path:^ pathu:n needle:^ needleu:n :}
    path pathu RUN-LOAD-HABU
    path pathu needle needleu EXPECT-DIAGNOSTIC ;
 
 \ stderr is one engine exit line: the text, " lr ", the lr's 16 hex digits and
 \ a newline.
-: EXPECT-DIE-LINE ( ptr u8 n ptr u8 n -- )
-   {: text:ptr textu:n label:ptr labelu:n :}
+: EXPECT-DIE-LINE ( ^u8 n ^u8 n -- )
+   {: text:^ textu:n label:^ labelu:n :}
    SB-RESET text textu SB-APPEND s"  lr " SB-APPEND
-   SB$ {: want:ptr wantu:n :}
-   GT-ERR$ {: err:ptr erru:n :}
+   SB$ {: want:^ wantu:n :}
+   GT-ERR$ {: err:^ erru:n :}
    erru wantu 17 + <> if label labelu GE-FAIL then
    err wantu want wantu STR= 0= if label labelu GE-FAIL then
    true erru 1- wantu ?do err i + c@ STR-HEX-DIGIT? and loop
    0= if label labelu GE-FAIL then
    err erru + 1- c@ GE-LF <> if label labelu GE-FAIL then ;
 
-: NEGATIVE-LINE ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n rc:n marker:ptr markeru:n text:ptr textu:n :}
+: NEGATIVE-LINE ( ^u8 n n ^u8 n ^u8 n -- )
+   {: path:^ pathu:n rc:n marker:^ markeru:n text:^ textu:n :}
    path pathu rc marker markeru text textu NEGATIVE
    text textu path pathu EXPECT-DIE-LINE ;
 
@@ -88,7 +88,7 @@ package PROGRAM-DIAGNOSTICS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/bootstrap-created-effect-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
+      s" BOOTSTRAP-CREATED-ARMED" s" actual: ^a" NEGATIVE
    s" test/bootstrap-created-raw-src.f" 70
       s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
    s" test/bootstrap-created-const-src.f" 70
@@ -119,7 +119,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Each refused signature of a multi-error load is counted once and written once:
 \ a second report of one would be a second line on stderr and a count of 2.
 : BADSIG-ONCE ( -- )
-   s" test/program-diagnostic-badsig.f" {: path:ptr pathu:n :}
+   s" test/program-diagnostic-badsig.f" {: path:^ pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
@@ -132,7 +132,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ A multi-error load counts the refusals it renders: a quiet scan's refusal is
 \ neither printed nor counted, so the count is 1 and stderr holds BADC's line.
 : QUIET-COUNT-ONCE ( -- )
-   s" test/program-diagnostic-quiet-count.f" {: path:ptr pathu:n :}
+   s" test/program-diagnostic-quiet-count.f" {: path:^ pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 0\n1\n1\nok\n" STR= 0= if s" quiet count" GE-FAIL then
@@ -148,9 +148,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
-   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" native-multi-error-recovery.f: at 'c@' expected: ^u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
-   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" native-multi-error-recovery.f: at 'c@' expected: ^u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" E-USING-UNKNOWN habu: " DIAGNOSTIC
    s" using: unknown package: NOPE-PKG" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS

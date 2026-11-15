@@ -23,14 +23,14 @@ create OUT CAP allot variable OUT-U
 create ERR CAP allot variable ERR-U
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: BAD$ ( -- ptr u8 n ) BAD BAD-U @ ;
-: ARCHIVE$ ( -- ptr u8 n ) ARCHIVE ARCHIVE-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: BAD$ ( -- ^u8 n ) BAD BAD-U @ ;
+: ARCHIVE$ ( -- ^u8 n ) ARCHIVE ARCHIVE-U @ ;
 
 \ BAD is a regular file, so FS:MKTEMP refuses a TMPDIR naming it (E-FS-DIR)
 \ and OPEN passes that code on.
 : SETUP ( -- )
-   s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" zip-temp" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" not-a-dir" BAD FS:JOIN-PATH BAD-U !

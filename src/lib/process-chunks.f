@@ -17,7 +17,7 @@ private
 4 cells constant CAP-OFF
 $1000 constant CHUNK-BYTES
 
-: ROOM? ( n ptr n [ n ptr n -- ptr SPAN:span<u8> ] -- bool )
+: ROOM? ( n ^n [ n ^n -- ^SPAN:span<u8> ] -- bool )
    {: need state chunks :}
    state CUR-OFF + @ state HELD-OFF + @ >= if false exit then
    state CUR-OFF + @ state chunks execute @ SPAN:LEN state USED-OFF + @ - need >= ;
@@ -25,7 +25,7 @@ $1000 constant CHUNK-BYTES
 
 \ A fresh chunk takes the current slot; the one it displaces, too small for
 \ this row, moves to the end.
-: GROW ( n ptr n [ n ptr n -- ptr SPAN:span<u8> ] [ n ptr n -- ] -- )
+: GROW ( n ^n [ n ^n -- ^SPAN:span<u8> ] [ n ^n -- ] -- )
    {: need state chunks reserve :}
    state HELD-OFF + @ {: held:n :}
    state CUR-OFF + @ {: cur:n :}
@@ -38,7 +38,7 @@ public
 
 3 constant CONTROL-CELLS
 
-: ROOM ( n ptr n [ n ptr n -- ptr SPAN:span<u8> ] [ n ptr n -- ] -- ptr u8 )
+: ROOM ( n ^n [ n ^n -- ^SPAN:span<u8> ] [ n ^n -- ] -- ^u8 )
    {: need state chunks reserve :}
    need state chunks ROOM? 0= if
       state CUR-OFF + @ state HELD-OFF + @ < if 1 state CUR-OFF + +! then
@@ -49,14 +49,14 @@ public
    need state USED-OFF + +! ;
 
 
-: REWIND ( ptr n -- )
+: REWIND ( ^n -- )
    {: state :}
    0 state CUR-OFF + !
    0 state USED-OFF + ! ;
 
 
 \ Unmaps every chunk; the caller then releases its chunk buffer.
-: FREE ( ptr n [ n ptr n -- ptr SPAN:span<u8> ] -- )
+: FREE ( ^n [ n ^n -- ^SPAN:span<u8> ] -- )
    {: state chunks :}
    state HELD-OFF + @ 0 ?do i state chunks execute @ MEM:FREE-SPAN loop
    0 state HELD-OFF + !
@@ -66,15 +66,15 @@ private
 
 2 constant SPAN-CELLS
 
-CAST: >SPANS ( ptr n -- ptr SPAN:span<u8> )
+CAST: >SPANS ( ^n -- ^SPAN:span<u8> )
 
-: TABLE ( ptr n -- ptr ptr a ) 3 ptr-field ;
+: TABLE ( ^n -- ^^a ) 3 ptr-field ;
 
-: OWNED-CHUNK ( n ptr n -- ptr SPAN:span<u8> )
+: OWNED-CHUNK ( n ^n -- ^SPAN:span<u8> )
    TABLE @ >SPANS swap SPAN-CELLS * record-at ;
 
 
-: RELEASE-TABLE ( ptr n -- )
+: RELEASE-TABLE ( ^n -- )
    {: state :}
    state CAP-OFF + @ {: cap:n :}
    cap 0= if exit then
@@ -83,11 +83,11 @@ CAST: >SPANS ( ptr n -- ptr SPAN:span<u8> )
    0 state CAP-OFF + ! ;
 
 
-: OWNED-RESERVE ( n ptr n -- )
+: OWNED-RESERVE ( n ^n -- )
    {: need state :}
    need state CAP-OFF + @ <= if exit then
    need state CAP-OFF + @ 2 * max {: cap:n :}
-   cap SPAN-CELLS * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:ptr :}
+   cap SPAN-CELLS * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:^ :}
    state HELD-OFF + @ 0 ?do
       i state OWNED-CHUNK @ fresh >SPANS i SPAN-CELLS * record-at !
    loop
@@ -99,11 +99,11 @@ public
 
 5 constant OWNED-CELLS
 
-: OWNED-ROOM ( n ptr n -- ptr u8 )
+: OWNED-ROOM ( n ^n -- ^u8 )
    [: OWNED-CHUNK ;] [: OWNED-RESERVE ;] ROOM ;
 
 
-: OWNED-FREE ( ptr n -- )
+: OWNED-FREE ( ^n -- )
    {: state :}
    state [: OWNED-CHUNK ;] FREE
    state RELEASE-TABLE ;

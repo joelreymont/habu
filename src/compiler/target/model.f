@@ -171,7 +171,7 @@ private
       x86-64-pc-windows-msvc OF CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH ENDOF
    ;MATCH ;
 
-: LABEL ( profile-id -- ptr u8 n )
+: LABEL ( profile-id -- ^u8 n )
    MATCH profile-id
       aarch64-apple-darwin OF s" aarch64-apple-darwin" ENDOF
       aarch64-unknown-linux-gnu OF s" aarch64-unknown-linux-gnu" ENDOF
@@ -182,19 +182,19 @@ private
       wasm64-unknown-unknown OF s" wasm64-unknown-unknown" ENDOF
    ;MATCH ;
 
-: NAME? ( ptr u8 n ptr u8 n -- bool ) STR= ;
+: NAME? ( ^u8 n ^u8 n -- bool ) STR= ;
 
 \ A platform name's profile and true; else false over a filler profile the caller drops.
-: PLATFORM ( ptr u8 n -- profile-id bool )
-   {: name:ptr size:n :}
+: PLATFORM ( ^u8 n -- profile-id bool )
+   {: name:^ size:n :}
    name size s" macos-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN true exit then
    name size s" linux-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU true exit then
    name size s" linux-x86-64" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU true exit then
    name size s" wasm" NAME? if RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN true exit then
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false ;
 
-: PROFILE ( ptr u8 n -- profile-id )
-   {: name:ptr size:n :}
+: PROFILE ( ^u8 n -- profile-id )
+   {: name:^ size:n :}
    name size PLATFORM if exit then drop
    name size s" aarch64-apple-darwin" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN exit then
    name size s" aarch64-unknown-linux-gnu" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU exit then
@@ -205,7 +205,7 @@ private
    name size s" wasm64-unknown-unknown" NAME? if RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN exit then
    E-UNKNOWN throw ;
 
-: LOOKUP-KEEP ( ptr u8 n -- ptr u8 n )
+: LOOKUP-KEEP ( ^u8 n -- ^u8 n )
    2dup PROFILE drop ;
 
 : DETECT-NATIVE-PROFILE ( -- native-profile-id )
@@ -239,16 +239,16 @@ private
 
 public
 
-: KNOWN? ( ptr u8 n -- bool )
+: KNOWN? ( ^u8 n -- bool )
    [: LOOKUP-KEEP ;] catch >r 2drop r>
    dup 0= if drop true exit then
    dup E-UNKNOWN = if drop false exit then
    throw ;
 
 \ True for a platform name, one per target; false for a triple.
-: PLATFORM? ( ptr u8 n -- bool ) PLATFORM nip ;
+: PLATFORM? ( ^u8 n -- bool ) PLATFORM nip ;
 
-: RESOLVE ( ptr u8 n -- resolved-target )
+: RESOLVE ( ^u8 n -- resolved-target )
    PROFILE dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
 
 : PROFILE@ ( resolved-target -- profile-id )
@@ -264,7 +264,7 @@ public
 : IMAGE@ ( resolved-target -- image )
    PROFILE@ PROFILE-IMAGE ;
 
-: PROFILE$ ( resolved-target -- ptr u8 n )
+: PROFILE$ ( resolved-target -- ^u8 n )
    PROFILE@ LABEL ;
 
 : SAME? ( resolved-target resolved-target -- bool )

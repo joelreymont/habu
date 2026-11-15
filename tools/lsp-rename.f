@@ -25,15 +25,15 @@ private
 
 \ Whether these bytes read as a qualified name, or with a second colon as
 \ one no word has: their first colon is neither first nor last.
-: QUALIFIES? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: QUALIFIES? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u [char] : INDEX-OF MATCH option
       some OF IDX>N {: k:n :} k 0 >  k u 1- <  and ENDOF
       none OF false ENDOF
    ;MATCH ;
 
-: ANY-BYTE? ( ptr u8 n [ n -- bool ] -- bool )
-   {: a:ptr u:n test :}
+: ANY-BYTE? ( ^u8 n [ n -- bool ] -- bool )
+   {: a:^ u:n test :}
    u 0 ?do
       a i + c@ test execute if true unloop exit then
    loop
@@ -52,7 +52,7 @@ public
 \ slot, which positions then count in: the use that holds the byte, else the
 \ declaring token LSP-REFERENCES:PLACE placed. The selecting use and the declaring
 \ token spell its tail (LSP-REFERENCES:SPELT?).
-: PREPARED ( ptr JSON:writer n n -- ptr JSON:writer )
+: PREPARED ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n at:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    slot at DEFS-USE-AT MATCH option
@@ -68,8 +68,8 @@ public
 \ its first colon is neither first nor last, making the tail a qualified name; or it
 \ holds a quote or a backslash, which a string literal naming the word (a use before
 \ a call of a names: word) could not spell.
-: WHY$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: WHY$ ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u 0= if s" the new name is empty" exit then
    a u [: LINT-LEX:ENGINE-DELIM? ;] ANY-BYTE? if
       s" the new name holds a space or a control byte" exit
@@ -82,8 +82,8 @@ public
 \ Why a name WHY$ passes cannot be written over the tails the gather placed, else
 \ empty: it holds a colon and a tail follows a qualifier, giving the token a name no
 \ word has (CHECKER-QUALIFIED?).
-: QUALIFIED-WHY$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: QUALIFIED-WHY$ ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    a u [: [char] : = ;] ANY-BYTE? 0= if s" " exit then
    LSP-REFERENCES:LOCATIONS 0 ?do
       i LSP-REFERENCES:LOC-QUALIFIED? if
@@ -96,8 +96,8 @@ public
 \ the tail of each location, to the writer. The declaration is the first
 \ location, then the uses by file, P's first (LSP-REFERENCES:SETTLE), so
 \ each URI's locations are one run.
-: ANSWER ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: name:ptr nu:n :}
+: ANSWER ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: name:^ nu:n :}
    WRITE-OBJECT-START
    s" changes" WRITE-KEY WRITE-OBJECT-START
    LSP-REFERENCES:LOCATIONS 0 ?do

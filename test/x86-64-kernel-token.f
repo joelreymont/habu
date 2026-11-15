@@ -15,7 +15,7 @@ using X64LAYOUT
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
-: INPUT, ( ptr u8 n -- )
+: INPUT, ( ^u8 n -- )
    X64HARNESS:PUSH-TEXT,
    RAX R64>N G-POP  RCX R64>N G-POP
    RCX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR
@@ -33,7 +33,7 @@ using X64LAYOUT
    RAX R64>N G-PUSH
    off X64HARNESS:EXPECT-POP, ;
 
-: IMM?, ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: IMM?, ( ^u8 n n -- ) {: a:^ u:n want:n :}
    a u X64HARNESS:PUSH-TEXT,
    s" tok-imm?" X64HARNESS:CALL-ROW,
    want X64HARNESS:EXPECT-POP, ;

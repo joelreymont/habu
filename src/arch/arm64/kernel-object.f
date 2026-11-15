@@ -55,8 +55,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: BYTES+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: BYTES+ ( ^u8 n -- )
+   {: a:^ u:n :}
    OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY
    u OUT-U +! ;
@@ -68,9 +68,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 \ Zeros up to the next multiple of 8.
 : PAD+ ( -- ) begin OUT-U @ 7 and 0<> while 0 BYTE+ repeat ;
 
-: SPAN+ ( ptr u8 n -- ) BYTES+ PAD+ ;
+: SPAN+ ( ^u8 n -- ) BYTES+ PAD+ ;
 
-: NAME+ ( ptr u8 n -- ) dup U64+ SPAN+ ;
+: NAME+ ( ^u8 n -- ) dup U64+ SPAN+ ;
 
 
 : SECTION ( -- ) OUT-U @ COUNT-AT !  0 COUNT-N !  0 U64+ ;
@@ -163,11 +163,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    then ;
 
 
-: SYM+ ( ptr u8 n n -- )
-   {: a:ptr u:n v:n :}
+: SYM+ ( ^u8 n n -- )
+   {: a:^ u:n v:n :}
    a u NAME+  v U64+  ENTRY ;
 
-: LSYM+ ( ptr u8 n label -- ) LABEL>N SYM+ ;
+: LSYM+ ( ^u8 n label -- ) LABEL>N SYM+ ;
 
 : COMMON-SYMBOLS ( -- )
    s" K0" K0 @ SYM+
@@ -244,7 +244,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;SECTION ;
 
 
-: IMPORTS+ ( n [ n -- ptr u8 n ] -- )
+: IMPORTS+ ( n [ n -- ^u8 n ] -- )
    {: n:n name :}
    OUT-U @ {: at:n :}
    0 U64+
@@ -277,7 +277,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 : SUM ( -- )
    SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN ;
 
-: WRITE-OUT ( bool [ ptr u8 n -- ] -- )
+: WRITE-OUT ( bool [ ^u8 n -- ] -- )
    {: engine:bool sink :}
    engine EMIT  engine ?PLACED
    0 OUT-U !
@@ -294,7 +294,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 public
 
 \ The object's bytes go once to the sink, valid only during the call.
-: WRITE ( bool [ ptr u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
+: WRITE ( bool [ ^u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package
 ;using

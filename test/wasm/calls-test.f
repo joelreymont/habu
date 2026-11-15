@@ -24,12 +24,12 @@ PATH-CAP BUFFER: SRC
 variable SRC-U
 
 : SETUP ( -- )
-   s" wasm-calls" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" wasm-calls" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm calls: sources and modules in " type  DIR u type cr ;
 
-: RAN ( ptr u8 n ptr u8 n -- n )
-   {: entry:ptr eu:n name:ptr nu:n :}
+: RAN ( ^u8 n ^u8 n -- n )
+   {: entry:^ eu:n name:^ nu:n :}
    SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
    DIR DIR-U @ SB$ MOD FS:JOIN-PATH MOD-U !
    SB-RESET name nu SB-APPEND s" .f" SB-APPEND
@@ -41,7 +41,7 @@ variable SRC-U
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    MOD MOD-U @ WASM-HARNESS:RUN ;
 
-: TRAPS ( ptr u8 n ptr u8 n -- )  RAN TRAPPED T= ;
+: TRAPS ( ^u8 n ^u8 n -- )  RAN TRAPPED T= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : FAULTED-CASE ( -- )

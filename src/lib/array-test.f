@@ -28,7 +28,7 @@ create AT-WORK 5 cells allot
    AT-WORK cell+ !
    AT-WORK ! ;
 
-: AT-CHECK-REJECTS ( ptr u8 n -- )
+: AT-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : AT-CHECK-INDEX ( n n -- ) {: len ix :}
@@ -43,16 +43,16 @@ create AT-WORK 5 cells allot
 : AT-CHECK-WHOLE ( n -- )
    A-LEN A-CHECK-WHOLE ;
 
-: AT-A@ ( ptr a n n -- a ) {: arr:ptr len ix :}
+: AT-A@ ( ^a n n -- a ) {: arr:^ len ix :}
    arr len A-LEN ix A-IDX A@ ;
 
-: AT-A! ( a ptr a n n -- ) {: value arr:ptr len ix :}
+: AT-A! ( a ^a n n -- ) {: value arr:^ len ix :}
    value arr len A-LEN ix A-IDX A! ;
 
-: AT-A+! ( n ptr n n n -- ) {: delta arr:ptr len ix :}
+: AT-A+! ( n ^n n n -- ) {: delta arr:^ len ix :}
    delta arr len A-LEN ix A-IDX A+! ;
 
-: AT-A-SWAP ( ptr a n n n -- ) {: arr:ptr len ix jx :}
+: AT-A-SWAP ( ^a n n n -- ) {: arr:^ len ix jx :}
    arr len A-LEN ix A-IDX jx A-IDX A-SWAP ;
 
 : AT-LAST-INDEX ( n -- n )
@@ -61,69 +61,69 @@ create AT-WORK 5 cells allot
 : AT-MIRROR-INDEX ( n n -- n ) {: len ix :}
    len A-LEN ix A-IDX MIRROR-INDEX IDX>N ;
 
-: AT-A-SUM ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-SUM ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-SUM ;
 
-: AT-A-MIN ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-MIN ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-MIN ;
 
-: AT-A-MAX ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-MAX ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-MAX ;
 
-: AT-A-COUNT-EVEN ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-COUNT-EVEN ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-COUNT-EVEN COUNT>N ;
 
-: AT-A-ARGMAX ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-ARGMAX ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-ARGMAX IDX>N ;
 
-: AT-A-MAX-INDEX ( ptr n n -- n ) {: arr:ptr len :}
+: AT-A-MAX-INDEX ( ^n n -- n ) {: arr:^ len :}
    arr len A-LEN A-MAX-INDEX IDX>N ;
 
-: AT-A-REVERSE-RANGE! ( ptr a n n n -- ) {: arr:ptr len start cnt :}
+: AT-A-REVERSE-RANGE! ( ^a n n n -- ) {: arr:^ len start cnt :}
    arr len A-LEN start A-IDX cnt A-COUNT A-REVERSE-RANGE! ;
 
-: AT-A-REVERSE! ( ptr a n -- ) {: arr:ptr len :}
+: AT-A-REVERSE! ( ^a n -- ) {: arr:^ len :}
    arr len A-LEN A-REVERSE! ;
 
-: AT-A-PREFIX-SUM! ( ptr n n -- ) {: arr:ptr len :}
+: AT-A-PREFIX-SUM! ( ^n n -- ) {: arr:^ len :}
    arr len A-LEN A-PREFIX-SUM! ;
 
-: AT-A-RUNMAX! ( ptr n n -- ) {: arr:ptr len :}
+: AT-A-RUNMAX! ( ^n n -- ) {: arr:^ len :}
    arr len A-LEN A-RUNMAX! ;
 
-: AT-A-FILL! ( a ptr a n -- ) {: value arr:ptr len :}
+: AT-A-FILL! ( a ^a n -- ) {: value arr:^ len :}
    value arr len A-LEN A-FILL! ;
 
-: AT-A-MAP! ( ptr a n [ a -- a ] -- ) {: arr:ptr len q :}
+: AT-A-MAP! ( ^a n [ a -- a ] -- ) {: arr:^ len q :}
    arr len A-LEN q A-MAP! ;
 
-: AT-A-MAPI! ( ptr a n [ idx a -- a ] -- ) {: arr:ptr len q :}
+: AT-A-MAPI! ( ^a n [ idx a -- a ] -- ) {: arr:^ len q :}
    arr len A-LEN q A-MAPI! ;
 
-: AT-A-FOLD ( ptr a n b [ b a -- b ] -- b ) {: arr:ptr len acc q :}
+: AT-A-FOLD ( ^a n b [ b a -- b ] -- b ) {: arr:^ len acc q :}
    arr len A-LEN acc q A-FOLD ;
 
-: AT-A-FOLDI ( ptr a n b [ b idx a -- b ] -- b ) {: arr:ptr len acc q :}
+: AT-A-FOLDI ( ^a n b [ b idx a -- b ] -- b ) {: arr:^ len acc q :}
    arr len A-LEN acc q A-FOLDI ;
 
-: AT-A-SCAN! ( ptr n n n [ n n -- n ] -- ) {: arr:ptr len acc q :}
+: AT-A-SCAN! ( ^n n n [ n n -- n ] -- ) {: arr:^ len acc q :}
    arr len A-LEN acc q A-SCAN! ;
 
-: AT-A-SCAN1! ( ptr n n [ n n -- n ] -- ) {: arr:ptr len q :}
+: AT-A-SCAN1! ( ^n n [ n n -- n ] -- ) {: arr:^ len q :}
    arr len A-LEN q A-SCAN1! ;
 
-: AT-A-FIND-INDEX ( ptr a n [ a -- bool ] -- n ) {: arr:ptr len q :}
+: AT-A-FIND-INDEX ( ^a n [ a -- bool ] -- n ) {: arr:^ len q :}
    arr len A-LEN q A-FIND-INDEX MATCH option none OF -1 ENDOF some OF IDX>N ENDOF ;MATCH ;
 
-: AT-A-FIND-INDEXI ( ptr a n [ idx a -- bool ] -- n ) {: arr:ptr len q :}
+: AT-A-FIND-INDEXI ( ^a n [ idx a -- bool ] -- n ) {: arr:^ len q :}
    arr len A-LEN q A-FIND-INDEXI MATCH option none OF -1 ENDOF some OF IDX>N ENDOF ;MATCH ;
 
-: AT-A-FIND-SOME ( ptr a n [ a -- bool ] n -- ) {: arr:ptr len q want:n :}
+: AT-A-FIND-SOME ( ^a n [ a -- bool ] n -- ) {: arr:^ len q want:n :}
    arr len A-LEN q A-FIND-INDEX MATCH option
      none OF 0 0= 0= ENDOF
      some OF IDX>N want = ENDOF
    ;MATCH T-ASSERT ;
-: AT-A-FIND-NONE ( ptr a n [ a -- bool ] -- ) {: arr:ptr len q :}
+: AT-A-FIND-NONE ( ^a n [ a -- bool ] -- ) {: arr:^ len q :}
    arr len A-LEN q A-FIND-INDEX MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
@@ -269,7 +269,7 @@ create AT-WORK 5 cells allot
    [: AT-LEN-NEG ;] catch E-A-BOUNDS T=
    [: AT-IDX-NEG ;] catch E-A-BOUNDS T=
    [: AT-COUNT-NEG ;] catch E-A-BOUNDS T=
-   s" BAD-A-FETCH ( ptr a len count -- a ) A@" AT-CHECK-REJECTS
+   s" BAD-A-FETCH ( ^a len count -- a ) A@" AT-CHECK-REJECTS
    s" BAD-A-RANGE ( len idx len -- ) A-CHECK-RANGE" AT-CHECK-REJECTS ;
 
 : AT-TEST-ACCESS ( -- )

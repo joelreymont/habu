@@ -14,7 +14,7 @@ public
 : RUN ( -- )
    T-RESET
    s" raw storage cannot initialize a scoped view" T-LABEL
-   s" : C2-INIT-RAW ( ptr u8 n c2irec -- ptr u8 n ) [: ;] C2-MEM:WITH-INIT ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-INIT-RAW ( ^u8 n c2irec -- ^u8 n ) [: ;] C2-MEM:WITH-INIT ;" 70 SUBJECT:EXITED? TTRUE
    s" a shared view cannot initialize a scoped view" T-LABEL
    s" : C2-INIT-SHARED ( read-view<p,q,u8> c2irec -- read-view<p,q,u8> ) [: ;] C2-MEM:WITH-INIT ;" 70 SUBJECT:EXITED? TTRUE
    s" an open record field cannot initialize storage" T-LABEL

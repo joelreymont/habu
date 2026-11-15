@@ -14,7 +14,7 @@ require src/habu/verify-source.f
 \ and both reach one row.
 package CDD-RESP
 public
-: CDD-RP-D ( n -- ) create , does> ( -- ptr n ) ;
+: CDD-RP-D ( n -- ) create , does> ( -- ^n ) ;
 ;package
 
 \ An export of that definer: the same xt under another tail, and the tail is a
@@ -26,7 +26,7 @@ EXPORT CDD-RESP:CDD-RP-D
 ;package
 
 \ The text-writing definer of sections 9-12, the shape of src/lib/task.f
-\ +USER: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
+\ +USER: MAKE builds `: NAME ( -- ^n ) data-base OFF + ;` for the next name
 \ and evaluates it, so its word has no `does>` clause for a checker to read.
 package CDD-GEN
 $60 constant TEXT-CAP
@@ -35,11 +35,11 @@ public
 : MAKE ( n -- )
    {: off:n :}
    parse-name
-   {: name:ptr nameu:n :}
+   {: name:^ nameu:n :}
    TEXT CODEGEN:RESET
    s" : " TEXT CODEGEN:APPEND-STRING
    name nameu TEXT CODEGEN:APPEND-STRING
-   s"  ( -- ptr n ) data-base " TEXT CODEGEN:APPEND-STRING
+   s"  ( -- ^n ) data-base " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
    TEXT CODEGEN:CONTENTS evaluate-closed ;
@@ -50,7 +50,7 @@ public
 \ that only calls it, and runs it for real.
 package CDD-GQ4
 : CDD-GD4 ( n -- ) CDD-GEN:MAKE ;
-generates: CDD-GD4 ( -- ptr n )
+generates: CDD-GD4 ( -- ^n )
 public
 : CDD-GD4 ( n -- ) CDD-GD4 ;
 ;package
@@ -77,7 +77,7 @@ package CERTIFY-DOES-DEFINER
 \ The rest of section 5's fixtures, also compiled by the engine here: this
 \ file's scanner never reads their text, so what they create is known only
 \ through the store the checker wrote when it certified their clause.
-: CDD-RES-D ( n -- ) create , does> ( -- ptr n ) ;
+: CDD-RES-D ( n -- ) create , does> ( -- ^n ) ;
 : CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a resident wrapper: known through the checker's walk
 : CDD-RES-P ( n -- n ) 1 + ;              \ the plain definition right after a definer
 
@@ -103,49 +103,49 @@ package CERTIFY-DOES-DEFINER
 
 \ A scanned word binds through the checker overlay only while the neutral scope
 \ holding its scan is open, so its probes ask the certify path inside it.
-: CDD-VERDICT ( ptr u8 n -- n )
+: CDD-VERDICT ( ^u8 n -- n )
    VERIFY:CANDIDATE-IN-SCOPE ;
 
 \ A word the engine created (section 4) is asked by the engine's lookup.
-: CDD-LIVE-VERDICT ( ptr u8 n -- n )
+: CDD-LIVE-VERDICT ( ^u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
 
 \ Section 1: the definer the scanner read and the word it creates.
 : CDD-SECTION-DEFINER ( -- )
-   s\" : CDD-D ( n -- ) create , does> ( -- ptr n ) ;\n8 CDD-D CDD-ONE\n"
+   s\" : CDD-D ( n -- ) create , does> ( -- ^n ) ;\n8 CDD-D CDD-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" the created word certifies as the clause effect" T-LABEL
-   s" C1 ( -- ptr n ) CDD-ONE" CDD-VERDICT ACCEPTED T=
+   s" C1 ( -- ^n ) CDD-ONE" CDD-VERDICT ACCEPTED T=
    s" the same word is refused against a bare cell" T-LABEL
    s" C2 ( -- n ) CDD-ONE" CDD-VERDICT REFUSED T=
    s" a byte pointee is refused too" T-LABEL
-   s" C3 ( -- ptr u8 ) CDD-ONE" CDD-VERDICT REFUSED T=
+   s" C3 ( -- ^u8 ) CDD-ONE" CDD-VERDICT REFUSED T=
    s" a name the definer never created stays unresolvable" T-LABEL
-   s" C4 ( -- ptr n ) CDD-TWO" CDD-VERDICT UNRESOLVED T=
+   s" C4 ( -- ^n ) CDD-TWO" CDD-VERDICT UNRESOLVED T=
    s" the definer itself keeps its own declared effect" T-LABEL
    s" C5 ( n -- ) CDD-D" CDD-VERDICT ACCEPTED T=
-   s\" : CDD-DU ( n -- ) create , DoEs> ( -- ptr n ) ;\n8 CDD-DU CDD-ONE-U\n"
+   s\" : CDD-DU ( n -- ) create , DoEs> ( -- ^n ) ;\n8 CDD-DU CDD-ONE-U\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a mixed-case `DoEs>` opens the clause, as the engine reads it" T-LABEL
-   s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
+   s" C1U ( -- ^n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ Section 2: a package definer, its straight-line wrapper and both spellings.
 \ A wrapper body whose tokens hold exactly one definer call and no control flow
 \ creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
    CHECKER-SCOPE-START-NEUTRAL
-   s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ptr n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"
+   s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ^n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s\" 8 CDDP:CDD-PD CDD-QUAL\n9 CDDP:CDD-PW CDD-WRAP\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s\" using CDDP\n7 CDD-PW CDD-BARE\n;using\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" the qualified definer's created word certifies" T-LABEL
-   s" C6 ( -- ptr n ) CDD-QUAL" CDD-VERDICT ACCEPTED T=
+   s" C6 ( -- ^n ) CDD-QUAL" CDD-VERDICT ACCEPTED T=
    s" the wrapper's created word certifies the same effect" T-LABEL
-   s" C7 ( -- ptr n ) CDD-WRAP" CDD-VERDICT ACCEPTED T=
+   s" C7 ( -- ^n ) CDD-WRAP" CDD-VERDICT ACCEPTED T=
    s" a bare wrapper call under `using` records the same row" T-LABEL
-   s" C8 ( -- ptr n ) CDD-BARE" CDD-VERDICT ACCEPTED T=
+   s" C8 ( -- ^n ) CDD-BARE" CDD-VERDICT ACCEPTED T=
    s" the wrapper's created word is refused against a bare cell" T-LABEL
    s" C9 ( -- n ) CDD-WRAP" CDD-VERDICT REFUSED T=
    CHECKER-SCOPE-DONE ;
@@ -160,35 +160,35 @@ package CERTIFY-DOES-DEFINER
 \ run takes the latch sections, which refuse names as UNRESOLVED, before this one
 \ marks this file's wordlist.
 : CDD-SECTION-NOT-A-WRAPPER ( -- )
-   s\" : CDD-CD ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
+   s\" : CDD-CD ( n -- ) create , does> ( -- ^n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer behind a conditional records nothing" T-LABEL
-   s" C10 ( -- ptr n ) CDD-COND" CDD-VERDICT DEFERRED T=
+   s" C10 ( -- ^n ) CDD-COND" CDD-VERDICT DEFERRED T=
    s\" : CDD-IFWU ( n -- ) dup 0= IF drop 1 THEN CDD-CD ;\n2 CDD-IFWU CDD-CONDU\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer behind an uppercase conditional records nothing" T-LABEL
-   s" C10U ( -- ptr n ) CDD-CONDU" CDD-VERDICT DEFERRED T=
+   s" C10U ( -- ^n ) CDD-CONDU" CDD-VERDICT DEFERRED T=
    s\" : CDD-TWOW ( n n -- ) CDD-CD CDD-CD ;\n3 4 CDD-TWOW CDD-TWICE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" two definer calls in one body record nothing" T-LABEL
-   s" C11 ( -- ptr n ) CDD-TWICE" CDD-VERDICT DEFERRED T=
+   s" C11 ( -- ^n ) CDD-TWICE" CDD-VERDICT DEFERRED T=
    s\" : CDD-QW ( n -- ) drop [: 5 CDD-CD ;] drop ;\n6 CDD-QW CDD-QUOT\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer inside a quotation records nothing" T-LABEL
-   s" C12 ( -- ptr n ) CDD-QUOT" CDD-VERDICT DEFERRED T= ;
+   s" C12 ( -- ^n ) CDD-QUOT" CDD-VERDICT DEFERRED T= ;
 
 \ Section 4: the learned row is the row the engine publishes.
 \ The same definition, compiled and run by the engine: CDD-LIVE-ONE's effect
 \ here comes from DOESPATCH:EMIT, not from the scanner, and the two agree on
 \ both the acceptance and the refusal.
-: CDD-LIVE-D ( n -- ) create , does> ( -- ptr n ) ;
+: CDD-LIVE-D ( n -- ) create , does> ( -- ^n ) ;
 8 CDD-LIVE-D CDD-LIVE-ONE
 
 : CDD-LIVE-READ ( -- n ) CDD-LIVE-ONE @ ;
 
 : CDD-SECTION-LIVE ( -- )
    s" the engine's own row certifies the clause effect" T-LABEL
-   s" C13 ( -- ptr n ) CDD-LIVE-ONE" CDD-LIVE-VERDICT ACCEPTED T=
+   s" C13 ( -- ^n ) CDD-LIVE-ONE" CDD-LIVE-VERDICT ACCEPTED T=
    s" and refuses the bare cell the scanner refuses" T-LABEL
    s" C14 ( -- n ) CDD-LIVE-ONE" CDD-LIVE-VERDICT REFUSED T=
    s" the created word holds what the definer stored" T-LABEL
@@ -208,43 +208,43 @@ package CERTIFY-DOES-DEFINER
 : CDD-SECTION-RESIDENT ( -- )
    s\" 8 CDD-RES-D CDD-RES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer's created word certifies as the clause effect" T-LABEL
-   s" C15 ( -- ptr n ) CDD-RES-ONE" CDD-VERDICT ACCEPTED T=
+   s" C15 ( -- ^n ) CDD-RES-ONE" CDD-VERDICT ACCEPTED T=
    s" and is refused against a bare cell" T-LABEL
    s" C16 ( -- n ) CDD-RES-ONE" CDD-VERDICT REFUSED T=
    s\" 8 CDD-RESP:CDD-RP-D CDD-RP-QUAL\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s\" using CDD-RESP\n7 CDD-RP-D CDD-RP-BARE\n;using\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the qualified spelling of a resident package definer certifies" T-LABEL
-   s" C17 ( -- ptr n ) CDD-RP-QUAL" CDD-VERDICT ACCEPTED T=
+   s" C17 ( -- ^n ) CDD-RP-QUAL" CDD-VERDICT ACCEPTED T=
    s" the bare spelling under `using` names the same definer" T-LABEL
-   s" C18 ( -- ptr n ) CDD-RP-BARE" CDD-VERDICT ACCEPTED T=
+   s" C18 ( -- ^n ) CDD-RP-BARE" CDD-VERDICT ACCEPTED T=
    s\" 9 CDD-RESX:CDD-RP-D CDD-RP-EXPORTED\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" an exported definer creates what the definer creates" T-LABEL
-   s" C24 ( -- ptr n ) CDD-RP-EXPORTED" CDD-VERDICT ACCEPTED T=
+   s" C24 ( -- ^n ) CDD-RP-EXPORTED" CDD-VERDICT ACCEPTED T=
    s\" : CDD-RES-WRAP ( -- ) 3 CDD-RES-D ;\nCDD-RES-WRAP CDD-RES-WRAPMADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a source-read wrapper of a resident definer creates what it creates" T-LABEL
-   s" C19 ( -- ptr n ) CDD-RES-WRAPMADE" CDD-VERDICT ACCEPTED T=
+   s" C19 ( -- ^n ) CDD-RES-WRAPMADE" CDD-VERDICT ACCEPTED T=
    s\" CDD-RES-W CDD-RES-WMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a RESIDENT wrapper creates what its definer creates (the walk's row)" T-LABEL
-   s" C20 ( -- ptr n ) CDD-RES-WMADE" CDD-VERDICT ACCEPTED T=
+   s" C20 ( -- ^n ) CDD-RES-WMADE" CDD-VERDICT ACCEPTED T=
    s\" 2 CDD-RES-IFW CDD-RES-CONDMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer behind a conditional records nothing" T-LABEL
-   s" C25 ( -- ptr n ) CDD-RES-CONDMADE" CDD-VERDICT DEFERRED T=
+   s" C25 ( -- ^n ) CDD-RES-CONDMADE" CDD-VERDICT DEFERRED T=
    s\" 3 4 CDD-RES-TWOW CDD-RES-TWICEMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" two resident definer calls in one body record nothing" T-LABEL
-   s" C26 ( -- ptr n ) CDD-RES-TWICEMADE" CDD-VERDICT DEFERRED T=
+   s" C26 ( -- ^n ) CDD-RES-TWICEMADE" CDD-VERDICT DEFERRED T=
    s\" 6 CDD-RES-QW CDD-RES-QUOTMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer inside a quotation records nothing" T-LABEL
-   s" C27 ( -- ptr n ) CDD-RES-QUOTMADE" CDD-VERDICT DEFERRED T= ;
+   s" C27 ( -- ^n ) CDD-RES-QUOTMADE" CDD-VERDICT DEFERRED T= ;
 
 : CDD-SECTION-LATCH ( -- )
    s\" 5 CDD-RES-P CDD-PL-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" engine order: the definition after a definer creates nothing" T-LABEL
-   s" C21 ( -- ptr n ) CDD-PL-MADE" CDD-VERDICT UNRESOLVED T=
-   s\" : CDD-SO-D ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-SO-P ( n -- n ) 1 + ;\n5 CDD-SO-P CDD-SO-MADE\n"
+   s" C21 ( -- ^n ) CDD-PL-MADE" CDD-VERDICT UNRESOLVED T=
+   s\" : CDD-SO-D ( n -- ) create , does> ( -- ^n ) ;\n: CDD-SO-P ( n -- n ) 1 + ;\n5 CDD-SO-P CDD-SO-MADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" source order: the definition after a definer creates nothing" T-LABEL
-   s" C22 ( -- ptr n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T= ;
+   s" C22 ( -- ^n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T= ;
 
 \ Section 6: the refused clause and the definition after it are live
 \ definitions, so they run between two scopes.
@@ -257,7 +257,7 @@ package CERTIFY-DOES-DEFINER
 : CDD-SECTION-LATCH-AFTER ( -- )
    s\" 6 CDD-RES-AFTER CDD-AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" and leaves nothing for the next definition to inherit" T-LABEL
-   s" C23 ( -- ptr n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
+   s" C23 ( -- ^n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
 
 \ Section 7: the wrapper latch's lifetime. The wrapper fact is learned by the
 \ body walk, and three walks are not a definition's own body: a candidate, a
@@ -270,23 +270,23 @@ package CERTIFY-DOES-DEFINER
    s\" 7 CDD-RES-D CDD-CAND-ONE\nCDD-CAND-ONE CDD-CAND-TWO\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" the next created word certifies as the clause effect" T-LABEL
-   s" C29 ( -- ptr n ) CDD-CAND-ONE" CDD-VERDICT ACCEPTED T=
+   s" C29 ( -- ^n ) CDD-CAND-ONE" CDD-VERDICT ACCEPTED T=
    s" and is no definer itself: the candidate walk left nothing to inherit" T-LABEL
-   s" C30 ( -- ptr n ) CDD-CAND-TWO" CDD-VERDICT UNRESOLVED T=
+   s" C30 ( -- ^n ) CDD-CAND-TWO" CDD-VERDICT UNRESOLVED T=
    s\" 5 CDD-RES-CD CDD-CD-MADE\nCDD-CD-MADE CDD-CD-X\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer whose clause calls a definer creates its OWN clause" T-LABEL
    s" C31 ( -- ) CDD-CD-MADE" CDD-VERDICT ACCEPTED T=
    s" and not the row the definer that clause calls creates" T-LABEL
-   s" C32 ( -- ptr n ) CDD-CD-MADE" CDD-VERDICT REFUSED T=
+   s" C32 ( -- ^n ) CDD-CD-MADE" CDD-VERDICT REFUSED T=
    s" what that clause created is no definer either" T-LABEL
-   s" C33 ( -- ptr n ) CDD-CD-X" CDD-VERDICT UNRESOLVED T=
+   s" C33 ( -- ^n ) CDD-CD-X" CDD-VERDICT UNRESOLVED T=
    \ The same clause in source order, which is the order that could inherit: the
    \ pre-pass checks the definer's body first and the clause last, so the next
    \ record published is the created word's (verify-source CREATED-TRUST-NEXT?).
    s\" : CDD-SRC-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;\n5 CDD-SRC-CD CDD-SRC-MADE\nCDD-SRC-MADE CDD-SRC-X\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a clause read from source arms nothing the created word takes" T-LABEL
-   s" C34 ( -- ptr n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
+   s" C34 ( -- ^n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
 
 \ Section 9: a definer that writes its word as text; a `generates: D ( effect )`
 \ row states what D makes. Section 10 reads FUNCTION:'s group, section 11 holds
@@ -298,20 +298,20 @@ package CERTIFY-DOES-DEFINER
 \ private definer is the only CDD-GD* defined when the row is read.
 : CDD-SECTION-GENERATES ( -- )
    CHECKER-SCOPE-START-NEUTRAL
-   s\" package CDD-GQ1\n: CDD-GD1 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GD1 ( -- ptr n )\npublic\n: CDD-GD1 ( n -- ) CDD-GD1 ;\n;package\n5 CDD-GQ1:CDD-GD1 CDD-GD1-ONE\n"
+   s\" package CDD-GQ1\n: CDD-GD1 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GD1 ( -- ^n )\npublic\n: CDD-GD1 ( n -- ) CDD-GD1 ;\n;package\n5 CDD-GQ1:CDD-GD1 CDD-GD1-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a generated word certifies as its row's effect" T-LABEL
-   s" C45 ( -- ptr n ) CDD-GD1-ONE" CDD-VERDICT ACCEPTED T=
+   s" C45 ( -- ^n ) CDD-GD1-ONE" CDD-VERDICT ACCEPTED T=
    s" and is refused against a bare cell" T-LABEL
    s" C46 ( -- n ) CDD-GD1-ONE" CDD-VERDICT REFUSED T=
-   s\" package CDD-GQ2\n: CDD-GD2 ( n -- ) CDD-GEN:MAKE ;\npublic\ngenerates: CDD-GD2 ( -- ptr n )\n: CDD-GD2 ( n -- ) CDD-GD2 ;\n;package\n5 CDD-GQ2:CDD-GD2 CDD-GD2-ONE\n"
+   s\" package CDD-GQ2\n: CDD-GD2 ( n -- ) CDD-GEN:MAKE ;\npublic\ngenerates: CDD-GD2 ( -- ^n )\n: CDD-GD2 ( n -- ) CDD-GD2 ;\n;package\n5 CDD-GQ2:CDD-GD2 CDD-GD2-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a row after `public` names the private definer too" T-LABEL
-   s" C47 ( -- ptr n ) CDD-GD2-ONE" CDD-VERDICT ACCEPTED T=
+   s" C47 ( -- ^n ) CDD-GD2-ONE" CDD-VERDICT ACCEPTED T=
    s" C48 ( -- n ) CDD-GD2-ONE" CDD-VERDICT REFUSED T=
    s\" 5 CDD-GQ4:CDD-GD4 CDD-GD4-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident row reaches a source that only calls its wrapper" T-LABEL
-   s" C49 ( -- ptr n ) CDD-GD4-MADE" CDD-VERDICT ACCEPTED T=
+   s" C49 ( -- ^n ) CDD-GD4-MADE" CDD-VERDICT ACCEPTED T=
    s" C50 ( -- n ) CDD-GD4-MADE" CDD-VERDICT REFUSED T=
    CHECKER-SCOPE-DONE ;
 
@@ -322,7 +322,7 @@ package CERTIFY-DOES-DEFINER
 
 : CDD-SECTION-GENERATES-LIVE ( -- )
    s" the generated word certifies as the effect its row states" T-LABEL
-   s" C51 ( -- ptr n ) CDD-GD4-LIVE" CDD-VERDICT ACCEPTED T=
+   s" C51 ( -- ^n ) CDD-GD4-LIVE" CDD-VERDICT ACCEPTED T=
    s" and refuses the bare cell the row refuses" T-LABEL
    s" C52 ( -- n ) CDD-GD4-LIVE" CDD-VERDICT REFUSED T= ;
 
@@ -336,15 +336,15 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
 : CDD-SECTION-FUNCTION ( -- )
    s" a declared function certifies as its group, the result a cell" T-LABEL
    s" C53 ( -- n ) CDD-FN" CDD-VERDICT ACCEPTED T=
-   s" C54 ( -- ptr n ) CDD-FN" CDD-VERDICT REFUSED T=
+   s" C54 ( -- ^n ) CDD-FN" CDD-VERDICT REFUSED T=
    s\" FUNCTION: CDD-FN-READ getpid ( -- i32 ) ;FUNCTION\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" and the pre-pass reads the same effect from the declaration" T-LABEL
    s" C55 ( -- n ) CDD-FN-READ" CDD-VERDICT ACCEPTED T=
-   s" C56 ( -- ptr n ) CDD-FN-READ" CDD-VERDICT REFUSED T= ;
+   s" C56 ( -- ^n ) CDD-FN-READ" CDD-VERDICT REFUSED T= ;
 
 \ Section 11: a row lives as long as its scope. A popped scope hands its symbol
 \ ids out again, so a row outliving it would make that id's next word a definer.
-TYPED-VARIABLE CDD-SRC-A ptr u8
+TYPED-VARIABLE CDD-SRC-A ^u8
 variable CDD-SRC-U
 
 \ x86-64 refuses a quotation that reads a local, so the span travels to the
@@ -352,27 +352,27 @@ variable CDD-SRC-U
 : CDD-READ ( -- )
    CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-: CDD-SPAN! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CDD-SPAN! ( ^u8 n -- )
+   {: a:^ u:n :}
    a CDD-SRC-A !
    u CDD-SRC-U ! ;
 
 \ A neutral scope that pops, as tools/check.f reads a source.
-: CDD-SCOPED ( ptr u8 n -- n )
+: CDD-SCOPED ( ^u8 n -- n )
    CDD-SPAN!
    CHECKER-SCOPE-START-NEUTRAL
    [: CDD-READ ;] catch
    CHECKER-SCOPE-DONE ;
 
 \ A scope in this package that pops.
-: CDD-OWN ( ptr u8 n -- n )
+: CDD-OWN ( ^u8 n -- n )
    CDD-SPAN!
    CHECKER-SCOPE-START
    [: CDD-READ ;] catch
    CHECKER-SCOPE-DONE ;
 
 \ A scope in this package that keeps what it read.
-: CDD-KEPT ( ptr u8 n -- n )
+: CDD-KEPT ( ^u8 n -- n )
    CDD-SPAN!
    CHECKER-SCOPE-START
    [: CDD-READ ;] catch
@@ -380,8 +380,8 @@ variable CDD-SRC-U
    rc 0= IF CHECKER-SCOPE-FINALIZE ELSE CHECKER-SCOPE-DONE THEN
    rc ;
 
-: CDD-REPLAY$ ( -- ptr u8 n )
-   s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ptr n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ptr n ) CDD-SGM ;\n" ;
+: CDD-REPLAY$ ( -- ^u8 n )
+   s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ^n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ^n ) CDD-SGM ;\n" ;
 
 \ The stale pair's E-UNDEFINED line on stderr is the refusal being measured.
 : CDD-SECTION-SCOPES ( -- )
@@ -389,16 +389,16 @@ variable CDD-SRC-U
    CDD-REPLAY$ CDD-SCOPED 0 T=
    CDD-REPLAY$ CDD-SCOPED 0 T=
    s" the stale pair's definer reads in a scope that pops" T-LABEL
-   s\" : CDD-SD ( n -- ) create , does> ( -- ptr n ) ;\n" CDD-SCOPED 0 T=
+   s\" : CDD-SD ( n -- ) create , does> ( -- ^n ) ;\n" CDD-SCOPED 0 T=
    s" and its row does not outlive the ids that scope gave out" T-LABEL
-   s\" : CDD-SE ( -- n ) 5 ;\nCDD-SE CDD-SF\n: CDD-SU ( -- ptr n ) CDD-SF ;\n" CDD-SCOPED 70 T= ;
+   s\" : CDD-SE ( -- n ) 5 ;\nCDD-SE CDD-SF\n: CDD-SU ( -- ^n ) CDD-SF ;\n" CDD-SCOPED 70 T= ;
 
 : CDD-SECTION-KEPT ( -- )
    s" a finalized scope keeps its definer's row" T-LABEL
-   s\" : CDD-SK ( n -- ) create , does> ( -- ptr n ) ;\n" CDD-KEPT 0 T=
+   s\" : CDD-SK ( n -- ) create , does> ( -- ^n ) ;\n" CDD-KEPT 0 T=
    s\" : CDD-SX ( -- n ) 1 ;\n" CDD-OWN 0 T=
    s" through a sibling scope's pop" T-LABEL
-   s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ptr n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
+   s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ^n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
 
 \ Section 12: the engine refuses a row it cannot keep. A refused row prints its
 \ E-GENERATES-ROW line on stderr before it throws, as section 5's refused clause
@@ -410,18 +410,18 @@ E-GENERATES-ROW constant E-GEN-ROW
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
-   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-GL ( -- ^n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a definer whose clause states its word is refused" T-LABEL
-   [: s\" generates: CDD-RES-D ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
-   s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ptr n )\n" evaluate-closed
+   [: s\" generates: CDD-RES-D ( -- ^n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ^n )\n" evaluate-closed
    s" a second row on one definer is refused" T-LABEL
-   [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-G2 ( -- ^n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect the checker cannot parse is refused" T-LABEL
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a word that reads no name after it is refused" T-LABEL
-   [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ^n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a deferred word is refused" T-LABEL
-   [: s\" defer CDD-GF ( n -- )\ngenerates: CDD-GF ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" defer CDD-GF ( n -- )\ngenerates: CDD-GF ( -- ^n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on evaluate, which reads no name, is refused" T-LABEL
    [: s\" generates: evaluate ( -- )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
 
@@ -430,14 +430,14 @@ E-GENERATES-ROW constant E-GEN-ROW
 defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 create CDD-DIAG 4096 allot
 
-: CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n wa:ptr wu:n :}
+: CDD-NOT-CERTIFIED ( ^u8 n ^u8 n -- )
+   {: sa:^ su:n wa:^ wu:n :}
    CDD-DIAG 4096 REJECTION:BUFFER!
    sa su TEST-EVAL:RC  70 T=
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
-: CDD-NP-REFUSED ( ptr u8 n -- )
+: CDD-NP-REFUSED ( ^u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
 
 : CDD-SECTION-CLAUSE-TAIL ( -- )
@@ -463,11 +463,11 @@ create CDD-DIAG 4096 allot
       CDD-NOT-CERTIFIED
    s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL
-   s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
+   s" : CDD-NORET ( n -- ) create , does> ( n -- ^u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
 
 \ Section 14: a clause naming a type a reached renderer may declare is deferred
 \ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
-: CDD-QUIET$ ( -- ptr u8 n )
+: CDD-QUIET$ ( -- ^u8 n )
    s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" evaluate-closed ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )
@@ -487,7 +487,7 @@ create CDD-DIAG 4096 allot
 \ own word and stores what that word gives in CDD-GOT.
 variable CDD-GOT
 
-: CDD-GOT-RC ( ptr u8 n -- n n )
+: CDD-GOT-RC ( ^u8 n -- n n )
    0 CDD-GOT !  TEST-EVAL:RC  CDD-GOT @ ;
 
 : CDD-SECTION-PATCH ( -- )

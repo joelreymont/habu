@@ -13,7 +13,7 @@ package WASM
 
 \ The name of the dictionary's first record entering at host address a, or an
 \ empty spelling.
-: NAME-AT ( n -- ptr u8 n )
+: NAME-AT ( n -- ^u8 n )
    {: a:n :}
    ndict@ 0 ?do
       i XREF-REC XREF-START a = if i XREF-REC XREF-NAME$ unloop exit then
@@ -23,8 +23,8 @@ package WASM
 
 \ NAME-AT's reverse: the host entry of the dictionary's first record so named,
 \ or 0.
-: NAMED-ENTRY ( ptr u8 n -- n )
-   {: name:ptr u:n :}
+: NAMED-ENTRY ( ^u8 n -- n )
+   {: name:^ u:n :}
    ndict@ 0 ?do
       i XREF-REC XREF-NAME$ name u STR=CI if i XREF-REC XREF-START unloop exit then
    loop
@@ -33,11 +33,11 @@ package WASM
 
 \ The host entry of the public word tail of the package named p, or 0. A build
 \ that never loaded the package provides nothing.
-: PUBLIC-ENTRY ( ptr u8 n ptr u8 n -- n )
-   {: p:ptr pu:n t:ptr tu:n :}
-   p pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+: PUBLIC-ENTRY ( ^u8 n ^u8 n -- n )
+   {: p:^ pu:n t:^ tu:n :}
+   p pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? 0= if 0 exit then
-   t tu pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   t tu pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-START ;
 
@@ -46,7 +46,7 @@ public
 \ The host entry of the kernel-words word that provides the kernel word
 \ entering at host address a, or 0.
 : PROVIDER ( n -- n )
-   NAME-AT WKMAP:WORD-OF {: w:ptr wu:n :}
+   NAME-AT WKMAP:WORD-OF {: w:^ wu:n :}
    wu 0= if 0 exit then
    w wu [char] : INDEX-OF MATCH option
       none OF 0 ENDOF

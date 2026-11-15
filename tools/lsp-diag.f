@@ -41,20 +41,20 @@ create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
 variable FILE-U
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
 
-TYPED-VARIABLE LINE-A ptr u8             \ the packet line being screened
+TYPED-VARIABLE LINE-A ^u8             \ the packet line being screened
 variable LINE-U
-TYPED-VARIABLE PKTS-A ptr u8             \ the packets being published
+TYPED-VARIABLE PKTS-A ^u8             \ the packets being published
 variable PKTS-U
 variable SELF                            \ the slot whose lists are published
-TYPED-VARIABLE LIST-A ptr u8             \ the file the list being written is for,
+TYPED-VARIABLE LIST-A ^u8             \ the file the list being written is for,
 variable LIST-U
 variable ITEMS                           \ and the diagnostics in it so far
 
-: NEW$ ( -- ptr u8 n )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
-: FILE$ ( -- ptr u8 n )  FILE-BUF FILE-U @ ;
+: NEW$ ( -- ^u8 n )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
+: FILE$ ( -- ^u8 n )  FILE-BUF FILE-U @ ;
 
-: ERR ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ERR ( ^u8 n -- )
+   {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
 \ ---- packets -------------------------------------------------------------------
@@ -75,8 +75,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
 \ path, which FILE$ then holds.
-: SCREENED ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: SCREENED ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a LINE-A !
    u LINE-U !
    [: SCAN ;] catch {: code:n :}
@@ -96,38 +96,38 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ message: the packet's, else its code, its non-empty suggestion, then
 \ `expected: ` and `actual: ` lines when present. data: the whole packet.
 
-: QUOTE ( ptr JSON:writer -- ptr JSON:writer )  s\" \"" WRITE-RAW ;
+: QUOTE ( ^JSON:writer -- ^JSON:writer )  s\" \"" WRITE-RAW ;
 
-: QUOTED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n :}
+: QUOTED ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: a:^ u:n :}
    QUOTE a u WRITE-RAW QUOTE ;
 
-: SEVERITY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+: SEVERITY ( ^JSON:writer ^u8 n -- ^JSON:writer )
    s" verdict" STRING-MEMBER 0= if 2drop exit then
-   {: v:ptr vu:n :}
+   {: v:^ vu:n :}
    v vu s" rejected" STR=  v vu s" uncheckable" STR= or if
       WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit
    then
    v vu s" deferred" STR= if WRITE-COMMA s" severity" INFORMATION-SEVERITY WRITE-FIELD-U then ;
 
-: CODE-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+: CODE-FIELD ( ^JSON:writer ^u8 n -- ^JSON:writer )
    s" code" STRING-MEMBER 0= if 2drop exit then
-   {: c:ptr cu:n :}
+   {: c:^ cu:n :}
    WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
 
-: SUGGESTION ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+: SUGGESTION ( ^JSON:writer ^u8 n -- ^JSON:writer )
    s" suggestion" STRING-MEMBER over 0 > and 0= if 2drop exit then
-   {: s:ptr su:n :}
+   {: s:^ su:n :}
    s" \n" WRITE-RAW s su WRITE-RAW ;
 
-: PIECE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n k:ptr ku:n :}
+: PIECE ( ^JSON:writer ^u8 n ^u8 n -- ^JSON:writer )
+   {: a:^ u:n k:^ ku:n :}
    a u k ku STRING-MEMBER 0= if 2drop exit then
-   {: v:ptr vu:n :}
+   {: v:^ vu:n :}
    s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW v vu WRITE-RAW ;
 
-: MESSAGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n :}
+: MESSAGE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: a:^ u:n :}
    a u s" message" STRING-MEMBER if QUOTED exit then
    2drop
    QUOTE
@@ -137,8 +137,8 @@ variable ITEMS                           \ and the diagnostics in it so far
    a u s" actual" PIECE
    QUOTE ;
 
-: DIAGNOSTIC ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n :}
+: DIAGNOSTIC ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: a:^ u:n :}
    WRITE-OBJECT-START
    a u RANGE
    a u SEVERITY
@@ -152,8 +152,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ A publishDiagnostics notification begun for the URI, with the version when
 \ there is one, up to its diagnostics' opening bracket.
-: OPENING ( ptr u8 n option<n> -- ptr JSON:writer )
-   {: u:ptr uu:n v :}
+: OPENING ( ^u8 n option<n> -- ^JSON:writer )
+   {: u:^ uu:n v :}
    W PUB-B WRITE-OPEN-BUF
    s" textDocument/publishDiagnostics" NOTIFY
    WRITE-OBJECT-START
@@ -164,15 +164,15 @@ variable ITEMS                           \ and the diagnostics in it so far
    ;MATCH
    s" diagnostics" WRITE-KEY WRITE-ARRAY-START ;
 
-: CLOSING ( ptr JSON:writer -- )
+: CLOSING ( ^JSON:writer -- )
    WRITE-ARRAY-END WRITE-OBJECT-END END
    {: w :}
-   w WRITTEN$ {: a:ptr u:n :}
+   w WRITTEN$ {: a:^ u:n :}
    w WRITE-CLOSE
    FD:STDOUT a u CONTENT-LENGTH:SEND ;
 
-: ITEM ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ITEM ( ^u8 n -- )
+   {: a:^ u:n :}
    a u SCREENED 0= if exit then
    FILE$ LIST-A @ LIST-U @ STR= 0= if exit then
    ITEMS @ 0 > if W WRITE-COMMA drop then
@@ -181,13 +181,13 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ The list for the file in LIST-A, its positions counted in the text TEXT!
 \ named, published at the URI.
-: LIST ( ptr u8 n option<n> -- )
+: LIST ( ^u8 n option<n> -- )
    OPENING drop
    0 ITEMS !
    PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
    W CLOSING ;
 
-: LIST-URI ( -- ptr u8 n )
+: LIST-URI ( -- ^u8 n )
    LIST-A @ LIST-U @ URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
@@ -207,16 +207,16 @@ variable ITEMS                           \ and the diagnostics in it so far
    ;MATCH ;
 
 \ Whether an open document is the file the checker names by this path.
-: HELD-OPEN? ( ptr u8 n -- bool )  DOC-HOLDING SLOT? ;
+: HELD-OPEN? ( ^u8 n -- bool )  DOC-HOLDING SLOT? ;
 
 \ Whether an open document's own list is at this path's file URI: the client
 \ opened it by this path.
-: SHOWN? ( ptr u8 n -- bool )  DOC-OPENED-AS SLOT? ;
+: SHOWN? ( ^u8 n -- bool )  DOC-OPENED-AS SLOT? ;
 
 \ Whether another open document's last check published a list for this path;
 \ each such document waits for a check again.
-: CLAIMED? ( ptr u8 n -- bool )
-   {: f:ptr fu:n :}
+: CLAIMED? ( ^u8 n -- bool )
+   {: f:^ fu:n :}
    false
    DOC-SLOTS 0 ?do
       i SELF @ <> i DOC-LIVE? and if
@@ -226,15 +226,15 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ Appends the path, LF-ended, to the files published; answers that copy, which
 \ outlives FILE-BUF.
-: KEEP-NEW ( ptr u8 n -- ptr u8 n )
-   {: f:ptr fu:n :}
+: KEEP-NEW ( ^u8 n -- ^u8 n )
+   {: f:^ fu:n :}
    NEW$ nip {: at:n :}
    f fu BUF:N>BLEN NEW-B BUF:APPEND-SPAN
    s\" \n" BUF:N>BLEN NEW-B BUF:APPEND-SPAN
    NEW$ drop at + fu ;
 
-: DEP ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DEP ( ^u8 n -- )
+   {: a:^ u:n :}
    a u SCREENED 0= if s" lsp: " ERR a u ERR s\" \n" ERR exit then
    FILE$ SELF @ DOC-CANON$ STR= if exit then
    NEW$ FILE$ HAS-LINE? if exit then
@@ -243,8 +243,8 @@ variable ITEMS                           \ and the diagnostics in it so far
    LIST-A @ LIST-U @ FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
-: WITHDRAW ( ptr u8 n -- )
-   {: f:ptr fu:n :}
+: WITHDRAW ( ^u8 n -- )
+   {: f:^ fu:n :}
    NEW$ f fu HAS-LINE? if exit then
    f fu SHOWN? if exit then
    f fu CLAIMED? if exit then
@@ -259,8 +259,8 @@ public
    PUB-B 1 BUF:N>BLEN BUF:INIT
    NEW-B 1 BUF:N>BLEN BUF:INIT ;
 
-: PUBLISH ( n ptr u8 n -- )
-   {: slot:n p:ptr pu:n :}
+: PUBLISH ( n ^u8 n -- )
+   {: slot:n p:^ pu:n :}
    p PKTS-A !
    pu PKTS-U !
    slot SELF !

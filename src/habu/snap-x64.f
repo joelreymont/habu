@@ -15,7 +15,7 @@ package SNAP
    DATA-START SHL @ + SPAD @ + SDW !
    bytes SPAD @ + SNL ! ;
 
-: SXT-PTR ( -- ptr u8 ) SXT-A @ ;
+: SXT-PTR ( -- ^u8 ) SXT-A @ ;
 
 : X64-TEXT ( -- )
    SNL @ SCRATCH SXT-A !

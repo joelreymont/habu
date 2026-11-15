@@ -30,7 +30,7 @@ $4000 constant CODE-RESERVE
 \ checked caller is refused by name: code-publish, xref-retarget and
 \ does-record are undefined there, and the global rows of callmap-set and
 \ addrmap-set are trusted-only.
-: CODE-WINDOW ( ptr u8 n n -- )
+: CODE-WINDOW ( ^u8 n n -- )
    code-publish ;
 
 : RELOC-EXTERNAL ( n -- )
@@ -242,9 +242,9 @@ private
 
 \ Place a prepared body after the pending row's checks; `pad` is room the
 \ caller writes past the body.
-: IMPORT-CODE ( ptr u8 n n ptr n n ptr n n n -- n n )
-   {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n pad:n :}
+: IMPORT-CODE ( ^u8 n n ^n n ^n n n -- n n )
+   {: code:^ size:n recorded:n calls:^ calln:n
+      addrs:^ addrn:n pad:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size 0 <= size 3 and 0<> or if E-NPUB-RELOC throw then
@@ -276,9 +276,9 @@ public
 \ A prepared definition reuses the interpreter's pending row, whose name and
 \ wordlist the source definition wrote. All references are prepared before
 \ this call.
-: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool -- n )
-   {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool :}
+: IMPORT-PENDING ( ^u8 n n ^n n ^n n bool -- n )
+   {: code:^ size:n recorded:n calls:^ calln:n
+      addrs:^ addrn:n wide:bool :}
    code size recorded calls calln addrs addrn 0 IMPORT-CODE drop {: idx:n :}
    idx APPEND-PENDING
    wide IMPORT-MARKS
@@ -287,9 +287,9 @@ public
 \ A prepared `does>` definer: its `;does` clause starts `off` bytes into the
 \ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
 \ The checker slice installed beside it carries the clause's checker facts.
-: IMPORT-PENDING-DOES ( ptr u8 n n ptr n n ptr n n bool n -- n )
-   {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool off:n :}
+: IMPORT-PENDING-DOES ( ^u8 n n ^n n ^n n bool n -- n )
+   {: code:^ size:n recorded:n calls:^ calln:n
+      addrs:^ addrn:n wide:bool off:n :}
    off 0 <= off size >= or off 3 and 0<> or if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
    idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
@@ -303,9 +303,9 @@ public
 
 \ A prepared defer body: its record spans the whole body; the trailer naming `cell` follows at
 \ fn + size, the code pointer where COMMIT-DEFER lays it: an arm64 code slot is one instruction word.
-: IMPORT-PENDING-DEFER ( ptr u8 n ptr n n ptr n n bool n -- n )
-   {: code:ptr size:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool cell:n :}
+: IMPORT-PENDING-DEFER ( ^u8 n ^n n ^n n bool n -- n )
+   {: code:^ size:n calls:^ calln:n
+      addrs:^ addrn:n wide:bool cell:n :}
    code size  size CODE-SPAN:EXACT  calls calln addrs addrn TRAILER-BYTES IMPORT-CODE
       {: idx:n fn:n :}
    cell fn size + TRAILER-PLACE

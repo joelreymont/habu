@@ -27,7 +27,7 @@ variable TREC-U
 : TREC-PAYLOAD-C ( n -- n )
    dup STR-TAB = over STR-LF = or over STR-CR = or if drop STR-SPACE then ;
 
-: TREC-$+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: TREC-$+ ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u < while
       dup a + c@ TREC-PAYLOAD-C TREC-C+
       1+
@@ -41,12 +41,12 @@ variable TREC-U
    dup 0 < if STR-MINUS TREC-C+ negate then
    TREC-DIGITS+ ;
 
-: TREC$ ( -- ptr u8 n )
+: TREC$ ( -- ^u8 n )
    TREC-BUF TREC-U @ ;
 
 \ The returned span is TREC-BUF scratch: the next record build clobbers it.
-: TREC-FAIL$ ( ptr u8 n n ptr u8 n -- ptr u8 n )
-   {: la:ptr lu:n id:n ba:ptr bu:n :}
+: TREC-FAIL$ ( ^u8 n n ^u8 n -- ^u8 n )
+   {: la:^ lu:n id:n ba:^ bu:n :}
    TREC-RESET
    s" TFAIL" TREC-$+
    STR-TAB TREC-C+
@@ -57,5 +57,5 @@ variable TREC-U
    ba bu TREC-$+
    TREC$ ;
 
-: TREC-FAIL ( ptr u8 n n ptr u8 n -- )
+: TREC-FAIL ( ^u8 n n ^u8 n -- )
    TREC-FAIL$ type cr ;

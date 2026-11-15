@@ -101,32 +101,32 @@ public
 STORAGE-BYTES TASK:+USERS STORAGE u8
 
 private
-: PATHZ-BUF ( -- ptr u8 ) PATHZ-OFF STORAGE ;
-: PFD ( -- ptr u8 ) PFD-OFF STORAGE ;
-: PROBE ( -- ptr u8 ) PROBE-OFF STORAGE ;
+: PATHZ-BUF ( -- ^u8 ) PATHZ-OFF STORAGE ;
+: PFD ( -- ^u8 ) PFD-OFF STORAGE ;
+: PROBE ( -- ^u8 ) PROBE-OFF STORAGE ;
 
 public
-\ The row's cells are `ptr n`: the fd, pid, rc, len and off roles are converted
+\ The row's cells are `^n`: the fd, pid, rc, len and off roles are converted
 \ where a value enters a word that names the role.
-: PID ( -- ptr n ) PID-OFF STORAGE CELL-VIEW ;
-: RC ( -- ptr n ) RC-OFF STORAGE CELL-VIEW ;
-: OUT-R ( -- ptr n ) OUT-R-OFF STORAGE CELL-VIEW ;
-: OUT-W ( -- ptr n ) OUT-W-OFF STORAGE CELL-VIEW ;
-: ERR-R ( -- ptr n ) ERR-R-OFF STORAGE CELL-VIEW ;
-: ERR-W ( -- ptr n ) ERR-W-OFF STORAGE CELL-VIEW ;
-: IN-R ( -- ptr n ) IN-R-OFF STORAGE CELL-VIEW ;
-: IN-W ( -- ptr n ) IN-W-OFF STORAGE CELL-VIEW ;
-: OUT-LEN ( -- ptr n ) OUT-LEN-OFF STORAGE CELL-VIEW ;
-: ERR-LEN ( -- ptr n ) ERR-LEN-OFF STORAGE CELL-VIEW ;
-: IN-OFF ( -- ptr n ) IN-OFF-OFF STORAGE CELL-VIEW ;
+: PID ( -- ^n ) PID-OFF STORAGE CELL-VIEW ;
+: RC ( -- ^n ) RC-OFF STORAGE CELL-VIEW ;
+: OUT-R ( -- ^n ) OUT-R-OFF STORAGE CELL-VIEW ;
+: OUT-W ( -- ^n ) OUT-W-OFF STORAGE CELL-VIEW ;
+: ERR-R ( -- ^n ) ERR-R-OFF STORAGE CELL-VIEW ;
+: ERR-W ( -- ^n ) ERR-W-OFF STORAGE CELL-VIEW ;
+: IN-R ( -- ^n ) IN-R-OFF STORAGE CELL-VIEW ;
+: IN-W ( -- ^n ) IN-W-OFF STORAGE CELL-VIEW ;
+: OUT-LEN ( -- ^n ) OUT-LEN-OFF STORAGE CELL-VIEW ;
+: ERR-LEN ( -- ^n ) ERR-LEN-OFF STORAGE CELL-VIEW ;
+: IN-OFF ( -- ^n ) IN-OFF-OFF STORAGE CELL-VIEW ;
 private
-: DEADLINE ( -- ptr n ) DEADLINE-OFF STORAGE CELL-VIEW ;
-: RD ( -- ptr n ) RD-OFF STORAGE CELL-VIEW ;
-: STATUS ( -- ptr n ) STATUS-OFF STORAGE CELL-VIEW ;
-: TIMED-OUT ( -- ptr n ) TIMED-OUT-OFF STORAGE CELL-VIEW ;
+: DEADLINE ( -- ^n ) DEADLINE-OFF STORAGE CELL-VIEW ;
+: RD ( -- ^n ) RD-OFF STORAGE CELL-VIEW ;
+: STATUS ( -- ^n ) STATUS-OFF STORAGE CELL-VIEW ;
+: TIMED-OUT ( -- ^n ) TIMED-OUT-OFF STORAGE CELL-VIEW ;
 public
 \ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
-: CANCEL-FD ( -- ptr n ) CANCEL-FD-OFF STORAGE CELL-VIEW ;
+: CANCEL-FD ( -- ^n ) CANCEL-FD-OFF STORAGE CELL-VIEW ;
 ;package
 
 \ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
@@ -147,11 +147,11 @@ public
 package PROC-RAW
 private
 
-CAST: >ROWS ( n -- ptr ptr u8 )
+CAST: >ROWS ( n -- ^^u8 )
 
-: ROWS ( ptr a -- ptr ptr u8 ) NULL-PTR - >ROWS ;
+: ROWS ( ^a -- ^^u8 ) NULL-PTR - >ROWS ;
 
-: PID ( -- ptr n ) PROCESS:RAW-PID-OFF PROCESS:STORAGE CELL-VIEW ;
+: PID ( -- ^n ) PROCESS:RAW-PID-OFF PROCESS:STORAGE CELL-VIEW ;
 
 : FD ( PROCESS:request n fd -- PROCESS:request ) {: child parent :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
@@ -171,8 +171,8 @@ public
    rc E-PROC-SPAWN <> if rc throw then
    PROCESS:ERRNO negate >PID ;
 
-: SPAWN ( ptr u8 fd fd fd -- ptr u8 fd fd fd )
-   {: pathz:ptr infd outfd errfd :}
+: SPAWN ( ^u8 fd fd fd -- ^u8 fd fd fd )
+   {: pathz:^ infd outfd errfd :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    infd outfd errfd LAUNCH
    pathz infd outfd errfd ;
@@ -183,11 +183,11 @@ package PROCESS
 
 private
 PROCESS-SYMBOLS
-FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
+FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 ;FUNCTION
 
 public
-: SPAWN-RAW ( ptr u8 fd fd fd -- pid )
+: SPAWN-RAW ( ^u8 fd fd fd -- pid )
    [: PROC-RAW:SPAWN ;] catch {: rc :}
    drop drop drop drop
    rc PROC-RAW:ANSWER ;
@@ -195,12 +195,12 @@ public
 : KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;
 
-: ZCOPY ( ptr u8 len ptr u8 len -- ptr u8 ) {: a:ptr u dst:ptr cap :}
+: ZCOPY ( ^u8 len ^u8 len -- ^u8 ) {: a:^ u dst:^ cap :}
    u LEN>N 0 < if E-PROC-OUTPUT throw then
    u LEN>N cap LEN>N >= if E-PROC-OUTPUT throw then
    a u LEN>N dst cap LEN>N SPAN:MAKE FFI:CSTR ;
 
-: PATHZ ( ptr u8 len -- ptr u8 )
+: PATHZ ( ^u8 len -- ^u8 )
    PATHZ-BUF PATHZ-CAP >LEN ZCOPY ;
 
 private
@@ -270,21 +270,21 @@ public
    RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
-: SPAWN-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
+: SPAWN-IO ( ^u8 len fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
    a u PATHZ infd outfd errfd SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
+: RUN-IO-RC ( ^u8 len fd fd fd -- result<n,n> )
    SPAWN-IO WAIT STATUS>RC RC>RESULT ;
 
-: RUN-RC ( ptr u8 len -- result<n,n> )
+: RUN-RC ( ^u8 len -- result<n,n> )
    -1 >FD -1 >FD -1 >FD RUN-IO-RC ;
 
 private
 \ An idx outside 0..PFD-SLOTS-1 is E-A-BOUNDS: PFD-AT! and PFD-REVENTS are
 \ public, and slot PFD-SLOTS would reach the cells after the table (PROBE-OFF).
-: PFD-SLOT ( idx -- ptr n ) {: idx :}
+: PFD-SLOT ( idx -- ^n ) {: idx :}
    idx IDX>N 0 < if E-A-BOUNDS throw then
    idx IDX>N PFD-SLOTS >= if E-A-BOUNDS throw then
    idx IDX>N PFD-SLOT-BYTES * PFD + CELL-VIEW ;
@@ -412,7 +412,7 @@ public
    0 STATUS !
    0 TIMED-OUT ! ;
 
-: CLOSE-CELL ( ptr n -- ) {: p:ptr :}
+: CLOSE-CELL ( ^n -- ) {: p:^ :}
    p @ dup 0 >= if
       close
       NO-FD p !
@@ -447,8 +447,8 @@ public
 \ vanish: CODE-REPORT names it on stderr from constant text, sharing no storage.
 
 private
-: DIAG ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DIAG ( ^u8 n -- )
+   {: a:^ u:n :}
    2 a u write drop ;
 
 \ v is at most 0, so MIN-N has a magnitude too: / and mod truncate toward zero.
@@ -457,8 +457,8 @@ private
    v -10 <= if v 10 / RECURSE then
    s" 0123456789" drop v 10 mod negate + 1 DIAG ;
 
-: CODE-REPORT ( ptr u8 n n -- )
-   {: what:ptr whatu:n code:n :}
+: CODE-REPORT ( ^u8 n n -- )
+   {: what:^ whatu:n code:n :}
    code 0= if exit then
    what whatu DIAG
    code 0 < if s" -" DIAG code else code negate then DIAG-DIGITS
@@ -542,14 +542,14 @@ public
    PID>N PID ! ;
 
 private
-: CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
+: CLOEXEC-CELL ( ^n -- ) {: p:^ :}
    p @ FD:F-SETFD FD:FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT THROW-CAPTURE then ;
 
-: PIPE-CELLS ( ptr n ptr n -- ptr n ptr n ) {: rp:ptr wp:ptr :}
+: PIPE-CELLS ( ^n ^n -- ^n ^n ) {: rp:^ wp:^ :}
    FD:PIPE FD>N wp ! FD>N rp !
    rp wp ;
 
-: OPEN-PIPE ( ptr n ptr n -- )
+: OPEN-PIPE ( ^n ^n -- )
    [: PIPE-CELLS ;] catch {: code:n :} 2drop
    code 0<> if E-PROC-OUTPUT THROW-CAPTURE then ;
 
@@ -671,7 +671,7 @@ public
    rc 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    rc >COUNT ;
 
-: READ-STREAM ( ptr n ptr u8 len ptr n -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
+: READ-STREAM ( ^n ^u8 len ^n -- ) {: fdp:^ buf:^ cap lenp:^ :}
    lenp @ 0 < if E-PROC-TRUNCATED THROW-CAPTURE then
    lenp @ cap LEN>N > if E-PROC-TRUNCATED THROW-CAPTURE then
    cap LEN>N lenp @ - 0 <= if E-PROC-TRUNCATED THROW-CAPTURE then
@@ -685,7 +685,7 @@ public
    then ;
 
 private
-: PROBE-FULL-STREAM ( ptr n -- ) {: fdp:ptr :}
+: PROBE-FULL-STREAM ( ^n -- ) {: fdp:^ :}
    fdp @ PROBE 1 read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 1 > if E-PROC-OUTPUT THROW-CAPTURE then
@@ -698,13 +698,13 @@ private
 \ A read that fills the span may leave an overflow byte already in the pipe.
 \ Probe it without waiting, before an expired deadline ends the capture. This
 \ uses poll slot 0 after its read; stderr's slot remains available to the drain.
-: PROBE-READY-FULL-STREAM ( ptr n -- ) {: fdp:ptr :}
+: PROBE-READY-FULL-STREAM ( ^n -- ) {: fdp:^ :}
    fdp @ >FD 0 >MS POLL-IN COUNT>N {: ready:n :}
    ready FD:EINTR# negate = if exit then
    ready 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    ready 0 > if fdp PROBE-FULL-STREAM then ;
 
-: READ-OR-PROBE-STREAM ( ptr n ptr u8 len ptr n -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
+: READ-OR-PROBE-STREAM ( ^n ^u8 len ^n -- ) {: fdp:^ buf:^ cap lenp:^ :}
    cap LEN>N lenp @ - 0 <= if
       fdp PROBE-FULL-STREAM
    else
@@ -713,7 +713,7 @@ private
    then ;
 
 public
-: DRAIN-READY ( ptr u8 len ptr u8 len -- ) {: out:ptr outcap err:ptr errcap :}
+: DRAIN-READY ( ^u8 len ^u8 len -- ) {: out:^ outcap err:^ errcap :}
    0 >IDX PFD-REVENTS 0 <> if
       OUT-R out outcap OUT-LEN READ-OR-PROBE-STREAM
    then
@@ -730,12 +730,12 @@ $10000 constant GROW-CHUNK
 
 \ SINK's first byte replaces the null one READ-GROWING hands in, since
 \ catch keeps the shape of the stack.
-: SINK-ROOM ( ptr u8 [ n -- ptr u8 ] ptr n -- ptr u8 [ n -- ptr u8 ] ptr n )
-   {: old:ptr sink lenp:ptr :}
+: SINK-ROOM ( ^u8 [ n -- ^u8 ] ^n -- ^u8 [ n -- ^u8 ] ^n )
+   {: old:^ sink lenp:^ :}
    lenp @ GROW-CHUNK + sink execute sink lenp ;
 
-: READ-INTO-ROOM ( ptr n ptr u8 ptr n -- )
-   {: fdp:ptr buf:ptr lenp:ptr :}
+: READ-INTO-ROOM ( ^n ^u8 ^n -- )
+   {: fdp:^ buf:^ lenp:^ :}
    fdp @ buf lenp @ + GROW-CHUNK read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ GROW-CHUNK > if E-PROC-OUTPUT THROW-CAPTURE then
@@ -745,14 +745,14 @@ $10000 constant GROW-CHUNK
       lenp @ RD @ + lenp !
    then ;
 
-: READ-GROWING ( ptr n ptr n [ n -- ptr u8 ] -- )
-   {: fdp:ptr lenp:ptr sink :}
-   NULL$ drop sink lenp [: SINK-ROOM ;] catch {: buf:ptr s lp:ptr code:n :}
+: READ-GROWING ( ^n ^n [ n -- ^u8 ] -- )
+   {: fdp:^ lenp:^ sink :}
+   NULL$ drop sink lenp [: SINK-ROOM ;] catch {: buf:^ s lp:^ code:n :}
    code 0= if fdp buf lp READ-INTO-ROOM exit then
    code THROW-CAPTURE ;
 
-: DRAIN-READY-GROWING ( [ n -- ptr u8 ] ptr u8 len -- )
-   {: sink err:ptr errcap :}
+: DRAIN-READY-GROWING ( [ n -- ^u8 ] ^u8 len -- )
+   {: sink err:^ errcap :}
    0 >IDX PFD-REVENTS 0 <> if
       OUT-R OUT-LEN sink READ-GROWING
    then
@@ -760,7 +760,7 @@ $10000 constant GROW-CHUNK
       ERR-R err errcap ERR-LEN READ-OR-PROBE-STREAM
    then ;
 
-: DRAIN-READY-GROWING-BOTH ( [ n -- ptr u8 ] [ n -- ptr u8 ] -- )
+: DRAIN-READY-GROWING-BOTH ( [ n -- ^u8 ] [ n -- ^u8 ] -- )
    {: out err :}
    0 >IDX PFD-REVENTS 0 <> if
       OUT-R OUT-LEN out READ-GROWING
@@ -795,7 +795,7 @@ private
 \ already asked poll whether the reader is gone, so the offset stays and the
 \ next POLLOUT under the deadline resumes; a short write advances by what
 \ landed. Closing here would truncate the child's stdin.
-: WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
+: WRITE-STDIN-ACTIVE ( ^u8 len -- ) {: src:^ inu :}
    inu LEN>N IN-OFF @ - >LEN STDIN-CHUNK {: chunk :}
    IN-W @ src IN-OFF @ + chunk LEN>N write {: wrote :}
    wrote 0 < if exit then
@@ -804,7 +804,7 @@ private
    inu CLOSE-STDIN-DONE ;
 
 public
-: WRITE-STDIN ( ptr u8 len -- ) {: src:ptr inu :}
+: WRITE-STDIN ( ^u8 len -- ) {: src:^ inu :}
    IN-W @ 0 < if exit then
    IN-OFF @ inu LEN>N >= if IN-W CLOSE-CELL exit then
    src inu WRITE-STDIN-ACTIVE ;
@@ -832,7 +832,7 @@ public
    rc 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    rc >COUNT ;
 
-: DRIVE-STDIN ( ptr u8 len -- ) {: in:ptr inu :}
+: DRIVE-STDIN ( ^u8 len -- ) {: in:^ inu :}
    2 >IDX PFD-REVENTS {: events :}
    events BROKEN-STDIN? if IN-W CLOSE-CELL exit then
    events FD:POLLOUT and 0= 0= if
@@ -883,7 +883,7 @@ private
 public
 \ One ready read per stream survives an expired deadline. The check after the
 \ drain ends the capture before another poll, even when a child floods output.
-: RUN-CAPTURE-LOOP ( ptr u8 len ptr u8 len -- ) {: out:ptr outcap err:ptr errcap :}
+: RUN-CAPTURE-LOOP ( ^u8 len ^u8 len -- ) {: out:^ outcap err:^ errcap :}
    begin CAPTURE-DONE? 0= while
       REMAINING-MS POLL-CAPTURE drop
       out outcap err errcap DRAIN-READY
@@ -892,7 +892,7 @@ public
       then
    repeat ;
 
-: RUN-CAPTURE-ENDING-LOOP ( ptr u8 len ptr u8 len -- ) {: out:ptr outcap err:ptr errcap :}
+: RUN-CAPTURE-ENDING-LOOP ( ^u8 len ^u8 len -- ) {: out:^ outcap err:^ errcap :}
    begin CAPTURE-DONE? 0= while
       REMAINING-MS POLL-CAPTURE-ENDING dup COUNT>N 0= if
          drop
@@ -907,8 +907,8 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 len ptr u8 len -- )
-   {: in:ptr inu out:ptr outcap err:ptr errcap :}
+: RUN-STDIN-CAPTURE-LOOP ( ^u8 len ^u8 len ^u8 len -- )
+   {: in:^ inu out:^ outcap err:^ errcap :}
    inu LEN>N 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO drop
@@ -919,8 +919,8 @@ public
       then
    repeat ;
 
-: RUN-STDIN-CAPTURE-ENDING-LOOP ( ptr u8 len ptr u8 len ptr u8 len -- )
-   {: in:ptr inu out:ptr outcap err:ptr errcap :}
+: RUN-STDIN-CAPTURE-ENDING-LOOP ( ^u8 len ^u8 len ^u8 len -- )
+   {: in:^ inu out:^ outcap err:^ errcap :}
    inu LEN>N 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
@@ -937,8 +937,8 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP ( ptr u8 len [ n -- ptr u8 ] ptr u8 len -- )
-   {: in:ptr inu sink err:ptr errcap :}
+: RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP ( ^u8 len [ n -- ^u8 ] ^u8 len -- )
+   {: in:^ inu sink err:^ errcap :}
    inu LEN>N 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
@@ -955,8 +955,8 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP ( ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] -- )
-   {: in:ptr inu out err :}
+: RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP ( ^u8 len [ n -- ^u8 ] [ n -- ^u8 ] -- )
+   {: in:^ inu out err :}
    inu LEN>N 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
@@ -1038,27 +1038,27 @@ public
    ERR-W CLOSE-CELL ;
 
 private
-: SPAWN-CAPTURE ( ptr u8 -- ) {: pathz:ptr :}
+: SPAWN-CAPTURE ( ^u8 -- ) {: pathz:^ :}
    [: pathz CAPTURE-NULL-INPUT OUT-W @ >FD ERR-W @ >FD SPAWN-RAW ;]
    CAPTURE-ADOPT-SPAWN ;
 
 public
-: RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: RUN-CAPTURE ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:ptr :}
+   path pathu PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
    pathz SPAWN-CAPTURE
    out outcap err errcap RUN-CAPTURE-LOOP
    CAPTURE-FINISH-RC ;
 
 private
-: RUN-CAPTURE-ENDING ( ptr u8 len ptr u8 len ptr u8 len ms -- len len ending )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: RUN-CAPTURE-ENDING ( ^u8 len ^u8 len ^u8 len ms -- len len ending )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:ptr :}
+   path pathu PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
    pathz SPAWN-CAPTURE
    out outcap err errcap RUN-CAPTURE-ENDING-LOOP

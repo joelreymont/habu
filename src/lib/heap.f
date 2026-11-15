@@ -12,27 +12,27 @@ package HEAP
 private
 
 PROCESS-SYMBOLS
-FUNCTION: CALLOC-CALL calloc ( n n -- ptr u8 ) ;FUNCTION
-FUNCTION: REALLOC-CALL realloc ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: FREE-CALL free ( ptr u8 -- ) ;FUNCTION
+FUNCTION: CALLOC-CALL calloc ( n n -- ^u8 ) ;FUNCTION
+FUNCTION: REALLOC-CALL realloc ( ^u8 n -- ^u8 ) ;FUNCTION
+FUNCTION: FREE-CALL free ( ^u8 -- ) ;FUNCTION
 
-: ALLOC-BYTES ( ptr u8 n -- ptr u8 )
-   {: st:ptr len:n :}
-   1 len CALLOC-CALL {: p:ptr :}
+: ALLOC-BYTES ( ^u8 n -- ^u8 )
+   {: st:^ len:n :}
+   1 len CALLOC-CALL {: p:^ :}
    p NULL-PTR = if E-MEM-MAP throw then
    p ;
 
 
 \ A refused realloc leaves the block as it was.
-: RESIZE-BYTES ( ptr u8 ptr u8 n n -- ptr u8 )
-   {: st:ptr block:ptr old:n new:n :}
-   block new REALLOC-CALL {: moved:ptr :}
+: RESIZE-BYTES ( ^u8 ^u8 n n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
+   block new REALLOC-CALL {: moved:^ :}
    moved NULL-PTR = if E-MEM-MAP throw then
    new old > if 0 moved old + new old - SPAN:MAKE SPAN:FILL then
    moved ;
 
 
-: FREE-BYTES ( ptr u8 ptr u8 -- ) {: st:ptr p:ptr :} p FREE-CALL ;
+: FREE-BYTES ( ^u8 ^u8 -- ) {: st:^ p:^ :} p FREE-CALL ;
 
 TYPED-VARIABLE RECORD ALLOC:allocator
 
@@ -44,7 +44,7 @@ FILL
 
 public
 
-: ALLOCATOR ( -- ptr ALLOC:allocator ) RECORD ;
+: ALLOCATOR ( -- ^ALLOC:allocator ) RECORD ;
 
 seal-package
 ;package

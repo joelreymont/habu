@@ -11,25 +11,25 @@ require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/test/subject.f
 
-: T-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
+: T-TIMED-OUT ( ^u8 n ^u8 n ^u8 n -- )
    T-LABEL. SUBJECT:TIMED-OUT ;
 
 \ The failed case for a child that completed by another variant than the one
 \ asserted, as `expected exit got signal 9`.
-: T-ENDING-MISS ( n ptr u8 n ptr u8 n -- )
-   {: code:n want:ptr wantu:n got:ptr gotu:n :}
+: T-ENDING-MISS ( n ^u8 n ^u8 n -- )
+   {: code:n want:^ wantu:n got:^ gotu:n :}
    T-NEXT
    T-FAIL
    s" assert: expected " type want wantu type
    s"  got " type got gotu type space code FMT:.INT cr ;
 
-: T-CODE-MISS ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: code:n want:n src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
+: T-CODE-MISS ( n n ^u8 n ^u8 n ^u8 n -- )
+   {: code:n want:n src:^ srcu:n out:^ outu:n err:^ erru:n :}
    code want T=
    code want <> if src srcu out outu err erru SUBJECT:SHOW then ;
 
-: T-ENDING-EXITED= ( ptr u8 n ptr u8 n ptr u8 n PROCESS:ending n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
+: T-ENDING-EXITED= ( ^u8 n ^u8 n ^u8 n PROCESS:ending n -- )
+   {: src:^ srcu:n out:^ outu:n err:^ erru:n oc want:n :}
    oc MATCH PROCESS:ending
      exited OF want src srcu out outu err erru T-CODE-MISS ENDOF
      signaled OF
@@ -38,14 +38,14 @@ require src/lib/test/subject.f
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: T-RUN-EXITED= ( CMD:command ptr u8 n ms n -- CMD:command )
-   {: exe:ptr xu:n deadline:ms status:n :}
+: T-RUN-EXITED= ( CMD:command ^u8 n ms n -- CMD:command )
+   {: exe:^ xu:n deadline:ms status:n :}
    exe xu deadline CMD:RUN-OUTCOME {: o :}
-   CMD:OUT$ {: out:ptr ou:n :}  CMD:ERR$ {: err:ptr eu:n :}
+   CMD:OUT$ {: out:^ ou:n :}  CMD:ERR$ {: err:^ eu:n :}
    exe xu out ou err eu o status T-ENDING-EXITED= ;
 
-: T-ENDING-SIGNALED= ( ptr u8 n ptr u8 n ptr u8 n PROCESS:ending n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
+: T-ENDING-SIGNALED= ( ^u8 n ^u8 n ^u8 n PROCESS:ending n -- )
+   {: src:^ srcu:n out:^ outu:n err:^ erru:n oc want:n :}
    oc MATCH PROCESS:ending
      exited OF
        s" signal" s" exit" T-ENDING-MISS src srcu out outu err erru SUBJECT:SHOW

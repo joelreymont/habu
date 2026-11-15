@@ -13,10 +13,10 @@ T-RESET
 \ Diagnostic capture as in test/type-match-suite.f: a JSON-mode render into a
 \ fixed buffer, asserted by substring.
 create SCG-BUF 8192 allot
-: SCG< ( ptr u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
+: SCG< ( ^u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
    SCG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: SCG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
+: SCG? ( ^u8 n -- )   \ assert the captured diag contains the needle
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
@@ -33,9 +33,9 @@ s" STRUCTURE scoutr FIELD w scinr FIELD t n ;STRUCTURE" evaluate-closed      \ w
 s" M1 ( scinr n -- scoutr ) SCOUTR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U1 ( scoutr -- scinr n ) SCOUTR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-s" STRUCTURE scpf FIELD p ptr n FIELD k n ;STRUCTURE" evaluate-closed
-s" M2 ( ptr n n -- scpf ) SCPF:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" U2 ( scpf -- ptr n n ) SCPF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" STRUCTURE scpf FIELD p ^n FIELD k n ;STRUCTURE" evaluate-closed
+s" M2 ( ^n n -- scpf ) SCPF:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" U2 ( scpf -- ^n n ) SCPF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 s" SUMTYPE scnr VARIANT ok n ;VARIANT VARIANT err n ;VARIANT ;SUMTYPE" evaluate-closed
 s" STRUCTURE schold FIELD r scnr FIELD t n ;STRUCTURE" evaluate-closed       \ sum-with-payload field
@@ -62,7 +62,7 @@ SCRT 9 T= 2 T= 1 T=                                  \ t=9 (top), b=2, a=1 round
 \    instantiation lowers through hidden-field expansion and is not pinned here.
 s" STRUCTURE scg<a> FIELD u a FIELD z n ;STRUCTURE" evaluate-closed
 s" G1 ( n n -- scg<n> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete a=n
-s" G2 ( ptr u8 n -- scg<n> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=        \ wrong role: u=n not ptr u8
+s" G2 ( ^u8 n -- scg<n> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=        \ wrong role: u=n not ^u8
 s" G3 ( scinr n -- scg<scinr> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=    \ WIDE instantiation a=scinr
 s" G4 ( n n n -- scg<scinr> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=       \ flattened inner rejects
 s" GUC ( scg<n> -- n n ) SCG:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=         \ concrete-cell UNMAKE inverts MAKE
@@ -74,10 +74,10 @@ s" GL2 ( scg<own> -- scg<own> )" CHECK-QUIET-CANDIDATE! 0 T=              \ line
 s" GL3 ( scg<own> -- own n ) SCG:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 4. Pointer and value roles: value-for-ptr and ptr-for-value both reject.
-s" STRUCTURE scrole FIELD p ptr n FIELD v n ;STRUCTURE" evaluate-closed
-s" R1 ( ptr n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" R2 ( n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=          \ value where ptr n required
-s" R3 ( ptr n ptr n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=  \ ptr where value required
+s" STRUCTURE scrole FIELD p ^n FIELD v n ;STRUCTURE" evaluate-closed
+s" R1 ( ^n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" R2 ( n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=          \ value where ^n required
+s" R3 ( ^n ^n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=  \ ptr where value required
 
 \ 5. Forged constructs reject before runtime; whole-bundle transport of a
 \ structure value is allowed.
@@ -96,11 +96,11 @@ s" F9 ( scpt -- scpt scpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=            \ whole
 \ 6. A malformed construct's E-MISMATCH names the generated constructor and the
 \    field-derived expected types: the reject is field-shape-specific, not an
 \    arity count.
-s" STRUCTURE scdg FIELD x n FIELD y ptr n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scdg FIELD x n FIELD y ^n ;STRUCTURE" evaluate-closed
 s" D1 ( n -- scdg ) SCDG:MAKE" SCG<
 s\" \"code\":\"E-MISMATCH\"" SCG?
 s\" \"token\":\"SCDG:MAKE\"" SCG?
-s\" \"expected\":\"n ptr n \"" SCG?                               \ the exact field-derived shape (x:n, y:ptr n)
+s\" \"expected\":\"n ^n \"" SCG?                               \ the exact field-derived shape (x:n, y:^ n)
 SCG-END
 
 \ 7. The derived package is closed but callable: reopening it (any case),

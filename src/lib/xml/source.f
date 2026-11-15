@@ -9,7 +9,7 @@ require src/lib/xml/scalar.f
 package XML
 public
 DEFLINEAR XML:source
-STRUCTURE source-owner OPAQUE FIELD state ptr n ;STRUCTURE
+STRUCTURE source-owner OPAQUE FIELD state ^n ;STRUCTURE
 ENUM encoding utf8 utf16-le utf16-be us-ascii ;ENUM
 -9216 constant E-UTF16
 -9217 constant E-BOUNDARY
@@ -17,7 +17,7 @@ ENUM encoding utf8 utf16-le utf16-be us-ascii ;ENUM
 private
 CAST: ENCODING>N ( encoding -- n )
 \ Views the encoding cell, which holds only ENCODING>N values.
-CAST: >ENCODING-CELL ( ptr n -- ptr encoding )
+CAST: >ENCODING-CELL ( ^n -- ^encoding )
 
 7 constant SRC-HEADER-CELLS
 0 constant SRC-ORIGINAL-IDX
@@ -35,38 +35,38 @@ CAST: >ENCODING-CELL ( ptr n -- ptr encoding )
 64 constant SRC-MARK-STRIDE
 
 \ The token carries the caller-owned header; every span stays caller-owned.
-LINEAR: SRC-MINT ( ptr n -- XML:source )
-LINEAR: SRC-ERASE ( XML:source -- ptr n )
+LINEAR: SRC-MINT ( ^n -- XML:source )
+LINEAR: SRC-ERASE ( XML:source -- ^n )
 
-: SRC-STATE ( XML:source -- XML:source ptr n )
+: SRC-STATE ( XML:source -- XML:source ^n )
    SRC-ERASE dup SRC-MINT swap ;
 
-: OWNER-STATE ( source-owner -- ptr n )
+: OWNER-STATE ( source-owner -- ^n )
    SOURCE-OWNER-UNMAKE
    dup 0= if E-STATE throw then
    dup SRC-STORAGE-LEN + @ 0= if E-STATE throw then ;
 
-: SRC-ORIGINAL$ ( ptr n -- ptr u8 n )
+: SRC-ORIGINAL$ ( ^n -- ^u8 n )
    {: state :}
    state SRC-ORIGINAL-IDX ptr-field @ state SRC-ORIGINAL-LEN + @ ;
 
-: SRC-LEXICAL$ ( ptr n -- ptr u8 n )
+: SRC-LEXICAL$ ( ^n -- ^u8 n )
    {: state :}
    state SRC-LEXICAL-IDX ptr-field @ state SRC-LEXICAL-LEN + @ ;
 
-: SRC-ENCODING-N ( ptr n -- n )
+: SRC-ENCODING-N ( ^n -- n )
    SRC-ENCODING-IDX + @ ;
 
-: SRC-BOM$ ( ptr n -- ptr u8 n )
+: SRC-BOM$ ( ^n -- ^u8 n )
    {: state :}
    state SRC-ORIGINAL-IDX ptr-field @ state SRC-BOM-LEN + @ ;
 
-: SRC-STARTS? ( ptr u8 n ptr u8 n -- bool )
+: SRC-STARTS? ( ^u8 n ^u8 n -- bool )
    {: source size:n signature count:n :}
    size count < if false exit then
    source count signature count BYTES= ;
 
-: SRC-UNIT ( ptr u8 n n -- n )
+: SRC-UNIT ( ^u8 n n -- n )
    {: source cursor:n encoding:n :}
    source cursor + c@ {: first:n :}
    source cursor 1+ + c@ {: second:n :}
@@ -76,7 +76,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
       first 8 lshift second or
    then ;
 
-: SRC-DECL-CHAR ( ptr u8 n n n n -- n )
+: SRC-DECL-CHAR ( ^u8 n n n n -- n )
    {: source size:n bom:n encoding:n index:n :}
    encoding XML-ENCODING:UTF8 ENCODING>N = if 1 else 2 then
    {: width:n :}
@@ -88,7 +88,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
 : FOLD-ASCII ( n -- n )
    dup $41 >= over $5A <= and if $20 + then ;
 
-: FOLD-EQUAL? ( ptr u8 n ptr u8 n -- bool )
+: FOLD-EQUAL? ( ^u8 n ^u8 n -- bool )
    {: first first-size:n second second-size:n :}
    first-size second-size <> if false exit then
    first-size 0 ?do
@@ -98,7 +98,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    loop
    true ;
 
-: SRC-DECL-MATCH? ( ptr u8 n n n n ptr u8 n -- bool )
+: SRC-DECL-MATCH? ( ^u8 n n n n ^u8 n -- bool )
    {: source size:n bom:n encoding:n cursor:n expected count:n :}
    count 0 ?do
       source size bom encoding cursor i + SRC-DECL-CHAR
@@ -106,7 +106,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    loop
    true ;
 
-: SRC-DECL-WHITE ( ptr u8 n n n n -- n )
+: SRC-DECL-WHITE ( ^u8 n n n n -- n )
    {: source size:n bom:n encoding:n cursor:n :}
    cursor
    begin
@@ -119,7 +119,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
 
 \ Read one quoted pseudoattribute value after its name; the reader validates
 \ the full declaration grammar after source encoding has been selected.
-: SRC-DECL-ASSIGN ( ptr u8 n n n n -- n n )
+: SRC-DECL-ASSIGN ( ^u8 n n n n -- n n )
    {: source size:n bom:n encoding:n cursor:n :}
    source size bom encoding cursor SRC-DECL-WHITE {: equal:n :}
    source size bom encoding equal SRC-DECL-CHAR $3D <> if -1 -1 exit then
@@ -136,7 +136,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
       cursor 1+
    again ;
 
-: SRC-DECL-ASCII? ( ptr u8 n n n -- bool )
+: SRC-DECL-ASCII? ( ^u8 n n n -- bool )
    {: source size:n bom:n encoding:n :}
    source size bom encoding 0 s" <?xml" SRC-DECL-MATCH? 0= if false exit then
    source size bom encoding 5 SRC-DECL-CHAR XML-SPACE? 0= if false exit then
@@ -158,7 +158,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    loop
    source size bom encoding end SRC-DECL-CHAR dup XML-SPACE? swap $3F = or ;
 
-: SRC-CHECK-DECL ( ptr u8 n n n -- n n )
+: SRC-CHECK-DECL ( ^u8 n n n -- n n )
    {: source size:n encoding:n bom:n :}
    source size bom encoding SRC-DECL-ASCII? if
       encoding XML-ENCODING:UTF8 ENCODING>N <> bom 0<> or if
@@ -168,7 +168,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    then
    encoding bom ;
 
-: SRC-DETECT ( ptr u8 n -- n n )
+: SRC-DETECT ( ^u8 n -- n n )
    {: source size:n :}
    source size s\" \z\z\xFE\xFF" SRC-STARTS?
    source size s\" \xFF\xFE\z\z" SRC-STARTS? or
@@ -193,7 +193,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    source size s\" \z<" SRC-STARTS? or if E-ENCODING throw then
    source size XML-ENCODING:UTF8 ENCODING>N 0 SRC-CHECK-DECL ;
 
-: SRC-NEXT ( ptr u8 n n n -- n n )
+: SRC-NEXT ( ^u8 n n n -- n n )
    {: source size:n cursor:n encoding:n :}
    size cursor - 2 < if E-UTF16 throw then
    source cursor encoding SRC-UNIT {: first:n :}
@@ -211,7 +211,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    scalar REQUIRE-SCALAR
    scalar next ;
 
-: SRC-SCAN ( ptr u8 n n n -- n )
+: SRC-SCAN ( ^u8 n n n -- n )
    {: source size:n bom:n encoding:n :}
    encoding XML-ENCODING:US-ASCII ENCODING>N = if
       source size ASCII-WIRE
@@ -240,7 +240,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    repeat
    drop ;
 
-: SRC-BYTES ( ptr u8 n -- n n n )
+: SRC-BYTES ( ^u8 n -- n n n )
    {: source size:n :}
    source size SPAN-CHECK
    source size SRC-DETECT {: encoding:n bom:n :}
@@ -256,7 +256,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    lexical CELL 1- + CELL 1- invert and
    marks + SRC-HEADER-CELLS cells + encoding bom ;
 
-: SRC-STORAGE-CHECK ( ptr n n ptr u8 n n -- )
+: SRC-STORAGE-CHECK ( ^n n ^u8 n n -- )
    {: storage cap:n original size:n needed:n :}
    storage BYTE-VIEW cap SPAN-CHECK
    cap needed < if E-CAPACITY throw then
@@ -265,7 +265,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
 \ Set each checkpoint from mark on whose stride point lies at or before the
 \ scalar boundary at lexical to original, that boundary's original offset;
 \ answer the next checkpoint to set.
-: SRC-MARKS ( ptr n n n n -- n )
+: SRC-MARKS ( ^n n n n -- n )
    {: marks mark:n lexical:n original:n :}
    mark
    begin dup SRC-MARK-STRIDE * lexical <= while
@@ -275,7 +275,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    repeat ;
 
 
-: SRC-WRITE-UTF16 ( ptr u8 n n n ptr n ptr u8 -- )
+: SRC-WRITE-UTF16 ( ^u8 n n n ^n ^u8 -- )
    {: original size:n bom:n encoding:n marks output :}
    output bom 1
    begin over size < while
@@ -288,7 +288,7 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    {: target cursor:n mark:n :}
    marks mark target output - cursor SRC-MARKS drop ;
 
-: SRC-INITIALIZE ( ptr n n ptr u8 n n n -- )
+: SRC-INITIALIZE ( ^n n ^u8 n n n -- )
    {: storage cap:n original size:n encoding:n bom:n :}
    original storage SRC-ORIGINAL-IDX ptr-field !
    size storage SRC-ORIGINAL-LEN + !
@@ -318,10 +318,10 @@ public
 \ UTF-16LE or UTF-16BE declaration, checked by the first NEXT. Labels are
 \ case-insensitive and the target `xml` lowercase (XML 1.0 section 4.3.3).
 \ Anything else, UTF-32 included, is E-ENCODING; bad surrogates are E-UTF16.
-: SOURCE-BYTES ( ptr u8 n -- n )
+: SOURCE-BYTES ( ^u8 n -- n )
    SRC-BYTES 2drop ;
 
-: SOURCE-INIT ( ptr n n ptr u8 n -- XML:source )
+: SOURCE-INIT ( ^n n ^u8 n -- XML:source )
    {: storage cap:n original size:n :}
    original size SRC-BYTES {: needed:n encoding:n bom:n :}
    storage cap original size needed SRC-STORAGE-CHECK
@@ -340,36 +340,36 @@ public
 : OWNER-CLOSE ( source-owner -- )
    OWNER-STATE SRC-STORAGE-LEN + 0 swap ! ;
 
-: OWNER-ORIGINAL$ ( source-owner -- ptr u8 n )
+: OWNER-ORIGINAL$ ( source-owner -- ^u8 n )
    OWNER-STATE SRC-ORIGINAL$ ;
 
-: OWNER-LEXICAL$ ( source-owner -- ptr u8 n )
+: OWNER-LEXICAL$ ( source-owner -- ^u8 n )
    OWNER-STATE SRC-LEXICAL$ ;
 
 : OWNER-ENCODING ( source-owner -- encoding )
    OWNER-STATE SRC-ENCODING-IDX + >ENCODING-CELL @ ;
 
-: OWNER-BOM$ ( source-owner -- ptr u8 n )
+: OWNER-BOM$ ( source-owner -- ^u8 n )
    OWNER-STATE SRC-BOM$ ;
 
 \ Includes the BOM; SOURCE-BOM$ is that prefix (0, 2 or 3 bytes) and
 \ SOURCE-LEXICAL$ drops only it. A reader over a source reports lexical UTF-8
 \ offsets only.
-: SOURCE-ORIGINAL$ ( XML:source -- XML:source ptr u8 n )
+: SOURCE-ORIGINAL$ ( XML:source -- XML:source ^u8 n )
    SRC-STATE SRC-ORIGINAL$ ;
 
-: SOURCE-LEXICAL$ ( XML:source -- XML:source ptr u8 n )
+: SOURCE-LEXICAL$ ( XML:source -- XML:source ^u8 n )
    SRC-STATE SRC-LEXICAL$ ;
 
 : SOURCE-ENCODING ( XML:source -- XML:source encoding )
    SRC-STATE SRC-ENCODING-IDX + >ENCODING-CELL @ ;
 
-: SOURCE-BOM$ ( XML:source -- XML:source ptr u8 n )
+: SOURCE-BOM$ ( XML:source -- XML:source ^u8 n )
    SRC-STATE SRC-BOM$ ;
 
 private
 \ SOURCE-INIT validated every scalar; only continuation bytes split one.
-: SRC-CONTINUATION? ( ptr u8 n n -- bool )
+: SRC-CONTINUATION? ( ^u8 n n -- bool )
    {: lexical size:n cursor:n :}
    cursor 0<> cursor size <> and if
       lexical cursor + c@ $C0 and $80 = exit
@@ -377,7 +377,7 @@ private
    false ;
 
 
-: SRC-MARK-AT ( ptr n n -- n n )
+: SRC-MARK-AT ( ^n n -- n n )
    {: state endpoint:n :}
    state SRC-LEXICAL$ {: lexical size:n :}
    endpoint SRC-MARK-STRIDE / {: mark:n :}
@@ -387,7 +387,7 @@ private
    state SRC-HEADER-CELLS mark 1- + cells + @ ;
 
 
-: SRC-MAP ( ptr n n -- n )
+: SRC-MAP ( ^n n -- n )
    {: state endpoint:n :}
    state SRC-LEXICAL$ {: lexical size:n :}
    lexical size endpoint SRC-CONTINUATION? if E-BOUNDARY throw then
@@ -404,7 +404,7 @@ private
    repeat
    nip ;
 
-: SRC-RANGE ( ptr n n n -- n n )
+: SRC-RANGE ( ^n n n -- n n )
    {: state start:n count:n :}
    state SRC-LEXICAL$ nip {: size:n :}
    start 0 < count 0 < or if E-RANGE throw then
@@ -414,7 +414,7 @@ private
    state start count + SRC-MAP first -
    first swap ;
 
-: SRC-RANGE-ARGS ( XML:source off len -- XML:source ptr n n n )
+: SRC-RANGE-ARGS ( XML:source off len -- XML:source ^n n n )
    {: start:off count:len :}
    SRC-STATE start OFF>N count LEN>N ;
 
@@ -434,7 +434,7 @@ public
    >LEN swap >OFF swap ;
 
 private
-: SRC-ENCODE-SIZE ( ptr n ptr u8 n -- n )
+: SRC-ENCODE-SIZE ( ^n ^u8 n -- n )
    {: state input size:n :}
    input size SPAN-CHECK
    state SRC-ENCODING-N XML-ENCODING:US-ASCII ENCODING>N = if
@@ -459,22 +459,22 @@ private
    repeat
    drop ;
 
-: SRC-ENCODE-ARGS ( XML:source ptr u8 n -- XML:source ptr n ptr u8 n )
+: SRC-ENCODE-ARGS ( XML:source ^u8 n -- XML:source ^n ^u8 n )
    {: input size:n :}
    SRC-STATE input size ;
 
 public
 \ ENCODE-SIZE and ENCODE write replacement markup, already escaped, in the wire
 \ encoding without a BOM, validating input, capacity and aliasing first.
-: ENCODE-SIZE ( XML:source ptr u8 n -- XML:source n )
+: ENCODE-SIZE ( XML:source ^u8 n -- XML:source n )
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
 
-: OWNER-ENCODE-SIZE ( source-owner ptr u8 n -- n )
+: OWNER-ENCODE-SIZE ( source-owner ^u8 n -- n )
    {: owner input size:n :}
    owner OWNER-STATE input size SRC-ENCODE-SIZE ;
 
 private
-: SRC-PUT-UNIT ( n n ptr u8 -- ptr u8 )
+: SRC-PUT-UNIT ( n n ^u8 -- ^u8 )
    {: unit:n encoding:n output :}
    encoding XML-ENCODING:UTF16-LE ENCODING>N = if
       unit $FF and output PUT-BYTE
@@ -484,7 +484,7 @@ private
       unit $FF and swap PUT-BYTE
    then ;
 
-: SRC-ENCODE-WRITE ( ptr n ptr u8 n ptr u8 -- )
+: SRC-ENCODE-WRITE ( ^n ^u8 n ^u8 -- )
    {: state input size:n output :}
    state SRC-ENCODING-N {: encoding:n :}
    encoding XML-ENCODING:UTF8 ENCODING>N =
@@ -509,14 +509,14 @@ private
 
 \ The fewest bytes size bytes of UTF-8 encode to: all of them in UTF-8, and in
 \ UTF-16 two for every three, the width of a three-byte scalar.
-: SRC-ENCODE-FLOOR ( ptr n n -- n ) {: state size:n :}
+: SRC-ENCODE-FLOOR ( ^n n -- n ) {: state size:n :}
    state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N =
    state SRC-ENCODING-N XML-ENCODING:US-ASCII ENCODING>N = or if
       size exit
    then
    size 3 / 2 * ;
 
-: SRC-ENCODE-INTO ( ptr n ptr u8 n ptr u8 n -- n )
+: SRC-ENCODE-INTO ( ^n ^u8 n ^u8 n -- n )
    {: state input size:n output cap:n :}
    input size SPAN-CHECK
    output cap SPAN-CHECK
@@ -530,15 +530,15 @@ private
    state input size output SRC-ENCODE-WRITE
    needed ;
 
-: SRC-INTO-ARGS ( XML:source ptr u8 n ptr u8 n -- XML:source ptr n ptr u8 n ptr u8 n )
+: SRC-INTO-ARGS ( XML:source ^u8 n ^u8 n -- XML:source ^n ^u8 n ^u8 n )
    {: input size:n output cap:n :}
    SRC-STATE input size output cap ;
 
 public
-: ENCODE ( XML:source ptr u8 n ptr u8 n -- XML:source n )
+: ENCODE ( XML:source ^u8 n ^u8 n -- XML:source n )
    SRC-INTO-ARGS SRC-ENCODE-INTO ;
 
-: OWNER-ENCODE ( source-owner ptr u8 n ptr u8 n -- n )
+: OWNER-ENCODE ( source-owner ^u8 n ^u8 n -- n )
    {: owner input size:n output cap:n :}
    owner OWNER-STATE input size output cap SRC-ENCODE-INTO ;
 

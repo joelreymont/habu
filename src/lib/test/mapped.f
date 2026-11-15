@@ -16,7 +16,7 @@ create SINK-DIR PATH-CAP allot
 create SINK-PATH PATH-CAP allot
 variable SINK-FD
 
-: DIR! ( ptr u8 n -- n ) {: a:ptr u:n :}
+: DIR! ( ^u8 n -- n ) {: a:^ u:n :}
    a SINK-DIR u BYTE-COPY
    u ;
 
@@ -38,7 +38,7 @@ variable SINK-FD
 
 public
 
-: LIVE? ( ptr u8 -- bool )
+: LIVE? ( ^u8 -- bool )
    SINK swap 1 write 0 > ;
 
 ;package

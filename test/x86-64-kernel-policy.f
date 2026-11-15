@@ -23,7 +23,7 @@ using X64RT
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
-: ROW, ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW, ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 
 \ The callback has the captured INTERPRETER policy check's effect: a public wid
 \ in, the first colliding spelling and a flag out. The normal arm returns no
@@ -43,14 +43,14 @@ using X64RT
 
 \ A namespace row's first cell is its public wid; the harness's RECORD, gives
 \ an ordinary code entry there, so replace only that field before indexing.
-: PACKAGE, ( ptr u8 n n -- ) {: name:ptr size:n wid:n :}
+: PACKAGE, ( ^u8 n n -- ) {: name:^ size:n wid:n :}
    name size WL:NAMESPACE 0 X64HARNESS:RECORD,
    wid 0 X64KERNEL:REC-CODE + X64HARNESS:REGION!, ;
 
-: ADMIT, ( ptr u8 n -- )
+: ADMIT, ( ^u8 n -- )
    X64HARNESS:PUSH-TEXT,  s" policy-admit" ROW, ;
 
-: READY, ( ptr u8 n n -- ) {: name:ptr size:n wid:n :}
+: READY, ( ^u8 n n -- ) {: name:^ size:n wid:n :}
    name size wid PACKAGE,
    s" SAFE" wid 0 X64HARNESS:RECORD,
    X64KERNEL:HIDX-BUILD,
@@ -95,7 +95,7 @@ using X64RT
    X64HARNESS:REST,
    s" PKW" ADMIT, ;
 
-: IMAGE ( [ -- ] ptr u8 n -- ) {: path:ptr size:n :}
+: IMAGE ( [ -- ] ^u8 n -- ) {: path:^ size:n :}
    false X64HARNESS:BOOT-OPEN,
    execute
    path size X64HARNESS:BOOT-CLOSE, ;

@@ -41,12 +41,12 @@ $FF constant OCTET
    c $20 = c $09 = or c $0A = or c $0C = or c $0D = or c 0= or ;
 
 
-: PUT ( n ptr u8 n -- )
+: PUT ( n ^u8 n -- )
    {: v out k:n :}
    k 0 ?do v 24 i 8 * - rshift OCTET and out i + c! loop ;
 
 
-: GROUP! ( n ptr u8 n bool -- )
+: GROUP! ( n ^u8 n bool -- )
    {: v:n out k:n put:bool :}
    v MAX-VALUE > if E-VALUE throw then
    put if v out k PUT then ;
@@ -54,7 +54,7 @@ $FF constant OCTET
 
 \ One source byte c on the walk's state: len bytes decoded so far, and the
 \ value v of the k digits of the open group.
-: TAKE ( n n n n ptr u8 bool -- n n n )
+: TAKE ( n n n n ^u8 bool -- n n n )
    {: len:n v:n k:n c:n out put:bool :}
    c SPACE? if len v k exit then
    c ZERO-CHAR = if
@@ -69,7 +69,7 @@ $FF constant OCTET
    len GROUP-BYTES + 0 0 ;
 
 
-: FINISH ( n n n ptr u8 bool -- n )
+: FINISH ( n n n ^u8 bool -- n )
    {: len:n v:n k:n out put:bool :}
    k 0= if len exit then
    k 1 = if E-LENGTH throw then
@@ -79,7 +79,7 @@ $FF constant OCTET
 
 
 \ The decoded length; the bytes too at out when put is set.
-: WALK ( ptr u8 n ptr u8 bool -- n )
+: WALK ( ^u8 n ^u8 bool -- n )
    {: a u:n out put:bool :}
    0 0 0
    u 0 ?do a i + c@ out put TAKE loop
@@ -87,7 +87,7 @@ $FF constant OCTET
 
 public
 
-: DECODE ( ptr u8 n SPAN:span<u8> -- n )
+: DECODE ( ^u8 n SPAN:span<u8> -- n )
    {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    s SPAN:$ drop {: out :}

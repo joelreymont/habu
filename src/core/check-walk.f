@@ -155,7 +155,7 @@
 
 \ The selector is a token, never a runtime field id. The callback may change
 \ the field, but it cannot return the child view or the projected region.
-: SCOPE-FIELD-STEP ( ptr u8 n -- ) {: name:ptr size:n :}
+: SCOPE-FIELD-STEP ( ^u8 n -- ) {: name:^ size:n :}
    DCUR @ R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
    dup P>TYPE T-RES {: supplied:n :}
    supplied SCOPE-FIELD-MAY-THROW? {: may-throw:bool :}
@@ -189,12 +189,12 @@
    THROW-CUR? may-throw or IF CALL-THROW-EDGE THEN
    off bytes SCOPE-FIELD-FACTS ;
 
-: SCOPE-FIELD-TOK ( ptr u8 n -- )
+: SCOPE-FIELD-TOK ( ^u8 n -- )
    EV-OPERAND                       \ the loaned field's name; the loan step compiles it
    0 FIELD-LOAN-PENDING !
    SCOPE-FIELD-STEP ;
 
-: DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
+: DO-TOK-BODY ( ^u8 n -- ) {: a:^ u:n :}
    0 CURSYM !
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
@@ -243,7 +243,7 @@
    TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
    a u REFUSE-UNDEFINED ;
 
-: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: DO-TOK ( ^u8 n -- ) {: a:^ u:n :}
    DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
    a u DO-TOK-BODY
    CURSYM @ 0 <> IF  pre NZ-CALL-CELLS  THEN
@@ -257,7 +257,7 @@
    MF-ENSURE
    MF-DEPTH @ 1 + MF-DEPTH !
    MF-CUR
-   {: r:ptr :}
+   {: r:^ :}
    fam r MF.FAM !
    MTCH-TAGT @ r MF.TERM !
    MTCH-ROW @ r MF.BASE !
@@ -295,8 +295,8 @@
    0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
    MATCH-FAM-STEP ;
 
-: MATCH-FAM-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MATCH-FAM-TOK ( ^u8 n -- )
+   {: a:^ u:n :}
    a u TFAM:TFAM-MATCH-FAM MATCH-FAM-FOUND ;
 
 : MATCH-END ( -- )
@@ -308,8 +308,8 @@
    CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE!
    0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE ! ;
 
-: MATCH-VARIANT ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MATCH-VARIANT ( ^u8 n -- )
+   {: a:^ u:n :}
    a u MF-CUR MF.FAM @ TFAM:TFAM-MATCH-VARIANT 0= IF
       drop MATCH-VARIANT-NONE EXIT THEN
    {: vid:n :}
@@ -320,8 +320,8 @@
    vid MPEND !
    3 CHECKER-MATCH-MODE ! ;
 
-: MATCH-VARIANT-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MATCH-VARIANT-TOK ( ^u8 n -- )
+   {: a:^ u:n :}
    a u s" ;match" CORE-STR= IF MATCH-END EXIT THEN
    a u MATCH-VARIANT ;
 
@@ -329,7 +329,7 @@
 : MATCH-OF ( bool -- )
    IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
    ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN
-   MF-CUR {: r:ptr :}
+   MF-CUR {: r:^ :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
@@ -345,9 +345,9 @@
    0 DEADP !
    0 CHECKER-MATCH-MODE ! ;
 
-: MATCH-OF-TOK ( ptr u8 n -- ) s" of" CORE-STR= MATCH-OF ;
+: MATCH-OF-TOK ( ^u8 n -- ) s" of" CORE-STR= MATCH-OF ;
 
-: MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: MATCH-TOK ( ^u8 n -- ) {: a:^ u:n :}
    CHECKER-MATCH-MODE @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
    CHECKER-MATCH-MODE @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
    CHECKER-MATCH-MODE @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
@@ -360,8 +360,8 @@
    IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
    2 CONM ! ;
 
-: CONSTRUCT-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CONSTRUCT-TOK ( ^u8 n -- )
+   {: a:^ u:n :}
    EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
    CONM @ 1 = IF a u TFAM:TFAM-CONSTRUCT-FAM CONSTRUCT-FAM-FOUND EXIT THEN
    CONFAM @ 0 < 0= IF
@@ -374,14 +374,14 @@
    0 CONM ! ;
 
 \ The call, judged as a call the body spelled.
-: POSTPONE-CALL ( ptr n n -- ) {: run:ptr sym:n :}
+: POSTPONE-CALL ( ^n n -- ) {: run:^ sym:n :}
    -1 POST-ON !
    run sym CALL-PRESET
    DCUR @ XE-PD !  RCUR @ XE-PR !
    run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
 
-: POSTPONE-IMM ( ptr n -- ) {: rec:ptr :}
+: POSTPONE-IMM ( ^n -- ) {: rec:^ :}
    rec FACTS-READ-XT
    rec REC-HOME-SYM {: sym:n :}
    sym 0= IF POSTPONE-UNDEFINED EXIT THEN
@@ -393,7 +393,7 @@
 : POSTPONE-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ a refusal names the operand, as a tick's does
-   POSTPONE-TARGET {: rec:ptr sym:n :}
+   POSTPONE-TARGET {: rec:^ sym:n :}
    rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
    rec POSTPONE-IMM? IF rec POSTPONE-IMM EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
@@ -405,13 +405,13 @@
 
 \ Whether the call is of an immediate: a CALL item's record REC says, and the
 \ spelling does for a text token, whose REC is NULL-PTR.
-: CALL-IMM? ( ptr n -- bool ) {: rec:ptr :}
+: CALL-IMM? ( ^n -- bool ) {: rec:^ :}
    rec NULL-PTR = IF TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? EXIT THEN
    rec POSTPONE-IMM? ;
 
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
-: CALL-STEP ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: CALL-STEP ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    rec CALL-IMM? IF REJECT-IMMEDIATE THEN
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
@@ -426,7 +426,7 @@
 
 \ The step a dead token, a locals group's token or a field loan's name takes
 \ before any other; true when it took one. A is its unfolded spelling.
-: MODE-TOK? ( ptr u8 -- bool ) {: a:ptr :}
+: MODE-TOK? ( ^u8 -- bool ) {: a:^ :}
    TKF TKFU @ LIVE-TOKEN? 0= IF
       -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK  RES-TRUE EXIT
    THEN
@@ -509,8 +509,8 @@ public
 
 \ Records the pending definition's declared effect under name NA, AT the name
 \ as read: its rows from PENDING-SIG, its text the signature at SGA.
-: CHECKER-USIG-CERT-ADD-PENDING ( ptr u8 n ptr u8 n bool -- )
-   {: na:ptr nu:n at:ptr atu:n external:bool :}
+: CHECKER-USIG-CERT-ADD-PENDING ( ^u8 n ^u8 n bool -- )
+   {: na:^ nu:n at:^ atu:n external:bool :}
    na nu at atu USIG-CERT-ADMIT
    NEW
    SGBAD-CLEAR
@@ -608,8 +608,8 @@ public
    CHECKER-MATCH-MODE @ 0 = IF RES-FALSE EXIT THEN
    v kind ITEM-MATCH RES-TRUE ;
 
-: ITEM-CALL ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
-   ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+: ITEM-CALL ( ^u8 n n -- ) {: a:^ u:n ix:n :}
+   ix CHECKER-RESOLVE:REC-AT {: rec:^ :}
    rec TKF TKFU @ BIND-RECORD
    TKF TKFU @ UNSAFE-TOK? IF
       BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
@@ -630,7 +630,7 @@ public
 : ITEM-STRAY? ( n -- bool ) {: kind:n :}
    kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or ;
 
-: ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
+: ITEM-KEYWORD ( ^u8 n -- ) {: a:^ u:n :}
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN EXIT THEN
@@ -641,7 +641,7 @@ public
 
 \ An item of kind KIND inside a `{:` group: a LOCAL item opens a local of
 \ type node V's term under its listing name A U, and `:}` binds the group.
-: ITEM-IN-GROUP ( n n ptr u8 n -- ) {: v:n kind:n a:ptr u:n :}
+: ITEM-IN-GROUP ( n n ^u8 n -- ) {: v:n kind:n a:^ u:n :}
    NZ-MOVED
    kind BODY-ITEM-KIND:LOCAL = IF
       a u LOC-OPEN
@@ -696,11 +696,11 @@ public
 \ definer gave it; a read of an index no LOCAL item declared names none.
 : ITEM-FAIL-SPELL ( n -- )
    ITEM-LOCAL-NODE 0= IF drop 0 FAILTU ! EXIT THEN
-   TFAM:EFFECT-TYPE TYPE-TEXT {: a:ptr u:n :}
+   TFAM:EFFECT-TYPE TYPE-TEXT {: a:^ u:n :}
    u TOKBUF-ENSURE  a FAILTK u CCOPY  u FAILTU ! ;
 
 : ITEM-STEP ( n -- ) {: i:n :}
-   TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
+   TSTART @ TADDR  TI @ TSTART @ -  {: a:^ u:n :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
    i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ {: kind:n :}
@@ -795,8 +795,8 @@ variable WALK-ITEM    \ the first item the walk has not passed
 
 \ Walks a body, holding its using refusals for the end, where a structure open
 \ at closer CA CU is refused first; a prefix passes none.
-: CHECK-SCAN ( ptr u8 n -- )
-   {: ca:ptr cu:n :}
+: CHECK-SCAN ( ^u8 n -- )
+   {: ca:^ cu:n :}
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
    [: CHECK-SCAN-WALK ;] catch
@@ -908,17 +908,17 @@ package CAST-ERROR
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
-: DECLARE ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
-   >r {: na:ptr nu:n sa:ptr su:n ka:ptr ku:n :}
+: DECLARE ( ^u8 n ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+   >r {: na:^ nu:n sa:^ su:n ka:^ ku:n :}
    na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !
    na nu sa su r> [: CLEAR ;] finally ;
-: TOKEN! ( ptr u8 n -- ) TOK-U !  TOK-A ! ;
-: RAISE ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
+: TOKEN! ( ^u8 n -- ) TOK-U !  TOK-A ! ;
+: RAISE ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
    wa WHY-A !  wu WHY-U !  code CODE !
    RENDER
    code CHECKER-REFUSE ;
 \ Refuses signature sa su of name na nu that does not parse.
-: REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: REFUSE-SIGNATURE ( ^u8 n ^u8 n -- ) {: sa:^ su:n na:^ nu:n :}
    sa su na nu na nu BADSIG-XT
    sa su na nu SGBAD-PIN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
@@ -958,9 +958,9 @@ variable TAGGED-FAM
    ELSE
       TAGGED-FAM @ TFAM-NAME$ CAST-ERROR:TOKEN!
       out IF
-         s" the output makes an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+         s" the output makes an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ^u8 -- ^T ) in a private section; found"
       ELSE
-         s" the input is handed an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+         s" the input is handed an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ^u8 -- ^T ) in a private section; found"
       THEN
    THEN
    E-CAST-CLASS CAST-ERROR:RAISE ;
@@ -1061,7 +1061,7 @@ variable TAGGED-FAM
    hi PAY CC-N <> IF RES-FALSE EXIT THEN
    row ROW-UNDER CAST-ROW-TERM BYTE-PTR? ;
 \ A quotation that consumes one two-cell value over its implicit tail and
-\ leaves that tail: `[ V -- ]` or `[ ptr u8 n -- ]`. A named tail could bind
+\ leaves that tail: `[ V -- ]` or `[ ^u8 n -- ]`. A named tail could bind
 \ the callback to cells under the view that the retyped callback's own tail
 \ never supplies.
 : PAIR-CALLBACK? ( n -- bool ) {: q:n :}
@@ -1069,7 +1069,7 @@ variable TAGGED-FAM
    q Q>DIN ROW-2? 0= IF RES-FALSE EXIT THEN
    q Q>DOUT R-RES  q Q>DIN ROW-UNDER ROW-UNDER <> IF RES-FALSE EXIT THEN
    q Q>DOUT R-RES PAY RVK-QUOT? ;
-\ A callback pack retypes `[ V -- ]` as `[ ptr u8 n -- ]` over the same tail:
+\ A callback pack retypes `[ V -- ]` as `[ ^u8 n -- ]` over the same tail:
 \ calling the result packs the two cells into the view the callback takes.
 : CALLBACK-PACK? ( -- bool )
    SGIN @ CAST-ROW-1? SGOUT @ CAST-ROW-1? and 0= IF RES-FALSE EXIT THEN
@@ -1130,7 +1130,7 @@ variable TAGGED-FAM
       s" the row is not one linear type and one non-linear payload"
       E-LINEAR-PAYLOAD CAST-ERROR:RAISE
    THEN
-   tok T-RES PAY CT-PKG$ {: pa:ptr pu:n :}
+   tok T-RES PAY CT-PKG$ {: pa:^ pu:n :}
    pu 0= IF
       s" the linear type is declared at top level, so no package mints it"
       E-LINEAR-OWNER CAST-ERROR:RAISE
@@ -1201,15 +1201,15 @@ variable TAGGED-FAM
 
 \ A recorded name's refusals (closed constructor package, duplicate tail) come
 \ before the record step's later-wins first write.
-: CHECK-REC-ADMIT ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CHECK-REC-ADMIT ( ^u8 n -- )
+   {: a:^ u:n :}
    a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
 \ Every refusal a certified definition can meet at publication, asked before its
 \ first write to the store: a write left behind is read by a later verdict.
-: PUBLISH-REFUSALS ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PUBLISH-REFUSALS ( ^u8 n -- )
+   {: a:^ u:n :}
    a u CHECK-REC-ADMIT
    CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
 
@@ -1402,43 +1402,43 @@ $D8 constant RBF-REC
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
 
-: RBF.UEND ( ptr a -- ptr a ) RBF.UEND-OFF + ;
-: RBF.NEND ( ptr a -- ptr a ) RBF.NEND-OFF + ;
-: RBF.SYMN ( ptr a -- ptr a ) RBF.SYMN-OFF + ;
-: RBF.SYMU ( ptr a -- ptr a ) RBF.SYMU-OFF + ;
-: RBF.CTN ( ptr a -- ptr a ) RBF.CTN-OFF + ;
-: RBF.CTU ( ptr a -- ptr a ) RBF.CTU-OFF + ;
-: RBF.LIN ( ptr a -- ptr a ) RBF.LIN-OFF + ;
-: RBF.VRECN ( ptr a -- ptr a ) RBF.VRECN-OFF + ;
-: RBF.VRECF ( ptr a -- ptr a ) RBF.VRECF-OFF + ;
-: RBF.VRECND ( ptr a -- ptr a ) RBF.VRECND-OFF + ;
-: RBF.VNARGN ( ptr a -- ptr a ) RBF.VNARGN-OFF + ;
-: RBF.VRECU ( ptr a -- ptr a ) RBF.VRECU-OFF + ;
-: RBF.CAND ( ptr a -- ptr a ) RBF.CAND-OFF + ;
-: RBF.VSIG ( ptr a -- ptr a ) RBF.VSIG-OFF + ;
-: RBF.PKGMODE ( ptr a -- ptr a ) RBF.PKGMODE-OFF + ;
-: RBF.PKGU ( ptr a -- ptr a ) RBF.PKGU-OFF + ;
-: RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
-: RBF.PIMMN ( ptr a -- ptr a ) RBF.PIMMN-OFF + ;
-: RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
-: RBF.OVNDICT ( ptr a -- ptr a ) RBF.OVNDICT-OFF + ;
-: RBF.OVLOG ( ptr a -- ptr a ) RBF.OVLOG-OFF + ;
-: RBF.OVCP ( ptr a -- ptr a ) RBF.OVCP-OFF + ;
-: RBF.OVWIDN ( ptr a -- ptr a ) RBF.OVWIDN-OFF + ;
-: RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
-: RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
-: RBF.VPRSN ( ptr a -- ptr a ) RBF.VPRSN-OFF + ;
-: RBF.NDICT ( ptr a -- ptr a ) RBF.NDICT-OFF + ;
+: RBF.UEND ( ^a -- ^a ) RBF.UEND-OFF + ;
+: RBF.NEND ( ^a -- ^a ) RBF.NEND-OFF + ;
+: RBF.SYMN ( ^a -- ^a ) RBF.SYMN-OFF + ;
+: RBF.SYMU ( ^a -- ^a ) RBF.SYMU-OFF + ;
+: RBF.CTN ( ^a -- ^a ) RBF.CTN-OFF + ;
+: RBF.CTU ( ^a -- ^a ) RBF.CTU-OFF + ;
+: RBF.LIN ( ^a -- ^a ) RBF.LIN-OFF + ;
+: RBF.VRECN ( ^a -- ^a ) RBF.VRECN-OFF + ;
+: RBF.VRECF ( ^a -- ^a ) RBF.VRECF-OFF + ;
+: RBF.VRECND ( ^a -- ^a ) RBF.VRECND-OFF + ;
+: RBF.VNARGN ( ^a -- ^a ) RBF.VNARGN-OFF + ;
+: RBF.VRECU ( ^a -- ^a ) RBF.VRECU-OFF + ;
+: RBF.CAND ( ^a -- ^a ) RBF.CAND-OFF + ;
+: RBF.VSIG ( ^a -- ^a ) RBF.VSIG-OFF + ;
+: RBF.PKGMODE ( ^a -- ^a ) RBF.PKGMODE-OFF + ;
+: RBF.PKGU ( ^a -- ^a ) RBF.PKGU-OFF + ;
+: RBF.DFEREND ( ^a -- ^a ) RBF.DFEREND-OFF + ;
+: RBF.PIMMN ( ^a -- ^a ) RBF.PIMMN-OFF + ;
+: RBF.COORD ( ^a -- ^a ) RBF.COORD-OFF + ;
+: RBF.OVNDICT ( ^a -- ^a ) RBF.OVNDICT-OFF + ;
+: RBF.OVLOG ( ^a -- ^a ) RBF.OVLOG-OFF + ;
+: RBF.OVCP ( ^a -- ^a ) RBF.OVCP-OFF + ;
+: RBF.OVWIDN ( ^a -- ^a ) RBF.OVWIDN-OFF + ;
+: RBF.FLOOR ( ^a -- ^a ) RBF.FLOOR-OFF + ;
+: RBF.VDEFN ( ^a -- ^a ) RBF.VDEFN-OFF + ;
+: RBF.VPRSN ( ^a -- ^a ) RBF.VPRSN-OFF + ;
+: RBF.NDICT ( ^a -- ^a ) RBF.NDICT-OFF + ;
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
-: RBF-BASE ( -- ptr n ) RBF-A-P @ ;
+: RBF-BASE ( -- ^n ) RBF-A-P @ ;
 PACKAGE-PATH:CAP CK-USE-SNAP-BYTES + constant RBF-NAME-REC
 create RBF-NAME-BOOT   RBF-CAP-INIT RBF-NAME-REC * allot
 PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
-: RBF-NAME-BASE ( -- ptr u8 ) RBF-NAME-P @ ;
+: RBF-NAME-BASE ( -- ^u8 ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 
 : RBF-GROW ( -- )
@@ -1449,22 +1449,22 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-ENSURE ( -- )
    RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
    RBF-GROW ;
-: RBF-CUR ( -- ptr n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
-: RBF-NAME-CUR ( -- ptr u8 )  RBF-DEPTH @ RBF-NAME-REC * RBF-NAME-BASE + ;
+: RBF-CUR ( -- ^n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
+: RBF-NAME-CUR ( -- ^u8 )  RBF-DEPTH @ RBF-NAME-REC * RBF-NAME-BASE + ;
 
 \ An import savepoint: the row count, then each row's length and name bytes.
-: CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
+: CK-USE-SAVE ( ^u8 n -- ) {: dst:^ u:n :}
    u dst cell-view !
    u 0 ?DO
-      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:^ :}
       CK-USE-LENS i cells + @ {: len:n :}
       len row cell-view !
       CK-USE-NAMES i PACKAGE-PATH:CAP * + row CELL + len ARENA-COPY
    LOOP ;
 
-: CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
+: CK-USE-RESTORE ( ^u8 -- ) {: src:^ :}
    src cell-view @ 0 ?DO
-      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:^ :}
       row cell-view @ {: len:n :}
       len CK-USE-LENS i cells + !
       row CELL + CK-USE-NAMES i PACKAGE-PATH:CAP * + len ARENA-COPY
@@ -1472,15 +1472,15 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 
 \ The byte half of each scope owns the package name and reachable import rows.
 \ Nested neutral scopes may overwrite any prefix, not just append imports.
-: RBF-NAME-SAVE ( ptr u8 -- ) {: dst:ptr :}
+: RBF-NAME-SAVE ( ^u8 -- ) {: dst:^ :}
    CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ ARENA-COPY
    dst PACKAGE-PATH:CAP + CK-USE-SCAN-N CK-USE-SAVE ;
 
-: RBF-NAME-RESTORE ( ptr u8 n -- ) {: src:ptr u:n :}
+: RBF-NAME-RESTORE ( ^u8 n -- ) {: src:^ u:n :}
    src CHECKER-PACKAGE-NAME u ARENA-COPY
    src PACKAGE-PATH:CAP + CK-USE-RESTORE ;
 
-: RBF-SAVE-INTO ( ptr n -- ) {: r:ptr :}
+: RBF-SAVE-INTO ( ^n -- ) {: r:^ :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
    SYM-N @ r RBF.SYMN !
@@ -1513,7 +1513,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-FACTS-FORGET ( n -- )
    ndict@ swap ?do 0 i record-facts! loop ;
 
-: RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
+: RBF-RESTORE-FROM ( ^n -- ) {: r:^ :}
    r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
    CHECKER-OVERLAY:ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
@@ -1558,10 +1558,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 
 package CHECKER-DECL-FRAME
 
-: FRAME ( n -- ptr n )
+: FRAME ( n -- ^n )
    RBF-REC * RBF-BASE + ;
 
-: TOP ( -- ptr n )
+: TOP ( -- ^n )
    RBF-DEPTH @ 1 - FRAME ;
 
 : ORDINARY? ( n -- bool )
@@ -1597,7 +1597,7 @@ package CHECKER-DECL-FRAME
 
 : START ( n -- ) {: depth:n :}
    RBF-PUSH
-   TOP {: r:ptr :}
+   TOP {: r:^ :}
    depth r RBF.COORD ! ;
 
 : PREPARE ( n -- bool ) {: depth:n :}
@@ -1668,12 +1668,12 @@ package CHECKER-DECL-FRAME
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
 
-: CHECK-WINDOWED ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CHECK-WINDOWED ( ^u8 n -- n )
+   {: a:^ u:n :}
    WRITE-WINDOW-CK
    a u CHECK ;
 
-: CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHECK-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
@@ -1697,7 +1697,7 @@ package CHECKER-DECL-FRAME
 
 package CHECKER-PREFIX
 
-: SCAN ( ptr u8 n -- bool )
+: SCAN ( ^u8 n -- bool )
    0 CHECKER-PREFIX-MISS !
    CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
    CHECK-RESET
@@ -1709,7 +1709,7 @@ public
 \ Ask only whether the newly captured part binds. Open control, quotation and
 \ local scopes remain prefixes; the declared result and publication belong to
 \ the caller's eventual `;`. No immediate word runs during this read.
-: BIND? ( ptr u8 n n -- n bool ) {: a:ptr u:n cut:n :}
+: BIND? ( ^u8 n n -- n bool ) {: a:^ u:n cut:n :}
    WRITE-WINDOW-CK
    cut CHECKER-PREFIX-CUT !
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
@@ -1739,7 +1739,7 @@ public
 
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic
 \ asks here, so the render counter stays inside this file.
-: CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHECK-QUIET-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    1 REJECTION:QUIET +!
    0 [: drop a u CHECK-CANDIDATE! ;] catch {: v rc:n :}
@@ -1766,7 +1766,7 @@ variable DEF-STOPPED
 
 \ Like CHECK, but verifies the body against a leading ( in -- out ) declared
 \ sig and rejects on mismatch.
-: CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHECK! ( ^u8 n -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    0 UWIN-VALID !
    CHECKER-REPORT-RESET
@@ -1802,7 +1802,7 @@ variable DEF-STOPPED
 \ its record grants no authority. A scan that throws abandons the definition,
 \ so it clears the latch: a restored arm would be stepped by the next body
 \ check into the record of whatever is defined next.
-: CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHECK-UNJUDGED! ( ^u8 n -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
@@ -1831,8 +1831,8 @@ public
 
 \ Keep this target-forcing entry distinct from the source checker CHECK! that
 \ RUN calls above. Its published name must not shadow that call on replay.
-: CHECK-TARGET! ( ptr u8 n ptr u8 n -- n )
-   {: ba:ptr bu:n ta:ptr tu:n :}
+: CHECK-TARGET! ( ^u8 n ^u8 n -- n )
+   {: ba:^ bu:n ta:^ tu:n :}
    WRITE-WINDOW-CK
    ba BODY-A!  bu BODY-U !  ta TARGET-A!  tu TARGET-U !
    -1 ACTIVE !
@@ -1871,7 +1871,7 @@ CHECKER-REG:}SCRATCH
 package CHECKER-IDENTITY
 \ A row that did not parse is refused before a gate walks it; family tails read
 \ the engine's open namespace.
-: PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+: PARSE ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    sa su BYTE-SPAN? 0= IF
       s" the signature's length describes no memory" E-CAST-ARITY CAST-ERROR:RAISE
    THEN
@@ -1891,7 +1891,7 @@ package CHECKER-IDENTITY
 
 \ An unsupplied output variable, a view pack's shape CAST sends elsewhere, is a
 \ bad row here.
-: ROWS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+: ROWS ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REFUSE-SIGNATURE THEN
    SGHASR @ 0 <> IF
       s" the signature declares a return-stack effect" E-CAST-ARITY CAST-ERROR:RAISE
@@ -1925,7 +1925,7 @@ TRUSTED: MARK-REP ( n -- ) rep-mark ;
 public
 \ Refuse first, register second: a refusal throws before the engine counts the
 \ record, so it leaves no name.
-: CAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+: CAST ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    na nu sa su PARSE
    CAST-SCOPED? IF
       VIEW-CAST-CERTIFY
@@ -1950,7 +1950,7 @@ public
 
 \ A `linear:` record takes no DNAME-REP: minting or erasing a token changes
 \ its owner, never a scalar's representation.
-: LINEAR ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+: LINEAR ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    na nu sa su PARSE
    na nu sa su ROWS
    LINEAR-CERTIFY
@@ -1961,9 +1961,9 @@ public
    sa su na nu CHECKER-USIG-CERT-ADD
    CHECKER-REC-SYM @ CK-CLOSE! ;
 ;package
-: CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- )
+: CHECKER-DEFCAST ( ^u8 n ^u8 n -- )
    s" cast:" [: CHECKER-IDENTITY:CAST ;] CAST-ERROR:DECLARE ;
-: CHECKER-LINEAR ( ptr u8 n ptr u8 n -- )
+: CHECKER-LINEAR ( ^u8 n ^u8 n -- )
    s" linear:" [: CHECKER-IDENTITY:LINEAR ;] CAST-ERROR:DECLARE ;
 package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
@@ -1972,7 +1972,7 @@ package CHECKER-REG
 
 \ A candidate scope latches nothing: its records are truncated when it ends, so
 \ a stored offset would name a record that no longer exists.
-: DOES-EFF-LATCH! ( ptr u8 n -- ) {: sa:ptr su:n :}
+: DOES-EFF-LATCH! ( ^u8 n -- ) {: sa:^ su:n :}
    DOES-EFF-CLEAR
    DVERD @ VERDICT-CHECKED <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
@@ -1982,7 +1982,7 @@ package CHECKER-REG
    rec DOES-EFF-ARM ;
 
 \ A created word declared `( in -- out )` needs a DOES> body typing as
-\ `( in ptr a -- out )`, since the CREATE stub pushes the data-field address
+\ `( in ^a -- out )`, since the CREATE stub pushes the data-field address
 \ before the body.
 : CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
@@ -2057,7 +2057,7 @@ package CHECKER-REG
 \ authority, as tier 0 checks it. With authority, a clause would be refused a
 \ call its parent's body may make (E-CAP-TRUSTED on a colon word defined with
 \ checking off).
-: CHECK-DOES-UNJUDGED! ( ptr u8 n ptr u8 n -- n ) {: ba:ptr bu:n sa:ptr su:n :}
+: CHECK-DOES-UNJUDGED! ( ^u8 n ^u8 n -- n ) {: ba:^ bu:n sa:^ su:n :}
    -1 BWIN-UNJUDGED !
    0 [: drop ba bu sa su CHECK-DOES-RUN ;]
    CHECKER-EFFECT-AUTHORITY:SCAN {: v rc:n :}
@@ -2069,11 +2069,11 @@ package CHECKER-REG
 \ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
 \ renders nothing. An uncheckable clause is rendered here too: the pre-pass
 \ renders nothing of its own for a clause.
-: DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
+: DOES-NAME! ( ^u8 n -- ) {: na:^ nu:n :}
    na nu TOKFOLD drop
    TKF nu CLAUSE-NAME NMU !  NMA ! ;
 
-: DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
+: DOES-REPORT ( n ^u8 n -- n ) {: v:n na:^ nu:n :}
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
    v DVERD !
@@ -2100,8 +2100,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 REJECTION:TALLY +!
    0 ;
 
-: CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
+: CHECKER-SOURCE-DOES! ( ^u8 n ^u8 n ^u8 n -- n )
+   {: ba:^ bu:n sa:^ su:n na:^ nu:n :}
    WRITE-WINDOW-CK
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
@@ -2121,14 +2121,14 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
    v na nu DOES-REPORT ;
 
-: TOP-ROW? ( n ptr u8 n -- bool )
-   {: sym:n a:ptr u:n :}
+: TOP-ROW? ( n ^u8 n -- bool )
+   {: sym:n a:^ u:n :}
    sym CHECKER-FIND-USIG-SYM IF RES-TRUE EXIT THEN
    sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
    sym a u TOK-IDENTITY 0 <> ;
 
-: TOP-REFUSE ( ptr u8 n n -- n )
-   {: a:ptr u:n sel:n :}
+: TOP-REFUSE ( ^u8 n n -- n )
+   {: a:^ u:n sel:n :}
    a USH-TOK-A !  u USH-TOK-U !
    sel SHADOW-DIAG-XT
    MULTI-ERR? IF 1 REJECTION:TALLY +! 0 EXIT THEN
@@ -2140,8 +2140,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ effect names a type that may arrive, or resolves nowhere but a rendering
 \ statement in scope may define it, the run's to judge; and 0 when the load
 \ refuses it.
-: TOP-ANSWER ( ptr u8 n bool -- n )
-   {: a:ptr u:n runs:bool :}
+: TOP-ANSWER ( ^u8 n bool -- n )
+   {: a:^ u:n runs:bool :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
@@ -2160,8 +2160,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
 
-: CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
-   {: a:ptr u:n runs:bool :}
+: CHECKER-VERIFY-TOP ( ^u8 n bool -- n )
+   {: a:^ u:n runs:bool :}
    WRITE-WINDOW-CK
    0 DEF-REFUSAL !
    0 [: drop a u runs TOP-ANSWER ;] catch {: v rc:n :}
@@ -2173,7 +2173,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : CHECKER-NATIVE-DOES-BEGIN ( -- )
    RBF-PUSH  1 DOES-SPLIT ! ;
 
-: CHECKER-NATIVE-DOES-PUBLISH ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHECKER-NATIVE-DOES-PUBLISH ( ^u8 n -- ) {: a:^ u:n :}
    DOESPEND @ 1 <> IF DOES-EFF-CLEAR EXIT THEN
    DOESEFF @ {: creates:n :}
    DOES-EFF-CLEAR
@@ -2186,8 +2186,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    NORET-ADD-CREATES
    sym VIS-SYM-REC sym RECORD-CONTROL-AT! ;
 
-: CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
-   {: a:ptr u:n committed:bool :}
+: CHECKER-NATIVE-DOES-FINISH ( ^u8 n bool -- )
+   {: a:^ u:n committed:bool :}
    0 DOES-SPLIT !
    committed 0= IF
       DOES-EFF-CLEAR WRAP-CLEAR RBF-POP EXIT
@@ -2199,15 +2199,15 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 2 constant GENR-BADSIG                    \ the effect does not parse or no record
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
 
-: GENERATES-REFUSE ( ptr u8 n n -- )
+: GENERATES-REFUSE ( ^u8 n n -- )
    GENR-DIAG
    MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-GENERATES-ROW throw ;
 
 \ `already` is what the caller knows of D beyond the checker. Answers D's symbol
 \ and the created word's record offset+1, 0 for a refused row.
-: CHECKER-GENERATES ( ptr u8 n ptr u8 n bool -- n n )
-   {: na:ptr nu:n sa:ptr su:n already:bool :}
+: CHECKER-GENERATES ( ^u8 n ^u8 n bool -- n n )
+   {: na:^ nu:n sa:^ su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
    {: sym:n :}
    sym 0= IF na nu GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
@@ -2222,8 +2222,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ A signature is read as a definition head reads one. PARSE-SIG-RAW splits the
 \ effect at spaces only, so a line feed inside it fuses the tokens around it.
-: CHECKER-SIG-SPAN ( ptr u8 n -- n n )
-   {: a:ptr u:n :}
+: CHECKER-SIG-SPAN ( ^u8 n -- n n )
+   {: a:^ u:n :}
    0 BEGIN dup u < IF a over + c@ 33 < ELSE RES-FALSE THEN WHILE 1 + REPEAT
    {: open:n :}
    open u = IF u 0 EXIT THEN
@@ -2237,8 +2237,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ at the same bound.
 $100 constant GENR-SIG-CAP
 
-: GENR-SIG-READ ( ptr u8 -- ptr u8 n )
-   {: at:ptr :}
+: GENR-SIG-READ ( ^u8 -- ^u8 n )
+   {: at:^ :}
    data-base INE-CELL + @  at NULL-PTR - -
    {: left:n :}
    at left CHECKER-SIG-SPAN
@@ -2256,26 +2256,26 @@ $100 constant GENR-SIG-CAP
 \ `generates:` from checked bodies.
 TRUSTED: generates: ( -- )
    parse-name
-   {: na:ptr nu:n :}
+   {: na:^ nu:n :}
    nu 0= IF s" checker: generates: needs a definer name" 76 die THEN
    na nu + GENR-SIG-READ
-   {: sa:ptr su:n :}
+   {: sa:^ su:n :}
    na nu sa su RES-FALSE CHECKER-GENERATES
    {: sym:n rec:n :}
    rec 0= IF EXIT THEN
-   BIND-REC @ {: selected:ptr :}
+   BIND-REC @ {: selected:^ :}
    sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec
    sym NORET-NONZERO@ NORET-ADD-CREATES
    selected sym RECORD-CONTROL-AT! ;
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
-: PARSES-REFUSE ( ptr u8 n n -- )
+: PARSES-REFUSE ( ^u8 n n -- )
    PRS-DIAG
    MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-PARSES-ROW throw ;
 
-: ROW-UNBOUND ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: ROW-UNBOUND ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u CHECKER-RESOLVE:WALK nip {: why:n :}
    why E-USING-SHADOW-GLOBAL = IF PARSES-SHADOW EXIT THEN
    why E-USING-AMBIGUOUS = IF PARSES-AMBIGUOUS EXIT THEN
@@ -2284,8 +2284,8 @@ TRUSTED: generates: ( -- )
    a u UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
 
-: PARSES-UNBOUND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PARSES-UNBOUND ( ^u8 n -- )
+   {: a:^ u:n :}
    a u ROW-UNBOUND {: kind:n :}
    kind 0 >= IF a u kind PARSES-REFUSE THEN ;
 
@@ -2294,8 +2294,8 @@ TRUSTED: generates: ( -- )
 \ apart. A cold selected dictionary record can likewise have control but no
 \ checker symbol to key a row: the row stands and bounds nothing until a checked
 \ use materializes that binding.
-: PARSES-TARGET ( ptr u8 n -- n n )
-   {: a:ptr u:n :}
+: PARSES-TARGET ( ^u8 n -- n n )
+   {: a:^ u:n :}
    a u TOP-BINDING {: sym:n eff1:n ctl:n :}
    sym 0= IF
       ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
@@ -2312,8 +2312,8 @@ TRUSTED: generates: ( -- )
 \ The checks every row passes, for the engine words and the source pre-verifier,
 \ each of which has read the whole row first, so a row refused under
 \ --all-errors leaves none of its tokens to what follows.
-: CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
-   {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
+: CHECKER-PARSES-ROW ( ^u8 n ^u8 n ^u8 n bool -- n n n )
+   {: ka:^ ku:n ta:^ tu:n ca:^ cu:n bad:bool :}
    tu 0= IF ka ku PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
    ca cu num-parse {: v:n flt:bool ok:bool :}
    ok 0=  flt or  v 0 <  or IF ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 EXIT THEN
@@ -2323,8 +2323,8 @@ TRUSTED: generates: ( -- )
 
 \ What a list token is to its reader: 0 a terminator, 1 the closing `)`, 2 the
 \ end of the input, where no `)` came.
-: PARSES-ITEM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: PARSES-ITEM ( ^u8 n -- n )
+   {: a:^ u:n :}
    u 0= IF 2 EXIT THEN
    a u s" )" CORE-STR= IF 1 EXIT THEN
    0 ;
@@ -2335,14 +2335,14 @@ TRUSTED: generates: ( -- )
    {: terms:n end:n :}
    end 2 =  terms 0=  or ;
 
-: NAMES-REFUSE ( ptr u8 n n -- )
+: NAMES-REFUSE ( ^u8 n n -- )
    NMS-DIAG
    MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-NAMES-ROW throw ;
 
 \ A record quiet TRUST left unresolved holds no row.
-: STRING-IN? ( ptr u8 -- bool )
-   {: rec:ptr :}
+: STRING-IN? ( ^u8 -- bool )
+   {: rec:^ :}
    rec ER.ACTIVE @ EFF-UNRESOLVED = IF RES-FALSE EXIT THEN
    rec E-DIN@ {: din:n :}
    0 din EFF-ROW-CON CC-N <> IF RES-FALSE EXIT THEN
@@ -2360,14 +2360,14 @@ TRUSTED: generates: ( -- )
    off E-PTR STRING-IN? ;
 
 \ A target the top-level find binds is a use. Its symbol takes the mark when its
-\ declared input row ends in the string pair ( ptr u8 n ); any other word, one
+\ declared input row ends in the string pair ( ^u8 n ); any other word, one
 \ with no inputs among them, refuses the row, so a row on the wrong word cannot
 \ make every string before it a use. A cold selected record with no checker
 \ symbol to key the mark leaves the row standing and binding nothing.
-: CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n ta:ptr tu:n :}
+: CHECKER-NAMES-ROW ( ^u8 n ^u8 n -- )
+   {: ka:^ ku:n ta:^ tu:n :}
    tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
-   ta tu TOP-BINDING-REC {: sym:n eff1:n ctl:n selected:ptr :}
+   ta tu TOP-BINDING-REC {: sym:n eff1:n ctl:n selected:^ :}
    sym 0= IF
       ctl 0 <> IF EXIT THEN
       ta tu ROW-UNBOUND {: kind:n :}
@@ -2382,8 +2382,8 @@ TRUSTED: generates: ( -- )
 \ PKG:TAIL is PKG's public TAIL, a bare name a global and never a package's own
 \ word, and a name with a second colon none, though the checker's split reads
 \ one whose first colon is at an edge as bare.
-: NAMED-SYM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: NAMED-SYM ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    a u CHECKER-COLON-SCAN drop 1 > IF 0 EXIT THEN
@@ -2396,15 +2396,15 @@ TRUSTED: generates: ( -- )
 : NAMED-OPERAND-USE ( -- )
    SPAY-ARMED @ 0= IF EXIT THEN
    SPAY-BYTES nip SPAY-U @ <> IF EXIT THEN
-   SPAY-B @ TADDR SPAY-U @ {: a:ptr u:n :}
+   SPAY-B @ TADDR SPAY-U @ {: a:^ u:n :}
    a u NAMED-SYM a u NAV-USE ;
 : NAMED-OPERAND-INSTALL ( -- ) [: NAMED-OPERAND-USE ;] is NAMED-OPERAND-XT ;
 NAMED-OPERAND-INSTALL
 
 \ A top-level literal's body the source pre-verifier found before a call of a
 \ marked word is a use of the word it names, published at once.
-: CHECKER-NAMED-USE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CHECKER-NAMED-USE ( ^u8 n -- )
+   {: a:^ u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
 
 \ ---- the interpret row: saved between top-level events -----------------------
@@ -2418,10 +2418,10 @@ variable TOP-BASE   variable TOP-ENTRY   variable TOP-LEVEL   variable TOP-LIVE
 NULL-PTR TOP-SEG-P !  0 TOP-SEG-CAP !  0 TOP-SEG-N !  0 TOP-BASE !  0 TOP-LIVE !
 0 TOP-ENTRY !  0 TOP-LEVEL !
 
-: TS-AT ( n n -- ptr n ) {: ix:n fld:n :} TOP-SEG-P ix TS-ROW NAV-CELL fld cells + ;
+: TS-AT ( n n -- ^n ) {: ix:n fld:n :} TOP-SEG-P ix TS-ROW NAV-CELL fld cells + ;
 package CHECKER-REG                       \ REG-PTR-CELLS is CHECKER-REG's private cast
 public
-: TS-PTR ( n n -- ptr ptr u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
+: TS-PTR ( n n -- ^^u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
 ;package
 
 : TOP-SEG-UNMAP ( n -- ) {: ix:n :}
@@ -2493,7 +2493,7 @@ public
 \ state (CHECK-CLEAR) as a body check does: every result a check leaves is
 \ consumed inside the token that ran it, and no later token reads one.
 : TOP-BEGIN ( -- )
-   TOK-SPELL-A @ TOK-SPELL-U @ {: a:ptr u:n :}
+   TOK-SPELL-A @ TOK-SPELL-U @ {: a:^ u:n :}
    CHECK-CLEAR
    BROW @ SGDBASE !
    u TOKBUF-ENSURE  a TBASE !  u TBLEN !  0 TOK0 !  u TI !  0 TSTART !
@@ -2614,9 +2614,9 @@ FILE-POS-CLEAR
 \ The file line, column and byte of t, which lies in the bytes the loader owns,
 \ counted as REJECTION:POSITION counts from their first byte. It counts on from
 \ its last answer when t is at or past it, so a file costs one pass.
-: FILE-POS ( ptr u8 -- n n n )
-   {: t:ptr :}
-   SRC-OWNED @ {: b:ptr :}
+: FILE-POS ( ^u8 -- n n n )
+   {: t:^ :}
+   SRC-OWNED @ {: b:^ :}
    t b - {: at:n :}
    at FPOS-OFF @ < IF FILE-POS-CLEAR THEN
    BEGIN FPOS-OFF @ at < WHILE
@@ -2646,13 +2646,13 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 \ A name not between the file's first owned byte and the cursor is not counted
 \ to, since the count would read outside the file: it is placed at the cursor.
 : NAME-LINE ( -- n )
-   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
+   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:^ nm:^ p:^ :}
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if o nm ERROR-TEXT:LINE else SRCLOC:LINE then ;
 
 public
-: REFUSE-DUPLICATE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: REFUSE-DUPLICATE ( ^u8 n -- )
+   {: a:^ u:n :}
    s" E-DUPLICATE-DEFINITION" REJECTION:PATH$
    SRCLOC:FILE-BUFFER? if NAME-LINE else 0 then
    ERROR-TEXT:PREFIX
@@ -2741,13 +2741,13 @@ CHECKER-REG:}SCRATCH
    TOP-RROW-OFF @ TOP-READ-P @ BYTE-VIEW E-INST-FROM {: rrow:n :}
    rrow rrow ROW-TERMS RBROW @ TOP-ROW-REBASE RCUR ! ;
 
-: TOP-READ-AT ( n -- ptr u8 ) TOP-READ-P @ BYTE-VIEW + ;
+: TOP-READ-AT ( n -- ^u8 ) TOP-READ-P @ BYTE-VIEW + ;
 
 \ The cells a stored entry fills when a load reads it back: its recorded width,
 \ except a cell lost to a live scope, which comes back as one unknown cell
 \ (E-COPY*'s S-PUSH arm).
 : TOP-PUSH-CELLS ( n -- n ) {: off:n :}
-   off TOP-READ-AT EN.A @ TOP-READ-AT {: ty:ptr :}
+   off TOP-READ-AT EN.A @ TOP-READ-AT {: ty:^ :}
    ty EN.TAG @ EN-STALE =  ty EN.A @ 0=  and IF 1 EXIT THEN
    off TOP-READ-AT EN.C @ 1 - ;
 
@@ -2769,7 +2769,7 @@ CHECKER-REG:}SCRATCH
    DCUR @ ROW-TERMS 0 <> IF DCUR @ E-COPY ELSE 0 THEN {: off:n :}
    RCUR @ ROW-TERMS 0 <> IF RCUR @ E-COPY ELSE 0 THEN TOP-RROW-OFF !
    0 TOP-COPYING !
-   TOP-READ-P @ TOP-WRITE-P @ {: old:ptr next:ptr :}
+   TOP-READ-P @ TOP-WRITE-P @ {: old:^ next:^ :}
    TOP-READ-CAP @ TOP-WRITE-CAP @ {: oldcap:n nextcap:n :}
    next TOP-READ-P !  nextcap TOP-READ-CAP !
    old TOP-WRITE-P !  oldcap TOP-WRITE-CAP !
@@ -2782,12 +2782,12 @@ CHECKER-REG:}SCRATCH
    {: live:n :}
    live CHECKER-TOP-LOAD  TOP-RUN ;
 
-: CHECKER-TOP-WORD ( ptr u8 n n -- )
-   {: a:ptr u:n live:n :}
+: CHECKER-TOP-WORD ( ^u8 n n -- )
+   {: a:^ u:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-LOAD ;
 
-: CHECKER-TOP-TICK ( ptr u8 n n -- )
-   {: a:ptr u:n live:n :}
+: CHECKER-TOP-TICK ( ^u8 n n -- )
+   {: a:^ u:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
 
 \ A keyword takes the top cell with no word event, so the row is not saved:
@@ -2868,9 +2868,9 @@ variable TOP-DROP-N
       TOP-ROW-OFF @ TOP-READ-AT EN.B @ TOP-ROW-OFF !
    REPEAT ;
 
-\ A literal of class cls: STR pushes ptr u8 and n, CSTR ptr u8, NUM n or r,
+\ A literal of class cls: STR pushes ^u8 and n, CSTR ^u8, NUM n or r,
 \ CHAR n; an integer NUM's entry keeps its value.
-: TOP-READ-LIT ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
+: TOP-READ-LIT ( ^u8 n n -- ) {: a:^ u:n cls:n :}
    cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH
       a u INTEGER-LITERAL-ADMITTED? IF
@@ -2881,7 +2881,7 @@ variable TOP-DROP-N
    cls TOP-EV-STR = cls TOP-EV-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
    cls TOP-EV-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
 
-: TOP-LIT-STEP ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
+: TOP-LIT-STEP ( ^u8 n n -- ) {: a:^ u:n cls:n :}
    cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF PE-R ELSE PE-N THEN TOP-PUSH
       a u INTEGER-LITERAL-ADMITTED? IF
@@ -2895,7 +2895,7 @@ variable TOP-DROP-N
 \ exactly the live cells takes the literal in place: with no saved row, or one
 \ the fit leaves short (it was short, or a wide entry left), the cells below it
 \ are unknown, and only a load, step and save stores them as padding.
-: CHECKER-TOP-PUSH ( ptr u8 n n n -- ) {: a:ptr u:n cls:n live:n :}
+: CHECKER-TOP-PUSH ( ^u8 n n n -- ) {: a:^ u:n cls:n live:n :}
    live TOP-READ-FIT
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
@@ -2975,14 +2975,14 @@ CHECKER-REG:}SCRATCH
    i 1 +  NS-ROWS-P @ wid cells + ! ;
 
 : NS-NOTE ( n -- ) {: i:n :}
-   i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   i CHECKER-RESOLVE:REC-AT {: ns:^ :}
    ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
    ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
 
 : NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
 
-: NS-UNNAME ( ptr n n -- )
-   {: row:ptr top:n :}
+: NS-UNNAME ( ^n n -- )
+   {: row:^ top:n :}
    row @ top > IF 0 row ! THEN ;
 
 : NS-DROP ( n -- )
@@ -3000,7 +3000,7 @@ CHECKER-REG:}SCRATCH
 
 : NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
    row 0= IF RES-FALSE EXIT THEN
-   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:^ :}
    ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
 
 \ The global wordlists and any wid at or below 0 are no package's: a miss on
@@ -3013,14 +3013,14 @@ CHECKER-REG:}SCRATCH
    wid NS-ROW@ {: row:n :}
    wid row NS-HOLDS? IF row ELSE 0 THEN ;
 
-: REC-SYM ( ptr n -- n ) {: rec:ptr :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
+: REC-SYM ( ^n -- n ) {: rec:^ :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF 0 EXIT THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    wid NS-FIND {: row:n :}
    row 0= IF 0 EXIT THEN
-   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:^ :}
    ns CHECKER-RESOLVE:CK-REC-NAME$
    wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
    name nameu CHECKER-PKG-SYM ;
@@ -3037,8 +3037,8 @@ GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
 variable GUEST-OPEN
 CHECKER-REG:}SCRATCH
 
-: GUEST-CELLS ( n ptr n n bool -- n )
-   {: k:n p:ptr cnt:n save:bool :}
+: GUEST-CELLS ( n ^n n bool -- n )
+   {: k:n p:^ cnt:n save:bool :}
    k cnt + GUEST-CAP > IF s" checker: guest cells full" 76 die THEN
    cnt 0 ?DO
       save IF i cells p + @  k i + cells GUEST-SAVED + !
@@ -3046,10 +3046,10 @@ CHECKER-REG:}SCRATCH
    LOOP
    k cnt + ;
 
-: GUEST-CELL ( n ptr n bool -- n ) {: p:ptr save:bool :} p 1 save GUEST-CELLS ;
+: GUEST-CELL ( n ^n bool -- n ) {: p:^ save:bool :} p 1 save GUEST-CELLS ;
 
-: GUEST-PTRS ( n ptr ptr u8 n bool -- n )
-   {: k:n p:ptr cnt:n save:bool :}
+: GUEST-PTRS ( n ^^u8 n bool -- n )
+   {: k:n p:^ cnt:n save:bool :}
    k cnt + GUEST-PTRS-CAP > IF s" checker: guest pointers full" 76 die THEN
    cnt 0 ?DO
       save IF i cells p + 0 ptr-field @  k i + cells GUEST-SAVED-PTRS + 0 ptr-field !
@@ -3115,8 +3115,8 @@ CHECKER-REG:}SCRATCH
 \ Facts text a u parsed; false when the parse refuses it, names a type no
 \ package declares here, or no record holds it. Tags alone answer no rows
 \ (SIG-TAGS-ONLY).
-: READ-ROWS ( ptr u8 n -- n n n n bool )
-   {: a:ptr u:n :}
+: READ-ROWS ( ^u8 n -- n n n n bool )
+   {: a:^ u:n :}
    SGBAD-CLEAR
    a u PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
    SGBAD @ 0 <>  SIG-UNRES @ 0 <> or IF
@@ -3126,14 +3126,14 @@ CHECKER-REG:}SCRATCH
    a u din dout rin rout SGBAD-UNFIT!
    din dout rin rout SGBAD @ 0= ;
 
-: READ-REFUSE ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n na:ptr nu:n :}
+: READ-REFUSE ( ^u8 n ^u8 n -- )
+   {: a:^ u:n na:^ nu:n :}
    SGBAD @ 0= IF a u SGBAD-SYNTAX! THEN
    a u na nu na nu USIG-ADD-BAD ;
 
 \ The created words' effect, offset+1, under symbol 0; 0 for none.
-: READ-MADE ( ptr u8 n -- n bool )
-   {: ca:ptr cu:n :}
+: READ-MADE ( ^u8 n -- n bool )
+   {: ca:^ cu:n :}
    cu 0= IF 0 RES-TRUE EXIT THEN
    ca cu READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    ok 0=  SIG-TAGS-ONLY @ or IF 0 RES-FALSE EXIT THEN
@@ -3166,18 +3166,18 @@ CHECKER-REG:}SCRATCH
 \ One more primitive row of sym from the text after `overload`: its effect and
 \ PE tags. Answers the text of the row after it; false when the text is
 \ refused or carries a tag only a first row may.
-: READ-OVERLOAD ( ptr u8 n n -- ptr u8 n bool )
-   {: a:ptr u:n sym:n :}
+: READ-OVERLOAD ( ^u8 n n -- ^u8 n bool )
+   {: a:^ u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
-   SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:ptr ru:n :}
+   SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:^ ru:n :}
    ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
       NULL-PTR 0 RES-FALSE EXIT
    THEN
    din dout rin rout hasr sym pe READ-ROW
    ra ru RES-TRUE ;
 
-: READ-OVERLOADS ( ptr u8 n n -- bool )
-   {: a:ptr u:n sym:n :}
+: READ-OVERLOADS ( ^u8 n n -- bool )
+   {: a:^ u:n sym:n :}
    sym PREFIX-SYM? IF RES-TRUE EXIT THEN
    PE-LAST @ {: last:n :}
    a u BEGIN dup 0 <> WHILE
@@ -3210,11 +3210,11 @@ CHECKER-REG:}SCRATCH
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 nz NORET-ADD-CREATES
    ix sym mark READ-LINK ;
 
-: READ-BODY ( ptr u8 n n -- )
-   {: a:ptr u:n ix:n :}
+: READ-BODY ( ^u8 n n -- )
+   {: a:^ u:n ix:n :}
    UEND @ {: mark:n :}
-   ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
+   ix CHECKER-RESOLVE:REC-AT {: rec:^ :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:^ nameu:n :}
    rec REC-SYM {: sym:n :}
    sym 0= IF a u name nameu READ-REFUSE EXIT THEN
    sym SYM-PKG$ SIGSCOPE!
@@ -3222,8 +3222,8 @@ CHECKER-REG:}SCRATCH
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    ok 0= IF a u name nameu READ-REFUSE EXIT THEN
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
-      {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
-   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:ptr ou:n nz:n :}
+      {: ctl:n pimm:n pe:n ca:^ cu:n hasr:bool :}
+   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:^ ou:n nz:n :}
    SIG-TAGS-ONLY @ IF
       pe 0 <>  pimm 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
@@ -3286,7 +3286,7 @@ CHECKER-REG:}SCRATCH
 
 \ Reads rec's facts text, or an image's export's source's, when there is one and no link,
 \ except hb's own record of a prefix symbol in a build: the prefix holds its rows.
-: READ-BOUND ( ptr n -- ) {: rec:ptr :}
+: READ-BOUND ( ^n -- ) {: rec:^ :}
    rec CK-REC-FACTS-SLOT cells + @ {: off:n :}
    off 0= IF EXIT THEN
    rec NULL-PTR - dbase@ - DREC / {: ix:n :}
@@ -3318,8 +3318,8 @@ public
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:
 \ an earlier file's record whose text a later file's `TRUST` row rewrote.
-: READ-FACTS ( ptr u8 n n -- )
-   {: a:ptr u:n ix:n :}
+: READ-FACTS ( ^u8 n n -- )
+   {: a:^ u:n ix:n :}
    u 0= IF EXIT THEN
    a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
 
@@ -3327,18 +3327,18 @@ public
 \ states one: never a user record, which answers alone.
 
 \ A row with no effect: its symbol alone.
-: PRIM-NAME ( ptr u8 n -- ) PE-SYM-OF drop ;
+: PRIM-NAME ( ^u8 n -- ) PE-SYM-OF drop ;
 
 \ Opens a row with an effect; PRIM-ATOM runs each of its atoms.
-: PRIM-OPEN ( ptr u8 n -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
+: PRIM-OPEN ( ^u8 n -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
 
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 
 \ Closes the open row on pkg's private symbol, or the global one for an empty
 \ pkg, with its flags; a symbol the prefix holds, a grammar word's, states
 \ nothing.
-: PRIM-CLOSE ( ptr u8 n bool bool -- )
-   {: pkg:ptr pkgu:n trusted:bool fixed:bool :}
+: PRIM-CLOSE ( ^u8 n bool bool -- )
+   {: pkg:^ pkgu:n trusted:bool fixed:bool :}
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
    pkgu 0= IF  PE-NA@ PE-NU @ PE-SYM-OF
    ELSE  pkg pkgu SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN  THEN {: sym:n :}

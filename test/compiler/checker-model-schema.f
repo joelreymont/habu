@@ -21,7 +21,7 @@ variable STR-N
 \ Every text below is interned once and referred to by handle, so a table row is
 \ a run of cells and the data blocks stay readable as data.
 
-: STR+ ( ptr u8 n -- n ) {: a:ptr u:n :}
+: STR+ ( ^u8 n -- n ) {: a:^ u:n :}
    STR-N @ STR-MAX >= if E-CMP-POOL throw then
    POOL-U @ u + POOL-CAP > if E-CMP-POOL throw then
    a POOL POOL-U @ + u BYTE-COPY
@@ -32,7 +32,7 @@ variable STR-N
 
 public
 
-: STR$ ( n -- ptr u8 n ) {: h:n :}
+: STR$ ( n -- ^u8 n ) {: h:n :}
    h 0 < h STR-N @ >= or if E-CMP-ROW throw then
    POOL h cells SOFF + @ + h cells SLEN + @ ;
 
@@ -44,11 +44,11 @@ create VEC-VERD ROW-MAX cells allot
 
 variable VEC-N
 
-: COL! ( n ptr n n -- ) {: v:n col:ptr i:n :}
+: COL! ( n ^n n -- ) {: v:n col:^ i:n :}
    i ROW-MAX >= if E-CMP-POOL throw then
    v col i cells + ! ;
 
-: COL@ ( ptr n n n -- n ) {: col:ptr i:n cnt:n :}
+: COL@ ( ^n n n -- n ) {: col:^ i:n cnt:n :}
    i 0 < i cnt >= or if E-CMP-ROW throw then
    col i cells + @ ;
 
@@ -62,7 +62,7 @@ public
 1 constant V-UNCK
 2 constant V-REJECT
 
-: VERDICT-NAME$ ( n -- ptr u8 n )
+: VERDICT-NAME$ ( n -- ^u8 n )
    case
       V-CERT of s" VCert" endof
       V-UNCK of s" VUncheckable" endof
@@ -72,8 +72,8 @@ public
 
 private
 
-: VEC-ROW ( ptr u8 n ptr u8 n n -- )
-   {: na:ptr nu:n sa:ptr su:n verd:n :}
+: VEC-ROW ( ^u8 n ^u8 n n -- )
+   {: na:^ nu:n sa:^ su:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su STR+ VEC-SRC VEC-N @ COL!
    verd VEC-VERD VEC-N @ COL!
@@ -104,11 +104,11 @@ private
 : +OPENERS ( n -- ) {: opens:n :}
    opens 0 ?do s"  begin" SB-APPEND loop ;
 
-: OPENERS$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n opens:n :}
+: OPENERS$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n opens:n :}
    SB-RESET a u SB-APPEND opens +OPENERS SB$ ;
 
-: FRAME-CAP-ROW ( ptr u8 n ptr u8 n n n -- )
-   {: na:ptr nu:n sa:ptr su:n opens:n verd:n :}
+: FRAME-CAP-ROW ( ^u8 n ^u8 n n n -- )
+   {: na:^ nu:n sa:^ su:n opens:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su opens OPENERS$ STR+ VEC-SRC VEC-N @ COL!
    verd VEC-VERD VEC-N @ COL!
@@ -135,11 +135,11 @@ private
 2 constant MATCH-FRAMES               \ the form's frame, and one branch's
 FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 
-: MATCH-SRC$ ( ptr u8 n n ptr u8 n -- ptr u8 n ) {: ha:ptr hu:n opens:n ta:ptr tu:n :}
+: MATCH-SRC$ ( ^u8 n n ^u8 n -- ^u8 n ) {: ha:^ hu:n opens:n ta:^ tu:n :}
    SB-RESET ha hu SB-APPEND opens +OPENERS s"  " SB-APPEND ta tu SB-APPEND SB$ ;
 
-: MATCH-DEPTH-ROW ( ptr u8 n ptr u8 n n ptr u8 n n -- )
-   {: na:ptr nu:n sa:ptr su:n opens:n ha:ptr hu:n verd:n :}
+: MATCH-DEPTH-ROW ( ^u8 n ^u8 n n ^u8 n n -- )
+   {: na:^ nu:n sa:^ su:n opens:n ha:^ hu:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su opens ha hu MATCH-SRC$ STR+ VEC-SRC VEC-N @ COL!
    verd VEC-VERD VEC-N @ COL!
@@ -377,7 +377,7 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV65 ( -- ) 0 0 ?do -99 throw loop 0 drop"
       V-CERT VEC-ROW
    s" dead_plus_loop_does_not_consume_an_increment"
-      s" CMV66 ( ptr u8 -- ptr u8 ) >r 3 0 do r> unloop exit +loop"
+      s" CMV66 ( ^u8 -- ^u8 ) >r 3 0 do r> unloop exit +loop"
       V-CERT VEC-ROW ;
 
 : BUILD-LOOP-BACKEDGE-VECTORS ( -- )
@@ -482,8 +482,8 @@ BUILD-VECTORS
 public
 
 : VECTORS ( -- n )      VEC-N @ ;
-: VEC-NAME$ ( n -- ptr u8 n )    VEC-NAME swap VEC-N @ COL@ STR$ ;
-: VEC-SRC$ ( n -- ptr u8 n )     VEC-SRC swap VEC-N @ COL@ STR$ ;
+: VEC-NAME$ ( n -- ^u8 n )    VEC-NAME swap VEC-N @ COL@ STR$ ;
+: VEC-SRC$ ( n -- ^u8 n )     VEC-SRC swap VEC-N @ COL@ STR$ ;
 : VEC-VERD@ ( n -- n )           VEC-VERD swap VEC-N @ COL@ ;
 
 ;package

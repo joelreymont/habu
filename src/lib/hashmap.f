@@ -31,8 +31,8 @@ public
 \ Habu's `*` wraps.
 : HASH64 ( n -- n ) XOR-FOLD FMIX-MUL1 *  XOR-FOLD FMIX-MUL2 *  XOR-FOLD ;
 
-: PROBE ( ptr n ptr n n n -- n )
-   {: keys:ptr used:ptr cap:n key:n :}
+: PROBE ( ^n ^n n n -- n )
+   {: keys:^ used:^ cap:n key:n :}
    cap CAP-OK
    key HASH64 cap 1- and
    cap 0 ?do
@@ -42,8 +42,8 @@ public
    loop
    drop E-HM-FULL throw ;
 
-: CLEAR ( ptr n n -- )
-   {: used:ptr cap:n :}
+: CLEAR ( ^n n -- )
+   {: used:^ cap:n :}
    cap CAP-OK
    cap 0 ?do 0 used i cells + ! loop ;
 

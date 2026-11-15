@@ -195,8 +195,8 @@ T-RESET
 package NUM-TEST
 private
 
-: YES   ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
-: NO    ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: YES   ( ^u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO    ( ^u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 \ Compiles all seven generated constructors: it takes a real numeric-result
 \ apart and rebuilds it arm by arm, the ok arm binding its payload through a

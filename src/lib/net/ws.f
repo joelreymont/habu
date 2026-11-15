@@ -47,8 +47,8 @@ NEWTYPE socket
 \ end has sent its close.
 ENUM message
    VARIANT opened ;VARIANT
-   VARIANT text FIELD chars ptr u8 FIELD count n ;VARIANT
-   VARIANT binary FIELD bytes ptr u8 FIELD len n ;VARIANT
+   VARIANT text FIELD chars ^u8 FIELD count n ;VARIANT
+   VARIANT binary FIELD bytes ^u8 FIELD len n ;VARIANT
    VARIANT closed FIELD status n ;VARIANT
 ;ENUM
 
@@ -233,7 +233,7 @@ DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running 
    n PENDING-RESERVE ;
 
 \ The handshake's scratch, a row to each HTTP worker that may run ACCEPT.
-HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ptr u8 \ Sec-WebSocket-Key as it was sent
+HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ^u8 \ Sec-WebSocket-Key as it was sent
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-U n
 HTTP:MAX-WORKERS NONCE-CAP * SPAN-BUFFER: NONCES
 
@@ -250,7 +250,7 @@ AIO:GROUP WAITERS
 \ fires, 0 while none is outstanding.
 TYPED-VARIABLE TIMER AIO:ticket
 variable TIMER-DUE
-1 TYPED-BUFFER STOPPER ptr n                \ the task STOP waits in
+1 TYPED-BUFFER STOPPER ^n                \ the task STOP waits in
 TYPED-VARIABLE WAKER AIO:waker              \ the wake pipe the task is poked through
 variable PIPED                              \ set while the wake pipe is open; under LOCK
 variable STOPPING                           \ set by STOP; under LOCK
@@ -374,7 +374,7 @@ RUN-IDLE RUN !
    live idx OUT-U ! ;
 
 
-: QUEUE ( n ptr u8 n -- ) {: idx:n a u:n :}
+: QUEUE ( n ^u8 n -- ) {: idx:n a u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx u ROOM
    a u idx OUT @ idx OUT-U @ SPAN:SKIP SPAN:COPY
@@ -388,7 +388,7 @@ RUN-IDLE RUN !
    idx OUT-U +! ;
 
 
-: FRAME-OUT ( n opcode ptr u8 n -- ) {: idx:n op a u:n :}
+: FRAME-OUT ( n opcode ^u8 n -- ) {: idx:n op a u:n :}
    idx op u HEADER-OUT
    idx a u QUEUE ;
 
@@ -429,7 +429,7 @@ RUN-IDLE RUN !
    phase PHASE-CLOSING = op CONTROL? and ;
 
 
-: SHIP ( n n ptr u8 n -- n ) {: h:n wire:n a u:n :}
+: SHIP ( n n ^u8 n -- n ) {: h:n wire:n a u:n :}
    h CURRENT? 0= if 0 exit then
    h >SLOT {: idx:n :}
    idx wire WIRE>OPCODE TAKES? 0= if 0 exit then
@@ -438,7 +438,7 @@ RUN-IDLE RUN !
    1 ;
 
 
-: SEND ( n n ptr u8 n -- ) {: h:n wire:n a u:n :}
+: SEND ( n n ^u8 n -- ) {: h:n wire:n a u:n :}
    u 0 < if E-WS-LENGTH throw then
    LOCK TASK:GET
    h wire a u [: SHIP ;] [: UNLOCK ;] finally {: got:n :}
@@ -894,7 +894,7 @@ RUN-IDLE RUN !
    construct progress through ;
 
 
-: MESSAGE$ ( n -- ptr u8 n ) {: idx:n :}
+: MESSAGE$ ( n -- ^u8 n ) {: idx:n :}
    idx MSG-BUF idx MSG-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -1250,12 +1250,12 @@ ENUM course
    code throw ;
 
 
-: SOLE ( HTTP:request ptr u8 n -- ptr u8 n bool ) {: asked:HTTP:request name nu:n :}
+: SOLE ( HTTP:request ^u8 n -- ^u8 n bool ) {: asked:HTTP:request name nu:n :}
    asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
    asked name nu HTTP:HEADER-OF$ ;
 
 
-: LISTS? ( HTTP:request ptr u8 n ptr u8 n -- bool )
+: LISTS? ( HTTP:request ^u8 n ^u8 n -- bool )
    {: asked:HTTP:request name nu:n token tu:n :}
    asked name nu SOLE {: va vu:n found:bool :}
    found 0= if false exit then
@@ -1320,7 +1320,7 @@ ENUM course
    400 WS-ACCEPTED:refused ;
 
 
-: GUID$ ( -- ptr u8 n )
+: GUID$ ( -- ^u8 n )
    s" 258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ;
 
 
@@ -1376,7 +1376,7 @@ ENUM course
    0 idx MSG-WIRE ! ;
 
 
-: FILL-INPUT ( n ptr u8 n -- n ptr u8 n ) {: idx:n early eu:n :}
+: FILL-INPUT ( n ^u8 n -- n ^u8 n ) {: idx:n early eu:n :}
    RX-CAP eu max NEW-SPAN idx IN !
    early eu idx IN @ SPAN:COPY
    0 idx IN-AT !
@@ -1690,12 +1690,12 @@ public
 \ E-WS-CLOSED; a frame is never refused for its own size. A send on a socket
 \ closing, closed or gone is E-WS-CLOSED, and text that is not UTF-8 is
 \ E-WS-TEXT before anything is queued (section 5.6).
-: SEND-TEXT ( socket ptr u8 n -- ) {: sock a u:n :}
+: SEND-TEXT ( socket ^u8 n -- ) {: sock a u:n :}
    a u UTF8:VALID? 0= if E-WS-TEXT throw then
    sock SOCKET>N WS-OPCODE:text OPCODE>WIRE a u SEND ;
 
 
-: SEND-BINARY ( socket ptr u8 n -- ) {: sock a u:n :}
+: SEND-BINARY ( socket ^u8 n -- ) {: sock a u:n :}
    sock SOCKET>N WS-OPCODE:binary OPCODE>WIRE a u SEND ;
 
 

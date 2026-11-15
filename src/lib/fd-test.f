@@ -42,7 +42,7 @@ variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation read
 variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotation tried
-1 TYPED-BUFFER NO-ENV ptr u8      \ a NULL slot: the exec'd child's empty environment
+1 TYPED-BUFFER NO-ENV ^u8      \ a NULL slot: the exec'd child's empty environment
 
 : OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
    MATCH FD:fill
@@ -51,11 +51,11 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    ;MATCH ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: p:ptr u:n :}
+   $ {: p:^ u:n :}
    u 0 ?do i PATTERN-MOD mod p i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: p:ptr u:n :}
+   $ {: p:^ u:n :}
    u 0 ?do p i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
    true ;
 
@@ -149,7 +149,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 : NONBLOCK-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w NONBLOCK!
-   SRC @ $ {: src:ptr u:n :}
+   SRC @ $ {: src:^ u:n :}
    w src u FD:TRY-WRITE {: k:n :}
    k 0 > TTRUE
    k u < TTRUE
@@ -303,7 +303,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 \ An append descriptor writes the next part at the end RESIZE leaves, once the
 \ part written after the kept one is cut away.
 : CUT-THEN-APPEND ( -- )
-   s" fd-test" FS:MKTEMP {: pa:ptr pu:n made:fd :}
+   s" fd-test" FS:MKTEMP {: pa:^ pu:n made:fd :}
    made FD>N close
    pa pu FS:OPEN-APPEND-FD >FD {: f:fd :}
    f s" part-one" WRITE-FULL
@@ -317,7 +317,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    pa pu FS:REMOVE-FILE ;
 
 : DIR-SYNC ( -- )
-   s" fd-test" FS:MKTEMP-DIR {: pa:ptr pu:n :}
+   s" fd-test" FS:MKTEMP-DIR {: pa:^ pu:n :}
    pa pu FS:OPEN-DIR-READ {: d:n :}
    d >FD SYNC
    d FS:CLOSE-FD 0 T=

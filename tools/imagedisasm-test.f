@@ -30,24 +30,24 @@ variable IMDT-RET-U
 variable IMDT-LDRB-U
 variable IMDT-FORMS-U
 
-: IMDT-COPY! ( ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u dst:ptr lenp:ptr :}
+: IMDT-COPY! ( ^u8 n ^u8 ^n -- )
+   {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: IMDT-ROOT$ ( -- ptr u8 n )
+: IMDT-ROOT$ ( -- ^u8 n )
    IMDT-ROOT IMDT-ROOT-U @ ;
 
-: IMDT-RET$ ( -- ptr u8 n )
+: IMDT-RET$ ( -- ^u8 n )
    IMDT-RET IMDT-RET-U @ ;
 
-: IMDT-LDRB$ ( -- ptr u8 n )
+: IMDT-LDRB$ ( -- ^u8 n )
    IMDT-LDRB IMDT-LDRB-U @ ;
 
-: IMDT-FORMS$ ( -- ptr u8 n )
+: IMDT-FORMS$ ( -- ^u8 n )
    IMDT-FORMS IMDT-FORMS-U @ ;
 
-: IMDT-ARG+ ( ptr u8 n -- )
+: IMDT-ARG+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
 : IMDT-WRITE-RET ( -- )
@@ -109,8 +109,8 @@ variable IMDT-FORMS-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" --" IMDT-ARG+ ;
 
-: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- len len PROCESS:ending )
-   {: path:ptr pathu off:ptr offu count:ptr countu :}
+: IMDT-RUN ( ^u8 n ^u8 n ^u8 n -- len len PROCESS:ending )
+   {: path:^ pathu off:^ offu count:^ countu :}
    IMDT-ARGV-BASE
    path pathu IMDT-ARG+
    off offu IMDT-ARG+
@@ -166,7 +166,7 @@ variable IMDT-FORMS-U
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
 
 \ Invalid digits and overflowing hex inputs are absent from the CLI fixtures.
-: IMDT-NUM-NONE ( ptr u8 n -- ) {: a:ptr u:n :}
+: IMDT-NUM-NONE ( ^u8 n -- ) {: a:^ u:n :}
    a u IMAGE-DISASM:IMGD>NUMBER? MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF

@@ -12,7 +12,7 @@
 \
 \ THE INSTRUCTION EMITTERS BELOW ARE WRITTEN AGAINST TWO LAYERS AND ONE NAME.
 \
-\ ASM-SINK ( -- ptr u8 ) is the byte buffer the code stream currently being
+\ ASM-SINK ( -- ^u8 ) is the byte buffer the code stream currently being
 \ emitted appends into, package X64CODE's (src/arch/x86-64/icode.f). An x86_64
 \ instruction has no value representation, so every X64ASM encoder takes that
 \ sink as its last operand instead of returning a word the way the ARM64
@@ -138,7 +138,7 @@ create SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES allot
 create SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES allot
 create SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES allot
 
-: SYS-NR-STENCIL! ( n ptr u8 -- )        \ B8 id, the immediate little-endian
+: SYS-NR-STENCIL! ( n ^u8 -- )        \ B8 id, the immediate little-endian
    $B8 over c!
    over $FF and over 1 + c!
    over 8 rshift $FF and over 2 + c!
@@ -150,9 +150,9 @@ NR-EXIT-GROUP SYS-EXIT-STENCIL SYS-NR-STENCIL!    \ llvm-mc: movl $231, %eax
 $0F SYS-SVC-STENCIL c!                             \ llvm-mc: syscall
 $05 SYS-SVC-STENCIL 1 + c!
 
-: SYS-EMIT-WRITE ( -- ptr u8 n )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-EXIT ( -- ptr u8 n )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-SVC ( -- ptr u8 n )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES ;
+: SYS-EMIT-WRITE ( -- ^u8 n )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES ;
+: SYS-EMIT-EXIT ( -- ^u8 n )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES ;
+: SYS-EMIT-SVC ( -- ^u8 n )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES ;
 
 \ ---- the kernel-argument translators -----------------------------------------
 \ openat(AT_FDCWD, path, 0, 0). The path register is set before AT_FDCWD so a

@@ -68,7 +68,7 @@ ELF-DYNAMIC-SZ constant ELF-GOT-OFF
 public
 \ The libc symbols the loader binds into the GOT of the tree's kernel, in slot
 \ order, by C name; the kernel object carries them to the link.
-: IMPORT$ ( n -- ptr u8 n )
+: IMPORT$ ( n -- ^u8 n )
    case
       0 of s" dlopen" endof
       1 of s" dlsym" endof
@@ -79,8 +79,8 @@ public
 4 constant IMPORTS
 
 \ The row whose C name this is; the build dies on a name the table lacks.
-: IMPORT-ROW ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: IMPORT-ROW ( ^u8 n -- n )
+   {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
    SB$ 73 die ;
@@ -89,7 +89,7 @@ public
 : SLOT-OFF ( n -- n ) 8 * ELF-GOT-OFF + ;
 private
 
-: LIBC$ ( -- ptr u8 n ) s" libc.so.6" ;
+: LIBC$ ( -- ^u8 n ) s" libc.so.6" ;
 
 : ELF-ALIGN8 ( n -- n ) 7 + -8 and ;
 
@@ -273,7 +273,7 @@ private
 public
 \ The program as an ELF file whose code maps at the address, its GOT binding
 \ the import names given.
-: BUILD-IMAGE ( asm n ptr u8 n -- img )
+: BUILD-IMAGE ( asm n ^u8 n -- img )
    IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP
@@ -297,10 +297,10 @@ variable RELA-AT
 variable RELA-ENT
 variable RELA-BYTES
 
-: CHECK ( bool ptr u8 n -- ) {: ok:bool why:ptr whyu:n :}
+: CHECK ( bool ^u8 n -- ) {: ok:bool why:^ whyu:n :}
    ok 0= if why whyu 74 die then ;
 
-: AT ( n n -- ptr u8 ) {: off:n size:n :}
+: AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and
    size BYTES @ off - <= and
    s" elf: an extent passes the file's end" CHECK
@@ -329,7 +329,7 @@ variable RELA-BYTES
 
 public
 
-: MAGIC? ( ptr u8 n -- bool ) {: image:ptr size:n :}
+: MAGIC? ( ^u8 n -- bool ) {: image:^ size:n :}
    size ELF-HDR-SZ < if false exit then
    image LE:U32@ $464C457F = ;
 
@@ -355,7 +355,7 @@ private
    40 U64@ 0= 60 U16@ 0= and
    s" elf: a section header table the linker does not write" CHECK ;
 
-: UNIQUE! ( n ptr n -- ) {: off:n slot:ptr :}
+: UNIQUE! ( n ^n -- ) {: off:n slot:^ :}
    slot @ 0= s" elf: two program headers of one kind" CHECK
    off slot ! ;
 
@@ -452,7 +452,7 @@ private
 
 public
 
-: OPEN ( ptr u8 n -- ) {: image:ptr size:n :}
+: OPEN ( ^u8 n -- ) {: image:^ size:n :}
    image size MAGIC? s" elf: not an ELF file" CHECK
    image IMAGE ! size BYTES !
    CHECK-HEADER PHDRS CHECK-LOADS CHECK-DYNAMIC CHECK-TABLES ;

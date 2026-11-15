@@ -16,7 +16,7 @@ DYNAMIC-BUFFER SAVED-STORAGE n
 : COUNT ( -- n ) LIVE-SPAN nip ;
 : LOCK@ ( -- n ) data-base LOCK-CELL + @ ;
 : INDEX@ ( -- n ) data-base INDEX-CELL + @ ;
-: SAVED ( -- ptr n ) 0 SAVED-STORAGE ;
+: SAVED ( -- ^n ) 0 SAVED-STORAGE ;
 \ evaluate-closed supplies the native recoverable-error boundary around PERSIST.
 : TRY-PERSIST ( -- ) s" ADDRESS-CELLS:PERSIST" evaluate-closed ;
 

@@ -22,11 +22,11 @@ package ENGINE-CANDIDATE
 private
 
 \ A gate names the freshly built candidate here.
-: NAME$ ( -- ptr u8 n )  s" HABU_UNDER_TEST" ;
+: NAME$ ( -- ^u8 n )  s" HABU_UNDER_TEST" ;
 
 PATH-CAP BUFFER: JOINED
 
-: RESOLVE$ ( -- ptr u8 n )
+: RESOLVE$ ( -- ^u8 n )
    NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
@@ -34,18 +34,18 @@ PATH-CAP BUFFER: JOINED
 
 \ An empty override stays empty for VALIDATE$ to refuse; joined, it would name
 \ the working directory.
-: ABSOLUTE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: ABSOLUTE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u 0= if a u exit then
    a c@ [char] / = if a u exit then
    SOURCE-ROOT:CWD$ a u JOINED FS:JOIN-PATH {: ju:n :}
    JOINED ju ;
 
-: VALIDATE$ ( ptr u8 n -- ptr u8 n )
+: VALIDATE$ ( ^u8 n -- ^u8 n )
    2dup FS:EXECUTABLE? 0= if E-FS-OPEN throw then ;
 
 public
 
-: PATH$ ( -- ptr u8 n )
+: PATH$ ( -- ^u8 n )
    RESOLVE$ ABSOLUTE$ VALIDATE$ ;
 
 ;package

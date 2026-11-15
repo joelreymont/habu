@@ -523,14 +523,14 @@ $38C8 constant VARIABLE-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect
-\ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
-\ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
+\ it registers. An OFF child adds its parameter, a byte offset, to `^a`,
+\ answering `^a` for CELL-OFF, `^^b` for PTR-OFF, `^u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
 \ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE are
 \ storage children: STORED's parameter is 0, or its type's node when the
 \ declaration spells none, that of BUFFER to ARENA-DISPOSE its routine's
 \ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK, WORKS,
-\ ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type t the declaration
+\ ARENA-NEW and ARENA-DISPOSE answer `^t` for the type t the declaration
 \ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
 \ writes through its receiver. A MAKE or UNMAKE child's parameter is its
@@ -538,7 +538,7 @@ $38C8 constant VARIABLE-CELL
 \ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
 \ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse. A SPAN
 \ child's parameter is the committed field id of a BUFFER field: it takes
-\ `ptr F<..>` and answers the field's bytes as `SPAN:span<u8>`.
+\ `^F<..>` and answers the field's bytes as `SPAN:span<u8>`.
 
 package CHILD-ABI
 public
@@ -611,7 +611,7 @@ public
 \ operations must follow the active compiler rather than dictionary names.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
-\ BODY-HOOK-CELL, when nonzero, is an xt `( -- ptr u8 bool )` the `:` and
+\ BODY-HOOK-CELL, when nonzero, is an xt `( -- ^u8 bool )` the `:` and
 \ TRUSTED: heads call with their record pending.
 $3838 constant BODY-HOOK-CELL
 \ Tier 0's compiler: COMP's COMPILE, installed by COMP:INSTALL through
@@ -773,7 +773,7 @@ $27A8 constant CMM-CELL
 $27E8 constant COMPILE-PREFLIGHT-CELL
 \ TOP-HOOK-CELL: top-row token hook xt; 0 = no hook. Installed only through the
 \ fail-closed `set-top-check` prim. Snapshot-persistent like HOOK-CELL.
-\ The hook's effect is ( ptr u8 n n n -- ): token addr, token len, class
+\ The hook's effect is ( ^u8 n n n -- ): token addr, token len, class
 \ (TOP-EV-*), LFIND flags.
 $27F0 constant TOP-HOOK-CELL
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
@@ -820,11 +820,11 @@ $2818 constant EXIT-HOOK-CELL
 $2840 constant EXIT-OWNER-CELL
 package BOOT
 private
-CAST: >PTR ( n -- ptr n )
+CAST: >PTR ( n -- ^n )
 public
 \ The main region's EXIT-HOOK-CELL from any thread, the process's one vector.
 \ Main reads data-base: a cross build's host is not mapped at DATA-VA.
-: EXIT-VECTOR ( -- ptr n )
+: EXIT-VECTOR ( -- ^n )
    data-base TASK-TCB-CELL + @ 0= if
       data-base EXIT-HOOK-CELL + exit
    then
@@ -959,8 +959,8 @@ $4CA8 constant CLAUSE-CELL
 \ an installed top-row hook. Word/tick events pass a flag word (bit 0 found,
 \ bit 1 DNAME-IMM); literals pass 0.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
-2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ptr u8 n )
-3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ptr )
+2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ^u8 n )
+3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ^ )
 4 constant TOP-EV-CHAR      \ char literal pushed ( n )
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)

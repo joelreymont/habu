@@ -34,8 +34,8 @@ s" ENUM-DECL:ED-RUN eempty ;ENUM" TEST-EVAL:RC 7107 T=                   \ an en
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TEST-EVAL:RC 7110 T=                 \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TEST-EVAL:RC 7101 T=                  \ upper-case family name (case)
 s" ENUM-DECL:ED-RUN n red ;ENUM" TEST-EVAL:RC 7110 T=                    \ single-letter family name
-\ An effect reads a bare `ptr` as the pointer constructor, never as a family, so
-\ the tail is reserved ahead of the global `ptr` family's duplicate check (7102).
+\ An effect reads the token `ptr` ahead of any family, never as this one, so the
+\ tail is reserved ahead of the global `ptr` family's duplicate check (7102).
 s" ENUM-DECL:ED-RUN ptr red ;ENUM" TEST-EVAL:RC 7110 T=
 s" ENUM-DECL:ED-RUN erf VARIANT alpha FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 7125 T=  \ reserved field name
 s" ENUM-DECL:ED-RUN ecf VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 7101 T=  \ upper-case field name (case)
@@ -62,7 +62,7 @@ public
 
 \ REJECT-CODE asserts a declaration's reject code, public so section 24
 \ (control-word names) reuses it.
-: REJECT-CODE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: REJECT-CODE ( ^u8 n n -- ) {: a:^ u:n want:n :}
    a u TEST-EVAL:RC want T= ;
 
 s" ENUM-DECL:ED-RUN compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 7163 REJECT-CODE
@@ -78,7 +78,7 @@ s" ENUM-DECL:ED-RUN compact-late-policy alpha POLICY packed-tag ;ENUM" 7107 REJE
 s" ENUM-DECL:ED-RUN compact-late-derive alpha DERIVE eq ;ENUM" 7107 REJECT-CODE
 s" ENUM-DECL:ED-RUN compact-policy-name alpha policy ;ENUM" 7107 REJECT-CODE
 s" ENUM-DECL:ED-RUN compact-derive-name alpha derive ;ENUM" 7107 REJECT-CODE
-s" ENUM-DECL:ED-RUN full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM" 0 REJECT-CODE
+s" ENUM-DECL:ED-RUN full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ^a ;VARIANT ;ENUM" 0 REJECT-CODE
 
 private
 
@@ -108,7 +108,7 @@ s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN allowed-full VARIANT foreign-variant ;VARIANT ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-CODE
 \ A package may shadow a global family, but not `ptr`: an effect in this
-\ package would still read `ptr` as the pointer constructor.
+\ package would still read the token `ptr` ahead of any family.
 s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-CODE
 
 ;package
@@ -130,7 +130,7 @@ variable CT-DICT   variable CT-CP
 
 \ A generation failure must leave the native dictionary byte-identical: what
 \ the generator had defined is truncated with the rest of the declaration.
-: CTOR-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: CTOR-REJECT ( ^u8 n n -- ) {: a:^ u:n want:n :}
    DICT-MARK
    a u TEST-EVAL:RC want T=
    DICT-SAME ;
@@ -279,6 +279,11 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? TTRUE
+
+\ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgptr VARIANT vv FIELD payfld ptr u8 ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'dgptr': unknown payload type at 'ptr'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 7116 T=
@@ -461,8 +466,8 @@ s" habu: bad enum declaration 'dgdgd': derive requires a concrete (arity 0) fami
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
-s" habu: bad enum declaration 'dgroleq': pointer payloads have no derived equality at 'ptr'"
+s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ^n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
+s" habu: bad enum declaration 'dgroleq': pointer payloads have no derived equality at '^n'"
 DECL-DIAG:HAS? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
@@ -494,8 +499,8 @@ s" reason two" 990002 DECL-REJECT:EXPLAIN
 package enum-replay-test
 public
 
-: RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
-: RP-TRY ( ptr u8 n ptr u8 n -- n )
+: RP-EV ( ^u8 n ^u8 n -- ) ENUM-DECL:ED-REPLAY ;
+: RP-TRY ( ^u8 n ^u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
 \ Force the replay stream open so the re-entry guard can be reached at all; the
@@ -649,11 +654,11 @@ variable LI
 
 700 constant LONG-N
 
-: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
+: SRC$ ( -- ^u8 n ) SRC-BUF SRC-U @ ;
 : PUT-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" 1 die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
-: PUT$ ( ptr u8 n -- ) {: a:ptr u:n :}
+: PUT$ ( ^u8 n -- ) {: a:^ u:n :}
    0 LI !
    BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
 : PUT-DIGIT ( n -- ) 48 + PUT-C ;
@@ -716,37 +721,37 @@ DECL-DIAG:OFF
 s" ENUM edlowns VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 DECL-DIAG:PROSE
-s" ENUM edlptr VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptr VARIANT hold FIELD p ^edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrcon VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptrcon VARIANT hold FIELD p ^EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
 DECL-DIAG:HAS? TTRUE
 
 \ The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
-s" ENUM edlptr2 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptr2 VARIANT hold FIELD p ^^edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrsum VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptrsum VARIANT hold FIELD p ^edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ^edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
 \ A pointer to a family that owns nothing declares, so the
-\ rejects above answer the POINTEE's linearity and not the word `ptr`.
-s" ENUM edlptrok VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM edlptrok2 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM edlptrn VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+\ rejects above answer the POINTEE's linearity and not the word `^`.
+s" ENUM edlptrok VARIANT hold FIELD p ^edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM edlptrok2 VARIANT hold FIELD p ^^edlplain ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM edlptrn VARIANT hold FIELD p ^n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 s" ENUM edlptrrole VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -755,29 +760,29 @@ s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0
 \ ordinary tokens, so the declaration is malformed and rejects 7107, not this
 \ rule's 7109.
 DECL-DIAG:PROSE
-s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
+s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ^edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TEST-EVAL:RC 7107 T=
+s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ^edlmodel" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrbsl': unexpected token in variant block at '\'"
 DECL-DIAG:HAS? TTRUE
 \ and trailing text after the offending payload cannot suppress the reject,
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
-s" ENUM edlptrtail VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edlptrtail VARIANT hold FIELD p ^edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
-\ A payload names its own family only inside a `ptr` pointee, and that pointer is
+\ A payload names its own family only inside a `^` pointee, and that pointer is
 \ a pointer to a linear value when the enum holds one: judged at ;ENUM.
 DECL-DIAG:PROSE
 s" ENUM edsval VARIANT hold FIELD x edsval ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edsval': payload type cannot recursively name its owner at 'edsval'"
 DECL-DIAG:HAS? TTRUE
-s" ENUM edsptr VARIANT hold FIELD next ptr edsptr ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM edsptr VARIANT hold FIELD next ^edsptr ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" ENUM edslin VARIANT hold FIELD next ptr edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" ENUM edslin VARIANT hold FIELD next ^edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edslin': payload type is a pointer to a linear value and cannot own it at 'edslin'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF

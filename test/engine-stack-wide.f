@@ -9,7 +9,7 @@ package STACK-LIFECYCLE-TEST
    SB-RESET
    s" package SW public STRUCTURE pair FIELD a n FIELD b n ;STRUCTURE " SB-APPEND ;
 
-: PAIR-RC ( ptr u8 n -- n )
+: PAIR-RC ( ^u8 n -- n )
    PAIR-TYPE-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ CHILD-RC ;
 
 \ RATCHET-TAIL wraps the named transfer in `begin dup <transfer> recurse again`.
@@ -20,19 +20,19 @@ package STACK-LIFECYCLE-TEST
 \ the first write past the capacity is the transfer's own. The child dies on the
 \ data guard page: ENGINE-ERROR:STACK-BOUNDS (102), "E-STACK-BOUNDS habu: stack
 \ bounds exceeded (data)".
-: RATCHET-TAIL ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: RATCHET-TAIL ( ^u8 n -- ) {: name:^ nameu:n :}
    s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name nameu SB-APPEND
    s"  recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; RATCHET0" SB-APPEND ;
 
-: PLAIN-OVERFLOW ( ptr u8 n ptr u8 n -- ) {: defs:ptr defsu:n name:ptr nameu:n :}
+: PLAIN-OVERFLOW ( ^u8 n ^u8 n -- ) {: defs:^ defsu:n name:^ nameu:n :}
    SB-RESET defs defsu SB-APPEND name nameu RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
-: PAIR-OVERFLOW ( ptr u8 n ptr u8 n -- ) {: defs:ptr defsu:n name:ptr nameu:n :}
+: PAIR-OVERFLOW ( ^u8 n ^u8 n -- ) {: defs:^ defsu:n name:^ nameu:n :}
    PAIR-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
    s"  ;package" SB-APPEND SB$ REFUSED-DATA ;
 
-: PAIR-REFUSED-RETURN ( ptr u8 n -- )
+: PAIR-REFUSED-RETURN ( ^u8 n -- )
    PAIR-TYPE-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ REFUSED-RETURN ;
 
 : PRIMITIVE-GROUPS ( -- )
@@ -74,10 +74,10 @@ package STACK-LIFECYCLE-TEST
    s" STRUCTURE sw-double<a> FIELD a a FIELD b a ;STRUCTURE STRUCTURE sw-plus<a> FIELD a a FIELD b n ;STRUCTURE " SB-APPEND
    s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND ;
 
-: LARGE-RC ( ptr u8 n -- n )
+: LARGE-RC ( ^u8 n -- n )
    LARGE-TYPE-SOURCE SB-APPEND SB$ CHILD-RC ;
 
-: LARGE-OVERFLOW ( ptr u8 n ptr u8 n -- ) {: defs:ptr defsu:n name:ptr nameu:n :}
+: LARGE-OVERFLOW ( ^u8 n ^u8 n -- ) {: defs:^ defsu:n name:^ nameu:n :}
    LARGE-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
@@ -93,10 +93,10 @@ package STACK-LIFECYCLE-TEST
    LARGE-TYPE-SOURCE
    s" 1 TYPED-BUFFER SMALL sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>> " SB-APPEND ;
 
-: MEDIUM-RC ( ptr u8 n -- n )
+: MEDIUM-RC ( ^u8 n -- n )
    MEDIUM-TYPE-SOURCE SB-APPEND SB$ CHILD-RC ;
 
-: MEDIUM-OVERFLOW ( ptr u8 n ptr u8 n -- ) {: defs:ptr defsu:n name:ptr nameu:n :}
+: MEDIUM-OVERFLOW ( ^u8 n ^u8 n -- ) {: defs:^ defsu:n name:^ nameu:n :}
    MEDIUM-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
    SB$ REFUSED-DATA ;
 

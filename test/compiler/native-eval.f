@@ -16,8 +16,8 @@ public
 \ The nested cases' inner texts. A text cannot spell a string literal inside
 \ its own literal, so it reaches an inner text through a word, and the word is
 \ public because the texts run after this package has closed.
-: INNER-DEPTH$ ( -- ptr u8 n ) s" depth 0 T=" ;
-: INNER-RESIDUE$ ( -- ptr u8 n ) s" 1 2" ;
+: INNER-DEPTH$ ( -- ^u8 n ) s" depth 0 T=" ;
+: INNER-RESIDUE$ ( -- ^u8 n ) s" 1 2" ;
 
 \ W claims one cell and adds two, the lie a trusted body can tell: a checked text
 \ that hands it one is admitted and reaches one cell under its floor at run
@@ -30,9 +30,9 @@ TRUSTED: W ( n -- n ) + dup SEEN ! ;
 : GETW ( -- [ n -- n ] ) [: W ;] ;
 : CLEAN ( -- [ -- ] ) [: ;] ;
 TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
-: INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
+: INNER-UNDER$ ( -- ^u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
-: INNER-OPEN$ ( -- ptr u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
+: INNER-OPEN$ ( -- ^u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
 
 \ The text EVAL-BODY evaluates would print; on a task's thread evaluation stops
 \ before it is read. The child activates the task: tasks do not cross a fork.
@@ -43,9 +43,9 @@ TASK:MIN-STACK TASK:TASK EVALUATOR
 \ The data-stack base each text of a nested pair sees.
 variable OUTER-BASE
 variable INNER-BASE
-: INNER-BASE$ ( -- ptr u8 n )
+: INNER-BASE$ ( -- ^u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE !" ;
-: INNER-THROW$ ( -- ptr u8 n )
+: INNER-THROW$ ( -- ^u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE ! 7 throw" ;
 
 private
@@ -87,7 +87,7 @@ private
    [: s" NATIVE-EVAL-TEST:INNER-RESIDUE$ evaluate-closed" evaluate-closed ;]
    E-EVAL-RESIDUE TTHROWSQ ;
 
-: OUTER-BASE$ ( -- ptr u8 n )
+: OUTER-BASE$ ( -- ^u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-BASE$ evaluate-closed" ;
 
 : STACK-BASE ( -- n ) data-base STACK-ABI:BASE-CELL + @ ;
@@ -106,7 +106,7 @@ private
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
-: OUTER-THROW$ ( -- ptr u8 n )
+: OUTER-THROW$ ( -- ^u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-THROW$ evaluate-closed" ;
 
 \ A throw out of a nested pair gives both stacks back. The caught delivery runs
@@ -261,7 +261,7 @@ create ERR IO-CAP allot
 \ RATCHET grows the stack one cell per level (recurse consumes the declared
 \ input and nothing pops it), so the text pushes until a push crosses the top
 \ of its stack's mapping.
-: OVERFLOW$ ( -- ptr u8 n )
+: OVERFLOW$ ( -- ^u8 n )
    S\" : RATCHET ( n -- ) begin dup recurse again ; s\" 1 RATCHET\" evaluate-closed" ;
 
 : OVERFLOW ( -- )
@@ -275,7 +275,7 @@ create ERR IO-CAP allot
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
-: TOP-LEVEL$ ( -- ptr u8 n )
+: TOP-LEVEL$ ( -- ^u8 n )
    s" TRUSTED: NATIVE-EVAL-W ( n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
 
 : TOP-LEVEL ( -- )
@@ -290,7 +290,7 @@ create ERR IO-CAP allot
 
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
-: UNFINISHED-LINE$ ( -- ptr u8 n )
+: UNFINISHED-LINE$ ( -- ^u8 n )
    S\" s\" : NATIVE-EVAL-F ( -- n ) 42\" evaluate-closed" ;
 
 : UNFINISHED-LINE ( -- )
@@ -324,16 +324,16 @@ variable TEXT-U
 variable OUT-U
 variable ERR-U
 
-: TEXT+ ( ptr u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
+: TEXT+ ( ^u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
 
 : TEXT-RC ( -- n )
    TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: rc:n :}
    LEN>N ERR-U !  LEN>N OUT-U !  rc ;
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
 
-: SAYS ( ptr u8 n -- ) {: a:ptr u:n :}
+: SAYS ( ^u8 n -- ) {: a:^ u:n :}
    ERR ERR-U @ a u CONTAINS? TTRUE ;
 
 \ A text that defines X-FORGET and then throws takes X-FORGET back, row and
@@ -363,9 +363,9 @@ variable ERR-U
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
-   s" NATIVE-EVAL-OPEN ( ptr u8 n -- ) evaluate" CHECK! 0 T=
+   s" NATIVE-EVAL-OPEN ( ^u8 n -- ) evaluate" CHECK! 0 T=
    s" a checked body naming evaluate-closed certifies" T-LABEL
-   s" NATIVE-EVAL-CLOSED ( ptr u8 n -- ) evaluate-closed" CHECK! -1 T= ;
+   s" NATIVE-EVAL-CLOSED ( ^u8 n -- ) evaluate-closed" CHECK! -1 T= ;
 
 : RUN ( -- )
    T-RESET

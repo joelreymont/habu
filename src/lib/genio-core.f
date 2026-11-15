@@ -47,9 +47,9 @@ $4004667F constant FIONREAD-MACOS
 SLOTS TYPED-BUFFER OP-EMIT   [ n -- ]
 SLOTS TYPED-BUFFER OP-KEY    [ -- n ]
 SLOTS TYPED-BUFFER OP-READY  [ -- bool ]
-SLOTS TYPED-BUFFER OP-READ   [ ptr u8 n -- n ]
-SLOTS TYPED-BUFFER OP-WRITE  [ ptr u8 n -- ]
-SLOTS TYPED-BUFFER OP-ACCEPT [ ptr u8 n -- n ]
+SLOTS TYPED-BUFFER OP-READ   [ ^u8 n -- n ]
+SLOTS TYPED-BUFFER OP-WRITE  [ ^u8 n -- ]
+SLOTS TYPED-BUFFER OP-ACCEPT [ ^u8 n -- n ]
 SLOTS TYPED-BUFFER OP-FLUSH  [ -- ]
 SLOTS TYPED-BUFFER OP-CLOSE  [ -- ]
 SLOTS TYPED-BUFFER SLOT-STATE n        \ the device's own data (a socket, an fd)
@@ -76,23 +76,23 @@ SCRATCH-VARIABLE TERMINAL-READY
 \ byte.
 $8 TASK:+USERS IO-SCRATCH u8
 
-: SCRATCH-CELL ( -- ptr n )
+: SCRATCH-CELL ( -- ^n )
    0 IO-SCRATCH CELL-VIEW ;
 
-: SCRATCH ( -- ptr u8 )
+: SCRATCH ( -- ^u8 )
    0 IO-SCRATCH ;
 
 \ The current task's input and output devices are two cells of the engine's DATA
 \ header: the engine swaps DATA for each task, and the engine's output funnel
 \ reads the output cell directly.
 
-: OUT-PTR ( -- ptr n )
+: OUT-PTR ( -- ^n )
    data-base GENIO-ABI:OUT-CELL + ;
 
-: IN-PTR ( -- ptr n )
+: IN-PTR ( -- ^n )
    data-base GENIO-ABI:IN-CELL + ;
 
-: ACTIVE-PTR ( -- ptr n )
+: ACTIVE-PTR ( -- ^n )
    data-base GENIO-ABI:ACTIVE-CELL + ;
 
 \ Row i-1 of the engine's write table, which only the output funnel reads; the
@@ -100,7 +100,7 @@ $8 TASK:+USERS IO-SCRATCH u8
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
-CAST: WRITE>N ( [ ptr u8 n -- ] -- n )
+CAST: WRITE>N ( [ ^u8 n -- ] -- n )
 
 : ENGINE-ROW-CLEAR ( n -- )
    0 swap ENGINE-ROW-OFF data-base + ! ;
@@ -115,7 +115,7 @@ CAST: WRITE>N ( [ ptr u8 n -- ] -- n )
    idx 0 < idx SLOTS >= or if E-OPERAND throw then
    idx ;
 
-: STATUS-CELL ( n -- ptr n ) {: idx:n :}
+: STATUS-CELL ( n -- ^n ) {: idx:n :}
    idx BOUNDED cells SLOT-STATUS + ;
 
 : STATUS@ ( n -- n )
@@ -196,21 +196,21 @@ private
 \ The terminal's operations name the descriptors rather than calling `emit` and
 \ `type`, which follow the current device.
 
-: TERMINAL-WRITE ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: TERMINAL-WRITE ( ^u8 n -- ) {: bytes:^ len:n :}
    STDOUT-FD bytes len write drop ;
 
 : TERMINAL-EMIT ( n -- ) {: c:n :}
    c SCRATCH c!
    STDOUT-FD SCRATCH 1 write drop ;
 
-: TERMINAL-READ ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
+: TERMINAL-READ ( ^u8 n -- n ) {: bytes:^ cap:n :}
    STDIN-FD bytes cap read dup 0 < if drop E-IO throw then ;
 
 : TERMINAL-KEY ( -- n )
    KEY1 ;
 
-: TERMINAL-ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
-   RD-LINE {: line:ptr len:n :}
+: TERMINAL-ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
+   RD-LINE {: line:^ len:n :}
    len cap > if E-OPERAND throw then
    len 0 ?do line i + c@ bytes i + c! loop
    len ;
@@ -254,7 +254,7 @@ public
 \ diagnostics (crash reports, die, E-* lines) stay on descriptor 2. The funnel
 \ falls back to descriptor 1 for a write that re-entered type, a routing cell
 \ outside 1..DEVICES and an unregistered row.
-: DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ptr u8 n -- n ] [ ptr u8 n -- ] [ ptr u8 n -- n ] [ -- ] [ -- ] n -- device )
+: DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ^u8 n -- n ] [ ^u8 n -- ] [ ^u8 n -- n ] [ -- ] [ -- ] n -- device )
    {: qemit qkey qready qread qwrite qaccept qflush qclose state:n :}
    INSTALL-TERMINAL
    CLAIM-ROW {: idx:n :}
@@ -325,7 +325,7 @@ public
 
 private
 
-: BUSY-PTR ( -- ptr n )
+: BUSY-PTR ( -- ^n )
    data-base GENIO-ABI:BUSY-CELL + ;
 
 \ A closed row answers the terminal rather than throwing, and it has to: the
@@ -356,9 +356,9 @@ private
 : RUN-READY-OP ( bool -- bool )
    drop ACTIVE-ROW OP-READY @ execute ;
 \ The buffer stays under the count read, so the catch preserves the shape.
-: RUN-READ-OP ( ptr u8 n -- ptr u8 n )
+: RUN-READ-OP ( ^u8 n -- ^u8 n )
    over swap ACTIVE-ROW OP-READ @ execute ;
-: RUN-ACCEPT-OP ( ptr u8 n -- ptr u8 n )
+: RUN-ACCEPT-OP ( ^u8 n -- ^u8 n )
    over swap ACTIVE-ROW OP-ACCEPT @ execute ;
 
 \ Everything the row was, undone, ending with the release: the generation has
@@ -387,7 +387,7 @@ public
    c idx OP-EMIT @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
-: WRITE ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: WRITE ( ^u8 n -- ) {: bytes:^ len:n :}
    OUT-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
@@ -423,7 +423,7 @@ public
    prev ACTIVE-PTR !
    code 0<> if code throw then ;
 
-: READ ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
+: READ ( ^u8 n -- n ) {: bytes:^ cap:n :}
    IN-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
@@ -439,7 +439,7 @@ public
 \ leaves the rest of a longer line for the next ACCEPT, so a filled buffer means
 \ the line may go on; the terminal refuses a line longer than the buffer with
 \ E-OPERAND, because its editor's line cannot be read twice.
-: ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
+: ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
    IN-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}

@@ -25,11 +25,11 @@ private
 \ This mapping exists for one call. Opaque native handles are never dereferenced.
 \ data/capacity are READ's destination or WRITE's value, borrowed from the caller.
 STRUCTURE request DERIVE addr
-   FIELD service ptr u8
+   FIELD service ^u8
    FIELD service-len n
-   FIELD account ptr u8
+   FIELD account ^u8
    FIELD account-len n
-   FIELD data ptr u8
+   FIELD data ^u8
    FIELD capacity n
    FIELD query n
    FIELD attrs n
@@ -44,32 +44,32 @@ STRUCTURE request DERIVE addr
    FIELD library2 n
 ;STRUCTURE
 
-CAST: >REQUEST ( ptr u8 -- ptr request )
-CAST: REQUEST>BYTES ( ptr request -- ptr u8 )
-CAST: >BYTES ( n -- ptr u8 )
+CAST: >REQUEST ( ^u8 -- ^request )
+CAST: REQUEST>BYTES ( ^request -- ^u8 )
+CAST: >BYTES ( n -- ^u8 )
 
-: INPUT ( ptr u8 n -- )
-   {: p:ptr u:n :}
+: INPUT ( ^u8 n -- )
+   {: p:^ u:n :}
    u 0 <= p 0= or if E-CONFIG throw then
    u 0 ?do p i + c@ 0= if E-CONFIG throw then loop
    p u UTF8:VALID? 0= if E-CONFIG throw then ;
 
-: COPY-VALUE ( ptr u8 n ptr request -- )
-   {: p:ptr u:n req:ptr :}
+: COPY-VALUE ( ^u8 n ^request -- )
+   {: p:^ u:n req:^ :}
    u 0 < if E-ACCESS throw then
    u req REQUEST-CAPACITY @ > if E-CAPACITY throw then
    p u req REQUEST-DATA @ req REQUEST-CAPACITY @ SPAN:MAKE SPAN:COPY
    u req REQUEST-SIZE !
    true req REQUEST-FOUND ! ;
 
-defer NATIVE-READ ( ptr request -- )
-defer NATIVE-WRITE ( ptr request -- )
-defer NATIVE-ERASE ( ptr request -- )
-defer NATIVE-CLOSE ( ptr request -- )
+defer NATIVE-READ ( ^request -- )
+defer NATIVE-WRITE ( ^request -- )
+defer NATIVE-ERASE ( ^request -- )
+defer NATIVE-CLOSE ( ^request -- )
 
-: NO-STORE ( ptr request -- )
+: NO-STORE ( ^request -- )
    drop E-CONFIG throw ;
-: NO-CLOSE ( ptr request -- ) drop ;
+: NO-CLOSE ( ^request -- ) drop ;
 : NATIVE-ERROR ( n -- n )
    dup E-FFI-DLSYM = over E-FFI-DLOPEN = or if drop E-CONFIG then ;
 : INSTALL-DEFAULT ( -- )
@@ -81,9 +81,9 @@ INSTALL-DEFAULT
 
 
 \ A zeroed request for checked identifiers; REQ-FREE releases it.
-: REQ-OPEN ( ptr u8 n ptr u8 n -- ptr request )
-   {: service:ptr su:n account:ptr au:n :}
-   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:ptr :}
+: REQ-OPEN ( ^u8 n ^u8 n -- ^request )
+   {: service:^ su:n account:^ au:n :}
+   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:^ :}
    service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
    account req REQUEST-ACCOUNT ! au req REQUEST-ACCOUNT-LEN !
    req ;
@@ -91,13 +91,13 @@ INSTALL-DEFAULT
 
 \ Closes the native handles after an operation that ended with code n, then
 \ returns the error to throw: the operation's own failure first, else the close's.
-: REQ-CLOSE ( ptr request n -- n )
-   {: req:ptr code:n :}
+: REQ-CLOSE ( ^request n -- n )
+   {: req:^ code:n :}
    req [: dup NATIVE-CLOSE ;] catch {: close-code:n :}
    drop
    code 0 <> if code else close-code then NATIVE-ERROR ;
 
-: REQ-FREE ( ptr request -- )
+: REQ-FREE ( ^request -- )
    REQUEST>BYTES REQUEST-BYTES SPAN:MAKE MEM:FREE-SPAN ;
 
 \ The native store's words take identifiers and values the public words checked.
@@ -110,9 +110,9 @@ INSTALL-DEFAULT
 \ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by `service` and
 \ `account` attributes, so a dismissed unlock is an access failure, and the
 \ value is read by length, keeping NULs.
-: OS-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
-   {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
-   service su account au REQ-OPEN {: req:ptr :}
+: OS-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+   {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
+   service su account au REQ-OPEN {: req:^ :}
    dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DATA !
    req [: dup NATIVE-READ ;] catch {: code:n :}
    drop
@@ -122,9 +122,9 @@ INSTALL-DEFAULT
    error 0 <> if 2drop error throw then ;
 
 
-: OS-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: service:ptr su:n account:ptr au:n value:ptr vu:n :}
-   service su account au REQ-OPEN {: req:ptr :}
+: OS-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+   {: service:^ su:n account:^ au:n value:^ vu:n :}
+   service su account au REQ-OPEN {: req:^ :}
    value req REQUEST-DATA ! vu req REQUEST-CAPACITY !
    req [: dup NATIVE-WRITE ;] catch {: code:n :}
    drop
@@ -133,8 +133,8 @@ INSTALL-DEFAULT
    error 0 <> if error throw then ;
 
 
-: OS-ERASE ( ptr u8 n ptr u8 n -- bool )
-   REQ-OPEN {: req:ptr :}
+: OS-ERASE ( ^u8 n ^u8 n -- bool )
+   REQ-OPEN {: req:^ :}
    req [: dup NATIVE-ERASE ;] catch {: code:n :}
    drop
    req code REQ-CLOSE {: error:n :}
@@ -142,9 +142,9 @@ INSTALL-DEFAULT
    req REQ-FREE
    error 0 <> if drop error throw then ;
 
-TYPED-VARIABLE STORE-READ [ ptr u8 n ptr u8 n SPAN:span<u8> -- n bool ]
-TYPED-VARIABLE STORE-WRITE [ ptr u8 n ptr u8 n ptr u8 n -- ]
-TYPED-VARIABLE STORE-ERASE [ ptr u8 n ptr u8 n -- bool ]
+TYPED-VARIABLE STORE-READ [ ^u8 n ^u8 n SPAN:span<u8> -- n bool ]
+TYPED-VARIABLE STORE-WRITE [ ^u8 n ^u8 n ^u8 n -- ]
+TYPED-VARIABLE STORE-ERASE [ ^u8 n ^u8 n -- bool ]
 : INSTALL-OS ( -- )
    ['] OS-READ STORE-READ ! ['] OS-WRITE STORE-WRITE ! ['] OS-ERASE STORE-ERASE ! ;
 INSTALL-OS
@@ -160,7 +160,7 @@ public
 \ which a person must fix; E-ACCESS for a failed or refused access; E-UNAVAILABLE
 \ for a store that did not answer and may answer later; E-CAPACITY before any
 \ byte is copied. It may log the detail first, never key material.
-: STORE! ( [ ptr u8 n ptr u8 n SPAN:span<u8> -- n bool ] [ ptr u8 n ptr u8 n ptr u8 n -- ] [ ptr u8 n ptr u8 n -- bool ] -- )
+: STORE! ( [ ^u8 n ^u8 n SPAN:span<u8> -- n bool ] [ ^u8 n ^u8 n ^u8 n -- ] [ ^u8 n ^u8 n -- bool ] -- )
    STORE-ERASE ! STORE-WRITE ! STORE-READ ! ;
 
 
@@ -169,8 +169,8 @@ public
 \ the caller's destination and answers true (0 true when empty); a miss answers 0
 \ false. A miss or a throw leaves the destination unchanged; a value larger than it
 \ is E-CAPACITY before any byte is copied. The caller owns the bytes.
-: READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
-   {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
+: READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+   {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
    service su INPUT account au INPUT
    service su account au dest STORE-READ @ execute ;
 
@@ -178,16 +178,16 @@ public
 \ Creates the item or replaces an existing item's value in place, without a
 \ duplicate (on macOS its access control stays). The value may be empty or hold
 \ NULs; a negative length or a null address throws E-CONFIG. The caller keeps the bytes.
-: WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: service:ptr su:n account:ptr au:n value:ptr vu:n :}
+: WRITE ( ^u8 n ^u8 n ^u8 n -- )
+   {: service:^ su:n account:^ au:n value:^ vu:n :}
    vu 0 < value 0= or if E-CONFIG throw then
    service su INPUT account au INPUT
    service su account au value vu STORE-WRITE @ execute ;
 
 
 \ Removes the item; a missing item returns false.
-: ERASE ( ptr u8 n ptr u8 n -- bool )
-   {: service:ptr su:n account:ptr au:n :}
+: ERASE ( ^u8 n ^u8 n -- bool )
+   {: service:^ su:n account:^ au:n :}
    service su INPUT account au INPUT
    service su account au STORE-ERASE @ execute ;
 

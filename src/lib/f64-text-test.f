@@ -14,26 +14,26 @@ create OUTPUT MAX-BYTES allot
       ok OF ENDOF err OF drop -9899 throw ENDOF
    ;MATCH ;
 
-: PARSE-OK ( ptr u8 n -- r )
+: PARSE-OK ( ^u8 n -- r )
    PARSE MATCH result ok OF ENDOF err OF drop -9899 throw ENDOF ;MATCH ;
-: PARSE-BITS ( ptr u8 n -- n ) PARSE-OK F64>BITS ;
+: PARSE-BITS ( ^u8 n -- n ) PARSE-OK F64>BITS ;
 
-: EXPECT ( n ptr u8 n -- ) {: bits:n expected:ptr len:n :}
+: EXPECT ( n ^u8 n -- ) {: bits:n expected:^ len:n :}
    bits BITS>F64 FORMAT-OK {: actual:n :}
    OUTPUT actual expected len STR= TTRUE
    OUTPUT actual PARSE-OK F64>BITS bits T= ;
 
 \ In LONG: head, then count zeros, then tail.
 create LONG 8192 allot
-: PADDED ( ptr u8 n n ptr u8 n -- ptr u8 n )
-   {: head:ptr head-len:n count:n tail:ptr tail-len:n :}
+: PADDED ( ^u8 n n ^u8 n -- ^u8 n )
+   {: head:^ head-len:n count:n tail:^ tail-len:n :}
    head LONG head-len BYTE-COPY
    count 0 ?do $30 LONG head-len i + + c! loop
    tail LONG head-len count + + tail-len BYTE-COPY
    LONG head-len count + tail-len + ;
 
 \ In LONG: count nines, then tail.
-: NINES ( n ptr u8 n -- ptr u8 n ) {: count:n tail:ptr tail-len:n :}
+: NINES ( n ^u8 n -- ^u8 n ) {: count:n tail:^ tail-len:n :}
    count 0 ?do $39 LONG i + c! loop
    tail LONG count + tail-len BYTE-COPY LONG count tail-len + ;
 

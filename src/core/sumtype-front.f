@@ -21,7 +21,7 @@ package TYPE-DECL
 public
 
 : TDECL-SUMTYPE ( -- )
-   DECL-FRONT:SOURCE-NEXT {: na:ptr nu:n :}
+   DECL-FRONT:SOURCE-NEXT {: na:^ nu:n :}
    TDECL-CLEAR
    TDECL-COLLECT
    s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!

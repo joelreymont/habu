@@ -26,9 +26,9 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 2 constant DECODE-RAW
 
 \ A numeric address view is needed solely for extent and alias checks.
-: BYTE-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+: BYTE-ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
-: SPAN-CHECK ( ptr u8 n -- )
+: SPAN-CHECK ( ^u8 n -- )
    {: source size:n :}
    size 0 < if E-RANGE throw then
    source BYTE-ADDRESS {: start:n :}
@@ -36,18 +36,18 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    size 0 > start 0= and if E-RANGE throw then
    size MAX-SIZE start - > if E-RANGE throw then ;
 
-: OVERLAP? ( ptr u8 n ptr u8 n -- bool )
+: OVERLAP? ( ^u8 n ^u8 n -- bool )
    {: first first-len:n second second-len:n :}
    first-len 0= second-len 0= or if false exit then
    first BYTE-ADDRESS second BYTE-ADDRESS second-len + <
    second BYTE-ADDRESS first BYTE-ADDRESS first-len + < and ;
 
-: BYTE@ ( ptr u8 n n -- n )
+: BYTE@ ( ^u8 n n -- n )
    {: source size:n index:n :}
    index 0 < index size >= or if E-TRUNCATED throw then
    source index + c@ ;
 
-: BYTES= ( ptr u8 n ptr u8 n -- bool )
+: BYTES= ( ^u8 n ^u8 n -- bool )
    {: first first-len:n second second-len:n :}
    first-len second-len <> if false exit then
    first-len 0 ?do
@@ -68,13 +68,13 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 : REQUIRE-SCALAR ( n -- )
    XML-SCALAR? 0= if E-SCALAR throw then ;
 
-: ASCII-WIRE ( ptr u8 n -- )
+: ASCII-WIRE ( ^u8 n -- )
    {: source size:n :}
    size 0 ?do
       source i + c@ $7F > if E-ENCODING throw then
    loop ;
 
-: SCALAR-AT ( ptr u8 n n -- n n )
+: SCALAR-AT ( ^u8 n n -- n n )
    {: source size:n cursor:n :}
    source size cursor BYTE@ drop
    source size cursor
@@ -96,7 +96,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    value $10FFFF digit - radix / > if E-ENTITY throw then
    value radix * digit + ;
 
-: NUMERIC-ENTITY ( ptr u8 n n -- n n )
+: NUMERIC-ENTITY ( ^u8 n n -- n n )
    {: source size:n start:n :}
    source size start BYTE@ $78 = if
       start 1+ $10
@@ -116,7 +116,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       value digit radix NUMERIC-STEP cursor 1+
    again ;
 
-: NAMED-SCALAR ( ptr u8 n -- n )
+: NAMED-SCALAR ( ^u8 n -- n )
    {: source size:n :}
    source size s" lt" BYTES= if $3C exit then
    source size s" gt" BYTES= if $3E exit then
@@ -125,11 +125,11 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source size s" quot" BYTES= if $22 exit then
    E-ENTITY throw ;
 
-: SEMICOLON? ( n ptr u8 n -- bool )
+: SEMICOLON? ( n ^u8 n -- bool )
    {: cursor:n source size:n :}
    source size cursor BYTE@ $3B = ;
 
-: ENTITY-AT ( ptr u8 n n -- n n )
+: ENTITY-AT ( ^u8 n n -- n n )
    {: source size:n start:n :}
    source size start 1+ BYTE@ $23 = if
       source size start 2 + NUMERIC-ENTITY exit
@@ -145,7 +145,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source start 1+ + end start - 1- NAMED-SCALAR
    end 1+ ;
 
-: NORMALIZED ( ptr u8 n n n n -- n n )
+: NORMALIZED ( ^u8 n n n n -- n n )
    {: source size:n mode:n scalar:n next:n :}
    scalar $D = if
       next size < if
@@ -158,7 +158,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       $20 after
    else value after then ;
 
-: DECODE-AT ( ptr u8 n n n -- n n )
+: DECODE-AT ( ^u8 n n n -- n n )
    {: source size:n cursor:n mode:n :}
    mode DECODE-RAW <> if
       source size cursor BYTE@ $26 = if
@@ -172,7 +172,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    dup $800 < if drop 2 exit then
    $10000 < if 3 else 4 then ;
 
-: DECODED-SIZE ( ptr u8 n n -- n )
+: DECODED-SIZE ( ^u8 n n -- n )
    {: source size:n mode:n :}
    source size SPAN-CHECK
    0 0
@@ -184,16 +184,16 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    repeat
    drop ;
 
-: PUT-BYTE ( n ptr u8 -- ptr u8 )
+: PUT-BYTE ( n ^u8 -- ^u8 )
    {: byte:n destination :}
    byte destination c!
    destination 1+ ;
 
-: PUT-CONTINUATION ( n ptr u8 -- ptr u8 )
+: PUT-CONTINUATION ( n ^u8 -- ^u8 )
    {: value:n destination :}
    value $3F and $80 or destination PUT-BYTE ;
 
-: PUT-SCALAR ( n ptr u8 -- ptr u8 )
+: PUT-SCALAR ( n ^u8 -- ^u8 )
    {: scalar:n destination :}
    scalar $80 < if scalar destination PUT-BYTE exit then
    scalar $800 < if
@@ -212,7 +212,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    {: last :}
    scalar last PUT-CONTINUATION ;
 
-: DECODE-WRITE ( ptr u8 n n ptr u8 -- )
+: DECODE-WRITE ( ^u8 n n ^u8 -- )
    {: source size:n mode:n destination :}
    destination 0
    begin dup size < while
@@ -223,7 +223,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    repeat
    2drop ;
 
-: DECODE-INTO ( ptr u8 n n ptr u8 n -- n )
+: DECODE-INTO ( ^u8 n n ^u8 n -- n )
    {: source size:n mode:n destination cap:n :}
    source size mode DECODED-SIZE {: needed:n :}
    destination cap SPAN-CHECK
@@ -232,7 +232,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source size mode destination DECODE-WRITE
    needed ;
 
-: NORMAL-EQUAL? ( ptr u8 n ptr u8 n -- bool )
+: NORMAL-EQUAL? ( ^u8 n ^u8 n -- bool )
    {: first first-len:n second second-len:n :}
    0 0
    begin

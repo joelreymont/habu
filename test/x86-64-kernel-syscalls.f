@@ -12,7 +12,7 @@ using X64RT
 
 \ hb-x64-kernel-syscalls exits 0; -negative expects the wrong balance and exits
 \ 21.
-: BUILD ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    X64HARNESS:EXPECT-BALANCED,
    0 X64HARNESS:EXPECT-DEPTH,
@@ -75,7 +75,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
@@ -110,7 +110,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : RECALL, ( n -- ) AT, FETCH, ;        \ ( -- x ) from one
 
 \ Push the address of a NUL-terminated copy of the string, behind a jump.
-: PATH, ( ptr u8 n -- ) {: a:ptr u:n :}
+: PATH, ( ^u8 n -- ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,
@@ -122,7 +122,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
 
 \ Call a row with the machine stack a cell deeper than CALL-ROW, leaves it.
-: SHIFTED-ROW ( ptr u8 n -- )
+: SHIFTED-ROW ( ^u8 n -- )
    RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : IO-CASE ( -- )
@@ -237,10 +237,10 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : QUIT, ( n -- ) {: rc:n :} QUIET, rc N, s" die" ROW ;
 
 \ argv = /bin/sh -c text, envp = text or nothing.
-: SH-ARGV, ( ptr u8 n -- ) {: a:ptr u:n :}
+: SH-ARGV, ( ^u8 n -- ) {: a:^ u:n :}
    s" /bin/sh" PATH, ARGV KEEP,  s" -c" PATH, ARGV CELL + KEEP,
    a u PATH, ARGV 2 CELL * + KEEP,  0 N, ARGV 3 CELL * + KEEP, ;
-: ENV, ( ptr u8 n -- ) {: a:ptr u:n :}
+: ENV, ( ^u8 n -- ) {: a:^ u:n :}
    a u PATH, ENVP KEEP,  0 N, ENVP CELL + KEEP, ;
 : NO-ENV, ( -- ) 0 N, ENVP KEEP, ;
 
@@ -383,7 +383,7 @@ $410 constant PID2
 : FD-SLOT, ( n n -- ) {: fd:n slot:n :}  fd N, FDS slot CELL * + KEEP, ;
 
 \ A request running sh with the text, over the map at FDS of n slots.
-: SH-REQ, ( ptr u8 n n -- ) {: a:ptr u:n nfds:n :}
+: SH-REQ, ( ^u8 n n -- ) {: a:^ u:n nfds:n :}
    a u SH-ARGV,  NO-ENV,
    s" /bin/sh" PATH, SPAWN-ABI:PATH REQ-CELL,  ARGV AT, SPAWN-ABI:ARGV REQ-CELL,
    ENVP AT, SPAWN-ABI:ENVP REQ-CELL,  0 N, SPAWN-ABI:CWD REQ-CELL,
@@ -432,7 +432,7 @@ $410 constant PID2
 \ A row image: the case, then the stack checks every case ends with. It exits 0
 \ when every check held, else FIRST-CASE upward at the first that did not (at
 \ most ten checks).
-: ROWS ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
+: ROWS ( [ -- ] ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,

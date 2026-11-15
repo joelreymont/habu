@@ -17,7 +17,7 @@ create SCRATCH SCRATCH-BYTES allot
 : FRESH ( -- ) SCRATCH-BYTES 0 do $AA SCRATCH i + c! loop ;
 
 \ The scratch bytes from offset 0 through the stored field and one past it.
-: SEEN$ ( n -- ptr u8 n ) SCRATCH swap ;
+: SEEN$ ( n -- ^u8 n ) SCRATCH swap ;
 
 \ 1 shl 63, C2BC928F996E0000h and 0123456789ABCDEFh, composed so no literal
 \ passes the signed cell.

@@ -10,21 +10,21 @@ package JSON-POINTER-TEST
 private
 
 \ RFC 6901 section 5's document.
-: DOC$ ( -- ptr u8 n )
+: DOC$ ( -- ^u8 n )
    s\" {\"foo\":[\"bar\",\"baz\"],\"\":0,\"a/b\":1,\"c%d\":2,\"e^f\":3,\"g|h\":4,\"i\\\\j\":5,\"k\\\"l\":6,\" \":7,\"m~n\":8}" ;
 
 \ A slash, then a byte no UTF-8 text holds.
 create BAD-UTF8 47 c, 255 c,
-: BAD-UTF8$ ( -- ptr u8 n ) BAD-UTF8 2 ;
+: BAD-UTF8$ ( -- ^u8 n ) BAD-UTF8 2 ;
 
 \ The bytes the pointer names in DOC$.
-: PLACE$ ( ptr u8 n -- ptr u8 n )
-   {: p:ptr u:n :}
+: PLACE$ ( ^u8 n -- ^u8 n )
+   {: p:^ u:n :}
    DOC$ p u JSON:POINTER-SPAN TTRUE {: at:n len:n :}
    DOC$ drop at + len ;
 
-: NO-PLACE ( ptr u8 n -- )
-   {: p:ptr u:n :}
+: NO-PLACE ( ^u8 n -- )
+   {: p:^ u:n :}
    DOC$ p u JSON:POINTER-SPAN TFALSE 0 T= 0 T= ;
 
 \ Section 5's twelve pointers and the values it gives for them.

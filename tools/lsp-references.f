@@ -191,45 +191,45 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 : MISS@ ( n n -- n )  swap MISS-CELLS * + MISSES @ ;
 : MISS! ( n n n -- )  swap MISS-CELLS * + MISSES ! ;
 
-: POOL$ ( n n -- ptr u8 n )
+: POOL$ ( n n -- ^u8 n )
    {: at:n u:n :}
    at POOL u ;
 
-: P$ ( -- ptr u8 n )  0 P-B P-U @ ;
-: NAME$ ( -- ptr u8 n )  NAME-AT @ NAME-U @ POOL$ ;
-: PKG$ ( -- ptr u8 n )  PKG-AT @ PKG-U @ POOL$ ;
-: D$ ( -- ptr u8 n )  D-AT @ D-U @ POOL$ ;
+: P$ ( -- ^u8 n )  0 P-B P-U @ ;
+: NAME$ ( -- ^u8 n )  NAME-AT @ NAME-U @ POOL$ ;
+: PKG$ ( -- ^u8 n )  PKG-AT @ PKG-U @ POOL$ ;
+: D$ ( -- ^u8 n )  D-AT @ D-U @ POOL$ ;
 
 : IMPLICIT? ( -- bool )  PRIM-ROW @ 0 >= BUILTIN-SYM @ 0 > or ;
 
-: KNOWN$ ( n -- ptr u8 n )  dup K-PATH KNOWN@ swap K-PATH-U KNOWN@ POOL$ ;
+: KNOWN$ ( n -- ^u8 n )  dup K-PATH KNOWN@ swap K-PATH-U KNOWN@ POOL$ ;
 
-: SUBJECT-PATH$ ( n -- ptr u8 n )  SUBS @ KNOWN$ ;
+: SUBJECT-PATH$ ( n -- ^u8 n )  SUBS @ KNOWN$ ;
 
-: CUR$ ( -- ptr u8 n )  CUR @ SUBJECT-PATH$ ;
+: CUR$ ( -- ^u8 n )  CUR @ SUBJECT-PATH$ ;
 
-: FILE$ ( n -- ptr u8 n )  dup F-PATH FILE@ swap F-PATH-U FILE@ POOL$ ;
+: FILE$ ( n -- ^u8 n )  dup F-PATH FILE@ swap F-PATH-U FILE@ POOL$ ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
-: POOL+ ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: POOL+ ( ^u8 n -- n )
+   {: a:^ u:n :}
    POOL-U @ {: at:n :}
    at u + 1+ POOL-RESERVE
    a at POOL u BYTE-COPY
    u POOL-U +!
    at ;
 
-: MSG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MSG+ ( ^u8 n -- )
+   {: a:^ u:n :}
    MSG-U @ {: at:n :}
    at u + 1+ MSG-RESERVE
    a at MSG u BYTE-COPY
    u MSG-U +! ;
 
-: MSG$ ( -- ptr u8 n )  0 MSG MSG-U @ ;
+: MSG$ ( -- ^u8 n )  0 MSG MSG-U @ ;
 
-: SHOWN$ ( ptr u8 n -- ptr u8 n )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
+: SHOWN$ ( ^u8 n -- ^u8 n )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
 : FRESH ( -- )
    0 POOL-U !
@@ -254,8 +254,8 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    0 BUILTIN-SYM !
    true SPELT ! ;
 
-: REFUSE ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n w:ptr wu:n :}
+: REFUSE ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n w:^ wu:n :}
    0 MSG-U !
    p pu SHOWN$ MSG+
    s" : " MSG+
@@ -276,29 +276,29 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    k 1+ MISS-N ! ;
 
 \ Neither string lies in POOL.
-: MISS+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr u:n w:ptr wu:n :}
+: MISS+ ( ^u8 n ^u8 n -- )
+   {: p:^ u:n w:^ wu:n :}
    p u POOL+ {: at:n :}
    w wu POOL+ {: why:n :}
    at u why wu NAMED! ;
 
 \ Subject K named, for this reason, which does not lie in POOL.
-: SUBJECT-MISS+ ( n ptr u8 n -- )
-   {: s:n w:ptr wu:n :}
+: SUBJECT-MISS+ ( n ^u8 n -- )
+   {: s:n w:^ wu:n :}
    s SUBS @ {: k:n :}
    w wu POOL+ {: why:n :}
    k K-PATH KNOWN@ k K-PATH-U KNOWN@ why wu NAMED! ;
 
-: NAMED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: NAMED? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    MISS-N @ 0 ?do
       i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR= if true unloop exit then
    loop
    false ;
 
-: SPAN-IN ( n n -- ptr u8 n n )
+: SPAN-IN ( n n -- ^u8 n n )
    {: from:n to:n :}
-   LSP-TEXT:TEXT$ {: t:ptr tu:n :}
+   LSP-TEXT:TEXT$ {: t:^ tu:n :}
    from 0 max tu min {: a:n :}
    to a max tu min {: b:n :}
    t a + b a - a ;
@@ -311,7 +311,7 @@ public
 \ when the token is qualified, after its qualifier when the
 \ bytes after it spell the tail; else -1.
 : TAIL-FROM ( n n -- n )
-   SPAN-IN {: w:ptr wu:n a:n :}
+   SPAN-IN {: w:^ wu:n a:n :}
    w wu NAME$ STR=CI if a exit then
    w wu QUALIFIER-AT {: at:n :}
    at 0 < if -1 exit then
@@ -322,8 +322,8 @@ private
 \ The file at this canonical path, which does not lie in POOL, among the
 \ files placed in, added when it is none of them: its index. The URI names
 \ the source text whose positions the caller supplies.
-: FILE-AT ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n ua:ptr uu:n :}
+: FILE-AT ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n ua:^ uu:n :}
    FILE-N @ 0 ?do
       i FILE$ a u STR= if i unloop exit then
    loop
@@ -369,8 +369,8 @@ private
 
 \ The first of known files LOW to HIGH, HIGH excluded, in BY-PATH's order,
 \ whose path does not come before path A.
-: KNOWN-FROM ( ptr u8 n n n -- n )
-   {: a:ptr u:n low:n high:n :}
+: KNOWN-FROM ( ^u8 n n n -- n )
+   {: a:^ u:n low:n high:n :}
    low high >= if low exit then
    low high low - 2 / + {: mid:n :}
    mid BY-PATH @ KNOWN$ a u LSP-WORKSPACE:PATH<
@@ -379,8 +379,8 @@ private
 
 \ The file at this canonical path, which does not lie in POOL, known, AT-th
 \ in BY-PATH's order: its index.
-: KNOWN+ ( ptr u8 n n -- n )
-   {: a:ptr u:n at:n :}
+: KNOWN+ ( ^u8 n n -- n )
+   {: a:^ u:n at:n :}
    KNOWN-N @ {: k:n :}
    k 1+ KNOWN-CELLS * KNOWN-RESERVE
    a u POOL+ k K-PATH KNOWN!
@@ -396,8 +396,8 @@ private
 
 \ The known file at this canonical path, which does not lie in POOL, known
 \ when it is not yet: its index.
-: KNOWN-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: KNOWN-AT ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u 0 KNOWN-N @ KNOWN-FROM {: at:n :}
    at KNOWN-N @ < if
       at BY-PATH @ KNOWN$ a u STR= if at BY-PATH @ exit then
@@ -426,7 +426,7 @@ private
 
 \ The file at this canonical path, which does not lie in POOL, the last
 \ subject, unless it is one.
-: SUBJECT+ ( ptr u8 n -- )
+: SUBJECT+ ( ^u8 n -- )
    KNOWN-AT {: k:n :}
    k K-SUB KNOWN@ 0 >= if exit then
    SUB-N @ {: s:n :}
@@ -437,8 +437,8 @@ private
 
 \ ---- the declaration -----------------------------------------------------------
 
-: KEY? ( ptr u8 n ptr u8 n n -- bool )
-   {: w:ptr wu:n k:ptr ku:n v:n :}
+: KEY? ( ^u8 n ^u8 n n -- bool )
+   {: w:^ wu:n k:^ ku:n v:n :}
    w wu NAME$ STR=  k ku PKG$ STR= and  v KEY-VIS @ = and ;
 
 : DECL-KEY? ( n -- bool )
@@ -461,8 +461,8 @@ private
    {: u:n g:n :}
    u USE-GROUP g = if u USE-TARGET TOKEN? else false then ;
 
-: P-PATH! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: P-PATH! ( ^u8 n -- )
+   {: a:^ u:n :}
    u 1+ P-B-RESERVE
    a 0 P-B u BYTE-COPY
    u P-U ! ;
@@ -472,24 +472,24 @@ private
    g G !
    g GROUP-PATH$ P-PATH! ;
 
-: NAME! ( ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n k:ptr ku:n :}
+: NAME! ( ^u8 n ^u8 n -- )
+   {: w:^ wu:n k:^ ku:n :}
    w wu POOL+ NAME-AT !
    wu NAME-U !
    k ku POOL+ PKG-AT !
    ku PKG-U ! ;
 
-: TEXT-OF! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TEXT-OF! ( ^u8 n -- )
+   {: a:^ u:n :}
    a u DOC-HOLDING MATCH option
       some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
       none OF a u LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
 \ The engine image records source paths relative to its source root.
-: ENGINE-PATH! ( ptr u8 n -- )
-   {: rel:ptr relu:n :}
-   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+: ENGINE-PATH! ( ^u8 n -- )
+   {: rel:^ relu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
    rootu relu + 2 + P-B-RESERVE
    root 0 P-B rootu BYTE-COPY
    47 rootu P-B c!
@@ -509,7 +509,7 @@ private
    {: sym:n found:bool :}
    found 0= if 0 false exit then
    sym ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n start:n stop:n name:ptr nameu:n live:bool :}
+   {: rel:^ relu:n start:n stop:n name:^ nameu:n live:bool :}
    live start at = and end 0= stop end = or and
    if sym true else 0 false then ;
 
@@ -518,7 +518,7 @@ private
 : FROM-BUILTIN ( n -- )
    {: sym:n :}
    sym ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n start:n stop:n name:ptr nameu:n live:bool :}
+   {: rel:^ relu:n start:n stop:n name:^ nameu:n live:bool :}
    live 0= if exit then
    rel relu ENGINE-PATH!
    name nameu s" " NAME!
@@ -539,7 +539,7 @@ private
 : FROM-PRIMITIVE ( n -- )
    {: row:n :}
    row PRIM-ROW !
-   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
    ready 0= if exit then
    path pathu P-PATH!
    row PRIM-SPEC:NAME$ row PRIM-SPEC:PKG$ NAME!
@@ -608,7 +608,7 @@ private
    loop
    OPTION:NONE ;
 
-: TOKEN-WHY ( n n -- ptr u8 n )
+: TOKEN-WHY ( n n -- ^u8 n )
    {: slot:n g:n :}
    slot DEFS-DECL-RANGE ?do
       i g DECL-AT? if
@@ -624,7 +624,7 @@ private
 : AT-DECL ( n n -- )
    {: slot:n d:n :}
    d FROM-DECL
-   slot G @ TOKEN-WHY {: w:ptr wu:n :}
+   slot G @ TOKEN-WHY {: w:^ wu:n :}
    wu 0<> if P$ w wu REFUSE then ;
 
 : AT-TOKEN-IN ( n n n -- )
@@ -644,7 +644,7 @@ private
 \ A name token selects the same canonical row as a use of that word.
 : AT-PRIMITIVE-TOKEN ( n n -- )
    {: slot:n at:n :}
-   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
    ready 0= if exit then
    slot DOC-CANON$ path pathu STR= 0= if exit then
    path pathu TEXT-OF!
@@ -656,7 +656,7 @@ private
 \ image symbol from its declaration.
 : AT-BUILTIN-TOKEN ( n n -- )
    {: slot:n at:n :}
-   slot DOC-CANON$ {: path:ptr pathu:n :}
+   slot DOC-CANON$ {: path:^ pathu:n :}
    path pathu TEXT-OF!
    path pathu at LSP-TEXT:TEXT$ SOURCE-INDEX:SYMBOL-IN
    {: sym:n found:bool :}
@@ -709,7 +709,7 @@ private
          none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REFUSE exit then ENDOF
       ;MATCH
    then
-   TS @ TE @ SPAN-IN drop {: a:ptr u:n :}
+   TS @ TE @ SPAN-IN drop {: a:^ u:n :}
    a u POOL+ TOK-AT !
    u TOK-U !
    IMPLICIT? if P$ P$ DEP-URI$
@@ -721,8 +721,8 @@ private
 
 \ A file whose loads the walk could not find named, unless it is P or D,
 \ whose checks say what they read.
-: UNREAD+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n w:ptr wu:n :}
+: UNREAD+ ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n w:^ wu:n :}
    p pu P$ STR= p pu D$ STR= or if exit then
    p pu w wu MISS+ ;
 
@@ -732,7 +732,7 @@ private
 \ an implicit word needs no load.
 : SUBJECTS! ( n -- )
    {: slot:n :}
-   slot DOC-CANON$ {: a:ptr u:n :}
+   slot DOC-CANON$ {: a:^ u:n :}
    a u POOL+ D-AT !
    u D-U !
    IMPLICIT? if
@@ -758,7 +758,7 @@ private
 \ A check numbers only its own visits, so it must state the revision of P that
 \ D's check read, declare the word at P's token in one visit at most, and bind
 \ its uses there in that visit.
-: DECL-WHY ( n n -- ptr u8 n )
+: DECL-WHY ( n n -- ^u8 n )
    {: slot:n g:n :}
    -1 SUB-VISIT !
    slot DEFS-DECL-RANGE ?do
@@ -772,7 +772,7 @@ private
    loop
    s" " ;
 
-: USE-WHY ( n n -- ptr u8 n )
+: USE-WHY ( n n -- ^u8 n )
    {: slot:n g:n :}
    slot DEFS-USE-RANGE ?do
       i g USE-AT? if
@@ -785,11 +785,11 @@ private
    loop
    s" " ;
 
-: WHY ( n n -- ptr u8 n )
+: WHY ( n n -- ^u8 n )
    {: slot:n g:n :}
    g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
    g G @ GROUP-SAME? 0= if s" source revision differs" exit then
-   slot g DECL-WHY {: w:ptr wu:n :}
+   slot g DECL-WHY {: w:^ wu:n :}
    wu 0<> if w wu exit then
    slot g USE-WHY ;
 
@@ -829,7 +829,7 @@ private
    s"  at line " MSG+
    SB-RESET LOC-N @ 1- L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
    s"  also declares " MSG+
-   d DECL-PACKAGE$ {: k:ptr ku:n :}
+   d DECL-PACKAGE$ {: k:^ ku:n :}
    ku 0<> if k ku MSG+ s" :" MSG+ then
    d DECL-NAME$ MSG+
    s" , whose uses a rename would not edit" MSG+
@@ -896,7 +896,7 @@ private
 
 : CONTRIBUTED ( n -- )
    {: g:n :}
-   PROBE g WHY {: w:ptr wu:n :}
+   PROBE g WHY {: w:^ wu:n :}
    wu 0<> if BY-VERIFIED PROBE-READS CUR @ w wu SUBJECT-MISS+ exit then
    BY-PLACING PROBE-READS
    g PLACED
@@ -908,8 +908,8 @@ private
 
 \ The subject being gathered held for SETTLE with its check's verdict, which
 \ does not lie in POOL.
-: PENDING+ ( ptr u8 n -- )
-   {: w:ptr wu:n :}
+: PENDING+ ( ^u8 n -- )
+   {: w:^ wu:n :}
    w wu POOL+ {: why:n :}
    PENDING-N @ {: k:n :}
    k 1+ PENDING-CELLS * PENDING-RESERVE
@@ -938,11 +938,11 @@ private
       none OF WITHOUT-P ENDOF
    ;MATCH ;
 
-: SRC-ROOM ( n -- ptr u8 )
+: SRC-ROOM ( n -- ^u8 )
    1+ SRC-RESERVE 0 SRC ;
 
-: READ-SRC ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
+: READ-SRC ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    path pathu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
    path pathu [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U !
    path pathu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
@@ -956,12 +956,12 @@ private
    CUR$ SRC-SIZE @ SRC-MSEC @ SRC-MNS @ SRC-CSEC @ SRC-CNS @
    PROBE-DISK-STAMP! ;
 
-: BATCH-TEXT ( ptr u8 n -- )
+: BATCH-TEXT ( ^u8 n -- )
    CUR$ LSP-CHECK:USES-BATCH-ADD
    1 BATCH-N +! ;
 
-: FROM-TEXT ( ptr u8 n n -- )
-   {: a:ptr u:n owner:n :}
+: FROM-TEXT ( ^u8 n n -- )
+   {: a:^ u:n owner:n :}
    a u CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
 
 : FROM-DISK ( -- )
@@ -1067,7 +1067,7 @@ public
    false ;
 
 : PRIMITIVE? ( -- bool )  IMPLICIT? ;
-: PRIMITIVE-RENAME$ ( -- ptr u8 n )  s" Built-in words cannot be renamed" ;
+: PRIMITIVE-RENAME$ ( -- ^u8 n )  s" Built-in words cannot be renamed" ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it, finding no subjects:
@@ -1084,7 +1084,7 @@ public
    FOUND @ if slot SUBJECTS! then ;
 
 : REFUSED? ( -- bool )  REFUSED @ ;
-: BLOCKED$ ( -- ptr u8 n )  MSG$ ;
+: BLOCKED$ ( -- ^u8 n )  MSG$ ;
 
 \ Whether a declaration is selected, and the bytes its token starts and ends
 \ at in P's text.
@@ -1096,7 +1096,7 @@ public
 : SPELT? ( -- bool )  SPELT @ ;
 
 \ A DEFTYPE declares its two converters at its name's token, which spells neither.
-: UNSPELT$ ( -- ptr u8 n )
+: UNSPELT$ ( -- ^u8 n )
    DECLARED-AT
    s" , but a token naming it does not spell it" MSG+
    MSG$ ;
@@ -1106,7 +1106,7 @@ public
       some OF REC-CLASS CLASS-EXPORT = ENDOF
       none OF false ENDOF
    ;MATCH ;
-: EXPORT$ ( -- ptr u8 n )
+: EXPORT$ ( -- ^u8 n )
    DECLARED-AT
    s"  as an EXPORT of another word" MSG+
    MSG$ ;
@@ -1118,14 +1118,14 @@ public
       some OF REC-CLASS CLASS-CONSTRUCTOR = ENDOF
       none OF false ENDOF
    ;MATCH ;
-: CONSTRUCTOR-RENAME$ ( -- ptr u8 n )
+: CONSTRUCTOR-RENAME$ ( -- ^u8 n )
    s" Constructor rename cannot update MATCH arms" ;
 
 \ Whether a location placed is a token that also declares another word in its
 \ subject's file, as an EXPORT's operand does, and the first such one said. A
 \ rename that edited the token would leave that word's uses naming the old one.
 : RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
-: RE-EXPORT$ ( -- ptr u8 n )  RX-AT @ RX-U @ POOL$ ;
+: RE-EXPORT$ ( -- ^u8 n )  RX-AT @ RX-U @ POOL$ ;
 
 \ How many subjects the request gathers from so far: none until a
 \ declaration is selected and walked.
@@ -1133,8 +1133,8 @@ public
 
 \ A queued edit to a subject or to a file a completed probe read can change
 \ the answer being gathered. Other open documents do not affect this request.
-: TOUCHES? ( ptr u8 n -- bool )
-   {: path:ptr pathu:n :}
+: TOUCHES? ( ^u8 n -- bool )
+   {: path:^ pathu:n :}
    KNOWN-N @ 0 ?do
       i K-SUB KNOWN@ 0 >= i K-CONSUMED KNOWN@ 0 > or if
          i KNOWN$ path pathu STR= if true unloop exit then
@@ -1169,8 +1169,8 @@ public
    0 lane REF-CHUNK * at + WAVE-DISK? !
    at 1+ lane WAVE-N ! ;
 
-: WAVE-TEXT ( ptr u8 n n -- )
-   {: a:ptr u:n owner:n :}
+: WAVE-TEXT ( ^u8 n n -- )
+   {: a:^ u:n owner:n :}
    a u BATCH-TEXT
    BATCH-N @ 1- WAVE-ENTRY
    WAVE-LANE @ REF-CHUNK * WAVE-LANE @ WAVE-N @ 1- + {: entry:n :}
@@ -1273,7 +1273,7 @@ public
 
 : UNCOVERED? ( -- bool )  MISS-N @ 0 > ;
 
-: UNCOVERED$ ( ptr u8 n -- ptr u8 n )
+: UNCOVERED$ ( ^u8 n -- ^u8 n )
    0 MSG-U !
    MSG+
    s" : " MSG+
@@ -1287,8 +1287,8 @@ public
    loop
    MSG$ ;
 
-: WARNING ( ptr JSON:writer -- ptr JSON:writer )
-   s" References may be incomplete" UNCOVERED$ {: m:ptr mu:n :}
+: WARNING ( ^JSON:writer -- ^JSON:writer )
+   s" References may be incomplete" UNCOVERED$ {: m:^ mu:n :}
    s" window/showMessage" JSON-RPC:NOTIFY
    WRITE-OBJECT-START
    s" type" WARNING-TYPE WRITE-FIELD-U WRITE-COMMA
@@ -1299,7 +1299,7 @@ public
 \ where its tail starts to its end, the bytes a rename edits, and whether a
 \ qualifier precedes that tail.
 : LOCATIONS ( -- n )  LOC-N @ ;
-: LOC-URI$ ( n -- ptr u8 n )
+: LOC-URI$ ( n -- ^u8 n )
    RANKED L-FILE LOC@ {: f:n :}
    f F-URI FILE@ f F-URI-U FILE@ POOL$ ;
 : LOC-TAIL ( n -- n n n n )
@@ -1311,7 +1311,7 @@ public
 
 private
 
-: LOCATION ( ptr JSON:writer n -- ptr JSON:writer )
+: LOCATION ( ^JSON:writer n -- ^JSON:writer )
    {: k:n :}
    k RANKED {: r:n :}
    WRITE-OBJECT-START
@@ -1321,7 +1321,7 @@ private
 
 public
 
-: ANSWER ( ptr JSON:writer -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer -- ^JSON:writer )
    WRITE-ARRAY-START
    LOC-N @ 0 ?do
       i 0 > if WRITE-COMMA then

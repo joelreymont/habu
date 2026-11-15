@@ -62,7 +62,7 @@ variable SLEEP-DONE-CELL
 
 TASK:+USER TASK-USER-CELL n
 2 TASK:+USERS TASK-USER-ROW n
-TASK:+USER TASK-USER-TEXT ptr u8
+TASK:+USER TASK-USER-TEXT ^u8
 STRUCTURE task-pair DERIVE addr FIELD first n FIELD second n ;STRUCTURE
 TASK:+USER TASK-USER-PAIR task-pair
 TASK:+USER TASK-LOCAL-ID n
@@ -203,10 +203,10 @@ variable BUILD-FMT-READY
    $22 SB-APPEND-C ;
 
 PROCESS-SYMBOLS
-FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ The pause comes before the call: a FUNCTION: word stages and calls at once.
-: TASK-CSTRLEN ( ptr u8 -- n ) TASK:PAUSE TASK-STRLEN ;
+: TASK-CSTRLEN ( ^u8 -- n ) TASK:PAUSE TASK-STRLEN ;
 
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
@@ -223,7 +223,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : JOIN-ERR= ( result<n,n> n -- ) {: want:n :}
    JOIN-UNWRAP 1 T= want T= ;
 
-: APP-WAIT-DONE ( ptr n -- ) {: tcb:ptr :}
+: APP-WAIT-DONE ( ^n -- ) {: tcb:^ :}
    begin tcb TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 : APP-SHARED+ ( n -- ) {: v:n :}
@@ -231,7 +231,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    APP-SHARED @ v + APP-SHARED !
    APP-LOCK TASK:RELEASE ;
 
-: APP-ACQ-WORK ( n ptr u8 n ptr n -- ) {: id:n cstr:ptr want:n done:ptr :}
+: APP-ACQ-WORK ( n ^u8 n ^n -- ) {: id:n cstr:^ want:n done:^ :}
    id TASK-LOCAL-ID !
    0 TASK-LOCAL-FFI !
    APP-ITERS 0 ?do
@@ -334,7 +334,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    loop ;
 
 \ MAIN COMPILES WHILE A TASK RUNS.
-: TASK-MAIN-COMPILES$ ( -- ptr u8 n )
+: TASK-MAIN-COMPILES$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/queue.f" SB-APPEND TASK-LF
@@ -366,7 +366,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ LOWERING IS REFUSED WHILE A TASK IS LIVE. Main defines and prints beside a
 \ parked worker, then `ndict!` exits $4F naming it: lowering frees records a
 \ task may hold. The printed word proves main compiled beside the live task.
-: TASK-LOWER-LIVE$ ( -- ptr u8 n )
+: TASK-LOWER-LIVE$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" : TLL-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
@@ -381,7 +381,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ evaluates a colon definition: exit $4F before the text is read, naming
 \ evaluate-closed.
 \ A worker that survived it would say so in TTC-DONE, and main would exit 0.
-: TASK-COMPILES$ ( -- ptr u8 n )
+: TASK-COMPILES$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" variable TTC-GO" SB-APPEND TASK-LF
@@ -397,7 +397,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ A worker calling INTERPRETER:EVAL-FRAMED exits $4F, naming the refusal,
 \ before a token of the text is read.
-: TASK-FRAMED-COMPILES$ ( -- ptr u8 n )
+: TASK-FRAMED-COMPILES$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" variable TFC-GO" SB-APPEND TASK-LF
@@ -415,7 +415,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ parses a name.
 \ The worker runs a definer once main has defined and printed; one that got
 \ past the guard would branch through the startup's create cell.
-: TASK-CREATES$ ( -- ptr u8 n )
+: TASK-CREATES$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package TTK" SB-APPEND TASK-LF
@@ -437,7 +437,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ SPIN by name and keeps its code, so the counter still advances, `' SPIN` is
 \ undefined, and the next four definitions land above the task's code instead
 \ of over it.
-: TASK-ROLLBACK-LIVE$ ( -- ptr u8 n )
+: TASK-ROLLBACK-LIVE$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package RW" SB-APPEND TASK-LF
@@ -455,7 +455,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-DIE$ ( -- ptr u8 n )
+: TASK-DIE$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" : TASK-DIE-WORK ( -- ) s" SB-APPEND TASK-DQ
@@ -472,11 +472,11 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ constant so a pinned message follows the constant instead of repeating its
 \ number. It lands in its own buffer because the caller builds the child's
 \ source in SB straight afterwards.
-: TASK-CODE$ ( n -- ptr u8 n ) {: code:n :}
+: TASK-CODE$ ( n -- ^u8 n ) {: code:n :}
    SB-RESET
    s" uncaught throw code " SB-APPEND
    code FMT:SB-INT
-   SB$ {: a:ptr u :}
+   SB$ {: a:^ u :}
    u TASK-CODE-CAP > if E-STR-CAPACITY throw then
    a TASK-CODE-BUF u BYTE-COPY
    TASK-CODE-BUF u ;
@@ -489,12 +489,12 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    s" package TUS" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" variable GOT  variable CTX  variable DIST  variable REGU" SB-APPEND TASK-LF
-   s" : REGION-U ( ptr n -- n ) BYTE-VIEW TASK-ABI:REGION-U-OFF + CELL-VIEW @ ;" SB-APPEND TASK-LF ;
+   s" : REGION-U ( ^n -- n ) BYTE-VIEW TASK-ABI:REGION-U-OFF + CELL-VIEW @ ;" SB-APPEND TASK-LF ;
 
 \ A row of count cells.
 : TASK-USER-SLOT ( n -- ) {: count:n :}
    count FMT:SB-INT s"  TASK:+USERS BIG n" SB-APPEND TASK-LF
-   s" : LAST ( -- ptr n ) " SB-APPEND count 1 - FMT:SB-INT s"  BIG ;" SB-APPEND TASK-LF
+   s" : LAST ( -- ^n ) " SB-APPEND count 1 - FMT:SB-INT s"  BIG ;" SB-APPEND TASK-LF
    s" : WORK ( -- ) 77 LAST ! LAST @ GOT ! TASK:SELF-CONTEXT CTX ! 0 BIG FFI:>CELL CTX @ - DIST ! ;" SB-APPEND TASK-LF
    s" : FITS ( -- n ) DIST @ $10000 >= DIST @ " SB-APPEND count FMT:SB-INT
    s"  cells + REGU @ <= and bool>n ;" SB-APPEND TASK-LF ;
@@ -506,7 +506,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    s" RUN GOT @ . LAST @ ." SB-APPEND TASK-LF ;
 
 \ 1024 cells: more than the band in a region's header holds.
-: TASK-USER-BIG$ ( -- ptr u8 n )
+: TASK-USER-BIG$ ( -- ^u8 n )
    SB-RESET
    TASK-USER-HEAD
    1024 TASK-USER-SLOT
@@ -516,7 +516,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ W's region is made before the 64 KiB claim outgrows its area: ACTIVATE must
 \ give W a new region, else BIG lies past the old one.
-: TASK-USER-LATE$ ( -- ptr u8 n )
+: TASK-USER-LATE$ ( -- ^u8 n )
    SB-RESET
    TASK-USER-HEAD
    s" variable OLD  W TASK:PREPARE W BYTE-VIEW TASK-ABI:REGION-OFF + CELL-VIEW @ OLD !" SB-APPEND TASK-LF
@@ -528,7 +528,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ The largest row the ceiling admits alone, $20000 under MEM-MAX-N: past the
 \ slots before it, its end is refused.
-: TASK-USER-WRAP$ ( -- ptr u8 n )
+: TASK-USER-WRAP$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" $7FFFFFFFFFFDFFFF TASK:+USERS PW u8" SB-APPEND TASK-LF
@@ -538,7 +538,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ count whose bytes wrap, a refused type, then SCRATCH-ALLOT's own huge and
 \ negative sizes: each prints its refusal, and the slots declared around them
 \ lie next to each other in a task's region.
-: TASK-USER-HUGE$ ( -- ptr u8 n )
+: TASK-USER-HUGE$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -557,7 +557,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ A live task's area cannot grow, so a claim while one runs is refused and
 \ leaves no word.
-: TASK-USER-LIVE$ ( -- ptr u8 n )
+: TASK-USER-LIVE$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -570,7 +570,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ Slots (one above a raised DATA floor) and a TASK made in texts that throw, each
 \ under later data: PA and PC keep apart, PC follows PA, the chain skips TB.
-: TASK-ROLLBACK-SLOT$ ( -- ptr u8 n )
+: TASK-ROLLBACK-SLOT$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -586,7 +586,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    s" W PC TASK:HIS W PA TASK:HIS - CELL - ." SB-APPEND TASK-LF
    s" require src/habu/task-abi.f" SB-APPEND TASK-LF
    s" package TRC" SB-APPEND TASK-LF
-   s" CAST: N>P ( n -- ptr n )" SB-APPEND TASK-LF
+   s" CAST: N>P ( n -- ^n )" SB-APPEND TASK-LF
    s" public" SB-APPEND TASK-LF
    s" : HEAD ( -- n ) data-base NULL-PTR - TASK-CHAIN-CELL + N>P @ N>P @ ;" SB-APPEND TASK-LF
    s" : LINK ( n -- n ) TASK-ABI:TCB-BYTES + N>P @ ;" SB-APPEND TASK-LF
@@ -602,18 +602,18 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    s" TRC:HEAD TRC:LINK TRC:LINK H0 @ = bool>n ." SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-SPAWN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
+: TASK-SPAWN-EXITS ( ^u8 n n -- len len ) {: src:^ srcu:n want:n :}
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
-: TASK-RUN-EXITS ( ptr u8 n n -- len len )
+: TASK-RUN-EXITS ( ^u8 n n -- len len )
    PROC-ARGV-RESET TASK-SPAWN-EXITS ;
 
 \ The pre-run check of the source, read from stdin as task-rx.f.
-: TASK-CHECK-EXITS ( ptr u8 n n -- len len )
+: TASK-CHECK-EXITS ( ^u8 n n -- len len )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
@@ -626,8 +626,8 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    erru LEN>N 0 T= ;
 
 \ The refusal's line, up to its lr's digits.
-: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n line:ptr lineu:n :}
+: TASK-EXPECT-REFUSED-EXIT ( ^u8 n ^u8 n -- )
+   {: src:^ srcu:n line:^ lineu:n :}
    src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
    TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE ;
@@ -640,7 +640,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    TASK-COMPILES$
    s" E-TASK-COMPILE habu: evaluate-closed from a task lr " TASK-EXPECT-REFUSED-EXIT ;
 
-: TASK-FRAMED-REFUSAL$ ( -- ptr u8 n )
+: TASK-FRAMED-REFUSAL$ ( -- ^u8 n )
    s" E-TASK-COMPILE habu: source read on a task's thread; only the main thread compiles" ;
 
 : TASK-TEST-FRAMED-COMPILES ( -- )
@@ -657,7 +657,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
    TASK-ERR erru LEN>N s" undefined word 'MISSING-WORD'" CONTAINS? TTRUE ;
 
-: TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
+: TASK-EXPECT-FAIL ( ^u8 n n ^u8 n -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
@@ -681,7 +681,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : BUILD-SB-ROUND ( n -- ) {: c :}
    SB-RESET
    BUILD-RUN 0 do c SB-APPEND-C TASK:PAUSE loop
-   SB$ {: a:ptr u :}
+   SB$ {: a:^ u :}
    u BUILD-RUN <> if BUILD-BAD+ exit then
    u 0 do a i + c@ c <> if BUILD-BAD+ unloop exit then loop ;
 
@@ -689,13 +689,13 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 \ digits, or its cursor, answer a different number.
 : BUILD-FMT-ROUND ( n -- ) {: v :}
    SB-RESET v FMT:SB-U
-   SB$ {: a:ptr u :}
+   SB$ {: a:^ u :}
    0 0 begin dup u < while
       swap 10 * over a + c@ STR-ZERO - + swap 1+
    repeat drop
    v <> if BUILD-BAD+ then ;
 
-: BUILD-WORK ( n n ptr n -- ) {: c v peer:ptr :}
+: BUILD-WORK ( n n ^n -- ) {: c v peer:^ :}
    1 BUILD-READY atomic-add drop
    begin BUILD-READY atomic@ 2 < while TASK:PAUSE repeat
    BUILD-ITERS 0 do c BUILD-SB-ROUND loop
@@ -715,7 +715,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    BUILD-B TASK:JOIN 0 JOIN-OK=
    BUILD-BAD @ 0 T= ;
 
-: TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: TASK-EXPECT-SILENT-OK ( ^u8 n -- ) {: src:^ srcu:n :}
    src srcu 0 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
@@ -727,7 +727,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    TASK-USER-LATE$ 0 TASK-RUN-EXITS {: lateu:len laterr:len :}
    TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
-   E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
+   E-TASK-USER TASK-CODE$ {: needle:^ needleu:n :}
    TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N S\" -1\n" T$=
@@ -743,7 +743,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n1\n-1\n-1\n-1\n" T$=
    erru LEN>N 0 T= ;
 
-: TASK-USER-REEXPORT$ ( -- ptr u8 n )
+: TASK-USER-REEXPORT$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package TASK-RX" SB-APPEND TASK-LF
@@ -853,7 +853,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : TASK-TEST-TRY-WAIT-TYPES ( -- )
    s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT-SEM"
+   s" TASK-TRY-WAIT-PTR ( ^n -- bool ) TASK:TRY-WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : POOL-TAKE ( -- )
@@ -934,17 +934,17 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : TASK-TEST-SEM-TYPES ( -- )
    s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-SEM-PTR ( ptr n -- ) TASK:WAIT-SEM"
+   s" TASK-SEM-PTR ( ^n -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-SEM-RAW ( n -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-SEM-OUT ( TASK:sem -- n ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-SIG-PTR ( ptr n -- ) TASK:SIGNAL-SEM"
+   s" TASK-SIG-PTR ( ^n -- ) TASK:SIGNAL-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-SEM-DEF ( -- TASK:sem ) SEM-COLD"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-SEM-DEF-PTR ( -- ptr n ) SEM-COLD"
+   s" TASK-SEM-DEF-PTR ( -- ^n ) SEM-COLD"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-SEM-INIT-OK ( n TASK:sem -- ) TASK:SEMAPHORE-INIT"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -1197,7 +1197,7 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
    0 UNWIND-OUTER atomic!
    0 UNWIND-AFTER atomic! ;
 
-: UNWIND-TAKE ( ptr n -- ) {: at:ptr :}
+: UNWIND-TAKE ( ^n -- ) {: at:^ :}
    1 UNWIND-TURN atomic-add 1 + at atomic! ;
 
 : UNWIND-INNER-CLEAN ( -- )
@@ -1389,39 +1389,39 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    JOIN-IDLE TASK:KILL ;
 
 : TASK-TEST-JOIN-TYPES ( -- )
-   s" TASK-JOIN-OK ( ptr n -- result<n,n> ) TASK:JOIN"
+   s" TASK-JOIN-OK ( ^n -- result<n,n> ) TASK:JOIN"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-JOIN-RAW ( n -- result<n,n> ) TASK:JOIN"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-JOIN-N ( ptr n -- n ) TASK:JOIN"
+   s" TASK-JOIN-N ( ^n -- n ) TASK:JOIN"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-RET-OK ( n -- ) TASK:RETURN"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-RET-PTR ( ptr n -- ) TASK:RETURN"
+   s" TASK-RET-PTR ( ^n -- ) TASK:RETURN"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-EXIT-OK ( [ -- ] ptr n -- ) TASK:AT-EXIT"
+   s" TASK-EXIT-OK ( [ -- ] ^n -- ) TASK:AT-EXIT"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-EXIT-RAW ( n ptr n -- ) TASK:AT-EXIT"
+   s" TASK-EXIT-RAW ( n ^n -- ) TASK:AT-EXIT"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-EXIT-IN ( [ n -- ] ptr n -- ) TASK:AT-EXIT"
+   s" TASK-EXIT-IN ( [ n -- ] ^n -- ) TASK:AT-EXIT"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : TASK-TEST-CALLBACK-TYPES ( -- )
-   s" TASK-CB-GOOD ( [ -- ] ptr n -- ) TASK:ACTIVATE"
+   s" TASK-CB-GOOD ( [ -- ] ^n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-CB-RAW ( n ptr n -- ) TASK:ACTIVATE"
+   s" TASK-CB-RAW ( n ^n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-CB-INPUT ( [ n -- n ] ptr n -- ) TASK:ACTIVATE"
+   s" TASK-CB-INPUT ( [ n -- n ] ^n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-CB-OUTPUT ( [ -- n ] ptr n -- ) TASK:ACTIVATE"
+   s" TASK-CB-OUTPUT ( [ -- n ] ^n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : TASK-TEST-THROW-TYPES ( -- )
-   s" TASK-TH-GOOD ( ptr n -- n ) TASK:THROW@"
+   s" TASK-TH-GOOD ( ^n -- n ) TASK:THROW@"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-TH-RAW ( n -- n ) TASK:THROW@"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-TH-BOOL ( ptr n -- bool ) TASK:THROW@"
+   s" TASK-TH-BOOL ( ^n -- bool ) TASK:THROW@"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ A spin costs the spinning task CPU time, and never more than the wall time
@@ -1538,7 +1538,7 @@ variable STOP-PARKED
 variable STOP-WAKED
 PTR-VARIABLE STOP-MAIN-TCB
 
-: STOP-MAIN-TCB@ ( -- ptr n )
+: STOP-MAIN-TCB@ ( -- ^n )
    STOP-MAIN-TCB @ ;
 
 : STOP-WAIT-SLOT ( n -- ) {: want:n :}
@@ -1648,7 +1648,7 @@ PTR-VARIABLE STOP-MAIN-TCB
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-STOP-N ( -- n ) TASK:WAIT"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-WAKE-OK ( ptr n -- ) TASK:WAKE"
+   s" TASK-WAKE-OK ( ^n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-WAKE-RAW ( n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -1893,7 +1893,7 @@ $C3 constant B-RET
 512 constant ENTRY-BYTE-CAP
 
 : ENTRY-W32@ ( n -- n ) {: a:n :}
-   a 4 CODE-BYTES:AT drop {: p:ptr :}
+   a 4 CODE-BYTES:AT drop {: p:^ :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
 : ENTRY-B8@ ( n -- n ) {: a:n :}
@@ -2006,7 +2006,7 @@ CB-POOL 2 - constant BIND-SLOT-B
 
 \ Slot k's owner cell, reached as the engine's thunk reaches it: through the
 \ row table the main region's CB-ROWS publishes.
-: SLOT-OWNER ( n -- ptr n ) {: k:n :}
+: SLOT-OWNER ( n -- ^n ) {: k:n :}
    TASK:MAIN-BASE {: base :}
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
    base table + k CB-ROW-BYTES * + CB-ROW-OWNER + ;
@@ -2276,7 +2276,7 @@ variable BIND-PAIR-Q-WON
 \ worker counts there: counted in its own region, the inner task would be
 \ invisible once the outer one is released, and main could free code beside a
 \ running thread.
-: TASK-WORKER-ACTIVATES$ ( -- ptr u8 n )
+: TASK-WORKER-ACTIVATES$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TWW-OUTER" SB-APPEND TASK-LF
@@ -2303,7 +2303,7 @@ $30 constant NEW-N                   \ past one pool chunk of 42 records
 NEW-HOLD-N 2 * constant NEW-HELD-ROWS  \ past the $80 rows of the image's table
 TASK:SEMAPHORE NEW-GATE
 TASK:MIN-STACK TASK:TASK NEW-MAKER
-NEW-HOLD-N TYPED-BUFFER NEW-TASKS ptr n
+NEW-HOLD-N TYPED-BUFFER NEW-TASKS ^n
 NEW-HELD-ROWS TYPED-BUFFER NEW-RAN n
 200 constant NEW-RACE-ROUNDS         \ enough for a racy TCB claim to fail nearly every run
 20 constant NEW-RACE-N               \ tasks each racer holds per round
@@ -2330,7 +2330,7 @@ variable NEW-STRAY
    9 TASK:RETURN ;
 
 : NEW-MAKER-BODY ( -- )
-   TASK:MIN-STACK TASK:NEW {: t:ptr :}
+   TASK:MIN-STACK TASK:NEW {: t:^ :}
    ['] NEW-INNER-BODY t TASK:ACTIVATE
    t TASK:JOIN JOIN-UNWRAP drop
    t TASK:FREE
@@ -2396,7 +2396,7 @@ variable NEW-STRAY
    1 NEW-CLEANED atomic-add drop ;
 
 : NEW-ROUND ( n -- ) {: r:n :}
-   TASK:MIN-STACK TASK:NEW {: t:ptr :}
+   TASK:MIN-STACK TASK:NEW {: t:^ :}
    t TASK:THROW@ 0 <> if 1 NEW-DIRTY +! then
    r 1 and 0= if ['] NEW-CLEAN t TASK:AT-EXIT then
    ['] TASK-THROW-WORK t TASK:ACTIVATE
@@ -2452,7 +2452,7 @@ variable NEW-STRAY
    s" rows given back serve the next round" T-LABEL
    EXIT-HOLD-ROUND 0 T= ;
 
-: NEW-HELD ( -- ptr n )
+: NEW-HELD ( -- ^n )
    0 NEW-TASKS @ ;
 
 : NEW-FREE-HELD ( -- )

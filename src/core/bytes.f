@@ -1,17 +1,17 @@
 \ bytes.f - core byte-buffer helpers, loaded in the engine's core prelude
 \ (a src/habu/boot-files.f CORE row) so low-level code needs no library
-\ require. BYTE-VIEW ( ptr a -- ptr u8 ) is an engine word: checked code refuses
+\ require. BYTE-VIEW ( ^a -- ^u8 ) is an engine word: checked code refuses
 \ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
 
-: BYTE+ ( ptr u8 n -- ptr u8 )
+: BYTE+ ( ^u8 n -- ^u8 )
    + ;
 
-: BYTE@ ( ptr u8 n -- n )
+: BYTE@ ( ^u8 n -- n )
    BYTE+ c@ ;
 
 \ Forward byte semantics also define overlapping copies: a destination inside
 \ the source repeats the bytes already written. This is not memmove.
-: BYTE-COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
+: BYTE-COPY-LEN ( ^u8 ^u8 len -- ) {: src:^ dst:^ u:len :}
    u LEN>N {: count :}
    count 0 <= if exit then
    0
@@ -28,5 +28,5 @@
       dup src + c@ over dst + c! 1+
    repeat drop ;
 
-: BYTE-COPY ( ptr u8 ptr u8 n -- )
+: BYTE-COPY ( ^u8 ^u8 n -- )
    >LEN BYTE-COPY-LEN ;

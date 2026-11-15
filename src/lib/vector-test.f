@@ -9,7 +9,7 @@ require src/lib/span.f
 require src/lib/vector.f
 require src/lib/arena.f
 
-: VECT-CHECK-REJECTS ( ptr u8 n -- )
+: VECT-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 DEFLINEAR vect-lin
@@ -18,37 +18,37 @@ package VECT-TYPED
 
 STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
-: CELLS-N ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: CELLS-N ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:NEW makes zeroed elements of n that keep what is written" T-LABEL
-   al 3 [type] n VEC:NEW {: v:ptr :}
+   al 3 [type] n VEC:NEW {: v:^ :}
    v VEC:COUNT 3 T=
    v 0 VEC:AT @ 0 T=  v 2 VEC:AT @ 0 T=
    5 v 0 VEC:AT !  6 v 2 VEC:AT !
    v 0 VEC:AT @ 5 T=  v 1 VEC:AT @ 0 T=  v 2 VEC:AT @ 6 T=
    v VEC:DELETE ;
 
-: CELLS-R ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: CELLS-R ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" and so of r" T-LABEL
-   al 2 [type] r VEC:NEW {: v:ptr :}
+   al 2 [type] r VEC:NEW {: v:^ :}
    2.5 v 1 VEC:AT !
    v 0 VEC:AT @ 0.0 f= TTRUE  v 1 VEC:AT @ 2.5 f= TTRUE ;
 
-: RECORDS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: RECORDS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" and so of a record, past an index's error" T-LABEL
-   al 4 [type] turn VEC:NEW {: v:ptr :}
+   al 4 [type] turn VEC:NEW {: v:^ :}
    7 v 3 VEC:AT TURN-ID !  8 v 3 VEC:AT TURN-STEP !
    v 3 VEC:AT TURN-ID @ 7 T=  v 3 VEC:AT TURN-STEP @ 8 T=
    v 2 VEC:AT TURN-STEP @ 0 T=
    [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
    [: v -1 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ ;
 
-: EMPTY ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: EMPTY ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" a vector of no elements has no index; a negative count is refused" T-LABEL
-   al 0 [type] n VEC:NEW {: v:ptr :}
+   al 0 [type] n VEC:NEW {: v:^ :}
    v VEC:COUNT 0 T=
    [: v 0 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
    v VEC:DELETE
@@ -56,29 +56,29 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    [: al $2000000000000001 [type] n VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ
    [: al $7FFFFFFFFFFFFFFF [type] u8 VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ ;
 
-: GROWS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: GROWS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:PUSH answers a zeroed new element; 1000 keep their values" T-LABEL
-   al 0 [type] n VEC:NEW {: v:ptr :}
+   al 0 [type] n VEC:NEW {: v:^ :}
    1000 0 ?do v VEC:PUSH dup @ 0 T= i swap ! loop
    v VEC:COUNT 1000 T=
    1000 0 ?do v i VEC:AT @ i T= loop
    v VEC:DELETE ;
 
-: PUSH-TURNS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: PUSH-TURNS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" and pushes records whose fields read back through VEC:AT" T-LABEL
-   al 0 [type] turn VEC:NEW {: v:ptr :}
-   v VEC:PUSH {: a:ptr :}  7 a TURN-ID !  8 a TURN-STEP !
-   v VEC:PUSH {: b:ptr :}  9 b TURN-ID !  10 b TURN-STEP !
+   al 0 [type] turn VEC:NEW {: v:^ :}
+   v VEC:PUSH {: a:^ :}  7 a TURN-ID !  8 a TURN-STEP !
+   v VEC:PUSH {: b:^ :}  9 b TURN-ID !  10 b TURN-STEP !
    v 0 VEC:AT TURN-ID @ 7 T=  v 0 VEC:AT TURN-STEP @ 8 T=
    v 1 VEC:AT TURN-ID @ 9 T=  v 1 VEC:AT TURN-STEP @ 10 T=
    v VEC:DELETE ;
 
-: ENSURED ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: ENSURED ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:ENSURE keeps the elements, zeroes new ones, never shrinks" T-LABEL
-   al 3 [type] n VEC:NEW {: v:ptr :}
+   al 3 [type] n VEC:NEW {: v:^ :}
    1 v 0 VEC:AT !  2 v 1 VEC:AT !  3 v 2 VEC:AT !
    v 10 VEC:ENSURE
    v VEC:COUNT 10 T=
@@ -87,10 +87,10 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    v 5 VEC:ENSURE  v VEC:COUNT 10 T=
    v VEC:DELETE ;
 
-: RESIZED ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: RESIZED ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:RESIZE cuts elements and grows back to zeroed ones" T-LABEL
-   al 10 [type] n VEC:NEW {: v:ptr :}
+   al 10 [type] n VEC:NEW {: v:^ :}
    10 0 ?do i 1 + v i VEC:AT ! loop
    v 4 VEC:RESIZE
    v VEC:COUNT 4 T=
@@ -101,24 +101,24 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    v 0 VEC:RESIZE  v VEC:COUNT 0 T=
    v VEC:DELETE ;
 
-: SPANS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: SPANS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:SPAN covers the elements in place" T-LABEL
-   al 0 [type] n VEC:NEW {: e:ptr :}
+   al 0 [type] n VEC:NEW {: e:^ :}
    e VEC:SPAN SPAN:LEN 0 T=
-   al 3 [type] n VEC:NEW {: v:ptr :}
+   al 3 [type] n VEC:NEW {: v:^ :}
    9 v 0 VEC:AT !
    v VEC:SPAN {: s :}
    s SPAN:LEN 3 cells T=
    s 0 SPAN:CELL@ 9 T=
-   al 2 [type] turn VEC:NEW {: t:ptr :}
+   al 2 [type] turn VEC:NEW {: t:^ :}
    t VEC:SPAN SPAN:LEN  [type] turn width>n 2 *  T=
    e VEC:DELETE  v VEC:DELETE  t VEC:DELETE ;
 
-: BAD-COUNTS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: BAD-COUNTS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" VEC:ENSURE, VEC:RESIZE and VEC:RESERVE refuse a negative count or one too big" T-LABEL
-   al 1 [type] n VEC:NEW {: v:ptr :}
+   al 1 [type] n VEC:NEW {: v:^ :}
    [: v -1 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:RESIZE ;] E-VEC-CAPACITY TTHROWSQ
    [: v $2000000000000001 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
@@ -126,7 +126,7 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    [: v $2000000000000001 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
    v VEC:DELETE ;
 
-TYPED-VARIABLE NO-VEC ptr VEC:vector<n>
+TYPED-VARIABLE NO-VEC ^VEC:vector<n>
 
 : DELETE-NULL ( -- )
    s" VEC:DELETE of NULL-PTR does nothing" T-LABEL
@@ -145,25 +145,25 @@ variable LAST-N
 10 TYPED-BUFFER FREED n
 TYPED-VARIABLE AL ALLOC:allocator
 
-: P-ALLOC ( ptr u8 n -- ptr u8 )
-   {: st:ptr len:n :}
+: P-ALLOC ( ^u8 n -- ^u8 )
+   {: st:^ len:n :}
    1 ALLOCS +!  len LAST-N !
    len 2000 >  TOP @ len + POOL-BYTES >  or if E-MEM-SIZE throw then
    st TOP @ +  len 7 + -8 and TOP +! ;
 
-: P-RESIZE ( ptr u8 ptr u8 n n -- ptr u8 )
-   {: st:ptr block:ptr old:n new:n :}
+: P-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
    1 RESIZE-CALLS +!
-   st new P-ALLOC {: moved:ptr :}
+   st new P-ALLOC {: moved:^ :}
    block moved old new min BYTE-COPY moved ;
 
-: P-FREE ( ptr u8 ptr u8 -- )
-   {: st:ptr p:ptr :}
+: P-FREE ( ^u8 ^u8 -- )
+   {: st:^ p:^ :}
    p NULL-PTR - st NULL-PTR - - FREES @ FREED !  1 FREES +! ;
 
 : DELETE-SOME ( -- )
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
-   AL 3 [type] n VEC:NEW {: v:ptr :}
+   AL 3 [type] n VEC:NEW {: v:^ :}
    ALLOCS @ a0 - 2 T=  LAST-N @ 3 cells T=
    v VEC:DELETE  FREES @ f0 - 2 T=
    f0 FREED @  h [type] VEC:vector<n> width>n +  T=
@@ -171,7 +171,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : DELETE-NONE ( -- )
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
-   AL 0 [type] n VEC:NEW {: v:ptr :}
+   AL 0 [type] n VEC:NEW {: v:^ :}
    ALLOCS @ a0 - 1 T=
    v VEC:DELETE  FREES @ f0 - 1 T=  f0 FREED @ h T= ;
 
@@ -187,7 +187,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : REFUSED-GROWTH ( -- )
    s" a growth the allocator refuses leaves the vector as it was" T-LABEL
-   AL 3 [type] n VEC:NEW {: v:ptr :}
+   AL 3 [type] n VEC:NEW {: v:^ :}
    1 v 0 VEC:AT !  2 v 1 VEC:AT !  3 v 2 VEC:AT !
    [: v 1000 VEC:ENSURE ;] E-MEM-SIZE TTHROWSQ
    v VEC:COUNT 3 T=
@@ -196,11 +196,11 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : RESERVED ( -- )
    s" VEC:RESERVE keeps COUNT; growth within it asks for no bytes and moves nothing" T-LABEL
-   AL 2 [type] n VEC:NEW {: v:ptr :}
+   AL 2 [type] n VEC:NEW {: v:^ :}
    7 v 0 VEC:AT !
    v 40 VEC:RESERVE
    v VEC:COUNT 2 T=  v 0 VEC:AT @ 7 T=
-   v 0 VEC:AT {: first:ptr :}  ALLOCS @ {: a0:n :}
+   v 0 VEC:AT {: first:^ :}  ALLOCS @ {: a0:n :}
    38 0 ?do v VEC:PUSH drop loop
    v 3 VEC:RESIZE  v 40 VEC:ENSURE  v 40 VEC:RESERVE
    ALLOCS @ a0 T=  v 0 VEC:AT first = TTRUE
@@ -211,7 +211,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 : AMORTIZED ( -- )
    s" sixty-four pushes double the room in at most eight resize calls" T-LABEL
    RESIZE-CALLS @ {: r0:n :}
-   AL 0 [type] n VEC:NEW {: v:ptr :}
+   AL 0 [type] n VEC:NEW {: v:^ :}
    [: 64 0 ?do v VEC:PUSH drop loop ;] 0 TTHROWSQ
    RESIZE-CALLS @ r0 - 8 <= TTRUE
    v VEC:DELETE ;
@@ -220,8 +220,8 @@ public
 
 : RUN ( -- )
    POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] AL ALLOC:INIT
-   ARENA:NEW {: a:ptr :}
-   a ARENA:ALLOCATOR {: al:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
    al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED
    al SPANS  al BAD-COUNTS  DELETE-NULL
@@ -233,10 +233,10 @@ public
 : VECT-RUN ( -- )
    T-RESET
    VECT-TYPED:RUN
-   s" VOK-TAT ( ptr VEC:vector<n> -- ptr n ) 0 VEC:AT" CHECK-QUIET-CANDIDATE! -1 T=
-   s" VOK-PUSH ( ptr VEC:vector<n> -- ptr n ) VEC:PUSH"
+   s" VOK-TAT ( ^VEC:vector<n> -- ^n ) 0 VEC:AT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" VOK-PUSH ( ^VEC:vector<n> -- ^n ) VEC:PUSH"
    CHECK-QUIET-CANDIDATE! -1 T=
-   s" VLIN-AT ( ptr VEC:vector<vect-lin> -- ptr vect-lin ) 0 VEC:AT" VECT-CHECK-REJECTS
+   s" VLIN-AT ( ^VEC:vector<vect-lin> -- ^vect-lin ) 0 VEC:AT" VECT-CHECK-REJECTS
    T-REPORT ;
 
 VECT-RUN

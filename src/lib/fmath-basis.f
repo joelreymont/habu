@@ -304,8 +304,8 @@ $4000000 constant BASE
 
 : NO-OVERLAP? ( SPAN:span<cell> SPAN:span<cell> -- bool )
    {: frame work :}
-   frame SPAN:BYTES SPAN:$ {: fp:ptr flen:n :}
-   work SPAN:BYTES SPAN:$ {: wp:ptr wlen:n :}
+   frame SPAN:BYTES SPAN:$ {: fp:^ flen:n :}
+   work SPAN:BYTES SPAN:$ {: wp:^ wlen:n :}
    fp NULL-PTR - wp NULL-PTR - {: fa:n wa:n :}
    fa wa <= if wa fa - flen >= else fa wa - wlen >= then ;
 

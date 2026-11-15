@@ -46,17 +46,17 @@ variable KEPT-OVER
 variable CALLS
 PTR-VARIABLE FILTER-A   variable FILTER-U
 
-: KEPT-RESET ( ptr u8 n -- )
+: KEPT-RESET ( ^u8 n -- )
    FILTER-U !  FILTER-A !
    0 KEPT-N !  0 KEPT-OVER !  0 CALLS ! ;
 
-: FILTERED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: FILTERED? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u FILTER-U @ < IF false EXIT THEN
    a FILTER-U @ FILTER-A @ FILTER-U @ CORE-STR=CI ;
 
-: KEEP ( ptr u8 n n n n -- )
-   {: a:ptr u:n v:n s:n e:n :}
+: KEEP ( ^u8 n n n n -- )
+   {: a:^ u:n v:n s:n e:n :}
    1 CALLS +!
    a u FILTERED? 0= IF EXIT THEN
    KEPT-N @ KEPT-CAP >=  u KEPT-W >  or IF 1 KEPT-OVER +! EXIT THEN
@@ -67,33 +67,33 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    e  KEPT-ENDS KEPT-N @ cells + !
    1 KEPT-N +! ;
 
-: KEPT$ ( n -- ptr u8 n )
+: KEPT$ ( n -- ^u8 n )
    {: i:n :}
    KEPT-NAMES i KEPT-W * +  KEPT-LENS i cells + @ ;
 
-: KEPT-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: KEPT-AT ( ^u8 n -- n )
+   {: a:^ u:n :}
    KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
-: KEPT-CI ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: KEPT-CI ( ^u8 n -- n )
+   {: a:^ u:n :}
    0  KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR=CI IF 1 + THEN
    LOOP ;
 
 \ For a word whose case the store does not keep, so no case pins one.
-: KEPT-CI-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: KEPT-CI-AT ( ^u8 n -- n )
+   {: a:^ u:n :}
    KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR=CI IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
-: ONCE ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: ONCE ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u KEPT-CI 1 =  a u KEPT-AT 0 >=  and ;
 
 : KEPT-ALL ( -- )
@@ -106,8 +106,8 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    KEPT-STARTS i cells + @ s T=
    KEPT-ENDS i cells + @ e T= ;
 
-: PLACED ( ptr u8 n n n n -- )
-   {: a:ptr u:n v:n s:n e:n :}
+: PLACED ( ^u8 n n n n -- )
+   {: a:^ u:n v:n s:n e:n :}
    a u T-LABEL
    a u KEPT-CI 1 T=
    a u KEPT-AT {: i:n :}
@@ -117,13 +117,13 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 
 \ NAME was offered once, exactly so spelled, with no location: an engine word,
 \ which no declaration on this path located.
-: UNPLACED ( ptr u8 n -- )
+: UNPLACED ( ^u8 n -- )
    0 0 0 PLACED ;
 
 \ NAME was offered once in any case, with no location: a word declared with no
 \ spelling armed, whose case the store does not keep, so no case pins it.
-: FOLDED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FOLDED ( ^u8 n -- )
+   {: a:^ u:n :}
    a u T-LABEL
    a u KEPT-CI 1 T=
    a u KEPT-CI-AT {: i:n :}
@@ -131,13 +131,13 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    i 0 < IF EXIT THEN
    i 0 0 0 KEPT-LOC ;
 
-: ABSENT ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ABSENT ( ^u8 n -- )
+   {: a:^ u:n :}
    a u T-LABEL
    a u KEPT-CI 0 T= ;
 
-: LOCAL ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: LOCAL ( ^u8 n -- )
+   {: a:^ u:n :}
    a u T-LABEL
    a u KEPT-AT {: i:n :}
    i 0 >= TTRUE
@@ -149,33 +149,33 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 PTR-VARIABLE TEXT-A   variable TEXT-U
 : REPLAY ( -- ) TEXT-A @ TEXT-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-: PLAIN ( ptr u8 n -- n )
+: PLAIN ( ^u8 n -- n )
    TEXT-U !  TEXT-A !
    [: REPLAY ;] catch ;
 
 \ Nothing disarms here: an arm the check failed to release makes the next
 \ case's arm throw.
-: ARMED ( ptr u8 n n [ ptr u8 n n n n -- ] -- n )
+: ARMED ( ^u8 n n [ ^u8 n n n n -- ] -- n )
    CURSOR!  PLAIN ;
 
 \ Replay TEXT with NAME's declaration armed at visit V, bytes S to E, as the
 \ verifier arms a registrar call in a file it visits.
-: NAMED-AT ( ptr u8 n ptr u8 n n n n -- n )
-   {: na:ptr nu:n a:ptr u:n v:n s:n e:n :}
+: NAMED-AT ( ^u8 n ^u8 n n n n -- n )
+   {: na:^ nu:n a:^ u:n v:n s:n e:n :}
    na nu v s e ARM
    a u PLAIN
    DISARM ;
 
-: NAMED ( ptr u8 n ptr u8 n -- n )
+: NAMED ( ^u8 n ^u8 n -- n )
    VISIT AT-START AT-END NAMED-AT ;
 
 \ ARMED, with NAME's declaration armed too: the word TEXT declares keeps its
 \ spelling.
-: DECLARED ( ptr u8 n ptr u8 n n [ ptr u8 n n n n -- ] -- n )
+: DECLARED ( ^u8 n ^u8 n n [ ^u8 n n n n -- ] -- n )
    CURSOR!  NAMED ;
 
-: FIND$ ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n b:ptr v:n :}
+: FIND$ ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n b:^ v:n :}
    u v - 1 + 0 ?DO
       a i + v b v CORE-STR= IF i UNLOOP EXIT THEN
    LOOP
@@ -185,8 +185,8 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \ TEXT. The checker reads the definition's tokens from its name on, each
 \ followed by one space, so in a single-spaced source a cursor sits at its
 \ source byte less the end of the `: ` before the name.
-: AT ( ptr u8 n ptr u8 n n -- n )
-   {: a:ptr u:n b:ptr v:n k:n :}
+: AT ( ^u8 n ^u8 n n -- n )
+   {: a:^ u:n b:^ v:n k:n :}
    a u b v FIND$ k +  a u s" : " FIND$ 2 + - ;
 
 \ Two more locations: the package's DSCITEM is declared at one, so it is told
@@ -253,7 +253,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \ spelling, so no case here pins one.
 
 \ 1. A body token.
-: PARTIAL$ ( -- ptr u8 n ) s" : CMPC ( -- n ) CMPA CMPB + ;" ;
+: PARTIAL$ ( -- ^u8 n ) s" : CMPC ( -- n ) CMPA CMPB + ;" ;
 
 : CASE-PARTIAL ( -- )
    s" cmp" KEPT-RESET
@@ -389,7 +389,7 @@ PTR-VARIABLE TOP-A   variable TOP-U
    TOP-A @ TOP-U @ CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
 \ The spellings that bind at top level under PREFIX, counted against the store.
-: TOP ( ptr u8 n -- )
+: TOP ( ^u8 n -- )
    TOP-U !  TOP-A !
    SYM-N @ {: n0:n :}
    s" " [: TOP-ASK ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE
@@ -423,7 +423,7 @@ variable USE-N   variable USE-SUM
 : COUNTED ( -- ) [: COUNT-USE ;] [: REPLAY ;] WITH-USES ;
 
 \ Replay TEXT counting its uses; its throw code, uses, byte sum and store growth.
-: OBSERVED ( ptr u8 n -- n n n n )
+: OBSERVED ( ^u8 n -- n n n n )
    TEXT-U !  TEXT-A !
    0 USE-N !  0 USE-SUM !
    SYM-N @ {: n0:n :}
@@ -486,7 +486,7 @@ variable NEST-ARM   variable NEST-ENUM
 : NEST-ARM-TRY ( -- ) 5 [: KEEP ;] CURSOR! ;
 : NEST-ENUM-TRY ( -- ) s" CM" CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
-: NESTING ( ptr u8 n n n n -- )
+: NESTING ( ^u8 n n n n -- )
    [: NEST-ARM-TRY ;] catch NEST-ARM !
    [: NEST-ENUM-TRY ;] catch NEST-ENUM !
    KEEP ;
@@ -503,7 +503,7 @@ variable NEST-ARM   variable NEST-ENUM
    KEPT-ALL
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
-: THROWING ( ptr u8 n n n n -- )
+: THROWING ( ^u8 n n n n -- )
    KEEP  E-DIV-ZERO throw ;
 
 : CASE-RELEASE ( -- )
@@ -598,7 +598,7 @@ variable DOES-USES
 \ dscitem: the local and the package's word are offered, each as written, and
 \ the global the package's word hides lends neither its spelling nor its
 \ location.
-: DISC$ ( -- ptr u8 n )
+: DISC$ ( -- ^u8 n )
    s" package DSCP : DSCB ( n -- n ) {: dscitem:n :} dscitem DSCITEM + ; ;package" ;
 
 : CASE-DISCRIMINATOR ( -- )
@@ -618,7 +618,7 @@ variable DOES-USES
 \ The open package's byte-copy, declared with no spelling armed, hides the
 \ engine's BYTE-COPY: what is offered is the package's word, with no location,
 \ and the hidden engine record does not lend it its spelling.
-: HIDE$ ( -- ptr u8 n ) s" package DSCQ : DSCH ( -- n ) BYTE-COPY ; ;package" ;
+: HIDE$ ( -- ^u8 n ) s" package DSCQ : DSCH ( -- n ) BYTE-COPY ; ;package" ;
 
 : CASE-HIDDEN ( -- )
    s" byte-c" KEPT-RESET
@@ -643,7 +643,7 @@ variable DOES-USES
 \ Composed with a visit, the verifier arms each declaration as it reads it: a
 \ DEFTYPE's two converters each by its own name, a qualified EXPORT by the tail
 \ it is kept under, and a trust row keeps the name its declaration wrote.
-: VISITED$ ( -- ptr u8 n )
+: VISITED$ ( -- ^u8 n )
    s\" DEFTYPE CmpCol\npackage CMPEA public : CMPEXA ( -- n ) 15 ; ;package\npackage CMPEB public EXPORT CMPEA:CMPEXA ;package\n: CmpTr ( -- n ) 16 ;\ns\" cmptr\" s\" -- n\" trust\n" ;
 
 : COMPOSED ( -- ) VISITED$ s" cmp-visited.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
@@ -673,7 +673,7 @@ variable DOES-USES
 \ A required file's declaration keeps the spelling it was armed with after the
 \ loader unmaps that file's bytes, when its scan ends: the cursor sits in the
 \ body of the subject that required it.
-: DEP-SUBJECT$ ( -- ptr u8 n )
+: DEP-SUBJECT$ ( -- ^u8 n )
    s\" require test/checker-completion-dep.f\n: CMPDU ( -- n ) CmpDep ;\n" ;
 
 : DEP-COMPOSED ( -- )
@@ -729,12 +729,12 @@ variable DOES-USES
    s" QALP:QALGONE" ABSENT
    s" QALP:QALPRI" ABSENT ;
 
-: SELF$ ( -- ptr u8 n ) s" package QALP public : QALSELF ( -- n ) QALP:QALPUB ; ;package" ;
+: SELF$ ( -- ^u8 n ) s" package QALP public : QALSELF ( -- n ) QALP:QALPUB ; ;package" ;
 
 \ Inside a package its name qualifies a global too, as the walk binds it: the
 \ prefix K bytes into TEXT's QALP:CMPA offers that spelling, the global's own.
-: ALIAS-AT ( ptr u8 n n -- )
-   {: a:ptr u:n k:n :}
+: ALIAS-AT ( ^u8 n n -- )
+   {: a:^ u:n k:n :}
    s" qalp:cmpa" KEPT-RESET
    a u  a u s" QALP:CMPA" k AT  [: KEEP ;] ARMED
    s" the open package's body's check runs through" T-LABEL 0 T=
@@ -784,8 +784,8 @@ variable DOES-USES
 \ Inside CMQA a qualifier CmqB names its part, which shadows the top-level
 \ CMQB there: the part's public is offered behind the part's name, as its row
 \ spells it, and neither the part's private nor CMQB's public is.
-: PART-IN ( ptr u8 n n -- )
-   {: a:ptr u:n k:n :}
+: PART-IN ( ^u8 n n -- )
+   {: a:^ u:n k:n :}
    s" cmqb:" KEPT-RESET
    a u  a u s" CmqB:QPW" k AT  [: KEEP ;] ARMED
    s" the package's body's check runs through" T-LABEL 0 T=
@@ -807,15 +807,15 @@ variable DOES-USES
    s" CMQB:QPV" ABSENT ;
 
 \ The prefix K bytes into TEXT's CMQB:QPT, in a body of CMQC.
-: PART-OTHER ( ptr u8 n n -- )
-   {: a:ptr u:n k:n :}
+: PART-OTHER ( ^u8 n n -- )
+   {: a:^ u:n k:n :}
    s" cmqb:" KEPT-RESET
    a u  a u s" CMQB:QPT" k AT  [: KEEP ;] ARMED
    s" the other package's body's check runs through" T-LABEL 0 T=
    PART-OUT ;
 
 \ Neither CMQA: nor its path to the part offers anything at top level.
-: PART-PATH ( ptr u8 n -- )
+: PART-PATH ( ^u8 n -- )
    s" cmqa:" KEPT-RESET  TOP
    KEPT-ALL
    s" nothing behind CMQA" T-LABEL

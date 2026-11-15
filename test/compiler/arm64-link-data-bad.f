@@ -20,7 +20,7 @@ package ARM64-LINK-DATA-BAD
 
 CAST: ENTRY-XT ( n -- [ -- ] )
 
-: WORD-XT ( ptr u8 n -- [ -- ] ) XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT ;
+: WORD-XT ( ^u8 n -- [ -- ] ) XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT ;
 
 : WRITE ( -- )
    s" ARM64-LINK-DATA-BAD-ARMED" type cr
@@ -57,7 +57,7 @@ public
 
 : RUN ( -- )
    1 SCRIPT-ARGV$ LINKER:KERNEL
-   0 SCRIPT-ARGV$ {: at:ptr u:n :}
+   0 SCRIPT-ARGV$ {: at:^ u:n :}
    at u s" data" STR= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
    at u s" header" STR= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
    at u s" eval" STR= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then

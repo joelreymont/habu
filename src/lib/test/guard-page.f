@@ -13,10 +13,10 @@ private
 
 PTR-VARIABLE PAGE-A
 
-: PAGE@ ( -- ptr u8 )
+: PAGE@ ( -- ^u8 )
    PAGE-A @ ;
 
-: PAGE ( -- ptr u8 )
+: PAGE ( -- ^u8 )
    PAGE@ 0= if
       STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop PAGE-A !
    then
@@ -26,11 +26,11 @@ public
 
 \ The last u bytes before the inaccessible page, each set to c. The page holds
 \ 0 to PAGE-BYTES of them; more would write into the guard below it.
-: TAIL ( n n -- ptr u8 ) {: u:n c:n :}
+: TAIL ( n n -- ^u8 ) {: u:n c:n :}
    u 0 < u STACK-ABI:PAGE-BYTES > or if
       s" guard-page: a tail is 0 to PAGE-BYTES bytes" T-EX-FAIL die
    then
-   PAGE STACK-ABI:PAGE-BYTES u - + {: a:ptr :}
+   PAGE STACK-ABI:PAGE-BYTES u - + {: a:^ :}
    u 0 ?do c a i + c! loop
    a ;
 

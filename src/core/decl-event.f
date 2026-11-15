@@ -69,17 +69,17 @@ s" OPAQUE requires a family declared in a package" E-DEV-OPAQUE-PACKAGE DECL-REJ
 4 cells constant DEV.OWNER-OFF
 5 cells constant DEV-REC
 
-: DEV.KIND ( ptr a -- ptr a ) DEV.KIND-OFF + ;
-: DEV.FAM ( ptr a -- ptr a ) DEV.FAM-OFF + ;
-: DEV.VAR ( ptr a -- ptr a ) DEV.VAR-OFF + ;
-: DEV.FLD ( ptr a -- ptr a ) DEV.FLD-OFF + ;
-: DEV.OWNER ( ptr a -- ptr a ) DEV.OWNER-OFF + ;
+: DEV.KIND ( ^a -- ^a ) DEV.KIND-OFF + ;
+: DEV.FAM ( ^a -- ^a ) DEV.FAM-OFF + ;
+: DEV.VAR ( ^a -- ^a ) DEV.VAR-OFF + ;
+: DEV.FLD ( ^a -- ^a ) DEV.FLD-OFF + ;
+: DEV.OWNER ( ^a -- ^a ) DEV.OWNER-OFF + ;
 
 8 constant DEV-CAP-INIT           \ small seed; grows geometrically (doubles) on demand
 variable DEV-CAP-V   DEV-CAP-INIT DEV-CAP-V !
 create DEV-A-BOOT   DEV-CAP-INIT DEV-REC * allot
 PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
-: DEV-BASE ( -- ptr n ) DEV-A-P @ ;
+: DEV-BASE ( -- ^n ) DEV-A-P @ ;
 
 variable DEV-N        \ provisional event high-water (scratch end, in records)
 variable DEV-BASE-FLD \ field-record committed count captured at the OUTER open
@@ -95,7 +95,7 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    DEV-N @ DEV-CAP-V @ < IF exit THEN
    DEV-N @ 1 + DEV-GROW ;
 
-: DEV-ROW ( n -- ptr n ) {: id:n :}
+: DEV-ROW ( n -- ^n ) {: id:n :}
    id 0 < IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-N @ >= IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
@@ -114,15 +114,15 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
 8 cells constant DEVTX.OWNER-OFF    \ exact first event that owns frame rows
 9 cells constant DEV-TX-REC
 
-: DEVTX.EVN ( ptr a -- ptr a ) DEVTX.EVN-OFF + ;
-: DEVTX.FLDORD ( ptr a -- ptr a ) DEVTX.FLDORD-OFF + ;
-: DEVTX.VARORD ( ptr a -- ptr a ) DEVTX.VARORD-OFF + ;
-: DEVTX.CURVAR ( ptr a -- ptr a ) DEVTX.CURVAR-OFF + ;
-: DEVTX.FLDTOK ( ptr a -- ptr a ) DEVTX.FLDTOK-OFF + ;
-: DEVTX.TOK ( ptr a -- ptr a ) DEVTX.TOK-OFF + ;
-: DEVTX.STATE ( ptr a -- ptr a ) DEVTX.STATE-OFF + ;
-: DEVTX.FAM ( ptr a -- ptr a ) DEVTX.FAM-OFF + ;
-: DEVTX.OWNER ( ptr a -- ptr a ) DEVTX.OWNER-OFF + ;
+: DEVTX.EVN ( ^a -- ^a ) DEVTX.EVN-OFF + ;
+: DEVTX.FLDORD ( ^a -- ^a ) DEVTX.FLDORD-OFF + ;
+: DEVTX.VARORD ( ^a -- ^a ) DEVTX.VARORD-OFF + ;
+: DEVTX.CURVAR ( ^a -- ^a ) DEVTX.CURVAR-OFF + ;
+: DEVTX.FLDTOK ( ^a -- ^a ) DEVTX.FLDTOK-OFF + ;
+: DEVTX.TOK ( ^a -- ^a ) DEVTX.TOK-OFF + ;
+: DEVTX.STATE ( ^a -- ^a ) DEVTX.STATE-OFF + ;
+: DEVTX.FAM ( ^a -- ^a ) DEVTX.FAM-OFF + ;
+: DEVTX.OWNER ( ^a -- ^a ) DEVTX.OWNER-OFF + ;
 
 4 constant DEV-TX-CAP-INIT
 variable DEV-TX-CAP-V   DEV-TX-CAP-INIT DEV-TX-CAP-V !
@@ -134,7 +134,7 @@ variable DEV-TX-SERIAL
 0 constant DEV-TX-OPEN
 1 constant DEV-TX-COMMITTED
 
-: DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
+: DEV-TX-BASE ( -- ^n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
    DEV-TX-P DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  REG-GROW1
@@ -142,8 +142,8 @@ variable DEV-TX-SERIAL
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
    DEV-TX-GROW ;
-: DEV-TX-AT ( n -- ptr n ) DEV-TX-REC * DEV-TX-BASE + ;
-: DEV-TX-TOP ( -- ptr n )
+: DEV-TX-AT ( n -- ^n ) DEV-TX-REC * DEV-TX-BASE + ;
+: DEV-TX-TOP ( -- ^n )
    DEV-TX-DEPTH @ 0= IF E-DEV-TX throw THEN
    DEV-TX-DEPTH @ 1 - DEV-TX-AT ;
 : DEV-TX-REQUIRE ( n -- ) DEV-TX-TOP DEVTX.TOK @ <> IF E-DEV-TX throw THEN ;
@@ -181,7 +181,7 @@ variable DEV-TX-SERIAL
       0 DEV-VAR-ORD !
       DEV-NO-VARIANT DEV-CUR-VAR !
    THEN
-   DEV-TX-DEPTH @ DEV-TX-AT {: r:ptr :}
+   DEV-TX-DEPTH @ DEV-TX-AT {: r:^ :}
    DEV-N @ r DEVTX.EVN !
    DEV-FLD-ORD @ r DEVTX.FLDORD !
    DEV-VAR-ORD @ r DEVTX.VARORD !
@@ -206,7 +206,7 @@ variable DEV-TX-SERIAL
 : DEV-EMIT ( n n n n -- ) {: k:n fam:n var:n fld:n :}
    DEV-ENSURE
    DEV-OWNER-ENSURE
-   DEV-N @ DEV-REC * DEV-BASE + {: r:ptr :}
+   DEV-N @ DEV-REC * DEV-BASE + {: r:^ :}
    k r DEV.KIND !   fam r DEV.FAM !   var r DEV.VAR !   fld r DEV.FLD !
    DEV-CUR-OWNER r DEV.OWNER !
    DEV-N @ 1 + DEV-N ! ;
@@ -373,7 +373,7 @@ variable DEV-TX-SERIAL
 
 \ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
 \ field rows are found downstream by (family, variant id).
-: DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
+: DEV-VARIANT ( n n ^u8 n -- n ) {: tok:n fam:n na:^ nu:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    na nu TYPE-NAME:VARIANT-REQUIRE
    fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
@@ -391,8 +391,8 @@ variable DEV-TX-SERIAL
 \ E-PF-*), so a malformed field emits no event and leaves the ordinal untouched.
 \ The event carries the field's eventual committed row id (base + ordinal), proven
 \ at PREPARE before any participant commits.
-: DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
-   {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+: DEV-FIELD ( n n ^u8 n n n n n n n n -- n )
+   {: tok:n fam:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ ADD wants the field-tx token, not our serial
    fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags TYPE-FIELD-OWNER:ADD drop
@@ -428,7 +428,7 @@ variable DEV-TX-SERIAL
 
 \ The family, variant, schema and layout cursors and the name pool are retired by
 \ the enclosing checker frame. Open and committed frames roll back alike.
-: DEV-FRAME-RESTORE ( ptr n -- ) {: r:ptr :}
+: DEV-FRAME-RESTORE ( ^n -- ) {: r:^ :}
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
@@ -561,9 +561,9 @@ public
 : POLICY ( n n n -- n ) DEV-POLICY ;
 : DERIVE ( n n n -- n ) DEV-DERIVE ;
 : OPAQUE ( n n -- n ) DEV-OPAQUE ;
-: VARIANT ( n n ptr u8 n -- n ) DEV-VARIANT ;
+: VARIANT ( n n ^u8 n -- n ) DEV-VARIANT ;
 : END-VARIANT ( n n -- n ) DEV-END-VARIANT ;
-: FIELD ( n n ptr u8 n n n n n n n n -- n ) DEV-FIELD ;
+: FIELD ( n n ^u8 n n n n n n n n -- n ) DEV-FIELD ;
 : FIELD-SCHEMA@ ( n n n -- n ) DEV-FIELD-SCHEMA@ ;
 : FIELD-CELLS@ ( n n n -- n ) DEV-FIELD-CELLS@ ;    \ a provisional field's cells
 : FIELD-FLAGS@ ( n n n -- n ) DEV-FIELD-FLAGS@ ;    \ a provisional field's flags (TFAM PF-FLAG-*)
@@ -581,17 +581,17 @@ public
 : CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;
 
-\ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
+\ A pointer does not own (TFCL-NODE? stops at it), so `^<linear>` would let
 \ its family copy and drop a linear value.
-: REQUIRE-POINTEE ( n ptr u8 n -- n )
-   {: node:n why:ptr whyu:n :}
+: REQUIRE-POINTEE ( n ^u8 n -- n )
+   {: node:n why:^ whyu:n :}
    node TFCL-NODE? IF why whyu TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    node ;
 
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;
 \ again at close, as a pointee naming the declared family was judged fieldless.
-: REQUIRE-POINTEES ( n ptr u8 n -- )
-   {: node:n why:ptr whyu:n :}
+: REQUIRE-POINTEES ( n ^u8 n -- )
+   {: node:n why:^ whyu:n :}
    node SCHEMA-PTR? IF
       node SCHEMA-A@ why whyu REQUIRE-POINTEE why whyu RECURSE EXIT THEN
    node SCHEMA-APP? IF

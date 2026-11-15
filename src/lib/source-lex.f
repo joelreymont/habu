@@ -24,7 +24,7 @@ $22 constant DQUOTE             \ the byte that closes a string literal
 \ partial: the tables possibly part made.
 ENUM tables released partial made ;ENUM
 TYPED-VARIABLE TABLES tables
-TYPED-VARIABLE SRC-A ptr u8   \ start of the source span being lexed
+TYPED-VARIABLE SRC-A ^u8   \ start of the source span being lexed
 variable TOK-N   variable SRC-U   variable POS
 variable LINE-N  variable COL-N  variable START  variable START-LINE  variable START-COL
 variable CSTART
@@ -39,49 +39,49 @@ variable FOFF   variable FLEN   \ current row field: offset into the source, len
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
 \ Each table is a vector the cell holds, NULL-PTR while it is not made.
-TYPED-VARIABLE KIND-V ptr VEC:vector<n>
+TYPED-VARIABLE KIND-V ^VEC:vector<n>
 \ The two address columns hold starts into the linted source.
-TYPED-VARIABLE ADDR-V ptr VEC:vector<ptr u8>
-TYPED-VARIABLE LEN-V ptr VEC:vector<n>
-TYPED-VARIABLE BYTE-V ptr VEC:vector<n>
-TYPED-VARIABLE LINE-V ptr VEC:vector<n>
-TYPED-VARIABLE COL-V ptr VEC:vector<n>
-TYPED-VARIABLE CADDR-V ptr VEC:vector<ptr u8>
-TYPED-VARIABLE CLEN-V ptr VEC:vector<n>
-TYPED-VARIABLE OPND-V ptr VEC:vector<n>   \ the token is a raw operand
+TYPED-VARIABLE ADDR-V ^VEC:vector<^u8>
+TYPED-VARIABLE LEN-V ^VEC:vector<n>
+TYPED-VARIABLE BYTE-V ^VEC:vector<n>
+TYPED-VARIABLE LINE-V ^VEC:vector<n>
+TYPED-VARIABLE COL-V ^VEC:vector<n>
+TYPED-VARIABLE CADDR-V ^VEC:vector<^u8>
+TYPED-VARIABLE CLEN-V ^VEC:vector<n>
+TYPED-VARIABLE OPND-V ^VEC:vector<n>   \ the token is a raw operand
 \ The locals live after the tokens below STEPPED, read from those tokens (STEP):
 \ the token of each live local's name and the block depth that declared it.
-TYPED-VARIABLE LOCAL-V ptr VEC:vector<n>
-TYPED-VARIABLE LDEPTH-V ptr VEC:vector<n>
+TYPED-VARIABLE LOCAL-V ^VEC:vector<n>
+TYPED-VARIABLE LDEPTH-V ^VEC:vector<n>
 variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
 variable IN-BODY                \ those tokens end inside a definition body
 
-: SRC@ ( -- ptr u8 )
+: SRC@ ( -- ^u8 )
    SRC-A @ ;
 
-: SRC! ( ptr u8 -- )
+: SRC! ( ^u8 -- )
    SRC-A ! ;
 
 \ NULL-PTR goes in before NEW: a refused NEW leaves no vector to delete twice.
-: INIT-ONE ( ptr ptr VEC:vector<n> -- )
-   {: c:ptr :}
+: INIT-ONE ( ^^VEC:vector<n> -- )
+   {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW c ! ;
 
-: INIT-ADDR ( ptr ptr VEC:vector<ptr u8> -- )
-   {: c:ptr :}
+: INIT-ADDR ( ^^VEC:vector<^u8> -- )
+   {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c !
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW c ! ;
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW c ! ;
 
-: CLEAR-ONE ( ptr ptr VEC:vector<t> -- )
-   {: c:ptr :}
+: CLEAR-ONE ( ^^VEC:vector<t> -- )
+   {: c:^ :}
    c @ NULL-PTR = if exit then
    c @ 0 VEC:RESIZE ;
 
 \ The vector a table's cell holds; one not made is E-VEC-BOUNDS.
-: TABLE@ ( ptr ptr VEC:vector<t> -- ptr VEC:vector<t> )
+: TABLE@ ( ^^VEC:vector<t> -- ^VEC:vector<t> )
    @ dup NULL-PTR = if E-VEC-BOUNDS throw then ;
 
 : CLEAR-ERROR ( -- )
@@ -156,7 +156,7 @@ TABLES-RELEASED TABLES !
 : SYNC-COUNT ( -- )
    KIND-V TABLE@ VEC:COUNT TOK-N ! ;
 
-: ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind:n a:ptr u:n byte:n line:n col:n ca:ptr cu:n :}
+: ADD ( n ^u8 n n n n ^u8 n -- ) {: kind:n a:^ u:n byte:n line:n col:n ca:^ cu:n :}
    kind KIND-V TABLE@ VEC:PUSH !
    a ADDR-V TABLE@ VEC:PUSH !
    u LEN-V TABLE@ VEC:PUSH !
@@ -185,11 +185,11 @@ public
 : COUNT ( -- n )
    TOK-N @ ;
 
-: TOKEN ( n -- ptr u8 n ) {: k:n :}
+: TOKEN ( n -- ^u8 n ) {: k:n :}
    ADDR-V TABLE@ k VEC:AT @
    LEN-V TABLE@ k VEC:AT @ ;
 
-: CONTENT ( n -- ptr u8 n ) {: k:n :}
+: CONTENT ( n -- ^u8 n ) {: k:n :}
    CADDR-V TABLE@ k VEC:AT @
    CLEN-V TABLE@ k VEC:AT @ ;
 
@@ -280,7 +280,7 @@ private
 : LINE-COMMENT ( -- )
    begin 10 CUR-NOT? while ADV drop repeat ;
 
-: BODY-A ( -- ptr u8 )
+: BODY-A ( -- ^u8 )
    SRC@ CSTART @ + ;
 
 : BODY-U ( -- n )
@@ -290,7 +290,7 @@ private
    begin 41 CUR-NOT? while ADV drop repeat ;
 
 \ The span from the token start the main loop recorded to the current position.
-: CUR$ ( -- ptr u8 n )
+: CUR$ ( -- ^u8 n )
    SRC@ START @ + POS @ START @ - ;
 
 : GAP? ( -- bool )
@@ -328,7 +328,7 @@ private
 \ an ordinary word, as `(CMP)` is. Its body becomes a COMMENT token whose CONTENT
 \ is the body: read word at a time, the body would yield a declaration the
 \ engine never performs.
-: PRINT-OPEN? ( ptr u8 n -- bool )
+: PRINT-OPEN? ( ^u8 n -- bool )
    s" .(" STR= ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
@@ -345,7 +345,7 @@ private
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
 
-: F$ ( -- ptr u8 n )
+: F$ ( -- ^u8 n )
    SRC@ FOFF @ + FLEN @ ;
 
 \ FLEN 0 means end of input: no field was left to read.
@@ -376,27 +376,27 @@ private
    NEXT-FIELD ;
 
 \ The family of the row a token opens, or -1 for a token that opens none.
-: ROW-FAMILY ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ROW-FAMILY ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" EPRIM:" STR=CI if ROW-BARE exit then
    a u s" EPPRIM:" STR=CI if ROW-PKG exit then
    -1 ;
 
-: ROW-OPEN? ( ptr u8 n -- bool )
+: ROW-OPEN? ( ^u8 n -- bool )
    ROW-FAMILY -1 <> ;
 
 \ A package row names its package before the primitive.
 : PKG-ROW? ( -- bool )
    FAM @ ROW-PKG = ;
 
-: EPRIM-CLOSE? ( ptr u8 n -- bool )
+: EPRIM-CLOSE? ( ^u8 n -- bool )
    s" EPRIM;" STR=CI ;
 
-: EPRIVATE-CLOSE? ( ptr u8 n -- bool )
+: EPRIVATE-CLOSE? ( ^u8 n -- bool )
    s" ECLOSE-PRIVATE" STR=CI ;
 
 \ Both closers write the open row, so the engine ends either row at the first
 \ `EPRIM;` or `ECLOSE-PRIVATE`.
-: ROW-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ROW-CLOSE? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u EPRIM-CLOSE? if true exit then
    a u EPRIVATE-CLOSE? ;
 
@@ -404,7 +404,7 @@ private
 \ that operand and not a closer. Bracket-less `char` is not here: `EPRIM: FOO
 \ char EPRIM; create LEAK EPRIM;` closes at the first closer and hands `create
 \ LEAK` to the consumer as tokens.
-: PARSE-NEXT? ( ptr u8 n -- bool )
+: PARSE-NEXT? ( ^u8 n -- bool )
    2dup s" [']" STR= if 2drop true exit then
    s" [char]" STR=CI ;
 
@@ -473,7 +473,7 @@ private
 \ After a body opener or `undefine` the engine consumes the next word as a parsed
 \ name and never executes it, so `: EPRIM: ( -- )` declares the opener rather
 \ than opening a row.
-: NAMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: NAMER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
    a u s" undefine" STR=CI ;
 
@@ -492,17 +492,17 @@ private
 \ is that local (src/habu/interpreter.f BODY-LOCAL?); a rescan reads locals
 \ from tokens.
 
-: LOCAL$ ( n -- ptr u8 n ) {: k:n :}
-   k TOKEN {: a:ptr u:n :}
+: LOCAL$ ( n -- ^u8 n ) {: k:n :}
+   k TOKEN {: a:^ u:n :}
    0 begin dup u < if a over + c@ $3A <> else false then while 1+ repeat
    a swap ;
 
 : LIVE ( -- n )
-   LOCAL-V @ {: v:ptr :}
+   LOCAL-V @ {: v:^ :}
    v NULL-PTR = if 0 exit then
    v VEC:COUNT ;
 
-: LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LOCAL? ( ^u8 n -- bool ) {: a:^ u:n :}
    LIVE 0 ?do
       a u LOCAL-V TABLE@ i VEC:AT @ LOCAL$ STR= if true unloop exit then
    loop
@@ -526,11 +526,11 @@ private
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
-: BLOCK-WORD? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+: BLOCK-WORD? ( n ^u8 n -- bool ) {: k:n a:^ u:n :}
    k NAMED-AT? if false exit then
    a u LOCAL? 0= ;
 
-: BLOCK-STEP ( n ptr u8 n -- ) {: k:n a:ptr u:n :}
+: BLOCK-STEP ( n ^u8 n -- ) {: k:n a:^ u:n :}
    a u SOURCE:BLOCK-OPENER? if
       k a u BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
    then
@@ -544,7 +544,7 @@ private
 \ Read token k into the state that holds after the tokens before it.
 : STEP ( n -- ) {: k:n :}
    k KIND@ WORD <> if exit then
-   k TOKEN {: a:ptr u:n :}
+   k TOKEN {: a:^ u:n :}
    IN-GROUP @ if
       a u s" :}" STR= if false IN-GROUP ! exit then
       k LOCAL-PUSH exit
@@ -581,8 +581,8 @@ public
 
 \ Name a u is a live local at token k: declared in the tokens before k, so a
 \ group's own name is live from the token after it.
-: LIVE-LOCAL? ( n ptr u8 n -- bool )
-   {: k:n a:ptr u:n :}
+: LIVE-LOCAL? ( n ^u8 n -- bool )
+   {: k:n a:^ u:n :}
    k LOCALS-TO
    a u LOCAL? ;
 
@@ -651,18 +651,18 @@ private
 \ followed by exactly one delimiter; it ends at the byte before the closing
 \ quote, which is where POS now sits minus one. An unterminated literal has no
 \ payload to report.
-: STRING-PAYLOAD ( bool -- ptr u8 n bool ) {: esc:bool :}
+: STRING-PAYLOAD ( bool -- ^u8 n bool ) {: esc:bool :}
    POS @ 1+ {: pstart:n :}
    esc if SKIP-ESC-QUOTE else SKIP-QUOTE then {: closed:bool :}
    closed 0= if SRC@ 0 closed exit then
    SRC@ pstart + POS @ 1- pstart - closed ;
 
-: STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: STRING-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u SOURCE:ESC-STRING-OPENER? if true exit then
    a u SOURCE:NORMAL-STRING-OPENER? ;
 
 \ A string opener opens a literal unless a live local has its spelling.
-: LITERAL-START? ( ptr u8 n -- bool )
+: LITERAL-START? ( ^u8 n -- bool )
    STRING-OPENER? 0= if false exit then
    LOCAL-START? 0= ;
 
@@ -681,12 +681,12 @@ private
    \ `.(` is already consumed by the word scan, so the print body starts at POS.
    PRINT-START? if PAREN-BODY exit then
    PARSER-START? if ADD-WORD RAW-OPERAND exit then
-   CUR$ {: a:ptr u:n :}
+   CUR$ {: a:^ u:n :}
    START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}
    a u LITERAL-START? 0= if
       WORD a u byte line col SRC@ 0 ADD exit
    then
-   a u SOURCE:ESC-STRING-OPENER? STRING-PAYLOAD {: pa:ptr pu:n closed:bool :}
+   a u SOURCE:ESC-STRING-OPENER? STRING-PAYLOAD {: pa:^ pu:n closed:bool :}
    WORD a u byte line col pa pu ADD
    closed 0= if COUNT 1- MARK-UNTERM then ;
 
@@ -731,7 +731,7 @@ private
    k COUNT >= if false exit then
    k KIND@ WORD <> if false exit then
    k BYTE@ a <> if false exit then
-   k TOKEN {: ta:ptr tu:n :}
+   k TOKEN {: ta:^ tu:n :}
    tu u <> if false exit then
    ta tu STRING-OPENER? 0= ;
 
@@ -753,7 +753,7 @@ private
 
 \ Token k, read as a plain word, steers how the scan reads the token after it.
 : STEERS? ( n -- bool ) {: k:n :}
-   k TOKEN {: a:ptr u:n :}
+   k TOKEN {: a:^ u:n :}
    a u s" {:" STR= if true exit then
    a u NAMER? if true exit then
    a u SOURCE:PARSING-KEYWORD? 0= if false exit then
@@ -768,11 +768,11 @@ public
 : LITERAL? ( n -- bool )
    {: k:n :}
    k KIND@ WORD <> if false exit then
-   k TOKEN {: a:ptr u:n :}
+   k TOKEN {: a:^ u:n :}
    a u STRING-OPENER? 0= if false exit then
    k CONTENT drop a u + 1+ = ;
 
-: SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SOURCE ( ^u8 n -- ) {: a:^ u:n :}
    a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
    CLEAR-ERROR
    RESET-TABLES

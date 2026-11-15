@@ -30,8 +30,8 @@ public
    SRC-A @ SRC-U @ evaluate-closed
    NAME-A @ NAME-U @ evaluate-closed ;
 
-: ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
+: ROW ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n src:^ su:n want:^ wu:n :}
    src SRC-A !  su SRC-U !  name NAME-A !  nu NAME-U !
    s" WASM-NUMERIC-TEST:ROW-EVAL"
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}

@@ -31,18 +31,18 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: ENTRY$ ( -- ptr u8 n ) ENTRY ENTRY-U @ ;
-: ENGINE$ ( -- ptr u8 n ) ENGINE ENGINE-U @ ;
-: MID$ ( -- ptr u8 n ) MID MID-U @ ;
-: GONE$ ( -- ptr u8 n ) GONE GONE-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ENTRY$ ( -- ^u8 n ) ENTRY ENTRY-U @ ;
+: ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
+: MID$ ( -- ^u8 n ) MID MID-U @ ;
+: GONE$ ( -- ^u8 n ) GONE GONE-U @ ;
 
 \ TAIL is three 200-byte segments, and MID is ROOT$/deep/TAIL.
 200 constant SEG-BYTES
 SEG-BYTES 1 + 3 * 1 - constant TAIL-BYTES
 create TAIL TAIL-BYTES allot
 
-: TAIL$ ( -- ptr u8 n ) TAIL TAIL-BYTES ;
+: TAIL$ ( -- ^u8 n ) TAIL TAIL-BYTES ;
 
 : TAIL! ( -- )
    TAIL-BYTES 0 ?do
@@ -50,10 +50,10 @@ create TAIL TAIL-BYTES allot
    loop ;
 
 : SETUP ( -- )
-   s" habu-deep-cwd" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-deep-cwd" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE {: e:ptr eu:n :}
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE {: e:^ eu:n :}
    e ENGINE eu BYTE-COPY eu ENGINE-U !
    ROOT$ s" entry.f" ENTRY FS:JOIN-PATH ENTRY-U !
    ENTRY$ S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" FS:WRITE-ALL
@@ -64,7 +64,7 @@ create TAIL TAIL-BYTES allot
    PATH pathu TAIL$ MID FS:JOIN-PATH MID-U !
    MID$ FS:MAKE-DIRS ;
 
-: SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
+: SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
    PATH pathu data size FS:WRITE-ALL ;
 
@@ -73,15 +73,15 @@ create TAIL TAIL-BYTES allot
    s" --load" >LEN PROC-ARGV+
    ENTRY$ >LEN PROC-ARGV+ ;
 
-: RUN-CHILD ( ptr u8 n ptr u8 n -- )
-   {: prog:ptr progu:n cwd:ptr cwdu:n :}
+: RUN-CHILD ( ^u8 n ^u8 n -- )
+   {: prog:^ progu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN cwd cwdu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
-: KEEP ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n err:ptr erru:n :}
+: KEEP ( ^u8 n ^u8 n -- ) {: out:^ outu:n err:^ erru:n :}
    out outu OUT OUT-U @ SAVE
    err erru ERR ERR-U @ SAVE ;
 

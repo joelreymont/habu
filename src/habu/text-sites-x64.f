@@ -14,7 +14,7 @@ private
 $3145544953343658 constant MAGIC
 variable PREV
 
-CAST: RAW-PTR ( n -- ptr u8 )
+CAST: RAW-PTR ( n -- ^u8 )
 
 : BAD ( -- ) s" x64text: malformed engine text sites" SITE-RC die ;
 : BASE-N ( -- n ) data-base RBASE-CELL + @ ;
@@ -24,7 +24,7 @@ CAST: RAW-PTR ( n -- ptr u8 )
    image $60 + RAW-PTR LE:U64@ {: size:n :}
    size 0 < size REGION-OFF > or if BAD then
    image size + ;
-: ROW ( n n -- ptr u8 ) {: table:n idx:n :}
+: ROW ( n n -- ^u8 ) {: table:n idx:n :}
    table 4 + idx ROW-BYTES * + RAW-PTR ;
 : WIDTH ( n -- n ) {: kind:n :}
    kind 0= if 1 exit then
@@ -44,13 +44,13 @@ CAST: RAW-PTR ( n -- ptr u8 )
    count rx-end table - 4 - FOOTER-BYTES - ROW-BYTES / > if BAD then
    table 4 + count ROW-BYTES * + FOOTER-BYTES + ROUND-PAGE {: end:n :}
    end rx-end > if BAD then
-   end FOOTER-BYTES - RAW-PTR {: footer:ptr :}
+   end FOOTER-BYTES - RAW-PTR {: footer:^ :}
    footer LE:U32@ table base - <> if BAD then
    footer 4 + LE:U32@ count <> if BAD then
    footer 8 + LE:U64@ MAGIC <> if BAD then
    -1 PREV !
    count 0 ?do
-      table i ROW {: row:ptr :}
+      table i ROW {: row:^ :}
       row LE:U32@ {: off:n :}
       row 4 + c@ WIDTH {: width:n :}
       off PREV @ <= off width + table base - > or if BAD then
@@ -62,13 +62,13 @@ public
 
 \ The callback receives a source field pointer and kind: 3 rel8, 4 rel32,
 \ 5 abs64. These values do not overlap live REGION site kinds 1/2.
-: EACH-IN-SPAN ( ptr u8 ptr u8 [ ptr u8 n -- ] -- )
-   {: first:ptr last:ptr q :}
+: EACH-IN-SPAN ( ^u8 ^u8 [ ^u8 n -- ] -- )
+   {: first:^ last:^ q :}
    TABLE {: table:n count:n :}
    first BASE-N RAW-PTR < last CODE-END-N RAW-PTR > or if BAD then
    count 0 ?do
-      table i ROW {: row:ptr :}
-      BASE-N row LE:U32@ + RAW-PTR {: site:ptr :}
+      table i ROW {: row:^ :}
+      BASE-N row LE:U32@ + RAW-PTR {: site:^ :}
       site first >= site last < and if
          site row 4 + c@ 3 + q execute
       then

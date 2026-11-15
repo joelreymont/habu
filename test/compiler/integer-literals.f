@@ -16,12 +16,12 @@ package INTEGER-LITERALS-TEST
 : $10000000000000000G ( -- n ) 42 ;
 
 
-: PARSED= ( ptr u8 n n -- ) {: src:ptr len:n want:n :}
+: PARSED= ( ^u8 n n -- ) {: src:^ len:n want:n :}
    src len num-parse {: got:n flt:bool ok:bool :}
    ok TTRUE flt TFALSE got want T= ;
 
 
-: REFUSED ( ptr u8 n -- )
+: REFUSED ( ^u8 n -- )
    num-parse {: got:n flt:bool ok:bool :}
    ok TFALSE flt TFALSE got 0 T= ;
 
@@ -52,14 +52,14 @@ package INTEGER-LITERALS-TEST
    s" $10000000000000000G" REFUSED ;
 
 
-: BAD-INTERPRETED ( ptr u8 n -- ) {: lit:ptr len:n :}
+: BAD-INTERPRETED ( ^u8 n -- ) {: lit:^ len:n :}
    SB-RESET
    lit len SB-APPEND
    s"  drop" SB-APPEND
    [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
-: BAD-COMPILED ( ptr u8 n -- ) {: lit:ptr len:n :}
+: BAD-COMPILED ( ^u8 n -- ) {: lit:^ len:n :}
    SB-RESET
    s" : INTEGER-OVERFLOW-BAD ( -- n ) " SB-APPEND
    lit len SB-APPEND
@@ -67,7 +67,7 @@ package INTEGER-LITERALS-TEST
    [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
-: BAD-LITERAL ( ptr u8 n -- ) {: lit:ptr len:n :}
+: BAD-LITERAL ( ^u8 n -- ) {: lit:^ len:n :}
    lit len REFUSED
    lit len BAD-INTERPRETED
    lit len BAD-COMPILED ;

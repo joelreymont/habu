@@ -45,31 +45,31 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: BASE$ ( -- ptr u8 n )
+: BASE$ ( -- ^u8 n )
    BASE BASE-U @ ;
 
-: FX$ ( -- ptr u8 n )
+: FX$ ( -- ^u8 n )
    FX FX-U @ ;
 
-: FX-PATH$ ( -- ptr u8 n )
+: FX-PATH$ ( -- ^u8 n )
    FX-P FX-PU @ ;
 
-: DEP$ ( -- ptr u8 n )
+: DEP$ ( -- ^u8 n )
    DEP DEP-U @ ;
 
-: DEP-PATH$ ( -- ptr u8 n )
+: DEP-PATH$ ( -- ^u8 n )
    DEP-P DEP-PU @ ;
 
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    OUT OUT-U @ ;
 
-: ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
 
 : ROOT! ( -- )
    FS:CLEANUP-RESET
    s" habu-diag-position" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL drop
-   {: a:ptr u:n :}
+   {: a:^ u:n :}
    a BASE u BYTE-COPY
    u BASE-U !
    BASE$ FS:CLEANUP-TREE+ ;
@@ -80,18 +80,18 @@ variable RC
 
 \ Writes the string builder's text as fixture NAME and keeps a copy for the
 \ packets' byte spans.
-: FIXTURE! ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: FIXTURE! ( ^u8 n -- )
+   {: name:^ nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    SB$
-   {: a:ptr u:n :}
+   {: a:^ u:n :}
    a FX u BYTE-COPY
    u FX-U !
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
-: CANON$ ( ptr u8 n -- ptr u8 n )
+: CANON$ ( ^u8 n -- ^u8 n )
    FS:>PATHZ CANON FS:PATHZ-CAP realpath {: n:n :}
    n 0 <= IF E-FS-PATH throw THEN
    CANON n ;
@@ -100,12 +100,12 @@ variable RC
 : DEP! ( -- )
    FX DEP FX-U @ BYTE-COPY
    FX-U @ DEP-U !
-   FX-PATH$ CANON$ {: a:ptr u:n :}
+   FX-PATH$ CANON$ {: a:^ u:n :}
    a DEP-P u BYTE-COPY
    u DEP-PU ! ;
 
-: STORE! ( ptr u8 n len len PROCESS:ending -- )
-   {: src:ptr srcu:n outu:len erru:len oc :}
+: STORE! ( ^u8 n len len PROCESS:ending -- )
+   {: src:^ srcu:n outu:len erru:len oc :}
    outu LEN>N OUT-U !
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
@@ -119,8 +119,8 @@ variable RC
 : CHECK-RUN ( -- )
    LSP-CHECK:RUN dup 0 <> IF throw THEN drop ;
 
-: CHECK-EXIT ( ptr u8 n n -- )
-   {: flag:ptr flagu:n want:n :}
+: CHECK-EXIT ( ^u8 n n -- )
+   {: flag:^ flagu:n want:n :}
    LSP-CHECK:RESET
    flagu 0 > IF flag 2 + flagu 2 - LSP-CHECK:OPT THEN
    s" json-errors" LSP-CHECK:OPT
@@ -132,32 +132,32 @@ variable RC
    rc want T=
    ERR$ GJA-SPLIT-LINES ;
 
-: CHECK ( ptr u8 n -- )
+: CHECK ( ^u8 n -- )
    REJECT-RC CHECK-EXIT ;
 
-: FIELD-MISSING ( ptr u8 n -- )
-   {: key:ptr keyu:n :}
+: FIELD-MISSING ( ^u8 n -- )
+   {: key:^ keyu:n :}
    T-NEXT
    T-FAIL
    s" assert: missing JSON field " type key keyu type cr ;
 
-: FIELD-NOT ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n kind:ptr kindu:n :}
+: FIELD-NOT ( ^u8 n ^u8 n -- )
+   {: key:^ keyu:n kind:^ kindu:n :}
    T-NEXT
    T-FAIL
    s" assert: JSON field " type key keyu type s"  is not " type kind kindu type cr ;
 
 
-: STR-FIELD= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )
-   {: root:SPAN:span<u8> key:ptr keyu:n want:ptr wantu:n :}
+: STR-FIELD= ( SPAN:span<u8> ^u8 n ^u8 n -- )
+   {: root:SPAN:span<u8> key:^ keyu:n want:^ wantu:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
    v GJA-KIND JSON:T-STR <> IF key keyu s" a string" FIELD-NOT EXIT THEN
    v GJA-STRING$ want wantu T$= ;
 
 
-: INT-FIELD= ( SPAN:span<u8> ptr u8 n n -- )
-   {: root:SPAN:span<u8> key:ptr keyu:n want:n :}
+: INT-FIELD= ( SPAN:span<u8> ^u8 n n -- )
+   {: root:SPAN:span<u8> key:^ keyu:n want:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
    v GJA-KIND JSON:T-INT <> IF key keyu s" an integer" FIELD-NOT EXIT THEN
@@ -165,8 +165,8 @@ variable RC
    got want T= ;
 
 
-: FIELD-ABSENT ( SPAN:span<u8> ptr u8 n -- )
-   {: root:SPAN:span<u8> key:ptr keyu:n :}
+: FIELD-ABSENT ( SPAN:span<u8> ^u8 n -- )
+   {: root:SPAN:span<u8> key:^ keyu:n :}
    root key keyu GJA-FIELD? 0= IF drop T-NEXT EXIT THEN
    drop
    T-NEXT
@@ -174,13 +174,13 @@ variable RC
    s" assert: unexpected JSON field " type key keyu type cr ;
 
 
-: FIELD= ( n ptr u8 n ptr u8 n -- )
-   {: k:n key:ptr keyu:n want:ptr wantu:n :}
+: FIELD= ( n ^u8 n ^u8 n -- )
+   {: k:n key:^ keyu:n want:^ wantu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE key keyu want wantu STR-FIELD= ;
 
-: PLACED-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
-   {: k:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
+: PLACED-IN ( n ^u8 n n n n n ^u8 n ^u8 n -- )
+   {: k:n sp:^ spu:n line:n col:n bs:n be:n path:^ pathu:n text:^ textu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE
    {: root:SPAN:span<u8> :}
@@ -195,15 +195,15 @@ variable RC
       T-NEXT s" expected span lies outside the fixture" T-ASSERT-DETAIL
    THEN ;
 
-: AT-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
-   {: k:n tok:ptr toku:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
+: AT-IN ( n ^u8 n n n n n ^u8 n ^u8 n -- )
+   {: k:n tok:^ toku:n line:n col:n bs:n be:n path:^ pathu:n text:^ textu:n :}
    k tok toku line col bs be path pathu text textu PLACED-IN
    k s" token" tok toku FIELD= ;
 
-: AT ( n ptr u8 n n n n n -- )
+: AT ( n ^u8 n n n n n -- )
    FX-PATH$ FX$ AT-IN ;
 
-: DEP-AT ( n ptr u8 n n n n n -- )
+: DEP-AT ( n ^u8 n n n n n -- )
    DEP-PATH$ DEP$ AT-IN ;
 
 : TEST-LINES ( -- )
@@ -320,8 +320,8 @@ variable RC
    s" " CHECK
    0 s" NOPE-LATE" 7 4 84 93 AT ;
 
-: NULL-FIELD ( SPAN:span<u8> ptr u8 n -- )
-   {: root:SPAN:span<u8> key:ptr keyu:n :}
+: NULL-FIELD ( SPAN:span<u8> ^u8 n -- )
+   {: root:SPAN:span<u8> key:^ keyu:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
    v GJA-KIND JSON:T-NULL <> IF key keyu s" null" FIELD-NOT EXIT THEN
@@ -331,8 +331,8 @@ variable RC
 \ null definition fields, the file and LINE alone, for the run file keeps each
 \ subject line on its own line but its markers shift bytes and columns, and a
 \ top step sits in no definition an origin maps.
-: TOP-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: c:ptr cu:n tok:ptr toku:n path:ptr pathu:n line:n :}
+: TOP-AT ( ^u8 n ^u8 n ^u8 n n -- )
+   {: c:^ cu:n tok:^ toku:n path:^ pathu:n line:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 s" code" c cu FIELD=
    0 s" token" tok toku FIELD=
@@ -386,8 +386,8 @@ variable RC
    s" " CHECK
    s" E-MISMATCH" s" +" FX-PATH$ 1 TOP-AT ;
 
-: SHADOW-FIXTURE ( ptr u8 n ptr u8 n -- )
-   {: decl:ptr declu:n body:ptr bodyu:n :}
+: SHADOW-FIXTURE ( ^u8 n ^u8 n -- )
+   {: decl:^ declu:n body:^ bodyu:n :}
    SB-RESET
    s" package P" SB-APPEND LF+
    s" public" SB-APPEND LF+
@@ -441,8 +441,8 @@ variable RC
    s" ;package" SB-APPEND LF+
    s" shadowed.f" FIXTURE! ;
 
-: SHADOWED-AT ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: SHADOWED-AT ( ^u8 n -- )
+   {: path:^ pathu:n :}
    0 s" code" s" E-SHADOWED-ARITY" FIELD=
    0 s" token" s" f" FIELD=
    0 s" F" 5 5 47 48 path pathu FX$ PLACED-IN ;
@@ -466,8 +466,8 @@ variable RC
    s" :   WIDE" SB-APPEND LF+
    s"    V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 ;" SB-APPEND LF+ ;
 
-: NOT-RECORDED ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: NOT-RECORDED ( ^u8 n -- )
+   {: path:^ pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
    0 s" word" s" wide" FIELD=
    0 s" WIDE" 3 5 68 72 path pathu FX$ PLACED-IN
@@ -616,8 +616,8 @@ variable RC
    0 s" Up" 2 12 27 29 AT ;
 
 \ A SUMTYPE in a private section defines HUE-RED for its variant red.
-: HUE-FIXTURE ( ptr u8 n -- )
-   {: tail:ptr tailu:n :}
+: HUE-FIXTURE ( ^u8 n -- )
+   {: tail:^ tailu:n :}
    SB-RESET
    s" package HUES" SB-APPEND LF+
    s" : HUE-RED ( -- n ) 1 ;" SB-APPEND LF+
@@ -628,8 +628,8 @@ variable RC
    s" sum-generated.f" FIXTURE! ;
 
 \ A top-level STRUCTURE defines CKDPROD:MAKE.
-: CKDPROD-FIXTURE ( ptr u8 n -- )
-   {: tail:ptr tailu:n :}
+: CKDPROD-FIXTURE ( ^u8 n -- )
+   {: tail:^ tailu:n :}
    SB-RESET
    s" : CKDPROD:MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
    s" STRUCTURE ckdprod FIELD x n ;STRUCTURE" SB-APPEND LF+
@@ -638,8 +638,8 @@ variable RC
 
 \ The token is the generated name, which lies in no source text: no line is
 \ asserted.
-: GENERATED-AT ( ptr u8 n -- )
-   {: ta:ptr tu:n :}
+: GENERATED-AT ( ^u8 n -- )
+   {: ta:^ tu:n :}
    0 s" code" s" E-BAD-DECLARATION" FIELD=
    0 s" reason" s" generated declaration already defined" FIELD=
    0 s" token" ta tu FIELD=
@@ -715,14 +715,14 @@ variable RC
    s" " CHECK
    0 s" size" 3 10 40 44 AT ;
 
-: LINE-FIXTURE ( ptr u8 n ptr u8 n -- )
-   {: text:ptr textu:n name:ptr nameu:n :}
+: LINE-FIXTURE ( ^u8 n ^u8 n -- )
+   {: text:^ textu:n name:^ nameu:n :}
    SB-RESET
    text textu SB-APPEND LF+
    name nameu FIXTURE! ;
 
-: REJECTED-AS ( ptr u8 n -- )
-   {: c:ptr cu:n :}
+: REJECTED-AS ( ^u8 n -- )
+   {: c:^ cu:n :}
    GJA-LINE# @ 1 T=
    0 s" code" c cu FIELD=
    0 s" verdict" s" rejected" FIELD= ;
@@ -730,14 +730,14 @@ variable RC
 \ The composition check gives one packet, a rejection. Plain preverification
 \ uses this same composition verifier; REFUSED-MODES keeps representative
 \ checks across the mode boundary.
-: REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: REFUSED-AT ( ^u8 n ^u8 n n n n n -- )
+   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" --all-errors" CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-: REFUSED-MODES ( ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: REFUSED-MODES ( ^u8 n ^u8 n n n n n -- )
+   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" " CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be AT
@@ -785,8 +785,8 @@ variable RC
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 GJA-LINE$ GJA-PARSE s" throw_code" code INT-FIELD= ;
 
-: THROWN-AT ( n ptr u8 n n n n n -- )
-   {: code:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: THROWN-AT ( n ^u8 n n n n n -- )
+   {: code:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" " CHECK
    s" E-STATEMENT-THROW" REJECTED-AS
    0 tok toku line col bs be AT
@@ -801,8 +801,8 @@ variable RC
    code THREW ;
 
 \ Under --verify-only the declaration pre-pass alone refuses the fixture.
-: PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n cls:ptr clsu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: PREPASS-REFUSED ( ^u8 n ^u8 n ^u8 n ^u8 n n n n n -- )
+   {: c:^ cu:n cls:^ clsu:n why:^ whyu:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" --verify-only" CHECK
    c cu REJECTED-AS
    0 s" repair_class" cls clsu FIELD=
@@ -875,8 +875,8 @@ variable RC
    1 s" code" s" W-CHECK-DEFERRED" FIELD=
    1 s" widget" 6 20 160 166 FX-PATH$ CANON$ FX$ AT-IN ;
 
-: TWO-LINE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: one:ptr oneu:n two:ptr twou:n name:ptr nameu:n :}
+: TWO-LINE-FIXTURE ( ^u8 n ^u8 n ^u8 n -- )
+   {: one:^ oneu:n two:^ twou:n name:^ nameu:n :}
    SB-RESET
    one oneu SB-APPEND LF+
    two twou SB-APPEND LF+
@@ -963,21 +963,21 @@ variable RC
    s" : X ( n n -- n ) {: a | :} | ;" s" local-bar-ref.f" LINE-FIXTURE
    s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES ;
 
-: RECORD-PLACED ( n ptr u8 n ptr u8 n ptr u8 n n n n n ptr u8 n -- )
-   {: k:n code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
+: RECORD-PLACED ( n ^u8 n ^u8 n ^u8 n n n n n ^u8 n -- )
+   {: k:n code:^ codeu:n tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n path:^ pathu:n :}
    k s" code" code codeu FIELD=
    k s" token" tok toku FIELD=
    k sp spu line col bs be path pathu FX$ PLACED-IN ;
 
-: STORED-PLACED ( ptr u8 n ptr u8 n n n n n ptr u8 n -- )
-   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
+: STORED-PLACED ( ^u8 n ^u8 n n n n n ^u8 n -- )
+   {: tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n path:^ pathu:n :}
    0 s" E-BAD-STORED-SIGNATURE" tok toku sp spu line col bs be path pathu RECORD-PLACED ;
 
 \ STORED-PLACED for each check of the fixture, plain, --all-errors and
 \ --verify-only: each gives the refusal alone, never followed by its statement's
 \ throw.
-: STORED-AT ( ptr u8 n ptr u8 n n n n n -- )
-   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
+: STORED-AT ( ^u8 n ^u8 n n n n n -- )
+   {: tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n :}
    s" " CHECK
    GJA-LINE# @ 1 T=
    tok toku sp spu line col bs be FX-PATH$ STORED-PLACED
@@ -1004,7 +1004,7 @@ variable RC
    s" stored-trust.f" FIXTURE!
    s" y" s" Y" 2 4 20 21 STORED-AT
    s" a cast" T-LABEL
-   s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
+   s" cast: >X ( ^ -- n )" s" stored-cast.f" LINE-FIXTURE
    s" >X" s" >X" 1 7 6 8 STORED-AT ;
 
 : TEST-REPLACED-SIGNATURE ( -- )
@@ -1031,8 +1031,8 @@ variable RC
    s" replaced-same-tail.f" FIXTURE!
    s" x" s" X" 3 10 39 40 STORED-AT ;
 
-: RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n n -- )
-   {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n lead:n :}
+: RECORD-AT ( ^u8 n ^u8 n ^u8 n n n n n n n -- )
+   {: code:^ codeu:n tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n count:n lead:n :}
    s" " CHECK
    GJA-LINE# @ count T=
    0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
@@ -1045,8 +1045,8 @@ variable RC
 
 \ RECORD-AT for E-BAD-QUALIFIED-RECORD: each check gives the record, then its
 \ statement's throw.
-: MALFORMED-AT ( ptr u8 n ptr u8 n n n n n -- )
-   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
+: MALFORMED-AT ( ^u8 n ^u8 n n n n n -- )
+   {: tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n :}
    s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be 2 0 RECORD-AT ;
 
 \ A colon definition CHECK rejects: the plain check stops at that refusal, and
@@ -1133,8 +1133,8 @@ variable RC
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
 
-: REPAIRED-AS ( ptr u8 n ptr u8 n -- )
-   {: cls:ptr clsu:n sug:ptr sugu:n :}
+: REPAIRED-AS ( ^u8 n ^u8 n -- )
+   {: cls:^ clsu:n sug:^ sugu:n :}
    0 s" repair_class" cls clsu FIELD=
    0 s" suggestion" sug sugu FIELD= ;
 
@@ -1254,8 +1254,8 @@ variable RC
    STALE-REPAIRED ;
 
 
-: LIT-FIXTURE ( ptr u8 n -- )
-   {: text:ptr textu:n :}
+: LIT-FIXTURE ( ^u8 n -- )
+   {: text:^ textu:n :}
    SB-RESET
    s" : U8C ( u8 -- ) drop ;" SB-APPEND LF+
    s" : U16C ( u16 -- ) drop ;" SB-APPEND LF+
@@ -1268,8 +1268,8 @@ variable RC
    s" literal.f" FIXTURE! ;
 
 
-: LIT-REFUSED ( ptr u8 n ptr u8 n -- )
-   {: text:ptr textu:n why:ptr whyu:n :}
+: LIT-REFUSED ( ^u8 n ^u8 n -- )
+   {: text:^ textu:n why:^ whyu:n :}
    text textu T-LABEL
    text textu LIT-FIXTURE
    s" " CHECK
@@ -1278,8 +1278,8 @@ variable RC
    s" fix_type" s" Write a value in range, or widen the declared type." REPAIRED-AS ;
 
 
-: LIT-ACCEPTED ( ptr u8 n -- )
-   {: text:ptr textu:n :}
+: LIT-ACCEPTED ( ^u8 n -- )
+   {: text:^ textu:n :}
    text textu T-LABEL
    text textu LIT-FIXTURE
    s" " 0 CHECK-EXIT ;
@@ -1302,11 +1302,11 @@ variable RC
    s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
    s" : X ( bool -- ) if 300 else 300 then U8C ;"
    s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
-   s" : X ( ptr u16 -- ) 70000 swap ! ;"
+   s" : X ( ^u16 -- ) 70000 swap ! ;"
    s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
    \ The callable's variable takes `u16` from the pointee, which is demanded; a
    \ rule that treats every link between variables as provided accepts this.
-   s" : X ( ptr u16 -- ) 70000 swap [: ! ;] K ;"
+   s" : X ( ^u16 -- ) 70000 swap [: ! ;] K ;"
    s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
    s" : X ( -- ) 300 {: c :} c U8C ;"
    s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED ;
@@ -1318,7 +1318,7 @@ variable RC
    s" : X ( -- ) -1 I64C ;" LIT-ACCEPTED
    s" : X ( -- ) -1 NC ;" LIT-ACCEPTED
    s" : X ( -- ) 300 1 - U8C ;" LIT-ACCEPTED
-   s" : X ( ptr u16 -- ) 65 swap ! ;" LIT-ACCEPTED
+   s" : X ( ^u16 -- ) 65 swap ! ;" LIT-ACCEPTED
    s" : X ( bool -- ) if 5 else 300 then U8C ;" LIT-ACCEPTED
    \ The carried cell is an `n`, which passes into `u8`; a rule that refuses an
    \ `n` there refuses this.
@@ -1334,7 +1334,7 @@ variable RC
    s" : X ( u8 -- ) 300 [: EQ2 ;] K ;" LIT-ACCEPTED
    s" : X ( u8 -- ) 300 swap [: EQ2 ;] K ;" LIT-ACCEPTED
    \ A chain the pointee demands still admits a literal that fits.
-   s" : X ( ptr u16 -- ) 65 swap [: ! ;] K ;" LIT-ACCEPTED ;
+   s" : X ( ^u16 -- ) 65 swap [: ! ;] K ;" LIT-ACCEPTED ;
 
 
 : TEST-LITERAL-FIT ( -- )
@@ -1384,8 +1384,8 @@ variable RC
    s" : X ( -- ) ['] dup drop ;" s" tick-defined.f" LINE-FIXTURE
    CERTIFIED ;
 
-: MK-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: def:ptr defu:n text:ptr textu:n name:ptr nameu:n :}
+: MK-FIXTURE ( ^u8 n ^u8 n ^u8 n -- )
+   {: def:^ defu:n text:^ textu:n name:^ nameu:n :}
    SB-RESET
    def defu SB-APPEND LF+
    s" MK MADE" SB-APPEND LF+
@@ -1394,8 +1394,8 @@ variable RC
 
 \ MK-FIXTURE whose row bounds MK's call to the name it reads, so the check goes
 \ on after it.
-: MADE-FIXTURE ( ptr u8 n ptr u8 n -- )
-   {: text:ptr textu:n name:ptr nameu:n :}
+: MADE-FIXTURE ( ^u8 n ^u8 n -- )
+   {: text:^ textu:n name:^ nameu:n :}
    s" : MK ( -- ) create ; parses: MK 1" text textu name nameu MK-FIXTURE ;
 
 : MK-DEFERRED ( n n -- )
@@ -1404,8 +1404,8 @@ variable RC
    k s" verdict" s" deferred" FIELD=
    k s" MK" 2 1 bs bs 2 + FX-PATH$ CANON$ FX$ AT-IN ;
 
-: RUN-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: RUN-REFUSED-AT ( ^u8 n ^u8 n n n n n -- )
+   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" " CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be AT
@@ -1415,8 +1415,8 @@ variable RC
 
 \ --verify-only defers both MK's call and X's body, whose use of MADE needs its
 \ own warning where the check stopped.
-: VERIFY-DEFERS ( ptr u8 n -- )
-   {: tok:ptr toku:n :}
+: VERIFY-DEFERS ( ^u8 n -- )
+   {: tok:^ toku:n :}
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
    0 34 MK-DEFERRED
@@ -1424,8 +1424,8 @@ variable RC
    1 s" verdict" s" deferred" FIELD=
    1 tok toku 3 12 53 53 toku + FX-PATH$ CANON$ FX$ AT-IN ;
 
-: VERIFY-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: VERIFY-REFUSED-AT ( ^u8 n ^u8 n n n n n -- )
+   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
    c cu tok toku line col bs be RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
@@ -1434,8 +1434,8 @@ variable RC
    1 s" verdict" s" rejected" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: LOADED ( ptr u8 n n -- )
-   {: text:ptr textu:n want:n :}
+: LOADED ( ^u8 n n -- )
+   {: text:^ textu:n want:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
@@ -1448,8 +1448,8 @@ variable RC
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
 
-: UNPLACED ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: k:n c:ptr cu:n tok:ptr toku:n path:ptr pathu:n :}
+: UNPLACED ( n ^u8 n ^u8 n ^u8 n -- )
+   {: k:n c:^ cu:n tok:^ toku:n path:^ pathu:n :}
    k s" code" c cu FIELD=
    k s" token" tok toku FIELD=
    k s" file" path pathu FIELD=
@@ -1462,12 +1462,12 @@ variable RC
    root s" byte_end" FIELD-ABSENT
    root GJA-DIAG-CONTRACT-ROW ;
 
-: UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
-   {: k:n tok:ptr toku:n path:ptr pathu:n :}
+: UNPLACED-STALE ( n ^u8 n ^u8 n -- )
+   {: k:n tok:^ toku:n path:^ pathu:n :}
    k s" E-TRUST-UNRESOLVED" tok toku path pathu UNPLACED ;
 
-: STALE-UNPLACED ( ptr u8 n -- )
-   {: tok:ptr toku:n :}
+: STALE-UNPLACED ( ^u8 n -- )
+   {: tok:^ toku:n :}
    s" " CHECK
    GJA-LINE# @ 1 T=
    0 tok toku FX-PATH$ UNPLACED-STALE
@@ -1478,8 +1478,8 @@ variable RC
    GJA-LINE# @ 1 T=
    0 tok toku FX-PATH$ CANON$ UNPLACED-STALE ;
 
-: VERIFY-REJECTED-AT ( n ptr u8 n ptr u8 n n n n n -- )
-   {: k:n c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: VERIFY-REJECTED-AT ( n ^u8 n ^u8 n n n n n -- )
+   {: k:n c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
    k s" code" c cu FIELD=
    k s" verdict" s" rejected" FIELD=
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
@@ -1540,14 +1540,14 @@ variable RC
 
 \ The u bytes at a end the fixture text, built in place for a fixture longer
 \ than the string builder holds.
-: FX+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: FX+ ( ^u8 n -- ) {: a:^ u:n :}
    FX-U @ u + CAP > IF E-STR-CAPACITY throw THEN
    a FX FX-U @ + u BYTE-COPY
    FX-U @ u + FX-U ! ;
 
 \ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
 \ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
-: STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
+: STEPS-FIXTURE ( n ^u8 n -- ) {: steps:n name:^ nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
    s\" s\\\" " FX+
@@ -1555,8 +1555,8 @@ variable RC
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
-: VERIFY-ONLY-AT ( ptr u8 n n n ptr u8 n n n n n -- )
-   {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: VERIFY-ONLY-AT ( ^u8 n n n ^u8 n n n n n -- )
+   {: call:^ callu:n cline:n cbs:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
    0 s" code" s" W-CHECK-DEFERRED" FIELD=
@@ -1566,8 +1566,8 @@ variable RC
    1 s" verdict" s" deferred" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: VERIFY-DEFERRED-AT ( ptr u8 n n n ptr u8 n n n n n -- )
-   {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
+: VERIFY-DEFERRED-AT ( ^u8 n n n ^u8 n n n n n -- )
+   {: call:^ callu:n cline:n cbs:n tok:^ toku:n line:n col:n bs:n be:n :}
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
@@ -1688,7 +1688,7 @@ variable RC
    1 s" E-MISSING-SOURCE" s" require" 2 1 48 55 VERIFY-REJECTED-AT
    s" bad string literal" 74 LOADED ;
 
-\ A word a create caller made is bound, and typed `-- ptr a`, by the run of that
+\ A word a create caller made is bound, and typed `-- ^a`, by the run of that
 \ caller: its tick is admitted, and a call to it fails its check in source
 \ order, after a signature that does not parse and an earlier failing check. A
 \ name nothing defines is still the load's compiler's to refuse, before any
@@ -1782,8 +1782,8 @@ variable RC
    s\" TRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate" SB-APPEND LF+
    s\" s\" EV\" 0 parse-imm" SB-APPEND LF+ ;
 
-: RUN-REFUSED-UNPLACED ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n tok:ptr toku:n :}
+: RUN-REFUSED-UNPLACED ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n tok:^ toku:n :}
    s" " CHECK
    c cu REJECTED-AS
    0 c cu tok toku FX-PATH$ UNPLACED
@@ -1828,40 +1828,40 @@ variable RC
 : TEST-DERIVE-PAYLOAD ( -- )
    s" a sum payload DERIVE eq cannot compare" T-LABEL
    SB-RESET
-   s" SUMTYPE dpsum DERIVE eq VARIANT hold ptr n ;VARIANT ;SUMTYPE"
+   s" SUMTYPE dpsum DERIVE eq VARIANT hold ^n ;VARIANT ;SUMTYPE"
    SB-APPEND LF+
    s" derive-payload.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ptr" 1 38 37 40 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^n" 1 38 37 39 RUN-REFUSED-AT ;
 
 : TEST-DERIVE-FIELD ( -- )
    s" a structure field DERIVE eq cannot compare" T-LABEL
    SB-RESET
-   s" STRUCTURE dpst DERIVE eq FIELD f ptr n ;STRUCTURE" SB-APPEND LF+
+   s" STRUCTURE dpst DERIVE eq FIELD f ^n ;STRUCTURE" SB-APPEND LF+
    s" derive-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ptr" 1 34 33 36 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^n" 1 34 33 35 RUN-REFUSED-AT ;
 
 : TEST-DERIVE-ENUM-FIELD ( -- )
    s" an enum field DERIVE eq cannot compare" T-LABEL
    SB-RESET
-   s" ENUM dpen DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+   s" ENUM dpen DERIVE eq VARIANT hold FIELD raw ^u8 ;VARIANT ;ENUM"
    SB-APPEND LF+
    s" derive-enum-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ptr" 1 44 43 46 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^u8" 1 44 43 46 RUN-REFUSED-AT ;
 
 : TEST-DERIVE-BYTES-FIELD ( -- )
    s" a structure byte-pointer field DERIVE eq cannot compare" T-LABEL
    SB-RESET
-   s" STRUCTURE dppr DERIVE eq FIELD b ptr u8 ;STRUCTURE" SB-APPEND LF+
+   s" STRUCTURE dppr DERIVE eq FIELD b ^u8 ;STRUCTURE" SB-APPEND LF+
    s" derive-product-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ptr" 1 34 33 36 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^u8" 1 34 33 36 RUN-REFUSED-AT ;
 
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
-: DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
-   {: want:n k:n tok:ptr toku:n sug:ptr sugu:n :}
+: DEFER-SUGGESTS ( n n ^u8 n ^u8 n -- )
+   {: want:n k:n tok:^ toku:n sug:^ sugu:n :}
    s" --verify-only" want CHECK-EXIT
    k s" code" s" W-CHECK-DEFERRED" FIELD=
    k s" token" tok toku FIELD=
@@ -2180,8 +2180,8 @@ variable RC
    s" depth-char.f" FIXTURE!
    s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT ;
 
-: AMBIG-FIXTURE ( bool ptr u8 n -- )
-   {: global:bool body:ptr bodyu:n :}
+: AMBIG-FIXTURE ( bool ^u8 n -- )
+   {: global:bool body:^ bodyu:n :}
    SB-RESET
    s" package PA" SB-APPEND LF+
    s" public" SB-APPEND LF+
@@ -2323,7 +2323,7 @@ variable RC
    SB-RESET
    s" : W1 ( -- ) ; immediate" SB-APPEND LF+
    s" package PK" SB-APPEND LF+
-   s" : parse-imm ( ptr u8 n n -- ) drop drop drop ;" SB-APPEND LF+
+   s" : parse-imm ( ^u8 n n -- ) drop drop drop ;" SB-APPEND LF+
    17 0 ?do s\" s\" W1\" 0 parse-imm" SB-APPEND LF+ loop
    s" ;package" SB-APPEND LF+
    s" : USE ( -- n ) 73 ;" SB-APPEND LF+

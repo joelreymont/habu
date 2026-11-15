@@ -50,8 +50,8 @@ public
       1+
    REPEAT drop 0 RES-FALSE ;
 
-: DECL-HEADER ( ptr u8 n -- ptr u8 n n bool )
-   {: a:ptr u:n :}
+: DECL-HEADER ( ^u8 n -- ^u8 n n bool )
+   {: a:^ u:n :}
    DECL-PARAM-CLEAR
    a u BYTE-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
    0 BEGIN dup u < IF a over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1+ REPEAT
@@ -84,19 +84,19 @@ SCRATCH-VARIABLE TDECL-SEEN-A-CAP
 SCRATCH-VARIABLE TDECL-SEEN-U-CAP
 variable TDECL-SEEN-N
 : TDECL-SEEN-CLEAR ( -- ) 0 TDECL-SEEN-N ! ;
-: TDECL-SEEN-NAME ( n -- ptr ptr u8 ) TDECL-SEEN-A @ swap ptr-field ;
-: TDECL-SEEN-LEN ( n -- ptr n ) cells TDECL-SEEN-U @ + ;
+: TDECL-SEEN-NAME ( n -- ^^u8 ) TDECL-SEEN-A @ swap ptr-field ;
+: TDECL-SEEN-LEN ( n -- ^n ) cells TDECL-SEEN-U @ + ;
 : TDECL-SEEN-ENSURE ( n -- ) {: need:n :}
    TDECL-SEEN-A TDECL-SEEN-A-CAP need 1 ARENA-ROWS-ENSURE
    TDECL-SEEN-U TDECL-SEEN-U-CAP need 1 ARENA-ROWS-ENSURE ;
 
-: TDECL-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-SEEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    0 BEGIN dup TDECL-SEEN-N @ < WHILE
       dup TDECL-SEEN-NAME @  over TDECL-SEEN-LEN @
       a u CORE-STR= IF drop RES-TRUE EXIT THEN
       1+
    REPEAT drop RES-FALSE ;
-: TDECL-SEEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-SEEN+ ( ^u8 n -- ) {: a:^ u:n :}
    TDECL-SEEN-N @ 1 + TDECL-SEEN-ENSURE
    a TDECL-SEEN-N @ TDECL-SEEN-NAME !
    u TDECL-SEEN-N @ TDECL-SEEN-LEN !
@@ -111,12 +111,12 @@ PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 
-: TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
-: TDECL-WHY! ( ptr u8 n -- ) TDW-U ! TDW-A ! ;
+: TDECL-TOK! ( ^u8 n -- ) TDT-U ! TDT-A ! ;
+: TDECL-WHY! ( ^u8 n -- ) TDW-U ! TDW-A ! ;
 
 public
 
-: TDECL-THROW ( ptr u8 n ptr u8 n n -- ) {: ta:ptr tu:n wa:ptr wu:n code:n :}
+: TDECL-THROW ( ^u8 n ^u8 n n -- ) {: ta:^ tu:n wa:^ wu:n code:n :}
    ta tu TDECL-TOK!
    wa wu TDECL-WHY!
    code throw ;
@@ -164,7 +164,7 @@ private
 PTR-VARIABLE TDECL-BUF-P
 SCRATCH-VARIABLE TDECL-BUF-CAP   \ in cells
 variable TDECL-U
-: TDECL-BUF ( -- ptr u8 ) TDECL-BUF-P @ ;
+: TDECL-BUF ( -- ^u8 ) TDECL-BUF-P @ ;
 
 \ One row per token copied into TDECL-BUF: its offset there and the address it
 \ was copied from.
@@ -173,8 +173,8 @@ PTR-U8-TABLE-VARIABLE TDECL-TOK-SRC
 SCRATCH-VARIABLE TDECL-TOK-OFF-CAP
 SCRATCH-VARIABLE TDECL-TOK-SRC-CAP
 variable TDECL-TOK-N
-: TDECL-OFF ( n -- ptr n ) cells TDECL-TOK-OFF @ + ;
-: TDECL-ORIGIN ( n -- ptr ptr u8 ) TDECL-TOK-SRC @ swap ptr-field ;
+: TDECL-OFF ( n -- ^n ) cells TDECL-TOK-OFF @ + ;
+: TDECL-ORIGIN ( n -- ^^u8 ) TDECL-TOK-SRC @ swap ptr-field ;
 
 \ The last row whose token starts at or before offset off; -1 for an empty table.
 : TDECL-ROW ( n -- n ) {: off:n :}
@@ -186,18 +186,18 @@ variable TDECL-TOK-N
 
 \ A span in TDECL-BUF becomes the bytes its token was copied from when those
 \ lie in armed text; any other span comes back unchanged.
-: TDECL-SRC ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: TDECL-SRC ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a TDECL-BUF - {: off:n :}
    off 0 <  off TDECL-U @ > or IF a u EXIT THEN
    off TDECL-ROW {: r:n :}
    r 0 < IF a u EXIT THEN
-   r TDECL-ORIGIN @  off r TDECL-OFF @ - + {: s:ptr :}
+   r TDECL-ORIGIN @  off r TDECL-OFF @ - + {: s:^ :}
    s REJECTION:>SOURCE nip 0= IF a u EXIT THEN
    s u ;
 
 \ A DEFFAMILY packet points at the name whatever the refusal, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.
-: TDECL-REPORT-TOK ( -- ptr u8 n )
+: TDECL-REPORT-TOK ( -- ^u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
    TDT-A @ TDT-U @ TDECL-SRC ;
 
@@ -225,7 +225,7 @@ variable TDECL-TOK-N
 \ The declared name is read first by the body's name gate and by the report. A
 \ length that describes no memory (BYTE-SPAN?) is recorded as no name, so the
 \ declaration is refused as a missing name and the report reads none of it.
-: TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
+: TDECL-CTX! ( ^u8 n ^u8 n ^u8 n -- )   \ kind, name, body
    TDB-U ! TDB-A !
    2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
@@ -249,16 +249,16 @@ variable TDECL-TOK-N
 
 private
 
-: TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
 
 : TDECL-VAR-SCOPE? ( n -- bool )
-   SUMV-FAM@ TFAM-PKG$ {: pa:ptr pu:n :}
+   SUMV-FAM@ TFAM-PKG$ {: pa:^ pu:n :}
    pu 0= IF RES-TRUE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
 
-: TDECL-VAR-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-VAR-TAKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    SUMV-N @ 0 ?do
       i SUMV-NAME$ a u CORE-STR= IF
          i TDECL-VAR-SCOPE? IF RES-TRUE unloop EXIT THEN
@@ -267,7 +267,7 @@ private
 
 \ A family, variant or field name longer than TF-NAME-MAX has no room in the
 \ spellings derived from it (type-family.f TF-CTOR-BUF).
-: TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-REQUIRE-NAME ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF a u s" missing name" E-TDECL-SYNTAX TDECL-THROW THEN
    u TF-NAME-MAX > IF a u TF-NAME-LONG$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
@@ -280,7 +280,7 @@ private
 \ E-TFAM-DUP so the diagnostic says "duplicate family". A package family may
 \ share a tail with a global or another package family; TFAM-RESOLVE preserves
 \ those exact identities with lexical lookup rather than rejecting the declaration.
-: TDECL-REQUIRE-FAMILY-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-REQUIRE-FAMILY-NAME ( ^u8 n -- ) {: a:^ u:n :}
    a u TDECL-REQUIRE-NAME
    a u TDECL-VAR-TAKEN? IF
       a u s" collides with a sum variant" E-TDECL-NAME TDECL-THROW
@@ -289,7 +289,7 @@ private
 \ A VARIANT name lives in no scope of its own: any collision with a family
 \ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
 \ in every scope.
-: TDECL-REQUIRE-VARIANT-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-REQUIRE-VARIANT-NAME ( ^u8 n -- ) {: a:^ u:n :}
    a u TDECL-REQUIRE-NAME
    a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family" E-TDECL-NAME TDECL-THROW ;
@@ -310,13 +310,13 @@ private
    TFAM-ACTIVE-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
-: TDECL-CURSOR! ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-CURSOR! ( ^u8 n -- ) {: a:^ u:n :}
    a SB!  u SL !  0 SI !
    PKRESET ;
-: TDECL-NEXT ( -- ptr u8 n ) NEXT-SIG-TOK ;
+: TDECL-NEXT ( -- ^u8 n ) NEXT-SIG-TOK ;
 
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
-\ letter params within arity, n/f/r and concrete CT cell types, `^T` and `ptr T`.
+\ letter params within arity, n/f/r and concrete CT cell types, and `^T`.
 \ Comments are not supported inside a declaration block; stray tokens reject.
 
 : TDECL-HEADER! ( -- n )
@@ -334,7 +334,7 @@ private
    TDS-U @ 0 > IF TDN-U @ TDS-U ! THEN
    ar ;
 
-: TDECL-LETTER ( ptr u8 n -- n ) {: a:ptr u:n :}
+: TDECL-LETTER ( ^u8 n -- n ) {: a:^ u:n :}
    a c@ {: c:n :}
    c 110 = IF CC-N SCHEMA-CON EXIT THEN
    c 102 = IF CC-BOOL SCHEMA-CON EXIT THEN
@@ -350,7 +350,7 @@ private
 \ here as recursive. This catches the bare spelling; TDECL-PAY-FAM? repeats the
 \ reject on the resolved id (TDECL-CUR-FAM) for a qualified one. Only the direct
 \ case: mutual recursion (A -> B -> A) is not detected.
-: TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-SELF-REF? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u TDN-A @ TDN-U @ CORE-STR= ;
 
 \ A bare family payload is one logical schema root whose physical width is the
@@ -360,7 +360,7 @@ private
 \ resolves. A resolved id equal to the declared family is the qualified
 \ self-reference and rejects recursive. A family UNSTORED-REASON names, linear
 \ payloads and evidence families are rejected.
-: TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: TDECL-PAY-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id UNSTORED-REASON IF a u 2swap E-TDECL-PAYLOAD TDECL-THROW THEN 2drop
@@ -372,17 +372,14 @@ private
    id TFAM-CONCRETE-LINEAR? IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TDECL-ABSENT-MAY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-ABSENT-MAY? ( ^u8 n -- bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
    a u TFAM-MAY-ARRIVE? ;
-: TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
+: TDECL-PAY-ELEM ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
    a u TDECL-KEYWORD? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
-   a u s" ptr" CORE-STR= IF
-      TDECL-NEXT RECURSE
-      SIG-UNRES @ IF drop 0 EXIT THEN
-      SCHEMA-PTR EXIT THEN
+   a u s" ptr" CORE-STR= IF a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
       a u SIG-CARET-BARE? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
       a u SIG-CARET-POINTEE RECURSE
@@ -415,19 +412,19 @@ private
 \ mapping, so a reader holds indices into each across a push, never an address.
 PTR-VARIABLE TDV-ARG-P   SCRATCH-VARIABLE TDV-ARG-CAP
 variable TDV-ARG-N
-: TDV-ARG-SCR ( -- ptr n ) TDV-ARG-P @ ;
+: TDV-ARG-SCR ( -- ^n ) TDV-ARG-P @ ;
 
 : TDV-ARG+ ( n -- ) {: node:n :}
    TDV-ARG-P TDV-ARG-CAP TDV-ARG-N @ 1 + 1 ARENA-ROWS-ENSURE
    node TDV-ARG-N @ cells TDV-ARG-SCR + !
    TDV-ARG-N @ 1 + TDV-ARG-N ! ;
 
-defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
+defer TDV-ELEM-XT ( ^u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
 
 \ resolve a payload token as a layout/cell family in signature scope (the head of
 \ a parametric application). Mirrors TDECL-PAY-FAM?'s kind gate but keeps arity
 \ open -- the arity match happens in TDV-ARGS-BUILD once the args are counted.
-: TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: TDECL-VPAY-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id UNSTORED-REASON IF a u 2swap E-TDECL-PAYLOAD TDECL-THROW THEN 2drop
@@ -476,7 +473,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ SCH-ROW range stays contiguous. No `|` clause stores hasr 0 with empty rin and
 \ rout rows; an explicit clause pins both.
 PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
-: TDV-QUOT-SCR ( -- ptr n ) TDV-QUOT-P @ ;
+: TDV-QUOT-SCR ( -- ^n ) TDV-QUOT-P @ ;
 : TDV-QUOT+ ( n -- ) {: node:n :}
    TDV-QUOT-P TDV-QUOT-CAP TDV-QUOT-N @ 1 + 1 ARENA-ROWS-ENSURE
    node 0= IF -1 TDV-QUOT-MISS ! THEN
@@ -499,16 +496,16 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    outer TDV-QUOT-MISS !
    missing 0 <> IF 0 EXIT THEN
    din dout rin rout hasr SCHEMA-QUOT ;
-: TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] -- n ptr u8 n )
+: TDV-QUOT-SIDE ( [ -- ^u8 n ] [ ^u8 n -- n ] -- n ^u8 n )
    {: next elem :}
    TDV-QUOT-N @ {: base:n :}
    BEGIN next execute 2dup DELIM? 0= WHILE
       elem execute TDV-QUOT+
    REPEAT
-   {: sep:ptr sepu:n :}
+   {: sep:^ sepu:n :}
    base TDV-QUOT-BUILD-ROW sep sepu ;
-: TDV-QUOT-EXPECT ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
-   {: a:ptr u:n ea:ptr eu:n fail :}
+: TDV-QUOT-EXPECT ( ^u8 n ^u8 n [ ^u8 n n -- ] -- )
+   {: a:^ u:n ea:^ eu:n fail :}
    a u ea eu CORE-STR= IF EXIT THEN
    s" malformed quotation payload" E-TDECL-SYNTAX fail execute ;
 
@@ -517,17 +514,17 @@ public
 \ The quotation grammar is shared by variant payloads and STRUCTURE fields.
 \ The caller supplies its token stream, element resolver and declaration error
 \ reporter; the resulting schema and ordered effect rows are identical.
-: PARSE-QUOT ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
+: PARSE-QUOT ( [ -- ^u8 n ] [ ^u8 n -- n ] [ ^u8 n n -- ] -- n )
    {: next elem fail :}
    TDV-QUOT-MISS @ {: outer:n :}
    0 TDV-QUOT-MISS !
-   next elem TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
+   next elem TDV-QUOT-SIDE {: din:n sep:^ sepu:n :}
    sep sepu s" --" fail TDV-QUOT-EXPECT
-   next elem TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
+   next elem TDV-QUOT-SIDE {: dout:n end:^ endu:n :}
    end endu s" |" CORE-STR= IF
-      next elem TDV-QUOT-SIDE {: rin:n rsep:ptr rsepu:n :}
+      next elem TDV-QUOT-SIDE {: rin:n rsep:^ rsepu:n :}
       rsep rsepu s" --" fail TDV-QUOT-EXPECT
-      next elem TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
+      next elem TDV-QUOT-SIDE {: rout:n rend:^ rendu:n :}
       rend rendu s" ]" fail TDV-QUOT-EXPECT
       din dout rin rout -1 outer TDV-QUOT-FINISH
    ELSE
@@ -537,7 +534,7 @@ public
 
 private
 
-: TDECL-QUOT-FAIL ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+: TDECL-QUOT-FAIL ( ^u8 n n -- ) {: a:^ u:n code:n :}
    TDN-A @ TDN-U @ a u code TDECL-THROW ;
 : TDECL-VPAY-QUOT ( -- n )
    [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT
@@ -546,7 +543,7 @@ private
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls
 \ through to the bare arity-0 grammar (or its reject).
-: TDECL-VPAY-APP? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: TDECL-VPAY-APP? ( ^u8 n -- n bool ) {: a:^ u:n :}
    a u TDECL-VPAY-FAM? 0= IF drop 0 RES-FALSE EXIT THEN
    {: fam:n :}
    TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop fam TDECL-VPAY-ARGS RES-TRUE EXIT THEN
@@ -568,12 +565,9 @@ private
       THEN THEN
    AGAIN ;
 
-: TDECL-VPAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
+: TDECL-VPAY-ELEM ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
-   a u s" ptr" CORE-STR= IF
-      TDECL-NEXT RECURSE
-      SIG-UNRES @ IF drop 0 EXIT THEN
-      SCHEMA-PTR EXIT THEN
+   a u s" ptr" CORE-STR= IF a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
       a u SIG-CARET-BARE? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
       a u SIG-CARET-POINTEE RECURSE
@@ -597,17 +591,23 @@ TDV-ELEM-INSTALL
 \ parameters come from EFFECT:NAMED. A type variable, a row variable and a
 \ fresh name are letters, and a view's region slots take only those.
 
-: READ-LETTER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ The token past its leading carets: `^a` spells a pointer to the letter `a`.
+: READ-UNCARET ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   0 BEGIN dup u < IF a over + c@ 94 = ELSE RES-FALSE THEN WHILE 1+ REPEAT
+   {: k:n :}  a k +  u k - ;
+
+: READ-LETTER? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0= IF RES-FALSE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u ROW-LEAD? IF RES-TRUE EXIT THEN
    a u SIG-VAR-SLOT 0 < IF RES-FALSE EXIT THEN
    a u SIG-FAM? nip 0= ;
 
 \ The first letter in the signature text, a 0 for none.
-: READ-LETTER ( -- ptr u8 n )
+: READ-LETTER ( -- ^u8 n )
    0 SI !  PKRESET
    BEGIN NEXT-SIG-TOK dup 0 <> WHILE
-      2dup READ-LETTER? IF EXIT THEN 2drop
+      READ-UNCARET 2dup READ-LETTER? IF EXIT THEN 2drop
    REPEAT ;
 
 \ Roots the nodes staged from base on as one contiguous run, the last staged
@@ -670,7 +670,7 @@ defer TERM-SCHEMA-XT ( n -- n )
 TERM-SCHEMA-INSTALL
 
 \ The parse's reject: the token SGBAD latched and why.
-: READ-BAD ( [ ptr u8 n ptr u8 n n n -- ] -- ) {: fail :}
+: READ-BAD ( [ ^u8 n ^u8 n n n -- ] -- ) {: fail :}
    SGBAD-A @ SGBAD-U @
    SGBAD-UNKNOWN? IF s" unknown type" E-TDECL-PAYLOAD 0 fail execute EXIT THEN
    SGBAD-ARITY? IF
@@ -686,18 +686,18 @@ public
 \ a name that may arrive later and text past the type included, runs FAIL
 \ with the token, the reason, the code and the STG- reason when no stored
 \ form holds the type, else 0.
-: READ-TYPE ( ptr u8 n [ ptr u8 n ptr u8 n n n -- ] [ ptr u8 n -- ] -- n )
-   {: a:ptr u:n fail letter :}
+: READ-TYPE ( ^u8 n [ ^u8 n ^u8 n n n -- ] [ ^u8 n -- ] -- n )
+   {: a:^ u:n fail letter :}
    a SB!  a u BYTE-SPAN? IF u ELSE 0 THEN SL !
-   READ-LETTER {: la:ptr lu:n :}
+   READ-LETTER {: la:^ lu:n :}
    lu 0 <> IF la lu letter execute 0 EXIT THEN
    SIG-UNRES-CLEAR  SGBAD-CLEAR  0 TDV-ARG-N !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !
    0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !  0 SI !
-   NEXT-SIG-TOK {: ta:ptr tu:n :}
+   NEXT-SIG-TOK {: ta:^ tu:n :}
    tu 0= IF ta 0 s" missing type" E-TDECL-SYNTAX 0 fail execute 0 EXIT THEN
    ta tu SIG-TYPE {: term:n :}
-   NEXT-SIG-TOK {: ea:ptr eu:n :}
+   NEXT-SIG-TOK {: ea:^ eu:n :}
    SGBAD @ IF fail READ-BAD 0 EXIT THEN
    CHECKER-SIG-UNRES-TAKE IF
       s" unknown type" E-TDECL-PAYLOAD 0 fail execute 0 EXIT
@@ -716,7 +716,7 @@ variable TDV-SS    variable TDV-PC   variable TDV-PW
 PTR-VARIABLE TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-NAME ( -- )
-   TDECL-NEXT {: a:ptr u:n :}
+   TDECL-NEXT {: a:^ u:n :}
    a u TDECL-REQUIRE-VARIANT-NAME
    a TDV-NA !  u TDV-NU ! ;
 
@@ -734,7 +734,7 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
 \ Variants never nest, so one scratch suffices.
 PTR-VARIABLE TDV-PAY-P   SCRATCH-VARIABLE TDV-PAY-CAP
 variable TDV-PAY-N
-: TDV-PAY-SCR ( -- ptr n ) TDV-PAY-P @ ;
+: TDV-PAY-SCR ( -- ^n ) TDV-PAY-P @ ;
 : TDV-PAY+ ( n -- ) {: node:n :}
    TDV-PAY-P TDV-PAY-CAP TDV-PAY-N @ 1 + 1 ARENA-ROWS-ENSURE
    node TDV-PAY-N @ cells TDV-PAY-SCR + !
@@ -781,7 +781,7 @@ create TDV-BADLETTER 1 allot
 \ checked pointer equality exists, and comparing a linear value consumes it.
 public
 
-: TDECL-DERIVE-WHY ( n n -- ptr u8 n )
+: TDECL-DERIVE-WHY ( n n -- ^u8 n )
    {: fam:n node:n :}
    node SCHEMA-CON? IF
       node SCHEMA-A@ CT-INT? IF s" " EXIT THEN
@@ -803,10 +803,10 @@ public
 
 private
 
-: TDECL-REQUIRE-DERIVABLE ( ptr u8 n n n -- )
-   {: ta:ptr tu:n fam:n node:n :}
+: TDECL-REQUIRE-DERIVABLE ( ^u8 n n n -- )
+   {: ta:^ tu:n fam:n node:n :}
    fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
-   fam node TDECL-DERIVE-WHY {: wa:ptr wu:n :}
+   fam node TDECL-DERIVE-WHY {: wa:^ wu:n :}
    wu 0= IF EXIT THEN
    ta tu wa wu E-TDECL-DERIVE TDECL-THROW ;
 
@@ -851,7 +851,7 @@ public
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDN-A @ TDN-U @ TDECL-TOK!
    s" constructor package name exceeds 255 bytes" TDECL-WHY!
-   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
+   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:^ cu:n :}
    s" declaration failed" TDECL-WHY!
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
@@ -866,9 +866,9 @@ public
 
 private
 
-: TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TDECL-POLICY-DEFERRED? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" boxed" CORE-STR=CI ;
-: TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
+: TDECL-POLICY-SET ( ^u8 n n -- ) {: a:^ u:n fam:n :}
    a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
    a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
    a u s" niche-null" CORE-STR=CI IF fam TL-NICHE TFAM-LAYOUT! EXIT THEN
@@ -887,16 +887,16 @@ public
    fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG = 0= IF EXIT THEN
    fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
 : TDECL-POLICY ( n -- ) {: fam:n :}
-   TDECL-NEXT {: a:ptr u:n :}
+   TDECL-NEXT {: a:^ u:n :}
    a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
-   TDECL-NEXT {: pa:ptr pu:n :}
+   TDECL-NEXT {: pa:^ pu:n :}
    pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" E-TDECL-POLICY TDECL-THROW THEN
    pa pu fam TDECL-POLICY-SET ;
 
 \ A niche-null value is one cell whose zero is the empty first variant, so the
-\ family is that variant and one holding a single `ptr` field.
-: TDECL-NICHE-MESSAGE$ ( -- ptr u8 n )
-   s" niche-null needs an empty variant, then one ptr field" ;
+\ family is that variant and one holding a single `^` field.
+: TDECL-NICHE-MESSAGE$ ( -- ^u8 n )
+   s" niche-null needs an empty variant, then one pointer field" ;
 
 private
 
@@ -915,10 +915,10 @@ private
 \ `DERIVE <feature>...` follows POLICY and precedes every VARIANT and FIELD, so
 \ each payload is judged against the family's final flags as it is read.
 
-: TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
+: TDECL-DERIVE-GUARD ( ^u8 n n -- ) {: a:^ u:n fam:n :}
    fam TFAM-ARITY@ 0 <> IF
       a u s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE TDECL-THROW THEN ;
-: TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
+: TDECL-DERIVE-SET ( ^u8 n n -- ) {: a:^ u:n fam:n :}
    a u s" eq" CORE-STR=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
    a u s" hash" CORE-STR=CI IF
@@ -931,7 +931,7 @@ private
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
 : TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}
-   TDECL-NEXT {: a:ptr u:n :}
+   TDECL-NEXT {: a:^ u:n :}
    u 0= IF RES-FALSE EXIT THEN
    a u s" eq" CORE-STR=CI
    a u s" hash" CORE-STR=CI or
@@ -942,9 +942,9 @@ private
    a u fam TDECL-DERIVE-SET
    RES-TRUE ;
 : TDECL-DERIVE ( n -- ) {: fam:n :}
-   TDECL-NEXT {: a:ptr u:n :}
+   TDECL-NEXT {: a:^ u:n :}
    a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
-   TDECL-NEXT {: fa:ptr fu:n :}
+   TDECL-NEXT {: fa:^ fu:n :}
    fu 0= IF TDN-A @ TDN-U @ s" missing derive feature" E-TDECL-DERIVE TDECL-THROW THEN
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
@@ -997,69 +997,69 @@ public
 
 \ The family header and the source token that names it, the same bytes up to
 \ case: a DEFTYPE name folds to its header, a NEWTYPE name is its own token.
-: TDECL-DEFFAMILY ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n ta:ptr tu:n :}
+: TDECL-DEFFAMILY ( ^u8 n ^u8 n -- )
+   {: na:^ nu:n ta:^ tu:n :}
    s" newtype" na nu s" " TDECL-CTX!
    ta tu 2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDS-U ! TDS-A !
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
-defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
-defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
+defer TDECL-NAME-PREFLIGHT-XT ( ^u8 n -- )
+defer TDECL-CAPACITY-PREFLIGHT-XT ( ^u8 n n -- )
 
 private
 
-CAST: AS-STORAGE-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+CAST: AS-STORAGE-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
-: TDECL-CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
+: TDECL-CHILD-RUN ( ^u8 n n n ^u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
 
-CAST: AS-OPEN ( n -- [ ptr u8 n n -- ] )
+CAST: AS-OPEN ( n -- [ ^u8 n n -- ] )
 
-: TDECL-DEFINE-RUN ( ptr u8 n n -- )
+: TDECL-DEFINE-RUN ( ^u8 n n -- )
    data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
 
-CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
+CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
 
 \ Appends to the open definition the item of ITEM-ABI op OP, spelled A U,
 \ with argument V.
-: TDGEN-ITEM ( ptr u8 n n n -- )
+: TDGEN-ITEM ( ^u8 n n n -- )
    data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
 
 \ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM.
-: TDECL-CHILD ( ptr u8 n n n -- )
-   {: na:ptr nu:n shape:n param:n :}
+: TDECL-CHILD ( ^u8 n n n -- )
+   {: na:^ nu:n shape:n param:n :}
    na nu shape param NULL-PTR 0 TDECL-CHILD-RUN drop ;
 
 public
 
 \ Makes the stored child NAME over TYPE, as TDECL-CHILD makes a child, and
 \ answers its effect handle.
-: TDECL-STORED-CHILD ( ptr u8 n ptr u8 n -- n )
-   {: na:ptr nu:n ta:ptr tu:n :}
+: TDECL-STORED-CHILD ( ^u8 n ^u8 n -- n )
+   {: na:^ nu:n ta:^ tu:n :}
    na nu CHILD-ABI:STORED 0 ta tu TDECL-CHILD-RUN ;
 
 \ Makes the stored child NAME over type node NODE, as TDECL-STORED-CHILD does.
-: TDECL-NODE-CHILD ( ptr u8 n n -- n ) {: na:ptr nu:n node:n :}
+: TDECL-NODE-CHILD ( ^u8 n n -- n ) {: na:^ nu:n node:n :}
    na nu CHILD-ABI:STORED node NULL-PTR 0 TDECL-CHILD-RUN ;
 
 \ The structures.f field words, OFF bytes into a record.
-: TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+: TDECL-CELL-CHILD ( ^u8 n n -- ) {: na:^ nu:n off:n :}
    na nu CHILD-ABI:CELL-OFF off TDECL-CHILD ;
 
-: TDECL-PTR-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+: TDECL-PTR-CHILD ( ^u8 n n -- ) {: na:^ nu:n off:n :}
    na nu CHILD-ABI:PTR-OFF off TDECL-CHILD ;
 
-: TDECL-BYTE-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+: TDECL-BYTE-CHILD ( ^u8 n n -- ) {: na:^ nu:n off:n :}
    na nu CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
 
 
 private
 
-: TDECL-NAME-PREFLIGHT-MISSING ( ptr u8 n -- )
+: TDECL-NAME-PREFLIGHT-MISSING ( ^u8 n -- )
    2drop s" sumtype: generated name preflight not installed" 76 die ;
 
-: TDECL-CAPACITY-PREFLIGHT-MISSING ( ptr u8 n n -- )
+: TDECL-CAPACITY-PREFLIGHT-MISSING ( ^u8 n n -- )
    2drop drop s" sumtype: generated capacity preflight not installed" 76 die ;
 
 : TDECL-PREFLIGHT-DEFAULTS ( -- )
@@ -1177,25 +1177,25 @@ public
 
 private
 
-: TDPLAN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDPLAN-APP ( ^u8 n -- ) {: a:^ u:n :}
    u TDPLAN-BYTE-NEED {: need:n :}
    need TDPLAN-ENSURE
    TDPLAN-U @ {: off:n :}
    u 0 ?do a i + c@ TDPLAN-P @ off + i + c! loop
    need TDPLAN-U ! ;
 
-: TDPLAN-ROW ( n -- ptr n )
+: TDPLAN-ROW ( n -- ^n )
    dup 0 < over TDPLAN-ROW-CAP @ >= or IF
       s" sumtype: generated declaration row capacity overflow" 76 die
    THEN
    TDPLAN-REC * TDPLAN-ROW-P @ + ;
 
-: TDPLAN.SYM ( ptr a -- ptr a ) TDPLAN.SYM-OFF + ;
-: TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
-: TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
-: TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
-: TDPLAN.FAM ( ptr a -- ptr a ) TDPLAN.FAM-OFF + ;
-: TDPLAN.VID ( ptr a -- ptr a ) TDPLAN.VID-OFF + ;
+: TDPLAN.SYM ( ^a -- ^a ) TDPLAN.SYM-OFF + ;
+: TDPLAN.NAME-OFF ( ^a -- ^a ) TDPLAN.NAME-OFF-OFF + ;
+: TDPLAN.NAME-U ( ^a -- ^a ) TDPLAN.NAME-U-OFF + ;
+: TDPLAN.BUILT ( ^a -- ^a ) TDPLAN.BUILT-OFF + ;
+: TDPLAN.FAM ( ^a -- ^a ) TDPLAN.FAM-OFF + ;
+: TDPLAN.VID ( ^a -- ^a ) TDPLAN.VID-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1220,12 +1220,12 @@ private
    TDPLAN-N @ 1 + TDPLAN-N ! ;
 
 : TDPLAN-NAME+ ( -- n )
-   TDGEN-BUF TDGEN-U @ {: na:ptr nu:n :}
+   TDGEN-BUF TDGEN-U @ {: na:^ nu:n :}
    na nu CHECKER-DEFINED-HERE? IF
       na nu s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
    THEN
    na nu CHECKER-RECORD-SYM dup TDPLAN-SYM+
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:^ :}
    TDPLAN-U @ r TDPLAN.NAME-OFF !
    nu r TDPLAN.NAME-U !
    na nu TDPLAN-APP ;
@@ -1237,16 +1237,16 @@ private
 \ word at evaluation.
 : TDPLAN-BUILT+ ( n n -- ) {: fam:n kind:n :}
    TDPLAN-NAME+ drop
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:^ :}
    kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  0 r TDPLAN.VID ! ;
 
 \ A built row whose name is variant VID's constructor symbol.
 : TDPLAN-CTOR-BUILT+ ( n n n -- ) {: vid:n fam:n kind:n :}
    vid TDPLAN-CTOR-NAME+ drop
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:^ :}
    kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  vid r TDPLAN.VID ! ;
 
-: TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
+: TDPLAN-SPAN$ ( n n -- ^u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
       s" sumtype: invalid generated declaration span" 76 die
    THEN
@@ -1258,8 +1258,8 @@ private
 
 public
 
-: TDPLAN-NAME$ ( n -- ptr u8 n )
-   TDPLAN-ROW {: r:ptr :}
+: TDPLAN-NAME$ ( n -- ^u8 n )
+   TDPLAN-ROW {: r:^ :}
    r TDPLAN.NAME-OFF @ r TDPLAN.NAME-U @ TDPLAN-SPAN$ ;
 
 
@@ -1361,9 +1361,9 @@ private
 : TDGEN-C, ( n -- )
    TDGEN-BUF TDGEN-U @ + c!
    TDGEN-U @ 1 + TDGEN-U ! ;
-: TDGEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDGEN-APP ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ TDGEN-C, loop ;
-: TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDGEN-UPPER ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
 
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
@@ -1385,16 +1385,16 @@ private
 \ name nothing. A private or OPAQUE family's words bind in the declaring package,
 \ so only a declaration in that package derives through them
 \ (TDECL-DERIVE-WHY).
-: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
+: TDGEN-DRV-REF ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}
    fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
-: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ the name alone
+: TDGEN-DRV-NAME ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}   \ the name alone
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF ;
-: TDGEN-KW ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD TDGEN-ITEM ;
-: TDGEN-OF ( ptr u8 n -- )                \ a variant's `of`
+: TDGEN-KW ( ^u8 n -- ) 0 ITEM-ABI:KEYWORD TDGEN-ITEM ;
+: TDGEN-OF ( ^u8 n -- )                \ a variant's `of`
    0 ITEM-ABI:OPERAND TDGEN-ITEM  s" of" TDGEN-KW ;
 \ The index the next local takes: the definition's locals before it.
 : TDGEN-LOCALS ( -- n ) data-base BODY-ITEMS:LOCALS-CELL + @ ;
@@ -1410,7 +1410,7 @@ private
    fam TFAM-NAME$  fam TDGEN-SELF-NODE  ITEM-ABI:TYPE TDGEN-ITEM ;
 \ A public family's derived TAIL by its exact name, which no part named as its
 \ constructor package captures; a private or OPAQUE one's where it binds.
-: TDGEN-DRV-CALL ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
+: TDGEN-DRV-CALL ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF
    fam TFAM-GEN-PUBLIC? IF ITEM-ABI:CALL-EXACT ELSE ITEM-ABI:CALL THEN {: op:n :}
    TDGEN-BUF TDGEN-U @ 0 op TDGEN-ITEM ;
@@ -1677,11 +1677,11 @@ public
 
 private
 
-: TDECL-ADDR-NAME ( n ptr u8 n -- ptr u8 n ) {: fam:n ta:ptr tu:n :}
+: TDECL-ADDR-NAME ( n ^u8 n -- ^u8 n ) {: fam:n ta:^ tu:n :}
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF  TDGEN-BUF TDGEN-U @ ;
 
 \ Runs XT on each child of FAM, with its name, shape and parameter.
-: TDECL-ADDR-EACH ( n [ ptr u8 n n n -- ] -- ) {: fam:n xt :}
+: TDECL-ADDR-EACH ( n [ ^u8 n n n -- ] -- ) {: fam:n xt :}
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fam  fs i + PF-NAME$  TDECL-ADDR-NAME
@@ -1696,20 +1696,20 @@ private
 
 \ A name the checker already holds in this scope is the declaration's error,
 \ asked of every child before any is made.
-: TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+: TDECL-ADDR-FREE ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
       na nu s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
    THEN ;
 
-: TDECL-ADDR-LIVE-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+: TDECL-ADDR-LIVE-FREE ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    na nu shape param TDECL-ADDR-FREE
    na nu TDECL-NAME-PREFLIGHT-XT ;
 
-: TDECL-ADDR-MAKE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+: TDECL-ADDR-MAKE ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    na nu shape param TDECL-CHILD ;
 
 \ Replay makes no word: it registers each child's effect, as CHILD-RUN would.
-: TDECL-ADDR-REG ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+: TDECL-ADDR-REG ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    shape param TFAM-CHILD-ROWS {: din:n dout:n val:n :}
    na nu din dout CHECKER-CHILD-ROWS drop ;
 
@@ -1740,8 +1740,8 @@ public
 \ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes each
 \ converter, >NAME then NAME>N. A family refused under a multi-error load
 \ leaves -1 and has no converters.
-: TDECL-DEFTYPE ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n ta:ptr tu:n :}
+: TDECL-DEFTYPE ( ^u8 n ^u8 n -- )
+   {: na:^ nu:n ta:^ tu:n :}
    ta tu na nu TDECL-DEFFAMILY
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
@@ -1751,7 +1751,7 @@ public
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-OUT fam  TDECL-CHILD ;
 
 \ Registers converter NA NU's effect, of SHAPE, over the last declared family.
-: TDECL-NOMINAL-REPLAY ( ptr u8 n n -- ) {: na:ptr nu:n shape:n :}
+: TDECL-NOMINAL-REPLAY ( ^u8 n n -- ) {: na:^ nu:n shape:n :}
    na nu shape TDECL-FAM-REG @ TDECL-ADDR-REG ;
 
 \ --- initialized-field accessors (`DERIVE init`).
@@ -1782,11 +1782,11 @@ private
       2drop 2drop
    loop ;
 
-: TDINIT-NAME ( n n bool -- ptr u8 n ) {: fam:n fid:n store:bool :}
+: TDINIT-NAME ( n n bool -- ^u8 n ) {: fam:n fid:n store:bool :}
    fam  fid store TFAM-INIT-MEMBER$  TDECL-ADDR-NAME ;
 
 \ Runs XT on each accessor of FAM, with its name, shape and field id.
-: TDINIT-EACH ( n [ ptr u8 n n n -- ] -- ) {: fam:n xt :}
+: TDINIT-EACH ( n [ ^u8 n n n -- ] -- ) {: fam:n xt :}
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fam fs i + RES-FALSE TDINIT-NAME  CHILD-ABI:INIT-GET fs i +  xt execute
@@ -1797,7 +1797,7 @@ private
    fam  fam TFAM-FLD-START@ RES-FALSE TDINIT-NAME
    fam TFAM-FLD-COUNT@ 2 * TDECL-CAPACITY-PREFLIGHT-XT ;
 
-: TDINIT-CHECK ( n [ ptr u8 n n n -- ] -- n )
+: TDINIT-CHECK ( n [ ^u8 n n n -- ] -- n )
    over swap TDINIT-EACH
    dup TDINIT-ROOM ;
 
@@ -1862,16 +1862,16 @@ private
    need TDECL-BUF-ENSURE
    TDECL-BUF TDECL-U @ + c!
    need TDECL-U ! ;
-: TDECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-APP ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ TDECL-C, loop ;
-: TDECL-ROW+ ( ptr u8 n -- ) {: a:ptr off:n :}
+: TDECL-ROW+ ( ^u8 n -- ) {: a:^ off:n :}
    TDECL-TOK-N @ 1 + {: need:n :}
    TDECL-TOK-OFF TDECL-TOK-OFF-CAP need 1 ARENA-ROWS-ENSURE
    TDECL-TOK-SRC TDECL-TOK-SRC-CAP need 1 ARENA-ROWS-ENSURE
    off TDECL-TOK-N @ TDECL-OFF !
    a TDECL-TOK-N @ TDECL-ORIGIN !
    need TDECL-TOK-N ! ;
-: TDECL-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: TDECL-TOKEN+ ( ^u8 n -- ) {: a:^ u:n :}
    TDECL-U @ 0 > IF 32 TDECL-C, THEN
    a TDECL-U @ TDECL-ROW+
    a u TDECL-APP ;
@@ -1886,11 +1886,11 @@ using TYPE-DECL
 
 \ The preverify and all-errors replay paths (verify-source.f) reach
 \ CHECKER-DEFFAMILY and CHECKER-NOMINAL-REPLAY; DEFTYPE reaches CHECKER-DEFTYPE.
-: CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
+: CHECKER-DEFFAMILY ( ^u8 n ^u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
-: CHECKER-DEFTYPE ( ptr u8 n ptr u8 n -- ) TDECL-DEFTYPE ;
+: CHECKER-DEFTYPE ( ^u8 n ^u8 n -- ) TDECL-DEFTYPE ;
 NOMINAL-PROVIDER
-: CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
+: CHECKER-NOMINAL-REPLAY ( ^u8 n n -- ) TDECL-NOMINAL-REPLAY ;
 
 ;using
 ;using

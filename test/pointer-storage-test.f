@@ -21,15 +21,15 @@ SCRATCH-VARIABLE SCR-CELL
 0 RESERVED-PTR-U8-CELL RSV-CELL-A
 $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 
-: ZERO-PTR ( -- ptr n )
+: ZERO-PTR ( -- ^n )
    ZERO-SLOT @ ;
 
-: ADDRESS ( -- ptr ptr n )
+: ADDRESS ( -- ^^n )
    SLOT ;
 
 \ An address is an integer through its distance from NULL-PTR; the offset is the
 \ cell's distance less the DATA base's, so no view of either pointer is taken.
-: DATA-OFF ( ptr ptr u8 -- n ) NULL-PTR - data-base NULL-PTR - - ;
+: DATA-OFF ( ^^u8 -- n ) NULL-PTR - data-base NULL-PTR - - ;
 : RSV-OFF-A ( -- n ) RSV-CELL-A DATA-OFF ;
 : RSV-OFF-B ( -- n ) RSV-CELL-B DATA-OFF ;
 
@@ -50,10 +50,10 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    42 SCR-CELL !  SCR-CELL @ 42 T=
    65 SCR-ROW 15 + c!  SCR-ROW 15 + c@ 65 T= ;
 
-: SAMPLE ( -- ptr u8 )
+: SAMPLE ( -- ^u8 )
    s" pointer-storage" drop ;
 
-: TABLE-FIELD ( n -- ptr ptr u8 )
+: TABLE-FIELD ( n -- ^^u8 )
    cells TABLE-SLOT + 0 ptr-field ;
 
 : TABLE-RUNTIME ( -- )
@@ -63,13 +63,13 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    0 TABLE-FIELD @ SAMPLE = TTRUE ;
 
 : VERIFY-EFFECT ( -- )
-   [: s" PTR-VARIABLE VS-PTR : VS-ADDR ( -- ptr ptr n ) VS-PTR ;" VERIFY:SOURCE-BUF ;]
+   [: s" PTR-VARIABLE VS-PTR : VS-ADDR ( -- ^^n ) VS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T=
-   [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ptr ptr n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
+   [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ^^n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T=
-   [: s" SCRATCH-VARIABLE VS-SCR : VS-SCR-A ( -- ptr n ) VS-SCR ;" VERIFY:SOURCE-BUF ;]
+   [: s" SCRATCH-VARIABLE VS-SCR : VS-SCR-A ( -- ^n ) VS-SCR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T=
-   [: s" SCRATCH-VARIABLE VS-SCR2 : VS-SCR2-A ( -- ptr ptr u8 ) VS-SCR2 ;" VERIFY:SOURCE-BUF ;]
+   [: s" SCRATCH-VARIABLE VS-SCR2 : VS-SCR2-A ( -- ^^u8 ) VS-SCR2 ;" VERIFY:SOURCE-BUF ;]
    catch 0<> TTRUE ;
 
 \ PTR-U8-TABLE and PERSISTED-PTR-U8-TABLE-VARIABLE spell the pointee in the
@@ -88,22 +88,22 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : VERIFY-DECLARED-POINTEE ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    REG-DECLARED-CELLS
-   s" DP-BASE ( -- ptr ptr u8 ) DPT" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" DP-READ ( -- ptr ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" DP-STORE ( ptr u8 -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" DP-RAW-SCALAR ( -- ptr u8 ) DPR @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" DP-BASE-WRONG ( -- ptr ptr n ) DPT" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   s" DP-READ-WRONG ( -- ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-BASE ( -- ^^u8 ) DPT" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-READ ( -- ^^u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-STORE ( ^u8 -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-RAW-SCALAR ( -- ^u8 ) DPR @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-BASE-WRONG ( -- ^^n ) DPT" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-READ-WRONG ( -- ^u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" DP-STORE-WRONG ( n -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-HEAD-WRONG ( ^^n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE ;
 
 \ RESERVED-PTR-U8-CELL's created word has the effect its does> states.
 : VERIFY-RESERVED-EFFECT ( -- )
-   s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
-   s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" RSV-BASE ( -- ^^u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
+   s" RSV-READ ( -- ^u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
+   s" RSV-BASE-WRONG ( -- ^^n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
+   s" RSV-READ-WRONG ( -- ^n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The pre-scan publishes the same effect for the word the definer creates, so a
 \ source declaring a reserved cell verifies without being run. The scan compiles
@@ -115,10 +115,10 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : VERIFY-RESERVED-SCAN ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    REG-RESERVED-CELL
-   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" VSRSV-BASE ( -- ^^u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" VSRSV-WRONG ( -- ^^n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE
-   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" VSRSV-BASE ( -- ^^u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
    T-RESET

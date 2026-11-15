@@ -42,8 +42,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-GAP? ( n -- bool ) {: c:n :}
    c STR-SPACE = c [char] " = or c [char] : = or ;
 
-: GDB-NUM-AT ( n ptr u8 n -- n )   \ the digit run at or after offset i, -1 when none
-   {: i:n a:ptr u:n :}
+: GDB-NUM-AT ( n ^u8 n -- n )   \ the digit run at or after offset i, -1 when none
+   {: i:n a:^ u:n :}
    i GDB-I !
    begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR-FALSE then while
       GDB-I @ 1+ GDB-I !
@@ -58,28 +58,28 @@ variable GDB-CUT      \ GDB-AFTER's cut point
      some OF ENDOF
    ;MATCH ;
 
-: GDB-FIELD ( ptr u8 n ptr u8 n -- n )   \ the integer printed after <name>, -1 when absent
-   {: a:ptr u:n b:ptr v:n :}
+: GDB-FIELD ( ^u8 n ^u8 n -- n )   \ the integer printed after <name>, -1 when absent
+   {: a:^ u:n b:^ v:n :}
    a u b v FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N v + a u GDB-NUM-AT ENDOF
    ;MATCH ;
 
-: GDB-AFTER ( ptr u8 n ptr u8 n -- ptr u8 n )   \ the tail past the first <b>, empty when absent
-   {: a:ptr u:n b:ptr v:n :}
+: GDB-AFTER ( ^u8 n ^u8 n -- ^u8 n )   \ the tail past the first <b>, empty when absent
+   {: a:^ u:n b:^ v:n :}
    a u b v FIND-SUB MATCH option
      none OF a 0 ENDOF
      some OF IDX>N v + GDB-CUT !  a GDB-CUT @ +  u GDB-CUT @ -  ENDOF
    ;MATCH ;
 
 \ The sample total, from either report: "profiler samples N" or {"samples":N}.
-: GDB-SAMPLES ( ptr u8 n -- n )
+: GDB-SAMPLES ( ^u8 n -- n )
    s" samples" GDB-FIELD ;
 
 \ The header's own identity, plus the limit the sample total must reach (-1:
 \ none). A sample counts the intervals since the last one, so the one that
 \ reaches the limit may carry the total past it.
-: GDB-ACCOUNT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: GDB-ACCOUNT ( ^u8 n n -- ) {: a:^ u:n want:n :}
    a u GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
    want 0 >= tot want < and if
@@ -253,8 +253,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
       s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr
    then ;
 
-: GDB-PROF-RATE-RUN ( ptr u8 n -- )   \ run GDB-BUSY under one prof-on line
-   {: arm:ptr armu:n :}
+: GDB-PROF-RATE-RUN ( ^u8 n -- )   \ run GDB-BUSY under one prof-on line
+   {: arm:^ armu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
@@ -308,8 +308,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" require src/habu/prof-abi.f" GE-SRC-LINE
    s" 0 SNAP-RELOC:XTCELL-OFF-MAX CELL + PROF-ABI:PROF-BAND-AT constant GDB-BAND" GE-SRC-LINE
    s" : GDB-BAND@ ( n -- n ) {: off:n :} data-base GDB-BAND + off + @ ;" GE-SRC-LINE
-   s" TRUSTED: GDB>ARENA ( n -- ptr n ) ;" GE-SRC-LINE
-   s" : GDB-ARENA ( n -- ptr n ) {: off:n :} PROF-ABI:PROF-ARENA GDB-BAND@ GDB>ARENA off + ;" GE-SRC-LINE ;
+   s" TRUSTED: GDB>ARENA ( n -- ^n ) ;" GE-SRC-LINE
+   s" : GDB-ARENA ( n -- ^n ) {: off:n :} PROF-ABI:PROF-ARENA GDB-BAND@ GDB>ARENA off + ;" GE-SRC-LINE ;
 
 \ prof-reset 1000 times at 50 us, each time followed by prof-off and the
 \ header's identity, words + other + new + defer + spill + foreign == samples,
@@ -341,7 +341,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" PASS: a held clock counts nothing, so the identity survives 1000 resets at 50 us" type cr ;
 
 \ The engine's whole stderr for an uncaught throw of the code.
-: GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
+: GDB-UNCAUGHT$ ( n -- ^u8 n ) {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
 
 \ prof-rate refuses a negative interval and one past the OS timer's longest,
@@ -398,9 +398,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    \ PHASE ends with a value, not a call, so BUSY runs inside PHASE's frame (see
    \ GDB-PROF-PKG-SRC).
    s" : PHASE ( -- n ) BUSY 5 ;" GE-SRC-LINE
-   s" : FIND-REC ( ptr u8 n -- n ) {: a:ptr u:n :}" GE-SRC-LINE
+   s" : FIND-REC ( ^u8 n -- n ) {: a:^ u:n :}" GE-SRC-LINE
    s"    -1 GDBPH-ACC !" GE-SRC-LINE
-   s"    ndict@ 0 ?do i XREF-REC {: rec:ptr :}" GE-SRC-LINE
+   s"    ndict@ 0 ?do i XREF-REC {: rec:^ :}" GE-SRC-LINE
    s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ a u STR= if i GDBPH-ACC ! then then" GE-SRC-LINE
    s"    loop GDBPH-ACC @ ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
@@ -500,7 +500,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROF-RUN
    s" profiler stop and reset" GE-EXPECT-OK
    GT-OUT$ GDB-SAMPLES {: first:n :}
-   GT-OUT$ s" profiler samples" GDB-AFTER {: a:ptr u:n :}
+   GT-OUT$ s" profiler samples" GDB-AFTER {: a:^ u:n :}
    a u GDB-SAMPLES {: second:n :}
    a u s" profiler samples" GDB-AFTER GDB-SAMPLES {: third:n :}
    first 0 <= if s" profiler stop case collected no sample" GE-FAIL then
@@ -541,12 +541,12 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBBP private" GE-SRC-LINE
    s" : VALID ( n -- n ) 1+ ; TYPED-VARIABLE VALID-XT [ n -- n ] ' VALID VALID-XT !" GE-SRC-LINE
-   s" TYPED-VARIABLE TARGET-XT [ n n ptr n -- n ] TRUSTED: TARGET-SET ( -- ) ['] atomic-cas TARGET-XT ! ; TARGET-SET" GE-SRC-LINE
+   s" TYPED-VARIABLE TARGET-XT [ n n ^n -- n ] TRUSTED: TARGET-SET ( -- ) ['] atomic-cas TARGET-XT ! ; TARGET-SET" GE-SRC-LINE
    s" TYPED-VARIABLE NONE-XT [ n -- n ]" GE-SRC-LINE
-   s" CAST: TARGET>ADDR ( [ n n ptr n -- n ] -- n )" GE-SRC-LINE
+   s" CAST: TARGET>ADDR ( [ n n ^n -- n ] -- n )" GE-SRC-LINE
    s" create SAVED-SLOTS DEBUG:MAXBP 32 * allot create SAVED-CODE 16 allot" GE-SRC-LINE
-   s" : TABLE ( -- ptr u8 ) data-base BPTAB-OFF + ;" GE-SRC-LINE
-   s" : SUBJECT ( -- ptr u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
+   s" : TABLE ( -- ^u8 ) data-base BPTAB-OFF + ;" GE-SRC-LINE
+   s" : SUBJECT ( -- ^u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
    s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY SUBJECT SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
    s" ['] ARM catch ." GE-SRC-LINE
@@ -562,7 +562,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ package is refused, and the check hook names the definition.
 : GDB-PATCH32-OUTSIDE ( -- )
    GE-HB-RESET GE-SRC-RESET
-   s" package GDBX : P ( n ptr u8 -- ) patch32 ; ;package" GE-SRC-LINE
+   s" package GDBX : P ( n ^u8 -- ) patch32 ; ;package" GE-SRC-LINE
    GDB-PROF-RUN
    70 s" patch32 outside DEBUG exits 70" GE-EXPECT-RC
    s" non-certified definition: p at 'patch32'" s" the check hook refuses patch32 outside DEBUG" GE-EXPECT-ERR-HAS
@@ -572,7 +572,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ and STEP beside the baked debugger.
 : GDB-DEBUG-NAMES ( -- )
    GE-HB-RESET GE-SRC-RESET
-   S\" : FIND ( ptr u8 -- n ) drop 0 ; : STEP ( -- ) ; s\" ok\" type" GE-SRC-LINE
+   S\" : FIND ( ^u8 -- n ) drop 0 ; : STEP ( -- ) ; s\" ok\" type" GE-SRC-LINE
    GDB-PROF-RUN
    s" a program defines FIND and STEP" GE-EXPECT-OK
    s" ok" s" FIND and STEP beside the baked debugger" GE-EXPECT-OUT

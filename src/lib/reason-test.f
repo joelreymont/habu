@@ -23,7 +23,7 @@ variable BAD-B
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: STATE ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+: STATE ( ^u8 n n -- ) {: a:^ u:n code:n :}
    [: a u code REASON:THROW ;] code TTHROWSQ ;
 
 : CHECK-MAIN ( -- )
@@ -45,7 +45,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 \ Both tasks state CODE-A before either reads it back.
 : BOTH-STATED? ( -- bool ) BARRIER atomic@ 2 >= ;
 
-: BODY ( ptr u8 n ptr n -- ) {: a:ptr u:n bad:ptr :}
+: BODY ( ^u8 n ^n -- ) {: a:^ u:n bad:^ :}
    [: a u CODE-A REASON:THROW ;] catch
    CODE-A <> if 1 bad +! then
    1 BARRIER atomic-add drop
@@ -56,7 +56,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : A-BODY ( -- ) s" stated by task a" BAD-A BODY ;
 : B-BODY ( -- ) s" task b's longer stated text" BAD-B BODY ;
 
-: JOIN-OK ( ptr n -- )
+: JOIN-OK ( ^n -- )
    TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
       err OF 0 T= ENDOF

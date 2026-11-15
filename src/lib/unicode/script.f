@@ -11,10 +11,10 @@ package UNICODE-SCRIPT
 private
 
 \ The table's tags are the family's tags, which the generator and verifier pin.
-CAST: >SCRIPT-CELL ( ptr n -- ptr script )
+CAST: >SCRIPT-CELL ( ^n -- ^script )
 
 \ The first cell of entry idx; its last scalar and tag follow.
-: ENTRY ( n -- ptr n )
+: ENTRY ( n -- ^n )
    3 * RANGE-TABLE ;
 
 public
@@ -25,7 +25,7 @@ public
    0 RANGE-COUNT [: ENTRY @ cp <= ;] SORT:PARTITION-POINT
    {: at:n :}
    at 0= if construct script unknown exit then
-   at 1- ENTRY {: entry:ptr :}
+   at 1- ENTRY {: entry:^ :}
    cp entry cell+ @ > if construct script unknown exit then
    entry 2 cells + >SCRIPT-CELL @ ;
 

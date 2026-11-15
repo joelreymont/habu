@@ -34,18 +34,18 @@ create FLT-CTX-BAD FS-LIST:STORAGE-BYTES 1+ allot
 TYPED-VARIABLE FLT-A FS-LIST:context
 TYPED-VARIABLE FLT-B FS-LIST:context
 
-: FLT-ROOT$ ( -- ptr u8 n )
+: FLT-ROOT$ ( -- ^u8 n )
    FLT-ROOT-BUF FLT-ROOT-U @ ;
 
 : FLT-ROOT! ( -- )
-   s" habu-fs-list" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-fs-list" FS:MKTEMP-DIR {: a:^ u:n :}
    a FLT-ROOT-BUF u BYTE-COPY
    u FLT-ROOT-U ! ;
 
-: FLT-PATH ( ptr u8 n -- ptr u8 n )
+: FLT-PATH ( ^u8 n -- ^u8 n )
    FLT-ROOT$ 2swap FLT-PATH-BUF FS:JOIN-PATH FLT-PATH-BUF swap ;
 
-: FLT-COUNT ( ptr u8 n -- )
+: FLT-COUNT ( ^u8 n -- )
    nip FLT-SEEN-BYTES +! 1 FLT-SEEN +! ;
 
 : FLT-EACH ( -- )
@@ -76,7 +76,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
 : FLT-TYPE-KIND ( u8 u8 -- ) {: got:u8 want:u8 :}
    got FS-LIST:DT-UNKNOWN = got want = or TTRUE ;
 
-: FLT-MANY-TYPE ( ptr u8 n u8 -- ) {: name:ptr size:n kind:u8 :}
+: FLT-MANY-TYPE ( ^u8 n u8 -- ) {: name:^ size:n kind:u8 :}
    size 3 <> if E-FS-LIST-ENTRY throw then
    name c@ [char] m <> if E-FS-LIST-ENTRY throw then
    name 1 + c@ [char] A - {: hi:n :}
@@ -89,7 +89,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    1 FLT-TYPED-MANY +!
    kind FS-LIST:DT-REG FLT-TYPE-KIND ;
 
-: FLT-TYPE ( ptr u8 n u8 -- ) {: name:ptr size:n kind:u8 :}
+: FLT-TYPE ( ^u8 n u8 -- ) {: name:^ size:n kind:u8 :}
    1 FLT-TYPED-SEEN +!
    name size s" a.txt" STR= if
       1 FLT-TYPED-A +!
@@ -151,7 +151,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    99 FLT-DIRENT-TYPE-FIXTURE 20 + c!
    FLT-DIRENT-TYPE-FIXTURE FS:DIRENT-TYPE 99 T= ;
 
-: FLT-MANY-PATH ( n -- ptr u8 n ) {: idx:n :}
+: FLT-MANY-PATH ( n -- ^u8 n ) {: idx:n :}
    [char] m FLT-MANY-NAME c!
    idx 16 / 65 + FLT-MANY-NAME 1 + c!
    idx 16 mod 65 + FLT-MANY-NAME 2 + c!
@@ -167,7 +167,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    FLT-A @ FLT-ROOT$ [: FLT-TYPE ;] FS-LIST:EACH-TYPED-IN
    FLT-CHECK-TYPED-REFILL ;
 
-: FLT-CHECK-LONG ( ptr u8 n -- )
+: FLT-CHECK-LONG ( ^u8 n -- )
    2dup FLT-COUNT
    dup 240 = if
       FLT-LONG-NAME 240 T$=
@@ -218,7 +218,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    s" the listing inside it saw every name" T-LABEL
    FLT-INNER FLT-INNER-U @ s\" one\ntwo" T$= ;
 
-: FLT-NEST ( ptr u8 n -- )
+: FLT-NEST ( ^u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if FLT-SUB-NAMES then ;
 
@@ -232,7 +232,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-BOTH-WHOLE ;
 
 \ A main thread that ends before it resumes the lister ends the lister's wait.
-: FLT-HANDOFF ( ptr u8 n -- )
+: FLT-HANDOFF ( ^u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if
       1 FLT-HANDED atomic!
@@ -268,13 +268,13 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    fd close
    fd ;
 
-: FLT-THROW ( ptr u8 n -- )
+: FLT-THROW ( ^u8 n -- )
    2drop E-A-BOUNDS throw ;              \ no listing path raises the quotation's code
 
 : FLT-THROWING ( -- )
    FLT-ROOT$ [: FLT-THROW ;] FS-LIST:EACH ;
 
-: FLT-TYPED-THROW ( ptr u8 n u8 -- )
+: FLT-TYPED-THROW ( ^u8 n u8 -- )
    drop FLT-THROW ;
 
 : FLT-TYPED-THROWING ( -- )
@@ -322,7 +322,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 : FLT-B-SUB-NAMES ( -- )
    FLT-B @ s" sub" FLT-PATH FLT-INNER 64 FS-LIST:NAMES-IN FLT-INNER-U ! ;
 
-: FLT-A-NEST ( ptr u8 n -- )
+: FLT-A-NEST ( ^u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if FLT-B-SUB-NAMES then ;
 
@@ -331,7 +331,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-A @ FLT-ROOT$ [: FLT-A-NEST ;] FS-LIST:EACH-IN
    FLT-BOTH-WHOLE ;
 
-: FLT-A-AGAIN ( ptr u8 n -- )
+: FLT-A-AGAIN ( ^u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if
       [: FLT-A @ FLT-ROOT$ [: 2drop ;] FS-LIST:EACH-IN ;]

@@ -65,92 +65,92 @@ private
      occupied OF 0 0= ENDOF
    ;MATCH ;
 
-: HEADER-FIELD ( ptr a n -- ptr n )
+: HEADER-FIELD ( ^a n -- ^n )
    cells + BYTE-VIEW CELL-VIEW ;
 
 public
 
-: CAP@ ( ptr a -- count )
+: CAP@ ( ^a -- count )
    CAP-OFF HEADER-FIELD @ >COUNT ;
 
-: COUNT@ ( ptr a -- count )
+: COUNT@ ( ^a -- count )
    COUNT-OFF HEADER-FIELD @ >COUNT ;
 
 private
 
-: CAP! ( count ptr a -- ) {: cap m:ptr :}
+: CAP! ( count ^a -- ) {: cap m:^ :}
    cap CHECK-CAP
    cap COUNT>N m CAP-OFF HEADER-FIELD ! ;
 
-: CHECK-HANDLE ( ptr a count -- ) {: m:ptr cap :}
+: CHECK-HANDLE ( ^a count -- ) {: m:^ cap :}
    cap CHECK-CAP
    m CAP@ COUNT>N cap COUNT>N <> if E-MAP-BAD-CAP throw then ;
 
-: COUNT! ( count ptr a -- ) {: count m:ptr :}
+: COUNT! ( count ^a -- ) {: count m:^ :}
    count COUNT>N 0 < if E-MAP-BAD-CAP throw then
    count COUNT>N m CAP@ COUNT>N > if E-MAP-FULL throw then
    count COUNT>N m COUNT-OFF HEADER-FIELD ! ;
 
-: SLOTS ( ptr a -- ptr a )
+: SLOTS ( ^a -- ^a )
    HEADER-CELLS cells + ;
 
-: CHECK-INDEX ( ptr a idx -- ) {: m:ptr ix :}
+: CHECK-INDEX ( ^a idx -- ) {: m:^ ix :}
    ix IDX>N 0 < if E-MAP-BAD-CAP throw then
    ix IDX>N m CAP@ COUNT>N >= if E-MAP-BAD-CAP throw then ;
 
-: SLOT ( ptr a idx -- ptr a ) {: m:ptr ix :}
+: SLOT ( ^a idx -- ^a ) {: m:^ ix :}
    m ix CHECK-INDEX
    m SLOTS ix IDX>N SLOT-CELLS * cells + ;
 
-: SLOT-FIELD ( ptr a idx off -- ptr a ) {: m:ptr ix off :}
+: SLOT-FIELD ( ^a idx off -- ^a ) {: m:^ ix off :}
    off OFF>N 0 < if E-MAP-BAD-CAP throw then
    off OFF>N SLOT-CELLS >= if E-MAP-BAD-CAP throw then
    m ix SLOT off OFF>N cells + ;
 
-: NUM-FIELD ( ptr a idx off -- ptr n )
+: NUM-FIELD ( ^a idx off -- ^n )
    SLOT-FIELD BYTE-VIEW CELL-VIEW ;
 
-: SLOT-STATE@ ( ptr a idx -- slot-state )
+: SLOT-STATE@ ( ^a idx -- slot-state )
    SLOT-STATE-OFF >OFF NUM-FIELD @ case
       0 of MAP-SLOT--STATE:EMPTY endof
       1 of MAP-SLOT--STATE:OCCUPIED endof
       E-MAP-BAD-CAP throw
    endcase ;
 
-: SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}
+: SLOT-STATE! ( slot-state ^a idx -- ) {: m:^ ix:idx :}
    MATCH slot-state
      empty OF 0 ENDOF
      occupied OF 1 ENDOF
    ;MATCH
    m ix SLOT-STATE-OFF >OFF NUM-FIELD ! ;
 
-: SLOT-HASH@ ( ptr a idx -- n )
+: SLOT-HASH@ ( ^a idx -- n )
    SLOT-HASH-OFF >OFF NUM-FIELD @ ;
 
-: SLOT-HASH! ( n ptr a idx -- ) {: hash m:ptr ix :}
+: SLOT-HASH! ( n ^a idx -- ) {: hash m:^ ix :}
    hash 0 < if E-MAP-BAD-CAP throw then
    hash m ix SLOT-HASH-OFF >OFF NUM-FIELD ! ;
 
-: SLOT-KEY-A@ ( ptr a idx -- ptr u8 )
+: SLOT-KEY-A@ ( ^a idx -- ^u8 )
    SLOT-KEY-A-OFF >OFF SLOT-FIELD 0 ptr-field @ ;
 
-: SLOT-KEY-A! ( ptr u8 ptr a idx -- ) {: key:ptr m:ptr ix :}
+: SLOT-KEY-A! ( ^u8 ^a idx -- ) {: key:^ m:^ ix :}
    key m ix SLOT-KEY-A-OFF >OFF SLOT-FIELD 0 ptr-field ! ;
 
-: SLOT-KEY-U@ ( ptr a idx -- len )
+: SLOT-KEY-U@ ( ^a idx -- len )
    SLOT-KEY-U-OFF >OFF NUM-FIELD @ >LEN ;
 
-: SLOT-KEY-U! ( len ptr a idx -- ) {: len m:ptr ix :}
+: SLOT-KEY-U! ( len ^a idx -- ) {: len m:^ ix :}
    len LEN>N 0 < if E-MAP-BAD-CAP throw then
    len LEN>N m ix SLOT-KEY-U-OFF >OFF NUM-FIELD ! ;
 
-: SLOT-VALUE@ ( ptr a idx -- a )
+: SLOT-VALUE@ ( ^a idx -- a )
    SLOT-VALUE-OFF >OFF SLOT-FIELD @ ;
 
-: SLOT-VALUE! ( a ptr a idx -- ) {: value m:ptr ix :}
+: SLOT-VALUE! ( a ^a idx -- ) {: value m:^ ix :}
    value m ix SLOT-VALUE-OFF >OFF SLOT-FIELD ! ;
 
-: SLOT-CLEAR ( ptr a idx -- ) {: m:ptr ix :}
+: SLOT-CLEAR ( ^a idx -- ) {: m:^ ix :}
    0 m ix SLOT-HASH!
    NULL$ drop m ix SLOT-KEY-A!
    0 >LEN m ix SLOT-KEY-U!
@@ -159,7 +159,7 @@ private
 
 public
 
-: CLEAR ( ptr a -- ) {: m:ptr :}
+: CLEAR ( ^a -- ) {: m:^ :}
    m CAP@ dup CHECK-CAP {: cap :}
    0 m COUNT-OFF HEADER-FIELD !
    cap COUNT>N 0 ?do
@@ -168,8 +168,8 @@ public
 
 \ Maps of one capacity and key given the same SETs in the same order store them
 \ alike; a map whose keys come from outside the program takes INIT's secret key.
-: INIT-KEYED ( ptr a count n n -- )
-   {: m:ptr cap k0 k1 :}
+: INIT-KEYED ( ^a count n n -- )
+   {: m:^ cap k0 k1 :}
    k0 m HASH-K0-OFF HEADER-FIELD !
    k1 m HASH-K1-OFF HEADER-FIELD !
    cap m CAP!
@@ -177,7 +177,7 @@ public
 
 private
 
-: HASH ( ptr a ptr u8 len -- n ) {: m:ptr a:ptr u :}
+: HASH ( ^a ^u8 len -- n ) {: m:^ a:^ u :}
    u CHECK-LEN
    m HASH-K0-OFF HEADER-FIELD @  m HASH-K1-OFF HEADER-FIELD @
    a u LEN>N SIPHASH:BYTES HASH-MASK and ;
@@ -196,11 +196,11 @@ private
       base inc +
    then >IDX ;
 
-: SLOT-MATCH? ( ptr a idx n ptr u8 len -- bool ) {: m:ptr ix hash key:ptr len :}
+: SLOT-MATCH? ( ^a idx n ^u8 len -- bool ) {: m:^ ix hash key:^ len :}
    m ix SLOT-HASH@ hash <> if 0 0= 0= exit then
    m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ LEN>N key len LEN>N STR= ;
 
-: LOCATE-SLOT ( ptr a idx ptr u8 len n -- loc ) {: m:ptr ix:idx key:ptr len:len hash:n :}
+: LOCATE-SLOT ( ^a idx ^u8 len n -- loc ) {: m:^ ix:idx key:^ len:len hash:n :}
    m ix SLOT-STATE@ MATCH slot-state
      empty OF ix MAP-LOC:FREE ENDOF
      occupied OF
@@ -212,7 +212,7 @@ private
      ENDOF
    ;MATCH ;
 
-: LOCATE ( ptr a count ptr u8 len -- loc n ) {: m:ptr cap:count key:ptr len:len :}
+: LOCATE ( ^a count ^u8 len -- loc n ) {: m:^ cap:count key:^ len:len :}
    m cap CHECK-HANDLE
    len CHECK-LEN
    m key len HASH {: hash:n :}
@@ -229,7 +229,7 @@ private
    loop
    MAP-LOC:FULL hash ;
 
-: SLOT-INSERT ( a ptr a idx n ptr u8 len -- ) {: value m:ptr ix hash key:ptr len :}
+: SLOT-INSERT ( a ^a idx n ^u8 len -- ) {: value m:^ ix hash key:^ len :}
    m COUNT@ COUNT>N 1 + >COUNT m COUNT!
    hash m ix SLOT-HASH!
    key m ix SLOT-KEY-A!
@@ -239,14 +239,14 @@ private
 
 public
 
-: GET ( ptr n count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}
+: GET ( ^n count ^u8 len -- option<n> ) {: m:^ cap:count key:^ len:len :}
    m cap key len LOCATE drop MATCH loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
      found OF m swap SLOT-VALUE@ OPTION:SOME ENDOF
    ;MATCH ;
 
-: HAS? ( ptr n count ptr u8 len -- bool )
+: HAS? ( ^n count ^u8 len -- bool )
    GET MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
@@ -254,7 +254,7 @@ public
 
 \ Stores the key's pointer and length, not a copy; a replacement keeps the first
 \ pointer: the key bytes stay alive and unchanged while the entry exists.
-: SET ( n ptr n count ptr u8 len -- ) {: value:n m:ptr cap:count key:ptr len:len :}
+: SET ( n ^n count ^u8 len -- ) {: value:n m:^ cap:count key:^ len:len :}
    m cap key len LOCATE {: hash:n :}
    MATCH loc
      full OF E-MAP-FULL throw ENDOF
@@ -263,7 +263,7 @@ public
    ;MATCH ;
 
 \ Visits in storage order, which follows the map's hash key.
-: EACH ( ptr n count [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
+: EACH ( ^n count [ ^u8 len n -- ] -- ) {: m:^ cap q :}
    m cap CHECK-HANDLE
    cap COUNT>N 0 ?do
       m i >IDX SLOT-STATE@ OCCUPIED? if

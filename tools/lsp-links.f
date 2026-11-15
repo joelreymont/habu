@@ -22,12 +22,12 @@ DYNAMIC-BUFFER PATH-B u8                 \ the line's file, decoded,
 variable PATH-U
 TYPED-VARIABLE HELD bool                 \ and whether its loader held it
 create TIP-B BUF:HDR-BYTES allot         \ a held link's tooltip
-TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
+TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable SHOWN-N                         \ and the links written so far
 
-: PATH$ ( -- ptr u8 n )  0 PATH-B PATH-U @ ;
-: T+ ( ptr u8 n -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
-: TIP$ ( -- ptr u8 n )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
+: PATH$ ( -- ^u8 n )  0 PATH-B PATH-U @ ;
+: T+ ( ^u8 n -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
+: TIP$ ( -- ^u8 n )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
 
 : STRING>PATH ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}
@@ -41,8 +41,8 @@ variable SHOWN-N                         \ and the links written so far
    s" outcome" READ-STR-EQ? if READ-NEXT drop s" held" READ-STR-EQ? HELD ! exit then
    READ-NEXT drop READ-SKIP-VALUE ;
 
-: DECODE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DECODE ( ^u8 n -- )
+   {: a:^ u:n :}
    0 PATH-U !
    false HELD !
    JSON-ST a u READ-INIT
@@ -53,15 +53,15 @@ variable SHOWN-N                         \ and the links written so far
 \ A loader that held its file (the engine provided it, or a load before recorded
 \ it) says so, naming the file as hover does: relative to the server's working
 \ directory when inside it, else by its path.
-: HELD-TIP ( -- ptr u8 n )
+: HELD-TIP ( -- ^u8 n )
    TIP-B BUF:CLEAR
    s" held " T+
    PATH$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE T+
    s" : this loader did not read it; the engine provides it or it was already recorded." T+
    TIP$ ;
 
-: LINK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: LINK ( ^u8 n -- )
+   {: a:^ u:n :}
    a u DECODE
    OUT @
    SHOWN-N @ 0 > if WRITE-COMMA then
@@ -77,7 +77,7 @@ public
 : PREPARE ( -- )
    TIP-B 1 BUF:N>BLEN BUF:INIT ;
 
-: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
    w OUT !
    0 SHOWN-N !

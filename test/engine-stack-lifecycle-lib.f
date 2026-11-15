@@ -12,7 +12,7 @@ package STACK-LIFECYCLE-TEST
 PTR-VARIABLE SAVED-BASE
 variable SAVED-CAP
 
-: ACTIVE-BASE ( -- ptr u8 )
+: ACTIVE-BASE ( -- ^u8 )
    data-base STACK-ABI:BASE-CELL + 0 ptr-field @ ;
 
 : ACTIVE-CAP ( -- n )
@@ -43,7 +43,7 @@ variable OUTLEN
 variable ERRLEN
 variable STATUS
 
-: CHILD-CAPTURE ( ptr u8 n -- ) {: src:ptr size:n :}
+: CHILD-CAPTURE ( ^u8 n -- ) {: src:^ size:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
@@ -55,19 +55,19 @@ variable STATUS
    T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
    0 OUTLEN ! 0 ERRLEN ! -1 ;
 
-: CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
+: CHILD-RC ( ^u8 n -- n ) {: src:^ size:n :}
    [: src size CHILD-CAPTURE ;] catch {: code:n :}
    code 0= if STATUS @ exit then
    code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
    code throw ;
 
-: PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: g:ptr gu:n w:ptr wu:n :}
+: PREFIX? ( ^u8 n ^u8 n -- bool ) {: g:^ gu:n w:^ wu:n :}
    gu wu < if 0 0= 0= exit then
    g wu w wu T-STR= ;
 
 \ GOT need only start with WANT: the guard-page crash handler (src/habu/crash.f)
 \ names the stack that faulted, then the trapping code's lr.
-: T-PREFIX= ( ptr u8 n ptr u8 n -- ) {: g:ptr gu:n w:ptr wu:n :}
+: T-PREFIX= ( ^u8 n ^u8 n -- ) {: g:^ gu:n w:^ wu:n :}
    T-NEXT
    g gu w wu PREFIX? 0= if
       T-FAIL
@@ -79,22 +79,22 @@ variable STATUS
 \ A push past the capacity and a return/loop frame past its region both exit
 \ ENGINE-ERROR:STACK-BOUNDS (102); only the parenthetical after the shared
 \ prefix says which, so every call site names the stack it expects.
-: REFUSED-DATA ( ptr u8 n -- )
+: REFUSED-DATA ( ^u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " T-PREFIX= ;
 
-: REFUSED-RETURN ( ptr u8 n -- )
+: REFUSED-RETURN ( ^u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (return) lr " T-PREFIX= ;
 
-: REFUSED-LOOP ( ptr u8 n -- )
+: REFUSED-LOOP ( ^u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
 
 \ A data request below the base is the one rejection with a name: the checker
 \ rejects a bare call on a shallower stack before the body runs, names the token
 \ and exits 70.
-: NAMED-UNDERDEPTH ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
+: NAMED-UNDERDEPTH ( ^u8 n ^u8 n -- ) {: src:^ size:n diag:^ diagu:n :}
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu T$= ;
 

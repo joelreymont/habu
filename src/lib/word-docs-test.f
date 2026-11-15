@@ -19,13 +19,13 @@ $40000 constant FIX-CAP          \ room for the largest generated text
 58 constant LONG-WIDTH           \ bytes of each of its lines after `\ `
 120 constant X-BYTE              \ `x`, which fills them
 
-TYPED-VARIABLE FIX ptr u8
+TYPED-VARIABLE FIX ^u8
 variable FIX-U
 
-: FIX@ ( -- ptr u8 )
+: FIX@ ( -- ^u8 )
    FIX @ ;
 
-: FIX$ ( -- ptr u8 n )
+: FIX$ ( -- ^u8 n )
    FIX@ FIX-U @ ;
 
 : FIX-OPEN ( -- )
@@ -35,7 +35,7 @@ variable FIX-U
 : FIX-CLOSE ( -- )
    FIX@ FIX-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: +FIX ( ptr u8 n -- ) {: a:ptr u:n :}
+: +FIX ( ^u8 n -- ) {: a:^ u:n :}
    FIX-U @ u + FIX-CAP > if E-STR-CAPACITY throw then
    a FIX@ FIX-U @ + u BYTE-COPY
    FIX-U @ u + FIX-U ! ;
@@ -43,10 +43,10 @@ variable FIX-U
 : +SB ( -- )
    SB$ +FIX ;
 
-: DOCS ( ptr u8 n -- )
+: DOCS ( ^u8 n -- )
    WORD-DOCS:RESET WORD-DOCS:FILE ;
 
-: REC= ( n ptr u8 n ptr u8 n ptr u8 n -- ) {: k:n a:ptr u:n p:ptr pu:n e:ptr eu:n :}
+: REC= ( n ^u8 n ^u8 n ^u8 n -- ) {: k:n a:^ u:n p:^ pu:n e:^ eu:n :}
    k WORD-DOCS:NAME$ a u T$=
    k WORD-DOCS:PACKAGE$ p pu T$=
    k WORD-DOCS:EFFECT$ e eu T$= ;
@@ -169,14 +169,14 @@ variable FIX-U
    MANY 1- WORD-DOCS:NAME$ s" W1499" T$=
    MANY 1- WORD-DOCS:COMMENT$ s" note 1499" T$=
    MANY s" LONG" s" " s" --" REC=
-   MANY WORD-DOCS:COMMENT$ {: c:ptr cu:n :}
+   MANY WORD-DOCS:COMMENT$ {: c:^ cu:n :}
    cu LONG-LINES LONG-WIDTH 1+ * 1- T=
    c c@ X-BYTE T=
    c LONG-WIDTH + c@ STR-LF T=
    c cu + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
 
-: READ-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
+: READ-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu FS:OPEN-SIZED {: fd size:n ok :}
    ok TTRUE
    size FIX-CAP > if E-STR-CAPACITY throw then
@@ -184,7 +184,7 @@ variable FIX-U
    size FIX-U ! ;
 
 \ Record k named a u.
-: FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+: FIND ( ^u8 n -- n ) {: a:^ u:n :}
    WORD-DOCS:COUNT 0 ?do
       i WORD-DOCS:NAME$ a u STR= if i unloop exit then
    loop
@@ -194,10 +194,10 @@ variable FIX-U
    s" src/lib/unicode.f" T-LABEL
    s" src/lib/unicode.f" READ-FILE FIX$ DOCS
    s" CASEFOLD=" FIND {: k:n :}
-   k s" CASEFOLD=" s" UNICODE" s" ptr u8 n ptr u8 n -- bool" REC=
+   k s" CASEFOLD=" s" UNICODE" s" ^u8 n ^u8 n -- bool" REC=
    k WORD-DOCS:PUBLIC? TTRUE
    s" RESULT" FIND {: r:n :}
-   r s" RESULT" s" UNICODE" s" -- ptr n" REC=
+   r s" RESULT" s" UNICODE" s" -- ^n" REC=
    r WORD-DOCS:PUBLIC? TFALSE
    r WORD-DOCS:COMMENT$
    s" C's four-byte int output, in a task-local cell each call zeroes first."

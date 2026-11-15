@@ -36,18 +36,18 @@ variable STALE-MOD-U
 PATH-CAP BUFFER: FILE
 DYNAMIC-BUFFER PAYLOAD u8
 
-: SMALL$ ( -- ptr u8 n )  s" the fixture's bytes" ;
-: LANDED$ ( -- ptr u8 n )  s" landed: plate/top is 6 mm deep" ;
-: REFUSED$ ( -- ptr u8 n )  s" refused: no extrusion ends at that face" ;
-: DROPPED$ ( -- ptr u8 n )  s" dropped" ;
+: SMALL$ ( -- ^u8 n )  s" the fixture's bytes" ;
+: LANDED$ ( -- ^u8 n )  s" landed: plate/top is 6 mm deep" ;
+: REFUSED$ ( -- ^u8 n )  s" refused: no extrusion ends at that face" ;
+: DROPPED$ ( -- ^u8 n )  s" dropped" ;
 
-: FILE! ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n name:ptr nu:n :}
+: FILE! ( ^u8 n ^u8 n -- )
+   {: a:^ u:n name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
 : SETUP ( -- )
-   s" browser-echo" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-echo" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser echo: module and files in " type  DIR u type cr
    DIR u s" echo.wasm" MOD FS:JOIN-PATH MOD-U !
@@ -57,7 +57,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    REFUSED$ s" refused.txt" FILE!
    DROPPED$ s" dropped.txt" FILE! ;
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
@@ -65,7 +65,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ The program at the path, run with the arguments staged after
 \ PROC-ARGV-RESET; answers its exit status, its stdout in OUT and its stderr in
 \ ERR.
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -86,17 +86,17 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
 \ A step at x and y: --pointer, --move or --release.
-: AT+ ( ptr u8 n n n n -- )
-   {: flag:ptr fu:n x:n y:n buttons:n :}
+: AT+ ( ^u8 n n n n -- )
+   {: flag:^ fu:n x:n y:n buttons:n :}
    flag fu ARG+  x N-ARG+  y N-ARG+  buttons N-ARG+  0 N-ARG+ ;
 
-: TYPED+ ( ptr u8 n -- )
+: TYPED+ ( ^u8 n -- )
    s" --typed" ARG+  ARG+ ;
 
 \ The oldest waiting request answered with the status and the file of this
 \ name in DIR.
-: ANSWER+ ( n ptr u8 n -- )
-   {: status:n name:ptr nu:n :}
+: ANSWER+ ( n ^u8 n -- )
+   {: status:n name:^ nu:n :}
    s" --answer" ARG+  status N-ARG+
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
@@ -106,18 +106,18 @@ DYNAMIC-BUFFER PAYLOAD u8
    EXE u SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------
-: LINE ( ptr u8 n -- )
+: LINE ( ^u8 n -- )
    SB-APPEND  10 SB-APPEND-C ;
 
-: TEXT-LINE ( ptr u8 n -- )
+: TEXT-LINE ( ^u8 n -- )
    s" text " SB-APPEND  LINE ;
 
 \ The checksum echo.f's module answers for bytes.
-: SUM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SUM ( ^u8 n -- n )
+   {: a:^ u:n :}
    0  u 0 ?do  31 *  a i + c@ +  $FFFFFFFF and  loop ;
 
-: SUM-LINE ( ptr u8 n -- )
+: SUM-LINE ( ^u8 n -- )
    SUM  s" text " SB-APPEND  FMT:SB-U  10 SB-APPEND-C ;
 
 \ Start's lines, printed before its fetch is answered.
@@ -128,13 +128,13 @@ DYNAMIC-BUFFER PAYLOAD u8
    {: d:n :}
    d 10 < if  d 48 +  else  d 87 +  then  SB-APPEND-C ;
 
-: HEX ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: HEX ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do  a i + c@ dup 4 rshift NIBBLE $F and NIBBLE  loop ;
 
 \ The line of a post typed text T makes: its path T, its body T twice.
-: POST-LINE ( ptr u8 n -- )
-   {: t:ptr u:n :}
+: POST-LINE ( ^u8 n -- )
+   {: t:^ u:n :}
    s" post " SB-APPEND  t u SB-APPEND  32 SB-APPEND-C
    u 2 * FMT:SB-U  32 SB-APPEND-C  t u HEX  t u HEX  10 SB-APPEND-C ;
 
@@ -197,13 +197,13 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" chained: a post's answer fetches, and that fetch goes before the second post" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-: TRAP$ ( -- ptr u8 n )
+: TRAP$ ( -- ^u8 n )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-: ENDED-LINE ( ptr u8 n -- )
+: ENDED-LINE ( ^u8 n -- )
    s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 : TRAPPED-CASE ( -- )
@@ -213,7 +213,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    STARTED
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT OUT-U @ SB$ T$=
-   TRAP$ {: t:ptr u:n :}
+   TRAP$ {: t:^ u:n :}
    s" trapped: the host names the fault kind the module recorded" T-LABEL
    t u s" fault kind 102 at " STARTS-WITH? TTRUE
    s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL

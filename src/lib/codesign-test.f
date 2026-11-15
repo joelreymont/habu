@@ -35,41 +35,41 @@ create CST-ELF-BUF PATH-CAP allot
 create CST-UNSIGNED-BUF PATH-CAP allot
 create CST-IN-BUF PATH-CAP allot
 
-: CST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: CST-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CST-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+: CST-PATH! ( ^u8 n ^u8 n ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: CST-ROOT ( -- ptr u8 n )
+: CST-ROOT ( -- ^u8 n )
    CST-ROOT-BUF CST-ROOT-U @ ;
 
-: CST-SIGN ( -- ptr u8 n )
+: CST-SIGN ( -- ^u8 n )
    CST-SIGN-BUF CST-SIGN-U @ ;
 
-: CST-ENSURE ( -- ptr u8 n )
+: CST-ENSURE ( -- ^u8 n )
    CST-ENSURE-BUF CST-ENSURE-U @ ;
 
-: CST-RESIGN ( -- ptr u8 n )
+: CST-RESIGN ( -- ^u8 n )
    CST-RESIGN-BUF CST-RESIGN-U @ ;
 
-: CST-KEEP ( -- ptr u8 n )
+: CST-KEEP ( -- ^u8 n )
    CST-KEEP-BUF CST-KEEP-U @ ;
 
-: CST-ELF ( -- ptr u8 n )
+: CST-ELF ( -- ^u8 n )
    CST-ELF-BUF CST-ELF-U @ ;
 
-: CST-UNSIGNED ( -- ptr u8 n )
+: CST-UNSIGNED ( -- ^u8 n )
    CST-UNSIGNED-BUF CST-UNSIGNED-U @ ;
 
-: CST-IN ( -- ptr u8 n )
+: CST-IN ( -- ^u8 n )
    CST-IN-BUF CST-IN-U @ ;
 
 : CST-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-codesign" FS:MKTEMP-DIR {: a:ptr u :}
+   s" habu-codesign" FS:MKTEMP-DIR {: a:^ u :}
    a u CST-ROOT-BUF CST-ROOT-U CST-COPY!
    CST-ROOT FS:CLEANUP-TREE+
    CST-ROOT s" sign-echo" CST-SIGN-BUF CST-SIGN-U CST-PATH!
@@ -79,7 +79,7 @@ create CST-IN-BUF PATH-CAP allot
    CST-ROOT s" elf" CST-ELF-BUF CST-ELF-U CST-PATH!
    CST-ROOT s" unsigned-script" CST-UNSIGNED-BUF CST-UNSIGNED-U CST-PATH! ;
 
-: CST-CP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+: CST-CP ( ^u8 n ^u8 n -- ) {: src:^ srcu dst:^ dstu :}
    PROC-ARGV-RESET
    src srcu  >LEN PROC-ARGV+
    dst dstu  >LEN PROC-ARGV+
@@ -88,17 +88,17 @@ create CST-IN-BUF PATH-CAP allot
 : CST-TOOL-RC ( -- n )
    CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: CST-TEAM ( -- ptr u8 n )
+: CST-TEAM ( -- ^u8 n )
    s" 8TW82D98K7" ;
 
 DYNAMIC-BUFFER CST-OUT u8
 DYNAMIC-BUFFER CST-ERR u8
 variable CST-ERR-U
 
-: CST-OUT-ROOM ( n -- ptr u8 )
+: CST-OUT-ROOM ( n -- ^u8 )
    CST-OUT-RESERVE 0 CST-OUT ;
 
-: CST-ERR-ROOM ( n -- ptr u8 )
+: CST-ERR-ROOM ( n -- ^u8 )
    CST-ERR-RESERVE 0 CST-ERR ;
 
 : CST-RELEASE ( -- )
@@ -106,7 +106,7 @@ variable CST-ERR-U
    CST-ERR-RELEASE ;
 
 \ Runs tool with PROC-ARGV and stdin in; its stderr stays in CST-ERR.
-: CST-CAPTURE ( ptr u8 n ptr u8 n -- n ) {: tool:ptr toolu:n in:ptr inu:n :}
+: CST-CAPTURE ( ^u8 n ^u8 n -- n ) {: tool:^ toolu:n in:^ inu:n :}
    PROC-ENV-RESET
    tool toolu >LEN in inu >LEN
    [: CST-OUT-ROOM ;] [: CST-ERR-ROOM ;]
@@ -115,7 +115,7 @@ variable CST-ERR-U
    e LEN>N CST-ERR-U !
    oc PROCESS:ENDING>RC RC>N ;
 
-: CST-TEAM-REQ ( ptr u8 n -- ptr u8 n ) {: id:ptr idu :}
+: CST-TEAM-REQ ( ^u8 n -- ^u8 n ) {: id:^ idu :}
    SB-RESET
    s\" =anchor apple generic and identifier \"" SB-APPEND
    id idu SB-APPEND
@@ -125,7 +125,7 @@ variable CST-ERR-U
    SB-BUF SB-LEN @ ;
 
 \ codesign -v exits 3 for a valid signature of another signer, ad hoc included.
-: CST-EXPECT-TEAM ( ptr u8 n ptr u8 n -- ) {: a:ptr u id:ptr idu :}
+: CST-EXPECT-TEAM ( ^u8 n ^u8 n -- ) {: a:^ u id:^ idu :}
    HB-TARGET-MACOS? 0= if exit then
    id idu CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
@@ -210,11 +210,11 @@ variable CST-ERR-U
    PROC-ARGV-RESET
    ENGINE-ID:PATH$ CST-IN CST-CAPTURE ;
 
-: CST-ERR-HAS? ( ptr u8 n -- bool )
-   {: a:ptr u :}
+: CST-ERR-HAS? ( ^u8 n -- bool )
+   {: a:^ u :}
    0 CST-ERR CST-ERR-U @ a u CONTAINS? ;
 
-: CST-UNSIGNED-CHILD ( ptr u8 n -- n ) {: w:ptr wu :}
+: CST-UNSIGNED-CHILD ( ^u8 n -- n ) {: w:^ wu :}
    SB-RESET
    s\" require src/lib/codesign.f\ns\" " SB-APPEND
    CST-UNSIGNED SB-APPEND
@@ -265,12 +265,12 @@ $19 constant CST-LC-SEGMENT
 create CST-IMG-A 128 allot
 create CST-IMG-B 128 allot
 
-: CST-BLOB ( n n ptr u8 n -- ) {: magic:n fill:n a:ptr off:n :}
+: CST-BLOB ( n n ^u8 n -- ) {: magic:n fill:n a:^ off:n :}
    magic a off + BE:U32!
    16 a off + 4 + BE:U32!
    8 0 ?do fill i + a off CST-BLOB-HEAD + i + + c! loop ;
 
-: CST-SUPERBLOB ( ptr u8 -- ) {: a:ptr :}
+: CST-SUPERBLOB ( ^u8 -- ) {: a:^ :}
    $FADE0CC0 a CST-SIG-OFF + BE:U32!
    CST-SIG-BYTES a CST-SIG-OFF + 4 + BE:U32!
    2 a CST-SIG-OFF + 8 + BE:U32!
@@ -283,7 +283,7 @@ create CST-IMG-B 128 allot
 
 \ The command is CST-LC-SIGNATURE for a signed image, another for an unsigned
 \ one; the signature offset is the command's, so it may lie past the image.
-: CST-IMAGE ( ptr u8 n n -- ) {: a:ptr cmd:n sig:n :}
+: CST-IMAGE ( ^u8 n n -- ) {: a:^ cmd:n sig:n :}
    128 0 ?do 0 a i + c! loop
    CST-MACHO-MAGIC a LE:U32!
    1 a 16 + LE:U32!
@@ -299,7 +299,7 @@ create CST-IMG-B 128 allot
 \ after it, where a 16-byte command's dataoff and datasize would sit, name an
 \ empty superblob inside the header.
 40 constant CST-SHORT-BYTES
-: CST-SHORT-SIG ( ptr u8 -- ) {: a:ptr :}
+: CST-SHORT-SIG ( ^u8 -- ) {: a:^ :}
    128 0 ?do 0 a i + c! loop
    CST-MACHO-MAGIC a LE:U32!
    1 a 16 + LE:U32!

@@ -60,11 +60,11 @@ CAST: XFER>N ( xfer -- n )
 
 CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
-CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
-CAST: BUF-SLOT ( ptr n -- ptr ptr u8 )
+CAST: OWNER-SLOT ( ^n -- ^^n )
+CAST: BUF-SLOT ( ^n -- ^^u8 )
 
 \ A record chunk, which this module names by address as n: 0 ends the chain.
-CAST: AIO-N>PTR ( n -- ptr n )
+CAST: AIO-N>PTR ( n -- ^n )
 
 \ ---- the kernel ABI ----------------------------------------------------------
 \ Every number below is read from /usr/include/linux/io_uring.h,
@@ -272,7 +272,7 @@ TASK:MIN-STACK TASK:TASK AIO-LOOP
 \ index. The common layer retains handles, buffers, generations and ownership.
 defer HOST-POLL ( n n n -- n n )
 defer HOST-TIMEOUT ( n -- n n )
-defer HOST-XFER ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
+defer HOST-XFER ( n ^u8 NUM:alloc-byte-len n n n -- n n )
 defer HOST-CANCEL ( n -- n )
 defer HOST-WAKE ( -- n )
 defer HOST-SETUP ( -- )
@@ -296,7 +296,7 @@ DIAG-CAP CODEGEN:BUFFER DIAG
 \ FFI sets al for every foreign call.
 PROCESS-SYMBOLS
 
-FUNCTION: URING-SETUP-CALL syscall ( n n ptr u8 -- n )
+FUNCTION: URING-SETUP-CALL syscall ( n n ^u8 -- n )
 ;FUNCTION
 
 FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
@@ -304,7 +304,7 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 
 \ One line to stderr before a refused system call throws, so the errno the
 \ kernel gave is not lost behind a named code.
-: DIAG-ERRNO ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: DIAG-ERRNO ( ^u8 n -- ) {: label:^ labelu:n :}
    DIAG CODEGEN:RESET
    label labelu DIAG CODEGEN:APPEND-STRING
    FFI:ERRNO DIAG CODEGEN:APPEND-DECIMAL
@@ -317,23 +317,23 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 \ ---- the module's one address crossing ---------------------------------------
 \ It is three calls, one right after each mmap, and every later access passes
 \ MAP-AT's bound, the length io_uring_params reported.
-CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
+CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ Out of bounds is this module's own defect, not a condition a caller can
 \ provoke or recover from, so it ends the process with a name rather than
 \ throwing into somebody's catch.
-: MAP-AT ( ptr u8 n n n -- ptr u8 ) {: base len:n off:n width:n :}
+: MAP-AT ( ^u8 n n n -- ^u8 ) {: base len:n off:n width:n :}
    off 0 < width 0 <= or if s" aio: mapping operand" E-AIO-STATE die then
    off len width - > if s" aio: mapping bounds" E-AIO-STATE die then
    base off + ;
 
-: SQ-AT ( n n -- ptr u8 ) {: off:n width:n :}
+: SQ-AT ( n n -- ^u8 ) {: off:n width:n :}
    SQ-BASE @ SQ-LEN @ off width MAP-AT ;
 
-: CQ-AT ( n n -- ptr u8 ) {: off:n width:n :}
+: CQ-AT ( n n -- ^u8 ) {: off:n width:n :}
    CQ-BASE @ CQ-LEN @ off width MAP-AT ;
 
-: SQE-AT ( n -- ptr u8 ) {: slot:n :}
+: SQE-AT ( n -- ^u8 ) {: slot:n :}
    SQE-BASE @ SQES-LEN @ slot SQE-BYTES * SQE-BYTES MAP-AT ;
 
 : SQ-TAIL@ ( -- n )
@@ -356,7 +356,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : CQ-TAIL-ACQUIRE ( -- n )
    CQ-TAIL-OFF @ 4 CQ-AT LE:U32@ fence ;
 
-: CQE-AT ( n -- ptr u8 ) {: head:n :}
+: CQE-AT ( n -- ^u8 ) {: head:n :}
    CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQE-BYTES CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
@@ -366,7 +366,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : CHUNK-NEXT ( n -- n )
    AIO-N>PTR atomic@ ;
 
-: CHUNK-REC ( n n -- ptr n ) {: c:n k:n :}
+: CHUNK-REC ( n n -- ^n ) {: c:n k:n :}
    c CHUNK-HEAD + k REC-BYTES * + AIO-N>PTR ;
 
 : CHUNK-LEN ( n -- NUM:alloc-byte-len )
@@ -379,7 +379,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : CHUNK-AFTER ( n -- n )
    CHUNK-NEXT dup 0= if s" aio: record index" E-AIO-STATE die then ;
 
-: REC ( n -- ptr n ) {: idx:n :}
+: REC ( n -- ^n ) {: idx:n :}
    idx 0 < if s" aio: record index" E-AIO-STATE die then
    CHUNK-FIRST idx RECS-FIRST
    begin 2dup >= while
@@ -391,10 +391,10 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : REC-STATE@ ( n -- n )
    REC REC.STATE atomic@ ;
 
-: REC-OWNER ( n -- ptr ptr n )
+: REC-OWNER ( n -- ^^n )
    REC REC.OWNER OWNER-SLOT ;
 
-: REC-BUF ( n -- ptr ptr u8 )
+: REC-BUF ( n -- ^^u8 )
    REC REC.BUF BUF-SLOT ;
 
 : REC-BUF-LEN! ( NUM:alloc-byte-len n -- ) {: cap:NUM:alloc-byte-len idx:n :}
@@ -407,7 +407,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : GROUPS-HEAD ( -- n )
    AIO-GROUPS CELL-VIEW FFI:>CELL ;
 
-: G-AT ( n n -- ptr n ) {: c:n k:n :}
+: G-AT ( n n -- ^n ) {: c:n k:n :}
    c CHUNK-HEAD + k G-BYTES * + AIO-N>PTR ;
 
 : G-CHUNK-LEN ( -- NUM:alloc-byte-len )
@@ -418,7 +418,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : ROW-LEN ( n -- NUM:alloc-byte-len )
    2 * cells MEM:BYTES-ALLOC-LEN ;
 
-: ROW-RELEASE ( ptr n -- ) {: e:ptr :}
+: ROW-RELEASE ( ^n -- ) {: e:^ :}
    e G.ROW @ 0= if exit then
    e G.ROW @ AIO-N>PTR BYTE-VIEW e G.CAP @ ROW-LEN MEM:RELEASE-BYTES ;
 
@@ -439,7 +439,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    G-CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL G-CHUNK-APPEND
    c CHUNK-NEXT ;
 
-: G-ENTRY ( n -- ptr n ) {: g:n :}
+: G-ENTRY ( n -- ^n ) {: g:n :}
    g 0 < g GROUP-N @ >= or if E-AIO-GROUP throw then
    GROUPS-HEAD g
    begin dup GROUPS-FIRST >= while
@@ -458,15 +458,15 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    c CHUNK-LAST AIO-N>PTR atomic!
    REC-GROWN @ len + REC-GROWN atomic! ;
 
-: AIO-NULL ( -- ptr n )
+: AIO-NULL ( -- ^n )
    NULL$ drop CELL-VIEW ;
 
-: AIO-NULL-BYTES ( -- ptr u8 )
+: AIO-NULL-BYTES ( -- ^u8 )
    NULL$ drop ;
 
 \ Only REC.BUF is cleared: REC.HOLD says whether the pair is readable.
 : REC-RESET ( n -- ) {: idx:n :}
-   idx REC {: r:ptr :}
+   idx REC {: r:^ :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! 0 r REC.CANCELING !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
    0 r REC.HOLD !
@@ -521,7 +521,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    0 swap ;
 
 : REC-ARM ( n n n -- ) {: idx:n kind:n owed:n :}
-   idx REC {: r:ptr :}
+   idx REC {: r:^ :}
    kind r REC.KIND !
    owed r REC.PENDING !
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! -1 r REC.PEER !
@@ -606,7 +606,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
       then
    again ;
 
-: SPEC! ( n ptr u8 -- ) {: ms:n spec :}
+: SPEC! ( n ^u8 -- ) {: ms:n spec :}
    ms MS-PER-S / spec LE:U64!
    ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE:U64! ;
 
@@ -642,14 +642,14 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    count slot SQE-AT SQE-LEN + LE:U32!
    off slot SQE-AT SQE-OFF + LE:U64! ;
 
-: SQE-BUF! ( n ptr u8 -- ) {: slot:n buf :}
+: SQE-BUF! ( n ^u8 -- ) {: slot:n buf :}
    buf FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64! ;
 
 \ ---- completion --------------------------------------------------------------
 \ The count is exact: the kernel posts both CQEs of a linked pair (POLL-LINKED)
 \ and one per cancel (CANCEL-STAGE), so the last one owed settles the record.
 : SETTLE ( n -- ) {: idx:n :}
-   idx REC {: r:ptr :}
+   idx REC {: r:^ :}
    r REC.PENDING @ 1 - dup r REC.PENDING !
    0 > if exit then
    r REC.STATE atomic@ STATE-FORGET = if idx REC-DISCARD exit then
@@ -665,7 +665,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ user_data is NOP-ID, the stop's wake, or a record's index; a cancel's carries
 \ CANCEL-BIT and only settles. A free record here is this module's own defect.
-: COMPLETE ( ptr u8 -- ) {: cqe :}
+: COMPLETE ( ^u8 -- ) {: cqe :}
    cqe LE:U64@ {: id:n :}
    cqe CQE-RES + LE:S32@ {: res:n :}
    cqe CQE-FLAGS + LE:U32@ {: fl:n :}
@@ -818,7 +818,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ The record takes the caller's allocation: the pair and REC.HOLD are written
 \ before the entry is published, and a refused claim writes no entry, so there
 \ the allocation is still the caller's.
-: XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
+: XFER-STAGE ( n ^u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    CLAIM-ONE {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
@@ -833,7 +833,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
-   target REC {: r:ptr :}
+   target REC {: r:^ :}
    r REC.STATE atomic@ {: st:n :}
    st STATE-SUBMITTED <> st STATE-FORGET <> and if 0 exit then
    r REC.KIND @ KIND-LINK = if 0 exit then
@@ -879,7 +879,7 @@ INSTALL-HOST
    STATE-FORGET idx REC REC.STATE atomic!
    idx TRY-CANCEL ;
 
-: G-RELEASE-HELD ( ptr n n -- ) {: e:ptr me:n :}
+: G-RELEASE-HELD ( ^n n -- ) {: e:^ me:n :}
    e G.OWNER atomic@ me <> if exit then
    0 e G.COUNT !
    0 e G.OWNER atomic! ;
@@ -915,7 +915,7 @@ INSTALL-HOST
 \ A poll that its link timeout ended reports -ECANCELED on its own record and
 \ -ETIME on the link's, so the flag the link set is read before the code.
 : OUTCOME-OF ( n -- outcome ) {: idx:n :}
-   idx REC {: r:ptr :}
+   idx REC {: r:^ :}
    r REC.RES @ {: res:n :}
    res 0 >= if res AIO-OUTCOME:ready exit then
    r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:timed-out exit then
@@ -932,7 +932,7 @@ INSTALL-HOST
 \ The transfer's own take: the allocation leaves the record before the record is
 \ freed, and REC.HOLD is cleared with it, so the caller has the only copy of the
 \ pair and the release path above can no longer reach those bytes.
-: TAKE-XFER ( n -- ptr u8 NUM:alloc-byte-len outcome ) {: idx:n :}
+: TAKE-XFER ( n -- ^u8 NUM:alloc-byte-len outcome ) {: idx:n :}
    AIO-LOCK TASK:GET
    idx REC-BUF @ idx REC-BUF-LEN@
    0 idx REC REC.HOLD !
@@ -971,7 +971,7 @@ INSTALL-HOST
 : AWAIT-ONE ( n -- outcome ) {: idx:n :}
    idx WAIT-DONE idx TAKE ;
 
-: AWAIT-XFER-ONE ( n -- ptr u8 NUM:alloc-byte-len outcome ) {: idx:n :}
+: AWAIT-XFER-ONE ( n -- ^u8 NUM:alloc-byte-len outcome ) {: idx:n :}
    idx WAIT-DONE idx TAKE-XFER ;
 
 : RUNNING-CHECK ( -- )
@@ -1003,31 +1003,31 @@ INSTALL-HOST
    off OFF-CURRENT < if E-AIO-BOUNDS throw then
    count cap ALLOC-LEN>N > if E-AIO-BOUNDS throw then ;
 
-: XFER-SUBMIT ( n ptr u8 NUM:alloc-byte-len n n n -- xfer )
+: XFER-SUBMIT ( n ^u8 NUM:alloc-byte-len n n n -- xfer )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    count cap off XFER-BOUNDS
    SUBMIT-ENTER
    f buf cap count off kind HOST-XFER SUBMIT-LEAVE >XFER ;
 
 \ ---- groups ------------------------------------------------------------------
-: ROW-SLOT ( n n -- ptr n ) {: row:n i:n :}
+: ROW-SLOT ( n n -- ^n ) {: row:n i:n :}
    row i 2 * cells + AIO-N>PTR ;
 
-: ROW-TAG ( n n -- ptr n ) {: row:n i:n :}
+: ROW-TAG ( n n -- ^n ) {: row:n i:n :}
    row i 2 * 1 + cells + AIO-N>PTR ;
 
 : ENTRY-COPY ( n n n n -- ) {: from:n i:n to:n j:n :}
    from i ROW-SLOT @ to j ROW-SLOT !
    from i ROW-TAG @ to j ROW-TAG ! ;
 
-: E-SLOT ( ptr n n -- ptr n ) {: e:ptr i:n :}
+: E-SLOT ( ^n n -- ^n ) {: e:^ i:n :}
    e G.ROW @ i ROW-SLOT ;
 
-: E-TAG ( ptr n n -- ptr n ) {: e:ptr i:n :}
+: E-TAG ( ^n n -- ^n ) {: e:^ i:n :}
    e G.ROW @ i ROW-TAG ;
 
 : G-FIND ( n n -- n ) {: g:n h:n :}
-   g G-ENTRY {: e:ptr :}
+   g G-ENTRY {: e:^ :}
    e G.COUNT @ 0 ?do
       e i E-SLOT @ h = if i unloop exit then
    loop
@@ -1035,7 +1035,7 @@ INSTALL-HOST
 
 \ Only the group's owner reaches here, so no other task reads the row while it
 \ moves and the move needs no facility.
-: ROW-GROW ( ptr n -- ) {: e:ptr :}
+: ROW-GROW ( ^n -- ) {: e:^ :}
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
    cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
    e G.COUNT @ 0 ?do
@@ -1045,17 +1045,17 @@ INSTALL-HOST
    row e G.ROW !
    cap e G.CAP ! ;
 
-: G-DISOWN-EMPTY ( ptr n -- ) {: e:ptr :}
+: G-DISOWN-EMPTY ( ^n -- ) {: e:^ :}
    e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
 
 \ A row that cannot grow leaves the group as it was, and a group this add
 \ claimed empty goes back to being no task's.
-: G-WIDEN ( ptr n -- ) {: e:ptr :}
+: G-WIDEN ( ^n -- ) {: e:^ :}
    e [: dup ROW-GROW ;] catch dup 0= if 2drop exit then
    nip e G-DISOWN-EMPTY throw ;
 
 : G-ADD ( n n n -- ) {: g:n h:n tag:n :}
-   g G-ENTRY {: e:ptr :}
+   g G-ENTRY {: e:^ :}
    e G.COUNT @ 0= if TASK:SELF-CONTEXT e G.OWNER atomic! then
    e G.COUNT @ e G.CAP @ = if e G-WIDEN then
    h e e G.COUNT @ E-SLOT !
@@ -1063,7 +1063,7 @@ INSTALL-HOST
    e G.COUNT @ 1 + e G.COUNT ! ;
 
 : G-REMOVE-AT ( n n -- ) {: g:n at:n :}
-   g G-ENTRY {: e:ptr :}
+   g G-ENTRY {: e:^ :}
    e G.COUNT @ 1 - {: last:n :}
    e G.ROW @ last e G.ROW @ at ENTRY-COPY
    last e G.COUNT !
@@ -1073,7 +1073,7 @@ INSTALL-HOST
    GROUP-N @ dup 1 + GROUP-N ! ;
 
 : G-READY ( n -- n ) {: g:n :}
-   g G-ENTRY {: e:ptr :}
+   g G-ENTRY {: e:^ :}
    e G.COUNT @ 0 ?do
       e i E-SLOT @ REC-STATE@ STATE-DONE = if i unloop exit then
    loop
@@ -1096,7 +1096,7 @@ INSTALL-HOST
 : GROUP-GIVE-BACK ( -- )
    AIO-PARKED @ {: g:n :}
    g 0 < if exit then
-   g G-ENTRY {: e:ptr :}
+   g G-ENTRY {: e:^ :}
    e G.COUNT @ 0 ?do
       e i E-SLOT @ GIVE-BACK
    loop ;
@@ -1201,34 +1201,34 @@ public
 
 \ Opens the waker's pipe, with no byte owed. FD:PIPE's code is thrown when the
 \ host refuses the pipe, and nothing is left open then.
-: WAKER-OPEN ( ptr waker -- ) {: w:ptr :}
+: WAKER-OPEN ( ^waker -- ) {: w:^ :}
    FD:PIPE w WAKER-WRITE-END ! w WAKER-READ-END !
    0 w WAKER-OWED atomic! ;
 
 \ Closes both ends. No WAKE may run after it or while it runs: the caller orders
 \ that, as by clearing its own open flag under the lock its wakers check it in,
 \ since a closed descriptor may name another file by then.
-: WAKER-CLOSE ( ptr waker -- ) {: w:ptr :}
+: WAKER-CLOSE ( ^waker -- ) {: w:^ :}
    w WAKER-READ-END @ FD>N close-rc drop
    w WAKER-WRITE-END @ FD>N close-rc drop ;
 
 \ From any task, with no lock: fences, then writes the byte unless one is owed;
 \ of WAKEs racing for the flag one writes. Never during or after WAKER-CLOSE.
-: WAKE ( ptr waker -- ) {: w:ptr :}
+: WAKE ( ^waker -- ) {: w:^ :}
    fence
    0 1 w WAKER-OWED atomic-cas 0<> if exit then
    w WAKER-WRITE-END @ FD>N WAKE-BYTE 1 write drop ;
 
 \ The read end polled for readable, with no deadline, for the parked task to
 \ add to its group: ready once a WAKE has written.
-: WAKER-POLL ( ptr waker -- ticket ) {: w:ptr :}
+: WAKER-POLL ( ^waker -- ticket ) {: w:^ :}
    w WAKER-READ-END @ READABLE -1 >MS POLL ;
 
 \ On the parked task, once WAKER-POLL's ticket is ready: reads the one byte
 \ owed, then clears the flag and fences, so a WAKE after it writes again and the
 \ scan the caller makes next sees each change made before a WAKE. It stands
 \ before READ, so its `read` is the engine's.
-: WOKE ( ptr waker -- ) {: w:ptr :}
+: WOKE ( ^waker -- ) {: w:^ :}
    w WAKER-READ-END @ FD>N SINK 1 read drop
    0 w WAKER-OWED atomic! fence ;
 
@@ -1247,13 +1247,13 @@ public
 \ E-AIO-ENTER must not touch or release those bytes.
 \ The ready arm carries the bytes the kernel moved: fewer than count is a short
 \ transfer, and zero from a READ is the end of the file.
-: READ ( fd ptr u8 NUM:alloc-byte-len n n -- xfer )
+: READ ( fd ^u8 NUM:alloc-byte-len n n -- xfer )
    {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
    f FD>N buf cap count off KIND-READ XFER-SUBMIT ;
 
 \ This is the only word that gives the bytes back. Only the task that submitted
 \ the transfer may await it, and only once, as for a ticket.
-: AWAIT-XFER ( xfer -- ptr u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
+: AWAIT-XFER ( xfer -- ^u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
    RUNNING-CHECK
    x XFER>N AWAIT-XFER-ONE ;
 

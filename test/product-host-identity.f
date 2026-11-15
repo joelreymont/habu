@@ -36,21 +36,21 @@ create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
-: VARIANT$ ( -- ptr u8 n ) VARIANT-ROOT VARIANT-ROOT-U @ ;
-: TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
-: BASE$ ( -- ptr u8 n ) BASE BASE-U @ ;
-: REF$ ( -- ptr u8 n ) REF REF-U @ ;
-: HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
-: REBUILT$ ( -- ptr u8 n ) REBUILT REBUILT-U @ ;
-: DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
+: VARIANT$ ( -- ^u8 n ) VARIANT-ROOT VARIANT-ROOT-U @ ;
+: TMP$ ( -- ^u8 n ) TMP TMP-U @ ;
+: BASE$ ( -- ^u8 n ) BASE BASE-U @ ;
+: REF$ ( -- ^u8 n ) REF REF-U @ ;
+: HOST$ ( -- ^u8 n ) HOST HOST-U @ ;
+: REBUILT$ ( -- ^u8 n ) REBUILT REBUILT-U @ ;
+: DEST$ ( -- ^u8 n ) DEST DEST-U @ ;
 
-: ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+: ROOT-PATH! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
    ROOT$ a u dst FS:JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" product-host-identity" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" product-host-identity" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!
@@ -63,16 +63,16 @@ variable RC
 \ A variant with one additional ARM primitive, built from copied sources.
 \ The specification row and ARM body are both required by the kernel's
 \ completeness check. The body reuses BCR because the new word is never run.
-: SPEC-ANCHOR$ ( -- ptr u8 n ) s" \ Primitives whose effect" ;
-: SPEC-ROW$ ( -- ptr u8 n ) S\" EPRIM: host-extra EPRIM;\n\n" ;
-: ARM-ANCHOR$ ( -- ptr u8 n ) S\" \n   s\" type\" ['] BTYPE  FPRIM-L ;" ;
-: ARM-ROW$ ( -- ptr u8 n ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
+: SPEC-ANCHOR$ ( -- ^u8 n ) s" \ Primitives whose effect" ;
+: SPEC-ROW$ ( -- ^u8 n ) S\" EPRIM: host-extra EPRIM;\n\n" ;
+: ARM-ANCHOR$ ( -- ^u8 n ) S\" \n   s\" type\" ['] BTYPE  FPRIM-L ;" ;
+: ARM-ROW$ ( -- ^u8 n ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
 
-: INSERT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n anchor:ptr anchoru:n row:ptr rowu:n :}
+: INSERT-ROW ( ^u8 n ^u8 n ^u8 n -- )
+   {: path:^ pathu:n anchor:^ anchoru:n row:^ rowu:n :}
    VARIANT$ path pathu DEST FS:JOIN-PATH DEST-U !
    DEST$ FS:FILE-SIZE {: size:n :}
-   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:ptr len :}
+   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ len :}
    DEST$ buf size FS:READ-ALL size <> if
       s" product-host-identity: short variant source read" 74 die
    then
@@ -104,15 +104,15 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
 
-: ARGV+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARGV+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 : ENV! ( -- )
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ engine builds the tree it runs in into path.
-: BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n tree:ptr treeu:n path:ptr pathu:n :}
+: BUILD ( ^u8 n ^u8 n ^u8 n -- )
+   {: engine:^ engineu:n tree:^ treeu:n path:^ pathu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
    s" tools/hb-build.f" ARGV+
@@ -126,15 +126,15 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    SUCCESS ;
 
-: NAMES! ( ptr u8 n ptr u8 ptr n -- )
-   {: path:ptr pathu:n dst:ptr up:ptr :}
+: NAMES! ( ^u8 n ^u8 ^n -- )
+   {: path:^ pathu:n dst:^ up:^ :}
    pathu s" .map" nip + PATH-CAP > if E-FS-PATH throw then
    path dst pathu BYTE-COPY
    s" .map" dst pathu + swap BYTE-COPY
    pathu s" .map" nip + up ! ;
 
-: SAME-PRODUCT ( ptr u8 n ptr u8 n -- )
-   {: a:ptr au:n b:ptr bu:n :}
+: SAME-PRODUCT ( ^u8 n ^u8 n -- )
+   {: a:^ au:n b:^ bu:n :}
    a au b bu CHAIN-RUN:SAME-FILES? TTRUE
    a au NAME-A NAME-A-U NAMES!
    b bu NAME-B NAME-B-U NAMES!

@@ -33,15 +33,15 @@ private
 : VALID-LENGTH ( n -- )
    0 < if E-UTF8 throw then ;
 
-: VALID-UTF8 ( ptr u8 n -- )
-   {: source:ptr size:n :}
+: VALID-UTF8 ( ^u8 n -- )
+   {: source:^ size:n :}
    size VALID-LENGTH
    source size UTF8:VALID? 0= if E-UTF8 throw then ;
 
 1 cells TASK:+USERS RESULT-ROW u8
 
 \ C's four-byte int output, in a task-local cell each call zeroes first.
-: RESULT ( -- ptr n ) 0 RESULT-ROW CELL-VIEW ;
+: RESULT ( -- ^n ) 0 RESULT-ROW CELL-VIEW ;
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
 \ policy pointers, and one four-byte writable result. u8_casefold and
@@ -49,16 +49,16 @@ private
 \ allocation, which only the matched private free binding may consume. No
 \ callable raw binding or configurable foreign symbol escapes this package.
 VERSIONED-LIBRARY unistring 5
-FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LOWER-CALL u8_tolower ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: COMPARE-CALL u8_casecmp ( ^u8 n ^u8 n n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: FOLD-CALL u8_casefold ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LOWER-CALL u8_tolower ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
 PROCESS-SYMBOLS
-FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
+FUNCTION: RELEASE free ( ^u8 -- ) ;FUNCTION
 
 \ Runs MAP, FOLD-CALL or LOWER-CALL, on a valid span and answers its
 \ owned result and that result's length.
-: ALLOCATE-MAP ( ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- ptr u8 n )
-   {: source:ptr size:n map :}
+: ALLOCATE-MAP ( ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- ^u8 n )
+   {: source:^ size:n map :}
    source size VALID-UTF8
    0 RESULT !
    source size 0 0 0 RESULT BYTE-VIEW map execute
@@ -66,18 +66,18 @@ FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
    RESULT @ ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
-: COPY-MAPPED ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: source:ptr size:n out:ptr capacity:n :}
+: COPY-MAPPED ( ^u8 n ^u8 n -- ^u8 n ^u8 n )
+   {: source:^ size:n out:^ capacity:n :}
    capacity size < if E-CAPACITY throw then
    source out size BYTE-COPY
    source size out capacity ;
 
-: MAPPED-BYTES ( ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- n )
+: MAPPED-BYTES ( ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- n )
    ALLOCATE-MAP swap RELEASE ;
 
-: MAP-INTO ( ptr u8 n ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- n )
-   {: out:ptr capacity:n map :}
-   map ALLOCATE-MAP {: mapped:ptr size:n :}
+: MAP-INTO ( ^u8 n ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- n )
+   {: out:^ capacity:n map :}
+   map ALLOCATE-MAP {: mapped:^ size:n :}
    mapped size out capacity [: COPY-MAPPED ;] catch
    {: error:n :} 2drop 2drop
    \ catch restores depth, not cells overwritten by a callee before throw.
@@ -88,32 +88,32 @@ FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
 
 public
 
-: CASEFOLD= ( ptr u8 n ptr u8 n -- bool )
-   {: left:ptr left-size:n right:ptr right-size:n :}
+: CASEFOLD= ( ^u8 n ^u8 n -- bool )
+   {: left:^ left-size:n right:^ right-size:n :}
    left left-size VALID-UTF8 right right-size VALID-UTF8
    0 RESULT !
    left left-size right right-size 0 0 RESULT BYTE-VIEW COMPARE-CALL
    0<> if E-CASEFOLD throw then
    RESULT @ 0= ;
 
-: FOLDED-BYTES ( ptr u8 n -- n )
+: FOLDED-BYTES ( ^u8 n -- n )
    [: FOLD-CALL ;] MAPPED-BYTES ;
 
-: FOLD ( ptr u8 n ptr u8 n -- n )
+: FOLD ( ^u8 n ^u8 n -- n )
    [: FOLD-CALL ;] MAP-INTO ;
 
-: LOWERED-BYTES ( ptr u8 n -- n )
+: LOWERED-BYTES ( ^u8 n -- n )
    [: LOWER-CALL ;] MAPPED-BYTES ;
 
-: LOWER ( ptr u8 n ptr u8 n -- n )
+: LOWER ( ^u8 n ^u8 n -- n )
    [: LOWER-CALL ;] MAP-INTO ;
 
 \ The second span is checked before the first is lowered, so nothing after
 \ ALLOCATE-MAP can throw and the owned result is always released.
-: LOWERS-TO? ( ptr u8 n ptr u8 n -- bool )
-   {: source:ptr size:n target:ptr target-size:n :}
+: LOWERS-TO? ( ^u8 n ^u8 n -- bool )
+   {: source:^ size:n target:^ target-size:n :}
    target target-size VALID-UTF8
-   source size [: LOWER-CALL ;] ALLOCATE-MAP {: lowered:ptr lowered-size:n :}
+   source size [: LOWER-CALL ;] ALLOCATE-MAP {: lowered:^ lowered-size:n :}
    lowered lowered-size target target-size STR=
    lowered RELEASE ;
 

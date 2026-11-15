@@ -43,15 +43,15 @@ variable PATH-U
 variable WATCH-N
 
 
-: NEEDLE-LEN-AT ( n -- ptr n ) {: w:n :}
+: NEEDLE-LEN-AT ( n -- ^n ) {: w:n :}
    w cells NEEDLE-LEN + cell-view ;
 
 
-: NEEDLE-SEEN-AT ( n -- ptr n ) {: w:n :}
+: NEEDLE-SEEN-AT ( n -- ^n ) {: w:n :}
    w cells NEEDLE-SEEN + cell-view ;
 
 
-: NEEDLE$ ( n -- ptr u8 n ) {: w:n :}
+: NEEDLE$ ( n -- ^u8 n ) {: w:n :}
    NEEDLE w NEEDLE-CAP * +  w NEEDLE-LEN-AT @ ;
 
 
@@ -104,14 +104,14 @@ variable WATCH-N
    OPEN-SLAVE ;
 
 
-: CLOSE-FD! ( ptr n -- ) {: slot:ptr :}
+: CLOSE-FD! ( ^n -- ) {: slot:^ :}
    slot @ 0 < if exit then
    slot @ close
    -1 slot ! ;
 
 public
 
-: BUF$ ( -- ptr u8 n )
+: BUF$ ( -- ^u8 n )
    RBUF RN @ ;
 
 
@@ -124,7 +124,7 @@ public
 
 \ Write room for a reader this module does not own, compacted first so the span
 \ is never empty; the reader hands back what it wrote with TOOK.
-: ROOM$ ( -- ptr u8 n )
+: ROOM$ ( -- ^u8 n )
    KEEP-TAIL!
    RBUF RN @ +  BUF-CAP RN @ - ;
 
@@ -140,7 +140,7 @@ public
 private
 
 : READ-CHUNK ( fd -- n ) {: f:fd :}
-   ROOM$ {: room:ptr cap:n :}
+   ROOM$ {: room:^ cap:n :}
    f FD>N room cap read {: got:n :}
    got 0 > if got TOOK then
    got ;
@@ -165,7 +165,7 @@ public
 
 \ A short write is an error, never a silent truncation. A negative length is
 \ refused before the write, whose -1 error answer would equal a length of -1.
-: WRITE-ALL ( fd ptr u8 n -- ) {: f:fd a:ptr u:n :}
+: WRITE-ALL ( fd ^u8 n -- ) {: f:fd a:^ u:n :}
    u 0 < if E-PTY-CAPACITY throw then
    f FD>N a u write u <> if E-PTY-IO throw then ;
 
@@ -175,7 +175,7 @@ public
    f OUTB 1 WRITE-ALL ;
 
 
-: WRITE-LINE ( fd ptr u8 n -- ) {: f:fd a:ptr u:n :}
+: WRITE-LINE ( fd ^u8 n -- ) {: f:fd a:^ u:n :}
    f a u WRITE-ALL
    f LF WRITE-BYTE ;
 
@@ -188,11 +188,11 @@ public
    KID @ >PID ;
 
 
-: SEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: SEND ( ^u8 n -- ) {: a:^ u:n :}
    MASTER-FD a u WRITE-ALL ;
 
 
-: SEND-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SEND-LINE ( ^u8 n -- ) {: a:^ u:n :}
    MASTER-FD a u WRITE-LINE ;
 
 
@@ -225,7 +225,7 @@ private
 
 \ The transaction below cannot read a local, so the path it execs travels
 \ through storage.
-: STORE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+: STORE-PATH ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < u PATH-CAP > or if E-PTY-CAPACITY throw then
    a PATH-BUF u BYTE-COPY
    u PATH-U ! ;
@@ -253,7 +253,7 @@ public
 \ terminal - input, output and diagnostics - and keep the master. The slave is
 \ closed here: the child holds the only copies, so its exit hangs the master up.
 \ A failed spawn throws what failed and leaves nothing open.
-: SPAWN-ON-PTY ( ptr u8 n -- )
+: SPAWN-ON-PTY ( ^u8 n -- )
    MFD @ 0 >= if E-PTY-IO throw then
    -1 SFD !
    STORE-PATH
@@ -267,7 +267,7 @@ public
 
 \ Offset of the first occurrence at or after `from` in the bytes read so far,
 \ or -1.
-: FIND-FROM ( n ptr u8 n -- n ) {: from:n a:ptr u:n :}
+: FIND-FROM ( n ^u8 n -- n ) {: from:n a:^ u:n :}
    from 0 < from RN @ > or if -1 exit then
    RBUF from +  RN @ from -  a u FIND-SUB MATCH option
      none OF -1 ENDOF
@@ -275,7 +275,7 @@ public
    ;MATCH ;
 
 
-: IN-BUF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: IN-BUF? ( ^u8 n -- bool ) {: a:^ u:n :}
    RBUF RN @ a u CONTAINS? ;
 
 
@@ -283,13 +283,13 @@ public
 \ markers in that order, which is what tells a prompt the child printed after its
 \ answer from one the line editor redrew before it. An empty head puts the tail
 \ anywhere.
-: FIND-AFTER ( ptr u8 n ptr u8 n -- n ) {: ha:ptr hu:n ta:ptr tu:n :}
+: FIND-AFTER ( ^u8 n ^u8 n -- n ) {: ha:^ hu:n ta:^ tu:n :}
    0 ha hu FIND-FROM {: at:n :}
    at 0 < if -1 exit then
    at hu + ta tu FIND-FROM ;
 
 
-: AFTER? ( ptr u8 n ptr u8 n -- bool )
+: AFTER? ( ^u8 n ^u8 n -- bool )
    FIND-AFTER 0 >= ;
 
 
@@ -306,19 +306,19 @@ public
 
 \ The editor redraws "habu> " per key, so only a prompt after the answer shows
 \ the child raw again; a ^D sent before it is read cooked and dropped as a NUL.
-: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n ta:ptr tu:n :}
+: WAIT-AFTER ( ^u8 n ^u8 n -- bool ) {: ha:^ hu:n ta:^ tu:n :}
    [: ha hu ta tu AFTER? ;] WAIT-UNTIL ;
 
 
 \ The text anywhere: an empty head puts the tail anywhere.
-: WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WAIT-FOR ( ^u8 n -- bool ) {: a:^ u:n :}
    s" " a u WAIT-AFTER ;
 
 
 \ The answer is the line just before the editor redraws its prompt: neither
 \ the echo nor the line's own output can end there.
 : WAIT-ANSWER ( -- bool )
-   s\"  ok\r\n\r\x1B[Khabu> " {: a:ptr u:n :}
+   s\"  ok\r\n\r\x1B[Khabu> " {: a:^ u:n :}
    [: a u IN-BUF?  s\" ?\r\n\r\x1B[Khabu> " IN-BUF? or ;]
    WAIT-UNTIL
    a u IN-BUF? and ;
@@ -328,7 +328,7 @@ public
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared. The window retires before the wait, so a wait the child hangs
 \ up on leaves none, and the claim behind it is refused as well.
-: WAIT-BARRIER ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WAIT-BARRIER ( ^u8 n -- bool ) {: a:^ u:n :}
    -1 WEND !
    a u WAIT-FOR 0= if false exit then
    0 a u FIND-FROM {: at:n :}
@@ -340,7 +340,7 @@ public
 \ An absence claim reads the window a barrier closed, never the whole buffer, so
 \ it reads the child's answer instead of a buffer that is merely still empty.
 \ With no window there is no claim and the answer is false.
-: WINDOW-ABSENT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WINDOW-ABSENT? ( ^u8 n -- bool ) {: a:^ u:n :}
    WEND @ 0 < if false exit then
    RBUF WEND @ a u CONTAINS? 0= ;
 
@@ -349,7 +349,7 @@ public
 \ every compaction and every BUF-CLEAR, which is what a negative claim over a
 \ whole run needs; a match that straddles the registration point counts as seen,
 \ so the fact can only refuse a claim, never grant one wrongly.
-: WATCH+ ( ptr u8 n -- watch ) {: a:ptr u:n :}
+: WATCH+ ( ^u8 n -- watch ) {: a:^ u:n :}
    WATCH-N @ WATCH-CAP >= if E-PTY-CAPACITY throw then
    u 0 <= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
    WATCH-N @ {: w:n :}

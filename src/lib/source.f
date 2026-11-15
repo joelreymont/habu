@@ -36,7 +36,7 @@ variable SOURCE-RD
 
 public
 
-: READ-STDIN-ALL ( ptr u8 len -- len ) {: dst:ptr cap :}
+: READ-STDIN-ALL ( ^u8 len -- len ) {: dst:^ cap :}
    cap LEN>N 0 < if E-FS-CAPACITY throw then
    0 >LEN SOURCE-LEN !
    begin
@@ -61,9 +61,9 @@ private
 
 \ Answers the bytes now held, the room for the next read (doubled once the held
 \ bytes fill it) and whether the read found the end.
-: SOURCE-READ-STEP ( n [ n -- ptr u8 ] n n -- n n bool )
+: SOURCE-READ-STEP ( n [ n -- ^u8 ] n n -- n n bool )
    {: fd:n room held:n want:n :}
-   want room execute {: dst:ptr :}
+   want room execute {: dst:^ :}
    fd dst held + want held - read {: got:n :}
    got 0 < if E-FS-IO throw then
    got want held - > if E-FS-IO throw then
@@ -73,7 +73,7 @@ private
 public
 
 \ The descriptor to its end; the sample is 0 when there is none.
-: READ-WHOLE-FD ( n n [ n -- ptr u8 ] -- n )
+: READ-WHOLE-FD ( n n [ n -- ^u8 ] -- n )
    {: fd:n first:n room :}
    0  first 1 + SOURCE-ROOM-MIN max
    begin fd room 2swap SOURCE-READ-STEP until
@@ -84,7 +84,7 @@ private
 \ Stack-preserving under `catch`: the descriptor, sample and room ride through
 \ and the count comes back where a zero went in, so READ-WHOLE-FILE closes the
 \ descriptor on every way out.
-: SOURCE-READ-RUN ( n n [ n -- ptr u8 ] n -- n n [ n -- ptr u8 ] n )
+: SOURCE-READ-RUN ( n n [ n -- ^u8 ] n -- n n [ n -- ^u8 ] n )
    drop
    {: fd:n first:n room :}
    fd first room  fd first room READ-WHOLE-FD ;
@@ -95,9 +95,9 @@ public
 \ first room. The open or a read refuses what cannot be read (E-FS-OPEN,
 \ E-FS-IO); a caller whose refusal of a missing file is the stat's samples with
 \ FS:FILE-SIZE.
-: READ-WHOLE-SAMPLED ( ptr u8 n n [ n -- ptr u8 ] -- n )
-   {: path:ptr pathu:n first:n room :}
-   path pathu FS:>PATHZ {: z:ptr :}
+: READ-WHOLE-SAMPLED ( ^u8 n n [ n -- ^u8 ] -- n )
+   {: path:^ pathu:n first:n room :}
+   path pathu FS:>PATHZ {: z:^ :}
    path pathu z COMPILE-READS:FILE+
    z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
@@ -108,13 +108,13 @@ public
 
 \ The file at a path, whole: its size is only the first room, and a path that
 \ names no regular file gives no sample.
-: READ-WHOLE-FILE ( ptr u8 n [ n -- ptr u8 ] -- n )
-   {: path:ptr pathu:n room :}
+: READ-WHOLE-FILE ( ^u8 n [ n -- ^u8 ] -- n )
+   {: path:^ pathu:n room :}
    path pathu FS:FILE? if path pathu FS:FILE-SIZE else 0 then {: first:n :}
    path pathu first room READ-WHOLE-SAMPLED ;
 
-: SOURCE-APPEND-BYTES ( ptr u8 len ptr u8 len ptr len -- )
-   {: src:ptr u dst:ptr cap lenp:ptr :}
+: SOURCE-APPEND-BYTES ( ^u8 len ^u8 len ^len -- )
+   {: src:^ u dst:^ cap lenp:^ :}
    u LEN>N 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N cap LEN>N > if E-FS-CAPACITY throw then
@@ -122,8 +122,8 @@ public
    src dst lenp @ LEN>N + u LEN>N BYTE-COPY
    lenp @ LEN>N u LEN>N + >LEN lenp ! ;
 
-: SOURCE-APPEND-C ( n ptr u8 len ptr len -- )
-   {: c:n dst:ptr cap:len lenp:ptr :}
+: SOURCE-APPEND-C ( n ^u8 len ^len -- )
+   {: c:n dst:^ cap:len lenp:^ :}
    lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N cap LEN>N >= if E-FS-CAPACITY throw then
    c dst lenp @ LEN>N + c!
@@ -143,7 +143,7 @@ private
    c SOURCE-CR = if STR-FALSE exit then
    STR-TRUE ;
 
-: SOURCE-PATH-SAFE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SOURCE-PATH-SAFE? ( ^u8 n -- bool ) {: a:^ u:n :}
    0 begin dup u < while
       a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR-FALSE exit then
       1+
@@ -153,11 +153,11 @@ public
 
 \ E-FS-PATH-UNSAFE for a path SOURCE-APPEND-QPATH cannot quote. A caller that
 \ quotes a spelling only late judges it early with this.
-: SOURCE-QPATH-CHECK ( ptr u8 n -- )
+: SOURCE-QPATH-CHECK ( ^u8 n -- )
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
 
-: SOURCE-APPEND-QPATH ( ptr u8 len ptr u8 len ptr len -- )
-   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
+: SOURCE-APPEND-QPATH ( ^u8 len ^u8 len ^len -- )
+   {: path:^ pathu:len dst:^ cap:len lenp:^ :}
    path pathu LEN>N SOURCE-QPATH-CHECK
    s" s" >LEN dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C
@@ -171,12 +171,12 @@ public
 
 \ At top level `char` and `'` parse, and `[char]` and `[']`, E-UNDEFINED there,
 \ take their token too; a body asks SOURCE-SYNTAX:BODY-PARSING-KEYWORD?.
-: PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
 \ Keywords only while the engine interprets: in a body `create` is a call and
 \ the others are undefined, so a scanner asks these outside a definition.
-: DEFINER-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEFINER-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" cast:" STR=CI if STR-TRUE exit then
    a u s" linear:" STR=CI if STR-TRUE exit then
    a u s" defer" STR=CI if STR-TRUE exit then
@@ -184,17 +184,17 @@ public
    a u s" variable" STR=CI if STR-TRUE exit then
    a u s" constant" STR=CI ;
 
-: PACKAGE-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PACKAGE-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" package" STR=CI if STR-TRUE exit then
    a u s" using" STR=CI if STR-TRUE exit then
    a u s" export" STR=CI ;
 
 \ A local a block declares ends with the block, and `else` ends the true arm's.
 \ A local of a control word's name is that local: ask after the local lookup.
-: BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BLOCK-OPENER? ;
 
-: BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 private
@@ -208,14 +208,14 @@ public
 \ The words that open a string literal, matched case-folded as the dictionary
 \ is: `s"`, `c"` and `."` take the bytes up to the next `"`, and `s\"`, `c\"`
 \ and `.\"` the same with a backslash escaping the byte after it.
-: NORMAL-STRING-OPENER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: NORMAL-STRING-OPENER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 2 <> if STR-FALSE exit then
    a 1 BYTE@ $22 <> if STR-FALSE exit then
    a 0 BYTE@ STRING-LEAD? ;
 
-: ESC-STRING-OPENER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: ESC-STRING-OPENER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 3 <> if STR-FALSE exit then
    a 1 BYTE@ $5C <> if STR-FALSE exit then
    a 2 BYTE@ $22 <> if STR-FALSE exit then

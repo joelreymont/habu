@@ -19,7 +19,7 @@ variable SS-BEFORE
 variable SS-MAIN
 
 PROCESS-SYMBOLS
-FUNCTION: SIGALTSTACK-CALL sigaltstack ( ptr u8 ptr u8 -- i32 )
+FUNCTION: SIGALTSTACK-CALL sigaltstack ( ^u8 ^u8 -- i32 )
 ;FUNCTION
 
 : READ-SS ( -- )

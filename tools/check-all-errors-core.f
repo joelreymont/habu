@@ -68,7 +68,7 @@ private
 public
 
 \ The 1-based line and column of byte at in the buffer that starts at a.
-: BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
+: BYTE-ORIGIN ( ^u8 n -- n n ) {: a:^ at:n :}
    1 0 at 0 ?do
       a i + c@ CA-LF = if drop 1+ i 1+ then
    loop
@@ -81,7 +81,7 @@ create CA-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CA-JSON-W JSON:writer
 variable CA-JSON-READY
 
-: CA-JSON-WRITER ( -- ptr JSON:writer )
+: CA-JSON-WRITER ( -- ^JSON:writer )
    CA-JSON-READY @ 0= if
       CA-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 CA-JSON-READY !
@@ -92,14 +92,14 @@ variable CA-JSON-READY
 variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
-TYPED-VARIABLE CA-SRC-A ptr u8
+TYPED-VARIABLE CA-SRC-A ^u8
 variable CA-SRC-U
 variable CA-SRC-CAP
 variable CA-ERR-LEN
-TYPED-VARIABLE CA-ERR-A ptr u8
+TYPED-VARIABLE CA-ERR-A ^u8
 variable CA-ERR-CAP
 variable CA-OUT-LEN
-TYPED-VARIABLE CA-OUT-A ptr u8
+TYPED-VARIABLE CA-OUT-A ^u8
 variable CA-OUT-CAP
 variable CA-OUT-FD                      \ where the report goes, or -1 for the buffer
 -1 CA-OUT-FD !
@@ -108,12 +108,12 @@ variable CA-LE
 variable CA-THROW-RC                    \ what a statement threw while it was checked
 variable CA-THROW-AT                    \ and the byte of the token the checker read last
 
-TYPED-VARIABLE CA-FILE-A ptr u8
+TYPED-VARIABLE CA-FILE-A ^u8
 variable CA-FILE-U
 variable CA-JSON
-TYPED-VARIABLE CA-COMPOSE-PATH-A ptr u8
+TYPED-VARIABLE CA-COMPOSE-PATH-A ^u8
 variable CA-COMPOSE-PATH-U
-TYPED-VARIABLE CA-COMPOSE-LABEL-A ptr u8
+TYPED-VARIABLE CA-COMPOSE-LABEL-A ^u8
 variable CA-COMPOSE-LABEL-U
 
 : CA-TRUE ( -- bool )
@@ -123,31 +123,31 @@ variable CA-COMPOSE-LABEL-U
    CA-TRUE 0= ;
 
 
-: CA-SRC-A@ ( -- ptr u8 )
+: CA-SRC-A@ ( -- ^u8 )
    CA-SRC-A @ ;
 
-: CA-SRC-A! ( ptr u8 -- )
+: CA-SRC-A! ( ^u8 -- )
    CA-SRC-A ! ;
 
 
 
 
-: CA-FILE-A@ ( -- ptr u8 )
+: CA-FILE-A@ ( -- ^u8 )
    CA-FILE-A @ ;
 
-: CA-FILE-A! ( ptr u8 -- )
+: CA-FILE-A! ( ^u8 -- )
    CA-FILE-A ! ;
 
-: CA-ERR-A@ ( -- ptr u8 )
+: CA-ERR-A@ ( -- ^u8 )
    CA-ERR-A @ ;
 
-: CA-ERR-A! ( ptr u8 -- )
+: CA-ERR-A! ( ^u8 -- )
    CA-ERR-A ! ;
 
-: CA-OUT-A@ ( -- ptr u8 )
+: CA-OUT-A@ ( -- ^u8 )
    CA-OUT-A @ ;
 
-: CA-OUT-A! ( ptr u8 -- )
+: CA-OUT-A! ( ^u8 -- )
    CA-OUT-A ! ;
 
 : CA-JSON? ( -- bool )
@@ -176,7 +176,7 @@ variable CA-COMPOSE-LABEL-U
    CA-OUT-FD @ 0 >= IF drop exit THEN
    CA-OUT-LEN @ + CA-OUT-CAP @ > IF E-DIAG-CAPACITY throw THEN ;
 
-: CA-ERR ( ptr u8 n -- ) {: a:ptr u:n :}
+: CA-ERR ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF exit THEN
    CA-OUT-FD @ 0 >= IF
       CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN
@@ -186,22 +186,22 @@ variable CA-COMPOSE-LABEL-U
    a CA-OUT-A@ CA-OUT-LEN @ + u BYTE-COPY
    CA-OUT-LEN @ u + CA-OUT-LEN ! ;
 
-: CA-LF$ ( -- ptr u8 n )
+: CA-LF$ ( -- ^u8 n )
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
 \ A record goes in with its line feed or not at all, so a report a full buffer
 \ cut short ends on a whole line.
-: CA-ERR-LN ( ptr u8 n -- ) {: a:ptr u:n :}
+: CA-ERR-LN ( ^u8 n -- ) {: a:^ u:n :}
    u 1+ CA-OUT-ROOM
    a u CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-JSON-LINE? ( ptr u8 n -- bool )
+: CA-JSON-LINE? ( ^u8 n -- bool )
    LINT-TRIM dup 0= IF 2drop CA-FALSE exit THEN
    drop c@ CA-LBRACE = ;
 
-: CA-ERR-LINE ( n n -- ptr u8 n ) {: start:n end:n :}
+: CA-ERR-LINE ( n n -- ^u8 n ) {: start:n end:n :}
    CA-ERR-A@ start + end start - ;
 
 : CA-EMIT-ERR-LINE ( n n -- ) {: start:n end:n :}
@@ -217,14 +217,14 @@ variable CA-COMPOSE-LABEL-U
 
 
 
-: CA-JSON-EMPTY-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+: CA-JSON-EMPTY-FIELD ( ^JSON:writer ^u8 n -- ^JSON:writer )
    s" " JSON:WRITE-FIELD-S ;
 
 
 \ ---- a definition of a name its scope already held ---------------------------
 
-: CA-JSON-DUP ( ptr u8 n n n n n -- )
-   {: wa:ptr wu:n ti:n line:n col:n byte:n :}
+: CA-JSON-DUP ( ^u8 n n n n n -- )
+   {: wa:^ wu:n ti:n line:n col:n byte:n :}
    CA-JSON-WRITER JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" code" s" E-DUPLICATE-DEFINITION" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -257,20 +257,20 @@ variable CA-COMPOSE-LABEL-U
    CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW drop ;
 
 \ The words the engine's wall writes under --load, for the name and its line.
-: CA-PROSE-DUP-AT ( ptr u8 n n -- ) {: na:ptr nu:n line:n :}
+: CA-PROSE-DUP-AT ( ^u8 n n -- ) {: na:^ nu:n line:n :}
    CA-JSON-WRITER  s" E-DUPLICATE-DEFINITION habu: " JSON:WRITE-RAW
    CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW  s" :" JSON:WRITE-RAW  line JSON:WRITE-U
    s" : duplicate definition: " JSON:WRITE-RAW  na nu JSON:WRITE-RAW drop ;
 
 : CA-DUP-AT ( n n -- ) {: at:n u:n :}
    CA-SRC-A@ at BYTE-ORIGIN {: line:n col:n :}
-   CA-SRC-A@ at + {: na:ptr :}
+   CA-SRC-A@ at + {: na:^ :}
    CA-JSON? IF na u 0 line col at CA-JSON-DUP ELSE na u line CA-PROSE-DUP-AT THEN ;
 
 \ The record of the name the scan refused, which starts at the given byte and
 \ has the given length, 0 for no name kept. Both renderings
 \ are built in the JSON writer's buffer.
-: CA-DUP-RECORD$ ( n n -- ptr u8 n ) {: at:n u:n :}
+: CA-DUP-RECORD$ ( n n -- ^u8 n ) {: at:n u:n :}
    u 0 > at u + CA-SRC-U @ <= and IF
       at u CA-DUP-AT
    ELSE
@@ -293,15 +293,15 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-TOKEN-U ( -- n )
    LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
 
-: CA-LEX-TOKEN$ ( -- ptr u8 n )
+: CA-LEX-TOKEN$ ( -- ^u8 n )
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ An incomplete primitive-axiom row stops the scan like an open string but gets
 \ its own code and repair text: a caller told to close a string literal would
 \ look for a quote that is not there.
-: CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n what:ptr whatu:n :}
+: CA-PROSE-LEX ( ^u8 n ^u8 n -- )
+   {: code:^ codeu:n what:^ whatu:n :}
    CA-JSON-WRITER
    code codeu JSON:WRITE-RAW
    s"  " JSON:WRITE-RAW
@@ -323,7 +323,7 @@ variable CA-COMPOSE-LABEL-U
 
 \ The record of the defect the lexer hit, in the selected mode, built in the
 \ JSON writer's buffer.
-: CA-LEX-RECORD$ ( -- ptr u8 n )
+: CA-LEX-RECORD$ ( -- ^u8 n )
    CA-JSON? IF
       CA-FILE-A@ CA-FILE-U @ CA-SRC-A@ CA-SRC-U @
       VERIFY-DIAGNOSTICS:LEX-RECORD$ EXIT
@@ -428,7 +428,7 @@ variable CA-COMPOSE-LABEL-U
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 
-: CA-THROW-TOKEN$ ( -- ptr u8 n )
+: CA-THROW-TOKEN$ ( -- ^u8 n )
    CA-SRC-A@ CA-THROW-AT @ + CA-THROW-END CA-THROW-AT @ - ;
 
 : CA-THROW-ORIGIN ( -- n n )
@@ -438,7 +438,7 @@ variable CA-COMPOSE-LABEL-U
    CA-THROW-ORIGIN {: line:n col:n :}
    CA-JSON-WRITER
    CA-THROW-RC @ VERIFY-DIAGNOSTICS:THROW-CODE$ 2swap 2drop 2swap 2drop
-   {: code:ptr codeu:n msg:ptr msgu:n :}
+   {: code:^ codeu:n msg:^ msgu:n :}
    code codeu JSON:WRITE-RAW
    s"  " JSON:WRITE-RAW
    CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW
@@ -453,7 +453,7 @@ variable CA-COMPOSE-LABEL-U
    s"  at '" JSON:WRITE-RAW CA-THROW-TOKEN$ JSON:WRITE-RAW
    s" '" JSON:WRITE-RAW drop ;
 
-: CA-THROW-RECORD$ ( -- ptr u8 n )
+: CA-THROW-RECORD$ ( -- ^u8 n )
    CA-JSON? IF
       CA-THROW-RC @ CA-THROW-AT @ CA-FILE-A@ CA-FILE-U @
       CA-SRC-A@ CA-SRC-U @ VERIFY:REASON$ VERIFY-DIAGNOSTICS:THROW-RECORD$ EXIT
@@ -502,10 +502,10 @@ private
 \ Room for n bytes of the source being read, in a region of the read's own: a
 \ larger region takes the bytes the last one holds, and the last is released
 \ when this read made it.
-: CA-SRC-ROOM ( n -- ptr u8 ) {: need:n :}
+: CA-SRC-ROOM ( n -- ^u8 ) {: need:n :}
    need CA-SRC-CAP @ > if
-      CA-SRC-A@ CA-SRC-CAP @ {: old:ptr oldcap:n :}
-      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:ptr :}
+      CA-SRC-A@ CA-SRC-CAP @ {: old:^ oldcap:n :}
+      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:^ :}
       old fresh oldcap BYTE-COPY
       oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
       fresh CA-SRC-A!
@@ -516,11 +516,11 @@ private
 \ caller left (CA-SOURCE-BUF!) stay where they are. The file is read to its end
 \ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
 \ a missing or irregular file's, is only the first room.
-: CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
+: CA-READ-SOURCE ( ^u8 n -- ) {: path:^ pu:n :}
    0 CA-SRC-CAP !
    path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
 
-: CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CA-SOURCE-BUF! ( ^u8 n -- ) {: a:^ u:n :}
    u CA-SRC-CAP !
    u CA-SRC-U !
    a CA-SRC-A! ;
@@ -541,7 +541,7 @@ private
 \ and its record names that file and reads the token out of its bytes. Every
 \ diagnostic the checker made before it is reported first.
 : CA-COMPOSE-STOPPED ( -- )
-   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
+   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:^ u:n :}
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
    u CA-FILE-U !  a CA-FILE-A! ;
 
@@ -571,7 +571,7 @@ private
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED exit THEN
    CA-WRITE-CAPTURED ;
 
-: CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
+: CA-START ( ^u8 n -- ) {: labela:^ labelu:n :}
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
@@ -596,7 +596,7 @@ public
 \ buffer this core appends to and OUT$ hands back; the second pair is the
 \ scratch buffer the checker renders its raw diagnostics into. Also clears the
 \ recorded report length.
-: BUFFERS! ( ptr u8 n ptr u8 n -- ) {: outa:ptr outcap:n erra:ptr errcap:n :}
+: BUFFERS! ( ^u8 n ^u8 n -- ) {: outa:^ outcap:n erra:^ errcap:n :}
    outcap CA-OUT-CAP !
    outa CA-OUT-A!
    errcap CA-ERR-CAP !
@@ -605,13 +605,13 @@ public
    -1 CA-OUT-FD ! ;
 
 \ The report the last run accumulated in the caller's first buffer.
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    CA-OUT-A@ CA-OUT-LEN @ ;
 
 \ BUFFERS! for a report written to the given file descriptor as it is made, so
 \ it holds as many records, each as long, as the checked sources make; the
 \ buffer is the scratch. OUT$ is then empty.
-: STREAM! ( fd ptr u8 n -- ) {: fd:fd erra:ptr errcap:n :}
+: STREAM! ( fd ^u8 n -- ) {: fd:fd erra:^ errcap:n :}
    s" " erra errcap BUFFERS!
    fd FD>N CA-OUT-FD ! ;
 
@@ -637,7 +637,7 @@ public
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 
-: FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+: FILE ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n patha:^ pathu:n :}
    labela labelu CA-START
    patha pathu CA-READ-SOURCE
    [: CA-RUN-SOURCE ;] SESSION ;
@@ -646,8 +646,8 @@ public
 \ label, by the record FILE writes for it, and throw the refusal status; return
 \ when the file lexes clean. Nothing is checked, so a caller that cannot check
 \ the file still reports the defect where it stands.
-: LEX-FILE ( ptr u8 n ptr u8 n -- )
-   {: labela:ptr labelu:n patha:ptr pathu:n :}
+: LEX-FILE ( ^u8 n ^u8 n -- )
+   {: labela:^ labelu:n patha:^ pathu:n :}
    labela labelu CA-START
    patha pathu CA-READ-SOURCE
    CA-LEX ;
@@ -655,8 +655,8 @@ public
 \ The record line LEX-FILE writes for the lexer defect of the given bytes, which
 \ stand for the file the label names, in the mode JSON! selected, with no line
 \ feed; empty when they lex clean.
-: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: labela:ptr labelu:n srca:ptr srcu:n :}
+: LEX-RECORD$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: labela:^ labelu:n srca:^ srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
@@ -671,15 +671,15 @@ public
 \ (LEX-FIRST?). A reader with no token after it throws VERIFY:E-MISSING-NAME
 \ to the caller, which reports it at VERIFY:TOKEN-BYTE@ in the file
 \ VERIFY:SOURCE-COMPOSE-STOPPED$ names.
-: COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+: COMPOSE-BUF ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
    label CA-COMPOSE-LABEL-A !  labelu CA-COMPOSE-LABEL-U !
    label labelu CA-START
    src srcu CA-SOURCE-BUF!
    [: CA-RUN-COMPOSE ;] SESSION ;
 
-: BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
+: BUF ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n srca:^ srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    [: CA-RUN-SOURCE ;] SESSION ;
@@ -688,8 +688,8 @@ public
 \ for a caller that had the checker run over the given source under the given
 \ label: at the token that starts at the given byte, the one the checker read
 \ last, in the mode JSON! selected, with no line feed.
-: THROW-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n labela:ptr labelu:n srca:ptr srcu:n :}
+: THROW-RECORD$ ( n n ^u8 n ^u8 n -- ^u8 n )
+   {: rc:n at:n labela:^ labelu:n srca:^ srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    rc CA-THROW-RC !
@@ -701,8 +701,8 @@ public
 \ name the scan refused, which starts at the given byte and has the given
 \ length, 0 for no name kept (VERIFY:DUPLICATE), in the mode JSON! selected,
 \ with no line feed.
-: DUP-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: at:n u:n labela:ptr labelu:n srca:ptr srcu:n :}
+: DUP-RECORD$ ( n n ^u8 n ^u8 n -- ^u8 n )
+   {: at:n u:n labela:^ labelu:n srca:^ srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    at u CA-DUP-RECORD$ ;

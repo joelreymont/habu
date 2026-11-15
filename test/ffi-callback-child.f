@@ -66,11 +66,11 @@ using FFI-CB
 \ restores C's callee-saved registers, the caller's record count and code
 \ pointer among them, so it ends the process rather than lose what the
 \ definition moved.
-CALLBACK: CMP-DEFINE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-DEFINE ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 variable DEFINED                        \ 1 once CMP-DEFINE has defined
 
-: CMP-DEFINE-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-DEFINE-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    DEFINED @ 0= if
       1 DEFINED !
       s" variable CBC-INSIDE" evaluate-closed
@@ -87,9 +87,9 @@ variable DEFINED                        \ 1 once CMP-DEFINE has defined
 
 \ PARK sees the halt and returns; TASK:PAUSE only yields while a comparison
 \ runs, so qsort completes and the worker ends after C returns; KILL joins it.
-CALLBACK: CMP-PARK ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-PARK ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
-: CMP-PARK-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-PARK-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    PARK
    a b ROW-ORDER ;
 
@@ -114,12 +114,12 @@ CALLBACK: CMP-PARK ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ The first comparison holds in TASK:WAIT until the kill's halt wakes it, so the
 \ next TASK:PAUSE runs inside the callback with the request set; the sort
 \ completes and the worker ends at its first TASK:PAUSE after it.
-CALLBACK: CMP-YIELD ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-YIELD ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 variable SORTED                      \ 1 once the killed worker's sort completed
 variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
 
-: CMP-YIELD-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-YIELD-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    INSIDE atomic@ 0= if 1 INSIDE atomic! TASK:WAIT then
    TASK:PAUSE
    a b ROW-ORDER ;
@@ -155,11 +155,11 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    s" ffi-callback-child: caller-thread was not refused" SURVIVED-RC die ;
 
 \ Left unbound until a text that grows the tables binds it and throws.
-CALLBACK: CMP-GROWN ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-GROWN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' ROW-ORDER CMP-GROWN-BODY !
 variable GROWN-FN                     \ the C entry the thrown text answered
 
-: GROWN$ ( -- ptr u8 n )
+: GROWN$ ( -- ^u8 n )
    s" CALLBACK: CBC-GROW ( -- ) ;CALLBACK  CMP-GROWN TASK:SELF-CONTEXT FFI-CB:ENTRY GROWN-FN !  1 throw" ;
 
 : GROWN-BIND ( -- )
@@ -171,7 +171,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    OUTER BYTE-VIEW ROW-N CELL GROWN-FN @ QSORT
    OUTER 10 ROW-SORTED? if s" grown-bind: sorted" type cr then ;
 
-: CASE? ( ptr u8 n -- bool )
+: CASE? ( ^u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
 : DISPATCH ( -- )

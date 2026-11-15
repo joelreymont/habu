@@ -22,7 +22,7 @@ private
 : PK-ONE ( -- n ) 1 ;
 
 \ : NAME ( -- n ) PK-ONE ; over effect E.
-: MAKE-ONE ( EFFECT:type ptr u8 n -- )
+: MAKE-ONE ( EFFECT:type ^u8 n -- )
    rot define-word  postpone PK-ONE  postpone ; ;
 
 EFFECT:EMPTY EFFECT:N EFFECT:OUT
@@ -50,16 +50,16 @@ private
 STRUCTURE pdhidden FIELD v n ;STRUCTURE
 1 TYPED-BUFFER PD-CELLS pdcell
 
-\ ( ptr pdcell -- ptr pdcell ).
+\ ( ^pdcell -- ^pdcell ).
 : CELL-EFFECT ( -- EFFECT:type )
    s" POSTPONE-CELL:pdcell" EFFECT:NAMED EFFECT:PTR
    {: p :}  EFFECT:EMPTY p EFFECT:IN  p EFFECT:OUT ;
 
 public
-: PD-CELL ( -- ptr pdcell ) 0 PD-CELLS ;
+: PD-CELL ( -- ^pdcell ) 0 PD-CELLS ;
 
-\ : NAME ( ptr pdcell -- ptr pdcell ) drop drop ;, an underflow.
-: MAKE-CELL-BROKEN ( ptr u8 n -- )
+\ : NAME ( ^pdcell -- ^pdcell ) drop drop ;, an underflow.
+: MAKE-CELL-BROKEN ( ^u8 n -- )
    CELL-EFFECT define-word
    postpone drop  postpone drop
    postpone ; ;
@@ -73,18 +73,18 @@ CAST: >NODE ( EFFECT:type -- n )
 : SLOT-PTR ( -- EFFECT:type )
    s" POSTPONE-EFFECT:peslot" EFFECT:NAMED EFFECT:PTR ;
 
-\ ( ptr peslot n -- ptr peslot ), one pointer node in both rows.
+\ ( ^peslot n -- ^peslot ), one pointer node in both rows.
 : SLOT-EFFECT ( -- EFFECT:type )
    SLOT-PTR {: p :}
    EFFECT:EMPTY p EFFECT:IN  EFFECT:N EFFECT:IN  p EFFECT:OUT ;
 
 \ The text a built word records as its signature.
-: SLOT-TEXT ( -- ptr u8 n ) SLOT-EFFECT >NODE CHECK:EFFECT-TEXT ;
+: SLOT-TEXT ( -- ^u8 n ) SLOT-EFFECT >NODE CHECK:EFFECT-TEXT ;
 
-SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
+SLOT-TEXT s" ( ^postpone-effect:peslot n -- ^postpone-effect:peslot )" T$=
 
 \ An `xt` in and out, which facts text writes with no quote.
-: XT-TEXT ( -- ptr u8 n )
+: XT-TEXT ( -- ^u8 n )
    s" xt" EFFECT:READ-TYPE {: x :}
    EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT >NODE CHECK:EFFECT-TEXT ;
 
@@ -101,12 +101,12 @@ ROOT-PERSIST
    [: node SCHEMA-REG:SCHEMA-PTR drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
 PTR-PERSIST
 
-TYPED-VARIABLE EVAL-A ptr u8
+TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( ptr u8 n -- n n )
+: MULTI ( ^u8 n -- n n )
    EVAL-U ! EVAL-A !  MULTI-ERR-BEGIN [: EVAL-RUN ;] catch MULTI-ERR-END ;
 
 \ The refused built word keeps its effect: its caller certifies, one refusal.
@@ -119,14 +119,14 @@ CAST: N>R ( n -- r )
 CAST: R>N ( r -- n )
 
 \ : NAME ( t -- t ) ;
-: MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
+: MAKE-ID ( ^u8 n EFFECT:type -- ) {: t :}
    EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  define-word
    postpone ; ;
 
 s" PE-U32" s" u32" EFFECT:READ-TYPE MAKE-ID
-s" PE-BYTES" s" ptr u8" EFFECT:READ-TYPE MAKE-ID
+s" PE-BYTES" s" ^u8" EFFECT:READ-TYPE MAKE-ID
 s" PE-NUL" s" nullable<u8>" EFFECT:READ-TYPE MAKE-ID
-s" PE-SLOT" s" ptr peslot" EFFECT:READ-TYPE MAKE-ID
+s" PE-SLOT" s" ^peslot" EFFECT:READ-TYPE MAKE-ID
 s" PE-R" s" r" EFFECT:NAMED MAKE-ID
 s" PE-BOOL" s" bool" EFFECT:NAMED MAKE-ID
 s" PE-U8" s" u8" EFFECT:NAMED MAKE-ID
@@ -162,7 +162,7 @@ READ-HIDDEN 70 T=
 
 package POSTPONE-STORE
 private
-: REJECTED ( ptr u8 n -- n ) {: a:ptr u:n :}
+: REJECTED ( ^u8 n -- n ) {: a:^ u:n :}
    DECL-DIAG:JSON  [: a u evaluate-closed ;] catch ;
 : REASON ( -- )
    s" a definer's type ends with the load that built it: build it where it is used"
@@ -184,11 +184,11 @@ s" STRUCTURE psfield FIELD t EFFECT:type ;STRUCTURE" REJECTED 0 T<>
 MEMBER
 s" SUMTYPE pspay VARIANT one EFFECT:type ;VARIANT ;SUMTYPE" REJECTED 0 T<>
 MEMBER
-s" STRUCTURE psprodp FIELD t ptr EFFECT:type ;STRUCTURE" REJECTED 0 T<>
+s" STRUCTURE psprodp FIELD t ^EFFECT:type ;STRUCTURE" REJECTED 0 T<>
 MEMBER
 s" ENUM psenum VARIANT one FIELD t EFFECT:type ;VARIANT ;ENUM" REJECTED 0 T<>
 MEMBER
-s" ENUM psenump VARIANT one FIELD t ptr EFFECT:type ;VARIANT ;ENUM" REJECTED
+s" ENUM psenump VARIANT one FIELD t ^EFFECT:type ;VARIANT ;ENUM" REJECTED
 0 T<>  MEMBER
 
 public

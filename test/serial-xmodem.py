@@ -23,13 +23,13 @@ create OUTPUT HDR-BYTES allot
 create SESSION SERIAL-XMODEM:SESSION-BYTES allot
 CAST: BLEN>N ( NUM:byte-len -- n )
 
-: INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
+: INPUT-READ ( ^u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT
    INPUT SPAN$ drop {: data :}
    path size data capacity READ-ALL data swap BYTES INPUT REPLACE ;
 
 
-: OPEN-HANDLE ( ptr u8 n -- SERIAL:handle )
+: OPEN-HANDLE ( ^u8 n -- SERIAL:handle )
    115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF ENDOF failed OF drop -1 throw ENDOF unsupported OF -2 throw ENDOF
    ;MATCH ;
@@ -477,14 +477,14 @@ TASK:MIN-STACK TASK:TASK WORKER1
    ;MATCH ;
 
 
-: CHECK-REPLY ( n ptr a -- ) {{: identity:n output:ptr :}}
+: CHECK-REPLY ( n ^a -- ) {{: identity:n output:^ :}}
    output SPAN$ BLEN>N {{: data length:n :}}
    length 128 <> if -1 throw then
    length 0 do data i + c@ identity <> if -1 throw then loop ;
 
 
-: WORK ( ptr u8 n ptr a ptr a ptr u8 n -- )
-   {{: path length:n session:ptr output:ptr data identity:n :}}
+: WORK ( ^u8 n ^a ^a ^u8 n -- )
+   {{: path length:n session:^ output:^ data identity:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
    path length OPEN-HANDLE {{: handle:SERIAL:handle :}}
@@ -503,7 +503,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
 : WORK1 ( -- ) s" {names[1]}" SESSION1 OUTPUT1 SOURCE1 177 WORK ;
 
 
-: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ^n -- ) {{: worker:^ :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 

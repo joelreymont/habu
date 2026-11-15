@@ -6,7 +6,7 @@ require test/fixtures/postpone-stored.f
 
 package POSTPONE-STORED-USE
 : ONE ( -- n ) 1 ;
-: MAKE ( ptr u8 n -- )
+: MAKE ( ^u8 n -- )
    POSTPONE-STORED:HELD @ define-word  postpone ONE  postpone ; ;
 
 EFFECT:EMPTY EFFECT:N EFFECT:IN drop

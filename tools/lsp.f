@@ -7,10 +7,10 @@ create ROOT PATH-CAP allot   variable ROOT-U
 create OLD PATH-CAP allot    variable OLD-U
 
 : SAVE ( -- )
-   SOURCE-ROOT:ENGINE$ {: a:ptr u:n :}
+   SOURCE-ROOT:ENGINE$ {: a:^ u:n :}
    a OLD u BYTE-COPY  u OLD-U !
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop
-   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:ptr rootu:n :}
+   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:^ rootu:n :}
    root ROOT rootu BYTE-COPY  rootu ROOT-U ! ;
 
 : LOAD ( -- ) s" tools/lsp-core.f" required ;

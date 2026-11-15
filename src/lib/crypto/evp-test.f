@@ -19,7 +19,7 @@ package CRYPTO-TEST
 
 private
 
-CAST: >RSA-U8 ( n -- ptr u8 )
+CAST: >RSA-U8 ( n -- ^u8 )
 
 VERSIONED-LIBRARY crypto 3
 FUNCTION: STALE-ERROR-NEW ERR_new ( -- ) ;FUNCTION
@@ -63,14 +63,14 @@ variable MAC-WANT-N
 \ groups or repeat counts that fill it. The cursor refuses to run past the
 \ target's capacity, so a mistyped fixture fails here and not inside libcrypto.
 
-TYPED-VARIABLE FILL-CELL ptr u8
+TYPED-VARIABLE FILL-CELL ^u8
 variable FILL-CAP
 variable FILL-N
 
-: FILL-AT ( -- ptr u8 )
+: FILL-AT ( -- ^u8 )
    FILL-CELL @ ;
 
-: INTO ( ptr u8 n -- ) {: target cap:n :}
+: INTO ( ^u8 n -- ) {: target cap:n :}
    target FILL-CELL !
    cap FILL-CAP !
    0 FILL-N ! ;
@@ -85,7 +85,7 @@ variable FILL-N
    value FILL-AT FILL-N @ + c!
    FILL-N @ 1+ FILL-N ! ;
 
-: HEX, ( ptr u8 n -- ) {: text u:n :}
+: HEX, ( ^u8 n -- ) {: text u:n :}
    u 2 mod 0 <> if E-VECTOR throw then
    u 2 / 0 ?do
       text i 2 * + c@ NIBBLE 4 lshift
@@ -154,12 +154,12 @@ variable FILL-N
    FILLED WANT-N ! ;
 
 
-: KEY$ ( -- ptr u8 n )     KEY-BUF KEY-N @ ;
-: NONCE$ ( -- ptr u8 n )   NONCE-BUF NONCE-N @ ;
-: AAD$ ( -- ptr u8 n )     AAD-BUF AAD-N @ ;
-: PLAIN$ ( -- ptr u8 n )   PLAIN-BUF PLAIN-N @ ;
-: SEALED$ ( -- ptr u8 n )  SEALED-BUF SEALED-N @ ;
-: WANT$ ( -- ptr u8 n )    WANT-BUF WANT-N @ ;
+: KEY$ ( -- ^u8 n )     KEY-BUF KEY-N @ ;
+: NONCE$ ( -- ^u8 n )   NONCE-BUF NONCE-N @ ;
+: AAD$ ( -- ^u8 n )     AAD-BUF AAD-N @ ;
+: PLAIN$ ( -- ^u8 n )   PLAIN-BUF PLAIN-N @ ;
+: SEALED$ ( -- ^u8 n )  SEALED-BUF SEALED-N @ ;
+: WANT$ ( -- ^u8 n )    WANT-BUF WANT-N @ ;
 
 : SEAL-VECTOR ( -- )
    KEY$ NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL SEALED-N ! ;
@@ -173,7 +173,7 @@ variable FILL-N
       failed OF CRYPTO:CODE>N negate ENDOF
    ;MATCH ;
 
-: BACK$ ( -- ptr u8 n )
+: BACK$ ( -- ^u8 n )
    BACK-BUF PLAIN-N @ ;
 
 : PAINT-BACK ( -- )
@@ -191,10 +191,10 @@ variable FILL-N
 
 \ RFC 4231 HMAC-SHA-256.
 
-: MAC-KEY$ ( -- ptr u8 n )   MAC-KEY-BUF MAC-KEY-N @ ;
-: MSG$ ( -- ptr u8 n )       MSG-BUF MSG-N @ ;
-: MAC$ ( -- ptr u8 n )       MAC-BUF CRYPTO:MAC-BYTES ;
-: MAC-WANT$ ( -- ptr u8 n )  MAC-WANT-BUF MAC-WANT-N @ ;
+: MAC-KEY$ ( -- ^u8 n )   MAC-KEY-BUF MAC-KEY-N @ ;
+: MSG$ ( -- ^u8 n )       MSG-BUF MSG-N @ ;
+: MAC$ ( -- ^u8 n )       MAC-BUF CRYPTO:MAC-BYTES ;
+: MAC-WANT$ ( -- ^u8 n )  MAC-WANT-BUF MAC-WANT-N @ ;
 
 : MAC-VECTOR ( -- )
    MAC-KEY$ MSG$ MAC-BUF MAC-CAP CRYPTO:HMAC-SHA256 ;
@@ -239,7 +239,7 @@ variable FILL-N
 
 \ Dynamic truncation belongs to the TOTP consumer, not the crypto binding.
 : TOTP1 ( -- n )
-   MAC-BUF CRYPTO:MAC1-BYTES 1- + c@ $0F and MAC-BUF + {: p:ptr :}
+   MAC-BUF CRYPTO:MAC1-BYTES 1- + c@ $0F and MAC-BUF + {: p:^ :}
    p c@ $7F and 24 lshift p 1+ c@ 16 lshift or
    p 2 + c@ 8 lshift or p 3 + c@ or 100000000 mod ;
 
@@ -305,7 +305,7 @@ create DRAW-B DRAW-CAP allot
 : PAINT-DRAWS ( -- )
    DRAW-CAP 0 ?do 0 DRAW-A i + c! 0 DRAW-B i + c! loop ;
 
-: ALL-ZERO? ( ptr u8 n -- bool ) {: span u:n :}
+: ALL-ZERO? ( ^u8 n -- bool ) {: span u:n :}
    u 0 ?do span i + c@ 0 <> if false unloop exit then loop
    true ;
 
@@ -320,16 +320,16 @@ variable BIG-UNSEALED
 : BIG-SPAN ( -- n )
    BIG-BYTES 3 * CRYPTO:TAG-BYTES + ;
 
-: BIG-FILL ( ptr u8 -- ) {: plain :}
+: BIG-FILL ( ^u8 -- ) {: plain :}
    BIG-BYTES 0 ?do i $FF and plain i + c! loop ;
 
-: BIG-SAME? ( ptr u8 ptr u8 -- bool ) {: plain unsealed :}
+: BIG-SAME? ( ^u8 ^u8 -- bool ) {: plain unsealed :}
    BIG-BYTES 0 ?do
       plain i + c@ unsealed i + c@ <> if false unloop exit then
    loop
    true ;
 
-: BIG-ROUND ( ptr u8 NUM:alloc-byte-len -- ) drop {: base :}
+: BIG-ROUND ( ^u8 NUM:alloc-byte-len -- ) drop {: base :}
    base {: plain :}
    base BIG-BYTES + {: sealed :}
    base BIG-BYTES 2 * CRYPTO:TAG-BYTES + + {: unsealed :}
@@ -365,9 +365,9 @@ create RUSAGE-BUF RUSAGE-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RESOURCE-USAGE getrusage ( n ^u8 -- i32 ) ;FUNCTION
 
-: LE64@ ( ptr u8 -- n ) {: source :}
+: LE64@ ( ^u8 -- n ) {: source :}
    0 CELL-BYTES 0 do source 7 i - + c@ swap 8 lshift or loop ;
 
 : PEAK-KB ( -- n )
@@ -523,10 +523,10 @@ create JWS-MSG JWS-CAP allot
 variable PEM-N
 variable JWS-N
 
-: ASCII, ( ptr u8 n -- ) {: p u:n :}
+: ASCII, ( ^u8 n -- ) {: p u:n :}
    u 0 ?do p i + c@ BYTE, loop ;
 
-: PEM-LINE ( ptr u8 n -- ) ASCII, 10 BYTE, ;
+: PEM-LINE ( ^u8 n -- ) ASCII, 10 BYTE, ;
 
 : RFC-RSA ( -- )
    JWS-FIXTURE:MODULUS$ RSA-N RSA-BYTES SPAN:MAKE BASE64:DECODE-URL RSA-BYTES T=

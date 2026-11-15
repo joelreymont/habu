@@ -25,14 +25,14 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 \ address pushed below that.
 8 constant ENTRY-RSP-LOW
 
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 
 \ Call a row with the machine stack a cell deeper than ROW leaves it, so the
 \ trampoline's alignment takes its other case.
-: SHIFTED-ROW ( ptr u8 n -- )
+: SHIFTED-ROW ( ^u8 n -- )
    RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : SUB, ( -- )                           \ ( x y -- x-y )
@@ -72,14 +72,14 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ARGS AT, FPS AT, STK AT, nstack N, ;
 
 \ A NUL-terminated copy of a string behind a jump, and its label.
-: C-TEXT, ( ptr u8 n -- label ) {: a:ptr u:n :}
+: C-TEXT, ( ^u8 n -- label ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
    past LBL,
    text ;
 
-: LIBC, ( ptr u8 n -- )
+: LIBC, ( ^u8 n -- )
    C-TEXT, {: name:label :}
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 
@@ -204,7 +204,7 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    0 ABI, s" snprintf" LIBC, s" ffi-call-abi" ROW  PRINTED WANT
    FLOATS-TEXT OUT X64HARNESS:EXPECT-SCRATCH, ;
 
-: BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    ARGS,
    execute

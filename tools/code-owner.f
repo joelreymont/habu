@@ -14,13 +14,13 @@ private
 
 variable HITS
 
-: SPAN? ( n ptr n -- bool ) {: a:n r:ptr :}
+: SPAN? ( n ^n -- bool ) {: a:n r:^ :}
    \ a package row's [0] is a wid, not code
    r XREF-WORDLIST BOOT:NAMESPACE-WL = if 0 0= 0= exit then
    r XREF-RETIRED? if 0 0= 0= exit then
    a r XREF-START >=  a r XREF-START r XREF-CODE-BYTES + <  and ;
 
-: ROW. ( n ptr n -- ) {: a:n r:ptr :}
+: ROW. ( n ^n -- ) {: a:n r:^ :}
    s" owner=" type r XREF-NAME$ type
    s"  wid=" type r XREF-WORDLIST FMT:.INT
    s"  start=" type r XREF-START FMT:.INT
@@ -39,7 +39,7 @@ public
 : AT ( n -- n ) {: a:n :}
    0 HITS !
    ndict@ 0 ?do
-      i XREF-REC {: r:ptr :}
+      i XREF-REC {: r:^ :}
       a r SPAN? if  a r ROW.  1 HITS +!  then
    loop
    HITS @ ;

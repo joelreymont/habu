@@ -3,6 +3,7 @@
 
 require src/lib/string.f
 require src/lib/test.f
+require test/decl-diag-capture.f
 
 using TFAM
 using TYPE-DECL
@@ -12,17 +13,17 @@ T-RESET
 \ Evaluate a declaration string through evaluate-closed, returning its throw
 \ code (0 = accepted). The catch is compiled: a top-level catch around evaluate
 \ loses the code.
-TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
+TYPED-VARIABLE TDTE-A ^u8   variable TDTE-U
 : TDT-EVAL-GO ( -- )
    TDTE-A @ TDTE-U @ evaluate-closed ;
-: TDT-EVAL-CATCH ( ptr u8 n -- n )
+: TDT-EVAL-CATCH ( ^u8 n -- n )
    TDTE-U ! TDTE-A !
    [: TDT-EVAL-GO ;] catch ;
 
 \ A check's results live until its definition publishes, inside the token that
 \ ran it, so each probe reads them in the word that runs the check.
 \ TD-WF-N: the fact rows a candidate with verdict `want` leaves.
-: TD-WF-N ( ptr u8 n n -- n )
+: TD-WF-N ( ^u8 n n -- n )
    {: want:n :}
    CHECK-QUIET-CANDIDATE! want T=
    WF-N@ ;
@@ -31,7 +32,7 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 
-: TDT-NEG ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+: TDT-NEG ( ^u8 n n -- ) {: a:^ u:n code:n :}
    a u TDT-EVAL-CATCH code T= ;
 
 \ silence expected declaration diagnostics (asserted explicitly further down).
@@ -58,7 +59,7 @@ s" \ TYPEFAMILY tdtombline 0" 0 TDT-NEG
 
 s" ( TYPEFAMILY tdtombparen 0 )" 0 TDT-NEG
 
-s\" : TDT-TOMB-TEXT ( -- ptr u8 n ) s\" TYPEFAMILY tdtombstr 0\" ;" 0 TDT-NEG
+s\" : TDT-TOMB-TEXT ( -- ^u8 n ) s\" TYPEFAMILY tdtombstr 0\" ;" 0 TDT-NEG
 
 \ The live spelling needs no separate control here: `tdfoo` and `tdzero` above
 \ already pin what a NEWTYPE declaration registers.
@@ -252,7 +253,7 @@ create BUF BUF-CAP allot
 variable BUF-N
 
 : RESET ( -- ) 0 BUF-N ! ;
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND ( ^u8 n -- ) {: a:^ u:n :}
    BUF-N @ u + BUF-CAP > IF s" local-bind test source overflow" 76 die THEN
    0 BEGIN dup u < WHILE
       a over + c@ BUF BUF-N @ + c!
@@ -261,7 +262,7 @@ variable BUF-N
    REPEAT drop ;
 : BIND ( -- )
    s" dup 0 > if 5 {: x:n :} x drop then " APPEND ;
-: SOURCE ( -- ptr u8 n )
+: SOURCE ( -- ^u8 n )
    RESET
    s" MANY-BINDS ( n -- n ) " APPEND
    257 0 ?do BIND loop
@@ -294,7 +295,7 @@ s" TD12-ADD ( tdres<n,n> n -- n ) +" CHECK-QUIET-CANDIDATE! 0 T=
 \ higher-order apply (execute) must not consume a layout value as an xt/cell.
 s" TD12-EXEC ( tdres<n,n> -- ) execute" CHECK-QUIET-CANDIDATE! 0 T=
 \ memory store/fetch is a field coercion outside constructors/MATCH: reject.
-s" TD12-STORE ( tdres<n,n> ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-STORE ( tdres<n,n> ^a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- possibly-linear layout transports reject -----------------------
 \ A layout family whose args carry a linear con — or an arg still unresolved,
@@ -339,13 +340,13 @@ s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ typed memory even though these arity-0 families have no arguments to scan.
 s" TDLINC-P-DUP ( tdlinp -- tdlinp tdlinp ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-P-DROP ( tdlinp -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-STORE ( tdlinp ptr tdlinp -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-FETCH ( ptr tdlinp -- tdlinp ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-STORE ( tdlinp ^tdlinp -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-FETCH ( ^tdlinp -- tdlinp ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-P-ID ( tdlinp -- tdlinp )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLINC-S-DUP ( tdlins -- tdlins tdlins ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-DROP ( tdlins -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-STORE ( tdlins ptr tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-FETCH ( ptr tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-STORE ( tdlins ^tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-FETCH ( ^tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ --- a checked word that only moves its var takes a one-cell layout value --
@@ -392,12 +393,12 @@ s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" CHECK-QUIET-CANDIDATE!
 s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" CHECK-QUIET-CANDIDATE! 0 T=
 \ nested evaluate is rejected in checked bodies outright (unsafe boundary).
-s" TD12-EVAL ( tdres<n,n> ptr u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-EVAL ( tdres<n,n> ^u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=
 \ throw takes an n code: a layout value is not a throw code.
 s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- storable layouts ---
-\ A layout value crosses `!`/`@` through a `ptr family` address; the address
+\ A layout value crosses `!`/`@` through a `^family` address; the address
 \ type carries the family identity, and a var may bind a width-1 non-linear
 \ layout pointee under a ptr spine. Only LAYOUT-BUFFER may introduce a
 \ family-typed pointer. The one-cell ops are the exact W=1 lowering; pass 2
@@ -408,34 +409,34 @@ SUMTYPE tdmemu<a>
   VARIANT dos ;VARIANT
 ;SUMTYPE
 variable TDS1-MEM
-s" TDS1-VP ( -- ptr tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-STORE ( tdcolor ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS1-FETCH ( ptr tdcolor -- tdcolor ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS1-RT ( tdcolor ptr tdcolor -- tdcolor ) tuck ! @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-VP ( -- ^tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-STORE ( tdcolor ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-FETCH ( ^tdcolor -- tdcolor ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-RT ( tdcolor ^tdcolor -- tdcolor ) tuck ! @" CHECK-QUIET-CANDIDATE! -1 T=
 \ a zero-arity width-1 SUM gets the same memory tier as the TK-ENUM.
-s" TDS1-SUM0 ( tdlight ptr tdlight -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-SUM0 ( tdlight ^tdlight -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 \ a parametric width-1 sum qualifies once its args are closed non-linear.
-s" TDS1-PAR ( tdmemu<n> ptr tdmemu<n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-PAR ( tdmemu<n> ^tdmemu<n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 \ family identity: untyped and mismatched addresses stay rejected.
-s" TDS1-BARE ( tdcolor ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-BAREF ( ptr a -- tdcolor ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-MIX ( tdlight ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-BARE ( tdcolor ^a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-BAREF ( ^a -- tdcolor ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-MIX ( tdlight ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ no n<->enum laundering in either direction.
-s" TDS1-NIN ( n ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-NOUT ( ptr tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-NIN ( n ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-NOUT ( ^tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 \ W > 1 store/fetch certifies before the executed round-trips below.
-s" TDS2-WIDE ( tdres<n,n> ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS2-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS2-WIDE ( tdres<n,n> ^tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS2-WIDEF ( ^tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
 \ wide family mismatch and scalar laundering stay rejected.
-s" TDS2-WMIX ( tdres<n,n> ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS2-WNIN ( n ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS2-WNOUT ( ptr tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WMIX ( tdres<n,n> ^tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNIN ( n ^tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNOUT ( ^tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 \ linear / open args stay fail-closed even at width 1.
-s" TDS1-LIN ( tdmemu<tdown> ptr tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-LIN ( tdmemu<tdown> ^tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-OPEN ( tdmemu<a> ^tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ executed round-trip: store an enum, fetch it, MATCH the fetched value.
 1 LAYOUT-BUFFER TDS1-BUF tdcolor
-: TDS1-P ( -- ptr tdcolor ) 0 TDS1-BUF ;
+: TDS1-P ( -- ^tdcolor ) 0 TDS1-BUF ;
 : TDS1-PUT ( tdcolor -- ) TDS1-P ! ;
 : TDS1-GET ( -- tdcolor ) TDS1-P @ ;
 : TDS1-CODE ( -- n )
@@ -449,7 +450,7 @@ TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
 
 \ Executed W=2 round-trip through sealed typed storage.
 1 LAYOUT-BUFFER TDS2-RES-BUF tdres<n,n>
-: TDS2-RES-P ( -- ptr tdres<n,n> ) 0 TDS2-RES-BUF ;
+: TDS2-RES-P ( -- ^tdres<n,n> ) 0 TDS2-RES-BUF ;
 : TDS2-RES-PUT ( tdres<n,n> -- ) TDS2-RES-P ! ;
 : TDS2-RES-GET ( -- tdres<n,n> ) TDS2-RES-P @ ;
 : TDS2-RES-SEED ( -- tdres<n,n> ) 37 TDRES:ERR ;
@@ -463,7 +464,7 @@ TDS2-RES-WRITE TDS2-RES-VAL 37 T=
 
 \ Arbitrary W=4 family: both the full payload and zero-filled padding survive.
 1 LAYOUT-BUFFER TDS2-MIX-BUF tdmix<n,n>
-: TDS2-MIX-P ( -- ptr tdmix<n,n> ) 0 TDS2-MIX-BUF ;
+: TDS2-MIX-P ( -- ^tdmix<n,n> ) 0 TDS2-MIX-BUF ;
 : TDS2-MIX-PUT ( tdmix<n,n> -- ) TDS2-MIX-P ! ;
 : TDS2-MIX-GET ( -- tdmix<n,n> ) TDS2-MIX-P @ ;
 : TDS2-MIX-BIG ( -- tdmix<n,n> ) 91 92 93 TDMIX:BIG ;
@@ -510,12 +511,12 @@ TDP-CODE 2 T=
 \ Wide STRUCTURE memory transports its full W=3 bundle. A different family or
 \ scalar result cannot cross the boundary even when the physical representation
 \ is cell-based.
-s" TDP-MEM-S ( tdprec ptr tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-MEM-F ( ptr tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-MEM-MIX ( tdprec ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDP-MEM-N ( ptr tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-MEM-S ( tdprec ^tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-MEM-F ( ^tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-MEM-MIX ( tdprec ^tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-MEM-N ( ^tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 1 LAYOUT-BUFFER TDP-BUF tdprec
-: TDP-P ( -- ptr tdprec ) 0 TDP-BUF ;
+: TDP-P ( -- ^tdprec ) 0 TDP-BUF ;
 : TDP-PUT ( tdprec -- ) TDP-P ! ;
 : TDP-GET ( -- tdprec ) TDP-P @ ;
 : TDP-WRITE ( -- ) TDP-MK TDP-PUT ;
@@ -1114,8 +1115,8 @@ s" NEWTYPE field<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE str<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE space-x<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE fresh-mask-x<a>" E-TDECL-NAME TDT-NEG
-\ an effect reads a bare `ptr` as the pointer constructor, never as a family,
-\ so the tail is reserved ahead of the global `ptr` family's duplicate check.
+\ An effect reads the token `ptr` ahead of any family, so the tail is reserved
+\ ahead of the global `ptr` family's duplicate check.
 s" NEWTYPE ptr" E-TDECL-NAME TDT-NEG
 \ Reserved token protocol: construct/match/;match may not name a
 \ family or a variant (;match already fails the canonical-tail gate).
@@ -1189,7 +1190,7 @@ s" SUMTYPE tdnovn<a> VARIANT ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 s" SUMTYPE tdkw<a> VARIANT variant a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdvcase<a> VARIANT Ok a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 s" SUMTYPE tdvdup<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
-s" SUMTYPE tdbadptr<a> VARIANT ok ptr ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
+s" SUMTYPE tdbadptr<a> VARIANT ok ^ ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
 \ unknown payload types: an out-of-arity letter and an unknown tail reject;
 \ parametric family applications and quotations resolve as payloads, so the
 \ other rejects are a wrong-arity application and an unbound argument letter.
@@ -1198,39 +1199,45 @@ s" SUMTYPE tdpay1<a> VARIANT ok q ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay2<a> VARIANT ok whatnot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay3<a> VARIANT ok tdres<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay4<a> VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
+DECL-DIAG:PROSE
+s" SUMTYPE tdpayptr VARIANT ok ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" habu: bad sumtype declaration 'tdpayptr': unknown payload type at 'ptr'"
+DECL-DIAG:HAS? TTRUE
+TDIAG-BUF 8192 REJECTION:BUFFER!
 \ quotation effect sides carry full rows: an empty input side, a multi-type
 \ input side, an empty output side, and a multi-type input with a ptr element
 \ all declare and resolve.
 SUMTYPE tdpq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-SUMTYPE tdpqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE tdpqm VARIANT run [ n ^u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 
 \ A quotation side of 300 elements declares, and the constructor takes a
 \ quotation of 300 cells, not of 299; a variant of 300 payload elements declares.
 package LONG-DECL-TEST
 300 constant LONG-N
-: Q-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpq300 VARIANT run [ " ;
-: Q-TAIL$ ( -- ptr u8 n ) s" -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" ;
-: C-TAIL$ ( -- ptr u8 n ) s" -- ] -- tdpq300 ) construct tdpq300 run ;" ;
-: P-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpay300 VARIANT wide " ;
-: P-TAIL$ ( -- ptr u8 n ) s" ;VARIANT ;SUMTYPE" ;
+: Q-HEAD$ ( -- ^u8 n ) s" SUMTYPE tdpq300 VARIANT run [ " ;
+: Q-TAIL$ ( -- ^u8 n ) s" -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" ;
+: C-TAIL$ ( -- ^u8 n ) s" -- ] -- tdpq300 ) construct tdpq300 run ;" ;
+: P-HEAD$ ( -- ^u8 n ) s" SUMTYPE tdpay300 VARIANT wide " ;
+: P-TAIL$ ( -- ^u8 n ) s" ;VARIANT ;SUMTYPE" ;
 Q-HEAD$ nip Q-TAIL$ nip +
 s" : TDPQ300-NO ( [ " nip C-TAIL$ nip + max
 P-HEAD$ nip P-TAIL$ nip + max
 LONG-N 2 * + constant CAP
 CAP BUFFER: BUF
 variable BUF-N
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND ( ^u8 n -- ) {: a:^ u:n :}
    a BUF BUF-N @ + u BYTE-COPY  BUF-N @ u + BUF-N ! ;
 : NS ( n -- ) 0 ?do s" n " APPEND loop ;
-: DECL$ ( -- ptr u8 n )
+: DECL$ ( -- ^u8 n )
    0 BUF-N !  Q-HEAD$ APPEND  LONG-N NS  Q-TAIL$ APPEND  BUF BUF-N @ ;
 \ : NAME ( [ n n … -- ] -- tdpq300 ) … ; of k cells
-: CTOR$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+: CTOR$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n k:n :}
    0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( [ " APPEND
    k NS  C-TAIL$ APPEND  BUF BUF-N @ ;
-: PAY$ ( -- ptr u8 n )
+: PAY$ ( -- ^u8 n )
    0 BUF-N !  P-HEAD$ APPEND  LONG-N NS  P-TAIL$ APPEND  BUF BUF-N @ ;
 : SHORT-CTOR ( -- )
    TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
@@ -1305,7 +1312,7 @@ s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
 
 \ malformed STRUCTURE declarations: each is refused with its code.
 \ a dangling ptr.
-s" STRUCTURE tdpptr<a> FIELD x ptr ;STRUCTURE" E-TDECL-PAYLOAD TDT-NEG
+s" STRUCTURE tdpptr<a> FIELD x ^ ;STRUCTURE" E-TDECL-PAYLOAD TDT-NEG
 \ a bad field name: uppercase.
 s" STRUCTURE tdpfc<a> FIELD X a ;STRUCTURE" E-TFAM-CASE TDT-NEG
 \ control words are refused in the family and variant positions too, on this
@@ -1348,9 +1355,9 @@ s" SUMTYPE tdpolns2<a> POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE" E-TDE
 s" SUMTYPE tdpolns3<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM" E-TDECL-POLICY TDT-NEG
 s" STRUCTURE tdpolns5 POLICY niche-null FIELD x n ;STRUCTURE" E-TDECL-POLICY TDT-NEG
-\ niche-null accepts its one shape, an empty variant then one `ptr` field; an
+\ niche-null accepts its one shape, an empty variant then one `^` field; an
 \ ENUM of two empty variants is refused.
-s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
+s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ^u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
 s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM" E-TDECL-POLICY TDT-NEG
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
 s" SUMTYPE tdpolun1<a> POLICY bogus VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
@@ -1364,7 +1371,7 @@ s" NEWTYPE policy<a>" E-TDECL-NAME TDT-NEG
 
 \ A self-family payload makes the family recursive and rejects with
 \ E-TDECL-RECURSIVE, not E-TDECL-PAYLOAD, in ptr, inline and bare forms.
-s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ^tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec2<a> VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec3 VARIANT self tdrec3 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 \ the recursive reject is INDEPENDENT of the stated policy: a direct self-ref
@@ -1375,7 +1382,7 @@ s" SUMTYPE tdrec3 VARIANT self tdrec3 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-N
 \ so a recursive boxed sum rejects earlier — at the POLICY clause
 \ (E-TDECL-POLICY), before the self-ref.
 s" SUMTYPE tdrecpk1 POLICY packed-tag VARIANT self tdrecpk1 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
-s" SUMTYPE tdrecpk2<a> POLICY packed-tag VARIANT node ptr tdrecpk2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrecpk2<a> POLICY packed-tag VARIANT node ^tdrecpk2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrecsc1 POLICY stack-cell-tag VARIANT self tdrecsc1 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrecbx1<a> POLICY boxed VARIANT node tdrecbx1<a> ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 \ mutual recursion is fail-closed: a forward reference to a not-yet-declared
@@ -1386,7 +1393,7 @@ s" SUMTYPE tdrec5<a> VARIANT node tdother<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD 
 \ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts.
 package tdrp
 SUMTYPE tdrec6<a>
-  VARIANT node ptr u8 ;VARIANT
+  VARIANT node ^u8 ;VARIANT
 ;SUMTYPE
 ;package
 
@@ -1458,7 +1465,7 @@ s" SUMTYPE tdqb5 VARIANT bv tdqp:QSLOT ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NE
 \ private, public, ptr-wrapped and STRUCTURE field forms all reject it.
 package tdqs
 s" SUMTYPE qself VARIANT wv tdqs:qself ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
-s" SUMTYPE qselfr VARIANT wv ptr tdqs:qselfr ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE qselfr VARIANT wv ^tdqs:qselfr ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" STRUCTURE qsprod FIELD child tdqs:qsprod ;STRUCTURE" E-TDECL-PAYLOAD TDT-NEG
 public
 s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
@@ -1703,7 +1710,7 @@ s" undefine TDPV:EQ" E-CTOR-PROTECTED TDT-NEG
 
 \ payload-role gates: pointer, parametric, linear, non-derived enum field,
 \ and the sum-variant name collision.
-s" SUMTYPE tdsb1 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdsb1 DERIVE eq VARIANT hold ^u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdsb2<a> DERIVE eq VARIANT hold a ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdsb3 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" STRUCTURE tdsb4 DERIVE eq FIELD cc tdrw ;STRUCTURE" E-TDECL-DERIVE TDT-NEG
@@ -1716,7 +1723,7 @@ s" STRUCTURE tdsb7 DERIVE eq FIELD w tdsbo:inner ;STRUCTURE" E-TDECL-DERIVE TDT-
 s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 
 \ rollback: a rejected derive leaves no residue; the name redeclares clean.
-s" SUMTYPE tdsb6 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdsb6 DERIVE eq VARIANT hold ^u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 SUMTYPE tdsb6 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 : TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
 TDSB6-EQ TTRUE
@@ -1779,11 +1786,11 @@ variable BUF-N
 : C+ ( n -- )
    BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" 76 die THEN
    BUF BUF-N @ + c!  BUF-N @ 1 + BUF-N ! ;
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do  a i + c@ C+  loop ;
 : NUM+ ( n -- ) {: v:n :}   \ three decimal digits
    v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
-: DECL$ ( -- ptr u8 n )
+: DECL$ ( -- ^u8 n )
    0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq hash" APPEND
    256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
    s"  ;STRUCTURE" APPEND  BUF BUF-N @ ;
@@ -1792,7 +1799,7 @@ variable BUF-N
       i odd = IF 999 ELSE i THEN NUM+  32 C+
    loop  s" TDEQ256:MAKE " APPEND ;
 \ A word comparing the value with every field i to one whose field odd is 999.
-: EQ$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n odd:n :}
+: EQ$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n odd:n :}
    0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( -- bool ) " APPEND
    -1 VALUE+  odd VALUE+  s" TDEQ256:EQ ; " APPEND  a u APPEND
    BUF BUF-N @ ;
@@ -1936,7 +1943,7 @@ TDBY-SH TFALSE
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.
 s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdhb2 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ^u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" STRUCTURE tdhb4 DERIVE hash FIELD cc tdrw ;STRUCTURE" E-TDECL-DERIVE TDT-NEG
 
 \ A family-typed field or payload compares through its family's EQ and hashes
@@ -1999,7 +2006,7 @@ TDNU-HASH-EQ TTRUE
 TDNU-HASH-ORDER TFALSE
 
 \ A pointer field rejects at its type, as a SUMTYPE pointer payload does.
-s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ^u8 ;VARIANT ;ENUM"
    E-TDECL-DERIVE TDT-NEG
 
 \ typed locals for family types: a bare arity-0 family tail is a
@@ -2161,14 +2168,14 @@ REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? TFALSE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 
-\ a single multi-cell family parameter (option<off len>, option<ptr u8 n>,
+\ a single multi-cell family parameter (option<off len>, option<^u8 n>,
 \ result<n n,n>) rejects at the signature's one-type-per-slot separator check;
 \ only comma-separated CELL params (tdres<n,n> above) are the accepted
 \ flat-tuple form.
 SUMTYPE tdpbopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 SUMTYPE tdpbres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 s" TDPB1 ( -- tdpbopt<off len> )"  CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPB2 ( -- tdpbopt<ptr u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB2 ( -- tdpbopt<^u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 
 \ constructor and MATCH effects for a NAMED multi-cell layout-family arg.

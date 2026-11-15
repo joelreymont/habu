@@ -16,7 +16,7 @@ variable READY
 66 constant MISSING-SOURCE
 74 constant UNREADABLE-SOURCE
 
-: START ( -- ptr JSON:writer )
+: START ( -- ^JSON:writer )
    READY @ 0= if
       OUT 256 BUF:N>BLEN BUF:INIT
       1 READY !
@@ -24,21 +24,21 @@ variable READY
    W OUT JSON:WRITE-OPEN-BUF JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
 
-: END$ ( ptr JSON:writer -- ptr u8 n )
+: END$ ( ^JSON:writer -- ^u8 n )
    JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
 
-: ORIGIN ( ptr u8 n -- n n ) {: src:ptr at:n :}
+: ORIGIN ( ^u8 n -- n n ) {: src:^ at:n :}
    1 0 at 0 ?do
       src i + c@ 10 = if drop 1+ i 1+ then
    loop
    at swap - 1+ ;
 
-: TOKEN-END ( ptr u8 n n -- n ) {: src:ptr u:n at:n :}
+: TOKEN-END ( ^u8 n n -- n ) {: src:^ u:n at:n :}
    at begin dup u < if src over + c@ 32 > else false then while
       1+
    repeat ;
 
-: LEX-CODE$ ( -- ptr u8 n ptr u8 n ptr u8 n )
+: LEX-CODE$ ( -- ^u8 n ^u8 n ^u8 n )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = if
       s" E-MALFORMED-REGISTRY-ROW" s" close_primitive_row"
       s" Close the primitive-axiom row opened at this token: a bare row reads EPRIM: name effect... EPRIM;, and a package row reads EPPRIM: package name effect... ECLOSE-PRIVATE." exit
@@ -46,7 +46,7 @@ variable READY
    s" E-UNTERMINATED-STRING" s" close_string"
    s" Close the string literal before the definition ends." ;
 
-: LOADER-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
+: LOADER-CODE$ ( n -- ^u8 n ^u8 n ^u8 n ) {: rc:n :}
    rc MISSING-SOURCE = if
       s" E-MISSING-SOURCE" s" fix_load_path"
       s" No file is at the path this loader word names. Correct the path, or create the file." exit
@@ -63,7 +63,7 @@ public
 \ The code, repair class, suggestion and short message of a statement that
 \ threw the given code. The message is empty for E-STATEMENT-THROW, which only
 \ the throw number tells apart.
-: THROW-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
+: THROW-CODE$ ( n -- ^u8 n ^u8 n ^u8 n ^u8 n ) {: rc:n :}
    rc VERIFY:E-MISSING-SIGNATURE = if
       s" E-MISSING-SIGNATURE" s" add_signature"
       s" Write the definer's stack effect as ( inputs -- outputs ) right after the name, or right after does> for its clause."
@@ -98,8 +98,8 @@ private
 \ source, and the stopped file. A length of 0 kept no name, as for one a definer
 \ generates, and its start is stale: the record places an empty token at the
 \ statement the scan stopped in.
-: DUP-RECORD$ ( n n ptr u8 ptr u8 n -- ptr u8 n )
-   {: at:n u:n src:ptr name:ptr nameu:n :}
+: DUP-RECORD$ ( n n ^u8 ^u8 n -- ^u8 n )
+   {: at:n u:n src:^ name:^ nameu:n :}
    u 0= if VERIFY:TOKEN-BYTE@ else at then {: start:n :}
    src start ORIGIN {: line:n col:n :}
    START
@@ -118,13 +118,13 @@ private
 public
 
 \ Scan the supplied source and render its first lexical fault, or an empty span.
-: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n src:ptr srcu:n :}
+: LEX-RECORD$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: name:^ nameu:n src:^ srcu:n :}
    src srcu LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= if s" " exit then
    LINT-LEX:ERROR-BYTE@ {: at:n :}
    src srcu at TOKEN-END at - {: len:n :}
-   LEX-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+   LEX-CODE$ {: code:^ codeu:n class:^ classu:n sug:^ sugu:n :}
    START
    s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -138,11 +138,11 @@ public
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
-: THROW-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n name:ptr nameu:n src:ptr srcu:n why:ptr whyu:n :}
+: THROW-RECORD$ ( n n ^u8 n ^u8 n ^u8 n -- ^u8 n )
+   {: rc:n at:n name:^ nameu:n src:^ srcu:n why:^ whyu:n :}
    src at ORIGIN {: line:n col:n :}
    src srcu at TOKEN-END {: last:n :}
-   rc THROW-CODE$ nip {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n msgu:n :}
+   rc THROW-CODE$ nip {: code:^ codeu:n class:^ classu:n sug:^ sugu:n msgu:n :}
    START
    s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -162,10 +162,10 @@ public
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
-: LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n len:n src:ptr srcu:n name:ptr nameu:n :}
+: LOADER-RECORD$ ( n n n ^u8 n ^u8 n -- ^u8 n )
+   {: rc:n at:n len:n src:^ srcu:n name:^ nameu:n :}
    src at ORIGIN {: line:n col:n :}
-   rc LOADER-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+   rc LOADER-CODE$ {: code:^ codeu:n class:^ classu:n sug:^ sugu:n :}
    START
    s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -180,7 +180,7 @@ public
    END$ ;
 
 \ The composition keeps the scanned source and stop location after its scope closes.
-: COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )
+: COMPOSE-FAULT-RECORD$ ( rc -- ^u8 n )
    {: rc:rc :}
    rc RC>N E-DISC-UNTERM = if
       VERIFY:SOURCE-COMPOSE-STOPPED$ VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$

@@ -226,7 +226,7 @@ public
 variable ENTRY-TICK-ORDER
 PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
-: ENTRY-TICK-ORDER! ( n ptr u8 -- )
+: ENTRY-TICK-ORDER! ( n ^u8 -- )
    ENTRY-TICK-OWNER !  ENTRY-TICK-ORDER ! ;
 
 private
@@ -384,17 +384,17 @@ TYPED-VARIABLE TICK-REMAINDER bool
    TICK-CONTEXT-ORDER @ DEF-TICK-ORDER !
    TICK-CONTEXT-OWNER @ DEF-TICK-OWNER ! ;
 
-defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
+defer COMPOSE-FILE ( ^u8 n ^u8 n -- )
 
-: SOURCE@ ( -- ptr u8 )
+: SOURCE@ ( -- ^u8 )
    SOURCE-A @ ;
 
-: SOURCE! ( ptr u8 n -- )
+: SOURCE! ( ^u8 n -- )
    SOURCE-U !
    SOURCE-A !
    0 TOKEN-BYTE !  0 REASON-U ! ;
 
-: REASON! ( ptr u8 n -- )
+: REASON! ( ^u8 n -- )
    REASON-U !  REASON-A ! ;
 
 \ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
@@ -423,7 +423,7 @@ variable FLAG-N
       SCAN-C+ ch = if -1 FOUND ! exit then
    repeat ;
 
-: NEXT-RAW ( -- ptr u8 n )
+: NEXT-RAW ( -- ^u8 n )
    SCAN-I @ {: prev:n :}
    SKIP-WS
    SCAN-I @ SOURCE-U @ >= if prev SOURCE-U @ dup CSR-HIT SOURCE@ 0 exit then
@@ -435,8 +435,8 @@ variable FLAG-N
    prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
-: STOP-AT ( ptr u8 n -- )
-   {: at:ptr code:n :}
+: STOP-AT ( ^u8 n -- )
+   {: at:^ code:n :}
    at SOURCE@ - TOKEN-BYTE !
    code throw ;
 
@@ -451,22 +451,22 @@ variable FLAG-N
 : STRING-LEAD? ( n -- bool )
    dup SC-LEAD? swap $2E = or ;
 
-: NORMAL-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: NORMAL-STRING-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 2 <> IF 0 0= 0= EXIT THEN
    a 1 BYTE@ $22 <> IF 0 0= 0= EXIT THEN
    a 0 BYTE@ STRING-LEAD? ;
 
-: ESCAPED-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ESCAPED-STRING-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 3 <> IF 0 0= 0= EXIT THEN
    a 1 BYTE@ $5C <> IF 0 0= 0= EXIT THEN
    a 2 BYTE@ $22 <> IF 0 0= 0= EXIT THEN
    a 0 BYTE@ STRING-LEAD? ;
 
-: STRING-OPENER? ( ptr u8 n -- bool )
+: STRING-OPENER? ( ^u8 n -- bool )
    2dup NORMAL-STRING-OPENER? IF 2drop 0 0= EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
-: PRINT-OPENER? ( ptr u8 n -- bool )
+: PRINT-OPENER? ( ^u8 n -- bool )
    s" .(" CORE-STR= ;
 
 : SKIP-ESCAPED-QUOTE ( -- )
@@ -488,8 +488,8 @@ variable FLAG-N
 
 \ Push the bytes A U a literal of the given kind makes, its text as written
 \ the RAWU bytes at RAW in the bytes being scanned.
-: STR-RING-PUSH ( ptr u8 n n ptr u8 n -- )
-   {: a:ptr u:n kind:n raw:ptr rawu:n :}
+: STR-RING-PUSH ( ^u8 n n ^u8 n -- )
+   {: a:^ u:n kind:n raw:^ rawu:n :}
    STR-LAST-A @ STR-PREV-A !
    STR-LAST-U @ STR-PREV-U !
    a STR-LAST-A !
@@ -506,7 +506,7 @@ variable FLAG-N
 2 constant LIT-OTHER
 3 constant LIT-BAD
 
-: LIT-KIND ( ptr u8 n -- n )
+: LIT-KIND ( ^u8 n -- n )
    drop c@ dup $73 = swap $53 = or IF LIT-PATH EXIT THEN
    LIT-OTHER ;
 
@@ -518,7 +518,7 @@ variable FLAG-N
 \ The payload of the literal just skipped: after its opener and delimiter, pfx
 \ bytes, and before the quote SCAN-I stands one past. The length is negative
 \ when the source ends before the payload starts.
-: SKIPPED-PAYLOAD ( n -- ptr u8 n ) {: pfx:n :}
+: SKIPPED-PAYLOAD ( n -- ^u8 n ) {: pfx:n :}
    SOURCE@ TOKEN-START @ + pfx +
    SCAN-I @ TOKEN-START @ - pfx - 1 - ;
 
@@ -528,7 +528,7 @@ variable FLAG-N
    {: kind:n pfx:n :}
    QUIET-UNTERM
    pfx SKIPPED-PAYLOAD dup 0 < IF 2drop EXIT THEN
-   {: raw:ptr rawu:n :}
+   {: raw:^ rawu:n :}
    raw rawu kind raw rawu STR-RING-PUSH ;
 
 DYNAMIC-BUFFER STR-DEC0 u8
@@ -536,7 +536,7 @@ DYNAMIC-BUFFER STR-DEC1 u8
 variable STR-DEC-TURN
 
 \ The turn's buffer, with room for u bytes and an address for none.
-: STR-DEC-ROOM ( n -- ptr u8 ) {: u:n :}
+: STR-DEC-ROOM ( n -- ^u8 ) {: u:n :}
    STR-DEC-TURN @ 0= IF u 1 + STR-DEC0-RESERVE  0 STR-DEC0 EXIT THEN
    u 1 + STR-DEC1-RESERVE  0 STR-DEC1 ;
 
@@ -545,8 +545,8 @@ variable STR-DEC-TURN
 \ with more bytes than it decodes to, so a decode as long as its payload met no
 \ escape: the answer is the source span, and a diagnostic at
 \ the literal keeps its position.
-: ESC-BYTES ( ptr u8 n -- ptr u8 n bool ) {: src:ptr u:n :}
-   u STR-DEC-ROOM {: dst:ptr :}
+: ESC-BYTES ( ^u8 n -- ^u8 n bool ) {: src:^ u:n :}
+   u STR-DEC-ROOM {: dst:^ :}
    src u dst ESC-DECODE {: k:n ok:bool :}
    k u = ok 0= or IF src u ok EXIT THEN
    1 STR-DEC-TURN @ - STR-DEC-TURN !
@@ -559,14 +559,14 @@ variable STR-DEC-TURN
    {: kind:n :}
    QUIET-UNTERM
    FOUND @ 0= IF EXIT THEN
-   4 SKIPPED-PAYLOAD {: raw:ptr rawu:n :}
+   4 SKIPPED-PAYLOAD {: raw:^ rawu:n :}
    raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
    kind raw rawu STR-RING-PUSH ;
 
 \ A body token is looked up among the live locals, byte for byte, after
 \ comments and before every keyword but `;`. Each body reader resets the table;
 \ a block's end retires its locals.
-DYNAMIC-BUFFER LOCAL-A ptr u8
+DYNAMIC-BUFFER LOCAL-A ^u8
 DYNAMIC-BUFFER LOCAL-U n
 DYNAMIC-BUFFER LOCAL-D n                      \ the block depth that declared it
 variable LOCAL-N
@@ -575,7 +575,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : LOCALS-RESET ( -- )
    0 LOCAL-N !  0 LOCAL-DEPTH ! ;
 
-: LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LOCAL? ( ^u8 n -- bool ) {: a:^ u:n :}
    LOCAL-N @ 0 ?do
       a u i LOCAL-A @ i LOCAL-U @ CORE-STR= if 0 0= unloop exit then
    loop
@@ -583,21 +583,21 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ A file whose first two bytes are `#!` names its interpreter on that line, and
 \ the loader reads the line as a comment: a token at the source's first byte.
-: SHEBANG? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: SHEBANG? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a SOURCE@ <>  u 2 <  or IF 0 0= 0= EXIT THEN
    a c@ $23 =  a 1 + c@ $21 =  and ;
 
 \ The byte that ends the comment a token opens, as the loader reads it: the
 \ line's end after `\`, `)` after `(`; 0 for any other token.
-: COMMENT-END ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: COMMENT-END ( ^u8 n -- n )
+   {: a:^ u:n :}
    u 1 <> IF 0 EXIT THEN
    a c@ 92 = IF 10 EXIT THEN
    a c@ 40 = IF 41 EXIT THEN
    0 ;
 
-: NEXT ( -- ptr u8 n )
+: NEXT ( -- ^u8 n )
    BEGIN
       NEXT-RAW
       dup 0= IF EXIT THEN
@@ -613,12 +613,12 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       CSR-SKIPPED
    AGAIN ;
 
-: NEXT-SCAN ( -- ptr u8 n )
+: NEXT-SCAN ( -- ^u8 n )
    -1 SKIP-STRINGS !
    STR-RING-RESET
    NEXT ;
 
-: NEXT-BODY ( -- ptr u8 n )
+: NEXT-BODY ( -- ^u8 n )
    0 SKIP-STRINGS !
    NEXT ;
 
@@ -644,8 +644,8 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ The buffers grow to hold every run, so a body is never truncated: a dropped
 \ token would make a well-formed, wrong declaration. Both are reserved before
 \ the run changes any state, so a refused reservation leaves the body as it was.
-: BODY-APPEND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: BODY-APPEND ( ^u8 n -- )
+   {: a:^ u:n :}
    a SOURCE@ - {: src:n :}
    src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 74 die THEN
    BODY-U @ u + 1 + {: end:n :}
@@ -659,7 +659,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ The armed addresses hold until the next BODY-APPEND, which may move both
 \ buffers; every check calls BODY$ again before it reads them.
-: BODY$ ( -- ptr u8 n )
+: BODY$ ( -- ^u8 n )
    BODY-U @ 1 max BODY-BUF-RESERVE
    BODY-ROWS @ 2 * 1 max BODY-ROW-RESERVE
    0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ REJECTION:MAP!
@@ -667,16 +667,16 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ The body holds no closer, so the checker is told where it stands and refuses
 \ a structure still open there.
-: DEF-BODY$ ( -- ptr u8 n )
+: DEF-BODY$ ( -- ^u8 n )
    BODY$  TOKEN-A @ TOKEN-U @ REJECTION:CLOSER! ;
 
 \ The signature ahead of the scan, read as the engine reads a definition head's:
 \ from its `(` through its `)`, and whether one opens there. The scan passes it.
 \ One that never closes stops the scan at the given opener with the given code.
-: SCAN-SIG ( ptr u8 n -- ptr u8 n bool )
-   {: opener:ptr unclosed:n :}
+: SCAN-SIG ( ^u8 n -- ^u8 n bool )
+   {: opener:^ unclosed:n :}
    SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
-   {: at:ptr left:n :}
+   {: at:^ left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
    open left = IF at 0 0 0= 0= EXIT THEN
@@ -684,22 +684,22 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
-: MAYBE-SIGNATURE ( -- ptr u8 n )
+: MAYBE-SIGNATURE ( -- ^u8 n )
    TOP-CUR-A @ E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
    2dup BODY-APPEND
-   {: sig:ptr sigu:n :}
+   {: sig:^ sigu:n :}
    sig 1 +  sigu 2 - ;
 
-: SIGNATURE-AT ( ptr u8 -- ptr u8 n )
-   {: opener:ptr :}
+: SIGNATURE-AT ( ^u8 -- ^u8 n )
+   {: opener:^ :}
    opener E-MISSING-SIGNATURE SCAN-SIG 0= IF opener E-MISSING-SIGNATURE STOP-AT THEN
-   {: sig:ptr sigu:n :}
+   {: sig:^ sigu:n :}
    sig 1 +  sigu 2 - ;
 
-: REQUIRE-SIGNATURE ( -- ptr u8 n )
+: REQUIRE-SIGNATURE ( -- ^u8 n )
    TOP-CUR-A @ SIGNATURE-AT ;
 
-: STRING-REST ( ptr u8 n -- ptr u8 n ) {: opener:ptr openeru:n :}
+: STRING-REST ( ^u8 n -- ^u8 n ) {: opener:^ openeru:n :}
    SCAN-I @ {: start:n :}
    opener openeru ESCAPED-STRING-OPENER? IF
       SKIP-ESCAPED-QUOTE
@@ -715,7 +715,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    dup $5A > IF EXIT THEN
    $20 or ;
 
-: STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: STR=CI ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> IF 0 0= 0= EXIT THEN
    0 BEGIN dup u < WHILE
       dup a + c@ FOLD-C
@@ -730,7 +730,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ the loader reads `[:` and `;]` as a nested line before the bracket list
 \ applies. Each matches case-folded, as the engine's keywords ignore case, so
 \ `EXIT` ends the line as `exit` does.
-: WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WRAP-COND-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI
    a u s" else" STR=CI or
    a u s" then" STR=CI or
@@ -739,7 +739,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u s" endof" STR=CI or
    a u s" endcase" STR=CI or ;
 
-: WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WRAP-LOOP-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" begin" STR=CI
    a u s" while" STR=CI or
    a u s" repeat" STR=CI or
@@ -752,7 +752,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u s" leave" STR=CI or
    a u s" exit" STR=CI or ;
 
-: WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WRAP-BRACKET-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" [:" STR=CI
    a u s" ;]" STR=CI or
    a u s" [" STR=CI or
@@ -760,7 +760,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u s" postpone" STR=CI or
    a u s" recurse" STR=CI or ;
 
-: WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WRAP-CTL-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u WRAP-COND-TOK?
    a u WRAP-LOOP-TOK? or
    a u WRAP-BRACKET-TOK? or ;
@@ -772,7 +772,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
 \ discovery reads as loaders, `script-required` not one.
-: LOADER-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
+: LOADER-BIT ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" include" STR=CI IF $01 EXIT THEN
    a u s" included" STR=CI IF $02 EXIT THEN
    a u s" require" STR=CI IF $04 EXIT THEN
@@ -788,10 +788,10 @@ $1F constant LOADER-BITS
 variable SHADOWED
 variable RETIRED
 
-: NAME-DECLARED ( ptr u8 n -- )
+: NAME-DECLARED ( ^u8 n -- )
    LOADER-BIT SHADOWED @ or SHADOWED ! ;
 
-: NAME-RETIRED ( ptr u8 n -- )
+: NAME-RETIRED ( ^u8 n -- )
    LOADER-BIT RETIRED @ or RETIRED ! ;
 
 \ `UNDEFINE-IF-DEFINED` at top level retires the word the literal before it
@@ -799,14 +799,14 @@ variable RETIRED
 \ the walk cannot read, any loader word among them; one holding a bad escape is
 \ the checker's. In a body it retires nothing until the word runs, which no
 \ check does.
-: TOP-RETIRED ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
+: TOP-RETIRED ( ^u8 n n ^u8 n -- ) {: a:^ u:n kind:n lit:^ litu:n :}
    a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
    kind LIT-BAD = IF EXIT THEN
    kind LIT-PATH = IF lit litu NAME-RETIRED EXIT THEN
    RETIRED @ LOADER-BITS or RETIRED ! ;
 
 \ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
-: QUIET-USE ( ptr u8 n -- ) {: a:ptr u:n :}
+: QUIET-USE ( ^u8 n -- ) {: a:^ u:n :}
    a u LOADER-BIT {: bit:n :}
    bit SHADOWED @ and 0<> IF E-DISC-SHADOW u QUIET-REJECT THEN
    bit RETIRED @ and 0<> IF E-DISC-RETIRE u QUIET-REJECT THEN ;
@@ -849,7 +849,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 : BODY-BEND ( -- )
    BODY-BENT @ 0= IF BODY-QUOT @ 1 + BODY-BENT ! THEN ;
 
-: QUOT-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: QUOT-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" [:" STR=CI IF BODY-QUOT @ 1 + BODY-QUOT ! 0 0= EXIT THEN
    a u s" ;]" STR=CI 0= IF 0 0= 0= EXIT THEN
    BODY-QUOT @ 0= IF BODY-BEND 0 0= EXIT THEN
@@ -864,7 +864,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 
 \ A load waiting for the path at a, u bytes, to include (inc 1) or require,
 \ its loader word wu bytes from byte w.
-: PEND-PUSH ( ptr u8 n n n n -- ) {: a:ptr u:n inc:n w:n wu:n :}
+: PEND-PUSH ( ^u8 n n n n -- ) {: a:^ u:n inc:n w:n wu:n :}
    PEND-N @ PEND-END
    {: at:n off:n :}
    off u + 1 + PEND-PATH-RESERVE
@@ -881,13 +881,13 @@ DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
 DYNAMIC-BUFFER SEALS-U n
 variable SEALS-N
 
-: SEAL-LISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SEAL-LISTED? ( ^u8 n -- bool ) {: a:^ u:n :}
    SEALS-N @ 0 ?do
       i SEALS-AT @ SEALS i SEALS-U @ a u STR=CI IF 0 0= unloop EXIT THEN
    loop
    0 0= 0= ;
 
-: SEAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+: SEAL-ADD ( ^u8 n -- ) {: a:^ u:n :}
    SEALS-N @ {: at:n :}
    at 0= IF 0 ELSE at 1 - SEALS-AT @ at 1 - SEALS-U @ + THEN {: off:n :}
    off u + 1 + SEALS-RESERVE
@@ -909,10 +909,10 @@ variable SEALS-N
    CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF at SEAL-STOP THEN ;
 
 \ A head resolves as the definition's does: a part is asked by its path.
-: SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+: SEALED-NAME ( ^u8 n n -- ) {: a:^ u:n at:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF at SEALED-OPEN EXIT THEN
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF at SEAL-STOP THEN
    row NULL-PTR <> IF row XREF:SEALED? IF at SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
@@ -924,7 +924,7 @@ variable SEALS-N
 \ the engine's literal makes it, decoded when the opener is an escaped one
 \ (ESC-BYTES), and its kind. A literal holding a bad escape leaves no text, of
 \ kind LIT-BAD: the checker refuses its body.
-: BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
+: BODY-LIT! ( ^u8 n ^u8 n -- ) {: o:^ ou:n s:^ su:n :}
    BODY-PREV-CLEAR
    su 2 < IF EXIT THEN
    s 1 + su 2 -
@@ -939,7 +939,7 @@ variable SEALS-N
 
 \ What a target predicate answers: the arm an `if` right after it runs in a
 \ body (ARM-TOKEN?), and the flag it pushes at top level (FLAG-LIT).
-: TARGET-GUARD ( ptr u8 n -- n ) {: a:ptr u:n :}
+: TARGET-GUARD ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" HB-TARGET-LINUX?" STR=CI IF HB-TARGET-LINUX? >GUARD EXIT THEN
    a u s" HB-TARGET-MACOS?" STR=CI IF HB-TARGET-MACOS? >GUARD EXIT THEN
    a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
@@ -953,7 +953,7 @@ variable SEALS-N
 
 \ `if`, `else` and `then` on the straight line, true when the token is one. The
 \ three match case-folded, as the engine's keywords do.
-: ARM-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ARM-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI IF
       BODY-GUARD @ GUARD-NONE = IF BODY-BEND 0 0= EXIT THEN
       BODY-ARMS @ 1 + BODY-ARMS !
@@ -968,19 +968,19 @@ variable SEALS-N
 
 \ A token in an arm that never runs, read only for the arm's end: the `else`
 \ of its own target `if` starts the arm that runs, and its `then` closes it.
-: DEAD-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEAD-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
    a u s" if" STR=CI IF BODY-DEAD @ 1 + BODY-DEAD ! EXIT THEN
    a u s" else" STR=CI BODY-DEAD @ 1 = and IF 0 BODY-DEAD ! EXIT THEN
    a u s" then" STR=CI 0= IF EXIT THEN
    BODY-DEAD @ 1 - BODY-DEAD !
    BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
-: BODY-USE ( ptr u8 n -- ) {: a:ptr u:n :}
+: BODY-USE ( ^u8 n -- ) {: a:^ u:n :}
    QUIET @ 0= IF EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or
    BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
 
-: BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: BODY-TOKEN-SEEN ( ^u8 n -- ) {: a:^ u:n :}
    a u BODY-USE
    BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
    BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
@@ -997,43 +997,43 @@ variable SEALS-N
 \ writes after the opener stands for, so it joins past that delimiter: the
 \ checker reads the literal's bytes as the engine makes them, and a names: row
 \ binds the word they name.
-: APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND-STRING ( ^u8 n -- ) {: a:^ u:n :}
    a u BODY-APPEND
-   a u STRING-REST {: s:ptr su:n :}
+   a u STRING-REST {: s:^ su:n :}
    s 1 + su 1 - BODY-APPEND
    a u s su BODY-LIT! ;
 
-: SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
+: SKIP-STRING-REST ( ^u8 n -- ) {: a:^ u:n :}
    a u a u STRING-REST BODY-LIT! ;
 
 \ A parsing keyword's operand is its next token, data whatever it spells; a body
 \ local is looked up first.
-: CHAR-KEYWORD? ( ptr u8 n -- bool )
+: CHAR-KEYWORD? ( ^u8 n -- bool )
    s" char" STR=CI ;
 
-: TOP-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: TOP-PARSER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u CHAR-KEYWORD? IF 0 0= EXIT THEN
    a u s" '" STR=CI ;
 
-: BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BODY-PARSER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" [']" STR=CI IF 0 0= EXIT THEN
    a u s" postpone" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 
-: OPERAND ( -- ptr u8 n )
+: OPERAND ( -- ^u8 n )
    NEXT-RAW dup 0= IF E-MISSING-NAME throw THEN ;
 
 \ A definer takes its name by the same rule, so `: \`, `DEFLINEAR (` and
 \ `create s"` name a word `\`, a type `(` and a word `s"`. A comment or string
 \ rule there would hand the definer a later token instead. With no token left
 \ TOKEN-BYTE stays at the definer.
-: NAME-TOKEN ( -- ptr u8 n )
+: NAME-TOKEN ( -- ^u8 n )
    NEXT-RAW ;
 
 : LOCAL-TOKEN? ( -- bool )
    TOKEN-A @ TOKEN-U @ LOCAL? ;
 
-: LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+: LOCAL-ADD ( ^u8 n -- ) {: a:^ u:n :}
    LOCAL-N @ 1 + LOCAL-A-RESERVE
    LOCAL-N @ 1 + LOCAL-U-RESERVE
    LOCAL-N @ 1 + LOCAL-D-RESERVE
@@ -1043,10 +1043,10 @@ variable SEALS-N
    LOCAL-DEPTH @ LOCAL-N @ LOCAL-D !
    LOCAL-N @ 1 + LOCAL-N ! ;
 
-: BLOCK-OPENER? ( ptr u8 n -- bool )
+: BLOCK-OPENER? ( ^u8 n -- bool )
    SOURCE-SYNTAX:BLOCK-OPENER? ;
 
-: BLOCK-CLOSER? ( ptr u8 n -- bool )
+: BLOCK-CLOSER? ( ^u8 n -- bool )
    SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 : BLOCK-DROP ( -- )
@@ -1056,13 +1056,13 @@ variable SEALS-N
       LOCAL-N @ 1 - LOCAL-N !
    REPEAT ;
 
-: BLOCK-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: BLOCK-STEP ( ^u8 n -- ) {: a:^ u:n :}
    LOCAL-N @ 0= IF EXIT THEN
    a u BLOCK-OPENER? IF LOCAL-DEPTH @ 1 + LOCAL-DEPTH ! EXIT THEN
    a u s" else" STR=CI IF BLOCK-DROP EXIT THEN
    a u BLOCK-CLOSER? IF BLOCK-DROP LOCAL-DEPTH @ 1 - LOCAL-DEPTH ! THEN ;
 
-: GROUP-TOKEN ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: GROUP-TOKEN ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" :}" CORE-STR= IF 0 0= EXIT THEN
    a u LOCAL-ADD
    0 0= 0= ;
@@ -1072,7 +1072,7 @@ variable GROUP-AT
 \ The next token of a group. The source ending inside one stops the statement
 \ it is in, and a quiet composition at the group's `{:`, as discovery's lexer
 \ stops there (E-DISC-UNTERM).
-: GROUP-NEXT ( -- ptr u8 n )
+: GROUP-NEXT ( -- ^u8 n )
    NEXT-RAW dup 0= IF
       QUIET @ INDEX-ON @ or IF GROUP-AT @ TOKEN-BYTE !  E-DISC-UNTERM throw THEN
       E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP
@@ -1087,8 +1087,8 @@ variable GROUP-AT
 \ The path `include` or `require` takes, the word wu bytes long and standing at
 \ TOKEN-BYTE: none is refused at the word, and one past PATH-CAP at itself, as
 \ the word refuses it before the resolver sees it.
-: LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
-   NEXT-RAW {: p:ptr pu:n :}
+: LOADER-OPERAND ( n -- ^u8 n ) {: wu:n :}
+   NEXT-RAW {: p:^ pu:n :}
    pu 0= IF E-DISC-DYNAMIC wu QUIET-REJECT THEN
    pu PATH-CAP > IF E-DISC-CAPACITY pu QUIET-REJECT THEN
    p pu ;
@@ -1096,15 +1096,15 @@ variable GROUP-AT
 \ `include` or `require` in a body, an immediate word the engine refuses there
 \ (E-UNMODELED-IMMEDIATE), loading nothing: a quiet composition still loads
 \ its file, as discovery records it, a superset of what the engine loads.
-: BODY-LOADER-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BODY-LOADER-IMM? ( ^u8 n -- bool ) {: a:^ u:n :}
    QUIET @ 0= IF false EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or ;
 
 \ The path the body's immediate loader word, the current token, takes: the
 \ file waits for the statement's end.
-: IMM-OPERAND ( -- ptr u8 n )
-   TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ {: w:ptr wu:n at:n :}
-   wu LOADER-OPERAND {: p:ptr pu:n :}
+: IMM-OPERAND ( -- ^u8 n )
+   TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ {: w:^ wu:n at:n :}
+   wu LOADER-OPERAND {: p:^ pu:n :}
    p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
    p pu ;
 
@@ -1171,26 +1171,26 @@ variable GROUP-AT
 
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.
-CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
-CAST: IDENTITY-ACTION ( n -- [ n -- ptr u8 n ptr u8 n n ] )
+CAST: SYM-ACTION ( n -- [ ^u8 n -- n ] )
+CAST: IDENTITY-ACTION ( n -- [ n -- ^u8 n ^u8 n n ] )
 CAST: SOURCE-ACTION ( n -- [ n -- n ] )
 CAST: CREATES-ACTION ( n -- [ n -- n ] )
-CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
-CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
-CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
-CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
-CAST: CLAUSE-ACTION ( n -- [ ptr u8 n -- ] )
-CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
-CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
+CAST: CREATED-ACTION ( n -- [ ^u8 n n -- bool ] )
+CAST: DOES-ACTION ( n -- [ ^u8 n ^u8 n ^u8 n -- n ] )
+CAST: RENDERS-ACTION ( n -- [ ^u8 n n -- bool ] )
+CAST: REACH-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
+CAST: CLAUSE-ACTION ( n -- [ ^u8 n -- ] )
+CAST: DECL-ACTION ( n -- [ ^u8 n ^u8 n -- bool ] )
+CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- ] -- n ] )
 
-: WITH-BODY-TICK-ORDER ( ptr u8 n [ -- ] -- bool )
-   {: a:ptr u:n q :}
+: WITH-BODY-TICK-ORDER ( ^u8 n [ -- ] -- bool )
+   {: a:^ u:n q :}
    a u DEF-TICK-ORDER @ DEF-TICK-OWNER @ q
    NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
-CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
-CAST: CTOR-DECL-ACTION ( n -- [ n ptr u8 n n n n -- ] )
+CAST: ARM-ACTION ( n -- [ ^u8 n n n n -- ] )
+CAST: CTOR-DECL-ACTION ( n -- [ n ^u8 n n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 
 \ Each file the composition scans is a visit, numbered from one counter that
@@ -1208,8 +1208,8 @@ DYNAMIC-BUFFER VISIT-PATHS u8           \ their paths, end to end
 variable VISIT-PATHS-U
 DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and length
 
-: VISIT-OPEN ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: VISIT-OPEN ( ^u8 n -- )
+   {: path:^ pathu:n :}
    VISIT-PATHS-U @ {: off:n :}
    VISIT-N @ 0= IF VISIT-NEXT @ 1 + VISIT-FIRST ! THEN
    off pathu + 1 + VISIT-PATHS-RESERVE
@@ -1227,7 +1227,7 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
    row 0 >= row VISIT-N @ < and ;
 
 \ The path visit V's file was resolved to, for a visit this composition made.
-: VISIT-PATH ( n -- ptr u8 n )
+: VISIT-PATH ( n -- ^u8 n )
    VISIT-FIRST @ - 2 * {: row:n :}
    row VISIT-ROWS @ VISIT-PATHS  row 1 + VISIT-ROWS @ ;
 
@@ -1239,14 +1239,14 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
 \ file being scanned: the record the next named registrar retains takes that
 \ spelling and location, until DISARM. Outside a visit there is no file to
 \ name, and the checker's armed state stays its caller's.
-: ARM-UNSEALED ( ptr u8 n n n -- )
-   {: name:ptr nameu:n at:n u:n :}
+: ARM-UNSEALED ( ^u8 n n n -- )
+   {: name:^ nameu:n at:n u:n :}
    VISIT-CUR @ 0= IF EXIT THEN
    name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
 
-: ARM ( ptr u8 n n n -- )
-   {: name:ptr nameu:n at:n u:n :}
+: ARM ( ^u8 n n n -- )
+   {: name:^ nameu:n at:n u:n :}
    name nameu at SEALED-NAME
    name nameu at u ARM-UNSEALED ;
 
@@ -1262,11 +1262,11 @@ public
 \ path and 0 0 for a declaration in no file the composition visited, or with no
 \ location. The strings are borrowed: a word installed here consumes them
 \ before it returns.
-defer ON-CANDIDATE ( ptr u8 n ptr u8 n n n -- )
+defer ON-CANDIDATE ( ^u8 n ^u8 n n n -- )
 
 private
 
-: CANDIDATE-NONE ( ptr u8 n ptr u8 n n n -- )
+: CANDIDATE-NONE ( ^u8 n ^u8 n n n -- )
    2drop 2drop 2drop ;
 
 : CANDIDATE-INIT ( -- )
@@ -1274,13 +1274,13 @@ private
 
 CANDIDATE-INIT
 
-CAST: CURSOR-ACTION ( n -- [ n [ ptr u8 n n n n -- ] -- ] )
-CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
+CAST: CURSOR-ACTION ( n -- [ n [ ^u8 n n n n -- ] -- ] )
+CAST: VISIBLE-ACTION ( n -- [ ^u8 n n [ ^u8 n n n n -- ] -- ] )
 
 \ The checker's candidate: its spelling and the declaration's visit and span,
 \ 0 0 0 for none.
-: CSR-VISIT ( ptr u8 n n n n -- )
-   {: a:ptr u:n v:n s:n e:n :}
+: CSR-VISIT ( ^u8 n n n n -- )
+   {: a:^ u:n v:n s:n e:n :}
    v VISIT-IN? IF a u v VISIT-PATH s e ON-CANDIDATE EXIT THEN
    a u NULL$ 0 0 ON-CANDIDATE ;
 
@@ -1319,20 +1319,20 @@ CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
 \ under (0 when it never was) and FIND-SYM resolves a USE through the open
 \ package's private and public wordlists, the global wordlist and the used
 \ publics - the same chain a body token resolves through.
-: RECORD-SYM? ( ptr u8 n -- n )
+: RECORD-SYM? ( ^u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
 \ classifying, and the two refusals the authoritative resolver owns (a used
 \ public shadowing a global, a tail two used packages both export) belong to the
 \ definition's own check, which resolves the same token straight after.
-: FIND-SYM ( ptr u8 n -- n )
+: FIND-SYM ( ^u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
 public
 
 \ The selected symbol's package, tail and visibility are borrowed from its
 \ checker owner until that owner next interns a symbol.
-: SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
+: SYM-IDENTITY ( n -- ^u8 n ^u8 n n )
    NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
 
 \ The word a symbol is: for an export, the symbol of the word it names, through
@@ -1353,7 +1353,7 @@ private
 \ raw-definer seal the engine's own `trust-raw` gives them.
 : CREATES-SYM? ( n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
-: RECORD-CREATED ( ptr u8 n n -- bool )
+: RECORD-CREATED ( ^u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
 \ Does the token run a word that may define words no source text spells, by one
@@ -1361,7 +1361,7 @@ private
 \ statement runs in, and a definition or a top-level token read after it that
 \ names a word nothing in scope defines is left to the run (CHECK's verdict 2,
 \ or a stretch deferred at the token) instead of refused E-UNDEFINED.
-: RENDERS-MARK? ( ptr u8 n n -- bool )
+: RENDERS-MARK? ( ^u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
 CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
@@ -1370,20 +1370,20 @@ CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 \ Only a reached call whose outputs this reader does not model can introduce
 \ nominal types absent from the source. A modeled declaration checks its own
 \ complete type before it publishes anything.
-: NOMINAL-MARK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: NOMINAL-MARK ( ^u8 n -- )
+   {: a:^ u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? IF EXIT THEN
    a u MARK-NOMINAL RENDERS-MARK? drop ;
 
 \ A call in the body of the TRUSTED: word NAME: the checker adds what the word
 \ the token names may do when it runs to what NAME may do.
-: TRUSTED-REACH ( ptr u8 n ptr u8 n -- )
+: TRUSTED-REACH ( ^u8 n ^u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-REACH-OFF OWNER-XT REACH-ACTION execute ;
 
 \ The does> clause record of the TRUSTED: definer NAME, published as the
 \ engine's `does>` makes it.
-: TRUSTED-CLAUSE ( ptr u8 n -- )
+: TRUSTED-CLAUSE ( ^u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-CLAUSE-OFF OWNER-XT CLAUSE-ACTION execute ;
 
 DYNAMIC-BUFFER DEFINER-SYM n
@@ -1392,7 +1392,7 @@ DYNAMIC-BUFFER DEFINER-AT n
 DYNAMIC-BUFFER DEFINER-GEN bool            \ its own `generates:` row states it
 DYNAMIC-BUFFER DEFINER-SIG u8
 
-: DEFINER-SIG@ ( n -- ptr u8 n ) {: row:n :}
+: DEFINER-SIG@ ( n -- ^u8 n ) {: row:n :}
    row DEFINER-AT @ DEFINER-SIG  row DEFINER-LEN @ ;
 
 : DEFINER-SIG-END ( -- n )
@@ -1438,7 +1438,7 @@ DYNAMIC-BUFFER DEFINER-SIG u8
 \ effect. An empty effect holds no byte: its row's length is 0, which
 \ DEFINER-FIND reads as retired, and no place in DEFINER-SIG, which may hold no
 \ byte yet, is formed for it.
-: DEFINER-ADD ( ptr u8 n bool n -- ) {: sig:ptr sigu:n gen:bool sym:n :}
+: DEFINER-ADD ( ^u8 n bool n -- ) {: sig:^ sigu:n gen:bool sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
    sym DEFINER-ROW
    {: row:n :}
@@ -1467,13 +1467,13 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    sym DEFINER-APPEND drop ;
 
 \ The row of a token's definer + 1, 0 when it is no learned definer.
-: DEFINER-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+: DEFINER-OF ( ^u8 n -- n ) {: a:^ u:n :}
    VERIFY-DEFINER-N @ 0= IF 0 EXIT THEN
    a u FIND-SYM DEFINER-FIND ;
 
 \ The effect a token's definer gives the word it creates, answered as a string
 \ whose ZERO LENGTH means "not a learned definer".
-: DEFINER-EFFECT ( ptr u8 n -- ptr u8 n )
+: DEFINER-EFFECT ( ^u8 n -- ^u8 n )
    DEFINER-OF dup 0= IF drop SOURCE@ 0 EXIT THEN
    1 - DEFINER-SIG@ ;
 
@@ -1484,13 +1484,13 @@ variable DEFER-SEEN
 
 \ WHY is the deferral's cause, which picks its packet's suggestion; 0 when the
 \ site cannot tell.
-CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
-: REPORT-STRETCH ( ptr u8 n n -- )
+CAST: STRETCH-ACTION ( n -- [ ^u8 n -- ] )
+: REPORT-STRETCH ( ^u8 n n -- )
    CHECKER-DEFER-WHY!
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
-: DEFER-AT ( ptr u8 n n -- )
-   {: a:ptr u:n why:n :}
+: DEFER-AT ( ^u8 n n -- )
+   {: a:^ u:n why:n :}
    FFI:SKIP-FUNCTION
    -1 DEFER-SEEN !
    DEFER-REPORT @ IF a u why REPORT-STRETCH THEN ;
@@ -1498,14 +1498,14 @@ CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : QUIET-TYPE-CLEAR ( -- )
    CHECKER-SIG-UNRES-TAKE drop 2drop ;
 : QUIET-TYPE-REPORT ( -- )
-   CHECKER-SIG-UNRES-TAKE {: a:ptr u:n found:bool :}
+   CHECKER-SIG-UNRES-TAKE {: a:^ u:n found:bool :}
    found IF a u DW-TYPE DEFER-AT THEN ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped, when the child reports deferrals, as a
 \ deferred stretch is at the token that opened it.
-CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
-: DEFERRED-BODY$ ( -- ptr u8 n )
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- ^u8 n ] )
+: DEFERRED-BODY$ ( -- ^u8 n )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
@@ -1549,7 +1549,7 @@ variable TICK-BODY-VERDICT
    TICK-BODY-U @ ['] TICK-BODY-CHECK CSR-CHECK ;
 
 : VERIFY-BODY ( -- n )
-   DEF-BODY$ {: ba:ptr bu:n :}
+   DEF-BODY$ {: ba:^ bu:n :}
    ba TICK-BODY-A !  bu TICK-BODY-U !
    ba bu [: TICK-BODY-RUN ;] WITH-BODY-TICK-ORDER
    IF true TICK-REMAINDER ! 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
@@ -1560,7 +1560,7 @@ variable TICK-BODY-VERDICT
 \ the next record belongs to the next definition. What this scan learns about a
 \ definer it READ goes into the table above instead. It takes the definer's
 \ name, which names the clause in the diagnostic of a refused one.
-: CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
+: CHECK-DOES-BODY ( ^u8 n ^u8 n ^u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
 PTR-VARIABLE TICK-DOES-SA
@@ -1613,8 +1613,8 @@ variable DOES-CLAUSE-U
 : TICK-DOES-RUN ( -- )
    TICK-BODY-U @ ['] TICK-DOES-CHECK CSR-CHECK ;
 
-: VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
-   DEF-BODY$ {: ba:ptr bu:n :}
+: VERIFY-DOES-BODY ( ^u8 n ^u8 n -- n ) {: sig:^ sigu:n na:^ nu:n :}
+   DEF-BODY$ {: ba:^ bu:n :}
    ba TICK-BODY-A !  bu TICK-BODY-U !
    sig TICK-DOES-SA !  sigu TICK-DOES-SU !
    na TICK-DOES-NA !  nu TICK-DOES-NU !
@@ -1650,13 +1650,13 @@ variable WRAP-ROW                             \ the definer row the last call na
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
 
-: DEFINER-RECORD-AS ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n na:ptr nu:n :}
+: DEFINER-RECORD-AS ( ^u8 n ^u8 n -- ) {: sig:^ sigu:n na:^ nu:n :}
    sig sigu false na nu RECORD-SYM? DEFINER-ADD ;
 
-: DEFINER-RECORD ( ptr u8 n -- )
+: DEFINER-RECORD ( ^u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
 
-: WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: WRAP-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
    a u DEFINER-OF dup 0<> IF
@@ -1678,19 +1678,19 @@ DYNAMIC-BUFFER TICK-QUAL u8
 
 \ A package's word as a caller outside it spells it, PKG:TAIL, copied into
 \ TICK-QUAL, so it outlives the borrowed bytes of a symbol's identity.
-: QUAL-SPELLING ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+: QUAL-SPELLING ( ^u8 n ^u8 n -- ^u8 n )
+   {: pkg:^ pkgu:n tail:^ tailu:n :}
    pkgu tailu + 1+ TICK-QUAL-RESERVE
    pkg 0 TICK-QUAL pkgu BYTE-COPY
    $3A 0 TICK-QUAL pkgu + c!
    tail 0 TICK-QUAL pkgu 1+ + tailu BYTE-COPY
    0 TICK-QUAL pkgu tailu + 1+ ;
 
-: TICK-RESIDENT-IMM? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: TICK-RESIDENT-IMM? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u tok-imm? 0<> IF true EXIT THEN
    a u FIND-SYM dup 0= IF drop false EXIT THEN
-   SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    vis 1 = IF true EXIT THEN
    pkgu 0= IF false EXIT THEN
    pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
@@ -1715,7 +1715,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ the deferred text. The definition reports one deferral: its clause's only
 \ when the definer's body was not deferred.
 : VERIFY-DOES ( -- bool )
-   TOKEN-A @ {: opener:ptr :}
+   TOKEN-A @ {: opener:^ :}
    false DOES-ACCEPTED !
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
@@ -1735,7 +1735,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    ELSE
       VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
    THEN
-   opener SIGNATURE-AT {: sig:ptr sigu:n :}
+   opener SIGNATURE-AT {: sig:^ sigu:n :}
    BODY-RESET
    LOCALS-RESET
    BEGIN
@@ -1754,7 +1754,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
             clause 2 = IF
                DEFERRED-BODY$ DOES-CLAUSE-U ! DOES-CLAUSE-A !
             THEN
-            TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
+            TOKEN-A @ {: end:^ :}  TOKEN-U @ {: endu:n :}
             DOES-PARENT-BACK
             DOES-CLOSER-A @ TOKEN-A !  DOES-CLOSER-U @ TOKEN-U !
             [: DOES-PARENT-RUN ;] catch {: rc:n :}
@@ -1785,40 +1785,40 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ and answers whether it retained it. A name its scope already holds keeps that
 \ record either way, so only this answer tells a redeclaration the registrar
 \ retained from one it refused.
-: DECL-SIGNATURE ( ptr u8 n ptr u8 n -- bool )
+: DECL-SIGNATURE ( ^u8 n ^u8 n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
 
-TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
+TRUSTED: TRUST-SIGNATURE ( ^u8 n ^u8 n -- )
    TRUST ;
 
 \ The cast declarer's registrar: UNSAFE-TOK? rejects `checker-defcast` inside a
 \ checked body, so the one place allowed to name it is a declared boundary word.
 \ The refusals it runs are the engine's own, so a cast this pre-pass accepts is
 \ exactly a cast the engine accepts.
-TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
+TRUSTED: DEFCAST-SIGNATURE ( ^u8 n ^u8 n -- )
    CHECKER-DEFCAST ;
 
 \ The `generates:` row's checks: UNSAFE-TOK? rejects `checker-generates` inside
 \ a checked body. The refusals are the engine's own, so a row this pre-pass
 \ accepts is a row the engine accepts.
-TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
+TRUSTED: GENERATES-SIGNATURE ( ^u8 n ^u8 n bool -- n n )
    CHECKER-GENERATES ;
 
 \ A `parses:` row's checks: UNSAFE-TOK? rejects `checker-parses-row` inside a
 \ checked body. The refusals are the engine's own, so a row this pre-pass keeps
 \ is a row the load accepts.
-TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
+TRUSTED: PARSES-CHECK ( ^u8 n ^u8 n ^u8 n bool -- n n n )
    CHECKER-PARSES-ROW ;
 
 \ A `names:` row's check: UNSAFE-TOK? rejects `checker-names-row` inside a
 \ checked body. The checker marks the word the row names, so this pre-pass
 \ keeps nothing of the row.
-TRUSTED: NAMES-CHECK ( ptr u8 n ptr u8 n -- )
+TRUSTED: NAMES-CHECK ( ^u8 n ^u8 n -- )
    CHECKER-NAMES-ROW ;
 
 \ A top-level literal that names a word, published as a use of it, on the same
 \ boundary: UNSAFE-TOK? rejects `checker-named-use` inside a checked body.
-TRUSTED: NAMED-USE ( ptr u8 n -- )
+TRUSTED: NAMED-USE ( ^u8 n -- )
    CHECKER-NAMED-USE ;
 
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
@@ -1834,11 +1834,11 @@ variable DUPLICATE-AT
 variable DUPLICATE-U
 
 \ Whether the path is the subject's, whose bytes are the supplied ones.
-: COMPOSE-SUBJ? ( ptr u8 n -- bool )
+: COMPOSE-SUBJ? ( ^u8 n -- bool )
    COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= ;
 
-: COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
+: COMPOSE-DIAG$ ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    path pathu COMPOSE-SUBJ? IF COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT THEN
    path pathu ;
 
@@ -1850,7 +1850,7 @@ public
 \ load, and DUPLICATE answers the name. A word installed in its place that
 \ returns has reported the duplicate: the scan counts it in REJECTION:TALLY, as
 \ a refused definition, skips the definition and goes on.
-defer ON-DUPLICATE ( n n ptr u8 n bool -- )
+defer ON-DUPLICATE ( n n ^u8 n bool -- )
 
 \ What a reported definition is, as the path that declared it knows it: a word
 \ that runs code (`:`, `TRUSTED:`, `defer`, a cast, a field, `FUNCTION:`), a
@@ -1872,7 +1872,7 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ where the token that declared it starts and ends in the file FILE$
 \ names; its class, one of the five above; and its file visit. The strings are
 \ borrowed: a word installed here consumes them before it returns.
-defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+defer ON-DEFINITION ( ^u8 n ^u8 n n ^u8 n n n n n -- )
 
 \ A use the checker bound, in the subject and in every file a load reads, each
 \ time it is read: where the use starts and ends in the file FILE$ names,
@@ -1883,7 +1883,7 @@ defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 \ and declaration visit. The path is borrowed: a word installed here consumes
 \ it before it returns. A use bound to a word with no declaration location has
 \ an empty path, zero target bytes and visit -1.
-defer ON-USE ( n n ptr u8 n n n n n -- )
+defer ON-USE ( n n ^u8 n n n n n -- )
 
 \ A use the checker bound, in the file FILE$ names, as its scan reads it: where
 \ the use starts and ends there, at the base TOKEN-BYTE@ counts from, and the
@@ -1910,10 +1910,10 @@ defer ON-BINDING ( n n n -- )
 \ installed here consumes it before it returns.
 0 constant LOAD-READ
 1 constant LOAD-HELD
-defer ON-LOADER ( n n ptr u8 n n -- )
+defer ON-LOADER ( n n ^u8 n n -- )
 
 \ The file being scanned, named as its packets name it.
-: FILE$ ( -- ptr u8 n )
+: FILE$ ( -- ^u8 n )
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ COMPOSE-DIAG$ ;
 
 \ Whether the file being scanned is the subject, the composition's first
@@ -1928,14 +1928,14 @@ defer ON-LOADER ( n n ptr u8 n n -- )
 \ subject first, before anything in it is reported. Both strings are borrowed
 \ and read-only: a word installed here consumes them before it returns and
 \ writes neither.
-defer ON-FILE ( ptr u8 n ptr u8 n -- )
+defer ON-FILE ( ^u8 n ^u8 n -- )
 
 \ The bytes supplied for the file other than the subject at this canonical
 \ path, as the loader resolved it, and true: a load of the file scans them in
 \ place of its bytes on disk, which it still needs to resolve. Else false, and
 \ the load reads the disk. The bytes are borrowed and read-only, and stay so
 \ while the composition runs.
-defer SUPPLIED ( ptr u8 n -- ptr u8 n bool )
+defer SUPPLIED ( ^u8 n -- ^u8 n bool )
 
 private
 
@@ -1943,8 +1943,8 @@ private
 \ counterparts do no arbitrary execution.
 \ A word-backed loader or library definer has no such structural guarantee:
 \ even the original include/require entry can call replaced source providers.
-: TICK-NATIVE-DEFINER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: TICK-NATIVE-DEFINER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" package" STR=CI  a u s" ;package" STR=CI or
    a u s" public" STR=CI or  a u s" private" STR=CI or
    a u s" using" STR=CI or  a u s" ;using" STR=CI or
@@ -1955,7 +1955,7 @@ private
    a u s" defer" STR=CI or  a u s" create" STR=CI or
    a u s" variable" STR=CI or  a u s" constant" STR=CI or ;
 
-: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+: DEFINITION-NONE ( ^u8 n ^u8 n n ^u8 n n n n n -- )
    2drop 2drop 2drop drop 2drop 2drop ;
 
 : DEFINITION-INIT ( -- )
@@ -1963,21 +1963,21 @@ private
 
 DEFINITION-INIT
 
-: FILE-NONE ( ptr u8 n ptr u8 n -- )  2drop 2drop ;
+: FILE-NONE ( ^u8 n ^u8 n -- )  2drop 2drop ;
 
 : FILE-INIT ( -- )
    ['] FILE-NONE is ON-FILE ;
 
 FILE-INIT
 
-: SUPPLIED-NONE ( ptr u8 n -- ptr u8 n bool )  2drop NULL$ false ;
+: SUPPLIED-NONE ( ^u8 n -- ^u8 n bool )  2drop NULL$ false ;
 
 : SUPPLIED-INIT ( -- )
    ['] SUPPLIED-NONE is SUPPLIED ;
 
 SUPPLIED-INIT
 
-: USE-NONE ( n n ptr u8 n n n n n -- )
+: USE-NONE ( n n ^u8 n n n n n -- )
    2drop 2drop 2drop 2drop ;
 
 : USE-INIT ( -- )
@@ -1992,7 +1992,7 @@ USE-INIT
 
 BINDING-INIT
 
-: LOADER-NONE ( n n ptr u8 n n -- )
+: LOADER-NONE ( n n ^u8 n n -- )
    2drop 2drop drop ;
 
 : LOADER-INIT ( -- )
@@ -2001,19 +2001,19 @@ BINDING-INIT
 LOADER-INIT
 
 variable PRIM-OPEN-READY
-defer ENGINE-TARGET ( n -- ptr u8 n n n bool )
+defer ENGINE-TARGET ( n -- ^u8 n n n bool )
 
-: ENGINE-TARGET-NONE ( n -- ptr u8 n n n bool )
+: ENGINE-TARGET-NONE ( n -- ^u8 n n n bool )
    drop NULL$ 0 0 false ;
 
 : ENGINE-TARGET-INIT ( -- ) ['] ENGINE-TARGET-NONE is ENGINE-TARGET ;
 ENGINE-TARGET-INIT
 
-: PRIM-TARGET ( n -- ptr u8 n n n bool )
+: PRIM-TARGET ( n -- ^u8 n n n bool )
    {: row:n :}
-   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
    ready 0= if NULL$ 0 0 false exit then
-   path pathu SUPPLIED {: a:ptr u:n open:bool :}
+   path pathu SUPPLIED {: a:^ u:n open:bool :}
    open if
       PRIM-OPEN-READY @ 0= if
          1 PRIM-OPEN-READY !
@@ -2041,13 +2041,13 @@ ENGINE-TARGET-INIT
    s e COLON-NAME-USE? IF EXIT THEN
    s e sym ON-BINDING
    v -2 <= IF
-      -2 v - PRIM-TARGET drop {: path:ptr pathu:n at:n end:n :}
+      -2 v - PRIM-TARGET drop {: path:^ pathu:n at:n end:n :}
       s e
       path pathu at end sym v ON-USE
       EXIT
    THEN
    v 0= IF
-      sym ENGINE-TARGET {: path:ptr pathu:n at:n end:n found:bool :}
+      sym ENGINE-TARGET {: path:^ pathu:n at:n end:n found:bool :}
       found IF
          s e
          path pathu at end sym -1 ON-USE
@@ -2060,7 +2060,7 @@ ENGINE-TARGET-INIT
       s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
-: DUPLICATE-STOP ( n n ptr u8 n bool -- )
+: DUPLICATE-STOP ( n n ^u8 n bool -- )
    drop 2drop
    DUPLICATE-U !  DUPLICATE-AT !
    E-DUP-DEFINITION throw ;
@@ -2073,13 +2073,13 @@ DUPLICATE-INIT
 : DUPLICATE! ( n -- )
    {: u:n :}
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   {: path:ptr pathu:n :}
+   {: path:^ pathu:n :}
    TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
    1 REJECTION:TALLY +! ;
 
 \ A name that lands in a sealed package stops first.
-: REFUSE-DUPLICATE ( ptr u8 n n -- bool )
-   {: a:ptr u:n at:n :}
+: REFUSE-DUPLICATE ( ^u8 n n -- bool )
+   {: a:^ u:n at:n :}
    a u at SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
@@ -2090,24 +2090,24 @@ DUPLICATE-INIT
 \ published. A record of the name from before the replay that has the other
 \ shape is no loaded twin of it, and the live engine refuses the definition
 \ there.
-: REFUSE-SHAPE ( ptr u8 n n bool -- bool )
-   {: a:ptr u:n at:n clause:bool :}
+: REFUSE-SHAPE ( ^u8 n n bool -- bool )
+   {: a:^ u:n at:n clause:bool :}
    a u clause CHECKER-CERT-SHAPE-DUP? 0= IF false EXIT THEN
    at TOKEN-BYTE !
    u DUPLICATE!
    true ;
 
-: PUBLIC-WID ( ptr u8 n -- n )
-   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
+: PUBLIC-WID ( ^u8 n -- n )
+   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:^ :}
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 
-: ROW-SEALED? ( ptr u8 n -- bool )
-   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
+: ROW-SEALED? ( ^u8 n -- bool )
+   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:^ :}
    row XREF-FOUND? 0= IF false EXIT THEN
    row XREF:SEALED? ;
 
-: SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+: SEALED-PACKAGE ( ^u8 n n -- ) {: a:^ u:n at:n :}
    a u SEAL-LISTED? IF at SEAL-STOP THEN
    a u ROW-SEALED? IF at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
@@ -2117,51 +2117,51 @@ DUPLICATE-INIT
 \ is the record that registrar retained. A declaration DECL-SIGNATURE registers
 \ has no guard: the record found for its name is that declaration's only when
 \ DECL-SIGNATURE answered true, so its callers ask only then.
-: RETAINED-SYM ( ptr u8 n -- n )
-   {: name:ptr nameu:n :}
+: RETAINED-SYM ( ^u8 n -- n )
+   {: name:^ nameu:n :}
    name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
    name nameu RECORD-SYM? ;
 
-: DEFINED ( ptr u8 n ptr u8 n ptr u8 n n n n -- )
-   {: kind:ptr kindu:n name:ptr nameu:n eff:ptr effu:n at:n end:n class:n :}
+: DEFINED ( ^u8 n ^u8 n ^u8 n n n n -- )
+   {: kind:^ kindu:n name:^ nameu:n eff:^ effu:n at:n end:n class:n :}
    name nameu RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
    kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
-: DEFINED-HERE ( ptr u8 n ptr u8 n n n -- )
-   {: name:ptr nameu:n eff:ptr effu:n at:n class:n :}
+: DEFINED-HERE ( ^u8 n ^u8 n n n -- )
+   {: name:^ nameu:n eff:^ effu:n at:n class:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu eff effu at at nameu + class DEFINED ;
 
 \ The effect of NAME's retained newest record, or empty when there is none or
 \ TEXT cannot say it; it lies past TEXT-LEN, where the next TEXT write lands.
-: MADE-EFFECT ( ptr u8 n -- ptr u8 n )
+: MADE-EFFECT ( ^u8 n -- ^u8 n )
    RETAINED-SYM {: sym:n :}
    sym 0= IF s" " EXIT THEN
    sym USIG-NEWEST {: rec1:n :}
    rec1 0= IF s" " EXIT THEN
    REJECTION:TEXT-LEN @ RQM @ REJECTION:DEST @ {: base:n qm:n dst:n :}
-   rec1 1 - REND-RECORD-EFFECT {: a:ptr u:n :}
+   rec1 1 - REND-RECORD-EFFECT {: a:^ u:n :}
    RQM @ {: unsaid:n :}
    base REJECTION:TEXT-LEN !  qm RQM !  dst REJECTION:DEST !
    unsaid 0<> IF s" " EXIT THEN
    a base +  u base - ;
 
 \ DEFINED-HERE for a word a definer made, with the effect its record carries.
-: DEFINED-MADE ( ptr u8 n n n -- )
-   {: name:ptr nameu:n at:n class:n :}
+: DEFINED-MADE ( ^u8 n n n -- )
+   {: name:^ nameu:n at:n class:n :}
    name nameu  name nameu MADE-EFFECT  at class DEFINED-HERE ;
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ Registers the effect for the word the next token names with TVK-RAW type
 \ vars, so its cell cannot launder into a nominal atom or family.
-: RAW-TRUST-NEXT ( ptr u8 n n -- )
-   {: sig:ptr sigu:n class:n :}
+: RAW-TRUST-NEXT ( ^u8 n n -- )
+   {: sig:^ sigu:n class:n :}
    NAME-TOKEN
    dup 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @
-   {: name:ptr nameu:n at:n :}
+   {: name:^ nameu:n at:n :}
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
@@ -2174,7 +2174,7 @@ DUPLICATE-INIT
 \ leave the scan exactly where it was.
 : CREATED-TRUST-NEXT? ( n -- bool )
    {: dsym:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
@@ -2186,9 +2186,9 @@ DUPLICATE-INIT
    name nameu at DEF-STORAGE DEFINED-MADE
    0 0= ;
 
-: TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
-   {: name:ptr nameu:n at:n :}
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+: TRUST-DEFER-SIGNATURE ( ^u8 n n -- )
+   {: name:^ nameu:n at:n :}
+   REQUIRE-SIGNATURE {: sig:^ sigu:n :}
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
@@ -2199,7 +2199,7 @@ DUPLICATE-INIT
    ELSE QUIET-TYPE-REPORT THEN ;
 
 : TRUST-DEFER ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
@@ -2208,9 +2208,9 @@ variable TRUSTED-DOES
 
 \ A token of the trusted body NAME before its `does>`, asked of the checker
 \ when it may call a word.
-: TRUSTED-CALL ( ptr u8 n -- ) {: na:ptr nu:n :}
+: TRUSTED-CALL ( ^u8 n -- ) {: na:^ nu:n :}
    TRUSTED-DOES @ LOCAL-TOKEN? or IF EXIT THEN
-   TOKEN-A @ TOKEN-U @ {: a:ptr u:n :}
+   TOKEN-A @ TOKEN-U @ {: a:^ u:n :}
    a u s" {:" CORE-STR=  a u BODY-PARSER? or  a u STRING-OPENER? or IF EXIT THEN
    a u num-parse nip nip IF EXIT THEN
    a u WRAP-CTL-TOK? IF EXIT THEN
@@ -2224,7 +2224,7 @@ variable TRUSTED-DOES
 \ checks no token of the body. A `does>` inside a string is no clause. What
 \ running the word may do is still what its calls may do, and the tokens before
 \ its `does>` run when it does.
-: SCAN-TRUSTED-BODY ( ptr u8 n bool -- ) {: na:ptr nu:n kept:bool :}
+: SCAN-TRUSTED-BODY ( ^u8 n bool -- ) {: na:^ nu:n kept:bool :}
    BODY-LOAD-RESET
    LOCALS-RESET
    0 TRUSTED-DOES !
@@ -2252,14 +2252,14 @@ variable TRUSTED-DOES
 \ at its `;`: a later definition of that name is refused and a `trust` of it
 \ binds, as in the live load.
 : TRUSTED-DEFINITION ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
       REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   REQUIRE-SIGNATURE {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2274,12 +2274,12 @@ variable TRUSTED-DOES
 \ Registration goes through the certifying registrar, not DECL-SIGNATURE, so
 \ an illegal retype is refused here too and not merely recorded.
 : CAST-DECLARATION ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   REQUIRE-SIGNATURE {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
@@ -2288,11 +2288,11 @@ variable TRUSTED-DOES
 \ A `linear:` row is certified by the engine's own registrar, so a mint or
 \ erase this pre-pass accepts is exactly one the engine accepts.
 : LINEAR-DECLARATION ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   REQUIRE-SIGNATURE {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
    DISARM
@@ -2306,7 +2306,7 @@ variable TRUSTED-DOES
    rc throw ;
 
 : UNDEFINE-WORD ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
@@ -2320,9 +2320,9 @@ variable TRUSTED-DOES
 \ the checker, the seal on the path.
 : RECORD-PACKAGE ( -- )
    CHECKER-RESOLVE:PART-GUARD
-   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu CHECKER-RESOLVE:PART-PATH {: pa:ptr pu:n :}
+   name nameu CHECKER-RESOLVE:PART-PATH {: pa:^ pu:n :}
    pa pu CHECKER-PACKAGE
    pa pu at SEALED-PACKAGE ;
 
@@ -2341,7 +2341,7 @@ variable TRUSTED-DOES
 \ owns the replay's using depth, so these two rows are the only thing that
 \ moves it.
 : RECORD-USING ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-USING-PUSH ;
 
@@ -2354,7 +2354,7 @@ variable TRUSTED-DOES
 \ standing in for the nominal.
 DYNAMIC-BUFFER NOM-TAIL u8
 
-: MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: MANGLE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u NOM-TAIL-RESERVE
    0 BEGIN dup u < WHILE
       dup a + c@ FOLD-C  over NOM-TAIL c!
@@ -2367,10 +2367,10 @@ DYNAMIC-BUFFER NOM-TAIL u8
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
 : RECORD-DEFTYPE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
-   name nameu MANGLE {: tail:ptr tailu:n :}
+   name nameu MANGLE {: tail:^ tailu:n :}
    REJECTION:TALLY @ {: refused:n :}
    tail tailu name nameu CHECKER-DEFFAMILY
    REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
@@ -2386,15 +2386,15 @@ DYNAMIC-BUFFER NOM-TAIL u8
    at nameu CAST-DEFINED ;
 
 : RECORD-DEFLINEAR ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu TYPE-RESERVED? IF s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
-: VALUE-RECORD-END? ( ptr u8 n -- bool )
+: VALUE-RECORD-END? ( ^u8 n -- bool )
    s" END-VALUE-RECORD" STR=CI ;
 
-: SUMTYPE-END? ( ptr u8 n -- bool )
+: SUMTYPE-END? ( ^u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
 
 \ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
@@ -2409,8 +2409,8 @@ DYNAMIC-BUFFER SUM-VAR-AT n
 variable SUM-VAR-N
 variable SUM-VAR-NEXT
 
-: SUM-VAR-STEP ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SUM-VAR-STEP ( ^u8 n -- )
+   {: a:^ u:n :}
    SUM-VAR-NEXT @ IF
       SUM-VAR-N @ 1+ SUM-VAR-AT-RESERVE
       TOKEN-BYTE @ SUM-VAR-N @ SUM-VAR-AT !
@@ -2427,7 +2427,7 @@ variable SUM-VAR-NEXT
       start i + {: vid:n :}
       vid TFAM:SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
-         vid TFAM:SUMV-NAME$ {: name:ptr nameu:n :}
+         vid TFAM:SUMV-NAME$ {: name:^ nameu:n :}
          i SUM-VAR-AT @ {: at:n :}
          sym name nameu VISIT-CUR @ at at nameu +
             NCOMP-DISPATCH:DECL-VERIFY-CTOR-DECL-OFF OWNER-XT CTOR-DECL-ACTION execute
@@ -2437,10 +2437,10 @@ variable SUM-VAR-NEXT
 
 \ A declaration name or body token, as its definer's parse-name reads one: `\` and `(`
 \ are tokens there, not comments (`ENUM colr red \ note` refuses 7101 at `\`).
-: DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
+: DECL-TOKEN ( -- ^u8 n ) NEXT-RAW ;
 
-: RECORD-SUMTYPE-BODY ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: RECORD-SUMTYPE-BODY ( ^u8 n -- )
+   {: name:^ nameu:n :}
    0 SUM-VAR-N !  0 SUM-VAR-NEXT !
    BODY-RESET
    BEGIN
@@ -2459,13 +2459,13 @@ variable SUM-VAR-NEXT
 : RECORD-SUMTYPE ( -- )
    NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
-: ENUM-END? ( ptr u8 n -- bool )
+: ENUM-END? ( ^u8 n -- bool )
    s" ;ENUM" STR=CI ;
 
 \ The body keeps its ;ENUM, which the front end parses itself; one the input
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
-   DECL-TOKEN {: name:ptr nameu:n :}
+   DECL-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
@@ -2475,13 +2475,13 @@ variable SUM-VAR-NEXT
    name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
-: STRUCTURE-DECL-END? ( ptr u8 n -- bool )
+: STRUCTURE-DECL-END? ( ^u8 n -- bool )
    s" ;STRUCTURE" STR=CI ;
 
 \ The replay registers MAKE/UNMAKE, so `FAMILY:MAKE` resolves later in this
 \ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
 : RECORD-STRUCTURE-DECL ( -- )
-   DECL-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu at SEALED-NAME
    BODY-RESET
@@ -2503,7 +2503,7 @@ PTR-VARIABLE STG-START
 PTR-VARIABLE STG-TYPE-A
 variable STG-TYPE-U
 
-: SCAN-LINE-TOKEN ( -- ptr u8 n )
+: SCAN-LINE-TOKEN ( -- ^u8 n )
    SCAN-I @ {: end:n :}
    SKIP-WS
    SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF SOURCE@ 0 EXIT THEN
@@ -2511,12 +2511,12 @@ variable STG-TYPE-U
 
 : SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended IF 0 0= 0= EXIT THEN
-   SCAN-LINE-TOKEN {: a:ptr u:n :}
+   SCAN-LINE-TOKEN {: a:^ u:n :}
    u 0= IF 0 0= 0= EXIT THEN
    a STG-A !  u STG-U !
    0 0= ;
 
-: SCAN-STORAGE-TYPE ( -- ptr u8 n )
+: SCAN-STORAGE-TYPE ( -- ^u8 n )
    SCAN-LINE-TOKEN STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
@@ -2526,7 +2526,7 @@ variable STG-TYPE-U
 \ A refused name, malformed or a duplicate, is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot
 \ be interpreted as a new statement.
-: SCAN-STORAGE-NAME ( -- ptr u8 n )
+: SCAN-STORAGE-NAME ( -- ^u8 n )
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    2dup NAME-DECLARED
@@ -2538,15 +2538,15 @@ variable STG-TYPE-U
 \ The load stops at a count token it refuses to resolve, refused there as a
 \ top-level token, so the declaration after it is read but not judged: its
 \ count is refused once.
-: COUNT-REFUSED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: COUNT-REFUSED? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0<>  a TOP-REFUSED @ =  and ;
 
 : RECORD-LAYOUT-BUFFER ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
@@ -2558,19 +2558,19 @@ variable STG-TYPE-U
 \ and a type it cannot size goes unreported until the run. No count token: the
 \ count arrives at the bind.
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-BUFFER ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
@@ -2578,19 +2578,19 @@ variable STG-TYPE-U
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-BYTE-BUFFER ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
@@ -2599,10 +2599,10 @@ variable STG-TYPE-U
 
 
 : RECORD-CWORK-SPAN ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
@@ -2610,18 +2610,18 @@ variable STG-TYPE-U
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-SLOT ( -- )
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFSLOT
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-CWORK-VARIABLE ( -- )
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFCWORK-VARIABLE
    DISARM
@@ -2633,9 +2633,9 @@ variable STG-TYPE-U
 \ three is E-UNDEFINED. No count token: a dynamic buffer's extent is set at run
 \ time.
 : RECORD-DYNAMIC-BUFFER ( -- )
-   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
@@ -2643,25 +2643,25 @@ variable STG-TYPE-U
 
 \ NAME, read from byte AT, names no word itself, so a taken derived word is the
 \ duplicate, refused at NAME.
-: ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
-   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+: ARENA-WORD-FREE? ( ^u8 n ^u8 n n -- bool )
+   {: name:^ nameu:n sfx:^ sfxu:n at:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   SB$ {: gen:ptr genu:n :}
+   SB$ {: gen:^ genu:n :}
    gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
    at TOKEN-BYTE !  nameu DUPLICATE!  false ;
 
 \ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
-: ARENA-WORDS-FREE? ( ptr u8 n n -- bool )
-   {: name:ptr nameu:n at:n :}
+: ARENA-WORDS-FREE? ( ^u8 n n -- bool )
+   {: name:^ nameu:n at:n :}
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
    name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? ;
 
 \ Whether Q's private section, which the qualified NAME Q:TAIL never writes,
 \ holds no TAIL+SFX; NAME is read from byte AT.
-: ARENA-PRIVATE-FREE? ( ptr u8 n ptr u8 n n -- bool )
-   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+: ARENA-PRIVATE-FREE? ( ^u8 n ^u8 n n -- bool )
+   {: name:^ nameu:n sfx:^ sfxu:n at:n :}
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= IF true EXIT THEN
@@ -2672,10 +2672,10 @@ variable STG-TYPE-U
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
-   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
@@ -2700,10 +2700,10 @@ variable STG-TYPE-U
 \ HEAP's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
 : RECORD-HEAP ( -- )
-   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
-   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
    name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
@@ -2734,13 +2734,13 @@ variable STG-TYPE-U
 
 \ A refusal stops at the name, at the field the checker refuses or, with no
 \ field, at END-VALUE-RECORD; a checker refusal's message is its reason.
-: VALUE-RECORD-ADD ( ptr u8 n n -- )
-   {: name:ptr nameu:n byte:n :}
+: VALUE-RECORD-ADD ( ^u8 n n -- )
+   {: name:^ nameu:n byte:n :}
    name nameu TYPE-RESERVED? IF
       byte TOKEN-BYTE !  s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw
    THEN
    name nameu BODY$ CHECKER-TRY-RECORD
-   {: at:n msg:ptr msgu:n :}
+   {: at:n msg:^ msgu:n :}
    msgu 0= IF EXIT THEN
    at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
    msg msgu REASON!
@@ -2749,7 +2749,7 @@ variable STG-TYPE-U
 \ A record the input ends inside is refused in the declaration packet, at its
 \ name, as an unclosed SUMTYPE is.
 : RECORD-VALUE-RECORD ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: byte:n :}
    BODY-RESET
@@ -2782,8 +2782,8 @@ variable STG-TYPE-U
 \ can tell whether the run defines the word or the name is misspelt. It is
 \ deferred at its name and records nothing, so each use of the name stays the
 \ run's too.
-CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
-: TRUST-UNSEEN? ( ptr u8 n -- bool )
+CAST: TRUST-ACTION ( n -- [ ^u8 n -- bool ] )
+: TRUST-UNSEEN? ( ^u8 n -- bool )
    CHECKER-OWNER-ABI:VERIFY-TRUST-OFF OWNER-XT TRUST-ACTION execute ;
 
 : RECORD-TRUST ( -- )
@@ -2814,33 +2814,33 @@ DYNAMIC-BUFFER PRS-TERMS u8
 : PRS-OWNER-BASE ( -- n )
    NCOMP-DISPATCH:DECL-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
-CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
-: TOP-BINDING ( ptr u8 n -- n n n )
+CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
+: TOP-BINDING ( ^u8 n -- n n n )
    CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
 
-CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
-: TOP-VERDICT ( ptr u8 n bool -- n )
+CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
+: TOP-VERDICT ( ^u8 n bool -- n )
    NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
 
 \ A replaced or unlocated engine word has no live origin and names no use.
-: ENGINE-ORIGIN-USE ( ptr u8 n n n -- )
-   {: a:ptr u:n at:n sym:n :}
+: ENGINE-ORIGIN-USE ( ^u8 n n n -- )
+   {: a:^ u:n at:n sym:n :}
    sym 0= IF EXIT THEN
    sym ENGINE-ORIGIN:TARGET
-   {: path:ptr pathu:n start:n end:n name:ptr nameu:n found:bool :}
+   {: path:^ pathu:n start:n end:n name:^ nameu:n found:bool :}
    found IF at dup u + sym 0 0 0 USE-SEEN THEN ;
 
 \ A definer's own `generates:` row declares the text its calls render: the row
 \ this scan read or, for a definer it never read, the engine's. A wrapper has
 \ none: it states nothing about the rest of its body.
-: DECLARED-RENDER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: DECLARED-RENDER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u DEFINER-OF dup 0<> IF 1 - DEFINER-GEN @ EXIT THEN drop
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
 
 \ Rendered text no row declares is source this scan never reads.
-: RENDER-GAP ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: RENDER-GAP ( ^u8 n -- )
+   {: a:^ u:n :}
    a u DECLARED-RENDER? IF EXIT THEN
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-DEFER and 0<>
    IF a u DW-DEFER DEFER-AT EXIT THEN
@@ -2849,7 +2849,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ A call of a `names:` word right after an `s"` literal is a use of the word
 \ the literal names, at the bytes between its quotes. A literal written with an
 \ escape binds nothing: its slot's bytes are shorter than its text.
-: TOP-NAMED ( ptr u8 n -- )
+: TOP-NAMED ( ^u8 n -- )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
    STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
    STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
@@ -2857,13 +2857,13 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 
 \ An unmodelled call makes the rest of the source uncertain, declarations the
 \ source index has already seen included.
-: TOP-OPAQUE ( ptr u8 n n -- )
-   {: a:ptr u:n why:n :}
+: TOP-OPAQUE ( ^u8 n n -- )
+   {: a:^ u:n why:n :}
    a u why DEFER-AT
    true TICK-REMAINDER ! ;
 
-: BOUND-CALL ( ptr u8 n bool -- )
-   {: a:ptr u:n renders:bool :}
+: BOUND-CALL ( ^u8 n bool -- )
+   {: a:^ u:n renders:bool :}
    renders IF a u RENDER-GAP THEN
    a u TOP-NAMED
    \ Literal openers only push the scanned string. Other calls may alter bindings.
@@ -2890,8 +2890,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
       IF 1 + EXIT THEN
    REPEAT ;
 
-: PRS-TERM-ADD ( ptr u8 n n -- n )
-   {: a:ptr u:n len:n :}
+: PRS-TERM-ADD ( ^u8 n n -- n )
+   {: a:^ u:n len:n :}
    PRS-TERMS-END len + {: at:n :}
    at u + 1 + PRS-TERMS-RESERVE
    a  at PRS-TERMS  u BYTE-COPY
@@ -2902,7 +2902,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ source's end.
 : PRS-LIST-TOKEN ( n -- n n )
    {: len:n :}
-   NEXT-RAW {: a:ptr u:n :}
+   NEXT-RAW {: a:^ u:n :}
    u 0= IF len 2 EXIT THEN
    a u s" )" CORE-STR= IF len 1 EXIT THEN
    a u len PRS-TERM-ADD 0 ;
@@ -2919,10 +2919,10 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ The row is read as the engine word reads it and checked by the engine's own
 \ checks. The scan knows every token the declarer reads, so none of it is the
 \ run's.
-: PARSES-ROW ( ptr u8 n bool -- )
-   {: ka:ptr ku:n through:bool :}
-   NEXT-RAW {: ta:ptr tu:n :}
-   NEXT-RAW {: ca:ptr cu:n :}
+: PARSES-ROW ( ^u8 n bool -- )
+   {: ka:^ ku:n through:bool :}
+   NEXT-RAW {: ta:^ tu:n :}
+   NEXT-RAW {: ca:^ cu:n :}
    through IF PRS-LIST-READ ELSE 0 0 0= 0= THEN {: len:n bad:bool :}
    ka ku ta tu ca cu bad PARSES-CHECK {: sym:n eff1:n count:n :}
    sym 0= IF EXIT THEN
@@ -2935,20 +2935,20 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    row 1 + VERIFY-PARSES-N ! ;
 
 \ Read and checked as the engine word does.
-: NAMES-ROW ( ptr u8 n -- )
+: NAMES-ROW ( ^u8 n -- )
    NEXT-RAW NAMES-CHECK ;
 
 : PRS-TERM-END ( n n -- n )
    {: end:n :}
    BEGIN dup end < IF dup PRS-TERMS c@ 32 <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT ;
 
-: PRS-TERM-AT? ( ptr u8 n n n -- bool )
-   {: a:ptr u:n i:n j:n :}
+: PRS-TERM-AT? ( ^u8 n n n -- bool )
+   {: a:^ u:n i:n j:n :}
    j i - u <> IF 0 0= 0= EXIT THEN
    a u  i PRS-TERMS u  CORE-STR= ;
 
-: PRS-TERM? ( ptr u8 n n -- bool )
-   {: a:ptr u:n row:n :}
+: PRS-TERM? ( ^u8 n n -- bool )
+   {: a:^ u:n row:n :}
    row PRS-AT @ row PRS-LEN @ + {: end:n :}
    row PRS-AT @
    BEGIN dup end < WHILE
@@ -2966,8 +2966,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN row PRS-TERM? UNTIL ;
 
 \ Structure bodies take this path too.
-: TOP-PARSER ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TOP-PARSER ( ^u8 n -- )
+   {: a:^ u:n :}
    a u TOP-BINDING {: sym:n eff1:n ctl:n :}
    ctl BINDING-ID {: id:n :}
    id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
@@ -2979,8 +2979,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    a u DW-PARSES DEFER-AT
    row 1 - PRS-CONSUME ;
 
-: TOKEN-TAIL ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: TOKEN-TAIL ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u 1 > IF
       u 1 - 1 ?do
          a i + c@ 58 = IF a i + 1 +  u i - 1 -  unloop EXIT THEN
@@ -2993,8 +2993,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ top-level find selects by package and tail. The bare tail is no such
 \ selection: in the package it can name the package's own private word. A word
 \ that only calls a bounded word takes no row.
-: EXPORT-PARSES ( n ptr u8 n -- )
-   {: from:n a:ptr u:n :}
+: EXPORT-PARSES ( n ^u8 n -- )
+   {: from:n a:^ u:n :}
    from 0= IF EXIT THEN
    a u TOKEN-TAIL RETAINED-SYM {: rec:n :}
    rec 0= IF EXIT THEN
@@ -3011,8 +3011,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 
 \ The export's record is the open section's, under the tail the checker
 \ recorded; its declaring token is the name as written, from byte at.
-: EXPORT-DEFINED ( ptr u8 n n -- )
-   {: name:ptr nameu:n at:n :}
+: EXPORT-DEFINED ( ^u8 n n -- )
+   {: name:^ nameu:n at:n :}
    name nameu RECORD-SYM? SYM-IDENTITY drop 2swap 2drop RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
@@ -3022,7 +3022,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ The checker refuses a duplicate tail only once the name resolves, as --load
 \ does, so the refusal is caught here and kept at the name as written.
 : RECORD-EXPORT ( -- )
-   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    at SEALED-OPEN
@@ -3058,55 +3058,55 @@ variable LOAD-END
    VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    at LOAD-AT !  end LOAD-END ! ;
 
-: LOADED ( ptr u8 n n -- )
-   {: path:ptr pathu:n outcome:n :}
+: LOADED ( ^u8 n n -- )
+   {: path:^ pathu:n outcome:n :}
    LOAD-END @ 0= IF EXIT THEN
    LOAD-AT @ LOAD-END @  0 LOAD-END !
    path pathu outcome ON-LOADER ;
 
-: COMPOSE-LOADED ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n path:ptr pathu:n :}
+: COMPOSE-LOADED ( ^u8 n ^u8 n -- )
+   {: a:^ u:n path:^ pathu:n :}
    path pathu LOAD-READ LOADED
    a COMPOSE-PEND-A !  u COMPOSE-PEND-U !
    path COMPOSE-PEND-PATH-A !  pathu COMPOSE-PEND-PATH-U !
    [: COMPOSE-PENDING ;]
    CHECKER-OWNER-ABI:VERIFY-FILE-OFF OWNER-XT FILE-ACTION execute ;
 
-: COMPOSE-OPEN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: COMPOSE-OPEN ( ^u8 n -- ) {: path:^ pathu:n :}
    path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
       path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
-   path pathu SUPPLIED {: t:ptr tu:n open:bool :}
+   path pathu SUPPLIED {: t:^ tu:n open:bool :}
    open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
    path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
-: COMPOSE-INCLUDED ( ptr u8 n -- )
+: COMPOSE-INCLUDED ( ^u8 n -- )
    SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
 
-: COMPOSE-REQUIRED ( ptr u8 n -- )
+: COMPOSE-REQUIRED ( ^u8 n -- )
    SOURCE-ROOT:RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE COMPOSE-OPEN ;
 
-: COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
+: COMPOSE-SCRIPT-REQUIRED ( ^u8 n -- )
    SOURCE-ROOT:ENTRY-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE COMPOSE-OPEN ;
 
-: COMPOSE-PROVIDED ( ptr u8 n -- )
+: COMPOSE-PROVIDED ( ^u8 n -- )
    SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
    REQUIRE-STORE 2drop ;
 
-: COMPOSE-STRING-PATH ( -- ptr u8 n )
+: COMPOSE-STRING-PATH ( -- ^u8 n )
    STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
    STR-LAST-A @ STR-LAST-U @ ;
 
-: COMPOSE-RAW-PATH ( -- ptr u8 n )
+: COMPOSE-RAW-PATH ( -- ^u8 n )
    NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
 
 PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
 variable LOAD-U
 
-: LOAD$ ( -- ptr u8 n )
+: LOAD$ ( -- ^u8 n )
    LOAD-A @ LOAD-U @ ;
 
 : FILE-LOAD ( bool -- [ -- ] )
@@ -3133,7 +3133,7 @@ variable LOAD-U
 : QUIET-WORD-LOAD ( n bool -- )
    {: u:n inc:bool :}
    TOKEN-BYTE @ {: at:n :}
-   u LOADER-OPERAND {: p:ptr pu:n :}
+   u LOADER-OPERAND {: p:^ pu:n :}
    TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
    inc FILE-LOAD at u CLAIMED-LOAD ;
@@ -3148,7 +3148,7 @@ variable LOAD-U
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
    q TOKEN-BYTE @ u CLAIMED-LOAD ;
 
-: QUIET-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: QUIET-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" include" STR=CI IF u true QUIET-WORD-LOAD true EXIT THEN
    a u s" require" STR=CI IF u false QUIET-WORD-LOAD true EXIT THEN
    a u s" included" STR=CI IF u true FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
@@ -3200,7 +3200,7 @@ variable LOAD-U
 variable FILE-PKG
 variable FILE-USE
 
-: FILE-SCOPE-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: FILE-SCOPE-STEP ( ^u8 n -- ) {: a:^ u:n :}
    a u s" package" STR=CI IF FILE-PKG @ 1 + FILE-PKG ! EXIT THEN
    a u s" ;package" STR=CI IF FILE-PKG @ 1 - 0 max FILE-PKG ! EXIT THEN
    FILE-PKG @ 0<> IF EXIT THEN
@@ -3210,7 +3210,7 @@ variable FILE-USE
 : FILE-NEUTRAL? ( -- bool )
    FILE-PKG @ 0= FILE-USE @ 0= and ;
 
-: COMPOSE-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: COMPOSE-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or
    a u s" included" STR=CI or  a u s" required" STR=CI or
@@ -3259,24 +3259,24 @@ variable FILE-USE
    2drop
    at RECORD-PRIM-ROW ;
 
-: STRUCTURE-END? ( ptr u8 n -- bool )
+: STRUCTURE-END? ( ^u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
 
-: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
+: STRUCTURE-PTR-FIELD? ( ^u8 n -- bool )
    s" PTR-FIELD:" STR=CI ;
 
-: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
+: STRUCTURE-CFIELD? ( ^u8 n -- bool )
    s" CFIELD:" STR=CI ;
 
-: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
+: STRUCTURE-CELL-FIELD? ( ^u8 n -- bool )
    s" +FIELD" STR=CI ;
 
-: TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- bool )
+: TRUST-STRUCTURE-FIELD ( ^u8 n ^u8 n -- bool )
    DECL-SIGNATURE ;
 
-: RECORD-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
-   {: kind:ptr kindu:n sig:ptr sigu:n :}
-   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+: RECORD-STRUCTURE-FIELD ( ^u8 n ^u8 n -- )
+   {: kind:^ kindu:n sig:^ sigu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
@@ -3285,7 +3285,7 @@ variable FILE-USE
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
-: STRUCTURE-SIZE ( ptr u8 n n -- ) {: name:ptr nameu:n at:n :}
+: STRUCTURE-SIZE ( ^u8 n n -- ) {: name:^ nameu:n at:n :}
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
@@ -3294,7 +3294,7 @@ variable FILE-USE
 
 \ The structure scanner takes these words' operands itself, though their
 \ run-time call may read source.
-: STRUCTURE-SYNTAX? ( ptr u8 n -- bool )
+: STRUCTURE-SYNTAX? ( ^u8 n -- bool )
    2dup STRUCTURE-END? IF 2drop true EXIT THEN
    2dup STRUCTURE-PTR-FIELD? IF 2drop true EXIT THEN
    2dup STRUCTURE-CFIELD? IF 2drop true EXIT THEN
@@ -3302,7 +3302,7 @@ variable FILE-USE
 
 \ The body executes its bound words though this scanner reads their tokens.
 \ `char` takes data and `'` names a word; both consume their next raw token.
-: STRUCTURE-USE ( ptr u8 n -- )
+: STRUCTURE-USE ( ^u8 n -- )
    2dup TOP-PARSER? IF
       2dup CHAR-KEYWORD? IF 2drop OPERAND 2drop EXIT THEN
       2drop OPERAND
@@ -3314,7 +3314,7 @@ variable FILE-USE
    IF TOP-PARSER ELSE 2drop THEN ;
 
 : RECORD-STRUCTURE ( -- )
-   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    name nameu at STRUCTURE-SIZE
@@ -3329,9 +3329,9 @@ variable FILE-USE
       THEN
       \ A pointer field's pointee is independent of the record's element type:
       \ a cell record may hold a byte pointer.
-      2dup STRUCTURE-PTR-FIELD? IF s" ptr a -- ptr ptr b" RECORD-STRUCTURE-FIELD ELSE
-      2dup STRUCTURE-CFIELD? IF s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
-      2dup STRUCTURE-CELL-FIELD? IF s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-PTR-FIELD? IF s" ^a -- ^^b" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CFIELD? IF s" ^a -- ^u8" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CELL-FIELD? IF s" ^a -- ^a" RECORD-STRUCTURE-FIELD ELSE
       2drop
       THEN THEN THEN
    AGAIN ;
@@ -3343,10 +3343,10 @@ variable FILE-USE
 \ counts as D already stating what it makes.
 : RECORD-GENERATES ( -- )
    NAME-TOKEN
-   {: name:ptr nameu:n :}
+   {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    REQUIRE-SIGNATURE
-   {: sig:ptr sigu:n :}
+   {: sig:^ sigu:n :}
    sigu GENR-SIG-CAP > IF E-VS-EFFECT-SIZE STATEMENT-STOP THEN
    name nameu FIND-SYM
    {: sym:n :}
@@ -3361,8 +3361,8 @@ variable FFI-LIT-N                          \ literals read last, at most two:
 variable FFI-LIT-A                          \ the older
 variable FFI-LIT-B                          \ and the newer
 
-: FFI-APPEND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FFI-APPEND ( ^u8 n -- )
+   {: a:^ u:n :}
    FFI-SIG-U @
    {: at:n :}
    at u + 1 + FFI-SIG-RESERVE
@@ -3372,45 +3372,45 @@ variable FFI-LIT-B                          \ and the newer
 
 \ A call into FFI's declaration machine placed at the scan's token A U, which
 \ stands in as the token read last until it returns or throws.
-: FFI-AT ( R [ R -- S ] ptr u8 n -- S )
-   {: a:ptr u:n :}
-   SRCLOC:TOKEN$ {: oa:ptr ou:n :}
+: FFI-AT ( R [ R -- S ] ^u8 n -- S )
+   {: a:^ u:n :}
+   SRCLOC:TOKEN$ {: oa:^ ou:n :}
    a u SRCLOC:TOKEN!
    a SOURCE@ - TOKEN-BYTE !
    [: oa ou SRCLOC:TOKEN! ;] finally ;
 
-: RECORD-FFI-FUNCTION ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: RECORD-FFI-FUNCTION ( ^u8 n -- )
+   {: a:^ u:n :}
    [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
       FFI:READ-FUNCTION ;] a u FFI-AT
-   {: name:ptr nameu:n :}
+   {: name:^ nameu:n :}
    name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
    0 FFI-SIG-U !
    [: FFI-APPEND ;] FFI:DECLARED-TEXTS
-   0 FFI-SIG FFI-SIG-U @ {: sig:ptr sigu:n :}
+   0 FFI-SIG FFI-SIG-U @ {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE
    ELSE FFI:SKIP-FUNCTION THEN ;
 
-: FFI-CLOSER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: FFI-CLOSER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" ;FUNCTION" STR=CI ;
 
-: FFI-LITERAL ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FFI-LITERAL ( ^u8 n -- )
+   {: a:^ u:n :}
    a u num-parse {: v:n flt:bool num:bool :}
    num flt 0= and 0= IF 0 FFI-LIT-N ! EXIT THEN
    FFI-LIT-B @ FFI-LIT-A !  v FFI-LIT-B !
    FFI-LIT-N @ 1+ 2 min FFI-LIT-N ! ;
 
-: FFI-CLAUSE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u TOKEN-TAIL {: t:ptr tu:n :}
+: FFI-CLAUSE ( ^u8 n -- )
+   {: a:^ u:n :}
+   a u TOKEN-TAIL {: t:^ tu:n :}
    FFI-LIT-N @ {: lits:n :}
    t tu s" STRUCT-ARG" STR=CI IF
       lits 2 < IF FFI:SKIP-FUNCTION EXIT THEN
@@ -3435,9 +3435,9 @@ variable FFI-LIT-B                          \ and the newer
 \ do: a prefix rewind keeps code but reuses discarded records. xt! registers
 \ these cells for
 \ relocation when the verifier is captured.
-: LIBRARY-XT! ( ptr u8 n ptr n -- )
-   {: a:ptr u:n cell:ptr :}
-   a u XREF-FIND {: rec:ptr :}
+: LIBRARY-XT! ( ^u8 n ^n -- )
+   {: a:^ u:n cell:^ :}
+   a u XREF-FIND {: rec:^ :}
    rec XREF-FOUND? 0= IF 2 s" verify-source: library word not loaded: " write drop  a u 70 die THEN
    rec XREF-START cell xt! ;
 
@@ -3461,30 +3461,30 @@ variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
 \ Known gap: an alias exported before its source is undefined, redefined or
 \ not, is followed to the current global word, so the check can certify a use
 \ the load refuses.
-: LIBRARY-DEFINER? ( ptr u8 n n ptr u8 n -- bool )
-   {: a:ptr u:n code:n name:ptr nameu:n :}
+: LIBRARY-DEFINER? ( ^u8 n n ^u8 n -- bool )
+   {: a:^ u:n code:n name:^ nameu:n :}
    a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
-   a u scope-find drop drop drop {: rec:ptr :}
+   a u scope-find drop drop drop {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    rec XREF-START code = IF true EXIT THEN
    a u FIND-SYM {: sym:n :}
    sym 0= IF false EXIT THEN
    sym SYM-SOURCE {: src:n :}
    src sym = IF false EXIT THEN
-   src SYM-IDENTITY drop {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   src SYM-IDENTITY drop {: pkg:^ pkgu:n tail:^ tailu:n :}
    tailu 0= IF false EXIT THEN
    pkgu 0<> IF pkg pkgu tail tailu QUAL-SPELLING
    ELSE tail tailu THEN
-   XREF-FIND {: word:ptr :}
+   XREF-FIND {: word:^ :}
    word XREF-FOUND? 0= IF false EXIT THEN
    word XREF-START code = ;
 
 \ src/lib/task.f loads after this file, so a TASK definer's code is read where
 \ its row is reached; Q is its qualified name.
-: TASK-DEFINER? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n q:ptr qu:n name:ptr nameu:n :}
+: TASK-DEFINER? ( ^u8 n ^u8 n ^u8 n -- bool )
+   {: a:^ u:n q:^ qu:n name:^ nameu:n :}
    a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
-   q qu XREF-FIND {: rec:ptr :}
+   q qu XREF-FIND {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    a u rec XREF-START name nameu LIBRARY-DEFINER? ;
 
@@ -3494,8 +3494,8 @@ variable STRUCT-ARG-XT s" STRUCT-ARG" STRUCT-ARG-XT LIBRARY-XT!
 variable STRUCT-RESULT-XT s" STRUCT-RESULT" STRUCT-RESULT-XT LIBRARY-XT!
 variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 
-: FFI-CLAUSE? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: FFI-CLAUSE? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u STRUCT-ARG-XT @ s" STRUCT-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
@@ -3515,7 +3515,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    TOP-PREV-STR-A @ TOP-PREV-STR-U @ cnt CHECKER-PARSE-IMM
    true ;
 
-: RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RECORD-DEFINER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
@@ -3560,8 +3560,8 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" EPRIM:" STR=CI IF TOKEN-BYTE @ RECORD-PRIM-ROW 0 0= EXIT THEN
    a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
@@ -3676,8 +3676,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 
 \ Every answer but a binding reports the token itself, so BOUND-CALL reports a
 \ gap only where no other report is, and a token has one packet at most.
-: TOP-RESOLVE ( ptr u8 n bool bool -- )
-   {: a:ptr u:n runs:bool renders:bool :}
+: TOP-RESOLVE ( ^u8 n bool bool -- )
+   {: a:^ u:n runs:bool renders:bool :}
    a u runs TOP-VERDICT {: v:n :}
    v -1 = IF
       runs IF a u renders BOUND-CALL THEN
@@ -3700,9 +3700,9 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    ['] CSR-VISIT
    NCOMP-DISPATCH:DECL-VERIFY-EACH-VISIBLE-OFF OWNER-XT VISIBLE-ACTION execute ;
 
-: TOP-OPERAND ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   OPERAND {: o:ptr ou:n :}
+: TOP-OPERAND ( ^u8 n -- )
+   {: a:^ u:n :}
+   OPERAND {: o:^ ou:n :}
    a u CHAR-KEYWORD? IF EXIT THEN
    CSR-TOP
    COMPOSE-ON @ INDEX-ON @ or 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
@@ -3714,8 +3714,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ does a word that calls `create` mark: a definer arm that takes the statement
 \ records the name it makes. An undeclared renderer is deferred at its token
 \ even when no later name uses it, inside an open stretch too.
-: TOP-TOKEN ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TOP-TOKEN ( ^u8 n -- )
+   {: a:^ u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u s" [package]" STR=CI IF EXIT THEN   \ pushes a name, calls nothing
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
@@ -3733,8 +3733,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ A declaration a definer of the table above reads closes the stretch, unless
 \ the checker counted a refusal while it was read (where refusals do not
 \ throw): then the stretch opens, unreported.
-: TOP-DEFINER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: TOP-DEFINER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    REJECTION:TALLY @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
    \ A library definer is a replaceable dictionary call, not structural syntax.
@@ -3754,25 +3754,25 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    0 0= ;
 
 \ `kernel:` is the engine's synonym for `:`.
-: COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: COLON? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" :" CORE-STR=  a u s" kernel:" STR=CI or ;
 
-: FLAG-TOP ( -- ptr bool )
+: FLAG-TOP ( -- ^bool )
    FLAG-N @ 1 - FLAGS ;
 
 : FLAG-PUSH ( bool -- )
    FLAG-N @ FLAG-CAP = IF drop 0 FLAG-N ! EXIT THEN
    FLAG-N @ FLAGS !  FLAG-N @ 1 + FLAG-N ! ;
 
-: FLAG-LIT ( ptr u8 n -- bool bool ) {: a:ptr u:n :}
+: FLAG-LIT ( ^u8 n -- bool bool ) {: a:^ u:n :}
    a u TARGET-GUARD {: g:n :}
    g GUARD-NONE = IF false false EXIT THEN
    g GUARD-LIVE = true ;
 
-: CORE-OP? ( ptr u8 n -- bool )
+: CORE-OP? ( ^u8 n -- bool )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
 
-: FLAG-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: FLAG-STEP ( ^u8 n -- ) {: a:^ u:n :}
    TOP-DEFER @ 0<> IF 0 FLAG-N ! EXIT THEN
    a u FLAG-LIT IF FLAG-PUSH EXIT THEN drop
    a u s" 0=" STR=CI IF a u CORE-OP? ELSE false THEN IF
@@ -3789,7 +3789,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       THEN
    REPEAT drop true ;
 
-: KNOWN-IF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: KNOWN-IF? ( ^u8 n -- bool ) {: a:^ u:n :}
    STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
    a u s" [if]" STR=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
    0 FLAGS @ IF true EXIT THEN
@@ -3844,19 +3844,19 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ composition. On return or throw the checker is re-armed with the caller's
 \ bytes, or disarmed when the subject's scan ends, so no nested file's bytes,
 \ which its loader frame releases, stay armed.
-: COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n path:ptr pathu:n :}
-   path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
+: COMPOSE-FILE-SCAN ( ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n :}
+   path pathu COMPOSE-DIAG$ {: diag:^ diagu:n :}
    SOURCE-A @ SOURCE-U @ SCAN-I @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
    SHADOWED @ RETIRED @
-   {: olda:ptr oldu:n oldi:n
-      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
-      olddefer:n olddefa:ptr olddefu:n oldrefused:ptr
-      oldpath:ptr oldpathu:n
+   {: olda:^ oldu:n oldi:n
+      oldprev:^ oldprevu:n oldcur:^ oldcuru:n
+      olddefer:n olddefa:^ olddefu:n oldrefused:^
+      oldpath:^ oldpathu:n
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
       oldshadowed:n oldretired:n :}
    src srcu SOURCE!
@@ -3967,7 +3967,7 @@ variable READ-PATH-U
 variable READ-META-VALID
 65536 constant READ-STEP
 
-: FAULT-TARGET! ( ptr u8 n -- ) {: a:ptr u:n :}
+: FAULT-TARGET! ( ^u8 n -- ) {: a:^ u:n :}
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
@@ -3984,8 +3984,8 @@ variable READ-META-VALID
 
 \ A stream has no reusable stamp: it is read, but only a regular file takes the
 \ before/after stamp check.
-: QUIET-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   2drop {: path:ptr pathu:n :}
+: QUIET-READ ( ^u8 n ^u8 n -- ^u8 n )
+   2drop {: path:^ pathu:n :}
    0 READ-META-VALID !
    path pathu READ-PATHZ PATH-CAP 1+ PATHZ
    pathu READ-PATH-U !
@@ -4016,15 +4016,15 @@ public
 
 \ An ON-FILE consumer that requires a regular-file stamp refuses its source
 \ through the same loader fault boundary as an acquisition failure.
-: REFUSE-SOURCE-READ ( ptr u8 n -- )
+: REFUSE-SOURCE-READ ( ^u8 n -- )
    FAULT-TARGET!
    E-SOURCE-READ throw ;
 
 \ The stamp of the disk bytes the quiet reader just handed to SOURCE-INPUT.
 \ ON-FILE runs before another acquisition can replace it. Readable streams
 \ have no regular-file stamp and return false.
-: QUIET-READ-META ( ptr u8 n -- n n n n n bool )
-   {: path:ptr pathu:n :}
+: QUIET-READ-META ( ^u8 n -- n n n n n bool )
+   {: path:^ pathu:n :}
    READ-META-VALID @ 0<> pathu READ-PATH-U @ = and
    path pathu READ-PATHZ pathu CORE-STR= and 0= IF 0 0 0 0 0 false EXIT THEN
    READ-SIZE @ READ-MSEC @ READ-MNS @ READ-CSEC @ READ-CNS @ true ;
@@ -4033,20 +4033,20 @@ private
 
 create ENGINE-PATH PATH-CAP allot
 
-: ENGINE-FULL-PATH ( ptr u8 n -- ptr u8 n bool )
-   {: rel:ptr relu:n :}
-   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+: ENGINE-FULL-PATH ( ^u8 n -- ^u8 n bool )
+   {: rel:^ relu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
    rootu relu + 1+ PATH-CAP > if NULL$ false exit then
    root ENGINE-PATH rootu BYTE-COPY
    47 ENGINE-PATH rootu + c!
    rel ENGINE-PATH rootu 1+ + relu BYTE-COPY
    ENGINE-PATH rootu relu + 1+ true ;
 
-: ENGINE-TARGET-READ ( n -- ptr u8 n n n bool )
+: ENGINE-TARGET-READ ( n -- ^u8 n n n bool )
    ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n at:n end:n name:ptr nameu:n found:bool :}
+   {: rel:^ relu:n at:n end:n name:^ nameu:n found:bool :}
    found 0= if NULL$ 0 0 false exit then
-   rel relu ENGINE-FULL-PATH {: path:ptr pathu:n fits:bool :}
+   rel relu ENGINE-FULL-PATH {: path:^ pathu:n fits:bool :}
    path pathu at end fits ;
 
 : ENGINE-TARGET-INSTALL ( -- ) ['] ENGINE-TARGET-READ is ENGINE-TARGET ;
@@ -4057,7 +4057,7 @@ public
 \ ACTION runs while both checker scopes still own the declaration symbols; a
 \ completed multi-error scan keeps surviving declarations. A thrown scan skips
 \ the action and propagates after both scopes close.
-: SOURCE-INDEX-BUF-IN-SCOPE ( ptr u8 n [ -- ] -- )
+: SOURCE-INDEX-BUF-IN-SCOPE ( ^u8 n [ -- ] -- )
    THEN-ACTION !
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
@@ -4101,7 +4101,7 @@ public
 
 \ Why the scan refused the declaration it stopped at with E-BAD-NOMINAL-TYPE or
 \ E-BAD-RECORD-FIELD, empty for any other stop.
-: REASON$ ( -- ptr u8 n )
+: REASON$ ( -- ^u8 n )
    REASON-A @ REASON-U @ ;
 
 \ The name of the definition the last scan stopped at because its scope
@@ -4115,8 +4115,8 @@ public
 \ loader token under the caller's active SOURCE-ROOT owner. The registry suffix
 \ and the caller's checker scope survive success and throw; the supplied bytes
 \ remain authoritative for this path.
-: SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+: SOURCE-COMPOSE-LABELED-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
    pathu 0= pathu PATH-CAP > or labelu PATH-CAP > or IF E-PATH-RANGE throw THEN
    path COMPOSE-SUBJ-PATH pathu BYTE-COPY
@@ -4141,7 +4141,7 @@ public
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
    rc 0<> IF rc throw THEN ;
 
-: SOURCE-COMPOSE-IN-SCOPE ( ptr u8 n ptr u8 n -- )
+: SOURCE-COMPOSE-IN-SCOPE ( ^u8 n ^u8 n -- )
    2dup SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 \ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
@@ -4149,8 +4149,8 @@ public
 \ before, and reads each file a loader loads, so no walk need run first. A stop
 \ at a loader (LOADER-FAULT?) stands at TOKEN-BYTE@, FAULT-LEN@ bytes long, and
 \ FAULT-TARGET$ names a file it could not read.
-: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n path:ptr pathu:n :}
+: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
    0 FAULT-LEN !  0 FAULT-U !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
@@ -4161,7 +4161,7 @@ public
    SOURCE-INPUT:RESET
    rc THROW-RESULT ;
 
-: SOURCE-COMPOSE-STOPPED$ ( -- ptr u8 n )
+: SOURCE-COMPOSE-STOPPED$ ( -- ^u8 n )
    COMPOSE-STOP-U @ 0 > IF COMPOSE-STOP-PATH COMPOSE-STOP-U @ EXIT THEN
    COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ ;
 
@@ -4174,7 +4174,7 @@ public
 
 \ The bytes scanned at the stopped file, retained before its loader frame
 \ closes. A nested loader may have replaced the quiet reader's scratch buffer.
-: SOURCE-COMPOSE-STOPPED-SOURCE$ ( -- ptr u8 n )
+: SOURCE-COMPOSE-STOPPED-SOURCE$ ( -- ^u8 n )
    0 COMPOSE-STOP-BYTES COMPOSE-STOP-SRC-U @ ;
 
 : LOADER-FAULT? ( n -- bool ) {: rc:n :}
@@ -4188,10 +4188,10 @@ public
 
 \ The file the last quiet composition could not read, as it was resolved, or
 \ empty. The string is borrowed until the next quiet composition.
-: FAULT-TARGET$ ( -- ptr u8 n )
+: FAULT-TARGET$ ( -- ^u8 n )
    FAULT-TARGET FAULT-U @ ;
 
-: SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
+: SOURCE-BUF-IN-SCOPE ( ^u8 n -- )
    SOURCE!
    RUN ;
 
@@ -4201,7 +4201,7 @@ public
 \ holds the overlay open, so a caller reading what the scan recorded by name
 \ reads it here. No second verifier scope opens inside this one
 \ (E-PKG-CONTEXT). A scan that throws runs no action.
-: SOURCE-BUF-THEN-IN-SCOPE ( ptr u8 n [ -- ] -- )
+: SOURCE-BUF-THEN-IN-SCOPE ( ^u8 n [ -- ] -- )
    THEN-ACTION !
    SOURCE!
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
@@ -4210,14 +4210,14 @@ public
 \ body`: -1 certified, 0 refused, 1 uncheckable. A name this scanner
 \ registered has no engine record, so a live candidate cannot bind it; here it
 \ binds where the scan recorded it.
-: CANDIDATE-IN-SCOPE ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CANDIDATE-IN-SCOPE ( ^u8 n -- n )
+   {: a:^ u:n :}
    [: a u CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;] RUN-IN-SCOPE
    CAND-VERDICT @ ;
 
 \ Verify a source in a candidate scope of its own: what it defines, and the
 \ definer rows it learns, go when CHECKER-CANDIDATE-SCOPE-DONE rewinds the scope.
-: SOURCE-BUF ( ptr u8 n -- )
+: SOURCE-BUF ( ^u8 n -- )
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
    [: RUN ;] catch

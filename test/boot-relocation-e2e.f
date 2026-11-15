@@ -30,19 +30,19 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
-: ENGINE$ ( -- ptr u8 n ) ENGINE ENGINE-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
+: ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
 
-: PATH! ( ptr u8 n -- )
+: PATH! ( ^u8 n -- )
    TREE$ 2swap PATH FS:JOIN-PATH PATH-U ! ;
 
-: COPY-SOURCE ( ptr u8 n -- ) {: rel:ptr relu:n :}
+: COPY-SOURCE ( ^u8 n -- ) {: rel:^ relu:n :}
    rel relu PATH!
    SOURCE-ROOT:CWD$ rel relu SRC FS:JOIN-PATH SRC-U !
    SRC SRC-U @ PATH PATH-U @ FS:COPY-FILE-STREAM ;
 
-: ENTRY+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: ENTRY+ ( ^u8 n -- ) {: a:^ u:n :}
    PATH PATH-U @ a u FS:APPEND-FILE ;
 
 \ With the argument `refused` the child first asserts that the kernel refused
@@ -56,7 +56,7 @@ variable RC
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
 : SETUP ( -- )
-   s" habu-boot-relocation" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-boot-relocation" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
@@ -72,7 +72,7 @@ variable RC
    s" src/lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;
 
-: SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
+: SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
    PATH pathu data size FS:WRITE-ALL ;
 
@@ -80,7 +80,7 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    s" tree/entry.f" >LEN PROC-ARGV+ ;
 
-: RUN-CHILD ( ptr u8 n -- ) {: exe:ptr exeu:n :}
+: RUN-CHILD ( ^u8 n -- ) {: exe:^ exeu:n :}
    PROC-ENV-INHERIT-MISSING
    exe exeu >LEN ROOT$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
@@ -88,8 +88,8 @@ variable RC
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ Keep the child's output beside the tree and check its verdict.
-: VERDICT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: out:ptr outu:n err:ptr erru:n label:ptr labelu:n :}
+: VERDICT ( ^u8 n ^u8 n ^u8 n -- )
+   {: out:^ outu:n err:^ erru:n label:^ labelu:n :}
    out outu OUT OUT-U @ SAVE
    err erru ERR ERR-U @ SAVE
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
@@ -104,7 +104,7 @@ variable RC
    s" child.out" s" child.err"
    s" the copied engine recognizes its baked module from a foreign cwd" VERDICT ;
 
-: SANDBOX$ ( -- ptr u8 n )
+: SANDBOX$ ( -- ^u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" boot-relocation: required executable missing on PATH: sandbox-exec" 1 die ENDOF
       some OF LEN>N ENDOF

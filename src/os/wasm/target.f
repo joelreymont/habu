@@ -15,7 +15,7 @@
 : HB-TARGET-WASM? ( -- bool )
    0 0= ;
 
-: HB-TARGET$ ( -- ptr u8 n )
+: HB-TARGET$ ( -- ^u8 n )
    s" wasm" ;
 
 \ Wasm has no OS path limit: it takes Linux's, PATH_MAX less its NUL.

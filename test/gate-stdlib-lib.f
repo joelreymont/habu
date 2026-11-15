@@ -20,7 +20,7 @@ package STDLIB-GATE
 : SUITE-CHECK-ARGS ( -- )
    ARGC 3 > if 3 SCRIPT-SEP? 0= if SUITE-USAGE then then
    SCRIPT-ARGC 0 ?do
-      i SCRIPT-ARGV$ {: a:ptr u:n :}
+      i SCRIPT-ARGV$ {: a:^ u:n :}
       a u TEST:ONLY 0= if
          2 s" test/run.f: no test named " write drop
          2 a u write drop
@@ -31,10 +31,10 @@ package STDLIB-GATE
 
 \ The spawn path is relative, as the gate runs in the checkout; the variable is
 \ absolute: ENGINE-CANDIDATE:PATH$ joins a relative one to its reader's own CWD.
-: PRODUCT-SPAWN$ ( -- ptr u8 n )
+: PRODUCT-SPAWN$ ( -- ^u8 n )
    s" bin/hb" ;
 
-: PRODUCT-ENGINE$ ( -- ptr u8 n )
+: PRODUCT-ENGINE$ ( -- ^u8 n )
    ENGINE-ID:PATH$ ;
 
 \ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) names the product engine to an
@@ -51,14 +51,14 @@ package STDLIB-GATE
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+ ;
 
-: ROW-ARG+ ( ptr u8 n -- )
+: ROW-ARG+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: SUITE-HB-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
    SUITE-ENV
    PRODUCT-SPAWN$ label labelu GT-POOL-START ;
 
-: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
+: SUITE-HB-RUN-STDIN ( ^u8 n ^u8 n -- ) {: in:^ inu:n label:^ labelu:n :}
    SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN ;
 

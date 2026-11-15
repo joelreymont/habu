@@ -17,45 +17,45 @@ create PATHS 16 PATH-CAP * allot
 create LONG PATH-CAP 1 + allot
 
 PROCESS-SYMBOLS
-FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
-: PATH ( n ptr u8 n -- ptr u8 n )
-   {: idx:n name:ptr u:n :}
-   PATHS idx PATH-CAP * + {: out:ptr :}
+: TMP$ ( -- ^u8 n ) TMP TMP-U @ ;
+: PATH ( n ^u8 n -- ^u8 n )
+   {: idx:n name:^ u:n :}
+   PATHS idx PATH-CAP * + {: out:^ :}
    TMP$ name u out FS:JOIN-PATH out swap ;
-: ROOT ( -- ptr u8 n ) 0 s" root" PATH ;
-: OUTSIDE ( -- ptr u8 n ) 1 s" outside" PATH ;
-: CHILD ( -- ptr u8 n ) 2 s" root/child" PATH ;
-: FILE ( -- ptr u8 n ) 3 s" root/child/file" PATH ;
-: LINK ( -- ptr u8 n ) 4 s" root/child/link" PATH ;
-: NEXT ( -- ptr u8 n ) 5 s" root/next" PATH ;
-: MOVED ( -- ptr u8 n ) 6 s" root/moved" PATH ;
-: FIFO ( -- ptr u8 n ) 7 s" root/fifo" PATH ;
-: BLOCKED ( -- ptr u8 n ) 8 s" root/blocked" PATH ;
-: BLOCKED-FILE ( -- ptr u8 n ) 9 s" root/blocked/file" PATH ;
-: OUT-FILE ( -- ptr u8 n ) 10 s" outside/file" PATH ;
-: REPLACEMENT ( -- ptr u8 n ) 11 s" root/replacement" PATH ;
-: DEEP ( -- ptr u8 n ) 12 s" root/child/deep" PATH ;
-: DEEP-FILE ( -- ptr u8 n ) 13 s" root/child/deep/file" PATH ;
-: DOT-DIR ( -- ptr u8 n ) 14 s" root/child/.cache" PATH ;
-: DOT-FILE ( -- ptr u8 n ) 15 s" root/child/.cache/a..b" PATH ;
+: ROOT ( -- ^u8 n ) 0 s" root" PATH ;
+: OUTSIDE ( -- ^u8 n ) 1 s" outside" PATH ;
+: CHILD ( -- ^u8 n ) 2 s" root/child" PATH ;
+: FILE ( -- ^u8 n ) 3 s" root/child/file" PATH ;
+: LINK ( -- ^u8 n ) 4 s" root/child/link" PATH ;
+: NEXT ( -- ^u8 n ) 5 s" root/next" PATH ;
+: MOVED ( -- ^u8 n ) 6 s" root/moved" PATH ;
+: FIFO ( -- ^u8 n ) 7 s" root/fifo" PATH ;
+: BLOCKED ( -- ^u8 n ) 8 s" root/blocked" PATH ;
+: BLOCKED-FILE ( -- ^u8 n ) 9 s" root/blocked/file" PATH ;
+: OUT-FILE ( -- ^u8 n ) 10 s" outside/file" PATH ;
+: REPLACEMENT ( -- ^u8 n ) 11 s" root/replacement" PATH ;
+: DEEP ( -- ^u8 n ) 12 s" root/child/deep" PATH ;
+: DEEP-FILE ( -- ^u8 n ) 13 s" root/child/deep/file" PATH ;
+: DOT-DIR ( -- ^u8 n ) 14 s" root/child/.cache" PATH ;
+: DOT-FILE ( -- ^u8 n ) 15 s" root/child/.cache/a..b" PATH ;
 
-: FD-ENTRY ( ptr u8 n -- )
+: FD-ENTRY ( ^u8 n -- )
    2drop 1 OPEN-FDS +! ;
 : FD-COUNT ( -- n )
    0 OPEN-FDS !
    HB-TARGET-MACOS? if s" /dev/fd" else s" /proc/self/fd" then
    [: FD-ENTRY ;] FS-LIST:EACH
    OPEN-FDS @ ;
-: READ$ ( fd ptr u8 n -- n ) OUT FS:READ-FILE-AT ;
-: READ-CHECK ( fd ptr u8 n ptr u8 n -- )
-   {: fd:fd path:ptr u:n want:ptr wantu:n :}
+: READ$ ( fd ^u8 n -- n ) OUT FS:READ-FILE-AT ;
+: READ-CHECK ( fd ^u8 n ^u8 n -- )
+   {: fd:fd path:^ u:n want:^ wantu:n :}
    fd path u READ$ wantu T=
    OUT wantu SPAN:TAKE SPAN:$ want wantu T$= ;
 
 : SETUP ( -- )
-   s" habu-anchored" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-anchored" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:>PATHZ TMP FS:PATHZ-CAP realpath {: actual:n :}
    actual 0 > TTRUE
    actual TMP-U !

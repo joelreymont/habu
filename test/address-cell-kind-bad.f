@@ -10,8 +10,8 @@ PERSISTED-PTR-VARIABLE SLOT
 
 \ PERSISTED-PTR-VARIABLE declared SLOT as DATA; xt! must refuse the contradictory XT kind
 \ before storing anything into the cell.
-CAST: >XT-CELL ( ptr ptr n -- ptr [ -- n ] )
-: SLOT-AS-XT ( -- ptr [ -- n ] ) SLOT >XT-CELL ;
+CAST: >XT-CELL ( ^^n -- ^[ -- n ] )
+: SLOT-AS-XT ( -- ^[ -- n ] ) SLOT >XT-CELL ;
 
 : GO ( -- )
    s" ADDRESS-CELL-KIND-ARMED" type cr

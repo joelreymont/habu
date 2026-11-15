@@ -91,10 +91,10 @@ $FFFFFFFF constant KEY-MAX
    ;MATCH ;
 
 
-: BE@ ( ptr u8 n -- n ) {: p k:n :}
+: BE@ ( ^u8 n -- n ) {: p k:n :}
    0 k 0 ?do 8 lshift p i + c@ or loop ;
 
-: BE! ( n ptr u8 n -- ) {: v p k:n :}
+: BE! ( n ^u8 n -- ) {: v p k:n :}
    k 0 ?do v k 1- i - 8 * rshift $FF and p i + c! loop ;
 
 
@@ -172,7 +172,7 @@ public
 \ bytes E-WS-CONTROL, a wrong mask bit for the sender E-WS-MASK, an extended
 \ length with its high bit set or not in its shortest form E-WS-LENGTH (section
 \ 5.2's MUST), and a payload past the bound E-WS-TOO-BIG.
-: DECODE-HEADER ( ptr u8 n sender n -- decoded ) {: p held:n who max:n :}
+: DECODE-HEADER ( ^u8 n sender n -- decoded ) {: p held:n who max:n :}
    held 0 < if E-SPAN-LENGTH throw then
    held 1 < if 2 WS-DECODED:need exit then
    p c@ FIRST-BYTE {: fin:bool op :}

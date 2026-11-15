@@ -60,13 +60,13 @@ create JWT-RUN-KEY-WANT
    char " c, 65 c, char \ c, char " c, $C3 c, $A9 c,
    char \ c, char \ c, 66 c, 67 c, char " c, char : c,
 
-: JWT-ESC-IN$ ( -- ptr u8 n )
+: JWT-ESC-IN$ ( -- ^u8 n )
    JWT-ESC-IN 7 ;
 
-: JWT-ESC-WANT$ ( -- ptr u8 n )
+: JWT-ESC-WANT$ ( -- ^u8 n )
    JWT-ESC-WANT 22 ;
 
-: JWT-NAME$ ( -- ptr u8 n )
+: JWT-NAME$ ( -- ^u8 n )
    JWT-NAME 3 ;
 
 : JWT-TRUE ( -- bool )
@@ -75,22 +75,22 @@ create JWT-RUN-KEY-WANT
 : JWT-FALSE ( -- bool )
    JWT-TRUE 0= ;
 
-: JWT-CHECK-REJECTS ( ptr u8 n -- )
+: JWT-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: JWT-CHECK-ACCEPTS ( ptr u8 n -- )
+: JWT-CHECK-ACCEPTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
-: JWT-OPEN-A ( -- ptr JSON:writer )
+: JWT-OPEN-A ( -- ^JSON:writer )
    JWT-A JWT-BUF-A JWT-CAP JSON:WRITE-OPEN ;
 
-: JWT-OPEN-B ( -- ptr JSON:writer )
+: JWT-OPEN-B ( -- ^JSON:writer )
    JWT-B JWT-BUF-B JWT-CAP JSON:WRITE-OPEN ;
 
-: JWT-OPEN-SMALL ( -- ptr JSON:writer )
+: JWT-OPEN-SMALL ( -- ^JSON:writer )
    JWT-A JWT-BUF-A JWT-SMALL-CAP JSON:WRITE-OPEN ;
 
-: JWT-EXPECTED-OBJECT$ ( -- ptr u8 n )
+: JWT-EXPECTED-OBJECT$ ( -- ^u8 n )
    SB-RESET
    [char] { SB-APPEND-C
    [char] " SB-APPEND-C s" name" SB-APPEND [char] " SB-APPEND-C [char] : SB-APPEND-C
@@ -108,7 +108,7 @@ create JWT-RUN-KEY-WANT
    [char] } SB-APPEND-C
    SB$ ;
 
-: JWT-EXPECTED-ARRAY$ ( -- ptr u8 n )
+: JWT-EXPECTED-ARRAY$ ( -- ^u8 n )
    SB-RESET
    [char] [ SB-APPEND-C
    s" 1" SB-APPEND
@@ -119,7 +119,7 @@ create JWT-RUN-KEY-WANT
    [char] ] SB-APPEND-C
    SB$ ;
 
-: JWT-BUILD-OBJECT ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-BUILD-OBJECT ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" name" JWT-NAME$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -130,7 +130,7 @@ create JWT-RUN-KEY-WANT
    s" none" JSON:WRITE-FIELD-NULL
    JSON:WRITE-OBJECT-END ;
 
-: JWT-BUILD-ARRAY ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-BUILD-ARRAY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-ARRAY-START
    1 JSON:WRITE-U
    JSON:WRITE-COMMA
@@ -159,8 +159,8 @@ create JWT-RUN-KEY-WANT
    JWT-OPEN-B JSON:WRITE-ARRAY-START 1 JSON:WRITE-U JSON:WRITE-COMMA drop
    JWT-A JSON:WRITE-COMMA s" ok" JWT-TRUE JSON:WRITE-FIELD-BOOL JSON:WRITE-OBJECT-END drop
    JWT-B 2 JSON:WRITE-U JSON:WRITE-ARRAY-END drop
-   JWT-A JSON:WRITTEN$ {: a:ptr au:n :}
-   JWT-B JSON:WRITTEN$ {: b:ptr bu:n :}
+   JWT-A JSON:WRITTEN$ {: a:^ au:n :}
+   JWT-B JSON:WRITTEN$ {: b:^ bu:n :}
    a au s\" {\"count\":42,\"ok\":true}" T$=
    b bu s" [1,2]" T$=
    a b <> TTRUE ;
@@ -171,7 +171,7 @@ create JWT-RUN-KEY-WANT
    JWT-A JSON:WRITTEN$ nip 0 T=
    JWT-A s" z" JSON:WRITE-RAW JSON:WRITTEN$ s" z" T$= ;
 
-: JWT-GROW-OPEN ( -- ptr JSON:writer )
+: JWT-GROW-OPEN ( -- ^JSON:writer )
    JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
    JWT-GROW-W JWT-GROW-BUF JSON:WRITE-OPEN-BUF ;
 
@@ -201,44 +201,44 @@ create JWT-RUN-KEY-WANT
 
 : JWT-TEST-GROW-RAW-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 1+ 5 JSON:WRITE-RAW
    JSON:WRITTEN$ s" abcdefbcdef" T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-TEST-GROW-STRING-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 1+ 5 JSON:WRITE-STRING
    JSON:WRITTEN$ s\" abcdef\"bcdef\"" T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-TEST-GROW-FIELD-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 3 a 3 + 3 JSON:WRITE-FIELD-S
    JSON:WRITTEN$ s\" abcdef\"abc\":\"def\"" T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-TEST-GROW-KEY-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a u JSON:WRITE-KEY JSON:WRITTEN$ s\" abcdef\"abcdef\":" T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-TEST-GROW-ESC-ALIAS ( -- )
    JWT-GROW-OPEN JWT-RUN-IN 7 JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a u JSON:WRITE-STRING JSON:WRITTEN$ JWT-RUN-KEY-WANT 18 T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE
    JWT-GROW-OPEN JWT-RUN-IN 7 JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: key:ptr keyu:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: key:^ keyu:n :}
    JWT-GROW-W key keyu JSON:WRITE-KEY JSON:WRITTEN$ JWT-RUN-KEY-WANT 19 T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-TEST-GROW-FIELD-RAW-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 3 a 3 + 3 JSON:WRITE-FIELD-RAW
    JSON:WRITTEN$ s\" abcdef\"abc\":def" T$=
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
@@ -248,7 +248,7 @@ create JWT-RUN-KEY-WANT
    JWT-GROW-OPEN JSON:WRITE-STRING-START
    1025 0 ?do JWT-LARGE-CHUNK 1024 JSON:WRITE-STRING-PART loop
    JSON:WRITE-STRING-END
-   JSON:WRITTEN$ {: a:ptr u:n :}
+   JSON:WRITTEN$ {: a:^ u:n :}
    u 1025 1024 * 2 + T=
    a c@ [char] " T=
    a 1+ c@ 65 T=
@@ -262,13 +262,13 @@ $80 constant JWT-EVERY-N
 JWT-EVERY-N 6 * 3 + constant JWT-EVERY-CAP   \ at most six bytes each, quotes, colon
 JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
-: JWT-EVERY-EMIT ( ptr JSON:writer bool -- ptr JSON:writer ) {: key:bool :}
+: JWT-EVERY-EMIT ( ^JSON:writer bool -- ^JSON:writer ) {: key:bool :}
    JWT-LARGE-CHUNK JWT-EVERY-N key if JSON:WRITE-KEY else JSON:WRITE-STRING then ;
 
 : JWT-EVERY ( bool -- ) {: key:bool :}
    JWT-EVERY-N 0 ?do i JWT-LARGE-CHUNK i + c! loop
-   JWT-A JWT-EVERY-OUT JWT-EVERY-CAP JSON:WRITE-OPEN key JWT-EVERY-EMIT JSON:WRITTEN$ {: f:ptr fu:n :}
-   JWT-GROW-OPEN s" pre" JSON:WRITE-RAW key JWT-EVERY-EMIT JSON:WRITTEN$ {: g:ptr gu:n :}
+   JWT-A JWT-EVERY-OUT JWT-EVERY-CAP JSON:WRITE-OPEN key JWT-EVERY-EMIT JSON:WRITTEN$ {: f:^ fu:n :}
+   JWT-GROW-OPEN s" pre" JSON:WRITE-RAW key JWT-EVERY-EMIT JSON:WRITTEN$ {: g:^ gu:n :}
    gu fu 3 + T=
    g 3 s" pre" T$=
    g 3 + gu 3 - f fu T$=
@@ -306,9 +306,9 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
 : JWT-TEST-SELF-RAW ( -- )
    JWT-FILL-A
-   JWT-A JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-A JSON:WRITTEN$ {: a:^ u:n :}
    JWT-A a u JSON:WRITE-RAW drop
-   JWT-A JSON:WRITTEN$ {: b:ptr v:n :}
+   JWT-A JSON:WRITTEN$ {: b:^ v:n :}
    v JWT-FILL-N 2 * T=
    b c@ 97 T=
    b JWT-FILL-N + c@ 97 T=
@@ -316,9 +316,9 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
 : JWT-TEST-SELF-STRING ( -- )
    JWT-FILL-A
-   JWT-A JSON:WRITTEN$ {: a:ptr u:n :}
+   JWT-A JSON:WRITTEN$ {: a:^ u:n :}
    JWT-A a u JSON:WRITE-STRING drop
-   JWT-A JSON:WRITTEN$ {: b:ptr v:n :}
+   JWT-A JSON:WRITTEN$ {: b:^ v:n :}
    v JWT-FILL-N 2 * 2 + T=
    b c@ 97 T=
    b JWT-FILL-N 1 - + c@ 97 T=
@@ -355,8 +355,8 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 : JWT-ZERO-CAP ( -- )
    JWT-A JWT-BUF-A 0 JSON:WRITE-OPEN s" x" JSON:WRITE-RAW drop ;
 
-: JWT-REFUSED-KEEPS$ ( [ -- ] ptr u8 n -- )   \ refusal left the document untouched
-   {: want:ptr wu:n :}
+: JWT-REFUSED-KEEPS$ ( [ -- ] ^u8 n -- )   \ refusal left the document untouched
+   {: want:^ wu:n :}
    E-JSON-WRITE-CAPACITY TTHROWSQ
    JWT-A JSON:WRITTEN$ want wu T$= ;
 
@@ -424,7 +424,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-OPEN-B JSON:WRITE-CLOSE
    JWT-B JSON:WRITE-CLOSE ;
 
-: JWT-NULL-OUT ( -- ptr u8 )   \ the zero image's null output pointer
+: JWT-NULL-OUT ( -- ^u8 )   \ the zero image's null output pointer
    JWT-FRESH @ JSON-WRITER:UNMAKE 2drop 2drop 2drop drop ;
 
 : JWT-CLOSED-FIELD-S-NULL-KEY ( -- )
@@ -493,12 +493,12 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
 \ WRITE-INT writes every cell: zero, both ends of the range, and negatives such
 \ as JSON-RPC's error codes, each compared with its exact decimal text.
-: JWT-INT$ ( n -- ptr u8 n )
+: JWT-INT$ ( n -- ^u8 n )
    {: v:n :}
    JWT-OPEN-A v JSON:WRITE-INT JSON:WRITTEN$ ;
 
-: JWT-INT= ( n ptr u8 n -- )
-   {: v:n a:ptr u:n :}
+: JWT-INT= ( n ^u8 n -- )
+   {: v:n a:^ u:n :}
    v JWT-INT$ a u T$= ;
 
 : JWT-TEST-INT ( -- )
@@ -533,27 +533,27 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    then
    95 PROP:RND% 32 + PROP:BUF-C+ ;
 
-: JWT-RT-CASE$ ( -- ptr u8 n )
+: JWT-RT-CASE$ ( -- ^u8 n )
    PROP:BUF-RESET
    JWT-RT-MAX-N PROP:RND% 0 ?do JWT-RT-BYTE+ loop
    PROP:BUF$ ;
 
-: JWT-RT-ENCODE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: JWT-RT-ENCODE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    JWT-RT-W JWT-RT-OUT JWT-RT-CAP JSON:WRITE-OPEN a u JSON:WRITE-STRING JSON:WRITTEN$ ;
 
-: JWT-RT-DECODE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: JWT-RT-DECODE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    JWT-RT-READER a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=
    JWT-RT-DECODE JWT-RT-CAP JSON:READ-STR {: got:n :}
    JSON:READ-CLOSE
    JWT-RT-DECODE got ;
 
-: JWT-RT-FIT ( ptr u8 n n -- ) {: a:ptr u:n cap:n :}
+: JWT-RT-FIT ( ^u8 n n -- ) {: a:^ u:n cap:n :}
    JWT-RT-W JWT-RT-OUT cap JSON:WRITE-OPEN a u JSON:WRITE-STRING drop ;
 
 : JWT-RT-ONE ( -- )
-   JWT-RT-CASE$ {: a:ptr u:n :}
-   a u JWT-RT-ENCODE {: e:ptr eu:n :}
+   JWT-RT-CASE$ {: a:^ u:n :}
+   a u JWT-RT-ENCODE {: e:^ eu:n :}
    e eu JWT-RT-DECODE$ a u T$=
    [: a u eu JWT-RT-FIT ;] 0 TTHROWSQ
    [: a u eu 1- JWT-RT-FIT ;] E-JSON-WRITE-CAPACITY TTHROWSQ ;
@@ -574,7 +574,7 @@ create JWT-OVERLONG $C0 c, $AF c,
 create JWT-SURROGATE $ED c, $A0 c, $80 c,
 create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c,
 
-: JWT-OPEN-AB ( -- ptr JSON:writer )
+: JWT-OPEN-AB ( -- ^JSON:writer )
    JWT-OPEN-A s" ab" JSON:WRITE-RAW ;
 
 : JWT-BAD-FFFE ( -- ) JWT-OPEN-AB JWT-FFFE 2 JSON:WRITE-STRING drop ;
@@ -600,13 +600,13 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 \ é (2 bytes), € (3), 😀 (4), DEL, a quote, a tab, U+FFFF and U+10000: in
 \ ASCII mode each scalar above U+007F and DEL is \uXXXX, one above U+FFFF a
 \ surrogate pair.
-: JWT-WIDE$ ( -- ptr u8 n )
+: JWT-WIDE$ ( -- ^u8 n )
    S\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x7F\"\t\xEF\xBF\xBF\xF0\x90\x80\x80" ;
 
-: JWT-WIDE-ESC$ ( -- ptr u8 n )
+: JWT-WIDE-ESC$ ( -- ^u8 n )
    S\" \\u00e9\\u20ac\\ud83d\\ude00\\u007f\\\"\\t\\uffff\\ud800\\udc00" ;
 
-: JWT-WIDE-WANT$ ( -- ptr u8 n )
+: JWT-WIDE-WANT$ ( -- ^u8 n )
    SB-RESET [char] { SB-APPEND-C
    [char] " SB-APPEND-C JWT-WIDE-ESC$ SB-APPEND [char] " SB-APPEND-C
    [char] : SB-APPEND-C
@@ -623,7 +623,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    JSON:WRITE-STRING-END JSON:WRITE-OBJECT-END
    JSON:WRITTEN$ JWT-WIDE-WANT$ T$= ;
 
-: JWT-QUOTE$ ( ptr u8 n -- ptr u8 n )
+: JWT-QUOTE$ ( ^u8 n -- ^u8 n )
    SB-RESET [char] " SB-APPEND-C SB-APPEND [char] " SB-APPEND-C SB$ ;
 
 : JWT-TEST-ASCII-RESET ( -- )
@@ -636,7 +636,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 \ One nested document: a sub-object, an array of two numbers, an empty object
 \ and an empty array. Width 2 breaks after each START and COMMA and closes on
 \ its own line, except the empty pair; width 0 makes the same calls compact.
-: JWT-NESTED ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-NESTED ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" a" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
    s" x" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA s" y" JWT-TRUE JSON:WRITE-FIELD-BOOL
@@ -647,7 +647,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    s" d" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END
    JSON:WRITE-OBJECT-END ;
 
-: JWT-INDENTED$ ( -- ptr u8 n )
+: JWT-INDENTED$ ( -- ^u8 n )
    s\" {\n  \"a\": {\n    \"x\": 1,\n    \"y\": true\n  },\n  \"b\": [\n    2,\n    3\n  ],\n  \"c\": {},\n  \"d\": []\n}" ;
 
 : JWT-TEST-INDENTED ( -- )
@@ -656,7 +656,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 \ Opening a writer again makes it compact, whatever width it had.
-: JWT-COMPACT$ ( -- ptr u8 n )
+: JWT-COMPACT$ ( -- ^u8 n )
    s\" {\"a\":{\"x\":1,\"y\":true},\"b\":[2,3],\"c\":{},\"d\":[]}" ;
 
 : JWT-TEST-COMPACT ( -- )
@@ -724,7 +724,7 @@ create JWT-PARTS-WANT
 : JWT-FRESH-PART ( -- ) JWT-FRESH s" x" JSON:WRITE-STRING-PART drop ;
 : JWT-FRESH-END ( -- ) JWT-FRESH JSON:WRITE-STRING-END drop ;
 
-: JWT-CLOSED ( -- ptr JSON:writer ) JWT-OPEN-B JSON:WRITE-CLOSE JWT-B ;
+: JWT-CLOSED ( -- ^JSON:writer ) JWT-OPEN-B JSON:WRITE-CLOSE JWT-B ;
 : JWT-CLOSED-INDENT! ( -- ) JWT-CLOSED 2 JSON:WRITE-INDENT! drop ;
 : JWT-CLOSED-START ( -- ) JWT-CLOSED JSON:WRITE-STRING-START drop ;
 : JWT-CLOSED-PART ( -- ) JWT-CLOSED s" x" JSON:WRITE-STRING-PART drop ;
@@ -758,12 +758,12 @@ create JWT-PARTS-WANT
 
 \ WRITE-COMMA before every element, the first included, writes what the same
 \ calls without the first comma write.
-: JWT-COMMA-ARRAY ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-COMMA-ARRAY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-ARRAY-START JSON:WRITE-COMMA 1 JSON:WRITE-U JSON:WRITE-COMMA 2 JSON:WRITE-U
    JSON:WRITE-ARRAY-END ;
 
 
-: JWT-COMMA-OBJECT ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-COMMA-OBJECT ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START JSON:WRITE-COMMA s" a" 1 JSON:WRITE-FIELD-U
    JSON:WRITE-COMMA s" b" 2 JSON:WRITE-FIELD-U JSON:WRITE-OBJECT-END ;
 
@@ -776,8 +776,8 @@ create JWT-PARTS-WANT
    s\" {\n  \"a\": 1,\n  \"b\": 2\n}" T$= ;
 
 
-: JWT-STATE-KEEPS$ ( [ -- ] ptr u8 n -- )   \ refusal left the document untouched
-   {: want:ptr wu:n :}
+: JWT-STATE-KEEPS$ ( [ -- ] ^u8 n -- )   \ refusal left the document untouched
+   {: want:^ wu:n :}
    E-JSON-WRITE-STATE TTHROWSQ
    JWT-A JSON:WRITTEN$ want wu T$= ;
 
@@ -809,12 +809,12 @@ create JWT-PARTS-WANT
 
 \ Calls the layout refuses, each on JWT-A; JWT-KEYED$ and JWT-QUOTING$ are
 \ what JWT-A holds when the refused call comes.
-: JWT-EMPTY$ ( -- ptr u8 n ) JWT-NAME 0 ;
-: JWT-KEYED ( -- ptr JSON:writer ) JWT-OPEN-A JSON:WRITE-OBJECT-START s" k" JSON:WRITE-KEY ;
-: JWT-KEYED$ ( -- ptr u8 n ) s\" {\"k\":" ;
-: JWT-QUOTING ( -- ptr JSON:writer )
+: JWT-EMPTY$ ( -- ^u8 n ) JWT-NAME 0 ;
+: JWT-KEYED ( -- ^JSON:writer ) JWT-OPEN-A JSON:WRITE-OBJECT-START s" k" JSON:WRITE-KEY ;
+: JWT-KEYED$ ( -- ^u8 n ) s\" {\"k\":" ;
+: JWT-QUOTING ( -- ^JSON:writer )
    JWT-OPEN-A JSON:WRITE-STRING-START s" ab" JSON:WRITE-STRING-PART ;
-: JWT-QUOTING$ ( -- ptr u8 n ) s\" \"ab" ;
+: JWT-QUOTING$ ( -- ^u8 n ) s\" \"ab" ;
 : JWT-COMMA-FRESH ( -- ) JWT-OPEN-A JSON:WRITE-COMMA drop ;
 : JWT-COMMA-RESET ( -- )
    JWT-OPEN-A s" x" JSON:WRITE-RAW JSON:WRITE-RESET JSON:WRITE-COMMA drop ;
@@ -828,12 +828,12 @@ create JWT-PARTS-WANT
 : JWT-NULL-QUOTING ( -- ) JWT-QUOTING JSON:WRITE-NULL drop ;
 : JWT-KEY-QUOTING ( -- ) JWT-QUOTING s" k" JSON:WRITE-KEY drop ;
 
-: JWT-PIECED ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-PIECED ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START s" k" JSON:WRITE-KEY JSON:WRITE-STRING-START
    s" a" JSON:WRITE-STRING-PART s" b" JSON:WRITE-STRING-PART JSON:WRITE-STRING-END
    JSON:WRITE-OBJECT-END ;
 
-: JWT-PAIR ( ptr JSON:writer -- ptr JSON:writer )
+: JWT-PAIR ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-ARRAY-START 1 JSON:WRITE-U JSON:WRITE-COMMA s" x" JSON:WRITE-STRING JSON:WRITE-ARRAY-END ;
 
 
@@ -857,11 +857,11 @@ create JWT-PARTS-WANT
 
 \ The handle is nominal: a raw cell is not a writer.
 : JWT-TEST-CHECKER ( -- )
-   s" JWT-OK ( ptr JSON:writer -- ptr JSON:writer ) JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END" JWT-CHECK-ACCEPTS
-   s" JWT-GROW-OK ( ptr JSON:writer ptr n -- ptr JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-ACCEPTS
-   s" JWT-GROW-BAD ( ptr JSON:writer ptr u8 -- ptr JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-REJECTS
-   s" JWT-BAD-CELL ( n ptr u8 n -- n ) JSON:WRITE-RAW" JWT-CHECK-REJECTS
-   s" JWT-BAD-BUF ( ptr u8 ptr u8 n -- ptr u8 ) JSON:WRITE-RAW" JWT-CHECK-REJECTS ;
+   s" JWT-OK ( ^JSON:writer -- ^JSON:writer ) JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END" JWT-CHECK-ACCEPTS
+   s" JWT-GROW-OK ( ^JSON:writer ^n -- ^JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-ACCEPTS
+   s" JWT-GROW-BAD ( ^JSON:writer ^u8 -- ^JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-REJECTS
+   s" JWT-BAD-CELL ( n ^u8 n -- n ) JSON:WRITE-RAW" JWT-CHECK-REJECTS
+   s" JWT-BAD-BUF ( ^u8 ^u8 n -- ^u8 ) JSON:WRITE-RAW" JWT-CHECK-REJECTS ;
 
 : JWT-MAIN ( -- )
    T-RESET

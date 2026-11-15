@@ -27,7 +27,7 @@ public
 0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
 0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
-0 CWORK-VARIABLE M-DOES-SIG ptr u8
+0 CWORK-VARIABLE M-DOES-SIG ^u8
 0 CWORK-VARIABLE M-DOES-SIG-U n
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
 0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
@@ -40,7 +40,7 @@ public
 
 \ The definition's name is its source spelling, whole, which stays put until the
 \ next definition is recorded: no copy that a longer name could run past.
-0 CWORK-VARIABLE NAME-A ptr u8
+0 CWORK-VARIABLE NAME-A ^u8
 0 CWORK-VARIABLE NAME-U n
 
 \ How PUBLISH-IT publishes the emission: a pending body (its `does>` clause,
@@ -57,9 +57,9 @@ DYNAMIC-BUFFER PUB-OFF n
 
 private
 
-0 CWORK-VARIABLE M-SRC ptr u8
+0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
-0 CWORK-VARIABLE M-SCAN ptr u8                 \ the text scanned last
+0 CWORK-VARIABLE M-SCAN ^u8                 \ the text scanned last
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
 -1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
@@ -68,13 +68,13 @@ private
 
 public
 
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    M-SRC @ M-SRC-U @ ;
 
 : DOES-BYTE@ ( -- n )
    data-base DOESB-CELL + @ ;
 
-: NAME$ ( -- ptr u8 n )
+: NAME$ ( -- ^u8 n )
    NAME-A @ NAME-U @ ;
 
 \ A compiler entry reached while a compilation runs would stage one definition
@@ -108,28 +108,28 @@ public
 
 private
 
-: DOES-SIG-FIELD ( -- ptr ptr u8 )
+: DOES-SIG-FIELD ( -- ^^u8 )
    data-base TCSIG-A-CELL CELL / ptr-field ;
 
 : TRUSTED? ( -- bool )
    data-base TRUSTED-CELL + @ 0<> ;
 
-: TRUST-SIG-A-FIELD ( -- ptr ptr u8 )
+: TRUST-SIG-A-FIELD ( -- ^^u8 )
    data-base TSIG-A-CELL CELL / ptr-field ;
 
-: TRUST-SIG$ ( -- ptr u8 n )
+: TRUST-SIG$ ( -- ^u8 n )
    TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
 \ TRUST-DECL is deliberately unavailable to checked code. Register only after
 \ the scan has recorded the exact source spelling from the tape: the pending
 \ dictionary record holds only the bare tail of a qualified definition.
-: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
+: REGISTER-TRUST ( ^u8 n ^u8 n -- )
    CHECK:DECLARED ;
 
 70 constant RC-REJECT                 \ CHECK:DEFINITION's reject status (check-hook.f CHECK-RC)
 
-: CHECK-PARENT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CHECK-PARENT ( ^u8 n -- n )
+   {: a:^ u:n :}
    a M-SCAN !
    CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
@@ -147,14 +147,14 @@ private
 \ A refused clause is reported as CHECK:DEFINITION reports a refused body: the
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
-: CLAUSE-CK ( n ptr u8 n -- )
+: CLAUSE-CK ( n ^u8 n -- )
    CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
 
 \ The engine records the split just past the `does> ` it consumed, so a cut
 \ that is not just past a `does> ` in this source means the source and the
 \ pending definition disagree.
 : DOES-CUT-CK ( -- )
-   M-SRC @ {: src:ptr :}
+   M-SRC @ {: src:^ :}
    M-DOES @ {: cut:n :}
    cut DOES-SPAN < cut M-SRC-U @ > or if E-NFEED-CUT throw then
    src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR=CI 0= if E-NFEED-CUT throw then
@@ -176,8 +176,8 @@ public
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
-: CHECK-DOES-CLAUSE ( ptr u8 n -- n )
-   {: na:ptr nu:n :}
+: CHECK-DOES-CLAUSE ( ^u8 n -- n )
+   {: na:^ nu:n :}
    CHECKER-TAPE:ADVANCE
    M-DOES @ {: cut:n :}
    M-SRC @ cut + M-SCAN !
@@ -227,15 +227,15 @@ private
 : REC-INDEX ( -- n )
    ndict@ ;
 
-: QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
-   {: rec:ptr a:ptr u:n split:n :}
+: QUALIFIED-RECORD-NAME? ( ^n ^u8 n n -- bool )
+   {: rec:^ a:^ u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split CHECKER-RESOLVE:HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
-: RECORD-NAME? ( ptr n ptr u8 n -- bool )
-   {: rec:ptr a:ptr u:n :}
+: RECORD-NAME? ( ^n ^u8 n -- bool )
+   {: rec:^ a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < if rec a u XREF-MATCH? exit then
    rec a u split QUALIFIED-RECORD-NAME? ;
@@ -322,7 +322,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
 \ The body text's base, through `ptr-field`, the declared door to a DATA cell
 \ that holds an address.
-: TEXT-BASE ( -- ptr u8 ) data-base BODY-TEXT:BASE-CELL + 0 ptr-field @ ;
+: TEXT-BASE ( -- ^u8 ) data-base BODY-TEXT:BASE-CELL + 0 ptr-field @ ;
 
 \ Cell k of layout.f BODY-SOURCE row i: 0 its text offset, 1 its source offset.
 \ The rows follow the text in the block, at base + cap.
@@ -341,8 +341,8 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
 \ The file line of text offset off in buffer [b, e) by row i, 0 when the row
 \ has no source or the byte lies past e.
-: ROW-LINE ( ptr u8 ptr u8 n n -- n )
-   {: b:ptr e:ptr i:n off:n :}
+: ROW-LINE ( ^u8 ^u8 n n -- n )
+   {: b:^ e:^ i:n off:n :}
    i 1 SOURCE-ROW@ BODY-SOURCE:NONE = if 0 exit then
    i 1 SOURCE-ROW@ off + i 0 SOURCE-ROW@ - {: src:n :}
    e b - src <= if 0 exit then
@@ -351,12 +351,12 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 \ 0 unless the name's buffer is current and p's run has a row. Rows at or past
 \ BODYLEN are stale. A donor engine whose heap does not start at DATA-START has
 \ another layout, its BODY-TEXT cells holding other bytes, so it has none.
-: BODY-LINE ( ptr u8 -- n )
-   {: p:ptr :}
+: BODY-LINE ( ^u8 -- n )
+   {: p:^ :}
    data-base BOOT:HEAP-START-CELL + @ DATA-START <> if 0 exit then
    p TEXT-BASE - {: off:n :}
    off 0 <  off data-base BODYLEN-CELL + @ >= or if 0 exit then
-   INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:ptr nm:ptr e:ptr :}
+   INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:^ nm:^ e:^ :}
    nm b - 0 <  e nm - 0 <= or if 0 exit then
    off ROW-BEFORE {: i:n :}
    i 0 < if 0 exit then
@@ -365,16 +365,16 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 \ The file line of byte p, in the buffer being read (a refusal at the closing
 \ `;`) or in the body text, 0 when it has none. Lines count from the file's
 \ first owned byte, so the buffer must lie in the file (SRCLOC:FILE-BUFFER?).
-: LINE-OF ( ptr u8 -- n )
-   {: p:ptr :}
-   INPUT-START @ INPUT-END @ {: b:ptr e:ptr :}
+: LINE-OF ( ^u8 -- n )
+   {: p:^ :}
+   INPUT-START @ INPUT-END @ {: b:^ e:^ :}
    p b - 0 >=  e p - 0 > and if FILE-START @ p ERROR-TEXT:LINE exit then
    p BODY-LINE ;
 
 \ `<lead><path>` while a file is open, then `:<line>` of byte p (LINE-OF) when
 \ it has one under SRCLOC:FILE-BUFFER?.
-: SAY-WHERE ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
+: SAY-WHERE ( ^u8 n ^u8 -- )
+   {: a:^ u:n p:^ :}
    data-base SRCLOC:PATHLEN-CELL + @ {: len:n :}
    len 0= if exit then
    a u ERROR-TEXT:TYPE
@@ -387,8 +387,8 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
 \ The rejection names the definition, the token it stopped at if any, and the
 \ place of p by SAY-WHERE.
-: REPORT-FAILURE ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
+: REPORT-FAILURE ( ^u8 n ^u8 -- )
+   {: a:^ u:n p:^ :}
    s" compiler: cannot compile " ERROR-TEXT:TYPE
    NAME$ ERROR-TEXT:TYPE
    u 0 > if s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE then
@@ -396,8 +396,8 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    S\" \n" ERROR-TEXT:TYPE ;
 
 \ An undefined word, placed on p's line while a file buffer is open.
-: REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
+: REPORT-UNDEFINED ( ^u8 n ^u8 -- )
+   {: a:^ u:n p:^ :}
    SRCLOC:FILE-BUFFER? if p LINE-OF else 0 then {: ln:n :}
    s" E-UNDEFINED" REJECTION:PATH$ ln ERROR-TEXT:PREFIX
    s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
@@ -420,17 +420,17 @@ public
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.
-: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
+: CLOSE$ ( -- ^u8 n ) READ-AT @ data-base TKL-CELL + @ ;
 
 private
 
 \ The checker's refused token in the text scanned last, empty if none; its byte, the
 \ closing `;` (CLOSE$) for one past the body's end; and whether it is undefined.
-: CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 bool )
+: CHECKER-REFUSED$ ( -- ^u8 n ^u8 bool )
    M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR false exit then
    PIN-TOKEN
    PIN-SPAN nip {: b:n undefined:bool :}
-   M-SCAN @ b + {: p:ptr :}
+   M-SCAN @ b + {: p:^ :}
    SRC$ + p - 0= if CLOSE$ drop else p then  undefined ;
 
 \ A refusal the checker pins its own token for: a reject, a using refusal, a bad
@@ -442,11 +442,11 @@ private
 
 \ A pinned refusal with no compiler token is the checker's refusal of the
 \ definition: name the token it refused instead.
-: REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n p:ptr rc:n :}
+: REPORT-REFUSAL ( ^u8 n ^u8 n -- )
+   {: a:^ u:n p:^ rc:n :}
    rc PINNED? 0=  u 0<> or
    if a u p REPORT-FAILURE exit then
-   CHECKER-REFUSED$ {: ca:ptr cu:n cp:ptr undefined:bool :}
+   CHECKER-REFUSED$ {: ca:^ cu:n cp:^ undefined:bool :}
    ca cu cp REPORT-FAILURE
    undefined if ca cu cp REPORT-UNDEFINED then ;
 
@@ -466,8 +466,8 @@ public
 
 \ A word compiled code cannot reach and a MALFORMED? body take the reject
 \ status; p is the refused token's byte or NULL-PTR.
-: SETTLE-UNIT ( n n bool ptr u8 n ptr u8 -- )
-   {: entry-rc:n rc:n undefined:bool a:ptr u:n p:ptr :}
+: SETTLE-UNIT ( n n bool ^u8 n ^u8 -- )
+   {: entry-rc:n rc:n undefined:bool a:^ u:n p:^ :}
    entry-rc 0<> if
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECK:DOES-PUBLISHED then
       entry-rc throw
@@ -497,7 +497,7 @@ public
       RETRACT rc throw
    then ;
 
-: STAGE-UNIT ( ptr u8 n -- )
+: STAGE-UNIT ( ^u8 n -- )
    {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !

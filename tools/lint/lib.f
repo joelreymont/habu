@@ -4,10 +4,10 @@ require tools/lint/text.f
 require tools/lint/token.f
 
 \ Source span used by the REPL lint file driver.
-TYPED-VARIABLE P2A ptr u8
+TYPED-VARIABLE P2A ^u8
 variable P2U
-: P2A@ ( -- ptr u8 ) P2A @ ;
-: P2A! ( ptr u8 -- ) P2A ! ;
+: P2A@ ( -- ^u8 ) P2A @ ;
+: P2A! ( ^u8 -- ) P2A ! ;
 
 \ ---- attributed CLI failure -------------------------------------------------
 \ A lint CLI catches its strict entry and calls `s" tool" code LINT-MAIN`, which
@@ -19,7 +19,7 @@ create LINT-MAIN-NBUF LINT-MAIN-NCAP allot
 create LINT-MAIN-LFB 1 allot
 variable LINT-MAIN-NI
 
-: LINT-MAIN-N$ ( n -- ptr u8 n ) {: v:n :}
+: LINT-MAIN-N$ ( n -- ^u8 n ) {: v:n :}
    LINT-MAIN-NCAP LINT-MAIN-NI !
    v 0= IF s" 0" exit THEN
    v 0 < IF 0 v - ELSE v THEN
@@ -35,7 +35,7 @@ variable LINT-MAIN-NI
    THEN
    LINT-MAIN-NBUF LINT-MAIN-NI @ +  LINT-MAIN-NCAP LINT-MAIN-NI @ - ;
 
-: LINT-MAIN-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
+: LINT-MAIN-OUT ( ^u8 n -- ) {: a:^ u:n :}
    1 a u LINT-OUT-WRITE ;
 
 : LINT-MAIN-LF ( -- )
@@ -48,7 +48,7 @@ variable LINT-MAIN-NI
    LINT-CODE-NAME$ LINT-MAIN-OUT
    s" )" LINT-MAIN-OUT ;
 
-: LINT-MAIN ( ptr u8 n n -- ) {: name:ptr nu:n code:n :}
+: LINT-MAIN ( ^u8 n n -- ) {: name:^ nu:n code:n :}
    code 0= IF exit THEN
    name nu LINT-MAIN-OUT
    s" : threw " LINT-MAIN-OUT

@@ -9,8 +9,8 @@ public
 
 : MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> ) C2-MEM:MUT-LENGTH ;
 
-: COPY$ ( mut-view<p,q,a,u8> ptr u8 n -- mut-view<p,q,a,u8> n )
-   {: source:ptr size:n :}
+: COPY$ ( mut-view<p,q,a,u8> ^u8 n -- mut-view<p,q,a,u8> n )
+   {: source:^ size:n :}
    MUT-LENGTH swap {: cap:n :}
    size 0 < if E-SPAN-RANGE throw then
    size cap > if E-SPAN-CAPACITY throw then

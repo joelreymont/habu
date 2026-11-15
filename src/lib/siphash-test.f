@@ -87,17 +87,17 @@ create SIPT-A SIPT-SMALL allot
 create SIPT-B SIPT-SMALL allot
 create SIPT-BIG SIPT-BIG-N allot
 
-: SIPT-ZERO ( ptr u8 n -- )
+: SIPT-ZERO ( ^u8 n -- )
    {: p len:n :}
    len 0 ?do 0 p i + c! loop ;
 
 
-: SIPT-DIFFS ( ptr u8 ptr u8 n -- n )
+: SIPT-DIFFS ( ^u8 ^u8 n -- n )
    {: p q len:n :}
    0 len 0 ?do p i + c@ q i + c@ <> if 1+ then loop ;
 
 
-: SIPT-NONZERO ( ptr u8 n -- n )
+: SIPT-NONZERO ( ^u8 n -- n )
    {: p len:n :}
    0 len 0 ?do p i + c@ 0<> if 1+ then loop ;
 

@@ -24,9 +24,9 @@ WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
-: XREF-A>U8 ( ptr n -- ptr u8 ) BYTE-VIEW ;
+: XREF-A>U8 ( ^n -- ^u8 ) BYTE-VIEW ;
 
-: XREF-REC+ ( ptr n n -- ptr n )
+: XREF-REC+ ( ^n n -- ^n )
    + ;
 
 : XREF-TRUE ( -- bool )
@@ -35,7 +35,7 @@ WL:RETIRED constant XREF-RETIRED-WL
 : XREF-FALSE ( -- bool )
    XREF-TRUE 0= ;
 
-: XREF-NULL ( -- ptr n )
+: XREF-NULL ( -- ^n )
    NULL-PTR ;
 
 : XREF-REC-ADDR ( n -- n )
@@ -43,20 +43,20 @@ WL:RETIRED constant XREF-RETIRED-WL
 
 \ Every reader in this file reads a record's cells through this word, and so
 \ through src/core/util.f DICT-CELL@, which refuses XREF-NULL (E-XREF-NULL).
-: XREF-CELL@ ( ptr n n -- n )
+: XREF-CELL@ ( ^n n -- n )
    DICT-CELL@ ;
 
 package XREF
 private
 \ A dictionary record's address and a record cell's name address are integers.
-CAST: N>REC ( n -- ptr n )
-CAST: N>U8 ( n -- ptr u8 )
+CAST: N>REC ( n -- ^n )
+CAST: N>U8 ( n -- ^u8 )
 public
-: REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
-: PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
+: REC ( n -- ^n ) XREF-REC-ADDR N>REC ;
+: PTR@ ( ^n n -- ^u8 ) XREF-CELL@ N>U8 ;
 ;package
 
-: XREF-REC ( n -- ptr n ) XREF:REC ;
+: XREF-REC ( n -- ^n ) XREF:REC ;
 
 \ The dictionary index of a record address an engine cell holds as an integer.
 \ n must be a live record's address; 0 and unaligned addresses are not
@@ -64,27 +64,27 @@ public
 : XREF-ADDR>INDEX ( n -- n ) dbase@ - DREC / ;
 
 \ The record at such an address, under the same precondition.
-: XREF-ADDR>REC ( n -- ptr n ) XREF-ADDR>INDEX XREF-REC ;
+: XREF-ADDR>REC ( n -- ^n ) XREF-ADDR>INDEX XREF-REC ;
 
-: LATEST ( -- ptr n )
+: LATEST ( -- ^n )
    ndict@ dup 0 <= if drop XREF-NULL exit then
    1- XREF-REC ;
 
-: XREF-FOUND? ( ptr n -- bool )
+: XREF-FOUND? ( ^n -- bool )
    XREF-NULL <> ;
 
-: XREF-PTR@ ( ptr n n -- ptr u8 ) XREF:PTR@ ;
+: XREF-PTR@ ( ^n n -- ^u8 ) XREF:PTR@ ;
 
-: XREF-START ( ptr n -- n )
+: XREF-START ( ^n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
-: XREF-RAW-LEN ( ptr n -- n )
+: XREF-RAW-LEN ( ^n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
-: XREF-FLAGS ( ptr n -- n )
+: XREF-FLAGS ( ^n -- n )
    XREF-FLAGS-SLOT XREF-CELL@ ;
 
-: XREF-WORDLIST ( ptr n -- n )
+: XREF-WORDLIST ( ^n -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
 
 \ A namespace row has no code, so it reuses a word's two code-span cells for its
@@ -92,16 +92,16 @@ public
 \ where a word keeps its length. A private wid of 0 means the package has opened
 \ no private section.
 \ Reading them as XREF-START / XREF-RAW-LEN says the opposite of what is meant.
-: XREF-PKG-PUBLIC ( ptr n -- n )
+: XREF-PKG-PUBLIC ( ^n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
-: XREF-PKG-PRIVATE ( ptr n -- n )
+: XREF-PKG-PRIVATE ( ^n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
 \ The private wid of the package the string names, 0 for no such package or
 \ no private section.
-: XREF-PRIVATE-WL ( ptr u8 n -- n )
-   BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+: XREF-PRIVATE-WL ( ^u8 n -- n )
+   BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = if 0 exit then
    rec XREF-PKG-PRIVATE ;
 
@@ -132,31 +132,31 @@ public
 \ row's length cell, live or retired, holds a wordlist id, so it is answered raw
 \ rather than sent through CODE-SPAN; a package reader names that cell
 \ XREF-PKG-PRIVATE. A raw length is only for record serialization.
-: XREF-LEN ( ptr n -- n ) {: rec:ptr :}
+: XREF-LEN ( ^n -- n ) {: rec:^ :}
    rec XREF-WORDLIST XREF:PACKAGE-WL? if rec XREF-RAW-LEN exit then
    rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
 
-: XREF-CODE-BYTES ( ptr n -- n ) {: rec:ptr :}
+: XREF-CODE-BYTES ( ^n -- n ) {: rec:^ :}
    rec XREF-WORDLIST XREF:PACKAGE-WL? if 0 exit then
    rec XREF-RAW-LEN CODE-SPAN:BYTES ;
 
-: XREF-RETIRED? ( ptr n -- bool )
+: XREF-RETIRED? ( ^n -- bool )
    XREF-WORDLIST XREF:RETIRED-WL? ;
 
-: XREF-NAME-LEN ( ptr n -- n )
+: XREF-NAME-LEN ( ^n -- n )
    XREF-FLAGS DNAME-LEN-MASK and ;
 
-: XREF-EXT? ( ptr n -- bool )
+: XREF-EXT? ( ^n -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
-: XREF-INLINE-NAME ( ptr n -- ptr u8 )
+: XREF-INLINE-NAME ( ^n -- ^u8 )
    $18 XREF-REC+ XREF-A>U8 ;
 
-: XREF-NAME-A ( ptr n -- ptr u8 )
+: XREF-NAME-A ( ^n -- ^u8 )
    dup XREF-EXT? if XREF-NAME-SLOT XREF-PTR@ exit then
    XREF-INLINE-NAME ;
 
-: XREF-NAME$ ( ptr n -- ptr u8 n )
+: XREF-NAME$ ( ^n -- ^u8 n )
    dup XREF-NAME-A swap XREF-NAME-LEN ;
 
 : XREF-FOLD-C ( n -- n )
@@ -175,31 +175,31 @@ variable XREF-FU
 variable XREF-IDX
 variable XREF-NV
 
-: XREF-A@ ( -- ptr u8 )
+: XREF-A@ ( -- ^u8 )
    XREF-A @ ;
 
-: XREF-B@ ( -- ptr u8 )
+: XREF-B@ ( -- ^u8 )
    XREF-B @ ;
 
-: XREF-SN@ ( -- ptr u8 )
+: XREF-SN@ ( -- ^u8 )
    XREF-SN @ ;
 
-: XREF-FN@ ( -- ptr u8 )
+: XREF-FN@ ( -- ^u8 )
    XREF-FN @ ;
 
-: XREF-A! ( ptr u8 -- )
+: XREF-A! ( ^u8 -- )
    XREF-A ! ;
 
-: XREF-B! ( ptr u8 -- )
+: XREF-B! ( ^u8 -- )
    XREF-B ! ;
 
-: XREF-SN! ( ptr u8 -- )
+: XREF-SN! ( ^u8 -- )
    XREF-SN ! ;
 
-: XREF-FN! ( ptr u8 -- )
+: XREF-FN! ( ^u8 -- )
    XREF-FN ! ;
 
-: XREF-STR=CI ( ptr u8 n ptr u8 n -- bool )
+: XREF-STR=CI ( ^u8 n ^u8 n -- bool )
    XREF-V ! XREF-B! XREF-U ! XREF-A!
    XREF-U @ XREF-V @ <> if XREF-FALSE exit then
    0 begin dup XREF-U @ < while
@@ -209,14 +209,14 @@ variable XREF-NV
    repeat drop
    XREF-TRUE ;
 
-: XREF-MATCH? ( ptr n ptr u8 n -- bool )
+: XREF-MATCH? ( ^n ^u8 n -- bool )
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
 package PKG-AUTH
 private
 
-: NAME-OUT ( ptr n -- ptr u8 n bool ) {: rec:ptr :}
+: NAME-OUT ( ^n -- ^u8 n bool ) {: rec:^ :}
    rec XREF-NAME$ dup 0= if
       2drop s" " XREF-FALSE exit
    then
@@ -235,7 +235,7 @@ private
 \ exact all-zero tuple. A package must name a live namespace record whose two
 \ WIDs equal the protected engine cells. Which of them current is, if either,
 \ is the checker's question (src/core/checker.f CHECKER-RESOLVE:AUTHORITY).
-: LIVE-PKG ( n n n -- ptr u8 n bool )
+: LIVE-PKG ( n n n -- ^u8 n bool )
    {: recn:n pub:n pri:n :}
    recn 0= if
       s" " pub 0= pri 0= and exit
@@ -258,7 +258,7 @@ private
    then
    NAME-OUT ;
 
-: LIVE ( -- ptr u8 n bool )
+: LIVE ( -- ^u8 n bool )
    data-base PKG-REC-CELL + @
    data-base PKG-PUB-CELL + @
    data-base PKG-PRI-CELL + @
@@ -266,10 +266,10 @@ private
 
 \ The package whose public wordlist wid is: the live namespace row that
 \ publishes it.
-: NS-PUB? ( ptr n n -- bool ) {: rec:ptr wid:n :}
+: NS-PUB? ( ^n n -- bool ) {: rec:^ wid:n :}
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
 
-: WID-PKG ( n -- ptr u8 n bool ) {: wid:n :}
+: WID-PKG ( n -- ^u8 n bool ) {: wid:n :}
    ndict@ 1-
    begin dup 0 >= while
       dup XREF-REC wid NS-PUB? if XREF-REC XREF-NAME$ XREF-TRUE exit then
@@ -278,7 +278,7 @@ private
    s" " XREF-FALSE ;
 
 \ The package the engine's using slot n imports (layout.f USE-WIDS-OFF).
-: USE-SLOT ( n -- ptr u8 n bool )
+: USE-SLOT ( n -- ^u8 n bool )
    cells USE-WIDS-OFF + data-base + @ WID-PKG ;
 
 : INSTALL ( -- )
@@ -288,7 +288,7 @@ INSTALL
 
 ;package
 
-: XREF-FIND-WL ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
+: XREF-FIND-WL ( ^u8 n n -- ^n ) {: a:^ u:n wid:n :}
    \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
    \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
@@ -306,7 +306,7 @@ INSTALL
 
 \ A miss in the global wordlist answers the walk of WL:PRIMITIVES, the
 \ built-ins' wordlist (kernel-x64.f FIND-HELPER, does the same).
-: XREF-FIND-WL-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
+: XREF-FIND-WL-INDEX ( ^u8 n n -- n ) {: a:^ u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -320,7 +320,7 @@ INSTALL
 
 variable XREF-QI
 
-: XREF-QUAL-INDEX ( ptr u8 n -- n )
+: XREF-QUAL-INDEX ( ^u8 n -- n )
    XREF-SU ! XREF-SN!
    -1 XREF-QI !
    0 begin dup XREF-SU @ < while
@@ -334,21 +334,21 @@ variable XREF-QI
    dup 0= if drop -1 exit then
    dup XREF-SU @ 1- = if drop -1 exit then ;
 
-: XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr n )
+: XREF-FIND-QUALIFIED ( ^u8 n n -- ^n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
-: XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
+: XREF-FIND-QUALIFIED-INDEX ( ^u8 n n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
 
-: XREF-FIND ( ptr u8 n -- ptr n )
+: XREF-FIND ( ^u8 n -- ^n )
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
@@ -358,7 +358,7 @@ variable XREF-QI
 \ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
 names: XREF-FIND
 
-: XREF-FIND-INDEX ( ptr u8 n -- n )
+: XREF-FIND-INDEX ( ^u8 n -- n )
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
@@ -366,10 +366,10 @@ names: XREF-FIND
    XREF-FIND-WL-INDEX ;
 names: XREF-FIND-INDEX
 
-: XREF-FIND-CURRENT-INDEX ( ptr u8 n -- n )
+: XREF-FIND-CURRENT-INDEX ( ^u8 n -- n )
    get-current XREF-FIND-WL-INDEX ;
 
-: XREF-FIND-TARGET-INDEX ( ptr u8 n -- n )
+: XREF-FIND-TARGET-INDEX ( ^u8 n -- n )
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
@@ -389,7 +389,7 @@ private
 
 $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
-: NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: NAMESPACE-EXISTS? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
@@ -398,24 +398,24 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 \ hash index the definer's own duplicate wall asks: a qualified name in the
 \ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
 \ walking every record, which a declaration asked once per generated word.
-: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+: TARGET-RECORD ( ^u8 n -- ^n ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = IF XREF-NULL EXIT THEN
    q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:^ :}
    ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
    a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
-: NAMESPACED? ( ptr u8 n -- bool )
+: NAMESPACED? ( ^u8 n -- bool )
    XREF-QUAL-INDEX 0 >= ;
 
 \ The duplicate test is asked in the scope the definition will LAND in: qualified
 \ names resolve through their namespace, a bare one through the current wordlist.
 \ XREF-FIND would answer a bare name from the global wordlist instead, and a
 \ global word of the same spelling is not this package's private word.
-: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHECK ( ^u8 n -- ) {: a:^ u:n :}
    a u TFAM-CTOR-WORD? 0= IF
       s" xref: generated declaration visibility mismatch" 76 die
    THEN
@@ -425,7 +425,7 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 public
 
-: DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
+: DICTIONARY-RECORDS ( ^u8 n n -- n ) {: a:^ u:n words:n :}
    words 0 <= words COUNT-MAX >= or IF
       s" xref: generated declaration word count overflow" 76 die
    THEN
@@ -448,26 +448,26 @@ seal-package
 package XREF
 private
 
-: RETIRE-RAW ( ptr n -- ) {: rec:ptr :}
-   rec XREF-WORDLIST-SLOT cells + {: wl:ptr :}
+: RETIRE-RAW ( ^n -- ) {: rec:^ :}
+   rec XREF-WORDLIST-SLOT cells + {: wl:^ :}
    XREF-RETIRED-WL wl patch32
    -1 wl 4 + patch32 ;
 
 private
 
-CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
+CAST: GRID-RETIRE-XT ( n -- [ ^n -- ] )
 
-: GRID-RETIRE-OWNER ( ptr n ptr u8 -- )
-   {: rec:ptr owner:ptr :}
+: GRID-RETIRE-OWNER ( ^n ^u8 -- )
+   {: rec:^ owner:^ :}
    owner NULL-PTR = IF EXIT THEN
    owner CHECKER-OWNER-ABI:GRID-RETIRE-OFF + CELL-VIEW @ {: action:n :}
    action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
 
-: GRID-RETIRE ( ptr n -- ) {: rec:ptr :}
+: GRID-RETIRE ( ^n -- ) {: rec:^ :}
    NCOMP-DISPATCH:TARGET-DECL-A @
-      {: target:ptr :}
+      {: target:^ :}
    NCOMP-DISPATCH:DECL-A @
-      {: source:ptr :}
+      {: source:^ :}
    rec target GRID-RETIRE-OWNER
    source target <> IF rec source GRID-RETIRE-OWNER THEN ;
 
@@ -476,27 +476,27 @@ public
 \ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED)
 \ before the grid action drops the record's checker link, so a link replays it
 \ before the first record the compile made after it (the linker's LINK-OBJECT).
-: RETIRE ( ptr n -- ) {: rec:ptr :}
+: RETIRE ( ^n -- ) {: rec:^ :}
    rec CHECKER-RESOLVE:REC>INDEX  rec XREF-WORDLIST  CHECK:HOLD-RETIRED
    rec GRID-RETIRE
    rec RETIRE-RAW ;
 
 \ DNAME-SEALED is bit 13 of the flags cell's upper half, rewritten whole with
 \ its other bits kept.
-: SEAL ( ptr n -- ) {: rec:ptr :}
+: SEAL ( ^n -- ) {: rec:^ :}
    rec XREF-FLAGS DNAME-SEALED or 32 rshift
    rec XREF-FLAGS-SLOT cells + 4 + patch32 ;
 
-: SEALED? ( ptr n -- bool ) XREF-FLAGS DNAME-SEALED and 0= 0= ;
+: SEALED? ( ^n -- bool ) XREF-FLAGS DNAME-SEALED and 0= 0= ;
 
 private
 \ Whether rec is a live namespace row whose public or private wid is wid.
-: NS-WID? ( ptr n n -- bool ) {: rec:ptr wid:n :}
+: NS-WID? ( ^n n -- bool ) {: rec:^ wid:n :}
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =
    rec XREF-PKG-PUBLIC wid =  rec XREF-PKG-PRIVATE wid =  or  and ;
 
 \ Whether rec is named and enters at xt.
-: NAMED-AT? ( ptr n n -- bool ) {: rec:ptr xt:n :}
+: NAMED-AT? ( ^n n -- bool ) {: rec:^ xt:n :}
    rec XREF-START xt =  rec XREF-NAME-LEN 0 >  and ;
 
 public
@@ -511,7 +511,7 @@ public
 
 \ The live namespace row whose public or private wordlist is wid. Package
 \ wids count up from FIRST-DYNAMIC-WID, so a lower wid answers at once.
-: NS-ROW ( n -- ptr n bool ) {: wid:n :}
+: NS-ROW ( n -- ^n bool ) {: wid:n :}
    wid FIRST-DYNAMIC-WID < if XREF-NULL XREF-FALSE exit then
    ndict@ 1-
    begin dup 0 >= while
@@ -527,7 +527,7 @@ public
 
 ;package
 
-: XREF-RETIRE-WL ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+: XREF-RETIRE-WL ( ^u8 n n -- ) {: a:^ u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -545,12 +545,12 @@ public
 \ four; the body test is what tells the clause from a word someone named X;does.
 : XREF-DOES-COMPANION? ( n -- bool ) {: k:n :}
    k 1+ ndict@ >= if XREF-FALSE exit then
-   k XREF-REC {: parent:ptr :}
-   k 1+ XREF-REC {: clause:ptr :}
+   k XREF-REC {: parent:^ :}
+   k 1+ XREF-REC {: clause:^ :}
    parent XREF-WORDLIST clause XREF-WORDLIST <> if XREF-FALSE exit then
-   parent XREF-NAME$ {: name:ptr len:n :}
-   clause XREF-NAME$ {: derived:ptr dlen:n :}
-   DOES-CLAUSE:SUFFIX$ {: suffix:ptr sufu:n :}
+   parent XREF-NAME$ {: name:^ len:n :}
+   clause XREF-NAME$ {: derived:^ dlen:n :}
+   DOES-CLAUSE:SUFFIX$ {: suffix:^ sufu:n :}
    dlen len sufu + <> if XREF-FALSE exit then
    derived len name len XREF-STR=CI 0= if XREF-FALSE exit then
    derived len + sufu suffix sufu XREF-STR=CI 0= if XREF-FALSE exit then
@@ -587,27 +587,27 @@ DOES-COMPANION-INSTALL
 \ load with that code. Both loops run these words; a replayed `undefine` never
 \ reaches them, since the checker's source pass retires through the overlay
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
-: XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+: XREF-UNDEFINE-GUARD ( ^u8 n -- ) {: a:^ u:n :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
    2 s" E-OVERLAY-OPEN habu: undefine while a checker replay is open: " write drop
    2 a u write drop
    2 S\" \n" write drop
    ENGINE-ERROR:OVERLAY-OPEN throw ;
 
-: UNDEFINE-NAME ( ptr u8 n -- )
+: UNDEFINE-NAME ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
-: UNDEFINE-FOUND ( ptr u8 n n -- )
+: UNDEFINE-FOUND ( ^u8 n n -- )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
-: UNDEFINE-IF-DEFINED ( ptr u8 n -- )
+: UNDEFINE-IF-DEFINED ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
@@ -635,7 +635,7 @@ DOES-COMPANION-INSTALL
 
 \ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
 \ one word with `undefine NAME`; it never replays baked sources to hide one.
-: HIDE-DEFS-FROM ( ptr u8 n -- )
+: HIDE-DEFS-FROM ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
@@ -651,8 +651,8 @@ DOES-COMPANION-INSTALL
 \ occurrences when it binds an exported contract (src/habu/prims.f).
 package DEF-OCC
 public
-: SELECT ( ptr n -- n n ) def-occ-select ;
-: RESOLVE ( n n -- ptr n ) def-occ-resolve ;
+: SELECT ( ^n -- n n ) def-occ-select ;
+: RESOLVE ( n n -- ^n ) def-occ-resolve ;
 
 : CALLABLE ( n n -- n )
    RESOLVE dup XREF-WORDLIST BOOT:NAMESPACE-WL = if E-NONCALLABLE throw then
@@ -701,7 +701,7 @@ private
 \ else its routine (REC-CODE), for an alias its source's, which it never wrote.
 : REC-LOW ( n -- n ) {: k:n :}
    k REC-CODE {: s:n :}
-   k XREF-REC {: rec:ptr :}
+   k XREF-REC {: rec:^ :}
    rec XREF-EXT? 0= if s exit then
    rec XREF-NAME-SLOT XREF-CELL@ {: a:n :}
    a ARENA-LO <  a cp@ < 0=  or if s exit then
@@ -762,7 +762,7 @@ seal-package
 
 ;package
 
-: FORGET-DEFS-FROM ( ptr u8 n -- )
+: FORGET-DEFS-FROM ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
@@ -770,16 +770,16 @@ seal-package
    idx ndict!
    floor CODE-RECLAIM:TRUNCATE ;
 
-: XREF-NAME. ( ptr n -- )
+: XREF-NAME. ( ^n -- )
    XREF-NAME$ type ;
 
-: XREF-N. ( ptr u8 n n -- )
+: XREF-N. ( ^u8 n n -- )
    XREF-NV ! XREF-FU ! XREF-FN!
    XREF-FN@ XREF-FU @ type
    XREF-SP emit
    XREF-NV @ . ;
 
-: XREF. ( ptr n -- )
+: XREF. ( ^n -- )
    dup XREF-FOUND? 0= if drop s" xref: not found" type cr exit then
    s" name " type dup XREF-NAME. cr
    dup s" start" rot XREF-START XREF-N.

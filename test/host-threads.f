@@ -10,12 +10,12 @@ package TEST-HOST
 THREAD-CAP THREAD-ID-BYTES * constant THREAD-BYTES
 THREAD-BYTES BUFFER: BASE-IDS
 THREAD-BYTES BUFFER: NOW-IDS
-TYPED-VARIABLE OUT-IDS ptr u8
+TYPED-VARIABLE OUT-IDS ^u8
 variable BASE-N
 variable THREAD-N
 
 PROCESS-SYMBOLS
-FUNCTION: PID-THREADS proc_pidinfo ( n n n ptr u8 n -- i32 )
+FUNCTION: PID-THREADS proc_pidinfo ( n n n ^u8 n -- i32 )
 ;FUNCTION
 
 : ADD-ID ( n -- ) {: id:n :}
@@ -23,7 +23,7 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ptr u8 n -- i32 )
    id OUT-IDS @ THREAD-N @ THREAD-ID-BYTES * + LE:U64!
    1 THREAD-N +! ;
 
-: ADD-NAME ( ptr u8 n -- )
+: ADD-NAME ( ^u8 n -- )
    STR>NUMBER? MATCH option
       some OF ADD-ID ENDOF
       none OF s" thread snapshot: invalid task name" 74 die ENDOF
@@ -32,7 +32,7 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ptr u8 n -- i32 )
 \ Flavor 28 (PROC_PIDLISTTHREADIDS) lists each thread's unique id. Flavor 6
 \ lists pthread_t addresses, and a thread created after a joined one gets its
 \ address, so a snapshot would count the new thread as old.
-: COLLECT ( ptr u8 -- n ) {: out:ptr :}
+: COLLECT ( ^u8 -- n ) {: out:^ :}
    HB-TARGET-MACOS? if
       getpid 28 0 out THREAD-BYTES PID-THREADS {: bytes:n :}
       bytes 0 <= bytes THREAD-BYTES >= or

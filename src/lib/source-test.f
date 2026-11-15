@@ -27,14 +27,14 @@ create ST-QP-BUF ST-CAP allot
    5 ST-APPEND-LEN !
    s" x" >LEN ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
 
-: ST-QP$ ( -- ptr u8 n )
+: ST-QP$ ( -- ^u8 n )
    ST-QP-BUF ST-QP-U @ LEN>N ;
 
-: ST-QPATH ( ptr u8 n -- ) {: a:ptr u:n :}
+: ST-QPATH ( ^u8 n -- ) {: a:^ u:n :}
    0 >LEN ST-QP-U !
    a u >LEN ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE-APPEND-QPATH ;
 
-: ST-QPATH-WANT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: ST-QPATH-WANT$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    SB-RESET
    s" s" SB-APPEND
    34 SB-APPEND-C

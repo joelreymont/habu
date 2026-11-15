@@ -63,8 +63,8 @@ $20 constant MSG-TRUNC
 
 \ Endpoint storage is per task: a $10 sockaddr_in and a $04 socklen_t.
 $14 TASK:+USERS IO-STORAGE u8
-: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
-: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
+: SOCKADDR ( -- ^u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ^u8 ) $10 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -89,19 +89,19 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SOCKET>N 0 $7FFFFFFF WITHIN-RANGE ;
 
 
-: BE16! ( n ptr u8 -- ) {: value:n target :}
+: BE16! ( n ^u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
 
-: BE16@ ( ptr u8 -- n ) {: source :}
+: BE16@ ( ^u8 -- n ) {: source :}
    source c@ 8 lshift source $01 + c@ or ;
 
 
-: BE32! ( n ptr u8 -- ) {: value:n target :}
+: BE32! ( n ^u8 -- ) {: value:n target :}
    value 16 rshift target BE16! value target $02 + BE16! ;
 
 
-: BE32@ ( ptr u8 -- n ) {: source :}
+: BE32@ ( ^u8 -- n ) {: source :}
    source BE16@ 16 lshift source $02 + BE16@ or ;
 
 
@@ -143,11 +143,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
@@ -176,24 +176,24 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
    socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
-: SEND-RAW ( socket ptr u8 NUM:byte-len -- n )
+: SEND-RAW ( socket ^u8 NUM:byte-len -- n )
    {: socket:socket bytes size:NUM:byte-len :}
    socket SOCKET>N bytes size BLEN>N 0
    SOCKADDR SOCKADDR-BYTES SEND-CALL ;
 
 
-: DARWIN-RECEIVE ( socket ptr u8 NUM:byte-len -- n errno )
+: DARWIN-RECEIVE ( socket ^u8 NUM:byte-len -- n errno )
    {: socket:socket bytes capacity:NUM:byte-len :}
    \ BSD recvfrom does not report the original size after truncation. Read one
    \ complete IPv4 datagram, then copy the prefix promised to the caller.
-   MAX-PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:ptr extent:NUM:alloc-byte-len :}
+   MAX-PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ extent:NUM:alloc-byte-len :}
    socket SOCKET>N buf MAX-PAYLOAD 0 SOCKADDR ADDRLEN RECEIVE-CALL {: got:n :}
    LAST-ERROR {: error:errno :}
    got 0 >= if buf bytes got capacity BLEN>N min BYTE-COPY then
    buf extent MEM:RELEASE-BYTES
    got error ;
 
-: RECEIVE-RAW ( socket ptr u8 NUM:byte-len -- n errno )
+: RECEIVE-RAW ( socket ^u8 NUM:byte-len -- n errno )
    {: socket:socket bytes capacity:NUM:byte-len :}
    HB-TARGET-MACOS? if socket bytes capacity DARWIN-RECEIVE exit then
    HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
@@ -237,13 +237,13 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
    then ;
 
 
-: OCTET-LENGTH ( ptr u8 n -- n ) {: text size:n :}
+: OCTET-LENGTH ( ^u8 n -- n ) {: text size:n :}
    0 begin dup size < while
       dup text + c@ $2E = if exit then 1 +
    repeat ;
 
 
-: OCTET-VALUE ( ptr u8 n -- n ) {: text size:n :}
+: OCTET-VALUE ( ^u8 n -- n ) {: text size:n :}
    size 1 3 WITHIN-RANGE
    size 1 > text c@ $30 = and if E-OPERAND throw then
    0 size 0 do
@@ -251,12 +251,12 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
    loop dup 0 $FF WITHIN-RANGE ;
 
 
-: OCTET ( ptr u8 n -- ptr u8 n n ) {: text size:n :}
+: OCTET ( ^u8 n -- ^u8 n n ) {: text size:n :}
    text size OCTET-LENGTH {: length:n :}
    text length + size length - text length OCTET-VALUE ;
 
 
-: FOLLOWING-OCTET ( n ptr u8 n -- n ptr u8 n ) {: address:n text size:n :}
+: FOLLOWING-OCTET ( n ^u8 n -- n ^u8 n ) {: address:n text size:n :}
    size 1 < if E-OPERAND throw then
    text c@ $2E <> if E-OPERAND throw then
    text $01 + size 1 - OCTET {: next remaining:n octet:n :}
@@ -271,7 +271,7 @@ public
 
 
 \ Strict dotted decimal: four octets, no signs, padding, or leading zeros.
-: ADDRESS$ ( ptr u8 n -- address ) {: text size:n :}
+: ADDRESS$ ( ^u8 n -- address ) {: text size:n :}
    size 7 15 WITHIN-RANGE
    text size OCTET {: next remaining:n first:n :}
    first next remaining FOLLOWING-OCTET FOLLOWING-OCTET FOLLOWING-OCTET
@@ -305,7 +305,7 @@ public
 
 \ The input is borrowed for this call. Success means the OS accepted the whole
 \ datagram, not that it arrived. Interrupted/would-block errors reach the caller.
-: SEND ( socket address port ptr u8 NUM:byte-len -- status )
+: SEND ( socket address port ^u8 NUM:byte-len -- status )
    {: socket:socket address:address port:port bytes size:NUM:byte-len :}
    socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
    address port ENDPOINT!
@@ -320,7 +320,7 @@ public
 \ waits on the AIO loop with no deadline; any other timeout is an absolute
 \ deadline the waits on the AIO loop share. AIO:START must have run before the
 \ first wait.
-: RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
+: RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
    timeout MS>N $7FFFFFFF > if E-OPERAND throw then

@@ -29,21 +29,21 @@ create HCT-OUT HCT-CAP allot
 create HCT-ERR HCT-CAP allot
 create HCT-EMPTY 1 allot   \ zero-length stdin
 
-: HCT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
+: HCT-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: HCT-ROOT ( -- ptr u8 n )
+: HCT-ROOT ( -- ^u8 n )
    HCT-ROOT-BUF HCT-ROOT-U @ ;
 
-: HCT-CHILD ( -- ptr u8 n )
+: HCT-CHILD ( -- ^u8 n )
    HCT-CHILD-BUF HCT-CHILD-U @ ;
 
 : HCT-LF ( -- )
    10 SB-APPEND-C ;
 
-: HCT-CHILD$ ( -- ptr u8 n )
+: HCT-CHILD$ ( -- ^u8 n )
    SB-RESET
    s" create HCT-BUF 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
@@ -52,20 +52,20 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;
 
-: HCT-WANT$ ( -- ptr u8 n )
+: HCT-WANT$ ( -- ^u8 n )
    SB-RESET
    s" 4" SB-APPEND HCT-LF
    s" DATA" SB-APPEND HCT-LF
    SB$ ;
 
-: HCT-BUILD$ ( -- ptr u8 n )
+: HCT-BUILD$ ( -- ^u8 n )
    SB-RESET
    s" SCRIPT-ARGC ." SB-APPEND HCT-LF
    s" 0 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
    s" 1 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
    SB$ ;
 
-: HCT-BUILD-WANT$ ( -- ptr u8 n )
+: HCT-BUILD-WANT$ ( -- ^u8 n )
    SB-RESET
    s" 2" SB-APPEND HCT-LF
    s" alpha" SB-APPEND HCT-LF
@@ -73,7 +73,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB$ ;
 
 
-: HCT-ARGV$ ( -- ptr u8 n )
+: HCT-ARGV$ ( -- ^u8 n )
    SB-RESET
    s" : HCT-ARGV-NEG ( -- ) [: -1 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
    s" : HCT-ARGV-ZERO ( -- ) [: 0 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
@@ -90,7 +90,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB$ ;
 
 
-: HCT-ARGV-NONE-WANT$ ( -- ptr u8 n )
+: HCT-ARGV-NONE-WANT$ ( -- ^u8 n )
    SB-RESET
    s" 0" SB-APPEND HCT-LF
    s" 7180" SB-APPEND HCT-LF
@@ -98,7 +98,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB$ ;
 
 
-: HCT-ARGV-VALUES-WANT$ ( -- ptr u8 n )
+: HCT-ARGV-VALUES-WANT$ ( -- ^u8 n )
    SB-RESET
    s" 3" SB-APPEND HCT-LF
    s" 7180" SB-APPEND HCT-LF
@@ -111,14 +111,14 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-cli-contracts" FS:MKTEMP-DIR {: a:ptr u :}
+   s" habu-cli-contracts" FS:MKTEMP-DIR {: a:^ u :}
    a u HCT-ROOT-BUF HCT-ROOT-U HCT-COPY!
    HCT-ROOT FS:CLEANUP-TREE+
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF FS:JOIN-PATH HCT-CHILD-U !
    HCT-CHILD HCT-CHILD$ FS:WRITE-ALL ;
 
-: HCT-STORE! ( len len PROCESS:ending ptr u8 n -- )
-   {: outu:len erru:len oc src:ptr srcu:n :}
+: HCT-STORE! ( len len PROCESS:ending ^u8 n -- )
+   {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N HCT-OUT-U !  erru LEN>N HCT-ERR-U !
    oc MATCH PROCESS:ending
      exited OF HCT-RC ! 0 0= HCT-EXITED ! ENDOF

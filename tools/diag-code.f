@@ -51,8 +51,8 @@ private
 \ field its record adds to its token. A code that names no class leaves the
 \ class to the record's evidence: a storage refusal's is its reason's class,
 \ held by GJA-STORAGE-CLASS (tools/gate-json-assert-core.f).
-: ROW ( ptr u8 n -- shape ptr u8 n ptr u8 n )
-   {: c:ptr u:n :}
+: ROW ( ^u8 n -- shape ^u8 n ^u8 n )
+   {: c:^ u:n :}
    c u s" E-BAD-DECLARATION" STR= IF
       construct shape declaration s" fix_family_declaration" s" " EXIT THEN
    c u s" E-BAD-STORAGE" STR= IF
@@ -129,7 +129,7 @@ private
       construct shape warning s" " s" " EXIT THEN
    construct shape definition s" " s" " ;
 
-: NAMED? ( ptr u8 n ptr u8 n -- bool ) {: names:ptr namesu:n class:ptr classu:n :}
+: NAMED? ( ^u8 n ^u8 n -- bool ) {: names:^ namesu:n class:^ classu:n :}
    0 begin
       >r names namesu 32 r> SPLIT-NEXT
    while
@@ -139,19 +139,19 @@ private
 
 public
 
-: SHAPE ( ptr u8 n -- shape )
+: SHAPE ( ^u8 n -- shape )
    ROW 2drop 2drop ;
 
-: ADMITS? ( ptr u8 n ptr u8 n -- bool ) {: c:ptr u:n class:ptr classu:n :}
-   c u ROW 2drop rot drop {: names:ptr namesu:n :}
+: ADMITS? ( ^u8 n ^u8 n -- bool ) {: c:^ u:n class:^ classu:n :}
+   c u ROW 2drop rot drop {: names:^ namesu:n :}
    namesu 0= IF STR-TRUE EXIT THEN
    names namesu class classu NAMED? ;
 
 \ Empty when the code adds no field.
-: EVIDENCE ( ptr u8 n -- ptr u8 n )
+: EVIDENCE ( ^u8 n -- ^u8 n )
    ROW 2swap 2drop rot drop ;
 
-: REFUSAL? ( ptr u8 n -- bool )
+: REFUSAL? ( ^u8 n -- bool )
    SHAPE MATCH shape
       definition OF STR-TRUE ENDOF
       declaration OF STR-TRUE ENDOF

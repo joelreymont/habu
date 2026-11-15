@@ -25,11 +25,11 @@ create FILE-BYTES FILE-CAP allot
 create EXPECTED FILE-CAP allot
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: FILE$ ( ^u8 n -- ^u8 n ) {: rel:^ size:n :}
    ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
 
-: RUN-INPUT ( ptr u8 n ptr u8 n -- )
+: RUN-INPUT ( ^u8 n ^u8 n -- )
    {: program size:n input input-size:n :}
    PROC-ENV-INHERIT-MISSING
    program size >LEN SOURCE-ROOT:CWD$ >LEN input input-size >LEN
@@ -41,10 +41,10 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
 
-: MARKER ( ptr u8 n -- ) {: marker size:n :}
+: MARKER ( ^u8 n -- ) {: marker size:n :}
    OUT OUT-U @ marker size CONTAINS? TTRUE ;
 
-: ENTRY$ ( -- ptr u8 n ) s" source-run.f" FILE$ ;
+: ENTRY$ ( -- ^u8 n ) s" source-run.f" FILE$ ;
 
 : SOURCE-ARGS ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -62,15 +62,15 @@ variable RC
    s" a linear source cannot be saved in a dynamic record" T-LABEL
    s" DYNAMIC-BUFFER BAD XML:source" TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" the owner constructor stays private" T-LABEL
-   s" : BAD ( ptr n -- XML:source-owner ) XML:SOURCE-OWNER-MAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( ^n -- XML:source-owner ) XML:SOURCE-OWNER-MAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" the owner unpacker stays private" T-LABEL
-   s" : BAD ( XML:source-owner -- ptr n ) XML:SOURCE-OWNER-UNMAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( XML:source-owner -- ^n ) XML:SOURCE-OWNER-UNMAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" the source token eraser stays private" T-LABEL
-   s" : BAD ( XML:source -- ptr n ) XML:SRC-ERASE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( XML:source -- ^n ) XML:SRC-ERASE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" the source token mint stays private" T-LABEL
-   s" : BAD ( ptr n -- XML:source ) XML:SRC-MINT ;" TEST-EVAL:RC CHECKER-REJECT-RC T= ;
+   s" : BAD ( ^n -- XML:source ) XML:SRC-MINT ;" TEST-EVAL:RC CHECKER-REJECT-RC T= ;
 
-: FILE-READ ( ptr u8 n -- n )
+: FILE-READ ( ^u8 n -- n )
    FILE$ FILE-BYTES FILE-CAP FS:READ-ALL ;
 
 : UTF8-ARTIFACT ( -- )
@@ -89,14 +89,14 @@ variable RC
    then
    at 2 + ;
 
-: PUT-ASCII ( ptr u8 n bool n -- n )
+: PUT-ASCII ( ^u8 n bool n -- n )
    {: chars size:n little:bool at:n :}
    size 0 ?do
       chars i + c@ little at i 2 * + PUT-UNIT drop
    loop
    at size 2 * + ;
 
-: EXPECT16 ( bool -- ptr u8 n )
+: EXPECT16 ( bool -- ^u8 n )
    {: little:bool :}
    little if $FF EXPECTED c! $FE EXPECTED 1+ c!
    else $FE EXPECTED c! $FF EXPECTED 1+ c! then
@@ -115,7 +115,7 @@ variable RC
 public
 : RUN ( -- )
    T-RESET
-   s" xml-owner-e2e" FS:MKTEMP-DIR {: root:ptr size:n :}
+   s" xml-owner-e2e" FS:MKTEMP-DIR {: root:^ size:n :}
    root size FS:CLEANUP-TREE+
    root ROOT size BYTE-COPY size ROOT-U !
    SOURCE-RUN REFUSALS

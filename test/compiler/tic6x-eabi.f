@@ -59,7 +59,7 @@ variable REMAINDER
    RESET FILL-REGISTERS x 4 A! y 4 B!
    PROGRAM$ CALL drop ;
 
-: CHECK ( bool ptr u8 n -- ) {: ok:bool text size:n :}
+: CHECK ( bool ^u8 n -- ) {: ok:bool text size:n :}
    ok 0= if 1 FAILURES +! s" eabi: " type text size type s"  x=" type 4 A@ FMT:.INT s"  y=" type 4 B@ FMT:.INT cr then ;
 
 

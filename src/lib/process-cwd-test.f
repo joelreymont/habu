@@ -46,20 +46,20 @@ variable PCT-I
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PCT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
+: PCT-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu cwd:^ cwdu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCT-CAPTURE>N ;
 
-: PCT-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+: PCT-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN cwd cwdu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-SETUP-ROOT ( -- )
    FS:CLEANUP-RESET
-   s" hb-process-cwd" FS:MKTEMP-DIR {: root:ptr rootu :}
+   s" hb-process-cwd" FS:MKTEMP-DIR {: root:^ rootu :}
    root PCT-ROOT rootu BYTE-COPY
    rootu PCT-ROOT-U !
    PCT-ROOT PCT-ROOT-U @ FS:CLEANUP-TREE+
@@ -97,10 +97,10 @@ variable PCT-I
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
-: PCT-EARLY-EOF$ ( -- ptr u8 n )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
+: PCT-EARLY-EOF$ ( -- ^u8 n )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
    s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 60000000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
 
-: PCT-SELF-EOF$ ( -- ptr u8 n )   \ writes ok, closes 1 and 2, spins 50 ms, then ends
+: PCT-SELF-EOF$ ( -- ^u8 n )   \ writes ok, closes 1 and 2, spins 50 ms, then ends
    s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 50000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
 
 : PCT-OUT-CLEAR ( -- )   \ so no assertion passes on an earlier capture's bytes
@@ -123,8 +123,8 @@ variable PCT-I
    s" bin/hb" s" ." PCT-EARLY-EOF$ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 300
    PCT-STDIN-CAPTURE drop 2drop ;
 
-: PCT-OUTCOME ( ptr u8 n ms -- len len PROCESS:ending )
-   {: src:ptr srcu:n deadline:ms :}
+: PCT-OUTCOME ( ^u8 n ms -- len len PROCESS:ending )
+   {: src:^ srcu:n deadline:ms :}
    PCT-RESET
    PCT-OUT-CLEAR
    s" bin/hb" >LEN s" ." >LEN src srcu >LEN

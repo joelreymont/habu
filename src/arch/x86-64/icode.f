@@ -52,13 +52,13 @@ public
 \ The driver owns ASM-SINK's lifetime: `ASM-SINK n BUF:N>BLEN BUF:INIT` before
 \ the first byte and `ASM-SINK BUF:DISPOSE` when the build is done. CODE and
 \ ASM-LEN fail closed on a sink that is not live.
-: ASM-SINK ( -- ptr u8 ) SINK ;
-: CODE ( -- ptr u8 ) SINK BUF:SPAN$ drop ;
+: ASM-SINK ( -- ^u8 ) SINK ;
+: CODE ( -- ^u8 ) SINK BUF:SPAN$ drop ;
 : ASM-LEN ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
 
 private
 
-: REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
+: REFUSE ( ^u8 n -- ) REFUSE-RC die ;
 
 : SITE-WIDTH ( n -- n ) {: kind:n :}
    kind SITE-REL8 = if 1 exit then
@@ -124,7 +124,7 @@ private
 \ The field is written little-endian over the zeros its instruction left.
 : SITE-PATCH ( n n -- ) {: base:n x:n :}
    base x SITE-VALUE {: v:n :}
-   CODE x SITE-AT @ + {: field:ptr :}
+   CODE x SITE-AT @ + {: field:^ :}
    x SITE-KIND @ SITE-WIDTH 0 ?do
       v i 8 * rshift $FF and  field i + c!
    loop ;

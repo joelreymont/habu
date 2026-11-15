@@ -29,11 +29,11 @@ variable FILE-N
 variable EDGE-N
 variable PROBE
 
-: FILE$ ( n -- ptr u8 n ) {: id:n :}
+: FILE$ ( n -- ^u8 n ) {: id:n :}
    0 PATH-BYTES id PATH-OFF @ +
    id PATH-LEN @ ;
 
-: FILE-ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
+: FILE-ADD ( ^u8 n -- n ) {: a:^ u:n :}
    FILE-N @ {: id:n :}
    PATH-U @ u + PATH-BYTES-RESERVE
    id 1+ PATH-OFF-RESERVE
@@ -49,10 +49,10 @@ variable PROBE
    id 1+ FILE-N !
    id ;
 
-: HASH-SLOT ( n -- ptr n )
+: HASH-SLOT ( n -- ^n )
    cells HASH + ;
 
-: FNV ( ptr u8 n -- n ) {: a:ptr u:n :}
+: FNV ( ^u8 n -- n ) {: a:^ u:n :}
    $CBF29CE484222325 u 0 ?do a i + c@ xor $100000001B3 * loop ;
 
 : SLOT-ID ( -- n )
@@ -60,14 +60,14 @@ variable PROBE
 
 \ Probe from a canonical path's hash to the slot holding it, or to the empty
 \ slot it would take.
-: PROBE! ( ptr u8 n -- ) {: a:ptr u:n :}
+: PROBE! ( ^u8 n -- ) {: a:^ u:n :}
    a u FNV HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
       SLOT-ID 1- FILE$ a u STR= if exit then
       PROBE @ 1+ HASH-CAP 1- and PROBE !
    repeat ;
 
-: INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+: INTERN ( ^u8 n -- n ) {: a:^ u:n :}
    a u PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
    FILE-N @ HASH-CAP 2 / >= if
@@ -94,15 +94,15 @@ variable PROBE
 \ A reference names its file from the tree root; a path that names no file is
 \ not an edge, and one holding a 0 byte names none. A launch is followed only
 \ into a Forth source: a launched script or data file is not lexed.
-: REF ( ptr u8 n n n -- )
-   {: a:ptr u:n line:n kind:n :}
+: REF ( ^u8 n n n -- )
+   {: a:^ u:n line:n kind:n :}
    kind LOAD-REFS:LAUNCHES <> {: import:bool :}
    a u 0 INDEX-OF MATCH option
       some OF drop exit ENDOF
       none OF ENDOF
    ;MATCH
    a u FS:FILE? 0= if exit then
-   a u SOURCE-ROOT:CANONICAL drop {: path:ptr pathu:n :}
+   a u SOURCE-ROOT:CANONICAL drop {: path:^ pathu:n :}
    import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then
    path pathu INTERN line import EDGE+ ;
 
@@ -118,8 +118,8 @@ variable PROBE
    EDGE-N @ id EDGE-OFF @ - id EDGE-CNT ! ;
 
 \ A file a row loads; a path that names no file is not read.
-: ROW-FILE ( n bool ptr u8 n -- )
-   {: row:n entry:bool a:ptr u:n :}
+: ROW-FILE ( n bool ^u8 n -- )
+   {: row:n entry:bool a:^ u:n :}
    a u FS:FILE? if a u SOURCE-ROOT:CANONICAL drop INTERN drop then ;
 
 public
@@ -141,7 +141,7 @@ public
 
 \ The id of a file READ read, by any path naming it. Any other path is refused:
 \ a file the walk never read has no loads to trust.
-: FILE-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
+: FILE-ID ( ^u8 n -- n ) {: a:^ u:n :}
    a u SOURCE-ROOT:CANONICAL drop PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
    s" load graph: not a file of the load graph: " type a u type cr

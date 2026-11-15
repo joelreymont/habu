@@ -15,7 +15,7 @@ require src/lib/fmt.f
 
 variable STR-TEST-N
 variable STR-TEST-FAIL
-TYPED-VARIABLE STR-TEST-SPLIT-A ptr u8
+TYPED-VARIABLE STR-TEST-SPLIT-A ^u8
 variable STR-TEST-SPLIT-U
 variable STR-TEST-SPLIT-NEXT
 variable STR-TEST-SPLIT-OK
@@ -44,13 +44,13 @@ variable STR-TEST-BUF2-LEN
 : STR-ASSERT= ( n n -- )
    = STR-ASSERT ;
 
-: STR-ASSERT$ ( ptr u8 n ptr u8 n -- )
+: STR-ASSERT$ ( ^u8 n ^u8 n -- )
    STR= STR-ASSERT ;
 
-: STR-CHECK-REJECTS ( ptr u8 n -- )
+: STR-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 STR-ASSERT= ;
 
-: STR-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- ) {: a:ptr u sep start exp:ptr exp-u exp-next exp-ok :}
+: STR-SPLIT-CHECK ( ^u8 n n n ^u8 n n bool -- ) {: a:^ u sep start exp:^ exp-u exp-next exp-ok :}
    a u sep start SPLIT-NEXT
    STR-TEST-SPLIT-OK !
    STR-TEST-SPLIT-NEXT !
@@ -64,7 +64,7 @@ variable STR-TEST-BUF2-LEN
       STR-TEST-SPLIT-OK @ 0= STR-ASSERT
    then ;
 
-: STR-PARSE-CHECK ( ptr u8 n n bool -- ) {: a:ptr u want ok :}
+: STR-PARSE-CHECK ( ^u8 n n bool -- ) {: a:^ u want ok :}
    a u STR>NUMBER? MATCH option
      none OF ok 0= STR-ASSERT ENDOF
      some OF ok STR-ASSERT want STR-ASSERT= ENDOF
@@ -99,13 +99,13 @@ variable STR-TEST-BUF2-LEN
    STR-TEST-BYTE-VIEW-CELL BYTE-VIEW c@ STR-TEST-A-CHAR STR-ASSERT=
    STR-TEST-BYTEPLUS 1 BYTE+ c@ STR-TEST-A-CHAR 1+ STR-ASSERT=
    STR-TEST-BYTEPLUS 2 BYTE@ STR-TEST-A-CHAR 2 + STR-ASSERT=
-   s" BAD-BYTE-VIEW-LOAD ( ptr a -- n ) BYTE-VIEW @" STR-CHECK-REJECTS
-   s" BAD-BYTE-VIEW-STORE ( n ptr a -- ) BYTE-VIEW !" STR-CHECK-REJECTS
-   s" BAD-BYTE-VIEW-WIDEN ( ptr a -- ptr cell ) BYTE-VIEW" STR-CHECK-REJECTS
-   s" BAD-BYTE-PLUS-RESULT ( ptr u8 n -- n ) BYTE+" STR-CHECK-REJECTS
-   s" BAD-BYTE-AT-RESULT ( ptr u8 n -- ptr u8 ) BYTE@" STR-CHECK-REJECTS
-   s" BAD-BYTE-COPY-LEN ( ptr u8 ptr u8 off -- ) BYTE-COPY-LEN" STR-CHECK-REJECTS
-   s" BAD-SB-APPEND-LEN ( ptr u8 off -- ) SB-APPEND-LEN" STR-CHECK-REJECTS
+   s" BAD-BYTE-VIEW-LOAD ( ^a -- n ) BYTE-VIEW @" STR-CHECK-REJECTS
+   s" BAD-BYTE-VIEW-STORE ( n ^a -- ) BYTE-VIEW !" STR-CHECK-REJECTS
+   s" BAD-BYTE-VIEW-WIDEN ( ^a -- ^cell ) BYTE-VIEW" STR-CHECK-REJECTS
+   s" BAD-BYTE-PLUS-RESULT ( ^u8 n -- n ) BYTE+" STR-CHECK-REJECTS
+   s" BAD-BYTE-AT-RESULT ( ^u8 n -- ^u8 ) BYTE@" STR-CHECK-REJECTS
+   s" BAD-BYTE-COPY-LEN ( ^u8 ^u8 off -- ) BYTE-COPY-LEN" STR-CHECK-REJECTS
+   s" BAD-SB-APPEND-LEN ( ^u8 off -- ) SB-APPEND-LEN" STR-CHECK-REJECTS
    SB-RESET ;
 
 : STR-TEST-BUF-OVERFLOW ( -- )
@@ -118,9 +118,9 @@ variable STR-TEST-BUF2-LEN
    33 STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND-C
    STR-TEST-BUF2 STR-TEST-BUF2-LEN BUF-LEN@ s" hi!" STR-ASSERT$
    [: STR-TEST-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
-   s" BAD-BUF-RESET ( ptr n -- ) BUF-RESET" STR-CHECK-REJECTS
-   s" BAD-BUF-LEN@ ( ptr n -- n ) BUF-LEN@" STR-CHECK-REJECTS
-   s" BAD-BUF-APPEND-LEN ( ptr u8 off ptr u8 len ptr len -- ) BUF-APPEND-LEN" STR-CHECK-REJECTS ;
+   s" BAD-BUF-RESET ( ^n -- ) BUF-RESET" STR-CHECK-REJECTS
+   s" BAD-BUF-LEN@ ( ^n -- n ) BUF-LEN@" STR-CHECK-REJECTS
+   s" BAD-BUF-APPEND-LEN ( ^u8 off ^u8 len ^len -- ) BUF-APPEND-LEN" STR-CHECK-REJECTS ;
 
 : STR-TEST-SPLIT ( -- )
    s" a,b,c" STR-TEST-COMMA 0 s" a" 2 STR-TRUE STR-SPLIT-CHECK
@@ -146,12 +146,12 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" 0 STR-FALSE STR-PARSE-CHECK
    s" -9223372036854775809" 0 STR-FALSE STR-PARSE-CHECK ;
 
-: STR-PARSE-SOME ( ptr u8 n n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n want:n q :}
+: STR-PARSE-SOME ( ^u8 n n [ ^u8 n -- option<n> ] -- ) {: a:^ u:n want:n q :}
    a u q execute MATCH option
      none OF 0 0= 0= ENDOF
      some OF want = ENDOF
    ;MATCH STR-ASSERT ;
-: STR-PARSE-NONE ( ptr u8 n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n q :}
+: STR-PARSE-NONE ( ^u8 n [ ^u8 n -- option<n> ] -- ) {: a:^ u:n q :}
    a u q execute MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
@@ -204,9 +204,9 @@ variable STR-TEST-BUF2-LEN
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: STR-INDEX-OF>N ( ptr u8 n n -- n ) INDEX-OF STR-IDX>N ;
-: STR-FIND-SUB>N ( ptr u8 n ptr u8 n -- n ) FIND-SUB STR-IDX>N ;
-: STR-FIND-SUB-FROM>N ( ptr u8 n ptr u8 n n -- n ) FIND-SUB-FROM STR-IDX>N ;
+: STR-INDEX-OF>N ( ^u8 n n -- n ) INDEX-OF STR-IDX>N ;
+: STR-FIND-SUB>N ( ^u8 n ^u8 n -- n ) FIND-SUB STR-IDX>N ;
+: STR-FIND-SUB-FROM>N ( ^u8 n ^u8 n n -- n ) FIND-SUB-FROM STR-IDX>N ;
 
 : STR-TEST-FIND-SUB-OPTION ( -- )
    s" abcdef" s" bcd" FIND-SUB MATCH option
@@ -220,7 +220,7 @@ variable STR-TEST-BUF2-LEN
 
 \ The end of readable memory: a word that reads a byte of a span it should have
 \ refused faults here instead of answering.
-: STR-TEST-EDGE ( -- ptr u8 )
+: STR-TEST-EDGE ( -- ^u8 )
    0 0 GUARD-PAGE:TAIL ;
 
 \ Equality must stay inside both spans, at every alignment and through NUL.
@@ -232,9 +232,9 @@ variable STR-TEST-BUF2-LEN
    3 cells 0 ?do 0 STR-TEST-EQ-BUF i + c! loop
    2 cells 2 + 0 ?do
       i {: u:n :}
-      u 0 GUARD-PAGE:TAIL {: a:ptr :}
+      u 0 GUARD-PAGE:TAIL {: a:^ :}
       CELL 0 ?do
-         STR-TEST-EQ-BUF i + {: b:ptr :}
+         STR-TEST-EQ-BUF i + {: b:^ :}
          a u b u STR= STR-ASSERT
          u 0 ?do
             128 b i + c!
@@ -274,24 +274,24 @@ CAST: STR-T-BL>RAW ( NUM:byte-len -- n )
 CAST: STR-T-BO>RAW ( NUM:byte-off -- n )
 CAST: STR-T-IC>RAW ( NUM:item-count -- n )
 
-: STR-T-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
+: STR-T-FIND ( ^u8 n ^u8 n -- n ) {: a:^ u:n b:^ v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB
    MATCH option
       none OF -1 ENDOF
       some OF NUM:ORDINAL ENDOF
    ;MATCH ;
-: STR-T-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
+: STR-T-INDEX ( ^u8 n n -- n ) {: a:^ u:n c:n :}
    a u STR:LENGTH c STR:INDEX-OF
    MATCH option
       none OF -1 ENDOF
       some OF NUM:ORDINAL ENDOF
    ;MATCH ;
 
-: STR-T-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- )
-   {: a:ptr u:n sep:n start:n exp:ptr exp-u:n exp-next:n exp-ok:bool :}
+: STR-T-SPLIT-CHECK ( ^u8 n n n ^u8 n n bool -- )
+   {: a:^ u:n sep:n start:n exp:^ exp-u:n exp-next:n exp-ok:bool :}
    a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF exp-ok 0= STR-ASSERT ENDOF
-     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
+     some OF STR-SPLIT:UNMAKE {: fa:^ fl:NUM:byte-len fo:NUM:byte-off :}
         exp-ok STR-ASSERT
         fa fl STR-T-BL>RAW exp exp-u STR-ASSERT$
         fo STR-T-BO>RAW exp-next STR-ASSERT= ENDOF
@@ -328,7 +328,7 @@ CAST: STR-T-IC>RAW ( NUM:item-count -- n )
 : STR-TEST-TYPED-SPLIT-OPTION ( -- )
    s" a,b" STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF STR-FALSE ENDOF
-     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
+     some OF STR-SPLIT:UNMAKE {: fa:^ fl:NUM:byte-len fo:NUM:byte-off :}
         fa fl STR-T-BL>RAW s" a" STR=
         fo STR-T-BO>RAW 2 = and ENDOF
    ;MATCH STR-ASSERT
@@ -374,17 +374,17 @@ CAST: STR-T-IC>RAW ( NUM:item-count -- n )
    [: STR-TEST-TYPED-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-TYPED-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    s" SOK-LEN ( n -- NUM:byte-len ) STR:LENGTH" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-FIND ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-INDEX ( ptr u8 NUM:byte-len n -- option<NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-SPLIT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-BUF-C ( n ptr u8 NUM:byte-len ptr len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SBAD-OFF-FOR-LEN ( ptr u8 NUM:byte-off ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-LEN-FOR-OFF ( ptr u8 NUM:byte-len n NUM:byte-len -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-RAW-LEN ( ptr u8 n ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-RAW-OFF ( ptr u8 NUM:byte-len n n -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-OFF-FOR-INDEX ( ptr u8 NUM:byte-off n -- option<NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
-   s" SBAD-FIND-OUT ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-BUF-C-RAW-CAP ( n ptr u8 n ptr len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
+   s" SOK-FIND ( ^u8 NUM:byte-len ^u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-INDEX ( ^u8 NUM:byte-len n -- option<NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-SPLIT ( ^u8 NUM:byte-len n NUM:byte-off -- option<str:split> ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-BUF-C ( n ^u8 NUM:byte-len ^len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SBAD-OFF-FOR-LEN ( ^u8 NUM:byte-off ^u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-LEN-FOR-OFF ( ^u8 NUM:byte-len n NUM:byte-len -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-RAW-LEN ( ^u8 n ^u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-RAW-OFF ( ^u8 NUM:byte-len n n -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-OFF-FOR-INDEX ( ^u8 NUM:byte-off n -- option<NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
+   s" SBAD-FIND-OUT ( ^u8 NUM:byte-len ^u8 NUM:byte-len -- option<NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-BUF-C-RAW-CAP ( n ^u8 n ^len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
 
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT
@@ -550,8 +550,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ A sign and one digit ending at the edge, so a length that wraps past the sign
 \ scans on into the inaccessible page.
-: STR-TEST-SIGNED ( n -- ptr u8 ) {: sign:n :}
-   2 STR-ZERO 1+ GUARD-PAGE:TAIL {: a:ptr :}
+: STR-TEST-SIGNED ( n -- ^u8 ) {: sign:n :}
+   2 STR-ZERO 1+ GUARD-PAGE:TAIL {: a:^ :}
    sign a c!
    a ;
 

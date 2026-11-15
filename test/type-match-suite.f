@@ -16,15 +16,15 @@ SUMTYPE mres
 ;SUMTYPE
 SUMTYPE mmix
   VARIANT small n ;VARIANT
-  VARIANT big ptr u8 n n ;VARIANT
+  VARIANT big ^u8 n n ;VARIANT
 ;SUMTYPE
 SUMTYPE men
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
 ;SUMTYPE
 SUMTYPE mptr
-  VARIANT ok  ptr u8 ;VARIANT
-  VARIANT err ptr u8 ;VARIANT
+  VARIANT ok  ^u8 ;VARIANT
+  VARIANT err ^u8 ;VARIANT
 ;SUMTYPE
 SUMTYPE mpoly<a,b>
   VARIANT ok  a ;VARIANT
@@ -71,15 +71,15 @@ ENUM mecolor
 
 \ Accepted: exhaustive matches with joined rows and refined payloads.
 s" M1=" type s" T1 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ payload refinement: the wide variant's ptr u8 n n row is live in its branch.
+\ payload refinement: the wide variant's ^u8 n n row is live in its branch.
 s" M2=" type s" T2 ( mmix -- n ) MATCH mmix small OF ENDOF big OF nip nip ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ refinement visible in the certified effect: both payloads type ptr u8.
-s" M3=" type s" T3 ( mptr -- ptr u8 ) MATCH mptr ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ refinement visible in the certified effect: both payloads type ^u8.
+s" M3=" type s" T3 ( mptr -- ^u8 ) MATCH mptr ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ enum-shaped family (zero-payload variants, width 1).
 s" M4=" type s" T4 ( men -- n ) MATCH men lit OF 1 ENDOF dark OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ parametric family: args recovered from the scrutinee's concrete expansion.
 s" M5=" type s" T5 ( mpoly<n,n> -- n ) MATCH mpoly ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-s" M6=" type s" T6 ( mpoly<ptr u8,ptr u8> -- ptr u8 ) MATCH mpoly ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" M6=" type s" T6 ( mpoly<^u8,^u8> -- ^u8 ) MATCH mpoly ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ nested match (frames stack) fed by the construct form.
 s" M7=" type s" T7 ( mres -- n ) MATCH mres ok OF construct mres err MATCH mres ok OF ENDOF err OF ENDOF ;MATCH ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ ordinary control interleaves inside a branch body.
@@ -165,7 +165,7 @@ s" MB8=" type s" B8 ( span<g,n,n> -- n ) MATCH span ok OF ENDOF ;MATCH" CHECK-QU
 \ branch-output join mismatch (E-MATCH-BRANCH-JOIN, docs/forth.md
 \ "Structures And Enums").
 SUMTYPE mjoin
-  VARIANT ok  ptr u8 ;VARIANT
+  VARIANT ok  ^u8 ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
 s" MB9=" type s" B9 ( mjoin -- n ) MATCH mjoin ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -214,7 +214,7 @@ create MD-BUF MD-CAP allot
 variable MD-U
 variable MD-I
 : MD-CLEAR ( -- ) 0 MD-U ! ;
-: MD-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: MD-APP ( ^u8 n -- ) {: a:^ u:n :}
    MD-U @ u + MD-CAP > if s" match-suite: depth fixture too long" 76 die then
    0 MD-I !
    begin MD-I @ u < while
@@ -223,7 +223,7 @@ variable MD-I
       MD-I @ 1 + MD-I !
    repeat ;
 variable MD-J   \ MD-BODY's own loop index: MD-APP clobbers MD-I per append
-: MD-BODY ( n -- ptr u8 n ) {: k:n :}   \ k if-frames around one full match
+: MD-BODY ( n -- ^u8 n ) {: k:n :}   \ k if-frames around one full match
    MD-CLEAR
    s" MD ( f mres -- f mres ) " MD-APP
    0 MD-J !  begin MD-J @ k < while s" over if " MD-APP MD-J @ 1 + MD-J ! repeat
@@ -260,10 +260,10 @@ s" MATCH-SCOPE" type cr
 \ Captured through the render diag buffer in JSON mode; one prose case pins the
 \ `bad match: missing variants` text.
 create MDG-BUF 8192 allot
-: MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
+: MDG< ( ^u8 n -- )   \ run one candidate with JSON diags into the buffer
    MDG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: MDG? ( ptr u8 n -- )
+: MDG? ( ^u8 n -- )
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
@@ -384,13 +384,13 @@ s" NEC3=" type s" NEC3 ( nec -- n ) MATCH nec red OF 0 ENDOF green OF 1 ENDOF ;M
 s" NEP1=" type s" NEP1 ( n n -- nep ) construct nep mk" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEP2=" type s" NEP2 ( nep -- n ) MATCH nep mk OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEP3=" type s" NEP3 ( n n -- n ) construct nep mk MATCH nep mk OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-s" NEP4=" type s" NEP4 ( n ptr u8 -- nep ) construct nep mk" CHECK-QUIET-CANDIDATE! 0 T=
+s" NEP4=" type s" NEP4 ( n ^u8 -- nep ) construct nep mk" CHECK-QUIET-CANDIDATE! 0 T=
 s" NEI1=" type s" NEI1 ( nei -- n ) MATCH nei quit OF 0 ENDOF move OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEG1=" type s" NEG1 ( n -- neg<n> ) construct neg some" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEG2=" type s" NEG2 ( neg<n> -- n ) MATCH neg some OF ENDOF none OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEN1=" type s" NEN1 ( nen -- n ) MATCH nen wrap OF MATCH nec red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 
-s" NED1 ( n ptr u8 -- nep ) construct nep mk" MDG<
+s" NED1 ( n ^u8 -- nep ) construct nep mk" MDG<
 s\" \"variant\":\"mk\"" MDG?
 s\" \"payload_pos\":1" MDG?
 s\" \"field\":\"y\"" MDG?
@@ -401,7 +401,7 @@ s" ENUM-CONSTRUCT-MATCH" type cr
 \ typed storage and returned by a C call. Each byte read is non-zero, so 0 is
 \ the none arm.
 PROCESS-SYMBOLS
-FUNCTION: TMN-MEMCHR memchr ( ptr u8 n n -- nullable<u8> ) ;FUNCTION
+FUNCTION: TMN-MEMCHR memchr ( ^u8 n n -- nullable<u8> ) ;FUNCTION
 
 TYPED-VARIABLE TMN-HELD nullable<u8>
 
@@ -411,7 +411,7 @@ TYPED-VARIABLE TMN-HELD nullable<u8>
       some OF c@ ENDOF
    ;MATCH ;
 : TMN-NONE ( -- nullable<u8> ) construct nullable none ;
-: TMN-SOME ( ptr u8 -- nullable<u8> ) construct nullable some ;
+: TMN-SOME ( ^u8 -- nullable<u8> ) construct nullable some ;
 
 : TMN-CONSTRUCT ( -- )
    s" construct nullable none matches none" T-LABEL
@@ -427,7 +427,7 @@ TYPED-VARIABLE TMN-HELD nullable<u8>
    TMN-HELD @ TMN-BYTE [char] R T= ;
 
 : TMN-C-RESULT ( -- )
-   s" ABC" {: buf:ptr u:n :}
+   s" ABC" {: buf:^ u:n :}
    s" memchr answers some at a byte the buffer holds" T-LABEL
    buf [char] B u TMN-MEMCHR TMN-BYTE [char] B T=
    s" memchr answers none for a byte the buffer lacks" T-LABEL

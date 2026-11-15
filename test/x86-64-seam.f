@@ -239,8 +239,8 @@ $228 constant WANT-RELA-OFF
 create SITE 16 allot
 create NEAR 16 allot
 
-: SITE-PTR ( -- ptr u8 )  SITE BYTE-VIEW ;
-: NEAR-PTR ( -- ptr u8 )  NEAR BYTE-VIEW ;
+: SITE-PTR ( -- ^u8 )  SITE BYTE-VIEW ;
+: NEAR-PTR ( -- ^u8 )  NEAR BYTE-VIEW ;
 
 : BUILD-SITE ( n n n -- ) {: rex:n op:n val:n :}
    rex SITE-PTR c!

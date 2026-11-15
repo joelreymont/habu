@@ -18,7 +18,7 @@ variable ROOT-LEN
 create PATH PATH-CAP allot
 
 : OPEN-COPY ( -- ZIP:archive )
-   s" habu-kept-zip" FS:MKTEMP-DIR {: dir:ptr len:n :}
+   s" habu-kept-zip" FS:MKTEMP-DIR {: dir:^ len:n :}
    dir ROOT len BYTE-COPY  len ROOT-LEN !
    ROOT len s" kept.zip" PATH FS:JOIN-PATH {: path-len:n :}
    PATH path-len ZIP-TEST:ORIGINAL$ FS:WRITE-ALL

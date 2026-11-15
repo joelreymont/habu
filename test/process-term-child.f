@@ -18,7 +18,7 @@ package PROCESS-TERM-CHILD
 : READY ( -- )
    1 s" ready" write drop ;
 
-: MODE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: MODE? ( ^u8 n -- bool ) {: a:^ u:n :}
    1 SCRIPT-ARGV$ a u STR= ;
 
 : ANSWER ( n -- ) {: sig:n :}

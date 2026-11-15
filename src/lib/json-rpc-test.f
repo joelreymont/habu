@@ -16,32 +16,32 @@ TYPED-VARIABLE ST JSON:cursor
 256 BUFFER: OUT
 TYPED-VARIABLE W JSON:writer
 
-: SORTED ( ptr u8 n -- JSON-RPC:message )
-   {: a:ptr u:n :}
+: SORTED ( ^u8 n -- JSON-RPC:message )
+   {: a:^ u:n :}
    ST a u >MESSAGE ;
 
 : SB-SP ( -- )  s"  " SB-APPEND ;
 
-: SHOW$ ( JSON-RPC:message -- ptr u8 n )
+: SHOW$ ( JSON-RPC:message -- ^u8 n )
    SB-RESET
    MATCH JSON-RPC:message
-      request OF {: i m:ptr mu:n p:ptr pu:n :}
+      request OF {: i m:^ mu:n p:^ pu:n :}
          s" request" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP
          m mu SB-APPEND SB-SP p pu SB-APPEND ENDOF
-      notification OF {: m:ptr mu:n p:ptr pu:n :}
+      notification OF {: m:^ mu:n p:^ pu:n :}
          s" notification" SB-APPEND SB-SP m mu SB-APPEND SB-SP p pu SB-APPEND ENDOF
-      success OF {: i v:ptr vu:n :}
+      success OF {: i v:^ vu:n :}
          s" success" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP v vu SB-APPEND ENDOF
-      failure OF {: i v:ptr vu:n :}
+      failure OF {: i v:^ vu:n :}
          s" failure" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP v vu SB-APPEND ENDOF
-      invalid OF {: c:n w:ptr wu:n i :}
+      invalid OF {: c:n w:^ wu:n i :}
          s" invalid" SB-APPEND SB-SP c FMT:SB-INT SB-SP i ID$ SB-APPEND SB-SP
          w wu SB-APPEND ENDOF
    ;MATCH
    SB$ ;
 
-: SORTS ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n want:ptr wu:n :}
+: SORTS ( ^u8 n ^u8 n -- )
+   {: a:^ u:n want:^ wu:n :}
    a u SORTED SHOW$ want wu T$= ;
 
 \ Members in any order and with blanks between; params an object, an array,
@@ -87,7 +87,7 @@ TYPED-VARIABLE W JSON:writer
    s\" {\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}}"
    s\" failure 10 {\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}" SORTS ;
 
-: NOT-JSON ( ptr u8 n -- )
+: NOT-JSON ( ^u8 n -- )
    s" invalid -32700 null a body that is not JSON" SORTS ;
 
 \ A string holding one byte that cannot start UTF-8.
@@ -135,7 +135,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"x\",\"params\":\"p\"}"
    s" invalid -32600 null params that are not an object or array" SORTS ;
 
-: BAD-ID ( ptr u8 n -- )
+: BAD-ID ( ^u8 n -- )
    s" invalid -32600 null an id that is not a number, string or null" SORTS ;
 
 \ An id that is an object, array or boolean: INVALID-REQUEST, id null; an id
@@ -147,7 +147,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"x\"}"
    s\" request 2 \"x\" " SORTS ;
 
-: NOT-ERROR ( ptr u8 n -- )
+: NOT-ERROR ( ^u8 n -- )
    s" invalid -32600 null an error that is not an error object" SORTS ;
 
 \ No method and no id; a result without an id; both result and error; neither;
@@ -168,8 +168,8 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1.5,\"message\":\"m\"}}" NOT-ERROR
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"message\":false}}" NOT-ERROR ;
 
-: NAMES? ( ptr u8 n ptr u8 n -- bool )
-   {: m:ptr mu:n name:ptr nu:n :}
+: NAMES? ( ^u8 n ^u8 n -- bool )
+   {: m:^ mu:n name:^ nu:n :}
    ST m mu name nu METHOD? ;
 
 \ METHOD? decoded: equal, escaped, a prefix, longer, another name.
@@ -181,16 +181,16 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" \"initialized\"" s" initialize" NAMES? TFALSE
    s\" \"\"" s" " NAMES? TTRUE ;
 
-: WRITER ( -- ptr JSON:writer )
+: WRITER ( -- ^JSON:writer )
    W OUT 256 WRITE-OPEN ;
 
-: CLOSED$ ( ptr JSON:writer -- ptr u8 n )
+: CLOSED$ ( ^JSON:writer -- ^u8 n )
    {: w :}
-   w WRITTEN$ {: a:ptr u:n :}
+   w WRITTEN$ {: a:^ u:n :}
    w WRITE-CLOSE
    a u ;
 
-: ID ( ptr u8 n -- JSON-RPC:id )  JSON--RPC-ID:MAKE ;
+: ID ( ^u8 n -- JSON-RPC:id )  JSON--RPC-ID:MAKE ;
 
 : EMPTY-RESULT ( -- )
    WRITER s" " ID RESULT CLOSED$ 2drop ;

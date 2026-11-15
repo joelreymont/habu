@@ -57,79 +57,79 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: GATE$ ( -- ptr u8 n ) GATE GATE-U @ ;
-: TOP$ ( -- ptr u8 n ) TOP TOP-U @ ;
-: FOREIGN$ ( -- ptr u8 n ) FOREIGN FOREIGN-U @ ;
-: HB$ ( -- ptr u8 n ) HB HB-U @ ;
-: B-ROOT$ ( -- ptr u8 n ) B-ROOT B-ROOT-U @ ;
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: GATE$ ( -- ^u8 n ) GATE GATE-U @ ;
+: TOP$ ( -- ^u8 n ) TOP TOP-U @ ;
+: FOREIGN$ ( -- ^u8 n ) FOREIGN FOREIGN-U @ ;
+: HB$ ( -- ^u8 n ) HB HB-U @ ;
+: B-ROOT$ ( -- ^u8 n ) B-ROOT B-ROOT-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: COPY! ( ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n dst:ptr lenp:ptr :}
+: COPY! ( ^u8 n ^u8 ^n -- )
+   {: a:^ u:n dst:^ lenp:^ :}
    u CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY u lenp ! ;
 
 \ <tmp>/<rel> in one of three buffers, so a call can hold an engine and two
 \ paths at once.
-: A$ ( ptr u8 n -- ptr u8 n )
-   {: rel:ptr relu:n :}
+: A$ ( ^u8 n -- ^u8 n )
+   {: rel:^ relu:n :}
    TOP$ rel relu PA FS:JOIN-PATH PA swap ;
 
-: B$ ( ptr u8 n -- ptr u8 n )
-   {: rel:ptr relu:n :}
+: B$ ( ^u8 n -- ^u8 n )
+   {: rel:^ relu:n :}
    TOP$ rel relu PB FS:JOIN-PATH PB swap ;
 
-: HB-AT$ ( ptr u8 n -- ptr u8 n )
-   {: rel:ptr relu:n :}
+: HB-AT$ ( ^u8 n -- ^u8 n )
+   {: rel:^ relu:n :}
    TOP$ rel relu PE FS:JOIN-PATH PE swap ;
 
 \ <gate tree>/<rel>
-: GATE-B$ ( ptr u8 n -- ptr u8 n )
-   {: rel:ptr relu:n :}
+: GATE-B$ ( ^u8 n -- ^u8 n )
+   {: rel:^ relu:n :}
    GATE$ rel relu PB FS:JOIN-PATH PB swap ;
 
-: LINE ( ptr u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
+: LINE ( ^u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
 
 : PROG-RESET ( -- ) 0 PROG-U ! ;
 
-: PLINE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PLINE ( ^u8 n -- )
+   {: a:^ u:n :}
    PROG-U @ u + 1+ PROG-CAP > if E-STR-CAPACITY throw then
    a PROG PROG-U @ + u BYTE-COPY
    10 PROG PROG-U @ u + + c!
    PROG-U @ u + 1+ PROG-U ! ;
 
-: PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
+: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
 
 : YN-LINE ( -- )
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" PLINE ;
 
 \ `<word> <tmp>/<rel>` as a program line.
-: PATH-LINE ( ptr u8 n ptr u8 n -- )
-   {: word:ptr wordu:n rel:ptr relu:n :}
+: PATH-LINE ( ^u8 n ^u8 n -- )
+   {: word:^ wordu:n rel:^ relu:n :}
    SB-RESET word wordu SB-APPEND s"  " SB-APPEND rel relu A$ SB-APPEND SB$ PLINE ;
 
-: TEXT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n text:ptr textu:n :}
+: TEXT ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n text:^ textu:n :}
    name nameu A$ text textu FS:WRITE-ALL ;
 
 \ <tmp>/<link> names <gate tree>/<sub>.
-: GATE-LINK ( ptr u8 n ptr u8 n -- )
-   {: sub:ptr subu:n link:ptr linku:n :}
+: GATE-LINK ( ^u8 n ^u8 n -- )
+   {: sub:^ subu:n link:^ linku:n :}
    sub subu GATE-B$ link linku A$ FS:MAKE-SYMLINK ;
 
 \ <tmp>/<rel> is a copy of the engine under test: a symlink would resolve to
 \ the candidate's own location.
-: PLACE-ENGINE ( ptr u8 n -- )
-   {: rel:ptr relu:n :}
+: PLACE-ENGINE ( ^u8 n -- )
+   {: rel:^ relu:n :}
    HB$ rel relu A$ FS:COPY-FILE-STREAM
    rel relu A$ FS:CHMOD-X ;
 
 \ <tmp>/b/<path> is a real copy of the gate tree's file: a symlink back would
 \ resolve to the gate tree.
-: B-COPY ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: B-COPY ( ^u8 n -- )
+   {: a:^ u:n :}
    a u FS:FILE? 0= if exit then
    B-ROOT$ a u CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
    COPY-DST size DIRNAME FS:MAKE-DIRS
@@ -141,8 +141,8 @@ variable RC
    s" test/fixtures/source-root-exe" [: B-COPY ;] FS:WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
-: MARKER ( ptr u8 n n -- )
-   {: name:ptr nameu:n value:n :}
+: MARKER ( ^u8 n n -- )
+   {: name:^ nameu:n value:n :}
    SB-RESET
    s" package " SB-APPEND name nameu LINE
    s" public" LINE
@@ -158,8 +158,8 @@ variable RC
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
-: DECOY ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: DECOY ( ^u8 n -- )
+   {: name:^ nameu:n :}
    SB-RESET
    s" package " SB-APPEND name nameu LINE
    S\" : HELLO ( -- ) s\q " SB-APPEND name nameu SB-APPEND S\" \q type cr ;" LINE
@@ -182,7 +182,7 @@ variable DEEP-U
 \ deep and DEEP-LEVELS nested <name>s below it, built in DEEP: the path can
 \ outgrow the string builder.
 : DEEP-DIRS ( -- )
-   s" deep" {: a:ptr u:n :}
+   s" deep" {: a:^ u:n :}
    a DEEP u BYTE-COPY u DEEP-U !
    DEEP-LEVELS 0 ?do
       [char] / DEEP DEEP-U @ + c!
@@ -267,19 +267,19 @@ variable DEEP-U
 \ to a root.
 : CHILD-ENV ( -- )
    PROC-ENV-RESET
-   s" TMPDIR" GETENV {: tmp:ptr tmpu:n :}
+   s" TMPDIR" GETENV {: tmp:^ tmpu:n :}
    tmpu 0= if exit then
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
-: RUN-ARGS ( ptr u8 n ptr u8 n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n :}
+: RUN-ARGS ( ^u8 n ^u8 n -- )
+   {: exe:^ exeu:n cwd:^ cwdu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
-: RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n :}
+: RUN-EXE ( ^u8 n ^u8 n ^u8 n -- )
+   {: exe:^ exeu:n cwd:^ cwdu:n in:^ inu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN in inu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
@@ -296,29 +296,29 @@ variable DEEP-U
    s" child stderr:" type cr ERR$ type ;
 
 \ Exactly this stdout and exit status, and nothing on stderr.
-: EXPECT ( ptr u8 n n -- )
-   {: want:ptr wantu:n rc:n :}
+: EXPECT ( ^u8 n n -- )
+   {: want:^ wantu:n rc:n :}
    RC @ rc = OUT$ want wantu STR= and ERR-U @ 0= and 0= if SHOW then
    RC @ rc T=
    OUT$ want wantu T$=
    ERR-U @ 0 T= ;
 
-: STDOUT ( ptr u8 n -- )
-   {: want:ptr wantu:n :}
+: STDOUT ( ^u8 n -- )
+   {: want:^ wantu:n :}
    OUT$ want wantu STR= 0= if SHOW then
    OUT$ want wantu T$= ;
 
 \ The loader's open failure for <dir><name>, exit 74.
-: CANNOT-OPEN ( ptr u8 n ptr u8 n -- )
-   {: dir:ptr diru:n name:ptr nameu:n :}
+: CANNOT-OPEN ( ^u8 n ^u8 n -- )
+   {: dir:^ diru:n name:^ nameu:n :}
    SB-RESET s" include: cannot open " SB-APPEND dir diru SB-APPEND name nameu SB-APPEND
    RC @ INCLUDE-IO-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
    RC @ INCLUDE-IO-RC T=
    ERR$ SB$ CONTAINS? TTRUE ;
 
 \ A refusal by name: exit 74, nothing on stdout, exactly this on stderr.
-: REFUSAL ( ptr u8 n -- )
-   {: want:ptr wantu:n :}
+: REFUSAL ( ^u8 n -- )
+   {: want:^ wantu:n :}
    RC @ INCLUDE-IO-RC = OUT-U @ 0= and ERR$ want wantu STR= and 0= if SHOW then
    RC @ INCLUDE-IO-RC T=
    OUT-U @ 0 T=
@@ -336,8 +336,8 @@ variable DEEP-U
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE ;
 
-: FROM-FOREIGN ( ptr u8 n -- )
-   {: exe:ptr exeu:n :}
+: FROM-FOREIGN ( ^u8 n -- )
+   {: exe:^ exeu:n :}
    PROC-ARGV-RESET
    ROOT-PROGRAM
    exe exeu FOREIGN$ PROG$ RUN-EXE
@@ -535,16 +535,16 @@ variable DEEP-U
    SB-RESET s" source root: a boot file is outside the engine root: " SB-APPEND
    s" foreign/x.f" A$ LINE SB$ REFUSAL ;
 
-: CD-PROG ( ptr u8 n -- ) {: rel:ptr relu:n :}
+: CD-PROG ( ^u8 n -- ) {: rel:^ relu:n :}
    PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE ;
 
 \ The refusal want, then <tmp>/<rel>.
-: CD-WANT ( ptr u8 n ptr u8 n -- )
-   {: rel:ptr relu:n want:ptr wantu:n :}
+: CD-WANT ( ^u8 n ^u8 n -- )
+   {: rel:^ relu:n want:^ wantu:n :}
    SB-RESET want wantu SB-APPEND rel relu A$ LINE SB$ REFUSAL ;
 
-: CD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: label:ptr labelu:n rel:ptr relu:n want:ptr wantu:n :}
+: CD-REFUSED ( ^u8 n ^u8 n ^u8 n -- )
+   {: label:^ labelu:n rel:^ relu:n want:^ wantu:n :}
    label labelu T-LABEL
    rel relu CD-PROG
    RUN-TREE
@@ -578,8 +578,8 @@ variable DEEP-U
    S\" source root: path is too long\n" REFUSAL ;
 
 \ A path word in <tmp>/<file>, the --load entry.
-: IN-LOAD ( ptr u8 n ptr u8 n -- )
-   {: file:ptr fileu:n want:ptr wantu:n :}
+: IN-LOAD ( ^u8 n ^u8 n -- )
+   {: file:^ fileu:n want:^ wantu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    file fileu A$ >LEN PROC-ARGV+

@@ -7,17 +7,17 @@ variable NAMES-U
 variable NAMES-N
 
 public
-: SPAN! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SPAN! ( ^u8 n -- )
+   {: a:^ u:n :}
    a NAMES !  u NAMES-U !
    0  u 0 ?do a i + c@ 0= if 1 + then loop  NAMES-N ! ;
 
-: SPAN@ ( -- ptr u8 n ) NAMES @ NAMES-U @ ;
+: SPAN@ ( -- ^u8 n ) NAMES @ NAMES-U @ ;
 
 : COUNT ( -- n ) NAMES-N @ ;
 
 \ The name at a byte offset in the span.
-: NAME-AT ( n -- ptr u8 n )
+: NAME-AT ( n -- ^u8 n )
    {: at:n :}
    NAMES @ at +  0
    begin 2dup + c@ 0<> while 1 + repeat ;

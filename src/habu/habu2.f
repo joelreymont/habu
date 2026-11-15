@@ -48,14 +48,14 @@ public
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 private
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
-: UNCMSG$ ( -- ptr u8 n )   s" hb: uncaught throw code " ;
+: UNCMSG$ ( -- ^u8 n )   s" hb: uncaught throw code " ;
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 public
 
 variable LMINCLASS   variable LMINMSG   \ the underdepth class head and prose LFLOORREC writes
 private
-: MINCLASS$ ( -- ptr u8 n )   s" E-UNDERFLOW habu: " ;
-: MINMSG$ ( -- ptr u8 n )   s" interpret stack underdepth: " ;
+: MINCLASS$ ( -- ^u8 n )   s" E-UNDERFLOW habu: " ;
+: MINMSG$ ( -- ^u8 n )   s" interpret stack underdepth: " ;
 : MINCLASS-LEN ( -- n )   MINCLASS$ nip ;
 : MINMSG-LEN ( -- n )   MINMSG$ nip ;
 public
@@ -68,13 +68,13 @@ variable LBGROWCLASS   variable LBGROWMSG   variable LBGROWUNIT   \ the body tex
 variable LDPBADCLASS   variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the class head, the prose before the DP's offset from the heap floor, the " of " before the ceiling's and the " bytes" that ends the line
 
 private
-: DPBAD-CLASS$ ( -- ptr u8 n )   s" E-DATA-SPACE habu: " ;
-: DPBAD-MSG$ ( -- ptr u8 n )     s" data space out of range: heap byte " ;
-: DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
-: DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
-: BGROW-CLASS$ ( -- ptr u8 n )   s" E-BODY-TEXT habu: " ;
-: BGROW-MSG$ ( -- ptr u8 n )     s" cannot grow definition body text to " ;
-: BGROW-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
+: DPBAD-CLASS$ ( -- ^u8 n )   s" E-DATA-SPACE habu: " ;
+: DPBAD-MSG$ ( -- ^u8 n )     s" data space out of range: heap byte " ;
+: DPBAD-OF$ ( -- ^u8 n )      s"  of " ;
+: DPBAD-UNIT$ ( -- ^u8 n )    s"  bytes" ;
+: BGROW-CLASS$ ( -- ^u8 n )   s" E-BODY-TEXT habu: " ;
+: BGROW-MSG$ ( -- ^u8 n )     s" cannot grow definition body text to " ;
+: BGROW-UNIT$ ( -- ^u8 n )    s"  bytes" ;
 
 : DPBAD-CLASS-LEN ( -- n )   DPBAD-CLASS$ nip ;
 : BGROW-CLASS-LEN ( -- n )   BGROW-CLASS$ nip ;
@@ -95,7 +95,7 @@ variable LPLACE        \ the place writer each die site calls after its class he
 package RELOC-EMIT
 public
 variable LXTMSG     \ checked growth could not secure storage
-: XTMSG$ ( -- ptr u8 n )   S\" hb: address-cell storage allocation failed\n" ;
+: XTMSG$ ( -- ^u8 n )   S\" hb: address-cell storage allocation failed\n" ;
 : XTMSG-LEN ( -- n )   XTMSG$ nip ;
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
@@ -112,7 +112,7 @@ public
 
 variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <path>:<line>
 private
-: PLACEEND$ ( -- ptr u8 n )   s" : " ;
+: PLACEEND$ ( -- ^u8 n )   s" : " ;
 : PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -394,7 +394,7 @@ private
 
 package ENGINE-EMIT
 private
-: RECWPUB$ ( -- ptr u8 n )      s" rec-wide-publish" ;
+: RECWPUB$ ( -- ^u8 n )      s" rec-wide-publish" ;
 ;package
 
 \ The baked `trust-raw` and `trust-decl` strings a missing checker word names.
@@ -403,10 +403,10 @@ package KWDATA
 public
 
 variable LKWTRUSTRAW
-: TRUSTRAW$ ( -- ptr u8 n )   s" trust-raw" ;
+: TRUSTRAW$ ( -- ^u8 n )   s" trust-raw" ;
 
 variable LKWTRUSTDECL
-: TRUSTDECL$ ( -- ptr u8 n )   s" trust-decl" ;
+: TRUSTDECL$ ( -- ^u8 n )   s" trust-decl" ;
 
 : EMIT ( -- )
    LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES, ;
@@ -417,7 +417,7 @@ package ENGINE-EMIT
 
 public
 
-: C-EXIT-LABEL ( ptr n n -- ) {: msg:ptr len:n :}
+: C-EXIT-LABEL ( ^n n -- ) {: msg:^ len:n :}
    0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -534,7 +534,7 @@ public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8]) or holds 0 there writes the line
 \ MA MU to fd 2 and exits 70.
-: C-OWNER-FIELD ( n ptr u8 n -- ) {: off:n ma:ptr mu:n :}
+: C-OWNER-FIELD ( n ^u8 n -- ) {: off:n ma:^ mu:n :}
    LBL LBL LBL {: absent:label msg:label ready:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
    10 11 8 SUBI,  10 10 0 LDR,
@@ -657,10 +657,10 @@ public
 
 private
 
-: NONE-CLASS$ ( -- ptr u8 n )
+: NONE-CLASS$ ( -- ^u8 n )
    s" E-DOES-UNCREATED habu: " ;
 
-: NONE$ ( -- ptr u8 n )
+: NONE$ ( -- ^u8 n )
    s" does> has no created word" ;
 
 \ A LASTC of zero names no record: none was created since boot, or the one it
@@ -887,7 +887,7 @@ package DEFWRITE
 
 \ The refusal at the label: the text and the primitive's lr, which BLs in the
 \ body replace and the frame keeps.
-: REFUSE-AT ( ptr u8 n label n -- ) {: a:ptr u:n at:label rc:n :}
+: REFUSE-AT ( ^u8 n label n -- ) {: a:^ u:n at:label rc:n :}
    at LBL,  0 CALLER-LR,  a u rc DIE-LINE, ;
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
@@ -991,7 +991,7 @@ variable LREPLAYTRAP
    LREPLAYTRAP LABEL@ LBL,
    s" E-REPLAY-RECORD habu: replay record executed" 76 DIE-LINE, ;
 
-\ namespace-record ( ptr u8 n bool -- n )
+\ namespace-record ( ^u8 n bool -- n )
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
 : NAMESPACE-RECORD ( -- )
    LBL LBL LBL LBL LBL LBL {: bad scan next clean nopri done :}
@@ -1049,7 +1049,7 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ alias-record ( ptr u8 n n n -- ) name, source index, wid
+\ alias-record ( ^u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
    LBL LBL LBL LBL {: bad prot notval done :}
    s" E-TASK-COMPILE habu: alias-record from a task" B-TASK-GUARD
@@ -1155,7 +1155,7 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ replay-record ( ptr u8 n n -- ) name, wid: a codeless record, whose entry
+\ replay-record ( ^u8 n n -- ) name, wid: a codeless record, whose entry
 \ is the trap. It needs no OPEN-WID: it can only trap, and replay-close
 \ removes it.
 : REPLAY-RECORD ( -- )
@@ -1307,7 +1307,7 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ def-open ( ptr u8 n n n -- ) name, wid, kind
+\ def-open ( ^u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
    LBL LBL LBL {: bad prot done :}
    s" E-TASK-COMPILE habu: def-open from a task" B-TASK-GUARD
@@ -1344,7 +1344,7 @@ variable LREPLAYTRAP
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ body-capture ( ptr u8 n -- ): LBCS is the capture `:` appends through; it grows
+\ body-capture ( ^u8 n -- ): LBCS is the capture `:` appends through; it grows
 \ the body text block as every capture does.
 : BODY-APPEND ( -- )
    LBL LBL {: bad done :}
@@ -1359,9 +1359,9 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ ( ptr u8 n -- ): the span into the cells aoff and uoff while a
+\ ( ^u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
-: PENDING-SPAN ( ptr u8 n n n -- ) {: a:ptr u:n aoff:n uoff:n :}
+: PENDING-SPAN ( ^u8 n n n -- ) {: a:^ u:n aoff:n uoff:n :}
    LBL LBL {: bad done :}
    12 G-POP  11 G-POP
    9 DATA PEND-CELL LDR,  9 bad CBZ,
@@ -1370,12 +1370,12 @@ variable LREPLAYTRAP
    a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ trust-sig! ( ptr u8 n -- )
+\ trust-sig! ( ^u8 n -- )
 : TRUST-SIG ( -- )
    s" E-SEAL-VIOLATION habu: trust-sig! with no definition pending"
    TSIG-A-CELL TSIG-U-CELL PENDING-SPAN ;
 
-\ created-sig! ( ptr u8 n -- )
+\ created-sig! ( ^u8 n -- )
 : CREATED-SIG ( -- )
    s" E-SEAL-VIOLATION habu: created-sig! with no definition pending"
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
@@ -1961,7 +1961,7 @@ ardone LBL,
    12 ROUTED-BYTES LIT64,  13 reg 12 SUB,  reg 13 0 STR,
    own LBL, ;
 
-\ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
+\ xt! ( q ^q -- ): store an execution token into a persisted cell and declare
 \ the cell. `defer` and `is` declare cells known at compile time; a table of
 \ dispatch cells picks its cell at run time, so only the store knows. The
 \ declaration runs first, so a cell LMARK refuses is never written; LMARK wants
@@ -1975,7 +1975,7 @@ ardone LBL,
    LMARK LABEL@ BL,
    C B 0 STR, ;
 
-\ ptr-cell! ( a ptr -- ): BXTSTORE for a DATA-pointer cell.
+\ ptr-cell! ( a ^ -- ): BXTSTORE for a DATA-pointer cell.
 : BPTRCELLSTORE ( -- )
    B G-POP  A G-POP
    B ROUTE-HEADER
@@ -2402,8 +2402,8 @@ private
 \ In x0 = the exit or throw code, the diagnostic written without its newline.
 : EM-COMPILE-DIE ( -- )
    LBL {: ldie:label :}
-   LBL S" E-OVERLAY-OPEN habu: " {: oclass:label oca:ptr ocu:n :}
-   LBL S" definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
+   LBL S" E-OVERLAY-OPEN habu: " {: oclass:label oca:^ ocu:n :}
+   LBL S" definition while a checker replay is open: " {: omsg:label oma:^ omu:n :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
@@ -2550,7 +2550,7 @@ public
 
 package ENGINE-EMIT
 
-\ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker.
+\ tok-imm? ( ^u8 n -- n ): live-dictionary immediate probe for the checker.
 \ Runs the interpret dispatch's LFIND on a token name and pushes flags&2, the
 \ DNAME-IMM bit, so DO-TOK1 can reject a live immediate as a checked body step.
 \ LFIND clobbers x3-x16 and preserves XDS (x19)/DATA (x20); the FPRIM frame
@@ -2615,7 +2615,7 @@ public
 ;package
 
 package ENGINE-EMIT
-\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for a
+\ scope-find ( ^u8 n -- ^n ^n ^n n ): LSCOPEREC's four answers for a
 \ token (bound record, used publics' record, second used record when two hold
 \ the tail, flags), so the checker, tier 0 and the Habu interpreter bind a
 \ spelling to the record a compiled call binds. A global row, checked like any

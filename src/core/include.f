@@ -77,20 +77,20 @@ variable REQUIRE-SAVE-BASE
 package SOURCE-INPUT
 private
 
-TYPED-VARIABLE CANON-XT [ ptr u8 n -- ptr u8 n bool ]
-TYPED-VARIABLE READ-XT [ ptr u8 n ptr u8 n -- ptr u8 n ]
+TYPED-VARIABLE CANON-XT [ ^u8 n -- ^u8 n bool ]
+TYPED-VARIABLE READ-XT [ ^u8 n ^u8 n -- ^u8 n ]
 
 public
 
-: CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT @ execute ;
-: READ ( ptr u8 n ptr u8 n -- ptr u8 n ) READ-XT @ execute ;
+: CANON ( ^u8 n -- ^u8 n bool ) CANON-XT @ execute ;
+: READ ( ^u8 n ^u8 n -- ^u8 n ) READ-XT @ execute ;
 
-: USE ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
+: USE ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n ^u8 n -- ^u8 n ] -- )
    {: canon read :}
    canon CANON-XT !
    read READ-XT ! ;
 
-: WITH ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] [ -- ] -- )
+: WITH ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n ^u8 n -- ^u8 n ] [ -- ] -- )
    {: canon read action :}
    CANON-XT @ READ-XT @ {: old-canon old-read :}
    canon read USE
@@ -137,12 +137,12 @@ CELL constant REC-ROOT
 create LOADER-REC REC-BYTES SCRATCH-ALLOT
 SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER-CELL
 LOADER-REC LOADER-CELL ptr-cell!            \ a build's store goes to its image
-CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
-: LOADER ( -- ptr u8 ) LOADER-CELL @ ;
-: TOP ( -- ptr ptr u8 ) LOADER REC-CELLS REC-TOP CELL / ptr-field ;
-: CURRENT-A ( -- ptr ptr u8 ) LOADER REC-CELLS REC-ROOT CELL / ptr-field ;
-: CURRENT-U ( -- ptr n ) LOADER REC-ROOTLEN + CELL-VIEW ;
-: SCOPES ( -- ptr n ) LOADER REC-SCOPES + CELL-VIEW ;
+CAST: REC-CELLS ( ^u8 -- ^^u8 )
+: LOADER ( -- ^u8 ) LOADER-CELL @ ;
+: TOP ( -- ^^u8 ) LOADER REC-CELLS REC-TOP CELL / ptr-field ;
+: CURRENT-A ( -- ^^u8 ) LOADER REC-CELLS REC-ROOT CELL / ptr-field ;
+: CURRENT-U ( -- ^n ) LOADER REC-ROOTLEN + CELL-VIEW ;
+: SCOPES ( -- ^n ) LOADER REC-SCOPES + CELL-VIEW ;
 create ENGINE-BUF PATH-BYTES allot
 variable ENGINE-U
 variable ENGINE-READ
@@ -153,35 +153,35 @@ PATH-DEPTH PTR-U8-TABLE SLOT-A
 create SLOT-U PATH-DEPTH cells allot
 variable SLOT-N
 
-: CURRENT-PTR ( -- ptr u8 ) CURRENT-A @ ;
+: CURRENT-PTR ( -- ^u8 ) CURRENT-A @ ;
 
 
-: CURRENT! ( ptr u8 n -- )
+: CURRENT! ( ^u8 n -- )
    CURRENT-U ! CURRENT-A ! ;
 
 \ The current path as set, null for the top-level root, which a scope saves
 \ and restores: CURRENT$ would hand back CWD-BUF, which no top-level path may
 \ hold (CD and POPPATH release the path they replace).
-: CURRENT@ ( -- ptr u8 n )
+: CURRENT@ ( -- ^u8 n )
    CURRENT-PTR CURRENT-U @ ;
 
 
-: CHECK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CHECK ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 <= u WORK-BYTES >= or if E-PATH-RANGE throw then ;
 
 
 \ realpath of a path into CANON-BUF: its length, -2 when that does not fit,
 \ below 0 when the path does not resolve.
-: CANON-N ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CANON-N ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u CHECK
    a u ZBUF WORK-BYTES PATHZ
    ZBUF CANON-BUF PATH-BYTES realpath ;
 
 public
 
-: CANON-OS ( ptr u8 n -- ptr u8 n bool )
+: CANON-OS ( ^u8 n -- ^u8 n bool )
    CANON-N {: n:n :}
    n -2 = if E-PATH-RANGE throw then
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
@@ -189,15 +189,15 @@ public
 
 private
 
-: TRY-CANON ( ptr u8 n -- bool )
-   SOURCE-INPUT:CANON {: a:ptr u:n found:bool :}
+: TRY-CANON ( ^u8 n -- bool )
+   SOURCE-INPUT:CANON {: a:^ u:n found:bool :}
    u PATH-BYTES >= if E-PATH-RANGE throw then
    a CANON-BUF <> if a CANON-BUF u BYTE-COPY then
    u CANON-U !
    found ;
 
 
-: CANON$ ( -- ptr u8 n ) CANON-BUF CANON-U @ ;
+: CANON$ ( -- ^u8 n ) CANON-BUF CANON-U @ ;
 
 
 \ The working directory must fit PATH-CAP as every root does; every path below
@@ -229,12 +229,12 @@ private
 
 public
 
-: CWD$ ( -- ptr u8 n ) CWD-RECORD CWD-BUF CWD-U @ ;
+: CWD$ ( -- ^u8 n ) CWD-RECORD CWD-BUF CWD-U @ ;
 
 
 private
 
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+: PARENT-U ( ^u8 n -- n ) {: a:^ u:n :}
    u
    begin dup 1 > while
       1- dup a + c@ 47 = if exit then
@@ -253,7 +253,7 @@ variable PROGRAM-U
 
 : PROGRAM-INIT ( -- )
    PROGRAM-U @ 0= 0= if exit then
-   PROGRAM-ARG @ {: a:ptr :}
+   PROGRAM-ARG @ {: a:^ :}
    a 0= if exit then
    a PROGRAM-BUF PATH-BYTES realpath {: n:n :}
    n 0 <= if
@@ -264,7 +264,7 @@ variable PROGRAM-U
 
 \ Whether a canonical path is the program file. A fresh discovery registry
 \ (REQUIRE-SNAPSHOT) hides it, as it hides every row recorded before it.
-: PROGRAM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PROGRAM? ( ^u8 n -- bool ) {: a:^ u:n :}
    REQUIRE-BASE @ 0= 0= if INCLUDE-FALSE exit then
    PROGRAM-INIT
    PROGRAM-U @ 0= if INCLUDE-FALSE exit then
@@ -274,7 +274,7 @@ variable PROGRAM-U
 \ work belong to the process that derived them, so their cells are scratch: a
 \ saved program, a cross-built one included, starts with none and derives its
 \ own instead of resolving against its builder's directory.
-: SCRATCH-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCRATCH-BYTES ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
 
 CWD-BUF PATH-BYTES SCRATCH-BYTES        CWD-U scratch-cell-mark
@@ -293,7 +293,7 @@ PROGRAM-BUF PATH-BYTES SCRATCH-BYTES    PROGRAM-U scratch-cell-mark
 
 public
 
-: CURRENT$ ( -- ptr u8 n )
+: CURRENT$ ( -- ^u8 n )
    CURRENT-U @ 0 > if CURRENT-PTR CURRENT-U @ exit then
    PROGRAM-INIT
    PROGRAM-U @ 0= if CWD$ exit then
@@ -304,7 +304,7 @@ private
 \ Both callers bound u with CHECK. The root length is the caller's, so it is
 \ compared with the room the name and its separator leave: in a sum, a length
 \ near the maximum cell wraps back into range.
-: JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
+: JOIN! ( ^u8 n ^u8 n -- ) {: root:^ rootu:n a:^ u:n :}
    rootu 0 < if E-PATH-RANGE throw then
    rootu WORK-BYTES 1- u - >= if E-PATH-RANGE throw then
    root WORK-BUF rootu BYTE-COPY
@@ -314,7 +314,7 @@ private
    WORK-BUF JOIN-BUF JOIN-U @ BYTE-COPY ;
 
 
-: ABSOLUTE! ( ptr u8 n -- ) {: a:ptr u:n :}
+: ABSOLUTE! ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECK
    a c@ 47 = if
       a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
@@ -326,7 +326,7 @@ private
    NORMAL-U @ + limit > if E-PATH-RANGE throw then ;
 
 
-: NORMAL-SEG ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
+: NORMAL-SEG ( ^u8 n n -- ) {: a:^ u:n limit:n :}
    u 0= if exit then
    a u s" ." CORE-STR= if exit then
    a u s" .." CORE-STR= if
@@ -342,7 +342,7 @@ private
    u NORMAL-U +! ;
 
 
-: SEG-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+: SEG-END ( ^u8 n n -- n ) {: a:^ u:n start:n :}
    start
    begin dup u < while
       dup a + c@ 47 = if exit then
@@ -350,8 +350,8 @@ private
    repeat ;
 
 
-: NORMALIZE-LIMIT ( ptr u8 n n -- )
-   {: a:ptr u:n limit:n :}
+: NORMALIZE-LIMIT ( ^u8 n n -- )
+   {: a:^ u:n limit:n :}
    47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
       dup a u rot SEG-END {: end:n :}
@@ -360,11 +360,11 @@ private
    repeat drop ;
 
 
-: NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
+: NORMALIZE ( ^u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
 \ The reason is written first, so a path of any length a caller holds is named
 \ whole.
-: PATH-DIE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n path:ptr pathu:n :}
+: PATH-DIE ( ^u8 n ^u8 n -- ) {: a:^ u:n path:^ pathu:n :}
    2 a u write drop
    path pathu INCLUDE-IO-RC die ;
 
@@ -381,7 +381,7 @@ public
 \ Public so provided, which this file defines outside
 \ SOURCE-ROOT, refuses here too: its row would lie outside the build's space,
 \ which only the linker would catch.
-: BUILD-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: BUILD-REFUSE ( ^u8 n -- ) {: path:^ pathu:n :}
    OWN-LOADER? if exit then
    s" include: a word loaded or provided a file during a build; do it at the file's top level: "
    path pathu PATH-DIE ;
@@ -414,7 +414,7 @@ public
 \ prefix physically, then normalize only the absent suffix for provided facts.
 \ The flag says whether the complete pathname existed. Result storage lasts
 \ until the next CANONICAL call.
-: CANONICAL ( ptr u8 n -- ptr u8 n bool )
+: CANONICAL ( ^u8 n -- ^u8 n bool )
    ABSOLUTE!
    JOIN-BUF JOIN-U @ TRY-CANON if
       CANON-BUF NORMAL-BUF CANON-U @ BYTE-COPY
@@ -427,19 +427,19 @@ public
 
 \ A name with no slash lies in the current directory, so its directory is `.`;
 \ PARENT-U alone would keep its first byte.
-: DIRNAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: DIRNAME ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u 0 SEG-END u = if s" ." exit then
    a a u PARENT-U ;
 
 
-: JOIN ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: JOIN ( ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u CHECK
    a c@ 47 = if 2drop a u exit then
    a u JOIN!
    JOIN-BUF JOIN-U @ ;
 
 
-: BELOW? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n root:ptr rootu:n :}
+: BELOW? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n root:^ rootu:n :}
    u rootu < if INCLUDE-FALSE exit then
    a rootu root rootu CORE-STR= 0= if INCLUDE-FALSE exit then
    u rootu = if INCLUDE-TRUE exit then
@@ -447,18 +447,18 @@ public
    a rootu + c@ 47 = ;
 
 
-: RELATIVE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n root:ptr rootu:n :}
+: RELATIVE ( ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n root:^ rootu:n :}
    a u root rootu BELOW? 0= if a u exit then
    u rootu = if s" ." exit then
    rootu 1 = if a 1+ u 1- exit then
    a rootu 1+ + u rootu 1+ - ;
 
 
-: RESOLVED-ROOT$ ( -- ptr u8 n ) OWNER-BUF OWNER-U @ ;
+: RESOLVED-ROOT$ ( -- ^u8 n ) OWNER-BUF OWNER-U @ ;
 
 private
 
-: OWNER! ( ptr u8 n -- ) {: a:ptr u:n :}
+: OWNER! ( ^u8 n -- ) {: a:^ u:n :}
    u INCLUDE-PATH-CAP > if E-PATH-RANGE throw then
    a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
 
@@ -479,7 +479,7 @@ private
 
 \ A root's lookup: the canonical length in CANON-BUF of the spelling, or -2 when
 \ it does not fit, -1 when it does not resolve, -3 when ENGINE-DIR? refuses it.
-: ROOT-N ( ptr u8 n -- n )
+: ROOT-N ( ^u8 n -- n )
    CANON-N {: n:n :}
    n -2 = if -2 exit then
    n 0 < if -1 exit then
@@ -493,7 +493,7 @@ private
    s" source root: does not resolve to a searchable directory within PATH-CAP bytes: "
    JOIN-BUF JOIN-U @ PATH-DIE ;
 
-: ROOT-CANON ( ptr u8 n -- )
+: ROOT-CANON ( ^u8 n -- )
    ABSOLUTE!
    JOIN-BUF JOIN-U @ ROOT-N {: n:n :}
    n 0 < if ROOT-DIE then
@@ -503,17 +503,17 @@ public
 
 \ ROOT-N's lookup, `.` being the working directory: the canonical directory and
 \ true; false too for an empty or too long spelling. Lasts until the next canon.
-: ROOT? ( ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n :}
+: ROOT? ( ^u8 n -- ^u8 n bool )
+   {: a:^ u:n :}
    u 1 <  u WORK-BYTES >=  or if CANON-BUF 0 INCLUDE-FALSE exit then
    a u ROOT-N {: n:n :}
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
-: CONFINE ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: CONFINE ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
-   a u CANONICAL drop {: path:ptr pathu:n :}
+   a u CANONICAL drop {: path:^ pathu:n :}
    path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
    2 s" E-POLICY habu: policy: source outside root: " write drop
    2 path pathu write drop
@@ -522,17 +522,17 @@ public
 
 private
 
-: MAP-COPY ( ptr u8 n -- ptr u8 )
-   {: a:ptr u:n :}
+: MAP-COPY ( ^u8 n -- ^u8 )
+   {: a:^ u:n :}
    u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" INCLUDE-IO-RC die then
-   {: fresh:ptr :}
+   {: fresh:^ :}
    a fresh u 1+ BYTE-COPY
    fresh ;
 
-: ROOT-ENTER ( ptr u8 n -- ptr u8 n )
+: ROOT-ENTER ( ^u8 n -- ^u8 n )
    ROOT-CANON
    CANON-U @ {: u:n :}
-   CANON-BUF u MAP-COPY {: fresh:ptr :}
+   CANON-BUF u MAP-COPY {: fresh:^ :}
    CURRENT@
    fresh u CURRENT!
    1 SCOPES +! ;
@@ -540,10 +540,10 @@ private
 \ The root current at a scope's exit is the scope's own mapping, or the one a
 \ ROOT! in the scope replaced it with; either is released once the caller's
 \ root is back.
-: ROOT-LEAVE ( ptr u8 n n -- )
-   {: old:ptr oldu:n rc:n :}
+: ROOT-LEAVE ( ^u8 n n -- )
+   {: old:^ oldu:n rc:n :}
    -1 SCOPES +!
-   CURRENT@ {: cur:ptr curu:n :}
+   CURRENT@ {: cur:^ curu:n :}
    old oldu CURRENT!
    cur curu 1+ munmap 0 < if
       s" source root: cannot release a root mapping" INCLUDE-IO-RC die
@@ -553,8 +553,8 @@ private
 public
 
 \ The caller's root is back before the scope's is released, on a throw too.
-: WITH ( ptr u8 n [ -- ] -- ) {: q :}
-   ROOT-ENTER {: old:ptr oldu:n :}
+: WITH ( ^u8 n [ -- ] -- ) {: q :}
+   ROOT-ENTER {: old:^ oldu:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
    q catch {: rc:n :}
    old oldu rc ROOT-LEAVE ;
@@ -563,7 +563,7 @@ private
 
 \ CD, PUSHPATH and POPPATH act on the top level only: each open scope, a load's
 \ among them, holds the current path it replaced and restores it on exit.
-: TOP-ONLY ( ptr u8 n -- )
+: TOP-ONLY ( ^u8 n -- )
    SCOPES @ 0= if 2drop exit then
    INCLUDE-IO-RC die ;
 
@@ -576,7 +576,7 @@ private
    then
    NULL$ CURRENT! ;
 
-: SLOT-FIELD ( n -- ptr ptr u8 )
+: SLOT-FIELD ( n -- ^^u8 )
    cells SLOT-A + 0 ptr-field ;
 
 : SLOT-U! ( n n -- )
@@ -589,7 +589,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ buffer, so a bare CD would otherwise take the next line's first word as its
 \ directory.
 : LINE-BLANK? ( -- bool )
-   INPUT-AT @ INPUT-END @ {: e:ptr :}
+   INPUT-AT @ INPUT-END @ {: e:^ :}
    begin dup e < while
       dup c@ 10 = if drop INCLUDE-TRUE exit then
       dup c@ 32 > if drop INCLUDE-FALSE exit then
@@ -601,17 +601,17 @@ public
 
 \ The directory is the current root, searched first by a relative require, until
 \ the load or WITH body it runs in ends. hb's directory and engine root stay.
-: ROOT! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ROOT! ( ^u8 n -- )
+   {: a:^ u:n :}
    u INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
-   CURRENT$ a u JOIN {: p:ptr pu:n :}
+   CURRENT$ a u JOIN {: p:^ pu:n :}
    pu INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
    p pu ROOT-N {: n:n :}
    n -2 = if s" source root: path is too long" INCLUDE-IO-RC die then
    n -1 = if s" source root: does not resolve to a directory: " p pu PATH-DIE then
    n -3 = if s" source root: is not a searchable directory: " p pu PATH-DIE then
    p pu CANON-BUF n COMPILE-READS:ROOT+
-   CANON-BUF n MAP-COPY {: fresh:ptr :}
+   CANON-BUF n MAP-COPY {: fresh:^ :}
    RELEASE-CURRENT
    fresh n CURRENT! ;
 
@@ -647,10 +647,10 @@ public
 
 using SOURCE-ROOT
 
-: INCLUDE-DIE ( ptr u8 n -- )
+: INCLUDE-DIE ( ^u8 n -- )
    INCLUDE-IO-RC die ;
 
-: INCLUDE-EVAL-DIE ( ptr u8 n -- )
+: INCLUDE-EVAL-DIE ( ^u8 n -- )
    INCLUDE-EVAL-RC die ;
 
 : INCLUDE-CLOSE ( -- )
@@ -661,11 +661,11 @@ using SOURCE-ROOT
    then
    -1 INCLUDE-FD ! ;
 
-: INCLUDE-IO-DIE ( ptr u8 n -- )
+: INCLUDE-IO-DIE ( ^u8 n -- )
    INCLUDE-CLOSE
    INCLUDE-DIE ;
 
-: INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
+: INCLUDE-CHECK-PATH ( ^u8 n -- ^u8 n )
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
    dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
 
@@ -679,27 +679,27 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
 \ A mapped chunk's room and used counts are the two cells after its prev
 \ pointer, and its path bytes follow them at CHUNK-HEAD.
-CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
+CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : SIZE-DIE ( -- )
    s" require: inventory size overflow" INCLUDE-DIE ;
 
-: FROZEN-REC ( n -- ptr n )
+: FROZEN-REC ( n -- ^n )
    2 * cells FROZEN @ swap + ;
 
 : FROZEN-LEN ( n -- n )
    FROZEN-REC CELL + @ ;
 
-: FROZEN-SLOT ( n -- ptr u8 ) {: idx:n :}
+: FROZEN-SLOT ( n -- ^u8 ) {: idx:n :}
    FROZEN @ idx FROZEN-REC @ + ;
 
-: ROW-PTR ( n -- ptr ptr u8 )
+: ROW-PTR ( n -- ^^u8 )
    ROWS @ swap ptr-field ;
 
-: ROW-PTR@ ( n -- ptr u8 )
+: ROW-PTR@ ( n -- ^u8 )
    ROW-PTR @ ;
 
-: ROW-LEN-ADDR ( n -- ptr n )
+: ROW-LEN-ADDR ( n -- ^n )
    ROW-LENS @ swap cells + ;
 
 : ROW-LEN@ ( n -- n )
@@ -712,12 +712,12 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
    need $40 max
    ROW-CAP @ ROW-LIMIT 2 / <= if ROW-CAP @ 2 * max then ;
 
-: COL-MAP ( n -- ptr a )
+: COL-MAP ( n -- ^a )
    cells map-anon 0 <> if
       drop s" require: cannot map the row table" INCLUDE-DIE
    then ;
 
-: COLS-UNMAP ( ptr ptr u8 ptr n n -- ) {: rows:ptr lens:ptr cap:n :}
+: COLS-UNMAP ( ^^u8 ^n n -- ) {: rows:^ lens:^ cap:n :}
    rows cap cells munmap {: rowsrc:n :}
    lens cap cells munmap {: lensrc:n :}
    rowsrc 0 < lensrc 0 < or if
@@ -727,7 +727,7 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
 : ROW-GROW ( n -- ) {: need:n :}
    need ROW-LIMIT > if SIZE-DIE then
    need ROW-NEW-CAP {: cap:n :}
-   ROWS @ ROW-LENS @ ROW-CAP @ {: old:ptr oldlens:ptr oldcap:n :}
+   ROWS @ ROW-LENS @ ROW-CAP @ {: old:^ oldlens:^ oldcap:n :}
    cap COL-MAP ROWS !
    cap COL-MAP ROW-LENS !
    cap ROW-CAP !
@@ -750,22 +750,22 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
    NULL-PTR ROW-LENS !
    0 ROW-CAP ! ;
 
-: CHUNK-PREV@ ( ptr ptr u8 -- ptr ptr u8 )
+: CHUNK-PREV@ ( ^^u8 -- ^^u8 )
    0 ptr-field @ ;
 
-: CHUNK-ROOM@ ( ptr ptr u8 -- n )
+: CHUNK-ROOM@ ( ^^u8 -- n )
    CHUNK-COUNTS CELL + @ ;
 
-: CHUNK-USED@ ( ptr ptr u8 -- n )
+: CHUNK-USED@ ( ^^u8 -- n )
    CHUNK-COUNTS 2 cells + @ ;
 
-: CHUNK-USED! ( n ptr ptr u8 -- )
+: CHUNK-USED! ( n ^^u8 -- )
    CHUNK-COUNTS 2 cells + ! ;
 
-: CHUNK-DATA ( ptr ptr u8 -- ptr u8 )
+: CHUNK-DATA ( ^^u8 -- ^u8 )
    CHUNK-COUNTS byte-view CHUNK-HEAD + ;
 
-: CHUNK-BYTES ( ptr ptr u8 -- n )
+: CHUNK-BYTES ( ^^u8 -- n )
    CHUNK-ROOM@ CHUNK-HEAD + ;
 
 : CHUNK-NEW-ROOM ( n -- n ) {: u:n :}
@@ -776,23 +776,23 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
 : CHUNK-NEW ( n -- )
    CHUNK-NEW-ROOM {: room:n :}
    room CHUNK-LIMIT > if SIZE-DIE then
-   CHUNK @ {: prev:ptr :}
+   CHUNK @ {: prev:^ :}
    room CHUNK-HEAD + map-anon 0 <> if
       drop s" require: cannot map a path chunk" INCLUDE-DIE
    then
-   {: fresh:ptr :}
+   {: fresh:^ :}
    fresh CHUNK !
    prev CHUNK @ 0 ptr-field !
    room CHUNK @ CHUNK-COUNTS CELL + !
    0 CHUNK @ CHUNK-USED! ;
 
-: CHUNK-SPACE ( n -- ptr u8 ) {: u:n :}
+: CHUNK-SPACE ( n -- ^u8 ) {: u:n :}
    CHUNK @ NULL-PTR = if
       u CHUNK-NEW
    else
       u CHUNK @ CHUNK-ROOM@ CHUNK @ CHUNK-USED@ - > if u CHUNK-NEW then
    then
-   CHUNK @ {: chunk:ptr :}
+   CHUNK @ {: chunk:^ :}
    chunk CHUNK-USED@ {: used:n :}
    used u + chunk CHUNK-USED!
    chunk CHUNK-DATA used + ;
@@ -805,15 +805,15 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
    repeat drop
    NULL-PTR CHUNK ! ;
 
-: CHUNK-CONTAINS? ( ptr ptr u8 ptr u8 -- bool ) {: chunk:ptr path:ptr :}
+: CHUNK-CONTAINS? ( ^^u8 ^u8 -- bool ) {: chunk:^ path:^ :}
    path chunk CHUNK-DATA - {: off:n :}
    off 0 >= off chunk CHUNK-ROOM@ < and ;
 
-: CHUNK-TRIM-TO ( ptr ptr u8 ptr u8 n -- ) {: chunk:ptr path:ptr u:n :}
+: CHUNK-TRIM-TO ( ^^u8 ^u8 n -- ) {: chunk:^ path:^ u:n :}
    path chunk CHUNK-DATA - u + chunk CHUNK-USED!
    chunk CHUNK ! ;
 
-: CHUNKS-TRIM ( ptr u8 n -- ) {: path:ptr u:n :}
+: CHUNKS-TRIM ( ^u8 n -- ) {: path:^ u:n :}
    CHUNK @ begin dup NULL-PTR <> while
       dup path CHUNK-CONTAINS? if path u CHUNK-TRIM-TO exit then
       dup CHUNK-PREV@ swap dup CHUNK-BYTES munmap 0 < if
@@ -844,7 +844,7 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
    used MAX-BYTES recs - > if SIZE-DIE then
    recs used + ;
 
-: PAD-BYTES ( ptr u8 -- n )
+: PAD-BYTES ( ^u8 -- n )
    data-base - negate CELL 1- and ;
 
 : TOTAL-BYTES ( n n -- n ) {: bytes:n pad:n :}
@@ -853,20 +853,20 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
 
 public
 
-: SLOT ( n -- ptr u8 ) {: idx:n :}
+: SLOT ( n -- ^u8 ) {: idx:n :}
    idx PREFIX-N @ < if idx FROZEN-SLOT else idx ROW-PTR@ then ;
 
 : LEN ( n -- n ) {: idx:n :}
    idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND ( ^u8 n -- ) {: a:^ u:n :}
    u 0 <= u INCLUDE-PATH-CAP > or if
       s" require: invalid path length" INCLUDE-DIE
    then
    REQUIRE-N @ {: idx:n :}
    idx ROW-LIMIT >= if SIZE-DIE then
    idx 1+ ROW-ENSURE
-   u CHUNK-SPACE {: path:ptr :}
+   u CHUNK-SPACE {: path:^ :}
    a path u BYTE-COPY
    path idx ROW-PTR !
    u idx ROW-LEN-ADDR !
@@ -929,11 +929,11 @@ public
       exit
    then
    LIVE-BYTES PACK-BYTES {: bytes:n :}
-   here {: start:ptr :}
+   here {: start:^ :}
    start PAD-BYTES {: pad:n :}
    bytes pad TOTAL-BYTES {: total:n :}
    total allot
-   start pad + {: fresh:ptr :}
+   start pad + {: fresh:^ :}
    REQUIRE-N @ FROZEN-BYTES
    REQUIRE-N @ 0 ?do
       {: cursor:n :}
@@ -953,20 +953,20 @@ public
 : REQUIRE-LEN@ ( n -- n )
    REQUIRE-REG:LEN ;
 
-: REQUIRE-SLOT ( n -- ptr u8 )
+: REQUIRE-SLOT ( n -- ^u8 )
    REQUIRE-REG:SLOT ;
 
-: REQUIRE-BYTE= ( ptr u8 n n -- bool ) {: a:ptr idx:n i:n :}
+: REQUIRE-BYTE= ( ^u8 n n -- bool ) {: a:^ idx:n i:n :}
    a i ZBYTE@ idx REQUIRE-SLOT i ZBYTE@ = ;
 
-: REQUIRE-PATH= ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
+: REQUIRE-PATH= ( ^u8 n n -- bool ) {: a:^ u:n idx:n :}
    idx REQUIRE-LEN@ u <> if INCLUDE-FALSE exit then
    0 begin dup u < while
       dup a idx rot REQUIRE-BYTE= 0= if drop INCLUDE-FALSE exit then
       1+
    repeat drop INCLUDE-TRUE ;
 
-: REQUIRE-KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: REQUIRE-KNOWN? ( ^u8 n -- bool ) {: a:^ u:n :}
    REQUIRE-BASE @ begin dup REQUIRE-N @ < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
@@ -975,7 +975,7 @@ public
 package SOURCE-ROOT
 private
 
-: LOADED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LOADED? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u PROGRAM? if INCLUDE-TRUE exit then
    a u REQUIRE-KNOWN? ;
 
@@ -987,7 +987,7 @@ private
    0 begin dup ENVP 0= 0= while 1+ repeat 1+ ;
 
 \ Apple strings can be empty, so the scan ends at the null pointer.
-: APPLE-EXE ( -- ptr u8 n )
+: APPLE-EXE ( -- ^u8 n )
    ENVP-BASE 0= if NULL$ exit then
    ENVP-END begin dup ENVP 0= 0= while
       dup ENVP s" executable_path" ENV=? if
@@ -999,18 +999,18 @@ private
 \ `%` in CANON-BUF, as a length. 0 when there is no path, it does not fit or
 \ realpath refuses it; never a throw: the length is checked before CANON-N, and
 \ neither path holds a NUL.
-: EXE-ROOT ( ptr u8 n -- n ) {: a:ptr u:n :}
+: EXE-ROOT ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= u INCLUDE-PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
    n 0 <= if 0 exit then
    CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
 
-: TREE? ( ptr u8 n -- bool )
+: TREE? ( ^u8 n -- bool )
    0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
 \ The root's length in CANON-BUF, 0 for the working directory.
-: ENGINE-FIND-FOR ( ptr u8 n -- n )
+: ENGINE-FIND-FOR ( ^u8 n -- n )
    REQUIRE-BOOT-LIMIT 0= if 2drop 0 exit then
    CWD$ TREE? if 2drop 0 exit then
    EXE-ROOT {: n:n :}
@@ -1037,13 +1037,13 @@ public
 
 \ The root is derived once, from whether the working directory is a Habu tree, so every answer
 \ records that read: a part's reads do not depend on which part asked first.
-: ENGINE$ ( -- ptr u8 n )
+: ENGINE$ ( -- ^u8 n )
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
    CWD-RECORD ENGINE-BUF ENGINE-U @ ;
 
 \ Override the fallback root; the caller restores the old one after its load.
-: ENGINE! ( ptr u8 n -- )
+: ENGINE! ( ^u8 n -- )
    ROOT-CANON
    CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
    CANON-U @ ENGINE-U !
@@ -1051,26 +1051,26 @@ public
 
 private
 
-: REQUEST! ( ptr u8 n -- ) {: a:ptr u:n :}
+: REQUEST! ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECK
    a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
 
-: REQUEST$ ( -- ptr u8 n ) REQUEST-BUF REQUEST-U @ ;
+: REQUEST$ ( -- ^u8 n ) REQUEST-BUF REQUEST-U @ ;
 
 \ Portable names describe only frozen engine facts, and a boot row IS its
 \ portable name, so this reads the registry itself. Ordinary application facts
 \ retain their canonical identity so identical names in distinct roots coexist.
-: BOOT-KNOWN? ( ptr u8 n n -- bool ) {: a:ptr u:n first:n :}
+: BOOT-KNOWN? ( ^u8 n n -- bool ) {: a:^ u:n first:n :}
    first begin dup REQUIRE-BOOT-LIMIT < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
 
-: CANDIDATE$ ( -- ptr u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
+: CANDIDATE$ ( -- ^u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
 
 \ A request spelled under a root, normalized but not resolved, in NORMAL-BUF.
 \ The root's spelling may be longer than its canonical symlink target.
-: UNDER ( ptr u8 n ptr u8 n -- ptr u8 n )
+: UNDER ( ^u8 n ^u8 n -- ^u8 n )
    JOIN WORK-BYTES 1- NORMALIZE-LIMIT
    NORMAL-BUF NORMAL-U @ ;
 
@@ -1081,8 +1081,8 @@ private
 \ only when it resolves to the same physical candidate: symlink/.. can name
 \ another file. Spelling the request reuses NORMAL-BUF, which holds the
 \ candidate, so the candidate is copied first.
-: BOOT-CANDIDATE ( ptr u8 n ptr u8 n ptr u8 n n -- ptr u8 n bool )
-   {: a:ptr u:n root:ptr rootu:n req:ptr requ:n first:n :}
+: BOOT-CANDIDATE ( ^u8 n ^u8 n ^u8 n n -- ^u8 n bool )
+   {: a:^ u:n root:^ rootu:n req:^ requ:n first:n :}
    first REQUIRE-BOOT-LIMIT >= if a u INCLUDE-FALSE exit then
    a u root rootu RELATIVE first BOOT-KNOWN? if a u INCLUDE-TRUE exit then
    u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
@@ -1101,7 +1101,7 @@ private
 \ symlinked working directory are still the engine's, and BOOT-CANDIDATE's
 \ physical test keeps another directory's file with an engine file's name its
 \ own.
-: CANDIDATE ( ptr u8 n n -- ptr u8 n bool bool )
+: CANDIDATE ( ^u8 n n -- ^u8 n bool bool )
    {: first:n :}
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
@@ -1118,7 +1118,7 @@ private
 \ and the working directory answers only what neither holds: an application's
 \ entry below its tree, run from the tree, requires the tree's files by their
 \ tree-relative names.
-: SEARCH-ROOTS ( n -- ptr u8 n bool )
+: SEARCH-ROOTS ( n -- ^u8 n bool )
    {: first:n :}
    CURRENT$ first CANDIDATE if exit then drop 2drop
    ENGINE$ CURRENT$ CORE-STR= 0= if
@@ -1132,8 +1132,8 @@ private
 \ A missing file's directory need not be a root at all (missing, a file,
 \ unsearchable), so its load keeps the current root and INCLUDE-OPEN names the
 \ file.
-: ABS-OWNER ( ptr u8 n bool -- )
-   {: a:ptr u:n exists:bool :}
+: ABS-OWNER ( ^u8 n bool -- )
+   {: a:^ u:n exists:bool :}
    a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
    a u ENGINE$ BELOW? if ENGINE$ OWNER! exit then
    a u CWD$ BELOW? if CWD$ OWNER! exit then
@@ -1142,7 +1142,7 @@ private
 
 \ The file a require of REQUEST$ selects, with frozen rows counted from row
 \ `first`.
-: SELECT ( n -- ptr u8 n bool )
+: SELECT ( n -- ^u8 n bool )
    {: first:n :}
    REQUEST-BUF c@ $2F = if
       REQUEST$ CANONICAL {: exists:bool :}
@@ -1157,16 +1157,16 @@ private
 
 public
 
-: RESOLVE ( ptr u8 n -- ptr u8 n bool )
+: RESOLVE ( ^u8 n -- ^u8 n bool )
    REQUEST! REQUIRE-BASE @ SELECT
    >r CONFINE r> ;
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
-: ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
+: ENTRY-RESOLVE ( ^u8 n -- ^u8 n bool )
    REQUEST!
    CWD$ REQUIRE-BASE @ CANDIDATE
-   {: path:ptr pathu:n known:bool exists:bool :}
+   {: path:^ pathu:n known:bool exists:bool :}
    exists if
       path pathu DIRNAME OWNER!
    else
@@ -1180,7 +1180,7 @@ public
 \ The selection counts every frozen row whatever REQUIRE-BASE is, so a frozen
 \ row is the engine's even where its file is missing. RESOLVED-ROOT$ stays as
 \ the caller's own RESOLVE left it.
-: ENGINE-KNOWN? ( ptr u8 n -- bool )
+: ENGINE-KNOWN? ( ^u8 n -- bool )
    OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
    OWNER-U @ {: owner:n :}
    REQUEST! 0 SELECT drop
@@ -1195,9 +1195,9 @@ public
 \ Any other file is refused by name: its row could only be its canonical path,
 \ and an engine carrying one takes that file for a stranger under every other
 \ root.
-: BOOT-ROW ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+: BOOT-ROW ( ^u8 n -- ^u8 n ^u8 n ) {: a:^ u:n :}
    u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
-   ENGINE$ {: root:ptr rootu:n :}
+   ENGINE$ {: root:^ rootu:n :}
    CANDIDATE$ root rootu BELOW? if
       CANDIDATE$ CANDIDATE$ root rootu RELATIVE exit
    then
@@ -1219,7 +1219,7 @@ public
 \ the two cannot collide, as a canonical name begins with `/` and a portable
 \ one never does. The path comes back in storage the store did not reuse, for
 \ the caller's load.
-: REQUIRE-STORE ( ptr u8 n -- ptr u8 n )
+: REQUIRE-STORE ( ^u8 n -- ^u8 n )
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
    REQUIRE-REG:APPEND ;
 
@@ -1236,17 +1236,17 @@ variable INCLUDE-DIAG-U
 \ A piece that does not fit is dropped. It is compared with the room left, so a
 \ length near the maximum cell cannot wrap the sum back under the capacity, and
 \ a negative one is dropped too.
-: INCLUDE-DIAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: INCLUDE-DIAG+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < if exit then
    u INCLUDE-DIAG-CAP INCLUDE-DIAG-U @ - > if exit then
    a INCLUDE-DIAG INCLUDE-DIAG-U @ + u BYTE-COPY
    INCLUDE-DIAG-U @ u + INCLUDE-DIAG-U ! ;
 
-: INCLUDE-DIAG$ ( -- ptr u8 n )
+: INCLUDE-DIAG$ ( -- ^u8 n )
    INCLUDE-DIAG INCLUDE-DIAG-U @ ;
 
-: INCLUDE-PATH0 ( ptr u8 n -- ptr u8 )
-   {: a:ptr u:n :}
+: INCLUDE-PATH0 ( ^u8 n -- ^u8 )
+   {: a:^ u:n :}
    a u INCLUDE-CHECK-PATH 2drop
    a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
    u INCLUDE-PATH-U !
@@ -1264,7 +1264,7 @@ variable SCRIPT-NAMED-PEND
    INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-DIAG+
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
-: INCLUDE-OPEN ( ptr u8 n -- )
+: INCLUDE-OPEN ( ^u8 n -- )
    INCLUDE-PATH0 open-rd INCLUDE-FD !
    INCLUDE-FD @ 0 < if INCLUDE-OPEN-DIE then ;
 
@@ -1276,21 +1276,21 @@ variable SCRIPT-NAMED-PEND
 package SOURCE-UNIT
 private
 
-TYPED-VARIABLE LOAD-XT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
+TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ]
 
-: ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+: ORDINARY ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+   {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    0 sourceu q execute ;
 
 public
 
 variable GEN
-: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    1 GEN +! LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
 \ its own beneath it; the quotation throws for a refused file.
-: USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
-: CURRENT ( -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
+: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
+: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
 
 ;package
@@ -1336,20 +1336,20 @@ variable DISC-TOK-U
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
 : DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
-: EVENT-RECS@ ( -- ptr u8 ) EVENT-RECS @ ;
-: EVENT-POOL@ ( -- ptr u8 ) EVENT-POOL @ ;
+: EVENT-RECS@ ( -- ^u8 ) EVENT-RECS @ ;
+: EVENT-POOL@ ( -- ^u8 ) EVENT-POOL @ ;
 
-: EVENT-UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
+: EVENT-UNMAP ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
    a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
 
 \ A fresh mapping of CAP bytes holding the first USED bytes of OLD, which maps
 \ OLDCAP bytes and is released first; the caller then publishes the answer and
 \ CAP, so a refusal ends the process while OLD is still the one published.
-: EVENT-REMAP ( ptr u8 n n n -- ptr u8 )
-   {: old:ptr oldcap:n used:n cap:n :}
+: EVENT-REMAP ( ^u8 n n n -- ^u8 )
+   {: old:^ oldcap:n used:n cap:n :}
    cap map-anon 0= 0= if drop s" events: cannot map an event table" INCLUDE-DIE then
-   {: fresh:ptr :}
+   {: fresh:^ :}
    old fresh used BYTE-COPY
    old oldcap EVENT-UNMAP
    fresh ;
@@ -1370,13 +1370,13 @@ variable DISC-TOK-U
    DISCOVERY? if DISC-TOK-A @ DISC-TOK-U @ exit then
    LOADER-TOKEN-SPAN ;
 
-: EVENT-SLOT ( n n -- ptr n )
+: EVENT-SLOT ( n n -- ^n )
    swap EVENT-FIELDS * + cells EVENT-RECS@ + CELL-VIEW ;
 
 : EVENT-FIELD@ ( n n -- n )  EVENT-SLOT @ ;
 : EVENT-FIELD! ( n n n -- )  EVENT-SLOT ! ;
 
-: EVENT-POOL-AT ( n -- ptr u8 )  EVENT-POOL@ + ;
+: EVENT-POOL-AT ( n -- ^u8 )  EVENT-POOL@ + ;
 
 : EVENT-GROWN ( n n -- n ) {: need:n cap:n :}
    cap 2 * need max EVENT-ROOM-MIN max ;
@@ -1402,7 +1402,7 @@ variable DISC-TOK-U
    EVENT-POOL !
    cap EVENT-POOL-CAP ! ;
 
-: EVENT-COPY-PATH ( ptr u8 n -- n n ) {: a:ptr u:n :}
+: EVENT-COPY-PATH ( ^u8 n -- n n ) {: a:^ u:n :}
    u EVENT-POOL-ROOM
    EVENT-POOL-N @ {: off:n :}
    a off EVENT-POOL-AT u BYTE-COPY
@@ -1412,16 +1412,16 @@ variable DISC-TOK-U
 package SOURCE-EVENT
 public
 
-: ROOT@ ( n -- ptr u8 n ) {: ix:n :}
+: ROOT@ ( n -- ^u8 n ) {: ix:n :}
    ix 6 EVENT-FIELD@ EVENT-POOL-AT ix 7 EVENT-FIELD@ ;
 
 \ The current root when the event was recorded.
-: CURRENT@ ( n -- ptr u8 n ) {: ix:n :}
+: CURRENT@ ( n -- ^u8 n ) {: ix:n :}
    ix 11 EVENT-FIELD@ EVENT-POOL-AT ix 12 EVENT-FIELD@ ;
 
 private
 
-: COPY-SHARED ( ptr u8 n -- n n ) {: a:ptr u:n :}
+: COPY-SHARED ( ^u8 n -- n n ) {: a:^ u:n :}
    0 begin dup EVENT-N @ < while
       dup ROOT@ a u CORE-STR= if
          dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
@@ -1445,8 +1445,8 @@ public
 
 ;package
 
-: EVENT-RECORD ( ptr u8 n ptr u8 n n n -- )
-   {: a:ptr u:n path:ptr pathu:n kd:n st:n :}
+: EVENT-RECORD ( ^u8 n ^u8 n n n -- )
+   {: a:^ u:n path:^ pathu:n kd:n st:n :}
    EVENT-ON? 0= if exit then
    EVENT-RECS-ROOM
    EVENT-N @ {: ix:n :}
@@ -1471,10 +1471,10 @@ public
 : EVENT-COUNT ( -- n )       EVENT-N @ ;
 : EVENT-KIND@ ( n -- n )     0 EVENT-FIELD@ ;
 : EVENT-STATE@ ( n -- n )    5 EVENT-FIELD@ ;
-: EVENT-PATH@ ( n -- ptr u8 n ) {: ix:n :}
+: EVENT-PATH@ ( n -- ^u8 n ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
-: EVENT-SPELLED@ ( n -- ptr u8 n ) {: ix:n :}
+: EVENT-SPELLED@ ( n -- ^u8 n ) {: ix:n :}
    ix 8 EVENT-FIELD@ EVENT-POOL-AT
    ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
@@ -1519,24 +1519,24 @@ $1000 constant ROOM-MIN
 \ A frame's FR-PREV, FR-OWNER, FR-EXEC-COPY and FR-EVAL-PTR cells hold
 \ addresses; its other header cells hold counts, flags and stamps, and its bytes
 \ follow them.
-CAST: FRAME-CELLS ( ptr u8 -- ptr ptr u8 )
-: FRAME-PREV ( ptr u8 -- ptr ptr u8 ) FRAME-CELLS FR-PREV CELL / ptr-field ;
-: FRAME-OWNER ( ptr u8 -- ptr ptr u8 ) FRAME-CELLS FR-OWNER CELL / ptr-field ;
-: FRAME-EXEC-COPY ( ptr u8 -- ptr ptr u8 )
+CAST: FRAME-CELLS ( ^u8 -- ^^u8 )
+: FRAME-PREV ( ^u8 -- ^^u8 ) FRAME-CELLS FR-PREV CELL / ptr-field ;
+: FRAME-OWNER ( ^u8 -- ^^u8 ) FRAME-CELLS FR-OWNER CELL / ptr-field ;
+: FRAME-EXEC-COPY ( ^u8 -- ^^u8 )
    FRAME-CELLS FR-EXEC-COPY CELL / ptr-field ;
-: FRAME-EVAL-PTR ( ptr u8 -- ptr ptr u8 )
+: FRAME-EVAL-PTR ( ^u8 -- ^^u8 )
    FRAME-CELLS FR-EVAL-PTR CELL / ptr-field ;
 PTR-VARIABLE RANGE-OWNER
 variable LAST-LOAD-EVAL-OK
 
-: TOP@ ( -- ptr u8 ) TOP @ ;
-: TOP! ( ptr u8 -- ) TOP ! ;
+: TOP@ ( -- ^u8 ) TOP @ ;
+: TOP! ( ^u8 -- ) TOP ! ;
 
 : CHECK-ACTIVE ( -- )
    TOP@ 0= if s" include: depth underflow" INCLUDE-DIE then ;
 
-: FRAME-EXEC-SOURCE ( ptr u8 -- ptr u8 )
-   {: frame:ptr :}
+: FRAME-EXEC-SOURCE ( ^u8 -- ^u8 )
+   {: frame:^ :}
    frame FRAME-EXEC-COPY @ dup 0= if
       drop frame HEADER-BYTES +
    then ;
@@ -1555,7 +1555,7 @@ variable LAST-LOAD-EVAL-OK
 : PUBLISH-LOCATION ( -- )
    CHECK:FILE-POS-CLEAR
    TOP@ 0= if PUBLISH-NONE exit then
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
    frame FR-PATH + NULL-PTR - data-base SRCLOC:PATH-CELL + !
    frame FR-PATHLEN + CELL-VIEW @ data-base SRCLOC:PATHLEN-CELL + !
@@ -1568,13 +1568,13 @@ variable LAST-LOAD-EVAL-OK
    frame FRAME-EXEC-SOURCE NULL-PTR -
       data-base SRCLOC:OWNED-CELL + ! ;
 
-: MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
+: MAPPED ( ^u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
 
 : ROOM ( -- n ) TOP@ FR-ROOM + CELL-VIEW @ ;
 
 : PUSH ( -- )
    HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
-   {: frame:ptr :}
+   {: frame:^ :}
    TOP@ frame FRAME-PREV !
    RANGE-OWNER @ frame FRAME-OWNER !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
@@ -1592,7 +1592,7 @@ variable LAST-LOAD-EVAL-OK
    roots frame FR-T-ROOTS + CELL-VIEW !
    params frame FR-T-PARAMS + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
-   CURRENT$ {: root:ptr rootu:n :}
+   CURRENT$ {: root:^ rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
    root frame FR-ROOT + rootu BYTE-COPY
    frame TOP!
@@ -1601,9 +1601,9 @@ variable LAST-LOAD-EVAL-OK
 
 : POP ( -- )
    CHECK-ACTIVE
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FRAME-OWNER @ RANGE-OWNER !
-   frame FRAME-EXEC-COPY @ {: copy:ptr :}
+   frame FRAME-EXEC-COPY @ {: copy:^ :}
    frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
    frame FRAME-PREV @ TOP!
    PUBLISH-LOCATION
@@ -1611,7 +1611,7 @@ variable LAST-LOAD-EVAL-OK
    frame dup MAPPED munmap 0 < copyrc 0 < or if
       s" include: cannot release a source frame" INCLUDE-DIE then ;
 
-: SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
+: SOURCE ( -- ^u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
 \ The header and the first KEEP source bytes move to a fresh mapping; once the
 \ old one is released, the fresh one becomes TOP and the published location,
@@ -1620,10 +1620,10 @@ variable LAST-LOAD-EVAL-OK
 \ published.
 : GROW ( n n -- )
    {: want:n keep:n :}
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    ROOM 2 * want max {: room:n :}
    HEADER-BYTES room + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
-   {: fresh:ptr :}
+   {: fresh:^ :}
    frame fresh HEADER-BYTES keep + BYTE-COPY
    room fresh FR-ROOM + CELL-VIEW !
    frame dup MAPPED munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then
@@ -1640,9 +1640,9 @@ variable LAST-LOAD-EVAL-OK
 
 \ The open frame's stamp, from a stat of the path taken before the file is
 \ opened, so a change during the read leaves a stamp no later load matches.
-: STAMP! ( ptr u8 -- )
+: STAMP! ( ^u8 -- )
    COMPILE-READS:STAMP {: sec:n ns:n size:n :}
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    sec frame FR-CTIME-SEC + CELL-VIEW !
    ns frame FR-CTIME-NS + CELL-VIEW !
    size frame FR-STAMP-SIZE + CELL-VIEW ! ;
@@ -1650,12 +1650,12 @@ variable LAST-LOAD-EVAL-OK
 \ Refuses PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
 \ HOLD). A word's read finds its own file's frame held, or no frame; in a build,
 \ hb's held frame.
-: READ-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: READ-REFUSE ( ^u8 n -- ) {: path:^ pathu:n :}
    TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
    s" include: READ-OS reads only the file a load is opening; a word read: "
    path pathu PATH-DIE ;
 
-: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
+: INCLUDE-READ-ALL ( ^u8 n -- ^u8 n )
    2dup INCLUDE-PATH0 STAMP!
    INCLUDE-OPEN
    0 INCLUDE-U !
@@ -1665,9 +1665,9 @@ variable LAST-LOAD-EVAL-OK
 
 public
 
-: ACTIVE-SOURCE ( -- ptr u8 n ptr u8 n ptr u8 n )
+: ACTIVE-SOURCE ( -- ^u8 n ^u8 n ^u8 n )
    CHECK-ACTIVE
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    SOURCE frame FR-SIZE + CELL-VIEW @ ;
@@ -1676,7 +1676,7 @@ public
 \ READ-OS did not read, as WITH-SUPPLIED's are.
 : ACTIVE-STAMP ( -- n n n )
    CHECK-ACTIVE
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-CTIME-SEC + CELL-VIEW @
    frame FR-CTIME-NS + CELL-VIEW @
    frame FR-STAMP-SIZE + CELL-VIEW @ ;
@@ -1685,7 +1685,7 @@ public
 \ loader's.
 : END-TYPES ( -- )
    CHECK-ACTIVE
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-T-NODES + CELL-VIEW @
    frame FR-T-ROOTS + CELL-VIEW @
    frame FR-T-PARAMS + CELL-VIEW @
@@ -1693,13 +1693,13 @@ public
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
-: READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
+: READ-OS ( ^u8 n ^u8 n -- ^u8 n )
    2drop 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
 \ A source whose first two bytes are `#!` names its interpreter on that line,
 \ and the engine reads the line as a comment: the two bytes become `\ `, so
 \ every line and column stays the file's own.
-: SHEBANG-COMMENT ( ptr u8 n -- ) {: a:ptr u:n :}
+: SHEBANG-COMMENT ( ^u8 n -- ) {: a:^ u:n :}
    u 2 < if exit then
    a c@ $23 <> if exit then
    a 1 + c@ $21 <> if exit then
@@ -1710,7 +1710,7 @@ public
 \ test/interpreter-loop-on.f binds (USE-INTERPRETER); a file under the design seal skips it (INTERPRET-SAVED-RANGE).
 private
 
-defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
+defer INCLUDE-INTERPRET ( ^u8 n n n -- )
 
 \ The design seal is read where the engine's loop reads a token, and the loop
 \ written in Habu reads it nowhere, so a file loaded once the seal is set is read
@@ -1722,8 +1722,8 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 \ The OS reader has filled the frame already, learning the size as it read;
 \ another reader's bytes come with their length, and the frame grows to fit
 \ them before they are copied in.
-: HOLD ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: HOLD ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    a SOURCE <> if
       u ROOM > if u 0 GROW then
       a SOURCE u BYTE-COPY
@@ -1732,19 +1732,19 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
    PUBLISH-LOCATION
    SOURCE u ;
 
-: READ-SOURCE ( -- ptr u8 n )
+: READ-SOURCE ( -- ^u8 n )
    INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$ SOURCE-INPUT:READ HOLD ;
 
 \ The original bytes remain in the frame while a shebang is rewritten in a
 \ private execution copy. Range positions continue to name the full source.
-: EXEC-SOURCE ( -- ptr u8 )
+: EXEC-SOURCE ( -- ^u8 )
    TOP@ FRAME-EXEC-SOURCE ;
 
 \ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
 \ its source frame across catch; copied arguments beneath evaluate-range would
 \ let an underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
 : INTERPRET-SAVED-RANGE ( -- )
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FRAME-EVAL-PTR @
    frame FR-EVAL-SIZE + CELL-VIEW @
    frame FR-EVAL-FIRST + CELL-VIEW @
@@ -1759,7 +1759,7 @@ INTERPRET-INSTALL
 
 public
 
-: USE-INTERPRETER ( [ ptr u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
+: USE-INTERPRETER ( [ ^u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
 
 \ The process's root stream (stdin, or the `--load` or `--build` stream) runs
 \ open, as the engine's own loop runs it: it may leave cells on the stack and
@@ -1768,22 +1768,22 @@ public
 \ which then publishes no location until the stream returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
    TOP@ 0= if exit then
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-ROOT-RUNS + CELL-VIEW @ k + frame FR-ROOT-RUNS + CELL-VIEW !
    PUBLISH-LOCATION ;
 
-: RUN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+: RUN-ROOT ( ^u8 n -- ) {: a:^ u:n :}
    1 ROOT-RUNS+
    a u 0 u [: INCLUDE-INTERPRET ;] [: -1 ROOT-RUNS+ ;] finally ;
 
 private
 
 : LOAD-BYTES ( -- )
-   READ-SOURCE {: a:ptr u:n :}
+   READ-SOURCE {: a:^ u:n :}
    u 2 >= if
       a c@ $23 = a 1 + c@ $21 = and if
          u 1 max map-anon 0= 0= if drop INCLUDE-IO-RC throw then
-         {: copy:ptr :}
+         {: copy:^ :}
          a copy u BYTE-COPY
          copy u SHEBANG-COMMENT
          copy TOP@ FRAME-EXEC-COPY !
@@ -1797,7 +1797,7 @@ private
    RANGE-OWNER @ 0= if INCLUDE-RANGE-RC throw then
    CHECK-ACTIVE
    TOP@ RANGE-OWNER @ <> if INCLUDE-RANGE-RC throw then
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-SIZE + CELL-VIEW @ {: size:n :}
    size first end CHECK-RANGE
    EXEC-SOURCE frame FRAME-EVAL-PTR !
@@ -1821,7 +1821,7 @@ create RESIDUE-DIGIT 1 allot
    2 s" E-EVAL-RESIDUE: stack depth " write drop
    RESIDUE-DEC
    2 s"  at " write drop
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    2 frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ write drop
    2 POLICY-LF 1 write drop
    STACK-ABI:E-EVAL-RESIDUE throw ;
@@ -1837,7 +1837,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ so the body's `,` grid stops there. No owner, or one that predates the slot,
 \ has no pending body.
 : BODY-CLOSE ( -- )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:^ :}
    owner NULL-PTR = if exit then
    owner CELL - CELL-VIEW @ CHECKER-OWNER-ABI:BODY-CLOSE-OFF CELL + <
       if exit then
@@ -1855,7 +1855,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ The created body closes and the residue check runs inside the unit, so a runner's call
 \ returns only for an accepted file; each compiled part starts in host.
 : CALL-UNIT ( -- )
-   TOP@ {: frame:ptr :}
+   TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
@@ -1892,19 +1892,19 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ the interpreter. The callback receives bytes owned by the frame and its
 \ canonical path; both remain valid throughout the callback, including nested
 \ loads.
-: READ-FOR ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] )
+: READ-FOR ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] )
    {: q :}
-   READ-SOURCE TOP@ {: frame:ptr :}
+   READ-SOURCE TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
    q ;
 
-: COPY-FOR ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
-   {: a:ptr u:n q :}
-   a u HOLD TOP@ {: frame:ptr :}
+: COPY-FOR ( ^u8 n [ ^u8 n ^u8 n -- ] -- ^u8 n [ ^u8 n ^u8 n -- ] )
+   {: a:^ u:n q :}
+   a u HOLD TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
    a u q ;
 
-: WITH-BYTES-CURRENT ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] ) {: q :}
+: WITH-BYTES-CURRENT ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] ) {: q :}
    PUSH
    q
    [: READ-FOR ;] catch {: rc:n :}
@@ -1914,8 +1914,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    q ;
 
-: WITH-SUPPLIED-CURRENT ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
-   {: a:ptr u:n q :}
+: WITH-SUPPLIED-CURRENT ( ^u8 n [ ^u8 n ^u8 n -- ] -- ^u8 n [ ^u8 n ^u8 n -- ] )
+   {: a:^ u:n q :}
    PUSH a u q
    [: COPY-FOR ;] catch {: rc:n :}
    2drop drop
@@ -1924,10 +1924,10 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    a u q ;
 
-: LOAD-RAW ( ptr u8 n -- )
+: LOAD-RAW ( ^u8 n -- )
    CONFINE
    INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
    [: LOAD-CURRENT ;] catch {: rc:n :}
    old oldu rc ROOT-LEAVE ;
 
@@ -1939,9 +1939,9 @@ public
 \ stack it leaves is kept, with no unit and no residue check. No WITH scope
 \ opens, so CD stays legal in its text and the frame's root is CURRENT$, at the
 \ top level the program's directory.
-: RUN-PROGRAM ( ptr u8 n -- )
+: RUN-PROGRAM ( ^u8 n -- )
    2dup BUILD-REFUSE
-   CANONICAL {: path:ptr pathu:n exists:bool :}
+   CANONICAL {: path:^ pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
    exists 0= if INCLUDE-OPEN-DIE then
    PUSH
@@ -1953,7 +1953,7 @@ public
 
 \ A completed source range leaves definitions live even if a unit callback
 \ later throws. A require keeps its row in that case.
-: LOAD-RESULT ( ptr u8 n -- bool n )
+: LOAD-RESULT ( ^u8 n -- bool n )
    2dup BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    [: 2dup LOAD-RAW ;] catch {: rc:n :}
@@ -1966,28 +1966,28 @@ public
    TOP@ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
 
-: LOAD ( ptr u8 n -- )
+: LOAD ( ^u8 n -- )
    LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
 
 \ PATH has already been resolved by the loader's resolver. This opens a source
 \ frame and makes its root current until the callback returns.
-: WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
-   {: path:ptr pathu:n q :}
+: WITH-BYTES ( ^u8 n [ ^u8 n ^u8 n -- ] -- )
+   {: path:^ pathu:n q :}
    path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
    old oldu rc ROOT-LEAVE ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
 \ reading a different disk copy.
-: WITH-SUPPLIED ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
-   {: path:ptr pathu:n src:ptr srcu:n q :}
+: WITH-SUPPLIED ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+   {: path:^ pathu:n src:^ srcu:n q :}
    path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
    old oldu rc ROOT-LEAVE ;
@@ -2003,11 +2003,11 @@ public
 
 ;package
 
-: INCLUDE-LOAD ( ptr u8 n -- bool n ) LOAD-RESULT ;
+: INCLUDE-LOAD ( ^u8 n -- bool n ) LOAD-RESULT ;
 
-: included ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u RESOLVE drop {: path:ptr pathu:n :}
+: included ( ^u8 n -- )
+   {: a:^ u:n :}
+   a u RESOLVE drop {: path:^ pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    path pathu INCLUDE-LOAD {: committed:bool rc:n :}
@@ -2018,8 +2018,8 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 
 \ A path the registry already holds is skipped, so the pending flag has to be
 \ cleared on every exit or it would leak into the next unrelated load.
-: REQUIRE-BODY ( ptr u8 n ptr u8 n bool -- )
-   {: a:ptr u:n path:ptr pathu:n known:bool :}
+: REQUIRE-BODY ( ^u8 n ^u8 n bool -- )
+   {: a:^ u:n path:^ pathu:n known:bool :}
    a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    REQUIRE-REG:MARK {: row:n :}
@@ -2031,8 +2031,8 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
       rc throw
    then ;
 
-: required ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: required ( ^u8 n -- )
+   {: a:^ u:n :}
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    a u  a u RESOLVE  REQUIRE-BODY ;
 
@@ -2040,17 +2040,17 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
 
 \ The `--load` argv row.
-: script-required ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: script-required ( ^u8 n -- )
+   {: a:^ u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
    a u  a u ENTRY-RESOLVE  REQUIRE-BODY ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
 
-: provided ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u RESOLVE {: path:ptr pathu:n known:bool :}
+: provided ( ^u8 n -- )
+   {: a:^ u:n :}
+   a u RESOLVE {: path:^ pathu:n known:bool :}
    path pathu SOURCE-ROOT:BUILD-REFUSE
    a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
@@ -2085,7 +2085,7 @@ public
    entry SOURCE-ORIGINAL-REQUIRED-ENTRY @ = or if STACK-PATH exit then
    NONE ;
 
-: LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
+: LOAD-PATH ( n ^u8 n -- ) {: mode:n path:^ size:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
    mode LOAD-INCLUDE = if path size included exit then
    mode LOAD-REQUIRE = if path size required exit then
@@ -2105,28 +2105,28 @@ private
    CANON-BUF POLICY-ROOT-BUF CANON-U @ BYTE-COPY
    CANON-U @ POLICY-ROOT-U ! ;
 
-: POLICY-ROOT-RELEASE ( ptr u8 n -- )
+: POLICY-ROOT-RELEASE ( ^u8 n -- )
    1+ munmap 0 < if s" policy: cannot release a root copy" INCLUDE-IO-RC die then ;
 
 public
 
 \ Configure confinement before checking or sealing. The policy library passes
 \ the ordinary require xt it captured when loaded.
-: POLICY-ROOT ( ptr u8 n [ -- ] -- )
-   {: path:ptr u:n require-xt :}
+: POLICY-ROOT ( ^u8 n [ -- ] -- )
+   {: path:^ u:n require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    path u ROOT-CANON
    require-xt POLICY-ROOT-SET ;
 
 \ Scope a root and require owner for reusable source checks. A callback that
 \ seals leaves the new policy root and refuses the attempted return to the old.
-: POLICY-WITH-ROOT ( ptr u8 n [ -- ] [ -- ] -- )
-   {: path:ptr u:n q require-xt :}
+: POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- ] -- )
+   {: path:^ u:n q require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
-   path u ROOT-ENTER {: prior:ptr prioru:n :}
+   path u ROOT-ENTER {: prior:^ prioru:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
    POLICY-ROOT-U @ {: old-u:n :}
-   POLICY-ROOT-BUF old-u MAP-COPY {: old:ptr :}
+   POLICY-ROOT-BUF old-u MAP-COPY {: old:^ :}
    require-xt POLICY-ROOT-SET
    q catch {: rc:n :}
    data-base POLICY-NDICT-CELL + @ 0 <> if
@@ -2178,7 +2178,7 @@ public
    REQUIRE-N @ REQUIRE-BOOT-N !
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;
 
-: ENGINE-PROVIDES? ( ptr u8 n -- bool )
+: ENGINE-PROVIDES? ( ^u8 n -- bool )
    ENGINE-KNOWN? ;
 
 \ A file that builds for some targets only states them on its first code line,

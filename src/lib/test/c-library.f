@@ -21,8 +21,8 @@ private
    s" -Wall" >LEN PROC-ARGV+
    s" -Werror" >LEN PROC-ARGV+ ;
 
-: FAIL ( ptr u8 n -- )
-   {: src:ptr srcu :}
+: FAIL ( ^u8 n -- )
+   {: src:^ srcu :}
    SB-RESET s" c-library: cc failed on " SB-APPEND
    src srcu SB-APPEND
    SB$ T-EX-FAIL die ;
@@ -35,8 +35,8 @@ private
 public
 
 \ Compile the source at the first path to the library at the second.
-: BUILD ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu lib:ptr libu :}
+: BUILD ( ^u8 n ^u8 n -- )
+   {: src:^ srcu lib:^ libu :}
    PROC-ARGV-ENV-RESET FLAGS
    s" -o" >LEN PROC-ARGV+
    lib libu >LEN PROC-ARGV+

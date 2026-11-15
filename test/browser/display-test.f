@@ -33,16 +33,16 @@ variable CHROME-U
 PATH-CAP BUFFER: FILE
 variable FILE-U
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-display" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-display" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser display: module and output in " type DIR u type cr
    DIR u s" display.wasm" MOD FS:JOIN-PATH MOD-U !
@@ -52,7 +52,7 @@ variable FILE-U
 : BUILD ( -- n )
    s" test/browser/display.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
-: MAC-CHROME ( -- ptr u8 n )
+: MAC-CHROME ( -- ^u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
 : CHROME-ASKED? ( -- bool )
@@ -63,7 +63,7 @@ variable FILE-U
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
-      MAC-CHROME {: a:ptr u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
+      MAC-CHROME {: a:^ u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
    then
    s" google-chrome" >LEN CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF

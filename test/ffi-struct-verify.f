@@ -6,7 +6,7 @@
 \ its file to the run and would hide the clauses) and name no defined symbol,
 \ so a clean certify shows the check resolves none.
 
-: FFI-SV-HEAD$ ( -- ptr u8 n )
+: FFI-SV-HEAD$ ( -- ^u8 n )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
 
 : FFI-SV-SETUP ( -- )
@@ -20,7 +20,7 @@ variable FFI-SV-SRC-U
 \ A deadlock guard.
 60000 constant FFI-SV-MS
 
-: FFI-SV-SRC$ ( -- ptr u8 n )
+: FFI-SV-SRC$ ( -- ^u8 n )
    0 FFI-SV-SRC FFI-SV-SRC-U @ ;
 
 \ Write the source where the load children read it.
@@ -40,7 +40,7 @@ variable FFI-SV-SRC-U
 
 \ Check the source SB holds as the tree's test/ffi-sv.f.
 : FFI-SV-CHECK ( -- n )
-   SB$ {: a:ptr u:n :}
+   SB$ {: a:^ u:n :}
    u 1 max FFI-SV-SRC-RESERVE
    a 0 FFI-SV-SRC u BYTE-COPY
    u FFI-SV-SRC-U !
@@ -48,8 +48,8 @@ variable FFI-SV-SRC-U
    LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
-: FFI-SV-RUN ( ptr u8 n -- n )
-   {: decl:ptr declu:n :}
+: FFI-SV-RUN ( ^u8 n -- n )
+   {: decl:^ declu:n :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
    s" FUNCTION: FFI-SV no_symbol " SB-APPEND
@@ -58,8 +58,8 @@ variable FFI-SV-SRC-U
    FFI-SV-CHECK ;
 
 \ Check FFI-SV-HEAD$ and then the source, a newline after it.
-: FFI-SV-SOURCE ( ptr u8 n -- n )
-   {: src:ptr srcu:n :}
+: FFI-SV-SOURCE ( ^u8 n -- n )
+   {: src:^ srcu:n :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
    src srcu SB-APPEND
@@ -70,8 +70,8 @@ variable FFI-SV-SRC-U
 : FFI-SV-SHOW ( -- )
    LSP-CHECK:VERIFY-OUT$ type LSP-CHECK:VERIFY-LOG$ type ;
 
-: FFI-SV-SAYS ( ptr u8 n -- )
-   {: s:ptr su:n :}
+: FFI-SV-SAYS ( ^u8 n -- )
+   {: s:^ su:n :}
    LSP-CHECK:VERIFY-OUT$ s su CONTAINS? 0= IF FFI-SV-SHOW THEN
    LSP-CHECK:VERIFY-OUT$ s su CONTAINS? TTRUE ;
 
@@ -83,48 +83,48 @@ variable FFI-SV-SRC-U
    kind 0 T=
    LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
 
-: FFI-SV-PASS ( ptr u8 n -- )
-   {: decl:ptr declu:n :}
+: FFI-SV-PASS ( ^u8 n -- )
+   {: decl:^ declu:n :}
    decl declu T-LABEL
    decl declu FFI-SV-RUN
    FFI-SV-CLEAN ;
 
 
 \ The source is refused, with CODE in a packet.
-: FFI-SV-REFUSES ( n ptr u8 n -- )
-   {: kind:n code:ptr codeu:n :}
+: FFI-SV-REFUSES ( n ^u8 n -- )
+   {: kind:n code:^ codeu:n :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
    LSP-CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
 
-: FFI-SV-REFUSED ( ptr u8 n ptr u8 n -- )
-   {: decl:ptr declu:n code:ptr codeu:n :}
+: FFI-SV-REFUSED ( ^u8 n ^u8 n -- )
+   {: decl:^ declu:n code:^ codeu:n :}
    decl declu FFI-SV-RUN
    code codeu FFI-SV-REFUSES ;
 
-: FFI-SV-REFUSE ( ptr u8 n ptr u8 n -- )
-   {: decl:ptr declu:n code:ptr codeu:n :}
+: FFI-SV-REFUSE ( ^u8 n ^u8 n -- )
+   {: decl:^ declu:n code:^ codeu:n :}
    decl declu T-LABEL
    decl declu code codeu FFI-SV-REFUSED ;
 
 
 \ A refusal's packet names the load's code as throw_code: -3501 E-FFI-SYNTAX,
 \ -3500 E-FFI-ARITY.
-: FFI-SV-SYNTAX ( ptr u8 n ptr u8 n -- )
-   {: decl:ptr declu:n msg:ptr msgu:n :}
+: FFI-SV-SYNTAX ( ^u8 n ^u8 n -- )
+   {: decl:^ declu:n msg:^ msgu:n :}
    decl declu S\" \"throw_code\":-3501" FFI-SV-REFUSE
    FFI-T-SRC CODEGEN:RESET
    S\" \"message\":\"" FFI-T-SRC+
    msg msgu FFI-T-SRC+
    S\" \"" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
-: FFI-SV-ARITY ( ptr u8 n -- )
+: FFI-SV-ARITY ( ^u8 n -- )
    S\" \"throw_code\":-3500" FFI-SV-REFUSE ;
 
 \ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
 \ its header and its help, placed at ;FUNCTION with the definer's label.
-: FFI-SV-RECORD ( ptr u8 n ptr u8 n -- )
-   {: head:ptr headu:n help:ptr helpu:n :}
+: FFI-SV-RECORD ( ^u8 n ^u8 n -- )
+   {: head:^ headu:n help:^ helpu:n :}
    LSP-CHECK:VERIFY-OUT$ head headu CONTAINS? TTRUE
    LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" CONTAINS? TTRUE
    LSP-CHECK:VERIFY-OUT$ S\" \"label\":\"the definer was reading here\"" CONTAINS? TTRUE
@@ -137,10 +137,10 @@ variable FFI-SV-SRC-U
 
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
-: FFI-SV-WRAP$ ( -- ptr u8 n )
+: FFI-SV-WRAP$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s" ( " FFI-T-SRC+
-   16 0 ?do s" ptr u8 " FFI-T-SRC+ loop
+   16 0 ?do s" ^u8 " FFI-T-SRC+ loop
    s" -- )" FFI-T-SRC+
    15 0 ?do
       s"  " FFI-T-SRC+ i FFI-T-SRC CODEGEN:APPEND-DECIMAL
@@ -151,57 +151,57 @@ variable FFI-SV-SRC-U
 
 
 : FFI-SV-ACCEPTED ( -- )
-   s" ( n ptr u8 -- ) 16 STRUCT-RESULT" FFI-SV-PASS
-   s" ( ptr u8 n -- n ) 0 24 STRUCT-ARG" FFI-SV-PASS
-   s" ( r ptr u8 f32 -- n ) 1 12 STRUCT-ARG" FFI-SV-PASS
-   s" ( i32 ptr u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
-   s" ( ptr u8 ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-PASS
-   s" ( ptr u8 -- n ) 0 128 STRUCT-ARG" FFI-SV-PASS
-   s" ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG" FFI-SV-PASS
+   s" ( n ^u8 -- ) 16 STRUCT-RESULT" FFI-SV-PASS
+   s" ( ^u8 n -- n ) 0 24 STRUCT-ARG" FFI-SV-PASS
+   s" ( r ^u8 f32 -- n ) 1 12 STRUCT-ARG" FFI-SV-PASS
+   s" ( i32 ^u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
+   s" ( ^u8 ^u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-PASS
+   s" ( ^u8 -- n ) 0 128 STRUCT-ARG" FFI-SV-PASS
+   s" ( n n n n n n n n ^u8 -- n ) 8 112 STRUCT-ARG" FFI-SV-PASS
    \ An operand the check cannot establish leaves the clause to the load.
-   s" ( ptr u8 -- ) FFI-SV-W STRUCT-RESULT" FFI-SV-PASS
-   s" ( ptr u8 -- n ) 0 FFI-SV-W STRUCT-ARG" FFI-SV-PASS
-   s" ( r r r r r r r r r f32 ptr u8 -- n ) 10 16 STRUCT-ARG" FFI-SV-PASS
+   s" ( ^u8 -- ) FFI-SV-W STRUCT-RESULT" FFI-SV-PASS
+   s" ( ^u8 -- n ) 0 FFI-SV-W STRUCT-ARG" FFI-SV-PASS
+   s" ( r r r r r r r r r f32 ^u8 -- n ) 10 16 STRUCT-ARG" FFI-SV-PASS
    \ macOS packs the seven u8s in one stack cell, leaving room for the copy.
    HB-TARGET-MACOS? if
-      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ptr u8 -- n ) 15 72 STRUCT-ARG" FFI-SV-PASS
+      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ^u8 -- n ) 15 72 STRUCT-ARG" FFI-SV-PASS
    else
-      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ptr u8 -- n ) 15 72 STRUCT-ARG"
+      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ^u8 -- n ) 15 72 STRUCT-ARG"
       FFI-SV-ARITY FFI-SV-STAGED
    then ;
 
 
 : FFI-SV-STRUCT-ARG ( -- )
    s" ( n -- n ) 0 16 STRUCT-ARG"
-   s" the clause names an input that is not ptr u8" FFI-SV-SYNTAX
+   s" the clause names an input that is not ^u8" FFI-SV-SYNTAX
    S\" \"token\":\"STRUCT-ARG\"" FFI-SV-SAYS
-   s" ( ptr u8 -- n ) 1 16 STRUCT-ARG"
+   s" ( ^u8 -- n ) 1 16 STRUCT-ARG"
    s" the clause names no input of the declaration" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) -1 16 STRUCT-ARG"
+   s" ( ^u8 -- n ) -1 16 STRUCT-ARG"
    s" the clause names no input of the declaration" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 0 STRUCT-ARG"
+   s" ( ^u8 -- n ) 0 0 STRUCT-ARG"
    s" STRUCT-ARG's byte count is not positive" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 -8 STRUCT-ARG"
+   s" ( ^u8 -- n ) 0 -8 STRUCT-ARG"
    s" STRUCT-ARG's byte count is not positive" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 16 STRUCT-ARG 0 16 STRUCT-ARG"
+   s" ( ^u8 -- n ) 0 16 STRUCT-ARG 0 16 STRUCT-ARG"
    s" a second clause names the same input" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- n ) 1 VARIADIC 1 16 STRUCT-ARG"
+   s" ( n ^u8 -- n ) 1 VARIADIC 1 16 STRUCT-ARG"
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- n ) 1 16 STRUCT-ARG 1 VARIADIC"
+   s" ( n ^u8 -- n ) 1 16 STRUCT-ARG 1 VARIADIC"
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
    S\" \"token\":\"VARIADIC\"" FFI-SV-SAYS
-   s" ( ptr u8 -- r ) 0 16 STRUCT-ARG"
+   s" ( ^u8 -- r ) 0 16 STRUCT-ARG"
    s" STRUCT-ARG with a float result" FFI-SV-SYNTAX
-   s" ( ptr u8 -- f32 ) 0 16 STRUCT-ARG"
+   s" ( ^u8 -- f32 ) 0 16 STRUCT-ARG"
    s" STRUCT-ARG with a float result" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT"
+   s" ( ^u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT"
    s" a second clause names the same input" FFI-SV-SYNTAX
    S\" \"token\":\"STRUCT-RESULT\"" FFI-SV-SAYS
-   s" ( ptr u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG"
+   s" ( ^u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG"
    s" the clause names STRUCT-RESULT's destination, the last input"
    FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
-   s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
+   s" ( ^u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
+   s" ( n n n n n n n n ^u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
    FFI-SV-WRAP$ S\" \"throw_code\":-3500" FFI-SV-REFUSED FFI-SV-STAGED ;
 
@@ -211,26 +211,26 @@ variable FFI-SV-SRC-U
    s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
    s" ( -- ) 8 STRUCT-RESULT"
    s" STRUCT-RESULT with no input to write to" FFI-SV-SYNTAX
-   s" ( ptr u8 n -- ) 8 STRUCT-RESULT"
-   s" the clause names an input that is not ptr u8" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 8 STRUCT-RESULT"
+   s" ( ^u8 n -- ) 8 STRUCT-RESULT"
+   s" the clause names an input that is not ^u8" FFI-SV-SYNTAX
+   s" ( ^u8 -- n ) 8 STRUCT-RESULT"
    s" STRUCT-RESULT with a declared output" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 0 STRUCT-RESULT"
+   s" ( ^u8 -- ) 0 STRUCT-RESULT"
    s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) -16 STRUCT-RESULT"
+   s" ( ^u8 -- ) -16 STRUCT-RESULT"
    s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT"
+   s" ( ^u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT"
    s" a second STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT"
+   s" ( n ^u8 -- ) 1 VARIADIC 8 STRUCT-RESULT"
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC"
+   s" ( n ^u8 -- ) 8 STRUCT-RESULT 1 VARIADIC"
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
-   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;
+   s" ( ^u8 ^u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;
 
 
 \ A whole source the load rejects, with its message and token.
-: FFI-SV-UNOPENED ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n msg:ptr msgu:n tok:ptr toku:n :}
+: FFI-SV-UNOPENED ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n msg:^ msgu:n tok:^ toku:n :}
    src srcu T-LABEL
    src srcu FFI-SV-SOURCE
    S\" \"throw_code\":-3501" FFI-SV-REFUSES
@@ -244,10 +244,10 @@ variable FFI-SV-SRC-U
    S\" \"token\":\"n\"" FFI-SV-SAYS
    S\" \"column\":35," FFI-SV-SAYS
    s" ( fd -- n )"
-   s" 'fd' is not an input type: an input is ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" 'fd' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-SV-SYNTAX
    S\" \"token\":\"fd\"" FFI-SV-SAYS
-   s" ( ptr -- n )" s" expected 'u8' after 'ptr'" FFI-SV-SYNTAX
+   s" ( ^ -- n )" s" expected 'u8' after '^'" FFI-SV-SYNTAX
    s" ( n n n n n n n n n n n n n n n n n -- n )" FFI-SV-ARITY
    S\" \"message\":\"a FUNCTION: declaration has at most 16 inputs\""
    FFI-SV-SAYS
@@ -267,8 +267,8 @@ variable FFI-SV-SRC-U
 \ A declaration a deferral leaves to the run takes its clauses and ;FUNCTION
 \ silently.
 : FFI-SV-DEFERRED ( -- )
-   S\" : FFI-SV-DEF: ( -- ) FFI:OPEN-FUNCTION ;\nparses: FFI-SV-DEF: 9\nFFI-SV-DEF: FFI-SV-G printf ( ptr u8 n -- n )\n1 VARIADIC\n;FUNCTION"
-   {: src:ptr srcu:n :}
+   S\" : FFI-SV-DEF: ( -- ) FFI:OPEN-FUNCTION ;\nparses: FFI-SV-DEF: 9\nFFI-SV-DEF: FFI-SV-G printf ( ^u8 n -- n )\n1 VARIADIC\n;FUNCTION"
+   {: src:^ srcu:n :}
    src srcu T-LABEL
    src srcu FFI-SV-SOURCE {: kind:n :}
    kind 2 <> IF FFI-SV-SHOW THEN
@@ -283,8 +283,8 @@ variable FFI-SV-SRC-U
 \ source and the load, which calls that word, accepts it. The load runs in a
 \ child because inside this file's FFI-TEST the source's `package` would open
 \ a part of FFI-TEST, not a package of its own.
-: FFI-SV-ORDINARY ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: FFI-SV-ORDINARY ( ^u8 n -- )
+   {: src:^ srcu:n :}
    SB-RESET src srcu SB-APPEND
    FFI-SV-CHECK
    FFI-SV-CLEAN
@@ -303,8 +303,8 @@ variable FFI-SV-SRC-U
 \ load binds the alias, bare inside its package or qualified outside it, to
 \ STRUCT-ARG's code and refuses the clause, so the check refuses it with the
 \ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
-: FFI-SV-ALIASED ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: FFI-SV-ALIASED ( ^u8 n -- )
+   {: src:^ srcu:n :}
    SB-RESET src srcu SB-APPEND
    FFI-SV-CHECK S\" \"throw_code\":-3501" FFI-SV-REFUSES
    FFI-SV-WRITE

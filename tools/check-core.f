@@ -72,10 +72,10 @@ create CHK-ONE 1 allot
 \ The lazily allocated byte buffers hold addresses, so each is a declared
 \ pointer cell: a raw `variable` would launder the address through a cell of
 \ unknown type.
-TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
-TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
-TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
-TYPED-VARIABLE CHK-SCRATCH-BUF-A ptr u8
+TYPED-VARIABLE CHK-OUT-BUF-A ^u8
+TYPED-VARIABLE CHK-ERR-BUF-A ^u8
+TYPED-VARIABLE CHK-MAP-BUF-A ^u8
+TYPED-VARIABLE CHK-SCRATCH-BUF-A ^u8
 
 \ A buffer that holds a source, or text built from one, grows to what it
 \ holds: the engine loads a source file of any size (src/core/include.f), so
@@ -88,7 +88,7 @@ create CHK-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CHK-JSON-W JSON:writer
 variable CHK-JSON-READY
 
-: CHK-JSON-WRITER ( -- ptr JSON:writer )
+: CHK-JSON-WRITER ( -- ^JSON:writer )
    CHK-JSON-READY @ 0= if
       CHK-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 CHK-JSON-READY !
@@ -124,73 +124,73 @@ variable CHK-EXP-OUT-U
 variable CHK-ALL-ID
 variable CHK-ALL-RC
 
-: CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+: CHK-PTR-U8-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
 
-: CHK-PTR-U8@ ( ptr a -- ptr u8 )
+: CHK-PTR-U8@ ( ^a -- ^u8 )
    CHK-PTR-U8-FIELD @ ;
 
-: CHK-PTR-U8! ( ptr u8 ptr a -- )
+: CHK-PTR-U8! ( ^u8 ^a -- )
    CHK-PTR-U8-FIELD ! ;
 
-: CHK-ALLOC-BUF ( n -- ptr u8 )
+: CHK-ALLOC-BUF ( n -- ^u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 \ A ROOM word makes room for n bytes and answers its buffer and that room, at
 \ least one byte so the answer is always an address. Growth may move the
 \ buffer, so a caller takes its address after the room it needs.
-: CHK-SRC-ROOM ( n -- ptr u8 n )
+: CHK-SRC-ROOM ( n -- ^u8 n )
    1 max dup CHK-SRC-MEM-RESERVE 0 CHK-SRC-MEM swap ;
 
-: CHK-SRC-BUF ( -- ptr u8 )
+: CHK-SRC-BUF ( -- ^u8 )
    1 CHK-SRC-ROOM drop ;
 
 \ Reads the file at a path into CHK-SRC whole, however it grows while it is
 \ read (src/lib/source.f READ-WHOLE-FILE). The buffer may move as it grows, so a
 \ caller takes CHK-SRC-BUF after the read.
-: CHK-SRC-READ ( ptr u8 n -- n )
+: CHK-SRC-READ ( ^u8 n -- n )
    [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
 
-: CHK-RUN-ROOM ( n -- ptr u8 n )
+: CHK-RUN-ROOM ( n -- ^u8 n )
    1 max dup CHK-RUN-MEM-RESERVE 0 CHK-RUN-MEM swap ;
 
-: CHK-RUN-BUF ( -- ptr u8 )
+: CHK-RUN-BUF ( -- ^u8 )
    1 CHK-RUN-ROOM drop ;
 
 \ The scratch where the all-errors core renders a pass's diagnostics has that
 \ core's bound (tools/check-all-errors-core.f SCRATCH-CAP).
-: CHK-SCRATCH-BUF ( -- ptr u8 )
+: CHK-SCRATCH-BUF ( -- ^u8 )
    CHK-SCRATCH-BUF-A @ 0= if
       CHECK-ALL-ERRORS:SCRATCH-CAP CHK-ALLOC-BUF CHK-SCRATCH-BUF-A !
    then
    CHK-SCRATCH-BUF-A @ ;
 
-: CHK-OUT-BUF ( -- ptr u8 )
+: CHK-OUT-BUF ( -- ^u8 )
    CHK-OUT-BUF-A @ 0= if CHK-OUT-CAP CHK-ALLOC-BUF CHK-OUT-BUF-A ! then
    CHK-OUT-BUF-A @ ;
 
-: CHK-ERR-BUF ( -- ptr u8 )
+: CHK-ERR-BUF ( -- ^u8 )
    CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
    CHK-ERR-BUF-A @ ;
 
-: CHK-MAP-BUF ( -- ptr u8 )
+: CHK-MAP-BUF ( -- ^u8 )
    CHK-MAP-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-MAP-BUF-A ! then
    CHK-MAP-BUF-A @ ;
 
-: CHK-SEL-SRC-ROOM ( n -- ptr u8 n )
+: CHK-SEL-SRC-ROOM ( n -- ^u8 n )
    1 max dup CHK-SEL-SRC-MEM-RESERVE 0 CHK-SEL-SRC-MEM swap ;
 
-: CHK-SEL-SRC-BUF ( -- ptr u8 )
+: CHK-SEL-SRC-BUF ( -- ^u8 )
    1 CHK-SEL-SRC-ROOM drop ;
 
-: CHK-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+: CHK-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    u 0= if exit then
    fd a u write u <> if E-FS-IO throw then ;
 
-: CHK-OUT ( ptr u8 n -- )
+: CHK-OUT ( ^u8 n -- )
    1 -rot CHK-WRITE ;
 
-: CHK-ERR ( ptr u8 n -- )
+: CHK-ERR ( ^u8 n -- )
    2 -rot CHK-WRITE ;
 
 : CHK-C! ( n -- )
@@ -200,7 +200,7 @@ variable CHK-ALL-RC
    CHK-C!
    2 CHK-ONE 1 CHK-WRITE ;
 
-: CHK-ERR-LN ( ptr u8 n -- )
+: CHK-ERR-LN ( ^u8 n -- )
    CHK-ERR
    CHK-LF CHK-ERR-C ;
 
@@ -208,7 +208,7 @@ variable CHK-ALL-RC
    CHK-C!
    1 CHK-ONE 1 CHK-WRITE ;
 
-: CHK-OUT-LN ( ptr u8 n -- )
+: CHK-OUT-LN ( ^u8 n -- )
    CHK-OUT
    CHK-LF CHK-OUT-C ;
 
@@ -218,10 +218,10 @@ variable CHK-ALL-RC
 : CHK-PROSE-OUT? ( -- bool )
    CHK-VERIFY @ CHK-JSON @ or 0<> ;
 
-: CHK-EXPLAIN ( ptr u8 n -- )
+: CHK-EXPLAIN ( ^u8 n -- )
    CHK-PROSE-OUT? if CHK-OUT else CHK-ERR then ;
 
-: CHK-EXPLAIN-LN ( ptr u8 n -- )
+: CHK-EXPLAIN-LN ( ^u8 n -- )
    CHK-PROSE-OUT? if CHK-OUT-LN else CHK-ERR-LN then ;
 
 : CHK-USAGE ( -- )
@@ -231,17 +231,17 @@ variable CHK-ALL-RC
 : CHK-THROW ( n -- )
    throw ;
 
-: CHK-FAIL ( ptr u8 n n -- ) {: msg:ptr u:n code:n :}
+: CHK-FAIL ( ^u8 n n -- ) {: msg:^ u:n code:n :}
    msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
 
 : CHK-PATH-TOO-BIG ( -- )
    s" check.f: source path exceeds capacity" CHK-E-USAGE CHK-FAIL ;
 
-: CHK-ARG$ ( n -- ptr u8 n )
+: CHK-ARG$ ( n -- ^u8 n )
    SCRIPT-ARGV$ ;
 
-: CHK-ARG= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
+: CHK-ARG= ( n ^u8 n -- bool ) {: idx:n a:^ u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
 
 \ --stdin-path and --deadline-ms each consume the next token as their value.
@@ -251,8 +251,8 @@ variable CHK-ALL-RC
 \ Establish the output stream before parsing can reject an earlier argument:
 \ whether option a u is given. A valued option's value is skipped; -- ends
 \ option parsing.
-: CHK-OPT? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: CHK-OPT? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    0 begin dup SCRIPT-ARGC < while
       dup s" --" CHK-ARG= if drop false exit then
       dup CHK-VALUED-ARG? if
@@ -263,22 +263,22 @@ variable CHK-ALL-RC
       then
    repeat drop false ;
 
-: CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: CHK-DASH? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
-: CHK-POS-SLOT ( n -- ptr u8 )
+: CHK-POS-SLOT ( n -- ^u8 )
    PATH-CAP * CHK-POS-BUF + ;
 
-: CHK-POS-U-SLOT ( n -- ptr n )
+: CHK-POS-U-SLOT ( n -- ^n )
    cells CHK-POS-U + ;
 
-: CHK-POS$ ( n -- ptr u8 n ) {: idx:n :}
+: CHK-POS$ ( n -- ^u8 n ) {: idx:n :}
    idx 0 < if CHK-USAGE then
    idx CHK-POS-N @ >= if CHK-USAGE then
    idx CHK-POS-SLOT
    idx CHK-POS-U-SLOT @ ;
 
-: CHK-ADD-POS ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-ADD-POS ( ^u8 n -- ) {: a:^ u:n :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
    a CHK-POS-N @ CHK-POS-SLOT u BYTE-COPY
@@ -294,7 +294,7 @@ variable CHK-ALL-RC
       CHK-USAGE
    endcase ;
 
-: CHK-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-OPT ( ^u8 n -- ) {: a:^ u:n :}
    a u s" json-errors" LINT-STR= if LINT-TRUE CHK-JSON ! exit then
    a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
    a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
@@ -303,10 +303,10 @@ variable CHK-ALL-RC
 
 public
 
-: OPT ( ptr u8 n -- )
+: OPT ( ^u8 n -- )
    CHK-OPT ;
 
-: FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: FILE ( ^u8 n -- ) {: path:^ pathu:n :}
    CHK-SEL-MODE @
    case
       CHK-SEL-NONE of
@@ -319,7 +319,7 @@ public
 
 private
 
-: CHK-PARSE-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-PARSE-ONE ( ^u8 n -- ) {: a:^ u:n :}
    a u s" --json-errors" LINT-STR= if s" json-errors" OPT exit then
    a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
    a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
@@ -333,7 +333,7 @@ private
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
-: CHK-STDIN-PATH$ ( -- ptr u8 n )
+: CHK-STDIN-PATH$ ( -- ^u8 n )
    CHK-STDIN-PATH-BUF CHK-STDIN-PATH-U @ ;
 
 \ The path stdin's text stands for under --verify-only, given once.
@@ -341,7 +341,7 @@ private
    CHK-ARG-I @ 1+ CHK-ARG-I !
    CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
    CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
-   CHK-ARG-I @ CHK-ARG$ {: a:ptr u:n :}
+   CHK-ARG-I @ CHK-ARG$ {: a:^ u:n :}
    u 0= if CHK-USAGE then
    u PATH-CAP > if E-FS-CAPACITY throw then
    a CHK-STDIN-PATH-BUF u BYTE-COPY
@@ -428,27 +428,27 @@ private
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
 
-: CHK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+: CHK-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CHK-ROOT ( -- ptr u8 n )
+: CHK-ROOT ( -- ^u8 n )
    CHK-ROOT-BUF CHK-ROOT-U @ ;
 
-: CHK-SRC-PATH ( -- ptr u8 n )
+: CHK-SRC-PATH ( -- ^u8 n )
    CHK-SRC-PATH-BUF CHK-SRC-PATH-U @ ;
 
-: CHK-RUN-PATH ( -- ptr u8 n )
+: CHK-RUN-PATH ( -- ^u8 n )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
-: CHK-MARK-PATH ( -- ptr u8 n )
+: CHK-MARK-PATH ( -- ^u8 n )
    CHK-MARK-PATH-BUF CHK-MARK-PATH-U @ ;
 
-: CHK-SUBJ$ ( -- ptr u8 n )
+: CHK-SUBJ$ ( -- ^u8 n )
    CHK-SUBJ-BUF CHK-SUBJ-U @ ;
 
-: CHK-SUBJ! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-SUBJ! ( ^u8 n -- ) {: a:^ u:n :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    a CHK-SUBJ-BUF u BYTE-COPY
    u CHK-SUBJ-U ! ;
@@ -502,21 +502,21 @@ private
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
 
-: CHK-LABEL ( -- ptr u8 n )
+: CHK-LABEL ( -- ^u8 n )
    CHK-LABEL-A CHK-PTR-U8@ CHK-LABEL-U @ ;
 
-: CHK-SOURCE ( -- ptr u8 n )
+: CHK-SOURCE ( -- ^u8 n )
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
-: CHK-SOURCE-BYTES ( -- ptr u8 n )
+: CHK-SOURCE-BYTES ( -- ^u8 n )
    CHK-SRC-PATH CHK-SRC-READ
    CHK-SRC-BUF swap ;
 
-: CHK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-LABEL! ( ^u8 n -- ) {: a:^ u:n :}
    u CHK-LABEL-U !
    a CHK-LABEL-A CHK-PTR-U8! ;
 
-: CHK-SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-SOURCE! ( ^u8 n -- ) {: a:^ u:n :}
    u CHK-SRC-U !
    a CHK-SRC-A CHK-PTR-U8! ;
 
@@ -525,7 +525,7 @@ private
 
 \ The lints read a named file where it lies, and any other input from the copy
 \ CHK-MATERIALIZE wrote.
-: CHK-LINT-SOURCE ( -- ptr u8 n )
+: CHK-LINT-SOURCE ( -- ^u8 n )
    CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
    CHK-SOURCE ;
 
@@ -541,15 +541,15 @@ private
 \ The pre-pass or discovery stops in one file of the composition: the subject,
 \ by its label, or any other file, by its canonical path. Its bytes are the
 \ subject's, or the file's own, read into CHK-SRC-BUF.
-: CHK-STOP-BYTES ( ptr u8 n bool -- ptr u8 n )
-   {: a:ptr u:n subj:bool :}
+: CHK-STOP-BYTES ( ^u8 n bool -- ^u8 n )
+   {: a:^ u:n subj:bool :}
    subj if CHK-SOURCE-BYTES exit then
    a u CHK-SRC-READ CHK-SRC-BUF swap ;
 
 \ Write the record of a pre-pass or discovery stop in the run's mode
 \ (STOP-RECORD$); the check fails as a refusal when the record is one.
-: CHK-STOP-WRITE ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   CHK-JSON @ STOP-RECORD$ {: rec:ptr recu:n refusal:bool :}
+: CHK-STOP-WRITE ( n n ^u8 n ^u8 n ^u8 n -- )
+   CHK-JSON @ STOP-RECORD$ {: rec:^ recu:n refusal:bool :}
    recu 0<> if rec recu CHK-ERR-LN then
    refusal if CHK-E-CHECK CHK-THROW then ;
 
@@ -571,14 +571,14 @@ private
 \ cannot be read; otherwise, or for a walk that ended at its own top, it is
 \ prose.
 : CHK-EXPAND-JSON ( n -- )
-   CHK-FAULT$ {: a:ptr u:n :}
+   CHK-FAULT$ {: a:^ u:n :}
    u 0= if exit then
    a u CHK-ERR-LN
    CHK-E-CHECK CHK-THROW ;
 
 \ A file the file system refused to read (CHK-READ-RC), by its canonical path:
 \ the one the walk was reading, or --verify-only's named file.
-: CHK-READ-FAIL ( ptr u8 n -- )
+: CHK-READ-FAIL ( ^u8 n -- )
    s" check.f: cannot read " CHK-EXPLAIN
    CHK-E-IOERR CHK-FAIL ;
 
@@ -592,24 +592,24 @@ private
    rc CHK-E-IOERR = if CHK-DISC-ID @ CHK-DEP$ CHK-READ-FAIL then
    rc throw ;
 
-: CHK-ENTRY-ID ( ptr u8 n -- n )
+: CHK-ENTRY-ID ( ^u8 n -- n )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
 
-: CHK-EXPAND-PATH ( ptr u8 n -- )
+: CHK-EXPAND-PATH ( ^u8 n -- )
    CHK-ENTRY-ID CHK-EXPAND CHK-EXPAND-REPORT ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
-: CHK-EXP-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-EXP-APP ( ^u8 n -- ) {: a:^ u:n :}
    a u >LEN
    CHK-EXP-OUT-U @ LEN>N u + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
 
 : CHK-EXP-C ( n -- )
    CHK-EXP-OUT-U @ LEN>N 1+ CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
 
-: CHK-EXP-QPATH ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-EXP-QPATH ( ^u8 n -- ) {: a:^ u:n :}
    a u >LEN
    CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
@@ -621,7 +621,7 @@ private
 \ working directory does not matter. The child's own JSON diagnostics for a file
 \ it loads by path carry that file's line and column, which the engine counts
 \ itself.
-: CHK-APPEND-ENTRY ( ptr u8 n -- )
+: CHK-APPEND-ENTRY ( ^u8 n -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
    s" script-required" CHK-EXP-APP
@@ -636,7 +636,7 @@ private
 \ spelling makes the child miss its boot row and reload a family such as
 \ option; paths outside the tree remain absolute and retain their distinct
 \ application identity.
-: CHK-APPEND-LISTED ( ptr u8 n -- )
+: CHK-APPEND-LISTED ( ^u8 n -- )
    SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
 \ Standard input holds a source of any size, read to its end into CHK-SRC
@@ -649,7 +649,7 @@ private
 \ walked as a named file's is, and the passes after the walk visit the order it
 \ leaves as they visit a named file's, that file under its label.
 : CHK-MATERIALIZE-BYTES ( -- )
-   CHK-SRC-BUF CHK-SRC-U @ {: a:ptr u:n :}
+   CHK-SRC-BUF CHK-SRC-U @ {: a:^ u:n :}
    CHK-SRC-PATH a u FS:WRITE-ALL
    a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES CHK-EXPAND-REPORT
    CHK-SRC-PATH CHK-SOURCE! ;
@@ -676,16 +676,16 @@ private
 \ input is given. Any other input is checked even when this process has loaded
 \ it: the pre-pass verifies it in the verifier child and the run loads it, each
 \ in an engine of its own.
-: CHK-INPUTS-ALL? ( [ ptr u8 n -- bool ] -- bool ) {: q :}
+: CHK-INPUTS-ALL? ( [ ^u8 n -- bool ] -- bool ) {: q :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ q execute 0= if unloop false exit then
    loop
    true ;
 
-: CHK-ENGINE-SUG$ ( -- ptr u8 n )
+: CHK-ENGINE-SUG$ ( -- ^u8 n )
    s" The engine provides this source; rebuild bin/hb to check a change to it." ;
 
-: CHK-ENGINE-JSON ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: CHK-ENGINE-JSON ( ^u8 n -- ) {: path:^ pathu:n :}
    CHK-JSON-WRITER JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" code" s" E-ENGINE-PROVIDED" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -697,7 +697,7 @@ private
    s" suggestion" CHK-ENGINE-SUG$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END JSON:WRITTEN$ CHK-ERR-LN ;
 
-: CHK-ENGINE-PROSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: CHK-ENGINE-PROSE ( ^u8 n -- ) {: path:^ pathu:n :}
    s" E-ENGINE-PROVIDED " CHK-ERR
    path pathu CHK-ERR
    s" :1:1: " CHK-ERR
@@ -736,7 +736,7 @@ private
 
 : CHK-MATERIALIZE-SOURCE ( -- )
    CHK-SEL-SRC-U @ CHK-SRC-ROOM drop
-   {: dst:ptr :}
+   {: dst:^ :}
    CHK-SEL-SRC-BUF dst CHK-SEL-SRC-U @ BYTE-COPY
    CHK-SEL-SRC-U @ CHK-SRC-U !
    CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
@@ -763,12 +763,12 @@ private
 
 public
 
-: SOURCE ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n label:ptr labelu:n :}
+: SOURCE ( ^u8 n ^u8 n -- )
+   {: src:^ srcu:n label:^ labelu:n :}
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
    labelu PATH-CAP > if E-FS-CAPACITY throw then
    srcu CHK-SEL-SRC-ROOM drop
-   {: dst:ptr :}
+   {: dst:^ :}
    src dst srcu BYTE-COPY
    label CHK-SEL-LABEL-BUF labelu BYTE-COPY
    srcu CHK-SEL-SRC-U !
@@ -802,7 +802,7 @@ private
    rc E-FS-PATH-UNSAFE = rc E-FFI-NUL = or if CHK-PATH-UNSAFE then
    rc throw ;
 
-: CHK-U$ ( n -- ptr u8 n ) {: u:n :}
+: CHK-U$ ( n -- ^u8 n ) {: u:n :}
    CHK-NUM-CAP CHK-NUM-I !
    u 0= if
       CHK-NUM-I @ 1- CHK-NUM-I !
@@ -824,7 +824,7 @@ private
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
 
-: CHK-RUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-RUN+ ( ^u8 n -- ) {: a:^ u:n :}
    CHK-RUN-U @ u + CHK-RUN-ROOM 2drop
    a CHK-RUN-BUF CHK-RUN-U @ + u BYTE-COPY
    CHK-RUN-U @ u + CHK-RUN-U ! ;
@@ -834,15 +834,15 @@ private
    c CHK-RUN-BUF CHK-RUN-U @ + c!
    CHK-RUN-U @ 1+ CHK-RUN-U ! ;
 
-: CHK-RUN-SP ( ptr u8 n -- )
+: CHK-RUN-SP ( ^u8 n -- )
    CHK-RUN+
    CHK-SP CHK-RUN-C ;
 
-: CHK-RUN-LN ( ptr u8 n -- )
+: CHK-RUN-LN ( ^u8 n -- )
    CHK-RUN+
    CHK-LF CHK-RUN-C ;
 
-: CHK-RUN-QPATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHK-RUN-QPATH+ ( ^u8 n -- ) {: a:^ u:n :}
    a u >LEN
    CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
    CHK-RUN-U SOURCE-APPEND-QPATH ;
@@ -870,7 +870,7 @@ private
 \ of a file it reads, so the pass comments the source's own first, with the
 \ engine's rewrite: the scan then reads that line as a comment, and the marked
 \ copy carries the rewrite the run needs.
-: CHK-RUN-ORIGIN+ ( ptr u8 n -- )
+: CHK-RUN-ORIGIN+ ( ^u8 n -- )
    CHK-SRC-READ {: len:n :}
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SRC-BUF len [: CHK-RUN-U @ + CHK-RUN-ROOM drop CHK-RUN-U @ + ;]
@@ -889,7 +889,7 @@ private
 
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
-   s" : CHECK-F-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: p:ptr pu:n r:ptr ru:n :}" CHK-RUN-LN
+   s" : CHECK-F-READ ( ^u8 n ^u8 n -- ^u8 n ) {: p:^ pu:n r:^ ru:n :}" CHK-RUN-LN
    s" p pu " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
    CHK-MARK-PATH CHK-RUN-QPATH+  s"  r ru SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
    s" p pu r ru SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
@@ -978,7 +978,7 @@ private
 \ A source list materializes as one `script-required` line per listed file, so
 \ a lint reads the listed files themselves, in list order, except a source the
 \ engine provides, which the run loads nothing from.
-: CHK-LINT-LISTED ( [ ptr u8 n -- ] -- ) {: lint :}
+: CHK-LINT-LISTED ( [ ^u8 n -- ] -- ) {: lint :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ ENGINE-PROVIDES? 0= if i CHK-POS$ lint execute then
    loop ;
@@ -1043,7 +1043,7 @@ private
 : CHK-ALL-NONAME ( -- )
    VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
    2dup VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? CHK-STOP-BYTES
-   {: at:n label:ptr labelu:n src:ptr srcu:n :}
+   {: at:n label:^ labelu:n src:^ srcu:n :}
    at label labelu src srcu CHK-JSON @ CHK-NONAME-AT$
    dup 0= if
       2drop VERIFY:E-MISSING-NAME at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
@@ -1078,7 +1078,7 @@ private
    CHK-SOURCE-LIST-REPORT
    rc CHK-THROW ;
 
-: CHK-STOPPED-SOURCE ( -- ptr u8 n )
+: CHK-STOPPED-SOURCE ( -- ^u8 n )
    VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
 
 \ The pre-pass stopped with the given code. A statement that threw is reported
@@ -1154,11 +1154,11 @@ private
    CHK-TRUNCATED-LN
    CHK-E-UNAVAILABLE CHK-THROW ;
 
-: CHK-MAP+ ( ptr u8 n -- )
+: CHK-MAP+ ( ^u8 n -- )
    >LEN CHK-MAP-BUF CHK-ERR-CAP >LEN CHK-MAP-U SOURCE-APPEND-BYTES ;
 
 \ Where the run file's name next starts in the given bytes, or -1.
-: CHK-RUN-NAMED-AT ( ptr u8 n -- n )
+: CHK-RUN-NAMED-AT ( ^u8 n -- n )
    CHK-RUN-PATH FIND-SUB MATCH option
      some OF IDX>N ENDOF
      none OF -1 ENDOF
@@ -1166,7 +1166,7 @@ private
 
 \ The bytes before the run file's name at at, then the label in its place;
 \ the bytes after the name remain.
-: CHK-MAP-NAME ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n at:n :}
+: CHK-MAP-NAME ( ^u8 n n -- ^u8 n ) {: a:^ u:n at:n :}
    a at CHK-MAP+
    CHK-LABEL CHK-MAP+
    at CHK-RUN-PATH-U @ + {: past:n :}
@@ -1240,20 +1240,20 @@ private
 
 \ The named file is read as the closure walk reads a file of the closure: one
 \ the file system refuses to read fails the check as it fails the walk.
-: CHK-VERIFY-FILE ( -- ptr u8 n )
-   0 CHK-POS$ {: a:ptr u:n :}
+: CHK-VERIFY-FILE ( -- ^u8 n )
+   0 CHK-POS$ {: a:^ u:n :}
    a u FS:FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    [: CHK-VERIFY-READ ;] CHK-READ-RC 0<> if a u CANONICAL drop CHK-READ-FAIL then
    a u ;
 
 \ stdin's path need not exist.
-: CHK-VERIFY-STDIN ( -- ptr u8 n )
+: CHK-VERIFY-STDIN ( -- ^u8 n )
    CHK-STDIN-PATH-U @ 0= if CHK-USAGE then
    CHK-READ-STDIN CHK-SRC-U !
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.
-: CHK-VERIFY-SELECT ( -- ptr u8 n )
+: CHK-VERIFY-SELECT ( -- ^u8 n )
    CHK-SEL-MODE @ CHK-SEL-FILE = if
       CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
       CHK-VERIFY-FILE exit
@@ -1287,7 +1287,7 @@ private
    ;MATCH ;
 
 : CHK-VERIFY-ACT ( -- )
-   CHK-VERIFY-SELECT {: path:ptr pathu:n :}
+   CHK-VERIFY-SELECT {: path:^ pathu:n :}
    CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ VERIFY-BYTES
    CHK-VERIFY-REPORT ;
 
@@ -1347,7 +1347,7 @@ private
 \ directory and dies of the signal; a step that throws is named and the answer goes on. A run
 \ that ended before its child started leaves its pid 0 or PROCESS:NO-PID, and PROCESS:KILL-CAPTURE
 \ kills nothing for either: kill(0) is check.f's own process group.
-: CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
+: CHK-SAY-THROW ( ^u8 n n -- ) {: what:^ whatu:n code:n :}
    code 0= if exit then
    s" check: " CHK-ERR what whatu CHK-ERR s"  threw " CHK-ERR
    SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;

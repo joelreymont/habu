@@ -12,19 +12,19 @@ DYNAMIC-BUFFER SBUF u8          \ the rest of the line STEP took, sized to it
 DYNAMIC-BUFFER SOUT u8          \ the token or rest the REPL is reading: only S-OUT writes it
 variable SLEN  variable SPOS  variable STEPPING
 
-: SINP-FIELD ( -- ptr ptr u8 )
+: SINP-FIELD ( -- ^^u8 )
    data-base INP-CELL + 0 ptr-field ;
 
-: SINE-FIELD ( -- ptr ptr u8 )
+: SINE-FIELD ( -- ^^u8 )
    data-base INE-CELL + 0 ptr-field ;
 
-: SINP@ ( -- ptr u8 )
+: SINP@ ( -- ^u8 )
    SINP-FIELD @ ;
 
-: SINE@ ( -- ptr u8 )
+: SINE@ ( -- ^u8 )
    SINE-FIELD @ ;
 
-: SINP! ( ptr u8 -- )
+: SINP! ( ^u8 -- )
    SINP-FIELD ! ;
 
 : S-FALSE ( -- bool )
@@ -66,7 +66,7 @@ variable SLEN  variable SPOS  variable STEPPING
 
 \ A word the REPL runs from what this hands out may STEP, which rewrites SBUF
 \ and can move it, so the REPL reads a copy that only this writes.
-: S-OUT ( n n -- ptr u8 n )
+: S-OUT ( n n -- ^u8 n )
    {: at u :}
    u SOUT-RESERVE
    u 0 ?do at i + SBUF c@ i SOUT c! loop
@@ -75,7 +75,7 @@ variable SLEN  variable SPOS  variable STEPPING
 
 \ Stepping is over and the last token it handed out is spent, so both mappings
 \ can go before the next line.
-: S-LINE ( -- ptr u8 n )
+: S-LINE ( -- ^u8 n )
    SBUF-RELEASE SOUT-RELEASE RD-LINE ;
 
 
@@ -84,7 +84,7 @@ variable SLEN  variable SPOS  variable STEPPING
    s" watch:" type cr
    BPW. ;
 
-: S-NEXT-TOK ( -- ptr u8 n )
+: S-NEXT-TOK ( -- ^u8 n )
    .s
    BPW-DUMP
    S-SKIP
@@ -96,7 +96,7 @@ variable SLEN  variable SPOS  variable STEPPING
       S-OUT  s" step> " type  over over type  s"  " type
    THEN ;
 
-: SRD-LINE ( -- ptr u8 n )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
+: SRD-LINE ( -- ^u8 n )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
 
 public
 

@@ -46,9 +46,8 @@ s" VN-C-SAME ( serial -- serial )"          CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 4. the name rule: a tail an effect reads as something other than the family is
-\    a reserved name in every scope. A bare `ptr` is the pointer constructor, so
-\    a package's own `ptr` would leave its converter `( n -- ptr )` without a
-\    pointee.
+\    a reserved name in every scope. An effect reads the token `ptr` ahead of
+\    any family, so a package's own `ptr` could never be named in one.
 : MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
 ' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
 package CTORPKG

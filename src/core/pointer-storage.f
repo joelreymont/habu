@@ -13,10 +13,10 @@
 \ (src/habu/t0.f EMPTY-CLAUSE), so a read costs one load (`0 ptr-field` cost a
 \ call, a branch and a frame).
 : SCRATCH-VARIABLE ( -- )
-   create 1 cells SCRATCH-ALLOT does> ( -- ptr a ) ;
+   create 1 cells SCRATCH-ALLOT does> ( -- ^a ) ;
 
 : PTR-VARIABLE ( -- )
-   create 1 cells SCRATCH-ALLOT does> ( -- ptr ptr a ) ;
+   create 1 cells SCRATCH-ALLOT does> ( -- ^^a ) ;
 
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
@@ -24,7 +24,7 @@
 \ null, NULL-PTR, is an engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
 public
-: DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
+: DATA-CELL ( n -- ^^u8 ) data-base swap + 0 ptr-field ;
 \ The DATA cell holding the newest datum's address, 0 before the first.
 $3820 constant DATUM-CELL
 \ Aligns here past one byte, so the datum laid next never starts where the data
@@ -35,16 +35,16 @@ $3820 constant DATUM-CELL
 \ Starts a nameless row at top level, an extent of its own up to the next
 \ definition or datum; its scratch first cell links the datums from DATUM-CELL.
 : datum ( -- )
-   POINTER-STORAGE:ALIGN-APART here CELL-VIEW {: at:ptr :}
+   POINTER-STORAGE:ALIGN-APART here CELL-VIEW {: at:^ :}
    1 cells SCRATCH-ALLOT
-   data-base POINTER-STORAGE:DATUM-CELL + 0 ptr-field {: newest:ptr :}
+   data-base POINTER-STORAGE:DATUM-CELL + 0 ptr-field {: newest:^ :}
    newest @  at 0 ptr-field !
    at newest ! ;
 
 \ Scratch slots (PTR-VARIABLE, PTR-U8-TABLE, PTR-U8-TABLE-VARIABLE) are saved as null; a slot
 \ whose value must survive an image or capture uses this definer.
 : PERSISTED-PTR-VARIABLE ( -- )
-   create here ptr-cell-mark 0 , does> ( -- ptr ptr a ) ;
+   create here ptr-cell-mark 0 , does> ( -- ^^a ) ;
 
 \ ---- a cell whose pointee the declaration chooses -----------------------------
 \ The clause names the pointee. `create` publishes through `trust-raw`, which
@@ -58,26 +58,26 @@ $3820 constant DATUM-CELL
 \ boot prefix; a clause is compiled, so it works in the boot prefix, where the
 \ checker's own pointer tables are declared.
 
-\ A table of byte pointers: `n` cells, each holding a `ptr u8`. `n PTR-U8-TABLE
+\ A table of byte pointers: `n` cells, each holding a `^u8`. `n PTR-U8-TABLE
 \ NAME` publishes NAME as the table's BASE, so `i cells NAME + 0 ptr-field` takes
 \ the field of a declared pointer cell rather than of raw dictionary storage.
 : PTR-U8-TABLE ( n -- )
-   create cells SCRATCH-ALLOT does> ( -- ptr ptr u8 ) ;
+   create cells SCRATCH-ALLOT does> ( -- ^^u8 ) ;
 
 \ A PTR-U8-TABLE whose cells keep their addresses across a save.
 : PERSISTED-PTR-U8-TABLE ( n -- )
-   create dup 0 ?do here i cells + ptr-cell-mark loop cells allot does> ( -- ptr ptr u8 ) ;
+   create dup 0 ?do here i cells + ptr-cell-mark loop cells allot does> ( -- ^^u8 ) ;
 
 \ A persisted cell holding a PTR-U8-TABLE's base: the head of an arena that
 \ starts in a boot table and is repointed at a grown allocation.
 : PERSISTED-PTR-U8-TABLE-VARIABLE ( -- )
-   create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
+   create here ptr-cell-mark 0 , does> ( -- ^^^u8 ) ;
 
 : PTR-U8-TABLE-VARIABLE ( -- )
-   create 1 cells SCRATCH-ALLOT does> ( -- ptr ptr ptr u8 ) ;
+   create 1 cells SCRATCH-ALLOT does> ( -- ^^^u8 ) ;
 
 \ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
 \ the engine layout reserves at `off`. The offset goes through
 \ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked.
 : RESERVED-PTR-U8-CELL ( n -- )
-   create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;
+   create , does> ( -- ^^u8 ) @ POINTER-STORAGE:DATA-CELL ;

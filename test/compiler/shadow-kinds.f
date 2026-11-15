@@ -44,7 +44,7 @@ variable SEC-END
 $FC000000 constant OP6               \ an arm64 branch's opcode bits
 $14000000 constant B-OP              \ `b` imm26
 
-CAST: CODE>BYTES ( n -- ptr u8 )
+CAST: CODE>BYTES ( n -- ^u8 )
 
 : .N ( n -- ) {: n:n :}
    n 0< if [char] - emit  0 n - recurse exit then
@@ -78,7 +78,7 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    at MARK? 0= if s" requires" type exit then
    SRC at 5 + +  at LINE-END at 5 + -  type ;
 
-: FAIL-HEAD ( ptr u8 n -- )
+: FAIL-HEAD ( ^u8 n -- )
    s" FAIL " type type s" : " type
    1 FAILS +! ;
 
@@ -177,7 +177,7 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    e ent off + ROW-AT CALL-ROW = if s"  (call row)" type then ;
 
 : CHECK ( n -- ) {: idx:n :}
-   idx XREF-REC {: rec:ptr :}
+   idx XREF-REC {: rec:^ :}
    rec XREF-START {: start:n :}
    rec XREF-CODE-BYTES {: hlen:n :}
    idx SHADOW-ROW {: r:n :}

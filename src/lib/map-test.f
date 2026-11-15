@@ -53,52 +53,52 @@ create MT-KEY-Z 122 c,
 : MT-MAP-CELLS ( n -- n )
    >COUNT CELL-COUNT COUNT>N ;
 
-: MT-MAP-CAP@ ( ptr a -- n )
+: MT-MAP-CAP@ ( ^a -- n )
    CAP@ COUNT>N ;
 
-: MT-MAP-COUNT@ ( ptr a -- n )
+: MT-MAP-COUNT@ ( ^a -- n )
    COUNT@ COUNT>N ;
 
-: MT-MAP-COUNT! ( n ptr a -- ) {: count m:ptr :}
+: MT-MAP-COUNT! ( n ^a -- ) {: count m:^ :}
    count >COUNT m COUNT! ;
 
-: MT-MAP-CHECK-INDEX ( ptr a n -- ) {: m:ptr ix :}
+: MT-MAP-CHECK-INDEX ( ^a n -- ) {: m:^ ix :}
    m ix >IDX CHECK-INDEX ;
 
-: MT-MAP-SLOT-FIELD ( ptr a n n -- ptr a ) {: m:ptr ix off :}
+: MT-MAP-SLOT-FIELD ( ^a n n -- ^a ) {: m:^ ix off :}
    m ix >IDX off >OFF SLOT-FIELD ;
 
-: MT-MAP-SLOT-STATE@ ( ptr a n -- slot-state ) {: m:ptr ix:n :}
+: MT-MAP-SLOT-STATE@ ( ^a n -- slot-state ) {: m:^ ix:n :}
    m ix >IDX SLOT-STATE@ ;
 
-: MT-MAP-SLOT-STATE! ( slot-state ptr a n -- ) {: m:ptr ix:n :}   \ enum stays on stack (no enum locals)
+: MT-MAP-SLOT-STATE! ( slot-state ^a n -- ) {: m:^ ix:n :}   \ enum stays on stack (no enum locals)
    m ix >IDX SLOT-STATE! ;
 
-: MT-MAP-SLOT-HASH@ ( ptr a n -- n ) {: m:ptr ix :}
+: MT-MAP-SLOT-HASH@ ( ^a n -- n ) {: m:^ ix :}
    m ix >IDX SLOT-HASH@ ;
 
-: MT-MAP-SLOT-HASH! ( n ptr a n -- ) {: hash m:ptr ix :}
+: MT-MAP-SLOT-HASH! ( n ^a n -- ) {: hash m:^ ix :}
    hash m ix >IDX SLOT-HASH! ;
 
-: MT-MAP-SLOT-KEY-A@ ( ptr a n -- ptr u8 ) {: m:ptr ix :}
+: MT-MAP-SLOT-KEY-A@ ( ^a n -- ^u8 ) {: m:^ ix :}
    m ix >IDX SLOT-KEY-A@ ;
 
-: MT-MAP-SLOT-KEY-U@ ( ptr a n -- n ) {: m:ptr ix :}
+: MT-MAP-SLOT-KEY-U@ ( ^a n -- n ) {: m:^ ix :}
    m ix >IDX SLOT-KEY-U@ LEN>N ;
 
-: MT-MAP-SLOT-KEY-U! ( n ptr a n -- ) {: len m:ptr ix :}
+: MT-MAP-SLOT-KEY-U! ( n ^a n -- ) {: len m:^ ix :}
    len >LEN m ix >IDX SLOT-KEY-U! ;
 
-: MT-MAP-SLOT-VALUE@ ( ptr a n -- a ) {: m:ptr ix :}
+: MT-MAP-SLOT-VALUE@ ( ^a n -- a ) {: m:^ ix :}
    m ix >IDX SLOT-VALUE@ ;
 
-: MT-MAP-SLOT-VALUE! ( a ptr a n -- ) {: value m:ptr ix :}
+: MT-MAP-SLOT-VALUE! ( a ^a n -- ) {: value m:^ ix :}
    value m ix >IDX SLOT-VALUE! ;
 
-: MT-MAP-INIT ( ptr a n -- ) {: m:ptr cap :}
+: MT-MAP-INIT ( ^a n -- ) {: m:^ cap :}
    m cap >COUNT INIT ;
 
-: MT-MAP-HASH ( ptr a ptr u8 n -- n ) {: m:ptr a:ptr u :}
+: MT-MAP-HASH ( ^a ^u8 n -- n ) {: m:^ a:^ u :}
    m a u >LEN HASH ;
 
 : MT-MAP-INDEX ( n n -- n ) {: hash cap :}
@@ -107,7 +107,7 @@ create MT-KEY-Z 122 c,
 : MT-MAP-PROBE ( n n n -- n ) {: hash step cap :}
    hash step >COUNT cap >COUNT PROBE IDX>N ;
 
-: MT-MAP-LOCATE ( ptr a n ptr u8 n -- loc n ) {: m:ptr cap:n key:ptr len:n :}
+: MT-MAP-LOCATE ( ^a n ^u8 n -- loc n ) {: m:^ cap:n key:^ len:n :}
    m cap >COUNT key len >LEN LOCATE ;
 
 : MT-LOC-KIND ( loc -- n )                           \ 0 full, 1 free, 2 found
@@ -124,16 +124,16 @@ create MT-KEY-Z 122 c,
      found OF IDX>N ENDOF
    ;MATCH ;
 
-: MT-MAP-GET ( ptr n n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
+: MT-MAP-GET ( ^n n ^u8 n -- option<n> ) {: m:^ cap:n key:^ len:n :}
    m cap >COUNT key len >LEN GET ;
 
-: MT-MAP-HAS? ( ptr n n ptr u8 n -- bool ) {: m:ptr cap key:ptr len :}
+: MT-MAP-HAS? ( ^n n ^u8 n -- bool ) {: m:^ cap key:^ len :}
    m cap >COUNT key len >LEN HAS? ;
 
-: MT-MAP-SET ( n ptr n n ptr u8 n -- ) {: value m:ptr cap key:ptr len :}
+: MT-MAP-SET ( n ^n n ^u8 n -- ) {: value m:^ cap key:^ len :}
    value m cap >COUNT key len >LEN SET ;
 
-: MT-MAP-EACH ( ptr n n [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
+: MT-MAP-EACH ( ^n n [ ^u8 len n -- ] -- ) {: m:^ cap q :}
    m cap >COUNT q EACH ;
 
 : MT-FILL-STORAGE ( -- )
@@ -149,7 +149,7 @@ create MT-KEY-Z 122 c,
 
 \ EACH runs over MT-MAP: each visit is an entry the map finds with that value,
 \ in a slot past the one visited before it.
-: MT-EACH-RECORD ( ptr u8 len n -- ) {: key:ptr len value :}
+: MT-EACH-RECORD ( ^u8 len n -- ) {: key:^ len value :}
    MT-MAP MT-CAP key len LEN>N MT-MAP-LOCATE drop
    dup MT-LOC-KIND 2 MT=
    MT-LOC-IDX {: slot :}
@@ -242,14 +242,14 @@ create MT-KEY-Z 122 c,
 : MT-FILL-LETTERS ( -- )
    26 0 ?do 97 i + MT-LETTERS i + c! loop ;
 
-: MT-LETTER ( n -- ptr u8 )
+: MT-LETTER ( n -- ^u8 )
    MT-LETTERS + ;
 
 : MT-HOME ( n -- n )
    MT-MAP swap MT-LETTER 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX ;
 
 \ Collision key k: one of three letters sharing a home slot under MT-MAP's key.
-: MT-COL ( n -- ptr u8 )
+: MT-COL ( n -- ^u8 )
    cells MT-COLS + @ MT-LETTER ;
 
 \ The key is secret, so the colliding keys are found, not chosen: 26 letters in
@@ -268,21 +268,21 @@ create MT-KEY-Z 122 c,
    loop
    0 0= 0= MT-ASSERT ;
 
-: MT-ASSERT-HIT ( ptr n n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
+: MT-ASSERT-HIT ( ^n n ^u8 n n -- ) {: m:^ cap:n key:^ len:n want:n :}
    m cap key len MT-MAP-HAS? MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
      none OF 0 0= 0= MT-ASSERT ENDOF
      some OF want MT= ENDOF
    ;MATCH ;
 
-: MT-ASSERT-MISS ( ptr n n ptr u8 n -- ) {: m:ptr cap:n key:ptr len:n :}
+: MT-ASSERT-MISS ( ^n n ^u8 n -- ) {: m:^ cap:n key:^ len:n :}
    m cap key len MT-MAP-HAS? 0= MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
      none OF ENDOF
      some OF drop 0 0= 0= MT-ASSERT ENDOF
    ;MATCH ;
 
-: MT-ASSERT-COLLISION-SLOT ( n ptr u8 -- ) {: step want:ptr :}
+: MT-ASSERT-COLLISION-SLOT ( n ^u8 -- ) {: step want:^ :}
    MT-MAP MT-MAP 0 MT-COL 1 MT-MAP-HASH step MT-CAP MT-MAP-PROBE MT-MAP-SLOT-KEY-A@
       want = MT-ASSERT ;
 
@@ -373,11 +373,11 @@ create MT-KEY-Z 122 c,
    MT-EACH-COUNT @ 3 MT=
    MT-EACH-SUM @ 66 MT= ;
 
-: MT-ORDER-RECORD ( ptr u8 len n -- )
+: MT-ORDER-RECORD ( ^u8 len n -- )
    drop drop c@ MT-ORDER MT-EACH-COUNT @ + c!
    MT-EACH-COUNT @ 1 + MT-EACH-COUNT ! ;
 
-: MT-SPREAD-FILL ( ptr n -- ) {: m:ptr :}
+: MT-SPREAD-FILL ( ^n -- ) {: m:^ :}
    m MT-SPREAD-CAP MT-MAP-INIT
    26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
 
@@ -396,7 +396,7 @@ create MT-KEY-Z 122 c,
    26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ <> or loop
    MT-ASSERT ;
 
-: MT-KEYED-FILL ( ptr n -- ) {: m:ptr :}
+: MT-KEYED-FILL ( ^n -- ) {: m:^ :}
    m MT-SPREAD-CAP >COUNT $5EED $C0DE INIT-KEYED
    26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
 

@@ -11,7 +11,7 @@ require src/habu/verify-source.f
 package CDR
 private
 
-TYPED-VARIABLE SRC-A ptr u8
+TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
 
 \ x86-64 refuses a quotation that reads a local, so the source span travels
@@ -29,8 +29,8 @@ $4E constant DUP-RC
 
 \ Verify one span in the caller's scope with the checker's diagnostics
 \ collected; 0 when it certified, else the throw code.
-: VERIFY-QUIET ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: VERIFY-QUIET ( ^u8 n -- n )
+   {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
    DIAG-BUF $1000 REJECTION:BUFFER!
@@ -41,13 +41,13 @@ $4E constant DUP-RC
 
 \ The same span in multi-error mode, where a refused body is recorded with
 \ source authority instead of thrown.
-: MULTI-QUIET ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: MULTI-QUIET ( ^u8 n -- n )
+   {: a:^ u:n :}
    MULTI-ERR-BEGIN
    a u VERIFY-QUIET
    MULTI-ERR-END drop ;
 
-: DIAG$ ( -- ptr u8 n )
+: DIAG$ ( -- ^u8 n )
    DIAG-BUF DIAG-U @ ;
 
 ;package

@@ -27,8 +27,8 @@ public
 
 \ The text and region land at their fixed addresses; DATA's bytes ride the
 \ read-only carrier the boot copies into DATA, so they must fit both.
-: WRITE-FD ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: text:ptr text-len:n region:ptr region-len:n data:ptr data-len:n fd:n :}
+: WRITE-FD ( ^u8 n ^u8 n ^u8 n n -- )
+   {: text:^ text-len:n region:^ region-len:n data:^ data-len:n fd:n :}
    text-len 0 <
    region-len REGION > or
    region-len 0 < or

@@ -26,18 +26,18 @@ create ROOT PATH-CAP allot   variable ROOT-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
 
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-tmp-path" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-tmp-path" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
 \ The refusal is a die, so each case is a child engine (test/tmp-path-child.f)
 \ whose TMPDIR is this test's own directory.
-: RUN ( ptr u8 n -- n n n ) {: case:ptr caseu:n :}   \ outu erru rc
-   ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
+: RUN ( ^u8 n -- n n n ) {: case:^ caseu:n :}   \ outu erru rc
+   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
    PROC-ARGV-ENV-RESET
    s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -65,7 +65,7 @@ create ERR IO-CAP allot
    s" ... and nothing after it but the line end" T-LABEL
    OUT PATH-CAP + c@ LF T= ;
 
-: REFUSED ( ptr u8 n ptr u8 n -- ) {: case:ptr caseu:n label:ptr labelu:n :}
+: REFUSED ( ^u8 n ^u8 n -- ) {: case:^ caseu:n label:^ labelu:n :}
    case caseu RUN {: outu:n erru:n rc:n :}
    label labelu T-LABEL
    rc REFUSE-RC T=

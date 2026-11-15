@@ -21,7 +21,7 @@ variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
-variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
+variable POINTEE    \ resolving the pointee of `^`: the declared family may be named
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
@@ -35,31 +35,31 @@ SD-RESET
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
 \ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
 \ Case and duplicate are TFAM-DECL's.
-: NAME-RESERVED? ( ptr u8 n -- bool )
+: NAME-RESERVED? ( ^u8 n -- bool )
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
 
-: REQUIRE-NAME ( ptr u8 n -- )
+: REQUIRE-NAME ( ^u8 n -- )
    dup 0= IF 2drop s" missing name" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-: NAME-GATE ( ptr u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
+: NAME-GATE ( ^u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
 
-: SD-KIND$ ( -- ptr u8 n ) s" structure" ;
+: SD-KIND$ ( -- ^u8 n ) s" structure" ;
 
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
 \ field naming a DEFLINEAR con already relies on.
 \ The kind test falls through to "unknown field type" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
-\ The declared family may be named only beneath a `ptr` (`ptr node`, `SPAN:span<ptr node>`);
+\ The declared family may be named only beneath a `^` (`^node`, `SPAN:span<^node>`);
 \ by value, as in `option<node>`, it is 7109.
-: FIELD-FAM? ( ptr u8 n -- n bool )
+: FIELD-FAM? ( ^u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id UNSTORED-REASON IF TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
@@ -69,7 +69,7 @@ SD-RESET
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n n -- n )
+: LETTER-TYPE ( ^u8 n n -- n )
    {: want:n :}
    drop c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
@@ -95,7 +95,7 @@ SD-RESET
 
 \ Each parser word takes the index it starts at and answers the index after what it
 \ consumed; a type spelled over tokens (SD-SPAN) holds blanks.
-: SD-ATOM ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}
+: SD-ATOM ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
    start
    BEGIN
       dup u < IF a over + c@ SD-DELIM? 0= ELSE NO THEN
@@ -106,26 +106,19 @@ SD-RESET
       s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a start + j start - j ;
 
-\ The blanks an argument may start with, and the blanks after its `ptr`.
-: SD-SKIP ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+\ The blanks an argument may start with.
+: SD-SKIP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    i BEGIN
       dup u < IF a over + c@ SD-BLANK? ELSE NO THEN
    WHILE
       1 +
    REPEAT ;
 
-\ Where the pointee of an argument's `ptr` is read from: a blank must follow
-\ `ptr`, so `span<ptr>` and `span<ptr,n>` are refused.
-: SD-PTR-START ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
-   j u < IF a j + c@ SD-BLANK? ELSE NO THEN 0= IF
-      s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   j 1 + ;
-
 \ Whether the atom ending at j opens a pointer argument, and the index its
-\ pointee is read from: an atom `^T` at the byte after `^`, an atom `ptr` not
-\ followed by `<` after its blank (SD-PTR-START). A `^` with nothing joined to
-\ it, as in `span<^ n>` or `span<^>`, is refused as `span<ptr>` is.
-: SD-POINTEE-AT ( ptr u8 n ptr u8 n n -- n bool ) {: na:ptr nu:n a:ptr u:n j:n :}
+\ pointee is read from: an atom `^T` at the byte after `^`. A `^` with nothing
+\ joined to it, as in `span<^ n>` or `span<^>`, is malformed; an atom `ptr` not
+\ followed by `<` names no type and is refused as an unknown field type.
+: SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = IF
          s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -133,11 +126,11 @@ SD-RESET
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
-   a u j SD-PTR-START YES ;
+   s" unknown field type" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
-defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
+defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
-: SD-APP-ARGS ( ptr u8 n n n n -- n n ) {: a:ptr u:n fam:n k:n i:n :}
+: SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       s" field type has too many arguments" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
@@ -150,7 +143,7 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
    c 62 = IF k 1 + j 1 + EXIT THEN
    s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
-: SD-APP ( ptr u8 n n n -- n n ) {: a:ptr u:n fam:n i:n :}
+: SD-APP ( ^u8 n n n -- n n ) {: a:^ u:n fam:n i:n :}
    SD-ARG-N @ {: base:n :}
    a u fam 0 i SD-APP-ARGS {: k:n j:n :}
    k fam TFAM-ARITY@ <> IF
@@ -163,9 +156,9 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
    base SD-ARG-N !
    fam start k SCHEMA-APP j ;
 
-defer SD-LOOSE-NODE ( ptr u8 n n -- n )
+defer SD-LOOSE-NODE ( ^u8 n n -- n )
 
-: SD-LOOSE-ARGS ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+: SD-LOOSE-ARGS ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
       s" unclosed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -175,13 +168,13 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
       s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u j 1 + RECURSE ;
 
-: SD-LOOSE-APP ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+: SD-LOOSE-APP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    i u >= IF
       s" unclosed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a i + c@ 62 = IF i 1 + EXIT THEN
    a u i SD-LOOSE-ARGS ;
 
-: SD-LOOSE-ATOM ( ptr u8 n -- ) {: a:ptr u:n :}
+: SD-LOOSE-ATOM ( ^u8 n -- ) {: a:^ u:n :}
    u 1 = IF
       a c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
       IF drop EXIT THEN
@@ -202,7 +195,7 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
 \ set as RESOLVE-TYPE sets it.
-: SD-LOOSE-PTR ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
+: SD-LOOSE-PTR ( ^u8 n n -- n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k SD-LOOSE-NODE
@@ -210,8 +203,8 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 
 \ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
-: SD-LOOSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
-   a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
+: SD-LOOSE-NODE-IMPL ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+   a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
@@ -227,10 +220,10 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ An argument `^T` or `ptr T` is a pointer to T, its pointee read from k
+\ An argument `^T` is a pointer to T, its pointee read from k
 \ (SD-POINTEE-AT) and built as RESOLVE-TYPE's pointer arm builds one; while T is
 \ read the declared family may be named (FIELD-FAM?).
-: SD-PTR-NODE ( ptr u8 n n -- n n ) {: a:ptr u:n k:n :}
+: SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
@@ -241,8 +234,8 @@ SD-LOOSE-INSTALL
 
 \ The node at i of a field type's text: a type parameter, a con, a family
 \ application or a pointer argument, with the index after it.
-: SD-PARSE-NODE-IMPL ( ptr u8 n n n -- n n ) {: a:ptr u:n i:n want:n :}
-   a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
+: SD-PARSE-NODE-IMPL ( ^u8 n n n -- n n ) {: a:^ u:n i:n want:n :}
+   a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
@@ -272,12 +265,12 @@ SD-PARSER-INSTALL
    c 60 = IF depth 1 + EXIT THEN
    c 62 = IF depth 1 - EXIT THEN
    depth ;
-: SD-DEPTH ( n ptr u8 n -- n ) {: depth:n a:ptr u:n :}
+: SD-DEPTH ( n ^u8 n -- n ) {: depth:n a:^ u:n :}
    depth u 0 ?do a i + c@ SD-NEST loop ;
 
 \ One declaration's tokens stand in order in one buffer (parse-name never refills, a replay
 \ reads one body); its end or `;STRUCTURE` goes back and the type is unclosed.
-: SD-SPAN-REST ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n depth:n :}
+: SD-SPAN-REST ( ^u8 n n -- ^u8 n ) {: a:^ u:n depth:n :}
    u depth
    BEGIN dup 0 > WHILE
       NEXT dup 0= IF YES ELSE 2dup s" ;structure" CORE-STR=CI THEN IF
@@ -290,30 +283,35 @@ SD-PARSER-INSTALL
 
 \ A type whose first token leaves a `<` open runs to the token closing it, as one span of the
 \ source or replay body, which outlives the TYPE@ span SD-MISSING! keeps.
-: SD-SPAN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: SD-SPAN ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    0 a u SD-DEPTH {: depth:n :}
    depth 1 < IF a u EXIT THEN
    a u depth SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
 
-defer SD-QUOT-ELEM ( ptr u8 n -- n )
-: SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
+defer SD-QUOT-ELEM ( ^u8 n -- n )
+: SD-QUOT-FAIL ( ^u8 n n -- ) DECL-REJECT:REJECT throw ;
 
-\ The pointee text of a field type that opens a pointer: the token after `ptr`,
-\ or the rest of a `^T` span, empty for a bare `^`.
-: SD-PTR-TEXT? ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR=CI IF NEXT YES EXIT THEN
+\ The pointee text of a field type that opens a pointer: the rest of a `^T`
+\ span, empty for a bare `^`. A leading `ptr` reaches SD-POINTEE-AT, which
+\ refuses it.
+: SD-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
    a u NO ;
 
-\ A field type's text, from its first token (SD-SPAN); a leading `ptr` and a
-\ quotation `[` read the tokens after them, a leading `^` the rest of its span.
-: RESOLVE-TYPE ( ptr u8 n -- n )
+\ A field type's text, from its first token (SD-SPAN); a quotation `[` reads the
+\ tokens after it, a leading `^` the rest of its span. The text resolved is the
+\ reject token, so a refused pointee names itself, not the `^T` span that holds it.
+: RESOLVE-TYPE ( ^u8 n -- n )
    dup 0= IF 2drop s" missing field type" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup DECL-REJECT:TOKEN!
    SD-SPAN
    2dup TYPE!
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
    SD-PTR-TEXT? IF
+      dup 0= IF
+         2drop s" pointer without a pointee"
+         TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       POINTEE @ {: outer:n :}
       -1 POINTEE !
       RECURSE
@@ -351,7 +349,7 @@ SD-QUOT-INSTALL
    TOK @ FAM @ DECL-EVENT:OPAQUE TOK !
    FAM @ TFAM-OPAQUE! ;
 
-: DERIVE-FEATURE? ( ptr u8 n -- bool )
+: DERIVE-FEATURE? ( ^u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -368,7 +366,7 @@ SD-QUOT-INSTALL
 \ `addr` has no arity condition: an accessor projects the field schema at the
 \ caller's instantiation, and the checker refuses the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
-: DERIVE-ONE ( ptr u8 n -- )
+: DERIVE-ONE ( ^u8 n -- )
    2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
@@ -386,7 +384,7 @@ SD-QUOT-INSTALL
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
-: EMIT-FIELD ( ptr u8 n n -- )
+: EMIT-FIELD ( ^u8 n n -- )
    SCHEMA-ROOT+ {: sch:n :}
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
@@ -399,19 +397,19 @@ SD-QUOT-INSTALL
 \ A field named like a generated member (MAKE, UNMAKE, F:AT, F:BYTES, F:CELLS, a
 \ derived tail) would make the generator define a name twice, a die inside the
 \ plan. Refused only under DERIVE addr, which header clauses have fixed by now.
-: MEMBER-CLASH? ( ptr u8 n -- bool )
+: MEMBER-CLASH? ( ^u8 n -- bool )
    2dup s" make" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup TFAM-ADDR-FIXED-TAIL? IF 2drop YES EXIT THEN
    TFAM-DERIVED-TAIL? ;
-: REQUIRE-FIELD-NAME ( ptr u8 n -- )    \ consumes the copy; throws on a member clash
+: REQUIRE-FIELD-NAME ( ^u8 n -- )    \ consumes the copy; throws on a member clash
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name" TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
-: FIELD-NAME ( -- ptr u8 n )                 \ a FIELD or BUFFER name, judged
+: FIELD-NAME ( -- ^u8 n )                 \ a FIELD or BUFFER name, judged
    NEXT dup 0= IF
       2drop s" missing field name" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   {: na:ptr nu:n :}
+   {: na:^ nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
@@ -423,9 +421,9 @@ SD-QUOT-INSTALL
    s" record takes more than 4096 items to make" TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw ;
 : ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
 : FIELD-CLAUSE ( -- )
-   FIELD-NAME {: na:ptr nu:n :}
+   FIELD-NAME {: na:^ nu:n :}
    0 FIELD-MISS !  0 POINTEE !
-   NEXT {: ta:ptr tu:n :}
+   NEXT {: ta:^ tu:n :}
    ta tu RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
@@ -444,7 +442,7 @@ SD-QUOT-INSTALL
       s" buffer byte count must be a number above 0" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
-: EMIT-BUFFER ( ptr u8 n n -- ) {: na:ptr nu:n bytes:n :}
+: EMIT-BUFFER ( ^u8 n n -- ) {: na:^ nu:n bytes:n :}
    bytes 1 - CELL / 1 + {: fw:n :}
    CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
    na nu DECL-REJECT:TOKEN!
@@ -463,15 +461,15 @@ SD-QUOT-INSTALL
    FAM @ TFAM-DERIVE-HASH? IF
       s" derive hash cannot hash a buffer" TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : BUFFER-CLAUSE ( -- )
-   FIELD-NAME {: na:ptr nu:n :}
+   FIELD-NAME {: na:^ nu:n :}
    BUFFER-DERIVABLE
    BUFFER-COUNT {: bytes:n :}
    bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
    na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
-: SD-REGISTER ( ptr u8 n n -- )
-   {: na:ptr nu:n ar:n :}
+: SD-REGISTER ( ^u8 n n -- )
+   {: na:^ nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
@@ -543,7 +541,7 @@ SD-QUOT-INSTALL
    SD-REGISTER
    CLAUSES ;
 
-: SD-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )
+: SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
 public
@@ -552,9 +550,9 @@ public
 
 \ Registers a STRUCTURE from a body a tool lexed, by SD-RUN's grammar, defining
 \ no word; a body without ;STRUCTURE is refused "missing ;STRUCTURE".
-: SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+: SD-REPLAY-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
-: SD-REPLAY ( ptr u8 n ptr u8 n -- )
+: SD-REPLAY ( ^u8 n ^u8 n -- )
    SD-FRONT DECL-FRONT:REPLAY ;
 
 ;package

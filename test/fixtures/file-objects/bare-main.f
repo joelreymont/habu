@@ -5,9 +5,9 @@
 ENUM lay fresh valued ;ENUM
 TYPED-VARIABLE SLOT lay
 
-: L-GET ( ptr lay -- lay ) @ ;
+: L-GET ( ^lay -- lay ) @ ;
 
-: LAY$ ( lay -- ptr u8 n )
+: LAY$ ( lay -- ^u8 n )
    MATCH lay
       fresh OF s" fresh" ENDOF
       valued OF s" valued" ENDOF

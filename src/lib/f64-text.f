@@ -33,19 +33,19 @@ $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
-: DIGITS ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
+: DIGITS ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
    offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
-: SIGN-SKIP ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
+: SIGN-SKIP ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
    offset len < if text offset + c@ dup $2B = swap $2D = or if offset 1+ exit then then offset ;
 : EXPONENT? ( n -- bool ) dup $65 = swap $45 = or ;
 
 \ Zero means complete decimal; one means malformed; two means trailing bytes.
-: FRACTION-END ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
+: FRACTION-END ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
    offset len < if text offset + c@ $2E = if
       text len offset 1+ DIGITS exit
    then then offset ;
 
-: GRAMMAR ( ptr u8 n -- n ) {: text:ptr len:n :}
+: GRAMMAR ( ^u8 n -- n ) {: text:^ len:n :}
    len 0 <= if 1 exit then
    text len 0 SIGN-SKIP {: first:n :}
    text len first DIGITS {: integer-end:n :}
@@ -57,13 +57,13 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
    else end then else end then
    len = if 0 else 2 then ;
 
-: NONFINITE-TEXT? ( ptr u8 n -- bool )
+: NONFINITE-TEXT? ( ^u8 n -- bool )
    2dup 0 SIGN-SKIP {: offset:n :} offset - swap offset + swap
    2dup s" nan" STR=CI if 2drop true exit then
    2dup s" inf" STR=CI if 2drop true exit then s" infinity" STR=CI ;
 
 : POW10 ( n -- n ) 1 swap 0 ?do 10 * loop ;
-: PUT-DIGITS ( n ptr u8 n -- ) {: value:n out:ptr width:n :}
+: PUT-DIGITS ( n ^u8 n -- ) {: value:n out:^ width:n :}
    value width 0 ?do 10 /mod swap $30 + out width i - 1- + c! loop drop ;
 
 \ A natural number: the count of limbs in use, its capacity, then that many
@@ -71,47 +71,47 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 $FFFFFFFF constant LIMB-MASK
 1000000000 constant BILLION
 
-: LIMB@ ( ptr n n -- n ) {: big:ptr at:n :}
+: LIMB@ ( ^n n -- n ) {: big:^ at:n :}
    at 0 >= at big @ < and if big at 2 + cells + @ else 0 then ;
-: LIMB! ( n ptr n n -- ) 2 + cells + ! ;
-: LIMB-CAP ( ptr n -- n ) 1 cells + @ ;
-: BIG-INIT ( n ptr n -- ) {: limbs:n big:ptr :} 0 big ! limbs big 1 cells + ! ;
-: NEED-LIMBS ( n ptr n -- ) LIMB-CAP > if E-LIMBS throw then ;
+: LIMB! ( n ^n n -- ) 2 + cells + ! ;
+: LIMB-CAP ( ^n -- n ) 1 cells + @ ;
+: BIG-INIT ( n ^n -- ) {: limbs:n big:^ :} 0 big ! limbs big 1 cells + ! ;
+: NEED-LIMBS ( n ^n -- ) LIMB-CAP > if E-LIMBS throw then ;
 
 \ Appends a top limb.
-: BIG-PUSH ( n ptr n -- ) {: limb:n big:ptr :}
+: BIG-PUSH ( n ^n -- ) {: limb:n big:^ :}
    big @ 1+ big NEED-LIMBS limb big big @ LIMB! big @ 1+ big ! ;
 
-: TRIM ( ptr n -- ) {: big:ptr :}
+: TRIM ( ^n -- ) {: big:^ :}
    big @ begin dup 0 > if big over 1- LIMB@ 0= else false then while
       1-
    repeat big ! ;
 
-: BIG-SET ( n ptr n -- ) {: value:n big:ptr :}
+: BIG-SET ( n ^n -- ) {: value:n big:^ :}
    0 big !
    value 0<> if value LIMB-MASK and big BIG-PUSH then
    value 32 rshift dup 0<> if big BIG-PUSH else drop then ;
 
-: BIG-CELL ( ptr n -- n ) {: big:ptr :}
+: BIG-CELL ( ^n -- n ) {: big:^ :}
    big 0 LIMB@ big 1 LIMB@ 32 lshift or ;
 
 : BIT-LENGTH ( n -- n )
    0 swap begin dup 0<> while 1 rshift swap 1+ swap repeat drop ;
-: BIG-BITS ( ptr n -- n )
-   {: big:ptr :}
+: BIG-BITS ( ^n -- n )
+   {: big:^ :}
    big @ 0= if 0 exit then
    big @ 1- 32 * big big @ 1- LIMB@ BIT-LENGTH + ;
 
 
-: BIG-MUL ( n ptr n -- ) {: factor:n big:ptr :}
+: BIG-MUL ( n ^n -- ) {: factor:n big:^ :}
    0 big @ 0 ?do
       big i LIMB@ factor * + dup LIMB-MASK and big i LIMB! 32 rshift
    loop
    dup 0<> if big BIG-PUSH else drop then ;
 
 \ Adds a number below 2^32.
-: BIG-ADD ( n ptr n -- )
-   {: addend:n big:ptr :}
+: BIG-ADD ( n ^n -- )
+   {: addend:n big:^ :}
    addend big @ 0 ?do
       big i LIMB@ + dup LIMB-MASK and big i LIMB! 32 rshift
    loop
@@ -119,7 +119,7 @@ $FFFFFFFF constant LIMB-MASK
 
 
 \ Answers whether the remainder was nonzero.
-: BIG-DIV ( n ptr n -- bool ) {: divisor:n big:ptr :}
+: BIG-DIV ( n ^n -- bool ) {: divisor:n big:^ :}
    0 big @ 0 ?do
       32 lshift big big @ 1- i - LIMB@ + divisor /mod
       big big @ 1- i - LIMB!
@@ -128,7 +128,7 @@ $FFFFFFFF constant LIMB-MASK
 
 \ The top limb first, so each limb is read before it is written; the result
 \ has exactly the limbs its bits need.
-: BIG-SHL ( n ptr n -- ) {: count:n big:ptr :}
+: BIG-SHL ( n ^n -- ) {: count:n big:^ :}
    big BIG-BITS dup 0= if drop exit then
    count + 31 + 32 / {: top:n :}
    top big NEED-LIMBS
@@ -141,7 +141,7 @@ $FFFFFFFF constant LIMB-MASK
 
 
 \ Answers whether a one bit was shifted out.
-: BIG-SHR ( n ptr n -- bool ) {: count:n big:ptr :}
+: BIG-SHR ( n ^n -- bool ) {: count:n big:^ :}
    count 32 / {: whole:n :} count 32 mod {: part:n :}
    big @ {: len:n :}
    false whole len min 0 ?do big i LIMB@ 0<> or loop
@@ -154,16 +154,16 @@ $FFFFFFFF constant LIMB-MASK
    loop kept big ! big TRIM lost ;
 
 
-: BIG-MUL-TENS ( n ptr n -- ) {: power:n big:ptr :}
+: BIG-MUL-TENS ( n ^n -- ) {: power:n big:^ :}
    power 9 / 0 ?do BILLION big BIG-MUL loop
    power 9 mod POW10 big BIG-MUL ;
-: BIG-DIV-TENS ( n ptr n -- bool ) {: power:n big:ptr :}
+: BIG-DIV-TENS ( n ^n -- bool ) {: power:n big:^ :}
    false power 9 / 0 ?do BILLION big BIG-DIV or loop
    power 9 mod POW10 big BIG-DIV or ;
 
 
 \ floor(value x 2^shift x 10^power) and whether that dropped a fraction.
-: SCALED ( n n n ptr n -- n bool ) {: value:n shift:n power:n big:ptr :}
+: SCALED ( n n n ^n -- n bool ) {: value:n shift:n power:n big:^ :}
    value big BIG-SET
    shift 0 > if shift big BIG-SHL then
    power 0 > if power big BIG-MUL-TENS then
@@ -193,7 +193,7 @@ $FFFFFFFF constant LIMB-MASK
 
 \ The shortest decimal in v's rounding interval, by PICK over v and its ends
 \ at 18 digits; floor(L x 1292913986 / 2^32) is k or k + 1, L the bit length.
-: FIND-DECIMAL ( n ptr u8 -- n n n ) {: bits:n work:ptr :}
+: FIND-DECIMAL ( n ^u8 -- n n n ) {: bits:n work:^ :}
    bits 52 rshift {: biased:n :}
    bits $FFFFFFFFFFFFF and {: mantissa:n :}
    biased 0= if mantissa -1074 else
@@ -218,10 +218,10 @@ $FFFFFFFF constant LIMB-MASK
    \ The interval is wider than the 17-digit step, so one candidate is inside.
    s least most 17 PICK drop k 17 ANSWER ;
 
-: PLAIN! ( ptr u8 n n n bool -- n )
-   {: out:ptr digits:n exponent:n precision:n negative:bool :}
+: PLAIN! ( ^u8 n n n bool -- n )
+   {: out:^ digits:n exponent:n precision:n negative:bool :}
    negative if $2D out c! 1 else 0 then {: prefix:n :}
-   out prefix + {: target:ptr :}
+   out prefix + {: target:^ :}
    exponent 0 < if
       $30 target c! $2E target 1+ c!
       exponent negate 1- 0 ?do $30 target i 2 + + c! loop
@@ -239,18 +239,18 @@ $FFFFFFFF constant LIMB-MASK
    digits divisor mod target before 1+ + precision before - PUT-DIGITS
    prefix precision 1+ + ;
 
-: FORMAT-LENGTH ( n ptr u8 -- n ) {: bits:n work:ptr :}
+: FORMAT-LENGTH ( n ^u8 -- n ) {: bits:n work:^ :}
    bits MAGNITUDE-MASK and dup 0= if
       drop work 128 + 0 0 1 bits 0 < PLAIN! exit
    then work FIND-DECIMAL {: digits:n exponent:n precision:n :}
    work 128 + digits exponent precision bits 0 < PLAIN! ;
 
-: FORMAT-WORK ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
+: FORMAT-WORK ( n ^u8 -- n ^u8 ) {: bits:n work:^ :}
    bits work FORMAT-LENGTH work 112 + CELL-VIEW ! bits work ;
 
 \ The output is copied out before the scope releases the work buffer.
-: FORMAT-COPY ( n ptr u8 n ptr u8 NUM:alloc-byte-len -- result<n,fault> )
-   drop {: bits:n out:ptr capacity:n work:ptr :}
+: FORMAT-COPY ( n ^u8 n ^u8 NUM:alloc-byte-len -- result<n,fault> )
+   drop {: bits:n out:^ capacity:n work:^ :}
    bits work FORMAT-WORK 2drop
    work 112 + CELL-VIEW @ {: len:n :}
    len capacity > if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
@@ -260,7 +260,7 @@ $FFFFFFFF constant LIMB-MASK
 public
 \ A shortest round-trip plain decimal, no terminator; equally close shortest
 \ decimals resolve away from zero, as Rust Display does.
-: FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
+: FORMAT ( r ^u8 n -- result<n,fault> ) {: value:r out:^ capacity:n :}
    value FMATH:FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    value IEEE754:F64>BITS out capacity
@@ -271,7 +271,7 @@ private
 800 constant MAX-DIGITS
 100000000000000000 constant EXPONENT-CAP
 
-: FOLD ( n n ptr n -- ) {: pending:n width:n big:ptr :}
+: FOLD ( n n ^n -- ) {: pending:n width:n big:^ :}
    width POW10 big BIG-MUL pending big BIG-ADD ;
 
 
@@ -287,30 +287,30 @@ private
    kept 1+ moved lost ;
 
 
-: COUNT-DIGITS ( n n bool ptr u8 n n bool -- n n bool )
-   {: text:ptr from:n to:n frac:bool :}
+: COUNT-DIGITS ( n n bool ^u8 n n bool -- n n bool )
+   {: text:^ from:n to:n frac:bool :}
    to from ?do text i + c@ $30 - frac COUNT-DIGIT loop ;
 
 
 \ The state: digits taken, digits pending and their count. Only the first
 \ `kept` significant digits are taken.
-: FILL-DIGIT ( n n n n n ptr n -- n n n )
-   {: taken:n pending:n width:n digit:n kept:n big:ptr :}
+: FILL-DIGIT ( n n n n n ^n -- n n n )
+   {: taken:n pending:n width:n digit:n kept:n big:^ :}
    taken kept >= taken 0= digit 0= and or if taken pending width exit then
    pending 10 * digit + {: next:n :}
    width 8 = if next 9 big FOLD taken 1+ 0 0 exit then
    taken 1+ next width 1+ ;
 
 
-: FILL-DIGITS ( n n n ptr u8 n n n ptr n -- n n n )
-   {: text:ptr from:n to:n kept:n big:ptr :}
+: FILL-DIGITS ( n n n ^u8 n n n ^n -- n n n )
+   {: text:^ from:n to:n kept:n big:^ :}
    to from ?do text i + c@ $30 - kept big FILL-DIGIT loop ;
 
 
 \ The exponent after the marker at offset - 1; once its magnitude reaches
 \ EXPONENT-CAP it grows no more.
-: EXPONENT-VALUE ( ptr u8 n n -- n )
-   {: text:ptr len:n offset:n :}
+: EXPONENT-VALUE ( ^u8 n n -- n )
+   {: text:^ len:n offset:n :}
    text len offset SIGN-SKIP {: start:n :}
    0 len start ?do
       dup EXPONENT-CAP < if 10 * text i + c@ $30 - + then
@@ -320,7 +320,7 @@ private
 
 \ Of a text GRAMMAR admits: where its digits start, its integer digits end and
 \ its fraction ends.
-: PARTS ( ptr u8 n -- n n n ) {: text:ptr len:n :}
+: PARTS ( ^u8 n -- n n n ) {: text:^ len:n :}
    text len 0 SIGN-SKIP {: first:n :}
    text len first DIGITS {: integer-end:n :}
    first integer-end text len integer-end FRACTION-END ;
@@ -328,8 +328,8 @@ private
 
 \ The count of significant digits kept, q with the value D x 10^q, D those
 \ digits, and whether a dropped digit was not 0.
-: SCAN-DECIMAL ( ptr u8 n -- n n bool )
-   {: text:ptr len:n :}
+: SCAN-DECIMAL ( ^u8 n -- n n bool )
+   {: text:^ len:n :}
    text len PARTS {: first:n integer-end:n end:n :}
    0 0 false text first integer-end false COUNT-DIGITS
    end integer-end > if text integer-end 1+ end true COUNT-DIGITS then
@@ -339,8 +339,8 @@ private
 
 
 \ Leaves D, the first `kept` significant digits, in big.
-: FILL-DECIMAL ( ptr u8 n n ptr n -- )
-   {: text:ptr len:n kept:n big:ptr :}
+: FILL-DECIMAL ( ^u8 n n ^n -- )
+   {: text:^ len:n kept:n big:^ :}
    text len PARTS {: first:n integer-end:n end:n :}
    0 0 0 text first integer-end kept big FILL-DIGITS
    end integer-end > if text integer-end 1+ end kept big FILL-DIGITS then
@@ -349,8 +349,8 @@ private
 
 \ B and s with D x 10^q = B x 2^-s, B replacing D in big, and whether B dropped
 \ a fraction. As 3402 / 1024 exceeds log2 10, B has at least 64 bits for q < 0.
-: BINARY-SCALE ( n ptr n -- n bool )
-   {: q:n big:ptr :}
+: BINARY-SCALE ( n ^n -- n bool )
+   {: q:n big:^ :}
    q 0 >= if q big BIG-MUL-TENS 0 false exit then
    q negate 3402 * 1024 / 65 + big BIG-BITS - 0 max {: s:n :}
    s big BIG-SHL q negate big BIG-DIV-TENS s swap ;
@@ -358,8 +358,8 @@ private
 
 \ The pattern of the binary64 nearest B x 2^-s, ties to even, lost a fraction
 \ below B; the round's carry runs into the exponent, up to the infinite pattern.
-: ROUNDED ( n bool ptr n -- n )
-   {: s:n lost:bool big:ptr :}
+: ROUNDED ( n bool ^n -- n )
+   {: s:n lost:bool big:^ :}
    big BIG-BITS 1- s - {: top:n :}
    top 1023 > if $7FF0000000000000 exit then
    top -1022 < if 0 s 1074 - else top 1022 + top 52 - s + then
@@ -378,8 +378,8 @@ private
    count q 0 max + q negate max 3402 * 1024 / 65 + 31 + 32 / ;
 
 
-: CONVERT ( ptr u8 n n n bool n n ptr u8 NUM:alloc-byte-len -- result<r,fault> )
-   drop {: text:ptr len:n count:n q:n dropped:bool limbs:n sign:n work:ptr :}
+: CONVERT ( ^u8 n n n bool n n ^u8 NUM:alloc-byte-len -- result<r,fault> )
+   drop {: text:^ len:n count:n q:n dropped:bool limbs:n sign:n work:^ :}
    work CELL-VIEW {: big :}
    limbs big BIG-INIT
    text len count big FILL-DECIMAL
@@ -389,8 +389,8 @@ private
 
 
 \ Decides the far ranges before it allocates; the sign joins last.
-: READ-DECIMAL ( ptr u8 n -- result<r,fault> )
-   {: text:ptr len:n :}
+: READ-DECIMAL ( ^u8 n -- result<r,fault> )
+   {: text:^ len:n :}
    text c@ $2D = if $8000000000000000 else 0 then {: sign:n :}
    text len SCAN-DECIMAL {: count:n q:n dropped:bool :}
    count 0= count q + -330 < or if sign IEEE754:BITS>F64 RESULT:OK exit then
@@ -403,8 +403,8 @@ private
 public
 \ The nearest binary64 to a signed decimal/exponent text, ties to even, zero's
 \ sign kept; padding, hex, nonfinite values and trailing bytes are refused.
-: PARSE ( ptr u8 n -- result<r,fault> )
-   {: text:ptr len:n :}
+: PARSE ( ^u8 n -- result<r,fault> )
+   {: text:^ len:n :}
    len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
    text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    text len GRAMMAR {: code:n :}

@@ -85,7 +85,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 : KERNEL-FUNCTION ( n -- n )
    {: a:n :}
    KERNEL-N @ 0 ?do i KERNEL-HOST @ a = if i KERNEL-HANDLE @ unloop exit then loop
-   a NAME-AT ROUTINE-BODY {: body:ptr bu:n has:bool :}
+   a NAME-AT ROUTINE-BODY {: body:^ bu:n has:bool :}
    has 0= if -1 exit then
    body bu  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
    ROUTINE-SITES 0 ?do  h  i ROUTINE-SITE  WLINK:INDIRECT+  loop
@@ -197,7 +197,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 : REFUSED. ( n -- )
    {: a:n :}
    s" link: a Wasm module has no " SAY
-   a NAME-AT {: name:ptr nameu:n :}
+   a NAME-AT {: name:^ nameu:n :}
    nameu 0= if s" code at " SAY a SAY-INT else name nameu SAY then
    SAY-CR ;
 
@@ -231,8 +231,8 @@ public
 
 \ Link the open space's stripped program into one Wasm module at the path, its reserve
 \ calling map-anon; the header's DP, bounds and heap start stay as the copy holds them.
-: WRITE-MODULE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: WRITE-MODULE ( ^u8 n -- )
+   {: path:^ pathu:n :}
    false GOING
    KERNEL? @ if s" link: a kernel build writes no program" 74 die then
    ENGINE? @ if s" link: a Wasm target builds no engine" 74 die then

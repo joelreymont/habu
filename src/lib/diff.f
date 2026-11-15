@@ -46,8 +46,8 @@ STRUCTURE script DERIVE addr
    FIELD a1 n
    FIELD b0 n
    FIELD b1 n
-   FIELD chg ptr n
-   FIELD groups ptr n
+   FIELD chg ^n
+   FIELD groups ^n
    FIELD count n
 ;STRUCTURE
 
@@ -64,16 +64,16 @@ STRUCTURE script DERIVE addr
 \ k1lo..k2hi are the diagonals each pass has run off the rectangle on; sx and sy
 \ are the split the bisection found.
 STRUCTURE work DERIVE addr
-   FIELD out ptr n
-   FIELD text ptr u8
-   FIELD starts ptr n
-   FIELD ids ptr n
-   FIELD map ptr n
+   FIELD out ^n
+   FIELD text ^u8
+   FIELD starts ^n
+   FIELD ids ^n
+   FIELD map ^n
    FIELD cap n
-   FIELD seen ptr n
-   FIELD seq ptr n
-   FIELD v1 ptr n
-   FIELD v2 ptr n
+   FIELD seen ^n
+   FIELD seq ^n
+   FIELD v1 ^n
+   FIELD v2 ^n
    FIELD x0 n
    FIELD y0 n
    FIELD nn n
@@ -89,7 +89,7 @@ STRUCTURE work DERIVE addr
 ;STRUCTURE
 
 STRUCTURE text
-   FIELD at ptr u8
+   FIELD at ^u8
    FIELD len n
    FIELD lines n
 ;STRUCTURE
@@ -99,25 +99,25 @@ ENUM kind edit add delete ;ENUM
 \ How a text ends its lines, as git's merge reads it at one line.
 ENUM eol crlf lf unknown ;ENUM
 
-CAST: >WORK ( ptr u8 -- ptr work )
-CAST: >SCRIPT ( ptr u8 -- ptr script )
+CAST: >WORK ( ^u8 -- ^work )
+CAST: >SCRIPT ( ^u8 -- ^script )
 
-: NTH@ ( ptr n n -- n )  cells + @ ;
-: NTH! ( n ptr n n -- )  cells + ! ;
+: NTH@ ( ^n n -- n )  cells + @ ;
+: NTH! ( n ^n n -- )  cells + ! ;
 
 
-: LINE-START? ( ptr u8 n -- bool )
+: LINE-START? ( ^u8 n -- bool )
    {: a i :}
    i 0= if true exit then
    a i 1- + c@ LF = ;
 
 
-: COUNT-LINES ( ptr u8 n -- n )
+: COUNT-LINES ( ^u8 n -- n )
    {: a u :}
    0 u 0 ?do a i LINE-START? if 1+ then loop ;
 
 
-: >TEXT ( ptr u8 n -- text )
+: >TEXT ( ^u8 n -- text )
    {: a u :}
    a u a u COUNT-LINES TEXT-MAKE ;
 
@@ -125,36 +125,36 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 : TEXT-LEN ( text -- n )  TEXT-UNMAKE drop nip ;
 
 
-: START@ ( ptr work n -- n )
+: START@ ( ^work n -- n )
    {: w g :}
    w WORK-STARTS @ g NTH@ ;
 
 
-: START! ( n ptr work n -- )
+: START! ( n ^work n -- )
    {: v w g :}
    v w WORK-STARTS @ g NTH! ;
 
 
-: ID@ ( ptr work n -- n )
+: ID@ ( ^work n -- n )
    {: w g :}
    w WORK-IDS @ g NTH@ ;
 
 
-: LINE$ ( ptr work n -- ptr u8 n )
+: LINE$ ( ^work n -- ^u8 n )
    {: w g :}
    w g START@ {: s :}
    w WORK-TEXT @ s +
    w g 1+ START@ s - ;
 
 
-: ENDS-LF? ( ptr u8 n -- bool )
+: ENDS-LF? ( ^u8 n -- bool )
    {: a u :}
    u 0= if false exit then
    a u 1- + c@ LF = ;
 
 
 \ Copy t to text offset at, its first line numbered g; the next line and offset.
-: ADD-TEXT ( ptr work text n n -- n n )
+: ADD-TEXT ( ^work text n n -- n n )
    {: w t g at :}
    t TEXT-UNMAKE drop {: a u :}
    a w WORK-TEXT @ at + u BYTE-COPY
@@ -166,7 +166,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ The map keeps a pointer into text, which lives for the whole call.
 
-: CLASS ( ptr work n -- n )
+: CLASS ( ^work n -- n )
    {: w g :}
    w WORK-MAP @ w WORK-CAP @ >COUNT w g LINE$ >LEN {: m cap a u :}
    m cap a u MAP:GET MATCH option
@@ -175,63 +175,63 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    ;MATCH ;
 
 
-: CLASSIFY ( ptr work n -- )
+: CLASSIFY ( ^work n -- )
    {: w lines :}
    w WORK-MAP @ w WORK-CAP @ >COUNT MAP:INIT
    lines 0 ?do w i CLASS w WORK-IDS @ i NTH! loop ;
 
 
 \ Line seq[p]'s class.
-: KEY@ ( ptr work n -- n )
+: KEY@ ( ^work n -- n )
    {: w p :}
    w w WORK-SEQ @ p NTH@ ID@ ;
 
 
-: DELTA ( ptr work -- n )
+: DELTA ( ^work -- n )
    {: w :}
    w WORK-NN @ w WORK-MM @ - ;
 
-: FRONT? ( ptr work -- bool )  DELTA 1 and 0<> ;
-: VLEN ( ptr work -- n )  WORK-OFF @ 2 * ;
+: FRONT? ( ^work -- bool )  DELTA 1 and 0<> ;
+: VLEN ( ^work -- n )  WORK-OFF @ 2 * ;
 
 
-: OLD@ ( ptr work n -- n )
+: OLD@ ( ^work n -- n )
    {: w x :}
    w w WORK-X0 @ x + KEY@ ;
 
 
-: NEW@ ( ptr work n -- n )
+: NEW@ ( ^work n -- n )
    {: w y :}
    w w WORK-Y0 @ y + KEY@ ;
 
 
-: AHEAD? ( ptr work n n -- bool )
+: AHEAD? ( ^work n n -- bool )
    {: w x y :}
    x w WORK-NN @ < 0= if false exit then
    y w WORK-MM @ < 0= if false exit then
    w x OLD@ w y NEW@ = ;
 
 
-: BEHIND? ( ptr work n n -- bool )
+: BEHIND? ( ^work n n -- bool )
    {: w x y :}
    x w WORK-NN @ < 0= if false exit then
    y w WORK-MM @ < 0= if false exit then
    w w WORK-NN @ x - 1- OLD@ w w WORK-MM @ y - 1- NEW@ = ;
 
 
-: SLIDE ( ptr work n n -- n )
+: SLIDE ( ^work n n -- n )
    {: w x k :}
    x begin {: p :} p w p p k - AHEAD? while 1+ repeat ;
 
 
-: SLIDE-BACK ( ptr work n n -- n )
+: SLIDE-BACK ( ^work n n -- n )
    {: w x k :}
    x begin {: p :} p w p p k - BEHIND? while 1+ repeat ;
 
 
 \ Diagonal k's starting x in round d, from the reach v recorded on its
 \ neighbours; at is k's index in v.
-: REACH ( ptr n n n n -- n )
+: REACH ( ^n n n n -- n )
    {: v at k d :}
    k d negate = if v at 1+ NTH@ exit then
    k d = if v at 1- NTH@ 1+ exit then
@@ -240,7 +240,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 
 \ The other pass's reach on the diagonal facing k, or -1 when it has none.
-: FACING ( ptr work ptr n n -- n )
+: FACING ( ^work ^n n -- n )
    {: w v k :}
    w WORK-OFF @ w DELTA + k - {: at :}
    at 0 < if -1 exit then
@@ -248,18 +248,18 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    v at NTH@ ;
 
 
-: SPLIT! ( ptr work n n -- )
+: SPLIT! ( ^work n n -- )
    {: w x y :}
    w WORK-X0 @ x + w WORK-SX !
    w WORK-Y0 @ y + w WORK-SY ! ;
 
 
-: SPLIT@ ( ptr work -- n n )
+: SPLIT@ ( ^work -- n n )
    {: w :}
    w WORK-SX @ w WORK-SY @ ;
 
 
-: FORWARD-MEETS? ( ptr work n n n -- bool )
+: FORWARD-MEETS? ( ^work n n n -- bool )
    {: w k x y :}
    w FRONT? 0= if false exit then
    w w WORK-V2 @ k FACING {: r :}
@@ -268,7 +268,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w x y SPLIT! true ;
 
 
-: REVERSE-MEETS? ( ptr work n n -- bool )
+: REVERSE-MEETS? ( ^work n n -- bool )
    {: w k x :}
    w FRONT? if false exit then
    w w WORK-V1 @ k FACING {: r :}
@@ -277,7 +277,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w r r w DELTA - k + SPLIT! true ;
 
 
-: FORWARD-ON ( ptr work n n -- bool )
+: FORWARD-ON ( ^work n n -- bool )
    {: w k d :}
    w WORK-OFF @ k + {: at :}
    w w WORK-V1 @ at k d REACH k SLIDE {: x :}
@@ -288,7 +288,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w k x y FORWARD-MEETS? ;
 
 
-: REVERSE-ON ( ptr work n n -- bool )
+: REVERSE-ON ( ^work n n -- bool )
    {: w k d :}
    w WORK-OFF @ k + {: at :}
    w w WORK-V2 @ at k d REACH k SLIDE-BACK {: x :}
@@ -301,8 +301,8 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ Round d of one pass over the diagonals still inside the rectangle; true at a
 \ meeting.
-: PASS ( ptr work n ptr n ptr n [ ptr work n n -- bool ] -- bool )
-   {: w d lo:ptr hi:ptr step :}
+: PASS ( ^work n ^n ^n [ ^work n n -- bool ] -- bool )
+   {: w d lo:^ hi:^ step :}
    d negate lo @ +
    begin {: k :} k k d hi @ - > 0= while
       w k d step execute if drop true exit then
@@ -310,7 +310,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    repeat drop false ;
 
 
-: BISECT-START ( ptr work n n n n -- )
+: BISECT-START ( ^work n n n n -- )
    {: w x0 x1 y0 y1 :}
    x0 w WORK-X0 !  y0 w WORK-Y0 !
    x1 x0 - w WORK-NN !  y1 y0 - w WORK-MM !
@@ -323,7 +323,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ A split of old x0..x1 against new y0..y1 on a shortest path, leaving both
 \ halves smaller; all of old against none of new when no path meets.
-: BISECT ( ptr work n n n n -- n n )
+: BISECT ( ^work n n n n -- n n )
    {: w x0 x1 y0 y1 :}
    w x0 x1 y0 y1 BISECT-START
    w WORK-OFF @ 0 ?do
@@ -335,36 +335,36 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ Edit scripts. COMPARE works on positions in seq, MARK maps them to lines.
 
-: SAME-LINES? ( ptr work n n n n -- bool )
+: SAME-LINES? ( ^work n n n n -- bool )
    {: w x y xe ye :}
    x xe < 0= if false exit then
    y ye < 0= if false exit then
    w x KEY@ w y KEY@ = ;
 
 
-: SAME-BEFORE? ( ptr work n n n n -- bool )
+: SAME-BEFORE? ( ^work n n n n -- bool )
    {: w x y xs ys :}
    x xs > 0= if false exit then
    y ys > 0= if false exit then
    w x 1- KEY@ w y 1- KEY@ = ;
 
 
-: HEAD ( ptr work n n n n -- n n )
+: HEAD ( ^work n n n n -- n n )
    {: w a0 a1 b0 b1 :}
    a0 b0 begin {: x y :} x y w x y a1 b1 SAME-LINES? while 1+ swap 1+ swap repeat ;
 
 
-: TAIL ( ptr work n n n n -- n n )
+: TAIL ( ^work n n n n -- n n )
    {: w a0 a1 b0 b1 :}
    a1 b1 begin {: x y :} x y w x y a0 b0 SAME-BEFORE? while 1- swap 1- swap repeat ;
 
 
-: MARK ( ptr work ptr script n n -- )
+: MARK ( ^work ^script n n -- )
    {: w s lo hi :}
    hi lo ?do 1 s SCRIPT-CHG @ w WORK-SEQ @ i NTH@ NTH! loop ;
 
 
-: COMPARE ( ptr work ptr script n n n n -- )
+: COMPARE ( ^work ^script n n n n -- )
    {: w s a0 a1 b0 b1 :}
    w a0 a1 b0 b1 HEAD {: x0 y0 :}
    w x0 a1 y0 b1 TAIL {: x1 y1 :}
@@ -375,12 +375,12 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w s x x1 y y1 RECURSE ;
 
 
-: CHANGED? ( ptr script n -- bool )
+: CHANGED? ( ^script n -- bool )
    {: s g :}
    s SCRIPT-CHG @ g NTH@ 0<> ;
 
 
-: KEPT? ( ptr script n n -- bool )
+: KEPT? ( ^script n n -- bool )
    {: s x y :}
    x s SCRIPT-A1 @ < 0= if false exit then
    y s SCRIPT-B1 @ < 0= if false exit then
@@ -388,34 +388,34 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    s y CHANGED? 0= ;
 
 
-: KEEP ( ptr script n n -- n n )
+: KEEP ( ^script n n -- n n )
    {: s i j :}
    i j begin {: x y :} x y s x y KEPT? while 1+ swap 1+ swap repeat ;
 
 
-: RUN-END ( ptr script n n -- n )
+: RUN-END ( ^script n n -- n )
    {: s i e :}
    i begin {: x :} x x e < if s x CHANGED? else false then while 1+ repeat ;
 
 
-: G@ ( ptr script n n -- n )
+: G@ ( ^script n n -- n )
    {: s g f :}
    s SCRIPT-GROUPS @ g GROUP-CELLS * f + NTH@ ;
 
 
-: G! ( n ptr script n n -- )
+: G! ( n ^script n n -- )
    {: v s g f :}
    v s SCRIPT-GROUPS @ g GROUP-CELLS * f + NTH! ;
 
 
-: ADD-GROUP ( ptr script n n n n -- )
+: ADD-GROUP ( ^script n n n n -- )
    {: s x xe y ye :}
    s SCRIPT-COUNT @ {: g :}
    x s g 0 G!  xe s g 1 G!  y s g 2 G!  ye s g 3 G!
    1 s SCRIPT-COUNT +! ;
 
 
-: GROUPS ( ptr script -- )
+: GROUPS ( ^script -- )
    {: s :}
    s SCRIPT-A0 @ s SCRIPT-B0 @
    begin {: i j :}
@@ -428,12 +428,12 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    again ;
 
 
-: UNSEE ( ptr work n n -- )
+: UNSEE ( ^work n n -- )
    {: w lo hi :}
    hi lo ?do 0 w WORK-SEEN @ w i ID@ NTH! loop ;
 
 
-: TALLY ( ptr work n n n -- )
+: TALLY ( ^work n n n -- )
    {: w lo hi side :}
    hi lo ?do
       w WORK-SEEN @ w i ID@ {: v c :}
@@ -443,7 +443,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ Each line lo..hi-1 whose class side has goes to seq from at, and any other
 \ is changed; the next free position in seq.
-: SIFT ( ptr work ptr script n n n n -- n )
+: SIFT ( ^work ^script n n n n -- n )
    {: w s lo hi side at :}
    at hi lo ?do
       w WORK-SEEN @ w i ID@ NTH@ side and 0<> if
@@ -457,7 +457,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 \ A line whose class the other side lacks can never match: it is changed
 \ first, and the search runs over the other lines alone, so dropping them
 \ keeps the edit shortest.
-: RUN ( ptr work ptr script -- )
+: RUN ( ^work ^script -- )
    {: w s :}
    s SCRIPT-A0 @ s SCRIPT-A1 @ s SCRIPT-B0 @ s SCRIPT-B1 @ {: a0 a1 b0 b1 :}
    w a0 a1 UNSEE  w b0 b1 UNSEE
@@ -468,7 +468,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    s GROUPS ;
 
 
-: RANGES! ( n n n n ptr script -- )
+: RANGES! ( n n n n ^script -- )
    {: a0 a1 b0 b1 s :}
    a0 s SCRIPT-A0 !  a1 s SCRIPT-A1 !  b0 s SCRIPT-B0 !  b1 s SCRIPT-B1 ! ;
 
@@ -499,12 +499,12 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    lines SCRIPT-SPACE k * + bytes + MEM:BYTES-ALLOC-LEN ;
 
 
-: CUT ( SPAN:span<u8> n -- SPAN:span<u8> ptr u8 )
+: CUT ( SPAN:span<u8> n -- SPAN:span<u8> ^u8 )
    {: s u :}
    s u SPAN:SKIP s u SPAN:TAKE SPAN:$ drop ;
 
 
-: OPEN ( ptr u8 NUM:alloc-byte-len ptr n n -- SPAN:span<u8> ptr work )
+: OPEN ( ^u8 NUM:alloc-byte-len ^n n -- SPAN:span<u8> ^work )
    {: base size out lines :}
    base size MEM:ALLOCATION>SPAN
    WORK-CELLS cells CUT >WORK {: w :}
@@ -520,7 +520,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w ;
 
 
-: CUT-SCRIPT ( SPAN:span<u8> n -- SPAN:span<u8> ptr script )
+: CUT-SCRIPT ( SPAN:span<u8> n -- SPAN:span<u8> ^script )
    {: s lines :}
    s SCRIPT-CELLS cells CUT >SCRIPT {: r :}
    lines 1+ GROUP-CELLS * cells CUT CELL-VIEW r SCRIPT-GROUPS !
@@ -529,45 +529,45 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 
 \ The texts' bytes take the rest of the scratch; their lines follow in order.
-: LOAD-TEXTS ( SPAN:span<u8> ptr work n -- )
+: LOAD-TEXTS ( SPAN:span<u8> ^work n -- )
    {: s w bytes :}
    s bytes CUT w WORK-TEXT ! SPAN:$ 2drop ;
 
 
-: FINISH ( ptr work n n -- )
+: FINISH ( ^work n n -- )
    {: w at lines :}
    at w lines START!
    w lines CLASSIFY ;
 
 
-: OUT$ ( ptr work ptr u8 n -- )
+: OUT$ ( ^work ^u8 n -- )
    {: w a u :}
    a u BUF:N>BLEN w WORK-OUT @ BUF:APPEND-SPAN ;
 
 
-: OUT-BYTE ( ptr work n -- )
+: OUT-BYTE ( ^work n -- )
    {: w c :}
    c w WORK-OUT @ BUF:APPEND-BYTE ;
 
 
-: OUT-LINE ( ptr work ptr u8 n -- )
+: OUT-LINE ( ^work ^u8 n -- )
    {: w a u :}
    w a u OUT$ w LF OUT-BYTE ;
 
 
-: OUT-U ( ptr work n -- )
+: OUT-U ( ^work n -- )
    {: w u :}
    u 10 < 0= if w u 10 / RECURSE then
    w u 10 mod 48 + OUT-BYTE ;
 
 
-: COPY-LINES ( ptr work n n -- )
+: COPY-LINES ( ^work n n -- )
    {: w lo hi :}
    w WORK-TEXT @ w lo START@ + w hi START@ w lo START@ - {: a u :}
    w a u OUT$ ;
 
 
-: OUT-MARKED ( ptr work n n -- )
+: OUT-MARKED ( ^work n n -- )
    {: w c g :}
    w c OUT-BYTE
    w g LINE$ {: a u :}
@@ -577,14 +577,14 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w s" \ No newline at end of file" OUT-LINE ;
 
 
-: OUT-RUN ( ptr work n n n -- )
+: OUT-RUN ( ^work n n n -- )
    {: w c lo hi :}
    hi lo ?do w c i OUT-MARKED loop ;
 
 
 \ git's start[,count]: an empty range names the line before it, and a count of
 \ one is left out.
-: OUT-RANGE ( ptr work n n -- )
+: OUT-RANGE ( ^work n n -- )
    {: w at count :}
    count 0= if w at OUT-U else w at 1+ OUT-U then
    count 1 = if exit then
@@ -592,7 +592,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w count OUT-U ;
 
 
-: FUNC? ( ptr work n -- bool )
+: FUNC? ( ^work n -- bool )
    {: w g :}
    w g LINE$ drop c@ {: c :}
    c [char] _ = c [char] $ = or if true exit then
@@ -603,7 +603,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 \ git's function line for a hunk whose old text starts at line a: the nearest
 \ old line before it starting with an ASCII letter, `_` or `$`, searched back
 \ to lo, the previous hunk's start; else fn, the previous hunk's.
-: FUNC-LINE ( ptr work n n n -- n )
+: FUNC-LINE ( ^work n n n -- n )
    {: w a lo fn :}
    a begin 1- {: g :}
       g lo < if fn exit then
@@ -612,14 +612,14 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    again ;
 
 
-: OUT-FUNC ( ptr work n -- )
+: OUT-FUNC ( ^work n -- )
    {: w g :}
    g NO-FUNC = if exit then
    w g LINE$ FUNC-MAX min RTRIM {: a u :}
    w 32 OUT-BYTE w a u OUT$ ;
 
 
-: OUT-HUNK-HEAD ( ptr work ptr script n n n n n -- )
+: OUT-HUNK-HEAD ( ^work ^script n n n n n -- )
    {: w s a ae b be fn :}
    w s" @@ -" OUT$ w a s SCRIPT-A0 @ - ae a - OUT-RANGE
    w s"  +" OUT$ w b s SCRIPT-B0 @ - be b - OUT-RANGE
@@ -628,7 +628,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ The changes first..last-1 with their context, after a hunk that started at
 \ old line lo with function line fn; this hunk's start and function line.
-: OUT-HUNK ( ptr work ptr script n n n n -- n n )
+: OUT-HUNK ( ^work ^script n n n n -- n n )
    {: w s first last lo fn :}
    s first 0 G@ CONTEXT - s SCRIPT-A0 @ max {: a :}
    s first 2 G@ s first 0 G@ a - - {: b :}
@@ -647,14 +647,14 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 
 \ The index after the last change one hunk joins to change first.
-: HUNK-END ( ptr script n -- n )
+: HUNK-END ( ^script n -- n )
    {: s first :}
    first begin {: g :} g
       g 1+ s SCRIPT-COUNT @ < if s g 1+ 0 G@ s g 1 G@ - JOIN > 0= else false then
    while 1+ repeat 1+ ;
 
 
-: OUT-MODE ( ptr work kind -- )
+: OUT-MODE ( ^work kind -- )
    {: w k :}
    k MATCH kind
       edit OF ENDOF
@@ -666,7 +666,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 \ Paths. git C-quotes a path holding a control byte, `"`, `\`, DEL or a byte
 \ past ASCII (core.quotePath), so no path byte can start a patch line.
 
-: ANY-BYTE? ( ptr u8 n [ n -- bool ] -- bool )
+: ANY-BYTE? ( ^u8 n [ n -- bool ] -- bool )
    {: a u pred :}
    u 0 ?do a i + c@ pred execute if true unloop exit then loop false ;
 
@@ -678,7 +678,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ A byte of a quoted path: C's escape letter for BEL..CR, a backslash before
 \ `"` and `\`, three octal digits for any other byte QUOTE-BYTE? admits.
-: OUT-QUOTED ( ptr work n -- )
+: OUT-QUOTED ( ^work n -- )
    {: w c :}
    c QUOTE-BYTE? 0= if w c OUT-BYTE exit then
    w [char] \ OUT-BYTE
@@ -690,7 +690,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 
 \ Prefix pre and path p as git names a side, quoted whole when p needs it.
-: OUT-NAME ( ptr work ptr u8 n ptr u8 n -- )
+: OUT-NAME ( ^work ^u8 n ^u8 n -- )
    {: w pre pu p u :}
    p u [: QUOTE-BYTE? ;] ANY-BYTE? 0= if w pre pu OUT$ w p u OUT$ exit then
    w [char] " OUT-BYTE w pre pu OUT$
@@ -700,14 +700,14 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 
 \ The rest of a `---` or `+++` line naming a side, which ends in a tab when the
 \ path holds a space.
-: OUT-SIDE ( ptr work ptr u8 n ptr u8 n -- )
+: OUT-SIDE ( ^work ^u8 n ^u8 n -- )
    {: w pre pu p u :}
    w pre pu p u OUT-NAME
    p u [: STR-SPACE = ;] ANY-BYTE? if w STR-TAB OUT-BYTE then
    w LF OUT-BYTE ;
 
 
-: OUT-NAMES ( ptr work ptr u8 n kind -- )
+: OUT-NAMES ( ^work ^u8 n kind -- )
    {: w p u k :}
    k MATCH kind
       edit OF
@@ -725,7 +725,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 \ Nothing for an edit that changes no line. An added or deleted file always
 \ has its mode line, as git writes for a regular file, and like git no names
 \ when it is empty.
-: OUT-PATCH ( ptr work ptr script ptr u8 n kind -- )
+: OUT-PATCH ( ^work ^script ^u8 n kind -- )
    {: w s p u k :}
    s SCRIPT-COUNT @ 0= k EDIT? and if exit then
    w s" diff --git " OUT$ w s" a/" p u OUT-NAME
@@ -740,7 +740,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    repeat ;
 
 
-: PATCH-BODY ( ptr u8 n text text kind ptr n ptr u8 NUM:alloc-byte-len -- )
+: PATCH-BODY ( ^u8 n text text kind ^n ^u8 NUM:alloc-byte-len -- )
    {: p u a b k out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lines :}
@@ -754,7 +754,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w s p u k OUT-PATCH ;
 
 
-: PATCH ( ptr u8 n text text kind ptr n -- )
+: PATCH ( ^u8 n text text kind ^n -- )
    {: p u a b k out :}
    p u a b k out
    a TEXT-LINES b TEXT-LINES + a TEXT-LEN b TEXT-LEN + 1 SIZE
@@ -775,13 +775,13 @@ STRUCTURE block
 
 
 \ Change g's base start, or past the end of base when s has no change g.
-: START-OF ( ptr script n -- n )
+: START-OF ( ^script n -- n )
    {: s g :}
    g s SCRIPT-COUNT @ < if s g 0 G@ exit then
    s SCRIPT-A1 @ 1+ ;
 
 
-: GROW ( ptr script ptr script n n n -- n n n )
+: GROW ( ^script ^script n n n -- n n n )
    {: o t i0 j0 e0 :}
    i0 j0 e0 begin {: i j e :}
       o i START-OF e > 0= if i 1+ j e o i 1 G@ max true
@@ -792,13 +792,13 @@ STRUCTURE block
 
 \ The lines of s's side standing for base g0..g1, which its changes first..last-1
 \ fall inside.
-: SIDE ( ptr script n n n n -- n n )
+: SIDE ( ^script n n n n -- n n )
    {: s first last g0 g1 :}
    s first 2 G@ s first 0 G@ g0 - -
    s last 1- 3 G@ g1 s last 1- 1 G@ - + ;
 
 
-: SAME-RUN? ( ptr work n n n n -- bool )
+: SAME-RUN? ( ^work n n n n -- bool )
    {: w a ae b be :}
    ae a - be b - <> if false exit then
    ae a - 0 ?do w a i + ID@ w b i + ID@ <> if false unloop exit then loop
@@ -809,7 +809,7 @@ STRUCTURE block
 \ and a line end it adds, with CR LF when neither side's line before the
 \ conflict, or first line, ends in LF alone and base's first line ends in CR LF.
 
-: CRLF-LINE? ( ptr work n -- bool )
+: CRLF-LINE? ( ^work n -- bool )
    {: w g :}
    w g LINE$ {: a u :}
    u 2 < if false exit then
@@ -821,7 +821,7 @@ STRUCTURE block
 \ The line end of the text in lines f0..f1-1 at its line g, read from the line
 \ before when g is a last line without LF; unknown when the text is empty or
 \ its only line has no LF.
-: EOL ( ptr work n n n -- eol )
+: EOL ( ^work n n n -- eol )
    {: w f0 f1 g :}
    f0 f1 = if construct eol unknown exit then
    w g LINE$ ENDS-LF? if w g CRLF-LINE? >EOL exit then
@@ -831,7 +831,7 @@ STRUCTURE block
 
 \ The line end of a side in lines f0..f1-1 whose conflict starts at line at:
 \ at the line before, or at the first line when it starts there.
-: EOL-BEFORE ( ptr work n n n -- eol )
+: EOL-BEFORE ( ^work n n n -- eol )
    {: w f0 f1 at :}
    w f0 f1 at f0 > if at 1- else f0 then EOL ;
 
@@ -844,7 +844,7 @@ STRUCTURE block
    MATCH eol crlf OF true ENDOF lf OF false ENDOF unknown OF false ENDOF ;MATCH ;
 
 
-: CRLF-NEEDED? ( ptr work ptr script ptr script n n -- bool )
+: CRLF-NEEDED? ( ^work ^script ^script n n -- bool )
    {: w o t os ts :}
    w o SCRIPT-B0 @ o SCRIPT-B1 @ os EOL-BEFORE LF-ONLY? if false exit then
    w t SCRIPT-B0 @ t SCRIPT-B1 @ ts EOL-BEFORE LF-ONLY? if false exit then
@@ -852,14 +852,14 @@ STRUCTURE block
    w g0 o SCRIPT-A1 @ g0 EOL CRLF? ;
 
 
-: OUT-EOL ( ptr work bool -- )
+: OUT-EOL ( ^work bool -- )
    {: w crlf :}
    crlf if w STR-CR OUT-BYTE then
    w LF OUT-BYTE ;
 
 
 \ A marker line and lines lo..hi-1, the last ended if it has no line end.
-: SECTION ( ptr work ptr u8 n n n bool -- )
+: SECTION ( ^work ^u8 n n n bool -- )
    {: w a u lo hi crlf :}
    w a u OUT$ w crlf OUT-EOL
    w lo hi COPY-LINES
@@ -868,7 +868,7 @@ STRUCTURE block
    w crlf OUT-EOL ;
 
 
-: CONFLICT ( ptr work n n n n n n bool -- )
+: CONFLICT ( ^work n n n n n n bool -- )
    {: w os oe g0 g1 ts te crlf :}
    w s" <<<<<<< ours" os oe crlf SECTION
    w s" ||||||| base" g0 g1 crlf SECTION
@@ -877,7 +877,7 @@ STRUCTURE block
    1 w WORK-CONFLICTS +! ;
 
 
-: RESOLVE ( ptr work ptr script ptr script block -- )
+: RESOLVE ( ^work ^script ^script block -- )
    {: w o t b :}
    b BLOCK-UNMAKE {: i i2 j j2 g0 g1 :}
    i i2 = if w t j j2 g0 g1 SIDE COPY-LINES exit then
@@ -888,7 +888,7 @@ STRUCTURE block
    w os oe g0 g1 ts te w o t os ts CRLF-NEEDED? CONFLICT ;
 
 
-: MERGE-RUN ( ptr work ptr script ptr script -- )
+: MERGE-RUN ( ^work ^script ^script -- )
    {: w o t :}
    0 0 o SCRIPT-A0 @
    begin {: i j pos :}
@@ -901,7 +901,7 @@ STRUCTURE block
    again ;
 
 
-: MERGE-BODY ( text text text ptr n ptr u8 NUM:alloc-byte-len -- bool )
+: MERGE-BODY ( text text text ^n ^u8 NUM:alloc-byte-len -- bool )
    {: a b c out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lb :}
@@ -927,21 +927,21 @@ public
 \ `--- a/P`, `+++ b/P` and hunks with three lines of context, joined when
 \ their context touches; nothing when the texts have the same lines. P is
 \ quoted and hunk headers name a function line as git's are.
-: WRITE-EDIT ( ptr u8 n ptr u8 n ptr u8 n ptr n -- )
+: WRITE-EDIT ( ^u8 n ^u8 n ^u8 n ^n -- )
    {: p u a au b bu out :}
    p u a au >TEXT b bu >TEXT construct kind edit out PATCH ;
 
 
 \ The patch adding path P with this text: `new file mode 100644`, then
 \ `--- /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-ADD ( ptr u8 n ptr u8 n ptr n -- )
+: WRITE-ADD ( ^u8 n ^u8 n ^n -- )
    {: p u b bu out :}
    p u s" " >TEXT b bu >TEXT construct kind add out PATCH ;
 
 
 \ The patch deleting path P, whose text this was: `deleted file mode 100644`,
 \ then `+++ /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-DELETE ( ptr u8 n ptr u8 n ptr n -- )
+: WRITE-DELETE ( ^u8 n ^u8 n ^n -- )
    {: p u a au out :}
    p u a au >TEXT s" " >TEXT construct kind delete out PATCH ;
 
@@ -952,7 +952,7 @@ public
 \ nothing conflicts; false when the text holds git's diff3 markers around each
 \ conflict (`<<<<<<< ours`, `||||||| base`, `=======`, `>>>>>>> theirs`), every
 \ section ending in a line end, CR LF where git's merge writes one.
-: MERGE ( ptr u8 n ptr u8 n ptr u8 n ptr n -- bool )
+: MERGE ( ^u8 n ^u8 n ^u8 n ^n -- bool )
    {: a au b bu c cu out :}
    a au >TEXT {: ta :}
    b bu >TEXT {: tb :}

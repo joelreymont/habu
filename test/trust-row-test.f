@@ -16,12 +16,12 @@ T-RESET
 
 \ TCE-CATCH answers the string's throw code, 0 when accepted. The row under test
 \ is last in the string, so a nonzero code is the row's.
-TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
+TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 : TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
 
 public
 
-: TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
+: TCE-CATCH ( ^u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
 
 \ The codes live in the package because a global `E-*` constant is
 \ src/lib/error.f's surface alone.
@@ -63,7 +63,7 @@ s\" \\ TRW-COMMENT-ONLY is named here and nowhere else\n s\q TRW-COMMENT-ONLY\q 
 
 \ The name inside a string literal that is not the row's name string: refused
 \ the same way.
-s\" : TRW-HOLDER ( -- ptr u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" : TRW-HOLDER ( -- ^u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
 
 \ The name as the row's signature string: the signature is text the parser
 \ reads, never a word, so the row is judged on the name it carries, which does

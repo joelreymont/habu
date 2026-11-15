@@ -40,33 +40,33 @@ $38 constant LENGTH-OFF          \ the message length in bits fills a block's la
 $80 constant PAD-MARK            \ the one bit appended after the message
 $FFFFFFFF constant W32
 
-: CONTEXT ( SPAN:span<u8> -- ptr u8 )
+: CONTEXT ( SPAN:span<u8> -- ^u8 )
    SPAN:$ CTX-BYTES < if E-SPAN-CAPACITY throw then ;
 
-: CHAIN ( ptr u8 -- ptr u8 )
+: CHAIN ( ^u8 -- ^u8 )
    CHAIN-OFF + ;
 
-: TAIL ( ptr u8 -- ptr u8 )
+: TAIL ( ^u8 -- ^u8 )
    TAIL-OFF + ;
 
-: PAD ( ptr u8 -- ptr u8 )
+: PAD ( ^u8 -- ^u8 )
    PAD-OFF + ;
 
-: TOTAL@ ( ptr u8 -- n )
+: TOTAL@ ( ^u8 -- n )
    TOTAL-OFF + LE:U64@ ;
 
-: TOTAL! ( n ptr u8 -- )
+: TOTAL! ( n ^u8 -- )
    TOTAL-OFF + LE:U64! ;
 
-: ZERO ( ptr u8 n -- ) {: p u:n :}
+: ZERO ( ^u8 n -- ) {: p u:n :}
    u 0 ?do 0 p i + c! loop ;
 
 \ The digest's bytes: each hash word big-endian, H0 first.
-: STORE ( digest ptr u8 -- ) {: dg p :}
+: STORE ( digest ^u8 -- ) {: dg p :}
    dg SHA1-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n w4:n :}
    w0 p BE32!  w1 p 4 + BE32!  w2 p 8 + BE32!  w3 p $C + BE32!  w4 p $10 + BE32! ;
 
-: LOAD ( ptr u8 -- digest ) {: p :}
+: LOAD ( ^u8 -- digest ) {: p :}
    p BE32@  p 4 + BE32@  p 8 + BE32@  p $C + BE32@  p $10 + BE32@
    SHA1-DIGEST:MAKE ;
 
@@ -94,10 +94,10 @@ $FFFFFFFF constant W32
 \ The schedule of FIPS 180-4 section 6.1.2 step 1, over a rolling window of
 \ sixteen words held in the block's own bytes: word t is read in place for
 \ t < 16, and from there on replaces word t - 16 in the same slot.
-: SLOT ( ptr u8 n -- ptr u8 )
+: SLOT ( ^u8 n -- ^u8 )
    $F and 4 * + ;
 
-: W ( ptr u8 n -- n ) {: blk t:n :}
+: W ( ^u8 n -- n ) {: blk t:n :}
    t 16 < if blk t SLOT BE32@ exit then
    blk t 3 - SLOT BE32@  blk t 8 - SLOT BE32@ xor
    blk t $E - SLOT BE32@ xor  blk t SLOT BE32@ xor
@@ -105,7 +105,7 @@ $FFFFFFFF constant W32
 
 \ One block into the chaining value, steps 2-4 of section 6.1.2. The schedule
 \ overwrites the block, so a block is compressed once.
-: COMPRESS ( digest ptr u8 -- digest ) {: h blk :}
+: COMPRESS ( digest ^u8 -- digest ) {: h blk :}
    h SHA1-DIGEST:UNMAKE
    80 0 do
       {: a:n b:n c:n d:n e:n :}
@@ -118,7 +118,7 @@ $FFFFFFFF constant W32
    h3 d + W32 and  h4 e + W32 and
    SHA1-DIGEST:MAKE ;
 
-: ABSORB ( ptr u8 ptr u8 n -- ptr u8 n ) {: ctx a u:n :}
+: ABSORB ( ^u8 ^u8 n -- ^u8 n ) {: ctx a u:n :}
    ctx TOTAL@ {: total:n :}
    total BLOCK-BYTES 1- and {: used:n :}
    BLOCK-BYTES used - u min {: take:n :}
@@ -136,7 +136,7 @@ public
    IV ctx CHAIN STORE
    0 ctx TOTAL! ;
 
-: FEED ( SPAN:span<u8> ptr u8 n -- ) {: s a u:n :}
+: FEED ( SPAN:span<u8> ^u8 n -- ) {: s a u:n :}
    s CONTEXT {: ctx :}
    u 0 < if E-SPAN-LENGTH throw then
    a u begin dup 0 > while ctx -rot ABSORB repeat 2drop ;
@@ -162,7 +162,7 @@ public
    total 8 * pad LENGTH-OFF + BE64!
    pad COMPRESS ;
 
-: HASH ( SPAN:span<u8> ptr u8 n -- digest ) {: s a u:n :}
+: HASH ( SPAN:span<u8> ^u8 n -- digest ) {: s a u:n :}
    s START  s a u FEED  s FINISH ;
 
 : DIGEST! ( digest SPAN:span<u8> -- )

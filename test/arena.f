@@ -14,7 +14,7 @@ require test/e2e-tree.f
 \ The fixture package whose words ARENA-TEST calls from outside it.
 package ARENA-FIX
 public
-STRUCTURE rec DERIVE addr FIELD id n FIELD note ptr u8 FIELD span SPAN:span<u8> ;STRUCTURE
+STRUCTURE rec DERIVE addr FIELD id n FIELD note ^u8 FIELD span SPAN:span<u8> ;STRUCTURE
 ARENA RECS rec
 : AFTER ( -- bool ) true ;
 private
@@ -22,7 +22,7 @@ ARENA PRECS rec
 \ Taken in this private section for the qualified declaration TOP-LEVEL makes.
 : TOP-TAKEN-NEW ( -- ) ;
 public
-: PRIV-NEW ( ptr ARENA:arena -- ptr rec ) PRECS-NEW ;
+: PRIV-NEW ( ^ARENA:arena -- ^rec ) PRECS-NEW ;
 ;package
 
 \ The declaring package spells `drop` and `swap` before its ARENA; the words
@@ -37,21 +37,21 @@ variable HITS
 public
 : GO ( -- n n n )
    0 HITS !
-   ARENA:NEW {: a:ptr :}
-   a CRECS-NEW {: r:ptr :}
+   ARENA:NEW {: a:^ :}
+   a CRECS-NEW {: r:^ :}
    7 r !
-   a [: drop 1 HITS +! ;] CRECS-NEW-DISPOSE {: s:ptr :}
+   a [: drop 1 HITS +! ;] CRECS-NEW-DISPOSE {: s:^ :}
    r @  s @  a ARENA:RELEASE  HITS @ ;
 ;package
 
 package ARENA-TEST
 
-STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena FIELD id n ;STRUCTURE
+STRUCTURE holder DERIVE addr FIELD arena ^ARENA:arena FIELD id n ;STRUCTURE
 HEAP HOLDERS holder
 DYNAMIC-BUFFER HOLDBUF holder
 
 100 constant TAKEN-N
-TAKEN-N TYPED-BUFFER SEEN ptr ARENA-FIX:rec
+TAKEN-N TYPED-BUFFER SEEN ^ARENA-FIX:rec
 TAKEN-N BUFFER: SPAN-BUF
 
 \ What each disposal action saw: the record's id and address, in run order.
@@ -59,23 +59,23 @@ TAKEN-N BUFFER: SPAN-BUF
 4 TYPED-BUFFER LOG-AT n
 variable LOG-N
 
-TYPED-VARIABLE EVAL-A ptr u8
+TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
-: EVAL ( ptr u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
+: EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( ptr u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
+: MULTI ( ^u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
 
-: ABSENT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+: ABSENT ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n sfx:^ sfxu:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
    SB$ get-current search-wl 0= TTRUE ;
 
 
-: NO-WORDS ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: NO-WORDS ( ^u8 n -- )
+   {: name:^ nameu:n :}
    name nameu s" -NEW" ABSENT
    name nameu s" -NEW-DISPOSE" ABSENT ;
 
@@ -84,7 +84,7 @@ variable EVAL-U
 \ narrower than `rec`, loses its id or the span of that length in its last field.
 : RECORDS ( -- )
    s" NAME-NEW answers zeroed, cell-aligned, distinct records that keep their fields" T-LABEL
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    TAKEN-N 0 do
       a ARENA-FIX:RECS-NEW
       dup ARENA--FIX-REC:ID @ 0 T=
@@ -104,8 +104,8 @@ variable EVAL-U
    a ARENA:RELEASE ;
 
 
-: NOTE ( ptr ARENA-FIX:rec -- )
-   {: r:ptr :}
+: NOTE ( ^ARENA-FIX:rec -- )
+   {: r:^ :}
    LOG-N @ {: k:n :}
    r ARENA--FIX-REC:ID @ k LOG-ID !
    r NULL-PTR - k LOG-AT !
@@ -116,9 +116,9 @@ variable EVAL-U
 : DISPOSALS ( -- )
    s" NAME-NEW-DISPOSE's actions run once at reset, newest first" T-LABEL
    0 LOG-N !
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE NULL-PTR - {: at1:n :}
-   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r2:ptr :}
+   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r2:^ :}
    2 r2 ARENA--FIX-REC:ID !
    r2 NULL-PTR - {: at2:n :}
    LOG-N @ 0 T=
@@ -130,7 +130,7 @@ variable EVAL-U
    a ARENA:RESET
    LOG-N @ 2 T=
    s" an action registered after the reset runs at release" T-LABEL
-   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r3:ptr :}
+   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r3:^ :}
    3 r3 ARENA--FIX-REC:ID !
    r3 NULL-PTR - {: at3:n :}
    a ARENA:RELEASE
@@ -148,24 +148,24 @@ variable EVAL-U
    s" a public declaration leaves its package's section public" T-LABEL
    ARENA-FIX:AFTER TTRUE
    s" a private declaration's words are not found from another package" T-LABEL
-   s" : P1 ( ptr ARENA:arena -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL CHECKER-REJECT-RC T=
-   s" : P2 ( ptr ARENA:arena [ ptr ARENA-FIX:rec -- ] -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL CHECKER-REJECT-RC T=
+   s" : P1 ( ^ARENA:arena -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL CHECKER-REJECT-RC T=
+   s" : P2 ( ^ARENA:arena [ ^ARENA-FIX:rec -- ] -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL CHECKER-REJECT-RC T=
    s" P1" get-current search-wl 0= TTRUE ;
 
 
 : HANDLES ( -- )
    s" a HEAP element holds an arena handle" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   HOLDERS-NEW {: h:ptr :}
+   ARENA:NEW {: a:^ :}
+   HOLDERS-NEW {: h:^ :}
    a h HOLDER-ARENA !
-   h HOLDER-ARENA @ {: b:ptr :}
+   h HOLDER-ARENA @ {: b:^ :}
    b NULL-PTR - a NULL-PTR - T=
    b ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
    h HOLDERS-RELEASE
    s" and so does a DYNAMIC-BUFFER element" T-LABEL
    2 HOLDBUF-RESERVE
    a 1 HOLDBUF HOLDER-ARENA !
-   1 HOLDBUF HOLDER-ARENA @ {: c:ptr :}
+   1 HOLDBUF HOLDER-ARENA @ {: c:^ :}
    c NULL-PTR - a NULL-PTR - T=
    c ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
    HOLDBUF-RELEASE
@@ -174,11 +174,11 @@ variable EVAL-U
 
 \ Whether NAME+SFX (PUB-ABSENT) or each of NAME's two words (PUB-NO-WORDS) is
 \ absent from ARENA-TEST's public section; the caller is in its private one.
-: PUB-ABSENT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+: PUB-ABSENT ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n sfx:^ sfxu:n :}
    s" public" EVAL 0 T=  name nameu sfx sfxu ABSENT  s" private" EVAL 0 T= ;
-: PUB-NO-WORDS ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: PUB-NO-WORDS ( ^u8 n -- )
+   {: name:^ nameu:n :}
    s" public" EVAL 0 T=  name nameu NO-WORDS  s" private" EVAL 0 T= ;
 
 
@@ -223,7 +223,7 @@ private
    s" a qualified name declares both words in that package's public section" T-LABEL
    s" ARENA ARENA-TEST:QUAL n" EVAL 0 T=
    s" ARENA:NEW dup ARENA-TEST:QUAL-NEW drop ARENA:RELEASE" EVAL 0 T=
-   s" : QUAL-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
+   s" : QUAL-USE ( ^ARENA:arena -- ^n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
    EVAL 0 T=
    s" and refuses one whose word is taken in that package's private section" T-LABEL
    s" public ARENA ARENA-TEST:TAKEN n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
@@ -231,20 +231,20 @@ private
    s" ARENA ARENA-FIX:PRECS n" EVAL E-DUP-DEFINITION T= ;
 
 
-: VERIFY-USES-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ptr ARENA:arena -- ptr rec ) [: drop ;] X-NEW-DISPOSE ;\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\npublic\n: MK ( ptr ARENA:arena -- ptr n ) X-NEW ;\n;package\n" ;
+: VERIFY-USES-SRC$ ( -- ^u8 n )
+   S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ^ARENA:arena -- ^rec ) [: drop ;] X-NEW-DISPOSE ;\n;package\npackage R public\n: U ( ^ARENA:arena -- ^Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\npublic\n: MK ( ^ARENA:arena -- ^n ) X-NEW ;\n;package\n" ;
 
-: VERIFY-WRONG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
+: VERIFY-WRONG-SRC$ ( -- ^u8 n )
+   S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ^ARENA:arena -- ^u8 ) Q:X-NEW ;\n: V ( ^ARENA:arena -- ^n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
 
-: VERIFY-TAKEN-SRC$ ( -- ptr u8 n )
+: VERIFY-TAKEN-SRC$ ( -- ^u8 n )
    S\" require src/lib/arena.f\npackage Q\nprivate\n: X-NEW ( -- ) ;\n;package\nARENA Q:X n\n" ;
 
-: VERIFY-QUAL-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/arena.f\npackage Q public\n;package\nARENA Q:Y n\npackage R public\n: U ( ptr ARENA:arena -- ptr n ) Q:Y-NEW ;\n;package\n" ;
+: VERIFY-QUAL-SRC$ ( -- ^u8 n )
+   S\" require src/lib/arena.f\npackage Q public\n;package\nARENA Q:Y n\npackage R public\n: U ( ^ARENA:arena -- ^n ) Q:Y-NEW ;\n;package\n" ;
 
-: VERIFY-FILE ( ptr u8 n -- )
-   {: rel:ptr relu:n :}
+: VERIFY-FILE ( ^u8 n -- )
+   {: rel:^ relu:n :}
    s" tools/check.f" E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+
@@ -296,7 +296,7 @@ public
    s" a declaration outside any package defines both words" T-LABEL
    s" ARENA TOP n" EVAL 0 T=
    s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
-   s" : TOP-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
+   s" : TOP-USE ( ^ARENA:arena -- ^n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
    s" and a qualified one whose word is taken in that package's private section is refused" T-LABEL
    s" ARENA ARENA-FIX:TOP-TAKEN n" EVAL E-DUP-DEFINITION T= ;
 

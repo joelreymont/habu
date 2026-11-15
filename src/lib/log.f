@@ -78,7 +78,7 @@ variable TAIL
 
 
 \ The line written for a lost one: a stamp, then the text.
-: NOTICE-TEXT$ ( -- ptr u8 n )  S\"  error log: out of memory, a line was lost\n" ;
+: NOTICE-TEXT$ ( -- ^u8 n )  S\"  error log: out of memory, a line was lost\n" ;
 DATE:TIME-LEN NOTICE-TEXT$ nip + constant NOTICE-U
 NOTICE-U BUFFER: NOTICE
 NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
@@ -117,7 +117,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : STAMP ( -- )
-   0 ROW DATE:TIME-LEN BUF:N>BLEN BUF:GROW SPAN:$ {: at:ptr u:n :}
+   0 ROW DATE:TIME-LEN BUF:N>BLEN BUF:GROW SPAN:$ {: at:^ u:n :}
    epoch-seconds at u DATE:FORMAT-EPOCH-UTC 2drop ;
 
 
@@ -127,7 +127,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    STAMP ;
 
 
-: LEVEL$ ( level -- ptr u8 n )
+: LEVEL$ ( level -- ^u8 n )
    LEVEL>N {: n:n :}
    n ERROR-N = if s" error" exit then
    n WARN-N = if s" warn" exit then
@@ -151,15 +151,15 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 \ Appends at[from, to).
-: RUN+ ( ptr u8 n n -- )
-   {: at:ptr from:n to:n :}
+: RUN+ ( ^u8 n n -- )
+   {: at:^ from:n to:n :}
    at from + to from - BUF:N>BLEN 0 ROW BUF:APPEND-SPAN ;
 
 
 \ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
 \ before any byte of the text is read.
-: ESCAPED+ ( ptr u8 n -- )
-   {: at:ptr u:n :}
+: ESCAPED+ ( ^u8 n -- )
+   {: at:^ u:n :}
    0 ROW  0 ROW BUF:LEN@ BUF:BLEN>N u BUF:N>BLEN BUF:BLEN>N + BUF:N>BLEN  BUF:ENSURE
    0 u 0 ?do
       at i + c@ ESCAPE? if
@@ -171,7 +171,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    at swap u RUN+ ;
 
 
-: LF$ ( -- ptr u8 n )  S\" \n" ;
+: LF$ ( -- ^u8 n )  S\" \n" ;
 
 
 \ One lone LF to fd 2, under the caller's SIGPIPE hold. A one-byte write that
@@ -244,7 +244,7 @@ public
 : INFO ( -- level )  INFO-N >LEVEL ;
 
 
-: TEXT+ ( ptr u8 n -- )
+: TEXT+ ( ^u8 n -- )
    PHASE @ OPENED <> if 2drop exit then
    [: 2dup ESCAPED+ ;] catch >r 2drop r> MAP-REFUSED ;
 
@@ -256,13 +256,13 @@ public
 \ `-9701 MODEL:E-KEY: the provider refused the key`, the number alone when none.
 : CODE+ ( n -- ) {: code:n :}
    code INT+
-   code ERROR:NAME$ {: name:ptr nameu:n :}
+   code ERROR:NAME$ {: name:^ nameu:n :}
    nameu 0= if exit then
    s"  " TEXT+ name nameu TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
-: LINE ( level ptr u8 n -- )
-   {: level:level tag:ptr tagu:n :}
+: LINE ( level ^u8 n -- )
+   {: level:level tag:^ tagu:n :}
    CLOSED PHASE !
    [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED
    s"  " TEXT+  level LEVEL$ TEXT+  s"  " TEXT+

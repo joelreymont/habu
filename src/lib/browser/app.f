@@ -32,16 +32,16 @@ private
 
 \ The path of the named file beside this one; it holds only while this file
 \ loads.
-: PATH ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: PATH ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
    a u SOURCE-ROOT:JOIN ;
 
 
 \ A file that changed size since it was measured is E-FS-IO, or E-FS-CAPACITY.
-: READ ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n dst:ptr cap:n :}
-   a u PATH {: path:ptr pathu:n :}
+: READ ( ^u8 n ^u8 n -- )
+   {: a:^ u:n dst:^ cap:n :}
+   a u PATH {: path:^ pathu:n :}
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
 s" app.html" PATH FS:FILE-SIZE constant HTML-U
@@ -89,17 +89,17 @@ DIGEST ID SHA256>HEX
 
 \ The offset of the marker in app.html at or after the offset; each marker
 \ follows the one before it.
-: MARK ( ptr u8 n n -- n )
-   {: m:ptr mu:n from:n :}
+: MARK ( ^u8 n n -- n )
+   {: m:^ mu:n from:n :}
    HTML HTML-U m mu from FIND-SUB-FROM MATCH option
       none OF s" hb: src/lib/browser/app.html lacks a marker in order" 1 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 
 
-: TITLE-MARK ( -- ptr u8 n )  s" <!--title-->" ;
-: ID-MARK ( -- ptr u8 n )  s" <!--page-id-->" ;
-: APP-MARK ( -- ptr u8 n )  s" <!--app.js-->" ;
+: TITLE-MARK ( -- ^u8 n )  s" <!--title-->" ;
+: ID-MARK ( -- ^u8 n )  s" <!--page-id-->" ;
+: APP-MARK ( -- ^u8 n )  s" <!--app.js-->" ;
 
 TITLE-MARK 0 MARK constant TITLE-AT
 TITLE-AT TITLE-MARK nip + constant TITLE-END
@@ -111,26 +111,26 @@ APP-AT APP-MARK nip + constant APP-END
 \ The longest escape ESCAPE-TEXT writes for one byte: &amp; and &#13;.
 5 constant WIDEST
 
-: SPAN+ ( ptr u8 n ptr a -- )
-   {: a:ptr u:n buf:ptr :}
+: SPAN+ ( ^u8 n ^a -- )
+   {: a:^ u:n buf:^ :}
    a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
 
-: GAP+ ( n n ptr a -- )
-   {: from:n to:n buf:ptr :}
+: GAP+ ( n n ^a -- )
+   {: from:n to:n buf:^ :}
    HTML from + to from - buf SPAN+ ;
 
 
-: BASE64+ ( ptr u8 n ptr a -- )
-   {: a:ptr u:n buf:ptr :}
+: BASE64+ ( ^u8 n ^a -- )
+   {: a:^ u:n buf:^ :}
    u 2 + 3 / 4 * {: len:n :}
    buf len BUF:N>BLEN BUF:GROW {: out :}
    a u out BASE64:ENCODE drop ;
 
 
 \ The escaped title and the BUF.
-: COMPOSE ( ptr u8 n ptr a -- )
-   {: t:ptr tu:n buf:ptr :}
+: COMPOSE ( ^u8 n ^a -- )
+   {: t:^ tu:n buf:^ :}
    0 TITLE-AT buf GAP+  t tu buf SPAN+
    TITLE-END ID-AT buf GAP+  ID ID-U buf SPAN+
    ID-END APP-AT buf GAP+  APP APP-U buf BASE64+
@@ -139,22 +139,22 @@ APP-AT APP-MARK nip + constant APP-END
 
 \ Escapes the title into the scratch bytes before the BUF is touched, so a
 \ title ESCAPE-TEXT refuses leaves the BUF as it was.
-: ESCAPED ( ptr u8 n ptr a n ptr u8 NUM:alloc-byte-len -- )
-   drop {: t:ptr tu:n buf:ptr cap:n s:ptr :}
+: ESCAPED ( ^u8 n ^a n ^u8 NUM:alloc-byte-len -- )
+   drop {: t:^ tu:n buf:^ cap:n s:^ :}
    t tu s cap XML:ESCAPE-TEXT {: n:n :}
    s n buf COMPOSE ;
 
 
 \ A member of CODE+'s files: the file's name and its bytes as base64.
-: MEMBER+ ( ptr u8 n ptr u8 n ptr a -- )
-   {: name:ptr nu:n a:ptr u:n buf:ptr :}
+: MEMBER+ ( ^u8 n ^u8 n ^a -- )
+   {: name:^ nu:n a:^ u:n buf:^ :}
    s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
    a u buf BASE64+  s\" \"" buf SPAN+ ;
 
 
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.
-: FILES-FED ( ptr u8 -- )
-   {: sha:ptr :}
+: FILES-FED ( ^u8 -- )
+   {: sha:^ :}
    sha VIEW-HTML VIEW-HTML-U SHA256-FEED
    sha VIEW-JS VIEW-JS-U SHA256-FEED
    sha TURN TURN-U SHA256-FEED
@@ -165,37 +165,37 @@ APP-AT APP-MARK nip + constant APP-END
 
 \ The scratch bytes hold the SHA-256 context, then the digest; the BUF grows
 \ only once the digest is done.
-: HASHED ( ptr u8 n ptr a ptr u8 NUM:alloc-byte-len -- )
-   drop {: m:ptr mu:n buf:ptr sha:ptr :}
+: HASHED ( ^u8 n ^a ^u8 NUM:alloc-byte-len -- )
+   drop {: m:^ mu:n buf:^ sha:^ :}
    sha SHA256-BEGIN  sha m mu SHA256-FEED  sha FILES-FED
-   sha SHA256-CTX-BYTES + {: dg:ptr :}
+   sha SHA256-CTX-BYTES + {: dg:^ :}
    sha dg SHA256-END
-   buf ID-U BUF:N>BLEN BUF:GROW SPAN:$ drop {: hex:ptr :}
+   buf ID-U BUF:N>BLEN BUF:GROW SPAN:$ drop {: hex:^ :}
    dg hex SHA256>HEX ;
 
 public
 
 \ The title and the BUF the page is appended to; a title that is not XML text
 \ is refused.
-: PAGE+ ( ptr u8 n ptr a -- )
-   {: t:ptr tu:n buf:ptr :}
+: PAGE+ ( ^u8 n ^a -- )
+   {: t:^ tu:n buf:^ :}
    \ An allocation is never empty, so an empty title takes one escape's room.
    tu 1 max WIDEST * {: cap:n :}
    t tu buf cap  cap MEM:BYTES-ALLOC-LEN [: ESCAPED ;] MEM:WITH-BYTES ;
 
 
 \ The app-only tool the page calls, with arguments {}, for its code.
-: CODE-TOOL$ ( -- ptr u8 n )  s" view_code" ;
+: CODE-TOOL$ ( -- ^u8 n )  s" view_code" ;
 
 \ The app-only tool the view calls, with arguments {}, for its socket; its
 \ result's _meta is {"url":"<the socket's ws: or wss: URL>","seconds":<n>},
 \ the seconds after which the view asks for the URL again.
-: SOCKET-TOOL$ ( -- ptr u8 n )  s" view_socket" ;
+: SOCKET-TOOL$ ( -- ^u8 n )  s" view_socket" ;
 
 \ The module's bytes and the BUF their code id is appended to: the SHA-256,
 \ as 64 lowercase hex digits, of the module's bytes, then view.html's,
 \ view.js's, turn.js's, viewport.js's, page.js's and socket.js's.
-: CODE-ID+ ( ptr u8 n ptr a -- )
+: CODE-ID+ ( ^u8 n ^a -- )
    SHA256-CTX-BYTES $20 + MEM:BYTES-ALLOC-LEN
    [: HASHED ;] MEM:WITH-BYTES ;
 
@@ -203,8 +203,8 @@ public
 \ {"page":"<page id>","code":"<CODE-ID+>","files":{"view.html":"<base64>",
 \ "view.js":…,"turn.js":…,"viewport.js":…,"page.js":…,"socket.js":…,
 \ "module":…}}. The BUF must not hold the module.
-: CODE+ ( ptr u8 n ptr a -- )
-   {: m:ptr mu:n buf:ptr :}
+: CODE+ ( ^u8 n ^a -- )
+   {: m:^ mu:n buf:^ :}
    s\" {\"page\":\"" buf SPAN+  ID ID-U buf SPAN+
    s\" \",\"code\":\"" buf SPAN+  m mu buf CODE-ID+
    s\" \",\"files\":{" buf SPAN+

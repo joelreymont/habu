@@ -18,12 +18,12 @@ create BUF CAP allot
 : CAPTURE-OFF ( -- )
    REJECTION:BUFFER-OFF
    false REJECTION:JSON ! ;
-: CAPTURED$ ( -- ptr u8 n ) REJECTION:BUFFER$ ;
+: CAPTURED$ ( -- ^u8 n ) REJECTION:BUFFER$ ;
 
 variable SI
 
-: AT? ( ptr u8 n ptr u8 n -- bool )     \ haystack tail, needle: needle starts here?
-   {: ha:ptr hu:n na:ptr nu:n :}
+: AT? ( ^u8 n ^u8 n -- bool )     \ haystack tail, needle: needle starts here?
+   {: ha:^ hu:n na:^ nu:n :}
    nu hu > IF 0 0= 0= EXIT THEN
    0 BEGIN dup nu < WHILE
       dup na + c@  over ha + c@ <> IF drop 0 0= 0= EXIT THEN
@@ -38,19 +38,19 @@ public
 : JSON ( -- ) true CAPTURE-ON ;
 : OFF ( -- ) CAPTURE-OFF ;
 
-: TEXT$ ( -- ptr u8 n ) CAPTURED$ ;
+: TEXT$ ( -- ^u8 n ) CAPTURED$ ;
 : LEN ( -- n ) CAPTURED$ nip ;
 : SILENT? ( -- bool ) LEN 0= ;
 
 \ Byte equality of two spans, for asserting a packet field against a literal
 \ when the field is read back through DECL-REJECT's reflection rather than out
 \ of a rendered line.
-: SAME? ( ptr u8 n ptr u8 n -- bool ) {: aa:ptr au:n ba:ptr bu:n :}
+: SAME? ( ^u8 n ^u8 n -- bool ) {: aa:^ au:n ba:^ bu:n :}
    au bu <> IF 0 0= 0= EXIT THEN
    aa au ba bu AT? ;
 
-: HAS? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
-   CAPTURED$ {: ha:ptr hu:n :}
+: HAS? ( ^u8 n -- bool ) {: na:^ nu:n :}
+   CAPTURED$ {: ha:^ hu:n :}
    0 SI !
    BEGIN SI @ nu + hu <= WHILE
       ha SI @ +  hu SI @ -  na nu AT? IF 0 0= EXIT THEN

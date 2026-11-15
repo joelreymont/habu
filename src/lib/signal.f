@@ -109,19 +109,19 @@ SCRATCH-VARIABLE READY             \ 1 from INIT to RELEASE, else 0
 
 PROCESS-SYMBOLS
 
-FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
+FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 ;FUNCTION
 
-: ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
+: ZERO-BYTES ( ^u8 n -- ) {: a:^ u :}
    0 begin dup u < while
       0 over a + c!
       1+
    repeat drop ;
 
-: SIGNO-BUF ( -- ptr u8 )
+: SIGNO-BUF ( -- ^u8 )
    0 SIGNO-STORAGE ;
 
-: ABI-SLOT ( n -- ptr n ) {: off:n :}
+: ABI-SLOT ( n -- ^n ) {: off:n :}
    data-base off + ;
 
 : STUB-CELL@ ( -- n )
@@ -133,10 +133,10 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ The published pointer read AS a pointer. Reaching the fd word by an offset of
 \ this task's own region instead would name a different word in every task and
 \ a zero one in a spawned task; the address is what makes it one word.
-: FD-WORD-PUBLISHED ( -- ptr n )
+: FD-WORD-PUBLISHED ( -- ^n )
    SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ ;
 
-: FD-WORD ( -- ptr n )
+: FD-WORD ( -- ^n )
    FD-WORD-A @ ;
 
 : ARM ( n -- )
@@ -433,7 +433,7 @@ public
 \ written to the pipe and read by nobody. The die ends a process whose signal
 \ another thread took, with the status a shell gives that death; it is not
 \ reached when this one took it.
-: DIE-OF ( ptr u8 n n -- ) {: msg:ptr msgu:n sig:n :}
+: DIE-OF ( ^u8 n n -- ) {: msg:^ msgu:n sig:n :}
    RELEASE
    getpid >PID sig PROCESS:KILL-RAW drop
    msg msgu 128 sig + die ;

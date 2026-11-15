@@ -32,31 +32,31 @@ create UB-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE UB-JSON-W JSON:writer
 variable UB-JSON-READY
 
-: UB-JSON-WRITER ( -- ptr JSON:writer )
+: UB-JSON-WRITER ( -- ^JSON:writer )
    UB-JSON-READY @ 0= if
       UB-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 UB-JSON-READY !
    then
    UB-JSON-W UB-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
-TYPED-VARIABLE UB-FILE-A ptr u8
+TYPED-VARIABLE UB-FILE-A ^u8
 variable UB-FILE-U
-TYPED-VARIABLE UB-LABEL-A ptr u8
+TYPED-VARIABLE UB-LABEL-A ^u8
 variable UB-LABEL-U
-TYPED-VARIABLE UB-SRC-A ptr u8
+TYPED-VARIABLE UB-SRC-A ^u8
 DYNAMIC-BUFFER UB-SRC-MEM u8   \ the file being scanned, read whole; released after its scan
 variable UB-SRC-U
 variable UB-I
 variable UB-LINE
 variable UB-COL
-TYPED-VARIABLE UB-TOK-A ptr u8
+TYPED-VARIABLE UB-TOK-A ^u8
 variable UB-TOK-U
 variable UB-TOK-BYTE
 variable UB-TOK-LINE
 variable UB-TOK-COL
-TYPED-VARIABLE UB-PREV-A ptr u8
+TYPED-VARIABLE UB-PREV-A ^u8
 variable UB-PREV-U
-TYPED-VARIABLE UB-PREV2-A ptr u8
+TYPED-VARIABLE UB-PREV2-A ^u8
 variable UB-PREV2-U
 variable UB-BAD
 variable UB-CHECK-OFF
@@ -68,43 +68,43 @@ variable UB-JSON
 variable UB-STRICT-BOUNDARY
 variable UB-OUT-FD
 
-: UB-FILE-A@ ( -- ptr u8 )
+: UB-FILE-A@ ( -- ^u8 )
    UB-FILE-A @ ;
 
-: UB-FILE$ ( -- ptr u8 n )
+: UB-FILE$ ( -- ^u8 n )
    UB-FILE-A@ UB-FILE-U @ ;
 
-: UB-LABEL$ ( -- ptr u8 n )
+: UB-LABEL$ ( -- ^u8 n )
    UB-LABEL-A @ UB-LABEL-U @ ;
 
-: UB-SRC-A@ ( -- ptr u8 )
+: UB-SRC-A@ ( -- ^u8 )
    UB-SRC-A @ ;
 
-: UB-TOK-A@ ( -- ptr u8 )
+: UB-TOK-A@ ( -- ^u8 )
    UB-TOK-A @ ;
 
-: UB-PREV-A@ ( -- ptr u8 )
+: UB-PREV-A@ ( -- ^u8 )
    UB-PREV-A @ ;
 
-: UB-PREV2-A@ ( -- ptr u8 )
+: UB-PREV2-A@ ( -- ^u8 )
    UB-PREV2-A @ ;
 
-: UB-FILE-A! ( ptr u8 -- )
+: UB-FILE-A! ( ^u8 -- )
    UB-FILE-A ! ;
 
-: UB-LABEL-A! ( ptr u8 -- )
+: UB-LABEL-A! ( ^u8 -- )
    UB-LABEL-A ! ;
 
-: UB-SRC-A! ( ptr u8 -- )
+: UB-SRC-A! ( ^u8 -- )
    UB-SRC-A ! ;
 
-: UB-TOK-A! ( ptr u8 -- )
+: UB-TOK-A! ( ^u8 -- )
    UB-TOK-A ! ;
 
-: UB-PREV-A! ( ptr u8 -- )
+: UB-PREV-A! ( ^u8 -- )
    UB-PREV-A ! ;
 
-: UB-PREV2-A! ( ptr u8 -- )
+: UB-PREV2-A! ( ^u8 -- )
    UB-PREV2-A ! ;
 
 : UB-TRUE ( -- bool )
@@ -133,10 +133,10 @@ private
    dup UB-CHECK-OFF !
    UB-CARRY-OFF ! ;
 
-: UB-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
+: UB-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    fd a u LINT-OUT-WRITE ;
 
-: UB-OUT ( ptr u8 n -- )
+: UB-OUT ( ^u8 n -- )
    UB-OUT-FD @ -rot UB-WRITE ;
 
 : UB-C ( n -- )
@@ -146,7 +146,7 @@ private
 : UB-NL ( -- )
    UB-LF UB-C ;
 
-: UB-U$ ( n -- ptr u8 n )
+: UB-U$ ( n -- ^u8 n )
    {: u:n :}
    UB-NUM-CAP UB-NUM-I !
    u 0= if
@@ -219,33 +219,33 @@ private
       else drop exit then then then
    repeat ;
 
-: UB-TOK$ ( -- ptr u8 n )
+: UB-TOK$ ( -- ^u8 n )
    UB-TOK-A@ UB-TOK-U @ ;
 
-: UB-PREV$ ( -- ptr u8 n )
+: UB-PREV$ ( -- ^u8 n )
    UB-PREV-A@ UB-PREV-U @ ;
 
-: UB-PREV2$ ( -- ptr u8 n )
+: UB-PREV2$ ( -- ^u8 n )
    UB-PREV2-A@ UB-PREV2-U @ ;
 
-: UB-TOK= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-TOK= ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-TOK$ a u LINT-STR= ;
 
-: UB-PREV= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-PREV= ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-PREV$ a u LINT-STR= ;
 
-: UB-TOK=CI ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-TOK=CI ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-TOK$ a u LINT-STR=CI ;
 
-: UB-PREV=CI ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-PREV=CI ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-PREV$ a u LINT-STR=CI ;
 
-: UB-PREV2= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-PREV2= ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-PREV2$ a u LINT-STR= ;
 
 : UB-SAVE-PREV ( -- )
@@ -322,18 +322,18 @@ private
 : UB-SEMI? ( -- bool )
    s" ;" UB-TOK= ;
 
-: UB-HOOK-NAME? ( ptr u8 n -- bool )
+: UB-HOOK-NAME? ( ^u8 n -- bool )
    s" CHECK-HOOK" LINT-ENDS-WITH? ;
 
-: UB-JSON-BASE ( ptr u8 n -- ptr JSON:writer )
-   {: code:ptr codeu:n :}
+: UB-JSON-BASE ( ^u8 n -- ^JSON:writer )
+   {: code:^ codeu:n :}
    UB-JSON-WRITER JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" repair_class" s" trusted_boundary_required" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA ;
 
-: UB-JSON-ORIGIN ( ptr JSON:writer -- ptr JSON:writer )
+: UB-JSON-ORIGIN ( ^JSON:writer -- ^JSON:writer )
    s" token" UB-TOK$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token_index" 0 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" file" UB-LABEL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -342,16 +342,16 @@ private
    s" byte_start" UB-TOK-BYTE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" byte_end" UB-TOK-BYTE @ UB-TOK-U @ + JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
 
-: UB-JSON-FINISH ( ptr JSON:writer ptr u8 n ptr u8 n -- )
-   {: expected:ptr expectedu:n actual:ptr actualu:n :}
+: UB-JSON-FINISH ( ^JSON:writer ^u8 n ^u8 n -- )
+   {: expected:^ expectedu:n actual:^ actualu:n :}
    s" expected" expected expectedu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" actual" actual actualu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" suggestion"
    s" Keep generated/user code checked; move checker mutations behind an audited boundary."
    JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END JSON:WRITTEN$ UB-OUT UB-NL ;
 
-: UB-JSON-DEFINITION ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: UB-JSON-DEFINITION ( ^u8 n -- )
+   {: name:^ nu:n :}
    s" E-UNCHECKED-DEFINITION" UB-JSON-BASE
    s" word" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
@@ -381,8 +381,8 @@ private
    UB-JSON-ORIGIN
    s" audited top-check hook" UB-PREV$ UB-JSON-FINISH ;
 
-: UB-REPORT-DEFINITION ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: UB-REPORT-DEFINITION ( ^u8 n -- )
+   {: name:^ nu:n :}
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if name nu UB-JSON-DEFINITION exit then
    s" UNCHECKED-DEFINITION " UB-OUT
@@ -530,7 +530,7 @@ private
       UB-SAVE-PREV
    repeat ;
 
-: UB-SRC-ROOM ( n -- ptr u8 )
+: UB-SRC-ROOM ( n -- ^u8 )
    UB-SRC-MEM-RESERVE 0 UB-SRC-MEM ;
 
 \ The file is read to its end however it grows while it is read: its size,
@@ -563,8 +563,8 @@ public
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it
 \ in every report.
-: FILE-AS ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pu:n label:ptr lu:n :}
+: FILE-AS ( ^u8 n ^u8 n -- )
+   {: path:^ pu:n label:^ lu:n :}
    UB-REQUIRE-IDLE
    path UB-FILE-A! pu UB-FILE-U !
    label UB-LABEL-A! lu UB-LABEL-U !
@@ -572,7 +572,7 @@ public
    UB-CLEAR-SPANS
    rc 0 <> if rc throw then ;
 
-: FILE ( ptr u8 n -- )
+: FILE ( ^u8 n -- )
    2dup FILE-AS ;
 
 : FINISH ( -- )

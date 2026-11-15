@@ -8,13 +8,13 @@ require src/lib/word-docs.f
 package FILE-OBJECTS-KEPT-DOCS
 private
 
-: FIRST$ ( -- ptr u8 n )
+: FIRST$ ( -- ^u8 n )
    s" package P public : A ( -- ) ; : B ( n -- n ) ; ;package" ;
 
 \ The text lies in memory the build does not own, as a program's input does.
 : READ-COPY ( -- n )
-   FIRST$ {: s:ptr u:n :}
-   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:ptr :}
+   FIRST$ {: s:^ u:n :}
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:^ :}
    s a u BYTE-COPY
    a u WORD-DOCS:FILE
    WORD-DOCS:COUNT

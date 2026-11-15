@@ -23,24 +23,24 @@ variable SIBLINGS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: PATH ( n ptr u8 n -- ptr u8 n ) {: idx name bytes :}
+: PATH ( n ^u8 n -- ^u8 n ) {: idx name bytes :}
    PATHS idx PATH-CAP * + {: out :}
    out ROOT ROOT-U @ name bytes out FS:JOIN-PATH ;
 
-: TARGET ( -- ptr u8 n ) 0 s" target" PATH ;
-: DEST ( -- ptr u8 n ) 1 s" dest" PATH ;
-: RACE-DEST ( -- ptr u8 n ) PATHS 2 PATH-CAP * + RACE-DEST-U @ ;
+: TARGET ( -- ^u8 n ) 0 s" target" PATH ;
+: DEST ( -- ^u8 n ) 1 s" dest" PATH ;
+: RACE-DEST ( -- ^u8 n ) PATHS 2 PATH-CAP * + RACE-DEST-U @ ;
 
-: CONTENT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu expected:ptr expectedu :}
+: CONTENT ( ^u8 n ^u8 n -- ) {: path:^ pathu expected:^ expectedu :}
    path pathu TEXT 64 FS:READ-ALL {: got :}
    TEXT got expected expectedu T$= ;
 
-: CLAIM ( ptr u8 n -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
+: CLAIM ( ^u8 n -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
 
-: COUNT-ENTRY ( ptr u8 n -- )
+: COUNT-ENTRY ( ^u8 n -- )
    1 ENTRIES +!
    s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
-: COUNT-ENTRIES ( ptr u8 n -- )
+: COUNT-ENTRIES ( ^u8 n -- )
    0 ENTRIES !  0 SIBLINGS !
    [: COUNT-ENTRY ;] FS-LIST:EACH ;
 
@@ -77,8 +77,8 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    DEST COUNT-ENTRIES  ENTRIES @ 0 T=
    DEST FS:REMOVE-DIR ;
 
-: RACE-WAIT ( ptr n -- )
-   {: peer:ptr :}
+: RACE-WAIT ( ^n -- )
+   {: peer:^ :}
    1 RACE-READY atomic-add drop
    RACE-READY 2 peer TEST-WAIT:FOR-CELL ;
 
@@ -118,7 +118,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    PUBLISH EXISTING-FILE LIVE-LINK DANGLING-LINK EXISTING-DIR RACE ;
 
 : SETUP ( -- )
-   s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:ptr bytes :}
+   s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:^ bytes :}
    path ROOT bytes BYTE-COPY bytes ROOT-U ! ;
 
 : CLEAN ( -- ) ROOT ROOT-U @ FS:REMOVE-TREE ;

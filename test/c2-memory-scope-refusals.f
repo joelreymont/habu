@@ -17,8 +17,8 @@ create ERR CAP allot
 
 \ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
 \ whether it exited with the expected status.
-: EXITED? ( ptr u8 n n -- len len bool )
-   {: src:ptr srcu:n expected:n :}
+: EXITED? ( ^u8 n n -- len len bool )
+   {: src:^ srcu:n expected:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu erru
@@ -29,15 +29,15 @@ create ERR CAP allot
    ;MATCH ;
 
 \ Exited with the expected status, WHY in the diagnostic and SAID in the output.
-: REPORTED? ( ptr u8 n n ptr u8 n ptr u8 n -- bool )
-   {: expected:n why:ptr whyu:n said:ptr saidu:n :}
+: REPORTED? ( ^u8 n n ^u8 n ^u8 n -- bool )
+   {: expected:n why:^ whyu:n said:^ saidu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
    exited ERR erru LEN>N why whyu CONTAINS? and
    OUT outu LEN>N said saidu CONTAINS? and ;
 
 \ Exited with the expected status, FIELDS and HELP in its JSON rejection.
-: JSON-REPORTED? ( ptr u8 n n ptr u8 n ptr u8 n -- bool )
-   {: expected:n fields:ptr fieldsu:n help:ptr helpu:n :}
+: JSON-REPORTED? ( ^u8 n n ^u8 n ^u8 n -- bool )
+   {: expected:n fields:^ fieldsu:n help:^ helpu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
    exited ERR erru LEN>N fields fieldsu CONTAINS? and
    ERR erru LEN>N help helpu CONTAINS? and ;
@@ -51,8 +51,8 @@ create ERR CAP allot
    s" TYPED-VARIABLE C2-SCOPE-SLOT forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
    70 s" in C2-SCOPE-SLOT: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
    s" a scheme cannot be stored behind a pointer" T-LABEL
-   s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" in C2-SCOPE-SLOTS: scheme in a stored type 'ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ^forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
+   70 s" in C2-SCOPE-SLOTS: scheme in a stored type '^forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
    s" a stored type ends at the end of its line" T-LABEL
    s\" NEWTYPE c2-line-pair<a,b>\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
    70 s" in C2-LINE-SLOT: malformed type 'c2-line-pair<n,n'" s" 4242" REPORTED? TTRUE
@@ -80,10 +80,10 @@ create ERR CAP allot
    70 s\" \"word\":\"C2-XT-HOOKS\",\"token\":\"c2hook<xt>\",\"reason\":\"xt in a stored type\""
    s\" \"suggestion\":\"Store a quotation of the word's effect, such as [ n -- n ], in place of xt.\"" JSON-REPORTED? TTRUE
    s" a layout pointer type is refused whole" T-LABEL
-   s" 4 LAYOUT-BUFFER C2-PTR-ROWS ptr n"
-   70 s" in C2-PTR-ROWS: type a layout buffer cannot lay out 'ptr n'" s" " REPORTED? TTRUE
-   s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ptr n"
-   70 s" in C2-PTR-COLUMN: type a layout buffer cannot lay out 'ptr n'" s" " REPORTED? TTRUE
+   s" 4 LAYOUT-BUFFER C2-PTR-ROWS ^n"
+   70 s" in C2-PTR-ROWS: type a layout buffer cannot lay out '^n'" s" " REPORTED? TTRUE
+   s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ^n"
+   70 s" in C2-PTR-COLUMN: type a layout buffer cannot lay out '^n'" s" " REPORTED? TTRUE
    s" an xt layout buffer's help is the layout help" T-LABEL
    s\" true REJECTION:JSON !\n4 LAYOUT-BUFFER C2-XT-ROWS xt"
    70 s\" \"word\":\"C2-XT-ROWS\",\"token\":\"xt\",\"reason\":\"type a layout buffer cannot lay out\""
@@ -163,7 +163,7 @@ public
    s" a scheme cannot pass through finally" T-LABEL
    s" : C2-SCOPE-FINALLY ( read-view<q,q,u8> forall<p,[ read-view<p,p,u8> -- read-view<p,p,u8> | U -- U ]> | U -- | U ) [: ;] finally drop ;" 70 SUBJECT:EXITED? TTRUE
    s" an ordinary same-spelled word receives no owner scope" T-LABEL
-   s" package C2-SCOPE-SHADOW TRUSTED: WITH-MUT ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) C2-MEM:WITH-MUT ; : CALL ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] WITH-MUT ; ;package" 70 SUBJECT:EXITED? TTRUE
+   s" package C2-SCOPE-SHADOW TRUSTED: WITH-MUT ( R NUM:alloc-byte-len [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S | U ) C2-MEM:WITH-MUT ; : CALL ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] WITH-MUT ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" a trusted declaration cannot publish a scheme" T-LABEL
    s" TRUSTED: C2-SCOPE-FORGE ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 76 SUBJECT:EXITED? TTRUE
    s" a cast declaration cannot publish a scheme" T-LABEL
@@ -174,9 +174,9 @@ public
    s" a scheme cannot be declared as an effect output" T-LABEL
    s" : C2-SCOPE-OUTPUT ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" an ordinary quotation may be a pointer referent" T-LABEL
-   s" : C2-QUOTE-POINTER ( ptr [ n -- n ] -- ) drop ;" 0 SUBJECT:EXITED? TTRUE
+   s" : C2-QUOTE-POINTER ( ^[ n -- n ] -- ) drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot be placed behind a pointer" T-LABEL
-   s" : C2-SCOPE-POINTER ( ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-SCOPE-POINTER ( ^forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" an ordinary quotation may be a family argument" T-LABEL
    s" NEWTYPE c2-quote-holder<a> : C2-QUOTE-FAMILY ( c2-quote-holder<[ n -- n ]> -- ) drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a family argument cannot contain a scheme" T-LABEL
@@ -195,9 +195,9 @@ public
    s" raw storage cannot retain a child view" T-LABEL
    s" variable C2-CHILD-RAW-SLOT : C2-CHILD-RAW ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup C2-CHILD-RAW-SLOT ! ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" a generic raw store cannot hide a child view" T-LABEL
-   s" variable C2-CHILD-GENERIC-SLOT : C2-CHILD-STORE ( a ptr a -- ) ! ; : C2-CHILD-GENERIC ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup C2-CHILD-GENERIC-SLOT C2-CHILD-STORE ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
+   s" variable C2-CHILD-GENERIC-SLOT : C2-CHILD-STORE ( a ^a -- ) ! ; : C2-CHILD-GENERIC ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup C2-CHILD-GENERIC-SLOT C2-CHILD-STORE ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" typed pointer storage cannot retain a child ceiling" T-LABEL
-   s" : C2-CHILD-TYPED ( read-view<p,l,u8> ptr read-view<p,l,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-CHILD-TYPED ( read-view<p,l,u8> ^read-view<p,l,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
    s" a global cannot declare a child-scoped view" T-LABEL
    s" TYPED-VARIABLE C2-CHILD-SLOT read-view<p,l,u8>" 70 SUBJECT:EXITED? TTRUE
    s" an ordinary helper cannot relabel the loan ceiling" T-LABEL
@@ -205,7 +205,7 @@ public
    s" a fixed existing-loan callback cannot claim a fresh child" T-LABEL
    s" : C2-CHILD-MONO ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> | U -- U ] | U -- read-view<p,q,u8> | U ) C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" a same-spelled ordinary word receives no child authority" T-LABEL
-   s" package C2-S TRUSTED: WITH-READ ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) C2-MEM:WITH-READ ; : X ( read-view<p,q,u8> -- n read-view<p,q,u8> ) [: 0 C2-MEM:BYTE@ ;] WITH-READ ; ;package" 70 SUBJECT:EXITED? TTRUE
+   s" package C2-S TRUSTED: WITH-READ ( R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S ^u8 n | U ) C2-MEM:WITH-READ ; : X ( read-view<p,q,u8> -- n read-view<p,q,u8> ) [: 0 C2-MEM:BYTE@ ;] WITH-READ ; ;package" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-memory-scope-refusals: ok" type cr ;
 

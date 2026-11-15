@@ -13,7 +13,7 @@ require src/lib/adt/option.f
 \ them in.
 NEWTYPE bpathing
 PTR-VARIABLE BPA-SLOT
-TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an address
+TYPED-VARIABLE BPA-PP ^^n     \ a declared cell that really holds an address
 TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls
 TYPED-VARIABLE BPA-TV bpathing      \ a pointer to a nominal, for the inferred-operand distances
 variable BPA-RAW                    \ an undeclared raw storage cell, for the RAW controls
@@ -24,12 +24,12 @@ DEFLINEAR bpa-tok                   \ a linear type, for linear-family pointees
 
 \ Its own certification matters: the offset mark rides its published quantifier,
 \ so a null handed to it is a DATA-base pointer at the caller.
-: BPA-STEPPER ( ptr a n -- ptr a ) + ;
+: BPA-STEPPER ( ^a n -- ^a ) + ;
 
 \ A distance reads no storage, so a caller may instantiate its pointee `a` with
 \ any stored type, a quotation or a record among them.
-: BPA-NDIST ( ptr a -- n ) NULL-PTR - ;
-: BPA-DDIST ( ptr a -- n ) data-base - ;
+: BPA-NDIST ( ^a -- n ) NULL-PTR - ;
+: BPA-DDIST ( ^a -- n ) data-base - ;
 
 \ A distance with no signature: its input is inferred from the body, never a
 \ base address, so it pairs with BPA-TV's pointee (CASE-DIST-INFERRED-OPERAND).
@@ -54,71 +54,71 @@ create DIAG-BUF 8192 allot
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ptr u8 n )
+: CODE$ ( -- ^u8 n )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
-: DB-REASON$ ( -- ptr u8 n )
+: DB-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
 
-: NULL-REASON$ ( -- ptr u8 n )
+: NULL-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;
 
-: REPAIR$ ( -- ptr u8 n )
+: REPAIR$ ( -- ^u8 n )
    S\" \"repair_class\":\"declare_pointer_cell\"" ;
 
 \ The raw-storage rule's reason. No base fixture may answer it: they name no
 \ `variable`, `create`, `constant` or `here`.
-: RAW-REASON$ ( -- ptr u8 n )
+: RAW-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
 \ An executable value reached through either base or an undeclared cell answers
 \ the raw rule's reason and repair class: declare the cell that holds the xt.
-: EXEC-REASON$ ( -- ptr u8 n )
+: EXEC-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
-: EXEC-REPAIR$ ( -- ptr u8 n )
+: EXEC-REPAIR$ ( -- ^u8 n )
    S\" \"repair_class\":\"declare_xt_cell\"" ;
 
-: NP-CODE$ ( -- ptr u8 n )
+: NP-CODE$ ( -- ^u8 n )
    S\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" ;
 
-: NP-SUGGEST$ ( -- ptr u8 n )
+: NP-SUGGEST$ ( -- ^u8 n )
    S\" Declare the pointee this base address really reaches" ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ptr u8 n -- )
+: LACKS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
-: REFUSED-CODE ( ptr u8 n -- )   \ leaves the diagnostic armed for the reason assertions
+: REFUSED-CODE ( ^u8 n -- )   \ leaves the diagnostic armed for the reason assertions
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  REPAIR$ HAS?  RAW-REASON$ LACKS? ;
 
-: DB-REFUSED ( ptr u8 n -- )
+: DB-REFUSED ( ^u8 n -- )
    REFUSED-CODE  DB-REASON$ HAS?  NULL-REASON$ LACKS?  DISARM ;
 
-: NULL-REFUSED ( ptr u8 n -- )
+: NULL-REFUSED ( ^u8 n -- )
    REFUSED-CODE  NULL-REASON$ HAS?  DB-REASON$ LACKS?  DISARM ;
 
 \ The raw-cell rule answers its own prose for the same shape over an undeclared
 \ cell.
-: RAW-REFUSED ( ptr u8 n -- )
+: RAW-REFUSED ( ^u8 n -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  RAW-REASON$ HAS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?
    DISARM ;
 
-: EXEC-REFUSED ( ptr u8 n -- )
+: EXEC-REFUSED ( ^u8 n -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
    REPAIR$ LACKS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?  RAW-REASON$ LACKS?
    DISARM ;
 
-: CERTIFIES ( ptr u8 n -- )
+: CERTIFIES ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- the forgery: a nominal identity out of a base address -------------------
@@ -144,7 +144,7 @@ create DIAG-BUF 8192 allot
    s" BPA-DZ ( -- bpathing ) data-base @" DB-REFUSED ;
 
 \ ---- the third door: an EXECUTION TOKEN out of a base address -----------------
-\ `: QCELL ( -- ptr [ -- n ] ) data-base 8 + ;` with
+\ `: QCELL ( -- ^[ -- n ] ) data-base 8 + ;` with
 \ `: FIRE ( -- n ) QCELL @ execute ;` certified unfenced and `1 W !  FIRE`
 \ branched to address 1 (measured: SIGBUS): the opaque-execute rule judges
 \ opacity, not provenance. Neither base addresses a declared element, so neither
@@ -152,21 +152,21 @@ create DIAG-BUF 8192 allot
 
 : CASE-DATA-XT-CELL ( -- )
    s" a DATA offset cannot be declared to hold an execution token" T-LABEL
-   s" BPA-Q ( -- ptr [ -- n ] ) data-base 8 +" EXEC-REFUSED ;
+   s" BPA-Q ( -- ^[ -- n ] ) data-base 8 +" EXEC-REFUSED ;
 
 : CASE-DATA-XT-ZERO ( -- )
    s" the same at offset zero, with no arithmetic at all" T-LABEL
-   s" BPA-QZ ( -- ptr [ -- n ] ) data-base" EXEC-REFUSED ;
+   s" BPA-QZ ( -- ^[ -- n ] ) data-base" EXEC-REFUSED ;
 
 \ The executable value is fenced ahead of the null's permissive pointee arm; the
 \ price is CASE-NULL-XT-COMPARE.
 : CASE-NULL-XT-CELL ( -- )
    s" and a null-derived address cannot hold one either" T-LABEL
-   s" BPA-NQ ( -- ptr [ -- n ] ) NULL-PTR 8 +" EXEC-REFUSED ;
+   s" BPA-NQ ( -- ^[ -- n ] ) NULL-PTR 8 +" EXEC-REFUSED ;
 
 : CASE-NULL-XT-ZERO ( -- )
    s" NULL-PTR itself is no code cell" T-LABEL
-   s" BPA-NQZ ( -- ptr [ -- n ] ) NULL-PTR" EXEC-REFUSED ;
+   s" BPA-NQZ ( -- ^[ -- n ] ) NULL-PTR" EXEC-REFUSED ;
 
 : CASE-DATA-XT-FETCH ( -- )
    s" nor is one fetched from a DATA cell" T-LABEL
@@ -176,29 +176,29 @@ create DIAG-BUF 8192 allot
 
 : CASE-NULL-POINTER ( -- )
    s" a pointer fetched through a null-derived address is refused too" T-LABEL
-   s" BPA-G ( n -- ptr n ) NULL-PTR + @" DB-REFUSED ;
+   s" BPA-G ( n -- ^n ) NULL-PTR + @" DB-REFUSED ;
 
 : CASE-DATA-POINTER ( -- )
    s" a DATA cell answers a number, not the address it was never declared to hold" T-LABEL
-   s" BPA-DG ( n -- ptr n ) data-base + @" DB-REFUSED ;
+   s" BPA-DG ( n -- ^n ) data-base + @" DB-REFUSED ;
 
 \ Refusing only the fetch would leave the address in the cell for another read.
 : CASE-POINTER-IN ( -- )
    s" and a real pointer cannot be put into an undeclared DATA cell either" T-LABEL
-   s" BPA-PS ( ptr n n -- ) data-base + !" DB-REFUSED ;
+   s" BPA-PS ( ^n n -- ) data-base + !" DB-REFUSED ;
 
 \ ptr-cell! is checked as `!`, so its declaration does not excuse a raw cell.
 : CASE-POINTER-IN-PTR-CELL ( -- )
    s" nor through ptr-cell!, whose declaration does not excuse an undeclared cell" T-LABEL
-   s" BPA-PCS ( ptr n n -- ) data-base + ptr-cell!" DB-REFUSED ;
+   s" BPA-PCS ( ^n n -- ) data-base + ptr-cell!" DB-REFUSED ;
 
-\ ptr-cell! takes `!`'s cell-width rule; its prims.f row alone admits a `ptr u8`.
+\ ptr-cell! takes `!`'s cell-width rule; its prims.f row alone admits a `^u8`.
 : CASE-BYTE-PTR-CELL ( -- )
    s" ptr-cell! refuses a byte pointer as its cell, as ! does" T-LABEL
    ARM
-   s" BPA-PCB ( u8 ptr u8 -- ) ptr-cell!" CHECK-CANDIDATE! 0 T=
+   s" BPA-PCB ( u8 ^u8 -- ) ptr-cell!" CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"repair_class\":\"fix_type\"" HAS?
-   S\" \"expected\":\"ptr a \"" HAS?  S\" \"actual\":\"ptr u8 \"" HAS?
+   S\" \"expected\":\"^a \"" HAS?  S\" \"actual\":\"^u8 \"" HAS?
    DISARM ;
 
 \ ---- the ways around it ------------------------------------------------------
@@ -235,35 +235,35 @@ create DIAG-BUF 8192 allot
 
 : CASE-DEPTH-2-POINTER ( -- )
    s" a DATA cell is not the address of an address" T-LABEL
-   s" BPA-P2 ( -- ptr ptr n ) data-base 8 +" DB-REFUSED ;
+   s" BPA-P2 ( -- ^^n ) data-base 8 +" DB-REFUSED ;
 
 : CASE-DEPTH-2-NOMINAL ( -- )
    s" nor the address of a pointer to a nominal" T-LABEL
-   s" BPA-N2 ( -- ptr ptr bpathing ) data-base 8 +" DB-REFUSED ;
+   s" BPA-N2 ( -- ^^bpathing ) data-base 8 +" DB-REFUSED ;
 
 \ Pinned as a check refusal: certified, `: W ( n -- ) data-base 8 + ! ;
 \ : BOOM ( -- n ) BPA-P3 @ @ @ ;` and `1 W BOOM` dereferenced the integer 1.
 : CASE-DEPTH-3 ( -- )
    s" and a three-deep chain is the same forgery with one more hop" T-LABEL
-   s" BPA-P3 ( -- ptr ptr ptr n ) data-base 8 +" DB-REFUSED ;
+   s" BPA-P3 ( -- ^^^n ) data-base 8 +" DB-REFUSED ;
 
 : CASE-DEPTH-4 ( -- )
    s" the fence follows the chain however deep it is declared" T-LABEL
-   s" BPA-P4 ( -- ptr ptr ptr ptr n ) data-base 8 +" DB-REFUSED ;
+   s" BPA-P4 ( -- ^^^^n ) data-base 8 +" DB-REFUSED ;
 
 : CASE-DEPTH-2-FETCH ( -- )
    s" a fetch that lands two deep answers the same refusal" T-LABEL
-   s" BPA-F2 ( -- ptr n ) data-base 8 + @ @" DB-REFUSED ;
+   s" BPA-F2 ( -- ^n ) data-base 8 + @ @" DB-REFUSED ;
 
 \ Controls: the RAW cell refuses this depth with its own prose; the rules stay
 \ separate.
 : CASE-RAW-DEPTH-2-POINTER ( -- )
    s" an undeclared raw cell still answers the raw-storage reason" T-LABEL
-   s" BPA-R2 ( -- ptr ptr n ) BPA-RAW" RAW-REFUSED ;
+   s" BPA-R2 ( -- ^^n ) BPA-RAW" RAW-REFUSED ;
 
 : CASE-RAW-DEPTH-2-NOMINAL ( -- )
    s" and so does the nominal spelling of it" T-LABEL
-   s" BPA-R2N ( -- ptr ptr bpathing ) BPA-RAW" RAW-REFUSED ;
+   s" BPA-R2N ( -- ^^bpathing ) BPA-RAW" RAW-REFUSED ;
 
 \ ---- the input-only excuse is the NULL's alone --------------------------------
 \ A quantifier restricted through an input-only position is excused because the
@@ -275,38 +275,38 @@ create DIAG-BUF 8192 allot
 : CASE-EXCUSE-STORE ( -- )
    s" a DATA-derived pointer is not excused by an input-only quantifier" T-LABEL
    ARM
-   s" BPA-STASH ( ptr ptr a -- ) data-base 8 + swap !" CHECK-CANDIDATE! 0 T=
+   s" BPA-STASH ( ^^a -- ) data-base 8 + swap !" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
 \ NP-INVARS-WALK descends into a quotation parameter's rows, so `a` is
-\ input-only there too: `[: ( ptr bpathing -- ) @ drop ;] BPA-FEED` reached the
+\ input-only there too: `[: ( ^bpathing -- ) @ drop ;] BPA-FEED` reached the
 \ caller's consumer.
 : CASE-EXCUSE-QUOTATION ( -- )
    s" nor by one that is input-only inside a quotation parameter" T-LABEL
    ARM
-   s" BPA-FEED ( [ ptr a -- ] -- ) data-base 8 + swap execute" CHECK-CANDIDATE! 0 T=
+   s" BPA-FEED ( [ ^a -- ] -- ) data-base 8 + swap execute" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
 \ ---- the wrapper, refused at its own declaration ------------------------------
-\ `( -- ptr a )` over a DATA offset let the caller choose the element type
+\ `( -- ^a )` over a DATA offset let the caller choose the element type
 \ (`SB-LEN @` certified as a nominal). It is refused where written, and the
 \ suggestion says what to write.
 
 : CASE-PUBLISH-VAR ( -- )
    s" a wrapper may not publish a base-derived pointer under a type variable" T-LABEL
    ARM
-   s" BPA-W ( -- ptr a ) data-base 8 +" CHECK-CANDIDATE! 0 T=
+   s" BPA-W ( -- ^a ) data-base 8 +" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
 \ A quantifier named on both sides is still published: the caller picks the
-\ pointee again through `ptr bpathing BPA-LEAK @`.
+\ pointee again through `^bpathing BPA-LEAK @`.
 : CASE-PUBLISH-INOUT ( -- )
    s" a wrapper that names the variable on both sides is refused too" T-LABEL
    ARM
-   s" BPA-LEAK ( ptr a -- ptr a ) drop data-base 8 +" CHECK-CANDIDATE! 0 T=
+   s" BPA-LEAK ( ^a -- ^a ) drop data-base 8 +" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
@@ -314,22 +314,22 @@ create DIAG-BUF 8192 allot
 \ The arithmetic rows (`+`, `-` with an n, `1+`, `1-`, `cell+`, `char+`) keep
 \ the base's pointee var, and the null's permissive arm is judged at the
 \ binding, so an unmarked offset null could be declared two deep:
-\ `: F ( -- ptr ptr n ) NULL-PTR <V's distance> + ;  : G ( -- n ) F @ @ ;`
+\ `: F ( -- ^^n ) NULL-PTR <V's distance> + ;  : G ( -- n ) F @ @ ;`
 \ printed 777 from `variable V  777 V !` (measured). The offset rows mark the
 \ pointee they step (src/habu/prims.f PE-PTR-A-OFF), and a null riding one
 \ meets as TVK-DBASE.
 
 : CASE-NULL-OFFSET-DEPTH-2 ( -- )
    s" a null plus an offset is not the address of an address" T-LABEL
-   s" BPA-NO2 ( n -- ptr ptr n ) NULL-PTR +" DB-REFUSED ;
+   s" BPA-NO2 ( n -- ^^n ) NULL-PTR +" DB-REFUSED ;
 
 : CASE-NULL-OFFSET-NOMINAL-DEEP ( -- )
    s" nor the address of a pointer to a nominal" T-LABEL
-   s" BPA-NON ( n -- ptr ptr bpathing ) NULL-PTR +" DB-REFUSED ;
+   s" BPA-NON ( n -- ^^bpathing ) NULL-PTR +" DB-REFUSED ;
 
 : CASE-NULL-OFFSET-PARAMETRIC ( -- )
    s" and neither does the parametric spelling of the same step" T-LABEL
-   s" BPA-NO7 ( n -- ptr ptr n ) NULL-PTR swap +" DB-REFUSED ;
+   s" BPA-NO7 ( n -- ^^n ) NULL-PTR swap +" DB-REFUSED ;
 
 \ The refusal lands on the store into the typed cell.
 : CASE-NULL-OFFSET-TYPED-CELL ( -- )
@@ -338,59 +338,59 @@ create DIAG-BUF 8192 allot
 
 : CASE-NULL-OFFSET-CELL-STEP ( -- )
    s" cell+ steps the null the same way, and is refused the same way" T-LABEL
-   s" BPA-NOC ( -- ptr ptr n ) NULL-PTR cell+" DB-REFUSED ;
+   s" BPA-NOC ( -- ^^n ) NULL-PTR cell+" DB-REFUSED ;
 
 : CASE-NULL-OFFSET-MINUS ( -- )
    s" and so does stepping it backwards by an integer" T-LABEL
-   s" BPA-NOM ( n -- ptr ptr n ) NULL-PTR swap -" DB-REFUSED ;
+   s" BPA-NOM ( n -- ^^n ) NULL-PTR swap -" DB-REFUSED ;
 
 : CASE-NULL-OFFSET-FETCH ( -- )
    s" a fetch that lands two deep through an offset null is refused" T-LABEL
-   s" BPA-NOF ( n -- ptr n ) NULL-PTR + @ @" DB-REFUSED ;
+   s" BPA-NOF ( n -- ^n ) NULL-PTR + @ @" DB-REFUSED ;
 
 \ The input-only excuse is the literal null's; an offset null is not one
 \ address.
 : CASE-NULL-OFFSET-PUBLISH ( -- )
    s" a wrapper may not publish an offset null under a type variable" T-LABEL
    ARM
-   s" BPA-NOW ( -- ptr a ) NULL-PTR 8 +" CHECK-CANDIDATE! 0 T=
+   s" BPA-NOW ( -- ^a ) NULL-PTR 8 +" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
 : CASE-NULL-OFFSET-EXCUSE ( -- )
    s" and an input-only quantifier does not excuse one either" T-LABEL
    ARM
-   s" BPA-NOS ( ptr ptr a -- ) NULL-PTR 8 + swap !" CHECK-CANDIDATE! 0 T=
+   s" BPA-NOS ( ^^a -- ) NULL-PTR 8 + swap !" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
 
 : CASE-NULL-OFFSET-VIA-WRAPPER ( -- )
    s" a checked stepper does not launder the offset either" T-LABEL
-   s" BPA-NOWR ( n -- ptr ptr n ) NULL-PTR swap BPA-STEPPER" DB-REFUSED ;
+   s" BPA-NOWR ( n -- ^^n ) NULL-PTR swap BPA-STEPPER" DB-REFUSED ;
 
 \ The mark is provenance, not a fence: an ordinary pointer still steps, and a
 \ word that steps a pointee it was handed keeps its quantifier.
 : CASE-OFFSET-KEEPS-POINTEE ( -- )
    s" stepping a pointer to a nominal still answers that nominal" T-LABEL
-   s" BPA-STEP ( ptr bpathing -- bpathing ) 8 + @" CERTIFIES ;
+   s" BPA-STEP ( ^bpathing -- bpathing ) 8 + @" CERTIFIES ;
 
 : CASE-OFFSET-KEEPS-QUANTIFIER ( -- )
    s" and a declared quantifier survives an offset step" T-LABEL
-   s" BPA-STEPQ ( ptr a -- ptr a ) 8 +" CERTIFIES ;
+   s" BPA-STEPQ ( ^a -- ^a ) 8 +" CERTIFIES ;
 
 : CASE-OFFSET-KEEPS-DEPTH ( -- )
    s" including a pointee that is itself an address" T-LABEL
-   s" BPA-STEP2 ( ptr ptr n -- ptr ptr n ) cell+" CERTIFIES ;
+   s" BPA-STEP2 ( ^^n -- ^^n ) cell+" CERTIFIES ;
 
 : CASE-OFFSET-WRAPPER-CERTIFIES ( -- )
    s" and a stepper called on an ordinary pointer answers its pointee" T-LABEL
-   s" BPA-OKWR ( ptr bpathing -- bpathing ) 8 BPA-STEPPER @" CERTIFIES ;
+   s" BPA-OKWR ( ^bpathing -- bpathing ) 8 BPA-STEPPER @" CERTIFIES ;
 
 \ The sanctioned address-to-integer idiom: both sides are byte views, so the
 \ pointee is a concrete `u8` and no kind rides the distance row.
 : CASE-NULL-BYTE-DISTANCE ( -- )
    s" the byte-view distance from the null is still a number" T-LABEL
-   s" BPA-NBV ( ptr bpathing -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW -" CERTIFIES ;
+   s" BPA-NBV ( ^bpathing -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW -" CERTIFIES ;
 
 \ ---- the controls: every honest use of a base address -------------------------
 
@@ -398,14 +398,14 @@ create DIAG-BUF 8192 allot
 \ src/core/dynamic-storage.f RELEASE is this shape.
 : CASE-INPUT-ONLY ( -- )
    s" a null stored through a declared parameter's own pointee certifies" T-LABEL
-   s" BPA-IN ( ptr ptr a -- ) NULL-PTR swap !" CERTIFIES ;
+   s" BPA-IN ( ^^a -- ) NULL-PTR swap !" CERTIFIES ;
 
 \ Through a quotation parameter, the shape the DATA base is refused for.
 : CASE-INPUT-ONLY-QUOT ( -- )
    s" and so does a null handed to a caller's own quotation" T-LABEL
-   s" BPA-NQ ( [ ptr a -- ] -- ) NULL-PTR swap execute" CERTIFIES ;
+   s" BPA-NQ ( [ ^a -- ] -- ) NULL-PTR swap execute" CERTIFIES ;
 
-\ The pointer itself: each binds the pointee inside a `ptr`, where the kind is
+\ The pointer itself: each binds the pointee inside a `^`, where the kind is
 \ permissive. The tree has 89 null stores into declared pointer cells and 11
 \ compares.
 : CASE-NULL-STORE ( -- )
@@ -414,11 +414,11 @@ create DIAG-BUF 8192 allot
 
 : CASE-NULL-COMPARE ( -- )
    s" and is still comparable against a pointer to a nominal" T-LABEL
-   s" BPA-EQ ( ptr bpathing -- bool ) NULL-PTR =" CERTIFIES ;
+   s" BPA-EQ ( ^bpathing -- bool ) NULL-PTR =" CERTIFIES ;
 
 : CASE-NULL-DIFF ( -- )
    s" and still subtracts from one" T-LABEL
-   s" BPA-SUB ( ptr bpathing -- n ) NULL-PTR -" CERTIFIES ;
+   s" BPA-SUB ( ^bpathing -- n ) NULL-PTR -" CERTIFIES ;
 
 : CASE-NULL-DIST-FREE ( -- )
    s" a distance from a base address leaves the pointee free" T-LABEL
@@ -429,54 +429,54 @@ create DIAG-BUF 8192 allot
 \ to any type; no signature states a pointer to a scoped family or a view.
 : CASE-ANY-POINTEE ( -- )
    s" a distance and PTR>N take a pointer to any type" T-LABEL
-   s" BPA-RN ( ptr bpa-rec -- n ) PTR>N" CERTIFIES
-   s" BPA-NN ( ptr nullable<u8> -- n ) PTR>N" CERTIFIES
-   s" BPA-EN ( ptr bpa-dir -- n ) PTR>N" CERTIFIES
-   s" BPA-ON ( ptr option<n> -- n ) PTR>N" CERTIFIES
-   s" BPA-RR ( ptr bpa-rec ptr bpa-rec -- n ) -" CERTIFIES
+   s" BPA-RN ( ^bpa-rec -- n ) PTR>N" CERTIFIES
+   s" BPA-NN ( ^nullable<u8> -- n ) PTR>N" CERTIFIES
+   s" BPA-EN ( ^bpa-dir -- n ) PTR>N" CERTIFIES
+   s" BPA-ON ( ^option<n> -- n ) PTR>N" CERTIFIES
+   s" BPA-RR ( ^bpa-rec ^bpa-rec -- n ) -" CERTIFIES
    s" BPA-RVD ( -- n ) BPA-RV BPA-NDIST" CERTIFIES
-   s" BPA-QO ( ptr option<a> -- n ) PTR>N" CERTIFIES
-   s" BPA-DO3 ( ptr option<a> ptr option<a> -- n ) -" CERTIFIES
-   s" BPA-DO4 ( ptr option<a> -- n ) data-base -" CERTIFIES
-   s" BPA-DO5 ( ptr option<a> -- n ) data-base swap -" CERTIFIES
-   s" BPA-LN ( ptr option<bpa-tok> -- n ) PTR>N" CERTIFIES
-   s" BPA-QIO ( ptr option<a> -- n ) BPA-QI" CERTIFIES ;
+   s" BPA-QO ( ^option<a> -- n ) PTR>N" CERTIFIES
+   s" BPA-DO3 ( ^option<a> ^option<a> -- n ) -" CERTIFIES
+   s" BPA-DO4 ( ^option<a> -- n ) data-base -" CERTIFIES
+   s" BPA-DO5 ( ^option<a> -- n ) data-base swap -" CERTIFIES
+   s" BPA-LN ( ^option<bpa-tok> -- n ) PTR>N" CERTIFIES
+   s" BPA-QIO ( ^option<a> -- n ) BPA-QI" CERTIFIES ;
 
-: MISMATCH ( ptr u8 n -- )
+: MISMATCH ( ^u8 n -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-MISMATCH\"" HAS?
    DISARM ;
 
-\ A definition that declares `ptr a` may rely on `a` being closed and laid out,
+\ A definition that declares `^a` may rely on `a` being closed and laid out,
 \ so its callers still pass it no open family.
 : CASE-DECLARED-POINTEE-CLOSED ( -- )
-   s" a declared ptr a still refuses an open family" T-LABEL
-   s" BPA-D2O ( ptr option<a> -- n ) BPA-NDIST" MISMATCH
-   s" BPA-QRO ( ptr option<a> -- ) BPA-QR" MISMATCH ;
+   s" a declared ^a still refuses an open family" T-LABEL
+   s" BPA-D2O ( ^option<a> -- n ) BPA-NDIST" MISMATCH
+   s" BPA-QRO ( ^option<a> -- ) BPA-QR" MISMATCH ;
 
 \ A byte written through a byte view could forge a value the record's fields
 \ or the family's slots type, so the view still refuses a pointer to one.
 : CASE-RECORD-BYTE-VIEW ( -- )
    s" a byte view of a pointer to a record or a family is still refused" T-LABEL
-   s" BPA-RBV ( ptr bpa-rec -- ptr u8 ) BYTE-VIEW" MISMATCH
-   s" BPA-OBV ( ptr option<a> -- ptr u8 ) BYTE-VIEW" MISMATCH ;
+   s" BPA-RBV ( ^bpa-rec -- ^u8 ) BYTE-VIEW" MISMATCH
+   s" BPA-OBV ( ^option<a> -- ^u8 ) BYTE-VIEW" MISMATCH ;
 
 \ A base row matches only a base address's own pointee. An operand still being
 \ inferred -- a quotation's input, a signature-less word's input -- is not one,
 \ so a distance against a pointer to a nominal pairs both pointees, and the
-\ inferred input is that pointer: it takes `ptr bpathing` and refuses the null.
+\ inferred input is that pointer: it takes `^bpathing` and refuses the null.
 : CASE-DIST-INFERRED-OPERAND ( -- )
    s" an inferred operand of a distance takes the other pointee" T-LABEL
-   s" BPA-QX ( ptr bpathing -- n ) [: BPA-TV - ;] execute" CERTIFIES
-   s" BPA-QD ( -- [ ptr bpathing -- n ] ) [: BPA-TV - ;]" CERTIFIES
-   s" BPA-NSU ( ptr bpathing -- n ) BPA-TVDIST" CERTIFIES ;
+   s" BPA-QX ( ^bpathing -- n ) [: BPA-TV - ;] execute" CERTIFIES
+   s" BPA-QD ( -- [ ^bpathing -- n ] ) [: BPA-TV - ;]" CERTIFIES
+   s" BPA-NSU ( ^bpathing -- n ) BPA-TVDIST" CERTIFIES ;
 
 : CASE-DIST-INFERRED-NULL ( -- )
    s" and a null is not that pointee" T-LABEL
    ARM
    s" BPA-NSN ( -- n ) NULL-PTR BPA-TVDIST" CHECK-CANDIDATE! 0 T=
-   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"expected\":\"ptr bpathing \"" HAS?
+   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"expected\":\"^bpathing \"" HAS?
    DISARM ;
 
 \ A null whose distance was taken is still the null: a read through it answers
@@ -484,7 +484,7 @@ create DIAG-BUF 8192 allot
 : CASE-NULL-DIST-READ ( -- )
    s" a read through the null a distance was taken from is still refused" T-LABEL
    ARM
-   s" BPA-NDR ( ptr a -- a ) NULL-PTR dup rot - drop @" CHECK-CANDIDATE! 0 T=
+   s" BPA-NDR ( ^a -- a ) NULL-PTR dup rot - drop @" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  s" Declare the pointee this null stands in for" HAS?
    DISARM ;
 
@@ -501,7 +501,7 @@ create DIAG-BUF 8192 allot
 
 : CASE-NULL-COMPARE-DEEP ( -- )
    s" and still compares against a pointer to a pointer" T-LABEL
-   s" BPA-N2C ( ptr ptr bpathing -- bool ) NULL-PTR =" CERTIFIES ;
+   s" BPA-N2C ( ^^bpathing -- bool ) NULL-PTR =" CERTIFIES ;
 
 \ The engine's own reads: a scalar cell of the task's DATA, read and written at
 \ an offset.
@@ -515,13 +515,13 @@ create DIAG-BUF 8192 allot
 
 : CASE-DATA-DISTANCE ( -- )
    s" the distance between two addresses is still a number" T-LABEL
-   s" BPA-DIST ( ptr n -- n ) data-base -" CERTIFIES ;
+   s" BPA-DIST ( ^n -- n ) data-base -" CERTIFIES ;
 
 \ A DATA cell that holds an address is reached with `ptr-field`, as the
 \ checker's store into NCOMP-DISPATCH:TARGET-DECL-CELL and the AOT span table do.
 : CASE-DATA-FIELD ( -- )
    s" a DATA cell that holds an address is still reached through ptr-field" T-LABEL
-   s" BPA-FLD ( -- ptr ptr u8 ) data-base 8 + 0 ptr-field @" CERTIFIES ;
+   s" BPA-FLD ( -- ^^u8 ) data-base 8 + 0 ptr-field @" CERTIFIES ;
 
 \ The linker's shape: src/habu/linker.f HOST adds an offset to `data-base
 \ BYTE-VIEW` and takes its CELL-VIEW.
@@ -532,7 +532,7 @@ create DIAG-BUF 8192 allot
 \ A concrete pointee is the repair the diagnostic names.
 : CASE-DECLARED-POINTEE ( -- )
    s" a wrapper that names its pointee is the repair, and it certifies" T-LABEL
-   s" BPA-OK ( -- ptr n ) data-base 8 +" CERTIFIES ;
+   s" BPA-OK ( -- ^n ) data-base 8 +" CERTIFIES ;
 
 \ ---- the executable-value controls -------------------------------------------
 
@@ -547,7 +547,7 @@ create DIAG-BUF 8192 allot
 \ involved.
 : CASE-DECLARED-XT-CELL ( -- )
    s" a TYPED-VARIABLE code cell certifies, and is executed" T-LABEL
-   s" BPA-HKACC ( -- ptr [ -- n ] ) BPA-HK" CERTIFIES
+   s" BPA-HKACC ( -- ^[ -- n ] ) BPA-HK" CERTIFIES
    s" BPA-HKRUN ( -- n ) BPA-HK @ execute" CERTIFIES ;
 
 \ The price: the null comparison on a declared code cell is refused with the
@@ -562,7 +562,7 @@ create DIAG-BUF 8192 allot
 \ EPRIM: row at a call, and no row rides its xt. NULL-PTR is a primitive, so
 \ `['] NULL-PTR execute` is refused like `['] dup execute`; a quotation
 \ that calls it carries the row.
-: OPAQUE-REFUSED ( ptr u8 n -- )
+: OPAQUE-REFUSED ( ^u8 n -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" HAS?

@@ -41,11 +41,11 @@ variable ACC
       HEXBUF HN @ + c@ SB-APPEND-C
    repeat ;
 
-: FIND-REC ( ptr u8 n -- n )   \ the last live record with this name, -1 when none
-   {: a:ptr u:n :}
+: FIND-REC ( ^u8 n -- n )   \ the last live record with this name, -1 when none
+   {: a:^ u:n :}
    -1 ACC !
    ndict@ 0 ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec XREF-RETIRED? 0= if
          rec XREF-NAME$ a u STR= if i ACC ! then
       then
@@ -53,13 +53,13 @@ variable ACC
    ACC @ ;
 
 \ ---- the captured lines -------------------------------------------------------
-: HEADER$ ( -- ptr u8 n )
+: HEADER$ ( -- ^u8 n )
    s" H 1880406 1097390.792320:     284641  apple_blizzard_pmu/cycles/Pu: " ;
 
-: FOREIGN-FRAME$ ( -- ptr u8 n )
+: FOREIGN-FRAME$ ( -- ^u8 n )
    S\" \tfffeffa417e0 __ctype_init+0x0 (/usr/lib/libc.so.6)" ;
 
-: ENGINE-FRAME$ ( -- ptr u8 n )
+: ENGINE-FRAME$ ( -- ^u8 n )
    S\" \t          401680 [unknown] (/tmp/hz-prof/H)" ;
 
 \ ---- cases --------------------------------------------------------------------
@@ -70,23 +70,23 @@ variable ACC
 
 \ Every byte of a call-chain line survives, not only its mapped address.
 : T-FRAME-KEPT ( -- )
-   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:ptr u:n :}
+   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
    a u s" __ctype_init+0x0" CONTAINS? TTRUE
    a u s" (/usr/lib/libc.so.6)" CONTAINS? TTRUE ;
 
 \ An address this dictionary does not own stays hex, and its line keeps its tail.
 : T-FOREIGN-STAYS-HEX ( -- )
-   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:ptr u:n :}
+   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
    a u s" fffeffa417e0" CONTAINS? TTRUE ;
 
 : T-ENGINE-FRAME-KEPT ( -- )
-   ENGINE-FRAME$ PERF-MAP:LINE$ {: a:ptr u:n :}
+   ENGINE-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
    a u s" [unknown]" CONTAINS? TTRUE
    a u s" (/tmp/hz-prof/H)" CONTAINS? TTRUE ;
 
 \ A live address resolves to its package-qualified word, and the rest of the
 \ line - symbol column and dso - is left alone.
-: LIVE-FRAME$ ( -- ptr u8 n )
+: LIVE-FRAME$ ( -- ^u8 n )
    s" MARKER" FIND-REC {: idx:n :}
    idx 0 < if s" perf-map-test: MARKER is not in the dictionary" 76 die then
    SB-RESET
@@ -96,13 +96,13 @@ variable ACC
    SB$ ;
 
 : T-LIVE-RESOLVES ( -- )
-   LIVE-FRAME$ PERF-MAP:LINE$ {: a:ptr u:n :}
+   LIVE-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
    a u s" PERF-MAP-TEST:MARKER" CONTAINS? TTRUE
    a u s" (bin/hb)" CONTAINS? TTRUE ;
 
 \ The header pid is a seven-digit run that is also valid hex.
 : T-PID-NOT-AN-ADDRESS ( -- )
-   HEADER$ PERF-MAP:LINE$ {: a:ptr u:n :}
+   HEADER$ PERF-MAP:LINE$ {: a:^ u:n :}
    a u s" 1880406" CONTAINS? TTRUE ;
 
 : RUN ( -- )

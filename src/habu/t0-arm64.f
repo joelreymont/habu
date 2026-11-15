@@ -148,7 +148,7 @@ DYNAMIC-BUFFER BR-ARG n
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
 : OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
 
-: W32+ ( n ptr a -- ) {: w:n buf:ptr :}
+: W32+ ( n ^a -- ) {: w:n buf:^ :}
    w  buf INSN BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U32! ;
 
 : W ( n -- ) RAW W32+ ;
@@ -223,7 +223,7 @@ DYNAMIC-BUFFER BR-ARG n
    if SP SP rot ENC-ADDI-LSL12 exit then
    SP SP rot ENC-SUBI-LSL12 ;
 
-: SP-ADJ ( n bool ptr a -- ) {: bytes:n add:bool buf:ptr :}
+: SP-ADJ ( n bool ^a -- ) {: bytes:n add:bool buf:^ :}
    bytes 12 rshift
    begin dup 0 > while
       dup ADJ-MAX min dup add SP-PAGES buf W32+ -
@@ -261,7 +261,7 @@ DYNAMIC-BUFFER BR-ARG n
    k 1 + NEPI ! ;
 
 \ The four-lane carrier into buf: every half, low first.
-: CHAIN4-IN ( n n ptr a -- ) {: v:n r:n buf:ptr :}
+: CHAIN4-IN ( n n ^a -- ) {: v:n r:n buf:^ :}
    r v 0 HALF 0 MOVZHW buf W32+
    4 1 ?do r v i HALF i MOVKHW buf W32+ loop ;
 
@@ -417,7 +417,7 @@ DYNAMIC-BUFFER BR-ARG n
    TMP ENC-BR OUT W32+
    at ;
 
-: BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- )
@@ -616,16 +616,16 @@ DYNAMIC-BUFFER BR-ARG n
 \ ---- the return stack --------------------------------------------------------
 \ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d.
 \ Vreg i of p moved to or from the slot at x17 + off.
-: RS-XFER ( ptr vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+: RS-XFER ( ^vreg n n bool -- ) {: p:^ i:n off:n st:bool :}
    p i VREG-AT REG ADR off st ACCESS ;
 
-: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
+: TOR ( ^vreg n -- ) {: p:^ n:n :}
    RDEPTH RSLOT
    n 0 ?do p i i CELL * true RS-XFER loop
    TMP TMP n ENC-ADDI W
    RDEPTH! ;
 
-: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
+: RFROM ( ^vreg n -- ) {: p:^ n:n :}
    RDEPTH
    TMP TMP n ENC-SUBI W
    RDEPTH! RSLOT
@@ -633,7 +633,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ Unscaled offsets under x17, the slot past the top, while the lowest fits nine
 \ bits; otherwise x17 moves down to the lowest slot first.
-: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
+: RFETCH ( ^vreg n n -- ) {: p:^ n:n k:n :}
    RDEPTH RSLOT
    n k + CELL * negate {: lo:n :}
    lo SIMM9? if lo else ADR ADR lo ADD-IMM 0 then {: at:n :}

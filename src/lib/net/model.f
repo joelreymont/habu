@@ -152,7 +152,7 @@ public
 8192 constant TOKENS-PER-INPUT-MAX
 
 STRUCTURE allocation DERIVE addr
-   FIELD base ptr u8
+   FIELD base ^u8
    FIELD size n
 ;STRUCTURE
 
@@ -195,8 +195,8 @@ STRUCTURE call DERIVE addr
    FIELD incomplete-u n
    FIELD embedding-kind n
    FIELD journal-context n
-   FIELD journal-get [ n ptr u8 n ptr n -- bool ]
-   FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
+   FIELD journal-get [ n ^u8 n ^n -- bool ]
+   FIELD journal-put [ n ^u8 n ^u8 n -- ]
    FIELD journal-ready bool
    FIELD tier-resend bool
    FIELD resend-wait n
@@ -218,7 +218,7 @@ STRUCTURE tokens DERIVE addr
    FIELD reasoning option<n>
 ;STRUCTURE
 
-CAST: >TOKENS ( ptr u8 -- ptr tokens )
+CAST: >TOKENS ( ^u8 -- ^tokens )
 
 \ The installed recorder and the current call's accounting: the purpose
 \ PURPOSE! left pending, the label of the call in progress, whether its request
@@ -226,7 +226,7 @@ CAST: >TOKENS ( ptr u8 -- ptr tokens )
 \ the libcurl code of the call's failed step, 0 when none.
 STRUCTURE ledger DERIVE addr
    FIELD context n
-   FIELD record [ n ptr u8 n -- n ]
+   FIELD record [ n ^u8 n -- n ]
    FIELD reject [ n n -- ]
    FIELD ready bool
    FIELD pending-u n
@@ -240,7 +240,7 @@ STRUCTURE ledger DERIVE addr
    FIELD transport n
 ;STRUCTURE
 
-CAST: >LEDGER ( ptr u8 -- ptr ledger )
+CAST: >LEDGER ( ^u8 -- ^ledger )
 
 \ A chat's event stream: whether it delivered an event, whether the response
 \ ended, an error event's fault, its first output's TIME:MONO-NS, 0 if none,
@@ -253,7 +253,7 @@ STRUCTURE stream DERIVE addr
    FIELD decoder option<SSE:decoder>
 ;STRUCTURE
 
-CAST: >STREAM ( ptr u8 -- ptr stream )
+CAST: >STREAM ( ^u8 -- ^stream )
 
 \ The land machine's steps: settling ends the call's transfer and lands it;
 \ recording runs the recorder; serving and refusing run it, then the put.
@@ -318,7 +318,7 @@ STRUCTURE receipt DERIVE addr
    FIELD ending option<ending>
 ;STRUCTURE
 
-CAST: >RECEIPT ( ptr u8 -- ptr receipt )
+CAST: >RECEIPT ( ^u8 -- ^receipt )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
@@ -394,9 +394,9 @@ INPUT-LEN-AT INPUT-MAX cells + constant VECTOR-OFF-AT
 VECTOR-OFF-AT INPUT-MAX cells + constant VECTOR-LEN-AT
 VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
-: INIT-BUFFERS ( ptr call -- )
+: INIT-BUFFERS ( ^call -- )
    {: c :}
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:ptr :}
+   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
    base GEN-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base EMBED-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base KEY-SPEC-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
@@ -436,8 +436,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base EVENT-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base NOTE-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT ;
 
-: DISPOSE-BUFFERS ( ptr u8 -- )
-   {: base:ptr :}
+: DISPOSE-BUFFERS ( ^u8 -- )
+   {: base:^ :}
    base GEN-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EMBED-HDR-AT + CELL-VIEW BUF:DISPOSE
    base KEY-SPEC-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -477,237 +477,237 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base EVENT-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base NOTE-HDR-AT + CELL-VIEW BUF:DISPOSE ;
 
-: STORAGE ( ptr call -- SPAN:span<u8> )
+: STORAGE ( ^call -- SPAN:span<u8> )
    {: c :}
    c MODEL-CALL:ARENA {: at :}
    at MODEL-ALLOCATION:BASE @ at MODEL-ALLOCATION:SIZE @
    MEM:BYTES-ALLOC-LEN MEM:ALLOCATION>SPAN ;
 
-: REGION ( ptr call n n -- SPAN:span<u8> )
+: REGION ( ^call n n -- SPAN:span<u8> )
    {: c off:n size:n :}
    c STORAGE off size SPAN:SUB ;
 
-: SCRATCH-BASE-CELL ( ptr call -- ptr n )
+: SCRATCH-BASE-CELL ( ^call -- ^n )
    SCRATCH-BASE-AT 1 cells REGION SPAN:$ drop CELL-VIEW ;
 
-: HEADER ( ptr call n -- ptr n )
+: HEADER ( ^call n -- ^n )
    {: c off:n :}
    c off BUF:HDR-BYTES REGION SPAN:$ drop CELL-VIEW ;
 
-: GEN-BUF ( ptr call -- ptr n ) GEN-HDR-AT HEADER ;
-: EMBED-BUF ( ptr call -- ptr n ) EMBED-HDR-AT HEADER ;
-: KEY-SPEC-BUF ( ptr call -- ptr n ) KEY-SPEC-HDR-AT HEADER ;
-: SYSTEM-BUF ( ptr call -- ptr n ) SYSTEM-HDR-AT HEADER ;
+: GEN-BUF ( ^call -- ^n ) GEN-HDR-AT HEADER ;
+: EMBED-BUF ( ^call -- ^n ) EMBED-HDR-AT HEADER ;
+: KEY-SPEC-BUF ( ^call -- ^n ) KEY-SPEC-HDR-AT HEADER ;
+: SYSTEM-BUF ( ^call -- ^n ) SYSTEM-HDR-AT HEADER ;
 \ The schema or the tools, as the call's form names.
-: FORM-BUF ( ptr call -- ptr n ) FORM-HDR-AT HEADER ;
-: PARTS-BUF ( ptr call -- ptr n ) PARTS-HDR-AT HEADER ;
+: FORM-BUF ( ^call -- ^n ) FORM-HDR-AT HEADER ;
+: PARTS-BUF ( ^call -- ^n ) PARTS-HDR-AT HEADER ;
 \ The parts as the journal input names them: an image by its digest.
-: JOURNAL-PARTS-BUF ( ptr call -- ptr n ) JOURNAL-PARTS-HDR-AT HEADER ;
+: JOURNAL-PARTS-BUF ( ^call -- ^n ) JOURNAL-PARTS-HDR-AT HEADER ;
 \ The history items as given, joined by single commas.
-: ITEMS-BUF ( ptr call -- ptr n ) ITEMS-HDR-AT HEADER ;
-: BODY-BUF ( ptr call -- ptr n ) BODY-HDR-AT HEADER ;
-: INPUT-BUF ( ptr call -- ptr n ) INPUT-HDR-AT HEADER ;
-: URI-BUF ( ptr call -- ptr n ) URI-HDR-AT HEADER ;
-: EFFORT-BUF ( ptr call -- ptr n ) EFFORT-HDR-AT HEADER ;
+: ITEMS-BUF ( ^call -- ^n ) ITEMS-HDR-AT HEADER ;
+: BODY-BUF ( ^call -- ^n ) BODY-HDR-AT HEADER ;
+: INPUT-BUF ( ^call -- ^n ) INPUT-HDR-AT HEADER ;
+: URI-BUF ( ^call -- ^n ) URI-HDR-AT HEADER ;
+: EFFORT-BUF ( ^call -- ^n ) EFFORT-HDR-AT HEADER ;
 \ The service tier generation requests without a purpose row name; the
 \ one the last reply says served it.
-: TIER-BUF ( ptr call -- ptr n ) TIER-HDR-AT HEADER ;
-: SERVED-BUF ( ptr call -- ptr n ) SERVED-HDR-AT HEADER ;
-: ENDPOINT-BUF ( ptr call -- ptr n ) ENDPOINT-HDR-AT HEADER ;
-: IDENTITY-BUF ( ptr call -- ptr n ) IDENTITY-HDR-AT HEADER ;
-: BASE-URL-BUF ( ptr call -- ptr n ) BASE-URL-HDR-AT HEADER ;
-: URL-BUF ( ptr call -- ptr n ) URL-HDR-AT HEADER ;
-: GEN-CONFIG-BUF ( ptr call -- ptr n ) GEN-CONFIG-HDR-AT HEADER ;
-: EMBED-CONFIG-BUF ( ptr call -- ptr n ) EMBED-CONFIG-HDR-AT HEADER ;
-: JOURNAL-INPUT-BUF ( ptr call -- ptr n ) JOURNAL-INPUT-HDR-AT HEADER ;
-: JOURNAL-RECORD-BUF ( ptr call -- ptr n ) JOURNAL-RECORD-HDR-AT HEADER ;
-: JOURNAL-OUT-BUF ( ptr call -- ptr n ) JOURNAL-OUT-HDR-AT HEADER ;
-: REPLAY-CONTENT-BUF ( ptr call -- ptr n ) REPLAY-CONTENT-HDR-AT HEADER ;
-: RESPONSE-BUF ( ptr call -- ptr n ) RESPONSE-HDR-AT HEADER ;
-: CONTENT-BUF ( ptr call -- ptr n ) CONTENT-HDR-AT HEADER ;
+: TIER-BUF ( ^call -- ^n ) TIER-HDR-AT HEADER ;
+: SERVED-BUF ( ^call -- ^n ) SERVED-HDR-AT HEADER ;
+: ENDPOINT-BUF ( ^call -- ^n ) ENDPOINT-HDR-AT HEADER ;
+: IDENTITY-BUF ( ^call -- ^n ) IDENTITY-HDR-AT HEADER ;
+: BASE-URL-BUF ( ^call -- ^n ) BASE-URL-HDR-AT HEADER ;
+: URL-BUF ( ^call -- ^n ) URL-HDR-AT HEADER ;
+: GEN-CONFIG-BUF ( ^call -- ^n ) GEN-CONFIG-HDR-AT HEADER ;
+: EMBED-CONFIG-BUF ( ^call -- ^n ) EMBED-CONFIG-HDR-AT HEADER ;
+: JOURNAL-INPUT-BUF ( ^call -- ^n ) JOURNAL-INPUT-HDR-AT HEADER ;
+: JOURNAL-RECORD-BUF ( ^call -- ^n ) JOURNAL-RECORD-HDR-AT HEADER ;
+: JOURNAL-OUT-BUF ( ^call -- ^n ) JOURNAL-OUT-HDR-AT HEADER ;
+: REPLAY-CONTENT-BUF ( ^call -- ^n ) REPLAY-CONTENT-HDR-AT HEADER ;
+: RESPONSE-BUF ( ^call -- ^n ) RESPONSE-HDR-AT HEADER ;
+: CONTENT-BUF ( ^call -- ^n ) CONTENT-HDR-AT HEADER ;
 \ The last failed reply's provider message.
-: ERROR-BUF ( ptr call -- ptr n ) ERROR-HDR-AT HEADER ;
-: KEY-LINE-BUF ( ptr call -- ptr n ) KEY-LINE-HDR-AT HEADER ;
-: VECTORS-BUF ( ptr call -- ptr n ) VECTORS-HDR-AT HEADER ;
-: PURPOSE-BUF ( ptr call -- ptr n ) PURPOSE-HDR-AT HEADER ;
-: ROWS-BUF ( ptr call -- ptr n ) ROWS-HDR-AT HEADER ;
-: ROW-TEXT-BUF ( ptr call -- ptr n ) ROW-TEXT-HDR-AT HEADER ;
+: ERROR-BUF ( ^call -- ^n ) ERROR-HDR-AT HEADER ;
+: KEY-LINE-BUF ( ^call -- ^n ) KEY-LINE-HDR-AT HEADER ;
+: VECTORS-BUF ( ^call -- ^n ) VECTORS-HDR-AT HEADER ;
+: PURPOSE-BUF ( ^call -- ^n ) PURPOSE-HDR-AT HEADER ;
+: ROWS-BUF ( ^call -- ^n ) ROWS-HDR-AT HEADER ;
+: ROW-TEXT-BUF ( ^call -- ^n ) ROW-TEXT-HDR-AT HEADER ;
 \ The event types the call's stream carried, one row each in first-seen order.
-: EVENT-ROWS-BUF ( ptr call -- ptr n ) EVENT-ROWS-HDR-AT HEADER ;
-: EVENT-TEXT-BUF ( ptr call -- ptr n ) EVENT-TEXT-HDR-AT HEADER ;
-: CACHE-KEY-BUF ( ptr call -- ptr n ) CACHE-KEY-HDR-AT HEADER ;
+: EVENT-ROWS-BUF ( ^call -- ^n ) EVENT-ROWS-HDR-AT HEADER ;
+: EVENT-TEXT-BUF ( ^call -- ^n ) EVENT-TEXT-HDR-AT HEADER ;
+: CACHE-KEY-BUF ( ^call -- ^n ) CACHE-KEY-HDR-AT HEADER ;
 \ The id of the call's response, empty until its reply names it.
-: RESPONSE-ID-BUF ( ptr call -- ptr n ) RESPONSE-ID-HDR-AT HEADER ;
+: RESPONSE-ID-BUF ( ^call -- ^n ) RESPONSE-ID-HDR-AT HEADER ;
 \ The bytes of the event stream's last read.
-: CHUNK-BUF ( ptr call -- ptr n ) CHUNK-HDR-AT HEADER ;
+: CHUNK-BUF ( ^call -- ^n ) CHUNK-HDR-AT HEADER ;
 \ The text LOG-NOTE! names the call's work with.
-: NOTE-BUF ( ptr call -- ptr n ) NOTE-HDR-AT HEADER ;
+: NOTE-BUF ( ^call -- ^n ) NOTE-HDR-AT HEADER ;
 \ A buffer's whole capacity. Writers that keep their own length write here.
-: HELD ( ptr n -- SPAN:span<u8> )
-   {: buf:ptr :}
+: HELD ( ^n -- SPAN:span<u8> )
+   {: buf:^ :}
    buf BUF:SPAN$ drop buf BUF:CAP@ BUF:BLEN>N SPAN:MAKE ;
 \ The buffer's capacity, at least need bytes, for writing afresh: the bytes it
 \ held are not kept.
-: ROOM ( n ptr n -- SPAN:span<u8> )
-   {: need:n buf:ptr :}
+: ROOM ( n ^n -- SPAN:span<u8> )
+   {: need:n buf:^ :}
    buf BUF:CLEAR
    buf need BUF:N>BLEN BUF:ENSURE
    buf HELD ;
-: TOKENS ( ptr call -- ptr tokens )
+: TOKENS ( ^call -- ^tokens )
    COUNTS-AT TOKENS-BYTES REGION SPAN:$ drop >TOKENS ;
-: LEDGER ( ptr call -- ptr ledger )
+: LEDGER ( ^call -- ^ledger )
    ACCOUNTS-AT LEDGER-BYTES REGION SPAN:$ drop >LEDGER ;
-: STREAM ( ptr call -- ptr stream )
+: STREAM ( ^call -- ^stream )
    EVENTS-AT STREAM-BYTES REGION SPAN:$ drop >STREAM ;
-: RECEIPT ( ptr call -- ptr receipt )
+: RECEIPT ( ^call -- ^receipt )
    ENDING-AT RECEIPT-BYTES REGION SPAN:$ drop >RECEIPT ;
-: DECODER-STORAGE ( ptr call -- ptr n n )
-   DECODER-AT SSE:STORAGE-BYTES REGION SPAN:$ {: a:ptr u:n :}
+: DECODER-STORAGE ( ^call -- ^n n )
+   DECODER-AT SSE:STORAGE-BYTES REGION SPAN:$ {: a:^ u:n :}
    a CELL-VIEW u ;
 \ A sha256 context, then the digest, then its hex.
-: HASH-WORK ( ptr call -- ptr u8 )
+: HASH-WORK ( ^call -- ^u8 )
    HASH-AT SHA256-CTX-BYTES 96 + REGION SPAN:$ drop ;
-: LABEL$ ( ptr call -- ptr u8 n )
+: LABEL$ ( ^call -- ^u8 n )
    {: c :}
    c PURPOSE-BUF HELD c LEDGER LEDGER-LABEL-U @ SPAN:TAKE SPAN:$ ;
 \ The request is leaving for the backend: from here on the call is recorded.
-: DISPATCHED ( ptr call -- )
+: DISPATCHED ( ^call -- )
    LEDGER {: l :}
    true l LEDGER-DISPATCHED !
    TIME:MONO-NS l LEDGER-STARTED-NS ! ;
-: INPUT-OFF ( ptr call n -- ptr n )
+: INPUT-OFF ( ^call n -- ^n )
    {: c idx:n :}
    c INPUT-OFF-AT idx cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
-: INPUT-LEN ( ptr call n -- ptr n )
+: INPUT-LEN ( ^call n -- ^n )
    {: c idx:n :}
    c INPUT-LEN-AT idx cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
-: VECTOR-OFF ( ptr call n -- ptr n )
+: VECTOR-OFF ( ^call n -- ^n )
    {: c idx:n :}
    c VECTOR-OFF-AT idx cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
-: VECTOR-LEN ( ptr call n -- ptr n )
+: VECTOR-LEN ( ^call n -- ^n )
    {: c idx:n :}
    c VECTOR-LEN-AT idx cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
 
-: ROW-COUNT ( ptr call -- n ) ROWS-BUF BUF:LEN@ BUF:BLEN>N ROW-BYTES / ;
+: ROW-COUNT ( ^call -- n ) ROWS-BUF BUF:LEN@ BUF:BLEN>N ROW-BYTES / ;
 \ The row the call in progress uses, plus one; 0 is none.
-: PICK-CELL ( ptr call -- ptr n )
+: PICK-CELL ( ^call -- ^n )
    PICK-AT 1 cells REGION SPAN:$ drop CELL-VIEW ;
 \ The most output tokens a chat request asks for; 0 asks for no limit.
-: MAX-OUTPUT-CELL ( ptr call -- ptr n )
+: MAX-OUTPUT-CELL ( ^call -- ^n )
    MAX-OUTPUT-AT 1 cells REGION SPAN:$ drop CELL-VIEW ;
 \ Cell k of the row being added.
-: ROW-NEW ( n ptr call -- ptr n )
+: ROW-NEW ( n ^call -- ^n )
    {: k:n c :}
    c ROW-NEW-AT k cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
 \ Cell k of row idx.
-: ROW-CELL ( n n ptr call -- n )
+: ROW-CELL ( n n ^call -- n )
    {: idx:n k:n c :}
    c ROWS-BUF BUF:SPAN idx ROW-BYTES * k cells + 1 cells SPAN:SUB
    SPAN:$ drop CELL-VIEW @ ;
 \ Field 0, 1, 2 or 3 of row idx: its purpose, model, effort or service tier.
-: ROW$ ( n n ptr call -- ptr u8 n )
+: ROW$ ( n n ^call -- ^u8 n )
    {: idx:n field:n c :}
    c ROW-TEXT-BUF BUF:SPAN
    idx field 2 * c ROW-CELL idx field 2 * 1+ c ROW-CELL SPAN:SUB SPAN:$ ;
 \ Adds field k of the row being added to the row text.
-: ROW-TEXT+ ( ptr u8 n n ptr call -- )
-   {: a:ptr u:n k:n c :}
+: ROW-TEXT+ ( ^u8 n n ^call -- )
+   {: a:^ u:n k:n c :}
    c ROW-TEXT-BUF BUF:LEN@ BUF:BLEN>N k 2 * c ROW-NEW !
    u k 2 * 1+ c ROW-NEW !
    a u BUF:N>BLEN c ROW-TEXT-BUF BUF:APPEND-SPAN ;
 \ The row of the purpose, plus one; 0 is none.
-: ROW-OF ( ptr u8 n ptr call -- n )
-   {: a:ptr u:n c :}
+: ROW-OF ( ^u8 n ^call -- n )
+   {: a:^ u:n c :}
    c ROW-COUNT 0 ?do
       i 0 c ROW$ a u STR= if i 1+ unloop exit then
    loop 0 ;
 
-: EVENT-ROW-COUNT ( ptr call -- n )
+: EVENT-ROW-COUNT ( ^call -- n )
    EVENT-ROWS-BUF BUF:LEN@ BUF:BLEN>N EVENT-ROW-BYTES / ;
 \ Cell k of event row idx.
-: EVENT-CELL ( n n ptr call -- ptr n )
+: EVENT-CELL ( n n ^call -- ^n )
    {: idx:n k:n c :}
    c EVENT-ROWS-BUF BUF:SPAN idx EVENT-ROW-BYTES * k cells + 1 cells SPAN:SUB
    SPAN:$ drop CELL-VIEW ;
-: EVENT-TYPE$ ( n ptr call -- ptr u8 n )
+: EVENT-TYPE$ ( n ^call -- ^u8 n )
    {: idx:n c :}
    c EVENT-TEXT-BUF BUF:SPAN idx 0 c EVENT-CELL @ idx 1 c EVENT-CELL @ SPAN:SUB
    SPAN:$ ;
 \ Counts one event of the type, adding its row the first time it is seen.
-: COUNT-EVENT ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: COUNT-EVENT ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c EVENT-ROW-COUNT {: rows:n :}
    rows rows 0 ?do i c EVENT-TYPE$ a u STR= if drop i leave then loop {: idx:n :}
    idx rows = if
       c EVENT-TEXT-BUF BUF:LEN@ BUF:BLEN>N {: off:n :}
       a u BUF:N>BLEN c EVENT-TEXT-BUF BUF:APPEND-SPAN
       c EVENT-ROWS-BUF EVENT-ROW-BYTES BUF:N>BLEN BUF:GROW SPAN:$ drop CELL-VIEW
-      {: row:ptr :}
+      {: row:^ :}
       off row !  u row 1 cells + !  0 row 2 cells + !
    then
    1 idx 2 c EVENT-CELL +! ;
 
-: BUFFER$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
+: BUFFER$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 \ The generation model, effort and tier: the purpose row's when the latest call
 \ or JOURNAL-INPUT$ selected one, else the call's own.
-: GEN$ ( ptr call -- ptr u8 n )
+: GEN$ ( ^call -- ^u8 n )
    {: c :}
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 1 c ROW$ exit then
    c GEN-BUF BUFFER$ ;
-: EMBED-MODEL$ ( ptr call -- ptr u8 n ) EMBED-BUF BUFFER$ ;
-: KEY-SPEC$ ( ptr call -- ptr u8 n ) KEY-SPEC-BUF BUFFER$ ;
-: SYSTEM$ ( ptr call -- ptr u8 n ) SYSTEM-BUF BUFFER$ ;
-: FORM$ ( ptr call -- ptr u8 n ) FORM-BUF BUFFER$ ;
-: PARTS$ ( ptr call -- ptr u8 n ) PARTS-BUF BUFFER$ ;
-: JOURNAL-PARTS$ ( ptr call -- ptr u8 n ) JOURNAL-PARTS-BUF BUFFER$ ;
-: ITEMS$ ( ptr call -- ptr u8 n ) ITEMS-BUF BUFFER$ ;
-: BODY$ ( ptr call -- ptr u8 n ) BODY-BUF BUFFER$ ;
-: EFFORT$ ( ptr call -- ptr u8 n )
+: EMBED-MODEL$ ( ^call -- ^u8 n ) EMBED-BUF BUFFER$ ;
+: KEY-SPEC$ ( ^call -- ^u8 n ) KEY-SPEC-BUF BUFFER$ ;
+: SYSTEM$ ( ^call -- ^u8 n ) SYSTEM-BUF BUFFER$ ;
+: FORM$ ( ^call -- ^u8 n ) FORM-BUF BUFFER$ ;
+: PARTS$ ( ^call -- ^u8 n ) PARTS-BUF BUFFER$ ;
+: JOURNAL-PARTS$ ( ^call -- ^u8 n ) JOURNAL-PARTS-BUF BUFFER$ ;
+: ITEMS$ ( ^call -- ^u8 n ) ITEMS-BUF BUFFER$ ;
+: BODY$ ( ^call -- ^u8 n ) BODY-BUF BUFFER$ ;
+: EFFORT$ ( ^call -- ^u8 n )
    {: c :}
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 2 c ROW$ exit then
    c EFFORT-BUF BUFFER$ ;
-: CACHE-KEY$ ( ptr call -- ptr u8 n ) CACHE-KEY-BUF BUFFER$ ;
-: RESPONSE-ID$ ( ptr call -- ptr u8 n ) RESPONSE-ID-BUF BUFFER$ ;
-: NOTE$ ( ptr call -- ptr u8 n ) NOTE-BUF BUFFER$ ;
+: CACHE-KEY$ ( ^call -- ^u8 n ) CACHE-KEY-BUF BUFFER$ ;
+: RESPONSE-ID$ ( ^call -- ^u8 n ) RESPONSE-ID-BUF BUFFER$ ;
+: NOTE$ ( ^call -- ^u8 n ) NOTE-BUF BUFFER$ ;
 \ Whether the call's sends name its tier: not once its tier machine sends at
 \ the standard tier or is done.
-: TIER-NAMED? ( ptr call -- bool )
+: TIER-NAMED? ( ^call -- bool )
    RECEIPT RECEIPT-TIER @ MATCH tier-step
       preferred OF true ENDOF
       resuming OF true ENDOF
       standard OF false ENDOF
       done OF false ENDOF
    ;MATCH ;
-: TIER$ ( ptr call -- ptr u8 n )
+: TIER$ ( ^call -- ^u8 n )
    {: c :}
    c TIER-NAMED? 0= if s" " exit then
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 3 c ROW$ exit then
    c TIER-BUF BUFFER$ ;
-: SERVED$ ( ptr call -- ptr u8 n ) SERVED-BUF BUFFER$ ;
-: ENDPOINT$ ( ptr call -- ptr u8 n ) ENDPOINT-BUF BUFFER$ ;
-: IDENTITY$ ( ptr call -- ptr u8 n ) IDENTITY-BUF BUFFER$ ;
-: BASE-URL$ ( ptr call -- ptr u8 n ) BASE-URL-BUF BUFFER$ ;
-: GEN-CONFIG$ ( ptr call -- ptr u8 n ) GEN-CONFIG-BUF BUFFER$ ;
-: EMBED-CONFIG$ ( ptr call -- ptr u8 n ) EMBED-CONFIG-BUF BUFFER$ ;
-: JOURNAL-INPUT-SPAN$ ( ptr call -- ptr u8 n ) JOURNAL-INPUT-BUF BUFFER$ ;
-: JOURNAL-RECORD$ ( ptr call -- ptr u8 n ) JOURNAL-RECORD-BUF BUFFER$ ;
-: JOURNAL-OUT$ ( ptr call -- ptr u8 n ) JOURNAL-OUT-BUF BUFFER$ ;
-: REPLAY-CONTENT$ ( ptr call -- ptr u8 n ) REPLAY-CONTENT-BUF BUFFER$ ;
-: RESPONSE$ ( ptr call -- ptr u8 n )
+: SERVED$ ( ^call -- ^u8 n ) SERVED-BUF BUFFER$ ;
+: ENDPOINT$ ( ^call -- ^u8 n ) ENDPOINT-BUF BUFFER$ ;
+: IDENTITY$ ( ^call -- ^u8 n ) IDENTITY-BUF BUFFER$ ;
+: BASE-URL$ ( ^call -- ^u8 n ) BASE-URL-BUF BUFFER$ ;
+: GEN-CONFIG$ ( ^call -- ^u8 n ) GEN-CONFIG-BUF BUFFER$ ;
+: EMBED-CONFIG$ ( ^call -- ^u8 n ) EMBED-CONFIG-BUF BUFFER$ ;
+: JOURNAL-INPUT-SPAN$ ( ^call -- ^u8 n ) JOURNAL-INPUT-BUF BUFFER$ ;
+: JOURNAL-RECORD$ ( ^call -- ^u8 n ) JOURNAL-RECORD-BUF BUFFER$ ;
+: JOURNAL-OUT$ ( ^call -- ^u8 n ) JOURNAL-OUT-BUF BUFFER$ ;
+: REPLAY-CONTENT$ ( ^call -- ^u8 n ) REPLAY-CONTENT-BUF BUFFER$ ;
+: RESPONSE$ ( ^call -- ^u8 n )
    {: c :}
    c RESPONSE-BUF HELD c MODEL-CALL:RESPONSE-U @ SPAN:TAKE SPAN:$ ;
 
-: REQUIRE-OPEN ( ptr call -- )
+: REQUIRE-OPEN ( ^call -- )
    MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then ;
 
-: IDLE! ( ptr call -- ) construct call-state idle swap MODEL-CALL:STATE ! ;
+: IDLE! ( ^call -- ) construct call-state idle swap MODEL-CALL:STATE ! ;
 
 
 \ The setters that keep the finished request run it.
-: REQUIRE-REST ( ptr call -- )
+: REQUIRE-REST ( ^call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -752,7 +752,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 \ Whether kind k's configuration is the one the last call restored from a
 \ journal record, with no setter of it since: the record's kind builds the
 \ configuration k builds.
-: REPLAYED? ( call-kind ptr call -- bool )
+: REPLAYED? ( call-kind ^call -- bool )
    {: k:call-kind c :}
    c MODEL-CALL:REPLAY-KIND @ MATCH option
       none OF false ENDOF
@@ -764,7 +764,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 \ Drops a generation configuration the last call restored from a journal
 \ record: a setter changed what generation calls send.
-: FORGET-GEN-REPLAY ( ptr call -- )
+: FORGET-GEN-REPLAY ( ^call -- )
    {: c :}
    c MODEL-CALL:REPLAY-KIND @ MATCH option
       none OF ENDOF
@@ -772,7 +772,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ;MATCH ;
 
 
-: REQUIRE-BUILDING ( ptr call -- )
+: REQUIRE-BUILDING ( ^call -- )
    MODEL-CALL:CHAT-INPUT @ MATCH input-state
       none OF E-STATE throw ENDOF
       building OF ENDOF
@@ -783,7 +783,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 \ Makes a call idle and answers whether JOURNAL-INPUT$ had finished its
 \ request, which stays finished for START to send.
-: TAKE-PREPARED ( ptr call -- bool )
+: TAKE-PREPARED ( ^call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -796,23 +796,23 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 \ Drops the request JOURNAL-INPUT$ finished, leaving no input, and answers
 \ whether there was one; JOURNAL-INPUT$ names the words that discard it.
-: UNPREPARE ( ptr call -- bool )
+: UNPREPARE ( ^call -- bool )
    {: c :}
    c TAKE-PREPARED dup if
       construct input-state none c MODEL-CALL:CHAT-INPUT !
    then ;
 
 
-: REPLACE-SOME ( ptr u8 n ptr n -- )
-   {: a:ptr u:n buf:ptr :}
+: REPLACE-SOME ( ^u8 n ^n -- )
+   {: a:^ u:n buf:^ :}
    u 0 <= if E-CONFIG throw then
    a u BUF:N>BLEN buf BUF:REPLACE ;
 
 \ Clears buf for a use of used bytes. One whose capacity is above the smallest
 \ doubling of the scratch base that holds them is shrunk to that doubling, the
 \ room a past use took given back; a shrink that throws leaves buf cleared.
-: RESET-SIZED ( ptr n n ptr call -- )
-   {: buf:ptr used:n c :}
+: RESET-SIZED ( ^n n ^call -- )
+   {: buf:^ used:n c :}
    c SCRATCH-BASE-CELL @
    begin dup used < while 2 * repeat {: target:n :}
    buf BUF:CAP@ BUF:BLEN>N target > if
@@ -821,12 +821,12 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
       buf BUF:CLEAR
    then ;
 
-: RESET-SCRATCH ( ptr n ptr call -- )
-   {: buf:ptr c :}
+: RESET-SCRATCH ( ^n ^call -- )
+   {: buf:^ c :}
    buf buf BUF:LEN@ BUF:BLEN>N c RESET-SIZED ;
 
 \ No reply usage seen yet.
-: RESET-USAGE ( ptr call -- )
+: RESET-USAGE ( ^call -- )
    TOKENS {: t :}
    false t TOKENS-SEEN !
    OPTION:NONE t TOKENS-INPUT !
@@ -835,7 +835,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    OPTION:NONE t TOKENS-OUTPUT !
    OPTION:NONE t TOKENS-REASONING ! ;
 
-: OPEN-PREP ( ptr call -- ptr call )
+: OPEN-PREP ( ^call -- ^call )
    {: c :}
    SCRATCH-INITIAL OS-MEMORY:PAGE-SIZE max c SCRATCH-BASE-CELL !
    c INIT-BUFFERS
@@ -873,21 +873,21 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c RESET-USAGE
    c ;
 
-: RELEASE-OPEN ( ptr call -- )
+: RELEASE-OPEN ( ^call -- )
    {: c :}
    c MODEL-CALL:GATE-READY @ if
       c MODEL-CALL:GATE @ TASK:FREE-SEMAPHORE
       false c MODEL-CALL:GATE-READY !
    then
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:ptr :}
+   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
    base DISPOSE-BUFFERS
    c MODEL-CALL:READER JSON:READ-DISPOSE
    base ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    0 c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE ! ;
 
-: SCHEME-LEN ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SCHEME-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u s" https://" STARTS-WITH? if 8 exit then
    a u s" http://" STARTS-WITH? if 7 exit then
    0 ;
@@ -900,38 +900,38 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    b [char] @ <> and b [char] ? <> and b [char] # <> and ;
 
 \ The provider base every OpenAI-compatible route extends when none is set.
-: OPENAI-BASE$ ( -- ptr u8 n ) s" https://api.openai.com/v1" ;
+: OPENAI-BASE$ ( -- ^u8 n ) s" https://api.openai.com/v1" ;
 
 \ The configured base, or OpenAI's when none is set.
-: BASE$ ( ptr call -- ptr u8 n )
-   BASE-URL$ {: base:ptr base-u:n :}
+: BASE$ ( ^call -- ^u8 n )
+   BASE-URL$ {: base:^ base-u:n :}
    base-u 0= if OPENAI-BASE$ else base base-u then ;
 
 \ The base followed by the route; valid until the next rendering.
-: URL$ ( ptr u8 n ptr call -- ptr u8 n )
-   {: route:ptr route-u:n c :}
+: URL$ ( ^u8 n ^call -- ^u8 n )
+   {: route:^ route-u:n c :}
    c URL-BUF BUF:CLEAR
    c BASE$ BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
    route route-u BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
    c URL-BUF BUFFER$ ;
 
-: CHAT-URL$ ( ptr call -- ptr u8 n )
+: CHAT-URL$ ( ^call -- ^u8 n )
    {: c :}
    s" /responses" c URL$ ;
 
-: EMBED-URL$ ( ptr call -- ptr u8 n )
+: EMBED-URL$ ( ^call -- ^u8 n )
    {: c :}
    s" /embeddings" c URL$ ;
 
-: COUNT-URL$ ( ptr call -- ptr u8 n )
+: COUNT-URL$ ( ^call -- ^u8 n )
    {: c :}
    s" /responses/input_tokens" c URL$ ;
 
-: COMPACT-URL$ ( ptr call -- ptr u8 n )
+: COMPACT-URL$ ( ^call -- ^u8 n )
    {: c :}
    s" /responses/compact" c URL$ ;
 
-: REQUEST-URL$ ( ptr call -- ptr u8 n )
+: REQUEST-URL$ ( ^call -- ^u8 n )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CHAT-URL$ ENDOF
@@ -948,17 +948,17 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    dims 0 <= deadline 0 <= or deadline CURL:MAX-TIMEOUT > or
    if E-CONFIG throw then ;
 
-: DIMS-DEADLINE! ( n n ptr call -- )
+: DIMS-DEADLINE! ( n n ^call -- )
    {: dims:n deadline:n c :}
    dims c MODEL-CALL:DIMS !
    deadline c MODEL-CALL:DEADLINE ! ;
 
 public
 
-: OPEN ( ptr call -- )
+: OPEN ( ^call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= 0= if E-STATE throw then
-   ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
+   ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:^ :}
    \ Fresh anonymous pages are zero; leave unused arena regions untouched.
    base c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    ARENA-BYTES c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE !
@@ -968,7 +968,7 @@ public
 
 
 \ Frees the open call, a landed one included; a started one is E-STATE.
-: CLOSE ( ptr call -- )
+: CLOSE ( ^call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -982,7 +982,7 @@ public
 
 \ Installs the journal, which resumes completed calls from the caller's
 \ durable store through get and put under the header's rules. OPEN disables it.
-: JOURNAL! ( n [ n ptr u8 n ptr n -- bool ] [ n ptr u8 n ptr u8 n -- ] ptr call -- )
+: JOURNAL! ( n [ n ^u8 n ^n -- bool ] [ n ^u8 n ^u8 n -- ] ^call -- )
    {: ctx:n get put c :}
    c REQUIRE-REST
    ctx c MODEL-CALL:JOURNAL-CONTEXT !
@@ -992,7 +992,7 @@ public
 
 \ Installs the recorder, which records each request a backend receives through
 \ record and each rejected reply through reject, under the header's rules.
-: RECORDER! ( n [ n ptr u8 n -- n ] [ n n -- ] ptr call -- )
+: RECORDER! ( n [ n ^u8 n -- n ] [ n n -- ] ^call -- )
    {: ctx:n record reject c :}
    c REQUIRE-REST
    c LEDGER {: l :}
@@ -1004,13 +1004,13 @@ public
 \ What the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED or REPLAY
 \ is for: nonblank.
 \ Each consumes it; with a recorder installed, one without a purpose is E-STATE.
-: PURPOSE? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: PURPOSE? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0= if false exit then
    false u 0 ?do a i + c@ 32 > or loop ;
 
-: PURPOSE! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: PURPOSE! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    a u PURPOSE? 0= if E-CONFIG throw then
    a u BUF:N>BLEN c PURPOSE-BUF BUF:REPLACE
@@ -1020,14 +1020,14 @@ public
 \ call and put into each of its failure lines; empty clears it. It changes no
 \ request, journal input, cache key or record. An idle or prepared call is
 \ required, else E-STATE; a negative length is E-CONFIG.
-: LOG-NOTE! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: LOG-NOTE! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c REQUIRE-REST
    u 0< if E-CONFIG throw then
    a u BUF:N>BLEN c NOTE-BUF BUF:REPLACE ;
 
-: BASE-URL? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: BASE-URL? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0< if false exit then
    a u SCHEME-LEN {: scheme-u:n :}
    scheme-u 0= u scheme-u <= or if false exit then
@@ -1036,24 +1036,24 @@ public
 
 \ The OpenAI-compatible base the chat, count, compaction and embedding routes
 \ extend; empty restores OpenAI's.
-: BASE-URL! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: BASE-URL! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
    a u c BASE-URL-BUF REPLACE-SOME ;
 
-: GENERATION-MODEL! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: GENERATION-MODEL! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    a u c GEN-BUF REPLACE-SOME
    c FORGET-GEN-REPLAY ;
 
 \ The reasoning effort of every chat and count without a purpose row; empty
 \ sends none.
-: EFFORT! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: EFFORT! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
    c FORGET-GEN-REPLAY ;
@@ -1061,14 +1061,14 @@ public
 \ The provider's prompt cache key of every later generation call: requests
 \ sharing a key share cache routing. Empty sends none. It leaves the reply,
 \ so the journal input and replay, unchanged.
-: CACHE-KEY! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: CACHE-KEY! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
 
 \ The most output tokens, reasoning included, of each later chat request alone,
 \ 0 none; a chat's journal input names it, so a refusal replays only under it.
-: MAX-OUTPUT! ( n ptr call -- )
+: MAX-OUTPUT! ( n ^call -- )
    {: n:n c :}
    c UNPREPARE drop
    n 0< if E-CONFIG throw then
@@ -1078,8 +1078,8 @@ public
 \ such as flex; empty sends none, so the provider serves its default.
 \ Embedding requests carry none. The tier changes no content, so replay does
 \ not depend on it.
-: SERVICE-TIER! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: SERVICE-TIER! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
 
@@ -1087,7 +1087,7 @@ public
 \ service tier, so the provider serves its default: each send is recorded,
 \ the first tier_unavailable. A second E-TIER, a stopped call or a failed
 \ recorder ends it.
-: TIER-RESEND! ( bool ptr call -- )
+: TIER-RESEND! ( bool ^call -- )
    {: on:bool c :}
    c REQUIRE-REST
    on c MODEL-CALL:TIER-RESEND ! ;
@@ -1096,7 +1096,7 @@ public
 \ request is sent again, with no cap: each send is recorded and its line
 \ names the wait. A stop or CANCEL during the rest ends the call E-CANCELLED.
 \ 0, OPEN's, is off; below 0 is E-CONFIG.
-: RESEND-WAIT! ( n ptr call -- )
+: RESEND-WAIT! ( n ^call -- )
    {: ms:n c :}
    c REQUIRE-REST
    ms 0< if E-CONFIG throw then
@@ -1106,8 +1106,8 @@ public
 \ purpose, in place of the call's own; empty effort or tier sends none, even
 \ when SERVICE-TIER! set one. A purpose takes one row: a repeated purpose is
 \ E-CONFIG.
-: PURPOSE-MODEL! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr call -- )
-   {: p:ptr p-u:n m:ptr m-u:n e:ptr e-u:n t:ptr t-u:n c :}
+: PURPOSE-MODEL! ( ^u8 n ^u8 n ^u8 n ^u8 n ^call -- )
+   {: p:^ p-u:n m:^ m-u:n e:^ e-u:n t:^ t-u:n c :}
    c UNPREPARE drop
    p p-u PURPOSE? 0= if E-CONFIG throw then
    m-u 0 <= e-u 0< or t-u 0< or if E-CONFIG throw then
@@ -1121,8 +1121,8 @@ public
 
 \ The embedding model, its dimensions and the deadline in milliseconds that
 \ ends each embedding call, connect included.
-: EMBEDDING-MODEL! ( ptr u8 n n n ptr call -- )
-   {: a:ptr u:n dims:n deadline:n c :}
+: EMBEDDING-MODEL! ( ^u8 n n n ^call -- )
+   {: a:^ u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
    a u c EMBED-BUF REPLACE-SOME
@@ -1141,29 +1141,29 @@ public
 \ and SECRET:E-UNAVAILABLE pass through; a call with no item named fails there
 \ with E-CONFIG. The key spec holds the service, then the account from byte
 \ key-split.
-: API-KEY! ( ptr u8 n ptr u8 n ptr call -- )
-   {: svc:ptr su:n acct:ptr au:n c :}
+: API-KEY! ( ^u8 n ^u8 n ^call -- )
+   {: svc:^ su:n acct:^ au:n c :}
    c REQUIRE-REST
    su 0 <= au 0 <= or if E-CONFIG throw then
    svc su c KEY-SPEC-BUF REPLACE-SOME
    acct au BUF:N>BLEN c KEY-SPEC-BUF BUF:APPEND-SPAN
    su c MODEL-CALL:KEY-SPLIT ! ;
 
-: SYSTEM! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: SYSTEM! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    a u c SYSTEM-BUF REPLACE-SOME ;
 
-: SCHEMA! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: SCHEMA! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    a u c FORM-BUF REPLACE-SOME
    construct reply-form schema c MODEL-CALL:FORM ! ;
 
 \ The tools a call offers, a JSON array of OpenAI function tools checked when
 \ the request is finished; the last of SCHEMA! and TOOLS! decides its form.
-: TOOLS! ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: TOOLS! ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    a u c FORM-BUF REPLACE-SOME
    construct reply-form tools c MODEL-CALL:FORM ! ;
@@ -1176,7 +1176,7 @@ public
 \ zeroed storage (1 TYPED-BUFFER S MODEL:settings); SETTINGS-OPEN reads the
 \ model and base once into bytes the settings own until SETTINGS-CLOSE.
 STRUCTURE settings DERIVE addr
-   FIELD bufs ptr u8
+   FIELD bufs ^u8
    FIELD ready n
    FIELD model-u n
    FIELD base-u n
@@ -1190,25 +1190,25 @@ private
 3 constant SETTING-BUFFERS
 64 constant SETTING-INITIAL
 
-: SETTING-BUF ( ptr settings n -- ptr n )
+: SETTING-BUF ( ^settings n -- ^n )
    {: s idx:n :}
    s MODEL-SETTINGS:BUFS @ idx BUF:HDR-BYTES * + CELL-VIEW ;
 
-: SETTING-ACCOUNT$ ( n -- ptr u8 n )
+: SETTING-ACCOUNT$ ( n -- ^u8 n )
    case
       SETTING-MODEL of s" model" endof
       SETTING-BASE of s" base-url" endof
       E-STATE throw
    endcase ;
 
-: SETTING$ ( ptr settings n n -- ptr u8 n )
+: SETTING$ ( ^settings n n -- ^u8 n )
    {: s idx:n u:n :}
    s idx SETTING-BUF HELD u SPAN:TAKE SPAN:$ ;
 
 
 \ Reads the item of setting idx into its buffer's capacity and returns its
 \ length; a missing item reads as empty.
-: SETTING-READ ( ptr settings n -- ptr settings n )
+: SETTING-READ ( ^settings n -- ^settings n )
    {: s idx:n :}
    s SETTING-SERVICE SETTING-BUF BUFFER$ idx SETTING-ACCOUNT$
    s idx SETTING-BUF HELD SECRET:READ {: u:n found:bool :}
@@ -1217,22 +1217,22 @@ private
 
 \ An item larger than the buffer grows it and is read again: the store copies
 \ no byte of an item it refuses. The store's own failures pass through.
-: SETTING-LOAD ( ptr settings n -- n )
+: SETTING-LOAD ( ^settings n -- n )
    {: s idx:n :}
    begin
       s idx [: SETTING-READ ;] catch {: fault:n :}
       fault 0= if nip exit then
       2drop
       fault SECRET:E-CAPACITY <> if fault throw then
-      s idx SETTING-BUF {: buf:ptr :}
+      s idx SETTING-BUF {: buf:^ :}
       buf BUF:CAP@ BUF:BLEN>N 2 * {: need:n :}
       buf BUF:CLEAR
       buf need BUF:N>BLEN BUF:ENSURE
    again ;
 
 
-: SETTINGS-FILL ( ptr u8 n ptr settings -- ptr u8 n ptr settings )
-   {: svc:ptr su:n s :}
+: SETTINGS-FILL ( ^u8 n ^settings -- ^u8 n ^settings )
+   {: svc:^ su:n s :}
    SETTING-BUFFERS 0 ?do
       s i SETTING-BUF SETTING-INITIAL BUF:N>BLEN BUF:INIT
       i 1+ s MODEL-SETTINGS:READY !
@@ -1247,7 +1247,7 @@ private
    svc su s ;
 
 
-: SETTINGS-RELEASE ( ptr settings -- )
+: SETTINGS-RELEASE ( ^settings -- )
    {: s :}
    s MODEL-SETTINGS:READY @ 0 ?do s i SETTING-BUF BUF:DISPOSE loop
    s MODEL-SETTINGS:BUFS @ SETTING-BUFFERS BUF:HDR-BYTES *
@@ -1257,7 +1257,7 @@ private
    0 s MODEL-SETTINGS:MODEL-U !
    0 s MODEL-SETTINGS:BASE-U ! ;
 
-: SETTINGS-OPEN? ( ptr settings -- bool )
+: SETTINGS-OPEN? ( ^settings -- bool )
    MODEL-SETTINGS:BUFS @ NULL-PTR = 0= ;
 
 public
@@ -1267,8 +1267,8 @@ public
 \ non-empty base-url item BASE-URL! refuses is E-CONFIG; SECRET:E-CONFIG,
 \ SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through. A failed open
 \ leaves s closed.
-: SETTINGS-OPEN ( ptr u8 n ptr settings -- )
-   {: svc:ptr su:n s :}
+: SETTINGS-OPEN ( ^u8 n ^settings -- )
+   {: svc:^ su:n s :}
    s SETTINGS-OPEN? if E-STATE throw then
    su 0 <= if E-CONFIG throw then
    SETTING-BUFFERS BUF:HDR-BYTES * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
@@ -1279,7 +1279,7 @@ public
    code 0<> if s SETTINGS-RELEASE code throw then ;
 
 \ Releases the settings' bytes; closed settings are E-STATE.
-: SETTINGS-CLOSE ( ptr settings -- )
+: SETTINGS-CLOSE ( ^settings -- )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTINGS-RELEASE ;
@@ -1287,17 +1287,17 @@ public
 \ The open settings' service, model and base URL (empty when its item is
 \ absent or empty). The bytes stay owned by the settings until SETTINGS-CLOSE.
 \ Closed settings are E-STATE.
-: SETTINGS-SERVICE$ ( ptr settings -- ptr u8 n )
+: SETTINGS-SERVICE$ ( ^settings -- ^u8 n )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-SERVICE SETTING-BUF BUFFER$ ;
 
-: SETTINGS-MODEL$ ( ptr settings -- ptr u8 n )
+: SETTINGS-MODEL$ ( ^settings -- ^u8 n )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-MODEL s MODEL-SETTINGS:MODEL-U @ SETTING$ ;
 
-: SETTINGS-BASE$ ( ptr settings -- ptr u8 n )
+: SETTINGS-BASE$ ( ^settings -- ^u8 n )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-BASE s MODEL-SETTINGS:BASE-U @ SETTING$ ;
@@ -1305,7 +1305,7 @@ public
 \ Sets the call's generation model, base URL and the service's "api-key" item
 \ as its key, copying each into the call: the settings may close after.
 \ A busy or unopened call, or closed settings, is E-STATE.
-: SETTINGS-APPLY ( ptr settings ptr call -- )
+: SETTINGS-APPLY ( ^settings ^call -- )
    {: s c :}
    c REQUIRE-REST
    s SETTINGS-MODEL$ c GENERATION-MODEL!
@@ -1314,12 +1314,12 @@ public
 
 private
 
-: WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:BODY-W ;
-: PART-WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:PARTS-W ;
-: JOURNAL-PART-WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:JOURNAL-PARTS-W ;
+: WRITER ( ^call -- ^JSON:writer ) MODEL-CALL:BODY-W ;
+: PART-WRITER ( ^call -- ^JSON:writer ) MODEL-CALL:PARTS-W ;
+: JOURNAL-PART-WRITER ( ^call -- ^JSON:writer ) MODEL-CALL:JOURNAL-PARTS-W ;
 
 \ The flag says whether the configuration carries the effort, when one is set.
-: BUILD-GEN-CONFIG ( bool ptr call -- )
+: BUILD-GEN-CONFIG ( bool ^call -- )
    {: shaped:bool c :}
    c WRITER c GEN-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
@@ -1333,7 +1333,7 @@ private
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
 
-: BUILD-EMBED-CONFIG ( ptr call -- )
+: BUILD-EMBED-CONFIG ( ^call -- )
    {: c :}
    c WRITER c EMBED-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
@@ -1352,13 +1352,13 @@ private
 
 public
 
-: GENERATION-CONFIG$ ( ptr call -- ptr u8 n )
+: GENERATION-CONFIG$ ( ^call -- ^u8 n )
    {: c :}
    c REQUIRE-REST
    construct call-kind chat c REPLAYED? 0= if true c BUILD-GEN-CONFIG then
    c GEN-CONFIG$ ;
 
-: EMBEDDING-CONFIG$ ( ptr call -- ptr u8 n )
+: EMBEDDING-CONFIG$ ( ^call -- ^u8 n )
    {: c :}
    c REQUIRE-REST
    construct call-kind embed c REPLAYED? 0= if c BUILD-EMBED-CONFIG then
@@ -1370,8 +1370,8 @@ public
 \ producer input outside it. Requests send truncate:false because Ollama
 \ truncates by default; a context overflow fails the call. dims and the
 \ deadline in milliseconds are as EMBEDDING-MODEL! takes them.
-: OLLAMA! ( ptr u8 n ptr u8 n ptr u8 n n n ptr call -- )
-   {: endpoint:ptr endpoint-u:n model:ptr model-u:n identity:ptr identity-u:n dims:n deadline:n c :}
+: OLLAMA! ( ^u8 n ^u8 n ^u8 n n n ^call -- )
+   {: endpoint:^ endpoint-u:n model:^ model-u:n identity:^ identity-u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
    endpoint endpoint-u BASE-URL? 0= if E-CONFIG throw then
@@ -1386,13 +1386,13 @@ public
 
 private
 
-: PART-OPEN ( ptr call -- )
+: PART-OPEN ( ^call -- )
    {: c :}
    c PART-WRITER c PARTS-BUF JSON:WRITE-OPEN-BUF JSON:WRITE-ARRAY-START drop
    c JOURNAL-PART-WRITER c JOURNAL-PARTS-BUF JSON:WRITE-OPEN-BUF
    JSON:WRITE-ARRAY-START drop ;
 
-: PART-FINISH ( ptr call -- )
+: PART-FINISH ( ^call -- )
    {: c :}
    c REQUIRE-BUILDING
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
@@ -1402,7 +1402,7 @@ private
 
 \ Finishes a building input and passes a finished one, as a count or a
 \ compaction leaves it.
-: FINISH-INPUT ( ptr call -- )
+: FINISH-INPUT ( ^call -- )
    {: c :}
    c MODEL-CALL:CHAT-INPUT @ MATCH input-state
       none OF E-STATE throw ENDOF
@@ -1411,20 +1411,20 @@ private
       finished OF ENDOF
    ;MATCH ;
 
-: PART-COMMA ( ptr call -- )
+: PART-COMMA ( ^call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 0 > if
       c PART-WRITER JSON:WRITE-COMMA drop
       c JOURNAL-PART-WRITER JSON:WRITE-COMMA drop
    then ;
 
-: PART-ADDED ( ptr call -- )
+: PART-ADDED ( ^call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 1+ c MODEL-CALL:PARTS-COUNT !
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
-: TEXT-PART ( ptr u8 n ptr JSON:writer -- )
-   {: a:ptr u:n w :}
+: TEXT-PART ( ^u8 n ^JSON:writer -- )
+   {: a:^ u:n w :}
    w JSON:WRITE-OBJECT-START
    s" type" s" input_text" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -1432,7 +1432,7 @@ private
    JSON:WRITE-OBJECT-END drop ;
 
 \ Drops the input's parts, their journal copy and its items.
-: EMPTY-INPUT ( ptr call -- )
+: EMPTY-INPUT ( ^call -- )
    {: c :}
    c PARTS-BUF c RESET-SCRATCH
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
@@ -1441,7 +1441,7 @@ private
 
 public
 
-: PARTS-RESET ( ptr call -- )
+: PARTS-RESET ( ^call -- )
    {: c :}
    c UNPREPARE drop
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
@@ -1450,8 +1450,8 @@ public
    c PART-OPEN
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
-: TEXT+ ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: TEXT+ ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
@@ -1462,25 +1462,25 @@ public
 
 private
 
-: IMAGE-MIME? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: IMAGE-MIME? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" image/png" STR= if true exit then
    a u s" image/jpeg" STR= if true exit then
    a u s" image/webp" STR= if true exit then
    a u s" image/gif" STR= ;
 
-: DIGEST-KEEP ( ptr u8 n ptr call -- ptr u8 n ptr call )
-   {: data:ptr du:n c :}
+: DIGEST-KEEP ( ^u8 n ^call -- ^u8 n ^call )
+   {: data:^ du:n c :}
    data du du 4 / 3 * c URI-BUF ROOM BASE64:DECODE {: n:n :}
-   c HASH-WORK {: w:ptr :}
+   c HASH-WORK {: w:^ :}
    w c URI-BUF BUF:SPAN$ drop n w SHA256-CTX-BYTES + SHA256-IN
    w SHA256-CTX-BYTES + w SHA256-CTX-BYTES + 32 + SHA256>HEX
    data du c ;
 
 \ The SHA-256 hex, in HASH-WORK, of the bytes base64 data encodes. Data that
 \ is not base64 as BASE64:ENCODE writes it is E-CONFIG.
-: IMAGE-DIGEST ( ptr u8 n ptr call -- ptr u8 n )
-   {: data:ptr du:n c :}
+: IMAGE-DIGEST ( ^u8 n ^call -- ^u8 n )
+   {: data:^ du:n c :}
    du 0= if E-CONFIG throw then
    data du c [: DIGEST-KEEP ;] catch {: code:n :} drop 2drop
    code 0<> if c URI-BUF c RESET-SCRATCH then
@@ -1493,12 +1493,12 @@ public
 \ The request carries the image inline; the journal input names it by media
 \ type and the SHA-256 of its bytes, so a saved step stays small and the same
 \ image replays it.
-: IMAGE+ ( ptr u8 n ptr u8 n ptr call -- )
-   {: mime:ptr mu:n data:ptr du:n c :}
+: IMAGE+ ( ^u8 n ^u8 n ^call -- )
+   {: mime:^ mu:n data:^ du:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
    mime mu IMAGE-MIME? 0= if E-CONFIG throw then
-   data du c IMAGE-DIGEST {: hex:ptr hex-u:n :}
+   data du c IMAGE-DIGEST {: hex:^ hex-u:n :}
    c URI-BUF BUF:CLEAR
    s" data:" BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
    mime mu BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
@@ -1529,8 +1529,8 @@ private
    {: code:n :}
    code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
 
-: JSON-OBJECT? ( ptr u8 n ptr call -- bool )
-   {: a:ptr u:n c :}
+: JSON-OBJECT? ( ^u8 n ^call -- bool )
+   {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ = if
       JSON:READ-SKIP-VALUE
@@ -1539,20 +1539,20 @@ private
    then
    JSON:READ-CLOSE false ;
 
-: OBJECT-STEP ( ptr u8 n ptr call -- ptr u8 n ptr call )
-   {: a:ptr u:n c :}
+: OBJECT-STEP ( ^u8 n ^call -- ^u8 n ^call )
+   {: a:^ u:n c :}
    a u c JSON-OBJECT? 0= if E-CONFIG throw then
    a u c ;
 
 \ Bytes that are not exactly one JSON object, a reader fault included, are
 \ E-CONFIG.
-: CHECK-OBJECT ( ptr u8 n ptr call -- )
+: CHECK-OBJECT ( ^u8 n ^call -- )
    [: OBJECT-STEP ;] catch {: code:n :} drop 2drop
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
-: JSON-TOOLS? ( ptr u8 n ptr call -- bool )
-   {: a:ptr u:n c :}
+: JSON-TOOLS? ( ^u8 n ^call -- bool )
+   {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE false exit then
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
@@ -1561,22 +1561,22 @@ private
    {: valid:bool :}
    JSON:READ-CLOSE valid ;
 
-: TOOLS-STEP ( ptr u8 n ptr call -- ptr u8 n ptr call )
-   {: a:ptr u:n c :}
+: TOOLS-STEP ( ^u8 n ^call -- ^u8 n ^call )
+   {: a:^ u:n c :}
    a u c JSON-TOOLS? 0= if E-CONFIG throw then
    a u c ;
 
 \ Bytes that are not one non-empty JSON array of objects, a reader fault
 \ included, are E-CONFIG.
-: CHECK-TOOLS ( ptr u8 n ptr call -- )
+: CHECK-TOOLS ( ^u8 n ^call -- )
    [: TOOLS-STEP ;] catch {: code:n :} drop 2drop
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
 \ Appends an item's bytes to the items, after a single comma once there are
 \ any.
-: ITEM-JOIN ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: ITEM-JOIN ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c ITEMS-BUF BUF:LEN@ BUF:BLEN>N 0<> if
       s" ," BUF:N>BLEN c ITEMS-BUF BUF:APPEND-SPAN
    then
@@ -1586,8 +1586,8 @@ public
 
 \ One history item in OpenAI's shape; E-CONFIG unless one JSON object. Items
 \ follow the parts' message, in the order added, verbatim in body and journal.
-: ITEM+ ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: ITEM+ ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
    a u c CHECK-OBJECT
@@ -1599,7 +1599,7 @@ private
 
 \ A request's input: a model, instructions and at least one part or item, else
 \ E-CONFIG.
-: CHECK-INPUT ( ptr call -- )
+: CHECK-INPUT ( ^call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 0= c ITEMS$ nip 0= and {: empty:bool :}
    c GEN$ nip 0=
@@ -1607,7 +1607,7 @@ private
       E-CONFIG throw
    then ;
 
-: CHECK-CHAT ( ptr call -- )
+: CHECK-CHAT ( ^call -- )
    {: c :}
    c CHECK-INPUT
    c MODEL-CALL:FORM @ MATCH reply-form
@@ -1616,17 +1616,17 @@ private
       tools OF c FORM$ c CHECK-TOOLS ENDOF
    ;MATCH ;
 
-: BODY-OPEN ( ptr call -- )
+: BODY-OPEN ( ^call -- )
    {: c :}
    c BODY-BUF c RESET-SCRATCH
    c WRITER c BODY-BUF JSON:WRITE-OPEN-BUF drop ;
 
-: BODY-DONE ( ptr call -- )
+: BODY-DONE ( ^call -- )
    {: c :}
    c WRITER JSON:WRITE-CLOSE ;
 
 \ The members after a schema call's input: its strict JSON schema format.
-: SCHEMA-TAIL ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: SCHEMA-TAIL ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    JSON:WRITE-COMMA
    s" text" JSON:WRITE-KEY
@@ -1645,14 +1645,14 @@ private
 
 \ The members after a tools call's input: one required call to one of its
 \ tools.
-: TOOL-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: TOOL-MEMBERS ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    JSON:WRITE-COMMA s" tools" c FORM$ JSON:WRITE-FIELD-RAW
    JSON:WRITE-COMMA s" tool_choice" s" required" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" parallel_tool_calls" false JSON:WRITE-FIELD-BOOL ;
 
 \ The effort member, when the call sends one.
-: EFFORT-MEMBER ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: EFFORT-MEMBER ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    c EFFORT$ nip 0<> if
       JSON:WRITE-COMMA s" reasoning" JSON:WRITE-KEY
@@ -1662,7 +1662,7 @@ private
    then ;
 
 \ The prompt cache key and the service tier, each when the call sets one.
-: SERVICE-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: SERVICE-MEMBERS ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    c CACHE-KEY$ nip 0<> if
       JSON:WRITE-COMMA s" prompt_cache_key" c CACHE-KEY$ JSON:WRITE-FIELD-S
@@ -1672,14 +1672,14 @@ private
    then ;
 
 \ The output limit member, when the call sets one.
-: OUTPUT-MEMBER ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: OUTPUT-MEMBER ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    c MAX-OUTPUT-CELL @ 0 > if
       JSON:WRITE-COMMA s" max_output_tokens" c MAX-OUTPUT-CELL @ JSON:WRITE-FIELD-U
    then ;
 
 \ The instructions and the input: the parts' message, then the items.
-: INPUT-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: INPUT-MEMBERS ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -1699,7 +1699,7 @@ private
    then
    JSON:WRITE-ARRAY-END ;
 
-: CHAT-BODY ( ptr call -- )
+: CHAT-BODY ( ^call -- )
    {: c :}
    c BODY-OPEN
    c WRITER
@@ -1728,7 +1728,7 @@ private
 
 \ A count's body: the chat body's members the count endpoint takes, without
 \ store, stream, include, prompt_cache_key, service_tier or max_output_tokens.
-: COUNT-BODY ( ptr call -- )
+: COUNT-BODY ( ^call -- )
    {: c :}
    c BODY-OPEN
    c WRITER
@@ -1746,7 +1746,7 @@ private
 
 \ The compact endpoint rejects tools, reasoning, text, store, stream and
 \ include.
-: COMPACT-BODY ( ptr call -- )
+: COMPACT-BODY ( ^call -- )
    {: c :}
    c BODY-OPEN
    c WRITER
@@ -1757,17 +1757,17 @@ private
    JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
-: INPUT$ ( n ptr call -- ptr u8 n )
+: INPUT$ ( n ^call -- ^u8 n )
    {: idx:n c :}
    c INPUT-BUF BUF:SPAN
    c idx INPUT-OFF @ c idx INPUT-LEN @ SPAN:SUB SPAN:$ ;
 
-: CHECK-EMBED ( ptr call -- )
+: CHECK-EMBED ( ^call -- )
    {: c :}
    c EMBED-MODEL$ nip 0= c MODEL-CALL:DIMS @ 0= or
    c MODEL-CALL:INPUT-COUNT @ 0= or if E-CONFIG throw then ;
 
-: EMBED-BODY ( ptr call -- )
+: EMBED-BODY ( ^call -- )
    {: c :}
    c BODY-OPEN
    c WRITER
@@ -1794,7 +1794,7 @@ private
    c BODY-DONE ;
 
 \ A change to the inputs drops the vectors they gave; a chat's content stays.
-: DROP-VECTORS ( ptr call -- )
+: DROP-VECTORS ( ^call -- )
    {: c :}
    c MODEL-CALL:RESULT @ MATCH call-result
       none OF ENDOF
@@ -1804,7 +1804,7 @@ private
 
 public
 
-: INPUT-RESET ( ptr call -- )
+: INPUT-RESET ( ^call -- )
    {: c :}
    c REQUIRE-REST
    0 c MODEL-CALL:HTTP-STATUS !
@@ -1813,8 +1813,8 @@ public
    0 c MODEL-CALL:INPUT-COUNT !
    c DROP-VECTORS ;
 
-: INPUT+ ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: INPUT+ ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    c REQUIRE-REST
    u 0= if E-CONFIG throw then
    c MODEL-CALL:INPUT-COUNT @ INPUT-MAX >= if E-CAPACITY throw then
@@ -1828,7 +1828,7 @@ public
 private
 
 \ The member that carries the form's text in a chat's journal input.
-: FORM-KEY$ ( ptr call -- ptr u8 n )
+: FORM-KEY$ ( ^call -- ^u8 n )
    MODEL-CALL:FORM @ MATCH reply-form
       none OF E-CONFIG throw ENDOF
       schema OF s" schema" ENDOF
@@ -1837,7 +1837,7 @@ private
 
 \ A generation kind's journal kind and its endpoint; an embedding's is
 \ JOURNAL-EMBED-INPUT.
-: GEN-INPUT-KIND ( call-kind ptr call -- ptr u8 n ptr u8 n )
+: GEN-INPUT-KIND ( call-kind ^call -- ^u8 n ^u8 n )
    {: k:call-kind c :}
    k MATCH call-kind
       chat OF s" generation" c CHAT-URL$ ENDOF
@@ -1847,9 +1847,9 @@ private
    ;MATCH ;
 
 \ A generation call's journal input for the kind.
-: JOURNAL-GEN-INPUT ( call-kind ptr call -- )
+: JOURNAL-GEN-INPUT ( call-kind ^call -- )
    {: k:call-kind c :}
-   k c GEN-INPUT-KIND {: kind:ptr kind-u:n url:ptr url-u:n :}
+   k c GEN-INPUT-KIND {: kind:^ kind-u:n url:^ url-u:n :}
    k SHAPED? {: shaped:bool :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
@@ -1875,7 +1875,7 @@ private
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
 
-: JOURNAL-EMBED-INPUT ( ptr call -- )
+: JOURNAL-EMBED-INPUT ( ^call -- )
    {: c :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
@@ -1905,19 +1905,19 @@ private
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
 
-: TRANSPORT-FAILED ( CURL:code ptr call -- )
+: TRANSPORT-FAILED ( CURL:code ^call -- )
    LEDGER {: code:CURL:code l :}
    code CURL:CODE>N l LEDGER-TRANSPORT !
    E-TRANSPORT throw ;
 
-: CHECK-STATUS ( CURL:status ptr call -- )
+: CHECK-STATUS ( CURL:status ^call -- )
    {: s:CURL:status c :}
    s MATCH CURL:status
       ok OF ENDOF
       failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
-: OPEN-HANDLE ( ptr call -- CURL:handle )
+: OPEN-HANDLE ( ^call -- CURL:handle )
    {: c :}
    CURL:INIT
    MATCH CURL:init-result
@@ -1925,40 +1925,40 @@ private
       failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
-: HEADER-WIPE ( ptr call -- )
+: HEADER-WIPE ( ^call -- )
    {: c :}
    0 c KEY-LINE-BUF HELD SPAN:FILL ;
 
 \ Wipes the header after a step that ended with fault, which is thrown first.
 \ Only a header a failed resize left dead refuses the wipe, and it holds no
 \ storage, so its refusal never hides the step's fault.
-: WIPE-AFTER ( n ptr call -- )
+: WIPE-AFTER ( n ^call -- )
    {: fault:n c :}
    c [: dup HEADER-WIPE ;] catch {: wiped:n :} drop
    fault 0<> if fault throw then
    wiped 0<> if wiped throw then ;
 
-: KEY-PREFIX$ ( -- ptr u8 n ) s" Authorization: Bearer " ;
+: KEY-PREFIX$ ( -- ^u8 n ) s" Authorization: Bearer " ;
 
 \ Room in the header for its prefix and then a key of n bytes, with the
 \ prefix written. The whole header is wiped before it is resized, so released
 \ storage never holds a key byte.
-: KEY-ROOM ( n ptr call -- )
+: KEY-ROOM ( n ^call -- )
    {: ku:n c :}
-   KEY-PREFIX$ {: prefix:ptr pu:n :}
+   KEY-PREFIX$ {: prefix:^ pu:n :}
    c HEADER-WIPE
    c KEY-LINE-BUF pu ku + c RESET-SIZED
    pu ku + c KEY-LINE-BUF ROOM {: line:SPAN:span<u8> :}
    prefix pu line SPAN:COPY ;
 
-: KEY-FAULT! ( key-fault ptr call -- ) RECEIPT RECEIPT-KEY-READ ! ;
+: KEY-FAULT! ( key-fault ^call -- ) RECEIPT RECEIPT-KEY-READ ! ;
 
 \ Keeps how the key read failed and throws E-KEY.
-: KEY-REFUSE ( key-fault ptr call -- ) KEY-FAULT! E-KEY throw ;
+: KEY-REFUSE ( key-fault ^call -- ) KEY-FAULT! E-KEY throw ;
 
 \ A key is one or more bytes from ! to ~.
-: KEY-CHECK ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: KEY-CHECK ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    u 0= if construct key-fault empty c KEY-REFUSE then
    u 0 ?do
       a i + c@ {: b:n :}
@@ -1970,9 +1970,9 @@ private
 
 \ Reads the store's item into the header after its pu-byte prefix and returns
 \ the line's length; a missing, empty or non-printable item is E-KEY.
-: KEY-READ ( ptr call n -- ptr call n )
+: KEY-READ ( ^call n -- ^call n )
    {: c pu:n :}
-   c KEY-SPEC$ {: spec:ptr spec-u:n :}
+   c KEY-SPEC$ {: spec:^ spec-u:n :}
    c MODEL-CALL:KEY-SPLIT @ {: su:n :}
    spec su spec su + spec-u su - c KEY-LINE-BUF HELD pu SPAN:SKIP SECRET:READ
    {: ku:n found:bool :}
@@ -1993,7 +1993,7 @@ private
 \ An item larger than the header after its prefix grows the header and is
 \ read again: the store copies no byte of an item it refuses. The store's own
 \ failures pass through.
-: KEY-FETCH ( ptr call n -- n )
+: KEY-FETCH ( ^call n -- n )
    {: c pu:n :}
    0 c KEY-ROOM
    begin
@@ -2008,17 +2008,17 @@ private
    again ;
 
 
-: KEY-LINE ( ptr call -- ptr u8 n )
+: KEY-LINE ( ^call -- ^u8 n )
    {: c :}
    c KEY-SPEC$ nip 0= if E-CONFIG throw then
    c KEY-PREFIX$ nip KEY-FETCH {: line-u:n :}
    c KEY-LINE-BUF HELD line-u SPAN:TAKE SPAN:$ ;
 
-: KEY-HEADER-KEEP ( CURL:handle ptr call -- CURL:handle ptr call )
+: KEY-HEADER-KEEP ( CURL:handle ^call -- CURL:handle ^call )
    2dup KEY-LINE CURL:HEADER+ over CHECK-STATUS ;
 
 \ Whether the call's request carries the API key: all but an Ollama embed.
-: KEYED? ( ptr call -- bool )
+: KEYED? ( ^call -- bool )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF true ENDOF
@@ -2027,7 +2027,7 @@ private
       compaction OF true ENDOF
    ;MATCH ;
 
-: SET-HEADERS ( CURL:handle ptr call -- )
+: SET-HEADERS ( CURL:handle ^call -- )
    {: h:CURL:handle c :}
    h s" Content-Type: application/json" CURL:HEADER+ c CHECK-STATUS
    c KEYED? if
@@ -2036,7 +2036,7 @@ private
    then ;
 
 \ Starts an exchange as the call's transport, which CANCEL ends.
-: START-LOCKED ( ptr call -- ptr call )
+: START-LOCKED ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:CANCELLED @ if E-CANCELLED throw then
    c MODEL-CALL:TRANSPORT @ MATCH option
@@ -2053,7 +2053,7 @@ private
    ;MATCH
    c ;
 
-: START-TRANSFER ( ptr call -- )
+: START-TRANSFER ( ^call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: START-LOCKED ;] catch {: code:n :} drop
@@ -2062,7 +2062,7 @@ private
 
 \ Clears the call's transfer, keeping in the receipt whether a CANCEL cut it:
 \ CANCEL-LOCKED clears the transfer it cuts.
-: END-TRANSFER ( ptr call -- )
+: END-TRANSFER ( ^call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:TRANSPORT @ MATCH option
@@ -2072,28 +2072,28 @@ private
    OPTION:NONE c MODEL-CALL:TRANSPORT !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
-: WIRE-READER ( ptr call -- JSON:reader )
+: WIRE-READER ( ^call -- JSON:reader )
    {: c :}
    c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT ;
 
 \ The reply's current string, decoded into the content buffer, which a failed
 \ call leaves unused.
-: REPLY-STR ( JSON:reader ptr call -- JSON:reader ptr u8 n )
+: REPLY-STR ( JSON:reader ^call -- JSON:reader ^u8 n )
    {: c :}
    c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: u:n :}
    c CONTENT-BUF HELD u SPAN:TAKE SPAN:$ ;
 
 \ Ollama's error text for an input longer than the model's context.
-: OLLAMA-SIZE? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: OLLAMA-SIZE? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" exceeds the context length" CONTAINS?
    a u s" exceeds maximum context length" CONTAINS? or ;
 
 \ Whether a member of OpenAI's error object, the reader at its value, names a
 \ refusal for size: by its code, or by its message where the code is null, as
 \ in an embeddings refusal.
-: SIZE-MEMBER? ( JSON:reader ptr u8 n ptr call -- JSON:reader bool )
-   {: key:ptr key-u:n c :}
+: SIZE-MEMBER? ( JSON:reader ^u8 n ^call -- JSON:reader bool )
+   {: key:^ key-u:n c :}
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-SKIP-VALUE false exit then
    key key-u s" code" STR= if
       s" context_length_exceeded" JSON:READ-STR-EQ? if true exit then
@@ -2104,18 +2104,18 @@ private
    then
    false ;
 
-: OPENAI-SIZE? ( JSON:reader ptr call -- JSON:reader bool )
+: OPENAI-SIZE? ( JSON:reader ^call -- JSON:reader bool )
    {: c :}
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
       drop
-      JSON:READ-SPAN$ {: key:ptr key-u:n :}
+      JSON:READ-SPAN$ {: key:^ key-u:n :}
       JSON:READ-NEXT drop
       key key-u c SIZE-MEMBER? if true exit then
    repeat
    drop false ;
 
 \ The reader at the reply's error member.
-: SIZE-ERROR? ( JSON:reader ptr call -- JSON:reader bool )
+: SIZE-ERROR? ( JSON:reader ^call -- JSON:reader bool )
    {: c :}
    JSON:READ-TOKEN JSON:T-STR = if c REPLY-STR OLLAMA-SIZE? exit then
    JSON:READ-TOKEN JSON:T-OBJ = if c OPENAI-SIZE? exit then
@@ -2124,7 +2124,7 @@ private
 \ The provider's message, kept from the reply's error member, the reader at
 \ it: the member itself when a string, as Ollama sends it, else its message,
 \ as OpenAI and Azure send it.
-: ERROR-TEXT ( JSON:reader ptr call -- JSON:reader )
+: ERROR-TEXT ( JSON:reader ^call -- JSON:reader )
    {: c :}
    JSON:READ-TOKEN JSON:T-OBJ = if
       s" message" JSON:READ-FIND-KEY 0= if exit then
@@ -2132,7 +2132,7 @@ private
    JSON:READ-TOKEN JSON:T-STR <> if exit then
    c REPLY-STR BUF:N>BLEN c ERROR-BUF BUF:REPLACE ;
 
-: ERROR-BODY ( ptr call -- ptr call )
+: ERROR-BODY ( ^call -- ^call )
    {: c :}
    c WIRE-READER
    JSON:READ-NEXT JSON:T-OBJ = if
@@ -2142,13 +2142,13 @@ private
 
 \ Keeps a failed reply's provider message. A body that is not such JSON has
 \ none.
-: KEEP-ERROR ( ptr call -- )
+: KEEP-ERROR ( ^call -- )
    {: c :}
    c [: ERROR-BODY ;] catch {: code:n :} drop
    code JSON-FAULT? if exit then
    code 0<> if code throw then ;
 
-: SIZE-BODY? ( ptr call -- bool )
+: SIZE-BODY? ( ^call -- bool )
    {: c :}
    c WIRE-READER
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
@@ -2158,7 +2158,7 @@ private
 
 \ Whether a failed reply refuses the request for its size: HTTP 413, or a 400
 \ whose body names the refusal. A body that is not such JSON is not one.
-: SIZE-REFUSAL? ( ptr call -- bool )
+: SIZE-REFUSAL? ( ^call -- bool )
    {: c :}
    c MODEL-CALL:HTTP-STATUS @ 413 = if true exit then
    c MODEL-CALL:HTTP-STATUS @ 400 <> if false exit then
@@ -2170,9 +2170,9 @@ private
 
 
 \ Room in the response buffer for at least one byte past those received.
-: GROW-REPLY ( ptr call -- ptr call )
+: GROW-REPLY ( ^call -- ^call )
    {: c :}
-   c RESPONSE-BUF {: buf:ptr :}
+   c RESPONSE-BUF {: buf:^ :}
    buf buf BUF:LEN@ BUF:BLEN>N 1+ BUF:N>BLEN BUF:ENSURE
    c ;
 
@@ -2190,7 +2190,7 @@ private
 
 \ Throws the fault of a refused reply's status; a key the provider refused
 \ keeps that it did.
-: STATUS-THROW ( CURL:http-status ptr call -- )
+: STATUS-THROW ( CURL:http-status ^call -- )
    {: status:CURL:http-status c :}
    status STATUS-FAULT {: fault:n :}
    fault E-KEY = c KEYED? and if
@@ -2201,7 +2201,7 @@ private
 
 \ Keeps the transfer's status and reply; throws the fault of a cut or failed
 \ exchange or a refused reply.
-: RECEIPT-CHECK ( ptr call -- ptr call )
+: RECEIPT-CHECK ( ^call -- ^call )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-STATUS @ r RECEIPT-CODE @ r RECEIPT-FAULT @ r RECEIPT-CUT @
@@ -2219,15 +2219,15 @@ private
    then
    c ;
 
-: CALL-HANDLE ( ptr call -- CURL:handle )
+: CALL-HANDLE ( ^call -- CURL:handle )
    MODEL-CALL:HANDLE @ MATCH option
       none OF E-STATE throw ENDOF
       some OF ENDOF
    ;MATCH ;
 
 \ Sets the next exchange: a POST of the body to the url.
-: AS-POST ( ptr u8 n ptr u8 n ptr call -- )
-   {: url:ptr url-u:n body:ptr body-u:n c :}
+: AS-POST ( ^u8 n ^u8 n ^call -- )
+   {: url:^ url-u:n body:^ body-u:n c :}
    c CALL-HANDLE {: h:CURL:handle :}
    h url url-u CURL:URL! c CHECK-STATUS
    h s" POST" CURL:METHOD! c CHECK-STATUS
@@ -2237,13 +2237,13 @@ private
    {: want:n :}
    JSON:READ-NEXT want <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-: DESCEND ( JSON:reader ptr u8 n -- JSON:reader )
-   {: key:ptr key-u:n :}
+: DESCEND ( JSON:reader ^u8 n -- JSON:reader )
+   {: key:^ key-u:n :}
    key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then ;
 
 \ The reader at the reply's member under the key.
-: REPLY-AT ( ptr u8 n ptr call -- JSON:reader )
-   {: key:ptr key-u:n c :}
+: REPLY-AT ( ^u8 n ^call -- JSON:reader )
+   {: key:^ key-u:n c :}
    c WIRE-READER
    JSON:T-OBJ EXPECT
    key key-u DESCEND ;
@@ -2265,19 +2265,19 @@ private
    true ;
 
 \ The reader past the opener of the reply's output array.
-: OUTPUT-AT ( ptr call -- JSON:reader )
+: OUTPUT-AT ( ^call -- JSON:reader )
    {: c :}
    s" output" c REPLY-AT
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
 \ The reader at the output item at the index; false past the last item.
-: ITEM ( n ptr call -- JSON:reader bool )
+: ITEM ( n ^call -- JSON:reader bool )
    {: idx:n c :}
    c OUTPUT-AT idx ELEMENT ;
 
 \ The reader at the content part at the index of the message item at the
 \ index; false past the last part.
-: PART ( n n ptr call -- JSON:reader bool )
+: PART ( n n ^call -- JSON:reader bool )
    {: idx:n part:n c :}
    idx c ITEM drop
    s" content" DESCEND
@@ -2286,7 +2286,7 @@ private
 
 \ The text of the answer message's output_text part (ANSWER?) is the content;
 \ a reply holds one, so a second, in any answer message, is E-RESPONSE.
-: READ-TEXT ( n n ptr call -- )
+: READ-TEXT ( n n ^call -- )
    {: idx:n part:n c :}
    c MODEL-CALL:CONTENT-SEEN @ if E-RESPONSE throw then
    idx part c PART drop
@@ -2297,7 +2297,7 @@ private
    true c MODEL-CALL:CONTENT-SEEN ! ;
 
 \ Reads the message's content part at the index; false past the last part.
-: READ-PART ( n n ptr call -- bool )
+: READ-PART ( n n ^call -- bool )
    {: idx:n part:n c :}
    idx part c PART 0= if JSON:READ-CLOSE false exit then
    TYPE-AT
@@ -2309,7 +2309,7 @@ private
 
 \ Whether the message item at the index is the answer: no phase, null or
 \ final_answer is; commentary is a progress note; any other is E-RESPONSE.
-: ANSWER? ( n ptr call -- bool )
+: ANSWER? ( n ^call -- bool )
    {: idx:n c :}
    idx c ITEM drop
    s" phase" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE true exit then
@@ -2323,7 +2323,7 @@ private
 
 \ Reads the output item at the index if it is an answer message; false past
 \ the last. Members come in any order, so type and phase each take a pass.
-: READ-ITEM ( n ptr call -- bool )
+: READ-ITEM ( n ^call -- bool )
    {: idx:n c :}
    idx c ITEM 0= if JSON:READ-CLOSE false exit then
    TYPE-AT s" message" JSON:READ-STR-EQ? {: message:bool :}
@@ -2335,7 +2335,7 @@ private
    then
    true ;
 
-: READ-OUTPUT ( ptr call -- )
+: READ-OUTPUT ( ^call -- )
    {: c :}
    false c MODEL-CALL:CONTENT-SEEN !
    0 c MODEL-CALL:CONTENT-U !
@@ -2344,7 +2344,7 @@ private
 
 \ Reads the content part at the index of the message item at the index; false
 \ past the last part, E-REFUSED on a refusal.
-: PART-REFUSED ( n n ptr call -- bool )
+: PART-REFUSED ( n n ^call -- bool )
    {: idx:n part:n c :}
    idx part c PART 0= if JSON:READ-CLOSE false exit then
    TYPE-AT s" refusal" JSON:READ-STR-EQ? {: refused:bool :}
@@ -2353,14 +2353,14 @@ private
    true ;
 
 \ A message in a tools reply: E-REFUSED if a part refuses, else E-RESPONSE.
-: TOOL-MESSAGE ( n ptr call -- )
+: TOOL-MESSAGE ( n ^call -- )
    {: idx:n c :}
    0 begin idx over c PART-REFUSED while 1+ repeat drop
    E-RESPONSE throw ;
 
 \ Counts a function call at the index and skips reasoning; a message is
 \ TOOL-MESSAGE's, any other type E-RESPONSE; false past the last item.
-: READ-TOOL ( n n ptr call -- n n bool )
+: READ-TOOL ( n n ^call -- n n bool )
    {: idx:n count:n c :}
    idx c ITEM 0= if JSON:READ-CLOSE idx count false exit then
    TYPE-AT
@@ -2374,7 +2374,7 @@ private
 
 \ A tools reply answers exactly one function call, read whole by OUTPUT$; it
 \ leaves no content.
-: READ-TOOLS ( ptr call -- )
+: READ-TOOLS ( ^call -- )
    {: c :}
    0 c MODEL-CALL:CONTENT-U !
    0 0 begin c READ-TOOL while swap 1+ swap repeat nip
@@ -2382,7 +2382,7 @@ private
 
 \ An incomplete reply keeps its reason in the content buffer: it has no
 \ content, and its decoded reason is no longer than the response that holds it.
-: READ-INCOMPLETE ( ptr call -- )
+: READ-INCOMPLETE ( ^call -- )
    {: c :}
    s" incomplete_details" c REPLY-AT
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2391,7 +2391,7 @@ private
    c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:INCOMPLETE-U !
    JSON:READ-CLOSE E-INCOMPLETE throw ;
 
-: ERROR-OBJECT ( ptr call -- JSON:reader )
+: ERROR-OBJECT ( ^call -- JSON:reader )
    {: c :}
    s" error" c REPLY-AT
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then ;
@@ -2407,14 +2407,14 @@ private
    E-HTTP ;
 
 \ A failed reply keeps its error message as the call's error text.
-: READ-FAILURE ( ptr call -- )
+: READ-FAILURE ( ^call -- )
    {: c :}
    c ERROR-OBJECT c ERROR-TEXT JSON:READ-CLOSE
    c ERROR-OBJECT CODE-FAULT {: fault:n :}
    JSON:READ-CLOSE fault throw ;
 
 \ Throws the fault of a reply whose status is other than completed.
-: REPLY-STATUS ( ptr call -- )
+: REPLY-STATUS ( ^call -- )
    {: c :}
    s" status" c REPLY-AT
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2424,7 +2424,7 @@ private
    JSON:READ-CLOSE
    done 0= if E-RESPONSE throw then ;
 
-: ACCEPT-CHAT ( ptr call -- )
+: ACCEPT-CHAT ( ^call -- )
    {: c :}
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c REPLY-STATUS
@@ -2438,23 +2438,23 @@ private
       tools OF c READ-TOOLS ENDOF
    ;MATCH ;
 
-: VECTORS-U ( ptr call -- n ) VECTORS-BUF BUF:LEN@ BUF:BLEN>N ;
+: VECTORS-U ( ^call -- n ) VECTORS-BUF BUF:LEN@ BUF:BLEN>N ;
 
 \ The vector just read is the one at idx.
-: VECTOR-KEEP ( n ptr call -- )
+: VECTOR-KEEP ( n ^call -- )
    {: idx:n c :}
    c MODEL-CALL:VECTOR-AT @ {: at:n :}
    at c idx VECTOR-OFF !
    c VECTORS-U at - c idx VECTOR-LEN ! ;
 
 \ No vector read yet; the vectors keep the room the last reply's took.
-: VECTORS-RESET ( ptr call -- )
+: VECTORS-RESET ( ^call -- )
    {: c :}
    INPUT-MAX 0 ?do 0 c i VECTOR-LEN ! loop
    c VECTORS-BUF c RESET-SCRATCH ;
 
 \ A vector's length in bytes.
-: VECTOR-BYTES ( ptr call -- n ) MODEL-CALL:DIMS @ 4 * ;
+: VECTOR-BYTES ( ^call -- n ) MODEL-CALL:DIMS @ 4 * ;
 
 \ Whether binary32 bits have an exponent field of all ones: NaN or infinity.
 : NONFINITE? ( n -- bool ) $7F800000 and $7F800000 = ;
@@ -2462,18 +2462,18 @@ private
 
 \ Grows the vectors by one vector's room, which VECTOR-AT marks, and answers
 \ its address.
-: VECTOR-ROOM ( ptr call -- ptr u8 )
+: VECTOR-ROOM ( ^call -- ^u8 )
    {: c :}
    c VECTORS-U c MODEL-CALL:VECTOR-AT !
    c VECTORS-BUF c VECTOR-BYTES BUF:N>BLEN BUF:GROW SPAN:$ drop ;
 
 
 \ A JSON array of DIMS numbers, each narrowed to binary32.
-: READ-NUMBERS ( JSON:reader ptr call -- JSON:reader )
+: READ-NUMBERS ( JSON:reader ^call -- JSON:reader )
    {: c :}
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    0 c MODEL-CALL:COMPONENT-COUNT !
-   c VECTOR-ROOM {: v:ptr :}
+   c VECTOR-ROOM {: v:^ :}
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if
          JSON:READ-CLOSE E-RESPONSE throw
@@ -2497,8 +2497,8 @@ private
 
 \ Decodes base64 a u into the vector's room, answering the decoded length in
 \ place of the n under it, so a catch keeps the shape.
-: DECODE-VECTOR ( n ptr u8 n ptr call -- n ptr u8 n ptr call )
-   {: a:ptr u:n c :}
+: DECODE-VECTOR ( n ^u8 n ^call -- n ^u8 n ^call )
+   {: a:^ u:n c :}
    drop
    a u c VECTORS-BUF BUF:SPAN c MODEL-CALL:VECTOR-AT @ c VECTOR-BYTES SPAN:SUB
    BASE64:DECODE a u c ;
@@ -2506,9 +2506,9 @@ private
 
 \ Base64 of DIMS little-endian binary32 values. An escaped string is unescaped
 \ into the room before its vector, unused until the next reply.
-: READ-BASE64 ( JSON:reader ptr call -- JSON:reader )
+: READ-BASE64 ( JSON:reader ^call -- JSON:reader )
    {: c :}
-   JSON:READ-SPAN$ {: a:ptr u:n :}
+   JSON:READ-SPAN$ {: a:^ u:n :}
    a u [char] \ INDEX-OF MATCH option
       none OF a u c VECTOR-ROOM drop ENDOF
       some OF
@@ -2522,15 +2522,15 @@ private
    code 0<> if 2drop 2drop JSON:READ-CLOSE E-RESPONSE throw then
    2drop drop {: len:n :}
    len c VECTOR-BYTES <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c VECTORS-BUF BUF:SPAN SPAN:$ drop c MODEL-CALL:VECTOR-AT @ + {: v:ptr :}
+   c VECTORS-BUF BUF:SPAN SPAN:$ drop c MODEL-CALL:VECTOR-AT @ + {: v:^ :}
    c MODEL-CALL:DIMS @ 0 ?do
       v i 4 * + F32-BUF:LOAD NONFINITE? if JSON:READ-CLOSE E-RESPONSE throw then
    loop
    true c MODEL-CALL:VECTOR-SEEN ! ;
 
 
-: EMBED-MEMBER ( JSON:reader ptr u8 n ptr call -- JSON:reader )
-   {: key:ptr key-u:n c :}
+: EMBED-MEMBER ( JSON:reader ^u8 n ^call -- JSON:reader )
+   {: key:^ key-u:n c :}
    key key-u s" index" STR= if
       c MODEL-CALL:PARSED-INDEX @ -1 <> if JSON:READ-CLOSE E-RESPONSE throw then
       JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2547,13 +2547,13 @@ private
    then
    JSON:READ-SKIP-VALUE ;
 
-: READ-EMBED-OBJECT ( JSON:reader ptr call -- JSON:reader )
+: READ-EMBED-OBJECT ( JSON:reader ^call -- JSON:reader )
    {: c :}
    -1 c MODEL-CALL:PARSED-INDEX !
    false c MODEL-CALL:VECTOR-SEEN !
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
       JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-SPAN$ {: key:ptr key-u:n :}
+      JSON:READ-SPAN$ {: key:^ key-u:n :}
       JSON:READ-NEXT drop
       key key-u c EMBED-MEMBER
    repeat
@@ -2565,7 +2565,7 @@ private
    c idx VECTOR-LEN @ 0<> if JSON:READ-CLOSE E-RESPONSE throw then
    idx c VECTOR-KEEP ;
 
-: READ-DATA ( JSON:reader ptr call -- JSON:reader )
+: READ-DATA ( JSON:reader ^call -- JSON:reader )
    {: c :}
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
@@ -2575,7 +2575,7 @@ private
    repeat
    drop ;
 
-: READ-EMBEDDINGS ( JSON:reader ptr call -- JSON:reader )
+: READ-EMBEDDINGS ( JSON:reader ^call -- JSON:reader )
    {: c :}
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
@@ -2591,7 +2591,7 @@ private
 
 \ The reader at the reply's top object, under no usage bytes, no usage member
 \ and no vectors read. Kept usage has a length: an object's bytes are not empty.
-: REPLY-START ( ptr call -- ptr u8 n bool bool JSON:reader )
+: REPLY-START ( ^call -- ^u8 n bool bool JSON:reader )
    {: c :}
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
@@ -2600,8 +2600,8 @@ private
 
 \ Whether the reader's key is the first under these bytes, which leaves it at
 \ the value; the flag under the reader says whether one came.
-: FIRST-KEY? ( bool JSON:reader ptr u8 n -- bool JSON:reader bool )
-   {: key:ptr key-u:n :}
+: FIRST-KEY? ( bool JSON:reader ^u8 n -- bool JSON:reader bool )
+   {: key:^ key-u:n :}
    >r {: seen:bool :} r>
    key key-u JSON:READ-STR-EQ? seen 0= and {: hit:bool :}
    hit if JSON:READ-NEXT drop then
@@ -2609,11 +2609,11 @@ private
 
 \ The reader at a member's key, under the usage bytes and whether a usage member
 \ came: the first one is kept there when an object; any other is skipped.
-: USAGE-MEMBER ( ptr u8 n bool bool JSON:reader -- ptr u8 n bool bool JSON:reader )
-   >r {: o:ptr o-u:n came:bool seen:bool :} r>
+: USAGE-MEMBER ( ^u8 n bool bool JSON:reader -- ^u8 n bool bool JSON:reader )
+   >r {: o:^ o-u:n came:bool seen:bool :} r>
    s" usage" JSON:READ-STR-EQ? came 0= and {: first:bool :}
    JSON:READ-NEXT JSON:T-OBJ = first and if
-      JSON:READ-VALUE-SPAN$ {: v:ptr v-u:n :}
+      JSON:READ-VALUE-SPAN$ {: v:^ v-u:n :}
       >r v v-u true seen r> exit
    then
    JSON:READ-SKIP-VALUE
@@ -2621,7 +2621,7 @@ private
 
 \ The usage bytes and whether there are any, once the reader has closed the
 \ top object; a reply with no vectors, or not one per input, is refused.
-: REPLY-END ( ptr u8 n bool bool JSON:reader ptr call -- ptr u8 n bool )
+: REPLY-END ( ^u8 n bool bool JSON:reader ^call -- ^u8 n bool )
    {: c :}
    JSON:READ-FINISH
    0= if E-RESPONSE throw then
@@ -2632,7 +2632,7 @@ private
 
 \ An embeddings reply's vectors, and the bytes of its usage object and whether
 \ it has one, in one walk of its top object.
-: ACCEPT-EMBED ( ptr call -- ptr u8 n bool )
+: ACCEPT-EMBED ( ^call -- ^u8 n bool )
    {: c :}
    c REPLY-START
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
@@ -2641,7 +2641,7 @@ private
    repeat
    drop c REPLY-END ;
 
-: ACCEPT-OLLAMA ( ptr call -- ptr u8 n bool )
+: ACCEPT-OLLAMA ( ^call -- ^u8 n bool )
    {: c :}
    c REPLY-START
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
@@ -2655,20 +2655,20 @@ private
    code JSON-FAULT? if E-RESPONSE throw then
    code 0<> if code throw then ;
 
-: PARSE-CHAT ( ptr call -- )
+: PARSE-CHAT ( ^call -- )
    {: c :}
    c [: dup ACCEPT-CHAT ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
 \ The bytes of the usage member of the JSON object in the bytes, and whether
 \ it is there as an object; no bytes when it is absent or not one.
-: USAGE ( ptr u8 n ptr call -- ptr u8 n bool )
-   {: a:ptr u:n c :}
+: USAGE ( ^u8 n ^call -- ^u8 n bool )
+   {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
    s" usage" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE a 0 false exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE a 0 false exit then
-   JSON:READ-VALUE-SPAN$ {: o:ptr o-u:n :}
+   JSON:READ-VALUE-SPAN$ {: o:^ o-u:n :}
    JSON:READ-CLOSE o o-u true ;
 
 \ The current usage count: an integer, or none for null.
@@ -2685,15 +2685,15 @@ private
    ;MATCH ;
 
 \ The usage count at the key: none when the key is absent or null.
-: COUNT-AT ( JSON:reader ptr u8 n -- JSON:reader option<n> )
+: COUNT-AT ( JSON:reader ^u8 n -- JSON:reader option<n> )
    JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
    USAGE-COUNT ;
 
 \ The count at the key of the JSON object the bytes hold, such as a usage
 \ object. Each count reads the object again, as providers order its members
 \ freely.
-: USAGE-AT ( ptr u8 n ptr call ptr u8 n -- option<n> )
-   {: a:ptr u:n c key:ptr key-u:n :}
+: USAGE-AT ( ^u8 n ^call ^u8 n -- option<n> )
+   {: a:^ u:n c key:^ key-u:n :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
    key key-u COUNT-AT {: got :}
@@ -2701,8 +2701,8 @@ private
 
 \ The count at the key of a member object of the usage object the bytes hold;
 \ none when that member is absent or not an object.
-: DETAIL-AT ( ptr u8 n ptr call ptr u8 n ptr u8 n -- option<n> )
-   {: a:ptr u:n c detail:ptr detail-u:n key:ptr key-u:n :}
+: DETAIL-AT ( ^u8 n ^call ^u8 n ^u8 n -- option<n> )
+   {: a:^ u:n c detail:^ detail-u:n key:^ key-u:n :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
    detail detail-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE OPTION:NONE exit then
@@ -2712,17 +2712,17 @@ private
 
 \ The bytes' usage object and whether they carry one; marks the call's usage
 \ seen.
-: USAGE? ( ptr u8 n ptr call -- ptr u8 n bool )
-   {: a:ptr u:n c :}
-   a u c USAGE {: o:ptr o-u:n present:bool :}
+: USAGE? ( ^u8 n ^call -- ^u8 n bool )
+   {: a:^ u:n c :}
+   a u c USAGE {: o:^ o-u:n present:bool :}
    present if true c TOKENS TOKENS-SEEN ! then
    o o-u present ;
 
 \ A chat or compaction reply's usage counts, in the Responses protocol's
 \ names.
-: ACCEPT-USAGE ( ptr call -- )
+: ACCEPT-USAGE ( ^call -- )
    {: c :}
-   c RESPONSE$ c USAGE? {: a:ptr u:n present:bool :}
+   c RESPONSE$ c USAGE? {: a:^ u:n present:bool :}
    present 0= if exit then
    a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
    a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
@@ -2734,44 +2734,44 @@ private
    c TOKENS TOKENS-REASONING ! ;
 
 \ An embeddings reply's prompt_tokens, from its usage object's bytes.
-: EMBED-TOKENS ( ptr u8 n ptr call -- ptr u8 n ptr call )
-   {: a:ptr u:n c :}
+: EMBED-TOKENS ( ^u8 n ^call -- ^u8 n ^call )
+   {: a:^ u:n c :}
    a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
    a u c ;
 
 \ The prompt_tokens of a reply the walk rejected, read from the whole reply;
 \ the walk's fault is the one passed on.
-: FAULT-USAGE ( ptr call -- )
+: FAULT-USAGE ( ^call -- )
    [: dup >r RESPONSE$ r@ USAGE? if r@ EMBED-TOKENS drop then 2drop r> ;]
    catch {: code:n :} drop ;
 
-: PARSE-USAGE ( ptr call -- )
+: PARSE-USAGE ( ^call -- )
    {: c :}
    c [: dup ACCEPT-USAGE ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
 \ The tier the reply says served it, when it names one: a nonempty string, or
 \ null for none.
-: ACCEPT-TIER ( ptr call -- )
+: ACCEPT-TIER ( ^call -- )
    {: c :}
    c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT
    JSON:T-OBJ EXPECT
    s" service_tier" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN dup JSON:T-NULL = if drop JSON:READ-CLOSE exit then
    JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c REPLY-STR {: a:ptr u:n :}
+   c REPLY-STR {: a:^ u:n :}
    JSON:READ-CLOSE
    u 0= if E-RESPONSE throw then
    a u c SERVED-BUF REPLACE-SOME ;
 
-: PARSE-TIER ( ptr call -- )
+: PARSE-TIER ( ^call -- )
    {: c :}
    c [: dup ACCEPT-TIER ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
 \ The reply's vectors, and its usage object's bytes and whether it has one.
 \ One catch: a code merged from two catches proves nothing, E-STALE-READ.
-: PARSE-EMBED ( ptr call -- ptr u8 n bool )
+: PARSE-EMBED ( ^call -- ^u8 n bool )
    {: c :}
    s" " false c
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
@@ -2784,7 +2784,7 @@ private
    code JSON-FAULT? if E-RESPONSE throw then
    code throw ;
 
-: BEGIN-RESET ( ptr call -- ptr call )
+: BEGIN-RESET ( ^call -- ^call )
    {: c :}
    \ The reply buffers keep the room the last call's reply took. They are
    \ resized before the call is started, so a resize that throws leaves the
@@ -2812,7 +2812,7 @@ private
    c RESET-USAGE
    c ;
 
-: BEGIN-LOCKED ( ptr call -- ptr call )
+: BEGIN-LOCKED ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
    c MODEL-CALL:STATE @ MATCH call-state
@@ -2826,7 +2826,7 @@ private
 \ Begins a landed call's next send, as BEGIN-LOCKED begins an idle call: a
 \ stop or a CANCEL since the send landed is E-CANCELLED, stored as the call's
 \ outcome under the gate, so a CANCEL once it is released finds it.
-: RESEND-LOCKED ( ptr call -- ptr call )
+: RESEND-LOCKED ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:STOPPED @ c MODEL-CALL:CANCELLED @ or if
       E-CANCELLED c RECEIPT RECEIPT-OUTCOME !
@@ -2841,7 +2841,7 @@ private
    c BEGIN-RESET ;
 
 \ Runs begin under the call's gate.
-: BEGIN-GATED ( ptr call [ ptr call -- ptr call ] -- )
+: BEGIN-GATED ( ^call [ ^call -- ^call ] -- )
    {: c begin :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
@@ -2849,10 +2849,10 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
 
-: BEGIN-CALL ( ptr call -- ) [: BEGIN-LOCKED ;] BEGIN-GATED ;
+: BEGIN-CALL ( ^call -- ) [: BEGIN-LOCKED ;] BEGIN-GATED ;
 
 \ A stopped call is E-CANCELLED before its request is checked.
-: REQUIRE-GOING ( ptr call -- )
+: REQUIRE-GOING ( ^call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:STOPPED @ {: stopped:bool :}
@@ -2861,14 +2861,14 @@ private
 
 \ Lands the call under its gate, storing no ending: the landing of a settle
 \ that threw (SETTLE-CAUGHT). A run that settles lands through END-RUN.
-: END-CALL ( ptr call -- )
+: END-CALL ( ^call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    construct call-state landed c MODEL-CALL:STATE !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Keeps the reply's response id, which a failure's log line names.
-: KEEP-ID ( ptr call -- )
+: KEEP-ID ( ^call -- )
    {: c :}
    s" id" c REPLY-AT
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2876,7 +2876,7 @@ private
    JSON:READ-CLOSE ;
 
 \ Whether the reply's status says the response is still queued or running.
-: RUNNING? ( ptr call -- bool )
+: RUNNING? ( ^call -- bool )
    {: c :}
    s" status" c REPLY-AT
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2885,7 +2885,7 @@ private
    JSON:READ-CLOSE
    queued going or ;
 
-: CODE$ ( n -- ptr u8 n )
+: CODE$ ( n -- ^u8 n )
    {: code:n :}
    code E-CONFIG = if s" MODEL:E-CONFIG" exit then
    code E-KEY = if s" MODEL:E-KEY" exit then
@@ -2912,21 +2912,21 @@ private
 
 
 \ The text becomes the call's reply.
-: KEEP-REPLY ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: KEEP-REPLY ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    a u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
    u c MODEL-CALL:RESPONSE-U ! ;
 
 \ The reader at the event data's member under the key, and whether it is there.
-: DATA-AT ( ptr u8 n ptr u8 n ptr call -- JSON:reader bool )
-   {: a:ptr u:n key:ptr key-u:n c :}
+: DATA-AT ( ^u8 n ^u8 n ^call -- JSON:reader bool )
+   {: a:^ u:n key:^ key-u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
    key key-u JSON:READ-FIND-KEY ;
 
 \ The reader at the error event's error object: its error member when an
 \ object, else the event.
-: ERROR-AT ( ptr call -- JSON:reader )
+: ERROR-AT ( ^call -- JSON:reader )
    {: c :}
    c WIRE-READER JSON:T-OBJ EXPECT
    s" error" JSON:READ-FIND-KEY if
@@ -2936,8 +2936,8 @@ private
 
 \ An error event fails the response as a failed status does: the event is the
 \ reply.
-: ERROR-EVENT ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: ERROR-EVENT ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    a u c KEEP-REPLY
    c ERROR-AT c ERROR-TEXT JSON:READ-CLOSE
    c ERROR-AT CODE-FAULT {: fault:n :}
@@ -2949,11 +2949,11 @@ private
 \ An event carrying the response object makes it the reply; the first names
 \ the response's id, and a status other than queued or in_progress ends the
 \ stream.
-: RESPONSE-EVENT ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
+: RESPONSE-EVENT ( ^u8 n ^call -- )
+   {: a:^ u:n c :}
    a u s" response" c DATA-AT 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-VALUE-SPAN$ {: r:ptr r-u:n :}
+   JSON:READ-VALUE-SPAN$ {: r:^ r-u:n :}
    JSON:READ-CLOSE
    r r-u c KEEP-REPLY
    c RESPONSE-ID$ nip 0= if c KEEP-ID then
@@ -2961,8 +2961,8 @@ private
 
 \ One event, its data a JSON object with a string type, counted by type; the
 \ call's first event starts its reply afresh, and a keepalive is skipped.
-: READ-EVENT ( ptr call ptr u8 n -- ptr call ptr u8 n )
-   {: c a:ptr u:n :}
+: READ-EVENT ( ^call ^u8 n -- ^call ^u8 n )
+   {: c a:^ u:n :}
    c STREAM {: s :}
    s STREAM-HEARD @ 0= if
       c RESPONSE-BUF BUF:CLEAR
@@ -2973,7 +2973,7 @@ private
    a u s" type" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    \ The span of a string token holds its bytes without the quotes.
-   JSON:READ-SPAN$ {: t:ptr t-u:n :}
+   JSON:READ-SPAN$ {: t:^ t-u:n :}
    t t-u c COUNT-EVENT
    s STREAM-OUTPUT-NS @ 0= t t-u s" response.output_" STARTS-WITH? and if
       TIME:MONO-NS s STREAM-OUTPUT-NS !
@@ -2996,19 +2996,19 @@ private
 
 \ An event the call cannot read becomes the reply, as an error event does,
 \ and fails the stream E-RESPONSE; none is read once the response ended.
-: EVENT ( ptr call ptr u8 n ptr u8 n -- )
-   {: c name:ptr name-u:n a:ptr u:n :}
+: EVENT ( ^call ^u8 n ^u8 n -- )
+   {: c name:^ name-u:n a:^ u:n :}
    c STREAM STREAM-DONE @ if exit then
    c a u [: READ-EVENT ;] catch {: code:n :} drop 2drop
    code 0= if exit then
    code READ-FAULT E-RESPONSE = if a u c KEEP-REPLY then
    code throw ;
 
-: KEEP-CHUNK ( ptr call -- )
+: KEEP-CHUNK ( ^call -- )
    {: c :}
    c CHUNK-BUF BUFFER$ BUF:N>BLEN c RESPONSE-BUF BUF:APPEND-SPAN ;
 
-: FEED-EVENTS ( SSE:decoder ptr call -- SSE:decoder ptr call )
+: FEED-EVENTS ( SSE:decoder ^call -- SSE:decoder ^call )
    {: d:SSE:decoder c :}
    d c CHUNK-BUF BUFFER$ c [: EVENT ;] SSE:FEED
    d c ;
@@ -3016,7 +3016,7 @@ private
 
 \ The chunk is the reply until the first event, so a 200 that is no event
 \ stream is, and so is one whose event the decoder refuses as not UTF-8.
-: FEED-CHUNK ( SSE:decoder ptr call -- )
+: FEED-CHUNK ( SSE:decoder ^call -- )
    {: d:SSE:decoder c :}
    c STREAM {: s :}
    s STREAM-DONE @ if exit then
@@ -3033,7 +3033,7 @@ ENUM answer fed spoiled done ;ENUM
 ENUM poll none fed spoiled done ;ENUM
 
 \ Records how the transfer ended.
-: KEEP-ENDING ( CURL:http-status n n ptr call -- )
+: KEEP-ENDING ( CURL:http-status n n ^call -- )
    RECEIPT {: status:CURL:http-status rc:n fault:n r :}
    status r RECEIPT-STATUS !
    rc r RECEIPT-CODE !
@@ -3043,14 +3043,14 @@ ENUM poll none fed spoiled done ;ENUM
 \ The response buffer's room past the bytes received: an embed, count or
 \ compaction read lands there, and appending it from where it lies adds it to
 \ them.
-: REPLY-ROOM ( ptr call -- ptr u8 n )
-   RESPONSE-BUF {: buf:ptr :}
+: REPLY-ROOM ( ^call -- ^u8 n )
+   RESPONSE-BUF {: buf:^ :}
    buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ ;
 
 
 \ Room for the next read of an embed, count or compaction reply; a fault spoils
 \ the reply.
-: MAKE-ROOM ( ptr call -- answer )
+: MAKE-ROOM ( ^call -- answer )
    {: c :}
    c [: GROW-REPLY ;] catch {: fault:n :} drop
    fault 0= if construct answer fed exit then
@@ -3058,7 +3058,7 @@ ENUM poll none fed spoiled done ;ENUM
    construct answer spoiled ;
 
 
-: CLEAR-REPLY ( ptr call -- answer )
+: CLEAR-REPLY ( ^call -- answer )
    {: c :}
    0 CURL:>HTTP-STATUS 0 0 c KEEP-ENDING
    c RESPONSE-BUF BUF:CLEAR
@@ -3071,9 +3071,9 @@ ENUM poll none fed spoiled done ;ENUM
 
 
 \ A 200 chunk feeds the decoder; any other is kept as the reply.
-: CHAT-CHUNK ( CURL:http-status n ptr call -- answer )
+: CHAT-CHUNK ( CURL:http-status n ^call -- answer )
    {: status:CURL:http-status got:n c :}
-   c CHUNK-BUF HELD SPAN:$ drop {: room:ptr :}
+   c CHUNK-BUF HELD SPAN:$ drop {: room:^ :}
    c STREAM STREAM-DECODER @ MATCH option
       none OF E-STATE throw ENDOF
       some OF ENDOF
@@ -3090,15 +3090,15 @@ ENUM poll none fed spoiled done ;ENUM
    construct answer spoiled ;
 
 
-: EMBED-CHUNK ( n ptr call -- answer )
+: EMBED-CHUNK ( n ^call -- answer )
    {: got:n c :}
-   c REPLY-ROOM drop {: room:ptr :}
+   c REPLY-ROOM drop {: room:^ :}
    room got BUF:N>BLEN c RESPONSE-BUF BUF:APPEND-SPAN
    c MAKE-ROOM ;
 
 
 \ A chat whose response already ended keeps it, however the transfer ends.
-: FAILED-END ( n ptr call -- )
+: FAILED-END ( n ^call -- )
    {: rc:n c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c STREAM STREAM-DONE @ ENDOF
@@ -3110,7 +3110,7 @@ ENUM poll none fed spoiled done ;ENUM
    0 CURL:>HTTP-STATUS rc 0 c KEEP-ENDING ;
 
 
-: TAKE-WAIT ( ptr call -- answer )
+: TAKE-WAIT ( ^call -- answer )
    {: c :}
    c CALL-HANDLE CURL:NEXT-TAKE MATCH CURL:chunk-result
       chunk OF LEN>N {: got:n :}
@@ -3128,7 +3128,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The receipt keeps the fault that spoiled the reply, however the drained
 \ transfer ends.
-: DISCARD-WAIT ( ptr call -- answer )
+: DISCARD-WAIT ( ^call -- answer )
    CALL-HANDLE CURL:NEXT-TAKE MATCH CURL:chunk-result
       chunk OF 2drop construct answer fed ENDOF
       response OF drop construct answer done ENDOF
@@ -3145,7 +3145,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 
 \ As TAKE-WAIT, but answers none at once while the armed read holds nothing.
-: TAKE ( ptr call -- poll )
+: TAKE ( ^call -- poll )
    {: c :}
    c CALL-HANDLE CURL:NEXT-READY? 0= if construct poll none exit then
    c TAKE-WAIT POLLED ;
@@ -3153,13 +3153,13 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ As DISCARD-WAIT, but answers none at once while the armed read holds
 \ nothing.
-: DISCARD ( ptr call -- poll )
+: DISCARD ( ^call -- poll )
    {: c :}
    c CALL-HANDLE CURL:NEXT-READY? 0= if construct poll none exit then
    c DISCARD-WAIT POLLED ;
 
 
-: REARM ( ptr call -- )
+: REARM ( ^call -- )
    {: c :}
    c CALL-HANDLE
    c MODEL-CALL:KIND @ MATCH call-kind
@@ -3172,24 +3172,24 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ Every kind drains into the chunk buffer, so the bytes of a dropped embed,
 \ count or compaction reply stay as they arrived.
-: REARM-DROP ( ptr call -- )
+: REARM-DROP ( ^call -- )
    {: c :}
    c CALL-HANDLE c CHUNK-BUF HELD SPAN:$ >LEN CURL:NEXT-ARM ;
 
 
-: DROP-REPLY ( ptr call -- )
+: DROP-REPLY ( ^call -- )
    {: c :}
    c CALL-HANDLE CURL:CANCEL
    c REARM-DROP ;
 
 
 \ An input the state cannot receive.
-: LOST ( ptr call -- ) drop E-STATE throw ;
+: LOST ( ^call -- ) drop E-STATE throw ;
 
 
 \ Arms a started transfer's first read and keeps how SERVE and AWAIT resume it:
 \ a reply the call cannot hold is dropped and drained.
-: ARM ( ptr call -- )
+: ARM ( ^call -- )
    {: c :}
    c CLEAR-REPLY MATCH answer
       fed OF c REARM construct receive-rest reading ENDOF
@@ -3199,14 +3199,14 @@ ENUM poll none fed spoiled done ;ENUM
 
 
 \ Keeps where SERVE or AWAIT resumes a parked transfer.
-: PARK ( ptr call -- )
+: PARK ( ^call -- )
    construct receive-rest reading swap MODEL-CALL:RECEIVE ! ;
-: PARK-DROP ( ptr call -- )
+: PARK-DROP ( ^call -- )
    construct receive-rest dropping swap MODEL-CALL:RECEIVE ! ;
 
 
 \ Ending before the response with no event means no event stream: E-RESPONSE.
-: STREAM-CHECK ( ptr call -- ptr call )
+: STREAM-CHECK ( ^call -- ^call )
    {: c :}
    c STREAM {: s :}
    s STREAM-DONE @ 0= if
@@ -3217,7 +3217,7 @@ ENUM poll none fed spoiled done ;ENUM
    c ;
 
 \ Reads a chat reply's usage, service tier and content.
-: CHAT-PARSE ( ptr call -- ptr call )
+: CHAT-PARSE ( ^call -- ^call )
    {: c :}
    c PARSE-USAGE
    c PARSE-TIER
@@ -3227,11 +3227,11 @@ ENUM poll none fed spoiled done ;ENUM
    c ;
 
 \ Reads an embed reply's vectors and usage.
-: EMBED-PARSE ( ptr call -- ptr call )
+: EMBED-PARSE ( ^call -- ^call )
    {: c :}
    s" " false c [: >r 2drop drop r@ PARSE-EMBED r> ;] catch {: walk:n :}
    walk 0<> if 2drop 2drop c FAULT-USAGE walk throw then
-   drop {: a:ptr u:n present:bool :}
+   drop {: a:^ u:n present:bool :}
    present if
       true c TOKENS TOKENS-SEEN !
       a u c [: EMBED-TOKENS ;] catch {: code:n :} 2drop drop
@@ -3240,7 +3240,7 @@ ENUM poll none fed spoiled done ;ENUM
    c ;
 
 \ A count reply's input_tokens, at its top level: an integer.
-: ACCEPT-COUNT ( ptr call -- )
+: ACCEPT-COUNT ( ^call -- )
    {: c :}
    c RESPONSE$ c s" input_tokens" USAGE-AT MATCH option
       none OF E-RESPONSE throw ENDOF
@@ -3248,7 +3248,7 @@ ENUM poll none fed spoiled done ;ENUM
    ;MATCH ;
 
 \ Reads a count reply's input tokens into COUNTED.
-: COUNT-PARSE ( ptr call -- ptr call )
+: COUNT-PARSE ( ^call -- ^call )
    {: c :}
    c [: dup ACCEPT-COUNT ;] catch {: code:n :} drop
    code RESPONSE-ERROR
@@ -3256,19 +3256,19 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The reader past the window's next item, an object, and the item's bytes;
 \ false past the last.
-: NEXT-ITEM ( JSON:reader -- JSON:reader ptr u8 n bool )
+: NEXT-ITEM ( JSON:reader -- JSON:reader ^u8 n bool )
    JSON:READ-NEXT dup JSON:T-ARR-END = if drop s" " false exit then
    JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-VALUE-SPAN$ true ;
 
 \ Keeps the item's bytes under the reader in place of the item before it.
-: KEEP-LAST ( ptr u8 n JSON:reader ptr u8 n -- ptr u8 n JSON:reader )
-   {: a:ptr u:n :}
+: KEEP-LAST ( ^u8 n JSON:reader ^u8 n -- ^u8 n JSON:reader )
+   {: a:^ u:n :}
    >r 2drop a u r> ;
 
 \ Whether the item's bytes are a compaction item.
-: COMPACTION? ( ptr u8 n ptr call -- bool )
-   {: a:ptr u:n c :}
+: COMPACTION? ( ^u8 n ^call -- bool )
+   {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT TYPE-AT
    s" compaction" JSON:READ-STR-EQ? {: hit:bool :}
@@ -3276,18 +3276,18 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ A compaction reply is one JSON object whose output is a nonempty array of
 \ objects, the last a compaction item; else E-RESPONSE.
-: CHECK-WINDOW ( ptr call -- )
+: CHECK-WINDOW ( ^call -- )
    {: c :}
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    s" " c OUTPUT-AT
    begin NEXT-ITEM while KEEP-LAST repeat
-   2drop JSON:READ-CLOSE {: last:ptr last-u:n :}
+   2drop JSON:READ-CLOSE {: last:^ last-u:n :}
    last-u 0= if E-RESPONSE throw then
    last last-u c COMPACTION? 0= if E-RESPONSE throw then ;
 
 \ Replaces the finished input with the reply's window: its output items, in
 \ order, and no parts; the input is broken until the window is whole.
-: TAKE-WINDOW ( ptr call -- )
+: TAKE-WINDOW ( ^call -- )
    {: c :}
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c EMPTY-INPUT
@@ -3300,7 +3300,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ A compaction reply, checked before the input changes: its usage and served
 \ tier, then its window as the call's input.
-: ACCEPT-COMPACT ( ptr call -- )
+: ACCEPT-COMPACT ( ^call -- )
    {: c :}
    c ACCEPT-USAGE
    c ACCEPT-TIER
@@ -3310,57 +3310,57 @@ ENUM poll none fed spoiled done ;ENUM
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS ! ;
 
 \ Reads a compaction reply into the call's input and usage.
-: COMPACT-PARSE ( ptr call -- ptr call )
+: COMPACT-PARSE ( ^call -- ^call )
    {: c :}
    c [: dup ACCEPT-COMPACT ;] catch {: code:n :} drop
    code RESPONSE-ERROR
    c ;
 
-: JOURNAL-GET? ( ptr call -- bool )
+: JOURNAL-GET? ( ^call -- bool )
    {: c :}
    c JOURNAL-OUT-BUF c RESET-SCRATCH
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-OUT-BUF c MODEL-CALL:JOURNAL-GET @ execute ;
 
-: JOURNAL-FIELD ( ptr u8 n ptr call -- ptr u8 n )
-   {: key:ptr key-u:n c :}
+: JOURNAL-FIELD ( ^u8 n ^call -- ^u8 n )
+   {: key:^ key-u:n c :}
    c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
    key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN {: kind:n :}
    kind JSON:T-OBJ = if
-      JSON:READ-VALUE-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u exit
+      JSON:READ-VALUE-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u exit
    then
    kind JSON:T-STR = if
-      JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a 1- u 2 + exit
+      JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a 1- u 2 + exit
    then
    JSON:READ-CLOSE E-RESPONSE throw ;
 
-: JOURNAL-DECODE ( ptr u8 n SPAN:span<u8> ptr call -- n )
-   {: raw:ptr raw-u:n target:SPAN:span<u8> c :}
+: JOURNAL-DECODE ( ^u8 n SPAN:span<u8> ^call -- n )
+   {: raw:^ raw-u:n target:SPAN:span<u8> c :}
    c MODEL-CALL:READER raw raw-u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    target SPAN:$ JSON:READ-STR {: got:n :}
    JSON:READ-CLOSE got ;
 
-: JOURNAL-STRING-BUF ( ptr u8 n ptr n ptr call -- )
-   {: key:ptr key-u:n buf:ptr c :}
-   key key-u c JOURNAL-FIELD {: raw:ptr raw-u:n :}
+: JOURNAL-STRING-BUF ( ^u8 n ^n ^call -- )
+   {: key:^ key-u:n buf:^ c :}
+   key key-u c JOURNAL-FIELD {: raw:^ raw-u:n :}
    buf raw-u c RESET-SIZED
    buf raw-u BUF:N>BLEN BUF:ENSURE
    raw raw-u buf BUF:SPAN$ drop raw-u SPAN:MAKE c JOURNAL-DECODE
    {: got:n :}
    buf BUF:SPAN$ drop got BUF:N>BLEN buf BUF:REPLACE ;
 
-: JOURNAL-RESPONSE ( ptr call -- )
+: JOURNAL-RESPONSE ( ^call -- )
    {: c :}
-   s" response" c JOURNAL-FIELD {: raw:ptr raw-u:n :}
+   s" response" c JOURNAL-FIELD {: raw:^ raw-u:n :}
    raw raw-u raw-u c RESPONSE-BUF ROOM c JOURNAL-DECODE
    c MODEL-CALL:RESPONSE-U ! ;
 
-: JOURNAL-ORIGIN ( ptr call -- )
+: JOURNAL-ORIGIN ( ^call -- )
    {: c :}
-   s" origin" c JOURNAL-FIELD {: raw:ptr raw-u:n :}
+   s" origin" c JOURNAL-FIELD {: raw:^ raw-u:n :}
    c MODEL-CALL:READER raw raw-u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
    s" kind" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
@@ -3369,7 +3369,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:READ-CLOSE ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
-: JOURNAL-CALL-ID ( ptr call -- n )
+: JOURNAL-CALL-ID ( ^call -- n )
    {: c :}
    c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -3378,7 +3378,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:READ-INT {: id:n :} JSON:READ-CLOSE id ;
 
 \ The fault a journaled refusal records, 0 for a reply.
-: JOURNAL-REFUSAL-FAULT ( ptr call -- n )
+: JOURNAL-REFUSAL-FAULT ( ^call -- n )
    {: c :}
    c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -3388,14 +3388,14 @@ ENUM poll none fed spoiled done ;ENUM
    s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-INCOMPLETE exit then
    JSON:READ-CLOSE E-RESPONSE throw ;
 
-: JOURNAL-RESTORE ( ptr call -- )
+: JOURNAL-RESTORE ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
    c JOURNAL-OUT$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c JOURNAL-REFUSAL-FAULT {: refusal:n :}
    refusal 0<> if refusal throw then
    c JOURNAL-ORIGIN
-   s" configuration" c JOURNAL-FIELD {: config:ptr config-u:n :}
+   s" configuration" c JOURNAL-FIELD {: config:^ config-u:n :}
    config config-u c JSON-OBJECT? 0= if E-RESPONSE throw then
    config config-u BUF:N>BLEN c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG-BUF ENDOF
@@ -3428,7 +3428,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ OPTION:SOME c MODEL-CALL:REPLAY-KIND ! ;
 
 \ A usage count, null when the reply omitted it.
-: COUNT-FIELD ( ptr JSON:writer ptr u8 n option<n> -- ptr JSON:writer )
+: COUNT-FIELD ( ^JSON:writer ^u8 n option<n> -- ^JSON:writer )
    MATCH option
       none OF JSON:WRITE-FIELD-NULL ENDOF
       some OF JSON:WRITE-FIELD-INT ENDOF
@@ -3436,7 +3436,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The call's kind, configured model and usage counts, when the reply carried
 \ usage.
-: USAGE-FIELD ( ptr JSON:writer ptr call -- ptr JSON:writer )
+: USAGE-FIELD ( ^JSON:writer ^call -- ^JSON:writer )
    {: c :}
    c TOKENS TOKENS-SEEN @ 0= if exit then
    JSON:WRITE-COMMA s" usage" JSON:WRITE-KEY
@@ -3461,7 +3461,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-OBJECT-END ;
 
 \ Opens the journal record with the call's configuration.
-: RECORD-OPEN ( ptr call -- ptr JSON:writer )
+: RECORD-OPEN ( ^call -- ^JSON:writer )
    {: c :}
    c MODEL-CALL:KIND @ {: k:call-kind :}
    k GENERATES? if k SHAPED? c BUILD-GEN-CONFIG else c BUILD-EMBED-CONFIG then
@@ -3475,7 +3475,7 @@ ENUM poll none fed spoiled done ;ENUM
       compaction OF c GEN-CONFIG$ ENDOF
    ;MATCH JSON:WRITE-FIELD-RAW ;
 
-: JOURNAL-RECORD ( ptr call -- )
+: JOURNAL-RECORD ( ^call -- )
    {: c :}
    c RECORD-OPEN
    JSON:WRITE-COMMA s" content" c MODEL-CALL:KIND @ MATCH call-kind
@@ -3498,7 +3498,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ A nonzero count, else none.
 : NONZERO ( n -- option<n> ) dup 0<> if OPTION:SOME else drop OPTION:NONE then ;
 
-: BACKEND$ ( ptr call -- ptr u8 n )
+: BACKEND$ ( ^call -- ^u8 n )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" openai" ENDOF
@@ -3513,7 +3513,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The sha256 hex of the model, system text and schema or tools every
 \ generation request of a purpose starts with, NUL-separated.
-: PREFIX-HASH$ ( ptr call -- ptr u8 n )
+: PREFIX-HASH$ ( ^call -- ^u8 n )
    {: c :}
    c HASH-WORK {: w :}
    w SHA256-BEGIN
@@ -3528,7 +3528,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The call's accounting record, the JSON object RECORDER!'s record receives.
 \ outcome is ok, cancelled, tier_unavailable for E-TIER, else failed.
-: CALL-RECORD ( ptr call -- )
+: CALL-RECORD ( ^call -- )
    {: c :}
    c LEDGER {: l :}
    l LEDGER-CANCELLED @ if E-CANCELLED else l LEDGER-CODE @ then {: fault:n :}
@@ -3597,12 +3597,12 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
 
-: REJECT-RUN ( ptr ledger -- ptr ledger )
+: REJECT-RUN ( ^ledger -- ^ledger )
    {: l :}
    l LEDGER-CONTEXT @ l LEDGER-CALL-ID @ l LEDGER-REJECT @ execute
    l ;
 
-: RECORD-RUN ( ptr call -- ptr call )
+: RECORD-RUN ( ^call -- ^call )
    {: c :}
    c CALL-RECORD
    c LEDGER {: l :}
@@ -3611,7 +3611,7 @@ ENUM poll none fed spoiled done ;ENUM
    c ;
 
 \ The row of the purpose PURPOSE! left pending, plus one; 0 is none.
-: PENDING-ROW ( ptr call -- n )
+: PENDING-ROW ( ^call -- n )
    {: c :}
    c PURPOSE-BUF HELD c LEDGER LEDGER-PENDING-U @ SPAN:TAKE SPAN:$ c ROW-OF ;
 
@@ -3619,7 +3619,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ recorder is installed, and selects the purpose's row. A fault before it
 \ sends reports no HTTP status, as PARTS-RESET and INPUT-RESET ensure for the
 \ builders.
-: START-LEDGER ( ptr call -- )
+: START-LEDGER ( ^call -- )
    {: c :}
    c REQUIRE-REST
    0 c MODEL-CALL:HTTP-STATUS !
@@ -3637,14 +3637,14 @@ ENUM poll none fed spoiled done ;ENUM
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
 \ Keeps a dispatched request's fault and cut for its record.
-: END-LEDGER ( n bool ptr call -- )
+: END-LEDGER ( n bool ^call -- )
    {: code:n cancelled:bool c :}
    c LEDGER {: l :}
    l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if exit then
    code l LEDGER-CODE !
    cancelled l LEDGER-CANCELLED ! ;
 
-: JOURNAL-PUT ( ptr call -- )
+: JOURNAL-PUT ( ^call -- )
    {: c :}
    c JOURNAL-RECORD
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
@@ -3658,7 +3658,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ incomplete, the provider's reply as received, a reply cut short with the
 \ output it streamed or the size rejection's body, and the recorded call id
 \ when there is one. A replay reads only the refusal.
-: REFUSAL-PUT ( n ptr call -- )
+: REFUSAL-PUT ( n ^call -- )
    {: code:n c :}
    c RECORD-OPEN
    JSON:WRITE-COMMA s" refusal" code E-CAPACITY = if s" capacity" else
@@ -3671,28 +3671,28 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
-: PREP-JOURNAL-CHAT ( ptr call -- )
+: PREP-JOURNAL-CHAT ( ^call -- )
    {: c :}
    c REQUIRE-REST
    c CHECK-CHAT
    c FINISH-INPUT
    construct call-kind chat c JOURNAL-GEN-INPUT ;
 
-: PREP-JOURNAL-COUNT ( ptr call -- )
+: PREP-JOURNAL-COUNT ( ^call -- )
    {: c :}
    c REQUIRE-REST
    c CHECK-CHAT
    c FINISH-INPUT
    construct call-kind tally c JOURNAL-GEN-INPUT ;
 
-: PREP-JOURNAL-COMPACT ( ptr call -- )
+: PREP-JOURNAL-COMPACT ( ^call -- )
    {: c :}
    c REQUIRE-REST
    c CHECK-INPUT
    c FINISH-INPUT
    construct call-kind compaction c JOURNAL-GEN-INPUT ;
 
-: PREP-JOURNAL-EMBED ( ptr call -- )
+: PREP-JOURNAL-EMBED ( ^call -- )
    {: c :}
    c REQUIRE-REST
    c CHECK-EMBED
@@ -3700,7 +3700,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ Whether the call's resend machine is sending: its send is out, or has
 \ landed and not yet been sensed.
-: SENDING? ( ptr call -- bool )
+: SENDING? ( ^call -- bool )
    RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF true ENDOF
       begun OF false ENDOF
@@ -3711,17 +3711,17 @@ ENUM poll none fed spoiled done ;ENUM
 
 public
 
-: INCOMPLETE-REASON$ ( ptr call -- ptr u8 n )
+: INCOMPLETE-REASON$ ( ^call -- ^u8 n )
    {: c :}
    c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ ;
 \ The last call's provider message from its refused HTTP reply or failed
 \ response; empty when none.
-: ERROR$ ( ptr call -- ptr u8 n ) ERROR-BUF BUFFER$ ;
+: ERROR$ ( ^call -- ^u8 n ) ERROR-BUF BUFFER$ ;
 
 private
 
 \ STREAM-CHECK's E-TRANSPORT is the only one with a status.
-: REPLY+ ( n ptr call -- )
+: REPLY+ ( n ^call -- )
    {: code:n c :}
    c MODEL-CALL:HTTP-STATUS @ {: status:n :}
    code E-RESPONSE = code E-REFUSED = or
@@ -3741,7 +3741,7 @@ private
    s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ ;
 
 
-: CAUSE+ ( n ptr call -- )
+: CAUSE+ ( n ^call -- )
    {: code:n c :}
    code E-INCOMPLETE = c INCOMPLETE-REASON$ nip 0<> and if
       s"  incomplete " LOG:TEXT+ c INCOMPLETE-REASON$ LOG:TEXT+
@@ -3752,7 +3752,7 @@ private
 
 \ The count of each event type the stream carried and how long after dispatch
 \ its first output event came; nothing when it carried none.
-: EVENTS+ ( ptr call -- )
+: EVENTS+ ( ^call -- )
    {: c :}
    c EVENT-ROW-COUNT {: rows:n :}
    rows 0= if exit then
@@ -3768,13 +3768,13 @@ private
 
 
 \ The text LOG-NOTE! set, then a colon; nothing when none is set.
-: NOTE+ ( ptr call -- )
-   NOTE$ {: a:ptr u:n :}
+: NOTE+ ( ^call -- )
+   NOTE$ {: a:^ u:n :}
    u 0= if exit then
    s"  " LOG:TEXT+ a u LOG:TEXT+ s" :" LOG:TEXT+ ;
 
 
-: KEY-REASON$ ( key-fault -- ptr u8 n )
+: KEY-REASON$ ( key-fault -- ^u8 n )
    MATCH key-fault
       none OF s" " ENDOF
       missing OF s" not found" ENDOF
@@ -3786,16 +3786,16 @@ private
       refused OF s" refused by the provider" ENDOF
    ;MATCH ;
 
-: KEY-FAILED? ( ptr call -- bool )
+: KEY-FAILED? ( ^call -- bool )
    RECEIPT RECEIPT-KEY-READ @ KEY-REASON$ nip 0<> ;
 
 
 \ The key's service and account and why it failed, in its read or at the
 \ provider; nothing when it did not.
-: KEY+ ( ptr call -- )
+: KEY+ ( ^call -- )
    {: c :}
    c KEY-FAILED? 0= if exit then
-   c KEY-SPEC$ {: spec:ptr spec-u:n :}
+   c KEY-SPEC$ {: spec:^ spec-u:n :}
    c MODEL-CALL:KEY-SPLIT @ {: su:n :}
    s"  key service " LOG:TEXT+ spec su LOG:TEXT+
    s" , account " LOG:TEXT+ spec su + spec-u su - LOG:TEXT+
@@ -3806,7 +3806,7 @@ private
 \ and URL, response id once known, the caller's note, the code's name, a failed
 \ key's service, account and reason, the code's cause, and a chat stream's
 \ events.
-: REPORT+ ( n ptr call -- )
+: REPORT+ ( n ^call -- )
    {: code:n c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" chat " LOG:TEXT+ c GEN$ ENDOF
@@ -3824,7 +3824,7 @@ private
    c EVENTS+ ;
 
 \ One line for a failed call, a warning for a refusal.
-: REPORT ( n ptr call -- )
+: REPORT ( n ^call -- )
    {: code:n c :}
    code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
    code c REPORT+
@@ -3834,7 +3834,7 @@ private
 \ so a wait under a second is 1 s: a warning for a fault that clears without a
 \ person (the provider away, a failed transfer, a key store that did not
 \ answer), an error for one a person must fix.
-: REST-REPORT ( n ptr call -- )
+: REST-REPORT ( n ^call -- )
    {: code:n c :}
    code E-UNAVAILABLE = code E-TRANSPORT = or code SECRET:E-UNAVAILABLE = or
    if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
@@ -3846,17 +3846,17 @@ private
 ENUM record-event kept faulted ;ENUM
 
 \ Keeps n as the call's outcome unless one is kept.
-: KEEP-FAULT ( n ptr call -- )
+: KEEP-FAULT ( n ^call -- )
    RECEIPT {: fault:n r :}
    r RECEIPT-OUTCOME @ 0= if fault r RECEIPT-OUTCOME ! then ;
 
-: RUN-STEP ( ptr call [ ptr call -- ptr call ] -- ptr call [ ptr call -- ptr call ] )
+: RUN-STEP ( ^call [ ^call -- ^call ] -- ^call [ ^call -- ^call ] )
    {: c step :}
    c step execute drop
    c step ;
 
 \ Runs the step on the call while it keeps no outcome, keeping the step's fault.
-: CHECK-STEP ( ptr call [ ptr call -- ptr call ] -- )
+: CHECK-STEP ( ^call [ ^call -- ^call ] -- )
    {: c step :}
    c RECEIPT RECEIPT-OUTCOME @ 0<> if exit then
    c step [: RUN-STEP ;] catch {: code:n :} 2drop
@@ -3864,12 +3864,12 @@ ENUM record-event kept faulted ;ENUM
 
 
 \ Whether the send's request left: dispatched, or its transfer failed.
-: LEFT? ( ptr call -- bool )
+: LEFT? ( ^call -- bool )
    LEDGER {: l :}
    l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or ;
 
 \ How a run that kept fault n, 0 for none, ended with no CANCEL.
-: RUN-ENDING ( n bool ptr call -- ending )
+: RUN-ENDING ( n bool ^call -- ending )
    {: fault:n replayed:bool c :}
    replayed if
       fault 0= if construct ending replayed exit then
@@ -3883,7 +3883,7 @@ ENUM record-event kept faulted ;ENUM
 \ The ending of a run a CANCEL ended before it landed: after a failure its
 \ send met first, whose line it keeps, or alone. A send whose transfer the
 \ CANCEL cut met none (E-CANCELLED).
-: CUT-ENDING ( n bool ptr call -- ending )
+: CUT-ENDING ( n bool ^call -- ending )
    {: fault:n replayed:bool c :}
    fault 0= fault E-CANCELLED = or replayed or if
       construct ending cut exit
@@ -3893,7 +3893,7 @@ ENUM record-event kept faulted ;ENUM
 
 \ The ending of a run that kept fault n, cut when cancelled, kept in the
 \ receipt for REST-OUT? and TIER-OUT?.
-: KEPT-ENDING ( n bool bool ptr call -- ending )
+: KEPT-ENDING ( n bool bool ^call -- ending )
    {: fault:n replayed:bool cancelled:bool c :}
    cancelled if fault replayed c CUT-ENDING
    else fault replayed c RUN-ENDING then
@@ -3902,7 +3902,7 @@ ENUM record-event kept faulted ;ENUM
 \ Lands a run that kept fault n and stores its ending in one hold of the
 \ call's gate, so a CANCEL that finds the call landed reads its ending too.
 \ Answers whether a CANCEL marked the call, and the ending.
-: END-RUN ( n bool ptr call -- bool ending )
+: END-RUN ( n bool ^call -- bool ending )
    {: fault:n replayed:bool c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
@@ -3912,7 +3912,7 @@ ENUM record-event kept faulted ;ENUM
 
 \ Ends the call's transfer, decoder and handle, wipes its header and parses its
 \ reply, keeping the first fault; then lands the call and answers its ending.
-: SETTLE-SENSE ( ptr call -- ending )
+: SETTLE-SENSE ( ^call -- ending )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-REPLAYED @ {: replayed:bool :}
@@ -3957,11 +3957,11 @@ ENUM record-event kept faulted ;ENUM
    fault cancelled c END-LEDGER
    e ;
 
-: LAND-CUT ( ptr call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
+: LAND-CUT ( ^call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
 
 
 \ Records a dispatched request, keeping the recorder's fault.
-: RECORD-SENSE ( ptr call -- record-event )
+: RECORD-SENSE ( ^call -- record-event )
    {: c :}
    c LEDGER {: l :}
    l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if
@@ -3973,7 +3973,7 @@ ENUM record-event kept faulted ;ENUM
    construct record-event kept ;
 
 \ A put fault replaces the outcome.
-: LAND-SERVED ( ptr call -- )
+: LAND-SERVED ( ^call -- )
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
    c [: dup JOURNAL-PUT ;] catch {: put:n :} drop
@@ -3981,39 +3981,39 @@ ENUM record-event kept faulted ;ENUM
 
 \ A served call whose recorder failed keeps the recorder's fault as its outcome
 \ and is journaled as served.
-: LAND-UNRECORDED ( ptr call -- )
+: LAND-UNRECORDED ( ^call -- )
    dup LEDGER LEDGER-FAULT @ over RECEIPT RECEIPT-OUTCOME !
    LAND-SERVED ;
 
 \ Journals a live refusal so a replay meets it at the same step and asks for
 \ less with no request. A put fault replaces the outcome.
-: LAND-REFUSED ( ptr call -- )
+: LAND-REFUSED ( ^call -- )
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
    c RECEIPT RECEIPT-OUTCOME @ c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
    put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
 
-: REPORT-OUTCOME ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
+: REPORT-OUTCOME ( ^call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
 
 \ A failed send's line waits for the resend machine, which knows whether the
 \ send rests.
-: KEEP-REPORT ( ptr call -- )
+: KEEP-REPORT ( ^call -- )
    RECEIPT dup RECEIPT-OUTCOME @ swap RECEIPT-REPORT ! ;
 
 \ Of the faults before a request leaves, only a failed key read was caused
 \ outside the program, by the store or the item it holds: its line waits for
 \ the resend machine, as a failed send's does.
-: KEEP-UNSENT ( ptr call -- )
+: KEEP-UNSENT ( ^call -- )
    dup KEY-FAILED? if KEEP-REPORT exit then
    drop ;
 
 \ A send that failed before a CANCEL ended it keeps its failure's line, as it
 \ would with no CANCEL, then lands cut.
-: CUT-UNSENT ( ptr call -- ) dup KEEP-UNSENT LAND-CUT ;
-: CUT-FAILED ( ptr call -- ) dup KEEP-REPORT LAND-CUT ;
+: CUT-UNSENT ( ^call -- ) dup KEEP-UNSENT LAND-CUT ;
+: CUT-FAILED ( ^call -- ) dup KEEP-REPORT LAND-CUT ;
 
 \ Writes the line a failed send keeps, if any, once.
-: REPORT-SENT ( ptr call -- )
+: REPORT-SENT ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-REPORT @ {: code:n :}
@@ -4023,7 +4023,7 @@ ENUM record-event kept faulted ;ENUM
 
 \ Lands a call once its run ends: what each ending reports, records, saves and
 \ leaves as the outcome. Settling runs in SETTLE, the rest in ACCOUNT.
-FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
+FSM:DEFINE LAND-MACHINE ( ^call ) land-step ending
    IN settling  SETTLE-SENSE
       cut            LAND-CUT        >recording
       cut-unsent     CUT-UNSENT      >recording
@@ -4052,13 +4052,13 @@ ENUM lookup-event missed replayed faulted ;ENUM
 ENUM dispatch-event armed faulted ;ENUM
 
 \ Restores the journal record in JOURNAL-OUT-BUF as the call's reply.
-: RESTORE ( ptr call -- )
+: RESTORE ( ^call -- )
    {: c :}
    true c RECEIPT RECEIPT-REPLAYED !
    c [: dup JOURNAL-RESTORE ;] catch {: code:n :} drop
    code c KEEP-FAULT ;
 
-: LOOK-UP ( ptr call -- lookup-event )
+: LOOK-UP ( ^call -- lookup-event )
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if construct lookup-event missed exit then
    false c [: >r drop r@ JOURNAL-GET? r> ;] catch {: code:n :} drop
@@ -4066,7 +4066,7 @@ ENUM dispatch-event armed faulted ;ENUM
    if c RESTORE construct lookup-event replayed exit then
    construct lookup-event missed ;
 
-: BOUND ( CURL:handle ptr call -- CURL:status )
+: BOUND ( CURL:handle ^call -- CURL:status )
    {: h:CURL:handle c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       embed OF h c MODEL-CALL:DEADLINE @ >MS CURL:TIMEOUT! ENDOF
@@ -4077,7 +4077,7 @@ ENUM dispatch-event armed faulted ;ENUM
 
 \ Sends the request on a fresh handle the land machine cleans up; the key is
 \ read once and wiped once libcurl copies it.
-: POST ( ptr call -- ptr call )
+: POST ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CHAT-BODY ENDOF
@@ -4104,7 +4104,7 @@ ENUM dispatch-event armed faulted ;ENUM
    c ARM
    c ;
 
-: DISPATCH ( ptr call -- dispatch-event )
+: DISPATCH ( ^call -- dispatch-event )
    {: c :}
    c [: POST ;] catch {: code:n :} drop
    code 0= if construct dispatch-event armed exit then
@@ -4114,24 +4114,24 @@ ENUM dispatch-event armed faulted ;ENUM
 \ The call whose recorder or journal put this task runs (ACCOUNT), for the
 \ cleanup a halt's unwind runs, which takes nothing.
 TASK:+USER LANDING n
-CAST: CALL>N ( ptr call -- n )
-CAST: N>CALL ( n -- ptr call )
+CAST: CALL>N ( ^call -- n )
+CAST: N>CALL ( n -- ^call )
 
-: STEP! ( land-step ptr call -- ) RECEIPT RECEIPT-STEP ! ;
+: STEP! ( land-step ^call -- ) RECEIPT RECEIPT-STEP ! ;
 
 \ A fault the machine throws becomes the outcome, and the call ends landed.
-: LAND-THREW ( n ptr call -- )
+: LAND-THREW ( n ^call -- )
    {: rc:n c :}
    rc c RECEIPT RECEIPT-OUTCOME !
    construct land-step landed c STEP! ;
 
-: SETTLE-RUN ( ptr call -- ptr call )
+: SETTLE-RUN ( ^call -- ^call )
    {: c :}
    c construct land-step settling LAND-MACHINE-STEP drop
    c STEP!
    c ;
 
-: SETTLE-CAUGHT ( ptr call -- )
+: SETTLE-CAUGHT ( ^call -- )
    {: c :}
    c [: SETTLE-RUN ;] catch {: rc:n :} drop
    rc 0= if exit then
@@ -4140,7 +4140,7 @@ CAST: N>CALL ( n -- ptr call )
 
 \ Lands a call once its run ends, keeping the next step for ACCOUNT. It runs
 \ deferred: a halt while it runs leaves the call landed.
-: SETTLE ( ptr call -- )
+: SETTLE ( ^call -- )
    TASK:DEFER-ENTER
    [: SETTLE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally ;
 
@@ -4154,7 +4154,7 @@ CAST: N>CALL ( n -- ptr call )
       landed OF false ENDOF
    ;MATCH ;
 
-: ACCOUNT-RUN ( ptr call -- ptr call )
+: ACCOUNT-RUN ( ^call -- ^call )
    {: c :}
    c RECEIPT {: r :}
    begin
@@ -4163,7 +4163,7 @@ CAST: N>CALL ( n -- ptr call )
    until
    c ;
 
-: ACCOUNT-CAUGHT ( ptr call -- )
+: ACCOUNT-CAUGHT ( ^call -- )
    {: c :}
    c [: ACCOUNT-RUN ;] catch {: rc:n :} drop
    rc 0= if exit then
@@ -4182,7 +4182,7 @@ CAST: N>CALL ( n -- ptr call )
 
 \ Runs a settled call's recorder and journal put after SETTLE's deferred
 \ section: a halt served while they wait leaves the call landed E-CANCELLED.
-: ACCOUNT ( ptr call -- )
+: ACCOUNT ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-STEP @ ACCOUNTING? 0= if exit then
@@ -4191,12 +4191,12 @@ CAST: N>CALL ( n -- ptr call )
    c [: ACCOUNT-CAUGHT ;] [: LANDING-END ;] finally ;
 
 \ Settles the call, then runs its recorder and journal put.
-: LAND ( ptr call -- )
+: LAND ( ^call -- )
    dup SETTLE ACCOUNT ;
 
 \ Receives the reply, or drops one the call cannot keep and drains its
 \ transfer, settling the call when it ends; reading and dropping park, not wait.
-FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
+FSM:DEFINE RECEIVE-MACHINE ( ^call ) receive-step answer
    IN reading       TAKE ( poll )
       none     -           >parked
       fed      REARM       >reading
@@ -4222,14 +4222,14 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 ;DEFINE
 
 
-: RECEIVE ( ptr call -- )
+: RECEIVE ( ^call -- )
    {: c :}
    c c MODEL-CALL:RECEIVE @ MATCH receive-rest
       reading OF construct receive-step waiting ENDOF
       dropping OF construct receive-step drop-waiting ENDOF
    ;MATCH RECEIVE-MACHINE ;
 
-: RECEIVE-READY ( ptr call -- )
+: RECEIVE-READY ( ^call -- )
    {: c :}
    c c MODEL-CALL:RECEIVE @ MATCH receive-rest
       reading OF construct receive-step reading ENDOF
@@ -4238,7 +4238,7 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ Settles a call whose receive threw n before the machine ended; 0: the machine
 \ settled or parked it.
-: LAND-FAULT ( n ptr call -- )
+: LAND-FAULT ( n ^call -- )
    {: code:n c :}
    code 0= if exit then
    code c KEEP-FAULT
@@ -4246,7 +4246,7 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ Sends a begun call's request, or restores its journal hit: out with the
 \ transfer armed, or landed.
-FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
+FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    IN looking  LOOK-UP
       missed    -  >sending
       replayed  -  >ended
@@ -4260,7 +4260,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 
 \ A send's or a replay's receipt: nothing replayed, failed, still to report,
 \ failing its key or ended yet.
-: RECEIPT-RESET ( ptr call -- )
+: RECEIPT-RESET ( ^call -- )
    RECEIPT {: r :}
    false r RECEIPT-REPLAYED !
    0 r RECEIPT-OUTCOME !
@@ -4268,7 +4268,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    construct key-fault none r RECEIPT-KEY-READ !
    OPTION:NONE r RECEIPT-ENDING ! ;
 
-: SEND-BEGUN ( ptr call -- )
+: SEND-BEGUN ( ^call -- )
    {: c :}
    c RECEIPT-RESET
    c RECEIPT {: r :}
@@ -4277,7 +4277,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c construct send-step looking SEND-MACHINE ;
 
 
-: LANDED? ( ptr call -- bool )
+: LANDED? ( ^call -- bool )
    MODEL-CALL:STATE @ MATCH call-state
       idle OF false ENDOF
       prepared OF false ENDOF
@@ -4285,7 +4285,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
       landed OF true ENDOF
    ;MATCH ;
 
-: STARTED? ( ptr call -- bool )
+: STARTED? ( ^call -- bool )
    MODEL-CALL:STATE @ MATCH call-state
       idle OF false ENDOF
       prepared OF false ENDOF
@@ -4294,7 +4294,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    ;MATCH ;
 
 \ Whether the receipt keeps a run that ended failed.
-: FAILED-ENDING? ( ptr call -- bool )
+: FAILED-ENDING? ( ^call -- bool )
    RECEIPT RECEIPT-ENDING @ MATCH option
       none OF false ENDOF
       some OF
@@ -4315,7 +4315,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ Whether the send that landed failed with E-TIER at a tier it named, with
 \ TIER-RESEND! on and its record kept. Its ending must be failed: a served or
 \ refused send whose journal put threw E-TIER is not sent again.
-: TIER-OUT? ( ptr call -- bool )
+: TIER-OUT? ( ^call -- bool )
    {: c :}
    c FAILED-ENDING?
    c RECEIPT RECEIPT-OUTCOME @ E-TIER = and
@@ -4326,13 +4326,13 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ A send TIER-OUT? accepts is halted instead while a halt of its starter is
 \ pending, a halt served there (TASK:HALT-DUE?), so no request is sent before
 \ RECEIVE-STARTED's HALT-UNWIND serves it.
-: TIER-SENSE ( ptr call -- tier-event )
+: TIER-SENSE ( ^call -- tier-event )
    TIER-OUT? 0= if construct tier-event settled exit then
    TASK:HALT-DUE? if construct tier-event halted exit then
    construct tier-event tier-out ;
 
 \ A resend's ledger: nothing dispatched, recorded or failed yet.
-: LEDGER-RESET ( ptr call -- )
+: LEDGER-RESET ( ^call -- )
    LEDGER {: l :}
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
@@ -4343,7 +4343,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ outcome E-CANCELLED already, stored by the gate hold that decided so
 \ (RESEND-LOCKED, LAND-CANCELLED); a dispatched one is recorded cancelled,
 \ with no status, tier, usage or duration of its own.
-: CANCEL-RECORD ( ptr call -- )
+: CANCEL-RECORD ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
    c SERVED-BUF BUF:CLEAR
@@ -4359,7 +4359,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ faulted, the call landed with n stored here as its outcome and no ending,
 \ so a CANCEL once the gate is released finds it out of REST-OUT?'s and
 \ TIER-OUT?'s class.
-: BEGIN-EVENT ( n ptr call -- begin-event )
+: BEGIN-EVENT ( n ^call -- begin-event )
    {: code:n c :}
    code 0= if construct begin-event begun exit then
    code E-CANCELLED = if construct begin-event refused exit then
@@ -4371,7 +4371,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ Runs begin on a landed call under its gate, as BEGIN-GATED does, and
 \ answers its BEGIN-EVENT from the same hold. A closed call is E-STATE: it
 \ has no gate or receipt to store in.
-: BEGIN-AGAIN ( ptr call [ ptr call -- ptr call ] -- begin-event )
+: BEGIN-AGAIN ( ^call [ ^call -- ^call ] -- begin-event )
    {: c begin :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
@@ -4380,13 +4380,13 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Begins a landed call that ended E-TIER again under its gate.
-: TIER-STANDARD ( ptr call -- begin-event )
+: TIER-STANDARD ( ^call -- begin-event )
    [: RESEND-LOCKED ;] BEGIN-AGAIN ;
 
 \ Sends the begun call's request again under its label and purpose row,
 \ naming no tier: the send reads that from the state, so the state moves
 \ first.
-: SEND-STANDARD ( ptr call -- )
+: SEND-STANDARD ( ^call -- )
    {: c :}
    construct tier-step standard c RECEIPT RECEIPT-TIER !
    c LEDGER-RESET
@@ -4397,7 +4397,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 \ E-CANCELLED with its cancelled record; a halt of its starter due there, or
 \ a fault beginning it, leaves it landed with that send's outcome or the
 \ fault. Stepped each time a send of the call has landed and been recorded.
-FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
+FSM:DEFINE TIER-MACHINE ( ^call ) tier-step tier-event
    IN preferred  TIER-SENSE
       settled   -            >done
       tier-out  REPORT-SENT  >resuming
@@ -4413,13 +4413,13 @@ FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
    FINAL done  -
 ;DEFINE
 
-: TIER-MOVE ( ptr call -- )
+: TIER-MOVE ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    c r RECEIPT-TIER @ TIER-MACHINE-STEP drop
    r RECEIPT-TIER ! ;
 
-: TIER-RESUMING? ( ptr call -- bool )
+: TIER-RESUMING? ( ^call -- bool )
    RECEIPT RECEIPT-TIER @ MATCH tier-step
       preferred OF false ENDOF
       resuming OF true ENDOF
@@ -4430,7 +4430,7 @@ FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
 \ Steps a landed call's tier machine, and once more when it resumes, keeping
 \ its next state until START-LEDGER begins the next call: a resend leaves the
 \ call started, or landed on a journal hit or a failed dispatch.
-: TIER-STEP ( ptr call -- )
+: TIER-STEP ( ^call -- )
    {: c :}
    c LANDED? 0= if exit then
    c TIER-MOVE
@@ -4443,7 +4443,7 @@ public
 \ (E-KEY), an unknown model (E-CONFIG with HTTP status 404), or the key
 \ store's SECRET:E-CONFIG, E-ACCESS or E-UNAVAILABLE from the key read at
 \ dispatch.
-: RESENDS? ( n ptr call -- bool )
+: RESENDS? ( n ^call -- bool )
    {: code:n c :}
    code E-UNAVAILABLE = code E-TRANSPORT = or code E-KEY = or
    code E-CONFIG = c MODEL-CALL:HTTP-STATUS @ 404 = and or
@@ -4452,7 +4452,7 @@ public
 
 \ The TIME:MONO-NS at which a resting call is sent again, 0 when the call is
 \ not resting.
-: RESEND-DUE ( ptr call -- n )
+: RESEND-DUE ( ^call -- n )
    {: c :}
    c REQUIRE-OPEN
    c RECEIPT RECEIPT-DUE @ ;
@@ -4460,7 +4460,7 @@ public
 private
 
 \ Whether a stop or CANCEL was asked for, read under the call's gate.
-: STOP-ASKED? ( ptr call -- bool )
+: STOP-ASKED? ( ^call -- bool )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:STOPPED @ c MODEL-CALL:CANCELLED @ or {: asked:bool :}
@@ -4470,7 +4470,7 @@ private
 \ Whether a run that ended so may rest: a send that failed once its request
 \ left, or went unsent in its key read. A served or refused send whose journal
 \ put failed, a replay, a failed journal lookup and a cut run do not.
-: ENDING-RESTS? ( ending ptr call -- bool )
+: ENDING-RESTS? ( ending ^call -- bool )
    {: e c :}
    e MATCH ending
       cut OF false ENDOF
@@ -4484,7 +4484,7 @@ private
       failed OF true ENDOF
    ;MATCH ;
 
-: RESTING-ENDING? ( ptr call -- bool )
+: RESTING-ENDING? ( ^call -- bool )
    {: c :}
    c RECEIPT RECEIPT-ENDING @ MATCH option
       none OF false ENDOF
@@ -4495,7 +4495,7 @@ private
 \ fault is in RESENDS?'s class, and its record is kept. A failed ending has no
 \ SECRET fault: the key read and the journal lookup, where one arises, leave
 \ the send unsent, and ENDING-RESTS? rests that only with KEY-FAILED?.
-: REST-OUT? ( ptr call -- bool )
+: REST-OUT? ( ^call -- bool )
    {: c :}
    c MODEL-CALL:RESEND-WAIT @ 0<>
    c RESTING-ENDING? and
@@ -4505,7 +4505,7 @@ private
 \ Whether a stop or CANCEL marked the landed send to keep it from being sent
 \ again (CANCEL-LOCKED), read under the call's gate. A send a CANCEL cut is
 \ E-CANCELLED already, and so is one a cancelled resend began.
-: CANCEL-KEPT? ( ptr call -- bool )
+: CANCEL-KEPT? ( ^call -- bool )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:CANCELLED @ {: marked:bool :}
@@ -4515,7 +4515,7 @@ private
 \ A landed send is stopped when a stop or CANCEL kept it from being sent
 \ again, the mark binding even if a later recorder fault takes it out of the
 \ class; else outside when it is in REST-OUT?'s class, else settled.
-: SENT-SENSE ( ptr call -- sent-event )
+: SENT-SENSE ( ^call -- sent-event )
    {: c :}
    c CANCEL-KEPT? if construct sent-event stopped exit then
    c REST-OUT? if construct sent-event outside exit then
@@ -4523,7 +4523,7 @@ private
 
 \ Writes the send's line, naming the wait, and starts the call again under
 \ its gate with no transfer until it is due.
-: BEGIN-REST ( ptr call -- )
+: BEGIN-REST ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-REPORT @ {: code:n :}
@@ -4534,7 +4534,7 @@ private
    construct call-state started c MODEL-CALL:STATE !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
-: REST-SENSE ( ptr call -- rest-event )
+: REST-SENSE ( ^call -- rest-event )
    {: c :}
    c STOP-ASKED? if construct rest-event stopped exit then
    TIME:MONO-NS c RECEIPT RECEIPT-DUE @ - 0< if
@@ -4543,7 +4543,7 @@ private
    construct rest-event due ;
 
 \ Ends a rest under the gate: the call lands as its send left it.
-: REST-END-LOCKED ( ptr call -- ptr call )
+: REST-END-LOCKED ( ^call -- ^call )
    {: c :}
    0 c RECEIPT RECEIPT-DUE !
    construct call-state landed c MODEL-CALL:STATE !
@@ -4551,13 +4551,13 @@ private
 
 \ Begins the resend: RESEND-LOCKED makes a stop or CANCEL during the rest
 \ E-CANCELLED.
-: RESUME-LOCKED ( ptr call -- ptr call ) REST-END-LOCKED RESEND-LOCKED ;
+: RESUME-LOCKED ( ^call -- ^call ) REST-END-LOCKED RESEND-LOCKED ;
 
 \ Lands E-CANCELLED a call a stop or CANCEL kept from being sent again,
 \ resting or not, after the line its send keeps, if any. The outcome is
 \ stored in the gate hold that lands it, so a CANCEL once it is released
 \ finds it.
-: LAND-CANCELLED ( ptr call -- )
+: LAND-CANCELLED ( ^call -- )
    {: c :}
    c REPORT-SENT
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
@@ -4567,15 +4567,15 @@ private
 
 \ Serves a halt of the starter pending here, where PAUSE would serve it,
 \ before a due rest's resend begins: the throw leaves the call resting.
-: SERVE-HALT ( ptr call -- ) drop 0 TASK:HALT-UNWIND ;
+: SERVE-HALT ( ^call -- ) drop 0 TASK:HALT-UNWIND ;
 
 \ Begins a resting call's resend under its gate: RESUME-LOCKED ends the rest
 \ and refuses a stop or CANCEL since the rest was sensed.
-: RESEND ( ptr call -- begin-event ) [: RESUME-LOCKED ;] BEGIN-AGAIN ;
+: RESEND ( ^call -- begin-event ) [: RESUME-LOCKED ;] BEGIN-AGAIN ;
 
 \ Sends a begun resend's kept request again at the tier its last send went
 \ out at, as SEND-STANDARD sends the tier machine's own.
-: SEND-AGAIN ( ptr call -- )
+: SEND-AGAIN ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    r RECEIPT-SENT @ r RECEIPT-TIER !
@@ -4592,7 +4592,7 @@ private
 \ starter due there served first. A
 \ fault beginning the resend becomes its outcome, sensed as a landed send's.
 \ Stepped after ACCOUNT and the tier machine, so it senses a settled send.
-FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
+FSM:DEFINE RESEND-MACHINE ( ^call ) resend-step sent-event
    IN sending  SENT-SENSE
       settled  REPORT-SENT     >done
       outside  BEGIN-REST      >begun
@@ -4612,7 +4612,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
    FINAL done  -
 ;DEFINE
 
-: RESTING? ( ptr call -- bool )
+: RESTING? ( ^call -- bool )
    RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF false ENDOF
       begun OF true ENDOF
@@ -4621,7 +4621,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
       done OF false ENDOF
    ;MATCH ;
 
-: BEGUN? ( ptr call -- bool )
+: BEGUN? ( ^call -- bool )
    RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF false ENDOF
       begun OF true ENDOF
@@ -4630,7 +4630,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
       done OF false ENDOF
    ;MATCH ;
 
-: RESUMING? ( ptr call -- bool )
+: RESUMING? ( ^call -- bool )
    RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF false ENDOF
       begun OF false ENDOF
@@ -4640,7 +4640,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
    ;MATCH ;
 
 \ Whether the machine is sending and its send has landed.
-: SENT? ( ptr call -- bool )
+: SENT? ( ^call -- bool )
    {: c :}
    c LANDED? 0= if false exit then
    c SENDING? ;
@@ -4648,7 +4648,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
 \ Whether the tier machine, at preferred or resuming, is to send the landed
 \ send again. A send resuming holds TIER-OUT? until its begin's hold stores
 \ another outcome, so it is read there too.
-: TIER-NEXT? ( ptr call -- bool )
+: TIER-NEXT? ( ^call -- bool )
    {: c :}
    c RECEIPT RECEIPT-TIER @ MATCH tier-step
       preferred OF c TIER-OUT? ENDOF
@@ -4663,7 +4663,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
 \ gate, so it reads REST-OUT? as sending does. Only LAND-CANCELLED lands a
 \ call resting, and RESEND's refused begin one resuming, each E-CANCELLED,
 \ which CANCEL-LOCKED's own check marks. Read under the call's gate.
-: RESEND-NEXT? ( ptr call -- bool )
+: RESEND-NEXT? ( ^call -- bool )
    {: c :}
    c RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF c REST-OUT? c TIER-NEXT? or ENDOF
@@ -4675,7 +4675,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
 
 \ Whether the resend machine has yet to sense the landed send: sending, or
 \ resuming while a resend that landed at once waits for RESEND-MOVE.
-: UNSENSED? ( ptr call -- bool )
+: UNSENSED? ( ^call -- bool )
    RECEIPT RECEIPT-RESEND @ MATCH resend-step
       sending OF true ENDOF
       begun OF false ENDOF
@@ -4692,7 +4692,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
 \ landed call whose outcome is E-CANCELLED is marked too; CANCEL-KEPT?
 \ passes over it, so no second cancelled record follows. Any other call's
 \ mark is cleared, so the flag says whether the call ends E-CANCELLED.
-: CANCEL-LOCKED ( ptr call -- ptr call )
+: CANCEL-LOCKED ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF false c MODEL-CALL:CANCELLED ! ENDOF
@@ -4713,12 +4713,12 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
    ;MATCH
    c ;
 
-: STOP-LOCKED ( ptr call -- ptr call )
+: STOP-LOCKED ( ^call -- ^call )
    {: c :}
    true c MODEL-CALL:STOPPED !
    c CANCEL-LOCKED ;
 
-: RESEND-MOVE ( ptr call -- )
+: RESEND-MOVE ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
    c r RECEIPT-RESEND @ RESEND-MACHINE-STEP drop
@@ -4728,7 +4728,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
 \ resend begun, then a send that has landed, a resend that landed at once
 \ included, then a rest that send began. A rest and a send still out wait
 \ for the next SERVE or AWAIT.
-: RESEND-STEP ( ptr call -- )
+: RESEND-STEP ( ^call -- )
    {: c :}
    c RESTING? if c RESEND-MOVE then
    c RESUMING? if c RESEND-MOVE then
@@ -4736,7 +4736,7 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
    c BEGUN? if c RESEND-MOVE then ;
 
 \ Parks AWAIT's task until a resting call is due or a hint wakes it.
-: REST-PARK ( ptr call -- )
+: REST-PARK ( ^call -- )
    {: c :}
    c RESTING? 0= if exit then
    c STOP-ASKED? if exit then
@@ -4744,20 +4744,20 @@ FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
    left 0 <= if exit then
    left NS-PER-MS 1- + NS-PER-MS / >MS TASK:WAIT-MS drop ;
 
-CAST: N>TASK ( n -- ptr n )
+CAST: N>TASK ( n -- ^n )
 
 \ Wakes the starter of a resting call; one that has ended takes no hint.
-: WAKE-STARTER ( ptr call -- )
+: WAKE-STARTER ( ^call -- )
    MODEL-CALL:STARTER @ N>TASK [: dup TASK:WAKE ;] catch {: code:n :} drop
    code 0= if exit then
    code E-TASK-STATE <> if code throw then ;
 
-: BEGIN-SEND ( ptr call -- ) dup BEGIN-CALL dup SEND-BEGUN RESEND-STEP ;
+: BEGIN-SEND ( ^call -- ) dup BEGIN-CALL dup SEND-BEGUN RESEND-STEP ;
 
 
 \ A chat AWAIT ended without a fault has used its finished input; a chat that
 \ ended in a fault keeps it for the next START or CHAT to send again.
-: USED ( ptr call -- )
+: USED ( ^call -- )
    {: c :}
    c MODEL-CALL:CHAT-INPUT @ MATCH input-state
       none OF ENDOF
@@ -4769,18 +4769,18 @@ CAST: N>TASK ( n -- ptr n )
 
 \ The starter is a TCB, as CURL's record owner is: a later task on that TCB
 \ passes, and the main thread's null TCB is a starter like any other.
-: REQUIRE-STARTER ( ptr call -- )
+: REQUIRE-STARTER ( ^call -- )
    MODEL-CALL:STARTER @ TASK:SELF-N <> if E-STATE throw then ;
 
 
-: RECEIVE-CAUGHT ( [ ptr call -- ptr call ] ptr call -- )
+: RECEIVE-CAUGHT ( [ ^call -- ^call ] ^call -- )
    {: receive c :}
    c receive catch {: code:n :} drop code c LAND-FAULT ;
 
 
 \ Deferred, a halt pending at the receive's take settles the call instead of
 \ unwinding out of the take.
-: RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
+: RECEIVE-STARTED ( [ ^call -- ^call ] ^call -- )
    {: receive c :}
    c REQUIRE-STARTER
    c RESTING? 0= if
@@ -4803,7 +4803,7 @@ public
 \ park, and answers true. A CANCEL of a landed send that would not be sent
 \ again leaves its outcome and answers whether it is E-CANCELLED.
 \ REQUEST-STOP does the same.
-: CANCEL ( ptr call -- bool )
+: CANCEL ( ^call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
@@ -4815,7 +4815,7 @@ public
    code 0<> code CURL:E-STATE <> and if code throw then
    selected ;
 
-: REQUEST-STOP ( ptr call -- )
+: REQUEST-STOP ( ^call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
@@ -4830,7 +4830,7 @@ public
 \ A request a failed chat kept is sent again, its body and journal input built
 \ from the settings and pending purpose then in force: the first try's when
 \ neither changed.
-: START ( ptr call -- )
+: START ( ^call -- )
    {: c :}
    c TAKE-PREPARED {: ready:bool :}
    construct call-result none c MODEL-CALL:RESULT !
@@ -4850,7 +4850,7 @@ public
    c BEGIN-SEND ;
 
 \ Sends the embed request as START sends a chat's.
-: START-EMBED ( ptr call -- )
+: START-EMBED ( ^call -- )
    {: c :}
    c UNPREPARE drop
    construct call-result none c MODEL-CALL:RESULT !
@@ -4864,7 +4864,7 @@ public
 \ answers whether the call landed, as a landed call has; AWAIT ends it. A take
 \ that faults gives the transfer up and waits until the loop leaves it. A
 \ resting call answers false, and is sent again by the SERVE that finds it due.
-: SERVE ( ptr call -- bool )
+: SERVE ( ^call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -4888,7 +4888,7 @@ public
 \ embed keep theirs, and PURPOSE! then START or CHAT sends it again. It waits
 \ through a resend TIER-RESEND! makes, and through each rest RESEND-WAIT!
 \ makes, parked until it is due or a CANCEL or stop wakes it.
-: AWAIT ( ptr call -- )
+: AWAIT ( ^call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -4914,7 +4914,7 @@ public
 \ The content of the chat AWAIT last ended, read on an idle call and borrowed
 \ until the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or
 \ CLOSE.
-: CONTENT$ ( ptr call -- ptr u8 n )
+: CONTENT$ ( ^call -- ^u8 n )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -4932,10 +4932,10 @@ public
 
 \ The output array of the chat reply last awaited or replayed, its own bytes,
 \ read and borrowed as CONTENT$ is; ITEM+ takes each item for the next turn.
-: OUTPUT$ ( ptr call -- ptr u8 n )
+: OUTPUT$ ( ^call -- ^u8 n )
    {: c :}
    c CONTENT$ 2drop
-   s" output" c REPLY-AT JSON:READ-VALUE-SPAN$ {: a:ptr u:n :}
+   s" output" c REPLY-AT JSON:READ-VALUE-SPAN$ {: a:^ u:n :}
    JSON:READ-CLOSE a u ;
 
 \ Finishes the chat request built since PARTS-RESET as CHAT does before its
@@ -4952,7 +4952,7 @@ public
 \ finished and only PARTS-RESET discards it: PURPOSE! then JOURNAL-INPUT$, CHAT
 \ or START answer or send it again under the settings then in force, the same
 \ input when none changed.
-: JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
+: JOURNAL-INPUT$ ( ^call -- ^u8 n )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -4970,7 +4970,7 @@ public
 \ A journal hit replays the recorded reply; otherwise the streaming request,
 \ and its tier resend when one is due, is read event by event until the
 \ response ends. START, AWAIT and CONTENT$.
-: CHAT ( ptr call -- ptr u8 n )
+: CHAT ( ^call -- ^u8 n )
    {: c :}
    c START
    c AWAIT
@@ -4980,7 +4980,7 @@ public
 \ generating: the request stays finished, so the next CHAT or START sends what
 \ was counted. Recorded and journaled as a call; it consumes the pending purpose
 \ and leaves no result. A prepared, started or landed call is E-STATE.
-: COUNT-INPUT ( ptr call -- n )
+: COUNT-INPUT ( ^call -- n )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -5009,7 +5009,7 @@ public
 \ Replaces the input of the chat request built since PARTS-RESET with the
 \ provider's compacted window, kept finished for the next COUNT-INPUT, CHAT or
 \ START; it needs no schema or tools and is otherwise as COUNT-INPUT.
-: COMPACT ( ptr call -- )
+: COMPACT ( ^call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -5040,8 +5040,8 @@ public
 \ or E-INCOMPLETE. It sends nothing and records nothing. Without a request
 \ JOURNAL-INPUT$ finished since the last CHAT, START or REPLAY it is E-STATE;
 \ one that throws keeps the request as JOURNAL-INPUT$ says.
-: REPLAY ( ptr u8 n ptr call -- ptr u8 n )
-   {: a:ptr u:n c :}
+: REPLAY ( ^u8 n ^call -- ^u8 n )
+   {: a:^ u:n c :}
    c TAKE-PREPARED 0= if E-STATE throw then
    construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
@@ -5059,7 +5059,7 @@ public
    c CONTENT$ ;
 
 \ START-EMBED and AWAIT.
-: EMBED ( ptr call -- )
+: EMBED ( ^call -- )
    {: c :}
    c START-EMBED
    c AWAIT ;
@@ -5067,7 +5067,7 @@ public
 \ Input idx's vector: DIMS little-endian IEEE-754 binary32 values, borrowed
 \ until the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or
 \ CLOSE.
-: VECTOR@ ( n ptr call -- ptr u8 n )
+: VECTOR@ ( n ^call -- ^u8 n )
    {: idx:n c :}
    c MODEL-CALL:RESULT @ MATCH call-result
       none OF E-STATE throw ENDOF
@@ -5077,19 +5077,19 @@ public
    idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if E-CONFIG throw then
    c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 
-: GENERATION-MODEL$ ( ptr call -- ptr u8 n ) GEN$ ;
-: EMBEDDING-MODEL$ ( ptr call -- ptr u8 n ) EMBED-MODEL$ ;
-: HTTP-STATUS ( ptr call -- n ) MODEL-CALL:HTTP-STATUS @ ;
-: INPUT-TOKENS ( ptr call -- n ) MODEL-CALL:INPUT-TOKENS @ ;
+: GENERATION-MODEL$ ( ^call -- ^u8 n ) GEN$ ;
+: EMBEDDING-MODEL$ ( ^call -- ^u8 n ) EMBED-MODEL$ ;
+: HTTP-STATUS ( ^call -- n ) MODEL-CALL:HTTP-STATUS @ ;
+: INPUT-TOKENS ( ^call -- n ) MODEL-CALL:INPUT-TOKENS @ ;
 \ The last call's recorded id: its own row, or for a replayed reply the row
 \ its live call recorded; 0 when none.
-: CALL-ID ( ptr call -- n ) LEDGER LEDGER-CALL-ID @ ;
+: CALL-ID ( ^call -- n ) LEDGER LEDGER-CALL-ID @ ;
 \ The recorder's fault from the last call, 0 when recording succeeded or did
 \ not run. A caller that rethrows the call's own fault reports this one too.
-: RECORD-FAULT ( ptr call -- n ) LEDGER LEDGER-FAULT @ ;
+: RECORD-FAULT ( ^call -- n ) LEDGER LEDGER-FAULT @ ;
 \ The library rejected the last call's reply: mark its recorded row. A
 \ recorder fault is kept for RECORD-FAULT, unless one already is, and thrown.
-: REJECTED ( ptr call -- )
+: REJECTED ( ^call -- )
    LEDGER {: l :}
    l LEDGER-READY @ 0= if exit then
    l LEDGER-CALL-ID @ 0= if exit then
@@ -5097,6 +5097,6 @@ public
    rc 0= if exit then
    l LEDGER-FAULT @ 0= if rc l LEDGER-FAULT ! then
    rc throw ;
-: CACHED-TOKENS ( ptr call -- n ) MODEL-CALL:CACHED-TOKENS @ ;
+: CACHED-TOKENS ( ^call -- n ) MODEL-CALL:CACHED-TOKENS @ ;
 
 ;package

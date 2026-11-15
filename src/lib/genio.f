@@ -26,7 +26,7 @@ CHUNK-CAP TASK:+USERS IO-CHUNK u8
 BUF:HDR-BYTES TASK:+USERS IO-LINE u8
 TASK:+USER IO-LINE-LIVE n
 
-: CHUNK ( -- ptr u8 )
+: CHUNK ( -- ^u8 )
    0 IO-CHUNK ;
 
 : LINE-DISPOSE ( -- )
@@ -62,7 +62,7 @@ public
 \ src/habu/repl.f's RD-LINE stays the terminal device's accept, the tty editor
 \ with its history; any other current input device answers with its own accept,
 \ so a REPL over a connection needs no change to repl.f.
-: READ-LINE ( -- ptr u8 n )
+: READ-LINE ( -- ^u8 n )
    IN-ROW TERMINAL-ROW = if RD-LINE exit then
    LINE-OPEN
    0 IO-LINE BUF:CLEAR
@@ -76,7 +76,7 @@ private
 : SELF-CONNECTION ( -- TCP4:connection )
    SELF-STATE TCP4:>CONNECTION ;
 
-: TCP-SEND ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: TCP-SEND ( ^u8 n -- ) {: bytes:^ len:n :}
    len 0 = if exit then
    SELF-CONNECTION bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
    MATCH TCP4:status
@@ -90,7 +90,7 @@ private
 
 \ One transfer. `closed` and `failed` are both E-GENIO-IO here: neither can
 \ answer with a byte, and answering zero for ever is the spin this must not do.
-: TCP-RECEIVE ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
+: TCP-RECEIVE ( ^u8 n -- n ) {: bytes:^ cap:n :}
    SELF-CONNECTION bytes cap TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
       data OF BLEN>N ENDOF
@@ -127,7 +127,7 @@ private
 \ keeps the rest of a long line with the stream: a device has no buffer to leave
 \ a half-read line in. The running length stays on the data stack because a
 \ quotation-free loop cannot rebind a local.
-: TCP-ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
+: TCP-ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
    0
    begin ( len )
       dup cap >= if exit then

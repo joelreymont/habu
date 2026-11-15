@@ -29,28 +29,28 @@ CAP BUFFER: WANT
 BUF:HDR-BYTES BUFFER: PAGE
 BUF:HDR-BYTES BUFFER: CODE
 
-: PREFIX$ ( -- ptr u8 n )  s" HTTP/1.1 200 OK prefix|" ;
-: MODULE$ ( -- ptr u8 n )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
-: TITLE$ ( -- ptr u8 n )  s\" Zürich <&\"'" ;
-: ESCAPED$ ( -- ptr u8 n )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
+: PREFIX$ ( -- ^u8 n )  s" HTTP/1.1 200 OK prefix|" ;
+: MODULE$ ( -- ^u8 n )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
+: TITLE$ ( -- ^u8 n )  s\" Zürich <&\"'" ;
+: ESCAPED$ ( -- ^u8 n )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
 
-: PAGE$ ( -- ptr u8 n )  PAGE BUF:SPAN$ BUF:BLEN>N ;
-: CODE$ ( -- ptr u8 n )  CODE BUF:SPAN$ BUF:BLEN>N ;
+: PAGE$ ( -- ^u8 n )  PAGE BUF:SPAN$ BUF:BLEN>N ;
+: CODE$ ( -- ^u8 n )  CODE BUF:SPAN$ BUF:BLEN>N ;
 
-: AFTER$ ( -- ptr u8 n )
-   PAGE$ {: a:ptr u:n :}
+: AFTER$ ( -- ^u8 n )
+   PAGE$ {: a:^ u:n :}
    PREFIX$ nip {: pu:n :}
    a pu + u pu - ;
 
 
 \ The text in the span after the first opener and before the next closer,
 \ empty when either is missing.
-: BETWEEN$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n o:ptr ou:n c:ptr cu:n :}
+: BETWEEN$ ( ^u8 n ^u8 n ^u8 n -- ^u8 n )
+   {: a:^ u:n o:^ ou:n c:^ cu:n :}
    a u o ou FIND-SUB MATCH option
       none OF a 0 ENDOF
       some OF IDX>N ou + {: at:n :}
-         a at + u at - {: s:ptr su:n :}
+         a at + u at - {: s:^ su:n :}
          s su c cu FIND-SUB MATCH option
             none OF s 0 ENDOF
             some OF IDX>N s swap ENDOF
@@ -60,29 +60,29 @@ BUF:HDR-BYTES BUFFER: CODE
 
 
 \ The text of the page's element of this id.
-: SCRIPT$ ( ptr u8 n -- ptr u8 n )
-   {: id:ptr iu:n :}
+: SCRIPT$ ( ^u8 n -- ^u8 n )
+   {: id:^ iu:n :}
    SB-RESET  s\" id=\"" SB-APPEND  id iu SB-APPEND  s\" \">" SB-APPEND
    AFTER$ SB$ s" </script>" BETWEEN$ ;
 
 
 \ The string of CODE+'s member of this name.
-: MEMBER$ ( ptr u8 n -- ptr u8 n )
-   {: name:ptr nu:n :}
+: MEMBER$ ( ^u8 n -- ^u8 n )
+   {: name:^ nu:n :}
    SB-RESET  s\" \"" SB-APPEND  name nu SB-APPEND  s\" \":\"" SB-APPEND
    CODE$ SB$ s\" \"" BETWEEN$ ;
 
 
 \ The base64 decodes to the bytes.
-: DECODES ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n w:ptr wu:n :}
+: DECODES ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n w:^ wu:n :}
    c cu DECODED BASE64:DECODE {: du:n :}
    DECODED SPAN:$ drop du w wu T$= ;
 
 
 \ The base64 decodes to the file's bytes.
-: CARRIES ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n path:ptr pu:n :}
+: CARRIES ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n path:^ pu:n :}
    path pu WANT CAP FS:READ-ALL {: wu:n :}
    c cu WANT wu DECODES ;
 

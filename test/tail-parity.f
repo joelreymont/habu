@@ -15,15 +15,15 @@ variable SAVED-OUT-U
 variable SAVED-ERR-U
 variable SAVED-RC
 
-: SAVE-BYTES ( ptr u8 n ptr u8 ptr n -- )
-   {: src:ptr u:n dst:ptr used:ptr :}
+: SAVE-BYTES ( ^u8 n ^u8 ^n -- )
+   {: src:^ u:n dst:^ used:^ :}
    u CAP > if E-STR-CAPACITY throw then
    src dst u BYTE-COPY
    u used ! ;
 
 \ Past a leading absolute `<path>:<line>: ` or `<path>: `; prose has no
 \ leading `/`, so text without one is returned whole.
-: PAST-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: PAST-PATH ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u s" /" STARTS-WITH? if
       a u s" : " FIND-SUB MATCH option
         none OF a u ENDOF
@@ -34,7 +34,7 @@ variable SAVED-RC
 \ A rejection split at ` habu: `: the class before it and the text after its
 \ location. One that starts `habu: ` has no class; with no `habu: ` the
 \ whole is the class.
-: UNLOCATED ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+: UNLOCATED ( ^u8 n -- ^u8 n ^u8 n ) {: a:^ u:n :}
    a u s" habu: " STARTS-WITH? if
       a 0  a 6 +  u 6 -  PAST-PATH exit
    then
@@ -47,33 +47,33 @@ variable SAVED-RC
 \ Short of a trailing ` lr <16 hex>` and newline: a kernel exit line ends in
 \ its trapping code's return address, which ASLR moves between runs.
 21 constant LR-TAIL
-: PAST-LR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: PAST-LR ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u LR-TAIL < if a u exit then
    a u + LR-TAIL - 4 s"  lr " STR= if a u LR-TAIL - else a u then ;
 
 public
 
-: SNAPSHOT ( ptr u8 n ptr u8 n n -- )
-   {: out:ptr outu:n err:ptr erru:n rc:n :}
+: SNAPSHOT ( ^u8 n ^u8 n n -- )
+   {: out:^ outu:n err:^ erru:n rc:n :}
    out outu SAVED-OUT SAVED-OUT-U SAVE-BYTES
    err erru SAVED-ERR SAVED-ERR-U SAVE-BYTES
    rc SAVED-RC ! ;
 
-: SAME ( ptr u8 n ptr u8 n n -- )
-   {: out:ptr outu:n err:ptr erru:n rc:n :}
+: SAME ( ^u8 n ^u8 n n -- )
+   {: out:^ outu:n err:^ erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=
    err erru PAST-LR SAVED-ERR SAVED-ERR-U @ PAST-LR T$= ;
 
 \ As SAME, but stderr's location may differ: a run names the file it reads
 \ and line, the file with no line, or nothing.
-: SAME-UNLOCATED ( ptr u8 n ptr u8 n n -- )
-   {: out:ptr outu:n err:ptr erru:n rc:n :}
+: SAME-UNLOCATED ( ^u8 n ^u8 n n -- )
+   {: out:^ outu:n err:^ erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru UNLOCATED {: cls:ptr cu:n tail:ptr tu:n :}
+   err erru UNLOCATED {: cls:^ cu:n tail:^ tu:n :}
    SAVED-ERR SAVED-ERR-U @ UNLOCATED
-   {: was:ptr wu:n wtail:ptr wtu:n :}
+   {: was:^ wu:n wtail:^ wtu:n :}
    cls cu was wu T$=
    tail tu wtail wtu T$= ;
 

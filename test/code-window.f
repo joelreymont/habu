@@ -19,21 +19,21 @@ package CODE-WINDOW-TEST
 $800 constant CAP
 \ The uncaught fault's line up to its address; the address, " pc ", the pc
 \ and a newline make 37 more bytes.
-: FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
+: FAULT-LINE$ ( -- ^u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
 
 create OUT CAP allot
 create ERR CAP allot
 
-: CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
+: CAPTURE ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
-: EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
+: EXPECT ( ^u8 n n -- ) {: src:^ u:n want:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
 \ arm64 throws the memory fault, uncaught: exit 110 after one line.
 HB-TARGET-LINUX-X86-64? 0= [if]
-: TRAPS ( ptr u8 n -- ) {: src:ptr u:n :}
+: TRAPS ( ^u8 n -- ) {: src:^ u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc ENGINE-ERROR:MEMORY-FAULT
    T-ENDING-EXITED=
@@ -44,12 +44,12 @@ HB-TARGET-LINUX-X86-64? 0= [if]
 \ the process dies by the SIGSEGV.
 HB-TARGET-LINUX-X86-64? [if]
 11 constant SIGSEGV
-: TRAPS ( ptr u8 n -- ) {: src:ptr u:n :}
+: TRAPS ( ^u8 n -- ) {: src:^ u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc SIGSEGV T-ENDING-SIGNALED= ;
 [then]
 
-: ACCEPTS ( ptr u8 n -- )  0 EXPECT ;
+: ACCEPTS ( ^u8 n -- )  0 EXPECT ;
 
 : TEST-RX-VIEW ( -- )
    s" a raw store above CP faults: the RX view is not writable" T-LABEL

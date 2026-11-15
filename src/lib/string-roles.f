@@ -25,13 +25,13 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 
 \ Bound before the public STR words shadow the global names, so a bare
 \ FIND-SUB, INDEX-OF, SPLIT-NEXT or BUF-* here is the raw word.
-: RAW-FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> )    FIND-SUB ;
-: RAW-INDEX-OF ( ptr u8 n n -- option<idx> )           INDEX-OF ;
-: RAW-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool )   SPLIT-NEXT ;
-: RAW-BUF-RESET ( ptr len -- )                         BUF-RESET ;
-: RAW-BUF-LEN@ ( ptr len -- n )                        BUF-LEN@ ;
-: RAW-BUF-APPEND ( ptr u8 n ptr u8 n ptr len -- )      BUF-APPEND ;
-: RAW-BUF-APPEND-C ( n ptr u8 n ptr len -- )           BUF-APPEND-C ;
+: RAW-FIND-SUB ( ^u8 n ^u8 n -- option<idx> )    FIND-SUB ;
+: RAW-INDEX-OF ( ^u8 n n -- option<idx> )           INDEX-OF ;
+: RAW-SPLIT-NEXT ( ^u8 n n n -- ^u8 n n bool )   SPLIT-NEXT ;
+: RAW-BUF-RESET ( ^len -- )                         BUF-RESET ;
+: RAW-BUF-LEN@ ( ^len -- n )                        BUF-LEN@ ;
+: RAW-BUF-APPEND ( ^u8 n ^u8 n ^len -- )      BUF-APPEND ;
+: RAW-BUF-APPEND-C ( n ^u8 n ^len -- )           BUF-APPEND-C ;
 
 \ A cell that fails a role predicate is E-STR-BOUNDS. The reachable arm is the
 \ negative for LENGTH, OFFSET and COUNT and the SPLIT-NEXT advance overflow; the
@@ -89,11 +89,11 @@ public
 : OFFSET ( n -- NUM:byte-off )      N>BYTE-OFF ;
 : COUNT ( n -- NUM:item-count )     N>ITEM-COUNT ;
 
-: FIND-SUB ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:index> )
-   {: a:ptr u:NUM:byte-len b:ptr v:NUM:byte-len :}
+: FIND-SUB ( ^u8 NUM:byte-len ^u8 NUM:byte-len -- option<NUM:index> )
+   {: a:^ u:NUM:byte-len b:^ v:NUM:byte-len :}
    a u BYTE-LEN>N b v BYTE-LEN>N RAW-FIND-SUB IDX-OPT>INDEX-OPT ;
-: INDEX-OF ( ptr u8 NUM:byte-len n -- option<NUM:index> )
-   {: a:ptr u:NUM:byte-len c:n :}
+: INDEX-OF ( ^u8 NUM:byte-len n -- option<NUM:index> )
+   {: a:^ u:NUM:byte-len c:n :}
    a u BYTE-LEN>N c RAW-INDEX-OF IDX-OPT>INDEX-OPT ;
 
 \ SOME(slice, next) while a field remains, NONE once the start cursor is past
@@ -101,13 +101,13 @@ public
 \ path. next is the offset one past the separator, or one past the string end
 \ on the final field.
 STRUCTURE split
-  FIELD ptr ptr u8
+  FIELD ptr ^u8
   FIELD len NUM:byte-len
   FIELD next NUM:byte-off
 ;STRUCTURE
 
-: SPLIT-NEXT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> )
-   {: a:ptr u:NUM:byte-len sep:n start:NUM:byte-off :}
+: SPLIT-NEXT ( ^u8 NUM:byte-len n NUM:byte-off -- option<str:split> )
+   {: a:^ u:NUM:byte-len sep:n start:NUM:byte-off :}
    u SPLIT-SENTINEL-OK
    a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
    {: rn:n more?:bool :}                                \ sub-ptr sub-rawlen remain on the stack
@@ -118,13 +118,13 @@ STRUCTURE split
    then ;
 
 \ The caller-owned bounded byte buffer, its length cell a NUM:byte-len.
-: BUF-RESET ( ptr len -- )                    RAW-BUF-RESET ;
-: BUF-LEN@ ( ptr len -- NUM:byte-len )    RAW-BUF-LEN@ N>BYTE-LEN ;
-: BUF-APPEND ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len ptr len -- )
-   {: src:ptr srclen:NUM:byte-len dst:ptr cap:NUM:byte-len lenp:ptr :}
+: BUF-RESET ( ^len -- )                    RAW-BUF-RESET ;
+: BUF-LEN@ ( ^len -- NUM:byte-len )    RAW-BUF-LEN@ N>BYTE-LEN ;
+: BUF-APPEND ( ^u8 NUM:byte-len ^u8 NUM:byte-len ^len -- )
+   {: src:^ srclen:NUM:byte-len dst:^ cap:NUM:byte-len lenp:^ :}
    src srclen BYTE-LEN>N dst cap BYTE-LEN>N lenp RAW-BUF-APPEND ;
-: BUF-APPEND-C ( n ptr u8 NUM:byte-len ptr len -- )
-   {: c:n dst:ptr cap:NUM:byte-len lenp:ptr :}
+: BUF-APPEND-C ( n ^u8 NUM:byte-len ^len -- )
+   {: c:n dst:^ cap:NUM:byte-len lenp:^ :}
    c dst cap BYTE-LEN>N lenp RAW-BUF-APPEND-C ;
 
 ;package

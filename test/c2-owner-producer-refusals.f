@@ -64,17 +64,17 @@ EXPORT REPLACE-R-CALLBACK
    s" two allocations cannot claim the same fresh region" T-LABEL
    s" : C2OP-COLLAPSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC swap 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC rot swap ;" 70 SUBJECT:EXITED? TTRUE
    s" a raw-pointer disposer cannot receive an owned view" T-LABEL
-   s" : C2OP-RAW-DISPOSE ( ptr u8 NUM:alloc-byte-len -- ) 2drop ; : C2OP-RAW ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-RAW-DISPOSE ;] C2-MEM:ALLOC-DISPOSE ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2OP-RAW-DISPOSE ( ^u8 NUM:alloc-byte-len -- ) 2drop ; : C2OP-RAW ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-RAW-DISPOSE ;] C2-MEM:ALLOC-DISPOSE ;" 70 SUBJECT:EXITED? TTRUE
    s" a disposer tied to an existing region cannot claim a fresh one" T-LABEL
    s" : C2OP-RIGID ( C2-MEM:owner<p,i,a> NUM:alloc-byte-len [ mut-view<p,p,a,u8> -- ] -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) C2-MEM:ALLOC-DISPOSE ;" 70 SUBJECT:EXITED? TTRUE
    s" two disposer allocations cannot claim one fresh region" T-LABEL
    s" : C2OP-DROP-VIEW ( mut-view<p,p,a,u8> -- ) C2-MEM:PUBLISH drop ; : C2OP-TWO-DISPOSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE swap 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE rot swap ;" 70 SUBJECT:EXITED? TTRUE
    s" the raw owner constructor cannot be called" T-LABEL
-   s" : C2OP-CTOR ( ptr u8 n -- C2-MEM:owner<p,i,a> ) C2-MEM:OWNER-MAKE ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2OP-CTOR ( ^u8 n -- C2-MEM:owner<p,i,a> ) C2-MEM:OWNER-MAKE ;" 70 SUBJECT:EXITED? TTRUE
    s" a mutable view cannot be unpacked outside the owner package" T-LABEL
-   s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ^u8 n ) C2-MEM:MUT-UNPACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ticking the unpacker does not cross its internal boundary" T-LABEL
-   s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ptr u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ^u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" 70 SUBJECT:EXITED? TTRUE
    \ The engine refuses `package C2-MEM` by name, exit 84, before the checker
    \ sees a body.
    s" the product refuses a reopen of C2-MEM by name" T-LABEL

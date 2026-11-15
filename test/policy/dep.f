@@ -11,8 +11,8 @@ public
 : ZERO ( -- n ) 0 ;
 : BIG? ( n -- bool ) 10 > ;
 : SHOW ( n -- ) . ;
-: NAME-LEN ( ptr u8 n -- n ) nip ;
-: SHOW-NAME ( ptr u8 n -- ) type ;
+: NAME-LEN ( ^u8 n -- n ) nip ;
+: SHOW-NAME ( ^u8 n -- ) type ;
 : BOOM ( -- ) -30001 throw ;
 : STEP ( -- n ) 1 ;
 MARK-LAST

@@ -7,7 +7,7 @@ private
 
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLS n
-DYNAMIC-BUFFER PTRS ptr u8
+DYNAMIC-BUFFER PTRS ^u8
 DYNAMIC-BUFFER A u8
 DYNAMIC-BUFFER B u8
 DYNAMIC-BUFFER C u8
@@ -22,7 +22,7 @@ STRUCTURE sample OPAQUE DERIVE addr
 ;STRUCTURE
 2 TYPED-BUFFER ROWS sample
 
-: SAME ( ptr a ptr a -- n )
+: SAME ( ^a ^a -- n )
    = if 1 else 0 then ;
 
 : PAST-MEMORY ( -- )  $100000000 BYTES-RESERVE ;
@@ -106,13 +106,13 @@ public
 \ pages again after both joined one run. Each run then overlaps a free one, so
 \ its second free traps, after the lines of the maps and frees before it.
 : TWICE ( -- )
-   65536 map-anon . {: p:ptr :}
+   65536 map-anon . {: p:^ :}
    p 65536 munmap .
    p 65536 munmap . ;
 
 : INSIDE ( -- )
-   65536 map-anon . {: p:ptr :}
-   65536 map-anon . {: q:ptr :}
+   65536 map-anon . {: p:^ :}
+   65536 map-anon . {: q:^ :}
    q byte-view p byte-view - .
    p 65536 munmap .
    q 65536 munmap .
@@ -123,14 +123,14 @@ public
 \ and which wraps to it in 32 bits: each answers -1 and leaves the free list as
 \ it was, so the page then frees, maps back whole and frees again.
 : REFUSED ( -- )
-   65536 map-anon . {: p:ptr :}
+   65536 map-anon . {: p:^ :}
    p 0 munmap .
    p byte-view 100 + 65536 munmap .
    p -65536 munmap .
    p $100000001 munmap .
    p byte-view $100000000 + 65536 munmap .
    p 65536 munmap .
-   65536 map-anon . {: q:ptr :}
+   65536 map-anon . {: q:^ :}
    q p SAME .
    q 65536 munmap . ;
 

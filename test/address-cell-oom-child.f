@@ -6,7 +6,7 @@ require src/habu/address-cells.f
 package ADDRESS-CELL-OOM-CHILD
 using ADDRESS-CELLS
 PROCESS-SYMBOLS
-FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 9 constant RLIMIT-AS                 \ Linux RLIMIT_AS
 create SLOTS BOOT-CAP 1+ cells allot
 create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max

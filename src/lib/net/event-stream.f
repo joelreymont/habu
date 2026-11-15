@@ -50,64 +50,64 @@ $BF constant BOM-THIRD
 58 constant COLON
 64 constant START-CAP
 
-CAST: >DECODER ( ptr n -- decoder )
-CAST: DECODER>STATE ( decoder -- ptr n )
+CAST: >DECODER ( ^n -- decoder )
+CAST: DECODER>STATE ( decoder -- ^n )
 
-: ST@ ( ptr n -- n ) ST-OFF + @ ;
-: ST! ( n ptr n -- ) ST-OFF + ! ;
-: BOM@ ( ptr n -- n ) BOM-OFF + @ ;
-: BOM! ( n ptr n -- ) BOM-OFF + ! ;
-: CR@ ( ptr n -- n ) CR-OFF + @ ;
-: CR! ( n ptr n -- ) CR-OFF + ! ;
-: DATA? ( ptr n -- bool ) DATA-OFF + @ 0<> ;
-: DATA! ( n ptr n -- ) DATA-OFF + ! ;
-: LINE-BUF ( ptr n -- ptr n ) LINE-OFF + ;
-: BODY-BUF ( ptr n -- ptr n ) BODY-OFF + ;
-: EVENT-BUF ( ptr n -- ptr n ) EVENT-OFF + ;
+: ST@ ( ^n -- n ) ST-OFF + @ ;
+: ST! ( n ^n -- ) ST-OFF + ! ;
+: BOM@ ( ^n -- n ) BOM-OFF + @ ;
+: BOM! ( n ^n -- ) BOM-OFF + ! ;
+: CR@ ( ^n -- n ) CR-OFF + @ ;
+: CR! ( n ^n -- ) CR-OFF + ! ;
+: DATA? ( ^n -- bool ) DATA-OFF + @ 0<> ;
+: DATA! ( n ^n -- ) DATA-OFF + ! ;
+: LINE-BUF ( ^n -- ^n ) LINE-OFF + ;
+: BODY-BUF ( ^n -- ^n ) BODY-OFF + ;
+: EVENT-BUF ( ^n -- ^n ) EVENT-OFF + ;
 
-: CHECK-LIVE ( ptr n -- ) ST@ LIVE <> if E-STATE throw then ;
-: CHECK-OPEN ( ptr n -- )
+: CHECK-LIVE ( ^n -- ) ST@ LIVE <> if E-STATE throw then ;
+: CHECK-OPEN ( ^n -- )
    ST@ dup CLOSED = if drop E-STATE throw then
    dup LIVE = if drop exit then
    dup FINISHED = if drop exit then
    FAILED = if exit then
    E-STATE throw ;
 
-: ZERO-BUF ( ptr n -- )
-   {: buf:ptr :}
+: ZERO-BUF ( ^n -- )
+   {: buf:^ :}
    0 buf ! 0 buf CELL + ! 0 buf 2 cells + ! ;
 
-: INIT-BUF ( ptr n -- ) START-CAP BUF:N>BLEN BUF:INIT ;
+: INIT-BUF ( ^n -- ) START-CAP BUF:N>BLEN BUF:INIT ;
 
-: INIT-BUFS ( ptr n -- ptr n )
-   {: state:ptr :}
+: INIT-BUFS ( ^n -- ^n )
+   {: state:^ :}
    state LINE-BUF INIT-BUF
    state BODY-BUF INIT-BUF
    state EVENT-BUF INIT-BUF
    state ;
 
-: DISPOSE-IF-LIVE ( ptr n -- )
-   {: buf:ptr :}
+: DISPOSE-IF-LIVE ( ^n -- )
+   {: buf:^ :}
    buf 2 cells + @ 0<> if buf BUF:DISPOSE then ;
 
-: DISPOSE-BUFS ( ptr n -- )
-   {: state:ptr :}
+: DISPOSE-BUFS ( ^n -- )
+   {: state:^ :}
    state LINE-BUF DISPOSE-IF-LIVE
    state BODY-BUF DISPOSE-IF-LIVE
    state EVENT-BUF DISPOSE-IF-LIVE ;
 
-: RESET-EVENT ( ptr n -- )
-   {: state:ptr :}
+: RESET-EVENT ( ^n -- )
+   {: state:^ :}
    state BODY-BUF BUF:CLEAR
    state EVENT-BUF BUF:CLEAR
    0 state DATA! ;
 
-: DISPATCH ( ptr n a [ a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr ctx:a cb :}
+: DISPATCH ( ^n a [ a ^u8 n ^u8 n -- ] -- )
+   {: state:^ ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
-   state EVENT-BUF BUF:SPAN$ BUF:BLEN>N {: kind:ptr ku:n :}
-   state BODY-BUF BUF:SPAN$ BUF:BLEN>N {: body:ptr bu:n :}
+   state EVENT-BUF BUF:SPAN$ BUF:BLEN>N {: kind:^ ku:n :}
+   state BODY-BUF BUF:SPAN$ BUF:BLEN>N {: body:^ bu:n :}
    kind ku UTF8:VALID? 0= if E-UTF8 throw then
    body bu 1- UTF8:VALID? 0= if E-UTF8 throw then
    ctx
@@ -116,25 +116,25 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    state RESET-EVENT
    LIVE state ST! ;
 
-: COLON-AT ( ptr u8 n -- n )
-   {: src:ptr u:n :}
+: COLON-AT ( ^u8 n -- n )
+   {: src:^ u:n :}
    u 0 ?do src i + c@ COLON = if i unloop exit then loop
    u ;
 
-: SPLIT-FIELD ( ptr u8 n -- ptr u8 n ptr u8 n )
-   {: src:ptr u:n :}
+: SPLIT-FIELD ( ^u8 n -- ^u8 n ^u8 n )
+   {: src:^ u:n :}
    src u COLON-AT {: at:n :}
    at u = if src u src u + 0 exit then
    src at
-   src at 1+ + u at 1+ - {: value:ptr vu:n :}
+   src at 1+ + u at 1+ - {: value:^ vu:n :}
    vu 0 > if value c@ SP = if value 1+ vu 1- exit then then
    value vu ;
 
-: FIELD-LINE ( ptr n -- )
-   {: state:ptr :}
-   state LINE-BUF BUF:SPAN$ BUF:BLEN>N {: src:ptr u:n :}
+: FIELD-LINE ( ^n -- )
+   {: state:^ :}
+   state LINE-BUF BUF:SPAN$ BUF:BLEN>N {: src:^ u:n :}
    src c@ COLON = if exit then
-   src u SPLIT-FIELD {: name:ptr nu:n value:ptr vu:n :}
+   src u SPLIT-FIELD {: name:^ nu:n value:^ vu:n :}
    name nu s" data" STR= if
       value vu BUF:N>BLEN state BODY-BUF BUF:APPEND-SPAN
       LF state BODY-BUF BUF:APPEND-BYTE
@@ -145,8 +145,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
       value vu BUF:N>BLEN state EVENT-BUF BUF:REPLACE
    then ;
 
-: END-LINE ( ptr n a [ a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr ctx:a cb :}
+: END-LINE ( ^n a [ a ^u8 n ^u8 n -- ] -- )
+   {: state:^ ctx:a cb :}
    state LINE-BUF BUF:LEN@ BUF:BLEN>N 0= if
       state ctx cb DISPATCH
    else
@@ -154,8 +154,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    then
    state LINE-BUF BUF:CLEAR ;
 
-: BYTE ( ptr n n a [ a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr byte:n ctx:a cb :}
+: BYTE ( ^n n a [ a ^u8 n ^u8 n -- ] -- )
+   {: state:^ byte:n ctx:a cb :}
    state CR@ 0<> if
       0 state CR!
       byte LF = if exit then
@@ -168,8 +168,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    byte LF = if state ctx cb END-LINE exit then
    byte state LINE-BUF BUF:APPEND-BYTE ;
 
-: BOM-BYTE ( ptr n n a [ a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr byte:n ctx:a cb :}
+: BOM-BYTE ( ^n n a [ a ^u8 n ^u8 n -- ] -- )
+   {: state:^ byte:n ctx:a cb :}
    state BOM@ BOM-START = if
       byte BOM-FIRST = if BOM-EF state BOM! exit then
       BOM-DONE state BOM!
@@ -191,8 +191,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    state byte ctx cb BYTE ;
 
 \ The offset of the first CR or LF in the span, else its length.
-: TERM-AT ( ptr u8 n -- n )
-   {: src:ptr u:n :}
+: TERM-AT ( ^u8 n -- n )
+   {: src:^ u:n :}
    0 begin dup u < while
       dup src + c@ dup LF = swap CR = or if exit then
       1+
@@ -202,8 +202,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
 \ does for each of them once the BOM is settled: a pending CR is answered by
 \ the first non-LF byte. Terminators and BOM bytes go through BOM-BYTE. The
 \ answer is the number of bytes consumed.
-: STEP ( ptr n ptr u8 n a [ a ptr u8 n ptr u8 n -- ] -- n )
-   {: state:ptr src:ptr u:n ctx:a cb :}
+: STEP ( ^n ^u8 n a [ a ^u8 n ^u8 n -- ] -- n )
+   {: state:^ src:^ u:n ctx:a cb :}
    state BOM@ BOM-DONE = if
       src u TERM-AT {: run:n :}
       run 0 > if
@@ -221,8 +221,8 @@ public
 
 \ Storage is zero-initialized before its first OPEN and remains exclusive until
 \ CLOSE. CLOSE clears the liveness cell so the same storage can be reopened.
-: OPEN ( ptr n n -- decoder )
-   {: state:ptr cap:n :}
+: OPEN ( ^n n -- decoder )
+   {: state:^ cap:n :}
    state 0= if E-STORAGE throw then
    cap STORAGE-BYTES < if E-STORAGE throw then
    state ST@ CLOSED <> if E-STATE throw then
@@ -236,9 +236,9 @@ public
    LIVE state ST!
    state >DECODER ;
 
-: FEED ( decoder ptr u8 n a [ a ptr u8 n ptr u8 n -- ] -- )
-   {: d:decoder src:ptr u:n ctx:a cb :}
-   d DECODER>STATE {: state:ptr :}
+: FEED ( decoder ^u8 n a [ a ^u8 n ^u8 n -- ] -- )
+   {: d:decoder src:^ u:n ctx:a cb :}
+   d DECODER>STATE {: state:^ :}
    state CHECK-LIVE
    u 0 < if E-SOURCE throw then
    u 0 > src 0= and if E-SOURCE throw then
@@ -247,12 +247,12 @@ public
    repeat drop ;
 
 : FINISH ( decoder -- )
-   DECODER>STATE {: state:ptr :}
+   DECODER>STATE {: state:^ :}
    state CHECK-LIVE
    FINISHED state ST! ;
 
 : CLOSE ( decoder -- )
-   DECODER>STATE {: state:ptr :}
+   DECODER>STATE {: state:^ :}
    state CHECK-OPEN
    state LINE-BUF BUF:DISPOSE
    state BODY-BUF BUF:DISPOSE

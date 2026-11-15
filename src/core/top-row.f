@@ -18,8 +18,8 @@ public
 \ `depth` is the anchor: each event fits the row to the live depth less the
 \ cells the event pushed, so a step the row cannot model leaves unknown cells,
 \ which a typed consumer refuses.
-: TOP-LEVEL ( ptr u8 n n n -- )
-   {: a:ptr u:n cls:n flg:n :}
+: TOP-LEVEL ( ^u8 n n n -- )
+   {: a:^ u:n cls:n flg:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    depth cls TR-PUSHED - {: live:n :}
    cls TOP-EV-WORD <>  cls TOP-EV-TICK <>  and IF a u cls live CHECKER-TOP-PUSH EXIT THEN

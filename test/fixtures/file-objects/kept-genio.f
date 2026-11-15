@@ -12,9 +12,9 @@ private
 : DROP-CHAR ( n -- ) drop ;
 : NO-KEY ( -- n ) GENIO:E-IO throw ;
 : READY? ( -- bool ) 0 0= ;
-: NO-READ ( ptr u8 n -- n ) {: a:ptr u:n :} 0 ;
-: DROP-BYTES ( ptr u8 n -- ) {: a:ptr u:n :} ;
-: NO-ACCEPT ( ptr u8 n -- n ) {: a:ptr u:n :} 0 ;
+: NO-READ ( ^u8 n -- n ) {: a:^ u:n :} 0 ;
+: DROP-BYTES ( ^u8 n -- ) {: a:^ u:n :} ;
+: NO-ACCEPT ( ^u8 n -- n ) {: a:^ u:n :} 0 ;
 
 : BUILD ( -- GENIO:device )
    [: DROP-CHAR ;] [: NO-KEY ;] [: READY? ;] [: NO-READ ;]

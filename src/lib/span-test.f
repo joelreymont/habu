@@ -30,10 +30,10 @@ public
 
 private
 
-: SRC8 ( -- ptr u8 n )
+: SRC8 ( -- ^u8 n )
    s" abcdefgh" ;
 
-: SRC9 ( -- ptr u8 n )
+: SRC9 ( -- ^u8 n )
    s" abcdefghi" ;
 
 : T-PRODUCERS ( -- )
@@ -129,7 +129,7 @@ private
    ST-BUF SPAN:$ drop 0 SPAN:MAKE SPAN:LEN 0 T=
    [: ST-BUF SPAN:$ drop -1 SPAN:MAKE SPAN:LEN drop ;] E-SPAN-LENGTH TTHROWS ;
 
-: T-ALLOCATION ( ptr u8 NUM:alloc-byte-len -- ) {: base:ptr bytes :}
+: T-ALLOCATION ( ^u8 NUM:alloc-byte-len -- ) {: base:^ bytes :}
    base bytes MEM:ALLOCATION>SPAN {: s :}
    s SPAN:LEN 37 T=
    s SPAN:$ drop base = TTRUE
@@ -147,7 +147,7 @@ private
    s MEM:FREE-SPAN ;
 
 \ u8, cell and a nominal family element (NUM:index, from a TYPED-BUFFER, the
-\ only checked way to hold a `ptr NUM:index`): the generic words are the same
+\ only checked way to hold a `^NUM:index`): the generic words are the same
 \ words in all three.
 : T-GENERIC ( -- )
    ST-BUF 8 SPAN:SKIP SPAN:LEN 56 T=
@@ -172,14 +172,14 @@ private
    \ SPAN:MAKE binds its element from the pointer it is given, so a byte pointer
    \ mints a `span<u8>` that widens into a declared `span<cell>` exactly as
    \ STW-OPEN's argument does; the reverse narrowing is refused in both places.
-   \ Two concrete pointees never unify (`( ptr cell -- u8 ) c@` is refused), and
+   \ Two concrete pointees never unify (`( ^cell -- u8 ) c@` is refused), and
    \ SPAN:MAKE stays audited to src/lib/ and src/: the reach it takes is
    \ unchecked.
-   s" STW-MINT ( ptr u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-   s" STW-MINT2 ( ptr cell n -- SPAN:span<u8> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-   s" STW-PTRSTRICT ( ptr cell -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T=
+   s" STW-MINT ( ^u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" STW-MINT2 ( ^cell n -- SPAN:span<u8> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" STW-PTRSTRICT ( ^cell -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T=
    \ a bare pointer is not a span and a span is not a bare pointer
-   s" STW-BARE ( ptr u8 n -- n ) SPAN:LEN" CHECK-QUIET-CANDIDATE! 0 T=
+   s" STW-BARE ( ^u8 n -- n ) SPAN:LEN" CHECK-QUIET-CANDIDATE! 0 T=
    s" STW-PTR ( SPAN:span<u8> -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ An open instantiation is a value like any other: `span`'s parameter occurs

@@ -28,11 +28,11 @@ undefine @
 undefine !
 : ! ( n n -- n ) + ;
 undefine c!
-: c! ( u8 ptr u8 -- ) 2drop ;
+: c! ( u8 ^u8 -- ) 2drop ;
 undefine ?dup
 : ?dup ( n -- n n ) dup ;
 undefine record-at
-: record-at ( ptr ubrec n -- n ) 2drop 42 ;
+: record-at ( ^ubrec n -- n ) 2drop 42 ;
 
 undefine dup
 : dup ( n -- n ) 100 + ;
@@ -53,8 +53,8 @@ s" a redefined engine word is checked by its own effect, not the engine rule" T-
 s" UB-FETCH ( -- n n ) 5 @" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-STORE ( -- n ) 2 3 !" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-QDUP ( -- n n ) 5 ?dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" UB-REC ( ptr ubrec -- n ) 0 record-at" CHECK-QUIET-CANDIDATE! -1 T=
-s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
+s" UB-REC ( ^ubrec -- n ) 0 record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" UB-REC-STEP ( ^ubrec -- ^ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ An operator row claims a token only when the lookup binds its own seeded
 \ primitive; the checker's intrinsic rules
@@ -73,7 +73,7 @@ s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 
 : UB-STORE ( -- n ) 2 3 ! ;
 : UB-BYTE-STORE ( -- u8 ) $22 UB-BYTE c! UB-BYTE c@ ;
 : UB-QDUP ( -- n n ) 5 ?dup ;
-: UB-REC ( ptr ubrec -- n ) 0 record-at ;
+: UB-REC ( ^ubrec -- n ) 0 record-at ;
 
 : RUN ( -- )
    s" a body compiled before the redefinition keeps the engine word" T-LABEL

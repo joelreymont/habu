@@ -19,9 +19,9 @@ public
 private
 
 \ EACH's visitor takes path, line, kind.
-TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
+TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
 
-: IMPORT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: IMPORT? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" require" STR=CI
    a u s" include" STR=CI or ;
 
@@ -31,12 +31,12 @@ TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
    idx LINT-LEX:LITERAL? 0= if false exit then
    idx LINT-LEX:TOKEN drop c@ dup 115 = swap 83 = or ;
 
-: STRING-IMPORT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: STRING-IMPORT? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" required" STR=CI
    a u s" included" STR=CI or ;
 
-: IMPORT-KIND ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: IMPORT-KIND ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u s" require" STR=CI
    a u s" required" STR=CI or if REQUIRES else INCLUDES then ;
 
@@ -57,10 +57,10 @@ public
 
 \ TEXT$ and PATH! are the hooks of LITERAL's closed text, which runs in the
 \ caller's scope and so reaches them only qualified.
-: TEXT$ ( -- ptr u8 n )
+: TEXT$ ( -- ^u8 n )
    TEXT-A @ TEXT-U @ ;
 
-: PATH! ( ptr u8 n -- )
+: PATH! ( ^u8 n -- )
    PATH-U !
    PATH-A ! ;
 
@@ -70,9 +70,9 @@ private
 
 \ A plain literal (a two-byte opener) holds its payload; the token is the
 \ opener, one delimiter, the payload and its closing quote.
-: LITERAL ( n -- ptr u8 n bool ) {: idx:n :}
-   idx LINT-LEX:CONTENT {: a:ptr u:n :}
-   idx LINT-LEX:TOKEN {: o:ptr ou:n :}
+: LITERAL ( n -- ^u8 n bool ) {: idx:n :}
+   idx LINT-LEX:CONTENT {: a:^ u:n :}
+   idx LINT-LEX:TOKEN {: o:^ ou:n :}
    ou 2 = if a u true exit then
    o TEXT-A !
    ou u + 2 + TEXT-U !
@@ -95,7 +95,7 @@ private
 
 \ These consumers take the path span directly. A later consumer is not proof
 \ that an earlier string survived the words between them.
-: DIRECT-LOAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DIRECT-LOAD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" GE-SRC-FILE+" STR=CI
    a u s" GE-ARG+" STR=CI or
    a u s" ARG" STR=CI or
@@ -103,7 +103,7 @@ private
    a u s" ARGS" STR=CI or
    a u s" CHILD-RUN" STR=CI or ;
 
-: DIAGNOSTIC-LOAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DIAGNOSTIC-LOAD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" DIAGNOSTIC" STR=CI
    a u s" DIAGNOSTIC-WB" STR=CI or ;
 
@@ -167,7 +167,7 @@ private
 
 public
 
-: EACH ( [ ptr u8 n n n -- ] -- )
+: EACH ( [ ^u8 n n n -- ] -- )
    VISIT !
    LINT-LEX:COUNT 0 ?do i SCAN-TOKEN loop ;
 

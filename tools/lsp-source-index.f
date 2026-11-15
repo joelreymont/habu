@@ -36,16 +36,16 @@ variable START
 variable END
 variable RESULT-SYM
 
-: ID! ( ptr u8 n ptr u8 n n -- )
-   {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+: ID! ( ^u8 n ^u8 n n -- )
+   {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    pkgu 1 max ID-PKG-RESERVE
    tailu 1 max ID-TAIL-RESERVE
    pkg 0 ID-PKG pkgu BYTE-COPY  pkgu ID-PKG-U !
    tail 0 ID-TAIL tailu BYTE-COPY  tailu ID-TAIL-U !
    vis ID-VIS ! ;
 
-: ID=? ( ptr u8 n ptr u8 n n -- bool )
-   {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+: ID=? ( ^u8 n ^u8 n n -- bool )
+   {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    vis ID-VIS @ = pkgu ID-PKG-U @ = and tailu ID-TAIL-U @ = and
    pkg pkgu 0 ID-PKG ID-PKG-U @ CORE-STR= and
    tail tailu 0 ID-TAIL ID-TAIL-U @ CORE-STR= and ;
@@ -83,8 +83,8 @@ variable RESULT-SYM
    then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
-: DECODE ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: DECODE ( ^u8 n -- bool )
+   {: a:^ u:n :}
    0 ROW-PKG-U !  0 ROW-TAIL-U !
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
    JSON-ST a u JSON:READ-INIT
@@ -95,7 +95,7 @@ variable RESULT-SYM
    ROW-TAIL-U @ 0 > and ROW-START @ 0 >= and
    ROW-END @ ROW-START @ > and ;
 
-: ROW-ID ( -- ptr u8 n ptr u8 n n )
+: ROW-ID ( -- ^u8 n ^u8 n n )
    0 ROW-PKG ROW-PKG-U @ 0 ROW-TAIL ROW-TAIL-U @ ROW-VIS @ ;
 
 : ROW-SELECT ( -- )
@@ -111,11 +111,11 @@ variable RESULT-SYM
       ROW-ID ID!
    then ;
 
-: LINE ( ptr u8 n -- )
+: LINE ( ^u8 n -- )
    DECODE if ROW-SELECT then ;
 
 : ROWS ( -- )
-   LSP-CHECK:VERIFY-INDEX$ {: a:ptr u:n :}
+   LSP-CHECK:VERIFY-INDEX$ {: a:^ u:n :}
    0 begin dup u < while
       {: at:n :}
       a at + u at - 10 INDEX-OF MATCH option
@@ -126,7 +126,7 @@ variable RESULT-SYM
       at len + 1+
    repeat drop ;
 
-: SCAN ( ptr u8 n ptr u8 n -- )
+: SCAN ( ^u8 n ^u8 n -- )
    0 COUNT !
    INDEX-MS >MS
    LSP-CHECK:INDEX-BYTES MATCH LSP-CHECK:verdict
@@ -139,9 +139,9 @@ variable RESULT-SYM
    ;MATCH ;
 
 \ The path must be in the image's own source tree; return its relative part.
-: RELATIVE ( ptr u8 n -- ptr u8 n bool )
-   {: path:ptr pathu:n :}
-   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+: RELATIVE ( ^u8 n -- ^u8 n bool )
+   {: path:^ pathu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
    pathu rootu 1+ <= if NULL$ false exit then
    path rootu root rootu CORE-STR= 0= if NULL$ false exit then
    path rootu + c@ 47 <> if NULL$ false exit then
@@ -165,12 +165,12 @@ public
 \ clause body the scanner skips; structural native declarations and literal
 \ openers still scan. A prefix file with a top-level dictionary call has no
 \ source locations.
-: TARGET-IN ( n ptr u8 n ptr u8 n -- n n bool )
-   {: sym:n path:ptr pathu:n src:ptr srcu:n :}
+: TARGET-IN ( n ^u8 n ^u8 n -- n n bool )
+   {: sym:n path:^ pathu:n src:^ srcu:n :}
    sym ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n old:n old-end:n name:ptr nameu:n live:bool :}
+   {: rel:^ relu:n old:n old-end:n name:^ nameu:n live:bool :}
    live 0= if 0 0 false exit then
-   path pathu RELATIVE {: got:ptr gotu:n in-root:bool :}
+   path pathu RELATIVE {: got:^ gotu:n in-root:bool :}
    in-root 0= if 0 0 false exit then
    got gotu rel relu CORE-STR= 0= if 0 0 false exit then
    sym VERIFY:SYM-IDENTITY ID!
@@ -178,9 +178,9 @@ public
    src srcu path pathu SCAN
    COUNT @ 1 = if START @ END @ true else 0 0 false then ;
 
-: SYMBOL-IN ( ptr u8 n n ptr u8 n -- n bool )
-   {: path:ptr pathu:n byte:n src:ptr srcu:n :}
-   path pathu RELATIVE {: rel:ptr relu:n in-root:bool :}
+: SYMBOL-IN ( ^u8 n n ^u8 n -- n bool )
+   {: path:^ pathu:n byte:n src:^ srcu:n :}
+   path pathu RELATIVE {: rel:^ relu:n in-root:bool :}
    in-root 0= if 0 false exit then
    1 MODE !  byte CURSOR !
    src srcu path pathu SCAN

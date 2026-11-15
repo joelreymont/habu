@@ -41,33 +41,33 @@ create FFI-T-CSTR-SRC 119 c, 111 c, 114 c, 108 c, 100 c,                        
 variable FFI-T-LIB
 variable FFI-T-MATH
 
-: FFI-T-LIB-PATH ( -- ptr u8 )
+: FFI-T-LIB-PATH ( -- ^u8 )
    HB-TARGET-MACOS? if FFI-T-LIBSYSTEM exit then
    FFI-T-LIBC ;
-: FFI-T-MATH-PATH ( -- ptr u8 )
+: FFI-T-MATH-PATH ( -- ^u8 )
    HB-TARGET-MACOS? if FFI-T-LIBSYSTEM exit then
    FFI-T-LIBM ;
 : FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH FFI:NOW FFI:DLOPEN ;
-: FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name FFI:DLSYM ;
-: FFI-T-SYM$ ( ptr u8 n -- n )
-   {: name:ptr nameu:n :}
-   name nameu FFI-T-SYM-BUF FFI:CSTR {: sym:ptr :}
+: FFI-T-SYM ( ^u8 -- n ) {: name:^ :}  FFI-T-LIB @ name FFI:DLSYM ;
+: FFI-T-SYM$ ( ^u8 n -- n )
+   {: name:^ nameu:n :}
+   name nameu FFI-T-SYM-BUF FFI:CSTR {: sym:^ :}
    FFI-T-LIB @ sym FFI:DLSYM ;
 : FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH FFI:NOW FFI:DLOPEN ;
-: FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name FFI:DLSYM ;
+: FFI-T-MSYM ( ^u8 -- n ) {: name:^ :}  FFI-T-MATH @ name FFI:DLSYM ;
 
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
 PROCESS-SYMBOLS
-FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-STRLEN$ strlen ( ^u8 -- n ) ;FUNCTION
+FUNCTION: FFI-T-STRNCMP$ strncmp ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-GETPID$ getpid ( -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-CTX-CALL getpid ( n -- i32 ) ;FUNCTION
 
 \ crc32 through the process: the engine does not link libz, so process-wide
 \ resolution finds it exactly when a libz open made its symbols global.
-FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n ^u8 n -- n ) ;FUNCTION
 
 \ A declaration with no result drops the machine return cell, so the word is
 \ stack-neutral for its caller.
@@ -76,15 +76,15 @@ FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
 \ gcvt(double, int, char *) returns its output buffer. This real libc call
 \ exercises a pointer result beside floating, integer and pointer arguments.
 64 BUFFER: FFI-T-GCVT-BUF
-FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: FFI-T-GCVT gcvt ( r n ^u8 -- ^u8 ) ;FUNCTION
 
 \ Resolution happens inside the call, after the arguments are staged: DLSYM
 \ marshals through its own buffer, so a symbol resolved for the first time here
 \ cannot overwrite the pending argument. Call this alias before FFI-T-STRLEN$ so
 \ the shared descriptor has not yet resolved either.
-FUNCTION: FFI-T-STRLEN-LATE strlen ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: FFI-T-STRLEN-LATE strlen ( ^u8 -- n ) ;FUNCTION
 
-FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-MEMCPY memcpy ( ^u8 ^u8 n -- n ) ;FUNCTION
 
 \ A C int result fills only the low half of the return register, and the half
 \ above it is whatever the callee left there. close(-1) fails with -1 in every
@@ -95,7 +95,7 @@ FUNCTION: FFI-T-CLOSE-U32 close ( n -- u32 ) ;FUNCTION
 FUNCTION: FFI-T-LABS-I64 labs ( i64 -- i64 ) ;FUNCTION
 FUNCTION: FFI-T-LABS-CELL labs ( cell -- cell ) ;FUNCTION
 FUNCTION: FFI-T-LABS-ADDR labs ( addr -- addr ) ;FUNCTION
-FUNCTION: FFI-T-ATOI atoi ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-ATOI atoi ( ^u8 -- i32 ) ;FUNCTION
 
 \ Nominal-input fixture proves ABI-cell identity does not erase a role: the
 \ conversion is visible at this call site and the checker keeps ffi-ctx apart
@@ -108,7 +108,7 @@ FUNCTION: FFI-T-ATOI atoi ( ptr u8 -- i32 ) ;FUNCTION
 variable FFI-T-DEPTH-BEFORE
 variable FFI-T-DEPTH-AFTER
 
-: FFI-T-DEPTH! ( ptr n -- ) depth swap ! ;
+: FFI-T-DEPTH! ( ^n -- ) depth swap ! ;
 
 FFI-T-DEPTH-BEFORE FFI-T-DEPTH!
 FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- i32 ) ;FUNCTION
@@ -117,11 +117,13 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ Declarations the declarer rejects, each by one rule; evaluate-closed raises
 \ the throw a file-level declaration would.
 : FFI-T-BAD-PTR ( -- )
-   s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" evaluate-closed ;
+   s" FUNCTION: FFI-T-X1 getpid ( ^ -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-RESULTS ( -- )
    s" FUNCTION: FFI-T-X2 getpid ( -- n n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-IN-TYPE ( -- )
    s" FUNCTION: FFI-T-XI getpid ( fd -- n ) ;FUNCTION" evaluate-closed ;
+: FFI-T-PTR-IN ( -- )
+   s" FUNCTION: FFI-T-XP getpid ( ptr u8 -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-OUT-TYPE ( -- )
    s" FUNCTION: FFI-T-XO getpid ( -- bool ) ;FUNCTION" evaluate-closed ;
 
@@ -150,10 +152,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ words never call their symbols; gcvt below witnesses the mixed pointer call
 \ and FFI-T-VARARGS the variadic stack staging.
 : FFI-T-PTR-MIXED ( -- )
-   s" FUNCTION: FFI-T-XM cairo_pdf_surface_create ( ptr u8 r r -- ptr u8 ) ;FUNCTION"
+   s" FUNCTION: FFI-T-XM cairo_pdf_surface_create ( ^u8 r r -- ^u8 ) ;FUNCTION"
    evaluate-closed ;
 : FFI-T-PTR-VARARG ( -- )
-   s" FUNCTION: FFI-T-XW habu-pointer-variadic ( ptr u8 r n ptr u8 r -- ptr u8 ) 1 VARIADIC ;FUNCTION"
+   s" FUNCTION: FFI-T-XW habu-pointer-variadic ( ^u8 r n ^u8 r -- ^u8 ) 1 VARIADIC ;FUNCTION"
    evaluate-closed ;
 
 \ Both cases declare in the public section, which the private PROCESS-SYMBOLS
@@ -183,7 +185,7 @@ variable FFI-T-PAIR-BEFORE
 variable FFI-T-PAIR-AFTER
 
 : FFI-T-REFUSED-CLAUSE ( -- )
-   s" FUNCTION: FFI-T-XA getpid ( ptr u8 -- n ) 9 VARIADIC ;FUNCTION"
+   s" FUNCTION: FFI-T-XA getpid ( ^u8 -- n ) 9 VARIADIC ;FUNCTION"
    evaluate-closed ;
 : FFI-T-GOOD-AFTER ( -- )
    s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" evaluate-closed ;
@@ -212,7 +214,7 @@ create FFI-T-OUT FFI-T-CAP allot
 create FFI-T-ERR FFI-T-CAP allot
 create FFI-T-LONG-PATH PATH-CAP allot
 
-: FFI-T-SRC+ ( ptr u8 n -- )
+: FFI-T-SRC+ ( ^u8 n -- )
    FFI-T-SRC CODEGEN:APPEND-STRING ;
 
 : FFI-T-FILL-SRC+ ( -- )
@@ -229,19 +231,19 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-LIBS-SRC+ ( -- )
    s\" 128 CODEGEN:BUFFER ZZ-PATH\n" FFI-T-SRC+
-   s\" : ZZ-PATH$ ( n -- ptr u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
+   s\" : ZZ-PATH$ ( n -- ^u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" /tmp/habu-ffi-path-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
    s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:SELECT-LIBRARY loop ;\n" FFI-T-SRC+
    s\" ZZ-LIBS\n" FFI-T-SRC+
-   s\" : ZZ-SYSTEM$ ( -- ptr u8 n ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" exit then\n" FFI-T-SRC+
+   s\" : ZZ-SYSTEM$ ( -- ^u8 n ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" exit then\n" FFI-T-SRC+
    s\"    s\" libc.so.6\" ;\n" FFI-T-SRC+
    s\" ZZ-SYSTEM$ FFI:SELECT-LIBRARY\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-LATE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
    s\"    ZZ-LATE 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
 
-: FFI-T-GROW-SRC$ ( -- ptr u8 n )
+: FFI-T-GROW-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
@@ -251,11 +253,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
-: FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
+: FFI-T-ERR$ ( len -- ^u8 n ) {: u:len :}
    FFI-T-ERR u LEN>N ;
 
 \ Runs the source on a fresh engine's stdin and asserts its exit code.
-: FFI-T-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
+: FFI-T-RUN-EXITS ( ^u8 n n -- len len ) {: src:^ srcu:n want:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
@@ -265,7 +267,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 \ The line the child prints for an uncaught code, rendered from the name so the
 \ needle follows src/lib/error.f instead of repeating its number.
-: FFI-T-CODE$ ( n -- ptr u8 n ) {: code:n :}
+: FFI-T-CODE$ ( n -- ^u8 n ) {: code:n :}
    SB-RESET
    s" uncaught throw code " SB-APPEND
    code FMT:SB-INT
@@ -277,7 +279,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    {: outu:len erru:len :}
    FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=
    erru LEN>N 0 T= ;
-: FFI-T-LIBRARY-SHARED-SRC$ ( -- ptr u8 n )
+: FFI-T-LIBRARY-SHARED-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\n" FFI-T-SRC+
    s\" 128 CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
@@ -315,15 +317,15 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 \ Runs a rejected case with its record captured, so stderr carries none,
 \ and asserts the record's header line.
-: FFI-T-RECORD ( [ -- ] n ptr u8 n -- )
-   {: code:n h:ptr hu:n :}
+: FFI-T-RECORD ( [ -- ] n ^u8 n -- )
+   {: code:n h:^ hu:n :}
    DECL-DIAG:PROSE
    code TTHROWSQ
    h hu DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
-: FFI-T-SYNTAX ( [ -- ] ptr u8 n -- )
-   {: h:ptr hu:n :}
+: FFI-T-SYNTAX ( [ -- ] ^u8 n -- )
+   {: h:^ hu:n :}
    E-FFI-SYNTAX h hu FFI-T-RECORD ;
 
 : FFI-T-SCOPE-RECORD ( [ -- ] -- )
@@ -348,7 +350,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-LONG-SRC! ( -- )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\ncreate ZZ-P PATH-CAP allot\n" FFI-T-SRC+
-   s\" : ZZ-LONG ( -- ptr u8 n ) PATH-CAP 0 ?do [char] a ZZ-P i + c! loop ZZ-P PATH-CAP ;\n" FFI-T-SRC+ ;
+   s\" : ZZ-LONG ( -- ^u8 n ) PATH-CAP 0 ?do [char] a ZZ-P i + c! loop ZZ-P PATH-CAP ;\n" FFI-T-SRC+ ;
 
 \ libz, which the VERSIONED-LIBRARY row below opens with FFI:NOW alone.
 \ dlopen(3) names the scope its symbols join: on Linux an open without
@@ -357,14 +359,14 @@ create FFI-T-LONG-PATH PATH-CAP allot
 \ The library's own handle finds crc32 either way, so a miss through the
 \ process is the scope and not the library. The second open promotes the
 \ already loaded library, as dlopen(3) does for a reopen with RTLD_GLOBAL.
-: FFI-T-GLOBAL-LIB$ ( -- ptr u8 )
+: FFI-T-GLOBAL-LIB$ ( -- ^u8 )
    HB-TARGET-MACOS? if s\" libz.1.dylib\z" drop exit then s\" libz.so.1\z" drop ;
 
 \ The miss prints its record, so it runs in a child whose stderr is asserted.
-: FFI-T-LOCAL-SRC$ ( -- ptr u8 n )
+: FFI-T-LOCAL-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
-   s\" FUNCTION: ZZ-PROBE crc32 ( n ptr u8 n -- n ) ;FUNCTION\n: ZZ-MISS ( -- )\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-PROBE crc32 ( n ^u8 n -- n ) ;FUNCTION\n: ZZ-MISS ( -- )\n" FFI-T-SRC+
    s\"    s\\\" libz.so.1\\z\" drop FFI:NOW FFI:DLOPEN 0= if s\" open\" 1 die then\n" FFI-T-SRC+
    s\"    [: 0 s\" a\" ZZ-PROBE drop ;] catch E-FFI-DLSYM <> if s\" miss\" 1 die then ;\n" FFI-T-SRC+
    s\" ZZ-MISS\n" FFI-T-SRC+
@@ -397,10 +399,10 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:GLOBAL or FFI:DLOPEN 0 T<>
    0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T= ;
 
-: FFI-T-CHECK-PASSES ( ptr u8 n -- )
+: FFI-T-CHECK-PASSES ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
-: FFI-T-CHECK-REJECTS ( ptr u8 n -- )
+: FFI-T-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The libm rows ride the ABI call: sqrt a float argument and a float result,
@@ -423,25 +425,25 @@ FUNCTION: FFI-T-SCALBLN-CALL scalbln ( r n -- r ) ;FUNCTION
 PROCESS-SYMBOLS
 
 \ The same declaration exercises Apple's stack varargs and Linux's registers.
-FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
+FUNCTION: FFI-T-PRINTF snprintf ( ^u8 n ^u8 n r ^u8 -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-SNPRINT-SHORT snprintf ( ptr u8 n ptr u8 n -- i32 )
+FUNCTION: FFI-T-SNPRINT-SHORT snprintf ( ^u8 n ^u8 n -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-SNPRINT-LONG snprintf ( ptr u8 n ptr u8 n n n n n n n -- i32 )
+FUNCTION: FFI-T-SNPRINT-LONG snprintf ( ^u8 n ^u8 n n n n n n n -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-PRINTF-INTS snprintf ( ptr u8 n ptr u8 n n n n n n n n -- i32 )
+FUNCTION: FFI-T-PRINTF-INTS snprintf ( ^u8 n ^u8 n n n n n n n n -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-PRINTF-MIXED snprintf ( ptr u8 n ptr u8 n n n n r n -- i32 )
+FUNCTION: FFI-T-PRINTF-MIXED snprintf ( ^u8 n ^u8 n n n n r n -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
+FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ^u8 n ^u8 n n n ^u8 -- i32 )
    3 VARIADIC
 ;FUNCTION
-FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-MPROTECT mprotect ( ^u8 n n -- i32 ) ;FUNCTION
 1 constant FFI-T-PROT-READ
 64 BUFFER: FFI-T-PRINT-BUF
 4 BUFFER: FFI-T-COUNT
@@ -451,8 +453,8 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 \ is copied into a fresh mapping and the page holding it made read-only for
 \ the call.
 : FFI-T-PRINTF-COUNTED ( -- n )
-   MEM:ALLOC-64K {: fmt:ptr fmtu :}
-   s\" %ld %ld %ld%n\z" {: src:ptr srcu:n :}
+   MEM:ALLOC-64K {: fmt:^ fmtu :}
+   s\" %ld %ld %ld%n\z" {: src:^ srcu:n :}
    src fmt srcu BYTE-COPY
    fmt srcu FFI-T-PROT-READ FFI-T-MPROTECT 0 T=
    FFI-T-PRINT-BUF 64 fmt 11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
@@ -474,12 +476,12 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
    FFI-T-COUNT LE:U32@ 8 T= ;
 
 \ snprintf's ninth double goes on the stack on every target.
-: FFI-T-F9-FORMAT ( -- ptr u8 )
+: FFI-T-F9-FORMAT ( -- ^u8 )
    s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
-: FFI-T-F9-WANT ( -- ptr u8 n )
+: FFI-T-F9-WANT ( -- ^u8 n )
    s" 1 2 3 4 5 6 7 8 9" ;
 : FFI-T-FLOAT-SPILL ( -- )
-   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC ;FUNCTION"
+   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ^u8 n ^u8 r r r r r r r r r -- i32 ) 3 VARIADIC ;FUNCTION"
       evaluate-closed
    FFI-T-SRC CODEGEN:RESET
    s" : FFI-T-F9-CHECK ( -- ) FFI-T-PRINT-BUF 64 FFI-T-F9-FORMAT"
@@ -503,7 +505,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 \ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
 \ selection at the first call on either target.
 VERSIONED-LIBRARY z 1
-FUNCTION: FFI-T-VERSIONED-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-VERSIONED-CRC crc32 ( n ^u8 n -- n ) ;FUNCTION
 PROCESS-SYMBOLS
 
 : FFI-T-VERSIONED-CALL ( -- )
@@ -512,24 +514,24 @@ PROCESS-SYMBOLS
 \ A version list: no libz 9999 exists on either target, so the first call is
 \ served by the second version written.
 VERSIONED-LIBRARY z 9999,1
-FUNCTION: FFI-T-LISTED-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-LISTED-CRC crc32 ( n ^u8 n -- n ) ;FUNCTION
 PROCESS-SYMBOLS
 
 : FFI-T-LISTED-CALL ( -- )
    0 s" a" FFI-T-LISTED-CRC $E8B7BE43 T= ;
 
-: FFI-T-NO-SUCH2-NAME$ ( -- ptr u8 n )
+: FFI-T-NO-SUCH2-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libhabu-no-such.2.dylib" exit then
    s" libhabu-no-such.so.2" ;
 
-: FFI-T-NO-SUCH1-NAME$ ( -- ptr u8 n )
+: FFI-T-NO-SUCH1-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libhabu-no-such.1.dylib" exit then
    s" libhabu-no-such.so.1" ;
 
-: FFI-T-Z1-NAME$ ( -- ptr u8 n )
+: FFI-T-Z1-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libz.1.dylib" exit then s" libz.so.1" ;
 
-: FFI-T-Z9999-NAME$ ( -- ptr u8 n )
+: FFI-T-Z9999-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libz.9999.dylib" exit then s" libz.so.9999" ;
 
 
@@ -542,13 +544,13 @@ PROCESS-SYMBOLS
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer rejects it where it is stated. The rejection ends the load, which is
 \ why it is measured in a child like the growth case.
-: FFI-T-FOREIGN-NAME$ ( -- ptr u8 n )
+: FFI-T-FOREIGN-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libx.so.5" exit then s" libx.5.dylib" ;
 
-: FFI-T-TARGET$ ( -- ptr u8 n )
+: FFI-T-TARGET$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" macos" exit then s" linux" ;
 
-: FFI-T-FOREIGN-SRC$ ( -- ptr u8 n )
+: FFI-T-FOREIGN-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
    s\" : ZZ-FOREIGN ( -- ) s\" LIBRARY " FFI-T-SRC+
@@ -572,7 +574,7 @@ PROCESS-SYMBOLS
 
 \ A fresh engine has made no selection, which this file's PROCESS-SYMBOLS has,
 \ and the rejection ends the load: the case runs in a child.
-: FFI-T-UNSELECTED-SRC$ ( -- ptr u8 n )
+: FFI-T-UNSELECTED-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-PID getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
@@ -585,10 +587,10 @@ PROCESS-SYMBOLS
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" CONTAINS? TTRUE ;
 
-: FFI-T-LONG-FOREIGN-SRC$ ( -- ptr u8 n )
+: FFI-T-LONG-FOREIGN-SRC$ ( -- ^u8 n )
    FFI-T-LONG-SRC!
-   s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:ptr u:n :}\n" FFI-T-SRC+
-   s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:ptr eu:n :}\n" FFI-T-SRC+
+   s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:^ u:n :}\n" FFI-T-SRC+
+   s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:^ eu:n :}\n" FFI-T-SRC+
    s\" ext path u eu - + eu BYTE-COPY path u FFI:SELECT-LIBRARY ;\nZZ-FOREIGN\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
@@ -599,7 +601,7 @@ PROCESS-SYMBOLS
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
    FFI-T-LONG-PATH!
-   HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:ptr eu:n :}
+   HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:^ eu:n :}
    ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: library 'aaaa" CONTAINS? TTRUE
    erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE
@@ -607,17 +609,17 @@ PROCESS-SYMBOLS
    FFI-T-TARGET$ SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
-: FFI-T-NO-LIB$ ( -- ptr u8 n )
+: FFI-T-NO-LIB$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libhabu-no-such-library.dylib" exit then
    s" libhabu-no-such-library.so" ;
 
-: FFI-T-LIBC$ ( -- ptr u8 n )
+: FFI-T-LIBC$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" /usr/lib/libSystem.B.dylib" exit then
    s" libc.so.6" ;
 
 \ Missing symbols and a missing library fail at the first call, never at the
 \ declaration; the final uncaught error ends the load, so the case runs in a child.
-: FFI-T-NO-LIB-SRC$ ( -- ptr u8 n )
+: FFI-T-NO-LIB-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\nLIBRARY " FFI-T-SRC+
@@ -664,7 +666,7 @@ PROCESS-SYMBOLS
 \ No version of the list exists, so the first call reports every name and a
 \ second call nothing; the final uncaught error ends the load, so it runs in a child.
 \ A symbol missing from a list whose second version opens names that version.
-: FFI-T-NO-VERSION-SRC$ ( -- ptr u8 n )
+: FFI-T-NO-VERSION-SRC$ ( -- ^u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 9999,1\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-LISTED-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\n" FFI-T-SRC+
@@ -681,8 +683,8 @@ PROCESS-SYMBOLS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
-   FFI-T-NO-SUCH2-NAME$ {: a:ptr au:n :}
-   FFI-T-NO-SUCH1-NAME$ {: b:ptr bu:n :}
+   FFI-T-NO-SUCH2-NAME$ {: a:^ au:n :}
+   FFI-T-NO-SUCH1-NAME$ {: b:^ bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
@@ -694,8 +696,8 @@ PROCESS-SYMBOLS
    SB-RESET s" tried '" SB-APPEND b bu SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    s" a missing symbol names the version that opened, never one that did not" T-LABEL
-   FFI-T-Z1-NAME$ {: z1:ptr z1u:n :}
-   FFI-T-Z9999-NAME$ {: z9:ptr z9u:n :}
+   FFI-T-Z1-NAME$ {: z1:^ z1u:n :}
+   FFI-T-Z9999-NAME$ {: z9:^ z9u:n :}
    SB-RESET
    s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
    z1 z1u SB-APPEND S\" '\n" SB-APPEND
@@ -734,7 +736,7 @@ PROCESS-SYMBOLS
    FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral
 
    s" a mixed floating call returns the output buffer and writes its value" T-LABEL
-   72.5 5 FFI-T-GCVT-BUF FFI-T-GCVT {: converted:ptr :}
+   72.5 5 FFI-T-GCVT-BUF FFI-T-GCVT {: converted:^ :}
    converted FFI-T-GCVT-BUF - 0 T=
    converted converted FFI-T-STRLEN$ s" 72.5" T$=
 
@@ -763,14 +765,18 @@ PROCESS-SYMBOLS
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
 
    [: FFI-T-BAD-PTR ;]
-   s" error[E-FFI-SYNTAX]: expected 'u8' after 'ptr'" FFI-T-SYNTAX
+   s" error[E-FFI-SYNTAX]: expected 'u8' after '^'" FFI-T-SYNTAX
    [: FFI-T-BAD-RESULTS ;]
    s" error[E-FFI-SYNTAX]: a FUNCTION: declaration has at most one output" FFI-T-SYNTAX
    [: FFI-T-BAD-IN-TYPE ;]
-   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   FFI-T-SYNTAX
+   \ A pointer input is spelled ^u8: `ptr` is no input type.
+   [: FFI-T-PTR-IN ;]
+   s" error[E-FFI-SYNTAX]: 'ptr' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-SYNTAX
    [: FFI-T-BAD-OUT-TYPE ;]
-   s" error[E-FFI-SYNTAX]: 'bool' is not an output type: an output is ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
+   s" error[E-FFI-SYNTAX]: 'bool' is not an output type: an output is ^u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-SYNTAX
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
@@ -813,11 +819,11 @@ PROCESS-SYMBOLS
    [: FFI-T-CLOSE-DANGLING ;]
    s" error[E-FFI-SYNTAX]: ;FUNCTION with no declaration open" FFI-T-SYNTAX
 
-   s" FFI-T-RAW ( ptr a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
+   s" FFI-T-RAW ( ^a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
    s" FFI-T-ROW ( n -- n ) FFI:CALL" FFI-T-CHECK-REJECTS
    s" FFI-T-STAGE ( n n -- ) FFI:VALUE!" FFI-T-CHECK-REJECTS
-   s" FFI-T-RAW-ABI ( ptr a ptr a ptr a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
-   s" FFI-T-MULTI ( ptr u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
+   s" FFI-T-RAW-ABI ( ^a ^a ^a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
+   s" FFI-T-MULTI ( ^u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE
 

@@ -287,14 +287,14 @@ variable ELF-DATA-BYTES
    ELF-GOT,
    M-HERE MLEN! ;
 
-: SNAP-EXTRA-PTR ( -- ptr u8 )
+: SNAP-EXTRA-PTR ( -- ^u8 )
    MBUF X64LAYOUT:CODE-OFF + ;
-s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
+s" SNAP-EXTRA-PTR" s" -- ^u8" TRUST
 
 $C0 constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
-: ELF-BUILD-SPAN ( ptr u8 n -- ) {: text:ptr bytes:n :}
+: ELF-BUILD-SPAN ( ^u8 n -- ) {: text:^ bytes:n :}
    bytes CODELEN !  M-RESET
    CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    TEXTSZ ELF-TEXT-SIZE !
@@ -336,7 +336,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 : IMG-TAIL-N ( -- n )
    ELF-TAIL-N ;
 
-: IMG-TAIL-NAME ( n -- ptr u8 n ) {: i:n :}
+: IMG-TAIL-NAME ( n -- ^u8 n ) {: i:n :}
    i 0 = if s" container/rw-segment" exit then
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
 

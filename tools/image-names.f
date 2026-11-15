@@ -18,13 +18,13 @@ variable COL-KIND variable COL-ORIGIN variable COL-SOURCE
 \ private wid in the len column. Its name points into TEXT, which only LOAD
 \ moves, and LOAD indexes the rows again.
 STRUCTURE pkg DERIVE addr
-   FIELD pub n FIELD priv n FIELD name ptr u8 FIELD size n
+   FIELD pub n FIELD priv n FIELD name ^u8 FIELD size n
 ;STRUCTURE
 DYNAMIC-BUFFER NS-ROWS pkg
 variable NS-N
 \ One line of a group's report, in the order its key first appears.
 STRUCTURE owner DERIVE addr
-   FIELD key ptr u8 FIELD size n FIELD sum n
+   FIELD key ^u8 FIELD size n FIELD sum n
 ;STRUCTURE
 DYNAMIC-BUFFER OWNERS owner
 variable OWNER-N
@@ -33,16 +33,16 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 \ The version-1 sidecar uses one space between fields; the header names columns
 \ so a reordered or extended map is read by meaning, not by column position.
-: FIELD$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n col:n :}
+: FIELD$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n col:n :}
    0
    col 0 ?do
       {: start:n :}
       a u 32 start SPLIT-NEXT 0= if drop 2drop s" " unloop exit then
-      {: field:ptr size:n next:n :} next
+      {: field:^ size:n next:n :} next
    loop
    {: start:n :} a u 32 start SPLIT-NEXT 2drop ;
 
-: COLUMN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n name:ptr size:n :}
+: COLUMN ( ^u8 n ^u8 n -- n ) {: a:^ u:n name:^ size:n :}
    1 begin
       {: col:n :}
       a u col FIELD$ dup 0= if 2drop -1 exit then
@@ -52,31 +52,31 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 : LOADED? ( -- bool ) USED @ 0<> ;
 
-: LINE$ ( -- ptr u8 n )
+: LINE$ ( -- ^u8 n )
    0 TEXT BYTE-VIEW USED @ 10 POS @ SPLIT-NEXT
    drop POS ! ;
 
-: NUMBER ( ptr u8 n -- n )
+: NUMBER ( ^u8 n -- n )
    STR>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
 
-: NUM-COL ( ptr u8 n n -- n ) FIELD$ NUMBER ;
+: NUM-COL ( ^u8 n n -- n ) FIELD$ NUMBER ;
 
-: ROW-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ROW-LEN ( ^u8 n -- n ) {: a:^ u:n :}
    a u COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BYTES else drop -1 then ;
 
-: ROW-BYTES ( ptr u8 n -- n )
+: ROW-BYTES ( ^u8 n -- n )
    ROW-LEN dup 0 < if
       s" image-names: a row's length is not a length" 74 die then ;
 
-: KIND? ( ptr u8 n ptr u8 n -- bool )
-   {: row:ptr rowu:n kind:ptr kindu:n :}
+: KIND? ( ^u8 n ^u8 n -- bool )
+   {: row:^ rowu:n kind:^ kindu:n :}
    row rowu COL-KIND @ FIELD$ kind kindu STR= ;
 
-: ROW-CHARGED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ROW-CHARGED? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u COL-KIND @ FIELD$ s" runtime" STR= if true exit then
    a u COL-KIND @ FIELD$ s" word" STR= ;
 
-: ORIGIN+ ( ptr u8 n n -- ) {: a:ptr u:n bytes:n :}
+: ORIGIN+ ( ^u8 n n -- ) {: a:^ u:n bytes:n :}
    a u COL-ORIGIN @ FIELD$ s" baked" STR= if
       ATTR-BAKED @ bytes + ATTR-BAKED ! exit then
    a u COL-ORIGIN @ FIELD$ s" loaded" STR= if
@@ -85,9 +85,9 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       ATTR-GENERATED @ bytes + ATTR-GENERATED ! exit then
    ATTR-UNKNOWN @ bytes + ATTR-UNKNOWN ! ;
 
-: NS+ ( ptr u8 n -- ) {: row:ptr rowu:n :}
+: NS+ ( ^u8 n -- ) {: row:^ rowu:n :}
    NS-N @ 1+ NS-ROWS-RESERVE
-   NS-N @ NS-ROWS {: pkg:ptr :}
+   NS-N @ NS-ROWS {: pkg:^ :}
    row rowu COL-START @ NUM-COL pkg PKG-PUB !
    row rowu COL-LEN @ NUM-COL pkg PKG-PRIV !
    row rowu COL-NAME @ FIELD$ pkg PKG-SIZE ! pkg PKG-NAME !
@@ -96,15 +96,15 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : INDEX-NAMESPACES ( -- )
    0 NS-N ! ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       COL-KIND @ 0 >= if
          row rowu COL-KIND @ FIELD$ s" namespace" STR=
       else false then if row rowu NS+ then
    repeat ;
 
 \ The kinds of the rows after the code: the regions the link appended and the pad before one.
-: TAIL? ( ptr u8 n -- bool )
-   {: kind:ptr kindu:n :}
+: TAIL? ( ^u8 n -- bool )
+   {: kind:^ kindu:n :}
    kind kindu s" data" STR= if true exit then
    kind kindu s" data-list" STR= if true exit then
    kind kindu s" names" STR= if true exit then
@@ -112,40 +112,40 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    kind kindu s" record-list" STR= if true exit then
    kind kindu s" pad" STR= ;
 
-: UNCHARGED? ( ptr u8 n -- bool )
-   {: kind:ptr kindu:n :}
+: UNCHARGED? ( ^u8 n -- bool )
+   {: kind:^ kindu:n :}
    kind kindu s" namespace" STR= if true exit then
    kind kindu s" alias" STR= if true exit then
    kind kindu TAIL? ;
 
 \ At most 64 bytes of the kind: a corrupt map's field can pass the string builder.
-: UNKNOWN-KIND ( ptr u8 n -- )
-   {: kind:ptr kindu:n :}
+: UNKNOWN-KIND ( ^u8 n -- )
+   {: kind:^ kindu:n :}
    SB-RESET s" image-names: a map row of unknown kind " SB-APPEND
    kind kindu 64 min SB-APPEND SB$ 74 die ;
 
 public
 
 \ Writes <path>.map into dst, a PATH-CAP buffer; false when it would pass PATH-CAP.
-: MAP-PATH! ( ptr u8 n ptr u8 -- n bool )
-   {: path:ptr pathu:n dst:ptr :}
+: MAP-PATH! ( ^u8 n ^u8 -- n bool )
+   {: path:^ pathu:n dst:^ :}
    pathu 4 + PATH-CAP > if 0 false exit then
    path dst pathu BYTE-COPY
    s" .map" drop dst pathu + 4 BYTE-COPY
    pathu 4 + true ;
 
 \ <path>.map in PATH until the next call, false when it would pass PATH-CAP.
-: MAP$ ( ptr u8 n -- ptr u8 n bool )
-   {: path:ptr pathu:n :}
+: MAP$ ( ^u8 n -- ^u8 n bool )
+   {: path:^ pathu:n :}
    path pathu PATH MAP-PATH! {: mapu:n ok:bool :}
    ok if PATH mapu true else path pathu false then ;
 
 \ A missing map or an unknown header leaves no rows: LOADED? is false.
-: LOAD ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: LOAD ( ^u8 n -- )
+   {: path:^ pathu:n :}
    0 USED ! 0 ATTR-OK ! 0 NS-N !
    path pathu MAP$ 0= if E-FS-CAPACITY throw then
-   {: map:ptr mapu:n :}
+   {: map:^ mapu:n :}
    map mapu FS:FILE? 0= if exit then
    map mapu FS:FILE-SIZE {: size:n :}
    size CELL + CELL / TEXT-RESERVE
@@ -153,7 +153,7 @@ public
       s" image-names: short read" 74 die then
    size USED ! 0 POS !
    LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then
-   LINE$ {: header:ptr headeru:n :}
+   LINE$ {: header:^ headeru:n :}
    header headeru 0 FIELD$ s" columns" STR= 0= if 0 USED ! exit then
    header headeru s" start" COLUMN COL-START !
    header headeru s" len" COLUMN COL-LEN !
@@ -176,7 +176,7 @@ public
    LOADED? 0= COL-KIND @ 0 < or COL-ORIGIN @ 0 < or if false exit then
    ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       row rowu ROW-CHARGED? if
          row rowu COL-START @ NUM-COL ATTR-TOTAL @ <> if false exit then
          row rowu ROW-LEN {: bytes:n :}
@@ -197,29 +197,29 @@ public
    LOADED? 0= COL-KIND @ 0 < or if -1 exit then
    ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       row rowu COL-KIND @ FIELD$ TAIL? if
          row rowu COL-START @ NUM-COL exit then
    repeat -1 ;
 
 \ The summed length of every row of a kind.
-: KIND-BYTES ( ptr u8 n -- n )
-   {: kind:ptr kindu:n :}
+: KIND-BYTES ( ^u8 n -- n )
+   {: kind:^ kindu:n :}
    LOADED? 0= COL-KIND @ 0 < or if 0 exit then
    0 ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       row rowu kind kindu KIND? if row rowu ROW-BYTES + then
    repeat ;
 
 \ The start and length of the one row of a kind, 0 0 when there is none.
-: REGION ( ptr u8 n -- n n )
-   {: kind:ptr kindu:n :}
+: REGION ( ^u8 n -- n n )
+   {: kind:^ kindu:n :}
    0 0 false
    LOADED? COL-KIND @ 0 >= and if
       ROWS @ POS !
       begin POS @ USED @ < while
-         LINE$ {: row:ptr rowu:n :}
+         LINE$ {: row:^ rowu:n :}
          row rowu kind kindu KIND? if
             if s" image-names: two rows of one region" 74 die then
             2drop row rowu COL-START @ NUM-COL row rowu ROW-BYTES true
@@ -231,31 +231,31 @@ private
 
 : ATTR? ( -- bool ) ATTR-OK @ 0<> ;
 
-: PACKAGE$ ( n -- ptr u8 n ) {: wid:n :}
+: PACKAGE$ ( n -- ^u8 n ) {: wid:n :}
    wid 0= if s" global" exit then
    wid -1 = if s" -" exit then
    NS-N @ 0 ?do
-      i NS-ROWS {: pkg:ptr :}
+      i NS-ROWS {: pkg:^ :}
       pkg PKG-PUB @ wid = pkg PKG-PRIV @ wid = or if
          pkg PKG-NAME @ pkg PKG-SIZE @ unloop exit
       then
    loop s" -" ;
 
-: GROUP-KEY$ ( ptr u8 n n -- ptr u8 n ) {: row:ptr rowu:n group:n :}
+: GROUP-KEY$ ( ^u8 n n -- ^u8 n ) {: row:^ rowu:n group:n :}
    group 0= if row rowu COL-WID @ NUM-COL PACKAGE$ exit then
    COL-SOURCE @ 0 < if s" -" exit then
    row rowu COL-SOURCE @ FIELD$ ;
 
 \ The pointer holds until the next call: a new owner may move OWNERS.
-: OWNER ( ptr u8 n -- ptr owner ) {: key:ptr keyu:n :}
+: OWNER ( ^u8 n -- ^owner ) {: key:^ keyu:n :}
    OWNER-N @ 0 ?do
-      i OWNERS {: seen:ptr :}
+      i OWNERS {: seen:^ :}
       seen OWNER-KEY @ seen OWNER-SIZE @ key keyu STR= if
          seen unloop exit
       then
    loop
    OWNER-N @ 1+ OWNERS-RESERVE
-   OWNER-N @ OWNERS {: new:ptr :}
+   OWNER-N @ OWNERS {: new:^ :}
    key new OWNER-KEY ! keyu new OWNER-SIZE ! 0 new OWNER-SUM !
    OWNER-N @ 1+ OWNER-N ! new ;
 
@@ -263,20 +263,20 @@ private
 : SUM-OWNERS ( n -- ) {: group:n :}
    0 OWNER-N ! ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       row rowu ROW-CHARGED? if
          row rowu ROW-LEN
          row rowu group GROUP-KEY$ OWNER OWNER-SUM +!
       then
    repeat ;
 
-: REPORT-GROUP ( n ptr u8 n -- )
-   {: group:n label:ptr labelu:n :}
+: REPORT-GROUP ( n ^u8 n -- )
+   {: group:n label:^ labelu:n :}
    cr label labelu type cr
    s" bytes" type 9 emit s" owner" type cr
    group SUM-OWNERS
    OWNER-N @ 0 ?do
-      i OWNERS {: own:ptr :}
+      i OWNERS {: own:^ :}
       own OWNER-SUM @ FMT:.U 9 emit
       own OWNER-KEY @ own OWNER-SIZE @ type cr
    loop ;
@@ -295,7 +295,7 @@ public
    s" package" type 9 emit s" word" type 9 emit s" source" type cr
    ROWS @ POS !
    begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
+      LINE$ {: row:^ rowu:n :}
       row rowu ROW-CHARGED? if
          row rowu ROW-LEN FMT:.U 9 emit
          row rowu COL-ORIGIN @ FIELD$ type 9 emit

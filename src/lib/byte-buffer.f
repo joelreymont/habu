@@ -13,7 +13,7 @@ require src/lib/adt/option.f
 package BUF
 private
 
-0 constant DATA-OFF                     \ storage pointer (a `ptr u8` cell)
+0 constant DATA-OFF                     \ storage pointer (a `^u8` cell)
 1 cells constant LEN-OFF                 \ active byte length (raw cell)
 2 cells constant CAP-OFF                 \ byte capacity / ownership token (raw cell)
 3 cells constant HDR-SIZE                 \ header footprint the caller allots
@@ -27,17 +27,17 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 CAST: N>BLEN ( n -- NUM:byte-len )
 private
 
-: DATA-FIELD ( ptr a -- ptr ptr u8 )  DATA-OFF ptr-field ;
-: DATA@ ( ptr a -- ptr u8 )  DATA-FIELD @ ;
-: DATA! ( ptr u8 ptr a -- ) {: d:ptr buf:ptr :}  d buf DATA-FIELD ! ;
-: LEN-FIELD ( ptr a -- ptr n )  BYTE-VIEW LEN-OFF + CELL-VIEW ;
-: CAP-FIELD ( ptr a -- ptr n )  BYTE-VIEW CAP-OFF + CELL-VIEW ;
-: LEN-RAW@ ( ptr a -- n )  LEN-FIELD @ ;
-: CAP-RAW@ ( ptr a -- n )  CAP-FIELD @ ;
-: CAP-RAW! ( n ptr a -- ) {: v:n buf:ptr :}  v buf CAP-FIELD ! ;
+: DATA-FIELD ( ^a -- ^^u8 )  DATA-OFF ptr-field ;
+: DATA@ ( ^a -- ^u8 )  DATA-FIELD @ ;
+: DATA! ( ^u8 ^a -- ) {: d:^ buf:^ :}  d buf DATA-FIELD ! ;
+: LEN-FIELD ( ^a -- ^n )  BYTE-VIEW LEN-OFF + CELL-VIEW ;
+: CAP-FIELD ( ^a -- ^n )  BYTE-VIEW CAP-OFF + CELL-VIEW ;
+: LEN-RAW@ ( ^a -- n )  LEN-FIELD @ ;
+: CAP-RAW@ ( ^a -- n )  CAP-FIELD @ ;
+: CAP-RAW! ( n ^a -- ) {: v:n buf:^ :}  v buf CAP-FIELD ! ;
 
 \ len <= cap is the header invariant.
-: SET-LEN ( n ptr a -- ) {: len:n buf:ptr :}
+: SET-LEN ( n ^a -- ) {: len:n buf:^ :}
    len buf LEN-FIELD ! ;
 
 \ A capacity or length must lie in [0, MAX-BYTES]; the `byte-len` cast does not
@@ -60,30 +60,30 @@ private
 \ (docs/forth.md "Raw storage never holds an address") and change HDR-BYTES, a
 \ footprint every caller allots. Every write goes through SPAN:U8! / SPAN:COPY
 \ against the owned reach.
-: BUF-SPAN ( ptr a -- SPAN:span<u8> ) {: buf:ptr :}
+: BUF-SPAN ( ^a -- SPAN:span<u8> ) {: buf:^ :}
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
 \ Install only after all source bytes have been copied; release is last, so a
 \ refused grow leaves the old mapping owned and intact.
-: INSTALL-STORAGE ( ptr a SPAN:span<u8> SPAN:span<u8> -- )
-   {: buf:ptr d old :}
-   d SPAN:$ {: dp:ptr cap:n :}
+: INSTALL-STORAGE ( ^a SPAN:span<u8> SPAN:span<u8> -- )
+   {: buf:^ d old :}
+   d SPAN:$ {: dp:^ cap:n :}
    dp buf DATA!
    cap buf CAP-RAW!
    old STORAGE-RELEASE ;
 
 \ The caller validates the new capacity before allocating.
-: INSTALL-RESIZE ( ptr a SPAN:span<u8> -- )
-   {: buf:ptr d :}
+: INSTALL-RESIZE ( ^a SPAN:span<u8> -- )
+   {: buf:^ d :}
    buf BUF-SPAN {: old :}
    old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
    buf d old INSTALL-STORAGE ;
 
-: RESIZE-RAW ( ptr a n -- ) {: buf:ptr cap:n :}
+: RESIZE-RAW ( ^a n -- ) {: buf:^ cap:n :}
    cap CHECK-CAP
    buf  cap STORAGE-ALLOC  INSTALL-RESIZE ;
 
-: GROW-CAP ( ptr a n -- n ) {: buf:ptr need:n :}
+: GROW-CAP ( ^a n -- n ) {: buf:^ need:n :}
    buf CAP-RAW@
    begin dup need < while
       dup MAX-BYTES GROWTH / > if
@@ -93,25 +93,25 @@ private
       then
    repeat ;
 
-: ENSURE-RAW ( ptr a n -- ) {: buf:ptr need:n :}
+: ENSURE-RAW ( ^a n -- ) {: buf:^ need:n :}
    need CHECK-NEED
    need buf CAP-RAW@ <= if exit then
    buf  buf need GROW-CAP  RESIZE-RAW ;
 
-: RESERVE-RAW ( ptr a n -- ) {: buf:ptr need:n :}
+: RESERVE-RAW ( ^a n -- ) {: buf:^ need:n :}
    need CHECK-NEED
    need buf CAP-RAW@ <= if exit then
    buf need RESIZE-RAW ;
 
-: INIT-RAW ( ptr a n -- ) {: buf:ptr cap:n :}
+: INIT-RAW ( ^a n -- ) {: buf:^ cap:n :}
    cap CHECK-CAP
-   cap STORAGE-ALLOC SPAN:$ {: d:ptr got:n :}
+   cap STORAGE-ALLOC SPAN:$ {: d:^ got:n :}
    d buf DATA!
    got buf CAP-RAW!
    0 buf SET-LEN ;
 
 \ Clear the entire header before release; dead headers retain no process address.
-: DISPOSE-RAW ( ptr a -- ) {: buf:ptr :}
+: DISPOSE-RAW ( ^a -- ) {: buf:^ :}
    buf BUF-SPAN {: owned :}
    NULL-PTR buf DATA!
    0 buf CAP-RAW!
@@ -119,17 +119,17 @@ private
    owned SPAN:LEN 0= if exit then
    owned STORAGE-RELEASE ;
 
-: CLEAR-RAW ( ptr a -- ) {: buf:ptr :}
+: CLEAR-RAW ( ^a -- ) {: buf:^ :}
    0 buf SET-LEN ;
 
 \ Writers project their destination from the mapping that receives the bytes.
-: APPEND-BYTE-RAW ( n ptr a -- ) {: v:n buf:ptr :}
+: APPEND-BYTE-RAW ( n ^a -- ) {: v:n buf:^ :}
    buf  buf LEN-RAW@ 1 +  ENSURE-RAW
    v  buf BUF-SPAN buf LEN-RAW@ SPAN:U8!
    buf LEN-RAW@ 1 + buf SET-LEN ;
 
-: APPEND-SPAN-RAW ( ptr u8 n ptr a -- )
-   {: src:ptr u:n buf:ptr :}
+: APPEND-SPAN-RAW ( ^u8 n ^a -- )
+   {: src:^ u:n buf:^ :}
    buf LEN-RAW@ u + {: need:n :}
    need CHECK-NEED
    need buf CAP-RAW@ > if
@@ -146,7 +146,7 @@ private
    then
    need buf SET-LEN ;
 
-: REPLACE-RAW ( ptr u8 n ptr a -- ) {: src:ptr u:n buf:ptr :}
+: REPLACE-RAW ( ^u8 n ^a -- ) {: src:^ u:n buf:^ :}
    buf u RESERVE-RAW
    src u buf BUF-SPAN SPAN:COPY
    u buf SET-LEN ;
@@ -154,8 +154,8 @@ private
 \ Appends text[at, hit) and new for the first old at or after at and answers
 \ the offset past that old and true; with no old left, appends the rest and
 \ answers at and false.
-: APPEND-UNTIL-OLD ( ptr u8 n ptr u8 n ptr u8 n ptr a n -- n bool )
-   {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr at:n :}
+: APPEND-UNTIL-OLD ( ^u8 n ^u8 n ^u8 n ^a n -- n bool )
+   {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ at:n :}
    text tu old ou at FIND-SUB-FROM MATCH option
       none OF text at + tu at - buf APPEND-SPAN-RAW at false ENDOF
       some OF IDX>N dup at - text at + swap buf APPEND-SPAN-RAW
@@ -166,37 +166,37 @@ public
 
 : HDR-BYTES ( -- n )  HDR-SIZE ;
 
-: INIT ( ptr a NUM:byte-len -- ) {: buf:ptr cap:NUM:byte-len :}
+: INIT ( ^a NUM:byte-len -- ) {: buf:^ cap:NUM:byte-len :}
    buf cap BLEN>N INIT-RAW ;
-: DISPOSE ( ptr a -- )  DISPOSE-RAW ;
-: CLEAR ( ptr a -- )  CLEAR-RAW ;
+: DISPOSE ( ^a -- )  DISPOSE-RAW ;
+: CLEAR ( ^a -- )  CLEAR-RAW ;
 
-: LEN@ ( ptr a -- NUM:byte-len )  LEN-RAW@ N>BLEN ;
-: CAP@ ( ptr a -- NUM:byte-len )  CAP-RAW@ N>BLEN ;
+: LEN@ ( ^a -- NUM:byte-len )  LEN-RAW@ N>BLEN ;
+: CAP@ ( ^a -- NUM:byte-len )  CAP-RAW@ N>BLEN ;
 \ Any length from zero through the capacity. The capacity stays, and bytes a
 \ longer length takes in are unspecified until written.
-: LEN! ( NUM:byte-len ptr a -- ) {: n:NUM:byte-len buf:ptr :}
+: LEN! ( NUM:byte-len ^a -- ) {: n:NUM:byte-len buf:^ :}
    n BLEN>N buf SET-LEN ;
 \ The one accessor safe on a fresh or disposed header.
-: LIVE? ( ptr a -- bool )  CAP-RAW@ 0<> ;
+: LIVE? ( ^a -- bool )  CAP-RAW@ 0<> ;
 \ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
 \ disposal; the span enforces neither that lifetime nor read-only use, and the
 \ borrower never frees it.
-: SPAN ( ptr a -- SPAN:span<u8> )
-   {: buf:ptr :}
+: SPAN ( ^a -- SPAN:span<u8> )
+   {: buf:^ :}
    buf BUF-SPAN buf LEN-RAW@ SPAN:TAKE ;
-: SPAN$ ( ptr a -- ptr u8 NUM:byte-len ) {: buf:ptr :}
+: SPAN$ ( ^a -- ^u8 NUM:byte-len ) {: buf:^ :}
    buf DATA@  buf LEN-RAW@ N>BLEN ;
 
 \ RESERVE grows to exactly the requested capacity, ENSURE and GROW by checked
 \ doubling; all keep the active bytes. GROW answers a writable span over the n
 \ new bytes, unspecified until written and valid until the next mutation or
 \ disposal; a length past one cell is E-BUF-CAPACITY before the length moves.
-: RESERVE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+: RESERVE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N RESERVE-RAW ;
-: ENSURE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+: ENSURE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N ENSURE-RAW ;
-: GROW ( ptr a NUM:byte-len -- SPAN:span<u8> ) {: buf:ptr n:NUM:byte-len :}
+: GROW ( ^a NUM:byte-len -- SPAN:span<u8> ) {: buf:^ n:NUM:byte-len :}
    buf LEN-RAW@ n BLEN>N {: at:n u:n :}
    buf at u + ENSURE-RAW
    at u + buf SET-LEN
@@ -206,29 +206,29 @@ public
 \ and keeps the active bytes; zero is E-BUF-CAPACITY. The new mapping is made
 \ and filled before the old one is released, so an allocation the OS refuses
 \ throws with the buffer as it was.
-: RESIZE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+: RESIZE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N RESIZE-RAW ;
 
 \ n zero on a dead header is E-BUF-CAPACITY, as INIT; a growth the OS refuses
 \ leaves a live one empty at its old capacity.
-: RESET ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+: RESET ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf LIVE? 0= if buf n INIT exit then
    buf CLEAR  buf n RESERVE ;
 
 \ Appends keep saved offsets valid; CLEAR and REPLACE do not. APPEND-SPAN
 \ accepts input borrowed from the buffer's own bytes: growth copies the input
 \ before releasing the old mapping.
-: APPEND-BYTE ( n ptr a -- )  APPEND-BYTE-RAW ;
-: APPEND-SPAN ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
+: APPEND-BYTE ( n ^a -- )  APPEND-BYTE-RAW ;
+: APPEND-SPAN ( ^u8 NUM:byte-len ^a -- ) {: src:^ u:NUM:byte-len buf:^ :}
    src u BLEN>N buf APPEND-SPAN-RAW ;
-: REPLACE ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
+: REPLACE ( ^u8 NUM:byte-len ^a -- ) {: src:^ u:NUM:byte-len buf:^ :}
    src u BLEN>N buf REPLACE-RAW ;
 
 \ The text with every non-overlapping old replaced by new, appended; answers the
 \ count COUNT-SUB answers. No operand may overlap the storage. An empty old is
 \ its zero occurrences: FIND-SUB-FROM would answer every offset.
-: APPEND-REPLACED ( ptr u8 n ptr u8 n ptr u8 n ptr a -- n )
-   {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr :}
+: APPEND-REPLACED ( ^u8 n ^u8 n ^u8 n ^a -- n )
+   {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ :}
    ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then
    0 0 begin >r text tu old ou new nu buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;
 

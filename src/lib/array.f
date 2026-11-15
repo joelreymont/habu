@@ -43,19 +43,19 @@ public
 : A-CHECK-WHOLE ( len -- ) {: len :}
    len 0 A-IDX len LEN>N A-COUNT A-CHECK-RANGE ;
 
-: A@ ( ptr a len idx -- a ) {: arr:ptr len ix :}
+: A@ ( ^a len idx -- a ) {: arr:^ len ix :}
    len ix A-CHECK-INDEX
    arr ix IDX>N cells + @ ;
 
-: A! ( a ptr a len idx -- ) {: value arr:ptr len ix :}
+: A! ( a ^a len idx -- ) {: value arr:^ len ix :}
    len ix A-CHECK-INDEX
    value arr ix IDX>N cells + ! ;
 
-: A+! ( n ptr n len idx -- ) {: delta arr:ptr len ix :}
+: A+! ( n ^n len idx -- ) {: delta arr:^ len ix :}
    arr len ix A@ delta +
    arr len ix A! ;
 
-: A-SWAP ( ptr a len idx idx -- ) {: arr:ptr len ix jx :}
+: A-SWAP ( ^a len idx idx -- ) {: arr:^ len ix jx :}
    arr len ix A@
    arr len jx A@
    arr len ix A!
@@ -72,35 +72,35 @@ public
 : EVEN? ( n -- bool )
    1 and 0= ;
 
-: A-SUM ( ptr n len -- n ) {: arr:ptr len :}
+: A-SUM ( ^n len -- n ) {: arr:^ len :}
    len A-CHECK-WHOLE
    0
    len LEN>N 0 ?do
       arr i cells + @ +
    loop ;
 
-: A-MIN ( ptr n len -- n ) {: arr:ptr len :}
+: A-MIN ( ^n len -- n ) {: arr:^ len :}
    len A-CHECK-NONEMPTY
    arr @
    len LEN>N 1 ?do
       arr i cells + @ min
    loop ;
 
-: A-MAX ( ptr n len -- n ) {: arr:ptr len :}
+: A-MAX ( ^n len -- n ) {: arr:^ len :}
    len A-CHECK-NONEMPTY
    arr @
    len LEN>N 1 ?do
       arr i cells + @ max
    loop ;
 
-: A-COUNT-EVEN ( ptr n len -- count ) {: arr:ptr len :}
+: A-COUNT-EVEN ( ^n len -- count ) {: arr:^ len :}
    len A-CHECK-WHOLE
    0
    len LEN>N 0 ?do
       arr i cells + @ 2 mod 0= if 1+ then
    loop A-COUNT ;
 
-: A-ARGMAX ( ptr n len -- idx ) {: arr:ptr len :}
+: A-ARGMAX ( ^n len -- idx ) {: arr:^ len :}
    len A-CHECK-NONEMPTY
    0 A-IDX arr @
    len LEN>N 1 ?do
@@ -111,10 +111,10 @@ public
    loop
    drop ;
 
-: A-MAX-INDEX ( ptr n len -- idx )
+: A-MAX-INDEX ( ^n len -- idx )
    A-ARGMAX ;
 
-: A-REVERSE-RANGE! ( ptr a len idx count -- ) {: arr:ptr len start cnt :}
+: A-REVERSE-RANGE! ( ^a len idx count -- ) {: arr:^ len start cnt :}
    len start cnt A-CHECK-RANGE
    cnt COUNT>N 2 / 0 ?do
       arr len
@@ -123,10 +123,10 @@ public
       A-SWAP
    loop ;
 
-: A-REVERSE! ( ptr a len -- ) {: arr:ptr len :}
+: A-REVERSE! ( ^a len -- ) {: arr:^ len :}
    arr len 0 A-IDX len LEN>N A-COUNT A-REVERSE-RANGE! ;
 
-: A-PREFIX-SUM! ( ptr n len -- ) {: arr:ptr len :}
+: A-PREFIX-SUM! ( ^n len -- ) {: arr:^ len :}
    len A-CHECK-WHOLE
    len LEN>N 1 <= if exit then
    len LEN>N 1 ?do
@@ -135,7 +135,7 @@ public
       arr i cells + !
    loop ;
 
-: A-RUNMAX! ( ptr n len -- ) {: arr:ptr len :}
+: A-RUNMAX! ( ^n len -- ) {: arr:^ len :}
    len A-CHECK-WHOLE
    len LEN>N 1 <= if exit then
    len LEN>N 1 ?do
@@ -144,34 +144,34 @@ public
       arr i cells + !
    loop ;
 
-: A-FILL! ( a ptr a len -- ) {: value arr:ptr len :}
+: A-FILL! ( a ^a len -- ) {: value arr:^ len :}
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
       value arr i cells + !
    loop ;
 
-: A-MAP! ( ptr a len [ a -- a ] -- ) {: arr:ptr len q :}
+: A-MAP! ( ^a len [ a -- a ] -- ) {: arr:^ len q :}
    len A-CHECK-WHOLE
    arr len LEN>N q MAP ;
 
-: A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :}
+: A-MAPI! ( ^a len [ idx a -- a ] -- ) {: arr:^ len q :}
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
       i A-IDX arr len i A-IDX A@ q execute
       arr len i A-IDX A!
    loop ;
 
-: A-FOLD ( ptr a len b [ b a -- b ] -- b ) {: arr:ptr len acc q :}
+: A-FOLD ( ^a len b [ b a -- b ] -- b ) {: arr:^ len acc q :}
    len A-CHECK-WHOLE
    arr len LEN>N acc q FOLD ;
 
-: A-FOLDI ( ptr a len b [ b idx a -- b ] -- b ) {: arr:ptr len acc q :}
+: A-FOLDI ( ^a len b [ b idx a -- b ] -- b ) {: arr:^ len acc q :}
    len A-CHECK-WHOLE
    acc len LEN>N 0 ?do
       i A-IDX arr len i A-IDX A@ q execute
    loop ;
 
-: A-SCAN! ( ptr n len n [ n n -- n ] -- ) {: arr:ptr len acc q :}
+: A-SCAN! ( ^n len n [ n n -- n ] -- ) {: arr:^ len acc q :}
    len A-CHECK-WHOLE
    acc len LEN>N 0 ?do
       arr len i A-IDX A@ q execute
@@ -179,7 +179,7 @@ public
    loop
    drop ;
 
-: A-SCAN1! ( ptr n len [ n n -- n ] -- ) {: arr:ptr len q :}
+: A-SCAN1! ( ^n len [ n n -- n ] -- ) {: arr:^ len q :}
    len A-CHECK-WHOLE
    len LEN>N 1 <= if exit then
    arr len 0 A-IDX A@
@@ -189,14 +189,14 @@ public
    loop
    drop ;
 
-: A-FIND-INDEX ( ptr a len [ a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first value-matching index, else NONE
+: A-FIND-INDEX ( ^a len [ a -- bool ] -- option<idx> ) {: arr:^ len:len q :}   \ SOME first value-matching index, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
       arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
 
-: A-FIND-INDEXI ( ptr a len [ idx a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first index-aware match, else NONE
+: A-FIND-INDEXI ( ^a len [ idx a -- bool ] -- option<idx> ) {: arr:^ len:len q :}   \ SOME first index-aware match, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
       i A-IDX arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then

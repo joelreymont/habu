@@ -79,14 +79,14 @@ variable CHK-DEP-ORDER-N
 variable CHK-DISC-ID
 variable CHK-EDGE                       \ the dependency followed last, -1 for none
 variable CHK-BYTES-ID
-TYPED-VARIABLE CHK-BYTES-A ptr u8
+TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U
-TYPED-VARIABLE CHK-BYTES-LABEL-A ptr u8
+TYPED-VARIABLE CHK-BYTES-LABEL-A ^u8
 variable CHK-BYTES-LABEL-U
 variable CHK-EXPAND-TOP
 
 
-: CHK-ARG+ ( ptr u8 n -- )
+: CHK-ARG+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
 
@@ -94,42 +94,42 @@ variable CHK-EXPAND-TOP
    {: id:n :}
    id 0 < id CHK-DEP-N @ >= or if E-TBL-BOUNDS throw then ;
 
-: CHK-DEP-PATH ( n -- ptr u8 )
+: CHK-DEP-PATH ( n -- ^u8 )
    {: id:n :}
    id CHK-DEP-CHECK
    id PATH-CAP * CHK-DEP-PATHS ;
 
-: CHK-DEP-U ( n -- ptr n )
+: CHK-DEP-U ( n -- ^n )
    {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-US ;
 
-: CHK-DEP-STATE ( n -- ptr n )
+: CHK-DEP-STATE ( n -- ^n )
    {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-STATES ;
 
-: CHK-DEP$ ( n -- ptr u8 n ) {: id:n :}
+: CHK-DEP$ ( n -- ^u8 n ) {: id:n :}
    id CHK-DEP-PATH
    id CHK-DEP-U @ ;
 
-: CHK-DEP-ROOT$ ( n -- ptr u8 n )
+: CHK-DEP-ROOT$ ( n -- ^u8 n )
    {: id:n :}
    id CHK-DEP-CHECK
    id PATH-CAP * CHK-DEP-ROOTS
    id CHK-DEP-ROOT-US @ ;
 
-: CHK-DEP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+: CHK-DEP-MATCH? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}
    a u id CHK-DEP$ STR= ;
 
-: CHK-DEP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHK-DEP-FIND ( ^u8 n -- n ) {: a:^ u:n :}
    0 begin dup CHK-DEP-N @ < while
       dup a u rot CHK-DEP-MATCH? if exit then
       1+
    repeat drop -1 ;
 
-: CHK-DEP-NEW ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n root:ptr rootu:n :}
+: CHK-DEP-NEW ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n root:^ rootu:n :}
    u PATH-CAP > rootu PATH-CAP > or if E-FS-CAPACITY throw then
    CHK-DEP-N @ {: id:n :}
    id 1+ PATH-CAP * dup CHK-DEP-PATHS-RESERVE CHK-DEP-ROOTS-RESERVE
@@ -142,7 +142,7 @@ variable CHK-EXPAND-TOP
    0 id CHK-DEP-STATE !
    id ;
 
-: CHK-DEP-ID ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
+: CHK-DEP-ID ( ^u8 n ^u8 n -- n ) {: a:^ u:n root:^ rootu:n :}
    a u CHK-DEP-FIND dup 0 >= if exit then
    drop a u root rootu CHK-DEP-NEW ;
 
@@ -165,14 +165,14 @@ variable CHK-EXPAND-TOP
    id CHK-DEP-ORDER-N @ CHK-DEP-ORDER !
    CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
 
-: CHK-DEP-DIRECT+ ( ptr u8 n ptr u8 n n n -- )
-   {: a:ptr u:n root:ptr rootu:n at:n len:n :}
+: CHK-DEP-DIRECT+ ( ^u8 n ^u8 n n n -- )
+   {: a:^ u:n root:^ rootu:n at:n len:n :}
    a u root rootu CHK-DEP-ID at len CHK-DIR-PUSH ;
 
 : CHK-DISC-RC? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
 
-: CHK-DISC-MSG$ ( n -- ptr u8 n ) {: rc:n :}
+: CHK-DISC-MSG$ ( n -- ^u8 n ) {: rc:n :}
    rc E-DISC-SHADOW = if s" discovery rejected: loader word used after the file defined its name" exit then
    rc E-DISC-DYNAMIC = if s" discovery rejected: dynamic (non-literal) loader path" exit then
    rc E-DISC-OPENER = if s" discovery rejected: unsupported string opener before a loader word" exit then
@@ -291,8 +291,8 @@ variable CHK-EXPAND-TOP
 \ file that ended the walk. A packet names the bytes' own file LABEL, the name
 \ the caller's other reports give it. Discovery takes PATH as loading
 \ meanwhile, so a require of an absent PATH meets the bytes too.
-: CHK-EXPAND-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+: CHK-EXPAND-BYTES ( ^u8 n ^u8 n ^u8 n -- n )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    CHK-EXPAND-RESET
    path pathu path pathu DIRNAME CHK-DEP-ID {: id:n :}
    src CHK-BYTES-A !
@@ -305,25 +305,25 @@ variable CHK-EXPAND-TOP
 
 DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a record
 
-: CHK-FILE-ROOM ( n -- ptr u8 )
+: CHK-FILE-ROOM ( n -- ^u8 )
    CHK-FILE-SRC-RESERVE 0 CHK-FILE-SRC ;
 
 \ The bytes of the file at PATH, read to its end however it grows while it is
 \ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
 \ is only the first room, and the bytes are taken after the read, which may move
 \ the storage.
-: CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
+: CHK-FILE-READ ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
    {: u:n :}
    0 CHK-FILE-SRC u ;
 
-: CHK-FILE-BYTES ( n -- ptr u8 n )
+: CHK-FILE-BYTES ( n -- ^u8 n )
    {: id:n :}
    id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    id CHK-DEP$ CHK-FILE-READ ;
 
-: CHK-FILE-NAME$ ( n -- ptr u8 n )
+: CHK-FILE-NAME$ ( n -- ^u8 n )
    {: id:n :}
    id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
    id CHK-DEP$ ;
@@ -332,7 +332,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 \ token that shows it: the form discovery refused in the file it read, or the
 \ loader word that names a file that is not there or cannot be read. Empty for
 \ a walk that ended at its own top, which no loader word names.
-: CHK-FAULT$ ( n -- ptr u8 n )
+: CHK-FAULT$ ( n -- ^u8 n )
    {: rc:n :}
    rc CHK-DISC-RC? if
       rc DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-DISC-ID @ CHK-FILE-NAME$
@@ -351,20 +351,20 @@ create CHK-NONAME-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CHK-NONAME-W JSON:writer
 variable CHK-NONAME-READY
 
-: CHK-NONAME-WRITER ( -- ptr JSON:writer )
+: CHK-NONAME-WRITER ( -- ^JSON:writer )
    CHK-NONAME-READY @ 0= if
       CHK-NONAME-BUF 1 BUF:N>BLEN BUF:INIT
       1 CHK-NONAME-READY !
    then
    CHK-NONAME-W CHK-NONAME-BUF JSON:WRITE-OPEN-BUF ;
 
-: CHK-NONAME-SUG$ ( -- ptr u8 n )
+: CHK-NONAME-SUG$ ( -- ^u8 n )
    s" Give the definer a name: the next whitespace-delimited token." ;
 
 \ The missing-name packet for definer k of the lex of the file the label
 \ names: one JSON object, no line feed.
-: CHK-NONAME-PACKET$ ( n ptr u8 n -- ptr u8 n )
-   {: k:n label:ptr labelu:n :}
+: CHK-NONAME-PACKET$ ( n ^u8 n -- ^u8 n )
+   {: k:n label:^ labelu:n :}
    CHK-NONAME-WRITER JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" code" s" E-MISSING-NAME" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -401,8 +401,8 @@ variable CHK-NONAME-READY
 \ Definer k of the lex has nothing after it, so it has no name to read: the
 \ loader refuses it, and the check does at the definer, in the file the label
 \ names. The record is a packet when json, else a prose line; no line feed.
-: CHK-NONAME-RECORD$ ( n ptr u8 n bool -- ptr u8 n )
-   {: k:n label:ptr labelu:n json:bool :}
+: CHK-NONAME-RECORD$ ( n ^u8 n bool -- ^u8 n )
+   {: k:n label:^ labelu:n json:bool :}
    json if k label labelu CHK-NONAME-PACKET$ exit then
    CHK-NONAME-WRITER
    s" check.f: " JSON:WRITE-RAW label labelu JSON:WRITE-RAW
@@ -411,8 +411,8 @@ variable CHK-NONAME-READY
    s" : missing name after '" JSON:WRITE-RAW k LINT-LEX:TOKEN JSON:WRITE-RAW
    s" '" JSON:WRITE-RAW JSON:WRITTEN$ ;
 
-: CHK-NONAME-AT$ ( n ptr u8 n ptr u8 n bool -- ptr u8 n )
-   {: at:n label:ptr labelu:n src:ptr srcu:n json:bool :}
+: CHK-NONAME-AT$ ( n ^u8 n ^u8 n bool -- ^u8 n )
+   {: at:n label:^ labelu:n src:^ srcu:n json:bool :}
    src srcu LINT-LEX:SOURCE
    at CHK-TOKEN-AT {: k:n :}
    k 0< if NULL$ exit then
@@ -420,8 +420,8 @@ variable CHK-NONAME-READY
 
 \ The record of a stop at byte AT of SRC, the file LABEL names: a packet when
 \ JSON, else prose, with no line feed, and whether it refuses the source itself.
-: STOP-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n bool -- ptr u8 n bool )
-   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n why:ptr whyu:n json:bool :}
+: STOP-RECORD$ ( n n ^u8 n ^u8 n ^u8 n bool -- ^u8 n bool )
+   {: rc:n at:n label:^ labelu:n src:^ srcu:n why:^ whyu:n json:bool :}
    rc VERIFY:E-MISSING-NAME = if
       at label labelu src srcu json CHK-NONAME-AT$
       dup 0<> if true exit then
@@ -516,10 +516,10 @@ s" check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
-TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
+TYPED-VARIABLE VFY-LABEL-A ^u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
 TYPED-VARIABLE VFY-PRE-JSON bool        \ ... and rendering its records as packets
-TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
+TYPED-VARIABLE VFY-OF-A ^u8          \ the tail whose uses the child writes in every file,
 variable VFY-OF-U                       \ 0 for none
 variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
 variable VFY-STOP-AT                    \ the byte of the token it read last,
@@ -533,7 +533,7 @@ create VFY-TARGET PATH-CAP allot     \ and the file it could not read, empty for
 variable VFY-TARGET-U
 
 
-: VFY-CHILD$ ( -- ptr u8 n )
+: VFY-CHILD$ ( -- ^u8 n )
    VFY-CHILD VFY-CHILD-U @ ;
 
 
@@ -565,38 +565,38 @@ variable VFY-TARGET-U
 \ PATH's canonical absolute spelling, a relative PATH read from the working
 \ directory: the identity the loader keys it by and the name its packets carry,
 \ whether or not a file is there yet.
-: VFY-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+: VFY-PATH! ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if E-FS-PATH throw then
-   a u CANONICAL drop {: c:ptr cu:n :}
+   a u CANONICAL drop {: c:^ cu:n :}
    cu PATH-CAP > if E-FS-CAPACITY throw then
    c VFY-PATH cu BYTE-COPY
    cu VFY-PATH-U ! ;
 
 
-: VFY-PATH$ ( -- ptr u8 n )
+: VFY-PATH$ ( -- ^u8 n )
    VFY-PATH VFY-PATH-U @ ;
 
 
-: VFY-OUT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-OUT+ ( ^u8 n -- )
+   {: a:^ u:n :}
    VFY-OUT-U @ u + VFY-OUT-RESERVE
    a VFY-OUT-U @ VFY-OUT u BYTE-COPY
    VFY-OUT-U @ u + VFY-OUT-U ! ;
 
 
-: VFY-LOG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-LOG+ ( ^u8 n -- )
+   {: a:^ u:n :}
    VFY-LOG-U @ u + VFY-LOG-RESERVE
    a VFY-LOG-U @ VFY-LOG u BYTE-COPY
    VFY-LOG-U @ u + VFY-LOG-U ! ;
 
 
-: VFY-LOG-LN ( ptr u8 n -- )
+: VFY-LOG-LN ( ^u8 n -- )
    VFY-LOG+ s\" \n" VFY-LOG+ ;
 
 
-: VFY-CLOSURE-LOG ( n ptr u8 n -- )
-   {: rc:n path:ptr pathu:n :}
+: VFY-CLOSURE-LOG ( n ^u8 n -- )
+   {: rc:n path:^ pathu:n :}
    rc CHK-E-IOERR = if
       s" cannot read " VFY-LOG+
       path pathu VFY-LOG-LN exit
@@ -607,8 +607,8 @@ variable VFY-TARGET-U
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
-: VFY-IN+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-IN+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-IN-U @ u + VFY-IN-RESERVE
    a VFY-IN-U @ VFY-IN u BYTE-COPY
@@ -617,8 +617,8 @@ variable VFY-TARGET-U
 
 \ An open document after VFY-IN: the byte counts of its canonical path and of
 \ its text on a line, then both.
-: VFY-OPEN+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n t:ptr tu:n :}
+: VFY-OPEN+ ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n t:^ tu:n :}
    SB-RESET pu FMT:SB-U SB$ VFY-IN+
    s"  " VFY-IN+
    SB-RESET tu FMT:SB-U SB$ VFY-IN+
@@ -636,7 +636,7 @@ variable VFY-TARGET-U
 
 \ The child's stdin: the open documents OPEN gives, an empty line, then the
 \ subject's bytes, CHK-BYTES-A and CHK-BYTES-U.
-: VFY-IN! ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+: VFY-IN! ( [ [ ^u8 n ^u8 n -- ] -- ] -- )
    {: open :}
    [: VFY-OPEN+ ;] open execute
    VFY-OPEN-N @ VFY-OPEN-END !
@@ -644,39 +644,39 @@ variable VFY-TARGET-U
    CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
 
 
-: VFY-OPEN-PATH$ ( n -- ptr u8 n )
+: VFY-OPEN-PATH$ ( n -- ^u8 n )
    4 * {: at:n :}
    at VFY-OPEN-AT @ VFY-IN at 1+ VFY-OPEN-AT @ ;
 
-: VFY-OPEN-TEXT$ ( n -- ptr u8 n )
+: VFY-OPEN-TEXT$ ( n -- ^u8 n )
    4 * {: at:n :}
    at 2 + VFY-OPEN-AT @ VFY-IN at 3 + VFY-OPEN-AT @ ;
 
 
 \ The text of the first open document at this canonical path and true, else
 \ false, as the child finds it.
-: VFY-OPEN-TEXT ( ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n :}
+: VFY-OPEN-TEXT ( ^u8 n -- ^u8 n bool )
+   {: a:^ u:n :}
    VFY-OPEN-END @ VFY-OPEN-START @ ?do
       i VFY-OPEN-PATH$ a u CORE-STR= if i VFY-OPEN-TEXT$ true unloop exit then
    loop
    NULL$ false ;
 
 
-: VFY-LINE+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-LINE+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    a u VFY-OUT+
    s\" \n" VFY-OUT+ ;
 
 
-: VFY-STOP-REASON$ ( -- ptr u8 n )
+: VFY-STOP-REASON$ ( -- ^u8 n )
    VFY-STOP-REASON-U @ 0= if NULL$ exit then
    0 VFY-STOP-REASON VFY-STOP-REASON-U @ ;
 
 
-: VFY-STOP-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: label:ptr labelu:n src:ptr srcu:n :}
+: VFY-STOP-RECORD$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: label:^ labelu:n src:^ srcu:n :}
    VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu VFY-STOP-REASON$ true STOP-RECORD$ drop ;
 
 
@@ -686,7 +686,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool
 \ CHK-ENGINE-REFUSED, held while the resolver runs, stays set: the check ended
 \ there, where a failure of the source may share that code, and check.f's
 \ command line reports it apart.
-: CHK-ENGINE$ ( -- ptr u8 n )
+: CHK-ENGINE$ ( -- ^u8 n )
    true CHK-ENGINE-REFUSED !
    ENGINE-CANDIDATE:PATH$
    false CHK-ENGINE-REFUSED ! ;
@@ -701,12 +701,12 @@ create VFY-EXE PATH-CAP allot
 variable VFY-EXE-U
 
 : VFY-EXE! ( -- )
-   CHK-ENGINE$ {: p:ptr pu:n :}
+   CHK-ENGINE$ {: p:^ pu:n :}
    pu PATH-CAP > if E-PROC-PATH throw then
    p VFY-EXE pu BYTE-COPY
    pu VFY-EXE-U ! ;
 
-: VFY-EXE$ ( -- ptr u8 n )
+: VFY-EXE$ ( -- ^u8 n )
    VFY-EXE VFY-EXE-U @ ;
 
 : VFY-LOAD-ARGS ( -- )
@@ -727,7 +727,7 @@ variable VFY-EXE-U
    PROC-ENV-INHERIT-MISSING ;
 
 
-: VFY-OUT-ROOM ( n -- ptr u8 )
+: VFY-OUT-ROOM ( n -- ^u8 )
    VFY-OUT-RESERVE 0 VFY-OUT ;
 
 
@@ -745,34 +745,34 @@ variable VFY-EXE-U
    PROCESS:ENDING>DEADLINE-RC drop 2drop ;
 
 
-: VFY-STOPPED$ ( -- ptr u8 n )
+: VFY-STOPPED$ ( -- ^u8 n )
    s" check-verify: stopped " ;
 
-: VFY-DUPLICATE$ ( -- ptr u8 n )
+: VFY-DUPLICATE$ ( -- ^u8 n )
    s" check-verify: duplicate " ;
 
-: VFY-DEFINITION$ ( -- ptr u8 n )
+: VFY-DEFINITION$ ( -- ^u8 n )
    s" check-verify: definition " ;
 
-: VFY-FILE$ ( -- ptr u8 n )
+: VFY-FILE$ ( -- ^u8 n )
    s" check-verify: file " ;
 
-: VFY-USE$ ( -- ptr u8 n )
+: VFY-USE$ ( -- ^u8 n )
    s" check-verify: use " ;
 
-: VFY-LOAD$ ( -- ptr u8 n )
+: VFY-LOAD$ ( -- ^u8 n )
    s" check-verify: load " ;
 
-: VFY-CAND$ ( -- ptr u8 n )
+: VFY-CAND$ ( -- ^u8 n )
    s" check-verify: candidate " ;
 
-: VFY-INDEX$ ( -- ptr u8 n )
+: VFY-INDEX$ ( -- ^u8 n )
    s" check-verify: index " ;
 
-: VFY-LOADER$ ( -- ptr u8 n )
+: VFY-LOADER$ ( -- ^u8 n )
    s" check-verify: loader " ;
 
-: VFY-REASON$ ( -- ptr u8 n )
+: VFY-REASON$ ( -- ^u8 n )
    s" check-verify: reason " ;
 
 
@@ -843,7 +843,7 @@ variable VFY-EXE-U
 \ The answer the final line from AT to END in VFY-OUT gives, its line feed
 \ excluded. Diagnostic duplicates have a different tag.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
-   at VFY-OUT end at - {: a:ptr u:n :}
+   at VFY-OUT end at - {: a:^ u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
    a u s" check-verify: deferred" STR= if VFY-DEFERRED exit then
@@ -890,17 +890,17 @@ variable VFY-EXE-U
    VFY-ANSWER @ VFY-STOPPED = if at VFY-REASON-TAKE else at then VFY-OUT-U ! ;
 
 
-: VFY-STOP-FILE$ ( -- ptr u8 n )
+: VFY-STOP-FILE$ ( -- ^u8 n )
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 
-: VFY-STOP-SOURCE ( -- ptr u8 n )
+: VFY-STOP-SOURCE ( -- ^u8 n )
    VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    VFY-STOP-FILE$ VFY-OPEN-TEXT if exit then
    2drop VFY-STOP-FILE$ CHK-FILE-READ ;
 
 
-: VFY-TARGET$ ( -- ptr u8 n )
+: VFY-TARGET$ ( -- ^u8 n )
    VFY-TARGET VFY-TARGET-U @ ;
 
 
@@ -913,7 +913,7 @@ variable VFY-EXE-U
    CHK-E-NOINPUT ;
 
 
-: VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
+: VFY-STOP-REC$ ( n -- ^u8 n ) {: class:n :}
    VFY-STOP-RC @ {: rc:n :}
    rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
       class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
@@ -927,7 +927,7 @@ variable VFY-EXE-U
 : VFY-STOP-LINE ( -- )
    VFY-STOP-RC @ {: rc:n :}
    rc VFY-FAULT-CLASS {: class:n :}
-   class VFY-STOP-REC$ {: a:ptr u:n :}
+   class VFY-STOP-REC$ {: a:^ u:n :}
    VFY-STOP-U @ {: fileu:n :}
    fileu VFY-STOP-PATH-RESERVE
    VFY-STOP-FILE$ drop 0 VFY-STOP-PATH fileu BYTE-COPY
@@ -940,16 +940,16 @@ variable VFY-EXE-U
    class VFY-STOP-FILE$ VFY-CLOSURE-LOG ;
 
 
-: VFY-REC+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-REC+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-REC-U @ u + VFY-REC-RESERVE
    a VFY-REC-U @ VFY-REC u BYTE-COPY
    VFY-REC-U @ u + VFY-REC-U ! ;
 
 
-: VFY-DEFS+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-DEFS+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-DEFS-U @ u + VFY-DEFS-RESERVE
    a VFY-DEFS-U @ VFY-DEFS u BYTE-COPY
@@ -964,8 +964,8 @@ variable VFY-EXE-U
    s\" \n" VFY-DEFS+ ;
 
 
-: VFY-FILES+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-FILES+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-FILES-U @ u + VFY-FILES-RESERVE
    a VFY-FILES-U @ VFY-FILES u BYTE-COPY
@@ -980,8 +980,8 @@ variable VFY-EXE-U
    s\" \n" VFY-FILES+ ;
 
 
-: VFY-USES+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-USES+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-USES-U @ u + VFY-USES-RESERVE
    a VFY-USES-U @ VFY-USES u BYTE-COPY
@@ -996,8 +996,8 @@ variable VFY-EXE-U
    s\" \n" VFY-USES+ ;
 
 
-: VFY-LOADS+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-LOADS+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-LOADS-U @ u + VFY-LOADS-RESERVE
    a VFY-LOADS-U @ VFY-LOADS u BYTE-COPY
@@ -1012,8 +1012,8 @@ variable VFY-EXE-U
    s\" \n" VFY-LOADS+ ;
 
 
-: VFY-CANDS+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: VFY-CANDS+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    VFY-CANDS-U @ u + VFY-CANDS-RESERVE
    a VFY-CANDS-U @ VFY-CANDS u BYTE-COPY
@@ -1160,8 +1160,8 @@ variable VFY-EXE-U
 
 \ The check of VERIFY-BYTES-AT and VERIFY-BYTES-OF, once VFY-RESET has run and
 \ the cursor or the tail is set.
-: VFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n open deadline :}
+: VFY-BYTES ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] ms -- verdict )
+   {: src:^ srcu:n path:^ pathu:n open deadline :}
    path pathu VFY-PATH!
    VFY-INDEX? @ 0= if
       VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
@@ -1184,25 +1184,25 @@ public
 \ the checker writes no packet for, is the record --all-errors writes, and the
 \ stop's record (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the
 \ next call.
-: VERIFY-OUT$ ( -- ptr u8 n )
+: VERIFY-OUT$ ( -- ^u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
 
 \ The child's stderr from the last VERIFY-BYTES or PREVERIFY-BYTES, then after a loader's fault the
 \ status line naming the file it is in, or the file it could not read, and why.
-: VERIFY-LOG$ ( -- ptr u8 n )
+: VERIFY-LOG$ ( -- ^u8 n )
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
 
 \ The definitions the last VERIFY-BYTES retained, one JSON object per line, in
 \ the order the verifier read them.
-: VERIFY-DEFS$ ( -- ptr u8 n )
+: VERIFY-DEFS$ ( -- ^u8 n )
    VFY-DEFS-U @ 0= if NULL$ exit then
    0 VFY-DEFS VFY-DEFS-U @ ;
 
 \ The file visits the last VERIFY-BYTES read, one JSON object per visit, in
 \ acquisition order.
-: VERIFY-FILES$ ( -- ptr u8 n )
+: VERIFY-FILES$ ( -- ^u8 n )
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;
 
@@ -1210,25 +1210,25 @@ public
 \ as engine primitives, and for VERIFY-BYTES-OF those of its tail in the files
 \ the subject loads, one JSON object per line, in the order the checker
 \ published them.
-: VERIFY-USES$ ( -- ptr u8 n )
+: VERIFY-USES$ ( -- ^u8 n )
    VFY-USES-U @ 0= if NULL$ exit then
    0 VFY-USES VFY-USES-U @ ;
 
 \ The top-level loaders of the last VERIFY-BYTES's subject that reached a file,
 \ one JSON object per line, in the subject's order; none for PREVERIFY-BYTES.
-: VERIFY-LOADS$ ( -- ptr u8 n )
+: VERIFY-LOADS$ ( -- ^u8 n )
    VFY-LOADS-U @ 0= if NULL$ exit then
    0 VFY-LOADS VFY-LOADS-U @ ;
 
 \ The spellings the last VERIFY-BYTES-AT's cursor offered, one JSON object per
 \ line, in the order the checker offered them; none for VERIFY-BYTES.
-: VERIFY-CANDIDATES$ ( -- ptr u8 n )
+: VERIFY-CANDIDATES$ ( -- ^u8 n )
    VFY-CANDS-U @ 0= if NULL$ exit then
    0 VFY-CANDS VFY-CANDS-U @ ;
 
 \ Surviving declarations from a standalone scan of the last INDEX-BYTES,
 \ one JSON object per line. The caller uses them only after a complete child.
-: VERIFY-INDEX$ ( -- ptr u8 n )
+: VERIFY-INDEX$ ( -- ^u8 n )
    VFY-INDEX-U @ 0= if NULL$ exit then
    0 VFY-INDEX VFY-INDEX-U @ ;
 
@@ -1248,20 +1248,20 @@ public
 \ definition is in, not open and no longer readable, throws as reading it does.
 \ VERIFY-BYTES-AT has the child offer, as well, the spellings that would bind
 \ at byte AT of the bytes, VERIFY-CANDIDATES$; a negative AT is no cursor.
-: VERIFY-BYTES-AT ( ptr u8 n ptr u8 n n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n at:n open deadline :}
+: VERIFY-BYTES-AT ( ^u8 n ^u8 n n [ [ ^u8 n ^u8 n -- ] -- ] ms -- verdict )
+   {: src:^ srcu:n path:^ pathu:n at:n open deadline :}
    VFY-RESET
    at VFY-AT !
    src srcu path pathu open deadline VFY-BYTES ;
 
-: VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n open deadline :}
+: VERIFY-BYTES ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] ms -- verdict )
+   {: src:^ srcu:n path:^ pathu:n open deadline :}
    src srcu path pathu -1 open deadline VERIFY-BYTES-AT ;
 
 \ Scan current source in the verifier child. It bypasses the engine-provided
 \ path skip only for this mode; incomplete children have no usable index.
-: INDEX-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n deadline :}
+: INDEX-BYTES ( ^u8 n ^u8 n ms -- verdict )
+   {: src:^ srcu:n path:^ pathu:n deadline :}
    VFY-RESET
    true VFY-INDEX? !
    src srcu path pathu [: drop ;] deadline VFY-BYTES ;
@@ -1270,8 +1270,8 @@ public
 \ a located declaration in a file other than the subject when the declaration's
 \ canonical tail is TAIL, byte for byte: a use of the word wherever the
 \ composition reads it. An empty TAIL names no word.
-: VERIFY-BYTES-OF ( ptr u8 n ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n tail:ptr tailu:n open deadline :}
+: VERIFY-BYTES-OF ( ^u8 n ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] ms -- verdict )
+   {: src:^ srcu:n path:^ pathu:n tail:^ tailu:n open deadline :}
    VFY-RESET
    tail VFY-OF-A !
    tailu VFY-OF-U !
@@ -1302,8 +1302,8 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
 : BATCH@ ( n n -- n )  swap VFY-BATCH-CELLS * + VFY-BATCH-META @ ;
 : BATCH! ( n n n -- )  swap VFY-BATCH-CELLS * + VFY-BATCH-META ! ;
 
-: VFY-BATCH-ADD ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
-   {: src:ptr srcu:n path:ptr pathu:n open :}
+: VFY-BATCH-ADD ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] -- )
+   {: src:^ srcu:n path:^ pathu:n open :}
    path pathu VFY-PATH!
    VFY-BATCH-N @ {: k:n :}
    k 1+ VFY-BATCH-CELLS * VFY-BATCH-META-RESERVE
@@ -1329,7 +1329,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    VFY-OF-A @ VFY-OF-U @ CHK-ARG+
    PROC-ENV-INHERIT-MISSING ;
 
-: VFY-BATCH-ROOM ( n -- ptr u8 )
+: VFY-BATCH-ROOM ( n -- ^u8 )
    VFY-BATCH-OUT-RESERVE 0 VFY-BATCH-OUT ;
 
 : VFY-BATCH-CAPTURE ( -- )
@@ -1355,7 +1355,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    k B-OPEN-START BATCH@ VFY-OPEN-START !
    k B-OPEN-END BATCH@ VFY-OPEN-END ! ;
 
-: VFY-BATCH-MARK$ ( n -- ptr u8 n )
+: VFY-BATCH-MARK$ ( n -- ^u8 n )
    SB-RESET s" check-verify: batch-end " SB-APPEND
    FMT:SB-U s\" \n" SB-APPEND SB$ ;
 
@@ -1462,7 +1462,7 @@ TASK:MIN-STACK TASK:TASK VFY-TASK9
 TASK:MIN-STACK TASK:TASK VFY-TASK10
 TASK:MIN-STACK TASK:TASK VFY-TASK11
 
-: VFY-LANE-TASK ( n -- ptr n )
+: VFY-LANE-TASK ( n -- ^n )
    dup 0= if drop VFY-TASK0 exit then
    dup 1 = if drop VFY-TASK1 exit then
    dup 2 = if drop VFY-TASK2 exit then
@@ -1477,7 +1477,7 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    dup 11 = if drop VFY-TASK11 exit then
    E-TBL-BOUNDS throw ;
 
-: VFY-LANE-OUT-ROOM ( n n -- ptr u8 )
+: VFY-LANE-OUT-ROOM ( n n -- ^u8 )
    {: k:n need:n :}
    k 0= if need VFY-LANE-OUT0-RESERVE 0 VFY-LANE-OUT0 exit then
    k 1 = if need VFY-LANE-OUT1-RESERVE 0 VFY-LANE-OUT1 exit then
@@ -1493,7 +1493,7 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    k 11 = if need VFY-LANE-OUT11-RESERVE 0 VFY-LANE-OUT11 exit then
    E-TBL-BOUNDS throw ;
 
-: VFY-LANE-ERR-ROOM ( n n -- ptr u8 )
+: VFY-LANE-ERR-ROOM ( n n -- ^u8 )
    {: k:n need:n :}
    k 0= if need VFY-LANE-ERR0-RESERVE 0 VFY-LANE-ERR0 exit then
    k 1 = if need VFY-LANE-ERR1-RESERVE 0 VFY-LANE-ERR1 exit then
@@ -1509,12 +1509,12 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    k 11 = if need VFY-LANE-ERR11-RESERVE 0 VFY-LANE-ERR11 exit then
    E-TBL-BOUNDS throw ;
 
-: VFY-LANE-OUT$ ( n -- ptr u8 n )
+: VFY-LANE-OUT$ ( n -- ^u8 n )
    {: k:n :}
    k VFY-LANE-OUT-U @ 0= if NULL$ exit then
    k k VFY-LANE-OUT-U @ VFY-LANE-OUT-ROOM k VFY-LANE-OUT-U @ ;
 
-: VFY-LANE-ERR$ ( n -- ptr u8 n )
+: VFY-LANE-ERR$ ( n -- ^u8 n )
    {: k:n :}
    k VFY-LANE-ERR-U @ 0= if NULL$ exit then
    k k VFY-LANE-ERR-U @ VFY-LANE-ERR-ROOM k VFY-LANE-ERR-U @ ;
@@ -1559,10 +1559,10 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    k VFY-LANE-ARGS
    k VFY-LANE-IN-AT @ VFY-LANE-IN k VFY-LANE-IN-U @ CMD:IN!
    VFY-LANE-ENGINE VFY-LANE-ENGINE-U @ VFY-DEADLINE @ CMD:RUN-OUTCOME k VFY-LANE-END !
-   CMD:OUT$ {: out:ptr outu:n :}
+   CMD:OUT$ {: out:^ outu:n :}
    outu 0 > if out k outu VFY-LANE-OUT-ROOM outu BYTE-COPY then
    outu k VFY-LANE-OUT-U !
-   CMD:ERR$ {: err:ptr erru:n :}
+   CMD:ERR$ {: err:^ erru:n :}
    erru 0 > if err k erru VFY-LANE-ERR-ROOM erru BYTE-COPY then
    erru k VFY-LANE-ERR-U ! ;
 
@@ -1648,7 +1648,7 @@ public
    0 VFY-LANE-META-TOP !
    0 VFY-LANE-OPEN-TOP !
    VFY-LANES 0 ?do 0 i VFY-LANE-STARTED ! loop
-   VFY-EXE! VFY-EXE$ {: a:ptr u:n :}
+   VFY-EXE! VFY-EXE$ {: a:^ u:n :}
    u PATH-CAP > if E-PROC-PATH throw then
    a VFY-LANE-ENGINE u BYTE-COPY
    u VFY-LANE-ENGINE-U ! ;
@@ -1672,8 +1672,8 @@ public
 \ Build a bounded set of independent checks for one tail, then consume their
 \ results in add order. Each ADD receives the same open-document callback a
 \ one-shot check would; each result exposes the usual VERIFY-* accessors.
-: VERIFY-BATCH-BEGIN ( ptr u8 n -- )
-   {: tail:ptr tailu:n :}
+: VERIFY-BATCH-BEGIN ( ^u8 n -- )
+   {: tail:^ tailu:n :}
    VFY-RESET
    false VFY-REF-BATCH !
    tailu 1 max VFY-BATCH-TAIL-RESERVE
@@ -1681,11 +1681,11 @@ public
    0 VFY-BATCH-TAIL VFY-OF-A ! tailu VFY-OF-U !
    0 VFY-BATCH-N ! ;
 
-: VERIFY-REF-BATCH-BEGIN ( ptr u8 n -- )
+: VERIFY-REF-BATCH-BEGIN ( ^u8 n -- )
    VERIFY-BATCH-BEGIN
    true VFY-REF-BATCH ! ;
 
-: VERIFY-BATCH-ADD ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+: VERIFY-BATCH-ADD ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] -- )
    VFY-BATCH-ADD ;
 
 : VERIFY-BATCH-RUN ( ms -- )
@@ -1711,8 +1711,8 @@ public
 
 \ check.f's pre-pass in the verifier child, records as packets when json, else
 \ prose: ok 0, ok its stop's code, or err how a child with no answer ended.
-: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms bool -- result<n,PROCESS:ending> )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline json:bool :}
+: PREVERIFY-BYTES ( ^u8 n ^u8 n ^u8 n ms bool -- result<n,PROCESS:ending> )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n deadline json:bool :}
    VFY-RESET
    path pathu VFY-PATH!
    true VFY-PREPASS !
@@ -1732,7 +1732,7 @@ public
 
 \ The actual target of a loader's failed source read, if there was one.
 \ The next verification replaces these bytes; a consumer keeps its own copy.
-: VERIFY-UNREAD$ ( -- ptr u8 n )
+: VERIFY-UNREAD$ ( -- ^u8 n )
    VFY-STOP-RC @ VERIFY:E-SOURCE-READ = if VFY-TARGET$ else NULL$ then ;
 
 \ Where it stopped: the byte where the token it stopped at starts, the one the
@@ -1750,12 +1750,12 @@ public
 : VERIFY-STOP-SUBJECT? ( -- bool )
    VFY-STOP-SUBJ @ ;
 
-: VERIFY-STOPPED$ ( -- ptr u8 n )
+: VERIFY-STOPPED$ ( -- ^u8 n )
    VFY-STOP-FILE$ ;
 
 \ Why the scan refused the declaration it stopped at, empty when the child gave
 \ no reason.
-: VERIFY-STOP-REASON$ ( -- ptr u8 n )
+: VERIFY-STOP-REASON$ ( -- ^u8 n )
    VFY-STOP-REASON$ ;
 
 ;using

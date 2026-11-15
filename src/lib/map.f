@@ -13,8 +13,8 @@ public
 \ expected short over the secret, not guaranteed. The key lives in the map's
 \ cells, so a map INITed while building an image carries it into every run; a
 \ map for untrusted keys is INITed at run time.
-: INIT ( ptr a count -- )
-   {: m:ptr cap :}
+: INIT ( ^a count -- )
+   {: m:^ cap :}
    m HASH-K0-OFF cells + BYTE-VIEW 2 cells ENTROPY:FILL
    m cap
    m HASH-K0-OFF HEADER-FIELD @

@@ -18,7 +18,7 @@ create BIG-OUT BIG-CAP allot
 create BIG-ERR BIG-CAP allot
 variable BIG-I
 
-: BIG-NAME$ ( -- ptr u8 n )
+: BIG-NAME$ ( -- ^u8 n )
    s" HABU_BIG_" ;
 
 : BIG-U-TYPE ( n -- ) {: n:n :}
@@ -34,11 +34,11 @@ variable BIG-I
 
 \ A prefixed entry starts a capture line only at a line boundary, so a value
 \ that happens to contain the prefix is not counted.
-: BIG-LINE-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+: BIG-LINE-AT? ( ^u8 n n -- bool ) {: a:^ u:n i:n :}
    i 0 > if a i 1 - + c@ $0A = 0= if 0 0= 0= exit then then
    a i + u i - BIG-NAME$ STARTS-WITH? ;
 
-: BIG-SEEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+: BIG-SEEN ( ^u8 n -- n ) {: a:^ u:n :}
    0
    0 BIG-I !
    begin BIG-I @ u < while

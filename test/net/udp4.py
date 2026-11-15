@@ -203,7 +203,7 @@ create BODY0 16 allot
 create BODY1 16 allot
 TASK:MIN-STACK TASK:TASK WORKER0
 TASK:MIN-STACK TASK:TASK WORKER1
-: WORK ( ptr u8 n n n -- ) {{: bytes identity:n expected:n peer:n :}}
+: WORK ( ^u8 n n n -- ) {{: bytes identity:n expected:n peer:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
    OPEN {{: socket:socket :}}
@@ -228,7 +228,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
    1 DONE atomic-add drop ;
 : WORK0 ( -- ) BODY0 160 3 {ports[0]} WORK ;
 : WORK1 ( -- ) BODY1 177 11 {ports[1]} WORK ;
-: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ^n -- ) {{: worker:^ :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 : RUN ( -- )
    ['] WORK0 WORKER0 TASK:ACTIVATE

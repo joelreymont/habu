@@ -48,7 +48,7 @@ private
 
 
 public
-: TEXT ( -- ptr u8 )
+: TEXT ( -- ^u8 )
    TEXT-CAP @ 0= IF TEXT-MAP THEN
    TEXT-P @ ;
 private
@@ -97,8 +97,8 @@ public
 : JSON-OPEN ( -- )   34 EMIT-RAW  -1 IN-JSON ! ;
 : JSON-CLOSE ( -- )  0 IN-JSON !  34 EMIT-RAW ;
 
-: BUFFER! ( ptr u8 n -- )
-   {: a:ptr cap:n :}
+: BUFFER! ( ^u8 n -- )
+   {: a:^ cap:n :}
    a BUF-A !
    cap BUF-CAP !
    0 BUF-U !
@@ -111,14 +111,14 @@ public
 : FD! ( n -- )
    BUF-FD ! ;
 
-\ BUF-A is a pointer cell, so a plain fetch keeps the ptr u8 view the byte
+\ BUF-A is a pointer cell, so a plain fetch keeps the ^u8 view the byte
 \ store in BUF-COPY needs.
-: BUFFER$ ( -- ptr u8 n )
+: BUFFER$ ( -- ^u8 n )
    BUF-A @ BUF-U @ ;
 private
 
-: BUF-COPY ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: BUF-COPY ( ^u8 n -- )
+   {: a:^ u:n :}
    0 BUF-I !
    BEGIN BUF-I @ u < WHILE
       a BUF-I @ + c@
@@ -128,8 +128,8 @@ private
 
 \ The caller's buffer cannot grow: a record that does not fit is rejected whole by
 \ a throw, and the buffer keeps every record before it.
-: BUF-APPEND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: BUF-APPEND ( ^u8 n -- )
+   {: a:^ u:n :}
    BUF-ON @ 0= IF BUF-FD @ a u write drop EXIT THEN
    BUF-U @ u + BUF-CAP @ > IF E-DIAG-CAPACITY throw THEN
    a u BUF-COPY
@@ -143,7 +143,7 @@ public
    0 DEST !  0 TEXT-LEN !
    BUF-APPEND ;
 
-: EMIT-STR ( ptr u8 n -- ) {: a:ptr u:n :}
+: EMIT-STR ( ^u8 n -- ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 : EMIT-U
@@ -164,9 +164,9 @@ public
    45 EMIT1
    v 1 63 lshift = IF s" 9223372036854775808" EMIT-STR EXIT THEN
    v negate EMIT-U ;
-: JSON-STRING ( ptr u8 n -- )
+: JSON-STRING ( ^u8 n -- )
    JSON-OPEN EMIT-STR JSON-CLOSE ;
-: JSON-KEY ( ptr u8 n -- ) {: a:ptr u:n :}
+: JSON-KEY ( ^u8 n -- ) {: a:^ u:n :}
    a u JSON-STRING  58 EMIT1 ;
 
 \ Where a top step's token sits: the active file's path, which an inner
@@ -176,17 +176,17 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 public
 
 \ The active file's path; empty when no file is being read.
-: PATH$ ( -- ptr u8 n )
+: PATH$ ( -- ^u8 n )
    FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ;
 
 \ The file a rejection names when no file holds its source.
-: NO-FILE$ ( -- ptr u8 n ) s" <input>" ;
+: NO-FILE$ ( -- ^u8 n ) s" <input>" ;
 
 private
 create FILE-BUF PATH-CAP 1 + allot   variable FILE-U
 public
 variable ORIGIN-LINE  variable ORIGIN-COLUMN  variable ORIGIN-BYTE
-: FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
+: FILE$ ( -- ^u8 n ) FILE-BUF FILE-U @ ;
 private
 \ A tool's label names one file, the one the load was reading when the tool set
 \ it; a label set with no file open names the steps that have no file. LABEL-BUF
@@ -195,23 +195,23 @@ private
 \ The boot's NO-FILE$ is no label.
 variable LABELED
 create LABEL-BUF PATH-CAP allot   variable LABEL-U
-: COPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+: COPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@
       over d + c!
       1 +
    REPEAT drop ;
-: PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
+: PATH-COPY ( ^u8 n ^u8 -- n ) {: a:^ u:n d:^ :}
    u PATH-CAP > IF s" diag: file path too long" 76 die THEN
    a d u COPY  u ;
-: FILE-COPY ( ptr u8 n -- )
+: FILE-COPY ( ^u8 n -- )
    FILE-BUF PATH-COPY FILE-U ! ;
 public
-: FILE! ( ptr u8 n -- )
+: FILE! ( ^u8 n -- )
    FILE-COPY
    PATH$ LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
-: LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LABELS? ( ^u8 n -- bool ) {: a:^ u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
    a u LABEL-BUF LABEL-U @ CORE-STR= ;
 : ORIGIN! {: line col byte :}
@@ -222,8 +222,8 @@ public
 private
 variable POS-OFF  variable POS-LINE  variable POS-COLUMN  variable POS-I
 public
-: POSITION ( ptr u8 ptr u8 n n n -- n n n )
-   {: base:ptr p:ptr bl:n bc:n bb:n :}
+: POSITION ( ^u8 ^u8 n n n -- n n n )
+   {: base:^ p:^ bl:n bc:n bb:n :}
    p base - POS-OFF !
    1 POS-LINE !  1 POS-COLUMN !  0 POS-I !
    BEGIN POS-I @ POS-OFF @ < WHILE
@@ -240,7 +240,7 @@ public
 \ Set ORIGIN! to the FILE position of a definition's name token, given the
 \ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
 \ start's own file line/col/byte.
-: ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
+: ORIGIN-SPAN! ( ^u8 ^u8 n n n -- )
    POSITION ORIGIN! ;
 
 private
@@ -264,28 +264,28 @@ public
 : SOURCE-OFF ( -- )
    NULL-PTR SOURCE-A !  0 SOURCE-U !
    MAP-OFF ;
-: SOURCE! ( ptr u8 n n n n -- )
-   {: a:ptr u:n line:n col:n byte:n :}
+: SOURCE! ( ^u8 n n n n -- )
+   {: a:^ u:n line:n col:n byte:n :}
    a SOURCE-A !  u SOURCE-U !
    line SOURCE-LINE !  col SOURCE-COLUMN !  byte SOURCE-BYTE !
    MAP-OFF ;
-: MAP! ( ptr u8 n ptr n n -- )
-   {: a:ptr u:n rows:ptr count:n :}
+: MAP! ( ^u8 n ^n n -- )
+   {: a:^ u:n rows:^ count:n :}
    a MAP-A !  u MAP-U !  rows ROW-A !  count ROW-N !  0 ROW-BIAS !
    CLOSER-OFF ;
 \ Set after MAP!, which clears it.
 : MAP-BIAS! ( n -- )
    ROW-BIAS ! ;
-: CLOSER! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: CLOSER! ( ^u8 n -- )
+   {: a:^ u:n :}
    a CLOSER-A !  u CLOSER-U ! ;
-: SOURCE$ ( -- ptr u8 n ) SOURCE-A @ SOURCE-U @ ;
-: MAPPED? ( ptr u8 -- bool ) MAP-A @ - 0= ROW-N @ 0 > and ;
-: MAP-BASE? ( ptr u8 -- bool ) MAP-A @ - 0= ;
-: CLOSER$ ( -- ptr u8 n ) CLOSER-A @ CLOSER-U @ ;
+: SOURCE$ ( -- ^u8 n ) SOURCE-A @ SOURCE-U @ ;
+: MAPPED? ( ^u8 -- bool ) MAP-A @ - 0= ROW-N @ 0 > and ;
+: MAP-BASE? ( ^u8 -- bool ) MAP-A @ - 0= ;
+: CLOSER$ ( -- ^u8 n ) CLOSER-A @ CLOSER-U @ ;
 private
 : ROW@ ( n -- n )
-   ROW-A @ {: i:n rows:ptr :}
+   ROW-A @ {: i:n rows:^ :}
    i cells rows + @ ;
 \ The first cell of the last row at or before text offset x, row 0 when
 \ none is. The rows ascend by text offset.
@@ -309,8 +309,8 @@ private
    SOURCE-A @  SOURCE-A @ off +
    SOURCE-LINE @ SOURCE-COLUMN @ SOURCE-BYTE @  POSITION ;
 public
-: >SOURCE ( ptr u8 -- n bool )
-   {: p:ptr :}
+: >SOURCE ( ^u8 -- n bool )
+   {: p:^ :}
    SOURCE-U @ 0 = IF 0 0 0= 0= EXIT THEN
    ROW-N @ 0 >  p MAP-A @ -  MAP-U @ IN-SPAN?  and IF
       p MAP-A @ - MAP-NONE? IF 0 0 0= 0= EXIT THEN
@@ -321,15 +321,15 @@ public
    THEN
    0 0 0= 0= ;
 \ 0 0 0 false when there is no map for p.
-: LOCATE ( ptr u8 -- n n n bool )
+: LOCATE ( ^u8 -- n n n bool )
    >SOURCE 0= IF drop 0 0 0 0 0= 0= EXIT THEN
    SOURCE-POSITION 0 0= ;
 NO-FILE$ FILE-COPY
 1 1 0 ORIGIN!
 
 \ The file a top-level step names; empty when no file or label names it.
-: LOAD-FILE$ ( -- ptr u8 n )
-   PATH$ {: pa:ptr pu:n :}
+: LOAD-FILE$ ( -- ^u8 n )
+   PATH$ {: pa:^ pu:n :}
    pa pu LABELS? IF FILE$ EXIT THEN
    pa pu ;
 
@@ -360,22 +360,22 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
    0 BEGIN dup k < WHILE 32 EMIT1 1 + REPEAT drop ;
 : DIGITS ( n -- n ) {: v:n :}
    1 v BEGIN dup 9 > WHILE 10 / swap 1 + swap REPEAT drop ;
-: FIELD ( ptr u8 n -- )   44 EMIT1 JSON-KEY ;
+: FIELD ( ^u8 n -- )   44 EMIT1 JSON-KEY ;
 : MARGIN ( -- )   GUTTER @ 1 + BLANKS ;
 
-: PLACE-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
+: PLACE-FILE! ( ^u8 n -- ) {: a:^ u:n :}
    a PLACE-FILE-A !  u PLACE-FILE-U ! ;
-: PLACE-FILE$ ( -- ptr u8 n )   PLACE-FILE-A @ PLACE-FILE-U @ ;
-: OWNED$ ( -- ptr u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
-: INPUT$ ( -- ptr u8 n )
-   INPUT-START @ {: b:ptr :}
+: PLACE-FILE$ ( -- ^u8 n )   PLACE-FILE-A @ PLACE-FILE-U @ ;
+: OWNED$ ( -- ^u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
+: INPUT$ ( -- ^u8 n )
+   INPUT-START @ {: b:^ :}
    b  INPUT-END @ b - ;
-: HOLDS? ( ptr u8 n ptr u8 n -- bool ) {: b:ptr bu:n t:ptr tu:n :}
+: HOLDS? ( ^u8 n ^u8 n -- bool ) {: b:^ bu:n t:^ tu:n :}
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
 \ The line of b's bu bytes that holds t: from the byte after the last LF before
 \ t up to the next LF, or the buffer's edge.
-: LINE! ( ptr u8 n ptr u8 -- ) {: b:ptr bu:n t:ptr :}
+: LINE! ( ^u8 n ^u8 -- ) {: b:^ bu:n t:^ :}
    t b - {: at:n :}
    at BEGIN dup 0 > IF dup 1 - b + c@ 10 <> ELSE 0 0= 0= THEN WHILE 1 - REPEAT
    {: s:n :}
@@ -384,33 +384,33 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
    b s + LINE-A !  e s - LINE-U !  at s - LEAD-U ! ;
 \ A body's source is armed from its name on, so a file or the buffer read,
 \ which hold the bytes before the name, cut the line first.
-: CUT ( ptr u8 -- ) {: t:ptr :}
+: CUT ( ^u8 -- ) {: t:^ :}
    OWNED$ t 0 HOLDS? IF OWNED$ t LINE! EXIT THEN
    INPUT$ t 0 HOLDS? IF INPUT$ t LINE! EXIT THEN
    SOURCE$ t LINE! ;
 : POSITION! ( n n n -- )
    AT-BYTE !  AT-COLUMN !  AT-LINE !  -1 PLACED ! ;
-: SOURCE-PLACE ( n ptr u8 n -- ) {: off:n t:ptr tu:n :}
+: SOURCE-PLACE ( n ^u8 n -- ) {: off:n t:^ tu:n :}
    off SOURCE-POSITION POSITION!
    t tu + >SOURCE IF SOURCE-BYTE @ + ELSE drop AT-BYTE @ tu + THEN AT-END !
-   SOURCE-A @ off + {: s:ptr :}
+   SOURCE-A @ off + {: s:^ :}
    s CUT
    OWNED$ s 0 HOLDS? IF LOAD-FILE$ ELSE FILE$ THEN PLACE-FILE! ;
-: BUFFER-PLACE ( ptr u8 n ptr u8 n -- ) {: b:ptr bu:n t:ptr tu:n :}
+: BUFFER-PLACE ( ^u8 n ^u8 n -- ) {: b:^ bu:n t:^ tu:n :}
    b t 1 1 0 POSITION POSITION!
    AT-BYTE @ tu + AT-END !
    t CUT ;
 \ The armed source holding the token's first byte, else the loader's owned
 \ bytes, else the buffer read, holding the whole token; else no place.
-: PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
+: PLACE ( ^u8 n -- ) {: t:^ tu:n :}
    0 PLACED !
    t >SOURCE IF t tu SOURCE-PLACE EXIT THEN drop
    OWNED$ t tu HOLDS? IF OWNED$ t tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
    INPUT$ t tu HOLDS? IF INPUT$ t tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
-   LOAD-FILE$ {: fa:ptr fu:n :}
+   LOAD-FILE$ {: fa:^ fu:n :}
    fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
 
-: PLACE-JSON ( ptr u8 n -- ) {: t:ptr tu:n :}
+: PLACE-JSON ( ^u8 n -- ) {: t:^ tu:n :}
    s" file" FIELD  PLACE-FILE$ JSON-STRING
    PLACED @ IF
       s" line" FIELD  AT-LINE @ EMIT-U
@@ -430,7 +430,7 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 : CARETS ( n -- ) {: tu:n :}
    tu 0= IF 1 ELSE tu THEN {: k:n :}
    0 BEGIN dup k < WHILE 94 EMIT1 1 + REPEAT drop ;
-: PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
+: PLACE-PROSE ( ^u8 n -- ) {: t:^ tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
    PLACED @ 0= IF
       10 EMIT1  MARGIN  s" = at `" EMIT-STR  t tu EMIT-STR  s" `: " EMIT-STR
@@ -450,7 +450,7 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 
 public
 \ Opens a record with its code; the message follows.
-: OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+: OPEN ( ^u8 n -- ) {: code:^ cu:n :}
    1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  s" error" JSON-STRING
@@ -461,14 +461,14 @@ public
    THEN
    MESSAGE-PART PART ! ;
 \ Places the token t tu; its label follows.
-: AT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: AT ( ^u8 n -- ) {: t:^ tu:n :}
    END-TEXT
    t tu PLACE
    PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
    JSON @ IF t tu PLACE-JSON ELSE t tu PLACE-PROSE THEN
    LABEL-PART PART ! ;
 \ A note's key; its value follows.
-: NOTE ( ptr u8 n -- ) {: k:ptr ku:n :}
+: NOTE ( ^u8 n -- ) {: k:^ ku:n :}
    END-TEXT
    JSON @ IF
       NOTES @ IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN

@@ -48,7 +48,7 @@ $0A constant NEWLINE
 
 
 \ A backslash at p, `x` and two hex digits before e.
-: HEX-STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
+: HEX-STEP ( ^u8 ^u8 -- n ^u8 bool ) {: p:^ e:^ :}
    p 4 + e > if 0 p false exit then
    p 2 + c@ HEX {: hi:n hi-ok:bool :}
    p 3 + c@ HEX {: lo:n lo-ok:bool :}
@@ -57,7 +57,7 @@ $0A constant NEWLINE
 
 \ The byte the text at p stands for, where its spelling ends, and whether that
 \ spelling is whole before e.
-: STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
+: STEP ( ^u8 ^u8 -- n ^u8 bool ) {: p:^ e:^ :}
    p c@ BACKSLASH <> if p c@ p 1 + true exit then
    p 1 + e >= if 0 p false exit then
    p 1 + c@ {: c:n :}
@@ -69,14 +69,14 @@ public
 \ The text from s on, up to e: its closing quote q, the count of bytes s..q
 \ decodes to, and whether a quote closes it with every escape whole. When the
 \ flag is false, q and the count mean nothing.
-: SPAN ( ptr u8 ptr u8 -- ptr u8 n bool ) {: s:ptr e:ptr :}
+: SPAN ( ^u8 ^u8 -- ^u8 n bool ) {: s:^ e:^ :}
    s 0
    begin
       over e >= if false exit then
       over c@ QUOTE <>
    while
-      {: p:ptr k:n :}
-      p e STEP {: nx:ptr ok:bool :} drop
+      {: p:^ k:n :}
+      p e STEP {: nx:^ ok:bool :} drop
       ok 0= if p k false exit then
       nx k 1 +
    repeat
@@ -84,11 +84,11 @@ public
 
 
 \ SPAN must have answered true for s and q.
-: COPY ( ptr u8 ptr u8 ptr u8 -- ) {: s:ptr q:ptr d:ptr :}
+: COPY ( ^u8 ^u8 ^u8 -- ) {: s:^ q:^ d:^ :}
    s d
    begin over q < while
-      {: p:ptr t:ptr :}
-      p q STEP drop {: b:n nx:ptr :}
+      {: p:^ t:^ :}
+      p q STEP drop {: b:n nx:^ :}
       b t c!
       nx t 1 +
    repeat

@@ -16,11 +16,11 @@ private
 2 LAYOUT-BUFFER BUF lvg-outer
 
 \ The forged rows need a raw cell view of the checked buffer.
-CAST: RAW ( ptr lvg-outer -- ptr n )
+CAST: RAW ( ^lvg-outer -- ^n )
 
 : SET ( n n n -- )
    {: payload:n tag:n idx:n :}
-   idx BUF RAW {: addr:ptr :}
+   idx BUF RAW {: addr:^ :}
    payload addr !
    tag addr cell+ ! ;
 

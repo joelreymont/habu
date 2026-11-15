@@ -7,10 +7,10 @@ package SIGN-ID
 
 public
 
-: PROG$ ( -- ptr u8 n )
+: PROG$ ( -- ^u8 n )
    s" hb-prog" ;
 
-: ENGINE$ ( -- ptr u8 n )
+: ENGINE$ ( -- ^u8 n )
    s" hb" ;
 
 ;package

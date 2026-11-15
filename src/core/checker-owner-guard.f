@@ -7,13 +7,13 @@ private
 
 \ E-COMP-OWNER; this small core helper does not require the library layer.
 : BAD ( -- ) -8574 throw ;
-: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+: ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 : DATA-SPAN ( -- n n ) data-base BYTE-VIEW ADDRESS here BYTE-VIEW ADDRESS ;
 
 public
 
 \ `need` is the exclusive end of the fields the caller reads.
-: VALIDATE ( ptr u8 n -- ptr u8 ) {: owner:ptr need:n :}
+: VALIDATE ( ^u8 n -- ^u8 ) {: owner:^ need:n :}
    DATA-SPAN {: lo:n hi:n :}
    owner ADDRESS {: at:n :}
    at lo < at hi > or at CELL mod 0 <> or IF BAD THEN

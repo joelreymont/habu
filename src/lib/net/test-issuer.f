@@ -34,8 +34,8 @@ private
 3600 constant LIFE-S
 $100 constant FIRST-CAP
 
-: KID$ ( -- ptr u8 n ) s" test-issuer" ;
-: TENANT$ ( -- ptr u8 n ) s" test-tenant" ;
+: KID$ ( -- ^u8 n ) s" test-issuer" ;
+: TENANT$ ( -- ^u8 n ) s" test-tenant" ;
 
 \ The fixture key's n and e as unsigned big-endian bytes; decoded base64url is
 \ shorter than its text.
@@ -44,36 +44,36 @@ variable MODULUS-U
 JWS-FIXTURE:EXPONENT$ nip BUFFER: EXPONENT-ROW
 variable EXPONENT-U
 
-: RAW ( ptr u8 n ptr u8 n -- n )
-   {: text:ptr tu:n row:ptr ru:n :}
+: RAW ( ^u8 n ^u8 n -- n )
+   {: text:^ tu:n row:^ ru:n :}
    text tu row ru SPAN:MAKE BASE64:DECODE-URL ;
 
 JWS-FIXTURE:MODULUS$ MODULUS-ROW JWS-FIXTURE:MODULUS$ nip RAW MODULUS-U !
 JWS-FIXTURE:EXPONENT$ EXPONENT-ROW JWS-FIXTURE:EXPONENT$ nip RAW EXPONENT-U !
 
-: HEADER$ ( -- ptr u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
+: HEADER$ ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
 
-: BUF$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
-: BUF+ ( ptr u8 n ptr n -- ) {: a:ptr u:n buf:ptr :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
+: BUF+ ( ^u8 n ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
 \ The clients: each id's offset in CLIENTS, its secret right after it.
 create CLIENTS-HEAD BUF:HDR-BYTES allot
-: CLIENTS ( -- ptr n ) CLIENTS-HEAD CELL-VIEW ;
+: CLIENTS ( -- ^n ) CLIENTS-HEAD CELL-VIEW ;
 variable CLIENT-COUNT
 DYNAMIC-BUFFER CLIENT-AT n
 DYNAMIC-BUFFER ID-LEN n
 DYNAMIC-BUFFER SECRET-LEN n
 
-: ID$ ( n -- ptr u8 n )
+: ID$ ( n -- ^u8 n )
    {: k:n :}
    CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ ;
 
-: SECRET$ ( n -- ptr u8 n )
+: SECRET$ ( n -- ^u8 n )
    {: k:n :}
    CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ + k SECRET-LEN @ ;
 
-: KNOWN? ( ptr u8 n ptr u8 n -- bool )
-   {: id:ptr iu:n secret:ptr su:n :}
+: KNOWN? ( ^u8 n ^u8 n -- bool )
+   {: id:^ iu:n secret:^ su:n :}
    CLIENT-COUNT @ 0 ?do
       i ID$ id iu STR= i SECRET$ secret su STR= and if true unloop exit then
    loop false ;
@@ -108,8 +108,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-AT n    \ a value's offset in FORM,
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
-: BUF-OF ( n -- ptr n ) SLOT BUFS * + BUF:HDR-BYTES * HEADS + CELL-VIEW ;
+: CURSOR ( -- ^JSON:cursor ) SLOT READER ;
+: BUF-OF ( n -- ^n ) SLOT BUFS * + BUF:HDR-BYTES * HEADS + CELL-VIEW ;
 : SLOT-FIELD ( n -- n ) SLOT FIELDS * + ;
 
 : READY ( -- )
@@ -119,11 +119,11 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 
 \ The first index of the byte at or after from, else the text's length.
-: FIND ( ptr u8 n n n -- n )
-   {: t:ptr u:n from:n byte:n :}
+: FIND ( ^u8 n n n -- n )
+   {: t:^ u:n from:n byte:n :}
    u from ?do t i + c@ byte = if i unloop exit then loop u ;
 
-: NAME$ ( n -- ptr u8 n )
+: NAME$ ( n -- ^u8 n )
    {: k:n :}
    k CLIENT-ID = if s" client_id" exit then
    k CLIENT-SECRET = if s" client_secret" exit then
@@ -134,14 +134,14 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    s" refresh_token" ;
 
 \ The field a decoded name is, else -1.
-: WHICH ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: WHICH ( ^u8 n -- n )
+   {: a:^ u:n :}
    FIELDS 0 ?do a u i NAME$ STR= if i unloop exit then loop -1 ;
 
 \ One name=value pair, a wanted name's value decoded into FORM; false when the
 \ form already holds that name (RFC 6749 3.1).
-: PAIR ( ptr u8 n -- bool )
-   {: p:ptr pu:n :}
+: PAIR ( ^u8 n -- bool )
+   {: p:^ pu:n :}
    p pu 0 [char] = FIND {: eq:n :}
    NOTE BUF-OF BUF:CLEAR
    p eq NOTE BUF-OF HTTP:FORM-DECODE+
@@ -155,8 +155,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    true ;
 
 \ False for a form naming a wanted field twice.
-: FORM! ( ptr u8 n -- bool )
-   {: b:ptr bu:n :}
+: FORM! ( ^u8 n -- bool )
+   {: b:^ bu:n :}
    FORM BUF-OF BUF:CLEAR
    FIELDS 0 ?do -1 i SLOT-FIELD FIELD-AT ! loop
    0 begin dup bu <= while
@@ -168,21 +168,21 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 
 \ A field's decoded value, borrowed from FORM; false when the form lacks it.
-: FIELD$ ( n -- ptr u8 n bool )
+: FIELD$ ( n -- ^u8 n bool )
    SLOT-FIELD {: f:n :}
    f FIELD-AT @ {: at:n :}
    at 0< if s" " false exit then
    FORM BUF-OF BUF$ drop at + f FIELD-LEN @ true ;
 
-: FIELD= ( n ptr u8 n -- bool )
-   {: k:n w:ptr wu:n :}
+: FIELD= ( n ^u8 n -- bool )
+   {: k:n w:^ wu:n :}
    k FIELD$ 0= if 2drop false exit then
    w wu STR= ;
 
 \ A form without client_secret presents a public client's empty one.
 : CLIENT? ( -- bool )
-   CLIENT-ID FIELD$ 0= if 2drop false exit then {: id:ptr iu:n :}
-   CLIENT-SECRET FIELD$ drop {: secret:ptr su:n :}
+   CLIENT-ID FIELD$ 0= if 2drop false exit then {: id:^ iu:n :}
+   CLIENT-SECRET FIELD$ drop {: secret:^ su:n :}
    id iu secret su KNOWN? ;
 
 \ Under CLIENT?: the client is a public one, its secret empty.
@@ -193,8 +193,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    TOKEN-USE s" on_behalf_of" FIELD= and ;
 
 \ The scope without a trailing /.default, as Entra names the audience.
-: AUDIENCE$ ( -- ptr u8 n )
-   SCOPE FIELD$ drop {: s:ptr su:n :}
+: AUDIENCE$ ( -- ^u8 n )
+   SCOPE FIELD$ drop {: s:^ su:n :}
    s su s" /.default" ENDS-WITH? if s su 9 - exit then
    s su ;
 
@@ -214,52 +214,52 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 \ The reader on an object text's member, false when the text is not an object
 \ or lacks the key; the caller closes the reader either way.
-: MEMBER ( ptr u8 n ptr u8 n -- JSON:reader bool )
-   {: t:ptr tu:n k:ptr ku:n :}
+: MEMBER ( ^u8 n ^u8 n -- JSON:reader bool )
+   {: t:^ tu:n k:^ ku:n :}
    CURSOR t tu JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if false exit then
    k ku JSON:READ-FIND-KEY ;
 
-: MEMBER-IS? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   {: t:ptr tu:n k:ptr ku:n w:ptr wu:n :}
+: MEMBER-IS? ( ^u8 n ^u8 n ^u8 n -- bool )
+   {: t:^ tu:n k:^ ku:n w:^ wu:n :}
    t tu k ku MEMBER 0= if JSON:READ-CLOSE false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE false exit then
    w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
 
-: MEMBER-INT ( ptr u8 n ptr u8 n -- n bool )
+: MEMBER-INT ( ^u8 n ^u8 n -- n bool )
    MEMBER 0= if JSON:READ-CLOSE 0 false exit then
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
 \ A string member as sent, quotes and escapes included; false when absent or
 \ not a string.
-: MEMBER-RAW ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+: MEMBER-RAW ( ^u8 n ^u8 n -- ^u8 n bool )
    MEMBER 0= if JSON:READ-CLOSE s" " false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
-   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a 1- u 2 + true ;
+   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a 1- u 2 + true ;
 
 \ Whether a text is one JSON object; malformed JSON throws the reader's code.
-: OBJECT? ( ptr u8 n -- bool )
+: OBJECT? ( ^u8 n -- bool )
    CURSOR -rot JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
    JSON:READ-CLOSE false ;
 
 
 \ This server's URL with the path; borrowed from the task's SB.
-: URL$ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pu:n :}
+: URL$ ( ^u8 n -- ^u8 n )
+   {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
 \ The bytes appended as unpadded base64url, whose length is exactly (4u+2)/3.
-: SEGMENT+ ( ptr u8 n ptr n -- )
-   {: a:ptr u:n buf:ptr :}
+: SEGMENT+ ( ^u8 n ^n -- )
+   {: a:^ u:n buf:^ :}
    buf u 4 * 2 + 3 / BUF:N>BLEN BUF:GROW {: room :}
    a u room BASE64:ENCODE-URL drop ;
 
 \ The signature over the BUF's text appended as its third segment.
-: SIGNED+ ( ptr n ptr u8 NUM:alloc-byte-len -- )
-   MEM:ALLOCATION>SPAN SPAN:$ {: buf:ptr out:ptr cap:n :}
+: SIGNED+ ( ^n ^u8 NUM:alloc-byte-len -- )
+   MEM:ALLOCATION>SPAN SPAN:$ {: buf:^ out:^ cap:n :}
    JWS-FIXTURE:PEM$ buf BUF$ out cap CRYPTO:RS256-SIGN {: su:n :}
    [char] . buf BUF:APPEND-BYTE
    out su buf SEGMENT+ ;
@@ -269,8 +269,8 @@ public
 \ A compact JWS of the claims text, signed RS256 with the fixture key under the
 \ issuer's kid, borrowed from the BUF until its next write. Claims must not lie
 \ in the BUF.
-: MINT ( ptr u8 n ptr n -- ptr u8 n )
-   {: claims:ptr cu:n buf:ptr :}
+: MINT ( ^u8 n ^n -- ^u8 n )
+   {: claims:^ cu:n buf:^ :}
    buf BUF:CLEAR
    HEADER$ buf SEGMENT+
    [char] . buf BUF:APPEND-BYTE
@@ -280,13 +280,13 @@ public
 
 private
 
-: ASSERTED$ ( -- ptr u8 n ) SLOT ASSERTED @ SPAN:$ ;
+: ASSERTED$ ( -- ^u8 n ) SLOT ASSERTED @ SPAN:$ ;
 
 \ The assertion's or refresh token's claims and signature decoded into
 \ SCRATCH, the claims kept in ASSERTED: the signed text's length and the
 \ signature, true for three segments and a modulus-wide signature.
-: SPLIT ( ptr u8 n -- n SPAN:span<u8> bool )
-   {: t:ptr u:n :}
+: SPLIT ( ^u8 n -- n SPAN:span<u8> bool )
+   {: t:^ u:n :}
    SCRATCH BUF-OF BUF:CLEAR
    SCRATCH BUF-OF u BUF:N>BLEN BUF:GROW {: room :}
    t u 0 [char] . FIND {: d1:n :}
@@ -303,7 +303,7 @@ private
 \ fixture key, and its claims are one object whose aud is the client id and
 \ whose exp is later than now.
 : VERIFIED? ( n -- bool )
-   FIELD$ 0= if 2drop false exit then {: t:ptr u:n :}
+   FIELD$ 0= if 2drop false exit then {: t:^ u:n :}
    t u SPLIT 0= if drop drop false exit then {: signed:n sig :}
    MODULUS-ROW MODULUS-U @ EXPONENT-ROW EXPONENT-U @
    t signed sig SPAN:$ CRYPTO:RS256-VERIFY? 0= if false exit then
@@ -314,7 +314,7 @@ private
 
 
 \ The claims every issued token carries; the writer is left inside the object.
-: CLAIMS-OPEN ( -- ptr JSON:writer )
+: CLAIMS-OPEN ( -- ^JSON:writer )
    epoch-seconds {: now:n :}
    SLOT WRITER CLAIMS BUF-OF JSON:WRITE-OPEN-BUF
    JSON:WRITE-OBJECT-START
@@ -325,7 +325,7 @@ private
    s" nbf" now JSON:WRITE-FIELD-INT JSON:WRITE-COMMA
    s" exp" now LIFE-S + JSON:WRITE-FIELD-INT ;
 
-: CLAIMS-CLOSE ( ptr JSON:writer -- )
+: CLAIMS-CLOSE ( ^JSON:writer -- )
    JSON:WRITE-OBJECT-END JSON:WRITE-CLOSE ;
 
 \ The client acts as itself.
@@ -336,9 +336,9 @@ private
    CLAIMS-CLOSE ;
 
 \ The assertion's or refresh token's claim copied as sent, when it has one.
-: COPIED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: k:ptr ku:n :}
-   ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:ptr vu:n :}
+: COPIED ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: k:^ ku:n :}
+   ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:^ vu:n :}
    JSON:WRITE-COMMA k ku v vu JSON:WRITE-FIELD-RAW ;
 
 \ The client acts for the user of the assertion or refresh token.
@@ -353,15 +353,15 @@ private
    s" exp" epoch-seconds LIFE-S + JSON:WRITE-FIELD-INT
    s" oid" COPIED s" tid" COPIED CLAIMS-CLOSE ;
 
-: TOKEN-FIELDS ( ptr JSON:writer -- ptr JSON:writer )
+: TOKEN-FIELDS ( ^JSON:writer -- ^JSON:writer )
    s" access_token" TOKEN BUF-OF BUF$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token_type" s" Bearer" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" expires_in" LIFE-S JSON:WRITE-FIELD-INT ;
 
-: ISSUED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: ISSUED-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START TOKEN-FIELDS JSON:WRITE-OBJECT-END ;
 
-: RENEWED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: RENEWED-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START TOKEN-FIELDS JSON:WRITE-COMMA
    s" refresh_token" RENEWAL BUF-OF BUF$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -377,18 +377,18 @@ private
    RENEWAL-CLAIMS CLAIMS RENEWAL MINTED
    [: RENEWED-BODY ;] HTTP:JSON! ;
 
-: ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: ERROR-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END ;
 
 \ The error code is a literal.
-: REFUSE ( HTTP:response n ptr u8 n -- )
-   {: answer:HTTP:response status:n why:ptr wu:n :}
+: REFUSE ( HTTP:response n ^u8 n -- )
+   {: answer:HTTP:response status:n why:^ wu:n :}
    why wu SPAN:MAKE SLOT WHY !
    answer status HTTP:STATUS!
    answer [: ERROR-BODY ;] HTTP:JSON! ;
 
 : FORM-TYPE? ( HTTP:request -- bool )
-   s" Content-Type" HTTP:HEADER-OF$ 0= if 2drop false exit then {: t:ptr u:n :}
+   s" Content-Type" HTTP:HEADER-OF$ 0= if 2drop false exit then {: t:^ u:n :}
    t u 0 [char] ; FIND {: end:n :}
    t end TRIM s" application/x-www-form-urlencoded" STR=CI ;
 
@@ -401,7 +401,7 @@ private
    GRANT-TYPE s" refresh_token" FIELD= {: refreshing:bool :}
    credentials OBO? or refreshing or 0= if answer 400 s" unsupported_grant_type" REFUSE exit then
    refreshing 0= PUBLIC? and if answer 401 s" invalid_client" REFUSE exit then
-   AUDIENCE$ {: aud:ptr au:n :}
+   AUDIENCE$ {: aud:^ au:n :}
    au 0= aud au UTF8:VALID? 0= or if answer 400 s" invalid_request" REFUSE exit then
    credentials if CREDENTIALS answer ISSUE exit then
    refreshing if
@@ -422,18 +422,18 @@ private
 : MINT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    READY
-   asked HTTP:BODY$ TOKEN BUF-OF MINT {: t:ptr u:n :}
+   asked HTTP:BODY$ TOKEN BUF-OF MINT {: t:^ u:n :}
    answer s" Content-Type" s" text/plain" HTTP:HEADER!
    answer t u HTTP:BODY! ;
 
-: DISCOVERY-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: DISCOVERY-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" issuer" s" " URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" jwks_uri" s" /keys" URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token_endpoint" s" /token" URL$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
-: KEYS-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: KEYS-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" keys" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
    s" kty" s" RSA" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -456,8 +456,8 @@ public
 \ A client id and secret /token accepts, copied; an empty secret states a
 \ public client, which presents none and may only refresh. E-HTTP-STATE while
 \ HTTP serves.
-: CLIENT+ ( ptr u8 n ptr u8 n -- )
-   {: id:ptr iu:n secret:ptr su:n :}
+: CLIENT+ ( ^u8 n ^u8 n -- )
+   {: id:^ iu:n secret:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    CLIENT-COUNT @ {: k:n :}
    k 0= if CLIENTS FIRST-CAP BUF:N>BLEN BUF:INIT then

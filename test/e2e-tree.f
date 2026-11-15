@@ -31,49 +31,49 @@ variable RC-CELL
 
 public
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 : RC@ ( -- n ) RC-CELL @ ;
 
-: AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
+: AT-A ( ^u8 n -- ^u8 n ) {: rel:^ relu:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH PATH swap ;
 
-: LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
+: LINK ( ^u8 n -- ) {: rel:^ relu:n :}
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:MAKE-SYMLINK ;
 
-: COPY-TEST ( ptr u8 n -- ) {: rel:ptr relu:n :}
+: COPY-TEST ( ^u8 n -- ) {: rel:^ relu:n :}
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
 
-: TREE ( ptr u8 n -- )
-   FS:MKTEMP-DIR {: a:ptr u:n :}
+: TREE ( ^u8 n -- )
+   FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" src" LINK s" tools" LINK
    s" test" AT-A FS:MAKE-DIRS ;
 
-: ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
+: ARGS ( ^u8 n -- ) {: source:^ size:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
    source size >LEN PROC-ARGV+ ;
 
-: RUN-ON ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n cwd:ptr cwdu:n :}
+: RUN-ON ( ^u8 n ^u8 n -- )
+   {: engine:^ engineu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN cwd cwdu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
-: RUN-INPUT ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n input:ptr inputu:n :}
+: RUN-INPUT ( ^u8 n ^u8 n -- )
+   {: engine:^ engineu:n input:^ inputu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN ROOT$ >LEN input inputu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
-: SAVE-LOG ( ptr u8 n ptr u8 n -- )
-   {: outpath:ptr outu:n errpath:ptr erru:n :}
+: SAVE-LOG ( ^u8 n ^u8 n -- )
+   {: outpath:^ outu:n errpath:^ erru:n :}
    outpath outu AT-A OUT$ FS:WRITE-ALL
    errpath erru AT-A ERR$ FS:WRITE-ALL ;
 

@@ -35,14 +35,14 @@ STRUCTURE reader-state<a,b>
    FIELD failed n
    FIELD attr-cap n
    FIELD source-mode n
-   FIELD wire-original ptr u8
+   FIELD wire-original ^u8
    FIELD wire-original-len n
-   FIELD wire-storage ptr u8
+   FIELD wire-storage ^u8
    FIELD wire-storage-len n
    FIELD ns-cap n
-   FIELD frames ptr n
-   FIELD attrs ptr n
-   FIELD namespaces ptr n
+   FIELD frames ^n
+   FIELD attrs ^n
+   FIELD namespaces ^n
    FIELD hash-k0 n
    FIELD hash-k1 n
    FIELD sip0 n
@@ -51,7 +51,7 @@ STRUCTURE reader-state<a,b>
    FIELD sip3 n
    FIELD sip4 n
    FIELD sip5 n
-   FIELD link ptr u8
+   FIELD link ^u8
 ;STRUCTURE
 
 private
@@ -66,7 +66,7 @@ LAYOUT-CHECK
 \ The task's innermost live reader record, or null. A reader links its record
 \ only once WITH-INIT has opened it, so inner readers unwind first, also under
 \ a throw, and the release always finds its own record at the head.
-TASK:+USER READER-HEAD ptr u8
+TASK:+USER READER-HEAD ^u8
 
 \ The load-time marker is retired after it seals the representation leaves.
 TRUSTED: HIDE ( n -- ) int-mark ;
@@ -86,55 +86,55 @@ s" XML--C2-READER--STATE:UNMAKE" XREF-FIND-INDEX HIDE
 
 \ Each unpack changes one logical view into its two ABI cells. CURSOR-BASE
 \ and DEST-SPAN below are their only callers.
-TRUSTED: CURSOR-UNPACK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- ptr u8 n ) ;
+TRUSTED: CURSOR-UNPACK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- ^u8 n ) ;
 ndict@ 1- constant CURSOR-ID
 
-TRUSTED: DEST-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n ) ;
+TRUSTED: DEST-UNPACK ( mut-view<p,q,a,u8> -- ^u8 n ) ;
 ndict@ 1- constant DEST-ID
 
 \ The cursor view stays live beside its record address; an unpack consumes it.
-TRUSTED: CURSOR-BASE ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> ptr u8 )
+TRUSTED: CURSOR-BASE ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> ^u8 )
    CURSOR-UNPACK 2dup drop ;
 ndict@ 1- constant CURSOR-BASE-ID
 
 \ The destination view stays live beside its raw cells; an unpack consumes it.
-TRUSTED: DEST-SPAN ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n )
+TRUSTED: DEST-SPAN ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ^u8 n )
    DEST-UNPACK 2dup ;
 ndict@ 1- constant DEST-SPAN-ID
 
 \ A slice of the source keeps its lifetime: an XML:INIT reader spans only its
 \ source (XML's SPAN$), proved by "a projected name lives after each cursor".
-TRUSTED: SOURCE-SLICE ( mut-view<b,i,a,init<i,reader-state<p,q>>> ptr u8 n -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> ) ;
+TRUSTED: SOURCE-SLICE ( mut-view<b,i,a,init<i,reader-state<p,q>>> ^u8 n -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> ) ;
 ndict@ 1- constant SOURCE-SLICE-ID
 
-CAST: >ADDR-CELL ( ptr u8 -- ptr ptr u8 )
+CAST: >ADDR-CELL ( ^u8 -- ^^u8 )
 ndict@ 1- constant ADDR-CELL-ID
-CAST: >LEN-CELL ( ptr u8 -- ptr n )
+CAST: >LEN-CELL ( ^u8 -- ^n )
 ndict@ 1- constant LEN-CELL-ID
 
 \ A live reader's token is its record's address. Each accessor re-enters the
 \ reader from the cursor storage and parks it there again; only WITH-READER's
 \ release ends it.
-TRUSTED: REENTER ( ptr u8 -- XML:reader ) ;
+TRUSTED: REENTER ( ^u8 -- XML:reader ) ;
 ndict@ 1- constant REENTER-ID
 
 TRUSTED: PARK ( XML:reader -- ) drop ;
 ndict@ 1- constant PARK-ID
 
 : OPEN-READER ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   CURSOR-BASE {: record:ptr :}
+   CURSOR-BASE {: record:^ :}
    record >ADDR-CELL @ record cell+ >LEN-CELL @ {: source size:n :}
    record XML:CURSOR-BYTES XML:EMPTY-CURSOR source size XML:INIT PARK ;
 ndict@ 1- constant OPEN-ID
 
 : LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   CURSOR-BASE {: record:ptr :}
+   CURSOR-BASE {: record:^ :}
    READER-HEAD @ record LINK-OFF + >ADDR-CELL !
    record READER-HEAD ! ;
 ndict@ 1- constant LINK-ID
 
 : RELEASE ( -- )
-   READER-HEAD @ {: record:ptr :}
+   READER-HEAD @ {: record:^ :}
    record LINK-OFF + >ADDR-CELL @ READER-HEAD !
    record REENTER XML:CLOSE ;
 ndict@ 1- constant RELEASE-ID
@@ -178,7 +178,7 @@ RELEASE-ID HIDE
    CURSOR-BASE REENTER XML:RAW rot PARK ;
 
 : CONTENT$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-BASE {: state:ptr :}
+   CURSOR-BASE {: state:^ :}
    state REENTER XML:CONTENT rot PARK {: offset:off count:len :}
    state >ADDR-CELL @ offset OFF>N + count LEN>N SOURCE-SLICE ;
 
@@ -186,7 +186,7 @@ RELEASE-ID HIDE
    CURSOR-BASE REENTER XML:CONTENT rot PARK ;
 
 : SOURCE$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-BASE {: record:ptr :}
+   CURSOR-BASE {: record:^ :}
    record >ADDR-CELL @ record cell+ >LEN-CELL @ SOURCE-SLICE ;
 
 : DEPTH ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> n )
@@ -208,7 +208,7 @@ RELEASE-ID HIDE
    CURSOR-BASE REENTER XML:ATTR-VALUE$ rot PARK SOURCE-SLICE ;
 
 : ATTR-RAW$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-BASE {: state:ptr :}
+   CURSOR-BASE {: state:^ :}
    state REENTER XML:ATTR-RAW rot PARK {: offset:off count:len :}
    state >ADDR-CELL @ offset OFF>N + count LEN>N SOURCE-SLICE ;
 
@@ -216,22 +216,22 @@ RELEASE-ID HIDE
    CURSOR-BASE REENTER XML:ATTR-RAW rot PARK ;
 
 : TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-SPAN {: destination:ptr cap:n :} swap
+   DEST-SPAN {: destination:^ cap:n :} swap
    CURSOR-BASE REENTER destination cap XML:TEXT swap PARK {: count:n :}
    swap count ;
 
 : URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-SPAN {: destination:ptr cap:n :} swap
+   DEST-SPAN {: destination:^ cap:n :} swap
    CURSOR-BASE REENTER destination cap XML:URI swap PARK {: count:n :}
    swap count ;
 
 : ATTR-TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-SPAN {: destination:ptr cap:n :} swap
+   DEST-SPAN {: destination:^ cap:n :} swap
    CURSOR-BASE REENTER destination cap XML:ATTR-TEXT swap PARK {: count:n :}
    swap count ;
 
 : ATTR-URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-SPAN {: destination:ptr cap:n :} swap
+   DEST-SPAN {: destination:^ cap:n :} swap
    CURSOR-BASE REENTER destination cap XML:ATTR-URI swap PARK {: count:n :}
    swap count ;
 

@@ -89,9 +89,10 @@ other way for its inputs, because whoever executes the quotation supplies them:
 `[ i64 -- ]` satisfies a `[ u8 -- ]` parameter and `[ u8 -- ]` does not satisfy
 `[ i64 -- ]`.
 
-**A pointer always says what it points at.** `ptr` consumes the next type
-token (`ptr u8`, `ptr a`, `ptr ptr u8`); a bare `ptr` is malformed. The element
-type is checked at call boundaries, so `ptr n` handed to a `ptr u8` parameter is
+**A pointer always says what it points at.** `^` is joined to the type
+it points at, one token per stack item (`^u8`, `^a`, `^^u8`); a bare `^` is
+malformed. The element
+type is checked at call boundaries, so `^n` handed to a `^u8` parameter is
 refused. The element type decides which fetch and store words apply, so it has
 to be part of the type.
 
@@ -219,9 +220,9 @@ policy would give one logical type several stack shapes.
   changes the stack shape must not be selectable before its constructor,
   `MATCH` and stack-operation lowering exists; `boxed` has none
   and is refused with `layout policy not yet supported`.
-- `niche-null` is one shape: an empty variant, then one holding a single `ptr`
+- `niche-null` is one shape: an empty variant, then one holding a single `^`
   field. The cell is the pointer, zero for the empty variant, so every cell
-  value is a variant and no tag can be invalid. With a plain `ptr` a null
+  value is a variant and no tag can be invalid. With a plain `^` a null
   `some` reads as `none`: the family means "an address or none", and
   `nullable<a>` is it.
 - Any other name is `unknown layout policy`. Every refusal rolls back the
@@ -352,7 +353,7 @@ package bytes stay shareable, several parser cursors may run over one buffer,
 and results can be returned independently owned. Checked borrowing must not
 depend on a caller honouring a lifetime comment.
 
-**Raw pointers stay lifetime-free.** `ptr T` says what it points at, not which
+**Raw pointers stay lifetime-free.** `^T` says what it points at, not which
 allocation, for how long or how far. Existing code and foreign and storage
 boundaries keep it. Views are a separate surface that does not make raw-pointer
 code memory-safe, and no ordinary checked operation turns a view into a raw

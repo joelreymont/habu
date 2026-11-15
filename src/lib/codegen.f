@@ -20,20 +20,20 @@ private
 \ save or a file's object holds it released.
 1 cells constant CB-RECORD
 CB-RECORD CELL / 1+ DYNAMIC-STORAGE:CONTROL-CELLS + constant CB-CELLS
-: CB-CAP@  ( ptr n -- n )  @ ;
-CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
-: CB-HEAD  ( ptr n -- ptr ptr u8 )  CB-RECORD + CB-HEAD-CELL ;
-: CB-CTL   ( ptr n -- ptr n )  CB-RECORD CELL + + ;
+: CB-CAP@  ( ^n -- n )  @ ;
+CAST: CB-HEAD-CELL ( ^n -- ^^u8 )
+: CB-HEAD  ( ^n -- ^^u8 )  CB-RECORD + CB-HEAD-CELL ;
+: CB-CTL   ( ^n -- ^n )  CB-RECORD CELL + + ;
 
 \ The mapping, reserved whole at first use: the length cell and cap bytes.
-: CB-MAP ( ptr n -- ptr u8 ) {: d:ptr :}
+: CB-MAP ( ^n -- ^u8 ) {: d:^ :}
    d CB-CTL @ 0= if
       CELL d CB-CAP@ + d CB-HEAD d CB-CTL 1 DYNAMIC-STORAGE:RESERVE
    then
    d CB-HEAD @ ;
-: CB-LEN@  ( ptr n -- n )  CB-MAP CELL-VIEW @ ;
-: CB-LEN!  ( n ptr n -- )  CB-MAP CELL-VIEW ! ;
-: CB-DATA  ( ptr n -- ptr u8 )  CB-MAP CELL + ;   \ content bytes past the length
+: CB-LEN@  ( ^n -- n )  CB-MAP CELL-VIEW @ ;
+: CB-LEN!  ( n ^n -- )  CB-MAP CELL-VIEW ! ;
+: CB-DATA  ( ^n -- ^u8 )  CB-MAP CELL + ;   \ content bytes past the length
 
 : CB-HEADER, ( n -- )   \ cap --
    ,  CB-CELLS CB-RECORD CELL / - 0 ?do here scratch-cell-mark 0 , loop ;
@@ -44,24 +44,24 @@ public
 \ colon: a package word ending in `:` cannot be resolved through a `CODEGEN:`
 \ qualifier.
 : BUFFER ( n -- )   \ cap --
-   create CB-HEADER,  does> ( -- ptr n ) ;
+   create CB-HEADER,  does> ( -- ^n ) ;
 
-: RESET ( ptr n -- )  0 swap CB-LEN! ;
+: RESET ( ^n -- )  0 swap CB-LEN! ;
 
 \ Append one byte; overflow throws E-CG-CAP.
-: APPEND-BYTE ( n ptr n -- ) {: c:n d:ptr :}
+: APPEND-BYTE ( n ^n -- ) {: c:n d:^ :}
    d CB-LEN@ 1 + d CB-CAP@ > if E-CG-CAP throw then
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
-: APPEND-STRING ( ptr u8 n ptr n -- ) {: a:ptr u:n d:ptr :}
+: APPEND-STRING ( ^u8 n ^n -- ) {: a:^ u:n d:^ :}
    0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
 
 \ A negative value throws E-CG-VALUE instead of emitting garbage digits.
-: APPEND-DECIMAL ( n ptr n -- ) {: v:n d:ptr :}
+: APPEND-DECIMAL ( n ^n -- ) {: v:n d:^ :}
    v 0 < if E-CG-VALUE throw then
    v 10 >= if v 10 / d recurse then  v 10 mod [char] 0 + d APPEND-BYTE ;
 
-: CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
+: CONTENTS ( ^n -- ^u8 n ) {: d:^ :}  d CB-DATA d CB-LEN@ ;
 
 ;package

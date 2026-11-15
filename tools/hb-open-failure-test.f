@@ -30,15 +30,15 @@ create HOF-ERR  HOF-CAP allot
 variable HOF-ROOT-U
 variable HOF-EXE-U
 
-: HOF-ROOT$ ( -- ptr u8 n )
+: HOF-ROOT$ ( -- ^u8 n )
    HOF-ROOT HOF-ROOT-U @ ;
 
-: HOF-EXE$ ( -- ptr u8 n )
+: HOF-EXE$ ( -- ^u8 n )
    HOF-EXE HOF-EXE-U @ ;
 
 : HOF-SETUP ( -- )
    FS:CLEANUP-RESET
-   s" hb-open-failure" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" hb-open-failure" FS:MKTEMP-DIR {: a:^ u:n :}
    a HOF-ROOT u BYTE-COPY
    u HOF-ROOT-U !
    HOF-ROOT$ FS:CLEANUP-TREE+

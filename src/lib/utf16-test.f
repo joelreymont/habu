@@ -19,18 +19,18 @@ create LE-OUT BUF:HDR-BYTES allot
 
 CAST: BL>N ( NUM:byte-len -- n )
 
-: FRESH ( ptr a -- )
-   {: buf:ptr :}
+: FRESH ( ^a -- )
+   {: buf:^ :}
    buf BUF:DISPOSE  buf BUF-CAP0 BUF:N>BLEN BUF:INIT ;
 
-: GOT$ ( ptr a -- ptr u8 n )  BUF:SPAN$ BL>N ;
+: GOT$ ( ^a -- ^u8 n )  BUF:SPAN$ BL>N ;
 
-: UNITS= ( ptr u8 n n -- )
-   {: a:ptr u:n want:n :}
+: UNITS= ( ^u8 n n -- )
+   {: a:^ u:n want:n :}
    a u UTF16:UNITS want T= ;
 
-: OFFSET= ( ptr u8 n n n -- )
-   {: a:ptr u:n unit:n want:n :}
+: OFFSET= ( ^u8 n n n -- )
+   {: a:^ u:n unit:n want:n :}
    a u unit UTF16:OFFSET want T= ;
 
 : BMP ( -- )
@@ -105,7 +105,7 @@ CAST: BL>N ( NUM:byte-len -- n )
 \ A, two-byte, three-byte and four-byte scalars, a raw byte, then x: scalar
 \ boundaries at bytes 0 1 3 6 10 11 12, which are units 0 1 2 3 5 6 7. Unit 4
 \ is inside the pair, the one index that does not come back.
-: MIXED ( -- ptr u8 n )
+: MIXED ( -- ^u8 n )
    s\" a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x80x" ;
 
 : BYTE-TRIP ( n -- )
@@ -140,20 +140,20 @@ CAST: BL>N ( NUM:byte-len -- n )
    [: OFFSET-NEGATIVE-INDEX ;] E-STR-BOUNDS TTHROWSQ
    [: OFFSET-EMPTY-NEGATIVE ;] E-STR-BOUNDS TTHROWSQ ;
 
-: LE>UTF8= ( ptr u8 n ptr u8 n -- )
-   {: le:ptr lu:n want:ptr wu:n :}
+: LE>UTF8= ( ^u8 n ^u8 n -- )
+   {: le:^ lu:n want:^ wu:n :}
    LE-BUF BUF:CLEAR
    le lu LE-BUF UTF16:APPEND-LE>UTF8
    LE-BUF GOT$ want wu T$= ;
 
-: UTF8>LE= ( ptr u8 n ptr u8 n -- )
-   {: text:ptr tu:n want:ptr wu:n :}
+: UTF8>LE= ( ^u8 n ^u8 n -- )
+   {: text:^ tu:n want:^ wu:n :}
    LE-BUF BUF:CLEAR
    text tu LE-BUF UTF16:APPEND-UTF8>LE
    LE-BUF GOT$ want wu T$= ;
 
-: BOTH= ( ptr u8 n ptr u8 n -- )
-   {: le:ptr lu:n text:ptr tu:n :}
+: BOTH= ( ^u8 n ^u8 n -- )
+   {: le:^ lu:n text:^ tu:n :}
    le lu text tu LE>UTF8=
    text tu le lu UTF8>LE= ;
 
@@ -172,7 +172,7 @@ CAST: BL>N ( NUM:byte-len -- n )
 
 
 : ROUND-TRIP ( -- )
-   s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:ptr tu:n :}
+   s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:^ tu:n :}
    LE-BUF BUF:CLEAR  LE-OUT BUF:CLEAR
    text tu LE-BUF UTF16:APPEND-UTF8>LE
    LE-BUF GOT$ LE-OUT UTF16:APPEND-LE>UTF8

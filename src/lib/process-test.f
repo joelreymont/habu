@@ -51,35 +51,35 @@ create PT-DRAIN-BUF PT-CHUNK allot
 2 constant PT-ENOENT
 300 constant PT-SHORT-TIMEOUT-MS
 
-: PT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: PT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: PT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+: PT-PATH! ( ^u8 n ^u8 n ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: PT-ROOT ( -- ptr u8 n )
+: PT-ROOT ( -- ^u8 n )
    PT-ROOT-BUF PT-ROOT-U @ ;
 
-: PT-CAPTURE-OK ( -- ptr u8 n )
+: PT-CAPTURE-OK ( -- ^u8 n )
    PT-CAPTURE-OK-BUF PT-CAPTURE-OK-U @ ;
 
-: PT-CAPTURE-LONG ( -- ptr u8 n )
+: PT-CAPTURE-LONG ( -- ^u8 n )
    PT-CAPTURE-LONG-BUF PT-CAPTURE-LONG-U @ ;
 
-: PT-CAPTURE-HANG ( -- ptr u8 n )
+: PT-CAPTURE-HANG ( -- ^u8 n )
    PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U @ ;
 
-: PT-CAPTURE-ERR-LONG ( -- ptr u8 n )
+: PT-CAPTURE-ERR-LONG ( -- ^u8 n )
    PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U @ ;
 
-: PT-CAPTURE-FALSE ( -- ptr u8 n )
+: PT-CAPTURE-FALSE ( -- ^u8 n )
    PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U @ ;
 
-: PT-CAPTURE-EOF ( -- ptr u8 n )
+: PT-CAPTURE-EOF ( -- ^u8 n )
    PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ ;
 
-: PT-TERM-MARKER ( -- ptr u8 n )
+: PT-TERM-MARKER ( -- ^u8 n )
    PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ ;
 
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
@@ -89,7 +89,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    ;MATCH ;
 
 : PT-ROOT! ( -- )
-   s" habu-process" FS:MKTEMP-DIR {: a:ptr u :}
+   s" habu-process" FS:MKTEMP-DIR {: a:^ u :}
    a u PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
 
 : PT-PATHS! ( -- )
@@ -101,7 +101,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH!
    PT-ROOT s" term-marker" PT-TERM-MARKER-BUF PT-TERM-MARKER-U PT-PATH! ;
 
-: PT-WRITE-SCRIPT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
+: PT-WRITE-SCRIPT ( ^u8 n ^u8 n -- ) {: path:^ pathu src:^ srcu :}
    path pathu src srcu FS:WRITE-ALL
    path pathu FS:CLEANUP+ ;
 
@@ -125,21 +125,21 @@ create PT-DRAIN-BUF PT-CHUNK allot
    FS:CLEANUP-RUN
    PT-ROOT FS:EXISTS? TFALSE ;
 
-: PT-RUN-HB-SCRIPT ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
+: PT-RUN-HB-SCRIPT ( ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
-: PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
-   {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
+: PT-RUN-HB-SCRIPT-OUTCOME ( ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+   {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: PT-RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: PT-RUN-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
    PT-CAPTURE>N ;
 
@@ -245,8 +245,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    s" PTN2 ( n n -- rc ) PROCESS:ENDING>RC" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN3 ( PROCESS:ending PROCESS:ending -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN4 ( pid -- n n ) PROCESS:WAIT" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN5 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" PTN5 ( ^u8 len ^u8 len ^u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTP2 ( ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ A signal-killed child's rc is 128+sig, never a masked rc 0.
 : TEST-PROC-WAIT-SIGNAL-RC ( -- )
@@ -425,7 +425,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ Signal-death capture: the reap path derives signaled(sig) from the raw wait
 \ status alone -- no stored pair. The API return and the derived getter agree.
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
-   s" /bin/sh -c kill -KILL $$" {: cmd:ptr cmdu:n :}
+   s" /bin/sh -c kill -KILL $$" {: cmd:^ cmdu:n :}
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s" kill -KILL $$" >LEN PROC-ARGV+
@@ -495,8 +495,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ Negative checked regression: the return is the pcap result, not a (len len rc)
 \ triple, and the ok arm cannot leak the failed payload.
 : TEST-RUN-CAPTURE-RESULT-TYPES ( -- )
-   s" PTC1 ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
-   s" PTC2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTC1 ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTC2 ( ^u8 len ^u8 len ^u8 len ms -- len len rc ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTC3 ( result<pcap:captured,pcap:failed> -- pcap:captured ) MATCH result ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : TEST-PROC-READ-NEG-LEN ( -- )
@@ -535,14 +535,14 @@ variable PT-HOLD-IN                      \ its stdin's write end: closing it rel
 variable PT-HOLD-OUT                     \ the read end its stdout and stderr share
 
 \ A child of /bin/sh running the script, on the test's own stdio.
-: PT-SH ( ptr u8 n -- pid )
-   {: s:ptr su:n :}
+: PT-SH ( ^u8 n -- pid )
+   {: s:^ su:n :}
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s su >LEN PROC-ARGV+
    s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
 
-: PT-HOLD-SCRIPT ( -- ptr u8 n )
+: PT-HOLD-SCRIPT ( -- ^u8 n )
    s" exec >&- 2>&-; read x; exit 5" ;
 
 \ A child that closes stdout and stderr at once, then lives until its stdin
@@ -709,7 +709,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    errn 0 T=
    PT-OUT outn s" stdin-zero" T$= ;
 
-: PT-UNMARKED-SCRIPT ( -- ptr u8 n )
+: PT-UNMARKED-SCRIPT ( -- ^u8 n )
    s" exec >&-; read x" ;
 
 \ Unmarked source: the stdout pipe's write end sits above 2 without
@@ -761,7 +761,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
 
 \ A capture of the child in mode, with no deadline. A child that ends before
 \ `ready` fails the case without a throw, so the case still kills it.
-: PT-TERM-START ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+: PT-TERM-START ( ^u8 n -- ) {: mode:^ modeu:n :}
    PT-TERM-MARKER s" marker" FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -769,7 +769,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    s" --" >LEN PROC-ARGV+
    PT-TERM-MARKER >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
-   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE
    PROCESS:OUT-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N
@@ -784,7 +784,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
 : PT-SINCE-MS ( n -- n )
    mono-ns swap - PROCESS:NS-PER-MS / ;
 
-: PT-TERM-ENDED= ( ptr u8 n n -- ) {: what:ptr whatu:n sig:n :}
+: PT-TERM-ENDED= ( ^u8 n n -- ) {: what:^ whatu:n sig:n :}
    what whatu s" " s" " PROCESS:CAPTURE-ENDING sig T-ENDING-SIGNALED= ;
 
 : TEST-KILL-CAPTURE-ASKS ( -- )

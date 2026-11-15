@@ -2,7 +2,7 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-structural-test.f
 \ TYPED-VARIABLE / TYPED-BUFFER admit a closed structural cell: a non-linear
-\ one-cell con (n, bool, i64, the role tokens) or a `ptr` chain bottoming at
+\ one-cell con (n, bool, i64, the role tokens) or a `^` chain bottoming at
 \ one.
 
 require src/lib/error.f
@@ -30,7 +30,7 @@ DEFLINEAR tsslin
 \    pinned at its declaration, each refusing the other two.
 TYPED-VARIABLE TSSN n
 TYPED-VARIABLE TSSF bool
-TYPED-VARIABLE TSSP ptr u8
+TYPED-VARIABLE TSSP ^u8
 2 TYPED-BUFFER TSSB n
 
 : TSSN-PUT ( n -- ) TSSN ! ;
@@ -46,18 +46,18 @@ TYPED-VARIABLE TSSP ptr u8
    s" W2 ( -- n ) TSSN @"              CHECK-QUIET-CANDIDATE! -1 T=
    s" W3 ( bool -- ) TSSF !"           CHECK-QUIET-CANDIDATE! -1 T=
    s" W4 ( -- bool ) TSSF @"           CHECK-QUIET-CANDIDATE! -1 T=
-   s" W5 ( ptr u8 -- ) TSSP !"         CHECK-QUIET-CANDIDATE! -1 T=
-   s" W6 ( -- ptr u8 ) TSSP @"         CHECK-QUIET-CANDIDATE! -1 T=
+   s" W5 ( ^u8 -- ) TSSP !"         CHECK-QUIET-CANDIDATE! -1 T=
+   s" W6 ( -- ^u8 ) TSSP @"         CHECK-QUIET-CANDIDATE! -1 T=
    \ ... and every OTHER reading of the same cell is refused
    s" W7 ( bool -- ) TSSN !"           CHECK-QUIET-CANDIDATE! 0 T=
-   s" W8 ( -- ptr u8 ) TSSN @"         CHECK-QUIET-CANDIDATE! 0 T=
+   s" W8 ( -- ^u8 ) TSSN @"         CHECK-QUIET-CANDIDATE! 0 T=
    s" W9 ( -- tssk ) TSSN @"           CHECK-QUIET-CANDIDATE! 0 T=
    s" WA ( n -- ) TSSF !"              CHECK-QUIET-CANDIDATE! 0 T=
    s" WB ( n -- ) TSSP !"              CHECK-QUIET-CANDIDATE! 0 T=
    s" WC ( -- n ) TSSP @"              CHECK-QUIET-CANDIDATE! 0 T=
-   \ the accessor value itself: a span cell is addressed as ptr ptr u8
-   s" WD ( -- ptr ptr u8 ) TSSP"       CHECK-QUIET-CANDIDATE! -1 T=
-   s" WE ( -- ptr n ) TSSN"            CHECK-QUIET-CANDIDATE! -1 T=
+   \ the accessor value itself: a span cell is addressed as ^^u8
+   s" WD ( -- ^^u8 ) TSSP"       CHECK-QUIET-CANDIDATE! -1 T=
+   s" WE ( -- ^n ) TSSN"            CHECK-QUIET-CANDIDATE! -1 T=
    \ indexed structural buffer, both directions
    s" WF ( n n -- ) TSSB !"            CHECK-QUIET-CANDIDATE! -1 T=
    s" WG ( n -- n ) TSSB @"            CHECK-QUIET-CANDIDATE! -1 T=
@@ -72,10 +72,10 @@ TYPED-VARIABLE TSSP ptr u8
 
 \ 2. Define-time admissibility: what a structural declaration accepts, and the
 \    fail-closed edge. An open var cannot be pinned at all, so it still rejects.
-TYPED-VARIABLE TSS-EVAL-A ptr u8
+TYPED-VARIABLE TSS-EVAL-A ^u8
 variable TSS-EVAL-U
 : TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ evaluate-closed ;
-: TSS-EVAL ( ptr u8 n -- n ) TSS-EVAL-U ! TSS-EVAL-A ! [: TSS-EVAL-RUN ;] catch ;
+: TSS-EVAL ( ^u8 n -- n ) TSS-EVAL-U ! TSS-EVAL-A ! [: TSS-EVAL-RUN ;] catch ;
 
 : SECTION-ADMISSIBILITY ( -- )
    \ closed structural cons and closed pointer chains are admitted
@@ -84,18 +84,18 @@ variable TSS-EVAL-U
    s" TYPED-VARIABLE TSS-OK-I i64" TSS-EVAL 0 T=
    s" TYPED-VARIABLE TSS-OK-IDX idx" TSS-EVAL 0 T=
    s" TYPED-VARIABLE TSS-OK-FD fd" TSS-EVAL 0 T=
-   s" TYPED-VARIABLE TSS-OK-PN ptr n" TSS-EVAL 0 T=
-   s" TYPED-VARIABLE TSS-OK-PU ptr u8" TSS-EVAL 0 T=
-   s" TYPED-VARIABLE TSS-OK-PPU ptr ptr u8" TSS-EVAL 0 T=
+   s" TYPED-VARIABLE TSS-OK-PN ^n" TSS-EVAL 0 T=
+   s" TYPED-VARIABLE TSS-OK-PU ^u8" TSS-EVAL 0 T=
+   s" TYPED-VARIABLE TSS-OK-PPU ^^u8" TSS-EVAL 0 T=
    \ an OPEN var has nothing to pin, in either position: still refused
    s" TYPED-VARIABLE TSS-BAD-A a" TSS-EVAL CHECKER-REJECT-RC T=
-   s" TYPED-VARIABLE TSS-BAD-PA ptr a" TSS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE TSS-BAD-PA ^a" TSS-EVAL CHECKER-REJECT-RC T=
    \ a bare atom carries no effect to pin either
    s" TYPED-VARIABLE TSS-BAD-XT xt" TSS-EVAL CHECKER-REJECT-RC T=
    \ a LINEAR con is closed and one cell, and still refused in BOTH positions:
    \ noncopyable
    s" TYPED-VARIABLE TSS-BAD-LIN tsslin" TSS-EVAL CHECKER-REJECT-RC T=
-   s" TYPED-VARIABLE TSS-BAD-PLIN ptr tsslin" TSS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE TSS-BAD-PLIN ^tsslin" TSS-EVAL CHECKER-REJECT-RC T=
    \ the refused names never reached the dictionary
    s" TSS-BAD-A" 0 search-wl 0= TTRUE
    s" TSS-BAD-PA" 0 search-wl 0= TTRUE
@@ -112,19 +112,19 @@ PTR-VARIABLE TSS-PV
    s" TYPED-VARIABLE TSS-BAD-U8 u8" TSS-EVAL CHECKER-REJECT-RC T=
    s" TYPED-VARIABLE TSS-BAD-U16 u16" TSS-EVAL CHECKER-REJECT-RC T=
    s" TSS-BAD-U8" 0 search-wl 0= TTRUE
-   \ ... because cell @ over a concrete `ptr u8` is a checker error, so the cell
-   \ would be unreadable by the operator its own ( -- ptr u8 ) implies ...
-   s" U1 ( ptr u8 -- n ) @"                   CHECK-QUIET-CANDIDATE! 0 T=
+   \ ... because cell @ over a concrete `^u8` is a checker error, so the cell
+   \ would be unreadable by the operator its own ( -- ^u8 ) implies ...
+   s" U1 ( ^u8 -- n ) @"                   CHECK-QUIET-CANDIDATE! 0 T=
    \ ... while the byte operator is exactly right for it ...
-   s" U2 ( ptr u8 -- u8 ) c@"                 CHECK-QUIET-CANDIDATE! -1 T=
+   s" U2 ( ^u8 -- u8 ) c@"                 CHECK-QUIET-CANDIDATE! -1 T=
    \ ... and one level up the span cell reads back fine, which is the shape
    \ TYPED-VARIABLE TSSP actually mints
-   s" U3 ( ptr ptr u8 -- ptr u8 ) @"          CHECK-QUIET-CANDIDATE! -1 T=
+   s" U3 ( ^^u8 -- ^u8 ) @"          CHECK-QUIET-CANDIDATE! -1 T=
    \ a raw pointer cell reached by ptr-field still enforces pointer-ness but NOT
    \ which pointer: the open pointee takes any of them, the same vacuity a raw
    \ scalar cell has, one level down
-   s" U4 ( ptr a -- ) TSS-PV 0 ptr-field !"   CHECK-QUIET-CANDIDATE! -1 T=
-   s" U5 ( ptr u8 -- ) TSS-PV 0 ptr-field !"  CHECK-QUIET-CANDIDATE! -1 T=
+   s" U4 ( ^a -- ) TSS-PV 0 ptr-field !"   CHECK-QUIET-CANDIDATE! -1 T=
+   s" U5 ( ^u8 -- ) TSS-PV 0 ptr-field !"  CHECK-QUIET-CANDIDATE! -1 T=
    s" U6 ( n -- ) TSS-PV 0 ptr-field !"       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )

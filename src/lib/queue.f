@@ -46,10 +46,10 @@ END-STRUCTURE
 2 constant Q-SEM-LOCK-IX
 Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem
 
-Q-MAX TYPED-BUFFER Q-RECS ptr n
+Q-MAX TYPED-BUFFER Q-RECS ^n
 variable Q-N
 
-: Q-SLOT ( n -- ptr ptr n ) {: idx:n :}
+: Q-SLOT ( n -- ^^n ) {: idx:n :}
    idx 0 < idx Q-MAX >= or if E-QUEUE-OPERAND throw then
    idx Q-RECS ;
 
@@ -60,10 +60,10 @@ variable Q-N
    idx 0 < idx Q-N @ >= or if E-QUEUE-OPERAND throw then
    idx ;
 
-: Q-REC ( n -- ptr n )
+: Q-REC ( n -- ^n )
    Q-SLOT @ ;
 
-: Q-REGISTER ( ptr n -- n )
+: Q-REGISTER ( ^n -- n )
    Q-N @ Q-MAX >= if E-QUEUE-TABLE throw then
    Q-N @ Q-SLOT !
    Q-N @ dup 1 + Q-N ! ;
@@ -87,7 +87,7 @@ variable Q-N
    dup 1 < if E-QUEUE-OPERAND throw then
    drop ;
 
-: Q-SEM-SLOT ( n n -- ptr TASK:sem ) {: idx:n which:n :}
+: Q-SEM-SLOT ( n n -- ^TASK:sem ) {: idx:n which:n :}
    idx Q-SEM-N * which + Q-SEMS ;
 
 : Q-SEM@ ( n n -- TASK:sem )
@@ -149,7 +149,7 @@ variable Q-N
 : Q-LOCK-RELEASE ( n -- )
    Q-LOCK-SEM SIGNAL-SEM ;
 
-: Q-DATA ( ptr n n -- ptr n )
+: Q-DATA ( ^n n -- ^n )
    cells Q-REC-BYTES + + ;
 
 \ A capacity is a count, never a mask, so the ring wraps with a remainder and
@@ -160,7 +160,7 @@ variable Q-N
 \ HEAD, TAIL and LEN move under the lock, so a slot is filled before the item
 \ semaphore announces it and two producers cannot claim the same one.
 : Q-PUT-LOCKED ( n n -- ) {: v:n idx:n :}
-   idx Q-REC {: rec:ptr :}
+   idx Q-REC {: rec:^ :}
    idx Q-LOCK-GET
    v rec rec Q.TAIL @ Q-DATA !
    rec Q.TAIL @ rec Q.CAP @ Q-NEXT rec Q.TAIL !
@@ -168,7 +168,7 @@ variable Q-N
    idx Q-LOCK-RELEASE ;
 
 : Q-TAKE-LOCKED ( n -- n ) {: idx:n :}
-   idx Q-REC {: rec:ptr :}
+   idx Q-REC {: rec:^ :}
    idx Q-LOCK-GET
    rec rec Q.HEAD @ Q-DATA @ {: v:n :}
    rec Q.HEAD @ rec Q.CAP @ Q-NEXT rec Q.HEAD !
@@ -177,7 +177,7 @@ variable Q-N
    v ;
 
 : Q-INIT ( n -- ) {: idx:n :}
-   idx Q-REC {: rec:ptr :}
+   idx Q-REC {: rec:^ :}
    rec Q.LIVE atomic@ 0 <> if E-QUEUE-STATE throw then
    0 rec Q.HEAD !
    0 rec Q.TAIL !
@@ -188,7 +188,7 @@ variable Q-N
 \ Idempotent, and bound by the same POSIX rule as the semaphores it gives back:
 \ the owner ends the queue's waiters before it destroys the queue.
 : Q-DESTROY ( n -- ) {: idx:n :}
-   idx Q-REC {: rec:ptr :}
+   idx Q-REC {: rec:^ :}
    rec Q.LIVE atomic@ 0= if exit then
    0 rec Q.LIVE atomic!
    idx Q-SEMS-DROP ;

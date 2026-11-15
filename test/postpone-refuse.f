@@ -15,14 +15,14 @@ package POSTPONE-REFUSE
 private
 
 \ : NAME ( n -- n ) 1 + ; through compile, of a quotation.
-: MAKE-QUOT-CALL ( ptr u8 n -- )
+: MAKE-QUOT-CALL ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    [: 1 + ;] compile,
    postpone ; ;
 
 : ONE ( -- n ) 1 ;
 \ : NAME ( -- n ) ONE ;
-: MAKE-ONE ( ptr u8 n -- )
+: MAKE-ONE ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone ONE
    postpone ; ;
@@ -30,7 +30,7 @@ undefine ONE
 : ONE ( -- n ) 2 ;
 
 : TRUSTED-POSTPONE ( -- n )
-   [: s\" : MAKE-TRUSTED ( ptr u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
+   [: s\" : MAKE-TRUSTED ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
       evaluate-closed ;] catch ;
 TRUSTED-POSTPONE 70 T=
 
@@ -41,14 +41,14 @@ QUOT-CALL 70 T=
 RETIRED 70 T=
 
 \ A throw between define-word and `;` leaves no definition open past its catch.
-: MAKE-THROWN ( ptr u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word 99 throw ;
+: MAKE-THROWN ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word 99 throw ;
 : THROWN ( -- n ) [: s" THROWN-DEF" MAKE-THROWN ;] catch ;
 THROWN 99 T=
 
 \ A refusal inside an evaluate the definer runs abandons the definer's definition.
 : NESTED-IMM ( -- ) [: 1 + ;] compile, ; immediate
 s" NESTED-IMM" 0 parse-imm
-: MAKE-NESTED ( ptr u8 n -- )
+: MAKE-NESTED ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" NESTED-IMM" evaluate-closed
    postpone ; ;
@@ -68,7 +68,7 @@ package CUT
 public
 : CUT-IMM ( -- ) postpone CUT-TWO postpone CUT-TWO 99 throw ; immediate
 s" CUT-IMM" 0 parse-imm
-: MAKE-CUT ( ptr u8 n -- )
+: MAKE-CUT ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    [: s" CUT:CUT-IMM" evaluate-closed ;] catch 99 T=
    postpone CUT-ONE
@@ -87,8 +87,8 @@ create RAW-ERR RAW-CAP allot
 public
 \ Abandoning a definition that awaits `[char]`'s operand skips no later line.
 : RAW-CHILD ( -- )
-   s\" : MAKE-RAW ( ptr u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  s\" [char]\" evaluate-closed  99 throw ;\n: RUN-RAW ( -- n ) [: s\" PR-RAW\" MAKE-RAW ;] catch ;\nRUN-RAW .  s\" raw: end\" type"
-   {: src:ptr srcu:n :}
+   s\" : MAKE-RAW ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  s\" [char]\" evaluate-closed  99 throw ;\n: RUN-RAW ( -- n ) [: s\" PR-RAW\" MAKE-RAW ;] catch ;\nRUN-RAW .  s\" raw: end\" type"
+   {: src:^ srcu:n :}
    src srcu RAW-OUT RAW-CAP >LEN RAW-ERR RAW-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    RAW-OUT outu LEN>N s\" 99\nraw: end" T$=

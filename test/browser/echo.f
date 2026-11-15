@@ -13,8 +13,8 @@ package ECHO
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 \ The text a record names: "released ", two signed cells' digits and a comma.
 64 BUFFER: TEXT
@@ -36,8 +36,8 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U ! ;
 
-: SAY ( ptr u8 n -- )
-   {: t:ptr u:n :}
+: SAY ( ^u8 n -- )
+   {: t:^ u:n :}
    u 0 ?do  t i + c@ CHAR+  loop ;
 
 \ The digits of n, which is not negative.
@@ -55,7 +55,7 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    3 TEXT BYTES>N TEXT-U @ 0 RECORD ;
 
 : FETCH-FIXTURE ( -- )
-   s" fixture" {: path:ptr u:n :}
+   s" fixture" {: path:^ u:n :}
    1 path BYTES>N u 0 RECORD ;
 
 \ The zero event: hello with the event's address and the fixtures' revision, a
@@ -78,13 +78,13 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    1 EVENT@ 2 EVENT@ SUM DIGITS
    TEXT-RECORD ;
 
-: AT ( ptr u8 n -- )
+: AT ( ^u8 n -- )
    0 TEXT-U !  SAY  1 EVENT@ SIGNED  44 CHAR+  2 EVENT@ SIGNED
    TEXT-RECORD ;
 
 \ The u bytes at at are the text t.
-: IS? ( n n ptr u8 n -- bool )
-   {: at:n u:n t:ptr tu:n :}
+: IS? ( n n ^u8 n -- bool )
+   {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do  at i + >BYTES c@  t i + c@ <> if false unloop exit then  loop
    true ;
@@ -118,7 +118,7 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 : ANSWERED ( -- )
    3 EVENT@ 200 = if FETCH-FIXTURE then
    0 TEXT-U !  3 EVENT@ DIGITS  TEXT-RECORD
-   DELIVERY {: at:ptr u:n :}
+   DELIVERY {: at:^ u:n :}
    u 1 max ANSWER-RESERVE
    at 0 ANSWER u BYTE-COPY
    3 0 ANSWER BYTES>N u 0 RECORD ;

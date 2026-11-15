@@ -30,7 +30,7 @@ variable ERRORS
    n 0 ?do -1 i ROW-A ! -1 i ROW-B ! 0 i MARK ! loop
    0 WALK ! -1 OWNER ! 0 ERRORS ! ;
 
-: ENTRY-ADD ( n bool ptr u8 n -- ) {: row:n entry:bool a:ptr u:n :}
+: ENTRY-ADD ( n bool ^u8 n -- ) {: row:n entry:bool a:^ u:n :}
    a u LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if exit then
    f ROW-A @ 0 < if row f ROW-A ! exit then
@@ -77,7 +77,7 @@ variable ERRORS
 
 \ One walk per row: a file the row reached from an earlier file is not walked
 \ again.
-: CHECK-FILE ( n bool ptr u8 n -- ) {: row:n entry:bool a:ptr u:n :}
+: CHECK-FILE ( n bool ^u8 n -- ) {: row:n entry:bool a:^ u:n :}
    row OWNER @ <> if row OWNER ! WALK @ 1+ WALK ! then
    a u LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if f CHECK-PRELOAD then

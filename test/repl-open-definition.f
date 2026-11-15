@@ -12,7 +12,7 @@ using PTY-HARNESS
 
 \ Only the prompt after an answer shows the child reading raw again, so a step
 \ waits for that one and ^D goes only after a step that saw it.
-: STEP ( ptr u8 n -- bool )
+: STEP ( ^u8 n -- bool )
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : OPEN ( -- bool )

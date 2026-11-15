@@ -156,8 +156,8 @@ variable UNSAFE-COUNT
 \ The kernel words a stripped program cannot run: it has no dictionary to read
 \ or write, no writable code and no interpreter for the evaluate words,
 \ literal, compile, and ;.
-: UNSAFE-NAME? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UNSAFE-NAME? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" create" XREF-STR=CI
    a u s" patch32" XREF-STR=CI or
    a u s" code-publish" XREF-STR=CI or
@@ -232,8 +232,8 @@ variable UNSAFE-COUNT
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
 \ kind, and whether they hold one there, read by a's part of LINKER.
-: ADDRESS@ ( CTARGET:arch ptr u8 n n n -- n bool )
-   {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
+: ADDRESS@ ( CTARGET:arch ^u8 n n n -- n bool )
+   {: a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
    NO-PART ;
@@ -241,8 +241,8 @@ variable UNSAFE-COUNT
 
 \ v written as ADDRESS@ reads it, by a's part of LINKER; false, with nothing written,
 \ where ADDRESS@ answers false.
-: ADDRESS! ( n CTARGET:arch ptr u8 n n n -- bool )
-   {: v:n a:CTARGET:arch b:ptr s:n site:n kind:n :}
+: ADDRESS! ( n CTARGET:arch ^u8 n n n -- bool )
+   {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
    NO-PART ;
@@ -423,7 +423,7 @@ variable UNSAFE-COUNT
    {: e:n :}
    e EM-FIRST @
    begin dup 0 >= while
-      dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
+      dup NSHADOW:RECORD@ XREF-REC {: rec:^ :}
       rec NDICT:TRAILER-CELL {: cell:n :}
       cell 0<> if
          RANGE-END  e NSHADOW:SIZE <> if

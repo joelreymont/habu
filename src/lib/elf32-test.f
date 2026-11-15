@@ -14,7 +14,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : U32! ( n n -- ) {: value:n offset:n :}
    4 0 do value i 8 * rshift $FF and INPUT offset + i + c! loop ;
 
-: SPAN ( -- ptr u8 NUM:byte-len )
+: SPAN ( -- ^u8 NUM:byte-len )
    INPUT $90 FILE-BYTES ;
 
 : HEADER-CASE ( -- )

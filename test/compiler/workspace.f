@@ -12,7 +12,7 @@ public
 variable HITS
 private
 : HIT ( -- ) 1 HITS +! ;
-: @ ( ptr n -- n ) HIT drop 0 ;
+: @ ( ^n -- n ) HIT drop 0 ;
 : * ( n n -- n ) HIT + ;
 : + ( a n -- a ) HIT drop ;
 : swap ( a b -- b a ) {: x y :} HIT y x ;
@@ -33,7 +33,7 @@ public
 package CWKT
 public
 \ Stores 1, 2 and 3 at indices 0 to 2 and reads them back as one number.
-: CWK-CELLS ( [ n -- ptr n ] -- n ) {: at :}
+: CWK-CELLS ( [ n -- ^n ] -- n ) {: at :}
    3 0 ?do i 1 + i at execute ! loop
    0 3 0 ?do 10 * i at execute @ + loop ;
 
@@ -49,7 +49,7 @@ public
 create CWK-FOOB 1 allot
 
 \ The text `value CWORK-VARIABLE <name><i> n`.
-: CWK-SRC$ ( n ptr u8 n n -- ptr u8 n ) {: value:n na:ptr nu:n i:n :}
+: CWK-SRC$ ( n ^u8 n n -- ^u8 n ) {: value:n na:^ nu:n i:n :}
    SB-RESET  value FMT:SB-INT  s"  CWORK-VARIABLE " SB-APPEND
    na nu SB-APPEND  i FMT:SB-INT  s"  n" SB-APPEND  SB$ ;
 

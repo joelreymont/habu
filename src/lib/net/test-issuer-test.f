@@ -83,7 +83,7 @@ variable CHILD-OUT                  \ the read end of the child's stdout, an fd 
 
 TYPED-VARIABLE READER JSON:cursor
 create MINTED-HEAD BUF:HDR-BYTES allot
-: MINTED ( -- ptr n ) MINTED-HEAD CELL-VIEW ;
+: MINTED ( -- ^n ) MINTED-HEAD CELL-VIEW ;
 MINTED $100 BUF:N>BLEN BUF:INIT
 
 $80 constant URL-CAP
@@ -99,14 +99,14 @@ variable PORT-KEPT                  \ the server's port, across its restart and 
 CAP BUFFER: AUTH
 variable AUTH-U
 create GOT-HEAD BUF:HDR-BYTES allot
-: GOT ( -- ptr n ) GOT-HEAD CELL-VIEW ;
+: GOT ( -- ^n ) GOT-HEAD CELL-VIEW ;
 GOT $100 BUF:N>BLEN BUF:INIT
 
 \ Whether GOT's storage past its length holds only zero bytes. The GROW spans that
 \ storage within the capacity, so nothing moves, and GOT keeps its length.
 : GOT-ZEROED? ( -- bool )
    GOT BUF:LEN@ {: len:NUM:byte-len :}
-   GOT GOT BUF:CAP@ BUF:BLEN>N len BUF:BLEN>N - BUF:N>BLEN BUF:GROW SPAN:$ {: p:ptr u:n :}
+   GOT GOT BUF:CAP@ BUF:BLEN>N len BUF:BLEN>N - BUF:N>BLEN BUF:GROW SPAN:$ {: p:^ u:n :}
    true u 0 ?do p i + c@ 0<> if drop false then loop
    len GOT BUF:LEN! ;
 
@@ -131,39 +131,39 @@ variable POSTED-U
 $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
-: BODY$ ( -- ptr u8 n ) BODY BODY-U @ ;
-: TOKEN$ ( -- ptr u8 n ) TOKEN TOKEN-U @ ;
-: CLAIMS$ ( -- ptr u8 n ) CLAIMS CLAIMS-U @ ;
-: ASSERTION$ ( -- ptr u8 n ) ASSERTION ASSERTION-U @ ;
+: BODY$ ( -- ^u8 n ) BODY BODY-U @ ;
+: TOKEN$ ( -- ^u8 n ) TOKEN TOKEN-U @ ;
+: CLAIMS$ ( -- ^u8 n ) CLAIMS CLAIMS-U @ ;
+: ASSERTION$ ( -- ^u8 n ) ASSERTION ASSERTION-U @ ;
 
 \ The text copied into a row, answering its length.
-: COPY ( ptr u8 n ptr u8 -- n )
-   {: a:ptr u:n row:ptr :}
+: COPY ( ^u8 n ^u8 -- n )
+   {: a:^ u:n row:^ :}
    a row u BYTE-COPY u ;
 
 
 \ A string member of an object text as sent, empty when absent.
-: MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: t:ptr tu:n k:ptr ku:n :}
+: MEMBER$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: t:^ tu:n k:^ ku:n :}
    READER t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
-   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
+   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
 \ An integer member of an object text, -1 when absent.
-: MEMBER-INT ( ptr u8 n ptr u8 n -- n )
-   {: t:ptr tu:n k:ptr ku:n :}
+: MEMBER-INT ( ^u8 n ^u8 n -- n )
+   {: t:^ tu:n k:^ ku:n :}
    READER t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE -1 exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v ;
 
 \ A string member of the body's first key, as sent.
-: KEY$ ( ptr u8 n -- ptr u8 n )
-   {: k:ptr ku:n :}
+: KEY$ ( ^u8 n -- ^u8 n )
+   {: k:^ ku:n :}
    READER BODY$ JSON:READ-INIT JSON:READ-NEXT drop
    s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
-   k ku JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
+   k ku JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
 
 : OK ( CURL:status -- )
@@ -172,12 +172,12 @@ PAST-CAP BUFFER: OVERSIZE
       failed OF drop false ENDOF
    ;MATCH TTRUE ;
 
-: URL ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pu:n :}
+: URL ( ^u8 n -- ^u8 n )
+   {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
-: OPEN-AT ( ptr u8 n -- CURL:handle )
-   {: url:ptr uu:n :}
+: OPEN-AT ( ^u8 n -- CURL:handle )
+   {: url:^ uu:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
@@ -185,7 +185,7 @@ PAST-CAP BUFFER: OVERSIZE
    ;MATCH {: h:CURL:handle :}
    h url uu CURL:URL! OK h ;
 
-: OPEN ( ptr u8 n -- CURL:handle ) URL OPEN-AT ;
+: OPEN ( ^u8 n -- CURL:handle ) URL OPEN-AT ;
 
 \ The response's status and its body in BODY; -1 for a body past CAP, -2 for
 \ a failed transfer.
@@ -201,21 +201,21 @@ PAST-CAP BUFFER: OVERSIZE
    ;MATCH
    h CURL:CLEANUP ;
 
-: GET ( ptr u8 n -- n ) OPEN FINISH ;
+: GET ( ^u8 n -- n ) OPEN FINISH ;
 
 \ The body posted with the media type; the body is copied by libcurl.
-: POST ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: path:ptr pu:n type:ptr tu:n b:ptr bu:n :}
+: POST ( ^u8 n ^u8 n ^u8 n -- n )
+   {: path:^ pu:n type:^ tu:n b:^ bu:n :}
    path pu OPEN {: h:CURL:handle :}
    h type tu CURL:HEADER+ OK
    h b bu CURL:BODY! OK
    h FINISH ;
 
-: FORM-TYPE ( -- ptr u8 n ) s" Content-Type: application/x-www-form-urlencoded" ;
+: FORM-TYPE ( -- ^u8 n ) s" Content-Type: application/x-www-form-urlencoded" ;
 
 : FORM-RESET ( -- ) 0 FORM-U ! ;
-: FORM+ ( ptr u8 n -- ) FORM FORM-U @ + COPY FORM-U +! ;
-: FORM$ ( -- ptr u8 n ) FORM FORM-U @ ;
+: FORM+ ( ^u8 n -- ) FORM FORM-U @ + COPY FORM-U +! ;
+: FORM$ ( -- ^u8 n ) FORM FORM-U @ ;
 : ASK ( -- n ) s" /token" FORM-TYPE FORM$ POST ;
 
 \ The client's credentials, its secret percent-encoded.
@@ -232,25 +232,25 @@ PAST-CAP BUFFER: OVERSIZE
 : ON-BEHALF ( -- ) UNSCOPED s" &scope=api%3A%2F%2Fdown%2F.default" FORM+ ;
 
 \ The body is the error answer.
-: REFUSED ( n n ptr u8 n -- )
-   {: status:n want:n code:ptr cu:n :}
+: REFUSED ( n n ^u8 n -- )
+   {: status:n want:n code:^ cu:n :}
    SB-RESET S\" {\"error\":\"" SB-APPEND code cu SB-APPEND S\" \"}" SB-APPEND
    BODY$ SB$ T$=
    status want T= ;
 
 
 \ The index of the first dot at or after from, else the text's length.
-: DOT ( ptr u8 n n -- n )
-   {: t:ptr u:n from:n :}
+: DOT ( ^u8 n n -- n )
+   {: t:^ u:n from:n :}
    u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
 
-: DECODED ( ptr u8 n ptr u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
+: DECODED ( ^u8 n ^u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
 
 \ The issued token copied from the answer; its header, claims and signature
 \ decoded.
 : ISSUED ( -- )
    BODY$ s" access_token" MEMBER$ TOKEN COPY TOKEN-U !
-   TOKEN$ {: t:ptr u:n :}
+   TOKEN$ {: t:^ u:n :}
    t u 0 DOT {: d1:n :}
    t u d1 1+ DOT {: d2:n :}
    t d1 HEAD CAP DECODED HEAD-U !
@@ -259,7 +259,7 @@ PAST-CAP BUFFER: OVERSIZE
 
 \ The issued token verifies against the key /keys served.
 : VERIFIES ( -- )
-   TOKEN$ {: t:ptr u:n :}
+   TOKEN$ {: t:^ u:n :}
    t u 0 DOT {: d1:n :}
    t u d1 1+ DOT {: d2:n :}
    MODULUS MODULUS-U @ EXPONENT EXPONENT-U @ t d2 SIGNATURE SIGNATURE-U @
@@ -269,8 +269,8 @@ PAST-CAP BUFFER: OVERSIZE
    HEAD HEAD-U @ s" typ" MEMBER$ s" JWT" T$= ;
 
 \ The answer is a 200 bearer token; the claims every issued token carries.
-: ANSWERED ( n ptr u8 n -- )
-   {: status:n aud:ptr au:n :}
+: ANSWERED ( n ^u8 n -- )
+   {: status:n aud:^ au:n :}
    status 200 T=
    BODY$ s" token_type" MEMBER$ s" Bearer" T$=
    BODY$ s" expires_in" MEMBER-INT ISSUED-S T=
@@ -284,8 +284,8 @@ PAST-CAP BUFFER: OVERSIZE
    CLAIMS$ s" exp" MEMBER-INT iat ISSUED-S + T= ;
 
 \ An assertion for the client, minted into ASSERTION.
-: ASSERT ( ptr u8 n n -- )
-   {: aud:ptr au:n exp:n :}
+: ASSERT ( ^u8 n n -- )
+   {: aud:^ au:n exp:n :}
    SB-RESET S\" {\"aud\":\"" SB-APPEND aud au SB-APPEND S\" \",\"exp\":" SB-APPEND
    exp FMT:SB-INT S\" ,\"oid\":\"user-1\",\"tid\":\"tenant-1\"}" SB-APPEND
    SB$ MINTED TEST-ISSUER:MINT ASSERTION COPY ASSERTION-U ! ;
@@ -294,7 +294,7 @@ PAST-CAP BUFFER: OVERSIZE
 
 \ One signature byte changed, away from the last character's padding bits.
 : FLIP ( -- )
-   ASSERTION ASSERTION-U @ + 10 - {: at:ptr :}
+   ASSERTION ASSERTION-U @ + 10 - {: at:^ :}
    at c@ [char] A = if [char] B else [char] A then at c! ;
 
 
@@ -386,15 +386,15 @@ PAST-CAP BUFFER: OVERSIZE
 
 : MINTS ( -- )
    s" /mint answers MINT's token for the same claims" T-LABEL
-   S\" {\"sub\":\"s-1\",\"n\":7}" {: c:ptr cu:n :}
+   S\" {\"sub\":\"s-1\",\"n\":7}" {: c:^ cu:n :}
    s" /mint" s" Content-Type: application/json" c cu POST 200 T=
    BODY$ c cu MINTED TEST-ISSUER:MINT T$= ;
 
 
-: ISSUER$ ( -- ptr u8 n ) ISSUER-URL ISSUER-URL-U @ ;
-: KEYS-URL$ ( -- ptr u8 n ) KEYS-URL KEYS-URL-U @ ;
-: ENDPOINT$ ( -- ptr u8 n ) ENDPOINT ENDPOINT-U @ ;
-: FAULT-URL$ ( -- ptr u8 n ) FAULT-URL FAULT-URL-U @ ;
+: ISSUER$ ( -- ^u8 n ) ISSUER-URL ISSUER-URL-U @ ;
+: KEYS-URL$ ( -- ^u8 n ) KEYS-URL KEYS-URL-U @ ;
+: ENDPOINT$ ( -- ^u8 n ) ENDPOINT ENDPOINT-U @ ;
+: FAULT-URL$ ( -- ^u8 n ) FAULT-URL FAULT-URL-U @ ;
 
 \ The running server's port and URLs, kept for its restart and stop.
 : ADDRESSES ( -- )
@@ -418,7 +418,7 @@ OVERSIZE-FILL
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer BEARER:ADMIT? 0= if exit then
    asked HTTP:BODY$ BEARER:CLAIM$ 0= if 2drop answer 404 HTTP:STATUS! exit then
-   {: v:ptr vu:n :} answer v vu HTTP:BODY! ;
+   {: v:^ vu:n :} answer v vu HTTP:BODY! ;
 
 : FAULT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -439,12 +439,12 @@ OVERSIZE-FILL
    asked HTTP:BODY$ POSTED COPY POSTED-U !
    answer S\" {\"expires_in\":60,\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
 
-: AUTH+ ( ptr u8 n -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
+: AUTH+ ( ^u8 n -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
 
 \ The token presented to /claim, asking for the named claim: the status, the
 \ claim in BODY.
-: CLAIM ( ptr u8 n ptr u8 n -- n )
-   {: t:ptr tu:n name:ptr nu:n :}
+: CLAIM ( ^u8 n ^u8 n -- n )
+   {: t:^ tu:n name:^ nu:n :}
    0 AUTH-U ! s" Authorization: Bearer " AUTH+ t tu AUTH+
    s" /claim" OPEN {: h:CURL:handle :}
    h AUTH AUTH-U @ CURL:HEADER+ OK
@@ -452,10 +452,10 @@ OVERSIZE-FILL
    h name nu CURL:BODY! OK
    h FINISH ;
 
-: UP ( -- ptr u8 n ) s" api://up/.default" ;
-: OWN-TOKEN ( -- ptr u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
-: ZEN ( -- ptr u8 n ) s" api://zen/.default" ;
-: FAULT-TOKEN ( -- ptr u8 n n )
+: UP ( -- ^u8 n ) s" api://up/.default" ;
+: OWN-TOKEN ( -- ^u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
+: ZEN ( -- ^u8 n ) s" api://zen/.default" ;
+: FAULT-TOKEN ( -- ^u8 n n )
    ZEN s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
 \ /token-fault answering as the mode makes TOKEN throw the code.
 : FAULT-THROWS ( n n -- )
@@ -468,23 +468,23 @@ variable LOG-PATH-U
 create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 $A constant LF
 
-: LOG-PATH$ ( -- ptr u8 n ) LOG-PATH LOG-PATH-U @ ;
+: LOG-PATH$ ( -- ^u8 n ) LOG-PATH LOG-PATH-U @ ;
 
 : LOG-INIT ( -- )
-   s" test-issuer-test" FS:MKTEMP-DIR {: dir:ptr dir-u:n :}
+   s" test-issuer-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
    dir dir-u FS:CLEANUP-TREE+
    dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
    LOG-B 1 BUF:N>BLEN BUF:INIT ;
 
 \ The whole capture file, valid until the next read.
-: LOG$ ( -- ptr u8 n )
+: LOG$ ( -- ^u8 n )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
    LOG-B BUF:SPAN$ BUF:BLEN>N ;
 
 : LINES ( -- n )
-   LOG$ {: a:ptr u:n :}
+   LOG$ {: a:^ u:n :}
    0 u 0 ?do a i + c@ LF = if 1+ then loop ;
 
 : CAPTURED ( [ -- ] -- )
@@ -492,8 +492,8 @@ $A constant LF
    [: STDERR:;CAPTURE ;] finally ;
 
 \ The one captured line after its stamp, empty when the capture is shorter.
-: LINE$ ( -- ptr u8 n )
-   LOG$ {: a:ptr u:n :}
+: LINE$ ( -- ^u8 n )
+   LOG$ {: a:^ u:n :}
    u DATE:TIME-LEN < if a 0 exit then
    a DATE:TIME-LEN + u DATE:TIME-LEN - ;
 
@@ -525,7 +525,7 @@ $A constant LF
    ENDPOINT$ s" cli" s" " BEARER:CLIENT!
    s" REFRESH from a public client is admitted with the refresh token's oid, for expires_in" T-LABEL
    s" cli" LATER ASSERT
-   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= {: r:ptr ru:n :}
+   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= {: r:^ ru:n :}
    s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
    s" its new refresh token refreshes again" T-LABEL
    r ru ASSERTION$ T$<>
@@ -664,7 +664,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    false ;
 
 \ The URL the issuer line names, empty when the child printed none.
-: CHILD-URL ( -- ptr u8 n )
+: CHILD-URL ( -- ^u8 n )
    LINE LINE-U @ s" issuer " STARTS-WITH? TTRUE
    LINE-U @ 8 - {: u:n :}
    u 0 > if LINE 7 + u exit then
@@ -692,7 +692,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    out-r FD>N CHILD-OUT !
    0 LINE-U !
    [: LINE? ;] TEST-WAIT:POLL
-   CHILD-URL {: url:ptr uu:n :}
+   CHILD-URL {: url:^ uu:n :}
    SB-RESET url uu SB-APPEND s" /.well-known/openid-configuration" SB-APPEND
    SB$ OPEN-AT FINISH 200 T=
    BODY$ s" issuer" MEMBER$ url uu T$=

@@ -125,17 +125,17 @@ TASK:+USER PASSED n
 TASK:+USER FROM n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
-: OUTER-CURSOR ( -- ptr JSON:cursor ) SLOT OUTER ;
-: HEADER$ ( -- ptr u8 n ) SLOT HEADER @ SPAN:$ ;
-: CLAIMS$ ( -- ptr u8 n ) SLOT CLAIMS @ SPAN:$ ;
+: CURSOR ( -- ^JSON:cursor ) SLOT READER ;
+: OUTER-CURSOR ( -- ^JSON:cursor ) SLOT OUTER ;
+: HEADER$ ( -- ^u8 n ) SLOT HEADER @ SPAN:$ ;
+: CLAIMS$ ( -- ^u8 n ) SLOT CLAIMS @ SPAN:$ ;
 
 : ROOM ( n n -- SPAN:span<u8> )
    {: off:n len:n :}
    SCRATCH SLOT SCRATCH-BYTES * off + len SPAN:SUB ;
 
-: DECODED ( ptr u8 n SPAN:span<u8> -- SPAN:span<u8> )
-   {: a:ptr u:n room :}
+: DECODED ( ^u8 n SPAN:span<u8> -- SPAN:span<u8> )
+   {: a:^ u:n room :}
    a u room BASE64:DECODE-URL {: got:n :}
    room 0 got SPAN:SUB ;
 
@@ -157,30 +157,30 @@ TASK:+USER FROM n
 
 \ The worker's reader on an object text at a member's value, and its token
 \ kind, -1 when the member is absent; the caller reads and closes it.
-: MEMBER ( ptr u8 n ptr u8 n -- JSON:reader n )
-   {: t:ptr tu:n k:ptr ku:n :}
+: MEMBER ( ^u8 n ^u8 n -- JSON:reader n )
+   {: t:^ tu:n k:^ ku:n :}
    CURSOR t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if -1 exit then
    JSON:READ-TOKEN ;
 
-: KIND-OF ( ptr u8 n ptr u8 n -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
+: KIND-OF ( ^u8 n ^u8 n -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
 
-: MEMBER-IS? ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
-   {: t:ptr tu:n k:ptr ku:n w:ptr wu:n absent:bool :}
+: MEMBER-IS? ( ^u8 n ^u8 n ^u8 n bool -- bool )
+   {: t:^ tu:n k:^ ku:n w:^ wu:n absent:bool :}
    t tu k ku MEMBER {: kind:n :}
    kind -1 = if JSON:READ-CLOSE absent exit then
    kind JSON:T-STR <> if JSON:READ-CLOSE false exit then
    w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
-: MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+: MEMBER$ ( ^u8 n ^u8 n -- ^u8 n )
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
-   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
+   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
-: MEMBER-INT ( ptr u8 n ptr u8 n -- n bool )
+: MEMBER-INT ( ^u8 n ^u8 n -- n bool )
    MEMBER JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
-: NOTE$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+: NOTE$ ( ^u8 n ^u8 n -- ^u8 n bool )
    NOTE-OFF HTTP:HEAD-CAP ROOM {: note :}
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
    note SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
@@ -192,18 +192,18 @@ TASK:+USER FROM n
 : TOKEN? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
    asked s" Authorization" HTTP:HEADER-COUNT-OF 1 <> if false exit then
-   asked s" Authorization" HTTP:HEADER-OF$ drop {: v:ptr vu:n :}
+   asked s" Authorization" HTTP:HEADER-OF$ drop {: v:^ vu:n :}
    vu 7 <= if false exit then
    v 6 s" Bearer" STR=CI 0= if false exit then
    v 6 + c@ 32 <> if false exit then
    v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
-: DOT ( ptr u8 n n -- n )
-   {: t:ptr u:n from:n :}
+: DOT ( ^u8 n n -- n )
+   {: t:^ u:n from:n :}
    u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
 
-: SEGMENT ( ptr u8 n n -- SPAN:span<u8> )
-   {: a:ptr u:n off:n :}
+: SEGMENT ( ^u8 n n -- SPAN:span<u8> )
+   {: a:^ u:n off:n :}
    a u off HTTP:HEAD-CAP off - ROOM DECODED ;
 
 \ Whether a text is one JSON object; malformed JSON throws the reader's code.
@@ -217,7 +217,7 @@ TASK:+USER FROM n
 \ claims that are JSON objects repeating no member name (RFC 7519 §4), the
 \ header naming a kid.
 : OPEN ( -- bool )
-   SLOT PRESENTED @ SPAN:$ {: t:ptr u:n :}
+   SLOT PRESENTED @ SPAN:$ {: t:^ u:n :}
    t u 0 DOT {: d1:n :}
    d1 u = if false exit then
    t u d1 1+ DOT {: d2:n :}
@@ -233,14 +233,14 @@ TASK:+USER FROM n
    body OBJECT? 0= if false exit then
    HEADER$ JSON:READ-REPEATS? if false exit then
    CLAIMS$ JSON:READ-REPEATS? if false exit then
-   HEADER$ s" kid" NOTE$ {: k:ptr ku:n named:bool :}
+   HEADER$ s" kid" NOTE$ {: k:^ ku:n named:bool :}
    k ku SPAN:MAKE SLOT KID ! named ;
 
 
 \ Its n and e are decoded into the worker's scratch; ones that will not decode
 \ throw, since a key the issuer publishes broken is not the caller's.
-: PICK? ( ptr u8 n -- bool )
-   {: m:ptr mu:n :}
+: PICK? ( ^u8 n -- bool )
+   {: m:^ mu:n :}
    m mu s" kid" SLOT KID @ SPAN:$ false MEMBER-IS? 0= if false exit then
    m mu s" kty" s" RSA" false MEMBER-IS? 0= if false exit then
    m mu s" use" s" sig" true MEMBER-IS? 0= if false exit then
@@ -419,13 +419,13 @@ ENUM lookup-step
    [: drop epoch-seconds VALID? ;] STEP 0= if INVALID exit then
    ADMITTED ;
 
-: CHALLENGE ( HTTP:response ptr u8 n -- )
-   {: answer:HTTP:response value:ptr vu:n :}
+: CHALLENGE ( HTTP:response ^u8 n -- )
+   {: answer:HTTP:response value:^ vu:n :}
    answer 401 HTTP:STATUS!
    answer s" WWW-Authenticate" value vu HTTP:HEADER! ;
 
 \ The challenge for NO-TOKEN or INVALID.
-: CHALLENGE$ ( n -- ptr u8 n )
+: CHALLENGE$ ( n -- ^u8 n )
    {: outcome:n :}
    NAMED-SPAN {: named :}
    named SPAN:LEN 0= if
@@ -440,14 +440,14 @@ ENUM lookup-step
    outcome UNAVAILABLE = if answer 503 HTTP:STATUS! exit then
    answer outcome CHALLENGE$ CHALLENGE ;
 
-: NAMED-PREFIX ( -- ptr u8 n ) s" Bearer " ;
-: INVALID-PREFIX ( -- ptr u8 n ) S\" Bearer error=\"invalid_token\", " ;
-: METADATA-NAME ( -- ptr u8 n ) s" resource_metadata" ;
-: SCOPE-NAME ( -- ptr u8 n ) s" scope" ;
-: SEPARATOR ( -- ptr u8 n ) s" , " ;
+: NAMED-PREFIX ( -- ^u8 n ) s" Bearer " ;
+: INVALID-PREFIX ( -- ^u8 n ) S\" Bearer error=\"invalid_token\", " ;
+: METADATA-NAME ( -- ^u8 n ) s" resource_metadata" ;
+: SCOPE-NAME ( -- ^u8 n ) s" scope" ;
+: SEPARATOR ( -- ^u8 n ) s" , " ;
 
-: PUT ( ptr u8 n SPAN:span<u8> n -- n )
-   {: a:ptr u:n row off:n :}
+: PUT ( ^u8 n SPAN:span<u8> n -- n )
+   {: a:^ u:n row off:n :}
    a u row off SPAN:SKIP SPAN:COPY
    off u + ;
 
@@ -460,8 +460,8 @@ ENUM lookup-step
 
 
 \ Writes nothing for an empty value, as PARAM-LEN measures nothing.
-: PARAM ( ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
-   {: name:ptr nu:n value:ptr vu:n row off:n :}
+: PARAM ( ^u8 n ^u8 n SPAN:span<u8> n -- n )
+   {: name:^ nu:n value:^ vu:n row off:n :}
    vu 0= if off exit then
    name nu row off PUT {: past-name:n :}
    S\" =\"" row past-name PUT {: past-eq:n :}
@@ -469,16 +469,16 @@ ENUM lookup-step
    S\" \"" row past-value PUT ;
 
 
-: NAMING ( ptr u8 n ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
-   {: pre:ptr pu:n url:ptr uu:n scope:ptr su:n row off:n :}
+: NAMING ( ^u8 n ^u8 n ^u8 n SPAN:span<u8> n -- n )
+   {: pre:^ pu:n url:^ uu:n scope:^ su:n row off:n :}
    pre pu row off PUT {: past-pre:n :}
    METADATA-NAME url uu row past-pre PARAM {: past-url:n :}
    uu 0<> su 0<> and if SEPARATOR row past-url PUT else past-url then
    {: past-sep:n :}
    SCOPE-NAME scope su row past-sep PARAM ;
 
-: COMPOSED ( ptr u8 n ptr u8 n -- SPAN:span<u8> n )
-   {: url:ptr uu:n scope:ptr su:n :}
+: COMPOSED ( ^u8 n ^u8 n -- SPAN:span<u8> n )
+   {: url:^ uu:n scope:^ su:n :}
    uu 0= su 0= and if s" " SPAN:MAKE 0 exit then
    METADATA-NAME nip uu PARAM-LEN SCOPE-NAME nip su PARAM-LEN +
    uu 0<> su 0<> and if SEPARATOR nip + then {: params:n :}
@@ -490,7 +490,7 @@ ENUM lookup-step
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
-: QUOTABLE ( ptr u8 n -- )
+: QUOTABLE ( ^u8 n -- )
    {: text u:n :}
    u 0 ?do
       text i + c@ {: c :}
@@ -500,7 +500,7 @@ ENUM lookup-step
 
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
 \ from the next. An empty scope names none.
-: SCOPE-TOKENS ( ptr u8 n -- )
+: SCOPE-TOKENS ( ^u8 n -- )
    {: text u:n :}
    u 0= if exit then
    text c@ $20 = text u 1- + c@ $20 = or if E-OPERAND throw then
@@ -519,8 +519,8 @@ public
 \ answers to, and its JWK Set's URL. The texts are borrowed and outlive the
 \ server, as literals do. A built program keeps none: it states them at run
 \ time. E-HTTP-STATE while HTTP serves.
-: ISSUER! ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: iss:ptr iu:n aud:ptr au:n url:ptr uu:n :}
+: ISSUER! ( ^u8 n ^u8 n ^u8 n -- )
+   {: iss:^ iu:n aud:^ au:n url:^ uu:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    iss ISSUER-AT ! iu ISSUER-LEN !
    aud AUDIENCE-AT ! au AUDIENCE-LEN !
@@ -538,8 +538,8 @@ public
 \ $7F, which the quoted challenge value cannot carry, or a scope that is not
 \ space-separated RFC 6749 3.3 scope tokens. A refused text or allocation
 \ leaves the previous challenges in force. E-HTTP-STATE while HTTP serves.
-: METADATA! ( ptr u8 n ptr u8 n -- )
-   {: url:ptr uu:n scope:ptr su:n :}
+: METADATA! ( ^u8 n ^u8 n -- )
+   {: url:^ uu:n scope:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    url uu QUOTABLE
    scope su SCOPE-TOKENS
@@ -570,8 +570,8 @@ public
 \ A string claim of the admitted request this worker answers, decoded; false
 \ outside one, or for a claim that is absent or not a string. The answer is
 \ borrowed until the worker's next CLAIM$ or ADMIT?.
-: CLAIM$ ( ptr u8 n -- ptr u8 n bool )
-   {: name:ptr nu:n :}
+: CLAIM$ ( ^u8 n -- ^u8 n bool )
+   {: name:^ nu:n :}
    PASSED @ 0= if s" " false exit then
    FROM @ HTTP:>REQUEST HTTP:SERVING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
@@ -596,15 +596,15 @@ public
 \ whose token is the assertion (Entra On-Behalf-Of).
 ENUM grant
    VARIANT own ;VARIANT
-   VARIANT for-person FIELD assertion ptr u8 FIELD len n ;VARIANT
+   VARIANT for-person FIELD assertion ^u8 FIELD len n ;VARIANT
 ;ENUM
 
 \ The token endpoint's URL, and the client id and secret this process presents
 \ there, written before any TOKEN or REFRESH, not while one runs. An empty
 \ secret states a public client, which presents none (RFC 6749 2.3.1). The
 \ texts are borrowed and outlive every TOKEN and REFRESH, as literals do.
-: CLIENT! ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: url:ptr uu:n id:ptr iu:n secret:ptr su:n :}
+: CLIENT! ( ^u8 n ^u8 n ^u8 n -- )
+   {: url:^ uu:n id:^ iu:n secret:^ su:n :}
    url uu SPAN:MAKE ENDPOINT !
    id iu SPAN:MAKE CLIENT-ID !
    secret su SPAN:MAKE SECRET ! ;
@@ -621,44 +621,44 @@ private
 
 : HEX-DIGIT ( n -- n ) dup 10 < if [char] 0 + else 10 - [char] A + then ;
 
-: ENCODED+ ( n ptr n -- )
-   {: c:n buf:ptr :}
+: ENCODED+ ( n ^n -- )
+   {: c:n buf:^ :}
    c UNRESERVED? if c buf BUF:APPEND-BYTE exit then
    [char] % buf BUF:APPEND-BYTE
    c 4 rshift HEX-DIGIT buf BUF:APPEND-BYTE
    c 15 and HEX-DIGIT buf BUF:APPEND-BYTE ;
 
-: PAIR+ ( ptr u8 n ptr u8 n ptr n -- )
-   {: k:ptr ku:n v:ptr vu:n buf:ptr :}
+: PAIR+ ( ^u8 n ^u8 n ^n -- )
+   {: k:^ ku:n v:^ vu:n buf:^ :}
    buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
    k ku BUF:N>BLEN buf BUF:APPEND-SPAN
    [char] = buf BUF:APPEND-BYTE
    vu 0 ?do v i + c@ buf ENCODED+ loop ;
 
-: CREDENTIALS+ ( ptr n -- )
-   {: buf:ptr :}
+: CREDENTIALS+ ( ^n -- )
+   {: buf:^ :}
    s" client_id" CLIENT-ID @ SPAN:$ buf PAIR+
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-: WIPE ( ptr n -- )
-   {: buf:ptr :}
+: WIPE ( ^n -- )
+   {: buf:^ :}
    0 buf BUF:SPAN SPAN:FILL
    buf BUF:CLEAR ;
 
 \ What the BUF held is wiped, and it has room for a form within TOKEN-CAP: the
 \ secret and the earlier answer never sit in storage a grow releases.
-: EMPTIED ( ptr n -- ) {: buf:ptr :} buf WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
+: EMPTIED ( ^n -- ) {: buf:^ :} buf WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
 
-: FORM ( ptr u8 n grant ptr n -- )
-   {: scope:ptr su:n g buf:ptr :}
+: FORM ( ^u8 n grant ^n -- )
+   {: scope:^ su:n g buf:^ :}
    g MATCH grant
       own OF
          buf EMPTIED
          s" grant_type" s" client_credentials" buf PAIR+
          buf CREDENTIALS+
          s" scope" scope su buf PAIR+ ENDOF
-      for-person OF {: a:ptr au:n :}
+      for-person OF {: a:^ au:n :}
          buf EMPTIED
          s" grant_type" s" urn:ietf:params:oauth:grant-type:jwt-bearer" buf PAIR+
          buf CREDENTIALS+
@@ -667,8 +667,8 @@ private
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
 
-: REFRESH-FORM ( ptr u8 n ptr u8 n ptr n -- )
-   {: scope:ptr su:n r:ptr ru:n buf:ptr :}
+: REFRESH-FORM ( ^u8 n ^u8 n ^n -- )
+   {: scope:^ su:n r:^ ru:n buf:^ :}
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
    buf CREDENTIALS+
@@ -692,8 +692,8 @@ private
 
 \ The BUF's form set as the request's body, then wiped from the BUF since the
 \ secret is in it; whether every setting took, logging the first that did not.
-: REQUESTED? ( CURL:handle ptr n -- bool )
-   {: h:CURL:handle buf:ptr :}
+: REQUESTED? ( CURL:handle ^n -- bool )
+   {: h:CURL:handle buf:^ :}
    h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY!
    buf WIPE
    SET? 0= if false exit then
@@ -714,8 +714,8 @@ private
    code 400 >= code 500 < and if E-REFUSED exit then
    E-RESPONSE ;
 
-: RECEIVED ( CURL:handle ptr n -- option<CURL:http-status> )
-   {: h:CURL:handle buf:ptr :}
+: RECEIVED ( CURL:handle ^n -- option<CURL:http-status> )
+   {: h:CURL:handle buf:^ :}
    buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
    h room SPAN:$ >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -734,16 +734,16 @@ private
       failed OF buf WIPE CURL-FAULT UNANSWERED ENDOF
    ;MATCH ;
 
-: POST ( CURL:handle ptr n -- option<CURL:http-status> )
-   {: h:CURL:handle buf:ptr :}
+: POST ( CURL:handle ^n -- option<CURL:http-status> )
+   {: h:CURL:handle buf:^ :}
    h buf REQUESTED? if h buf RECEIVED else UNANSWERED then ;
 
 \ POST's status in place of the third cell, the handle and BUF kept for catch.
-: POSTED ( CURL:handle ptr n option<CURL:http-status> -- CURL:handle ptr n option<CURL:http-status> )
-   drop {: h:CURL:handle buf:ptr :} h buf h buf POST ;
+: POSTED ( CURL:handle ^n option<CURL:http-status> -- CURL:handle ^n option<CURL:http-status> )
+   drop {: h:CURL:handle buf:^ :} h buf h buf POST ;
 
-: EXCHANGE ( ptr n -- option<CURL:http-status> )
-   {: buf:ptr :}
+: EXCHANGE ( ^n -- option<CURL:http-status> )
+   {: buf:^ :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
@@ -756,8 +756,8 @@ private
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
 \ value, and its token kind, -1 when the text is no object or lacks the member;
 \ the caller reads and closes it.
-: ANSWER-MEMBER ( SPAN:span<u8> ptr u8 n -- JSON:reader n )
-   {: text k:ptr ku:n :}
+: ANSWER-MEMBER ( SPAN:span<u8> ^u8 n -- JSON:reader n )
+   {: text k:^ ku:n :}
    ANSWER-CURSOR text SPAN:$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if -1 exit then
    k ku JSON:READ-FIND-KEY 0= if -1 exit then
@@ -809,8 +809,8 @@ private
 
 \ A 2xx answer lacking a member, logged without the answer, which can hold a
 \ token.
-: LACKS ( n ptr u8 n -- )
-   {: status:n what:ptr wu:n :}
+: LACKS ( n ^u8 n -- )
+   {: status:n what:^ wu:n :}
    OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
    s"  lacks " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
    E-RESPONSE throw ;
@@ -819,8 +819,8 @@ private
 \ when absent, decoded into the BUF past the answer's bytes, the refresh token
 \ right after the access token, and its expires_in. They are disjoint parts of
 \ the answer and a decoded string never outgrows its text, so both fit.
-: ISSUED ( n ptr n bool -- ptr u8 n ptr u8 n n )
-   {: status:n buf:ptr renew:bool :}
+: ISSUED ( n ^n bool -- ^u8 n ^u8 n n )
+   {: status:n buf:^ renew:bool :}
    buf BUF:LEN@ {: u:NUM:byte-len :}
    buf u BUF:GROW {: room :}
    buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room renew [: PARSED ;] PARSING
@@ -828,18 +828,18 @@ private
    got 0< if status s" an access_token string" LACKS then
    kept 0< if status s" a refresh_token string" LACKS then
    secs 0< if status s" a positive integer expires_in" LACKS then
-   room SPAN:$ drop {: at:ptr :}
+   room SPAN:$ drop {: at:^ :}
    at got at got + kept secs ;
 
-: ANSWERED ( n ptr n -- )
-   {: status:n buf:ptr :}
+: ANSWERED ( n ^n -- )
+   {: status:n buf:^ :}
    OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
    s" : " LOG:TEXT+  buf BUF:SPAN$ BUF:BLEN>N LOG:TEXT+  LOG:;LINE ;
 
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
 
-: ASKED ( ptr n -- n )
-   {: buf:ptr :}
+: ASKED ( ^n -- n )
+   {: buf:^ :}
    buf EXCHANGE MATCH option
       none OF E-TRANSFER throw ENDOF
       some OF ENDOF
@@ -861,11 +861,11 @@ public
 \ Each of those failures first logs one line tagged bearer, never a 2xx
 \ answer's text. A scope or assertion must not lie in the BUF.
 \ E-HTTP-STATE before CLIENT!.
-: TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
-   {: scope:ptr su:n g buf:ptr :}
+: TOKEN ( ^u8 n grant ^n -- ^u8 n n )
+   {: scope:^ su:n g buf:^ :}
    STATED
    scope su g buf FORM
-   buf ASKED buf false ISSUED {: a:ptr u:n r:ptr ru:n secs:n :}
+   buf ASKED buf false ISSUED {: a:^ u:n r:^ ru:n secs:n :}
    a u secs ;
 
 
@@ -876,8 +876,8 @@ public
 \ to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
 \ refresh_token is not a string. A scope or refresh token must not lie in the
 \ BUF.
-: REFRESH ( ptr u8 n ptr u8 n ptr n -- ptr u8 n ptr u8 n n )
-   {: scope:ptr su:n r:ptr ru:n buf:ptr :}
+: REFRESH ( ^u8 n ^u8 n ^n -- ^u8 n ^u8 n n )
+   {: scope:^ su:n r:^ ru:n buf:^ :}
    STATED
    scope su r ru buf REFRESH-FORM
    buf ASKED buf true ISSUED ;

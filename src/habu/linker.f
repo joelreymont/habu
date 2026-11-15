@@ -66,7 +66,7 @@ variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-C
 TYPED-VARIABLE BODY [ -- ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
-TYPED-VARIABLE PRIOR-RUNNER [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
+TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ]
 
 \ The host cells a build changes; RESTORE puts them back.
 variable SAVED-DP
@@ -89,7 +89,7 @@ GENIO-ABI:END GENIO-ABI:OUT-CELL - BUFFER: SAVED-ROUTING
 
 $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
-: HOST ( n -- ptr n )
+: HOST ( n -- ^n )
    {: off:n :}
    data-base BYTE-VIEW off + CELL-VIEW ;
 
@@ -97,15 +97,15 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : HOST! ( n n -- ) HOST ! ;
 : DATA-N ( -- n ) data-base NULL-PTR - ;
 
-: SPACE-AT ( n -- ptr n )
+: SPACE-AT ( n -- ^n )
    {: off:n :}
    NULL-PTR BYTE-VIEW BASE @ + off + CELL-VIEW ;
 
 \ The open space's bytes, [BASE, DP).
-: SPACE-DATA ( -- ptr u8 n )
+: SPACE-DATA ( -- ^u8 n )
    NULL-PTR BYTE-VIEW BASE @ +  DP-CELL HOST@ BASE @ - ;
 
-: ROWS ( -- ptr n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
+: ROWS ( -- ^n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
 
 \ A row's cell offset from the space's start, and its kind (layout.f).
 : ROW-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
@@ -231,7 +231,7 @@ STAMP-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!)
 $10 constant TIMESPEC-BYTES
 TIMESPEC-BYTES BUFFER: CLOCK-SPEC
 PROCESS-SYMBOLS
-FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
+FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ^u8 -- i32 )
 ;FUNCTION
 
 \ Nanoseconds since the epoch on clock 0, CLOCK_REALTIME on macOS and Linux: a piece's time.
@@ -454,9 +454,9 @@ variable RUN-N                       \ the running run's filled slots
 variable RUN-ID                      \ the running run's id, from 1
 variable RUN-AT                      \ the offset in SPELLS of the running run's first sum
 
-: SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
-: SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
-: SLOT-PKG ( n -- ptr n ) 3 * 2 + NAMES ;
+: SLOT-SUM ( n -- ^n ) 3 * NAMES ;
+: SLOT-ROW ( n -- ^n ) 3 * 1 + NAMES ;
+: SLOT-PKG ( n -- ^n ) 3 * 2 + NAMES ;
 
 \ NAMES with cap slots, all empty.
 : NAMES-CLEAR ( n -- )
@@ -532,7 +532,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ['] INIT-BUFFERS catch {: rc:n :}
    rc 0<> if DISPOSE-OBJECTS rc throw then ;
 
-: BYTES$ ( ptr a -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
+: BYTES$ ( ^a -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 
 \ OBJECT's bytes, which every field read of OBJECT reads: READ-OBJECT and WRITE-OBJECT, the
 \ only words that move them, take them again (OBJ-TAKE) before they return, as RD-OPEN does.
@@ -541,23 +541,23 @@ PTR-VARIABLE OBJ-BASE
 \ Answers OBJECT's length.
 : OBJ-TAKE ( -- n ) OBJECT BYTES$ swap OBJ-BASE ! ;
 
-: OBJ-PTR ( n -- ptr u8 ) OBJ-BASE @ swap + ;
+: OBJ-PTR ( n -- ^u8 ) OBJ-BASE @ swap + ;
 
-: SPAN+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
+: SPAN+ ( ^u8 n ^a -- ) {: a:^ u:n buf:^ :}
    a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
 \ n as eight bytes, low byte first.
-: U64+ ( n ptr a -- ) {: v:n buf:ptr :}
+: U64+ ( n ^a -- ) {: v:n buf:^ :}
    v  buf 8 BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U64! ;
 
 \ A key field: its length as a U64+, then its bytes.
-: FIELD+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
+: FIELD+ ( ^u8 n ^a -- ) {: a:^ u:n buf:^ :}
    u buf U64+  a u buf SPAN+ ;
 
 \ The offset of the path's FIELD+ in the buffer of FIELD+s, added when it holds none.
-: PATH-IN ( ptr u8 n ptr a -- n )
-   {: a:ptr u:n buf:ptr :}
-   buf BYTES$ {: p:ptr pu:n :}
+: PATH-IN ( ^u8 n ^a -- n )
+   {: a:^ u:n buf:^ :}
+   buf BYTES$ {: p:^ pu:n :}
    0 begin dup pu < while
       {: at:n :}
       p at + LE:U64@ {: len:n :}
@@ -567,35 +567,35 @@ PTR-VARIABLE OBJ-BASE
    drop  a u buf FIELD+  pu ;
 
 \ The path the key at the address names (KEY-PATHS).
-: CANON$ ( ptr u8 -- ptr u8 n )
+: CANON$ ( ^u8 -- ^u8 n )
    LE:U64@ {: at:n :}
-   KEY-PATHS BYTES$ drop {: a:ptr :}
+   KEY-PATHS BYTES$ drop {: a:^ :}
    a at + 8 +  a at + LE:U64@ ;
 
 \ The key of the file whose compile or link is running, empty for the build's body.
-: LOADER$ ( -- ptr u8 n )
-   LOADERS BYTES$ {: a:ptr u:n :}
+: LOADER$ ( -- ^u8 n )
+   LOADERS BYTES$ {: a:^ u:n :}
    u 0= if a 0 exit then
    a u LOADER-BYTES - +  KEY-BYTES ;
 
 \ The running file is being linked, so a file it requests links too.
 : LINKING? ( -- bool )
-   LOADERS BYTES$ {: a:ptr u:n :}
+   LOADERS BYTES$ {: a:^ u:n :}
    u 0= if false exit then
    a u 8 - + LE:U64@ 1 = ;
 
 \ The build's earlier loads of the path at the offset in KEY-PATHS (LOADS).
 : SEEN ( n -- n )
    {: at:n :}
-   LOADS BYTES$ {: rows:ptr rowsu:n :}
+   LOADS BYTES$ {: rows:^ rowsu:n :}
    0  rowsu 8 / 0 ?do
       rows i 8 * + LE:U64@ at = if 1 + then
    loop ;
 
 \ FILE-KEY for a load of the path: its offset in KEY-PATHS, then its earlier loads (SEEN); the
 \ offset goes onto LOADS.
-: KEY! ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: KEY! ( ^u8 n -- )
+   {: path:^ pathu:n :}
    path pathu KEY-PATHS PATH-IN {: at:n :}
    at FILE-KEY LE:U64!
    at SEEN FILE-KEY 8 + LE:U64!
@@ -609,25 +609,25 @@ PTR-VARIABLE OBJ-BASE
 
 \ The stack's top back into FILE-KEY, and off the stack.
 : POP-KEY ( -- )
-   LOADER$ {: top:ptr topu:n :}
+   LOADER$ {: top:^ topu:n :}
    top FILE-KEY topu BYTE-COPY
    LOADERS BYTES$ LOADER-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
 
-: PATH! ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: PATH! ( ^u8 n -- )
+   {: path:^ pathu:n :}
    pathu PATH-CAP min {: u:n :}
    path FILE-PATH u BYTE-COPY  u FILE-PATH-N ! ;
 
 \ FILE-KEY's load into LOAD-PATHS, with the path below the root that resolved it, as the
 \ program's map names the file.
-: PATH+ ( ptr u8 n ptr u8 n -- )
-   SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
+: PATH+ ( ^u8 n ^u8 n -- )
+   SOURCE-ROOT:RELATIVE {: rel:^ relu:n :}
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+
    rel relu LOAD-PATHS FIELD+ ;
 
 \ The offset in LOAD-PATHS of FILE-KEY's path; a piece's BUILT row follows its file's load.
 : KEY-PATH ( -- n )
-   LOAD-PATHS BYTES$ {: a:ptr u:n :}
+   LOAD-PATHS BYTES$ {: a:^ u:n :}
    0 begin dup u < while
       a over + KEY-BYTES  FILE-KEY KEY-BYTES  STR= if KEY-BYTES + exit then
       KEY-BYTES +  a over + LE:U64@ +  8 +
@@ -635,11 +635,11 @@ PTR-VARIABLE OBJ-BASE
 
 \ The object of FILE-KEY's part FILE-PART. A source named a.f.2 or a.f+1 shares the name of a.f's second load or
 \ second part: each fails the other's object at HEADER-CK's key and compiles.
-: OBJECT$ ( -- ptr u8 n )
+: OBJECT$ ( -- ^u8 n )
    OBJ-NAME BUF:CLEAR
    TARGET @ RTARGET:PROFILE$ OBJ-NAME SPAN+  s" /" OBJ-NAME SPAN+
    ENGINE? @ if s" engine" else KERNEL? @ if s" kernel" else s" app" then then OBJ-NAME SPAN+
-   FILE-KEY CANON$ {: p:ptr pu:n :}
+   FILE-KEY CANON$ {: p:^ pu:n :}
    pu 0 >  if p c@ FS:SLASH = else false then 0= if s" /" OBJ-NAME SPAN+ then
    p pu OBJ-NAME SPAN+
    FILE-KEY 8 + LE:U64@ {: n:n :}
@@ -650,8 +650,8 @@ PTR-VARIABLE OBJ-BASE
    OBJ-NAME BYTES$ BUILD-OUT:OBJ$ ;
 
 \ The object path's directory made, so the object can be written there.
-: OBJECT-DIR ( ptr u8 n -- )
-   {: p:ptr pu:n :}
+: OBJECT-DIR ( ^u8 n -- )
+   {: p:^ pu:n :}
    pu begin dup 0 > if p over 1 - + c@ FS:SLASH <> else false then while 1 - repeat
    1 - {: du:n :}
    p du FS:MAKE-DIRS ;
@@ -659,15 +659,15 @@ PTR-VARIABLE OBJ-BASE
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES, so larger earlier files leave its bytes alone (test/file-objects.f).
 
-: BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
+: BUILT-N ( -- n ) BUILT BYTES$ {: a:^ u:n :}  u BUILT-BYTES / ;
 
-: BUILT-AT ( n -- ptr u8 )
+: BUILT-AT ( n -- ^u8 )
    {: row:n :}
-   BUILT BYTES$ {: a:ptr u:n :}  a row BUILT-BYTES * + ;
+   BUILT BYTES$ {: a:^ u:n :}  a row BUILT-BYTES * + ;
 
 : HOLDS? ( n n -- bool )
    {: idx:n row:n :}
-   row BUILT-AT BUILT-FIRST + {: at:ptr :}
+   row BUILT-AT BUILT-FIRST + {: at:^ :}
    at LE:U64@ idx <=  at 8 + LE:U64@ idx >  and ;
 
 \ The BUILT row that holds the record index, and true; 0 false when none does.
@@ -685,7 +685,7 @@ PTR-VARIABLE OBJ-BASE
 : DP-ROW ( n -- n bool )
    {: v:n :}
    BUILT-N 0 ?do
-      i BUILT-AT BUILT-DP + {: at:ptr :}
+      i BUILT-AT BUILT-DP + {: at:^ :}
       at LE:U64@ v <=  at 8 + LE:U64@ v >  and if i true unloop exit then
    loop
    0 false ;
@@ -698,8 +698,8 @@ PTR-VARIABLE OBJ-BASE
    {: row:n :}
    row 1 + 2 * REF-OF-RESERVE
    row 2 * REF-OF @ OBJECT-SERIAL @ = if  row 2 * 1 + REF-OF @ 1 -  exit then
-   row BUILT-AT {: at:ptr :}
-   REFS BYTES$ {: refs:ptr refsu:n :}
+   row BUILT-AT {: at:^ :}
+   REFS BYTES$ {: refs:^ refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
    n 0 ?do
       refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +  at KEY-BYTES 8 +  STR= if i unloop exit then
@@ -710,13 +710,13 @@ PTR-VARIABLE OBJ-BASE
 \ once a use is whole, else 0: only WORDS and EXTENTS rows and REACHED's stores times decide.
 : REF-FILE ( n bool -- n )
    {: row:n whole:bool :}
-   row BUILT-AT {: at:ptr :}
-   REFS BYTES$ {: refs:ptr refsu:n :}
+   row BUILT-AT {: at:^ :}
+   REFS BYTES$ {: refs:^ refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
    row FIND-REF {: i:n :}
    OBJECT-SERIAL @ row 2 * REF-OF !  i 1 + row 2 * 1 + REF-OF !
    i n < if
-      refs i FILES-ROW-BYTES * + {: r:ptr :}
+      refs i FILES-ROW-BYTES * + {: r:^ :}
       whole  r BUILT-TIME + LE:U64@ 0=  and if
          at BUILT-TIME + LE:U64@  r BUILT-TIME +  LE:U64!
       then
@@ -770,8 +770,8 @@ PTR-VARIABLE OBJ-BASE
 \ A spelled record with a time gets a WORDS row; one without names its piece whole, as do the pieces that changed it.
 
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
-: NAME-SUM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: NAME-SUM ( ^u8 n -- n )
+   {: a:^ u:n :}
    $811C9DC5  u 0 ?do
       a i + c@ {: c:n :}
       c 97 >=  c 122 <=  and if c 32 - else c then  xor  $1000193 *
@@ -781,7 +781,7 @@ PTR-VARIABLE OBJ-BASE
 \ Whether slot s of PLACES holds a key other than the key's two cells, third cell, sum and count.
 : SLOT-OTHER? ( n n n n n n -- bool )
    {: s:n path:n seen:n third:n sum:n count:n :}
-   s 6 * PLACES {: row:ptr :}
+   s 6 * PLACES {: row:^ :}
    row @ {: first:n :}
    first 0= if false exit then
    first path 1 + <>  row 1 cells + @ seen <>  or
@@ -798,13 +798,13 @@ PTR-VARIABLE OBJ-BASE
 
 \ The value in the slot PLACE-SLOT answers for the key, third cell and identity, -1 for none.
 : PLACE-VALUE ( n n n n n -- n )
-   PLACE-SLOT 6 * PLACES {: row:ptr :}
+   PLACE-SLOT 6 * PLACES {: row:^ :}
    row @ 0= if -1 exit then
    row 5 cells + @ ;
 
 \ The record with that sum and count of the part whose FILES row is at the address, -1 for none.
-: PLACE ( ptr u8 n n -- n )
-   {: key:ptr sum:n count:n :}
+: PLACE ( ^u8 n n -- n )
+   {: key:^ sum:n count:n :}
    key LE:U64@  key 8 + LE:U64@  key KEY-BYTES + LE:U64@  sum count PLACE-VALUE ;
 
 \ The running part's record with that sum and count, -1 for none.
@@ -830,7 +830,7 @@ PTR-VARIABLE OBJ-BASE
    -3 row kind sum count PLACE-VALUE ;
 
 \ Cell f of extent e.
-: EXT ( n n -- ptr n ) swap EXT-CELLS * + EXTS ;
+: EXT ( n n -- ^n ) swap EXT-CELLS * + EXTS ;
 
 \ The extent holding the address: the last whose start is at most it, -1 for none.
 : EXT-OF ( n -- n )
@@ -838,7 +838,7 @@ PTR-VARIABLE OBJ-BASE
    0 EXTS-N @ [: 0 EXT @ at <= ;] SORT:PARTITION-POINT 1 - ;
 
 \ Cell f of BUILT-EXTS row b.
-: BUILT-EXT ( n n -- ptr n ) swap BUILT-EXT-CELLS * + BUILT-EXTS ;
+: BUILT-EXT ( n n -- ^n ) swap BUILT-EXT-CELLS * + BUILT-EXTS ;
 
 \ The BUILT-EXTS row of BUILT row row's extent holding the address: the last whose start is at most
 \ it, -1 for none.
@@ -894,7 +894,7 @@ PTR-VARIABLE OBJ-BASE
    FILE-KEY LE:U64@  FILE-KEY 8 + LE:U64@ {: path:n seen:n :}
    ndict@ start - 0 max PLACES-ROOM
    ndict@ start ?do
-      i XREF-REC XREF-NAME$ {: a:ptr u:n :}
+      i XREF-REC XREF-NAME$ {: a:^ u:n :}
       u 0= if 0 else a u NAME-SUM then {: sum:n :}
       0 begin sum over PART-REC 0 >= while 1 + repeat {: count:n :}
       sum i 2 * REC-IDS !  count i 2 * 1 + REC-IDS !
@@ -939,14 +939,14 @@ PTR-VARIABLE OBJ-BASE
    NAMES-N @ 1 + 2 *  NAMES-CAP @ > if GROW-NAMES then  PUT-NAME ;
 
 \ A package's name up to its first ':', the top-level package a part belongs to.
-: TOP-NAME ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: TOP-NAME ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ 58 = if a i unloop exit then loop
    a u ;
 
 \ A name's bytes after its last ':', length 0 when it has none or ends in one.
-: TAIL-NAME ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: TAIL-NAME ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u 0 ?do a u + i - 1 - c@ 58 = if a u + i - i unloop exit then loop
    a 0 ;
 
@@ -965,12 +965,12 @@ PTR-VARIABLE OBJ-BASE
 \ its tail is filed too.
 : REC-NAME+ ( n n -- )
    {: idx:n v:n :}
-   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   idx XREF-REC XREF-NAME$ {: a:^ u:n :}
    u 0= if exit then
    idx NAME-PKG {: pkg:n :}
    a u NAME-SUM v pkg NAME+
    idx XREF-REC XREF-WORDLIST BOOT:TYPES-WL <> if exit then
-   a u TAIL-NAME {: t:ptr tu:n :}
+   a u TAIL-NAME {: t:^ tu:n :}
    tu 0<> if t tu NAME-SUM v pkg NAME+ then ;
 
 \ The records [INDEXED, end) of the row into NAMES, each as -1 when the row is negative, the
@@ -1037,7 +1037,7 @@ PTR-VARIABLE OBJ-BASE
 \ RUN-SUMS with twice its slots, holding the running run's sums from SPELLS.
 : GROW-RUN ( -- )
    RUN-CAP @ 2 * RUN-CLEAR
-   SPELLS BYTES$ {: a:ptr u:n :}
+   SPELLS BYTES$ {: a:^ u:n :}
    u RUN-AT @ - 8 / 0 ?do a RUN-AT @ + i 8 * + LE:U64@ RUN-SUM+ drop loop ;
 
 : RUN! ( -- ) 1 RUN-ID +!  0 RUN-N !  SPELLS BYTES$ nip RUN-AT ! ;
@@ -1072,26 +1072,26 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
 TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 \ SPELL-HIT for the source's bytes [from, to) when there are any.
-: HIT-SPAN ( ptr u8 n n -- )
-   {: src:ptr from:n to:n :}
+: HIT-SPAN ( ^u8 n n -- )
+   {: src:^ from:n to:n :}
    to from > if src from +  to from -  NAME-SUM SPELL-HIT then ;
 
 \ True when the word [from, to) is `\` and its line's first: the line is a comment. A `\` later
 \ in a line may be text a parsing word takes (`[char] \ INDEX-OF`), so it starts none.
-: COMMENT? ( ptr u8 n n -- bool )
-   {: src:ptr from:n to:n :}
+: COMMENT? ( ^u8 n n -- bool )
+   {: src:^ from:n to:n :}
    FIRST-WORD @  to from - 1 =  and if src from + c@ 92 = else false then ;
 
 \ The word [from, to), not empty: the package it names opens when it follows `package`.
-: OPENS ( ptr u8 n n -- )
-   {: src:ptr from:n to:n :}
-   src from +  to from - {: a:ptr u:n :}
+: OPENS ( ^u8 n n -- )
+   {: src:^ from:n to:n :}
+   src from +  to from - {: a:^ u:n :}
    AFTER-PACKAGE @ if a u NAME-SUM SPELL-OPEN then
    a u s" package" XREF-STR=CI AFTER-PACKAGE ! ;
 
 \ The running word ends at byte i, the blank c.
-: WORD-END ( ptr u8 n n -- )
-   {: src:ptr i:n c:n :}
+: WORD-END ( ^u8 n n -- )
+   {: src:^ i:n c:n :}
    src WORD-AT @ i COMMENT?  c 10 <>  and if true SKIP ! exit then
    src PART-AT @ i HIT-SPAN
    ARG-FROM @ PART-AT @ > if src ARG-FROM @ i HIT-SPAN then
@@ -1103,8 +1103,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ SPELL-HIT for each name outside comment lines: a span between CUT? bytes, a
 \ run of it between ARG-CUT? bytes (`box<turn>`: box<turn>, box, turn) and a
 \ joined word (`P:W`: P, W, P:W).
-: SPELL-TEXT ( ptr u8 n -- )
-   {: src:ptr u:n :}
+: SPELL-TEXT ( ^u8 n -- )
+   {: src:^ u:n :}
    0 PART-AT !  0 ARG-FROM !  0 WORD-AT !  false JOINED !
    true FIRST-WORD !  false SKIP !  false AFTER-PACKAGE !   \ a text's last word opens nothing in the next
    u 0 ?do
@@ -1129,8 +1129,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    SKIP @ 0= if src u 32 WORD-END then ;
 
 \ A scan of the text from an empty SPELLS; SPELL-TEXT after it appends another text's names.
-: SPELLED ( ptr u8 n -- )
-   {: src:ptr u:n :}
+: SPELLED ( ^u8 n -- )
+   {: src:^ u:n :}
    0 OPENED-N !  SPELLS BUF:CLEAR  RUN!
    src u SPELL-TEXT ;
 
@@ -1192,9 +1192,9 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ After the files PIECES and REQUESTS reference: FILES gains a whole row for each piece the source
 \ names whole, then each record of NAMED-RECS gains its rows (NAMED-REC+).
 : NAMED+ ( -- )
-   NAMED-ROWS BYTES$ {: a:ptr u:n :}
+   NAMED-ROWS BYTES$ {: a:^ u:n :}
    u 8 / 0 ?do a i 8 * + LE:U64@ true REF-FILE drop loop
-   NAMED-RECS BYTES$ {: r:ptr ru:n :}
+   NAMED-RECS BYTES$ {: r:^ ru:n :}
    ru 8 / 0 ?do r i 8 * + LE:U64@ NAMED-REC+ loop ;
 
 
@@ -1533,7 +1533,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : RETIRED! ( -- )
    0 RETIRED-N !
    CHECK:HELD-FACTS FILE-HELD @ ?do
-      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+      i CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
       ix CHECK:HELD-RETIRED = if
          i CHECK:HELD-RETIRED@ drop {: idx:n wid:n :}
          RETIRED-N @ 1 + 2 * RETIRED-RESERVE
@@ -1564,7 +1564,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : OWN-PRIVATE? ( n -- bool )
    {: idx:n :}
    idx FILE-REC @ < if false exit then
-   idx XREF-REC {: rec:ptr :}
+   idx XREF-REC {: rec:^ :}
    rec XREF-PKG-PRIVATE {: w:n :}
    w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
 
@@ -1632,8 +1632,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    row NSHADOW:EMISSION@ ;
 
 \ The record's dispatch cell, a defer's trailer cell, as a data reference; 5 for none.
-: DISPATCH+ ( ptr n -- )
-   {: rec:ptr :}
+: DISPATCH+ ( ^n -- )
+   {: rec:^ :}
    rec NDICT:TRAILER-CELL {: cell:n :}
    cell 0= if 5 PIECES U64+ exit then
    cell DATA-REF+ if exit then
@@ -1641,7 +1641,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 \ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
 : TYPE-SOURCE ( -- n )
-   s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    -1  pkg XREF-FOUND? if
       drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
    then {: src:n :}
@@ -1654,7 +1654,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the record the entry binds: an alias's or type's source, else -1.
 : RECORD+ ( n -- n )
    {: idx:n :}
-   idx XREF-REC {: rec:ptr :}
+   idx XREF-REC {: rec:^ :}
    idx SHADOW-ROW {: row:n :}
    row idx MADE-WID KIND {: kind:n :}
    kind PIECES U64+
@@ -1671,7 +1671,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    src ID-REF+  src ;
 
 \ Word w's cell c in WORD-SPANS.
-: WORD-SPAN ( n n -- ptr n )
+: WORD-SPAN ( n n -- ^n )
    {: w:n c:n :}
    w SPAN-CELLS * c + WORD-SPANS ;
 
@@ -1679,7 +1679,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : NAMED-BY! ( n n -- )
    {: idx:n bit:n :}
    idx FILE-REC @ < if exit then
-   idx FILE-REC @ - 6 WORD-SPAN {: at:ptr :}
+   idx FILE-REC @ - 6 WORD-SPAN {: at:^ :}
    at @ bit or  at ! ;
 
 \ The edges to a definition's copies, emission e and, in a cross build, its host copy e + 1: a run
@@ -1712,18 +1712,18 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    bound  w 7 WORD-SPAN ! ;
 
 \ The late private wordlists in id order, 16 bytes each: the id, then the package.
-: LATE-N ( -- n ) LATE BYTES$ {: a:ptr u:n :}  u 16 / ;
+: LATE-N ( -- n ) LATE BYTES$ {: a:^ u:n :}  u 16 / ;
 
-: LATE-AT ( n -- ptr u8 )
+: LATE-AT ( n -- ^u8 )
    {: k:n :}
-   LATE BYTES$ {: a:ptr u:n :}  a k 16 * + ;
+   LATE BYTES$ {: a:^ u:n :}  a k 16 * + ;
 
 : LATE-W ( n -- n ) LATE-AT LE:U64@ ;
 : LATE-P ( n -- n ) LATE-AT 8 + LE:U64@ ;
 
 : LATE! ( n n n -- )
    {: w:n p:n k:n :}
-   k LATE-AT {: at:ptr :}
+   k LATE-AT {: at:^ :}
    w at LE:U64!  p at 8 + LE:U64! ;
 
 : LATE-SHIFT ( n -- )
@@ -1850,7 +1850,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : EMISSION-CODE+ ( n -- )
    {: e:n :}
    e NSHADOW:SIZE {: s:n :}
-   e NSHADOW:BYTES {: src:ptr :}
+   e NSHADOW:BYTES {: src:^ :}
    e NSHADOW:PATCH-SITE@ {: p:n :}
    e NSHADOW:CALL-SITES {: calls:n :}
    s PIECES U64+  e NSHADOW:RET-BYTES PIECES U64+
@@ -1988,7 +1988,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ The first data address emission e's code holds, -1 for none.
 : EM-DATA ( n -- n )
    {: e:n :}
-   e NSHADOW:BYTES {: src:ptr :}
+   e NSHADOW:BYTES {: src:^ :}
    e NSHADOW:SIZE {: s:n :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
@@ -2032,8 +2032,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 
 \ FNV-1a over the bytes, as NAME-SUM without its case fold; never 0.
-: BYTES-SUM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: BYTES-SUM ( ^u8 n -- n )
+   {: a:^ u:n :}
    $811C9DC5  u 0 ?do  a i + c@ xor  $1000193 *  loop
    dup 0= if 1 + then ;
 
@@ -2066,7 +2066,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : EXTENTS! ( -- )
    0 ANCHORS-N !  0 EXTS-N !
    ndict@ FILE-REC @ ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec XREF-FLAGS DNAME-ALLOC and 0<> if
          i OWNER-EM {: e:n :}
          e 0 >= if  e EM-DATA {: a:n :}  a 0 >= if a 1 i ANCHOR+ then  then
@@ -2105,7 +2105,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ The running piece's cell rows into EXT-ROWS, grouped by extent and in the space's order within one: a cell not
 \ 8-aligned from FILE-DP, crossing its extent's end or ending past the data is E-COMP-STATE.
 : GROUP-ROWS ( -- )
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    0  count 0 ?do
       rows i cells + @ {: row:n :}
       row IN-FILE? if
@@ -2139,8 +2139,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    e EXT-END at - {: u:n :}
    e 1 EXT @ PIECES U64+  e 2 EXT @ PIECES U64+  e 3 EXT @ PIECES U64+  u PIECES U64+
    NULL-PTR BYTE-VIEW at +  u  PIECES SPAN+
-   PIECES BYTES$ {: buf:ptr len:n :}
-   buf len + u - {: bytes:ptr :}
+   PIECES BYTES$ {: buf:^ len:n :}
+   buf len + u - {: bytes:^ :}
    e 7 EXT @  e 8 EXT @ {: first:n k:n :}
    k 0 ?do  0  bytes  first i + EXT-ROWS @ ROW-AT at - +  LE:U64!  loop
    k PIECES U64+
@@ -2191,16 +2191,16 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : BELOW ( -- n n ) SNAP-RELOC:XTCELL-END  FILE-DP @ BASE @ - ;
 
 
-: SPACE-BYTES ( n -- ptr u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
+: SPACE-BYTES ( n -- ^u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
 
 \ The band's cell that marks the header cell at offset off: a routed store wrote the cell's
 \ address there (MAP).
-: MARK-AT ( n -- ptr n )
+: MARK-AT ( n -- ^n )
    {: off:n :}
    NULL-PTR BYTE-VIEW  BASE @ ROUTED-BYTES - off +  + CELL-VIEW ;
 
 \ The band's last cell: nonzero once a routed store marked a cell.
-: ANY-MARK ( -- ptr n ) NULL-PTR BYTE-VIEW  BASE @ CELL -  + CELL-VIEW ;
+: ANY-MARK ( -- ^n ) NULL-PTR BYTE-VIEW  BASE @ CELL -  + CELL-VIEW ;
 
 : CLEAR-MARKS ( -- )
    ANY-MARK @ 0= if exit then
@@ -2226,7 +2226,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 
 \ Earlier record k's copy (COPY-BELOW) and its index.
-: OLD-REC ( n -- ptr u8 n )
+: OLD-REC ( n -- ^u8 n )
    {: k:n :}
    OLD-RECS BYTES$ drop  k DREC * +  FIRST-REC @ 1 - k + ;
 
@@ -2235,8 +2235,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 \ True when the file's compile sealed the build's package record, given its copy: the flags
 \ differ by DNAME-SEALED alone, which the record now holds.
-: SEALED-NOW? ( ptr u8 n -- bool )
-   {: old:ptr idx:n :}
+: SEALED-NOW? ( ^u8 n -- bool )
+   {: old:^ idx:n :}
    idx FIRST-REC @ < if false exit then
    idx PKG? 0= if false exit then
    old XREF-FLAGS-SLOT cells + CELL-VIEW @ {: was:n :}
@@ -2246,9 +2246,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 \ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?),
 \ a seal (SEALED-NOW?) or a retirement (RETIRED).
-: REC-CHANGED? ( ptr u8 n -- bool )
-   {: old:ptr idx:n :}
-   idx XREF-REC BYTE-VIEW {: rec:ptr :}
+: REC-CHANGED? ( ^u8 n -- bool )
+   {: old:^ idx:n :}
+   idx XREF-REC BYTE-VIEW {: rec:^ :}
    idx RETIRED-AT nip {: retired:bool :}
    DREC CELL / 0 ?do
       old i cells + CELL-VIEW @  rec i cells + CELL-VIEW @  <> if
@@ -2318,7 +2318,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ The space's address-cell row of the cell at v, and true; false when it has none.
 : ROW-OF ( n -- n bool )
    {: v:n :}
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       row ROW-AT v = if row true unloop exit then
@@ -2335,8 +2335,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ STORED, other than a scratch cell.
 : COMPARE-RANGE ( n n -- )
    {: from:n to:n :}
-   OLD-SPACE BYTES$ drop {: old:ptr :}
-   from SPACE-BYTES {: now:ptr :}
+   OLD-SPACE BYTES$ drop {: old:^ :}
+   from SPACE-BYTES {: now:^ :}
    to from - CELL / 0 ?do
       old i cells + CELL-VIEW @  now i cells + CELL-VIEW @  <> if
          BASE @ from + i cells + dup SCRATCH-CELL? if drop else STORED+ then
@@ -2383,7 +2383,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
          i cells MARK-AT @ 0<> if E-HEAP-STORE throw then
       loop
    then
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count FILE-CELLS @ ?do
       rows i cells + @ ROW-AT {: at:n :}
       at FILE-DP @ < if
@@ -2422,7 +2422,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    recs 0 > if recs LAST-HELD-RESERVE then
    recs 0 ?do -1 i LAST-HELD ! loop
    CHECK:HELD-FACTS FILE-HELD @ ?do
-      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+      i CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
       ix ndict@ >= if E-STORE throw then
       ix FILE-REC @ >= if  i  ix FILE-REC @ - LAST-HELD !  then
    loop ;
@@ -2432,7 +2432,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ earlier one is never read. An amended record's entry is not: the text written again for it is.
 : KEPT? ( n -- bool )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
    ix CHECK:HELD-AMENDED = if false exit then
    ix FILE-REC @ < if true exit then
    ix FILE-REC @ - LAST-HELD @  k = ;
@@ -2442,7 +2442,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ the piece's records made before it; a record's text, own or earlier, by reference; a kind's text.
 : FACT+ ( n -- )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
    ix CHECK:HELD-RETIRED = if
       k CHECK:HELD-RETIRED@ nip {: r:n made:n :}
       r FILE-REC @ < if true CHANGED-EARLIER ! then
@@ -2458,7 +2458,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ FACT+, then for a text of the piece's own record its span into WORD-SPANS.
 : WORD-FACT+ ( n -- )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
    ix FILE-REC @ < if k FACT+ exit then
    ix FILE-REC @ - {: w:n :}
    PIECES BYTES$ nip {: at:n :}
@@ -2478,8 +2478,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : SEALED-N ( -- n ) 0  OLD-RECS-N 0 ?do i OLD-REC SEALED-NOW? if 1 + then loop ;
 
 \ A KIND-SEALED entry for the earlier record when the file's compile sealed it.
-: SEAL+ ( ptr u8 n -- )
-   {: old:ptr idx:n :}
+: SEAL+ ( ^u8 n -- )
+   {: old:^ idx:n :}
    old idx SEALED-NOW? 0= if exit then
    KIND-SEALED PIECES U64+  idx ID-REF+  idx CHANGER+ ;
 
@@ -2509,7 +2509,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ A linked file's top level never runs, so what a piece stores in scratch ends with it: every
 \ scratch cell in file data, [OPEN-DP, DP), reads zero after each piece.
 : RESET-SCRATCH ( -- )
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       row SCRATCH-ROW? if
@@ -2552,13 +2552,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : PATHS-LAY ( -- )
    OBJ-PATHS BUF:CLEAR
    FILE-KEY CANON$ OBJ-PATHS PATH-IN drop
-   REFS BYTES$ {: refs:ptr refsu:n :}
+   REFS BYTES$ {: refs:^ refsu:n :}
    refsu FILES-ROW-BYTES / 0 ?do  refs i FILES-ROW-BYTES * + CANON$ OBJ-PATHS PATH-IN drop  loop ;
 
 \ OBJECT's FILES rows at the offset, each key's first cell made its path's offset in OBJ-PATHS.
 : KEYS-OUT ( n -- )
    {: files-at:n :}
-   REFS BYTES$ {: refs:ptr refsu:n :}
+   REFS BYTES$ {: refs:^ refsu:n :}
    refsu FILES-ROW-BYTES / 0 ?do
       refs i FILES-ROW-BYTES * + CANON$ OBJ-PATHS PATH-IN
       OBJECT BYTES$ drop files-at + i FILES-ROW-BYTES * +  LE:U64!
@@ -2572,15 +2572,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    \ (RAN-FILES+); WORDS lists the words the part refers to (ID-REF+), its source spells (NAMED+)
    \ and a run reaches; EXTENTS the earlier extents its data references name (ROW-DATA-REF+).
    NAMED+  RAN-FILES+  PATHS-LAY
-   REFS BYTES$ {: refs:ptr refsu:n :}
-   REQUESTS BYTES$ {: reqs:ptr requ:n :}
-   SPELLS BYTES$ {: nm:ptr nmu:n :}
-   REACHED BYTES$ {: rch:ptr rchu:n :}
-   OBJ-PATHS BYTES$ {: pth:ptr pthu:n :}
-   WORD-ROWS BYTES$ {: wds:ptr wdsu:n :}
-   USED-EXTS BYTES$ {: exts:ptr extsu:n :}
-   TIMES BYTES$ {: tms:ptr tmsu:n :}
-   PIECES BYTES$ {: pieces:ptr piecesu:n :}
+   REFS BYTES$ {: refs:^ refsu:n :}
+   REQUESTS BYTES$ {: reqs:^ requ:n :}
+   SPELLS BYTES$ {: nm:^ nmu:n :}
+   REACHED BYTES$ {: rch:^ rchu:n :}
+   OBJ-PATHS BYTES$ {: pth:^ pthu:n :}
+   WORD-ROWS BYTES$ {: wds:^ wdsu:n :}
+   USED-EXTS BYTES$ {: exts:^ extsu:n :}
+   TIMES BYTES$ {: tms:^ tmsu:n :}
+   PIECES BYTES$ {: pieces:^ piecesu:n :}
    UNLINKABLE @ if 0 else ENTRY-ROOT BYTES$ nip  EXIT-ROOT BYTES$ nip +  PART-READS BYTES$ nip + then
    STAMP-BYTES + 24 + {: inputu:n :}
    HEADER-BYTES inputu + {: files-at:n :}
@@ -2628,7 +2628,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    reqs-at REQS-AT !  requ 0<> if 1 else 0 then REQS-N !
    STAMPED? 0= if exit then
    \ Cached: a crash may lose the new object; the next build then finds the old one or none, as this build did.
-   OBJECT$ {: obj:ptr obju:n :}
+   OBJECT$ {: obj:^ obju:n :}
    obj obju OBJECT-DIR
    obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
 
@@ -2681,7 +2681,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    dend end = if exit then
    BUILT-N {: row:n :}
    BUILT-EXTS-N @ {: first:n :}
-   0 OBJ-PTR {: obj:ptr :}
+   0 OBJ-PTR {: obj:^ :}
    FACTS-AT @ 8 +  dend 1 -
    obj FACTS-AT @ + LE:U64@ 0 ?do
       {: at:n last:n :}
@@ -2776,8 +2776,8 @@ variable RD-END
 
 
 \ Bad unless the next u bytes equal the span's.
-: RD-SAME ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: RD-SAME ( ^u8 n -- )
+   {: a:^ u:n :}
    RD-AT @ {: at:n :}
    u RD-STEP 0= if exit then
    at OBJ-PTR u  a u  STR= 0= if BAD then ;
@@ -2809,7 +2809,7 @@ variable RD-END
    k 1 >=  k FILES-N @ <=  and ;
 
 \ FILES row k, from 1, in OBJECT.
-: FILES-ROW ( n -- ptr u8 )
+: FILES-ROW ( n -- ^u8 )
    {: k:n :}
    PAIRS-AT 16 + OBJ@  k 1 - FILES-ROW-BYTES * +  OBJ-PTR ;
 
@@ -2960,16 +2960,16 @@ variable RD-END
 
 \ Whether the FILES row names the BUILT row: its key and piece number, and its time 0 (REF-FILE) or
 \ the BUILT row's.
-: ROW-FITS? ( ptr u8 ptr u8 -- bool )
-   {: f:ptr b:ptr :}
+: ROW-FITS? ( ^u8 ^u8 -- bool )
+   {: f:^ b:^ :}
    f KEY-BYTES 8 +  b KEY-BYTES 8 +  STR= 0= if false exit then
    f BUILT-TIME + LE:U64@ {: t:n :}
    t 0=  t  b BUILT-TIME + LE:U64@  =  or ;
 
 
 \ The BUILT row the FILES row names (ROW-FITS?), and true; false when none.
-: BUILT-MATCH ( ptr u8 -- n bool )
-   {: at:ptr :}
+: BUILT-MATCH ( ^u8 -- n bool )
+   {: at:^ :}
    BUILT-N 0 ?do
       at i BUILT-AT ROW-FITS? if i true unloop exit then
    loop
@@ -2979,7 +2979,7 @@ variable RD-END
 \ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-ABSENT.
 : MAP-FILES ( -- )
    FILES-N @ 0 ?do
-      i 1 + FILES-ROW {: at:ptr :}
+      i 1 + FILES-ROW {: at:^ :}
       at BUILT-MATCH if
          i 1 + FILE-ROWS !
       else
@@ -3055,9 +3055,9 @@ variable RD-END
 : NAME-CK ( -- ) RD-U64 {: u:n :}  u 1 < if BAD exit then  u RD-SKIP ;
 
 \ A name: its length, then its bytes, which stay in OBJECT.
-: RD-NAME ( -- ptr u8 n )
+: RD-NAME ( -- ^u8 n )
    RD-U64 {: u:n :}
-   RD-AT @ OBJ-PTR {: a:ptr :}
+   RD-AT @ OBJ-PTR {: a:^ :}
    u RD-SKIP
    a u ;
 
@@ -3108,7 +3108,7 @@ variable RD-END
 
 
 \ The FIELD+ at the offset in OBJECT.
-: FIELD$ ( n -- ptr u8 n )
+: FIELD$ ( n -- ^u8 n )
    {: at:n :}
    at 8 + OBJ-PTR  at OBJ@ ;
 
@@ -3292,59 +3292,59 @@ variable RD-END
 
 \ Whether the spelling resolves to the canonical directory it resolved to; ROOT? resolves `.` against the working
 \ directory and answers false for a spelling it cannot take.
-: ROOT-HOLDS? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n b:ptr v:n :}
-   a u SOURCE-ROOT:ROOT? {: c:ptr cu:n ok:bool :}
+: ROOT-HOLDS? ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
+   a u SOURCE-ROOT:ROOT? {: c:^ cu:n ok:bool :}
    ok 0= if false exit then
    c cu b v STR= ;
 
 \ Whether an object's root is the current one or still resolves to itself, as SOURCE-ROOT:WITH and ROOT! need.
-: ROOT-STANDS? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: ROOT-STANDS? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u SOURCE-ROOT:CURRENT$ STR= if true exit then
    a u a u ROOT-HOLDS? ;
 
 \ Whether a part's entry root is the current one, as its link needs.
-: ENTRY-HOLDS? ( ptr u8 n -- bool ) SOURCE-ROOT:CURRENT$ STR= ;
+: ENTRY-HOLDS? ( ^u8 n -- bool ) SOURCE-ROOT:CURRENT$ STR= ;
 
 \ Whether the environment variable holds the value it held, or is absent when value is NULL-PTR.
-: ENV-HOLDS? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n b:ptr v:n :}
-   a u ENV-INPUT:CURRENT$ {: e:ptr eu:n :}
+: ENV-HOLDS? ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
+   a u ENV-INPUT:CURRENT$ {: e:^ eu:n :}
    b NULL-PTR - 0= if e NULL-PTR - 0= exit then
    e NULL-PTR - 0= if false exit then
    e eu b v STR= ;
 
-: NUL-FREE? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: NUL-FREE? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0 ?do  a i + c@ 0= if unloop false exit then  loop
    true ;
 
 \ Whether the bytes are a path FS takes without a throw: at most PATH-CAP bytes, none of them NUL.
-: PATH-OK? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: PATH-OK? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u PATH-CAP > if false exit then
    a u NUL-FREE? ;
 
 \ Whether the file at the path has the COMPILE-READS:LSTAMP, when link is true, else the
 \ COMPILE-READS:STAMP, of the three cells; false for a stamp that is not COMPILE-READS:STABLE?.
-: STAMP-SAME? ( ptr u8 n n n n bool -- bool )
-   {: a:ptr u:n sec:n ns:n size:n link:bool :}
+: STAMP-SAME? ( ^u8 n n n n bool -- bool )
+   {: a:^ u:n sec:n ns:n size:n link:bool :}
    sec ns size COMPILE-READS:STABLE? 0= if false exit then
    a u FS:>PATHZ  link if COMPILE-READS:LSTAMP else COMPILE-READS:STAMP then {: s:n n:n z:n :}
    s sec =  n ns =  and  z size =  and ;
 
 \ Whether the file has the stamp whose three cells are the bytes (STAMP-SAME?).
-: FILE-HOLDS? ( ptr u8 n ptr u8 n bool -- bool )
-   {: a:ptr u:n b:ptr v:n link:bool :}
+: FILE-HOLDS? ( ^u8 n ^u8 n bool -- bool )
+   {: a:^ u:n b:^ v:n link:bool :}
    v 24 <> if false exit then
    a u PATH-OK? 0= if false exit then
    a u  b LE:U64@  b 8 + LE:U64@  b 16 + LE:U64@  link STAMP-SAME? ;
 
 \ Whether the read of the kind (COMPILE-READS) reads the same now; false for a spelling holding a NUL, which ROOT?
 \ would refuse with a throw (E-PATH-NUL).
-: READ-HOLDS? ( n ptr u8 n ptr u8 n -- bool )
-   {: kind:n a:ptr u:n b:ptr v:n :}
+: READ-HOLDS? ( n ^u8 n ^u8 n -- bool )
+   {: kind:n a:^ u:n b:^ v:n :}
    a u NUL-FREE? 0= if false exit then
    kind COMPILE-READS:ROOT-READ = if a u b v ROOT-HOLDS? exit then
    kind COMPILE-READS:ENV-READ = if a u b v ENV-HOLDS? exit then
@@ -3355,8 +3355,8 @@ variable RD-END
 
 \ Whether every read in the bytes, an INPUT reads field in COMPILE-READS' layout, reads the same now: false when a
 \ read's lengths run past them. A link check runs outside any recording, so these lookups record nothing.
-: READS-HOLD? ( ptr u8 n -- bool )
-   {: p:ptr pu:n :}
+: READS-HOLD? ( ^u8 n -- bool )
+   {: p:^ pu:n :}
    0 begin dup pu < while
       {: at:n :}
       at 24 + pu > if false exit then
@@ -3370,8 +3370,8 @@ variable RD-END
    true ;
 
 \ The path resolved as SOURCE-ROOT:RESOLVE resolves it with root current; the answer lasts until the next resolve.
-: RESOLVE-UNDER ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n root:ptr rootu:n :}
+: RESOLVE-UNDER ( ^u8 n ^u8 n -- ^u8 n bool )
+   {: a:^ u:n root:^ rootu:n :}
    root rootu SOURCE-ROOT:CURRENT$ STR= if a u SOURCE-ROOT:RESOLVE exit then
    root rootu [:
       a u SOURCE-ROOT:RESOLVE UNDER-KNOWN !
@@ -3382,16 +3382,16 @@ variable RD-END
 
 \ The act's spelled path resolved under the root it was spelled in, RESOLVE-UNDER's known flag, and whether that root
 \ stands (ROOT-STANDS?); an empty path when it does not.
-: ACT-RESOLVE ( ptr u8 n ptr u8 n -- ptr u8 n bool bool )
-   {: a:ptr u:n root:ptr rootu:n :}
+: ACT-RESOLVE ( ^u8 n ^u8 n -- ^u8 n bool bool )
+   {: a:^ u:n root:^ rootu:n :}
    root rootu ROOT-STANDS? 0= if a 0 false false exit then
    a u root rootu RESOLVE-UNDER true ;
 
 \ The request's spelled path resolved under the exit root, RESOLVE-UNDER's known flag, and whether it is the loaded
 \ path and a regular file.
-: REQ-RESOLVE ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n bool bool )
-   {: s:ptr su:n x:ptr xu:n l:ptr lu:n :}
-   s su x xu RESOLVE-UNDER {: c:ptr cu:n known:bool :}
+: REQ-RESOLVE ( ^u8 n ^u8 n ^u8 n -- ^u8 n bool bool )
+   {: s:^ su:n x:^ xu:n l:^ lu:n :}
+   s su x xu RESOLVE-UNDER {: c:^ cu:n known:bool :}
    c cu known  c cu l lu STR=  c cu FS:FILE?  and ;
 
 
@@ -3731,8 +3731,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ The buffer grown to the file's size, then the file read into it; a size the buffer cannot
 \ hold throws before FS:READ-SIZED owns the descriptor.
-: READ-BODY ( fd n ptr a -- )
-   {: file:fd size:n buf:ptr :}
+: READ-BODY ( fd n ^a -- )
+   {: file:fd size:n buf:^ :}
    buf BUF:CLEAR
    file  buf size BUF:N>BLEN BUF:GROW SPAN:$
    -1 READ-FD !  FS:READ-SIZED ;
@@ -3743,8 +3743,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ The file at the path, whole, into the buffer through one descriptor, so a build renaming
 \ a new file over the path cannot tear the read; false when it is missing.
-: READ-INTO ( ptr u8 n ptr a -- bool )
-   {: path:ptr pathu:n buf:ptr :}
+: READ-INTO ( ^u8 n ^a -- bool )
+   {: path:^ pathu:n buf:^ :}
    path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
    file FD>N READ-FD !
@@ -3752,13 +3752,13 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    true ;
 
 \ READ-INTO with its inputs kept beneath its answer, so a catch around it keeps the stack's shape.
-: READ-KEEPING ( ptr u8 n ptr a bool -- ptr u8 n ptr a bool )
-   drop {: path:ptr pathu:n buf:ptr :}
+: READ-KEEPING ( ^u8 n ^a bool -- ^u8 n ^a bool )
+   drop {: path:^ pathu:n buf:^ :}
    path pathu buf  path pathu buf READ-INTO ;
 
 \ READ-INTO, false also when the path cannot be opened (too long, a 0 byte), the file read or
 \ a buffer of its size mapped (E-MEM-MAP); any other throw passes.
-: READ-WHOLE ( ptr u8 n ptr a -- bool )
+: READ-WHOLE ( ^u8 n ^a -- bool )
    false ['] READ-KEEPING catch {: path pathu buf ok code:n :}
    code 0= if ok exit then
    code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or
@@ -3767,8 +3767,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ The disk key at the address made a memory key: its first cell, an offset in PATHS' u bytes, becomes
 \ that path's offset in KEY-PATHS (PATH-IN); false when the FIELD+ there leaves PATHS.
-: KEY-IN ( ptr u8 ptr u8 n -- bool )
-   {: key:ptr paths:ptr u:n :}
+: KEY-IN ( ^u8 ^u8 n -- bool )
+   {: key:^ paths:^ u:n :}
    key LE:U64@ {: at:n :}
    at 0<  at u 8 - >  or if false exit then
    paths at + LE:U64@ {: len:n :}
@@ -3778,9 +3778,9 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ The object read into the buffer: true once its header key and FILES rows hold memory keys (KEY-IN);
 \ false when the magic, the FILES or PATHS pair or a key leaves the object, which then counts as unread.
-: KEYS-IN ( ptr a -- bool )
-   {: buf:ptr :}
-   buf BYTES$ {: a:ptr len:n :}
+: KEYS-IN ( ^a -- bool )
+   {: buf:^ :}
+   buf BYTES$ {: a:^ len:n :}
    len HEADER-BYTES < if false exit then
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    PAIRS-AT {: pairs:n :}
@@ -3817,7 +3817,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 : PRIOR-READ ( -- bool )
    OBJECT$ PRIOR READ-WHOLE 0= if false exit then
    PRIOR KEYS-IN 0= if false exit then
-   PRIOR BYTES$ {: a:ptr len:n :}
+   PRIOR BYTES$ {: a:^ len:n :}
    len HEADER-BYTES < if false exit then
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
@@ -3836,9 +3836,9 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ The count of PRIOR's leading FILES rows from 1 that equal REFS' rows by key and piece number.
 : KEPT-ROWS ( -- n )
-   REFS BYTES$ {: refs:ptr refsu:n :}
+   REFS BYTES$ {: refs:^ refsu:n :}
    PAIRS-AT 16 + {: files:n :}
-   PRIOR BYTES$ drop  files PRIOR@ + {: old:ptr :}
+   PRIOR BYTES$ drop  files PRIOR@ + {: old:^ :}
    files 8 + PRIOR@ FILES-ROW-BYTES /  refsu FILES-ROW-BYTES /  min {: n:n :}
    n 0 ?do
       refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +
@@ -4081,7 +4081,7 @@ variable PRIOR-STORES-SIZE
    old 0= if now exit then
    PRIOR-PIECE {: at:n u:n t:n ok:bool :}
    ok 0=  t 0=  or if now exit then
-   PIECES BYTES$ {: a:ptr len:n :}
+   PIECES BYTES$ {: a:^ len:n :}
    len start - u <> if now exit then
    a start + u  PRIOR BYTES$ drop at + u  STR= 0= if now exit then
    REFS-KEPT? 0= if now exit then
@@ -4126,9 +4126,9 @@ variable PRIOR-STORES-SIZE
 \ Each path a part's acts and request name resolves as its compile resolved it; PENDING-PATHS holds earlier acts' paths.
 
 \ Whether an earlier act of the checked part provided the path (PENDING-PATHS).
-: PENDING-PATH? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   PENDING-PATHS BYTES$ {: p:ptr pu:n :}
+: PENDING-PATH? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   PENDING-PATHS BYTES$ {: p:^ pu:n :}
    0 begin dup pu < while
       {: at:n :}
       p at + LE:U64@ {: len:n :}
@@ -4139,8 +4139,8 @@ variable PRIOR-STORES-SIZE
 
 \ Whether the registry holds the path, or an earlier act of the checked part provided it, as a
 \ compile of the part would find it.
-: REGISTERED? ( ptr u8 n bool -- bool )
-   {: a:ptr u:n known:bool :}
+: REGISTERED? ( ^u8 n bool -- bool )
+   {: a:^ u:n known:bool :}
    known if true exit then
    a u PENDING-PATH? ;
 
@@ -4151,7 +4151,7 @@ variable PRIOR-STORES-SIZE
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME RD-NAME ACT-RESOLVE {: canon:ptr canonu:n known:bool stands:bool :}
+      RD-NAME RD-NAME ACT-RESOLVE {: canon:^ canonu:n known:bool stands:bool :}
       stands 0= if BAD unloop exit then
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
@@ -4178,7 +4178,7 @@ variable PRIOR-STORES-SIZE
    1 INPUT-AT FIELD$ ROOT-STANDS? 0= if false exit then
    REQS-N @ 0= if true exit then
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
-   spelled FIELD$  1 INPUT-AT FIELD$  loaded FIELD$  REQ-RESOLVE {: canon:ptr canonu:n known:bool ok:bool :}
+   spelled FIELD$  1 INPUT-AT FIELD$  loaded FIELD$  REQ-RESOLVE {: canon:^ canonu:n known:bool ok:bool :}
    ok 0= if false exit then
    kind SOURCE-UNIT:LOAD-REQUIRE <> if true exit then
    canon canonu known REGISTERED? 0= ;
@@ -4274,21 +4274,21 @@ variable PRIOR-STORES-SIZE
 \ The log holds when every record holds and the machine ends outside.
 
 \ The log's number at the offset and the offset past it; -1 for the offset when the bytes end first.
-: LOG-CELL ( ptr u8 n n -- n n )
-   {: p:ptr pu:n at:n :}
+: LOG-CELL ( ^u8 n n -- n n )
+   {: p:^ pu:n at:n :}
    at 0<  at pu 8 - >  or if 0 -1 exit then
    p at + LE:U64@  at 8 + ;
 
 \ The log's FIELD+ at the offset and the offset past it; -1 for the offset when the bytes end first.
-: LOG-FIELD ( ptr u8 n n -- ptr u8 n n )
-   {: p:ptr pu:n at:n :}
+: LOG-FIELD ( ^u8 n n -- ^u8 n n )
+   {: p:^ pu:n at:n :}
    p pu at LOG-CELL {: u:n next:n :}
    next 0<  u 0<  or  u pu next - >  or if p 0 -1 exit then
    p next +  u  next u + ;
 
 \ LOG-FIELD for a path, -1 for the offset when it is not PATH-OK?, so no FS or resolver call ever takes it.
-: LOG-PATH ( ptr u8 n n -- ptr u8 n n )
-   LOG-FIELD {: a:ptr u:n next:n :}
+: LOG-PATH ( ^u8 n n -- ^u8 n n )
+   LOG-FIELD {: a:^ u:n next:n :}
    a u PATH-OK? if a u next else a 0 -1 then ;
 
 \ Each HOLD- word takes the log's bytes and an offset in a record and answers the offset past what it checked, or -1
@@ -4296,14 +4296,14 @@ variable PRIOR-STORES-SIZE
 
 \ Whether the file at the canonical path has the stamp its load took (STAMP-SAME?); false for
 \ bytes no file stamp covers (size -1).
-: STAMP-HOLDS? ( ptr u8 n n n n -- bool )
-   {: a:ptr u:n sec:n ns:n size:n :}
+: STAMP-HOLDS? ( ^u8 n n n n -- bool )
+   {: a:^ u:n sec:n ns:n size:n :}
    size -1 = if false exit then
    a u sec ns size false STAMP-SAME? ;
 
-: HOLD-SOURCE ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
-   p pu at LOG-PATH {: a:ptr u:n at1:n :}
+: HOLD-SOURCE ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
+   p pu at LOG-PATH {: a:^ u:n at1:n :}
    p pu at1 LOG-CELL {: sec:n at2:n :}
    p pu at2 LOG-CELL {: ns:n at3:n :}
    p pu at3 LOG-CELL {: size:n at4:n :}
@@ -4323,8 +4323,8 @@ variable LOG-REQ                     \ the offset in the log of the request the 
 \ load): each one's LOG-ROOT, LOG-ROOT-U, LOG-PART and LOG-PART-U.
 create LOG-ROOTS BUF:HDR-BYTES allot
 
-: CUR-ROOT$ ( ptr u8 -- ptr u8 n )
-   {: p:ptr :}
+: CUR-ROOT$ ( ^u8 -- ^u8 n )
+   {: p:^ :}
    LOG-ROOT @ 0< if SOURCE-ROOT:CURRENT$ exit then
    p LOG-ROOT @ +  LOG-ROOT-U @ ;
 
@@ -4334,16 +4334,16 @@ create LOG-ROOTS BUF:HDR-BYTES allot
 
 \ The innermost open load's restored root made current and LOG-PART as that load began; false when no load is open.
 : ROOT-POP ( -- bool )
-   LOG-ROOTS BYTES$ {: a:ptr u:n :}
+   LOG-ROOTS BYTES$ {: a:^ u:n :}
    u 32 < if false exit then
-   a u + 32 - {: e:ptr :}
+   a u + 32 - {: e:^ :}
    e LE:U64@ LOG-ROOT !  e 8 + LE:U64@ LOG-ROOT-U !
    e 16 + LE:U64@ LOG-PART !  e 24 + LE:U64@ LOG-PART-U !
    u 32 - BUF:N>BLEN LOG-ROOTS BUF:LEN!
    true ;
 
 \ The resolved path into the build's registry once, as `provided` stores it.
-: REG+ ( ptr u8 n -- )
+: REG+ ( ^u8 n -- )
    2dup REQUIRE-KNOWN? if 2drop exit then
    REQUIRE-STORE 2drop ;
 
@@ -4354,12 +4354,12 @@ create LOG-ROOTS BUF:HDR-BYTES allot
 \ Whether the request (kind, spelling) loads the part whose path and entry root sit at the offsets in the log, of the
 \ lengths, as LOAD-RAW would from the current root now; true registers a require's path, pushes the current root and
 \ LOG-PART and makes the entry root current.
-: LOADS? ( ptr u8 n ptr u8 n n n n n -- bool )
-   {: p:ptr kind:n s:ptr su:n c:n cu:n e:n eu:n :}
+: LOADS? ( ^u8 n ^u8 n n n n n -- bool )
+   {: p:^ kind:n s:^ su:n c:n cu:n e:n eu:n :}
    kind LOAD-KIND? 0=  su 0=  or if false exit then
-   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:ptr au:n known:bool :}
+   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:^ au:n known:bool :}
    a au  p c + cu  STR= 0= if false exit then
-   SOURCE-ROOT:RESOLVED-ROOT$ SOURCE-ROOT:ROOT? {: o:ptr ou:n ok:bool :}
+   SOURCE-ROOT:RESOLVED-ROOT$ SOURCE-ROOT:ROOT? {: o:^ ou:n ok:bool :}
    ok 0= if false exit then
    o ou  p e + eu  STR= 0= if false exit then
    kind SOURCE-UNIT:LOAD-REQUIRE = if
@@ -4370,22 +4370,22 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    true ;
 
 \ Whether the request at LOG-REQ is for the part's path and loads it (LOADS?).
-: REQUESTED? ( ptr u8 n n n n n -- bool )
-   {: p:ptr pu:n c:n cu:n e:n eu:n :}
+: REQUESTED? ( ^u8 n n n n n -- bool )
+   {: p:^ pu:n c:n cu:n e:n eu:n :}
    p pu LOG-REQ @ LOG-CELL {: kind:n at1:n :}
-   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
-   p pu at2 LOG-PATH {: l:ptr lu:n at3:n :}
+   p pu at1 LOG-PATH {: s:^ su:n at2:n :}
+   p pu at2 LOG-PATH {: l:^ lu:n at3:n :}
    at3 0< if false exit then
    l lu  p c + cu  STR= 0= if false exit then
    p kind s su c cu e eu LOADS? ;
 
 \ The request no part made that loaded the part, and the part's entry by NEXT-REC; the part's path and entry root sit
 \ at the offsets in the log, of the lengths.
-: HOLD-ENTRY ( ptr u8 n n n n n n -- n )
-   {: p:ptr pu:n at:n c:n cu:n e:n eu:n :}
+: HOLD-ENTRY ( ^u8 n n n n n n -- n )
+   {: p:^ pu:n at:n c:n cu:n e:n eu:n :}
    p pu at LOG-CELL {: kind:n at1:n :}
-   p pu at1 LOG-PATH {: r:ptr ru:n at2:n :}
-   p pu at2 LOG-PATH {: s:ptr su:n at3:n :}
+   p pu at1 LOG-PATH {: r:^ ru:n at2:n :}
+   p pu at2 LOG-PATH {: s:^ su:n at3:n :}
    at3 0< if -1 exit then
    NEXT-REC @ MATCH expect
       outside OF  r ru p CUR-ROOT$ STR=  dup if drop p kind s su c cu e eu LOADS? then  ENDOF
@@ -4397,32 +4397,32 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    ;MATCH
    if at3 else -1 then ;
 
-: HOLD-ACT ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
+: HOLD-ACT ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
    p pu at LOG-CELL {: kind:n at1:n :}
-   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
-   p pu at2 LOG-PATH {: r:ptr ru:n at3:n :}
-   p pu at3 LOG-PATH {: c:ptr cu:n at4:n :}
+   p pu at1 LOG-PATH {: s:^ su:n at2:n :}
+   p pu at2 LOG-PATH {: r:^ ru:n at3:n :}
+   p pu at3 LOG-PATH {: c:^ cu:n at4:n :}
    at4 0<  su 0=  or if -1 exit then
    kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if -1 exit then
-   s su r ru ACT-RESOLVE {: a:ptr au:n known:bool stands:bool :}
+   s su r ru ACT-RESOLVE {: a:^ au:n known:bool stands:bool :}
    stands  a au c cu STR=  and 0= if -1 exit then
    kind EV-PROVIDED = if c cu REG+ at4 exit then
    c cu REQUIRE-KNOWN? if at4 else -1 then ;
 
 \ An act takes at least 32 bytes, so a count the bytes cannot hold is -1 before any act is read.
-: HOLD-ACTS ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
+: HOLD-ACTS ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
    p pu at LOG-CELL {: n:n at1:n :}
    n 0<  n  pu at1 - 32 /  >  or if -1 exit then
    at1  n 0 ?do  p pu rot HOLD-ACT  loop ;
 
 \ The request the part ended with, its exit root current: NEXT-REC by it.
-: HOLD-REQUEST ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
+: HOLD-REQUEST ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
    p pu at LOG-CELL {: kind:n at1:n :}
-   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
-   p pu at2 LOG-PATH {: l:ptr lu:n at3:n :}
+   p pu at1 LOG-PATH {: s:^ su:n at2:n :}
+   p pu at2 LOG-PATH {: l:^ lu:n at3:n :}
    at3 0< if -1 exit then
    kind -1 = if
       ROOT-POP 0= if -1 exit then
@@ -4433,13 +4433,13 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    at LOG-REQ !  construct expect requested NEXT-REC !
    at3 ;
 
-: HOLD-PART ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
-   p pu at LOG-PATH {: c:ptr cu:n at0:n :}
+: HOLD-PART ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
+   p pu at LOG-PATH {: c:^ cu:n at0:n :}
    p pu at HOLD-SOURCE {: at1:n :}
-   p pu at1 LOG-PATH {: e:ptr eu:n at2:n :}
-   p pu at2 LOG-PATH {: x:ptr xu:n at3:n :}
-   p pu at3 LOG-FIELD {: r:ptr ru:n at4:n :}
+   p pu at1 LOG-PATH {: e:^ eu:n at2:n :}
+   p pu at2 LOG-PATH {: x:^ xu:n at3:n :}
+   p pu at3 LOG-FIELD {: r:^ ru:n at4:n :}
    at4 0< if -1 exit then
    p pu at4  at 8 + cu  at1 8 + eu  HOLD-ENTRY {: at5:n :}
    at5 0< if -1 exit then
@@ -4450,14 +4450,14 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    at 8 + LOG-PART !  cu LOG-PART-U !
    p pu at6 HOLD-REQUEST ;
 
-: HOLD-EVENT ( ptr u8 n n n -- n )
-   {: p:ptr pu:n at:n kind:n :}
-   p pu at LOG-PATH {: r:ptr ru:n at1:n :}
-   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
-   p pu at2 LOG-PATH {: c:ptr cu:n at3:n :}
+: HOLD-EVENT ( ^u8 n n n -- n )
+   {: p:^ pu:n at:n kind:n :}
+   p pu at LOG-PATH {: r:^ ru:n at1:n :}
+   p pu at1 LOG-PATH {: s:^ su:n at2:n :}
+   p pu at2 LOG-PATH {: c:^ cu:n at3:n :}
    at3 0<  su 0=  or if -1 exit then
    r ru  p CUR-ROOT$  STR= 0= if -1 exit then
-   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:ptr au:n known:bool :}
+   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:^ au:n known:bool :}
    a au c cu STR= 0= if -1 exit then
    kind INPUT-PROVIDE = if c cu REG+ at3 exit then
    c cu REQUIRE-KNOWN? if at3 else -1 then ;
@@ -4469,8 +4469,8 @@ create LOG-ROOTS BUF:HDR-BYTES allot
       resumed OF false ENDOF
    ;MATCH ;
 
-: HOLD-RECORD ( ptr u8 n n -- n )
-   {: p:ptr pu:n at:n :}
+: HOLD-RECORD ( ^u8 n n -- n )
+   {: p:^ pu:n at:n :}
    p pu at LOG-CELL {: kind:n at1:n :}
    at1 0< if -1 exit then
    kind INPUT-PART = if p pu at1 HOLD-PART exit then
@@ -4487,8 +4487,8 @@ create LOG-ROOTS BUF:HDR-BYTES allot
 : HOLD-CLOSE ( -- ) REQUIRE-RESTORE  LOG-ROOTS BUF:DISPOSE ;
 
 \ Whether every record from the log's start holds and the machine ends outside at its end.
-: HOLD-ALL ( ptr u8 n -- bool )
-   {: p:ptr pu:n :}
+: HOLD-ALL ( ^u8 n -- bool )
+   {: p:^ pu:n :}
    0 begin dup 0 >=  over pu <  and while
       p pu rot HOLD-RECORD
    repeat
@@ -4580,7 +4580,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 
 
 \ Record idx's flags cell, through the alias as habu2.f C-IMMEDIATE writes it.
-: REC-FLAGS ( n -- ptr n )
+: REC-FLAGS ( n -- ^n )
    XREF-REC-ADDR XREF-FLAGS-SLOT cells +
    REGION-ALIAS:DELTA-CELL HOST@ + {: at:n :}
    NULL-PTR BYTE-VIEW at + CELL-VIEW ;
@@ -4590,7 +4590,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 \ RECORD+ saves the flags without them.
 : SET-FLAGS ( n n -- )
    {: saved:n idx:n :}
-   idx REC-FLAGS {: at:ptr :}
+   idx REC-FLAGS {: at:^ :}
    at @  DNAME-LEN-MASK DNAME-EXT or  and  saved or  at ! ;
 
 
@@ -4603,7 +4603,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    role 2 = if BOOT:NAMESPACE-WL exit then
    role 5 = if BOOT:TYPES-WL exit then
    role 3 <>  role 4 <>  and if E-COMP-STATE throw then
-   RD-U64 RD-U64 RD-U64 ID-REC XREF-REC {: rec:ptr :}
+   RD-U64 RD-U64 RD-U64 ID-REC XREF-REC {: rec:^ :}
    role 3 = if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then {: wid:n :}
    wid 0= if E-COMP-STATE throw then
    wid ;
@@ -4614,7 +4614,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    {: i:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-PACKAGE <> if E-COMP-STATE throw then
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
    RD-U64 {: own:n :}
@@ -4648,7 +4648,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    {: i:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-ALIAS <> if E-COMP-STATE throw then
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
@@ -4670,7 +4670,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    {: i:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-TYPE <> if E-COMP-STATE throw then
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
    GOOD? 0= if E-COMP-STATE throw then
@@ -4708,7 +4708,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    CODE-COPY BUF:CLEAR
    RD-AT @ OBJ-PTR  CODE-COPY s BUF:N>BLEN BUF:GROW SPAN:$ drop  s BYTE-COPY
    s RD-SKIP
-   CODE-COPY BYTES$ drop {: copy:ptr :}
+   CODE-COPY BYTES$ drop {: copy:^ :}
    copy s r  e EM-ARCH  NEMIT:OPEN
    RD-U64 0 ?do RD-U64 NEMIT:FUNCTION+ loop
    0 HOST-CALLS-N !  0 HOST-ADDRS-N !
@@ -4758,7 +4758,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    e COPIES + 1 - {: h:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-DEF <> if E-COMP-STATE throw then
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
    RD-REF {: tag:n x:n y:n z:n w:n :}
@@ -4769,7 +4769,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
       RD-U64 drop  RD-NAME  RD-U64  ROLE-WID  RD-U64
    else
       NULL-PTR 0  0  0  0
-   then {: da:ptr du:n dflags:n dwid:n off:n :}
+   then {: da:^ du:n dflags:n dwid:n off:n :}
    GOOD? 0= if E-COMP-STATE throw then
    does  tag 5 <>  and if E-COMP-STATE throw then
    does if e off DOES-FUN else 0 then {: j:n :}
@@ -4797,14 +4797,14 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    want NSHADOW:PUBLISH
    \ As the does> primitive's patch: PATCH then writes the slot as a branch to the clause.
    patch 0<> if want patch NSHADOW:PATCH-DOES then
-   CODE-COPY BYTES$ drop {: copy:ptr :}
+   CODE-COPY BYTES$ drop {: copy:^ :}
    \ The call targets and chains already hold host values, so both resolvers answer what they get.
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PATCH
    h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    s r CODE-SPAN:RECORDED {: recorded:n :}
-   HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:ptr calln:n :}
-   HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:ptr addrn:n :}
+   HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:^ calln:n :}
+   HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:^ addrn:n :}
    does if
       copy s recorded calls calln addrs addrn false hoff NPUB:IMPORT-PENDING-DOES
    else
@@ -4820,7 +4820,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    flags want SET-FLAGS
    FILE-EM @ e + COPY-EDGES+  want start REC-EDGES!
    does if
-      want 1 + XREF-REC {: rec:ptr :}
+      want 1 + XREF-REC {: rec:^ :}
       rec XREF-NAME$ da du STR= 0=  rec XREF-WORDLIST dwid <>  or if E-COMP-STATE throw then
       dflags want 1 + SET-FLAGS
       EDGES-N @ {: does-start:n :}
@@ -4838,12 +4838,12 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 \ ---- linking data --------------------------------------------------------------
 \ An xt cell's value is a code address the link writes with xt!.
 CAST: >XT ( n -- [ -- ] )
-CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
+CAST: >XT-CELL ( ^n -- ^[ -- ] )
 
 \ v into the cell at distance at, stored and marked as the compile's word for the kind did.
 : PUT-CELL ( n n n -- )
    {: v:n kind:n at:n :}
-   NULL-PTR BYTE-VIEW at + CELL-VIEW {: p:ptr :}
+   NULL-PTR BYTE-VIEW at + CELL-VIEW {: p:^ :}
    kind 0 = if v >XT  p >XT-CELL  xt! exit then
    kind 1 = if v p ptr-cell! exit then
    kind 2 = if p scratch-cell-mark exit then
@@ -4941,7 +4941,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 : LINK-TEXT ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    GOOD? 0= if E-COMP-STATE throw then
    read file sum count FACT-REC {: r:n :}
    file 0= if a u r CHECK:FACTS! exit then
@@ -4978,7 +4978,7 @@ variable DUE-MADE
    RD-U64 {: ix:n :}
    ix CHECK:HELD-RETIRED = if read LINK-RETIRED exit then
    ix CHECK:HELD-AMENDED = if read LINK-TEXT exit then
-   RD-NAME {: a:ptr u:n :}
+   RD-NAME {: a:^ u:n :}
    GOOD? 0= if E-COMP-STATE throw then
    ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
    ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then ;
@@ -5066,7 +5066,7 @@ variable DUE-MADE
 
 \ The flags cell of hb's newest record: an `immediate` before the space's first
 \ definition sets it.
-: NEWEST-FLAGS ( -- ptr n ) FIRST-REC @ 1- REC-FLAGS ;
+: NEWEST-FLAGS ( -- ^n ) FIRST-REC @ 1- REC-FLAGS ;
 
 \ EXITED, set after its definition: SAVE adds it, and it adds itself again.
 TYPED-VARIABLE EXITER [ -- ]
@@ -5176,8 +5176,8 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ The loader's log event of the request no part made that loads the path, as LOAD starts: the newest event, an
 \ include or a require the registry did not hold for the path; -2 when it is not one.
-: TOP-REQUEST ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
+: TOP-REQUEST ( ^u8 n -- n )
+   {: path:^ pathu:n :}
    EVENT-COUNT 1 - {: ev:n :}
    ev 0< if -2 exit then
    ev EVENT-KIND@ {: kind:n :}
@@ -5203,7 +5203,7 @@ TYPED-VARIABLE EXITER [ -- ]
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME RD-NAME {: a:ptr u:n root:ptr rootu:n :}
+      RD-NAME RD-NAME {: a:^ u:n root:^ rootu:n :}
       GOOD? 0= if E-COMP-STATE throw then
       kind EV-PROVIDED = if
          root rootu SOURCE-ROOT:CURRENT$ STR= if
@@ -5246,7 +5246,7 @@ TYPED-VARIABLE EXITER [ -- ]
 \ The root the linked object's compile left (INPUT's exit root) made current, as its ROOT! made it then, so the
 \ request REPLAY loads and the next part resolve from it.
 : LINK-ROOT ( -- )
-   1 INPUT-AT FIELD$ {: x:ptr xu:n :}
+   1 INPUT-AT FIELD$ {: x:^ xu:n :}
    x xu SOURCE-ROOT:CURRENT$ STR= 0= if x xu SOURCE-ROOT:ROOT! then ;
 
 
@@ -5335,9 +5335,9 @@ TYPED-VARIABLE EXITER [ -- ]
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
-   NULL-PTR BYTE-VIEW FILE-SRC @ + FILE-OFF @ +  end FILE-OFF @ - {: src:ptr srcu:n :}
+   NULL-PTR BYTE-VIEW FILE-SRC @ + FILE-OFF @ +  end FILE-OFF @ - {: src:^ srcu:n :}
    src srcu SPELLED
-   PART-TEXTS BYTES$ {: p:ptr pu:n :}
+   PART-TEXTS BYTES$ {: p:^ pu:n :}
    2 0 do
       i 1 =  pu 0 >  and if src srcu SPELL-TEXT then
       0 begin dup pu < while
@@ -5379,7 +5379,7 @@ TYPED-VARIABLE EXITER [ -- ]
 : READS-KEEP ( -- )
    COMPILE-READS:MISSED? if true UNLINKABLE ! then
    PART-READS BUF:CLEAR  PART-TEXTS BUF:CLEAR
-   COMPILE-READS:READS$ {: p:ptr pu:n :}
+   COMPILE-READS:READS$ {: p:^ pu:n :}
    0 begin dup pu < while
       {: at:n :}
       p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: u:n v:n :}
@@ -5394,8 +5394,8 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
 \ (NEST) or the end. A load no load holds first logs the events made since the last such load ended (EVENTS-LOG).
-: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+   {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    LOADER$ nip 0= {: outer:bool :}
    outer if path pathu TOP-REQUEST else -1 then {: top:n :}
    outer if  top 0 >= if top else EVENT-COUNT then EVENTS-LOG  then
@@ -5488,8 +5488,8 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ The newest request ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
 \ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
-: NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+: NEST ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+   {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
@@ -5514,7 +5514,7 @@ TYPED-VARIABLE EXITER [ -- ]
    part 1 + FILE-PART !  off FILE-OFF !  src FILE-SRC !  srcu FILE-SRC-U !
    resume 0< if unlinkable UNLINKABLE ! then
    resume 0 >= if resume FILE-OFF ! then
-   LOADER$ {: k:ptr ku:n :}
+   LOADER$ {: k:^ ku:n :}
    k FILE-KEY ku BYTE-COPY
    FILE-KEY CANON$ PATH!
    align
@@ -5528,7 +5528,7 @@ TYPED-VARIABLE EXITER [ -- ]
 
 
 \ The load, nested when a compiling file requested it.
-: ENTER ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+: ENTER ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    LOADER$ nip 0<>  LINKING? 0=  and if NEST else LOAD then
    construct step returned PROGRESS ! ;
 
@@ -5556,7 +5556,7 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ A file's load once GOING admits it: ENTER (LOAD, or NEST for a compiling file's request), then
 \ LEFT on either exit.
-: RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+: RUN-FILE ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    LOADER$ nip 0<> GOING
    construct step loading PROGRESS !
    ['] ENTER ['] LEFT finally ;
@@ -5581,8 +5581,8 @@ TYPED-VARIABLE EXITER [ -- ]
 \ the primitive's facts text as every word's record does. The package's first file reopens the
 \ package the open made (interpreter.f PKG-ENSURE).
 
-: OWNED-COPY ( ptr u8 n -- n n )
-   {: a:ptr u:n :}
+: OWNED-COPY ( ^u8 n -- n n )
+   {: a:^ u:n :}
    OWNED-TEXT-N @ {: off:n :}
    off u + OWNED-TEXT-RESERVE
    a  off OWNED-TEXT  u BYTE-COPY
@@ -5591,15 +5591,15 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ Gathers package pa pu's primitive na nu: hb's kernel record of it, and copies of both names and of the facts text
 \ the stated rows give it. With no text its calls would go unchecked: the open fails.
-: OWNED+ ( ptr u8 n ptr u8 n -- )
-   {: pa:ptr pu:n na:ptr nu:n :}
-   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:ptr :}
+: OWNED+ ( ^u8 n ^u8 n -- )
+   {: pa:^ pu:n na:^ nu:n :}
+   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:^ :}
    src XREF-FOUND? 0= if
       s" linker: hb has no primitive " SAY  na nu SAY
       s" , which an owned row of " SAY  pa pu SAY  s"  names" SAY  SAY-CR
       E-COMP-STATE throw
    then
-   pa pu na nu CHECK:OWNED-FACTS {: a:ptr u:n :}
+   pa pu na nu CHECK:OWNED-FACTS {: a:^ u:n :}
    u 0= if
       s" linker: no facts text says owned primitive " SAY
       pa pu SAY  s" :" SAY  na nu SAY  SAY-CR
@@ -5632,12 +5632,12 @@ TYPED-VARIABLE EXITER [ -- ]
 : OWNED@ ( n n -- n ) {: r:n f:n :} r OWNED-CELLS * f + OWNED @ ;
 
 \ Owned row r's text at field f: its offset, then its length.
-: OWNED$ ( n n -- ptr u8 n ) {: r:n f:n :} r f OWNED@ OWNED-TEXT  r f 1 + OWNED@ ;
+: OWNED$ ( n n -- ^u8 n ) {: r:n f:n :} r f OWNED@ OWNED-TEXT  r f 1 + OWNED@ ;
 
 \ Package a u's build record, made with its private wordlist when no earlier row made it.
-: OWNER ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+: OWNER ( ^u8 n -- ^n )
+   {: a:^ u:n :}
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? if pkg exit then
    a u true INTERPRETER:PACKAGE-RECORD XREF-REC ;
 
@@ -5645,7 +5645,7 @@ TYPED-VARIABLE EXITER [ -- ]
 \ and hb's record's immediate and wide bits, the ones alias-record keeps.
 : MAKE-OWNED ( n -- )
    {: r:n :}
-   r 0 OWNED@ XREF-REC {: src:ptr :}
+   r 0 OWNED@ XREF-REC {: src:^ :}
    r 1 OWNED$ OWNER XREF-PKG-PRIVATE {: wid:n :}
    r 3 OWNED$ wid 0 INTERPRETER:DEF-RECORD
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY {: want:n :}
@@ -5781,8 +5781,8 @@ public
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
 \ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the
 \ target is the one the program runs on, and another than hb's own makes a cross build.
-: WITH ( ptr u8 n RTARGET:resolved-target [ -- ] -- )
-   {: mode:ptr modeu:n target:RTARGET:resolved-target body :}
+: WITH ( ^u8 n RTARGET:resolved-target [ -- ] -- )
+   {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
    target TARGET !
    mode modeu s" engine" STR= ENGINE? !
@@ -5792,7 +5792,7 @@ public
 
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.
-: KERNEL ( ptr u8 n -- ) ARM64:READ ;
+: KERNEL ( ^u8 n -- ) ARM64:READ ;
 
 \ True while a build's space is open, from WITH's open to the end of its close.
 : OPEN? ( -- bool ) IDLE? 0= ;
@@ -5803,13 +5803,13 @@ public
 
 \ The open build's INPUTS log, with the events made since its last load no load held ended (EVENTS-LOG) when no load
 \ is open; valid until the next part or event is logged or the build closes.
-: INPUTS$ ( -- ptr u8 n )
+: INPUTS$ ( -- ^u8 n )
    LOADER$ nip 0= if EVENT-COUNT EVENTS-LOG then
    INPUTS BYTES$ ;
 
 \ The false beneath the catch keeps the stack's shape.
-: HOLD-CAUGHT ( ptr u8 n -- bool )
-   {: p:ptr pu:n :}
+: HOLD-CAUGHT ( ^u8 n -- bool )
+   {: p:^ pu:n :}
    false [: drop p pu HOLD-ALL ;] catch {: ok rc:n :}
    rc 0= if ok exit then
    rc E-PATH-RANGE <> if rc throw then
@@ -5818,8 +5818,8 @@ public
 \ Whether a build run now from the current root would load every record the INPUTS bytes log as it did, with no build
 \ open: the replay machine above, over the build's registry; false for empty bytes, bytes that run past their end or
 \ end inside a load, a path no FS call takes (PATH-OK?) and a spelling the resolver refuses (E-PATH-RANGE).
-: INPUTS-HOLD? ( ptr u8 n -- bool )
-   {: p:ptr pu:n :}
+: INPUTS-HOLD? ( ^u8 n -- bool )
+   {: p:^ pu:n :}
    pu 0 <= if false exit then
    HOLD-OPEN
    [: p pu HOLD-CAUGHT ;] [: HOLD-CLOSE ;] finally ;

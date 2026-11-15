@@ -12,7 +12,7 @@ package TEST-WAIT
 public
 
 \ No assertion counter and no test label is read or changed.
-: EXPIRED ( ptr u8 n -- )
+: EXPIRED ( ^u8 n -- )
    type s" : a deadline expired" type cr
    E-PROC-TIMEOUT throw ;
 
@@ -28,8 +28,8 @@ public
 \ Waits until the cell holds at least want. The task is the cell's setter. DONE?
 \ is read before the cell, so a store it made before ending is seen; ending
 \ without it throws the task's code here.
-: FOR-CELL ( ptr n n ptr n -- )
-   {: cell:ptr want:n tcb:ptr :}
+: FOR-CELL ( ^n n ^n -- )
+   {: cell:^ want:n tcb:^ :}
    begin
       tcb TASK:DONE?
       cell atomic@ want < while

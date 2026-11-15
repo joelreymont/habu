@@ -62,22 +62,22 @@ NO-FD HOLD !
 false UP !
 false STOPPED !
 
-: INITDB$ ( -- ptr u8 n )    INITDB INITDB-U @ ;
-: POSTGRES$ ( -- ptr u8 n )  POSTGRES POSTGRES-U @ ;
-: ROOT$ ( -- ptr u8 n )      ROOT ROOT-U @ ;
-: SOCKETS$ ( -- ptr u8 n )   SOCKETS SOCKETS-U @ ;
-: DATA$ ( -- ptr u8 n )      DATA DATA-U @ ;
-: LOG$ ( -- ptr u8 n )       LOG LOG-U @ ;
-: INITDB-LOG$ ( -- ptr u8 n ) INITDB-LOG INITDB-LOG-U @ ;
-: PIDFILE$ ( -- ptr u8 n )   PIDFILE PIDFILE-U @ ;
-: CONNINFO$ ( -- ptr u8 n )  CONNINFO CONNINFO-U @ ;
-: CONNINFO+ ( ptr u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
-: ARG+ ( ptr u8 n -- )       >LEN PROC-ARGV+ ;
+: INITDB$ ( -- ^u8 n )    INITDB INITDB-U @ ;
+: POSTGRES$ ( -- ^u8 n )  POSTGRES POSTGRES-U @ ;
+: ROOT$ ( -- ^u8 n )      ROOT ROOT-U @ ;
+: SOCKETS$ ( -- ^u8 n )   SOCKETS SOCKETS-U @ ;
+: DATA$ ( -- ^u8 n )      DATA DATA-U @ ;
+: LOG$ ( -- ^u8 n )       LOG LOG-U @ ;
+: INITDB-LOG$ ( -- ^u8 n ) INITDB-LOG INITDB-LOG-U @ ;
+: PIDFILE$ ( -- ^u8 n )   PIDFILE PIDFILE-U @ ;
+: CONNINFO$ ( -- ^u8 n )  CONNINFO CONNINFO-U @ ;
+: CONNINFO+ ( ^u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
+: ARG+ ( ^u8 n -- )       >LEN PROC-ARGV+ ;
 
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
 \ it.
-: TOOL ( ptr u8 n ptr u8 -- n ) {: name:ptr size:n dst:ptr :}
+: TOOL ( ^u8 n ^u8 -- n ) {: name:^ size:n dst:^ :}
    name size >LEN dst FIND-EXECUTABLE MATCH option
       none OF
          s" pg-cluster: required executable missing on PATH: " type
@@ -87,7 +87,7 @@ false STOPPED !
       some OF LEN>N ENDOF
    ;MATCH ;
 
-: SOCKETS! ( ptr u8 n -- ) {: a:ptr u:n :}
+: SOCKETS! ( ^u8 n -- ) {: a:^ u:n :}
    u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
@@ -98,7 +98,7 @@ false STOPPED !
 \ FMT-ROOT! does. A made directory's name lives in the per-task band the next
 \ FS:MKTEMP-DIR-IN reuses, so each is copied out before the other is made.
 : MAKE-DIRS ( -- )
-   s" habu-pg" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-pg" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    s" HB_SOCK_TMP" GETENV dup 0 > if
@@ -127,8 +127,8 @@ false STOPPED !
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
-: EXITED-0? ( PROCESS:ending ptr u8 n -- bool )
-   {: what:ptr whatu:n :}
+: EXITED-0? ( PROCESS:ending ^u8 n -- bool )
+   {: what:^ whatu:n :}
    MATCH PROCESS:ending
       exited OF
          s" pg-cluster: " type what whatu type
@@ -145,7 +145,7 @@ false STOPPED !
    ;MATCH
    cr false ;
 
-: SHOW-LOG ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: SHOW-LOG ( ^u8 n -- ) {: path:^ pathu:n :}
    path pathu FS:EXISTS? 0= if exit then
    path pathu OUT CAPTURE-CAP FS:READ-ALL {: n:n :}
    OUT n type ;
@@ -158,7 +158,7 @@ false STOPPED !
    watch >FD FD:POLLIN PROCESS:PFD!
    1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART 0 > ;
 
-: CLOSE-WATCH ( ptr n -- ) {: p:ptr :}
+: CLOSE-WATCH ( ^n -- ) {: p:^ :}
    p @ 0 >= if p @ close then
    NO-FD p ! ;
 
@@ -168,7 +168,7 @@ false STOPPED !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: OPEN-LOG ( ptr u8 n -- n )
+: OPEN-LOG ( ^u8 n -- n )
    FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
@@ -245,7 +245,7 @@ false STOPPED !
 
 \ The engine's stdout and stderr are this process's, so its report reaches the
 \ row's log as it runs.
-: CASE-SPAWN ( ptr u8 n -- ) {: file:ptr fileu:n :}
+: CASE-SPAWN ( ^u8 n -- ) {: file:^ fileu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" ARG+ file fileu ARG+
    s" --" ARG+ CONNINFO$ ARG+
@@ -325,7 +325,7 @@ false STOPPED !
 \ outlives such a SIGKILL, logging to <root>/initdb.log: wait for it or SIGTERM
 \ it (it then removes <root>/data), then remove the directories.
 
-: SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
+: SAY-THROW ( ^u8 n n -- ) {: what:^ whatu:n code:n :}
    code 0= if exit then
    s" pg-cluster: " type what whatu type s"  threw " type code FMT:.INT cr ;
 
@@ -353,7 +353,7 @@ false STOPPED !
    ;MATCH ;
 
 \ A failed run exits 1. A caught signal is answered first.
-: FAIL-ROW ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+: FAIL-ROW ( ^u8 n -- ) {: msg:^ msgu:n :}
    SIGNAL-CHECK
    msg msgu 1 die ;
 
@@ -394,7 +394,7 @@ false STOPPED !
 
 \ Each case file runs in a child engine given the conninfo; the first to fail
 \ ends the run.
-: RUN-FILE ( ptr u8 n -- bool ) {: file:ptr fileu:n :}
+: RUN-FILE ( ^u8 n -- bool ) {: file:^ fileu:n :}
    file fileu CASE-SPAWN
    CASE-WATCH @ -1 ENDED-WITHIN? drop
    CASE-REAP
@@ -406,20 +406,20 @@ false STOPPED !
    SCRIPT-ARGC 0= if 2 exit then
    SCRIPT-ARGC ;
 
-: CASE$ ( n -- ptr u8 n ) {: i:n :}
+: CASE$ ( n -- ^u8 n ) {: i:n :}
    SCRIPT-ARGC 0 > if i SCRIPT-ARGV$ exit then
    i 0= if s" src/lib/pg-test.f" exit then
    s" src/lib/pg-rows-test.f" ;
 
 \ The first file to fail ends the run; the answer is the last file run and
 \ whether it passed.
-: CASES ( -- ptr u8 n bool )
+: CASES ( -- ^u8 n bool )
    CASE-N 1- 0 ?do
       i CASE$ 2dup RUN-FILE 0= if false unloop exit then 2drop
    loop
    CASE-N 1- CASE$ 2dup RUN-FILE ;
 
-: SERVE ( -- ptr u8 n bool )
+: SERVE ( -- ^u8 n bool )
    READY? 0= if s" postgres start" false exit then
    true UP !
    CASES ;
@@ -447,7 +447,7 @@ false STOPPED !
    INITDB-RUN
    SIGNAL-CHECK
    START
-   [: SERVE ;] [: END ;] finally {: what:ptr whatu:n passed:bool :}
+   [: SERVE ;] [: END ;] finally {: what:^ whatu:n passed:bool :}
    SIGNAL-CHECK
    UP @ 0= if LOG$ SHOW-LOG then
    passed STOPPED @ and if exit then

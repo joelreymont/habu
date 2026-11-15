@@ -17,7 +17,7 @@ package TAKE-TURN
 private
 using BROWSER-EVENT
 
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: BYTES>N ( ^u8 -- n )
 
 40 BUFFER: TEXT
 variable TEXT-U
@@ -31,12 +31,12 @@ variable HELD-U
    {: kind:n a:n b:n c:n :}
    kind FIELD,  a FIELD,  b FIELD,  c FIELD, ;
 
-: SAY ( ptr u8 n -- )
-   {: t:ptr u:n :}
+: SAY ( ^u8 n -- )
+   {: t:^ u:n :}
    u 0 ?do  t i + c@  TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U !  loop ;
 
-: TEXT-RECORD ( ptr u8 n -- )
-   {: t:ptr u:n :}
+: TEXT-RECORD ( ^u8 n -- )
+   {: t:^ u:n :}
    3 t BYTES>N u 0 RECORD ;
 
 : SHOW-HELD ( -- )
@@ -45,13 +45,13 @@ variable HELD-U
    TEXT TEXT-U @ TEXT-RECORD
    HELD @ HELD-U @ FREE  0 HELD-U ! ;
 
-: SAME? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr au:n b:ptr bu:n :}
+: SAME? ( ^u8 n ^u8 n -- bool )
+   {: a:^ au:n b:^ bu:n :}
    a BYTES>N b BYTES>N =  au bu =  and ;
 
 : HOLD ( -- )
-   0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:ptr du:n :}
-   BROWSER-EVENT:TAKE {: k:ptr ku:n :}
+   0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:^ du:n :}
+   BROWSER-EVENT:TAKE {: k:^ ku:n :}
    k ku d du SAME? 0= if 91 throw then
    DELIVERY d du SAME? 0= if 91 throw then
    0 EVENT@ kind <>  1 EVENT@ at <> or  2 EVENT@ u <> or if 91 throw then

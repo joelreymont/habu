@@ -28,22 +28,22 @@ private
 : DIGIT? ( n -- bool )
    dup ZERO >= swap NINE <= and ;
 
-: BYTE ( ptr u8 n -- n )
-   {: a:ptr at:n :}
+: BYTE ( ^u8 n -- n )
+   {: a:^ at:n :}
    a at + c@ ;
 
-: AT ( ptr u8 n n -- n )
-   {: a:ptr u:n at:n :}
+: AT ( ^u8 n n -- n )
+   {: a:^ u:n at:n :}
    at u < if a at BYTE else 0 then ;
 
-: SOURCE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SOURCE ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 < if E-SOURCE throw then
    u 0 > a 0= and if E-SOURCE throw then ;
 
 \ An invalid separator remains unconsumed.
-: DIGITS ( ptr u8 n n bool -- n n n n )
-   {: a:ptr u:n start:n repeat?:bool :}
+: DIGITS ( ^u8 n n bool -- n n n n )
+   {: a:^ u:n start:n repeat?:bool :}
    start 0 0 0 begin
       {: at:n count:n leading:n trailing:n :}
       a u at AT {: ch:n :}
@@ -74,8 +74,8 @@ private
 : EXP-CAP ( n -- n )
    STR-MAX-I64 20 - min 20 + ;
 
-: EXP-MAGNITUDE ( ptr u8 n n n -- n )
-   {: a:ptr start:n end:n cap:n :}
+: EXP-MAGNITUDE ( ^u8 n n n -- n )
+   {: a:^ start:n end:n cap:n :}
    0 end start ?do
       a i BYTE dup DIGIT? if
          ZERO - {: digit:n :}
@@ -89,8 +89,8 @@ private
 
 \ An absent marker has zero exponent. A malformed marker remains unconsumed,
 \ so the caller's end-of-input check rejects it.
-: EXPONENT ( ptr u8 n n -- n n bool )
-   {: a:ptr u:n start:n :}
+: EXPONENT ( ^u8 n n -- n n bool )
+   {: a:^ u:n start:n :}
    a u start AT dup EXP-LOWER = swap EXP-UPPER = or 0= if
       start 0 false exit
    then
@@ -103,8 +103,8 @@ private
    end magnitude negative? ;
 
 \ The negative accumulator admits i64 minimum without overflow.
-: ACCUM ( ptr u8 n n n n bool -- option<i64> )
-   {: a:ptr start:n end:n leading:n wanted:n negative?:bool :}
+: ACCUM ( ^u8 n n n n bool -- option<i64> )
+   {: a:^ start:n end:n leading:n wanted:n negative?:bool :}
    negative? if 8 else 7 then {: last:n :}
    0 0 0 end start ?do
       a i BYTE {: ch:n :}
@@ -131,8 +131,8 @@ private
 \ All zero mantissas are exact regardless of exponent size. For a nonzero
 \ mantissa, `base` is the count of whole digits after leading zeros. Compare
 \ exponent before adding it, keeping the resulting significant width 1..19.
-: VALUE ( ptr u8 n n n n n n n bool bool -- option<i64> )
-   {: a:ptr start:n end:n whole:n total:n leading:n trailing:n magnitude:n exp-negative?:bool negative?:bool :}
+: VALUE ( ^u8 n n n n n n n bool bool -- option<i64> )
+   {: a:^ start:n end:n whole:n total:n leading:n trailing:n magnitude:n exp-negative?:bool negative?:bool :}
    whole leading - {: base:n :}
    exp-negative? if
       base magnitude <= if OPTION:NONE exit then
@@ -146,8 +146,8 @@ private
    total leading - wanted - trailing > if OPTION:NONE exit then
    a start end leading wanted negative? ACCUM ;
 
-: CONVERT ( ptr u8 n bool -- option<i64> )
-   {: a:ptr u:n integer?:bool :}
+: CONVERT ( ^u8 n bool -- option<i64> )
+   {: a:^ u:n integer?:bool :}
    a u SOURCE
    u 0= if OPTION:NONE exit then
    a 0 BYTE MINUS = {: negative?:bool :}
@@ -175,10 +175,10 @@ private
 
 public
 
-: EXACT ( ptr u8 n -- option<i64> )
+: EXACT ( ^u8 n -- option<i64> )
    false CONVERT ;
 
-: INTEGER ( ptr u8 n -- option<i64> )
+: INTEGER ( ^u8 n -- option<i64> )
    true CONVERT ;
 
 ;package

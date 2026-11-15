@@ -8,16 +8,16 @@ package ROLLBACK-CELLS
 \ and the marked cell.
 PERSISTED-PTR-VARIABLE CELLS-LAST
 
-CAST: >CELL ( ptr t -- ptr n )
+CAST: >CELL ( ^t -- ^n )
 
-: ROW-PREV ( ptr n -- ptr n ) 0 ptr-field @ ;
-: ROW-CELL ( ptr n -- ptr n ) 1 ptr-field @ ;
+: ROW-PREV ( ^n -- ^n ) 0 ptr-field @ ;
+: ROW-CELL ( ^n -- ^n ) 1 ptr-field @ ;
 
 public
 
-: MARK ( ptr t -- )
-   >CELL {: cell:ptr :}
-   datum here CELL-VIEW {: row:ptr :}
+: MARK ( ^t -- )
+   >CELL {: cell:^ :}
+   datum here CELL-VIEW {: row:^ :}
    here ptr-cell-mark 0 ,
    here ptr-cell-mark 0 ,
    CELLS-LAST @ row 0 ptr-field !
@@ -31,9 +31,9 @@ public
    REPEAT drop ;
 
 \ The area holds CELLS-LAST, then each marked cell's value, newest row first.
-: SAVE ( ptr a -- )
-   BYTE-VIEW CELL-VIEW {: area:ptr :}
-   CELLS-LAST @ {: first:ptr :}
+: SAVE ( ^a -- )
+   BYTE-VIEW CELL-VIEW {: area:^ :}
+   CELLS-LAST @ {: first:^ :}
    first area 0 ptr-field !
    area CELL + first
    BEGIN dup NULL-PTR <> WHILE
@@ -41,9 +41,9 @@ public
       ROW-PREV swap CELL + swap
    REPEAT 2drop ;
 
-: RESTORE ( ptr a -- )
-   BYTE-VIEW CELL-VIEW {: area:ptr :}
-   area 0 ptr-field @ {: first:ptr :}
+: RESTORE ( ^a -- )
+   BYTE-VIEW CELL-VIEW {: area:^ :}
+   area 0 ptr-field @ {: first:^ :}
    first CELLS-LAST !
    area CELL + first
    BEGIN dup NULL-PTR <> WHILE

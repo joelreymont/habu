@@ -5,11 +5,11 @@
 package BITEM-PLACED
 private
 
-: KW ( ptr u8 n -- ) EFFECT:KEYWORD ;
+: KW ( ^u8 n -- ) EFFECT:KEYWORD ;
 : GROUP ( -- n ) s" {:" KW  EFFECT:N EFFECT:LOCAL  s" :}" KW ;
 
 \ : NAME ( n bool -- n ) if {: a:n :} a then {: b:n :} a ;
-: MAKE-PLACED ( ptr u8 n -- )
+: MAKE-PLACED ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
    EFFECT:N EFFECT:OUT define-word
    s" if" KW  GROUP {: a:n :}  a EFFECT:LOCAL@  s" then" KW

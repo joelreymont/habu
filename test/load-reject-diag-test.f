@@ -85,90 +85,90 @@ variable ERR-U
 variable EXITED
 variable RC
 
-: BASE$ ( -- ptr u8 n )
+: BASE$ ( -- ^u8 n )
    BASE BASE-U @ ;
 
-: UNDEF$ ( -- ptr u8 n )
+: UNDEF$ ( -- ^u8 n )
    UNDEF-P UNDEF-U @ ;
 
-: BODY$ ( -- ptr u8 n )
+: BODY$ ( -- ^u8 n )
    BODY-P BODY-U @ ;
 
-: OUTER$ ( -- ptr u8 n )
+: OUTER$ ( -- ^u8 n )
    OUTER-P OUTER-U @ ;
 
-: FRAG$ ( -- ptr u8 n )
+: FRAG$ ( -- ^u8 n )
    FRAG-P FRAG-U @ ;
 
-: SIDE$ ( -- ptr u8 n )
+: SIDE$ ( -- ^u8 n )
    SIDE-P SIDE-U @ ;
 
-: INC$ ( -- ptr u8 n )
+: INC$ ( -- ^u8 n )
    INC-P INC-U @ ;
 
-: REQ$ ( -- ptr u8 n )
+: REQ$ ( -- ^u8 n )
    REQ-P REQ-U @ ;
 
-: CALLER$ ( -- ptr u8 n )
+: CALLER$ ( -- ^u8 n )
    CALLER-P CALLER-U @ ;
 
-: TOP-INC$ ( -- ptr u8 n )
+: TOP-INC$ ( -- ^u8 n )
    TOP-INC-P TOP-INC-U @ ;
 
-: TOP-REQ$ ( -- ptr u8 n )
+: TOP-REQ$ ( -- ^u8 n )
    TOP-REQ-P TOP-REQ-U @ ;
 
-: RUNTIME$ ( -- ptr u8 n )
+: RUNTIME$ ( -- ^u8 n )
    RUNTIME-P RUNTIME-U @ ;
 
-: MODELED$ ( -- ptr u8 n )
+: MODELED$ ( -- ^u8 n )
    MODELED-P MODELED-U @ ;
 
-: TRUSTED$ ( -- ptr u8 n )
+: TRUSTED$ ( -- ^u8 n )
    TRUSTED-P TRUSTED-U @ ;
 
-: BPS$ ( -- ptr u8 n )
+: BPS$ ( -- ^u8 n )
    BPS-P BPS-U @ ;
 
-: BPF$ ( -- ptr u8 n )
+: BPF$ ( -- ^u8 n )
    BPF-P BPF-U @ ;
 
-: RES$ ( -- ptr u8 n )
+: RES$ ( -- ^u8 n )
    RES-P RES-U @ ;
 
-: RTYPE$ ( -- ptr u8 n )
+: RTYPE$ ( -- ^u8 n )
    RTYPE-P RTYPE-U @ ;
 
-: RNEST$ ( -- ptr u8 n )
+: RNEST$ ( -- ^u8 n )
    RNEST-P RNEST-U @ ;
 
-: RCATCH$ ( -- ptr u8 n )
+: RCATCH$ ( -- ^u8 n )
    RCATCH-P RCATCH-U @ ;
 
-: CF$ ( -- ptr u8 n )
+: CF$ ( -- ^u8 n )
    CF-P CF-U @ ;
 
-: TARGET$ ( -- ptr u8 n )
+: TARGET$ ( -- ^u8 n )
    TARGET-P TARGET-U @ ;
 
-: TARGET-JSON$ ( -- ptr u8 n )
+: TARGET-JSON$ ( -- ^u8 n )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
-: FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
+: FRAG-FIXTURE! ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: pre:^ preu:n frag:^ fragu:n post:^ postu:n path:^ pathu:n :}
    SB-RESET
    pre preu SB-APPEND
    frag fragu SB-APPEND
    post postu SB-APPEND
    path pathu SB$ FS:WRITE-ALL ;
 
-: PATH! ( ptr u8 n ptr u8 ptr n -- )
-   {: name:ptr nameu:n dst:ptr lenp:ptr :}
+: PATH! ( ^u8 n ^u8 ^n -- )
+   {: name:^ nameu:n dst:^ lenp:^ :}
    BASE$ name nameu dst FS:JOIN-PATH lenp ! ;
 
 : ROOT! ( -- )
    FS:CLEANUP-RESET
-   s" habu-load-reject-diag" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-load-reject-diag" FS:MKTEMP-DIR {: a:^ u:n :}
    a BASE u BYTE-COPY
    u BASE-U !
    BASE$ FS:CLEANUP-TREE+ ;
@@ -203,8 +203,8 @@ variable RC
    \ The byte pointer comes from a declared cell: a raw `variable` hands out no
    \ address (E-RAW-CELL-PTR), which would refuse the fixture one definition
    \ before the token these cases pin.
-   BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
-   BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
+   BPS$ s" TYPED-VARIABLE LRD-P ^u8 : LRD-BASE ( -- ^u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
+   BPF$ s" TYPED-VARIABLE LRD-Q ^u8 : LRD-QBASE ( -- ^u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    TARGET$ s" false ?TARGET" FS:WRITE-ALL
    TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
@@ -227,7 +227,7 @@ variable RC
 " FS:WRITE-ALL ;
 
 \ One definition per append: SB holds one path and its text, not three.
-: RUNTIME-DEF+ ( ptr u8 n ptr u8 n -- ) {: pre:ptr preu:n post:ptr postu:n :}
+: RUNTIME-DEF+ ( ^u8 n ^u8 n -- ) {: pre:^ preu:n post:^ postu:n :}
    SB-RESET
    pre preu SB-APPEND FRAG$ SB-APPEND post postu SB-APPEND
    RUNTIME$ SB$ FS:APPEND-FILE ;
@@ -263,8 +263,8 @@ variable RC
    PATHS!
    FIXTURES! ;
 
-: STORE! ( len len PROCESS:ending ptr u8 n -- )
-   {: outu:len erru:len oc src:ptr srcu:n :}
+: STORE! ( len len PROCESS:ending ^u8 n -- )
+   {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF RC ! 0 0= EXITED ! ENDOF
@@ -272,7 +272,7 @@ variable RC
      timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: RUN ( ^u8 n -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
@@ -280,15 +280,15 @@ variable RC
    ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
 
-: ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
 
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    OUT OUT-U @ ;
 
 \ Every rejecting load: NON-EMPTY stderr that names the failing token, EMPTY
 \ stdout, exit-kind EXIT, rc 70 — the silent-exit-70 red/green discriminator.
-: ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: ASSERT-NAMED ( ^u8 n -- ) {: name:^ nameu:n :}
    ERR-U @ 0 > TTRUE
    ERR$ name nameu CONTAINS? TTRUE
    OUT-U @ 0 T=
@@ -300,13 +300,13 @@ variable RC
    RC @ 0 T=
    ERR-U @ 0 T= ;
 
-: ASSERT-OK-OUT ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ASSERT-OK-OUT ( ^u8 n -- )
+   {: a:^ u:n :}
    ASSERT-OK
    OUT$ a u CONTAINS? TTRUE ;
 
-: ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
-   {: word:ptr wordu:n token:ptr tokenu:n :}
+: ASSERT-IMM-DIAG ( ^u8 n ^u8 n -- )
+   {: word:^ wordu:n token:^ tokenu:n :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root GJA-DIAG-CONTRACT-ROW
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
@@ -314,7 +314,7 @@ variable RC
    root s" word" GJA-REQ word wordu GJA-ASSERT-STR
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
    ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
-   {: pa:ptr pu:n :}
+   {: pa:^ pu:n :}
    pa OUT pu BYTE-COPY
    OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
    packet s" model_compile_immediate" GJA-REPAIR-HEAD
@@ -350,17 +350,17 @@ variable RC
    ERR$ s" at 'drop'" CONTAINS? TTRUE ;
 
 \ Store/fetch target mismatch: `!`/`@` need
-\ a cell-width `ptr a`; a `ptr u8` must name the pair, not just the token.
+\ a cell-width `^a`; a `^u8` must name the pair, not just the token.
 : TEST-BYTE-PTR-STORE ( -- )
    s" cell store into a byte pointer names expected/actual" T-LABEL
    BPS$ RUN
    s" in lrd-bps" ASSERT-NAMED
    ERR$ s" at '!'" CONTAINS? TTRUE
-   ERR$ s" expected: ptr a" CONTAINS? TTRUE
-   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+   ERR$ s" expected: ^a" CONTAINS? TTRUE
+   ERR$ s" actual: ^u8" CONTAINS? TTRUE ;
 
 \ Each control-flow case is a load of its own: a load stops at its first refusal.
-: CF-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: CF-RUN ( ^u8 n -- ) {: src:^ srcu:n :}
    CF$ src srcu FS:WRITE-ALL
    CF$ RUN ;
 
@@ -421,19 +421,19 @@ variable RC
    BPF$ RUN
    s" in lrd-bpf" ASSERT-NAMED
    ERR$ s" at '@'" CONTAINS? TTRUE
-   ERR$ s" expected: ptr a" CONTAINS? TTRUE
-   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+   ERR$ s" expected: ^a" CONTAINS? TTRUE
+   ERR$ s" actual: ^u8" CONTAINS? TTRUE ;
 
-: PARAMETRIC-REJECT ( ptr u8 n -- )
+: PARAMETRIC-REJECT ( ^u8 n -- )
    BODY$ 2swap FS:WRITE-ALL
    BODY$ RUN
    s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED ;
 
 : TEST-PARAMETRIC ( -- )
    s" generic output cannot forge a pointer through an integer" T-LABEL
-   s" : LRD-MINT ( -- a ) 123 ; : LRD-PTR ( -- ptr u8 ) LRD-MINT ;" PARAMETRIC-REJECT
+   s" : LRD-MINT ( -- a ) 123 ; : LRD-PTR ( -- ^u8 ) LRD-MINT ;" PARAMETRIC-REJECT
    s" numeric fetch requires a numeric pointee" T-LABEL
-   s" : LRD-FETCH ( ptr a -- n ) @ ;" PARAMETRIC-REJECT
+   s" : LRD-FETCH ( ^a -- n ) @ ;" PARAMETRIC-REJECT
    s" quotation output cannot specialize a declared variable" T-LABEL
    s" : LRD-QUOT ( [ -- a ] -- n ) execute ;" PARAMETRIC-REJECT
    s" family argument cannot specialize a declared variable" T-LABEL
@@ -520,19 +520,19 @@ variable RC
 \ so `2dup` over a two-cell view copies two cells.
 : TEST-T0-RAW-SPLIT ( -- )
    s" T0 compiles a refused TRUSTED: step as its raw effect" T-LABEL
-   BODY$ s" require src/lib/c2-memory.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
+   BODY$ s" require src/lib/c2-memory.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ^u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
    BODY$ RUN S\" 8\n8\n" ASSERT-OK-OUT ;
 
 \ A refused `!` of a two-cell product in a TRUSTED: body splices its own typed
 \ rows and keeps their width fact, so it stores both cells.
 : TEST-T0-RAW-STORE ( -- )
    s" T0 compiles a refused TRUSTED: store at its field width" T-LABEL
-   BODY$ s" STRUCTURE lrd-pt FIELD x n FIELD y n ;STRUCTURE TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
+   BODY$ s" STRUCTURE lrd-pt FIELD x n FIELD y n ;STRUCTURE TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ^lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
    BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word and the type.
-: STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+: STORAGE-REJECT ( ^u8 n ^u8 n -- ) {: src:^ srcu:n name:^ nameu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    name nameu ASSERT-NAMED
@@ -548,8 +548,8 @@ variable RC
 
 \ SRC as the body exits RC, its stderr holding the line
 \ `<class> habu: <body>:<line>: <prose>`.
-: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n ln:n rc:n :}
+: CODE-REJECT-AT ( ^u8 n ^u8 n ^u8 n n n -- )
+   {: src:^ srcu:n cls:^ clsu:n prose:^ proseu:n ln:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    SB-RESET  cls clsu SB-APPEND  s"  habu: " SB-APPEND  BODY$ SB-APPEND
@@ -561,8 +561,8 @@ variable RC
    RC @ rc T= ;
 
 \ CODE-REJECT-AT located on the body's first line.
-: CODE-REJECT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n rc:n :}
+: CODE-REJECT ( ^u8 n ^u8 n ^u8 n n -- )
+   {: src:^ srcu:n cls:^ clsu:n prose:^ proseu:n rc:n :}
    src srcu cls clsu prose proseu 1 rc CODE-REJECT-AT ;
 
 \ A definer with no signature stops at the word being defined, or at `does>`
@@ -659,8 +659,8 @@ variable RC
 
 \ body.f is refused by the native compiler, naming definition NAME, the token
 \ TOK it refused and that token's LINE.
-: ASSERT-NCOMP-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n :}
+: ASSERT-NCOMP-LINE ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nameu:n tok:^ toku:n line:^ lineu:n :}
    BODY$ RUN
    SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile " SB-APPEND  name nameu SB-APPEND
    s"  at " SB-APPEND  tok toku SB-APPEND  s"  in " SB-APPEND  BODY$ SB-APPEND
@@ -672,8 +672,8 @@ variable RC
 
 \ The native compiler places a structure the checker finds open at a body's
 \ closing `;`, a plain body's or a does> clause's, on the line of that `;`.
-: ASSERT-CLOSE-LINE ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n line:ptr lineu:n :}
+: ASSERT-CLOSE-LINE ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n line:^ lineu:n :}
    name nameu s" ;" line lineu ASSERT-NCOMP-LINE ;
 
 : TEST-OPEN-AT-CLOSE ( -- )
@@ -708,15 +708,15 @@ variable RC
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
    s" a cast of one cell into three names its arity" T-LABEL
-   BODY$ s" cast: LRD-WIDE ( n -- ptr u8 n )" FS:WRITE-ALL
+   BODY$ s" cast: LRD-WIDE ( n -- ^u8 n )" FS:WRITE-ALL
    BODY$ RUN
    s" E-CAST-ARITY habu: " ASSERT-NAMED
    ERR$ s" :1: cast: 'LRD-WIDE': the output is not one term over the stack below" CONTAINS? TTRUE ;
 
 \ A checked body that calls a word acting on source or checker state is refused
 \ E-UNSAFE, naming the word and why; the compiler's line names the file and line.
-: UNSAFE-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n head:ptr headu:n line:ptr lineu:n :}
+: UNSAFE-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n head:^ headu:n line:^ lineu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    head headu ASSERT-NAMED
@@ -725,7 +725,7 @@ variable RC
 
 : TEST-UNSAFE ( -- )
    s" a checked body calling evaluate names E-UNSAFE and why" T-LABEL
-   s" : LRD-EV ( ptr u8 n -- ) evaluate ;"
+   s" : LRD-EV ( ^u8 n -- ) evaluate ;"
    s" E-UNSAFE habu: in lrd-ev: 'evaluate' reads source" s" body.f:1" UNSAFE-REJECT ;
 
 : TEST-REQUIRE-CHAIN ( -- )
@@ -736,7 +736,7 @@ variable RC
 \ A file that leaves cells is refused once, by one line naming the count and
 \ the innermost file, then the engine's uncaught throw. Paths are matched by
 \ their file names: the temporary root may resolve through a symbolic link.
-: ASSERT-RESIDUE ( ptr u8 n ptr u8 n -- ) {: line:ptr lineu:n file:ptr fileu:n :}
+: ASSERT-RESIDUE ( ^u8 n ^u8 n -- ) {: line:^ lineu:n file:^ fileu:n :}
    EXITED @ TTRUE
    RC @ UNCAUGHT-RC T=
    OUT-U @ 0 T=
@@ -839,7 +839,7 @@ variable RC
    root s" token" GJA-REQ s" drop" GJA-ASSERT-STR
    root s" line" GJA-HAS? TFALSE
    ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
-   {: pa:ptr pu:n :}
+   {: pa:^ pu:n :}
    pa OUT pu BYTE-COPY
    OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
    packet s" supply_missing_input" GJA-REPAIR-HEAD

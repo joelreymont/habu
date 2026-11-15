@@ -642,14 +642,14 @@ variable SITES-N
 : ROUTINE-SITES ( -- n )  SITES-N @ ;
 : ROUTINE-SITE ( n -- n )  SITES @ ;
 
-: BODY$ ( -- ptr u8 n )  0 BUF BUF-U @ ;
+: BODY$ ( -- ^u8 n )  0 BUF BUF-U @ ;
 
 public
 
 \ The named kernel word's routine body, as WLINK:FUNCTION+ takes one and valid
 \ until the next call, and true; an empty span and false when it has none.
-: ROUTINE-BODY ( ptr u8 n -- ptr u8 n bool )
-   {: name:ptr u:n :}
+: ROUTINE-BODY ( ^u8 n -- ^u8 n bool )
+   {: name:^ u:n :}
    0 BUF-U !  0 SITES-N !
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
    name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then

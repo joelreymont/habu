@@ -6,7 +6,7 @@ package BITEM-UNBOUND
 private
 
 \ : NAME ( -- ) drop l9 ;
-: MAKE-UNBOUND ( ptr u8 n -- )
+: MAKE-UNBOUND ( ^u8 n -- )
    EFFECT:EMPTY define-word  s" drop" EFFECT:CALL  9 EFFECT:LOCAL@
    postpone ; ;
 

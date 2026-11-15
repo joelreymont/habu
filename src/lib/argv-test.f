@@ -22,7 +22,7 @@ variable TEST-FAIL
 
 : ASSERT= ( n n -- )  = ASSERT ;
 
-: ASSERT$ ( ptr u8 n ptr u8 n -- )  STR= ASSERT ;
+: ASSERT$ ( ^u8 n ^u8 n -- )  STR= ASSERT ;
 
 : ASSERT-RC ( n n -- )
    0 QUIET!
@@ -246,9 +246,9 @@ variable TEST-FAIL
    0 QUIET! ;
 
 : TEST-SPAN-REFUSALS ( -- )
-   s" ARGV-SPAN-OK ( ptr u8 len -- span ) SPAN-MAKE"
+   s" ARGV-SPAN-OK ( ^u8 len -- span ) SPAN-MAKE"
       CHECK-QUIET-CANDIDATE! -1 ASSERT=
-   s" ARGV-SPAN-SWAP ( len ptr u8 -- span ) SPAN-MAKE"
+   s" ARGV-SPAN-SWAP ( len ^u8 -- span ) SPAN-MAKE"
       CHECK-QUIET-CANDIDATE! 0 ASSERT=
    s" ARGV-SPAN-SCALAR ( n -- ) 0 ARGV-MOCK !"
       CHECK-QUIET-CANDIDATE! 0 ASSERT=

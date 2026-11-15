@@ -13,25 +13,25 @@ package AFFINE
 private
 
 \ The cell n down a column from its top, rows four cells apart.
-: DOWN ( ptr r n -- ptr r ) 4 * cells + ;
+: DOWN ( ^r n -- ^r ) 4 * cells + ;
 
 \ The row a b c of a matrix times the column whose top is at col.
-: ROW*COLUMN ( ptr r r r r -- r )
-   {: col:ptr a:r b:r c:r :}
+: ROW*COLUMN ( ^r r r r -- r )
+   {: col:^ a:r b:r c:r :}
    col @ a f*
    col 1 DOWN @ b f* f+
    col 2 DOWN @ c f* f+ ;
 
-: COLUMN! ( r r r ptr r -- )
-   {: x:r y:r z:r col:ptr :}
+: COLUMN! ( r r r ^r -- )
+   {: x:r y:r z:r col:^ :}
    x col !
    y col 1 DOWN !
    z col 2 DOWN ! ;
 
 \ Adds x y z to the translation column t.
-: SHIFT ( ptr r r r r -- )
-   {: m:ptr x:r y:r z:r :}
-   m 3 cells + {: t:ptr :}
+: SHIFT ( ^r r r r -- )
+   {: m:^ x:r y:r z:r :}
+   m 3 cells + {: t:^ :}
    t @ x f+  t 1 DOWN @ y f+  t 2 DOWN @ z f+  t COLUMN! ;
 
 \ The Rodrigues entry k a b + w: a diagonal one takes w = cos, an off-diagonal
@@ -54,8 +54,8 @@ private
    dz dx k sy fnegate TERM  dz dy k sx TERM  dz dz k c TERM ;
 
 \ One row of A p + t, the row's first cell at row.
-: ROW-MAP ( ptr r r r r -- r )
-   {: row:ptr x:r y:r z:r :}
+: ROW-MAP ( ^r r r r -- r )
+   {: row:^ x:r y:r z:r :}
    row @ x f*
    row cell+ @ y f* f+
    row 2 cells + @ z f* f+
@@ -68,13 +68,13 @@ public
 \ length is the caller's contract: A becomes R A and t becomes
 \ R (t - p) + p. An angle outside FMATH:SIN's domain is FMATH:E-DOMAIN,
 \ with m unchanged.
-: ROTATE ( ptr r r r r r r r r -- )
-   {: m:ptr px:r py:r pz:r dx:r dy:r dz:r angle:r :}
+: ROTATE ( ^r r r r r r r r -- )
+   {: m:^ px:r py:r pz:r dx:r dy:r dz:r angle:r :}
    dx dy dz angle RODRIGUES
    {: r00:r r01:r r02:r r10:r r11:r r12:r r20:r r21:r r22:r :}
    m px fnegate py fnegate pz fnegate SHIFT
    4 0 ?do
-      m i cells + {: col:ptr :}
+      m i cells + {: col:^ :}
       col r00 r01 r02 ROW*COLUMN
       col r10 r11 r12 ROW*COLUMN
       col r20 r21 r22 ROW*COLUMN
@@ -83,8 +83,8 @@ public
    m px py pz SHIFT ;
 
 \ The point x y z under the transform at m, A p + t.
-: MAP ( ptr r r r r -- r r r )
-   {: m:ptr x:r y:r z:r :}
+: MAP ( ^r r r r -- r r r )
+   {: m:^ x:r y:r z:r :}
    m x y z ROW-MAP
    m 4 cells + x y z ROW-MAP
    m 8 cells + x y z ROW-MAP ;

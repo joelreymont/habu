@@ -20,35 +20,35 @@ create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
-: SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
-: IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+: SUBJECT$ ( -- ^u8 n ) SUBJECT SUBJECT-U @ ;
+: IMAGE$ ( -- ^u8 n ) IMAGE IMAGE-U @ ;
 
-: MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr " ;
-: DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " ;
+: MACHINE$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr " ;
+: DATA$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " ;
 
-: SELF$ ( -- ptr u8 n ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
-: CELLS$ ( -- ptr u8 n ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
-: SELF-CATCH$ ( -- ptr u8 n )
+: SELF$ ( -- ^u8 n ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
+: CELLS$ ( -- ^u8 n ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
+: SELF-CATCH$ ( -- ^u8 n )
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: T ( -- n ) ['] R catch ;\nT\n" ;
-: CELLS-CATCH$ ( -- ptr u8 n )
+: CELLS-CATCH$ ( -- ^u8 n )
    S\" : R ( n -- n ) 1 + recurse 1 + ;\n: T ( -- n n ) 0 [: R ;] catch ;\nT\n" ;
 
-: TASK$ ( -- ptr u8 n )
+: TASK$ ( -- ^u8 n )
    S\" require src/lib/task.f\nTRUSTED: R ( -- ) recurse recurse ;\n: R0 ( -- ) R ;\nTASK:MIN-STACK TASK:TASK WORKER\n: GO ( -- ) ['] R0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;\nGO\n" ;
 
 \ stderr starts with the line's text; its lr varies with the build.
-: EXPECT-LINE ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+: EXPECT-LINE ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
    GT-ERR$ want wantu STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
-: RUN-SRC ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: RUN-SRC ( ^u8 n -- ) {: src:^ srcu:n :}
    GE-HB-RESET
    GE-HB$ src srcu PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
-: MACHINE-EXIT ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: MACHINE-EXIT ( ^u8 n -- ) {: label:^ labelu:n :}
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
    MACHINE$ label labelu EXPECT-LINE ;
 
-: MACHINE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+: MACHINE ( ^u8 n ^u8 n -- ) {: src:^ srcu:n label:^ labelu:n :}
    src srcu RUN-SRC
    label labelu MACHINE-EXIT ;
 
@@ -65,14 +65,14 @@ variable IMAGE-U
 
 \ MAIN catches a load from address 0, prints its code and overflows the machine
 \ stack; given an argument, it leaves the load uncaught.
-: STRIPPED-SRC$ ( -- ptr u8 n )
+: STRIPPED-SRC$ ( -- ^u8 n )
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\n: MAIN ( -- ) ARGC 1 > if W then ['] W catch . R ;\n" ;
 
 \ The fault's line up to its address, written on fd 2 at the fault, caught or
 \ not.
-: FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
+: FAULT-LINE$ ( -- ^u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
 
-: FAULT-LINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: FAULT-LINE ( ^u8 n -- ) {: label:^ labelu:n :}
    GT-ERR$ FAULT-LINE$ STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
 \ The stripped application's own startup registers the alternate stack before it

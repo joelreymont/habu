@@ -20,22 +20,22 @@ variable RC
 \ Texts that outrun a source line.
 create TEXT CAP allot                  variable TEXT-U
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
-: TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
+: TEXT$ ( -- ^u8 n ) TEXT TEXT-U BUF-LEN@ ;
+: TEXT+ ( ^u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
 : SHOW ( bool -- bool )
    dup 0= if OUT$ type ERR$ type then ;
 
-: SAYS ( ptr u8 n -- ) {: a:ptr u:n :}
+: SAYS ( ^u8 n -- ) {: a:^ u:n :}
    ERR$ a u CONTAINS? SHOW TTRUE ;
 
-: PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
+: PRINTS ( ^u8 n -- ) {: a:^ u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-: SUBJECT-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: SUBJECT-STORE! ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
@@ -43,7 +43,7 @@ create TEXT CAP allot                  variable TEXT-U
       signaled OF drop -1 RC ! ENDOF
    ;MATCH ;
 
-: SESSION ( ptr u8 n -- ) {: src:ptr u:n :}
+: SESSION ( ^u8 n -- ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    src u SUBJECT-STORE! ;
 

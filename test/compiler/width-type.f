@@ -24,7 +24,7 @@ create DIAG-BUF 8192 allot
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : STORED ( -- )
@@ -90,8 +90,8 @@ create DIAG-BUF 8192 allot
    STORED
    DISARM ;
 
-: DECL-REFUSED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DECL-REFUSED ( ^u8 n -- )
+   {: a:^ u:n :}
    ARM
    [: a u evaluate-closed ;] 7109 TTHROWSQ
    s" a width is not stored: keep its bytes (width>n)" HAS?
@@ -102,20 +102,20 @@ create DIAG-BUF 8192 allot
    s" : TW1 ( -- width<turn> ) [type] turn ; TW1 width>n" TEST-EVAL:N 16 T=
    s" : TW2 ( -- width<n> ) [type] n ; TW2 width>n" TEST-EVAL:N 8 T=
    s" : TW3 ( -- width<u8> ) [type] u8 ; TW3 width>n" TEST-EVAL:N 1 T=
-   s" : TW4 ( -- n ) [type] ptr turn width>n ; TW4" TEST-EVAL:N 8 T=
+   s" : TW4 ( -- n ) [type] ^turn width>n ; TW4" TEST-EVAL:N 8 T=
    s" : TW5 ( -- n ) [: [type] turn ;] execute width>n ; TW5" TEST-EVAL:N 16 T=
    s" : TW6 ( -- n ) [type] turn W1 ; TW6" TEST-EVAL:N 16 T= ;
 
-: FORM-REFUSED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FORM-REFUSED ( ^u8 n -- )
+   {: a:^ u:n :}
    ARM
    [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"code\":\"E-BAD-STORAGE\"" HAS?
    s" [type] names no type storage holds" HAS?
    DISARM ;
 
-: FORM-PINNED ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n f:ptr fu:n :}
+: FORM-PINNED ( ^u8 n ^u8 n -- )
+   {: a:^ u:n f:^ fu:n :}
    ARM
    [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
    f fu HAS?
@@ -123,8 +123,8 @@ create DIAG-BUF 8192 allot
 
 : CASE-TYPE-FORM-REFUSED ( -- )
    s" [type] refuses a type storage cannot hold" T-LABEL
-   s" : TX1 ( ptr t -- n ) drop [type] t width>n ;" FORM-REFUSED
-   s" : TX2 ( ptr t -- n ) drop [type] ptr t width>n ;" FORM-REFUSED
+   s" : TX1 ( ^t -- n ) drop [type] t width>n ;" FORM-REFUSED
+   s" : TX2 ( ^t -- n ) drop [type] ^t width>n ;" FORM-REFUSED
    s" : TX3 ( -- n ) [type] wtlin width>n ;" FORM-REFUSED
    s" : TX4 ( -- n ) [type] wtbox width>n ;" FORM-REFUSED
    s" : TX5 ( -- n ) [type] xt width>n ;" FORM-REFUSED
@@ -140,9 +140,9 @@ create DIAG-BUF 8192 allot
 
 : CASE-TYPE-FORM-END ( -- )
    s" a [type] span ends where its definition or quotation ends" T-LABEL
-   s" : TX9 [type] ptr ;" FORM-REFUSED
-   s" : TX10 ( -- n ) [: [type] ptr ;] drop 1 ;"
-   S\" \"token\":\"ptr\"" FORM-PINNED ;
+   s" : TX9 [type] ^ ;" FORM-REFUSED
+   s" : TX10 ( -- n ) [: [type] ^ ;] drop 1 ;"
+   S\" \"token\":\"^\"" FORM-PINNED ;
 
 : CASE-TYPE-FORM-NAME ( -- )
    s" [type] is a keyword no definition is named" T-LABEL
@@ -152,7 +152,7 @@ create DIAG-BUF 8192 allot
    s" no declaration holds a width member" T-LABEL
    s" STRUCTURE sw1 FIELD w width<n> ;STRUCTURE" DECL-REFUSED
    s" STRUCTURE sw2<a> FIELD w width<a> ;STRUCTURE" DECL-REFUSED
-   s" STRUCTURE sw3 FIELD w ptr width<n> ;STRUCTURE" DECL-REFUSED
+   s" STRUCTURE sw3 FIELD w ^width<n> ;STRUCTURE" DECL-REFUSED
    s" STRUCTURE sw4 FIELD w option<width<n>> ;STRUCTURE" DECL-REFUSED
    s" SUMTYPE stw VARIANT one width<n> ;VARIANT ;SUMTYPE" DECL-REFUSED ;
 

@@ -10,31 +10,31 @@ package ALLOC-TEST
 STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 \ Two records' address distances: cell-aligned and distinct. A caller takes
-\ each at its own type: a `ptr t` input that reaches `-` is a cell pointer.
+\ each at its own type: a `^t` input that reaches `-` is a cell pointer.
 : APART ( n n -- )
    {: x:n y:n :}
    x CELL mod 0 T=  y CELL mod 0 T=  x y <> TTRUE ;
 
 
-: NEW-TURN ( ptr ALLOC:allocator -- ptr turn ) [type] turn ALLOC:NEW ;
+: NEW-TURN ( ^ALLOC:allocator -- ^turn ) [type] turn ALLOC:NEW ;
 
 
-: TURN-ZERO ( ptr turn -- )
-   {: t:ptr :}
+: TURN-ZERO ( ^turn -- )
+   {: t:^ :}
    t TURN-ID @ 0 T=  t TURN-STEP @ 0 T= ;
 
 public
 
-: ZEROED ( ptr u8 n -- )
-   {: p:ptr len:n :}
+: ZEROED ( ^u8 n -- )
+   {: p:^ len:n :}
    0 len 0 ?do p i + c@ or loop 0 T= ;
 
 
-: TURNS ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: TURNS ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" ALLOC:NEW answers zeroed, distinct, cell-aligned records" T-LABEL
-   al NEW-TURN {: t1:ptr :}
-   al NEW-TURN {: t2:ptr :}
+   al NEW-TURN {: t1:^ :}
+   al NEW-TURN {: t2:^ :}
    t1 TURN-ZERO  t2 TURN-ZERO  t1 NULL-PTR - t2 NULL-PTR - APART
    s" that keep the fields written" T-LABEL
    1 t1 TURN-ID !  2 t1 TURN-STEP !  3 t2 TURN-ID !  4 t2 TURN-STEP !

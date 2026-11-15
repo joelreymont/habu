@@ -40,14 +40,14 @@ $5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
 TYPED-VARIABLE CONN PG:connection
 
 
-: CONNINFO$ ( -- ptr u8 n )
+: CONNINFO$ ( -- ^u8 n )
    0 SCRIPT-ARGV$ ;
 
-: PERSON-SQL$ ( -- ptr u8 n )
+: PERSON-SQL$ ( -- ^u8 n )
    s" select id, name, nick, score, boss, active from person where id = $1" ;
 
 
-: RUN ( ptr u8 n -- ) {: a:ptr u:n :}
+: RUN ( ^u8 n -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u [: ;] PG:WITH-RESULT ;
 
@@ -57,18 +57,18 @@ TYPED-VARIABLE CONN PG:connection
    s" insert into person values (1, 'Ada', 'ada', 0.5, null, true), (2, 'Grace', null, null, 1, false)" RUN ;
 
 
-: NAMES-ROW ( PG:result -- ptr u8 n ptr u8 n bool PG:result )
+: NAMES-ROW ( PG:result -- ^u8 n ^u8 n bool PG:result )
    1 PG:COL-TEXT rot
-   2 PG:COL-TEXT? {: ka:ptr ku:n given:bool :}
+   2 PG:COL-TEXT? {: ka:^ ku:n given:bool :}
    ka ku rot given swap ;
 
 
-: NAMES-OF ( PG:connection n -- ptr u8 n ptr u8 n bool )
+: NAMES-OF ( PG:connection n -- ^u8 n ^u8 n bool )
    PERSON-SQL$ [: NAMES-ROW ;] PG:BY-ID ;
 
 
-: CHURNED ( ptr u8 n ptr u8 n bool PG:result -- PG:result )
-   >r {: na:ptr nu:n ka:ptr ku:n given:bool :}
+: CHURNED ( ^u8 n ^u8 n bool PG:result -- PG:result )
+   >r {: na:^ nu:n ka:^ ku:n given:bool :}
    s" name after clear" T-LABEL
    na nu s" Ada" T$=
    s" nick after clear" T-LABEL
@@ -154,11 +154,11 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s" select count(*) from person" PG:ONE-INT 2 T= ;
 
 
-: LONG-SQL$ ( -- ptr u8 n )
+: LONG-SQL$ ( -- ^u8 n )
    s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
 
 
-: LONG-ROW ( PG:result -- ptr u8 n ptr u8 n ptr u8 n PG:result )
+: LONG-ROW ( PG:result -- ^u8 n ^u8 n ^u8 n PG:result )
    1 PG:COL-TEXT rot
    2 PG:COL-TEXT rot
    3 PG:COL-TEXT rot ;
@@ -166,8 +166,8 @@ TYPED-VARIABLE CONN PG:connection
 
 \ The short text stays in the arena's first chunk while each long one chains
 \ another.
-: LONG-CHURNED ( ptr u8 n ptr u8 n ptr u8 n PG:result -- PG:result )
-   >r {: ha:ptr hu:n aa:ptr au:n ba:ptr bu:n :}
+: LONG-CHURNED ( ^u8 n ^u8 n ^u8 n PG:result -- PG:result )
+   >r {: ha:^ hu:n aa:^ au:n ba:^ bu:n :}
    s" a short text beside long ones" T-LABEL
    ha hu s" head" T$=
    s" a text longer than the first chunk reads whole" T-LABEL
@@ -240,7 +240,7 @@ TYPED-VARIABLE CONN PG:connection
    [: BAD-DECODE ;] PG:E-ROW EACH-REFUSES ;
 
 
-: REFUSAL-NAMES ( ptr u8 n -- ) {: a:ptr u:n :}
+: REFUSAL-NAMES ( ^u8 n -- ) {: a:^ u:n :}
    PG:REFUSED$ s" 42P01: " STARTS-WITH? TTRUE
    PG:REFUSED$ a u CONTAINS? TTRUE ;
 
@@ -249,12 +249,12 @@ TYPED-VARIABLE CONN PG:connection
    PG:REFUSED$ nip 0 T= ;
 
 
-: EXEC-ON ( ptr u8 n -- ) {: a:ptr u:n :}
+: EXEC-ON ( ^u8 n -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u PG:EXEC ;
 
 
-: QUERY-ON ( ptr u8 n -- ) {: a:ptr u:n :}
+: QUERY-ON ( ^u8 n -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u [: ;] PG:QUERY ;
 
@@ -473,15 +473,15 @@ TASK:MIN-STACK TASK:TASK SIDE-B
 TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
-: NAME-ROW ( PG:result -- ptr u8 n PG:result )
+: NAME-ROW ( PG:result -- ^u8 n PG:result )
    1 PG:COL-TEXT rot ;
 
 
-: NAME-OF ( PG:connection n -- ptr u8 n )
+: NAME-OF ( PG:connection n -- ^u8 n )
    PERSON-SQL$ [: NAME-ROW ;] PG:BY-ID ;
 
 
-: SIDE-NAME$ ( n -- ptr u8 n )
+: SIDE-NAME$ ( n -- ^u8 n )
    0= if s" Ada" exit then
    s" Grace" ;
 
@@ -501,7 +501,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 : SIDE ( n -- ) {: k:n :}
    CONNINFO$ PG:OPEN k SIDE-CONN !
    k 0<> if begin ARRIVED atomic@ 1 < while TASK:PAUSE repeat then
-   k SIDE-CONN @ k 1 + NAME-OF {: a:ptr u:n :}
+   k SIDE-CONN @ k 1 + NAME-OF {: a:^ u:n :}
    k 0= if
       [: 0 SIDE-MISSING ;] catch PG:E-QUERY =
       PG:REFUSED$ s" side_missing_q" CONTAINS? and

@@ -119,7 +119,7 @@ CHECK-DEFINER-FACTS
    s" TOP-RECOVERY" get-current search-wl 0<> if s" native top refusal published" 1 die then ;
 
 START
-: TOP-RECOVERY ( n -- ptr u8 ) drop ;
+: TOP-RECOVERY ( n -- ^u8 ) drop ;
 CHECK-TOP
 
 \ EXPORT runs at once too, so it publishes the global it finds under the
@@ -134,7 +134,7 @@ CHECK-TOP
 
 START
 private
-: EXPORT-RECOVERY ( n -- ptr u8 ) drop ;
+: EXPORT-RECOVERY ( n -- ^u8 ) drop ;
 public
 EXPORT EXPORT-RECOVERY
 private
@@ -142,7 +142,7 @@ CHECK-EXPORT
 public
 
 : CHECK-CAST ( -- )
-   [: s" cast: CAST-WIDE ( n -- ptr u8 n )" evaluate-closed ;] catch
+   [: s" cast: CAST-WIDE ( n -- ^u8 n )" evaluate-closed ;] catch
    E-CAST-ARITY <> if s" native cast refusal code" 1 die then
    FINISH 0<> if s" native cast refusal count" 1 die then
    s" CAST-WIDE" get-current search-wl 0<> if s" native refused cast published" 1 die then ;

@@ -38,18 +38,18 @@ create XPK-OUT XPK-CAP allot
 create XPK-ERR XPK-CAP allot
 create XPK-EMPTY 1 allot
 
-: XPK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
+: XPK-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: XPK-ROOT ( -- ptr u8 n )   XPK-ROOT-BUF XPK-ROOT-U @ ;
-: XPK-CHILD ( -- ptr u8 n )  XPK-CHILD-BUF XPK-CHILD-U @ ;
-: XPK-IN$ ( -- ptr u8 n )    XPK-IN XPK-IN-U @ ;
+: XPK-ROOT ( -- ^u8 n )   XPK-ROOT-BUF XPK-ROOT-U @ ;
+: XPK-CHILD ( -- ^u8 n )  XPK-CHILD-BUF XPK-CHILD-U @ ;
+: XPK-IN$ ( -- ^u8 n )    XPK-IN XPK-IN-U @ ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
 
-: XPK-LINE ( ptr u8 n -- )   SB-APPEND XPK-LF ;
+: XPK-LINE ( ^u8 n -- )   SB-APPEND XPK-LF ;
 
 \ --- forge programs -----------------------------------------------------------
 \ Child exits: primitive source 67 (uncaught E-EXPORT-PRIM 7115), trusted
@@ -62,7 +62,7 @@ create XPK-EMPTY 1 allot
    s" : W ( n -- n ) 2 * ;" XPK-LINE
    s" ;package" XPK-LINE ;
 
-: XPK-OK-FORGE$ ( -- ptr u8 n )               \ dual-name execution + checked callers
+: XPK-OK-FORGE$ ( -- ^u8 n )               \ dual-name execution + checked callers
    SB-RESET
    XPK-SRC-PKG
    s" package XB" XPK-LINE
@@ -77,7 +77,7 @@ create XPK-EMPTY 1 allot
    s" 5 U2 . cr" XPK-LINE
    SB$ ;
 
-: XPK-DIRECTIVE-FORGE$ ( -- ptr u8 n )        \ top-level EXPORT is a no-op
+: XPK-DIRECTIVE-FORGE$ ( -- ^u8 n )        \ top-level EXPORT is a no-op
    SB-RESET
    s" : SQ ( n -- n ) dup * ;" XPK-LINE
    s" EXPORT SQ" XPK-LINE
@@ -85,7 +85,7 @@ create XPK-EMPTY 1 allot
    s" 6 SQ . cr" XPK-LINE
    SB$ ;
 
-: XPK-UNDEF-FORGE$ ( -- ptr u8 n )            \ undefined source rejects
+: XPK-UNDEF-FORGE$ ( -- ^u8 n )            \ undefined source rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -93,20 +93,20 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-QDUP-FORGE$ ( -- ptr u8 n )             \ top-level ?dup over an enum value
+: XPK-QDUP-FORGE$ ( -- ^u8 n )             \ top-level ?dup over an enum value
    SB-RESET
    s" SUMTYPE xpklight VARIANT red ;VARIANT VARIANT green ;VARIANT ;SUMTYPE" XPK-LINE
    s" XPKLIGHT:RED ?dup" XPK-LINE
    SB$ ;
 
-: XPK-NONAME-FORGE$ ( -- ptr u8 n )           \ EXPORT with no name rejects
+: XPK-NONAME-FORGE$ ( -- ^u8 n )           \ EXPORT with no name rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT" XPK-LINE
    SB$ ;
 
-: XPK-DUP-FORGE$ ( -- ptr u8 n )              \ second export of the same tail rejects
+: XPK-DUP-FORGE$ ( -- ^u8 n )              \ second export of the same tail rejects
    SB-RESET
    XPK-SRC-PKG
    s" package XB" XPK-LINE
@@ -116,7 +116,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-SELF-FORGE$ ( -- ptr u8 n )             \ self-export in the same section rejects
+: XPK-SELF-FORGE$ ( -- ^u8 n )             \ self-export in the same section rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -125,7 +125,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-PRIM-FORGE$ ( -- ptr u8 n )             \ primitive source rejects (E-EXPORT-PRIM)
+: XPK-PRIM-FORGE$ ( -- ^u8 n )             \ primitive source rejects (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -133,7 +133,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-UNSAFE-FORGE$ ( -- ptr u8 n )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
+: XPK-UNSAFE-FORGE$ ( -- ^u8 n )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
    SB-RESET
    s" package TICK-ALIAS" XPK-LINE
    s" public" XPK-LINE
@@ -141,7 +141,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-PRIV-FORGE$ ( -- ptr u8 n )             \ private word behind a closed package
+: XPK-PRIV-FORGE$ ( -- ^u8 n )             \ private word behind a closed package
    SB-RESET
    s" package XA" XPK-LINE
    s" : PW ( -- n ) 1 ;" XPK-LINE
@@ -153,7 +153,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-DATA-FORGE$ ( -- ptr u8 n )             \ a data record is never internal
+: XPK-DATA-FORGE$ ( -- ^u8 n )             \ a data record is never internal
    SB-RESET
    s" 42 constant K package P public export K ;package P:K ." XPK-LINE
    SB$ ;
@@ -161,7 +161,7 @@ create XPK-EMPTY 1 allot
 \ Re-exporting a generated constructor (closed but callable) under a second
 \ public name is allowed, a checked caller through the alias compiles, and the
 \ alias inherits DNAME-WIDE.
-: XPK-CTOR-FORGE$ ( -- ptr u8 n )
+: XPK-CTOR-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -174,7 +174,7 @@ create XPK-EMPTY 1 allot
    S\" s\" ctor-alias-ok\" type cr" XPK-LINE
    SB$ ;
 
-: XPK-CTOR-WIDE-SRC-FORGE$ ( -- ptr u8 n )    \ interpret gate on the SOURCE ctor
+: XPK-CTOR-WIDE-SRC-FORGE$ ( -- ^u8 n )    \ interpret gate on the SOURCE ctor
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -184,7 +184,7 @@ create XPK-EMPTY 1 allot
    s" dup" XPK-LINE
    SB$ ;
 
-: XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- ptr u8 n )  \ interpret gate on the ALIAS
+: XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- ^u8 n )  \ interpret gate on the ALIAS
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -202,8 +202,8 @@ create XPK-EMPTY 1 allot
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
 \ data cases also run --load.
 
-: XPK-STORE! ( len len PROCESS:ending ptr u8 n -- )
-   {: outu:len erru:len oc src:ptr srcu:n :}
+: XPK-STORE! ( len len PROCESS:ending ^u8 n -- )
+   {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N XPK-OUT-U !  erru LEN>N XPK-ERR-U !
    oc MATCH PROCESS:ending
      exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
@@ -213,13 +213,13 @@ create XPK-EMPTY 1 allot
      ENDOF
    ;MATCH ;
 
-: XPK-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
+: XPK-IN! ( ^u8 n -- ) {: a:^ u:n :}
    u XPK-CAP > if E-FS-CAPACITY throw then
    a XPK-IN u BYTE-COPY
    u XPK-IN-U ! ;
 
-: XPK-RUN-LOAD ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: XPK-RUN-LOAD ( ^u8 n -- )
+   {: src:^ srcu:n :}
    XPK-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -229,7 +229,7 @@ create XPK-EMPTY 1 allot
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XPK-STORE! ;
 
-: XPK-RUN-STDIN ( ptr u8 n -- )
+: XPK-RUN-STDIN ( ^u8 n -- )
    XPK-IN!
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
@@ -241,15 +241,15 @@ create XPK-EMPTY 1 allot
    XPK-EXITED @ TTRUE
    XPK-RC @ rc T= ;
 
-: XPK-OUT? ( ptr u8 n -- ) {: a:ptr u:n :}
+: XPK-OUT? ( ^u8 n -- ) {: a:^ u:n :}
    XPK-OUT XPK-OUT-U @ a u CONTAINS? TTRUE ;
 
-: XPK-ERR? ( ptr u8 n -- ) {: a:ptr u:n :}
+: XPK-ERR? ( ^u8 n -- ) {: a:^ u:n :}
    XPK-ERR XPK-ERR-U @ a u CONTAINS? TTRUE ;
 
 : XPK-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-export-pkg" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-export-pkg" FS:MKTEMP-DIR {: a:^ u:n :}
    a u XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
    XPK-ROOT FS:CLEANUP-TREE+
    XPK-ROOT s" forge.f" XPK-CHILD-BUF FS:JOIN-PATH XPK-CHILD-U ! ;
@@ -297,7 +297,7 @@ create XPK-EMPTY 1 allot
 
 \ The source ctor and its alias must behave alike at top level: both run and
 \ leave their two-cell value, and a primitive over it (dup) is refused alike
-\ (E-LAYOUT-VALUE, same rc), proving the alias copied DNAME-WIDE; equality is
+\ (E-LAYOUT-VALUE, same rc), proving the alias carries the constructor's effect; equality is
 \ the contract.
 variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 
@@ -328,7 +328,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 : XPK-PT-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
    w v T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
-   XPK-CHECK-RC XPK-ASSERT-RC
+   XPK-CHECK-RC XPK-ASSERT-RC  s" E-LAYOUT-VALUE habu: " XPK-ERR?
    SB-RESET s" interpret-mode layout value: " SB-APPEND  w v SB-APPEND
    SB$ XPK-ERR? ;
 
@@ -381,6 +381,23 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    SB$ XPK-RUN-STDIN
    0 XPK-ASSERT-RC  s" 3" XPK-OUT?  s" 100" XPK-OUT? ;
 
+\ A word whose effect carries the point keeps it whole at top level: run by
+\ `evaluate`, by a tick and `execute`, and as a `does>` child, then taken by
+\ one word, so the load ends clean.
+: XPK-WIDE-KEEP ( -- )
+   s" top-level evaluate, execute and a does> child keep a point whole" T-LABEL
+   SB-RESET XPK-PT-LINES
+   s" : XPK-SAME ( PT:point -- PT:point ) ;" XPK-LINE
+   s" : XPK-SUM ( PT:point -- n ) PT-POINT:UNMAKE + ;" XPK-LINE
+   s" : XPK-KEEPS ( -- ) create does> ( PT:point -- PT:point ) drop ;" XPK-LINE
+   s" XPK-KEEPS XPK-KEPT" XPK-LINE
+   S\" s\" XPK-SAME\" evaluate" XPK-LINE
+   s" ' XPK-SAME execute" XPK-LINE
+   s" XPK-KEPT" XPK-LINE
+   s" XPK-SUM 100 + . cr" XPK-LINE
+   SB$ XPK-RUN-STDIN
+   0 XPK-ASSERT-RC  s" 105" XPK-OUT? ;
+
 T-RESET
 XPK-PREPARE
 XPK-POSITIVES
@@ -389,6 +406,7 @@ XPK-WIDE-PARITY
 XPK-WIDE-TAKE
 XPK-WIDE-DROP
 XPK-USER-DROP
+XPK-WIDE-KEEP
 XPK-CLEANUP
 T-REPORT
 s" export-package: ok" type cr

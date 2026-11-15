@@ -7,13 +7,13 @@ require src/lib/test.f
 
 package ZIP-TEST
 
-: TRY-TEMP ( ptr u8 n -- ptr u8 n )
+: TRY-TEMP ( ^u8 n -- ^u8 n )
    2dup ZIP:OPEN ZIP:CLOSE ;
 
 public
 : TEMP-RUN ( -- )
    T-RESET
-   0 SCRIPT-ARGV$ {: path:ptr len:n :}
+   0 SCRIPT-ARGV$ {: path:^ len:n :}
    path len ORIGINAL$ FS:WRITE-ALL
    path len [: TRY-TEMP ;] catch {: code:n :} 2drop
    code E-FS-DIR T=

@@ -13,17 +13,17 @@ private
 
 4 constant INSN-BYTES
 
-: REC ( ptr u8 n -- ptr n )
+: REC ( ^u8 n -- ^n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" code-reclaim: subject not found" 76 die then ;
 
-: REC-START ( ptr u8 n -- n )
+: REC-START ( ^u8 n -- n )
    REC XREF-START ;
 
-: REC-INDEX ( ptr u8 n -- n )
+: REC-INDEX ( ^u8 n -- n )
    XREF-FIND-INDEX ;
 
-: DEFINED? ( ptr u8 n -- bool )
+: DEFINED? ( ^u8 n -- bool )
    XREF-FIND XREF-FOUND? ;
 
 : FILL ( -- )
@@ -147,18 +147,18 @@ $1000 constant LC-CAP
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
 
-: LC-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
+: LC-EXITS ( ^u8 n n -- len len ) {: src:^ srcu:n want:n :}
    src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
-: LC-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
+: LC-PRINTS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n :}
    0 LC-EXITS {: outu:len erru:len :}
    erru LEN>N 0 T=
    LC-OUT outu LEN>N want wantu T$= ;
 
-: LC-REFUSED ( ptr u8 n -- )
+: LC-REFUSED ( ^u8 n -- )
    70 LC-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    LC-ERR erru LEN>N s" E-DOES-UNCREATED habu: " CONTAINS? TTRUE
@@ -166,7 +166,7 @@ LC-CAP BUFFER: LC-ERR
 
 \ The program runs to the end and prints this; the definition it refuses reports
 \ on stderr.
-: LC-OUT-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
+: LC-OUT-PRINTS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n :}
    0 LC-EXITS drop {: outu:len :}
    LC-OUT outu LEN>N want wantu T$= ;
 

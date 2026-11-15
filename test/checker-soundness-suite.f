@@ -48,29 +48,29 @@ TYPED-VARIABLE TAIL-QA [ -- n ]
 TYPED-VARIABLE TAIL-QR [ R [ R -- R ] -- R ]
 defer TAIL-DF ( R [ R -- S ] -- S )
 \ A family argument is read and written, as a pointee is.
-STRUCTURE tailvals<a> OPAQUE FIELD data ptr a ;STRUCTURE
+STRUCTURE tailvals<a> OPAQUE FIELD data ^a ;STRUCTURE
 : TAIL-VPUT ( a tailvals<a> -- ) TAILVALS-UNMAKE ! ;
 : TAIL-VK ( R tailvals<[ R -- R ]> -- R ) [: ;] swap TAIL-VPUT ;
 : TAIL-VKN ( R tailvals<tailvals<[ R -- R ]>> -- R ) drop ;
 : TAIL-RETAG ( tailvals<a> a -- tailvals<a> ) drop ;
 : TAIL-RETAGN ( tailvals<tailvals<a>> a -- tailvals<tailvals<a>> ) drop ;
-: TAIL-RETAGP ( ptr a a -- ptr a ) drop ;
-: TAIL-STORE ( R ptr [ R -- R ] -- R ) [: ;] swap ! ;
+: TAIL-RETAGP ( ^a a -- ^a ) drop ;
+: TAIL-STORE ( R ^[ R -- R ] -- R ) [: ;] swap ! ;
 \ A view's element type names its storage, whatever record holds the view.
 STRUCTURE tailview<a,b,c,d> FIELD view mut-view<a,b,c,d> ;STRUCTURE
 : TAIL-TAKEV ( R tailview<p,q,a,[ R -- R ]> -- R tailview<p,q,a,[ R -- R ]> ) ;
 \ A literal runs on any stack, so it takes the row of the cell it is stored in.
 TYPED-VARIABLE TAIL-QI [ n -- n ]
 TYPED-VARIABLE TAIL-Q0 [ -- ]
-: TAIL-ST ( ptr a a -- ) drop drop ;
+: TAIL-ST ( ^a a -- ) drop drop ;
 : TAIL-PIN ( R [ R -- R ] -- R [ R -- R ] ) ;
 : TAIL-TAKE0 ( [ -- ] -- ) drop ;
 \ A family built around a literal is a value, as the literal is.
 STRUCTURE tailhook<a> DERIVE addr FIELD fn a ;STRUCTURE
 TYPED-VARIABLE TAIL-QH tailhook<[ n -- n ]>
 : TAIL-TV ( R [ -- a ] -- R a ) execute ;
-defer TAIL-HF ( R [ R -- R ] -- R ptr tailhook<[ R -- R ]> )
-defer TAIL-HG ( R [ R -- R ] -- R [ -- ptr tailhook<[ R -- R ]> ] )
+defer TAIL-HF ( R [ R -- R ] -- R ^tailhook<[ R -- R ]> )
+defer TAIL-HG ( R [ R -- R ] -- R [ -- ^tailhook<[ R -- R ]> ] )
 
 \ A type whose name is the longest a family tail may be.
 NEWTYPE wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
@@ -79,7 +79,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 
 \ CS-K90's literal leaves 40 values of that type, so its escape refusal renders
 \ about 10 KB as the inferred effect and as much again as the actual callable.
-: CAPTURE-PAST$ ( -- ptr u8 n )
+: CAPTURE-PAST$ ( -- ^u8 n )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
 
 
@@ -201,16 +201,16 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K45 ( R [ -- S ] -- S ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K47 ( R [ -- S ] f -- S ) IF drop [: 1 ;] THEN execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" a family argument demands its declared callable" T-LABEL
-   s" CS-K49 ( R ptr CHECKER-SOUNDNESS:tailvals<[ -- R ]> -- R ) @ CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K49 ( R ^CHECKER-SOUNDNESS:tailvals<[ -- R ]> -- R ) @ CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
    s" a type variable may not take a held tail inside a family argument" T-LABEL
    s" CS-K88 ( R -- R ) [: [: ;] CHECKER-SOUNDNESS:TAIL-HF ;] CHECKER-SOUNDNESS:TAIL-TV drop" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K89 ( R -- R ) [: [: ;] CHECKER-SOUNDNESS:TAIL-HG ;] CHECKER-SOUNDNESS:TAIL-TV drop" CHECK-QUIET-CANDIDATE! 0 T=
    s" a family argument stays demanded through a retag" T-LABEL
-   s" CS-K75 ( R ptr CHECKER-SOUNDNESS:tailvals<[ -- R ]> ptr [ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAG CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K75 ( R ^CHECKER-SOUNDNESS:tailvals<[ -- R ]> ^[ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAG CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
    s" a pointee stays demanded through a retag" T-LABEL
-   s" CS-K76 ( R ptr [ -- R ] -- R ) dup @ CHECKER-SOUNDNESS:TAIL-RETAGP CHECKER-SOUNDNESS:TAIL-STORE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K76 ( R ^[ -- R ] -- R ) dup @ CHECKER-SOUNDNESS:TAIL-RETAGP CHECKER-SOUNDNESS:TAIL-STORE" CHECK-QUIET-CANDIDATE! 0 T=
    s" a nested family argument stays demanded through a retag" T-LABEL
-   s" CS-K77 ( R ptr CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- R ]>> ptr [ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAGN CHECKER-SOUNDNESS:TAIL-VKN" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K77 ( R ^CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- R ]>> ^[ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAGN CHECKER-SOUNDNESS:TAIL-VKN" CHECK-QUIET-CANDIDATE! 0 T=
    s" a view's element type stays demanded inside a record" T-LABEL
    s" CS-K78 ( R CHECKER-SOUNDNESS:tailview<p,q,a,[ -- ]> -- R CHECKER-SOUNDNESS:tailview<p,q,a,[ R -- R ]> ) CHECKER-SOUNDNESS:TAIL-TAKEV" CHECK-QUIET-CANDIDATE! 0 T=
    s" a literal stored beside a cell takes the cell's row" T-LABEL
@@ -236,7 +236,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" : CS-K38 ( -- ) create does> ( R [ A -- B ] -- B ) drop CHECKER-SOUNDNESS:TAIL-G ;" 70
    s" callable row escape" SUBJECT:REFUSED? TTRUE
    s" a store or an install demands the declared callable" T-LABEL
-   s" CS-K39 ( ptr [ R [ R -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-G swap !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K39 ( ^[ R [ R -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-G swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K48 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" CHECK-QUIET-CANDIDATE! 0 T=
    s" ' CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" 70
    s" callable row escape" SUBJECT:REFUSED? TTRUE
@@ -248,8 +248,8 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\",\"verdict\":\"rejected\",\"word\":\"cs-k73\",\"token\":\"is\",\"reason\":\"callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s\" \"inferred_effect\":\"-- [ [ -- ] -- ] \",\"return_stack\"" SUBJECT:REFUSED? TTRUE
-   s" CS-K42 ( ptr [ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" CS-K43 ( R [ R -- S ] ptr [ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K42 ( ^[ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K43 ( R [ R -- S ] ^[ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
    s" a cell over a callable whose tails differ is refused at its declaration" T-LABEL
    s" TYPED-VARIABLE CS-QB [ -- S ]" 70
    s" in CS-QB: stored type may hold a linear value '[ -- S ]'" SUBJECT:REFUSED? TTRUE
@@ -280,11 +280,11 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K64 ( x -- x ) [: ;] CHECKER-SOUNDNESS:TAIL-UNDER" CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-K66 ( A -- A ) [: ;] dup CHECKER-SOUNDNESS:TAIL-KEEP CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
    \ A literal demanding a named row is a value: its own row instantiates.
-   s" CS-K67 ( ptr [ [ -- S ] -- S ] -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] swap !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-K67 ( ^[ [ -- S ] -- S ] -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] swap !" CHECK-QUIET-CANDIDATE! -1 T=
    \ A loaded callable is provided whatever its cell declares.
    s" CS-K68 ( x -- x n ) CHECKER-SOUNDNESS:TAIL-QA @ CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
-   s" CS-K69 ( R [ -- S ] ptr [ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! -1 T=
-   s" CS-K70 ( ptr [ [ -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-ONCE swap !" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" CS-K69 ( R [ -- S ] ^[ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-K70 ( ^[ [ -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-ONCE swap !" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 
 : RETURN-ROW ( -- )

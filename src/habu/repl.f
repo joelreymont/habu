@@ -29,29 +29,29 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
 \ name (LINE-FULL): dropping keys silently lost a pasted definition's `;`.
 255 constant LLINE-MAX
 
-defer REPL-READ ( -- ptr u8 n )
+defer REPL-READ ( -- ^u8 n )
 
-: HS@ ( -- ptr u8 )
+: HS@ ( -- ^u8 )
    HS @ ;
 
-: HS! ( ptr u8 -- )
+: HS! ( ^u8 -- )
    HS ! ;
 
-: TIO32@ ( ptr u8 -- n ) {: a:ptr :}
+: TIO32@ ( ^u8 -- n ) {: a:^ :}
    a c@  a 1 + c@ 8 lshift or
    a 2 + c@ 16 lshift or
    a 3 + c@ 24 lshift or ;
 
-: TIO32! ( n ptr u8 -- ) {: x a:ptr :}
+: TIO32! ( n ^u8 -- ) {: x a:^ :}
    x $FF and a c!
    x 8 rshift $FF and a 1 + c!
    x 16 rshift $FF and a 2 + c!
    x 24 rshift $FF and a 3 + c! ;
 
-: TIO-LFLAG-U8 ( -- ptr u8 )
+: TIO-LFLAG-U8 ( -- ^u8 )
    TIOB HBR-LFLAG-OFF + ;
 
-: TIO-LFLAG-CELL ( -- ptr n )
+: TIO-LFLAG-CELL ( -- ^n )
    TIOB HBR-LFLAG-OFF + ;
 
 : TIO-LFLAG@ ( -- n )
@@ -108,7 +108,7 @@ defer REPL-READ ( -- ptr u8 n )
          dup LBUF + c@  over 1 - LBUF + c!  1 + repeat drop
       LLEN @ 1 - LLEN !  LPOS @ 1 - LPOS ! THEN ;
 
-: HSLOT ( n -- ptr u8 )  15 and 256 * HIST + ;
+: HSLOT ( n -- ^u8 )  15 and 256 * HIST + ;
 
 : HSAVE ( -- )
    LLEN @ 0 > IF
@@ -166,7 +166,7 @@ defer REPL-READ ( -- ptr u8 n )
       10 /
    repeat drop ;
 
-: LDEC$ ( -- ptr u8 n )
+: LDEC$ ( -- ^u8 n )
    LDEC LDEC-I @ +  24 LDEC-I @ - ;
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
@@ -183,7 +183,7 @@ defer REPL-READ ( -- ptr u8 n )
 
 \ A refused line stays out of the history ring; the outer session sees only
 \ whole lines.
-: RD-LINE ( -- ptr u8 n )
+: RD-LINE ( -- ^u8 n )
    TTY? 0= IF NULL$ exit THEN
    0 HBR-TIO-GET TIOB0 ioctl drop
    begin

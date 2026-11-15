@@ -42,66 +42,66 @@ private
 -1 constant IDLE
 -2 constant CLAIMED
 
-CAST: >CONTEXT ( ptr u8 -- context )
-CAST: CONTEXT>PTR ( context -- ptr u8 )
+CAST: >CONTEXT ( ^u8 -- context )
+CAST: CONTEXT>PTR ( context -- ^u8 )
 
-: FD-CELL ( ptr u8 -- ptr n ) CELL-VIEW ;
-: BASE-CELL ( ptr u8 -- ptr n ) CELL-VIEW cell+ ;
+: FD-CELL ( ^u8 -- ^n ) CELL-VIEW ;
+: BASE-CELL ( ^u8 -- ^n ) CELL-VIEW cell+ ;
 
 
-: BLOCK ( ptr u8 -- ptr u8 )
+: BLOCK ( ^u8 -- ^u8 )
    2 cells + ;
 
 
-: MAP ( -- ptr u8 NUM:alloc-byte-len )
+: MAP ( -- ^u8 NUM:alloc-byte-len )
    STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES ;
 
 
-: FINISH ( ptr u8 -- ) {: ls:ptr :}
+: FINISH ( ^u8 -- ) {: ls:^ :}
    ls FD-CELL @ {: fd:n :}
    fd 0 >= if fd close then
    IDLE ls FD-CELL atomic! ;
 
-: ACQUIRE ( ptr u8 -- ) {: ls:ptr :}
+: ACQUIRE ( ^u8 -- ) {: ls:^ :}
    IDLE CLAIMED ls FD-CELL atomic-cas IDLE <> if
       FS:CAUSE-CLEAR E-ACTIVE throw
    then
    0 ls BASE-CELL ! ;
 
 
-: OPEN ( ptr u8 ptr u8 n -- ) {: ls:ptr path:ptr size:n :}
-   path size FS:>PATHZ {: z:ptr :}
+: OPEN ( ^u8 ^u8 n -- ) {: ls:^ path:^ size:n :}
+   path size FS:>PATHZ {: z:^ :}
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
    handle ls FD-CELL ! ;
 
 
-: READ-BLOCK ( ptr u8 -- n ) {: ls:ptr :}
+: READ-BLOCK ( ^u8 -- n ) {: ls:^ :}
    ls FD-CELL @ ls BLOCK BLOCK-CAP ls BASE-CELL getdirentries64 {: got:n :}
    got 0 < if E-READ throw then
    got ;
 
 
 \ Validate the header before field reads, then validate the name inside rec.
-: RECORD ( n n ptr u8 -- n n ptr u8 n u8 )
-   {: filled:n at:n ls:ptr :}
+: RECORD ( n n ^u8 -- n n ^u8 n u8 )
+   {: filled:n at:n ls:^ :}
    filled at - FS:DIRENT-NAME-OFFSET < if
       FS:CAUSE-CLEAR E-ENTRY throw
    then
-   ls BLOCK at + {: ent:ptr :}
+   ls BLOCK at + {: ent:^ :}
    ent FS:DIRENT-RECLEN {: rec:n :}
    rec FS:DIRENT-NAME-OFFSET <= rec filled at - > or if
       FS:CAUSE-CLEAR E-ENTRY throw
    then
-   ent FS:DIRENT-NAME {: name:ptr size:n :}
+   ent FS:DIRENT-NAME {: name:^ size:n :}
    size rec FS:DIRENT-NAME-OFFSET - > if FS:CAUSE-CLEAR E-ENTRY throw then
    filled at rec + name size ent FS:DIRENT-TYPE ;
 
 
 \ The next name except . and .., read from a new block when this one is spent;
 \ FALSE under an empty name once the directory has no more.
-: NEXT ( n n ptr u8 -- n n ptr u8 n u8 bool ) {: ls:ptr :}
+: NEXT ( n n ^u8 -- n n ^u8 n u8 bool ) {: ls:^ :}
    begin
       2dup > if
          ls RECORD >r 2dup FS:SKIP-SELF-ENTRY? 0= if r> true exit then
@@ -112,7 +112,7 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    again ;
 
 
-: BEFORE? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: BEFORE? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
    u v min {: shared:n :}
    shared 0 ?do
       a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
@@ -120,11 +120,11 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    u v < ;
 
 
-: LINE-END ( ptr u8 n n -- n ) {: dst:ptr len:n at:n :}
+: LINE-END ( ^u8 n n -- n ) {: dst:^ len:n at:n :}
    at begin dup len < if dup dst + c@ LF <> else false then while 1+ repeat ;
 
 
-: INSERT-AT ( ptr u8 n ptr u8 n -- n ) {: name:ptr size:n dst:ptr len:n :}
+: INSERT-AT ( ^u8 n ^u8 n -- n ) {: name:^ size:n dst:^ len:n :}
    0 begin dup len < while
       {: at:n :}
       dst len at LINE-END {: stop:n :}
@@ -134,7 +134,7 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    len min ;
 
 
-: INSERT ( n ptr u8 n ptr u8 n -- n ) {: len:n name:ptr size:n dst:ptr cap:n :}
+: INSERT ( n ^u8 n ^u8 n -- n ) {: len:n name:^ size:n dst:^ cap:n :}
    size 0 ?do name i + c@ LF = if FS:CAUSE-CLEAR E-ENTRY throw then loop
    len 0 > if 1 else 0 then {: separator:n :}
    len size + separator + cap > if FS:CAUSE-CLEAR E-CAPACITY throw then
@@ -156,28 +156,28 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 \ The listing runs on the stack into these preserving words, so the catch
 \ around each gives the mapping back however it leaves - a quotation-typed
 \ local cannot be caught (src/lib/fs.f WALK-RUN).
-: EACH-RUN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ptr u8 ptr u8 n [ ptr u8 n -- ] )
-   {: ls:ptr path:ptr size:n q :}
+: EACH-RUN ( ^u8 ^u8 n [ ^u8 n -- ] -- ^u8 ^u8 n [ ^u8 n -- ] )
+   {: ls:^ path:^ size:n q :}
    ls path size OPEN
    0 0 begin ls NEXT while drop q execute repeat drop 2drop 2drop
    ls path size q ;
 
-: EACH-TYPED-RUN ( ptr u8 ptr u8 n [ ptr u8 n u8 -- ] -- ptr u8 ptr u8 n [ ptr u8 n u8 -- ] )
-   {: ls:ptr path:ptr size:n q :}
+: EACH-TYPED-RUN ( ^u8 ^u8 n [ ^u8 n u8 -- ] -- ^u8 ^u8 n [ ^u8 n u8 -- ] )
+   {: ls:^ path:^ size:n q :}
    ls path size OPEN
    0 0 begin ls NEXT while q execute repeat drop 2drop 2drop
    ls path size q ;
 
-: NAMES-STEP ( n n n ptr u8 ptr u8 n -- n n n bool )
-   {: len:n filled:n at:n ls:ptr dst:ptr cap:n :}
+: NAMES-STEP ( n n n ^u8 ^u8 n -- n n n bool )
+   {: len:n filled:n at:n ls:^ dst:^ cap:n :}
    filled at ls NEXT if
       drop len -rot dst cap INSERT -rot true
    else
       drop 2drop len -rot false
    then ;
 
-: NAMES-RUN ( ptr u8 ptr u8 n ptr u8 n n -- ptr u8 ptr u8 n ptr u8 n n )
-   {: ls:ptr path:ptr size:n dst:ptr cap:n len:n :}
+: NAMES-RUN ( ^u8 ^u8 n ^u8 n n -- ^u8 ^u8 n ^u8 n n )
+   {: ls:^ path:^ size:n dst:^ cap:n len:n :}
    ls path size OPEN
    len 0 0 begin ls dst cap NAMES-STEP while repeat 2drop
    >r ls path size dst cap r> ;
@@ -189,7 +189,7 @@ public
 \ lifetime and never INITs one that is listing. A context is reusable after
 \ success, an open or read failure, or a callback throw.
 : INIT ( SPAN:span<u8> -- context )
-   SPAN:$ {: ls:ptr cap:n :}
+   SPAN:$ {: ls:^ cap:n :}
    cap STORAGE-BYTES < ls NULL$ drop - 1 cells mod 0<> or if
       FS:CAUSE-CLEAR E-CAPACITY throw
    then
@@ -197,28 +197,28 @@ public
    0 ls BASE-CELL !
    ls >CONTEXT ;
 
-: EACH-IN ( context ptr u8 n [ ptr u8 n -- ] -- )
-   {: ctx path:ptr size:n q :}
-   ctx CONTEXT>PTR {: ls:ptr :}
+: EACH-IN ( context ^u8 n [ ^u8 n -- ] -- )
+   {: ctx path:^ size:n q :}
+   ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
    ls path size q [: EACH-RUN ;] catch {: code:n :}
    drop 2drop drop
    ls FINISH
    code 0<> if code throw then ;
 
-: EACH-TYPED-IN ( context ptr u8 n [ ptr u8 n u8 -- ] -- )
-   {: ctx path:ptr size:n q :}
-   ctx CONTEXT>PTR {: ls:ptr :}
+: EACH-TYPED-IN ( context ^u8 n [ ^u8 n u8 -- ] -- )
+   {: ctx path:^ size:n q :}
+   ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
    ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
    drop 2drop drop
    ls FINISH
    code 0<> if code throw then ;
 
-: NAMES-IN ( context ptr u8 n ptr u8 n -- n )
-   {: ctx path:ptr size:n dst:ptr cap:n :}
+: NAMES-IN ( context ^u8 n ^u8 n -- n )
+   {: ctx path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
-   ctx CONTEXT>PTR {: ls:ptr :}
+   ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
    ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
    ls FINISH
@@ -226,8 +226,8 @@ public
    >r 2drop 2drop drop r> ;
 
 \ Hands each name except . and .. to the quotation, in directory order.
-: EACH ( ptr u8 n [ ptr u8 n -- ] -- ) {: path:ptr size:n q :}
-   MAP {: ls:ptr lsu :}
+: EACH ( ^u8 n [ ^u8 n -- ] -- ) {: path:^ size:n q :}
+   MAP {: ls:^ lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
    ls path size q [: EACH-RUN ;] catch {: code:n :}
    drop 2drop drop
@@ -238,8 +238,8 @@ public
 \ d_type passes unchanged: a filesystem may omit it, so a caller handles
 \ DT-UNKNOWN. The name is borrowed from the listing's block only for the
 \ callback.
-: EACH-TYPED ( ptr u8 n [ ptr u8 n u8 -- ] -- ) {: path:ptr size:n q :}
-   MAP {: ls:ptr lsu :}
+: EACH-TYPED ( ^u8 n [ ^u8 n u8 -- ] -- ) {: path:^ size:n q :}
+   MAP {: ls:^ lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
    ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
    drop 2drop drop
@@ -251,9 +251,9 @@ public
 \ The names except . and .. into the caller's buffer, newline-separated and in
 \ byte order, so two listings of one directory compare equal; answers the
 \ length. A name holding a newline is refused; a short buffer is E-FS-LIST-CAPACITY.
-: NAMES ( ptr u8 n ptr u8 n -- n ) {: path:ptr size:n dst:ptr cap:n :}
+: NAMES ( ^u8 n ^u8 n -- n ) {: path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
-   MAP {: ls:ptr lsu :}
+   MAP {: ls:^ lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
    ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
    ls FINISH

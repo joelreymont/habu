@@ -51,20 +51,20 @@ variable SFT-DEEP-DIR-U
 variable SFT-DEEP-U
 variable SFT-EDGE-U
 
-: SFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: SFT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: SFT-ROOT$ ( -- ptr u8 n )
+: SFT-ROOT$ ( -- ^u8 n )
    SFT-ROOT SFT-ROOT-U @ ;
 
-: SFT-FILE$ ( -- ptr u8 n )
+: SFT-FILE$ ( -- ^u8 n )
    SFT-FILE SFT-FILE-U @ ;
 
-: SFT-FILE1$ ( -- ptr u8 n )
+: SFT-FILE1$ ( -- ^u8 n )
    SFT-FILE1 SFT-FILE1-U @ ;
 
-: SFT-MISSING$ ( -- ptr u8 n )
+: SFT-MISSING$ ( -- ^u8 n )
    SFT-MISSING SFT-MISSING-U @ ;
 
 : SFT-PREPARE ( -- )
@@ -90,7 +90,7 @@ variable SFT-EDGE-U
       97 SFT-A100 i + c!
    loop ;
 
-: SFT-SHA-HEX= ( ptr u8 n ptr u8 n -- ) {: a:ptr u expect:ptr eu :}
+: SFT-SHA-HEX= ( ^u8 n ^u8 n -- ) {: a:^ u expect:^ eu :}
    SFT-CTX-ONE a u SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
    SFT-HEX-A 64 expect eu T$= ;
@@ -118,23 +118,23 @@ variable SFT-EDGE-U
 \ A digest in progress lives in the caller's span. Every digest is compared
 \ against the one-shot SHA256-IN of the same bytes.
 
-: SFT-DIGEST= ( ptr u8 ptr u8 -- ) {: got want :}   \ two $20-byte digests, as hex
+: SFT-DIGEST= ( ^u8 ^u8 -- ) {: got want :}   \ two $20-byte digests, as hex
    got SFT-HEX-A SHA256>HEX
    want SFT-HEX-B SHA256>HEX
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
-: SFT-ONE-SHOT= ( ptr u8 ptr u8 n -- ) {: got a u:n :}
+: SFT-ONE-SHOT= ( ^u8 ^u8 n -- ) {: got a u:n :}
    SFT-CTX-ONE a u SFT-DG-E SHA256-IN
    got SFT-DG-E SFT-DIGEST= ;
 
-: SFT-FEED-PIECES ( ptr u8 ptr u8 n n -- ) {: ctx a u:n piece:n :}
+: SFT-FEED-PIECES ( ^u8 ^u8 n n -- ) {: ctx a u:n piece:n :}
    u 0 ?do
       ctx  a i ZPTR+  u i - piece min  SHA256-FEED
    piece +loop ;
 
 \ One byte to the first context for every $40 to the second, so the two digests
 \ interleave inside each block.
-: SFT-FEED-BOTH ( ptr u8 ptr u8 ptr u8 n -- ) {: ca cb a u:n :}
+: SFT-FEED-BOTH ( ^u8 ^u8 ^u8 n -- ) {: ca cb a u:n :}
    u 0 ?do
       ca  a i ZPTR+  1  SHA256-FEED
       i $40 mod 0= if
@@ -307,7 +307,7 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 
 \ A path longer than 256 bytes: the digest words take every path src/lib/fs.f
 \ takes. One 230-byte component keeps the name under NAME_MAX.
-: SFT-DEEP$ ( -- ptr u8 n )
+: SFT-DEEP$ ( -- ^u8 n )
    SFT-DEEP SFT-DEEP-U @ ;
 
 : SFT-TEST-DEEP-PATH ( -- )
@@ -325,10 +325,10 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 
 \ A path string of exactly PATH-CAP bytes from the physical root, since a
 \ symlink's target also counts against the kernel limit.
-: SFT-EDGE$ ( -- ptr u8 n )
+: SFT-EDGE$ ( -- ^u8 n )
    SFT-EDGE SFT-EDGE-U @ ;
 
-: SFT-EDGE+ ( ptr u8 n -- ) {: a:ptr u :}
+: SFT-EDGE+ ( ^u8 n -- ) {: a:^ u :}
    a SFT-EDGE SFT-EDGE-U @ + u BYTE-COPY
    SFT-EDGE-U @ u + SFT-EDGE-U ! ;
 

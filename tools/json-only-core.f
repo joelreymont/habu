@@ -21,32 +21,32 @@ variable JSON-ONLY-PROSE-A
 variable JSON-ONLY-PROSE-CAP
 variable JSON-ONLY-PROSE-U
 variable JSON-ONLY-BUF-ON
-TYPED-VARIABLE JSON-ONLY-SOURCE ptr u8
+TYPED-VARIABLE JSON-ONLY-SOURCE ^u8
 variable JSON-ONLY-SOURCE-U
 variable JSON-ONLY-POS
-TYPED-VARIABLE JSON-ONLY-LINE ptr u8
+TYPED-VARIABLE JSON-ONLY-LINE ^u8
 variable JSON-ONLY-LINE-U
 variable JSON-ONLY-ROW-OBJECT
 
-: JSON-ONLY-BUF-PTR-FIELD ( ptr a -- ptr ptr u8 )
+: JSON-ONLY-BUF-PTR-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
 
-: JSON-ONLY-BUF-PTR@ ( ptr a -- ptr u8 )
+: JSON-ONLY-BUF-PTR@ ( ^a -- ^u8 )
    JSON-ONLY-BUF-PTR-FIELD @ ;
 
-: JSON-ONLY-BUF-PTR! ( ptr u8 ptr a -- )
+: JSON-ONLY-BUF-PTR! ( ^u8 ^a -- )
    JSON-ONLY-BUF-PTR-FIELD ! ;
 
-: JSON-ONLY-JSON-A@ ( -- ptr u8 )
+: JSON-ONLY-JSON-A@ ( -- ^u8 )
    JSON-ONLY-JSON-A JSON-ONLY-BUF-PTR@ ;
 
-: JSON-ONLY-PROSE-A@ ( -- ptr u8 )
+: JSON-ONLY-PROSE-A@ ( -- ^u8 )
    JSON-ONLY-PROSE-A JSON-ONLY-BUF-PTR@ ;
 
-: JSON-ONLY-JSON-A! ( ptr u8 -- )
+: JSON-ONLY-JSON-A! ( ^u8 -- )
    JSON-ONLY-JSON-A JSON-ONLY-BUF-PTR! ;
 
-: JSON-ONLY-PROSE-A! ( ptr u8 -- )
+: JSON-ONLY-PROSE-A! ( ^u8 -- )
    JSON-ONLY-PROSE-A JSON-ONLY-BUF-PTR! ;
 
 : JSON-ONLY-FDS! ( fd fd -- ) {: jsonfd prosefd :}
@@ -56,7 +56,7 @@ variable JSON-ONLY-ROW-OBJECT
 : JSON-ONLY-DEFAULT-FDS ( -- )
    FD:STDOUT FD:STDERR JSON-ONLY-FDS! ;
 
-: JSON-ONLY-BUFFERS! ( ptr u8 n ptr u8 n -- ) {: json:ptr jsonu:n prose:ptr proseu:n :}
+: JSON-ONLY-BUFFERS! ( ^u8 n ^u8 n -- ) {: json:^ jsonu:n prose:^ proseu:n :}
    json JSON-ONLY-JSON-A!
    jsonu JSON-ONLY-JSON-CAP !
    0 JSON-ONLY-JSON-U !
@@ -68,14 +68,14 @@ variable JSON-ONLY-ROW-OBJECT
 : JSON-ONLY-BUFFERS-OFF ( -- )
    0 0= 0= JSON-ONLY-BUF-ON ! ;
 
-: JSON-ONLY-JSON$ ( -- ptr u8 n )
+: JSON-ONLY-JSON$ ( -- ^u8 n )
    JSON-ONLY-JSON-A@ JSON-ONLY-JSON-U @ ;
 
-: JSON-ONLY-PROSE$ ( -- ptr u8 n )
+: JSON-ONLY-PROSE$ ( -- ^u8 n )
    JSON-ONLY-PROSE-A@ JSON-ONLY-PROSE-U @ ;
 
-: JSON-ONLY-BUF-COPY ( ptr u8 ptr u8 n -- )
-   {: a:ptr dst:ptr u:n :}
+: JSON-ONLY-BUF-COPY ( ^u8 ^u8 n -- )
+   {: a:^ dst:^ u:n :}
    0 begin dup u < while
       dup a + c@ over dst + c!
       1+
@@ -84,32 +84,32 @@ variable JSON-ONLY-ROW-OBJECT
 \ The two buffers are the caller's and cannot grow, so text that does not fit
 \ is refused whole by E-DIAG-CAPACITY, as the all-errors core refuses its
 \ report buffer, and the buffer keeps everything before it.
-: JSON-ONLY-BUF-ROOM ( n n ptr n -- )
-   {: need:n cap:n lenp:ptr :}
+: JSON-ONLY-BUF-ROOM ( n n ^n -- )
+   {: need:n cap:n lenp:^ :}
    lenp @ need + cap > IF E-DIAG-CAPACITY throw THEN ;
 
-: JSON-ONLY-APPEND ( ptr u8 n ptr u8 n ptr n -- )
-   {: a:ptr u:n dst:ptr cap:n lenp:ptr :}
+: JSON-ONLY-APPEND ( ^u8 n ^u8 n ^n -- )
+   {: a:^ u:n dst:^ cap:n lenp:^ :}
    u cap lenp JSON-ONLY-BUF-ROOM
    a dst lenp @ + u JSON-ONLY-BUF-COPY
    lenp @ u + lenp ! ;
 
-: JSON-ONLY-JSON-APPEND ( ptr u8 n -- )
+: JSON-ONLY-JSON-APPEND ( ^u8 n -- )
    JSON-ONLY-JSON-A@ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-APPEND ;
 
-: JSON-ONLY-PROSE-APPEND ( ptr u8 n -- )
+: JSON-ONLY-PROSE-APPEND ( ^u8 n -- )
    JSON-ONLY-PROSE-A@ JSON-ONLY-PROSE-CAP @ JSON-ONLY-PROSE-U JSON-ONLY-APPEND ;
 
-: JSON-ONLY-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
+: JSON-ONLY-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    u 0= IF exit THEN
    fd a u write u <> IF s" json-only: write failed" JSON-ONLY-E-IO die THEN ;
 
-: JSON-ONLY-LF$ ( -- ptr u8 n )
+: JSON-ONLY-LF$ ( -- ^u8 n )
    JSON-ONLY-LF-C JSON-ONLY-LF c!
    JSON-ONLY-LF 1 ;
 
-: JSON-ONLY-PROSE ( ptr u8 n -- )
-   {: a:ptr u :}
+: JSON-ONLY-PROSE ( ^u8 n -- )
+   {: a:^ u :}
    JSON-ONLY-BUF-ON @ IF a u JSON-ONLY-PROSE-APPEND exit THEN
    JSON-ONLY-PROSE-FD @ a u JSON-ONLY-WRITE ;
 
@@ -149,7 +149,7 @@ variable JSON-ONLY-ROW-OBJECT
       JSON-ONLY-LINE-U @ 0 > if JSON-ONLY-OBJECT? if true exit then then
    again ;
 
-: JSON-ONLY-START? ( ptr u8 n -- bool )
+: JSON-ONLY-START? ( ^u8 n -- bool )
    JSON-ONLY-SOURCE-U ! JSON-ONLY-SOURCE !
    0 JSON-ONLY-POS !
    JSON-ONLY-NEXT? ;
@@ -160,7 +160,7 @@ variable JSON-ONLY-ROW-OBJECT
       JSON-ONLY-NEXT? 0=
    until ;
 
-: JSON-ONLY-FILTER ( ptr u8 n -- )
+: JSON-ONLY-FILTER ( ^u8 n -- )
    2dup JSON-ONLY-START? IF
       2drop
       JSON-ONLY-EMIT-FOUND

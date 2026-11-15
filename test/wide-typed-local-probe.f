@@ -209,16 +209,16 @@ variable WL-RT
    ;MATCH {: c :}
    depth d - ;
 
-\ ---- a bundle and a `:ptr` local in ONE group -------------------------------
+\ ---- a bundle and a `:^` local in ONE group -------------------------------
 \ The group path binds the pointer's inferred pointee under the same transport
 \ rule as a group without a bundle: the pointee here is a layout, which a bare
-\ `ptr` local only absorbs in transport.
-: WL-GROUP ( pair ptr pair -- n )         \ pointer above the bundle
-   {: p:pair q:ptr :}
+\ `^` local only absorbs in transport.
+: WL-GROUP ( pair ^pair -- n )         \ pointer above the bundle
+   {: p:pair q:^ :}
    p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
 
-: WL-GROUP-BELOW ( ptr pair pair -- n )   \ pointer below the bundle
-   {: q:ptr p:pair :}
+: WL-GROUP-BELOW ( ^pair pair -- n )   \ pointer below the bundle
+   {: q:^ p:pair :}
    p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
 
 \ ---- a record wider than the register pool, shuffled whole -----------------
@@ -314,8 +314,8 @@ public
 
 private
 \ ---- checker verdicts: the annotation is asserted, not ignored --------------
-: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
-: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: YES ( ^u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ^u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 s" WLC-WIDE ( pair -- pair ) {: p:pair :} p " YES
 s" WLC-TRIP ( trip -- trip ) {: t:trip :} t " YES
@@ -341,21 +341,21 @@ s" WLC-WRONG-ARG ( opt<n> -- n ) {: o:opt<pair> :} 0 " NO
 \ token are both rejected at the annotation, not at `:}`.
 s" WLC-EMPTY-ANN ( n -- n ) {: x: :} x " NO
 s" WLC-TRAILING-ANN ( opt<n> -- n ) {: o:opt<n>> :} 0 " NO
-\ `:ptr` stays the one-token shorthand for an INFERRED pointee — a signature
-\ reads `ptr <pointee>`, an annotation has no second token to read. The pointee
-\ is inferred from the captured value, and a declared quantifier survives it.
-s" WLC-PTR-ANN ( ptr a -- ptr a ) {: p:ptr :} p " YES
-s" WLC-PTR-N-ANN ( ptr n -- ptr n ) {: p:ptr :} p " YES
-\ `{: p:ptr n :}` is therefore NOT a pointee spelling: `n` is a second local.
-s" WLC-PTR-TWO ( ptr n n -- ptr n ) {: p:ptr n :} p " YES
-s" WLC-PTR-ONE ( ptr n -- ptr n ) {: p:ptr n :} p " NO
-\ a `:ptr` local whose pointee is a layout binds in ONE group with a bundle,
+\ `:^` alone is the shorthand for an INFERRED pointee; `:^n` states it. The
+\ pointee is inferred from the captured value, and a declared quantifier
+\ survives it.
+s" WLC-PTR-ANN ( ^a -- ^a ) {: p:^ :} p " YES
+s" WLC-PTR-N-ANN ( ^n -- ^n ) {: p:^ :} p " YES
+\ `{: p:^ n :}` is two locals: `n` is a second local, not the pointee.
+s" WLC-PTR-TWO ( ^n n -- ^n ) {: p:^ n :} p " YES
+s" WLC-PTR-ONE ( ^n -- ^n ) {: p:^ n :} p " NO
+\ a `:^` local whose pointee is a layout binds in ONE group with a bundle,
 \ above it or below it, exactly as it does in a group without one; the bundle
 \ annotation is still asserted in that group.
-s" WLC-GROUP-PTR ( pair ptr pair -- n ) {: p:pair q:ptr :} 0 " YES
-s" WLC-GROUP-PTR-BELOW ( ptr pair pair -- n ) {: q:ptr p:pair :} 0 " YES
-s" WLC-GROUP-PTR-ALONE ( ptr pair n -- n ) {: q:ptr k:n :} k " YES
-s" WLC-GROUP-WRONG-FAM ( pair ptr pair -- n ) {: p:trip q:ptr :} 0 " NO
+s" WLC-GROUP-PTR ( pair ^pair -- n ) {: p:pair q:^ :} 0 " YES
+s" WLC-GROUP-PTR-BELOW ( ^pair pair -- n ) {: q:^ p:pair :} 0 " YES
+s" WLC-GROUP-PTR-ALONE ( ^pair n -- n ) {: q:^ k:n :} k " YES
+s" WLC-GROUP-WRONG-FAM ( pair ^pair -- n ) {: p:trip q:^ :} 0 " NO
 \ a result whose width read an open argument is one logical cell; its family's
 \ annotation takes it whole and gives an open width (OPTION:NONE's) its own.
 s" WLC-MATCH-SOME ( option<n> -- option<n> ) MATCH option some OF 1+ OPTION:SOME ENDOF none OF OPTION:NONE ENDOF ;MATCH {: r:option<n> :} r " YES

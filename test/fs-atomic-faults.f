@@ -41,19 +41,19 @@ create ERR IO-CAP allot
 create GOT IO-CAP allot
 variable SIBLINGS
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: SHIM-C$ ( -- ptr u8 n ) SHIM-C SHIM-C-U @ ;
-: SHIM-SO$ ( -- ptr u8 n ) SHIM-SO SHIM-SO-U @ ;
-: TARGET$ ( -- ptr u8 n ) TARGET TARGET-U @ ;
-: FREE$ ( -- ptr u8 n ) FREE FREE-U @ ;
-: STAGED$ ( -- ptr u8 n ) STAGED STAGED-U @ ;
-: CACHED$ ( -- ptr u8 n ) CACHED CACHED-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: SHIM-C$ ( -- ^u8 n ) SHIM-C SHIM-C-U @ ;
+: SHIM-SO$ ( -- ^u8 n ) SHIM-SO SHIM-SO-U @ ;
+: TARGET$ ( -- ^u8 n ) TARGET TARGET-U @ ;
+: FREE$ ( -- ^u8 n ) FREE FREE-U @ ;
+: STAGED$ ( -- ^u8 n ) STAGED STAGED-U @ ;
+: CACHED$ ( -- ^u8 n ) CACHED CACHED-U @ ;
 
-: C+ ( ptr u8 n -- )
+: C+ ( ^u8 n -- )
    SHIM CODEGEN:APPEND-STRING
    10 SHIM CODEGEN:APPEND-BYTE ;
 
-: P+ ( ptr u8 n -- )
+: P+ ( ^u8 n -- )
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
@@ -88,15 +88,15 @@ variable SIBLINGS
    s"    FS:ERRNO {: code:n e:n :}" P+
    s"    code FMT:INT$ type cr e FMT:INT$ type cr ;" P+
    s" : GO ( -- )" P+
-   S\"    s\" ATOMIC_TARGET\" GETENV {: p:ptr u:n :}" P+
+   S\"    s\" ATOMIC_TARGET\" GETENV {: p:^ u:n :}" P+
    S\"    [: p u s\" new bytes\" FS:ATOMIC-WRITE-FILE ;] catch SHOW" P+
-   S\"    s\" ATOMIC_FREE\" GETENV {: f:ptr fu:n :}" P+
+   S\"    s\" ATOMIC_FREE\" GETENV {: f:^ fu:n :}" P+
    S\"    [: f fu s\" new bytes\" FS:ATOMIC-CREATE-PRIVATE drop ;]" P+
    s"    catch SHOW" P+
-   S\"    s\" ATOMIC_STAGED\" GETENV {: sp:ptr su:n :}" P+
+   S\"    s\" ATOMIC_STAGED\" GETENV {: sp:^ su:n :}" P+
    S\"    [: sp su [: s\" staged bytes\" FS:WRITE-ALL ;]" P+
    s"    FS:REPLACE-STAGED ;] catch SHOW" P+
-   S\"    s\" ATOMIC_CACHED\" GETENV {: cp:ptr cu:n :}" P+
+   S\"    s\" ATOMIC_CACHED\" GETENV {: cp:^ cu:n :}" P+
    S\"    [: cp cu [: s\" cached bytes\" FS:WRITE-ALL ;]" P+
    s"    FS:REPLACE-CACHED ;] catch SHOW ;" P+
    s" GO" P+ ;
@@ -108,7 +108,7 @@ variable SIBLINGS
 
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-atomic-faults" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-atomic-faults" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" shim.c" SHIM-C FS:JOIN-PATH SHIM-C-U !
@@ -126,8 +126,8 @@ variable SIBLINGS
 \ A fresh engine: LD_PRELOAD reaches only a process it starts.
 : RUN ( bool -- n n n )   \ outu erru rc
    {: fail-file?:bool :}
-   ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
-   PROG CODEGEN:CONTENTS {: prog:ptr progu:n :}
+   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
+   PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
    PROC-ARGV-ENV-RESET
    s" LD_PRELOAD" >LEN SHIM-SO$ >LEN PROC-ENV+
    s" ATOMIC_TARGET" >LEN TARGET$ >LEN PROC-ENV+
@@ -143,7 +143,7 @@ variable SIBLINGS
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 
-: WANT$ ( -- ptr u8 n )
+: WANT$ ( -- ^u8 n )
    SB-RESET
    E-FS-SYNC FMT:SB-INT 10 SB-APPEND-C
    EIO FMT:SB-INT 10 SB-APPEND-C
@@ -155,7 +155,7 @@ variable SIBLINGS
    0 FMT:SB-INT 10 SB-APPEND-C
    SB$ ;
 
-: FILE-WANT$ ( -- ptr u8 n )
+: FILE-WANT$ ( -- ^u8 n )
    SB-RESET
    4 0 ?do
       E-FS-IO FMT:SB-INT 10 SB-APPEND-C
@@ -163,7 +163,7 @@ variable SIBLINGS
    loop
    SB$ ;
 
-: COUNT-SIBLING ( ptr u8 n -- )
+: COUNT-SIBLING ( ^u8 n -- )
    s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
 
 : NO-LEFTOVER ( -- )
@@ -192,7 +192,7 @@ variable SIBLINGS
    GOT cachedu s" cached bytes" T$=
    NO-LEFTOVER ;
 
-: HOLDS-OLD ( ptr u8 n -- )
+: HOLDS-OLD ( ^u8 n -- )
    GOT IO-CAP FS:READ-ALL {: gotu:n :}
    GOT gotu s" old bytes" T$= ;
 

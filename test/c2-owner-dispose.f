@@ -28,17 +28,17 @@ TASK:MIN-STACK TASK:TASK WORKER
 TASK:MIN-STACK TASK:TASK WORKER-B
 TASK:MIN-STACK TASK:TASK WORKER-C
 
-: FOREIGN-CELL ( n -- ptr ptr u8 ) cells FOREIGN + 0 ptr-field ;
+: FOREIGN-CELL ( n -- ^^u8 ) cells FOREIGN + 0 ptr-field ;
 
 : ACQUIRE ( n -- ) {: id:n :}
-   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: p:ptr size:NUM:alloc-byte-len :}
+   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: p:^ size:NUM:alloc-byte-len :}
    id p c!
    p id FOREIGN-CELL !
    size id FOREIGN-LEN ! ;
 
 : RELEASE ( n -- ) {: id:n :}
    id CALLS @ 0<> if -9365 throw then
-   id FOREIGN-CELL @ {: p:ptr :}
+   id FOREIGN-CELL @ {: p:^ :}
    p c@ id T=
    p id FOREIGN-LEN @ MEM:RELEASE-BYTES
    1 id CALLS +!

@@ -47,7 +47,7 @@ using X64RT
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
-: BUILD ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    ROWS,
    path pathu X64HARNESS:BOOT-CLOSE, ;
@@ -103,7 +103,7 @@ DICT-SIZE 32 + constant THIRD-SLOT
 $CCCCCCCCCCCCCCC3 constant RET-INT3S
 $CCCCCCCCCCCCCCCC constant INT3S
 
-: AT-ROW, ( n ptr u8 n -- ) {: off:n row:ptr rowu:n :}
+: AT-ROW, ( n ^u8 n -- ) {: off:n row:^ rowu:n :}
    off X64HARNESS:PUSH-REGION,  row rowu X64HARNESS:CALL-ROW, ;
 
 : CLEAR, ( n n -- ) {: off:n len:n :}
@@ -289,8 +289,8 @@ DICT-SIZE $100 + constant CLAUSE-A
 DICT-SIZE $200 + constant CLAUSE-B
 9 constant CLAUSE-LEN-A
 11 constant CLAUSE-LEN-B
-: SHORT$ ( -- ptr u8 n ) s" abc;does" ;
-: LONG$ ( -- ptr u8 n ) s" abcdefghijklmnopq;does" ;
+: SHORT$ ( -- ^u8 n ) s" abc;does" ;
+: LONG$ ( -- ^u8 n ) s" abcdefghijklmnopq;does" ;
 DICT-SIZE 16 + constant LONG-AT
 LONG-AT CELL 2 * + constant LONG-TAIL
 LONG-TAIL CELL + constant LONG-PAD
@@ -347,7 +347,7 @@ LONG-TAIL CELL + constant LONG-PAD
    0 X64HARNESS:PUSH,  dst X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" code-publish" X64HARNESS:CALL-ROW, ;
 
-: IMAGE ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
+: IMAGE ( [ -- ] ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    execute
    path pathu X64HARNESS:BOOT-CLOSE, ;

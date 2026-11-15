@@ -88,22 +88,22 @@ variable CUR-ROOT                        \ and the root being walked
 : ROOT@ ( n n -- n )  swap ROOT-CELLS * + ROOTS @ ;
 : ROOT! ( n n n -- )  swap ROOT-CELLS * + ROOTS ! ;
 
-: POOL$ ( n n -- ptr u8 n )
+: POOL$ ( n n -- ^u8 n )
    {: at:n u:n :}
    at POOL u ;
 
-: PATH$ ( n -- ptr u8 n )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
-: DIR$ ( n -- ptr u8 n )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
-: F$ ( -- ptr u8 n )  F-AT @ F-U @ POOL$ ;
+: PATH$ ( n -- ^u8 n )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
+: DIR$ ( n -- ^u8 n )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
+: F$ ( -- ^u8 n )  F-AT @ F-U @ POOL$ ;
 
-: ROOT-PATH$ ( n -- ptr u8 n )
+: ROOT-PATH$ ( n -- ^u8 n )
    {: r:n :}
    r R-PATH ROOT@ ROOT-BYTES r R-PATH-U ROOT@ ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
-: POOL+ ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: POOL+ ( ^u8 n -- n )
+   {: a:^ u:n :}
    POOL-U @ {: at:n :}
    at u + 1+ POOL-RESERVE
    a at POOL u BYTE-COPY
@@ -112,7 +112,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The name of a code that keeps a file's loads from being found, as
 \ src/lib/error.f names a discovery's code, and whether RC is one.
-: FAULT$ ( n -- ptr u8 n bool )
+: FAULT$ ( n -- ^u8 n bool )
    {: rc:n :}
    rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
    rc E-DISC-SHADOW = if s" E-DISC-SHADOW" true exit then
@@ -123,8 +123,8 @@ variable CUR-ROOT                        \ and the root being walked
    rc E-DISC-RETIRE = if s" E-DISC-RETIRE" true exit then
    s" " false ;
 
-: REFUSE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: REFUSE ( ^u8 n -- )
+   {: a:^ u:n :}
    u 1+ BLOCK-B-RESERVE
    a 0 BLOCK-B u BYTE-COPY
    u BLOCK-U !
@@ -132,24 +132,24 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ ---- the nodes, indexed by path and root ----------------------------------------
 
-: MIX ( n ptr u8 n -- n )
-   {: h:n a:ptr u:n :}
+: MIX ( n ^u8 n -- n )
+   {: h:n a:^ u:n :}
    h u 0 ?do a i + c@ xor FNV-PRIME * loop
    u xor FNV-PRIME * ;
 
-: KEY ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n r:ptr ru:n :}
+: KEY ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n r:^ ru:n :}
    FNV-BASIS a u MIX r ru MIX ;
 
-: SAME? ( n ptr u8 n ptr u8 n n -- bool )
-   {: id:n a:ptr u:n r:ptr ru:n h:n :}
+: SAME? ( n ^u8 n ^u8 n n -- bool )
+   {: id:n a:^ u:n r:^ ru:n h:n :}
    id N-HASH NODE@ h <> if false exit then
    id PATH$ a u STR= id DIR$ r ru STR= and ;
 
 \ The slot holding the node of this path, root and hash, else the empty slot
 \ it would take.
-: SLOT ( ptr u8 n ptr u8 n n -- n )
-   {: a:ptr u:n r:ptr ru:n h:n :}
+: SLOT ( ^u8 n ^u8 n n -- n )
+   {: a:^ u:n r:^ ru:n h:n :}
    SLOT-CAP @ 1- {: mask:n :}
    h mask and
    begin dup SLOTS @ dup 0<> if 1- a u r ru h SAME? 0= else drop false then while
@@ -171,8 +171,8 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The node of this path under this root, made when there is none. Neither
 \ string lies in POOL.
-: NODE-OF ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n r:ptr ru:n :}
+: NODE-OF ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n r:^ ru:n :}
    NODE-N @ 1+ 2 * SLOT-CAP @ > if GROW then
    a u r ru KEY {: h:n :}
    a u r ru h SLOT {: s:n :}
@@ -203,14 +203,14 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The subject at this canonical path, rooted at its directory as the checker
 \ roots a document it checks (tools/check-verify-core.f CHK-EXPAND-BYTES).
-: SUBJECT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SUBJECT ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u a u SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}
    1 id N-SUBJECT NODE!
    id ;
 
-: OPEN+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n t:ptr tu:n :}
+: OPEN+ ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n t:^ tu:n :}
    p pu SUBJECT {: id:n :}
    OPEN-N @ {: o:n :}
    o 1+ OPEN-CELLS * OPENS-RESERVE
@@ -219,14 +219,14 @@ variable CUR-ROOT                        \ and the root being walked
    tu o O-TEXT-U OPEN!
    o 1+ OPEN-N ! ;
 
-: FOUND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FOUND ( ^u8 n -- )
+   {: a:^ u:n :}
    a u s" .f" ENDS-WITH? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
 \ Repository and tool state is not workspace source.
-: WALKED? ( ptr u8 n -- bool )
-   FS:BASENAME {: a:ptr u:n :}
+: WALKED? ( ^u8 n -- bool )
+   FS:BASENAME {: a:^ u:n :}
    a u s" .jj" STR= a u s" .jj-ws.noindex" STR= or a u s" .git" STR= or
    a u s" .out" STR= or a u s" .dots" STR= or 0= ;
 
@@ -266,8 +266,8 @@ variable CUR-ROOT                        \ and the root being walked
       k i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
    loop ;
 
-: NAMED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: NAMED? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    BAD-N @ 0 ?do
       i BAD @ PATH$ a u STR= if true unloop exit then
    loop
@@ -388,8 +388,8 @@ variable CUR-ROOT                        \ and the root being walked
 
 public
 
-: PATH< ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n b:ptr v:n :}
+: PATH< ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
    u v min 0 ?do
       a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
    loop
@@ -430,8 +430,8 @@ private
 
 public
 
-: ROOT+ ( ptr u8 n -- )
-   SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :}
+: ROOT+ ( ^u8 n -- )
+   SOURCE-ROOT:CANONICAL drop {: a:^ u:n :}
    ROOT-BYTES-U @ {: at:n :}
    at u + 1+ ROOT-BYTES-RESERVE
    a at ROOT-BYTES u BYTE-COPY
@@ -447,8 +447,8 @@ public
 \ whatever its closure holds: F first when it is a subject, then by path. Both
 \ paths are copied before EACH runs; EACH calls the word it is given once per
 \ open document, with its canonical path and text.
-: REACHING ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
-   {: f:ptr fu:n d:ptr du:n each :}
+: REACHING ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] -- )
+   {: f:^ fu:n d:^ du:n each :}
    RESET
    f fu POOL+ F-AT !
    fu F-U !
@@ -466,7 +466,7 @@ public
 
 \ Inventory every workspace .f file and open document. Primitive bindings
 \ need no load graph: the engine supplies them in each independent check.
-: ALL-SUBJECTS ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+: ALL-SUBJECTS ( [ [ ^u8 n ^u8 n -- ] -- ] -- )
    {: each :}
    RESET
    0 F-AT ! 0 F-U !
@@ -478,8 +478,8 @@ public
 
 \ REACHING for another F over the last REACHING's graph and document: nothing
 \ is walked or discovered, so UNREADABLE stays as that REACHING left it.
-: REACHING-AGAIN ( ptr u8 n -- )
-   {: f:ptr fu:n :}
+: REACHING-AGAIN ( ^u8 n -- )
+   {: f:^ fu:n :}
    f fu POOL+ F-AT !
    fu F-U !
    NODE-N @ 0 ?do 0 i N-REACH NODE! loop
@@ -491,16 +491,16 @@ public
 
 \ Whether the last REACHING refused, giving no subject, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
-: BLOCKED$ ( -- ptr u8 n )  0 BLOCK-B BLOCK-U @ ;
+: BLOCKED$ ( -- ^u8 n )  0 BLOCK-B BLOCK-U @ ;
 
 : SUBJECTS ( -- n )  HIT-N @ ;
-: SUBJECT$ ( n -- ptr u8 n )  HITS @ PATH$ ;
+: SUBJECT$ ( n -- ^u8 n )  HITS @ PATH$ ;
 
 \ The files whose loads the last REACHING could not find, in the byte order
 \ of their paths: each one's path, and why, a discovery's code as
 \ src/lib/error.f names it or "cannot be read".
 : UNREADABLE ( -- n )  BAD-N @ ;
-: UNREADABLE$ ( n -- ptr u8 n ptr u8 n )
+: UNREADABLE$ ( n -- ^u8 n ^u8 n )
    BAD @ {: k:n :}
    k PATH$ k N-FAULT NODE@ FAULT$ drop ;
 

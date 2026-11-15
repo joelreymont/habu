@@ -173,7 +173,7 @@ variable SESSION-CELL
    RBX RBX CODE-SPAN:INSN-BYTES SCALE,  RAX RBX ASM-SINK ENC-SUB-RR ;
 
 \ Write a named profiler refusal on fd 2 and exit PROF-MAP-RC.
-: REFUSED, ( ptr u8 n -- ) {: a:ptr u:n :}
+: REFUSED, ( ^u8 n -- ) {: a:^ u:n :}
    LBL {: msg:label :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
    RDI PROF-MAP-RC IMM32,  NR-EXIT-GROUP SYS,
@@ -734,7 +734,7 @@ variable SESSION-CELL
 \ of prof.f's printers. Each writes fd 1 directly, as those do.
 
 \ Write the text; its bytes sit in the stream behind a jump.
-: SAY, ( ptr u8 n -- ) {: a:ptr u:n :}
+: SAY, ( ^u8 n -- ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
@@ -897,11 +897,11 @@ variable SESSION-CELL
 
 \ A header field: the text, then the value in one column, from the frame, the
 \ band or the arena.
-: FRAME-FIELD, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+: FRAME-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX off SLOT@,  1 NUM, ;
-: BAND-FIELD, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+: BAND-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX BAND-VA IMM,  RAX RAX off MEM-OFF LOAD,  1 NUM, ;
-: ARENA-FIELD, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+: ARENA-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX R15 off MEM-OFF LOAD,  1 NUM, ;
 
 \ The header: words + other + new + defer + spill + foreign == samples is the
@@ -1152,7 +1152,7 @@ private
 \ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
 \ and exits PROF-MAP-RC: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
-: MAP, ( n ptr u8 n -- ) {: len:n a:ptr u:n :}
+: MAP, ( n ^u8 n -- ) {: len:n a:^ u:n :}
    LBL {: ok:label :}
    RDI ZERO-REG,  RSI len IMM32,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
    R8 ALL-ONES,  R9 ZERO-REG,

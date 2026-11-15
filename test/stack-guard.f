@@ -14,7 +14,7 @@ package STACK-LIFECYCLE-TEST
 STACK-ABI:BOOT-BYTES 8 / 2 * constant LIT-SRC-CAP   \ "1 " per cell of the page
 create LIT-SRC LIT-SRC-CAP allot
 
-: FILL-LITERALS$ ( n -- ptr u8 n ) {: count:n :}
+: FILL-LITERALS$ ( n -- ^u8 n ) {: count:n :}
    count 2 * LIT-SRC-CAP > if E-STR-CAPACITY throw then
    count 0 do
       $31 LIT-SRC i 2 * + c!
@@ -34,7 +34,7 @@ create LIT-SRC LIT-SRC-CAP allot
 \ and DO frames in the guarded VM stacks. On Intel, Y's live >r value fills the
 \ guarded user return stack; native DO frames live in HIR, so Z exhausts the
 \ machine call stack and reports on its alternate signal stack.
-: MACHINE-OVERFLOW ( ptr u8 n -- )
+: MACHINE-OVERFLOW ( ^u8 n -- )
    CHILD-RC 128 11 + T=                          \ the dump, then death by SIGSEGV
    ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
 

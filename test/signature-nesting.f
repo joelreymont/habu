@@ -19,6 +19,8 @@
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
+\ A pointer is spelled ^T: `ptr` in a signature or a local's annotation is an
+\ unknown type, and a `^` a blank parts from its element type is a bare `^`.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -38,20 +40,20 @@ TYPED-VARIABLE SRC-U len
 
 : SRC-RESET ( -- )
    SRC-U BUF-RESET ;
-: S+ ( ptr u8 n -- )
+: S+ ( ^u8 n -- )
    SRC-BUF CAP SRC-U BUF-APPEND ;
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-BUF SRC-U @ LEN>N ;
 
 
-: S+N ( ptr u8 n n -- )
-   {: a:ptr u:n k:n :}
+: S+N ( ^u8 n n -- )
+   {: a:^ u:n k:n :}
    k 0 ?do a u S+ loop ;
 
 
 \ A colon definition NAME whose input is k binders nested around a quotation.
-: BINDERS ( ptr u8 n n -- )
-   {: name:ptr nameu:n k:n :}
+: BINDERS ( ^u8 n n -- )
+   {: name:^ nameu:n k:n :}
    SRC-RESET
    s" : " S+  name nameu S+  s"  ( " S+
    s" forall<a," k S+N  s" [ -- ]" S+  s" >" k S+N
@@ -67,7 +69,7 @@ TYPED-VARIABLE SRC-U len
 \ A stored row whose input is k nested pointees.
 : POINTEES ( n -- )
    {: k:n :}
-   TRUST-OPEN  s" ptr " k S+N  s" n" S+  TRUST-CLOSE ;
+   TRUST-OPEN  s" ^" k S+N  s" n" S+  TRUST-CLOSE ;
 
 \ A stored row whose input is k nested quotations, each the input of the next.
 : QUOTATIONS ( n -- )
@@ -87,12 +89,12 @@ TYPED-VARIABLE SRC-U len
    s" : SN-LOCAL-DEEP ( n -- ) {: x:" S+  s" [" k S+N  s"  :} ;" S+ ;
 
 \ A definition NAME whose body nests k `IF`s, from its name to its last token.
-: IFS-TEXT ( ptr u8 n n -- )
-   {: name:ptr nameu:n k:n :}
+: IFS-TEXT ( ^u8 n n -- )
+   {: name:^ nameu:n k:n :}
    name nameu S+  s"  ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
 
-: NESTED-IFS ( ptr u8 n n -- )
-   {: name:ptr nameu:n k:n :}
+: NESTED-IFS ( ^u8 n n -- )
+   {: name:^ nameu:n k:n :}
    SRC-RESET  s" : " S+  name nameu k IFS-TEXT  s"  ;" S+ ;
 
 \ The same nest whose innermost `IF` tests a number, from its name to its last
@@ -147,8 +149,8 @@ TYPED-VARIABLE SRC-U len
 
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
-: REFUSES ( ptr u8 n -- )
-   {: why:ptr whyu:n :}
+: REFUSES ( ^u8 n -- )
+   {: why:^ whyu:n :}
    SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
@@ -165,7 +167,7 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
 \ diagnostics captured; it stays in PKT-BUF until the next capture.
-: PACKET$ ( -- ptr u8 n )
+: PACKET$ ( -- ^u8 n )
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
    REJECTION:BUFFER$ nip  0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF  PKT-BUF swap ;
 
@@ -176,8 +178,8 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 \ A caller passes CODE, VERDICT and WHY as packet fields in text; SRC-BUF's packet
 \ holds all three: checked as a candidate, or compiled to walk a does> clause.
-: PACKET-HOLDS ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n verdict:ptr verdictu:n why:ptr whyu:n :}
+: PACKET-HOLDS ( ^u8 n ^u8 n ^u8 n -- )
+   {: code:^ codeu:n verdict:^ verdictu:n why:^ whyu:n :}
    REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
    REJECTION:BUFFER$ verdict verdictu CONTAINS? TTRUE
    REJECTION:BUFFER$ why whyu CONTAINS? TTRUE
@@ -185,12 +187,12 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 
 \ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.
-: PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n n -- )
+: PACKET-HAS ( ^u8 n ^u8 n ^u8 n n -- )
    {: answer:n :}
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! answer T=  PACKET-HOLDS ;
 
 
-: CLAUSE-PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
+: CLAUSE-PACKET-HAS ( ^u8 n ^u8 n ^u8 n -- )
    PACKET-OPEN  SRC$ TEST-EVAL:RC drop  PACKET-HOLDS ;
 
 public
@@ -361,9 +363,27 @@ public
    s" a type mismatch prints its suggestion after its actual row" T-LABEL
    SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
    S\" habu: in sn-mis: at '1' expected: bool actual: n ; suggestion: Change the body so produced types match the signature.\n" REFUSES
-   s" a bare ptr in a signature names its missing element type once, in its suggestion" T-LABEL
-   SRC-RESET  s" : SN-BP ( ptr -- ) drop ;" S+
-   S\" habu: in sn-bp: 'ptr' needs an element type; suggestion: Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.\n" REFUSES
+   s" a bare ^ in a signature names its missing element type once, in its suggestion" T-LABEL
+   SRC-RESET  s" : SN-BP ( ^ -- ) drop ;" S+
+   S\" habu: in sn-bp: '^' needs an element type; suggestion: Give '^' an element type, e.g. '^u8' or '^a'.\n" REFUSES
+   s" a ^ a blank parts from its element type is a bare ^" T-LABEL
+   SRC-RESET  s" : SN-BPU ( ^ u8 -- ) drop ;" S+
+   S\" habu: in sn-bpu: '^' needs an element type; suggestion: Give '^' an element type, e.g. '^u8' or '^a'.\n" REFUSES
+   SRC-RESET  s" SN-BPU ( ^ u8 -- ) drop" S+
+   S\" \"code\":\"E-BARE-PTR-SIGNATURE\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"^\"" VERDICT-REFUSED PACKET-HAS
+   s" ptr in a signature is an unknown type: a pointer is ^T" T-LABEL
+   SRC-RESET  s" : SN-PTR ( ptr u8 -- ) drop ;" S+
+   S\" habu: in sn-ptr: unknown type 'ptr' in signature; suggestion: Use a known stack-signature type or a single-letter type variable.\n" REFUSES
+   SRC-RESET  s" SN-PTR ( ptr u8 -- ) drop" S+
+   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"ptr\"" VERDICT-REFUSED PACKET-HAS
+   s" ptr in a local's annotation is an unknown type" T-LABEL
+   SRC-RESET  s" : SN-PTRL ( ^u8 -- ) {: p:ptr :} ;" S+
+   S\" habu: in sn-ptrl: unknown type 'p:ptr' in signature; suggestion: Use a known stack-signature type or a single-letter type variable.\n" REFUSES
+   SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
+   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"p:ptr\"" VERDICT-REFUSED PACKET-HAS
    s" a trust-boundary primitive in a checked body names its boundary once, in its suggestion" T-LABEL
    SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
    S\" E-CAP-TRUSTED habu: in sn-cap: 'reloc-maps-clear' is a trust-boundary primitive; suggestion: Move this compiler or runtime boundary behind audited TRUST.\n" REFUSES ;

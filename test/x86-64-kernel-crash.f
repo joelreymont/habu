@@ -41,7 +41,7 @@ $0B0F008948 constant STORE-CODE                 \ 48 89 00 0f 0b: mov [rax], rax
 5 constant PROT-RX                              \ PROT_READ|PROT_EXEC
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
@@ -64,7 +64,7 @@ variable SKIP-AT
    b WANT-BUF WANT-N @ + c!
    WANT-N @ 1+ WANT-N ! ;
 
-: WANT-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do  a i + c@ WANT-BYTE  loop ;
+: WANT-TEXT ( ^u8 n -- ) {: a:^ u:n :}  u 0 ?do  a i + c@ WANT-BYTE  loop ;
 
 : HEX-CHAR ( n -- n ) {: d:n :}  s" 0123456789abcdef" drop d + c@ ;
 
@@ -86,7 +86,7 @@ variable SKIP-AT
    DIGITS 0 ?do  [char] ? WANT-BYTE  loop
    STR-LF WANT-BYTE ;
 
-: HEAD$ ( -- ptr u8 n )
+: HEAD$ ( -- ^u8 n )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;
 
 \ The value a dump image gives register n, rbp the one given: the others hold
@@ -117,7 +117,7 @@ RBP R64>N TURNED constant WILD-RBP
    lo MEMORY-LINE  mid MEMORY-LINE  hi MEMORY-LINE ;
 
 \ A guard hit's one line, compared whole.
-: LINE-TEXT ( ptr u8 n -- )
+: LINE-TEXT ( ^u8 n -- )
    0 WANT-N !  WANT-TEXT  WANT-N @ SKIP-AT ! ;
 
 \ ---- the children ------------------------------------------------------------
@@ -277,7 +277,7 @@ $1716151413121110 constant CELL-C
 
 \ An image: the pipe, the fork, the child the quotation emits and the
 \ parent's checks, then the stack checks every image ends with.
-: IMAGE ( [ -- ] n bool ptr u8 n -- ) {: status:n negative:bool path:ptr pathu:n :}
+: IMAGE ( [ -- ] n bool ^u8 n -- ) {: status:n negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  CHILD,

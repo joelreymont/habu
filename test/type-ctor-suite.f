@@ -30,10 +30,10 @@ using TYPE-DECL
 
 T-RESET
 
-TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
+TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 : TCE-GO ( -- )
    TCE-A @ TCE-U @ evaluate-closed ;
-: TCE-CATCH ( ptr u8 n -- n )
+: TCE-CATCH ( ^u8 n -- n )
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
 
@@ -59,17 +59,17 @@ SUMTYPE zwv
 s" GEN-CONCRETE" type cr
 
 s" ZB1 ( -- zres ) ZRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
-s" ZB2 ( ptr u8 -- zres ) ZRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZB2 ( ^u8 -- zres ) ZRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
 \ raw cells cannot forge a layout value.
 s" ZB3 ( n -- zres ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZB4 ( n n -- zres )" CHECK-QUIET-CANDIDATE! 0 T=
 
 SUMTYPE zmix
   VARIANT small n ;VARIANT
-  VARIANT big ptr u8 n n ;VARIANT
+  VARIANT big ^u8 n n ;VARIANT
 ;SUMTYPE
 : ZMK-SMALL ( n -- zmix ) ZMIX:SMALL ;
-: ZMK-BIG ( ptr u8 n n -- zmix ) ZMIX:BIG ;
+: ZMK-BIG ( ^u8 n n -- zmix ) ZMIX:BIG ;
 s" GEN-MIX" type cr
 s" ZB5 ( n n -- zmix ) ZMIX:BIG" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -121,7 +121,7 @@ private
 : EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
 s" EVX-GET ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT"  CHECK-QUIET-CANDIDATE! -1 T=
 s" EVX-NON (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
+s" EVX-BAD ( ^u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
 
 package verylongpackagename
 public
@@ -144,7 +144,7 @@ SUMTYPE zpoly<a,b>
 ;SUMTYPE
 : ZPMK-OK ( n -- zpoly<n,n> ) ZPOLY:OK ;
 : ZPMK-ERR ( n -- zpoly<n,n> ) ZPOLY:ERR ;
-: ZPMK-PTR ( ptr u8 -- zpoly<ptr u8,n> ) ZPOLY:OK ;
+: ZPMK-PTR ( ^u8 -- zpoly<^u8,n> ) ZPOLY:OK ;
 : ZPMK-G ( a -- zpoly<a,b> ) ZPOLY:OK ;
 : ZPMK-USE ( n -- zpoly<n,n> ) ZPMK-G ;
 s" GEN-POLY" type cr
@@ -156,7 +156,7 @@ SUMTYPE zpmix<a,b>
 : ZPMK-BIG ( n n n -- zpmix<n,n> ) ZPMIX:BIG ;
 s" GEN-POLY-MIX" type cr
 s" ZP1 ( -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
-s" ZP2 ( ptr u8 -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZP2 ( ^u8 -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZP3 ( n -- zpoly<n,n> ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 \ cross-family bundles cannot alias: a zpmix result is not a zpoly.
 s" ZP4 ( n -- zpoly<n,n> ) ZPMIX:SMALL" CHECK-QUIET-CANDIDATE! 0 T=
@@ -208,11 +208,11 @@ s" undefine ZDOOMED" TCE-CATCH 0 T=
 \ never resolve as either.
 s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=
-s" CN3 ( ptr u8 n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN3 ( ^u8 n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN4 ( n -- zmix ) construct zmix small" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN5 ( -- zopt ) construct zopt none" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN6 ( n -- zpar<n> ) construct zpar psome" CHECK-QUIET-CANDIDATE! -1 T=
-s" CN7 ( ptr u8 -- zpoly<ptr u8,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN7 ( ^u8 -- zpoly<^u8,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN8 ( n n -- zres ) {: ok:n :} construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN9 ( n -- zres ) [: construct zres ok ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-OK" type cr
@@ -222,11 +222,11 @@ s" CB3 ( n -- zres ) construct zres some" CHECK-QUIET-CANDIDATE! 0 T=   \ zopt's
 s" CB4 ( n -- zres ) construct span ok" CHECK-QUIET-CANDIDATE! 0 T=   \ cell family: kind-gated
 s" CB5 ( n -- zres ) construct zres" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB6 ( n -- zres ) construct" CHECK-QUIET-CANDIDATE! 0 T=
-s" CB7 ( ptr u8 -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB7 ( ^u8 -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB8 ( -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB9 ( n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB10 ( n -- zres ) exit construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=   \ dead path
-s" CB11 ( ptr u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB11 ( ^u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB12 ( n -- zpoly<n,n> zpoly<n,n> ) construct zpoly ok dup" CHECK-QUIET-CANDIDATE! 0 T=   \ open-arg transport
 s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
@@ -281,7 +281,7 @@ ZPT-RTX 7 T=
 ZPT-RTY 9 T=
 \ raw cells cannot forge a product and a bundle cannot split without UNMAKE.
 s" PB1 ( n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-s" PB2 ( ptr u8 n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PB2 ( ^u8 n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB3 ( n n -- zpt )" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB4 ( zpt -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
@@ -289,10 +289,10 @@ s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" PB6 ( n n -- zpt ) construct zpt make" CHECK-QUIET-CANDIDATE! 0 T=
 STRUCTURE zbuf
   FIELD cap n
-  FIELD raw ptr u8
+  FIELD raw ^u8
 ;STRUCTURE
-: ZBUF-MK ( n ptr u8 -- zbuf ) ZBUF:MAKE ;
-: ZBUF-UN ( zbuf -- n ptr u8 ) ZBUF:UNMAKE ;
+: ZBUF-MK ( n ^u8 -- zbuf ) ZBUF:MAKE ;
+: ZBUF-UN ( zbuf -- n ^u8 ) ZBUF:UNMAKE ;
 s" GEN-PRODUCT-PTR" type cr
 STRUCTURE zpr<a,b>
   FIELD fst a
@@ -306,7 +306,7 @@ STRUCTURE zpr<a,b>
 : ZPR-RT ( -- n n ) 2 8 ZPR:MAKE ZPR:UNMAKE ;
 ZPR-RT 8 T= 2 T=
 s" GEN-PRODUCT-POLY" type cr
-s" PP1 ( ptr u8 -- zpr<n,n> ) 0 swap ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PP1 ( ^u8 -- zpr<n,n> ) 0 swap ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PP2 ( n n -- zpt ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PL1 ( own n -- zpr<own,n> ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PL2 ( zpr<own,n> -- zpr<own,n> )" CHECK-QUIET-CANDIDATE! 0 T=
@@ -552,8 +552,8 @@ s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ record-at refuses a widened application: wapplied<wleaf> is 4 cells over 3
 \ committed slots. An accessor refuses a family argument at any width, so only
 \ record-at reaches the width condition.
-s" WAPAT ( ptr wapplied<wleaf> n -- ptr wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
-s" WAPAT1 ( ptr wapplied<n> n -- ptr wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" WAPAT ( ^wapplied<wleaf> n -- ^wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
+s" WAPAT1 ( ^wapplied<n> n -- ^wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ UNMAKE's empty body must give back exactly the bundle's cells: wapplied<wleaf>
 \ is 4 cells and its fields wholder<wleaf> n are 4.
 s" WAPUN ( wapplied<wleaf> -- wholder<wleaf> n ) WAPPLIED:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -621,7 +621,7 @@ SUMTYPE pqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQD-RUN ( -- n ) 0 PQD-SINK ! [: PQD-SINK ! ;] PQD:RUN PQD-APP ;
 PQD-RUN 5 T=
 create PQM-BUF 4 allot  3 PQM-BUF c!
-SUMTYPE pqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pqm VARIANT run [ n ^u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQM-APP ( pqm -- n ) MATCH pqm run OF 5 PQM-BUF 100 >r rot execute r> + ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQM-RUN ( -- n ) [: drop ;] PQM:RUN PQM-APP ;
 PQM-RUN 105 T=
@@ -692,10 +692,10 @@ s" RFB-L2 ( rfberr rfbpair<rfbtag,rfberr> -- rfberr ) RFB-LATER"
 
 \ The alias variable occurs only in stored positions, so it takes a two-cell
 \ term and a term behind a pointer.
-: RFB-PTR-ID ( ptr rfbpair<a,a> -- ptr rfbpair<a,a> ) ;
+: RFB-PTR-ID ( ^rfbpair<a,a> -- ^rfbpair<a,a> ) ;
 s" RFB-WIDE ( rfbpair<clw2,clw2> -- rfbpair<clw2,clw2> ) RFB-ALIAS"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" RFB-PTR ( ptr rfbpair<rfbtag,rfbtag> -- ptr rfbpair<rfbtag,rfbtag> ) RFB-PTR-ID"
+s" RFB-PTR ( ^rfbpair<rfbtag,rfbtag> -- ^rfbpair<rfbtag,rfbtag> ) RFB-PTR-ID"
    CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Open family terms and one-cell families containing a linear resource cannot
@@ -747,11 +747,11 @@ s" : RFB-CON-RUN ( -- ) ZPUB-RFBTAG:RED RFB-CON-E ZPUB:RFB-VALUE 11 T= 37 ZPUB-R
    TCE-CATCH 0 T=
 RFB-CON-RUN
 \ Open variables nested below a pointer are not closed family arguments.
-\ Neither constructor may pre-seed rfbwone<ptr a> into RESULT's fresh payload
+\ Neither constructor may pre-seed rfbwone<^a> into RESULT's fresh payload
 \ variable.
-s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) RESULT:OK ;"
+s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<^a> -- result<zpub:rfbwone<^a>,n> ) RESULT:OK ;"
    TCE-CATCH 70 T=
-s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) construct result ok ;"
+s" : RFB-PTR-CON-BAD ( zpub:rfbwone<^a> -- result<zpub:rfbwone<^a>,n> ) construct result ok ;"
    TCE-CATCH 70 T=
 
 T-REPORT

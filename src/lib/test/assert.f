@@ -40,10 +40,10 @@ variable T-LABEL-U
 : T-LABEL-CLEAR ( -- )
    0 T-LABEL-U ! ;
 
-: T-LABEL$ ( -- ptr u8 n )
+: T-LABEL$ ( -- ^u8 n )
    T-LABEL-BUF T-LABEL-U @ ;
 
-: T-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
+: T-LABEL ( ^u8 n -- ) {: a:^ u:n :}
    u T-LABEL-CAP > if s" test: label too long" T-EX-FAIL die then
    0 begin dup u < while
       dup a + c@  over T-LABEL-BUF + c!
@@ -57,7 +57,7 @@ variable T-LABEL-U
 : T-FAIL+ ( -- )
    1 T-FAIL# atomic-add drop ;
 
-: T-FAIL-AS ( ptr u8 n -- ) {: la:ptr lu:n :}
+: T-FAIL-AS ( ^u8 n -- ) {: la:^ lu:n :}
    [char] F emit T-CASE# @ .
    T-LABEL.
    la lu T-CASE# @ T-LABEL$ TREC-FAIL
@@ -66,7 +66,7 @@ variable T-LABEL-U
 : T-FAIL ( -- )
    s" assert" T-FAIL-AS ;
 
-: T-ASSERT-DETAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+: T-ASSERT-DETAIL ( ^u8 n -- ) {: msg:^ msgu:n :}
    T-FAIL
    s" assert: " type msg msgu type cr ;
 
@@ -99,15 +99,15 @@ variable T-LABEL-U
    T-NEXT
    if s" expected false got true" T-ASSERT-DETAIL then ;
 
-: T-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: T-STR= ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
       1+
    repeat drop 0 0= ;
 
-: T$= ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n b:ptr v:n :}
+: T$= ( ^u8 n ^u8 n -- )
+   {: a:^ u:n b:^ v:n :}
    T-NEXT
    a u b v T-STR= 0= if
       T-FAIL
@@ -117,8 +117,8 @@ variable T-LABEL-U
       a u type cr
    then ;
 
-: T$<> ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n b:ptr v:n :}
+: T$<> ( ^u8 n ^u8 n -- )
+   {: a:^ u:n b:^ v:n :}
    T-NEXT
    a u b v T-STR= if
       T-FAIL

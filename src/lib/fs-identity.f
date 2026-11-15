@@ -21,32 +21,32 @@ private
 STAT-CAP PATHZ-CAP + constant WORK-BYTES
 
 PROCESS-SYMBOLS
-FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
+FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 ;FUNCTION
 
-: DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}
+: DEVICE-INODE ( ^u8 -- n n ) {: buffer :}
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer LE:U64@ else
       HB-TARGET-MACOS? if buffer LE:U32@ else E-FS-STAT throw then
    then
    buffer INODE-OFFSET + LE:U64@ ;
 
-: FD-IDENTITY ( fd ptr u8 -- n n ) {: file buffer :}
+: FD-IDENTITY ( fd ^u8 -- n n ) {: file buffer :}
    file FD>N buffer FSTAT-CALL 0<> if E-FS-STAT throw then
    buffer DEVICE-INODE ;
 
-: COMPARE-FDS ( fd fd ptr u8 NUM:alloc-byte-len -- bool )
+: COMPARE-FDS ( fd fd ^u8 NUM:alloc-byte-len -- bool )
    drop {: left right buffer :}
    left buffer FD-IDENTITY {: device:n inode:n :}
    right buffer FD-IDENTITY inode = swap device = and ;
 
 
-: CHECK-PATH ( ptr u8 n -- )
+: CHECK-PATH ( ^u8 n -- )
    {: text bytes:n :}
    bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then ;
 
 
 \ 0 when the stat filled the block, else the errno it failed with.
-: STAT-ERRNO ( ptr u8 SPAN:span<u8> -- n )
+: STAT-ERRNO ( ^u8 SPAN:span<u8> -- n )
    {: path output :}
    path output 0 SPAN:AT STAT-CALL 0= if 0 exit then
    FFI:ERRNO ;
@@ -66,28 +66,28 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 \ writes and the NUL-padded path behind it. Both halves are narrowings, so the
 \ split cannot address past what SAMEFILE allocated. Device and inode are 0 0
 \ when the stat failed; the errno is on top.
-: IDENTITY ( ptr u8 n SPAN:span<u8> -- n n n )
+: IDENTITY ( ^u8 n SPAN:span<u8> -- n n n )
    {: text bytes:n work :}
    text bytes CHECK-PATH
-   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:ptr :}
+   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:^ :}
    text bytes z COMPILE-READS:FILE+
    z work 0 STAT-CAP SPAN:SUB STAT-ERRNO {: errno:n :}
    errno 0= if work 0 SPAN:AT DEVICE-INODE else 0 0 then
    errno ;
 
 
-: COMPARE-IDENTITIES ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- bool )
+: COMPARE-IDENTITIES ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- bool )
    ALLOCATION>SPAN {: left left-bytes:n right right-bytes:n work :}
    left left-bytes work IDENTITY STAT-EXISTS? {: left-device:n left-inode:n left-exists:bool :}
    right right-bytes work IDENTITY STAT-EXISTS? {: right-device:n right-inode:n right-exists:bool :}
    left-exists right-exists and left-device right-device = and left-inode right-inode = and ;
 
 
-: LOOKUP-IDENTITY ( ptr u8 n ptr u8 NUM:alloc-byte-len -- n n )
+: LOOKUP-IDENTITY ( ^u8 n ^u8 NUM:alloc-byte-len -- n n )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY 0<> if E-FS-STAT throw then ;
 
-: INSPECT-IDENTITY ( ptr u8 n ptr u8 NUM:alloc-byte-len -- n n bool )
+: INSPECT-IDENTITY ( ^u8 n ^u8 NUM:alloc-byte-len -- n n bool )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY STAT-INSPECTED? ;
 
@@ -97,13 +97,13 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 public
 \ WITH-BYTES hands the quotation exactly the WORK-BYTES mapping it allocated
 \ here; ALLOCATION>SPAN preserves that producer's base and reach together.
-: SAMEFILE ( ptr u8 n ptr u8 n -- bool )
+: SAMEFILE ( ^u8 n ^u8 n -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
 
-: PATH-IDENTITY ( ptr u8 n -- n n )
+: PATH-IDENTITY ( ^u8 n -- n n )
    WORK-BYTES BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] WITH-BYTES ;
 
-: TRY-PATH-IDENTITY ( ptr u8 n -- n n bool )
+: TRY-PATH-IDENTITY ( ^u8 n -- n n bool )
    WORK-BYTES BYTES-ALLOC-LEN [: INSPECT-IDENTITY ;] WITH-BYTES ;
 
 ;using

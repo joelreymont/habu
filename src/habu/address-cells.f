@@ -33,23 +33,23 @@ private
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;
 
-: HEADER ( -- ptr n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
+: HEADER ( -- ^n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
 
 \ The header's base and the index cell hold an outside mapping's address as an integer.
-CAST: N>ROWS ( n -- ptr n )
-: ROWS>N ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
-: DATA-ROWS ( n -- ptr n ) data-base + ;
+CAST: N>ROWS ( n -- ^n )
+: ROWS>N ( ^n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+: DATA-ROWS ( n -- ^n ) data-base + ;
 
-: LOCK-ADDR ( -- ptr n ) data-base LOCK-CELL + ;
-: INDEX-ADDR ( -- ptr n ) data-base INDEX-CELL + ;
+: LOCK-ADDR ( -- ^n ) data-base LOCK-CELL + ;
+: INDEX-ADDR ( -- ^n ) data-base INDEX-CELL + ;
 : LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
 
 public
 \ Unmaps the index the cell holds and zeroes the cell. On a table markers reach, the caller holds
 \ its mutex through this AND the row/header mutation after, so no marker rebuilds the view between.
-: INDEX-RELEASE ( ptr n -- )
-   {: held:ptr :}
+: INDEX-RELEASE ( ^n -- )
+   {: held:^ :}
    held @ dup 0= if drop exit then {: address:n :}
    address 0 < address 7 and 0 <> or
    address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
@@ -68,8 +68,8 @@ private
    off 0 < off bytes > or if REFUSE then
    cap bytes off - CELL / > if REFUSE then ;
 
-: LIVE-HEADER ( -- ptr n n n )
-   HEADER {: h:ptr :}
+: LIVE-HEADER ( -- ^n n n )
+   HEADER {: h:^ :}
    h MAGIC-FIELD + @ MAGIC <> if REFUSE then
    h @ h CAP-FIELD + @ SHAPE
    h BASE-FIELD + @ {: base:n :}
@@ -86,30 +86,30 @@ private
 \ A source rewind can retire the DATA backing of a restored vector. Secure
 \ outside storage first, including when the cut crosses its unused capacity.
 : KEEP-STORAGE ( n -- ) {: floor:n :}
-   LIVE-HEADER {: old:ptr cap:n mode:n :}
+   LIVE-HEADER {: old:^ cap:n mode:n :}
    mode 1 = if exit then
    old data-base - {: off:n :}
    off floor <= if cap floor off - CELL / <= if exit then then
    cap cells map-anon 0 <> if
-      drop s" address-cells: storage allocation failed" 96 die then {: fresh:ptr :}
+      drop s" address-cells: storage allocation failed" 96 die then {: fresh:^ :}
    cap 0 ?do old i cells + @ fresh i cells + ! loop
    fresh ROWS>N HEADER BASE-FIELD + !
    1 HEADER MODE-FIELD + ! ;
 
 public
 
-: LIVE-SPAN ( -- ptr n n )
+: LIVE-SPAN ( -- ^n n )
    LIVE-HEADER 2drop HEADER @ ;
 
 : ROW@ ( n -- n ) {: row:n :}
-   LIVE-SPAN {: base:ptr count:n :}
+   LIVE-SPAN {: base:^ count:n :}
    row 0 < row count >= or if REFUSE then
    base row cells + @ ;
 
 private
 
 : KEEP-ROWS ( n -- ) {: floor:n :}
-   LIVE-SPAN {: base:ptr count:n :}
+   LIVE-SPAN {: base:^ count:n :}
    0 count 0 ?do
       base i cells + @ {: row:n :}
       row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
@@ -119,11 +119,11 @@ private
    HEADER ! ;
 
 : PERSIST-ROWS ( -- )
-   LIVE-HEADER {: old:ptr cap:n mode:n :}
+   LIVE-HEADER {: old:^ cap:n mode:n :}
    mode 0= if exit then
    cap cells {: bytes:n :}
    here data-base - cap DATA-SIZE WITHIN
-   here {: fresh:ptr :}
+   here {: fresh:^ :}
    bytes allot
    cap 0 ?do old i cells + @ fresh i cells + cell-view ! loop
    old bytes munmap 0 <> if
@@ -161,7 +161,7 @@ public
 private
 : REMOVE-LOCKED ( n n -- ) {: first:n limit:n :}
    INDEX-ADDR INDEX-RELEASE
-   LIVE-SPAN {: rows:ptr count:n :}
+   LIVE-SPAN {: rows:^ count:n :}
    0
    count 0 ?do
       rows i cells + @ {: row:n :}
@@ -187,9 +187,9 @@ public
    [: INDEX-ADDR INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
 
 \ Reads a complete snapshot DATA copy.
-: DATA-SPAN ( ptr u8 n -- ptr n n ) {: data:ptr bytes:n :}
+: DATA-SPAN ( ^u8 n -- ^n n ) {: data:^ bytes:n :}
    bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
-   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:ptr :}
+   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h MAGIC-FIELD + @ MAGIC <> if REFUSE then
    h MODE-FIELD + @ 0 <> if REFUSE then
    h @ h CAP-FIELD + @ SHAPE

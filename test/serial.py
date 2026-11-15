@@ -26,7 +26,7 @@ create BODY 1048578 allot
    ;MATCH ;
 
 
-: OPEN ( ptr u8 n -- SERIAL:handle )
+: OPEN ( ^u8 n -- SERIAL:handle )
    115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF ENDOF
       failed OF SERIAL:ERRNO>N throw ENDOF
@@ -43,7 +43,7 @@ create BODY 1048578 allot
    ;MATCH ;
 
 
-: EXACT-READ ( SERIAL:handle ptr u8 n -- ) {: handle:SERIAL:handle bytes size:n :}
+: EXACT-READ ( SERIAL:handle ^u8 n -- ) {: handle:SERIAL:handle bytes size:n :}
    0 begin dup size < while
       dup {: offset:n :}
       handle bytes offset + size offset - SERIAL:BYTES 2000 >MS SERIAL:READ MOVED +
@@ -276,7 +276,7 @@ create BODY0 16 allot
 create BODY1 16 allot
 TASK:MIN-STACK TASK:TASK WORKER0
 TASK:MIN-STACK TASK:TASK WORKER1
-: WORK ( ptr u8 n n ptr u8 n n -- )
+: WORK ( ^u8 n n ^u8 n n -- )
    {{: path size:n speed:n bytes identity:n expected:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
@@ -299,7 +299,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
 : WORK1 ( -- ) s" {paths[1]}" {speeds[1]} BODY1 177 11 WORK ;
 
 
-: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ^n -- ) {{: worker:^ :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 

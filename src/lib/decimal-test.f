@@ -27,29 +27,29 @@ create LONG-SRC 1048600 allot
       some OF drop false TTRUE ENDOF
    ;MATCH ;
 
-: EXACT= ( ptr u8 n i64 -- )
-   {: a:ptr u:n want:i64 :}
+: EXACT= ( ^u8 n i64 -- )
+   {: a:^ u:n want:i64 :}
    a u DECIMAL:EXACT want SOME= ;
 
-: EXACT-NONE ( ptr u8 n -- )
+: EXACT-NONE ( ^u8 n -- )
    DECIMAL:EXACT NONE? ;
 
-: INTEGER= ( ptr u8 n i64 -- )
-   {: a:ptr u:n want:i64 :}
+: INTEGER= ( ^u8 n i64 -- )
+   {: a:^ u:n want:i64 :}
    a u DECIMAL:INTEGER want SOME= ;
 
-: INTEGER-NONE ( ptr u8 n -- )
+: INTEGER-NONE ( ^u8 n -- )
    DECIMAL:INTEGER NONE? ;
 
-: PRIORITY ( ptr u8 n -- option<i64> )
-   {: a:ptr u:n :}
+: PRIORITY ( ^u8 n -- option<i64> )
+   {: a:^ u:n :}
    a u DECIMAL:INTEGER MATCH option
       none OF a u DECIMAL:EXACT ENDOF
       some OF OPTION:SOME ENDOF
    ;MATCH ;
 
-: STRING= ( ptr u8 n i64 -- )
-   {: a:ptr u:n want:i64 :}
+: STRING= ( ^u8 n i64 -- )
+   {: a:^ u:n want:i64 :}
    READER-SPACE a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=
    DECODE-BUF 64 JSON:READ-STR {: size:n :}
@@ -67,7 +67,7 @@ create LONG-SRC 1048600 allot
    48 LONG-SRC c!
    46 LONG-SRC 1+ c!
    LONG-ZEROS 0 ?do 48 LONG-SRC 2 i + + c! loop
-   s" 1e1048578" {: suffix:ptr size:n :}
+   s" 1e1048578" {: suffix:^ size:n :}
    suffix LONG-SRC 2 LONG-ZEROS + + size BYTE-COPY
    LONG-SRC 2 LONG-ZEROS + size + 1 EXACT= ;
 

@@ -28,10 +28,10 @@ create DIAG-BUF 8192 allot
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: TOKEN? ( ptr u8 n -- )
+: TOKEN? ( ^u8 n -- )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;

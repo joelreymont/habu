@@ -35,10 +35,10 @@ using A64ASM
 using A64ICODE
 
 package CRASH
-: CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: CRH-BYTE+ ( ^u8 n -- ^u8 ) + ;
 
 : CRH-INIT ( -- )
-   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:ptr u:n :}
+   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:^ u:n :}
    0 BEGIN dup u < WHILE
       dup a swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
       1 +
@@ -171,8 +171,8 @@ public
    0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 private
-: DIE-LINE-SITE, ( ptr u8 n n n -- )
-   LBL {: a:ptr u:n status:n flag:n msg:label :}
+: DIE-LINE-SITE, ( ^u8 n n n -- )
+   LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
       s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" ICODE-EXIT-RC die
    THEN
@@ -183,12 +183,12 @@ private
 public
 \ A branch to LDIE-LINE with the text and the exit status, the text laid
 \ after it. The caller places its own label before it.
-: DIE-LINE, ( ptr u8 n n -- )  0 DIE-LINE-SITE, ;
+: DIE-LINE, ( ^u8 n n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of x0..x4.
-: DIE-LINE-VALUE, ( ptr u8 n n n -- )
-   {: a:ptr u:n status:n reg:n :}
+: DIE-LINE-VALUE, ( ^u8 n n n -- )
+   {: a:^ u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
       s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" ICODE-EXIT-RC die
    THEN
@@ -310,17 +310,17 @@ variable CRS-MACHINE-H
 variable CRS-THROW  variable CRS-MEMORY-M
 
 \ The four stack-bounds texts LDIE-LINE prints.
-: CRS-DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data)" ;
-: CRS-RET$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (return)" ;
-: CRS-LOOP$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (loop)" ;
-: CRS-MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine)" ;
+: CRS-DATA$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data)" ;
+: CRS-RET$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (return)" ;
+: CRS-LOOP$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (loop)" ;
+: CRS-MACHINE$ ( -- ^u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine)" ;
 
 \ The memory fault's line, in two runs: the first is whole words, so BYTES,
 \ lays the second right after it. The handler writes the fault address and the
 \ pc over the zeros at byte offsets CRS-MEMORY-AT and CRS-MEMORY-PC.
-: CRS-MEMORY$ ( -- ptr u8 n )
+: CRS-MEMORY$ ( -- ^u8 n )
    S\" E-MEMORY-FAULT habu: memory fault at 0000000000000000 pc" ;
-: CRS-MEMORY-TAIL$ ( -- ptr u8 n )  S\"  0000000000000000\n" ;
+: CRS-MEMORY-TAIL$ ( -- ^u8 n )  S\"  0000000000000000\n" ;
 CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
 37 constant CRS-MEMORY-AT
 57 constant CRS-MEMORY-PC
@@ -348,8 +348,8 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
 
 \ The line for the guard page hit at the label; x30 is the interrupted code's
 \ lr. Never returns.
-: C-CRASH-GUARD-REPORT ( ptr u8 n label -- )
-   {: a:ptr u:n hit:label :}
+: C-CRASH-GUARD-REPORT ( ^u8 n label -- )
+   {: a:^ u:n hit:label :}
    hit LBL,  21 C-CRASH-LR>R30
    a u ENGINE-ERROR:STACK-BOUNDS DIE-LINE, ;
 

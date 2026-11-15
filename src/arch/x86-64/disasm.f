@@ -13,13 +13,13 @@ public
 
 private
 
-TYPED-VARIABLE DA ptr u8
+TYPED-VARIABLE DA ^u8
 variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP
 
-: OUT ( ptr u8 n -- ) {: a:ptr u:n :}
+: OUT ( ^u8 n -- ) {: a:^ u:n :}
    a u type ;
 
 : CHAR-OUT ( n -- ) {: c:n :}
@@ -44,7 +44,7 @@ variable DSCALE  variable DDISP  variable DRIP
 
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
-: REFUSE ( n ptr u8 n -- ) {: code:n msg:ptr u:n :}
+: REFUSE ( n ^u8 n -- ) {: code:n msg:^ u:n :}
    s" x64dis: " OUT msg u OUT s"  at " OUT
    DPC @ DI @ + HEX. cr code throw ;
 
@@ -115,7 +115,7 @@ variable DSCALE  variable DDISP  variable DRIP
    DMOD @ 1 = if S8 DDISP ! then
    DMOD @ 2 = if S32 DDISP ! then ;
 
-: R64$ ( n -- ptr u8 n )
+: R64$ ( n -- ^u8 n )
    case
       0 of s" rax" endof  1 of s" rcx" endof
       2 of s" rdx" endof  3 of s" rbx" endof
@@ -128,7 +128,7 @@ variable DSCALE  variable DDISP  variable DRIP
       UNKNOWN
    endcase ;
 
-: R32$ ( n -- ptr u8 n )
+: R32$ ( n -- ^u8 n )
    case
       0 of s" eax" endof  1 of s" ecx" endof
       2 of s" edx" endof  3 of s" ebx" endof
@@ -141,7 +141,7 @@ variable DSCALE  variable DDISP  variable DRIP
       UNKNOWN
    endcase ;
 
-: R16$ ( n -- ptr u8 n )
+: R16$ ( n -- ^u8 n )
    case
       0 of s" ax" endof  1 of s" cx" endof
       2 of s" dx" endof  3 of s" bx" endof
@@ -154,7 +154,7 @@ variable DSCALE  variable DDISP  variable DRIP
       UNKNOWN
    endcase ;
 
-: R8$ ( n -- ptr u8 n )
+: R8$ ( n -- ^u8 n )
    case
       0 of s" al" endof  1 of s" cl" endof
       2 of s" dl" endof  3 of s" bl" endof
@@ -223,7 +223,7 @@ variable DSCALE  variable DDISP  variable DRIP
 : PLAIN-PREFIX ( -- )
    DPFX @ 0<> DLOCK @ 0<> or if UNKNOWN then ;
 
-: ALU$ ( n -- ptr u8 n )
+: ALU$ ( n -- ^u8 n )
    case
       0 of s" add" endof 1 of s" or" endof
       2 of s" adc" endof 3 of s" sbb" endof
@@ -232,7 +232,7 @@ variable DSCALE  variable DDISP  variable DRIP
       UNKNOWN
    endcase ;
 
-: SHIFT$ ( n -- ptr u8 n )
+: SHIFT$ ( n -- ^u8 n )
    case
       0 of s" rol" endof 1 of s" ror" endof
       4 of s" shl" endof 5 of s" shr" endof
@@ -240,7 +240,7 @@ variable DSCALE  variable DDISP  variable DRIP
       UNKNOWN
    endcase ;
 
-: JCC$ ( n -- ptr u8 n )
+: JCC$ ( n -- ^u8 n )
    case
       0 of s" jo" endof   1 of s" jno" endof
       2 of s" jb" endof   3 of s" jae" endof
@@ -253,7 +253,7 @@ variable DSCALE  variable DDISP  variable DRIP
      UNKNOWN
    endcase ;
 
-: CMOV$ ( n -- ptr u8 n )
+: CMOV$ ( n -- ^u8 n )
    case
       0 of s" cmovo" endof  1 of s" cmovno" endof
       2 of s" cmovb" endof  3 of s" cmovae" endof
@@ -266,7 +266,7 @@ variable DSCALE  variable DDISP  variable DRIP
      UNKNOWN
    endcase ;
 
-: SET$ ( n -- ptr u8 n )
+: SET$ ( n -- ^u8 n )
    case
       0 of s" seto" endof  1 of s" setno" endof
       2 of s" setb" endof  3 of s" setae" endof
@@ -284,20 +284,20 @@ variable DSCALE  variable DDISP  variable DRIP
 : SIMM. ( n -- )
    dup 0 < if [char] - CHAR-OUT negate then IMM. ;
 
-: REG-RM ( ptr u8 n n -- ) {: name:ptr u:n width:n :}
+: REG-RM ( ^u8 n n -- ) {: name:^ u:n width:n :}
    name u OUT GAP DREG @ width REG. SEP width RM. ;
 
-: RM-REG ( ptr u8 n n -- ) {: name:ptr u:n width:n :}
+: RM-REG ( ^u8 n n -- ) {: name:^ u:n width:n :}
    name u OUT GAP width RM. SEP DREG @ width REG. ;
 
 : ALU-REG ( -- )
    INT-PREFIX MODRM
-   DOP @ 3 rshift ALU$ WIDTH {: name:ptr u:n width:n :}
+   DOP @ 3 rshift ALU$ WIDTH {: name:^ u:n width:n :}
    DOP @ 7 and 1 = if name u width RM-REG else name u width REG-RM then ;
 
 : ALU-IMM ( -- )
    INT-PREFIX MODRM
-   DREG @ ALU$ {: name:ptr u:n :}
+   DREG @ ALU$ {: name:^ u:n :}
    DOP @ $83 = if S8 else WIDTH 16 = if S16 else S32 then then {: value:n :}
    name u OUT GAP WIDTH RM. SEP value SIMM. ;
 
@@ -328,7 +328,7 @@ variable DSCALE  variable DDISP  variable DRIP
    PLAIN-PREFIX
    DOP @ $E8 = if S32 s" call" else
    DOP @ $E9 = if S32 s" jmp" else S8 s" jmp" then then
-   {: delta:n name:ptr u:n :}
+   {: delta:n name:^ u:n :}
    name u OUT GAP delta PRINT-REL ;
 
 : COND-BRANCH ( -- )
@@ -413,10 +413,10 @@ variable DSCALE  variable DDISP  variable DRIP
 : SSE-PREFIX ( n -- ) {: want:n :}
    DPFX @ want <> DLOCK @ 0<> or if UNKNOWN then ;
 
-: SSE-REG-RM ( ptr u8 n -- ) {: name:ptr u:n :}
+: SSE-REG-RM ( ^u8 n -- ) {: name:^ u:n :}
    MODRM name u OUT GAP DREG @ XMM. SEP XRM. ;
 
-: SSE-RM-REG ( ptr u8 n -- ) {: name:ptr u:n :}
+: SSE-RM-REG ( ^u8 n -- ) {: name:^ u:n :}
    MODRM name u OUT GAP XRM. SEP DREG @ XMM. ;
 
 : SSE-SCALAR ( -- bool )
@@ -505,7 +505,7 @@ variable DSCALE  variable DDISP  variable DRIP
 
 private
 
-: DECODE ( ptr u8 n n -- ) {: a:ptr u:n pc:n :}
+: DECODE ( ^u8 n n -- ) {: a:^ u:n pc:n :}
    a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK !
    u 0 <= if TRUNC then
    PREFIXES OPCODE
@@ -518,7 +518,7 @@ private
 public
 
 \ Returns the consumed byte count (1..15).
-: DIS1 ( ptr u8 n n -- n )
+: DIS1 ( ^u8 n n -- n )
    DECODE DI @ ;
 
 ;package

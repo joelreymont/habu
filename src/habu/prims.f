@@ -107,14 +107,14 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 
 \ SLOT addresses a row the caller has already bounded. Only ROW-WRITE needs
 \ SLOT: it fills the row at ROW-N before ROW-N counts it.
-: SLOT ( n n -- ptr n ) {: row:n field:n :}
+: SLOT ( n n -- ^n ) {: row:n field:n :}
    row ROW-CELLS * field + cells ROWS + ;
 
-: ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
+: ROW-FIELD ( n n -- ^n ) {: row:n field:n :}
    row 0 < row ROW-N @ >= or IF s" prims: row index out of range" SPEC-RC die THEN
    row field SLOT ;
 
-: NAME-SPAN, ( ptr u8 n -- ) {: a:ptr u:n :}
+: NAME-SPAN, ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < IF s" prims: negative name length" SPEC-RC die THEN
    NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" SPEC-RC die THEN
    0 BI !
@@ -230,7 +230,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
-: REACH-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}
+: REACH-CODE ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" stack" CORE-STR= IF R-STACK EXIT THEN
    a u s" memory" CORE-STR= IF R-MEMORY EXIT THEN
    a u s" data" CORE-STR= IF R-DATA EXIT THEN
@@ -260,13 +260,13 @@ public
 : KIND@ ( n -- n )
    F-KIND ROW-FIELD @ ;
 
-: NAME$ ( n -- ptr u8 n ) {: row:n :}
+: NAME$ ( n -- ^u8 n ) {: row:n :}
    NAMES row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
 
-: PKG$ ( n -- ptr u8 n ) {: row:n :}
+: PKG$ ( n -- ^u8 n ) {: row:n :}
    NAMES row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
 
-: REF$ ( n -- ptr u8 n ) {: row:n :}
+: REF$ ( n -- ^u8 n ) {: row:n :}
    NAMES row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
 
 : TRUSTED-ONLY? ( n -- bool )
@@ -292,7 +292,7 @@ public
 \ Exact spelling: a body registered under a different case is a different row
 \ and must say so. The index lives on the stack: a lookup leaves no state in
 \ the image.
-: FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+: FIND ( ^u8 n -- n ) {: a:^ u:n :}
    0
    BEGIN dup ROW-N @ < WHILE
       dup NAME$ a u CORE-STR= IF EXIT THEN
@@ -349,7 +349,7 @@ EPRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
             REF PRIM-REF:S-2OVER EPRIM; REACH stack
 
 EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM; REACH stack
-\ The PE-PTR-B-BASE rows precede `ptr a ptr a`, so `X NULL-PTR -` matches the
+\ The PE-PTR-B-BASE rows precede `^a ^a`, so `X NULL-PTR -` matches the
 \ null's pointee alone and publishes no null kind.
 EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
 EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
@@ -635,7 +635,7 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ $4000 above DBASE, compared unsigned) and a pending definition, whose record
 \ occupies slot NDICT.
 \
-\ namespace-record ( ptr u8 n bool -- n ): publish a namespace row at NDICT and
+\ namespace-record ( ^u8 n bool -- n ): publish a namespace row at NDICT and
 \ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
 \ set and else 0, [40] WL:NAMESPACE. It refuses a colon at an edge of the
 \ name and a second colon: a name with one is a part's path, `A:B`.
@@ -652,7 +652,7 @@ EPPRIM: INTERPRETER namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N
 EPRIM: namespace-private PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER namespace-private PE-N PE-IN ECLOSE-PRIVATE
-\ alias-record ( ptr u8 n n n -- ) name, source index, wid: a record for the source's code, as
+\ alias-record ( ^u8 n n n -- ) name, source index, wid: a record for the source's code, as
 \ `export` makes. It refuses a negative wid and a source at or above NDICT, unsigned.
 EPRIM: alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
@@ -670,7 +670,7 @@ EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
+\ def-open ( ^u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR with
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
@@ -681,7 +681,7 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ body-capture ( ptr u8 n -- ): append the bytes and one space to the body text
+\ body-capture ( ^u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
 \ not fit (rc 71 when it cannot). It refuses BODYLEN past the text capacity and
 \ a BODYLEN + u + 1 that wraps, with BODYLEN and u both unsigned.
@@ -699,11 +699,11 @@ EPRIM: compile, PE-QANY EPRIM;
 \ definition; it refuses when none is open.
 EPRIM: ; EPRIM;
 EIMMEDIATE!
-\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ trust-sig! ( ^u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
+\ created-sig! ( ^u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
 \ copy in the body text. It refuses when no definition is
 \ pending.
@@ -744,7 +744,7 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
 \ and the using band in the engine's REPLAY-SCOPE band. It
 \ refuses an open overlay and a pending definition.
-\ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
+\ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose
 \ entry traps, exit 76. It refuses no overlay, a negative wid and what the
 \ three record writers above refuse.
 \ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
@@ -786,7 +786,7 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ nothing. Its value is zero, so the body pushes zero and reads no memory.
 \ TVK-NULL keeps every honest use: storing a null into a declared pointer cell,
 \ comparing one, subtracting one, testing it with 0= - each binds the pointee
-\ INSIDE a `ptr`, where the kind is permissive, and each means this one literal
+\ INSIDE a `^`, where the kind is permissive, and each means this one literal
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
@@ -807,7 +807,7 @@ EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
-\ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
+\ num-parse ( ^u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
 \ dispatches call for every literal token. It
 \ answers the value, whether that value is a double's bits, and whether the
@@ -818,7 +818,7 @@ EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F P
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
 \ lies.
 EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
-\ sha256-blocks ( ptr n ptr u8 n -- n ) state cells, bytes, block count: how
+\ sha256-blocks ( ^n ^u8 n -- n ) state cells, bytes, block count: how
 \ many blocks the CPU's SHA-256 instructions compressed.
 EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM; REACH memory
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;

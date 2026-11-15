@@ -28,19 +28,19 @@ create BODY 4096 allot
 : RC>N ( result<n,n> -- n )
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: PROJECT-PATH ( ptr u8 n -- ptr u8 n )
+: PROJECT-PATH ( ^u8 n -- ^u8 n )
    PROJECT PROJECT-U @ 2swap PATH FS:JOIN-PATH PATH-U !
    PATH PATH-U @ ;
 
-: SERVER-ENTRY ( ptr u8 n -- ptr u8 n )
+: SERVER-ENTRY ( ^u8 n -- ^u8 n )
    SOURCE-ROOT:ENGINE$ 2swap SERVER FS:JOIN-PATH SERVER-U !
    SERVER SERVER-U @ ;
 
-: POISON ( ptr u8 n -- )
+: POISON ( ^u8 n -- )
    PROJECT-PATH s\" 86 throw\n" FS:WRITE-ALL ;
 
 : SETUP ( -- )
-   s" hb-lsp-entry" FS:MKTEMP-DIR {: d:ptr du:n :}
+   s" hb-lsp-entry" FS:MKTEMP-DIR {: d:^ du:n :}
    d PROJECT du BYTE-COPY  du PROJECT-U !
    s" tools" PROJECT-PATH FS:MAKE-DIRS
    s" src/core" PROJECT-PATH FS:MAKE-DIRS
@@ -50,7 +50,7 @@ create BODY 4096 allot
    s" tools/check-verify-child-lib.f" POISON
    s" src/habu/verify-source.f" POISON
    s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" FS:WRITE-ALL
-   s" subject.f" PROJECT-PATH {: p:ptr pu:n :}
+   s" subject.f" PROJECT-PATH {: p:^ pu:n :}
    p SUBJECT pu BYTE-COPY  pu SUBJECT-U !
    SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" FS:WRITE-ALL
    s" tools/lsp.f" SERVER-ENTRY 2drop
@@ -58,27 +58,27 @@ create BODY 4096 allot
    SERVER-U @ CHILD-U !
    s" tools/lsp.f" SERVER-ENTRY 2drop ;
 
-: STAGE ( CMD:command ptr u8 n -- CMD:command )
-   {: entry:ptr entryu:n :}
+: STAGE ( CMD:command ^u8 n -- CMD:command )
+   {: entry:^ entryu:n :}
    PROJECT PROJECT-U @ CMD:CWD!
    \ Exercise a cold image build here, then reuse it for the nested entry.
    s" HABU_OUT" s" out" PROJECT-PATH CMD:ENV+
    s" --load" CMD:ARG+
    entry entryu CMD:ARG+ ;
 
-: QUOTED ( ptr u8 n -- )
+: QUOTED ( ^u8 n -- )
    s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
    SB-APPEND 34 SB-APPEND-C ;
 
 \ Keep the inherited root at the entry tree while loading the entry by its
 \ absolute path. With this nesting, CURRENT$ names that root, not the file.
-: NESTED ( ptr u8 n -- ptr u8 n ) {: entry:ptr u:n :}
+: NESTED ( ^u8 n -- ^u8 n ) {: entry:^ u:n :}
    SB-RESET s" : NESTED-LOAD ( -- ) " SB-APPEND
    entry u SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME QUOTED
    s"  [: " SB-APPEND
    entry u QUOTED
    s\"  required ;] SOURCE-ROOT:WITH ;\nNESTED-LOAD\n" SB-APPEND
-   s" driver.f" PROJECT-PATH {: path:ptr pathu:n :}
+   s" driver.f" PROJECT-PATH {: path:^ pathu:n :}
    path DRIVER pathu BYTE-COPY pathu DRIVER-U !
    DRIVER DRIVER-U @ SB$ FS:WRITE-ALL
    DRIVER DRIVER-U @ ;
@@ -86,11 +86,11 @@ create BODY 4096 allot
 \ A document request forces the server to run its verifier child.
 \ Loading the entry and reaching EOF alone never crosses that boundary.
 : FRAME ( -- )
-   SB$ {: a:ptr u:n :}
+   SB$ {: a:^ u:n :}
    a BODY u BYTE-COPY
    SB-RESET s" Content-Length: " SB-APPEND u FMT:SB-U
    s\" \r\n\r\n" SB-APPEND
-   SB$ {: h:ptr hu:n :}
+   SB$ {: h:^ hu:n :}
    h WIRE WIRE-U @ + hu BYTE-COPY hu WIRE-U +!
    BODY WIRE WIRE-U @ + u BYTE-COPY u WIRE-U +! ;
 
@@ -113,21 +113,21 @@ create BODY 4096 allot
    s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" SB-APPEND
    URI+ s\" \"}}}" SB-APPEND FRAME ;
 
-: STREAM-PATH ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n suffix:ptr suffixu:n :}
+: STREAM-PATH ( ^u8 n ^u8 n -- ^u8 n )
+   {: name:^ nameu:n suffix:^ suffixu:n :}
    SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
    SB$ PROJECT-PATH ;
 
 \ A child has no deadline: its cold image build takes as long as the host's
 \ load makes it, and a hung row is named by its WAIT line.
-: SERVER-RUN ( ptr u8 n ptr u8 n CMD:command -- CMD:command )
-   >r {: entry:ptr entryu:n name:ptr nameu:n :} r>
+: SERVER-RUN ( ^u8 n ^u8 n CMD:command -- CMD:command )
+   >r {: entry:^ entryu:n name:^ nameu:n :} r>
    entry entryu STAGE
    CONVERSATION
    WIRE WIRE-U @ CMD:IN!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
-   CMD:OUT$ {: out:ptr outu:n :}
-   CMD:ERR$ {: err:ptr erru:n :}
+   CMD:OUT$ {: out:^ outu:n :}
+   CMD:ERR$ {: err:^ erru:n :}
    name nameu s" .in" STREAM-PATH WIRE WIRE-U @ FS:WRITE-ALL
    name nameu s" .out" STREAM-PATH out outu FS:WRITE-ALL
    name nameu s" .err" STREAM-PATH err erru FS:WRITE-ALL
@@ -138,11 +138,11 @@ create BODY 4096 allot
    out outu s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
    out outu s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
 
-: SERVER-CASE ( ptr u8 n ptr u8 n -- )
+: SERVER-CASE ( ^u8 n ^u8 n -- )
    [: SERVER-RUN ;] CMD:WITH-COMMAND ;
 
-: CHILD-RUN ( ptr u8 n CMD:command -- CMD:command )
-   >r {: entry:ptr entryu:n :} r>
+: CHILD-RUN ( ^u8 n CMD:command -- CMD:command )
+   >r {: entry:^ entryu:n :} r>
    entry entryu STAGE
    s" --" CMD:ARG+
    SUBJECT SUBJECT-U @ CMD:ARG+
@@ -151,7 +151,7 @@ create BODY 4096 allot
    rc 0 <> if CMD:ERR$ type cr then rc 0 T=
    CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
 
-: CHILD-CASE ( ptr u8 n -- )
+: CHILD-CASE ( ^u8 n -- )
    [: CHILD-RUN ;] CMD:WITH-COMMAND ;
 
 public

@@ -12,7 +12,7 @@ private
 
 TYPED-VARIABLE READER-SPACE JSON:cursor
 
-: PARSED? ( ptr u8 n -- bool )
+: PARSED? ( ^u8 n -- bool )
    STR>FLOAT MATCH option
       none OF false ENDOF
       some OF drop true ENDOF

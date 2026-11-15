@@ -37,10 +37,10 @@ $20000 constant FILE-CAP
 FILE-CAP BUFFER: FILE-A
 FILE-CAP BUFFER: FILE-B
 
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
-: PROG$ ( ptr u8 n -- ptr u8 n )
-   {: name:ptr name-n:n :}
+: PROG$ ( ^u8 n -- ^u8 n )
+   {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
@@ -52,13 +52,13 @@ FILE-CAP BUFFER: FILE-B
    s" : PL-GO-FIVE ( -- ) PL-FIVE . ;" evaluate-closed ;
 
 
-: STORE-ENTRY ( ptr u8 n -- )
+: STORE-ENTRY ( ^u8 n -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-: WRITE-PROG ( ptr u8 n ptr u8 n -- )
-   {: word:ptr word-n:n file:ptr file-n:n :}
+: WRITE-PROG ( ^u8 n ^u8 n -- )
+   {: word:^ word-n:n file:^ file-n:n :}
    word word-n STORE-ENTRY
    file file-n PROG$ LINKER:WRITE ;
 
@@ -72,8 +72,8 @@ FILE-CAP BUFFER: FILE-B
    s" PL-GO-RUN" s" run-again" WRITE-PROG ;
 
 
-: RUN-PROG ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
-   {: file:ptr file-n:n out:ptr out-n:n :}
+: RUN-PROG ( CMD:command ^u8 n ^u8 n -- CMD:command )
+   {: file:^ file-n:n out:^ out-n:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc 0=  and 0= if
       s" arm64-place: " type file file-n type s"  exited " type rc .
@@ -88,8 +88,8 @@ FILE-CAP BUFFER: FILE-B
 
 
 \ Whether the map has a row for the word: a row's name stands between spaces.
-: ROW? ( ptr u8 n ptr u8 n -- bool )
-   {: map:ptr map-n:n name:ptr name-n:n :}
+: ROW? ( ^u8 n ^u8 n -- bool )
+   {: map:^ map-n:n name:^ name-n:n :}
    map map-n PROG$ FILE-A FILE-CAP FS:READ-ALL {: u:n :}
    FILE-A u name name-n CONTAINS? ;
 
@@ -158,7 +158,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-place" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-place" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH

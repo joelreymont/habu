@@ -9,8 +9,8 @@ package UNICODE-CLASS-DATA
 
 private
 
-: R, ( ptr n n n -- ptr n )
-   {: at:ptr lo:n hi:n :}
+: R, ( ^n n n -- ^n )
+   {: at:^ lo:n hi:n :}
    lo at ! hi at cell+ !
    at 2 cells + ;
 
@@ -2526,40 +2526,40 @@ drop
 
 public
 
-: LETTER-RANGES ( -- ptr n n )
+: LETTER-RANGES ( -- ^n n )
    0 LETTER-TABLE LETTER-TABLE-COUNT ;
 
-: NUMBER-RANGES ( -- ptr n n )
+: NUMBER-RANGES ( -- ^n n )
    0 NUMBER-TABLE NUMBER-TABLE-COUNT ;
 
-: WHITE-SPACE-RANGES ( -- ptr n n )
+: WHITE-SPACE-RANGES ( -- ^n n )
    0 WHITE-SPACE-TABLE WHITE-SPACE-TABLE-COUNT ;
 
-: LETTER-NUMBER-RANGES ( -- ptr n n )
+: LETTER-NUMBER-RANGES ( -- ^n n )
    0 LETTER-NUMBER-TABLE LETTER-NUMBER-TABLE-COUNT ;
 
-: OTHER-ALPHABETIC-RANGES ( -- ptr n n )
+: OTHER-ALPHABETIC-RANGES ( -- ^n n )
    0 OTHER-ALPHABETIC-TABLE OTHER-ALPHABETIC-TABLE-COUNT ;
 
-: UPPERCASE-LETTER-RANGES ( -- ptr n n )
+: UPPERCASE-LETTER-RANGES ( -- ^n n )
    0 UPPERCASE-LETTER-TABLE UPPERCASE-LETTER-TABLE-COUNT ;
 
-: OTHER-UPPERCASE-RANGES ( -- ptr n n )
+: OTHER-UPPERCASE-RANGES ( -- ^n n )
    0 OTHER-UPPERCASE-TABLE OTHER-UPPERCASE-TABLE-COUNT ;
 
-: MARK-RANGES ( -- ptr n n )
+: MARK-RANGES ( -- ^n n )
    0 MARK-TABLE MARK-TABLE-COUNT ;
 
-: MATH-SYMBOL-RANGES ( -- ptr n n )
+: MATH-SYMBOL-RANGES ( -- ^n n )
    0 MATH-SYMBOL-TABLE MATH-SYMBOL-TABLE-COUNT ;
 
-: OTHER-SYMBOL-RANGES ( -- ptr n n )
+: OTHER-SYMBOL-RANGES ( -- ^n n )
    0 OTHER-SYMBOL-TABLE OTHER-SYMBOL-TABLE-COUNT ;
 
-: OPEN-BRACKET-PAIRS ( -- ptr n n )
+: OPEN-BRACKET-PAIRS ( -- ^n n )
    0 OPEN-BRACKET-TABLE OPEN-BRACKET-TABLE-COUNT ;
 
-: CLOSE-BRACKET-PAIRS ( -- ptr n n )
+: CLOSE-BRACKET-PAIRS ( -- ^n n )
    0 CLOSE-BRACKET-TABLE CLOSE-BRACKET-TABLE-COUNT ;
 
 ;package

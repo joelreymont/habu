@@ -10,7 +10,7 @@ create EXPECT CAP allot
    CAP 0 ?do i 251 mod dup ACTUAL i + c! EXPECT i + c! loop ;
 
 \ Deliberately bytewise: pin forward overlap semantics independently of chunks.
-: REFERENCE ( ptr u8 ptr u8 n -- ) {: src dst count :}
+: REFERENCE ( ^u8 ^u8 n -- ) {: src dst count :}
    count 0 ?do src i + c@ dst i + c! loop ;
 
 : CHECK-COPY ( n n n -- ) {: source dest count :}

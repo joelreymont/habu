@@ -14,7 +14,7 @@ private
 
 DYNAMIC-BUFFER TAIL u8
 
-: MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: MANGLE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u TAIL-RESERVE
    u 0 ?do  a i + c@ ASCII-LOWER i TAIL c!  loop
    0 TAIL u ;
@@ -26,11 +26,11 @@ public
 \ surface NAME folds to it (FRAME-INDEX -> frame-index; TF-CANON? keeps hyphens);
 \ the converters take the surface spelling (`>SERIAL`), a signature names the
 \ tail (`( serial -- n )`). CHECKER-DEFTYPE rejects an empty or over-cap name,
-\ a reserved tail (a CT-role, or `ptr`, the pointer constructor) and one the
-\ scope already declares (E-TFAM-DUP); a package may still shadow a global or
-\ another package's family.
-: MINT ( ptr u8 n -- ) {: sa:ptr su:n :}
-   sa su MANGLE {: ta:ptr tu:n :}
+\ a reserved tail (a CT-role, or `ptr`, which an effect never reads as a
+\ family) and one the scope already declares (E-TFAM-DUP); a package may still
+\ shadow a global or another package's family.
+: MINT ( ^u8 n -- ) {: sa:^ su:n :}
+   sa su MANGLE {: ta:^ tu:n :}
    sa su ta tu CHECKER-DEFTYPE ;
 
 ;package

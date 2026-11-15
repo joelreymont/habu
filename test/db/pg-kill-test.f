@@ -33,7 +33,7 @@ create FIFO PATH-CAP allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: SHM-CTL shmctl ( n n ptr u8 -- i32 )
+FUNCTION: SHM-CTL shmctl ( n n ^u8 -- i32 )
 ;FUNCTION
 
 variable LINE-U
@@ -47,9 +47,9 @@ false REPORTED !
 true FIFO-DONE !
 PROCESS:NO-FD FIFO-RD !
 
-: SOCKETS$ ( -- ptr u8 n )  LINE LINE-U @ ;
+: SOCKETS$ ( -- ^u8 n )  LINE LINE-U @ ;
 
-: FIFO$ ( -- ptr u8 n )    FIFO FIFO-U @ ;
+: FIFO$ ( -- ^u8 n )    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
 \ harness's open of the write end does not wait. The harness and the case
@@ -80,8 +80,8 @@ PROCESS:NO-FD FIFO-RD !
 
 \ One line into buf, stepping the pool while none is there. False if the test
 \ ends, the FIFO ends, buf fills or a read or poll fails first.
-: LINE-READ? ( ptr u8 ptr n -- bool )
-   {: buf:ptr count:ptr :}
+: LINE-READ? ( ^u8 ^n -- bool )
+   {: buf:^ count:^ :}
    0 count !
    begin
       count @ PATH-CAP >= if false exit then
@@ -107,7 +107,7 @@ PROCESS:NO-FD FIFO-RD !
 \ The second field of the segment line, whose fields postmaster.pid
 \ right-aligns in nine columns; -1 when it holds no number there.
 : SHMID ( -- n )
-   SHM SHM-U @ LTRIM {: a:ptr u:n :}
+   SHM SHM-U @ LTRIM {: a:^ u:n :}
    0 begin dup u < if a over + c@ STR-SPACE <> else false then while 1+ repeat
    begin dup u < if a over + c@ STR-SPACE = else false then while 1+ repeat
    {: at:n :}

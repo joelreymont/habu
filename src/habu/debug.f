@@ -26,7 +26,7 @@ BPTRAMP-BYTES TRAMP-BYTES / constant MAXBP
 
 private
 
-: W32@ ( ptr u8 -- n ) {: a :}
+: W32@ ( ^u8 -- n ) {: a :}
    a c@  a 1 + c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
 
 : SLOT-OFF ( n -- n )
@@ -35,22 +35,22 @@ private
 \ The four fixed DATA fields of a breakpoint slot. The address field holds a
 \ code pointer, so it is reached through `ptr-field`, the declared pointer-cell
 \ door; the other three hold numbers.
-: BP-SLOT-ADDR ( n -- ptr ptr u8 )
+: BP-SLOT-ADDR ( n -- ^^u8 )
    SLOT-OFF data-base + 0 ptr-field ;
 
-: BP-SLOT-INSTR ( n -- ptr n )
+: BP-SLOT-INSTR ( n -- ^n )
    SLOT-OFF 8 + data-base + ;
 
-: BP-SLOT-HITS ( n -- ptr n )
+: BP-SLOT-HITS ( n -- ^n )
    SLOT-OFF 16 + data-base + ;
 
-: BP-SLOT-CTRL ( n -- ptr n )
+: BP-SLOT-CTRL ( n -- ^n )
    SLOT-OFF 24 + data-base + ;
 
-: BP-NULL ( -- ptr u8 )
+: BP-NULL ( -- ^u8 )
    NULL-PTR ;
 
-: BP-PATCH32 ( n ptr u8 -- ) patch32 ;
+: BP-PATCH32 ( n ^u8 -- ) patch32 ;
 
 \ A code address reaches checked code as a number; CODE-BYTES:AT is the one
 \ bounded view of the bytes there.
@@ -96,7 +96,7 @@ CAST: XT>N ( [ R -- S ] -- n )
    0 BEGIN dup MAXBP < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
 
 \ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent.
-: BP-SET-SLOT ( ptr u8 n n -- ) {: xt:ptr ctrl idx :}
+: BP-SET-SLOT ( ^u8 n n -- ) {: xt:^ ctrl idx :}
    xt idx BP-SLOT-ADDR !
    xt W32@ idx BP-SLOT-INSTR !
    0 idx BP-SLOT-HITS !
@@ -114,7 +114,7 @@ CAST: XT>N ( [ R -- S ] -- n )
    ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
    FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
    {: idx :}
-   at 4 CODE-BYTES:AT drop {: xt:ptr :}
+   at 4 CODE-BYTES:AT drop {: xt:^ :}
    xt ctrl idx BP-SET-SLOT
    ctrl 1 and 0<> if  idx BP-SLOT-INSTR @ at idx TRAMP!  then
    BRK0 xt BP-PATCH32 ;

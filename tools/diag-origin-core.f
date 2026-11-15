@@ -39,7 +39,7 @@ create DO-NUM-BUF DO-NUM-CAP allot
 create DO-ONE 1 allot
 
 DYNAMIC-BUFFER DO-FILE u8   \ the CLI's source, read whole
-TYPED-VARIABLE DO-SRC-A ptr u8
+TYPED-VARIABLE DO-SRC-A ^u8
 variable DO-SRC-U
 variable DO-X
 variable DO-LINE
@@ -48,7 +48,7 @@ variable DO-OUT-X
 variable DO-NUM-I
 
 variable DO-TOK-K
-TYPED-VARIABLE DO-TOK-A ptr u8
+TYPED-VARIABLE DO-TOK-A ^u8
 variable DO-TOK-U
 variable DO-TOK-BYTE
 variable DO-TOK-LINE
@@ -63,9 +63,9 @@ variable DO-ORIG-BYTE
 variable DO-ORIG-POS
 variable DO-BODY              \ between a body opener and its `;`
 variable DO-RUN-X             \ first word of the current run, -1 for none
-TYPED-VARIABLE DO-OUT-A ptr u8
+TYPED-VARIABLE DO-OUT-A ^u8
 variable DO-OUT-U
-TYPED-VARIABLE DO-OUT-ROOM [ n -- ptr u8 ]   \ the caller's growing buffer
+TYPED-VARIABLE DO-OUT-ROOM [ n -- ^u8 ]   \ the caller's growing buffer
 variable DO-OUT-BUF?
 
 : DO-TRUE ( -- bool )
@@ -74,28 +74,28 @@ variable DO-OUT-BUF?
 : DO-FALSE ( -- bool )
    DO-TRUE 0= ;
 
-: DO-SRC-A@ ( -- ptr u8 )
+: DO-SRC-A@ ( -- ^u8 )
    DO-SRC-A @ ;
 
-: DO-SRC-A! ( ptr u8 -- )
+: DO-SRC-A! ( ^u8 -- )
    DO-SRC-A ! ;
 
-: DO-TOK-A@ ( -- ptr u8 )
+: DO-TOK-A@ ( -- ^u8 )
    DO-TOK-A @ ;
 
-: DO-TOK-A! ( ptr u8 -- )
+: DO-TOK-A! ( ^u8 -- )
    DO-TOK-A ! ;
 
-: DO-OUT-A@ ( -- ptr u8 )
+: DO-OUT-A@ ( -- ^u8 )
    DO-OUT-A @ ;
 
-: DO-OUT-A! ( ptr u8 -- )
+: DO-OUT-A! ( ^u8 -- )
    DO-OUT-A ! ;
 
-: DO-FAIL ( ptr u8 n n -- )
+: DO-FAIL ( ^u8 n n -- )
    die ;
 
-: DO-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
+: DO-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    u 0= if exit then
    fd a u write u <> if s" diag-origin: write failed" 74 DO-FAIL then ;
 
@@ -103,18 +103,18 @@ variable DO-OUT-BUF?
    u 0 < if s" diag-origin: negative output" 74 DO-FAIL then
    DO-OUT-U @ u + DO-OUT-ROOM @ execute DO-OUT-A! ;
 
-: DO-BUF-OUT ( ptr u8 n -- ) {: a:ptr u :}
+: DO-BUF-OUT ( ^u8 n -- ) {: a:^ u :}
    u DO-BUF-ROOM
    a DO-OUT-A@ DO-OUT-U @ + u BYTE-COPY
    DO-OUT-U @ u + DO-OUT-U ! ;
 
-: DO-FD-OUT ( ptr u8 n -- )
+: DO-FD-OUT ( ^u8 n -- )
    1 -rot DO-WRITE ;
 
-: DO-OUT ( ptr u8 n -- )
+: DO-OUT ( ^u8 n -- )
    DO-OUT-BUF? @ if DO-BUF-OUT else DO-FD-OUT then ;
 
-: DO-ERR ( ptr u8 n -- )
+: DO-ERR ( ^u8 n -- )
    2 -rot DO-WRITE ;
 
 : DO-C! ( n -- )
@@ -131,7 +131,7 @@ variable DO-OUT-BUF?
 : DO-USAGE ( -- )
    s" usage: tools/diag-origin.f file" 64 DO-FAIL ;
 
-: DO-U$ ( n -- ptr u8 n ) {: u :}
+: DO-U$ ( n -- ^u8 n ) {: u :}
    DO-NUM-CAP DO-NUM-I !
    u 0= if
       DO-NUM-I @ 1- DO-NUM-I !
@@ -326,7 +326,7 @@ variable DO-OUT-BUF?
    DO-FALSE DO-OUT-BUF? !
    0 DO-OUT-U ! ;
 
-: DO-OUT-BUF! ( [ n -- ptr u8 ] -- )
+: DO-OUT-BUF! ( [ n -- ^u8 ] -- )
    DO-OUT-ROOM !
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
@@ -340,7 +340,7 @@ variable DO-OUT-BUF?
    DO-TOK-A@ DO-TOK-U @ SOURCE-SYNTAX:BODY-OPENER? if DO-TRUE DO-BODY ! then
    DO-COLON? if DO-MARK-COLON then ;
 
-: DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
+: DO-MARK ( ^u8 n -- ) {: src:^ u:n :}
    src DO-SRC-A!
    u DO-SRC-U !
    0 DO-X !
@@ -352,12 +352,12 @@ variable DO-OUT-BUF?
    begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
-: DO-FILE-ROOM ( n -- ptr u8 )
+: DO-FILE-ROOM ( n -- ^u8 )
    DO-FILE-RESERVE 0 DO-FILE ;
 
 \ Stack-preserving under `catch`: the path rides through and the byte count
 \ comes back where a zero went in.
-: DO-READ ( ptr u8 n n -- ptr u8 n n )
+: DO-READ ( ^u8 n n -- ^u8 n n )
    drop 2dup [: DO-FILE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
 
 \ A source the CLI cannot read ends the run naming it: a path the file system
@@ -368,15 +368,15 @@ variable DO-OUT-BUF?
    rc E-FS-PATH = rc E-FFI-NUL = or
    rc E-FS-OPEN = or rc E-FS-IO = or ;
 
-: DO-READ-FAIL ( ptr u8 n -- )
+: DO-READ-FAIL ( ^u8 n -- )
    2 s" diag-origin: cannot read file: " DO-WRITE 1 die ;
 
 \ The engine's own rewrite comments a leading `#!` line, so the scan and the
 \ marked copy read it as the engine does. The source is read whole however it
 \ grows while it is read, and its bytes are taken after the read, which may
 \ move the buffer.
-: DIAG-ORIGIN ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: DIAG-ORIGIN ( ^u8 n -- )
+   {: path:^ pathu:n :}
    DO-OUT-FD!
    path pathu 0 [: DO-READ ;] catch
    {: rc:n :}
@@ -386,7 +386,7 @@ variable DO-OUT-BUF?
       rc DO-READ-FAIL? if path pathu DO-READ-FAIL then
       rc throw
    then
-   0 DO-FILE {: u:n a:ptr :}
+   0 DO-FILE {: u:n a:^ :}
    a u SOURCE-ROOT:SHEBANG-COMMENT
    a u DO-MARK ;
 
@@ -394,7 +394,7 @@ variable DO-OUT-BUF?
 \ buffer, which grows to the copy: before each write, room answers where the
 \ copy starts once it holds n bytes, so the buffer may move between writes.
 \ The answer is the copy's length.
-: DIAG-ORIGIN-SOURCE>BUF ( ptr u8 n [ n -- ptr u8 ] -- n ) {: src:ptr u room :}
+: DIAG-ORIGIN-SOURCE>BUF ( ^u8 n [ n -- ^u8 ] -- n ) {: src:^ u room :}
    room DO-OUT-BUF!
    src u DO-MARK
    DO-OUT-U @ ;

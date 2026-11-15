@@ -15,7 +15,7 @@ $4A constant FAILURE-RC
 
 PROCESS-SYMBOLS
 
-FUNCTION: QSORT qsort ( ptr u8 n n n -- )
+FUNCTION: QSORT qsort ( ^u8 n n n -- )
 ;FUNCTION
 
 create OUTER ROW-N cells allot
@@ -23,13 +23,13 @@ create INNER ROW-N cells allot
 variable INNER-FN
 variable NESTED
 
-CALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-NEST ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-NEST ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
-: ROW-FILL ( ptr n n -- ) {: row:ptr base:n :}
+: ROW-FILL ( ^n n -- ) {: row:^ base:n :}
    ROW-N 0 ?do base ROW-N + i - row i cells + ! loop ;
 
-: ROW-SORTED? ( ptr n n -- bool ) {: row:ptr base:n :}
+: ROW-SORTED? ( ^n n -- bool ) {: row:^ base:n :}
    true ROW-N 0 ?do row i cells + @ base 1 + i + = and loop ;
 
 : SIGN-OF ( n n -- n ) {: a:n b:n :}
@@ -37,10 +37,10 @@ CALLBACK: CMP-NEST ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
    a b > if 1 exit then
    0 ;
 
-: CMP-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    a CELL-VIEW @ b CELL-VIEW @ SIGN-OF ;
 
-: CMP-NEST-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-NEST-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    INNER 100 ROW-FILL
    INNER BYTE-VIEW ROW-N CELL INNER-FN @ QSORT
    INNER 100 ROW-SORTED? if 1 NESTED +! then

@@ -35,17 +35,17 @@ create RNL-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE RNL-JSON-W JSON:writer
 variable RNL-JSON-READY
 
-: RNL-JSON-WRITER ( -- ptr JSON:writer )
+: RNL-JSON-WRITER ( -- ^JSON:writer )
    RNL-JSON-READY @ 0= if
       RNL-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 RNL-JSON-READY !
    then
    RNL-JSON-W RNL-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
-TYPED-VARIABLE RNL-SRC-A ptr u8
+TYPED-VARIABLE RNL-SRC-A ^u8
 variable RNL-SRC-U
 variable RNL-SRC-CAP
-TYPED-VARIABLE RNL-FILE-A ptr u8
+TYPED-VARIABLE RNL-FILE-A ^u8
 variable RNL-FILE-U
 variable RNL-BAD
 variable RNL-I
@@ -54,16 +54,16 @@ variable RNL-JSON
 variable RNL-OUT-FD
 variable RNL-NUM-I
 
-: RNL-SRC-A@ ( -- ptr u8 )
+: RNL-SRC-A@ ( -- ^u8 )
    RNL-SRC-A @ ;
 
-: RNL-FILE-A@ ( -- ptr u8 )
+: RNL-FILE-A@ ( -- ^u8 )
    RNL-FILE-A @ ;
 
-: RNL-SRC-A! ( ptr u8 -- )
+: RNL-SRC-A! ( ^u8 -- )
    RNL-SRC-A ! ;
 
-: RNL-FILE-A! ( ptr u8 -- )
+: RNL-FILE-A! ( ^u8 -- )
    RNL-FILE-A ! ;
 
 public
@@ -76,10 +76,10 @@ public
 
 private
 
-: RNL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
+: RNL-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    fd a u LINT-OUT-WRITE ;
 
-: RNL-OUT ( ptr u8 n -- )
+: RNL-OUT ( ^u8 n -- )
    RNL-OUT-FD @ -rot RNL-WRITE ;
 
 : RNL-C ( n -- )
@@ -89,7 +89,7 @@ private
 : RNL-NL ( -- )
    RNL-LF RNL-C ;
 
-: RNL-U$ ( n -- ptr u8 n ) {: u:n :}
+: RNL-U$ ( n -- ^u8 n ) {: u:n :}
    RNL-NUM-CAP RNL-NUM-I !
    u 0= if
       RNL-NUM-I @ 1- RNL-NUM-I !
@@ -125,7 +125,7 @@ private
    k LINT-LEX:TOKEN s" defer" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" LAYOUT-BUFFER" LINT-STR=CI ;
 
-: RNL-RESERVED-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u :}
+: RNL-RESERVED-CONTROL? ( ^u8 n -- bool ) {: a:^ u :}
    a u s" if" LINT-STR=CI if LINT-TRUE exit then
    a u s" then" LINT-STR=CI if LINT-TRUE exit then
    a u s" [if]" LINT-STR=CI if LINT-TRUE exit then
@@ -154,7 +154,7 @@ private
    a u s" exit" LINT-STR=CI if LINT-TRUE exit then
    a u s" recurse" LINT-STR=CI ;
 
-: RNL-RESERVED-PARSER? ( ptr u8 n -- bool ) {: a:ptr u :}
+: RNL-RESERVED-PARSER? ( ^u8 n -- bool ) {: a:^ u :}
    a u RNL-SDQ 2 LINT-STR=CI if LINT-TRUE exit then
    a u RNL-CDQ 2 LINT-STR=CI if LINT-TRUE exit then
    a u RNL-DOTQ 2 LINT-STR= if LINT-TRUE exit then
@@ -174,7 +174,7 @@ private
    a u s" trust" LINT-STR=CI if LINT-TRUE exit then
    a u s" kernel:" LINT-STR=CI ;
 
-: RNL-RESERVED-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u :}
+: RNL-RESERVED-DEFINER? ( ^u8 n -- bool ) {: a:^ u :}
    a u s" create" LINT-STR=CI if LINT-TRUE exit then
    a u s" variable" LINT-STR=CI if LINT-TRUE exit then
    a u s" constant" LINT-STR=CI if LINT-TRUE exit then
@@ -195,7 +195,7 @@ private
    a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ structure field keyword
    a u s" undefine" LINT-STR=CI ;
 
-: RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-RESERVED-LOADER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" include" LINT-STR=CI if LINT-TRUE exit then
    a u s" included" LINT-STR=CI if LINT-TRUE exit then
    a u s" require" LINT-STR=CI if LINT-TRUE exit then
@@ -204,14 +204,14 @@ private
 
 \ The verifier takes a target predicate's spelling as the engine's answer, for
 \ a body `if` and a top-level `[if]` (src/habu/verify-source.f TARGET-GUARD).
-: RNL-RESERVED-TARGET? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-RESERVED-TARGET? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" hb-target-linux?" LINT-STR=CI if LINT-TRUE exit then
    a u s" hb-target-macos?" LINT-STR=CI if LINT-TRUE exit then
    a u s" hb-target-linux-x86-64?" LINT-STR=CI if LINT-TRUE exit then
    a u s" hb-target-linux-kernel?" LINT-STR=CI if LINT-TRUE exit then
    a u s" hb-target-wasm?" LINT-STR=CI ;
 
-: RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
+: RNL-RESERVED? ( ^u8 n -- bool ) {: a:^ u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then
    a u RNL-RESERVED-PARSER? if LINT-TRUE exit then
    a u RNL-RESERVED-DEFINER? if LINT-TRUE exit then
@@ -230,61 +230,61 @@ private
    c RNL-DIGIT? if LINT-TRUE exit then
    c RNL-HEX-LETTER? ;
 
-: RNL-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all decimal digits
+: RNL-DIGITS? ( ^u8 n -- bool ) {: a:^ u:n :}   \ nonempty, all decimal digits
    u 0= if LINT-FALSE exit then
    u 0 ?do
       a i + c@ RNL-DIGIT? 0= if LINT-FALSE unloop exit then
    loop LINT-TRUE ;
 
-: RNL-DIGITS-OPT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ empty or all digits
+: RNL-DIGITS-OPT? ( ^u8 n -- bool ) {: a:^ u:n :}   \ empty or all digits
    u 0= if LINT-TRUE exit then
    a u RNL-DIGITS? ;
 
-: RNL-HEX-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all hex digits
+: RNL-HEX-DIGITS? ( ^u8 n -- bool ) {: a:^ u:n :}   \ nonempty, all hex digits
    u 0= if LINT-FALSE exit then
    u 0 ?do
       a i + c@ RNL-HEX-DIGIT? 0= if LINT-FALSE unloop exit then
    loop LINT-TRUE ;
 
-: RNL-FLOAT-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n dot:n :}   \ digits* '.'@dot digits+
+: RNL-FLOAT-AT? ( ^u8 n n -- bool ) {: a:^ u:n dot:n :}   \ digits* '.'@dot digits+
    a dot RNL-DIGITS-OPT?
    a dot 1+ + u dot 1+ - RNL-DIGITS?
    and ;
 
-: RNL-FLOAT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-FLOAT-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u RNL-DOT-C LINT-INDEX-OF MATCH option
      none OF LINT-FALSE ENDOF
      some OF a u rot RNL-FLOAT-AT? ENDOF
    ;MATCH ;
 
-: RNL-HEX-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-HEX-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 2 < if LINT-FALSE exit then
    a c@ RNL-DOLLAR-C <> if LINT-FALSE exit then
    a 1+ u 1- RNL-HEX-DIGITS? ;
 
-: RNL-NUM-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-NUM-BODY? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u RNL-DIGITS? if LINT-TRUE exit then
    a u RNL-FLOAT-NAME? if LINT-TRUE exit then
    a u RNL-HEX-NAME? ;
 
-: RNL-NUM-CLAIMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ number parser owns the token
+: RNL-NUM-CLAIMED? ( ^u8 n -- bool ) {: a:^ u:n :}   \ number parser owns the token
    a u RNL-NUM-BODY? if LINT-TRUE exit then
    u 2 < if LINT-FALSE exit then
    a c@ RNL-MINUS-C <> if LINT-FALSE exit then
    a 1+ u 1- RNL-NUM-BODY? ;
 
-: RNL-DOT-DIGIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ contains a ".<digit>" tail
+: RNL-DOT-DIGIT? ( ^u8 n -- bool ) {: a:^ u:n :}   \ contains a ".<digit>" tail
    u 1- 0 ?do
       a i + c@ RNL-DOT-C =
       a i + 1+ c@ RNL-DIGIT? and if LINT-TRUE unloop exit then
    loop LINT-FALSE ;
 
-: RNL-NUMERIC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RNL-NUMERIC-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u RNL-NUM-CLAIMED? if LINT-TRUE exit then
    a u RNL-DOT-DIGIT? ;
 
-: RNL-JSON-FINDING-AS ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: k:n code:ptr codeu:n why:ptr whyu:n fix:ptr fixu:n :}
+: RNL-JSON-FINDING-AS ( n ^u8 n ^u8 n ^u8 n -- )
+   {: k:n code:^ codeu:n why:^ whyu:n fix:^ fixu:n :}
    RNL-JSON-WRITER JSON:WRITE-OBJECT-START
    s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -310,8 +310,8 @@ private
    s" Rename so the name cannot parse as a number: avoid digit-only, dot-digit, and $hex shapes."
    RNL-JSON-FINDING-AS ;
 
-: RNL-TEXT-FINDING-AS ( n ptr u8 n ptr u8 n -- )
-   {: k:n code:ptr codeu:n why:ptr whyu:n :}
+: RNL-TEXT-FINDING-AS ( n ^u8 n ^u8 n -- )
+   {: k:n code:^ codeu:n why:^ whyu:n :}
    code codeu RNL-OUT
    RNL-SP RNL-C
    RNL-FILE-A@ RNL-FILE-U @ RNL-OUT
@@ -385,10 +385,10 @@ private
 \ larger region takes the bytes the last one holds, and the last is released
 \ when this read made it. A region is made only for more than the read holds,
 \ so it is never empty.
-: RNL-SRC-ROOM ( n -- ptr u8 ) {: need:n :}
+: RNL-SRC-ROOM ( n -- ^u8 ) {: need:n :}
    need RNL-SRC-CAP @ > if
-      RNL-SRC-A@ RNL-SRC-CAP @ {: old:ptr oldcap:n :}
-      need MEM-ALLOC-64K-SPAN RNL-SRC-CAP ! {: fresh:ptr :}
+      RNL-SRC-A@ RNL-SRC-CAP @ {: old:^ oldcap:n :}
+      need MEM-ALLOC-64K-SPAN RNL-SRC-CAP ! {: fresh:^ :}
       old fresh oldcap BYTE-COPY
       oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
       fresh RNL-SRC-A!
@@ -399,7 +399,7 @@ private
 \ where they are. The file is read to its end however it grows while it is
 \ read: its size, whose refusal (E-FS-STAT) stays a missing or irregular
 \ file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
-: RNL-LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu :}
+: RNL-LOAD-SOURCE ( ^u8 n -- ) {: path:^ pathu :}
    0 RNL-SRC-CAP !
    path pathu  path pathu FS:FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;
 
@@ -410,14 +410,14 @@ public
    0 RNL-JSON !
    FD:STDOUT OUT-FD! ;
 
-: FILE-AS ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu label:ptr labelu :}
+: FILE-AS ( ^u8 n ^u8 n -- )
+   {: path:^ pathu label:^ labelu :}
    label RNL-FILE-A! labelu RNL-FILE-U !
    path pathu RNL-LOAD-SOURCE
    RNL-SRC-A@ RNL-SRC-U @ LINT-LEX:SOURCE
    RNL-SCAN ;
 
-: FILE ( ptr u8 n -- )
+: FILE ( ^u8 n -- )
    2dup FILE-AS ;
 
 : FINISH ( -- )

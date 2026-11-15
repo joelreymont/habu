@@ -17,7 +17,7 @@ CAST: TYPE>N ( type -- n )
 CAST: AS-TYPE-OP ( n -- [ n n n -- n ] )
 
 \ The engine's cell holds INTERPRETER:DEFINE-RUN as a raw execution token.
-CAST: AS-OPEN ( n -- [ ptr u8 n n -- ] )
+CAST: AS-OPEN ( n -- [ ^u8 n n -- ] )
 
 : OP ( n n n -- type )
    data-base PROVIDED-XT:TYPE-OP-CELL + @ AS-TYPE-OP execute >TYPE ;
@@ -28,12 +28,12 @@ public
 
 \ The built-in type the spelling names (`n`, `u8`), else the family it names as
 \ source where the definer runs would, over fresh parameters; else rejected.
-: NAMED ( ptr u8 n -- type ) {: a:ptr u:n :}
+: NAMED ( ^u8 n -- type ) {: a:^ u:n :}
    TYPE-OP-ABI:NAMED a NULL-PTR - u OP ;
 
-\ The one type the text spells (`ptr u8`, `nullable<u8>`), read as a declaration
+\ The one type the text spells (`^u8`, `nullable<u8>`), read as a declaration
 \ where the definer runs reads it; a letter is rejected.
-: READ-TYPE ( ptr u8 n -- type ) {: a:ptr u:n :}
+: READ-TYPE ( ^u8 n -- type ) {: a:^ u:n :}
    TYPE-OP-ABI:READ a NULL-PTR - u OP ;
 
 : PTR ( type -- type ) {: t:type :}
@@ -51,33 +51,33 @@ public
    TYPE-OP-ABI:OUT e TYPE>N t TYPE>N OP ;
 
 \ Opens the definition the string names with effect E, in the running engine.
-: OPEN-WORD ( ptr u8 n type -- ) {: e:type :}
+: OPEN-WORD ( ^u8 n type -- ) {: e:type :}
    e TYPE>N data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
 
 private
 
 \ The engine's cell holds the item runner as a raw execution token.
-CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
+CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
 
 \ The engine's cell holds the typed-variable maker as a raw execution token.
-CAST: AS-VARIABLE ( n -- [ ptr u8 n n -- ] )
+CAST: AS-VARIABLE ( n -- [ ^u8 n n -- ] )
 
-: ITEM ( ptr u8 n n n -- )
+: ITEM ( ^u8 n n n -- )
    data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
 
 public
 
 \ Appends the keyword the string spells (`match`, `of`, `begin`).
-: KEYWORD ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD ITEM ;
+: KEYWORD ( ^u8 n -- ) 0 ITEM-ABI:KEYWORD ITEM ;
 
 \ Appends an operand: the variant name an `of` arm or a `construct` takes.
-: OPERAND ( ptr u8 n -- ) 0 ITEM-ABI:OPERAND ITEM ;
+: OPERAND ( ^u8 n -- ) 0 ITEM-ABI:OPERAND ITEM ;
 
 \ Appends type T, shown in the listing as the string spells it.
-: TYPE-ITEM ( ptr u8 n type -- ) TYPE>N ITEM-ABI:TYPE ITEM ;
+: TYPE-ITEM ( ^u8 n type -- ) TYPE>N ITEM-ABI:TYPE ITEM ;
 
 \ Appends a call of the word the name binds where the definer runs.
-: CALL ( ptr u8 n -- ) 0 ITEM-ABI:CALL ITEM ;
+: CALL ( ^u8 n -- ) 0 ITEM-ABI:CALL ITEM ;
 
 \ Appends a local of type T to the open `{:` group and answers its index,
 \ which counts the locals the definition declared before it.
@@ -92,10 +92,10 @@ public
 
 \ Declares the variable the string names, holding one T, as
 \ TYPED-VARIABLE does.
-: VARIABLE-OF ( ptr u8 n type -- ) {: t:type :}
+: VARIABLE-OF ( ^u8 n type -- ) {: t:type :}
    t TYPE>N data-base PROVIDED-XT:VARIABLE-CELL + @ AS-VARIABLE execute ;
 
 ;package
 
 \ A definer's opener: the definition the string names, with effect E.
-: define-word ( ptr u8 n EFFECT:type -- ) EFFECT:OPEN-WORD ;
+: define-word ( ^u8 n EFFECT:type -- ) EFFECT:OPEN-WORD ;

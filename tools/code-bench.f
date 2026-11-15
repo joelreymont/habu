@@ -87,7 +87,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 : EMIT-FIELD ( n -- ) SP EMIT-C EMIT-DEC ;
 
 
-: ROW-NAME$ ( n -- ptr u8 n ) {: row :}
+: ROW-NAME$ ( n -- ^u8 n ) {: row :}
    row HARNESS-ROW = if s" harness" exit then
    row ARITH-ROW = if s" arith" exit then
    row BRANCH-ROW = if s" branch" exit then
@@ -99,15 +99,15 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 \ ---- the source under the text benchmarks -----------------------------------
 
-: TEXT$ ( -- ptr u8 n ) LINT-SOURCE:TEXT drop TEXT-N @ ;
+: TEXT$ ( -- ^u8 n ) LINT-SOURCE:TEXT drop TEXT-N @ ;
 
-: LINES$ ( -- ptr u8 n ) LINT-SOURCE:TEXT drop LINES-N @ ;
+: LINES$ ( -- ^u8 n ) LINT-SOURCE:TEXT drop LINES-N @ ;
 
 \ LINT-SPLIT:SPLIT-LINES dies rather than truncating when a file has more
 \ fields than its table holds, so the prefix handed to it is cut at MAX-LINES
 \ newlines instead of at a byte count that happens to work for one file.
 : LINE-LIMIT ( -- )
-   LINT-SOURCE:TEXT drop {: a:ptr :}
+   LINT-SOURCE:TEXT drop {: a:^ :}
    0 {: seen :}
    TEXT-N @ LINES-N !
    seen TEXT-N @ 0 ?do
@@ -115,7 +115,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
       dup MAX-LINES >= if i LINES-N ! leave then
    loop drop ;
 
-: LOAD-SOURCE ( ptr u8 n -- )
+: LOAD-SOURCE ( ^u8 n -- )
    LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT nip {: got :}
    got 0= if s" code-bench: source file is empty" IO-RC die then
@@ -132,7 +132,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
      some OF ENDOF
    ;MATCH ;
 
-: NEEDLE$ ( -- ptr u8 n )
+: NEEDLE$ ( -- ^u8 n )
    LINT-SOURCE:TEXT drop TEXT-N @ NEEDLE-N @ - + NEEDLE-N @ ;
 
 : SEARCH-AT ( -- n ) TEXT$ NEEDLE$ LINT-FIND-SUB FOUND-AT ;
@@ -199,11 +199,11 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 \ ---- timing -----------------------------------------------------------------
 
-: SAMPLE ( n n -- ptr n ) {: row run :}
+: SAMPLE ( n n -- ^n ) {: row run :}
    RUN-NS row RUNS * run + cells + ;
 
-: SORTED-AT ( n -- ptr n ) cells SORTED + ;
-: RESULT-AT ( n -- ptr n ) cells RESULTS + ;
+: SORTED-AT ( n -- ^n ) cells SORTED + ;
+: RESULT-AT ( n -- ^n ) cells RESULTS + ;
 
 \ v into SORTED's first k samples, which are in ascending order.
 : INSERT ( n n -- ) {: v k :}
@@ -235,7 +235,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    LF EMIT-C ;
 
 
-: MSG+ ( ptr u8 n -- ) MSG MSG-CAP MSG-N BUF-APPEND ;
+: MSG+ ( ^u8 n -- ) MSG MSG-CAP MSG-N BUF-APPEND ;
 
 
 \ Run 0 records each benchmark's result; a later round that computes another

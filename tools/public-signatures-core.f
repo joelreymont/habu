@@ -44,7 +44,7 @@ package PS
 create SRC-SLAB LINT-SLAB:CELLS cells allot
 create DEP-SLAB LINT-SLAB:CELLS cells allot
 
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-SLAB LINT-SLAB:TEXT ;
 
 create PS-WORD-BUF PS-WORD-CAP allot
@@ -58,11 +58,11 @@ variable PS-I
 variable PS-CLOSURE-I
 variable PS-NUM-I
 variable PS-FIRST?
-TYPED-VARIABLE PS-TA ptr u8
+TYPED-VARIABLE PS-TA ^u8
 variable PS-TU
 variable PS-HAS-ALPHA?
 
-TYPED-VARIABLE PS-SRC-A ptr u8
+TYPED-VARIABLE PS-SRC-A ^u8
 variable PS-SRC-U
 variable PS-X
 variable PS-OFF
@@ -74,89 +74,89 @@ variable PS-START-LINE
 variable PS-START-COL
 
 variable PS-TOK-K
-TYPED-VARIABLE PS-TOK-A ptr u8
+TYPED-VARIABLE PS-TOK-A ^u8
 variable PS-TOK-U
 variable PS-TOK-BYTE
 variable PS-TOK-LINE
 variable PS-TOK-COL
-TYPED-VARIABLE PS-CONT-A ptr u8
+TYPED-VARIABLE PS-CONT-A ^u8
 variable PS-CONT-U
 
-TYPED-VARIABLE PS-NAME-A ptr u8
+TYPED-VARIABLE PS-NAME-A ^u8
 variable PS-NAME-U
 variable PS-NAME-BYTE
 variable PS-NAME-LINE
 variable PS-NAME-COL
-TYPED-VARIABLE PS-SIG-A ptr u8
+TYPED-VARIABLE PS-SIG-A ^u8
 variable PS-SIG-U
 public
 variable PS-TRUST
 private
 variable PS-ARG-I
-TYPED-VARIABLE PS-OUT-A ptr u8
+TYPED-VARIABLE PS-OUT-A ^u8
 variable PS-OUT-CAP
 variable PS-OUT-U
-TYPED-VARIABLE PS-ERR-A ptr u8
+TYPED-VARIABLE PS-ERR-A ^u8
 variable PS-ERR-CAP
 variable PS-ERR-U
-TYPED-VARIABLE PS-PKG-A ptr u8
+TYPED-VARIABLE PS-PKG-A ^u8
 variable PS-PKG-U
 variable PS-IN-PKG
 variable PS-PKG-PUBLIC
 variable PS-DEF-SIG-U
 
-: PS-TA@ ( -- ptr u8 )
+: PS-TA@ ( -- ^u8 )
    PS-TA @ ;
 
-: PS-SRC-A@ ( -- ptr u8 )
+: PS-SRC-A@ ( -- ^u8 )
    PS-SRC-A @ ;
 
-: PS-TOK-A@ ( -- ptr u8 )
+: PS-TOK-A@ ( -- ^u8 )
    PS-TOK-A @ ;
 
-: PS-CONT-A@ ( -- ptr u8 )
+: PS-CONT-A@ ( -- ^u8 )
    PS-CONT-A @ ;
 
-: PS-NAME-A@ ( -- ptr u8 )
+: PS-NAME-A@ ( -- ^u8 )
    PS-NAME-A @ ;
 
-: PS-SIG-A@ ( -- ptr u8 )
+: PS-SIG-A@ ( -- ^u8 )
    PS-SIG-A @ ;
 
-: PS-OUT-A@ ( -- ptr u8 )
+: PS-OUT-A@ ( -- ^u8 )
    PS-OUT-A @ ;
 
-: PS-ERR-A@ ( -- ptr u8 )
+: PS-ERR-A@ ( -- ^u8 )
    PS-ERR-A @ ;
 
-: PS-PKG-A@ ( -- ptr u8 )
+: PS-PKG-A@ ( -- ^u8 )
    PS-PKG-A @ ;
 
-: PS-TA! ( ptr u8 -- )
+: PS-TA! ( ^u8 -- )
    PS-TA ! ;
 
-: PS-SRC-A! ( ptr u8 -- )
+: PS-SRC-A! ( ^u8 -- )
    PS-SRC-A ! ;
 
-: PS-TOK-A! ( ptr u8 -- )
+: PS-TOK-A! ( ^u8 -- )
    PS-TOK-A ! ;
 
-: PS-CONT-A! ( ptr u8 -- )
+: PS-CONT-A! ( ^u8 -- )
    PS-CONT-A ! ;
 
-: PS-NAME-A! ( ptr u8 -- )
+: PS-NAME-A! ( ^u8 -- )
    PS-NAME-A ! ;
 
-: PS-SIG-A! ( ptr u8 -- )
+: PS-SIG-A! ( ^u8 -- )
    PS-SIG-A ! ;
 
-: PS-OUT-A! ( ptr u8 -- )
+: PS-OUT-A! ( ^u8 -- )
    PS-OUT-A ! ;
 
-: PS-ERR-A! ( ptr u8 -- )
+: PS-ERR-A! ( ^u8 -- )
    PS-ERR-A ! ;
 
-: PS-PKG-A! ( ptr u8 -- )
+: PS-PKG-A! ( ^u8 -- )
    PS-PKG-A ! ;
 
 : PS-TRUE ( -- bool )
@@ -165,15 +165,15 @@ variable PS-DEF-SIG-U
 : PS-FALSE ( -- bool )
    PS-TRUE 0= ;
 
-: PS-DIE ( ptr u8 n -- )  76 die ;
+: PS-DIE ( ^u8 n -- )  76 die ;
 
 public
-: PS-OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+: PS-OUT-BUFFER! ( ^u8 n -- ) {: a:^ cap:n :}
    a PS-OUT-A!
    cap PS-OUT-CAP !
    0 PS-OUT-U ! ;
 
-: PS-ERR-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+: PS-ERR-BUFFER! ( ^u8 n -- ) {: a:^ cap:n :}
    a PS-ERR-A!
    cap PS-ERR-CAP !
    0 PS-ERR-U ! ;
@@ -186,14 +186,14 @@ public
    0 PS-OUT-U !
    0 PS-ERR-U ! ;
 
-: PS-OUT$ ( -- ptr u8 n )
+: PS-OUT$ ( -- ^u8 n )
    PS-OUT-A@ PS-OUT-U @ ;
 
-: PS-ERR$ ( -- ptr u8 n )
+: PS-ERR$ ( -- ^u8 n )
    PS-ERR-A@ PS-ERR-U @ ;
 
 private
-: PS-WRITE-BUFFERED ( n ptr u8 n -- bool ) {: fd:n a:ptr u:n :}
+: PS-WRITE-BUFFERED ( n ^u8 n -- bool ) {: fd:n a:^ u:n :}
    fd 1 = PS-OUT-A@ 0= 0= and IF
       a u STR:LENGTH PS-OUT-A@ PS-OUT-CAP @ STR:LENGTH PS-OUT-U STR:BUF-APPEND
       PS-TRUE exit
@@ -204,12 +204,12 @@ private
    THEN
    PS-FALSE ;
 
-: PS-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+: PS-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    u 0= IF exit THEN
    fd a u PS-WRITE-BUFFERED IF exit THEN
    fd a u write u <> IF s" public-signatures: write failed" PS-DIE THEN ;
 
-: PS-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-OUT ( ^u8 n -- ) {: a:^ u:n :}
    1 a u PS-WRITE ;
 
 : PS-C! ( n -- )
@@ -223,7 +223,7 @@ private
    PS-C!
    2 PS-ONE 1 PS-WRITE ;
 
-: PS-ERRLN ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-ERRLN ( ^u8 n -- ) {: a:^ u:n :}
    2 a u PS-WRITE
    PS-LF-C PS-ERR-C ;
 
@@ -233,7 +233,7 @@ public
    64 throw ;
 
 private
-: PS-U$ ( n -- ptr u8 n ) {: u:n :}
+: PS-U$ ( n -- ^u8 n ) {: u:n :}
    PS-NUM-CAP PS-NUM-I !
    u 0= IF
       PS-NUM-I @ 1- PS-NUM-I !
@@ -277,7 +277,7 @@ private
    c 32 < IF c PS-JSON-U00 exit THEN
    c PS-C ;
 
-: PS-JSON-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-JSON-STRING ( ^u8 n -- ) {: a:^ u:n :}
    PS-DQ PS-C
    0 begin dup u < while
       dup a + c@ PS-JSON-ESC-C
@@ -285,7 +285,7 @@ private
    repeat drop
    PS-DQ PS-C ;
 
-: PS-JSON-KEY ( ptr u8 n -- )
+: PS-JSON-KEY ( ^u8 n -- )
    PS-JSON-STRING
    PS-COLON-C PS-C ;
 
@@ -295,7 +295,7 @@ private
 : PS-JSON-ARRAY-START ( -- ) PS-LBRACK-C PS-C ;
 : PS-JSON-ARRAY-END ( -- ) PS-RBRACK-C PS-C ;
 
-: PS-TRUST-Q ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-TRUST-Q ( ^u8 n -- ) {: a:^ u:n :}
    115 PS-C
    PS-DQ PS-C
    32 PS-C
@@ -311,7 +311,7 @@ private
 : PS-ALPHA? ( n -- bool )
    dup PS-UPPER? swap PS-LOWER? or ;
 
-: PS-PROJECT-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-PROJECT-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    PS-FALSE PS-HAS-ALPHA? !
    0 begin dup u < while
       a over + c@ dup PS-LOWER? IF drop drop PS-FALSE exit THEN
@@ -335,50 +335,50 @@ private
    c PS-DIGIT? IF PS-TRUE exit THEN
    c PS-HEX-LETTER? ;
 
-: PS-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all decimal digits
+: PS-DIGITS? ( ^u8 n -- bool ) {: a:^ u:n :}   \ nonempty, all decimal digits
    u 0= IF PS-FALSE exit THEN
    u 0 ?do
       a i + c@ PS-DIGIT? 0= IF PS-FALSE unloop exit THEN
    loop PS-TRUE ;
 
-: PS-DIGITS-OPT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ empty or all digits
+: PS-DIGITS-OPT? ( ^u8 n -- bool ) {: a:^ u:n :}   \ empty or all digits
    u 0= IF PS-TRUE exit THEN
    a u PS-DIGITS? ;
 
-: PS-HEX-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all hex digits
+: PS-HEX-DIGITS? ( ^u8 n -- bool ) {: a:^ u:n :}   \ nonempty, all hex digits
    u 0= IF PS-FALSE exit THEN
    u 0 ?do
       a i + c@ PS-HEX-DIGIT? 0= IF PS-FALSE unloop exit THEN
    loop PS-TRUE ;
 
-: PS-FLOAT-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n dot:n :}   \ digits* '.'@dot digits+
+: PS-FLOAT-AT? ( ^u8 n n -- bool ) {: a:^ u:n dot:n :}   \ digits* '.'@dot digits+
    a dot PS-DIGITS-OPT?
    a dot 1+ + u dot 1+ - PS-DIGITS?
    and ;
 
-: PS-FLOAT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-FLOAT-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u PS-DOT-C LINT-INDEX-OF MATCH option
      none OF PS-FALSE ENDOF
      some OF a u rot PS-FLOAT-AT? ENDOF
    ;MATCH ;
 
-: PS-HEX-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-HEX-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 2 < IF PS-FALSE exit THEN
    a c@ PS-DOLLAR-C <> IF PS-FALSE exit THEN
    a 1+ u 1- PS-HEX-DIGITS? ;
 
-: PS-NUM-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-NUM-BODY? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u PS-DIGITS? IF PS-TRUE exit THEN
    a u PS-FLOAT-NAME? IF PS-TRUE exit THEN
    a u PS-HEX-NAME? ;
 
-: PS-NUM-CLAIMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ number parser owns the token
+: PS-NUM-CLAIMED? ( ^u8 n -- bool ) {: a:^ u:n :}   \ number parser owns the token
    a u PS-NUM-BODY? IF PS-TRUE exit THEN
    u 2 < IF PS-FALSE exit THEN
    a c@ PS-MINUS-C <> IF PS-FALSE exit THEN
    a 1+ u 1- PS-NUM-BODY? ;
 
-: PS-UPPER$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: PS-UPPER$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
    a u PS-WORD-BUF COPY-UPPER
    PS-WORD-BUF u ;
@@ -386,7 +386,7 @@ private
 : PS-PKG-PUBLIC? ( -- bool )
    PS-IN-PKG @ if PS-PKG-PUBLIC @ else PS-FALSE then ;
 
-: PS-QUAL-WORD$ ( -- ptr u8 n )
+: PS-QUAL-WORD$ ( -- ^u8 n )
    PS-PKG-U @ PS-NAME-U @ + 1+ {: u:n :}
    u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
    PS-PKG-A@ PS-PKG-U @ PS-WORD-BUF COPY-UPPER
@@ -394,18 +394,18 @@ private
    PS-NAME-A@ PS-NAME-U @ PS-WORD-BUF PS-PKG-U @ + 1+ COPY-UPPER
    PS-WORD-BUF u ;
 
-: PS-WORD$ ( -- ptr u8 n )
+: PS-WORD$ ( -- ^u8 n )
    PS-PKG-PUBLIC? if PS-QUAL-WORD$ exit then
    PS-NAME-A@ PS-NAME-U @ PS-UPPER$ ;
 
-: PS-TRUST-ENTRY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+: PS-TRUST-ENTRY ( ^u8 n -- ) {: sig:^ sigu:n :}
    PS-WORD$ PS-TRUST-Q
    32 PS-C
    sig sigu LINT-TRIM PS-TRUST-Q
    s"  TRUST" PS-OUT
    PS-LF-C PS-C ;
 
-: PS-SIGNATURE$ ( ptr u8 n -- ptr u8 n )
+: PS-SIGNATURE$ ( ^u8 n -- ^u8 n )
    LINT-TRIM PS-TU ! PS-TA!
    PS-TU @ 2 + PS-SIG-CAP > IF s" public-signatures: signature too long" PS-DIE THEN
    40 PS-SIG-BUF c!
@@ -451,7 +451,7 @@ private
       THEN
    repeat ;
 
-: PS-LEX-START ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-LEX-START ( ^u8 n -- ) {: a:^ u:n :}
    a PS-SRC-A!
    u PS-SRC-U !
    0 PS-X !
@@ -465,8 +465,8 @@ private
    PS-LINE @ PS-START-LINE !
    PS-COL @ PS-START-COL ! ;
 
-: PS-SAVE-TOKEN ( ptr u8 n ptr u8 n n -- )
-   {: a:ptr u:n ca:ptr cu:n kind:n :}
+: PS-SAVE-TOKEN ( ^u8 n ^u8 n n -- )
+   {: a:^ u:n ca:^ cu:n kind:n :}
    kind PS-TOK-K !
    a PS-TOK-A!
    u PS-TOK-U !
@@ -527,8 +527,8 @@ private
 
 : PS-WORD? ( -- bool ) PS-TOK-K @ PS-WORD = ;
 : PS-COMMENT? ( -- bool ) PS-TOK-K @ PS-COMMENT = ;
-: PS-TOK$ ( -- ptr u8 n ) PS-TOK-A@ PS-TOK-U @ ;
-: PS-CONTENT$ ( -- ptr u8 n ) PS-CONT-A@ PS-CONT-U @ ;
+: PS-TOK$ ( -- ^u8 n ) PS-TOK-A@ PS-TOK-U @ ;
+: PS-CONTENT$ ( -- ^u8 n ) PS-CONT-A@ PS-CONT-U @ ;
 
 : PS-SAVE-NAME ( -- )
    PS-TOK-A@ PS-NAME-A!
@@ -566,7 +566,7 @@ private
 : PS-PAIR-COMMA ( -- )
    PS-JSON-COMMA ;
 
-: PS-EMIT-DEF ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
+: PS-EMIT-DEF ( bool ^u8 n -- ) {: exported?:bool file-a:^ file-u:n :}
    PS-DEF-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY PS-WORD$ PS-JSON-STRING PS-PAIR-COMMA
@@ -578,7 +578,7 @@ private
    s" exported" PS-JSON-KEY exported? PS-JSON-BOOL
    PS-DEF-END ;
 
-: PS-EMIT-PUBLIC ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
+: PS-EMIT-PUBLIC ( bool ^u8 n -- ) {: exported?:bool file-a:^ file-u:n :}
    PS-TRUST @ IF
       exported? drop file-a drop file-u drop
       PS-SIG-A@ PS-SIG-U @ PS-TRUST-ENTRY
@@ -600,7 +600,7 @@ private
    PS-PKG-PUBLIC? IF PS-TRUE exit THEN
    PS-EXPORTED? ;
 
-: PS-MAYBE-DEF ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-MAYBE-DEF ( ^u8 n -- ) {: file-a:^ file-u:n :}
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
    PS-SAVE-NAME
@@ -610,34 +610,34 @@ private
    PS-SAVE-SIG
    PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
 
-: PS-TRUST-DEFINER ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+: PS-TRUST-DEFINER ( ^u8 n -- ) {: sig:^ sigu:n :}
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
    PS-SAVE-NAME
    PS-PUBLIC? IF sig sigu PS-TRUST-ENTRY THEN ;
 
-: PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-MAYBE-TRUST-DEFINER ( ^u8 n -- bool ) {: a:^ u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" create" LINT-STR=CI IF s" -- ^a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" variable" LINT-STR=CI IF s" -- ^a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
-: PS-DEF-SIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-DEF-SIG-APP ( ^u8 n -- ) {: a:^ u:n :}
    PS-DEF-SIG-U @ u + PS-SIG-CAP > IF
       s" public-signatures: signature too long" PS-DIE
    THEN
    a PS-DEF-SIG-BUF PS-DEF-SIG-U @ + u LINT-BMOVE
    PS-DEF-SIG-U @ u + PS-DEF-SIG-U ! ;
 
-: PS-LAYOUT-BUFFER ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-LAYOUT-BUFFER ( ^u8 n -- ) {: file-a:^ file-u:n :}
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
    PS-SAVE-NAME
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
    0 PS-DEF-SIG-U !
-   s" n -- ptr " PS-DEF-SIG-APP
+   s" n -- ^" PS-DEF-SIG-APP
    PS-TOK$ PS-DEF-SIG-APP
    PS-DEF-SIG-BUF PS-SIG-A!
    PS-DEF-SIG-U @ PS-SIG-U !
@@ -656,10 +656,10 @@ private
    PS-TRUE PS-IN-PKG !
    PS-FALSE PS-PKG-PUBLIC ! ;
 
-: PS-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-PACKAGE-CLOSE? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" ;package" LINT-STR=CI ;
 
-: PS-SCOPE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PS-SCOPE-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" package" LINT-STR=CI IF PS-PACKAGE-NAME! PS-TRUE exit THEN
    a u s" public" LINT-STR=CI IF PS-IN-PKG @ IF PS-TRUE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
    a u s" private" LINT-STR=CI IF PS-IN-PKG @ IF PS-FALSE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
@@ -672,7 +672,7 @@ private
    PS-FALSE PS-PKG-PUBLIC !
    0 PS-PKG-U ! ;
 
-: PS-SCAN-DEFS-BODY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-SCAN-DEFS-BODY ( ^u8 n -- ) {: file-a:^ file-u:n :}
    SRC$ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
@@ -689,13 +689,13 @@ private
       THEN
    repeat ;
 
-: PS-SCAN-DEFS ( ptr u8 n -- )
+: PS-SCAN-DEFS ( ^u8 n -- )
    PS-RESET-SCOPE
    PS-SCAN-DEFS-BODY ;
 
 \ Only scope tokens are replayed, so an entry continuing a package a dependency
 \ opened qualifies its public words; balanced packages leave no residual.
-: PS-PRESCAN-DEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-PRESCAN-DEP ( ^u8 n -- ) {: a:^ u:n :}
    a u DEP-SLAB LINT-SLAB:LOAD
    DEP-SLAB LINT-SLAB:TEXT PS-LEX-START
    begin PS-NEXT-TOK while
@@ -705,7 +705,7 @@ private
 \ EC:LOAD-ORDER is depth-first post-order, so a package unclosed across nested
 \ deps settles to the residual the loader leaves. The entry file is the last
 \ element (deps are 0..ORDER-COUNT-2); the caller scans it.
-: PS-PRESCAN-CLOSURE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-PRESCAN-CLOSURE ( ^u8 n -- ) {: file-a:^ file-u:n :}
    file-a file-u EC:LOAD-ORDER
    0 PS-CLOSURE-I !
    begin PS-CLOSURE-I @ EC:ORDER-COUNT 1- < while
@@ -734,10 +734,10 @@ private
 : PS-CSIG-C, ( n -- )
    PS-CSIG-W @ PS-SIG-CAP >= IF s" public-signatures: constructor signature too long" PS-DIE THEN
    PS-CSIG-BUF PS-CSIG-W @ + c!  PS-CSIG-W @ 1+ PS-CSIG-W ! ;
-: PS-CSIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: PS-CSIG-APP ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do  a i + c@ PS-CSIG-C,  loop ;
 public
-: PS-CSIG$ ( -- ptr u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
+: PS-CSIG$ ( -- ^u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
 
 private
 : PS-PARAM-CHAR ( n -- n )
@@ -756,16 +756,16 @@ public
    62 PS-CSIG-C, ;                        \ '>'
 
 private
-: PS-CTOR-SIG$ ( n -- ptr u8 n ) {: fam:n :}   \ "-- family<args>"
+: PS-CTOR-SIG$ ( n -- ^u8 n ) {: fam:n :}   \ "-- family<args>"
    PS-CSIG-RESET
    45 PS-CSIG-C,  45 PS-CSIG-C,  32 PS-CSIG-C,   \ "-- "
    fam TFAM-NAME$ PS-CSIG-APP
    fam TFAM-ARITY@ PS-FAM-ARGS
    PS-CSIG$ ;
 
-: PS-CTOR-WORD$ ( n -- ptr u8 n ) {: vid:n :}   \ PKG:VARIANT (upper-cased)
-   vid SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
-   vid SUMV-NAME$ {: na:ptr nu:n :}
+: PS-CTOR-WORD$ ( n -- ^u8 n ) {: vid:n :}   \ PKG:VARIANT (upper-cased)
+   vid SUMV-CTOR-PKG$ {: pa:^ pu:n :}
+   vid SUMV-NAME$ {: na:^ nu:n :}
    pu nu + 1+ {: u:n :}
    u PS-WORD-CAP > IF s" public-signatures: constructor word too long" PS-DIE THEN
    pa pu PS-WORD-BUF COPY-UPPER
@@ -773,7 +773,7 @@ private
    na nu PS-WORD-BUF pu + 1+ COPY-UPPER
    PS-WORD-BUF u ;
 
-: PS-EMIT-CTOR ( n n ptr u8 n -- ) {: fam:n vid:n file-a:ptr file-u:n :}
+: PS-EMIT-CTOR ( n n ^u8 n -- ) {: fam:n vid:n file-a:^ file-u:n :}
    PS-DEF-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY vid PS-CTOR-WORD$ PS-JSON-STRING PS-PAIR-COMMA
@@ -790,7 +790,7 @@ private
 
 \ DERIVE eq adds PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ), from the
 \ same registry metadata.
-: PS-DRV-SIG$ ( n n -- ptr u8 n ) {: fam:n eq:n :}   \ "fam -- n" / "fam fam -- bool"
+: PS-DRV-SIG$ ( n n -- ^u8 n ) {: fam:n eq:n :}   \ "fam -- n" / "fam fam -- bool"
    PS-CSIG-RESET
    fam TFAM-NAME$ PS-CSIG-APP  32 PS-CSIG-C,
    eq 0 <> IF fam TFAM-NAME$ PS-CSIG-APP  32 PS-CSIG-C, THEN
@@ -798,8 +798,8 @@ private
    eq 0 <> IF s" bool" PS-CSIG-APP ELSE 110 PS-CSIG-C, THEN
    PS-CSIG$ ;
 
-: PS-DRV-WORD$ ( n ptr u8 n -- ptr u8 n ) {: fam:n ta:ptr tu:n :}   \ PKG:TAIL (upper)
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
+: PS-DRV-WORD$ ( n ^u8 n -- ^u8 n ) {: fam:n ta:^ tu:n :}   \ PKG:TAIL (upper)
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ {: pa:^ pu:n :}
    pu tu + 1+ {: u:n :}
    u PS-WORD-CAP > IF s" public-signatures: derived word too long" PS-DIE THEN
    pa pu PS-WORD-BUF COPY-UPPER
@@ -807,8 +807,8 @@ private
    ta tu PS-WORD-BUF pu + 1+ COPY-UPPER
    PS-WORD-BUF u ;
 
-: PS-EMIT-DRV ( n ptr u8 n ptr u8 n n -- )
-   {: fam:n ta:ptr tu:n file-a:ptr file-u:n eq:n :}
+: PS-EMIT-DRV ( n ^u8 n ^u8 n n -- )
+   {: fam:n ta:^ tu:n file-a:^ file-u:n eq:n :}
    PS-DEF-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY fam ta tu PS-DRV-WORD$ PS-JSON-STRING PS-PAIR-COMMA
@@ -820,7 +820,7 @@ private
    s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
    PS-DEF-END ;
 
-: PS-EMIT-FAM-CTORS ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
+: PS-EMIT-FAM-CTORS ( n ^u8 n -- ) {: fam:n file-a:^ file-u:n :}
    fam TFAM-VAR-START@ {: vs:n :}
    vs fam TFAM-VAR-COUNT@ + vs ?do
       fam  i  file-a file-u PS-EMIT-CTOR
@@ -830,7 +830,7 @@ private
 \ sum or enum (a product has no discriminant), EQ on DERIVE eq, HASH on DERIVE
 \ hash.
 1 constant PS-TK-PRODUCT
-: PS-EMIT-FAM-DRV ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
+: PS-EMIT-FAM-DRV ( n ^u8 n -- ) {: fam:n file-a:^ file-u:n :}
    fam TFAM-KIND@ PS-TK-PRODUCT = 0= IF
       fam s" tag" file-a file-u 0 PS-EMIT-DRV THEN
    fam TFAM-DERIVE-EQ? IF
@@ -844,7 +844,7 @@ public
    fam TFAM-GEN-PUBLIC? and ;
 private
 
-: PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-EMIT-REGISTRY ( ^u8 n -- ) {: file-a:^ file-u:n :}
    PS-TRUST @ IF exit THEN
    TFAM-N@ FAM-BASE ?do
       i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
@@ -852,7 +852,7 @@ private
    loop ;
 
 public
-: PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+: PS-SCAN-FILE ( ^u8 n -- ) {: file-a:^ file-u:n :}
    file-a file-u SRC-SLAB LINT-SLAB:LOAD
    PS-COLLECT-EXPORTS
    PS-RESET-SCOPE

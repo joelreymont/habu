@@ -43,7 +43,7 @@ variable HOLD                        \ the FIFO's write end
 
 \ The writer lives 20 s: longer than the test waits for it to be ended, and
 \ short enough that a run which fails to end it still leaves nothing behind.
-: WRITER$ ( -- ptr u8 n )
+: WRITER$ ( -- ^u8 n )
    s\" mkdir -p \"$TMPDIR/use\" && : > \"$TMPDIR/use/$$\" && exec sleep 20" ;
 
 : START-WRITER ( n -- ) {: i:n :}
@@ -57,7 +57,7 @@ variable HOLD                        \ the FIFO's write end
 \ The helper's writer sends its output to /dev/null, so the pipe the helper
 \ writes to reaches its end when the helper has exited: a zombie, since nothing
 \ reaps it.
-: HELPER$ ( -- ptr u8 n )
+: HELPER$ ( -- ^u8 n )
    s\" { mkdir -p \"$TMPDIR/use\" && : > \"$TMPDIR/use/$$\" && exec sleep 20; } >/dev/null & exit" ;
 
 : START-HELPER ( -- )

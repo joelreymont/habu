@@ -9,8 +9,8 @@ require src/lib/test/wait.f
 \ of the accessors it makes: each reads and writes its own field.
 package C2IPCAP
 : + ( n n -- n ) - ;
-: @ ( ptr n -- n ) drop 7 ;
-: ! ( n ptr n -- ) drop drop ;
+: @ ( ^n -- n ) drop 7 ;
+: ! ( n ^n -- ) drop drop ;
 public
 STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
 private

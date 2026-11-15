@@ -210,7 +210,7 @@ private
 : SLOT-AT ( n n -- )
    {: value:n offset:n :}
    32 0 ?do $A5 SLOT-BUF i + c! loop
-   SLOT-BUF offset + {: base:ptr :}
+   SLOT-BUF offset + {: base:^ :}
    value base 1 CDIGEST:SLOT!
    base 1 CDIGEST:SLOT@ value T=
    8 0 ?do

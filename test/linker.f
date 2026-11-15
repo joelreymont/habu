@@ -20,7 +20,7 @@ require src/habu/link-band.f
 package LINKER-TEST
 private
 
-CAST: STRING-XT ( n -- [ -- ptr u8 n ] )
+CAST: STRING-XT ( n -- [ -- ^u8 n ] )
 
 77 constant BODY-CODE
 
@@ -30,11 +30,11 @@ variable HERE0
 variable DPHW0
 variable HEADER0                     \ hb's DATA header, its distance from NULL-PTR
 
-: DATA-CELL ( n -- ptr n )
+: DATA-CELL ( n -- ^n )
    {: off:n :}
    data-base BYTE-VIEW off + CELL-VIEW ;
 
-: COPY-CELL ( n -- ptr n )
+: COPY-CELL ( n -- ^n )
    {: off:n :}
    NULL-PTR BYTE-VIEW HEADER0 @ + off + CELL-VIEW ;
 
@@ -106,7 +106,7 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    {: body :}
    s" test" RTARGET:HOST-TARGET body LINKER:WITH ;
 
-: SAY ( ptr u8 n -- ) s" linker: " type type cr ;
+: SAY ( ^u8 n -- ) s" linker: " type type cr ;
 
 variable IMAGE                       \ BOOT:IMAGE-BASE-CELL inside the body
 variable FOUND
@@ -127,15 +127,15 @@ variable LOW-DP
 
 : TAKE-IMAGE ( -- ) data-base BOOT:IMAGE-BASE-CELL + @ IMAGE ! ;
 
-: LOOKUP ( ptr u8 n -- n ) XREF-FIND-INDEX ;
+: LOOKUP ( ^u8 n -- n ) XREF-FIND-INDEX ;
 
 \ The address a string word of the space answers, read with its length cell
 \ and bytes while the space is mapped.
-: CALL$ ( ptr u8 n -- ptr u8 n ) LOOKUP XREF-REC XREF-START STRING-XT execute ;
+: CALL$ ( ^u8 n -- ^u8 n ) LOOKUP XREF-REC XREF-START STRING-XT execute ;
 
-: LEN-AT ( n -- ptr n ) NULL-PTR BYTE-VIEW swap + CELL - CELL-VIEW ;
+: LEN-AT ( n -- ^n ) NULL-PTR BYTE-VIEW swap + CELL - CELL-VIEW ;
 
-: MAIN$ ( -- ptr u8 n ) s" MAIN" ;
+: MAIN$ ( -- ^u8 n ) s" MAIN" ;
 
 : BODY-A ( -- )
    s" : MAIN ( -- ) 72 emit 105 emit cr ;" evaluate-closed
@@ -161,12 +161,12 @@ variable LOW-DP
    HOST-CHECK
    s" b: after the close hb's dictionary, code, data and header are as before" SAY ;
 
-: C1$ ( -- ptr u8 n ) s" LK-C1" ;
-: C2$ ( -- ptr u8 n ) s" LK-C2" ;
+: C1$ ( -- ^u8 n ) s" LK-C1" ;
+: C2$ ( -- ^u8 n ) s" LK-C2" ;
 
 : BODY-C ( -- )
-   s\" : LK-C1 ( -- ptr u8 n ) s\" hello\" ;" evaluate-closed
-   s\" : LK-C2 ( -- ptr u8 n ) s\" hello\" ;" evaluate-closed
+   s\" : LK-C1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
+   s\" : LK-C2 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
    TAKE-IMAGE
    C1$ CALL$ drop NULL-PTR - AT1 !
    C2$ CALL$ drop NULL-PTR - AT2 !
@@ -182,7 +182,7 @@ variable LOW-DP
    HOST-CHECK
    s" c: two words' equal strings share one address in the space" SAY ;
 
-: D1$ ( -- ptr u8 n ) s" LK-D1" ;
+: D1$ ( -- ^u8 n ) s" LK-D1" ;
 
 \ A decoy where case c's string sat: a table the last build left would find it.
 : DECOY ( -- )
@@ -194,7 +194,7 @@ variable LOW-DP
    TAKE-IMAGE
    IMAGE @ IMAGE-C @ = if DECOY then
    HERE-N HERE-D !
-   s\" : LK-D1 ( -- ptr u8 n ) s\" hello\" ;" evaluate-closed
+   s\" : LK-D1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
    D1$ CALL$ s" hello" STR= BYTES-OK !
    D1$ CALL$ drop NULL-PTR - {: at:n :}
    at AT-D !
@@ -220,7 +220,7 @@ variable LOW-DP
    s" e: a throw in the body is rethrown after the close" SAY ;
 
 : REFUSE ( -- ) s\" : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
-: REWIND ( -- ) s\" : LK-F2 ( -- ptr u8 n ) s\" new\" ;" evaluate-closed ;
+: REWIND ( -- ) s\" : LK-F2 ( -- ^u8 n ) s\" new\" ;" evaluate-closed ;
 
 : BODY-F ( -- )
    TAKE-IMAGE
@@ -237,7 +237,7 @@ variable LOW-DP
    HOST-CHECK
    s" f: after a rollback in the space a new string is refused" SAY ;
 
-: G1$ ( -- ptr u8 n ) s" LK-G1" ;
+: G1$ ( -- ^u8 n ) s" LK-G1" ;
 
 : INNER ( -- ) s" engine" RTARGET:HOST-TARGET [: ;] LINKER:WITH ;
 
@@ -450,15 +450,15 @@ CASE-R
 
 TYPED-VARIABLE SEALED-S bool
 
-: S$ ( -- ptr u8 n ) s" LK-S" ;
+: S$ ( -- ^u8 n ) s" LK-S" ;
 
 \ LK-S's row in the namespace wordlist BOOT:NAMESPACE-WL names, the build's
 \ inside a body.
-: S-ROW ( -- ptr n ) S$ BOOT:NAMESPACE-WL XREF-FIND-WL ;
+: S-ROW ( -- ^n ) S$ BOOT:NAMESPACE-WL XREF-FIND-WL ;
 
 : BODY-S ( -- )
    s" package LK-S seal-package ;package" evaluate-closed
-   S-ROW {: row:ptr :}
+   S-ROW {: row:^ :}
    row XREF-FOUND? 0= if exit then
    row XREF:SEALED? SEALED-S ! ;
 

@@ -43,33 +43,33 @@ create TO PATH-CAP allot            variable TO-U
 create FROM PATH-CAP allot          variable FROM-U
 create MSG 64 allot
 
-: LIB$ ( -- ptr u8 n ) LIB LIB-U @ ;
-: LIB-TREES$ ( -- ptr u8 n ) LIB-TREES LIB-TREES-U @ ;
-: LINK$ ( -- ptr u8 n ) LINK LINK-U @ ;
-: NEXT$ ( -- ptr u8 n ) NEXT NEXT-U @ ;
-: TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
-: ENTRY$ ( -- ptr u8 n ) ENTRY ENTRY-U @ ;
-: ENTRY-HB$ ( -- ptr u8 n ) ENTRY-HB ENTRY-HB-U @ ;
-: TO$ ( -- ptr u8 n ) TO TO-U @ ;
-: FROM$ ( -- ptr u8 n ) FROM FROM-U @ ;
+: LIB$ ( -- ^u8 n ) LIB LIB-U @ ;
+: LIB-TREES$ ( -- ^u8 n ) LIB-TREES LIB-TREES-U @ ;
+: LINK$ ( -- ^u8 n ) LINK LINK-U @ ;
+: NEXT$ ( -- ^u8 n ) NEXT NEXT-U @ ;
+: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
+: ENTRY$ ( -- ^u8 n ) ENTRY ENTRY-U @ ;
+: ENTRY-HB$ ( -- ^u8 n ) ENTRY-HB ENTRY-HB-U @ ;
+: TO$ ( -- ^u8 n ) TO TO-U @ ;
+: FROM$ ( -- ^u8 n ) FROM FROM-U @ ;
 
 
 \ A tree-relative name as a path in the new tree and as a working-directory
 \ path.
-: TO! ( ptr u8 n -- ) {: r:ptr ru:n :}
+: TO! ( ^u8 n -- ) {: r:^ ru:n :}
    TREE$ r ru TO FS:JOIN-PATH TO-U ! ;
 
-: FROM! ( ptr u8 n -- ) {: r:ptr ru:n :}
+: FROM! ( ^u8 n -- ) {: r:^ ru:n :}
    SOURCE-ROOT:CWD$ r ru FROM FS:JOIN-PATH FROM-U ! ;
 
 
 \ The part of path p below a root of ru bytes.
-: BELOW ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ru:n :}
+: BELOW ( ^u8 n n -- ^u8 n ) {: p:^ u:n ru:n :}
    p ru 1 + +  u ru 1 + - ;
 
 
 : PATHS! ( -- )
-   s" HOME" GETENV {: h:ptr hu:n :}
+   s" HOME" GETENV {: h:^ hu:n :}
    hu 0= if s" install: HOME is not set" CONFIG-RC die then
    h hu s" .local/lib" LIB FS:JOIN-PATH LIB-U !
    LIB$ s" habu-trees" LIB-TREES FS:JOIN-PATH LIB-TREES-U !
@@ -77,21 +77,21 @@ create MSG 64 allot
    LIB$ s" habu.next" NEXT FS:JOIN-PATH NEXT-U ! ;
 
 
-: MISSING ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" install: the working directory has no " {: p:ptr pu:n :}
+: MISSING ( ^u8 n -- ) {: a:^ u:n :}
+   s" install: the working directory has no " {: p:^ pu:n :}
    p MSG pu BYTE-COPY
    a MSG pu + u BYTE-COPY
    MSG pu u + NOINPUT-RC die ;
 
-: PLAIN-DIR? ( ptr u8 n -- bool )
+: PLAIN-DIR? ( ^u8 n -- bool )
    2dup FS:SYMLINK? if 2drop false exit then
    FS:DIR? ;
 
-: NEED-FILE ( ptr u8 n -- )
+: NEED-FILE ( ^u8 n -- )
    2dup FROM! FROM$ FS:FILE? if 2drop exit then
    MISSING ;
 
-: NEED-DIR ( ptr u8 n -- )
+: NEED-DIR ( ^u8 n -- )
    2dup FROM! FROM$ PLAIN-DIR? if 2drop exit then
    MISSING ;
 
@@ -110,11 +110,11 @@ create MSG 64 allot
 
 
 \ Whether a process runs the hb of the tree at path p.
-: RUN? ( ptr u8 n -- bool )
+: RUN? ( ^u8 n -- bool )
    s" bin/hb" ENTRY-HB FS:JOIN-PATH ENTRY-HB-U !
    ENTRY-HB$ FS:FILE? if ENTRY-HB$ PROC-TREE:RUNS? else false then ;
 
-: SWEEP-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SWEEP-ONE ( ^u8 n -- ) {: a:^ u:n :}
    LIB-TREES$ a u ENTRY FS:JOIN-PATH ENTRY-U !
    ENTRY$ LINK$ FS:SAMEFILE if exit then
    ENTRY$ RUN? if exit then
@@ -127,22 +127,22 @@ create MSG 64 allot
 
 \ The copy walk's filter: symlinks are not carried, and a directory exists in
 \ the new tree before its files are written.
-: CARRY? ( ptr u8 n -- bool ) {: p:ptr u:n :}
+: CARRY? ( ^u8 n -- bool ) {: p:^ u:n :}
    p u FS:SYMLINK? if false exit then
    p u FS:DIR? if p u SOURCE-ROOT:CWD$ nip BELOW TO! TO$ FS:MAKE-DIRS then
    true ;
 
-: CARRY ( ptr u8 n -- ) {: p:ptr u:n :}
+: CARRY ( ^u8 n -- ) {: p:^ u:n :}
    p u SOURCE-ROOT:CWD$ nip BELOW TO!
    p u TO$ FS:COPY-FILE-STREAM ;
 
-: CARRY-TREE ( ptr u8 n -- )
+: CARRY-TREE ( ^u8 n -- )
    FROM! FROM$ [: CARRY? ;] [: CARRY ;] FS:WALK-FILES-IF ;
 
 
 \ The answer FS:MKTEMP-DIR-IN gives is transient, so TREE copies it.
 : BUILD ( -- )
-   LIB-TREES$ s" tree" FS:MKTEMP-DIR-IN {: a:ptr u:n :}
+   LIB-TREES$ s" tree" FS:MKTEMP-DIR-IN {: a:^ u:n :}
    a TREE u BYTE-COPY u TREE-U !
    TREE$ 493 FS:CHMOD-MODE              \ 0755
    s" src" CARRY-TREE  s" tools" CARRY-TREE  s" test" CARRY-TREE

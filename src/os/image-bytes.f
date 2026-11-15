@@ -20,13 +20,13 @@ private
 PTR-VARIABLE M-A
 variable M-N
 variable M-O
-: M-ALLOC-BUF ( -- ptr u8 )
+: M-ALLOC-BUF ( -- ^u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
-: MBUF-A@ ( -- ptr u8 )
+: MBUF-A@ ( -- ^u8 )
    MBUF-A @ ;
 
-: MBUF-A! ( ptr u8 -- )
+: MBUF-A! ( ^u8 -- )
    MBUF-A ! ;
 
 : M-ENSURE-BUF ( -- )
@@ -47,12 +47,12 @@ public
       n MSIZE-N !
    then ;
 
-: MBUF ( -- ptr u8 )
+: MBUF ( -- ^u8 )
    M-ENSURE-BUF
    MBUF-A@ ;
 
 private
-: MP@ ( -- ptr u8 ) MP @ ;
+: MP@ ( -- ^u8 ) MP @ ;
 
 public
 : MLEN@ ( -- n )
@@ -62,20 +62,20 @@ public
    MLEN ! ;
 
 private
-: M-A@ ( -- ptr u8 )
+: M-A@ ( -- ^u8 )
    M-A @ ;
 
-: M-A! ( ptr u8 -- )
+: M-A! ( ^u8 -- )
    M-A ! ;
 
 : M-O@ ( -- off )
    M-O @ >OFF ;
 
 public
-: M-BYTE+ ( ptr u8 n -- ptr u8 )
+: M-BYTE+ ( ^u8 n -- ^u8 )
    + ;
 
-: M-BYTE@ ( ptr u8 n -- n )
+: M-BYTE@ ( ^u8 n -- n )
    M-BYTE+ c@ ;
 
 : M-RESET ( -- )
@@ -89,7 +89,7 @@ create M-FAIL-NL 1 allot
 
 \ Reports before throwing: the drivers exit with the raw throw code, so an
 \ unreported overrun exits 75 silently. The write's rc has nowhere to go.
-: M-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+: M-FAIL ( ^u8 n -- ) {: a:^ u:n :}
    2 a u write drop
    10 M-FAIL-NL c!
    2 M-FAIL-NL 1 write drop
@@ -149,22 +149,22 @@ public
 : M-ZEROS ( n -- )
    M-LEN M-ZEROS-LEN ;
 
-: M-BYTES-LEN ( ptr u8 len -- )
-   {: src:ptr u:len :}
+: M-BYTES-LEN ( ^u8 len -- )
+   {: src:^ u:len :}
    u M-CHECK-ROOM
    src MP@ u BYTE-COPY-LEN
    u M-ADVANCE ;
 
-: M-BYTES ( ptr u8 n -- )
+: M-BYTES ( ^u8 n -- )
    M-LEN M-BYTES-LEN ;
 
-: M-NAME16-LEN ( ptr u8 len -- )
+: M-NAME16-LEN ( ^u8 len -- )
    dup LEN>N dup M-N ! $10 > if s" image-bytes: name exceeds 16 bytes" M-FAIL then
    2dup M-BYTES-LEN
    2drop $10 M-N @ - M-ZEROS ;
 
 private
-: M-NAME16 ( ptr u8 n -- )
+: M-NAME16 ( ^u8 n -- )
    M-LEN M-NAME16-LEN ;
 
 public
@@ -175,7 +175,7 @@ private
 : M-PAD ( n -- )
    M-OFF M-PAD-OFF ;
 
-: M-ADDR ( off -- ptr u8 )
+: M-ADDR ( off -- ^u8 )
    OFF>N MBUF swap M-BYTE+ ;
 
 public
@@ -208,7 +208,7 @@ public
 : M-BE-HERE ( -- n )
    MBC @ ;
 
-: M-BE-PTR ( -- ptr u8 )
+: M-BE-PTR ( -- ^u8 )
    MBUF MBC @ M-BYTE+ ;
 
 : M-BE-SKIP ( len -- )
@@ -228,12 +228,12 @@ public
    dup 32 rshift M-BE32
    $FFFFFFFF and M-BE32 ;
 
-: M-BE-BYTES-LEN ( ptr u8 len -- )
-   {: src:ptr u:len :}
+: M-BE-BYTES-LEN ( ^u8 len -- )
+   {: src:^ u:len :}
    src M-BE-PTR u BYTE-COPY-LEN
    u M-BE-SKIP ;
 
 private
-: M-BE-BYTES ( ptr u8 n -- )
+: M-BE-BYTES ( ^u8 n -- )
    M-LEN M-BE-BYTES-LEN ;
 ;package

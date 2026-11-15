@@ -22,7 +22,7 @@ variable DTC-SIG-U
 
 \ Any source can call DTC+, so the length is compared with the room left: in a
 \ sum, a length near the maximum cell wraps back under the capacity.
-: DTC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: DTC+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < u DTC-CAP DTC-U @ - > or IF
       s" nominal: converter text too long" 70 die
    THEN
@@ -31,10 +31,10 @@ variable DTC-SIG-U
       DTC-U @ 1 + DTC-U !  1+
    REPEAT drop ;
 
-: DTC-NAME$ ( -- ptr u8 n )
+: DTC-NAME$ ( -- ^u8 n )
    DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ ;
 
-: DTC-SIG$ ( -- ptr u8 n )
+: DTC-SIG$ ( -- ^u8 n )
    DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
 
 \ The buffer carries two spans and nothing else: DTC-NAME$ and DTC-SIG$ are
@@ -50,19 +50,19 @@ variable DTC-SIG-U
 : DTC-SIG-END ( -- )
    DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U ! ;
 
-: DTC-BUILD-IN ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
+: DTC-BUILD-IN ( ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n :}
    DTC-BEGIN
    s" >" DTC+ sa su DTC+ DTC-NAME-END
    s" n -- " DTC+ ta tu DTC+ DTC-SIG-END ;
 
-: DTC-BUILD-OUT ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
+: DTC-BUILD-OUT ( ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n :}
    DTC-BEGIN
    sa su DTC+ s" >N" DTC+ DTC-NAME-END
    ta tu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
 
 \ The role conversions are casts, not trusted declarations: checker.f
 \ CAST-CERTIFY refuses a bad cast at its declaration, while
-\ `TRUSTED: L ( n -- ptr u8 ) ;` records any shape and fails only at a caller
+\ `TRUSTED: L ( n -- ^u8 ) ;` records any shape and fails only at a caller
 \ (`8 L c@` compiled and crashed).
 
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only: executing one parses
@@ -164,7 +164,7 @@ variable VRDEF-I
 : VRDEF-SPACE ( -- )
    VRDEF-U @ 0 > IF 32 VRDEF-C, THEN ;
 
-: VRDEF-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: VRDEF-APP ( ^u8 n -- ) {: a:^ u:n :}
    u VRDEF-ROOM
    0 VRDEF-I !
    BEGIN VRDEF-I @ u < WHILE
@@ -172,7 +172,7 @@ variable VRDEF-I
       VRDEF-I @ 1 + VRDEF-I !
    REPEAT ;
 
-: VRDEF-TOKEN+ ( ptr u8 n -- )
+: VRDEF-TOKEN+ ( ^u8 n -- )
    VRDEF-SPACE
    VRDEF-APP ;
 
@@ -181,7 +181,7 @@ variable VRDEF-I
    dup $5A > IF EXIT THEN
    $20 or ;
 
-: VRDEF-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: VRDEF-STR=CI ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> IF 0 0= 0= EXIT THEN
    0 BEGIN dup u < WHILE
       dup a + c@ VRDEF-FOLD-C
@@ -189,14 +189,14 @@ variable VRDEF-I
       1+
    REPEAT drop 0 0= ;
 
-: VRDEF-END? ( ptr u8 n -- bool )
+: VRDEF-END? ( ^u8 n -- bool )
    s" END-VALUE-RECORD" VRDEF-STR=CI ;
 
 : VALUE-RECORD ( -- )
    parse-name dup 0= IF
       s" value-record: missing name" 70 die
    THEN
-   {: name:ptr nameu:n :}
+   {: name:^ nameu:n :}
    VRDEF-CLEAR
    BEGIN
       parse-name dup 0= IF

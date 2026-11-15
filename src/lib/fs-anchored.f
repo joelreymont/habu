@@ -24,39 +24,39 @@ A-PROBE-OFF 1 + constant A-WORK-BYTES
 4 constant A-INTERRUPTED
 
 PROCESS-SYMBOLS
-FUNCTION: A-READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: A-READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
-: A-SLOT ( ptr u8 n -- ptr n ) {: work:ptr idx:n :}
+: A-SLOT ( ^u8 n -- ^n ) {: work:^ idx:n :}
    work CELL-VIEW idx cells + ;
-: A-CUR@ ( ptr u8 -- n ) A-CUR-CELL A-SLOT @ ;
-: A-CUR! ( n ptr u8 -- ) A-CUR-CELL A-SLOT ! ;
-: A-NEXT@ ( ptr u8 -- n ) A-NEXT-CELL A-SLOT @ ;
-: A-NEXT! ( n ptr u8 -- ) A-NEXT-CELL A-SLOT ! ;
-: A-PATH-BUF ( ptr u8 -- ptr u8 ) A-PATH-OFF + ;
-: A-STAT-BUF ( ptr u8 -- ptr u8 ) A-STAT-OFF + ;
-: A-PROBE-BUF ( ptr u8 -- ptr u8 ) A-PROBE-OFF + ;
+: A-CUR@ ( ^u8 -- n ) A-CUR-CELL A-SLOT @ ;
+: A-CUR! ( n ^u8 -- ) A-CUR-CELL A-SLOT ! ;
+: A-NEXT@ ( ^u8 -- n ) A-NEXT-CELL A-SLOT @ ;
+: A-NEXT! ( n ^u8 -- ) A-NEXT-CELL A-SLOT ! ;
+: A-PATH-BUF ( ^u8 -- ^u8 ) A-PATH-OFF + ;
+: A-STAT-BUF ( ^u8 -- ^u8 ) A-STAT-OFF + ;
+: A-PROBE-BUF ( ^u8 -- ^u8 ) A-PROBE-OFF + ;
 
-: A-MAP ( -- ptr u8 NUM:alloc-byte-len )
-   A-WORK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: work:ptr len:NUM:alloc-byte-len :}
+: A-MAP ( -- ^u8 NUM:alloc-byte-len )
+   A-WORK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: work:^ len:NUM:alloc-byte-len :}
    -1 work A-CUR! -1 work A-NEXT!
    work len ;
 
 \ close(2) can have retired a descriptor even on failure. Clear its slot first.
-: A-CLOSE-SLOT ( ptr u8 n -- n ) {: work:ptr idx:n :}
+: A-CLOSE-SLOT ( ^u8 n -- n ) {: work:^ idx:n :}
    work idx A-SLOT @ {: file:n :}
    file 0 < if 0 exit then
    -1 work idx A-SLOT !
    file A-CLOSE-CALL 0= if 0 exit then
    FFI:ERRNO ;
-: A-CLEANUP ( ptr u8 -- n ) {: work:ptr :}
+: A-CLEANUP ( ^u8 -- n ) {: work:^ :}
    work A-NEXT-CELL A-CLOSE-SLOT {: first:n :}
    work A-CUR-CELL A-CLOSE-SLOT {: second:n :}
    first 0<> if first else second then ;
 
 \ The primary cause was taken before cleanup's close calls replaced libc errno.
-: A-FINISH ( ptr u8 NUM:alloc-byte-len n n -- )
-   {: work:ptr len:NUM:alloc-byte-len code:n cause:n :}
+: A-FINISH ( ^u8 NUM:alloc-byte-len n n -- )
+   {: work:^ len:NUM:alloc-byte-len code:n cause:n :}
    work A-CLEANUP {: closing:n :}
    work len MEM:RELEASE-BYTES
    code 0<> if cause CAUSE! code throw then
@@ -71,17 +71,17 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    HB-TARGET-LINUX-X86-64? if $20000 $80000 or $800 or $100 or exit then
    $8000 $80000 or $800 or $100 or ;
 
-: A-SNAPSHOT ( ptr u8 n ptr u8 -- ptr u8 )
-   {: src:ptr u:n work:ptr :}
+: A-SNAPSHOT ( ^u8 n ^u8 -- ^u8 )
+   {: src:^ u:n work:^ :}
    u 0 <= u PATH-CAP > or if E-FS-PATH throw then
-   work A-PATH-BUF {: dst:ptr :}
+   work A-PATH-BUF {: dst:^ :}
    src u dst PATHZ-CAP SPAN:MAKE FFI:CSTR ;
-: A-COMPONENT-END ( ptr u8 n n -- n ) {: path:ptr u:n at:n :}
+: A-COMPONENT-END ( ^u8 n n -- n ) {: path:^ u:n at:n :}
    at begin dup u < while
       path over + c@ SLASH = if exit then
       1+
    repeat ;
-: A-COMPONENT-OK ( ptr u8 n n -- ) {: path:ptr from:n stop:n :}
+: A-COMPONENT-OK ( ^u8 n n -- ) {: path:^ from:n stop:n :}
    stop from = if E-FS-PATH throw then
    stop from - 1 = if
       path from + c@ DOT = if E-FS-PATH throw then
@@ -90,8 +90,8 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       path from + c@ DOT = path from 1 + + c@ DOT = and
       if E-FS-PATH throw then
    then ;
-: A-VALIDATE ( ptr u8 n bool -- n )
-   {: path:ptr u:n base:bool :}
+: A-VALIDATE ( ^u8 n bool -- n )
+   {: path:^ u:n base:bool :}
    path c@ SLASH = {: absolute:bool :}
    absolute base 0= and if E-FS-PATH throw then
    u 1 = base and if
@@ -109,7 +109,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    path u 1 - + c@ SLASH = if E-FS-PATH throw then
    start ;
 
-: A-OPEN-BASE ( ptr u8 ptr u8 -- ) {: path:ptr work:ptr :}
+: A-OPEN-BASE ( ^u8 ^u8 -- ) {: path:^ work:^ :}
    path c@ SLASH = if
       AT-CWD S\" /\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL
    else
@@ -118,7 +118,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-CUR! ;
 
-: A-OPEN-NEXT ( ptr u8 n ptr u8 n -- ) {: work:ptr parent:n component:ptr flags:n :}
+: A-OPEN-NEXT ( ^u8 n ^u8 n -- ) {: work:^ parent:n component:^ flags:n :}
    parent component flags OPEN-AT-CALL
    dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-NEXT!
@@ -129,8 +129,8 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ A-VALIDATE checks every component before the first open. Splitting ends each
 \ component through FFI:CSTR! inside this call's snapshot, never in the caller's
 \ path.
-: A-WALK ( ptr u8 n n ptr u8 n bool -- )
-   {: path:ptr u:n start:n work:ptr parent:n file:bool :}
+: A-WALK ( ^u8 n n ^u8 n bool -- )
+   {: path:^ u:n start:n work:^ parent:n file:bool :}
    start begin dup u < while
       {: at:n :}
       path u at A-COMPONENT-END {: stop:n :}
@@ -141,32 +141,32 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       stop u < if stop 1 + else stop then
    repeat drop ;
 
-: A-OPEN-RUN ( ptr u8 n ptr u8 -- ptr u8 n ptr u8 )
-   {: src:ptr u:n work:ptr :}
-   src u work A-SNAPSHOT {: path:ptr :}
+: A-OPEN-RUN ( ^u8 n ^u8 -- ^u8 n ^u8 )
+   {: src:^ u:n work:^ :}
+   src u work A-SNAPSHOT {: path:^ :}
    path u true A-VALIDATE {: start:n :}
    path work A-OPEN-BASE
    path u start work -1 false A-WALK
    src u work ;
-: A-OPEN-AT-RUN ( fd ptr u8 n ptr u8 -- fd ptr u8 n ptr u8 )
-   {: anchor:fd src:ptr u:n work:ptr :}
-   src u work A-SNAPSHOT {: path:ptr :}
+: A-OPEN-AT-RUN ( fd ^u8 n ^u8 -- fd ^u8 n ^u8 )
+   {: anchor:fd src:^ u:n work:^ :}
+   src u work A-SNAPSHOT {: path:^ :}
    path u false A-VALIDATE {: start:n :}
    path u start work anchor FD>N false A-WALK
    anchor src u work ;
 
-: A-REGULAR ( ptr u8 -- ) {: work:ptr :}
+: A-REGULAR ( ^u8 -- ) {: work:^ :}
    work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT ERRNO-FAIL then
    work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
-: A-READ-STEP ( ptr u8 ptr u8 n -- n ) {: work:ptr dst:ptr count:n :}
+: A-READ-STEP ( ^u8 ^u8 n -- n ) {: work:^ dst:^ count:n :}
    begin
       work A-CUR@ dst count A-READ-CALL {: got:n :}
       got 0 >= if got exit then
       FFI:ERRNO dup A-INTERRUPTED = if drop else CAUSE! E-FS-IO throw then
    again ;
-: A-READ-CONTENT ( ptr u8 SPAN:span<u8> -- n ) {: work:ptr dst :}
-   dst SPAN:$ {: output:ptr cap:n :}
+: A-READ-CONTENT ( ^u8 SPAN:span<u8> -- n ) {: work:^ dst :}
+   dst SPAN:$ {: output:^ cap:n :}
    0 begin dup cap < while
       {: done:n :}
       work output done + cap done - A-READ-STEP {: got:n :}
@@ -177,9 +177,9 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    work work A-PROBE-BUF 1 A-READ-STEP {: extra:n :}
    extra 0 > if E-FS-CAPACITY throw then
    cap ;
-: A-READ-RUN ( fd ptr u8 n SPAN:span<u8> ptr u8 -- fd ptr u8 n SPAN:span<u8> ptr u8 )
-   {: anchor:fd src:ptr u:n dst work:ptr :}
-   src u work A-SNAPSHOT {: path:ptr :}
+: A-READ-RUN ( fd ^u8 n SPAN:span<u8> ^u8 -- fd ^u8 n SPAN:span<u8> ^u8 )
+   {: anchor:fd src:^ u:n dst work:^ :}
+   src u work A-SNAPSHOT {: path:^ :}
    path u false A-VALIDATE {: start:n :}
    path u start work anchor FD>N true A-WALK
    work A-REGULAR
@@ -193,10 +193,10 @@ public
 \ empty, negative or over-PATH-CAP path and an empty, repeated, trailing, . or
 \ .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE (.cache and a..b are
 \ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a refusal 0.
-: OPEN-DIR ( ptr u8 n -- fd ) {: src:ptr u:n :}
+: OPEN-DIR ( ^u8 n -- fd ) {: src:^ u:n :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:ptr len:NUM:alloc-byte-len :}
+   A-MAP {: work:^ len:NUM:alloc-byte-len :}
    src u work [: A-OPEN-RUN ;] catch {: code:n :}
    drop 2drop
    ERRNO {: cause:n :}
@@ -204,10 +204,10 @@ public
    code 0= if -1 work A-CUR! then
    work len code cause A-FINISH
    opened >FD ;
-: OPEN-DIR-AT ( fd ptr u8 n -- fd ) {: anchor:fd src:ptr u:n :}
+: OPEN-DIR-AT ( fd ^u8 n -- fd ) {: anchor:fd src:^ u:n :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:ptr len:NUM:alloc-byte-len :}
+   A-MAP {: work:^ len:NUM:alloc-byte-len :}
    anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
    drop 2drop drop
    ERRNO {: cause:n :}
@@ -218,11 +218,11 @@ public
 \ Reads the descriptor fstat found regular (else E-FS-STAT), probing one byte
 \ past a full span (excess is E-FS-CAPACITY); the span is unspecified after a
 \ throw.
-: READ-FILE-AT ( fd ptr u8 n SPAN:span<u8> -- n )
-   {: anchor:fd src:ptr u:n dst :}
+: READ-FILE-AT ( fd ^u8 n SPAN:span<u8> -- n )
+   {: anchor:fd src:^ u:n dst :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:ptr len:NUM:alloc-byte-len :}
+   A-MAP {: work:^ len:NUM:alloc-byte-len :}
    anchor src u dst work [: A-READ-RUN ;] catch {: code:n :}
    drop 2drop 2drop
    ERRNO {: cause:n :}

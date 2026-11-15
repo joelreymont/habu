@@ -21,14 +21,14 @@ defer PLAIN ( -- n )
 
 
 \ An object is a cell of OBJECTS: 1 while entered, 0 once closed.
-: OBJ ( n -- ptr n ) OBJECTS ;
-: OBJ# ( ptr n -- n ) NULL-PTR - 0 OBJECTS NULL-PTR - - 8 / ;
-: ENTER ( ptr n -- ) 1 swap ! ;
+: OBJ ( n -- ^n ) OBJECTS ;
+: OBJ# ( ^n -- n ) NULL-PTR - 0 OBJECTS NULL-PTR - - 8 / ;
+: ENTER ( ^n -- ) 1 swap ! ;
 
 
 \ Appends under an atomic index, so two tasks closing at once both land.
-: CLOSE ( ptr n -- )
-   {: o:ptr :}
+: CLOSE ( ^n -- )
+   {: o:^ :}
    0 o !
    o OBJ# 1 CLOSES atomic-add CLOSED ! ;
 
@@ -38,13 +38,13 @@ defer PLAIN ( -- n )
    9 CLOSES @ 0 ?do 10 * i CLOSED @ + loop ;
 
 
-: SCOPE ( ptr n [ -- ] -- )
-   {: o:ptr body :}
+: SCOPE ( ^n [ -- ] -- )
+   {: o:^ body :}
    o ENTER body [: o CLOSE ;] finally ;
 
 
-: SCOPE-CLEANUP-THROWS ( ptr n [ -- ] -- )
-   {: o:ptr body :}
+: SCOPE-CLEANUP-THROWS ( ^n [ -- ] -- )
+   {: o:^ body :}
    o ENTER body [: o CLOSE E-CLEANUP throw ;] finally ;
 
 
@@ -66,8 +66,8 @@ defer PLAIN ( -- n )
    begin ARRIVED atomic@ 2 < while TASK:PAUSE repeat ;
 
 
-: MET-SCOPE ( ptr n ptr n -- )
-   {: o:ptr seen:ptr :}
+: MET-SCOPE ( ^n ^n -- )
+   {: o:^ seen:^ :}
    o [: MEET o OBJ# seen ! ;] SCOPE ;
 
 
@@ -75,8 +75,8 @@ defer PLAIN ( -- n )
 : WORK-B ( -- ) 7 OBJ SEEN-B MET-SCOPE ;
 
 
-: WAIT ( ptr n -- )
-   {: t:ptr :}
+: WAIT ( ^n -- )
+   {: t:^ :}
    begin t TASK:DONE? 0= while TASK:PAUSE repeat
    t TASK:KILL ;
 

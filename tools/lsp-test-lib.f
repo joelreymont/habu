@@ -785,30 +785,30 @@ create OPEN-PATHS OPEN-CAP PATH-CAP * allot
 OPEN-CAP TYPED-BUFFER OPEN-LENS n
 variable OPEN-N
 
-: READY ( ptr a -- )  256 N>BLEN INIT ;
+: READY ( ^a -- )  256 N>BLEN INIT ;
 
-: LABEL$ ( -- ptr u8 n )  LABEL-B SPAN$ BLEN>N ;
-: SESSION$ ( -- ptr u8 n )  SESSION-B SPAN$ BLEN>N ;
-: IN$ ( -- ptr u8 n )  IN-B SPAN$ BLEN>N ;
-: WANT$ ( -- ptr u8 n )  WANT-B SPAN$ BLEN>N ;
-: MSG$ ( -- ptr u8 n )  MSG-B SPAN$ BLEN>N ;
-: PAR$ ( -- ptr u8 n )  PAR-B SPAN$ BLEN>N ;
-: DIR$ ( -- ptr u8 n )  DIR-B SPAN$ BLEN>N ;
-: IN+ ( ptr u8 n -- )  N>BLEN IN-B APPEND-SPAN ;
-: WANT+ ( ptr u8 n -- )  N>BLEN WANT-B APPEND-SPAN ;
-: MSG+ ( ptr u8 n -- )  N>BLEN MSG-B APPEND-SPAN ;
-: PAR+ ( ptr u8 n -- )  N>BLEN PAR-B APPEND-SPAN ;
-: EXP$ ( -- ptr u8 n )  EXP-B SPAN$ BLEN>N ;
-: EXP+ ( ptr u8 n -- )  N>BLEN EXP-B APPEND-SPAN ;
-: TXT$ ( -- ptr u8 n )  TXT-B SPAN$ BLEN>N ;
-: OUT$ ( -- ptr u8 n )  OUT-SPAN SPAN:$ drop OUT-LEN @ ;
-: ERR$ ( -- ptr u8 n )  ERR-SPAN SPAN:$ drop ERR-LEN @ ;
+: LABEL$ ( -- ^u8 n )  LABEL-B SPAN$ BLEN>N ;
+: SESSION$ ( -- ^u8 n )  SESSION-B SPAN$ BLEN>N ;
+: IN$ ( -- ^u8 n )  IN-B SPAN$ BLEN>N ;
+: WANT$ ( -- ^u8 n )  WANT-B SPAN$ BLEN>N ;
+: MSG$ ( -- ^u8 n )  MSG-B SPAN$ BLEN>N ;
+: PAR$ ( -- ^u8 n )  PAR-B SPAN$ BLEN>N ;
+: DIR$ ( -- ^u8 n )  DIR-B SPAN$ BLEN>N ;
+: IN+ ( ^u8 n -- )  N>BLEN IN-B APPEND-SPAN ;
+: WANT+ ( ^u8 n -- )  N>BLEN WANT-B APPEND-SPAN ;
+: MSG+ ( ^u8 n -- )  N>BLEN MSG-B APPEND-SPAN ;
+: PAR+ ( ^u8 n -- )  N>BLEN PAR-B APPEND-SPAN ;
+: EXP$ ( -- ^u8 n )  EXP-B SPAN$ BLEN>N ;
+: EXP+ ( ^u8 n -- )  N>BLEN EXP-B APPEND-SPAN ;
+: TXT$ ( -- ^u8 n )  TXT-B SPAN$ BLEN>N ;
+: OUT$ ( -- ^u8 n )  OUT-SPAN SPAN:$ drop OUT-LEN @ ;
+: ERR$ ( -- ^u8 n )  ERR-SPAN SPAN:$ drop ERR-LEN @ ;
 
-: INT$ ( n -- ptr u8 n )  SB-RESET FMT:SB-INT SB$ ;
+: INT$ ( n -- ^u8 n )  SB-RESET FMT:SB-INT SB$ ;
 
 \ ---- the input ----------------------------------------------------------------
 
-: HEAD$ ( n -- ptr u8 n )
+: HEAD$ ( n -- ^u8 n )
    SB-RESET
    s" Content-Length: " SB-APPEND
    FMT:SB-U
@@ -816,39 +816,39 @@ variable OPEN-N
    SB$ ;
 
 \ The body must not live in SB, where the header is built.
-: FRAMED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FRAMED ( ^u8 n -- )
+   {: a:^ u:n :}
    u HEAD$ IN+
    a u IN+ ;
 
 \ A body framed in another header form: BEFORE, the length, AFTER, the body.
-: FORM ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n b:ptr bu:n c:ptr cu:n :}
+: FORM ( ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ u:n b:^ bu:n c:^ cu:n :}
    b bu IN+
    u INT$ IN+
    c cu IN+
    a u IN+ ;
 
-: ASK$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: i:ptr iu:n m:ptr mu:n :}
+: ASK$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: i:^ iu:n m:^ mu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"" MSG+ m mu MSG+ s\" \"}" MSG+
    MSG$ ;
 
-: ASK ( ptr u8 n ptr u8 n -- )  ASK$ FRAMED ;
+: ASK ( ^u8 n ^u8 n -- )  ASK$ FRAMED ;
 
-: TELL$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: m:ptr mu:n p:ptr pu:n :}
+: TELL$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: m:^ mu:n p:^ pu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"" MSG+ m mu MSG+ s\" \"" MSG+
    pu 0 > if s\" ,\"params\":" MSG+ p pu MSG+ then
    s" }" MSG+
    MSG$ ;
 
-: TELL ( ptr u8 n ptr u8 n -- )  TELL$ FRAMED ;
+: TELL ( ^u8 n ^u8 n -- )  TELL$ FRAMED ;
 
-: INITIALIZE$ ( -- ptr u8 n )
+: INITIALIZE$ ( -- ^u8 n )
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}" ;
 
 : INITIALIZE ( -- )  INITIALIZE$ FRAMED ;
@@ -860,47 +860,47 @@ variable OPEN-N
    SHUTDOWN
    EXIT-NOTE ;
 
-: URI-A ( -- ptr u8 n )  s\" \"file:///habu-lsp-test/a.f\"" ;
-: URI-B ( -- ptr u8 n )  s\" \"file:///habu-lsp-test/a%20b.f\"" ;
+: URI-A ( -- ^u8 n )  s\" \"file:///habu-lsp-test/a.f\"" ;
+: URI-B ( -- ^u8 n )  s\" \"file:///habu-lsp-test/a%20b.f\"" ;
 
-: OPEN-PARAMS ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: u:ptr uu:n v:ptr vu:n t:ptr tu:n :}
+: OPEN-PARAMS ( ^u8 n ^u8 n ^u8 n -- )
+   {: u:^ uu:n v:^ vu:n t:^ tu:n :}
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v vu PAR+
    s\" ,\"text\":" PAR+ t tu PAR+ s" }}" PAR+ ;
 
-: CHANGE-PARAMS ( ptr u8 n ptr u8 n -- )
-   {: u:ptr uu:n c:ptr cu:n :}
+: CHANGE-PARAMS ( ^u8 n ^u8 n -- )
+   {: u:^ uu:n c:^ cu:n :}
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
    s\" ,\"version\":2},\"contentChanges\":" PAR+ c cu PAR+ s" }" PAR+ ;
 
-: OPEN-DOC ( ptr u8 n -- )
+: OPEN-DOC ( ^u8 n -- )
    s" 1" s\" \": A ( -- ) ;\\n\"" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ TELL ;
 
 \ Two whole texts, the last one the document's.
-: CHANGE-DOC ( ptr u8 n -- )
+: CHANGE-DOC ( ^u8 n -- )
    s\" [{\"text\":\"x\"},{\"text\":\": B ( -- ) ;\\n\"}]" CHANGE-PARAMS
    s" textDocument/didChange" PAR$ TELL ;
 
 \ A change of a range, which Full sync never sends.
-: RANGE-CHANGE ( ptr u8 n -- )
+: RANGE-CHANGE ( ^u8 n -- )
    s\" [{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":1}},\"text\":\"y\"}]"
    CHANGE-PARAMS
    s" textDocument/didChange" PAR$ TELL ;
 
-: CLOSE-DOC ( ptr u8 n -- )
-   {: u:ptr uu:n :}
+: CLOSE-DOC ( ^u8 n -- )
+   {: u:^ uu:n :}
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+ s" }}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
 
 \ The workspace session reuses one root: the first path component names the
 \ case and is dropped. Its live tree moves into that case's artifact afterward.
-: FIXTURE ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: FIXTURE ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    DIR$ N>BLEN PATH-B REPLACE
    SHARED? @ if
       s" /" N>BLEN PATH-B APPEND-SPAN
@@ -915,56 +915,56 @@ variable OPEN-N
    else a u then N>BLEN PATH-B APPEND-SPAN
    PATH-B SPAN$ BLEN>N ;
 
-: IN-TREE ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: IN-TREE ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    SOURCE-ROOT:CWD$ N>BLEN PATH-B REPLACE
    s" /" N>BLEN PATH-B APPEND-SPAN
    a u N>BLEN PATH-B APPEND-SPAN
    PATH-B SPAN$ BLEN>N ;
 
-: A-PATH ( -- ptr u8 n )  s" a.f" FIXTURE ;
-: B-PATH ( -- ptr u8 n )  s" b.f" FIXTURE ;
+: A-PATH ( -- ^u8 n )  s" a.f" FIXTURE ;
+: B-PATH ( -- ^u8 n )  s" b.f" FIXTURE ;
 
-: URI-OF ( ptr u8 n -- ptr u8 n )
+: URI-OF ( ^u8 n -- ^u8 n )
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
-: URI+ ( ptr u8 n -- )
-   URI-OF {: a:ptr u:n :}
+: URI+ ( ^u8 n -- )
+   URI-OF {: a:^ u:n :}
    s\" \"" PAR+ a u PAR+ s\" \"" PAR+ ;
 
 \ The byte at A as JSON string text, in PAR: a quote, a backslash and LF
 \ escaped; the texts here hold no other control byte.
-: ESCAPED+ ( ptr u8 -- )
-   {: a:ptr :}
+: ESCAPED+ ( ^u8 -- )
+   {: a:^ :}
    a c@ {: c:n :}
    c 10 = if s" \n" PAR+ exit then
    c 34 = if s\" \\\"" PAR+ exit then
    c 92 = if s" \\" PAR+ exit then
    a 1 PAR+ ;
 
-: TEXT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TEXT+ ( ^u8 n -- )
+   {: a:^ u:n :}
    s\" \"" PAR+
    u 0 ?do a i + ESCAPED+ loop
    s\" \"" PAR+ ;
 
-: OPEN-AT ( n -- ptr u8 )  PATH-CAP * OPEN-PATHS + ;
-: OPEN-PATH ( n -- ptr u8 n )
+: OPEN-AT ( n -- ^u8 )  PATH-CAP * OPEN-PATHS + ;
+: OPEN-PATH ( n -- ^u8 n )
    dup OPEN-AT swap OPEN-LENS @ ;
 
-: OPEN-ADD ( ptr u8 n -- )
+: OPEN-ADD ( ^u8 n -- )
    SHARED? @ 0= if 2drop exit then
-   {: p:ptr pu:n :}
+   {: p:^ pu:n :}
    OPEN-N @ OPEN-CAP < pu PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
    OPEN-N @ {: idx:n :}
    p idx OPEN-AT pu BYTE-COPY
    pu idx OPEN-LENS !
    1 OPEN-N +! ;
 
-: OPEN-REMOVE ( ptr u8 n -- )
+: OPEN-REMOVE ( ^u8 n -- )
    SHARED? @ 0= if 2drop exit then
-   {: p:ptr pu:n :}
+   {: p:^ pu:n :}
    OPEN-N @ 0 ?do
       i OPEN-PATH p pu STR= if
          OPEN-N @ 1- {: last:n :}
@@ -977,8 +977,8 @@ variable OPEN-N
       then
    loop ;
 
-: OPENS ( ptr u8 n ptr u8 n n -- )
-   {: p:ptr pu:n t:ptr tu:n v:n :}
+: OPENS ( ^u8 n ^u8 n n -- )
+   {: p:^ pu:n t:^ tu:n v:n :}
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ p pu URI+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v INT$ PAR+
@@ -986,25 +986,25 @@ variable OPEN-N
    s" textDocument/didOpen" PAR$ TELL
    p pu OPEN-ADD ;
 
-: CHANGES ( ptr u8 n ptr u8 n n -- )
-   {: p:ptr pu:n t:ptr tu:n v:n :}
+: CHANGES ( ^u8 n ^u8 n n -- )
+   {: p:^ pu:n t:^ tu:n v:n :}
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ p pu URI+
    s\" ,\"version\":" PAR+ v INT$ PAR+
    s\" },\"contentChanges\":[{\"text\":" PAR+ t tu TEXT+ s" }]}" PAR+
    s" textDocument/didChange" PAR$ TELL ;
 
-: NAMING ( ptr u8 n -- )
+: NAMING ( ^u8 n -- )
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ URI+ s" }}" PAR+ ;
 
-: SAVES ( ptr u8 n -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
-: CLOSE-WIRE ( ptr u8 n -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
-: CLOSES ( ptr u8 n -- )
+: SAVES ( ^u8 n -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
+: CLOSE-WIRE ( ^u8 n -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
+: CLOSES ( ^u8 n -- )
    2dup CLOSE-WIRE
    OPEN-REMOVE ;
 
-: WATCHES ( ptr u8 n -- )
+: WATCHES ( ^u8 n -- )
    PAR-B CLEAR
    s\" {\"changes\":[{\"uri\":" PAR+ URI+
    s\" ,\"type\":2}]}" PAR+
@@ -1012,8 +1012,8 @@ variable OPEN-N
 
 \ ---- the stderr expected ------------------------------------------------------
 
-: IGNORED ( ptr u8 n n -- )
-   {: m:ptr mu:n code:n :}
+: IGNORED ( ^u8 n n -- )
+   {: m:^ mu:n code:n :}
    s\" lsp: ignored \"" WANT+ m mu WANT+ s\" \": throw " WANT+
    code INT$ WANT+ s\" \n" WANT+ ;
 
@@ -1022,30 +1022,30 @@ variable OPEN-N
 
 : CUT-SHORT ( -- )  s\" lsp: input ended before exit\n" WANT+ ;
 
-: UNAPPLIED ( ptr u8 n ptr u8 n n -- )
-   {: m:ptr mu:n p:ptr pu:n code:n :}
+: UNAPPLIED ( ^u8 n ^u8 n n -- )
+   {: m:^ mu:n p:^ pu:n code:n :}
    m mu p pu TELL
    m mu code IGNORED ;
 
 \ The line about the check of the document at PATH, these words after its URI,
 \ then the prose of the test's own check, ended by LF.
-: SAID ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n w:ptr wu:n :}
+: SAID ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n w:^ wu:n :}
    s" lsp: " WANT+ p pu URI-OF WANT+ s" : " WANT+ w wu WANT+ s\" \n" WANT+
-   LSP-CHECK:VERIFY-LOG$ {: a:ptr u:n :}
+   LSP-CHECK:VERIFY-LOG$ {: a:^ u:n :}
    u 0= if exit then
    a u WANT+
    a u + 1- c@ 10 <> if s\" \n" WANT+ then ;
 
 \ The lines about a check that completed with this verdict: none unless the
 \ test's own check wrote prose.
-: COMPLETED ( ptr u8 n ptr u8 n -- )
+: COMPLETED ( ^u8 n ^u8 n -- )
    LSP-CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
    SAID ;
 
 \ ---- running the server -------------------------------------------------------
 
-: CONVERSATION ( ptr u8 n -- )
+: CONVERSATION ( ^u8 n -- )
    N>BLEN LABEL-B REPLACE
    IN-B CLEAR
    WANT-B CLEAR
@@ -1053,14 +1053,14 @@ variable OPEN-N
    0 OUT-AT !
    0 ERR-LEN ! ;
 
-: STAGED ( -- ptr u8 len )
+: STAGED ( -- ^u8 len )
    ENGINE-CANDIDATE:PATH$ >LEN
    s" --load" >LEN PROC-ARGV+
    s" tools/lsp.f" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING ;
 
-: ARTIFACT$ ( ptr u8 n -- ptr u8 n )
-   {: x:ptr xu:n :}
+: ARTIFACT$ ( ^u8 n -- ^u8 n )
+   {: x:^ xu:n :}
    SB-RESET
    DIR$ SB-APPEND s" /" SB-APPEND LABEL$ SB-APPEND x xu SB-APPEND
    SB$ ;
@@ -1080,8 +1080,8 @@ variable OPEN-N
 
 \ The shared session's complete byte trace includes initialize and shutdown;
 \ its named case files are individual segments.
-: TRACE$ ( ptr u8 n -- ptr u8 n )
-   {: x:ptr xu:n :}
+: TRACE$ ( ^u8 n -- ^u8 n )
+   {: x:^ xu:n :}
    SB-RESET DIR$ SB-APPEND s" /" SB-APPEND SESSION$ SB-APPEND
    s" .trace" SB-APPEND
    x xu SB-APPEND SB$ ;
@@ -1113,7 +1113,7 @@ variable OPEN-N
 
 : TEST-EXIT-TIMEOUT ( -- )
    s" LSP timeout reports the conversation and both streams" T-LABEL
-   s" package LSP-TEST TIMEOUT-EXIT-PROBE ;package" {: src:ptr srcu:n :}
+   s" package LSP-TEST TIMEOUT-EXIT-PROBE ;package" {: src:^ srcu:n :}
    src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
@@ -1131,8 +1131,8 @@ variable OPEN-N
    ns 1000000 / FMT:SB-U s"  ms" SB-APPEND
    SB$ type cr ;
 
-: HOLDS ( bool ptr u8 n -- )
-   {: ok:bool r:ptr ru:n :}
+: HOLDS ( bool ^u8 n -- )
+   {: ok:bool r:^ ru:n :}
    SB-RESET LABEL$ SB-APPEND s" : " SB-APPEND r ru SB-APPEND
    SB$ T-LABEL ok TTRUE ;
 
@@ -1153,12 +1153,12 @@ variable OPEN-N
 
 \ ---- the output ---------------------------------------------------------------
 
-: UNREAD ( -- ptr u8 n )  OUT-SPAN SPAN:$ drop OUT-AT @ +  OUT-LEN @ OUT-AT @ - ;
+: UNREAD ( -- ^u8 n )  OUT-SPAN SPAN:$ drop OUT-AT @ +  OUT-LEN @ OUT-AT @ - ;
 
-: ALIKE ( ptr u8 n ptr u8 n -- )  LABEL$ T-LABEL T$= ;
+: ALIKE ( ^u8 n ^u8 n -- )  LABEL$ T-LABEL T$= ;
 
-: FRAME-LEN ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: FRAME-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
    s" Content-Length: " nip {: name:n :}
    a u s\" \r\n\r\n" FIND-SUB MATCH option
       none OF -1 ENDOF
@@ -1170,32 +1170,32 @@ variable OPEN-N
       some OF ENDOF
    ;MATCH ;
 
-: MISFRAMED ( -- ptr u8 n )
+: MISFRAMED ( -- ^u8 n )
    false s" output not framed as LSP frames it" HOLDS
    OUT-LEN @ OUT-AT !
    OUT-SPAN SPAN:$ drop 0 ;
 
 \ The server frames a message as `Content-Length: N`, CR LF twice and N bytes,
 \ the length without sign or leading zeros.
-: NEXT-BODY ( -- ptr u8 n )
-   UNREAD {: a:ptr u:n :}
+: NEXT-BODY ( -- ^u8 n )
+   UNREAD {: a:^ u:n :}
    a u FRAME-LEN {: len:n :}
    len 0 < if MISFRAMED exit then
-   len HEAD$ {: h:ptr hu:n :}
+   len HEAD$ {: h:^ hu:n :}
    a u h hu STARTS-WITH? 0= if MISFRAMED exit then
    hu len + u > if MISFRAMED exit then
    hu len + OUT-AT +!
    a hu + len ;
 
-: HEARD ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: HEARD ( ^u8 n -- )
+   {: a:^ u:n :}
    NEXT-BODY a u ALIKE ;
 
 \ The next frame is an error reply to the request with this id's JSON text,
 \ with this code. Its message is prose: only that it is a string is read.
-: REFUSED ( ptr u8 n n -- )
-   {: i:ptr iu:n code:n :}
-   NEXT-BODY {: b:ptr bu:n :}
+: REFUSED ( ^u8 n n -- )
+   {: i:^ iu:n code:n :}
+   NEXT-BODY {: b:^ bu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"error\":{\"code\":" MSG+
    code INT$ MSG+ s\" ,\"message\":\"" MSG+
@@ -1219,14 +1219,14 @@ variable OPEN-N
    MSG$ HEARD ;
 
 
-: NULL-RESULT ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: NULL-RESULT ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":null}" MSG+
    MSG$ HEARD ;
 
-: PUBLISHED ( ptr u8 n -- )
-   {: u:ptr uu:n :}
+: PUBLISHED ( ^u8 n -- )
+   {: u:^ uu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" MSG+
    u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
@@ -1257,8 +1257,8 @@ variable OPEN-N
       eof OF drop false ENDOF
    ;MATCH ;
 
-: DRAIN ( fd SPAN:span<u8> ptr n n -- )
-   {: f:fd dst len:ptr deadline:n :}
+: DRAIN ( fd SPAN:span<u8> ^n n -- )
+   {: f:fd dst len:^ deadline:n :}
    len @ begin
       dup len !
       dup dst SPAN:LEN < if dup f dst deadline BYTE else false then
@@ -1480,7 +1480,7 @@ variable OPEN-N
    1 DEADLINE @ PROCESS:LEFT-MS PROCESS:POLL drop ;
 
 : PIECE ( -- )
-   IN$ {: a:ptr u:n :}
+   IN$ {: a:^ u:n :}
    u SENT @ - PIPE-ATOM min {: k:n :}
    WRITABLE
    IN-W @ a SENT @ + k FD:WRITE-FULL
@@ -1494,7 +1494,7 @@ variable OPEN-N
 \ A long turn, including one with long document paths, is streamed under the
 \ same deadline rather than refused by the test.
 : SAY ( -- )
-   IN$ {: a:ptr u:n :}
+   IN$ {: a:^ u:n :}
    u SENT @ - {: left:n :}
    left PROCESS:STDIN-CHUNK-CAP > if STREAM exit then
    WRITABLE
@@ -1502,7 +1502,7 @@ variable OPEN-N
    u SENT ! ;
 
 : WHOLE? ( -- bool )
-   UNREAD {: a:ptr u:n :}
+   UNREAD {: a:^ u:n :}
    a u FRAME-LEN {: len:n :}
    len 0 < if false exit then
    len HEAD$ nip len + u <= ;
@@ -1594,7 +1594,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ The test's own check of the text as the file at PATH, with the documents open
 \ that OPEN gives, whose packets and prose the server's check of them must
 \ publish and write, given what is left of the conversation's time.
-: CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+: CHECKS-WITH ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
    DEADLINE @ PROCESS:LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF ENDOF
@@ -1605,24 +1605,24 @@ variable PACKET-NEXT                     \ where the check's next packet starts
       deferred OF ENDOF
    ;MATCH ;
 
-: CHECKS ( ptr u8 n ptr u8 n -- )  [: drop ;] CHECKS-WITH ;
+: CHECKS ( ^u8 n ^u8 n -- )  [: drop ;] CHECKS-WITH ;
 
 \ The document at PATH is open with this text beside CHECKS-BESIDE's subject.
-: BESIDE! ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n t:ptr tu:n :}
+: BESIDE! ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n t:^ tu:n :}
    p pu SOURCE-ROOT:CANONICAL drop N>BLEN BESIDE-B REPLACE
    t tu N>BLEN BESIDE-TEXT-B REPLACE ;
 
-: BESIDE ( [ ptr u8 n ptr u8 n -- ] -- )
+: BESIDE ( [ ^u8 n ^u8 n -- ] -- )
    {: each :}
    BESIDE-B SPAN$ BLEN>N BESIDE-TEXT-B SPAN$ BLEN>N each execute ;
 
-: CHECKS-BESIDE ( ptr u8 n ptr u8 n -- )  [: BESIDE ;] CHECKS-WITH ;
+: CHECKS-BESIDE ( ^u8 n ^u8 n -- )  [: BESIDE ;] CHECKS-WITH ;
 
-: PACKET-FROM$ ( n -- ptr u8 n )
-   LSP-CHECK:VERIFY-OUT$ {: at:n a:ptr u:n :}
+: PACKET-FROM$ ( n -- ^u8 n )
+   LSP-CHECK:VERIFY-OUT$ {: at:n a:^ u:n :}
    at u min {: from:n :}
-   a from + u from - {: p:ptr pu:n :}
+   a from + u from - {: p:^ pu:n :}
    p pu 10 INDEX-OF MATCH option
       none OF p pu ENDOF
       some OF IDX>N p swap ENDOF
@@ -1630,15 +1630,15 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The raw text of a top-level member of the packet, a string's between its
 \ quotes, and whether it is a string.
-: MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n k:ptr ku:n :}
+: MEMBER$ ( ^u8 n ^u8 n -- ^u8 n bool )
+   {: a:^ u:n k:^ ku:n :}
    JSON-ST a u JSON:READ-INIT
    JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
    JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
 
-: MESSAGE+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MESSAGE+ ( ^u8 n -- )
+   {: a:^ u:n :}
    s\" \"" EXP+
    a u s" message" MEMBER$ if EXP+ s\" \"" EXP+ exit then
    2drop
@@ -1650,8 +1650,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The publish the next frame must be, for the document or the file at PATH,
 \ with this version, or without one for -1: begun, up to its list's bracket.
-: EXPECT ( ptr u8 n n -- )
-   {: p:ptr pu:n v:n :}
+: EXPECT ( ^u8 n n -- )
+   {: p:^ pu:n v:n :}
    EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" EXP+
    p pu URI-OF EXP+ s\" \"," EXP+
@@ -1667,33 +1667,33 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s\" ,\"character\":" EXP+ c2 INT$ EXP+
    s\" }}" EXP+ ;
 
-: PACKET-FOR ( ptr u8 n -- ptr u8 n )
-   {: c:ptr cu:n :}
-   PACKET-NEXT @ PACKET-FROM$ {: a:ptr u:n :}
+: PACKET-FOR ( ^u8 n -- ^u8 n )
+   {: c:^ cu:n :}
+   PACKET-NEXT @ PACKET-FROM$ {: a:^ u:n :}
    SB-RESET LABEL$ SB-APPEND s" : a packet for " SB-APPEND c cu SB-APPEND SB$ T-LABEL
    u 0 > TTRUE
    u 0= if a u exit then
    PACKET-NEXT @ u + 1+ PACKET-NEXT !
    a u ;
 
-: CODED+ ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n a:ptr u:n :}
+: CODED+ ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n a:^ u:n :}
    s\" ,\"code\":\"" EXP+ c cu EXP+
    s\" \",\"source\":\"habu\",\"message\":" EXP+ a u MESSAGE+
    s\" ,\"data\":" EXP+ a u EXP+ s" }" EXP+ ;
 
-: DIAG+ ( n n n n n ptr u8 n -- )
-   {: l1:n c1:n l2:n c2:n sev:n c:ptr cu:n :}
-   c cu PACKET-FOR {: a:ptr u:n :}
+: DIAG+ ( n n n n n ^u8 n -- )
+   {: l1:n c1:n l2:n c2:n sev:n c:^ cu:n :}
+   c cu PACKET-FOR {: a:^ u:n :}
    u 0= if exit then
    l1 c1 l2 c2 RANGE+
    s\" ,\"severity\":" EXP+ sev INT$ EXP+
    c cu a u CODED+ ;
 
 \ DIAG+ for a packet with no verdict, whose diagnostic has no severity.
-: UNRATED+ ( n n n n ptr u8 n -- )
-   {: l1:n c1:n l2:n c2:n c:ptr cu:n :}
-   c cu PACKET-FOR {: a:ptr u:n :}
+: UNRATED+ ( n n n n ^u8 n -- )
+   {: l1:n c1:n l2:n c2:n c:^ cu:n :}
+   c cu PACKET-FOR {: a:^ u:n :}
    u 0= if exit then
    l1 c1 l2 c2 RANGE+
    c cu a u CODED+ ;
@@ -1713,7 +1713,7 @@ variable PUB-COUNT
    {: count:n :}
    count PUB-COUNT !
    count 0 ?do
-      HEAR NEXT-BODY {: body:ptr len:n :}
+      HEAR NEXT-BODY {: body:^ len:n :}
       body PUB-BODIES i ptr-field !
       len i PUB-LENS !
       false i PUB-USED !
@@ -1721,7 +1721,7 @@ variable PUB-COUNT
 
 : PUBLISHES-ANY ( -- )
    s" ]}}" EXP+
-   EXP$ {: want:ptr wantu:n :}
+   EXP$ {: want:^ wantu:n :}
    PUB-COUNT @ 0 ?do
       i PUB-USED @ 0= if
          PUB-BODIES i ptr-field @ i PUB-LENS @ want wantu STR= if
@@ -1734,16 +1734,16 @@ variable PUB-COUNT
 \ The next frame is the empty list of the document at PATH at this version,
 \ heard as it comes: the test runs no check of its own first, so the turn
 \ after it is written while the server goes on.
-: CLEAN ( ptr u8 n n -- )  EXPECT PUBLISHES ;
+: CLEAN ( ^u8 n n -- )  EXPECT PUBLISHES ;
 
 \ didClose may also retract diagnostics for a disk dependency. The final
 \ request marks the end of the batch, so every preceding frame must be an
 \ empty diagnostic publication.
-: CLEANUP-REPLY? ( ptr u8 n -- bool )
+: CLEANUP-REPLY? ( ^u8 n -- bool )
    2dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STARTS-WITH?
    >r s\" \"}}" ENDS-WITH? r> and ;
 
-: CLEANUP-EMPTY? ( ptr u8 n -- bool )
+: CLEANUP-EMPTY? ( ^u8 n -- bool )
    2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STARTS-WITH?
    >r s\" \",\"diagnostics\":[]}}" ENDS-WITH? r> and ;
 
@@ -1753,8 +1753,8 @@ variable PUB-COUNT
       CLEANUP-EMPTY? LABEL$ T-LABEL TTRUE
    again ;
 
-: TALK ( ptr u8 n [ -- ] -- )
-   {: a:ptr u:n turns :}
+: TALK ( ^u8 n [ -- ] -- )
+   {: a:^ u:n turns :}
    a u CONVERSATION
    SHARED? @ 0= if turns HELD exit then
    0 SENT !
@@ -1784,8 +1784,8 @@ variable PUB-COUNT
 \ and say what the server must write to stderr then; AFTER checks the frames
 \ the server wrote once its input ended, among those read to its stdout's end
 \ (HEAR). It must exit 1, nothing past them.
-: TALK-CUT ( ptr u8 n [ -- ] [ -- ] -- )
-   {: a:ptr u:n turns after :}
+: TALK-CUT ( ^u8 n [ -- ] [ -- ] -- )
+   {: a:^ u:n turns after :}
    a u CONVERSATION
    turns [: UNFINISHED ;] 1 HELD-BY 0= if exit then
    after execute
@@ -1798,8 +1798,8 @@ variable PUB-COUNT
    HEAR s" 3" JSON-RPC:METHOD-NOT-FOUND REFUSED ;
 
 \ A string id with a quote, a backslash, \u and \/ escaped.
-: ESCAPED-ID ( -- ptr u8 n )  s\" \"a\\\"b\\\\\\u00e9\\/c\"" ;
-: LONG-ID ( -- ptr u8 n )  s" 123456789012345678901234567890" ;
+: ESCAPED-ID ( -- ^u8 n )  s\" \"a\\\"b\\\\\\u00e9\\/c\"" ;
+: LONG-ID ( -- ^u8 n )  s" 123456789012345678901234567890" ;
 
 : IDS-TURNS ( -- )
    s" 0" s" habu/unknown" ASK
@@ -1899,10 +1899,10 @@ variable PUB-COUNT
 \ ---- diagnostics ------------------------------------------------------------------
 
 \ F's drop takes the only cell its effect leaves: E-MISMATCH at bytes 15-19.
-: TEXT-F ( -- ptr u8 n )  s" : F ( n -- n ) drop ;" ;
+: TEXT-F ( -- ^u8 n )  s" : F ( n -- n ) drop ;" ;
 
-: F-LISTED ( ptr u8 n n -- )
-   {: p:ptr pu:n v:n :}
+: F-LISTED ( ^u8 n n -- )
+   {: p:^ pu:n v:n :}
    TEXT-F p pu CHECKS
    p pu s" refused" COMPLETED
    p pu v EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
@@ -1917,7 +1917,7 @@ variable PUB-COUNT
 \ An undefined word refuses LSPT-U1. LSPT-U2 uses its declared effect and
 \ certifies; LSPT-U3 calls it with nothing on the stack and LSPT-U4 leaves a
 \ cell short, and each is refused.
-: TEXT-U ( -- ptr u8 n )
+: TEXT-U ( -- ^u8 n )
    s\" : LSPT-U1 ( n -- n ) NOPE ;\n: LSPT-U2 ( n -- n ) LSPT-U1 1 + ;\n: LSPT-U3 ( -- n ) LSPT-U1 ;\n: LSPT-U4 ( n -- n ) drop ;\n" ;
 
 : OPEN-TURNS ( -- )
@@ -1942,7 +1942,7 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 4 EXPECT 1 15 1 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-: TEXT-X ( -- ptr u8 n )  s" : X ( n -- zz ) NOPE ;" ;
+: TEXT-X ( -- ^u8 n )  s" : X ( n -- zz ) NOPE ;" ;
 
 : ONE-REFUSAL-TURNS ( -- )
    F-OPENED
@@ -1952,8 +1952,8 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 2 EXPECT 0 16 0 20 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-: REQUIRES-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
-: UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
+: REQUIRES-FMT ( -- ^u8 n )  s\" require src/lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
+: UNDERFLOWS-FMT ( -- ^u8 n )  s\" require src/lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
 
 : REQUIRE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -1988,7 +1988,7 @@ variable PUB-COUNT
    s" src/lib/string.f" IN-TREE 1 EXPECT PUBLISHES ;
 
 \ The emoji before H's drop is four bytes and two UTF-16 units.
-: TEXT-H ( -- ptr u8 n )  s" ( 😀 ) : H ( n -- n ) drop ;" ;
+: TEXT-H ( -- ^u8 n )  s" ( 😀 ) : H ( n -- n ) drop ;" ;
 
 : UTF16-TURNS ( -- )
    SESSION-INITIALIZE
@@ -1999,7 +1999,7 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 22 0 26 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-: BIG-PATH ( -- ptr u8 n )  s" big.f" FIXTURE ;
+: BIG-PATH ( -- ^u8 n )  s" big.f" FIXTURE ;
 
 : BIG-TEXT ( -- )
    TXT-B CLEAR
@@ -2017,37 +2017,37 @@ variable PUB-COUNT
    BIG-PATH s" refused" COMPLETED
    BIG-PATH 1 EXPECT BIG-LINES 15 BIG-LINES 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-: S-PATH ( -- ptr u8 n )  s" s.f" FIXTURE ;
-: DEP-PATH ( -- ptr u8 n )  s" dep.f" FIXTURE ;
-: TEXT-S ( -- ptr u8 n )  s\" require dep.f\n: S ( -- ) ;\n" ;
-: DEP-BROKEN ( -- ptr u8 n )  s\" : D ( n -- n ) drop ;\n" ;
-: DEP-FIXED ( -- ptr u8 n )  s\" : D ( n -- n ) ;\n" ;
+: S-PATH ( -- ^u8 n )  s" s.f" FIXTURE ;
+: DEP-PATH ( -- ^u8 n )  s" dep.f" FIXTURE ;
+: TEXT-S ( -- ^u8 n )  s\" require dep.f\n: S ( -- ) ;\n" ;
+: DEP-BROKEN ( -- ^u8 n )  s\" : D ( n -- n ) drop ;\n" ;
+: DEP-FIXED ( -- ^u8 n )  s\" : D ( n -- n ) ;\n" ;
 
-: TEXT-SD ( -- ptr u8 n )  s\" require dep.f\n: S ( -- n ) 1 D ;\n" ;
-: DEP-TWO ( -- ptr u8 n )  s\" : D ( n n -- n ) + ;\n" ;
+: TEXT-SD ( -- ^u8 n )  s\" require dep.f\n: S ( -- n ) 1 D ;\n" ;
+: DEP-TWO ( -- ^u8 n )  s\" : D ( n n -- n ) + ;\n" ;
 
-: DEP-WRITTEN ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DEP-WRITTEN ( ^u8 n -- )
+   {: a:^ u:n :}
    DEP-PATH a u FS:WRITE-ALL ;
 
 \ The path the packets name dep.f by: its canonical one.
-: DEP-CANON ( -- ptr u8 n )  DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: DEP-CANON ( -- ^u8 n )  DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
-: LISTED ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: t:ptr tu:n p:ptr pu:n v:n w:ptr wu:n :}
+: LISTED ( ^u8 n ^u8 n n ^u8 n -- )
+   {: t:^ tu:n p:^ pu:n v:n w:^ wu:n :}
    t tu p pu CHECKS
    p pu w wu COMPLETED
    p pu v EXPECT PUBLISHES ;
 
-: BATCH-LISTED ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: t:ptr tu:n p:ptr pu:n v:n w:ptr wu:n :}
+: BATCH-LISTED ( ^u8 n ^u8 n n ^u8 n -- )
+   {: t:^ tu:n p:^ pu:n v:n w:^ wu:n :}
    t tu p pu CHECKS
    p pu w wu COMPLETED
    p pu v EXPECT PUBLISHES-ANY ;
 
 \ The list at PATH, with this version or none for -1, holding the broken D's
 \ packet, which the test's last check found first.
-: D-LISTED ( ptr u8 n n -- )
+: D-LISTED ( ^u8 n n -- )
    EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ S requires dep.f, which is not open. Broken on disk, dep.f gets a list of its
@@ -2141,19 +2141,19 @@ variable PUB-COUNT
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED ;
 
-: SV-PATH ( -- ptr u8 n )  s" sv.f" FIXTURE ;
-: SV-NEW-PATH ( -- ptr u8 n )  s" sv-new.f" FIXTURE ;
-: TEXT-SV ( -- ptr u8 n )  s\" require sv-new.f\n: S ( -- ) ;\n" ;
-: TEXT-SV-NEW ( -- ptr u8 n )  s\" : N ( -- ) ;\n" ;
-: MW-PATH ( -- ptr u8 n )  s" mw.f" FIXTURE ;
-: MW-NEW-PATH ( -- ptr u8 n )  s" mw-new.f" FIXTURE ;
-: TEXT-MW ( -- ptr u8 n )  s\" require mw-new.f\n: M ( -- ) ;\n" ;
-: SR-PATH ( -- ptr u8 n )  s" sr.f" FIXTURE ;
-: SR-NEW-PATH ( -- ptr u8 n )  s" sr-new.f" FIXTURE ;
-: TEXT-SR ( -- ptr u8 n )  s\" require sr-new.f\n: S ( -- ) ;\n" ;
-: UR-PATH ( -- ptr u8 n )  s" ur.f" FIXTURE ;
-: UR-DEP-PATH ( -- ptr u8 n )  s" ur-dep.f" FIXTURE ;
-: TEXT-UR ( -- ptr u8 n )  s\" require ur-dep.f\n: U ( -- ) ;\n" ;
+: SV-PATH ( -- ^u8 n )  s" sv.f" FIXTURE ;
+: SV-NEW-PATH ( -- ^u8 n )  s" sv-new.f" FIXTURE ;
+: TEXT-SV ( -- ^u8 n )  s\" require sv-new.f\n: S ( -- ) ;\n" ;
+: TEXT-SV-NEW ( -- ^u8 n )  s\" : N ( -- ) ;\n" ;
+: MW-PATH ( -- ^u8 n )  s" mw.f" FIXTURE ;
+: MW-NEW-PATH ( -- ^u8 n )  s" mw-new.f" FIXTURE ;
+: TEXT-MW ( -- ^u8 n )  s\" require mw-new.f\n: M ( -- ) ;\n" ;
+: SR-PATH ( -- ^u8 n )  s" sr.f" FIXTURE ;
+: SR-NEW-PATH ( -- ^u8 n )  s" sr-new.f" FIXTURE ;
+: TEXT-SR ( -- ^u8 n )  s\" require sr-new.f\n: S ( -- ) ;\n" ;
+: UR-PATH ( -- ^u8 n )  s" ur.f" FIXTURE ;
+: UR-DEP-PATH ( -- ^u8 n )  s" ur-dep.f" FIXTURE ;
+: TEXT-UR ( -- ^u8 n )  s\" require ur-dep.f\n: U ( -- ) ;\n" ;
 
 \ sv.f requires sv-new.f, which is open but on no disk: the loader finds no
 \ file to read the open text for, so sv.f's list holds E-MISSING-SOURCE, and
@@ -2196,12 +2196,12 @@ variable PUB-COUNT
    SAY
    TEXT-MW MW-PATH 1 s" verified" LISTED ;
 
-: LINK-S ( -- ptr u8 n )  s" link/s.f" FIXTURE ;
-: LINK-DEP ( -- ptr u8 n )  s" link/dep.f" FIXTURE ;
-: REAL-DEP ( -- ptr u8 n )  s" real/dep.f" FIXTURE ;
+: LINK-S ( -- ^u8 n )  s" link/s.f" FIXTURE ;
+: LINK-DEP ( -- ^u8 n )  s" link/dep.f" FIXTURE ;
+: REAL-DEP ( -- ^u8 n )  s" real/dep.f" FIXTURE ;
 
 \ The canonical path under real, by which the packets name dep.f.
-: REAL-CANON ( -- ptr u8 n )  REAL-DEP SOURCE-ROOT:CANONICAL drop ;
+: REAL-CANON ( -- ^u8 n )  REAL-DEP SOURCE-ROOT:CANONICAL drop ;
 
 \ The client names S and dep.f through link, a symlink to real, and the
 \ packets name dep.f by its canonical path, under real. Broken on disk, dep.f
@@ -2229,10 +2229,10 @@ variable PUB-COUNT
    LINK-S 1 EXPECT 1 15 1 16 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES
    REAL-CANON -1 EXPECT PUBLISHES ;
 
-: T-PATH ( -- ptr u8 n )  s" t.f" FIXTURE ;
-: TEXT-T ( -- ptr u8 n )  s\" require dep.f\n: T ( -- ) ;\n" ;
-: ALONE-S ( -- ptr u8 n )  s\" : S ( -- ) ;\n" ;
-: ALONE-T ( -- ptr u8 n )  s\" : T ( -- ) ;\n" ;
+: T-PATH ( -- ^u8 n )  s" t.f" FIXTURE ;
+: TEXT-T ( -- ^u8 n )  s\" require dep.f\n: T ( -- ) ;\n" ;
+: ALONE-S ( -- ^u8 n )  s\" : S ( -- ) ;\n" ;
+: ALONE-T ( -- ^u8 n )  s\" : T ( -- ) ;\n" ;
 
 : DEP-SHARED-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
@@ -2256,8 +2256,8 @@ variable PUB-COUNT
    ALONE-T T-PATH 2 s" verified" LISTED
    DEP-CANON -1 EXPECT PUBLISHES ;
 
-: DEFINES-A ( -- ptr u8 n )  s" : LSPT-ONLY-A ( -- ) ;" ;
-: CALLS-A ( -- ptr u8 n )  s" : LSPT-B ( -- ) LSPT-ONLY-A ;" ;
+: DEFINES-A ( -- ^u8 n )  s" : LSPT-ONLY-A ( -- ) ;" ;
+: CALLS-A ( -- ^u8 n )  s" : LSPT-B ( -- ) LSPT-ONLY-A ;" ;
 
 : TWO-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2272,7 +2272,7 @@ variable PUB-COUNT
    B-PATH s" refused" COMPLETED
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-: UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
+: UNENDED ( -- ^u8 n )  s" : H6 ( n -- n ) 1" ;
 
 : UNENDED-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2283,7 +2283,7 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-: MISSING-NAME ( -- ptr u8 n )  s" :" ;
+: MISSING-NAME ( -- ^u8 n )  s" :" ;
 
 : MISSING-NAME-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2332,7 +2332,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ The verifier's own image holds tools/check-verify-child-lib.f.
-: HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child-lib.f" IN-TREE ;
+: HELD-PATH ( -- ^u8 n )  s" tools/check-verify-child-lib.f" IN-TREE ;
 
 : HELD-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2346,7 +2346,7 @@ USE-MAX 1 + constant OVER-USINGS
 \ The public W moves other cells than the private W, whose tail it shares: the
 \ packet is at the public definition's name. The refusal refuses W alone: the
 \ check goes on, and M's extra cell on line 7 is published beside it.
-: SHADOWS ( -- ptr u8 n )
+: SHADOWS ( -- ^u8 n )
    s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n: LSPT-M ( -- ) 1 ;\n" ;
 
 : SHADOWED-TURNS ( -- )
@@ -2361,7 +2361,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 \ LSPT-WIDE's inferred effect has more than TYPE-VAR-MAX type variables: the
 \ check verifies it and warns at its name that the effect is not recorded.
-: WIDENS ( -- ptr u8 n )
+: WIDENS ( -- ^u8 n )
    s\" defer LSPT-V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )\n: LSPT-WIDE LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 ;\n" ;
 
 : NOT-RECORDED-TURNS ( -- )
@@ -2373,7 +2373,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
 
-: TWO-USED ( -- ptr u8 n )
+: TWO-USED ( -- ^u8 n )
    s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
 : TWO-USED-TURNS ( -- )
@@ -2386,7 +2386,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
    11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-: GLOBAL-USED ( -- ptr u8 n )
+: GLOBAL-USED ( -- ^u8 n )
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
 
 : GLOBAL-USED-TURNS ( -- )
@@ -2399,7 +2399,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
    7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-: CLAUSE-USED ( -- ptr u8 n )
+: CLAUSE-USED ( -- ^u8 n )
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
 : CLAUSE-USED-TURNS ( -- )
@@ -2414,7 +2414,7 @@ USE-MAX 1 + constant OVER-USINGS
    14 16 14 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ DA defined twice: the packet at the second DA, line 1, characters 2-4.
-: TEXT-DUP ( -- ptr u8 n )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
+: TEXT-DUP ( -- ^u8 n )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
 
 : DUPLICATE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2425,8 +2425,8 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 4 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
-: DD-DEP ( -- ptr u8 n )  s" dd-dep.f" FIXTURE ;
-: TEXT-DD ( -- ptr u8 n )  s\" require dd-dep.f\n: LSPT-DD ( -- n ) 2 ;\n" ;
+: DD-DEP ( -- ^u8 n )  s" dd-dep.f" FIXTURE ;
+: TEXT-DD ( -- ^u8 n )  s\" require dd-dep.f\n: LSPT-DD ( -- n ) 2 ;\n" ;
 
 : DUP-REQUIRED-TURNS ( -- )
    DD-DEP s\" : LSPT-DD ( -- n ) 1 ;\n" FS:WRITE-ALL
@@ -2438,8 +2438,8 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
-: UNDEFINED-AT-TOP ( -- ptr u8 n )  s\" 1 NOSUCHWORD drop\n" ;
-: DEFERRED-AT-TOP ( -- ptr u8 n )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
+: UNDEFINED-AT-TOP ( -- ^u8 n )  s\" 1 NOSUCHWORD drop\n" ;
+: DEFERRED-AT-TOP ( -- ^u8 n )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
 
 : TOP-LEVEL-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2455,7 +2455,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" deferred" COMPLETED
    A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
-: DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
+: DEFERRED-IN-BODY ( -- ^u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
 
 : DEFINITION-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2488,30 +2488,30 @@ USE-MAX 1 + constant OVER-USINGS
 
 \ ---- workspace symbols ------------------------------------------------------------
 
-: SYM-A-PATH ( -- ptr u8 n )  s" sym-a.f" FIXTURE ;
-: SYM-B-PATH ( -- ptr u8 n )  s" sym-b.f" FIXTURE ;
-: SYM-DEP-PATH ( -- ptr u8 n )  s" sym-dep.f" FIXTURE ;
-: SYM-DEP-CANON ( -- ptr u8 n )  SYM-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
-: TEXT-SYM-A ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-A ( -- n ) 1 ;\n: ZED ( -- n ) 4 ;\n" ;
-: TEXT-SYM-A2 ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-AA ( -- n ) 1 ;\n" ;
-: TEXT-SYM-B ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-B ( -- n ) 2 ;\n3 constant QUX-K\n" ;
-: TEXT-SYM-DEP ( -- ptr u8 n )
+: SYM-A-PATH ( -- ^u8 n )  s" sym-a.f" FIXTURE ;
+: SYM-B-PATH ( -- ^u8 n )  s" sym-b.f" FIXTURE ;
+: SYM-DEP-PATH ( -- ^u8 n )  s" sym-dep.f" FIXTURE ;
+: SYM-DEP-CANON ( -- ^u8 n )  SYM-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: TEXT-SYM-A ( -- ^u8 n )  s\" require sym-dep.f\n: QUX-A ( -- n ) 1 ;\n: ZED ( -- n ) 4 ;\n" ;
+: TEXT-SYM-A2 ( -- ^u8 n )  s\" require sym-dep.f\n: QUX-AA ( -- n ) 1 ;\n" ;
+: TEXT-SYM-B ( -- ^u8 n )  s\" require sym-dep.f\n: QUX-B ( -- n ) 2 ;\n3 constant QUX-K\n" ;
+: TEXT-SYM-DEP ( -- ^u8 n )
    s\" package QD\n: QUX-P ( -- n ) 5 ;\n: QE:QUX-Q ( -- n ) 6 ;\npublic\n: QUX-DEP ( -- n ) 3 ;\nEXPORT QE:QUX-Q\n;package\nvariable QUX-V\n" ;
 
-: SYMBOLS-ASK ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n :}
+: SYMBOLS-ASK ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
    MSG$ FRAMED ;
 
-: SYMBOLS-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: SYMBOLS-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
-: SYMBOL+ ( ptr u8 n n ptr u8 n n n n ptr u8 n -- )
-   {: w:ptr wu:n k:n u:ptr uu:n l:n c1:n c2:n p:ptr pu:n :}
+: SYMBOL+ ( ^u8 n n ^u8 n n n n ^u8 n -- )
+   {: w:^ wu:n k:n u:^ uu:n l:n c1:n c2:n p:^ pu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"name\":\"" MSG+ w wu MSG+
    s\" \",\"kind\":" MSG+ k INT$ MSG+
@@ -2531,7 +2531,7 @@ USE-MAX 1 + constant OVER-USINGS
 \ Params nested past the 64 levels a cursor keeps inline.
 100 constant DEEP-NEST
 
-: DEEP-PARAMS ( -- ptr u8 n )
+: DEEP-PARAMS ( -- ^u8 n )
    PAR-B CLEAR
    s\" {\"deep\":" PAR+
    DEEP-NEST 0 ?do s" [" PAR+ loop
@@ -2545,16 +2545,16 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    s" 3" SYMBOLS-START SYMBOLS-END ;
 
-: OUTLINE-ASK ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n :}
+: OUTLINE-ASK ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-: AT-ASK-WITH ( ptr u8 n ptr u8 n ptr u8 n n n ptr u8 n -- )
-   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
+: AT-ASK-WITH ( ^u8 n ^u8 n ^u8 n n n ^u8 n -- )
+   {: m:^ mu:n i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"" MSG+ m mu MSG+
@@ -2565,18 +2565,18 @@ USE-MAX 1 + constant OVER-USINGS
    x xu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
-: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )  s" " AT-ASK-WITH ;
+: AT-ASK ( ^u8 n ^u8 n ^u8 n n n -- )  s" " AT-ASK-WITH ;
 
-: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: DEFINITION-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/definition" i iu p pu l c AT-ASK ;
 
-: DECLARATION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: DECLARATION-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/declaration" i iu p pu l c AT-ASK ;
 
-: LOCATED ( ptr u8 n ptr u8 n n n n -- )
-   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
+: LOCATED ( ^u8 n ^u8 n n n n -- )
+   {: i:^ iu:n u:^ uu:n l:n c1:n c2:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
@@ -2599,7 +2599,7 @@ USE-MAX 1 + constant OVER-USINGS
    s" qd:QUX-Q" 12 SYM-DEP-CANON URI-OF 5 7 15 s" qd" SYMBOL+
    s" QUX-V" 13 SYM-DEP-CANON URI-OF 7 9 14 s" " SYMBOL+ ;
 
-: TEXT-SYM-DEP2 ( -- ptr u8 n )
+: TEXT-SYM-DEP2 ( -- ^u8 n )
    s\" package QD\npublic\n: QUX-NEW ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
 
 : DEP2-SYMBOLS+ ( -- )
@@ -2675,7 +2675,7 @@ USE-MAX 1 + constant OVER-USINGS
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    SYMBOLS-END ;
 
-: TEXT-SYM-DEP3 ( -- ptr u8 n )  s\" \\ no definition remains\n" ;
+: TEXT-SYM-DEP3 ( -- ^u8 n )  s\" \\ no definition remains\n" ;
 
 : EMPTY-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
@@ -2708,8 +2708,8 @@ USE-MAX 1 + constant OVER-USINGS
 
 \ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
 \ registrar would refuse.
-: TEXT-RETAINED ( -- ptr u8 n )
-   s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
+: TEXT-RETAINED ( -- ^u8 n )
+   s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ^ ) ;\n" ;
 
 \ NAV-WIDE declared, then declared again taking 256 cells; NAV-SAME declared
 \ twice with one effect; NAV-ODD malformed with nothing declared before it;
@@ -2719,11 +2719,11 @@ USE-MAX 1 + constant OVER-USINGS
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
    256 0 ?do s"  n" N>BLEN TXT-B APPEND-SPAN loop
    s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" N>BLEN TXT-B APPEND-SPAN
-   s\" TRUSTED: NAV-ODD ( -- ptr ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" N>BLEN TXT-B APPEND-SPAN ;
+   s\" TRUSTED: NAV-ODD ( -- ^ ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" N>BLEN TXT-B APPEND-SPAN ;
 
-: RETAINED-PATH ( -- ptr u8 n )  s" retained.f" FIXTURE ;
+: RETAINED-PATH ( -- ^u8 n )  s" retained.f" FIXTURE ;
 
-: REDECLARED-PATH ( -- ptr u8 n )  s" redeclared.f" FIXTURE ;
+: REDECLARED-PATH ( -- ^u8 n )  s" redeclared.f" FIXTURE ;
 
 \ The load refuses the redeclaration at its name as a duplicate, before its
 \ effect (exit 78), and so does the check.
@@ -2766,11 +2766,11 @@ USE-MAX 1 + constant OVER-USINGS
    s" NAV-LATER" 12 REDECLARED-PATH URI-OF 6 2 11 s" " SYMBOL+
    SYMBOLS-END ;
 
-: REP-DEP-PATH ( -- ptr u8 n )  s" rep-dep.f" FIXTURE ;
-: REP-DEP-CANON ( -- ptr u8 n )  REP-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
-: REP-PATH ( -- ptr u8 n )  s" rep.f" FIXTURE ;
-: TEXT-REP-DEP ( -- ptr u8 n )  s\" : REV-SHARED ( -- n ) 7 ;\n" ;
-: TEXT-REP ( -- ptr u8 n )
+: REP-DEP-PATH ( -- ^u8 n )  s" rep-dep.f" FIXTURE ;
+: REP-DEP-CANON ( -- ^u8 n )  REP-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: REP-PATH ( -- ^u8 n )  s" rep.f" FIXTURE ;
+: TEXT-REP-DEP ( -- ^u8 n )  s\" : REV-SHARED ( -- n ) 7 ;\n" ;
+: TEXT-REP ( -- ^u8 n )
    s\" include rep-dep.f\nundefine REV-SHARED\ninclude rep-dep.f\n" ;
 
 : REINCLUDE-TURNS ( -- )
@@ -2788,17 +2788,17 @@ USE-MAX 1 + constant OVER-USINGS
 
 \ od-dep.f on disk, and the other text its open document holds, whose first
 \ line is longer in bytes than in characters.
-: OD-DEP-PATH ( -- ptr u8 n )  s" od-dep.f" FIXTURE ;
-: OD-PATH ( -- ptr u8 n )  s" od.f" FIXTURE ;
-: TEXT-OD-DISK ( -- ptr u8 n )  s\" ( disk )\n: REV-DISK ( -- n ) 7 ;\n" ;
-: TEXT-OD-EDIT ( -- ptr u8 n )
+: OD-DEP-PATH ( -- ^u8 n )  s" od-dep.f" FIXTURE ;
+: OD-PATH ( -- ^u8 n )  s" od.f" FIXTURE ;
+: TEXT-OD-DISK ( -- ^u8 n )  s\" ( disk )\n: REV-DISK ( -- n ) 7 ;\n" ;
+: TEXT-OD-EDIT ( -- ^u8 n )
    s\" ( unsaved é🙂 comment )\n: REV-EDIT ( -- n ) 8 ;\n" ;
-: TEXT-OD ( -- ptr u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
+: TEXT-OD ( -- ^u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
 
 \ od-twin.f, a symlink to od-dep.f, and the other text its open document
 \ holds, whose definitions are on other lines than od-dep.f's.
-: OD-TWIN-PATH ( -- ptr u8 n )  s" od-twin.f" FIXTURE ;
-: TEXT-OD-TWIN ( -- ptr u8 n )
+: OD-TWIN-PATH ( -- ^u8 n )  s" od-twin.f" FIXTURE ;
+: TEXT-OD-TWIN ( -- ^u8 n )
    s\" \\ twin\n\n: REV-TWIN ( -- n ) 9 ;\n: REV-USE ( -- n ) REV-TWIN ;\n" ;
 
 : OPEN-DEP-TURNS ( -- )
@@ -2872,9 +2872,9 @@ USE-MAX 1 + constant OVER-USINGS
 
 variable LENGTH-N
 
-: LENGTH-DIR ( -- ptr u8 n )  s" dddd" drop LENGTH-N @ FIXTURE ;
+: LENGTH-DIR ( -- ^u8 n )  s" dddd" drop LENGTH-N @ FIXTURE ;
 
-: LENGTH-PATH ( -- ptr u8 n )
+: LENGTH-PATH ( -- ^u8 n )
    LENGTH-DIR 2drop
    s" /g.f" N>BLEN PATH-B APPEND-SPAN
    PATH-B SPAN$ BLEN>N ;
@@ -2894,22 +2894,22 @@ variable LENGTH-N
 
 \ ---- go to definition --------------------------------------------------------
 
-: DEF-A-PATH ( -- ptr u8 n )  s" def-a.f" FIXTURE ;
-: DEF-B-PATH ( -- ptr u8 n )  s" def-b.f" FIXTURE ;
-: DEF-DEP-PATH ( -- ptr u8 n )  s" def-dep.f" FIXTURE ;
-: DEF-DEP-CANON ( -- ptr u8 n )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: DEF-A-PATH ( -- ^u8 n )  s" def-a.f" FIXTURE ;
+: DEF-B-PATH ( -- ^u8 n )  s" def-b.f" FIXTURE ;
+: DEF-DEP-PATH ( -- ^u8 n )  s" def-dep.f" FIXTURE ;
+: DEF-DEP-CANON ( -- ^u8 n )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
-: TEXT-DEF-A ( -- ptr u8 n )
+: TEXT-DEF-A ( -- ^u8 n )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE  1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
 
-: TEXT-DEF-DEP ( -- ptr u8 n )
+: TEXT-DEF-DEP ( -- ^u8 n )
    s\" package DD\npublic\n: DEF-PUB ( -- n ) 3 ;\n;package\n: DEF-DEP ( -- n ) 4 ;\n" ;
 
-: TEXT-DEF-B ( -- ptr u8 n )
+: TEXT-DEF-B ( -- ^u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
 
-: NOWHERE ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: NOWHERE ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[]}" MSG+
    HEAR
@@ -2970,17 +2970,17 @@ variable LENGTH-N
 \ A case that navigates into the tree finds its target's line or byte in the
 \ file as it stands, not by a number every edit above the target moves.
 DYNAMIC-BUFFER TREE-TEXT u8
-: TREE-ROOM ( n -- ptr u8 )
+: TREE-ROOM ( n -- ^u8 )
    1+ TREE-TEXT-RESERVE 0 TREE-TEXT ;
-: TREE-READ ( ptr u8 n -- n )
+: TREE-READ ( ^u8 n -- n )
    [: TREE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
 \ The text of the file at PATH, held until the next read.
-: TREE$ ( ptr u8 n -- ptr u8 n )
+: TREE$ ( ^u8 n -- ^u8 n )
    TREE-READ 0 TREE-TEXT swap ;
 
 \ A file with no such line cannot hold the case's target.
-: LINE-START ( n ptr u8 n -- n )
-   {: size:n t:ptr tu:n :}
+: LINE-START ( n ^u8 n -- n )
+   {: size:n t:^ tu:n :}
    size 0 ?do
       i 0= if 0 0= else i 1- TREE-TEXT c@ 10 = then
       if i TREE-TEXT size i - t tu STARTS-WITH? if i unloop exit then then
@@ -2990,12 +2990,12 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ PATH and the line, counted from 0 as LSP positions are, of the first line of
 \ the file there that starts with TEXT.
-: PATH-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
-   {: p:ptr pu:n t:ptr tu:n :}
+: PATH-LINE ( ^u8 n ^u8 n -- ^u8 n n )
+   {: p:^ pu:n t:^ tu:n :}
    p pu TREE-READ t tu LINE-START {: at:n :}
    p pu 0 at 0 ?do i TREE-TEXT c@ 10 = if 1+ then loop ;
 
-: URI-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
+: URI-LINE ( ^u8 n ^u8 n -- ^u8 n n )
    PATH-LINE {: at:n :} URI-OF at ;
 
 \ The engine's require binding is known, but include.f's top-level dictionary
@@ -3019,8 +3019,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ roles.f's NOMINAL-PROVIDER is a dictionary call; pointer-storage.f calls
 \ nothing through the dictionary.
-: AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
-: AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
+: AIO-PATH ( -- ^u8 n )  s" src/lib/aio.f" IN-TREE ;
+: AIO-PTR-PATH ( -- ^u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
 
 : SUMTYPE-DEF-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3072,18 +3072,18 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ A constructor's MATCH arm is a source reference that checked use collection
 \ does not report. A rename of its generated word cannot safely edit the
 \ declaration and call while leaving that arm spelling behind.
-: CHOICE-PATH ( -- ptr u8 n )  s" sumtype-rename.f" FIXTURE ;
-: CHOICE-TEXT ( -- ptr u8 n )
+: CHOICE-PATH ( -- ^u8 n )  s" sumtype-rename.f" FIXTURE ;
+: CHOICE-TEXT ( -- ^u8 n )
    s\" SUMTYPE choice\n  VARIANT red ;VARIANT\n  VARIANT blue ;VARIANT\n;SUMTYPE\n: PICK ( -- choice ) CHOICE:red ;\n: PICK-CODE ( choice -- n ) MATCH choice red OF 1 ENDOF blue OF 2 ENDOF ;MATCH ;\n" ;
 
-: VARIANT-DEF-PATH ( -- ptr u8 n )  s" variant-definer-rename.f" FIXTURE ;
-: VARIANT-DEF-TEXT ( -- ptr u8 n )
+: VARIANT-DEF-PATH ( -- ^u8 n )  s" variant-definer-rename.f" FIXTURE ;
+: VARIANT-DEF-TEXT ( -- ^u8 n )
    s\" : VARIANT ( n -- ) create , does> ( -- n ) @ ;\n7 VARIANT SEVEN\n: READ-SEVEN ( -- n ) SEVEN ;\n" ;
 
-: PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
-: PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
-: SCRIPT-ARGV-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
-: TEXT-PRIM-NAV ( -- ptr u8 n )
+: PRIM-PATH ( -- ^u8 n )  s" prim-nav.f" FIXTURE ;
+: PRIM-SOURCE-PATH ( -- ^u8 n )  s" src/habu/prims.f" IN-TREE ;
+: SCRIPT-ARGV-PATH ( -- ^u8 n )  s" src/os/script-argv.f" IN-TREE ;
+: TEXT-PRIM-NAV ( -- ^u8 n )
    s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\nscript-arg-start drop\nundefine script-argc\n: script-argc ( -- n ) 7 ;\nscript-argc drop\n" ;
 
 : PRIM-DEF-TURNS ( -- )
@@ -3137,7 +3137,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 4" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED ;
 
-: ENGINE-OPEN-SOURCE ( -- ptr u8 n )
+: ENGINE-OPEN-SOURCE ( -- ^u8 n )
    SCRIPT-ARGV-PATH TREE-READ {: size:n :}
    32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
    0 TREE-TEXT size ;
@@ -3158,19 +3158,19 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" NOWHERE
    s" 4" NOWHERE ;
 
-: PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
-: PREFIX-TARGET-PATH ( -- ptr u8 n )
+: PREFIX-SOURCE-PATH ( -- ^u8 n )  s" src/core/sumtype.f" IN-TREE ;
+: PREFIX-TARGET-PATH ( -- ^u8 n )
    HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then
    HB-TARGET-LINUX-X86-64? if
       s" src/os/linux-x86-64/target.f" IN-TREE exit
    then
    s" src/os/linux/target.f" IN-TREE ;
-: PREFIX-USE-PATH ( -- ptr u8 n )  s" prefix-origin.f" FIXTURE ;
-: PREFIX-USE ( -- ptr u8 n )
+: PREFIX-USE-PATH ( -- ^u8 n )  s" prefix-origin.f" FIXTURE ;
+: PREFIX-USE ( -- ^u8 n )
    s\" NEWTYPE prefix-role\n: target-probe ( -- bool ) HB-TARGET-MACOS? ;\n: pre-cap ( -- n ) PATH-CAP ;\n" ;
 
-: PREFIX-STRUCT-PATH ( -- ptr u8 n )  s" prefix-structure.f" FIXTURE ;
-: PREFIX-STRUCT ( -- ptr u8 n )
+: PREFIX-STRUCT-PATH ( -- ^u8 n )  s" prefix-structure.f" FIXTURE ;
+: PREFIX-STRUCT ( -- ^u8 n )
    s\" 8 constant STRUCT-NAV-WIDTH\nBEGIN-STRUCTURE STRUCT-NAV\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV.F\nchar STRUCT-NAV-WIDTH drop\n' STRUCT-NAV-WIDTH drop\nEND-STRUCTURE\n: STRUCT-SKIP ( -- ) parse-name 2drop ;\nparses: STRUCT-SKIP 1\nBEGIN-STRUCTURE STRUCT-NAV-2\nSTRUCT-SKIP STRUCT-NAV-WIDTH\n8 +FIELD STRUCT-NAV-2.F\nEND-STRUCTURE\nBEGIN-STRUCTURE STRUCT-NAV-3\n' STRUCT-SKIP drop\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV-3.F\nEND-STRUCTURE\n" ;
 
 : PREFIX-DEF-TURNS ( -- )
@@ -3223,8 +3223,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 15" PREFIX-STRUCT-PATH URI-OF 6 2 13 LOCATED
    s" 16" PREFIX-STRUCT-PATH URI-OF 0 11 27 LOCATED ;
 
-: PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
-: PREFIX-SHADOW ( -- ptr u8 n )
+: PREFIX-SHADOW-PATH ( -- ^u8 n )  s" prefix-shadow.f" FIXTURE ;
+: PREFIX-SHADOW ( -- ^u8 n )
    s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
 
 : PREFIX-SHADOW-TURNS ( -- )
@@ -3237,14 +3237,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 3" NOWHERE ;
 
-: DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
-: DEF-OD-DEP-CANON ( -- ptr u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
-: DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
-: TEXT-DEF-OD-DISK ( -- ptr u8 n )
+: DEF-OD-DEP-PATH ( -- ^u8 n )  s" def-od-dep.f" FIXTURE ;
+: DEF-OD-DEP-CANON ( -- ^u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: DEF-OD-PATH ( -- ^u8 n )  s" def-od.f" FIXTURE ;
+: TEXT-DEF-OD-DISK ( -- ^u8 n )
    s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
-: TEXT-DEF-OD-EDIT ( -- ptr u8 n )
+: TEXT-DEF-OD-EDIT ( -- ^u8 n )
    s\" \\ one\n\\ two\n\\ three\n: DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
-: TEXT-DEF-OD ( -- ptr u8 n )
+: TEXT-DEF-OD ( -- ^u8 n )
    s\" require def-od-dep.f\n: DEF-USE ( -- n ) DEF-DEPA DEF-DEPB + + ;\n" ;
 
 : DEF-OPEN-DEP-TURNS ( -- )
@@ -3280,7 +3280,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    DEF-A-PATH 1 CLEAN
    s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
 
-: TEXT-DEF-A-MOVED ( -- ptr u8 n )
+: TEXT-DEF-A-MOVED ( -- ^u8 n )
    s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
 
 : DEF-AFTER-CHANGE-TURNS ( -- )
@@ -3295,13 +3295,13 @@ DYNAMIC-BUFFER TREE-TEXT u8
    DEF-A-PATH 2 CLEAN
    s" 3" DEF-A-PATH URI-OF 2 2 9 LOCATED ;
 
-: TEXT-DEF-C ( -- ptr u8 n )
+: TEXT-DEF-C ( -- ^u8 n )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
 \ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
 \ holds open, at which the verifier dies (`76 die`) and exits without a
 \ verdict as in incomplete.
-: TEXT-DEF-C-SWAPPED ( -- ptr u8 n )
+: TEXT-DEF-C-SWAPPED ( -- ^u8 n )
    TXT-B CLEAR
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
    N>BLEN TXT-B APPEND-SPAN
@@ -3330,8 +3330,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- document symbols --------------------------------------------------------
 
-: SYM-NONE-PATH ( -- ptr u8 n )  s" sym-none.f" FIXTURE ;
-: TEXT-SYM-NONE ( -- ptr u8 n )  s\" \\ no definition\n" ;
+: SYM-NONE-PATH ( -- ^u8 n )  s" sym-none.f" FIXTURE ;
+: TEXT-SYM-NONE ( -- ^u8 n )  s\" \\ no definition\n" ;
 
 : OUTLINE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
@@ -3418,8 +3418,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- hover -------------------------------------------------------------------
 
-: INITIALIZE-AS ( ptr u8 n -- )
-   {: f:ptr fu:n :}
+: INITIALIZE-AS ( ^u8 n -- )
+   {: f:^ fu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{\"textDocument\":{\"hover\":{\"contentFormat\":" MSG+
    f fu MSG+ s" }}}}}" MSG+
@@ -3429,20 +3429,20 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SHARED? @ 0= if s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS then ;
 : PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
 
-: HOVER-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: HOVER-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/hover" i iu p pu l c AT-ASK ;
 
-: HV+ ( ptr u8 n -- )  N>BLEN TXT-B APPEND-SPAN ;
+: HV+ ( ^u8 n -- )  N>BLEN TXT-B APPEND-SPAN ;
 
 \ A path as a hover names its file: relative to the working directory, which
 \ the server shares, when the file lies inside it, else the path.
-: WHERE+ ( ptr u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE HV+ ;
+: WHERE+ ( ^u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE HV+ ;
 
 \ The next frame answers the request with this id's JSON text with a hover of
 \ this kind, whose value TXT-B holds, over characters C1 to C2 of line L.
-: HOVERED ( ptr u8 n ptr u8 n n n n -- )
-   {: i:ptr iu:n k:ptr ku:n l:n c1:n c2:n :}
+: HOVERED ( ^u8 n ^u8 n n n n -- )
+   {: i:^ iu:n k:^ ku:n l:n c1:n c2:n :}
    PAR-B CLEAR TXT$ TEXT+
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
@@ -3455,11 +3455,11 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR
    MSG$ HEARD ;
 
-: HOVER-A-PATH ( -- ptr u8 n )  s" hover-a.f" IN-TREE ;
-: TEXT-HOVER-A ( -- ptr u8 n )
+: HOVER-A-PATH ( -- ^u8 n )  s" hover-a.f" IN-TREE ;
+: TEXT-HOVER-A ( -- ^u8 n )
    s\" package HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
 
-: TEXT-HOVER-A-MOVED ( -- ptr u8 n )
+: TEXT-HOVER-A-MOVED ( -- ^u8 n )
    s\" \\ two lines\n\\ above\npackage HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
 
 \ HV-ONE's lines, declared on this 1-based line.
@@ -3528,14 +3528,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
 
-: HOVER-MADE-PATH ( -- ptr u8 n )  s" hover-made.f" IN-TREE ;
-: TEXT-HOVER-MADE ( -- ptr u8 n )
-   s\" package HV-M\n16 SCRATCH-BUFFER: SB\n4 TYPED-BUFFER HV-TB n\n: HV-P ( -- ptr u8 ) SB ;\n: HV-T ( -- n ) 0 HV-TB @ ;\n;package\n" ;
+: HOVER-MADE-PATH ( -- ^u8 n )  s" hover-made.f" IN-TREE ;
+: TEXT-HOVER-MADE ( -- ^u8 n )
+   s\" package HV-M\n16 SCRATCH-BUFFER: SB\n4 TYPED-BUFFER HV-TB n\n: HV-P ( -- ^u8 ) SB ;\n: HV-T ( -- n ) 0 HV-TB @ ;\n;package\n" ;
 
 \ The lines of word W, which definer K made with effect E on 1-based line L,
 \ as Markdown.
-: MADE-MD ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: k:ptr ku:n w:ptr wu:n e:ptr eu:n l:n :}
+: MADE-MD ( ^u8 n ^u8 n ^u8 n n -- )
+   {: k:^ ku:n w:^ wu:n e:^ eu:n l:n :}
    TXT-B CLEAR s\" ```habu\n" HV+ k ku HV+ s"  " HV+ w wu HV+
    s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-m, hover-made.f:" HV+
    SB-RESET l FMT:SB-INT SB$ HV+ s\" \n```" HV+ ;
@@ -3552,22 +3552,22 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY ;
 
 : HOVER-SCRATCH-TURNS ( -- )
-   3 21 HOVER-MADE-ASK
+   3 18 HOVER-MADE-ASK
    s" SCRATCH-BUFFER:" s" SB" s" -- ^u8" 2 MADE-MD
-   s" 3" s" markdown" 3 21 23 HOVERED ;
+   s" 3" s" markdown" 3 18 20 HOVERED ;
 
 : HOVER-TYPED-TURNS ( -- )
    4 18 HOVER-MADE-ASK
    s" TYPED-BUFFER" s" HV-TB" s" n -- ^n" 3 MADE-MD
    s" 3" s" markdown" 4 18 23 HOVERED ;
 
-: HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
-: TEXT-HOVER-CVT ( -- ptr u8 n )
+: HOVER-CVT-PATH ( -- ^u8 n )  s" hover-cvt.f" IN-TREE ;
+: TEXT-HOVER-CVT ( -- ^u8 n )
    s\" require src/lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
 
 \ The lines of CVT-T's converter W, of effect E, as Markdown.
-: CVT-MD ( ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n e:ptr eu:n :}
+: CVT-MD ( ^u8 n ^u8 n -- )
+   {: w:^ wu:n e:^ eu:n :}
    TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
    s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
 
@@ -3639,8 +3639,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- document highlight ------------------------------------------------------
 
-: HIGHLIGHT-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: HIGHLIGHT-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/documentHighlight" i iu p pu l c AT-ASK ;
 
 \ The highlight the answer SYMBOLS-START began lists next: a Text one from
@@ -3655,8 +3655,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ The next frame answers the request with this id's JSON text with DEF-ONE's
 \ declaring token and its two uses, in TEXT-DEF-A moved this many lines down.
-: DEF-ONE-LIT ( ptr u8 n n -- )
-   {: i:ptr iu:n down:n :}
+: DEF-ONE-LIT ( ^u8 n n -- )
+   {: i:^ iu:n down:n :}
    i iu SYMBOLS-START
    down 2 9 HIGHLIGHT+
    down 1+ 19 26 HIGHLIGHT+
@@ -3743,10 +3743,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 5" 0 DEF-ONE-LIT ;
 
-: HU-PATH ( -- ptr u8 n )  s" hu.f" FIXTURE ;
-: HD-PATH ( -- ptr u8 n )  s" hd.f" FIXTURE ;
-: TEXT-HU ( -- ptr u8 n )  s\" : HU-ONE ( -- n ) 1 ;\n: HU-BAD ( -- ) HU-ONE ;\n" ;
-: TEXT-HD ( -- ptr u8 n )
+: HU-PATH ( -- ^u8 n )  s" hu.f" FIXTURE ;
+: HD-PATH ( -- ^u8 n )  s" hd.f" FIXTURE ;
+: TEXT-HU ( -- ^u8 n )  s\" : HU-ONE ( -- n ) 1 ;\n: HU-BAD ( -- ) HU-ONE ;\n" ;
+: TEXT-HD ( -- ^u8 n )
    s\" : HD-ONE ( -- n ) 1 ;\n: HD-TWO ( -- n ) HD-ONE ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
 
 : HIGHLIGHT-UNPROVED-TURNS ( -- )
@@ -3786,16 +3786,16 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 3" NULL-RESULT
    LOGGED ;
 
-: HL-COMMON-PATH ( -- ptr u8 n )  s" hl-common.f" FIXTURE ;
-: HL-TWICE-PATH ( -- ptr u8 n )  s" hl-twice.f" FIXTURE ;
-: HL-VIS-PATH ( -- ptr u8 n )  s" hl-vis.f" FIXTURE ;
-: HL-UNDEF-PATH ( -- ptr u8 n )  s" hl-undef.f" FIXTURE ;
-: TEXT-HL-COMMON ( -- ptr u8 n )  s\" : HL-K ( -- n ) 1 ;\n" ;
-: TEXT-HL-TWICE ( -- ptr u8 n )
+: HL-COMMON-PATH ( -- ^u8 n )  s" hl-common.f" FIXTURE ;
+: HL-TWICE-PATH ( -- ^u8 n )  s" hl-twice.f" FIXTURE ;
+: HL-VIS-PATH ( -- ^u8 n )  s" hl-vis.f" FIXTURE ;
+: HL-UNDEF-PATH ( -- ^u8 n )  s" hl-undef.f" FIXTURE ;
+: TEXT-HL-COMMON ( -- ^u8 n )  s\" : HL-K ( -- n ) 1 ;\n" ;
+: TEXT-HL-TWICE ( -- ^u8 n )
    s\" package HLP\npublic\ninclude hl-common.f\n;package\npackage HLQ\npublic\ninclude hl-common.f\n;package\n: HL-BOTH ( -- n ) HLP:HL-K HLQ:HL-K + ;\n" ;
-: TEXT-HL-VIS ( -- ptr u8 n )
+: TEXT-HL-VIS ( -- ^u8 n )
    s\" package HLV\npublic\ninclude hl-common.f\nprivate\ninclude hl-common.f\n: HL-IN ( -- n ) HL-K ;\n;package\n: HL-OUT ( -- n ) HLV:HL-K ;\n" ;
-: TEXT-HL-UNDEF ( -- ptr u8 n )
+: TEXT-HL-UNDEF ( -- ^u8 n )
    s\" include hl-common.f\n: HL-U1 ( -- n ) HL-K ;\nundefine HL-K\ninclude hl-common.f\n: HL-U2 ( -- n ) HL-K ;\n" ;
 
 \ HLP:HL-K and HLQ:HL-K, the private HL-K and the public HLV:HL-K, then the
@@ -3829,14 +3829,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ hl-case.f, on disk, as the second of one check's two readings of it read it:
 \ between the readings the file changed from `: K ( -- n ) 1 ;` to this text.
-: HL-CASE-PATH ( -- ptr u8 n )  s" hl-case.f" FIXTURE ;
-: HL-REREAD-PATH ( -- ptr u8 n )  s" hl-reread.f" FIXTURE ;
-: TEXT-HL-CASE ( -- ptr u8 n )  s\" : k ( -- n ) 2 ;\n" ;
-: TEXT-HL-REREAD ( -- ptr u8 n )
+: HL-CASE-PATH ( -- ^u8 n )  s" hl-case.f" FIXTURE ;
+: HL-REREAD-PATH ( -- ^u8 n )  s" hl-reread.f" FIXTURE ;
+: TEXT-HL-CASE ( -- ^u8 n )  s\" : k ( -- n ) 2 ;\n" ;
+: TEXT-HL-REREAD ( -- ^u8 n )
    s\" package P\npublic\ninclude hl-case.f\n;package\npackage Q\npublic\ninclude hl-case.f\n;package\n: HL-BOTH ( -- n ) P:K Q:k + ;\n" ;
 
-: HL-CASE-DEF+ ( ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n p:ptr pu:n :}
+: HL-CASE-DEF+ ( ^u8 n ^u8 n -- )
+   {: w:^ wu:n p:^ pu:n :}
    s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w wu PAR+
    s\" \",\"package\":\"" PAR+ p pu PAR+
    s\" \",\"visibility\":\"public\",\"effect\":\"-- n\",\"file\":" PAR+
@@ -3850,8 +3850,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" ,\"file\":" PAR+ HL-CASE-PATH TEXT+
    s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
 
-: HL-NULL-AT ( n n n ptr u8 n -- )
-   {: slot:n line:n ch:n l:ptr lu:n :}
+: HL-NULL-AT ( n n n ^u8 n -- )
+   {: slot:n line:n ch:n l:^ lu:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    line ch LSP-TEXT:OFFSET-AT {: at:n :}
    l lu T-LABEL
@@ -3870,7 +3870,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    PAR$ nip {: defs:n :}
    107 110 HL-CASE-USE+
    111 114 HL-CASE-USE+
-   PAR$ {: a:ptr u:n :}
+   PAR$ {: a:^ u:n :}
    a files  a files + defs files -  a defs + u defs -  NULL$ slot true
    LSP-DEFS:DEFS-KEEP
    slot 8 20 s" highlight-case-reread: P:K" HL-NULL-AT
@@ -3886,16 +3886,16 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- semantic tokens ---------------------------------------------------------
 
-: TOKENS-ASK ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n :}
+: TOKENS-ASK ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/semanticTokens/full\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-: TOKENS-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: TOKENS-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":{\"data\":[" MSG+ ;
 
@@ -3920,10 +3920,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR
    MSG$ HEARD ;
 
-: TOK-PATH ( -- ptr u8 n )  s" tok.f" FIXTURE ;
-: TEXT-TOK ( -- ptr u8 n )
+: TOK-PATH ( -- ^u8 n )  s" tok.f" FIXTURE ;
+: TEXT-TOK ( -- ^u8 n )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
    s\" 7 constant K7\nvariable V7\npackage TP\n: PRIV ( -- n ) K7 V7 @ + ;\n" HV+
    s\" public\n: PUB ( -- n ) PRIV ROOK + ;\nEXPORT ROOK\n;package\n" HV+
    s\" : SEEK ( -- n ) s\" é\" 2drop s\" ROOK\" LOOK TP:PUB dup + TP:ROOK + ;\n" HV+
@@ -4018,24 +4018,24 @@ DYNAMIC-BUFFER TREE-TEXT u8
 create SNAP-B HDR-BYTES allot
 create WAS-B HDR-BYTES allot
 
-: SNAP$ ( -- ptr u8 n )  SNAP-B SPAN$ BLEN>N ;
-: WAS$ ( -- ptr u8 n )  WAS-B SPAN$ BLEN>N ;
-: SNAP+ ( ptr u8 n -- )  N>BLEN SNAP-B APPEND-SPAN ;
+: SNAP$ ( -- ^u8 n )  SNAP-B SPAN$ BLEN>N ;
+: WAS$ ( -- ^u8 n )  WAS-B SPAN$ BLEN>N ;
+: SNAP+ ( ^u8 n -- )  N>BLEN SNAP-B APPEND-SPAN ;
 : SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
 
-: ID-INC-PATH ( -- ptr u8 n )  s" id-inc.f" FIXTURE ;
-: ID-TWICE-PATH ( -- ptr u8 n )  s" id-twice.f" FIXTURE ;
-: ID-DT-PATH ( -- ptr u8 n )  s" id-dt.f" FIXTURE ;
-: ID-PROBE-PATH ( -- ptr u8 n )  s" id-probe.f" FIXTURE ;
-: TEXT-ID-INC ( -- ptr u8 n )  s\" : K ( -- n ) 1 ;\n" ;
-: TEXT-ID-TWICE ( -- ptr u8 n )
+: ID-INC-PATH ( -- ^u8 n )  s" id-inc.f" FIXTURE ;
+: ID-TWICE-PATH ( -- ^u8 n )  s" id-twice.f" FIXTURE ;
+: ID-DT-PATH ( -- ^u8 n )  s" id-dt.f" FIXTURE ;
+: ID-PROBE-PATH ( -- ^u8 n )  s" id-probe.f" FIXTURE ;
+: TEXT-ID-INC ( -- ^u8 n )  s\" : K ( -- n ) 1 ;\n" ;
+: TEXT-ID-TWICE ( -- ^u8 n )
    s\" package P\npublic\ninclude id-inc.f\n;package\npackage Q\npublic\ninclude id-inc.f\n;package\n: ID-BOTH ( -- n ) P:K Q:K + ;\n" ;
-: TEXT-ID-DT ( -- ptr u8 n )
+: TEXT-ID-DT ( -- ^u8 n )
    s\" require src/lib/type/deftype.f\npackage ID-DT\npublic\nDEFTYPE ID-CVT\n: ID-USE ( -- n ) 5 >ID-CVT ID-CVT>N ;\n;package\n" ;
-: TEXT-ID-PROBE ( -- ptr u8 n )
+: TEXT-ID-PROBE ( -- ^u8 n )
    s\" package R\npublic\ninclude id-inc.f\n;package\n: ID-R ( -- n ) R:K ;\n" ;
 
-: ID-CHECK ( ptr u8 n ptr u8 n -- bool )
+: ID-CHECK ( ^u8 n ^u8 n -- bool )
    [: drop ;] CHECKED-MS >MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF true ENDOF
       refused OF false ENDOF
@@ -4045,16 +4045,16 @@ create WAS-B HDR-BYTES allot
       deferred OF false ENDOF
    ;MATCH ;
 
-: ID-OPEN ( ptr u8 n ptr u8 n -- n )
-   {: p:ptr pu:n t:ptr tu:n :}
+: ID-OPEN ( ^u8 n ^u8 n -- n )
+   {: p:^ pu:n t:^ tu:n :}
    p pu URI-OF 1 p pu t tu LSP-DOCS:DOC-OPEN
    p pu URI-OF LSP-DOCS:DOC-FIND MATCH option
       some OF ENDOF
       none OF s" identities: open" T-LABEL false TTRUE -1 ENDOF
    ;MATCH ;
 
-: ID-KEEP ( n ptr u8 n -- )
-   {: slot:n l:ptr lu:n :}
+: ID-KEEP ( n ^u8 n -- )
+   {: slot:n l:^ lu:n :}
    slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
    l lu T-LABEL ok TTRUE
    LSP-CHECK:VERIFY-FILES$ LSP-CHECK:VERIFY-DEFS$ LSP-CHECK:VERIFY-USES$
@@ -4102,8 +4102,8 @@ create WAS-B HDR-BYTES allot
       i LSP-DEFS:DECL-BYTES e = swap s = and and if 1+ then
    loop ;
 
-: VISIT-OF ( n n n n ptr u8 n ptr u8 n n -- n )
-   {: slot:n g:n s:n e:n nm:ptr nu:n p:ptr pu:n v:n :}
+: VISIT-OF ( n n n n ^u8 n ^u8 n n -- n )
+   {: slot:n g:n s:n e:n nm:^ nu:n p:^ pu:n v:n :}
    slot LSP-DEFS:DEFS-DECL-RANGE ?do
       i LSP-DEFS:DECL-GROUP g =
       i LSP-DEFS:DECL-BYTES e = swap s = and and
@@ -4114,8 +4114,8 @@ create WAS-B HDR-BYTES allot
    loop
    0 ;
 
-: USE-NAMES ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: slot:n u:n nm:ptr nu:n p:ptr pu:n l:ptr lu:n :}
+: USE-NAMES ( n n ^u8 n ^u8 n ^u8 n -- )
+   {: slot:n u:n nm:^ nu:n p:^ pu:n l:^ lu:n :}
    l lu T-LABEL u LSP-DEFS:USE-NAME$ nm nu T$=
    l lu T-LABEL u LSP-DEFS:USE-PACKAGE$ p pu T$=
    l lu T-LABEL u LSP-DEFS:USE-VISIT 0 > TTRUE
@@ -4199,30 +4199,30 @@ create WAS-B HDR-BYTES allot
 
 \ ---- completion --------------------------------------------------------------
 
-: CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
-: CMP-DEP-PATH ( -- ptr u8 n )  s" cmpl-dep.f" FIXTURE ;
+: CMP-A-PATH ( -- ^u8 n )  s" cmpl-a.f" FIXTURE ;
+: CMP-DEP-PATH ( -- ^u8 n )  s" cmpl-dep.f" FIXTURE ;
 
-: TEXT-CMP-DEP ( -- ptr u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
+: TEXT-CMP-DEP ( -- ^u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
 
-: TEXT-CMP-A ( -- ptr u8 n )
+: TEXT-CMP-A ( -- ^u8 n )
    s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
 \ TEXT-CMP-A with CMPL-ONE renamed CMPL-NEW, the body's bytes unmoved.
-: TEXT-CMP-A-NEW ( -- ptr u8 n )
+: TEXT-CMP-A-NEW ( -- ^u8 n )
    s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
-: COMPLETION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: COMPLETION-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/completion" i iu p pu l c AT-ASK ;
 
-: ITEMS-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: ITEMS-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
 
-: ITEM+ ( ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n d:ptr du:n :}
+: ITEM+ ( ^u8 n ^u8 n -- )
+   {: w:^ wu:n d:^ du:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
    du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
@@ -4346,50 +4346,50 @@ create WAS-B HDR-BYTES allot
 
 \ ---- document links ----------------------------------------------------------
 
-: LK-PATH ( -- ptr u8 n )  s" lk.f" FIXTURE ;
-: LK-DEP-PATH ( -- ptr u8 n )  s" lk-dep.f" FIXTURE ;
-: LK-INC-PATH ( -- ptr u8 n )  s" lk-inc.f" FIXTURE ;
-: LK-REAL-DEP ( -- ptr u8 n )  s" lk-real/lk-dep.f" FIXTURE ;
-: LK-LINK-DEP ( -- ptr u8 n )  s" lk-link/lk-dep.f" FIXTURE ;
-: LK-LINK-DOC ( -- ptr u8 n )  s" lk-link/lk.f" FIXTURE ;
+: LK-PATH ( -- ^u8 n )  s" lk.f" FIXTURE ;
+: LK-DEP-PATH ( -- ^u8 n )  s" lk-dep.f" FIXTURE ;
+: LK-INC-PATH ( -- ^u8 n )  s" lk-inc.f" FIXTURE ;
+: LK-REAL-DEP ( -- ^u8 n )  s" lk-real/lk-dep.f" FIXTURE ;
+: LK-LINK-DEP ( -- ^u8 n )  s" lk-link/lk-dep.f" FIXTURE ;
+: LK-LINK-DOC ( -- ^u8 n )  s" lk-link/lk.f" FIXTURE ;
 
 \ The path the load lines name the file at this path by.
-: LK-CANON ( ptr u8 n -- ptr u8 n )  SOURCE-ROOT:CANONICAL drop ;
+: LK-CANON ( ^u8 n -- ^u8 n )  SOURCE-ROOT:CANONICAL drop ;
 
-: TEXT-LK-LOADED ( -- ptr u8 n )  s\" \\ loaded\n" ;
-: TEXT-LK-ONE ( -- ptr u8 n )  s\" require lk-dep.f\n" ;
-: TEXT-LK-MOVED ( -- ptr u8 n )  s\" \\ moved\nrequire lk-dep.f\n" ;
+: TEXT-LK-LOADED ( -- ^u8 n )  s\" \\ loaded\n" ;
+: TEXT-LK-ONE ( -- ^u8 n )  s\" require lk-dep.f\n" ;
+: TEXT-LK-MOVED ( -- ^u8 n )  s\" \\ moved\nrequire lk-dep.f\n" ;
 
 \ After a comment holding a character UTF-16 counts as one unit and UTF-8 as
 \ two bytes, lk-dep.f required; src/lib/string.f required, which the engine
 \ provides; lk-dep.f required again by a string; lk-inc.f included; and
 \ lk-gone.f, which is not there, required, where the check stops.
-: TEXT-LK ( -- ptr u8 n )
+: TEXT-LK ( -- ^u8 n )
    s\" ( é ) require lk-dep.f\nrequire src/lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
 
 \ TEXT-LK-ONE, then one `using` more than the checker holds open, at which the
 \ verifier dies, its load reported, and exits without a verdict.
-: TEXT-LK-OVER ( -- ptr u8 n )
+: TEXT-LK-OVER ( -- ^u8 n )
    TXT-B CLEAR
    TEXT-LK-ONE N>BLEN TXT-B APPEND-SPAN
    OVER-USINGS+
    TXT$ ;
 
-: LINKS-ASK ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n :}
+: LINKS-ASK ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-: LINKS-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: LINKS-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
-: LINK+ ( n n n ptr u8 n -- )
-   {: l:n c1:n c2:n p:ptr pu:n :}
+: LINK+ ( n n n ^u8 n -- )
+   {: l:n c1:n c2:n p:^ pu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
@@ -4397,10 +4397,10 @@ create WAS-B HDR-BYTES allot
    s\" ,\"character\":" MSG+ c2 INT$ MSG+
    s\" }},\"target\":\"" MSG+ p pu URI-OF MSG+ s\" \"" MSG+ ;
 
-: READ-LINK+ ( n n n ptr u8 n -- )  LINK+ s" }" MSG+ ;
+: READ-LINK+ ( n n n ^u8 n -- )  LINK+ s" }" MSG+ ;
 
-: HELD-LINK+ ( n n n ptr u8 n -- )
-   {: l:n c1:n c2:n p:ptr pu:n :}
+: HELD-LINK+ ( n n n ^u8 n -- )
+   {: l:n c1:n c2:n p:^ pu:n :}
    l c1 c2 p pu LINK+
    TXT-B CLEAR
    s" held " HV+ p pu WHERE+
@@ -4517,23 +4517,23 @@ create WAS-B HDR-BYTES allot
 create WS-B HDR-BYTES allot
 variable WS-ROOT-U
 
-: WS+ ( ptr u8 n -- )  N>BLEN WS-B APPEND-SPAN ;
-: WS$ ( -- ptr u8 n )  WS-B SPAN$ BLEN>N ;
+: WS+ ( ^u8 n -- )  N>BLEN WS-B APPEND-SPAN ;
+: WS$ ( -- ^u8 n )  WS-B SPAN$ BLEN>N ;
 
-: IN-GRAPH ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: IN-GRAPH ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    SB-RESET s" graph/" SB-APPEND a u SB-APPEND SB$ FIXTURE ;
 
-: WS-DIR ( ptr u8 n -- )  IN-GRAPH FS:MAKE-DIR ;
+: WS-DIR ( ^u8 n -- )  IN-GRAPH FS:MAKE-DIR ;
 
-: WS-FILE ( ptr u8 n ptr u8 n -- )
-   {: n:ptr nu:n t:ptr tu:n :}
+: WS-FILE ( ^u8 n ^u8 n -- )
+   {: n:^ nu:n t:^ tu:n :}
    n nu IN-GRAPH t tu FS:WRITE-ALL ;
 
-: WS-CANON ( ptr u8 n -- ptr u8 n )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
+: WS-CANON ( ^u8 n -- ^u8 n )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
 
-: WS-NAME ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: WS-NAME ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u WS-ROOT-U @ < if a u exit then
    a WS-ROOT-U @ + u WS-ROOT-U @ - ;
 
@@ -4582,12 +4582,12 @@ variable WS-ROOT-U
    s" dyn/z8.f" s\" : Z8 ( -- ) ;\n" WS-FILE
    s" dyn/z8.f" IN-GRAPH 0 FS:CHMOD-MODE ;
 
-: WS-OPENS ( [ ptr u8 n ptr u8 n -- ] -- )
+: WS-OPENS ( [ ^u8 n ^u8 n -- ] -- )
    {: q :}
    s" w/b2.f" WS-CANON s\" : B2 ( -- ) ;\n" q execute
    s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
 
-: WS-ANSWER$ ( -- ptr u8 n )
+: WS-ANSWER$ ( -- ^u8 n )
    WS-B CLEAR
    LSP-WORKSPACE:REFUSED? if
       s" refused " WS+ LSP-WORKSPACE:BLOCKED$ WS-NAME WS+ WS$ exit
@@ -4605,16 +4605,16 @@ variable WS-ROOT-U
 \ The files that reach the file of the first name, given with the document of
 \ the second, must be these. WS-B holds the first's path while the second's
 \ is made.
-: REACHES ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: f:ptr fu:n d:ptr du:n w:ptr wu:n :}
+: REACHES ( ^u8 n ^u8 n ^u8 n -- )
+   {: f:^ fu:n d:^ du:n w:^ wu:n :}
    WS-B CLEAR f fu WS-CANON WS+
    WS$ d du WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
    SB-RESET s" workspace-reaching: " SB-APPEND f fu SB-APPEND s" , " SB-APPEND d du SB-APPEND
    SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
-: REACHES-AGAIN ( ptr u8 n ptr u8 n -- )
-   {: f:ptr fu:n w:ptr wu:n :}
+: REACHES-AGAIN ( ^u8 n ^u8 n -- )
+   {: f:^ fu:n w:^ wu:n :}
    WS-B CLEAR f fu WS-CANON WS+
    WS$ LSP-WORKSPACE:REACHING-AGAIN
    SB-RESET s" workspace-reaching: again " SB-APPEND f fu SB-APPEND
@@ -4658,44 +4658,44 @@ variable WS-ROOT-U
 
 \ A file the server reads from disk is named by its canonical path, at that
 \ path's file URI; an open document is at the URI the client opened it by.
-: CANON ( ptr u8 n -- ptr u8 n )  FIXTURE SOURCE-ROOT:CANONICAL drop ;
-: DISK-URI ( ptr u8 n -- ptr u8 n )  CANON URI-OF ;
-: OPEN-URI ( ptr u8 n -- ptr u8 n )  FIXTURE URI-OF ;
+: CANON ( ^u8 n -- ^u8 n )  FIXTURE SOURCE-ROOT:CANONICAL drop ;
+: DISK-URI ( ^u8 n -- ^u8 n )  CANON URI-OF ;
+: OPEN-URI ( ^u8 n -- ^u8 n )  FIXTURE URI-OF ;
 
-: REFS-FILE ( ptr u8 n ptr u8 n -- )
-   {: n:ptr nu:n t:ptr tu:n :}
+: REFS-FILE ( ^u8 n ^u8 n -- )
+   {: n:^ nu:n t:^ tu:n :}
    n nu FIXTURE t tu FS:WRITE-ALL ;
 
-: REFS-DIR ( ptr u8 n -- )  FIXTURE FS:MAKE-DIR ;
+: REFS-DIR ( ^u8 n -- )  FIXTURE FS:MAKE-DIR ;
 
-: REF-A-PATH ( -- ptr u8 n )  s" ref-a.f" FIXTURE ;
-: TEXT-REF-A ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK  ROOK + ;\n" ;
-: TEXT-RF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n" ;
-: TEXT-RF-MOVED ( -- ptr u8 n )  s\" \\ moved\n: ROOK ( -- n ) 1 ;\n" ;
-: TEXT-RF-TAIL ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n\\ tail\n" ;
-: TEXT-RD ( -- ptr u8 n )  s\" require f.f\n: DU ( -- n ) ROOK ;\n" ;
-: TEXT-RE ( -- ptr u8 n )  s\" require f.f\n: EU ( -- n ) ROOK ROOK + ;\n" ;
-: TEXT-RS ( -- ptr u8 n )  s\" require f.f\n: SU ( -- n ) ROOK ;\n" ;
-: TEXT-RS-BAD ( -- ptr u8 n )  s\" require f.f\n: SU ( -- ) ROOK ;\n" ;
-: TEXT-RS-PN ( -- ptr u8 n )
+: REF-A-PATH ( -- ^u8 n )  s" ref-a.f" FIXTURE ;
+: TEXT-REF-A ( -- ^u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK  ROOK + ;\n" ;
+: TEXT-RF ( -- ^u8 n )  s\" : ROOK ( -- n ) 1 ;\n" ;
+: TEXT-RF-MOVED ( -- ^u8 n )  s\" \\ moved\n: ROOK ( -- n ) 1 ;\n" ;
+: TEXT-RF-TAIL ( -- ^u8 n )  s\" : ROOK ( -- n ) 1 ;\n\\ tail\n" ;
+: TEXT-RD ( -- ^u8 n )  s\" require f.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RE ( -- ^u8 n )  s\" require f.f\n: EU ( -- n ) ROOK ROOK + ;\n" ;
+: TEXT-RS ( -- ^u8 n )  s\" require f.f\n: SU ( -- n ) ROOK ;\n" ;
+: TEXT-RS-BAD ( -- ^u8 n )  s\" require f.f\n: SU ( -- ) ROOK ;\n" ;
+: TEXT-RS-PN ( -- ^u8 n )
    s\" require f.f\n: SU ( -- n ) ROOK ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
-: TEXT-RS-DEP ( -- ptr u8 n )
+: TEXT-RS-DEP ( -- ^u8 n )
    s\" require ../out/u.f\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
-: TEXT-RU-DEP ( -- ptr u8 n )
+: TEXT-RU-DEP ( -- ^u8 n )
    s\" require ../w/f.f\n: OU ( -- n ) ROOK ;\n" ;
-: TEXT-RT ( -- ptr u8 n )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
-: TEXT-RO ( -- ptr u8 n )  s\" require ../out/m.f\n: OU ( -- n ) ROOK ;\n" ;
-: TEXT-RM ( -- ptr u8 n )  s\" require f.f\n" ;
-: TEXT-RY ( -- ptr u8 n )
+: TEXT-RT ( -- ^u8 n )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
+: TEXT-RO ( -- ^u8 n )  s\" require ../out/m.f\n: OU ( -- n ) ROOK ;\n" ;
+: TEXT-RM ( -- ^u8 n )  s\" require f.f\n" ;
+: TEXT-RY ( -- ^u8 n )
    s\" require f.f\npackage YP\n: ROOK ( -- n ) 3 ;\n: YU ( -- n ) ROOK ;\n;package\n" ;
-: TEXT-RG ( -- ptr u8 n )  s\" : KAY ( -- n ) 1 ;\n" ;
-: TEXT-LIFE ( -- ptr u8 n )
+: TEXT-RG ( -- ^u8 n )  s\" : KAY ( -- n ) 1 ;\n" ;
+: TEXT-LIFE ( -- ^u8 n )
    s\" include g.f\nundefine KAY\ninclude g.f\n: LU ( -- n ) KAY ;\n" ;
-: TEXT-RVG ( -- ptr u8 n )  s\" : GROOK ( -- n ) 1 ;\n" ;
-: TEXT-RVH ( -- ptr u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
-: TEXT-RVE ( -- ptr u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
+: TEXT-RVG ( -- ^u8 n )  s\" : GROOK ( -- n ) 1 ;\n" ;
+: TEXT-RVH ( -- ^u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
+: TEXT-RVE ( -- ^u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
 
-: TEXT-RID ( -- ptr u8 n )
+: TEXT-RID ( -- ^u8 n )
    TXT-B CLEAR
    s\" package RP\npublic\ninclude g.f\n: PU ( -- n ) KAY ;\n;package\n" HV+
    s\" package RQ\npublic\ninclude g.f\n;package\n" HV+
@@ -4706,15 +4706,15 @@ variable WS-ROOT-U
    TXT$ ;
 
 \ A shared workspace session has already initialized with its fixed root.
-: INITIALIZE-WITH ( ptr u8 n -- )
-   {: m:ptr mu:n :}
+: INITIALIZE-WITH ( ^u8 n -- )
+   {: m:^ mu:n :}
    SHARED? @ if exit then
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}," MSG+
    m mu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
-: ROOT-URI+ ( ptr u8 n -- )
+: ROOT-URI+ ( ^u8 n -- )
    PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
 
 : WORKSPACE-INIT ( -- )
@@ -4722,15 +4722,15 @@ variable WS-ROOT-U
    s" workspace/w" FIXTURE FS:MAKE-DIR
    s" workspace/w" ROOT-URI+ PAR$ INITIALIZE-WITH ;
 
-: DECL-TOO ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
-: DECL-NOT ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
+: DECL-TOO ( -- ^u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
+: DECL-NOT ( -- ^u8 n )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
 
-: REFS-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
+: REFS-ASK ( ^u8 n ^u8 n n n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
    s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
 
-: REF+ ( ptr u8 n n n n -- )
-   {: u:ptr uu:n l:n c1:n c2:n :}
+: REF+ ( ^u8 n n n n -- )
+   {: u:^ uu:n l:n c1:n c2:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"uri\":\"" MSG+ u uu MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
@@ -4754,16 +4754,16 @@ variable WS-ROOT-U
 \ The refusal the next frame must be, of the rename with this id's JSON text
 \ whose gather left N files out, begun in EXP: NAMED+ adds each file,
 \ NAMED-END hears it.
-: NOT-APPLIED ( ptr u8 n n -- )
-   {: i:ptr iu:n n:n :}
+: NOT-APPLIED ( ^u8 n n -- )
+   {: i:^ iu:n n:n :}
    EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" EXP+ i iu EXP+
    s\" ,\"error\":{\"code\":-32803,\"message\":\"Rename not applied: " EXP+ n NOT-COVERED ;
 
 \ The file at this canonical path left out, named relative to the working
 \ directory the server shares, and why.
-: NAMED+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n w:ptr wu:n :}
+: NAMED+ ( ^u8 n ^u8 n -- )
+   {: p:^ pu:n w:^ wu:n :}
    s" \n" EXP+
    p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+
    s" : " EXP+ w wu EXP+ ;
@@ -4780,15 +4780,15 @@ variable WS-ROOT-U
    HEAR
    NEXT-BODY EXP$ STR= ;
 
-: ELSEWHERE+ ( ptr u8 n n ptr u8 n -- )
-   {: p:ptr pu:n l:n s:ptr su:n :}
+: ELSEWHERE+ ( ^u8 n n ^u8 n -- )
+   {: p:^ pu:n l:n s:^ su:n :}
    p pu CANON s" the token at line " NAMED+
    l INT$ EXP+
    s"  is bound to another word under " EXP+
    s su CANON SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+ ;
 
-: FAILED ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n :}
+: FAILED ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n :}
    HEAR
    OUT-AT @ {: from:n :}
    i iu -32803 REFUSED
@@ -4957,8 +4957,8 @@ variable WS-ROOT-U
    1 NAMED s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
 
-: UNV-ANSWER ( ptr u8 n bool n -- )
-   {: i:ptr iu:n opened:bool at:n :}
+: UNV-ANSWER ( ^u8 n bool n -- )
+   {: i:^ iu:n opened:bool at:n :}
    i iu SYMBOLS-START
    s" refs-unv/w/f.f" DISK-URI 0 2 6 REF+
    s" refs-unv/w/d.f" OPEN-URI 1 14 18 REF+
@@ -5035,10 +5035,10 @@ variable WS-ROOT-U
    s" refs-dep/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-: TEXT-REFS-READ ( -- ptr u8 n )
+: TEXT-REFS-READ ( -- ^u8 n )
    s\" require d.f\ninclude x.f\n: EU ( -- n ) ROOK ;\n: BAD ( -- ) NO-SUCH-WORD ;\n" ;
-: TEXT-REFS-READ-X ( -- ptr u8 n )  s\" \\ no changes to ROOK\n" ;
-: TEXT-REFS-READ-EDIT ( -- ptr u8 n )
+: TEXT-REFS-READ-X ( -- ^u8 n )  s\" \\ no changes to ROOK\n" ;
+: TEXT-REFS-READ-EDIT ( -- ^u8 n )
    s\" \\ changed after the probe read it\n" ;
 
 : REFS-PARTIAL-EDIT-TURNS ( -- )
@@ -5058,10 +5058,10 @@ variable WS-ROOT-U
    s" refs-read/w/x.f" FIXTURE 2 CLEAN
    s" 4" SYMBOLS-START SYMBOLS-END ;
 
-: REFS-ALIAS-A ( -- ptr u8 n )  s" refs-alias/a.f" FIXTURE ;
-: REFS-ALIAS-B ( -- ptr u8 n )  s" refs-alias/b.f" FIXTURE ;
-: TEXT-REFS-ALIAS-A ( -- ptr u8 n )  s\" : DUCK ( -- n ) 1 ;\n" ;
-: TEXT-REFS-ALIAS-B ( -- ptr u8 n )
+: REFS-ALIAS-A ( -- ^u8 n )  s" refs-alias/a.f" FIXTURE ;
+: REFS-ALIAS-B ( -- ^u8 n )  s" refs-alias/b.f" FIXTURE ;
+: TEXT-REFS-ALIAS-A ( -- ^u8 n )  s\" : DUCK ( -- n ) 1 ;\n" ;
+: TEXT-REFS-ALIAS-B ( -- ^u8 n )
    s\" : ROOK ( -- n ) 1 ;\n: USE-ROOK ( -- n ) ROOK ;\n" ;
 
 \ Two URIs of one canonical file have different open buffers. The check of
@@ -5135,8 +5135,8 @@ variable WS-ROOT-U
    s" refs-dig/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-: TEXT-RDB ( -- ptr u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
-: TEXT-RSTL ( -- ptr u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RDB ( -- ^u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RSTL ( -- ^u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
 
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
@@ -5198,9 +5198,9 @@ variable WS-ROOT-U
 \ open, requires ../h.f, above the folder and open, whose load of lib/g.f
 \ resolves against e.f's root, the folder, and whose own check is refused; e.f
 \ and h.f use GROOK.
-: TEXT-RXB ( -- ptr u8 n )  s\" require ../s/x.f\n: BU ( -- n ) ROOK ;\n" ;
-: TEXT-RXX ( -- ptr u8 n )  s\" require y.f\n: XU ( -- n ) ROOK ;\n" ;
-: TEXT-RXY ( -- ptr u8 n )  s\" require ../f.f\n" ;
+: TEXT-RXB ( -- ^u8 n )  s\" require ../s/x.f\n: BU ( -- n ) ROOK ;\n" ;
+: TEXT-RXX ( -- ^u8 n )  s\" require y.f\n: XU ( -- n ) ROOK ;\n" ;
+: TEXT-RXY ( -- ^u8 n )  s\" require ../f.f\n" ;
 
 : REFS-RCH-TURNS ( -- )
    s" refs-rch" REFS-DIR s" refs-rch/w" REFS-DIR s" refs-rch/w/q" REFS-DIR
@@ -5238,10 +5238,10 @@ variable WS-ROOT-U
    s" refs-rch/w/e.f" OPEN-URI 1 14 19 REF+
    SYMBOLS-END ;
 
-: TEXT-RFD ( -- ptr u8 n )
+: TEXT-RFD ( -- ^u8 n )
    s\" : ROOK ( -- n ) 1 ;\nrequire ../z.f\nrequire y.f\n: DU ( -- n ) ROOK ;\n" ;
-: TEXT-RFZ ( -- ptr u8 n )  s\" : ZU ( -- n ) ROOK ;\n" ;
-: TEXT-RFY ( -- ptr u8 n )  s\" : YU ( -- n ) ROOK ;\n" ;
+: TEXT-RFZ ( -- ^u8 n )  s\" : ZU ( -- n ) ROOK ;\n" ;
+: TEXT-RFY ( -- ^u8 n )  s\" : YU ( -- n ) ROOK ;\n" ;
 
 : REFS-FRG-TURNS ( -- )
    s" refs-frg" REFS-DIR s" refs-frg/w" REFS-DIR
@@ -5262,9 +5262,9 @@ variable WS-ROOT-U
    s" refs-frg/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
-: TEXT-RCD ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\nrequire z.f\n" ;
-: TEXT-RCE ( -- ptr u8 n )  s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n" ;
-: TEXT-RCE-BAD ( -- ptr u8 n )
+: TEXT-RCD ( -- ^u8 n )  s\" : ROOK ( -- n ) 1 ;\nrequire z.f\n" ;
+: TEXT-RCE ( -- ^u8 n )  s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n" ;
+: TEXT-RCE-BAD ( -- ^u8 n )
    s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n: EU ( -- n ) NOPE ;\n" ;
 
 : REFS-CNF-TURNS ( -- )
@@ -5289,11 +5289,11 @@ variable WS-ROOT-U
 \ z.f alone, and e.f requiring it, check the same bytes outside REVIEW,
 \ binding the engine's primitive and image word. These checks verify, so each
 \ shared token conflicts.
-: TEXT-ENG-D ( -- ptr u8 n )
+: TEXT-ENG-D ( -- ^u8 n )
    s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: ASCII-LOWER ( n -- n ) ;\nrequire z.f\n;package\n" ;
-: TEXT-ENG-Z ( -- ptr u8 n )
+: TEXT-ENG-Z ( -- ^u8 n )
    s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- n ) ASCII-LOWER ;\n" ;
-: TEXT-ENG-E ( -- ptr u8 n )  s\" require z.f\n" ;
+: TEXT-ENG-E ( -- ^u8 n )  s\" require z.f\n" ;
 
 : REFS-ENG-TURNS ( -- )
    s" refs-eng" REFS-DIR s" refs-eng/w" REFS-DIR
@@ -5333,7 +5333,7 @@ variable WS-ROOT-U
       s" refs-img/w/z.f" DISK-URI 1 16 27 REF+ SYMBOLS-END
    then ;
 
-: TEXT-RPKG ( -- ptr u8 n )
+: TEXT-RPKG ( -- ^u8 n )
    s\" package RQ\npublic\ninclude f.f\n: QU ( -- n ) ROOK ;\n;package\n" ;
 
 \ A rename of the token would change q.f's composition, so q.f is named.
@@ -5353,7 +5353,7 @@ variable WS-ROOT-U
    s" 3" SYMBOLS-START s" refs-pkg/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END ;
 
 \ A rename of the token would change RQ's word too, so q2.f is named.
-: TEXT-RVIS ( -- ptr u8 n )
+: TEXT-RVIS ( -- ^u8 n )
    TXT-B CLEAR
    s\" include f.f\npackage RQ\npublic\ninclude f.f\n;package\n" HV+
    s\" : QU ( -- n ) RQ:ROOK ROOK + ;\n" HV+
@@ -5374,14 +5374,14 @@ variable WS-ROOT-U
    s" 3" SYMBOLS-START s" refs-vis/w/f.f" OPEN-URI 0 2 6 REF+
    s" refs-vis/w/q2.f" DISK-URI 5 22 26 REF+ SYMBOLS-END ;
 
-: TEXT-RN ( -- ptr u8 n )
+: TEXT-RN ( -- ^u8 n )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
    s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" XREF-FIND drop ;\n" HV+
    s\" : TWO ( -- n ) ROOK 1 + ;\n" HV+
    TXT$ ;
 
-: RN-PATH ( -- ptr u8 n )  s" ref-n.f" FIXTURE ;
+: RN-PATH ( -- ^u8 n )  s" ref-n.f" FIXTURE ;
 : RN-REF+ ( n n n -- )
    {: l:n c1:n c2:n :}
    RN-PATH URI-OF l c1 c2 REF+ ;
@@ -5401,15 +5401,15 @@ variable WS-ROOT-U
    s" 4" SYMBOLS-START 0 2 6 RN-REF+ RN-USES+ SYMBOLS-END
    s" 5" SYMBOLS-START RN-USES+ SYMBOLS-END ;
 
-: TEXT-PR-A ( -- ptr u8 n )  s\" : A ( -- n ) 2 3 * ;\n" ;
-: TEXT-PR-B ( -- ptr u8 n )  s\" : B ( -- n ) 4 5 * ;\n" ;
-: TEXT-PR-C ( -- ptr u8 n )  s\" : C ( -- n ) 6 7 * ;\n" ;
-: TEXT-PR-ELAB ( -- ptr u8 n )
+: TEXT-PR-A ( -- ^u8 n )  s\" : A ( -- n ) 2 3 * ;\n" ;
+: TEXT-PR-B ( -- ^u8 n )  s\" : B ( -- n ) 4 5 * ;\n" ;
+: TEXT-PR-C ( -- ^u8 n )  s\" : C ( -- n ) 6 7 * ;\n" ;
+: TEXT-PR-ELAB ( -- ^u8 n )
    s\" : E ( n [ n -- n ] -- n ) execute ;\n" ;
-: TEXT-PR-SHADOW ( -- ptr u8 n )
+: TEXT-PR-SHADOW ( -- ^u8 n )
    s\" undefine *\n: * ( n n -- n ) + ;\n: S ( -- n ) 2 3 * ;\n" ;
-: PR-A-PATH ( -- ptr u8 n )  s" refs-prim/w/a.f" FIXTURE ;
-: PR-C-PATH ( -- ptr u8 n )  s" refs-prim/w/c.f" FIXTURE ;
+: PR-A-PATH ( -- ^u8 n )  s" refs-prim/w/a.f" FIXTURE ;
+: PR-C-PATH ( -- ^u8 n )  s" refs-prim/w/c.f" FIXTURE ;
 
 : PRIM-REF-TREE ( -- )
    s" refs-prim" REFS-DIR s" refs-prim/w" REFS-DIR
@@ -5423,7 +5423,7 @@ variable WS-ROOT-U
    s" refs-prim-decl/w/a.f" TEXT-PR-A REFS-FILE
    s" refs-prim-decl/w/b.f" TEXT-PR-B REFS-FILE
    s" refs-prim-decl/w/s.f" TEXT-PR-SHADOW REFS-FILE ;
-: PR-DECL-A-PATH ( -- ptr u8 n )  s" refs-prim-decl/w/a.f" FIXTURE ;
+: PR-DECL-A-PATH ( -- ^u8 n )  s" refs-prim-decl/w/a.f" FIXTURE ;
 
 : PRIM-REF-USES ( -- )
    s" refs-prim/w/a.f" OPEN-URI 0 17 18 REF+
@@ -5460,7 +5460,7 @@ variable WS-ROOT-U
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
-: TEXT-PR-UPPER ( -- ptr u8 n )
+: TEXT-PR-UPPER ( -- ^u8 n )
    s\" : A ( -- ) SEAL-CAPTURE ;\n" ;
 
 : PRIM-UPPER-TURNS ( -- )
@@ -5480,19 +5480,19 @@ variable WS-ROOT-U
    SYMBOLS-END ;
 
 \ The second wave starts after four captures have run together.
-: PRIM-WAVE-PATH ( n -- ptr u8 n )
+: PRIM-WAVE-PATH ( n -- ^u8 n )
    {: k:n :}
    SB-RESET s" refs-prim-wave/w/" SB-APPEND
    k 10 < if s" 0" SB-APPEND then
    k FMT:SB-U s" .f" SB-APPEND SB$ ;
 
-: TEXT-PR-WAVE-DEP ( -- ptr u8 n )
+: TEXT-PR-WAVE-DEP ( -- ^u8 n )
    s\" require dep.f\n: A ( -- n ) 2 3 * DEP + ;\n" ;
-: TEXT-PR-WAVE-BAD ( -- ptr u8 n )
+: TEXT-PR-WAVE-BAD ( -- ^u8 n )
    s\" : B ( -- n ) NOPE ;\n" ;
-: TEXT-PR-DEP-DISK ( -- ptr u8 n )
+: TEXT-PR-DEP-DISK ( -- ^u8 n )
    s\" : DEP ( -- n ) NOPE ;\n" ;
-: TEXT-PR-DEP-OPEN ( -- ptr u8 n )
+: TEXT-PR-DEP-OPEN ( -- ^u8 n )
    s\" : DEP ( -- n ) 3 ;\n" ;
 
 : PRIM-WAVE-TURNS ( -- )
@@ -5528,7 +5528,7 @@ variable WS-ROOT-U
 
 \ An overflowing subject in the second lane makes that lane retry individually,
 \ including a later subject.
-: PRIM-FAIL-PATH ( n -- ptr u8 n )
+: PRIM-FAIL-PATH ( n -- ^u8 n )
    {: k:n :}
    SB-RESET s" refs-prim-fail/w/" SB-APPEND
    k 10 < if s" 0" SB-APPEND then
@@ -5628,7 +5628,7 @@ variable WS-ROOT-U
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
 
-: TEXT-PR-BAD ( -- ptr u8 n )  s\" : BAD ( -- n ) 2 3 * NOPE ;\n" ;
+: TEXT-PR-BAD ( -- ^u8 n )  s\" : BAD ( -- n ) 2 3 * NOPE ;\n" ;
 : PRIM-COVER-TURNS ( -- )
    s" refs-prim-cover" REFS-DIR s" refs-prim-cover/w" REFS-DIR
    s" refs-prim-cover/w/a.f" TEXT-PR-A REFS-FILE
@@ -5684,78 +5684,78 @@ variable PROBE-DECLS
    s" references-probe: removed after the throw" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
-: TEXT-BI-A ( -- ptr u8 n )
+: TEXT-BI-A ( -- ^u8 n )
    s\" : A ( -- n ) SCRIPT-ARGC ;\n: C ( -- n ) SCRIPT-ARG-START ;\n" ;
-: TEXT-BI-B ( -- ptr u8 n )  s\" : B ( -- n ) SCRIPT-ARGC ;\n" ;
-: TEXT-BI-SHADOW ( -- ptr u8 n )
+: TEXT-BI-B ( -- ^u8 n )  s\" : B ( -- n ) SCRIPT-ARGC ;\n" ;
+: TEXT-BI-SHADOW ( -- ^u8 n )
    s\" package SH\n: SCRIPT-ARGC ( -- n ) 1 ;\n: S ( -- n ) SCRIPT-ARGC ;\n;package\n" ;
-: BI-A-PATH ( -- ptr u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
+: BI-A-PATH ( -- ^u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
 \ The image's saved byte for SCRIPT-ARGC: where its declaration's name starts
 \ in the file. The fake puts the same spelling there as an ordinary use.
 : BI-FAKE-AT ( -- n )
    SCRIPT-ARGV-PATH TREE-READ s" : SCRIPT-ARGC " LINE-START 2 + ;
-: BI-SOURCE-FAKE$ ( -- ptr u8 n )
+: BI-SOURCE-FAKE$ ( -- ^u8 n )
    TXT-B CLEAR
    BI-FAKE-AT 0 ?do s"  " HV+ loop
    s\" SCRIPT-ARGC drop\n" HV+
    TXT$ ;
 
-: BI-SOURCE-SHIFT$ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
+: BI-SOURCE-SHIFT$ ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    TXT-B CLEAR
    s\" \n" HV+
    path pathu TREE$ HV+
    TXT$ ;
 
-: BI-SOURCE-UNENDED$ ( -- ptr u8 n )
+: BI-SOURCE-UNENDED$ ( -- ^u8 n )
    TXT-B CLEAR
    SCRIPT-ARGV-PATH TREE$ HV+
    s\" \n: BAD ( -- n" HV+
    TXT$ ;
 
-: BI-SOURCE-UNBALANCED$ ( -- ptr u8 n )
+: BI-SOURCE-UNBALANCED$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;using\n" ;
-: BI-SOURCE-RETIRED$ ( -- ptr u8 n )
+: BI-SOURCE-RETIRED$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n" ;
-: BI-SOURCE-REPLACED$ ( -- ptr u8 n )
+: BI-SOURCE-REPLACED$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
-: BI-SOURCE-TRUST-UNENDED$ ( -- ptr u8 n )
+: BI-SOURCE-TRUST-UNENDED$ ( -- ^u8 n )
    s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1" ;
-: BI-SOURCE-USING-CRASH$ ( -- ptr u8 n )
+: BI-SOURCE-USING-CRASH$ ( -- ^u8 n )
    TXT-B CLEAR
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
    17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
    TXT$ ;
-: BI-SOURCE-CAST-REFUSED$ ( -- ptr u8 n )
+: BI-SOURCE-CAST-REFUSED$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
 
-: BI-SOURCE-REFUSED$ ( -- ptr u8 n )
+: BI-SOURCE-REFUSED$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) drop ;\n: SCRIPT-ARG-START ( -- n ) 1 ;\n" ;
-: BI-SOURCE-PARSED$ ( -- ptr u8 n )
+: BI-SOURCE-PARSED$ ( -- ^u8 n )
    s\" : SKIP-DECL ( -- ) 8 0 do parse-name 2drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
-: BI-SOURCE-UNTERM$ ( -- ptr u8 n )
+: BI-SOURCE-UNTERM$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" unclosed\n" ;
-: BI-SOURCE-DEFERRED$ ( -- ptr u8 n )
+: BI-SOURCE-DEFERRED$ ( -- ^u8 n )
    s\" : MK ( -- ) create 0 , ;\nparses: MK 1\nMK THING\n: SCRIPT-ARGC ( -- n ) THING @ ;\n" ;
-: BI-SOURCE-OPAQUE$ ( -- ptr u8 n )
+: BI-SOURCE-OPAQUE$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" undefine SCRIPT-ARGC\" evaluate\n" ;
-: BI-SOURCE-REPLACED-DEFINER$ ( -- ptr u8 n )
+: BI-SOURCE-REPLACED-DEFINER$ ( -- ^u8 n )
    s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name 2drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
-: BI-SOURCE-REFUSED-TRUST$ ( -- ptr u8 n )
+: BI-SOURCE-REFUSED-TRUST$ ( -- ^u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nTRUSTED: REVIEW-BAD ( -- zzz-unknown ) 1 ;\n" ;
-: BI-SOURCE-REFUSED-OPAQUE$ ( -- ptr u8 n )
+: BI-SOURCE-REFUSED-OPAQUE$ ( -- ^u8 n )
    TXT-B CLEAR
    BI-SOURCE-REFUSED-TRUST$ HV+
    s\" undefine SCRIPT-ARGC\n" HV+
    TXT$ ;
-: BI-SOURCE-TRUST$ ( -- ptr u8 n )
+: BI-SOURCE-TRUST$ ( -- ^u8 n )
    s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1 ;\n" ;
-: BI-SOURCE-TRUST-DOES-BAD$ ( -- ptr u8 n )
-   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) drop ;\n" ;
-: BI-SOURCE-TRUST-DOES$ ( -- ptr u8 n )
-   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) ;\n" ;
-: BI-SOURCE-CHECKED-DOES$ ( -- ptr u8 n )
-   s\" : PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) ;\n" ;
+: BI-SOURCE-TRUST-DOES-BAD$ ( -- ^u8 n )
+   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ^^a ) drop ;\n" ;
+: BI-SOURCE-TRUST-DOES$ ( -- ^u8 n )
+   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ^^a ) ;\n" ;
+: BI-SOURCE-CHECKED-DOES$ ( -- ^u8 n )
+   s\" : PTR-VARIABLE ( -- ) create 0 , does> ( -- ^^a ) ;\n" ;
 
 : BI-USES+ ( -- )
    s" refs-builtin/w/a.f" OPEN-URI 0 13 24 REF+
@@ -5962,9 +5962,9 @@ variable PROBE-DECLS
 
 \ xref.f's top-level require defers its index; code-bytes.f holds only
 \ declarations.
-: TEXT-BI-OTHER ( -- ptr u8 n )
-   s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n: Z ( -- ) WORDS ;\n" ;
-: BI-OTHER-PATH ( -- ptr u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
+: TEXT-BI-OTHER ( -- ^u8 n )
+   s\" : X ( ^n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n: Z ( -- ) WORDS ;\n" ;
+: BI-OTHER-PATH ( -- ^u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
 
 : REFS-BUILTIN-OTHER-TURNS ( -- )
    s" refs-builtin-other" REFS-DIR s" refs-builtin-other/w" REFS-DIR
@@ -6061,12 +6061,12 @@ variable PROBE-DECLS
 
 \ ---- rename ------------------------------------------------------------------
 
-: PREPARE-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: PREPARE-ASK ( ^u8 n ^u8 n n n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n :}
    s" textDocument/prepareRename" i iu p pu l c AT-ASK ;
 
-: RANGED ( ptr u8 n n n n -- )
-   {: i:ptr iu:n l:n c1:n c2:n :}
+: RANGED ( ^u8 n n n n -- )
+   {: i:^ iu:n l:n c1:n c2:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
@@ -6076,8 +6076,8 @@ variable PROBE-DECLS
    HEAR
    MSG$ HEARD ;
 
-: RN-PREP-PATH ( -- ptr u8 n )  s" rn-prep.f" FIXTURE ;
-: TEXT-RN-PREP ( -- ptr u8 n )
+: RN-PREP-PATH ( -- ^u8 n )  s" rn-prep.f" FIXTURE ;
+: TEXT-RN-PREP ( -- ^u8 n )
    s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK  + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
 
 : RENAME-PREPARE-TURNS ( -- )
@@ -6122,11 +6122,11 @@ variable PROBE-DECLS
    s" 14" 2 2 6 RANGED
    HEAR s" 15" NULL-RESULT ;
 
-: RENAME-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
+: RENAME-ASK ( ^u8 n ^u8 n n n ^u8 n -- )
+   {: i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
    s" textDocument/rename" i iu p pu l c x xu AT-ASK-WITH ;
 
-: CROW ( -- ptr u8 n )  s\" ,\"newName\":\"CROW\"" ;
+: CROW ( -- ^u8 n )  s\" ,\"newName\":\"CROW\"" ;
 
 : SUMTYPE-RENAME-TURNS ( -- )
    SESSION-INITIALIZE
@@ -6142,19 +6142,19 @@ variable PROBE-DECLS
    HEAR s" 4" -32803 REFUSED
    HEAR s" 5" -32803 REFUSED ;
 
-: EDITS-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: EDITS-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"changes\":{" MSG+ ;
 
-: EDITS-IN ( ptr u8 n -- )
-   {: u:ptr uu:n :}
+: EDITS-IN ( ^u8 n -- )
+   {: u:^ uu:n :}
    MSG$ s" {" ENDS-WITH? 0= if s" ]," MSG+ then
    s\" \"" MSG+ u uu MSG+ s\" \":[" MSG+ ;
 
-: EDIT-AS+ ( n n n ptr u8 n -- )
-   {: l:n c1:n c2:n t:ptr tu:n :}
+: EDIT-AS+ ( n n n ^u8 n -- )
+   {: l:n c1:n c2:n t:^ tu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
@@ -6182,7 +6182,7 @@ variable PROBE-DECLS
    1 10 15 EDIT+  2 22 27 EDIT+
    EDITS-END ;
 
-: ROOK-EDITS ( ptr u8 n -- )
+: ROOK-EDITS ( ^u8 n -- )
    EDITS-START RN-PREP-PATH URI-OF EDITS-IN
    2 2 6 EDIT+  3 15 19 EDIT+  3 20 24 EDIT+  5 19 23 EDIT+
    EDITS-END ;
@@ -6284,8 +6284,8 @@ variable PROBE-DECLS
    s" 4" s" rn-unv/w/s.f" CANON FAILED ;
 
 \ rn-out/h.f loads lib/g.f from e.f's root, the folder.
-: TEXT-RVF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: FU ( -- n ) ROOK ;\n" ;
-: TEXT-RVD ( -- ptr u8 n )  s\" require ../f.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RVF ( -- ^u8 n )  s\" : ROOK ( -- n ) 1 ;\n: FU ( -- n ) ROOK ;\n" ;
+: TEXT-RVD ( -- ^u8 n )  s\" require ../f.f\n: DU ( -- n ) ROOK ;\n" ;
 
 : RENAME-OUT-TURNS ( -- )
    s" rn-out" REFS-DIR s" rn-out/w" REFS-DIR s" rn-out/w/lib" REFS-DIR
@@ -6453,8 +6453,8 @@ variable PROBE-DECLS
    s" 3" 1 NOT-APPLIED s" rn-vis/w/q2.f" CANON
    s" declares another word at the declaration's token" NAMED+ NAMED-END ;
 
-: TEXT-RX ( -- ptr u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
-: TEXT-RU ( -- ptr u8 n )  s\" require x.f\n: UU ( -- n ) RX:ROOK ;\n" ;
+: TEXT-RX ( -- ^u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
+: TEXT-RU ( -- ^u8 n )  s\" require x.f\n: UU ( -- n ) RX:ROOK ;\n" ;
 
 \ Once x.f is opened and checked, the EXPORT's operand asked there: -32803
 \ naming x.f, then u.f's list, from its check over the open x.f, a turn after
@@ -6486,10 +6486,10 @@ variable PROBE-DECLS
    s" 6" s" rn-exp/w/x.f" CANON FAILED
    s" rn-exp/w/u.f" FIXTURE 1 CLEAN ;
 
-: RNN-PATH ( -- ptr u8 n )  s" rn-named.f" FIXTURE ;
-: TEXT-RNN ( -- ptr u8 n )
+: RNN-PATH ( -- ^u8 n )  s" rn-named.f" FIXTURE ;
+: TEXT-RNN ( -- ^u8 n )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
    s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: TWO ( -- n ) ROOK 1 + ;\ns\" ROOK\" LOOK\n" HV+
    s\" package RNN\npublic\n: ROOK ( -- n ) 2 ;\n;package\n" HV+
    s\" : SEEK2 ( -- ) s\" RNN:ROOK\" LOOK ;\ns\" RNN:ROOK\" LOOK\n" HV+
@@ -6498,8 +6498,8 @@ variable PROBE-DECLS
 \ rn-named.f's global ROOK edited to this text where it is declared and used
 \ and between each literal's quotes, in the answer to the request with this
 \ id's JSON text.
-: RNN-EDITS ( ptr u8 n ptr u8 n -- )
-   {: i:ptr iu:n t:ptr tu:n :}
+: RNN-EDITS ( ^u8 n ^u8 n -- )
+   {: i:^ iu:n t:^ tu:n :}
    i iu EDITS-START RNN-PATH URI-OF EDITS-IN
    0 2 6 t tu EDIT-AS+  3 17 21 t tu EDIT-AS+  4 15 19 t tu EDIT-AS+  5 3 7 t tu EDIT-AS+
    EDITS-END ;
@@ -6526,7 +6526,7 @@ variable PROBE-DECLS
    s" 7" s" :CROW" RNN-EDITS
    HEAR s" 8" -32803 REFUSED ;
 
-: TEXT-RF-DOWN ( -- ptr u8 n )  s\" \\ one\n\\ two\n: ROOK ( -- n ) 1 ;\n" ;
+: TEXT-RF-DOWN ( -- ^u8 n )  s\" \\ one\n\\ two\n: ROOK ( -- n ) 1 ;\n" ;
 : RENAME-OPEN-TURNS ( -- )
    s" rn-uns" REFS-DIR s" rn-uns/w" REFS-DIR
    s" rn-uns/w/f.f" TEXT-RF REFS-FILE
@@ -6556,8 +6556,8 @@ variable PROBE-DECLS
 
 \ ---- cancellation ------------------------------------------------------------
 
-: CANCELS ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: CANCELS ( ^u8 n -- )
+   {: i:^ iu:n :}
    PAR-B CLEAR
    s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
    s" $/cancelRequest" PAR$ TELL ;
@@ -6646,10 +6646,10 @@ variable PROBE-DECLS
 
 \ No folder is given, so a request about ROOK gathers from the open documents,
 \ d.f first, then the rest in the order of their paths.
-: TEXT-HE ( -- ptr u8 n )  s\" require d.f\n: EU ( -- n ) ROOK ;\n" ;
-: TEXT-HG ( -- ptr u8 n )  s\" require d.f\n: GU ( -- n ) ROOK ;\n" ;
-: TEXT-HH ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ;\n" ;
-: TEXT-HH-NEW ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ROOK + ;\n" ;
+: TEXT-HE ( -- ^u8 n )  s\" require d.f\n: EU ( -- n ) ROOK ;\n" ;
+: TEXT-HG ( -- ^u8 n )  s\" require d.f\n: GU ( -- n ) ROOK ;\n" ;
+: TEXT-HH ( -- ^u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ;\n" ;
+: TEXT-HH-NEW ( -- ^u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ROOK + ;\n" ;
 
 : HALT-TREE ( -- )
    s" refs-halt" FIXTURE FS:MAKE-DIRS
@@ -6678,8 +6678,8 @@ variable PROBE-DECLS
 
 \ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
 \ JSON text, in one turn.
-: PAIR-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: PAIR-START ( ^u8 n -- )
+   {: i:^ iu:n :}
    HALT-TREE
    SESSION-INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
@@ -6691,8 +6691,8 @@ variable PROBE-DECLS
 
 \ The answer to the request with this id's JSON text: the declaration and
 \ e.f's use.
-: PAIR-ANSWER ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+: PAIR-ANSWER ( ^u8 n -- )
+   {: i:^ iu:n :}
    i iu SYMBOLS-START
    s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
    s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
@@ -6834,8 +6834,8 @@ variable PROBE-DECLS
    0 SENT !
    CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE ! ;
 
-: SESSION-RUN ( ptr u8 n [ -- ] [ -- ] -- )
-   {: a:ptr u:n init cases :}
+: SESSION-RUN ( ^u8 n [ -- ] [ -- ] -- )
+   {: a:^ u:n init cases :}
    a u N>BLEN SESSION-B REPLACE
    init SESSION-INIT !
    cases SESSION-CASES !
@@ -6928,7 +6928,7 @@ false constant ENGINE-ORIGINS?
    s" document-symbol" [: OUTLINE-TURNS ;] TALK
    s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
 
-: REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
+: REPLACED-TRUSTED ( -- ^u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
 
 : REPLACED-SIGNATURE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -6939,7 +6939,7 @@ false constant ENGINE-ORIGINS?
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
 
-: MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
+: MALFORMED-DEFER ( -- ^u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
 
 : MALFORMED-RECORD-TURNS ( -- )
    SESSION-INITIALIZE
@@ -6952,7 +6952,7 @@ false constant ENGINE-ORIGINS?
    0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
    0 6 0 19 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-: MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
+: MALFORMED-REJECTED ( -- ^u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
 
 : MALFORMED-REJECTED-TURNS ( -- )
    SESSION-INITIALIZE

@@ -31,18 +31,18 @@ PATH-CAP BUFFER: MOD
 variable MOD-U
 PATH-CAP BUFFER: FILE
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
 : SETUP ( -- )
-   s" browser-navigation" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-navigation" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser navigation: module and CLI output in " type DIR u type cr
    DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -59,14 +59,14 @@ PATH-CAP BUFFER: FILE
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
-: STEP+ ( ptr u8 n n n n n -- )
-   {: flag:ptr u:n x:n y:n buttons:n mods:n :}
+: STEP+ ( ^u8 n n n n n -- )
+   {: flag:^ u:n x:n y:n buttons:n mods:n :}
    flag u ARG+ x N-ARG+ y N-ARG+ buttons N-ARG+ mods N-ARG+ ;
 
-: TYPED+ ( ptr u8 n -- )
+: TYPED+ ( ^u8 n -- )
    s" --typed" ARG+ ARG+ ;
 
-: LINE ( ptr u8 n -- )
+: LINE ( ^u8 n -- )
    SB-APPEND 10 SB-APPEND-C ;
 
 : ROWS-WANT ( -- )
@@ -85,8 +85,8 @@ PATH-CAP BUFFER: FILE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE ;
 
-: OUTPUT! ( ptr u8 n -- )
-   {: a:ptr n:n :}
+: OUTPUT! ( ^u8 n -- )
+   {: a:^ n:n :}
    DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH {: u:n :}
    FILE u a n FS:WRITE-ALL ;
 
@@ -188,8 +188,8 @@ PATH-CAP BUFFER: FILE
    s" an occlude no step answers is outstanding at the end" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-: REJECT ( ptr u8 n ptr u8 n -- )
-   {: command:ptr cu:n why:ptr wu:n :}
+: REJECT ( ^u8 n ^u8 n -- )
+   {: command:^ cu:n why:^ wu:n :}
    HOST-OPEN command cu TYPED+
    HOST 1 T=
    s" malformed browser record is rejected" T-LABEL

@@ -19,7 +19,7 @@ create FFI-T-CC-LIB-PATH PATH-CAP allot
 variable FFI-T-CC-SRC-U
 variable FFI-T-CC-LIB-U
 
-: FFI-T-CC-L+ ( ptr u8 n -- )
+: FFI-T-CC-L+ ( ^u8 n -- )
    FFI-T-CC-SRC CODEGEN:APPEND-STRING
    10 FFI-T-CC-SRC CODEGEN:APPEND-BYTE ;
 
@@ -66,15 +66,15 @@ variable FFI-T-CC-LIB-U
    s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j; }"
    FFI-T-CC-L+ ;
 
-: FFI-T-CC-LIB$ ( -- ptr u8 n )
+: FFI-T-CC-LIB$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libhbccalls.dylib" exit then
    s" libhbccalls.so" ;
 
-: FFI-T-CC-SRC$ ( -- ptr u8 n ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ ;
-: FFI-T-CC-LIB-PATH$ ( -- ptr u8 n ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ ;
+: FFI-T-CC-SRC$ ( -- ^u8 n ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ ;
+: FFI-T-CC-LIB-PATH$ ( -- ^u8 n ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ ;
 
 : FFI-T-CC-BUILD ( -- )
-   s" habu-ffi-c-calls" FS:MKTEMP-DIR {: dir:ptr diru :}
+   s" habu-ffi-c-calls" FS:MKTEMP-DIR {: dir:^ diru :}
    dir diru FS:CLEANUP-TREE+
    dir diru s" hb-c-calls.c" FFI-T-CC-SRC-PATH FS:JOIN-PATH FFI-T-CC-SRC-U !
    dir diru FFI-T-CC-LIB$ FFI-T-CC-LIB-PATH FS:JOIN-PATH FFI-T-CC-LIB-U !

@@ -23,20 +23,20 @@ variable START-VM
 
 PROCESS-SYMBOLS
 FUNCTION: PRCTL-NO-PRIV prctl ( n n n n n -- i32 ) 1 VARIADIC ;FUNCTION
-FUNCTION: PRCTL-SECCOMP prctl ( n n ptr u8 n n -- i32 ) 1 VARIADIC ;FUNCTION
+FUNCTION: PRCTL-SECCOMP prctl ( n n ^u8 n n -- i32 ) 1 VARIADIC ;FUNCTION
 FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
 
 \ The foreign sock_fprog embeds a raw pointer at byte 8.
 : FILTER-IN-PROG ( -- ) FILTER NULL-PTR - PROGRAM 8 + ! ;
 
-: U32! ( n ptr u8 -- ) {: value:n at:ptr :}
+: U32! ( n ^u8 -- ) {: value:n at:^ :}
    4 0 do
       value i 8 * rshift $FF and at i + c!
    loop ;
 
 \ sock_filter is {u16 code, u8 jt, u8 jf, u32 k}.
 : INSN ( n n n n n -- ) {: idx:n code:n jt:n jf:n k:n :}
-   FILTER idx 8 * + {: at:ptr :}
+   FILTER idx 8 * + {: at:^ :}
    code $FF and at c!
    code 8 rshift $FF and at 1 + c!
    jt at 2 + c!

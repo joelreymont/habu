@@ -64,7 +64,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    loop ;
 
 
-: CHECK-VALUE ( ptr u8 n n -- n ) {: data size:n kind:n :}
+: CHECK-VALUE ( ^u8 n n -- n ) {: data size:n kind:n :}
    0 size 0 ?do
       data i + c@ kind 1 = if CRC-BYTE else + $FF and then
    loop ;
@@ -84,27 +84,27 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    size 0 < size block > or if E-OPERAND throw then ;
 
 
-: HEADER+ ( n n ptr a -- ) {: sequence:n block:n output:ptr :}
+: HEADER+ ( n n ^a -- ) {: sequence:n block:n output:^ :}
    block START-BYTE output APPEND-BYTE
    sequence output APPEND-BYTE sequence $FF xor output APPEND-BYTE ;
 
 
-: PAYLOAD+ ( ptr u8 n n ptr a -- ) {: data size:n block:n output:ptr :}
+: PAYLOAD+ ( ^u8 n n ^a -- ) {: data size:n block:n output:^ :}
    data size LENGTH output APPEND-SPAN
    block size - 0 ?do $1A output APPEND-BYTE loop ;
 
 
-: TRAILER+ ( n n ptr a -- ) {: block:n kind:n output:ptr :}
+: TRAILER+ ( n n ^a -- ) {: block:n kind:n output:^ :}
    output SPAN$ drop 3 + block kind CHECK-VALUE {: check:n :}
    kind 1 = if check 8 rshift output APPEND-BYTE then
    check $FF and output APPEND-BYTE ;
 
 
-: TRAILER@ ( ptr u8 n -- n ) {: data kind:n :}
+: TRAILER@ ( ^u8 n -- n ) {: data kind:n :}
    data c@ kind 1 = if 8 lshift data 1 + c@ or then ;
 
 
-: CHECK-DECODE ( ptr u8 n n -- n ) {: data size:n kind:n :}
+: CHECK-DECODE ( ^u8 n n -- n ) {: data size:n kind:n :}
    kind CHECK-KIND
    size 4 < if E-FRAME throw then
    data c@ WIRE-BLOCK {: block:n :}
@@ -129,8 +129,8 @@ public
 
 \ Output is an initialized BUF. The borrowed payload must not alias it.
 \ Input length may be zero.
-: ENCODE ( ptr u8 NUM:byte-len sequence payload-size check-kind ptr a -- )
-   {: data size:NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:ptr :}
+: ENCODE ( ^u8 NUM:byte-len sequence payload-size check-kind ^a -- )
+   {: data size:NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:^ :}
    size BLEN>N sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
    output block kind PACKET-BYTES RESERVE output CLEAR
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
@@ -140,7 +140,7 @@ public
 
 \ Validates one entire packet, then borrows its full 128/1024-byte payload.
 \ XMODEM carries no exact binary length; never strip 0x1A from this span.
-: DECODE ( ptr u8 NUM:byte-len check-kind -- ptr u8 NUM:byte-len sequence )
+: DECODE ( ^u8 NUM:byte-len check-kind -- ^u8 NUM:byte-len sequence )
    {: data size:NUM:byte-len kind:check-kind :}
    data size BLEN>N kind CHECK-KIND>N CHECK-DECODE {: block:n :}
    data 3 + block LENGTH data 1 + c@ >SEQUENCE ;

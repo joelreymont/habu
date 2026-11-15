@@ -15,7 +15,7 @@
 : HB-TARGET-WASM? ( -- bool )
    0 0= 0= ;
 
-: HB-TARGET$ ( -- ptr u8 n )
+: HB-TARGET$ ( -- ^u8 n )
    s" macos-aarch64" ;
 
 \ The OS's PATH_MAX (sys/syslimits.h, 1024) less its NUL.

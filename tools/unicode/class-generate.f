@@ -18,28 +18,28 @@ private
 create INPUT-DIGEST SHA256-HEX-LENGTH allot
 create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
-: UNICODE-PATH$ ( -- ptr u8 n )
+: UNICODE-PATH$ ( -- ^u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
 
-: PROPERTIES-PATH$ ( -- ptr u8 n )
+: PROPERTIES-PATH$ ( -- ^u8 n )
    s" data/unicode/16.0.0/PropList.txt" ;
 
-: BRACKETS-PATH$ ( -- ptr u8 n )
+: BRACKETS-PATH$ ( -- ^u8 n )
    s" data/unicode/16.0.0/BidiBrackets.txt" ;
 
-: OUTPUT-PATH$ ( -- ptr u8 n )
+: OUTPUT-PATH$ ( -- ^u8 n )
    s" src/lib/unicode/class-data.f" ;
 
-: EXPECTED-UNICODE-DIGEST$ ( -- ptr u8 n )
+: EXPECTED-UNICODE-DIGEST$ ( -- ^u8 n )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
 
-: EXPECTED-PROPERTIES-DIGEST$ ( -- ptr u8 n )
+: EXPECTED-PROPERTIES-DIGEST$ ( -- ^u8 n )
    s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
 
-: EXPECTED-BRACKETS-DIGEST$ ( -- ptr u8 n )
+: EXPECTED-BRACKETS-DIGEST$ ( -- ^u8 n )
    s" b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67" ;
 
-: VERIFY-FILE-DIGEST ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
+: VERIFY-FILE-DIGEST ( ^u8 n ^u8 n -- ) {: path:^ pathu:n want:^ wantu:n :}
    wantu SHA256-HEX-LENGTH <> if E-DIGEST throw then
    UC-FSHA-CTX path pathu INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
    INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR= 0= if E-DIGEST throw then ;
@@ -50,27 +50,27 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    BRACKETS-PATH$ EXPECTED-BRACKETS-DIGEST$ VERIFY-FILE-DIGEST ;
 
 : LOAD-UNICODE-FILE ( -- )
-   UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-UNICODE ;
 
 : LOAD-PROPERTIES-FILE ( -- )
-   PROPERTIES-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   PROPERTIES-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-PROPERTIES ;
 
 : LOAD-BRACKETS-FILE ( -- )
-   BRACKETS-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   BRACKETS-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-BRACKETS ;
 
-: OUT$ ( ptr u8 n -- )
+: OUT$ ( ^u8 n -- )
    OUTPUT CODEGEN:APPEND-STRING ;
 
 : OUT-N ( n -- )
    OUTPUT CODEGEN:APPEND-DECIMAL ;
 
-: OUT-LINE ( ptr u8 n -- )
+: OUT-LINE ( ^u8 n -- )
    OUT$
    OUTPUT-LINE-FEED OUTPUT CODEGEN:APPEND-BYTE ;
 
@@ -83,8 +83,8 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
       1+
    repeat drop ;
 
-: OUT-TABLE ( ptr u8 n n [ n -- n n ] -- )
-   {: name:ptr nameu:n count:n getter :}
+: OUT-TABLE ( ^u8 n n [ n -- n n ] -- )
+   {: name:^ nameu:n count:n getter :}
    count OUT-N s"  constant " OUT$ name nameu OUT$ s" -TABLE-COUNT" OUT-LINE
    \ Empty logical tables still need a valid private typed buffer.
    count 2 * 1 max OUT-N s"  TYPED-BUFFER " OUT$ name nameu OUT$ s" -TABLE n" OUT-LINE
@@ -105,8 +105,8 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    s" " OUT-LINE
    s" private" OUT-LINE
    s" " OUT-LINE
-   s" : R, ( ptr n n n -- ptr n )" OUT-LINE
-   s"    {: at:ptr lo:n hi:n :}" OUT-LINE
+   s" : R, ( ^n n n -- ^n )" OUT-LINE
+   s"    {: at:^ lo:n hi:n :}" OUT-LINE
    s"    lo at ! hi at cell+ !" OUT-LINE
    s"    at 2 cells + ;" OUT-LINE
    s" " OUT-LINE ;
@@ -116,14 +116,14 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    s" " OUT-LINE ;
 
 \ An accessor answers its table's first cell and pair count together.
-: OUT-ACCESSOR-AS ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n suffix:ptr suffixu:n :}
-   s" : " OUT$ name nameu OUT$ suffix suffixu OUT$ s"  ( -- ptr n n )" OUT-LINE
+: OUT-ACCESSOR-AS ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n suffix:^ suffixu:n :}
+   s" : " OUT$ name nameu OUT$ suffix suffixu OUT$ s"  ( -- ^n n )" OUT-LINE
    s"    0 " OUT$ name nameu OUT$ s" -TABLE " OUT$
    name nameu OUT$ s" -TABLE-COUNT ;" OUT-LINE
    s" " OUT-LINE ;
 
-: OUT-ACCESSOR ( ptr u8 n -- )
+: OUT-ACCESSOR ( ^u8 n -- )
    s" -RANGES" OUT-ACCESSOR-AS ;
 
 : OUT-ACCESSORS ( -- )
@@ -143,7 +143,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 public
 
-: CHECK-FILE-DIGEST ( ptr u8 n ptr u8 n -- )
+: CHECK-FILE-DIGEST ( ^u8 n ^u8 n -- )
    VERIFY-FILE-DIGEST ;
 
 : LOAD-PINNED ( -- )
@@ -154,7 +154,7 @@ public
    LOAD-BRACKETS-FILE
    READY? 0= if E-STATE throw then ;
 
-: RENDER ( -- ptr u8 n )
+: RENDER ( -- ^u8 n )
    READY? 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE

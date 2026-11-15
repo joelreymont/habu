@@ -29,10 +29,10 @@ $0B constant END-OP
 32 SPAN-BUFFER: STAGED
 variable STAGED-LEN
 
-: OUT$ ( n -- ptr u8 n )
+: OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
-: HEX$ ( ptr u8 n -- ptr u8 n )
+: HEX$ ( ^u8 n -- ^u8 n )
    {: a u:n :}
    HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
@@ -45,7 +45,7 @@ variable STAGED-LEN
 
 \ A refusal's quotation sees no locals, so the hex's bytes are staged, with
 \ canaries past them.
-: STAGE ( ptr u8 n -- )
+: STAGE ( ^u8 n -- )
    {: a u:n :}
    u 2 / {: k:n :}
    CANARY STAGED SPAN:FILL
@@ -54,7 +54,7 @@ variable STAGED-LEN
    loop
    k STAGED-LEN ! ;
 
-: STAGED$ ( -- ptr u8 n )
+: STAGED$ ( -- ^u8 n )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 : STAGED-SPAN ( -- SPAN:span<u8> )
@@ -66,7 +66,7 @@ variable STAGED-LEN
 
 \ ---- the shortest LEB, at the edges ---------------------------------------
 \ v's shortest LEB is want, and reads back as v from exactly those bytes.
-: SHORTEST ( n [ n SPAN:span<u8> -- n ] [ ptr u8 n -- n n ] ptr u8 n -- )
+: SHORTEST ( n [ n SPAN:span<u8> -- n ] [ ^u8 n -- n n ] ^u8 n -- )
    {: v:n put get want wu:n :}
    v OUT put execute {: k:n :}
    want wu T-LABEL
@@ -75,15 +75,15 @@ variable STAGED-LEN
    want wu T-LABEL k T=
    want wu T-LABEL v T= ;
 
-: U32-IS ( n ptr u8 n -- )
+: U32-IS ( n ^u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:U32! ;] [: WLEB:U32@ ;] a u SHORTEST ;
 
-: S32-IS ( n ptr u8 n -- )
+: S32-IS ( n ^u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:S32! ;] [: WLEB:S32@ ;] a u SHORTEST ;
 
-: S64-IS ( n ptr u8 n -- )
+: S64-IS ( n ^u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:S64! ;] [: WLEB:S64@ ;] a u SHORTEST ;
 
@@ -139,7 +139,7 @@ variable STAGED-LEN
    a OUT ADDR-AT SPAN:SKIP WLEB:S64-PAD! drop
    END-OP OUT CODE-LEN 1- SPAN:U8! ;
 
-: CODE$ ( -- ptr u8 n )
+: CODE$ ( -- ^u8 n )
    CODE-LEN OUT$ ;
 
 \ Each field reads back at its offset and takes a patch in place: the opcodes
@@ -170,7 +170,7 @@ variable STAGED-LEN
 
 \ v's padded field is want, whatever v's shortest LEB takes, and reads back as
 \ v at offset 0.
-: PADDED ( n [ n SPAN:span<u8> -- n ] [ ptr u8 n n -- n ] ptr u8 n -- )
+: PADDED ( n [ n SPAN:span<u8> -- n ] [ ^u8 n n -- n ] ^u8 n -- )
    {: v:n put get want wu:n :}
    v OUT put execute {: k:n :}
    want wu T-LABEL
@@ -178,11 +178,11 @@ variable STAGED-LEN
    want wu T-LABEL
    k OUT$ 0 get execute v T= ;
 
-: U32-PADS ( n ptr u8 n -- )
+: U32-PADS ( n ^u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:U32-PAD! ;] [: WLEB:U32-PAD@ ;] a u PADDED ;
 
-: S64-PADS ( n ptr u8 n -- )
+: S64-PADS ( n ^u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:S64-PAD! ;] [: WLEB:S64-PAD@ ;] a u PADDED ;
 
@@ -204,7 +204,7 @@ variable STAGED-LEN
 
 \ ---- reading what Wasm admits, and refusing the rest ----------------------
 \ The staged bytes read as v and take len of them.
-: READS ( ptr u8 n [ ptr u8 n -- n n ] n n -- )
+: READS ( ^u8 n [ ^u8 n -- n n ] n n -- )
    {: a u:n get v:n len:n :}
    a u STAGE
    STAGED$ get execute
@@ -212,7 +212,7 @@ variable STAGED-LEN
    a u T-LABEL v T= ;
 
 \ fail, run on the staged bytes, refuses with code.
-: REFUSES ( ptr u8 n [ -- ] n -- )
+: REFUSES ( ^u8 n [ -- ] n -- )
    {: a u:n fail code:n :}
    a u STAGE
    a u T-LABEL
@@ -253,7 +253,7 @@ variable STAGED-LEN
 \ ---- refused writes --------------------------------------------------------
 \ fail, writing into OUT, refuses with code, and leaves the whole of OUT as the
 \ canaries it was filled with.
-: WRITE-REFUSES ( ptr u8 n [ -- ] n -- )
+: WRITE-REFUSES ( ^u8 n [ -- ] n -- )
    {: a u:n fail code:n :}
    CANARY OUT SPAN:FILL
    a u T-LABEL
@@ -297,7 +297,7 @@ variable STAGED-LEN
 
 \ patch, run on the staged code, refuses with code, and leaves the code as it
 \ was and the canaries past it.
-: PATCH-REFUSES ( ptr u8 n [ -- ] n -- )
+: PATCH-REFUSES ( ^u8 n [ -- ] n -- )
    {: a u:n patch code:n :}
    a u patch code REFUSES
    a u T-LABEL
@@ -321,12 +321,12 @@ variable STAGED-LEN
 
 \ ---- round trips ------------------------------------------------------------
 \ v written by put reads back through get from exactly the bytes put wrote.
-: BACK ( n [ n SPAN:span<u8> -- n ] [ ptr u8 n -- n n ] -- )
+: BACK ( n [ n SPAN:span<u8> -- n ] [ ^u8 n -- n n ] -- )
    {: v:n put get :}
    v OUT put execute {: k:n :}
    k OUT$ get execute k T= v T= ;
 
-: PAD-BACK ( n [ n SPAN:span<u8> -- n ] [ ptr u8 n n -- n ] -- )
+: PAD-BACK ( n [ n SPAN:span<u8> -- n ] [ ^u8 n n -- n ] -- )
    {: v:n put get :}
    v OUT put execute {: k:n :}
    k OUT$ 0 get execute v T= ;

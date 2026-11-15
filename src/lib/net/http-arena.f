@@ -99,11 +99,11 @@ MAX-WORKERS TYPED-BUFFER SEGMENT-N n      \ segments the matched route bound
 MAX-WORKERS TYPED-BUFFER ROUTE-AT n       \ the matched route, -1 while none
 MAX-WORKERS TYPED-BUFFER KEEP-ALIVE n
 MAX-WORKERS TYPED-BUFFER STATUS n
-MAX-WORKERS TYPED-BUFFER BODY-PTR ptr u8  \ the response body, owned elsewhere
+MAX-WORKERS TYPED-BUFFER BODY-PTR ^u8  \ the response body, owned elsewhere
 MAX-WORKERS TYPED-BUFFER BODY-LEN n
 MAX-WORKERS TYPED-BUFFER FILE-FD fd
 MAX-WORKERS TYPED-BUFFER FILE-LIVE n
-MAX-WORKERS TYPED-BUFFER FILE-BUFFER ptr u8
+MAX-WORKERS TYPED-BUFFER FILE-BUFFER ^u8
 MAX-WORKERS TYPED-BUFFER FILE-ALLOCATION NUM:alloc-byte-len
 MAX-WORKERS TYPED-BUFFER FILE-OWNED n
 MAX-WORKERS TYPED-BUFFER SEG-U n          \ bytes of decoded segment text
@@ -190,14 +190,14 @@ private
    1 idx SLOT-LIVE ! ;
 
 
-: BUF-AT ( n n -- ptr n ) {: idx:n off:n :}
+: BUF-AT ( n n -- ^n ) {: idx:n off:n :}
    idx SLOT-SPAN off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
 
 
-: BODY-HDR ( n -- ptr n )    BODY-OFF BUF-AT ;
-: HDR-BUF ( n -- ptr n )     HDR-OFF BUF-AT ;
-: JSON-BUF ( n -- ptr n )    JSON-OFF BUF-AT ;
-: OUT-BUF ( n -- ptr n )     OUT-OFF BUF-AT ;
+: BODY-HDR ( n -- ^n )    BODY-OFF BUF-AT ;
+: HDR-BUF ( n -- ^n )     HDR-OFF BUF-AT ;
+: JSON-BUF ( n -- ^n )    JSON-OFF BUF-AT ;
+: OUT-BUF ( n -- ^n )     OUT-OFF BUF-AT ;
 
 
 \ One span per worker, taken before any task is live and given back after every
@@ -258,7 +258,7 @@ private
    BODY-HDR BODY-START-CAP BUF:N>BLEN BUF:INIT ;
 
 
-: BODY-APPEND ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
+: BODY-APPEND ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
    bytes len BUF:N>BLEN idx BODY-HDR BUF:APPEND-SPAN ;
 
 
@@ -298,10 +298,10 @@ private
 : BODY-LEN@ ( n -- n )    BOUNDED BODY-LEN @ ;
 : LATE-LEFT@ ( n -- n )   BOUNDED LATE-LEFT @ ;
 : LATE-LEFT! ( n n -- )   BOUNDED LATE-LEFT ! ;
-: BODY-PTR@ ( n -- ptr u8 ) BOUNDED BODY-PTR @ ;
+: BODY-PTR@ ( n -- ^u8 ) BOUNDED BODY-PTR @ ;
 
 
-: RESPONSE-BODY! ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
+: RESPONSE-BODY! ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
    len 0 < if E-CAPACITY throw then
    idx CLOSE-FILE
    bytes idx BOUNDED BODY-PTR !
@@ -315,7 +315,7 @@ private
    idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
 
 
-: BUF$ ( ptr n -- ptr u8 n )  BUF:SPAN$ BUF:BLEN>N ;
+: BUF$ ( ^n -- ^u8 n )  BUF:SPAN$ BUF:BLEN>N ;
 
 
 : NEXT-SEQ ( n -- n ) {: idx:n :}
@@ -340,27 +340,27 @@ private
    at idx BOUNDED VERSION-AT ! len idx VERSION-N ! ;
 
 
-: SLOT-METHOD$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-METHOD$ ( n -- ^u8 n ) {: idx:n :}
    idx IN-BUF idx BOUNDED METHOD-AT @ idx METHOD-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-PATH$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-PATH$ ( n -- ^u8 n ) {: idx:n :}
    idx IN-BUF idx BOUNDED PATH-AT @ idx PATH-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-QUERY$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-QUERY$ ( n -- ^u8 n ) {: idx:n :}
    idx IN-BUF idx BOUNDED QUERY-AT @ idx QUERY-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-VERSION$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-VERSION$ ( n -- ^u8 n ) {: idx:n :}
    idx IN-BUF idx BOUNDED VERSION-AT @ idx VERSION-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-BODY$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-BODY$ ( n -- ^u8 n ) {: idx:n :}
    idx BODY-HDR BUF:SPAN$ BUF:BLEN>N ;
 
 
-: SLOT-ID$ ( n -- ptr u8 n ) {: idx:n :}
+: SLOT-ID$ ( n -- ^u8 n ) {: idx:n :}
    idx ID-BUF idx ID-U@ SPAN:TAKE SPAN:$ ;
 
 
@@ -381,12 +381,12 @@ private
    at 1+ idx HEADER-N! ;
 
 
-: HEADER-NAME$ ( n n -- ptr u8 n ) {: idx:n at:n :}
+: HEADER-NAME$ ( n n -- ^u8 n ) {: idx:n at:n :}
    idx at HEADER-ROW {: row:n :}
    idx IN-BUF row HEADER-NAME-AT @ row HEADER-NAME-N @ SPAN:SUB SPAN:$ ;
 
 
-: HEADER-VALUE$ ( n n -- ptr u8 n ) {: idx:n at:n :}
+: HEADER-VALUE$ ( n n -- ^u8 n ) {: idx:n at:n :}
    idx at HEADER-ROW {: row:n :}
    idx IN-BUF row HEADER-VALUE-AT @ row HEADER-VALUE-N @ SPAN:SUB SPAN:$ ;
 
@@ -417,18 +417,18 @@ private
    count 1+ idx SEGMENT-N! ;
 
 
-: SEGMENT$ ( n n -- ptr u8 n ) {: idx:n at:n :}
+: SEGMENT$ ( n n -- ^u8 n ) {: idx:n at:n :}
    idx at SEGMENT-ROW {: row:n :}
    idx SEG-BUF row SEGMENT-AT @ row SEGMENT-LEN @ SPAN:SUB SPAN:$ ;
 
 
 \ True when the buffer has grown past its first capacity n.
-: GROWN? ( ptr n n -- bool ) {: buf:ptr start:n :}
+: GROWN? ( ^n n -- bool ) {: buf:^ start:n :}
    buf BUF:CAP@ BUF:BLEN>N start > ;
 
 
 \ Disposes the buffer, live or not, and makes it again at its first capacity n.
-: REMAKE ( ptr n n -- ) {: buf:ptr start:n :}
+: REMAKE ( ^n n -- ) {: buf:^ start:n :}
    buf BUF:DISPOSE
    buf start BUF:N>BLEN BUF:INIT ;
 

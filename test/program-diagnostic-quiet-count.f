@@ -6,7 +6,7 @@ package PROGRAM-DIAG-QUIET-COUNT
 public
 : START ( -- ) MULTI-ERR-BEGIN ;
 : FINISH ( -- n ) MULTI-ERR-END ;
-: FOUND ( ptr u8 n -- n ) get-current search-wl 0<> if 1 else 0 then ;
+: FOUND ( ^u8 n -- n ) get-current search-wl 0<> if 1 else 0 then ;
 ;package
 
 PROGRAM-DIAG-QUIET-COUNT:START

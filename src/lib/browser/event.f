@@ -12,8 +12,8 @@ require src/lib/error.f
 package BROWSER-EVENT
 private
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: >CELLS ( ptr u8 -- ptr n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: >CELLS ( ^u8 -- ^n )
 
 \ Seven cells: kind, a, b, c, d, buttons, mods; zero, which is start, until the
 \ host writes one.
@@ -31,24 +31,24 @@ TYPED-VARIABLE TAKEN bool
 
 public
 
-: EVENT ( -- ptr u8 )  EVENT-BUF ;
+: EVENT ( -- ^u8 )  EVENT-BUF ;
 
 : EVENT@ ( n -- n )
    8 * EVENT-BUF + >CELLS @ ;
 
-: DELIVERY ( -- ptr u8 n )
+: DELIVERY ( -- ^u8 n )
    0 EVENT@ DELIVERS? if  1 EVENT@ >BYTES 2 EVENT@  else  0 >BYTES 0  then ;
 
 \ HANDLE leaves this turn's delivery to the caller to FREE on every exit of the
 \ turn, a throw after TAKE included; one never freed keeps its pages.
-: TAKE ( -- ptr u8 n )
+: TAKE ( -- ^u8 n )
    true TAKEN !  DELIVERY ;
 
 \ A refused unmap, of bytes no reserve handed out, is E-MEM-UNMAP. FREE writes
 \ the allocator's free-list entry into the pages, so a record that must show
 \ delivered bytes names a copy in module storage, or a taken delivery.
-: FREE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: FREE ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if exit then
    a u munmap 0<> if E-MEM-UNMAP throw then ;
 

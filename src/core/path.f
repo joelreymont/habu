@@ -11,8 +11,8 @@
 \ see these throws.
 7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
 7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
-: PATHZ ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u d:ptr room :}
+: PATHZ ( ^u8 n ^u8 n -- )
+   {: a:^ u d:^ room :}
    u 0 < IF E-PATH-RANGE throw THEN
    u room >= IF E-PATH-RANGE throw THEN
    0 BEGIN dup u < WHILE
@@ -20,6 +20,6 @@
    REPEAT drop  0 d u + c! ;
 create PZB PATH-CAP 1 + allot
 
-: PATH0 ( ptr u8 n -- ptr u8 )
-   {: a:ptr u :}
+: PATH0 ( ^u8 n -- ^u8 )
+   {: a:^ u :}
    a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch

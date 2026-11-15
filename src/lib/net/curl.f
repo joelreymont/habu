@@ -153,17 +153,17 @@ $08 constant CELL-BYTES
 
 \ Foreign out-parameter cells, per task.
 $28 TASK:+USERS IO-STORAGE u8
-: INFO-CELL ( -- ptr u8 ) 0 IO-STORAGE ;
-: BUF-CELL ( -- ptr u8 ) $08 IO-STORAGE ;
-: LEN-CELL ( -- ptr u8 ) $10 IO-STORAGE ;
-: HBUF-CELL ( -- ptr u8 ) $18 IO-STORAGE ;
-: HLEN-CELL ( -- ptr u8 ) $20 IO-STORAGE ;
+: INFO-CELL ( -- ^u8 ) 0 IO-STORAGE ;
+: BUF-CELL ( -- ^u8 ) $08 IO-STORAGE ;
+: LEN-CELL ( -- ^u8 ) $10 IO-STORAGE ;
+: HBUF-CELL ( -- ^u8 ) $18 IO-STORAGE ;
+: HLEN-CELL ( -- ^u8 ) $20 IO-STORAGE ;
 
 
 \ CURL* and FILE* are OPAQUE here, and so is curl_slist* outside SLIST-RELEASE;
 \ all three are declared `n`: both host ABIs pass a pointer and an integer in
 \ the same register. Only a span Habu or the callee really reads or writes is
-\ declared `ptr u8`. The two fixed arguments precede a variadic value.
+\ declared `^u8`. The two fixed arguments precede a variadic value.
 VERSIONED-LIBRARY curl 4
 
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
@@ -172,13 +172,13 @@ FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
 FUNCTION: EASY-RESET curl_easy_reset ( n -- ) ;FUNCTION
 FUNCTION: EASY-PERFORM curl_easy_perform ( n -- i32 ) ;FUNCTION
 FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ^u8 -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SLIST-APPEND curl_slist_append ( n n -- n ) ;FUNCTION
 FUNCTION: SLIST-FREE curl_slist_free_all ( n -- ) ;FUNCTION
-FUNCTION: EASY-STRERROR curl_easy_strerror ( n -- ptr u8 ) ;FUNCTION
+FUNCTION: EASY-STRERROR curl_easy_strerror ( n -- ^u8 ) ;FUNCTION
 FUNCTION: EASY-PAUSE curl_easy_pause ( n n -- i32 ) ;FUNCTION
 
-FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
+FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ^u8 -- i32 )
    2 VARIADIC
 ;FUNCTION
 
@@ -191,10 +191,10 @@ FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
 FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- i32 ) ;FUNCTION
-FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n ) ;FUNCTION
-FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-PERFORM curl_multi_perform ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ^u8 -- n ) ;FUNCTION
+FUNCTION: MULTI-FDSET curl_multi_fdset ( n ^u8 ^u8 ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ^u8 -- i32 ) ;FUNCTION
 
 
 PROCESS-SYMBOLS
@@ -205,13 +205,13 @@ FUNCTION: STREAM-POSITION ftell ( n -- n ) ;FUNCTION
 FUNCTION: STREAM-SEEK fseek ( n n n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-ERROR ferror ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-BUFFERING setvbuf ( n n n n -- i32 ) ;FUNCTION
-FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: FILE-OPEN fopen ( ^u8 ^u8 -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
 FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
-FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n ) ;FUNCTION
-FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n ) ;FUNCTION
-FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: MEMSTREAM open_memstream ( ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: SPAN-STREAM fmemopen ( ^u8 n ^u8 -- n ) ;FUNCTION
+FUNCTION: COPY-OUT memcpy ( ^u8 n n -- n ) ;FUNCTION
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
@@ -225,7 +225,7 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n ) ;FUNCTION
 
 
 \ Every foreign cell here is little-endian.
-: CELL-CLEAR ( ptr u8 -- ) {: target :}
+: CELL-CLEAR ( ^u8 -- ) {: target :}
    CELL-BYTES 0 do 0 target i + c! loop ;
 
 
@@ -242,7 +242,7 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n ) ;FUNCTION
    CURLE-OUT-OF-MEMORY >CODE CURL-STATUS:failed ;
 
 
-CAST: >BYTES ( n -- ptr u8 )
+CAST: >BYTES ( n -- ^u8 )
 
 
 \ A URL, a header line or a response can carry a credential, so every text
@@ -292,19 +292,19 @@ CAST: >BYTES ( n -- ptr u8 )
    subject HANDLE-CELL option value SETOPT-NUM ;
 
 
-: TEXT-SETOPT ( n n ptr u8 n SPAN:span<u8> -- n )
+: TEXT-SETOPT ( n n ^u8 n SPAN:span<u8> -- n )
    {: easy:n option:n text u:n copy :}
    easy option text u copy FFI:CSTR FFI:>CELL SETOPT-NUM
    copy TEXT-WIPE ;
 
 
-: SET-TEXT-RAW ( handle n ptr u8 n -- n )
+: SET-TEXT-RAW ( handle n ^u8 n -- n )
    {: subject:handle option:n text u:n :}
    subject HANDLE-CELL option text u u TEXT-ROOM
    [: MEM:ALLOCATION>SPAN TEXT-SETOPT ;] MEM:WITH-BYTES ;
 
 
-: SET-TEXT ( handle n ptr u8 n -- status )
+: SET-TEXT ( handle n ^u8 n -- status )
    SET-TEXT-RAW CODE>STATUS ;
 
 
@@ -323,7 +323,7 @@ CAST: >BYTES ( n -- ptr u8 )
    easy INFO-PRIVATE INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
    INFO-CELL LE:U64@ dup 0= if E-STATE throw then ;
 
-: STATE-FIELD ( n n -- ptr u8 )
+: STATE-FIELD ( n n -- ^u8 )
    {: state:n offset:n :}
    state >BYTES offset + ;
 
@@ -370,13 +370,13 @@ CAST: >BYTES ( n -- ptr u8 )
 
 
 \ curl_slist_append duplicates the line into the node it adds.
-: TEXT-APPEND ( n ptr u8 n SPAN:span<u8> -- n )
+: TEXT-APPEND ( n ^u8 n SPAN:span<u8> -- n )
    {: old:n text u:n copy :}
    old text u copy FFI:CSTR FFI:>CELL SLIST-APPEND
    copy TEXT-WIPE ;
 
 
-: HEADER-APPEND ( n ptr u8 n -- status )
+: HEADER-APPEND ( n ^u8 n -- status )
    {: easy:n text u:n :}
    easy STATE-GET {: state:n :}
    state STATE-LIST@ {: old:n :}
@@ -388,7 +388,7 @@ CAST: >BYTES ( n -- ptr u8 )
 
 \ libcurl sends a header line as it is: a CR or LF inside it would end the line
 \ early and send the rest as a line of its own.
-: ONE-LINE ( ptr u8 n -- )
+: ONE-LINE ( ^u8 n -- )
    {: text u:n :}
    u 0 ?do
       text i + c@ dup $0D = swap $0A = or if E-OPERAND throw then
@@ -399,7 +399,7 @@ CAST: >BYTES ( n -- ptr u8 )
 \ are the CALLER'S, not this word's: PERFORM passes its own task's pair, while a
 \ multiplexed transfer passes its record's, because the task that closes that
 \ stream is the loop and not the task that opened it.
-: STREAM-OPEN ( ptr u8 ptr u8 -- n ) {: buf len :}
+: STREAM-OPEN ( ^u8 ^u8 -- n ) {: buf len :}
    buf CELL-CLEAR
    len CELL-CLEAR
    buf len MEMSTREAM ;
@@ -407,7 +407,7 @@ CAST: >BYTES ( n -- ptr u8 )
 
 \ open_memstream publishes its buffer and length when the stream closes; the
 \ buffer is the caller's to free from then on.
-: STREAM-TAKE ( n ptr u8 ptr u8 -- n n n ) {: stream:n buf len :}
+: STREAM-TAKE ( n ^u8 ^u8 -- n n n ) {: stream:n buf len :}
    stream STREAM-CLOSE 0= if CURLE-OK else CURLE-WRITE-ERROR then
    buf LE:U64@ len LE:U64@ rot ;
 
@@ -417,7 +417,7 @@ CAST: >BYTES ( n -- ptr u8 )
 \ zero-byte fmemopen, so an empty span is /dev/null opened read-only, which
 \ refuses every write on both. Unbuffered, a byte libcurl hands fwrite is in
 \ the span or refused at that call.
-: SPAN-OPEN ( ptr u8 n -- n ) {: target capacity:n :}
+: SPAN-OPEN ( ^u8 n -- n ) {: target capacity:n :}
    capacity 0= if
       S\" /dev/null\z" drop S\" rb\z" drop FILE-OPEN
    else
@@ -465,7 +465,7 @@ CAST: >BYTES ( n -- ptr u8 )
    true ;
 
 
-: BODY-COPY ( ptr u8 n n -- ) {: target source:n u:n :}
+: BODY-COPY ( ^u8 n n -- ) {: target source:n u:n :}
    u 0= if exit then
    source 0= if E-RESULT throw then
    target source u COPY-OUT drop ;
@@ -533,13 +533,13 @@ public
    easy >HANDLE CURL-INIT--RESULT:ready ;
 
 
-: URL! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
+: URL! ( handle ^u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    subject OPT-URL text u SET-TEXT ;
 
 
 \ An empty proxy disables proxies, including those named by the environment.
-: PROXY! ( handle ptr u8 n -- status )
+: PROXY! ( handle ^u8 n -- status )
    {: subject:handle text u:n :}
    subject OPT-PROXY text u SET-TEXT ;
 
@@ -549,7 +549,7 @@ public
 \ override is sent on every request, redirected ones included: METHOD! "POST"
 \ stays POST across a 302 or 303. A POST that should follow 302 or 303 as GET
 \ uses BODY! alone.
-: METHOD! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
+: METHOD! ( handle ^u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    subject OPT-METHOD text u SET-TEXT ;
 
@@ -562,7 +562,7 @@ public
    subject OPT-METHOD 0 SET-NUM-RAW CODE>STATUS ;
 
 
-: HEADER+ ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
+: HEADER+ ( handle ^u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    text u ONE-LINE
    subject HANDLE-CELL text u HEADER-APPEND ;
@@ -570,7 +570,7 @@ public
 
 \ The span is borrowed for this call: libcurl copies the body out of it, and its
 \ declared length is set first because the copy reads that length.
-: BODY! ( handle ptr u8 n -- status ) {: subject:handle bytes u:n :}
+: BODY! ( handle ^u8 n -- status ) {: subject:handle bytes u:n :}
    u 0 AT-LEAST
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
    subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
@@ -578,12 +578,12 @@ public
 
 \ Cookies read at request time. An empty path starts the cookie engine with no
 \ stored cookies, which is libcurl's own spelling for "keep session cookies".
-: COOKIE-FILE! ( handle ptr u8 n -- status ) {: subject:handle path u:n :}
+: COOKIE-FILE! ( handle ^u8 n -- status ) {: subject:handle path u:n :}
    subject OPT-COOKIE-FILE path u SET-TEXT ;
 
 
 \ Cookies written back when the handle is cleaned up.
-: COOKIE-JAR! ( handle ptr u8 n -- status ) {: subject:handle path u:n :}
+: COOKIE-JAR! ( handle ^u8 n -- status ) {: subject:handle path u:n :}
    u 1 AT-LEAST
    subject OPT-COOKIE-JAR path u SET-TEXT ;
 
@@ -620,7 +620,7 @@ public
 
 \ libcurl's static text for the code, never freed and valid for the process;
 \ "Unknown error" for a code libcurl does not know.
-: ERROR$ ( code -- ptr u8 n )
+: ERROR$ ( code -- ^u8 n )
    CODE>N EASY-STRERROR dup ZLEN ;
 
 
@@ -753,16 +753,16 @@ TYPED-VARIABLE TIMER-TICKET AIO:ticket
 -1 constant WAKE-WAIT
 -2 constant TIMER-WAIT
 
-: COUNT-CELL ( -- ptr u8 )    MULTI-STAGE ;
-: MAXFD-CELL ( -- ptr u8 )    MULTI-STAGE $08 + ;
-: TIMEOUT-CELL ( -- ptr u8 )  MULTI-STAGE $10 + ;
+: COUNT-CELL ( -- ^u8 )    MULTI-STAGE ;
+: MAXFD-CELL ( -- ^u8 )    MULTI-STAGE $08 + ;
+: TIMEOUT-CELL ( -- ^u8 )  MULTI-STAGE $10 + ;
 
 
 \ A record chunk, which this module names by address as n: 0 ends the chain.
-CAST: CURL-N>PTR ( n -- ptr n )
+CAST: CURL-N>PTR ( n -- ^n )
 
-CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
-CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
+CAST: OWNER-SLOT ( ^n -- ^^n )
+CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 : CHUNK-FIRST ( -- n )
    CURL-RECS CELL-VIEW FFI:>CELL ;
@@ -770,7 +770,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 : CHUNK-NEXT ( n -- n )
    CURL-N>PTR atomic@ ;
 
-: CHUNK-REC ( n n -- ptr n ) {: c:n k:n :}
+: CHUNK-REC ( n n -- ^n ) {: c:n k:n :}
    c CHUNK-HEAD + k REC-BYTES * + CURL-N>PTR ;
 
 : CHUNK-LEN ( n -- NUM:alloc-byte-len )
@@ -794,7 +794,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ The walk carries the chunk, the index left and the chunk's record count.
-: REC ( n -- ptr n ) REC-CHECK
+: REC ( n -- ^n ) REC-CHECK
    CHUNK-FIRST swap RECS-FIRST
    begin 2dup >= while
       swap over - swap 2 *
@@ -803,10 +803,10 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    drop CHUNK-REC ;
 
 
-: REC-BUF-CELL ( n -- ptr u8 )  REC R.BUF BYTE-VIEW ;
-: REC-LEN-CELL ( n -- ptr u8 )  REC R.BUF-LEN BYTE-VIEW ;
-: REC-HBUF-CELL ( n -- ptr u8 ) REC R.HBUF BYTE-VIEW ;
-: REC-HLEN-CELL ( n -- ptr u8 ) REC R.HLEN BYTE-VIEW ;
+: REC-BUF-CELL ( n -- ^u8 )  REC R.BUF BYTE-VIEW ;
+: REC-LEN-CELL ( n -- ^u8 )  REC R.BUF-LEN BYTE-VIEW ;
+: REC-HBUF-CELL ( n -- ^u8 ) REC R.HBUF BYTE-VIEW ;
+: REC-HLEN-CELL ( n -- ^u8 ) REC R.HLEN BYTE-VIEW ;
 
 
 : REC-STATE@ ( n -- n )     REC R.STATE atomic@ ;
@@ -815,11 +815,11 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 : REC-STREAM@ ( n -- n )    REC R.STREAM @ ;
 : REC-HSTREAM@ ( n -- n )   REC R.HSTREAM @ ;
 : REC-MODE@ ( n -- n )      REC R.MODE @ ;
-: REC-TARGET@ ( n -- ptr u8 ) REC R.TARGET TARGET-SLOT @ ;
-: REC-OWNER@ ( n -- ptr n ) REC R.OWNER OWNER-SLOT @ ;
+: REC-TARGET@ ( n -- ^u8 ) REC R.TARGET TARGET-SLOT @ ;
+: REC-OWNER@ ( n -- ^n ) REC R.OWNER OWNER-SLOT @ ;
 
 
-: REC-TARGET! ( ptr u8 n -- ) {: target idx:n :}
+: REC-TARGET! ( ^u8 n -- ) {: target idx:n :}
    target idx REC R.TARGET TARGET-SLOT ! ;
 
 
@@ -929,7 +929,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    false ;
 
 
-: REC-FILL ( n n ptr u8 n n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n mode:n :}
+: REC-FILL ( n n ^u8 n n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n mode:n :}
    easy idx REC R.EASY !
    capacity idx REC R.CAP !
    stream idx REC R.STREAM !
@@ -1036,19 +1036,19 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-: HEADER-STATUS? ( ptr u8 n n -- bool ) {: source at:n u:n :}
+: HEADER-STATUS? ( ^u8 n n -- bool ) {: source at:n u:n :}
    at 5 + u > if false exit then
    source at + 5 s" HTTP/" STR= ;
 
 
-: HEADER-LF ( ptr u8 n n -- n ) {: source at:n u:n :}
+: HEADER-LF ( ^u8 n n -- n ) {: source at:n u:n :}
    at begin dup u < while
       source over + c@ $0A = if exit then
       1+
    repeat drop -1 ;
 
 
-: HEADER-BLANK? ( ptr u8 n -- bool ) {: source at:n :}
+: HEADER-BLANK? ( ^u8 n -- bool ) {: source at:n :}
    source at + c@ dup $0D = swap $0A = or ;
 
 
@@ -1060,7 +1060,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 \ Task-local scratch. True when the last status line's block reaches a line led
 \ by CR or LF, as libcurl ends one; LEN-CELL holds its start, HBUF-CELL its end.
-: FINAL-BLOCK? ( ptr u8 n -- bool ) {: source u:n :}
+: FINAL-BLOCK? ( ^u8 n -- bool ) {: source u:n :}
    0 BUF-CELL LE:U64!
    0 LEN-CELL LE:U64!
    0 HBUF-CELL LE:U64!
@@ -1084,7 +1084,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 \ Only a capture FINAL-BLOCK? accepts is published, so a peer's bytes never
 \ reach this E-RESULT.
-: FINAL-BLOCK ( ptr u8 n -- n n )
+: FINAL-BLOCK ( ^u8 n -- n n )
    FINAL-BLOCK? 0= if E-RESULT throw then
    LEN-CELL LE:U64@ HBUF-CELL LE:U64@ ;
 
@@ -1314,11 +1314,11 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 \ FD_SETSIZE cannot appear in one at all, so the sets bound this loop at 1024
 \ descriptors and that ceiling is libcurl's own.
 
-: SET-CLEAR ( ptr u8 -- ) {: target :}
+: SET-CLEAR ( ^u8 -- ) {: target :}
    FD-SET-BYTES 0 do 0 target i + c! loop ;
 
 
-: SET-BIT? ( ptr u8 n -- bool ) {: target fd:n :}
+: SET-BIT? ( ^u8 n -- bool ) {: target fd:n :}
    fd 0 < fd FD-SETSIZE >= or if false exit then
    target fd 8 / + c@ 1 fd 7 and lshift and 0 <> ;
 
@@ -1640,7 +1640,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    true ;
 
 
-: OWNER-MARK ( ptr n n -- bool ) {: owner:ptr idx:n :}
+: OWNER-MARK ( ^n n -- bool ) {: owner:^ idx:n :}
    idx REC-STATE@ dup STATE-FREE = swap STATE-CLAIMING = or if false exit then
    idx REC-OWNER@ FFI:>CELL owner FFI:>CELL <> if false exit then
    STATE-ABANDONED idx REC-STATE!
@@ -1652,7 +1652,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 \ the loop before releasing the lock, so the loop cannot stop and close the
 \ waker under that wake.
 : OWNER-END ( -- )
-   TASK:SELF {: owner:ptr :}
+   TASK:SELF {: owner:^ :}
    CURL-LOCK TASK:GET
    false REC-COUNT 0 ?do owner i OWNER-MARK or loop
    if WAKER AIO:WAKE then
@@ -1716,12 +1716,12 @@ private
 
 \ A whole body goes straight into the owner's span; a streamed one grows in the
 \ record's memstream until the loop copies it into a span NEXT-ARM armed.
-: BODY-OPEN ( n ptr u8 n n -- n ) {: idx:n target capacity:n mode:n :}
+: BODY-OPEN ( n ^u8 n n -- n ) {: idx:n target capacity:n mode:n :}
    mode MODE-WHOLE = if target capacity SPAN-OPEN exit then
    idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN ;
 
 
-: START-WITH-BODY ( handle ptr u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
+: START-WITH-BODY ( handle ^u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
    subject HANDLE-CELL {: easy:n :}
    LOOP-LIVE atomic@ 0= if E-STATE throw then
    capacity LEN>N 0 AT-LEAST
@@ -1763,7 +1763,7 @@ private
 
 \ No halt may leave a half-initialized transfer behind. Once published, the
 \ task's exit cleanup owns abandonment until a terminal result is collected.
-: START-WITH ( handle ptr u8 len n -- status )
+: START-WITH ( handle ^u8 len n -- status )
    TASK:DEFER-ENTER
    [: START-WITH-BODY ;] [: TASK:DEFER-LEAVE ;] finally ;
 
@@ -1799,7 +1799,7 @@ public
 \ other task may touch either. A START with no loop running, and a second START
 \ on a handle already in flight, are E-STATE. The records grow with the
 \ transfers in flight, so no count of them is refused.
-: START ( handle ptr u8 len -- status ) {: subject:handle target capacity:len :}
+: START ( handle ^u8 len -- status ) {: subject:handle target capacity:len :}
    subject target capacity MODE-WHOLE START-WITH ;
 
 
@@ -1811,7 +1811,7 @@ public
 
 \ Arms the next read into the span. The loop may write it until NEXT-TAKE
 \ answers or the task's exit, after its cleanups: none may free it.
-: NEXT-ARM ( handle ptr u8 len -- )
+: NEXT-ARM ( handle ^u8 len -- )
    {: subject:handle target capacity:len :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if E-STATE throw then
@@ -1859,7 +1859,7 @@ public
    again ;
 
 
-: NEXT ( handle ptr u8 len -- chunk-result )
+: NEXT ( handle ^u8 len -- chunk-result )
    {: subject:handle target capacity:len :}
    subject target capacity NEXT-ARM
    subject NEXT-TAKE ;
@@ -1920,7 +1920,7 @@ private
 
 
 \ Copies what fits of the final block, naming its whole length.
-: HEADER-BLOCK ( n ptr u8 len -- header-result )
+: HEADER-BLOCK ( n ^u8 len -- header-result )
    {: state:n target capacity:len :}
    state STATE-RESP@ >BYTES state STATE-LEN@ FINAL-BLOCK
       {: at:n finish:n :}
@@ -1943,7 +1943,7 @@ private
 
 \ A handle with no transfer in flight answers only a finished
 \ transfer's capture.
-: IDLE-HEADERS ( n ptr u8 len -- header-result )
+: IDLE-HEADERS ( n ^u8 len -- header-result )
    {: easy:n target capacity:len :}
    easy STATE-GET {: state:n :}
    state STATE-VALID@ VALID-WHOLE <> if E-STATE throw then
@@ -1952,7 +1952,7 @@ private
 
 \ Runs under CURL-LOCK, which the loop holds to publish and replace a response;
 \ the loop drives a handle in flight unlocked, so only its record is read.
-: LOCKED-HEADERS ( n ptr u8 len -- header-result )
+: LOCKED-HEADERS ( n ^u8 len -- header-result )
    {: easy:n target capacity:len :}
    easy REC-FIND {: idx:n :}
    idx 0 < if easy target capacity IDLE-HEADERS exit then
@@ -1965,7 +1965,7 @@ public
 
 \ Answers an idle handle's response, or this task's stream once its first chunk
 \ or response is ready; E-STATE leaves the span untouched.
-: HEADERS ( handle ptr u8 len -- header-result )
+: HEADERS ( handle ^u8 len -- header-result )
    {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
    capacity LEN>N 0 < if E-OPERAND throw then
@@ -1975,7 +1975,7 @@ public
    [: CURL-LOCK TASK:RELEASE ;] finally ;
 
 
-: PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
+: PERFORM ( handle ^u8 len -- fetch-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
    capacity LEN>N 0 AT-LEAST
    easy HANDLE-BUSY? if E-STATE throw then

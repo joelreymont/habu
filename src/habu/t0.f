@@ -92,15 +92,15 @@ variable MISSING                     \ nonzero: the refused token names a word c
 variable ORD                         \ the ordinal of the row the walk reads next
 variable CUT                         \ the byte just past `does> `, or 0
 
-: TXT$ ( -- ptr u8 ) TXT @ ;
+: TXT$ ( -- ^u8 ) TXT @ ;
 
 \ Row k's span, empty past the tape.
-: ROW$ ( n -- ptr u8 n ) {: k:n :}
+: ROW$ ( n -- ^u8 n ) {: k:n :}
    k ROWS @ >= if TXT$ 0 exit then
    TXT$ k ROW-OFF @ +  k ROW-LEN @ ;
 
 \ The row the walk reads next, which it then passes.
-: NEXT$ ( -- ptr u8 n )
+: NEXT$ ( -- ^u8 n )
    ORD @ ROW$
    ORD @ ROWS @ < if 1 ORD +! then ;
 
@@ -113,13 +113,13 @@ variable CUT                         \ the byte just past `does> `, or 0
    ORD @ QUOT-END? ;
 
 \ Throw code, naming the token for UNSUPPORTED$.
-: REFUSE ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+: REFUSE ( ^u8 n n -- ) {: a:^ u:n code:n :}
    a BAD !  u BAD-LEN !
    code throw ;
 
 : CONTROL-FAULT ( -- ) ORD @ 1- ROW$ E-T0-CONTROL REFUSE ;
 
-: UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
+: UNSUPPORTED ( ^u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
 
 \ ---- the control stack -------------------------------------------------------
 \ THE CONTROL STACK holds each open structure's kind with the locals' frame
@@ -494,7 +494,7 @@ variable HEAD-BINDS                  \ the binds of the scan at the text's start
 DYNAMIC-BUFFER WS n                  \ the operands' cells, position 0 the top
 variable WS-K                        \ operands the word moves
 
-: WIDTHS ( ptr u8 n -- ) {: a:ptr k:n :}
+: WIDTHS ( ^u8 n -- ) {: a:^ k:n :}
    a TXT$ - {: at:n :}
    k WS-RESERVE
    k 0 ?do at i OPERAND-CELLS i WS ! loop
@@ -539,21 +539,21 @@ variable WS-K                        \ operands the word moves
    c negate EMIT-DSP+ ;
 
 \ How many leading outputs are the bottom operands in their order.
-: KEPT ( ptr u8 n -- n ) {: outs:ptr u:n :}
+: KEPT ( ^u8 n -- n ) {: outs:^ u:n :}
    WS-K @ u min {: m:n :}
    m 0 ?do outs i + c@ $30 -  WS-K @ 1- i -  <> if i unloop exit then loop
    m ;
 
 \ The WS-K operands replaced by outs, the operand positions of the outputs
 \ from the bottom as digits: the kept bottom ones stay, the rest are copied.
-: MOVE-WIDE ( ptr u8 n -- ) {: outs:ptr u:n :}
+: MOVE-WIDE ( ^u8 n -- ) {: outs:^ u:n :}
    outs u KEPT {: j:n :}
    WS-K @ j - DEPTH {: c:n :}
    0 u j ?do outs i + c@ $30 - PUT-OP loop {: o:n :}
    o c NIP-CELLS ;
 
 \ A shuffle with its entry move over one-cell operands.
-: SHUFFLE ( [ -- ] ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+: SHUFFLE ( [ -- ] ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS
    WIDE? if drop outs u MOVE-WIDE exit then
    execute ;
@@ -1104,16 +1104,16 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The code record rec offers a compiled reference, or 0: a retired record's
 \ code nothing reaches (src/compiler/native/dict.f REC-CODE).
-: REC-START ( ptr n -- n ) {: rec:ptr :}
+: REC-START ( ^n -- n ) {: rec:^ :}
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
 \ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses, is undefined
 \ (MISSING), even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
-   ORD @ ROW$ {: a:ptr u:n :}
+   ORD @ ROW$ {: a:^ u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec NDICT:TICK-REFUSED? if -1 MISSING !  a u UNSUPPORTED then
    rec REC-START {: xt:n :}
    xt 0= if a u UNSUPPORTED then
@@ -1135,11 +1135,11 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    then
    to loc EMIT-CALL ;
 
-: MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+: MOVE-OP ( ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
 
 \ ---- whole-width memory ------------------------------------------------------
-: CELLS0 ( ptr u8 -- n ) {: a:ptr :} a 1 WIDTHS 0 WS @ ;
+: CELLS0 ( ^u8 -- n ) {: a:^ :} a 1 WIDTHS 0 WS @ ;
 
 : ADDR+ ( n -- ) {: k:n :}
    k 0= if exit then
@@ -1151,7 +1151,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
-: DO-FETCH ( ptr u8 -- ) {: a:ptr :}
+: DO-FETCH ( ^u8 -- ) {: a:^ :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    w 1 = if CELL-W FETCH exit then
@@ -1160,7 +1160,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The wide store's calls never leave as a tail: each stores a copy of one cell,
 \ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( ptr u8 n -- ) {: a:ptr to:n :}
+: DO-STORE ( ^u8 n -- ) {: a:^ to:n :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    a TXT$ - {: loc:n :}
@@ -1193,7 +1193,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
-   TXT$ k ROW-OFF @ + {: s:ptr :}
+   TXT$ k ROW-OFF @ + {: s:^ :}
    k ROW-AT @ {: body:n :}
    k ROW-U @ {: u:n :}
    counted if u TOO-LONG then
@@ -1223,7 +1223,7 @@ CAST: XT>N ( xt -- n )
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
    ORD @ ROWS @ >= if ORD @ 1- ROW$ E-T0-DEFER REFUSE then
-   ORD @ ROW$ {: a:ptr u:n :}        \ the operand
+   ORD @ ROW$ {: a:^ u:n :}        \ the operand
    r 0< if a u E-T0-DEFER REFUSE then
    r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0= if a u E-T0-DEFER REFUSE then
@@ -1519,16 +1519,16 @@ variable OP-HITS                     \ the seeded records OP-MAP found by the na
 variable OP-REC                      \ the last of them
 
 \ End the process: operation a u names no single seeded record.
-: OP-DIE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   s" : T0: an inlined operation names no single seeded record" {: m:ptr k:n :}
+: OP-DIE ( ^u8 n -- )
+   {: a:^ u:n :}
+   s" : T0: an inlined operation names no single seeded record" {: m:^ k:n :}
    u k + STR-BUF-RESERVE
    a 0 STR-BUF u BYTE-COPY
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + 76 die ;
 
-: OP-MAP ( ptr u8 n n -- )
-   {: a:ptr u:n code:n :}
+: OP-MAP ( ^u8 n n -- )
+   {: a:^ u:n code:n :}
    0 OP-HITS !
    OP-N @ 0 ?do
       i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
@@ -1558,14 +1558,14 @@ variable OP-REC                      \ the last of them
    r OP-N @ >= if 0 exit then
    r OP-OF @ ;
 
-: CELL1 ( ptr u8 -- )
-   {: a:ptr :}
+: CELL1 ( ^u8 -- )
+   {: a:^ :}
    a CELLS0 1 <> if E-T0-BUNDLE throw then ;
 
 \ Operation code at a, whose primitive's entry is to: false when it is not
 \ inlined after all (DIV2), so the name is a call.
-: INLINE ( ptr u8 n n -- bool )
-   {: a:ptr code:n to:n :}
+: INLINE ( ^u8 n n -- bool )
+   {: a:^ code:n to:n :}
    code case
       1 of a CELL1 [: + ;] OP-ADD true ALU2 true endof
       2 of a CELL1 [: - ;] OP-SUB false ALU2 true endof
@@ -1617,7 +1617,7 @@ variable OP-REC                      \ the last of them
 \ (src/core/checker.f CF-CODE, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
 \ ends its unit before it is compiled (BODY), and a stray `;MATCH` (9) never
 \ certifies.
-: DO-CONTROL ( ptr u8 n -- ) {: a:ptr code:n :}
+: DO-CONTROL ( ^u8 n -- ) {: a:^ code:n :}
    code case
       CF-QUOT-OPEN of DO-QUOT endof
       CF-IF of DO-IF endof
@@ -1659,7 +1659,7 @@ variable OP-REC                      \ the last of them
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
 \ T0 passes over a parse-neutral immediate and refuses any other.
-: IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: IMM-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
    a u NEUTRAL-PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;
 
@@ -1675,10 +1675,10 @@ variable OP-REC                      \ the last of them
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 
-: CALL-TOKEN ( ptr u8 n n n -- )
-   {: a:ptr u:n r:n loc:n :}
+: CALL-TOKEN ( ^u8 n n n -- )
+   {: a:^ u:n r:n loc:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
    code 0<> if a code to INLINE if exit then then
@@ -1689,8 +1689,8 @@ variable OP-REC                      \ the last of them
    to 0= if a u UNSUPPORTED then
    to flags DKIND:MASK and r loc WORD-CALL ;
 
-: NAME-TOKEN ( ptr u8 n n n -- )
-   {: a:ptr u:n r:n loc:n :}
+: NAME-TOKEN ( ^u8 n n n -- )
+   {: a:^ u:n r:n loc:n :}
    r 0 >= if
       r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if a u IMM-TOKEN exit then
    then
@@ -1703,7 +1703,7 @@ variable OP-REC                      \ the last of them
    ORD @ {: k:n :}
    k ROW-KIND @ {: event:n :}
    k ROW-A0 @ {: a0:n :}
-   NEXT$ {: a:ptr u:n :}
+   NEXT$ {: a:^ u:n :}
    a TXT$ - {: loc:n :}
    event STRING-KIND? if k DO-STRING exit then
    event case
@@ -1746,11 +1746,11 @@ variable OP-REC                      \ the last of them
 
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
-: END$ ( -- ptr u8 n )
+: END$ ( -- ^u8 n )
    ORD @ ROWS @ >= if NDEFINITION:CLOSE$ exit then
    ORD @ ROW$ ;
 
-: FINISH ( ptr u8 n -- ) {: a:ptr u:n :}
+: FINISH ( ^u8 n -- ) {: a:^ u:n :}
    CS-N @ 0<> if a u E-T0-CONTROL REFUSE then
    TAILED @ 0= if SPILL-ALL EMIT-RETURN then
    EMIT-CLOSE ;
@@ -1808,7 +1808,7 @@ variable OP-REC                      \ the last of them
 
 \ The token this compile's refusal named, for a code REFUSED$ answers with it;
 \ empty until one does.
-: UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
+: UNSUPPORTED$ ( -- ^u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
 
@@ -1855,15 +1855,15 @@ variable SCAN-LO                     \ the ordinal of its first row
    m ROWS !
    k ;
 
-: KEEP-BODY ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+: KEEP-BODY ( ^u8 n n -- ) {: a:^ u:n k:n :}
    BODIES-N @ {: at:n :}
    at u + BODIES-RESERVE
    a at BODIES u BYTE-COPY
    at k ROW-AT !
    at u + BODIES-N ! ;
 
-: ON-SCAN ( ptr u8 n -- )
-   drop {: a:ptr :}
+: ON-SCAN ( ^u8 n -- )
+   drop {: a:^ :}
    a SCAN-TXT !
    a SRC$ drop - {: base:n :}
    base SCAN-BASE !
@@ -1878,9 +1878,9 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ An escaped string's body is copied: it is not the text at its offset. Row 0,
 \ the definition's name, names the unit from here on.
-: ON-TOKEN ( ptr u8 n n n n n -- )
-   drop {: a:ptr u:n off:n ru:n kind:n :}
-   SCAN-TXT @ off + {: at:ptr :}
+: ON-TOKEN ( ^u8 n n n n n -- )
+   drop {: a:^ u:n off:n ru:n kind:n :}
+   SCAN-TXT @ off + {: at:^ :}
    SCAN-BASE @ off + ru LAY-ROW {: k:n :}
    kind STRING-KIND? if
       u k ROW-U !
@@ -1909,7 +1909,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ Offsets are made whole by the scan's base. A scan that lost a width fact
 \ leaves no cells to place a wide value from, so nothing lowers.
-: ON-DONE ( ptr u8 n n -- )
+: ON-DONE ( ^u8 n n -- )
    SCAN-VERDICT !  2drop
    SCAN-INCOMPLETE @ 0<> if E-NELAB-BUNDLE throw then
    ROWS @ SCAN-LO @ ?do
@@ -2147,7 +2147,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : FIXED-RUN ( -- ) [: FIXED-LOWER ;] [: SHUT ;] finally ;
 
-: REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
+: REFUSED$ ( n -- ^u8 n ) {: rc:n :}
    rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
    if UNSUPPORTED$ exit then
@@ -2169,7 +2169,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
 \ Compile the pending definition whose body text the engine captured.
-: COMPILE ( ptr u8 n -- )
+: COMPILE ( ^u8 n -- )
    IDLE-CK
    STAGE-UNIT
    CHECKER-OWNER:RESET-REPORT
@@ -2180,10 +2180,10 @@ variable SCAN-LO                     \ the ordinal of its first row
    0 M-OPEN !
    STUB-END
    FORGET-MEASURES
-   rc REFUSED$ {: a:ptr u:n :}
+   rc REFUSED$ {: a:^ u:n :}
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  a u a SETTLE-UNIT ;
 
-: DISPATCH! ( [ ptr u8 n -- ] -- )
+: DISPATCH! ( [ ^u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 public

@@ -1,6 +1,6 @@
 \ raw-cell-pointer-refusals.f - rejected programs for "a raw storage cell never
 \ holds an address". Every mention of a raw storage word (variable, create,
-\ constant, here) re-freshens its published `-- ptr a`, so an `n` stored through
+\ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
 \ one mention would come back from the next as an address `@`, `c@`, `!` or
 \ `0 ptr-field` accepts.
 require src/lib/test.f
@@ -39,33 +39,33 @@ create DIAG-BUF 8192 allot
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ptr u8 n )
+: CODE$ ( -- ^u8 n )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
-: VALUE-REASON$ ( -- ptr u8 n )
+: VALUE-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
-: FIELD-REASON$ ( -- ptr u8 n )
+: FIELD-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"ptr-field: base is an undeclared raw storage cell, not a declared pointer cell\"" ;
 
-: REPAIR$ ( -- ptr u8 n )
+: REPAIR$ ( -- ^u8 n )
    S\" \"repair_class\":\"declare_pointer_cell\"" ;
 
 \ An EXECUTABLE value through the same cell answers the same code with its own
 \ reason and repair class: a declared CODE cell, not a declared pointer cell.
-: EXEC-REASON$ ( -- ptr u8 n )
+: EXEC-REASON$ ( -- ^u8 n )
    S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
-: EXEC-REPAIR$ ( -- ptr u8 n )
+: EXEC-REPAIR$ ( -- ^u8 n )
    S\" \"repair_class\":\"declare_xt_cell\"" ;
 
-: RETURN-REPAIR$ ( -- ptr u8 n )
+: RETURN-REPAIR$ ( -- ^u8 n )
    S\" \"repair_class\":\"fix_return_stack\"" ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ptr u8 n -- )
+: LACKS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Each shape is refused with its own named diagnostic (the code and the prose
@@ -119,7 +119,7 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
-\ The byte door is the same door: `c@` wants a `ptr u8`, and a value out of a
+\ The byte door is the same door: `c@` wants a `^u8`, and a value out of a
 \ raw cell is no more a byte address than it is a cell address.
 : CASE-BYTE-FETCH ( -- )
    s" the byte view of the pun is refused where the cell view is" T-LABEL
@@ -133,11 +133,11 @@ create DIAG-BUF 8192 allot
 : CASE-POINTER-IN ( -- )
    s" and a real pointer cannot be put into a plain cell in the first place" T-LABEL
    ARM
-   [: s" : RCP-PSTORE ( ptr a -- ) RCP-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-PSTORE ( ^a -- ) RCP-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
-\ The field door: `ptr-field`'s row is `ptr a n -- ptr ptr b` with `b` free, and
+\ The field door: `ptr-field`'s row is `^a n -- ^^b` with `b` free, and
 \ the value-position rule never sees that pointer, so the raw base is refused at
 \ the `ptr-field` token whatever the result is then used as.
 
@@ -162,12 +162,12 @@ create DIAG-BUF 8192 allot
    DISARM ;
 
 \ A refusal with no token to sit on: every token accepts the value (`@` takes
-\ `ptr a`, answers `a`) and only the DECLARED output row refuses it, after the
+\ `^a`, answers `a`) and only the DECLARED output row refuses it, after the
 \ last token was checked. The reason is still the raw-cell one.
 : CASE-SIGNATURE-BOUNDARY ( -- )
    s" the declared output row refuses it too, and names the same rule" T-LABEL
    ARM
-   [: s" : RCP-VBASE ( -- ptr u8 ) RCP-V @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-VBASE ( -- ^u8 ) RCP-V @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -183,7 +183,7 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
-\ The executable value: with `variable ZQW  : ZQWQ ( -- ptr [ -- n ] ) ZQW ;  :
+\ The executable value: with `variable ZQW  : ZQWQ ( -- ^[ -- n ] ) ZQW ;  :
 \ I1 ( -- n ) ZQWQ @ execute ;`, `1 ZQW !  I1` would branch to address 1. The
 \ fetched value carries a declared quotation type, so the opaque-execute rule
 \ (which judges opacity, not provenance) never fires; the refusal lands on the
@@ -192,14 +192,14 @@ create DIAG-BUF 8192 allot
 : CASE-VARIABLE-AS-XT-CELL ( -- )
    s" a plain variable cannot be declared to hold an execution token" T-LABEL
    ARM
-   [: s" : RCP-QCELL ( -- ptr [ -- n ] ) RCP-V ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-QCELL ( -- ^[ -- n ] ) RCP-V ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
 : CASE-CREATE-AS-XT-CELL ( -- )
    s" a create'd cell gets the same answer" T-LABEL
    ARM
-   [: s" : RCP-QCELLC ( -- ptr [ -- n ] ) RCP-C ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-QCELLC ( -- ^[ -- n ] ) RCP-C ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -237,8 +237,8 @@ create DIAG-BUF 8192 allot
    [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The latch is raised inside the unifier, so a row that is then thrown away can
-\ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` refuses the `ptr a
-\ -- ptr a` row then succeeds on `n -- n`. A later rejection keeps its own
+\ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` refuses the `^a
+\ -- ^a` row then succeeds on `n -- n`. A later rejection keeps its own
 \ reason.
 : CASE-ABANDONED-CANDIDATE ( -- )
    s" a candidate row that was abandoned does not name the real refusal" T-LABEL
@@ -253,7 +253,7 @@ create DIAG-BUF 8192 allot
 \ row.
 : CASE-TYPED-VARIABLE-XT ( -- )
    s" a TYPED-VARIABLE code cell still certifies, and is still executed" T-LABEL
-   [: s" : RCP-HKACC ( -- ptr [ -- n ] ) RCP-HK ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-HKACC ( -- ^[ -- n ] ) RCP-HK ;" evaluate-closed ;] 0 TTHROWSQ
    [: s" : RCP-HKRUN ( -- n ) RCP-HK @ execute ;" evaluate-closed ;] 0 TTHROWSQ
    [: s" : RCP-HKPUT ( -- ) [: 1 ;] RCP-HK ! ;" evaluate-closed ;] 0 TTHROWSQ ;
 
@@ -281,12 +281,12 @@ create DIAG-BUF 8192 allot
 : CASE-XT-WINDOW-CLOSES ( -- )
    s" and the window it opens does not outlive its own token" T-LABEL
    ARM
-   [: s" : RCP-XTTHEN ( -- ptr [ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" evaluate-closed ;]
+   [: s" : RCP-XTTHEN ( -- ^[ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
-\ A TASK:+USER slot of n publishes `-- ptr n`: a fetch through the value it
+\ A TASK:+USER slot of n publishes `-- ^n`: a fetch through the value it
 \ holds is refused, without the raw-cell code.
 : CASE-TASK-SLOT ( -- )
    s" a TASK:+USER slot's refusal is not the raw-cell one" T-LABEL

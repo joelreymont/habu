@@ -6,7 +6,7 @@ require src/lib/c2-memory.f
 package C2-MEM-RUNTIME
 private
 
-: CHANGE-ROW ( n ptr u8 n -- n ptr u8 n ) {: seed:n p:ptr len:n :}
+: CHANGE-ROW ( n ^u8 n -- n ^u8 n ) {: seed:n p:^ len:n :}
    73 p c!
    seed 1+ p 1+ len 1- ;
 

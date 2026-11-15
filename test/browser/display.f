@@ -45,8 +45,8 @@ package DISPLAY
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 \ A mesh's counts and origin take 20 bytes; these three keep origin 0.
 104 BUFFER: SQUARE-MESH
@@ -76,12 +76,12 @@ variable ECHO-U
    {: kind:n a:n b:n c:n :}
    kind FIELD, a FIELD, b FIELD, c FIELD, ;
 
-: SVG ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SVG ( ^u8 n -- )
+   {: a:^ u:n :}
    8 a BYTES>N u 0 RECORD ;
 
-: IMAGE+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: IMAGE+ ( ^u8 n -- )
+   {: a:^ u:n :}
    a IMAGE IMAGE-U @ + u BYTE-COPY
    u IMAGE-U +! ;
 
@@ -95,55 +95,55 @@ variable ECHO-U
 : BLUE ( -- )
    s\" <svg xmlns='http://www.w3.org/2000/svg' width='100' height='400' viewBox='0 0 100 400'><rect width='100' height='400' fill='#245bd6'/></svg>" SVG ;
 
-: U16! ( n ptr u8 -- )
-   {: bits:n dst:ptr :}
+: U16! ( n ^u8 -- )
+   {: bits:n dst:^ :}
    2 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
-: U32! ( n ptr u8 -- )
-   {: bits:n dst:ptr :}
+: U32! ( n ^u8 -- )
+   {: bits:n dst:^ :}
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
-: VERTEX ( ptr u8 n n n n -- )
+: VERTEX ( ^u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
-   {: m:ptr k:n x:n y:n face:n :}
-   m 20 + k 12 * + {: at:ptr :}
+   {: m:^ k:n x:n y:n face:n :}
+   m 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  0 at 4 + U16!  face at 6 + U16! ;
 
 : SQUARE ( -- )
    \ The unit square's lower-left triangle is face 0, its upper-right face 1;
    \ its normals are +z, octahedral 0, 0; the six indices end at byte 104.
-   SQUARE-MESH {: m:ptr :}
+   SQUARE-MESH {: m:^ :}
    6 m U32!  2 m 4 + U32!
    m 0 0 0 0 VERTEX  m 1 1 0 0 VERTEX  m 2 0 1 0 VERTEX
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
    6 0 do i m 92 + i 2 * + U16! loop ;
 
-: TRIANGLE ( ptr u8 n n -- )
+: TRIANGLE ( ^u8 n n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
    \ 2 of the second word; the indices end at byte 62.
-   {: m:ptr ox:n oy:n :}
+   {: m:^ ox:n oy:n :}
    3 m U32!  1 m 4 + U32!
    m 0 0 0 34 VERTEX  m 1 1 0 34 VERTEX  m 2 0 1 34 VERTEX
    3 0 do ox m 28 + i 12 * + U16!  oy m 30 + i 12 * + U16! loop
    3 0 do i m 56 + i 2 * + U16! loop ;
 
-: ORIGIN ( ptr u8 n n n -- )
+: ORIGIN ( ^u8 n n n -- )
    \ The mesh at m's origin x, y, z.
-   {: m:ptr x:n y:n z:n :}
+   {: m:^ x:n y:n z:n :}
    x m 8 + U32!  y m 12 + U32!  z m 16 + U32! ;
 
-: CORNER ( ptr u8 n n n n -- )
+: CORNER ( ^u8 n n n n -- )
    \ Vertex k of the mesh at m at x, y and z on its grid, of face 0, its
    \ normal +z, octahedral 0, 0.
-   {: m:ptr k:n x:n y:n z:n :}
-   m 20 + k 12 * + {: at:ptr :}
+   {: m:^ k:n x:n y:n z:n :}
+   m 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  z at 4 + U16! ;
 
-: QUAD ( ptr u8 n n n n n -- )
+: QUAD ( ^u8 n n n n n -- )
    \ The mesh at m, the rectangle x0..x1 by y0..y1 at z on its grid: vertices
    \ 0 to 3 counterclockwise from x0, y0 and triangles 0 1 2 and 0 2 3, so
    \ each side is a whole triangle edge; the indices end at byte 80.
-   {: m:ptr x0:n y0:n x1:n y1:n z:n :}
+   {: m:^ x0:n y0:n x1:n y1:n z:n :}
    4 m U32!  2 m 4 + U32!
    m 0 x0 y0 z CORNER  m 1 x1 y0 z CORNER
    m 2 x1 y1 z CORNER  m 3 x0 y1 z CORNER
@@ -155,7 +155,7 @@ variable ECHO-U
    \ about the grid's 140000, 220000, 300000, R a turn about x of cos 0.6,
    \ sin 0.8, then one about y of cos 0.8, sin 0.6 (f32 bits, column-major).
    {: r:n handle:n :}
-   SEAM-ROWS r 72 * + {: at:ptr :}
+   SEAM-ROWS r 72 * + {: at:^ :}
    $37CCCCCD at U32!  0 at 4 + U32!  $B799999A at 8 + U32!
    $3775C28F at 12 + U32!  $3799999A at 16 + U32!  $37A3D70A at 20 + U32!
    $373851EC at 24 + U32!  $B7CCCCCD at 28 + U32!  $3775C28F at 32 + U32!
@@ -181,7 +181,7 @@ variable ECHO-U
    \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
    \ bits) and z 0.5.
    {: r:n handle:n tx:n ty:n :}
-   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:^ :}
    $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!  $3F4CCCCD at 32 + U32!
    tx at 36 + U32!  ty at 40 + U32!  $3F000000 at 44 + U32!
    handle at 48 + U32! ;
@@ -194,13 +194,13 @@ variable ECHO-U
 : MARK ( n n n n -- )
    \ Row r's id, flags and highlight offset.
    {: r:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:^ :}
    id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
 
 : PAINT ( n n n n -- )
    \ Row r's colour $rrggbb, metallic and roughness.
    {: r:n rgb:n metal:n rough:n :}
-   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:^ :}
    rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
    rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
@@ -208,8 +208,8 @@ variable ECHO-U
    $3F800000 MATRIX U32!  $3F800000 MATRIX 20 + U32!
    $3F800000 MATRIX 40 + U32!  $3F800000 MATRIX 60 + U32! ;
 
-: DRAW ( ptr u8 n -- )
-   {: rows:ptr count:n :}
+: DRAW ( ^u8 n -- )
+   {: rows:^ count:n :}
    2 rows BYTES>N count MATRIX BYTES>N RECORD ;
 
 : INSTANCES ( -- )
@@ -242,7 +242,7 @@ variable ECHO-U
 : BOX ( n n n n n n n -- )
    \ Box k's lowest x, y, z, then its highest, as f32 bits.
    {: k:n x0:n y0:n z0:n x1:n y1:n z1:n :}
-   BOXES k 24 * + {: at:ptr :}
+   BOXES k 24 * + {: at:^ :}
    x0 at U32!  y0 at 4 + U32!  z0 at 8 + U32!
    x1 at 12 + U32!  y1 at 16 + U32!  z1 at 20 + U32! ;
 
@@ -277,13 +277,13 @@ variable ECHO-U
    s\" [{\"key\":1,\"parent\":0,\"label\":\"Van\"}," SB-APPEND
    s\" {\"key\":2,\"parent\":1,\"label\":\"Shelf\"" SB-APPEND ;
 
-: TREE ( ptr u8 n -- )
+: TREE ( ^u8 n -- )
    \ The rows closed by the string, sent with no selection.
-   SB-APPEND SB$ {: t:ptr tu:n :} 5 t BYTES>N tu 0 RECORD ;
+   SB-APPEND SB$ {: t:^ tu:n :} 5 t BYTES>N tu 0 RECORD ;
 
 : OPENED ( -- )
    \ Shelf's child Bracket arrives with Bracket's child Bolt.
-   s" opened" {: a:ptr u:n :} 3 a BYTES>N u 0 RECORD
+   s" opened" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD
    ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
    s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
 
@@ -323,8 +323,8 @@ variable ECHO-U
    {: b:n c:n :}
    17 PLANE BYTES>N b c RECORD ;
 
-: IS? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: IS? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    2 EVENT@ u <> if false exit then
    u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
    true ;
@@ -346,10 +346,10 @@ variable ECHO-U
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
-   s" text" IS? if s" still here" {: a:ptr u:n :} 3 a BYTES>N u 0 RECORD exit then
-   s" tree" IS? if s" []" {: a:ptr u:n :} 5 a BYTES>N u 0 RECORD exit then
+   s" text" IS? if s" still here" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD exit then
+   s" tree" IS? if s" []" {: a:^ u:n :} 5 a BYTES>N u 0 RECORD exit then
    s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
-   s" fetch" IS? if s" slow" {: a:ptr u:n :} 1 a BYTES>N u 0 RECORD exit then
+   s" fetch" IS? if s" slow" {: a:^ u:n :} 1 a BYTES>N u 0 RECORD exit then
    s" empty" IS? if 8 0 0 0 RECORD exit then
    s" negative" IS? if 8 0 -1 0 RECORD exit then
    s" outside" IS? if 8 -1 1 0 RECORD exit then
@@ -391,14 +391,14 @@ variable ECHO-U
    \ Byte k of the event's bytes.
    1 EVENT@ + >BYTES c@ ;
 
-: NAMED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: NAMED ( ^u8 n -- )
+   {: a:^ u:n :}
    a ECHO-BUF u BYTE-COPY u ECHO-U ! ;
 
 \ The name and the event's bytes in ECHO-BUF; refuses an echo past the
 \ buffer.
-: ECHOED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ECHOED ( ^u8 n -- )
+   {: a:^ u:n :}
    u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
    a u NAMED
    2 EVENT@ 0 ?do i BYTE@ BYTE, loop ;
@@ -406,7 +406,7 @@ variable ECHO-U
 : ECHO-RECORD ( -- )
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
 
-: ECHO ( ptr u8 n -- )
+: ECHO ( ^u8 n -- )
    ECHOED ECHO-RECORD ;
 
 : ONES ( -- n )

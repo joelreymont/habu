@@ -1,6 +1,6 @@
 \ create-axiom-test.f - `create`'s effect row (src/habu/prims.f `EPRIM: create
 \ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
-\ BCREATE); the word gets `-- ptr a` from its definer (src/habu/interpreter.f
+\ BCREATE); the word gets `-- ^a` from its definer (src/habu/interpreter.f
 \ DEF-ADDR-PUBLISH). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
 \ and both callers.
 
@@ -16,14 +16,14 @@ private
 \ `evaluate-closed` loads a definition as a source file loads one. At top level
 \ what these publish is global, the position the inference case needs.
 
-\ Controls: `here` is measured beside it; a word `create` made keeps `-- ptr a`;
+\ Controls: `here` is measured beside it; a word `create` made keeps `-- ^a`;
 \ `create` in a string or a comment certifies as if absent.
 \ The parser-only definer regression calls the production source verifier
 \ directly.
 \ NDICT:SPELL-ARITY resolves a spelling's active effect through the checker's
 \ effect-read API and answers the pair in stack cells: asking it is asking the
 \ row.
-\ The word `create` makes keeps `-- ptr a`: its definer publishes it against the
+\ The word `create` makes keeps `-- ^a`: its definer publishes it against the
 \ new name as it emits the body.
 : MADE-WORD ( -- )
    s" create CAX-DAT 8 allot" evaluate-closed ;
@@ -42,19 +42,19 @@ private
    s" 41 CAX-DAT !  CAX-USE" TEST-EVAL:N 41 T= ;
 
 : LOAD-EMPTY ( -- )      s" : CAX-B1 ( -- ) create ;" evaluate-closed ;
-: LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ptr a ) create ;" evaluate-closed ;
+: LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ^a ) create ;" evaluate-closed ;
 : LOAD-N ( -- )          s" : CAX-B3 ( -- n ) create ;" evaluate-closed ;
 : LOAD-ENUM-HALF ( -- )  s" : CAX-B4 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
-: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ptr u8 n ) s\q create\q ;" evaluate-closed ;
+: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ^u8 n ) s\q create\q ;" evaluate-closed ;
 : LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" evaluate-closed ;
-\ `here` hands back a raw storage address, so its wrapper declares `ptr n`: a
+\ `here` hands back a raw storage address, so its wrapper declares `^n`: a
 \ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md
 \ "Real types, not reflexive `n`."). What this case measures is the arity.
-: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" evaluate-closed ;
+: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ^n ) here ;" evaluate-closed ;
 \ A body that allots after `create` is the sharpest form of `create` moving no
 \ stack cell.
 : LOAD-BUFFER-HALF ( -- ) s" : CAX-D3 ( n -- ) create allot ;" evaluate-closed ;
-\ The definer's runtime `create` gives the word it makes `-- ptr a`, so a checked
+\ The definer's runtime `create` gives the word it makes `-- ^a`, so a checked
 \ body can name it, and a package's public reader can name one its private
 \ definer made.
 : LOAD-CELL-READ ( -- )   s" : CAX-B8 ( -- n ) CAX-B4-CELL @ ;" evaluate-closed ;
@@ -120,7 +120,7 @@ private
 \ DEFINER-TOK does not shadow, and its inferred effect is recorded under its
 \ name for every later caller.
 : INFER-MK ( -- )       s" : CAX-MK create ;" evaluate-closed ;
-: INFER-BAD ( -- )      s" : CAX-C1 ( -- ptr a ) CAX-MK ;" evaluate-closed ;
+: INFER-BAD ( -- )      s" : CAX-C1 ( -- ^a ) CAX-MK ;" evaluate-closed ;
 : INFER-GOOD ( -- )     s" : CAX-C2 ( -- ) CAX-MK ;" evaluate-closed ;
 
 : INFER-CASE ( -- )
@@ -149,7 +149,7 @@ private
    s" : CAX-K1 constant ;" VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VC-INERT ( -- )
-   s\" : CAX-V2 ( -- ptr u8 n ) s\q variable\q ;\n: CAX-K2 ( -- ) ( constant ) ;"
+   s\" : CAX-V2 ( -- ^u8 n ) s\q variable\q ;\n: CAX-K2 ( -- ) ( constant ) ;"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VC-REJECT-CASE ( -- )

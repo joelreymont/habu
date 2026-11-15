@@ -39,7 +39,7 @@ PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
 \ that allocation with its rows, then clear the retired header so capture has
 \ only one live store to prepare. Reinstalling the current header is harmless.
 : INSTALL ( -- )
-   CWIN-STATE {: prior:ptr prior-n:ptr prior-cap:ptr :}
+   CWIN-STATE {: prior:^ prior-n:^ prior-cap:^ :}
    prior STATE = if exit then
    prior @ STATE !
    prior-n @ STATE-N !

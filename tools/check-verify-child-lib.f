@@ -52,11 +52,11 @@ DYNAMIC-BUFFER DEF-PKG u8
 variable DEF-PKG-U
 DYNAMIC-BUFFER IDX-EVENTS n              \ symbol, start, end for each declaration
 variable IDX-N
-TYPED-VARIABLE OF-A ptr u8              \ the fourth form's TAIL,
+TYPED-VARIABLE OF-A ^u8              \ the fourth form's TAIL,
 variable OF-U                           \ 0 for the other forms
 
 
-: WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+: WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    u 0= if exit then
    fd a u write u <> if s" check-verify: write failed" 74 die then ;
 
@@ -66,7 +66,7 @@ variable OF-U                           \ 0 for the other forms
    fd NL 1 WRITE ;
 
 
-: U$ ( n -- ptr u8 n )
+: U$ ( n -- ^u8 n )
    NUM-CAP NUM-I !
    begin
       dup 10 mod 48 + NUM-I @ 1- dup NUM-I ! NUM + c!
@@ -143,28 +143,28 @@ variable OF-U                           \ 0 for the other forms
    POS @ 1+ SUBJECT-AT ! ;
 
 
-: OPEN-PATH$ ( n -- ptr u8 n )
+: OPEN-PATH$ ( n -- ^u8 n )
    4 * {: at:n :}
    at OPEN-AT @ IN at 1+ OPEN-AT @ ;
 
-: OPEN-TEXT$ ( n -- ptr u8 n )
+: OPEN-TEXT$ ( n -- ^u8 n )
    4 * {: at:n :}
    at 2 + OPEN-AT @ IN at 3 + OPEN-AT @ ;
 
 
 \ The text of the first open document at this canonical path and true, else
 \ false (VERIFY:SUPPLIED).
-: OPEN-TEXT ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+: OPEN-TEXT ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    OPEN-N @ 0 ?do
       i OPEN-PATH$ a u CORE-STR= if i OPEN-TEXT$ true unloop exit then
    loop
    NULL$ false ;
 
 
-: SUBJECT$ ( -- ptr u8 n )
+: SUBJECT$ ( -- ^u8 n )
    SUBJECT-AT @ IN SUBJECT-U @ ;
 
-: SUBJECT-PATH$ ( -- ptr u8 n )
+: SUBJECT-PATH$ ( -- ^u8 n )
    BATCH? @ if SUBJECT-PATH-AT @ IN SUBJECT-PATH-U @ exit then
    0 SCRIPT-ARGV$ ;
 
@@ -179,7 +179,7 @@ variable OF-U                           \ 0 for the other forms
 
 \ The definitions after the throw went unverified, and a throw the checker
 \ rendered no packet for has nothing else to show it.
-: STOPPED ( ptr u8 n n n -- ) {: label:ptr labelu:n rc:n rejects:n :}
+: STOPPED ( ^u8 n n n -- ) {: label:^ labelu:n rc:n rejects:n :}
    ERR-FD label labelu WRITE
    ERR-FD s" : verification stopped by throw " WRITE
    ERR-FD rc FD-N
@@ -192,7 +192,7 @@ variable OF-U                           \ 0 for the other forms
 \ A loader's fault, for the parent to place its packet and status line: the
 \ loader token's length and the file the loader could not read, if any.
 : LOADER-LINE ( -- )
-   VERIFY:FAULT-TARGET$ {: t:ptr tu:n :}
+   VERIFY:FAULT-TARGET$ {: t:^ tu:n :}
    OUT-FD s" check-verify: loader " WRITE
    OUT-FD VERIFY:FAULT-LEN@ FD-N
    tu 0 > if
@@ -205,7 +205,7 @@ variable OF-U                           \ 0 for the other forms
 \ Why the scan refused the declaration it stopped at, when it kept a reason
 \ (VERIFY:REASON$), for the parent to put in the stop's packet.
 : REASON-LINE ( -- )
-   VERIFY:REASON$ {: r:ptr ru:n :}
+   VERIFY:REASON$ {: r:^ ru:n :}
    ru 0= if exit then
    OUT-FD s" check-verify: reason " WRITE
    OUT-FD r ru WRITE
@@ -220,8 +220,8 @@ variable OF-U                           \ 0 for the other forms
    [: VERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
-: STOP-FIELDS ( n n ptr u8 n bool n -- )
-   {: at:n u:n file:ptr fileu:n subj:bool rc:n :}
+: STOP-FIELDS ( n n ^u8 n bool n -- )
+   {: at:n u:n file:^ fileu:n subj:bool rc:n :}
    OUT-FD rc FD-N
    OUT-FD s"  " WRITE
    OUT-FD VERIFY:TOKEN-BYTE@ FD-N
@@ -243,7 +243,7 @@ variable OF-U                           \ 0 for the other forms
 
 
 \ A duplicate the first form goes past, which the checker writes no packet for.
-: DUPLICATE-LINE ( n n ptr u8 n bool -- )
+: DUPLICATE-LINE ( n n ^u8 n bool -- )
    OUT-FD s" check-verify: duplicate " WRITE
    E-DUP-DEFINITION STOP-FIELDS ;
 
@@ -252,7 +252,7 @@ variable OF-U                           \ 0 for the other forms
    dup 10 < if 48 + exit then 87 + ;
 
 
-: CONTROL-ESC ( n -- ptr u8 n )
+: CONTROL-ESC ( n -- ^u8 n )
    {: c:n :}
    92 ESC c!  117 ESC 1 + c!  48 ESC 2 + c!  48 ESC 3 + c!
    c 16 / HEX-DIGIT ESC 4 + c!
@@ -262,7 +262,7 @@ variable OF-U                           \ 0 for the other forms
 
 \ RFC 8259's string escapes: quotation mark, reverse solidus and control bytes;
 \ empty for none.
-: ESCAPE$ ( n -- ptr u8 n )
+: ESCAPE$ ( n -- ^u8 n )
    {: c:n :}
    c 34 = if s\" \\\"" exit then
    c 92 = if s\" \\\\" exit then
@@ -270,18 +270,18 @@ variable OF-U                           \ 0 for the other forms
    NULL$ ;
 
 
-: JSON-BYTE ( ptr u8 n -- )
-   {: a:ptr i:n :}
+: JSON-BYTE ( ^u8 n -- )
+   {: a:^ i:n :}
    a i + c@ ESCAPE$
-   {: e:ptr eu:n :}
+   {: e:^ eu:n :}
    eu 0= if exit then
    OUT-FD a RUN-AT @ + i RUN-AT @ - WRITE
    OUT-FD e eu WRITE
    i 1+ RUN-AT ! ;
 
 
-: JSON-STR ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: JSON-STR ( ^u8 n -- )
+   {: a:^ u:n :}
    OUT-FD s\" \"" WRITE
    0 RUN-AT !
    u 0 ?do a i JSON-BYTE loop
@@ -292,18 +292,18 @@ variable OF-U                           \ 0 for the other forms
 \ The package span, copied out of the checker's symbol pool before anything
 \ else runs: the next intern can move it. The storage holds a byte at least,
 \ so a global's empty package has an address.
-: DEF-PKG! ( ptr u8 n -- )
-   {: pkg:ptr pkgu:n :}
+: DEF-PKG! ( ^u8 n -- )
+   {: pkg:^ pkgu:n :}
    pkgu 1 max DEF-PKG-RESERVE
    pkg 0 DEF-PKG pkgu BYTE-COPY
    pkgu DEF-PKG-U ! ;
 
 
-: DEF-PKG$ ( -- ptr u8 n )
+: DEF-PKG$ ( -- ^u8 n )
    0 DEF-PKG DEF-PKG-U @ ;
 
 
-: VISIBILITY$ ( n -- ptr u8 n )
+: VISIBILITY$ ( n -- ^u8 n )
    {: vis:n :}
    vis SYM-GLOBAL = if s" global" exit then
    vis SYM-PRIVATE = if s" private" exit then
@@ -311,7 +311,7 @@ variable OF-U                           \ 0 for the other forms
    s" check-verify: unknown visibility" 74 die ;
 
 
-: CLASS$ ( n -- ptr u8 n )
+: CLASS$ ( n -- ^u8 n )
    {: class:n :}
    class VERIFY:DEF-WORD = if s" word" exit then
    class VERIFY:DEF-CONSTANT = if s" constant" exit then
@@ -324,10 +324,10 @@ variable OF-U                           \ 0 for the other forms
 \ A definition the first form retained, as its definition line: the name as
 \ the event gives it, the package and visibility the checker recorded it
 \ under. The tail it recorded is its lookup key, not a name to show.
-: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
-   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+: DEFINITION-LINE ( ^u8 n ^u8 n n ^u8 n n n n n -- )
+   {: kind:^ kindu:n name:^ nameu:n sym:n eff:^ effu:n at:n end:n class:n visit:n :}
    REF-BATCH? @ if exit then
-   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: definition {\"kind\":" WRITE
    kind kindu JSON-STR
@@ -357,8 +357,8 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 \ Index records are selected before the candidate scope destroys its symbols.
-: IDX-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
-   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+: IDX-DEFINITION ( ^u8 n ^u8 n n ^u8 n n n n n -- )
+   {: kind:^ kindu:n name:^ nameu:n sym:n eff:^ effu:n at:n end:n class:n visit:n :}
    IDX-N @ 1+ 3 * IDX-EVENTS-RESERVE
    IDX-N @ 3 * {: row:n :}
    sym row IDX-EVENTS !
@@ -366,11 +366,11 @@ variable OF-U                           \ 0 for the other forms
    end row 2 + IDX-EVENTS !
    1 IDX-N +! ;
 
-: IDX-DUPLICATE ( n n ptr u8 n bool -- ) drop 2drop 2drop ;
+: IDX-DUPLICATE ( n n ^u8 n bool -- ) drop 2drop 2drop ;
 
 : IDX-LINE ( n n n -- )
    {: sym:n at:n end:n :}
-   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    tailu 0= if exit then
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: index {\"decl_name\":" WRITE
@@ -398,8 +398,8 @@ variable OF-U                           \ 0 for the other forms
 
 \ A file visit, with the source of the bytes ON-FILE was handed. Disk metadata
 \ comes from the quiet reader, never from a stat after verification.
-: FILE-LINE ( ptr u8 n ptr u8 n -- )
-   {: f:ptr fu:n a:ptr u:n :}
+: FILE-LINE ( ^u8 n ^u8 n -- )
+   {: f:^ fu:n a:^ u:n :}
    f fu SUBJECT-PATH$ CORE-STR= {: subject:bool :}
    f fu OPEN-TEXT {: open:bool :} 2drop
    f fu VERIFY:QUIET-READ-META
@@ -435,7 +435,7 @@ variable OF-U                           \ 0 for the other forms
       located VERIFY:SUBJECT? and if true exit then
    then
    OF-U @ 0= if false exit then
-   sym VERIFY:SYM-IDENTITY drop {: tail:ptr tailu:n :} 2drop
+   sym VERIFY:SYM-IDENTITY drop {: tail:^ tailu:n :} 2drop
    REF-BATCH? @ if
       tail tailu OF-A @ OF-U @ STR=CI
    else
@@ -443,10 +443,10 @@ variable OF-U                           \ 0 for the other forms
    then ;
 
 
-: USE-LINE ( n n ptr u8 n n n n n -- )
-   {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
+: USE-LINE ( n n ^u8 n n n n n -- )
+   {: at:n end:n path:^ pathu:n tat:n tend:n sym:n visit:n :}
    sym pathu 0<> USE-WRITTEN? 0= if exit then
-   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
    OUT-FD at FD-N
@@ -472,7 +472,7 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 
-: LOAD-OUTCOME$ ( n -- ptr u8 n )
+: LOAD-OUTCOME$ ( n -- ^u8 n )
    {: outcome:n :}
    outcome VERIFY:LOAD-READ = if s" read" exit then
    outcome VERIFY:LOAD-HELD = if s" held" exit then
@@ -481,8 +481,8 @@ variable OF-U                           \ 0 for the other forms
 
 \ A top-level loader of the first form's subject whose load reached a file, as
 \ its load line.
-: LOAD-LINE ( n n ptr u8 n n -- )
-   {: at:n end:n path:ptr pathu:n outcome:n :}
+: LOAD-LINE ( n n ^u8 n n -- )
+   {: at:n end:n path:^ pathu:n outcome:n :}
    OUT-FD s\" check-verify: load {\"byte_start\":" WRITE
    OUT-FD at FD-N
    OUT-FD s\" ,\"byte_end\":" WRITE
@@ -496,8 +496,8 @@ variable OF-U                           \ 0 for the other forms
 
 
 \ A spelling the third form's cursor offers, as its candidate line.
-: CANDIDATE-LINE ( ptr u8 n ptr u8 n n n -- )
-   {: w:ptr wu:n path:ptr pathu:n tat:n tend:n :}
+: CANDIDATE-LINE ( ^u8 n ^u8 n n n -- )
+   {: w:^ wu:n path:^ pathu:n tat:n tend:n :}
    OUT-FD s\" check-verify: candidate {\"word\":" WRITE
    w wu JSON-STR
    pathu 0 > if
@@ -541,11 +541,11 @@ variable OF-U                           \ 0 for the other forms
 
 
 \ The engine provides the path, or this child loaded it: what `require` skips.
-: HELD? ( ptr u8 n -- bool )
+: HELD? ( ^u8 n -- bool )
    SOURCE-ROOT:RESOLVE nip nip ;
 
 
-: RESULT ( ptr u8 n -- ) {: a:ptr u:n :}
+: RESULT ( ^u8 n -- ) {: a:^ u:n :}
    OUT-FD s" check-verify: " WRITE
    OUT-FD a u WRITE
    OUT-FD NEWLINE ;

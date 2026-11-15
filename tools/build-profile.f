@@ -39,12 +39,12 @@ variable REPORT-FD
    s" usage: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>"
    USAGE-RC die ;
 
-: SOURCE$ ( -- ptr u8 n )   FIRST SCRIPT-ARGV$ ;
-: OUT$    ( -- ptr u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
-: TEXT$   ( -- ptr u8 n )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
-: JSON$   ( -- ptr u8 n )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
+: SOURCE$ ( -- ^u8 n )   FIRST SCRIPT-ARGV$ ;
+: OUT$    ( -- ^u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
+: TEXT$   ( -- ^u8 n )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
+: JSON$   ( -- ^u8 n )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
 
-: DASHED? ( ptr u8 n -- bool )   s" -" STARTS-WITH? ;
+: DASHED? ( ^u8 n -- bool )   s" -" STARTS-WITH? ;
 
 : ARGS-OK? ( -- bool )
    OPERANDS 4 <> if false exit then
@@ -56,7 +56,7 @@ variable REPORT-FD
 \ The option's name, resolved as tools/hb-build.f resolves its --target.
 : TARGET ( -- RTARGET:resolved-target )
    OPTION? 0= if RTARGET:HOST-TARGET exit then
-   1 SCRIPT-ARGV$ {: a:ptr u:n :}
+   1 SCRIPT-ARGV$ {: a:^ u:n :}
    a u RTARGET:PLATFORM? 0= if
       2 s" build-profile: unknown target " write drop
       a u USAGE-RC die
@@ -66,7 +66,7 @@ variable REPORT-FD
 \ The reports are written by the engine straight to fd 1, which is what makes
 \ them safe to take from a signal handler. Pointing fd 1 at a file for the
 \ length of one report is therefore the whole of "write it to a file".
-: REDIRECT ( ptr u8 n -- ) {: pa:ptr pu:n :}
+: REDIRECT ( ^u8 n -- ) {: pa:^ pu:n :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
    SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" E-BUILD-PROFILE-IO die then
    pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !

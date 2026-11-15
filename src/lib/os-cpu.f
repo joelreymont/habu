@@ -26,13 +26,13 @@ private
 
 PROCESS-SYMBOLS
 FUNCTION: SYSCONF-CALL sysconf ( n -- n ) ;FUNCTION
-FUNCTION: GETLOADAVG-CALL getloadavg ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: GETLOADAVG-CALL getloadavg ( ^u8 n -- i32 ) ;FUNCTION
 
 : ONLN ( -- n )
    HB-TARGET-MACOS? if ONLN-MACOS else ONLN-LINUX then ;
 
 
-: SAMPLE ( ptr u8 NUM:alloc-byte-len -- r )
+: SAMPLE ( ^u8 NUM:alloc-byte-len -- r )
    drop {: buf :}
    buf 1 GETLOADAVG-CALL 1 < if E-LOAD throw then
    buf CELL-VIEW @ IEEE754:BITS>F64 ;

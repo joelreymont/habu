@@ -17,10 +17,10 @@ create BINARY-EXPECTED $41 c, $7F c, 0 c, $42 c,
 create BINARY-INSERT $7F c, 0 c,
 create ODD-STORE CAP STORAGE-BYTES 1+ allot
 
-: OPEN ( ptr u8 n -- EDIT:editor )
+: OPEN ( ^u8 n -- EDIT:editor )
    STORAGE CAP STORAGE-BYTES 2swap INIT ;
 
-: RESULT= ( EDIT:editor ptr u8 n -- EDIT:editor )
+: RESULT= ( EDIT:editor ^u8 n -- EDIT:editor )
    {: expected size:n :}
    OUTPUT OUTPUT-CAP EDIT:WRITE
    OUTPUT swap expected size T$= ;
@@ -127,7 +127,7 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
 : CHECKED-OWNERSHIP ( -- )
    s" BYTE-EDIT-DUP ( EDIT:editor -- EDIT:editor EDIT:editor ) dup" CHECK! 0 T=
    s" BYTE-EDIT-DROP ( EDIT:editor -- ) drop" CHECK! 0 T=
-   s" BYTE-EDIT-SWAP ( EDIT:editor len off ptr u8 n -- EDIT:editor ) EDIT:REPLACE"
+   s" BYTE-EDIT-SWAP ( EDIT:editor len off ^u8 n -- EDIT:editor ) EDIT:REPLACE"
    CHECK! 0 T= ;
 
 T-RESET

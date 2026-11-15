@@ -28,9 +28,9 @@ TYPED-VARIABLE HK [ n -- n ]
 TYPED-VARIABLE HKN [ [ n -- n ] -- n ]
 
 \ define-time reject verdicts (evaluate-closed under catch)
-TYPED-VARIABLE XC-A ptr u8  variable XC-U
+TYPED-VARIABLE XC-A ^u8  variable XC-U
 : XC-RUN ( -- ) XC-A @ XC-U @ evaluate-closed ;
-: XC-EVAL ( ptr u8 n -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
+: XC-EVAL ( ^u8 n -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
 
 \ ---- checker seam: store / fetch / execute fit-checks ------------------------
 : XC-SECTION-CHECKER ( -- )
@@ -42,7 +42,7 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    s" F2 ( -- ) HK @ execute" CHECK-QUIET-CANDIDATE! 0 T=
    \ row polymorphism: surplus depth under the arg is preserved
    s" F3 ( n n -- n n ) HK @ execute" CHECK-QUIET-CANDIDATE! -1 T=
-   s" F4 ( -- ptr [ n -- n ] ) HK" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" F4 ( -- ^[ n -- n ] ) HK" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- live round-trip through the cell ---------------------------------------
 : HK-STORE ( -- ) [: SP ;] HK ! ;
@@ -118,10 +118,10 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 \ refused at RSEXEC's T-VAR branch: its stack effect is not statically known.
 \ The typed xt cell above is the sound alternative.
 create XC-DBUF 8192 allot
-: XC-CODE< ( ptr u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
+: XC-CODE< ( ^u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
    XC-DBUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: XC-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this code
+: XC-CODE? ( ^u8 n -- )   \ assert the captured diagnostic names this code
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : XC-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
@@ -159,7 +159,7 @@ defer XC-DF ( n -- n )
 \ ---- the `xt` type: the token `'` pushes for a word with no stack effect -------
 \ XE declares it. A cast may take it but never yields one, and no storage holds
 \ one, directly or in a field; a quotation row may name it.
-: XC-EVAL< ( ptr u8 n -- )   \ evaluate with JSON diags captured; assert reject
+: XC-EVAL< ( ^u8 n -- )   \ evaluate with JSON diags captured; assert reject
    XC-DBUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    XC-EVAL CHECKER-REJECT-RC T= ;
 : XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one

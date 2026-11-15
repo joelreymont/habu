@@ -55,7 +55,7 @@ variable SNAP-END
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-: TEXT-BYTES, ( ptr u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+: TEXT-BYTES, ( ^u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
 : CELL! ( r64 n -- ) {: r:r64 off:n :}
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
@@ -293,7 +293,7 @@ variable SNAP-END
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside
 \ the loaded text, so it is readable before any region exists.
-: FAIL, ( label ptr u8 n n -- ) {: at:label a:ptr u:n rc:n :}
+: FAIL, ( label ^u8 n n -- ) {: at:label a:^ u:n rc:n :}
    X64CODE:LBL {: msg:label :}
    at X64CODE:LBL,
    RDI STDERR IMM,  RSI msg MOVABS,  RDX u IMM,  NR-WRITE SYS,
@@ -516,15 +516,15 @@ DIGITS 1+ constant LINE-BYTES
 1 constant MEMORY-ORDER
 $F constant NIBBLE
 
-: HEX$ ( -- ptr u8 n ) s" 0123456789abcdef" ;
+: HEX$ ( -- ^u8 n ) s" 0123456789abcdef" ;
 \ crash.f's CRS-DATA$, CRS-RET$, CRS-LOOP$ and CRS-MACHINE$, byte for byte.
 \ crash.f itself is not loaded here: only the ARM64 build driver loads it,
 \ beside A64ASM.
-: DATA-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
-: RETURN-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
-: LOOP-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
-: MACHINE-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
-: HEAD$ ( -- ptr u8 n )
+: DATA-HIT$ ( -- ^u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
+: RETURN-HIT$ ( -- ^u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
+: LOOP-HIT$ ( -- ^u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
+: MACHINE-HIT$ ( -- ^u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
+: HEAD$ ( -- ^u8 n )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;
 
 \ Bind the printer at the label: called with rax = the value and rdx = the
