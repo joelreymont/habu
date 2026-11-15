@@ -41,7 +41,7 @@ RANGE-CAPACITY TYPED-BUFFER RANGE-TAG n
 variable RANGE-N
 variable READY
 
-131072 CODEGEN:BUFFER OUTPUT
+CODEGEN:BUFFER OUTPUT
 
 : SCRIPTS-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/Scripts.txt" ;

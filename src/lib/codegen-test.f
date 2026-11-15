@@ -1,32 +1,42 @@
-\ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a plain
-\ buffer throws E-CG-CAP / E-CG-VALUE, a BUFFER-E: buffer the caller's codes.
+\ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a text
+\ past the first mapping is kept whole, and a negative decimal keeps its sign.
 \ Run: bin/hb --load src/lib/test.f src/lib/codegen.f src/lib/codegen-test.f
 
 require src/lib/test.f
 require src/lib/codegen.f
 
-16 CODEGEN:BUFFER CGT-D
-8 -7001 -7002 CODEGEN:BUFFER-E CGT-E     \ explicit per-buffer codes (arbitrary caller sentinels)
+CODEGEN:BUFFER CGT-D
+CODEGEN:BUFFER CGT-W
 
-: CGT-FILL ( -- )
+\ 1000 bytes, each the low digit of its index, past the 256-byte first mapping.
+1000 constant CGT-LONG
+: CGT-DIGIT ( n -- n )  10 mod [char] 0 + ;
+: CGT-LONG-FILL ( -- )
    CGT-D CODEGEN:RESET
-   s" 0123456789abcdef" CGT-D CODEGEN:APPEND-STRING   \ 16 bytes == cap
-   CGT-D CODEGEN:CONTENTS s" 0123456789abcdef" T$= ;
+   CGT-LONG 0 ?do  i CGT-DIGIT CGT-D CODEGEN:APPEND-BYTE  loop ;
+: CGT-LONG-KEPT? ( -- bool )
+   CGT-D CODEGEN:CONTENTS {: a:ptr u:n :}
+   true  u 0 ?do  a i + c@ i CGT-DIGIT = and  loop ;
 
-: CGT-THROWS ( -- )
-   [: CGT-D CODEGEN:RESET  s" 0123456789abcdefg" CGT-D CODEGEN:APPEND-STRING ;]
-      E-CG-CAP TTHROWSQ                    \ 17 > 16: default buffer overflow -> module code
-   [: CGT-D CODEGEN:RESET  -5 CGT-D CODEGEN:APPEND-DECIMAL ;]
-      E-CG-VALUE TTHROWSQ                  \ default buffer negative decimal -> module code
-   [: CGT-E CODEGEN:RESET  s" 123456789" CGT-E CODEGEN:APPEND-STRING ;]
-      -7001 TTHROWSQ                       \ 9 > 8: explicit buffer overflow -> caller code
-   [: CGT-E CODEGEN:RESET  -1 CGT-E CODEGEN:APPEND-DECIMAL ;]
-      -7002 TTHROWSQ ;                     \ explicit buffer negative decimal -> caller code
+: CGT-GROW ( -- )
+   CGT-LONG-FILL
+   CGT-D CODEGEN:CONTENTS nip CGT-LONG T=
+   CGT-LONG-KEPT? TTRUE ;
+
+: CGT-DEC$ ( n -- ptr u8 n )
+   CGT-W CODEGEN:RESET  CGT-W CODEGEN:APPEND-DECIMAL  CGT-W CODEGEN:CONTENTS ;
+
+: CGT-DECIMAL ( -- )
+   0 CGT-DEC$ s" 0" T$=
+   1234 CGT-DEC$ s" 1234" T$=
+   -5 CGT-DEC$ s" -5" T$=
+   -1230 CGT-DEC$ s" -1230" T$=
+   $8000000000000000 CGT-DEC$ s" -9223372036854775808" T$= ;
 
 : CGT-RUN ( -- )
    T-RESET
-   CGT-FILL
-   CGT-THROWS
+   CGT-GROW
+   CGT-DECIMAL
    T-REPORT ;
 
 CGT-RUN

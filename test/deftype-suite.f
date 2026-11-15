@@ -61,7 +61,7 @@ PTR-REJECTED
 
 \ 5. the name length rule is the family name cap (TFAM:TF-NAME-MAX, 255 bytes):
 \    a 40-byte name and a 255-byte one declare with working converters, and a
-\    256-byte one is refused E-VNOM-CAP before anything is registered.
+\    256-byte one is rejected with a record before anything is registered.
 package LONGPKG
 DEFTYPE FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP
 s" VN-LONG-RT ( n -- n ) >FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP>N" CHECK-QUIET-CANDIDATE! -1 T=
@@ -71,15 +71,16 @@ s" VN-MAX-RT ( n -- n ) >MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
 ;package
 
 \ The 256-byte name goes through the public route, a DEFTYPE text evaluated in
-\ its own package; -6002 is deftype.f's private E-VNOM-CAP.
--6002 constant VN-CAP-CODE
-TFAM:TF-NAME-MAX 32 + CODEGEN:BUFFER VN-CAP-SRC
+\ its own package.
+CODEGEN:BUFFER VN-CAP-SRC
 : VN-CAP-SRC! ( -- )
    VN-CAP-SRC CODEGEN:RESET
    s" package VNCAP DEFTYPE " VN-CAP-SRC CODEGEN:APPEND-STRING
    TFAM:TF-NAME-MAX 1+ 0 ?do 78 VN-CAP-SRC CODEGEN:APPEND-BYTE loop
    s"  ;package" VN-CAP-SRC CODEGEN:APPEND-STRING ;
 VN-CAP-SRC!
-VN-CAP-SRC CODEGEN:CONTENTS TEST-EVAL:RC VN-CAP-CODE T=
+REJECTION:CAPTURE
+VN-CAP-SRC CODEGEN:CONTENTS TEST-EVAL:RC CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ s" name longer than 255 bytes" CONTAINS? TTRUE
 
 T-REPORT

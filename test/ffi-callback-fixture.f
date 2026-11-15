@@ -313,7 +313,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 : DECLARED ( -- n ) 0 begin dup SLOT? while 1 + repeat ;
 
-128 CODEGEN:BUFFER PAD-TEXT
+CODEGEN:BUFFER PAD-TEXT
 variable PADS
 
 : PAD ( -- )
