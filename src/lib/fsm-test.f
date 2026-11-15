@@ -1,4 +1,5 @@
 require src/lib/test.f
+require src/lib/test/subject.f
 require src/lib/fsm.f
 require src/lib/fmt.f
 require src/core/bytes.f
@@ -401,6 +402,16 @@ variable SRC-LEN
    5 VALID 2 T= ;
 
 
+\ A table word's undefined ACTION is placed at the ACTION's own line.
+: PLACED-ACTION ( -- )
+   s" include test/fixtures/fsm/undefined-action.f" 70
+   s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
+
+\ An unknown states type is placed at the header's states token.
+: PLACED-STATES ( -- )
+   s" include test/fixtures/fsm/unknown-states.f" 70
+   s" unknown-states.f:11" SUBJECT:REFUSED? TTRUE ;
+
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )
    s" package FSM-GOOD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
@@ -561,6 +572,8 @@ public
    STEPS
    SYNTAX
    REJECTED
+   PLACED-ACTION
+   PLACED-STATES
    SHADOWED
    USING-SHADOW
    SIZE

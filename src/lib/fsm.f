@@ -36,16 +36,19 @@ public
 private
 
 \ Every token DEFINE keeps points into the source it reads, which stays in
-\ place while it runs.
+\ place while it runs. Reading one back makes it the token read last, so a
+\ rejection while DEFINE builds from it is placed at it.
 PTR-VARIABLE NAME-A   variable NAME-U
 PTR-VARIABLE CTX-A    variable CTX-U
 PTR-VARIABLE STATES-A variable STATES-U
 PTR-VARIABLE INPUTS-A variable INPUTS-U
 
-: NAME$ ( -- ptr u8 n ) NAME-A @ NAME-U @ ;
-: CTX$ ( -- ptr u8 n ) CTX-A @ CTX-U @ ;
-: STATES$ ( -- ptr u8 n ) STATES-A @ STATES-U @ ;
-: INPUTS$ ( -- ptr u8 n ) INPUTS-A @ INPUTS-U @ ;
+: AT ( ptr u8 n -- ptr u8 n ) 2dup SRCLOC:TOKEN! ;
+
+: NAME$ ( -- ptr u8 n ) NAME-A @ NAME-U @ AT ;
+: CTX$ ( -- ptr u8 n ) CTX-A @ CTX-U @ AT ;
+: STATES$ ( -- ptr u8 n ) STATES-A @ STATES-U @ AT ;
+: INPUTS$ ( -- ptr u8 n ) INPUTS-A @ INPUTS-U @ AT ;
 
 \ The table's rows in order. A row's tokens start at its ROW-AT: an IN row's
 \ state, SENSE and inputs, then ROW-LINES lines of input, ACTION and NEXT; a
@@ -67,7 +70,7 @@ variable WORD-LEN
    a k TOK-A !  u k TOK-U !
    k 1+ TOKS ! ;
 
-: TOK$ ( n -- ptr u8 n ) {: k:n :} k TOK-A @ k TOK-U @ ;
+: TOK$ ( n -- ptr u8 n ) {: k:n :} k TOK-A @ k TOK-U @ AT ;
 
 \ Opens a row at the next token.
 : ROW+ ( -- )
@@ -268,12 +271,15 @@ variable WORD-LEN
    postpone 2drop  postpone ; ;
 
 
+\ The words are built with their table tokens read last, then the `;DEFINE`
+\ READ-TABLE stopped at is read last again.
 : GENERATE ( -- )
    READ-TABLE
-   ROWS @ 0 ?do i ROW-ACTS loop
-   ROWS @ 0 ?do i FINAL? 0= if i ROW-WORD then loop
-   STEP-WORD
-   RUN-WORD ;
+   SRCLOC:TOKEN$ {: a:ptr u:n :}
+   [: ROWS @ 0 ?do i ROW-ACTS loop
+      ROWS @ 0 ?do i FINAL? 0= if i ROW-WORD then loop
+      STEP-WORD  RUN-WORD ;]
+   [: a u SRCLOC:TOKEN! ;] finally ;
 
 public
 

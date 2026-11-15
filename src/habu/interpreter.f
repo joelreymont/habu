@@ -309,12 +309,17 @@ create NL NEWLINE c,
    ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
 
-: REFUSAL ( ptr u8 n -- )
-   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@ SRCLOC:LINE
+: REFUSAL-AT ( ptr u8 n n -- ) {: ln:n :}
+   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@ ln
    ERROR-TEXT:PREFIX ;
 
+: REFUSAL ( ptr u8 n -- ) SRCLOC:LINE REFUSAL-AT ;
+
+\ Placed at the name's own line when its bytes lie in the open file: a definer
+\ may call a name it read earlier.
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-UNDEFINED" REFUSAL
+   s" E-UNDEFINED"
+   a CHECK:LINE-AT 0= if drop SRCLOC:LINE then REFUSAL-AT
    s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
    s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
