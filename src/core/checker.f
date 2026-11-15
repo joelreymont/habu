@@ -14918,25 +14918,31 @@ variable EV-LO   variable EV-N
 : DFER-ADD ( ptr u8 n -- )
    CHECKER-RECORD-SYM RES-TRUE DFER-ADD-SYM ;
 
+\ Rejects the record name a u, placed at the token at atu: a name given as a
+\ string, as `define-word`'s, is not the token the load stands on.
+package CHECKER-RESOLVE
+public
+: REJECT-QUALIFIED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n at:ptr atu:n :}
+   s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
+   s" the record name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` has more than one `:`" REJECTION:EMIT-STR
+   at atu REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+   s" rule" REJECTION:NOTE
+   s" one `:` not at an edge selects a package, and a second `:` names no word"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` with one `:` between the package and the word, as `PKG:WORD`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+;package
+
 \ No row may carry 0: a defer row keyed 0 is DFERS' terminator and hides every
 \ later row, and an effect row keyed 0 is anonymous.
 : CHECKER-RECORD-NAME-AT ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
-   sym 0= IF
-      s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
-      s" the record name `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
-      s" ` has more than one `:`" REJECTION:EMIT-STR
-      at atu REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
-      s" rule" REJECTION:NOTE
-      s" one `:` not at an edge selects a package, and a second `:` names no word"
-      REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" write `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
-      s" ` with one `:` between the package and the word, as `PKG:WORD`"
-      REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   THEN
+   sym 0= IF a u at atu CHECKER-RESOLVE:REJECT-QUALIFIED THEN
    sym CHECKER-REC-SYM !
    a u ;
 

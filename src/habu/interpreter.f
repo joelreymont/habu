@@ -1556,21 +1556,13 @@ private
    wid ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
-\ DEF-TKL take the name token, which the refusals after them name. A bare name
+\ DEF-TKL take the name token, which the rejections after them name. A bare name
 \ goes into the current wordlist; the qualifier is the first colon at neither
-\ edge (`:a:b` is bare), and a second colon after it refuses.
+\ edge (`:a:b` is bare), and a second colon after it is rejected.
 : DEF-QUALIFY-NAME ( ptr u8 n -- ptr u8 n n ) {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
-   a u q 1+ COLON-AT 0 >= if
-      s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
-      s" the name `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-      s" ` has a second qualifier colon" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:AT  s" more than one qualifier" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" qualify the name with one package, as `PKG:NAME`" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   then
+   a u q 1+ COLON-AT 0 >= if a u TOKEN$ CHECKER-RESOLVE:REJECT-QUALIFIED then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
 : DEF-QUALIFY ( -- ptr u8 n n )
