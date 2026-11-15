@@ -546,6 +546,10 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 
 : FLOW-TOP  ( -- n )  1 FLOW-NEED  FLOW# @ 1- ;
 : FLOW-POP  ( -- n )  FLOW-TOP  dup FLOW# ! ;
+: FLOW-LIVE?  ( -- bool )
+   FLOW# @ begin dup 0 > while
+      1-  dup FL-PATH FL @ LIVE = if drop LINT-TRUE exit then
+   repeat drop LINT-FALSE ;
 
 
 \ The innermost do entry.
@@ -567,9 +571,10 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 \ control flow moves the path. Back edges are not modeled: a loop body is walked once.
 : FLOW-STEP  ( n -- )
    TOK {: a:^ u:n :}
-   a u s" if" LINT-STR=CI  a u s" of" LINT-STR=CI or  a u s" begin" LINT-STR=CI or if
+   a u s" if" LINT-STR=CI  a u s" of" LINT-STR=CI or if
       LINT-FALSE FLOW-PUSH drop exit
    then
+   a u s" begin" LINT-STR=CI if LINT-FALSE FLOW-PUSH DEAD>ENTRY exit then
    a u s" else" LINT-STR=CI if FLOW-TOP FLOW-SWAP exit then
    a u s" then" LINT-STR=CI  a u s" endcase" LINT-STR=CI or
    a u s" loop" LINT-STR=CI or  a u s" +loop" LINT-STR=CI or if
@@ -1094,8 +1099,10 @@ variable HIDDEN
    RNEXT @ ON# @ >= if LINT-FALSE exit then
    DI @ RNEXT @ OPEN@ = ;
 
+\ The walk ends at an opening only when no state lives: a path parked in a
+\ flow entry, as by a host `else`, rejoins after the opening.
 : ROUTINE-ADVANCE-OPEN ( -- )
-   PATH @ LIVE <> if
+   PATH @ LIVE <>  FLOW-LIVE? 0= and if
       -1 RDONE !
    else
       RNEXT @ 1+ RNEXT !
