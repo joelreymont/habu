@@ -848,15 +848,21 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
-: PKG-CONTEXT-FAIL ( -- )
+public
+\ Writes the record of package keyword t tu out of its context through its
+\ help; the caller ends it.
+: PKG-CONTEXT-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
-   TOKEN$ TICKS  s"  is not allowed in this context" SAY
-   TOKEN$ REJECTION:AT  s" out of context" SAY
+   t tu TICKS  s"  is not allowed in this context" SAY
+   t tu REJECTION:AT  s" out of context" SAY
    REJECTION:HELP  s" write " SAY  s" public" TICKS  s" , " SAY
    s" private" TICKS  s" , " SAY  s" seal-package" TICKS  s"  and " SAY
    s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
-   s"  inside its enclosing package" SAY
-   PKG-RC-CONTEXT REJECTION:STOP ;
+   s"  inside its enclosing package" SAY ;
+private
+
+: PKG-CONTEXT-FAIL ( -- )
+   TOKEN$ PKG-CONTEXT-REJECT  PKG-RC-CONTEXT REJECTION:STOP ;
 
 public
 \ Writes the record of the name a u, placed at it, through its help and leaves
@@ -1330,19 +1336,22 @@ private
 
 \ `host` or `target` at top level is the section word; with a word of that name in scope the
 \ token could mean either, so it is refused: the word is renamed, or called qualified if public.
+public
+\ Writes the record of section word t tu, which a word in scope also names,
+\ through its help; the caller ends it.
+: SECTION-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-SECTION-WORD" REJECTION:OPEN
+   t tu TICKS
+   s"  is the section word, and a word of that name is in scope" SAY
+   t tu REJECTION:AT  s" section word or word in scope" SAY
+   REJECTION:HELP
+   s" rename the word, or call it by its qualified name if it is public" SAY ;
+private
+
 : SECTION? ( -- bool )
    s" host" TOKEN-IS?  s" target" TOKEN-IS? or 0= if false exit then
    SEARCH
-   REC @ XREF-FOUND? if
-      s" E-SECTION-WORD" REJECTION:OPEN
-      s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-      s" ` is the section word, and a word of that name is in scope" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:AT  s" section word or word in scope" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" rename the word, or call it by its qualified name if it is public"
-      REJECTION:EMIT-STR
-      RC-REJECT REJECTION:STOP
-   then
+   REC @ XREF-FOUND? if TOKEN$ SECTION-REJECT  RC-REJECT REJECTION:STOP then
    s" target" TOKEN-IS? if 1 else 0 then SECTION-CELL CELL!
    true ;
 
@@ -1751,15 +1760,20 @@ private
    s DEF-SIG-END drop {: end:ptr :}
    s end DEF-SIG-TAKE ;
 
-: DEF-SIG-BAD ( -- )
+public
+\ Writes the record of t tu, a definition's name or `does>`, with no closed
+\ signature after it, through its help; the caller ends it.
+: SIGNATURE-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
    s" E-MISSING-SIGNATURE" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-   s" ` has no closed `( -- )` signature" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:AT  s" no closed signature after this" REJECTION:EMIT-STR
+   t tu TICKS  s"  has no closed `( -- )` signature" SAY
+   t tu REJECTION:AT  s" no closed signature after this" SAY
    REJECTION:HELP
    s" write the stack effect after the name, as `( n -- n )`, with its closing `)`"
-   REJECTION:EMIT-STR
-   DEF-RC-BAD-SIG REJECTION:STOP ;
+   SAY ;
+private
+
+: DEF-SIG-BAD ( -- )
+   TOKEN$ SIGNATURE-REJECT  DEF-RC-BAD-SIG REJECTION:STOP ;
 
 \ A head's signature that the input ends before or inside is the source ending
 \ inside the definition.
