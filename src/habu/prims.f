@@ -63,6 +63,8 @@ public
 24 constant A-ADDR
 \ A quotation input whose input and output rows are independent: [ R -- S ].
 25 constant A-QUOT-ANY
+\ `str`: a string as one value, its base address and byte length.
+26 constant A-STR
 
 private
 
@@ -142,6 +144,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-F           A-BOOL CODE, ;
 : PE-R           A-REAL CODE, ;
 : PE-U8          A-U8 CODE, ;
+: PE-STR         A-STR CODE, ;
 : PE-PTR-A       A-VAR-A CODE, A-PTR CODE, ;
 : PE-PTR-B       A-VAR-B CODE, A-PTR CODE, ;
 : PE-PTR-C       A-VAR-C CODE, A-PTR CODE, ;

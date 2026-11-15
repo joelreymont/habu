@@ -3287,6 +3287,7 @@ variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
 variable STOW-FAM
+variable STRING-FAM
 variable VIEW-TX
 variable VIEW-FIELD-BASE
 
@@ -3311,6 +3312,24 @@ variable VIEW-FIELD-BASE
    READ-FAM @ 1 PK-SCOPE TFAM-PK!
    READ-FAM @ 2 PK-TYPE TFAM-PK!
    READ-FAM @ REGISTER-VIEW-FIELDS ;
+
+\ str is a native two-cell product, base address below byte length; it
+\ publishes no constructor, destructor or field accessor.
+: REGISTER-STR ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" str" 0 TK-PRODUCT TFAM-DECL STRING-FAM !
+   STRING-FAM @ STR-FAM !
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ STRING-FAM @ TYPE-FIELD:NO-VARIANT s" base"
+      CC-U8 SCHEMA-CON SCHEMA-PTR SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ STRING-FAM @ TYPE-FIELD:NO-VARIANT s" len"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   STRING-FAM @ VIEW-FIELD-BASE @ 2 TFAM-FLD-RANGE!
+   STRING-FAM @ 2 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
 
 : REGISTER-MUT-VIEW ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" mut-view" 4 TK-PRODUCT TFAM-DECL MUT-FAM !
@@ -3387,6 +3406,7 @@ REGISTER-WIDTH
 REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
 REGISTER-STOW
+REGISTER-STR
 
 \ --- type entries. Inside a build each family a file declares gets a record,
 \ its type entry, named `pkg:tail` (a global's `tail`) in the program's types

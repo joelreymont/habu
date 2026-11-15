@@ -1649,6 +1649,7 @@ variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element f
 variable WIDTH-FAM  -1 WIDTH-FAM !
 variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
+variable STR-FAM  -1 STR-FAM !          \ `str`, a string as one value
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -2451,7 +2452,7 @@ CWIN-BOOT-DEFAULT
 
 1 constant CC-N     2 constant CC-F     3 constant CC-R
 4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
-8 constant CC-CHAR  9 constant CC-STR  10 constant CC-ADDR  11 constant CC-BOOL
+8 constant CC-CHAR                    10 constant CC-ADDR  11 constant CC-BOOL
 12 constant CC-IDX  13 constant CC-LEN  14 constant CC-COUNT 15 constant CC-OFF
 16 constant CC-FD   17 constant CC-RC   18 constant CC-PID   19 constant CC-MS
 20 constant CC-NS   21 constant CC-TOK  22 constant CC-REG   23 constant CC-LABEL
@@ -2469,7 +2470,6 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 2 constant CT-ROLE
 3 constant CT-BOOL
 4 constant CT-FLOAT
-5 constant CT-OBJ
 6 constant CT-LINEAR
 
 0 constant CS-NONE
@@ -2712,7 +2712,6 @@ CT-ARENA-BOOT
    s" u32"     CC-U32    CT-INT   32 CS-UNSIGNED CT-SET
    s" cell"    CC-CELL   CT-INT   64 CS-GENERIC CT-SET
    s" char"    CC-CHAR   CT-INT    8 CS-UNSIGNED CT-SET
-   s" str"     CC-STR    CT-OBJ    0 CS-NONE    CT-SET
    s" addr"    CC-ADDR   CT-INT   64 CS-ADDR    CT-SET
    s" bool"    CC-BOOL   CT-BOOL   1 CS-NONE    CT-SET
    s" idx"     CC-IDX    CT-ROLE  64 CS-NONE    CT-SET
@@ -11627,6 +11626,7 @@ variable PRM-FIRST
 : PE-N ( -- n ) CC-N MK-CON ;
 : PE-R ( -- n ) CC-R MK-CON ;
 : PE-U8 ( -- n ) CC-U8 MK-CON ;
+: PE-STR ( -- n ) PARAM-SCR-N @ s" str" STR-FAM @ MK-PARAM ;
 : PE-PTR ( n -- n ) MK-PTR ;
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 
@@ -11689,11 +11689,16 @@ variable PE-EFF-ID
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
 
+\ A layout type's term goes in as its cells, as a signature lays it out.
+: PE-PUSH ( n n -- n ) {: t:n row:n :}
+   t T-RES LAYOUT-PARAM? IF t row LAYOUT-PUSH-FIELDS EXIT THEN
+   t row MK-PUSH ;
+
 : PE-IN ( n -- )
-   PE-DIN @ MK-PUSH PE-DIN ! ;
+   PE-DIN @ PE-PUSH PE-DIN ! ;
 
 : PE-OUT ( n -- )
-   PE-DOUT @ MK-PUSH PE-DOUT ! ;
+   PE-DOUT @ PE-PUSH PE-DOUT ! ;
 
 : PE-A ( -- n ) $61 VAR-OF ;
 : PE-B ( -- n ) $62 VAR-OF ;
@@ -11793,6 +11798,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-BOOL     = IF PE-F  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-REAL     = IF PE-R  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-U8       = IF PE-U8 PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-STR      = IF PE-STR PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
