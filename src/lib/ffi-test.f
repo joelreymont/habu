@@ -342,7 +342,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-LONG-PATH!
    FFI-T-LONG-PATH PATH-CAP FFI:SELECT-LIBRARY
    [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:SELECT-LIBRARY ;]
-   E-FFI-SYNTAX TTHROWSQ ;
+   E-FFI-SYNTAX TTHROWSQ
+   FFI:SELECT-PROCESS ;
 
 : FFI-T-LONG-SRC! ( -- )
    FFI-T-SRC CODEGEN:RESET
@@ -810,8 +811,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: ;FUNCTION with no declaration open" FFI-T-SYNTAX
 
    s" FFI-T-RAW ( ptr a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
+   s" FFI-T-ROW ( n -- n ) FFI:CALL" FFI-T-CHECK-REJECTS
+   s" FFI-T-STAGE ( n n -- ) FFI:VALUE!" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ptr a ptr a ptr a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
-   s" FFI-T-LIE ( n -- ) 0 FFI:POINTER!" FFI-T-CHECK-REJECTS
    s" FFI-T-MULTI ( ptr u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE

@@ -1,6 +1,7 @@
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
-\ only checked call surface: its word names a row, never an address.
+\ only call surface: its word names a row, never an address, and the row and
+\ staging words are private.
 \ STORAGE CLASS. TASK-LOCAL: marshalling buffers and the DLSYM loader block;
 \ calls nest only through a C callback, which shares them. PROCESS-WIDE: rows,
 \ whose addresses, handles and failures are scratch.
@@ -561,6 +562,7 @@ public
 
 : >CELL ( ptr a -- n ) PTR>CELL ;
 
+private
 : VALUE! ( n n -- ) FFI-ARG! ;
 : POINTER! ( ptr a n -- ) FFI-PTR-ARG! ;
 
@@ -581,8 +583,7 @@ public
    {: value:ptr off:n :}
    value PTR>CELL off FFI-STACK! ;
 
-: ARGS ( -- ptr n ) FFI-BUF ;
-
+public
 : OUT@ ( ptr n -- n ) FFI-OUT@ ;
 : OUT! ( n ptr n -- ) FFI-OUT! ;
 
@@ -639,8 +640,6 @@ public
 : CALLBACK-ENTRY ( n -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
-\ The declarer below is DECLARE-ROW's only intended caller.
-: PROCESS ( -- n ) 0 ;
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
 
@@ -665,6 +664,10 @@ public
    buf CODEGEN:CONTENTS ;
 
 
+private
+
+: PROCESS ( -- n ) 0 ;
+
 : LIB-INDEX ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
    LIB-N @ 0 ?do
@@ -673,8 +676,6 @@ public
       then
    loop
    0 ;
-
-private
 
 : LIBRARY-PATH-OR ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
@@ -689,8 +690,6 @@ private
    0 row 1- LIB-FAILED!
    next row 1- LIB-NEXT!
    row ;
-
-public
 
 : LIBRARY-PATH ( ptr u8 n -- n ) 0 LIBRARY-PATH-OR ;
 
@@ -739,8 +738,6 @@ public
 
 : CALL-STRUCT-PTR ( n -- ptr u8 ) CALL-STRUCT drop CELL>PTR ;
 
-private
-
 : REG-STORE ( n ptr u8 n -- ) {: v:n dst:ptr len:n :}
    len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
 
@@ -759,8 +756,6 @@ private
       src len i RECORD-CELL pay i + cells STACK-VALUE!
    loop
    pay cells FFI-STACK-SLOT PTR>CELL ;
-
-public
 
 \ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
 \ integer registers from reg, or in stack cells from byte offset pos; a larger
@@ -792,8 +787,6 @@ public
    $FFFFFFFF and $80000000 xor $80000000 - ;
 \ The stored symbol's length decides along with its bytes, so neither a prefix
 \ nor a name holding a 0 byte matches a row.
-private
-
 : SAME-FN? ( ptr u8 n n n n n n -- bool )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
@@ -809,8 +802,6 @@ private
 : RELOC-OWNED? ( n n n -- bool ) {: reloc:n argc:n spills:n :}
    1 argc 8 min lshift 1-  1 spills lshift 1- 8 lshift or {: own:n :}
    reloc own invert and 0= ;
-
-public
 
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
@@ -840,20 +831,16 @@ public
    0 idx FN-ADDR!
    idx ;
 
-: DECLARE ( ptr u8 n n n -- n )
-   {: argc:n :}
-   argc REG-MAX > if E-FFI-ARITY throw then
-   argc 0 0 DECLARE-ROW ;
-
+public
 \ errno is this package's own binding, written by hand because the declarer is
-\ defined after this package closes. libc's location is thread-local and the
+\ defined below it, in this package. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
    ERRNO-FN CALL-PTR LE:U32@ ;
 
-ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
+ERRNO-SYMBOL$ PROCESS 0 0 0 DECLARE-ROW ERRNO-FN-CELL !
 
-s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
+s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 
 
 \ FUNCTION: - declare a foreign function, get a checked word.
