@@ -273,9 +273,9 @@
 \ - a declaring token not answered with its definition, over it
 \   ...................................................... hover-definition
 \ - a use of a word SCRATCH-BUFFER: made not answered with its definition
-\   and its effect ( -- ptr u8 ) ...................... hover-made-scratch
+\   and its effect ( -- ^u8 ) ......................... hover-made-scratch
 \ - a use of a word TYPED-BUFFER made not answered with its definition and
-\   its effect ( n -- ptr n ) ............................ hover-made-typed
+\   its effect ( n -- ^n ) ............................... hover-made-typed
 \ - a use of either converter a DEFTYPE declares, both at its name's token,
 \   in either case or package-qualified, not answered with that converter's
 \   own definition ........................................... hover-deftype
@@ -3553,12 +3553,12 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : HOVER-SCRATCH-TURNS ( -- )
    3 21 HOVER-MADE-ASK
-   s" SCRATCH-BUFFER:" s" SB" s" -- ptr u8" 2 MADE-MD
+   s" SCRATCH-BUFFER:" s" SB" s" -- ^u8" 2 MADE-MD
    s" 3" s" markdown" 3 21 23 HOVERED ;
 
 : HOVER-TYPED-TURNS ( -- )
    4 18 HOVER-MADE-ASK
-   s" TYPED-BUFFER" s" HV-TB" s" n -- ptr n" 3 MADE-MD
+   s" TYPED-BUFFER" s" HV-TB" s" n -- ^n" 3 MADE-MD
    s" 3" s" markdown" 4 18 23 HOVERED ;
 
 : HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;

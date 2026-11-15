@@ -7325,6 +7325,23 @@ variable PKHAVE
 : SIG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
 
+\ `^T` is a pointer to T, `^` joined to T's first byte. The lexer splits `^` from
+\ a `[` after it, so a `^` token alone has a pointee only when the source byte
+\ after it is `[`; a blank, another split character or the text's end after it
+\ leaves the pointer bare (SIG-CARET-BARE?).
+: SIG-CARET? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 < IF RES-FALSE EXIT THEN
+   a c@ 94 = ;
+: SIG-CARET-BARE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 <> IF RES-FALSE EXIT THEN
+   a NULL-PTR - SB@ NULL-PTR - - 1 + SL @ < 0= IF RES-TRUE EXIT THEN
+   a 1 + c@ 91 <> ;
+\ The pointee's first token of a `^` token SIG-CARET-BARE? passes: the rest of
+\ the token, else the `[` the lexer split from it.
+: SIG-CARET-POINTEE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 1 = IF NEXT-SIG-TOK EXIT THEN
+   a 1 + u 1 - ;
+
 : SIG-NEST ( n n -- n ) {: depth:n c:n :}
    c 60 = c 91 = or IF depth 1 + EXIT THEN
    c 62 = c 93 = or IF depth 1 - EXIT THEN
@@ -7332,7 +7349,7 @@ variable PKHAVE
 : CHECKER-TYPE-SPAN-STEP ( n ptr u8 n -- n bool ) {: depth:n a:ptr u:n :}
    depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
    after 0 > IF after RES-FALSE EXIT THEN
-   after a u SIG-PTR-TOK? 0= ;
+   after a u SIG-PTR-TOK? a u s" ^" CORE-STR= or 0= ;
 \ No type spelling holds `;` or `;]`, so a body's `[type]` span ends before
 \ one, never past the end of its definition or quotation.
 : TYPE-SPAN-END? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -7343,7 +7360,8 @@ variable PKHAVE
 \ An effect spells a type exactly as declared, so `CELL` and `PTR` are types
 \ beside `cell` and `ptr`. A name holding `(` (40), `"` (34) or `\` (92) is
 \ refused wherever that byte sits: where source names the type again, check.f's
-\ lexer can read such a token as a comment or string opener.
+\ lexer can read such a token as a comment or string opener. A name beginning
+\ with `^` (94) is refused: an effect reads it as a pointer (SIG-CARET?).
 : TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
    c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
    c 41 = IF RES-TRUE EXIT THEN
@@ -7351,6 +7369,7 @@ variable PKHAVE
    c 34 = IF RES-TRUE EXIT THEN
    c 92 = ;
 : TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 > IF a c@ 94 = IF RES-TRUE EXIT THEN THEN
    0 begin dup u < while
       a over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN
       1+
@@ -7517,6 +7536,10 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 \ must always reach the MK-PTR case below, even when `ptr` is no live family:
 \ only `family<...>` takes the family branch.
 : SIG-TYPE-ONE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u SIG-CARET? IF
+      a u SIG-CARET-BARE? IF a u SGBAD-BAREPTR! 1 MK-CON EXIT THEN
+      a u SIG-CARET-POINTEE SIG-TYPE-XT MK-PTR EXIT
+   THEN
    a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN
    a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
    a u s" forall-region" CORE-STR= IF SIG-FORALL-REGION EXIT THEN
@@ -7582,7 +7605,7 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 SIG-BINDER-BODY-INSTALL
 
 \ ---- typed local annotations -------------------------------------------------
-\ `{: p:ptr :}` means an inferred pointee, which SIG-TYPE would refuse, so the
+\ `{: p:^ :}` and `{: p:ptr :}` mean an inferred pointee, which SIG-TYPE would refuse, so the
 \ shorthand is taken ahead of the delegation.
 : BAD-LOC-ANN ( ptr u8 n -- n )    \ unusable local annotation: fail fast so the
    BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
@@ -7608,11 +7631,11 @@ SIG-BINDER-BODY-INSTALL
    rt LAYOUT-WIDTH-OPEN? IF rt EXIT THEN
    rt dup T-WIDTH 1 - MK-HIDDEN ;
 
-\ A bare `ptr` local's pointee is STORED: binding the pointer asks nothing of
+\ A bare `^` or `ptr` local's pointee is STORED: binding the pointer asks nothing of
 \ what it points at, and a one-cell use of it (`p @`) makes it one cell.
 : LOCAL-TYPE ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   a u SIG-PTR-TOK? IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
+   a u SIG-PTR-TOK? a u s" ^" CORE-STR= or IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
                               \ that already failed keeps its own diagnostic
    u 0 = IF 0 RES-FALSE ELSE a u TYPE-SPAN-READ THEN
@@ -14438,7 +14461,7 @@ public
 
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
-   s" n -- ptr " LBUF-SIG-APP
+   s" n -- ^" LBUF-SIG-APP
    type typeu LBUF-SIG-APP
    LBUF-SIG-BUF LBUF-SIG-U @ ;
 
@@ -14459,7 +14482,7 @@ public
 
 : CHECKER-STORAGE-VAR-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
-   s" -- ptr " LBUF-SIG-APP
+   s" -- ^" LBUF-SIG-APP
    type typeu LBUF-SIG-APP
    LBUF-SIG-BUF LBUF-SIG-U @ ;
 
@@ -14629,20 +14652,20 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFARENA ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    0 LBUF-SIG-U !
-   s" ptr ARENA:arena -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s" ^ARENA:arena -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
    0 LBUF-SIG-U !
-   s" ptr ARENA:arena [ ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   s"  -- ] -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s" ^ARENA:arena [ ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s"  -- ] -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW-DISPOSE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
 : CHECKER-DEFHEAP ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    0 LBUF-SIG-U !
-   s" -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s" -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
    0 LBUF-SIG-U !
-   s" ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
+   s" ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
    name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
 \ Its count arrives at the bind, so the line carries none.

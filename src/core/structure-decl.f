@@ -114,17 +114,26 @@ SD-RESET
       1 +
    REPEAT ;
 
-\ An atom `ptr` not followed by `<` opens a pointer argument (SD-PTR-START).
-: SD-PTR-ATOM? ( ptr u8 n ptr u8 n n -- bool ) {: na:ptr nu:n a:ptr u:n j:n :}
-   na nu s" ptr" CORE-STR=CI 0= IF NO EXIT THEN
-   j u < IF a j + c@ 60 <> ELSE YES THEN ;
-
 \ Where the pointee of an argument's `ptr` is read from: a blank must follow
 \ `ptr`, so `span<ptr>` and `span<ptr,n>` are refused.
 : SD-PTR-START ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
    j u < IF a j + c@ SD-BLANK? ELSE NO THEN 0= IF
       s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    j 1 + ;
+
+\ Whether the atom ending at j opens a pointer argument, and the index its
+\ pointee is read from: an atom `^T` at the byte after `^`, an atom `ptr` not
+\ followed by `<` after its blank (SD-PTR-START). A `^` with nothing joined to
+\ it, as in `span<^ n>` or `span<^>`, is refused as `span<ptr>` is.
+: SD-POINTEE-AT ( ptr u8 n ptr u8 n n -- n bool ) {: na:ptr nu:n a:ptr u:n j:n :}
+   na c@ 94 = IF
+      nu 1 = IF
+         s" malformed field type application" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      j nu - 1 + YES EXIT
+   THEN
+   na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
+   j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
+   a u j SD-PTR-START YES ;
 
 defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
 
@@ -191,9 +200,9 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
    s" unknown field type" TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
-\ The pointee of an argument's `ptr`, with POINTEE set as RESOLVE-TYPE sets it.
-: SD-LOOSE-PTR ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
-   a u j SD-PTR-START {: k:n :}
+\ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
+\ set as RESOLVE-TYPE sets it.
+: SD-LOOSE-PTR ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k SD-LOOSE-NODE
@@ -203,7 +212,7 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
 : SD-LOOSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
-   na nu a u j SD-PTR-ATOM? IF a u j SD-LOOSE-PTR EXIT THEN
+   na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
@@ -218,10 +227,10 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ An argument `ptr T` is a pointer to T, built as RESOLVE-TYPE's `ptr` arm
-\ builds one; while T is read the declared family may be named (FIELD-FAM?).
-: SD-PTR-NODE ( ptr u8 n n -- n n ) {: a:ptr u:n j:n :}
-   a u j SD-PTR-START {: k:n :}
+\ An argument `^T` or `ptr T` is a pointer to T, its pointee read from k
+\ (SD-POINTEE-AT) and built as RESOLVE-TYPE's pointer arm builds one; while T is
+\ read the declared family may be named (FIELD-FAM?).
+: SD-PTR-NODE ( ptr u8 n n -- n n ) {: a:ptr u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
@@ -234,7 +243,7 @@ SD-LOOSE-INSTALL
 \ application or a pointer argument, with the index after it.
 : SD-PARSE-NODE-IMPL ( ptr u8 n n n -- n n ) {: a:ptr u:n i:n want:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
-   na nu a u j SD-PTR-ATOM? IF a u j SD-PTR-NODE EXIT THEN
+   na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
          drop
@@ -289,18 +298,25 @@ SD-PARSER-INSTALL
 defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
 
+\ The pointee text of a field type that opens a pointer: the token after `ptr`,
+\ or the rest of a `^T` span, empty for a bare `^`.
+: SD-PTR-TEXT? ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   a u s" ptr" CORE-STR=CI IF NEXT YES EXIT THEN
+   u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
+   a u NO ;
+
 \ A field type's text, from its first token (SD-SPAN); a leading `ptr` and a
-\ quotation `[` read the tokens after them.
+\ quotation `[` read the tokens after them, a leading `^` the rest of its span.
 : RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing field type" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    SD-SPAN
    2dup TYPE!
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
-   2dup s" ptr" CORE-STR=CI IF
-      2drop POINTEE @ {: outer:n :}
+   SD-PTR-TEXT? IF
+      POINTEE @ {: outer:n :}
       -1 POINTEE !
-      NEXT RECURSE
+      RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" field type is a pointer to a linear value and cannot own it"

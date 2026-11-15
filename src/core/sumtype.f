@@ -316,7 +316,7 @@ private
 : TDECL-NEXT ( -- ptr u8 n ) NEXT-SIG-TOK ;
 
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
-\ letter params within arity, n/f/r and concrete CT cell types, and `ptr T`.
+\ letter params within arity, n/f/r and concrete CT cell types, `^T` and `ptr T`.
 \ Comments are not supported inside a declaration block; stray tokens reject.
 
 : TDECL-HEADER! ( -- n )
@@ -381,6 +381,11 @@ private
    a u TDECL-KEYWORD? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
    a u s" ptr" CORE-STR= IF
       TDECL-NEXT RECURSE
+      SIG-UNRES @ IF drop 0 EXIT THEN
+      SCHEMA-PTR EXIT THEN
+   a u SIG-CARET? IF
+      a u SIG-CARET-BARE? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
+      a u SIG-CARET-POINTEE RECURSE
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
    a u TDECL-SELF-REF? IF
@@ -567,6 +572,11 @@ private
    a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
    a u s" ptr" CORE-STR= IF
       TDECL-NEXT RECURSE
+      SIG-UNRES @ IF drop 0 EXIT THEN
+      SCHEMA-PTR EXIT THEN
+   a u SIG-CARET? IF
+      a u SIG-CARET-BARE? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
+      a u SIG-CARET-POINTEE RECURSE
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
    a u TDECL-VPAY-APP? IF EXIT THEN drop

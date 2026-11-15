@@ -64,12 +64,19 @@ ED-RESET
       drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
+\ The pointee text of a payload type that opens a pointer: the token after
+\ `ptr`, or the rest of a `^T` token, empty for a bare `^`.
+: EN-PTR-TEXT? ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   a u s" ptr" CORE-STR=CI IF NEXT YES EXIT THEN
+   u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
+   a u NO ;
+
 : RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing payload type" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF
-      2drop POINTEE @ {: outer:n :}
+   EN-PTR-TEXT? IF
+      POINTEE @ {: outer:n :}
       -1 POINTEE !
-      NEXT RECURSE
+      RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" payload type is a pointer to a linear value and cannot own it"

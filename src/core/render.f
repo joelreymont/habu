@@ -398,7 +398,7 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
    r TAG case
       T-VAR of r PAY SEEN-IDX VAR-NAME endof
       T-CON of r PAY CON-OUT endof
-      T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
+      T-PTR of s" ^" RSTR  r PTR>INNER d 0 RECURSE endof
       \ A cell a caught throw may have overwritten names the type it lost.
       \ `stale<...>` is not a declarable type, so it sets RQM: REC-SIG never
       \ records a row carrying one.
