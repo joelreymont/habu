@@ -747,13 +747,11 @@ using SOURCE-ROOT
    INCLUDE-DIE ;
 
 : INCLUDE-NO-PATH ( -- )
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" `include` and `require` need a path" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no path follows" REJECTION:EMIT-STR
-   REJECTION:HELP
+   SRCLOC:TOKEN$ s" a path" SRCLOC:TOKEN$ s" no path follows"
+   REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : INCLUDE-LONG-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-PATH-RANGE" REJECTION:OPEN

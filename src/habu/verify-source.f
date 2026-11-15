@@ -224,9 +224,6 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 private
 
-\ A statement the source ends inside stops the scan with this at its opener.
-7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
-
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
 \ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
 TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX
@@ -3643,7 +3640,7 @@ variable FFI-LIT-B                          \ and the newer
    {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
-   NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+   NEXT-SCAN nip 0= IF UNCLOSED-STOP THEN
    name nameu FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
    name nameu at REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
@@ -3994,7 +3991,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    LOCALS-RESET
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       SKIP-DEF-TOKEN
    AGAIN ;
@@ -4014,7 +4011,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    MAYBE-SIGNATURE DEF-SIG-U !  DEF-SIG-A !
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
          VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN

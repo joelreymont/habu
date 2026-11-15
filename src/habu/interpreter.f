@@ -2650,14 +2650,10 @@ variable DEF-VALUE
 \ refusal names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-   s" ` has no name after it" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP
+   TOKEN$ s" a name" TOKEN$ s" no name follows" REJECTION:MISSING-OPERAND
    s" write the defer's name and signature after `" REJECTION:EMIT-STR
    TOKEN$ REJECTION:EMIT-STR  s" `, as `defer NAME ( n -- n )`" REJECTION:EMIT-STR
-   RC-NO-NAME REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}

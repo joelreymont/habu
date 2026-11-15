@@ -883,11 +883,8 @@ seal-package
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
    {: ta:ptr tu:n :}
    parse-name dup 0= if
-      s" E-MISSING-NAME" REJECTION:OPEN
-      s" `undefine` needs the name of the word to retire" REJECTION:EMIT-STR
-      ta tu REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-      s" source" REJECTION:NOTE  s" ended before a name" REJECTION:EMIT-STR
-      REJECTION:HELP
+      ta tu s" the name of the word to retire"
+      ta tu s" no name follows" REJECTION:MISSING-OPERAND
       s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then

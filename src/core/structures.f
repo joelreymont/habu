@@ -37,11 +37,9 @@ variable STRUCT-OPEN
 
 \ w names the field word that has no name after it.
 : STRUCT-NO-NAME ( ptr u8 n -- ) {: w:ptr wu:n :}
-   s" E-MISSING-NAME" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-   s" ` needs a field name" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP  s" write the field's name after the word, as `" REJECTION:EMIT-STR
+   w wu s" a field name" SRCLOC:TOKEN$ s" no name follows"
+   REJECTION:MISSING-OPERAND
+   s" write the field's name after the word, as `" REJECTION:EMIT-STR
    w wu REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 

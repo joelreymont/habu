@@ -311,7 +311,7 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" defer" GE-SRC-LINE
-   74 s" error[E-MISSING-NAME]: `defer` has no name after it" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
+   70 s" error[E-MISSING-NAME]: `defer` needs a name" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
 
 : ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
