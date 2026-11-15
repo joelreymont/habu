@@ -522,9 +522,24 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 : FFI-T-PQ-NAME$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libpq.5.dylib" exit then s" libpq.so.5" ;
 
-\ A base name past LIB-BASE-CAP: refused by name, never rendered short.
+\ A 100-byte name no library has, for a symbol, a token and a base name.
+100 constant FFI-T-LONG-U
+create FFI-T-LONG FFI-T-LONG-U allot
+
+: FFI-T-LONG$ ( -- ptr u8 n )
+   FFI-T-LONG-U 0 ?do [char] x FFI-T-LONG i + c! loop
+   s" habu-ffi-long-" {: p:ptr pu:n :}
+   p FFI-T-LONG pu BYTE-COPY
+   FFI-T-LONG FFI-T-LONG-U ;
+
+: FFI-T-LONG+ ( -- ) FFI-T-LONG$ FFI-T-SRC+ ;
+
 : FFI-T-LONG-BASE ( -- )
-   s" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" 5 FFI-T-NAME-A FFI:LIBRARY-NAME$ 2drop ;
+   s" a 100-byte base name renders whole" T-LABEL
+   FFI-T-LONG$ 5 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: got:ptr gu:n :}
+   SB-RESET s" lib" SB-APPEND FFI-T-LONG$ SB-APPEND
+   HB-TARGET-MACOS? if s" .5.dylib" else s" .so.5" then SB-APPEND
+   got gu SB$ T$= ;
 
 
 \ A path one byte longer than the table holds, whose bytes end at an
@@ -599,8 +614,12 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-NO-LIB$ FFI-T-SRC+
    s\" \nFUNCTION: ZZ-NO-LIB getpid ( -- n ) ;FUNCTION\nLIBRARY " FFI-T-SRC+
    FFI-T-LIBC$ FFI-T-SRC+
-   s\" \nFUNCTION: ZZ-ABSENT-IN habu-no-such-symbol ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
+   s\" \nFUNCTION: ZZ-ABSENT-IN habu-no-such-symbol ( -- n ) ;FUNCTION\n" FFI-T-SRC+
+   s" FUNCTION: " FFI-T-SRC+ FFI-T-LONG+ s"  " FFI-T-SRC+ FFI-T-LONG+
+   s\"  ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
    s\"    [: ZZ-ABSENT drop ;] catch E-FFI-DLSYM <> if s\" absent\" 1 die then\n" FFI-T-SRC+
+   s" [: " FFI-T-SRC+ FFI-T-LONG+
+   s\"  drop ;] catch E-FFI-DLSYM <> if s\" long\" 1 die then\n" FFI-T-SRC+
    s\"    [: ZZ-ABSENT-IN drop ;] catch E-FFI-DLSYM <> if s\" absent in\" 1 die then\n" FFI-T-SRC+
    s\"    [: ZZ-NO-LIB drop ;] catch E-FFI-DLOPEN <> if s\" no lib\" 1 die then\n" FFI-T-SRC+
    s\"    [: ZZ-NO-LIB drop ;] catch E-FFI-DLOPEN <> if s\" no lib again\" 1 die then\n" FFI-T-SRC+
@@ -620,6 +639,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" a missing library symbol fails with its name and the library's path" T-LABEL
    SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND FFI-T-LIBC$ SB-APPEND
    S\" \n" SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   s" a 100-byte name and symbol reach the call whole" T-LABEL
+   SB-RESET s" E-FFI-DLSYM: " SB-APPEND FFI-T-LONG$ SB-APPEND
+   s"  in " SB-APPEND FFI-T-LIBC$ SB-APPEND S\" \n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ No version of the list exists, so the first call reports every name and a
@@ -630,8 +653,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 9999,1\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-LISTED-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\n" FFI-T-SRC+
    s\" VERSIONED-LIBRARY habu-no-such 2,1\n" FFI-T-SRC+
-   s\" FUNCTION: ZZ-NO-VERSION getpid ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-NO-VERSION getpid ( -- n ) ;FUNCTION\n" FFI-T-SRC+
+   s" VERSIONED-LIBRARY " FFI-T-SRC+ FFI-T-LONG+
+   s\"  1\nFUNCTION: ZZ-LONG-BASE getpid ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
    s\"    [: ZZ-LISTED-ABSENT drop ;] catch E-FFI-DLSYM <> if s\" listed absent\" 1 die then\n" FFI-T-SRC+
+   s\"    [: ZZ-LONG-BASE drop ;] catch E-FFI-DLOPEN <> if s\" long base\" 1 die then\n" FFI-T-SRC+
    s\"    [: ZZ-NO-VERSION drop ;] catch E-FFI-DLOPEN <> if s\" no version\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-NO-VERSION drop ;\nZZ-CALL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
@@ -658,7 +684,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND z1 z1u SB-APPEND
    S\" \n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
-   erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE ;
+   erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE
+   s" a 100-byte base name reaches the loader whole" T-LABEL
+   FFI-T-LONG$ 1 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: lg:ptr lgu:n :}
+   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND lg lgu SB-APPEND s" : " SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T= ;
 
 : FFI-RUN ( -- )
    T-RESET
@@ -790,7 +820,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    HB-TARGET-MACOS? if s" /opt/build.so.cache/libx.1.dylib"
    else s" /opt/build.dylib/libx.so.1" then FFI:SELECT-LIBRARY
    FFI:SELECT-PROCESS
-   [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
+   FFI-T-LONG-BASE
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
    [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
