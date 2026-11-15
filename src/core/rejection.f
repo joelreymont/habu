@@ -723,6 +723,19 @@ public
    t tu AT  s" already defined" EMIT-STR
    HELP  s" rename this word, or remove the earlier definition" EMIT-STR ;
 
+\ The does> clause of definer stem, named stem then suffix, takes a name
+\ already defined: the record stands at t tu. It is written through its help,
+\ and the caller stops it.
+: CLAUSE-TAKEN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: stem:ptr stemu:n sfx:ptr sfxu:n t:ptr tu:n :}
+   s" E-DUPLICATE-DEFINITION" OPEN
+   96 EMIT1  stem stemu EMIT-STR  sfx sfxu EMIT-STR
+   s" ` is already defined in this wordlist" EMIT-STR
+   t tu AT  s" its clause's name is taken" EMIT-STR
+   HELP  s" rename `" EMIT-STR  stem stemu EMIT-STR
+   s" `, or the word already named `" EMIT-STR
+   stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.

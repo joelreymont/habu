@@ -24,8 +24,6 @@ package LOAD-REJECT-TEST
 
 $1000 constant CAP
 70 constant REJECT-RC
-84 constant SEALED-RC
-105 constant SHADOW-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -613,14 +611,14 @@ variable RC
    s" a sealed package's reopening names its class, package and line" T-LABEL
    S\" package NDICT\n;package"
    s" error[E-SEALED-PACKAGE]: `NDICT` would change a sealed package"
-      s" :1:9" SEALED-RC CODE-REJECT-AT ;
+      s" :1:9" REJECT-RC CODE-REJECT-AT ;
 
 \ A definition into a package the engine sealed stops at its whole name.
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into a sealed package names its class, whole name and line" T-LABEL
    s" : NDICT:FOO ( -- ) ;"
    s" error[E-SEALED-PACKAGE]: `NDICT:FOO` would change a sealed package"
-      s" :1:3" SEALED-RC CODE-REJECT-AT ;
+      s" :1:3" REJECT-RC CODE-REJECT-AT ;
 
 \ A name a sealed package already holds is refused as sealed, as the check
 \ refuses it: the seal is asked before the duplicate.
@@ -628,7 +626,7 @@ variable RC
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
    s" error[E-SEALED-PACKAGE]: `SP:A` would change a sealed package"
-      s" :6:3" SEALED-RC CODE-REJECT-AT
+      s" :6:3" REJECT-RC CODE-REJECT-AT
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    S\" package SP2\npublic\n: A ( -- ) ;\n" SB-APPEND
@@ -636,7 +634,7 @@ variable RC
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\nEXPORT SP2:A\n" SB-APPEND
    S\" s\" ACCEPTED\" type cr\n;package\n" SB-APPEND
    SB$ s" error[E-SEALED-PACKAGE]: `SP2:A` would change a sealed package"
-      s" :10:8" SEALED-RC CODE-REJECT-AT ;
+      s" :10:8" REJECT-RC CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
 \ the file's bytes, so its rejection is placed in the evaluated text, <input>.
@@ -860,7 +858,7 @@ variable RC
    s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
    S\"  or rename one of the two: the global word has no qualified form\n\n"
    SB-APPEND
-   SHADOW-RC ASSERT-REJECTED ;
+   REJECT-RC ASSERT-REJECTED ;
 
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL

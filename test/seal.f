@@ -190,11 +190,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0000000000002001 lr "
    SLV-ASSERT-PWID-OOR ;
 
-\ Publishing into a protected WID is rejected with exit 84 and an
+\ Publishing into a protected WID is rejected with exit 70 and an
 \ E-SEALED-PACKAGE record naming the word it would add.
 : SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: prose:ptr proseu:n :}
    SLV-EXITED @ TTRUE
-   SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
+   SLV-RC @ CHECKER-REJECT-RC T=
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
    SLV-ERR$ prose proseu CONTAINS? TTRUE ;
 
@@ -214,9 +214,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : SLV-OWNER-FORGE ( -- )
-   s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 84" T-LABEL
+   s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 70" T-LABEL
    SLV-OWNER-PRI-FORGE$ SLV-SUBJECT s" `OWNERFORGE` would change a sealed package" SLV-ASSERT-PROT-PUBLISH
-   s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
+   s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 70" T-LABEL
    SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" `OWNERFORGE` would change a sealed package" SLV-ASSERT-PROT-PUBLISH ;
 
 : SLV-LINE ( ptr u8 n -- )
@@ -247,18 +247,18 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ A sealed package's record refuses a definition, a variable and an export into its
 \ wordlists, and a bare name inside it, naming the name token as written.
 : SLV-SEALED-DEFINE ( -- )
-   s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE naming SP:B, exit 84" T-LABEL
+   s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE naming SP:B, exit 70" T-LABEL
    SLV-SP-COLON$ SLV-RUN-LOAD s" `SP:B` would change a sealed package" SLV-ASSERT-PROT-PUBLISH
-   s" variable SP:V after SP's seal-package -> E-SEALED-PACKAGE naming SP:V, exit 84" T-LABEL
+   s" variable SP:V after SP's seal-package -> E-SEALED-PACKAGE naming SP:V, exit 70" T-LABEL
    SLV-SP-VAR$ SLV-SUBJECT s" `SP:V` would change a sealed package" SLV-ASSERT-PROT-PUBLISH
-   s" : C inside SP after its seal-package -> E-SEALED-PACKAGE naming C, exit 84" T-LABEL
+   s" : C inside SP after its seal-package -> E-SEALED-PACKAGE naming C, exit 70" T-LABEL
    SLV-SP-INSIDE$ SLV-SUBJECT s" `C` would change a sealed package" SLV-ASSERT-PROT-PUBLISH
-   s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE naming SP2:Z, exit 84" T-LABEL
+   s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE naming SP2:Z, exit 70" T-LABEL
    SLV-SP-EXPORT$ SLV-SUBJECT s" `SP2:Z` would change a sealed package" SLV-ASSERT-PROT-PUBLISH ;
 
 \ hb's build seals every engine package, MACHO with no seal-package in its source.
 : SLV-ENGINE-SEALED ( -- )
-   s" package MACHO in hb -> E-SEALED-PACKAGE naming MACHO, exit 84" T-LABEL
+   s" package MACHO in hb -> E-SEALED-PACKAGE naming MACHO, exit 70" T-LABEL
    s" package MACHO ;package" SLV-RUN-LOAD s" `MACHO` would change a sealed package" SLV-ASSERT-PROT-PUBLISH ;
 
 : SLV-PREPARE ( -- )

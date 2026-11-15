@@ -11,7 +11,7 @@
 \
 \ The checker reports a definition it rejects and returns, but a statement can
 \ also throw out of it. A status in 1..255 follows the record its rejection
-\ printed, as a `;using` with no `using` open throws 93 after
+\ printed, as a `;using` with no `using` open throws 70 after
 \ E-USING-UNBALANCED, and fails the source with that status (THREW?). Any other
 \ code was thrown with nothing reported: its record is written at the token the
 \ checker read last, after whatever it reported before it, or the lexer's

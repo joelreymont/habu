@@ -344,7 +344,7 @@ create NL NEWLINE c,
 
 : AMBIGUOUS ( -- )
    TOKEN$ [: ANSWERING ;] USING-AMBIGUOUS-REJECT
-   ENGINE-ERROR:USING-AMBIGUOUS REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 variable ANSWERED
 
@@ -356,7 +356,7 @@ variable ANSWERED
 
 : SHADOWED ( -- )
    TOKEN$ ANSWER CHECKER-USING$ USING-SHADOW-REJECT
-   ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 public
 \ Writes the record through its help and leaves it open: the caller ends it.
@@ -372,7 +372,7 @@ public
 private
 
 : SEALED-FAIL ( ptr u8 n -- )
-   TOKEN$ SEALED-REJECT  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
+   TOKEN$ SEALED-REJECT  REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -384,7 +384,7 @@ private
    s"  while a checker replay is open" SAY
    TOKEN$ REJECTION:AT  s" replay still open" SAY
    REJECTION:HELP  s" close the checker replay before this definition" SAY
-   ENGINE-ERROR:OVERLAY-OPEN REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
@@ -454,7 +454,7 @@ TYPED-VARIABLE REC ptr n
    TOKEN$ REJECTION:AT  s" not admitted" SAY
    REJECTION:HELP
    s" call only public words of the packages admitted before the seal" SAY
-   ENGINE-ERROR:POLICY REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -598,13 +598,13 @@ TYPED-VARIABLE RUNS-ON bool
 
 \ The input ended after keyword kw: the token cells still hold the keyword, and
 \ the text names kw lowercase whatever the token's case.
-: NAME-MISSING ( ptr u8 n n -- ) {: kw:ptr u:n rc:n :}
+: NAME-MISSING ( ptr u8 n -- ) {: kw:ptr u:n :}
    kw u TOKEN$ s" no name follows" REJECTION:MISSING-NAME
-   rc REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
    TOKEN if exit then
-   kw u CHECKER-REJECT-RC NAME-MISSING ;
+   kw u NAME-MISSING ;
 
 \ A literal's text starts one byte past the keyword, past the blank that ended
 \ it, and runs to a closing quote that INP then passes. A literal's rejections
@@ -854,7 +854,7 @@ private
 
 : PKG-NAME ( -- )
    TOKEN if exit then
-   TOKEN$ CHECKER-REJECT-RC NAME-MISSING ;
+   TOKEN$ NAME-MISSING ;
 
 \ The rejection names what DEF-TKA and DEF-TKL hold, which `package` never
 \ writes: for it, what the last definition or `export` left there.
@@ -951,7 +951,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
       TOKEN$ REJECTION:AT  s" checker-export dispatch unset" SAY
       REJECTION:HELP  s" load the checker before any export" SAY
       REJECTION:KEEP
-      s" " ENGINE-ERROR:DISPATCH-UNSET die-closed
+      s" " CHECKER-REJECT-RC die-closed
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
@@ -981,7 +981,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    TOKEN$ REJECTION:AT  s" opened before the seal" SAY
    REJECTION:HELP
    s" give the sealed source's package a name of its own" SAY
-   ENGINE-ERROR:POLICY REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
@@ -1108,7 +1108,7 @@ private
    TOKEN$ REJECTION:AT  s" not a package name" SAY
    REJECTION:HELP  s" use a top-level package, named without " SAY
    s" :" TICKS
-   ENGINE-ERROR:USING-BAD-NAME REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : USING-UNKNOWN ( -- )
    s" E-USING-UNKNOWN" REJECTION:OPEN
@@ -1116,10 +1116,10 @@ private
    TOKEN$ REJECTION:AT  s" unknown package" SAY
    REJECTION:HELP  s" load the file that defines " SAY  TOKEN$ TICKS
    s"  before this using, or check its spelling" SAY
-   ENGINE-ERROR:USING-UNKNOWN REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : PKG-USED-WID ( -- n )
-   TOKEN 0= if s" using" ENGINE-ERROR:USING-NO-NAME NAME-MISSING then
+   TOKEN 0= if s" using" NAME-MISSING then
    TOKEN$ 0 COLON-AT 0 >= if USING-BAD-NAME then
    TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? 0= if USING-UNKNOWN then
@@ -1133,7 +1133,7 @@ private
    s" limit" REJECTION:NOTE  USE-MAX REJECTION:EMIT-U
    REJECTION:HELP  s" close a using with " SAY  s" ;using" TICKS
    s"  before opening another" SAY
-   ENGINE-ERROR:USING-OVERFLOW REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The using depth the buffer may close down to: its entry depth, lowered to the
 \ first using it opens after a `;package` closes a package opened before it.
@@ -1154,7 +1154,7 @@ variable USE-FLOOR
    TOKEN$ REJECTION:AT  s" nothing to close" SAY
    REJECTION:HELP  s" remove this " SAY  TOKEN$ TICKS
    s" , or open a using before it" SAY
-   ENGINE-ERROR:USING-UNBALANCED REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ w names where the using to close was opened from: a package or a file.
 : USING-OUTER ( ptr u8 n -- ) {: w:ptr wu:n :}
@@ -1163,7 +1163,7 @@ variable USE-FLOOR
    TOKEN$ REJECTION:AT  s" using opened outside" SAY
    REJECTION:HELP  s" close each using in the " SAY  w wu SAY
    s"  that opens it" SAY
-   ENGINE-ERROR:USING-OUTER REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ In an open package the most recent using must be the package's own: one
 \ opened before `package` sits at or below the depth `;package` restores, so
@@ -1231,13 +1231,14 @@ variable USE-FLOOR
    then ;
 
 \ The clause takes the slot above the export's own, and its name must not be
-\ live in the current wordlist.
+\ live in the current wordlist: a clash is rejected at the export's operand,
+\ still in TOKEN$.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u get-current WL-PROBE XREF-FOUND? if
-      a u PKG-DUPLICATE
+      a u TOKEN$ REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
@@ -1552,7 +1553,7 @@ private
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND  s" trusted:" TOKEN$ REJECTION:NOT-A-NAME exit then
    TOKEN$ {: kw:ptr ku:n :}
-   TOKEN 0= if kw ku CHECKER-REJECT-RC NAME-MISSING then
+   TOKEN 0= if kw ku NAME-MISSING then
    kw ku TOKEN$ REJECTION:NOT-A-NAME ;
 
 \ A head with no row makes a top-level package with a public wordlist
@@ -1684,7 +1685,7 @@ private
    a u REJECTION:AT  s" engine keyword" REJECTION:EMIT-STR
    REJECTION:HELP
    s" give the definition a name that is not an engine keyword" REJECTION:EMIT-STR
-   ENGINE-ERROR:POLICY REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
@@ -1786,7 +1787,7 @@ private
    REJECTION:HELP
    s" load the native compiler, as the boot prefix does, before any definition"
    REJECTION:EMIT-STR
-   REJECTION:KEEP  s" " ENGINE-ERROR:DISPATCH-UNSET die-closed ;
+   REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
 
 public
 \ The tail passes the wall, room, duplicate, code room and protected-wordlist
@@ -2028,16 +2029,8 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
-               s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
-               s" `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
-               suffix sufu REJECTION:EMIT-STR
-               s" ` is already defined in this wordlist" REJECTION:EMIT-STR
-               TOKEN$ REJECTION:AT  s" its clause's name is taken" REJECTION:EMIT-STR
-               REJECTION:HELP
-               s" rename `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
-               s" `, or the word already named `" REJECTION:EMIT-STR
-               stem stemu REJECTION:EMIT-STR  suffix sufu REJECTION:EMIT-STR
-               s" `" REJECTION:EMIT-STR
+               stem stemu suffix sufu
+               DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ REJECTION:CLAUSE-TAKEN
                CHECKER-REJECT-RC REJECTION:STOP
             then
          then
@@ -2378,7 +2371,7 @@ variable LIT-AT
       REJECTION:HELP
       s" load the checker, which sets the trust-raw dispatch, before this definer"
       REJECTION:EMIT-STR
-      REJECTION:KEEP  s" " ENGINE-ERROR:DISPATCH-UNSET die-closed
+      REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed
    then
    target ;
 
@@ -2457,7 +2450,7 @@ variable DEF-VALUE
 \ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
-   TOKEN$ CHECKER-REJECT-RC NAME-MISSING ;
+   TOKEN$ NAME-MISSING ;
 
 \ The signature must be there, opened and closed, before the qualifier's
 \ refusals, and INP passes it first, so those name the line it ends on.
