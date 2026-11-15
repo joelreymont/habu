@@ -421,9 +421,9 @@ variable RAN-L
 : CASE-L ( -- )
    [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] INTERPRETER:WITHOUT-PACKAGE ;] catch 0 T=
    s" LK-L1" LOOKUP -1 T<>
-   s" package LK-PB ;package" TEST-EVAL:RC 75 T=
+   s" package LK-PB ;package" TEST-EVAL:RC CHECKER-REJECT-RC T=
    0 RAN-L !
-   s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC 75 T=
+   s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC CHECKER-REJECT-RC T=
    RAN-L @ -1 T=
    s" l: WITHOUT-PACKAGE defines at top level and keeps the caller's package outside" SAY ;
 

@@ -53,7 +53,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package" SAYS
-   s" = packages: ua, uc" SAYS ;
+   s" = packages: UA, UC" SAYS ;
 
 \ A used public that shadows a global is refused the same way.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -61,8 +61,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" a bare callee a used public shadows is refused naming the callee" T-LABEL
    s" ;package : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
    RC @ CHECKER-REJECT-RC T=
-   s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `us`" SAYS
-   s" = package: us:SW" SAYS ;
+   s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `US`" SAYS
+   s" = package: US:SW" SAYS ;
 
 \ A TRUSTED: row whose stored signature does not parse is refused at that token.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -71,8 +71,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `TB8` cannot be recorded" SAYS
-   s" --> <input>:1:28" SAYS
-   s" ^^^^^^^^^^ no type has this name" SAYS ;
+   s" = evaluated: ;package TRUSTED: TB8 ( -- nosuch:fam )" SAYS
+   s" no type has this name" SAYS ;
 
 \ A public whose private twin moves other cells is refused at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -81,8 +81,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-SHADOWED-ARITY]: public `SAT-A:F` has a different stack effect" SAYS
-   s" --> <input>:1:54" SAYS
-   s" ^ its name binds the private word" SAYS ;
+   s" = evaluated: ;package package SAT-A" SAYS
+   s" its name binds the private word" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
 \ loses that value's width, so nothing can place its cells; a checked does>
@@ -126,7 +126,7 @@ create TEXT CAP allot                  variable TEXT-U
    RC @ CHECKER-REJECT-RC T=
    S\" 70\n" PRINTS
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
-   s" --> <input>:1:226" SAYS ;
+   s" = evaluated: ;package package P-FORGET" SAYS ;
 
 : RUN ( -- )
    T-RESET

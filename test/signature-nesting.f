@@ -233,7 +233,7 @@ public
    s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
    s" SN-IFS-33" 33 NESTED-IFS
    s" error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at most 32)" REFUSES
-   s" --> <input>:1:253" SAID
+   s" = evaluated: : SN-IFS-33 ( bool -- ) dup IF" SAID  s" one structure too deep" SAID
    s" 32 nested IFs check" T-LABEL
    s" SN-IFS-32" 32 NESTED-IFS
    SRC$ TEST-EVAL:RC 0 T=
@@ -344,7 +344,8 @@ public
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    s" error[E-UNCHECKABLE]: recursion needs a declared stack effect" REFUSES
-   s" --> <input>:1:26" SAID  s" help: declare the definition's stack effect after its name" SAID
+   s" = evaluated: : SN-DOWN dup 0 > IF 1 - RECURSE THEN ;" SAID  s" no effect to call" SAID
+   s" help: declare the definition's stack effect after its name" SAID
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"RECURSE\""
@@ -361,7 +362,8 @@ public
    s" a RECURSE in a does> clause is uncheckable for calling the defining word, and says where to recurse" T-LABEL
    RECURSE-DOES
    s" error[E-UNCHECKABLE]: recurse in a does> clause would call the defining word" REFUSES
-   s" --> <input>:1:55" SAID  s" help: move the recursion into a named word" SAID
+   s" = evaluated: : SN-MK ( n -- ) create , does>" SAID  s" inside a `does>` clause" SAID
+   s" help: move the recursion into a named word" SAID
    s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
    RECURSE-DOES
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"RECURSE\""
@@ -380,7 +382,7 @@ public
    s" a type mismatch prints its expected and found rows" T-LABEL
    SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises bool" REFUSES
-   S\"   = expected: bool\n  = found: n\n" SAID
+   s" = expected: bool" SAID  s" = found: n" SAID
    s" a bare ptr in a signature is rejected for its missing element type" T-LABEL
    SRC-RESET  s" : SN-BP ( ptr -- ) drop ;" S+
    s" error[E-BARE-PTR-SIGNATURE]: `ptr` needs an element type" REFUSES
@@ -404,7 +406,7 @@ public
    S\" \"message\":\"no loop is open here\"" VERDICT-REFUSED PACKET-HAS
    s" a structure left open after a covered name in an unfit definition keeps its reason" T-LABEL
    s" SN-OPEN-UNSEEN" s" MADE" WIDE-TEXT  s"  0 0= IF" S+
-   S\" \"code\":\"E-REJECTED\"" S\" \"token\":\";\""
+   S\" \"code\":\"E-REJECTED\"" S\" \"token\":\"\""
    S\" \"message\":\"a control structure is still open at the end of the definition\"" VERDICT-REFUSED PACKET-HAS
    s" a covered name after a pinned mismatch keeps the mismatch" T-LABEL
    SRC-RESET  s" SN-MISMATCH ( -- ) 1 IF THEN MADE" S+

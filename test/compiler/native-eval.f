@@ -320,7 +320,8 @@ create ERR IO-CAP allot
    s" and names the definition and where the text ran" T-LABEL
    ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " CONTAINS? TTRUE
    ERR erru s" the definition of `NATIVE-EVAL-F`" CONTAINS? TTRUE
-   ERR erru s" --> <input>:1:3" CONTAINS? TTRUE ;
+   ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" CONTAINS? TTRUE
+   ERR erru s" never closed" CONTAINS? TTRUE ;
 
 $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
@@ -379,7 +380,8 @@ variable ERR-U
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
-   s" --> <input>:1:180" SAYS ;
+   s" = evaluated: : X-FORGET ( -- n ) 1 ; TRUSTED: EVAL-X-FORGET" SAYS
+   s" the stack holds n after this" SAYS ;
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
