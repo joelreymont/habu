@@ -20891,6 +20891,7 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
 \ any effect for a name in the open section's wordlist.
+package CHECKER-REG
 : TRUST-DECL-ROW ( ^u8 n ^u8 n -- n )
    {: na:^ nu:n sa:^ su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
@@ -20918,7 +20919,6 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 : TRUST-DECL-REJECTED? ( ^u8 n ^u8 n -- bool )
    TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 
-package CHECKER-REG
 : TRUST-DECL ( ^u8 n ^u8 n -- )
    TRUST-DECL-ROW drop ;
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
