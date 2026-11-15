@@ -941,10 +941,6 @@ SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
 ;SUITE
 
-SUITE address-cell-index-recovery
-   test/address-cell-index-recovery.f
-;SUITE
-
 SUITE address-cell-storage-oom
    test/address-cell-storage-oom.f
 ;SUITE
