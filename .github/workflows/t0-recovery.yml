@@ -15,8 +15,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      RECOVERY_ROOT: ${{ runner.temp }}/habu-t0-recovery
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -26,7 +24,8 @@ jobs:
           test "$(uname -m)" = aarch64
           cd ci/recovery
           sha256sum -c seed.sha256
-          mkdir -p "$RECOVERY_ROOT/latest"
+          printf 'RECOVERY_ROOT=%s/habu-t0-recovery\n' "$RUNNER_TEMP" >>"$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/habu-t0-recovery/latest"
       - name: Provision interpreter-rows
         run: |
           mkdir -p "$RECOVERY_ROOT/interpreter-rows/tmp" "$RECOVERY_ROOT/interpreter-rows/objects" "$RECOVERY_ROOT/results/interpreter-rows"
