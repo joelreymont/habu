@@ -1,0 +1,107 @@
+diff --git a/src/core/check-walk.f b/src/core/check-walk.f
+new file mode 100644
+index 00000000..e0fb4bfb
+--- /dev/null
++++ b/src/core/check-walk.f
+@@ -0,0 +1,2 @@
++\ check-walk.f - the checker's walk over a definition, which calls the type registry
++\ and the diagnostics that load before it.
+diff --git a/src/core/path.f b/src/core/path.f
+new file mode 100644
+index 00000000..119d7183
+--- /dev/null
++++ b/src/core/path.f
+@@ -0,0 +1,25 @@
++\ path.f - the engine's C paths: one capacity, one copier, one shared scratch.
++\
++\ PATH-CAP is the tree's one path capacity, in bytes without the NUL: a path one
++\ layer accepts every layer accepts. PATHZ copies (a,u) into the room bytes at d
++\ and appends the NUL, so src/core and src/habu write no terminator of their
++\ own. A path holding a 0 byte, which the OS would read short, is E-PATH-NUL.
++\ Every guard throws, never dies: every file reader opens through here and a
++\ caller must get a catchable refusal. The negative check is the memory guard:
++\ for u < 0 the copy loop never runs and `0 d u + c!` writes before the buffer.
++\ The checker models PATHZ and PATH0 with a stack effect only, so it does not
++\ see these throws.
++7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
++7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
++: PATHZ ( ptr u8 n ptr u8 n -- )
++   {: a:ptr u d:ptr room :}
++   u 0 < IF E-PATH-RANGE throw THEN
++   u room >= IF E-PATH-RANGE throw THEN
++   0 BEGIN dup u < WHILE
++      dup a + c@  dup 0= IF E-PATH-NUL throw THEN  over d + c!  1 +
++   REPEAT drop  0 d u + c! ;
++create PZB PATH-CAP 1 + allot
++
++: PATH0 ( ptr u8 n -- ptr u8 )
++   {: a:ptr u :}
++   a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch
+diff --git a/src/habu/boot-files.f b/src/habu/boot-files.f
+index ddd63c01..c255995b 100644
+--- a/src/habu/boot-files.f
++++ b/src/habu/boot-files.f
+@@ -59,10 +59,9 @@ private
+    CHECKER MACOS s" src/os/macos/target.f" ROW
+    CHECKER X64 s" src/os/linux-x86-64/target.f" ROW
+    CHECKER WASM s" src/os/wasm/target.f" ROW
+-   CHECKER LINUX s" src/os/linux/layout-constants.f" ROW
++   CHECKER COMMON s" src/core/path.f" ROW
+    CHECKER LINUX s" src/os/linux/layout.f" ROW
+    CHECKER MACOS s" src/os/macos/layout.f" ROW
+-   CHECKER X64 s" src/os/linux/layout-constants.f" ROW
+    CHECKER X64 s" src/os/linux/layout.f" ROW
+    CHECKER COMMON s" src/habu/stack-abi.f" ROW
+    \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.
+@@ -71,10 +70,11 @@ private
+    CHECKER COMMON s" src/habu/layout.f" ROW
+    CHECKER COMMON s" src/habu/intern-table.f" ROW
+    CHECKER COMMON s" src/core/checker.f" ROW
+-   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
+    CHECKER COMMON s" src/core/type-schema.f" ROW
+    CHECKER COMMON s" src/core/type-family.f" ROW
+    CHECKER COMMON s" src/core/render.f" ROW
++   CHECKER COMMON s" src/core/check-walk.f" ROW
++   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
+    CHECKER COMMON s" src/core/sumtype.f" ROW
+    CHECKER COMMON s" src/core/effect.f" ROW
+    CHECKER COMMON s" src/core/layout-buffer.f" ROW
+diff --git a/src/habu/habu1.f b/src/habu/habu1.f
+index 339b1a32..aaf1ba7b 100644
+--- a/src/habu/habu1.f
++++ b/src/habu/habu1.f
+@@ -2589,6 +2589,12 @@ public
+    bad LBL,  SP SP 64 ADDI,  fail B,
+    ok LBL, ;
+ 
++\ dlopen-entry ( -- n ): the address the loader bound to dlopen.
++: DLOPEN-ENTRY ( -- )   s" dlopen" SLOT,  16 G-PUSH ;
++
++\ dlsym-entry ( -- n ): the address the loader bound to dlsym.
++: DLSYM-ENTRY ( -- )   s" dlsym" SLOT,  16 G-PUSH ;
++
+ \ ( pathz dst capacity -- length | -1 | -2 )
+ \ libc allocates its realpath result. Only a fitting result, including its NUL,
+ \ reaches dst; free runs after both success and insufficient capacity.
+@@ -4232,6 +4238,8 @@ package ENGINE-EMIT
+    s" ffi-call" ['] BFFI-CALL FPRIM
+    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+    s" task-entry" ['] BTASK-ENTRY FPRIM
++   s" dlopen-entry" ['] LIBC-OS:DLOPEN-ENTRY FPRIM
++   s" dlsym-entry" ['] LIBC-OS:DLSYM-ENTRY FPRIM
+    LBL LCALLBACKTHUNK !
+    LBL LCALLBACKADDR !
+    s" callback-entry" ['] BCALLBACK-ENTRY FPRIM
+diff --git a/src/habu/prims.f b/src/habu/prims.f
+index c236b74d..43c65b1f 100644
+--- a/src/habu/prims.f
++++ b/src/habu/prims.f
+@@ -921,6 +921,8 @@ ETRUSTED-ONLY!
+ EPRIM: task-entry PE-N PE-OUT EPRIM;
+ ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
+ EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
++EPRIM: dlopen-entry PE-N PE-OUT EPRIM;
++EPRIM: dlsym-entry PE-N PE-OUT EPRIM;
+ \ callback-entry -1 answers the shared raw C thunk for a compiler-owned stub.
+ \ Nonnegative IDs answer the boot stubs.
+ EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;

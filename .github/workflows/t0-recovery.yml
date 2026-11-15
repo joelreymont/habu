@@ -11,35 +11,1089 @@ permissions:
 jobs:
   bootstrap:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      RECOVERY_ROOT: ${{ runner.temp }}/habu-t0-recovery
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Build the checked bootstrap stages
-        run: bash ci/recovery/run.sh
-      - name: Check the ordinary builder before it is sealed
+      - name: Verify the pinned seed
         run: |
-          stage="$RUNNER_TEMP/habu-t0-recovery/7205e0b606676b4325b3fd60ad9264ee1ac3d7d5"
-          result="$RUNNER_TEMP/habu-t0-recovery/results/7205e0b606676b4325b3fd60ad9264ee1ac3d7d5"
-          seed="$RUNNER_TEMP/habu-t0-recovery/results/0c1e6b799379ed0f16dc55c272309cc53cff90c6/hb"
-          mkdir -p "$stage/tmp" "$stage/objects" "$result"
+          test "$(uname -m)" = aarch64
+          cd ci/recovery
+          sha256sum -c seed.sha256
+          mkdir -p "$RECOVERY_ROOT/latest"
+      - name: Provision interpreter-rows
+        run: |
+          mkdir -p "$RECOVERY_ROOT/interpreter-rows/tmp" "$RECOVERY_ROOT/interpreter-rows/objects" "$RECOVERY_ROOT/results/interpreter-rows"
+          git fetch --depth=1 origin c5a99531f3f535bd7540b1448af6a54924bda64e
+          git worktree add --detach "$RECOVERY_ROOT/interpreter-rows/source" c5a99531f3f535bd7540b1448af6a54924bda64e
+          test "$(git -C "$RECOVERY_ROOT/interpreter-rows/source" write-tree)" = 00662fb1d0a6aa75e153380d5b7e3aee22a47694
+          printf '%s\n' 'c5a99531f3f535bd7540b1448af6a54924bda64e' '00662fb1d0a6aa75e153380d5b7e3aee22a47694' >"$RECOVERY_ROOT/results/interpreter-rows/source.txt"
+      - name: Kernel interpreter-rows
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/objects
+        run: >-
+          timeout 300 "$GITHUB_WORKSPACE/ci/recovery/hb" --load "$GITHUB_WORKSPACE/ci/recovery/kernel.f" -- "$RECOVERY_ROOT/interpreter-rows/source" "$RECOVERY_ROOT/results/interpreter-rows/kernel.hko"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/interpreter-rows/kernel.log"
+      - name: Engine interpreter-rows
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/objects
+        run: >-
+          timeout 300 "$GITHUB_WORKSPACE/ci/recovery/hb" --load "$GITHUB_WORKSPACE/ci/recovery/engine.f" -- "$RECOVERY_ROOT/interpreter-rows/source" "$RECOVERY_ROOT/results/interpreter-rows/hb" "$RECOVERY_ROOT/results/interpreter-rows/kernel.hko"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/interpreter-rows/engine.log"
+      - name: Smoke interpreter-rows
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/interpreter-rows/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/interpreter-rows/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/interpreter-rows/smoke.log"
+      - name: Record interpreter-rows
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/interpreter-rows
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision build-parent
+        run: |
+          mkdir -p "$RECOVERY_ROOT/build-parent/tmp" "$RECOVERY_ROOT/build-parent/objects" "$RECOVERY_ROOT/results/build-parent"
+          git fetch --depth=1 origin 0c1e6b799379ed0f16dc55c272309cc53cff90c6
+          git worktree add --detach "$RECOVERY_ROOT/build-parent/source" 0c1e6b799379ed0f16dc55c272309cc53cff90c6
+          test "$(git -C "$RECOVERY_ROOT/build-parent/source" write-tree)" = b91d5dc5ca84388157de21d44b3e324d85d1417c
+          printf '%s\n' '0c1e6b799379ed0f16dc55c272309cc53cff90c6' 'b91d5dc5ca84388157de21d44b3e324d85d1417c' >"$RECOVERY_ROOT/results/build-parent/source.txt"
+      - name: Kernel build-parent
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/build-parent/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/build-parent/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/build-parent/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/interpreter-rows/hb" --load "$GITHUB_WORKSPACE/ci/recovery/kernel.f" -- "$RECOVERY_ROOT/build-parent/source" "$RECOVERY_ROOT/results/build-parent/kernel.hko"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/build-parent/kernel.log"
+      - name: Engine build-parent
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/build-parent/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/build-parent/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/build-parent/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/interpreter-rows/hb" --load "$GITHUB_WORKSPACE/ci/recovery/engine.f" -- "$RECOVERY_ROOT/build-parent/source" "$RECOVERY_ROOT/results/build-parent/hb" "$RECOVERY_ROOT/results/build-parent/kernel.hko"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/build-parent/engine.log"
+      - name: Smoke build-parent
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/build-parent/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/build-parent/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/build-parent/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/build-parent/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/build-parent/smoke.log"
+      - name: Record build-parent
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/build-parent
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision build-baked
+        run: |
+          mkdir -p "$RECOVERY_ROOT/build-baked/tmp" "$RECOVERY_ROOT/build-baked/objects" "$RECOVERY_ROOT/results/build-baked"
           git fetch --depth=1 origin 7205e0b606676b4325b3fd60ad9264ee1ac3d7d5
-          git worktree add --detach "$stage/source" 7205e0b606676b4325b3fd60ad9264ee1ac3d7d5
-          cd "$stage/source"
-          git rev-parse HEAD HEAD^{tree} >"$result/source.txt"
-          test "$(git rev-parse HEAD^{tree})" = 81e481f60d5f36627e556a4da37c1d5fa65d4e0d
-          TMPDIR="$stage/tmp" HABU_OUT="$stage/objects" timeout 300 "$seed" \
-            --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- \
-            --engine -o "$result/hb" 2>&1 | tee "$result/engine.log"
-          (cd "$result" && sha256sum hb hb.map >sha256.txt)
-          timeout 300 "$result/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
-      - name: Retain the hosts and diagnostics
+          git worktree add --detach "$RECOVERY_ROOT/build-baked/source" 7205e0b606676b4325b3fd60ad9264ee1ac3d7d5
+          test "$(git -C "$RECOVERY_ROOT/build-baked/source" write-tree)" = 81e481f60d5f36627e556a4da37c1d5fa65d4e0d
+          printf '%s\n' '7205e0b606676b4325b3fd60ad9264ee1ac3d7d5' '81e481f60d5f36627e556a4da37c1d5fa65d4e0d' >"$RECOVERY_ROOT/results/build-baked/source.txt"
+      - name: Engine build-baked
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/build-baked/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/build-baked/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/build-baked/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/build-parent/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/build-baked/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/build-baked/engine.log"
+      - name: Smoke build-baked
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/build-baked/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/build-baked/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/build-baked/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/build-baked/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/build-baked/smoke.log"
+      - name: Record build-baked
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/build-baked
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision xref-row
+        run: |
+          mkdir -p "$RECOVERY_ROOT/xref-row/tmp" "$RECOVERY_ROOT/xref-row/objects" "$RECOVERY_ROOT/results/xref-row"
+          git fetch --depth=1 origin c8f8c4debc2a77a9fb7ec1a67e95be15a9b54d97
+          git worktree add --detach "$RECOVERY_ROOT/xref-row/source" c8f8c4debc2a77a9fb7ec1a67e95be15a9b54d97
+          test "$(git -C "$RECOVERY_ROOT/xref-row/source" write-tree)" = 40d41d07ca142dc919405b95ed4893bf2512e046
+          printf '%s\n' 'c8f8c4debc2a77a9fb7ec1a67e95be15a9b54d97' '40d41d07ca142dc919405b95ed4893bf2512e046' >"$RECOVERY_ROOT/results/xref-row/source.txt"
+      - name: Engine xref-row
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/xref-row/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/xref-row/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/xref-row/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/build-baked/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/xref-row/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/xref-row/engine.log"
+      - name: Smoke xref-row
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/xref-row/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/xref-row/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/xref-row/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/xref-row/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/xref-row/smoke.log"
+      - name: Record xref-row
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/xref-row
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision data-start
+        run: |
+          mkdir -p "$RECOVERY_ROOT/data-start/tmp" "$RECOVERY_ROOT/data-start/objects" "$RECOVERY_ROOT/results/data-start"
+          git fetch --depth=1 origin 4add0d6394d4b839b35bc9cc15afb8fba288e120
+          git worktree add --detach "$RECOVERY_ROOT/data-start/source" 4add0d6394d4b839b35bc9cc15afb8fba288e120
+          test "$(git -C "$RECOVERY_ROOT/data-start/source" write-tree)" = ceb29cbbd9eff1778cc0e960fdfc6fa79d5b935c
+          printf '%s\n' '4add0d6394d4b839b35bc9cc15afb8fba288e120' 'ceb29cbbd9eff1778cc0e960fdfc6fa79d5b935c' >"$RECOVERY_ROOT/results/data-start/source.txt"
+      - name: Engine data-start
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/data-start/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/data-start/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/data-start/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/xref-row/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/data-start/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/data-start/engine.log"
+      - name: Smoke data-start
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/data-start/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/data-start/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/data-start/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/data-start/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/data-start/smoke.log"
+      - name: Record data-start
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/data-start
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision ffi-bodies
+        run: |
+          mkdir -p "$RECOVERY_ROOT/ffi-bodies/tmp" "$RECOVERY_ROOT/ffi-bodies/objects" "$RECOVERY_ROOT/results/ffi-bodies"
+          git fetch --depth=1 origin 7dd93c4ade4f78abf2b688520469639c0f763b24
+          git worktree add --detach "$RECOVERY_ROOT/ffi-bodies/source" 7dd93c4ade4f78abf2b688520469639c0f763b24
+          test "$(git -C "$RECOVERY_ROOT/ffi-bodies/source" write-tree)" = ca9ff3fb97f8bb0926e14bbe104d0490bbaf205d
+          printf '%s\n' '7dd93c4ade4f78abf2b688520469639c0f763b24' 'ca9ff3fb97f8bb0926e14bbe104d0490bbaf205d' >"$RECOVERY_ROOT/results/ffi-bodies/source.txt"
+      - name: Engine ffi-bodies
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/data-start/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/ffi-bodies/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/ffi-bodies/engine.log"
+      - name: Smoke ffi-bodies
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/ffi-bodies/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/ffi-bodies/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/ffi-bodies/smoke.log"
+      - name: Record ffi-bodies
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/ffi-bodies
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision field-child
+        run: |
+          mkdir -p "$RECOVERY_ROOT/field-child/tmp" "$RECOVERY_ROOT/field-child/objects" "$RECOVERY_ROOT/results/field-child"
+          git fetch --depth=1 origin b1b1d3d2db8cd22d56e519ec707578829029d758
+          git worktree add --detach "$RECOVERY_ROOT/field-child/source" b1b1d3d2db8cd22d56e519ec707578829029d758
+          test "$(git -C "$RECOVERY_ROOT/field-child/source" write-tree)" = 13726d1b92cae7368f67735d3096135c600e94eb
+          printf '%s\n' 'b1b1d3d2db8cd22d56e519ec707578829029d758' '13726d1b92cae7368f67735d3096135c600e94eb' >"$RECOVERY_ROOT/results/field-child/source.txt"
+      - name: Engine field-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/field-child/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/field-child/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/field-child/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/ffi-bodies/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/field-child/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/field-child/engine.log"
+      - name: Smoke field-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/field-child/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/field-child/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/field-child/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/field-child/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/field-child/smoke.log"
+      - name: Record field-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/field-child
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision item-literal
+        run: |
+          mkdir -p "$RECOVERY_ROOT/item-literal/tmp" "$RECOVERY_ROOT/item-literal/objects" "$RECOVERY_ROOT/results/item-literal"
+          git fetch --depth=1 origin 6e94c677415f7f5113f0d3045adf3605cc86dd9f
+          git worktree add --detach "$RECOVERY_ROOT/item-literal/source" 6e94c677415f7f5113f0d3045adf3605cc86dd9f
+          test "$(git -C "$RECOVERY_ROOT/item-literal/source" write-tree)" = c91b90edc61bde0bbf5fc34946ebe55b0e6e2b49
+          printf '%s\n' '6e94c677415f7f5113f0d3045adf3605cc86dd9f' 'c91b90edc61bde0bbf5fc34946ebe55b0e6e2b49' >"$RECOVERY_ROOT/results/item-literal/source.txt"
+      - name: Engine item-literal
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/item-literal/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/item-literal/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/item-literal/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/field-child/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/item-literal/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/item-literal/engine.log"
+      - name: Smoke item-literal
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/item-literal/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/item-literal/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/item-literal/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/item-literal/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/item-literal/smoke.log"
+      - name: Record item-literal
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/item-literal
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision child-run
+        run: |
+          mkdir -p "$RECOVERY_ROOT/child-run/tmp" "$RECOVERY_ROOT/child-run/objects" "$RECOVERY_ROOT/results/child-run"
+          git fetch --depth=1 origin 1db253be07c6006fc930653294c5e1438e78615f
+          git worktree add --detach "$RECOVERY_ROOT/child-run/source" 1db253be07c6006fc930653294c5e1438e78615f
+          test "$(git -C "$RECOVERY_ROOT/child-run/source" write-tree)" = 121030791340e117416ce6c3ea6c66114bc64d3c
+          printf '%s\n' '1db253be07c6006fc930653294c5e1438e78615f' '121030791340e117416ce6c3ea6c66114bc64d3c' >"$RECOVERY_ROOT/results/child-run/source.txt"
+      - name: Engine child-run
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/child-run/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/child-run/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/child-run/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/item-literal/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/child-run/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/child-run/engine.log"
+      - name: Smoke child-run
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/child-run/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/child-run/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/child-run/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/child-run/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/child-run/smoke.log"
+      - name: Record child-run
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/child-run
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision typed-child
+        run: |
+          mkdir -p "$RECOVERY_ROOT/typed-child/tmp" "$RECOVERY_ROOT/typed-child/objects" "$RECOVERY_ROOT/results/typed-child"
+          git fetch --depth=1 origin 7b3c8f348f26ad0c11168e1888eefaaef849a111
+          git worktree add --detach "$RECOVERY_ROOT/typed-child/source" 7b3c8f348f26ad0c11168e1888eefaaef849a111
+          test "$(git -C "$RECOVERY_ROOT/typed-child/source" write-tree)" = 87173d5d0fe46d16c1ebaba3953de7fc2fb31976
+          printf '%s\n' '7b3c8f348f26ad0c11168e1888eefaaef849a111' '87173d5d0fe46d16c1ebaba3953de7fc2fb31976' >"$RECOVERY_ROOT/results/typed-child/source.txt"
+      - name: Engine typed-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/typed-child/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/typed-child/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/typed-child/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/child-run/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/typed-child/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/typed-child/engine.log"
+      - name: Smoke typed-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/typed-child/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/typed-child/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/typed-child/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/typed-child/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/typed-child/smoke.log"
+      - name: Record typed-child
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/typed-child
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision storage-line
+        run: |
+          mkdir -p "$RECOVERY_ROOT/storage-line/tmp" "$RECOVERY_ROOT/storage-line/objects" "$RECOVERY_ROOT/results/storage-line"
+          git fetch --depth=1 origin 376d6a144b791a77b527d4c855ecd634757a7005
+          git worktree add --detach "$RECOVERY_ROOT/storage-line/source" 376d6a144b791a77b527d4c855ecd634757a7005
+          test "$(git -C "$RECOVERY_ROOT/storage-line/source" write-tree)" = f82595675b62784d0742ae052dc5f21bed1b72b6
+          printf '%s\n' '376d6a144b791a77b527d4c855ecd634757a7005' 'f82595675b62784d0742ae052dc5f21bed1b72b6' >"$RECOVERY_ROOT/results/storage-line/source.txt"
+      - name: Engine storage-line
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/storage-line/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/storage-line/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/storage-line/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/typed-child/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/storage-line/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/storage-line/engine.log"
+      - name: Smoke storage-line
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/storage-line/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/storage-line/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/storage-line/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/storage-line/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/storage-line/smoke.log"
+      - name: Record storage-line
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/storage-line
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision rollback-order
+        run: |
+          mkdir -p "$RECOVERY_ROOT/rollback-order/tmp" "$RECOVERY_ROOT/rollback-order/objects" "$RECOVERY_ROOT/results/rollback-order"
+          git fetch --depth=1 origin 2407c8dc9ac88639f3f8b8ec56fe4d0040888501
+          git worktree add --detach "$RECOVERY_ROOT/rollback-order/source" 2407c8dc9ac88639f3f8b8ec56fe4d0040888501
+          test "$(git -C "$RECOVERY_ROOT/rollback-order/source" write-tree)" = ef17e1711979cec13abfcb01530da743afb4a03c
+          printf '%s\n' '2407c8dc9ac88639f3f8b8ec56fe4d0040888501' 'ef17e1711979cec13abfcb01530da743afb4a03c' >"$RECOVERY_ROOT/results/rollback-order/source.txt"
+      - name: Engine rollback-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/rollback-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/rollback-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/rollback-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/storage-line/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/rollback-order/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/rollback-order/engine.log"
+      - name: Smoke rollback-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/rollback-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/rollback-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/rollback-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/rollback-order/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/rollback-order/smoke.log"
+      - name: Record rollback-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/rollback-order
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision certificate-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/certificate-list/tmp" "$RECOVERY_ROOT/certificate-list/objects" "$RECOVERY_ROOT/results/certificate-list"
+          git fetch --depth=1 origin ab32156561620e5ab24efa0e407f56f8b50d46fb
+          git worktree add --detach "$RECOVERY_ROOT/certificate-list/source" ab32156561620e5ab24efa0e407f56f8b50d46fb
+          test "$(git -C "$RECOVERY_ROOT/certificate-list/source" write-tree)" = 3b47247969e3fd3a9e2b19cae9d333c3596c4ced
+          printf '%s\n' 'ab32156561620e5ab24efa0e407f56f8b50d46fb' '3b47247969e3fd3a9e2b19cae9d333c3596c4ced' >"$RECOVERY_ROOT/results/certificate-list/source.txt"
+      - name: Engine certificate-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/certificate-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/certificate-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/certificate-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/rollback-order/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/certificate-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/certificate-list/engine.log"
+      - name: Smoke certificate-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/certificate-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/certificate-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/certificate-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/certificate-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/certificate-list/smoke.log"
+      - name: Record certificate-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/certificate-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision producer-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/producer-list/tmp" "$RECOVERY_ROOT/producer-list/objects" "$RECOVERY_ROOT/results/producer-list"
+          git fetch --depth=1 origin be39d81dffb0edd6763e5dd7edfe2dba0cc69f82
+          git worktree add --detach "$RECOVERY_ROOT/producer-list/source" be39d81dffb0edd6763e5dd7edfe2dba0cc69f82
+          test "$(git -C "$RECOVERY_ROOT/producer-list/source" write-tree)" = e80d33c6fbf8a407f1cbba1e099c5527023d4b8a
+          printf '%s\n' 'be39d81dffb0edd6763e5dd7edfe2dba0cc69f82' 'e80d33c6fbf8a407f1cbba1e099c5527023d4b8a' >"$RECOVERY_ROOT/results/producer-list/source.txt"
+      - name: Engine producer-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/producer-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/producer-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/producer-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/certificate-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/producer-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/producer-list/engine.log"
+      - name: Smoke producer-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/producer-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/producer-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/producer-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/producer-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/producer-list/smoke.log"
+      - name: Record producer-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/producer-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision executable-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/executable-list/tmp" "$RECOVERY_ROOT/executable-list/objects" "$RECOVERY_ROOT/results/executable-list"
+          git fetch --depth=1 origin 1b176f2d2f7f5f335f7eca4fe7b0cffe341444dd
+          git worktree add --detach "$RECOVERY_ROOT/executable-list/source" 1b176f2d2f7f5f335f7eca4fe7b0cffe341444dd
+          test "$(git -C "$RECOVERY_ROOT/executable-list/source" write-tree)" = 6da61150d77d798e99df75db158e6e75ff511b67
+          printf '%s\n' '1b176f2d2f7f5f335f7eca4fe7b0cffe341444dd' '6da61150d77d798e99df75db158e6e75ff511b67' >"$RECOVERY_ROOT/results/executable-list/source.txt"
+      - name: Engine executable-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/executable-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/executable-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/executable-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/producer-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/executable-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/executable-list/engine.log"
+      - name: Smoke executable-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/executable-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/executable-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/executable-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/executable-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/executable-list/smoke.log"
+      - name: Record executable-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/executable-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision stow-reader
+        run: |
+          mkdir -p "$RECOVERY_ROOT/stow-reader/tmp" "$RECOVERY_ROOT/stow-reader/objects" "$RECOVERY_ROOT/results/stow-reader"
+          git fetch --depth=1 origin bd2954c0c37023007020851ee4f6b54409190b03
+          git worktree add --detach "$RECOVERY_ROOT/stow-reader/source" bd2954c0c37023007020851ee4f6b54409190b03
+          test "$(git -C "$RECOVERY_ROOT/stow-reader/source" write-tree)" = d88a22f510f695112a9bf4f9b04ee100541791cf
+          printf '%s\n' 'bd2954c0c37023007020851ee4f6b54409190b03' 'd88a22f510f695112a9bf4f9b04ee100541791cf' >"$RECOVERY_ROOT/results/stow-reader/source.txt"
+      - name: Engine stow-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/stow-reader/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/stow-reader/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/stow-reader/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/executable-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/stow-reader/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/stow-reader/engine.log"
+      - name: Smoke stow-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/stow-reader/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/stow-reader/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/stow-reader/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/stow-reader/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/stow-reader/smoke.log"
+      - name: Record stow-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/stow-reader
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision fetch-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/fetch-list/tmp" "$RECOVERY_ROOT/fetch-list/objects" "$RECOVERY_ROOT/results/fetch-list"
+          git fetch --depth=1 origin 9a7528ae99a2556bca6ec593119981c343b6613d
+          git worktree add --detach "$RECOVERY_ROOT/fetch-list/source" 9a7528ae99a2556bca6ec593119981c343b6613d
+          test "$(git -C "$RECOVERY_ROOT/fetch-list/source" write-tree)" = d80a858c74ec0fe5d1bf50e6b5a60c6974c6e062
+          printf '%s\n' '9a7528ae99a2556bca6ec593119981c343b6613d' 'd80a858c74ec0fe5d1bf50e6b5a60c6974c6e062' >"$RECOVERY_ROOT/results/fetch-list/source.txt"
+      - name: Engine fetch-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/fetch-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/fetch-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/fetch-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/stow-reader/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/fetch-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/fetch-list/engine.log"
+      - name: Smoke fetch-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/fetch-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/fetch-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/fetch-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/fetch-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/fetch-list/smoke.log"
+      - name: Record fetch-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/fetch-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision imports
+        run: |
+          mkdir -p "$RECOVERY_ROOT/imports/tmp" "$RECOVERY_ROOT/imports/objects" "$RECOVERY_ROOT/results/imports"
+          git fetch --depth=1 origin a9be1b482179aeebbdf50050383d9645ae67909c
+          git worktree add --detach "$RECOVERY_ROOT/imports/source" a9be1b482179aeebbdf50050383d9645ae67909c
+          printf '%s  %s\n' '02e61325fbd90a9b0cfc07dc527f8e6e46014d5011c9b9cefe65bdd6e2a574da' "$GITHUB_WORKSPACE/ci/recovery/recovery-imports.patch" | sha256sum -c -
+          git -C "$RECOVERY_ROOT/imports/source" apply --index "$GITHUB_WORKSPACE/ci/recovery/recovery-imports.patch"
+          test "$(git -C "$RECOVERY_ROOT/imports/source" write-tree)" = de0f958b58c16102b3fa3cd8df2081ace5f1f0f6
+          printf '%s\n' 'd042cef85927e36c44a7ca9515ce6e764da99dda' 'de0f958b58c16102b3fa3cd8df2081ace5f1f0f6' >"$RECOVERY_ROOT/results/imports/source.txt"
+      - name: Engine imports
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/imports/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/imports/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/imports/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/fetch-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/imports/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/imports/engine.log"
+      - name: Smoke imports
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/imports/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/imports/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/imports/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/imports/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/imports/smoke.log"
+      - name: Record imports
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/imports
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision import-manifest
+        run: |
+          mkdir -p "$RECOVERY_ROOT/import-manifest/tmp" "$RECOVERY_ROOT/import-manifest/objects" "$RECOVERY_ROOT/results/import-manifest"
+          git fetch --depth=1 origin 08abe92f528e09bf6445a644a63d9d72cff26220
+          git worktree add --detach "$RECOVERY_ROOT/import-manifest/source" 08abe92f528e09bf6445a644a63d9d72cff26220
+          printf '%s  %s\n' '4356b90a8c82f2ebf435d46e3d2bd552705eef301044a2fdafe6a7e526084be5' "$GITHUB_WORKSPACE/ci/recovery/recovery-import-manifest.patch" | sha256sum -c -
+          git -C "$RECOVERY_ROOT/import-manifest/source" apply --index "$GITHUB_WORKSPACE/ci/recovery/recovery-import-manifest.patch"
+          test "$(git -C "$RECOVERY_ROOT/import-manifest/source" write-tree)" = ef7657920b2d17bc8e1c42ad5b1ad7c9d94bf914
+          printf '%s\n' '3e880d9bec4ceb068eec072bd9495097bc74c3f7' 'ef7657920b2d17bc8e1c42ad5b1ad7c9d94bf914' >"$RECOVERY_ROOT/results/import-manifest/source.txt"
+      - name: Engine import-manifest
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/import-manifest/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/import-manifest/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/import-manifest/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/imports/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/import-manifest/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/import-manifest/engine.log"
+      - name: Smoke import-manifest
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/import-manifest/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/import-manifest/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/import-manifest/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/import-manifest/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/import-manifest/smoke.log"
+      - name: Record import-manifest
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/import-manifest
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision define-axiom
+        run: |
+          mkdir -p "$RECOVERY_ROOT/define-axiom/tmp" "$RECOVERY_ROOT/define-axiom/objects" "$RECOVERY_ROOT/results/define-axiom"
+          git fetch --depth=1 origin a89f92b0b52fd5e2efb9618921afe02dc738f245
+          git worktree add --detach "$RECOVERY_ROOT/define-axiom/source" a89f92b0b52fd5e2efb9618921afe02dc738f245
+          test "$(git -C "$RECOVERY_ROOT/define-axiom/source" write-tree)" = b304541b0be681645d83d9d3c9694c241cd2b483
+          printf '%s\n' 'a89f92b0b52fd5e2efb9618921afe02dc738f245' 'b304541b0be681645d83d9d3c9694c241cd2b483' >"$RECOVERY_ROOT/results/define-axiom/source.txt"
+      - name: Engine define-axiom
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/define-axiom/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/define-axiom/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/define-axiom/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/import-manifest/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/define-axiom/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/define-axiom/engine.log"
+      - name: Smoke define-axiom
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/define-axiom/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/define-axiom/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/define-axiom/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/define-axiom/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/define-axiom/smoke.log"
+      - name: Record define-axiom
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/define-axiom
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision quotation-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/quotation-list/tmp" "$RECOVERY_ROOT/quotation-list/objects" "$RECOVERY_ROOT/results/quotation-list"
+          git fetch --depth=1 origin ddd6363fed7d2d653b4f5e357af701d32ef4f7f7
+          git worktree add --detach "$RECOVERY_ROOT/quotation-list/source" ddd6363fed7d2d653b4f5e357af701d32ef4f7f7
+          test "$(git -C "$RECOVERY_ROOT/quotation-list/source" write-tree)" = ed7068243f17667a5becbfbe22d3df8ceb347011
+          printf '%s\n' 'ddd6363fed7d2d653b4f5e357af701d32ef4f7f7' 'ed7068243f17667a5becbfbe22d3df8ceb347011' >"$RECOVERY_ROOT/results/quotation-list/source.txt"
+      - name: Engine quotation-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/quotation-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/quotation-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/quotation-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/define-axiom/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/quotation-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/quotation-list/engine.log"
+      - name: Smoke quotation-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/quotation-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/quotation-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/quotation-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/quotation-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/quotation-list/smoke.log"
+      - name: Record quotation-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/quotation-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision quot-any-reader
+        run: |
+          mkdir -p "$RECOVERY_ROOT/quot-any-reader/tmp" "$RECOVERY_ROOT/quot-any-reader/objects" "$RECOVERY_ROOT/results/quot-any-reader"
+          git fetch --depth=1 origin 74c1059403c8fae4a98a627da76f7ed88c3bf739
+          git worktree add --detach "$RECOVERY_ROOT/quot-any-reader/source" 74c1059403c8fae4a98a627da76f7ed88c3bf739
+          test "$(git -C "$RECOVERY_ROOT/quot-any-reader/source" write-tree)" = 3153dd9f9d0662c2ceb2c150b845e6f2593ac307
+          printf '%s\n' '74c1059403c8fae4a98a627da76f7ed88c3bf739' '3153dd9f9d0662c2ceb2c150b845e6f2593ac307' >"$RECOVERY_ROOT/results/quot-any-reader/source.txt"
+      - name: Engine quot-any-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/quotation-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/quot-any-reader/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/quot-any-reader/engine.log"
+      - name: Smoke quot-any-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/quot-any-reader/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/quot-any-reader/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/quot-any-reader/smoke.log"
+      - name: Record quot-any-reader
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/quot-any-reader
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision compile-comma
+        run: |
+          mkdir -p "$RECOVERY_ROOT/compile-comma/tmp" "$RECOVERY_ROOT/compile-comma/objects" "$RECOVERY_ROOT/results/compile-comma"
+          git fetch --depth=1 origin 6e18ce948123f15af893e71459b4cade5c9e0493
+          git worktree add --detach "$RECOVERY_ROOT/compile-comma/source" 6e18ce948123f15af893e71459b4cade5c9e0493
+          test "$(git -C "$RECOVERY_ROOT/compile-comma/source" write-tree)" = 9157acfa62342c0cc96b865b8130762a62ba1bd0
+          printf '%s\n' '6e18ce948123f15af893e71459b4cade5c9e0493' '9157acfa62342c0cc96b865b8130762a62ba1bd0' >"$RECOVERY_ROOT/results/compile-comma/source.txt"
+      - name: Engine compile-comma
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/compile-comma/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/compile-comma/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/compile-comma/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/quot-any-reader/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/compile-comma/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/compile-comma/engine.log"
+      - name: Smoke compile-comma
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/compile-comma/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/compile-comma/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/compile-comma/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/compile-comma/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/compile-comma/smoke.log"
+      - name: Record compile-comma
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/compile-comma
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision address-order
+        run: |
+          mkdir -p "$RECOVERY_ROOT/address-order/tmp" "$RECOVERY_ROOT/address-order/objects" "$RECOVERY_ROOT/results/address-order"
+          git fetch --depth=1 origin e4c6009ac36469fa9b77183b226f3272c464267e
+          git worktree add --detach "$RECOVERY_ROOT/address-order/source" e4c6009ac36469fa9b77183b226f3272c464267e
+          test "$(git -C "$RECOVERY_ROOT/address-order/source" write-tree)" = c186f518689cdb9da11e69b51c0ae4017d8b9d9a
+          printf '%s\n' 'e4c6009ac36469fa9b77183b226f3272c464267e' 'c186f518689cdb9da11e69b51c0ae4017d8b9d9a' >"$RECOVERY_ROOT/results/address-order/source.txt"
+      - name: Engine address-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/address-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/address-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/address-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/compile-comma/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/address-order/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/address-order/engine.log"
+      - name: Smoke address-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/address-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/address-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/address-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/address-order/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/address-order/smoke.log"
+      - name: Record address-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/address-order
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision address-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/address-list/tmp" "$RECOVERY_ROOT/address-list/objects" "$RECOVERY_ROOT/results/address-list"
+          git fetch --depth=1 origin 20a1637d08f81c85bafea9737170a6995cec0cf7
+          git worktree add --detach "$RECOVERY_ROOT/address-list/source" 20a1637d08f81c85bafea9737170a6995cec0cf7
+          test "$(git -C "$RECOVERY_ROOT/address-list/source" write-tree)" = fb9e0aa9aa104178f83f86fcb14e95c82dc7eb9f
+          printf '%s\n' '20a1637d08f81c85bafea9737170a6995cec0cf7' 'fb9e0aa9aa104178f83f86fcb14e95c82dc7eb9f' >"$RECOVERY_ROOT/results/address-list/source.txt"
+      - name: Engine address-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/address-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/address-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/address-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/address-order/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/address-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/address-list/engine.log"
+      - name: Smoke address-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/address-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/address-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/address-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/address-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/address-list/smoke.log"
+      - name: Record address-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/address-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision arena-pages
+        run: |
+          mkdir -p "$RECOVERY_ROOT/arena-pages/tmp" "$RECOVERY_ROOT/arena-pages/objects" "$RECOVERY_ROOT/results/arena-pages"
+          git fetch --depth=1 origin 66f66eedea2b6ed3e767c5e7d3b4b83f2c0c16ec
+          git worktree add --detach "$RECOVERY_ROOT/arena-pages/source" 66f66eedea2b6ed3e767c5e7d3b4b83f2c0c16ec
+          test "$(git -C "$RECOVERY_ROOT/arena-pages/source" write-tree)" = ffd6a61d40edb0cd03fd5ae344d4f9beaaab62be
+          printf '%s\n' '66f66eedea2b6ed3e767c5e7d3b4b83f2c0c16ec' 'ffd6a61d40edb0cd03fd5ae344d4f9beaaab62be' >"$RECOVERY_ROOT/results/arena-pages/source.txt"
+      - name: Engine arena-pages
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/arena-pages/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/arena-pages/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/arena-pages/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/address-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/arena-pages/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/arena-pages/engine.log"
+      - name: Smoke arena-pages
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/arena-pages/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/arena-pages/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/arena-pages/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/arena-pages/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/arena-pages/smoke.log"
+      - name: Record arena-pages
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/arena-pages
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision rejection-order
+        run: |
+          mkdir -p "$RECOVERY_ROOT/rejection-order/tmp" "$RECOVERY_ROOT/rejection-order/objects" "$RECOVERY_ROOT/results/rejection-order"
+          git fetch --depth=1 origin 08b92dfec4d239a77377813c1fbe7c46a767d04c
+          git worktree add --detach "$RECOVERY_ROOT/rejection-order/source" 08b92dfec4d239a77377813c1fbe7c46a767d04c
+          test "$(git -C "$RECOVERY_ROOT/rejection-order/source" write-tree)" = c1b0409b427054704d17af3e1448584013b594b7
+          printf '%s\n' '08b92dfec4d239a77377813c1fbe7c46a767d04c' 'c1b0409b427054704d17af3e1448584013b594b7' >"$RECOVERY_ROOT/results/rejection-order/source.txt"
+      - name: Engine rejection-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/rejection-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/rejection-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/rejection-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/arena-pages/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/rejection-order/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/rejection-order/engine.log"
+      - name: Smoke rejection-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/rejection-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/rejection-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/rejection-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/rejection-order/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/rejection-order/smoke.log"
+      - name: Record rejection-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/rejection-order
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision cwork
+        run: |
+          mkdir -p "$RECOVERY_ROOT/cwork/tmp" "$RECOVERY_ROOT/cwork/objects" "$RECOVERY_ROOT/results/cwork"
+          git fetch --depth=1 origin 51935097059494392f7697720d4725e374892308
+          git worktree add --detach "$RECOVERY_ROOT/cwork/source" 51935097059494392f7697720d4725e374892308
+          test "$(git -C "$RECOVERY_ROOT/cwork/source" write-tree)" = 094e388b2e78698335013a8692159129401119ee
+          printf '%s\n' '51935097059494392f7697720d4725e374892308' '094e388b2e78698335013a8692159129401119ee' >"$RECOVERY_ROOT/results/cwork/source.txt"
+      - name: Engine cwork
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/cwork/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/cwork/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/cwork/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/rejection-order/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/cwork/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/cwork/engine.log"
+      - name: Smoke cwork
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/cwork/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/cwork/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/cwork/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/cwork/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/cwork/smoke.log"
+      - name: Record cwork
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/cwork
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision heap-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/heap-list/tmp" "$RECOVERY_ROOT/heap-list/objects" "$RECOVERY_ROOT/results/heap-list"
+          git fetch --depth=1 origin 4c5acba0690b62d47a9722f6a82ac756868c55c4
+          git worktree add --detach "$RECOVERY_ROOT/heap-list/source" 4c5acba0690b62d47a9722f6a82ac756868c55c4
+          test "$(git -C "$RECOVERY_ROOT/heap-list/source" write-tree)" = 8b0c8a60b7cabf38089c7af0a495f062ca07e3cc
+          printf '%s\n' '4c5acba0690b62d47a9722f6a82ac756868c55c4' '8b0c8a60b7cabf38089c7af0a495f062ca07e3cc' >"$RECOVERY_ROOT/results/heap-list/source.txt"
+      - name: Engine heap-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/heap-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/heap-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/heap-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/cwork/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/heap-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/heap-list/engine.log"
+      - name: Smoke heap-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/heap-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/heap-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/heap-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/heap-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/heap-list/smoke.log"
+      - name: Record heap-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/heap-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision arena-order
+        run: |
+          mkdir -p "$RECOVERY_ROOT/arena-order/tmp" "$RECOVERY_ROOT/arena-order/objects" "$RECOVERY_ROOT/results/arena-order"
+          git fetch --depth=1 origin 5bde22fec31c751a0021acec941448088f6a1ce7
+          git worktree add --detach "$RECOVERY_ROOT/arena-order/source" 5bde22fec31c751a0021acec941448088f6a1ce7
+          test "$(git -C "$RECOVERY_ROOT/arena-order/source" write-tree)" = a921a919a2d478d911b115bb42a8a22cf7a8d634
+          printf '%s\n' '5bde22fec31c751a0021acec941448088f6a1ce7' 'a921a919a2d478d911b115bb42a8a22cf7a8d634' >"$RECOVERY_ROOT/results/arena-order/source.txt"
+      - name: Engine arena-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/arena-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/arena-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/arena-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/heap-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/arena-order/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/arena-order/engine.log"
+      - name: Smoke arena-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/arena-order/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/arena-order/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/arena-order/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/arena-order/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/arena-order/smoke.log"
+      - name: Record arena-order
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/arena-order
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision storage-cells
+        run: |
+          mkdir -p "$RECOVERY_ROOT/storage-cells/tmp" "$RECOVERY_ROOT/storage-cells/objects" "$RECOVERY_ROOT/results/storage-cells"
+          git fetch --depth=1 origin 99d97ad6d631efd73468a4119143ada3a1bd7585
+          git worktree add --detach "$RECOVERY_ROOT/storage-cells/source" 99d97ad6d631efd73468a4119143ada3a1bd7585
+          test "$(git -C "$RECOVERY_ROOT/storage-cells/source" write-tree)" = 84d083bc84f99510fa3b32eb936cdfcddf3c6a50
+          printf '%s\n' '99d97ad6d631efd73468a4119143ada3a1bd7585' '84d083bc84f99510fa3b32eb936cdfcddf3c6a50' >"$RECOVERY_ROOT/results/storage-cells/source.txt"
+      - name: Engine storage-cells
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/storage-cells/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/storage-cells/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/storage-cells/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/arena-order/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/storage-cells/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/storage-cells/engine.log"
+      - name: Smoke storage-cells
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/storage-cells/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/storage-cells/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/storage-cells/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/storage-cells/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/storage-cells/smoke.log"
+      - name: Record storage-cells
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/storage-cells
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision layout-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/layout-list/tmp" "$RECOVERY_ROOT/layout-list/objects" "$RECOVERY_ROOT/results/layout-list"
+          git fetch --depth=1 origin a3d03c69e969ac668d38ed3fc8be59032b066e3b
+          git worktree add --detach "$RECOVERY_ROOT/layout-list/source" a3d03c69e969ac668d38ed3fc8be59032b066e3b
+          test "$(git -C "$RECOVERY_ROOT/layout-list/source" write-tree)" = 140a9781b16b2c8ae40ec7cb5071f6d213b67410
+          printf '%s\n' 'a3d03c69e969ac668d38ed3fc8be59032b066e3b' '140a9781b16b2c8ae40ec7cb5071f6d213b67410' >"$RECOVERY_ROOT/results/layout-list/source.txt"
+      - name: Engine layout-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/layout-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/layout-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/layout-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/storage-cells/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/layout-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/layout-list/engine.log"
+      - name: Smoke layout-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/layout-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/layout-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/layout-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/layout-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/layout-list/smoke.log"
+      - name: Record layout-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/layout-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision die-closed
+        run: |
+          mkdir -p "$RECOVERY_ROOT/die-closed/tmp" "$RECOVERY_ROOT/die-closed/objects" "$RECOVERY_ROOT/results/die-closed"
+          git fetch --depth=1 origin 42694f101351c45d5417200121cbde23a7e296a4
+          git worktree add --detach "$RECOVERY_ROOT/die-closed/source" 42694f101351c45d5417200121cbde23a7e296a4
+          test "$(git -C "$RECOVERY_ROOT/die-closed/source" write-tree)" = 20f474a3c50acb2ff8855817d7a2e10c4a51f957
+          printf '%s\n' '42694f101351c45d5417200121cbde23a7e296a4' '20f474a3c50acb2ff8855817d7a2e10c4a51f957' >"$RECOVERY_ROOT/results/die-closed/source.txt"
+      - name: Engine die-closed
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/die-closed/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/die-closed/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/die-closed/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/layout-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/die-closed/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/die-closed/engine.log"
+      - name: Smoke die-closed
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/die-closed/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/die-closed/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/die-closed/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/die-closed/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/die-closed/smoke.log"
+      - name: Record die-closed
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/die-closed
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision items
+        run: |
+          mkdir -p "$RECOVERY_ROOT/items/tmp" "$RECOVERY_ROOT/items/objects" "$RECOVERY_ROOT/results/items"
+          git fetch --depth=1 origin 8fc2fad64194bb96bb1423337b2e1bd101772f55
+          git worktree add --detach "$RECOVERY_ROOT/items/source" 8fc2fad64194bb96bb1423337b2e1bd101772f55
+          test "$(git -C "$RECOVERY_ROOT/items/source" write-tree)" = c460e741fa7a9c8b838ddafe9e58be8765fe98a5
+          printf '%s\n' '8fc2fad64194bb96bb1423337b2e1bd101772f55' 'c460e741fa7a9c8b838ddafe9e58be8765fe98a5' >"$RECOVERY_ROOT/results/items/source.txt"
+      - name: Engine items
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/items/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/items/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/items/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/die-closed/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/items/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/items/engine.log"
+      - name: Smoke items
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/items/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/items/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/items/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/items/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/items/smoke.log"
+      - name: Record items
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/items
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision effect-builtin
+        run: |
+          mkdir -p "$RECOVERY_ROOT/effect-builtin/tmp" "$RECOVERY_ROOT/effect-builtin/objects" "$RECOVERY_ROOT/results/effect-builtin"
+          git fetch --depth=1 origin 6b6f9af7b6c259f8c6eeede42aee566a8b7ecf4f
+          git worktree add --detach "$RECOVERY_ROOT/effect-builtin/source" 6b6f9af7b6c259f8c6eeede42aee566a8b7ecf4f
+          test "$(git -C "$RECOVERY_ROOT/effect-builtin/source" write-tree)" = 36048dc23293f34d92f232a21d51f62812dab0a9
+          printf '%s\n' '6b6f9af7b6c259f8c6eeede42aee566a8b7ecf4f' '36048dc23293f34d92f232a21d51f62812dab0a9' >"$RECOVERY_ROOT/results/effect-builtin/source.txt"
+      - name: Engine effect-builtin
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/items/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/effect-builtin/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/effect-builtin/engine.log"
+      - name: Smoke effect-builtin
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/effect-builtin/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/effect-builtin/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/effect-builtin/smoke.log"
+      - name: Record effect-builtin
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/effect-builtin
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision c2-list
+        run: |
+          mkdir -p "$RECOVERY_ROOT/c2-list/tmp" "$RECOVERY_ROOT/c2-list/objects" "$RECOVERY_ROOT/results/c2-list"
+          git fetch --depth=1 origin f668875e9a71ad65c1b1a6e8fe4da8b336ec8c4a
+          git worktree add --detach "$RECOVERY_ROOT/c2-list/source" f668875e9a71ad65c1b1a6e8fe4da8b336ec8c4a
+          test "$(git -C "$RECOVERY_ROOT/c2-list/source" write-tree)" = 17a6e82e9f0075faa8bafaf7ab01c5113abe4620
+          printf '%s\n' 'f668875e9a71ad65c1b1a6e8fe4da8b336ec8c4a' '17a6e82e9f0075faa8bafaf7ab01c5113abe4620' >"$RECOVERY_ROOT/results/c2-list/source.txt"
+      - name: Engine c2-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/c2-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/c2-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/c2-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/effect-builtin/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/c2-list/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/c2-list/engine.log"
+      - name: Smoke c2-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/c2-list/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/c2-list/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/c2-list/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/c2-list/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/c2-list/smoke.log"
+      - name: Record c2-list
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/c2-list
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Provision master
+        run: |
+          mkdir -p "$RECOVERY_ROOT/master/tmp" "$RECOVERY_ROOT/master/objects" "$RECOVERY_ROOT/results/master"
+          git fetch --depth=1 origin 5bb4971e0ca553776e55be910341dffed3fb1e20
+          git worktree add --detach "$RECOVERY_ROOT/master/source" 5bb4971e0ca553776e55be910341dffed3fb1e20
+          test "$(git -C "$RECOVERY_ROOT/master/source" write-tree)" = 692178c0294d404c54a8a2dedb5f89f3582ed330
+          printf '%s\n' '5bb4971e0ca553776e55be910341dffed3fb1e20' '692178c0294d404c54a8a2dedb5f89f3582ed330' >"$RECOVERY_ROOT/results/master/source.txt"
+      - name: Engine master
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/master/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/master/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/master/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/c2-list/hb" --load tools/hb-build.f -- --engine -o "$RECOVERY_ROOT/results/master/hb"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/master/engine.log"
+      - name: Smoke master
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/master/source
+        env:
+          TMPDIR: ${{ runner.temp }}/habu-t0-recovery/master/tmp
+          HABU_OUT: ${{ runner.temp }}/habu-t0-recovery/master/objects
+        run: >-
+          timeout 300 "$RECOVERY_ROOT/results/master/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
+          </dev/null 2>&1 | tee "$RECOVERY_ROOT/results/master/smoke.log"
+      - name: Record master
+        working-directory: ${{ runner.temp }}/habu-t0-recovery/results/master
+        run: |
+          sha256sum hb hb.map >sha256.txt
+          cp hb hb.map source.txt sha256.txt "$RECOVERY_ROOT/latest/"
+      - name: Retain the latest host and all diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: t0-recovery
-          path: ${{ runner.temp }}/habu-t0-recovery/results
+          path: |
+            ${{ runner.temp }}/habu-t0-recovery/latest/*
+            ${{ runner.temp }}/habu-t0-recovery/results/**/*.log
+            ${{ runner.temp }}/habu-t0-recovery/results/**/source.txt
+            ${{ runner.temp }}/habu-t0-recovery/results/**/sha256.txt
+            ${{ runner.temp }}/habu-t0-recovery/results/**/kernel.hko
           compression-level: 0
           if-no-files-found: error
           retention-days: 30

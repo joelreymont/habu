@@ -1,4 +1,3 @@
-0 set-tier
 package CI-T0-SMOKE
 private
 : RUN ( -- )
