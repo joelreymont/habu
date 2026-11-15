@@ -1056,10 +1056,22 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    a 0 SYM-BUF u BYTE-COPY
    u SYM-U ! ;
 
+\ The bytes LIBRARY-NAME$ adds to a base at the longest version it renders.
+: AFFIX-BYTES ( -- n )
+   s" x" LIB-VERSION-MAX LIB-NAME LIBRARY-NAME$ nip 1 - ;
+
 \ The base name is copied out of the token buffer because reading the version
-\ token overwrites it.
+\ token overwrites it. The base is checked before that token is read, so its
+\ name must fit a path at any version.
 : BASE! ( -- )
    TOK$ {: a:ptr u:n :}
+   u AFFIX-BYTES + LIBRARY-PATH-CAP 1 - > if
+      s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
+      TOK-AT s" too long" REJECTION:OPEN-AT
+      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
+      s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit" SAY
+      FFI-STOP
+   then
    u BASE-BUF-RESERVE
    a 0 BASE-BUF u BYTE-COPY
    u BASE-U ! ;

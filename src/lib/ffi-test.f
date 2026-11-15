@@ -220,7 +220,7 @@ variable FFI-T-PAIR-AFTER
 
 \ A child declares 270 distinct symbols and 270 library paths, past any fixed
 \ table: an exact alias takes no row, paths keep their ids and later rows call.
-$800 constant FFI-T-SRC-CAP
+$2000 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
 
@@ -662,6 +662,24 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s\"    ZZ-NO-VERSION drop ;\nZZ-CALL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
+: FFI-T-HUGE-BASE-SRC$ ( -- ptr u8 n )
+   FFI-T-LONG-PATH!
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY " FFI-T-SRC+
+   FFI-T-LONG-PATH PATH-CAP FFI-T-SRC+
+   s\"  1\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-HUGE-BASE ( -- )
+   s" a base whose library name passes the path cap is rejected at the base" T-LABEL
+   FFI-T-HUGE-BASE-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
+   SB-RESET s" = limit: " SB-APPEND FFI:LIBRARY-PATH-CAP 1 - FMT:SB-INT s"  bytes" SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ s" uncaught" CONTAINS? TFALSE ;
+
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL
    FFI-T-NO-VERSION-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
@@ -863,6 +881,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-LONG-FOREIGN-LIBRARY
    FFI-T-NO-LIB
    FFI-T-NO-VERSION
+   FFI-T-HUGE-BASE
    FFI-T-GLOBAL ;
 
 FFI-RUN
