@@ -6,6 +6,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/source.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
+require tools/lint/text.f
 
 package CHECKED-BOUNDARY-LINT
 
