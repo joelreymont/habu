@@ -1250,7 +1250,7 @@ public
    dup DVERD !
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
    dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE =  or
-   REJECTION:QUIET @ 0= and IF DIAG-PRINT THEN
+   REJECTION:QUIET @ 0= and BWIN-UNJUDGED @ 0= and IF DIAG-PRINT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
    SIG-EFF-DROP
@@ -1310,7 +1310,7 @@ public
       NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
-   REJECTION:QUIET @ 0= and IF
+   REJECTION:QUIET @ 0= and BWIN-UNJUDGED @ 0= and IF
       MULTI-REFUSED
    THEN ;
 
@@ -1794,10 +1794,12 @@ variable DEF-STOPPED
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
 \ only to fill the source tape the optimizing elaborator reads, and its verdict
-\ is never acted on. A scan that returns leaves the clause latch as it found it:
-\ its record grants no authority. A scan that throws abandons the definition,
-\ so it clears the latch: a restored arm would be stepped by the next body
-\ check into the record of whatever is defined next.
+\ is never acted on, so the verdict's record stays silent while BWIN-UNJUDGED
+\ is set; a rejection that stops the definition still prints. A scan that
+\ returns leaves the clause latch as it found it: its record grants no
+\ authority. A scan that throws abandons the definition, so it clears the
+\ latch: a restored arm would be stepped by the next body check into the
+\ record of whatever is defined next.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UNJ-A   variable UNJ-U
 variable UNJ-VERDICT
@@ -1811,9 +1813,7 @@ CHECKER-REG:}SCRATCH
    a UNJ-A !  u UNJ-U !
    DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
-   1 REJECTION:QUIET +!
    [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
-   -1 REJECTION:QUIET +!
    0 BWIN-UNJUDGED !
    rc 0 <> IF DOES-EFF-CLEAR rc throw THEN
    eff DOESEFF !  pend DOESPEND !

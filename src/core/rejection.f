@@ -381,15 +381,6 @@ EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
    SOURCE-U @ 0 = IF 0 0= 0= EXIT THEN
    ROW-N @ 0 >  MAP-A @ MAP-U @ p n HOLDS?  and IF p MAP-A @ - MAP-NONE? 0= EXIT THEN
    SOURCE$ p n HOLDS? ;
-public
-\ Whether one source a rejection places from holds the token p n whole, for
-\ good: the armed source, the given closer's bytes or the loader's owned bytes.
-\ A zero-length token is held at any offset from 0 to the buffer's length.
-: HELD? ( ptr u8 n -- bool ) {: p:ptr n:n :}
-   p n ARMED? IF 0 0= EXIT THEN
-   CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
-   OWNED$ p n HOLDS? ;
-private
 \ The line of b's bu bytes that holds t: from the byte after the last LF before
 \ t up to the next LF, or the buffer's edge.
 : LINE! ( ptr u8 n ptr u8 -- ) {: b:ptr bu:n t:ptr :}
@@ -498,6 +489,18 @@ private
    OWNED$ a u HOLDS? IF OWNED$ a u BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
    b bu a u BUFFER-PLACE NO-FILE$ PLACE-FILE! ;
 public
+\ Whether one source a rejection places from holds the token p n whole while
+\ the rejection is written: the armed source, the given closer's bytes or the
+\ loader's owned bytes, which stay put for good, or an evaluated text being
+\ run, which stays put while it runs. A zero-length token is held at any
+\ offset from 0 to the buffer's length.
+: HELD? ( ptr u8 n -- bool ) {: p:ptr n:n :}
+   p n ARMED? IF 0 0= EXIT THEN
+   CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
+   OWNED$ p n HOLDS? IF 0 0= EXIT THEN
+   INVOKER {: inv:ptr :}
+   inv NULL-PTR = IF 0 0= 0= EXIT THEN
+   p n inv IN-EVALUATED? nip ;
 \ Whether PLACE finds the byte p points at in a source it knows.
 : PLACES? ( ptr u8 -- bool ) {: p:ptr :}
    p >SOURCE nip IF 0 0= EXIT THEN
