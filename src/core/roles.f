@@ -147,51 +147,6 @@ CAST: >SNAP ( n -- snap )
    CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 
-$1000 constant VRDEF-CAP
-create VRDEF-BUF VRDEF-CAP allot
-variable VRDEF-U
-variable VRDEF-I
-PTR-VARIABLE VRDEF-FIRST   \ the first field token in the source
-
-: VRDEF-CLEAR ( -- )
-   0 VRDEF-U ! ;
-
-\ The field token t tu, which does not fit in the field list's VRDEF-CAP bytes.
-\ It is written through its help, and the caller stops it.
-: VRDEF-TOO-LONG ( ptr u8 n -- ) {: t:ptr tu:n :}
-   s" E-VALUE-RECORD-TOO-LONG" REJECTION:OPEN
-   s" value record field list is too long" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" does not fit" REJECTION:EMIT-STR
-   s" limit" REJECTION:NOTE  VRDEF-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   REJECTION:HELP  s" split the record" REJECTION:EMIT-STR ;
-
-\ The field token t tu needs n more bytes, compared with the room left as DTC+
-\ compares: a sum near the maximum cell wraps back under the capacity.
-: VRDEF-ROOM ( ptr u8 n n -- ) {: t:ptr tu:n u:n :}
-   u 0 < u VRDEF-CAP VRDEF-U @ - > or IF
-      t tu VRDEF-TOO-LONG  CHECKER-REJECT-RC REJECTION:STOP
-   THEN ;
-
-: VRDEF-C, ( n -- )
-   VRDEF-BUF VRDEF-U @ + c!
-   VRDEF-U @ 1 + VRDEF-U ! ;
-
-: VRDEF-SPACE ( -- )
-   VRDEF-U @ 0 > IF 32 VRDEF-C, THEN ;
-
-: VRDEF-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 VRDEF-I !
-   BEGIN VRDEF-I @ u < WHILE
-      a VRDEF-I @ + c@ VRDEF-C,
-      VRDEF-I @ 1 + VRDEF-I !
-   REPEAT ;
-
-\ The token and the space before it take their room at once.
-: VRDEF-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u  VRDEF-U @ 0 > IF u 1 + ELSE u THEN  VRDEF-ROOM
-   VRDEF-SPACE
-   a u VRDEF-APP ;
-
 : VRDEF-FOLD-C ( n -- n )
    dup $41 < IF EXIT THEN
    dup $5A > IF EXIT THEN
@@ -217,29 +172,21 @@ PTR-VARIABLE VRDEF-FIRST   \ the first field token in the source
    a u REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
    REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR ;
 
-\ The field list from its first token to the closer at e as the source holds
-\ it, when REJECTION holds that span (REJECTION:HELD?), so a rejected field is
-\ placed; else the copy, which has no place.
-: VRDEF-FIELDS ( ptr u8 -- ptr u8 n ) {: e:ptr :}
-   VRDEF-U @ 0= IF e 0 EXIT THEN
-   VRDEF-FIRST @ {: f:ptr :}
-   e f - {: u:n :}
-   u 0 >= IF f u REJECTION:HELD? IF f u EXIT THEN THEN
-   VRDEF-BUF VRDEF-U @ ;
-
+\ The field list is the source from its first token f to the closer at e:
+\ parse-name never refills the input, so the span is the record's own bytes and
+\ a rejected field is placed.
 : VALUE-RECORD ( -- )
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
-   VRDEF-CLEAR
+   parse-name over {: f:ptr :}
    BEGIN
-      parse-name dup 0= IF
+      dup 0= IF
          name nameu VRDEF-UNCLOSED  CHECKER-REJECT-RC REJECTION:STOP
       THEN
       2dup VRDEF-END? IF
-         drop  name nameu rot VRDEF-FIELDS CHECKER-DEFRECORD
+         drop {: e:ptr :}  name nameu f e f - CHECKER-DEFRECORD
          EXIT
       THEN
-      VRDEF-U @ 0= IF over VRDEF-FIRST ! THEN
-      VRDEF-TOKEN+
+      2drop parse-name
    AGAIN ;
 NOMINAL-PROVIDER

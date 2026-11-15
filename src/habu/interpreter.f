@@ -2546,7 +2546,7 @@ variable DEF-VALUE
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if param exit then
    shape ROUTINE$ HANDLE-REC XREF-START ;
 
-\ An unknown shape is the calling declaration's error.
+\ A shape is a CHILD-ABI constant: those left are the routine children's.
 : CHILD-BODY ( n n -- COMP:body n ) {: shape:n param:n :}
    shape CHILD-ABI:CELL-OFF =
    shape CHILD-ABI:PTR-OFF = or
@@ -2557,10 +2557,7 @@ variable DEF-VALUE
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
    shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
    shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
-   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:ARENA-DISPOSE <= and if
-      COMP-BODY:routine shape param ROUTINE exit
-   then
-   CHECKER-REJECT-RC throw ;
+   COMP-BODY:routine shape param ROUTINE ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
    shape CHILD-ABI:STORED >= shape CHILD-ABI:ARENA-DISPOSE <= and ;
