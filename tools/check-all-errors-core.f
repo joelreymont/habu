@@ -45,11 +45,6 @@ require src/habu/verify-source.f
 
 package CHECK-ALL-ERRORS
 
-public
-
-\ The status a duplicate definition stops a load with.
-$4E constant DUP-RC
-
 private
 
 10 constant CA-LF
@@ -435,66 +430,6 @@ variable CA-JSON-READY
    loop
    at swap - 1+ ;
 
-: CA-JSON-EMPTY-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   s" " JSON:WRITE-FIELD-S ;
-
-\ ---- a definition of a name its scope already held ---------------------------
-
-: CA-JSON-DUP ( ptr u8 n n n n n -- )
-   {: wa:ptr wu:n ti:n line:n col:n byte:n :}
-   CA-JSON-WRITER JSON:WRITE-OBJECT-START
-   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" code" s" E-DUPLICATE-DEFINITION" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" s" rename_duplicate" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" word" wa wu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token" wa wu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token_index" ti JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" file" CA-FILE-A@ CA-FILE-U @ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" byte JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" byte wu + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" definition_source" wa wu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" declared_effect" s" unknown" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" declared_effect_source" s" unknown" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" inferred_effect" s" unknown" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" return_stack" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
-   s" expected" CA-JSON-EMPTY-FIELD JSON:WRITE-COMMA
-   s" actual" CA-JSON-EMPTY-FIELD
-   JSON:WRITE-OBJECT-END JSON:WRITE-COMMA
-   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END drop ;
-
-\ A session checks several files, so the line names the one that defined the
-\ word again, as the JSON record does.
-: CA-PROSE-DUP ( -- )
-   CA-JSON-WRITER
-   s" checker: duplicate definition in " JSON:WRITE-RAW
-   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW drop ;
-
-\ The words the engine's wall writes under --load, for the name and its line.
-: CA-PROSE-DUP-AT ( ptr u8 n n -- ) {: na:ptr nu:n line:n :}
-   CA-JSON-WRITER  s" E-DUPLICATE-DEFINITION habu: " JSON:WRITE-RAW
-   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW  s" :" JSON:WRITE-RAW  line JSON:WRITE-U
-   s" : duplicate definition: " JSON:WRITE-RAW  na nu JSON:WRITE-RAW drop ;
-
-: CA-DUP-AT ( n n -- ) {: at:n u:n :}
-   CA-SRC-A@ at BYTE-ORIGIN {: line:n col:n :}
-   CA-SRC-A@ at + {: na:ptr :}
-   CA-JSON? IF na u 0 line col at CA-JSON-DUP ELSE na u line CA-PROSE-DUP-AT THEN ;
-
-\ The record of the name the scan refused, which starts at the given byte and
-\ has the given length, 0 for no name kept. Both renderings
-\ are built in the JSON writer's buffer.
-: CA-DUP-RECORD$ ( n n -- ptr u8 n ) {: at:n u:n :}
-   u 0 > at u + CA-SRC-U @ <= and IF
-      at u CA-DUP-AT
-   ELSE
-      CA-JSON? IF s" duplicate-definition" 1 1 1 0 CA-JSON-DUP ELSE CA-PROSE-DUP THEN
-   THEN
-   CA-JSON-W JSON:WRITTEN$ ;
-
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ An incomplete primitive-axiom row stops the scan like an open string but gets
 \ its own code and repair text: a caller told to close a string literal would
@@ -586,16 +521,5 @@ public
    rc CA-THROW-RC !
    at CA-THROW-AT !
    CA-THROW-RECORD$ ;
-
-\ The record line --all-errors writes for a duplicate definition, for a caller
-\ that had the checker run over the given source under the given label: at the
-\ name the scan refused, which starts at the given byte and has the given
-\ length, 0 for no name kept, in the mode JSON! selected,
-\ with no line feed.
-: DUP-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: at:n u:n labela:ptr labelu:n srca:ptr srcu:n :}
-   labela labelu CA-START
-   srca srcu CA-SOURCE-BUF!
-   at u CA-DUP-RECORD$ ;
 
 ;package

@@ -10,7 +10,6 @@ $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
-78 constant E-DUP-DEFINITION
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
 

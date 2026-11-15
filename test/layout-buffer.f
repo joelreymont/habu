@@ -87,10 +87,10 @@ PTR-VARIABLE LB-DP
    s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" INCLUDE-EVALUATE ;
 
 : LB-DUP-RC ( -- n )
-   [: LB-DUPLICATE ;] catch ;
+   1 REJECTION:QUIET +!  [: LB-DUPLICATE ;] catch  -1 REJECTION:QUIET +! ;
 
 here LB-DP 0 ptr-field !
-LB-DUP-RC $4E T=
+LB-DUP-RC CHECKER-REJECT-RC T=
 here LB-DP 0 ptr-field @ = TTRUE
 
 here LB-DP 0 ptr-field !
@@ -154,14 +154,15 @@ s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 : LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" INCLUDE-EVALUATE ;
 : LBTK-ZERO-RC ( -- n )  [: LBTK-ZERO-DECL ;] catch ;
 : LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" INCLUDE-EVALUATE ;
-: LBTK-DUP-RC ( -- n )  [: LBTK-DUP-DECL ;] catch ;
+: LBTK-DUP-RC ( -- n )
+   1 REJECTION:QUIET +!  [: LBTK-DUP-DECL ;] catch  -1 REJECTION:QUIET +! ;
 : LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
 here LB-DP 0 ptr-field !
 LBTK-ZERO-RC CHECKER-REJECT-RC T=
 here LB-DP 0 ptr-field @ = TTRUE
 LBTK-ZERO-ABSENT? TTRUE
 here LB-DP 0 ptr-field !
-LBTK-DUP-RC $4E T=
+LBTK-DUP-RC CHECKER-REJECT-RC T=
 here LB-DP 0 ptr-field @ = TTRUE
 
 \ PRODUCT positive: MAKE, typed store, fetch and UNMAKE round-trip through

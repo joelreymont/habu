@@ -64,6 +64,9 @@ variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ INCLUDE-EVALUATE ;
 : EVAL ( ptr u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
+\ EVAL with its rejection record unprinted.
+: QUIET-EVAL ( ptr u8 n -- n ) 1 REJECTION:QUIET +! EVAL -1 REJECTION:QUIET +! ;
+
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( ptr u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
@@ -208,16 +211,16 @@ private
    s" ARENA OPENQ [ a -- a ]" EVAL CHECKER-REJECT-RC T=
    s" OPENQ" NO-WORDS
    s" a name whose derived word is taken defines neither word" T-LABEL
-   s" ARENA TAKEN n" EVAL E-DUP-DEFINITION T=
+   s" ARENA TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T=
    s" TAKEN" s" -NEW" ABSENT
    s" a refusal counted by a multi-error load defines nothing" T-LABEL
    s" ARENA MBAD u16" MULTI 1 T= 0 T=
    s" MBAD" NO-WORDS
    s" a name whose word is taken in the other section defines neither word" T-LABEL
-   s" public ARENA PUBDIS n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
+   s" public ARENA PUBDIS n" QUIET-EVAL CHECKER-REJECT-RC T=  s" private" EVAL 0 T=
    s" PUBDIS" PUB-NO-WORDS
    s" PUBDIS" s" -NEW" ABSENT
-   s" ARENA PRIVNEW n" EVAL E-DUP-DEFINITION T=
+   s" ARENA PRIVNEW n" QUIET-EVAL CHECKER-REJECT-RC T=
    s" PRIVNEW" NO-WORDS
    s" PRIVNEW" s" -NEW-DISPOSE" PUB-ABSENT
    s" a qualified name declares both words in that package's public section" T-LABEL
@@ -226,9 +229,9 @@ private
    s" : QUAL-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
    EVAL 0 T=
    s" and refuses one whose word is taken in that package's private section" T-LABEL
-   s" public ARENA ARENA-TEST:TAKEN n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
-   s" ARENA ARENA-TEST:PUBDIS n" EVAL E-DUP-DEFINITION T=
-   s" ARENA ARENA-FIX:PRECS n" EVAL E-DUP-DEFINITION T= ;
+   s" public ARENA ARENA-TEST:TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T=  s" private" EVAL 0 T=
+   s" ARENA ARENA-TEST:PUBDIS n" QUIET-EVAL CHECKER-REJECT-RC T=
+   s" ARENA ARENA-FIX:PRECS n" QUIET-EVAL CHECKER-REJECT-RC T= ;
 
 
 : VERIFY-USES-SRC$ ( -- ptr u8 n )
@@ -248,6 +251,7 @@ private
    s" tools/check.f" E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
    rel relu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 
@@ -298,7 +302,7 @@ public
    s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
    s" : TOP-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
    s" and a qualified one whose word is taken in that package's private section is refused" T-LABEL
-   s" ARENA ARENA-FIX:TOP-TAKEN n" EVAL E-DUP-DEFINITION T= ;
+   s" ARENA ARENA-FIX:TOP-TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T= ;
 
 ;package
 

@@ -182,7 +182,6 @@ variable GE-EVAL-SRC-U
       55 of s" E-PROC-ENV" type endof
       54 of s" E-PROC-PATH" type endof
       70 of s" E-CHECK" type endof
-      78 of s" E-DUP-DEFINITION" type endof
       202 of s" E-FS-OPEN" type endof
       198 of s" E-FS-CAPACITY" type endof
       104 of s" E-STR-BOUNDS" type endof
