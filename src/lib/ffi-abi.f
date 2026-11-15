@@ -177,9 +177,7 @@ CAST: CELL>PTR ( n -- ptr u8 )
 
 \ ---- declared foreign functions -------------------------------------------
 
-$30 constant FN-NAME-CAP
 PATH-CAP 1 + constant LIB-PATH-CAP
-$20 constant LIB-BASE-CAP
 9999 constant LIB-VERSION-MAX
 
 0 cells constant FN-ADDR-OFF
@@ -187,8 +185,9 @@ $20 constant LIB-BASE-CAP
 2 cells constant FN-ARGC-OFF
 3 cells constant FN-SPILL-OFF
 4 cells constant FN-RELOC-OFF
-5 cells constant FN-NAME-OFF
-FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
+5 cells constant FN-NAME-OFF              \ the symbol's address, a pointer cell
+6 cells constant FN-NAME-LEN-OFF          \ the symbol's length, its 0 byte not counted
+7 cells constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
 2 cells constant LIB-FAILED-OFF
@@ -215,13 +214,17 @@ LIB-N ROLLBACK-CELLS:MARK
    size allot
    rows ;
 
-\ An old block stays allotted: a callback the loader runs may grow the table
-\ while the loader still reads a row's name or path there.
+\ An old block stays allotted: a callback the loader runs may grow a table
+\ while the loader still reads a library row's path there.
 : FN-GROW ( -- )
    FN-CAP @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
    next FN-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
-   next 0 ?do rows i FN-ROW-BYTES * + FN-ADDR-OFF + scratch-cell-mark loop
+   next 0 ?do
+      rows i FN-ROW-BYTES * + {: row:ptr :}
+      row FN-ADDR-OFF + scratch-cell-mark
+      row FN-NAME-OFF + ptr-cell-mark
+   loop
    oldcap 0 > if
       FN-TABLE @ {: old:ptr :}
       old rows FN-N @ FN-ROW-BYTES * BYTE-COPY
@@ -272,11 +275,8 @@ LIB-N ROLLBACK-CELLS:MARK
    {: idx:n off:n :}
    idx LIB-ROW off + CELL-VIEW ;
 
-\ A new row's string field, read before the row is counted: the name or path is
-\ copied first, so a refused one leaves the row count as it was.
-: NAME-FIELD ( n -- SPAN:span<u8> )
-   FN-ROW FN-NAME-OFF + FN-NAME-CAP SPAN:MAKE ;
-
+\ A new library row's path field, written before the row is counted, so a
+\ refused path leaves the row count as it was.
 : PATH-FIELD ( n -- SPAN:span<u8> )
    LIB-ROW LIB-PATH-OFF + LIB-PATH-CAP SPAN:MAKE ;
 
@@ -284,15 +284,19 @@ LIB-N ROLLBACK-CELLS:MARK
    {: idx:n :}
    idx FN-N @ FFI-CHECK-INDEX ;
 
+: NAME-CELL ( n -- ptr ptr u8 )
+   {: idx:n :}
+   idx FN-ROW FN-NAME-OFF + CELL-VIEW 0 ptr-field ;
+
 : FN-NAME ( n -- ptr u8 )
    {: idx:n :}
    idx FN-CHECK
-   idx FN-ROW FN-NAME-OFF + ;
+   idx NAME-CELL @ ;
 
 : NAME-LEN ( n -- n )
    {: idx:n :}
-   idx FN-NAME {: name:ptr :}
-   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat ;
+   idx FN-CHECK
+   idx FN-NAME-LEN-OFF FN-FIELD @ ;
 
 : FN-ADDR@ ( n -- n )
    {: idx:n :}
@@ -469,10 +473,9 @@ variable DLERROR-FN-CELL
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
-: NAME-ROOM ( n -- )
+: NAME-CHECK ( n -- )
    {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then
-   u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then ;
+   u 0 <= if E-FFI-SYNTAX throw then ;
 
 : PATH-ROOM ( n -- )
    {: u:n :}
@@ -480,8 +483,7 @@ variable DLERROR-FN-CELL
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then ;
 
 : BASE-CHECK ( n -- ) {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then
-   u LIB-BASE-CAP > if E-FFI-SYNTAX throw then ;
+   u 0 <= if E-FFI-SYNTAX throw then ;
 
 : VERSION-CHECK ( n -- ) {: version:n :}
    version 0 < if E-FFI-SYNTAX throw then
@@ -737,6 +739,17 @@ private
    idx NAME-LEN u <> if false exit then
    name u idx FN-NAME u STR= ;
 
+\ The symbol and its 0 byte are allotted where the declaration is accepted and
+\ never move; the row's pointer cell reaches them across a save or a link.
+: NAME-STORE ( ptr u8 n n -- ) {: name:ptr u:n idx:n :}
+   name u NUL-CHECK
+   here BYTE-VIEW {: b:ptr :}
+   u 1+ allot
+   name b u BYTE-COPY
+   0 b u + c!
+   b idx NAME-CELL !
+   u idx FN-NAME-LEN-OFF FN-FIELD ! ;
+
 \ A relocation mask may name only the row's own cells: registers among its
 \ first argc, at most x0-x7, and stack cells among its spills, so the engine
 \ never moves a cell past the native frame it copies.
@@ -748,7 +761,7 @@ public
 
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   u NAME-ROOM
+   u NAME-CHECK
    FN-N @ 0 ?do
       name u lib argc spills reloc i SAME-FN? if i unloop exit then
    loop
@@ -765,7 +778,7 @@ public
    name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    FN-N @ {: idx:n :}
-   name u idx NAME-FIELD CSTR drop
+   name u idx NAME-STORE
    FN-N @ 1+ FN-N !
    spills idx FN-SPILL-OFF FN-FIELD !
    reloc idx FN-RELOC-OFF FN-FIELD !
@@ -886,7 +899,6 @@ private
 
 $800 constant GEN-CAP
 $100 constant EFF-CAP
-$40 constant TOK-CAP
 $10 constant ARG-MAX
 8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
@@ -928,13 +940,14 @@ EFF-CAP CODEGEN:BUFFER EFF
 
 \ One declaration's working state: a declaration word writes each cell before
 \ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
-\ zero, and the token cells rest outside every declaration word. Each word that
-\ can write a cell keeps this on every exit, a throw included (KEEP-REST); a
-\ throw while a declaration stays open keeps that declaration.
-create NAME-BUF TOK-CAP allot
-create SYM-BUF TOK-CAP allot
-create TOK-BUF TOK-CAP allot
-create BASE-BUF TOK-CAP allot
+\ zero and every buffer holds nothing, and the token cells and buffers rest
+\ outside every declaration word. Each word that can write one keeps this on
+\ every exit, a throw included (KEEP-REST); a throw while a declaration stays
+\ open keeps that declaration. A buffer grows to the token it holds.
+DYNAMIC-BUFFER NAME-BUF u8
+DYNAMIC-BUFFER SYM-BUF u8
+DYNAMIC-BUFFER TOK-BUF u8
+DYNAMIC-BUFFER BASE-BUF u8
 variable NAME-U
 variable SYM-U
 variable TOK-U
@@ -966,12 +979,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
-   TOK-CAP 0 ?do 0 TOK-BUF i + c! 0 BASE-BUF i + c! loop
+   TOK-BUF-RELEASE BASE-BUF-RELEASE
    0 TOK-U ! 0 BASE-U !
    NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U ! ;
 
 : REST ( -- )
-   TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
+   NAME-BUF-RELEASE SYM-BUF-RELEASE
    0 NAME-U ! 0 SYM-U !
    NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U !
    REST-TOKENS
@@ -999,13 +1012,13 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ copy: a rejection places it while REJECTION holds its source, else the copy.
 
 : TOK$ ( -- ptr u8 n )
-   TOK-BUF TOK-U @ ;
+   0 TOK-BUF TOK-U @ ;
 
 : TOK-AT ( -- ptr u8 n )
    TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK$ REJECTION:KEPT ;
 
 : NAME-AT ( -- ptr u8 n )
-   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME-BUF NAME-U @ REJECTION:KEPT ;
+   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ 0 NAME-BUF NAME-U @ REJECTION:KEPT ;
 
 \ The input ended: the record stands at the last token read, or at the keyword
 \ when the declaration has read none.
@@ -1019,14 +1032,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if ENDED then
-   u TOK-CAP > if
-      s" E-FFI-SYNTAX" s" a declaration token is longer than a declaration keeps"
-      a u s" too long" REJECTION:OPEN-AT
-      TOK-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
-      s" shorten the name, symbol or library name to the limit" SAY
-      FFI-STOP
-   then
-   a TOK-BUF u BYTE-COPY
+   u TOK-BUF-RESERVE
+   a 0 TOK-BUF u BYTE-COPY
    u TOK-U !
    a TOK-SRC-A 0 ptr-field !  u TOK-SRC-U ! ;
 
@@ -1038,34 +1045,23 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : NAME! ( -- )
    TOK$ {: a:ptr u:n :}
-   a NAME-BUF u BYTE-COPY
+   u NAME-BUF-RESERVE
+   a 0 NAME-BUF u BYTE-COPY
    u NAME-U !
    TOK-SRC-A 0 ptr-field @ NAME-SRC-A 0 ptr-field !  TOK-SRC-U @ NAME-SRC-U ! ;
 
 : SYM! ( -- )
    TOK$ {: a:ptr u:n :}
-   u FN-NAME-CAP 1 - > if
-      s" E-FFI-SYNTAX" s" the symbol is longer than a declared function keeps"
-      TOK-AT s" too long" REJECTION:OPEN-AT
-      FN-NAME-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
-      s" declare a shorter symbol, such as a C wrapper that calls this one" SAY
-      FFI-STOP
-   then
-   a SYM-BUF u BYTE-COPY
+   u SYM-BUF-RESERVE
+   a 0 SYM-BUF u BYTE-COPY
    u SYM-U ! ;
 
 \ The base name is copied out of the token buffer because reading the version
 \ token overwrites it.
 : BASE! ( -- )
    TOK$ {: a:ptr u:n :}
-   u LIB-BASE-CAP > if
-      s" E-FFI-SYNTAX" s" the library name is longer than a declaration keeps"
-      TOK-AT s" too long" REJECTION:OPEN-AT
-      LIB-BASE-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
-      s" name the library by its file with `LIBRARY` instead" SAY
-      FFI-STOP
-   then
-   a BASE-BUF u BYTE-COPY
+   u BASE-BUF-RESERVE
+   a 0 BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
 \ STR-PARSE-POS answers no negative version, so only the top bound is read.
@@ -1104,7 +1100,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    ;MATCH {: cut:n :}
    list cut >VERSION {: version:n :}
    cut u = if 0 else list cut + 1+ u cut - 1- RECURSE then {: next:n :}
-   BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ next LIBRARY-PATH-OR ;
+   0 BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ next LIBRARY-PATH-OR ;
 
 \ ---- the declared effect ---------------------------------------------------
 
@@ -1508,7 +1504,7 @@ private
 
 : SLOT ( n n -- n )
    {: int:n stk:n :}
-   SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
+   0 SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
 : RESULT-TAIL ( -- )
@@ -1553,7 +1549,7 @@ private
 : EMIT ( n n n -- )
    {: int:n stk:n kind:n :}
    GEN CODEGEN:RESET
-   s" : " GEN+ NAME-BUF NAME-U @ GEN+
+   s" : " GEN+ 0 NAME-BUF NAME-U @ GEN+
    s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
    kind C-STRUCT = if int stk STRUCT-BODY s"  ;" GEN+ exit then
    STAGE
