@@ -533,6 +533,17 @@ public
    u JW-DIGIT-COUNT JW-TOKEN
    u JW-DIGITS ;
 
+\ A negative cell is a value at or above 2^63. Halved unsigned, then divided
+\ by five, it gives its quotient by ten, a positive cell; the last digit is
+\ the remainder.
+: WRITE-U64 ( ^writer n -- ^writer )
+   {: v:n :}
+   v 0 >= if v WRITE-U exit then
+   v 1 rshift 5 / {: q:n :}
+   q JW-DIGIT-COUNT 1+ JW-TOKEN
+   q JW-DIGITS
+   v q JW-RADIX * - JW-ZERO + JW-C ;
+
 \ The minimum cell negates to itself. Its quotient by ten has a positive
 \ magnitude that fits in a cell, and its final digit comes from the remainder.
 \ Reserve the whole width first, so a number is written whole or not at all.
