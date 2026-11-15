@@ -367,9 +367,8 @@ CAST: >BYTES ( n -- ptr u8 )
    REJECTION:HELP
    why STG-UNSTORABLE-TYPE = if
       s" write a closed, copyable type, such as n or ptr u8"
-   else why 0 <> if why STGR-SUGGEST$
    else unknown if s" declare a type of that name, or correct its spelling"
-   else s" write the type as a signature writes it" then then then
+   else s" write the type as a signature writes it" then then
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 

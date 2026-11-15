@@ -129,12 +129,13 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop EMIT-UNSAID THEN
    ELSE EMIT-UNSAID THEN THEN ;
 
-\ Facts text (RFACTS?) writes a plain atom as `'NAME`, which TOK-TYPE reads back.
+\ Facts text (RFACTS?) writes a plain atom other than `xt` as `'NAME`, which
+\ TOK-TYPE reads back.
 \ A fresh atom's ordinal tells two identities of one name apart; a signature
 \ keys a fresh name by its spelling, so its declared effect (RDECL) writes none.
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF
-      RFACTS? IF 39 EMIT1 THEN
+      RFACTS? t OPAQUE-XT? 0= and IF 39 EMIT1 THEN
       t ATOM>A t ATOM>U RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U RSTR

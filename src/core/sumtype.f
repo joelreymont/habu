@@ -628,11 +628,8 @@ defer TERM-SCHEMA-XT ( n -- n )
    q Q>DOUT READ-SIDE dup 0= IF EXIT THEN {: dout:n :}
    din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT ;
 
-\ The STG- reason a read type no schema node holds is rejected with.
-variable READ-WHY
-
-\ The schema node of a closed type's term, 0 for one no node holds: an atom,
-\ a binder or a variable; an `xt` also sets READ-WHY to STG-XT-TYPE.
+\ The schema node of a closed type's term, 0 for one no node holds: an atom
+\ other than `xt`, a binder or a variable.
 : TERM-SCHEMA ( n -- n )
    T-RES {: t:n :}
    t TAG T-CON = IF t PAY SCHEMA-CON EXIT THEN
@@ -641,7 +638,7 @@ variable READ-WHY
    THEN
    t TAG T-PARAM = IF t READ-APP EXIT THEN
    t TAG T-QUOT = IF t READ-QUOT EXIT THEN
-   t OPAQUE-XT? IF STG-XT-TYPE READ-WHY ! 0 EXIT THEN
+   t OPAQUE-XT? IF SCHEMA-XT EXIT THEN
    0 ;
 : TERM-SCHEMA-INSTALL ( -- ) [: TERM-SCHEMA ;] is TERM-SCHEMA-XT ;
 TERM-SCHEMA-INSTALL
@@ -671,7 +668,6 @@ public
    SIG-UNRES-CLEAR  SGBAD-CLEAR  0 TDV-ARG-N !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !
    0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !  0 SI !
-   STG-UNSTORABLE-TYPE READ-WHY !
    NEXT-SIG-TOK {: ta:ptr tu:n :}
    tu 0= IF ta 0 s" missing type" E-TDECL-SYNTAX 0 fail execute 0 EXIT THEN
    ta tu SIG-TYPE {: term:n :}
@@ -684,8 +680,8 @@ public
       ea eu s" one type expected" E-TDECL-SYNTAX 0 fail execute 0 EXIT
    THEN
    term TERM-SCHEMA dup 0 <> IF EXIT THEN drop
-   READ-WHY @ {: why:n :}
-   a 0 why STGR-REASON$ E-TDECL-SYNTAX why fail execute 0 ;
+   a 0 STG-UNSTORABLE-TYPE STGR-REASON$ E-TDECL-SYNTAX
+   STG-UNSTORABLE-TYPE fail execute 0 ;
 
 private
 

@@ -4059,6 +4059,7 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ stored RECURSE MK-PTR EXIT THEN
+   node SCHEMA-XT?    IF OPAQUE-XT EXIT THEN
    node SCHEMA-APP? IF
       PARAM-SCR-N @ {: base:n :}
       0 BEGIN dup node SCHEMA-C@ < WHILE

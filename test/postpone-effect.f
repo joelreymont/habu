@@ -83,6 +83,13 @@ CAST: >NODE ( EFFECT:type -- n )
 
 SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
 
+\ An `xt` in and out, which facts text writes with no quote.
+: XT-TEXT ( -- ptr u8 n )
+   s" xt" EFFECT:READ-TYPE {: x :}
+   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT >NODE CHECK:EFFECT-TEXT ;
+
+XT-TEXT s" ( xt -- xt )" T$=
+
 : ROOT-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
    [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
