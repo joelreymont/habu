@@ -2386,7 +2386,8 @@ sections above.
   with more than one `:`; and an invalid literal count are `E-BAD-STORAGE` at
   the offending token. The name is on the definer's line, the type starts on the
   name's line; a following-line token belongs to the next statement. A computed
-  count is bounded by the definer at run time with catchable `E-LAYOUT-BUFFER`.
+  count below 1, or one whose elements do not fit in memory, is rejected
+  `E-BAD-STORAGE` when the definer runs (status 70).
 - **No storage is declared with a type that may hold a linear value.** A cell's
   type is believed at every read whatever bytes were written, so a cell over a
   token or a type variable, or over a quotation whose rows hold a token, a type
@@ -2409,7 +2410,7 @@ sections above.
   shadowed name, `variable`, or `( -- bool )` word is `E-BAD-STORAGE` (`count
   resolves to no ( -- n ) word`). Expressions such as `N 2 * TYPED-BUFFER B n`
   are evaluated by the load. A `( -- n )` word whose value is zero passes
-  pre-verification, but the definer throws `E-LAYOUT-BUFFER`. The same count
+  pre-verification, and the definer rejects it `E-BAD-STORAGE`. The same count
   rule applies to `LAYOUT-BUFFER`.
 - **Parsing operands are data.** Top-level `'` and `char`, and body `[']` and
   `[char]`, consume the next blank-delimited token, even across lines, without

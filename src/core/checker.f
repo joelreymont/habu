@@ -10753,8 +10753,8 @@ ON-USE-DEFAULT
    p @  p CELL + @  p 3 cells + @
    p 4 cells + @  p 5 cells + @  p 6 cells + @  CHECKER-ON-USE ;
 
-\ The rows stay counted while the handler runs, so a check it starts appends
-\ above them.
+\ Sends the uses recorded from row from on to the handler. A handler starts no
+\ check: its walk would discard the tape events the publishing check still reads.
 : NAV-PUBLISH ( n -- )
    {: from:n :}
    PU-N @ from ?do i PU-SEND loop
