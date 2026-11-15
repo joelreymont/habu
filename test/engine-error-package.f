@@ -104,7 +104,11 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" a colon named by a comment opener rejects at the name" T-LABEL
    HB$ s" : \ ( -- ) ;" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE
-   ERR$ s" a comment, not a name" CONTAINS? TTRUE ;
+   ERR$ s" a comment, not a name" CONTAINS? TTRUE
+   s" a type definer named by a signature opener rejects at the name" T-LABEL
+   HB$ s" DEFLINEAR ( -- )" RUN-SOURCE 70 T=
+   ERR$ s" error[E-MISSING-NAME]: `DEFLINEAR` needs a name" CONTAINS? TTRUE
+   ERR$ s" a signature, not a name" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )
    s" code certificate exits 88" T-LABEL

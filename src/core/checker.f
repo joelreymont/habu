@@ -8415,11 +8415,13 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 
 : VREC-FIELD-BAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= IF RES-TRUE EXIT THEN
+   a u s" (" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" \" CORE-STR= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
 \ Why a record is refused, 0 when it is not.
 1 constant VREC-WHY-NAME     \ the name is a type already, or reserved
-2 constant VREC-WHY-FIELD    \ a field's name is a delimiter
+2 constant VREC-WHY-FIELD    \ a field's name is a delimiter, `(` or `\`
 3 constant VREC-WHY-DUP      \ a field's name repeats
 4 constant VREC-WHY-TYPE     \ a field's type is missing or bad
 5 constant VREC-WHY-SCOPED   \ a field's type has a scoped dependency
@@ -8497,6 +8499,13 @@ variable VREC-AT
    e at = at fu < and IF at 1 + ELSE e THEN {: end:n :}
    f at + end at - ;
 
+\ The label of the rejected field token t tu: the checker reads a `(` as a
+\ signature and a `\` as a comment wherever either stands.
+: VREC-FIELD-LABEL ( ptr u8 n -- ptr u8 n ) {: t:ptr tu:n :}
+   t tu s" (" CORE-STR= IF s" a signature, not a name" EXIT THEN
+   t tu s" \" CORE-STR= IF s" a comment, not a name" EXIT THEN
+   s" not a field name" ;
+
 : VREC-OF ( ptr u8 n -- ) {: a:ptr u:n :}
    s" ` of value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1 ;
@@ -8526,7 +8535,7 @@ variable VREC-AT
       96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
       s" ` cannot name a field of value record `" REJECTION:EMIT-STR
       a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-      t tu REJECTION:AT  s" not a field name" REJECTION:EMIT-STR
+      t tu REJECTION:AT  t tu VREC-FIELD-LABEL REJECTION:EMIT-STR
       REJECTION:HELP  s" name each field with a word and give its type, as `x n`"
       REJECTION:EMIT-STR
    THEN

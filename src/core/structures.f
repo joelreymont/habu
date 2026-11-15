@@ -43,10 +43,11 @@ variable STRUCT-OPEN
    s" write the field's name after the word, as `" REJECTION:EMIT-STR
    w wu REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR ;
 
-\ The field's name, which the live input holds next; w names the field word.
-: STRUCT-NAME ( ptr u8 n -- ptr u8 n ) {: w:ptr wu:n :}
+\ The field's name, which the live input holds next; with none left the
+\ source token is the field word, as the source spells it.
+: STRUCT-NAME ( -- ptr u8 n )
    parse-name dup 0= if
-      w wu SRCLOC:TOKEN$ STRUCT-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
+      SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
 : STRUCT-UNALIGNED ( n ptr u8 n -- ) {: off:n fa:ptr fu:n :}
@@ -77,19 +78,19 @@ variable STRUCT-OPEN
 
 : +FIELD ( ptr a n n -- ptr a n )
    s" +FIELD" STRUCT-REQUIRE-OPEN
-   over s" +FIELD" STRUCT-NAME rot TYPE-DECL:TDECL-CELL-CHILD
+   over STRUCT-NAME rot TYPE-DECL:TDECL-CELL-CHILD
    + ;
 
 : PTR-FIELD: ( ptr a n -- ptr a n )
    s" PTR-FIELD:" STRUCT-REQUIRE-OPEN
-   dup s" PTR-FIELD:" STRUCT-NAME {: off:n fa:ptr fu:n :}
+   dup STRUCT-NAME {: off:n fa:ptr fu:n :}
    off CELL mod 0 <> if off fa fu STRUCT-UNALIGNED then
    fa fu off TYPE-DECL:TDECL-PTR-CHILD
    CELL + ;
 
 : CFIELD: ( ptr a n -- ptr a n )
    s" CFIELD:" STRUCT-REQUIRE-OPEN
-   dup s" CFIELD:" STRUCT-NAME rot TYPE-DECL:TDECL-BYTE-CHILD
+   dup STRUCT-NAME rot TYPE-DECL:TDECL-BYTE-CHILD
    1 + ;
 
 : END-STRUCTURE ( ptr n n -- )

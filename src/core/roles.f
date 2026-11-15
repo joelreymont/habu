@@ -143,8 +143,11 @@ CAST: >SNAP ( n -- snap )
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFLINEAR ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name dup 0= IF DEF-NO-NAME THEN
-   CHECKER-DEFLINEAR ;
+   {: name:ptr nameu:n :}
+   kw ku name nameu REJECTION:NOT-A-NAME
+   name nameu CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 
 $1000 constant VRDEF-CAP
@@ -228,8 +231,10 @@ PTR-VARIABLE VRDEF-FIRST   \ the first field token in the source
    VRDEF-BUF VRDEF-U @ ;
 
 : VALUE-RECORD ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
+   kw ku name nameu REJECTION:NOT-A-NAME
    VRDEF-CLEAR
    BEGIN
       parse-name dup 0= IF

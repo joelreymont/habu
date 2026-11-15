@@ -667,6 +667,19 @@ public
    s" give `" EMIT-STR  kw ku EMIT-STR
    s" ` one name, a token with no blanks" EMIT-STR ;
 
+\ The checker reads a `(` as a signature and a `\` as a comment wherever either
+\ stands, so the source token t tu names nothing when definer kw ku takes it as
+\ a name. Neither byte has a case.
+: NOT-A-NAME ( ptr u8 n ptr u8 n -- ) {: kw:ptr ku:n t:ptr tu:n :}
+   t tu s" (" CORE-STR= IF
+      kw ku t tu s" a signature, not a name" MISSING-NAME
+      CHECKER-REJECT-RC STOP
+   THEN
+   t tu s" \" CORE-STR= IF
+      kw ku t tu s" a comment, not a name" MISSING-NAME
+      CHECKER-REJECT-RC STOP
+   THEN ;
+
 \ The counted string the literal's opener t tu opens is longer than the max
 \ bytes its count byte holds. It is written through its help, and the caller
 \ stops it.

@@ -1160,10 +1160,10 @@ variable SEALS-N
 : OPERAND ( -- ptr u8 n )
    NEXT-RAW dup 0= IF NAME-STOP THEN ;
 
-\ A definer takes its name by the same rule, so `DEFLINEAR (` and `create s"`
-\ name a type `(` and a word `s"`, and a word's definer rejects a `(` or `\`
-\ name. A comment or string rule there would hand the definer a later token
-\ instead. With no token left TOKEN-BYTE stays at the definer.
+\ A definer takes its name as the next raw token, so `create s"` names a word
+\ `s"`; every definer rejects a `(` or `\` name (REJECTION:NOT-A-NAME). A
+\ comment or string rule there would hand the definer a later token instead.
+\ With no token left TOKEN-BYTE stays at the definer.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
@@ -2315,7 +2315,7 @@ DUPLICATE-INIT
    dup 0= IF NAME-STOP THEN
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
-   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
+   STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
@@ -2330,7 +2330,7 @@ DUPLICATE-INIT
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
+   STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
@@ -2356,7 +2356,7 @@ DUPLICATE-INIT
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
@@ -2410,7 +2410,7 @@ variable TRUSTED-DOES
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   s" trusted:" name nameu INTERPRETER:NOT-A-NAME
+   s" trusted:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
@@ -2433,7 +2433,7 @@ variable TRUSTED-DOES
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
@@ -2448,7 +2448,7 @@ variable TRUSTED-DOES
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   s" linear:" name nameu INTERPRETER:NOT-A-NAME
+   s" linear:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -2532,6 +2532,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    REJECTION:TALLY @ {: refused:n :}
@@ -2558,6 +2559,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu TYPE-RESERVED? IF
       name nameu CHECKER-LINEAR-TAKEN  DECLARATION-END EXIT
    THEN
@@ -2572,7 +2574,9 @@ DYNAMIC-BUFFER NOM-TAIL u8
 \ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
 \ the declaration packet (E-BAD-DECLARATION), as on the native path.
 : RECORD-NEWTYPE ( -- )
-   NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
+   NAME-TOKEN {: name:ptr nameu:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu name nameu CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one
@@ -2637,7 +2641,9 @@ variable SUM-VAR-NEXT
    AGAIN ;
 
 : RECORD-SUMTYPE ( -- )
-   NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
+   NAME-TOKEN {: name:ptr nameu:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
 : ENUM-END? ( ptr u8 n -- bool )
    s" ;ENUM" STR=CI ;
@@ -2679,6 +2685,7 @@ variable SUM-VAR-NEXT
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
@@ -2944,6 +2951,7 @@ variable STG-TYPE-U
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    DECL-TOKEN  over {: f:ptr :}
    BEGIN
       dup 0= IF
@@ -4041,7 +4049,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if NAME-STOP then
-   TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ REJECTION:NOT-A-NAME
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
