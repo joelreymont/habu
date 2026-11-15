@@ -191,7 +191,8 @@ defer XC-DF ( n -- n )
    CHECKER-REJECT-RC s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REFUSED? TTRUE
    s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL<
    s\" \"code\":\"E-BAD-DECLARATION\"" XC-CODE?
-   s\" \"token\":\"xt\",\"label\":\"reserved name\"" XC-CODE? XC-CODE-END ;
+   s\" \"token\":\"xt\"" XC-CODE?
+   s\" \"label\":\"reserved name\"" XC-CODE? XC-CODE-END ;
 
 : RUN ( -- )
    T-RESET

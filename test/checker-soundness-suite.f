@@ -273,15 +273,15 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" TYPED-VARIABLE CS-QB [ -- S ]" 70
    s" error[E-BAD-STORAGE]: the type of `CS-QB` may hold a linear value" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QB [ -- S ]" 70
-   s" --> <input>:1:22" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QB [ -- S ]" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" 70
    s" error[E-BAD-STORAGE]: the type of `CS-QD` may hold a linear value" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" 70
-   s" --> <input>:1:22" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" 70
    s" error[E-BAD-STORAGE]: the type of `CS-QN` may hold a linear value" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" 70
-   s" --> <input>:1:22" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QV CHECKER-SOUNDNESS:tailvals<[ -- S ]>" 70
    s" error[E-BAD-STORAGE]: the type of `CS-QV` may hold a linear value" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE CS-QVV CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- S ]>>" 70

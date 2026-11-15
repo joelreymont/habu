@@ -214,9 +214,9 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 \ A top-level rejection names the file, line and column, in prose and JSON. A
-\ string `evaluate` runs lies outside the file's bytes, so its rejection names
-\ `<input>` and the string's own line. The load holds the resolved path, so the
-\ assertions match its tail.
+\ string `evaluate` runs lies outside the file's bytes, so its rejection is
+\ placed at the `evaluate` in the file, with the string's line in an evaluated
+\ note. The load holds the resolved path, so the assertions match its tail.
 : INCLUDE-SITE ( -- )
    [: s" include test/fixtures/top-row-site.f" evaluate-closed ;] CHECK-RC TTHROWSQ ;
 
@@ -234,13 +234,16 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-EVAL-SITE ( -- )
-   s" a top-level rejection in an evaluated string names <input> and the string's line" T-LABEL
+   s" a top-level rejection in an evaluated string names its evaluate and the string's line" T-LABEL
    CLEAR  REJECTION:CAPTURE
    INCLUDE-EVAL
-   s" --> <input>:3:11" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
+   s" /test/fixtures/top-row-eval.f:4:" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
+   s" = evaluated: here TS-V !" HAS?  s" pointer through an untyped cell" HAS?
    REJECTION:BUFFER-OFF
    ARM  INCLUDE-EVAL
-   S\" \"file\":\"<input>\",\"line\":3,\"column\":11," HAS?  RAW-PTR
+   S\" /test/fixtures/top-row-eval.f\",\"line\":4," HAS?
+   S\" \"token\":\"evaluate\"" HAS?
+   S\" \"evaluated\":{\"source_line\":\"here TS-V !\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
 
 \ ---- children -----------------------------------------------------------------
@@ -305,7 +308,7 @@ variable ERR-U
    REJECTION:CAPTURE
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" HAS?
-   s" --> <input>:1:17" HAS?
+   s" = evaluated: : TS-B15 ( -- ) r> drop ;" HAS?
    REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
@@ -342,13 +345,15 @@ variable ERR-U
    DISARM ;
 
 \ A child: REJECTION:FILE! has no inverse; the label stays on this test file for
-\ every later case. A step in an evaluated buffer is outside the labeled file,
-\ so its rejection names `<input>`.
+\ every later case. A step in an evaluated buffer is placed at the word in this
+\ file that ran it, so its rejection names the label, with the step in an
+\ evaluated note.
 : CASE-LABEL ( -- )
-   s" a tool's file label leaves an evaluated step's rejection on <input>" T-LABEL
+   s" a tool's file label names an evaluated step's rejection at the word that ran it" T-LABEL
    S\" s\" /subject/label.f\" REJECTION:FILE! true REJECTION:JSON ! here TS-V !"
    CHECK-RC EXITS
-   S\" \"file\":\"<input>\"" ERR-HAS?
+   S\" \"file\":\"/subject/label.f\"" ERR-HAS?
+   S\" \"evaluated\":{\"source_line\":\"s\\\" /subject/label.f" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
 
 \ A child: unchecked, `c@` reads through a cell TS-L3 left, which crashes the
