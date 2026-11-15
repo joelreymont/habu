@@ -186,32 +186,33 @@ variable SD-SCOPES
 : SD-PATH$ ( -- ptr u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
 
-\ A rejection's record stands at the token the walk read last (LAST-TOKEN) and
-\ stops with the form's code. A harvest, which drops the code (HARVEST), throws
-\ it bare: the expansion after it meets the form again and writes the record.
+\ A rejection's record stands at the token the walk read last (LAST-TOKEN), and
+\ the walk stops with the form's kind (STOPPED). A harvest, which drops the
+\ stop (HARVEST), throws the kind bare: the expansion after it meets the form
+\ again and writes the record.
 : SD-LAST$ ( -- ptr u8 n )  SD-TOK-OFF @ SD-TOK-LEN @ SD-TOK$ ;
 : SD-HARVEST-THROW ( n -- ) {: code:n :}
    SD-HARVESTING @ if code throw then ;
 : SD-SHADOW-STOP ( -- )
    E-DISC-SHADOW SD-HARVEST-THROW
-   SD-LAST$ VERIFY:SHADOW-REJECT  E-DISC-SHADOW REJECTION:STOP ;
+   SD-LAST$ VERIFY:SHADOW-REJECT  E-DISC-SHADOW VERIFY:DISCOVERY-STOP ;
 : SD-RETIRE-STOP ( -- )
    E-DISC-RETIRE SD-HARVEST-THROW
-   SD-LAST$ VERIFY:RETIRE-REJECT  E-DISC-RETIRE REJECTION:STOP ;
+   SD-LAST$ VERIFY:RETIRE-REJECT  E-DISC-RETIRE VERIFY:DISCOVERY-STOP ;
 : SD-DYNAMIC-STOP ( -- )
    E-DISC-DYNAMIC SD-HARVEST-THROW
-   SD-LAST$ VERIFY:DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP ;
+   SD-LAST$ VERIFY:DYNAMIC-REJECT  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP ;
 : SD-OPENER-STOP ( -- )
    E-DISC-OPENER SD-HARVEST-THROW
-   SD-LAST$ VERIFY:OPENER-REJECT  E-DISC-OPENER REJECTION:STOP ;
+   SD-LAST$ VERIFY:OPENER-REJECT  E-DISC-OPENER VERIFY:DISCOVERY-STOP ;
 \ The string literal the walk read last, its opener, has no closing quote.
 : SD-UNTERM-STOP ( -- )
    E-DISC-UNTERM SD-HARVEST-THROW
-   SD-LAST$ INTERPRETER:LITERAL-REJECT  E-DISC-UNTERM REJECTION:STOP ;
+   SD-LAST$ INTERPRETER:LITERAL-REJECT  E-DISC-UNTERM VERIFY:DISCOVERY-STOP ;
 \ A path past SD-PATH-CAP that a caller gives, in no source the walk reads.
 : SD-PATH-STOP ( ptr u8 n -- )
    E-DISC-CAPACITY SD-HARVEST-THROW
-   VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP ;
+   VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY VERIFY:DISCOVERY-STOP ;
 
 : SD-R-COPY ( ptr u8 n -- n ) {: a:ptr u:n :}
    SD-R-BYTES-U @ {: at:n :}
@@ -1144,7 +1145,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-RAW {: poff:n plen:n :}
    plen 0= if
       E-DISC-DYNAMIC SD-HARVEST-THROW
-      toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
+      toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP
    then
    toff tlen SD-TOK$ poff plen SD-TOK$ INCLUDE-CHECK-PATH
    poff plen SD-TOK$ SD-PATH-FILL
@@ -1196,7 +1197,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ The `{:` at SD-OPENER that the source ends inside.
 : SD-GROUP-STOP ( -- )
    E-DISC-UNTERM SD-HARVEST-THROW
-   SD-OPENER @ 2 SD-TOK$ INTERPRETER:GROUP-REJECT  E-DISC-UNTERM REJECTION:STOP ;
+   SD-OPENER @ 2 SD-TOK$ INTERPRETER:GROUP-REJECT  E-DISC-UNTERM VERIFY:DISCOVERY-STOP ;
 
 : SD-LOCAL-GROUP ( -- )
    begin
@@ -1436,6 +1437,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
 
 : SELECT-ENTRY ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n root:ptr rootu:n :}
+   0 VERIFY:DISCOVERY-STOPPED !
    pu SD-PATH-CAP > if pa pu SD-PATH-STOP then
    rootu SD-PATH-CAP > if root rootu SD-PATH-STOP then
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !

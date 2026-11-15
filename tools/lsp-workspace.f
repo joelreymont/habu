@@ -111,7 +111,7 @@ variable CUR-ROOT                        \ and the root being walked
    at ;
 
 \ The name of a code that keeps a file's loads from being found, as
-\ src/lib/error.f names a discovery's code, and whether RC is one.
+\ src/lib/error.f names a discovery's kind, and whether RC is one.
 : FAULT$ ( n -- ptr u8 n bool )
    {: rc:n :}
    rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
@@ -284,12 +284,14 @@ variable CUR-ROOT                        \ and the root being walked
 
 : FAULT? ( n -- bool )  N-FAULT NODE@ 0<> ;
 
-\ A discovery refusal (E-DISC-*) or an unreadable file (E-FS-*) leaves the node
-\ with no loads and names it; any other throw propagates.
+\ A discovery rejection (VERIFY:DISCOVERY-STOPPED holds its kind) or an unreadable file
+\ (E-FS-*) leaves the node with no loads and names it; any other throw
+\ propagates.
 : FOLLOW ( [ -- ] -- )
    {: q :}
    q catch {: rc:n :}
    rc 0= if CUR @ LOADS exit then
+   rc CHECKER-REJECT-RC =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit then
    rc FAULT$ nip nip if CUR @ rc FAULT exit then
    rc throw ;
 
@@ -504,7 +506,7 @@ public
 : SUBJECT$ ( n -- ptr u8 n )  HITS @ PATH$ ;
 
 \ The files whose loads the last REACHING could not find, in the byte order
-\ of their paths: each one's path, and why, a discovery's code as
+\ of their paths: each one's path, and why, a discovery's kind as
 \ src/lib/error.f names it or "cannot be read".
 : UNREADABLE ( -- n )  BAD-N @ ;
 : UNREADABLE$ ( n -- ptr u8 n ptr u8 n )

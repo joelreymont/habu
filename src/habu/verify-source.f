@@ -200,6 +200,14 @@ public
 \ stops with INCLUDE-IO-RC. check.f's packets still read the code.
 7201 constant E-SOURCE-READ
 
+\ The E-DISC kind of the discovery rejection that stopped the last walk or
+\ quiet composition, 0 for none.
+variable DISCOVERY-STOPPED
+
+\ A loader form discovery rejects, its record written: the stop, with KIND.
+: DISCOVERY-STOP ( n -- )
+   DISCOVERY-STOPPED !  CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ Captured by the verifier child's body as it starts loading. A direct caller
 \ that does not supply an entry observation retains checking order.
 variable ENTRY-TICK-ORDER
@@ -563,7 +571,7 @@ variable FLAG-N
 : QUIET-UNTERM ( -- )
    FOUND @ 0= QUIET @ INDEX-ON @ or and IF
       TOKEN-START @ TOKEN-FROM INTERPRETER:LITERAL-REJECT
-      E-DISC-UNTERM REJECTION:STOP
+      E-DISC-UNTERM DISCOVERY-STOP
    THEN ;
 
 \ The payload of the literal just skipped: after its opener and delimiter, pfx
@@ -855,7 +863,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 public
 \ Discovery (tools/source-discovery.f) and a quiet composition write the record
 \ of a loader form they reject, at its token t tu, with these, and stop it
-\ with the form's E-DISC code.
+\ with DISCOVERY-STOP.
 : SHADOW-REJECT ( ptr u8 n -- )
    s" loader word used after the file defined its name"
    [: s" load files before the definition that reuses " REJECTION:EMIT-STR  TICKED
@@ -878,10 +886,9 @@ public
 private
 
 \ A loader word u bytes long at TOKEN-BYTE@ with no literal path: its record,
-\ stopped with E-DISC-DYNAMIC.
+\ stopped as E-DISC-DYNAMIC.
 : DYNAMIC-STOP ( n -- ) {: u:n :}
-   u FAULT-LEN !
-   SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP ;
+   SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP ;
 
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
 \ discovery reads as loaders, `script-required` not one.
@@ -921,10 +928,10 @@ variable RETIRED
    a u LOADER-BIT {: bit:n :}
    SOURCE@ TOKEN-BYTE @ + {: t:ptr :}
    bit SHADOWED @ and 0<> IF
-      u FAULT-LEN !  t u SHADOW-REJECT  E-DISC-SHADOW REJECTION:STOP
+      t u SHADOW-REJECT  E-DISC-SHADOW DISCOVERY-STOP
    THEN
    bit RETIRED @ and 0<> IF
-      u FAULT-LEN !  t u RETIRE-REJECT  E-DISC-RETIRE REJECTION:STOP
+      t u RETIRE-REJECT  E-DISC-RETIRE DISCOVERY-STOP
    THEN ;
 
 \ A string loader u bytes long, after a literal of the given kind. True when it
@@ -932,7 +939,7 @@ variable RETIRED
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
    kind 0= IF u DYNAMIC-STOP THEN
    kind LIT-OTHER = IF
-      u FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + u OPENER-REJECT  E-DISC-OPENER REJECTION:STOP
+      SOURCE@ TOKEN-BYTE @ + u OPENER-REJECT  E-DISC-OPENER DISCOVERY-STOP
    THEN
    kind LIT-PATH = ;
 
@@ -1172,13 +1179,13 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 variable GROUP-AT
 
 \ The next token of a group. The source ending inside one is rejected at the
-\ group's `{:`; a quiet composition stops with discovery's code, as its lexer
-\ stops there (E-DISC-UNTERM).
+\ group's `{:`; a quiet composition stops as discovery's lexer stops there
+\ (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
       GROUP-AT @ TOKEN-BYTE !
       GROUP-AT @ TOKEN-FROM INTERPRETER:GROUP-REJECT
-      QUIET @ INDEX-ON @ or IF E-DISC-UNTERM REJECTION:STOP THEN
+      QUIET @ INDEX-ON @ or IF E-DISC-UNTERM DISCOVERY-STOP THEN
       CHECKER-REJECT-RC REJECTION:STOP
    THEN ;
 
@@ -1195,7 +1202,7 @@ variable GROUP-AT
    SOURCE@ TOKEN-BYTE @ + {: w:ptr :}
    NEXT-RAW {: p:ptr pu:n :}
    pu 0= IF
-      wu FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
+      SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN
    w wu p pu INCLUDE-CHECK-PATH
    p pu ;
@@ -3290,13 +3297,13 @@ variable LOAD-END
 \ dynamic path.
 : COMPOSE-STRING-PATH ( -- ptr u8 n )
    STR-LAST-KIND @ 0= IF
-      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP
+      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN
    STR-LAST-A @ STR-LAST-U @ ;
 
 : COMPOSE-RAW-PATH ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
-      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP
+      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN ;
 
 PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
@@ -4444,12 +4451,12 @@ public
 \ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
 \ forms discovery refuses, where it meets them and after the packets it made
 \ before, and reads each file a loader loads, so no walk need run first. A stop
-\ at a loader (LOADER-FAULT?) stands at TOKEN-BYTE@, and FAULT-TARGET$ names a
-\ file it could not read.
+\ at a loader stands at TOKEN-BYTE@, and FAULT-TARGET$ names a file it could
+\ not read.
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
-   0 FAULT-LEN !  0 FAULT-U !
+   0 FAULT-LEN !  0 FAULT-U !  0 DISCOVERY-STOPPED !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
    true QUIET !
    [: src srcu path pathu SOURCE-COMPOSE-IN-SCOPE ;]
@@ -4468,10 +4475,6 @@ public
 \ otherwise.
 : SOURCE-COMPOSE-STOPPED-SUBJECT? ( -- bool )
    COMPOSE-STOP-U @ 0= COMPOSE-STOP-SUBJ @ or ;
-
-: LOADER-FAULT? ( n -- bool ) {: rc:n :}
-   rc E-DISC-FIRST <= rc E-DISC-LAST >= and
-   rc LOADER-REJECTED? or ;
 
 \ The file the last quiet composition could not read, as it was resolved, or
 \ empty. The string is borrowed until the next quiet composition.

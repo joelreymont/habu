@@ -16,8 +16,8 @@
 \ source occurrence is added, since a later dependency's row can let an earlier
 \ file read past a parsing call. It then follows direct dependencies depth
 \ first from the top, recording each file after its dependencies. It ends at
-\ the first file it cannot follow: discovery refuses it, with an E-DISC-* code,
-\ or it does not exist or the file system will not read it, the loader's
+\ the first file it cannot follow: discovery rejects it, stopping with
+\ CHECKER-REJECT-RC, or it does not exist or the file system will not read it, the loader's
 \ rejection placed at its path in the file that names it. CHK-DISC-ID names
 \ it. The file CHK-BYTES-ID names is read from the caller's bytes, never from
 \ disk.
@@ -183,9 +183,6 @@ variable CHK-EXPAND-TOP
    id CHK-DEP-ORDER-N @ CHK-DEP-ORDER !
    CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
 
-: CHK-DISC-RC? ( n -- bool ) {: rc:n :}
-   rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
-
 : CHK-READ-ACT ( -- )
    CHK-DISC-ID @ {: id:n :}
    id CHK-DEP$ id CHK-DEP-ROOT$ DISCOVER:READ-IN ;
@@ -348,8 +345,8 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    CHK-HARVEST
    CHK-EXPAND-TOP @ CHK-EXPAND-ID ;
 
-\ Walk the closure below ID into the dependency order: 0, or the E-DISC-* code
-\ of the file that ended the walk. Any other throw goes on. The walk starts with no
+\ Walk the closure below ID into the dependency order: 0, or CHECKER-REJECT-RC
+\ when a rejection ended the walk. Any other throw goes on. The walk starts with no
 \ dependency followed, whatever an earlier walk of the run followed, so a
 \ fault in ID itself has no loader word.
 : CHK-EXPAND ( n -- n )
@@ -357,7 +354,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    -1 CHK-EDGE !
    [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
-   rc CHK-DISC-RC? rc 0= or 0= if rc throw then
+   rc CHECKER-REJECT-RC = rc 0= or 0= if rc throw then
    rc ;
 
 \ Walk the closure over SRC, bytes that stand for the file at PATH with its

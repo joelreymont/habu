@@ -143,13 +143,19 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
+\ Q's walk is rejected as KIND: it stops with CHECKER-REJECT-RC and
+\ VERIFY:DISCOVERY-STOPPED holds the kind.
+: SDT-STOPS ( [ -- ] n -- ) {: q kind:n :}
+   q CHECKER-REJECT-RC TTHROWSQ
+   VERIFY:DISCOVERY-STOPPED @ kind T= ;
+
 : SDT-TEST-DYNAMIC ( -- )
    s" dyn.f" S\" required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-TEST-OPENER ( -- )
    s" opener.f" S\" C\\\" sd-g.f\" required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-OPENER TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] E-DISC-OPENER SDT-STOPS ;
 
 \ --- whole-file scan: colon-body loaders are events, spans byte-exact --------
 
@@ -196,7 +202,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ source is refused before anything compiles it.
 : SDT-TEST-UNTERM-STRING ( -- )
    s" unterm.f" S\" : L ( -- ) s\" sd-l.f\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-UNTERM TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] E-DISC-UNTERM SDT-STOPS ;
 
 \ --- a parsing keyword's operand is data -------------------------------------
 
@@ -238,9 +244,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" s\" sd-commented.f\" ( kept ) required\n" SDT-COMMENTED-ONE
    S\" s\" sd-commented.f\" \\ kept\nrequired\n" SDT-COMMENTED-ONE
    s" commented-opener.f" S\" c\" sd-commented.f\" ( kept ) required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-OPENER TTHROWSQ
+   [: SDT-RUN-ENTRY ;] E-DISC-OPENER SDT-STOPS
    s" commented-code.f" S\" s\" sd-commented.f\" ( kept ) 2dup \\ kept\nrequired 2drop\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
@@ -266,7 +272,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" : L ( ptr u8 n -- ) included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
    S\" : L ( ptr u8 n -- ) included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
    s" body-dyn-top.f" S\" : L ( ptr u8 n -- ) included ;\nrequired\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:LAST-TOKEN {: off:n len:n :}
    off 31 T=
    len 8 T= ;
@@ -298,7 +304,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ long.
 : SDT-REPLACED-AT ( ptr u8 n n n n -- ) {: a:ptr u:n code:n off:n len:n :}
    s" replaced.f" a u SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] code TTHROWSQ
+   [: SDT-RUN-ENTRY ;] code SDT-STOPS
    DISCOVER:LAST-TOKEN {: at:n atu:n :}
    at off T=
    atu len T= ;
@@ -377,7 +383,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
-   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS
    DISCOVER:LAST-TOKEN {: off:n len:n :}
    off 34 T=
    len 9 T=
@@ -390,13 +396,13 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
-   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS ;
 
 : SDT-TEST-FAMILY-RETIRE ( -- )
    s" family-retire.f"
    S\" package DEMO undefine enum\nenum require dep.f ;package\n"
    SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-RETIRE TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-RETIRE SDT-STOPS ;
 
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
 \ word, not a keyword, so its operand is code: storage named with a loader
@@ -406,7 +412,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 \ not.
 : SDT-TEST-STORAGE-DEFINER ( -- )
    s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:LAST-TOKEN {: off:n len:n :}
    off 31 T=
    len 8 T= ;
@@ -416,7 +422,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 \ loader after it, which takes no literal, is refused at itself.
 : SDT-TEST-DEFINER-IN-BODY ( -- )
    s" definer-body.f" S\" : MK ( -- ) create ;\nrequired\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:LAST-TOKEN {: off:n len:n :}
    off 21 T=
    len 8 T= ;
@@ -614,15 +620,15 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" row-lib.f" S\" package SDT-R : W ( -- ) ; parses: W 1 ;package\n"
    SDT-WRITE-ENTRY SDT-DISCOVER
    s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-TEST-ROW-KEYS ( -- )
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
    s" row-use.f" s" OTHER:W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    s" row-use.f" s" package SDT-R W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:ROWS-RESET
    s" row-bare.f" s" : PN ( -- ) ; parses: PN 1 parses: PN 2" SDT-WRITE-ENTRY
    SDT-HARVEST-ENTRY
@@ -654,25 +660,25 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    SDT-HARVEST-ENTRY
    SDT-ROW-LIB SDT-SETTLE
    s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
    s" row-retire.f" s" undefine SDT-R:W" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
    s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:ROWS-RESET
    s" row-bare.f" s" : PN ( -- ) ; parses: PN 1" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    s" row-other.f" s" package OTHER : PN ( -- ) ; ;package" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    SDT-SETTLE
    s" row-use.f" s" PN required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    DISCOVER:ROWS-RESET ;
 
 : SDT-TEST-MISSING-PATH ( -- )
    s" missing-path.f" s" include" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS
    s" missing-path.f" s" require" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-HARVEST-MISSING ( -- )
    s" never-existing.f" SDT-PATH SDT-ROOT$ DISCOVER:READ-IN
@@ -717,7 +723,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    SDT-ROW-LIB
    s" row-real.f" S\" require row-lib.f\nSDT-R:W required SDT-R:;W\npackage SDT-R : W ( -- ) ; ;package\n"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-CROSS-PASS ( bool -- ) {: lib-first:bool :}
    DISCOVER:ROWS-PASS-BEGIN
@@ -781,7 +787,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    loop
    DISCOVER:ROWS-PASS-STABLE? TTRUE
    s" cascade-use.f" SDT-SELECT-NAMED
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 \ Replacing an unchanged early row must not let a later row for the same
 \ spelling take precedence, including while the early file is being read.
@@ -832,7 +838,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    8 0 ?do SDT-CYCLE-PASS loop
    DISCOVER:ROWS-VERSION T=
    s" cycle-use.f" s" SDT-CYC:W required" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-MAIN ( -- )
    T-RESET
