@@ -36,15 +36,16 @@ NEWTYPE socket
 \ What a handler is handed, with the socket and the value ACCEPT was given:
 \ first, once, that the socket has opened; then each whole text or binary
 \ message, its bytes BORROWED until the handler returns, and their count; and
-\ last, once, that the socket has closed, with its status: the close frame's,
-\ 1005 when it carried none, 1006 when the stream ended without one (section
-\ 7.1.5). A handler runs on a request worker (HTTP:SUBMIT) and may block; its
-\ socket's next call waits for it. Its throw is one LOG line, tag ws, `socket
-\ <handle> failed, throw <code>`, and a throw on `opened` or a message also
-\ closes the socket under 1011. A peer that breaks the protocol fails the
-\ connection: 1002 for a frame the codec refuses or one out of order, 1007 for
-\ text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
-\ answered with a pong even once this end has sent its close.
+\ last, once, that the socket has closed, unless a STOP passes its bound first
+\ (STOP), with its status: the close frame's, 1005 when it carried none, 1006
+\ when the stream ended without one (section 7.1.5). A handler runs on a
+\ request worker (HTTP:SUBMIT) and may block; its socket's next call waits for
+\ it. Its throw is one LOG line, tag ws, `socket <handle> failed, throw
+\ <code>`, and a throw on `opened` or a message also closes the socket under
+\ 1011. A peer that breaks the protocol fails the connection: 1002 for a frame
+\ the codec refuses or one out of order, 1007 for text that is not UTF-8, 1009
+\ for a message past MESSAGE-MAX. A ping is answered with a pong even once this
+\ end has sent its close.
 ENUM message
    VARIANT opened ;VARIANT
    VARIANT text FIELD chars ptr u8 FIELD count n ;VARIANT
@@ -1500,19 +1501,14 @@ ENUM course
    GOODBYE-MS STOP-MARGIN-MS + NS-PER-MS * mono-ns + ;
 
 
-\ Parks until a hint, or until the deadline while it is ahead.
-: NAP ( n -- ) {: deadline:n :}
-   mono-ns deadline >= if TASK:WAIT exit then
-   deadline REMAINING TASK:WAIT-MS drop ;
-
-
 \ CLEANUP's hint wakes this, or the deadline ends it; the other hints a stop
-\ gets are read past.
+\ gets are read past. Each wait is bounded by the deadline, so a deadline
+\ that passes after the check makes it a wait of zero.
 : AWAIT-LEFT ( n -- ) {: deadline:n :}
    begin
       LEFT @ 0 <> if exit then
       mono-ns deadline >= if exit then
-      deadline NAP
+      deadline REMAINING TASK:WAIT-MS drop
    again ;
 
 
@@ -1528,10 +1524,11 @@ ENUM course
    CAP @ 0 ?do i CALLED? if drop true leave then loop ;
 
 
-\ Under LOCK: what STOP still waits for, a handshake inside ACCEPT whatever
-\ the time, or a handler call until the deadline.
-: UNGIVEN? ( n -- bool ) {: deadline:n :}
-   RESERVED? if true exit then
+\ Under LOCK, at one reading of the clock: what STOP still waits for, a
+\ handshake inside ACCEPT whatever the time, and a handler call out before
+\ the deadline.
+: UNGIVEN ( n -- bool bool ) {: deadline:n :}
+   RESERVED?
    mono-ns deadline < CALLING? and ;
 
 
@@ -1539,14 +1536,18 @@ ENUM course
 \ none fills a slot once STOP has returned and a START may move the tables.
 \ Each handler call ends and retires its slot, or is still out at the
 \ deadline: a running one holds START off until it ends (CLAIM-START), and
-\ STOP retires a queued one (DROP-QUEUED).
+\ STOP retires a queued one (DROP-QUEUED). Only a handshake makes the wait
+\ unbounded, ended by GIVE-BACK's hint; a call's wait is bounded by the
+\ deadline, so one that passes after UNGIVEN read the clock is a wait of zero.
 : AWAIT-GIVEN ( n -- ) {: deadline:n :}
    begin
       LOCK TASK:GET
-      deadline UNGIVEN?
+      deadline UNGIVEN
       LOCK TASK:RELEASE
-      0= if exit then
-      deadline NAP
+      swap if drop TASK:WAIT else
+         0= if exit then
+         deadline REMAINING TASK:WAIT-MS drop
+      then
    again ;
 
 
@@ -1678,22 +1679,22 @@ public
 \ is an HTTP/1.1 GET whose Upgrade names websocket, whose Connection names
 \ Upgrade, whose Sec-WebSocket-Key is the base64 of sixteen bytes and whose
 \ Sec-WebSocket-Version is 13, each of those four arriving once; the server
-\ refuses an HTTP/1.1 request without exactly one valid Host before any
-\ handler runs. A handshake that passes takes the connection from the server
-\ and `open` carries the socket; the task answers 101, and the handler is
-\ called with the socket, n and `opened`, then every message and, once,
-\ `closed`, each call with n, so whatever the handler does for `opened`, such
-\ as recording the socket under n, precedes every message. A socket whose
-\ connection refuses TCP_NODELAY is closed from birth under 1006, and still
-\ told `opened`, then `closed`. A peer gone without a close is found by ping:
-\ an open socket from which no frame has arrived for 30 s, counted while no
-\ handler call runs, is pinged, and is lost under 1006 when 10 s more pass
-\ with no frame. A handshake that does not pass is answered 400, or 426
-\ naming version 13, and one past START's limit, or while WS is stopping,
-\ 503, through the response once the route handler returns, and `refused`
-\ carries that status: no socket exists for it, and n is not kept. Origin is
-\ the route handler's to check before it accepts. Outside a run or while
-\ START still starts it, it is E-WS-STATE.
+\ refuses an HTTP/1.1 request without exactly one valid Host before any handler
+\ runs. A handshake that passes takes the connection from the server and `open`
+\ carries the socket; the task answers 101, and the handler is called with the
+\ socket, n and `opened`, then every message and, once, `closed`, short of a
+\ STOP that passes its bound (STOP), each call with n, so whatever the handler
+\ does for `opened`, such as recording the socket under n, precedes every
+\ message. A socket whose connection refuses TCP_NODELAY is closed from birth
+\ under 1006, and still told `opened`, then `closed`. A peer gone without a
+\ close is found by ping: an open socket from which no byte has arrived for
+\ 30 s, counted while no handler call runs, is pinged, and is lost under 1006
+\ when 10 s more pass with none after the ping has left (PING-MS). A handshake that does not pass is answered
+\ 400, or 426 naming version 13, and one past START's limit, or while WS is
+\ stopping, 503, through the response once the route handler returns, and
+\ `refused` carries that status: no socket exists for it, and n is not kept.
+\ Origin is the route handler's to check before it accepts. Outside a run or
+\ while START still starts it, it is E-WS-STATE.
 : ACCEPT ( HTTP:request HTTP:response [ socket n message -- ] n -- accepted )
    {: asked:HTTP:request answer:HTTP:response q arg:n :}
    RUNNING? 0= if E-WS-STATE throw then

@@ -194,6 +194,8 @@ variable FIRST-DONE               \ set once that wait has ended
 variable NEXT-SAW                 \ FIRST-DONE as the handler of `next` found it
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
 variable HOLDING                  \ set while the handler of `hold` waits on UNHELD
+variable PROBING                  \ set while the handler of `brief` sends its probes
+variable PROBE-END                \ what the probe that ended them threw
 variable ERR-U
 variable ERR-WANT-U
 STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers a stop gave back
@@ -483,10 +485,22 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : RX$ ( -- ptr u8 n )
    CLIENT-RX RX-LEN @ SPAN:TAKE SPAN:$ ;
 
-: HEAR ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   conn NEXT-FRAME
+: HEARD ( -- )
    RX-EOF @ 0 <> if s" < end of stream" LOG-LINE exit then
    s" < " RX-FIN @ 0 <> RX-OP @ RX$ LOG-FRAME ;
+
+: HEAR ( TCP4:connection -- )
+   NEXT-FRAME HEARD ;
+
+: PROBE-FRAME? ( -- bool )
+   RX-EOF @ 0= RX-OP @ OP$ s" text" STR= and ;
+
+\ The probes the handler of `brief` sent are read past unlogged, since how
+\ many it sent before the stop is the scheduler's; the frame after them is
+\ heard.
+: HEAR-PAST-PROBES ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   begin conn NEXT-FRAME PROBE-FRAME? 0= until
+   HEARD ;
 
 : GOT ( WS:opcode ptr u8 n -- ) {: op want wu:n :}
    RX-EOF @ 0 T=
@@ -586,6 +600,20 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    UNHELD TASK:WAIT-SEM
    0 HOLDING atomic! ;
 
+: SEND-PROBE ( -- )
+   0 NOTED @ s" ." WS:SEND-TEXT ;
+
+\ The handler sends a probe every POLL-MS until one is refused, as it is once
+\ a stop has closed the socket, and returns: the stop's own close ends the
+\ call, not a step the case takes.
+: PROBE ( -- )
+   1 PROBING atomic!
+   begin [: SEND-PROBE ;] catch dup 0 = while
+      drop POLL-MS >MS TASK:SLEEP
+   repeat
+   PROBE-END atomic!
+   0 PROBING atomic! ;
+
 : TEXT-IN ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
    sock 0 NOTED !
    a u s" throw" STR= if E-HANDLER throw then
@@ -596,6 +624,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u s" blast" STR= if sock BLAST exit then
    a u s" wait" STR= if sock BLOCK exit then
    a u s" hold" STR= if HOLD exit then
+   a u s" brief" STR= if PROBE exit then
    a u s" next" STR= if FIRST-DONE atomic@ NEXT-SAW atomic! then
    sock a u WS:SEND-TEXT ;
 
@@ -1603,24 +1632,41 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: 1 WS:START ;] catch 0 T=
    [: WS:STOP ;] catch 0 T= ;
 
-\ A stop while a handler call runs briefly tells the handler `closed`, under
-\ the stop's 1001, once that call has returned. WS:STOP runs on its own task
-\ while this one lets the call return.
+\ WS started again, 1, or 0 while a call a stop passed its bound still holds
+\ its slot (E-WS-STATE), so the next case starts on a WS no call holds.
+: RESTARTED ( -- n )
+   [: 1 WS:START ;] catch {: code:n :}
+   code E-WS-STATE = if 0 exit then
+   code 0<> if code throw then
+   1 ;
+
+\ A stop while a handler call runs briefly: the stop closes the socket under
+\ 1001, which ends the call, and the handler is told `closed`, under that
+\ 1001, after the call has returned, unless the stop passed its bound first.
+\ The stop's own close ends the call, so no step this task takes need fit
+\ inside the bound. WS:STOP runs on its own task while this one reads.
 : BRIEF-STOP-CASE ( -- )
    s" a stop while a handler call runs briefly" SECTION
-   0 HOLDING atomic!
+   0 PROBING atomic!
+   0 PROBE-END atomic!
    2 WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:text s" hold" SAY
-   [: HOLDING atomic@ ;] AWAITED drop
+   conn true WS-OPCODE:text s" brief" SAY
+   [: PROBING atomic@ ;] AWAITED drop
+   mono-ns {: began:n :}
    [: WS:STOP 0 TASK:RETURN ;] STOP-TASK TASK:ACTIVATE
-   conn HEAR 1001 GOT-CLOSE
-   UNHELD TASK:SIGNAL-SEM
+   conn HEAR-PAST-PROBES 1001 GOT-CLOSE
    conn ENDS
    [: STOP-ENDED ;] AWAITED drop
+   mono-ns began - {: took:n :}
    TASK-CODE 0 T=
-   s" the handler told `closed` once its call returned" T-LABEL
-   sock CLOSED-OF 1001 T= ;
+   s" the call returned once the stop closed its socket" T-LABEL
+   PROBE-END atomic@ E-WS-CLOSED T=
+   s" the handler told `closed` after its call, or the stop passed its bound" T-LABEL
+   sock CLOSED-OF {: code:n :}
+   code 1001 = code 0= took STOP-BOUND-MS NS-PER-MS * >= and or TTRUE
+   ['] RESTARTED AWAITED drop
+   WS:STOP ;
 
 : FILL-ONE ( -- )
    FILL-N @ {: idx:n :}
@@ -2024,7 +2070,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" < close 2 03e9" W
    s" < end of stream" W
    s" == a stop while a handler call runs briefly" W
-   s" > text 4 686f6c64" W
+   s" > text 5 6272696566" W
    s" < close 2 03e9" W
    s" < end of stream" W ;
 
