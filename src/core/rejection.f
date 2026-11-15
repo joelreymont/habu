@@ -23,6 +23,15 @@ create BYTE-BUF 1 allot
 PERSISTED-PTR-VARIABLE TEXT-P   NULL-PTR TEXT-P !
 variable TEXT-CAP   0 TEXT-CAP !        \ bytes mapped at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
+\ Which text of the record is open. A prose AT opens GAP-PART: the label's
+\ first byte writes the space after the carets and opens LABEL-PART.
+0 constant NO-PART
+1 constant MESSAGE-PART
+2 constant LABEL-PART
+3 constant VALUE-PART
+4 constant HELP-PART
+5 constant GAP-PART
+variable PART   NO-PART PART !
 variable BUF-ON
 variable BUF-FD   2 BUF-FD !
 \ The capture, mapped on first use and grown as TEXT is, holds HELD-U bytes;
@@ -109,6 +118,7 @@ private
 public
 \ Between JSON-OPEN and JSON-CLOSE every byte is escaped: a package may be named `\`.
 : EMIT1 {: c :}
+   PART @ GAP-PART = IF  LABEL-PART PART !  32 EMIT-RAW  THEN
    IN-JSON @ IF c JSON-CHAR ELSE c EMIT-RAW THEN ;
 : JSON-OPEN ( -- )   34 EMIT-RAW  -1 IN-JSON ! ;
 : JSON-CLOSE ( -- )  0 IN-JSON !  34 EMIT-RAW ;
@@ -325,13 +335,6 @@ public
    pa pu ;
 
 private
-\ Which text of the record is open.
-0 constant NO-PART
-1 constant MESSAGE-PART
-2 constant LABEL-PART
-3 constant VALUE-PART
-4 constant HELP-PART
-variable PART   NO-PART PART !
 variable NOTES   0 NOTES !              \ the JSON notes object is open
 variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL OWNED
@@ -356,6 +359,7 @@ PTR-VARIABLE INVOKED-A  variable INVOKED-U
 EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 
 : END-TEXT ( -- )
+   PART @ GAP-PART = IF LABEL-PART PART ! THEN
    PART @ NO-PART = IF EXIT THEN
    JSON @ IF JSON-CLOSE ELSE 10 EMIT1 THEN ;
 : BLANKS ( n -- ) {: k:n :}
@@ -555,13 +559,13 @@ private
 : PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
    PLACED @ 0= IF
-      10 EMIT1  MARGIN  s" = at `" EMIT-STR  t tu EMIT-STR  s" `: " EMIT-STR
+      10 EMIT1  MARGIN  s" = at `" EMIT-STR  t tu EMIT-STR  s" `:" EMIT-STR
       EXIT
    THEN
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
    MARGIN 124 EMIT1 10 EMIT1
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
-   MARGIN s" | " EMIT-STR  LINE-A @ LEAD-U @ LEAD  tu CARETS  32 EMIT1 ;
+   MARGIN s" | " EMIT-STR  LINE-A @ LEAD-U @ LEAD  tu CARETS ;
 
 \ A note's key; its value follows.
 : NOTE-KEY ( ptr u8 n -- ) {: k:ptr ku:n :}
@@ -603,7 +607,7 @@ private
 
 variable WARNING   0 WARNING !           \ the open record is a warning
 : BEGIN-RECORD ( ptr u8 n ptr u8 n -- ) {: sev:ptr su:n code:ptr cu:n :}
-   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !
+   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !  NO-PART PART !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
       s" code" FIELD  code cu JSON-STRING
@@ -626,8 +630,8 @@ public
    t tu PLACE
    PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
    EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE t tu THEN {: p:ptr pu:n :}
-   JSON @ IF p pu PLACE-JSON ELSE p pu PLACE-PROSE THEN
-   LABEL-PART PART ! ;
+   JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
+   PART ! ;
 \ A note's key; its value follows.
 : NOTE ( ptr u8 n -- )
    CLOSE-PART NOTE-KEY ;
