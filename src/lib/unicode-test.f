@@ -142,6 +142,13 @@ s" " s" " LOWERED=
 s" Straße" s" straße" LOWERED=
 s" İ" s" i̇" LOWERED=
 s" ΟΔΟΣ" s" οδος" LOWERED=
+s" ΓΙΑΝΝΗΣ'S.doc" s" γιαννησ's.doc" LOWERED=
+s" Α'Σ" s" α'ς" LOWERED=
+s" ʰΣ" s" ʰσ" LOWERED=
+s" ΑΣʰ" s" αςʰ" LOWERED=
+s" ΑΣ" s" ας" LOWERED=
+s" Σ" s" σ" LOWERED=
+s" ΑΣΑ" s" ασα" LOWERED=
 s\" A\zB" s\" a\zb" LOWERED=
 LOWER-PREFLIGHT
 RANDOM-FOLDS
