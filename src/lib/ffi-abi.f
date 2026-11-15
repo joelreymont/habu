@@ -1097,9 +1097,10 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
 \ ---- the declaration token stream -----------------------------------------
-\ parse-name's span lasts while its line is read, so every token is copied
-\ as it is read and every comparison reads the copy. A declaration's effect
-\ is on its line, so its types are read from their spans.
+\ Tokens come from the caller's source, and a span lasts while the source's
+\ line is read, so every token is copied as it is read and every comparison
+\ reads the copy. A declaration's effect is on its line, so its types are
+\ read from their spans.
 
 : TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if
@@ -1115,11 +1116,11 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    a TOK-BUF u BYTE-COPY
    u TOK-U ! ;
 
-: TOK@ ( -- )
-   parse-name TOK! ;
+: TOK@ ( [ -- ptr u8 n ] -- )
+   execute TOK! ;
 
-: TOK-SPAN ( -- ptr u8 n )
-   parse-name 2dup TOK! ;
+: TOK-SPAN ( [ -- ptr u8 n ] -- ptr u8 n )
+   execute 2dup TOK! ;
 
 : TOK$ ( -- ptr u8 n )
    TOK-BUF TOK-U @ ;
@@ -1251,8 +1252,9 @@ private
 
 \ A pointer is `ptr u8`, a byte span.
 \ Answers the span from `ptr`, at A, through `u8`.
-: PTR-TAIL ( ptr u8 -- ptr u8 n ) {: a:ptr :}
-   TOK-SPAN {: b:ptr u:n :}
+: PTR-TAIL ( ptr u8 [ -- ptr u8 n ] -- ptr u8 n )
+   {: a:ptr src :}
+   src TOK-SPAN {: b:ptr u:n :}
    s" u8" TOK-IS? 0= if
       s" expected 'u8' after 'ptr'"
       s" declare a pointer as ptr u8, a byte span, whatever C points at"
@@ -1289,10 +1291,11 @@ private
 
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
-: IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: IN-TOKEN ( ptr u8 n [ -- ptr u8 n ] -- )
+   {: a:ptr u:n src :}
    a u TYPE-SIZE {: size:n :}
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ-TYPE drop
+      a src PTR-TAIL EFFECT:READ-TYPE drop
       K-POINTER size ARG+ s" ptr u8" IN-TEXT exit
    then
    s" f32" TOK-IS? if
@@ -1312,14 +1315,15 @@ private
    s" u8" TOK-IS? s" char" TOK-IS? or if R-U8 exit then
    R-VALUE ;
 
-: OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: OUT-TOKEN ( ptr u8 n [ -- ptr u8 n ] -- )
+   {: a:ptr u:n src :}
    RES-KIND @ R-NONE <> if
       s" a FUNCTION: declaration has at most one output"
       s" C returns one value: return the others through ptr u8 inputs C writes"
       SYNTAX-REJECT
    then
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ-TYPE drop
+      a src PTR-TAIL EFFECT:READ-TYPE drop
       s" ptr u8" RES-TEXT! R-POINTER RES-KIND ! exit
    then
    s" f32" TOK-IS? if s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit then
@@ -1332,39 +1336,42 @@ private
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
    SCALAR-KIND RES-KIND ! ;
 
-: INPUTS ( -- )
+: INPUTS ( [ -- ptr u8 n ] -- )
+   {: src :}
    begin
-      TOK-SPAN
+      src TOK-SPAN
       s" --" TOK-IS? if 2drop exit then
       s" )" TOK-IS? if
          s" expected '--' before ')'"
          s" write the effect as ( inputs -- output ), '--' even with no output"
          SYNTAX-REJECT
       then
-      IN-TOKEN
+      src IN-TOKEN
    again ;
 
-: OUTPUTS ( -- )
+: OUTPUTS ( [ -- ptr u8 n ] -- )
+   {: src :}
    begin
-      TOK-SPAN
+      src TOK-SPAN
       s" )" TOK-IS? if 2drop exit then
       s" --" TOK-IS? if
          s" a second '--' in the effect"
          s" write one '--', between the inputs and the output"
          SYNTAX-REJECT
       then
-      OUT-TOKEN
+      src OUT-TOKEN
    again ;
 
-: EFFECT ( -- )
-   TOK@
+: EFFECT ( [ -- ptr u8 n ] -- )
+   {: src :}
+   src TOK@
    s" (" TOK-IS? 0= if
       s" expected '(' after the C symbol"
       s" write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
       SYNTAX-REJECT
    then
-   INPUTS
-   OUTPUTS ;
+   src INPUTS
+   src OUTPUTS ;
 
 \ ---- which call the declaration rides --------------------------------------
 
@@ -1736,6 +1743,7 @@ public
 \ Nothing is published before ;FUNCTION, and the row is registered as the word
 \ is built, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
+   [: parse-name ;] {: src :}
    [: CHECK-SCOPE
       OPEN @ if
          s" FUNCTION: inside an open declaration"
@@ -1744,9 +1752,9 @@ public
       then
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND ! 0 RES-NULLABLE !
-      TOK@ NAME!
-      TOK@ SYM!
-      EFFECT
+      src TOK@ NAME!
+      src TOK@ SYM!
+      src EFFECT
       true OPEN ! ;] KEEP-REST ;
 
 : CLOSE-FUNCTION ( -- )
@@ -1910,8 +1918,9 @@ public
    path u SELECT-LIBRARY ;
 
 : SELECT-VERSIONED-LIBRARY ( -- )
-   [: TOK@ BASE!
-      TOK@ TOK$ VERSION-ROWS CUR-LIB !
+   [: parse-name ;] {: src :}
+   [: src TOK@ BASE!
+      src TOK@ TOK$ VERSION-ROWS CUR-LIB !
       RECORD-SCOPE ;]
    KEEP-REST ;
 
