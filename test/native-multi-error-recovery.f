@@ -149,7 +149,7 @@ public
    REJECTION:BUFFER-OFF
    CHECKER-REJECT-RC <> if s" native cast refusal status" 1 die then
    REJECTION:BUFFER$ s" error[E-CAST-ARITY]" CONTAINS? 0= if s" native cast refusal code" 1 die then
-   FINISH 0<> if s" native cast refusal count" 1 die then
+   FINISH 1 <> if s" native cast refusal count" 1 die then
    s" CAST-WIDE" get-current search-wl 0<> if s" native refused cast published" 1 die then ;
 
 START

@@ -315,7 +315,7 @@ private
 \ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
 \ a status in 1..255 was printed where it arose, and a code no reason is armed
 \ with is no declaration's: all three are rethrown. Any other is rendered,
-\ then counts in a multi-error load or stops the load (DEF-STOPPED). The record
+\ then counts in a multi-error load or stops the load. The record
 \ is rendered before this rollback, but a throw inside a transaction
 \ participant has already rolled back, scrubbing the stores its token may
 \ point into: its word note reads TDECL-THROW's copy.
@@ -334,7 +334,6 @@ private
    TDECL-RESTORE
    SIG-UNRES-CLEAR
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   rc DEF-STOPPED !
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The declared name is read first by the body's name gate and by the report. A

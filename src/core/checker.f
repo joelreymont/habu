@@ -702,14 +702,12 @@
 \ after the checker keep parallel marks through the REG-EXT-RB words, in
 \ lockstep since every push pairs with one pop.
 \
-\ Refusing a definition: a refusal of the definition (REFUSE-DEF) leaves the
-\ walk by a throw, from a body, a does> clause or a top-level token alike.
-\ DEF-REFUSED rethrows any other code. On the ordinary load path the refusal
-\ stops the load and DEF-STOPPED keeps its code. In a multi-error load it
-\ refuses the definition as a rejected verdict does: the walk ends at the
-\ refusal, what the walk left set is cleared, the record step runs as CHECK
-\ runs it for a refusal, and the load goes on to the next definition.
-\ The packet is the definition's diagnostic; nothing else renders.
+\ Rejecting a definition: a body, a does> clause or a top-level token is
+\ checking, rejected or stopped. Every writer prints its record and throws
+\ CHECKER-REJECT-RC; DEF-REJECTED catches it. Caught under MULTI-ERR? it takes
+\ checking to rejected: what the walk left set is cleared, the record step
+\ runs as for a rejected verdict, and the load goes on at the next definition.
+\ Caught otherwise, or any other code, takes it to stopped: it is thrown on.
 \
 \ The interpret row: a segment is a saved row and the row's two buffers, keyed
 \ by the evaluator stack base (a closed `evaluate` reads a different floor) and
@@ -5016,7 +5014,9 @@ variable FAILB  variable FAILE
 \ The pin is a call in the definition's own body: no tick's operand and in no quotation.
 variable PIN-BODY-CALL
 CHECKER-REG:SCRATCH{
-variable DVERD     \ the verdict CHECK-VERDICT gave the diagnostic rendered next
+\ The verdict CHECK-VERDICT gave the diagnostic rendered next; VERDICT-NONE
+\ until the verdict.
+variable DVERD
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
 
@@ -12723,12 +12723,6 @@ variable USING-HOLD      \ a body token's walk holds its using refusal for the s
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
 
-\ A refusal of the definition being checked that leaves its body's or does>
-\ clause's walk by a throw. The code is kept as raised, so DEF-REFUSED tells the
-\ definition's refusal from a throw nothing judged, which propagates.
-variable DEF-REFUSAL
-: REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
-
 \ Keeps the name of the used package at scan slot ix, which the rejection's fix
 \ writes as PKG:WORD.
 : CK-SHADOW-CAPTURE ( n -- n ) {: ix:n :}
@@ -14234,13 +14228,13 @@ public
    THEN
    why E-USING-SHADOW-GLOBAL = IF
       s su USH-PKG-A @ USH-PKG-U @ USING-SHADOW-REJECT
-      CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    why E-USING-AMBIGUOUS = IF
       s su [: UPKG-EACH ;] USING-AMBIGUOUS-REJECT
-      CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
-   why REFUSE-DEF throw ;
+   s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" 76 die ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
 \ refused? It raises and renders nothing.
@@ -15284,7 +15278,7 @@ package CHECKER-REG
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
    pin pout SBA-CELLS-TXT
    s" `, or rename one of the two" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A length that describes no memory is refused with the symbol pool's refusal
 \ before the constructor scan reads it.
@@ -22529,6 +22523,8 @@ variable ARMED   0 ARMED !
 0 constant VERDICT-REFUSED
 1 constant VERDICT-UNCHECKABLE
 2 constant VERDICT-DEFERRED
+\ No verdict yet: the walk has not reached CHECK-VERDICT.
+-2 constant VERDICT-NONE
 
 CHECKER-REG:SCRATCH{
 variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
@@ -22574,7 +22570,7 @@ CHECKER-REG:}SCRATCH
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
-   0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
+   0 TOKIX !  0 FAILIX !  VERDICT-NONE DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
@@ -22652,7 +22648,7 @@ variable SCAN-TOK0
    CHECKER-TAPE:STRING-KIND CHECKER-TAPE:K-COUNTED-STRING =
    u CHECKER-TAPE:COUNTED-MAX >  and IF
       TSTART @ TADDR SCAN-U @  CHECKER-TAPE:COUNTED-MAX REJECTION:COUNTED-RANGE
-      CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    a u ;
 

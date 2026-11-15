@@ -180,7 +180,7 @@ public
 \ generations differ. A status in 1..255 was printed where it arose, and a code
 \ no reason explains is no declaration's: both are rethrown. Any other renders,
 \ then counts in a multi-error load (DRIVE skipped to its terminator) or stops
-\ the load (DEF-STOPPED).
+\ the load.
 : GUARD-CODE ( n -- )
    {: rc:n :}
    rc 0= IF FORGET-SRC EXIT THEN
@@ -188,7 +188,6 @@ public
    rc RENDER
    FORGET-SRC
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   rc DEF-STOPPED !
    STOP-RC REJECTION:STOP ;
 
 7182 constant E-REASON-DUP  \ the code already has a reason

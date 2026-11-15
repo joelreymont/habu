@@ -567,7 +567,7 @@ public
    REJECTION:HELP
    s" declare `: " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s"  ( -- )` and read inputs inside it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Installs the '( ... )' in TSTART..TI when it is the first after the name, the
 \ signature (a built definition's from its effect); true when that ends the walk.
@@ -951,9 +951,6 @@ public
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
-\ True for an error the checker reports itself before throwing it.
-: REPORTED-ERROR? ( n -- bool ) {: rc:n :}
-   rc CHECKER-REJECT-RC = ;
 package CAST-ERROR
 \ Zeros outside a declaration, so a saved image holds none of the build
 \ process's addresses.
@@ -980,13 +977,13 @@ public
    SIG-NOTE
    REJECTION:HELP  ha hu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
-\ Refuses signature sa su of name na nu that does not parse.
-: REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+\ Rejects signature sa su of name na nu that does not parse.
+: REJECT-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu SGBAD-REJECTION
    sa su na nu SGBAD-PIN
    CHECKER-REJECT-RC REJECTION:STOP ;
 : SKIP ( n -- ) {: rc:n :}
-   rc REPORTED-ERROR? IF 1 REJECTION:TALLY +! EXIT THEN
+   rc CHECKER-REJECT-RC = IF EXIT THEN
    rc throw ;
 ;package
 
@@ -1320,10 +1317,10 @@ variable TAGGED-FAM
 \ The declared row reported this definition's bad signature.
 : DECLARED-ROW-REPORTS? ( -- bool )
    BWIN-UNJUDGED @ 0= 0= SGDECL-BAD @ 0= 0= and ;
-\ A definition refused in a multi-error load keeps its declared signature as
+\ A definition rejected in a multi-error load keeps its declared signature as
 \ source authority, so a later caller checks against it, unless that signature
 \ is bad or too big to record.
-: MULTI-REFUSED ( -- )
+: MULTI-REJECTED ( -- )
    DECLARED-ROW-REPORTS? IF EXIT THEN
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
@@ -1461,7 +1458,7 @@ variable TAGGED-FAM
    THEN
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
    REJECTION:QUIET @ 0= and BWIN-UNJUDGED @ 0= and IF
-      MULTI-REFUSED
+      MULTI-REJECTED
    THEN ;
 
 \ The source pre-pass learns definers in rows keyed by this checker's symbol ids
@@ -1871,24 +1868,17 @@ package CHECKER-REG
    rc 0= IF v EXIT THEN
    rc throw ;
 
-\ The code of the last refusal that rendered its packet and stopped a load by its
-\ throw, 0 before one.
-variable DEF-STOPPED
-
-: CHECKER-DEF-STOPPED? ( n -- bool ) DEF-STOPPED @ = ;
-
-: DEF-REFUSED ( n -- )
+: DEF-REJECTED ( n -- )
    {: rc:n :}
-   rc DEF-REFUSAL @ <> IF rc throw THEN
-   MULTI-ERR? 0= IF rc DEF-STOPPED ! rc throw THEN
+   rc CHECKER-REJECT-RC <>  MULTI-ERR? 0= or IF rc throw THEN
    0 LAYOUT-XPORT !  0 BIND-HORIZON ! ;
 
+\ A throw from the walk records the rejected body; a throw after the verdict
+\ came from the verdict's own record step, which has judged the name.
 : CHECK-DEF-THREW ( n -- )
    0 PARSE-COMPLETE !
-   DEF-REFUSED
-   \ Counted here: no REJECTION:KEEP printed a thrown rejection.
-   DECLARED-ROW-REPORTS? 0= IF 1 REJECTION:TALLY +! THEN
-   MULTI-REFUSED ;
+   DEF-REJECTED
+   DVERD @ VERDICT-NONE = IF MULTI-REJECTED THEN ;
 
 \ Like CHECK, for the text `NAME ( in -- out ) body` with no `:` or `;`: verifies
 \ the body against the declared effect and rejects a mismatch.
@@ -1896,7 +1886,6 @@ variable DEF-STOPPED
    WRITE-WINDOW-CK
    0 BWIN-VALID !  0 UWIN-VALID !
    -1 VSIG !
-   0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
    1 TORDER-DEPTH +!
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
@@ -2015,13 +2004,13 @@ package CHECKER-IDENTITY
       E-CAST-FAM CAST-ERROR:RAISE
    THEN
    SGBAD @ SGBAD-UNSUPPLIED? 0= and IF
-      sa su na nu CAST-ERROR:REFUSE-SIGNATURE
+      sa su na nu CAST-ERROR:REJECT-SIGNATURE
    THEN ;
 
 \ An unsupplied output variable, a view pack's shape CAST sends elsewhere, is a
 \ bad row here.
 : ROWS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
-   SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REFUSE-SIGNATURE THEN
+   SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REJECT-SIGNATURE THEN
    SGHASR @ 0 <> IF
       s" the signature declares a return-stack effect"
       s" write the signature with no `|` clause"
@@ -2222,10 +2211,10 @@ package CHECKER-REG
    SIG-EFF-DROP
    v ;
 
-\ A clause is inside its definer's definition, so a refusal of the definition
-\ that leaves the clause's walk by a throw is, in a multi-error load, a refused
-\ clause like one its verdict refuses. Its packet, rendered where the refusal
-\ was found, is its diagnostic.
+\ A clause is inside its definer's definition, so a rejection that leaves the
+\ clause's walk by a throw is, in a multi-error load, a rejected clause like one
+\ its verdict rejects: its record, written where the rejection was found, is
+\ its diagnostic.
 PTR-VARIABLE SRC-DOES-BA   variable SRC-DOES-BU
 PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
@@ -2235,16 +2224,14 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 : SRC-DOES-THREW ( n -- n )
    SIG-EFF-DROP
-   DEF-REFUSED
+   DEF-REJECTED
    WRAP-CLEAR
-   1 REJECTION:TALLY +!
    0 ;
 
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
-   0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
    1 TORDER-DEPTH +!
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
@@ -2322,10 +2309,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
    WRITE-WINDOW-CK
-   0 DEF-REFUSAL !
    0 [: drop a u runs TOP-ANSWER ;] catch {: v rc:n :}
    rc 0= IF v EXIT THEN
-   rc DEF-REFUSED  1 REJECTION:TALLY +!  0 ;
+   rc DEF-REJECTED  0 ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
 \ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.

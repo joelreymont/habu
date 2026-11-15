@@ -486,13 +486,12 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    OUT-FD NEWLINE ;
 
 \ The answer to a throw RC that ended the composition after its rejection wrote
-\ its record: a rejection's or a rejected definition's (CHECKER-DEF-STOPPED?)
-\ is refused, or missing when the file a loader names is not there, and a file
-\ found but not readable is unread. Any other code goes on with no answer.
+\ its record: a rejection's is refused, or missing when the file a loader names
+\ is not there, and a file found but not readable is unread. Any other code
+\ goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
    rc INCLUDE-IO-RC = if s" unread" TARGET-RESULT exit then
-   rc CHECKER-REJECT-RC =  rc CHECKER-DEF-STOPPED? or
-   0= if rc throw then
+   rc CHECKER-REJECT-RC = 0= if rc throw then
    VERIFY:FAULT-TARGET$ nip 0 > if s" missing" TARGET-RESULT exit then
    s" refused" RESULT ;
 

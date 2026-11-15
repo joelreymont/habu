@@ -793,13 +793,13 @@ public
       MARGIN  s" = help: " EMIT-STR
    THEN
    HELP-PART PART ! ;
-\ Ends the record and throws status n.
-: STOP ( n -- )
-   END-RECORD throw ;
 \ Ends the record and returns; a sent rejection counts in TALLY.
 : KEEP ( -- )
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
+\ Ends the record, counts it as KEEP does and throws status n.
+: STOP ( n -- )
+   KEEP throw ;
 
 \ Ends the record and keeps it, in place of the one kept before, for
 \ SEND-SAVED; under QUIET it keeps none.
