@@ -12493,34 +12493,6 @@ package CHECKER-REG
 ;package
 
 
-\ --- the replay's `;using` rejections ------------------------------------------
-\ A replayed `;using` is rejected where the engine's is, with the engine's
-\ records (CHECKER-OVERLAY:CLOSE-USING). Each names the `;using` token t tu.
-: CLOSE-UNBALANCED ( ptr u8 n -- ) {: t:ptr tu:n :}
-   s" E-USING-UNBALANCED" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-   s" ` has no open using to close" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" nothing to close" REJECTION:EMIT-STR
-   REJECTION:HELP  s" remove this `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-   s" `, or open a using before it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ Inside a package a `;using` closes only an import the package opened: one
-\ opened before `package` is at or below the depth `;package` restores, so
-\ closing it would come undone there.
-\ Nor does the replayed source close an import it inherited, at or below
-\ CHECKER-USE:SOURCE-FLOOR: the engine rejects that in an evaluated buffer.
-\ w names where the using to close was opened from: a package or a file.
-: CLOSE-OUTER ( ptr u8 n ptr u8 n -- ) {: t:ptr tu:n w:ptr wu:n :}
-   s" E-USING-OUTER" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-   s" ` would close a using opened outside this " REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" using opened outside" REJECTION:EMIT-STR
-   REJECTION:HELP  s" close each using in the " REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR  s"  that opens it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ --- global-vs-used-public shadow rejection. Resolution puts the open scope and
 \ the global wordlist ahead of the used publics, so a bare tail inside a live
 \ `using` scope that resolves to a global while a used package also exports it
@@ -13168,14 +13140,21 @@ ROW-CELLS cells constant SCOPE-BYTES
    d 1 + USE-DEPTH-CELL DATA! ;
 
 \ `;using`, the token t tu, closes only an import the open package or the
-\ replayed source opened.
+\ replayed source opened: one opened before `package` is at or below the depth
+\ `;package` restores, so closing it would come undone there, and the engine
+\ rejects closing one the source inherited, at or below
+\ CHECKER-USE:SOURCE-FLOOR, in an evaluated buffer.
 : CLOSE-USING ( ptr u8 n -- ) {: t:ptr tu:n :}
    USE-DEPTH-CELL DATA@ {: d:n :}
-   d 0 <= IF t tu CLOSE-UNBALANCED THEN
-   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
-      t tu s" package" CLOSE-OUTER
+   d 0 <= IF
+      t tu REJECTION:USING-UNBALANCED  CHECKER-REJECT-RC REJECTION:STOP
    THEN
-   d CHECKER-USE:SOURCE-FLOOR @ <= IF t tu s" file" CLOSE-OUTER THEN
+   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
+      t tu s" package" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   d CHECKER-USE:SOURCE-FLOOR @ <= IF
+      t tu s" file" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    d 1 - USE-DEPTH-CELL DATA! ;
 
 \ `undefine NAME`: every live record of the name in the wordlist it acts in is
