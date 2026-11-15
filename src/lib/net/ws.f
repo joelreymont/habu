@@ -4,7 +4,9 @@
 \ readiness poll per socket and one on a wake pipe. Every handler call runs on
 \ a request worker (HTTP:SUBMIT), one at a time for each socket, and carries
 \ the value ACCEPT was given; `opened` comes first, so whatever the handler does
-\ there precedes every message.
+\ there precedes every message. STOP waits for handler calls at most
+\ GOODBYE-MS and STOP-MARGIN-MS: a call it leaves running retires its own slot
+\ as it ends, and START is E-WS-STATE until then.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/error.f
@@ -80,15 +82,18 @@ variable CAP                                \ START's limit: the slots the table
 3 constant PHASE-CLOSED           \ the status is final; the socket ends once its queue is written
 4 constant PHASE-RESERVED         \ ACCEPT is filling the slot
 
-\ A slot's delivery, read and written only under LOCK, by ACCEPT, by WS's task
-\ and by the request worker running the slot's handler call. A socket is
-\ published handing, ACCEPT having queued its `opened` (OPEN-CALL); ready moves
-\ to handing as the task hands the handler a message or `closed` (HAND-OFF),
-\ and handing back to ready as that call ends on its worker (CALL-ENDED), which
-\ pokes the task to parse on from IN-AT; the end of a `closed` call retires the
-\ slot instead.
+\ A slot's delivery, read and written only under LOCK, by ACCEPT, by WS's
+\ task, by STOP and by the request worker running the slot's handler call. A
+\ slot is handing while its call is queued or running. A socket is published
+\ queued, ACCEPT having queued its `opened` (OPEN-CALL); ready moves to queued
+\ as the task hands the handler a message or `closed` (HAND-OFF), queued to
+\ running as a worker starts the call (HAND), and running back to ready as it
+\ ends (CALL-ENDED), which pokes the task to parse on from IN-AT. The end of a
+\ `closed` call retires the slot instead, and STOP retires a slot whose call
+\ is still queued once it gives up on it (DROP-QUEUED).
 0 constant DELIVERY-READY         \ PARSE may run
-1 constant DELIVERY-HANDING       \ a handler call is queued or running: nothing parsed, no read armed
+1 constant DELIVERY-QUEUED        \ a handler call is queued: nothing parsed, no read armed
+2 constant DELIVERY-RUNNING       \ that call runs on a worker, which holds the slot until it ends
 
 \ Close statuses (section 7.4.1).
 1000 constant STATUS-NORMAL
@@ -108,6 +113,7 @@ $FFFFFFFF constant GEN-MASK
 
 1000000 constant NS-PER-MS
 $C8 constant GOODBYE-MS           \ how long a stop waits for the 1001 frames to be written
+$C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
 $100000 constant TASK-STACK
 $18 constant NONCE-CHARS          \ sixteen bytes in base64
 $10 constant NONCE-BYTES
@@ -130,9 +136,9 @@ DIGEST-OFF SHA1:DIGEST-BYTES + constant REGION-BYTES
 
 DYNAMIC-BUFFER LINK TCP4:connection
 \ The tables: CAP slots, mapped by START under LOCK while WS's task is not
-\ running. Nothing moves a slot while any task may read one, since STOP returns
-\ only once no handler call holds one, and STOP never releases them: the next
-\ START keeps them or grows them under LOCK. A socket's
+\ running. Nothing moves a slot while any task may read one, since START is
+\ E-WS-STATE while a handler call holds one (CLAIM-START), and STOP never
+\ releases them: the next START keeps them or grows them under LOCK. A socket's
 \ message buffer and scratch are one mapping (REGION), its input and outgoing
 \ queue two more; ACCEPT makes them and the task gives them back as the socket
 \ ends.
@@ -164,9 +170,8 @@ DYNAMIC-BUFFER PAY-U n                \ payload bytes of it read
 DYNAMIC-BUFFER FAILING n              \ the status a faulty frame closes under
 DYNAMIC-BUFFER MSG-U n                \ bytes of the message being reassembled
 DYNAMIC-BUFFER MSG-WIRE n             \ its opcode; 0 while there is none
-DYNAMIC-BUFFER DELIVERY n             \ DELIVERY-READY or DELIVERY-HANDING
+DYNAMIC-BUFFER DELIVERY n             \ DELIVERY-READY, DELIVERY-QUEUED or DELIVERY-RUNNING
 DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running is handed
-DYNAMIC-BUFFER CALLER n               \ the task running that call (TASK:SELF-N), 0 until it runs
 
 \ Every column holds n slots. A column that already holds them is left as it
 \ is; fresh pages are zero, a free slot (PHASE-NONE). A refused mapping throws
@@ -202,13 +207,18 @@ DYNAMIC-BUFFER CALLER n               \ the task running that call (TASK:SELF-N)
    n MSG-U-RESERVE
    n MSG-WIRE-RESERVE
    n DELIVERY-RESERVE
-   n PENDING-RESERVE
-   n CALLER-RESERVE ;
+   n PENDING-RESERVE ;
 
 \ The handshake's scratch, a row to each HTTP worker that may run ACCEPT.
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ptr u8 \ Sec-WebSocket-Key as it was sent
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-U n
 HTTP:MAX-WORKERS NONCE-CAP * SPAN-BUFFER: NONCES
+
+\ The handler call each request worker runs, for HAND-ENDED, which takes
+\ nothing: its slot, and whether it failed, as it has until the handler
+\ returns with no throw, so a call a halt cuts short is a failed one.
+HTTP:MAX-WORKERS TYPED-BUFFER CALL-SLOT n
+HTTP:MAX-WORKERS TYPED-BUFFER CALL-FAILED bool
 
 TASK:FACILITY LOCK
 TASK-STACK TASK:TASK WS-TASK
@@ -527,9 +537,14 @@ RUN-IDLE RUN !
    h >SLOT code PHASE-CLOSING SHUT ;
 
 
+\ Under LOCK: the slot is handing, its call queued or running.
+: CALLED? ( n -- bool ) {: idx:n :}
+   idx DELIVERY @ DELIVERY-READY <> ;
+
+
 : HANDING? ( n -- bool ) {: idx:n :}
    LOCK TASK:GET
-   idx DELIVERY @ DELIVERY-HANDING =
+   idx CALLED?
    UNLOCK ;
 
 
@@ -552,37 +567,68 @@ RUN-IDLE RUN !
 
 
 \ Under LOCK: a message's call ended. Its socket closes under 1011 when the
-\ handler threw. The slot is ready again, or, once the task has left
-\ (CLEANUP), which would serve it no more, closed and retired.
-: MESSAGE-ENDED ( n n -- ) {: idx:n code:n :}
+\ call failed. The slot is ready again, or, once the task has left (CLEANUP),
+\ which would serve it no more, closed and retired.
+: MESSAGE-ENDED ( n bool -- ) {: idx:n failed:bool :}
    LEFT @ 0 <> if idx LINK @ TCP4:CLOSE drop idx VACATE exit then
-   code 0 <> if idx STATUS-INTERNAL PHASE-CLOSED SHUT drop then
+   failed if idx STATUS-INTERNAL PHASE-CLOSED SHUT drop then
    DELIVERY-READY idx DELIVERY ! ;
 
 
-\ Under LOCK, on the worker: the end of a `closed` call retires the slot, and
-\ any other is MESSAGE-ENDED's. A STOP waiting for slots is told.
-: CALL-ENDED ( n n -- ) {: idx:n code:n :}
-   0 idx CALLER !
-   idx CLOSED-CALL? if idx VACATE else idx code MESSAGE-ENDED then
+\ Under LOCK: the end of a `closed` call retires the slot, and any other is
+\ MESSAGE-ENDED's.
+: END-CALL ( n bool -- ) {: idx:n failed:bool :}
+   idx CLOSED-CALL? if idx VACATE exit then
+   idx failed MESSAGE-ENDED ;
+
+
+\ Under LOCK, on the worker: the call ended, and a STOP waiting for slots is
+\ told.
+: CALL-ENDED ( n bool -- )
+   END-CALL
    STOPPING @ 0 <> if 0 STOPPER @ TASK:WAKE then ;
 
 
-\ A handler call, on a request worker. However the handler ends, short of a
-\ halt, the slot moves on under LOCK and the task is poked to serve it.
-: HAND ( n -- ) {: idx:n :}
-   LOCK TASK:GET
-   TASK:SELF-N idx CALLER !
-   UNLOCK
+: RUN-CALL ( n -- n ) {: idx:n :}
    idx [: CALL-HANDLER ;] catch {: code:n :} drop
-   code 0 <> if idx code REPORT-FAULT then
+   code 0 <> if idx code REPORT-FAULT idx exit then
+   false HTTP:WORKER-SLOT CALL-FAILED !
+   idx ;
+
+
+\ HAND's cleanup, on the worker, however the call ended: the slot moves on
+\ under LOCK and the task is poked to serve it.
+: HAND-ENDED ( -- )
+   HTTP:WORKER-SLOT {: w:n :}
    LOCK TASK:GET
-   idx code [: CALL-ENDED ;] [: UNLOCK ;] finally
+   w CALL-SLOT @ w CALL-FAILED @ [: CALL-ENDED ;] [: UNLOCK ;] finally
    POKE ;
 
 
+\ Under LOCK: the call submitted for that handle starts, its slot running, or
+\ false when STOP retired the slot while the call was queued (DROP-QUEUED).
+: STARTS? ( n -- bool ) {: h:n :}
+   h CURRENT? 0= if false exit then
+   DELIVERY-RUNNING h >SLOT DELIVERY !
+   true ;
+
+
+\ A handler call, on a request worker, for the handle of its slot. A halt
+\ that cuts the call short, as HTTP:STOP's kill does, still ends it, since a
+\ halt unwinds through `finally`; a call that does not start runs nothing.
+: HAND ( n -- ) {: h:n :}
+   LOCK TASK:GET
+   h [: STARTS? ;] [: UNLOCK ;] finally
+   0= if exit then
+   h >SLOT {: idx:n :}
+   HTTP:WORKER-SLOT {: w:n :}
+   idx w CALL-SLOT !
+   true w CALL-FAILED !
+   idx [: RUN-CALL ;] [: HAND-ENDED ;] finally drop ;
+
+
 : QUEUE-HAND ( n -- n ) {: idx:n :}
-   idx [: HAND ;] HTTP:SUBMIT
+   idx HANDLE [: HAND ;] HTTP:SUBMIT
    idx ;
 
 
@@ -599,7 +645,7 @@ RUN-IDLE RUN !
 : HAND-OFF ( n message -- ) {: idx:n msg :}
    LOCK TASK:GET
    msg idx PENDING !
-   DELIVERY-HANDING idx DELIVERY !
+   DELIVERY-QUEUED idx DELIVERY !
    UNLOCK
    idx [: QUEUE-HAND ;] catch {: code:n :} drop
    code 0= if exit then
@@ -609,8 +655,9 @@ RUN-IDLE RUN !
 
 
 \ The connection is closed and the handler told `closed`, once. The slot is
-\ retired as that call ends (CALL-ENDED), however it ends: the handler can
-\ still name the socket, and nothing closes the connection a second time.
+\ retired as that call ends (CALL-ENDED), however it ends, or by STOP while
+\ the call is still queued (DROP-QUEUED): the handler can still name the
+\ socket, and nothing closes the connection a second time.
 : FINISH ( n -- ) {: idx:n :}
    idx DISARM
    idx LINK @ TCP4:CLOSE drop
@@ -621,7 +668,7 @@ RUN-IDLE RUN !
 : LOSE ( n -- ) {: idx:n :}
    LOCK TASK:GET
    idx LOST
-   idx DELIVERY @ DELIVERY-HANDING =
+   idx CALLED?
    LOCK TASK:RELEASE
    if exit then
    idx FINISH ;
@@ -913,7 +960,7 @@ ENUM course
 \ message handed on, come next, since no poll reports them.
 : COURSE ( n -- course ) {: idx:n :}
    idx PHASE-SET? 0= if construct course vacant exit then
-   idx DELIVERY @ DELIVERY-HANDING = if idx HELD exit then
+   idx CALLED? if idx HELD exit then
    idx IN-U @ 0 > if construct course unparsed exit then
    idx AWAY
    idx GIVE-UP? if construct course given-up exit then
@@ -1246,7 +1293,7 @@ ENUM course
    q idx HANDLER !
    arg idx HANDLER-ARG !
    WS-MESSAGE:opened idx PENDING !
-   DELIVERY-HANDING idx DELIVERY !
+   DELIVERY-QUEUED idx DELIVERY !
    idx [: QUEUE-HAND ;] catch {: code:n :} drop
    code 0= if 0 exit then
    idx LINK @ TCP4:CLOSE drop
@@ -1290,56 +1337,84 @@ ENUM course
    WAKE-W @ close-rc drop ;
 
 
-\ CLEANUP's hint wakes this; the others a stop gets are read past.
-: AWAIT-LEFT ( -- )
+\ When STOP gives up waiting for WS's task and the handler calls.
+: STOP-DEADLINE ( -- n )
+   GOODBYE-MS STOP-MARGIN-MS + NS-PER-MS * mono-ns + ;
+
+
+\ Parks until a hint, or until the deadline while it is ahead.
+: NAP ( n -- ) {: deadline:n :}
+   mono-ns deadline >= if TASK:WAIT exit then
+   deadline REMAINING TASK:WAIT-MS drop ;
+
+
+\ CLEANUP's hint wakes this, or the deadline ends it; the other hints a stop
+\ gets are read past.
+: AWAIT-LEFT ( n -- ) {: deadline:n :}
    begin
       LEFT @ 0 <> if exit then
-      TASK:WAIT
+      mono-ns deadline >= if exit then
+      deadline NAP
    again ;
 
 
-: CALLED? ( n -- bool ) {: idx:n :}
-   idx DELIVERY @ DELIVERY-HANDING = ;
-
-
-\ Under LOCK: a handshake inside ACCEPT holds a slot, or a handler call does,
-\ which outlives the task only when the task failed.
-: BUSY? ( -- bool )
+\ Under LOCK: a handshake inside ACCEPT holds a slot.
+: RESERVED? ( -- bool )
    false
-   CAP @ 0 ?do
-      i PHASE @ PHASE-RESERVED = i CALLED? or if drop true leave then
-   loop ;
+   CAP @ 0 ?do i PHASE @ PHASE-RESERVED = if drop true leave then loop ;
 
 
-\ Each handshake inside ACCEPT finds WS stopping and gives its slot back, and
-\ each handler call ends and retires its slot, so none fills or reads a slot
-\ once STOP has returned and a START may move the tables.
-: AWAIT-GIVEN ( -- )
+\ Under LOCK: a slot is handing.
+: CALLING? ( -- bool )
+   false
+   CAP @ 0 ?do i CALLED? if drop true leave then loop ;
+
+
+\ Under LOCK: what STOP still waits for, a handshake inside ACCEPT whatever
+\ the time, or a handler call until the deadline.
+: UNGIVEN? ( n -- bool ) {: deadline:n :}
+   RESERVED? if true exit then
+   mono-ns deadline < CALLING? and ;
+
+
+\ Each handshake inside ACCEPT finds WS stopping and gives its slot back, so
+\ none fills a slot once STOP has returned and a START may move the tables.
+\ Each handler call ends and retires its slot, or is still out at the
+\ deadline: a running one holds START off until it ends (CLAIM-START), and
+\ STOP retires a queued one (DROP-QUEUED).
+: AWAIT-GIVEN ( n -- ) {: deadline:n :}
    begin
       LOCK TASK:GET
-      BUSY?
+      deadline UNGIVEN?
       LOCK TASK:RELEASE
       0= if exit then
-      TASK:WAIT
+      deadline NAP
    again ;
 
 
-\ Under LOCK: whether this task runs a slot's handler call. The main thread,
-\ whose number is 0, runs none.
-: IN-CALL? ( -- bool )
-   TASK:SELF-N {: me:n :}
-   me 0= if false exit then
-   false
+\ Under LOCK, once the task has left: each slot whose call is still queued is
+\ retired, its connection closed unless FINISH has closed it, so neither a
+\ call a worker takes later nor one HTTP:STOP drops unrun leaves its slot
+\ handing. A worker that takes such a call finds its handle stale, since the
+\ retirement moved the slot's count on, and runs nothing (HAND).
+: DROP-QUEUED ( -- )
    CAP @ 0 ?do
-      i CALLED? i CALLER @ me = and if drop true leave then
+      i DELIVERY @ DELIVERY-QUEUED = if i false END-CALL then
    loop ;
+
+
+\ Under LOCK: the end of STOP, with no stopper left to tell.
+: STOPPED ( -- )
+   DROP-QUEUED
+   0 STOPPING !
+   RUN-IDLE RUN ! ;
 
 
 \ Under LOCK: this task takes the stop, or false on WS's own task, which STOP
-\ joins, or in a handler call, which STOP waits for, outside a run or while
-\ START still starts it, or when another STOP holds it.
+\ joins, outside a run or while START still starts it, or when another STOP
+\ holds it.
 : CLAIM-STOP ( -- bool )
-   TASK:SELF WS-TASK = IN-CALL? or if false exit then
+   TASK:SELF WS-TASK = if false exit then
    RUNNING? 0= STOP-FLAG? or if false exit then
    TASK:SELF 0 STOPPER !
    1 STOPPING !
@@ -1356,8 +1431,11 @@ ENUM course
    0 LEFT ! ;
 
 
-\ Under LOCK: this START claims the run, or false when WS is not idle.
+\ Under LOCK: this START claims the run, or false when WS is not idle, or
+\ when a handler call from an earlier run is still out, reading the tables
+\ SET-UP may move.
 : CLAIM-START ( -- bool )
+   CALLING? if false exit then
    RUN @
    MATCH run
       idle OF construct run starting RUN ! true ENDOF
@@ -1392,6 +1470,8 @@ public
 
 \ n bounds open sockets (past it, 503); each maps REGION-BYTES and queues up to
 \ QUEUE-MAX. Size n from memory and descriptors, under AIO's ceiling (SERVE).
+\ While WS runs, or while a handler call an earlier STOP left running is
+\ still out, it is E-WS-STATE.
 : START ( n -- ) {: n:n :}
    LOCK TASK:GET
    CLAIM-START
@@ -1408,27 +1488,30 @@ public
 \ written or within GOODBYE-MS, tells each handler `closed` once the call it
 \ has running, if any, has returned, and joins the task. A socket already
 \ closing gets no 1001: it stays closing, and its handler is told its peer's
-\ answer, or 1006 once it gives up. STOP waits for every handler call it
-\ submitted: it takes GOODBYE-MS, then as long as the longest handler call
-\ running or queued and the `closed` call behind it, so a handler that never
-\ returns holds it for ever. The calls run on HTTP's workers, so WS stops
-\ before HTTP does. A handshake inside ACCEPT is answered 503 and STOP waits
-\ for it, however long its worker takes to get there. Outside a run or while
-\ START still starts it, while another STOP runs, or on WS's own task or in a
-\ handler call, which it would wait for, it is E-WS-STATE.
+\ answer, or 1006 once it gives up. STOP waits for WS's task and the handler
+\ calls at most GOODBYE-MS and STOP-MARGIN-MS, kills the task if it has not
+\ left by then, and returns. A call still running then ends later: its end
+\ closes its socket and retires its slot, telling the handler nothing more,
+\ and START is E-WS-STATE until it has. A call still queued then is dropped
+\ with its socket and never runs (DROP-QUEUED). Called inside a handler call,
+\ STOP waits out its bound for that call, then returns. The calls run on
+\ HTTP's workers, so WS stops before HTTP does. A handshake inside ACCEPT is
+\ answered 503 and STOP waits for it, however long its worker takes to get
+\ there. Outside a run or while START still starts it, while another STOP
+\ runs, or on WS's own task, it is E-WS-STATE.
 : STOP ( -- )
    LOCK TASK:GET
    CLAIM-STOP
    LOCK TASK:RELEASE
    0= if E-WS-STATE throw then
+   STOP-DEADLINE {: deadline:n :}
    POKE
-   AWAIT-LEFT
+   deadline AWAIT-LEFT
    WS-TASK TASK:KILL
-   AWAIT-GIVEN
+   deadline AWAIT-GIVEN
    PIPE-CLOSE
    LOCK TASK:GET
-   RUN-IDLE RUN !
-   LOCK TASK:RELEASE ;
+   [: STOPPED ;] [: UNLOCK ;] finally ;
 
 
 \ Inside a route handler: the request is checked as an opening handshake, that

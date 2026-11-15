@@ -193,6 +193,7 @@ variable BLOCKING                 \ set while the handler blocks on `wait`
 variable FIRST-DONE               \ set once that call has slept its BLOCK-MS
 variable NEXT-SAW                 \ FIRST-DONE as the handler of `next` found it
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
+variable HOLDING                  \ set while the handler of `hold` waits on UNHELD
 variable ERR-U
 variable ERR-WANT-U
 STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers a stop gave back
@@ -200,6 +201,7 @@ CROWD 1+ TYPED-BUFFER CONNS TCP4:connection  \ the client connections a case hol
 TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
 variable ROUTE-CODE               \ what the route threw before it posted ACCEPTED
 TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
+TASK:SEMAPHORE UNHELD             \ lets the handler of `hold` return
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
 FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
@@ -576,6 +578,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 BLOCKING atomic!
    sock s" waited" WS:SEND-TEXT ;
 
+\ The handler holds its worker until the case signals UNHELD.
+: HOLD ( -- )
+   1 HOLDING atomic!
+   UNHELD TASK:WAIT-SEM
+   0 HOLDING atomic! ;
+
 : TEXT-IN ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
    sock 0 NOTED !
    a u s" throw" STR= if E-HANDLER throw then
@@ -585,6 +593,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u s" bye" STR= if sock 4000 WS:CLOSE exit then
    a u s" blast" STR= if sock BLAST exit then
    a u s" wait" STR= if sock BLOCK exit then
+   a u s" hold" STR= if HOLD exit then
    a u s" next" STR= if FIRST-DONE atomic@ NEXT-SAW atomic! then
    sock a u WS:SEND-TEXT ;
 
@@ -1537,22 +1546,65 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    here there min E-WS-STATE T=
    [: WS:STOP ;] catch 0 T= ;
 
-\ A handler's WS:STOP, on WS's own task, is E-WS-STATE and leaves WS serving:
-\ this task's stop then closes the socket under 1001, and a new run starts and
-\ stops.
+\ A handler's WS:STOP, on a request worker, waits out its bound for its own
+\ call and returns: the peer reads 1001, and the stream ends once that call
+\ has returned and retired its slot, so a new run starts and stops.
 : HANDLER-STOP-CASE ( -- )
    s" a stop from a handler" SECTION
-   0 HANDLER-STOP atomic!
+   -1 HANDLER-STOP atomic!
    2 WS:START
    OPENS drop {: conn:TCP4:connection :}
    conn true WS-OPCODE:text s" stop" SAY
-   s" a handler's stop is refused" T-LABEL
-   [: HANDLER-STOP atomic@ ;] AWAITED E-WS-STATE T=
-   [: WS:STOP ;] catch 0 T=
    conn HEAR 1001 GOT-CLOSE
    conn ENDS
+   s" a handler's stop returns" T-LABEL
+   HANDLER-STOP atomic@ 0 T=
    [: 1 WS:START ;] catch 0 T=
    [: WS:STOP ;] catch 0 T= ;
+
+\ A stop while a handler call blocks past its bound returns within the bound,
+\ its peer sent the 1001. A start is E-WS-STATE until that call returns,
+\ whose end closes the socket and retires its slot, the handler untold; a
+\ start then succeeds.
+: BLOCKED-STOP-CASE ( -- )
+   s" a stop while a handler call blocks" SECTION
+   0 HOLDING atomic!
+   2 WS:START
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   conn true WS-OPCODE:text s" hold" SAY
+   [: HOLDING atomic@ ;] AWAITED drop
+   mono-ns {: began:n :}
+   WS:STOP
+   s" a stop past a blocked call returns within its bound" T-LABEL
+   mono-ns began - STOP-BOUND-MS GRACE-MS + NS-PER-MS * < TTRUE
+   conn HEAR 1001 GOT-CLOSE
+   s" a start while that call is out" T-LABEL
+   [: 1 WS:START ;] E-WS-STATE TTHROWSQ
+   UNHELD TASK:SIGNAL-SEM
+   conn ENDS
+   s" a start once that call has retired its slot" T-LABEL
+   sock CLOSED-OF 0 T=
+   [: 1 WS:START ;] catch 0 T=
+   [: WS:STOP ;] catch 0 T= ;
+
+\ A stop while a handler call runs briefly tells the handler `closed`, under
+\ the stop's 1001, once that call has returned. WS:STOP runs on its own task
+\ while this one lets the call return.
+: BRIEF-STOP-CASE ( -- )
+   s" a stop while a handler call runs briefly" SECTION
+   0 HOLDING atomic!
+   2 WS:START
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   conn true WS-OPCODE:text s" hold" SAY
+   [: HOLDING atomic@ ;] AWAITED drop
+   [: WS:STOP 0 TASK:RETURN ;] STOP-TASK TASK:ACTIVATE
+   conn HEAR 1001 GOT-CLOSE
+   UNHELD TASK:SIGNAL-SEM
+   conn ENDS
+   [: STOP-ENDED ;] AWAITED drop
+   TASK-CODE 0 T=
+   s" the handler told `closed` once its call returned" T-LABEL
+   sock CLOSED-OF 1001 T= ;
 
 : FILL-ONE ( -- )
    FILL-N @ {: idx:n :}
@@ -1947,6 +1999,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" == a stop from a handler" W
    s" > text 4 73746f70" W
    s" < close 2 03e9" W
+   s" < end of stream" W
+   s" == a stop while a handler call blocks" W
+   s" > text 4 686f6c64" W
+   s" < close 2 03e9" W
+   s" < end of stream" W
+   s" == a stop while a handler call runs briefly" W
+   s" > text 4 686f6c64" W
+   s" < close 2 03e9" W
    s" < end of stream" W ;
 
 \ The artifact as another reader will find it: read back from its file and
@@ -2021,6 +2081,7 @@ public
    FILL-BUFFERS
    0 ACCEPTED TASK:SEMAPHORE-INIT
    0 FILLED TASK:SEMAPHORE-INIT
+   0 UNHELD TASK:SEMAPHORE-INIT
    AIO:START
    INSTALL-ROUTES
    LOOPBACK 0 WORKERS IDLE-MS HTTP:START
@@ -2028,6 +2089,7 @@ public
    CASES
    STOP-CASE STALE-CASE IDLE-STOP-CASE CLOSING-STOP-CASE
    SHRINK-CASE STRAGGLER-CASE STOP-TWICE-CASE START-RACE-CASE HANDLER-STOP-CASE
+   BLOCKED-STOP-CASE BRIEF-STOP-CASE
    FAULT-CASE
    WRAP-CASE
    HTTP:STOP
@@ -2037,6 +2099,7 @@ public
    AIO-STOP
    ACCEPTED TASK:SEMAPHORE-DESTROY
    FILLED TASK:SEMAPHORE-DESTROY
+   UNHELD TASK:SEMAPHORE-DESTROY
    TRANSCRIPT-CASE ;
 
 ;package
