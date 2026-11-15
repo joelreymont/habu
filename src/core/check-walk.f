@@ -976,6 +976,20 @@ package CAST-ERROR
 : SIG-NOTE ( -- )
    SIG$ BYTE-SPAN? 0= IF EXIT THEN
    s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-CUT ;
+\ Opens the declaration's rejection under code, why wa wu saying what is wrong,
+\ placed at its token; the caller writes the label.
+: PLACE ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
+   code CODE$ REJECTION:OPEN  wa wu TITLE  SPOT$ REJECTION:AT ;
+\ The term atop row and its width in cells, as "`str` is 2".
+: TERM-WIDTH ( n -- ) {: row:n :}
+   96 REJECTION:EMIT1  row CAST-ROW-TERM REND-TYPE
+   s" ` is " REJECTION:EMIT-STR  row CAST-ROW-WIDTH REJECTION:EMIT-N ;
+\ The terms atop rows in and out and their widths, as "`str` is 2 cells, `n` is 1".
+: WIDTHS ( n n -- ) {: in:n out:n :}
+   SEEN-RESET RATOM-RESET 0 NLET !
+   in TERM-WIDTH  s"  cell" REJECTION:EMIT-STR
+   in CAST-ROW-WIDTH 1 <> IF 115 REJECTION:EMIT1 THEN
+   s" , " REJECTION:EMIT-STR  out TERM-WIDTH ;
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
@@ -987,14 +1001,23 @@ public
 \ Opens the declaration's rejection under code, why wa wu saying what is wrong;
 \ the caller writes its help and stops.
 : OPEN ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
-   code CODE$ REJECTION:OPEN  wa wu TITLE
-   SPOT$ REJECTION:AT  code LABEL$ REJECTION:EMIT-STR
-   SIG-NOTE ;
-\ Rejects the declaration under code: why wa wu says what is wrong, help ha hu
-\ what to write instead.
-: RAISE ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
-   wa wu code OPEN
+   wa wu code PLACE  code LABEL$ REJECTION:EMIT-STR  SIG-NOTE ;
+\ Rejects the declaration under code: why wa wu says what is wrong, label la lu
+\ the issue at its token, help ha hu what to write instead.
+: RAISE-LABEL ( ^u8 n ^u8 n ^u8 n n -- )
+   {: wa:^ wu:n la:^ lu:n ha:^ hu:n code:n :}
+   wa wu code PLACE  la lu REJECTION:EMIT-STR  SIG-NOTE
    REJECTION:HELP  ha hu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+\ RAISE-LABEL under code's own label.
+: RAISE ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
+   wa wu code LABEL$ ha hu code RAISE-LABEL ;
+\ Rejects a cast whose input row in and output row out differ in width.
+: WIDTH-RAISE ( n n -- ) {: in:n out:n :}
+   s" the input and output differ in width" E-CAST-ARITY PLACE
+   in out WIDTHS  SIG-NOTE
+   REJECTION:HELP  s" give both sides the same width in cells: " REJECTION:EMIT-STR
+   in out WIDTHS
    CHECKER-REJECT-RC REJECTION:STOP ;
 \ Rejects signature sa su of name na nu that does not parse.
 : REJECT-SIGNATURE ( ^u8 n ^u8 n -- ) {: sa:^ su:n na:^ nu:n :}
@@ -2030,8 +2053,9 @@ package CHECKER-IDENTITY
 : PARSE ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    sa su BYTE-SPAN? 0= IF
       s" the signature's length describes no memory"
+      s" length describes no memory"
       s" pass the signature text's address and its length in bytes"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
    THEN
    NEW
    SGBAD-CLEAR
@@ -2051,28 +2075,30 @@ package CHECKER-IDENTITY
    SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REJECT-SIGNATURE THEN
    SGHASR @ 0 <> IF
       s" the signature declares a return-stack effect"
+      s" a return-stack effect"
       s" write the signature with no `|` clause"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
    THEN
    SGIN @ CAST-ROW-1? 0= IF
       s" the input is not one term over the stack below"
+      s" input not one term"
       s" take exactly one term as the input, as `( n -- u8 )`, with one declaration per term"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
    THEN
    SGOUT @ CAST-ROW-1? 0= IF
       s" the output is not one term over the stack below"
+      s" output not one term"
       s" give exactly one term as the output, as `( n -- u8 )`, with one declaration per term"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
    THEN
    SGIN @ CAST-ROW-UNDER  SGOUT @ CAST-ROW-UNDER <> IF
       s" the input and output rows end in different tails"
+      s" different tails"
       s" end both sides in the same tail, as `( R n -- R u8 )`, or name no tail"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
    THEN
    SGIN @ CAST-ROW-WIDTH  SGOUT @ CAST-ROW-WIDTH <> IF
-      s" the input and output differ in width"
-      s" give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type"
-      E-CAST-ARITY CAST-ERROR:RAISE
+      SGIN @ SGOUT @ CAST-ERROR:WIDTH-RAISE
    THEN
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 

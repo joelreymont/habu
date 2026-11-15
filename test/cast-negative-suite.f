@@ -50,6 +50,7 @@ variable SRC-U
 ;package
 \ arity: more than one input, or more than one output term.
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA1`" CN-RUN:REJECTS
+REJECTION:BUFFER$ s" ^^^^ input not one term" CONTAINS? TTRUE
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA2`" CN-RUN:REJECTS
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
 \ storage. A layout value wider than a cell is one term; a cast between values
@@ -57,6 +58,9 @@ s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARIT
 s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC1`" CN-RUN:REJECTS
 s" cast: CNC2 ( n -- ^extent-a )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC2`" CN-RUN:REJECTS
 s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNC3`" CN-RUN:REJECTS
+REJECTION:BUFFER$ s" the input and output differ in width" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `n` is 1 cell, `cast-neg:wide` is 2" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `n` is 1 cell, `cast-neg:wide` is 2" CONTAINS? TTRUE
 \ Nor does the destination introduce an atom where a call, a read or a field
 \ projection yields a value: a produced row, a pointee and a layout argument
 \ refuse one as the bare term does, even in a private section, where the mint
@@ -556,12 +560,14 @@ s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T
 package CN-STR
 : WIDTH? ( -- bool )
    REJECTION:BUFFER$ s" the input and output differ in width" CONTAINS? ;
-: WIDTH-HELP? ( -- bool )
-   REJECTION:BUFFER$ s" = help: give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type" CONTAINS? ;
 s" cast: CNS1 ( str -- n )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNS1`" CN-RUN:REJECTS
-WIDTH? TTRUE  WIDTH-HELP? TTRUE
+WIDTH? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `str` is 2 cells, `n` is 1" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `str` is 2 cells, `n` is 1" CONTAINS? TTRUE
 s" cast: CNS2 ( n -- str )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNS2`" CN-RUN:REJECTS
-WIDTH? TTRUE  WIDTH-HELP? TTRUE
+WIDTH? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `n` is 1 cell, `str` is 2" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `n` is 1 cell, `str` is 2" CONTAINS? TTRUE
 \ A package retypes a str as its own role and back in its private section.
 public
 STRUCTURE path OPAQUE FIELD v str ;STRUCTURE

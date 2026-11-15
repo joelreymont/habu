@@ -2061,9 +2061,9 @@ package CAST-ERROR
    code E-LINEAR-OWNER = IF s" E-LINEAR-OWNER" EXIT THEN
    code E-LINEAR-SCOPE = IF s" E-LINEAR-SCOPE" EXIT THEN
    s" checker: a cast rejection with no code name" 76 die ;
-\ E-CAST-FAM's label is the parse's: only PARSE raises it, with SGBAD set.
+\ E-CAST-FAM's label is the parse's: only PARSE raises it, with SGBAD set. Each
+\ E-CAST-ARITY case gives its own label.
 : LABEL$ ( n -- ^u8 n ) {: code:n :}
-   code E-CAST-ARITY = IF s" not one term on each side" EXIT THEN
    code E-CAST-CLASS = IF s" a retype no cast may make" EXIT THEN
    code E-CAST-FAM = IF SGBAD-LABEL$ EXIT THEN
    code E-CAST-LINEAR = IF s" a linear value would change hands" EXIT THEN
@@ -2071,7 +2071,8 @@ package CAST-ERROR
    code E-CAST-SCOPE = IF s" not a view cast this place may declare" EXIT THEN
    code E-LINEAR-PAYLOAD = IF s" not one token and one payload" EXIT THEN
    code E-LINEAR-OWNER = IF s" declared outside the type's package" EXIT THEN
-   s" outside its owner's private section" ;
+   code E-LINEAR-SCOPE = IF s" outside its owner's private section" EXIT THEN
+   s" checker: a cast rejection with no label" 76 die ;
 : WORD$ ( -- ^u8 n ) WORD-A @ WORD-U @ ;
 : SIG$ ( -- ^u8 n ) SIG-A @ SIG-U @ ;
 \ The message: the declaration in backticks, why wa wu, then the token TOKEN!

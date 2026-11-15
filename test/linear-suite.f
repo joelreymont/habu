@@ -73,7 +73,7 @@ variable ROW-LOW  variable ROW-HIGH
 s" 7 42 ROW-ROUND ROW-HIGH ! ROW-LOW !" LIN-RUN:DECL 0 T=
 ROW-LOW @ 7 T=  ROW-HIGH @ 42 T=
 s" LINEAR: Q-MINT ( R n -- S LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: Q-MINT`" s" not one term on each side" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: Q-MINT`" s" different tails" LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-SCOPE]" s" `linear: LIN-OWN:PUBLIC-MINT`" s" outside its owner's private section"
    LIN-RUN:REJECTS-AT
@@ -119,11 +119,11 @@ s" LINEAR: LP9 ( LIN-OTHER:ofam -- LIN-OWN:tok )"  LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP9`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP10 ( [ -- ] -- LIN-OWN:tok )"         LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP10`" s" not one token and one payload" LIN-RUN:REJECTS-AT
-s" the shapes cast: refuses" T-LABEL
+s" the shapes cast: rejects" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: LA1`" s" not one term on each side" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: LA1`" s" input not one term" LIN-RUN:REJECTS-AT
 s" LINEAR: LA2 ( -- LIN-OWN:tok )"                 LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: LA2`" s" not one term on each side" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: LA2`" s" input not one term" LIN-RUN:REJECTS-AT
 s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL
    s" error[E-CAST-FAM]" s" `neverdecl`" LIN-RUN:REJECTS
 \ An output scope variable no input supplies is a bad signature here: only a
@@ -156,7 +156,7 @@ s" LIN-NO-PACKAGE:PUBLIC-MINT" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:BAD-PAYLOAD" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:BAD-OWNER" XREF-FIND XREF-FOUND? TFALSE
 s" cast: BAD-TAIL ( R n -- S n )" LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `cast: BAD-TAIL`" s" not one term on each side" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `cast: BAD-TAIL`" s" different tails" LIN-RUN:REJECTS-AT
 
 \ ---- no other scope mints or erases --------------------------------------------
 s" another package neither mints nor erases the owner's type" T-LABEL

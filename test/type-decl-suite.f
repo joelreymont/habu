@@ -2554,7 +2554,7 @@ TDWR-TRIP 3 T=
 REJECTION:CAPTURE
 s" cast: TDWR-NARROW ( n -- tdwrap )" 70 TDT-NEG
 s\" error[E-CAST-ARITY]: in `cast: TDWR-NARROW`, the input and output differ in width\n" TDT-HAS
-s\"   = help: give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type\n" TDT-HAS
+s\"   = help: give both sides the same width in cells: `n` is 1 cell, `tdwrap` is 2\n" TDT-HAS
 ;package
 s" TDWR-NOT ( str -- tdwrap )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A comment on the name's line is no base: the family stays one cell.
