@@ -99,7 +99,7 @@ public
    JSON-REPORT
    s" build-profile: reports in " type TEXT$ type s"  and " type JSON$ type cr
    rc 0<> if
-      s" build-profile: the build threw " type rc . s" at " type HB-BUILD-CORE:ROW$ type cr
+      s" build-profile: the build threw " type rc . s" at " type HB-BUILD-CORE:WHERE$ type cr
       s" " 1 die
    then ;
 ;package

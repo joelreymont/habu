@@ -380,12 +380,12 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
-\ A link that threw names the file it was loading, except under --json-errors,
-\ whose stderr holds only JSON.
+\ A link that threw names where it was, except under --json-errors.
 : HBB-LINK-FAILED ( n -- )
    {: rc:n :}
    HBB-JSON @ 0= if
-      s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR  s"  threw " HBB-WERR
+      s" hb-build: " HBB-WERR  HB-BUILD-CORE:WHERE$ HBB-WERR
+      s"  threw " HBB-WERR
       SB-RESET  rc FMT:SB-INT  SB$ HBB-WERR
       rc ERROR:NAME$ {: name:^ nameu:n :}
       nameu 0<> if s"  " HBB-WERR  name nameu HBB-WERR then
@@ -394,18 +394,12 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-CLEANUP
    HBB-BUILD-RC HBB-EXIT ;
 
-\ hb-build's exit action: a process ended inside a build leaves no program and -o
-\ as it was; the line names the file it was loading, if any (not --json-errors).
+\ Exit action in a build: names where, keeps -o as it was (not --json-errors).
 : HBB-EXITED ( -- )
    LINKER:OPEN? 0= if exit then
    HBB-JSON @ 0= if
-      HB-BUILD-CORE:ROW$ {: row:^ rowu:n :}
-      rowu 0= if
-         s" hb-build: the build ended the process before its first file" HBB-WERR
-      else
-         s" hb-build: " HBB-WERR  row rowu HBB-WERR
-         s"  ended the process during the build" HBB-WERR
-      then
+      s" hb-build: " HBB-WERR  HB-BUILD-CORE:WHERE$ HBB-WERR
+      s"  ended the process during the build" HBB-WERR
       HBB-WERR-LF
    then
    HBB-BUILD-RC HBB-EXIT ;
