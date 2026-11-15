@@ -16,6 +16,7 @@ require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require src/os/script-argv.f
+require src/core/rejection.f
 
 package FILE-OBJECTS-BUILD
 
@@ -970,6 +971,73 @@ CAST: >ANSWER ( n -- [ -- n ] )
    s" through-cold" THROUGH-BUILD {: cold:n :}  SEEN-Q @ {: qc:n :}
    s" through: compiled " one two three four q1 q2 q3 q4 cold qc COLD-WARM. ;
 
+\ ---- a warm build at a full dictionary ----
+1024 constant RECORD-CAP
+RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
+
+: FULL-A$ ( ptr u8 n -- ptr u8 n ) s" a.f" FIRST-BUF FILE-IN ;
+: FULL-B$ ( ptr u8 n -- ptr u8 n ) s" b.f" SECOND-BUF FILE-IN ;
+
+\ The directory's a.f, which creates words until the number of records the text spells is free, counted from DICT-CAP,
+\ which a.f cannot spell, as a literal. Each text a compile evaluates is recorded after a scan of those before it
+\ (COMPILE-READS:APPEND), so a text creates a thousand words.
+: FULL-A! ( ptr u8 n ptr u8 n -- )
+   {: d:ptr du:n free:ptr freeu:n :}
+   d du FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
+   d du FULL-A$ s\"    15 0 do  s\" create F000000 \" drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
+   d du FULL-A$ s\"    k  6 0 do  dup 10 mod 48 +  NB at 15 * 13 + i - + c!  10 /  loop drop ;\n" FS:APPEND-FILE
+   d du FULL-A$ s\" : CHUNK ( n n -- ) {: first:n k:n :}\n   k 0 ?do  first i +  i ENTRY  loop\n" FS:APPEND-FILE
+   d du FULL-A$ s\"    NB k 15 * evaluate-closed ;\n: FILL ( n -- )\n   " FS:APPEND-FILE
+   d du FULL-A$ DICT-CAP FMT:INT$ FS:APPEND-FILE
+   d du FULL-A$ s\"  ndict@ - swap - {: t:n :}\n   t 0 ?do  i  t i - 1000 min  CHUNK  1000 +loop ;\n" FS:APPEND-FILE
+   d du FULL-A$ free freeu FS:APPEND-FILE
+   d du FULL-A$ s\"  FILL\n;package\n" FS:APPEND-FILE ;
+
+\ The directory's b.f, three words spelling no name of a.f's.
+: FULL-B! ( ptr u8 n -- )
+   {: d:ptr du:n :}
+   d du FULL-B$ s\" : FILE-OBJECTS-FULL-ONE ( -- n ) 1 ;\n: FILE-OBJECTS-FULL-TWO ( -- n ) 2 ;\n" FS:WRITE-ALL
+   d du FULL-B$ s\" : FILE-OBJECTS-FULL-THREE ( -- n ) 3 ;\n" FS:APPEND-FILE ;
+
+\ A build of the directory's a.f and b.f, the records it prints captured.
+: FULL-BUILD ( ptr u8 n -- n )
+   SEQ-DIR!
+   REJECTION:QUIET @ {: q:n :}
+   0 REJECTION:QUIET !  REJECTION:CAPTURE
+   [: s" app" RTARGET:HOST-TARGET [: SEQ-DIR$ FULL-A$ included  SEQ-DIR$ FULL-B$ included ;] LINKER:WITH ;]
+   catch RESULT
+   REJECTION:BUFFER-OFF  q REJECTION:QUIET ! ;
+
+\ Whether WARM-RECORD is the cold build's record, whose path names full-cold where the warm one's names full.
+: SAME-RECORD? ( -- bool )
+   REJECTION:BUFFER$ {: c:ptr cu:n :}
+   WARM-RECORD WARM-RECORD-U @ {: w:ptr wu:n :}
+   s" full-cold" DIR$ {: d:ptr du:n :}
+   c cu d du FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N du + 5 - ENDOF
+   ;MATCH {: k:n :}
+   k 0< if false exit then
+   wu cu 5 - <> if false exit then
+   w k c k STR= 0= if false exit then
+   w k + wu k - c k + 5 + wu k - STR= ;
+
+\ a.f leaves eight records free, b.f links, and then two, fewer than b.f's three: b.f's object must not link past the
+\ dictionary's end, so b.f compiles and is rejected as a cold build of the same sources is. full-cold holds them.
+: BY-FULL ( -- )
+   s" full" DIR$ FS:MAKE-DIR  s" full-cold" DIR$ FS:MAKE-DIR
+   s" full" s" 8" FULL-A!  s" full" FULL-B!
+   s" full" FULL-BUILD {: one:n :}
+   s" full" FULL-BUILD {: two:n :}
+   s" full" s" 2" FULL-A!
+   s" full" FULL-BUILD {: three:n :}
+   REJECTION:BUFFER$ RECORD-CAP min {: a:ptr u:n :}
+   a WARM-RECORD u BYTE-COPY  u WARM-RECORD-U !
+   s" full-cold" s" 2" FULL-A!  s" full-cold" FULL-B!
+   s" full-cold" FULL-BUILD {: cold:n :}
+   s" full: compiled " one two three RESULTS.  s"  cold " type cold FMT:.INT
+   s"  same record " type  SAME-RECORD? bool>n FMT:.INT cr ;
+
 \ ---- a piece that gains a store into reached data ----
 : GAIN-H$ ( -- ptr u8 n ) s" gain" s" h.f" FIRST-BUF FILE-IN ;
 : GAIN-S$ ( -- ptr u8 n ) s" gain" s" s.f" SECOND-BUF FILE-IN ;
@@ -1007,7 +1075,7 @@ CAST: >ANSWER ( n -- [ -- n ] )
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
-   BY-STORES BY-GAIN BY-OWN BY-THROUGH
+   BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

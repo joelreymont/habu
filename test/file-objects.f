@@ -52,12 +52,13 @@ package FILE-OBJECTS-TEST
 36 constant PFIELD-MAIN                  \ and pf-main.f's
 37 constant SPELLED-BLOB                 \ the spelled sequence's blob.f's
 38 constant TAILS                        \ TAIL$'s tails
-65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
+68 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
                                          \ words sequence's five, the ran and stores sequences' four each,
                                          \ the gain sequence's three, the own and own-cold builds' two
-                                         \ each, the through and through-cold builds' four each
+                                         \ each, the through and through-cold builds' four each, the full
+                                         \ builds' two and the full-cold build's a.f's
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -315,7 +316,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote sixty-five objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote sixty-eight objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -328,8 +329,9 @@ variable CLASS-N                        \ the class CLASS+ read
 \ earlier file that defines a public name it spells, or a private name of a package it opens, is
 \ edited, when an earlier file lays a string its object lays, when it is loaded without the
 \ files its object names, when files that
-\ stored into a cell it read load in another order, or when the link refuses its object or would
-\ link it wrong; any other file links, a compile after it included.
+\ stored into a cell it read load in another order, when its records do not fit the dictionary, or
+\ when the link refuses its object or would link it wrong; any other file links, a compile after it
+\ included.
 : CHECK-EDIT ( -- )
    s" C" WHICH!
    s" the mixed builds compile 0, 1 and 0 files" LABEL
@@ -373,7 +375,9 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the own builds compile 2, 0, 2 and 0 files, the edited quotation's Q as a cold build's" LABEL
    STATE-W STATE-W-U @ s\" own: compiled 2 0 2 0 q 42 42 43 43 cold 2 q 43\n" CONTAINS? TTRUE
    s" the through builds compile 4, 0, 3 and 0 files, the edited quotation's Q as a cold build's" LABEL
-   STATE-W STATE-W-U @ s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" CONTAINS? TTRUE ;
+   STATE-W STATE-W-U @ s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" CONTAINS? TTRUE
+   s" the full builds compile 2 and 0 files, then are rejected with 77 and the record a cold build prints" LABEL
+   STATE-W STATE-W-U @ s\" full: compiled 2 0 77 cold 77 same record -1\n" CONTAINS? TTRUE ;
 
 \ Whether A's printed state holds the line, a record's name line with its newlines, followed
 \ by a fields line that ends in the text, the record's facts text.
