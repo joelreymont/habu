@@ -189,6 +189,11 @@ PRODUCT tdpoint
 ;PRODUCT
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ DERIVE init needs no package: a top-level record's init accessors check.
+PRODUCT tdtop DERIVE init FIELD x n ;PRODUCT
+s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ Layout-aware generic stack ops. A logical
 \ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
 \ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails

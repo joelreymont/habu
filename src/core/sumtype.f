@@ -1919,7 +1919,6 @@ private
 \ committed rows, so this runs only after the field transaction's commit.
 : TDINIT-REQUIRE ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF TDINIT-REFUSE THEN
-   fam TFAM-PKG$ nip 0= IF TDINIT-REFUSE THEN
    fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF TDINIT-REFUSE THEN
    fam TDINIT-TERM {: term:n :}
    term INIT-RECORD? 0= IF 2drop drop TDINIT-REFUSE THEN
