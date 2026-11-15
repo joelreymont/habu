@@ -217,8 +217,11 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 public
 
 : DECLARE ( -- )
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: na:ptr nu:n :}
-   nu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   nu 0= if
+      s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
    na nu na nu LBUF-NAME-OK? 0= if exit then
    na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
@@ -242,8 +245,11 @@ public
 \ record is its own OS mapping, so the OS rounds it up to a page; each child
 \ holds the declared type's width.
 : DECLARE-HEAP ( -- )
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: na:ptr nu:n :}
-   nu 0= if s" HEAP" CHECKER-STORAGE-NAME-REFUSE exit then
+   nu 0= if
+      s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if exit then
    na nu s" -NEW" LBUF-SUFFIX-OK? 0= if exit then

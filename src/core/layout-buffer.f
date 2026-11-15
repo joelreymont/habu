@@ -177,8 +177,8 @@ PTR-VARIABLE STGT-START
 \ Every definer reads its type here, so pointer chains, family applications and
 \ spaced quotations reach the checker whole. The name stands on the definer's
 \ line and the type's first token on the name's (STORAGE-LINE-TOKEN); a missing
-\ name is refused at the definer (CHECKER-STORAGE-NAME-REFUSE), an empty type by
-\ the checker (CHECKER-STORAGE-TYPE-REFUSE).
+\ name is rejected at the definer's token, an empty type by the checker
+\ (CHECKER-STORAGE-TYPE-REFUSE).
 
 \ Leaves a token parse-name read to the next statement.
 : STORAGE-UNREAD ( ptr u8 -- )
@@ -354,8 +354,11 @@ public
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if
+      s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
@@ -368,8 +371,11 @@ public
 PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 
 : DEFER-LAYOUT-BUFFER ( -- )
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" DEFER-LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if
+      s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
@@ -417,8 +423,11 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    count swap name nameu STORAGE-SIZE ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" TYPED-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if
+      s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then

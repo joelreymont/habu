@@ -74,8 +74,11 @@ public
 \ Both words must be free in both sections of the package they land in: its
 \ bare calls resolve private-first.
 : RUN ( -- )
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" ARENA" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if
+      s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
    name nameu FREE? 0= if exit then
