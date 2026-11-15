@@ -11311,11 +11311,11 @@ public
    s" write one whole type after `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
    s" :`, as in `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR  s" :n`" REJECTION:EMIT-STR ;
 
-\ The help of stored signature sa su's rejection, declared at at atu.
+\ The help of stored signature sa su's rejection, declared at at atu. A fix
+\ names the token SGBAD rejects, even when it is the whole row.
 : SGBAD-HELP ( ^u8 n ^u8 n -- ) {: sa:^ su:n at:^ atu:n :}
-   sa su at atu SGBAD-TOKEN {: t:^ tu:n :}
-   SGBAD-AMBIG? IF t tu SGBAD-AMBIG-HELP EXIT THEN
-   REJECTION:HELP  t tu t 0 SGBAD-FIX ;
+   SGBAD-AMBIG? IF sa su at atu SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
+   REJECTION:HELP  sa su SGBAD-AT SGBAD-U @  over 0 SGBAD-FIX ;
 
 : SIG-WS? {: c :}  c 32 <= ;
 : SIG-LTRIM ( ^u8 n -- ^u8 n ) {: a:^ u:n :}

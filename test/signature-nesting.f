@@ -429,6 +429,10 @@ public
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" SAID
+   s" a stored row that is one rejected token is placed at its name, helped by that token" T-LABEL
+   SRC-RESET  s" defer SN-ARD (option)" S+
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-ARD` cannot be recorded" REFUSES
+   S\" = help: give `option` 1 type argument\n" SAID
    s" a trust-boundary primitive in a checked body is rejected by name" T-LABEL
    SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
    s" error[E-CAP-TRUSTED]: `reloc-maps-clear` is a trust-boundary primitive" REFUSES ;

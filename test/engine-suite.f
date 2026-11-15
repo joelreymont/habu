@@ -1094,6 +1094,16 @@ REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
 s" its help gives each qualified spelling" T-LABEL
 REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
+\ A local's annotation is pinned under its own interned name: the help spells
+\ the family, never that name.
+REJECTION:CAPTURE
+s" a family two used packages make public is rejected in a local's annotation" T-LABEL
+s" CBAD-LOCAL-AMBIG ( n -- ) {: x:es-amb<n> :}" CHECK-CANDIDATE! 0 T=
+s" its record names the family and the local" T-LABEL
+REJECTION:BUFFER$ s" type family `es-amb` in the annotation of local `x` is public in more than one used package" CONTAINS? TTRUE
+s" its help gives each qualified spelling of the family" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
 \ A built definition's type naming that family is ambiguous too.
 : ES-AMB-READ ( -- n ) [: s" es-amb<n>" EFFECT:READ-TYPE drop ;] catch ;
 REJECTION:CAPTURE
