@@ -35,7 +35,6 @@ variable UB-PREV-U
 TYPED-VARIABLE UB-PREV2-A ptr u8
 variable UB-PREV2-U
 variable UB-BAD
-variable UB-STRICT-BOUNDARY
 
 : UB-FILE-A@ ( -- ptr u8 )
    UB-FILE-A @ ;
@@ -84,13 +83,6 @@ variable UB-STRICT-BOUNDARY
 
 : UB-NOT ( bool -- bool )
    IF UB-FALSE ELSE UB-TRUE THEN ;
-
-public
-
-: STRICT! ( bool -- )
-   UB-STRICT-BOUNDARY ! ;
-
-private
 
 : UB-END? ( -- bool )
    UB-I @ UB-SRC-U @ >= ;
@@ -304,8 +296,7 @@ public
 
 : RESET ( -- )
    UB-CLEAR-SPANS
-   0 UB-BAD !
-   UB-FALSE STRICT! ;
+   0 UB-BAD ! ;
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it
 \ in every report.
