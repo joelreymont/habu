@@ -116,13 +116,13 @@ variable RC
    s" with-file" s" plain.f" WITH-AT ;
 
 \ A program whose one line requires the absolute path <root>/<rel>, and the
-\ loader's open failure naming that path with INCLUDE-IO-RC.
+\ loader's missing-source rejection naming that path.
 : REQUIRE-AT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n rel:ptr relu:n :}
    0 PROG-U !
    s" require " PROG+ rel relu AT PLINE
    name nameu LOAD-CASE
-   INCLUDE-IO-RC EXITS
+   CHECKER-REJECT-RC EXITS
    s" error[E-MISSING-SOURCE]" ERR-HAS
    s" cannot open `" rel relu SB-NAMES SB$ ERR-HAS ;
 

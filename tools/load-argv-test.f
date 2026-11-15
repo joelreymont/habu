@@ -136,8 +136,8 @@ variable LA-DANGLING-LINK-U
 : LA-MISSING-PATH-NAMED ( -- )
    LA-ARGV0  LA-MISS$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
-   s" a missing --load file exits 74" T-LABEL
-   rc 74 T=
+   s" a missing --load file exits 70" T-LABEL
+   rc 70 T=
    s" a missing --load file is named on stderr" T-LABEL
    erru LA-ERR$ LA-MISS$ CONTAINS? TTRUE
    erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
@@ -147,8 +147,8 @@ variable LA-DANGLING-LINK-U
 : LA-DANGLING-PATH-NAMED ( -- )
    LA-ARGV0  LA-DANGLING$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
-   s" a --load path below a dangling symlink exits 74" T-LABEL
-   rc 74 T=
+   s" a --load path below a dangling symlink exits 70" T-LABEL
+   rc 70 T=
    s" a dangling-symlink --load path is named on stderr" T-LABEL
    erru LA-ERR$ LA-DANGLING$ CONTAINS? TTRUE
    s" a dangling-symlink --load path keeps the open diagnostic" T-LABEL
