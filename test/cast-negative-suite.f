@@ -513,7 +513,7 @@ variable ERR-U
 \ A cast's bare call on an empty stack is rejected at its place before it reads
 \ the cell below the base.
 s\" NEWTYPE cnmrole\ncast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
-s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  CN-CHILD:ERR$ s" cast-negative-suite.f" 64 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" T-PLACED
+s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  CN-CHILD:ERR$ s" cast-negative-suite.f" 65 s\" s\\\" NEWTYPE cnmrole\\ncast: >CNMROLE ( n -- cnmrole )  >CNMROLE\" CN-CHILD:RUN" T-PLACED
 s" >CNMROLE" CN-CHILD:HAS
 
 \ The trailing `;` of the retired spelling ends no definition.
@@ -554,15 +554,14 @@ s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T
 \ A cast retypes one value of any width, to a value of the same width only: a
 \ str is two cells, and n is one.
 package CN-STR
-create DIAG 4096 allot
 : WIDTH? ( -- bool )
    REJECTION:BUFFER$ s" the input and output differ in width" CONTAINS? ;
-DIAG 4096 REJECTION:BUFFER!
-s" cast: CNS1 ( str -- n )" CN-RUN:DECL E-CAST-ARITY T=
-WIDTH? TTRUE
-DIAG 4096 REJECTION:BUFFER!
-s" cast: CNS2 ( n -- str )" CN-RUN:DECL E-CAST-ARITY T=
-WIDTH? TTRUE
+: WIDTH-HELP? ( -- bool )
+   REJECTION:BUFFER$ s" = help: give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type" CONTAINS? ;
+s" cast: CNS1 ( str -- n )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNS1`" CN-RUN:REJECTS
+WIDTH? TTRUE  WIDTH-HELP? TTRUE
+s" cast: CNS2 ( n -- str )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNS2`" CN-RUN:REJECTS
+WIDTH? TTRUE  WIDTH-HELP? TTRUE
 \ A package retypes a str as its own role and back in its private section.
 public
 STRUCTURE path OPAQUE FIELD v str ;STRUCTURE

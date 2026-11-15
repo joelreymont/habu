@@ -2540,12 +2540,10 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 : TFR-W65 ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) ;
 : TFR-Q300 ( [ n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- ] -- ) drop ;
 
-TD-JSON-WAS @ REJECTION:JSON !
-
 \ NEWTYPE over a base spelled on the name's line: the family is as wide as the
 \ base and a type apart from it, and no word is made, so casts cross it. A str
 \ holds a pointer, so the casts mint one and sit in a private section.
-TDIAG-BUF 8192 REJECTION:BUFFER!
+REJECTION:CAPTURE
 NEWTYPE tdwrap str
 package TDWRAP-CAST
 private
@@ -2553,20 +2551,26 @@ s" cast: >TDWRAP ( str -- tdwrap )" 0 TDT-NEG
 s" cast: TDWRAP> ( tdwrap -- str )" 0 TDT-NEG
 : TDWR-TRIP ( -- n ) s" abc" >str >TDWRAP TDWRAP> str> nip ;
 TDWR-TRIP 3 T=
-s" cast: TDWR-NARROW ( n -- tdwrap )" E-CAST-ARITY TDT-NEG
+REJECTION:CAPTURE
+s" cast: TDWR-NARROW ( n -- tdwrap )" 70 TDT-NEG
+s\" error[E-CAST-ARITY]: in `cast: TDWR-NARROW`, the input and output differ in width\n" TDT-HAS
+s\"   = help: give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type\n" TDT-HAS
 ;package
 s" TDWR-NOT ( str -- tdwrap )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A comment on the name's line is no base: the family stays one cell.
 NEWTYPE tdnote   \ a comment
 s" cast: TDN-CELL ( n -- tdnote )" 0 TDT-NEG
-\ A base never declared is refused as an unknown field type is: 7109,
-\ E-TDECL-PAYLOAD.
-s" NEWTYPE tdbad tdmissing-type" E-TDECL-PAYLOAD TDT-NEG
+\ A base never declared is rejected as an unknown field type is.
+s" NEWTYPE tdbad tdmissing-type"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdbad`\n"
+s" tdmissing-type" s" unknown field type" TDT-AT
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
 \ The verifier replays a base on the name's line as the load registers it.
 : TDWR-VERIFY ( -- )
    s\" NEWTYPE tdvwrap str\n: TDWR-VUSE ( tdvwrap -- tdvwrap ) ;" VERIFY:SOURCE-BUF ;
 ' TDWR-VERIFY catch 0 T=
 REJECTION:BUFFER-OFF
+TD-JSON-WAS @ REJECTION:JSON !
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT

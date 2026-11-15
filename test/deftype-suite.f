@@ -6,6 +6,7 @@
 require src/lib/codegen.f
 require src/lib/type/deftype.f
 require src/lib/test.f
+require test/decl-diag-capture.f
 
 T-RESET
 
@@ -13,7 +14,7 @@ T-RESET
 REJECTION:CAPTURE
 
 \ 1. a declared value nominal, checked inside its own package; test/engine-suite.f
-\    checks the converters and the refused crossings in signatures.
+\    checks the converters and the rejected crossings in signatures.
 package CAMERA
 DEFTYPE SERIAL
 DEFTYPE FRAME-INDEX
@@ -90,14 +91,22 @@ REJECTION:BUFFER$ s" name longer than 255 bytes" CONTAINS? TTRUE
 \    it, crossed by >NAME and NAME>BASE, the base in upper case.
 DEFTYPE REV str
 s" abc" >str >REV REV>STR str> nip 3 T=
-\ a rev is not a str: 70, the checker's refusal ("expected: str actual: rev").
+\ a rev is not a str: 70, the checker's rejection ("expected: str actual: rev").
 s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
-\ the base is one name, since NAME>BASE is made from it; the refusal names the
-\ type.
-VNDIAG-BUF 8192 REJECTION:BUFFER!
-s" DEFTYPE DTBAD option<n>" TEST-EVAL:RC TYPE-DECL:E-TDECL-SYNTAX T=
-REJECTION:BUFFER$ s" DTBAD" CONTAINS? TTRUE
-s" DEFTYPE DTBAD2 pkg:thing" TEST-EVAL:RC TYPE-DECL:E-TDECL-SYNTAX T=
+\ the base is one name, since NAME>BASE is made from it; the rejection names the
+\ type and marks the base.
+: DT-ONE-NAME ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ha:^ hu:n ta:^ tu:n :}
+   REJECTION:CAPTURE
+   sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ ha hu CONTAINS? TTRUE
+   ta tu s" a deftype base is one name" DECL-DIAG:CAUSE? TTRUE
+   REJECTION:BUFFER$ s" = help: write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it" CONTAINS? TTRUE ;
+s" DEFTYPE DTBAD option<n>"
+s" error[E-BAD-DECLARATION]: bad newtype declaration `DTBAD`"
+s" option<n>" DT-ONE-NAME
+s" DEFTYPE DTBAD2 pkg:thing"
+s" error[E-BAD-DECLARATION]: bad newtype declaration `DTBAD2`"
+s" pkg:thing" DT-ONE-NAME
 \ a comment on the name's line is no base: the type stays one cell over n.
 DEFTYPE DTNOTE   \ a comment
 s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" CHECK-QUIET-CANDIDATE! -1 T=
@@ -106,7 +115,7 @@ s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" CHECK-QUIET-CANDIDATE! -1 T=
    s\" DEFTYPE REV2 str\n: DTV ( str -- rev2 ) >REV2 ;" VERIFY:SOURCE-BUF ;
 ' DT-VERIFY catch 0 T=
 \ the verifier's converter text holds NAME>BASE with a name at the cap.
-TFAM:TF-NAME-MAX 32 + CODEGEN:BUFFER VN-VMAX-SRC
+CODEGEN:BUFFER VN-VMAX-SRC
 : VN-VMAX-SRC! ( -- )
    VN-VMAX-SRC CODEGEN:RESET
    s" DEFTYPE " VN-VMAX-SRC CODEGEN:APPEND-STRING
@@ -116,9 +125,9 @@ VN-VMAX-SRC!
 : DT-VERIFY-MAX ( -- ) VN-VMAX-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
 ' DT-VERIFY-MAX catch 0 T=
 
-\ 7. a multi-error load records a base the wrap refuses and declares no
+\ 7. a multi-error load records a base the wrap rejects and declares no
 \    converters for it; an earlier DEFTYPE's converter still verifies.
-256 CODEGEN:BUFFER DT-MULTI-SRC
+CODEGEN:BUFFER DT-MULTI-SRC
 : DT-LINE ( ^u8 n -- )
    DT-MULTI-SRC CODEGEN:APPEND-STRING
    10 DT-MULTI-SRC CODEGEN:APPEND-BYTE ;
@@ -131,11 +140,11 @@ VN-VMAX-SRC!
 DT-MULTI-SRC!
 : DT-MULTI ( -- )
    DT-MULTI-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
-VNDIAG-BUF 8192 REJECTION:BUFFER!
+REJECTION:CAPTURE
 MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
 2 T=  0 T=
-REJECTION:BUFFER$ s" undefined word '>DTWRAP'"
-CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
 
 T-REPORT

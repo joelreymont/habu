@@ -2624,7 +2624,7 @@ variable STG-TYPE-U
    bu 1 = IF ba c@ 92 = IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN THEN
    ba bu 0 0= ;
 
-\ A base replays as DEFTYPE registers it; a deferred or refused family
+\ A base replays as DEFTYPE registers it; a deferred or rejected family
 \ declares no converters.
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:^ nameu:n :}

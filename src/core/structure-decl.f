@@ -627,7 +627,7 @@ SD-QUOT-INSTALL
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
 \ A newtype over a base: its name, then the base's tokens, which stand for one
-\ field `base`; a token past the base is refused.
+\ field `base`; a token past the base is rejected.
 : WRAP-DRIVE ( -- )
    NEXT 2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop s" missing name"
@@ -645,7 +645,7 @@ SD-QUOT-INSTALL
    -1 SEEN-END !
    SD-SEAL ;
 
-\ The stream has no closer, so a refused one resynchronizes to its end.
+\ The stream has no closer, so a rejected one resynchronizes to its end.
 : WRAP-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    s" newtype" s" " [: SD-RESET WRAP-DRIVE ;] ;
 
@@ -660,7 +660,7 @@ public
 
 private
 
-\ TYPE-DECL:TDECL-FAM-REG holds the family only when the wrap left no refusal,
+\ TYPE-DECL:TDECL-FAM-REG holds the family only when the wrap left no rejection,
 \ which a multi-error load tallies and any other load throws.
 : WRAP-KEEP ( n -- ) {: tally:n :}
    REJECTION:TALLY @ tally <> IF EXIT THEN
@@ -671,7 +671,7 @@ private
 
 public
 
-\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, refuses NAME.
+\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, rejects NAME.
 : SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
    NO bu 0 ?do ba i + c@ NAME-STOP? or loop
    0= IF YES EXIT THEN
@@ -691,7 +691,7 @@ public
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;
 \ The same, raising E-UNRESOLVED instead of answering, and answering the
-\ family, or -1 when a multi-error load refused it.
+\ family, or -1 when a multi-error load rejected it.
 : SD-WRAP ( ^u8 n ^u8 n -- n )
    SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
    TYPE-DECL:TDECL-FAM-REG @ ;
