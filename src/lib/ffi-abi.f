@@ -80,36 +80,22 @@ CAST: CELL>PTR ( n -- ptr u8 )
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. The stack buffer
 \ is addressed by byte offset and copied to the C stack exactly as prepacked.
-: FFI-CHECK-INDEX ( n n -- ) {: idx:n cap:n :}
-   idx 0 < if E-FFI-ARITY throw then
-   idx cap >= if E-FFI-ARITY throw then ;
-: FFI-CHECK-COUNT ( n n -- ) {: count:n cap:n :}
-   count 0 < if E-FFI-ARITY throw then
-   count cap > if E-FFI-ARITY throw then ;
+\ Every slot and offset is a literal FUNCTION:'s planner bounds at ;FUNCTION, so
+\ none is checked here.
 : FFI-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
    FFI-BUF idx cells + ;
 : FFI-FSLOT ( n -- ptr r ) {: idx:n :}
-   idx REG-MAX FFI-CHECK-INDEX
    FFI-FBUF idx cells + ;
 : FFI-F32SLOT ( n -- ptr n ) {: idx:n :}
-   idx REG-MAX FFI-CHECK-INDEX
    FFI-F32BUF idx cells + ;
-: FFI-CHECK-STACK ( n n -- )
-   {: off:n width:n :}
-   off 0 < if E-FFI-ARITY throw then
-   off width + FFI-MAX-ARGS cells > if E-FFI-ARITY throw then ;
 : FFI-STACK-SLOT ( n -- ptr n )
    {: off:n :}
-   off CELL FFI-CHECK-STACK
    FFI-STACK-BUF off + ;
 : FFI-STACK-FSLOT ( n -- ptr r )
    {: off:n :}
-   off CELL FFI-CHECK-STACK
    FFI-STACK-FBUF off + ;
-: FFI-STACK-AT ( n n -- ptr u8 )
-   {: off:n width:n :}
-   off width FFI-CHECK-STACK
+: FFI-STACK-AT ( n -- ptr u8 )
+   {: off:n :}
    FFI-STACK-BYTES off + ;
 : FFI-ARG! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
@@ -127,13 +113,13 @@ CAST: CELL>PTR ( n -- ptr u8 )
    v off FFI-STACK-FSLOT ! ;
 : FFI-STACK-U8! ( n n -- )
    {: v:n off:n :}
-   v $FF and off 1 FFI-STACK-AT c! ;
+   v $FF and off FFI-STACK-AT c! ;
 : FFI-STACK-U16! ( n n -- )
    {: v:n off:n :}
-   v off 2 FFI-STACK-AT LE:U16! ;
+   v off FFI-STACK-AT LE:U16! ;
 : FFI-STACK-U32! ( n n -- )
    {: v:n off:n :}
-   v off 4 FFI-STACK-AT LE:U32! ;
+   v off FFI-STACK-AT LE:U32! ;
 
 \ ---- out-params -----------------------------------------------------------
 : FFI-OUT@ ( ptr n -- n )
@@ -256,13 +242,8 @@ LIB-N ROLLBACK-CELLS:MARK
 : PATH-FIELD ( n -- SPAN:span<u8> )
    LIB-ROW LIB-PATH-OFF + LIB-PATH-CAP SPAN:MAKE ;
 
-: FN-CHECK ( n -- )
-   {: idx:n :}
-   idx FN-N @ FFI-CHECK-INDEX ;
-
 : FN-NAME ( n -- ptr u8 )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-ROW FN-NAME-OFF + ;
 
 : NAME-LEN ( n -- n )
@@ -272,81 +253,62 @@ LIB-N ROLLBACK-CELLS:MARK
 
 : FN-ADDR@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-ADDR-OFF FN-FIELD @ ;
 
 : FN-ADDR! ( n n -- )
    {: value:n idx:n :}
-   idx FN-CHECK
    value idx FN-ADDR-OFF FN-FIELD ! ;
 
 : FN-LIB@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-LIB-OFF FN-FIELD @ ;
 
 : FN-SPILL@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-SPILL-OFF FN-FIELD @ ;
 
 : FN-ARGC@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-ARGC-OFF FN-FIELD @ ;
 
 : FN-RELOC@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-RELOC-OFF FN-FIELD @ ;
-
-: LIB-CHECK ( n -- )
-   {: idx:n :}
-   idx LIB-N @ FFI-CHECK-INDEX ;
 
 : LIB-PATH ( n -- ptr u8 )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-ROW LIB-PATH-OFF + ;
 
 : LIB-LEN@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-LEN-OFF LIB-FIELD @ ;
 
 : LIB-LEN! ( n n -- )
    {: u:n idx:n :}
-   idx LIB-CHECK
    u idx LIB-LEN-OFF LIB-FIELD ! ;
 
 : LIB-HANDLE@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-HANDLE-OFF LIB-FIELD @ ;
 
 : LIB-HANDLE! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-HANDLE-OFF LIB-FIELD ! ;
 
 : LIB-FAILED? ( n -- bool )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-FAILED-OFF LIB-FIELD @ 0 <> ;
 
 : LIB-FAILED! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-FAILED-OFF LIB-FIELD ! ;
 
 : LIB-NEXT@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-NEXT-OFF LIB-FIELD @ ;
 
 : LIB-NEXT! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-NEXT-OFF LIB-FIELD ! ;
 
 public
@@ -532,11 +494,6 @@ public
 
 private
 
-: NAME-ROOM ( n -- )
-   {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then
-   u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then ;
-
 : PATH-ROOM ( n -- )
    {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
@@ -679,7 +636,6 @@ private
 
 : LIBRARY-PATH-OR ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
-   u PATH-ROOM
    path u next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
    path u LIB-N @ PATH-FIELD CSTR drop
@@ -746,13 +702,11 @@ private
 : RECORD-CELL ( ptr u8 n n -- n ) {: src:ptr len:n k:n :}
    0 len k 8 * - 8 min 0 ?do src k 8 * + i + c@ i 8 * lshift or loop ;
 
-: RECORD-CELLS ( ptr u8 n -- n ) {: src:ptr len:n :}
-   src PTR>CELL 0= len 0 <= or if E-FFI-SYNTAX throw then
-   len 1- 8 / 1+ ;
+: RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
 : RECORD-COPY ( ptr u8 n n -- n )
    {: src:ptr len:n pay:n :}
-   src len RECORD-CELLS 0 ?do
+   len RECORD-WORDS 0 ?do
       src len i RECORD-CELL pay i + cells STACK-VALUE!
    loop
    pay cells FFI-STACK-SLOT PTR>CELL ;
@@ -762,11 +716,11 @@ private
 \ one is copied into stack cells from cell pay and passed by address in
 \ register reg or the stack cell at byte offset pos.
 : STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
+   len RECORD-WORDS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
 : STRUCT-STACK! ( ptr u8 n n -- )
    {: src:ptr len:n pos:n :}
-   src len RECORD-CELLS 0 ?do
+   len RECORD-WORDS 0 ?do
       src len i RECORD-CELL pos i cells + STACK-VALUE!
    loop ;
 
@@ -796,29 +750,15 @@ private
    idx NAME-LEN u <> if false exit then
    name u idx FN-NAME u STR= ;
 
-\ A relocation mask may name only the row's own cells: registers among its
-\ first argc, at most x0-x7, and stack cells among its spills, so the engine
-\ never moves a cell past the native frame it copies.
-: RELOC-OWNED? ( n n n -- bool ) {: reloc:n argc:n spills:n :}
-   1 argc 8 min lshift 1-  1 spills lshift 1- 8 lshift or {: own:n :}
-   reloc own invert and 0= ;
-
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   u NAME-ROOM
    FN-N @ 0 ?do
       name u lib argc spills reloc i SAME-FN? if i unloop exit then
    loop
    -1 ;
 
-\ Validation precedes reading a row's name.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   lib 0 < if E-FFI-LIBRARY throw then
-   lib LIB-N @ > if E-FFI-LIBRARY throw then
-   argc FFI-MAX-ARGS FFI-CHECK-COUNT
-   spills FFI-MAX-ARGS FFI-CHECK-COUNT
-   reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
    name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    FN-N @ {: idx:n :}
@@ -930,7 +870,9 @@ s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 private
 
 $40 constant TOK-CAP
-$10 constant ARG-MAX
+\ Each input but a record takes at most one 8-byte stack slot, so ARG-MAX
+\ inputs fit FFI's stack buffer.
+FFI-MAX-ARGS constant ARG-MAX
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
 
 \ An input's kind: a cell, a `ptr u8`, an `r` or an `f32`.
@@ -1367,8 +1309,6 @@ private
    then
    int flt off bytes SPILL-ARG ;
 
-: RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
-
 : PLACE-RECORD ( n n n n -- n n n n )
    {: int:n flt:n off:n bytes:n :}
    bytes RECORD-WORDS {: words:n :}
@@ -1564,7 +1504,8 @@ private
 
 \ The cells holding a larger record's copy address, which the call moves to
 \ the copy in its native frame: bit reg for x0-x7, bit 8+cell for a stack
-\ cell. The row keeps this mask; no caller supplies one.
+\ cell. Each bit is one of this plan's own cells, so the engine never moves a
+\ cell past the native frame it copies; no caller supplies a mask.
 : RELOC-MASK ( -- n )
    0 C-ARGS 0 ?do
       i ARG-SBYTES@ 16 > if
