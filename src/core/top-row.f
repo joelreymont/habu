@@ -40,18 +40,4 @@ public
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    depth CHECKER-TOP-DROP ;
 
-private
-
-\ set-top-check is a guarded-deref trust-boundary prim. CHECK's private row
-\ (src/habu/prims.f) takes a hook of TOP-LEVEL's shape, so this install is
-\ checked; outside CHECK only a TRUSTED: body may call it. The audited escape
-\ window is the set-top-check install itself: only TOP-LEVEL may be installed
-\ (checked-boundary lint UB-TOP-HOOK-ALLOWED? audit row). As check-hook.f
-\ INSTALL, it leaves a builder's tracker in place inside a build.
-: TR-INSTALL ( -- )
-   BUILDING? IF EXIT THEN
-   ['] TOP-LEVEL set-top-check ;
-
-TR-INSTALL
-
 ;package

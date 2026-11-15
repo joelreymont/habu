@@ -25,7 +25,6 @@ require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
-require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 \ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
@@ -458,22 +457,12 @@ private
 : CHK-SESSION-CLEAR ( -- )
    CHK-RESET-CFG ;
 
-: CHK-FIRST-RC ( n n -- n ) {: rc:n next-rc:n :}
-   rc 0 <> if
-      \ One public operation returns one code, so simultaneous propagation is
-      \ impossible; the earliest primary code has precedence.
-      rc exit
-   then
-   next-rc ;
-
 public
 
 : RESET ( -- )
    [: CHK-TEMP-CLEAN ;] catch {: rc:n :}
    CHK-SESSION-CLEAR
-   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
-   rc provider-rc CHK-FIRST-RC
-   dup 0 <> if throw then drop ;
+   rc 0<> if rc throw then ;
 
 private
 
@@ -945,14 +934,6 @@ private
       i CHK-POS$ ENGINE-PROVIDES? 0= if i CHK-POS$ lint execute then
    loop ;
 
-: CHK-RUN-BOUNDARY ( -- )
-   CHK-SEL-MODE @ CHK-SEL-LIST = if
-      [: CHECKED-BOUNDARY-LINT:FILE ;] CHK-LINT-LISTED
-   else
-      CHK-LINT-SOURCE CHK-LABEL CHECKED-BOUNDARY-LINT:FILE-AS
-   then
-   CHECKED-BOUNDARY-LINT:FINISH ;
-
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
    CHK-SEL-MODE @ CHK-SEL-LIST = if
@@ -1101,24 +1082,16 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
-\ Under --all-errors a lint's rejection is answered and the next lint runs.
-: CHK-LINT-ALL ( [ -- ] -- bool ) {: q :}
-   q catch {: rc:n :}
-   rc 0<> rc CHECKER-REJECT-RC <> and if rc throw then
-   rc CHECKER-REJECT-RC = ;
-
 : CHK-RUN-STATIC-LINTS ( -- )
    \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
-   \ The lints write their records in the run's mode.
+   \ The lint writes its records in the run's mode.
    CHK-JSON @ REJECTION:JSON !
    CHK-ALL @ 0= if
       CHK-RUN-RESERVED-NAMES
-      CHK-RUN-BOUNDARY
       exit
    then
-   [: CHK-RUN-RESERVED-NAMES ;] CHK-LINT-ALL
-   [: CHK-RUN-BOUNDARY ;] CHK-LINT-ALL or
-   if CHECKER-REJECT-RC else 0 then {: lints:n :}
+   [: CHK-RUN-RESERVED-NAMES ;] catch {: lints:n :}
+   lints 0<>  lints CHECKER-REJECT-RC <>  and if lints throw then
    \ The kept stops are written however the composition ends, and any end but
    \ a rejection's is the run's.
    [: CHK-RUN-ALL ;] catch {: rc:n :}
@@ -1214,7 +1187,6 @@ private
    CHK-JSON @ 0<> REJECTION:JSON !
    CHK-VERIFY @ if CHK-RUN-VERIFY exit then
    CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
-   CHECKED-BOUNDARY-LINT:RESET
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
 
@@ -1228,12 +1200,10 @@ public
    [: CHK-TEMP-CLEAN ;] catch {: pre-rc:n :}
    pre-rc 0= if [: CHK-RUN-INNER ;] else [: ;] then catch {: run-rc:n :}
    [: CHK-TEMP-CLEAN ;] catch {: temp-rc:n :}
-   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
-   temp-rc 0<> provider-rc 0<> or if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
+   temp-rc 0<> if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
    pre-rc 0<> if pre-rc throw then
    run-rc 0<> if run-rc throw then
-   temp-rc 0<> if temp-rc throw then
-   provider-rc 0<> if provider-rc throw then ;
+   temp-rc 0<> if temp-rc throw then ;
 
 private
 

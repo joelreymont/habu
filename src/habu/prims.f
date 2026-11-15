@@ -11,14 +11,12 @@ package PRIM-SPEC
 
 public
 
-\ K-ELAB and K-UNROWED carry no effect: they are the two ways a primitive can
-\ have a body and no table row, named here so the completeness gate passes by an
-\ explicit row rather than by silence.
+\ K-ELAB carries no effect: a primitive whose checker elaborates its effect has a
+\ body and an explicit row, so the completeness gate passes by a row, not silence.
 0 constant K-PRIM            \ a global row
 1 constant K-PKG-PRIVATE     \ a package row closed by ECLOSE-PRIVATE: only the
                              \ owning package's checked bodies resolve it
 2 constant K-ELAB            \ the checker elaborates this primitive's effect
-3 constant K-UNROWED         \ no checker row anywhere; no checked caller exists
 
 \ What a primitive touches besides the data and return stacks, stated by a
 \ row's REACH clause.
@@ -256,9 +254,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
-
-: UNROWED: ( -- )
-   K-UNROWED ROW-OPEN ROW-NAME ROW-WRITE ;
 
 public
 
@@ -605,14 +600,6 @@ EPPRIM: CHECK set-check PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
 EPPRIM: CHECK set-preflight PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
-EPRIM: set-top-check PE-A PE-IN EPRIM;
-ETRUSTED-ONLY!
-EFIXED-ABI!
-\ The top-level tracker's own install: its row takes a hook of the shape the
-\ tracker is called with, where the global row above takes any one cell, as
-\ set-check's and set-preflight's rows do.
-EPPRIM: CHECK set-top-check
-   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
@@ -908,10 +895,5 @@ ELAB: ?dup REACH stack
 ELAB: 2>r REACH stack
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack
-
-\ A body with no declaration anywhere, so no checked program can name it: a
-\ checked caller of `top-check@` is E-UNDEFINED. Only unchecked source or the
-\ kernel harness reaches it. It is a row so the gap is stated instead of silent.
-UNROWED: top-check@
 
 ;package

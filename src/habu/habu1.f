@@ -1270,7 +1270,6 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BNULLPTR ( -- ) 31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
-: BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
 private
 128 constant GUARD-MSG-CAP
@@ -3550,23 +3549,6 @@ private
    msg LBL,  ma mu BYTES,
    invalid-msg LBL,  ia iu BYTES,
    done LBL, ;
-
-\ set-top-check ( xt -- ): install the top-row token hook.
-: BSETTOPCHECK ( -- )
-   LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
-   S\" set-top-check: invalid top-row hook xt\n" {: ma:^ mu:n :}
-   A G-POP                               \ x9 = candidate xt
-   9 ok CBZ,
-      9 DBASE CMP,  C-CC bad BCOND,
-      9 CP CMP,     C-CS bad BCOND,
-   ok LBL,
-      A DATA TOP-HOOK-CELL STR,
-      done B,
-   bad LBL,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
-   done LBL, ;
 ;package
 
 package ENGINE-EMIT
@@ -4162,8 +4144,7 @@ package ENGINE-EMIT
    s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
-   s" set-preflight" ['] BSETPREFLIGHT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
+   s" set-preflight" ['] BSETPREFLIGHT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 ;package
 
 package ENGINE-EMIT

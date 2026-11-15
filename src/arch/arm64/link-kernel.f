@@ -198,7 +198,6 @@ variable PATH-U
    then
    atoms 8 * SKIP
    kind PRIM-SPEC:K-ELAB = if name nameu PRIM-NAME exit then
-   kind PRIM-SPEC:K-UNROWED = if exit then
    BAD ;
 
 

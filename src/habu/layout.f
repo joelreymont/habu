@@ -781,13 +781,6 @@ $27A8 constant CMM-CELL
 \ state. It persists through snapshots like HOOK-CELL; `0 set-check` parks it in
 \ the SUSP-HOOK band below.
 $27E8 constant COMPILE-PREFLIGHT-CELL
-\ TOP-HOOK-CELL: top-row token hook xt; 0 = no hook. Installed only through the
-\ fail-closed `set-top-check` prim. Snapshot-persistent like HOOK-CELL.
-\ The hook's effect is ( ^u8 n n n -- ): token addr, token len, class
-\ (TOP-EV-*), LFIND flags.
-$27F0 constant TOP-HOOK-CELL
-COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
-2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
 \ suspends until `set-check` of the same hook resumes it. Both start zero.
 $2D80 constant SUSP-HOOK-CELL
@@ -964,9 +957,7 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ stays the clause's offset into the body text, which an imported definer never
 \ fills.
 $4CA8 constant CLAUSE-CELL
-\ Top-row event class codes: the protocol between the interpret dispatch and
-\ an installed top-row hook. Word/tick events pass a flag word (bit 0 found,
-\ bit 1 DNAME-IMM); literals pass 0.
+\ Top-row event classes: what a top-level token pushed or is about to run.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
 2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ^u8 n )
 3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ^ )

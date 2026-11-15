@@ -119,7 +119,7 @@ create TAB
    PROT:WINDOW                        1 cells                 CLAIM PROT-WINDOW
    PROT:WLO                           1 cells                 CLAIM PROT-WLO
    PROT:RLO                           1 cells                 CLAIM PROT-RLO
-   ENGINE-HOOK-OFF                    ENGINE-HOOK-LEN         CLAIM ENGINE-HOOK
+   COMPILE-PREFLIGHT-CELL             1 cells                 CLAIM COMPILE-PREFLIGHT-CELL
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    THROWS-CELL                        1 cells                 CLAIM THROWS-CELL
    STAMP-CELL                         1 cells                 CLAIM STAMP-CELL
