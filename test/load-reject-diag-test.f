@@ -933,6 +933,22 @@ variable RC
    S\"  or check its spelling\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+\ Under a rendering statement's mark CHECK leaves an undefined name to the run
+\ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
+: TEST-DEFERRED ( -- )
+   s" a definition left to the run prints one E-UNDEFINED" T-LABEL
+   BODY$ S\" package LRD-UNSEEN\nCHECKER-UNSEEN-MARK\n: LRD-DEFER ( -- ) LRD-MADE ;\n;package\n"
+   FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `LRD-MADE`\n --> " SB-APPEND
+   BODY$ SB-APPEND
+   S\" :3:20\n  |\n3 | : LRD-DEFER ( -- ) LRD-MADE ;\n" SB-APPEND
+   S\"   |                    ^^^^^^^^ not found\n" SB-APPEND
+   s"   = help: define `LRD-MADE` before this point," SB-APPEND
+   S\"  or check its spelling\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 : TEST-SHADOW ( -- )
    s" a bare word a global and a used package share is rejected" T-LABEL
    SHADOW$ RUN
@@ -1079,6 +1095,7 @@ variable RC
    TEST-TARGET
    TEST-DEF-ONCE
    TEST-RECURSE-HELP
+   TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH
    TEST-IMM-INCLUDE
