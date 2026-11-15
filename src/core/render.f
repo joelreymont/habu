@@ -869,6 +869,7 @@ variable MDV-I   variable MDV-F
 : MD-CODE$ ( n -- ptr u8 n )
    case
       MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
+      MD-FAM-AMBIG    of s" E-USING-AMBIGUOUS" endof
       MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
       MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
       MD-FAM-MISMATCH of s" E-MATCH-FAMILY-MISMATCH" endof
@@ -985,6 +986,7 @@ variable MDV-I   variable MDV-F
       MD-VAR-UNKNOWN  of s" write a variant the family declares, spelled as its declaration spells it" endof
       MD-CON-VAR      of s" write a variant the family declares, spelled as its declaration spells it" endof
       MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, one a `using` imports, or `PKG:family`" endof
+      MD-FAM-AMBIG    of s" qualify the family as `PKG:family` with the package you mean" endof
       MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:variant`" endof
       MD-FAM-KIND     of s" name a `SUMTYPE` or `ENUM` family after `MATCH`" endof
       MD-CON-KIND     of s" name a `SUMTYPE` or `ENUM` family after `construct`" endof
@@ -1078,6 +1080,7 @@ variable MDV-I   variable MDV-F
 : MD-REASON$ ( n -- ptr u8 n )
    case
       MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
+      MD-FAM-AMBIG    of s" bad match: ambiguous type family" endof
       MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
       MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
       MD-FAM-MISMATCH of s" bad match: family mismatch" endof
@@ -1183,6 +1186,7 @@ variable MDV-I   variable MDV-F
       MD-MEMORY-ARG   of s" type argument may be linear" endof
       MD-MEMORY-EMPTY of s" zero-width value" endof
       MD-FAM-UNKNOWN  of s" names no visible family" endof
+      MD-FAM-AMBIG    of s" names a family two used packages make public" endof
       MD-FAM-KIND     of s" family of another kind" endof
       MD-SCRUT        of s" no matchable value on top" endof
       MD-FAM-MISMATCH of s" top value of another family" endof

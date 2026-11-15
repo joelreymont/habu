@@ -73,12 +73,9 @@ SD-RESET
 \ The declared family may be named only beneath a `ptr` (`ptr node`, `SPAN:span<ptr node>`);
 \ by value, as in `option<node>`, it is 7109.
 : FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF
-      drop
-      TFSR-AMBIG @ IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
-      0 NO EXIT
-   THEN
-   {: id:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
+   sr SR-FOUND <> IF 0 NO EXIT THEN
    id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF

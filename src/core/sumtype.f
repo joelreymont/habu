@@ -530,9 +530,9 @@ variable TDECL-FAM-ARITY
 : TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TDN-A @ TDN-U @ CORE-STR= ;
 
-\ Rejects the tail a u the last TFAM-SIG-RESOLVE found ambiguous.
-: TDECL-AMBIG-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
-   TFSR-AMBIG @ 0= IF EXIT THEN
+\ Rejects the tail a u when its outcome sr is SR-AMBIG.
+: TDECL-AMBIG-REJECT ( n ptr u8 n -- ) {: sr:n a:ptr u:n :}
+   sr SR-AMBIG <> IF EXIT THEN
    a u TDECL-TOK!  a u TDECL-AMBIG throw ;
 
 \ A bare family payload is one logical schema root whose physical width is the
@@ -543,8 +543,8 @@ variable TDECL-FAM-ARITY
 \ self-reference and rejects recursive. A family UNSTORED-REASON names, linear
 \ payloads and evidence families are rejected.
 : TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
-   {: id:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-FOUND <> IF sr a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    a u id UNSTORED-REASON IF E-TDECL-PAYLOAD TDECL-THROW THEN 2drop 2drop 2drop
    id TDECL-CUR-FAM @ = IF
       a u s" invalid layout policy for recursive sum"
@@ -556,7 +556,7 @@ variable TDECL-FAM-ARITY
    id RES-TRUE ;
 
 : TDECL-ABSENT-MAY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE nip SR-FOUND = IF RES-FALSE EXIT THEN
    a u TFAM-MAY-ARRIVE? ;
 : TDECL-NO-END-THROW ( ptr u8 n -- ) {: a:ptr u:n :}
    TDK-A @ TDK-U @ s" product" CORE-STR= IF
@@ -623,8 +623,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ a parametric application). Mirrors TDECL-PAY-FAM?'s kind gate but keeps arity
 \ open -- the arity match happens in TDV-ARGS-BUILD once the args are counted.
 : TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
-   {: id:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-FOUND <> IF sr a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
@@ -1308,8 +1308,8 @@ private
 \ concrete non-linear layout/cell families (self-references reject recursive)
 \ and rejects parametric, linear and unknown types (E-TDECL-PAYLOAD).
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
-   {: id:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-FOUND <> IF sr a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
    id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
    id TFAM-WIDTH@ 1 <> IF 0 RES-FALSE EXIT THEN

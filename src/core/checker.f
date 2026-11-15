@@ -5158,6 +5158,7 @@ CHECKER-REG:}SCRATCH
 97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY); E-UNDEFINED
 98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
+100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; each other reason has its own code (MD-CODE$).
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)

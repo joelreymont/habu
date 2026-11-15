@@ -3994,24 +3994,28 @@ variable TFQ-COLON
    u TFQ-COLON @ - 1 - TFQ-TU !
    RES-TRUE ;
 
-variable TFSR-HIDDEN
+\ How a family token resolved: SR-AMBIG is a bare tail two used packages make
+\ public, SR-HIDDEN a family another package keeps private.
+0 constant SR-FOUND
+1 constant SR-ABSENT
+2 constant SR-AMBIG
+3 constant SR-HIDDEN
 
 private
 
 \ The split tail's family in package qa, seen from package pa.
-: TFAM-QUAL-IN ( ptr u8 n ptr u8 n -- n bool )
+: TFAM-QUAL-IN ( ptr u8 n ptr u8 n -- n n )
    {: qa:ptr qu:n pa:ptr pu:n :}
-   TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
-   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
+   TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 SR-ABSENT EXIT THEN
+   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 SR-ABSENT EXIT THEN
    {: id:n :}
-   id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
-   qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
-   -1 TFSR-HIDDEN !
-   0 RES-FALSE ;
+   id TFAM-PUBLIC? IF id SR-FOUND EXIT THEN
+   qa qu pa pu CORE-STR=CI IF id SR-FOUND EXIT THEN   \ own private rows
+   0 SR-HIDDEN ;
 
 public
 
-: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+: TFAM-QUAL-RESOLVE ( ptr u8 n -- n n ) {: pa:ptr pu:n :}
    TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
 
 \ A qualified spelling's family in the package its qualifier names as
@@ -4019,46 +4023,47 @@ public
 : TFAM-EXACT-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN ;
+   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN SR-FOUND = ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
 \ quotation that cannot read locals, so buffer the (pkg,name) args and the
 \ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
 PTR-VARIABLE TFSR-PA   variable TFSR-PU   PTR-VARIABLE TFSR-NA   variable TFSR-NU
 variable TFSR-ID   variable TFSR-FLAG
-\ The last TFAM-SIG-RESOLVE met a bare tail two used packages make public.
-variable TFSR-AMBIG
 : TFSR-RUN ( -- )
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
 
-\ An ambiguous public tail (E-TFAM-AMBIG) leaves the token unresolved.
-: TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+\ The family token na nu names in package pa and how it resolved; an ambiguous
+\ public tail (E-TFAM-AMBIG) answers SR-AMBIG.
+: TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n n )
    {: pa:ptr pu:n na:ptr nu:n :}
-   0 TFSR-AMBIG !  0 TFSR-HIDDEN !
-   SIG-FACTS-MODE @ IF na nu TFAM-FIND-SPELLED EXIT THEN   \ facts may start "@:"
-   na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
+   SIG-FACTS-MODE @ IF   \ facts may start "@:"
+      na nu TFAM-FIND-SPELLED IF SR-FOUND ELSE SR-ABSENT THEN EXIT
+   THEN
+   na nu TF-HIDDEN? IF 0 SR-ABSENT EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
    pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
    [: TFSR-RUN ;] catch {: rc:n :}
-   rc 0= IF TFSR-ID @ TFSR-FLAG @ EXIT THEN   \ ( id flag ) from the resolver
-   rc E-TFAM-AMBIG = IF -1 TFSR-AMBIG ! 0 RES-FALSE EXIT THEN
+   rc 0= IF TFSR-ID @  TFSR-FLAG @ IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
+   rc E-TFAM-AMBIG = IF 0 SR-AMBIG EXIT THEN
    rc throw ;
 
 \ The checker's TFAM-RESOLVE-XT target: an ambiguous tail fails the parse as
 \ SGBAD's ambiguous kind, with the using slots that offer it.
 : TFAM-PARSE-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
-   pa pu na nu TFAM-SIG-RESOLVE {: id:n ok:bool :}
-   TFSR-AMBIG @ 0 <> IF na nu  na nu TFAM-USED-MASK  SGBAD-AMBIG! THEN
-   id ok ;
+   pa pu na nu TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-AMBIG = IF na nu  na nu TFAM-USED-MASK  SGBAD-AMBIG! THEN
+   id  sr SR-FOUND = ;
 
 \ The signature parser asks this only after its normal family and concrete
-\ lookups missed. An ambiguous public tail, a malformed qualifier or a
-\ noncanonical family tail is not an absent declaration a quiet producer may
-\ explain.
+\ lookups missed. An ambiguous public tail, another package's private family, a
+\ malformed qualifier or a noncanonical family tail is not an absent
+\ declaration a quiet producer may explain.
 : TFAM-MAY-ARRIVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   TFSR-AMBIG @ TFSR-HIDDEN @ or 0 <> IF RES-FALSE EXIT THEN
+   SIG-SCOPE$ a u TFAM-SIG-RESOLVE nip {: sr:n :}
+   sr SR-AMBIG =  sr SR-HIDDEN = or IF RES-FALSE EXIT THEN
    a u TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TF-CANON?
    ELSE a u TF-CANON? THEN
    IF a u CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
@@ -4918,8 +4923,10 @@ public
    id RES-TRUE ;
 
 : TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   TFAM-MATCH-KIND ;
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-AMBIG = IF MD-FAM-AMBIG MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   sr SR-FOUND <> IF MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   id TFAM-MATCH-KIND ;
 
 \ The family a node applies. EFFECT:NAMED resolved it as source does, so a
 \ built match needs no scope resolve.
@@ -5010,7 +5017,7 @@ public
    id RES-TRUE ;
 
 : TFL-MATCH-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ signature scope
-   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE SR-FOUND <> IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
