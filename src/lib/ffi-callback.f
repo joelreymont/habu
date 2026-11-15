@@ -255,10 +255,15 @@ variable NAME-SRC-U
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST then ;] finally ;
 
+\ The loader runs this on a declaration still open when its file ends.
+: DISCARD ( -- )
+   0 OPEN !  REST ;
+
 \ ---- a bad declaration's rejection ----------------------------------------
 \ The caller writes a record's help and ends it with ABANDON. The stop abandons
 \ the declaration, so the next CALLBACK: in the file is not rejected for it.
 : ABANDON ( -- )
+   OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
    0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
@@ -519,7 +524,7 @@ variable NAME-SRC-U
 \ CLOSE-CALLBACK's cleanup to put the buffers at rest.
 : FINISH ( -- )
    OPEN @ 0= if STRAY-CLOSE then
-   0 OPEN !
+   0 OPEN !  SOURCE-ROOT:CLOSED
    RES-KIND @ R-NONE <> FB-SET @ 0= and if NO-FALLBACK then
    NEXT-SLOT {: k:n :}
    FB-VALUE @ k FALLBACKS !
@@ -530,6 +535,7 @@ variable NAME-SRC-U
 public
 
 : OPEN-CALLBACK ( -- )
+   SRCLOC:TOKEN$ {: t:ptr tu:n :}
    [: OPEN @ 0 <> if NESTED then
       R-NONE RES-KIND ! 0 FB-SET !
       QTYPE CODEGEN:RESET READS CODEGEN:RESET
@@ -537,7 +543,8 @@ public
       TOK@ s" (" STR= 0= if NO-EFFECT then
       INPUTS
       OUTPUTS
-      1 OPEN ! ;] KEEP-REST ;
+      1 OPEN ! ;] KEEP-REST
+   t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED ;
 
 : SET-FALLBACK ( n -- ) {: v:n :}
    [: OPEN @ 0= if OUTSIDE then

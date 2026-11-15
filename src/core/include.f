@@ -2087,6 +2087,75 @@ private
    n 0 > if n RESIDUE-LEFT then
    n 0 < if n negate RESIDUE-TAKEN then ;
 
+\ The declaration open in the running source, as its declarer records it: the
+\ source token that opened it, its closer's spelling and the action that
+\ abandons it. CLOSER-U is 0 while none is open.
+PTR-VARIABLE OPENER-A
+variable OPENER-U
+PTR-VARIABLE CLOSER-A
+variable CLOSER-U
+TYPED-VARIABLE ABANDON-XT [ -- ]
+\ Counts the rows OPENED records: the open row is always the newest.
+variable DECL-SERIAL
+
+\ A row is open that the text whose mark is n opened.
+: OPEN-SINCE? ( n -- bool )
+   DECL-SERIAL @ <  CLOSER-U @ 0 <> and ;
+
+public
+
+\ The record of the declaration t tu opened, which c cu closes, still open when
+\ the token o ou opens another or, with ou 0, when its source ends; not stopped.
+: UNCLOSED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: t:ptr tu:n c:ptr cu:n o:ptr ou:n :}
+   s" E-UNCLOSED" REJECTION:OPEN
+   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
+   s" ` is still open when " REJECTION:EMIT-STR
+   ou 0= if
+      s" the source ends" REJECTION:EMIT-STR
+   else
+      96 REJECTION:EMIT1  o ou REJECTION:EMIT-STR  s" ` opens" REJECTION:EMIT-STR
+   then
+   t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close it with `" REJECTION:EMIT-STR
+   c cu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   ou 0= if
+      s" before the source ends" REJECTION:EMIT-STR
+   else
+      s" before `" REJECTION:EMIT-STR  o ou REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   then ;
+
+: CLOSED ( -- )
+   0 CLOSER-U ! ;
+
+\ A declaration opening while another is open rejects the open one and
+\ abandons both.
+: OPENED ( ptr u8 n ptr u8 n [ -- ] -- ) {: t:ptr tu:n c:ptr cu:n q :}
+   CLOSER-U @ 0 <> if
+      OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ t tu UNCLOSED
+      ABANDON-XT @ execute  q execute  CLOSED
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT !
+   1 DECL-SERIAL +! ;
+
+\ The mark a text takes as it starts, for TEXT-END and TEXT-UNWOUND.
+: TEXT-MARK ( -- n )
+   DECL-SERIAL @ ;
+
+\ A text ending with a declaration it opened still open rejects it.
+: TEXT-END ( n -- )
+   OPEN-SINCE? 0= if exit then
+   OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ NULL-PTR 0 UNCLOSED
+   ABANDON-XT @ execute  CLOSED
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ A text a throw left abandons the declaration it opened, with no record.
+: TEXT-UNWOUND ( n -- )
+   OPEN-SINCE? 0= if exit then
+   ABANDON-XT @ execute  CLOSED ;
+
+private
+
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
@@ -2115,7 +2184,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK TRANSIENT-END ;]
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK
+      TRANSIENT-END ;]
    SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function

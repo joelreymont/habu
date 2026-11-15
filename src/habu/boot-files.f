@@ -4,7 +4,7 @@
 \
 \ A row is its part (the boot phase that loads it), its target kind and its
 \ path. A target row loads only on its target, but its path is still part of
-\ the list. CORE has two places: the first three core files load before
+\ the list. CORE has two places: the first two core files load before
 \ DYNAMIC, the rest after it.
 package BOOT-FILES
 public
@@ -92,13 +92,14 @@ private
    DECL COMMON s" src/core/structure-make.f" ROW
    DECL COMMON s" src/core/structure-decl.f" ROW
    DECL COMMON s" src/core/enum-decl.f" ROW
-   CORE COMMON s" src/core/structures.f" ROW
    CORE COMMON s" src/core/roles.f" ROW
    CORE COMMON s" src/core/bytes.f" ROW
    DYNAMIC COMMON s" src/core/dynamic-storage.f" ROW
    CORE COMMON s" src/core/compile-reads.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
    CORE COMMON s" src/core/include.f" ROW
+   \ BEGIN-STRUCTURE records its declaration in include.f's SOURCE-ROOT.
+   CORE COMMON s" src/core/structures.f" ROW
    CORE COMMON s" src/core/enums.f" ROW
    CORE COMMON s" src/core/sha256.f" ROW
    CORE COMMON s" src/core/combinators.f" ROW

@@ -996,10 +996,15 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
+\ The loader runs this on a declaration still open when its file ends.
+: DISCARD ( -- )
+   0 OPEN !  REST ;
+
 \ ---- a bad declaration's rejection ----------------------------------------
 \ The caller writes a record's help and ends it with FFI-STOP. The stop abandons
 \ the declaration, so the next FUNCTION: in the file is not rejected for it.
 : FFI-STOP ( -- )
+   OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
    0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
@@ -1600,6 +1605,7 @@ public
 \ Nothing is published before ;FUNCTION, and the row is registered as the text
 \ is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
+   SRCLOC:TOKEN$ {: t:ptr tu:n :}
    [: CHECK-SCOPE
       OPEN @ 0 <> if
          s" E-FFI-SYNTAX" s" a declaration opens while another is open"
@@ -1613,7 +1619,8 @@ public
       TOK@ NAME!
       TOK@ SYM!
       EFFECT
-      1 OPEN ! ;] KEEP-REST ;
+      1 OPEN ! ;] KEEP-REST
+   t tu s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
 
 \ The rendered text calls only FFI words, which no scratch cell reaches, so
 \ the scratch rests before the text runs.
@@ -1625,7 +1632,7 @@ public
          s" remove this `;FUNCTION`, or open its declaration with `FUNCTION:` first" SAY
          FFI-STOP
       then
-      0 OPEN !
+      0 OPEN !  SOURCE-ROOT:CLOSED
       PLAN-CALL
       EMIT ;] KEEP-REST
    GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
