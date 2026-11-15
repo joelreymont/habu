@@ -453,7 +453,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    \ The return-stack seal's, not the parametric pass's (checker.f RS-BORROWS?).
    s" a clause that reads below its declared return row is refused at the read" T-LABEL
    s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
-      s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
+      s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `cdd-zz`" CDD-NOT-CERTIFIED

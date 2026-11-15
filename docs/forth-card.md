@@ -198,14 +198,14 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a local's type nested past the depth ceiling: `{: x:[[[… :}` | `E-BAD-SIGNATURE`, `fix_signature_size`, the depth reason |
 | more than 32 `forall<…>` binders nested in one signature | `E-BAD-SIGNATURE`, `fix_signature_size`, `more than 32 nested binders at '<token>'`; `E-BAD-STORED-SIGNATURE` for a stored row |
 | a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
-| a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-REJECTED` at `;]`, `fix_return_stack` |
-| a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack` |
+| a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-RETURN-STACK` at `;]`, `fix_return_stack` |
+| a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-RETURN-STACK` at the read, `fix_return_stack` |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over 255 bytes, or a public type whose constructor package name, `<PKG>-<TYPE>`, would be | `E-PACKAGE-NAME-CAP` at the name, rc 70 |
 | `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` is sealed, by its `seal-package` or as an engine package, and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
-| a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED`, `fix_control_flow`, `no loop is open here`, `exit inside a loop needs unloop first` |
+| a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-NO-LOOP`, `no loop is open here`, or `E-EXIT-IN-LOOP`, `exit inside a loop needs unloop first`, both `fix_control_flow` |
 | any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
@@ -216,7 +216,7 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
 | a multi-cell value at the prompt | `E-LAYOUT-VALUE`, rc 70 |
-| `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-REJECTED`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
+| `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-DEPTH-WIDE`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |

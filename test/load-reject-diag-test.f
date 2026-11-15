@@ -411,13 +411,13 @@ variable RC
    CF-ROWS?
    s" an i outside every loop says no loop is open" T-LABEL
    s" : LRD-IO ( -- ) i drop ;"
-      s" error[E-REJECTED]: no loop is open here" s" :1:17" CF-RUN
+      s" error[E-NO-LOOP]: no loop is open here" s" :1:17" CF-RUN
    s" a j in a single loop says no outer loop is open" T-LABEL
    s" : LRD-JO ( -- ) 3 0 do j drop loop ;"
-      s" error[E-REJECTED]: no outer loop is open here" s" :1:24" CF-RUN
+      s" error[E-NO-OUTER-LOOP]: no outer loop is open here" s" :1:24" CF-RUN
    s" a then with no if says it closes nothing" T-LABEL
    s" : LRD-TS ( -- ) then ;"
-      s" error[E-REJECTED]: this word closes nothing open here" s" :1:17" CF-RUN
+      s" error[E-CONTROL-ORPHAN]: this word closes nothing open here" s" :1:17" CF-RUN
    s" an if arm that changes depth names both rows" T-LABEL
    s" : LRD-IA ( n bool -- n ) if 1 then ;"
       s" error[E-MISMATCH]: the if arm changes the stack's depth" s" :1:31" CF-RUN
@@ -428,23 +428,23 @@ variable RC
    CF-ROWS?
    s" an exit inside a loop says it needs unloop" T-LABEL
    s" : LRD-EL ( -- ) 3 0 do exit loop ;"
-      s" error[E-REJECTED]: exit inside a loop needs unloop first" s" :1:24" CF-RUN
+      s" error[E-EXIT-IN-LOOP]: exit inside a loop needs unloop first" s" :1:24" CF-RUN
    s" a leave that changes depth names both rows" T-LABEL
    s" : LRD-LV ( n -- n ) 3 0 do 1 leave loop ;"
       s" error[E-MISMATCH]: the loop body changes the stack's depth" s" :1:30" CF-RUN
    CF-ROWS?
    s" a loop body that changes the return stack's depth says so" T-LABEL
    s" : LRD-RD ( -- ) 3 0 do 1 >r loop ;"
-      s" error[E-REJECTED]: the loop body changes the return stack's depth" s" :1:29" CF-RUN
+      s" error[E-LOOP-RETURN-DEPTH]: the loop body changes the return stack's depth" s" :1:29" CF-RUN
    s" a second else says the if already has one" T-LABEL
    s" : LRD-E2 ( bool -- ) if else else then ;"
-      s" error[E-REJECTED]: this if already has an else" s" :1:30" CF-RUN
+      s" error[E-ELSE-TWICE]: this if already has an else" s" :1:30" CF-RUN
    s" an if open at ; says a structure is still open" T-LABEL
    s" : LRD-OP ( bool -- ) if ;"
-      s" error[E-REJECTED]: a control structure is still open at the end of the definition" s" :1:25" CF-RUN
+      s" error[E-CONTROL-OPEN]: a control structure is still open at the end of the definition" s" :1:25" CF-RUN
    s" a +loop that meets an if inside its do says it closes nothing" T-LABEL
    s" : LRD-PI ( -- ) 3 0 do 0 0= if 1 +loop then ;"
-      s" error[E-REJECTED]: this word closes nothing open here" s" :1:34" CF-RUN ;
+      s" error[E-CONTROL-ORPHAN]: this word closes nothing open here" s" :1:34" CF-RUN ;
 
 : TEST-BYTE-PTR-FETCH ( -- )
    s" cell fetch from a byte pointer names expected/actual" T-LABEL
@@ -727,7 +727,7 @@ variable RC
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
 : ASSERT-CLOSE-LINE ( ptr u8 n -- ) {: place:ptr placeu:n :}
    BODY$ RUN
-   s" error[E-REJECTED]: a control structure is still open at the end of the definition"
+   s" error[E-CONTROL-OPEN]: a control structure is still open at the end of the definition"
       place placeu BODY-REJECT-AT ;
 
 : TEST-OPEN-AT-CLOSE ( -- )

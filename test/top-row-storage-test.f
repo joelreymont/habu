@@ -307,12 +307,12 @@ variable ERR-U
    s" r> below a body's return frame names the return-stack reason" T-LABEL
    REJECTION:CAPTURE
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" HAS?
+   s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" HAS?
    s" = evaluated: : TS-B15 ( -- ) r> drop ;" HAS?
    REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
-   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" ERR-HAS?
+   s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" ERR-HAS?
    s" = expected: a b" ERR-HAS? ;
 
 \ A signature naming one row as data and after `|` binds its caller's return
@@ -325,23 +325,23 @@ variable ERR-U
    ARM
    [: s" : TS-U1 ( U | U -- U | U ) ; : TS-B16 ( n -- n ) TS-U1 ;" evaluate-closed ;]
    CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
+   S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
    DISARM
    s" r@ over a return base a call bound is refused by the seal, never run" T-LABEL
    s" true REJECTION:JSON ! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
    CHECK-RC EXITS
-   S\" \"code\":\"E-REJECTED\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
+   S\" \"code\":\"E-RETURN-STACK\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
    s" a literal binding its return base with no read is refused at ;]" T-LABEL
    ARM
    [: s" : TS-U3 ( U | U -- U | U ) ; : TS-B18 ( -- ) [: 5 TS-U3 r@ drop drop ;] drop ;" evaluate-closed ;]
    CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
+   S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM
    s" a literal reading its caller's pushed cell through the bound base is refused at ;]" T-LABEL
    ARM
    [: s" : TS-U4 ( U | U -- U | U ) ; : TS-B19 ( -- n ) 5 >r [: 7 TS-U4 r@ swap drop ;] execute r> drop ;" evaluate-closed ;]
    CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
+   S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM ;
 
 \ A child: REJECTION:LABEL! has no inverse; the label stays on this test file for

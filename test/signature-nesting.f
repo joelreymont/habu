@@ -389,7 +389,7 @@ public
    SRC$ CHECK-CANDIDATE! VERDICT-DEFERRED T=
    s" a covered name after a pinned reason keeps the reason" T-LABEL
    SRC-RESET  s" SN-LOOPLESS ( -- ) i drop MADE" S+
-   S\" \"code\":\"E-REJECTED\"" S\" \"token\":\"i\""
+   S\" \"code\":\"E-NO-LOOP\"" S\" \"token\":\"i\""
    S\" \"message\":\"no loop is open here\"" VERDICT-REFUSED PACKET-HAS
    s" a covered name after a pinned mismatch keeps the mismatch" T-LABEL
    SRC-RESET  s" SN-MISMATCH ( -- ) 1 IF THEN MADE" S+

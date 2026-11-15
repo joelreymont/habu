@@ -135,9 +135,9 @@ variable CS-TICK
    CS-STALE? CS-CODE-END
    \ Iteration one may skip the read on failure. Iteration two must not treat the
    \ loop-carried ordinary zero as the original status, even after it was
-   \ checked on the first pass. The changed back-edge proof is E-REJECTED.
+   \ checked on the first pass. The changed back-edge proof is E-LOOP-CARRIED.
    s" P12 ( n -- ) [: WNUMBER ;] catch swap {: v :} 2 0 do dup 0= if v 1+ drop then drop 0 loop drop" CS-CODE<
-   s\" \"code\":\"E-REJECTED\"" CS-CODE? CS-CODE-END
+   s\" \"code\":\"E-LOOP-CARRIED\"" CS-CODE? CS-CODE-END
    \ A loop entered under the status guard may carry the caught cell through a
    \ word that drops its normal proof, read in the body or not.
    s" A4 ( option<n> -- n ) [: SETO ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap KEEPO swap REPEAT drop READO ELSE drop 0 THEN"

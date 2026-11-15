@@ -391,15 +391,15 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 : WIDE-COUNT ( -- )
    s" depth and .s over a wide value or one of open width are refused, naming the word and the value; a one-cell value is counted" T-LABEL
    s" ENUM csdone solo pair ;ENUM : CS-D2 ( -- option<a> option<a> ) OPTION:NONE OPTION:NONE ; : CS-D3 ( option<n> -- ) drop ; : CS-D5 ( -- option<n> csdone n ) CS-D2 CS-D3 CHECKER--SOUNDNESS-CSDONE:SOLO depth ;" 70
-   s" error[E-REJECTED]: cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REFUSED? TTRUE
+   s" error[E-DEPTH-WIDE]: cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REFUSED? TTRUE
    s\" ENUM csdone solo pair ;ENUM : CS-D6 ( -- csdone n ) CHECKER--SOUNDNESS-CSDONE:SOLO depth ; : CS-D7 ( -- ) CS-D6 nip 1 <> IF s\" depth counted a one-cell enum as other than 1\" 1 die THEN ; CS-D7" 0
       SUBJECT:EXITED? TTRUE
    s" -1 REJECTION:JSON ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
-   s\" \"code\":\"E-REJECTED\",\"message\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REFUSED? TTRUE
+   s\" \"code\":\"E-DEPTH-WIDE\",\"message\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
    s\" \"token\":\".s\"" SUBJECT:REFUSED? TTRUE
    s" : CS-D8 ( option<a> -- option<a> n ) depth ;" 70
-   s" error[E-REJECTED]: cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-DEPTH-WIDE]: cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REFUSED? TTRUE ;
 
 
 : RUN ( -- )

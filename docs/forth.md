@@ -1536,8 +1536,8 @@ shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
    Run the quotation that yields the output row on every path, or declare the
    row the body leaves. A definition's own return row (the implicit base or its
    `|` row) bound to fixed cells is refused by the return-stack seal instead:
-   `E-REJECTED`, `fix_return_stack`, at the read that binds it, or at the last
-   token when no read does.
+   `E-RETURN-STACK`, `fix_return_stack`, at the read that binds it, or at the
+   last token when no read does.
 
 The pass makes no bindings, so a rejected signature never persists.
 
@@ -2695,7 +2695,7 @@ sections above.
   transport it, and a typed use or `MATCH` is `E-STALE-READ`.
 - **`depth` and `.s` count no value held in several cells.** They count raw
   cells, so over a layout value held in more than one cell, or one whose width
-  is open in the word (`( option<a> -- ) depth`), both are `E-REJECTED`,
+  is open in the word (`( option<a> -- ) depth`), both are `E-DEPTH-WIDE`,
   `count_values`: ``cannot count `option<n>`: it is one value held in 2
   cells``, or ``cannot count `option<a>`: it is one value, and how many cells
   it holds is not known here``. A one-cell enum or product is counted. The rule
@@ -2739,7 +2739,7 @@ sections above.
   cell entries, a bar on only one side, and such entries in quotation types
   are `E-BAD-SIGNATURE` (or `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`,
   `trust` and `CAST:`), repair `fix_return_stack`. A literal that pushes a
-  cell for its caller to pop, or pops one the caller pushed, is `E-REJECTED`
+  cell for its caller to pop, or pops one the caller pushed, is `E-RETURN-STACK`
   at `;]`; an unsigned definition's `r@` or `r>` on an input it did not push
   is rejected at the token. Use `>r … r>` within one definition (see
   **Checker & type model**).

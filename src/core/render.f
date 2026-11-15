@@ -952,7 +952,19 @@ variable MDV-I   variable MDV-F
       MD-CALLBACK-NOT-GENERIC of s" E-CALLBACK-NOT-GENERIC" endof
       MD-SCOPED-TICK  of s" E-UNSAFE" endof
       MD-DOES-UNMADE  of s" E-DOES-UNCREATED" endof
-      s" E-REJECTED" rot
+      MD-NO-LOOP      of s" E-NO-LOOP" endof
+      MD-LOOP-CARRIED of s" E-LOOP-CARRIED" endof
+      MD-CLOSES-NOTHING of s" E-CONTROL-ORPHAN" endof
+      MD-NO-CASE      of s" E-CONTROL-ORPHAN" endof
+      MD-NO-OUTER-LOOP of s" E-NO-OUTER-LOOP" endof
+      MD-LOOP-RDEPTH  of s" E-LOOP-RETURN-DEPTH" endof
+      MD-ELSE-TWICE   of s" E-ELSE-TWICE" endof
+      MD-EXIT-LOOP    of s" E-EXIT-IN-LOOP" endof
+      MD-UNLOOP-JOIN  of s" E-UNLOOP-JOIN" endof
+      MD-CF-OPEN      of s" E-CONTROL-OPEN" endof
+      MD-DEPTH-WIDE   of s" E-DEPTH-WIDE" endof
+      MD-LITERAL-RANGE of s" E-LITERAL-RANGE" endof
+      s" render: a reason with no code" 76 die
    endcase ;
 
 
@@ -1371,7 +1383,7 @@ variable MDV-I   variable MDV-F
    k RF-REASON = IF MDIAG @ MD-CODE$ EXIT THEN
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
-   k RF-RETURN = IF s" E-REJECTED" EXIT THEN
+   k RF-RETURN = IF s" E-RETURN-STACK" EXIT THEN
    s" render: a rejection with no code" 76 die ;
 : NM-SPAN ( -- ptr u8 n )
    NMOFF @ TADDR NMU @ ;

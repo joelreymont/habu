@@ -91,19 +91,19 @@ variable ERR-U
    s" --> <input>:1:8"  REFUSED-RC REFUSED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
-   s" error[E-REJECTED]: return stack: the quotation leaves its return row unbalanced"
+   s" error[E-RETURN-STACK]: return stack: the quotation leaves its return row unbalanced"
    s" --> <input>:1:26"  REFUSED-RC REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
-   s" error[E-REJECTED]: return stack: the quotation reads below the return-stack cells it pushed"
+   s" error[E-RETURN-STACK]: return stack: the quotation reads below the return-stack cells it pushed"
    s" --> <input>:1:25"  REFUSED-RC REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
-   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here"
+   s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
    s" --> <input>:1:9"  REFUSED-RC REFUSED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
-   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here"
+   s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
    s" --> <input>:1:8"  REFUSED-RC REFUSED ;
 
 \ ---- still admitted -----------------------------------------------------------

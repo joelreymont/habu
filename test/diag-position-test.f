@@ -1106,44 +1106,44 @@ variable RC
    0 s" family" s" rvbox" NOTE=
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
-   s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
+   s" E-RETURN-STACK" s" >r" 1 14 13 15 REFUSED-AT
    0 s" message" s" return stack: the return row does not balance at exit" FIELD=
    s" an r> below the return cells pushed here" T-LABEL
    s" : X ( -- ) r> drop ;" s" rread.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
    s" an r@ below them" T-LABEL
    s" : X ( -- ) r@ drop ;" s" rfetch.f" LINE-FIXTURE
-   s" E-REJECTED" s" r@" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r@" 1 12 11 13 REFUSED-AT  false READS-BELOW
    s" a 2r> below them" T-LABEL
    s" : X ( -- ) 2r> 2drop ;" s" r2read.f" LINE-FIXTURE
-   s" E-REJECTED" s" 2r>" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" 2r>" 1 12 11 14 REFUSED-AT  false READS-BELOW
    s" a 2r@ below them" T-LABEL
    s" : X ( -- ) 2r@ 2drop ;" s" r2fetch.f" LINE-FIXTURE
-   s" E-REJECTED" s" 2r@" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" 2r@" 1 12 11 14 REFUSED-AT  false READS-BELOW
    s" an r> whose cell goes back with >r" T-LABEL
    s" : X ( -- ) r> >r ;" s" rround.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
    s" an r> in the else arm, whose if arm pushed its own" T-LABEL
    s" : X ( bool -- ) if 1 >r r> drop else r> drop then ;" s" relse.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 38 37 39 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 38 37 39 REFUSED-AT  false READS-BELOW
    s" an r> in a quotation literal" T-LABEL
    s" : X ( -- ) [: r> drop ;] drop ;" s" rquot.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 15 14 16 REFUSED-AT  true READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 15 14 16 REFUSED-AT  true READS-BELOW
    s" an r@ in a do loop, whose cells are not on the return row" T-LABEL
    s" : X ( n n -- ) do r@ drop loop ;" s" rloopf.f" LINE-FIXTURE
-   s" E-REJECTED" s" r@" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r@" 1 19 18 20 REFUSED-AT  false READS-BELOW
    s" an r> in a do loop" T-LABEL
    s" : X ( n n -- ) do r> drop loop ;" s" rloopr.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 19 18 20 REFUSED-AT  false READS-BELOW
    s" an r> below a return row the signature names" T-LABEL
    s" : X ( | U -- | U ) r> drop ;" s" rnamed.f" LINE-FIXTURE
-   s" E-REJECTED" s" r>" 1 20 19 21 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 20 19 21 REFUSED-AT  false READS-BELOW
    s" a 2r> that moves a record whole, one cell short" T-LABEL
    SB-RESET
    s" PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT" SB-APPEND LF+
    s" : X ( pr2 -- ) >r 2r> drop drop ;" SB-APPEND LF+
    s" rwide.f" FIXTURE!
-   s" E-REJECTED" s" 2r>" 2 19 59 62 REFUSED-AT  false READS-BELOW ;
+   s" E-RETURN-STACK" s" 2r>" 2 19 59 62 REFUSED-AT  false READS-BELOW ;
 
 \ A stack word over an open layout is refused by the step path's mismatch,
 \ whatever else is among its operands: a proof or an expanded layout beside it
@@ -1805,23 +1805,23 @@ variable RC
 : TEST-CONTROL-ORPHAN ( -- )
    s" a signature that does not parse and a then with no if" T-LABEL
    s" : X ( n -- zz ) then ;" s" badsig-then.f" LINE-FIXTURE
-   s" E-REJECTED" s" then" 1 17 16 20 REFUSED-MODES
+   s" E-CONTROL-ORPHAN" s" then" 1 17 16 20 REFUSED-MODES
    s" a then with no if before an undefined word" T-LABEL
    s" : X ( n -- n ) then NOPE ;" s" then-undefined.f" LINE-FIXTURE
-   s" E-REJECTED" s" then" 1 16 15 19 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 16 15 19 REFUSED-AT
    0 s" message" s" this word closes nothing open here" FIELD=
    s" a trust-boundary word before a then with no if" T-LABEL
    s" : X ( n -- n ) evaluate then ;" s" unsafe-then.f" LINE-FIXTURE
-   s" E-REJECTED" s" then" 1 25 24 28 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 25 24 28 REFUSED-AT
    s" an endcase with no case before an undefined word" T-LABEL
    s" : X ( n -- n ) endcase NOPE ;" s" endcase-undefined.f" LINE-FIXTURE
-   s" E-REJECTED" s" endcase" 1 16 15 22 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" endcase" 1 16 15 22 REFUSED-AT
    s" a signature that does not parse and a then closing a begin" T-LABEL
    s" : X ( n -- zz ) begin then ;" s" badsig-begin-then.f" LINE-FIXTURE
-   s" E-REJECTED" s" then" 1 23 22 26 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 23 22 26 REFUSED-AT
    s" a leave outside every do before an undefined word" T-LABEL
    s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
-   s" E-REJECTED" s" leave" 1 16 15 20 REFUSED-AT ;
+   s" E-NO-LOOP" s" leave" 1 16 15 20 REFUSED-AT ;
 
 
 \ A do holding 32 nested ifs, which loop leaves before their thens: the 32nd if
@@ -1857,35 +1857,35 @@ variable RC
    0 s" found" s" n n" NOTE=
    s" an i outside every loop" T-LABEL
    s" : X ( -- ) i drop ;" s" i-outside.f" LINE-FIXTURE
-   s" E-REJECTED" s" i" 1 12 11 12 REFUSED-AT
+   s" E-NO-LOOP" s" i" 1 12 11 12 REFUSED-AT
    0 s" message" s" no loop is open here" FIELD=
    s" a j in a single loop" T-LABEL
    s" : X ( -- ) 3 0 do j drop loop ;" s" j-single.f" LINE-FIXTURE
-   s" E-REJECTED" s" j" 1 19 18 19 REFUSED-AT
+   s" E-NO-OUTER-LOOP" s" j" 1 19 18 19 REFUSED-AT
    0 s" message" s" no outer loop is open here" FIELD=
    s" an exit inside a loop with no unloop" T-LABEL
    s" : X ( -- ) 3 0 do exit loop ;" s" exit-loop.f" LINE-FIXTURE
-   s" E-REJECTED" s" exit" 1 19 18 22 REFUSED-AT
+   s" E-EXIT-IN-LOOP" s" exit" 1 19 18 22 REFUSED-AT
    0 s" message" s" exit inside a loop needs unloop first" FIELD=
    s" a loop body that changes the return stack's depth" T-LABEL
    s" : X ( -- ) 3 0 do 1 >r loop ;" s" loop-rdepth.f" LINE-FIXTURE
-   s" E-REJECTED" s" loop" 1 24 23 27 REFUSED-AT
+   s" E-LOOP-RETURN-DEPTH" s" loop" 1 24 23 27 REFUSED-AT
    0 s" message" s" the loop body changes the return stack's depth" FIELD=
    s" an if still open at ;" T-LABEL
    s" : X ( bool -- ) if ;" s" if-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 20 19 20 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 20 19 20 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-REJECTED" s" :1:20" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:20" REJECT-RC LOADED-AT
    s" an if still open at ; after a refused drop" T-LABEL
    s" : X ( -- ) drop 0 0= if ;" s" if-open-drop.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 25 24 25 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 25 24 25 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-REJECTED" s" :1:25" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:25" REJECT-RC LOADED-AT
    s" a case still open at ;" T-LABEL
    s" : X ( n -- ) case ;" s" case-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 19 18 19 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 19 18 19 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-REJECTED" s" :1:19" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:19" REJECT-RC LOADED-AT
    s" a structure past the frame limit is refused at its opener, not at ;" T-LABEL
    DEEP-FIXTURE
    s" --all-errors" CHECK
@@ -1896,18 +1896,18 @@ variable RC
    s" E-UNCHECKABLE" s" :1:272" REJECT-RC LOADED-AT
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
-   s" E-REJECTED" s" loop" 1 27 26 30 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" loop" 1 27 26 30 REFUSED-AT
    0 s" message" s" this word closes nothing open here" FIELD=
    s" a loop that meets an if with no do open" T-LABEL
    s" : X ( -- ) 0 0= if loop then ;" s" loop-no-do.f" LINE-FIXTURE
-   s" E-REJECTED" s" loop" 1 20 19 23 REFUSED-AT
+   s" E-NO-LOOP" s" loop" 1 20 19 23 REFUSED-AT
    0 s" message" s" no loop is open here" FIELD=
    s" match arms that unloop different loops" T-LABEL
    SB-RESET
    s" ENUM choice first second ;ENUM" SB-APPEND LF+
    s" : LOB-MATCH ( choice -- ) 3 0 do dup MATCH choice first OF unloop ENDOF second OF ENDOF ;MATCH loop drop ;" SB-APPEND LF+
    s" match-unloop.f" FIXTURE!
-   s" E-REJECTED" s" ENDOF" 2 83 113 118 REFUSED-AT
+   s" E-UNLOOP-JOIN" s" ENDOF" 2 83 113 118 REFUSED-AT
    0 s" message" s" the paths that meet here have unlooped different loops" FIELD= ;
 
 \ The load's compiler takes a second else, as it takes an else over an if's
@@ -1925,7 +1925,7 @@ variable RC
    s" E-UNSAFE" s" evaluate" 1 17 16 24 REFUSED-AT
    s" a second else alone" T-LABEL
    s" : X ( bool -- ) if else else then ;" s" else2.f" LINE-FIXTURE
-   s" E-REJECTED" s" else" 1 25 24 28 REFUSED-AT
+   s" E-ELSE-TWICE" s" else" 1 25 24 28 REFUSED-AT
    0 s" message" s" this if already has an else" FIELD= ;
 
 \ A structure still open where its definition ends is one the load cannot
@@ -1936,24 +1936,24 @@ variable RC
 : TEST-CONTROL-OPEN ( -- )
    s" a signature that does not parse and an if open at ;" T-LABEL
    s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 24 23 24 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 24 23 24 REFUSED-AT
    s" a called shadowed name and an IF open at ;" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE IF ;" SHADOW-FIXTURE
    s" shade-open.f" FIXTURE!
-   s" E-REJECTED" s" ;" 8 13 96 97 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 8 13 96 97 REFUSED-AT
    s" a trust-boundary word and an if open at ;" T-LABEL
    s" : X ( n -- n ) evaluate if ;" s" unsafe-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 28 27 28 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 28 27 28 REFUSED-AT
    s" dead code and an if open at ;" T-LABEL
    s" : X ( n -- n ) dup if exit 1 ;" s" dead-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 30 29 30 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 30 29 30 REFUSED-AT
    s" an if open at the does> ending a definer's body" T-LABEL
    s" : CONST ( n -- ) create dup , 0= if does> ( -- n ) @ ;" s" does-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" does>" 1 37 36 41 REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 1 37 36 41 REFUSED-AT
    s" an if open at does> after a head call the run decides" T-LABEL
    s" : MYK ( n -- ) MADE drop create dup , 0= if does> ( -- n ) @ ;"
    s" made-does-open.f" MADE-FIXTURE
-   s" E-REJECTED" s" does>" 3 45 86 91 RUN-REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 3 45 86 91 RUN-REFUSED-AT
    s" MK" 2 34 s" does>" 3 45 86 91 VERIFY-ONLY-AT
    s" an if open at does> on the line after a head call the run decides" T-LABEL
    SB-RESET
@@ -1962,18 +1962,18 @@ variable RC
    s" : MYK ( n -- ) ( c ) MADE drop create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" made-does-open2.f" FIXTURE!
-   s" E-REJECTED" s" does>" 4 10 95 100 RUN-REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 4 10 95 100 RUN-REFUSED-AT
    s" an orphan then before does> after a head call the run decides" T-LABEL
    s" : MYK ( n -- ) MADE drop create dup , then does> ( -- n ) @ ;"
    s" made-does-then.f" MADE-FIXTURE
-   s" E-REJECTED" s" then" 3 39 80 84 RUN-REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 3 39 80 84 RUN-REFUSED-AT
    s" an undefined head call and an if open at does>" T-LABEL
    s" : MYK ( n -- ) NOSUCH drop create dup , 0= if does> ( -- n ) @ ;"
    s" made-does-nosuch.f" MADE-FIXTURE
    s" E-UNDEFINED" s" NOSUCH" 3 16 57 63 RUN-REFUSED-AT
    s" an if open at the ; ending a does> clause" T-LABEL
    s" : CONST ( n -- ) create , does> ( -- n ) @ dup 0= if ;" s" clause-open.f" LINE-FIXTURE
-   s" E-REJECTED" s" ;" 1 54 53 54 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 54 53 54 REFUSED-AT
    s" a match open at ;" T-LABEL
    SB-RESET
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE" SB-APPEND LF+
