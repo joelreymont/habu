@@ -382,8 +382,8 @@ variable ANSWERED
    a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: SEALED-FAIL ( ptr u8 n -- )
-   TOKEN$ REJECTION:SEALED  REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
+: SEALED-FAIL ( ptr u8 n ptr u8 n -- )
+   REJECTION:SEALED  REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -459,10 +459,10 @@ TYPED-VARIABLE REC ptr n
 
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
-: POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+: POLICY-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    s" E-POLICY" REJECTION:OPEN
    a u TICKS  s"  is not in the vocabulary this source may use" SAY
-   a u REJECTION:AT  s" not admitted" SAY
+   t tu REJECTION:AT  s" not admitted" SAY
    REJECTION:HELP
    s" call only public words of the packages admitted before the seal" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -470,16 +470,16 @@ TYPED-VARIABLE REC ptr n
 : POLICY-CHECK-REC ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
-   rec XREF-FOUND? 0= if a u POLICY-REFUSE then
+   rec XREF-FOUND? 0= if a u a u POLICY-REFUSE then
    rec XREF-NULL - seal XREF-REC-ADDR < if
       rec XREF-WORDLIST {: wid:n :}
-      wid 0 < wid PROT-WID-MAX >= or if a u POLICY-REFUSE then
+      wid 0 < wid PROT-WID-MAX >= or if a u a u POLICY-REFUSE then
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
-      wid 63 and rshift 1 and 0= if a u POLICY-REFUSE then
+      wid 63 and rshift 1 and 0= if a u a u POLICY-REFUSE then
    then
-   rec XREF-FLAGS DNAME-INT and 0<> if a u POLICY-REFUSE then
-   rec XREF-WORDLIST OWNER-API-PRI-WID = if a u POLICY-REFUSE then
-   rec XREF-START 0= if a u POLICY-REFUSE then ;
+   rec XREF-FLAGS DNAME-INT and 0<> if a u a u POLICY-REFUSE then
+   rec XREF-WORDLIST OWNER-API-PRI-WID = if a u a u POLICY-REFUSE then
+   rec XREF-START 0= if a u a u POLICY-REFUSE then ;
 
 \ At top level the ordinary `require`'s global record, spelled so, is in the
 \ vocabulary as well. A body never admits it.
@@ -885,16 +885,16 @@ private
    room used - {: left:n :}
    left u PKG-CODE-SPAN U> ;
 
-: PKG-CODE-ROOM-AFTER ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
+: PKG-CODE-ROOM-AFTER ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n t:ptr tu:n used:n :}
    u used PKG-FITS-AFTER? if exit then
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
    s" code space has no room for the name " SAY  a u TICKS
-   a u REJECTION:AT  s" no code room" SAY
+   t tu REJECTION:AT  s" no code room" SAY
    REJECTION:HELP
    s" shorten the name, or define fewer words in this load" SAY
    PKG-RC-CODE-FULL REJECTION:STOP ;
 
-: PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
+: PKG-CODE-ROOM ( ptr u8 n ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
 \ The operation at off in the owner record a dispatch cell names, 0 when there
 \ is no record or the field is empty: the call is then skipped, not refused.
@@ -963,7 +963,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 
 : PKG-SEAL-GUARD ( -- )
    PKG-SEALED? 0= if exit then
-   TOKEN$ SEALED-FAIL ;
+   TOKEN$ TOKEN$ SEALED-FAIL ;
 
 : PKG-POLICY-GUARD ( -- )
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -1002,7 +1002,7 @@ private
    row XREF-FOUND? if row PKG-REOPEN exit then
    OVERLAY-GUARD
    PKG-DICT-ROOM
-   TOKEN$ PKG-CODE-ROOM
+   TOKEN$ TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
 \ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge
@@ -1023,7 +1023,7 @@ public
    u 1 < if E-COMP-STATE throw then
    a u PKG-PATH-CK
    PKG-DICT-ROOM
-   a u PKG-CODE-ROOM
+   a u a u PKG-CODE-ROOM
    a u BOOT:NAMESPACE-WL WL-PROBE XREF-FOUND? if
       a u PKG-DUPLICATE
    then
@@ -1229,7 +1229,7 @@ public
    swid XREF:PACKAGE-WL?  swid XREF:RETIRED-WL?  or if E-COMP-STATE throw then
    rec XREF-FLAGS DNAME-INT and 0<> if E-COMP-STATE throw then
    PKG-DICT-ROOM
-   a u PKG-CODE-ROOM
+   a u a u PKG-CODE-ROOM
    a u wid WL-PROBE XREF-FOUND? if
       a u PKG-DUPLICATE
    then
@@ -1264,7 +1264,7 @@ private
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:ptr :}
    TOKEN$ {: operand:ptr operand-u:n :}
-   get-current PKG-WID-SEALED? if operand operand-u SEALED-FAIL then
+   get-current PKG-WID-SEALED? if operand operand-u 2dup SEALED-FAIL then
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
    ta tu get-current WL-PROBE XREF-FOUND? if
@@ -1272,9 +1272,9 @@ private
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then
-   ta tu PKG-CODE-ROOM
+   ta tu ta tu PKG-CODE-ROOM
    clause 0 >= if
-      clause XREF-REC XREF-NAME$ tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER
+      clause XREF-REC XREF-NAME$ 2dup tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER
    then
    PKG-CHECK-EXPORT
    ta tu src PKG-INDEX get-current alias-record
@@ -1511,11 +1511,6 @@ private
       PKG-RC-CODE-FULL REJECTION:STOP
    then ;
 
-\ a u names the definition; its rejection is placed at t tu.
-: DEF-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
-   DEF-CODE-ROOM
-   ndict@ DICT-CAP >= if a u t tu REJECTION:DICTIONARY-FULL then ;
-
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
@@ -1530,24 +1525,24 @@ private
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
    PKG-DICT-ROOM
-   a q PKG-CODE-ROOM
+   a q a q PKG-CODE-ROOM
    a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
 
-\ A wordlist of a sealed package refuses the name token. Checked as source names
+\ A wordlist of a sealed package rejects the name token. Checked as source names
 \ a definition, not in DEF-RECORD, which a file object's link replays.
 : DEF-SEAL-GUARD ( n ptr u8 n -- n ) {: wid:n a:ptr u:n :}
-   wid PKG-WID-SEALED? if a u SEALED-FAIL then
+   wid PKG-WID-SEALED? if a u TOKEN$ SEALED-FAIL then
    wid ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
-\ DEF-TKL take the name token, which the rejections after them name. A bare name
+\ DEF-TKL take the name token, which a `does>` clause's rejections name. A bare name
 \ goes into the current wordlist; the qualifier is the first colon at neither
 \ edge (`:a:b` is bare), and a second colon after it is rejected.
 : DEF-QUALIFY-NAME ( ptr u8 n -- ptr u8 n n ) {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if a u TOKEN$ CHECKER-RESOLVE:REJECT-QUALIFIED then
-   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
+   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u TOKEN$ SEALED-FAIL then ;
 
 : DEF-QUALIFY ( -- ptr u8 n n )
    OVERLAY-GUARD
@@ -1628,33 +1623,33 @@ public
    ['] POLICY-KEYWORD data-base POLICY-ABI:KEYWORD-CELL + xt! ;
 private
 
-: DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-KEYWORD-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    s" E-RESERVED-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` is a compile keyword and cannot name a definition" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
    REJECTION:HELP
    s" give the definition a name that is not a compile keyword" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-NUMBER-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
    REJECTION:HELP
    s" give the definition a name that does not read as a number" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-WALL ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
-      a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
-      a u DEF-NAME-KEYWORD? if a u POLICY-REFUSE then
+      a u DEF-DESIGN-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
+      a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
    else
-      a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then
+      a u DEF-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
    then
    a u NUMBER {: v:n flt:bool num:bool range:bool :}
-   num range or if a u DEF-NUMBER-REFUSE then ;
+   num range or if a u t tu DEF-NUMBER-REFUSE then ;
 
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
@@ -1740,18 +1735,19 @@ private
    REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
 
 public
-\ The tail passes the wall, room, duplicate, code room and protected-wordlist
-\ tests before def-open writes; the wall, code room and protected-wordlist
-\ test name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL
-\ or CAST. def-open refuses a protected wordlist too, but without a word.
-: DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
-   a u DEF-WALL
-   PKG-DICT-ROOM
+\ The name a u passes the wall, room, duplicate, code room and
+\ protected-wordlist tests, then def-open records it; every rejection is placed
+\ at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST. def-open rejects a
+\ protected wordlist too, but without a word.
+: DEF-RECORD ( ptr u8 n ptr u8 n n n -- )
+   {: a:ptr u:n t:ptr tu:n wid:n kind:n :}
+   a u t tu DEF-WALL
+   ndict@ DICT-CAP >= if a u t tu REJECTION:DICTIONARY-FULL then
    a u wid WL-PROBE XREF-FOUND? if
-      TOKEN$ PKG-DUPLICATE
+      t tu PKG-DUPLICATE
    then
-   a u PKG-CODE-ROOM
-   SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u SEALED-FAIL then
+   a u t tu PKG-CODE-ROOM
+   SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u t tu SEALED-FAIL then
    kind DKIND:MASK and {: dk:n :}
    \ A value or an address in a target section stays unmarked: it answers on the host.
    SECTION-CELL CELL@ 0<>  dk DKIND:ADDR <> and  dk DKIND:VAL <> and
@@ -1768,7 +1764,8 @@ private
 : DEF-START ( n -- )
    {: kind:n :}
    DEF-SEED
-   DEF-QUALIFY kind DEF-RECORD ;
+   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   a u TOKEN$ wid kind DEF-RECORD ;
 
 \ On true the body hook has installed the definition, the source resumes past
 \ its `;` and the record closes.
@@ -1786,7 +1783,7 @@ private
       DEF-NO-COMPILER
    then
    trusted DEF-NAME
-   TOKEN$ TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    0 DEF-START
    0 LOCN-CELL CELL!
    trusted if
@@ -1901,7 +1898,7 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
    s" [package]" TOKEN-IS? if exit then
    s" [type]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
-   TOKEN$ POLICY-REFUSE ;
+   TOKEN$ TOKEN$ POLICY-REFUSE ;
 
 : DEF-PREFLIGHT ( -- )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
@@ -2142,14 +2139,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
    then
-   a u TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    OVERLAY-GUARD
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    ITEMS-RESET
    0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
    \ A refused record opens no definition, whose end would drop the item.
-   [: ta tu wid 0 DEF-RECORD ;] catch {: rc:n :}
+   [: ta tu TOKEN$ wid 0 DEF-RECORD ;] catch {: rc:n :}
    rc 0<> if ITEMS-RESET rc throw then
    0 LOCN-CELL CELL!
    dense BODY-ITEMS:EFFECT-CELL CELL!
@@ -2495,7 +2492,8 @@ variable DEF-VALUE
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
-   DEF-QUALIFY DKIND:CAST DEF-RECORD
+   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   a u TOKEN$ wid DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER ;
 
 \ A row the checker refuses throws before DEF-FIXED counts the record, so no
@@ -2519,7 +2517,7 @@ variable DEF-VALUE
 : DEF-CAST-ROW ( -- )
    TOKEN$ {: kw:ptr ku:n :}
    DEF-CAST-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
-   TOKEN$ TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
    0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
@@ -2590,7 +2588,7 @@ variable DEF-VALUE
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   ta tu wid shape CHILD-KIND DEF-RECORD ;
+   ta tu TOKEN$ wid shape CHILD-KIND DEF-RECORD ;
 
 \ The anchor is taken after CHECK:CHILD, whose facts may open an intern segment
 \ at here.
@@ -2615,7 +2613,7 @@ variable DEF-VALUE
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape param CHILD-BODY 2drop
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
-   a u TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
 
@@ -2631,7 +2629,7 @@ variable DEF-VALUE
 \ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
    s" linear:" OPERAND  s" linear:" TOKEN$ REJECTION:NOT-A-NAME
-   TOKEN$ TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
@@ -2647,7 +2645,8 @@ variable DEF-VALUE
       REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
-   DEF-QUALIFY DKIND:CAST DEF-RECORD
+   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   a u TOKEN$ wid DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
    DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
    NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
@@ -2743,17 +2742,18 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    ready dtarget 0<> and if DEF-CAPTURED-NAME dtarget PKG-AS-NAME-ACTION execute then
    ready 0= if sig su PD-HOLD then ;
 
-\ defer-unset is looked up before DEF-ROOM, so its rejection leaves no capture.
+\ defer-unset is looked up before DEF-SEED, so its rejection leaves no capture.
 : DEF-DEFER ( -- )
    DEFER-UNSET-XT {: unset:n :}
    TOKEN$ {: kw:ptr ku:n :}
    DEFER-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
-   TOKEN$ TOKEN$ DEF-ROOM
+   DEF-CODE-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
    unset DEFER-CELL {: cell:n :}
-   DEF-QUALIFY 0 DEF-RECORD
+   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   a u TOKEN$ wid 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
    cell 0 COMP-BODY:defer DEF-FIXED

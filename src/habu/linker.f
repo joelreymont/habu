@@ -4775,7 +4775,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    does if e off DOES-FUN else 0 then {: j:n :}
    does if h j OWN-FUN-AT else 0 then {: hoff:n :}
    ndict@ {: want:n :}
-   a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
+   a u a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
    fn LINK-FN !  want LINK-OWNER !
    h e <> if
@@ -5647,7 +5647,7 @@ TYPED-VARIABLE EXITER [ -- ]
    {: r:n :}
    r 0 OWNED@ XREF-REC {: src:ptr :}
    r 1 OWNED$ OWNER XREF-PKG-PRIVATE {: wid:n :}
-   r 3 OWNED$ wid 0 INTERPRETER:DEF-RECORD
+   r 3 OWNED$ 2dup wid 0 INTERPRETER:DEF-RECORD
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY {: want:n :}
    INTERPRETER:DEF-CLOSE
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or  and  want SET-FLAGS
