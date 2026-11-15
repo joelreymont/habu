@@ -238,8 +238,10 @@ variable SLOT-N
    u WORK-BYTES >= if a u E-PATH-RANGE u WORK-BYTES 1- PATH-PASS then ;
 
 
-\ realpath of a path into CANON-BUF: its length, -2 when that does not fit,
-\ below 0 when the path does not resolve. CHECK bounds the scan for a NUL byte.
+\ realpath of a path into CANON-BUF: its length, or below 0 when the path does
+\ not resolve. Every result fits: glibc's realpath fails on one longer than
+\ PATH-CAP and macOS's on one of 1023 bytes or more. CHECK bounds the scan for
+\ a NUL byte.
 : CANON-N ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECK
@@ -253,7 +255,6 @@ public
 : CANON-OS ( ptr u8 n -- ptr u8 n bool )
    {: a:ptr u:n :}
    a u CANON-N {: n:n :}
-   n -2 = if a u E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
@@ -274,9 +275,9 @@ private
 \ The working directory must fit PATH-CAP as every root does; every path below
 \ a longer one is longer still, so the engine rejects it rather than resolve
 \ without it. realpath does not say why it fails, so the record names what a
-\ removed, unsearchable or long directory all are not. macOS's realpath rejects
-\ a result of 1023 bytes or more, and glibc answers a longer path whole, which
-\ the canon answer rejects with E-PATH-RANGE.
+\ removed, unsearchable or long directory all are not. realpath fails on a
+\ longer one; a supplied canon's longer answer is rejected by TRY-CANON with
+\ E-PATH-RANGE, which CWD-INIT turns into this record.
 : CWD-DIE ( -- )
    s" E-SOURCE-ROOT" REJECTION:OPEN
    s" the working directory does not resolve to a searchable directory" REJECTION:EMIT-STR
@@ -577,11 +578,10 @@ private
    WORK-BUF n 2 + ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
-\ A root's lookup: the canonical length in CANON-BUF of the spelling, or -2 when
-\ it does not fit, -1 when it does not resolve, -3 when ENGINE-DIR? refuses it.
+\ A root's lookup: the canonical length in CANON-BUF of the spelling, -1 when it
+\ does not resolve, -3 when ENGINE-DIR? rejects it.
 : ROOT-N ( ptr u8 n -- n )
    CANON-N {: n:n :}
-   n -2 = if -2 exit then
    n 0 < if -1 exit then
    n ENGINE-DIR? 0= if -3 exit then
    n ;
@@ -737,18 +737,14 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    drop INCLUDE-TRUE ;
 
 \ Word w got the path a u that, joined to the current root, is len bytes, more
-\ than PATH-CAP; len is -1 when only its realpath is longer.
+\ than PATH-CAP.
 : ROOT-LONG ( ptr u8 n ptr u8 n n -- ) {: w:ptr wu:n a:ptr u:n len:n :}
    w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
    w wu a u LOADER-PATH-AT
-   len 0 < if
-      s" is too long once resolved"
+   len u = if
+      s" is too long"
    else
-      len u = if
-         s" is too long"
-      else
-         s" is too long once joined to the current root"
-      then
+      s" is too long once joined to the current root"
    then REJECTION:EMIT-STR
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
@@ -763,7 +759,6 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    CURRENT$ a u JOIN {: p:ptr pu:n :}
    pu INCLUDE-PATH-CAP > if w wu a u pu ROOT-LONG then
    p pu ROOT-N {: n:n :}
-   n -2 = if w wu a u -1 ROOT-LONG then
    n -1 = if
       w wu a u p pu s" does not resolve to a directory"
       s" name an existing directory" PATH-DIE
@@ -1176,9 +1171,9 @@ private
       1+
    repeat drop NULL$ ;
 
-\ `%` in CANON-BUF, as a length. 0 when there is no path, it does not fit or
-\ realpath refuses it; never a throw: the length is checked before CANON-N, and
-\ neither path holds a NUL.
+\ `%` in CANON-BUF, as a length. 0 when there is no path, it is longer than
+\ PATH-CAP or realpath rejects it; never a throw: the length is checked before
+\ CANON-N, and neither path holds a NUL.
 : EXE-ROOT ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= u INCLUDE-PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
