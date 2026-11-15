@@ -21,12 +21,11 @@ public
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
 105 constant USING-SHADOW-GLOBAL \ an interpreted, ticked or built-call bare global a used public also exports
-\ 106: a callback thunk runs on C's stack with no catch frame above it, so it
-\ cannot throw. Every refusal (the CB-DIE rows in habu1.f and kernel-x64.f) and an
-\ outbound FFI call on a context another thread owns write one line to fd 2 and
-\ exit_group 106 without touching the region: `E-CALLBACK habu: <reason> lr
-\ <hex>` on arm64, `hb: callback: <reason>` on x86-64. A busy context refuses,
-\ never waits.
+\ 106: a callback thunk cannot throw across C's stack. Its refusals write
+\ `E-CALLBACK habu: <reason> lr <16 hex digits>` to fd 2 and exit_group 106.
+\ An outbound FFI call also refuses a context another thread owns; on x86
+\ its line is `hb: callback: context busy on another thread`.
+\ A busy context refuses without waiting.
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)

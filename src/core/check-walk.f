@@ -865,7 +865,7 @@ variable WALK-ITEM    \ the first item the walk has not passed
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword

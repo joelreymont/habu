@@ -6847,7 +6847,6 @@ variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 variable UNFIT                \ the effect a record would hold is too deep (ROWS-FIT?)
 variable QUALBAD
-variable QDUPBAD             \ ?dup applied to a layout value (width-breaking)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
 CHECKER-REG:}SCRATCH
 0 constant TORDER-CHECKING
@@ -20731,17 +20730,11 @@ variable IS-PEND-U                   \ and its length
    a u s" 2r>"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r@"   CORE-STR= ;
 
-: DCUR-TOP-LAYOUT? ( -- bool )
-   \ LAYOUT-PARAM? is true for a HIDDEN field too (same layout family-id), so an
-   \ expanded bundle's tag cell on top refuses ?dup as a logical cell does.
-   DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
-
+\ ?dup has no checked form whatever its operand (no row models a result whose
+\ cell count depends on a value), so every checked ?dup is refused as an
+\ undefined word.
 : QDUP-STEP ( -- )
-   DCUR-TOP-LAYOUT? IF
-      0 OK !  -1 FAILSET !  -1 QDUPBAD !
-   ELSE
-      -1 UNDEFERR !  UNCK-RAISE                  \ no row models a scalar ?dup: refused as an undefined word
-   THEN ;
+   -1 UNDEFERR !  UNCK-RAISE ;
 
 \ --- construct form: `construct family variant` is a reserved checker token
 \ protocol, not a word lookup. DO-TOK1 captures both operands before locals,
@@ -21636,7 +21629,7 @@ CHECKER-REG:}SCRATCH
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
-   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
    CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !

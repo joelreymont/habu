@@ -17,6 +17,7 @@ create SECOND-BUF CAPACITY allot
 
 : LOWERED= ( ptr u8 n ptr u8 n -- )
    {: expected:ptr expected-size:n :}
+   2dup expected expected-size LOWERS-TO? TTRUE
    2dup LOWERED-BYTES expected-size T=
    OUTPUT CAPACITY UNICODE:LOWER
    OUTPUT swap expected expected-size T$= ;
@@ -39,7 +40,11 @@ create SECOND-BUF CAPACITY allot
    CANARY!
    [: s" İ" OUTPUT 2 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
    [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] E-UTF8 TTHROWSQ CANARY=
-   [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ ;
+   [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
+   s" STRASSE" s" straße" LOWERS-TO? TFALSE
+   s" Straße" s" Straße" LOWERS-TO? TFALSE
+   [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
+   [: s" x" s\" x\xFF" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ ;
 
 : CHUNK$ ( -- ptr u8 n )
    8 RND% case

@@ -248,23 +248,24 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    wid NATIVE:U64, ;
 
 
-\ Shadow record s's [8] cell as native publication records it: a definer's span
-\ runs over its does> clause to its emission's end.
+\ The packed emission's span, without the running image's slot padding.
+\ A defer ends exactly at its trailer; a definer includes its does> clause.
 : TARGET-LEN ( n -- n )
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
-   e NSHADOW:SIZE s NSHADOW:ENTRY@ -  e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
+   e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
+   e TRAILERS @ 0<> if size CODE-SPAN:EXACT exit then
+   size e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
 
-\ Build record r's length: the target kernel's for a kernel primitive's, in a
-\ cross-build its target emission's, else its own: a target word's host routine
-\ is the error routine.
+\ A linked record names the target kernel or its packed emission.
+\ A record without either keeps its own span.
 : BUILD-LEN ( n -- n )
    {: r:n :}
    r XREF-REC {: rec:ptr :}
    rec XREF-START {: a:n :}
    a NATIVE:KERNEL-ROW {: k:n :}
    k 0 >= if k PRIM-LEN exit then
-   CROSS? a 0<> and if
+   a 0<> if
       a REC-AT {: s:n :}
       s 0 >= if s TARGET-LEN exit then
    then

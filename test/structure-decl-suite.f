@@ -237,6 +237,35 @@ s" STRUCTURE-DECL:SD-RUN" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? TTRUE
 s" sdgself" DECL-DIAG:HAS? TFALSE
 
+\ A generated word whose effect is too deep to record has no signature text:
+\ its refusal quotes none. SDGDEEP:MAKE takes 4095 `n` fields and one
+\ `option<n>`, 4097 cells, one past EFFECT-DEPTH-MAX.
+package SDDEEP
+private
+$20000 constant CAP              \ bytes: 4096 FIELD clauses of 12 bytes and the frame
+create SRC-BUF CAP allot
+TYPED-VARIABLE SRC-U len
+: S+ ( ptr u8 n -- ) SRC-BUF CAP SRC-U BUF-APPEND ;
+: C+ ( n -- ) SRC-BUF CAP SRC-U BUF-APPEND-C ;
+: LETTER+ ( n -- ) 26 mod [char] a + C+ ;
+\ FIELD q<i in three letters> n, a name unique for i below 26^3.
+: FIELD+ ( n -- )
+   {: i:n :}
+   s"  FIELD q" S+  i 676 / LETTER+  i 26 / LETTER+  i LETTER+  s"  n" S+ ;
+public
+: DEEP$ ( -- ptr u8 n )
+   SRC-U BUF-RESET
+   s" STRUCTURE-DECL:SD-RUN sdgdeep" S+
+   4095 0 ?do i FIELD+ loop
+   s"  FIELD qopt option<n> ;STRUCTURE" S+
+   SRC-BUF SRC-U @ LEN>N ;
+;package
+DECL-DIAG:PROSE
+SDDEEP:DEEP$ TEST-EVAL:RC 7156 T=
+s" habu: in SDGDEEP:MAKE: bad stored signature: effect too deep to record (depth 4097, at most 4096)"
+DECL-DIAG:HAS? TTRUE
+s" ''" DECL-DIAG:HAS? TFALSE
+
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.
 STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ptr sdsnode ;STRUCTURE
