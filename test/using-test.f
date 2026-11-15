@@ -79,7 +79,11 @@ s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-AMBIGUOUS]" UCE-SAID  s" `AW`" UCE-SAID  s" = evaluated: using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using\n" UCE-SAID
+S\" = packages: UA, UC\n" UCE-SAID
+S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
 REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]" CONTAINS? TTRUE
@@ -184,15 +188,27 @@ s" 1 drop" VS-CATCH 0 T=
 \ defined by an earlier load, then using-import of the same name -> reject
 REJECTION:CAPTURE
 s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `GW`" UCE-SAID  s" = evaluated: using USG : USG-R1 ( -- n ) GW ; ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `USG`\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using USG : USG-R1 ( -- n ) GW ; ;using\n" UCE-SAID
+S\" = global: GW\n" UCE-SAID  S\" = package: USG:GW\n" UCE-SAID
+S\" = help: write `USG:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ order-swapped: using first, global defined later in the same scope, then bareword
 REJECTION:CAPTURE
 s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `SW`" UCE-SAID  s" = evaluated: using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `USG`\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using\n" UCE-SAID
+S\" = global: SW\n" UCE-SAID  S\" = package: USG:SW\n" UCE-SAID
+S\" = help: write `USG:SW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ effects coincide: a silent bind to the global would certify; must reject
 REJECTION:CAPTURE
 s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `MW`" UCE-SAID  s" = evaluated: using USG : USG-R3 ( -- n ) MW ; ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-SHADOW-GLOBAL]: `MW` is both a global word and a public of used package `USG`\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using USG : USG-R3 ( -- n ) MW ; ;using\n" UCE-SAID
+S\" = global: MW\n" UCE-SAID  S\" = package: USG:MW\n" UCE-SAID
+S\" = help: write `USG:MW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ qualified access is the escape: PKG:WORD reaches the used public and certifies
 s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
 \ a used import with no global collision keeps resolving (purely-additive

@@ -55,16 +55,17 @@ def check_process(result, expected=0):
     return result.stdout.split()
 
 
-def native(habu, output, body, *, refused=False):
+def native(habu, output, body, *, rejected=None):
     path = output / 'case.f'
     path.write_text(SETUP + body + '\n;package\n')
     result = subprocess.run(
         [str(habu), '--load', str(path)], cwd=ROOT,
         input='', text=True, capture_output=True, timeout=15,
     )
-    values = check_process(result, 70 if refused else 0)
-    if refused:
-        assert 'non-certified' in result.stderr, result.stderr
+    values = check_process(result, 70 if rejected else 0)
+    if rejected:
+        lines = [line.strip() for line in result.stderr.splitlines()]
+        assert lines[0] == rejected[0] and '= help: ' + rejected[1] in lines, result.stderr
     return values
 
 
@@ -290,9 +291,17 @@ def main():
         checks += 1
     assert native(habu, output, ': RUN ( -- ) 0 PAYLOAD-BYTES BLEN>N . 65507 PAYLOAD-BYTES BLEN>N . ; RUN') == ['0', '65507']
     checks += 1
-    for signature in ('n -- UDP4:socket', 'UDP4:address -- UDP4:port',
-                      'UDP4:socket -- UDP4:errno'):
-        native(habu, output, f': BAD ( {signature} ) ;', refused=True)
+    for signature, first, help in (
+        ('n -- UDP4:socket',
+         'error[E-MISMATCH]: BAD ends with n on the stack; its signature promises udp4:socket',
+         'leave udp4:socket in the body, or declare ( n -- n )'),
+        ('UDP4:address -- UDP4:port',
+         'error[E-MISMATCH]: BAD ends with udp4:address on the stack; its signature promises udp4:port',
+         'leave udp4:port in the body, or declare ( udp4:address -- udp4:address )'),
+        ('UDP4:socket -- UDP4:errno',
+         'error[E-MISMATCH]: BAD ends with udp4:socket on the stack; its signature promises udp4:errno',
+         'leave udp4:errno in the body, or declare ( udp4:socket -- udp4:socket )')):
+        native(habu, output, f': BAD ( {signature} ) ;', rejected=(first, help))
         checks += 1
     print(f'udp4: {checks} native cases passed, including independent localhost exchange')
 

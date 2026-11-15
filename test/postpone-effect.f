@@ -83,16 +83,19 @@ CAST: >NODE ( EFFECT:type -- n )
 
 SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
 
-\ The captured record is an E-SCHEMA-BAD naming SCHEMA-REG word W.
-: SAID-BAD ( ptr u8 n -- ) {: w:ptr wu:n :}
-   REJECTION:BUFFER$ s" E-SCHEMA-BAD" CONTAINS? TTRUE
-   REJECTION:BUFFER$ w wu CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
+\ The captured record opens with the line L and gives the transient-node help.
+: SAID-BAD ( ptr u8 n -- ) {: l:ptr lu:n :}
+   REJECTION:BUFFER$ l lu STARTS-WITH? TTRUE
+   REJECTION:BUFFER$
+   S\" = help: pass a node made outside transient mode\n"
+   CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 
 : ROOT-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
    REJECTION:CAPTURE
    [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] CHECKER-REJECT-RC TTHROWSQ
-   s" `SCHEMA-REG:SCHEMA-ROOT+`" SAID-BAD ;
+   S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-ROOT+` was given a transient node outside transient mode\n"
+   SAID-BAD ;
 ROOT-PERSIST
 
 \ Nor does a persistent pointer node.
@@ -100,7 +103,8 @@ ROOT-PERSIST
    SLOT-PTR >NODE {: node:n :}
    REJECTION:CAPTURE
    [: node SCHEMA-REG:SCHEMA-PTR drop ;] CHECKER-REJECT-RC TTHROWSQ
-   s" `SCHEMA-REG:SCHEMA-PTR`" SAID-BAD ;
+   S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-PTR` was given a transient node outside transient mode\n"
+   SAID-BAD ;
 PTR-PERSIST
 
 TYPED-VARIABLE EVAL-A ptr u8

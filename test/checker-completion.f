@@ -476,8 +476,12 @@ variable USE-N   variable USE-SUM
    5 [: KEEP ;] CURSOR!
    REJECTION:CAPTURE
    [: 6 [: KEEP ;] CURSOR! ;] CHECKER-REJECT-RC TTHROWSQ
-   REJECTION:BUFFER$ s" E-CURSOR-NESTED" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" `CHECKER-CURSOR!`" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+   REJECTION:BUFFER$
+   S\" error[E-CURSOR-NESTED]: `CHECKER-CURSOR!` armed a cursor while another is armed\n"
+   STARTS-WITH? TTRUE
+   REJECTION:BUFFER$
+   S\" = help: disarm the armed cursor with a negative offset before arming another\n"
+   CONTAINS? TTRUE  REJECTION:BUFFER-OFF
    -1 [: KEEP ;] CURSOR!
    s" cmp" KEPT-RESET
    s" : CMPG ( -- n ) CMPA ;" PLAIN
@@ -489,14 +493,22 @@ variable NEST-ARM   variable NEST-ENUM
 : NEST-ARM-TRY ( -- ) 5 [: KEEP ;] CURSOR! ;
 : NEST-ENUM-TRY ( -- ) s" CM" CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
-\ Whether XT stopped with the checker's status after an E-CURSOR-NESTED record.
-: NESTED? ( [ -- ] -- bool )
+\ Whether XT stopped with the checker's status after an E-CURSOR-NESTED record
+\ that opens with the line L and says to leave the visitor.
+: NESTED? ( [ -- ] ptr u8 n -- bool ) {: l:ptr lu:n :}
    REJECTION:CAPTURE  catch CHECKER-REJECT-RC =
-   REJECTION:BUFFER$ s" E-CURSOR-NESTED" CONTAINS? and  REJECTION:BUFFER-OFF ;
+   REJECTION:BUFFER$ l lu STARTS-WITH? and
+   REJECTION:BUFFER$
+   S\" = help: arm, disarm or enumerate before the check runs or after it returns, never from a visitor\n"
+   CONTAINS? and  REJECTION:BUFFER-OFF ;
 
 : NESTING ( ptr u8 n n n n -- )
-   [: NEST-ARM-TRY ;] NESTED? NEST-ARM !
-   [: NEST-ENUM-TRY ;] NESTED? NEST-ENUM !
+   [: NEST-ARM-TRY ;]
+   S\" error[E-CURSOR-NESTED]: `CHECKER-CURSOR!` ran while a check owns the cursor or a visitor runs\n"
+   NESTED? NEST-ARM !
+   [: NEST-ENUM-TRY ;]
+   S\" error[E-CURSOR-NESTED]: `CHECKER-RESOLVE:EACH-VISIBLE` ran while a check owns the cursor or a visitor runs\n"
+   NESTED? NEST-ENUM !
    KEEP ;
 
 : CASE-NESTED ( -- )

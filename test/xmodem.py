@@ -35,14 +35,15 @@ class Checks:
         self.out.mkdir(parents=True, exist_ok=True)
         self.count = 0
 
-    def run(self, source, *, refused=False):
+    def run(self, source, *, rejected=None):
         path = self.out / 'case.f'
         path.write_text(source)
         result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'src/lib/xmodem.f', str(path)],
                                 cwd=ROOT, input='', text=True, capture_output=True, timeout=20)
-        assert result.returncode == (70 if refused else 0), (result.stdout, result.stderr)
-        if refused:
-            assert 'non-certified' in result.stderr, result.stderr
+        assert result.returncode == (70 if rejected else 0), (result.stdout, result.stderr)
+        if rejected:
+            lines = [line.strip() for line in result.stderr.splitlines()]
+            assert lines[0] == rejected[0] and '= help: ' + rejected[1] in lines, result.stderr
         self.count += 1
         return result.stdout.split()
 
@@ -109,10 +110,17 @@ EXERCISE
         changed = bytearray(packet(b'binary\x1a\0\xff', 7, 1024, False))
         changed[-1] ^= 1
         self.decode(bytes(changed), 0, error=-9121)
-        for effect in ['XMODEM:sequence -- XMODEM:payload-size',
-                       'XMODEM:payload-size -- XMODEM:check-kind',
-                       'n -- XMODEM:sequence']:
-            self.run(f': BAD ( {effect} ) ;\n', refused=True)
+        for effect, first, help in [
+            ('XMODEM:sequence -- XMODEM:payload-size',
+             'error[E-MISMATCH]: BAD ends with xmodem:sequence on the stack; its signature promises xmodem:payload-size',
+             'leave xmodem:payload-size in the body, or declare ( xmodem:sequence -- xmodem:sequence )'),
+            ('XMODEM:payload-size -- XMODEM:check-kind',
+             'error[E-MISMATCH]: BAD ends with xmodem:payload-size on the stack; its signature promises xmodem:check-kind',
+             'leave xmodem:check-kind in the body, or declare ( xmodem:payload-size -- xmodem:payload-size )'),
+            ('n -- XMODEM:sequence',
+             'error[E-MISMATCH]: BAD ends with n on the stack; its signature promises xmodem:sequence',
+             'leave xmodem:sequence in the body, or declare ( n -- n )')]:
+            self.run(f': BAD ( {effect} ) ;\n', rejected=(first, help))
         source = '''
 using XMODEM
 : CRC-KIND ( -- check-kind ) CRC ;

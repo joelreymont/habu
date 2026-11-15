@@ -165,9 +165,18 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 
-: SLV-ASSERT-REJECT ( -- )
+\ The child's record opens with the line L and holds the help line H.
+: SLV-ASSERT-REJECT ( ptr u8 n ptr u8 n -- )
+   {: l:ptr lu:n h:ptr hu:n :}
    CHECKER-REJECT-RC SLV-ASSERT-RC
-   SLV-ERR$ s" E-SEAL-VIOLATION" CONTAINS? TTRUE ;
+   SLV-ERR$ l lu STARTS-WITH? TTRUE
+   SLV-ERR$ h hu CONTAINS? TTRUE ;
+
+: SLV-FORGET-HELP$ ( -- ptr u8 n )
+   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" FORGET-DEFS-FROM`\n" ;
+
+: SLV-HIDE-HELP$ ( -- ptr u8 n )
+   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" HIDE-DEFS-FROM`\n" ;
 
 : SLV-ASSERT-OK ( -- )
    SLV-EXITED @ TTRUE
@@ -274,15 +283,23 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-NEGATIVES-TRUNCATE ( -- )
    s" FORGET-DEFS-FROM of an engine def is rejected" T-LABEL
-   SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT
+   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `FORGET-DEFS-FROM` cannot remove\n"
+   SLV-FORGET-HELP$ SLV-ASSERT-REJECT
    s" HIDE-DEFS-FROM of an engine def is rejected" T-LABEL
-   SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT
+   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `HIDE-DEFS-FROM` cannot remove\n"
+   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
    s" direct CHECKER-USIGS-TRUNCATE-FROM is a defect" T-LABEL
    SLV-USIG-TRUNC-FORGE$ SLV-SUBJECT 76 SLV-ASSERT-RC
    s" FORGET-DEFS-FROM of the script-argv tail is rejected" T-LABEL
-   SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT
+   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `FORGET-DEFS-FROM` cannot remove\n"
+   SLV-FORGET-HELP$ SLV-ASSERT-REJECT
    s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT
+   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `HIDE-DEFS-FROM` cannot remove\n"
+   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
    s" public ndict! continuation cannot cross the engine watermark" T-LABEL
    SLV-NDICT-CONTINUATION-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
    s" record-facts! of a sealed record traps" T-LABEL

@@ -72,13 +72,14 @@ def source(output, body):
     return path
 
 
-def native(habu, output, body, refused=False):
+def native(habu, output, body, rejected=None):
     result = subprocess.run([str(habu), '--load', str(source(output, body))],
                             cwd=ROOT, stdin=subprocess.DEVNULL, text=True,
                             capture_output=True, timeout=15)
-    assert result.returncode == (70 if refused else 0), (result.stdout, result.stderr)
-    if refused:
-        assert 'non-certified' in result.stderr, result.stderr
+    assert result.returncode == (70 if rejected else 0), (result.stdout, result.stderr)
+    if rejected:
+        lines = [line.strip() for line in result.stderr.splitlines()]
+        assert lines[0] == rejected[0] and '= help: ' + rejected[1] in lines, result.stderr
     return result.stdout.split()
 
 
@@ -381,8 +382,17 @@ def main():
 '''
         assert native(habu, output, body) == ['-9110']
         checks += 1
-    for signature in ('n -- SERIAL:handle', 'SERIAL:baud -- SERIAL:handle', 'SERIAL:handle -- SERIAL:errno'):
-        native(habu, output, f': BAD ( {signature} ) ;', refused=True)
+    for signature, first, help in (
+        ('n -- SERIAL:handle',
+         'error[E-MISMATCH]: BAD ends with n on the stack; its signature promises serial:handle',
+         'leave serial:handle in the body, or declare ( n -- n )'),
+        ('SERIAL:baud -- SERIAL:handle',
+         'error[E-MISMATCH]: BAD ends with serial:baud on the stack; its signature promises serial:handle',
+         'leave serial:handle in the body, or declare ( serial:baud -- serial:baud )'),
+        ('SERIAL:handle -- SERIAL:errno',
+         'error[E-MISMATCH]: BAD ends with serial:handle on the stack; its signature promises serial:errno',
+         'leave serial:errno in the body, or declare ( serial:handle -- serial:handle )')):
+        native(habu, output, f': BAD ( {signature} ) ;', rejected=(first, help))
         checks += 1
     print(f'serial: {checks} native/ABI cases passed, including kernel pseudoterminal I/O')
 

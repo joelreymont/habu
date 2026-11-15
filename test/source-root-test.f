@@ -119,7 +119,12 @@ private
    s" a path holding a 0 byte is rejected by required" T-LABEL
    REJECTION:CAPTURE
    [: s\" a\zb.f" A-PATH required ;] CHECKER-REJECT-RC TTHROWSQ
-   REJECTION:BUFFER$ s" E-PATH-NUL" CONTAINS? TTRUE
+   REJECTION:BUFFER$
+   S\" error[E-PATH-NUL]: `required` got a path with a NUL byte, which no file name holds\n"
+   STARTS-WITH? TTRUE
+   REJECTION:BUFFER$ S\" ^ holds a NUL byte\n" CONTAINS? TTRUE
+   REJECTION:BUFFER$
+   S\" = help: remove the NUL byte from the path\n" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
