@@ -399,6 +399,12 @@ SUITE json-rpc
    src/lib/json-rpc-test.f
 ;SUITE
 
+\ The parser examples reopen SPARQL before sparql.f seals it.
+SUITE sparql
+   src/lib/sparql/syntax-test.f
+   src/lib/sparql-test.f
+;SUITE
+
 SUITE diff
    src/lib/diff-test.f
 ;SUITE

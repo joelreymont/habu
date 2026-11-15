@@ -696,6 +696,8 @@ require src/lib/prelude.f
 \ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
 \ which owns package STUDIO.
 
+\ SPARQL Query: -10000..-10099, minted in src/lib/sparql.f, package SPARQL.
+
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.
 -9600 constant E-T0-FIRST
