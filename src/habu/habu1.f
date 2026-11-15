@@ -4439,12 +4439,11 @@ package ENGINE-EMIT
 \ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper: the fork
 \ primitive's Linux child branches to it directly.
 : EMIT-FLUSH ( -- )
-   LFLUSHTO LABEL@ {: start:label :}
    LBL {: end:label :}
-   s" (FLUSHTO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   s" (FLUSHTO)" LFLUSHTO LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    LFLUSH LABEL@ LBL,
    11 CP 0 ADDI,
-   start LBL,
+   LFLUSHTO LABEL@ LBL,
    LBL FL-DL !
    LBL FL-DD !
    LBL FL-IL !

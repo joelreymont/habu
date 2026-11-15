@@ -366,9 +366,8 @@ private
 \ of its write is caught with the device state its catch saved.
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
-   LGENIOOUT LABEL@ {: start:label :}
-   s" (GENIO-OUT)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL,
+   s" (GENIO-OUT)" LGENIOOUT LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LGENIOOUT LABEL@ LBL,
    SP SP $10 SUBI,  30 SP 0 STR,
    9 DATA GENIO-ABI:BUSY-CELL LDR,  9 term CBNZ,
    0 GENIO-ABI:DEVICES CMPI,  C-HI term BCOND,          \ index outside 1..DEVICES
@@ -1459,9 +1458,8 @@ private
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
    LBL {: owned:label :}
-   LEXITHOOK LABEL@ {: start:label :}
-   s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL,
+   s" (LEXITHOOK)" LEXITHOOK LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LEXITHOOK LABEL@ LBL,
    11 DATA-VA VA>N LIT64,
    12 EXIT-OWNER-CELL MOVZ,  12 11 12 ADD,
    9 0 MOVZ,  9 DATA 12 CASAL,

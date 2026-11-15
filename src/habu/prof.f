@@ -631,7 +631,7 @@ public
    s\" ]}\n" C-PROF-SAY ;
 
 : EMIT-PROFREP ( bool -- ) {: json:bool :}
-   json IF LPROFJSON LABEL@ ELSE LPROFDUMP LABEL@ THEN LBL,
+   json IF LPROFJSON LABEL@ LBL, ELSE LPROFDUMP LABEL@ LBL, THEN
    LBL {: armed :}
    C-PROF-REP-OPEN
    7 PROF-BAND-VA LIT64,
