@@ -615,6 +615,40 @@ variable RC
    s" " CHECK
    0 s" Up" 2 12 27 29 AT ;
 
+\ A SUMTYPE in a private section defines HUE-RED for its variant red.
+: GENERATED-FIXTURE ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   SB-RESET
+   s" package HUES" SB-APPEND LF+
+   s" : HUE-RED ( -- n ) 1 ;" SB-APPEND LF+
+   s" SUMTYPE hue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
+   SB-APPEND LF+
+   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   s" ;package" SB-APPEND LF+
+   s" sum-generated.f" FIXTURE! ;
+
+\ The generated name lies in no source text, so the packet names the file.
+: GENERATED-AT ( -- )
+   0 s" reason" s" generated declaration already defined" FIELD=
+   0 s" token" s" HUE-RED" FIELD=
+   0 s" file" FX-PATH$ FIELD= ;
+
+\ The rejected family registers no type for a later use.
+: TEST-GENERATED-NAME ( -- )
+   s" a generated name already defined" T-LABEL
+   s" " GENERATED-FIXTURE
+   s" " CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-BAD-DECLARATION" FIELD=
+   GENERATED-AT
+   s" : HUE-USE ( hue -- ) drop ;" GENERATED-FIXTURE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-BAD-DECLARATION" FIELD=
+   GENERATED-AT
+   1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
+   1 s" hue" 4 13 112 115 AT ;
+
 \ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
    s" a NEWTYPE packet at its family name" T-LABEL
@@ -2306,6 +2340,7 @@ variable RC
    TEST-COMPOSE-ALL
    TEST-COMPOSE-VERIFY
    TEST-DECLARATION
+   TEST-GENERATED-NAME
    TEST-NEWTYPE
    TEST-ENUM
    TEST-ENUM-CLOSE

@@ -3,7 +3,8 @@
 \ And Enums"). Loaded unchecked in the checker prefix, right after render.f.
 \ Every failure is transactional: the registry marks restore, TDECL-DIAG
 \ (render.f) reports, and the declaration counts as a multi-error reject or
-\ throws its code. The seven global entries are at the foot of the file.
+\ throws its code. Seven global entries are at the foot of the file; SUMTYPE
+\ itself loads after the declaration runner, in sumtype-front.f.
 
 using SCHEMA-REG
 using TFAM
@@ -145,7 +146,7 @@ private
 
 public
 
-variable TDECL-FAM-REG   \ family id registered by the LAST successful declaration (-1 = none)
+variable TDECL-FAM-REG   \ family id the LAST successful NEWTYPE, DEFTYPE or PRODUCT registered (-1 = none)
 
 \ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
 \ one declaration transaction, whose event participant owns the field frame
@@ -165,11 +166,45 @@ private
    TDM-SCH @ TDM-ROOT @ SCHEMA-REG:REWIND
    QUOT-ROLLBACK ;
 
+PTR-VARIABLE TDECL-BUF-P
+SCRATCH-VARIABLE TDECL-BUF-CAP   \ in cells
+variable TDECL-U
+: TDECL-BUF ( -- ptr u8 ) TDECL-BUF-P @ ;
+
+\ One row per token copied into TDECL-BUF: its offset there and the address it
+\ was copied from.
+PTR-VARIABLE TDECL-TOK-OFF
+PTR-U8-TABLE-VARIABLE TDECL-TOK-SRC
+SCRATCH-VARIABLE TDECL-TOK-OFF-CAP
+SCRATCH-VARIABLE TDECL-TOK-SRC-CAP
+variable TDECL-TOK-N
+: TDECL-OFF ( n -- ptr n ) cells TDECL-TOK-OFF @ + ;
+: TDECL-ORIGIN ( n -- ptr ptr u8 ) TDECL-TOK-SRC @ swap ptr-field ;
+
+\ The last row whose token starts at or before offset off; -1 for an empty table.
+: TDECL-ROW ( n -- n ) {: off:n :}
+   TDECL-TOK-N @ 1 -
+   BEGIN dup 0 > WHILE
+      dup TDECL-OFF @ off <= IF EXIT THEN
+      1 -
+   REPEAT ;
+
+\ A span in TDECL-BUF becomes the bytes its token was copied from when those
+\ lie in armed text; any other span comes back unchanged.
+: TDECL-SRC ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a TDECL-BUF - {: off:n :}
+   off 0 <  off TDECL-U @ > or IF a u EXIT THEN
+   off TDECL-ROW {: r:n :}
+   r 0 < IF a u EXIT THEN
+   r TDECL-ORIGIN @  off r TDECL-OFF @ - + {: s:ptr :}
+   s REJECTION:>SOURCE nip 0= IF a u EXIT THEN
+   s u ;
+
 \ A DEFFAMILY packet points at the name whatever the refusal, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.
 : TDECL-REPORT-TOK ( -- ptr u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
-   TDT-A @ TDT-U @ ;
+   TDT-A @ TDT-U @ TDECL-SRC ;
 
 : TDECL-REPORT ( -- )
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  TDW-A @ TDW-U @
@@ -207,20 +242,10 @@ private
    -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
 
-\ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
-\ packet (name + partial body) through TDECL-RUN so every path -- native SUMTYPE,
-\ the verify-source recording pass, and the check.f collector -- agrees.
-\ Defined here (before TDECL-DEFSUM) so every context that sees TDECL-DEFSUM
-\ also sees TDECL-DEFSUM-NOEND.
+\ The unterminated-sum reject: the declaration-shaped E-BAD-DECLARATION packet
+\ (name + partial body) through TDECL-RUN, on the load and a replay alike.
 : TDECL-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;SUMTYPE" E-TDECL-SYNTAX TDECL-THROW ;
-
-public
-
-: TDECL-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" sumtype" na nu ba bu TDECL-CTX!
-   [: TDECL-NOEND-BODY ;] TDECL-RUN ;
 
 \ --- name gate: reserved signature/type tokens, control words, and grammar
 \ keywords may not name a family or variant (docs/forth.md "Structures And Enums"). The family
@@ -371,7 +396,7 @@ variable TDECL-FAM-ARITY
    u 1 = IF a u TDECL-LETTER EXIT THEN
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
    a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
-   a u TDECL-ABSENT-MAY? IF a u SIG-UNRES! 0 EXIT THEN
+   a u TDECL-ABSENT-MAY? IF a u TDECL-SRC SIG-UNRES! 0 EXIT THEN
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
 \ --- a variant payload may also be a closed parametric application
@@ -557,7 +582,7 @@ private
    u 1 = IF a u TDECL-PAY-ELEM EXIT THEN
    a u CON-OF dup 0 <> IF drop a u TDECL-PAY-ELEM EXIT THEN drop
    a u TDECL-ABSENT-MAY? IF
-      a u SIG-UNRES!
+      a u TDECL-SRC SIG-UNRES!
       TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop TDECL-VPAY-LOOSE-APP
       ELSE PK! THEN
       0 EXIT
@@ -925,11 +950,11 @@ private
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
-\ --- registration entry points (verify-source and the definers below).
+\ --- registration entry points (verify-source, sumtype-front.f and the definers below).
 
 private
 
-: CHECKER-DEFSUM-BODY ( -- )
+: CHECKER-DEFSUM-BODY ( -- n )
    TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
@@ -946,16 +971,11 @@ private
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
-   fam vstart TDV-N @ TDECL-CTOR-PUBLISH
-   fam TDECL-FAM-REG ! ;
+   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
+   fam ;
 
 
 public
-
-: TDECL-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" sumtype" na nu ba bu TDECL-CTX!
-   [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
 \ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-PLAN). Field tails are
 \ their own namespace, one-letter names legal; linear instantiations are refused at the sig and bind layers.
@@ -1493,10 +1513,6 @@ private
    u 0 ?do a i + c@ TDGEN-C, loop ;
 : TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
-PTR-VARIABLE TDECL-BUF-P
-SCRATCH-VARIABLE TDECL-BUF-CAP   \ in cells
-variable TDECL-U
-: TDECL-BUF ( -- ptr u8 ) TDECL-BUF-P @ ;
 
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
 \ constructor package from items, their engine words found where this file is
@@ -1990,10 +2006,10 @@ public
 : TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
    fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
-\ Every declaration announces its family through TDECL-FAM-REG; that ambient
-\ read lives only in the adapters below and in TDECL-DEFTYPE and
-\ TDECL-NOMINAL-REPLAY. SUMTYPE and PRODUCT generate inside the body TDECL-RUN
-\ guards, so a refused declaration never reaches generation.
+\ NEWTYPE, DEFTYPE and PRODUCT announce their family through TDECL-FAM-REG;
+\ that ambient read lives only in the adapters below and in TDECL-DEFTYPE and
+\ TDECL-NOMINAL-REPLAY. PRODUCT generates inside the body TDECL-RUN guards, so
+\ a refused declaration never reaches generation.
 
 private
 
@@ -2013,14 +2029,10 @@ private
    TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
    TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
 
-: TDECL-SUM-GENERATE ( -- )
-   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
-   TDECL-CTOR-WORDS ;
-
 public
 
-\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens
-\ it already lexed (verify-source.f): the checked effects of the words the
+\ The replay twin, for a tool that registered a PRODUCT from tokens it already
+\ lexed (verify-source.f): the checked effects of the words the
 \ definer would generate, and no word. These include a PRODUCT's
 \ initialized-field accessors when it derives init (TDECL-PRODUCT-INIT-ARM);
 \ its rows are committed once the registration returns, which is all
@@ -2037,7 +2049,7 @@ public
 
 private
 
-: TDECL-CLEAR ( -- ) 0 TDECL-U ! ;
+: TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-TOK-N ! ;
 : TDECL-BUF-ENSURE ( n -- ) {: need:n :}
    TDECL-BUF-P TDECL-BUF-CAP  need CELL + 1 - CELL /  1
    ARENA-ROWS-ENSURE ;
@@ -2048,35 +2060,17 @@ private
    need TDECL-U ! ;
 : TDECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TDECL-C, loop ;
-: TDECL-TOKEN+ ( ptr u8 n -- )
+: TDECL-ROW+ ( ptr u8 n -- ) {: a:ptr off:n :}
+   TDECL-TOK-N @ 1 + {: need:n :}
+   TDECL-TOK-OFF TDECL-TOK-OFF-CAP need 1 ARENA-ROWS-ENSURE
+   TDECL-TOK-SRC TDECL-TOK-SRC-CAP need 1 ARENA-ROWS-ENSURE
+   off TDECL-TOK-N @ TDECL-OFF !
+   a TDECL-TOK-N @ TDECL-ORIGIN !
+   need TDECL-TOK-N ! ;
+: TDECL-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    TDECL-U @ 0 > IF 32 TDECL-C, THEN
-   TDECL-APP ;
-
-: SUMTYPE-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
-   BEGIN
-      parse-name
-      dup 0= IF 2drop RES-FALSE EXIT THEN
-      2dup s" ;sumtype" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
-      TDECL-TOKEN+
-   AGAIN ;
-
-: TDECL-SUM-GEN-TXN ( -- )
-   [: CHECKER-DEFSUM-BODY TDECL-SUM-GENERATE ;] TDECL-TXN-XT ;
-
-
-public
-
-: TDECL-SUMTYPE ( -- )
-   parse-name {: na:ptr nu:n :}
-   TDECL-CLEAR
-   SUMTYPE-COLLECT 0= IF
-      na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
-   THEN
-   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-   [: TDECL-SUM-GEN-TXN ;] TDECL-RUN ;
-
-private
+   a TDECL-U @ TDECL-ROW+
+   a u TDECL-APP ;
 
 : PRODUCT-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
    BEGIN
@@ -2115,7 +2109,6 @@ using TYPE-DECL
 \ --- the global surface, the only names in this file a user program can spell:
 \ global so a declaration registers from top level (test/type-decl-suite.f).
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
-: SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;
 
 \ The preverify and all-errors replay paths (verify-source.f) reach
@@ -2125,22 +2118,16 @@ NOMINAL-PROVIDER
 : CHECKER-DEFTYPE ( ptr u8 n ptr u8 n -- ) TDECL-DEFTYPE ;
 NOMINAL-PROVIDER
 : CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
-: CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
-NOMINAL-PROVIDER
-: CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;
 : CHECKER-DEFPRODUCT-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT-NOEND ;
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
 NOMINAL-PROVIDER
 
-\ The block openers parse their own body tokens up to the ;NAME closer, so their
-\ cell effect is ( -- ). The axiom rows keep them checker-known: the sealed
+\ NEWTYPE and PRODUCT parse their own body tokens up to the ;NAME closer, so
+\ their cell effect is ( -- ). The axiom rows keep them checker-known: the sealed
 \ checker refuses a word it has no row for. UNSAFE-TOK? rejects the openers inside checked bodies
 \ (they parse the live input and mutate the type registry at run time, which
-\ ( -- ) does not express), so the axioms add no checked-code capability. ENUM
-\ has no row: it is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN,
-\ like STRUCTURE.
+\ ( -- ) does not express), so the axioms add no checked-code capability.
 PRIM: NEWTYPE PRIM;
-PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;
 
 ;using

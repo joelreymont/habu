@@ -325,6 +325,14 @@ public
    RP-HEAD? @ IF 0 RP-HEAD? ! RP-HEAD@ EXIT THEN
    RP-BODY-NEXT ;
 
+\ Runs the quotation on this stream; a failed claim leaves another's stream.
+: RP-RUN ( ptr u8 n ptr u8 n [ -- ] -- )
+   {: na:ptr nu:n ba:ptr bu:n body :}
+   na nu ba bu RP-CLAIM
+   body catch {: rc:n :}
+   RP-RELEASE
+   rc 0 <> IF rc throw THEN ;
+
 private
 ;package
 
@@ -424,10 +432,10 @@ public
 
 : OWNS? ( n -- bool ) GEN-OK? ;
 
-\ SUMTYPE and PRODUCT still generate their constructors in sumtype.f, outside
-\ this participant. A tool that registered one from tokens it had lexed
-\ (src/habu/verify-source.f) replays that family's constructors here: their
-\ checked effects, for the family sumtype.f last announced, and no word.
+\ PRODUCT generates its words in sumtype.f, outside this participant. A tool
+\ that registered one from tokens it had lexed (src/habu/verify-source.f)
+\ replays them here: their checked effects, for the family sumtype.f last
+\ announced, and no word.
 : REPLAY-LEGACY ( -- ) TDECL-CTOR-WORDS-REPLAY ;
 
 private

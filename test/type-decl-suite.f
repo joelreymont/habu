@@ -1193,8 +1193,7 @@ s" NEWTYPE tdarres<n>" E-TDECL-ARITY TDT-NEG
 s" NEWTYPE tdarlong<item>" E-TDECL-ARITY TDT-NEG
 s" PRODUCT tdarprod<a,a> FIELD v z ;PRODUCT" E-TDECL-ARITY TDT-NEG
 s" SUMTYPE tdarv<> VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-ARITY TDT-NEG
-\ unterminated body (no ;SUMTYPE) reports the declaration packet via
-\ TDECL-DEFSUM-NOEND.
+\ an unterminated body (no ;SUMTYPE) reports the declaration packet.
 s" SUMTYPE tdnoend<a> VARIANT ok a ;VARIANT" E-TDECL-SYNTAX TDT-NEG
 \ malformed sum bodies.
 s" SUMTYPE tdempty<a> ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG

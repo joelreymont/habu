@@ -2383,9 +2383,9 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
 
-\ A SUMTYPE defines its constructors when it loads, so after the registration
-\ the scan replays their checked effects: a later definition that calls one
-\ resolves here as in the load.
+\ A SUMTYPE defines its constructors when it loads; the scan replays its body
+\ through the same front end, which publishes their checked effects, so a later
+\ definition that calls one resolves here as in the load.
 DYNAMIC-BUFFER SUM-VAR-AT n
 variable SUM-VAR-N
 variable SUM-VAR-NEXT
@@ -2426,24 +2426,16 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF
-         2drop
-         name nameu BODY$ CHECKER-DEFSUM-NOEND
-         EXIT
+      dup 0= IF 2drop 0 0= ELSE
+         2dup BODY-APPEND
+         2dup SUMTYPE-END? IF 2drop 0 0= ELSE SUM-VAR-STEP 0 0= 0= THEN
       THEN
-      2dup SUMTYPE-END? IF
-         2drop
-         TFAM:TFAM-N@ {: before:n :}
-         name nameu BODY$ CHECKER-DEFSUM
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
-         TFAM:TFAM-N@ before > IF
-            TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
-         THEN
-         EXIT
-      THEN
-      2dup SUM-VAR-STEP
-      BODY-APPEND
-   AGAIN ;
+   UNTIL
+   TFAM:TFAM-N@ {: before:n :}
+   name nameu BODY$ [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN
+   TFAM:TFAM-N@ before > IF
+      TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
+   THEN ;
 
 : RECORD-SUMTYPE ( -- )
    NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
