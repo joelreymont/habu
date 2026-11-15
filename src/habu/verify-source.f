@@ -2612,7 +2612,6 @@ variable SUM-VAR-NEXT
          2drop
          TFAM:TFAM-N@ {: before:n :}
          name nameu BODY$ CHECKER-DEFSUM
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
          TFAM:TFAM-N@ before > IF
             TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
          THEN
@@ -2680,7 +2679,6 @@ variable SUM-VAR-NEXT
       2dup PRODUCT-END? IF
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
          EXIT
       THEN
       BODY-APPEND
