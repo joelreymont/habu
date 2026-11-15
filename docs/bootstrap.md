@@ -21,8 +21,9 @@ under the out root (src/lib/build-out.f), in a directory
 named by the building hb's change time and size, so two hb never share an
 object.
 
-No route builds hb without an hb. x86-64 builds are off until x86-64 moves onto
-the linker.
+No route builds hb without an hb. T0 builds Linux x86-64 with
+`--target linux-x86-64`; an ARM host can emit the initial executable, which is
+then qualified on x86-64.
 
 ## Recovery
 
@@ -42,6 +43,10 @@ candidate, not a qualified target: run the
 [qualify](#refresh-binhb) the converged hb before installing it.
 
 A trusted hb too old to build the tree needs a [staged host](#staged-hosts).
+
+An ARM host run by QEMU uses `-cpu neoverse-n1`: its 64-byte cache lines match
+Habu's cache-maintenance stride. QEMU's default `max` CPU advertises 32-byte
+lines, leaving alternate instruction-cache lines unflushed.
 
 ## Requirements
 
