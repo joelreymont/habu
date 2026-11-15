@@ -1,7 +1,10 @@
 \ workspace.f - CWORK storage: the declaring package's own words capture none
 \ of its accessors, and no checked source reaches the mapping's cells.
 
+require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/ending.f
+require src/lib/test/subject.f
 require src/lib/fmt.f
 require src/compiler/workspace.f
 
@@ -53,20 +56,24 @@ create CWK-FOOB 1 allot
    SB-RESET  value FMT:SB-INT  s"  CWORK-VARIABLE " SB-APPEND
    na nu SB-APPEND  i FMT:SB-INT  s"  n" SB-APPEND  SB$ ;
 
-\ Declares CWK-Pi with no default, then CWK-Di with one; answers the code
-\ CWK-Di's declaration threw.
-: CWK-TURN ( n -- n ) {: i:n :}
-   0 s" CWK-P" i CWK-SRC$ TEST-EVAL:RC 0 T=
-   1 s" CWK-D" i CWK-SRC$ TEST-EVAL:RC ;
+\ Declares CWK-Di with a default for more i than the default table holds.
+: CWK-FILL ( -- )
+   $101 0 ?do 1 s" CWK-D" i CWK-SRC$ TEST-EVAL:RC drop loop ;
 
-\ Turns from 0 until a CWK-Di is refused; answers that i and its code.
-: CWK-FILL ( -- n n )
-   0 begin dup CWK-TURN dup 0= while drop 1+ repeat ;
+$4000 constant CWK-CAP
+create CWK-OUT CWK-CAP allot
+create CWK-ERR CWK-CAP allot
 
-\ The bytes from CWK-Pi to CWK-A.
-: CWK-GAP ( n -- n ) {: i:n :}
-   SB-RESET  s" CWK-A NULL-PTR - CWK-P" SB-APPEND
-   i FMT:SB-INT  s"  NULL-PTR - -" SB-APPEND  SB$ TEST-EVAL:N ;
+\ A full default table ends the process, so CWK-FILL runs in a child.
+: CWK-FULL ( -- )
+   s" CWKT:CWK-FILL" {: src:ptr srcu:n :}
+   src srcu CWK-OUT CWK-CAP >LEN CWK-ERR CWK-CAP >LEN PROCESS:WAIT-FOREVER
+   SUBJECT:RUN {: outl:len errl:len oc :}
+   CWK-ERR errl LEN>N {: err:ptr erru:n :}
+   src srcu CWK-OUT outl LEN>N err erru oc 76 T-ENDING-EXITED=
+   err erru
+   s" compiler workspace: the default table is full at DEFAULT-CAP rows"
+   CONTAINS? TTRUE ;
 ;package
 
 CWKT:CWK-V T=
@@ -81,10 +88,6 @@ s" : CWK-CTL ( -- ) 0 CWORK:MEM#ctl ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 s" : CWK-OFF ( -- ) 0 CWKC:V#base ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 s" 0 CWORK-VARIABLE CWK-U8 u8" TEST-EVAL:RC CHECKER-REJECT-RC T=
 
-\ Defaults fill the table; the refused declaration lays nothing, so the
-\ variables declared around it are one cell apart.
-CWKT:CWK-FILL E-LAYOUT-BUFFER T=
-s" 0 CWORK-VARIABLE CWK-A n" TEST-EVAL:RC 0 T=
-CWKT:CWK-GAP CELL T=
+CWKT:CWK-FULL
 
 T-REPORT

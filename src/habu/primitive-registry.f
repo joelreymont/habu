@@ -15,9 +15,8 @@ package ENGINE-PRIMS
 
 6 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
-\ The generated storage accessors' size and index refusals: src/core/
-\ layout-buffer.f's codes, which this file requires.
-E-LAYOUT-BUFFER constant E-SIZE
+\ The generated storage accessors' index refusal: src/core/layout-buffer.f's
+\ code, which this file requires.
 E-LAYOUT-BOUNDS constant E-INDEX
 \ Both specification gates exit with the table's own refusal status.
 76 constant SPEC-RC
@@ -31,9 +30,13 @@ variable NAME-BYTES
    row ROW-CELLS * field + ROWS ;
 
 : RESERVE ( n -- ) {: size:n :}
-   size 0 <= if E-SIZE throw then
-   USED @ MAX-N CELL / ROW-CELLS / >= if E-SIZE throw then
-   size MAX-N CELL 1- - NAME-BYTES @ - > if E-SIZE throw then
+   size 0 <= if s" prims: a primitive's name is empty" 76 die then
+   USED @ MAX-N CELL / ROW-CELLS / >= if
+      s" prims: ROWS is full at MAX-N bytes" 76 die
+   then
+   size MAX-N CELL 1- - NAME-BYTES @ - > if
+      s" prims: NAMES is full at MAX-N bytes" 76 die
+   then
    USED @ 1+ ROW-CELLS * ROWS-RESERVE
    NAME-BYTES @ size + CELL 1- + CELL / NAMES-RESERVE ;
 

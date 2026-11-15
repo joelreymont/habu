@@ -174,6 +174,11 @@ public
 : EMIT-U
    NUM-V !  0 NUM-N !
    NUM-V @ 0= IF 48 EMIT1 EXIT THEN
+   NUM-V @ 0 < IF
+      NUM-V @ 1 rshift 5 /
+      NUM-V @ over 10 * - 48 +  NUM-BUF c!
+      1 NUM-N !  NUM-V !
+   THEN
    BEGIN NUM-V @ 0 > WHILE
       NUM-V @ 10 mod 48 +  NUM-BUF NUM-N @ + c!
       NUM-N @ 1 + NUM-N !
@@ -187,7 +192,6 @@ public
 : EMIT-N ( n -- ) {: v:n :}
    v 0 >= IF v EMIT-U EXIT THEN
    45 EMIT1
-   v 1 63 lshift = IF s" 9223372036854775808" EMIT-STR EXIT THEN
    v negate EMIT-U ;
 private
 : JSON-STRING ( ptr u8 n -- )

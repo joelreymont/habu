@@ -19,10 +19,16 @@ variable DEFAULT-N
 
 \ The offset the next bytes take; USED moves only once they are laid.
 : FIT ( n -- n ) {: bytes:n :}
-   bytes 0 <= if E-LAYOUT-BUFFER throw then
+   bytes 0 <= if
+      s" compiler workspace: a declaration takes no bytes" 76 die
+   then
    USED @ CELL 1- + CELL / CELL * {: off:n :}
-   off LIMIT > if E-LAYOUT-BUFFER throw then
-   bytes LIMIT off - > if E-LAYOUT-BUFFER throw then
+   off LIMIT > if
+      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+   then
+   bytes LIMIT off - > if
+      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+   then
    off ;
 
 : DEFAULT ( n n -- ) {: off:n value:n :}
@@ -64,8 +70,12 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
 \ The bytes a declaration of OPERAND elements of W bytes takes.
 : EXTENT ( n n n -- n ) {: operand:n kind:n w:n :}
    kind VARIABLE-KIND = if w exit then
-   operand 0 <= if E-LAYOUT-BUFFER throw then
-   operand LIMIT w / > if E-LAYOUT-BUFFER throw then
+   operand 0 <= if
+      s" compiler workspace: a declaration has no elements" 76 die
+   then
+   operand LIMIT w / > if
+      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+   then
    operand w * ;
 
 \ The product's USED and MEM#base place the storage; the building hb makes the
@@ -88,9 +98,11 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
    AS-STORAGE-LINE execute {: na:ptr nu:n ta:ptr tu:n w:n :}
    w 0= if exit then
    operand kind w EXTENT {: bytes:n :}
-   \ A full default table refuses before FIT, so USED keeps no refused bytes.
    kind VARIABLE-KIND = operand 0<> and
-   DEFAULT-N @ DEFAULT-CAP >= and if E-LAYOUT-BUFFER throw then
+   DEFAULT-N @ DEFAULT-CAP >= and if
+      s" compiler workspace: the default table is full at DEFAULT-CAP rows"
+      76 die
+   then
    bytes FIT {: off:n :}
    na nu ta tu kind ACCESSOR
    off ,  w ,

@@ -11,16 +11,14 @@
 package DYNAMIC-STORAGE
 public
 
-\ A refused map and a refused unmap.
+\ The code of a map the system refused.
 7138 constant E-MAP
-7139 constant E-UNMAP
 
 2 constant CONTROL-CELLS
 
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
-E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size refusal
 
 $40 constant REG-INIT
 
@@ -29,9 +27,7 @@ $40 constant REG-INIT
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
-   CELL part - {: pad:n :}
-   bytes MAX-BYTES pad - > if E-SIZE throw then
-   bytes pad + ;
+   bytes CELL part - + ;
 
 : CAPACITY ( n n -- n ) {: need:n old:n :}
    old MAX-BYTES 2 / > if need CELL-CEIL exit then
@@ -67,8 +63,22 @@ variable MUTEX
 \ The control block's cell after the capacity, which is its first cell.
 : SLOT ( ptr n -- ptr n ) CELL + ;
 
+\ The record of a map of n bytes the system refused, thrown as E-MAP: a caller
+\ that can go on without the storage catches it, and nothing prints.
+: MAP-REFUSED ( n -- ) {: bytes:n :}
+   s" E-MAP" REJECTION:OPEN
+   s" the system refused " REJECTION:EMIT-STR  bytes REJECTION:EMIT-U
+   s"  bytes of storage" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT
+   s" bytes" REJECTION:NOTE  bytes REJECTION:EMIT-U
+   REJECTION:HELP
+   s" reserve fewer elements, or release storage the program no longer needs"
+   REJECTION:EMIT-STR
+   REJECTION:SAVE  E-MAP REJECTION:PASS ;
+
 : REG-MAP ( n -- ptr ptr u8 )
-   REG-BYTES map-anon 0< if drop E-MAP throw then ;
+   REG-BYTES {: bytes:n :}
+   bytes map-anon 0< if drop bytes MAP-REFUSED then ;
 
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
@@ -83,8 +93,11 @@ variable MUTEX
    old 2 * {: cap:n :}
    cap REG-MAP {: fresh:ptr :}
    REG @ fresh old REG-BYTES COPY
+   \ GROW holds the lock, and the exit actions die runs may take it.
    REG @ old REG-BYTES munmap 0< if
-      fresh cap REG-BYTES munmap drop E-UNMAP throw
+      UNLOCK
+      s" dynamic storage: the system refused to unmap this process's own mapping"
+      76 die
    then
    fresh REG !
    cap REG-CAP ! ;
@@ -120,7 +133,7 @@ variable MUTEX
 : GROW ( n ptr ptr a ptr n n -- )
    {: need:n cb:ptr ctl:ptr old:n :}
    need old CAPACITY {: cap:n :}
-   cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
+   cap map-anon 0< if drop cap MAP-REFUSED then {: fresh:ptr :}
    old 0= if
       \ Distinct controls may allocate concurrently. Keep their mapping work
       \ outside the lock; registry room and publication form one commit.
@@ -137,7 +150,9 @@ variable MUTEX
    cb @ fresh old COPY
    LOCK
    cb @ old munmap 0< if
-      UNLOCK fresh cap munmap drop E-UNMAP throw
+      UNLOCK
+      s" dynamic storage: the system refused to unmap this process's own mapping"
+      76 die
    then
    fresh cap cb ctl PUBLISH
    UNLOCK ;
@@ -154,7 +169,11 @@ public
    ctl @ {: cap:n :}
    cap 0= if exit then
    LOCK
-   cb @ cap munmap 0< if UNLOCK E-UNMAP throw then
+   cb @ cap munmap 0< if
+      UNLOCK
+      s" dynamic storage: the system refused to unmap this process's own mapping"
+      76 die
+   then
    ctl UNREGISTER
    NULL-PTR cb !
    0 ctl !
@@ -200,10 +219,14 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 \ A HEAP child's routines, each taking the cell holding its record's width in
 \ bytes last: a zero-filled record on its own mapping, and its unmap.
 : MAP-RECORD ( ptr n -- ptr a )
-   @ map-anon 0< if drop E-MAP throw then ;
+   @ {: bytes:n :}
+   bytes map-anon 0< if drop bytes MAP-REFUSED then ;
 
 : UNMAP-RECORD ( ptr a ptr n -- )
-   @ munmap 0< if E-UNMAP throw then ;
+   @ munmap 0< if
+      s" dynamic storage: the system refused to unmap this process's own mapping"
+      76 die
+   then ;
 
 private
 
