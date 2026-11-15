@@ -84,17 +84,19 @@ ED-RESET
    SCHEMA-PARAM ;
 
 \ The pointee text of a payload type that opens a pointer: the rest of a `^T`
-\ token, empty for a bare `^`. The token `ptr` names no type: it is refused as
-\ an unknown payload type.
+\ token. A bare `^` and the token `ptr` name no type and are rejected.
+: EN-PTR-FIX$ ( -- ^u8 n )
+   s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" ;
 : EN-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    a u s" ptr" CORE-STR=CI IF
-      s" unknown payload type"
-      s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`"
-      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
+      s" unknown payload type" EN-PTR-FIX$ E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+   u 0 > IF a c@ 94 = IF
+      u 1 = IF s" pointer without a pointee" EN-PTR-FIX$
+         E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      a 1 + u 1 - YES EXIT THEN THEN
    a u NO ;
 
-\ The text resolved is the reject token, so a refused pointee names itself, not
+\ The text resolved is the reject token, so a rejected pointee names itself, not
 \ the `^T` token that holds it.
 : RESOLVE-TYPE ( ^u8 n -- n )
    dup 0= IF 2drop

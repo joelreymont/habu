@@ -504,6 +504,13 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `dgptr`\n" DECL-DIAG:HAS? TTR
 s" ptr" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`\n" DECL-DIAG:HAS? TTRUE
 
+\ A bare `^` is a pointer with no pointee, never a missing type.
+DECL-DIAG:PROSE
+s" ENUM dgbare VARIANT vv FIELD payfld ^ ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `dgbare`\n" DECL-DIAG:HAS? TTRUE
+s" ^" s" pointer without a pointee" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`\n" DECL-DIAG:HAS? TTRUE
+
 DECL-DIAG:PROSE
 s" ENUM dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgpol`\n" DECL-DIAG:HAS? TTRUE
