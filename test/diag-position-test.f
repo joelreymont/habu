@@ -1421,10 +1421,10 @@ variable RC
 \ A top-level row the check replays gets the bytes the load's literals make. A
 \ decoded name nothing defines is stale and unplaced: the checked text does not
 \ hold it. A bad escape is rejected at the literal's opener, by each check as
-\ by the load, before an unclosed string after it; --all-errors's lexer reads
-\ no escape and reports that string alone. The lexer's defect comes before an
-\ earlier definition that does not check; --verify-only composes the file as it
-\ reads it and keeps that definition's rejection before the string's.
+\ by the load, before an unclosed string after it. The lexer's defect comes
+\ before an earlier definition that does not check; --verify-only composes the
+\ file as it reads it and keeps that definition's rejection before the
+\ string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1458,13 +1458,7 @@ variable RC
    s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-unterminated.f" FIXTURE!
-   s" " CHECK
-   s" E-UNTERMINATED-STRING" REJECTED-AS  0 s\" s\\\"" 1 1 0 3 AT
-   s" --all-errors" CHECK
-   s" E-UNTERMINATED-STRING" REJECTED-AS  0 s\" s\"" 2 1 16 18 AT
-   s" --verify-only" CHECK
-   s" E-UNTERMINATED-STRING" REJECTED-AS
-   0 s\" s\\\"" 1 1 0 3 FX-PATH$ CANON$ FX$ AT-IN
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
    s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET

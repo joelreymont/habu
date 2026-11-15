@@ -2,7 +2,6 @@
 \ Returned bytes belong to this package and last until its next record.
 
 require src/lib/json.f
-require src/lib/source-lex.f
 require src/habu/verify-source.f
 
 package VERIFY-DIAGNOSTICS
@@ -34,14 +33,6 @@ variable READY
       1+
    repeat ;
 
-: LEX-CODE$ ( -- ptr u8 n ptr u8 n ptr u8 n )
-   LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = if
-      s" E-MALFORMED-REGISTRY-ROW" s" close_primitive_row"
-      s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE." exit
-   then
-   s" E-UNTERMINATED-STRING" s" close_string"
-   s" Close the string literal before the definition ends." ;
-
 public
 
 \ The code, repair class, suggestion and short message of a statement that
@@ -65,27 +56,6 @@ public
    then
    s" E-STATEMENT-THROW" s" unknown_rejection"
    s" Inspect the token, signature, and raw stack evidence." s" " ;
-
-\ Scan the supplied source and render its first lexical fault, or an empty span.
-: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n src:ptr srcu:n :}
-   src srcu LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= if s" " exit then
-   LINT-LEX:ERROR-BYTE@ {: at:n :}
-   src srcu at TOKEN-END at - {: len:n :}
-   LEX-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   START
-   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token" src at + len JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" LINT-LEX:ERROR-LINE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" LINT-LEX:ERROR-COL@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" at JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" at len + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" suggestion" sug sugu JSON:WRITE-FIELD-S
-   END$ ;
 
 : THROW-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: rc:n at:n name:ptr nameu:n src:ptr srcu:n why:ptr whyu:n :}

@@ -23,7 +23,7 @@ public
 \ A lexer defect hides every later claim in its source, so the scan refuses
 \ rather than certify a partial ledger. -4808..-4810 sit in the lint-tool block
 \ that starts at E-SHADOW-UNTERM (-4800).
--4808 constant E-QUOTE   \ a string literal ran past end of input
+-4808 constant E-QUOTE   \ a string literal has no closing quote or holds a bad escape
 -4809 constant E-ROW     \ a primitive-axiom row lacked a header or its closer
 -4810 constant E-LEX     \ a lexer diagnostic or token kind this lint was never taught
 
@@ -341,8 +341,9 @@ variable JX
 : LEX-DEFECT ( -- )
    DEFECT-SITE
    LINT-LEX:ERROR-KIND@ {: kind:n :}
-   kind LINT-LEX:UNTERMINATED-QUOTE = if
-      s" unterminated string literal" type NL  E-QUOTE throw
+   kind LINT-LEX:BAD-STRING = if
+      s" string literal with no closing quote or a bad escape" type NL
+      E-QUOTE throw
    then
    kind LINT-LEX:MALFORMED-REGISTRY = if
       s" malformed primitive-axiom row" type NL  E-ROW throw

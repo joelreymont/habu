@@ -2,9 +2,8 @@
 \
 \ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; LETTER
 \ decodes an escape letter, and `\x` and `\X` take two hex
-\ digits. src/habu/interpreter.f ESC-SCAN reads literals through SPAN and COPY.
-\ Neither allocates, refuses or bounds a length: the caller decides what a
-\ failed or long span means.
+\ digits. SPAN and COPY neither allocate, reject nor bound a length: the
+\ caller decides what a failed or long span means.
 
 require src/lib/prelude.f
 

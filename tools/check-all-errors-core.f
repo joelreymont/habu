@@ -175,21 +175,21 @@ variable CA-COMPOSE-LABEL-U
 \ its own code and help: a caller told to close a string literal would look for
 \ a quote that is not there.
 : CA-LEX-HELP ( -- )
-   CA-LEX-ROW? IF
-      s" close the row: `PRIM:` ends at `PRIM;`, `EPRIM:` at `EPRIM;`, " CA-SAY
-      s" `PPRIM:` at `PPRIM;` or `CLOSE-PRIVATE`, `EPPRIM:` at `ECLOSE-PRIVATE`" CA-SAY
-      exit
-   THEN
-   s" close the string literal before the file ends" CA-SAY ;
+   s" close the row: `PRIM:` ends at `PRIM;`, `EPRIM:` at `EPRIM;`, " CA-SAY
+   s" `PPRIM:` at `PPRIM;` or `CLOSE-PRIVATE`, `EPPRIM:` at `ECLOSE-PRIVATE`" CA-SAY ;
 
+: CA-LEX-ROW-RECORD ( -- )
+   s" E-MALFORMED-REGISTRY-ROW" REJECTION:OPEN
+   s" the primitive-axiom row opened at " CA-SAY  CA-LEX-TOKEN$ CA-TICKS
+   s"  does not close" CA-SAY
+   CA-LEX-TOKEN$ REJECTION:AT  s" opened here" CA-SAY
+   REJECTION:HELP  CA-LEX-HELP ;
+
+\ A string defect gets the load's record.
 : CA-LEX-RECORD ( -- )
    CA-ARM
-   CA-LEX-ROW? IF s" E-MALFORMED-REGISTRY-ROW" ELSE s" E-UNTERMINATED-STRING" THEN
-   REJECTION:OPEN
-   CA-LEX-ROW? IF s" the primitive-axiom row" ELSE s" the string literal" THEN CA-SAY
-   s"  opened at " CA-SAY  CA-LEX-TOKEN$ CA-TICKS  s"  does not close" CA-SAY
-   CA-LEX-TOKEN$ REJECTION:AT  s" opened here" CA-SAY
-   REJECTION:HELP  CA-LEX-HELP
+   CA-LEX-ROW? IF CA-LEX-ROW-RECORD
+   ELSE CA-LEX-TOKEN$ INTERPRETER:LITERAL-REJECT THEN
    REJECTION:KEEP
    REJECTION:SOURCE-OFF ;
 
@@ -229,24 +229,15 @@ public
 : THREW? ( n -- bool ) {: rc:n :}
    rc 0 < rc 255 > or ;
 
-private
-
-\ True for the code the pre-verifier stops with at a string or a
-\ primitive-axiom row the file never closes, and discovery at a string or a
-\ locals group, a defect the lexer reads too but for the group.
-: LEX-STOP? ( n -- bool ) {: rc:n :}
+\ True for the code of a stop that the lexer's record of the stopped file goes
+\ before, as it goes before any error in the file: the pre-verifier's at a
+\ string or a primitive-axiom row the file never closes, and discovery's at a
+\ string or a locals group, a defect the lexer reads too but for the group.
+\ With no defect for the lexer to read, the stop's own record stands.
+: LEX-FIRST? ( n -- bool ) {: rc:n :}
    rc VERIFY:E-UNTERMINATED-STRING =
    rc VERIFY:E-MALFORMED-REGISTRY-ROW = or
    rc E-DISC-UNTERM = or ;
-
-public
-
-\ True for the code of a stop that the lexer's record of the stopped file goes
-\ before, as it goes before any error in the file: a defect the lexer reads
-\ too (LEX-STOP?), and a bad escape, which it does not read. With no defect
-\ for the lexer to read, the stop's own record stands.
-: LEX-FIRST? ( n -- bool ) {: rc:n :}
-   rc LEX-STOP? rc VERIFY:E-BAD-ESCAPE = or ;
 
 private
 
@@ -430,38 +421,6 @@ variable CA-JSON-READY
    loop
    at swap - 1+ ;
 
-\ ---- malformed primitive-axiom row --------------------------------------------
-\ An incomplete primitive-axiom row stops the scan like an open string but gets
-\ its own code and repair text: a caller told to close a string literal would
-\ look for a quote that is not there.
-: CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n what:ptr whatu:n :}
-   CA-JSON-WRITER
-   code codeu JSON:WRITE-RAW
-   s"  " JSON:WRITE-RAW
-   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW
-   s" :" JSON:WRITE-RAW LINT-LEX:ERROR-LINE@ JSON:WRITE-U
-   s" :" JSON:WRITE-RAW LINT-LEX:ERROR-COL@ JSON:WRITE-U
-   s" : " JSON:WRITE-RAW what whatu JSON:WRITE-RAW
-   s"  opened at '" JSON:WRITE-RAW CA-LEX-TOKEN$ JSON:WRITE-RAW
-   s" ' does not close" JSON:WRITE-RAW drop ;
-
-: CA-PROSE-LEX-ROW ( -- )
-   s" E-MALFORMED-REGISTRY-ROW" s" primitive-axiom row" CA-PROSE-LEX ;
-
-: CA-PROSE-LEX-UNTERM ( -- )
-   s" E-UNTERMINATED-STRING" s" string literal" CA-PROSE-LEX ;
-
-\ The record of the defect the lexer hit, in the selected mode, built in the
-\ JSON writer's buffer.
-: CA-LEX-RECORD$ ( -- ptr u8 n )
-   CA-JSON? IF
-      CA-FILE-A@ CA-FILE-U @ CA-SRC-A@ CA-SRC-U @
-      VERIFY-DIAGNOSTICS:LEX-RECORD$ EXIT
-   THEN
-   CA-LEX-ROW? IF CA-PROSE-LEX-ROW ELSE CA-PROSE-LEX-UNTERM THEN
-   CA-JSON-W JSON:WRITTEN$ ;
-
 : CA-THROW-ORIGIN ( -- n n )
    CA-SRC-A@ CA-THROW-AT @ BYTE-ORIGIN ;
 
@@ -498,17 +457,6 @@ public
 \ selects the prose rendering.
 : JSON! ( bool -- )
    CA-JSON ! ;
-
-\ The record line LEX-FILE writes for the lexer defect of the given bytes, which
-\ stand for the file the label names, in the mode JSON! selected, with no line
-\ feed; empty when they lex clean.
-: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: labela:ptr labelu:n srca:ptr srcu:n :}
-   labela labelu CA-START
-   srca srcu CA-SOURCE-BUF!
-   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? IF CA-LEX-RECORD$ EXIT THEN
-   s" " ;
 
 \ The record line --all-errors writes for a statement that threw the given code,
 \ for a caller that had the checker run over the given source under the given
