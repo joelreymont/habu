@@ -214,6 +214,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : PATH-HUGE$ ( -- ptr u8 n ) s" /huge" ;
 : PATH-CHUNKED$ ( -- ptr u8 n ) s" /chunked" ;
 : PATH-BODIED-REDIRECT$ ( -- ptr u8 n ) s" /bodied-redirect" ;
+: PATH-CUT-HEAD$ ( -- ptr u8 n ) s" /cut-head" ;
+: PATH-CR-END$ ( -- ptr u8 n ) s" /cr-end" ;
+: PATH-HINT-CUT$ ( -- ptr u8 n ) s" /hint-cut" ;
 : SENT-BYTES ( -- ptr u8 ) HUGE-SENT @ ;
 : GOT-BYTES ( -- ptr u8 ) HUGE-GOT @ ;
 : FORM$ ( -- ptr u8 n ) s" a=1" ;
@@ -222,6 +225,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    S\" HTTP/1.0 200 OK\r\nCache-Control: max-age=60\r\nExpires: Wed, 21 Oct 2030 07:28:00 GMT\r\nAge: 7\r\nRetry-After: 9\r\nX-Duplicate: first\r\nX-Duplicate: second\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
 : HEADERS-B$ ( -- ptr u8 n )
    S\" HTTP/1.0 200 OK\r\nX-Generation: two\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
+: CR-END$ ( -- ptr u8 n )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\rX\r\n" ;
+: CR-BODY$ ( -- ptr u8 n ) s" abc" ;
 : INTERIM-FINAL$ ( -- ptr u8 n )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Cache-Control\r\nConnection: close\r\n\r\n" ;
 : DRIBBLE$ ( -- ptr u8 n ) DRIBBLE-BUF DRIBBLE-U ;
@@ -571,6 +577,26 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
+\ A status line and then the close, with no blank line ending the block.
+: SERVE-CUT-HEAD ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   s" HTTP/1.1 200 OK" RES+ CRLF+
+   conn SEND-RESPONSE ;
+
+
+\ A complete 103 block and then the close, with no final response at all.
+: SERVE-HINT-CUT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   S\" HTTP/1.1 103 Early Hints\r\nLink: </s>\r\n\r\n" RES+
+   conn SEND-RESPONSE ;
+
+
+: SERVE-CR-END ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   CR-END$ RES+ CR-BODY$ RES+
+   conn SEND-RESPONSE ;
+
+
 : REQ-HOLDS? ( TCP4:connection n -- bool ) {: conn:TCP4:connection want:n :}
    want REQ-CAP > if false exit then
    begin REQ-U @ want < while
@@ -854,6 +880,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    PATH-INTERIM$ PATH-IS? if conn SERVE-INTERIM exit then
    PATH-HUGE$ PATH-IS? if conn SERVE-HUGE exit then
    PATH-CHUNKED$ PATH-IS? if conn SERVE-CHUNKED exit then
+   PATH-CUT-HEAD$ PATH-IS? if conn SERVE-CUT-HEAD exit then
+   PATH-CR-END$ PATH-IS? if conn SERVE-CR-END exit then
+   PATH-HINT-CUT$ PATH-IS? if conn SERVE-HINT-CUT exit then
    PATH-BODIED-REDIRECT$ PATH-IS? if conn SERVE-BODIED-REDIRECT exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
@@ -1541,6 +1570,28 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Timeout was reached" T$= ;
 
 
+: TEST-CUT-HEAD ( -- )
+   PATH-CUT-HEAD$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   s" a reply cut inside its header block fails as CURLE_PARTIAL_FILE, lost" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 18 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE
+   subject HEADER-REFUSED
+   subject CURL:CLEANUP ;
+
+
+: TEST-CR-END ( -- )
+   PATH-CR-END$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   s" a header block ended by a CR-led line is a response, as libcurl reads it" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ CR-BODY$ T$=
+   subject CR-END$ HEADER-EXACT
+   subject CURL:CLEANUP ;
+
+
 : TEST-REFUSED ( -- )
    s" a free loopback port is found and closed again" T-LABEL
    CLOSED-LISTENER CLOSED-PORT LISTEN-LOOPBACK TTRUE
@@ -2210,6 +2261,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
       failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
+   STREAM-HEAD subject RES-BUF RES-U @ HEADER-EXACT
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
@@ -2217,6 +2269,47 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
    ;MATCH
    subject HEADER-REFUSED
+   subject CURL:CLEANUP ;
+
+
+: CASE-STREAM-CUT-HEAD ( -- )
+   s" a stream cut inside its header block ends failed as CURLE_PARTIAL_FILE" T-LABEL
+   PATH-CUT-HEAD$ GET-READY {: subject:CURL:handle :}
+   subject CURL:STREAM-START EXPECT-OK
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
+   ;MATCH
+   subject HEADER-REFUSED
+   subject CURL:CLEANUP ;
+
+
+: CASE-MULTI-CUT-HEAD ( -- )
+   PATH-CUT-HEAD$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   s" a started reply cut inside its header block fails as CURLE_PARTIAL_FILE" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 18 T=
+   subject HEADER-REFUSED
+   subject CURL:CLEANUP ;
+
+
+: CASE-STREAM-HINT-CUT ( -- )
+   PATH-HINT-CUT$ GET-READY {: subject:CURL:handle :}
+   subject HEADER-HANDLE !
+   subject CURL:STREAM-START EXPECT-OK
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
+   [: HEADER-HANDLE @ CURL:NEXT-READY? ;] TEST-WAIT:POLL
+   subject HEADER-REFUSED
+   s" a stream cut after a 103 block fails as CURLE_GOT_NOTHING" T-LABEL
+   subject CURL:NEXT-TAKE
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 52 T= ENDOF
+   ;MATCH
    subject CURL:CLEANUP ;
 
 
@@ -2939,6 +3032,9 @@ variable DEFER-RETURNED
    CASE-STREAM-HTTP-ERROR
    CASE-STREAM-FAILURES
    CASE-STREAM-PARTIAL
+   CASE-STREAM-CUT-HEAD
+   CASE-MULTI-CUT-HEAD
+   CASE-STREAM-HINT-CUT
    CASE-STREAM-BOUNDED
    CASE-STREAM-TWO
    CASE-HEADER-REUSE
@@ -2978,7 +3074,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   99 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   104 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3038,6 +3134,8 @@ public
    TEST-HEADER-REDIRECT
    TEST-HEADER-INTERIM
    TEST-TIMEOUT
+   TEST-CUT-HEAD
+   TEST-CR-END
    TEST-REFUSED
    TEST-MALFORMED
    TEST-TLS-PLAIN
