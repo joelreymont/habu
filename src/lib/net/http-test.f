@@ -1923,16 +1923,38 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" keep-alive" TRANSCRIBE ;
 
 
-\ A connection the peer keeps open and says nothing more on is closed by the
-\ server's own idle deadline, without the peer asking for it.
+\ A connection the peer keeps open and says nothing more on is parked once
+\ answered and closed by the server's own idle deadline, IDLE-MS past that
+\ answer, without the peer asking for it.
 : IDLE-CASE ( -- )
    RAW-OPEN {: quiet:TCP4:connection :}
+   mono-ns {: began:n :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
    quiet REQ$ RAW-SEND
    quiet S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   s" a parked connection idle past IDLE-MS is closed" T-LABEL
    quiet CLOSED-WITHIN? TTRUE
+   mono-ns began - IDLE-MS NS-PER-MS * >= TTRUE
    quiet TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: PING-KEPT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   conn S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE ;
+
+
+\ The server's one worker parks a connection kept alive once it has answered
+\ it, so another peer is served next; the parked one's next request, sent
+\ after that, is answered.
+: PARKED-REQUEST-CASE ( -- )
+   RAW-OPEN {: kept:TCP4:connection :}
+   kept PING-KEPT
+   s" GET" s" /api/ping" FETCH 200 T=
+   s" a parked connection's next request is answered" T-LABEL
+   kept s\" GET /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   kept S\" {\qid\q:\q7\q" RAW-COLLECT TTRUE
+   kept TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 $C8 constant STALL-MARGIN-MS
@@ -2092,8 +2114,8 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
 
 
-\ A worker waiting for the next request on a connection its peer keeps open
-\ reads the stop flag while it waits.
+\ A connection its peer keeps open, parked under an idle bound far past the
+\ stop's, is closed by STOP as the listener leaves.
 : IDLE-STOP-CASE ( -- )
    TRACE-RESET
    LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
@@ -2104,6 +2126,7 @@ $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
    held S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
    mono-ns {: began:n :}
    HTTP:STOP
+   s" STOP closes a parked connection within its bound" T-LABEL
    mono-ns began - IDLE-STOP-MS NS-PER-MS * < TTRUE
    HTTP:KILLED-TASKS 0 T=
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
@@ -2808,6 +2831,36 @@ variable CALL-DONE
    CALL-SLOT @ 0 T= ;
 
 
+variable CALL-AT                  \ mono-ns when the submitted call ran
+$32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
+
+: STAMP-CALL ( n -- )
+   drop
+   mono-ns CALL-AT !
+   1 CALL-DONE atomic! ;
+
+
+\ Two workers, each having answered a peer that keeps its connection open and
+\ says nothing more: a call queued then runs at once, not past IDLE-MS.
+: IDLE-CALL-CASE ( -- )
+   TRACE-RESET
+   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   RAW-OPEN {: one:TCP4:connection :}
+   RAW-OPEN {: two:TCP4:connection :}
+   one PING-KEPT
+   two PING-KEPT
+   0 CALL-DONE atomic!
+   mono-ns {: began:n :}
+   0 [: STAMP-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" a call waits for no idle keep-alive connection" T-LABEL
+   CALL-AT @ began - CALL-WAIT-MS NS-PER-MS * < TTRUE
+   one TCP4:CLOSE DROP-TCP-STATUS
+   two TCP4:CLOSE DROP-TCP-STATUS
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T= ;
+
+
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
@@ -2846,6 +2899,7 @@ variable CALL-DONE
    CLOSE-CASE
    HEAD-CASE
    IDLE-CASE
+   PARKED-REQUEST-CASE
    STALLED-WORKER-CASE
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
@@ -2870,6 +2924,7 @@ variable CALL-DONE
    LINKED-TREE-CASE
    PARKED-WORKER-CASE
    IDLE-STOP-CASE
+   IDLE-CALL-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE
