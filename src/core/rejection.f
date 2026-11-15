@@ -591,22 +591,15 @@ public
    INVOKER {: inv:ptr :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p n inv IN-EVALUATED? nip ;
-\ Whether PLACE finds the byte p points at in a source it knows.
-: PLACES? ( ptr u8 -- bool ) {: p:ptr :}
-   p >SOURCE nip IF 0 0= EXIT THEN
-   p 1 BODY>INPUT {: s:ptr :}
-   OWNED$ s 1 HOLDS? IF 0 0= EXIT THEN
-   INPUT$ s 1 HOLDS? IF 0 0= EXIT THEN
-   INVOKER {: inv:ptr :}
-   inv NULL-PTR = IF 0 0= 0= EXIT THEN
-   p 1 inv IN-EVALUATED? nip ;
 private
 \ Places the token t tu in the armed source holding its first byte, else the
 \ loader's owned bytes, else an evaluated text, which places it where the
 \ evaluation was run, else the buffer read, holding the whole token, as itself
-\ or as the bytes a body's text copied it from; answers whether one did.
+\ or as the bytes a body's text copied it from; answers whether one did. A
+\ token of a run a definer built is placed by none of them.
 : PLACE-IN ( ptr u8 n -- bool ) {: t:ptr tu:n :}
    t >SOURCE IF t tu SOURCE-PLACE 0 0= EXIT THEN drop
+   t BUILDER nip 0 > IF 0 0= 0= EXIT THEN
    t tu BODY>INPUT {: s:ptr :}
    OWNED$ s tu HOLDS? IF
       OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE!  0 0= EXIT
@@ -620,11 +613,30 @@ private
    THEN
    INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
    0 0= 0= ;
+\ Whether PLACE-IN places the byte p points at.
+: PLACES-IN? ( ptr u8 -- bool ) {: p:ptr :}
+   p >SOURCE nip IF 0 0= EXIT THEN
+   p BUILDER nip 0 > IF 0 0= 0= EXIT THEN
+   p 1 BODY>INPUT {: s:ptr :}
+   OWNED$ s 1 HOLDS? IF 0 0= EXIT THEN
+   INPUT$ s 1 HOLDS? IF 0 0= EXIT THEN
+   INVOKER {: inv:ptr :}
+   inv NULL-PTR = IF 0 0= 0= EXIT THEN
+   p 1 inv IN-EVALUATED? nip ;
 \ Whether a tool named a file while the file being read is not labelled: that
 \ file is then the tool's own.
 : TOOL-OWN? ( -- bool )
    NAMED @ 0= IF 0 0= 0= EXIT THEN
    PATH$ LABELS? 0= ;
+public
+\ Whether PLACE places the byte p points at, at itself or at the token that
+\ built its run.
+: PLACES? ( ptr u8 -- bool ) {: p:ptr :}
+   p PLACES-IN? IF 0 0= EXIT THEN
+   p BUILDER {: b:ptr bu:n :}
+   bu 0 > 0= IF 0 0= 0= EXIT THEN
+   TOOL-OWN? IF b >SOURCE nip ELSE b PLACES-IN? THEN ;
+private
 \ Places the token t tu, else the token that built its run, else the reader's
 \ token when it is on one or the running token when not, naming t tu in a
 \ `word` note, else nowhere.
@@ -775,6 +787,8 @@ public
    EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE SHOWN-A @ SHOWN-U @ THEN {: p:ptr pu:n :}
    JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
    PART ! ;
+\ Drops the `word` note AT added to its place.
+: NO-WORD ( -- )   0 WORD-U ! ;
 \ A note's key; its value follows.
 : NOTE ( ptr u8 n -- )
    CLOSE-PART NOTE-KEY ;
