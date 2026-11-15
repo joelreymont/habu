@@ -3905,8 +3905,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       EXIT
    THEN
    v 2 = IF a u TOP-PARSER EXIT THEN
-   -1 TOP-DEFER !
+   \ A stretch holds names rendered text may define; an undefined name defines
+   \ nothing, so the names after it are still resolved and rejected one by one.
    v 0= IF a TOP-REFUSED ! EXIT THEN
+   -1 TOP-DEFER !
    a TOP-DEFER-A !  u TOP-DEFER-U ! ;
 
 \ The checker offers the spellings that bind at the cursor's token before it is
