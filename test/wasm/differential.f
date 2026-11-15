@@ -99,17 +99,8 @@ variable PROG-U
 
 \ The first line of the engine's record of an uncaught throw of code c, with its
 \ line feed.
-: THROWN-HEAD$ ( n -- ptr u8 n )
-   {: c:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
-   SB-RESET s" error[" SB-APPEND
-   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
-   s" ]: " SB-APPEND
-   textu 0= if
-      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
-   else text textu SB-APPEND then
-   10 SB-APPEND-C  SB$ ;
+: THROWN-LINE$ ( n -- ptr u8 n )
+   SB-RESET TEST-EVAL:THROWN-HEAD$ SB-APPEND  10 SB-APPEND-C  SB$ ;
 
 \ The program natively: it prints want and exits rc; answers its stderr's
 \ length.
@@ -130,7 +121,7 @@ variable PROG-U
    {: want:ptr wu:n rc:n code:n :}
    want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
-   rc UNCAUGHT-RC = if  LABEL  ERR e code THROWN-HEAD$ STARTS-WITH? TTRUE  then ;
+   rc UNCAUGHT-RC = if  LABEL  ERR e code THROWN-LINE$ STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole.

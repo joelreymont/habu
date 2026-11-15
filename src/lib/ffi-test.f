@@ -6,7 +6,7 @@ require src/lib/test.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
 require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is matched here
-require src/lib/fmt.f                  \ the code the child prints is rendered from its name
+require src/lib/fmt.f                  \ the path cap a huge base's rejection prints
 require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/le.f                   \ the spilled %n out-parameter is a C int
@@ -261,20 +261,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
-
-\ The head line of the record of an uncaught throw of code c, built from the
-\ code so the needle follows src/lib/error.f.
-: FFI-T-THROWN-HEAD$ ( n -- ptr u8 n )
-   {: c:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
-   SB-RESET s" error[" SB-APPEND
-   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
-   s" ]: " SB-APPEND
-   textu 0= if
-      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
-   else text textu SB-APPEND then
-   SB$ ;
 
 : FFI-T-GROW-ALIAS ( -- )
    s" descriptors and library paths grow past 256 and later declarations call" T-LABEL
@@ -661,7 +647,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-LIB-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-THROWN-HEAD$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    FFI-T-NO-LIB$ SB-APPEND s\" '\n  = note: tried '" SB-APPEND
    FFI-T-NO-LIB$ SB-APPEND s" ': " SB-APPEND
@@ -729,7 +715,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-VERSION-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-THROWN-HEAD$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
    FFI-T-NO-SUCH2-NAME$ {: a:ptr au:n :}
    FFI-T-NO-SUCH1-NAME$ {: b:ptr bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.

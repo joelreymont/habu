@@ -24,8 +24,6 @@ private
 PTR-VARIABLE STEM-A                    \ the harness the next child loads, as its file stem
 variable STEM-U
 variable CODE                          \ the last child's exit code, -1 when it did not exit
-$100 constant HEAD-CAP
-create HEAD-BUF HEAD-CAP allot
 
 : ARTIFACT$ ( -- ptr u8 n ) s" build/vocabulary-run.txt" ;
 : DIR$ ( -- ptr u8 n ) s" test/policy/" ;
@@ -151,30 +149,13 @@ create HEAD-BUF HEAD-CAP allot
    s" escaped-c" S\" error[E-POLICY]: `C\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-c.f:2:" TIER0-REFUSES
    s" escaped-dotq" S\" error[E-POLICY]: `.\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-dotq.f:2:" TIER0-REFUSES ;
 
-\ The head line of the record of an uncaught throw of code c. It lands in its
-\ own buffer: RUNS builds in SB before it compares.
-: THROWN-HEAD$ ( n -- ptr u8 n )
-   {: c:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
-   SB-RESET s" error[" SB-APPEND
-   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
-   s" ]: " SB-APPEND
-   textu 0= if
-      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
-   else text textu SB-APPEND then
-   SB$ {: a:ptr u:n :}
-   u HEAD-CAP > if E-STR-CAPACITY throw then
-   a HEAD-BUF u BYTE-COPY
-   HEAD-BUF u ;
-
 \ The seal removes words; it does not change what an admitted program does, what
 \ the checker refuses, how a throw ends the process, or the refusal of a source
 \ that ends inside a definition.
 : ADMITTED ( -- )
    TIER0 s" ok" 0 s" " OK-OUT$ RUNS
-   TIER0 s" dead" 67 -30001 THROWN-HEAD$ s" " RUNS
-   TIER0 s" throw" 67 -30001 THROWN-HEAD$ s" " RUNS
+   TIER0 s" dead" 67 -30001 TEST-EVAL:THROWN-HEAD$ s" " RUNS
+   TIER0 s" throw" 67 -30001 TEST-EVAL:THROWN-HEAD$ s" " RUNS
    TIER0 s" checked" 70 s" error[E-MISMATCH]: the body ends with nothing on the stack; the signature promises n" s" test/policy/checked.f:2:" s" " SAYS
    TIER0 s" eof" 70 s" error[E-VS-UNTERMINATED-DEFINITION]: the source ends inside the definition of `X`" s" test/policy/eof.f:2:" s" " SAYS
    LOCALS ESCAPED ;

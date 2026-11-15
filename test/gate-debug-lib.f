@@ -7,6 +7,7 @@ require tools/code-dump-core.f
 require src/lib/process.f
 require test/gate-common.f
 require src/habu/prof-abi.f
+require src/lib/test/eval.f
 
 using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 
@@ -345,14 +346,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ thrown at `at`, a PATH:L:C.
 : GDB-THROWN$ ( n ptr u8 n -- ptr u8 n )
    {: c:n at:ptr atu:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
-   SB-RESET s" error[" SB-APPEND
-   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
-   s" ]: " SB-APPEND
-   textu 0= if
-      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
-   else text textu SB-APPEND then
+   SB-RESET c TEST-EVAL:THROWN-HEAD$ SB-APPEND
    GE-SB-LF s"  --> " SB-APPEND at atu SB-APPEND GE-SB-LF
    SB$ ;
 

@@ -1,9 +1,15 @@
 \ eval.f - typed values and throw codes out of evaluated test text, package
 \ TEST-EVAL, loaded by src/lib/test.f. N, FLAG and RC take one cell, a flag or the
 \ throw code out of a source text under `evaluate-closed`, so a test needs no
-\ `evaluate` wrapper of its own. The measured rules are in docs/forth.md "Rules
-\ learned by refusal".
-\ STORAGE CLASS. PROCESS-WIDE: static source and result cells; one task at a time.
+\ `evaluate` wrapper of its own; THROWN-HEAD$ is the record line a throw nothing
+\ caught ends with. The measured rules are in docs/forth.md "Rules learned by
+\ refusal".
+\ STORAGE CLASS. PROCESS-WIDE: static source, result and head cells; one task at
+\ a time.
+
+require src/lib/error.f
+require src/lib/string.f
+require src/lib/fmt.f
 
 package TEST-EVAL
 
@@ -15,6 +21,14 @@ TYPED-VARIABLE FLAG-CELL bool
 : SRC! ( ptr u8 n -- )
    SRC-U !
    SRC-A ! ;
+
+\ A code's name is at most 255 bytes; a longer text throws E-STR-CAPACITY.
+$400 constant HEAD-CAP
+HEAD-CAP BUFFER: HEAD-BUF
+variable HEAD-LEN
+
+: HEAD+ ( ptr u8 n -- )
+   HEAD-BUF HEAD-CAP HEAD-LEN BUF-APPEND ;
 
 public
 
@@ -50,5 +64,21 @@ public
 : RC ( ptr u8 n -- n )
    SRC!
    [: SRC$ evaluate-closed ;] catch ;
+
+\ The head line, without its line feed, of the record the engine prints for a
+\ throw of code c that nothing caught. It is built in a buffer of its own, so a
+\ caller's SB survives it; the next call overwrites it.
+: THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   HEAD-LEN BUF-RESET
+   s" error[" HEAD+
+   nameu 0= if s" E-THROW" HEAD+ else name nameu HEAD+ then
+   s" ]: " HEAD+
+   textu 0= if
+      s" nothing caught a throw of code " HEAD+  c FMT:INT$ HEAD+
+   else text textu HEAD+ then
+   HEAD-BUF HEAD-LEN BUF-LEN@ ;
 
 ;package

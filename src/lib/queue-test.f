@@ -48,7 +48,6 @@ create Q-OUT Q-CAPTURE-CAP allot
 create Q-ERR Q-CAPTURE-CAP allot
 
 CODEGEN:BUFFER Q-SRC
-CODEGEN:BUFFER Q-NEEDLE
 
 $80 constant Q-POOL-CAP              \ handles this fixture can hold
 Q-POOL-CAP TYPED-BUFFER Q-POOL-SEMS TASK:sem
@@ -154,22 +153,6 @@ variable Q-POOL-RC
    ix Q-SRC CODEGEN:APPEND-DECIMAL
    Q-SRC-LF ;
 
-\ The head line of the record of an uncaught throw of code c.
-: Q-THROW-NEEDLE ( n -- ptr u8 n )
-   {: c:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
-   Q-NEEDLE CODEGEN:RESET
-   s" error[" Q-NEEDLE CODEGEN:APPEND-STRING
-   nameu 0= if s" E-THROW" else name nameu then
-   Q-NEEDLE CODEGEN:APPEND-STRING
-   s" ]: " Q-NEEDLE CODEGEN:APPEND-STRING
-   textu 0= if
-      s" nothing caught a throw of code " Q-NEEDLE CODEGEN:APPEND-STRING
-      c Q-NEEDLE CODEGEN:APPEND-DECIMAL
-   else text textu Q-NEEDLE CODEGEN:APPEND-STRING then
-   Q-NEEDLE CODEGEN:CONTENTS ;
-
 : Q-RUN-STDIN ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
@@ -181,7 +164,7 @@ variable Q-POOL-RC
    src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
    src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
-   Q-ERR erru LEN>N code Q-THROW-NEEDLE CONTAINS? TTRUE ;
+   Q-ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
 
 : QUEUE-TEST-BAD-CAPACITY ( -- )
    Q-SRC-HEAD
