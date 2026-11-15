@@ -1085,8 +1085,8 @@ variable MDV-I   variable MDV-F
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
-      MD-IS-UNKNOWN   of s" names no word" endof
-      MD-IS-NOT-DEFER of s" is not a deferred word" endof
+      MD-IS-UNKNOWN   of s"  names no word" endof
+      MD-IS-NOT-DEFER of s"  is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
       MD-TYPE-FORM    of s" [type] names no type storage holds" endof
       MD-STORED-LINEAR of s" a cast's stored type would hold a linear value" endof
@@ -1481,7 +1481,8 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 : REASON-MESSAGE ( -- )
-   MDIAG @ MD-SCOPED-TICK = IF TOK-SPAN THEN
+   MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
+   IF TOK-SPAN THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
