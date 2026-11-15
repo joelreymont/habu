@@ -162,22 +162,6 @@ $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
    HB-TARGET-LINUX-KERNEL? if 1 exit then
    HB-TARGET-MACOS? if $FFFF exit then
    E-PLATFORM throw ;
-: SO-KEEPALIVE ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 9 exit then
-   HB-TARGET-MACOS? if 8 exit then
-   E-PLATFORM throw ;
-: TCP-KEEPIDLE ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 4 exit then
-   HB-TARGET-MACOS? if $10 exit then
-   E-PLATFORM throw ;                    \ Darwin's TCP_KEEPALIVE.
-: TCP-KEEPINTVL ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 5 exit then
-   HB-TARGET-MACOS? if $101 exit then
-   E-PLATFORM throw ;
-: TCP-KEEPCNT ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 6 exit then
-   HB-TARGET-MACOS? if $102 exit then
-   E-PLATFORM throw ;
 : SO-REUSEADDR ( -- n )
    HB-TARGET-LINUX-KERNEL? if 2 exit then
    HB-TARGET-MACOS? if 4 exit then
@@ -352,11 +336,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 : REUSEADDR-RAW ( n -- n ) {: fd:n :}
    1 OPTION LE:U32!
    fd SOL-SOCKET SO-REUSEADDR OPTION 4 OPTION-CALL ;
-
-
-: INT-OPTION ( n n n n -- n ) {: fd:n level:n name:n value:n :}
-   value OPTION LE:U32!
-   fd level name OPTION 4 OPTION-CALL ;
 
 
 : LISTEN-RAW ( n n -- n )
@@ -761,20 +740,6 @@ public
 : NODELAY! ( connection bool -- status ) {: conn:connection on:bool :}
    on if 1 else 0 then OPTION LE:U32!
    conn CONNECTION-FD IPPROTO-TCP TCP-NODELAY OPTION 4 OPTION-CALL RC>STATUS ;
-
-
-\ Turns TCP keepalive on: once the connection has been idle-s seconds idle,
-\ a probe every interval-s seconds, and the connection fails once that many
-\ probes go unanswered. The options are set in turn; the first the OS refuses
-\ is the failed status, and the ones before it stay set.
-: KEEPALIVE! ( connection n n n -- status )
-   {: conn:connection idle-s:n interval-s:n probes:n :}
-   conn CONNECTION-FD {: fd:n :}
-   fd SOL-SOCKET SO-KEEPALIVE 1 INT-OPTION
-   dup 0= if drop fd IPPROTO-TCP TCP-KEEPIDLE idle-s INT-OPTION then
-   dup 0= if drop fd IPPROTO-TCP TCP-KEEPINTVL interval-s INT-OPTION then
-   dup 0= if drop fd IPPROTO-TCP TCP-KEEPCNT probes INT-OPTION then
-   RC>STATUS ;
 
 
 : UNREAD ( connection -- queue-result )

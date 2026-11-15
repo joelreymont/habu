@@ -1,10 +1,12 @@
 \ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server.
 \ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
 \ the only reader and writer of every socket, which waits on one AIO group: a
-\ readiness poll per socket and one on a wake pipe. Every handler call runs on
-\ a request worker (HTTP:SUBMIT), one at a time for each socket, and carries
-\ the value ACCEPT was given; `opened` comes first, so whatever the handler does
-\ there precedes every message. STOP waits for handler calls at most
+\ readiness poll per socket and one on a wake pipe, none with a deadline, and
+\ one timer, due when the first socket is to give up, be pinged or be lost.
+\ Every handler call runs on a request worker (HTTP:SUBMIT), one at a time for
+\ each socket, and carries the value ACCEPT was given; `opened` comes first, so
+\ whatever the handler does there precedes every message. A peer gone without
+\ a word is found by ping (PING-MS). STOP waits for handler calls at most
 \ GOODBYE-MS and STOP-MARGIN-MS: a call it leaves running retires its own slot
 \ as it ends, and START is E-WS-STATE until then.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
@@ -72,8 +74,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 variable CAP                                \ START's limit: the slots the tables hold
 
-\ The number the wake's wait carries in WAITERS; a slot's wait carries its index.
+\ The numbers the wake's wait and the timer's carry in WAITERS; a slot's wait
+\ carries its index.
 -1 constant WAKE-WAIT
+-2 constant TIMER-WAIT
 
 \ Every change of phase is made under LOCK.
 0 constant PHASE-NONE             \ a free slot
@@ -114,6 +118,13 @@ $FFFFFFFF constant GEN-MASK
 1000000 constant NS-PER-MS
 $C8 constant GOODBYE-MS           \ how long a stop waits for the 1001 frames to be written
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
+
+\ An open socket from which no frame has arrived for PING-MS is pinged, and
+\ lost under 1006 once PONG-MS more pass with no frame. The count runs only
+\ while its read is armed: a frame sent while a handler call runs is not read
+\ until the call ends, so that time says nothing of the peer.
+30000 constant PING-MS
+10000 constant PONG-MS
 $100000 constant TASK-STACK
 $18 constant NONCE-CHARS          \ sixteen bytes in base64
 $10 constant NONCE-BYTES
@@ -153,12 +164,13 @@ DYNAMIC-BUFFER OUT-AT n               \ its first byte not yet written
 DYNAMIC-BUFFER OUT-U n                \ its bytes queued
 DYNAMIC-BUFFER SINCE n                \ when the queue last moved, or was first filled
 DYNAMIC-BUFFER CLOSE-BY n             \ when a CLOSE gives up on the peer's answer
+DYNAMIC-BUFFER HEARD n                \ when PING-MS began: a frame read or a call ended
+DYNAMIC-BUFFER PINGED n               \ set once that spell's ping is queued
 DYNAMIC-BUFFER GEN n                  \ retirements
 DYNAMIC-BUFFER PHASE n
 DYNAMIC-BUFFER STATUS n               \ the status a closed socket reports
 DYNAMIC-BUFFER TICKET AIO:ticket
 DYNAMIC-BUFFER ARMED n                \ the mask TICKET polls for; 0 when no poll is in the group
-DYNAMIC-BUFFER ARMED-DUE n            \ the deadline TICKET carries; 0 for none
 DYNAMIC-BUFFER HEAD-U n               \ header bytes held of the frame being read
 DYNAMIC-BUFFER HEAD-WANT n            \ header bytes to hold before decoding again
 DYNAMIC-BUFFER HEAD-DONE n            \ set once the header is decoded
@@ -189,12 +201,13 @@ DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running 
    n OUT-U-RESERVE
    n SINCE-RESERVE
    n CLOSE-BY-RESERVE
+   n HEARD-RESERVE
+   n PINGED-RESERVE
    n GEN-RESERVE
    n PHASE-RESERVE
    n STATUS-RESERVE
    n TICKET-RESERVE
    n ARMED-RESERVE
-   n ARMED-DUE-RESERVE
    n HEAD-U-RESERVE
    n HEAD-WANT-RESERVE
    n HEAD-DONE-RESERVE
@@ -224,6 +237,10 @@ TASK:FACILITY LOCK
 TASK-STACK TASK:TASK WS-TASK
 AIO:GROUP WAITERS
 TYPED-VARIABLE WAKE-TICKET AIO:ticket
+\ The task's own: its one timer, in WAITERS under TIMER-WAIT, and when that
+\ fires, 0 while none is outstanding.
+TYPED-VARIABLE TIMER AIO:ticket
+variable TIMER-DUE
 1 TYPED-BUFFER STOPPER ptr n                \ the task STOP waits in
 variable WAKE-R
 variable WAKE-W
@@ -341,9 +358,10 @@ RUN-IDLE RUN !
    ;MATCH ;
 
 
-\ A ticket the task no longer wants leaves the group and is awaited here, so
-\ the group never holds two tickets for one socket. A poll is level-triggered:
-\ readiness it reported is reported again to the next.
+\ A ticket the task no longer wants leaves the group and is awaited here, its
+\ outcome read past, so the group never holds two tickets for one socket or
+\ two timers. A poll is level-triggered: readiness it reported is reported
+\ again to the next.
 : UNWAIT ( AIO:ticket -- ) {: t:AIO:ticket :}
    t WAITERS AIO:GROUP-
    t AIO:CANCEL
@@ -499,6 +517,50 @@ RUN-IDLE RUN !
    STOP-AT @ 0 <> if STOP-AT @ over 0= if nip else min then then ;
 
 
+\ The quiet clock starts again. Written by the task while the slot is ready,
+\ and under LOCK by the worker whose call ends.
+: HEARD-NOW ( n -- ) {: idx:n :}
+   mono-ns idx HEARD !
+   0 idx PINGED ! ;
+
+
+\ When an open socket's ping is due, or once it is queued, when the socket
+\ is lost; 0 for one not open. Under LOCK, while no handler call holds it.
+: QUIET-DUE ( n -- n ) {: idx:n :}
+   idx PHASE @ PHASE-OPEN <> if 0 exit then
+   PING-MS idx PINGED @ 0 <> if PONG-MS + then
+   NS-PER-MS * idx HEARD @ + ;
+
+
+\ Under LOCK: an open socket quiet for PING-MS is pinged, once a spell.
+: PROBE ( n -- ) {: idx:n :}
+   idx PINGED @ 0 <> if exit then
+   idx QUIET-DUE {: due:n :}
+   due 0= mono-ns due < or if exit then
+   idx OVERFLOW? if exit then
+   idx WS-OPCODE:ping 0 HEADER-OUT
+   1 idx PINGED ! ;
+
+
+\ Under LOCK: the ping went unanswered for PONG-MS.
+: SILENT? ( n -- bool ) {: idx:n :}
+   idx PINGED @ 0= if false exit then
+   idx QUIET-DUE {: due:n :}
+   due 0 <> mono-ns due >= and ;
+
+
+\ The earlier of two dues, 0 being none.
+: SOONER ( n n -- n ) {: a:n b:n :}
+   a 0= if b exit then
+   b 0= if a exit then
+   a b min ;
+
+
+\ DUE, or QUIET-DUE when that comes first, for a slot no call holds.
+: READY-DUE ( n -- n ) {: idx:n :}
+   idx DUE idx QUIET-DUE SOONER ;
+
+
 : DISARM ( n -- ) {: idx:n :}
    idx ARMED @ 0= if exit then
    0 idx ARMED !
@@ -566,12 +628,22 @@ RUN-IDLE RUN !
    idx ;
 
 
+\ Under LOCK: a closing socket's peer has STALL-MS from the end of a call to
+\ answer, since nothing was read while it ran.
+: EXTEND-CLOSE ( n -- ) {: idx:n :}
+   idx PHASE @ PHASE-CLOSING <> if exit then
+   mono-ns STALL-MS NS-PER-MS * + idx CLOSE-BY @ max idx CLOSE-BY ! ;
+
+
 \ Under LOCK: a message's call ended. Its socket closes under 1011 when the
-\ call failed. The slot is ready again, or, once the task has left (CLEANUP),
-\ which would serve it no more, closed and retired.
+\ call failed. The slot is ready again, its quiet clock and a closing peer's
+\ time to answer starting over, or, once the task has left (CLEANUP), which
+\ would serve it no more, closed and retired.
 : MESSAGE-ENDED ( n bool -- ) {: idx:n failed:bool :}
    LEFT @ 0 <> if idx LINK @ TCP4:CLOSE drop idx VACATE exit then
    failed if idx STATUS-INTERNAL PHASE-CLOSED SHUT drop then
+   idx EXTEND-CLOSE
+   idx HEARD-NOW
    DELIVERY-READY idx DELIVERY ! ;
 
 
@@ -841,6 +913,7 @@ RUN-IDLE RUN !
 
 
 : TURN ( n -- ) {: idx:n :}
+   idx HEARD-NOW
    idx F-WIRE @ WIRE>OPCODE
    MATCH opcode
       continuation OF idx DATA-IN ENDOF
@@ -906,10 +979,9 @@ RUN-IDLE RUN !
    AIO:READABLE ;
 
 
-\ What is left until the deadline, as a poll takes it: a part of a
-\ millisecond counts as a whole one, so a poll that times out has outlasted it.
+\ What is left until the deadline, as the timer takes it: a part of a
+\ millisecond counts as a whole one, so a timer that fires has outlasted it.
 : REMAINING ( n -- ms ) {: deadline:n :}
-   deadline 0= if -1 >MS exit then
    deadline mono-ns - {: left:n :}
    left 0 <= if 0 >MS exit then
    left NS-PER-MS /mod {: part:n whole:n :}
@@ -917,18 +989,39 @@ RUN-IDLE RUN !
    whole >MS ;
 
 
-: ARM ( n n n -- ) {: idx:n mask:n due:n :}
-   idx LINK @ TCP4:CONNECTION-FD mask due REMAINING AIO:POLL {: t:AIO:ticket :}
+\ A socket's poll carries no deadline, so it costs one AIO record: the task's
+\ one timer bounds it (BOUND).
+: ARM ( n n -- ) {: idx:n mask:n :}
+   idx LINK @ TCP4:CONNECTION-FD mask -1 >MS AIO:POLL {: t:AIO:ticket :}
    t idx WAITERS AIO:GROUP+
    t idx TICKET !
-   mask idx ARMED !
-   due idx ARMED-DUE ! ;
+   mask idx ARMED ! ;
+
+
+: TIMER-ARM ( n -- ) {: due:n :}
+   due REMAINING AIO:TIMEOUT {: t:AIO:ticket :}
+   t TIMER-WAIT WAITERS AIO:GROUP+
+   t TIMER !
+   due TIMER-DUE ! ;
+
+
+\ The timer fires by that due, 0 for none: one outstanding for a later due is
+\ cancelled first, so at most one is.
+: BOUND ( n -- ) {: due:n :}
+   due 0= if exit then
+   TIMER-DUE @ {: at:n :}
+   at 0 <> if
+      at due <= if exit then
+      TIMER @ UNWAIT
+      0 TIMER-DUE !
+   then
+   due TIMER-ARM ;
 
 
 \ What SYNC does next with a slot: nothing, since it holds no socket the task
 \ serves; parse the bytes read; end a socket that gave up, or one closed with
-\ its queue written; arm nothing while its handler call runs; or poll with
-\ that mask and deadline.
+\ its queue written; arm nothing while its handler call runs; or poll for that
+\ mask, with no deadline, the task's timer bounding the wait by that due.
 ENUM course
    VARIANT vacant ;VARIANT
    VARIANT unparsed ;VARIANT
@@ -957,15 +1050,18 @@ ENUM course
 \ The slot's course, under LOCK: its phase first, since LINK, IN and HANDLER
 \ are the task's to read only once the slot is published, then its delivery.
 \ Bytes held unparsed, the ones that rode behind the handshake or behind a
-\ message handed on, come next, since no poll reports them.
+\ message handed on, come next, since no poll reports them. A socket closed
+\ with its queue written is spent before it may give up, so a stop's deadline
+\ that passed during a call leaves its 1001 the status.
 : COURSE ( n -- course ) {: idx:n :}
    idx PHASE-SET? 0= if construct course vacant exit then
    idx CALLED? if idx HELD exit then
    idx IN-U @ 0 > if construct course unparsed exit then
    idx AWAY
-   idx GIVE-UP? if construct course given-up exit then
+   idx PROBE
    idx PHASE @ PHASE-CLOSED = idx QUEUED 0= and if construct course spent exit then
-   idx WANTED idx DUE construct course waiting ;
+   idx GIVE-UP? idx SILENT? or if construct course given-up exit then
+   idx WANTED idx READY-DUE construct course waiting ;
 
 
 : LOCKED-COURSE ( n -- course )
@@ -973,28 +1069,41 @@ ENUM course
    [: COURSE ;] [: UNLOCK ;] finally ;
 
 
-: REARM ( n n n -- ) {: idx:n mask:n due:n :}
-   idx ARMED @ mask = idx ARMED-DUE @ due = and if exit then
+\ A poll is replaced only for another mask: it carries no deadline, since the
+\ task's one timer bounds every poll.
+: REARM ( n n -- ) {: idx:n mask:n :}
+   idx ARMED @ mask = if exit then
    idx DISARM
-   idx mask due ARM ;
+   idx mask ARM ;
 
 
-: SYNC ( n -- ) {: idx:n :}
+\ The slot taken through its course; the due its wait is bounded by, 0 for
+\ none.
+: SYNC ( n -- n ) {: idx:n :}
    begin
       idx LOCKED-COURSE
       MATCH course
-         vacant OF exit ENDOF
+         vacant OF 0 exit ENDOF
          unparsed OF idx PARSE ENDOF
-         given-up OF idx LOSE exit ENDOF
-         spent OF idx FINISH exit ENDOF
-         held OF idx DISARM exit ENDOF
-         waiting OF idx -rot REARM exit ENDOF
+         given-up OF idx LOSE 0 exit ENDOF
+         spent OF idx FINISH 0 exit ENDOF
+         held OF idx DISARM 0 exit ENDOF
+         waiting OF swap idx swap REARM exit ENDOF
       ;MATCH
    again ;
 
 
+\ Every slot taken through its course, and the timer bounding the earliest
+\ due among them.
 : SYNC-ALL ( -- )
-   CAP @ 0 ?do i SYNC loop ;
+   0 CAP @ 0 ?do i SYNC SOONER loop BOUND ;
+
+
+\ The timer fired, so none is outstanding: the slots now due give up, are
+\ pinged or are lost, and the timer is armed for the next due.
+: FIRED ( -- )
+   0 TIMER-DUE !
+   SYNC-ALL ;
 
 
 \ The poll's readiness: room is written to, and anything else is read, which
@@ -1009,7 +1118,8 @@ ENUM course
    idx INPUT ;
 
 
-\ A poll that timed out is answered by SYNC, where its socket gives up.
+\ A poll carries no deadline, so it never times out; the timer bounds the due
+\ SYNC answers.
 : POLLED ( n AIO:outcome -- ) {: idx:n out :}
    0 idx ARMED !
    out
@@ -1019,7 +1129,7 @@ ENUM course
       cancelled OF ENDOF
       refused OF drop idx LOSE ENDOF
    ;MATCH
-   idx SYNC ;
+   idx SYNC BOUND ;
 
 
 \ The wake stays armed until SERVE leaves, so an ACCEPT that ends while WS
@@ -1033,6 +1143,7 @@ ENUM course
 
 : ANSWER ( n AIO:outcome -- ) {: wait:n out :}
    wait WAKE-WAIT = if out OUTCOME-DROP WOKEN exit then
+   wait TIMER-WAIT = if out OUTCOME-DROP FIRED exit then
    wait out POLLED ;
 
 
@@ -1055,8 +1166,10 @@ ENUM course
 \ after it closes and retires its own slot (MESSAGE-ENDED).
 \ SERVE registers this before the task's first AIO submission registers AIO's
 \ own cleanup, which therefore runs first: it has given back every record the
-\ task submitted and emptied WAITERS, so no ticket is left to take out of it.
+\ task submitted, the timer's among them, and emptied WAITERS, so no ticket is
+\ left to take out of it and no timer is outstanding.
 : CLEANUP ( -- )
+   0 TIMER-DUE !
    LOCK TASK:GET
    1 LEFT !
    LOCK TASK:RELEASE
@@ -1069,6 +1182,9 @@ ENUM course
    0 STOPPER @ TASK:WAKE ;
 
 
+\ Each wait ends at a socket's poll, the wake or the timer: the polls carry no
+\ deadline, and the task's one timer bounds them. A stop that has emptied
+\ every slot ends it.
 : SERVING ( -- )
    WAKE-ARM
    SYNC-ALL
@@ -1211,21 +1327,6 @@ ENUM course
    ;MATCH ;
 
 
-\ TCP keepalive on, so a peer that has vanished is found within 90 s: 60 s
-\ idle, then three probes 10 s apart.
-: KEEPALIVE-ON? ( TCP4:connection -- bool )
-   60 10 3 TCP4:KEEPALIVE!
-   MATCH TCP4:status
-      ok OF true ENDOF
-      failed OF drop false ENDOF
-   ;MATCH ;
-
-
-: TUNED? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
-   conn NAGLE-OFF? 0= if false exit then
-   conn KEEPALIVE-ON? ;
-
-
 \ A mapping that fails throws with the ones before it in the slot, for
 \ RETIRE to give back.
 : FILL ( n -- ) {: idx:n :}
@@ -1248,15 +1349,15 @@ ENUM course
 
 \ Under LOCK: the request's connection taken into the slot and the socket
 \ published to the task, open with the 101 queued, or closed from birth under
-\ 1006 when its connection refuses TCP_NODELAY or keepalive (TUNED?). An input
-\ mapping that fails
-\ closes the connection before the throw goes on, so nothing holds it.
+\ 1006 when its connection refuses TCP_NODELAY (NAGLE-OFF?). An input mapping
+\ that fails closes the connection before the throw goes on, so nothing holds
+\ it.
 : TAKE ( HTTP:request n -- HTTP:request n ) {: asked:HTTP:request idx:n :}
    asked HTTP:TAKE-OVER {: conn:TCP4:connection early eu:n :}
    idx early eu [: FILL-INPUT ;] catch {: code:n :} 2drop drop
    code 0 <> if conn TCP4:CLOSE drop code throw then
    conn idx LINK !
-   conn TUNED? if PHASE-OPEN else STATUS-LOST idx STATUS ! 0 idx OUT-U ! PHASE-CLOSED then idx PHASE !
+   conn NAGLE-OFF? if PHASE-OPEN else STATUS-LOST idx STATUS ! 0 idx OUT-U ! PHASE-CLOSED then idx PHASE !
    asked idx ;
 
 
@@ -1468,8 +1569,10 @@ ENUM course
 
 public
 
-\ n bounds open sockets (past it, 503); each maps REGION-BYTES and queues up to
-\ QUEUE-MAX. Size n from memory and descriptors, under AIO's ceiling (SERVE).
+\ n bounds open sockets (past it, 503); each maps REGION-BYTES, queues up to
+\ QUEUE-MAX and costs one AIO record, its poll, beside the task's two, the
+\ wake's and the timer's. Size n from memory and descriptors, under AIO's
+\ ceiling (SERVE).
 \ While WS runs, or while a handler call an earlier STOP left running is
 \ still out, it is E-WS-STATE.
 : START ( n -- ) {: n:n :}
@@ -1524,13 +1627,16 @@ public
 \ called with the socket, n and `opened`, then every message and, once,
 \ `closed`, each call with n, so whatever the handler does for `opened`, such
 \ as recording the socket under n, precedes every message. A socket whose
-\ connection refuses TCP_NODELAY or keepalive is closed from birth under 1006,
-\ and still told `opened`, then `closed`. One that does not pass is
-\ answered 400, or 426 naming version 13, and one past START's limit, or while
-\ WS is stopping, 503, through the response once the route handler returns,
-\ and `refused` carries that status: no socket exists for it, and n is not
-\ kept. Origin is the route handler's to check before it accepts. Outside a
-\ run or while START still starts it, it is E-WS-STATE.
+\ connection refuses TCP_NODELAY is closed from birth under 1006, and still
+\ told `opened`, then `closed`. A peer gone without a close is found by ping:
+\ an open socket from which no frame has arrived for 30 s, counted while no
+\ handler call runs, is pinged, and is lost under 1006 when 10 s more pass
+\ with no frame. A handshake that does not pass is answered 400, or 426
+\ naming version 13, and one past START's limit, or while WS is stopping,
+\ 503, through the response once the route handler returns, and `refused`
+\ carries that status: no socket exists for it, and n is not kept. Origin is
+\ the route handler's to check before it accepts. Outside a run or while
+\ START still starts it, it is E-WS-STATE.
 : ACCEPT ( HTTP:request HTTP:response [ socket n message -- ] n -- accepted )
    {: asked:HTTP:request answer:HTTP:response q arg:n :}
    RUNNING? 0= if E-WS-STATE throw then

@@ -45,6 +45,7 @@ package WS
    LOCK TASK:GET
    GEN-MASK idx GEN !
    LOCK TASK:RELEASE ;
+: WS-TEST:SILENT-MS ( -- n ) PING-MS PONG-MS + ;
 ;package
 
 \ Reopens HTTP for its listener's descriptor, which the fault case polls so the
@@ -61,7 +62,6 @@ $1F4 constant IDLE-MS
 10 constant POLL-MS
 $3E8 constant GRACE-MS            \ what a bounded wait may run past its bound on a loaded box
 $190 constant STOP-BOUND-MS       \ how long WS:STOP may take
-$12C constant BLOCK-MS            \ how long the handler blocks on `wait`
 STOP-BOUND-MS 2 / constant IDLE-STOP-MS \ an idle socket's stop: far over its few ms, under a stop that waits out its bound
 STOP-BOUND-MS GRACE-MS + constant HOLD-MS \ how long a stalled handshake holds its slot: past any stop's bound
 $400000 constant QUEUE-MAX        \ the unwritten bytes behind which a frame loses its socket
@@ -189,8 +189,8 @@ TASK:FACILITY CLOSED-LOCK         \ `closed` calls run on any worker
 variable PEER-HELD                \ what the stalled peer held unread when last looked at
 variable PEER-MOVED               \ when that last changed
 variable CLOSE-GOAL               \ the count of logged closes a case awaits
-variable BLOCKING                 \ set while the handler blocks on `wait`
-variable FIRST-DONE               \ set once that call has slept its BLOCK-MS
+variable BLOCKING                 \ set while the handler of `wait` waits on RELEASED
+variable FIRST-DONE               \ set once that wait has ended
 variable NEXT-SAW                 \ FIRST-DONE as the handler of `next` found it
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
 variable HOLDING                  \ set while the handler of `hold` waits on UNHELD
@@ -202,6 +202,7 @@ TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
 variable ROUTE-CODE               \ what the route threw before it posted ACCEPTED
 TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 TASK:SEMAPHORE UNHELD             \ lets the handler of `hold` return
+TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
 FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
@@ -570,10 +571,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : BLAST ( WS:socket -- ) {: sock:WS:socket :}
    BLAST-N 0 ?do sock HANDLER-BUF SPAN:$ WS:SEND-BINARY loop ;
 
-\ The handler blocks BLOCK-MS on its worker, then answers `waited`.
+\ The handler holds its worker until the case signals RELEASED, then answers
+\ `waited`.
 : BLOCK ( WS:socket -- ) {: sock:WS:socket :}
    1 BLOCKING atomic!
-   BLOCK-MS >MS TASK:SLEEP
+   RELEASED TASK:WAIT-SEM
    1 FIRST-DONE atomic!
    0 BLOCKING atomic!
    sock s" waited" WS:SEND-TEXT ;
@@ -1224,6 +1226,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    BLOCKING atomic@ 1 T=
    FIRST-DONE atomic@ 0 T=
    BLOCKING atomic@ 0 <> if s" < answered while the other handler blocks" LOG-LINE then
+   RELEASED TASK:SIGNAL-SEM
    a HEAR WS-OPCODE:text s" waited" GOT
    a HEAR WS-OPCODE:text s" next" GOT
    s" and the message behind it only once that call returned" T-LABEL
@@ -1359,6 +1362,19 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:text s" after" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
+
+\ A peer that sends nothing and answers no ping is lost within PING-MS and
+\ PONG-MS of its socket's opening: it reads the ping, then the end of the
+\ stream, and its handler is told `closed` 1006.
+: SILENT-CASE ( -- )
+   s" a peer that falls silent" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   mono-ns {: began:n :}
+   sock LOST CLOSES-WITHIN
+   s" lost within its quiet bound" T-LABEL
+   mono-ns began - WS-TEST:SILENT-MS GRACE-MS + NS-PER-MS * < TTRUE
+   conn HEAR WS-OPCODE:ping s" " GOT
+   conn ENDS ;
 
 : OVERFLOW-CASE ( -- )
    s" a queue past its bound" SECTION
@@ -1985,6 +2001,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" > text 5 6166746572" W
    s" < text 5 6166746572" W
    W-FAREWELL
+   s" == a peer that falls silent" W
+   s" < ping 0" W
+   s" < end of stream" W
    s" == a stop" W
    s" < close 2 03e9" W-FAILED
    s" == a stop while a socket closes" W
@@ -2065,7 +2084,8 @@ create FD-LIMIT 16 allot
    FIRST-CALL-CASE
    HEADER-FAULTS MESSAGE-FAULTS BOUND-CASES
    CLOSE-STATUS-CASES CLOSE-CASES SERVER-CLOSE-CASE TWICE-CASE THROW-CASE
-   MANY-CASE BLOCK-CASE PUSH-CASE BOTH-CASE BURST-CASE HELD-CASE OVERFLOW-CASE STALL-CASE ;
+   MANY-CASE BLOCK-CASE PUSH-CASE BOTH-CASE BURST-CASE HELD-CASE OVERFLOW-CASE STALL-CASE
+   SILENT-CASE ;
 
 public
 
@@ -2082,6 +2102,7 @@ public
    0 ACCEPTED TASK:SEMAPHORE-INIT
    0 FILLED TASK:SEMAPHORE-INIT
    0 UNHELD TASK:SEMAPHORE-INIT
+   0 RELEASED TASK:SEMAPHORE-INIT
    AIO:START
    INSTALL-ROUTES
    LOOPBACK 0 WORKERS IDLE-MS HTTP:START
@@ -2100,6 +2121,7 @@ public
    ACCEPTED TASK:SEMAPHORE-DESTROY
    FILLED TASK:SEMAPHORE-DESTROY
    UNHELD TASK:SEMAPHORE-DESTROY
+   RELEASED TASK:SEMAPHORE-DESTROY
    TRANSCRIPT-CASE ;
 
 ;package
