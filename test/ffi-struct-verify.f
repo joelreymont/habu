@@ -1,5 +1,5 @@
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
-\ --verify-only, reads FUNCTION:'s struct clauses. Loaded by
+\ --verify-only, reads FUNCTION: declarations. Loaded by
 \ src/lib/ffi-test.f on macOS and Linux arm64, inside package FFI-TEST. Each
 \ declaration is its own source, checked in a verifier child that stops at its
 \ first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the rest of
@@ -57,9 +57,23 @@ variable FFI-SV-SRC-U
    S\"  ;FUNCTION\n" SB-APPEND
    FFI-SV-CHECK ;
 
+\ Check FFI-SV-HEAD$ and then the source, a newline after it.
+: FFI-SV-SOURCE ( ptr u8 n -- n )
+   {: src:ptr srcu:n :}
+   SB-RESET
+   FFI-SV-HEAD$ SB-APPEND
+   src srcu SB-APPEND
+   S\" \n" SB-APPEND
+   FFI-SV-CHECK ;
+
 
 : FFI-SV-SHOW ( -- )
    LSP-CHECK:VERIFY-OUT$ type LSP-CHECK:VERIFY-LOG$ type ;
+
+: FFI-SV-SAYS ( ptr u8 n -- )
+   {: s:ptr su:n :}
+   LSP-CHECK:VERIFY-OUT$ s su CONTAINS? 0= IF FFI-SV-SHOW THEN
+   LSP-CHECK:VERIFY-OUT$ s su CONTAINS? TTRUE ;
 
 
 \ The source certifies: verified, and no packet, deferred or refused.
@@ -96,8 +110,14 @@ variable FFI-SV-SRC-U
 
 \ A refusal's packet names the load's code as throw_code: -3501 E-FFI-SYNTAX,
 \ -3500 E-FFI-ARITY.
-: FFI-SV-SYNTAX ( ptr u8 n -- )
-   S\" \"throw_code\":-3501" FFI-SV-REFUSE ;
+: FFI-SV-SYNTAX ( ptr u8 n ptr u8 n -- )
+   {: decl:ptr declu:n msg:ptr msgu:n :}
+   decl declu S\" \"throw_code\":-3501" FFI-SV-REFUSE
+   FFI-T-SRC CODEGEN:RESET
+   S\" \"message\":\"" FFI-T-SRC+
+   msg msgu FFI-T-SRC+
+   S\" \"" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
 : FFI-SV-ARITY ( ptr u8 n -- )
    S\" \"throw_code\":-3500" FFI-SV-REFUSE ;
 
@@ -152,18 +172,34 @@ variable FFI-SV-SRC-U
 
 
 : FFI-SV-STRUCT-ARG ( -- )
-   s" ( n -- n ) 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) -1 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 0 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 -8 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 16 STRUCT-ARG 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- n ) 1 VARIADIC 1 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- n ) 1 16 STRUCT-ARG 1 VARIADIC" FFI-SV-SYNTAX
-   s" ( ptr u8 -- r ) 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- f32 ) 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG" FFI-SV-SYNTAX
+   s" ( n -- n ) 0 16 STRUCT-ARG"
+   s" the clause names an input that is not ptr u8" FFI-SV-SYNTAX
+   S\" \"token\":\"STRUCT-ARG\"" FFI-SV-SAYS
+   s" ( ptr u8 -- n ) 1 16 STRUCT-ARG"
+   s" the clause names no input of the declaration" FFI-SV-SYNTAX
+   s" ( ptr u8 -- n ) -1 16 STRUCT-ARG"
+   s" the clause names no input of the declaration" FFI-SV-SYNTAX
+   s" ( ptr u8 -- n ) 0 0 STRUCT-ARG"
+   s" STRUCT-ARG's byte count is not positive" FFI-SV-SYNTAX
+   s" ( ptr u8 -- n ) 0 -8 STRUCT-ARG"
+   s" STRUCT-ARG's byte count is not positive" FFI-SV-SYNTAX
+   s" ( ptr u8 -- n ) 0 16 STRUCT-ARG 0 16 STRUCT-ARG"
+   s" a second clause names the same input" FFI-SV-SYNTAX
+   s" ( n ptr u8 -- n ) 1 VARIADIC 1 16 STRUCT-ARG"
+   s" a struct call with VARIADIC" FFI-SV-SYNTAX
+   s" ( n ptr u8 -- n ) 1 16 STRUCT-ARG 1 VARIADIC"
+   s" a struct call with VARIADIC" FFI-SV-SYNTAX
+   S\" \"token\":\"VARIADIC\"" FFI-SV-SAYS
+   s" ( ptr u8 -- r ) 0 16 STRUCT-ARG"
+   s" STRUCT-ARG with a float result" FFI-SV-SYNTAX
+   s" ( ptr u8 -- f32 ) 0 16 STRUCT-ARG"
+   s" STRUCT-ARG with a float result" FFI-SV-SYNTAX
+   s" ( ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT"
+   s" a second clause names the same input" FFI-SV-SYNTAX
+   S\" \"token\":\"STRUCT-RESULT\"" FFI-SV-SAYS
+   s" ( ptr u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG"
+   s" the clause names STRUCT-RESULT's destination, the last input"
+   FFI-SV-SYNTAX
    s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
@@ -171,16 +207,75 @@ variable FFI-SV-SRC-U
 
 
 : FFI-SV-STRUCT-RESULT ( -- )
-   s" ( n -- ) 0 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( -- ) 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 n -- ) 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 0 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) -16 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC" FFI-SV-SYNTAX
+   s" ( n -- ) 0 STRUCT-RESULT"
+   s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
+   s" ( -- ) 8 STRUCT-RESULT"
+   s" STRUCT-RESULT with no input to write to" FFI-SV-SYNTAX
+   s" ( ptr u8 n -- ) 8 STRUCT-RESULT"
+   s" the clause names an input that is not ptr u8" FFI-SV-SYNTAX
+   s" ( ptr u8 -- n ) 8 STRUCT-RESULT"
+   s" STRUCT-RESULT with a declared output" FFI-SV-SYNTAX
+   s" ( ptr u8 -- ) 0 STRUCT-RESULT"
+   s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
+   s" ( ptr u8 -- ) -16 STRUCT-RESULT"
+   s" STRUCT-RESULT's byte count is not positive" FFI-SV-SYNTAX
+   s" ( ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT"
+   s" a second STRUCT-RESULT" FFI-SV-SYNTAX
+   s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT"
+   s" a struct call with VARIADIC" FFI-SV-SYNTAX
+   s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC"
+   s" a struct call with VARIADIC" FFI-SV-SYNTAX
    s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;
+
+
+\ A whole source the load rejects, with its message and token.
+: FFI-SV-UNOPENED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n msg:ptr msgu:n tok:ptr toku:n :}
+   src srcu T-LABEL
+   src srcu FFI-SV-SOURCE
+   S\" \"throw_code\":-3501" FFI-SV-REFUSES
+   msg msgu FFI-SV-SAYS
+   tok toku FFI-SV-SAYS ;
+
+\ The check rejects each declaration where the load does, with the load's record.
+: FFI-SV-DECLARATIONS ( -- )
+   s" ( -- n n )"
+   s" a FUNCTION: declaration has at most one output" FFI-SV-SYNTAX
+   S\" \"token\":\"n\"" FFI-SV-SAYS
+   S\" \"column\":35," FFI-SV-SAYS
+   s" ( fd -- n )"
+   s" 'fd' is not an input type: an input is ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   FFI-SV-SYNTAX
+   S\" \"token\":\"fd\"" FFI-SV-SAYS
+   s" ( ptr -- n )" s" expected 'u8' after 'ptr'" FFI-SV-SYNTAX
+   s" ( n n n n n n n n n n n n n n n n n -- n )" FFI-SV-ARITY
+   S\" \"message\":\"a FUNCTION: declaration has at most 16 inputs\""
+   FFI-SV-SAYS
+   s" 16 STRUCT-RESULT"
+   S\" \"message\":\"a clause outside a FUNCTION: declaration\""
+   S\" \"token\":\"STRUCT-RESULT\"" FFI-SV-UNOPENED
+   s" FUNCTION: FFI-SV no_symbol ( -- ) FUNCTION: FFI-SW no_symbol ( -- ) ;FUNCTION"
+   S\" \"message\":\"FUNCTION: inside an open declaration\""
+   S\" \"token\":\"FUNCTION:\"" FFI-SV-UNOPENED
+   s" ;FUNCTION"
+   S\" \"message\":\";FUNCTION with no declaration open\""
+   S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
+   s" FUNCTION: FFI-SV no_symbol ( n --"
+   S\" \"message\":\"the line ended before the declaration did\""
+   S\" \"token\":\"--\"" FFI-SV-UNOPENED ;
+
+\ A declaration a deferral leaves to the run takes its clauses and ;FUNCTION
+\ silently.
+: FFI-SV-DEFERRED ( -- )
+   S\" : FFI-SV-DEF: ( -- ) FFI:OPEN-FUNCTION ;\nparses: FFI-SV-DEF: 9\nFFI-SV-DEF: FFI-SV-G printf ( ptr u8 n -- n )\n1 VARIADIC\n;FUNCTION"
+   {: src:ptr srcu:n :}
+   src srcu T-LABEL
+   src srcu FFI-SV-SOURCE {: kind:n :}
+   kind 2 <> IF FFI-SV-SHOW THEN
+   kind 2 T=
+   S\" W-CHECK-DEFERRED" FFI-SV-SAYS
+   LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" CONTAINS?
+   dup IF FFI-SV-SHOW THEN TFALSE ;
 
 
 \ A clause is the declarer's word only where the token resolves to it: a
@@ -245,6 +340,8 @@ variable FFI-SV-SRC-U
    FFI-SV-ACCEPTED
    FFI-SV-STRUCT-ARG
    FFI-SV-STRUCT-RESULT
+   FFI-SV-DECLARATIONS
+   FFI-SV-DEFERRED
    FFI-SV-SHADOWED
    FFI-SV-REEXPORTED
    FFI-SV-EXPORTED ;

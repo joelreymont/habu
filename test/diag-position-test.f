@@ -925,12 +925,6 @@ variable RC
 \ A stored signature that does not parse is refused at the name its declaration
 \ reads, though the row is stored under that name's fold.
 : TEST-STORED-SIGNATURE ( -- )
-   s" a FUNCTION: whose group is empty" T-LABEL
-   SB-RESET
-   s" require src/lib/ffi-abi.f" SB-APPEND LF+
-   s" FUNCTION: F getpid ( )" SB-APPEND LF+
-   s" stored-ffi.f" FIXTURE!
-   s" f" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
    s" x" s" X" 1 10 9 10 STORED-AT

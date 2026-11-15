@@ -2438,7 +2438,7 @@ sections above.
   for `DEFLINEAR` and `VALUE-RECORD`). A definer or parsing word without its
   operand is `E-MISSING-NAME` at the keyword in every `tools/check.f` mode,
   `--verify-only` included. A definer that declares an effect (`defer`,
-  `TRUSTED:`, `FUNCTION:`, a `does>` clause, …) with no signature after its
+  `TRUSTED:`, a `does>` clause, …) with no signature after its
   name, or one never closed, is `E-MISSING-SIGNATURE` (`add_signature`) at the
   definer, at `does>` for a clause. `--load` refuses `defer D` and a clause
   with exit 76 and `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature`, `does>` in place
@@ -2473,7 +2473,9 @@ sections above.
   declaration group or `generates:` row is itself `W-CHECK-DEFERRED`, even
   without a later product use. A declared primary product closes that gap;
   other generated names remain deferred at their uses. Closing a read group
-  with `;FUNCTION` is not a gap; closing one whose opener was not read is.
+  with `;FUNCTION` is not a gap; a `;FUNCTION` with no declaration open is
+  rejected as the load rejects it, unless a deferral before it left the
+  declaration to the run.
   `EXPORT` preserves an engine-provided definer's coverage declaration; an
   export of a source-scanned definer remains deferred.
 - **A text-generating definer can declare its product with `generates:`.** At
