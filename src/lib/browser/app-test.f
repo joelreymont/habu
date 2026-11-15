@@ -1,12 +1,13 @@
 \ app-test.f - MCP-APP:PAGE+ into a BUF holding a prefix, with a title holding
 \ <&"', and MCP-APP:CODE+ of a small module. The prefix is kept; the page after
 \ it is valid UTF-8, holds the escaped title, the page id and app.js's base64,
-\ and no marker. CODE+ names the same page id and carries turn.js, viewport.js,
-\ page.js and the module as base64 that decodes to their bytes, the files read
-\ here from src/lib/browser at the tree's root. A title that is not XML text,
-\ a module held in the BUF itself or a negative module length is refused and
-\ the BUF kept. test/browser/app-test.f's --chrome check runs a composed page
-\ and its code in Chrome.
+\ and no marker. CODE+ names the same page id and carries view.html, view.js,
+\ turn.js, viewport.js, page.js and the module as base64 that decodes to their
+\ bytes, the files read here from src/lib/browser at the tree's root. A title
+\ that is not XML text is refused and the BUF kept; the cases of a module held
+\ in the BUF and of a negative module length need the build's --checks option
+\ and are off. test/browser/app-test.f's --chrome check
+\ runs a composed page and its code in Chrome.
 \ Run: bin/hb --load src/lib/browser/app-test.f
 
 require src/lib/test.f
@@ -106,6 +107,10 @@ BUF:HDR-BYTES BUFFER: CODE
 : CODE-CASES ( -- )
    s" CODE+ names the page's id" T-LABEL
    s" page" MEMBER$ s" page-id" SCRIPT$ T$=
+   s" view.html's base64 decodes to src/lib/browser/view.html" T-LABEL
+   s" view.html" MEMBER$ s" src/lib/browser/view.html" CARRIES
+   s" view.js's base64 decodes to src/lib/browser/view.js" T-LABEL
+   s" view.js" MEMBER$ s" src/lib/browser/view.js" CARRIES
    s" turn.js's base64 decodes to src/lib/browser/turn.js" T-LABEL
    s" turn.js" MEMBER$ s" src/lib/browser/turn.js" CARRIES
    s" viewport.js's base64 decodes to src/lib/browser/viewport.js" T-LABEL

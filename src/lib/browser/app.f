@@ -1,18 +1,19 @@
 \ app.f - MCP-APP: an MCP App's view (ext-apps "2026-01-26") of a Habu Wasm
-\ module, in two parts. The page, PAGE+, holds only what a host keeps between
-\ its reads of the ui:// resource: app.html with the title HTML-escaped at its
-\ <!--title--> marker, the page id at <!--page-id--> and app.js as base64 at
-\ <!--app.js-->. Everything that changes with a release comes from the server
-\ each time the page starts: after ui/notifications/initialized the page calls
-\ the app-only tool CODE-TOOL$ with arguments {}, and CODE+ is that result's
-\ _meta, the page id and turn.js, viewport.js, page.js and the module as base64.
+\ module, in two parts. The kept page, PAGE+, is app.html and app.js, all a
+\ host keeps between its reads of the ui:// resource: app.html with the title
+\ HTML-escaped at its <!--title--> marker, the page id at <!--page-id--> and
+\ app.js as base64 at <!--app.js-->. Everything that changes with a release
+\ comes from the server each time the page starts: after
+\ ui/notifications/initialized the page calls the app-only tool CODE-TOOL$
+\ with arguments {}, and CODE+ is that result's _meta, the page id and
+\ view.html, view.js, turn.js, viewport.js, page.js and the module as base64.
 \ A page whose id is not the _meta's is older than its server and does not
 \ start. The page id is the SHA-256, in lowercase hex, of app.html's and
-\ app.js's bytes, so it changes exactly when the page a host keeps changes.
+\ app.js's bytes, so it changes exactly when app.html or app.js does.
 \ The page fetches nothing and runs under ChatGPT's view CSP:
 \ script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:;
 \ worker-src blob:; connect-src 'self'; img-src 'self' data:, so page.js
-\ shows an SVG from a data: URL. The five files, beside this one, are
+\ shows an SVG from a data: URL. The seven files, beside this one, are
 \ read into dictionary buffers as it loads.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
 \ PAGE+ and CODE+ write only the caller's BUF.
@@ -49,6 +50,14 @@ s" app.html" HTML HTML-U READ
 s" app.js" PATH FS:FILE-SIZE constant APP-U
 APP-U BUFFER: APP
 s" app.js" APP APP-U READ
+
+s" view.html" PATH FS:FILE-SIZE constant VIEW-HTML-U
+VIEW-HTML-U BUFFER: VIEW-HTML
+s" view.html" VIEW-HTML VIEW-HTML-U READ
+
+s" view.js" PATH FS:FILE-SIZE constant VIEW-JS-U
+VIEW-JS-U BUFFER: VIEW-JS
+s" view.js" VIEW-JS VIEW-JS-U READ
 
 s" viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
 VIEWPORT-U BUFFER: VIEWPORT
@@ -152,12 +161,15 @@ public
 : CODE-TOOL$ ( -- ptr u8 n )  s" view_code" ;
 
 \ The module's bytes and the BUF CODE-TOOL$'s result's _meta is appended to:
-\ {"page":"<page id>","files":{"turn.js":"<base64>","viewport.js":…,
-\ "page.js":…,"module":…}}. The BUF must not hold the module.
+\ {"page":"<page id>","files":{"view.html":"<base64>","view.js":…,
+\ "turn.js":…,"viewport.js":…,"page.js":…,"module":…}}. The BUF must not
+\ hold the module.
 : CODE+ ( ptr u8 n ptr a -- )
    {: m:ptr mu:n buf:ptr :}
    s\" {\"page\":\"" buf SPAN+  ID ID-U buf SPAN+
    s\" \",\"files\":{" buf SPAN+
+   s" view.html" VIEW-HTML VIEW-HTML-U buf MEMBER+  s" ," buf SPAN+
+   s" view.js" VIEW-JS VIEW-JS-U buf MEMBER+  s" ," buf SPAN+
    s" turn.js" TURN TURN-U buf MEMBER+  s" ," buf SPAN+
    s" viewport.js" VIEWPORT VIEWPORT-U buf MEMBER+  s" ," buf SPAN+
    s" page.js" PAGE PAGE-U buf MEMBER+  s" ," buf SPAN+

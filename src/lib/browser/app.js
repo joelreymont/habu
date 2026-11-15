@@ -1,43 +1,54 @@
 // app.js - an MCP App's view (ext-apps, protocol "2026-01-26") of a Habu Wasm
-// module, started by app.html's bootstrap with the page's id. It speaks
-// JSON-RPC 2.0 with the host over window.parent.postMessage and takes messages
-// only from window.parent:
+// module, started by app.html's bootstrap with the page's id. A host keeps
+// this page, so it holds only what does not change with a release; the view
+// comes from the server each time it starts. It speaks JSON-RPC 2.0 with the
+// host over window.parent.postMessage and takes messages only from
+// window.parent:
 //
 //   start  ui/initialize {appInfo, appCapabilities, protocolVersion}; on its
 //          result the notification ui/notifications/initialized, then
 //          ui/request-display-mode {mode: "fullscreen"}, then tools/call
 //          {name: "view_code", arguments: {}}, whose result's _meta holds the
-//          server's page id and the view's code, then mount; a teardown
-//          before ui/initialize's result ends start there
-//   code   _meta {page, files: {"turn.js", "viewport.js", "page.js",
-//          "module"}}, each file base64; turn.js, viewport.js and page.js
-//          are imported from blob: URLs and the module's bytes are mounted;
-//          a page id that is not this page's ends start: the page is older
-//          than its server
+//          server's page id and the view's code, then view.js's start
+//   code   _meta {page, files}, files each base64 by name; view.js is
+//          imported from a blob: URL; a page id that is not this page's ends
+//          start: the page is older than its server
+//   view   view.js exports start(host), host {files, request}: files
+//          is the _meta's files, request(method, params) resolves with the
+//          response message as request below does; start resolves with
+//          {notify(method, paramsJSON), dispose()}
 //   failure
-//          a failure of start after ui/initialize answered (the call's
-//          error, a missing file, an import's failure, the older page) is
-//          told to the model once, as ui/update-model-context of one text
-//          block for the assistant, then shown in #text
-//   rpc    a module's rpc record is a request under this file's own id; its
-//          response's result or error answers the record; a response that
-//          holds neither or both rejects it
+//          a failure of loading or mounting (the call's error, a missing
+//          file, an import's or view.js's start's failure, the older page)
+//          is told to the model once, as ui/update-model-context of one text
+//          block for the assistant, then shown in #text; a failure after
+//          ui/resource-teardown is neither told nor shown
 //   host notifications
-//          each goes to view.notify(method, paramsJSON), in order, held until
-//          mount has resolved, so after the start turn has begun
+//          each goes to notify(method, paramsJSON), in order, held until
+//          view.js's start has resolved, and dropped once start has failed
+//          or the view is torn down
 //   ui/resource-teardown
-//          disposes the viewport, then answers {}; any other host request is
-//          answered -32601
+//          disposes the started view, then answers {}; any other host
+//          request is answered -32601
 //
-// page.js shows what the module sends and gives it the field's text and each
-// file dropped anywhere on the page. The module is the one path the
-// viewport's fetch answers; every other path rejects.
+// Start is a machine over phase, whose states are
+//   starting  waiting for ui/initialize's result
+//   loading   the view_code call and view.js's import
+//   mounting  waiting for view.js's start
+//   running   started; notifications are delivered
+//   failed    start failed: shown, and told to the model when loading or mounting failed
+//   torn      ui/resource-teardown arrived
+// starting goes to loading on initialize's result; loading to mounting once
+// the code is checked and view.js imported; mounting to running when start
+// resolves, which delivers the held notifications. loading or mounting goes
+// to failed on any failure; a failure in starting goes to failed and is only
+// shown, by the bootstrap. Any state goes to torn on ui/resource-teardown. Each step after
+// an await runs only while the phase is still the one it set, and a start
+// that resolves after torn is disposed at once.
 const PROTOCOL = "2026-01-26";
 const VERSION = "1";
-const MODULE = "module.wasm";
 const NOT_FOUND = -32601;
 const CODE_TOOL = "view_code";
-const SCRIPTS = ["turn.js", "viewport.js", "page.js"];
 
 let lastId = 0;
 const pending = new Map(); // a request's id -> the resolve and reject of its response
@@ -62,14 +73,11 @@ async function call(method, params) {
   return r.result;
 }
 
-async function rpc(method, params) {
-  const r = await request(method, JSON.parse(params));
-  return JSON.stringify("result" in r ? { result: r.result } : { error: r.error });
-}
+const shown = document.querySelector("#text"); // app.html's own, where a failure is shown
 
-let view = null;
-let torn = false;
-const held = []; // host notifications that arrived before mount resolved
+let phase = "starting";
+let view = null; // view.js's started view, while running
+const held = []; // host notifications that arrived before start resolved
 
 // JSON-RPC 2.0 omits params when there are none: delivered as {}.
 function deliver({ method, params }) {
@@ -77,8 +85,10 @@ function deliver({ method, params }) {
 }
 
 function teardown() {
-  torn = true;
-  view?.dispose();
+  if (phase === "running") view.dispose();
+  view = null;
+  held.length = 0;
+  phase = "torn";
 }
 
 function received({ source, data: m }) {
@@ -91,9 +101,8 @@ function received({ source, data: m }) {
       post({ id: m.id, error: { code: NOT_FOUND, message: "Method not found" } });
     }
   } else if (typeof m.method === "string") {
-    if (torn) return;
-    if (view) deliver(m);
-    else held.push(m);
+    if (phase === "running") deliver(m);
+    else if (phase !== "failed" && phase !== "torn") held.push(m);
   } else if (pending.has(m.id)) {
     const { resolve, reject } = pending.get(m.id);
     pending.delete(m.id);
@@ -102,25 +111,17 @@ function received({ source, data: m }) {
   }
 }
 
-// A file of view_code's _meta as bytes.
-function file(files, name) {
-  const coded = files?.[name];
-  if (typeof coded !== "string") throw new Error(`${CODE_TOOL}: the result's _meta lacks ${name}`);
-  return Uint8Array.fromBase64(coded);
-}
-
 async function load(bytes) {
   const url = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" }));
   try { return await import(url); } finally { URL.revokeObjectURL(url); }
 }
 
-// A failure of start after ui/initialize answered: told to the model, then
-// shown in #text. start ends here, so it runs once.
+// A failure of loading or mounting: told to the model, then shown in #text.
 function failed(title, text) {
   call("ui/update-model-context", { content: [{ type: "text",
     text: `${title}'s view could not start: ${text}`, annotations: { audience: ["assistant"] } }] })
     .catch((e) => console.error(e));
-  const shown = document.querySelector("#text");
+  document.body.replaceChildren(shown);
   shown.textContent = text;
   shown.className = "error";
 }
@@ -128,57 +129,57 @@ function failed(title, text) {
 // The server's page id is not this page's: its text is shown as it is.
 class OlderPage extends Error {}
 
-// The server's code for this page.
-async function code(id, title) {
-  const r = await call("tools/call", { name: CODE_TOOL, arguments: {} });
+// view_code's result r, checked for this page: its files and view.js's bytes.
+function code(r, id, title) {
   if (r.isError)
     throw new Error(`${CODE_TOOL}: ${(r.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ")}`);
-  if (r._meta?.page !== id)
+  if (typeof r._meta?.page !== "string")
+    throw new Error(`${CODE_TOOL}: the result's _meta lacks page`);
+  if (r._meta.page !== id)
     throw new OlderPage(`This view's page is older than ${title}'s server: refresh the ${title} app, then open this view again.`);
   const { files } = r._meta;
-  const [{ Module }, { mount }, page] = await Promise.all(SCRIPTS.map((name) => load(file(files, name))));
-  return { Module, mount, page, bytes: file(files, "module") };
+  const coded = files?.["view.js"];
+  if (typeof coded !== "string") throw new Error(`${CODE_TOOL}: the result's _meta lacks view.js`);
+  return { files, bytes: Uint8Array.fromBase64(coded) };
 }
 
+// loading, then mounting, then running.
 async function run(id, title) {
   post({ method: "ui/notifications/initialized" });
   call("ui/request-display-mode", { mode: "fullscreen" }).catch((e) => console.error(e));
-  const { Module, mount, page: { canvas, show, enable, sceneTree, svg, listen }, bytes } = await code(id, title);
-  const mounted = await mount(canvas, {
-    Module,
-    module: MODULE,
-    fetch: async (url) => {
-      if (url !== MODULE) throw new Error(`${url}: the page holds only ${MODULE}`);
-      return new Response(bytes, { headers: { "Content-Type": "application/wasm" } });
-    },
-    rpc,
-    onTree: sceneTree((key, opened) =>
-      mounted.post({ kind: "control", key, opened })),
-    onText: show,
-    onSvg: svg,
-    onInput: enable,
-  });
-  if (torn) {
-    mounted.dispose();
+  const r = await call("tools/call", { name: CODE_TOOL, arguments: {} });
+  if (phase !== "loading") return;
+  const { files, bytes } = code(r, id, title);
+  const module = await load(bytes);
+  if (phase !== "loading") return;
+  phase = "mounting";
+  const started = await module.start({ files, request });
+  if (phase !== "mounting") {
+    started.dispose();
     return;
   }
-  view = mounted;
+  phase = "running";
+  view = started;
   for (const m of held.splice(0)) deliver(m);
-  listen(view);
 }
 
 export async function start(id) {
   window.addEventListener("message", received);
   const title = document.querySelector("title").textContent;
-  await call("ui/initialize", {
-    appInfo: { name: title, version: VERSION },
-    appCapabilities: {},
-    protocolVersion: PROTOCOL,
-  });
-  if (torn) return;
   try {
+    await call("ui/initialize", {
+      appInfo: { name: title, version: VERSION },
+      appCapabilities: {},
+      protocolVersion: PROTOCOL,
+    });
+    if (phase !== "starting") return;
+    phase = "loading";
     await run(id, title);
   } catch (e) {
+    if (phase === "starting") { phase = "failed"; held.length = 0; throw e; } // the bootstrap shows it
+    if (phase !== "loading" && phase !== "mounting") return;
+    phase = "failed";
+    held.length = 0;
     console.error(e);
     failed(title, e instanceof OlderPage ? e.message : String(e));
   }

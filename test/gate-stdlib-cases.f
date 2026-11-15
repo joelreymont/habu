@@ -512,7 +512,7 @@ SUITE browser-host
 
 \ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
 \ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
-\ page id and the base64 of the other scripts and the module.
+\ page id and the base64 of the view's files and the module.
 SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE

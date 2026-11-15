@@ -10,9 +10,10 @@
 // window other than the parent is ignored, a tools/call round trip, the model
 // context, an after tick, a response holding both a result and an error, a
 // dropped file read in two pieces, teardown, a second frame torn down before
-// its ui/initialize is answered, and a third whose view_code answer names
-// another page id. DIR holds data.bin, the file dropped, and receives
-// chrome.log; TITLE is the page's unescaped title.
+// its ui/initialize is answered, a third torn down while its view_code
+// request is pending, and a fourth whose view_code answer names another page
+// id. DIR holds data.bin, the file dropped, and receives chrome.log;
+// TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,8 +37,9 @@ const OLDER_CONTEXT = { content: [{ type: "text", text: `${title}'s view could n
 
 // The parent: every message from the frame lands in window.log; requests are
 // answered from the table, view_code with code. Before it answers ui/initialize it starts
-// recording into window.shown each text the frame's #text is given, and sends
-// the two notifications. stranger posts a message to the frame from a new
+// recording into window.shown each text an element #text in the frame's body is
+// given, view.html's included once it replaces the body, and sends the two
+// notifications. stranger posts a message to the frame from a new
 // sibling frame, so its source is not the frame's parent. While both is set,
 // the next tools/call is answered with a result and an error.
 const parent = `<!doctype html><meta charset="utf-8"><iframe src="/app.html" style="width:507px;height:700px"></iframe>
@@ -68,29 +70,33 @@ window.addEventListener("message", ({ source, data }) => {
   log.push(data);
   if (data.method === "ui/initialize") {
     new MutationObserver((records) => {
-      for (const r of records) for (const n of r.addedNodes) shown.push(n.textContent);
-    }).observe(frame.contentDocument.querySelector("#text"), { childList: true });
+      for (const r of records) if (r.target.id === "text") for (const n of r.addedNodes) shown.push(n.textContent);
+    }).observe(frame.contentDocument.body, { childList: true, subtree: true });
     send({ method: "ui/notifications/tool-input", params: ${JSON.stringify(INPUT)} });
     send({ method: "ui/notifications/tool-result", params: ${JSON.stringify(PARAMS)} });
   }
   if (both && data.method === "tools/call") { both = false; send({ id: data.id, result: answers[data.method], error: { code: -32603, message: "both" } }); }
   else if ("id" in data) send({ id: data.id, result: answer(data) });
 });
-// addSecond adds a page frame and, on its ui/initialize, sends it a teardown,
-// then the answer, then a ping whose reply marks that the answer was handled.
-// The messages it posts land in second.log, its replies in second.replies.
-window.second = { log: [], replies: [] };
-window.addSecond = () => {
+// addTorn adds a page frame and answers its requests from the table, but to
+// a request of method it sends a teardown, then answer, then a ping whose
+// reply marks that the answer was handled. The messages the frame
+// posts land in window[name].log, its replies in window[name].replies. second
+// is torn down on ui/initialize, pending on view_code, answered with another
+// page id.
+window.addTorn = (name, method, answer) => {
+  const torn = window[name] = { log: [], replies: [] };
   const other = document.body.appendChild(document.createElement("iframe"));
   other.src = "/app.html";
   const send = (message) => other.contentWindow.postMessage({ jsonrpc: "2.0", ...message }, "*");
   window.addEventListener("message", ({ source, data }) => {
     if (source !== other.contentWindow) return;
-    if (!("method" in data)) { second.replies.push(data); return; }
-    second.log.push(data);
-    if (data.method !== "ui/initialize") return;
+    if (!("method" in data)) { torn.replies.push(data); return; }
+    torn.log.push(data);
+    if (!("id" in data)) return;
+    if (data.method !== method) { send({ id: data.id, result: answers[data.method] }); return; }
     send({ id: 1, method: "ui/resource-teardown", params: {} });
-    send({ id: data.id, result: answers["ui/initialize"] });
+    send({ id: data.id, result: answer });
     send({ id: 2, method: "ping" });
   });
 };
@@ -204,12 +210,19 @@ try {
   await until(() => evaluate("replies.some((r) => r.id === 99)"));
   assert.deepEqual(await evaluate("replies.find((r) => r.id === 99)"), { jsonrpc: "2.0", id: 99, result: {} });
 
-  await evaluate("addSecond()");
+  await evaluate(`addTorn("second", "ui/initialize", answers["ui/initialize"])`);
   await until(() => evaluate("second.replies.some((r) => r.id === 2)"));
   assert.deepEqual(await evaluate("second.replies"), [{ jsonrpc: "2.0", id: 1, result: {} },
     { jsonrpc: "2.0", id: 2, error: { code: -32601, message: "Method not found" } }]);
   assert.deepEqual(await evaluate("second.log.map((m) => m.method)"), ["ui/initialize"],
     "a frame torn down before its initialize is answered posts nothing after the answer");
+
+  await evaluate(`addTorn("pending", "tools/call", { content: [], _meta: { ...code, page: "0".repeat(64) } })`);
+  await until(() => evaluate("pending.replies.some((r) => r.id === 2)"));
+  assert.deepEqual(await evaluate("pending.replies"), [{ jsonrpc: "2.0", id: 1, result: {} },
+    { jsonrpc: "2.0", id: 2, error: { code: -32601, message: "Method not found" } }]);
+  assert.deepEqual(await evaluate("pending.log.map((m) => m.method)"), handshake,
+    "a frame torn down while its view_code request is pending posts nothing after the teardown's answer");
 
   await evaluate("addOlder()");
   const olderText = () => evaluate("older.frame.contentDocument?.querySelector('#text')?.textContent ?? null");
@@ -220,7 +233,7 @@ try {
     "an older page asks for its code, then tells the model once");
   assert.deepEqual(olderLog.at(-1).params, OLDER_CONTEXT);
   console.log(`Headless Chrome: an older page shows ${JSON.stringify(OLDER)}`);
-  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call, model context, after, a malformed response, file reads, teardown, an early teardown and an older page passed");
+  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code and an older page passed");
 } catch (error) {
   failure = error; throw error;
 } finally {
