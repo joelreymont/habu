@@ -480,7 +480,11 @@ S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: declare a type of that name, or correct its spelling"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  XT-VAR 70 T=
-s" in BI-XVAR: xt in a stored type 'xt'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+s" error[E-BAD-STORAGE]: the type of `BI-XVAR` holds an `xt`, which no storage holds"
+DECL-DIAG:HAS? TTRUE
+s" |                  ^^^^^^ xt in a stored type" DECL-DIAG:HAS? TTRUE
+s" = help: declare `BI-XVAR` with a quotation type such as `[ n -- n ]` in place of `xt`"
+DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 300 constant LONG-N
 s" [ -- ]" nip LONG-N 2 * + constant LONG-TYPE-CAP
@@ -502,12 +506,21 @@ variable LONG-U
    LONG-CALL s"  ( -- ) [: " LONG+
    k 0 ?do LONG-CALL s" drop " LONG+ loop
    LONG-CALL s" ;] BI-LONG drop ;" LONG+  LONG-CALL LONG-U @ ;
+LONG-TYPE-CAP 64 + BUFFER: LONG-HEAD
+\ The rejection's head: BI-LONG takes the LONG-N cells and gets a quotation.
+: LONG-HEAD$ ( -- ptr u8 n )
+   LONG-TYPE$ {: ta:ptr tu:n :}
+   0 LONG-U !  LONG-HEAD s" error[E-MISMATCH]: `BI-LONG` takes " LONG+
+   LONG-HEAD ta tu LONG+  LONG-HEAD s" ; the stack holds [ a b " LONG+
+   LONG-HEAD LONG-U @ ;
 
 s" BI-LONG" LONG-TYPE$ EFFECT:READ-TYPE MAKE-ID
 s" BI-LONG-OK" LONG-N LONG-CALL$ TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" BI-LONG-NO" LONG-N 1 - LONG-CALL$ TEST-EVAL:RC 70 T=
-s" in bi-long-no: at 'BI-LONG' expected: " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+LONG-HEAD$ DECL-DIAG:HAS? TTRUE
+s" ^^^^^^^^^^^^ takes [ n n " DECL-DIAG:HAS? TTRUE
+s" = help: give `BI-LONG` [ n n " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
 : SUB2-OPEN ( ptr u8 n -- )
