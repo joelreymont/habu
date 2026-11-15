@@ -208,7 +208,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
       s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT ;
 
-\ Each rides INCLUDE-EVALUATE, so the refusal is a throw this file catches.
+\ Each rides INCLUDE-EVALUATE, so the rejection's stop is a throw this file
+\ catches.
 : DECL-BAD-TOKEN ( -- )
    s" CALLBACK: CBT-X1 ( q -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 : DECL-BAD-PTR ( -- )
@@ -245,23 +246,30 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : DECL-NAME-64 ( -- )
    s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 
+\ The quotation stops with the rejection status after a record of code c cu.
+: REJECTS? ( [ -- ] ptr u8 n -- bool ) {: q c:ptr cu:n :}
+   REJECTION:CAPTURE
+   q catch CHECKER-REJECT-RC =
+   REJECTION:BUFFER$ c cu CONTAINS? and
+   REJECTION:BUFFER-OFF ;
+
 : CASE-DECLARATIONS ( -- )
    s" == declarations refused" SAY
-   [: DECL-BAD-TOKEN ;] catch E-FFI-SYNTAX = s" an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" FACT
-   [: DECL-BAD-PTR ;] catch E-FFI-SYNTAX = s" a pointer that is not ptr u8: E-FFI-SYNTAX" FACT
-   [: DECL-TWO-RESULTS ;] catch E-FFI-SYNTAX = s" two results: E-FFI-SYNTAX" FACT
-   [: DECL-PTR-RESULT ;] catch E-FFI-SYNTAX = s" a pointer result: E-FFI-SYNTAX" FACT
-   [: DECL-NO-FALLBACK ;] catch E-FFI-SYNTAX = s" a value result with no fallback: E-FFI-SYNTAX" FACT
-   [: DECL-WRONG-FALLBACK ;] catch E-FFI-SYNTAX = s" FFALLBACK for an integer result: E-FFI-SYNTAX" FACT
-   [: DECL-VOID-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with no result: E-FFI-SYNTAX" FACT
-   [: DECL-TOO-MANY-INTS ;] catch E-FFI-ARITY = s" an integer argument past the registers: E-FFI-ARITY" FACT
-   [: DECL-NINE-FLOATS ;] catch E-FFI-ARITY = s" a ninth float argument: E-FFI-ARITY" FACT
-   [: DECL-STRAY-CLOSE ;] catch E-FFI-SYNTAX = s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
-   [: DECL-STRAY-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
-   [: DECL-NESTED ;] catch E-FFI-SYNTAX = s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
+   [: DECL-BAD-TOKEN ;] s" E-FFI-SYNTAX" REJECTS? s" an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" FACT
+   [: DECL-BAD-PTR ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer that is not ptr u8: E-FFI-SYNTAX" FACT
+   [: DECL-TWO-RESULTS ;] s" E-FFI-SYNTAX" REJECTS? s" two results: E-FFI-SYNTAX" FACT
+   [: DECL-PTR-RESULT ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer result: E-FFI-SYNTAX" FACT
+   [: DECL-NO-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" a value result with no fallback: E-FFI-SYNTAX" FACT
+   [: DECL-WRONG-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" FFALLBACK for an integer result: E-FFI-SYNTAX" FACT
+   [: DECL-VOID-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" FALLBACK with no result: E-FFI-SYNTAX" FACT
+   [: DECL-TOO-MANY-INTS ;] s" E-FFI-ARITY" REJECTS? s" an integer argument past the registers: E-FFI-ARITY" FACT
+   [: DECL-NINE-FLOATS ;] s" E-FFI-ARITY" REJECTS? s" a ninth float argument: E-FFI-ARITY" FACT
+   [: DECL-STRAY-CLOSE ;] s" E-FFI-SYNTAX" REJECTS? s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
+   [: DECL-STRAY-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
+   [: DECL-NESTED ;] s" E-FFI-SYNTAX" REJECTS? s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
    [: DECL-SEVENTEENTH ;] catch 0=
       s" the seventeenth declaration succeeds" FACT
-   [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
+   [: DECL-NAME-65 ;] s" E-FFI-SYNTAX" REJECTS? s" a 65-byte name: E-FFI-SYNTAX" FACT
    [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
 : PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;

@@ -2821,6 +2821,16 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
+\ NAME, read from byte AT, names no word itself, so a taken derived word is the
+\ duplicate, rejected at NAME.
+: ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
+   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+   SB$ {: gen:ptr genu:n :}
+   gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
+   gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
+   at TOKEN-BYTE !  gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
+
 \ DYNAMIC-BUFFER publishes THREE words from one line - the accessor,
 \ NAME-RESERVE and NAME-RELEASE. Certification never runs the definer, and
 \ without this row a later definition in the same source calling one of the
@@ -2836,16 +2846,6 @@ variable STG-TYPE-U
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
-
-\ NAME, read from byte AT, names no word itself, so a taken derived word is the
-\ duplicate, rejected at NAME.
-: ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
-   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
-   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   SB$ {: gen:ptr genu:n :}
-   gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
-   gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
-   at TOKEN-BYTE !  gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
