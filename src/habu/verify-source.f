@@ -300,6 +300,20 @@ variable FAULT-LEN
 create FAULT-TARGET PATH-CAP allot
 variable FAULT-U
 
+: FAULT-TARGET! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a FAULT-TARGET u BYTE-COPY
+   u FAULT-U ! ;
+
+\ Whether a stop with code n is the rejection of a missing source, whose file
+\ FAULT-TARGET$ names (COMPOSE-MISSING).
+: LOADER-REJECTED? ( n -- bool )
+   CHECKER-REJECT-RC =  FAULT-U @ 0 >  and ;
+
+\ Where the path the quiet composition's load loads is written in the file
+\ being scanned, as the program wrote it.
+PTR-VARIABLE LOAD-PLACE-A
+variable LOAD-PLACE-U
+
 0 constant CSR-WAIT                      \ not reached yet
 1 constant CSR-SPACE                     \ in the blanks before the token at CSR-TOK
 2 constant CSR-PART                      \ inside the token at CSR-TOK, past its first byte
@@ -881,6 +895,7 @@ DYNAMIC-BUFFER PEND-U n
 DYNAMIC-BUFFER PEND-INC n                     \ 1 to include its file, 0 to require it
 DYNAMIC-BUFFER PEND-WORD-AT n                 \ where its loader word starts
 DYNAMIC-BUFFER PEND-WORD-U n
+DYNAMIC-BUFFER PEND-OP-AT n                   \ where IMM-OPERAND's path is written
 variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
@@ -1167,6 +1182,9 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ {: w:ptr wu:n at:n :}
    wu LOADER-OPERAND {: p:ptr pu:n :}
    p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
+   PEND-N @ 1 - {: k:n :}
+   k 1 + PEND-OP-AT-RESERVE
+   p SOURCE@ - k PEND-OP-AT !
    p pu ;
 
 \ A local or a group skips BODY-TOKEN-SEEN, so it clears what the token before
@@ -3198,25 +3216,44 @@ variable LOAD-END
    [: COMPOSE-PENDING ;]
    CHECKER-OWNER-ABI:VERIFY-FILE-OFF OWNER-XT FILE-ACTION execute ;
 
-: COMPOSE-OPEN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+\ A quiet composition rejects a load of a file no root holds as the loader
+\ does: its record names the request a u and stands at LOAD-PLACE, and
+\ FAULT-TARGET$ names the file the read would have opened. No read runs.
+: COMPOSE-MISSING ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n path:ptr pathu:n :}
+   path pathu FAULT-TARGET!
+   a u LOAD-PLACE-A @ LOAD-PLACE-U @ false SOURCE-ROOT:MISSING-SOURCE ;
+
+\ Load PATH, the file the request a u resolved to.
+: COMPOSE-OPEN ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n path:ptr pathu:n :}
    path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
       path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
+   THEN
+   QUIET @ IF
+      path pathu FS:EXISTS? 0= IF a u path pathu COMPOSE-MISSING THEN
    THEN
    path pathu SUPPLIED {: t:ptr tu:n open:bool :}
    open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
    path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
 : COMPOSE-INCLUDED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:RESOLVE drop {: path:ptr pathu:n :}
+   a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE IF LOAD-HELD LOADED EXIT THEN
-   REQUIRE-STORE COMPOSE-OPEN ;
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   REQUIRE-STORE {: path:ptr pathu:n :}
+   a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:ENTRY-RESOLVE IF LOAD-HELD LOADED EXIT THEN
-   REQUIRE-STORE COMPOSE-OPEN ;
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:ENTRY-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   REQUIRE-STORE {: path:ptr pathu:n :}
+   a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ptr u8 n -- )
    SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
@@ -3241,15 +3278,16 @@ variable LOAD-U
 
 \ Run Q, the load a loader word wu bytes long at byte w makes, under the word's
 \ claim: a fault no loader below claimed stands at the word when the file is
-\ missing or unreadable (E-SOURCE-READ) or the resolver refuses its path
-\ (E-PATH-RANGE, refused as discovery refuses it: E-DISC-CAPACITY). Any other
-\ fault keeps the place where it was made.
+\ missing (LOADER-REJECTED?) or unreadable (E-SOURCE-READ) or the resolver
+\ refuses its path (E-PATH-RANGE, refused as discovery refuses it:
+\ E-DISC-CAPACITY). Any other fault keeps the place where it was made.
 : CLAIMED-LOAD ( [ -- ] n n -- )
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
    {: rc:n :}
    rc E-PATH-RANGE =  rc E-PATH-NUL =  or IF E-DISC-CAPACITY ELSE rc THEN {: code:n :}
-   code E-SOURCE-READ =  code E-DISC-CAPACITY =  or  FAULT-LEN @ 0=  and IF
+   code E-SOURCE-READ =  code E-DISC-CAPACITY =  or  code LOADER-REJECTED? or
+   FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
    code 0<> IF code throw THEN ;
@@ -3262,6 +3300,7 @@ variable LOAD-U
    u LOADER-OPERAND {: p:ptr pu:n :}
    TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
+   p LOAD-PLACE-A !  pu LOAD-PLACE-U !
    inc FILE-LOAD at u CLAIMED-LOAD ;
 
 \ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
@@ -3272,6 +3311,8 @@ variable LOAD-U
    STR-LAST-KIND @ u LITERAL-LOAD? 0= IF EXIT THEN
    STR-LAST-AT @ STR-LAST-END @ ARM-LOAD
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
+   SOURCE@ STR-LAST-AT @ + LOAD-PLACE-A !
+   STR-LAST-END @ STR-LAST-AT @ - LOAD-PLACE-U !
    q TOKEN-BYTE @ u CLAIMED-LOAD ;
 
 : QUIET-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -3314,6 +3355,7 @@ variable LOAD-U
       i PEND-AT @ PEND-PATH i PEND-U @  LOAD-U !  LOAD-A !
       i PEND-INC @ 0<> FILE-LOAD
       QUIET @ IF
+         SOURCE@ i PEND-OP-AT @ + LOAD-PLACE-A !  i PEND-U @ LOAD-PLACE-U !
          i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
       ELSE
          i PEND-INC @ 0<> BODY-LOAD? IF execute ELSE drop THEN
@@ -4289,10 +4331,10 @@ TYPED-VARIABLE THEN-ACTION [ -- ]
    VERIFY-ARMED
    THEN-ACTION @ execute ;
 
-\ A quiet composition reads each file a loader loads itself: a file the system
-\ does not open or read to its end stops it with E-SOURCE-READ, FAULT-TARGET$
-\ naming the file as resolved; whether it is missing or unreadable is the
-\ caller's to ask. Any other refusal, memory's among them, stays itself. The
+\ A quiet composition reads each file a loader loads itself, once
+\ COMPOSE-MISSING has rejected a missing one: a file the system does not open or
+\ read to its end stops it with E-SOURCE-READ, FAULT-TARGET$ naming the file as
+\ resolved. Any other refusal, memory's among them, stays itself. The
 \ loader refuses a resolved path past PATH-CAP before reading, so the path fits
 \ both buffers.
 create READ-PATHZ PATH-CAP 1+ allot
@@ -4307,10 +4349,6 @@ variable READ-CNS
 variable READ-PATH-U
 variable READ-META-VALID
 65536 constant READ-STEP
-
-: FAULT-TARGET! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a FAULT-TARGET u BYTE-COPY
-   u FAULT-U ! ;
 
 : READ-FILL ( -- )
    0 READ-U !
@@ -4555,7 +4593,8 @@ public
 
 : LOADER-FAULT? ( n -- bool ) {: rc:n :}
    rc E-SOURCE-READ =
-   rc E-DISC-FIRST <= rc E-DISC-LAST >= and or ;
+   rc E-DISC-FIRST <= rc E-DISC-LAST >= and or
+   rc LOADER-REJECTED? or ;
 
 \ The length of the loader token the last quiet composition stopped at, 0 when
 \ it stopped at none.

@@ -1620,7 +1620,7 @@ variable RC
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
-   1 s" E-MISSING-SOURCE" s" require" 2 1 42 49 VERIFY-REJECTED-AT
+   1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 VERIFY-REJECTED-AT
    s" E-UNTERMINATED-STRING" s" :1:12" 74 LOADED-AT
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
@@ -1631,7 +1631,7 @@ variable RC
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT
-   1 s" E-MISSING-SOURCE" s" require" 2 1 48 55 VERIFY-REJECTED-AT
+   1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 VERIFY-REJECTED-AT
    s" E-UNTERMINATED-STRING" s" :1:18" 74 LOADED-AT ;
 
 \ A word a create caller made is bound, and typed `-- ptr a`, by the run of that

@@ -577,7 +577,6 @@ variable VFY-TARGET-U
    then
    path pathu VFY-LOG+
    s" : " VFY-LOG+
-   rc CHK-E-NOINPUT = if s" no such source" VFY-LOG-LN exit then
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
@@ -879,12 +878,11 @@ variable VFY-EXE-U
 
 
 \ The loader's fault RC as the closure walk classes it: a file a loader could
-\ not read is CHK-E-NOINPUT when no file is there, else CHK-E-IOERR; a form
-\ keeps discovery's code.
+\ not read is CHK-E-IOERR, the child having rejected a missing one itself; a
+\ form keeps discovery's code.
 : VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
-   rc VERIFY:E-SOURCE-READ <> if rc exit then
-   VFY-TARGET$ FS:EXISTS? if CHK-E-IOERR exit then
-   CHK-E-NOINPUT ;
+   rc VERIFY:E-SOURCE-READ = if CHK-E-IOERR exit then
+   rc ;
 
 
 : VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
@@ -1704,10 +1702,13 @@ public
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
 
-\ The actual target of a loader's failed source read, if there was one.
-\ The next verification replaces these bytes; a consumer keeps its own copy.
+\ The actual target of a loader's failed source read or missing source, if
+\ there was one. The next verification replaces these bytes; a consumer keeps
+\ its own copy.
 : VERIFY-UNREAD$ ( -- ptr u8 n )
-   VFY-STOP-RC @ VERIFY:E-SOURCE-READ = if VFY-TARGET$ else NULL$ then ;
+   VFY-STOP-RC @ {: rc:n :}
+   rc VERIFY:E-SOURCE-READ =  rc CHECKER-REJECT-RC =  or
+   if VFY-TARGET$ else NULL$ then ;
 
 \ Where it stopped: the byte where the token it stopped at starts, the one the
 \ verifier read last or the opener of the statement it was in, whether that is

@@ -1256,8 +1256,11 @@ private
    then
    first SEARCH-ROOTS ;
 
+public
+
 \ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
-\ an entry's and an absolute request's is one. Placed at p.
+\ an entry's and an absolute request's is one. Placed at p. Public so the
+\ verifier's composition rejects a missing source with the loader's record.
 : MISSING-SOURCE ( ptr u8 n ptr u8 n bool -- )
    {: a:ptr u:n p:ptr pu:n entry:bool :}
    s" E-MISSING-SOURCE" REJECTION:OPEN
@@ -1286,8 +1289,6 @@ private
       s" then the directory hb runs in" REJECTION:EMIT-STR
    then
    CHECKER-REJECT-RC REJECTION:STOP ;
-
-public
 
 \ SELECT and CANONICAL may reuse the buffer a u lies in, so a rejection names
 \ REQUEST$, the request's copy, and is placed at a u only where a u is source.
