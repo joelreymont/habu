@@ -624,20 +624,6 @@ function keyAxes(axes, plane) {
     n: Array.from(plane.subarray(0, 3), (v) => v / length), d: plane[3] / length };
 }
 
-// g, how far in the key's x and y past casters at most tall above the plane
-// a point of the plane can see one against the softbox, with the key's axes
-// a: h D / (1 - h |slope|) in each, h the softbox's half extent, D = tall /
-// nz the casters' reach to the plane along the key and slope the plane's
-// rise along the key per unit along that axis. It is finite, since the key
-// stands 36.6° above the ground, more than the softbox's half-angle
-// atan(0.45) = 24.2°.
-function growth(tall, a) {
-  const nx = dot3(a.n, a.x), ny = dot3(a.n, a.y), nz = dot3(a.n, a.z);
-  const D = tall / nz;
-  return [KEY_BOX[0] * D / (1 - KEY_BOX[0] * Math.abs(nx / nz)),
-    KEY_BOX[1] * D / (1 - KEY_BOX[1] * Math.abs(ny / nz))];
-}
-
 // The world point of the plane, unit n and d, that clip matrix m, column-major,
 // takes to NDC x, y, in binary64 by Cramer's rule over the plane and the two
 // planes m takes to x and y; null when the view runs along the plane or the
@@ -699,8 +685,10 @@ function keyVolume(m, box, a) {
 // over the map's side; its depth runs over the casters' box along the key,
 // from its nearest corner, 0, to its farthest, 1, 1% to spare at each end,
 // so a cleared 1 holds none. reach.z is T, the casters' greatest height
-// above the plane, in units of depth. The catcher is M grown by growth's g
-// on each side, laid on the plane. An axis in which M has no extent takes a
+// above the plane, in units of depth. The catcher is M grown by the
+// shadow's read reach, KEY_BOX[k] D, on each side, laid on the plane: past
+// that a ground point's search finds no blocker, so the catcher would draw
+// only the clear's white there. An axis in which M has no extent takes a
 // spare of a millionth of its largest extent or the box's depth, so the
 // fit keeps the scene's own scale whatever its units.
 function lit(fitted, a) {
@@ -717,7 +705,7 @@ function lit(fitted, a) {
   const rows = [[...scaled(a.x, 1 / ex), -cx / ex], [...scaled(a.y, 1 / ey), -cy / ey],
     [...scaled(a.z, -1 / span), top / span], [0, 0, 0, 1]];
   const D = tall / nz;
-  const [gx, gy] = growth(tall, a);
+  const [gx, gy] = KEY_BOX.map((h) => h * D);
   const corner = (x, y) => [...plus(scaled(a.x, x), scaled(a.y, y),
     scaled(a.z, -(a.d + x * nx + y * ny) / nz)), 1];
   const out = new Float32Array(40);
