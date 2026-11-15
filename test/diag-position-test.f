@@ -762,8 +762,7 @@ variable RC
    REJECT-RC REFUSED-MODES-RC ;
 
 \ A named file that will not open is one record, which no source places: its
-\ notes follow its message. The file's mode comes back even when the check
-\ throws.
+\ notes follow its message.
 : TEST-ALL-UNREADABLE ( -- )
    s" a named file that will not open, under --all-errors" T-LABEL
    SB-RESET  s" 1 drop" SB-APPEND LF+

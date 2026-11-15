@@ -11,8 +11,8 @@
 \
 \ A rejection stops its definition or statement with CHECKER-REJECT-RC after its
 \ record and the scan goes on at the next; any other code is thrown on. A
-\ source the scan read to its end is lexed then, so a lexer defect, which runs
-\ to the end of its file, is reported after every record before it.
+\ lexer defect, which runs to the end of its file, or a loader form discovery
+\ rejects ends the scan where it lies, after every record before it.
 
 require src/lib/error.f
 require src/lib/string.f
