@@ -86,12 +86,16 @@ S\" = packages: UA, UC\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
-REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" `AW`" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
+S\"  ^^ ambiguous here\n" UCE-SAID
+S\" = packages: UA, UC\n" UCE-SAID
+S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a top-level `target` where a word of that name is in scope, and where none is
 REJECTION:CAPTURE
 s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH E-REJECT T=
-REJECTION:BUFFER$ s" error[E-SECTION-WORD]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+S\" error[E-SECTION-WORD]: `target` is the section word, and a word of that name is in scope\n" UCE-SAID
+S\"  ^^^^^^ section word or word in scope\n" UCE-SAID
+S\" = help: rename the word, or call it by its qualified name if it is public\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" package UT-SECT : UT-SECT-W ( -- ) ; target ;package" VS-CATCH 0 T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-REJECT T=
@@ -118,7 +122,9 @@ s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-REJECT T=
 \ the production source verifier refuses the same nesting
 REJECTION:CAPTURE
 s" using UA package UQ ;using ;package" VS-CATCH E-REJECT T=
-REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+S\" error[E-USING-OUTER]: `;using` would close a using opened outside this package\n" UCE-SAID
+S\"  ^^^^^^ using opened outside\n" UCE-SAID
+S\" = help: close each using in the package that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a using opened and closed inside the package, and one opened before `package`
 \ and closed after `;package`, are unchanged on both routes
 s" package UQ using UA AW drop ;using ;package" UCE-CATCH 0 T=
@@ -242,7 +248,11 @@ s" using USH : USH-R3 ( -- n ) SOLO ; ;using" UCE-CATCH 0 T=
 USH-R3 7 T=
 REJECTION:CAPTURE
 s" using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `LATER`" UCE-SAID  s" = evaluated: using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-SHADOW-GLOBAL]: `LATER` is both a global word and a public of used package `USH`\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using\n" UCE-SAID
+S\" = global: LATER\n" UCE-SAID  S\" = package: USH:LATER\n" UCE-SAID
+S\" = help: write `USH:LATER` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" using USH : USH-R5 ( -- n ) SOONER ; ;using" UCE-CATCH 0 T=
 USH-R5 13 T=
 s" : SOONER ( -- n ) 99 ;" UCE-CATCH 0 T=
@@ -317,7 +327,9 @@ s" BW drop" UCE-CATCH E-REJECT T=
 s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
 REJECTION:CAPTURE
 s" ;using" VS-CATCH E-REJECT T=
-REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+S\" error[E-USING-OUTER]: `;using` would close a using opened outside this file\n" UCE-SAID
+S\"  ^^^^^^ using opened outside\n" UCE-SAID
+S\" = help: close each using in the file that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" using UB ;using" VS-CATCH 0 T=
 ;using
 
@@ -331,7 +343,9 @@ using UP
 package UQK using UA
 REJECTION:CAPTURE
 s" ;package ;using" VS-CATCH E-REJECT T=
-REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+S\" error[E-USING-OUTER]: `;using` would close a using opened outside this file\n" UCE-SAID
+S\"  ^^^^^^ using opened outside\n" UCE-SAID
+S\" = help: close each using in the file that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" ;package using UB BW drop ;using" VS-CATCH 0 T=
 s" ;package ;using" UCE-CATCH E-REJECT T=
 s" ;package" UCE-CATCH 0 T=
@@ -410,7 +424,11 @@ s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-
 USING-TEST:UAD-V @ 1 T=
 REJECTION:CAPTURE
 s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
-s" error[E-USING-AMBIGUOUS]" UCE-SAID  s" `AW`" UCE-SAID  s" = evaluated: using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-SAID  s" ambiguous here" UCE-SAID  REJECTION:BUFFER-OFF
+S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
+S\" ^^^^^^^^^ ambiguous here\n" UCE-SAID
+S\" = evaluated: using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using\n" UCE-SAID
+S\" = packages: UA, UC\n" UCE-SAID
+S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
 s" undefine AW" UCE-CATCH 0 T=
 
