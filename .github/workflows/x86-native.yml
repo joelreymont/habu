@@ -1,8 +1,6 @@
 name: Qualify the native T0 compiler
 
 on:
-  push:
-    branches: [x86-native-validation]
   workflow_dispatch:
 
 permissions:
