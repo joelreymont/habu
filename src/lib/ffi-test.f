@@ -888,6 +888,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" habu-ffi-nul-before" FFI:PROCESS 0 FFI:DECLARE {: fn-before:n :}
    [: s\" getpid\z" FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-NUL TTHROWSQ
    s" habu-ffi-nul-after" FFI:PROCESS 0 FFI:DECLARE fn-before 1+ T=
+   s" FFI:DECLARE rejects a ninth argument" T-LABEL
+   [: s" getpid" FFI:PROCESS 9 FFI:DECLARE drop ;] E-FFI-ARITY TTHROWSQ
    s" a version list opens the first version present, in the order written" T-LABEL
    FFI-T-LISTED-CALL
    s" a declaration through the versioned form resolves its symbol" T-LABEL

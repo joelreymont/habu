@@ -3880,12 +3880,12 @@ public
    HEAP,  PRINTERS,  HOOKS,
    DICT-COUNT,  SEAL-ROWS,  WORDLIST-ROWS,  SCOPE-ROWS, ;
 
-\ The twins of habu1.f BFFI-CALL and BFFI-CALL-N: integer SysV calls through
-\ SYSV-CALL,. argbuf holds at least eight cells, the contract ARM64's
-\ unconditional load of x0..x7 sets; SysV takes six in registers, so the other
-\ two, and every cell past eight that ffi-call-n passes, go on the stack.
+\ ffi-call and ffi-call-n: integer SysV calls through SYSV-CALL,. argbuf holds
+\ at least eight cells, the contract ARM64's unconditional load of x0..x7 sets;
+\ SysV takes six in registers, so the other two, and every cell past eight that
+\ ffi-call-n passes, go on the stack.
 \
-\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-STRUCT, the rows src/lib/ffi-abi.f
+\ ffi-call-abi(-r) and ffi-call-struct, the rows src/lib/ffi-abi.f
 \ plans a call for: the integer arguments in argbuf, the doubles in fpbuf and
 \ the stack arguments prepacked in stackbuf. rdi..r9 take argbuf[0..6),
 \ xmm0..7 always take fpbuf[0..8), and the stack takes max(nstack, 0)
@@ -3982,7 +3982,7 @@ private
    kept X64CODE:LBL, ;
 
 \ r10 = max(nargs, BUF-CELLS) - REG-CELLS, the stack cells, from nargs in r10;
-\ signed, as BFFI-CALL-N-CORE compares.
+\ signed.
 : STACK-CELLS, ( -- )
    X64CODE:LBL {: wide:label :}
    R10 BUF-CELLS >IMM8 ASM-SINK ENC-CMP-RI8  C-GE wide JCC,

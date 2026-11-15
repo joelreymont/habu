@@ -2057,42 +2057,6 @@ private
    false BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
-\ Argbuf holds max(8,nargs) cells. x20 holds DATA through every load that can
-\ fault; x17 carries the frame sp to the BLR, and x20 (callee-saved) carries it
-\ only across the BLR. Shifted-register SUB reads r31 as XZR, not SP, so sp is
-\ lowered through a temp.
-: BFFI-CALL-N-CORE ( -- )
-   BCB-ENTER
-   20 SP $8 STR,
-   17 SP 0 ADDI,
-   LBL FFI-SKIP !
-   LBL FFI-LOOP !
-   LBL FFI-DONE !
-   14 8 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,
-      10 14 8 SUBI,                                    \ x10 = extra = nargs - 8
-      11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,  \ salloc = (extra*8+$F)&~$F
-      12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,      \ sp -= salloc
-      12 15 $40 ADDI,                                  \ x12 = src = argbuf + 8 cells
-      13 SP 0 ADDI,                                    \ x13 = dst = sp
-      FFI-LOOP LABEL@ LBL,
-      10 FFI-DONE LABEL@ CBZ,
-         9 12 0 LDR,  9 13 0 STR,
-         12 12 $8 ADDI,  13 13 $8 ADDI,
-         10 10 1 SUBI,  FFI-LOOP LABEL@ B,
-      FFI-DONE LABEL@ LBL,
-   FFI-SKIP LABEL@ LBL,
-   BFFI-LOAD-X0-X7
-   20 17 0 ADDI,
-   16 BLR,
-   SP 20 0 ADDI,
-   20 SP $8 LDR,
-   BCB-LEAVE
-   0 G-PUSH ;
-
-: BFFI-CALL-N ( -- )
-   16 G-POP  14 G-POP  15 G-POP
-   BFFI-CALL-N-CORE ;
-
 \ Returns an immutable pthread entry, not a Habu xt; its C argument is the
 \ TASK-ABI descriptor and the body enters that task's VM state. It writes two
 \ task cells: the TCB address into the task's data region, and DONE into the
@@ -4129,7 +4093,7 @@ package ENGINE-EMIT
    s" mmap" ['] BMMAP FPRIM
    s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL FPRIM
-   s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+   s" ffi-call-n" ['] BFFI-CALL FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
    s" dlopen-entry" ['] LIBC-OS:DLOPEN-ENTRY FPRIM
    s" dlsym-entry" ['] LIBC-OS:DLSYM-ENTRY FPRIM

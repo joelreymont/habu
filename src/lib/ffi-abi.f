@@ -40,8 +40,8 @@ s" src/lib/memory.f" required
 
 package FFI
 
-8 constant FFI-REG-ARGS
 16 constant FFI-MAX-ARGS
+8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 16 constant FFI-MAX-KPARAMS
 2 constant FFI-RTLD-NOW
 
@@ -106,10 +106,10 @@ CAST: CELL>PTR ( n -- ptr u8 )
    idx FFI-MAX-ARGS FFI-CHECK-INDEX
    FFI-BUF idx cells + ;
 : FFI-FSLOT ( n -- ptr r ) {: idx:n :}
-   idx FFI-REG-ARGS FFI-CHECK-INDEX
+   idx REG-MAX FFI-CHECK-INDEX
    FFI-FBUF idx cells + ;
 : FFI-F32SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-REG-ARGS FFI-CHECK-INDEX
+   idx REG-MAX FFI-CHECK-INDEX
    FFI-F32BUF idx cells + ;
 : FFI-CHECK-STACK ( n n -- )
    {: off:n width:n :}
@@ -900,7 +900,10 @@ public
    0 idx FN-ADDR!
    idx ;
 
-: DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
+: DECLARE ( ptr u8 n n n -- n )
+   {: argc:n :}
+   argc REG-MAX > if E-FFI-ARITY throw then
+   argc 0 0 DECLARE-ROW ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
@@ -1007,7 +1010,6 @@ private
 
 $40 constant TOK-CAP
 $10 constant ARG-MAX
-8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
 
 public
