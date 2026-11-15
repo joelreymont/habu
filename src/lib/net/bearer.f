@@ -703,10 +703,6 @@ private
    h s" Accept: application/json" CURL:HEADER+ SET? 0= if false exit then
    h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! SET? ;
 
-\ No answer, typed: EXCHANGE's catch drops it after a throw, where a bare
-\ OPTION:NONE is E-REJECTED at the 2drop (rc 70).
-: UNANSWERED ( -- option<CURL:http-status> ) OPTION:NONE ;
-
 : STATUS-ERROR ( CURL:http-status -- n )
    {: status:CURL:http-status :}
    status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
@@ -731,12 +727,12 @@ private
          s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
          LOG:;LINE
          status STATUS-ERROR throw ENDOF
-      failed OF buf WIPE CURL-FAULT UNANSWERED ENDOF
+      failed OF buf WIPE CURL-FAULT OPTION:NONE ENDOF
    ;MATCH ;
 
 : POST ( CURL:handle ptr n -- option<CURL:http-status> )
    {: h:CURL:handle buf:ptr :}
-   h buf REQUESTED? if h buf RECEIVED else UNANSWERED then ;
+   h buf REQUESTED? if h buf RECEIVED else OPTION:NONE then ;
 
 \ POST's status in place of the third cell, the handle and BUF kept for catch.
 : POSTED ( CURL:handle ptr n option<CURL:http-status> -- CURL:handle ptr n option<CURL:http-status> )
@@ -747,10 +743,10 @@ private
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
-         h buf UNANSWERED [: POSTED ;] catch {: code:n :}
+         h buf OPTION:NONE [: POSTED ;] catch {: code:n :}
          code 0<> if 2drop drop h CURL:CLEANUP buf WIPE code throw then
          nip nip h CURL:CLEANUP ENDOF
-      failed OF CURL-FAULT buf WIPE UNANSWERED ENDOF
+      failed OF CURL-FAULT buf WIPE OPTION:NONE ENDOF
    ;MATCH ;
 
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
