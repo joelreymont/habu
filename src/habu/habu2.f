@@ -1823,10 +1823,9 @@ ardone LBL,
    {: common:label lookup:label full:label band:label kind:label
       ret:label shape:label mapped:label ready:label grow:label copy:label
       copied:label publish:label rebuild:label hit:label missing:label :}
-   LMARK LABEL@ {: start:label :}
    LBL {: end:label :}
-   s" (MARK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL, MARK-SAVE
+   s" (MARK)" LMARK LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LMARK LABEL@ LBL, MARK-SAVE
    15 0 MOVZ, common B,
    LSCRATCHMARK LABEL@ LBL, MARK-SAVE
    15 SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or LIT64,

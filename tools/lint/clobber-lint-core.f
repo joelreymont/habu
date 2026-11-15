@@ -6,6 +6,10 @@
 \ written, clobbered by a call, then read. Back edges grow a label's state after
 \ its placement, so pass 2 walks a definition until no label's state grows,
 \ then once more; only that last walk reports.
+\
+\ The run also fails when a mask row names no routine pass 1 opened, or
+\ when the openings and calls it met differ in number from those a plain
+\ scan of the same files finds.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -17,19 +21,19 @@ require src/lib/map.f
 
 package CLOBBER-CENSUS
 
-\ The production floor, qualified labels and wrapped calls included. A lower
-\ count needs review: dropping package tails must not hide routines.
-397 constant MIN-ROUTINES
-625 constant MIN-CALLS
+\ The sites the analysis met in definitions, and the sites a plain scan of the
+\ same files finds.
+variable ROUTINE-N  variable SCAN-ROUTINE-N
+variable CALL-N  variable SCAN-CALL-N
 
-variable ROUTINE-N
-variable CALL-N
+: AGREE? ( -- bool )
+   ROUTINE-N @ SCAN-ROUTINE-N @ =  CALL-N @ SCAN-CALL-N @ = and ;
 
 public
 
 : RESET ( -- )
-   0 ROUTINE-N !
-   0 CALL-N ! ;
+   0 ROUTINE-N !  0 SCAN-ROUTINE-N !
+   0 CALL-N !  0 SCAN-CALL-N ! ;
 
 : ROUTINE+ ( -- )
    ROUTINE-N @ 1+ ROUTINE-N ! ;
@@ -37,18 +41,19 @@ public
 : CALL+ ( -- )
    CALL-N @ 1+ CALL-N ! ;
 
-: COUNTS ( -- n n )
-   ROUTINE-N @ CALL-N @ ;
+: SCAN-ROUTINE+ ( -- )
+   SCAN-ROUTINE-N @ 1+ SCAN-ROUTINE-N ! ;
+
+: SCAN-CALL+ ( -- )
+   SCAN-CALL-N @ 1+ SCAN-CALL-N ! ;
 
 : PROVE ( -- )
-   ROUTINE-N @ MIN-ROUTINES < IF
-      s" clobber-lint: routines=" type ROUTINE-N @ .
-      s" clobber-lint: routine census below floor" 1 die
-   THEN
-   CALL-N @ MIN-CALLS < IF
-      s" clobber-lint: calls=" type CALL-N @ .
-      s" clobber-lint: call census below floor" 1 die
-   THEN ;
+   AGREE? if exit then
+   s" clobber-lint: routines=" type ROUTINE-N @ .
+   s" clobber-lint: scanned routines=" type SCAN-ROUTINE-N @ .
+   s" clobber-lint: calls=" type CALL-N @ .
+   s" clobber-lint: scanned calls=" type SCAN-CALL-N @ .
+   s" clobber-lint: the analysis missed a LABEL@ site" 1 die ;
 
 : REPORT ( -- )
    s" clobber-lint: routines=" type ROUTINE-N @ .
@@ -117,63 +122,78 @@ variable RX  variable RACC
       RX @ 1+ RX !
    repeat  LINT-TRUE ;
 
-: RETURNS-MASK  ( ^u8 n -- n ) {: a:^ u :}
+\ A mask row names a routine as the analysis's label table does: `PKG:Lname`
+\ for a label declared in package PKG.
+: RETURNS-ROWS  ( [ ^u8 n n -- ] -- ) {: row :}
    \ LCOUNT publishes the requested count in NDICT; APPEND and RESET use it.
-   a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
-   a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI or
-   a u s" EM-DEF-OCC:LRESET" LINT-STR=CI or if 0 27 CL-ADD exit then
+   s" EM-DEF-OCC:LCOUNT" 0 27 CL-ADD row execute
+   s" EM-DEF-OCC:LAPPEND" 0 27 CL-ADD row execute
+   s" EM-DEF-OCC:LRESET" 0 27 CL-ADD row execute
    \ Both LMATCH return arms define the hit flag in x12.
-   a u s" EM-DEF-OCC:LMATCH" LINT-STR=CI if 0 12 CL-ADD exit then
+   s" EM-DEF-OCC:LMATCH" 0 12 CL-ADD row execute
    \ LRETIRE answers in x14: nonzero when it retired instead of lowering.
-   a u s" EM-DEF-OCC:LRETIRE" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" WLFIND:LENTRY" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD exit then
-   a u s" Lheadrow" LINT-STR=CI if 0 12 CL-ADD exit then
+   s" EM-DEF-OCC:LRETIRE" 0 14 CL-ADD row execute
+   s" WLFIND:LENTRY" 0 11 CL-ADD 12 CL-ADD row execute
+   s" ENGINE-EMIT:Lheadrow" 0 12 CL-ADD row execute
    \ The callback accessor returns its thunk address in A (x9).
-   a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
-   a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
-   a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   s" ENGINE-EMIT:Lcallbackaddr" 0 9 CL-ADD row execute
+   s" ENGINE-EMIT:Ltok" 0 0 CL-ADD row execute
+   s" ENGINE-EMIT:Lfind" 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD
+      row execute
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
    \ x12 name the first and second record.
-   a u s" Lfindused-core" LINT-STR=CI if
-      0 5 CL-ADD 6 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 16 CL-ADD exit then
-   a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
-   0 ;
-: PRESERVE-MASK  ( ^u8 n -- n ) {: a:^ u :}
+   s" ENGINE-EMIT:Lfindused-core"
+      0 5 CL-ADD 6 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 16 CL-ADD
+      row execute
+   s" ENGINE-EMIT:Lnum" 0 2 CL-ADD 11 CL-ADD 12 CL-ADD row execute ;
+: PRESERVE-ROWS  ( [ ^u8 n n -- ] -- ) {: row :}
    \ LROOM restores x9-x12; its exhaustion branch throws without returning.
-   a u s" EM-DEF-OCC:LROOM" LINT-STR=CI if
-      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD exit then
+   s" EM-DEF-OCC:LROOM" 0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD
+      row execute
    \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND also frames
    \ x15-x17 around its forwarded checker callback; RESET frames LCOUNT.
-   a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI if
+   s" EM-DEF-OCC:LAPPEND"
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
-        15 CL-ADD 16 CL-ADD 17 CL-ADD 30 CL-ADD exit then
+      15 CL-ADD 16 CL-ADD 17 CL-ADD 30 CL-ADD row execute
    \ LRETIRE frames x9-x13 and x15 and writes only its answer, x14.
-   a u s" EM-DEF-OCC:LRETIRE" LINT-STR=CI if
-      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 15 CL-ADD exit then
-   a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
-   a u s" EM-DEF-OCC:LRESET" LINT-STR=CI or if
+   s" EM-DEF-OCC:LRETIRE"
+      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 15 CL-ADD
+      row execute
+   s" EM-DEF-OCC:LCOUNT"
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
-        15 CL-ADD 30 CL-ADD exit then
+      15 CL-ADD 30 CL-ADD row execute
+   s" EM-DEF-OCC:LRESET"
+      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
+      15 CL-ADD 30 CL-ADD row execute
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
-   a u s" RELOC-EMIT:Lmark" LINT-STR=CI if $3FFFF exit then
-   a u s" RELOC-EMIT:Lptrmark" LINT-STR=CI if $3FFFF exit then
-   a u s" RELOC-EMIT:Lscratchmark" LINT-STR=CI if $3FFFF exit then
+   s" RELOC-EMIT:Lmark" $3FFFF row execute
+   s" RELOC-EMIT:Lptrmark" $3FFFF row execute
+   s" RELOC-EMIT:Lscratchmark" $3FFFF row execute
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
-   a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
-   a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
+   s" RELOC-EMIT:Lrollback" $3FFFF row execute
+   s" ENGINE-EMIT:Lbcs" 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD
+      row execute
    \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
-   a u s" Lcemit" LINT-STR=CI if
+   s" ENGINE-EMIT:Lcemit"
       0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
-        16 CL-ADD 30 CL-ADD exit then
+      16 CL-ADD 30 CL-ADD row execute
    \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.
-   a u s" Lheadrow" LINT-STR=CI if
-      0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD 30 CL-ADD exit then
-   a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
-   a u s" Lhidxadd" LINT-STR=CI if
+   s" ENGINE-EMIT:Lheadrow"
+      0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD
+      30 CL-ADD row execute
+   s" ENGINE-EMIT:Lprotwidq" 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD
+      row execute
+   s" ENGINE-EMIT:Lhidxadd"
       0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
-        14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD exit
-   then
-   0 ;
+      14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD row execute ;
+
+variable ROW-HIT
+: ROW-HIT+  ( ^u8 n n ^u8 n -- ) {: ra:^ ru:n m:n a:^ u:n :}
+   ra ru a u LINT-STR=CI if ROW-HIT @ m or ROW-HIT ! then ;
+: RETURNS-MASK  ( ^u8 n -- n ) {: a:^ u:n :}
+   0 ROW-HIT !  [: a u ROW-HIT+ ;] RETURNS-ROWS  ROW-HIT @ ;
+: PRESERVE-MASK  ( ^u8 n -- n ) {: a:^ u:n :}
+   0 ROW-HIT !  [: a u ROW-HIT+ ;] PRESERVE-ROWS  ROW-HIT @ ;
 
 \ An UPPER-CASE `PKG:CALL` word emits a register-move prelude and a BL to a
 \ shared helper, so neither the mnemonic scan nor a `LABEL@ BL,` triple sees it.
@@ -606,6 +626,7 @@ create CNBUF CNBUF-CAP allot   variable CEND
 CMAX TYPED-BUFFER CNOFF ^u8
 create CNLEN CMAX cells allot
 create CWS CMAX cells allot     variable CN#
+create COPENED CMAX cells allot \ nonzero once pass 1 opens the entry
 create EFROM EMAX cells allot   create ETO EMAX cells allot   variable EN#
 variable CX  variable EX
 
@@ -614,6 +635,8 @@ variable CX  variable EX
 : CWS@  ( n -- n )  CWS swap cells + @ ;
 : CWS!  ( n n -- )  CWS swap cells + ! ;
 : C-WOR  ( n n -- ) {: idx m :}  idx CWS@ m or idx CWS! ;
+: C-OPENED!  ( n -- )  -1 swap cells COPENED + ! ;
+: C-OPENED?  ( n -- bool )  cells COPENED + @ 0<> ;
 : C-FIND  ( ^u8 n -- n ) {: a:^ u :}
    0 CX !
    begin CX @ CN# @ < while
@@ -625,7 +648,7 @@ variable CX  variable EX
    CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" 1 die then
    a u CNBUF CEND @ + FOLD-TO
    CNBUF CEND @ +  CN# @ CNOFF !  u CNLEN CN# @ cells + !
-   0 CWS CN# @ cells + !
+   0 CWS CN# @ cells + !  0 COPENED CN# @ cells + !
    CEND @ u + CEND !  CN# @ dup 1+ CN# ! ;
 : C-ENSURE  {: a u :}  ( -- idx )
    a u C-FIND dup 0 >= if exit then
@@ -1006,7 +1029,6 @@ variable HIDDEN
    begin OX @ hi < while
       OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
       OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
-      OX @ TOK CLOBBER-WRAP:WRAP? if CLOBBER-CENSUS:CALL+ then
       OX @ 1+ OX !
    repeat ;
 : CALLEE? ( n n -- bool ) {: lo:n hi:n :}
@@ -1087,7 +1109,7 @@ variable HIDDEN
    lo hi COLLECT-OPENINGS
    0 OX !
    begin OX @ ON# @ < while
-      OX @ OPEN@ TOK C-LABEL$ C-ENSURE CUR !
+      OX @ OPEN@ TOK C-LABEL$ C-ENSURE dup CUR !  C-OPENED!
       CUR @ OX @ hi ROUTINE-SCAN
       OX @ 1+ OX !
    repeat ;
@@ -1150,14 +1172,6 @@ variable TRACK-LR
 
 : WORD-NAME!  ( n -- )
    TOK dup WLEN !  WNAME FOLD-TO ;
-: CRASH-FILE?  ( ^u8 n -- bool ) {: a:^ u :}
-   a u s" src/habu/crash.f" LINT-STR= ;
-: ALLOW?  ( ^u8 n n n -- bool ) {: fa:^ fu reg cidx :}
-   fa fu CRASH-FILE? 0= if LINT-FALSE exit then
-   WNAME WLEN @ s" emit-crash-handler" LINT-STR=CI 0= if LINT-FALSE exit then
-   reg 1 = reg 2 = or 0= if LINT-FALSE exit then
-   cidx 0 < if LINT-FALSE exit then
-   cidx C-NAME s" lhex" LINT-STR=CI ;
 : DEC-TYPE  ( n -- ) {: n :}
    n 10 < if 48 n + NUMBUF c!  NUMBUF 1 type
    else 48 n 10 / + NUMBUF c!  48 n 10 mod + NUMBUF 1+ c!  NUMBUF 2 type then ;
@@ -1170,7 +1184,6 @@ variable TRACK-LR
 variable QUIET
 : REPORT  ( ^u8 n n n -- ) {: fa:^ fu:n reg:n cidx:n :}
    QUIET @ if exit then
-   fa fu reg cidx ALLOW? if exit then
    fa fu reg cidx FINDING  BAD @ 1+ BAD ! ;
 : NOTE-READS  {: fa fu rmask :}  ( -- )
    0 PR !
@@ -1404,16 +1417,48 @@ variable LBL#  variable LX  variable GROWN
    0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
    0 HOST# !  0 BOUND# !  0 DEF# !  0 NAME-CAP ! ;
 
+\ The plain scan reads every token of a file outside comments, code outside
+\ definitions included, and counts `Lname LABEL@ LBL,` openings and
+\ `Lname LABEL@ BL,` calls.
+TYPED-VARIABLE SCAN-W1 ^u8  variable SCAN-U1   \ the word before last
+TYPED-VARIABLE SCAN-W2 ^u8  variable SCAN-U2   \ the last word
+: SCAN-WORD  ( ^u8 n -- ) {: a:^ u:n :}
+   SCAN-W1 @ SCAN-U1 @ START-L?  SCAN-W2 @ SCAN-U2 @ LABEL-ACCESS? and if
+      a u s" LBL," LINT-STR=CI if CLOBBER-CENSUS:SCAN-ROUTINE+ then
+      a u s" BL," LINT-STR=CI if CLOBBER-CENSUS:SCAN-CALL+ then
+   then
+   SCAN-W2 @ SCAN-W1 !  SCAN-U2 @ SCAN-U1 !  a SCAN-W2 !  u SCAN-U2 ! ;
+: SCAN-FILE  ( ^u8 n -- )
+   LINT-SOURCE:LOAD  LINT-SOURCE:TEXT {: t:^ n:n :}
+   t n TOKENIZE
+   t SCAN-W1 !  0 SCAN-U1 !  t SCAN-W2 !  0 SCAN-U2 !
+   TN# @ 0 ?do
+      i TOK PAREN-COMMENT? 0= if i TOK SCAN-WORD then
+   loop ;
+
+variable STALE
+: ROW-DECLARED  ( ^u8 n -- ) {: a:^ u:n :}
+   a u C-FIND dup 0 >= if C-OPENED? if exit then else drop then
+   s" clobber-lint: row names no opened routine: " type a u type NL
+   STALE @ 1+ STALE ! ;
+: PROVE-ROWS  ( -- )
+   0 STALE !
+   [: drop ROW-DECLARED ;] RETURNS-ROWS
+   [: drop ROW-DECLARED ;] PRESERVE-ROWS
+   STALE @ 0 > if s" clobber-lint: stale mask rows" 1 die then ;
+
 : PASS2-START  ( -- )
    SEED# @ BOUND# !  0 BAD ! ;
 
-\ Both passes over the files the enumerator visits, in its order; BAD and
-\ the census hold the result.
+\ Both passes and the plain scan over the files the enumerator visits, in
+\ its order; BAD and the census hold the result.
 : ANALYZE  ( [ [ ^u8 n -- ] -- ] -- ) {: files :}
    FRESH-SCAN
    [: DECL-FILE ;] files execute
    HOSTS-OPEN
    [: PASS1-FILE ;] files execute
+   PROVE-ROWS
+   [: SCAN-FILE ;] files execute
    CLOSE-CLOBBERS
    PASS2-START
    [: PASS2-FILE ;] files execute
