@@ -38,7 +38,7 @@ public
 : MINT-OVER ( ^u8 n ^u8 n -- ) {: sa:^ su:n ba:^ bu:n :}
    sa su ba bu TYPE-DECL:SD-ONE-NAME 0= IF EXIT THEN
    sa su MANGLE {: ta:^ tu:n :}
-   ta tu ba bu TYPE-DECL:SD-WRAP {: fam:n :}
+   ta tu ba bu s" deftype" TYPE-DECL:SD-WRAP {: fam:n :}
    sa su ba bu fam TYPE-DECL:TDECL-CONVERTERS ;
 
 ;package

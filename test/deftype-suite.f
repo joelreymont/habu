@@ -102,11 +102,22 @@ s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
    ta tu s" a deftype base is one name" DECL-DIAG:CAUSE? TTRUE
    REJECTION:BUFFER$ s" = help: write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it" CONTAINS? TTRUE ;
 s" DEFTYPE DTBAD option<n>"
-s" error[E-BAD-DECLARATION]: bad newtype declaration `DTBAD`"
+s" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD`"
 s" option<n>" DT-ONE-NAME
 s" DEFTYPE DTBAD2 pkg:thing"
-s" error[E-BAD-DECLARATION]: bad newtype declaration `DTBAD2`"
+s" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD2`"
 s" pkg:thing" DT-ONE-NAME
+s" DEFTYPE rev ^u8"
+s" error[E-BAD-DECLARATION]: bad deftype declaration `rev`"
+s" ^u8" DT-ONE-NAME
+\ a base no type declares: the record names DEFTYPE and its help offers one
+\ bare name, never a pointer.
+REJECTION:CAPTURE
+s" DEFTYPE path frob" TEST-EVAL:RC CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad deftype declaration `path`" CONTAINS? TTRUE
+s" frob" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+REJECTION:BUFFER$ s" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `^u8`" CONTAINS? TFALSE
 \ a comment on the name's line is no base: the type stays one cell over n.
 DEFTYPE DTNOTE   \ a comment
 s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" CHECK-QUIET-CANDIDATE! -1 T=

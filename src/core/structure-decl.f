@@ -35,7 +35,11 @@ SD-RESET
 
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
+: DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
+\ A DEFTYPE base is one name (SD-ONE-NAME), so its help offers no `^` or header.
 : SD-TYPE-FIX$ ( -- ^u8 n )
+   DEFTYPE? IF
+      s" name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" EXIT THEN
    s" name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`" ;
 : SD-PARAM-FIX$ ( -- ^u8 n )
    s" list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it" ;
@@ -627,7 +631,8 @@ SD-QUOT-INSTALL
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
 \ A newtype over a base: its name, then the base's tokens, which stand for one
-\ field `base`; a token past the base is rejected.
+\ field `base`; a token past the base is rejected. DEFTYPE reaches neither
+\ rejection: its name is never empty and its base is one name (SD-ONE-NAME).
 : WRAP-DRIVE ( -- )
    NEXT 2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop s" missing name"
@@ -645,9 +650,10 @@ SD-QUOT-INSTALL
    -1 SEEN-END !
    SD-SEAL ;
 
-\ The stream has no closer, so a rejected one resynchronizes to its end.
-: WRAP-FRONT ( -- ^u8 n ^u8 n [ -- ] )
-   s" newtype" s" " [: SD-RESET WRAP-DRIVE ;] ;
+\ The kind is the declaration's keyword, "newtype" or "deftype". The stream has
+\ no closer, so a rejected one resynchronizes to its end.
+: WRAP-FRONT ( ^u8 n -- ^u8 n ^u8 n [ -- ] )
+   s" " [: SD-RESET WRAP-DRIVE ;] ;
 
 public
 
@@ -675,24 +681,26 @@ public
 : SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
    NO bu 0 ?do ba i + c@ NAME-STOP? or loop
    0= IF YES EXIT THEN
-   s" newtype" DECL-REJECT:OPEN
+   s" deftype" DECL-REJECT:OPEN
    na nu DECL-REJECT:FAMILY!
+   ba bu DECL-REJECT:TOKEN!
    s" a deftype base is one name"
    s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT
    DECL-REJECT:GUARD-CODE
    NO ;
 
-\ Registers NEWTYPE NAME's family over BASE: one field base, no word made.
+\ Registers NAME's family over BASE: one field base, no word made; KIND is the
+\ declaration's keyword, "newtype" or "deftype", which its records name.
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
-: SD-WRAP-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
+: SD-WRAP-OUTCOME ( ^u8 n ^u8 n ^u8 n -- ^u8 n bool )
    -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
    WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;
 \ The same, raising E-UNRESOLVED instead of answering, and answering the
 \ family, or -1 when a multi-error load rejected it.
-: SD-WRAP ( ^u8 n ^u8 n -- n )
+: SD-WRAP ( ^u8 n ^u8 n ^u8 n -- n )
    SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
    TYPE-DECL:TDECL-FAM-REG @ ;
 
@@ -725,7 +733,7 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu STORAGE-PARSE-TYPE TYPE-DECL:SD-WRAP drop ;
+   na nu STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
 
 ;using
 ;using

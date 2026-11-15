@@ -2610,7 +2610,7 @@ variable STG-TYPE-U
    tu 0= IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
    tu 1 = IF ta c@ 92 = IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN THEN
    name nameu at nameu SEALED-NAME
-   name nameu SCAN-STORAGE-TYPE TYPE-DECL:SD-WRAP-OUTCOME
+   name nameu SCAN-STORAGE-TYPE s" newtype" TYPE-DECL:SD-WRAP-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
 \ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
@@ -2635,7 +2635,7 @@ variable STG-TYPE-U
    REJECTION:TALLY @ {: refused:n :}
    based IF
       name nameu at nameu SEALED-NAME
-      tail tailu ba bu TYPE-DECL:SD-WRAP-OUTCOME
+      tail tailu ba bu s" deftype" TYPE-DECL:SD-WRAP-OUTCOME
       IF DW-TYPE DEFER-AT EXIT THEN 2drop
    ELSE
       tail tailu name nameu CHECKER-DEFFAMILY
