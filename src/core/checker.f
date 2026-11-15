@@ -12734,7 +12734,7 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
-$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CLAUSE and EXPORT-ROOM throw it
+$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CLAUSE throws it
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
 \ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! refuses.
@@ -13106,10 +13106,13 @@ ROW-CELLS cells constant SCOPE-BYTES
    rec REC>IX CLAUSE-OF 0 >= ;
 
 \ The room an export NAME of a does> definer needs for its clause CNAME in the
-\ current wordlist. A wordlist already holding NAME holds the export's twin.
-: EXPORT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
+\ current wordlist, rejected at T, the export's name as written. A wordlist
+\ already holding NAME holds the export's twin.
+: EXPORT-ROOM ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n ca:ptr cu:n t:ptr tu:n :}
    a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
-   ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
+   ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
+   ca cu t tu REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Inside an open package NAME is a part's path, refused elsewhere or in a part.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -16728,7 +16731,7 @@ variable CURSYM
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ carries EXPORT-RECORD
    carries IF
-      a u EXPORT-TAIL$ 2dup CLAUSE-NAME CHECKER-OVERLAY:EXPORT-ROOM
+      a u EXPORT-TAIL$ 2dup CLAUSE-NAME a u CHECKER-OVERLAY:EXPORT-ROOM
    THEN
    src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    DL-NEW @ {: effect:n :}
