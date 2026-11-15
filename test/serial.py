@@ -10,6 +10,7 @@ import pty
 import select
 import struct
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -350,8 +351,11 @@ def main():
                  '0 SERIAL:BYTES', '-1 SERIAL:BYTES', '$7FFFF001 SERIAL:BYTES'):
         assert native(habu, output, f': RUN ( -- ) [: {expr} drop ;] catch . ; RUN') == ['-9110']
         checks += 1
-    for length, timeout, handle in ((0, 0, 0), (0x7FFFF001, 0, 0), (1, -1, 0), (1, 0x80000000, 0),
-                                     (1, 0, -1), (1, 0, 0x80000000)):
+    # A negative timeout is no deadline, so (1, -1, 0) passes the operand checks
+    # and its wait, with no AIO:START, is E-AIO-STATE (-9292).
+    for length, timeout, handle, code in ((0, 0, 0, -9110), (0x7FFFF001, 0, 0, -9110),
+                                           (1, -1, 0, -9292), (1, 0x80000000, 0, -9110),
+                                           (1, 0, -1, -9110), (1, 0, 0x80000000, -9110)):
         for operation in ('READ', 'WRITE'):
             body = f'''
 : RUN ( -- )
@@ -361,7 +365,7 @@ def main():
       bad-alignment OF -1 throw ENDOF misaligned OF -1 throw ENDOF
    ;MATCH {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
 '''
-            assert native(habu, output, body) == ['-9110']
+            assert native(habu, output, body) == [str(code)]
             checks += 1
     for path, expected in (('/no/such/habu-serial-port', '2'), ('/dev/null', '25')):
         body = f'''
@@ -372,15 +376,22 @@ def main():
 '''
         assert native(habu, output, body) == [expected]
         checks += 1
-    for text, size in (('s" "', None), ('BODY 4096', None), ('BODY 3', 3)):
-        prep = '0 BODY 1 + c!' if size else ''
+    name_max = '63' if sys.platform == 'darwin' else '36'
+    for prep, text, expected in (
+            # An empty path is an operand error (E-SERIAL-OPERAND).
+            ('', 's" "', ['-9110']),
+            # A NUL inside the path cannot cross into C (E-FFI-NUL).
+            ('0 BODY 1 + c!', 'BODY 3', ['-3504']),
+            # A 4096-byte path with no NUL reaches open, which answers ENAMETOOLONG.
+            ('$41 BODY 4096 SPAN:MAKE SPAN:FILL', 'BODY 4096', [name_max, '0'])):
         body = f'''
 : RUN ( -- )
    {prep} [: {text} 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
-      opened OF SERIAL:CLOSE OK ENDOF failed OF drop ENDOF unsupported OF ENDOF
+      opened OF SERIAL:CLOSE OK -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
+      unsupported OF -1 throw ENDOF
    ;MATCH ;] catch . ; RUN
 '''
-        assert native(habu, output, body) == ['-9110']
+        assert native(habu, output, body) == expected, (text, expected)
         checks += 1
     for signature, first, help in (
         ('n -- SERIAL:handle',
