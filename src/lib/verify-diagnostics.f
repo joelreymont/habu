@@ -12,9 +12,6 @@ create OUT BUF:HDR-BYTES allot
 TYPED-VARIABLE W JSON:writer
 variable READY
 
-66 constant MISSING-SOURCE
-74 constant UNREADABLE-SOURCE
-
 : START ( -- ptr JSON:writer )
    READY @ 0= if
       OUT 256 BUF:N>BLEN BUF:INIT
@@ -45,18 +42,6 @@ variable READY
    s" E-UNTERMINATED-STRING" s" close_string"
    s" Close the string literal before the definition ends." ;
 
-: LOADER-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
-   rc MISSING-SOURCE = if
-      s" E-MISSING-SOURCE" s" fix_load_path"
-      s" No file is at the path this loader word names. Correct the path, or create the file." exit
-   then
-   rc UNREADABLE-SOURCE = if
-      s" E-UNREADABLE-SOURCE" s" make_source_readable"
-      s" The file this loader word names cannot be read. Make it readable, or correct the path." exit
-   then
-   s" E-LOADER-FORM" s" literal_loader_form"
-   s" Load a file by a literal path that resolves within PATH-CAP bytes, written in at most PATH-CAP bytes after include or require and otherwise in under twice PATH-CAP plus 2 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires." ;
-
 public
 
 \ The code, repair class, suggestion and short message of a statement that
@@ -80,31 +65,6 @@ public
    then
    s" E-STATEMENT-THROW" s" unknown_rejection"
    s" Inspect the token, signature, and raw stack evidence." s" " ;
-
-private
-
-\ The record of the name the scan refused: its start and length in the stopped
-\ source, and the stopped file. A length of 0 kept no name, as for one a definer
-\ generates, and its start is stale: the record places an empty token at the
-\ statement the scan stopped in.
-: DUP-RECORD$ ( n n ptr u8 ptr u8 n -- ptr u8 n )
-   {: at:n u:n src:ptr name:ptr nameu:n :}
-   u 0= if VERIFY:TOKEN-BYTE@ else at then {: start:n :}
-   src start ORIGIN {: line:n col:n :}
-   START
-   s" code" s" E-DUPLICATE-DEFINITION" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" s" rename_duplicate" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token" src start + u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" start JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" start u + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON:WRITE-FIELD-S
-   END$ ;
-
-public
 
 \ Scan the supplied source and render its first lexical fault, or an empty span.
 : LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -148,23 +108,6 @@ public
    msgu 0= if
       s" throw_code" rc JSON:WRITE-FIELD-INT JSON:WRITE-COMMA
    then
-   s" suggestion" sug sugu JSON:WRITE-FIELD-S
-   END$ ;
-
-: LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n len:n src:ptr srcu:n name:ptr nameu:n :}
-   src at ORIGIN {: line:n col:n :}
-   rc LOADER-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   START
-   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token" src at + len JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" at JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" at len + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 

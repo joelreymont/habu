@@ -282,8 +282,6 @@ variable COMPOSE-REQ0
 create COMPOSE-STOP-PATH PATH-CAP allot
 variable COMPOSE-STOP-U
 variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
-DYNAMIC-BUFFER COMPOSE-STOP-BYTES u8        \ the stopped frame is released on throw
-variable COMPOSE-STOP-SRC-U
 
 \ A quiet composition and the load fault it stopped at: the loader token's
 \ length, 0 when no loader stopped it, and the file it could not read, empty
@@ -4286,9 +4284,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
       path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
-      srcu COMPOSE-STOP-BYTES-RESERVE
-      src 0 COMPOSE-STOP-BYTES srcu BYTE-COPY
-      srcu COMPOSE-STOP-SRC-U !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
@@ -4570,7 +4565,6 @@ public
    src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 COMPOSE-STOP-U !
-   0 COMPOSE-STOP-SRC-U !
    0 PRIM-OPEN-READY !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
@@ -4591,8 +4585,8 @@ public
 \ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
 \ forms discovery refuses, where it meets them and after the packets it made
 \ before, and reads each file a loader loads, so no walk need run first. A stop
-\ at a loader (LOADER-FAULT?) stands at TOKEN-BYTE@, FAULT-LEN@ bytes long, and
-\ FAULT-TARGET$ names a file it could not read.
+\ at a loader (LOADER-FAULT?) stands at TOKEN-BYTE@, and FAULT-TARGET$ names a
+\ file it could not read.
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
@@ -4618,19 +4612,9 @@ public
 : SOURCE-COMPOSE-STOPPED-SUBJECT? ( -- bool )
    COMPOSE-STOP-U @ 0= COMPOSE-STOP-SUBJ @ or ;
 
-\ The bytes scanned at the stopped file, retained before its loader frame
-\ closes. A nested loader may have replaced the quiet reader's scratch buffer.
-: SOURCE-COMPOSE-STOPPED-SOURCE$ ( -- ptr u8 n )
-   0 COMPOSE-STOP-BYTES COMPOSE-STOP-SRC-U @ ;
-
 : LOADER-FAULT? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and
    rc LOADER-REJECTED? or ;
-
-\ The length of the loader token the last quiet composition stopped at, 0 when
-\ it stopped at none.
-: FAULT-LEN@ ( -- n )
-   FAULT-LEN @ ;
 
 \ The file the last quiet composition could not read, as it was resolved, or
 \ empty. The string is borrowed until the next quiet composition.

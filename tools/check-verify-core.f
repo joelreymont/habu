@@ -43,8 +43,6 @@ require src/lib/engine-candidate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
 require tools/source-discovery.f
-require tools/check-all-errors-core.f
-require src/lib/verify-diagnostics.f
 require src/habu/verify-source.f
 
 package LSP-CHECK
@@ -419,11 +417,7 @@ DYNAMIC-BUFFER VFY-LOADS u8
 DYNAMIC-BUFFER VFY-CANDS u8
 DYNAMIC-BUFFER VFY-INDEX u8
 DYNAMIC-BUFFER VFY-IN u8
-DYNAMIC-BUFFER VFY-OPEN-AT n            \ each open document's path's offset in VFY-IN and length, then its text's
 variable VFY-IN-U
-variable VFY-OPEN-N
-variable VFY-OPEN-START
-variable VFY-OPEN-END
 variable VFY-REC-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
@@ -471,9 +465,6 @@ variable VFY-TARGET-U
    0 VFY-CANDS-U !
    0 VFY-INDEX-U !
    0 VFY-IN-U !
-   0 VFY-OPEN-N !
-   0 VFY-OPEN-START !
-   0 VFY-OPEN-END !
    -1 VFY-AT !
    0 VFY-OF-U !
    VFY-NONE VFY-ANSWER !
@@ -521,15 +512,8 @@ variable VFY-TARGET-U
    s"  " VFY-IN+
    SB-RESET tu FMT:SB-U SB$ VFY-IN+
    s\" \n" VFY-IN+
-   VFY-OPEN-N @ 4 * {: at:n :}
-   at 4 + VFY-OPEN-AT-RESERVE
-   VFY-IN-U @ at VFY-OPEN-AT !
-   pu at 1+ VFY-OPEN-AT !
    p pu VFY-IN+
-   VFY-IN-U @ at 2 + VFY-OPEN-AT !
-   tu at 3 + VFY-OPEN-AT !
-   t tu VFY-IN+
-   VFY-OPEN-N @ 1+ VFY-OPEN-N ! ;
+   t tu VFY-IN+ ;
 
 
 \ The child's stdin: the open documents OPEN gives, an empty line, then the
@@ -537,7 +521,6 @@ variable VFY-TARGET-U
 : VFY-IN! ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    {: open :}
    [: VFY-OPEN+ ;] open execute
-   VFY-OPEN-N @ VFY-OPEN-END !
    s\" \n" VFY-IN+
    CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
 
@@ -994,14 +977,12 @@ public
 private
 
 \ The framed verifier keeps input offsets, since VFY-IN can move as subjects
-\ are added. Each frame records path, source and its own open-document slice.
-6 constant VFY-BATCH-CELLS
+\ are added. Each frame records its path and source.
+4 constant VFY-BATCH-CELLS
 0 constant B-PATH
 1 constant B-PATH-U
 2 constant B-SRC
 3 constant B-SRC-U
-4 constant B-OPEN-START
-5 constant B-OPEN-END
 DYNAMIC-BUFFER VFY-BATCH-META n
 DYNAMIC-BUFFER VFY-BATCH-OUT u8
 DYNAMIC-BUFFER VFY-BATCH-TAIL u8
@@ -1029,9 +1010,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    VFY-IN-U @ k B-SRC BATCH!
    srcu k B-SRC-U BATCH!
    src srcu VFY-IN+
-   VFY-OPEN-N @ k B-OPEN-START BATCH!
    [: VFY-OPEN+ ;] open execute
-   VFY-OPEN-N @ k B-OPEN-END BATCH!
    s\" \n" VFY-IN+
    k 1+ VFY-BATCH-N ! ;
 
@@ -1065,9 +1044,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    {: k:n :}
    k B-PATH BATCH@ VFY-IN k B-PATH-U BATCH@ VFY-PATH!
    k B-SRC BATCH@ VFY-IN CHK-BYTES-A !
-   k B-SRC-U BATCH@ CHK-BYTES-U !
-   k B-OPEN-START BATCH@ VFY-OPEN-START !
-   k B-OPEN-END BATCH@ VFY-OPEN-END ! ;
+   k B-SRC-U BATCH@ CHK-BYTES-U ! ;
 
 : VFY-BATCH-MARK$ ( n -- ptr u8 n )
    SB-RESET s" check-verify: batch-end " SB-APPEND
@@ -1117,7 +1094,6 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
 12 constant VFY-LANES
 DYNAMIC-BUFFER VFY-LANE-IN u8
 DYNAMIC-BUFFER VFY-LANE-META n
-DYNAMIC-BUFFER VFY-LANE-OPEN n
 DYNAMIC-BUFFER VFY-LANE-OUT0 u8
 DYNAMIC-BUFFER VFY-LANE-OUT1 u8
 DYNAMIC-BUFFER VFY-LANE-OUT2 u8
@@ -1145,8 +1121,6 @@ DYNAMIC-BUFFER VFY-LANE-ERR11 u8
 VFY-LANES TYPED-BUFFER VFY-LANE-IN-AT n
 VFY-LANES TYPED-BUFFER VFY-LANE-IN-U n
 VFY-LANES TYPED-BUFFER VFY-LANE-META-AT n
-VFY-LANES TYPED-BUFFER VFY-LANE-OPEN-AT n
-VFY-LANES TYPED-BUFFER VFY-LANE-OPEN-N n
 VFY-LANES TYPED-BUFFER VFY-LANE-N n
 VFY-LANES TYPED-BUFFER VFY-LANE-OUT-U n
 VFY-LANES TYPED-BUFFER VFY-LANE-ERR-U n
@@ -1158,7 +1132,6 @@ VFY-LANES TYPED-BUFFER VFY-LANE-STARTED n
 VFY-LANES TYPED-BUFFER VFY-LANE-END PROCESS:ending
 variable VFY-LANE-IN-TOP
 variable VFY-LANE-META-TOP
-variable VFY-LANE-OPEN-TOP
 create VFY-LANE-ENGINE PATH-CAP allot
 variable VFY-LANE-ENGINE-U
 
@@ -1251,11 +1224,6 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    VFY-LANE-META-TOP @ VFY-BATCH-N @ VFY-BATCH-CELLS * + VFY-LANE-META-RESERVE
    VFY-BATCH-N @ VFY-BATCH-CELLS * 0 ?do i VFY-BATCH-META @ VFY-LANE-META-TOP @ i + VFY-LANE-META ! loop
    VFY-LANE-META-TOP @ VFY-BATCH-N @ VFY-BATCH-CELLS * + VFY-LANE-META-TOP !
-   VFY-LANE-OPEN-TOP @ k VFY-LANE-OPEN-AT !
-   VFY-OPEN-N @ k VFY-LANE-OPEN-N !
-   VFY-LANE-OPEN-TOP @ VFY-OPEN-N @ 4 * + VFY-LANE-OPEN-RESERVE
-   VFY-OPEN-N @ 4 * 0 ?do i VFY-OPEN-AT @ VFY-LANE-OPEN-TOP @ i + VFY-LANE-OPEN ! loop
-   VFY-LANE-OPEN-TOP @ VFY-OPEN-N @ 4 * + VFY-LANE-OPEN-TOP !
    0 k VFY-LANE-OUT-U ! 0 k VFY-LANE-ERR-U ! 0 k VFY-LANE-CODE ! ;
 
 : VFY-LANE-ARGS ( CMD:command n -- CMD:command )
@@ -1344,9 +1312,6 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    k VFY-LANE-IN-AT @ VFY-LANE-IN 0 VFY-IN VFY-IN-U @ BYTE-COPY
    VFY-BATCH-N @ VFY-BATCH-CELLS * VFY-BATCH-META-RESERVE
    VFY-BATCH-N @ VFY-BATCH-CELLS * 0 ?do k VFY-LANE-META-AT @ i + VFY-LANE-META @ i VFY-BATCH-META ! loop
-   k VFY-LANE-OPEN-N @ VFY-OPEN-N !
-   VFY-OPEN-N @ 4 * VFY-OPEN-AT-RESERVE
-   VFY-OPEN-N @ 4 * 0 ?do k VFY-LANE-OPEN-AT @ i + VFY-LANE-OPEN @ i VFY-OPEN-AT ! loop
    k VFY-LANE-OUT-U @ dup VFY-BATCH-OUT-U ! VFY-BATCH-OUT-RESERVE
    VFY-BATCH-OUT-U @ 0 > if k VFY-LANE-OUT$ drop 0 VFY-BATCH-OUT VFY-BATCH-OUT-U @ BYTE-COPY then
    k VFY-LANE-ERR-U @ dup VFY-LOG-U ! VFY-LOG-RESERVE
@@ -1359,7 +1324,6 @@ public
 : VERIFY-BATCH-WAVE-BEGIN ( -- )
    0 VFY-LANE-IN-TOP !
    0 VFY-LANE-META-TOP !
-   0 VFY-LANE-OPEN-TOP !
    VFY-LANES 0 ?do 0 i VFY-LANE-STARTED ! loop
    VFY-EXE! VFY-EXE$ {: a:ptr u:n :}
    u PATH-CAP > if E-PROC-PATH throw then

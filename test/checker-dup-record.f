@@ -6,6 +6,7 @@
 
 require src/lib/error.f
 require src/lib/test.f
+require src/lib/string.f
 require src/habu/verify-source.f
 
 package CDR
@@ -21,9 +22,6 @@ variable SRC-U
 
 public
 
-\ The duplicate's own code: checker.f CHECKER-DUP-DEFINITION throws it.
-$4E constant DUP-RC
-
 \ Verify one span in the caller's scope with the checker's diagnostics
 \ collected; 0 when it certified, else the throw code.
 : VERIFY-QUIET ( ptr u8 n -- n )
@@ -35,13 +33,13 @@ $4E constant DUP-RC
    REJECTION:BUFFER-OFF
    rc ;
 
-\ The same span in multi-error mode, where a refused body is recorded with
-\ source authority instead of thrown.
-: MULTI-QUIET ( ptr u8 n -- n )
+\ The same span in multi-error mode, where a rejection's record is kept instead
+\ of thrown: the throw code, then the rejections counted.
+: MULTI-QUIET ( ptr u8 n -- n n )
    {: a:ptr u:n :}
    MULTI-ERR-BEGIN
    a u VERIFY-QUIET
-   MULTI-ERR-END drop ;
+   MULTI-ERR-END ;
 
 : DIAG$ ( -- ptr u8 n )
    REJECTION:BUFFER$ ;
@@ -53,7 +51,7 @@ T-RESET
 : CDR-ONE ( -- n ) 1 ;
 
 s" a certified word redefined with a signature is refused" T-LABEL
-s" : CDR-ONE ( -- n ) 2 ;" CDR:VERIFY-QUIET CDR:DUP-RC T=
+s" : CDR-ONE ( -- n ) 2 ;" CDR:VERIFY-QUIET CHECKER-REJECT-RC T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-ONE-USE ( -- n ) CDR-ONE ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
@@ -61,7 +59,7 @@ CDR:DIAG$ nip 0 T=
 : CDR-TWO ( -- n ) 2 ;
 
 s" a certified word redefined without a signature is refused" T-LABEL
-s" : CDR-TWO 3 ;" CDR:VERIFY-QUIET CDR:DUP-RC T=
+s" : CDR-TWO 3 ;" CDR:VERIFY-QUIET CHECKER-REJECT-RC T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-TWO-USE ( -- n ) CDR-TWO ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
@@ -70,9 +68,10 @@ CDR:DIAG$ nip 0 T=
 : CDR-THREE ( -- n ) 3 ;
 
 s" a refused body under a certified name is refused as a duplicate" T-LABEL
-s" : CDR-THREE ( -- n ) 1 2 ;" CDR:MULTI-QUIET CDR:DUP-RC T=
+s" : CDR-THREE ( -- n ) 1 2 ;" CDR:MULTI-QUIET 1 T= 0 T=
 s" the duplicate is refused at its name, its body unchecked" T-LABEL
-CDR:DIAG$ nip 0 T=
+CDR:DIAG$ s" error[E-DUPLICATE-DEFINITION]: `CDR-THREE`" CONTAINS? TTRUE
+CDR:DIAG$ s" E-MISMATCH" CONTAINS? 0= TTRUE
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-THREE-USE ( -- n ) CDR-THREE ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
