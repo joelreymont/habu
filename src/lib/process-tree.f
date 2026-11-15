@@ -142,20 +142,13 @@ PROCESS-SYMBOLS
 
 FUNCTION: LIST-PIDS proc_listpids ( n n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: ERRNO-CELL __error ( -- ^u8 ) ;FUNCTION
-
-: ERRNO-CLEAR ( -- )
-   0 ERRNO-CELL LE:U32! ;
-
-: ERRNO@ ( -- n )
-   ERRNO-CELL LE:U32@ ;
 
 \ TRUE with the record of the given flavor and size filled, FALSE when pid is
 \ not there - or, asked LIVE-ONLY, is a zombie.
 : RECORD? ( n n n ^u8 n -- bool ) {: pid:n flavor:n arg:n buf:^ size:n :}
-   ERRNO-CLEAR
+   FFI:ERRNO-CLEAR
    pid flavor arg buf size PID-INFO size = if true exit then
-   ERRNO@ ESRCH = if false exit then
+   FFI:ERRNO ESRCH = if false exit then
    E-PROC-OUTPUT throw ;
 
 : SHORT? ( n -- bool )
@@ -207,9 +200,9 @@ FUNCTION: ERRNO-CELL __error ( -- ^u8 ) ;FUNCTION
    LIST-BYTES @ 0= if LIST-FIRST LIST-BYTES ! then
    begin
       LIST-BYTES @ LIST-RESERVE
-      ERRNO-CLEAR
+      FFI:ERRNO-CLEAR
       kind pid 0 LIST LIST-BYTES @ LIST-PIDS {: bytes:n :}
-      bytes 0= ERRNO@ 0<> and if E-PROC-OUTPUT throw then
+      bytes 0= FFI:ERRNO 0<> and if E-PROC-OUTPUT throw then
       bytes LIST-BYTES @ < if bytes PID-BYTES / exit then
       LIST-BYTES @ 2 * LIST-BYTES !
    again ;
@@ -547,11 +540,11 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
 
 \ The time units pid ran and reaped; 0 for one already reaped.
 : UNITS-MACOS ( n -- n ) {: pid:n :}
-   ERRNO-CLEAR
+   FFI:ERRNO-CLEAR
    pid RUSAGE-FLAVOR RUSAGE PID-RUSAGE 0= if
       RU-USER RU@ RU-SYSTEM RU@ + RU-CHILD-USER RU@ + RU-CHILD-SYSTEM RU@ + exit
    then
-   ERRNO@ ESRCH = if 0 exit then
+   FFI:ERRNO ESRCH = if 0 exit then
    E-PROC-OUTPUT throw ;
 
 : UNITS>NS ( n -- n ) {: units:n :}
@@ -638,10 +631,10 @@ variable RUN-N
 \ first) or that names no executable.
 : EXE-PATH-MACOS ( n -- ^u8 n ) {: pid:n :}
    0 EXE-PATH c!
-   ERRNO-CLEAR
+   FFI:ERRNO-CLEAR
    pid PATH-FLAVOR 0 EXE-PATH EXE-PATH-BYTES PID-INFO drop
-   ERRNO@ ESRCH = if EXE-PATH 0 exit then
-   ERRNO@ 0<> if E-PROC-OUTPUT throw then
+   FFI:ERRNO ESRCH = if EXE-PATH 0 exit then
+   FFI:ERRNO 0<> if E-PROC-OUTPUT throw then
    EXE-PATH dup ZLEN ;
 
 : RUNS-MACOS ( -- )

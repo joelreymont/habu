@@ -673,14 +673,6 @@ FUNCTION: PATHCONF-CALL fpathconf ( n n -- n ) ;FUNCTION
 : PC-NAME-MAX ( -- n )
    HB-TARGET-MACOS? if 4 else 3 then ;
 
-\ libc's thread-local errno: __error on macOS, __errno_location on glibc. A
-\ row resolves its symbol at its first call, so declaring both is harmless.
-FUNCTION: ERROR-AT-CALL __error ( -- ^u8 ) ;FUNCTION
-FUNCTION: ERRNO-AT-CALL __errno_location ( -- ^u8 ) ;FUNCTION
-: LIBC-ERRNO-CLEAR ( -- )
-   HB-TARGET-MACOS? if 0 ERROR-AT-CALL LE:U32! exit then
-   0 ERRNO-AT-CALL LE:U32! ;
-
 : NAME-MAX-FAIL ( n -- ) {: limit:n :}
    limit 0 < if FFI:ERRNO else 0 then CAUSE!
    E-FS-STAT throw ;
@@ -728,7 +720,7 @@ public
 \ The longest name in bytes the descriptor's file system takes; the descriptor
 \ stays open. E-FS-STAT with its errno, or with 0 for no limit or a zero one.
 : FD-NAME-MAX ( fd -- n ) {: file:fd :}
-   LIBC-ERRNO-CLEAR
+   FFI:ERRNO-CLEAR
    file FD>N PC-NAME-MAX PATHCONF-CALL {: limit:n :}
    limit 0 <= if limit NAME-MAX-FAIL then
    limit ;
