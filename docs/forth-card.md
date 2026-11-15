@@ -133,7 +133,7 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   one cell: a record is `E-MISMATCH` at the call.
 - A type var named only on the stack, whose body only moves it (stack words
   but `?dup`, locals, calls of words that only move theirs), also takes a
-  one-cell enum, sum or product; passing it to a primitive, a `defer` or
+  one-cell enum, sum or structure; passing it to a primitive, a `defer` or
   `RECURSE` makes it one plain cell, and a wider or possibly linear value is
   rejected at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
@@ -673,7 +673,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`STRUCTURE`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
 | Stack comments | the token list, real types |

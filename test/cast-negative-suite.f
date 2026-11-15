@@ -127,17 +127,17 @@ s" cast: CNL22 ( ptr u8 -- ptr [ R -- R n ] )" CN-RUN:DECL 0 T=
 s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
-\ A layout's fields are what its projection yields, so a field holding a linear
-\ value behind a pointer or in a quotation row carries it through the cast as
-\ well, on either side, and a private section does not change that. STRUCTURE
-\ refuses the pointer field itself; PRODUCT admits it.
-PRODUCT lpfbox FIELD p ptr CAST-NEG:lease ;PRODUCT
+\ A layout's fields and a sum's variants are what its projection yields, so one
+\ holding a linear value behind a pointer or in a quotation row carries it
+\ through the cast as well, on either side, and a private section does not
+\ change that.
+SUMTYPE lpvbox VARIANT hold ptr CAST-NEG:lease ;VARIANT ;SUMTYPE
 STRUCTURE lqfbox FIELD q [ -- CAST-NEG:lease ] ;STRUCTURE
 package CN-LIN
-s" cast: CNL13 ( n -- lpfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL13 ( n -- ptr lpvbox )"  CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL14 ( n -- lqfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL15 ( n -- ptr lqfbox )"  CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL16 ( lpfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL16 ( ptr lpvbox -- n )"  CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL17 ( lqfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
 ;package
 \ The production declarer path rejects the same foreign-package forgeries and

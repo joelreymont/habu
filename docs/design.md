@@ -163,7 +163,7 @@ reopens one.
 ## Families and layout policies
 
 **Every declared type is one row in one registry.** `STRUCTURE`, `ENUM`,
-`NEWTYPE`, the older `SUMTYPE` and `PRODUCT`, and the built-in parametric
+`NEWTYPE`, the older `SUMTYPE`, and the built-in parametric
 types (`span`, `matrix`, `tile`) all register a type family in
 `src/core/type-family.f`: name, owning package, arity, fields or variants, and
 opted-in derivations. Parametric type names were once a parser whitelist, so a

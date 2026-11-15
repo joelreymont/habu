@@ -16067,7 +16067,6 @@ CHECKER-REG:}SCRATCH
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -16113,7 +16112,6 @@ CHECKER-REG:}SCRATCH
    \ an alias to resolve to.
    sym s" sumtype" UNSAFE-NAME? or
    sym s" enum" UNSAFE-NAME? or
-   sym s" product" UNSAFE-NAME? or
    sym s" newtype" UNSAFE-NAME? or
    sym s" layout-buffer" UNSAFE-NAME? or
    sym s" defer-layout-buffer" UNSAFE-NAME? or

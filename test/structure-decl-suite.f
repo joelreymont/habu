@@ -217,8 +217,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgfn FIELD make n ;STRUCTURE" TEST-EVAL:RC 7125 T=
 s" habu: bad structure declaration 'sdgfn': reserved field name at 'make'" DECL-DIAG:HAS? TTRUE
 
-\ a terminator that never arrives anchors on the family, exactly as the legacy
-\ unterminated-declaration packet does (sumtype.f TDECL-PRODUCT-NOEND-BODY).
+\ a terminator that never arrives anchors on the family.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgnoend FIELD a n" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdgnoend': missing ;STRUCTURE at 'sdgnoend'"

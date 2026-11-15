@@ -494,8 +494,8 @@ public
 
 ;package
 
-\ STRUCTURE is a documented global (package-first exception, like the SUMTYPE and
-\ PRODUCT openers); it parses its body to ;STRUCTURE at interpret time, so its
+\ STRUCTURE is a documented global (package-first exception, like the SUMTYPE
+\ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 

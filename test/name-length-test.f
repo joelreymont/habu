@@ -69,7 +69,7 @@ TEXTS!
    t u ;
 
 \ A definition CHECK certifies, and a type every storage gate admits: the
-\ product this file declares below.
+\ structure this file declares below.
 : BODY$ ( -- ptr u8 n ) s" NLT-W ( -- )" TEXT ;
 : STORED$ ( -- ptr u8 n ) s" nlt-pair" TEXT ;
 
@@ -157,19 +157,16 @@ create BEFORE MARK-N cells allot
    [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
 : SUM-NOEND-IT ( -- )
    BAD$ s" 0" [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
-: PRODUCT-IT ( -- )
-   BAD$ s" FIELD a n ;PRODUCT"
-   [: TYPE-DECL:TDECL-PRODUCT ;] DECL-REPLAY:RP-RUN ;
 : CHECK-IT ( -- ) BODY$ CHECK drop ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
-\ A product of this file's own, so a field transaction has a family to add to:
+\ A structure of this file's own, so a field transaction has a family to add to:
 \ the family of the field row it just committed.
-PRODUCT nlt-pair
+STRUCTURE nlt-pair
    FIELD a n
-;PRODUCT
+;STRUCTURE
 TYPE-FIELD:COUNT 1 - TYPE-FIELD:FAMILY@ constant PAIR
 : FIELD-ADD-IT ( -- )
    TYPE-FIELD-OWNER:OPEN PAIR TYPE-FIELD:NO-VARIANT BAD$ 0 0 0 0 0 0 0
@@ -279,7 +276,6 @@ variable LBL-U
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" SUM-NOEND-IT" 70 S\" habu: bad sumtype declaration '': missing ;SUMTYPE\nhb: uncaught throw code 7107\n" DIES
-   s" PRODUCT-IT" 70 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
 \ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a

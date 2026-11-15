@@ -438,8 +438,8 @@ seal-package
 \ DECL-FRONT: what the STRUCTURE and ENUM front ends share around their
 \ grammar: reject codes, the token source with one-token pushback and a
 \ lookahead span, per-declaration parse cells, a replay's field-name window, the
-\ guarded run with resynchronization, and the replay entries; SUMTYPE and
-\ PRODUCT read only the token source. One set of cells serves every
+\ guarded run with resynchronization, and the replay entries; SUMTYPE reads
+\ only the token source. One set of cells serves every
 \ declaration: declarations never nest (the runner refuses a second with
 \ E-ACTIVE, DECL-REPLAY a second stream with E-REPLAY-BUSY). Every borrowed span
 \ is forgotten as the declaration ends (RESET and MISS-CLEAR in DRIVE,

@@ -572,8 +572,6 @@ public
 : CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;
 
-: DEPTH ( -- n ) DEV-TX-DEPTH @ ;
-
 \ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
 \ its family copy and drop a linear value.
 : REQUIRE-POINTEE ( n ptr u8 n -- n )
@@ -599,20 +597,6 @@ public
          THEN
       loop
    THEN ;
-
-private
-
-\ The front ends reach this module only through these hooks, which go through the
-\ public words (CURRENT carries the frame and open-state guards the private reader
-\ lacks). Installed after the public section: a quotation binds its target at
-\ compile time.
-: DEV-EVENT-HOOKS-INSTALL ( -- )
-   [: CURRENT ;] is TYPE-DECL:TDECL-EVENT-CURRENT-XT
-   [: DECL ;] is TYPE-DECL:TDECL-EVENT-DECL-XT
-   [: ARITY ;] is TYPE-DECL:TDECL-EVENT-ARITY-XT
-   [: FIELD ;] is TYPE-DECL:TDECL-EVENT-FIELD-XT ;
-
-DEV-EVENT-HOOKS-INSTALL
 
 ;package
 

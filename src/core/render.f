@@ -1179,7 +1179,7 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-LOCAL-ESCAPE of s" Run the quotation inside the block of the locals it reads; a quotation that is stored, kept or returned takes its values from the stack." endof
       MD-BINDER-PLACE of s" Call the scope operation directly in the word that supplies its callback; only a scope operation's callback input may hold a callback binder." endof
-      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a product; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
+      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a structure; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
       MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
       MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
       MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
@@ -2257,7 +2257,7 @@ RECORD-DIAG-INSTALL
    why STG-LINEAR-TYPE = IF s" Keep a linear value on the stack; name a callable over one, or over an open type, with defer." EXIT THEN
    why STG-XT-TYPE = IF s" Store a quotation of the word's effect, such as [ n -- n ], in place of xt." EXIT THEN
    why STG-EFFECT-TYPE = IF s" Build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local." EXIT THEN
-   why STG-LAYOUT-TYPE = IF s" Give the buffer a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty ENUM, SUMTYPE, PRODUCT or STRUCTURE holding no view, region or linear value." EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" Give the buffer a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}

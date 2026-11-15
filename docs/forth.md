@@ -43,7 +43,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   `APPLY-EFFECT`; `and`, `cells`, `allot`, `: ;`, `?do`. Never upper-case a
   built-in.
 - **Scope pairs are `FOO … ;FOO`**: a new pair that opens and closes a scope
-  closes with the opener's name behind `;`, as `SUMTYPE … ;SUMTYPE`, `PRODUCT`,
+  closes with the opener's name behind `;`, as `SUMTYPE … ;SUMTYPE`, `STRUCTURE`,
   `ENUM`, `VARIANT`, `MATCH`, `package … ;package` (keyword case follows the
   opener). `VALUE-RECORD … END-VALUE-RECORD` and Forth-2012 `BEGIN-STRUCTURE …
   END-STRUCTURE` are sanctioned exceptions, not templates. Never coin `END-FOO`,
@@ -439,12 +439,10 @@ their written order. Replace the old integer counts with named parameters:
 |---|---|
 | `NEWTYPE rownum 0` | `NEWTYPE rownum` |
 | `SUMTYPE result 0` | `SUMTYPE result` |
-| `PRODUCT row 0` | `PRODUCT row` |
 | `STRUCTURE box 1` | `STRUCTURE box<a>` |
 | `ENUM result 2` | `ENUM result<a,b>` |
 
-Compact `ENUM` has no payload fields or parameters. Legacy `SUMTYPE`, `PRODUCT`,
-`VALUE-RECORD`,
+Compact `ENUM` has no payload fields or parameters. Legacy `SUMTYPE`, `VALUE-RECORD`,
 low-level `BEGIN-STRUCTURE`/`END-STRUCTURE` definers and counter enums (`ENUM+`,
 `ENUM4+`) still have executable sites; they are migration debt, forbidden in new
 code.
@@ -533,7 +531,7 @@ multi-cell type rationale is `docs/design.md` "Types".
 
 - `NEWTYPE name` registers an opaque nominal cell family, with no
   closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
-  `PRODUCT`, `STRUCTURE`, and full `ENUM` use the same header syntax. The count
+  `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
   `f`, `n`, and `r` always name concrete scalar types. Parameters may be unused.
@@ -586,9 +584,9 @@ multi-cell type rationale is `docs/design.md` "Types".
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;
   `boxed` is `E-TDECL-POLICY` ("layout policy not yet supported").
   `niche-null` takes one shape, an empty variant then one holding a single
-  `ptr` field, and refuses any other, a `PRODUCT` included (`E-TDECL-POLICY`,
-  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE` or
-  `PRODUCT` payload naming the family being declared (inline, through `ptr` or
+  `ptr` field, and refuses any other (`E-TDECL-POLICY`,
+  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE`
+  payload naming the family being declared (inline, through `ptr` or
   bare) is `E-TDECL-RECURSIVE` under every accepted policy, and a payload naming a family not yet declared is
   `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
 - A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
@@ -734,8 +732,8 @@ multi-cell type rationale is `docs/design.md` "Types".
     ] -- [ R ptr n -- R ] )` loads.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
-    `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
-    field `[ -- lease ]` carries the lease through the cast on either side.
+    `E-CAST-LINEAR`: a `STRUCTURE` field `[ -- lease ]` carries the lease
+    through the cast on either side.
     A quotation whose input and output rows end in different tails, such as
     `[ R -- S ]`, hands out values it never took, so in a cast's output, in a
     view cast's element on either side, in a storage declaration's type, or
@@ -1236,7 +1234,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   cell again, and a record is refused at the call (`E-MISMATCH`). A var a
   checked `:` definition's effect names only on the stack, and whose body only
   moves it (stack words but `?dup`, locals, calls of words that only move
-  theirs), takes a one-cell enum, sum or product too; handing it to any other
+  theirs), takes a one-cell enum, sum or structure too; handing it to any other
   word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
   cell, and a value wider than one cell or one that may be linear is rejected
   at the call.
@@ -1265,7 +1263,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - `ptr τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
   or execution token carrying its effect (prose writes `xt<E>`; the parser does
   not). `pkg:tail<arg,…>` is a declared family (`NEWTYPE`, `ENUM`, `STRUCTURE`,
-  `SUMTYPE`, `PRODUCT`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
+  `SUMTYPE`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
   linear cell type.
 - `xt` is the token `'` pushes for an engine primitive or a word with no stack
   effect: no effect rides it, and no storage holds one (`xt in a stored type`).
@@ -2092,7 +2090,7 @@ cannot grow definition body text to <n> bytes`.
   <word>`. Checked code meets the checker first: 33 nested `begin`s are refused
   `hook: non-certified definition: <name> at 'begin'`. Factor the inner loops
   into their own words.
-- **A family, variant, field or package name**: `SUMTYPE`, `PRODUCT`,
+- **A family, variant, field or package name**: `SUMTYPE`,
   `NEWTYPE`, `STRUCTURE` and `ENUM` refuse a longer one, `tools/check.f`
   reporting `E-BAD-DECLARATION` with the name as its token and the reason
   `name longer than <cap> bytes`; `package` and `using` throw
@@ -2732,11 +2730,11 @@ sections above.
   is open in the word (`( option<a> -- ) depth`), both are `E-REJECTED`,
   `count_values`: ``cannot count `option<n>`: it is one value held in 2
   cells``, or ``cannot count `option<a>`: it is one value, and how many cells
-  it holds is not known here``. A one-cell enum or product is counted. The rule
-  judges the values the word's own row holds: a helper `: F ( -- n ) depth ;`
-  called over `3 OPTION:SOME` answers its 2 cells. Take the value apart first
-  (`MATCH` once its arguments are concrete, `UNMAKE`), or count the values
-  another way.
+  it holds is not known here``. A one-cell enum or structure is counted. The
+  rule judges the values the word's own row holds: a helper
+  `: F ( -- n ) depth ;` called over `3 OPTION:SOME` answers its 2 cells. Take
+  the value apart first (`MATCH` once its arguments are concrete, `UNMAKE`), or
+  count the values another way.
 - **`evaluate-closed ( ptr u8 n -- )` isolates a checked caller's stack.**
   A checked body calling `evaluate` is `E-UNSAFE`. Text under
   `evaluate-closed` starts at depth 0, cannot reach caller cells even through

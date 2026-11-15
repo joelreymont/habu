@@ -219,9 +219,9 @@ s" P4 ( -- fepar ) FEPAR:BLUE" CHECK-QUIET-CANDIDATE! -1 T=
 s" P5 ( n -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ 20d. A PRODUCT family is not owned here: its definer generates its own
+\ 20d. A STRUCTURE family is not owned here: its definer generates its own
 \      make/unmake.
-s" PRODUCT prodctor FIELD a n FIELD b n ;PRODUCT" evaluate-closed
+s" STRUCTURE prodctor FIELD a n FIELD b n ;STRUCTURE" evaluate-closed
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A later constructor collides after the first has entered the generation plan.
@@ -237,7 +237,7 @@ undefine ROLLCOLL:TAKEN
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" evaluate-closed
 s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ A PRODUCT collision on UNMAKE also rolls back the MAKE planned before it.
+\ A STRUCTURE collision on UNMAKE also rolls back the MAKE planned before it.
 : ROLLP:UNMAKE ( -- n ) 41 ;
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
