@@ -9,6 +9,7 @@ require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration
 require src/lib/test.f
 require src/lib/vector.f
 require src/lib/heap.f
+require src/lib/string.f
 
 \ Capture every reject's declaration diagnostic from the start; the last
 \ section asserts the rendered lines.
@@ -343,6 +344,21 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration\n" DECL-DIAG:HAS? TTRUE
 s" " s" missing name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name after `STRUCTURE`, as in `STRUCTURE point`\n" DECL-DIAG:HAS? TTRUE
 s" sdgself" DECL-DIAG:HAS? TFALSE
+
+\ A type parameter used in two kinds of place rejects with one text in
+\ either field order: at the second field when it is added, at the family at close.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgkind<a,q> FIELD v read-view<a,q,n> FIELD x a ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
+s" x" s" field type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
+s" sdgkind" s" field type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
 
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.

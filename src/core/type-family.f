@@ -71,7 +71,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 
 \ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7125 constant E-PF-NAME       \ reserved field tail
-7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
+7126 constant E-PF-SCHEMA     \ a field type parameter's kinds do not fit
 
 private
 
@@ -2613,7 +2613,8 @@ public
       s" pf: a field's owner is not a product, or a sum or enum variant of the family" 76 die THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
-   fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
+   fam sch PF-SCHEMA-OK? 0= IF
+      s" pf: a field's schema does not fit its family's parameter kinds" 76 die THEN
    fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
    fam var slot cellsn boff bytesn PF-OVERLAP? IF
       s" pf: a field overlaps another field of its owner" 76 die THEN

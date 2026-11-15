@@ -400,14 +400,16 @@ variable DEV-TX-SERIAL
    DEV-NO-VARIANT DEV-CUR-VAR !
    tok ;
 
-\ The field record validates and throws first (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE,
-\ E-PF-*), so a malformed field emits no event and leaves the ordinal untouched.
+\ DEV-FIELD checks the schema against the family's kinds (E-PF-SCHEMA) and the
+\ field record validates the rest and throws first (E-TFAM-DUP, E-PF-NAME,
+\ E-TFAM-CASE), so a malformed field emits no event and leaves the ordinal untouched.
 \ The event carries the field's eventual committed row id (base + ordinal), proven
 \ at PREPARE before any participant commits.
 : DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
    {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ ADD wants the field-tx token, not our serial
+   fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
    fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags TYPE-FIELD-OWNER:ADD drop
    DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD !

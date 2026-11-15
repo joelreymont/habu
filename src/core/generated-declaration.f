@@ -259,8 +259,8 @@ E-TFAM-DUP EXPLAIN
 s" reserved field name"
 s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
 E-PF-NAME EXPLAIN
-s" malformed or owner-incompatible field schema"
-s" give the field a type whose parameters match the kinds its family declares"
+s" field type parameter has incompatible kinds"
+s" use each type parameter in one kind of place: a value type, a scope or a region"
 E-PF-SCHEMA EXPLAIN
 s" a declaration is already open"
 s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
@@ -504,9 +504,9 @@ public
 \ Local names for the shared declaration codes, read at top level from their
 \ owners (sumtype.f E-TDECL-*, type-family.f E-TFAM-*): a post-hook checked body
 \ cannot name a pre-hook constant on a from-source build. Each code keeps one
-\ numeric owner (tools/error-code-lint.f). E-PF-NAME, E-TFAM-DUP, E-TFAM-CASE and
-\ E-PF-SCHEMA, raised by TFAM-DECL, SUMV-ADD and the field-event path, pass
-\ through unchanged.
+\ numeric owner (tools/error-code-lint.f). E-PF-NAME, E-TFAM-DUP and E-TFAM-CASE,
+\ raised by TFAM-DECL, SUMV-ADD and the field record, and E-PF-SCHEMA, raised by
+\ the field event, pass through unchanged.
 E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, token out of place
 E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
 E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
