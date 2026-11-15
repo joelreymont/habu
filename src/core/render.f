@@ -10,6 +10,9 @@ using REJECTION
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
 variable RQM
+\ RORDINAL: the text names a type variable by its ordinal, which no source
+\ signature spells.
+variable RORDINAL
 \ RROW-UNSAID: the unsaid part is a row, for REC-REFUSE-WHY.
 variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
@@ -146,7 +149,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 \ then the ordinal; the signature parser reads both back.
 : VAR-NAME ( n -- )
    {: idx:n :}
-   idx 22 > IF idx RNUM EXIT THEN
+   idx 22 > IF 1 RORDINAL !  idx RNUM EXIT THEN
    idx 97 +
    dup 102 >= IF 1+ THEN
    dup 110 >= IF 1+ THEN
@@ -1742,13 +1745,15 @@ CHECKER-REG:}SCRATCH
    k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
 
 \ The help for a body whose end does not fit its signature: the row it should
-\ leave after its last word, or the effect it has.
+\ leave after its last word, or the effect it has when a signature can spell it.
 : END-WHERE ( -- )
    CLOSER-PINNED? IF s"  in the body" EMIT-STR EXIT THEN
    s"  after " EMIT-STR  TOK-SPAN ;
 : END-HELP ( -- )
    s" leave " EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
-   s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR ;
+   TEXT-LEN @ {: at:n :}  0 RORDINAL !
+   s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR
+   RORDINAL @ 0 <> IF at TEXT-LEN ! THEN ;
 : TAKES-HELP ( -- )
    ['] ROW-VALUES ROWS-DEPTHS
    DSUGA @ DSUGE @ < IF

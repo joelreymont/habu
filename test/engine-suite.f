@@ -577,12 +577,21 @@ s" RSV28C RSV28" CHECK-QUIET-CANDIDATE! -1 T=
 s" a caller of RSB24 calls the recorded word" T-LABEL
 s" RSB24C RSB24" CHECK-QUIET-CANDIDATE! -1 T=
 defer T-Q23 ( -- [ a b c d e g h i j k l m o p q s t u v w x y z -- ] )
-REJECTION:CAPTURE
 : RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 ;
 s" a caller of RSQ276 calls the recorded word" T-LABEL
 s" RSQ276C RSQ276" CHECK-QUIET-CANDIDATE! -1 T=
-s" 276 type variables: no warning" T-LABEL
-REJECTION:BUFFER$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
+\ RSV46's effect names 23 of its type variables by their ordinals, so the help
+\ for a body that leaves them offers no declaration.
+defer T-V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )
+: RSV46 T-V23 T-V23 ;
+REJECTION:CAPTURE
+s" a body leaving numbered type variables rejects" T-LABEL
+s" RSV46C ( -- ) RSV46" CHECK-CANDIDATE! 0 T=
+s" its help leaves nothing" T-LABEL
+REJECTION:BUFFER$ s" help: leave nothing after" CONTAINS? TTRUE
+s" its help offers no declaration" T-LABEL
+REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
+REJECTION:CAPTURE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
 defer T-MK ( -- a )
 : T-UN ( forall<p,[ a -- ]> -- a ) drop T-MK ;
@@ -2249,7 +2258,7 @@ s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2251:39" ES-RES-REFUSE:HAS
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2260:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL
