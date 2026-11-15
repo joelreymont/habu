@@ -15,9 +15,11 @@
 \ worker-src blob:; connect-src 'self'; img-src 'self' data:, so page.js
 \ shows an SVG from a data: URL. A page's descriptor may list
 \ connectDomains, which the host adds to connect-src. The eight files, beside
-\ this one, are read into dictionary buffers as it loads.
+\ this one, are read into dictionary buffers as it loads. A server whose view
+\ is its own view.js, not this one, answers CODE-TOOL$ with a _meta of its own
+\ making, {"page":PAGE-ID$,"files":{FILE+ ...}}, whose view.js app.js starts.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
-\ PAGE+, CODE-ID+ and CODE+ write only the caller's BUF.
+\ PAGE+, FILE+, CODE-ID+ and CODE+ write only the caller's BUF.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -145,13 +147,6 @@ APP-AT APP-MARK nip + constant APP-END
    s n buf COMPOSE ;
 
 
-\ A member of CODE+'s files: the file's name and its bytes as base64.
-: MEMBER+ ( ^u8 n ^u8 n ^a -- )
-   {: name:^ nu:n a:^ u:n buf:^ :}
-   s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
-   a u buf BASE64+  s\" \"" buf SPAN+ ;
-
-
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.
 : FILES-FED ( ^u8 -- )
    {: sha:^ :}
@@ -174,6 +169,18 @@ APP-AT APP-MARK nip + constant APP-END
    dg hex SHA256>HEX ;
 
 public
+
+\ The page id, PAGE+'s page's: the SHA-256 of app.html's bytes, then app.js's,
+\ as 64 lowercase hex digits.
+: PAGE-ID$ ( -- ^u8 n )  ID ID-U ;
+
+\ A file's name, its bytes and the BUF a member of a CODE-TOOL$ result's
+\ files is appended to: "<name>":"<the bytes as base64>".
+: FILE+ ( ^u8 n ^u8 n ^a -- )
+   {: name:^ nu:n a:^ u:n buf:^ :}
+   s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
+   a u buf BASE64+  s\" \"" buf SPAN+ ;
+
 
 \ The title and the BUF the page is appended to; a title that is not XML text
 \ is refused.
@@ -208,12 +215,12 @@ public
    s\" {\"page\":\"" buf SPAN+  ID ID-U buf SPAN+
    s\" \",\"code\":\"" buf SPAN+  m mu buf CODE-ID+
    s\" \",\"files\":{" buf SPAN+
-   s" view.html" VIEW-HTML VIEW-HTML-U buf MEMBER+  s" ," buf SPAN+
-   s" view.js" VIEW-JS VIEW-JS-U buf MEMBER+  s" ," buf SPAN+
-   s" turn.js" TURN TURN-U buf MEMBER+  s" ," buf SPAN+
-   s" viewport.js" VIEWPORT VIEWPORT-U buf MEMBER+  s" ," buf SPAN+
-   s" page.js" PAGE PAGE-U buf MEMBER+  s" ," buf SPAN+
-   s" socket.js" SOCKET SOCKET-U buf MEMBER+  s" ," buf SPAN+
-   s" module" m mu buf MEMBER+  s" }}" buf SPAN+ ;
+   s" view.html" VIEW-HTML VIEW-HTML-U buf FILE+  s" ," buf SPAN+
+   s" view.js" VIEW-JS VIEW-JS-U buf FILE+  s" ," buf SPAN+
+   s" turn.js" TURN TURN-U buf FILE+  s" ," buf SPAN+
+   s" viewport.js" VIEWPORT VIEWPORT-U buf FILE+  s" ," buf SPAN+
+   s" page.js" PAGE PAGE-U buf FILE+  s" ," buf SPAN+
+   s" socket.js" SOCKET SOCKET-U buf FILE+  s" ," buf SPAN+
+   s" module" m mu buf FILE+  s" }}" buf SPAN+ ;
 
 ;package
