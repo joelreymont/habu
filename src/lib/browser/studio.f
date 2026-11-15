@@ -4,9 +4,9 @@
 \   plane's unit normal n), then keyAxes' key x, y and z;
 \ - V, the plane's points at clip x, y = +-1 met along the view's back, and
 \   R, their rectangle in key x, y; T, the highest rise n.p + d of the box's
-\   corners; g, lit's growth by the softbox's half extent h at D = T / nz,
-\   h D / (1 - h |slope|) in each axis; M, R grown by g and cut to the
-\   rectangle of the box's corners in key x, y;
+\   corners; M, R grown in each key axis by the shadow's read reach, the
+\   softbox's half extent there (KEY-BOX-X, KEY-BOX-Y) times D = T / nz, nz
+\   n's key z, and cut to the rectangle of the box's corners in key x, y;
 \ - the volume, every point on or above the plane whose key x, y lie in M, and
 \   the key's pixel, M's larger side over the shadow map's side.
 \ src/lib/browser/viewport.js states KEY, KEY_BOX, SHADOW_SIDE and studio's
@@ -235,14 +235,13 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
       lo v FMATH:FMIN  hi v FMATH:FMAX
    loop ;
 
-\ g in key axis k for the softbox's half extent h: h D / (1 - h |slope|),
-\ D = T / nz and slope n.k / nz, nz = n.kz.
-: GROWTH ( ^u8 vec vec r r -- r )
-   {: g k:vec kz:vec t:r h:r :}
-   g NORMAL {: n:vec :}
-   n kz DOT {: nz:r :}
-   h t nz f/ f*
-   1.0  h  n k DOT nz f/ fabs  f*  f-  f/ ;
+\ The shadow's read reach in a key axis for the softbox's half extent h
+\ there: h D, D = T / nz and nz = n.kz, how far from a ground point the
+\ shadow's summed-table reads reach in that axis.
+: GROWTH ( ^u8 vec r r -- r )
+   {: g kz:vec t:r h:r :}
+   g NORMAL kz DOT {: nz:r :}
+   h t nz f/ f* ;
 
 \ M in key axis k: R grown by grow, cut to the box's span.
 : M-SPAN ( ^u8 ^u8 vec r -- r r )
@@ -256,8 +255,8 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
 : M ( ^u8 ^u8 r -- r r r r )
    {: m g t:r :}
    m g KEY-FRAME {: kx:vec ky:vec kz:vec :}
-   m g kx  g kx kz t KEY-BOX-X GROWTH  M-SPAN
-   m g ky  g ky kz t KEY-BOX-Y GROWTH  M-SPAN ;
+   m g kx  g kz t KEY-BOX-X GROWTH  M-SPAN
+   m g ky  g kz t KEY-BOX-Y GROWTH  M-SPAN ;
 
 \ Whether M holds no point; a NaN side holds none.
 : EMPTY? ( r r r r -- bool )

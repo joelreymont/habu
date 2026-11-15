@@ -1,7 +1,7 @@
 \ studio-test.f - STUDIO:KEY-VOLUME for three scenes stated here, each number
 \ within 1e-9 of the larger of its own size and 1; the expected numbers come
-\ from a binary64 port of viewport.js's viewer, studio and keyAxes that finds
-\ V by unprojecting each clip corner. A matrix whose fourth row is not
+\ from viewport.js's own viewer, studio, keyAxes and keyVolume, run in
+\ binary64 on the scene's f32 numbers. A matrix whose fourth row is not
 \ 0 0 0 1, and a singular one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
@@ -72,9 +72,9 @@ private
    0.8682431421244592 -0.4961389383568339 0.0 3.4920370965954692 1 PLANE=
    -0.8682431421244592 0.4961389383568339 0.0 4.465250445211504 2 PLANE=
    0.29620601710581057 0.5183605299351683 0.8022246296615702
-   1.4194775191178302 3 PLANE=
+   0.9044888059008803 3 PLANE=
    -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
-   4.677743707281746 4 PLANE= ;
+   4.162754994064795 4 PLANE= ;
 
 \ A skewed affine map onto the tilted plane 0.1 x + 0.2 y + z = 0.5, the
 \ box -20 -3 0.25 to 5 20 3.5; 1280 x 720.
@@ -95,7 +95,7 @@ private
    0.12385968791951427 0.7394060438273888 0.6617684489759311
    4.5299697776284695 3 PLANE=
    -0.12385968791951427 -0.7394060438273888 -0.6617684489759311
-   11.035282019793861 4 PLANE= ;
+   9.15061629379561 4 PLANE= ;
 
 \ Looking down at x in 100..102 and y in 0..2: that ground, grown by the
 \ softbox, lies wholly outside the box's rectangle in key x.

@@ -533,14 +533,14 @@ async function browser() {
         return subject.host.pick(BigInt(Math.floor(c.width / 2)), BigInt(Math.floor(c.height / 2))); })()`);
       assert.deepEqual(castPick, [-1, 0, 0x3F800000], `a pick on a cast-only box answers none, got ${castPick}`);
       // The map covers M, the ground in view's rectangle in the key's x and y
-      // grown by g and cut to the casters' box. For zoomed, a casters' box of
-      // x, y -10..10 and z 0..1, and the key's axes on this ground (x
-      // 0.86824, -0.49614, 0; y 0.29621, 0.51836, 0.80222; z -0.39801,
-      // -0.69653, 0.59702): the
-      // view's corners span key x -0.39071..0.29148 and y 0.32953..0.73681,
-      // T is 1, g is 0.45 / 0.59702 = 0.75374 and 0.27 / 0.59702 / (1 - 0.27
-      // 0.80222 / 0.59702) = 0.70974, and the box does not cut, so M is x
-      // -1.14445..1.04522 and y -0.38021..1.44655, sides 2.18967 and 1.82676.
+      // grown by the shadow's read reach and cut to the casters' box. For
+      // zoomed, a casters' box of x, y -10..10 and z 0..1, and the key's axes
+      // on this ground (x 0.86824, -0.49614, 0; y 0.29621, 0.51836, 0.80222;
+      // z -0.39801, -0.69653, 0.59702): the view's corners span key x
+      // -0.39071..0.29148 and y 0.32953..0.73681, T is 1, the reach is 0.45 /
+      // 0.59702 = 0.75374 and 0.27 / 0.59702 = 0.45224, and the box does not
+      // cut, so M is x -1.14445..1.04522 and y -0.12272..1.18906, sides
+      // 2.18967 and 1.31177.
       // The drawn box's own rectangle, which a fit to the rows would cover,
       // is 1.36398 wide in key x.
       const fitted = await lit(`() => {
@@ -548,8 +548,8 @@ async function browser() {
         box(${JSON.stringify(zoomed)}, 1, 2); }`);
       const { half: [ex, ey], centre } = keyed(fitted.light);
       const near = (a, b) => Math.abs(a - b) < 1e-4;
-      assert.ok(near(2 * ex, 2.18967) && near(2 * ey, 1.82676),
-        `the map covers M's sides 2.18967 by 1.82676, got ${2 * ex} by ${2 * ey}`);
+      assert.ok(near(2 * ex, 2.18967) && near(2 * ey, 1.31177),
+        `the map covers M's sides 2.18967 by 1.31177, got ${2 * ex} by ${2 * ey}`);
       assert.ok(near(centre[0], -0.04961) && near(centre[1], 0.53317),
         `the map is centred on M's centre -0.04961, 0.53317, got ${centre}`);
       await command("ground");

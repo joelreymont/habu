@@ -660,12 +660,16 @@ function onPlane(m, n, d, x, y) {
 // when no shadow is drawn. V, the ground in view, is the plane's points at
 // NDC x, y = ±1 and R their rectangle in key x and y, unbounded where one of
 // them is none (onPlane). T is the most the box's corners rise above the
-// plane and g growth's for T; M is R grown by g on each side, cut to the
-// rectangle of the box's corners. Null when T is not above 0, M is empty, or
-// M and the box's depth along the key all have no extent, a box that is a
-// point. Every summed-table read shadow makes for a ground point in view lies
-// in M or outside the box, so the picture does not depend on rows outside
-// the volume.
+// plane and D = T / nz its reach to the plane along the key; M is R grown
+// by KEY_BOX[k] D on each side in key axis k, cut to the rectangle of the
+// box's corners. That growth is shadow's read reach: lit sets reach so that
+// its search rectangle's half extents are KEY_BOX[k] D in key units,
+// whatever the plane's slope, and its penumbra rectangle lies within that
+// but for its one-texel minimum. So every summed-table read shadow makes for
+// a ground point in view lies in M or outside the box, and the picture does
+// not depend on rows outside the volume. Null when T is not above 0, M is
+// empty, or M and the box's depth along the key all have no extent, a box
+// that is a point.
 function keyVolume(m, box, a) {
   const corners = Array.from({ length: 8 }, (_, k) =>
     [0, 1, 2].map((j) => box[(k >> j) & 1 ? 3 + j : j]));
@@ -679,7 +683,8 @@ function keyVolume(m, box, a) {
   const [r0, r1] = seen.every((p) => p) ? rect(seen)
     : [[-Infinity, -Infinity], [Infinity, Infinity]];
   const [b0, b1] = rect(corners);
-  const g = growth(tall, a);
+  const D = tall / dot3(a.n, a.z);
+  const g = KEY_BOX.map((h) => h * D);
   const lo = [0, 1].map((k) => Math.max(r0[k] - g[k], b0[k]));
   const hi = [0, 1].map((k) => Math.min(r1[k] + g[k], b1[k]));
   const depths = corners.map((p) => dot3(a.z, p));

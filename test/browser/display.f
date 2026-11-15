@@ -418,7 +418,9 @@ variable ECHO-U
 
 : TILTED-FLOOR ( -- )
    \ The plane 0.1x - 0.2y + z + 0.3 = 0 and the casters' box x -1..20,
-   \ y -0.8..1.2 and z -0.5..2.
+   \ y -0.8..1.2 and z -0.5..2. The box's rectangle sets M's lowest key x,
+   \ -1.886, and lowest key y, -1.114: the ground in view grown by the
+   \ shadow's read reach runs to -8.936 and -4.656.
    0.1 VOLUME-GROUND 0 F32!  -0.2 VOLUME-GROUND 1 F32!
    1.0 VOLUME-GROUND 2 F32!  0.3 VOLUME-GROUND 3 F32!
    -1.0 VOLUME-GROUND 4 F32!  -0.8 VOLUME-GROUND 5 F32!
