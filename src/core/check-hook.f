@@ -561,20 +561,17 @@ private
    na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
 
 
-\ CHECK prints no deferred verdict; outside a multi-error load it rejects the
-\ definition, so it is printed here while the body's source is armed.
+\ CHECK prints no deferred verdict, which rejects a definition the engine
+\ compiles, so its record is written here while the body's source is armed.
 : REPORT-DEFERRED ( n -- n )
-   dup VERDICT-DEFERRED =  MULTI-ERR? 0= and
-   if dup DVERD !  DIAG-PRINT then ;
+   dup VERDICT-DEFERRED = if dup DVERD !  DIAG-PRINT then ;
 
 public
 
-\ The check of a definition's source: a rejection is printed once, by the
-\ check, before CHECK-RC is thrown. In multi-error mode CHECK already emitted
-\ the diagnostic, counted the reject and kept the declared signature. A
-\ non-zero answer publishes the definition (zero rejects and unpublishes it),
-\ so the name resolves for later definitions; the driver exits nonzero via
-\ MULTI-ERR-END.
+\ The check of a definition's source: a rejected or deferred body's record is
+\ written, then CHECK-RC thrown. In multi-error mode the record is counted and
+\ the answer is -1, which publishes the definition (zero unpublishes) so its
+\ name resolves for later definitions; the driver exits nonzero via MULTI-ERR-END.
 : DEFINITION ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u FIRST-TOKEN {: na:ptr nu:n :}

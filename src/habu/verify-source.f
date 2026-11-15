@@ -1639,17 +1639,13 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
    DEFER-REPORT @ IF DEFERRED-BODY$ 0 REPORT-STRETCH THEN ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run,
-\ 0 refused. In MULTI-ERR mode a refusal, rejected (0) or uncheckable (1),
-\ RETURNS 0 instead of throwing: the checker has rendered it, counted it in
-\ REJECTION:TALLY, which keeps the run failing, and recorded the declared
-\ signature (no-cascade), so the scan continues at the next definition.
-\ The verdict is answered rather than swallowed because a created effect is a
-\ fact about a definition the checker did not refuse: a refused body records
-\ nothing.
+\ 0 rejected. The check wrote the record of a rejected (0) or uncheckable (1)
+\ body; under MULTI-ERR? the scan answers 0 and goes on, so the body records no
+\ created effect, else it stops with the record's status.
 : BODY-VERDICT ( n -- n ) {: v:n :}
    v -1 = v 2 = or IF v EXIT THEN
    MULTI-ERR? IF 0 EXIT THEN
-   70 throw ;
+   CHECKER-REJECT-RC throw ;
 
 \ The colon definitions this run judged, each counted once its verdict is
 \ final (CENSUS): a `:` or `kernel:` statement (COLON?) is certified when its
