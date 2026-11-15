@@ -43,6 +43,7 @@ CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
 CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
+CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- bool ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
@@ -113,12 +114,12 @@ public
 : DOES-REPORT ( n ptr u8 n -- n )
    SOURCE-DOES-REPORT ;
 
-\ Whether the checker counted a refusal of this definition's declared row
-\ (checker.f SIG-COUNTED). Read per call, not by name nor in BIND-SOURCE-CALLS:
-\ a build host's checker lacks the name and its record the field.
-: SIG-REFUSED? ( -- bool )
-   NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature rejection" SOURCE-FIELD
-   AS-BOOL execute ;
+\ Declare a TRUSTED: definition's row NAME SIG and answer whether the checker
+\ rejected it. Read per call, not by name nor in BIND-SOURCE-CALLS: a build
+\ host's checker lacks the name and its record the field.
+: DECLARE-ROW ( ptr u8 n ptr u8 n -- bool )
+   NCOMP-DISPATCH:DECL-DECL-ROW-OFF s" declared row" SOURCE-FIELD
+   AS-DECLARE execute ;
 
 \ The store's end when a definition begins, and a refused one's cut back to it:
 \ exactly the rows it recorded go, and every row recorded before it stays

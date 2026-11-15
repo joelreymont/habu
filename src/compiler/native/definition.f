@@ -24,6 +24,7 @@ public
 
 \ Everything the run needs, parked in cells: the whole run is one quotation under catch (compiler.f RUN).
 0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
+0 CWORK-VARIABLE M-ROW-REJECTED bool           \ the checker rejected a TRUSTED: definition's row
 0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
 0 CWORK-VARIABLE M-DOES-SIG ptr u8
@@ -118,11 +119,11 @@ private
 : TRUST-SIG$ ( -- ptr u8 n )
    TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
-\ TRUST-DECL is deliberately unavailable to checked code. Register only after
-\ the scan has recorded the exact source spelling from the tape: the pending
-\ dictionary record holds only the bare tail of a qualified definition.
-: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
-   CHECK:DECLARED ;
+\ Register only after the scan has recorded the exact source spelling from the
+\ tape: the pending dictionary record holds only the bare tail of a qualified
+\ definition. Answers whether the checker rejected the row.
+: REGISTER-TRUST ( ptr u8 n ptr u8 n -- bool )
+   CHECKER-OWNER:DECLARE-ROW ;
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -183,10 +184,11 @@ public
 
 public
 
-\ A TRUSTED: definition's row, which no scan certified. Run once the scan has
-\ named the unit.
-: DECLARE-ROW ( -- )
-   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
+\ A TRUSTED: definition's row, which no scan certified, and whether the checker
+\ rejected it. Run once the scan has named the unit.
+: DECLARE-ROW ( -- bool )
+   TRUSTED? 0= if false exit then
+   NAME$ TRUST-SIG$ REGISTER-TRUST ;
 
 private
 
@@ -199,11 +201,11 @@ private
 
 public
 
-\ Under a recovering reader a definition the checker refused, or any
-\ definition, trusted or not, whose body or does> clause bound a refused
+\ Under a recovering reader a definition the checker rejected, or any
+\ definition, trusted or not, whose body or does> clause bound a rejected
 \ declaration's recovery row, is counted and abandoned unpublished:
 \ E-COMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
-\ whose declared row the checker refused, reported and counted (SIG-REFUSED?).
+\ whose declared row the checker rejected and reported.
 : VERDICT-CK ( -- )
    TRUSTED? 0= if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
@@ -214,7 +216,7 @@ public
    RECOVERING? if
       CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY @ or
       if E-COMP-RECOVERY throw then
-      TRUSTED? if CHECKER-OWNER:SIG-REFUSED? if E-COMP-RECOVERY throw then then
+      M-ROW-REJECTED @ if E-COMP-RECOVERY throw then
    then ;
 
 private
@@ -368,6 +370,7 @@ public
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !
    0 M-VERDICT !
+   false M-ROW-REJECTED !
    CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !

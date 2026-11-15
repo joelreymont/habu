@@ -2191,7 +2191,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    CHECKER-TAPE:ARM
    [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-TAPE:DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
-   DECLARE-ROW ;
+   DECLARE-ROW M-ROW-REJECTED ! ;
 
 \ ---- the walks ---------------------------------------------------------------
 \ THE WALKS. While a shadow is open (src/compiler/native/shadow.f), SHADOWED

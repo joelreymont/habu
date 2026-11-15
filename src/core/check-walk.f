@@ -1854,10 +1854,6 @@ public
 
 ;package
 
-package CHECKER-REG
-' SIG-COUNTED? DECLARATIONS CHECKER-OWNER-ABI:SIG-COUNTED-OFF + xt!
-;package
-
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic
 \ asks here, so the render counter stays inside this file.
 : CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}

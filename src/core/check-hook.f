@@ -196,12 +196,14 @@ public
 private
 
 
-\ checker.f's TRUST-RAW, TRUST-DECL and CHECKER-DEFCAST, which the fields held:
-\ a checked body cannot name them (UNSAFE-TOK?), so each entry calls its token.
+\ The checker's registrars the fields held: a checked body cannot name them
+\ (UNSAFE-TOK?), so each entry calls its token.
 variable RAW-REG
 variable DECL-REG
 variable DEFCAST-REG
+variable ROW-REG
 CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: ROW-XT ( n -- [ ptr u8 n ptr u8 n -- bool ] )
 
 
 \ The raw registrar's field entry: a created word or constant takes its text
@@ -232,6 +234,14 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u CHECKER-RECORD-SYM? sym <> if exit then
    sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
+
+\ The declared-row registrar's field entry: DECLARED's, answering whether the
+\ checker rejected the row.
+: ROW-DECLARED ( ptr u8 n ptr u8 n -- bool )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su ROW-REG @ ROW-XT execute {: rejected:bool :}
+   na nu PENDING-FACTS
+   rejected ;
 
 \ The shapes whose child answers or takes `ptr t` for its declared type t.
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}
@@ -275,13 +285,13 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    then {: bytes:n :}
    na nu ta tu bytes ;
 
-public
-
 \ The declaration registrars' field entries: each runs its registrar, then lays
 \ the declared name's facts.
 : DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
+
+public
 
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
 \ stored TYPE, lays its facts, and answers its body value and effect handle.
@@ -692,14 +702,15 @@ public
    ['] CHECK:IMMEDIATE set-preflight
    ['] DEFINITION set-check ;
 
-\ Replace the checker's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
-\ CHECKER-DEFER, CHECKER-DEFCAST and CHECKER-LINEAR, now the renderer exists.
+\ Replace the checker's entries in the owner's fields, now the renderer exists.
 ' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + CELL-VIEW @ DECL-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + CELL-VIEW @ DEFCAST-REG xt!
+CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + CELL-VIEW @ ROW-REG xt!
 ' RAW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + xt!
 ' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
+' ROW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 ' DEFERRED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DEFER-OFF + xt!
 ' CAST-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + xt!
 ' LINEAR-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:LINEAR-OFF + xt!

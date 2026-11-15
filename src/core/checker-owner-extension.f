@@ -19,9 +19,9 @@ $238 constant NATIVE-DOES-REPORT-OFF
 \ ( -- ) closes the created body pending at a load boundary (checker.f
 \ CHECKER-BODY-CLOSE).
 $240 constant BODY-CLOSE-OFF
-\ ( -- bool ) the checker counted a refusal of the scanned definition's row
-\ (checker.f SIG-COUNTED).
-$248 constant SIG-COUNTED-OFF
+\ ( ptr u8 n ptr u8 n -- bool ) declares a TRUSTED: definition's row as
+\ EFFECT-OFF's registrar does and answers whether the checker rejected it.
+$248 constant DECL-ROW-OFF
 \ ( -- bool ) the last unjudged scan closed every construct it opened
 \ (checker.f UNJUDGED-CLOSED?).
 $250 constant UNJUDGED-CLOSED-OFF

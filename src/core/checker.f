@@ -11084,12 +11084,14 @@ public
 \ A MULTI-ERROR load counts each refused definition and goes on.
 variable MULTI-ERR
 0 MULTI-ERR !
-\ Set where a multi-error load reports and counts a refused declared row;
-\ CHECK-RESET clears it at each scan.
-variable SIG-COUNTED
-0 SIG-COUNTED !
-: SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
-: SIG-COUNT ( -- ) -1 SIG-COUNTED ! ;
+\ A declared row's outcome: stored, left unstored with its type unresolved and
+\ no record, or rejected with its record written.
+package CHECKER-ROW
+public
+0 constant KEPT
+1 constant QUIET
+2 constant REJECTED
+;package
 7156 constant E-BAD-STORED-SIGNATURE
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
@@ -11303,7 +11305,7 @@ variable SIG-COUNTED
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    sa su at atu SGBAD-REJECTION
-   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    sa su at atu SGBAD-PIN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -11352,20 +11354,21 @@ variable SIG-COUNTED
    s" `: only a checked `:` definition binds a callback scope" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ USIG-ADD-AS past its parse, given the rows of signature text SA.
-: USIG-ADD-ROWS ( ptr u8 n ptr u8 n n n n n bool -- bool )
+\ USIG-ADD-AS past its parse, given the rows of signature text SA; answers the
+\ row's outcome.
+: USIG-ADD-ROWS ( ptr u8 n ptr u8 n n n n n bool -- n )
    {: sa:ptr su:n at:ptr atu:n din dout rin rout external:bool :}
-   SGBAD @ if sa su at atu USIG-ADD-BAD RES-FALSE exit then
-   SIG-UNRES @ IF RES-FALSE EXIT THEN
+   SGBAD @ if sa su at atu USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
+   SIG-UNRES @ IF CHECKER-ROW:QUIET EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
-   SGBAD @ if sa su at atu USIG-ADD-BAD RES-FALSE exit then
+   SGBAD @ if sa su at atu USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
    din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
-   RES-TRUE ;
+   CHECKER-ROW:KEPT ;
 
-\ AT is the declaring name as read. The result is false after a refusal that
-\ returns, true once the effect and its text are stored.
-: USIG-ADD-AS ( ptr u8 n ptr u8 n bool -- bool )
+\ AT is the declaring name as read. Answers the row's outcome,
+\ CHECKER-ROW:REJECTED only after a rejection that returns.
+: USIG-ADD-AS ( ptr u8 n ptr u8 n bool -- n )
    {: sa:ptr su:n at:ptr atu:n external:bool :}
    NEW
    SGBAD-CLEAR
@@ -12717,7 +12720,7 @@ package CHECKER-REG
    s" correct `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` to the word the row describes, write the row in the section that defines that word, or delete the row"
    REJECTION:EMIT-STR
-   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
@@ -20605,13 +20608,13 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 \ definer latch for a row that is never stored.
 
 \ The registration TRUST, TRUST-DECL and TRUST-RAW share (a checked body cannot
-\ call `trust`) and has no axiom; it answers whether USIG-ADD-AS kept the row.
-: TRUST-USIG-SYM! ( ptr u8 n ptr u8 n n -- bool )
+\ call `trust`) and has no axiom; it answers the row's outcome.
+: TRUST-USIG-SYM! ( ptr u8 n ptr u8 n n -- n )
    {: na:ptr nu:n sa:ptr su:n sym:n :}
    na nu TOKFOLD drop
    \ A span no memory has is refused as unparsed; SGBAD-CLEAR first drops the
    \ class an earlier refused signature left.
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu USIG-ADD-BAD RES-FALSE EXIT THEN
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu USIG-ADD-BAD CHECKER-ROW:REJECTED EXIT THEN
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.
    sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
@@ -20621,11 +20624,11 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    THEN
    sa su  na nu RES-TRUE USIG-ADD-AS ;
 
-: TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
+: TRUST-USIG! ( ptr u8 n ptr u8 n -- n )
    0 TRUST-USIG-SYM! ;
 
-\ TRUST-DECL: record the effect a DEFINER declared for the word it is
-\ publishing.
+\ Record the effect a DEFINER declared for the word it is publishing, and
+\ answer the row's outcome.
 \ The engine's publish tail runs before the record is findable (absent from
 \ `search-wl` at its own tail, present one statement later), so a definer-facing
 \ registration must never consult the dictionary.
@@ -20635,16 +20638,18 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
 \ any effect for a name in the open section's wordlist.
-: TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
+: TRUST-DECL-ROW ( ptr u8 n ptr u8 n -- n )
    {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
+   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE CHECKER-ROW:REJECTED EXIT THEN
    DOES-EFF-STEP
    0 DL-NEW !
    na nu sa su TRUST-USIG!
-   {: kept:bool :}
-   SIG-UNRES @ IF DL-TAKE RES-FALSE EXIT THEN
+   {: row:n :}
    DL-TAKE
+   \ A quiet row comes only from the verifier's pre-pass, whose quiet types
+   \ QUIET-TYPE-REPORT reports; the run declares the row again.
+   row CHECKER-ROW:QUIET = IF row EXIT THEN
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
    \ cells for a later catch.
@@ -20653,12 +20658,19 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
       sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
    THEN
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
-   kept ;
+   row ;
+
+: TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
+   TRUST-DECL-ROW CHECKER-ROW:KEPT = ;
+
+: TRUST-DECL-REJECTED? ( ptr u8 n ptr u8 n -- bool )
+   TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 
 : TRUST-DECL ( ptr u8 n ptr u8 n -- )
-   TRUST-DECL? drop ;
+   TRUST-DECL-ROW drop ;
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
+' TRUST-DECL-REJECTED? DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 ;package
 
 : TRUST-RECORD-WL ( -- n )
@@ -20701,12 +20713,12 @@ package CHECKER-REG
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu TRUST-REC FACTS-READ-XT
    0 DL-NEW !
-   na nu sa su TRUST-USIG! IF
+   na nu sa su TRUST-USIG! {: row:n :}
+   row CHECKER-ROW:KEPT = IF
       DL-AMEND  na nu TRUST-REC CHECKER-RESOLVE:REC>INDEX  na nu CHECKER-RECORD-SYM? CHECK:HOLD-AMENDED
       EXIT
    THEN
-   SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
-   ELSE SIG-UNRES-CLEAR THEN ;
+   row CHECKER-ROW:QUIET = IF E-ADD-UNRESOLVED ELSE SIG-UNRES-CLEAR THEN ;
 
 \ A blank, a byte at or below 32, ends a token, so no token spells a name
 \ holding one and no definer gives it to a word.
@@ -22548,7 +22560,6 @@ CHECKER-REG:}SCRATCH
    BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
-   0 SIG-COUNTED !
    FO-RESET
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
