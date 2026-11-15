@@ -179,16 +179,10 @@ DYNAMIC-BUFFER SECOND-LINK u8
    CMD:ERR$ SB$ CONTAINS? TTRUE ;
 
 : BAD-EVAL ( CMD:command -- CMD:command )
-   s" eval"  s" link: a stripped program reaches a word it cannot run" 74 BAD-CHILD
-   s" eval" NAMES-LABEL
-   CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run"
-   CONTAINS? TTRUE ;
+   s" eval"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-EV` calls `evaluate-closed`" 70 BAD-CHILD ;
 
 : BAD-DICT ( CMD:command -- CMD:command )
-   s" dict"  s" link: a stripped program reaches a word it cannot run" 74 BAD-CHILD
-   s" dict" NAMES-LABEL
-   CMD:ERR$ s" link: LD-DW calls search-wl, which a stripped program cannot run"
-   CONTAINS? TTRUE ;
+   s" dict"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-DW` calls `search-wl`" 70 BAD-CHILD ;
 
 
 SHA256-CTX-BYTES BUFFER: SHA-CTX

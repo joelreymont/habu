@@ -346,6 +346,14 @@ variable CUR-ROOT                        \ and the root being walked
       dup EXPAND 1+
    repeat drop ;
 
+\ Every node's loads, harvested then expanded. Discovery writes the record of
+\ each form it rejects; the workspace keeps the code (FAULT$) and no record.
+: DISCOVER-ALL ( -- )
+   1 REJECTION:QUIET +!
+   [: HARVEST-ALL EXPAND-ALL ;] catch {: rc:n :}
+   -1 REJECTION:QUIET +!
+   rc 0<> if rc throw then ;
+
 \ ---- what reaches F -------------------------------------------------------------
 
 : REACHES? ( n -- bool )  N-REACH NODE@ 0<> ;
@@ -456,8 +464,7 @@ public
    [: OPEN+ ;] each execute
    WALK-ROOTS
    BLOCKED @ if exit then
-   HARVEST-ALL
-   EXPAND-ALL
+   DISCOVER-ALL
    MARK
    SPREAD
    GIVE

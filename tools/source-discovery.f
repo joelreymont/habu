@@ -20,6 +20,7 @@ require src/lib/span.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/sort.f
+require src/habu/verify-source.f
 
 package DISCOVER
 using SOURCE
@@ -68,6 +69,8 @@ variable SD-DEF                          \ 1 from a definition's opener to its ;
 variable SD-DEF-NAME
 variable SD-DEF-STAGE
 variable SD-DEF-OFF
+variable SD-NAME-OFF                     \ the open definition's name, 0 0 for none
+variable SD-NAME-LEN
 variable SD-SHADOWED                     \ loader and family words the file defined
 variable SD-RETIRED                      \ and those it retired
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
@@ -181,6 +184,36 @@ variable SD-SCOPES
 : SD-AT? ( n -- bool )  SD-U @ < ;
 : SD-PATH$ ( -- ptr u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
+
+\ A rejection's record stands at the token the walk read last (LAST-TOKEN) and
+\ stops with the form's code. A harvest, which drops the code (HARVEST), throws
+\ it bare: the expansion after it meets the form again and writes the record.
+: SD-LAST$ ( -- ptr u8 n )  SD-TOK-OFF @ SD-TOK-LEN @ SD-TOK$ ;
+: SD-HARVEST-THROW ( n -- ) {: code:n :}
+   SD-HARVESTING @ if code throw then ;
+: SD-SHADOW-STOP ( -- )
+   E-DISC-SHADOW SD-HARVEST-THROW
+   SD-LAST$ VERIFY:SHADOW-REJECT  E-DISC-SHADOW REJECTION:STOP ;
+: SD-RETIRE-STOP ( -- )
+   E-DISC-RETIRE SD-HARVEST-THROW
+   SD-LAST$ VERIFY:RETIRE-REJECT  E-DISC-RETIRE REJECTION:STOP ;
+: SD-DYNAMIC-STOP ( -- )
+   E-DISC-DYNAMIC SD-HARVEST-THROW
+   SD-LAST$ VERIFY:DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP ;
+: SD-OPENER-STOP ( -- )
+   E-DISC-OPENER SD-HARVEST-THROW
+   SD-LAST$ VERIFY:OPENER-REJECT  E-DISC-OPENER REJECTION:STOP ;
+: SD-CAPACITY-STOP ( -- )
+   E-DISC-CAPACITY SD-HARVEST-THROW
+   SD-LAST$ VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP ;
+\ The string literal the walk read last, its opener, has no closing quote.
+: SD-UNTERM-STOP ( -- )
+   E-DISC-UNTERM SD-HARVEST-THROW
+   SD-LAST$ INTERPRETER:LITERAL-REJECT  E-DISC-UNTERM REJECTION:STOP ;
+\ A path past SD-PATH-CAP that a caller gives, in no source the walk reads.
+: SD-PATH-STOP ( ptr u8 n -- )
+   E-DISC-CAPACITY SD-HARVEST-THROW
+   VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP ;
 
 : SD-R-COPY ( ptr u8 n -- n ) {: a:ptr u:n :}
    SD-R-BYTES-U @ {: at:n :}
@@ -301,7 +334,7 @@ variable SD-SCOPES
 \ A bare name reaches package (outer, name) open here and, inside part A:B,
 \ (none, A) as well. Where either is unknown it may reach any package: refused.
 : SD-C-OPEN? ( ptr u8 n ptr u8 n -- bool ) {: out:ptr outu:n pkg:ptr pkgu:n :}
-   SD-C-KNOWN? 0= if E-DISC-SHADOW throw then
+   SD-C-KNOWN? 0= if SD-SHADOW-STOP then
    pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI
    out outu SD-C-OUTER @ SD-C-PKG$ STR=CI and if true exit then
    outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR=CI and ;
@@ -331,7 +364,7 @@ variable SD-SCOPES
    r SD-R-IDS {: ids:n :}
    false
    ids 0 ?do r i SD-R-ID SD-C-OPEN? or loop
-   dup ids 1 > and if E-DISC-SHADOW throw then ;
+   dup ids 1 > and if SD-SHADOW-STOP then ;
 
 : SD-R-KEY-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n r:n :}
    r SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
@@ -375,7 +408,7 @@ variable SD-SCOPES
 
 \ Where the package is unknown, `;package` closes one discovery cannot know.
 : SD-C-PACKAGE-CLOSE ( -- )
-   SD-C-PKG @ SD-C-UNKNOWN = if E-DISC-SHADOW throw then
+   SD-C-PKG @ SD-C-UNKNOWN = if SD-SHADOW-STOP then
    SD-C-OUTER @ SD-C-PKG !
    SD-C-PKG @ SD-C-UNKNOWN <> if -1 SD-C-OUTER ! then ;
 
@@ -437,9 +470,9 @@ variable SD-SCOPES
             family SD-R-OFF @ SD-TOK-OFF !
             family SD-R-SPAN @ SD-TOK-LEN !
             i SD-C-ROW @ SD-R-KIND @ SD-R-DECL = if
-               E-DISC-SHADOW throw
+               SD-SHADOW-STOP
             then
-            E-DISC-RETIRE throw
+            SD-RETIRE-STOP
          then
       then
    loop ;
@@ -526,8 +559,8 @@ variable SD-SCOPES
    unknown 0= SD-S-N @ SD-S-MARK @ > and if 1 SD-R-VERSION +! exit then
    row SD-R-OFF @ SD-TOK-OFF !
    row SD-R-SPAN @ SD-TOK-LEN !
-   row SD-R-KIND @ SD-R-RETIRE = if E-DISC-RETIRE throw then
-   E-DISC-SHADOW throw ;
+   row SD-R-KIND @ SD-R-RETIRE = if SD-RETIRE-STOP then
+   SD-SHADOW-STOP ;
 
 \ Only rows between two successive loader sites in this file run before the
 \ next child. Replaying an include visits these same rows again in a new place.
@@ -720,7 +753,7 @@ variable SD-SCOPES
       on row SD-R-BARE-OFF @ 0= and row off SD-R-SEEN? and if true exit then
    then
    SD-HARVESTING @ if false exit then
-   E-DISC-SHADOW throw ;
+   SD-SHADOW-STOP ;
 
 : SD-R-FROZEN-FIND ( n n -- n ) {: off:n len:n :}
    off len SD-TOK$ {: a:ptr u:n :}
@@ -997,7 +1030,7 @@ DYNAMIC-BUFFER SD-DEC u8
       SD-I @ SD-BYTE SD-BACKSLASH = escaped and if SD-I @ 1+ SD-I ! then
       SD-I @ SD-AT? if SD-I @ 1+ SD-I ! then
    repeat
-   E-DISC-UNTERM throw ;
+   SD-UNTERM-STOP ;
 
 : SD-LOADER-KIND ( n n -- n )
    SD-TOK$ {: a:ptr u:n :}
@@ -1037,8 +1070,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
-   bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW throw then
-   bit SD-RETIRED @ and 0<> if E-DISC-RETIRE throw then ;
+   bit SD-SHADOWED @ and 0<> if SD-SHADOW-STOP then
+   bit SD-RETIRED @ and 0<> if SD-RETIRE-STOP then ;
 
 \ The loader is given the path as the source holds it, so a rejection of it is
 \ placed there; a decoded literal's bytes are in no source.
@@ -1049,11 +1082,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    kind SD-K-REQUIRED = if a u required exit then
    a u provided ;
 
-\ False, and nothing recorded, for a path the loader's resolver refuses
-\ (E-PATH-NUL, a NUL in the path; E-PATH-RANGE).
-: SD-LOAD? ( n n n -- bool )
-   {: off:n len:n kind:n :}
+\ The loader word at off len takes the path written at poff plen. False, and
+\ nothing recorded, for a path the loader's resolver refuses (E-PATH-NUL, a NUL
+\ in the path; E-PATH-RANGE).
+: SD-LOAD? ( n n n n n -- bool )
+   {: off:n len:n poff:n plen:n kind:n :}
    off len DISC-TOK!
+   poff plen DISC-PATH!
    kind SD-CALL-KIND !
    EVENT-COUNT {: before:n :}
    [: SD-CALL-ACT ;] catch {: rc:n :}
@@ -1075,12 +1110,12 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ `require` in a body, which the engine refuses there but whose file the quiet
 \ composition reads: a path it cannot resolve is a form discovery cannot
 \ follow, refused at the loader word that names it.
-: SD-CALL-LOADER ( n n n -- )
-   {: off:n len:n kind:n :}
-   off len kind SD-LOAD? if exit then
+: SD-CALL-LOADER ( n n n n n -- )
+   {: off:n len:n poff:n plen:n kind:n :}
+   off len poff plen kind SD-LOAD? if exit then
    off SD-TOK-OFF !
    len SD-TOK-LEN !
-   E-DISC-CAPACITY throw ;
+   SD-CAPACITY-STOP ;
 
 \ A loader word in a body is a call the word makes when it runs, which no check
 \ runs: right after a path literal the resolver takes it is recorded, the
@@ -1096,13 +1131,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-DEF @ 0<> if
       pend SD-PEND-PATH = 0= if exit then
       off len SD-CHECK-USE
-      off len kind SD-LOAD? drop
+      off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-LOAD? drop
       exit
    then
    off len SD-CHECK-USE
-   pend SD-PEND-OTHER = if E-DISC-OPENER throw then
-   pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC throw then
-   off len kind SD-CALL-LOADER ;
+   pend SD-PEND-OTHER = if SD-OPENER-STOP then
+   pend SD-PEND-PATH = 0= if SD-DYNAMIC-STOP then
+   off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
 
 \ `include` and `require` take the next token as their path and refuse one
 \ over PATH-CAP bytes before they resolve it; the resolver decides the rest. The
@@ -1111,16 +1146,18 @@ $FF constant SD-NAMES                    \ loaders and family openers
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}
-   plen 0= if E-DISC-DYNAMIC throw then
-   plen PATH-CAP > if E-DISC-CAPACITY throw then
+   plen 0= if SD-DYNAMIC-STOP then
+   plen PATH-CAP > if SD-CAPACITY-STOP then
    poff plen SD-TOK$ SD-PATH-FILL
-   toff tlen kind SD-CALL-LOADER ;
+   toff tlen poff plen kind SD-CALL-LOADER ;
 
 
 : SD-LOCALS-RESET ( -- )
    0 SD-LOCALS !
    0 SD-LOCAL-BASE !
    0 SD-SCOPES ! ;
+
+: SD-NAMED ( n n -- )  SD-NAME-LEN !  SD-NAME-OFF ! ;
 
 : SD-DEF-OPEN ( -- )
    SD-LOCALS-RESET
@@ -1157,10 +1194,18 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-LOCALS @ 1+ SD-LOCALS ! ;
 
 
+\ The `{:` at SD-OPENER that the source ends inside, in the open definition,
+\ or named by itself outside one.
+: SD-GROUP-STOP ( -- )
+   E-DISC-UNTERM SD-HARVEST-THROW
+   SD-OPENER @ 2 SD-TOK$ {: t:ptr tu:n :}
+   SD-DEF @ 0= SD-NAME-LEN @ 0= or if t tu else SD-NAME-OFF @ SD-NAME-LEN @ SD-TOK$ then
+   t tu INTERPRETER:UNCLOSED-REJECT  E-DISC-UNTERM REJECTION:STOP ;
+
 : SD-LOCAL-GROUP ( -- )
    begin
       SD-RAW {: off:n len:n :}
-      len 0= if E-DISC-UNTERM throw then
+      len 0= if SD-GROUP-STOP then
       off len SD-TOK$ s" :}" STR= if exit then
       off len SD-LOCAL+
    again ;
@@ -1327,11 +1372,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
    off len SD-TOK$ s" :" STR= if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
+      noff nu SD-NAMED
       noff nu SD-R-DECL-NAME noff nu SD-DEF-TRACK
       noff nu SD-TOK$ SD-SHADOW exit
    then
    off len SD-TOK$ SOURCE-SYNTAX:BODY-OPENER? if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
+      noff nu SD-NAMED
       noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
    then
    SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if
@@ -1357,6 +1404,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
    0 SD-PEND !
    0 SD-TOK-OFF !
    0 SD-TOK-LEN !
+   0 SD-NAME-OFF !
+   0 SD-NAME-LEN !
    0 SD-DEF !
    0 SD-SHADOWED !
    0 SD-RETIRED !
@@ -1391,7 +1440,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
 
 : SELECT-ENTRY ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n root:ptr rootu:n :}
-   pu SD-PATH-CAP > rootu SD-PATH-CAP > or if E-DISC-CAPACITY throw then
+   pu SD-PATH-CAP > if pa pu SD-PATH-STOP then
+   rootu SD-PATH-CAP > if root rootu SD-PATH-STOP then
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
@@ -1510,7 +1560,7 @@ public
 \ none.
 : LOADING! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u SD-PATH-CAP > if E-DISC-CAPACITY throw then
+   u SD-PATH-CAP > if a u SD-PATH-STOP then
    a SD-LOADING u BYTE-COPY
    u SD-LOADING-U ! ;
 
@@ -1537,11 +1587,6 @@ public
 
 : RUN ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ RUN-IN ;
-
-\ Where the string or locals group a walk ended at with E-DISC-UNTERM opens:
-\ the byte of its opener in the file that ended the walk.
-: OPENER-AT ( -- n )
-   SD-OPENER @ ;
 
 \ The bytes the last run read, and where the token it read last starts in them
 \ and its length. A run that refused a loader form read that form last: a

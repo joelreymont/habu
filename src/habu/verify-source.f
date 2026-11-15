@@ -224,9 +224,6 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 private
 
-\ A statement the source ends inside stops the scan with this at its opener.
-7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
-
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
 \ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
 TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX
@@ -464,6 +461,13 @@ variable FLAG-N
    t tu t tu s" no name follows" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+\ The definition's checker reads a `(` after its definer as the signature, so
+\ the name the scan read last, at TOKEN-BYTE, names nothing.
+: SIG-NAME-STOP ( -- )
+   TOP-CUR-A @ TOP-CUR-U @  TOKEN-A @ TOKEN-U @
+   s" a signature, not a name" REJECTION:MISSING-NAME
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ The source ends inside the statement's definition, named by the token after
 \ its opener.
 : UNCLOSED-STOP ( -- )
@@ -561,7 +565,10 @@ variable FLAG-N
 \ A literal the source ends inside stops a quiet composition or index at its
 \ opener, as discovery's lexer stops there.
 : QUIET-UNTERM ( -- )
-   FOUND @ 0= QUIET @ INDEX-ON @ or and IF E-DISC-UNTERM throw THEN ;
+   FOUND @ 0= QUIET @ INDEX-ON @ or and IF
+      TOKEN-START @ TOKEN-FROM INTERPRETER:LITERAL-REJECT
+      E-DISC-UNTERM REJECTION:STOP
+   THEN ;
 
 \ The payload of the literal just skipped: after its opener and delimiter, pfx
 \ bytes, and before the quote SCAN-I stands one past. The length is negative
@@ -835,10 +842,42 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u WRAP-LOOP-TOK? or
    a u WRAP-BRACKET-TOK? or ;
 
+\ The record of a loader form at t tu that discovery cannot follow, for the
+\ message m mu, written through its help: the caller stops it.
+: FORM-REJECT ( ptr u8 n ptr u8 n -- ) {: t:ptr tu:n m:ptr mu:n :}
+   s" E-LOADER-FORM" REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   t tu REJECTION:AT
+   s" discovery cannot follow `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" load a file by a literal path that resolves within PATH-CAP bytes, written in at most PATH-CAP bytes after include or require and otherwise in under twice PATH-CAP plus 2 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires" REJECTION:EMIT-STR ;
+
+public
+\ Discovery (tools/source-discovery.f) and a quiet composition write the record
+\ of a loader form they reject, at its token t tu, with these, and stop it
+\ with the form's E-DISC code.
+: SHADOW-REJECT ( ptr u8 n -- )
+   s" loader word used after the file defined its name" FORM-REJECT ;
+: RETIRE-REJECT ( ptr u8 n -- )
+   s" loader word used after the file retired it" FORM-REJECT ;
+: DYNAMIC-REJECT ( ptr u8 n -- )
+   s" dynamic (non-literal) loader path" FORM-REJECT ;
+: OPENER-REJECT ( ptr u8 n -- )
+   s" unsupported string opener before a loader word" FORM-REJECT ;
+: CAPACITY-REJECT ( ptr u8 n -- )
+   s" capacity exceeded" FORM-REJECT ;
+private
+
 \ A refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long.
 : QUIET-REJECT ( n n -- ) {: code:n len:n :}
    len FAULT-LEN !
    code throw ;
+
+\ A loader word u bytes long at TOKEN-BYTE@ with no literal path: its record,
+\ stopped with E-DISC-DYNAMIC.
+: DYNAMIC-STOP ( n -- ) {: u:n :}
+   u FAULT-LEN !
+   SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP ;
 
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
 \ discovery reads as loaders, `script-required` not one.
@@ -885,7 +924,7 @@ variable RETIRED
 \ may load the literal's path, which the resolver alone may still refuse, false
 \ after a literal holding a bad escape, which is the checker's.
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
-   kind 0= IF E-DISC-DYNAMIC u QUIET-REJECT THEN
+   kind 0= IF u DYNAMIC-STOP THEN
    kind LIT-OTHER = IF E-DISC-OPENER u QUIET-REJECT THEN
    kind LIT-PATH = ;
 
@@ -1150,7 +1189,11 @@ variable GROUP-AT
 \ stops there (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
-      QUIET @ INDEX-ON @ or IF GROUP-AT @ TOKEN-BYTE !  E-DISC-UNTERM throw THEN
+      QUIET @ INDEX-ON @ or IF
+         GROUP-AT @ TOKEN-BYTE !
+         TOP-CUR-A @ SOURCE@ - TOP-CUR-U @ + TOKEN-FROM  GROUP-AT @ TOKEN-FROM
+         INTERPRETER:UNCLOSED-REJECT  E-DISC-UNTERM REJECTION:STOP
+      THEN
       UNCLOSED-STOP
    THEN ;
 
@@ -1165,7 +1208,7 @@ variable GROUP-AT
 \ the word refuses it before the resolver sees it.
 : LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
    NEXT-RAW {: p:ptr pu:n :}
-   pu 0= IF E-DISC-DYNAMIC wu QUIET-REJECT THEN
+   pu 0= IF wu DYNAMIC-STOP THEN
    pu PATH-CAP > IF E-DISC-CAPACITY pu QUIET-REJECT THEN
    p pu ;
 
@@ -3260,11 +3303,15 @@ variable LOAD-END
    REQUIRE-STORE 2drop ;
 
 : COMPOSE-STRING-PATH ( -- ptr u8 n )
-   STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
+   STR-LAST-U @ 0= IF
+      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP
+   THEN
    STR-LAST-A @ STR-LAST-U @ ;
 
 : COMPOSE-RAW-PATH ( -- ptr u8 n )
-   NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
+   NEXT-RAW dup 0= IF
+      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP
+   THEN ;
 
 PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
 variable LOAD-U
@@ -3643,7 +3690,7 @@ variable FFI-LIT-B                          \ and the newer
    {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
-   NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+   NEXT-SCAN nip 0= IF UNCLOSED-STOP THEN
    name nameu FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
    name nameu at REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
@@ -3994,7 +4041,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    LOCALS-RESET
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       SKIP-DEF-TOKEN
    AGAIN ;
@@ -4004,6 +4051,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if NAME-STOP then
+   TOKEN-A @ TOKEN-U @ s" (" CORE-STR= if SIG-NAME-STOP then
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
@@ -4014,7 +4062,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    MAYBE-SIGNATURE DEF-SIG-U !  DEF-SIG-A !
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
          VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN

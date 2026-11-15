@@ -267,7 +267,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
 \ So it is refused with E-PKG-CONTEXT, as the window's other replay-only steps
 \ are, and records nothing; a package-neutral scope, which source can open, is
 \ no window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
-70 constant E-TS-REJECT        \ the checker's compile reject (habu2.f RC-REJECT)
+70 constant E-TS-REJECT        \ the checker's compile reject (CHECKER-REJECT-RC)
 
 \ TS-PKG-CONTEXT asserts the text stops with the checker's status after an
 \ E-PKG-CONTEXT record that quotes the name given.

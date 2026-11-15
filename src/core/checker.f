@@ -14645,6 +14645,7 @@ public
 4 constant K-CHAR               \ a0: the payload's first byte
 5 constant K-COUNTED-STRING
 6 constant K-PRINTED-STRING
+255 constant COUNTED-MAX        \ the bytes a counted string's count byte holds
 \ The kinds below are what the checker judged a token to be, which its
 \ spelling does not say: a local named 1 is a K-LOCAL-REF of class K-INT.
 7 constant K-CONTROL            \ a0: the marker's place in CF-CODE's list, or RS-KEYWORD's
@@ -22224,6 +22225,16 @@ variable SCAN-TOK0
       REC-IX @ 1 + EV-FILE
    THEN ;
 
+\ A counted literal's decoded body of u bytes past its count byte is rejected at
+\ its opener, the token at TSTART.
+: SPAY-COUNTED-CK ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   CHECKER-TAPE:STRING-KIND CHECKER-TAPE:K-COUNTED-STRING =
+   u CHECKER-TAPE:COUNTED-MAX >  and IF
+      TSTART @ TADDR SCAN-U @  CHECKER-TAPE:COUNTED-MAX REJECTION:COUNTED-RANGE
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   a u ;
+
 \ What this token instantiated is filed before the token is reported, so the
 \ row and its ordinal are made in one step: the ordinal is the one the observer
 \ has not yet advanced.
@@ -22236,7 +22247,7 @@ variable SCAN-TOK0
       SCAN-PEND-REPORT EXIT
    THEN
    SPAY-ON @ IF
-      SPAY-BYTES  SPAY-B @ SPAY-U @
+      SPAY-BYTES  SPAY-COUNTED-CK  SPAY-B @ SPAY-U @
       CHECKER-TAPE:STRING-KIND  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN

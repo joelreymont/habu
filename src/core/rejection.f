@@ -649,16 +649,35 @@ public
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
 
+\ The word kw ku has no operand after it, which what names with its article
+\ ("a name"): the record stands at t tu, which why labels. It is written
+\ through the start of its help: the caller writes the help and stops it.
+: MISSING-OPERAND ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: kw:ptr ku:n what:ptr whatu:n t:ptr tu:n why:ptr whyu:n :}
+   s" E-MISSING-NAME" OPEN
+   96 EMIT1  kw ku EMIT-STR  s" ` needs " EMIT-STR  what whatu EMIT-STR
+   t tu AT  why whyu EMIT-STR
+   HELP ;
+
 \ The definer kw ku has no name of one token: the record stands at t tu, which
 \ why labels. It is written through its help, and the caller stops it.
 : MISSING-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: kw:ptr ku:n t:ptr tu:n why:ptr whyu:n :}
-   s" E-MISSING-NAME" OPEN
-   96 EMIT1  kw ku EMIT-STR  s" ` needs a name" EMIT-STR
-   t tu AT  why whyu EMIT-STR
-   HELP
+   kw ku s" a name" t tu why whyu MISSING-OPERAND
    s" give `" EMIT-STR  kw ku EMIT-STR
    s" ` one name, a token with no blanks" EMIT-STR ;
+
+\ The counted string the literal's opener t tu opens is longer than the max
+\ bytes its count byte holds. It is written through its help, and the caller
+\ stops it.
+: COUNTED-RANGE ( ptr u8 n n -- ) {: t:ptr tu:n max:n :}
+   s" E-COUNTED-STRING-TOO-LONG" OPEN
+   s" the counted string `" EMIT-STR  t tu EMIT-STR
+   s" ` opens is longer than its count byte holds" EMIT-STR
+   t tu AT  s" too long" EMIT-STR
+   s" limit" NOTE  max EMIT-U  s"  bytes" EMIT-STR
+   HELP  s" shorten the text, or write it with " EMIT-STR
+   S\" `s\"`" EMIT-STR  s" , which has no count byte" EMIT-STR ;
 
 \ Writes the record of word w given a path len bytes long, past the cap bytes
 \ a path may have, through the start of its help: the caller writes the help

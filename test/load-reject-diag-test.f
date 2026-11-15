@@ -24,7 +24,6 @@ package LOAD-REJECT-TEST
 
 $1000 constant CAP
 70 constant REJECT-RC
-76 constant BAD-SIG-RC
 84 constant SEALED-RC
 105 constant SHADOW-RC
 78 constant DUP-RC
@@ -605,10 +604,10 @@ variable RC
    s" a definer's missing signature names its class, token and line" T-LABEL
    s" : LRD-MK ( n -- ) create , does> @ ;"
    s" error[E-MISSING-SIGNATURE]: `does>` has no closed `( -- )` signature"
-      s" :1:28" BAD-SIG-RC CODE-REJECT-AT
+      s" :1:28" REJECT-RC CODE-REJECT-AT
    s" defer LRD-D"
    s" error[E-MISSING-SIGNATURE]: `LRD-D` has no closed `( -- )` signature"
-      s" :1:7" BAD-SIG-RC CODE-REJECT-AT ;
+      s" :1:7" REJECT-RC CODE-REJECT-AT ;
 
 \ Reopening a package the engine sealed stops at the package's name.
 : TEST-SEALED-PACKAGE ( -- )
@@ -783,7 +782,7 @@ variable RC
    RC @ rc T= ;
 
 : ASSERT-TARGET ( -- )
-   74 ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 : TEST-TARGET ( -- )
    s" a ?TARGET stop prints the rejection form" T-LABEL

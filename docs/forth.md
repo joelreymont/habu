@@ -69,7 +69,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   resolve to the latest live binding; mentions before the closer resolve in the
   preceding scope.
 - **Names fold case, and a wordlist holds each once**: a top-level `: dup` is
-  `duplicate definition: dup`, rc 78. A package's own word may spell a global
+  rejected (`E-DUPLICATE-DEFINITION`). A package's own word may spell a global
   or an engine word; a public one that does is refused at a bare call through
   `using` (`E-USING-SHADOW-GLOBAL`), so name it otherwise.
 - **A parser or control word cannot be a definition name** (by
@@ -155,11 +155,11 @@ private
 - In package A's private section, under no `using` A opened, in the file or
   evaluated string A is open in, `package B` opens B as a part of A, whose row
   is named by the path `A:B`. Anywhere else inside a package `package` is
-  refused (`E-PKG-CONTEXT habu: <loc>: package`, rc 75): in a public section, under a using the
+  rejected (`E-PKG-CONTEXT`): in a public section, under a using the
   package opened, inside a part, and in a file or string that began inside the
   package, so a file required inside a package cannot open one. A package a
   file or string leaves open is its includer's from then on. A path of 256
-  bytes or more is refused by its name (`E-PKG-CONTEXT habu: <loc>: B`, rc 75). `;package` of a
+  bytes or more is rejected at its name (`E-PKG-CONTEXT`). `;package` of a
   part reopens A in its private section with A's using floor. Inside A and its
   parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
@@ -193,8 +193,8 @@ private
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
   into it then exits 84 with ``error[E-SEALED-PACKAGE]: `<name>` would change a sealed package``,
   naming the package or word, and `tools/check.f` refuses it as
-  `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
-  `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
+  `E-SEALED-PACKAGE` at the name. Outside a package it is rejected
+  (`E-PKG-CONTEXT`). Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. A build also seals every package its
   engine files made before it reads program source; an application package
   without `seal-package` stays reopenable. So a stripped program cannot
@@ -907,7 +907,7 @@ every FINAL's ACTION never returns), at the `swap` after `<NAME>-STEP`'s
 `<NAME>/<state>`, `<NAME>/<state>/<input>`, `<NAME>/<final>` and
 `<NAME>-STEP` share `<NAME>`'s visibility. A second row for a state, or a
 second line for one input when both name an ACTION, fails the load as a
-duplicate definition, 78 under `evaluate-closed`. The machine keeps no state
+duplicate definition. The machine keeps no state
 of its own; a throw from a SENSE, ACTION or NEXT leaves `<NAME>-STEP` and
 `<NAME>` as thrown, with nothing answered. Neither `MATCH` has a default arm,
 so the checker fails the load, 70 under `evaluate-closed`, for a row missing
@@ -2451,9 +2451,8 @@ sections above.
   `--verify-only` included. A definer that declares an effect (`defer`,
   `TRUSTED:`, `FUNCTION:`, a `does>` clause, …) with no signature after its
   name, or one never closed, is `E-MISSING-SIGNATURE` (`add_signature`) at the
-  definer, at `does>` for a clause. `--load` refuses `defer D` and a clause
-  with exit 76 and `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature`, `does>` in place
-  of the name for a clause.
+  definer, at `does>` for a clause. `--load` rejects `defer D` and such a
+  clause the same way.
 - **A `create … does>` clause declares its created words' effects.** The
   source pre-pass learns a scanned clause; for a resident definer, the checker
   latches the created-word effect at publication. A straight-line wrapper

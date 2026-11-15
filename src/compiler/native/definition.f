@@ -124,8 +124,6 @@ private
 : REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECK:DECLARED ;
 
-70 constant RC-REJECT                 \ CHECK:DEFINITION's reject status (check-hook.f CHECK-RC)
-
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
@@ -144,7 +142,7 @@ private
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
 : CLAUSE-CK ( n ptr u8 n -- )
-   CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
+   CHECKER-OWNER:DOES-REPORT -1 <> if CHECKER-REJECT-RC throw then ;
 
 \ The engine records the split just past the `does> ` it consumed, so a cut
 \ that is not just past a `does> ` in this source means the source and the
@@ -331,7 +329,7 @@ public
    s" define `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s" ` in a `host` section if the build runs it, or call it only from target words"
    REJECTION:EMIT-STR
-   RC-REJECT REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.

@@ -391,17 +391,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : REFUSAL-CASES ( -- )
    s" : MAIN ( -- ) here drop align ;" s" kernel.f" SOURCE!
-   s" kernel words with no routine are each refused by name with 74 and no module" T-LABEL
-   s" kernel.wasm" BUILD 74 T=
-   s" link: a Wasm module has no here" ERR-HAS
-   s" link: a Wasm module has no align" ERR-HAS
-   s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
+   s" kernel words with no routine are each rejected by name with 70 and no module" T-LABEL
+   s" kernel.wasm" BUILD 70 T=
+   s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `here`" ERR-HAS
+   s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `align`" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;" s" does.f" SOURCE!
-   s" a does> clause is refused by name with 74 and no module" T-LABEL
-   s" does.wasm" BUILD 74 T=
-   s" link: B has a does> clause, which a Wasm module cannot hold" ERR-HAS
-   s" link: a Wasm module cannot hold a does> clause" ERR-HAS
+   s" a does> clause is rejected by name with 70 and no module" T-LABEL
+   s" does.wasm" BUILD 70 T=
+   s" error[E-WASM-DOES-CLAUSE]: `B` has a does> clause" ERR-HAS
    NO-MODULE
    SB-RESET
    S\" package ADV\nprivate\nvariable ACTION\npublic\n" SB-APPEND
@@ -410,10 +408,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB$ s" clause-cell.f" SOURCE!
    \ The cell places its definer's whole emission, and every does> definer calls
    \ does-patch, which a Wasm module has no function for.
-   s" a cell naming a does> clause is refused with 74 and no module" T-LABEL
-   s" clause-cell.wasm" BUILD 74 T=
-   s" link: a Wasm module has no does-patch" ERR-HAS
-   s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
+   s" a cell naming a does> clause is rejected with 70 and no module" T-LABEL
+   s" clause-cell.wasm" BUILD 70 T=
+   s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `does-patch`" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
    s" an unchecked MAIN is rejected with 70 and no module" T-LABEL
@@ -422,9 +419,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" unchecked.f:1:15" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f : MAIN ( -- ) 8 SPAN-BUFFER: ;" s" reached-definer.f" SOURCE!
-   s" a definer MAIN reaches is refused with 74 and no module" T-LABEL
-   s" reached-definer.wasm" BUILD 74 T=
-   s" link: a stripped program reaches a word it cannot run" ERR-HAS
+   s" a definer MAIN reaches is rejected with 70 and no module" T-LABEL
+   s" reached-definer.wasm" BUILD 70 T=
+   s" error[E-CANNOT-RUN-STRIPPED]: `SPAN-BUFFER:` calls `create`" ERR-HAS
    NO-MODULE
    s" : MAIN ( n -- ) drop ;" s" cells.f" SOURCE!
    s" a MAIN that takes a cell is rejected at its effect with 70 and no module" T-LABEL
@@ -439,8 +436,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" no-main.f" ERR-HAS
    NO-MODULE
    s" require src/lib/fs.f" s" native-only.f" SOURCE!
-   s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL
-   s" native-only.wasm" BUILD 74 T=
+   s" a file that does not build for Wasm stops its load with 70 and no module" T-LABEL
+   s" native-only.wasm" BUILD 70 T=
    s" error[E-TARGET]: this file does not build for wasm" ERR-HAS
    s" src/lib/ffi-abi.f:" ERR-HAS
    NO-MODULE

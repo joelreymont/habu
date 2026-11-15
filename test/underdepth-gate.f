@@ -23,7 +23,7 @@ require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 2048 constant UDG-CAP
-70 constant UDG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
+70 constant UDG-REJECT-RC           \ interpret-level reject exit (CHECKER-REJECT-RC)
 
 variable UDG-ROOT-U
 variable UDG-CHILD-U
@@ -137,7 +137,7 @@ public
 
 package UDG-MINIMUM
 
-70 constant WIDE-RC                 \ rendered before its code is thrown (RC-REJECT)
+70 constant WIDE-RC                 \ rendered before its code is thrown (CHECKER-REJECT-RC)
 
 \ The DNAME-MIN-IN byte accepts 255 and rejects 256: a wider declared row is a
 \ stored signature no record holds, refused by its width.

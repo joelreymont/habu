@@ -747,13 +747,11 @@ using SOURCE-ROOT
    INCLUDE-DIE ;
 
 : INCLUDE-NO-PATH ( -- )
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" `include` and `require` need a path" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no path follows" REJECTION:EMIT-STR
-   REJECTION:HELP
+   SRCLOC:TOKEN$ s" a path" SRCLOC:TOKEN$ s" no path follows"
+   REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : INCLUDE-LONG-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-PATH-RANGE" REJECTION:OPEN
@@ -1470,10 +1468,10 @@ SOURCE-UNIT:RESET
 \ multiplicity and require/provided registry state in order, and a build's
 \ linker can carry the acts in a file's object.
 \ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
-\ to DISC-TOK!. A build's linker reads the depth to tell a request made with
-\ cells on the stack.
+\ to DISC-TOK! and the span where the path is written to DISC-PATH!. A build's
+\ linker reads the depth to tell a request made with cells on the stack.
 
-13 constant EVENT-FIELDS
+15 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 
@@ -1495,6 +1493,8 @@ variable EVENT-ON-V
 variable EVENT-DISC-V
 variable DISC-TOK-A
 variable DISC-TOK-U
+variable DISC-PATH-A
+variable DISC-PATH-U
 
 : EVENT-ON? ( -- bool )   EVENT-ON-V @ 0= 0= ;
 : DISCOVERY? ( -- bool )  EVENT-DISC-V @ 0= 0= ;
@@ -1503,6 +1503,7 @@ variable DISC-TOK-U
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
 : DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
+: DISC-PATH! ( n n -- )   DISC-PATH-U ! DISC-PATH-A ! ;
 : EVENT-RECS@ ( -- ptr u8 ) EVENT-RECS @ ;
 : EVENT-POOL@ ( -- ptr u8 ) EVENT-POOL @ ;
 
@@ -1535,6 +1536,11 @@ variable DISC-TOK-U
 
 : EVENT-SPAN ( -- n n )
    DISCOVERY? if DISC-TOK-A @ DISC-TOK-U @ exit then
+   LOADER-TOKEN-SPAN ;
+
+\ Outside discovery no reader takes the path's span: it is the loader token's.
+: EVENT-PATH-SPAN ( -- n n )
+   DISCOVERY? if DISC-PATH-A @ DISC-PATH-U @ exit then
    LOADER-TOKEN-SPAN ;
 
 : EVENT-SLOT ( n n -- ptr n )
@@ -1616,6 +1622,7 @@ public
    EVENT-RECS-ROOM
    EVENT-N @ {: ix:n :}
    EVENT-SPAN {: toka:n toku:n :}
+   EVENT-PATH-SPAN {: pat:n plen:n :}
    path pathu EVENT-COPY-PATH {: off:n len:n :}
    a u EVENT-COPY-PATH {: soff:n slen:n :}
    kd    ix 0 EVENT-FIELD!
@@ -1627,6 +1634,8 @@ public
    soff  ix 8 EVENT-FIELD!
    slen  ix 9 EVENT-FIELD!
    depth ix 10 EVENT-FIELD!     \ the callers hold their arguments in locals: the requester's depth
+   pat   ix 13 EVENT-FIELD!
+   plen  ix 14 EVENT-FIELD!
    ix SOURCE-EVENT:STORE-ROOT
    ix 1 + EVENT-N ! ;
 
@@ -1644,6 +1653,8 @@ public
    ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
+: EVENT-PATH-TOK@ ( n -- n n ) {: ix:n :}
+   ix 13 EVENT-FIELD@ ix 14 EVENT-FIELD@ ;
 : EVENT-DEPTH@ ( n -- n )    10 EVENT-FIELD@ ;
 
 package SOURCE-ROOT
@@ -2199,9 +2210,15 @@ public
 : INCLUDE-LOAD ( ptr u8 n -- bool n ) {: a:ptr u:n :}
    NULL-PTR 0 s" INCLUDE-LOAD" a u LOAD-RESULT ;
 
+\ A discovery pass reads source and opens no file, so it records a missing
+\ file's request like any other; the reader that opens the file rejects it.
+: LOADER-RESOLVE ( ptr u8 n -- ptr u8 n bool )
+   DISCOVERY? if RESOLVE exit then
+   LOAD-RESOLVE ;
+
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u LOAD-RESOLVE drop {: path:ptr pathu:n :}
+   a u LOADER-RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a REJECTION:PLACES? if a u else NULL-PTR 0 then
@@ -2231,7 +2248,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 : required ( ptr u8 n -- )
    {: a:ptr u:n :}
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   s" required" a u  a u LOAD-RESOLVE  REQUIRE-BODY ;
+   s" required" a u  a u LOADER-RESOLVE  REQUIRE-BODY ;
 
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
@@ -2391,7 +2408,7 @@ public
    REJECTION:HELP
    s" build this file only for a target its test admits, or widen the test"
    REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 ;using

@@ -456,8 +456,8 @@ variable RUN-FILE-U
    S\" : ACT ( -- ) s\q act ran\q type cr ;  ' ACT AT-EXIT:ADD\n" TEXT+
    S\" NOSUCHWORD\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a failed build whose source added an exit action fails 74" T-LABEL
-   outu erru rc 74 EXPECT-RC
+   s" a failed build whose source added an exit action fails 70" T-LABEL
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" habu-crash" ERR-HAS? TFALSE
    outu s" act ran" OUT-HAS? TTRUE ;

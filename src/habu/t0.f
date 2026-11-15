@@ -1321,9 +1321,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ A string is one row whose span is the payload; the checker reports its body,
 \ decoded for an escaped literal (src/core/checker.f CHECKER-TAPE:STRING), and
 \ the tape copies it. Bytes are interned (INTERN:INTERN-SOURCE), so equal bodies
-\ share an address, and the address row files the origin interning answers. A
-\ counted string past COUNTED-MAX bytes is refused with exit code 76.
-255 constant COUNTED-MAX            \ a counted string's length is one byte
+\ share an address, and the address row files the origin interning answers.
 
 DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 
@@ -1331,18 +1329,11 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    kind CHECKER-TAPE:K-STRING =  kind CHECKER-TAPE:K-COUNTED-STRING = or
    kind CHECKER-TAPE:K-PRINTED-STRING = or ;
 
-\ A counted string of u bytes past COUNTED-MAX refuses.
-: TOO-LONG ( n -- )
-   COUNTED-MAX <= if exit then
-   2 S\" E-COUNTED-STRING-TOO-LONG habu: counted string too long (max 255)\n" write drop
-   76 throw ;                       \ the exit code src/habu/interpreter.f RC-TOO-LONG defines
-
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
    TXT$ k ROW-OFF @ + {: s:ptr :}
    k ROW-AT @ {: body:n :}
    k ROW-U @ {: u:n :}
-   counted if u TOO-LONG then
    body 0< u 0= or counted 0= and if s u INTERN:INTERN-SOURCE u exit then
    counted if 1 else 0 then {: at:n :}
    at u + STR-BUF-RESERVE

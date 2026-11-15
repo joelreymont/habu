@@ -70,14 +70,21 @@ variable UNSAFE-COUNT
    s ENTRY-RECS @ ;
 
 
-\ The name of the record entering emission e at its first byte.
-: ROUTINE. ( n -- )
+\ The name of the record entering emission e at its first byte, empty for none.
+: ROUTINE-NAME$ ( n -- ptr u8 n )
    {: e:n :}
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0= and if
-         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY unloop exit
+         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ unloop exit
       then
    loop
+   s" " ;
+
+
+: ROUTINE. ( n -- )
+   {: e:n :}
+   e ROUTINE-NAME$ {: name:ptr nameu:n :}
+   nameu 0<> if name nameu SAY exit then
    s" emission " SAY e SAY-INT ;
 
 
@@ -310,10 +317,25 @@ variable UNSAFE-COUNT
    r NSHADOW:EMISSION@ PLACE-EM ;
 
 
-: CANNOT-RUN ( n -- )
-   XREF-REC XREF-NAME$ SAY
-   s" , which a stripped program cannot run" SAY SAY-CR
-   s" link: a stripped program reaches a word it cannot run" 74 die ;
+\ Live record r, or -1 for the program's start, reaches the UNSAFE-NAME? word
+\ at dictionary index d. No record keeps its source, so the record is unplaced.
+: CANNOT-RUN ( n n -- )
+   {: r:n d:n :}
+   d XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   s" E-CANNOT-RUN-STRIPPED" REJECTION:OPEN
+   r 0< if
+      s" the program starts at `" REJECTION:EMIT-STR
+   else
+      s" `" REJECTION:EMIT-STR  r NSHADOW:RECORD@ XREF-REC XREF-NAME$ REJECTION:EMIT-STR
+      s" ` calls `" REJECTION:EMIT-STR
+   then
+   name nameu REJECTION:EMIT-STR
+   s" `, which a stripped program cannot run" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" a stripped program has no dictionary, writable code or interpreter: run `"
+   REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" ` while the program builds, never from code its entry reaches" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ The shadow record host address a names, or -1. A Wasm module has no hb
@@ -343,8 +365,7 @@ variable UNSAFE-COUNT
    r 0 >= if r MAKE-LIVE exit then
    a UNSAFE@ {: d:n :}
    d 0< if exit then
-   s" link: " SAY WALKING @ NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
-   s"  calls " SAY d CANNOT-RUN ;
+   WALKING @ d CANNOT-RUN ;
 
 
 \ A placed emission's target places the emission holding its record, else
@@ -411,7 +432,7 @@ variable UNSAFE-COUNT
       a KEEP-KERNEL if exit then
       a QUOTE-ROOT exit
    then
-   s" link: the program starts at " SAY d CANNOT-RUN ;
+   -1 d CANNOT-RUN ;
 
 
 \ An engine ships every routine.
