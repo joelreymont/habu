@@ -613,6 +613,33 @@ variable DOES-USES
    s" it fires no stale visitor" T-LABEL
    CALLS @ 0 T= ;
 
+\ A use handler that names an effect, which resets the signature verdict a
+\ rejected definition's record step reads: the step runs before the handler,
+\ so the load prints and tallies what it does under a handler that names
+\ nothing, and BAD's unrecordable signature is neither recorded nor reported.
+: USE-NAMES ( n n n n n n -- )
+   s" nullable" EFFECT:NAMED drop  2drop 2drop 2drop ;
+
+: NAMED-USES ( -- ) [: USE-NAMES ;] [: REPLAY ;] WITH-USES ;
+
+: NAMED-TEXT$ ( -- ptr u8 n )
+   s\" : HELPER ( -- ) ;\n: BAD ( ptr -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" drop ;\n: LATER ( -- ) BAD ;\n" ;
+
+: NAMED-RECORDS$ ( -- ptr u8 n )
+   S\" error[E-COUNTED-STRING-TOO-LONG]: the counted string `c\"` opens is longer than its count byte holds\n --> <input>:2:25\n  |\n2 | : BAD ( ptr -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n  |                         ^^ too long\n  = limit: 255 bytes\n  = help: shorten the text, or write it with `s\"`, which has no count byte\n\nerror[E-UNDEFINED]: cannot find word `BAD`\n --> <input>:3:16\n  |\n3 | : LATER ( -- ) BAD ;\n  |                ^^^ not found\n  = help: define `BAD` before this point, or check its spelling\n\n" ;
+
+: CASE-USE-NAMES ( -- )
+   NAMED-TEXT$ TEXT-U !  TEXT-A !
+   REJECTION:CAPTURE  MULTI-ERR-BEGIN
+   [: NAMED-USES ;] catch  MULTI-ERR-END {: rc:n tally:n :}
+   REJECTION:BUFFER-OFF
+   s" the load goes on past the rejected body under a naming use handler" T-LABEL
+   rc 0 T=
+   s" it tallies the counted string and the undefined word" T-LABEL
+   tally 2 T=
+   s" it prints their records and no signature record" T-LABEL
+   REJECTION:BUFFER$ NAMED-RECORDS$ T$= ;
+
 \ 8. The selection spells what it binds.
 \ An earlier global dscitem, the open package's DSCITEM and a body's local
 \ dscitem: the local and the package's word are offered, each as written, and
@@ -886,6 +913,7 @@ variable DOES-USES
    CASE-RELEASE
    CASE-USE-THROW
    CASE-DOES-USE-THROW
+   CASE-USE-NAMES
    CASE-DISCRIMINATOR
    CASE-HIDDEN
    CASE-REDECLARED

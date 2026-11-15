@@ -704,9 +704,10 @@
 \
 \ Rejecting a definition: a body, a does> clause or a top-level token is
 \ checking, rejected or stopped. Every writer prints its record and throws
-\ CHECKER-REJECT-RC; DEF-REJECTED catches it. Caught under MULTI-ERR? it takes
-\ checking to rejected: what the walk left set is cleared, the record step
-\ runs as for a rejected verdict, and the load goes on at the next definition.
+\ CHECKER-REJECT-RC; the definition's catcher decides by DEF-RESUMES?. Caught
+\ under MULTI-ERR? it takes checking to rejected: what the walk left set is
+\ cleared, the record step runs as for a rejected verdict, and the load goes on
+\ at the next definition.
 \ Caught otherwise, or any other code, takes it to stopped: it is thrown on.
 \
 \ The interpret row: a segment is a saved row and the row's two buffers, keyed

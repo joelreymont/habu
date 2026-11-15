@@ -1868,17 +1868,16 @@ package CHECKER-REG
    rc 0= IF v EXIT THEN
    rc throw ;
 
-: DEF-REJECTED ( n -- )
-   {: rc:n :}
-   rc CHECKER-REJECT-RC <>  MULTI-ERR? 0= or IF rc throw THEN
+: DEF-RESUMES? ( n -- bool )
+   CHECKER-REJECT-RC =  MULTI-ERR? and ;
+
+: DEF-RESUMED ( -- )
    0 LAYOUT-XPORT !  0 BIND-HORIZON ! ;
 
-\ A throw from the walk records the rejected body; a throw after the verdict
-\ came from the verdict's own record step, which has judged the name.
-: CHECK-DEF-THREW ( n -- )
-   0 PARSE-COMPLETE !
-   DEF-REJECTED
-   DVERD @ VERDICT-NONE = IF MULTI-REJECTED THEN ;
+\ Resumes past a rejected body and records it when the walk threw; a throw
+\ after the verdict came from the verdict's record step, which judged the name.
+: CHECK-DEF-THREW ( -- )
+   DEF-RESUMED  DVERD @ VERDICT-NONE = IF MULTI-REJECTED THEN ;
 
 \ Like CHECK, for the text `NAME ( in -- out ) body` with no `:` or `;`: verifies
 \ the body against the declared effect and rejects a mismatch.
@@ -1897,8 +1896,13 @@ package CHECKER-REG
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
-   pu0 took PUBLISH-EXIT {: prc:n :}   \ the body's uses, its resolved prefix if it
-   rc 0 <> IF rc CHECK-DEF-THREW THEN  \ stopped, and its candidates; the arm goes either way
+   \ The record step reads what the walk left, so it runs before the exit's
+   \ handlers, which may start a check; the exit runs whatever either throws.
+   rc 0 <> IF 0 PARSE-COMPLETE ! THEN
+   rc DEF-RESUMES? IF [: CHECK-DEF-THREW ;] ELSE [: ;] THEN catch {: trc:n :}
+   pu0 took PUBLISH-EXIT {: prc:n :}
+   rc 0 <> rc DEF-RESUMES? 0= and IF rc throw THEN
+   trc 0 <> IF trc throw THEN
    prc 0 <> IF prc throw THEN
    rc 0= IF v ELSE 0 THEN {: verdict:n :}
    0 VSIG !
@@ -2222,11 +2226,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    SRC-DOES-BA @ SRC-DOES-BU @ SRC-DOES-SA @ SRC-DOES-SU @ CHECK-DOES-RUN
    SRC-DOES-VERDICT ! ;
 
-: SRC-DOES-THREW ( n -- n )
+\ Drops a thrown clause's effect and, when the load resumes past its rejection,
+\ clears what the walk left; its catcher throws any other code on.
+: SRC-DOES-THREW ( n -- ) {: rc:n :}
    SIG-EFF-DROP
-   DEF-REJECTED
-   WRAP-CLEAR
-   0 ;
+   rc DEF-RESUMES? IF DEF-RESUMED WRAP-CLEAR THEN ;
 
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
@@ -2240,10 +2244,12 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    [: SRC-DOES-BODY ;] catch {: rc:n :}
    -1 TORDER-DEPTH +!
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
+   rc 0 <> IF rc SRC-DOES-THREW THEN
    pu0 took PUBLISH-EXIT {: prc:n :}
    DOES-EFF-CLEAR
-   rc 0 <> IF rc SRC-DOES-THREW  prc 0 <> IF prc throw THEN  EXIT THEN
+   rc 0 <> rc DEF-RESUMES? 0= and IF rc throw THEN
    prc 0 <> IF prc throw THEN
+   rc 0 <> IF 0 EXIT THEN
    SRC-DOES-VERDICT @ {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
    v na nu DOES-REPORT ;
@@ -2311,7 +2317,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    WRITE-WINDOW-CK
    0 [: drop a u runs TOP-ANSWER ;] catch {: v rc:n :}
    rc 0= IF v EXIT THEN
-   rc DEF-REJECTED  0 ;
+   rc DEF-RESUMES? 0= IF rc throw THEN  DEF-RESUMED  0 ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
 \ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.
