@@ -15,6 +15,11 @@ name into the working-copy commit.
   and browser-host tests; `db/` — the private PostgreSQL cluster;
   `policy/` and `fixtures/` — subjects other tests load.
 - Non-Habu files are device peers (`*.py`, `wasm/*.mjs`, `browser/*.mjs`).
+- On Linux with snap Chromium, the `google-chrome` a `-- --chrome` check finds
+  on PATH must be a script that execs the snap's own binary
+  (`/snap/chromium/current/usr/lib/chromium-browser/chrome`), not
+  `/snap/bin/chromium`: the snap's confinement gives Chrome a private `/tmp`,
+  so a peer never finds the profile's `DevToolsActivePort`.
 
 ## Writing tests
 

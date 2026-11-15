@@ -148,6 +148,9 @@ try {
   const typed = async (words, want) => { await submit(words); await shows(want); };
   await call("Page.enable");
   await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/` });
+  // Page.navigate answers once the navigation commits, before the page's
+  // script has defined the globals read below.
+  await until(async () => await evaluate("typeof shown") === "object");
 
   const notes = async () => (await evaluate("shown")).filter((t) => t.startsWith("notified "));
   const input = `notified ui/notifications/tool-input ${JSON.stringify(INPUT)}`;
