@@ -37,7 +37,6 @@ private
 
 \ The header's base and the index cell hold an outside mapping's address as an integer.
 CAST: N>ROWS ( n -- ptr n )
-: ROWS>N ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 : DATA-ROWS ( n -- ptr n ) data-base + ;
 
 : LOCK-ADDR ( -- ptr n ) data-base LOCK-CELL + ;
@@ -83,19 +82,6 @@ private
    cap $7FFFFFFFFFFFFFFF base - CELL / > if REFUSE then
    base N>ROWS cap 1 ;
 
-\ A source rewind can retire the DATA backing of a restored vector. Secure
-\ outside storage first, including when the cut crosses its unused capacity.
-: KEEP-STORAGE ( n -- ) {: floor:n :}
-   LIVE-HEADER {: old:ptr cap:n mode:n :}
-   mode 1 = if exit then
-   old data-base - {: off:n :}
-   off floor <= if cap floor off - CELL / <= if exit then then
-   cap cells map-anon 0 <> if
-      drop s" address-cells: storage allocation failed" 96 die then {: fresh:ptr :}
-   cap 0 ?do old i cells + @ fresh i cells + ! loop
-   fresh ROWS>N HEADER BASE-FIELD + !
-   1 HEADER MODE-FIELD + ! ;
-
 public
 
 : LIVE-SPAN ( -- ptr n n )
@@ -108,6 +94,8 @@ public
 
 private
 
+\ Mode-0 rows live only in the boot area, below every DP a rewind returns to,
+\ so a rewind keeps them in place.
 : KEEP-ROWS ( n -- ) {: floor:n :}
    LIVE-SPAN {: base:ptr count:n :}
    0 count 0 ?do
@@ -119,7 +107,7 @@ private
    HEADER ! ;
 
 : KEEP-LOCKED ( n -- )
-   INDEX-ADDR INDEX-RELEASE dup KEEP-STORAGE KEEP-ROWS ;
+   INDEX-ADDR INDEX-RELEASE KEEP-ROWS ;
 
 \ allot and protected memory sinks can throw through an active evaluator.
 \ Cleanup must release the mutex before such a caller resumes after catch.

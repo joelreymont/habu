@@ -94,16 +94,10 @@ variable LPLACE        \ the place writer each die site calls after its class he
 \ emitter's half is its own package.
 package RELOC-EMIT
 public
-variable LXTMSG     \ checked growth could not secure storage
-: XTMSG$ ( -- ptr u8 n )   S\" hb: address-cell storage allocation failed\n" ;
-: XTMSG-LEN ( -- n )   XTMSG$ nip ;
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
-
-: EMIT-FULL-MESSAGE ( -- )
-   LXTMSG LABEL@ LBL, XTMSG$ BYTES, ;
 
 ;package
 
@@ -347,7 +341,6 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBGROWCLASS LABEL@ LBL, BGROW-CLASS$ BYTES,
    LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the newline
    LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
-   RELOC-EMIT:EMIT-FULL-MESSAGE
    LPLACEEND LABEL@ LBL, PLACEEND$ BYTES, ;
 
 : C-TARGET-UNKNOWN ( -- )
@@ -1759,7 +1752,7 @@ public
 
 \ x12 = absolute DP cut. Preserve x0..x17 for both recovery callers.
 : EMIT-ROLLBACK ( -- )
-   LBL LBL {: addrfull:label no-owner:label :}
+   LBL {: no-owner:label :}
    LROLLBACK LABEL@ LBL,
    \ Registration order is not address order: a late xt! can declare an
    \ older cell. Keep every row below the cut, preserving its relative order.
@@ -1774,34 +1767,8 @@ public
    12 SP 96 LDR,
    MARK-HEADER MARK-LOCK MARK-ROWS
    12 12 16 SUB,                                  \ cut as DATA offset
-   13 4 0 LDR, 10 4 ADDRESS-CELLS:CAP-FIELD LDR,
-   LBL LBL LBL LBL LBL LBL LBL
-   {: acopy:label acloop:label acdone:label afilter:label
-      arloop:label arnext:label ardone:label :}
-   11 afilter CBNZ,                               \ mapped backing survives DP rewind
-   6 5 16 SUB, 6 12 CMP, C-HI acopy BCOND,
-   7 12 6 SUB, 7 7 3 LSRI, 10 7 CMP, C-LS afilter BCOND,
-acopy LBL,
-   \ A snapshot/PERSIST may have placed the row backing in the abandoned
-   \ DATA suffix. Move that existing backing outside DATA before rewinding.
-   5 SP 144 STR, 10 SP 152 STR, 12 SP 160 STR, 13 SP 168 STR,
-   0 0 MOVZ, 1 10 3 LSLI, 2 3 MOVZ,
-   3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
-   NR-MMAP SYS, C-CS addrfull BCOND, 0 addrfull CBZ,
-   17 0 0 ADDI,
-   MARK-HEADER
-   5 SP 144 LDR, 10 SP 152 LDR, 12 SP 160 LDR, 13 SP 168 LDR,
-   3 0 MOVZ,
-acloop LBL,
-   3 13 CMP, C-CS acdone BCOND,
-   6 3 3 LSLI, 7 5 6 ADD, 7 7 0 LDR,
-   6 17 6 ADD, 7 6 0 STR,
-   3 3 1 ADDI, acloop B,
-acdone LBL,
-   17 4 ADDRESS-CELLS:BASE-FIELD STR,
-   6 1 MOVZ, 6 4 ADDRESS-CELLS:MODE-FIELD STR,
-   5 17 0 ADDI,
-afilter LBL,
+   13 4 0 LDR,
+   LBL LBL LBL {: arloop:label arnext:label ardone:label :}
    3 0 MOVZ, 10 0 MOVZ,
    6 SNAP-RELOC:XTCELL-OFF-MASK LIT64,
 arloop LBL,
@@ -1815,11 +1782,7 @@ arnext LBL,
 ardone LBL,
    10 4 0 STR,
    MARK-UNLOCK
-   MARK-RESTORE
-   addrfull LBL,
-   1 LXTMSG LABEL@ ADR, 0 2 MOVZ,
-   2 XTMSG-LEN MOVZ, NR-WRITE SYS,
-   0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
+   MARK-RESTORE ;
 
 \ (MARK) spans [LMARK, end) as one sealed record: xt!'s direct BL lands on its entry.
 : EMIT-MARK ( -- )
@@ -2521,7 +2484,6 @@ package LABELS
    LBL LDIAGU !
    LBL LBGROWFAIL !  LBL LBGROWCLASS !  LBL LBGROWMSG !  LBL LBGROWUNIT !
    LBL LCOMPILEDIE !  LBL LPLACE !
-   LBL RELOC-EMIT:LXTMSG !
    LBL LPLACEEND !  ;
 
 : PROF ( -- )

@@ -63,6 +63,8 @@ public
 24 constant A-ADDR
 \ A quotation input whose input and output rows are independent: [ R -- S ].
 25 constant A-QUOT-ANY
+\ Package C2-MEM's stow-layout, taken whole.
+26 constant A-STOW-LAYOUT
 
 private
 
@@ -165,6 +167,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
 : PE-C2-INVOKE   A-C2-INVOKE CODE, ;
+: PE-STOW-LAYOUT A-STOW-LAYOUT CODE, ;
 : PE-QANY        A-QUOT-ANY CODE, ;
 
 : ROW-OPEN ( n -- ) {: kind:n :}
@@ -346,21 +349,19 @@ private
 \ the gate runs on it.
 EPRIM: finally PE-FINALLY EPRIM; REACH run
 2 EMIN-IN!                           \ the body xt and the cleanup xt
-EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
+\ The C2 runtime's scoped invocation is package C2-MEM's.
+EPPRIM: C2-MEM c2-invoke PE-C2-INVOKE ECLOSE-PRIVATE
 3 EMIN-IN!                           \ body, cleanup, and result-code finisher
-ETRUSTED-ONLY!                       \ the C2 runtime owns the exceptional row
-\ The trusted runtime passes the frame pointer. The authenticated call site's
-\ private width descriptors are consumed by this narrow machine transfer.
-EPRIM: c2-init-stow
+\ The C2 runtime passes the stow-layout, then the frame pointer; this narrow
+\ machine transfer takes the layout whole.
+EPPRIM: C2-MEM c2-init-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-C PE-IN PE-PTR-N PE-IN
-   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: c2-records-stow
+   PE-STOW-LAYOUT PE-IN PE-PTR-N PE-IN
+   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT ECLOSE-PRIVATE
+EPPRIM: C2-MEM c2-records-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-C PE-IN PE-PTR-N PE-IN
-   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
-ETRUSTED-ONLY!
+   PE-STOW-LAYOUT PE-IN PE-PTR-N PE-IN
+   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT ECLOSE-PRIVATE
 
 EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
@@ -606,8 +607,8 @@ EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH dict
-ETRUSTED-ONLY!                       \ native defining-word runtime patch
+\ The native defining-word runtime patch is package NDICT's.
+EPPRIM: NDICT does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE REACH dict
 \ `does-record ( entry len -- )` records the pending definition's `;does`
 \ clause, writes its name at CP, zero-padded to a code slot, and sets CLAUSE-CELL.
 EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE

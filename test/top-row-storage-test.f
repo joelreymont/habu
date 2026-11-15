@@ -344,13 +344,13 @@ variable ERR-U
    S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM ;
 
-\ A child: REJECTION:FILE! has no inverse; the label stays on this test file for
+\ A child: REJECTION:LABEL! has no inverse; the label stays on this test file for
 \ every later case. A step in an evaluated buffer is placed at the word in this
 \ file that ran it, so its rejection names the label, with the step in an
 \ evaluated note.
 : CASE-LABEL ( -- )
    s" a tool's file label names an evaluated step's rejection at the word that ran it" T-LABEL
-   S\" s\" /subject/label.f\" REJECTION:FILE! true REJECTION:JSON ! here TS-V !"
+   S\" s\" /subject/label.f\" REJECTION:LABEL! true REJECTION:JSON ! here TS-V !"
    CHECK-RC EXITS
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"evaluated\":{\"source_line\":\"s\\\" /subject/label.f" ERR-HAS?

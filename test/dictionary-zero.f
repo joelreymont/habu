@@ -11,9 +11,7 @@ package DICTIONARY-ZERO-TEST
 using PTY-HARNESS
 
 \ Each path raises the release high-water (src/habu/layout.f DPHW-CELL) and
-\ allot zeroes the reused space below it; fresh DATA pages are zero. A release
-\ that zeroed what it gave back could not finish
-\ test/address-cell-index-recovery.f's allot of almost all of DATA.
+\ allot zeroes the reused space below it; fresh DATA pages are zero.
 : ZERO3? ( ptr n -- bool )
    {: p:ptr :}
    p @ 0=  p cell+ @ 0= and  p 2 cells + @ 0= and ;

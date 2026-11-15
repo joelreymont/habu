@@ -256,12 +256,12 @@ CAST: >NODE-CELL ( ptr u8 -- ptr ptr n )
 
 \ c2-init-stow is the narrow machine transfer: it validates the byte view and
 \ descriptors, arms the clear-only frame, then moves the fixed cell bundle.
-\ INIT-RUN's c2-invoke body catches a refusal and retires the pending frame.
-TRUSTED: INIT-STOW ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
+\ INIT-RUN's c2-invoke body catches a rejection and retires the pending frame.
+: INIT-STOW ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
    HEAD-FRAME c2-init-stow
    TASK:DEFER-LEAVE ;
 
-TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
+: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
    HEAD-FRAME c2-records-stow
    TASK:DEFER-LEAVE ;
 
@@ -287,17 +287,17 @@ TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
 : FINISH ( n -- )
    HEAD-CELL @ 0= if TASK:HALT-UNWIND else drop then ;
 
-TRUSTED: INIT-RUN ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
+: INIT-RUN ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-OPEN
    [: INIT-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;
 
-TRUSTED: RECORDS-RUN ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
+: RECORDS-RUN ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-OPEN
    [: RECORDS-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;
 
-TRUSTED: INVOKE ( R [ R -- S | U -- U ] | U -- S | U )
+: INVOKE ( R [ R -- S | U -- U ] | U -- S | U )
    [: RUN-BODY ;] [: CLOSE ;] [: FINISH ;] c2-invoke ;
 
 : RUN ( R [ R -- S | U -- U ] | U -- S | U )

@@ -199,12 +199,14 @@ public
 variable ORIGIN-LINE  variable ORIGIN-COLUMN  variable ORIGIN-BYTE
 : FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
 private
-\ A tool's label names one file, the one the load was reading when the tool set
-\ it; a label set with no file open names the steps that have no file. LABEL-BUF
-\ holds that file's path, empty for none; a top-level step in it names the
-\ label, and one in any other file names its own path.
+\ LABEL! labels one file, the one the load was reading when it ran; a label set
+\ with no file open names the steps that have no file. LABEL-BUF holds that
+\ file's path, empty for none; a top-level step in it names the label, and one
+\ in any other file names its own path.
 \ The boot's NO-FILE$ is no label.
 variable LABELED
+\ Whether a tool named a file by FILE!.
+variable NAMED
 create LABEL-BUF PATH-CAP allot   variable LABEL-U
 : COPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -548,16 +550,28 @@ private
    THEN
    INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
    0 0= 0= ;
+\ Whether a tool named a file while the file being read is not labelled: that
+\ file is then the tool's own.
+: TOOL-OWN? ( -- bool )
+   NAMED @ 0= IF 0 0= 0= EXIT THEN
+   PATH$ LABELS? 0= ;
 \ Places the token t tu, else the reader's token when it is on one or the
 \ running token when not, naming t tu in a `word` note, else the file alone.
+\ While the file being read is the tool's own, that token places only in an
+\ armed source. With no place, the record names FILE$ when the file being read
+\ is labelled or a tool named a file, else the file being read, else NO-FILE$.
 : PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
    0 PLACED !  0 EVALUATED !  0 WORD-U !  t SHOWN-A !  tu SHOWN-U !
    t tu PLACE-IN IF EXIT THEN
    t WORD-A !  tu WORD-U !
    READER-U @ 0 > IF READER-A @ READER-U @ ELSE RUNNING @ data-base TKL-CELL + @ THEN
    {: r:ptr ru:n :}
-   r ru PLACE-IN IF r SHOWN-A !  ru SHOWN-U !  EXIT THEN
-   LOAD-FILE$ {: fa:ptr fu:n :}
+   TOOL-OWN? IF
+      r >SOURCE IF r ru SOURCE-PLACE  r SHOWN-A !  ru SHOWN-U !  EXIT THEN drop
+   ELSE
+      r ru PLACE-IN IF r SHOWN-A !  ru SHOWN-U !  EXIT THEN
+   THEN
+   NAMED @ 0= 0= PATH$ LABELS? or IF FILE$ ELSE PATH$ THEN {: fa:ptr fu:n :}
    fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
 
 : PLACE-JSON ( ptr u8 n -- ) {: t:ptr tu:n :}
@@ -827,7 +841,10 @@ private
 NO-FILE$ FILE-COPY
 public
 : FILE! ( ptr u8 n -- )
-   FILE-COPY
+   FILE-COPY  -1 NAMED ! ;
+\ Places in the bytes of the file being read name this file.
+: LABEL! ( ptr u8 n -- )
+   FILE!
    PATH$ LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
 
@@ -844,19 +861,19 @@ variable LABELS-U   0 LABELS-U !
    a LABELS-P @ LABELS-U @ + u COPY
    LABELS-U @ u + LABELS-U ! ;
 
-\ The label's bytes are saved; where they start, their lengths, LABELED and the
-\ origin stay on the stack for LABEL-RESTORE.
-: LABEL-SAVE ( -- n n n n n n n )
+\ The label's bytes are saved; where they start, their lengths, LABELED, NAMED
+\ and the origin stay on the stack for LABEL-RESTORE.
+: LABEL-SAVE ( -- n n n n n n n n )
    LABELS-U @  FILE$ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
-   FILE-U @ LABEL-U @ LABELED @
+   FILE-U @ LABEL-U @ LABELED @ NAMED @
    ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @ ;
 
-: LABEL-RESTORE ( n n n n n n n -- )
-   {: at:n fu:n lu:n on:n line:n col:n byte:n :}
+: LABEL-RESTORE ( n n n n n n n n -- )
+   {: at:n fu:n lu:n on:n nm:n line:n col:n byte:n :}
    LABELS-P @ at + {: k:ptr :}
    k FILE-BUF fu COPY  fu FILE-U !
    k fu + LABEL-BUF lu COPY  lu LABEL-U !
-   on LABELED !  line col byte ORIGIN!  at LABELS-U ! ;
+   on LABELED !  nm NAMED !  line col byte ORIGIN!  at LABELS-U ! ;
 public
 
 \ Runs q, then puts back the label and origin it found, on a throw too.
