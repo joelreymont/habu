@@ -777,12 +777,13 @@ variable DSUGE  variable DSUGA
    THEN ;
 
 
-: INFERRED-EFFECT ( -- )   \ the body's effect so far: the declared inputs to the current rows
-   SGSEEN @ IF SGIN @ ELSE BROW @ THEN
+: INFERRED-FROM ( n -- )   \ the body's effect so far: input row n to the current rows
    DCUR @
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
    RCUR @
    SGHASR @ JEFFECT-TEXT ;
+: INFERRED-EFFECT ( -- )   \ from the declared inputs
+   SGSEEN @ IF SGIN @ ELSE BROW @ THEN INFERRED-FROM ;
 
 
 \ The escape rejection (MD-TAIL-ESCAPE): the inferred effect, then the declared
@@ -1668,6 +1669,12 @@ CHECKER-REG:}SCRATCH
    THEN
    ;AT-PIN ;
 
+\ The inferred effect as the body's declaration writes it: a does> clause
+\ declares its created words' effect, without the data-field cell the CREATE
+\ stub pushes on its inputs.
+: DECLARABLE ( -- )
+   CLAUSE-WALK @ 0= IF INFERRED EXIT THEN
+   SGIN @ INFERRED-FROM TRIM-SPACE ;
 : EFFECT-NOTES? ( n -- bool ) {: k:n :}
    RECEFF-ON? TOP-STEP @ 0= and 0= IF RES-FALSE EXIT THEN
    k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or  REFUSAL-UNCHECKABLE? or
@@ -1676,7 +1683,7 @@ CHECKER-REG:}SCRATCH
    s" declared" REJECTION:NOTE  SGA @ SGU @ SIG-BARE EMIT-STR
    s" inferred" REJECTION:NOTE
    MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM EMIT-STR EXIT THEN
-   INFERRED ;
+   DECLARABLE ;
 
 \ A rejected read's rows stand at its pin, before the read bound them.
 : RS-NOTES ( -- )
@@ -1699,7 +1706,7 @@ CHECKER-REG:}SCRATCH
    s"  after " EMIT-STR  TOK-SPAN ;
 : END-HELP ( -- )
    s" leave " EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
-   s" , or declare ( " EMIT-STR  INFERRED  s"  )" EMIT-STR ;
+   s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR ;
 : TAKES-HELP ( -- )
    ['] ROW-VALUES ROWS-DEPTHS
    DSUGA @ DSUGE @ < IF

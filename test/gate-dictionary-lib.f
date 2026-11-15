@@ -282,6 +282,8 @@ variable CANDIDATE-VERDICT
    70 s" error[E-MISMATCH]: the `does>` clause of BADARR ends with n on the stack; its signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
    s" = evaluated: TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" s" hb bad trusted DOES> diagnostic evaluated note" GE-EXPECT-ERR-HAS
    s" the stack holds n after this" s" hb bad trusted DOES> diagnostic label" GE-EXPECT-ERR-HAS
+   s" = help: leave ptr a after `drop`, or declare ( n -- n )" s" hb bad trusted DOES> diagnostic help" GE-EXPECT-ERR-HAS
+   s" = inferred: n -- n" s" hb bad trusted DOES> diagnostic inferred note" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
