@@ -627,16 +627,30 @@ public
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
 
+\ Writes the record of word w given a path len bytes long, past the cap bytes
+\ a path may have, through the start of its help: the caller writes the help
+\ and ends the record. len is 0 for an empty path and -1 when only the path it
+\ resolves to is longer.
+: PATH-RANGE ( ptr u8 n n n -- ) {: w:ptr wu:n len:n cap:n :}
+   s" E-PATH-RANGE" OPEN
+   96 EMIT1  w wu EMIT-STR
+   len 0= IF s" ` got an empty path" EMIT-STR  HELP EXIT THEN
+   len 0 < IF
+      s" ` got a path that resolves to more than the " EMIT-STR
+   ELSE
+      s" ` got a path " EMIT-STR  len EMIT-U
+      s"  bytes long, more than the " EMIT-STR
+   THEN
+   cap EMIT-U  s"  bytes a path may have" EMIT-STR
+   HELP ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.
 : PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
    u PATH-CAP > IF
-      s" E-PATH-RANGE" OPEN
-      s" `REJECTION:FILE!` got a path " EMIT-STR  u EMIT-U
-      s"  bytes long, more than the " EMIT-STR  PATH-CAP EMIT-U
-      s"  bytes a path may have" EMIT-STR
-      HELP  s" name the file by a path of at most " EMIT-STR
+      s" REJECTION:FILE!" u PATH-CAP PATH-RANGE
+      s" name the file by a path of at most " EMIT-STR
       PATH-CAP EMIT-U  s"  bytes" EMIT-STR
       CHECKER-REJECT-RC STOP
    THEN

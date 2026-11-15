@@ -663,16 +663,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ Word w got a path that, joined to the current root, is len bytes, more than
 \ PATH-CAP; len is -1 when only its realpath is longer.
 : ROOT-LONG ( ptr u8 n n -- ) {: w:ptr wu:n len:n :}
-   s" E-PATH-RANGE" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-   len 0 < if
-      s" ` got a path that resolves to more than the " REJECTION:EMIT-STR
-   else
-      s" ` got a path " REJECTION:EMIT-STR  len REJECTION:EMIT-U
-      s"  bytes long, more than the " REJECTION:EMIT-STR
-   then
-   INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes a path may have" REJECTION:EMIT-STR
-   REJECTION:HELP
+   w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;

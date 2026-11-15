@@ -207,15 +207,10 @@ public
 \ naming the file as it was resolved.
 7201 constant E-SOURCE-READ
 
-\ A definer with no signature after its name, or one never closed, stops the
-\ scan with this at the definer, or at `does>` for a clause's (SIGNATURE-AT).
-7157 constant E-MISSING-SIGNATURE
-
-\ A top-level `host` or `target` while a word of that name is in scope.
-7135 constant E-SECTION-WORD
-
-\ A DEFLINEAR or VALUE-RECORD the checker refuses stops the scan with one of
-\ these where the refusal stands; a load's registration dies with it instead.
+\ The scan throws none of these: it records each rejection and stops with
+\ CHECKER-REJECT-RC. Readers of a stop's code still name them.
+7157 constant E-MISSING-SIGNATURE  \ a definer or `does>` with no closed signature
+7135 constant E-SECTION-WORD       \ `host` or `target`, with a word of that name in scope
 7200 constant E-BAD-NOMINAL-TYPE   \ a DEFLINEAR or VALUE-RECORD name no type may take
 7198 constant E-BAD-RECORD-FIELD   \ a VALUE-RECORD field, or a record with none
 
@@ -441,6 +436,29 @@ variable FLAG-N
 \ it read last.
 : STATEMENT-STOP ( n -- )
    TOP-CUR-A @ swap STOP-AT ;
+
+\ Ends the record a site wrote and stops the scan. An index scan drops the
+\ record: its caller reads only the thrown status.
+: REJECT-STOP ( -- )
+   INDEX-ON @ 0= IF CHECKER-REJECT-RC REJECTION:STOP THEN
+   1 REJECTION:QUIET +!
+   [: CHECKER-REJECT-RC REJECTION:STOP ;] catch
+   -1 REJECTION:QUIET +!
+   throw ;
+
+\ Places the empty token at the statement the scan is in, labelled l lu, when
+\ a source the record knows holds it.
+: STATEMENT-AT ( ptr u8 n -- ) {: l:ptr lu:n :}
+   TOP-CUR-A @ REJECTION:PLACES? 0= IF EXIT THEN
+   TOP-CUR-A @ 0 REJECTION:AT  l lu REJECTION:EMIT-STR ;
+
+\ The source token that starts at byte at: its bytes up to the next blank.
+: TOKEN-AT ( n -- ptr u8 n ) {: at:n :}
+   at BEGIN
+      dup SOURCE-U @ < IF SOURCE@ over + c@ 32 > ELSE false THEN
+   WHILE 1 + REPEAT
+   {: end:n :}
+   SOURCE@ at +  end at - ;
 
 : SC-LEAD? ( n -- bool )
    dup $73 = over $53 = or over $63 = or swap $43 = or ;
@@ -669,18 +687,25 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    TOKEN-A @ TOKEN-U @ a REJECTION:CLOSER!  a u ;
 
 \ The signature ahead of the scan, read as the engine reads a definition head's:
-\ from its `(` through its `)`, and whether one opens there. The scan passes it.
-\ One that never closes stops the scan at the given opener with the given code.
-: SCAN-SIG ( ptr u8 n -- ptr u8 n bool )
-   {: opener:ptr unclosed:n :}
+\ from its `(` through its `)`, whether one opens there and whether it closes.
+\ The scan passes a closed one.
+: SIG-GROUP ( -- ptr u8 n bool bool )
    SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
    {: at:ptr left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
-   open left = IF at 0 0 0= 0= EXIT THEN
-   close 0= IF opener unclosed STOP-AT THEN
+   open left = IF at 0 false false EXIT THEN
+   close 0= IF at 0 true false EXIT THEN
    SCAN-I @ close + SCAN-I !
-   at open +  close open -  0 0= ;
+   at open +  close open -  true true ;
+
+\ SIG-GROUP, and whether one opens; one that never closes stops the scan at the
+\ given opener with the given code.
+: SCAN-SIG ( ptr u8 n -- ptr u8 n bool )
+   {: opener:ptr unclosed:n :}
+   SIG-GROUP {: open:bool closed:bool :}
+   open closed 0= and IF opener unclosed STOP-AT THEN
+   open ;
 
 : MAYBE-SIGNATURE ( -- ptr u8 n )
    TOP-CUR-A @ E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
@@ -688,14 +713,23 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    {: sig:ptr sigu:n :}
    sig 1 +  sigu 2 - ;
 
-: SIGNATURE-AT ( ptr u8 -- ptr u8 n )
-   {: opener:ptr :}
-   opener E-MISSING-SIGNATURE SCAN-SIG 0= IF opener E-MISSING-SIGNATURE STOP-AT THEN
-   {: sig:ptr sigu:n :}
+\ The record of t tu, a definition's name or `does>`, with no closed signature
+\ after it; the stop stands at the opener.
+: SIGNATURE-STOP ( ptr u8 ptr u8 n -- ) {: opener:ptr t:ptr tu:n :}
+   opener SOURCE@ - TOKEN-BYTE !
+   t tu INTERPRETER:SIGNATURE-REJECT  REJECT-STOP ;
+
+\ The signature that must follow t tu; with none the scan stops at the opener.
+: SIGNATURE-AT ( ptr u8 ptr u8 n -- ptr u8 n )
+   {: opener:ptr t:ptr tu:n :}
+   SIG-GROUP nip {: sig:ptr sigu:n closed:bool :}
+   closed 0= IF opener t tu SIGNATURE-STOP THEN
    sig 1 +  sigu 2 - ;
 
-: REQUIRE-SIGNATURE ( -- ptr u8 n )
-   TOP-CUR-A @ SIGNATURE-AT ;
+\ The signature that must follow the definition's name a u.
+: REQUIRE-SIGNATURE ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   TOP-CUR-A @ a u SIGNATURE-AT ;
 
 : STRING-REST ( ptr u8 n -- ptr u8 n ) {: opener:ptr openeru:n :}
    SCAN-I @ {: start:n :}
@@ -1166,12 +1200,24 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
 
+\ The record of a declaration-owner record with no operation for a step the
+\ scan takes, at the statement it is in.
+: OWNER-STOP ( -- )
+   s" E-COMP-OWNER" REJECTION:OPEN
+   s" the checker that owns the source carries no operation for this step"
+   REJECTION:EMIT-STR
+   s" needed here" STATEMENT-AT
+   REJECTION:HELP
+   s" publish a declaration-owner record that carries every operation"
+   REJECTION:EMIT-STR
+   REJECT-STOP ;
+
 \ Replay-only checker queries use the live declaration owner. The verifier is
 \ source loaded, so the sealed image need not publish these checker names.
 : OWNER-XT ( n -- n ) {: off:n :}
    NCOMP-DISPATCH:DECL-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF E-COMP-OWNER throw THEN ;
+   off + CELL-VIEW @ dup 0= IF OWNER-STOP THEN ;
 
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.
@@ -1718,7 +1764,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ the deferred text. The definition reports one deferral: its clause's only
 \ when the definer's body was not deferred.
 : VERIFY-DOES ( -- bool )
-   TOKEN-A @ {: opener:ptr :}
+   TOKEN-A @ TOKEN-U @ {: opener:ptr openeru:n :}
    false DOES-ACCEPTED !
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
@@ -1738,7 +1784,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    ELSE
       VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
    THEN
-   opener SIGNATURE-AT {: sig:ptr sigu:n :}
+   opener opener openeru SIGNATURE-AT {: sig:ptr sigu:n :}
    BODY-RESET
    LOCALS-RESET
    BEGIN
@@ -2178,7 +2224,7 @@ DUPLICATE-INIT
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
@@ -2228,7 +2274,7 @@ variable TRUSTED-DOES
             TOKEN-A @ TOKEN-U @ 0 DEFER-AT
             true TICK-REMAINDER ! EXIT
          THEN
-         TOKEN-A @ SIGNATURE-AT
+         TOKEN-A @ TOKEN-A @ TOKEN-U @ SIGNATURE-AT
          kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
          -1 TRUSTED-DOES !
       ELSE
@@ -2247,9 +2293,9 @@ variable TRUSTED-DOES
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
-      REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
+      name nameu REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2268,8 +2314,8 @@ variable TRUSTED-DOES
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu at REFUSE-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
+   name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
@@ -2282,7 +2328,7 @@ variable TRUSTED-DOES
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
    DISARM
@@ -2303,7 +2349,9 @@ variable TRUSTED-DOES
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
 : SEAL-ROW ( -- )
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF
+      TOP-CUR-A @ TOP-CUR-U @ INTERPRETER:PKG-CONTEXT-REJECT  REJECT-STOP
+   THEN
    CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
 
 \ The engine's order: the part guard at `package`, then the name and its path,
@@ -2377,10 +2425,35 @@ DYNAMIC-BUFFER NOM-TAIL u8
    DISARM
    at nameu CAST-DEFINED ;
 
+\ Ends the record of declaration token t tu the scan refused, message m mu,
+\ with the reason it kept (REASON!) as a note and help h hu; then stops.
+: DECLARATION-STOP ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: t:ptr tu:n m:ptr mu:n h:ptr hu:n :}
+   m mu REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR
+   t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   t tu REJECTION:AT  m mu REJECTION:EMIT-STR
+   s" reason" REJECTION:NOTE  REASON-A @ REASON-U @ REJECTION:EMIT-STR
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECT-STOP ;
+
+\ A DEFLINEAR or VALUE-RECORD name t tu no type may take.
+: NOMINAL-STOP ( ptr u8 n -- )
+   s" E-BAD-NOMINAL-TYPE" REJECTION:OPEN
+   s" bad nominal type"
+   s" choose a unique non-reserved nominal type name" DECLARATION-STOP ;
+
+\ A VALUE-RECORD field t tu the checker refuses, or the END-VALUE-RECORD of a
+\ record with none.
+: RECORD-FIELD-STOP ( ptr u8 n -- )
+   s" E-BAD-RECORD-FIELD" REJECTION:OPEN
+   s" bad record field"
+   s" declare at least one field, each with a unique name and a known type"
+   DECLARATION-STOP ;
+
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu TYPE-RESERVED? IF s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw THEN
+   name nameu TYPE-RESERVED? IF s" reserved name" REASON!  name nameu NOMINAL-STOP THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -2762,14 +2835,14 @@ variable STG-TYPE-U
 : VALUE-RECORD-ADD ( ptr u8 n n -- )
    {: name:ptr nameu:n byte:n :}
    name nameu TYPE-RESERVED? IF
-      byte TOKEN-BYTE !  s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw
+      byte TOKEN-BYTE !  s" reserved name" REASON!  name nameu NOMINAL-STOP
    THEN
    name nameu BODY$ CHECKER-TRY-RECORD
    {: at:n msg:ptr msgu:n :}
    msgu 0= IF EXIT THEN
    at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
    msg msgu REASON!
-   E-BAD-RECORD-FIELD throw ;
+   TOKEN-BYTE @ TOKEN-AT RECORD-FIELD-STOP ;
 
 \ A record the input ends inside is refused in the declaration packet, at its
 \ name, as an unclosed SUMTYPE is.
@@ -3376,7 +3449,7 @@ variable FILE-USE
    NAME-TOKEN
    {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   REQUIRE-SIGNATURE
+   name nameu REQUIRE-SIGNATURE
    {: sig:ptr sigu:n :}
    name nameu FIND-SYM
    {: sym:n :}
@@ -3466,8 +3539,10 @@ variable FFI-LIT-B                          \ and the newer
    FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
    a u FFI-APPEND ;
 
-: FFI-SIGNATURE ( -- ptr u8 n )
-   NEXT-RAW s" (" CORE-STR= 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
+\ The declaration group that must follow the declared word's name a u.
+: FFI-SIGNATURE ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   NEXT-RAW s" (" CORE-STR= 0= IF TOP-CUR-A @ a u SIGNATURE-STOP THEN
    1 FFI-SIG-RESERVE                          \ an empty group answers a string in the row
    0 FFI-SIG-U !
    0 FFI-OUT !
@@ -3476,7 +3551,7 @@ variable FFI-LIT-B                          \ and the newer
    0 FFI-LIT-N !
    BEGIN
       NEXT-RAW
-      dup 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
+      dup 0= IF TOP-CUR-A @ a u SIGNATURE-STOP THEN
       2dup s" )" CORE-STR= IF 2drop 0 FFI-SIG FFI-SIG-U @ EXIT THEN
       FFI-TOKEN
    AGAIN ;
@@ -3487,7 +3562,7 @@ variable FFI-LIT-B                          \ and the newer
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
-   FFI-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
    name nameu at REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
    name nameu at nameu ARM
@@ -3966,7 +4041,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    \ A refused name goes on as an ordinary word, refused as one.
    ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
    section and IF false EXIT THEN
-   section sym 0<> and IF E-SECTION-WORD throw THEN
+   section sym 0<> and IF a u INTERPRETER:SECTION-REJECT  REJECT-STOP THEN
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
@@ -4344,14 +4419,38 @@ public
 : DUPLICATE ( -- n n )
    DUPLICATE-AT @ DUPLICATE-U @ ;
 
+private
+
+\ The record of entry word w called while a composition is open, at the
+\ statement the open one is in.
+: COMPOSE-NESTED ( ptr u8 n -- ) {: w:ptr wu:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   s" ` ran while a source composition is open" REJECTION:EMIT-STR
+   s" the open composition is here" STATEMENT-AT
+   REJECTION:HELP
+   s" compose one source at a time: let the open composition end first"
+   REJECTION:EMIT-STR
+   REJECT-STOP ;
+
+\ The record of a path or label u bytes long, which a composition cannot hold.
+: COMPOSE-PATH-STOP ( n -- ) {: u:n :}
+   s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" u PATH-CAP REJECTION:PATH-RANGE
+   s" pass a path of 1 to " REJECTION:EMIT-STR  PATH-CAP REJECTION:EMIT-U
+   s"  bytes" REJECTION:EMIT-STR
+   REJECT-STOP ;
+
+public
+
 \ Verify one supplied source through loader composition at each top-level
 \ loader token under the caller's active SOURCE-ROOT owner. The registry suffix
 \ and the caller's checker scope survive success and throw; the supplied bytes
 \ remain authoritative for this path.
 : SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
-   COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
-   pathu 0= pathu PATH-CAP > or labelu PATH-CAP > or IF E-PATH-RANGE throw THEN
+   COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" COMPOSE-NESTED THEN
+   pathu 0= pathu PATH-CAP > or IF pathu COMPOSE-PATH-STOP THEN
+   labelu PATH-CAP > IF labelu COMPOSE-PATH-STOP THEN
    path COMPOSE-SUBJ-PATH pathu BYTE-COPY
    pathu COMPOSE-SUBJ-PATH-U !
    label COMPOSE-SUBJ-LABEL labelu BYTE-COPY
@@ -4384,7 +4483,7 @@ public
 \ FAULT-TARGET$ names a file it could not read.
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
-   COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
+   COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
    src QUIET-SRC-A !  srcu QUIET-SRC-U !
    path QUIET-PATH-A !  pathu QUIET-PATH-U !
    0 FAULT-LEN !  0 FAULT-U !
