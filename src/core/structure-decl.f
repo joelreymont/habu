@@ -493,7 +493,7 @@ SD-QUOT-INSTALL
       s" derive init requires a canonical fixed-cell record"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
-: SD-CLOSE ( -- )
+: SD-SEAL ( -- )
    DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
       TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
@@ -507,7 +507,9 @@ SD-QUOT-INSTALL
       s" field type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop
-   FAM @ SD-CELLS @ TFAM-SLOTS!
+   FAM @ SD-CELLS @ TFAM-SLOTS! ;
+: SD-CLOSE ( -- )
+   SD-SEAL
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
@@ -544,6 +546,25 @@ SD-QUOT-INSTALL
 : SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
+\ A newtype over a base: its name, then the base's tokens, which stand for one
+\ field `base`; a token past the base is refused.
+: WRAP-DRIVE ( -- )
+   NEXT 2dup DECL-REJECT:FAMILY!
+   dup 0= IF 2drop s" missing name" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-GATE
+   0 SD-REGISTER
+   0 FIELD-MISS !  0 POINTEE !
+   NEXT RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
+   NEXT nip 0 <> IF
+      s" a newtype takes one base type" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   -1 SEEN-END !
+   SD-SEAL ;
+
+\ The stream has no closer, so a refused one resynchronizes to its end.
+: WRAP-FRONT ( -- ^u8 n ^u8 n [ -- ] )
+   s" newtype" s" " [: SD-RESET WRAP-DRIVE ;] ;
+
 public
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
@@ -555,12 +576,33 @@ public
 : SD-REPLAY ( ^u8 n ^u8 n -- )
    SD-FRONT DECL-FRONT:REPLAY ;
 
+\ Registers NEWTYPE NAME's family over BASE, a type spelling: one field `base`,
+\ the family as wide as it; no word is made. A base not yet declared is
+\ answered as SD-REPLAY-OUTCOME answers one.
+: SD-WRAP-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
+   WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME ;
+\ The same, raising E-UNRESOLVED instead of answering.
+: SD-WRAP ( ^u8 n ^u8 n -- )
+   WRAP-FRONT DECL-FRONT:REPLAY ;
+
 ;package
 
 \ STRUCTURE is a documented global (package-first exception, like the SUMTYPE
 \ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
+
+\ NEWTYPE is a documented global. A base is the type on the name's line; a \
+\ there, or a parametrised name, leaves the one-cell family.
+: NEWTYPE ( -- )
+   parse-name {: na:^ nu:n :}
+   NO nu 0 ?do na i + c@ 60 = or loop
+   nu 0= or IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   STORAGE-LINE-TOKEN {: ta:^ tu:n :}
+   tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   ta STORAGE-UNREAD
+   tu 1 = IF ta c@ 92 = IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
+   na nu STORAGE-PARSE-TYPE STRUCTURE-DECL:SD-WRAP ;
 
 ;using
 ;using

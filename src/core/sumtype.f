@@ -3,8 +3,9 @@
 \ And Enums"). Loaded unchecked in the checker prefix.
 \ Every failure is transactional: the registry marks restore, TDECL-DIAG
 \ (render.f) reports, and the declaration counts as a multi-error reject or
-\ throws its code. NEWTYPE and the replay entries are at the foot of the file;
-\ SUMTYPE loads after the declaration runner, in sumtype-front.f.
+\ throws its code. The replay entries are at the foot of the file; NEWTYPE
+\ (structure-decl.f) and SUMTYPE (sumtype-front.f) load after the declaration
+\ runner.
 
 using SCHEMA-REG
 using TFAM
@@ -1847,9 +1848,6 @@ public
 : TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
    fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
-: TDECL-NEWTYPE ( -- )
-   parse-name 2dup TDECL-DEFFAMILY ;
-
 
 private
 
@@ -1879,10 +1877,6 @@ private
 ;package
 
 using TYPE-DECL
-
-\ --- the global surface, the only names in this file a user program can spell:
-\ global so a declaration registers from top level (test/type-decl-suite.f).
-: NEWTYPE ( -- ) TDECL-NEWTYPE ;
 
 \ The preverify and all-errors replay paths (verify-source.f) reach
 \ CHECKER-DEFFAMILY and CHECKER-NOMINAL-REPLAY; DEFTYPE reaches CHECKER-DEFTYPE.

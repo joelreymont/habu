@@ -436,11 +436,11 @@ s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 0 T=
 package CN-CAST-TEST
 public
 : CN-VRF-VERIFY ( -- )
-   s" package CN-VRF public NEWTYPE vfam ;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
+   s\" package CN-VRF public NEWTYPE vfam\n;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
    VERIFY:SOURCE-BUF ;
 
 : CN-VRF-FAIL ( -- )
-   s" package CN-VRF-ERR public NEWTYPE efam NEWTYPE efam ;package"
+   s\" package CN-VRF-ERR public NEWTYPE efam\nNEWTYPE efam\n;package"
    VERIFY:SOURCE-BUF ;
 
 \ The pre-pass reads public and private as it replays, so a mint certifies in a
@@ -499,7 +499,7 @@ variable ERR-U
 
 \ A cast's bare call on an empty stack is rejected by name before it reads the
 \ cell below the base.
-s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
+s\" NEWTYPE cnmrole\ncast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
 CN-CHILD:ERR$ s" at '>CNMROLE' input underflow" CONTAINS? TTRUE
 
 \ The trailing `;` of the retired spelling ends no definition.

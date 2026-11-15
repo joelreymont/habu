@@ -2384,11 +2384,6 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : SUMTYPE-END? ( ^u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
 
-\ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
-\ the declaration packet (E-BAD-DECLARATION), as on the native path.
-: RECORD-NEWTYPE ( -- )
-   NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
-
 \ A SUMTYPE defines its constructors when it loads; the scan replays its body
 \ through the same front end, which publishes their checked effects, so a later
 \ definition that calls one resolves here as in the load.
@@ -2509,6 +2504,21 @@ variable STG-TYPE-U
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
+
+\ CHECKER-DEFFAMILY reports a missing name or malformed header through the
+\ declaration packet; a base on the name's line replays as NEWTYPE registers it.
+: RECORD-NEWTYPE ( -- )
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
+   0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
+   nameu 0= or IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   SCAN-I @ {: mark:n :}
+   SCAN-LINE-TOKEN {: ta:^ tu:n :}
+   mark SCAN-I !
+   tu 0= IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   tu 1 = IF ta c@ 92 = IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN THEN
+   name nameu at SEALED-NAME
+   name nameu SCAN-STORAGE-TYPE STRUCTURE-DECL:SD-WRAP-OUTCOME
+   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
 \ A refused name, malformed or a duplicate, is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot

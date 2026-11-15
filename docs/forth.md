@@ -431,7 +431,7 @@ serves a one-off call or escapes a collision.
 
 ### Structures And Enums
 
-New declarations use `NEWTYPE` for an opaque nominal cell, `STRUCTURE` for a
+New declarations use `NEWTYPE` for an opaque nominal value, `STRUCTURE` for a
 record with named fields and `ENUM` for alternatives with or without payloads.
 Each registers a whole family at top level and cannot be called inside a checked
 definition. Family headers name their type parameters, such as `box<a>` or
@@ -551,7 +551,9 @@ family argument and a bare tail of a family of arity > 0 are all refused. The
 multi-cell type rationale is `docs/design.md` "Types".
 
 - `NEWTYPE name` registers an opaque nominal cell family, with no
-  closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
+  closer. `NEWTYPE name base`, the base spelled on the name's line, makes the
+  family as wide as the base and a type apart from it (`NEWTYPE path str`).
+  `NEWTYPE name<a,b>` declares two type parameters and takes no base. `SUMTYPE`,
   `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
