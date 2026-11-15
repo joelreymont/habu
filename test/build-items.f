@@ -587,7 +587,8 @@ JSON-ON  UNREAD-JSON 70 T=  JSON-OFF
 S\" \"code\":\"E-UNDEFINED\"" JSON-HAS
 S\" \"message\":\"reads built local 9, which no `{:` group bound before it" JSON-HAS
 REJECTION:BUFFER$ s" l9" CONTAINS? TFALSE
-REJECTION:BUFFER$ GJA-PARSE GJA-RECORD-FORM
+: JSON-FORM ( -- ) REJECTION:BUFFER$ GJA-PARSE GJA-RECORD-FORM ;
+JSON-FORM
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.

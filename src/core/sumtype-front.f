@@ -23,7 +23,9 @@ package TYPE-DECL
 public
 
 : TDECL-SUMTYPE ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    DECL-FRONT:SOURCE-NEXT {: na:ptr nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    s" ;sumtype" TDECL-COLLECT
    s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
@@ -43,7 +45,9 @@ private
 public
 
 : TDECL-PRODUCT ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    DECL-FRONT:SOURCE-NEXT {: na:ptr nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    s" ;product" TDECL-COLLECT
    s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!

@@ -83,7 +83,7 @@ public
 
 private
 
-: INSTALL-RUNNER ( -- ) [: RUN ;] is TDECL-TXN-XT  -1 TDECL-TXN-ARMED ! ;
+: INSTALL-RUNNER ( -- ) [: RUN ;] is TDECL-TXN-XT ;
 INSTALL-RUNNER
 
 ;package

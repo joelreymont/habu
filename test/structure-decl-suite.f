@@ -1197,7 +1197,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE oroll<a> OPAQUE DERIVE init FIELD value a FIELD tail n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `oroll`\n" DECL-DIAG:HAS? TTRUE
 s" oroll" s" derive init requires a canonical fixed-cell record" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: drop `init` from `DERIVE`, or declare it in a package with fields of a fixed" DECL-DIAG:HAS? TTRUE
+s\"   = help: drop `init` from `DERIVE`, or give every field a fixed cell width\n" DECL-DIAG:HAS? TTRUE
 REJ-SAME
 STRUCTURE oroll OPAQUE FIELD z n ;STRUCTURE
 : ORR ( n -- n ) OROLL-MAKE OROLL-UNMAKE ;

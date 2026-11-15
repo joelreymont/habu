@@ -640,33 +640,32 @@ variable RC
    tailu 0 > IF tail tailu SB-APPEND LF+ THEN
    s" prod-generated.f" FIXTURE! ;
 
-\ The token is the generated name, which lies in no source text: no line is
-\ asserted.
+\ The generated name lies in no source text: the record is placed at the
+\ family's name and names the word in its `word` note.
 : GENERATED-AT ( ptr u8 n -- )
-   {: ta:ptr tu:n :}
+   {: wa:ptr wu:n :}
    0 s" code" s" E-BAD-DECLARATION" FIELD=
-   0 s" reason" s" generated declaration already defined" FIELD=
-   0 s" token" ta tu FIELD=
-   0 s" file" FX-PATH$ FIELD= ;
+   0 s" label" s" generated declaration already defined" FIELD=
+   0 s" word" wa wu NOTE= ;
 
 \ The rejected family registers no type for a later use.
 : TEST-GENERATED-NAME ( -- )
    s" a generated name already defined" T-LABEL
    s" " HUE-FIXTURE
    s" " CHECK
-   GJA-LINE# @ 1 T=  s" HUE-RED" GENERATED-AT
+   GJA-LINE# @ 1 T=  s" HUE-RED" GENERATED-AT  0 s" hue" 3 9 44 47 AT
    s" : HUE-USE ( hue -- ) drop ;" HUE-FIXTURE
    s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=  s" HUE-RED" GENERATED-AT
+   GJA-LINE# @ 2 T=  s" HUE-RED" GENERATED-AT  0 s" hue" 3 9 44 47 AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
    1 s" hue" 4 13 112 115 AT
    s" a product's generated name already defined" T-LABEL
    s" " CKDPROD-FIXTURE
    s" " CHECK
-   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT
+   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 9 40 47 AT
    s" : CKDPROD-USE ( ckdprod -- ) drop ;" CKDPROD-FIXTURE
    s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT
+   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 9 40 47 AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
    1 s" ckdprod" 3 17 83 90 AT ;
 

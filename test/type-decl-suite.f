@@ -1415,10 +1415,10 @@ variable BUF-N
 : PAY$ ( -- ptr u8 n )
    0 BUF-N !  P-HEAD$ APPEND  LONG-N NS  P-TAIL$ APPEND  BUF BUF-N @ ;
 : SHORT-CTOR ( -- )
-   TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
+   REJECTION:CAPTURE  true REJECTION:JSON !
    s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
    REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-   false REJECTION:JSON !  TDIAG-BUF 8192 REJECTION:BUFFER! ;
+   false REJECTION:JSON !  REJECTION:CAPTURE ;
 public
 : RUN ( -- )
    DECL$ TDT-EVAL-CATCH 0 T=
@@ -1574,7 +1574,7 @@ s" loop" s" reserved field name" TDT-AT
 s" PRODUCT tdpfmatch FIELD match n ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfmatch`\n"
 s" match" s" reserved field name" TDT-AT
-\ control words are refused in the family and variant positions too, on this
+\ control words are rejected in the family and variant positions too, on this
 \ legacy path, with the reason the unified front ends give.
 s" PRODUCT if FIELD x n ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `if`\n"
@@ -1669,7 +1669,7 @@ s" PRODUCT tdpolns5 POLICY niche-null FIELD x n ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdpolns5`\n"
 s" tdpolns5" s" niche-null needs an empty variant, then one ptr field" TDT-AT
 \ niche-null accepts its one shape, an empty variant then one `ptr` field; an
-\ ENUM of two empty variants is refused.
+\ ENUM of two empty variants is rejected.
 s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
 s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdpolnq2`\n"
@@ -2432,7 +2432,7 @@ s" ptr" s" pointer payloads have no derived equality" TDT-AT
 \ legal {: x:fam :} annotation. Enum-tier layouts (W=1 sum/enum) assert the
 \ one-cell hidden term — the :} bind unifies the captured bundle's tag term
 \ against it, reads restore the exact bound term (family id intact, MATCH
-\ works), and wrong families reject through the standard mismatch packet.
+\ works), and wrong families reject with the standard mismatch record.
 \ Arity-0 CELL families assert their nominal scalar like a signature.
 \ Parametric and wider non-linear locals are covered below; owning linear
 \ values remain excluded from named locals.

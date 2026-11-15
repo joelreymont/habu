@@ -2638,7 +2638,7 @@ variable SUM-VAR-NEXT
 
 \ The load's front end replays the body, its ;PRODUCT kept, and publishes the
 \ generated words' checked effects without defining them; a body the input ends
-\ inside replays without it, and the front end refuses "missing ;PRODUCT".
+\ inside replays without it, and the front end rejects "missing ;PRODUCT".
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN

@@ -1194,7 +1194,6 @@ variable TDP-EVT
 
 \ TYPE-DECL's parts install the transaction runner and the event steps at load.
 defer TDECL-TXN-XT ( [ -- ] -- )
-variable TDECL-TXN-ARMED
 defer TDECL-EVENT-CURRENT-XT ( -- n )
 defer TDECL-EVENT-DECL-XT ( n n -- n )
 defer TDECL-EVENT-ARITY-XT ( n n n -- n )

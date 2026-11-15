@@ -493,7 +493,7 @@ SD-QUOT-INSTALL
       E-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-DERIVE-INIT? IF
       s" derive init requires a canonical fixed-cell record"
-      s" drop `init` from `DERIVE`, or declare the structure in a package with fields of a fixed cell width"
+      s" drop `init` from `DERIVE`, or give every field a fixed cell width"
       E-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
 : SD-CLOSE ( -- )

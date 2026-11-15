@@ -8073,7 +8073,7 @@ CHECKER-REG:}SCRATCH
    SIG-CTL @ CTL-THROW or  dmask rmask XFER-PACK SIG-CTL ! ;
 
 
-\ The writer leaves out a tag with no input, so `nonzero 0 0` is refused too.
+\ The writer leaves out a tag with no input, so `nonzero 0 0` is rejected too.
 : SIG-NONZERO-TAG ( ptr u8 n -- )
    {: ta:ptr tu:n :}
    SIG-NONZERO @ 0 <> IF ta tu SGBAD-SYNTAX! THEN

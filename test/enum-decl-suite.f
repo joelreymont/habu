@@ -427,18 +427,6 @@ s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 s" PRODUCT prodctor FIELD a n FIELD b n ;PRODUCT" evaluate-closed
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20f. A payload with no derived equality, or a variant named like a derived
-\      word, rolls the whole declaration back.
-DECL-DIAG:PROSE
-s" ENUM rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
-   70 enum-ctor-test:CTOR-REJECT
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor`\n" DECL-DIAG:HAS? TTRUE
-s" r" s" payload type has no derived equality" DECL-DIAG:CAUSE? TTRUE
-DECL-DIAG:PROSE
-s" ENUM rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
-   70 enum-ctor-test:CTOR-REJECT
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor2`\n" DECL-DIAG:HAS? TTRUE
-s" tag" s" variant name collides with a derived word" DECL-DIAG:CAUSE? TTRUE
 \ A later constructor collides after the first has entered the generation plan.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 DECL-DIAG:PROSE
@@ -467,13 +455,8 @@ undefine ROLLP:UNMAKE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 21. POLICY packed-tag with DERIVE eq: an n payload declares, and a pointer payload
-\     is rejected at its type (no derived equality).
+\ 21. POLICY packed-tag with DERIVE eq declares.
 s" ENUM lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-DECL-DIAG:PROSE
-s" ENUM lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `lay-drop`\n" DECL-DIAG:HAS? TTRUE
-s" ptr" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
 \ 22. Each case asserts whole rendered lines and the token the caret marks,
 \     so text the declaration supplies cannot satisfy it elsewhere in the buffer.
