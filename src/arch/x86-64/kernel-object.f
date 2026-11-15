@@ -145,7 +145,7 @@ DYNAMIC-BUFFER NAME-OFF n
    s" ENTRY-CELL" engine if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then SYM+
    ;SECTION ;
 
-: PRESET+ ( n n -- ) swap U64+ U64+ ENTRY ;
+: PRESET+ ( n n -- ) U64+ U64+ ENTRY ;
 
 : PRESETS+ ( bool -- )
    {: engine:bool :}
