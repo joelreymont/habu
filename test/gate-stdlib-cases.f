@@ -1019,6 +1019,10 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
+SUITE dictionary-full
+   test/dictionary-full-test.f
+;SUITE
+
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE

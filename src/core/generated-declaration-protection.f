@@ -8,8 +8,8 @@ s" a declaration is already open"
 s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
 E-ACTIVE DECL-REJECT:EXPLAIN
 
-: PLAN-PREFLIGHT ( ptr u8 n n -- )
-   GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
+: PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
+   a u  a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 
 : INSTALL ( -- )

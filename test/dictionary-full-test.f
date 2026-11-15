@@ -1,0 +1,66 @@
+\ dictionary-full-test.f - a definition, a does> clause, a package and a
+\ declaration that find no dictionary record left are rejected as
+\ E-DICTIONARY-FULL, placed at the name they make or, for a declaration, where
+\ it ran out of room, and the load exits REJECTION:DICT-FULL-RC. A full
+\ dictionary stops the load, so each case is its own child hb. Each child fills
+\ the dictionary to a set number of free records counted from its own ndict@,
+\ so no case depends on how many records the engine uses at boot.
+require test/gate-common.f
+require src/lib/engine-candidate.f
+require src/core/rejection.f
+
+package DICTIONARY-FULL-TEST
+private
+
+\ Lines 1-3 of each child: LEAVE-FREE ( n -- ) creates words until n records
+\ are free.
+: PRELUDE$ ( -- ptr u8 n )
+   S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ {: a:ptr u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
+
+\ Runs the prelude, then the case's lines from line 4.
+: RUN-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
+   GE-SRC-RESET  PRELUDE$ GE-SRC+  a u GE-SRC+
+   GE-HB-RESET
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+
+: EXPECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n want:ptr wantu:n label:ptr labelu:n :}
+   src srcu RUN-CASE
+   want wantu label labelu GE-EXPECT-ERR
+   REJECTION:DICT-FULL-RC label labelu GE-EXPECT-RC
+   s" PASS: " type label labelu type cr ;
+
+\ MK and its does> clause take the last two records, so OVER1 finds none.
+: DEFINITION ( -- )
+   S\" 2 LEAVE-FREE\n: MK ( n -- ) create , does> ( -- n ) @ ;\n: OVER1 ;\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `OVER1`\n --> <input>:6:3\n  |\n6 | : OVER1 ;\n  |   ^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a definition after a does> definer fills the dictionary" EXPECT ;
+
+: DOES-CLAUSE ( -- )
+   S\" 1 LEAVE-FREE\n: MK ( n -- ) create , does> ( -- n ) @ ;\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `MK`\n --> <input>:5:24\n  |\n5 | : MK ( n -- ) create , does> ( -- n ) @ ;\n  |                        ^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a does> clause with no record left" EXPECT ;
+
+: PACKAGE ( -- )
+   S\" 0 LEAVE-FREE\npackage FOO\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `FOO`\n --> <input>:5:9\n  |\n5 | package FOO\n  |         ^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a package in a full dictionary" EXPECT ;
+
+\ A declaration makes all its words or none; the record names the first.
+: STRUCTURE-DECL ( -- )
+   S\" 2 LEAVE-FREE\nSTRUCTURE pt DERIVE addr FIELD x n FIELD y n ;STRUCTURE\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `PT:MAKE`\n --> <input>:5:46\n  |\n5 | STRUCTURE pt DERIVE addr FIELD x n FIELD y n ;STRUCTURE\n  |                                              ^^^^^^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a structure that does not fit" EXPECT ;
+
+: SUMTYPE-DECL ( -- )
+   S\" 2 LEAVE-FREE\nSUMTYPE shape VARIANT circle n ;VARIANT VARIANT square n ;VARIANT ;SUMTYPE\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `SHAPE:CIRCLE`\n --> <input>:5:67\n  |\n5 | SUMTYPE shape VARIANT circle n ;VARIANT VARIANT square n ;VARIANT ;SUMTYPE\n  |                                                                   ^^^^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a sumtype that does not fit" EXPECT ;
+
+DEFINITION
+DOES-CLAUSE
+PACKAGE
+STRUCTURE-DECL
+SUMTYPE-DECL
+
+;package

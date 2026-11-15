@@ -7,12 +7,6 @@
 
 package GENERATED-DECL-DICTIONARY
 
-7175 constant E-DICTIONARY-CAP
-\ What a declaration reject reports for the code (generated-declaration.f).
-s" generated-name table is full"
-s" generate fewer words in this image, for example by dropping `DERIVE` features nothing calls"
-E-DICTIONARY-CAP DECL-REJECT:EXPLAIN
-
 variable NDICT-MARK
 variable CP-MARK
 PTR-VARIABLE DP-MARK
@@ -43,9 +37,10 @@ public
    CP-MARK @ CODE-RECLAIM:TRUNCATE
    DP-MARK @ DICTIONARY-DP! ;
 
-: PREFLIGHT ( n -- )
-   dup 0 < IF E-DICTIONARY-CAP throw THEN
-   DICT-CAP ndict@ - > IF E-DICTIONARY-CAP throw THEN ;
+\ Rejects a declaration whose first word is a u when its n records do not fit,
+\ placed at the token read last, where the declaration ran out of room.
+: PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n n:n :}
+   n DICT-CAP ndict@ - > IF a u SRCLOC:TOKEN$ REJECTION:DICTIONARY-FULL THEN ;
 
 private
 

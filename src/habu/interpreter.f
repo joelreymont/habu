@@ -857,14 +857,10 @@ private
    TOKEN if exit then
    TOKEN$ NAME-MISSING ;
 
-\ The rejection names what DEF-TKA and DEF-TKL hold, which `package` never
-\ writes: for it, what the last definition or `export` left there.
-: PKG-DICT-FULL ( -- )
-   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ 2dup REJECTION:DICTIONARY-FULL ;
-
-: PKG-DICT-ROOM ( -- )
+\ Rejects making the name a u, placed at t tu, when no record is left.
+: PKG-DICT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    ndict@ DICT-CAP < if exit then
-   PKG-DICT-FULL ;
+   a u t tu REJECTION:DICTIONARY-FULL ;
 
 \ A long name copied to CP takes one whole target code slot. Both names an
 \ export writes must fit before its checker declaration becomes pending.
@@ -1001,7 +997,7 @@ private
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
    OVERLAY-GUARD
-   PKG-DICT-ROOM
+   TOKEN$ TOKEN$ PKG-DICT-ROOM
    TOKEN$ TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
@@ -1022,7 +1018,7 @@ public
    {: a:ptr u:n own:bool :}
    u 1 < if E-COMP-STATE throw then
    a u PKG-PATH-CK
-   PKG-DICT-ROOM
+   a u a u PKG-DICT-ROOM
    a u a u PKG-CODE-ROOM
    a u BOOT:NAMESPACE-WL WL-PROBE XREF-FOUND? if
       a u PKG-DUPLICATE
@@ -1206,7 +1202,9 @@ variable USE-FLOOR
 \ still in TOKEN$, under the clause's name as the operand's tail spells it.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
-   ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
+   ndict@ 1+ DICT-CAP < 0= if
+      PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DICTIONARY-FULL
+   then
    k XREF-REC XREF-NAME$ get-current WL-PROBE XREF-FOUND? if
       PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DUPLICATE
       CHECKER-REJECT-RC REJECTION:STOP
@@ -1228,7 +1226,7 @@ public
    rec XREF-WORDLIST {: swid:n :}
    swid XREF:PACKAGE-WL?  swid XREF:RETIRED-WL?  or if E-COMP-STATE throw then
    rec XREF-FLAGS DNAME-INT and 0<> if E-COMP-STATE throw then
-   PKG-DICT-ROOM
+   a u a u PKG-DICT-ROOM
    a u a u PKG-CODE-ROOM
    a u wid WL-PROBE XREF-FOUND? if
       a u PKG-DUPLICATE
@@ -1265,8 +1263,8 @@ private
    PKG-EXPORT-SOURCE {: src:ptr :}
    TOKEN$ {: operand:ptr operand-u:n :}
    get-current PKG-WID-SEALED? if operand operand-u 2dup SEALED-FAIL then
-   PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
+   ta tu operand operand-u PKG-DICT-ROOM
    ta tu get-current WL-PROBE XREF-FOUND? if
       TOKEN$ PKG-DUPLICATE
    then
@@ -1524,7 +1522,7 @@ private
 : DEF-NAMESPACE ( ptr u8 n -- n bool ) {: a:ptr q:n :}
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
-   PKG-DICT-ROOM
+   a q TOKEN$ PKG-DICT-ROOM
    a q a q PKG-CODE-ROOM
    a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
 
