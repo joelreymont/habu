@@ -17,9 +17,10 @@
 \ file read past a parsing call. It then follows direct dependencies depth
 \ first from the top, recording each file after its dependencies. It ends at
 \ the first file it cannot follow: discovery refuses it, with an E-DISC-* code,
-\ it does not exist, CHK-E-NOINPUT, or the file system will not read it,
-\ CHK-E-IOERR. CHK-DISC-ID names it. The file CHK-BYTES-ID names is read from
-\ the caller's bytes, never from disk.
+\ it does not exist, the loader's rejection placed at its path in the file that
+\ names it, or the file system will not read it, CHK-E-IOERR. CHK-DISC-ID names
+\ it. The file CHK-BYTES-ID names is read from the caller's bytes, never from
+\ disk.
 \
 \ A batch wave assembles one immutable input snapshot per lane on the calling
 \ task before it starts; capture tasks touch only their lane's output buffers
@@ -51,7 +52,6 @@ using SOURCE-ROOT
 
 \ check.f's exit statuses.
 64 constant CHK-E-USAGE
-66 constant CHK-E-NOINPUT
 69 constant CHK-E-UNAVAILABLE
 70 constant CHK-E-CHECK
 74 constant CHK-E-IOERR
@@ -59,8 +59,9 @@ using SOURCE-ROOT
 \ The closure's files: each one's path and the root that resolved it, PATH-CAP
 \ bytes apiece, their lengths and its walk state (0 not walked, 1 walking, 2
 \ walked); the direct dependencies found and not yet followed, each with the
-\ file whose loader word names it, where that word starts there and its length;
-\ and the files walked, dependencies first.
+\ file whose loader word names it, where that word and the path it takes start
+\ there and their lengths, and the request as the program wrote it, the
+\ requests end to end in CHK-DIR-REQS; and the files walked, dependencies first.
 \ Growth moves a buffer, so a path is read through its id, never kept.
 DYNAMIC-BUFFER CHK-DEP-PATHS u8
 DYNAMIC-BUFFER CHK-DEP-US n
@@ -71,6 +72,10 @@ DYNAMIC-BUFFER CHK-DIR-IDS n
 DYNAMIC-BUFFER CHK-DIR-FROM n
 DYNAMIC-BUFFER CHK-DIR-AT n
 DYNAMIC-BUFFER CHK-DIR-LEN n
+DYNAMIC-BUFFER CHK-DIR-PATH-AT n
+DYNAMIC-BUFFER CHK-DIR-PATH-LEN n
+DYNAMIC-BUFFER CHK-DIR-REQ-END n
+DYNAMIC-BUFFER CHK-DIR-REQS u8
 DYNAMIC-BUFFER CHK-DEP-ORDER n
 
 variable CHK-DEP-N
@@ -146,17 +151,37 @@ variable CHK-EXPAND-TOP
    a u CHK-DEP-FIND dup 0 >= if exit then
    drop a u root rootu CHK-DEP-NEW ;
 
-\ A direct dependency of the file the walk is in, CHK-DISC-ID, named by the
-\ loader word that starts at AT and has length LEN there.
-: CHK-DIR-PUSH ( n n n -- )
-   {: id:n at:n len:n :}
+: CHK-DIR-REQ-START ( n -- n ) {: ix:n :}
+   ix 0= if 0 exit then
+   ix 1- CHK-DIR-REQ-END @ ;
+
+: CHK-DIR-REQ$ ( n -- ptr u8 n ) {: ix:n :}
+   ix CHK-DIR-REQ-START {: at:n :}
+   at CHK-DIR-REQS  ix CHK-DIR-REQ-END @ at - ;
+
+: CHK-DIR-REQ! ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
+   ix CHK-DIR-REQ-START {: at:n :}
+   at u + 1+ CHK-DIR-REQS-RESERVE
+   a at CHK-DIR-REQS u BYTE-COPY
+   at u + ix CHK-DIR-REQ-END ! ;
+
+: CHK-DIR-RESERVE ( n -- )
+   dup CHK-DIR-IDS-RESERVE dup CHK-DIR-FROM-RESERVE
+   dup CHK-DIR-AT-RESERVE dup CHK-DIR-LEN-RESERVE
+   dup CHK-DIR-PATH-AT-RESERVE dup CHK-DIR-PATH-LEN-RESERVE
+   CHK-DIR-REQ-END-RESERVE ;
+
+\ A direct dependency ID of the file the walk is in, CHK-DISC-ID, requested by
+\ event EV: the spans of its loader word and of the path it takes there.
+: CHK-DIR-PUSH ( n n -- )
+   {: id:n ev:n :}
    CHK-DIR-N @ {: ix:n :}
-   ix 1+ dup CHK-DIR-IDS-RESERVE dup CHK-DIR-FROM-RESERVE
-   dup CHK-DIR-AT-RESERVE CHK-DIR-LEN-RESERVE
+   ix 1+ CHK-DIR-RESERVE
    id ix CHK-DIR-IDS !
    CHK-DISC-ID @ ix CHK-DIR-FROM !
-   at ix CHK-DIR-AT !
-   len ix CHK-DIR-LEN !
+   ev EVENT-TOK@ ix CHK-DIR-LEN ! ix CHK-DIR-AT !
+   ev EVENT-PATH-TOK@ ix CHK-DIR-PATH-LEN ! ix CHK-DIR-PATH-AT !
+   ev EVENT-SPELLED@ ix CHK-DIR-REQ!
    ix 1+ CHK-DIR-N ! ;
 
 : CHK-DEP-ORDER-PUSH ( n -- )
@@ -164,10 +189,6 @@ variable CHK-EXPAND-TOP
    CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-RESERVE
    id CHK-DEP-ORDER-N @ CHK-DEP-ORDER !
    CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
-
-: CHK-DEP-DIRECT+ ( ptr u8 n ptr u8 n n n -- )
-   {: a:ptr u:n root:ptr rootu:n at:n len:n :}
-   a u root rootu CHK-DEP-ID at len CHK-DIR-PUSH ;
 
 : CHK-DISC-RC? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
@@ -226,7 +247,7 @@ variable CHK-EXPAND-TOP
    CHK-RUN-READ ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ ix EVENT-TOK@ CHK-DEP-DIRECT+ ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID ix CHK-DIR-PUSH ;
 
 : CHK-EVENTS>DEPS ( -- )
    0 begin dup EVENT-COUNT < while
@@ -256,6 +277,44 @@ variable CHK-EXPAND-TOP
       DISCOVER:ROWS-PASS-STABLE? and
    until ;
 
+DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a record
+
+: CHK-FILE-ROOM ( n -- ptr u8 )
+   CHK-FILE-SRC-RESERVE 0 CHK-FILE-SRC ;
+
+\ The bytes of the file at PATH, read to its end however it grows while it is
+\ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
+\ is only the first room, and the bytes are taken after the read, which may move
+\ the storage.
+: CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
+   {: u:n :}
+   0 CHK-FILE-SRC u ;
+
+: CHK-FILE-BYTES ( n -- ptr u8 n )
+   {: id:n :}
+   id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
+   id CHK-DEP$ CHK-FILE-READ ;
+
+\ Edge EDGE names a file that is not there: the loader's rejection, placed at
+\ the path in the file that names it and searched from that file's root.
+: CHK-MISSING ( n -- ) {: edge:n :}
+   edge CHK-DIR-FROM @ {: from:n :}
+   from CHK-FILE-NAME$ REJECTION:FILE!
+   from CHK-FILE-BYTES {: src:ptr srcu:n :}
+   src srcu 1 1 0 REJECTION:SOURCE!
+   src edge CHK-DIR-PATH-AT @ +  edge CHK-DIR-PATH-LEN @ {: p:ptr pu:n :}
+   from CHK-DEP-ROOT$
+   [: edge CHK-DIR-REQ$ p pu false SOURCE-ROOT:MISSING-SOURCE ;]
+   SOURCE-ROOT:WITH ;
+
+\ The top's caller found it; a followed edge may name a file that is not there.
+: CHK-PRESENT ( n -- ) {: id:n :}
+   CHK-EDGE @ 0 < if exit then
+   id CHK-DEP$ FS:FILE? if exit then
+   CHK-EDGE @ CHK-MISSING ;
+
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-STATE @ 2 = if exit then
@@ -263,9 +322,7 @@ variable CHK-EXPAND-TOP
    1 id CHK-DEP-STATE !
    id CHK-DISC-ID !
    CHK-DIR-N @
-   id CHK-BYTES-ID @ <> if
-      id CHK-DEP$ FS:FILE? 0= if CHK-E-NOINPUT throw then
-   then
+   id CHK-PRESENT
    CHK-DISCOVER-ACT
    CHK-EVENTS>DEPS
    dup CHK-DIR-N @
@@ -298,7 +355,7 @@ variable CHK-EXPAND-TOP
    -1 CHK-EDGE !
    [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
-   rc CHK-DISC-RC? rc CHK-E-NOINPUT = or rc CHK-E-IOERR = or rc 0= or 0= if rc throw then
+   rc CHK-DISC-RC? rc CHK-E-IOERR = or rc 0= or 0= if rc throw then
    rc ;
 
 \ Walk the closure over SRC, bytes that stand for the file at PATH with its
@@ -318,30 +375,10 @@ variable CHK-EXPAND-TOP
    path pathu DISCOVER:LOADING!
    id [: CHK-EXPAND ;] [: NULL$ DISCOVER:LOADING! ;] finally ;
 
-DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a record
-
-: CHK-FILE-ROOM ( n -- ptr u8 )
-   CHK-FILE-SRC-RESERVE 0 CHK-FILE-SRC ;
-
-\ The bytes of the file at PATH, read to its end however it grows while it is
-\ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
-\ is only the first room, and the bytes are taken after the read, which may move
-\ the storage.
-: CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
-   path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
-   {: u:n :}
-   0 CHK-FILE-SRC u ;
-
-: CHK-FILE-BYTES ( n -- ptr u8 n )
-   {: id:n :}
-   id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
-   id CHK-DEP$ CHK-FILE-READ ;
-
 \ The packet for the fault RC that ended the walk, CHK-EXPAND's code, at the
 \ token that shows it: the form discovery refused in the file it read, or the
-\ loader word that names a file that is not there or cannot be read. Empty for
-\ a walk that ended at its own top, which no loader word names.
+\ loader word that names a file that cannot be read. Empty for a walk that
+\ ended at its own top, which no loader word names.
 : CHK-FAULT$ ( n -- ptr u8 n )
    {: rc:n :}
    rc CHK-DISC-RC? if

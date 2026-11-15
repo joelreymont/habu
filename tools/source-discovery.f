@@ -1049,11 +1049,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    kind SD-K-REQUIRED = if a u required exit then
    a u provided ;
 
-\ False, and nothing recorded, for a path the loader's resolver refuses
-\ (E-PATH-NUL, a NUL in the path; E-PATH-RANGE).
-: SD-LOAD? ( n n n -- bool )
-   {: off:n len:n kind:n :}
+\ The loader word at off len takes the path written at poff plen. False, and
+\ nothing recorded, for a path the loader's resolver refuses (E-PATH-NUL, a NUL
+\ in the path; E-PATH-RANGE).
+: SD-LOAD? ( n n n n n -- bool )
+   {: off:n len:n poff:n plen:n kind:n :}
    off len DISC-TOK!
+   poff plen DISC-PATH!
    kind SD-CALL-KIND !
    EVENT-COUNT {: before:n :}
    [: SD-CALL-ACT ;] catch {: rc:n :}
@@ -1075,9 +1077,9 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ `require` in a body, which the engine refuses there but whose file the quiet
 \ composition reads: a path it cannot resolve is a form discovery cannot
 \ follow, refused at the loader word that names it.
-: SD-CALL-LOADER ( n n n -- )
-   {: off:n len:n kind:n :}
-   off len kind SD-LOAD? if exit then
+: SD-CALL-LOADER ( n n n n n -- )
+   {: off:n len:n poff:n plen:n kind:n :}
+   off len poff plen kind SD-LOAD? if exit then
    off SD-TOK-OFF !
    len SD-TOK-LEN !
    E-DISC-CAPACITY throw ;
@@ -1096,13 +1098,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-DEF @ 0<> if
       pend SD-PEND-PATH = 0= if exit then
       off len SD-CHECK-USE
-      off len kind SD-LOAD? drop
+      off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-LOAD? drop
       exit
    then
    off len SD-CHECK-USE
    pend SD-PEND-OTHER = if E-DISC-OPENER throw then
    pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC throw then
-   off len kind SD-CALL-LOADER ;
+   off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
 
 \ `include` and `require` take the next token as their path and refuse one
 \ over PATH-CAP bytes before they resolve it; the resolver decides the rest. The
@@ -1114,7 +1116,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    plen 0= if E-DISC-DYNAMIC throw then
    plen PATH-CAP > if E-DISC-CAPACITY throw then
    poff plen SD-TOK$ SD-PATH-FILL
-   toff tlen kind SD-CALL-LOADER ;
+   toff tlen poff plen kind SD-CALL-LOADER ;
 
 
 : SD-LOCALS-RESET ( -- )

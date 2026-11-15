@@ -558,9 +558,8 @@ private
 
 \ A closure the walk cannot follow fails the check as a refusal. Under
 \ --json-errors it is the walk's packet (CHK-FAULT$), placed at the form
-\ discovery refused or at the loader word naming a file that is not there or
-\ cannot be read; otherwise, or for a walk that ended at its own top, it is
-\ prose.
+\ discovery refused or at the loader word naming a file that cannot be read;
+\ otherwise, or for a walk that ended at its own top, it is prose.
 : CHK-EXPAND-JSON ( n -- )
    CHK-FAULT$ {: a:ptr u:n :}
    u 0= if exit then
@@ -579,7 +578,6 @@ private
    rc E-DISC-UNTERM = if CHK-DISC-STOPPED then
    CHK-JSON @ if rc CHK-EXPAND-JSON then
    rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
-   rc CHK-E-NOINPUT = if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    rc CHK-E-IOERR = if CHK-DISC-ID @ CHK-DEP$ CHK-READ-FAIL then
    rc throw ;
 
