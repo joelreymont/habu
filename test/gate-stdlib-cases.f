@@ -1086,6 +1086,13 @@ SUITE os-cpu
    src/lib/os-cpu-test.f
 ;SUITE
 
+\ statx(2) is Linux's: birth time and subvolume of a file under TMPDIR.
+HB-TARGET-MACOS? 0= [if]
+SUITE fs-statx
+   src/lib/fs-statx-test.f
+;SUITE
+[then]
+
 SUITE fs-list
    src/lib/fs-list-test.f
    src/lib/fs-cause-test.f
