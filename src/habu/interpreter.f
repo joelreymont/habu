@@ -2413,19 +2413,11 @@ variable LIT-AT
    latch 0= if DEF-NO-COMPILER then
    NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute ;
 
-\ The body-close operation of the owner record a dispatch cell names, 0 when
-\ there is no record or it predates the slot.
-: DEF-BODY-CLOSER ( ptr ptr u8 -- n ) {: cell:ptr :}
-   cell @ {: rec:ptr :}
-   rec 0= if 0 exit then
-   rec CELL - CELL-VIEW @ CHECKER-OWNER-ABI:BODY-CLOSE-OFF CELL + < if 0 exit then
-   rec CHECKER-OWNER-ABI:BODY-CLOSE-OFF + CELL-VIEW @ ;
-
 \ Each checker a created word publishes to ends the body it holds pending.
 : DEF-BODY-CLOSE ( -- )
-   NCOMP-DISPATCH:DECL-A DEF-BODY-CLOSER {: own:n :}
+   NCOMP-DISPATCH:DECL-A @ CHECKER-OWNER-ABI:CLOSER {: own:n :}
    own 0<> if own PKG-AS-ACTION execute then
-   NCOMP-DISPATCH:TARGET-DECL-A DEF-BODY-CLOSER {: target:n :}
+   NCOMP-DISPATCH:TARGET-DECL-A @ CHECKER-OWNER-ABI:CLOSER {: target:n :}
    target 0= target own = or if exit then
    target PKG-AS-ACTION execute ;
 

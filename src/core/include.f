@@ -2215,14 +2215,10 @@ private
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
-\ so the body's `,` grid stops there. No owner, or one that predates the slot,
-\ has no pending body.
+\ so the body's `,` grid stops there.
 : BODY-CLOSE ( -- )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
-   owner NULL-PTR = if exit then
-   owner CELL - CELL-VIEW @ CHECKER-OWNER-ABI:BODY-CLOSE-OFF CELL + <
-      if exit then
-   owner CHECKER-OWNER-ABI:BODY-CLOSE-OFF + CELL-VIEW @ {: close:n :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   CHECKER-OWNER-ABI:CLOSER {: close:n :}
    close 0= if exit then
    close CLOSE-ACTION execute ;
 

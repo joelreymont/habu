@@ -160,6 +160,11 @@ CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym nam
 CHECKER-OWNER-EXT:DOES-UNJUDGED-OFF constant DOES-UNJUDGED-OFF \ ( ptr u8 n ptr u8 n -- n )
 CHECKER-OWNER-EXT:NATIVE-DOES-REPORT-OFF constant NATIVE-DOES-REPORT-OFF \ ( n ptr u8 n -- n )
 CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
+\ The body-close action of the owner record at ptr, 0 for no record. Every
+\ owner record is laid out from this field list, so it holds the slot.
+: CLOSER ( ptr u8 -- n ) {: rec:ptr :}
+   rec NULL-PTR = if 0 exit then
+   rec BODY-CLOSE-OFF + CELL-VIEW @ ;
 CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ptr u8 n ptr u8 n -- bool )
 CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF constant UNJUDGED-CLOSED-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:OWNER-BYTES constant BYTES
