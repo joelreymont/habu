@@ -1359,9 +1359,7 @@ LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
-\ trust-sig! has no INTERPRETER row: it is the `trusted:`, `cast:`, `linear:`
-\ and `defer` heads' alone.
-TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
+: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
 \ The block BODY-ITEMS describes. Each opener zeroes CAP-CELL, so a
 \ definition's first item reserves the block again, as it must after a capture

@@ -477,7 +477,7 @@
 \ the split refuses (a malformed qualified name, or a length that describes no
 \ memory) binds nothing. A sym of 0 without a refusal does not prove the load
 \ cannot bind the name, since the engine holds words no checker symbol names
-\ (one defined undeclared under `0 set-check`); LIVE-BIND sets WALK-REC when
+\ (one defined while checking was off); LIVE-BIND sets WALK-REC when
 \ its answer is the record the engine's lookup found.
 \
 \ Native multi-error recovery: under a hook the native compiler abandons a
@@ -15528,13 +15528,16 @@ RECORD-PEND-EFF 0 CELL-ROW+
    row RLINK.CONTROL cells + @
       RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI ! ;
 
-\ The engine primitive selects the live occurrence; only this small boundary
-\ can call it, so a saved link compares the identity it selected.
-TRUSTED: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
+\ The engine primitive selects the live occurrence, so a saved link compares
+\ the identity it selected.
+package CHECK
+public
+: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
    ord CHECKER-RESOLVE:REC-AT def-occ-select ;
+;package
 
 : RECORD-LINK-SELECT ( n -- n n )
-   RECORD-LINK-OCC ;
+   CHECK:RECORD-LINK-OCC ;
 
 \ Reclaiming code can retire an occurrence while its ordinal remains in NDICT.
 \ Only that expected selection refusal means the saved link is stale.
@@ -15693,7 +15696,7 @@ PENDING-MARKED 0 CELL-ROW+
 : RECORD-LINK-SET ( n n n -- )
    {: ord:n effect:n control:n :}
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
+   ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> IF EXIT THEN
    ord effect control occurrence RECORD-LINK-WRITE ;
 
@@ -15761,7 +15764,7 @@ PENDING-MARKED 0 CELL-ROW+
 
 : RECORD-LINK-GRID-ATTACH ( n n -- ) {: ord:n grid:n :}
    grid RECORD-GRID-REC drop
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
+   ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> occurrence 0= or IF E-CHECKER-LAYOUT-BUFFER throw THEN
    ord RECORD-LINK-ROOM
    ord RECORD-LINK-CELL {: row:ptr :}
@@ -15871,7 +15874,7 @@ BODY-PEND-BASE 0 CELL-ROW+
    rec NULL-PTR = IF EXIT THEN
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF EXIT THEN
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
+   ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> occurrence 0= or IF EXIT THEN
    ord CHECKER-BODY-ALLOC? IF
       ord BODY-PEND-ORD !  occurrence BODY-PEND-OCC !
@@ -16537,8 +16540,6 @@ variable CURSYM
    a u s" names:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-names-row" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-named-use" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN

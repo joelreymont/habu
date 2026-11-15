@@ -180,12 +180,10 @@ variable UNSAFE-COUNT
    a u s" tok-imm?" XREF-STR=CI or
    a u s" policy-admit" XREF-STR=CI or
    a u s" policy-seal" XREF-STR=CI or
-   a u s" def-occ-select" XREF-STR=CI or
    a u s" def-occ-resolve" XREF-STR=CI or
    a u s" prof-on" XREF-STR=CI or
    a u s" ndict!" XREF-STR=CI or
    a u s" int-mark" XREF-STR=CI or
-   a u s" rep-mark" XREF-STR=CI or
    a u s" min-in-mark" XREF-STR=CI or
    a u s" wide-mark" XREF-STR=CI or
    a u s" record-facts!" XREF-STR=CI or

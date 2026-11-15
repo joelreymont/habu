@@ -33,8 +33,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   (**Packages**) and a generated declaration are closed programs too. A text's
   top-level code is typed as a body is: with `variable V` and
   `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
-  at `!` and throws 70 before V changes. A `0 set-check` in the text or before
-  it leaves every later definition and token checked.
+  at `!` and throws 70 before V changes.
 - `TRUST` forms mentioned below are legacy syntax awaiting removal.
 
 ## Naming
@@ -400,8 +399,7 @@ serves a one-off call or escapes a collision.
   `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies) or
   rename the collision. The checker enforces this in every checked body, and
   the interpreter at top level and for `'` (status 70, a throw inside
-  `evaluate`). A `TRUSTED:` body and a definition after
-  `0 set-check` are refused the same way.
+  `evaluate`). A `TRUSTED:` body is refused the same way.
 - The colliding global need not be one the checker knows: an unsigned engine
   word counts. Likewise a word in the open
   package's wordlist wins over a used public even when the checker never
@@ -2612,12 +2610,9 @@ sections above.
   so a conflicting enum variant is refused. A grammar keyword such as
   `policy` and a value-record name already registered as `vr` similarly
   cannot name a family (`STRUCTURE vr` is refused).
-- **`set-check` turns no checking off.** `set-check ( xt -- )` stores the
-  cell `check@` reads and `0 set-check` empties it, but hb's interpreter
-  calls the checker by name: after `0 set-check` or `' NAME set-check`,
-  every definition, immediate and top-level token is checked, and a cell
-  pushed meanwhile keeps its type. Use a `PRIM: … PRIM;` axiom for a genuine
-  missing primitive model.
+- **Nothing turns checking off.** `set-check` and `set-preflight` are private
+  to `CHECK`, so a program that names them is `E-UNDEFINED`. Use a
+  `PRIM: … PRIM;` axiom for a genuine missing primitive model.
 - **A pre-hook word needs an external row.** A word defined
   before the check hook has no authority without a `PRIM:` axiom or a
   `TRUSTED:` declaration after the checker claiming it. A

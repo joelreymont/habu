@@ -320,8 +320,8 @@ row's bottom is the live floor, so a step that reaches below it is refused as a
 body reaching under its declared inputs is. A word with no stored effect is
 refused at top level as in a body.
 
-**No escape hatch.** Nothing suspends the row: after `0 set-check` every
-top-level token is still checked, and a cell pushed meanwhile keeps its type.
+**No escape hatch.** Nothing suspends the row: the words that install the
+checker are private to `CHECK`, so every top-level token is checked.
 
 **An xt carries its effect.** `['] W` yields `xt<effect(W)>`, a quotation type
 built from `W`'s certified effect, so `execute`, `catch` and `is` check it by

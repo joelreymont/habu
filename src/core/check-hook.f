@@ -593,11 +593,9 @@ public
    {: pa:ptr pu:n na:ptr nu:n :}
    pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM? ROWS-FACTS ;
 
-\ Dynamic preflight/hook installation asserts the canonical checker identities;
-\ ordinary checked code cannot type execution-token installation. Only the
-\ engine reads the two cells; inside a
-\ build the builder's own checker checks, so a product's never replaces it.
-TRUSTED: INSTALL ( -- )
+\ Only the engine reads the two cells; inside a build the builder's own checker
+\ checks, so a target's never replaces it.
+: INSTALL ( -- )
    BUILDING? if exit then
    ['] CHECK:IMMEDIATE set-preflight
    ['] DEFINITION set-check ;
