@@ -20,9 +20,9 @@ package FS
 private
 $FFF constant MODE-PERM
 73 constant MODE-EXEC
-384 constant MODE-PRIVATE-FILE
 
 public
+384 constant MODE-PRIVATE-FILE
 448 constant MODE-PRIVATE-DIR
 
 private
