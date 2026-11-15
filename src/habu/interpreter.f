@@ -2593,8 +2593,6 @@ private
 \ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
    s" trust" TOKEN-IS? if true exit then
-   s" prim-top-only!" TOKEN-IS? if true exit then
-   s" prim-trusted-only!" TOKEN-IS? if true exit then
    s" intrinsic" TOKEN-IS? if true exit then
    s" nominal-provider" TOKEN-IS? if true exit then
    s" parse-imm" TOKEN-IS? if true exit then

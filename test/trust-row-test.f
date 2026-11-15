@@ -43,6 +43,10 @@ s\" s\q TRW-NO-SUCH-WORD\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STA
 \ src/os/env-base.f sits directly under its definition.
 s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
 
+\ PE-OPEN is private to the checker's sealed package CHECK: user source naming
+\ it is undefined.
+s\" : TRW-ROWED ( -- n ) 1 ; s\q TRW-ROWED\q PE-OPEN PE-N PE-OUT PE-CLOSE" TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT T=
+
 \ A negative length, or one that runs the name past the top of the address
 \ range, names no word even where its bytes begin a live one. It is refused
 \ before the name is read: the maximum cell would run the colon scan off the end

@@ -11540,6 +11540,7 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : PREFIX-SYM? ( n -- bool ) {: sym:n :}
    data-base BOOT:IMAGE-BASE-CELL + @ 0 <>  sym BUILD-SYM-END @ <  and ;
 
+package CHECK
 : PRIM-ENSURE ( -- )
    #PE @ PE-CAP-V @ < IF EXIT THEN
    PE-CAP-V @ 2 * {: next:n :}
@@ -11557,6 +11558,7 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : PE-LAST-FLAG! ( n -- ) {: flag:n :}
    PE-LAST @ 0 < IF EXIT THEN
    PE-LAST @ PE-ROW PE.FLAGS dup @ flag or swap ! ;
+;package
 
 \ Drops the rows whose effect lies at or above newend, the newest rows: rows
 \ are appended as their effects are built. A dropped row's slot can be cached
@@ -11582,6 +11584,7 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
    UEND !
    UTERM! ;
 
+package CHECK
 \ Marks the just-registered prim a trust boundary: a checked caller is refused,
 \ a TRUSTED: body (never checked) may use it.
 : PRIM-TRUSTED-ONLY! ( -- ) PE-TRUSTED-ONLY PE-LAST-FLAG! ;
@@ -11589,6 +11592,7 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : PRIM-TOP-ONLY! ( -- ) PE-TOP-ONLY PE-LAST-FLAG! ;
 
 : PRIM-FIXED-ABI! ( -- ) PE-FIXED-ABI PE-LAST-FLAG! ;
+;package
 
 variable PRM-FIRST
 
@@ -11669,6 +11673,27 @@ variable PRM-FIRST
 : PE-SYM-OF ( ^u8 n -- n ) {: a:^ u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
+: PE-N ( -- n ) CC-N MK-CON ;
+: PE-R ( -- n ) CC-R MK-CON ;
+: PE-U8 ( -- n ) CC-U8 MK-CON ;
+: PE-PTR ( n -- n ) MK-PTR ;
+: PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
+
+\ The return effect is neutral, as SIG-PARSE-QUOT builds it, so a prim row and a
+\ written signature describe the same term.
+variable PE-QDIN
+variable PE-QDOUT
+
+: ;PE-Q ( -- n )
+   FRESH MK-QROW {: rbase:n :}
+   PE-QDIN @ PE-QDOUT @ rbase rbase MK-QUOT ;
+
+\ A quotation of any data effect: its data input and output are two unrelated
+\ fresh rows, its return input and output one fresh row.
+: FREE-QUOT ( -- n )
+   FRESH MK-ROW PE-QDIN !  FRESH MK-ROW PE-QDOUT !  ;PE-Q ;
+
+package CHECK
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE PE-NA
 variable PE-NU
@@ -11724,14 +11749,7 @@ variable PE-EFF-ID
 : PE-C ( -- n ) $63 VAR-OF ;
 : PE-D ( -- n ) $64 VAR-OF ;
 : PE-E ( -- n ) $65 VAR-OF ;
-: PE-N ( -- n ) CC-N MK-CON ;
 : PE-F ( -- n ) CC-BOOL MK-CON ;
-: PE-R ( -- n ) CC-R MK-CON ;
-: PE-U8 ( -- n ) CC-U8 MK-CON ;
-: PE-PTR ( n -- n ) MK-PTR ;
-: PE-PTR-A ( -- n ) PE-A PE-PTR ;
-: PE-PTR-N ( -- n ) PE-N PE-PTR ;
-: PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 \ RAW-kinds a prototype var, for the raw storage-definer prims (here/data-base):
 \ the minted pointee is TVK-RAW, so a fetch through it yields a RAW value that
 \ cannot launder into a nominal atom/family.
@@ -11741,7 +11759,6 @@ variable PE-EFF-ID
 \ `data-base`.
 : PE-NULL!  ( n -- n ) dup PAY TVK-NULL! ;
 : PE-DBASE! ( n -- n ) dup PAY TVK-DBASE! ;
-: PE-PTR-A-NULL ( -- n ) PE-A PE-NULL! PE-PTR ;
 
 \ Marks the pointee var of a row that steps a pointer by an INTEGER offset, so a
 \ null riding that row comes out TVK-DBASE; the mark is transparent to every
@@ -11753,12 +11770,7 @@ variable PE-EFF-ID
 
 : PE-ADDR! ( n -- n ) dup PAY TVK-ADDR! ;
 
-\ Data in and out share one fresh base row and the return effect is neutral,
-\ exactly what SIG-PARSE-QUOT builds from the same text, so a prim row and a
-\ written signature describe the same term.
-variable PE-QDIN
-variable PE-QDOUT
-
+\ Data in and out share one fresh base row, as SIG-PARSE-QUOT builds them.
 : PE-Q ( -- )
    FRESH MK-QROW dup PE-QDIN ! PE-QDOUT ! ;
 
@@ -11767,11 +11779,6 @@ variable PE-QDOUT
 
 : PE-QOUT ( n -- )
    PE-QDOUT @ MK-PUSH PE-QDOUT ! ;
-
-: ;PE-Q ( -- n )
-   FRESH MK-QROW {: rbase:n :}
-   PE-QDIN @ PE-QDOUT @ rbase rbase MK-QUOT ;
-
 
 \ finally's body may change the entire data row; cleanup has no fixed window.
 : PE-FINALLY ( -- )
@@ -11786,11 +11793,6 @@ variable PE-QDOUT
    ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN
    PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
-
-\ A quotation of any data effect: its data input and output are two unrelated
-\ fresh rows, its return input and output one fresh row.
-: FREE-QUOT ( -- n )
-   FRESH MK-ROW PE-QDIN !  FRESH MK-ROW PE-QDOUT !  ;PE-Q ;
 
 : PE-QANY ( -- )
    FREE-QUOT PE-IN ;
@@ -11888,16 +11890,15 @@ KEYWORD-ROWS
 \ A build's stores start with the rows above (CHECK:OPEN), and its new symbols
 \ take the ids after them.
 SYM-N @ BUILD-SYM-END !
-package CHECK
 SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
 SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
 USIGS-P USIGS-CAP-U 1 UEND STORE+
 PES-P PE-CAP-V PE-REC #PE STORE+
 USIGS-USER-OFF UEND @ CELL-ROW+
 BUILD-SYM-END BUILD-SYM-END @ CELL-ROW+
-;package
 
 PTABLE-END
+;package
 
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE CHECKER-REC-A
