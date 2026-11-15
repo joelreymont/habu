@@ -380,7 +380,7 @@ variable ERR-U
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
-   s" = evaluated: : X-FORGET ( -- n ) 1 ; TRUSTED: EVAL-X-FORGET" SAYS
+   s" = evaluated: ...FORGET catch . cr : T-FORGET ( -- n n ) X-FORGET ;" SAYS
    s" the stack holds n after this" SAYS ;
 
 : CHECKED ( -- )
