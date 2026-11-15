@@ -2168,8 +2168,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 \ private or OPAQUE family's rows (not TFAM-GEN-PUBLIC?) go into the declaring
 \ package's private wordlist, so Q runs between a switch to private and a
 \ restore of the declaration's section, on either exit. Everything that interns
-\ a name runs inside the switch: the name preflight asks the wordlist the name
-\ will land in (xref.f TARGET-RECORD), and CHECKER-RECORD-SYM interns a plan's
+\ a name runs inside the switch: CHECKER-RECORD-SYM interns a plan's
 \ constructor authorities per section, so a plan rendered in another section
 \ queues authorities CTOR-PEND-MATCH? never finds. Q takes and returns the
 \ family: a quotation cannot read this word's locals, and catch takes only a
@@ -2222,16 +2221,13 @@ private
    fam s" cells" TDECL-ADDR-NAME
    CHILD-ABI:VALUE  fam TFAM-SLOTS@  xt execute ;
 
-\ A name the checker already holds in this scope is the declaration's error,
-\ asked of every child before any is made.
+\ A name the checker already holds in this scope, or one the name preflight
+\ rejects, is the declaration's error, asked of every child before any is made.
 : TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
       na nu s" generated declaration already defined"
          TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW
-   THEN ;
-
-: TDECL-ADDR-LIVE-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
-   na nu shape param TDECL-ADDR-FREE
+   THEN
    na nu TDECL-NAME-PREFLIGHT-XT ;
 
 : TDECL-ADDR-MAKE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
@@ -2247,7 +2243,7 @@ private
    TDECL-CAPACITY-PREFLIGHT-XT ;
 
 : TDECL-ADDR-LIVE ( n -- n )
-   dup [: TDECL-ADDR-LIVE-FREE ;] TDECL-ADDR-EACH
+   dup [: TDECL-ADDR-FREE ;] TDECL-ADDR-EACH
    dup TDECL-ADDR-ROOM
    dup [: TDECL-ADDR-MAKE ;] TDECL-ADDR-EACH ;
 
@@ -2317,7 +2313,7 @@ private
    dup TDINIT-ROOM ;
 
 : TDINIT-LIVE ( n -- n )
-   [: TDECL-ADDR-LIVE-FREE ;] TDINIT-CHECK
+   [: TDECL-ADDR-FREE ;] TDINIT-CHECK
    dup [: TDECL-ADDR-MAKE ;] TDINIT-EACH ;
 
 : TDINIT-REPLAY-REG ( n -- n )
@@ -2384,6 +2380,7 @@ private
 \ declaration. It emits no code and creates no runtime dictionary entries.
 : TDECL-REPLAY-PLAN ( n -- n ) {: family:n :}
    TDECL-SUMV-PROVIDER family TDECL-GEN-PLAN
+   TDPLAN-PREFLIGHT-NAMES
    TDPLAN-PREFLIGHT-DEFINITIONS
    {: ctx:n qn qr qc fam:n :}
    fam ;
