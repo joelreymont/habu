@@ -298,10 +298,11 @@ variable FAULT-U
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
-\ Whether a stop with code n is the rejection of a missing source, whose file
-\ FAULT-TARGET$ names (COMPOSE-MISSING).
-: LOADER-REJECTED? ( n -- bool )
-   CHECKER-REJECT-RC =  FAULT-U @ 0 >  and ;
+\ Whether a stop with code n is the rejection of a missing source
+\ (COMPOSE-MISSING) or of one that will not open (COMPOSE-UNREADABLE), whose
+\ file FAULT-TARGET$ names.
+: LOADER-REJECTED? ( n -- bool ) {: rc:n :}
+   rc CHECKER-REJECT-RC =  rc INCLUDE-IO-RC =  or  FAULT-U @ 0 >  and ;
 
 \ Where the path the quiet composition's load loads is written in the file
 \ being scanned, as the program wrote it.
@@ -3324,9 +3325,9 @@ variable LOAD-U
 
 \ Run Q, the load a loader word wu bytes long at byte w makes, under the word's
 \ claim: a fault no loader below claimed stands at the word when the file is
-\ missing (LOADER-REJECTED?) or unreadable (E-SOURCE-READ). Any other fault,
-\ the resolver's rejection of its path among them, keeps the place where it was
-\ made.
+\ missing or will not open (LOADER-REJECTED?) or is not read to its end
+\ (E-SOURCE-READ). Any other fault, the resolver's rejection of its path among
+\ them, keeps the place where it was made.
 : CLAIMED-LOAD ( [ -- ] n n -- )
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
@@ -4370,9 +4371,10 @@ TYPED-VARIABLE THEN-ACTION [ -- ]
    THEN-ACTION @ execute ;
 
 \ A quiet composition reads each file a loader loads itself, once
-\ COMPOSE-MISSING has rejected a missing one: a file the system does not open or
-\ read to its end stops it with E-SOURCE-READ, FAULT-TARGET$ naming the file as
-\ resolved. Any other refusal, memory's among them, stays itself. The
+\ COMPOSE-MISSING has rejected a missing one: a file the system does not open is
+\ the loader's rejection at LOAD-PLACE, and one it does not read to its end
+\ stops it with E-SOURCE-READ, FAULT-TARGET$ naming the file as resolved either
+\ way. Any other refusal, memory's among them, stays itself. The
 \ loader refuses a resolved path past PATH-CAP before reading, so the path fits
 \ both buffers.
 create READ-PATHZ PATH-CAP 1+ allot
@@ -4387,6 +4389,11 @@ variable READ-CNS
 variable READ-PATH-U
 variable READ-META-VALID
 65536 constant READ-STEP
+
+\ PATH, resolved, will not open, with errno E.
+: COMPOSE-UNREADABLE ( ptr u8 n n -- ) {: path:ptr pathu:n e:n :}
+   path pathu FAULT-TARGET!
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
 
 : READ-FILL ( -- )
    0 READ-U !
@@ -4409,7 +4416,7 @@ variable READ-META-VALID
    path pathu FS:TRY-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
    READ-PATHZ open-rd {: fd:n :}
-   fd 0 < IF path pathu FAULT-TARGET!  E-SOURCE-READ throw THEN
+   fd 0 < IF path pathu FS:ERRNO COMPOSE-UNREADABLE THEN
    fd READ-FD !
    [: READ-FILL ;] catch {: rc:n :}
    fd close

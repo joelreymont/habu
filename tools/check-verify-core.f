@@ -17,8 +17,8 @@
 \ file read past a parsing call. It then follows direct dependencies depth
 \ first from the top, recording each file after its dependencies. It ends at
 \ the first file it cannot follow: discovery refuses it, with an E-DISC-* code,
-\ it does not exist, the loader's rejection placed at its path in the file that
-\ names it, or the file system will not read it, CHK-E-IOERR. CHK-DISC-ID names
+\ or it does not exist or the file system will not read it, the loader's
+\ rejection placed at its path in the file that names it. CHK-DISC-ID names
 \ it. The file CHK-BYTES-ID names is read from the caller's bytes, never from
 \ disk.
 \
@@ -59,8 +59,8 @@ using SOURCE-ROOT
 \ The closure's files: each one's path and the root that resolved it, PATH-CAP
 \ bytes apiece, their lengths and its walk state (0 not walked, 1 walking, 2
 \ walked); the direct dependencies found and not yet followed, each with the
-\ file whose loader word names it, where that word and the path it takes start
-\ there and their lengths, and the request as the program wrote it, the
+\ file whose loader word names it, where the path that word takes starts there
+\ and its length, and the request as the program wrote it, the
 \ requests end to end in CHK-DIR-REQS; and the files walked, dependencies first.
 \ Growth moves a buffer, so a path is read through its id, never kept.
 DYNAMIC-BUFFER CHK-DEP-PATHS u8
@@ -70,8 +70,6 @@ DYNAMIC-BUFFER CHK-DEP-ROOT-US n
 DYNAMIC-BUFFER CHK-DEP-STATES n
 DYNAMIC-BUFFER CHK-DIR-IDS n
 DYNAMIC-BUFFER CHK-DIR-FROM n
-DYNAMIC-BUFFER CHK-DIR-AT n
-DYNAMIC-BUFFER CHK-DIR-LEN n
 DYNAMIC-BUFFER CHK-DIR-PATH-AT n
 DYNAMIC-BUFFER CHK-DIR-PATH-LEN n
 DYNAMIC-BUFFER CHK-DIR-REQ-END n
@@ -167,19 +165,17 @@ variable CHK-EXPAND-TOP
 
 : CHK-DIR-RESERVE ( n -- )
    dup CHK-DIR-IDS-RESERVE dup CHK-DIR-FROM-RESERVE
-   dup CHK-DIR-AT-RESERVE dup CHK-DIR-LEN-RESERVE
    dup CHK-DIR-PATH-AT-RESERVE dup CHK-DIR-PATH-LEN-RESERVE
    CHK-DIR-REQ-END-RESERVE ;
 
 \ A direct dependency ID of the file the walk is in, CHK-DISC-ID, requested by
-\ event EV: the spans of its loader word and of the path it takes there.
+\ event EV: the span of the path its loader word takes there.
 : CHK-DIR-PUSH ( n n -- )
    {: id:n ev:n :}
    CHK-DIR-N @ {: ix:n :}
    ix 1+ CHK-DIR-RESERVE
    id ix CHK-DIR-IDS !
    CHK-DISC-ID @ ix CHK-DIR-FROM !
-   ev EVENT-TOK@ ix CHK-DIR-LEN ! ix CHK-DIR-AT !
    ev EVENT-PATH-TOK@ ix CHK-DIR-PATH-LEN ! ix CHK-DIR-PATH-AT !
    ev EVENT-SPELLED@ ix CHK-DIR-REQ!
    ix 1+ CHK-DIR-N ! ;
@@ -229,22 +225,20 @@ variable CHK-EXPAND-TOP
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;
 
-\ How Q, a read of a source, ended: 0, or CHK-E-IOERR for a file the file
-\ system refuses to read (a code of its block, such as E-FS-OPEN for a file
-\ whose mode forbids it). Any other failure of the read goes on.
-: CHK-READ-RC ( [ -- ] -- n ) {: q :}
+\ Whether Q, a read of a source, ended with the file system refusing to read it
+\ (a code of its block, such as E-FS-OPEN for a file whose mode forbids it),
+\ with the refusal's errno, else 0. Any other failure of the read goes on.
+: CHK-READ-REFUSED ( [ -- ] -- n bool ) {: q :}
    q catch {: rc:n :}
-   rc CHK-FS-RC? if CHK-E-IOERR exit then
+   rc CHK-FS-RC? if FS:ERRNO true exit then
    rc 0<> if rc throw then
-   0 ;
+   0 false ;
 
-\ A file the file system refuses to read is the walk's CHK-E-IOERR, placed at
-\ the loader word that names it.
-: CHK-DISCOVER-ACT ( -- )
-   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
-   [: CHK-READ-ACT ;] CHK-READ-RC {: rc:n :}
-   rc 0<> if rc throw then
-   CHK-RUN-READ ;
+\ PATH, a file the caller named, will not open, with errno E: the loader's
+\ rejection, at the path in no source.
+: CHK-UNREADABLE-NAMED ( ptr u8 n n -- ) {: path:ptr pathu:n e:n :}
+   path pathu REJECTION:FILE!
+   NULL-PTR 0 path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
    ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID ix CHK-DIR-PUSH ;
@@ -297,17 +291,36 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    id CHK-DEP$ CHK-FILE-READ ;
 
-\ Edge EDGE names a file that is not there: the loader's rejection, placed at
-\ the path in the file that names it and searched from that file's root.
-: CHK-MISSING ( n -- ) {: edge:n :}
+\ The file that names edge EDGE armed as the rejection source: the span of the
+\ edge's path in it.
+: CHK-EDGE-ARM ( n -- ptr u8 n ) {: edge:n :}
    edge CHK-DIR-FROM @ {: from:n :}
    from CHK-FILE-NAME$ REJECTION:FILE!
    from CHK-FILE-BYTES {: src:ptr srcu:n :}
    src srcu 1 1 0 REJECTION:SOURCE!
-   src edge CHK-DIR-PATH-AT @ +  edge CHK-DIR-PATH-LEN @ {: p:ptr pu:n :}
-   from CHK-DEP-ROOT$
+   src edge CHK-DIR-PATH-AT @ +  edge CHK-DIR-PATH-LEN @ ;
+
+\ Edge EDGE names a file that is not there: the loader's rejection, placed at
+\ the path in the file that names it and searched from that file's root.
+: CHK-MISSING ( n -- ) {: edge:n :}
+   edge CHK-EDGE-ARM {: p:ptr pu:n :}
+   edge CHK-DIR-FROM @ CHK-DEP-ROOT$
    [: edge CHK-DIR-REQ$ p pu false SOURCE-ROOT:MISSING-SOURCE ;]
    SOURCE-ROOT:WITH ;
+
+\ The file the walk reads will not open, with errno E: the loader's rejection,
+\ placed at the path in the file that names it, or at the top's path, which its
+\ caller named.
+: CHK-UNREADABLE ( n -- ) {: e:n :}
+   CHK-DISC-ID @ CHK-DEP$ {: path:ptr pathu:n :}
+   CHK-EDGE @ 0 < if path pathu e CHK-UNREADABLE-NAMED then
+   CHK-EDGE @ CHK-EDGE-ARM path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
+
+: CHK-DISCOVER-ACT ( -- )
+   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
+   [: CHK-READ-ACT ;] CHK-READ-REFUSED {: e:n refused:bool :}
+   refused if e CHK-UNREADABLE then
+   CHK-RUN-READ ;
 
 \ The top's caller found it; a followed edge may name a file that is not there.
 : CHK-PRESENT ( n -- ) {: id:n :}
@@ -346,8 +359,8 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    CHK-HARVEST
    CHK-EXPAND-TOP @ CHK-EXPAND-ID ;
 
-\ Walk the closure below ID into the dependency order: 0, or the code of the
-\ file that ended the walk. Any other throw goes on. The walk starts with no
+\ Walk the closure below ID into the dependency order: 0, or the E-DISC-* code
+\ of the file that ended the walk. Any other throw goes on. The walk starts with no
 \ dependency followed, whatever an earlier walk of the run followed, so a
 \ fault in ID itself has no loader word.
 : CHK-EXPAND ( n -- n )
@@ -355,7 +368,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    -1 CHK-EDGE !
    [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
-   rc CHK-DISC-RC? rc CHK-E-IOERR = or rc 0= or 0= if rc throw then
+   rc CHK-DISC-RC? rc 0= or 0= if rc throw then
    rc ;
 
 \ Walk the closure over SRC, bytes that stand for the file at PATH with its
@@ -374,18 +387,6 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-BYTES-ID !
    path pathu DISCOVER:LOADING!
    id [: CHK-EXPAND ;] [: NULL$ DISCOVER:LOADING! ;] finally ;
-
-\ The packet for the fault RC that ended the walk, CHK-EXPAND's code, at the
-\ loader word that names a file that cannot be read. Empty for a walk that
-\ ended at its own top, which no loader word names. A form discovery rejected
-\ wrote its record where discovery met it.
-: CHK-FAULT$ ( n -- ptr u8 n )
-   {: rc:n :}
-   CHK-EDGE @ {: edge:n :}
-   edge 0 < if NULL$ exit then
-   edge CHK-DIR-FROM @ {: from:n :}
-   rc edge CHK-DIR-AT @ edge CHK-DIR-LEN @ from CHK-FILE-BYTES from CHK-FILE-NAME$
-   VERIFY-DIAGNOSTICS:LOADER-RECORD$ ;
 
 \ The token of the source LINT-LEX read last that starts at the given byte, or
 \ -1 when none does.
@@ -911,8 +912,8 @@ variable VFY-EXE-U
 
 
 \ The loader's fault RC as the closure walk classes it: a file a loader could
-\ not read is CHK-E-IOERR, the child having rejected a missing one itself; a
-\ form keeps discovery's code.
+\ not read to its end is CHK-E-IOERR, the child having rejected a missing one
+\ and one that will not open itself; a form keeps discovery's code.
 : VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
    rc VERIFY:E-SOURCE-READ = if CHK-E-IOERR exit then
    rc ;
@@ -1738,12 +1739,12 @@ public
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
 
-\ The actual target of a loader's failed source read or missing source, if
-\ there was one. The next verification replaces these bytes; a consumer keeps
-\ its own copy.
+\ The actual target of a loader's failed source read, unreadable source or
+\ missing source, if there was one. The next verification replaces these
+\ bytes; a consumer keeps its own copy.
 : VERIFY-UNREAD$ ( -- ptr u8 n )
    VFY-STOP-RC @ {: rc:n :}
-   rc VERIFY:E-SOURCE-READ =  rc CHECKER-REJECT-RC =  or
+   rc VERIFY:E-SOURCE-READ =  rc CHECKER-REJECT-RC =  or  rc INCLUDE-IO-RC =  or
    if VFY-TARGET$ else NULL$ then ;
 
 \ Where it stopped: the byte where the token it stopped at starts, the one the
