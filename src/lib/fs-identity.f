@@ -22,7 +22,6 @@ STAT-CAP PATHZ-CAP + constant WORK-BYTES
 
 PROCESS-SYMBOLS
 FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
-   1 STAT-CAP WRITES-BYTES
 ;FUNCTION
 
 : DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}

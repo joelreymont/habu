@@ -19,13 +19,9 @@ LIBRARY libgobject-2.0.so.0
 FUNCTION: OBJECT-FREE g_object_unref ( n -- ) ;FUNCTION
 
 LIBRARY libsecret-1.so.0
-FUNCTION: SECRET-SEARCH secret_service_search_sync ( n n n n n ptr u8 -- n )
-   5 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: SECRET-SEARCH secret_service_search_sync ( n n n n n ptr u8 -- n ) ;FUNCTION
 FUNCTION: SECRET-GET secret_item_get_secret ( n -- n ) ;FUNCTION
-FUNCTION: VALUE-GET secret_value_get ( n ptr u8 -- ptr u8 )
-   1 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: VALUE-GET secret_value_get ( n ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: VALUE-FREE secret_value_unref ( n -- ) ;FUNCTION
 
 PROCESS-SYMBOLS

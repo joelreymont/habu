@@ -44,12 +44,8 @@ private
 \ binding may consume. No callable raw binding or configurable foreign symbol
 \ escapes this package.
 VERSIONED-LIBRARY unistring 5
-FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
-   6 4 WRITES-BYTES                      \ int *resultp
-;FUNCTION
-FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 )
-   5 CELL WRITES-BYTES                   \ size_t *lengthp
-;FUNCTION
+FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
 PROCESS-SYMBOLS
 FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
 

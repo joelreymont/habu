@@ -203,8 +203,7 @@ TASK:+USER REFUSED-HOLD n
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
 
 
-\ Every pointer is `ptr u8`, passed back or read at the width libpq states; the
-\ one libpq writes, PQgetCopyData's char** (CONN-COPY-ROW), states its extent.
+\ Every pointer is `ptr u8`, passed back or read at the width libpq states.
 VERSIONED-LIBRARY pq 5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
@@ -252,9 +251,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-NOTIFIES PQnotifies ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-PUT-COPY-END PQputCopyEnd ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
-   1 $08 WRITES-BYTES                     \ one char*
-;FUNCTION
+FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
 
 : NULL-ARG ( -- ptr u8 )

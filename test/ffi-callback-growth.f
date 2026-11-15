@@ -11,7 +11,6 @@ private
 
 PROCESS-SYMBOLS
 FUNCTION: QSORT qsort ( ptr u8 n n n -- )
-   0 32 WRITES-BYTES
 ;FUNCTION
 
 4 constant ROW-N

@@ -37,16 +37,13 @@ private
 VERSIONED-LIBRARY rsvg-2 2
 FUNCTION: SVG-OPEN rsvg_handle_new_from_data
    ( ptr u8 n ptr u8 -- ptr u8 )
-   2 CELL WRITES-BYTES
 ;FUNCTION
 FUNCTION: SVG-DPI rsvg_handle_set_dpi ( ptr u8 r -- ) ;FUNCTION
 FUNCTION: SVG-SIZE rsvg_handle_get_intrinsic_size_in_pixels
    ( ptr u8 ptr u8 ptr u8 -- i32 )
-   1 8 WRITES-BYTES 2 8 WRITES-BYTES
 ;FUNCTION
 FUNCTION: SVG-RENDER rsvg_handle_render_document
    ( ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
-   3 CELL WRITES-BYTES
 ;FUNCTION
 
 VERSIONED-LIBRARY glib-2.0 0

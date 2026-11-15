@@ -88,15 +88,11 @@ private
 
 \ The one fstat binding: libc's struct stat, not the normalized stat64 layout.
 PROCESS-SYMBOLS
-FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
-   1 STAT-CAP WRITES-BYTES
-;FUNCTION
+FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 ) ;FUNCTION
 
 \ pread(fd, buf, count, offset), answering ssize_t: bytes read, 0 at end of
 \ file, or -1 with errno set.
-FUNCTION: PREAD-CALL pread ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: PREAD-CALL pread ( n ptr u8 n n -- n ) ;FUNCTION
 
 \ The most one pread asks: macOS answers EINVAL to a count above INT_MAX, so a
 \ longer range is read over several calls.
@@ -105,12 +101,8 @@ $7FFFFFFF constant PREAD-MAX
 \ XSI strerror_r is `strerror_r` on macOS and `__xpg_strerror_r` on glibc,
 \ whose `strerror_r` is the GNU form answering a pointer. Declaring the other
 \ target's symbol is harmless: a row resolves its symbol at its first call.
-FUNCTION: STRERROR-CALL strerror_r ( n ptr u8 n -- i32 )
-   1 2 WRITES-ARG
-;FUNCTION
-FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ptr u8 n -- i32 )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: STRERROR-CALL strerror_r ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ptr u8 n -- i32 ) ;FUNCTION
 
 22 constant EINVAL
 34 constant ERANGE
@@ -405,9 +397,7 @@ private
 \ AT-CWD) into a buffer of STAT-CAP bytes, in libc's struct stat layout,
 \ not lstat64's, so its mode is LIBC-MODE@'s to read.
 PROCESS-SYMBOLS
-FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
-   2 STAT-CAP WRITES-BYTES
-;FUNCTION
+FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
 \ AT_SYMLINK_NOFOLLOW, fstatat's flag for the link itself, never its target.
 \ Darwin: xnu bsd/sys/fcntl.h. Linux: include/uapi/linux/fcntl.h, every arch.

@@ -39,9 +39,7 @@ variable MADE
 
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: READ-CALL read ( n ptr u8 n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
 
 \ The child's fd n is the parent's fd; a negative parent fd maps nothing.
 : SLOT ( PROCESS:request n fd -- PROCESS:request ) {: child:n parent:fd :}

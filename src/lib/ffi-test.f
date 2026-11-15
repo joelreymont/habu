@@ -76,9 +76,7 @@ FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
 \ gcvt(double, int, char *) returns its output buffer. This real libc call
 \ exercises a pointer result beside floating, integer and pointer arguments.
 64 BUFFER: FFI-T-GCVT-BUF
-FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 )
-   2 64 WRITES-BYTES
-;FUNCTION
+FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 ) ;FUNCTION
 
 \ Resolution happens inside the call, after the arguments are staged: DLSYM
 \ marshals through its own buffer, so a symbol resolved for the first time here
@@ -86,11 +84,7 @@ FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 )
 \ the shared descriptor has not yet resolved either.
 FUNCTION: FFI-T-STRLEN-LATE strlen ( ptr u8 -- n ) ;FUNCTION
 
-\ The writable form: memcpy's destination is written and its extent is the
-\ third argument, so the bounded call guards exactly that span.
-FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n )
-   0 2 WRITES-ARG
-;FUNCTION
+FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) ;FUNCTION
 
 \ A C int result fills only the low half of the return register, and the half
 \ above it is whatever the callee left there. close(-1) fails with -1 in every
@@ -126,12 +120,6 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-RESULTS ( -- )
    s" FUNCTION: FFI-T-X2 getpid ( -- n n ) ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-EXTENT ( -- )
-   s" FUNCTION: FFI-T-X3 getpid ( ptr u8 -- n ) 0 0 WRITES-BYTES ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-EXTENT-ARG ( -- )
-   s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-EXTENT-INDEX ( -- )
-   s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-IN-TYPE ( -- )
    s" FUNCTION: FFI-T-XI getpid ( fd -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-OUT-TYPE ( -- )
@@ -187,7 +175,7 @@ variable FFI-T-SCOPE-AFTER
    evaluate-closed ;
 
 \ A refused declaration is ABANDONED, not left half open. The refusal below
-\ names an argument the effect does not have; the good declaration after it must
+\ counts more inputs than the effect has; the good declaration after it must
 \ still compile, and the pair must leave the stack where it found it. Without
 \ that the next declaration in a file refuses too and the first diagnostic names
 \ the wrong one.
@@ -195,7 +183,7 @@ variable FFI-T-PAIR-BEFORE
 variable FFI-T-PAIR-AFTER
 
 : FFI-T-REFUSED-CLAUSE ( -- )
-   s" FUNCTION: FFI-T-XA getpid ( ptr u8 -- n ) 9 $10 WRITES-BYTES ;FUNCTION"
+   s" FUNCTION: FFI-T-XA getpid ( ptr u8 -- n ) 9 VARIADIC ;FUNCTION"
    evaluate-closed ;
 : FFI-T-GOOD-AFTER ( -- )
    s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" evaluate-closed ;
@@ -446,28 +434,21 @@ PROCESS-SYMBOLS
 \ The same declaration exercises Apple's stack varargs and Linux's registers.
 FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
    3 VARIADIC
-   0 64 WRITES-BYTES
 ;FUNCTION
 FUNCTION: FFI-T-SNPRINT-SHORT snprintf ( ptr u8 n ptr u8 n -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
 ;FUNCTION
 FUNCTION: FFI-T-SNPRINT-LONG snprintf ( ptr u8 n ptr u8 n n n n n n n -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
 ;FUNCTION
 FUNCTION: FFI-T-PRINTF-INTS snprintf ( ptr u8 n ptr u8 n n n n n n n n -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
 ;FUNCTION
 FUNCTION: FFI-T-PRINTF-MIXED snprintf ( ptr u8 n ptr u8 n n n n r n -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
 ;FUNCTION
 FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
-   6 4 WRITES-BYTES
 ;FUNCTION
 FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 1 constant FFI-T-PROT-READ
@@ -507,7 +488,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 : FFI-T-F9-WANT ( -- ptr u8 n )
    s" 1 2 3 4 5 6 7 8 9" ;
 : FFI-T-FLOAT-SPILL ( -- )
-   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC 0 1 WRITES-ARG ;FUNCTION"
+   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC ;FUNCTION"
       evaluate-closed
    FFI-T-SRC CODEGEN:RESET
    s" : FFI-T-F9-CHECK ( -- ) FFI-T-PRINT-BUF 64 FFI-T-F9-FORMAT"
@@ -795,12 +776,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: expected 'u8' after 'ptr'" FFI-T-SYNTAX
    [: FFI-T-BAD-RESULTS ;]
    s" error[E-FFI-SYNTAX]: a FUNCTION: declaration has at most one output" FFI-T-SYNTAX
-   [: FFI-T-BAD-EXTENT ;]
-   s" error[E-FFI-SYNTAX]: WRITES-BYTES's byte count is not positive" FFI-T-SYNTAX
-   [: FFI-T-BAD-EXTENT-ARG ;]
-   s" error[E-FFI-SYNTAX]: WRITES-ARG's length input is not an integer" FFI-T-SYNTAX
-   [: FFI-T-BAD-EXTENT-INDEX ;]
-   s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: FFI-T-BAD-IN-TYPE ;]
    s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-SYNTAX
@@ -836,7 +811,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" a refused declaration is abandoned, not left open" T-LABEL
    FFI-T-PAIR-BEFORE FFI-T-DEPTH!
    [: FFI-T-REFUSED-CLAUSE ;]
-   s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
+   s" error[E-FFI-SYNTAX]: VARIADIC's fixed count is not from 1 to the inputs declared" FFI-T-SYNTAX
    [: FFI-T-GOOD-AFTER ;] 0 TTHROWSQ
    FFI-T-PAIR-AFTER FFI-T-DEPTH!
    FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=

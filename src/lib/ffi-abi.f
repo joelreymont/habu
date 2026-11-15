@@ -915,21 +915,15 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
-\     FUNCTION: LOCAL-CALL getsockname ( i32 ptr u8 ptr u8 -- i32 )
-\        1 $10 WRITES-BYTES                   \ sockaddr_in
-\        2 $04 WRITES-BYTES                   \ socklen_t
-\     ;FUNCTION
+\     FUNCTION: LOCAL-CALL getsockname ( i32 ptr u8 ptr u8 -- i32 ) ;FUNCTION
 \
 \ The Habu word name and the C symbol are separate tokens. A symbol is often not
 \ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` and `i32` to `n` on either side. A clause names a
-\ `ptr u8` the callee writes: `idx len WRITES-BYTES` for a fixed width, or
-\ `idx arg WRITES-ARG` when another argument carries the length. The clauses
-\ are ordinary words the
-\ interpreter runs between the two keywords, so their numbers are literals and
-\ comments sit among them.
+\ to Habu `r` and `i32` to `n` on either side. The clauses STRUCT-ARG,
+\ STRUCT-RESULT and VARIADIC are ordinary words the interpreter runs between
+\ the two keywords, so their numbers are literals and comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
@@ -1059,7 +1053,6 @@ variable BASE-U
 create ARG-KIND ARG-MAX cells allot
 create ARG-WIDTH ARG-MAX cells allot          \ each input's C width in bytes
 create ARG-REG ARG-MAX cells allot
-ARG-MAX TYPED-BUFFER ARG-WRITTEN bool         \ true once WRITES-BYTES or WRITES-ARG names it
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
 create ARG-TEXT ARG-MAX TOK-CAP * allot       \ each input's type as DECLARED-EFFECT reads it
@@ -1093,7 +1086,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    ARG-MAX TOK-CAP * 0 ?do 0 ARG-TEXT i + c! loop
    ARG-MAX 0 ?do
       0 ARG-KIND i cells + ! 0 ARG-WIDTH i cells + !
-      0 ARG-REG i cells + ! false i ARG-WRITTEN !
+      0 ARG-REG i cells + !
       0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
       0 ARG-TEXT-U i cells + !
    loop
@@ -1253,11 +1246,10 @@ private
    ARG-N @ ARG-MAX >= if INPUTS-FULL then
    kind ARG-KIND ARG-N @ cells + !
    width ARG-WIDTH ARG-N @ cells + !
-   false ARG-N @ ARG-WRITTEN !
    0 ARG-N @ ARG-SBYTES!
    ARG-N @ 1 + ARG-N ! ;
 
-\ A pointer is `ptr u8`: a byte span with a length the declaration states.
+\ A pointer is `ptr u8`, a byte span.
 \ Answers the span from `ptr`, at A, through `u8`.
 : PTR-TAIL ( ptr u8 -- ptr u8 n ) {: a:ptr :}
    TOK-SPAN {: b:ptr u:n :}
@@ -1323,7 +1315,7 @@ private
 : OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if
       s" a FUNCTION: declaration has at most one output"
-      s" C returns one value: pass others as ptr u8 inputs with WRITES-BYTES"
+      s" C returns one value: return the others through ptr u8 inputs C writes"
       SYNTAX-REJECT
    then
    s" ptr" TOK-IS? if
@@ -1799,7 +1791,7 @@ private
 
 : TAKEN ( -- )
    s" a second clause names the same input"
-   s" give each ptr u8 input one WRITES-BYTES, WRITES-ARG or STRUCT-ARG"
+   s" give a ptr u8 input one STRUCT-ARG, or make it STRUCT-RESULT's destination, not both"
    REJECT ;
 
 : DEST-TAKEN ( -- )
@@ -1811,7 +1803,6 @@ private
    OPEN @ 0= if NOT-OPEN then
    idx 0 < idx ARG-N @ >= or if NO-INPUT then
    idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
-   idx ARG-WRITTEN @ if TAKEN then
    idx ARG-SBYTES@ 0 <> if TAKEN then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
 
@@ -1837,28 +1828,6 @@ private
       i ARG-KIND@ K-FLOAT32 = if VARIADIC-F32 then
    loop
    fixed VAR-START ! ;
-
-: EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
-   idx CLAUSE-TARGET
-   len 0 <= if
-      s" WRITES-BYTES's byte count is not positive"
-      s" write idx n WRITES-BYTES with n the bytes C writes, at least 1"
-      REJECT
-   then
-   true idx ARG-WRITTEN ! ;
-
-: LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
-   idx CLAUSE-TARGET
-   src 0 < src ARG-N @ >= or if
-      s" WRITES-ARG's length names no input of the declaration"
-      s" write idx len WRITES-ARG with len the input holding the byte count"
-      REJECT
-   then
-   src ARG-KIND@ K-VALUE <> if
-      s" WRITES-ARG's length input is not an integer"
-      s" name an n input that holds the byte count" REJECT
-   then
-   true idx ARG-WRITTEN ! ;
 
 : RESULT-CHECK ( n -- ) {: bytes:n :}
    STRUCT-BYTES @ 0 <> if
@@ -1924,8 +1893,6 @@ private
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
-: WRITE-EXTENT ( n n -- ) [: EXTENT-CLAUSE ;] KEEP-REST ;
-: WRITE-LENGTH-ARG ( n n -- ) [: LENGTH-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-RESULT ( n -- ) [: STRUCT-RESULT-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
@@ -1975,12 +1942,6 @@ parses: LIBRARY 1
 
 : FUNCTION: ( -- )
    FFI:OPEN-FUNCTION ;
-
-: WRITES-BYTES ( n n -- )
-   FFI:WRITE-EXTENT ;
-
-: WRITES-ARG ( n n -- )
-   FFI:WRITE-LENGTH-ARG ;
 
 : VARIADIC ( n -- ) FFI:SET-VARIADIC ;
 

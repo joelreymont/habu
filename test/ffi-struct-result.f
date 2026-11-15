@@ -84,12 +84,6 @@ create FFI-T-SR-BUF 64 allot
 : FFI-T-SR-VARIADIC-AFTER ( -- )
    s" FUNCTION: FFI-T-SRX8 div ( n n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC ;FUNCTION"
    evaluate-closed ;
-: FFI-T-SR-WRITES-BEFORE ( -- )
-   s" FUNCTION: FFI-T-SRX9 div ( n n ptr u8 -- ) 2 8 WRITES-BYTES 8 STRUCT-RESULT ;FUNCTION"
-   evaluate-closed ;
-: FFI-T-SR-WRITES-AFTER ( -- )
-   s" FUNCTION: FFI-T-SRXA div ( n n ptr u8 -- ) 8 STRUCT-RESULT 2 8 WRITES-BYTES ;FUNCTION"
-   evaluate-closed ;
 : FFI-T-SR-OUTSIDE ( -- )
    s" 8 STRUCT-RESULT" evaluate-closed ;
 : FFI-T-SR-INPUTS ( -- )
@@ -163,10 +157,6 @@ create FFI-T-SR-BUF 64 allot
    s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
    [: FFI-T-SR-VARIADIC-AFTER ;]
    s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
-   [: FFI-T-SR-WRITES-BEFORE ;]
-   s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
-   [: FFI-T-SR-WRITES-AFTER ;]
-   s" error[E-FFI-SYNTAX]: the clause names STRUCT-RESULT's destination, the last input" FFI-T-SYNTAX
    [: FFI-T-SR-OUTSIDE ;]
    s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-SYNTAX
    s" sixteen C arguments beside the destination exceed the inputs" T-LABEL

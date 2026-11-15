@@ -131,7 +131,6 @@ PROCESS:NO-FD ROOT-WATCH !
 
 PROCESS-SYMBOLS
 FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
-   3 4 WRITES-ARG
 ;FUNCTION
 
 3 constant BSD-FLAVOR

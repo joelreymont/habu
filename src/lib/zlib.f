@@ -62,24 +62,12 @@ STREAM-BYTES 1+ TASK:+USERS SCRATCH u8
 VERSIONED-LIBRARY z 1
 FUNCTION: C-VERSION zlibVersion ( -- ptr u8 ) ;FUNCTION
 FUNCTION: C-CRC32 crc32 ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: C-INFLATE-INIT inflateInit2_ ( ptr u8 n ptr u8 n -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: C-INFLATE inflate ( ptr u8 n -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: C-INFLATE-END inflateEnd ( ptr u8 -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: C-DEFLATE-INIT deflateInit2_ ( ptr u8 n n n n n ptr u8 n -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: C-DEFLATE deflate ( ptr u8 n -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: C-DEFLATE-END deflateEnd ( ptr u8 -- i32 )
-   0 STREAM-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: C-INFLATE-INIT inflateInit2_ ( ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: C-INFLATE inflate ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: C-INFLATE-END inflateEnd ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: C-DEFLATE-INIT deflateInit2_ ( ptr u8 n n n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: C-DEFLATE deflate ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: C-DEFLATE-END deflateEnd ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 
 \ Null allocator callbacks select libz's own malloc and free.

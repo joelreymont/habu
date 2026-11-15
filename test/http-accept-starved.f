@@ -37,9 +37,7 @@ $1000 constant RES-CAP
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: DUP2 dup2 ( n n -- i32 ) ;FUNCTION
 

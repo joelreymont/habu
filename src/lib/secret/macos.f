@@ -18,9 +18,7 @@ FUNCTION: CF-BYTES CFDataGetBytePtr ( n -- ptr u8 ) ;FUNCTION
 FUNCTION: CF-DATA-BORROW CFDataCreateWithBytesNoCopy ( n ptr u8 n n -- n ) ;FUNCTION
 
 LIBRARY /System/Library/Frameworks/Security.framework/Security
-FUNCTION: SEC-READ SecItemCopyMatching ( n ptr u8 -- i32 )
-   1 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: SEC-READ SecItemCopyMatching ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SEC-UPDATE SecItemUpdate ( n n -- i32 ) ;FUNCTION
 FUNCTION: SEC-ADD SecItemAdd ( n n -- i32 ) ;FUNCTION
 FUNCTION: SEC-DELETE SecItemDelete ( n -- i32 ) ;FUNCTION

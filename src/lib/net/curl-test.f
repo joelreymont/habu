@@ -67,7 +67,6 @@ CAST: STATE>CELL ( n -- ptr n )
 VERSIONED-LIBRARY curl 4
 FUNCTION: PRIVATE-GET curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $08 WRITES-BYTES
 ;FUNCTION
 
 $100015 constant INFO-PRIVATE

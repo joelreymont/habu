@@ -232,7 +232,6 @@ $10 constant TIMESPEC-BYTES
 TIMESPEC-BYTES BUFFER: CLOCK-SPEC
 PROCESS-SYMBOLS
 FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
-   1 TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
 \ Nanoseconds since the epoch on clock 0, CLOCK_REALTIME on macOS and Linux: a piece's time.

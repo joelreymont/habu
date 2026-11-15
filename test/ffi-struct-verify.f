@@ -136,7 +136,6 @@ variable FFI-SV-SRC-U
    s" ( r ptr u8 f32 -- n ) 1 12 STRUCT-ARG" FFI-SV-PASS
    s" ( i32 ptr u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
    s" ( ptr u8 ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-PASS
-   s" ( ptr u8 n ptr u8 -- n ) 0 8 STRUCT-ARG 2 1 WRITES-ARG" FFI-SV-PASS
    s" ( ptr u8 -- n ) 0 128 STRUCT-ARG" FFI-SV-PASS
    s" ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG" FFI-SV-PASS
    \ An operand the check cannot establish leaves the clause to the load.
@@ -159,10 +158,6 @@ variable FFI-SV-SRC-U
    s" ( ptr u8 -- n ) 0 0 STRUCT-ARG" FFI-SV-SYNTAX
    s" ( ptr u8 -- n ) 0 -8 STRUCT-ARG" FFI-SV-SYNTAX
    s" ( ptr u8 -- n ) 0 16 STRUCT-ARG 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 16 WRITES-BYTES 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 16 STRUCT-ARG 0 16 WRITES-BYTES" FFI-SV-SYNTAX
-   s" ( ptr u8 n -- n ) 0 1 WRITES-ARG 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 n -- n ) 0 16 STRUCT-ARG 0 1 WRITES-ARG" FFI-SV-SYNTAX
    s" ( n ptr u8 -- n ) 1 VARIADIC 1 16 STRUCT-ARG" FFI-SV-SYNTAX
    s" ( n ptr u8 -- n ) 1 16 STRUCT-ARG 1 VARIADIC" FFI-SV-SYNTAX
    s" ( ptr u8 -- r ) 0 16 STRUCT-ARG" FFI-SV-SYNTAX
@@ -183,10 +178,6 @@ variable FFI-SV-SRC-U
    s" ( ptr u8 -- ) 0 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( ptr u8 -- ) -16 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 0 8 WRITES-BYTES 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( ptr u8 -- ) 8 STRUCT-RESULT 0 8 WRITES-BYTES" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 1 0 WRITES-ARG 8 STRUCT-RESULT" FFI-SV-SYNTAX
-   s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 0 WRITES-ARG" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC" FFI-SV-SYNTAX
    s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;

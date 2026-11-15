@@ -218,35 +218,15 @@ CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 \ stages its argument tables in the calling task's own DATA region.
 PROCESS-SYMBOLS
 
-FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES          \ sem_t; then pshared, then the count
-;FUNCTION
+FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: SEM-WAIT-CALL sem_wait ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: SEM-POST-CALL sem_post ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 ) ;FUNCTION
 
-FUNCTION: SEM-WAIT-CALL sem_wait ( ptr u8 -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: SEM-POST-CALL sem_post ( ptr u8 -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES
-;FUNCTION
-
-\ sem_clockwait (glibc 2.30) takes an absolute deadline on the named clock and
-\ only reads it; clock_gettime writes its timespec.
-FUNCTION: SEM-CLOCKWAIT-CALL sem_clockwait ( ptr u8 n ptr u8 -- i32 )
-   0 TASK-SEM-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
-   1 TASK-TIMESPEC-BYTES WRITES-BYTES
-;FUNCTION
+\ sem_clockwait (glibc 2.30) takes an absolute deadline on the named clock.
+FUNCTION: SEM-CLOCKWAIT-CALL sem_clockwait ( ptr u8 n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 ) ;FUNCTION
 
 \ Darwin's unnamed POSIX semaphore entry points are ENOSYS stubs. A Mach
 \ semaphore is a process-owned port name stored in the same record. Its wait
@@ -258,52 +238,29 @@ FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
 0 constant MACH-FIFO
 $FFFFFFFF constant MACH-SEC-MAX
 FUNCTION: MACH-TASK task_self_trap ( -- u32 ) ;FUNCTION
-FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 )
-   1 4 WRITES-BYTES
-;FUNCTION
+FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-DESTROY semaphore_destroy ( n n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-TIMEDWAIT semaphore_timedwait ( n n -- i32 ) ;FUNCTION
 
-\ nanosleep only reads the request and writes the remainder when a signal cuts
-\ the sleep short, so only the second argument states an extent.
-FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
-   1 TASK-TIMESPEC-BYTES WRITES-BYTES
-;FUNCTION
-
+FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SCHED-YIELD-CALL sched_yield ( -- i32 ) ;FUNCTION
-
-\ munmap only reads the address it is given.
 FUNCTION: MUNMAP-CALL munmap ( ptr u8 n -- i32 ) ;FUNCTION
 
 \ pthread_create writes the pthread_t into the TCB's THREAD cell and passes the
 \ TCB to the entry (TASK-ABI's code address, null attribute); pthread_join
 \ writes the thread's exit value into the TCB's RET cell.
-FUNCTION: PTHREAD-CREATE-CALL pthread_create ( ptr u8 n n ptr u8 -- i32 )
-   0 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: PTHREAD-CREATE-CALL pthread_create ( ptr u8 n n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PTHREAD-JOIN-CALL pthread_join ( n ptr u8 -- i32 ) ;FUNCTION
 
-FUNCTION: PTHREAD-JOIN-CALL pthread_join ( n ptr u8 -- i32 )
-   1 8 WRITES-BYTES
-;FUNCTION
-
-\ A FACILITY's lock: one pthread_mutex_t of TASK-MUTEX-BYTES in its record,
-\ which each call may write.
-FUNCTION: MUTEX-LOCK-CALL pthread_mutex_lock ( ptr u8 -- i32 )
-   0 TASK-MUTEX-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
-   0 TASK-MUTEX-BYTES WRITES-BYTES
-;FUNCTION
+\ A FACILITY's lock: one pthread_mutex_t of TASK-MUTEX-BYTES in its record.
+FUNCTION: MUTEX-LOCK-CALL pthread_mutex_lock ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 ) ;FUNCTION
 
 \ pthread_key_create writes the key into the cell, 8 bytes on macOS and 4 on
 \ Linux; the second argument is the destructor, 0 for none.
-FUNCTION: KEY-CREATE-CALL pthread_key_create ( ptr u8 n -- i32 )
-   0 8 WRITES-BYTES
-;FUNCTION
-
+FUNCTION: KEY-CREATE-CALL pthread_key_create ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: KEY-DELETE-CALL pthread_key_delete ( n -- i32 ) ;FUNCTION
 FUNCTION: SETSPECIFIC-CALL pthread_setspecific ( n n -- i32 ) ;FUNCTION
 FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION

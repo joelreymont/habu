@@ -140,14 +140,8 @@ create TASK TASK-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: LIST-PIDS proc_listpids ( n n ptr u8 n -- i32 )
-   2 3 WRITES-ARG
-;FUNCTION
-
-FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
-   3 4 WRITES-ARG
-;FUNCTION
-
+FUNCTION: LIST-PIDS proc_listpids ( n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 : ERRNO-CLEAR ( -- )
@@ -458,10 +452,7 @@ create STATUS STATUS-CAP allot
 variable KINFO-U                    \ sysctl's size_t in and out
 variable STATUS-U
 
-FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
-   2 KINFO-BYTES WRITES-BYTES
-   3 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
 : CAUGHT-BIT? ( n n -- bool ) {: set:n sig:n :}
    set 1 sig 1- lshift and 0<> ;
@@ -548,13 +539,8 @@ create RUSAGE RUSAGE-BYTES allot
 create TIMEBASE TIMEBASE-BYTES allot
 variable TICKS
 
-FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ptr u8 -- i32 )
-   2 RUSAGE-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
-   0 TIMEBASE-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 ) ;FUNCTION
 
 : RU@ ( n -- n ) {: off:n :}
    RUSAGE off + LE:U64@ ;

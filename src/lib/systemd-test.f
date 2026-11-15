@@ -49,9 +49,7 @@ PROCESS-SYMBOLS
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG                         \ the datagram buffer
-;FUNCTION
+FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
 
 : P+ ( ptr u8 n -- )
    PROG CODEGEN:APPEND-STRING

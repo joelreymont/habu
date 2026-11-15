@@ -111,11 +111,9 @@ TASK:MIN-STACK TASK:TASK OUTSIDER
 PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
-   2 SA-BUF-BYTES WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
-   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}

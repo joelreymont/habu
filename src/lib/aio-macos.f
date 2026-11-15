@@ -68,11 +68,9 @@ variable MAC-WRITE-FD
 
 PROCESS-SYMBOLS
 FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 )
-   0 OPEN-MAX MAC-POLL-BYTES * WRITES-BYTES
-;FUNCTION
-FUNCTION: MAC-READ read ( n ptr u8 n -- n ) 1 2 WRITES-ARG ;FUNCTION
-FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) 1 2 WRITES-ARG ;FUNCTION
+FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: MAC-READ read ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: MAC-WRITE write ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 

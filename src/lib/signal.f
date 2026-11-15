@@ -110,7 +110,6 @@ SCRATCH-VARIABLE READY             \ 1 from INIT to RELEASE, else 0
 PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
-   2 SA-BUF-BYTES WRITES-BYTES
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}

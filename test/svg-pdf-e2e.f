@@ -40,9 +40,7 @@ variable FINISH-LIMIT
 25 constant FILE-SIZE-SIGNAL
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 

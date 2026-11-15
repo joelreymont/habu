@@ -3392,7 +3392,6 @@ TYPED-VARIABLE FFI-UNREAD bool              \ the load refuses the effect before
 FFI-IN-CAP TYPED-BUFFER FFI-KIND n          \ an input's kind
 FFI-IN-CAP TYPED-BUFFER FFI-SIZE n          \ its C size
 FFI-IN-CAP TYPED-BUFFER FFI-SARG n          \ its STRUCT-ARG bytes, 0 for none
-FFI-IN-CAP TYPED-BUFFER FFI-WRIT bool       \ a write clause names it
 FFI-IN-CAP TYPED-BUFFER FFI-REGS n          \ the plan's places (FFI-STAGING), unread
 FFI-IN-CAP TYPED-BUFFER FFI-PAYS n          \ and its copies', unread
 variable FFI-RES                            \ the STRUCT-RESULT bytes, 0 for none
@@ -3434,7 +3433,7 @@ variable FFI-LIT-B                          \ and the newer
    a u s" ptr" CORE-STR= FFI-PTR !
    a u FFI-IN-KIND i FFI-KIND !
    a u FFI:TYPE-SIZE i FFI-SIZE !
-   0 i FFI-SARG !  false i FFI-WRIT ! ;
+   0 i FFI-SARG ! ;
 
 
 : FFI-OUTPUT ( ptr u8 n -- )
@@ -3524,15 +3523,6 @@ variable FFI-LIT-B                          \ and the newer
    false ;
 
 
-\ `idx len WRITES-BYTES`, `idx src WRITES-ARG`: idx is no struct clause's input.
-: FFI-WRITES ( -- )
-   2 FFI-OPERANDS? 0= IF EXIT THEN
-   FFI-LIT-A @ {: i:n :}
-   i FFI-INPUT? 0= IF EXIT THEN
-   i FFI-UNSTRUCT
-   true i FFI-WRIT ! ;
-
-
 : FFI-VARIADIC ( -- )
    FFI-RES @ 0<> FFI-ANY-SARG? or IF FFI-STOP THEN
    true FFI-VAR ! ;
@@ -3547,7 +3537,6 @@ variable FFI-LIT-B                          \ and the newer
    bytes 0 <= IF FFI-STOP THEN
    i FFI-INPUT? 0= IF FFI-STOP THEN
    i FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
-   i FFI-WRIT @ IF FFI-STOP THEN
    i FFI-UNSTRUCT
    bytes i FFI-SARG ! ;
 
@@ -3561,7 +3550,6 @@ variable FFI-LIT-B                          \ and the newer
    bytes 0 <= IF FFI-STOP THEN
    FFI-OUT-N @ 0<> FFI-IN-N @ 0= or IF FFI-STOP THEN
    FFI-DEST FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
-   FFI-DEST FFI-WRIT @ IF FFI-STOP THEN
    FFI-DEST FFI-SARG @ 0<> IF FFI-STOP THEN
    bytes FFI-RES ! ;
 
@@ -3572,8 +3560,7 @@ variable FFI-LIT-B                          \ and the newer
    a u TOKEN-TAIL {: t:ptr tu:n :}
    t tu s" STRUCT-ARG" STR=CI IF FFI-STRUCT-ARG EXIT THEN
    t tu s" STRUCT-RESULT" STR=CI IF FFI-STRUCT-RESULT EXIT THEN
-   t tu s" VARIADIC" STR=CI IF FFI-VARIADIC EXIT THEN
-   FFI-WRITES ;
+   t tu s" VARIADIC" STR=CI IF FFI-VARIADIC THEN ;
 
 \ The record and the stop of a declaration the plan rejects sit at the
 \ statement's last token, ;FUNCTION, where the load rejects it.
@@ -3670,16 +3657,13 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
 \ the storage definers are (LIBRARY-DEFINER?); a re-export of it is the clause.
 \ A clause is the declaration's syntax, not a call, so the check needs no
 \ runtime that defines it. Struct clauses are held to the declarer's rules:
-\ the code the load throws is the refusal here. A write clause is read only for
-\ the struct clause its target conflicts with and VARIADIC for its presence;
-\ their other rules stay the load's. An operand is established only as a
+\ the code the load throws is the refusal here. VARIADIC is read only for its
+\ presence; its other rules stay the load's. An operand is established only as a
 \ literal num-parse takes, read at top level right before the clause. Any other
 \ operand, or an effect the load refuses, leaves the group's remaining clauses
 \ to the load. Nothing runs.
 variable STRUCT-ARG-XT s" STRUCT-ARG" STRUCT-ARG-XT LIBRARY-XT!
 variable STRUCT-RESULT-XT s" STRUCT-RESULT" STRUCT-RESULT-XT LIBRARY-XT!
-variable WRITES-BYTES-XT s" WRITES-BYTES" WRITES-BYTES-XT LIBRARY-XT!
-variable WRITES-ARG-XT s" WRITES-ARG" WRITES-ARG-XT LIBRARY-XT!
 variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 
 : FFI-CLAUSE? ( ptr u8 n -- bool )
@@ -3687,8 +3671,6 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    FFI-GROUP @ 0= IF false EXIT THEN
    a u STRUCT-ARG-XT @ s" STRUCT-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
-   a u WRITES-BYTES-XT @ s" WRITES-BYTES" LIBRARY-DEFINER? IF true EXIT THEN
-   a u WRITES-ARG-XT @ s" WRITES-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
 \ `parse-imm` is the engine's word only where the load binds the token to its

@@ -89,9 +89,7 @@ FUNCTION: DRAW-TRANSFORM hb_vector_draw_set_transform
 FUNCTION: DRAW-GLYPH hb_vector_draw_glyph_or_fail
    ( ptr u8 ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: DRAW-PRECISION hb_vector_draw_set_precision ( ptr u8 n -- ) ;FUNCTION
-FUNCTION: DRAW-EXTENTS hb_vector_draw_get_extents ( ptr u8 ptr u8 -- i32 )
-   1 EXTENTS-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: DRAW-EXTENTS hb_vector_draw_get_extents ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: DRAW-SET-EXTENTS hb_vector_draw_set_extents ( ptr u8 ptr u8 -- ) ;FUNCTION
 FUNCTION: DRAW-RENDER hb_vector_draw_render ( ptr u8 -- ptr u8 ) ;FUNCTION
 

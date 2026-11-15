@@ -100,20 +100,15 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
-\ libc's calls, each staged with the pointer direction and extent it needs.
-\ The termios extent is the target's record; Darwin passes ioctl's variadic
-\ pointer on the stack.
+\ libc's calls. Darwin passes ioctl's variadic pointer on the stack.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 PROCESS-SYMBOLS
 FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: GET-CALL ioctl ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 TERM-BYTES WRITES-BYTES             \ termios (Darwin) or termios2 (Linux)
 ;FUNCTION
 FUNCTION: SET-CALL ioctl ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: READ-CALL read ( n ptr u8 n -- n )
-   1 2 WRITES-ARG                        \ the caller's capacity
-;FUNCTION
+FUNCTION: READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 

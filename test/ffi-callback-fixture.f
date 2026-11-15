@@ -3,8 +3,6 @@
 \ entry points, the callbacks C is handed, the cells their bodies report
 \ through, and the words that pad the slot tables to their edge. Each file
 \ reopens package FFI-CB-TEST.
-\ Every row sorted here is ROW-N cells, which is the extent QSORT declares
-\ written.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
@@ -24,16 +22,12 @@ $1F constant SORTS-ALL               \ SORTS with every case true
 
 PROCESS-SYMBOLS
 
-FUNCTION: QSORT qsort ( ptr u8 n n n -- )
-   0 $40 WRITES-BYTES                \ ROW-N cells
-;FUNCTION
+FUNCTION: QSORT qsort ( ptr u8 n n n -- ) ;FUNCTION
 
 \ The matched element's address as a number, 0 for none.
 FUNCTION: BSEARCH bsearch ( ptr u8 ptr u8 n n n -- n ) ;FUNCTION
 
-FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 )
-   0 8 WRITES-BYTES                  \ pthread_t
-;FUNCTION
+FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 ) ;FUNCTION
 
 create OUTER ROW-N cells allot        \ the row the calling task sorts
 create INNER ROW-N cells allot        \ the row a comparator sorts, nested

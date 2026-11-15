@@ -34,7 +34,6 @@ create FIFO PATH-CAP allot
 PROCESS-SYMBOLS
 
 FUNCTION: SHM-CTL shmctl ( n n ptr u8 -- i32 )
-   2 SHMID-DS-BYTES WRITES-BYTES
 ;FUNCTION
 
 variable LINE-U

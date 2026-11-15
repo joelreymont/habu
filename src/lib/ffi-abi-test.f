@@ -35,14 +35,14 @@ public
 \ C writes through a staged cell: strtol stores its end pointer in argument 1,
 \ an eight-byte output. memcpy copies the kernel-parameter block out whole.
 PROCESS-SYMBOLS
-FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) 1 8 WRITES-BYTES ;FUNCTION
-FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
+FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 \ A declaration held open across a require: the file ends before ;FUNCTION.
 FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    require test/fixtures/ffi-abi-require.f
-   1 8 WRITES-BYTES ;FUNCTION
+;FUNCTION
 
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:ptr :}
