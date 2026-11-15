@@ -30,6 +30,7 @@ variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 \ Which text of the record is open. A prose AT opens GAP-PART: the label's
 \ first byte writes the space after the carets and opens LABEL-PART. An AT no
 \ source holds opens DROP-PART, which drops the label: no place carries it.
+\ Its end writes nothing and leaves LABEL-PART, so the notes after it print.
 0 constant NO-PART
 1 constant MESSAGE-PART
 2 constant LABEL-PART
@@ -439,7 +440,7 @@ public
 private
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
-   PART @ DROP-PART = IF EXIT THEN
+   PART @ DROP-PART = IF LABEL-PART PART ! EXIT THEN
    JSON @ IF JSON-CLOSE EXIT THEN
    10 EMIT1 ;
 : BLANKS ( n -- ) {: k:n :}
@@ -744,7 +745,7 @@ private
 \ evaluated place, then the `word` note.
 : CLOSE-PART ( -- )
    END-TEXT
-   PART @ LABEL-PART =  PART @ DROP-PART = or 0= IF EXIT THEN
+   PART @ LABEL-PART = 0= IF EXIT THEN
    EVALUATED @ IF
       0 EVALUATED !
       JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN
