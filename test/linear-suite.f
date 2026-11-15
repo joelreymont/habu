@@ -48,11 +48,12 @@ variable SRC-U
    rc CHECKER-REJECT-RC T=
    REJECTION:BUFFER$ c cu CONTAINS? TTRUE
    REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
-\ REJECTS, and the record places the cause where the text wrote it.
+\ REJECTS, and the record quotes the evaluated text and labels its cause.
 : REJECTS-AT ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: rc:n c:ptr cu:n w:ptr wu:n p:ptr pu:n :}
+   {: rc:n c:ptr cu:n w:ptr wu:n l:ptr lu:n :}
    rc c cu w wu REJECTS
-   REJECTION:BUFFER$ p pu CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s" = evaluated: " CONTAINS? TTRUE
+   REJECTION:BUFFER$ l lu CONTAINS? TTRUE ;
 ;package
 
 T-RESET
@@ -72,18 +73,18 @@ variable ROW-LOW  variable ROW-HIGH
 s" 7 42 ROW-ROUND ROW-HIGH ! ROW-LOW !" LIN-RUN:DECL 0 T=
 ROW-LOW @ 7 T=  ROW-HIGH @ 42 T=
 s" LINEAR: Q-MINT ( R n -- S LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: Q-MINT`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: Q-MINT`" s" not one term on each side" LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-LINEAR-SCOPE]" s" `linear: LIN-OWN:PUBLIC-MINT`" s" <input>:1:9"
+   s" error[E-LINEAR-SCOPE]" s" `linear: LIN-OWN:PUBLIC-MINT`" s" outside its owner's private section"
    LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-NO-PACKAGE:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-LINEAR-SCOPE]" s" `linear: LIN-NO-PACKAGE:PUBLIC-MINT`" s" <input>:1:9"
+   s" error[E-LINEAR-SCOPE]" s" `linear: LIN-NO-PACKAGE:PUBLIC-MINT`" s" outside its owner's private section"
    LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:BAD-PAYLOAD ( n -- n )" LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LIN-OWN:BAD-PAYLOAD`" s" <input>:1:9"
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LIN-OWN:BAD-PAYLOAD`" s" not one token and one payload"
    LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:BAD-OWNER ( n -- LIN-OTHER:tok )" LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LIN-OWN:BAD-OWNER`" s" <input>:1:9"
+   s" error[E-LINEAR-OWNER]" s" `linear: LIN-OWN:BAD-OWNER`" s" declared outside the type's package"
    LIN-RUN:REJECTS-AT
 s" MINT" ABSENT? TFALSE
 s" ERASE" ABSENT? TFALSE
@@ -98,42 +99,42 @@ s" the declarer inside a checked body is unsafe" T-LABEL
 s" LV5 ( LIN-OWN:tok -- ) linear:"                   CHECK-QUIET-CANDIDATE! 0 T=
 s" exactly one side is linear and the other a payload" T-LABEL
 s" LINEAR: LP1 ( LIN-OWN:tok -- LIN-OWN:tok )"     LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP1`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP1`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP2 ( LIN-OWN:tok -- LIN-OWN:aux )"     LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP2`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP2`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP3 ( n -- n )"                         LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP3`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP3`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP4 ( n -- idx )"                       LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP4`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP4`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP5 ( n -- ptr LIN-OWN:tok )"           LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP5`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP5`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" a payload is a non-linear constructor or a pointer chain ending at one" T-LABEL
 s" LINEAR: LP6 ( ptr LIN-OWN:aux -- LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP7 ( ptr a -- LIN-OWN:tok )"           LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP8 ( LIN-OWN:tok -- a )"               LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP8`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP8`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP9 ( LIN-OTHER:ofam -- LIN-OWN:tok )"  LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP9`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP9`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP10 ( [ -- ] -- LIN-OWN:tok )"         LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP10`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP10`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" the shapes cast: refuses" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: LA1`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: LA1`" s" not one term on each side" LIN-RUN:REJECTS-AT
 s" LINEAR: LA2 ( -- LIN-OWN:tok )"                 LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `linear: LA2`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `linear: LA2`" s" not one term on each side" LIN-RUN:REJECTS-AT
 s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL
    s" error[E-CAST-FAM]" s" `neverdecl`" LIN-RUN:REJECTS
 \ An output scope variable no input supplies is a bad signature here: only a
 \ cast: view pack leaves that fault to its scope rule.
 s" LINEAR: LA4 ( n -- read-view<p,q,u8> )"         LIN-RUN:DECL
-   s" error[E-BAD-STORED-SIGNATURE]" s" `LA4`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-BAD-STORED-SIGNATURE]" s" `LA4`" s" its outputs name a variable no input supplies" LIN-RUN:REJECTS-AT
 s" cast: carries no linear type, in the owner too" T-LABEL
 s" cast: LC1 ( n -- LIN-OWN:tok )"                 LIN-RUN:DECL
-   s" error[E-CAST-LINEAR]" s" `cast: LC1`" s" <input>:1:7" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-LINEAR]" s" `cast: LC1`" s" a linear value would change hands" LIN-RUN:REJECTS-AT
 s" cast: LC2 ( LIN-OWN:tok -- n )"                 LIN-RUN:DECL
-   s" error[E-CAST-LINEAR]" s" `cast: LC2`" s" <input>:1:7" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-LINEAR]" s" `cast: LC2`" s" a linear value would change hands" LIN-RUN:REJECTS-AT
 s" a refused row publishes no name" T-LABEL
 s" LP1" ABSENT? TTRUE
 s" LP9" ABSENT? TTRUE
@@ -142,9 +143,9 @@ s" LC1" ABSENT? TTRUE
 s" the owner's public section refuses a row" T-LABEL
 public
 s" LINEAR: LS1 ( n -- LIN-OWN:tok )"               LIN-RUN:DECL
-   s" error[E-LINEAR-SCOPE]" s" `linear: LS1`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-SCOPE]" s" `linear: LS1`" s" outside its owner's private section" LIN-RUN:REJECTS-AT
 s" LINEAR: LS2 ( LIN-OWN:tok -- n )"               LIN-RUN:DECL
-   s" error[E-LINEAR-SCOPE]" s" `linear: LS2`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-SCOPE]" s" `linear: LS2`" s" outside its owner's private section" LIN-RUN:REJECTS-AT
 s" : GIVE ( ptr n -- LIN-OWN:tok ) MINT ;"         LIN-RUN:DECL 0 T=
 s" : LOOK ( LIN-OWN:tok -- LIN-OWN:tok n ) PEEK ;" LIN-RUN:DECL 0 T=
 s" : TAKE ( LIN-OWN:tok -- ptr n ) ERASE ;"        LIN-RUN:DECL 0 T=
@@ -155,23 +156,23 @@ s" LIN-NO-PACKAGE:PUBLIC-MINT" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:BAD-PAYLOAD" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:BAD-OWNER" XREF-FIND XREF-FOUND? TFALSE
 s" cast: BAD-TAIL ( R n -- S n )" LIN-RUN:DECL
-   s" error[E-CAST-ARITY]" s" `cast: BAD-TAIL`" s" <input>:1:7" LIN-RUN:REJECTS-AT
+   s" error[E-CAST-ARITY]" s" `cast: BAD-TAIL`" s" not one term on each side" LIN-RUN:REJECTS-AT
 
 \ ---- no other scope mints or erases --------------------------------------------
 s" another package neither mints nor erases the owner's type" T-LABEL
 package LIN-OTHER
 s" LINEAR: LO1 ( n -- LIN-OWN:tok )"     LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LO1`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-OWNER]" s" `linear: LO1`" s" declared outside the type's package" LIN-RUN:REJECTS-AT
 s" LINEAR: LO2 ( LIN-OWN:tok -- n )"     LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LO2`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-OWNER]" s" `linear: LO2`" s" declared outside the type's package" LIN-RUN:REJECTS-AT
 s" LINEAR: LO3 ( n -- lin-free )"        LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LO3`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-OWNER]" s" `linear: LO3`" s" declared outside the type's package" LIN-RUN:REJECTS-AT
 ;package
 s" nor does the top level, for an owned type or an unowned one" T-LABEL
 s" LINEAR: LT1 ( n -- LIN-OWN:tok )"     LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LT1`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-OWNER]" s" `linear: LT1`" s" declared outside the type's package" LIN-RUN:REJECTS-AT
 s" LINEAR: LT2 ( n -- lin-free )"        LIN-RUN:DECL
-   s" error[E-LINEAR-OWNER]" s" `linear: LT2`" s" <input>:1:9" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-OWNER]" s" `linear: LT2`" s" declared outside the type's package" LIN-RUN:REJECTS-AT
 s" the mint stays private while the owner's public words resolve" T-LABEL
 s" LIN-OWN:MINT" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:GIVE" XREF-FIND XREF-FOUND? TTRUE
@@ -253,7 +254,7 @@ variable ERR-U
    ERR$ w wu CONTAINS? TTRUE ;
 ;package
 s" the keyword with nothing after it names itself" T-LABEL
-s" linear:" LIN-CHILD:RUN $4A T=
+s" linear:" LIN-CHILD:RUN 70 T=
 s" error[E-MISSING-NAME]" s" `linear:`" LIN-CHILD:SAYS
 s" a row's bare call at an empty stack is refused by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
