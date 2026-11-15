@@ -372,7 +372,7 @@ public
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `sn-nosuch`" REFUSES
    s" a type mismatch prints its expected and found rows" T-LABEL
    SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
-   s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises bool" REFUSES
+   s" error[E-MISMATCH]: SN-MIS ends with n on the stack; its signature promises bool" REFUSES
    s" = expected: bool" SAID  s" = found: n" SAID
    s" a bare ptr in a signature is rejected for its missing element type" T-LABEL
    SRC-RESET  s" : SN-BP ( ptr -- ) drop ;" S+

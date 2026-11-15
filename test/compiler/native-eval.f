@@ -379,7 +379,7 @@ variable ERR-U
    s" : T-FORGET ( -- n n ) X-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
-   s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
+   s" error[E-MISMATCH]: T-FORGET ends with n on the stack; its signature promises n n" SAYS
    s" = evaluated: ...FORGET catch . cr : T-FORGET ( -- n n ) X-FORGET ;" SAYS
    s" the stack holds n after this" SAYS ;
 

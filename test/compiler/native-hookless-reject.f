@@ -125,7 +125,7 @@ create TEXT CAP allot                  variable TEXT-U
    TEXT$ SESSION
    RC @ CHECKER-REJECT-RC T=
    S\" 70\n" PRINTS
-   s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
+   s" error[E-MISMATCH]: T-FORGET ends with n on the stack; its signature promises n n" SAYS
    s" = evaluated: ...; TRY-FORGET . cr : T-FORGET ( -- n n ) W-FORGET ;" SAYS ;
 
 : RUN ( -- )

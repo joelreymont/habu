@@ -2475,11 +2475,11 @@ s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\"   = help: give `x:tdres<n>` 2 type arguments\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlnom on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlnom on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check.
 REJECTION:CAPTURE
@@ -2494,7 +2494,7 @@ NEWTYPE tdlrfam
 ;package
 REJECTION:CAPTURE
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpk:tdlrfam on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" CONTAINS? TTRUE
 
 \ Same row, but the package was declared in UPPER case (TDLR4's `tdlrpk` is
@@ -2509,12 +2509,12 @@ NEWTYPE tdlrfamu
 ;package
 REJECTION:CAPTURE
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpku:tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
 REJECTION:CAPTURE
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpku:tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
@@ -2530,7 +2530,7 @@ false REJECTION:JSON !
 package tdlrpku
 REJECTION:CAPTURE
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" CONTAINS? TFALSE
 ;package

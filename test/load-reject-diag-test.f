@@ -822,8 +822,8 @@ variable RC
    s" a rejected definition prints its diagnostic once" T-LABEL
    ONCE$ RUN
    SB-RESET
-   s" error[E-MISMATCH]: the body ends with nothing on the stack;" SB-APPEND
-   S\"  the signature promises n\n --> " SB-APPEND
+   s" error[E-MISMATCH]: F ends with nothing on the stack;" SB-APPEND
+   S\"  its signature promises n\n --> " SB-APPEND
    ONCE$ SB-APPEND  S\" :1:16\n  |\n1 | : F ( n -- n ) drop ;\n" SB-APPEND
    S\"   |                ^^^^ the stack is empty after this\n" SB-APPEND
    S\"   = expected: n\n  = found: (nothing)\n" SB-APPEND
@@ -845,8 +845,8 @@ variable RC
    ONCE-JSON$ RUN
    SB-RESET
    S\" {\"severity\":\"error\",\"code\":\"E-MISMATCH\"" SB-APPEND
-   S\" ,\"message\":\"the body ends with nothing on the stack;" SB-APPEND
-   S\"  the signature promises n\",\"file\":\"" SB-APPEND
+   S\" ,\"message\":\"F ends with nothing on the stack;" SB-APPEND
+   S\"  its signature promises n\",\"file\":\"" SB-APPEND
    ONCE-JSON$ SB-APPEND
    S\" \",\"line\":2,\"column\":16,\"byte_start\":35" SB-APPEND
    S\" ,\"byte_end\":39,\"token\":\"drop\"" SB-APPEND

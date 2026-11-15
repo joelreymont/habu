@@ -1443,9 +1443,15 @@ variable MDV-I   variable MDV-F
 
 : INFERRED ( -- ) INFERRED-EFFECT TRIM-SPACE ;
 
+\ The body whose end is checked: a colon definition's name as written, or a
+\ does> clause's definer, which DOES-NAME! leaves folded with the clause suffix.
+: END-SUBJECT ( -- )
+   CLAUSE-WALK @ 0= IF NM-SPAN EMIT-STR EXIT THEN
+   s" the `does>` clause of " EMIT-STR
+   NMA @ NMU @ DOES-CLAUSE:SUFFIX$ nip - EMIT-STR ;
 : END-MESSAGE ( -- )
-   s" the body ends with " EMIT-STR  DACT @ ROW-WORD
-   s"  on the stack; the signature promises " EMIT-STR  DEXP @ ROW-WORD ;
+   END-SUBJECT  s"  ends with " EMIT-STR  DACT @ ROW-WORD
+   s"  on the stack; its signature promises " EMIT-STR  DEXP @ ROW-WORD ;
 : MISMATCH-MESSAGE ( -- )
    DEND @ 0 <> IF END-MESSAGE EXIT THEN
    TOK-SPAN  s"  takes " EMIT-STR  DEXP @ ROW-WORD
