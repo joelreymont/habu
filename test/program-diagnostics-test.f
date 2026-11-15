@@ -209,7 +209,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/program-diagnostic-export.f" s" <input>:1:15" DIAGNOSTIC
    s" error[E-INPUT-UNDERFLOW]" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
    s" 1 | XPU3 ( -- n ) XPD:XP-INC" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
-   s" test/program-diagnostic-lower.f" s" <input>:1:39" DIAGNOSTIC
+   s" test/program-diagnostic-lower.f" s" <input>:1:36" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS
    s" 1 | LC-NAMED-BAD ( ^lcnamed -- color ) @" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS ;
 

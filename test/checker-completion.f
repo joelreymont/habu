@@ -626,7 +626,7 @@ variable DOES-USES
    s\" : HELPER ( -- ) ;\n: BAD ( ^ -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" drop ;\n: LATER ( -- ) BAD ;\n" ;
 
 : NAMED-RECORDS$ ( -- ^u8 n )
-   S\" error[E-COUNTED-STRING-TOO-LONG]: the counted string `c\"` opens is longer than its count byte holds\n --> <input>:2:25\n  |\n2 | : BAD ( ^ -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n  |                         ^^ too long\n  = limit: 255 bytes\n  = help: shorten the text, or write it with `s\"`, which has no count byte\n\nerror[E-UNDEFINED]: cannot find word `BAD`\n --> <input>:3:16\n  |\n3 | : LATER ( -- ) BAD ;\n  |                ^^^ not found\n  = help: define `BAD` before this point, or check its spelling\n\n" ;
+   S\" error[E-COUNTED-STRING-TOO-LONG]: the counted string `c\"` opens is longer than its count byte holds\n --> <input>:2:23\n  |\n2 | : BAD ( ^ -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n  |                       ^^ too long\n  = limit: 255 bytes\n  = help: shorten the text, or write it with `s\"`, which has no count byte\n\nerror[E-UNDEFINED]: cannot find word `BAD`\n --> <input>:3:16\n  |\n3 | : LATER ( -- ) BAD ;\n  |                ^^^ not found\n  = help: define `BAD` before this point, or check its spelling\n\n" ;
 
 : CASE-USE-NAMES ( -- )
    NAMED-TEXT$ TEXT-U !  TEXT-A !

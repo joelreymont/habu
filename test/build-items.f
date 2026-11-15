@@ -675,7 +675,7 @@ private
    PROCESS:ENDING>RC RC>N 70 T=
    CMD:ERR$ s" error[E-UNDEFINED]: `[ ^^" CONTAINS? TTRUE
    CMD:ERR$ s" ^u8 -- ]` is a built local outside a `{:` group" CONTAINS? TTRUE
-   CMD:ERR$ s" long-type.f:22:13" CONTAINS? TTRUE ;
+   CMD:ERR$ s" long-type.f:23:13" CONTAINS? TTRUE ;
 
 public
 : RUN ( -- ) [: LONG ;] CMD:WITH-COMMAND ;

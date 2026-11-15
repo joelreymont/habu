@@ -394,7 +394,7 @@ variable RC
    s" cell store into a byte pointer names expected/actual" T-LABEL
    BPS$ RUN
    s" error[E-MISMATCH]: `!` takes ^a" ASSERT-NAMED
-   BPS$ s" :1:92" ASSERT-AT
+   BPS$ s" :1:86" ASSERT-AT
    ERR$ S\" = expected: ^a\n" CONTAINS? TTRUE
    ERR$ S\" = found: ^u8\n" CONTAINS? TTRUE ;
 
@@ -458,7 +458,7 @@ variable RC
    s" cell fetch from a byte pointer names expected/actual" T-LABEL
    BPF$ RUN
    s" error[E-MISMATCH]: `@` takes ^a" ASSERT-NAMED
-   BPF$ s" :1:94" ASSERT-AT
+   BPF$ s" :1:88" ASSERT-AT
    ERR$ S\" = expected: ^a\n" CONTAINS? TTRUE
    ERR$ S\" = found: ^u8\n" CONTAINS? TTRUE ;
 
@@ -487,7 +487,7 @@ variable RC
    s" numeric fetch requires a numeric pointee" T-LABEL
    s" : LRD-FETCH ( ^a -- n ) @ ;"
    s" declared type variable `a` is specialized to a concrete type; a declared effect must stay parametric over its quantifier"
-   28 s" ^ makes `a` a concrete type here"
+   25 s" ^ makes `a` a concrete type here"
    S\" = declared: ^a -- n\n  = inferred: ^n -- n\n  = help: declare a concrete type in place of `a`, or keep the body generic over `a`"
    PARAMETRIC-REJECT
    s" quotation output cannot specialize a declared variable" T-LABEL
@@ -786,7 +786,7 @@ variable RC
    BODY$ s" : LRD-EV ( ^u8 n -- ) evaluate ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-UNSAFE]: `evaluate` reads source or changes the compiler's or checker's state, which no stack effect describes"
-      s" :1:26" BODY-REJECT-AT
+      s" :1:23" BODY-REJECT-AT
    ERR$ s" `evaluate-closed`" CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-CHAIN ( -- )

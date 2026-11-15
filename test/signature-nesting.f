@@ -390,13 +390,13 @@ public
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr`" REFUSES
    SRC-RESET  s" SN-PTR ( ptr u8 -- ) drop" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
-   S\" \"message\":\"unknown type `ptr`\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"unknown type `ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
    s" ptr in a local's annotation is an unknown type" T-LABEL
    SRC-RESET  s" : SN-PTRL ( ^u8 -- ) {: p:ptr :} ;" S+
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `p:ptr`" REFUSES
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"p:ptr\""
-   S\" \"message\":\"unknown type `p:ptr`\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"unknown type `p:ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
    s" a trust-boundary primitive in a checked body is rejected by name" T-LABEL
    SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
    s" error[E-CAP-TRUSTED]: `reloc-maps-clear` is a trust-boundary primitive" REFUSES ;
