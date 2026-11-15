@@ -1719,18 +1719,11 @@ PTR-VARIABLE HOLDER-FIRST
 : QUALIFIED ( ptr u8 n -- ) {: t:ptr tu:n :}
    96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
-\ A body's own name is found only after its `;`.
+\ A top-level step is in no body.
 : UNDEF-HELP ( ptr u8 n -- ) {: t:ptr tu:n :}
-   TOP-STEP @ 0=  t tu NMA @ NMU @ CORE-STR=CI  and IF
-      t tu CODE-SPAN
-      s"  is the word this definition defines: call it from its own body with `recurse`"
-      EMIT-STR EXIT
-   THEN
-   t tu RES-FALSE HOLDER-SCAN
-   HOLDER-N @ 0= IF
-      s" define " EMIT-STR  t tu CODE-SPAN
-      s"  before this point, or check its spelling" EMIT-STR EXIT
-   THEN
+   TOP-STEP @ 0= IF NMA @ NMU @ ELSE NMA @ 0 THEN {: d:ptr du:n :}
+   t tu d du CORE-STR=CI IF 0 HOLDER-N ! ELSE t tu RES-FALSE HOLDER-SCAN THEN
+   HOLDER-N @ 0= IF t tu d du REJECTION:UNDEFINED-HELP EXIT THEN
    t tu CODE-SPAN  s"  is public in " EMIT-STR
    HOLDER-N @ 1 = IF
       HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  t tu QUALIFIED

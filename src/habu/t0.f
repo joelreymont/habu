@@ -192,13 +192,13 @@ variable CUT                         \ the byte just past `does> `, or 0
    s"  as a call, a literal or a control word" SAY
    REJECT ;
 
-\ A name bound to no record, even in an unchecked body.
-: NOT-FOUND ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A name bound to no record, even in an unchecked body, called in the body of
+\ d du, empty for a tick's operand.
+: NOT-FOUND ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n d:ptr du:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" cannot find word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
-   REJECTION:HELP  s" define " SAY  a u TICKS
-   s"  before this point, or check its spelling" SAY
+   REJECTION:HELP  a u d du REJECTION:UNDEFINED-HELP
    REJECT ;
 
 \ A tick of an engine-internal record or a scope entry (NDICT:TICK-REFUSED?).
@@ -1258,7 +1258,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
    ORD @ ROW$ {: a:ptr u:n :}
-   r 0< if a u NOT-FOUND then
+   r 0< if a u NULL$ NOT-FOUND then
    r XREF-REC {: rec:ptr :}
    rec NDICT:TICK-REFUSED? if a u NO-TICK then
    rec REC-START {: xt:n :}
@@ -1824,7 +1824,7 @@ variable OP-REC                      \ the last of them
 
 : CALL-TOKEN ( ptr u8 n n n -- )
    {: a:ptr u:n r:n loc:n :}
-   r 0< if a u NOT-FOUND then
+   r 0< if a u NDEFINITION:NAME$ NOT-FOUND then
    r XREF-REC {: rec:ptr :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}

@@ -306,14 +306,27 @@ create NL NEWLINE c,
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
 
+\ The capture's first token, the definition's name, which a head seeds.
+: DEF-CAPTURED-NAME ( -- ptr u8 n )
+   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:ptr len:n :}
+   0 begin
+      dup len < if b over + c@ dup BLANK <> swap 0<> and else false then
+   while 1+ repeat
+   {: u:n :}
+   b u ;
+
+\ The name of the definition the engine holds open, empty when none is.
+: OPEN-NAME ( -- ptr u8 n )
+   PEND-CELL CELL@ 0= if NULL$ exit then
+   DEF-CAPTURED-NAME ;
+
 \ Placed at the name's own line when its bytes lie in the open file: a definer
 \ may call a name it read earlier.
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" cannot find word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
-   REJECTION:HELP  s" define " SAY  a u TICKS
-   s"  before this point, or check its spelling" SAY
+   REJECTION:HELP  a u OPEN-NAME REJECTION:UNDEFINED-HELP
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : UNDERFLOW ( -- )
@@ -1405,15 +1418,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    s" load the native compiler, as the boot prefix does, before any definition"
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ The capture's first token, the definition's name, which a head seeds.
-: DEF-CAPTURED-NAME ( -- ptr u8 n )
-   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:ptr len:n :}
-   0 begin
-      dup len < if b over + c@ dup BLANK <> swap 0<> and else false then
-   while 1+ repeat
-   {: u:n :}
-   b u ;
 
 \ The checker declaration xt given takes the name a u and the signature given.
 : DEF-DECLARE-NAME ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n sig:ptr len:n xt:n :}
