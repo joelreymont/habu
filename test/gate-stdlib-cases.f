@@ -1229,6 +1229,10 @@ SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
+SUITE split-str
+   test/split-str-test.f
+;SUITE
+
 SUITE closed-source
    test/closed-source-suite.f
 ;SUITE

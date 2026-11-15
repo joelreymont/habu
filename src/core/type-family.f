@@ -3081,6 +3081,7 @@ variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
 variable STOW-FAM
+variable STRING-FAM
 variable VIEW-FIELD-BASE
 
 : REGISTER-VIEW-FIELDS ( n -- ) {: fam:n :}
@@ -3102,6 +3103,22 @@ variable VIEW-FIELD-BASE
    READ-FAM @ 1 PK-SCOPE TFAM-PK!
    READ-FAM @ 2 PK-TYPE TFAM-PK!
    READ-FAM @ REGISTER-VIEW-FIELDS ;
+
+\ str is a native two-cell product, base address below byte length; it
+\ publishes no constructor, destructor or field accessor.
+: REGISTER-STR ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" str" 0 TK-PRODUCT TFAM-DECL STRING-FAM !
+   STRING-FAM @ STR-FAM !
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   STRING-FAM @ TYPE-FIELD:NO-VARIANT s" base"
+      CC-U8 SCHEMA-CON SCHEMA-PTR SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE PF-ADD
+   STRING-FAM @ TYPE-FIELD:NO-VARIANT s" len"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE PF-ADD
+   PF-COMMIT
+   STRING-FAM @ VIEW-FIELD-BASE @ 2 TFAM-FLD-RANGE!
+   STRING-FAM @ 2 TFAM-SLOTS! ;
 
 : REGISTER-MUT-VIEW ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" mut-view" 4 TK-PRODUCT TFAM-DECL MUT-FAM !
@@ -3175,6 +3192,7 @@ REGISTER-WIDTH
 REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
 REGISTER-STOW
+REGISTER-STR
 
 \ --- type entries. Inside a build each family a file declares gets a record,
 \ its type entry, named `pkg:tail` (a global's `tail`) in the program's types
@@ -4384,13 +4402,16 @@ private
    shape CHILD-ABI:MAKE = IF pay value ELSE value pay THEN
    0 ;
 
-\ A DEFTYPE converter's rows over FAM: NOMINAL-IN takes n and answers the
-\ nominal, NOMINAL-OUT the reverse. Its body is a cast, so its value is unread.
+\ A DEFTYPE converter's rows over FAM, between its base (n, or the one field of
+\ a family over a base) and the nominal. Its body is a cast: the value is unread.
 : NOMINAL-ROWS ( n n -- n n n ) {: shape:n fam:n :}
    FRESH MK-ROW {: base:n :}
-   CC-N MK-CON base MK-PUSH {: num:n :}
+   fam TFAM-FLD-COUNT@ 1 = IF
+      fam TFAM-FLD-START@ PF-SCH@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+      base TFC-PUSH-PAY
+   ELSE CC-N MK-CON base MK-PUSH THEN {: val:n :}
    fam TFAM-FRESH-TERM base PUSH-LOGICAL {: nom:n :}
-   shape CHILD-ABI:NOMINAL-IN = IF num nom ELSE nom num THEN
+   shape CHILD-ABI:NOMINAL-IN = IF val nom ELSE nom val THEN
    0 ;
 
 public

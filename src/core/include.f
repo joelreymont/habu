@@ -2038,16 +2038,24 @@ defer INCLUDE-INTERPRET ( ^u8 n n n -- )
 : EXEC-SOURCE ( -- ^u8 )
    TOP@ FRAME-EXEC-SOURCE ;
 
-\ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
-\ its source frame across catch; copied arguments beneath evaluate-range would
-\ let an underflow consume loader cells and turn it into a residue rejection.
-: INTERPRET-SAVED-RANGE ( -- )
+\ Every range of a file starts marked when the file's source is, whatever part
+\ ran before it, so the marker is read from byte 0.
+: RUN-SAVED-RANGE ( -- )
    TOP@ {: frame:^ :}
    frame FRAME-EVAL-PTR @
    frame FR-EVAL-SIZE + CELL-VIEW @
+   2dup SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    frame FR-EVAL-FIRST + CELL-VIEW @
    frame FR-EVAL-END + CELL-VIEW @
    POLICY-SEALED? if evaluate-range else INCLUDE-INTERPRET then ;
+
+\ A file's range runs on an empty data stack, so an underflow cannot reach the
+\ loader's cells; the loader's marker comes back as the range returns or throws.
+: INTERPRET-SAVED-RANGE ( -- )
+   CHECKER-SPLIT-STR @ {: split:n :}
+   [: RUN-SAVED-RANGE ;] catch {: rc:n :}
+   split CHECKER-SPLIT-STR !
+   rc 0 <> if rc throw then ;
 
 : CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
    first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;

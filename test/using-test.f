@@ -285,9 +285,13 @@ OPKC:OPKC-R 41 T=
 
 \ Type imports use the same explicit package scope. A compiler-owned public
 \ cell-id must not prevent an application from importing its own cell-id.
-package UTA public NEWTYPE cell-id NEWTYPE import-id ;package
-package UTB public NEWTYPE import-id ;package
-package UTP NEWTYPE secret-id public : VISIBLE ( -- ) ; ;package
+package UTA public NEWTYPE cell-id
+NEWTYPE import-id
+;package
+package UTB public NEWTYPE import-id
+;package
+package UTP NEWTYPE secret-id
+public : VISIBLE ( -- ) ; ;package
 s" package UTC using UTA public : CELL ( cell-id -- cell-id ) ; : KEEP ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
 \ Compiled effects retain the imported family after its scope closes.
 s" : UT-SAME ( UTA:cell-id -- UTA:cell-id ) UTC:CELL ;" UCE-CATCH 0 T=
@@ -299,7 +303,8 @@ s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH E-REJECT
 s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH E-REJECT T=
 \ A public family no other package declares still needs its package imported
 \ or named: bare outside it is refused, under `using` it resolves.
-package UTD public NEWTYPE solo-id ;package
+package UTD public NEWTYPE solo-id
+;package
 s" : UT-SOLO-BARE ( solo-id -- solo-id ) ;" UCE-CATCH E-REJECT T=
 s" using UTD : UT-SOLO-USED ( solo-id -- solo-id ) ; ;using" UCE-CATCH 0 T=
 \ The current package still wins before imported families.

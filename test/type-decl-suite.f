@@ -1160,9 +1160,6 @@ s" n" s" reserved name" TDT-AT
 s" NEWTYPE field<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `field`\n"
 s" field" s" reserved name" TDT-AT
-s" NEWTYPE str<a>"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `str`\n"
-s" str" s" reserved name" TDT-AT
 s" NEWTYPE space-x<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `space-x`\n"
 s" space-x" s" reserved name" TDT-AT
@@ -1197,6 +1194,9 @@ s" ;match" s" name must be a lowercase family tail" TDT-AT
 s" NEWTYPE span<a,b,c>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `span`\n"
 s" span" s" duplicate family" TDT-AT
+s" NEWTYPE str<a>"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration `str`\n"
+s" str" s" duplicate family" TDT-AT
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains a duplicate family.
 \ variant names may not collide with any family the declaring scope resolves:
@@ -2541,6 +2541,32 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 : TFR-Q300 ( [ n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- ] -- ) drop ;
 
 TD-JSON-WAS @ REJECTION:JSON !
+
+\ NEWTYPE over a base spelled on the name's line: the family is as wide as the
+\ base and a type apart from it, and no word is made, so casts cross it. A str
+\ holds a pointer, so the casts mint one and sit in a private section.
+TDIAG-BUF 8192 REJECTION:BUFFER!
+NEWTYPE tdwrap str
+package TDWRAP-CAST
+private
+s" cast: >TDWRAP ( str -- tdwrap )" 0 TDT-NEG
+s" cast: TDWRAP> ( tdwrap -- str )" 0 TDT-NEG
+: TDWR-TRIP ( -- n ) s" abc" >str >TDWRAP TDWRAP> str> nip ;
+TDWR-TRIP 3 T=
+s" cast: TDWR-NARROW ( n -- tdwrap )" E-CAST-ARITY TDT-NEG
+;package
+s" TDWR-NOT ( str -- tdwrap )" CHECK-QUIET-CANDIDATE! 0 T=
+\ A comment on the name's line is no base: the family stays one cell.
+NEWTYPE tdnote   \ a comment
+s" cast: TDN-CELL ( n -- tdnote )" 0 TDT-NEG
+\ A base never declared is refused as an unknown field type is: 7109,
+\ E-TDECL-PAYLOAD.
+s" NEWTYPE tdbad tdmissing-type" E-TDECL-PAYLOAD TDT-NEG
+\ The verifier replays a base on the name's line as the load registers it.
+: TDWR-VERIFY ( -- )
+   s\" NEWTYPE tdvwrap str\n: TDWR-VUSE ( tdvwrap -- tdvwrap ) ;" VERIFY:SOURCE-BUF ;
+' TDWR-VERIFY catch 0 T=
+REJECTION:BUFFER-OFF
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT

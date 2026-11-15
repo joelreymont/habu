@@ -275,7 +275,7 @@ variable RC
 
 : RESIDUE-FIXTURES! ( -- )
    RES$ s" 1 2" FS:WRITE-ALL
-   RTYPE$ s" NEWTYPE lrd-length 0" FS:WRITE-ALL
+   RTYPE$ s\" NEWTYPE lrd-length\n0" FS:WRITE-ALL
    s" require " RES$ s" " RNEST$ FRAG-FIXTURE!
    S\" : LRD-T ( -- ) [: s\" " RES$ S\" \" required ;] catch . ; LRD-T"
       RCATCH$ FRAG-FIXTURE! ;

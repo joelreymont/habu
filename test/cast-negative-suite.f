@@ -52,8 +52,8 @@ variable SRC-U
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA1`" CN-RUN:REJECTS
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA2`" CN-RUN:REJECTS
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
-\ storage. A layout value wider than a cell stands for one term per cell, so it
-\ is refused as arity before its class is asked.
+\ storage. A layout value wider than a cell is one term; a cast between values
+\ of different widths is refused as arity before its class is asked.
 s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC1`" CN-RUN:REJECTS
 s" cast: CNC2 ( n -- ^extent-a )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC2`" CN-RUN:REJECTS
 s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNC3`" CN-RUN:REJECTS
@@ -443,11 +443,11 @@ s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 0 T=
 package CN-CAST-TEST
 public
 : CN-VRF-VERIFY ( -- )
-   s" package CN-VRF public NEWTYPE vfam ;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
+   s\" package CN-VRF public NEWTYPE vfam\n;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
    VERIFY:SOURCE-BUF ;
 
 : CN-VRF-FAIL ( -- )
-   s" package CN-VRF-ERR public NEWTYPE efam NEWTYPE efam ;package"
+   s\" package CN-VRF-ERR public NEWTYPE efam\nNEWTYPE efam\n;package"
    VERIFY:SOURCE-BUF ;
 
 \ The pre-pass reads public and private as it replays, so a mint certifies in a
@@ -512,7 +512,7 @@ variable ERR-U
 
 \ A cast's bare call on an empty stack is rejected at its place before it reads
 \ the cell below the base.
-s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
+s\" NEWTYPE cnmrole\ncast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  CN-CHILD:ERR$ s" cast-negative-suite.f" 64 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" T-PLACED
 s" >CNMROLE" CN-CHILD:HAS
 
@@ -550,5 +550,29 @@ package CN
 \ no window is armed — the reject is the bare token, before any name is parsed.
 s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T=
 ;package
+
+\ A cast retypes one value of any width, to a value of the same width only: a
+\ str is two cells, and n is one.
+package CN-STR
+create DIAG 4096 allot
+: WIDTH? ( -- bool )
+   REJECTION:BUFFER$ s" the input and output differ in width" CONTAINS? ;
+DIAG 4096 REJECTION:BUFFER!
+s" cast: CNS1 ( str -- n )" CN-RUN:DECL E-CAST-ARITY T=
+WIDTH? TTRUE
+DIAG 4096 REJECTION:BUFFER!
+s" cast: CNS2 ( n -- str )" CN-RUN:DECL E-CAST-ARITY T=
+WIDTH? TTRUE
+\ A package retypes a str as its own role and back in its private section.
+public
+STRUCTURE path OPAQUE FIELD v str ;STRUCTURE
+private
+s" cast: >PATH ( str -- path )" CN-RUN:DECL 0 T=
+s" cast: PATH> ( path -- str )" CN-RUN:DECL 0 T=
+public
+: MK ( str -- path ) >PATH ;
+: UN ( path -- str ) PATH> ;
+;package
+s" abc" >str CN-STR:MK CN-STR:UN str> nip 3 T=
 
 T-REPORT

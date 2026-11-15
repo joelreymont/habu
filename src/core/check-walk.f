@@ -942,17 +942,24 @@ variable WALK-ITEM    \ the first item the walk has not passed
 \ retype legal. The refusals are properties of the two declared terms only.
 
 : CAST-ROW-1? ( n -- bool )
-   R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES TAG S-ROW = ;
-: CAST-ROW-TERM ( n -- n ) R-RES P>TYPE ;
-\ A cast may retype one machine cell. A pointer chain must end at storage: an
-\ atom is a phantom index. The pointee carries no width rule, since a layout of
-\ any width is one pointer cell away.
+   VALUE-REST 0= IF drop RES-FALSE EXIT THEN
+   R-RES TAG S-ROW = ;
+\ The row under the value on top: a hidden group whole, or one other cell.
+: CAST-ROW-UNDER ( n -- n ) VALUE-REST drop R-RES ;
+\ The width of the value on top, in cells.
+: CAST-ROW-WIDTH ( n -- n ) R-RES VALUE-CELLS ;
+\ The term of the value on top: a hidden group's logical term.
+: CAST-ROW-TERM ( n -- n )
+   R-RES dup VALUE-CELLS 1 > IF P>TYPE MK-LOGICAL EXIT THEN
+   P>TYPE ;
+\ A cast retypes one value of any width, the same width on both sides (ROWS). A
+\ pointer chain must end at storage: an atom is a phantom index. The pointee
+\ carries no width rule, since a layout of any width is one pointer cell away.
 : CAST-TERM? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-CON = IF RES-TRUE EXIT THEN
    t TAG T-VAR = IF RES-TRUE EXIT THEN
-   t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
+   t TAG T-PARAM = IF RES-TRUE EXIT THEN
    t TAG T-QUOT = IF RES-TRUE EXIT THEN
    t TAG T-PTR = IF
       t BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
@@ -1142,7 +1149,7 @@ variable TAGGED-FAM
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>REST CAST-ROW-1? ;
 : VIEW-PAIR? ( n -- bool ) {: row:n :}
-   row CAST-ROW-TERM T-RES {: hi:n :}
+   row R-RES P>TYPE T-RES {: hi:n :}
    row ROW-UNDER CAST-ROW-TERM T-RES {: lo:n :}
    hi READ-VIEW? hi MUT-VIEW? or 0= IF RES-FALSE EXIT THEN
    hi HIDDEN-PARAM? lo HIDDEN-PARAM? and 0= IF RES-FALSE EXIT THEN
@@ -1324,7 +1331,7 @@ variable TAGGED-FAM
 : PUBLISH-REFUSALS ( ^u8 n -- )
    {: a:^ u:n :}
    a u CHECK-REC-ADMIT
-   CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
+   CHECK-SIG? IF SGWIN @ SGWOUT @ a u SHADOW-ARITY-CK THEN ;
 
 \ The declared row reported this definition's bad signature.
 : DECLARED-ROW-REPORTS? ( -- bool )
@@ -2003,6 +2010,7 @@ CHECKER-REG:}SCRATCH
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
    SGROUT !  SGRIN !  SGOUT !  SGIN !   \ no `|` anywhere: both return rows are 0
+   SG-WRITTEN!
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
    ;
 
@@ -2056,10 +2064,14 @@ package CHECKER-IDENTITY
       s" give exactly one term as the output, as `( n -- u8 )`, with one declaration per term"
       E-CAST-ARITY CAST-ERROR:RAISE
    THEN
-   SGIN @ R-RES P>REST R-RES
-   SGOUT @ R-RES P>REST R-RES <> IF
+   SGIN @ CAST-ROW-UNDER  SGOUT @ CAST-ROW-UNDER <> IF
       s" the input and output rows end in different tails"
       s" end both sides in the same tail, as `( R n -- R u8 )`, or name no tail"
+      E-CAST-ARITY CAST-ERROR:RAISE
+   THEN
+   SGIN @ CAST-ROW-WIDTH  SGOUT @ CAST-ROW-WIDTH <> IF
+      s" the input and output differ in width"
+      s" give both sides the same width in cells, as `( n -- u8 )`: a two-cell `str` casts only to a two-cell type"
       E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
@@ -2158,13 +2170,13 @@ package CHECKER-REG
       CHECKER-UNSEEN-MARK
       2 EXIT
    THEN
-   RAW-SIG!
+   RAW-SIG!  SG-SPLIT
    SG-ROWS-COLLECT
    NP-COLLECT
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
-   \ The record is the signature's as written, whatever the runtime row below
-   \ measures; a refused or uncheckable clause keeps it for its packet.
+   \ The record is the signature's as its body reads it, whatever the runtime
+   \ row below measures; a refused or uncheckable clause keeps it for its packet.
    SIG-EFF-CACHE!
    \ The runtime row holds the signature's and the data-field address, so its
    \ counts replace any the signature set and name the unfit clause.

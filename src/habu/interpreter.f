@@ -847,6 +847,14 @@ public
    s" private" TICKS  s" , " SAY  s" seal-package" TICKS  s"  and " SAY
    s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
    s"  inside its enclosing package" SAY ;
+\ Writes the record of a split-str token t tu in a file that does not begin
+\ with the line split-str, through its help; the caller ends it.
+: SPLIT-STR-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   t tu TICKS  s"  is not allowed in this context" SAY
+   t tu REJECTION:AT  s" its file does not begin with this line" SAY
+   REJECTION:HELP  s" write " SAY  s" split-str" TICKS
+   s"  alone on its file's first line, or delete it" SAY ;
 private
 
 : PKG-CONTEXT-FAIL ( -- )
@@ -1309,6 +1317,12 @@ private
    s" using" TOKEN-IS? if PKG-USING true exit then
    s" ;using" TOKEN-IS? if PKG-END-USING true exit then
    s" export" TOKEN-IS? if PKG-EXPORT true exit then
+   s" split-str" TOKEN-IS? if
+      CHECKER-SPLIT-STR @ 0= if
+         TOKEN$ SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+      then
+      true exit
+   then
    false ;
 
 : PKG-CLEAR ( -- )
@@ -1562,7 +1576,7 @@ private
 \ require and include may be published by a package even though a definition
 \ cannot take their names at this checked head boundary.
 : DEF-INTERPRET-KEYWORDS ( -- ^u8 n )
-   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package char ' ;match" ;
+   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package split-str char ' ;match" ;
 
 : DEF-NAME-ONLY-KEYWORDS ( -- ^u8 n )
    s" : 2constant to require include sumtype variant ;variant ;sumtype" ;

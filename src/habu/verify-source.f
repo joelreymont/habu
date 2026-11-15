@@ -2453,26 +2453,6 @@ DYNAMIC-BUFFER NOM-TAIL u8
    {: at:n u:n :}
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
-: RECORD-DEFTYPE ( -- )
-   NAME-TOKEN {: name:^ nameu:n :}
-   nameu 0= IF NAME-STOP THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   TOKEN-BYTE @ {: at:n :}
-   name nameu MANGLE {: tail:^ tailu:n :}
-   REJECTION:TALLY @ {: refused:n :}
-   tail tailu name nameu CHECKER-DEFFAMILY
-   REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
-   name nameu tail tailu DTC-BUILD-IN
-   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
-   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
-   DISARM
-   at nameu CAST-DEFINED
-   name nameu tail tailu DTC-BUILD-OUT
-   DTC-NAME$ at nameu ARM
-   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
-   DISARM
-   at nameu CAST-DEFINED ;
-
 \ Ends a declaration's rejection record: under MULTI-ERR? the scan goes on and
 \ the caller registers nothing, so TOP-DEFINER? opens an unreported stretch;
 \ else the scan stops.
@@ -2494,13 +2474,6 @@ DYNAMIC-BUFFER NOM-TAIL u8
 
 : SUMTYPE-END? ( ^u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
-
-\ Missing names and malformed headers are rejected by CHECKER-DEFFAMILY in the
-\ declaration's record (E-BAD-DECLARATION), as on the native path.
-: RECORD-NEWTYPE ( -- )
-   NAME-TOKEN {: name:^ nameu:n :}
-   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   name nameu name nameu CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads; the scan replays its body
 \ through the same front end, which publishes their checked effects, so a later
@@ -2624,6 +2597,62 @@ variable STG-TYPE-U
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
+
+\ Missing names and malformed headers are rejected by CHECKER-DEFFAMILY in the
+\ declaration's record (E-BAD-DECLARATION), as on the native path; a base on
+\ the name's line replays as NEWTYPE registers it.
+: RECORD-NEWTYPE ( -- )
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
+   nameu 0= or IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   SCAN-I @ {: mark:n :}
+   SCAN-LINE-TOKEN {: ta:^ tu:n :}
+   mark SCAN-I !
+   tu 0= IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   tu 1 = IF ta c@ 92 = IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN THEN
+   name nameu at nameu SEALED-NAME
+   name nameu SCAN-STORAGE-TYPE TYPE-DECL:SD-WRAP-OUTCOME
+   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+
+\ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
+\ left unread, is `n`, and the bool says whether one was spelled.
+: DEFTYPE-BASE ( -- ^u8 n bool )
+   SCAN-I @ {: mark:n :}
+   SCAN-LINE-TOKEN {: ba:^ bu:n :}
+   bu 0= IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN
+   bu 1 = IF ba c@ 92 = IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN THEN
+   ba bu 0 0= ;
+
+\ A base replays as DEFTYPE registers it; a deferred or refused family
+\ declares no converters.
+: RECORD-DEFTYPE ( -- )
+   NAME-TOKEN {: name:^ nameu:n :}
+   nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   TOKEN-BYTE @ {: at:n :}
+   name nameu MANGLE {: tail:^ tailu:n :}
+   DEFTYPE-BASE {: ba:^ bu:n based:bool :}
+   based IF name nameu ba bu TYPE-DECL:SD-ONE-NAME 0= IF EXIT THEN THEN
+   REJECTION:TALLY @ {: refused:n :}
+   based IF
+      name nameu at nameu SEALED-NAME
+      tail tailu ba bu TYPE-DECL:SD-WRAP-OUTCOME
+      IF DW-TYPE DEFER-AT EXIT THEN 2drop
+   ELSE
+      tail tailu name nameu CHECKER-DEFFAMILY
+   THEN
+   REJECTION:TALLY @ refused <> IF EXIT THEN
+   name nameu tail tailu ba bu DTC-BUILD-IN
+   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
+   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
+   DISARM
+   at nameu CAST-DEFINED
+   name nameu tail tailu ba bu DTC-BUILD-OUT
+   DTC-NAME$ at nameu ARM
+   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
+   DISARM
+   at nameu CAST-DEFINED ;
 
 \ A refused name, malformed or a duplicate, is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot
@@ -3675,6 +3704,12 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
    a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
    a u s" ;using" STR=CI IF a u RECORD-END-USING 0 0= EXIT THEN
+   a u s" split-str" STR=CI IF
+      CHECKER-SPLIT-STR @ 0= IF
+         a u INTERPRETER:SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+      THEN
+      0 0= EXIT
+   THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF
@@ -3972,6 +4007,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ A record no source places is placed at the top-level token.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
+   SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -4010,13 +4046,13 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
-   SHADOWED @ RETIRED @
+   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @
    {: olda:^ oldu:n oldi:n
       oldprev:^ oldprevu:n oldcur:^ oldcuru:n
       olddefer:n olddefa:^ olddefu:n oldrefused:^
       oldpath:^ oldpathu:n
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
-      oldshadowed:n oldretired:n :}
+      oldshadowed:n oldretired:n oldsplit:n :}
    src srcu SOURCE!
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    path pathu VISIT-OPEN
@@ -4039,7 +4075,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
-   oldshadowed SHADOWED !  oldretired RETIRED !
+   oldshadowed SHADOWED !  oldretired RETIRED !  oldsplit CHECKER-SPLIT-STR !
    oldpathu 0 > IF
       oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
@@ -4061,6 +4097,7 @@ COMPOSE-INIT
 \ action replays binds through the engine dictionary; the done closes it and
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
+   CHECKER-SPLIT-STR @ {: split:n :}
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  XREF:SOURCE-SEALS-CLEAR
@@ -4068,6 +4105,7 @@ COMPOSE-INIT
    catch
    XREF:SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
+   split CHECKER-SPLIT-STR !
    THROW-RESULT ;
 
 : VERIFY-ARMED ( -- )

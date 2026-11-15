@@ -565,7 +565,7 @@ SD-QUOT-INSTALL
       s" drop `init` from `DERIVE`, or give every field a fixed cell width"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
-: SD-CLOSE ( -- )
+: SD-SEAL ( -- )
    DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
       FLDBASE @ i + PF-PENDING-SCH@ FAM @ swap PF-SCHEMA-OK? 0= IF
@@ -580,7 +580,9 @@ SD-QUOT-INSTALL
       s" field type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop
-   FAM @ SD-CELLS @ TFAM-SLOTS!
+   FAM @ SD-CELLS @ TFAM-SLOTS! ;
+: SD-CLOSE ( -- )
+   SD-SEAL
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields"
       s" add a `FIELD` to the structure, or drop `OPAQUE`"
@@ -624,6 +626,29 @@ SD-QUOT-INSTALL
 : SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
+\ A newtype over a base: its name, then the base's tokens, which stand for one
+\ field `base`; a token past the base is refused.
+: WRAP-DRIVE ( -- )
+   NEXT 2dup DECL-REJECT:FAMILY!
+   dup 0= IF 2drop s" missing name"
+      s" write the family name after `NEWTYPE`, as in `NEWTYPE path str`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-GATE
+   0 SD-REGISTER
+   0 FIELD-MISS !  0 POINTEE !
+   NEXT RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
+   NEXT nip 0 <> IF
+      s" a newtype takes one base type"
+      s" give one base type after the name, as in `NEWTYPE path str`, and end the line there"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   -1 SEEN-END !
+   SD-SEAL ;
+
+\ The stream has no closer, so a refused one resynchronizes to its end.
+: WRAP-FRONT ( -- ^u8 n ^u8 n [ -- ] )
+   s" newtype" s" " [: SD-RESET WRAP-DRIVE ;] ;
+
 public
 
 : DECLARE-STRUCTURE ( -- ) SD-FRONT DECL-FRONT:RUN ;
@@ -633,12 +658,53 @@ public
 : REPLAY-STRUCTURE ( ^u8 n ^u8 n -- ^u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 
+private
+
+\ TYPE-DECL:TDECL-FAM-REG holds the family only when the wrap left no refusal,
+\ which a multi-error load tallies and any other load throws.
+: WRAP-KEEP ( n -- ) {: tally:n :}
+   REJECTION:TALLY @ tally <> IF EXIT THEN
+   FAM @ TYPE-DECL:TDECL-FAM-REG ! ;
+
+: NAME-STOP? ( n -- bool ) {: c:n :}
+   c 58 =  c 60 = or  c 94 = or  c 91 = or ;
+
+public
+
+\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, refuses NAME.
+: SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
+   NO bu 0 ?do ba i + c@ NAME-STOP? or loop
+   0= IF YES EXIT THEN
+   s" newtype" DECL-REJECT:OPEN
+   na nu DECL-REJECT:FAMILY!
+   s" a deftype base is one name"
+   s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
+   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT
+   DECL-REJECT:GUARD-CODE
+   NO ;
+
+\ Registers NEWTYPE NAME's family over BASE: one field base, no word made.
+\ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
+: SD-WRAP-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
+   -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
+   WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
+   miss 0= IF tally WRAP-KEEP THEN
+   ma mu miss ;
+\ The same, raising E-UNRESOLVED instead of answering, and answering the
+\ family, or -1 when a multi-error load refused it.
+: SD-WRAP ( ^u8 n ^u8 n -- n )
+   SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
+   TYPE-DECL:TDECL-FAM-REG @ ;
+
 ;package
 
 public
 
 EXPORT STRUCTURE-DECL:DECLARE-STRUCTURE
 EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
+EXPORT STRUCTURE-DECL:SD-ONE-NAME
+EXPORT STRUCTURE-DECL:SD-WRAP-OUTCOME
+EXPORT STRUCTURE-DECL:SD-WRAP
 
 ;package
 
@@ -646,6 +712,20 @@ EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
 \ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
+
+\ NEWTYPE is a documented global. A base is the type on the name's line; a \
+\ there, or a parametrised name, leaves the one-cell family.
+: NEWTYPE ( -- )
+   SRCLOC:TOKEN$ {: kw:^ ku:n :}
+   parse-name {: na:^ nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
+   0 0= 0= nu 0 ?do na i + c@ 60 = or loop
+   nu 0= or IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   STORAGE-LINE-TOKEN {: ta:^ tu:n :}
+   tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   ta STORAGE-UNREAD
+   tu 1 = IF ta c@ 92 = IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
+   na nu STORAGE-PARSE-TYPE TYPE-DECL:SD-WRAP drop ;
 
 ;using
 ;using

@@ -663,8 +663,9 @@ create UNESC-MAP
 \ text it rejected while STATE still describes the text before it, so the code
 \ is stored and every later advance throws it again: a reader never parses on
 \ from a failure as if the rejected text had been valid.
-\ Accessor refusals (READ-INT, READ-FLOAT, READ-STR, READ-STR-EQ?) and wrong-phase E-JSON-READ-STATE
-\ refusals leave the reader usable.
+\ Accessor refusals (READ-INT, READ-U64, READ-FLOAT, READ-STR,
+\ READ-STR-EQ?) and wrong-phase E-JSON-READ-STATE refusals leave the reader
+\ usable.
 : NEXT-INNER ( ^cursor -- n ) {: state:^ :}
    state REQUIRE-SOUND
    0 state [: STEP-SLOT ;] catch nip {: token code:n :}
@@ -696,6 +697,28 @@ private
      some OF ENDOF
    ;MATCH ;
 
+\ 2^64-1 is U64-TENTH * 10 + U64-LAST: a digit after a larger accumulator,
+\ a negative one included, or after U64-TENTH and above U64-LAST overflows.
+\ Halving -1 unsigned, then dividing by five, divides 2^64-1 by ten.
+-1 1 rshift 5 / constant U64-TENTH
+-1 U64-TENTH STR-BASE * - constant U64-LAST
+
+: U64-DIGIT ( n n -- n ) {: acc:n d:n :}
+   acc 0<  acc U64-TENTH > or if E-JSON-READ-NUMBER throw then
+   acc U64-TENTH = d U64-LAST > and if
+      E-JSON-READ-NUMBER throw
+   then
+   acc STR-BASE * d + ;
+
+\ SCAN-NUMBER leaves a T-INT token an optional minus and digits.
+: U64-INNER ( ^cursor -- n ) {: state:^ :}
+   state CURSOR-KIND @ {: kind:n :}
+   kind T-FLOAT = if E-JSON-READ-NUMBER throw then
+   kind T-INT <> if E-JSON-READ-STATE throw then
+   state RAW-SPAN$ {: a:^ u:n :}
+   a c@ MINUS = if E-JSON-READ-NUMBER throw then
+   0 u 0 ?do a i + c@ STR-DIGIT-VALUE U64-DIGIT loop ;
+
 : FLOAT-INNER ( ^cursor -- r ) {: state:^ :}
    state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if E-JSON-READ-STATE throw then
    state RAW-SPAN$ STR>FLOAT MATCH option
@@ -707,6 +730,10 @@ public
 
 : READ-INT ( JSON:reader -- JSON:reader n )
    READER>STATE INT-INNER ;
+
+\ A value at or above 2^63 is answered as a negative cell, its 64 bits.
+: READ-U64 ( JSON:reader -- JSON:reader n )
+   READER>STATE U64-INNER ;
 
 : READ-FLOAT ( JSON:reader -- JSON:reader r )
    READER>STATE FLOAT-INNER ;

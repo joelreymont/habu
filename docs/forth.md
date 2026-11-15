@@ -427,7 +427,7 @@ serves a one-off call or escapes a collision.
 
 ### Structures And Enums
 
-New declarations use `NEWTYPE` for an opaque nominal cell, `STRUCTURE` for a
+New declarations use `NEWTYPE` for an opaque nominal value, `STRUCTURE` for a
 record with named fields and `ENUM` for alternatives with or without payloads.
 Each registers a whole family at top level and cannot be called inside a checked
 definition. Family headers name their type parameters, such as `box<a>` or
@@ -547,7 +547,9 @@ family argument and a bare tail of a family of arity > 0 are all refused. The
 multi-cell type rationale is `docs/design.md` "Types".
 
 - `NEWTYPE name` registers an opaque nominal cell family, with no
-  closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
+  closer. `NEWTYPE name base`, the base spelled on the name's line, makes the
+  family as wide as the base and a type apart from it (`NEWTYPE path str`).
+  `NEWTYPE name<a,b>` declares two type parameters and takes no base. `SUMTYPE`,
   `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
@@ -1261,8 +1263,9 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   type variable, and renders as `bool`.
 - `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
   with `r`.
-- `str` is declarable, but no primitive produces or consumes it; a string is
-  `^u8 n`.
+- `str` is a string as one value, its base address and byte length; `>str`
+  and `str>` cross between it and `^u8 n`, which the string words still
+  take.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.
 - `^τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
@@ -1340,6 +1343,10 @@ family, the substrate of `NEWTYPE`:
 - It derives the converters `>NAME ( n -- name )` and `NAME>N ( name -- n )`,
   no-op casts and the only crossing. They follow package visibility: declared
   without `public`, `PKG:>NAME` is `E-UNDEFINED` outside.
+- `DEFTYPE NAME base`, the base one name on the name's line, makes the type as
+  wide as the base, with `>NAME ( base -- name )` and `NAME>BASE ( name -- base )`:
+  `DEFTYPE REV str` gives `>REV` and `REV>STR`. A base holding `:`, `<`, `^` or
+  `[` is refused.
 - The name cannot be a built-in type, a role, an atom prefix, a one-letter type
   variable or `ptr`: `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject with
   `bad newtype declaration '…': reserved name`. A family the
