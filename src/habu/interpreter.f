@@ -1484,6 +1484,15 @@ public
    REJECTION:HELP
    s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` with `;` before the source ends" REJECTION:EMIT-STR ;
+
+\ The source ends inside the locals group the source token t tu, its `{:`,
+\ opens. It is written through its help, and the caller stops it.
+: GROUP-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-UNCLOSED-LOCALS" REJECTION:OPEN
+   s" the locals group `{:` opens is never closed" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" never closed" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" close the group with `:}` before the body" REJECTION:EMIT-STR ;
 private
 
 \ The rejection marks the opener's token in the source, the name a colon
@@ -1922,12 +1931,18 @@ private
    CAPDEPTH-CELL CELL@ idx BODY-LOCAL-DEPTH !
    idx 1+ LOCN-CELL CELL! ;
 
+\ The `{:` of the locals group the source ended inside, NULL-PTR while it has
+\ not. A REPL line's end leaves the group to the next line; RUN rejects it.
+TYPED-VARIABLE GROUP-OPEN ptr u8
+
 : BODY-LOCAL-GROUP ( -- )
+   TOKEN$ drop {: at:ptr :}
    begin TOKEN while
       TOKEN$ DEF-CAPTURE
       s" :}" TOKEN-IS? if exit then
       BODY-LOCAL-ONE
-   repeat ;
+   repeat
+   at GROUP-OPEN ! ;
 
 \ A later rejected token can restore the count without reconstructing any row.
 : BODY-BLOCK-DROP ( -- )
@@ -2886,8 +2901,17 @@ private
 : RUN-TOKENS ( -- )
    TASK-GUARD  begin TOKEN-MARK TOKEN while STEP repeat ;
 
+\ A definition this source opened ends inside its locals group.
+: GROUP-SOURCE-END ( -- )
+   GROUP-OPEN @ {: at:ptr :}
+   at NULL-PTR - 0= if exit then
+   PEND-CELL CELL@ ENTRY-PEND @ = if exit then
+   at 2 GROUP-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+
 : RUN ( -- )
+   NULL-PTR GROUP-OPEN !
    RUN-TOKENS
+   GROUP-SOURCE-END
    DEF-SOURCE-END ;
 
 \ An evaluate the buffer caught left its code, which would fail the load.
