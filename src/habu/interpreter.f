@@ -305,6 +305,9 @@ create NL NEWLINE c,
 : TICKS ( ptr u8 n -- ) {: a:ptr u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
+
+\ Placed at the name's own line when its bytes lie in the open file: a definer
+\ may call a name it read earlier.
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" cannot find word " SAY  a u TICKS
@@ -1474,6 +1477,23 @@ private
    i 0= if 0 exit then
    i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
 
+\ Places a run whose bytes the buffer read lacks at the token read last, if the
+\ definition opened there; PENDTKA-CELL is set after the name's run (off 0).
+: PLACE-RUN ( n -- )
+   {: off:n :}
+   BODY-TEXT:ROWS-CELL CELL@ 1 - {: i:n :}
+   i 0 < if exit then
+   BODY-TEXT:BASE-CELL ADDR@ BODY-TEXT:CAP-CELL CELL@ +
+   i BODY-SOURCE:ROW * + {: row:ptr :}
+   row 0 FR@ off <> if exit then
+   row 8 FR@ BODY-SOURCE:NONE <> if exit then
+   TKA-CELL ADDR@ SRCLOC:INB-CELL ADDR@ INE-CELL ADDR@
+   {: t:ptr b:ptr e:ptr :}
+   PENDTKA-CELL ADDR@ {: p:ptr :}
+   off 0 >  p b - 0 <  e p - 0 <= or  and if exit then
+   t b - 0 <  e t - 0 <= or if exit then
+   t b - row 8 FR! ;
+
 \ Appends an item and captures its spelling, which the row's off and len span;
 \ a run captured between items is text no item spans.
 : ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
@@ -1481,6 +1501,7 @@ private
    off ITEMS-END <> if -1 BODY-ITEMS:RAW-CELL CELL! then
    ITEM-ROOM
    s u DEF-CAPTURE
+   off PLACE-RUN
    BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
    kind i BODY-ITEMS:KIND ITEM!  a i BODY-ITEMS:A ITEM!  b i BODY-ITEMS:B ITEM!
    off i BODY-ITEMS:OFF ITEM!  u i BODY-ITEMS:LEN ITEM!
@@ -2223,17 +2244,17 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    wid XREF:NS-ROW nip if exit then
    E-COMP-STATE throw ;
 
-\ Appends a call of the word at record index R, which the checker binds.
-: CALL-ITEM ( n -- ) {: r:n :}
-   r XREF-REC {: rec:ptr :}
-   rec CALLEE-CHECK
-   BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
+\ Appends a call of the word at record index R, spelled S U, which the checker
+\ binds.
+: CALL-ITEM ( ptr u8 n n -- ) {: s:ptr u:n r:n :}
+   r XREF-REC CALLEE-CHECK
+   BODY-ITEM-KIND:CALL r 0 s u ITEM+ ;
 
 \ Appends a call of the word at entry E.
 : COMPILE-CALL ( n -- ) {: e:n :}
    e XREF:ENTRY-REC {: r:n :}
    r -1 = if NAMELESS-REFUSE then
-   r CALL-ITEM ;
+   r XREF-REC XREF-NAME$ r CALL-ITEM ;
 
 \ What `compile,` runs: it appends a call of the word whose entry the quotation is.
 : COMPILE-RUN ( [ R -- S ] -- )
@@ -2272,7 +2293,7 @@ variable LIT-AT
 \ Appends a call of the word a lookup of the name found.
 : FOUND-CALL ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
-   rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
+   a u  rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
 
 : ITEM-OP-REFUSE ( n -- ) {: op:n :}
    s" E-ITEM-OP" REJECTION:OPEN

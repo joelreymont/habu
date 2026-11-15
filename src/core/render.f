@@ -914,6 +914,8 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
       MD-LOCAL-ENDED  of s" E-UNDEFINED" endof
+      MD-LOCAL-STRAY  of s" E-UNDEFINED" endof
+      MD-LOCAL-UNBOUND of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
       MD-TYPE-FORM    of s" E-BAD-STORAGE" endof
@@ -1009,6 +1011,8 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
       MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
       MD-LOCAL-ENDED  of s" read the local inside the `{:` block that binds it, and keep a value needed after the block on the stack" endof
+      MD-LOCAL-STRAY  of s" append a built local between the `{:` and `:}` keywords of its group" endof
+      MD-LOCAL-UNBOUND of s" read a built local by the index `EFFECT:LOCAL` answered, after the `:}` that binds it" endof
       MD-IS-NOT-DEFER of s" declare the target with `defer NAME ( in -- out )`, or name a deferred word after `is`" endof
       MD-IS-MISSING   of s" write the name of a deferred word after `is`" endof
       MD-TYPE-FORM    of s" write after `[type]` a closed type storage holds, as `n`, `u8` or a declared record, with no type variable, quotation, linear value, atom, xt or width in it" endof
@@ -1107,6 +1111,8 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
       MD-IS-UNKNOWN   of s"  names no word" endof
       MD-LOCAL-ENDED  of s" reads built local" endof
+      MD-LOCAL-STRAY  of s"  is a built local outside a `{:` group" endof
+      MD-LOCAL-UNBOUND of s" reads built local" endof
       MD-IS-NOT-DEFER of s"  is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
       MD-TYPE-FORM    of s" [type] names no type storage holds" endof
@@ -1205,6 +1211,8 @@ variable MDV-I   variable MDV-F
       MD-LIT-FIT      of s" out of the type's range" endof
       MD-IS-UNKNOWN   of s" not found" endof
       MD-LOCAL-ENDED  of s" local past its block" endof
+      MD-LOCAL-STRAY  of s" outside a `{:` group" endof
+      MD-LOCAL-UNBOUND of s" no group bound it before" endof
       MD-IS-NOT-DEFER of s" declared without `defer`" endof
       MD-IS-MISSING   of s" no name after it" endof
       MD-TYPE-FORM    of s" needs a closed storable type" endof
@@ -1288,6 +1296,11 @@ variable MDV-I   variable MDV-F
    s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-U
    s" , whose `{:` block has ended" EMIT-STR ;
 
+\ The unbound local's index, after the reason's `reads built local`.
+: LOCAL-UNBOUND-COUNTS ( -- )
+   s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-N
+   s" , which no `{:` group bound before it" EMIT-STR ;
+
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
@@ -1307,6 +1320,7 @@ variable MDV-I   variable MDV-F
       TCAP-HELD$ EMIT-STR EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
+   MDIAG @ MD-LOCAL-UNBOUND = IF LOCAL-UNBOUND-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
@@ -1497,6 +1511,7 @@ variable MDV-I   variable MDV-F
 
 : REASON-MESSAGE ( -- )
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
+   MDIAG @ MD-LOCAL-STRAY = or
    IF TOK-SPAN THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN

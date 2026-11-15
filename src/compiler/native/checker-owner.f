@@ -108,8 +108,8 @@ public
    SOURCE-DOES-CHECK ;
 
 \ The split's scan renders nothing, so the reason for a clause it refused is
-\ rendered here, under the clause name of the definer NAME (checker.f
-\ CHECKER-NATIVE-DOES-REPORT), while the owner still holds that scan.
+\ rendered here, under the clause name of the definer NAME, while the owner
+\ still holds that scan.
 : DOES-REPORT ( n ptr u8 n -- n )
    SOURCE-DOES-REPORT ;
 

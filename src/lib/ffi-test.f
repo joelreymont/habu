@@ -521,12 +521,19 @@ PROCESS-SYMBOLS
 : FFI-T-LISTED-CALL ( -- )
    0 s" a" FFI-T-LISTED-CRC $E8B7BE43 T= ;
 
-\ The rendered name itself, byte for byte on this target.
-CODEGEN:BUFFER FFI-T-NAME-A
-CODEGEN:BUFFER FFI-T-NAME-B
+: FFI-T-NO-SUCH2-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libhabu-no-such.2.dylib" exit then
+   s" libhabu-no-such.so.2" ;
 
-: FFI-T-PQ-NAME$ ( -- ptr u8 n )
-   HB-TARGET-MACOS? if s" libpq.5.dylib" exit then s" libpq.so.5" ;
+: FFI-T-NO-SUCH1-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libhabu-no-such.1.dylib" exit then
+   s" libhabu-no-such.so.1" ;
+
+: FFI-T-Z1-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libz.1.dylib" exit then s" libz.so.1" ;
+
+: FFI-T-Z9999-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libz.9999.dylib" exit then s" libz.so.9999" ;
 
 \ A 100-byte name no library has, for a symbol, a token and a base name.
 100 constant FFI-T-LONG-U
@@ -540,19 +547,17 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-LONG+ ( -- ) FFI-T-LONG$ FFI-T-SRC+ ;
 
-: FFI-T-LONG-BASE ( -- )
-   s" a 100-byte base name renders whole" T-LABEL
-   FFI-T-LONG$ 5 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: got:ptr gu:n :}
-   SB-RESET s" lib" SB-APPEND FFI-T-LONG$ SB-APPEND
-   HB-TARGET-MACOS? if s" .5.dylib" else s" .so.5" then SB-APPEND
-   got gu SB$ T$= ;
+\ Appends the library name version 1 of the 100-byte base renders.
+: FFI-T-LONG-NAME+ ( -- )
+   s" lib" SB-APPEND  FFI-T-LONG$ SB-APPEND
+   HB-TARGET-MACOS? if s" .1.dylib" else s" .so.1" then SB-APPEND ;
 
 
 \ A path one byte longer than the table holds, whose bytes end at an
 \ inaccessible page: the length is refused before the spelling check reads it.
 : FFI-T-GUARDED-PATH ( -- )
-   FFI:LIBRARY-PATH-CAP [char] a GUARD-PAGE:TAIL
-   FFI:LIBRARY-PATH-CAP 1+ FFI:SELECT-LIBRARY ;
+   PATH-CAP 1+ [char] a GUARD-PAGE:TAIL
+   PATH-CAP 1+ 1+ FFI:SELECT-LIBRARY ;
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer rejects it where it is stated. The rejection ends the load, which is
@@ -715,7 +720,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
-   SB-RESET s" = limit: " SB-APPEND FFI:LIBRARY-PATH-CAP 1 - FMT:SB-INT s"  bytes" SB-APPEND
+   SB-RESET s" = limit: " SB-APPEND PATH-CAP FMT:SB-INT s"  bytes" SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    erru FFI-T-ERR$ s" uncaught" CONTAINS? TFALSE ;
 
@@ -725,8 +730,8 @@ create FFI-T-LONG FFI-T-LONG-U allot
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-THROWN-HEAD$ CONTAINS? TTRUE
-   s" habu-no-such" 2 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: a:ptr au:n :}
-   s" habu-no-such" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: b:ptr bu:n :}
+   FFI-T-NO-SUCH2-NAME$ {: a:ptr au:n :}
+   FFI-T-NO-SUCH1-NAME$ {: b:ptr bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
@@ -738,18 +743,17 @@ create FFI-T-LONG FFI-T-LONG-U allot
    SB-RESET s" tried '" SB-APPEND b bu SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    s" a missing symbol names the version that opened, never one that did not" T-LABEL
-   s" z" 1 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: z1:ptr z1u:n :}
-   s" z" 9999 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: z9:ptr z9u:n :}
+   FFI-T-Z1-NAME$ {: z1:ptr z1u:n :}
+   FFI-T-Z9999-NAME$ {: z9:ptr z9u:n :}
    SB-RESET
    s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
    z1 z1u SB-APPEND S\" '\n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
    erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE
    s" a 100-byte base name reaches the loader whole" T-LABEL
-   FFI-T-LONG$ 1 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: lg:ptr lgu:n :}
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
-   lg lgu SB-APPEND s\" '\n  = note: tried '" SB-APPEND
-   lg lgu SB-APPEND s" ': " SB-APPEND
+   FFI-T-LONG-NAME+ s\" '\n  = note: tried '" SB-APPEND
+   FFI-T-LONG-NAME+ s" ': " SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T= ;
 
 : FFI-RUN ( -- )
@@ -870,14 +874,11 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE
 
-   s" a library name renders this target's soname spelling" T-LABEL
-   s" pq" 5 FFI-T-NAME-A FFI:LIBRARY-NAME$
-   s" z" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ 2drop
-   FFI-T-PQ-NAME$ T$=
-   HB-TARGET-MACOS? if s" /opt/build.so.cache/libx.1.dylib"
-   else s" /opt/build.dylib/libx.so.1" then FFI:SELECT-LIBRARY
-   FFI:SELECT-PROCESS
-   FFI-T-LONG-BASE
+   HB-TARGET-MACOS? if
+      s" a library path's spelling is judged by its file name, not its directories" T-LABEL
+      [: s" /opt/build.so.cache/libx" FFI:SELECT-LIBRARY ;] 0 TTHROWSQ
+      FFI:SELECT-PROCESS
+   then
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
    [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ

@@ -22,13 +22,13 @@
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
 \ in its package would, and EFFECT:IN a type that is no effect. A build of a
 \ program whose source stores a definer's type is rejected with the record its
-\ load prints.
+\ load prints. A rejected built local whose type text outgrows the checker's
+\ first token buffers still names its definition.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
 require src/lib/adt/nullable.f
 require src/lib/test/subject.f
-require src/lib/test/ending.f
 require test/decl-diag-capture.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -243,13 +243,13 @@ s" : BI-BAD-WRONG ( -- n ) 7 ;" evaluate-closed
 BI-BAD-WRONG 7 T=
 
 \ : NAME ( n bool -- n ) if {: a:n :} a then {: b:n :} a ; with b in the
-\ slot a's block left.
-: MAKE-ENDED ( ptr u8 n -- )
+\ slot a's block left; ENDED-OPEN leaves the word open before its `;`.
+: ENDED-OPEN ( ptr u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
    EFFECT:N EFFECT:OUT define-word
    s" if" KW  GROUP {: a:n :}  a EFFECT:LOCAL@  s" then" KW
-   GROUP drop  a EFFECT:LOCAL@
-   postpone ; ;
+   GROUP drop  a EFFECT:LOCAL@ ;
+: MAKE-ENDED ( ptr u8 n -- ) ENDED-OPEN  postpone ; ;
 : BAD-ENDED ( -- n ) [: s" BI-BAD-ENDED" MAKE-ENDED ;] catch ;
 BAD-ENDED 70 T=
 s" : BI-BAD-ENDED ( -- n ) 8 ;" evaluate-closed
@@ -453,28 +453,62 @@ S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: declare a type of that name, or correct its spelling"
 DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
-$400 constant LNEG-CAP
-LNEG-CAP BUFFER: LNEG-OUT
-LNEG-CAP BUFFER: LNEG-ERR
-: LNEG-HAS? ( len ptr u8 n -- bool )
-   {: eu:len a:ptr u:n :}
-   LNEG-ERR eu LEN>N a u CONTAINS? ;
+\ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
+: SUB2-OPEN ( ptr u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
+   define-word
+   s" {:" KW  EFFECT:N EFFECT:LOCAL  EFFECT:N EFFECT:LOCAL  s" :}" KW
+   {: a:n b:n :}
+   a EFFECT:LOCAL@  b EFFECT:LOCAL@ ;
 
 public
+: SUB2-GO ( -- ) s" BI-SUB2" SUB2-OPEN ;
+: ENDED-TEXT-GO ( -- ) s" BI-ENDED-TEXT" ENDED-OPEN ;
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 : TEXT-REF-GO ( -- )
    s" : BI-TEXT-REF ( -- ) BITEM:LOCAL-READ-NOW ;" evaluate-closed ;
 : ENDED-GO ( -- ) s" BI-ENDED" MAKE-ENDED ;
+: STRAY-GO ( -- ) s" BI-STRAY" MAKE-STRAY ;
 : LNEG-GO ( -- ) s" BI-LNEG" MAKE-LNEG ;
-\ A read of local -1 names no bind: undefined, never an ended block.
+\ A read of local -1 names no bind: unbound, never an ended block.
 : LNEG-CHILD ( -- )
-   s" BITEM:LNEG-GO" {: src:ptr srcu:n :}
-   src srcu LNEG-OUT LNEG-CAP >LEN LNEG-ERR LNEG-CAP >LEN
-   10000 >MS SUBJECT:RUN {: ou:len eu:len oc :}
-   src srcu LNEG-OUT ou LEN>N LNEG-ERR eu LEN>N oc 70 T-ENDING-EXITED=
-   eu s" E-UNDEFINED habu: in bi-lneg: undefined word 'l-1'" LNEG-HAS? TTRUE
-   eu s" block has ended" LNEG-HAS? TFALSE ;
+   s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" reads built local -1, which no `{:` group bound before it"
+   CONTAINS? TTRUE
+   e eu s" block has ended" CONTAINS? TFALSE ;
+
+\ A built body's rejection names the line of the definer's call, and a built
+\ local by its declared type, not a listing index.
+: PLACED-CHILD ( -- )
+   s" include test/fixtures/build-items/placed.f" 70 SUBJECT:REJECTED
+   {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" placed.f:19" CONTAINS? TTRUE
+   e eu s" at 'n' reads built local 0" CONTAINS? TTRUE ;
+
+\ A read pinned after an earlier failure is placed at the definer's call.
+: UNBOUND-CHILD ( -- )
+   s" include test/fixtures/build-items/unbound.f" 70 SUBJECT:REJECTED
+   {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" in bi-unbound: reads built local 9, which no `{:` group bound before it"
+   CONTAINS? TTRUE
+   e eu S\" definition: bi-unbound\n" CONTAINS? TTRUE
+   e eu S\" unbound.f:13\n" CONTAINS? TTRUE ;
+
+\ A call an evaluated string appends is placed in no line of the file whose
+\ text opened the definition: the string's offsets are not the file's.
+: EVALUATED-CHILD ( -- )
+   s" include test/fixtures/build-items/evaluated.f" 70 SUBJECT:REJECTED
+   {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" input underflow" CONTAINS? TTRUE
+   e eu S\" evaluated.f:1\n" CONTAINS? TFALSE ;
+
+\ Two built locals of one type read in a body text finishes are two locals.
+s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
@@ -487,6 +521,15 @@ s" BITEM:TEXT-REF-GO" 70
 s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 s" BITEM:ENDED-GO" 70
 s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+\ A local outside a group is rejected as a stray local.
+s" BITEM:STRAY-GO" 70
+s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
+\ A read of a local whose block ended, in a body text finishes, is rejected.
+s" BITEM:ENDED-TEXT-GO 1 + ;" 70
+s" cannot compile BI-ENDED-TEXT" SUBJECT:REFUSED? TTRUE
+BITEM:PLACED-CHILD
+BITEM:UNBOUND-CHILD
+BITEM:EVALUATED-CHILD
 BITEM:LNEG-CHILD
 
 \ A fresh hb runs the build, since the build is under test.
@@ -524,5 +567,22 @@ public
 ;package
 
 BITEM-STORED:RUN
+
+\ A fresh hb runs the fixture: the case needs the token buffers at their first
+\ capacity, which an earlier check in this process could have grown.
+package BITEM-LONG-TYPE
+private
+: LONG ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" test/fixtures/build-items/long-type.f" CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 70 T=
+   CMD:ERR$ s" hook: non-certified definition: bi-long" CONTAINS? TTRUE ;
+
+public
+: RUN ( -- ) [: LONG ;] CMD:WITH-COMMAND ;
+;package
+
+BITEM-LONG-TYPE:RUN
 
 T-REPORT

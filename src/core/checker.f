@@ -4983,12 +4983,26 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : TOKBUF-ALLOC ( n -- ptr u8 )
    map-anon 0 <> IF drop s" checker: token buffer mmap failed" 76 die THEN ;
 
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+
+: TOKBUF-CARRY ( ptr u8 n -- ptr u8 )
+   {: old:ptr cap:n :}
+   cap TOKBUF-ALLOC {: new:ptr :}
+   old new TOKBUF-CAP-U @ CCOPY  new ;
+
+\ A grown buffer starts with the old one's bytes, and the old mapping stays:
+\ a caller may hold a pointer into it across a TOKBUF-ENSURE.
 : TOKBUF-GROW {: need :}
    need TOKBUF-ROUND-CAP {: cap :}
-   cap TOKBUF-ALLOC FAILTK!
-   cap TOKBUF-ALLOC TKF!
-   cap TOKBUF-ALLOC NMB!
-   cap TOKBUF-ALLOC SDEC!
+   FAILTK cap TOKBUF-CARRY FAILTK!
+   TKF cap TOKBUF-CARRY TKF!
+   NMB cap TOKBUF-CARRY NMB!
+   SDEC cap TOKBUF-CARRY SDEC!
    cap TOKBUF-CAP-U ! ;
 : TOKBUF-ENSURE {: need :}
    need TOKBUF-CAP-U @ <= IF exit THEN
@@ -5135,6 +5149,8 @@ CHECKER-REG:}SCRATCH
 94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP); E-UNKNOWN-FIELD
 95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REFUSE)
 96 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED); E-UNDEFINED
+97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY); E-UNDEFINED
+98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5185,7 +5201,7 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
-variable MDIAG-LOCAL  \ ended local: the built local's index
+variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
@@ -7016,13 +7032,6 @@ CHECKER-REG:}SCRATCH
 : UNSEEN-RAISE ( -- )
    PIN-OPEN? IF -1 UNSEEN ! THEN
    UNCK-RAISE ;
-
-: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@
-      over d + c!
-      1 +
-   REPEAT drop ;
 
 \ The offset of the text at A U in the checked text, -1 when it lies outside.
 : CHECKED-OFF ( ptr u8 n -- n )
@@ -16844,8 +16853,6 @@ variable CURSYM
    sym s" cwork-span" UNSAFE-NAME? or
    sym s" cwork-variable" UNSAFE-NAME? or ;
 
-\ Growing the token buffers drops what they hold, so a caller that reports a
-\ token its scan left there sizes them before that scan.
 : CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
    DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
    nu su + TOKBUF-ENSURE

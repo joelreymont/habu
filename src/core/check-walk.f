@@ -733,10 +733,9 @@ public
 : ITEM-UNDEFINED ( -- )
    TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
 
-\ A TYPE, OPERAND or LOCAL item outside the form that takes it.
+\ A TYPE or OPERAND item outside the form that takes it.
 : ITEM-STRAY? ( n -- bool ) {: kind:n :}
-   kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or
-   kind BODY-ITEM-KIND:LOCAL = or ;
+   kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or ;
 
 : ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
@@ -771,12 +770,40 @@ public
    MD-LOCAL-ENDED MDIAG-COMPILE!  IS-FAIL ;
 
 \ A read of the local LOCAL answered index IX for: its bind sequence, which
-\ names an ended local when an earlier bind took it.
+\ names an ended local when an earlier bind took it and an unbound one when
+\ no bind has, a negative index included.
 : ITEM-LOCAL-REF ( n -- ) {: ix:n :}
    ix SEQ-SLOT {: li:n :}
-   li 0 <  ix 0 >= and  ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
-   li 0 < IF ITEM-UNDEFINED EXIT THEN
-   li LOC-REF-AT ;
+   li 0 >= IF li LOC-REF-AT EXIT THEN
+   ix 0 >=  ix LOCSEQ @ <  and IF ix LOCAL-ENDED EXIT THEN
+   RCOMPILE @  CREFUSE @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
+   MD-LOCAL-UNBOUND MDIAG-COMPILE!  IS-FAIL ;
+
+\ A built local appended outside a `{:` group; the load cannot compile it
+\ either, so the reason is a compile-time one.
+: LOCAL-STRAY ( -- )
+   MD-LOCAL-STRAY MDIAG-COMPILE!  IS-FAIL ;
+
+\ The type node of item IX's local: a LOCAL's own, a LOCAL-REF's from the LOCAL
+\ item whose B is its A; false when no LOCAL item has that index.
+: ITEM-LOCAL-NODE ( n -- n bool ) {: ix:n :}
+   ix BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ {: v:n :}
+   ix BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL = IF
+      v RES-TRUE EXIT THEN
+   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL =
+      i BODY-ITEMS:B CHECKER-ITEMS:ITEM-CELL@ v = and IF
+         i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ RES-TRUE UNLOOP EXIT
+      THEN
+   LOOP
+   0 RES-FALSE ;
+
+\ A built local's rejection pinned on its item names the local by the type the
+\ definer gave it; a read of an index no LOCAL item declared names none.
+: ITEM-FAIL-SPELL ( n -- )
+   ITEM-LOCAL-NODE 0= IF drop 0 FAILTU ! EXIT THEN
+   TFAM:EFFECT-TYPE TYPE-TEXT {: a:ptr u:n :}
+   u TOKBUF-ENSURE  a FAILTK u CCOPY  u FAILTU ! ;
 
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
@@ -792,10 +819,15 @@ public
    kind BODY-ITEM-KIND:INT = IF v ITEM-INT ELSE
    kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
    kind BODY-ITEM-KIND:LOCAL-REF = IF v ITEM-LOCAL-REF ELSE
+   kind BODY-ITEM-KIND:LOCAL = IF LOCAL-STRAY ELSE
    kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL
+   kind BODY-ITEM-KIND:LOCAL =  kind BODY-ITEM-KIND:LOCAL-REF = or
+   FAILIX @  TOKIX @ 1 - =  and
+   MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
+   MDIAG @ MD-LOCAL-STRAY = or  and IF i ITEM-FAIL-SPELL THEN ;
 
 : ITEM-WALK ( -- )
    0 SPAY-S !
@@ -2180,16 +2212,6 @@ package CHECKER-REG
    SIG-EFF-DROP
    v ;
 
-\ Both compilers report a clause their check refused the same way, but they name
-\ the definer only after the scan, so the token buffers are sized for the clause
-\ name here. A grown buffer starts empty and the old one stays mapped, so the
-\ refused token is carried over from it.
-: CHECKER-NATIVE-DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
-   FAILTK {: tk:ptr :}
-   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
-   FAILTK tk <> IF tk FAILTK FAILTU @ CCOPY THEN
-   v na nu DOES-REPORT ;
-
 \ A clause is inside its definer's definition, so a refusal of the definition
 \ that leaves the clause's walk by a throw is, in a multi-error load, a refused
 \ clause like one its verdict refuses. Its packet, rendered where the refusal
@@ -2208,13 +2230,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 REJECTION:TALLY +!
    0 ;
 
-\ The clause's name is written after the scan, so the token buffers are sized
-\ for it first: growing them afterwards would drop the refused token being
-\ reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
-   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
@@ -3257,7 +3275,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
 ' CHECKER-VERIFY-TRUST DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TRUST-OFF + xt!
 ' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
-' CHECKER-NATIVE-DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
+' DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
 
 \ A checker claims the source only where nothing owns it, after every callback
 \ is installed.

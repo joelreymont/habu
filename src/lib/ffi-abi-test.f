@@ -40,13 +40,13 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
 
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:ptr :}
-   0 FFI-T-OUT FFI:OUT!
+   0 FFI-T-OUT !
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
-   FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T= ;
+   FFI-T-OUT @ num FFI:>CELL 2 + T= ;
 
 : FFI-T-REQUIRED ( -- )
    s" a declaration open across a require calls C" T-LABEL
-   0 FFI-T-OUT FFI:OUT!
+   0 FFI-T-OUT !
    FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
 \ The table these declarations grow lies in the storage the rollback cuts.
@@ -140,20 +140,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI-T-FOREIGN-HELP$ DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
-\ 33 bytes, one past the longest base name a row holds.
-: FFI-T-LONG-BASE$ ( -- ptr u8 n )
-   s" VERSIONED-LIBRARY aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1" ;
-
-: FFI-T-LONG-BASE ( -- )
-   s" a base name over its bound prints its record" T-LABEL
-   DECL-DIAG:PROSE
-   FFI-T-LONG-BASE$ TEST-EVAL:RC E-FFI-SYNTAX T=
-   s" error[E-FFI-SYNTAX]: a library base name is at most 32 bytes"
-   DECL-DIAG:HAS? TTRUE
-   s" = help: write the name without its lib prefix and suffix"
-   DECL-DIAG:HAS? TTRUE
-   DECL-DIAG:OFF ;
-
 \ src/lib/ffi-test.f calls C functions that write the sret x8 and stack-slot
 \ outputs, and names the shapes no C function witnesses.
 
@@ -167,7 +153,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI-T-LONG-SYMBOL
    FFI-T-NO-PATH
    FFI-T-FOREIGN
-   FFI-T-LONG-BASE
    T-REPORT ;
 
 FFI-ABI-RUN

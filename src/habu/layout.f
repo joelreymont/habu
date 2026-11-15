@@ -1056,7 +1056,8 @@ START BYTES + constant END
 \ ffi-abi.f is baked into the engine.
 package FFI-ABI
 public
-16 cells constant BUF-BYTES
+\ The call stubs load x0-x7 and x8, the indirect-result register.
+9 cells constant BUF-BYTES
 8 cells constant FBUF-BYTES
 16 cells constant STACK-BUF-BYTES
 $40 constant DLBUF-BYTES
