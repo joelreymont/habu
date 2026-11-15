@@ -413,7 +413,7 @@ variable SRC-LEN
    s" include test/fixtures/fsm/wrong-effect.f" 70 SUBJECT:REJECTED
    {: e:ptr eu:n exited:bool :}
    exited TTRUE
-   e eu s" 'bump'" CONTAINS? TTRUE
+   e eu s" `bump`" CONTAINS? TTRUE
    e eu s" wrong-effect.f:15" CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.

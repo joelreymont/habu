@@ -1513,6 +1513,10 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
    MDIAG @ MD-LOCAL-STRAY = or
    IF TOK-SPAN THEN
+   \ A built local's read leads with the type its `{:` group gave it, which a
+   \ read of an index no group declared lacks.
+   MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
+   PIN-TOK$ nip 0 <>  and IF TOK-SPAN 32 EMIT1 THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;

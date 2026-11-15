@@ -23,7 +23,7 @@
 \ in its package would, and EFFECT:IN a type that is no effect. A build of a
 \ program whose source stores a definer's type is rejected with the record its
 \ load prints. A rejected built local whose type text outgrows the checker's
-\ first token buffers still names its definition.
+\ first token buffers is named by that whole text.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -302,7 +302,7 @@ BAD-QSTORE 70 T=
    EFFECT:VARIABLE-OF ;
 : BAD-OVAR ( -- n ) [: s" BI-BAD-OVAR" MAKE-OVAR ;] catch ;
 DECL-DIAG:PROSE  BAD-OVAR 70 T=
-s" '[ n -- option<a> ]'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+s" = word: [ n -- option<a> ]" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U
@@ -320,9 +320,22 @@ variable BUILT-DIAG-U
 : LOAN-BUILT ( -- n ) [: s" BI-LOAN" MAKE-LOAN ;] catch ;
 : LOAN-TEXT ( -- n )
    [: s" : BI-LOAN ( -- ) C2-MEM:WITH-FIELD inner ;" evaluate-closed ;] catch ;
+\ A record's first line, and its notes from `= declared:` on: the twins' places
+\ differ, the built one's at the definer's call.
+: CUT ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n ka:ptr ku:n :}
+   a u ka ku FIND-SUB MATCH option
+      none OF u ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+: HEAD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a  a u S\" \n" CUT ;
+: NOTES$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u s" = declared:" CUT {: k:n :}
+   a k +  u k - ;
 DECL-DIAG:PROSE  LOAN-BUILT 70 T=  KEEP-DIAG
 DECL-DIAG:PROSE  LOAN-TEXT 70 T=
-BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
+BUILT-DIAG$ HEAD$  DECL-DIAG:TEXT$ HEAD$ T$=
+BUILT-DIAG$ NOTES$  DECL-DIAG:TEXT$ NOTES$ T$=  DECL-DIAG:OFF
 
 \ : NAME ( bfam -- n ) match zz ba of evaluate endof ;match ; whose family
 \ resolves nothing: the call is skipped through `;match` as its text is.
@@ -364,7 +377,7 @@ DECL-DIAG:PROSE  TYPE-VARIANT 70 T=
 s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( -- n ) 5 S ; with S an item spelled by the string: an item's
-\ spelling is one token, else it is rejected as define-word's name is, 74.
+\ spelling is one token, else it is rejected as define-word's name is, 70.
 : MAKE-SPELLED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    5 literal  sa su KW
@@ -372,8 +385,8 @@ s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 : EMPTY-ITEM ( -- n ) [: s" BI-EMPTY-ITEM" s" " MAKE-SPELLED ;] catch ;
 : BLANK-ITEM ( -- n )
    [: s" BI-BLANK-ITEM" s" 1 drop" MAKE-SPELLED ;] catch ;
-EMPTY-ITEM 74 T=
-BLANK-ITEM 74 T=
+EMPTY-ITEM 70 T=
+BLANK-ITEM 70 T=
 s" : BI-BLANK-ITEM ( -- n ) 8 ;" evaluate-closed
 BI-BLANK-ITEM 8 T=
 
@@ -486,17 +499,17 @@ public
    {: e:ptr eu:n exited:bool :}
    exited TTRUE
    e eu s" placed.f:19" CONTAINS? TTRUE
-   e eu s" at 'n' reads built local 0" CONTAINS? TTRUE ;
+   e eu s" `n` reads built local 0" CONTAINS? TTRUE ;
 
 \ A read pinned after an earlier failure is placed at the definer's call.
 : UNBOUND-CHILD ( -- )
    s" include test/fixtures/build-items/unbound.f" 70 SUBJECT:REJECTED
    {: e:ptr eu:n exited:bool :}
    exited TTRUE
-   e eu s" in bi-unbound: reads built local 9, which no `{:` group bound before it"
+   e eu s" error[E-UNDEFINED]: reads built local 9, which no `{:` group bound before it"
    CONTAINS? TTRUE
-   e eu S\" definition: bi-unbound\n" CONTAINS? TTRUE
-   e eu S\" unbound.f:13\n" CONTAINS? TTRUE ;
+   e eu s\" 13 | s\" BI-UNBOUND\" MAKE-UNBOUND" CONTAINS? TTRUE
+   e eu s" unbound.f:13:16" CONTAINS? TTRUE ;
 
 \ A call an evaluated string appends is placed in no line of the file whose
 \ text opened the definition: the string's offsets are not the file's.
@@ -512,8 +525,8 @@ s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
-s" BITEM:WIDE-GO" 76
-s" define-word has more than 23 type parameters: 'BI-WIDE'"
+s" BITEM:WIDE-GO" 70
+s" the effect `define-word` got for `BI-WIDE` has too many type parameters"
 SUBJECT:REFUSED? TTRUE
 s" BITEM:TEXT-GO" 70
 s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
@@ -553,7 +566,7 @@ PATH-CAP BUFFER: APP  variable APP-U
    CMD:ERR$ s" a definer's type ends with the load that built it: build it where it is used"
    CONTAINS? TTRUE
    CMD:ERR$ s" HELD" CONTAINS? TTRUE
-   rc 74 T= ;
+   rc 70 T= ;
 
 : CHECKS ( -- ) [: STORED ;] CMD:WITH-COMMAND ;
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
@@ -569,7 +582,8 @@ public
 BITEM-STORED:RUN
 
 \ A fresh hb runs the fixture: the case needs the token buffers at their first
-\ capacity, which an earlier check in this process could have grown.
+\ capacity, which an earlier check in this process could have grown. The record
+\ names the local by its whole type text, at the definer's call.
 package BITEM-LONG-TYPE
 private
 : LONG ( CMD:command -- CMD:command )
@@ -577,7 +591,9 @@ private
    s" --load" CMD:ARG+  s" test/fixtures/build-items/long-type.f" CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 70 T=
-   CMD:ERR$ s" hook: non-certified definition: bi-long" CONTAINS? TTRUE ;
+   CMD:ERR$ s" error[E-UNDEFINED]: `[ ptr ptr " CONTAINS? TTRUE
+   CMD:ERR$ s" ptr u8 -- ]` is a built local outside a `{:` group" CONTAINS? TTRUE
+   CMD:ERR$ s" long-type.f:22:13" CONTAINS? TTRUE ;
 
 public
 : RUN ( -- ) [: LONG ;] CMD:WITH-COMMAND ;
