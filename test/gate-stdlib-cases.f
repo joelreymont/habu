@@ -114,6 +114,12 @@ SUITE linker
    test/linker.f
 ;SUITE
 
+HB-TARGET-LINUX-X86-64? [if]
+SUITE x86-64-link-run
+   test/compiler/x86-64-link-run.f
+;SUITE
+[then]
+
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. A row of its own is reachable by
 \ name in the registry, not only inside a fork list.

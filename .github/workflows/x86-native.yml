@@ -1,0 +1,213 @@
+name: Qualify the native T0 compiler
+
+on:
+  push:
+    branches: [x86-native-validation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+# Native recovery supplies the clean-master compiler and paired map.
+env:
+  RECOVERY_RUN_ID: '43726684683'
+  RECOVERY_ARTIFACT_ID: '14166876386'
+  RECOVERY_HB_SHA256: 55f867a6b70be1c14afbae691e35fb1f30ec6787a4e017b2113441950b80e7db
+  RECOVERY_MAP_SHA256: a66cc6468abb0c53d139d8df673e4e01cf83a5ec21c4f063baab951be5cdf67c
+
+jobs:
+  arm:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prepare ARM workspace and require seed pins
+        run: |
+          test "$(uname -m)" = aarch64
+          HABU_CI="$RUNNER_TEMP/habu-native-arm"
+          mkdir -p "$HABU_CI"/{seed,chain,cross,tmp,objects,logs} bin
+          printf 'HABU_CI=%s\nTMPDIR=%s/tmp\nHABU_OUT=%s/objects\n' "$HABU_CI" "$HABU_CI" "$HABU_CI" >>"$GITHUB_ENV"
+          git rev-parse HEAD HEAD^{tree} >"$HABU_CI/source.txt"
+          if [[ ! "$RECOVERY_RUN_ID" =~ ^[0-9]+$ || ! "$RECOVERY_ARTIFACT_ID" =~ ^[0-9]+$ || ! "$RECOVERY_HB_SHA256" =~ ^[0-9a-f]{64}$ || ! "$RECOVERY_MAP_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo '::error::Fill the four clean-master recovery pins before running this workflow.'
+            exit 64
+          fi
+      - name: Download the pinned clean-master compiler
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ env.RECOVERY_ARTIFACT_ID }}
+          run-id: ${{ env.RECOVERY_RUN_ID }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/habu-native-arm/seed
+      - name: Verify the recovery source and bytes
+        working-directory: ${{ runner.temp }}/habu-native-arm/seed/latest
+        run: |
+          printf '%s\n' '5bb4971e0ca553776e55be910341dffed3fb1e20' '692178c0294d404c54a8a2dedb5f89f3582ed330' | cmp - source.txt
+          printf '%s  hb\n%s  hb.map\n' "$RECOVERY_HB_SHA256" "$RECOVERY_MAP_SHA256" | sha256sum -c -
+          install -m 755 hb "$HABU_CI/seed/hb"
+          install -m 644 hb.map "$HABU_CI/seed/hb.map"
+          cp source.txt "$HABU_CI/logs/seed-source.txt"
+      - name: Bootstrap and converge the combined ARM source
+        run: >-
+          "$HABU_CI/seed/hb" --load tools/chain-run-build.f --
+          "$HABU_CI/seed/hb" "$HABU_CI/chain/g1" "$HABU_CI/chain/g2" "$HABU_CI/chain/g3" "$TMPDIR"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/convergence.log"
+      - name: Use the converged ARM compiler
+        run: |
+          # g2 belongs to either equal pair accepted by the checked chain.
+          install -m 755 "$HABU_CI/chain/g2" bin/hb
+          install -m 644 "$HABU_CI/chain/g2.map" bin/hb.map
+          sha256sum bin/hb bin/hb.map >"$HABU_CI/logs/converged.sha256"
+      - name: Crossbuild Linux x86-64
+        run: >-
+          timeout 300 bin/hb --load tools/hb-build.f --
+          --engine --target linux-x86-64 -o "$HABU_CI/cross/hb"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/crossbuild.log"
+      - name: Record the crossbuilt compiler
+        working-directory: ${{ runner.temp }}/habu-native-arm/cross
+        run: |
+          cp "$HABU_CI/source.txt" source.txt
+          sha256sum hb hb.map >sha256.txt
+      - name: Pass the crossbuilt compiler to the x86 job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: x86-t0-crossbuilt
+          path: ${{ runner.temp }}/habu-native-arm/cross/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain ARM diagnostics and generations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-arm-diagnostics
+          path: |
+            ${{ runner.temp }}/habu-native-arm/source.txt
+            ${{ runner.temp }}/habu-native-arm/logs/*
+            ${{ runner.temp }}/habu-native-arm/chain/g*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+  x86:
+    needs: arm
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prepare x86 workspace
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(id -u)" -ne 0
+          HABU_CI="$RUNNER_TEMP/habu-native-x86"
+          mkdir -p "$HABU_CI"/{cross,chain,tmp,objects,logs,downloads,deps-src,deps/bin,qualified} bin
+          printf 'HABU_CI=%s\nTMPDIR=%s/tmp\nHABU_OUT=%s/objects\n' "$HABU_CI" "$HABU_CI" "$HABU_CI" >>"$GITHUB_ENV"
+          printf 'LD_LIBRARY_PATH=%s/deps/lib%s\n' "$HABU_CI" "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >>"$GITHUB_ENV"
+          printf 'PKG_CONFIG_PATH=%s/deps/lib/pkgconfig%s\n' "$HABU_CI" "${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >>"$GITHUB_ENV"
+          printf '%s\n' "$GITHUB_WORKSPACE/bin" "$HABU_CI/deps/bin" /usr/lib/postgresql/18/bin >>"$GITHUB_PATH"
+          git rev-parse HEAD HEAD^{tree} >"$HABU_CI/source.txt"
+      - name: Download this run's crossbuilt compiler
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: x86-t0-crossbuilt
+          path: ${{ runner.temp }}/habu-native-x86/cross
+      - name: Verify the matching source and crossbuilt bytes
+        working-directory: ${{ runner.temp }}/habu-native-x86/cross
+        run: |
+          cmp source.txt "$HABU_CI/source.txt"
+          sha256sum -c sha256.txt
+          install -m 755 hb "$GITHUB_WORKSPACE/bin/hb"
+          install -m 644 hb.map "$GITHUB_WORKSPACE/bin/hb.map"
+      - name: Install native suite dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config curl ca-certificates unzip xz-utils \
+            libfreetype-dev libglib2.0-dev zlib1g-dev \
+            libzip5 libunistring5 libcurl4t64 libssl3t64 librsvg2-2 \
+            qpdf poppler-utils socat \
+            fonts-dejavu-core fonts-urw-base35 fonts-noto-color-emoji \
+            postgresql-18 libpq5
+          dpkg-query -W >"$HABU_CI/logs/packages.txt"
+      - name: Download and verify pinned tool dependencies
+        working-directory: ${{ runner.temp }}/habu-native-x86/downloads
+        run: |
+          curl --fail --location --output harfbuzz-14.2.0.tar.xz https://github.com/harfbuzz/harfbuzz/releases/download/14.2.0/harfbuzz-14.2.0.tar.xz
+          curl --fail --location --output wasm-tools-1.263.0-x86_64-linux.tar.gz https://github.com/bytecodealliance/wasm-tools/releases/download/v1.263.0/wasm-tools-1.263.0-x86_64-linux.tar.gz
+          curl --fail --location --output bun-linux-x64.zip https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip
+          printf '%s\n' \
+            '94017020f96d025bb66ae91574e4cf334bcad23e8175a8a40565b3721bc2eaff  harfbuzz-14.2.0.tar.xz' \
+            '21c036c1740a0552124c79c6e2170cb61c5b016005671a6d5bc06cf642165431  wasm-tools-1.263.0-x86_64-linux.tar.gz' \
+            'bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip' >"$HABU_CI/logs/dependencies.sha256"
+          sha256sum -c "$HABU_CI/logs/dependencies.sha256"
+          tar -xf harfbuzz-14.2.0.tar.xz -C "$HABU_CI/deps-src"
+          tar -xf wasm-tools-1.263.0-x86_64-linux.tar.gz -C "$HABU_CI/deps-src"
+          unzip -q bun-linux-x64.zip -d "$HABU_CI/deps-src"
+          install -m 755 "$HABU_CI/deps-src/wasm-tools-1.263.0-x86_64-linux/wasm-tools" "$HABU_CI/deps/bin/wasm-tools"
+          install -m 755 "$HABU_CI/deps-src/bun-linux-x64/bun" "$HABU_CI/deps/bin/bun"
+      - name: Build HarfBuzz with its vector library
+        run: |
+          meson setup "$HABU_CI/harfbuzz-build" "$HABU_CI/deps-src/harfbuzz-14.2.0" \
+            --prefix="$HABU_CI/deps" --libdir=lib --buildtype=release \
+            -Ddefault_library=shared \
+            -Dvector=enabled -Dfreetype=enabled -Dglib=enabled -Dzlib=enabled \
+            -Dtests=disabled -Ddocs=disabled -Dutilities=disabled \
+            -Dintrospection=disabled -Draster=disabled -Dgpu=disabled -Dsubset=disabled \
+            2>&1 | tee "$HABU_CI/logs/harfbuzz-setup.log"
+          meson compile -C "$HABU_CI/harfbuzz-build" 2>&1 | tee "$HABU_CI/logs/harfbuzz-build.log"
+          meson install -C "$HABU_CI/harfbuzz-build" 2>&1 | tee "$HABU_CI/logs/harfbuzz-install.log"
+          pkg-config --modversion harfbuzz harfbuzz-vector >"$HABU_CI/logs/harfbuzz-version.txt"
+          wasm-tools --version >"$HABU_CI/logs/wasm-tools-version.txt"
+          bun --version >"$HABU_CI/logs/bun-version.txt"
+      - name: Converge on native x86-64
+        run: >-
+          bin/hb --load tools/chain-run-build.f --
+          bin/hb "$HABU_CI/chain/g1" "$HABU_CI/chain/g2" "$HABU_CI/chain/g3" "$TMPDIR"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/convergence.log"
+      - name: Use the converged x86 compiler
+        run: |
+          install -m 755 "$HABU_CI/chain/g2" bin/hb
+          install -m 644 "$HABU_CI/chain/g2.map" bin/hb.map
+          sha256sum bin/hb bin/hb.map >"$HABU_CI/logs/converged.sha256"
+      - name: Run the full registered native suite
+        run: >-
+          bin/hb --load test/run.f </dev/null 2>&1 | tee "$HABU_CI/logs/native-suite.log"
+      - name: Record the qualified compiler
+        working-directory: ${{ runner.temp }}/habu-native-x86/qualified
+        run: |
+          install -m 755 "$GITHUB_WORKSPACE/bin/hb" hb
+          install -m 644 "$GITHUB_WORKSPACE/bin/hb.map" hb.map
+          cp "$HABU_CI/source.txt" source.txt
+          sha256sum hb hb.map >sha256.txt
+      - name: Retain the qualified x86 compiler
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: x86-t0-qualified
+          path: ${{ runner.temp }}/habu-native-x86/qualified/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain x86 diagnostics and generations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-x86-diagnostics
+          path: |
+            ${{ runner.temp }}/habu-native-x86/source.txt
+            ${{ runner.temp }}/habu-native-x86/logs/*
+            ${{ runner.temp }}/habu-native-x86/chain/g*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30

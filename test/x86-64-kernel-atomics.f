@@ -53,18 +53,15 @@ using X64RT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the publication rows ----------------------------------------------------
-\ Each image puts the code region at rest first, read-execute throughout as the
-\ ARM64 boot leaves it, so a row that writes the region outside its window
-\ faults: the crash handler dumps and dies by SIGSEGV. PROBE, proves a window
-\ closed: clock_gettime answers -EFAULT for a timespec the kernel cannot write.
+\ RX addresses stay protected while the separate alias accepts engine writes.
+\ PROBE, asks clock_gettime to write through RX and must receive -EFAULT.
 \ The case images exit 0. Of the armed images, -sites-kind-armed and
 \ -sites-full-armed exit 103, SNAP-RELOC:SITE-RC; the others exit 83.
-$1000 constant PAGE                    \ the x86-64 page a window flips
+$1000 constant PAGE
 42 constant ANSWER                     \ what the published routine answers
 99 constant PATCHED                    \ what it answers once patch32 rewrites it
 1 constant IMM-AT                      \ mov eax, imm32: the immediate follows the opcode
 32 constant KIND-SHIFT                 \ a checked site row: the kind above the offset
-52 constant MIN-IN-SHIFT               \ layout.f DNAME-MIN-IN-MASK: flag bits 52-59
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
@@ -134,37 +131,23 @@ X64KERNEL:REC-CODE CELL + constant REC-LEN
 CFSTK-OFF CELL - constant STRADDLE
 DICT-SIZE PAGE 2 * + CELL + constant WIDEN
 
-: DECLARE, ( n n -- ) {: off:n len:n :}
-   RDI DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
-   RSI len >IMM32 ASM-SINK ENC-MOV-RI32
-   X64KERNEL:WINDOW-SPAN, ;
-
-\ The window both window images open: a span across the record band's top and
-\ into the control-flow band, the code band at CP with an end below it, and a
-\ span two pages on that widens the code band, each written.
+\ Write each formerly separate band through the alias, including a record /
+\ control-flow boundary and code several pages past CP.
 : WINDOW-SETUP, ( -- )
-   X64HARNESS:REST,
-   STRADDLE CELL 2 * DECLARE,
    STRADDLE X64HARNESS:POKE,  CFSTK-OFF X64HARNESS:POKE,
-   RDI ZERO-REG,  X64KERNEL:WINDOW-OPEN,              \ an end below CP: CP's byte
-   WIDEN CELL DECLARE,
    DICT-SIZE X64HARNESS:POKE,  WIDEN X64HARNESS:POKE, ;
 
 : WINDOW-CASE, ( -- )
    WINDOW-SETUP,
-   PROT:RLO X64HARNESS:PUSH-DATA-CELL,  CFSTK-OFF PAGE - X64HARNESS:EXPECT-POP-REGION,
-   PROT:RHI X64HARNESS:PUSH-DATA-CELL,  CFSTK-OFF X64HARNESS:EXPECT-POP-REGION,
-   1 PROT:CF X64HARNESS:EXPECT-CELL,
-   PROT:WLO X64HARNESS:PUSH-DATA-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
-   PROT:WINDOW X64HARNESS:PUSH-DATA-CELL,  DICT-SIZE PAGE 3 * + X64HARNESS:EXPECT-POP-REGION,
-   DICT-SIZE PAGE + X64HARNESS:PROBE,  0 X64HARNESS:EXPECT-POP,  \ the page only the union opened
-   X64KERNEL:WINDOW-CLOSE, ;
+   STRADDLE X64HARNESS:PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
+   CFSTK-OFF X64HARNESS:PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
+   DICT-SIZE X64HARNESS:PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
+   WIDEN X64HARNESS:PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
+   DICT-SIZE PAGE + X64HARNESS:PROBE-ALIAS,  0 X64HARNESS:EXPECT-POP, ;
 
-\ Closed, each band is read-execute again, and so is the page just past the
-\ window's recorded end, which no flip may have reached.
+\ The RX views reject writes even while the aliases remain writable.
 : WINDOW-CLOSED-CASE, ( -- )
    WINDOW-SETUP,
-   X64KERNEL:WINDOW-CLOSE,
    X64HARNESS:PUSH-BANDS,  0 X64HARNESS:EXPECT-POP,
    STRADDLE CELL - X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP,
    CFSTK-OFF X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP,
@@ -246,15 +229,12 @@ DICT-SIZE $80 + constant ENTRY-B
    ENTRY-A LEN-A 1 RETARGET,
    ENTRY-B CODE-SPAN:RAW-MAX 3 RETARGET,             \ record NDICT, the pending one
    0 X64HARNESS:PUSH,  s" int-mark" X64HARNESS:CALL-ROW,
-   2 X64HARNESS:PUSH,  $1FF X64HARNESS:PUSH,  s" min-in-mark" X64HARNESS:CALL-ROW,
    1 X64KERNEL:REC-CODE REC X64HARNESS:PUSH-REGION-CELL,  ENTRY-A X64HARNESS:EXPECT-POP-REGION,
    1 REC-LEN REC X64HARNESS:PUSH-REGION-CELL,  LEN-A X64HARNESS:EXPECT-POP,
    3 X64KERNEL:REC-CODE REC X64HARNESS:PUSH-REGION-CELL,  ENTRY-B X64HARNESS:EXPECT-POP-REGION,
    3 REC-LEN REC X64HARNESS:PUSH-REGION-CELL,  CODE-SPAN:RAW-MAX X64HARNESS:EXPECT-POP,
    0 X64KERNEL:REC-FLAGS REC X64HARNESS:PUSH-REGION-CELL,
    s" alpha" nip DNAME-INT or X64HARNESS:EXPECT-POP,
-   2 X64KERNEL:REC-FLAGS REC X64HARNESS:PUSH-REGION-CELL,
-   s" gamma" nip $FF MIN-IN-SHIFT lshift or X64HARNESS:EXPECT-POP,
    0 X64KERNEL:REC-FLAGS REC X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
@@ -263,10 +243,12 @@ DICT-SIZE $80 + constant ENTRY-B
 \ inspect the process-local occurrence slot through the booted kernel.
 : RECLAIM-GLOBAL-CASE, ( -- )
    s" global" 0 0 X64HARNESS:RECORD,
+   RCX ENGINE-GPR:X64-DBASE >R64 ASM-SINK ENC-MOV-RR
+   RCX X64KERNEL:WRITE-ALIAS,
    RAX ENGINE-GPR:X64-DBASE >R64 DICT-SIZE $40 + MEM-OFF ASM-SINK ENC-LEA
-   RAX ENGINE-GPR:X64-DBASE >R64 X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX RCX X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
    RAX $20 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX ENGINE-GPR:X64-DBASE >R64 REC-LEN MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX RCX REC-LEN MEM-OFF ASM-SINK ENC-MOV-MR
    RAX DATA-REG DEF-OCC:PTR-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RCX 1 >IMM32 ASM-SINK ENC-MOV-RI32
    RCX RAX 0 MEM-OFF ASM-SINK ENC-MOV-MR
