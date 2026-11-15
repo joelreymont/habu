@@ -36,11 +36,20 @@ private
 \ The first id the build minted after its global and namespace.
 : FIRST-WID ( -- n ) BOOT:GLOBAL-WL  BOOT:NAMESPACE-WL negate  max 1 + ;
 
+\ Build record r names wordlist wid, which the build did not make: the target
+\ cannot number it. The linker holds no source place, so the record is unplaced.
 : BAD-WID ( n n -- )
    {: wid:n r:n :}
-   s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  holds wordlist " SAY wid SAY-INT
-   s" , which the build did not make" SAY SAY-CR
-   s" link: a record holds a wordlist the target cannot name" 76 die ;
+   r XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   s" E-LINK-WORDLIST" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" ` names wordlist " REJECTION:EMIT-STR  wid REJECTION:EMIT-N
+   s" , which the build did not make, so the target cannot number it" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" ` in a wordlist the build makes: its global wordlist, a package it declares or one `wordlist` answers"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Build record r's wordlist id wid as the target numbers it.
 : WID-MAP ( n n -- n )
@@ -294,14 +303,14 @@ variable REGION-N
    BAND-END @ GAP
    BAND-END @ end RUNTIME-ROW+ ;
 
+\ Region kind k's name; REGION+'s callers pass only the five kinds above.
 : KIND$ ( n -- ptr u8 n )
    {: k:n :}
    k DATA-KIND = if s" data" exit then
    k DATA-LIST-KIND = if s" data-list" exit then
    k NAMES-KIND = if s" names" exit then
    k RECORDS-KIND = if s" records" exit then
-   k RECORD-LIST-KIND = if s" record-list" exit then
-   s" link: a map region has no kind past 4" 76 die ;
+   s" record-list" ;
 
 \ The link appended bytes [start, end) of kind k after the code.
 : REGION+ ( n n n -- )
@@ -323,17 +332,13 @@ variable REGION-N
 : REGION-ROW+ ( n -- )
    {: i:n :}
    i REGION-START @ {: start:n :}
-   start MAP-AT @ < if s" link: the map's regions overlap" 76 die then
    s" pad" MAP-AT @ start TAIL-ROW+
    i REGION-KIND @ KIND$  start  i REGION-END @  TAIL-ROW+
    i REGION-END @ MAP-AT ! ;
 
 : REGION-ROWS ( n -- )
    MAP-AT !
-   REGION-N @ 0 ?do i REGION-ROW+ loop
-   MAP-AT @ A64ICODE:ASM-LEN <> if
-      s" link: the map's regions do not end at the code buffer's end" 76 die
-   then ;
+   REGION-N @ 0 ?do i REGION-ROW+ loop ;
 
 : PACKAGE-ROWS ( -- )
    ndict@ FIRST-REC @ ?do
