@@ -431,10 +431,12 @@ private
    path pathu REJECTION:EMIT-STR  s" `, which " REJECTION:EMIT-STR
    why whyu REJECTION:EMIT-STR ;
 
-\ PATH-REJECT's record, unplaced; help says what to pass instead.
-: PATH-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n path:ptr pathu:n why:ptr whyu:n help:ptr helpu:n :}
-   w wu path pathu why whyu PATH-REJECT
+\ Word w got the path a u, shown as p pu: why reads after "which" and "that".
+\ The record stands where LOADER-PATH-AT places a u; help says what to pass.
+: PATH-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n p:ptr pu:n why:ptr whyu:n help:ptr helpu:n :}
+   w wu p pu why whyu PATH-REJECT
+   w wu a u LOADER-PATH-AT  why whyu REJECTION:EMIT-STR
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -453,7 +455,8 @@ public
 \ which only the linker would catch. w is the word the program called.
 : BUILD-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n path:ptr pathu:n :}
    OWN-LOADER? if exit then
-   w wu path pathu s" a word may not load or provide while a build runs"
+   w wu path pathu path pathu
+   s" a word may not load or provide while a build runs"
    s" load or provide the file at a file's top level, which the build's loader runs"
    PATH-DIE ;
 
@@ -466,7 +469,7 @@ private
       JOIN-BUF swap PARENT-U
       dup JOIN-BUF swap TRY-CANON if exit then
       dup 1 <= if
-         s" SOURCE-INPUT:CANON" JOIN-BUF JOIN-U @
+         s" SOURCE-INPUT:CANON" JOIN-BUF JOIN-U @ JOIN-BUF JOIN-U @
          s" has no directory above it that the supplied canon resolves"
          s" have the canon given to `SOURCE-INPUT:USE` or `SOURCE-INPUT:WITH` answer true for `/`"
          PATH-DIE
@@ -565,7 +568,7 @@ private
 \ tried and what a missing, unsearchable or long directory and a file all are
 \ not. w is the word the program called.
 : ROOT-DIE ( ptr u8 n -- )
-   JOIN-BUF JOIN-U @
+   JOIN-BUF JOIN-U @ JOIN-BUF JOIN-U @
    s" does not resolve to a searchable directory within PATH-CAP bytes"
    s" name an existing directory this process can search"
    PATH-DIE ;
@@ -729,15 +732,6 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ Word w got the path a u, which joined to the current root is p pu, a path
-\ that is no directory it can use: why follows "which" and "that".
-: ROOT-DIR-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n a:ptr u:n p:ptr pu:n why:ptr whyu:n help:ptr helpu:n :}
-   w wu p pu why whyu PATH-REJECT
-   w wu a u LOADER-PATH-AT  why whyu REJECTION:EMIT-STR
-   REJECTION:HELP  help helpu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
    a u LOADER-PATH-FAULT {: kind:n len:n :}
@@ -749,11 +743,11 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    n -2 = if w wu a u -1 ROOT-LONG then
    n -1 = if
       w wu a u p pu s" does not resolve to a directory"
-      s" name an existing directory" ROOT-DIR-DIE
+      s" name an existing directory" PATH-DIE
    then
    n -3 = if
       w wu a u p pu s" is not a directory this process can search"
-      s" name a directory, one this process may search" ROOT-DIR-DIE
+      s" name a directory, one this process may search" PATH-DIE
    then
    p pu CANON-BUF n COMPILE-READS:ROOT+
    CANON-BUF n MAP-COPY {: fresh:ptr :}
@@ -1889,12 +1883,13 @@ variable LAST-LOAD-EVAL-OK
    ns frame FR-CTIME-NS + CELL-VIEW !
    size frame FR-STAMP-SIZE + CELL-VIEW ! ;
 
-\ Refuses PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
+\ Rejects PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
 \ HOLD). A word's read finds its own file's frame held, or no frame; in a build,
 \ hb's held frame.
 : READ-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
-   s" SOURCE-ROOT:READ-OS" path pathu s" is not the file a load is opening"
+   s" SOURCE-ROOT:READ-OS" path pathu path pathu
+   s" is not the file a load is opening"
    s" call it only from a reader installed with `SOURCE-INPUT:USE`, for the path the loader passes"
    PATH-DIE ;
 
