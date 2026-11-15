@@ -290,6 +290,13 @@ private
    {: c:connection :}
    c DB LIB-AUTOCOMMIT 0= if c s" ROLLBACK" EXEC then ;
 
+\ Begins with the text; a body or COMMIT that fails is rolled back, and its
+\ error goes on.
+: TRANSACTION ( R connection ^u8 n [ R -- S ] -- S )
+   {: c:connection a:^ u:n body :}
+   c a u EXEC
+   c body [: COMMIT-AFTER ;] [: c ROLLBACK-OPEN ;] finally ;
+
 public
 
 \ The text's one statement, prepared for the body.
@@ -301,11 +308,17 @@ public
    [: RUN-BODY stmt <> if E-HANDLE throw then ;]
    [: stmt FINALIZE ;] finally ;
 
-\ A COMMIT that fails is rolled back too, and its error goes on.
+\ BEGIN IMMEDIATE: takes the write lock at once and holds off every other
+\ writer until it ends. For a body that writes.
 : WITH-TRANSACTION ( R connection [ R -- S ] -- S )
    {: c:connection body :}
-   c s" BEGIN IMMEDIATE" EXEC
-   c body [: COMMIT-AFTER ;] [: c ROLLBACK-OPEN ;] finally ;
+   c s" BEGIN IMMEDIATE" body TRANSACTION ;
+
+\ BEGIN DEFERRED: no lock until the first read, no write lock unless the
+\ body writes. For a body that only reads, as one snapshot.
+: WITH-READ ( R connection [ R -- S ] -- S )
+   {: c:connection body :}
+   c s" BEGIN DEFERRED" body TRANSACTION ;
 
 : CHANGES ( connection -- n ) DB LIB-CHANGES ;
 
