@@ -260,7 +260,7 @@ s" error[E-MISSING-NAME]" s" `linear:`" LIN-CHILD:SAYS
 s" a row's bare call at an empty stack is refused by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
    LIN-CHILD:RUN 70 T=
-s" error[E-INPUT-UNDERFLOW]" LIN-CHILD:HAS  s" linear-suite.f:262:4" LIN-CHILD:HAS
+s" error[E-INPUT-UNDERFLOW]" LIN-CHILD:HAS  LIN-CHILD:ERR$ s" linear-suite.f" 4 s" LIN-CHILD:RUN 70 T=" T-PLACED
 s" LCM" LIN-CHILD:HAS
 
 \ ---- tools/check.f, an hb built with --repl and a built program -----------------

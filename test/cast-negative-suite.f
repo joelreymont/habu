@@ -509,7 +509,7 @@ variable ERR-U
 \ A cast's bare call on an empty stack is rejected at its place before it reads
 \ the cell below the base.
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
-s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  s" cast-negative-suite.f:511:64" CN-CHILD:HAS
+s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  CN-CHILD:ERR$ s" cast-negative-suite.f" 64 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" T-PLACED
 s" >CNMROLE" CN-CHILD:HAS
 
 \ The trailing `;` of the retired spelling ends no definition.

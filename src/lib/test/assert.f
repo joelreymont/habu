@@ -126,6 +126,71 @@ variable T-LABEL-U
       a u type cr
    then ;
 
+: T-DIGITS-END ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i begin dup u < while
+      dup a + c@ STR-DIGIT? 0= if exit then
+      1+
+   repeat ;
+
+: T-LINE-END ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i begin dup u < while
+      dup a + c@ 10 = if exit then
+      1+
+   repeat ;
+
+: T-FROM ( ptr u8 n ptr u8 n n -- n )   \ FIND-SUB-FROM's offset, else -1
+   FIND-SUB-FROM MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ The offset of the line number after `f:` in the ` --> ` line of r, else -1.
+: T-PLACE-LINE ( ptr u8 n ptr u8 n -- n ) {: r:ptr ru:n f:ptr fu:n :}
+   r ru s"  --> " 0 T-FROM {: a:n :}
+   a 0< if -1 exit then
+   r  r ru a T-LINE-END  f fu a T-FROM {: t:n :}
+   t 0< if -1 exit then
+   t fu + {: s:n :}
+   s ru < if s r + c@ [char] : = if s 1+ exit then then
+   -1 ;
+
+\ Whether r holds, at h, a line `d | ` whose rest contains c.
+: T-GUTTER-AT? ( ptr u8 n ptr u8 n ptr u8 n n -- bool )
+   {: r:ptr ru:n d:ptr du:n c:ptr cu:n h:n :}
+   h du + 3 + {: s:n :}
+   s ru > if STR-FALSE exit then
+   h 1- r + c@ 10 <> if STR-FALSE exit then
+   h du + r + 3 s"  | " STR= 0= if STR-FALSE exit then
+   s r +  r ru s T-LINE-END s -  c cu CONTAINS? ;
+
+: T-GUTTER? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: r:ptr ru:n d:ptr du:n c:ptr cu:n :}
+   du 0= if STR-FALSE exit then
+   1 begin
+      >r r ru d du r> T-FROM
+      dup 0< 0= while
+      dup >r r ru d du c cu r> T-GUTTER-AT? if drop STR-TRUE exit then
+      1+
+   repeat drop STR-FALSE ;
+
+\ A record's place in the file whose name ends f, asserted without pinning a
+\ line: its ` --> ` line names `f:N:col`, and its gutter line `N | ` shows a
+\ source line that contains c. Two assertions, as T= and TTRUE count them.
+: T-PLACED ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: r:ptr ru:n f:ptr fu:n col:n c:ptr cu:n :}
+   r ru f fu T-PLACE-LINE {: ls:n :}
+   ls 0< if -1 col T=  STR-FALSE TTRUE exit then
+   r ru ls T-DIGITS-END {: le:n :}
+   le ru < if le r + c@ [char] : = else STR-FALSE then
+   if
+      le 1+ r +  r ru le 1+ T-DIGITS-END le 1+ -  STR-PARSE-POS MATCH option
+        none OF -1 ENDOF
+        some OF ENDOF
+      ;MATCH
+   else -1 then
+   col T=
+   r ru  ls r +  le ls -  c cu T-GUTTER? TTRUE ;
+
 : T-REPORT ( -- )
    T-FAIL# @ 0= if s" test: ok" type cr exit then
    s" test: " type T-FAIL# @ FMT:.INT s"  failure(s)" type cr
