@@ -41,8 +41,8 @@
 //     UTF-8; one per host notification
 //   tick: a the token of the after record that asked for it
 //   file: a, b the file's UTF-8 name, c its size in bytes, d the host's
-//     positive file number, valid while the module lives; one per file picked
-//     or dropped
+//     positive file number, valid while the module lives; one per file the
+//     host numbers
 //   chunk: a, b the bytes read, c the file number, d the offset; buttons 1, or
 //     0 when the read failed, with a, b String(error)
 //   picked: a the id (the row's u32 id) of the instance nearest at the pick's

@@ -1,9 +1,9 @@
 // page.js - a host page's view of a mounted module, shared by host.js
-// (index.html) and app.js (app.html): both pages hold a canvas, a #tree, a
-// #text, a form's input and a #file picker under a #viewport. This file shows
-// the module's text, tree and SVG images, enables its field, and sends the
-// view the field's text and each file picked or dropped on the page. It
-// imports nothing, so app.html can load it from a blob: URL.
+// (index.html) and app.js (app.html): both pages hold a canvas under a
+// #viewport, a #tree, a #text and a form's input, and no file picker. This file
+// shows the module's text, tree and SVG images, enables its field, and sends
+// the view the field's text and each file dropped on the page. It imports
+// nothing, so app.html can load it from a blob: URL.
 //
 // SVG is shown through an img element, whose processing mode disables scripts,
 // interaction and external references; supplied markup is never inserted into
@@ -11,7 +11,6 @@
 
 export const canvas = document.querySelector("canvas");
 const field = document.querySelector("form input");
-const picker = document.querySelector("#file");
 const shown = document.querySelector("#text");
 const tree = document.querySelector("#tree");
 const frame = document.querySelector("#viewport");
@@ -170,10 +169,6 @@ export function listen(view) {
     const text = field.value;
     field.value = "";
     view.post({ kind: "typed", text });
-  });
-  picker.addEventListener("change", () => {
-    for (const file of picker.files) view.file(file);
-    picker.value = "";
   });
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => {

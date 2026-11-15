@@ -20,7 +20,7 @@ canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
 .tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
 .tree-row button:focus-visible { outline: 2px solid #1168b6; }
 .tree-spacer { width: 22px; }
-form, #file, #text { margin: 4px 8px; }
+form, #text { margin: 4px 8px; }
 form input { box-sizing: border-box; width: 100%; }
 #text { white-space: pre-wrap; overflow-wrap: anywhere; }
 #text.error { color: #b00020; }
@@ -30,7 +30,6 @@ form input { box-sizing: border-box; width: 100%; }
 <div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
 <section id="scene" aria-label="Scene tree"><h2>Scene</h2><div id="tree"></div></section>
 <form><input aria-label="text" autocomplete="off" disabled></form>
-<input id="file" type="file" multiple aria-label="file">
 <div id="text">loading</div>
 <script type="application/base64" id="turn.js"><!--turn.js--></script>
 <script type="application/base64" id="viewport.js"><!--viewport.js--></script>

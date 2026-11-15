@@ -8,8 +8,8 @@
 // notifications reach the module in the order sent, that a message from a
 // window other than the parent is ignored, a tools/call round trip, the model
 // context, an after tick, a response holding both a result and an error, a
-// picked file read in two pieces, teardown, and a second frame torn down before
-// its ui/initialize is answered. DIR holds data.bin, the file picked, and
+// dropped file read in two pieces, teardown, and a second frame torn down before
+// its ui/initialize is answered. DIR holds data.bin, the file dropped, and
 // receives chrome.log; TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -163,10 +163,11 @@ try {
   assert.match(await text(), /^answered 0 1 Error: \d+: the message is not a JSON-RPC response$/,
     "a response holding both a result and an error is a transport failure");
 
+  // The page has no file picker: a file reaches the module dropped on the frame.
   const data = resolve(output, "data.bin");
-  const picker = await call("Runtime.evaluate", { expression: "frames[0].document.querySelector('#file')" });
-  await call("DOM.enable");
-  await call("DOM.setFileInputFiles", { files: [data], objectId: picker.result.objectId });
+  const drag = { items: [], files: [data], dragOperationsMask: 1 };
+  for (const type of ["dragEnter", "dragOver", "drop"])
+    await call("Input.dispatchDragEvent", { type, x: 100, y: 100, data: drag });
   await shows(`file data.bin ${readFileSync(data).length} 1`);
   await typed("read start", "chunk 1 0 1 0,1,2,");
   await typed("read end", "chunk 1 7 1 253,254,255,");

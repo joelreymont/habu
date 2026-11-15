@@ -19,7 +19,7 @@
 //          answered -32601
 //
 // page.js shows what the module sends and gives it the field's text and each
-// file picked or dropped anywhere on the page. The module is the one path the
+// file dropped anywhere on the page. The module is the one path the
 // viewport's fetch answers; every other path rejects.
 const PROTOCOL = "2026-01-26";
 const VERSION = "1";
