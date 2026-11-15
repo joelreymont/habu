@@ -10,12 +10,17 @@
 //          ui/request-display-mode {mode: "fullscreen"}, then tools/call
 //          {name: "view_code", arguments: {}}, whose result's _meta holds the
 //          server's page id and the view's code, then view.js's start
-//   code   _meta {page, files}, files each base64 by name; view.js is
+//   code   _meta {page, code, files}, code the id of the view's code
+//          (MCP-APP:CODE-ID+), files each base64 by name; view.js is
 //          imported from a blob: URL; a page id that is not this page's ends
 //          start: the page is older than its server
-//   view   view.js exports start(host), host {files, request}: files
-//          is the _meta's files, request(method, params) resolves with the
-//          response message as request below does; start resolves with
+//   view   view.js exports start(host), host {meta, files, request,
+//          restart, carried}: meta is the view_code result's whole _meta,
+//          files its files, request(method, params) resolves with the
+//          response message as request below does, restart(result,
+//          carried) starts the view again from another view_code result,
+//          handing the new view carried, and carried is what restart was
+//          handed, null at the first start; start resolves with
 //          {notify(method, paramsJSON), dispose()}
 //   failure
 //          a failure of loading or mounting (the call's error, a missing
@@ -33,14 +38,15 @@
 //
 // Start is a machine over phase, whose states are
 //   starting  waiting for ui/initialize's result
-//   loading   the view_code call and view.js's import
+//   loading   the view_code call, or a restart's dispose, and view.js's import
 //   mounting  waiting for view.js's start
 //   running   started; notifications are delivered
 //   failed    start failed: shown, and told to the model when loading or mounting failed
 //   torn      ui/resource-teardown arrived
 // starting goes to loading on initialize's result; loading to mounting once
 // the code is checked and view.js imported; mounting to running when start
-// resolves, which delivers the held notifications. loading or mounting goes
+// resolves, which delivers the held notifications. running goes to loading on
+// restart, which is a no-op in any other state. loading or mounting goes
 // to failed on any failure; a failure in starting goes to failed and is only
 // shown, by the bootstrap. Any state goes to torn on ui/resource-teardown. Each step after
 // an await runs only while the phase is still the one it set, and a start
@@ -76,6 +82,8 @@ async function call(method, params) {
 const shown = document.querySelector("#text"); // app.html's own, where a failure is shown
 
 let phase = "starting";
+let pageId = ""; // this page's id, and its title, as start was given them
+let title = "";
 let view = null; // view.js's started view, while running
 const held = []; // host notifications that arrived before start resolved
 
@@ -143,17 +151,22 @@ function code(r, id, title) {
   return { files, bytes: Uint8Array.fromBase64(coded) };
 }
 
-// loading, then mounting, then running.
-async function run(id, title) {
-  post({ method: "ui/notifications/initialized" });
-  call("ui/request-display-mode", { mode: "fullscreen" }).catch((e) => console.error(e));
-  const r = await call("tools/call", { name: CODE_TOOL, arguments: {} });
-  if (phase !== "loading") return;
-  const { files, bytes } = code(r, id, title);
+// A failure of loading or mounting, unless the phase has moved on.
+function stopped(e) {
+  if (phase !== "loading" && phase !== "mounting") return;
+  phase = "failed";
+  held.length = 0;
+  console.error(e);
+  failed(title, e instanceof OlderPage ? e.message : String(e));
+}
+
+// loading, from view_code's result r, then mounting, then running.
+async function mount(r, carried) {
+  const { files, bytes } = code(r, pageId, title);
   const module = await load(bytes);
   if (phase !== "loading") return;
   phase = "mounting";
-  const started = await module.start({ files, request });
+  const started = await module.start({ meta: r._meta, files, request, restart, carried });
   if (phase !== "mounting") {
     started.dispose();
     return;
@@ -163,9 +176,32 @@ async function run(id, title) {
   for (const m of held.splice(0)) deliver(m);
 }
 
+async function run() {
+  post({ method: "ui/notifications/initialized" });
+  call("ui/request-display-mode", { mode: "fullscreen" }).catch((e) => console.error(e));
+  const r = await call("tools/call", { name: CODE_TOOL, arguments: {} });
+  if (phase !== "loading") return;
+  await mount(r, null);
+}
+
+// running goes to loading: the view is disposed and mounted again from result.
+async function restart(result, carried) {
+  if (phase !== "running") return;
+  phase = "loading";
+  const old = view;
+  view = null;
+  try {
+    old.dispose();
+    await mount(result, carried);
+  } catch (e) {
+    stopped(e);
+  }
+}
+
 export async function start(id) {
   window.addEventListener("message", received);
-  const title = document.querySelector("title").textContent;
+  pageId = id;
+  title = document.querySelector("title").textContent;
   try {
     await call("ui/initialize", {
       appInfo: { name: title, version: VERSION },
@@ -174,13 +210,9 @@ export async function start(id) {
     });
     if (phase !== "starting") return;
     phase = "loading";
-    await run(id, title);
+    await run();
   } catch (e) {
     if (phase === "starting") { phase = "failed"; held.length = 0; throw e; } // the bootstrap shows it
-    if (phase !== "loading" && phase !== "mounting") return;
-    phase = "failed";
-    held.length = 0;
-    console.error(e);
-    failed(title, e instanceof OlderPage ? e.message : String(e));
+    stopped(e);
   }
 }

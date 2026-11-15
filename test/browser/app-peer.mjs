@@ -11,9 +11,11 @@
 // context, an after tick, a response holding both a result and an error, a
 // dropped file read in two pieces, teardown, a second frame torn down before
 // its ui/initialize is answered, a third torn down while its view_code
-// request is pending, and a fourth whose view_code answer names another page
-// id. DIR holds data.bin, the file dropped, and receives chrome.log;
-// TITLE is the page's unescaped title.
+// request is pending, a fourth whose view_code answer names another page id,
+// a fifth whose started view restarts with a second view_code result, handing
+// the second view what it carried, and a sixth whose restart's result names
+// another page id. DIR holds data.bin, the file dropped, and receives
+// chrome.log; TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +36,23 @@ const TOOL_RESULT = { content: [{ type: "text", text: "project" }] };
 const OLDER = `This view's page is older than ${title}'s server: ${title}'s app must be refreshed where it was installed; then open this view again.`;
 const OLDER_CONTEXT = { content: [{ type: "text", text: `${title}'s view could not start: ${OLDER}`,
   annotations: { audience: ["assistant"] } }] };
+// The restarting frames' view.js files: the first records what start was
+// handed, asks for view_code again and restarts with its result, carrying
+// CARRIED; the second shows that it started and what it was handed.
+const CARRIED = { from: "first" };
+const FIRST = `export async function start(host) {
+  const first = window.first = { meta: host.meta, carried: host.carried, disposed: false };
+  host.request("tools/call", { name: "view_code", arguments: {} })
+    .then((r) => host.restart(r.result, ${JSON.stringify(CARRIED)}));
+  return { notify() {}, dispose() { first.disposed = true; } };
+}`;
+const SECOND = `export async function start({ carried }) {
+  document.body.innerHTML = '<p id="text"></p>';
+  document.querySelector("#text").textContent = "second view " + JSON.stringify(carried);
+  return { notify() {}, dispose() {} };
+}`;
+const SECOND_SHOWN = `second view ${JSON.stringify(CARRIED)}`;
+const base64 = (text) => Buffer.from(text).toString("base64");
 
 // The parent: every message from the frame lands in window.log; requests are
 // answered from the table, view_code with code. Before it answers ui/initialize it starts
@@ -111,6 +130,26 @@ window.addOlder = () => {
     older.log.push(data);
     if (!("id" in data)) return;
     const result = data.method === "tools/call" ? { content: [], _meta: { ...code, page: "0".repeat(64) } } : answers[data.method];
+    other.contentWindow.postMessage({ jsonrpc: "2.0", id: data.id, result }, "*");
+  });
+};
+// addRestart adds a page frame whose first view_code answer is code with
+// FIRST as its view.js, and whose second is next; the messages it posts land
+// in window[name].log.
+const coded = (view, meta) => ({ content: [], _meta: { ...code, ...meta, files: { ...code.files, "view.js": view } } });
+window.firstCode = coded(${JSON.stringify(base64(FIRST))}, {});
+window.secondCode = coded(${JSON.stringify(base64(SECOND))}, {});
+window.olderCode = coded(${JSON.stringify(base64(SECOND))}, { page: "0".repeat(64) });
+window.addRestart = (name, next) => {
+  const other = document.body.appendChild(document.createElement("iframe"));
+  const restarted = window[name] = { log: [], frame: other };
+  let calls = 0;
+  other.src = "/app.html";
+  window.addEventListener("message", ({ source, data }) => {
+    if (source !== other.contentWindow || !("method" in data)) return;
+    restarted.log.push(data);
+    if (!("id" in data)) return;
+    const result = data.method !== "tools/call" ? answers[data.method] : calls++ === 0 ? firstCode : next;
     other.contentWindow.postMessage({ jsonrpc: "2.0", id: data.id, result }, "*");
   });
 };
@@ -233,7 +272,32 @@ try {
     "an older page asks for its code, then tells the model once");
   assert.deepEqual(olderLog.at(-1).params, OLDER_CONTEXT);
   console.log(`Headless Chrome: an older page shows ${JSON.stringify(OLDER)}`);
-  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code and an older page passed");
+
+  const view_code = { name: "view_code", arguments: {} };
+  const restartedText = (name) => evaluate(`${name}.frame.contentDocument?.querySelector('#text')?.textContent ?? null`);
+  const restartedShows = (name, want) => until(async () => await restartedText(name) === want)
+    .catch(async (error) => { throw new Error(`the ${name} frame's #text is ${JSON.stringify(await restartedText(name))}, not ${JSON.stringify(want)}`, { cause: error }); });
+  await evaluate("addRestart('restarted', secondCode)");
+  await restartedShows("restarted", SECOND_SHOWN);
+  const first = await evaluate("restarted.frame.contentWindow.first");
+  assert.deepEqual(first.meta, await evaluate("firstCode._meta"), "the first view is handed view_code's whole _meta");
+  assert.equal(first.carried, null, "the first view is handed carried null");
+  assert.equal(first.disposed, true, "restart disposes the first view");
+  assert.deepEqual((await evaluate("restarted.log")).filter((m) => m.method === "tools/call").map((m) => m.params),
+    [view_code, view_code], "the page asks for view_code once and the first view once more");
+  console.log(`Headless Chrome: a restarted view shows ${JSON.stringify(SECOND_SHOWN)}`);
+
+  await evaluate("addRestart('restartedOlder', olderCode)");
+  await restartedShows("restartedOlder", OLDER);
+  await until(async () => (await evaluate("restartedOlder.log")).some((m) => m.method === "ui/update-model-context"));
+  const restartedOlderLog = await evaluate("restartedOlder.log");
+  assert.deepEqual(restartedOlderLog.map((m) => m.method), [...handshake, "tools/call", "ui/update-model-context"],
+    "a restart onto an older page tells the model once");
+  assert.deepEqual(restartedOlderLog.at(-1).params, OLDER_CONTEXT);
+  assert.equal(await evaluate("restartedOlder.frame.contentWindow.first.disposed"), true,
+    "a restart onto an older page disposes the first view");
+  console.log(`Headless Chrome: a restart onto an older page shows ${JSON.stringify(OLDER)}`);
+  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code, an older page, a restart and a restart onto an older page passed");
 } catch (error) {
   failure = error; throw error;
 } finally {
