@@ -7752,8 +7752,6 @@ defer SIG-TYPE-XT ( ^u8 n -- n )
 SIG-BINDER-BODY-INSTALL
 
 \ ---- typed local annotations -------------------------------------------------
-\ `{: p:^ :}` means an inferred pointee, which SIG-TYPE would refuse, so the
-\ shorthand is taken ahead of the delegation.
 \ An unusable local annotation, its verdict set: fail fast so the pinned token
 \ is the annotation itself, not ':}'.
 : LOC-ANN-FAILS ( -- n )
@@ -7781,8 +7779,8 @@ SIG-BINDER-BODY-INSTALL
    rt LAYOUT-WIDTH-OPEN? IF rt EXIT THEN
    rt dup T-WIDTH 1 - MK-HIDDEN ;
 
-\ A bare `^` local's pointee is STORED: binding the pointer asks nothing of
-\ what it points at, and a one-cell use of it (`p @`) makes it one cell.
+\ A bare `^`, which SIG-TYPE rejects, is read first: its pointee is STORED, and
+\ a one-cell use of it (`p @`) makes it one cell.
 : LOCAL-TYPE ( ^u8 n -- n )
    {: a:^ u:n :}
    a u s" ^" CORE-STR= IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
@@ -11281,9 +11279,8 @@ public
    SGBAD-AR-DECL @ REJECTION:EMIT-U
    SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
    REJECTION:EMIT-STR ;
-\ A `ptr` gets the example `^u8`. In the annotation of the local l lu it gets
-\ `l:^u8` where it opens the annotation, else the annotation with `^u8` in
-\ place of `ptr`: l starts the local's token `l:type`, the pin FAILTK FAILTU.
+\ In a local's annotation l starts the pin FAILTK FAILTU, the local's token
+\ `l:type` that holds t, so the example is that token with `^u8` for `ptr`.
 : SGBAD-UNKNOWN-FIX ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
    t tu s" ptr" CORE-STR= IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `" REJECTION:EMIT-STR
@@ -11294,6 +11291,42 @@ public
    THEN
    s" write a type in scope or a one-letter type variable in place of " REJECTION:EMIT-STR
    t tu CODE-SPAN ;
+
+\ The offset of the first `forall` in a u, or u when it holds none.
+: FORALL-AT ( ^u8 n -- n ) {: a:^ u:n :}
+   0 BEGIN dup 6 + u <= WHILE
+      a over + 6 s" forall" CORE-STR= IF EXIT THEN
+      1 +
+   REPEAT drop u ;
+
+\ The offset of the `>` that closes the first `<` at or past offset i of a u,
+\ or u when none does.
+: ANGLE-CLOSE ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+   0 i BEGIN dup u < WHILE
+      a over + c@ 60 = IF swap 1 + swap THEN
+      a over + c@ 62 = IF
+         swap 1 - swap
+         over 0= IF nip EXIT THEN
+      THEN
+      1 +
+   REPEAT nip ;
+\ The first binder in a u, `forall` through the `>` that closes it; a u when it
+\ holds none.
+: FORALL-SPAN ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u FORALL-AT {: i:n :}
+   i u = IF a u EXIT THEN
+   a i +  a u i ANGLE-CLOSE 1 + u min i - ;
+\ Emits a u with each binder's head, as `forall<p,`, and its closing `>` cut,
+\ so the binder's body stands in its place.
+: EMIT-UNBOUND ( ^u8 n -- ) {: a:^ u:n :}
+   a u FORALL-AT {: i:n :}
+   a i REJECTION:EMIT-STR
+   i u = IF EXIT THEN
+   a u i ANGLE-CLOSE {: e:n :}
+   i BEGIN dup e < IF a over + c@ 44 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   1 + e min {: b:n :}
+   a b +  e b -  RECURSE
+   e u < IF a e + 1 +  u e - 1 -  RECURSE THEN ;
 \ The help of a verdict other than the ambiguous one: t tu is the token it
 \ rejects, l lu the local whose annotation that is, empty in a signature.
 : SGBAD-FIX ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
@@ -11306,19 +11339,20 @@ public
       s" follow `^` with its element type, as `^u8` or `^a`" REJECTION:EMIT-STR EXIT
    THEN
    SGBAD-ARITY? IF t tu SGBAD-ARITY-FIX EXIT THEN
-   SGBAD-BINDERS? IF
-      s" name an inner callback's effect in a word of its own, so this " REJECTION:EMIT-STR
-      lu 0= IF s" signature" ELSE s" annotation" THEN REJECTION:EMIT-STR
-      s"  nests fewer binders" REJECTION:EMIT-STR EXIT
+   SGBAD-BINDERS? lu 0= and IF
+      s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
+      REJECTION:EMIT-STR EXIT
    THEN
    SGBAD-DEPTH? IF DEPTH-SUGGEST$ REJECTION:EMIT-STR EXIT THEN
    SGBAD-UNSUPPLIED? IF
       s" name each output scope or region variable in an input too, or drop it from the outputs"
       REJECTION:EMIT-STR EXIT
    THEN
-   SGBAD-SCHEME? IF
+   \ A local's annotation holds no binder: the example is it with each one cut.
+   SGBAD-SCHEME? SGBAD-BINDERS? or IF
       s" write the type without `forall`: its type variables are then the definition's, as in `"
-      REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR  s" :[--]`" REJECTION:EMIT-STR EXIT
+      REJECTION:EMIT-STR  l lu 1 + REJECTION:EMIT-STR
+      l lu 1 + +  FAILTK FAILTU @ +  over -  EMIT-UNBOUND  96 REJECTION:EMIT1 EXIT
    THEN
    lu 0= IF
       s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
@@ -11411,15 +11445,12 @@ public
 \ its `<`; the declaring name AT ATU when the text holds none.
 : SCHEME-BINDER ( ^u8 n ^u8 n -- ^u8 n )
    {: sa:^ su:n at:^ atu:n :}
-   0 BEGIN dup 6 + su <= WHILE
-      sa over + 6 s" forall" CORE-STR= IF
-         dup BEGIN dup su < IF sa over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
-         {: start:n end:n :}
-         end su < IF sa start +  end start - 1 + EXIT THEN
-         at atu EXIT
-      THEN
-      1 +
-   REPEAT drop at atu ;
+   sa su FORALL-AT {: start:n :}
+   start su = IF at atu EXIT THEN
+   start BEGIN dup su < IF sa over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   {: end:n :}
+   end su < IF sa start +  end start - 1 + EXIT THEN
+   at atu ;
 
 \ A stored signature SA SU, declared at the name AT ATU as read, that binds a
 \ callback scope.
@@ -19070,9 +19101,9 @@ CHECKER-REG:}SCRATCH
    LOCSEQ @ 1 + LOCSEQ ! ;
 
 \ Types the slot LOC-OPEN made with term T; a type scheme is rejected at the
-\ type's spelling A U.
+\ first binder in the type's spelling A U.
 : LOC-TYPED ( ^u8 n n -- ) {: a:^ u:n t:n :}
-   t SCHEME-TYPE? IF a u SGBAD-SCHEME! LOC-ANN-FAILS ELSE t LOC-ANN-TERM THEN
+   t SCHEME-TYPE? IF a u FORALL-SPAN SGBAD-SCHEME! LOC-ANN-FAILS ELSE t LOC-ANN-TERM THEN
    #LOC @ LOC-TYPE-SET ;
 
 \ The annotation A U after a local's colon. A verdict it gives names a token of

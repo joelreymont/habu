@@ -432,9 +432,13 @@ public
    SRC-RESET  s" : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;" S+
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
    S\" ^ a local holds one type\n" SAID
-   S\" = evaluated: : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;\n" SAID
-   S\"  ^^^^^^^^^^^^^^\n" SAID
+   S\" = evaluated: : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;\n                                       ^^^^^^^^^^^^^^\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:[--]`\n" SAID
+   s" a nested type scheme in a local's annotation is placed and named by its binder, helped by the annotation without it" T-LABEL
+   SRC-RESET  s" : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;" S+
+   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
+   S\" = evaluated: : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;\n                                        ^^^^^^^^^^^^^^\n" SAID
+   S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:^[--]`\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
