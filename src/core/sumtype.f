@@ -113,7 +113,7 @@ PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
-PTR-VARIABLE TDA-A   variable TDA-U   \ token TDECL-THROW armed with (diagnostics)
+PTR-VARIABLE TDA-A   variable TDA-U   \ copy of the token TDECL-THROW armed with
 variable TDECL-CODE                 \ the code TDW and TDF explain (0 = none armed)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
@@ -139,6 +139,26 @@ PTR-VARIABLE TDECL-FIRST            \ the body's first token, as parse-name gave
 : TDECL-DEFECT-FIX$ ( -- ptr u8 n )
    s" report this declaration as a Habu defect: no declaration text should reach this state" ;
 
+\ TDECL-THROW's own copy of its word, mapped on first use and grown to fit: the
+\ rollback a throw in a transaction participant runs first scrubs the stores
+\ the word may point into before the record reads it.
+$1000 constant TDA-FIRST                 \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE TDA-P   NULL-PTR TDA-P !
+variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
+
+: TDA-ROOM ( n -- ) {: u:n :}
+   TDA-CAP @ 0= IF
+      TDA-FIRST ARENA-ALLOC-BYTES TDA-P !  TDA-FIRST TDA-CAP !
+   THEN
+   TDA-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
+   nc TDA-CAP @ > IF
+      TDA-P @ TDA-CAP @ nc ARENA-BYTES-GROW TDA-P !  nc TDA-CAP !
+   THEN ;
+: TDA-KEEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u TDA-ROOM
+   a TDA-P @ u ARENA-COPY
+   TDA-P @ TDA-A !  u TDA-U ! ;
+
 public
 
 \ The armed reason is the one store every declaration catcher reads, whichever
@@ -160,7 +180,7 @@ public
    {: ta:ptr tu:n wa:ptr wu:n fa:ptr fu:n code:n :}
    wa wu fa fu code TDECL-ARM
    ta tu TDECL-TOK!
-   ta TDA-A !  tu TDA-U !
+   ta tu TDA-KEEP
    code throw ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
@@ -249,9 +269,11 @@ private
 
 \ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
 \ a status in 1..255 was printed where it arose, and a code no reason is armed
-\ with is no declaration's: all three are rethrown. Any other is
-\ rendered before the rollback, which rewinds the stores its token may point
-\ into, then counts in a multi-error load or stops the load (DEF-STOPPED).
+\ with is no declaration's: all three are rethrown. Any other is rendered,
+\ then counts in a multi-error load or stops the load (DEF-STOPPED). The record
+\ is rendered before this rollback, but a throw inside a transaction
+\ participant has already rolled back, scrubbing the stores its token may
+\ point into: its word note reads TDECL-THROW's copy.
 : TDECL-RUN ( [ -- ] -- )
    READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
