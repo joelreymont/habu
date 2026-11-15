@@ -1033,8 +1033,8 @@ SUITE vocabulary
    src/lib/vocabulary-test.f
 ;SUITE
 
-SUITE trust-row-refusal
-   test/trust-row-test.f
+SUITE engine-private
+   test/engine-private-test.f
 ;SUITE
 
 SUITE shadowed-arity-refusal

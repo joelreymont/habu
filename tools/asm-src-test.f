@@ -11,31 +11,8 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f);
-\ the trusted rows below name them qualified.
 using A64ASM
 using A64ICODE
-
-\ Raw ARM64 fixture effects.
-\ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
-s" A64ASM:MOVZHW" s" n n n -- n" TRUST
-s" A64ASM:ENC-ADD" s" n n n -- n" TRUST
-s" A64ASM:ENC-LDR" s" n n n -- n" TRUST
-s" A64ASM:ENC-LDAR" s" n n -- n" TRUST
-s" A64ASM:ENC-BLR" s" n -- n" TRUST
-\ >LIMM exposes immediate layout; ENC-ANDI the logical-immediate encoder.
-s" A64ASM:>LIMM" s" n -- n" TRUST
-s" A64ASM:ENC-ANDI" s" n n n -- n" TRUST
-\ CW@ exposes code bytes; CODE-BYTE+ preserves byte-pointer arithmetic.
-s" A64ICODE:CW@" s" n -- ^u8" TRUST
-s" A64ICODE:CODE-BYTE+" s" ^u8 n -- ^u8" TRUST
-\ ARESET resets the buffer; ADD,/LDAR, emit fixture instructions.
-s" A64ICODE:ARESET" s" --" TRUST
-s" A64ICODE:ADD," s" n n n --" TRUST
-s" A64ICODE:LDAR," s" n n --" TRUST
-\ ASM-LEN reads emitted length; LIT64, emits the literal fixture.
-s" A64ICODE:ASM-LEN" s" -- n" TRUST
-s" A64ICODE:LIT64," s" n n --" TRUST
 
 $2000000000000000 constant AST-DNAME-EXT
 

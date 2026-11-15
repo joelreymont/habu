@@ -1368,7 +1368,7 @@ private
 
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
 \ constructor package from items, their engine words found where this file is
-\ compiled: no pending window, no trust rows, no engine lowering, so equality is semantic and
+\ compiled: no pending window, no engine lowering, so equality is semantic and
 \ layout-policy agnostic. Derived eq consumes both operands.
 \  - TAG ( fam -- n ): declaration-order tag, which any checked MATCH already
 \    observes. Enums and sums only.

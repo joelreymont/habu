@@ -2599,7 +2599,6 @@ private
 \ copy, which records into a checker that checks nothing, so hb's word of that
 \ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
-   s" trust" TOKEN-IS? if true exit then
    s" intrinsic" TOKEN-IS? if true exit then
    s" nominal-provider" TOKEN-IS? if true exit then
    s" parse-imm" TOKEN-IS? if true exit then

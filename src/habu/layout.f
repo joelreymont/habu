@@ -1097,19 +1097,17 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
-\ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot register
-\ itself: the lookup of `trust` and `checker-defer` fails. The Habu loop's
-\ `defer` then copies the qualified name
-\ and effect signature into a slot here;
-\ DRAIN-PRETRUST, right after `: TRUST`, replays both registrations per slot, so
+\ A `defer NAME ( E )` in src/core/checker.f before the checker defines
+\ `trust-decl` and `checker-defer` cannot register itself, so the Habu loop's
+\ `defer` copies the qualified name and effect signature into a slot here;
+\ DRAIN-PRETRUST, right after both, replays both registrations per slot, so
 \ the table is empty by snapshot time. Overflow or an over-long name or sig dies
 \ at declaration; a non-empty table at SEAL-CAPTURE dies. The table sits after
 \ the private engine bands, below DATA-START, so its growth never moves the
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
-\ A raw store grants nothing beyond the public `trust`/`checker-defer` words,
-\ and the table is empty whenever user source runs.
+\ The table is empty whenever user source runs.
 128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP
 64 constant PD-SIG-CAP

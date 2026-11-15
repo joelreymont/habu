@@ -278,29 +278,13 @@ variable LBL-U
    s" SUM-NOEND-IT" 70 S\" habu: bad sumtype declaration '': missing ;SUMTYPE\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
-\ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
-\ checked body may call, so the child names them at its top level or in a
-\ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
-\ refused name publishes no use and reads none of its bytes. TRUST-DECL and
+\ CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a checked body may
+\ call, so the child names them at its top level or in a TRUSTED: body, as
+\ verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a refused name publishes
+\ no use and reads none of its bytes. TRUST-DECL and
 \ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
 \ TRUSTED: body calls them, as the engine's own callers do. A cast reaches
 \ its name once its signature certifies, and stores it.
-$400 constant WANT-CAP
-create WANT WANT-CAP allot
-variable WANT-U
-: WANT+ ( ^u8 n -- )
-   {: a:^ u:n :}
-   a WANT WANT-U @ + u BYTE-COPY
-   WANT-U @ u + WANT-U ! ;
-
-: STALE$ ( ^u8 n -- ^u8 n )
-   {: a:^ u:n :}
-   0 WANT-U !
-   s" E-TRUST-UNRESOLVED habu: trust row for '" WANT+
-   a u WANT+
-   S\" ' names no word where its record lands: nothing in the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
-   WANT WANT-U @ ;
-
 : TEST-TOP-LEVEL ( -- )
    s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
       RETURNS
@@ -310,9 +294,8 @@ variable WANT-U
 \ A name with a second inner ':' has a length a name has and keys no record:
 \ the engine defines no such word (rc 75), and CHECKER-RECORD-SYM answers
 \ symbol 0 for one. No row may carry symbol 0: a defer row keyed 0 is the
-\ defer store's terminator and hides every row after it. A trust row refuses
-\ the name as naming no word, and echoes it; every other word that records a
-\ symbol for it names it as malformed and throws. Each refusal is rendered
+\ defer store's terminator and hides every row after it. Every word that records
+\ a symbol for it names it as malformed and throws. Each refusal is rendered
 \ before its throw, so the child exits 70.
 : MAL$ ( -- ^u8 n ) s" q:q:q" ;
 : MALFORMED$ ( -- ^u8 n )
@@ -324,7 +307,6 @@ variable WANT-U
    s" MAL$ CHECKER-DEFER" 70 MALFORMED$ MAL-DIES
    s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED$ MAL-DIES
    s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED$ MAL-DIES
-   s" MAL$ SIG$ TRUST" 70 MAL$ STALE$ MAL-DIES
    s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED$ MAL-DIES
    s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED$ MAL-DIES ;
 
@@ -487,9 +469,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    T-REPORT
    s" name-length-test: ok" type cr ;
 
-\ The word with a long name, and the top-level-only word taking its name.
+\ The word with a long name.
 LONG-LEN 113 DEF-SRC evaluate
-s" LONG$ SIG$ TRUST" evaluate
 
 MAIN
 

@@ -576,10 +576,9 @@ create DIAG-BUF 8192 allot
 
 public
 
-\ NULL-PTR is an engine primitive with an EPRIM: row in src/habu/prims.f, not a
-\ TRUST declaration. The seal's internal-word marking keeps a checker-known name
-\ callable; this executed definition, loaded after the seal, proves it stayed
-\ callable.
+\ NULL-PTR is an engine primitive with an EPRIM: row in src/habu/prims.f. The
+\ seal's internal-word marking keeps a checker-known name callable; this
+\ executed definition, loaded after the seal, proves it stayed callable.
 : NULL-STILL-CALLABLE ( -- )
    s" NULL-PTR is still callable from ordinary source after the seal" T-LABEL
    NULL-PTR BPA-SLOT !

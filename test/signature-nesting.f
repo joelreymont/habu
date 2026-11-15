@@ -17,7 +17,7 @@
 \ row the signature declares is a missing value. The tokens after a refusal
 \ check in CPU time linear in their count.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
-\ are stored rows (`trust`). A packet is read in this process. An effect split
+\ are stored rows (`defer`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
 \ A pointer is spelled ^T: `ptr` in a signature or a local's annotation is an
 \ unknown type, and a `^` a blank parts from its element type is a bare `^`.
@@ -60,21 +60,21 @@ TYPED-VARIABLE SRC-U len
    s"  -- ) drop ;" S+ ;
 
 
-: TRUST-OPEN ( -- )
+: DEFER-OPEN ( -- )
    SRC-RESET
-   S\" : SN-DEEP ( -- ) ; s\" SN-DEEP\" s\" " S+ ;
-: TRUST-CLOSE ( -- )
-   S\"  --\" trust" S+ ;
+   s" defer SN-DEEP ( " S+ ;
+: DEFER-CLOSE ( -- )
+   s"  -- )" S+ ;
 
 \ A stored row whose input is k nested pointees.
 : POINTEES ( n -- )
    {: k:n :}
-   TRUST-OPEN  s" ^" k S+N  s" n" S+  TRUST-CLOSE ;
+   DEFER-OPEN  s" ^" k S+N  s" n" S+  DEFER-CLOSE ;
 
 \ A stored row whose input is k nested quotations, each the input of the next.
 : QUOTATIONS ( n -- )
    {: k:n :}
-   TRUST-OPEN  s" [ " k S+N  s" -- ]" S+  s"  -- ]" k 1 - S+N  TRUST-CLOSE ;
+   DEFER-OPEN  s" [ " k S+N  s" -- ]" S+  s"  -- ]" k 1 - S+N  DEFER-CLOSE ;
 
 \ A colon definition whose signature opens k quotations it never closes.
 : DEF-QUOTATIONS ( n -- )
@@ -386,7 +386,7 @@ public
    S\" \"token\":\"p:ptr\"" VERDICT-REFUSED PACKET-HAS
    s" a trust-boundary primitive in a checked body names its boundary once, in its suggestion" T-LABEL
    SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
-   S\" E-CAP-TRUSTED habu: in sn-cap: 'reloc-maps-clear' is a trust-boundary primitive; suggestion: Move this compiler or runtime boundary behind audited TRUST.\n" REFUSES ;
+   S\" E-CAP-TRUSTED habu: in sn-cap: 'reloc-maps-clear' is a trust-boundary primitive; suggestion: Move this compiler or runtime boundary behind an audited TRUSTED: boundary.\n" REFUSES ;
 
 \ Run while a package holding a rendering statement's mark is open, so MADE is
 \ a name the run may define to these texts and to no other.

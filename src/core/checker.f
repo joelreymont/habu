@@ -448,8 +448,8 @@
 \ checker symbol is not certifiable: 0, and E-UNDEFINED at the call site. A
 \ token binds the record the lookup binds, a definition recorded and not yet
 \ published (CK-PENDING-SYM), or a keyword's axiom (CK-AXIOM-SYM). Other
-\ symbols with no engine record (a TRUST with no body, a name only the source
-\ pre-verifier registered) bind nowhere, bare or qualified. An owner-private
+\ symbols with no engine record (a name only the source pre-verifier
+\ registered) bind nowhere, bare or qualified. An owner-private
 \ primitive row binds only as the owner's view of the engine's global record,
 \ which the engine holds once (CK-REC-BIND). The engine finds a bare name in
 \ the open package whatever current is, so the binding asks PKG-LIVE-XT for
@@ -5164,7 +5164,6 @@ CHECKER-REG:}SCRATCH
 2 constant DW-DEFER          \ a top-level call of a deferred word
 3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
 4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
-5 constant DW-RENDERED       \ a name only a rendering statement may define
 6 constant DW-TYPE           \ a type that may arrive with rendered text
 7 constant DW-TICK           \ a tick of a trusted-only word in unknown tick order
 
@@ -8759,15 +8758,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    off u + DLB-N !
    off ;
 
-\ The room comes first, so the source is read where the names now are.
-: DLB-AGAIN ( n n -- n )
-   {: off:n u:n :}
-   u DLB-ROOM
-   DLB-N @ {: dst:n :}
-   DLB-P @ off +  DLB-P @ dst +  u ARENA-COPY
-   dst u + DLB-N !
-   dst ;
-
 \ Records only append above the rows a rewind kept, so the table stays
 \ ascending; a row out of order is a lost truncation.
 : DL-ROW+ ( n n n n n n -- )
@@ -9397,7 +9387,6 @@ public
 0 constant EFF-DELETED
 1 constant EFF-ACTIVE
 2 constant EFF-RECOVERY          \ current-run analysis fact, never a source grant
-4 constant EFF-UNRESOLVED        \ quiet TRUST changed this binding; no effect content
 
 0 constant EN-CON
 1 constant EN-VAR
@@ -10418,10 +10407,6 @@ RECORD-HOOK-DEFAULTS
       1 - E-PTR ER.SYMPREV @
    REPEAT ;
 
-: SYM-EFFECT-UNRESOLVED? ( n -- bool )
-   USIG-NEWEST-VISIBLE dup 0= IF drop RES-FALSE EXIT THEN
-   1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED = ;
-
 \ ---- navigation: what a use bound ---------------------------------------------
 \ A use: its start and end, selected symbol, and its declaration's visit,
 \ start and end, 0 0 0 when it has no location.
@@ -10512,27 +10497,6 @@ ON-USE-DEFAULT
    {: from:n :}
    PU-N @ from ?do i PU-SEND loop
    from PU-N ! ;
-
-\ A `trust` row amends the record before it in the same recording identity and
-\ keeps that record's location; a tombstone between them ends the declaration.
-: DL-AMEND ( -- )
-   DL-NEW @ {: rec1:n :}
-   0 DL-NEW !
-   rec1 0= IF EXIT THEN
-   rec1 1 - E-PTR ER.SYMPREV @
-   BEGIN
-      dup 0 <> IF dup 1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED =
-      ELSE RES-FALSE THEN
-   WHILE
-      1 - E-PTR ER.SYMPREV @
-   REPEAT {: prev:n :}
-   prev 0= IF EXIT THEN
-   prev 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF EXIT THEN
-   prev CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   found 0= IF EXIT THEN
-   prev 1 - DL-SEEK DL-NAME-AT {: noff:n nu:n :}
-   noff nu DLB-AGAIN {: off2:n :}
-   rec1 1 - v s e off2 nu DL-ROW+ ;
 
 \ The owner slot: run Q with H receiving the uses its checks publish.
 : CHECKER-WITH-USES ( [ n n n n n n -- ] [ -- ] -- ) {: h q :}
@@ -10793,20 +10757,6 @@ public
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-\ Quiet TRUST cannot retain the former effect when its new nominal type may
-\ be made by earlier rendered source. UEND rollback and a later resolved
-\ assertion supersede it.
-: E-ADD-UNRESOLVED ( -- )
-   WRITE-WINDOW-CK
-   0 DL-NEW !  0 RECW !
-   E-REC-START {: rec:^ :}
-   EFF-UNRESOLVED rec ER.ACTIVE !
-   rec E-REC-FINISH
-   CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
-      0 CHECKER-REC-SYM @ HIDX-EFF!
-      UEND @ HIDX-EFF-DEP+
-   THEN ;
-
 \ --- stored-signature intake (USIG-ADD-AS).
 
 \ A MULTI-ERROR load counts each refused definition and goes on.
@@ -10964,7 +10914,7 @@ BADSIG-DEFAULT
    sym USIG-NEWEST-VISIBLE dup 0= if exit then
    1 - E-PTR {: rec:^ :}
    rec E-NEXT@
-   rec ER.ACTIVE @ dup EFF-DELETED <> swap EFF-UNRESOLVED <> and
+   rec ER.ACTIVE @ EFF-DELETED <>
    if rec FEP-SET then ;
 
 : E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
@@ -12118,7 +12068,7 @@ public
       s" checker: held entry is not a retired record" 76 die
    THEN
    a CELL-VIEW @   a CELL + CELL-VIEW @   a 2 cells + CELL-VIEW @ ;
-\ Holds that a `TRUST` row or an amender changed record ix's facts after its
+\ Holds that an amender changed record ix's facts after its
 \ text was written, and sym, the symbol they are read from. Neither can write
 \ the text then, before the renderer.
 : HOLD-AMENDED ( n n -- )
@@ -12204,8 +12154,7 @@ package CHECKER-REG
 \ `using` scope that resolves to a global while a used package also exports it
 \ is ambiguous and fails at the reference.
 7141 constant E-USING-SHADOW-GLOBAL
-\ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
-\ row would mint a bare global checker symbol.
+\ A declared row whose name describes no memory, so it spells no word.
 7143 constant E-TRUST-UNRESOLVED
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
 7152 constant E-BAD-QUALIFIED
@@ -12217,9 +12166,9 @@ package CHECKER-REG
 7186 constant E-PARSES-ROW
 \ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
 7208 constant E-NAMES-ROW
-\ ONE hook for the three refused-record diagnostics, selected by its last
+\ ONE hook for the three rejected-record diagnostics, selected by its last
 \ argument, for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders
-\ the stale `trust` row here, 1 the storage record refused outside the verifier
+\ the row TRUST-STALE rejects, 1 the storage record rejected outside the verifier
 \ window (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
 \ (CHECKER-RECORD-NAME). Each renders the record's name as written, located at
 \ the place before the selector (NULL-PTR 0 for none).
@@ -12248,8 +12197,8 @@ CHECKER-REG:}SCRATCH
 \ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
 \ a top-level stretch or a definition deferred to the run
 \ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
-\ and not six because every `defer` written here, before `: TRUST`, takes a slot
-\ of the engine's pre-trust pending table.
+\ and not six because every `defer` written here, before DRAIN-PRETRUST, takes a
+\ slot of the engine's pre-trust pending table.
 defer SHADOW-DIAG-XT ( n -- )
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
@@ -13606,7 +13555,6 @@ package CHECKER-REG
 
 : FIND-SIG-SYM ( n -- bool ) {: sym:n :}
    FEP-CLEAR
-   sym SYM-EFFECT-UNRESOLVED? IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF RES-TRUE EXIT THEN
    sym PRIM-FIRST-SYM
@@ -14316,7 +14264,7 @@ CHECKER-REG:}SCRATCH
 : SBA-CELLS ( n -- n n ) {: sym:n :}
    sym USIG-NEWEST-VISIBLE dup 0= IF drop CELLS-NONE CELLS-NONE EXIT THEN
    1 - {: off:n :}
-   off E-PTR ER.ACTIVE @ dup EFF-DELETED = swap EFF-UNRESOLVED = or
+   off E-PTR ER.ACTIVE @ EFF-DELETED =
    IF CELLS-NONE CELLS-NONE EXIT THEN
    off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
@@ -15970,7 +15918,6 @@ CHECKER-REG:}SCRATCH
 \ Tokens whose execution from a checked body is unsound whatever their row says.
 : UNSAFE-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust-decl" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust-raw" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -19622,15 +19569,14 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    ELSE RF-SIG REFUSAL ! THEN
    -1 FAILSET ! ;
 
-\ A NAME whose length describes no memory spells no word, so TRUST,
-\ TRUST-RAW and TRUST-DECL each refuse its row first as E-TRUST-UNRESOLVED with
-\ no spelling rendered: TRUST before its dictionary walk (whose colon scan never
-\ ends given the maximum cell), TRUST-RAW before it turns on raw-definer mode
-\ (which a caught refusal would leave on), TRUST-DECL before it steps the
-\ definer latch for a row that is never stored.
+\ A NAME whose length describes no memory spells no word, so TRUST-RAW and
+\ TRUST-DECL each reject its row first as E-TRUST-UNRESOLVED with no spelling
+\ rendered: TRUST-RAW before it turns on raw-definer mode (which a caught
+\ rejection would leave on), TRUST-DECL before it steps the definer latch for a
+\ row that is never stored.
 
-\ The registration TRUST, TRUST-DECL and TRUST-RAW share (a checked body cannot
-\ call `trust`) and has no axiom; it answers whether USIG-ADD-AS kept the row.
+\ The registration TRUST-DECL and TRUST-RAW share; it answers whether
+\ USIG-ADD-AS kept the row.
 : TRUST-USIG-SYM! ( ^u8 n ^u8 n n -- bool )
    {: na:^ nu:n sa:^ su:n sym:n :}
    na nu TOKFOLD drop
@@ -19686,79 +19632,6 @@ package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ;package
 
-: TRUST-RECORD-WL ( -- n )
-   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-PRIVATE = IF data-base PKG-PRI-CELL + @ EXIT THEN
-   mode CHECKER-PACKAGE-PUBLIC = IF data-base PKG-PUB-CELL + @ EXIT THEN
-   BOOT:GLOBAL-WL ;
-
-\ PKG:TAIL is asked in PKG's public wordlist, as the engine's FIND asks it; a
-\ missing package's 0 must not be asked as a wordlist.
-: TRUST-PUBLIC-CLAIMS? ( ^u8 n ^u8 n -- bool )
-   {: pa:^ pu:n ta:^ tu:n :}
-   pa pu BOOT:NAMESPACE-WL search-wl {: wid:n :}
-   wid 0= IF RES-FALSE EXIT THEN
-   ta tu wid CK-WL-CLAIMS? ;
-
-\ The engine answers, as a row's word ordinarily has no effect yet, in the one
-\ wordlist the record lands in: a scope-chain hit could name a package symbol
-\ never defined. A malformed token is asked bare and no wordlist claims it.
-: TRUST-RESOLVES? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ TRUST-PUBLIC-CLAIMS? EXIT THEN
-   a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
-
-\ The record a resolved row names, in the wordlist TRUST-RESOLVES? asks.
-: TRUST-REC ( ^u8 n -- ^n )
-   {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF
-      CHECKER-QPKG$ BOOT:NAMESPACE-WL search-wl {: wid:n :}
-      CHECKER-QTAIL$ wid CHECKER-RESOLVE:WL-PROBE EXIT
-   THEN
-   a u TRUST-RECORD-WL CHECKER-RESOLVE:WL-PROBE ;
-
-\ Declare a word's effect without checking its body (TRUSTED:); callers are
-\ checked against it. Usage: s" myword" s" n n -- n" trust
-\ A linked file's record is read first, as a lookup reads it, so the amend
-\ keeps the tags its facts text carries.
-: TRUST {: na:^ nu:n sa:^ su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
-   na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
-   na nu TRUST-REC FACTS-READ-XT
-   0 DL-NEW !
-   na nu sa su TRUST-USIG! IF
-      DL-AMEND  na nu TRUST-REC CHECKER-RESOLVE:REC>INDEX  na nu CHECKER-RECORD-SYM? CHECK:HOLD-AMENDED
-      EXIT
-   THEN
-   SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
-   ELSE SIG-UNRES-CLEAR THEN ;
-
-\ A blank, a byte at or below 32, ends a token, so no token spells a name
-\ holding one and no definer gives it to a word.
-: CK-HOLDS-BLANK? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   0 begin dup u < while
-      a over + c@ 32 <= IF drop RES-TRUE EXIT THEN
-      1+
-   repeat drop RES-FALSE ;
-
-\ The source pre-pass's question about a `trust` row: is the row the run's to
-\ judge? It is when the row names no word in the wordlist its record lands in
-\ and a rendering statement read before it marked that same wordlist: there a
-\ word the run defines and a misspelt name look alike, so the load's TRUST
-\ judges both. A mark only a use walks to (the global one from inside a
-\ package, a used public's, the other section's) is no answer, nor is any mark
-\ for a name no word can have (a false length, one holding a blank, a malformed
-\ qualified one). Nothing is recorded.
-: CHECKER-VERIFY-TRUST ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   a u CK-HOLDS-BLANK? IF RES-FALSE EXIT THEN
-   a u TRUST-RESOLVES? IF RES-FALSE EXIT THEN
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
-   CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
-   UNSEEN-MARK$ CHECKER-RECORD-SYM? 0 <> ;
-
 \ The symbol of the effect the last created record links, 0 when it links none.
 \ A created record starts unlinked.
 : LASTC-LINK-SYM ( -- n )
@@ -19771,8 +19644,9 @@ package CHECKER-REG
    effect 0= IF 0 EXIT THEN
    effect 1- E-PTR ER.SYM @ ;
 
-\ TRUST in raw-definer mode, the only path that publishes a created word: every
-\ type variable is TVK-RAW, so the cell read back cannot bind a nominal family.
+\ A created word's row, registered in raw-definer mode, the only path that
+\ publishes a created word: every type variable is TVK-RAW, so the cell read
+\ back cannot bind a nominal family.
 : TRUST-RAW {: na:^ nu:n sa:^ su:n :}
    na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    \ A does> patch publishes under the symbol LASTC's record links, if any.
@@ -19799,8 +19673,8 @@ package CHECKER-REG
 
 
 \ Pre-trust defer drain: `trust-decl` and `checker-defer` are both defined here,
-\ the earliest point, so the pending table is replayed through `trust-decl` (a
-\ definer's registration, not `trust`). DRAIN-PRETRUST is a baked engine
+\ the earliest point, so the pending table is replayed through `trust-decl`, a
+\ definer's registration. DRAIN-PRETRUST is a baked engine
 \ primitive. It is called by bare token, not looked up: this prefix declares
 \ pre-trust defers of its own, so an engine without it cannot load either way
 \ (E-UNDEFINED, exit 70), and a lookup would cost a trusted execute-of-plain-n
@@ -20534,9 +20408,6 @@ variable IS-PEND-U                   \ and its length
    CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym 0=  IS-TA@ IS-TU @ UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-RAISE  EXIT THEN
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
-   CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      UNSEEN-RAISE  EXIT
-   THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
@@ -20598,9 +20469,6 @@ variable IS-PEND-U                   \ and its length
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
       0 OK !  -1 FAILSET !  RES-TRUE EXIT
-   THEN
-   CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      TICK-PIN  UNSEEN-RAISE  RES-TRUE EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop

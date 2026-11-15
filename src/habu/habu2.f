@@ -1408,8 +1408,8 @@ package ENGINE-EMIT
 \ DRAIN-PRETRUST ( -- ): for each pending pre-trust defer, last slot first,
 \ calls `trust-decl` with the slot's name and signature, then the target
 \ owner's `checker-defer` with the name, and drops the slot; a target with no
-\ `checker-defer` ends the drain. Runs once after `: TRUST`, where both words
-\ exist. The band count is the loop state, so it survives the checker BLR
+\ `checker-defer` ends the drain. Runs once, after checker.f defines both
+\ words. The band count is the loop state, so it survives the checker BLR
 \ calls. A framed prim (FPRIM).
 : BDRAINPRETRUST ( -- )
    LBL LBL {: loop done :}

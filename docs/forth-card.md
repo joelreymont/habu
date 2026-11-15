@@ -196,10 +196,10 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a body nesting more than 32 control frames (each `if`, `begin`, `do`, `case`, `MATCH`, `of` arm and `[:` takes one): 33 nested `dup IF` | `E-UNCHECKABLE`, `control flow nested too deep to check (depth <depth>, at most <cap>)` |
 | `: DOWN dup 0 > IF 1 - RECURSE THEN ;`: `recurse` in a definition with no signature | `E-UNCHECKABLE`, `recursion needs a declared stack effect` |
 | `: MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;`: `recurse` in a `does>` clause | `E-UNCHECKABLE`, `recurse in a does> clause would call the defining word` |
-| a `trust`, `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
+| a `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a local's type nested past the depth ceiling: `{: x:[[[… :}` | `E-BAD-SIGNATURE`, `fix_signature_size`, the depth reason |
 | more than 32 `forall<…>` binders nested in one signature | `E-BAD-SIGNATURE`, `fix_signature_size`, `more than 32 nested binders at '<token>'`; `E-BAD-STORED-SIGNATURE` for a stored row |
-| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
+| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `CAST:` — park a value with `>r … r>` inside one definition |
 | a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-REJECTED` at `;]`, `fix_return_stack` |
 | a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack` |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
@@ -672,7 +672,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `EPRIM:`, what `evaluate-closed` checks |
+| Checked code and primitive boundaries | a new `EPRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |

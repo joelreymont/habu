@@ -384,7 +384,7 @@ s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
 \ constant pops one physical cell: a checked-body pop of a multi-cell layout
 \ value rejects rather than store one of its cells.
 \ The top-level pop never sees a wide value (DNAME-WIDE dispatch gate) and
-\ records the one-cell `-- a` trust for the rest.
+\ records the one-cell `-- a` row for the rest.
 s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-CONST-N ( n -- ) constant" CHECK-QUIET-CANDIDATE! -1 T=
 \ catch/frame words: a layout value FLOWS through a stack-preserving quotation
@@ -1587,31 +1587,11 @@ TWX-MULTI-ERR-END 2 T=
 s" TDSME1-USE ( n -- n ) TDSME1" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDSME2-USE ( n -- n ) TDSME2" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDSME3-USE ( n -- n ) TDSME3" CHECK-QUIET-CANDIDATE! -1 T=
-\ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
-\ malformed effect is not stored.
-\
-\ The row names the word defined just before it: a row must name a word the
-\ engine resolves (src/core/checker.f TRUST-RESOLVES?), so a row for an
-\ undefined word is refused for its name before the signature parser (the case
-\ below). The row is counted although it names the definition CHECK just
-\ handled (USIG-ADD-BAD). "No row stored" is asserted as the effect TDTBAD
-\ keeps: a signature that does not parse never becomes a word's effect.
-TWX-MULTI-ERR-BEGIN
-s\" : TDTBAD ( n -- n ) ; s\" TDTBAD\" s\" nope<n> -- n\" TRUST" evaluate
-TWX-MULTI-ERR-END 1 T=
-s" TDTKEPT ( n -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDTTOOK ( -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! 0 T=
-\ A raw TRUST row naming no word is counted and reported like its sibling, not
-\ thrown: the load goes on and defines TDTOK2.
-TWX-MULTI-ERR-BEGIN
-s\" s\" TDTGONE\" s\" -- n\" TRUST : TDTOK2 ( n -- n ) ;" evaluate
-TWX-MULTI-ERR-END 1 T=
-s" TDTOK2-USE ( n -- n ) TDTOK2" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:BUFFER-OFF
 
 \ derive: `DERIVE eq` on a PUBLIC ENUM generates PKG:TAG (discriminant) and
 \ PKG:EQ (tag equality) as ordinary checked words in the ctor package: no
-\ window, no trust, no engine lowering.
+\ window, no engine lowering.
 TDIAG-BUF 8192 REJECTION:BUFFER!   \ silence this section's expected declaration rejects
 ENUM tdrv DERIVE eq red green blue ;ENUM
 : TDRV-EQ-SAME ( -- bool ) TDRV:RED TDRV:RED TDRV:EQ ;

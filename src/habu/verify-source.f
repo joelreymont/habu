@@ -15,14 +15,13 @@
 \ comment or string the scan skips belong to the token after it. One answer at
 \ most.
 \
-\ Skipped top-level string literals feed a two-slot ring so the strings the
-\ scanner would otherwise discard reach the rows that replay them: a bare
-\ top-level `s" NAME" s" SIG" TRUST`, a string loader's path, a name before a
-\ call of a word a names: row marks, and the name of a top-level
-\ `s" X" n parse-imm`, kept past the count's statement. A slot holds the bytes
-\ the engine's literal makes: a plain literal's source span, an escaped one's
-\ decoded payload. The ring resets per NEXT-SCAN call, so at a TRUST token it
-\ holds exactly the two preceding literals from the same statement. The last
+\ A skipped top-level string literal is kept in one slot so the string the
+\ scanner would otherwise discard reaches the row that replays it: a string
+\ loader's path, a name before a call of a word a names: row marks, and the
+\ name of a top-level `s" X" n parse-imm`, kept past the count's statement. The
+\ slot holds the bytes the engine's literal makes: a plain literal's source
+\ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
+\ token it holds the literal before it in the same statement, if any. The
 \ literal's kind is kept too, 0 when there is none: a quiet composition refuses
 \ a string loader by it. So is where its text between the quotes starts and
 \ ends in the file, as written, escapes and all, the end 0 when there is none:
@@ -33,13 +32,12 @@
 \ decode that answers its buffer flips it, so the last answer is never in the
 \ buffer the next decode writes, or that a reserve for it moves. No reader
 \ reads an older answer after the next decode. A top-level literal's answer
-\ goes to the ring, which the handler of the token NEXT-SCAN answers reads
-\ before the next NEXT-SCAN resets it: only STR-PREV and TOP-PREV-STR may hold
-\ an older answer. The push after the next decode drops STR-PREV's, and the
-\ parse-imm row reads TOP-PREV-STR's only when no literal came before its
-\ token, so no decode came between. Only `trust`, the string loaders, a call of
+\ goes to the slot, which the handler of the token NEXT-SCAN answers reads
+\ before the next NEXT-SCAN resets it: only TOP-PREV-STR may hold an older
+\ answer, and the parse-imm row reads it only when no literal came before its
+\ token, so no decode came between. Only the string loaders, a call of
 \ a word a names: row marks, a top-level `parse-imm` and a quiet composition's
-\ `UNDEFINE-IF-DEFINED` read the ring, and none of them reads a body. A body
+\ `UNDEFINE-IF-DEFINED` read the slot, and none of them reads a body. A body
 \ literal's answer is BODY-LIT, which the body's next token clears or consumes,
 \ and a body token is read with SKIP-STRINGS off, so no decode comes between.
 \
@@ -236,7 +234,6 @@ private
 \ A statement the source ends inside, one that lacks a part it must have, or one
 \ past a bound the engine sets stops the scan with one of these at its opener.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
-7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
 
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
@@ -257,8 +254,6 @@ variable REASON-U
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
-PTR-VARIABLE STR-PREV-A
-variable STR-PREV-U
 PTR-VARIABLE STR-LAST-A
 variable STR-LAST-U
 variable STR-LAST-KIND
@@ -266,7 +261,7 @@ variable STR-LAST-AT
 variable STR-LAST-END
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
-PTR-VARIABLE TOP-PREV-STR-A               \ the ring's last literal as TOP-PREV's
+PTR-VARIABLE TOP-PREV-STR-A               \ the slot's last literal as TOP-PREV's
 variable TOP-PREV-STR-U                  \ statement ended, its kind 0 for none
 variable TOP-PREV-STR-KIND               \ (PARSE-IMM-ROW)
 PTR-VARIABLE TOP-REFUSED
@@ -483,17 +478,14 @@ variable FLAG-N
       then
    repeat ;
 
-: STR-RING-RESET ( -- )
-   NULL-PTR STR-PREV-A !  0 STR-PREV-U !
+: STR-LAST-RESET ( -- )
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
    0 STR-LAST-AT !  0 STR-LAST-END ! ;
 
-\ Push the bytes A U a literal of the given kind makes, its text as written
-\ the RAWU bytes at RAW in the bytes being scanned.
-: STR-RING-PUSH ( ^u8 n n ^u8 n -- )
+\ Record the bytes A U a literal of the given kind makes and its text as
+\ written, the RAWU bytes at RAW in the bytes being scanned.
+: STR-LAST! ( ^u8 n n ^u8 n -- )
    {: a:^ u:n kind:n raw:^ rawu:n :}
-   STR-LAST-A @ STR-PREV-A !
-   STR-LAST-U @ STR-PREV-U !
    a STR-LAST-A !
    u STR-LAST-U !
    kind STR-LAST-KIND !
@@ -531,7 +523,7 @@ variable FLAG-N
    QUIET-UNTERM
    pfx SKIPPED-PAYLOAD dup 0 < IF 2drop EXIT THEN
    {: raw:^ rawu:n :}
-   raw rawu kind raw rawu STR-RING-PUSH ;
+   raw rawu kind raw rawu STR-LAST! ;
 
 DYNAMIC-BUFFER STR-DEC0 u8
 DYNAMIC-BUFFER STR-DEC1 u8
@@ -563,7 +555,7 @@ variable STR-DEC-TURN
    FOUND @ 0= IF EXIT THEN
    4 SKIPPED-PAYLOAD {: raw:^ rawu:n :}
    raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
-   kind raw rawu STR-RING-PUSH ;
+   kind raw rawu STR-LAST! ;
 
 \ A body token is looked up among the live locals, byte for byte, after
 \ comments and before every keyword but `;`. Each body reader resets the table;
@@ -617,7 +609,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 : NEXT-SCAN ( -- ^u8 n )
    -1 SKIP-STRINGS !
-   STR-RING-RESET
+   STR-LAST-RESET
    NEXT ;
 
 : NEXT-BODY ( -- ^u8 n )
@@ -1779,18 +1771,13 @@ DYNAMIC-BUFFER TICK-QUAL u8
 
 \ This scanner is a PRE-PASS: it reads a whole source buffer before any of it is
 \ compiled, so a definer it replays names a word that does not exist in this
-\ process and cannot be asked to prove otherwise. A bare `s" NAME" s" SIG" trust`
-\ row is the opposite - it asserts an effect for a word it CLAIMS already exists,
-\ which is a claim the dictionary answers.
+\ process and cannot be asked to prove otherwise.
 \ DECL-SIGNATURE asks the declaration owner's registrar, which registers the row
 \ and answers whether it retained it. A name its scope already holds keeps that
 \ record either way, so only this answer tells a redeclaration the registrar
 \ retained from one it refused.
 : DECL-SIGNATURE ( ^u8 n ^u8 n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
-
-TRUSTED: TRUST-SIGNATURE ( ^u8 n ^u8 n -- )
-   TRUST ;
 
 \ The cast declarer's registrar: UNSAFE-TOK? rejects `checker-defcast` inside a
 \ checked body, so the one place allowed to name it is a declared boundary word.
@@ -2250,8 +2237,7 @@ variable TRUSTED-DOES
 
 \ The engine's `does>` makes the clause record `<definer>;does` for a TRUSTED:
 \ definer as for a checked one, so a definer whose `does>` the scan read gets it
-\ at its `;`: a later definition of that name is refused and a `trust` of it
-\ binds, as in the live load.
+\ at its `;`: a later definition of that name is refused, as in the live load.
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2776,28 +2762,6 @@ variable STG-TYPE-U
 : VALUE-RECORD-OUTCOME ( n -- ) {: rc:n :}
    rc 0= IF EXIT THEN
    rc E-CHECKER-RECORD-UNRESOLVED <> IF rc throw THEN
-   QUIET-TYPE-REPORT ;
-
-\ A row the checker leaves to the run: no word exists where its record lands
-\ and a rendering statement before it marked that wordlist, so only the load
-\ can tell whether the run defines the word or the name is misspelt. It is
-\ deferred at its name and records nothing, so each use of the name stays the
-\ run's too.
-CAST: TRUST-ACTION ( n -- [ ^u8 n -- bool ] )
-: TRUST-UNSEEN? ( ^u8 n -- bool )
-   CHECKER-OWNER-ABI:VERIFY-TRUST-OFF OWNER-XT TRUST-ACTION execute ;
-
-: RECORD-TRUST ( -- )
-   STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
-   STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
-   STR-PREV-A @ STR-PREV-U @ TRUST-UNSEEN? IF
-      STR-PREV-A @ STR-PREV-U @ DW-RENDERED DEFER-AT
-      EXIT
-   THEN
-   QUIET-TYPE-CLEAR
-   STR-PREV-A @ STR-PREV-U @
-   STR-LAST-A @ STR-LAST-U @
-   TRUST-SIGNATURE
    QUIET-TYPE-REPORT ;
 
 \ The row count is a checker cell the rollback frame rewinds, so a rewound
@@ -3585,7 +3549,6 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" linear:" STR=CI IF
       [: LINEAR-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
    a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
-   a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR=CI IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN

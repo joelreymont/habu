@@ -546,7 +546,7 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ code, and a checked caller anywhere else is refused by name. code-publish,
 \ xref-retarget and does-record (below) are that row alone: outside NPUB the
 \ name is undefined to a checked caller. A global trusted-only row beside an
-\ owner's row refuses a checked caller even a `trust` row would admit.
+\ owner's row rejects every other checked caller.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
@@ -555,7 +555,7 @@ EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ Record writers: trusted-only rows, so no `trust` row admits a checked caller.
+\ Record writers: trusted-only rows, which reject a checked caller.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: rep-mark      PE-N PE-IN EPRIM;
@@ -848,7 +848,7 @@ EPRIM: ffi-call-struct PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN P
 ETRUSTED-ONLY!
 
 \ FFI's checked words call these by its private rows; the global trusted-only
-\ rows above refuse any other checked caller, even past a `trust` row.
+\ rows above reject any other checked caller.
 EPPRIM: FFI ffi-call-n PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                         PE-N PE-OUT ECLOSE-PRIVATE

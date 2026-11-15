@@ -1113,7 +1113,6 @@ variable MDV-I   variable MDV-F
       DW-DEFER    of s" Call this deferred word from a definition: a top-level `defer` may read any of the source after it, and no row bounds it." endof
       DW-PARSES   of s" Nothing to write: the check went on after the operands its row states; the run decides what the word reads." endof
       DW-RENDERER of s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." endof
-      DW-RENDERED of s" Make this name with a definer called as `D NAME` and declare it with `generates: D ( effect )` after its definition or with a `does>` clause; otherwise the run defines it or refuses a misspelling." endof
       DW-TYPE     of s" Declare this type in the source before its use (`NEWTYPE`, `STRUCTURE`, `SUMTYPE`); a type only rendered text makes is the run's to check." endof
       DW-TICK     of s" Tick this trusted-only word inside a `TRUSTED:` body; checked code may tick it only if the run's checker allows it." endof
       UNCK-SUGGEST$ rot
@@ -1522,7 +1521,7 @@ variable MDV-I   variable MDV-F
    k RF-SIG = IF SGBAD-SUGGEST$ EXIT THEN
    k RF-DEAD = IF s" Nothing after a word that never returns runs (throw, die, exit, or a call whose body always ends in one): remove the tokens after it, or move the work before it." EXIT THEN
    k RF-NP = IF NP-SUGGEST$ EXIT THEN
-   k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   k RF-CAP = IF s" Move this compiler or runtime boundary behind an audited TRUSTED: boundary." EXIT THEN
    k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
    k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
    k RF-REASON = IF MDIAG @ MD-SUGGEST$ EXIT THEN
@@ -2135,8 +2134,8 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
 \ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
 \ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
-\ because every defer before `: TRUST` takes a slot of the engine's pre-trust
-\ pending table (src/habu/layout.f PD-CAP).
+\ because every defer before DRAIN-PRETRUST takes a slot of the engine's
+\ pre-trust pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
    {: sel:n :}
    sel 1 = IF SBARITY-DIAG EXIT THEN
@@ -2148,9 +2147,8 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 
-\ A `trust` row naming a word the engine resolves to nothing. It sits beside the
-\ shadow diagnostic because it stops a stale row from becoming one. Placed at the
-\ row's name (checker.f TRUST) when that lies in checked text.
+\ The row checker.f TRUST-STALE rejects: a declared row whose name describes no
+\ memory.
 : TSTALE-PROSE ( ^u8 n -- )
    {: na:^ nu:n :}
    s" E-TRUST-UNRESOLVED habu: trust row for '" EMIT-STR  na nu EMIT-STR
@@ -2219,7 +2217,7 @@ SHADOW-DIAG-INSTALL
    JSON @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
    10 EMIT1
    FLUSH ;
-\ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
+\ checker.f RECORD-DIAG-XT selects: 0 the row TRUST-STALE rejects, 1 the storage
 \ record, 2 the malformed name.
 : RECORD-DIAG ( ^u8 n ^u8 n n -- )
    {: na:^ nu:n pa:^ pu:n which:n :}

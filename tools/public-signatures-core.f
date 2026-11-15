@@ -89,9 +89,6 @@ variable PS-NAME-LINE
 variable PS-NAME-COL
 TYPED-VARIABLE PS-SIG-A ^u8
 variable PS-SIG-U
-public
-variable PS-TRUST
-private
 variable PS-ARG-I
 TYPED-VARIABLE PS-OUT-A ^u8
 variable PS-OUT-CAP
@@ -229,7 +226,7 @@ private
 
 public
 : PS-USAGE ( -- )
-   s" usage: tools/public-signatures.f [--trust] file ..." PS-ERRLN
+   s" usage: tools/public-signatures.f file ..." PS-ERRLN
    64 throw ;
 
 private
@@ -294,13 +291,6 @@ private
 : PS-JSON-OBJECT-END ( -- ) PS-RBRACE-C PS-C ;
 : PS-JSON-ARRAY-START ( -- ) PS-LBRACK-C PS-C ;
 : PS-JSON-ARRAY-END ( -- ) PS-RBRACK-C PS-C ;
-
-: PS-TRUST-Q ( ^u8 n -- ) {: a:^ u:n :}
-   115 PS-C
-   PS-DQ PS-C
-   32 PS-C
-   a u PS-OUT
-   PS-DQ PS-C ;
 
 : PS-LOWER? ( n -- bool )
    dup 96 > swap 123 < and ;
@@ -397,13 +387,6 @@ private
 : PS-WORD$ ( -- ^u8 n )
    PS-PKG-PUBLIC? if PS-QUAL-WORD$ exit then
    PS-NAME-A@ PS-NAME-U @ PS-UPPER$ ;
-
-: PS-TRUST-ENTRY ( ^u8 n -- ) {: sig:^ sigu:n :}
-   PS-WORD$ PS-TRUST-Q
-   32 PS-C
-   sig sigu LINT-TRIM PS-TRUST-Q
-   s"  TRUST" PS-OUT
-   PS-LF-C PS-C ;
 
 : PS-SIGNATURE$ ( ^u8 n -- ^u8 n )
    LINT-TRIM PS-TU ! PS-TA!
@@ -578,14 +561,6 @@ private
    s" exported" PS-JSON-KEY exported? PS-JSON-BOOL
    PS-DEF-END ;
 
-: PS-EMIT-PUBLIC ( bool ^u8 n -- ) {: exported?:bool file-a:^ file-u:n :}
-   PS-TRUST @ IF
-      exported? drop file-a drop file-u drop
-      PS-SIG-A@ PS-SIG-U @ PS-TRUST-ENTRY
-   ELSE
-      exported? file-a file-u PS-EMIT-DEF
-   THEN ;
-
 : PS-EXPORTED? ( -- bool )
    PS-NAME-A@ PS-NAME-U @ INTERN-FOLD? ;
 
@@ -608,20 +583,7 @@ private
    PS-COMMENT? 0= IF exit THEN
    PS-CONTENT$ s" --" LINT-CONTAINS? 0= IF exit THEN
    PS-SAVE-SIG
-   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
-
-: PS-TRUST-DEFINER ( ^u8 n -- ) {: sig:^ sigu:n :}
-   PS-NEXT-TOK 0= IF exit THEN
-   PS-WORD? 0= IF exit THEN
-   PS-SAVE-NAME
-   PS-PUBLIC? IF sig sigu PS-TRUST-ENTRY THEN ;
-
-: PS-MAYBE-TRUST-DEFINER ( ^u8 n -- bool ) {: a:^ u:n :}
-   PS-TRUST @ 0= IF PS-FALSE exit THEN
-   a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" create" LINT-STR=CI IF s" -- ^a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" variable" LINT-STR=CI IF s" -- ^a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   PS-FALSE ;
+   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-DEF THEN ;
 
 : PS-DEF-SIG-APP ( ^u8 n -- ) {: a:^ u:n :}
    PS-DEF-SIG-U @ u + PS-SIG-CAP > IF
@@ -641,7 +603,7 @@ private
    PS-TOK$ PS-DEF-SIG-APP
    PS-DEF-SIG-BUF PS-SIG-A!
    PS-DEF-SIG-U @ PS-SIG-U !
-   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
+   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-DEF THEN ;
 
 \ Token bytes live in the closure and entry slabs, which the next dep read or the
 \ entry scan overwrites; a nested unclosed package's residual name must outlive
@@ -683,8 +645,6 @@ private
             file-a file-u PS-MAYBE-DEF
          ELSE PS-TOK$ s" LAYOUT-BUFFER" LINT-STR=CI IF
             file-a file-u PS-LAYOUT-BUFFER
-         ELSE
-            PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
          THEN THEN THEN THEN
       THEN
    repeat ;
@@ -845,7 +805,6 @@ public
 private
 
 : PS-EMIT-REGISTRY ( ^u8 n -- ) {: file-a:^ file-u:n :}
-   PS-TRUST @ IF exit THEN
    TFAM-N@ FAM-BASE ?do
       i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
       i PS-DRV-PUBLIC? IF i file-a file-u PS-EMIT-FAM-DRV THEN
@@ -862,27 +821,19 @@ public
 
 : PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !
-   PS-TRUST @ IF exit THEN
    PS-JSON-OBJECT-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-JSON-COMMA
    s" definitions" PS-JSON-KEY PS-JSON-ARRAY-START ;
 
 : PS-JSON-DOC-END ( -- )
-   PS-TRUST @ IF exit THEN
    PS-JSON-ARRAY-END
    PS-JSON-OBJECT-END
    PS-LF-C PS-C ;
 
 private
 : PS-PARSE-ARGS ( -- )
-   0 PS-TRUST !
    0 PS-ARG-I !
-   SCRIPT-ARGC 0= IF PS-USAGE THEN
-   0 SCRIPT-ARGV$ s" --trust" LINT-STR= IF
-      -1 PS-TRUST !
-      1 PS-ARG-I !
-   THEN
-   PS-ARG-I @ SCRIPT-ARGC >= IF PS-USAGE THEN ;
+   SCRIPT-ARGC 0= IF PS-USAGE THEN ;
 
 public
 : PS-MAIN ( -- )

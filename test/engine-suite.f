@@ -345,19 +345,8 @@ TC-SYMU=? TTRUE
 \ its effect, a checked stub or a `defer`: no body runs and no defer is set,
 \ since every case hands the checker a candidate that names them. They are
 \ global because the suite tests genuine global top level.
-\ T-RDF is defined once and overridden by the two rows below: a row must name a
-\ word the engine resolves, and a second definition would be a duplicate.
-: T-RDF ( n -- n ) ;
-s" T-RDF" s" n -- n" TRUST
-s" caller of first TRUST effect certifies" T-LABEL
-s" COK-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! -1 T=
-s" T-RDF" s" -- n" TRUST
-s" caller of overriding TRUST effect certifies" T-LABEL
-s" COK-RDF-V2 ( -- n ) T-RDF" CHECK-QUIET-CANDIDATE! -1 T=
-s" caller of stale first effect rejects" T-LABEL
-s" CBAD-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! 0 T=
 : T-SCV ( n -- n ) drop 0 ;
-s" candidate shadow of TRUSTed word certifies" T-LABEL
+s" candidate shadow of a word certifies" T-LABEL
 s" T-SCV ( -- n ) 5" CHECK-QUIET-CANDIDATE! -1 T=
 s" pre-candidate effect restored after scope" T-LABEL
 s" COK-SCV-BACK ( n -- n ) T-SCV" CHECK-QUIET-CANDIDATE! -1 T=
@@ -370,10 +359,10 @@ s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-START
 : T-SCOPED-W ( -- n ) 0 ;
-s" scoped TRUST resolves inside the scope" T-LABEL
+s" scoped word resolves inside the scope" T-LABEL
 s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
-s" scoped TRUST retired with the scope" T-LABEL
+s" scoped word retired with the scope" T-LABEL
 s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 0 T=
 : T-PRESO ( -- n ) 0 ;
 package ES-PRES
@@ -601,7 +590,7 @@ s" RSR17C RSR17" CHECK-QUIET-CANDIDATE! -1 T=
 : x: ( -- n ) 0 ;
 : ::x ( -- n ) 0 ;
 \ The qualified case names a real public word: a candidate binds the record the
-\ engine's lookup binds, and a bodiless TRUST row has none.
+\ engine's lookup binds.
 package TQ
 public
 : TAIL ( -- n ) 0 ;

@@ -289,10 +289,8 @@ variable ELF-DATA-BYTES
 
 : SNAP-EXTRA-PTR ( -- ^u8 )
    MBUF X64LAYOUT:CODE-OFF + ;
-s" SNAP-EXTRA-PTR" s" -- ^u8" TRUST
 
 $C0 constant SNAP-EXTRA-SIZE
-s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
 : ELF-BUILD-SPAN ( ^u8 n -- ) {: text:^ bytes:n :}
    bytes CODELEN !  M-RESET
