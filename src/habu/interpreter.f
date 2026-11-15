@@ -3093,7 +3093,6 @@ variable OPENER-U
    c OPENER-A !  u OPENER-U !
    c off + PENDTKA-CELL ADDR! ;
 
-\ A record of a throw of code c that its text did not catch.
 : THROWN-OPEN ( n -- )
    {: c:n :}
    c ERROR:NAME$ {: a:ptr u:n :}
@@ -3114,22 +3113,27 @@ variable OPENER-U
    s" catch the code where the program can go on, or remove its cause"
    REJECTION:EMIT-STR ;
 
+\ The record, at the running token, of a throw of code c that its text did not
+\ catch.
 : THROWN-AT ( n -- )
    {: c:n :}
    c THROWN-OPEN  c THROWN-TEXT
    SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
    c THROWN-HELP ;
 
-\ The running text's inner catch is the nearest handler. A PASS noted to the
-\ same handler before this text began carried no record of this text.
-: BEGIN-TEXT ( -- )
-   HND-CELL CELL@ {: h:n :}
-   h OWN-HND !
-   REJECTION:PASSED-TO @ h = if 0 REJECTION:PASSED-TO ! then ;
-
 \ Whether the top frame, the running text's, has no frame outside it.
 : OUTERMOST? ( -- bool )
    NULL-PTR EVAL-TOP-CELL CELL@ + EVAL-PREV FR@ 0= ;
+
+\ The running text's inner catch is the nearest handler. A PASS noted to the
+\ same handler before this text began carried no record of this text. An
+\ outermost text that begins ends the wait for the record of the one before
+\ it, which a program caught.
+: BEGIN-TEXT ( -- )
+   HND-CELL CELL@ {: h:n :}
+   h OWN-HND !
+   PASSED-TO-CELL CELL@ h = if 0 PASSED-TO-CELL CELL! then
+   OUTERMOST? if 0 ROOT-CODE ! then ;
 
 \ Ends the running text's inner catch with code c: 0 returns and 1..255 goes
 \ on as thrown. Any other code leaves the text with a record kept at the
@@ -3138,7 +3142,7 @@ variable OPENER-U
    {: c:n :}
    c 0= if exit then
    c 1 255 BETWEEN? if c throw then
-   REJECTION:PASSED-TO @ OWN-HND @ =
+   PASSED-TO-CELL CELL@ OWN-HND @ =
    REJECTION:SAVED-CODE @ c =  and 0= if
       c THROWN-AT REJECTION:SAVE  c REJECTION:SAVED-CODE !
    then

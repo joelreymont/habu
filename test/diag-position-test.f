@@ -2057,6 +2057,7 @@ variable RC
 
 \ A throw nothing catches, outside the exit statuses 1..255, ends the load with
 \ one record at the word that threw it, in the file whose text ran that word.
+\ A throw from an evaluated text is placed at the word that ran the text.
 : TEST-UNCAUGHT ( -- )
    s" a throw nothing catches" T-LABEL
    SB-RESET
@@ -2071,6 +2072,18 @@ variable RC
    s" error[E-THROW]" THROW-RC LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" a throw nothing catches in an evaluated text" T-LABEL
+   SB-RESET
+   s" : EV ( -- ) s" SB-APPEND  34 SB-APPEND-C
+   s"  1 2 -77 throw" SB-APPEND  34 SB-APPEND-C
+   s"  evaluate-closed ;" SB-APPEND LF+
+   s" EV" SB-APPEND LF+
+   s" uncaught-eval.f" FIXTURE!
+   s" error[" THROW-RC LOADED
+   SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :2:1" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ s" = evaluated:" CONTAINS? TTRUE
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A match beyond the control-frame limit leaves its body to the load. The

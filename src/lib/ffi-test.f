@@ -1,6 +1,7 @@
 \ ffi-test.f - checked C-ABI FFI tests against libc.
 \ Run: bin/hb --load src/lib/ffi-test.f
 
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
@@ -283,12 +284,18 @@ create FFI-T-LONG-PATH PATH-CAP allot
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
-\ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows src/lib/error.f instead of repeating its number.
-: FFI-T-CODE$ ( n -- ptr u8 n ) {: code:n :}
-   SB-RESET
-   s" uncaught throw code " SB-APPEND
-   code FMT:SB-INT
+\ The head line of the record of an uncaught throw of code c, built from the
+\ code so the needle follows src/lib/error.f.
+: FFI-T-THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
    SB$ ;
 
 : FFI-T-GROW-ALIAS ( -- )
@@ -630,7 +637,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-LIB-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-THROWN-HEAD$ CONTAINS? TTRUE
    SB-RESET s" E-FFI-DLOPEN: " SB-APPEND FFI-T-NO-LIB$ SB-APPEND s" : " SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    s" a missing process symbol fails with its name" T-LABEL
@@ -684,7 +691,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-VERSION-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-THROWN-HEAD$ CONTAINS? TTRUE
    s" habu-no-such" 2 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: a:ptr au:n :}
    s" habu-no-such" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: b:ptr bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.

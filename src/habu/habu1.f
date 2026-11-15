@@ -3107,6 +3107,19 @@ public
 : EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-UNWIND ;
 
 private
+\ Throws again the code in x9 that a catch frame took, for a primitive that kept
+\ a 32-byte frame of its own above that catch frame and has popped both: a
+\ REJECTION:PASS to the catch frame moves to the nearest handler, so the record
+\ it carried stays with the code.
+: BRETHROW ( -- )
+   LBL {: keep:label :}
+   10 SP 32 STACK-ABI:CATCH-BYTES + SUBI,
+   11 DATA PASSED-TO-CELL LDR,
+   10 11 CMP,  C-NE keep BCOND,
+   11 DATA 8 LDR,  11 DATA PASSED-TO-CELL STR,
+   keep LBL,
+   9 G-PUSH  BTHROW ;
+
 \ BCATCH-FORWARD sits at CATCH-RES with the code in x9. With HALT-UNWIND-CELL
 \ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
 \ while a frame remains below this one (HND nonzero) this is an inner catch,
@@ -3239,7 +3252,7 @@ private
 \ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
 \ reads. PROVIDED-XT:EVALUATE-CLOSED-CELL's word runs the text under this
 \ frame's catch and rejects a text that leaves cells; the frame gives the
-\ stack back, then throws on what the word threw.
+\ stack back, then throws what the word threw again through BRETHROW.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL {: have:label take:label done:label :}
    s" E-TASK-COMPILE" s" evaluate-closed" B-TASK-GUARD
@@ -3265,7 +3278,7 @@ private
    BCATCH-RUN
    CATCH-PUSH LABEL@ LBL,                            \ x9 = the code, 0 on return
    CLOSED-LEAVE  9 done CBZ,
-   9 G-PUSH  BTHROW
+   BRETHROW
    done LBL, ;
 
 \ source-file-run ( xt -- ): run a file's unit on a pool stack and rethrow
@@ -3322,7 +3335,7 @@ private
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS SP 16 LDR,  SP SP 32 ADDI,
    9 done CBZ,
-   9 G-PUSH  BTHROW
+   BRETHROW
    done LBL, ;
 
 \ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
@@ -3347,7 +3360,7 @@ private
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 FINALLY-DONE LABEL@ CBZ,
-   throw LBL,  9 G-PUSH  BTHROW
+   throw LBL,  BRETHROW
    FINALLY-DONE LABEL@ LBL, ;
 
 \ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
@@ -3382,7 +3395,7 @@ private
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 C2-INVOKE-DONE LABEL@ CBZ,
-   throw LBL,  9 G-PUSH  BTHROW
+   throw LBL,  BRETHROW
    C2-INVOKE-DONE LABEL@ LBL, ;
 
 \ (R base bound value[W] callback W bytes align frame) -> (R base bytes

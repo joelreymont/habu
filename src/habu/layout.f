@@ -785,6 +785,10 @@ $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
+\ PASSED-TO-CELL: the catch handler the newest REJECTION:PASS threw to, 0 for
+\ none. A kernel catch that throws its code again (habu1.f BRETHROW) moves it to
+\ the next handler when it names that catch's frame.
+$27F8 constant PASSED-TO-CELL
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: `die`, the uncaught

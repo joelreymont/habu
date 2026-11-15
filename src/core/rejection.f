@@ -59,8 +59,6 @@ variable TEXT-LEN
 \ hook exists, so no effect is published for it.
 variable QUIET
 variable TALLY   0 TALLY !               \ rejections counted this load
-\ The handler the newest PASS threw to, 0 for none.
-variable PASSED-TO   0 PASSED-TO !
 \ The code whose record SAVE kept.
 variable SAVED-CODE   0 SAVED-CODE !
 
@@ -739,9 +737,9 @@ public
    SAVED-U @ 0= IF EXIT THEN
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
-\ Throws n, noting the nearest handler, which takes it, in PASSED-TO.
+\ Throws n, noting the nearest handler, which takes it, in PASSED-TO-CELL.
 : PASS ( n -- )
-   data-base HND-CELL + @ PASSED-TO !  throw ;
+   data-base HND-CELL + @  data-base PASSED-TO-CELL + !  throw ;
 
 \ The word kw ku has no operand after it, which what names with its article
 \ ("a name"): the record stands at t tu, which why labels. It is written

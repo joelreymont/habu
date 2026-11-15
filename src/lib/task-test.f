@@ -108,7 +108,7 @@ $4000 constant TASK-CAP
 $4F constant TASK-REFUSED-RC
 $62 constant TASK-DIE-RC
 67 constant TASK-UNCAUGHT-RC
-$30 constant TASK-CODE-CAP
+$100 constant TASK-HEAD-CAP
 8 constant APP-CYCLES
 16 constant APP-ITERS
 APP-ITERS 10 * 5 + constant APP-FFI-WANT
@@ -129,7 +129,7 @@ POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
 
 create TASK-OUT TASK-CAP allot
 create TASK-ERR TASK-CAP allot
-create TASK-CODE-BUF TASK-CODE-CAP allot
+create TASK-HEAD-BUF TASK-HEAD-CAP allot
 create APP-CSTR1 $61 c, 0 c,
 create APP-CSTR2 $61 c, $62 c, 0 c,
 create APP-CSTR3 $61 c, $62 c, $63 c, 0 c,
@@ -471,18 +471,23 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" TASK-DIE-WAIT" SB-APPEND TASK-LF
    SB$ ;
 
-\ The diagnostic a child prints for an uncaught code, built from the named
-\ constant so a pinned message follows the constant instead of repeating its
-\ number. It lands in its own buffer because the caller builds the child's
-\ source in SB straight afterwards.
-: TASK-CODE$ ( n -- ptr u8 n ) {: code:n :}
-   SB-RESET
-   s" uncaught throw code " SB-APPEND
-   code FMT:SB-INT
+\ The head line of the record of an uncaught throw of code c, built from the
+\ code so the needle follows src/lib/error.f. It lands in its own buffer
+\ because the caller builds the child's source in SB straight afterwards.
+: TASK-THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
    SB$ {: a:ptr u :}
-   u TASK-CODE-CAP > if E-STR-CAPACITY throw then
-   a TASK-CODE-BUF u BYTE-COPY
-   TASK-CODE-BUF u ;
+   u TASK-HEAD-CAP > if E-STR-CAPACITY throw then
+   a TASK-HEAD-BUF u BYTE-COPY
+   TASK-HEAD-BUF u ;
 
 \ The +USER cases run in a child engine: a definer's throw aborts the load that
 \ carries it, and a claim made in this image would outlive the case.
@@ -744,7 +749,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-USER-LATE$ 0 TASK-RUN-EXITS {: lateu:len laterr:len :}
    TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
-   E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
+   E-TASK-USER TASK-THROWN-HEAD$ {: needle:ptr needleu:n :}
    TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N S\" -1\n" T$=
