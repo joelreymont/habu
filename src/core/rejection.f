@@ -404,11 +404,10 @@ TKA-CELL RESERVED-PTR-U8-CELL RUNNING
 PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
 \ The token PLACE placed, t tu or the running token.
 PTR-VARIABLE SHOWN-A  variable SHOWN-U
-\ Bytes of a prose line or note shown: rustc's width when its output is not a
-\ terminal. A longer one shows a window, `...` in place of each cut end.
+\ Bytes of a prose line or quoted text shown: rustc's width when its output is
+\ not a terminal. A longer one shows a window, `...` in place of each cut end.
 140 constant WIDTH
 40 constant ROOM                        \ bytes shown before a windowed token
-variable NOTE-AT                        \ TEXT-LEN where the open note's text starts
 
 \ Whether byte c continues a UTF-8 character, taking no column of its own.
 : CONT? ( n -- bool )  192 and 128 = ;
@@ -424,20 +423,21 @@ variable NOTE-AT                        \ TEXT-LEN where the open note's text st
       dup a + c@ 10 = IF EXIT THEN
       1 +
    REPEAT ;
-\ A prose note shows one line of at most WIDTH bytes: past its first line or its
-\ first WIDTH - 3 bytes, the rest becomes `...`.
-: NOTE-CUT ( -- )
-   TEXT NOTE-AT @ + {: a:ptr :}
-   TEXT-LEN @ NOTE-AT @ - {: u:n :}
+public
+\ Emits the program text a u a note quotes. In prose it shows one line of at
+\ most WIDTH bytes: past its first line or its first WIDTH - 3 bytes, the rest
+\ becomes `...`. Other text a note holds, a path or a type, shows in full.
+: EMIT-CUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   JSON @ IF a u EMIT-STR EXIT THEN
    a u LF-AT {: f:n :}
-   f u =  u WIDTH <= and IF EXIT THEN
-   a  f WIDTH 3 - min  CHAR-START  NOTE-AT @ + TEXT-LEN !
+   f u =  u WIDTH <= and IF a u EMIT-STR EXIT THEN
+   a  a f WIDTH 3 - min CHAR-START  EMIT-STR
    s" ..." EMIT-STR ;
+private
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
    PART @ NO-PART = IF EXIT THEN
    JSON @ IF JSON-CLOSE EXIT THEN
-   PART @ VALUE-PART = IF NOTE-CUT THEN
    10 EMIT1 ;
 : BLANKS ( n -- ) {: k:n :}
    0 BEGIN dup k < WHILE 32 EMIT1 1 + REPEAT drop ;
@@ -719,7 +719,6 @@ private
       k ku JSON-KEY  JSON-OPEN
    ELSE
       MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
-      TEXT-LEN @ NOTE-AT !
    THEN
    VALUE-PART PART ! ;
 \ The evaluated place: in JSON an object after the label, in prose its line

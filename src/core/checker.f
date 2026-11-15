@@ -11168,7 +11168,7 @@ variable SIG-COUNTED
    s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
    sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
-   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
    REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
@@ -11222,7 +11222,7 @@ variable SIG-COUNTED
    s" ` binds a callback scope" REJECTION:EMIT-STR
    sa su at atu SCHEME-BINDER REJECTION:AT
    s" binder in a declared signature" REJECTION:EMIT-STR
-   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    REJECTION:HELP
    s" drop the binder from the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" `: only a checked `:` definition binds a callback scope" REJECTION:EMIT-STR

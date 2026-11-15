@@ -954,7 +954,7 @@ package CAST-ERROR
 \ A signature whose length describes no memory gets no note.
 : SIG-NOTE ( -- )
    SIG$ BYTE-SPAN? 0= IF EXIT THEN
-   s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-STR ;
+   s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-CUT ;
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
@@ -2383,7 +2383,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ A bad effect is placed and labelled as a bad stored signature is.
 : GENR-SIG-PARTS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su na nu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
-   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
    REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
