@@ -105,6 +105,7 @@ private
    CORE COMMON s" src/core/int-convert-retire.f" ROW
    CORE COMMON s" src/core/generated-declaration-dictionary.f" ROW
    CORE COMMON s" src/core/generated-declaration-protection.f" ROW
+   CORE COMMON s" src/core/sumtype-front.f" ROW
    OWNER COMMON s" src/core/checker-owner-guard.f" ROW
    ARGV COMMON s" src/os/script-argv.f" ROW
    INTERNAL COMMON s" src/core/internal-mark.f" ROW
