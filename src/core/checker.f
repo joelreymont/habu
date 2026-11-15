@@ -1815,6 +1815,8 @@ public
 \ decides.
 variable TOP-STEP
 
+variable WALK-ITEMS   \ the items of the text walked, 0 when it has none
+
 \ Outside a package context a top step names no package: every name binds as the
 \ engine's top-level find selects it.
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
@@ -21481,7 +21483,7 @@ CHECKER-REG:}SCRATCH
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
-   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK ! ;
+   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK !  0 WALK-ITEMS ! ;
 
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK

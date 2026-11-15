@@ -19,6 +19,9 @@
 \ A definition record whose word is null is a top-level step's: token_index,
 \ definition_source, declared_effect, declared_effect_source and inferred_effect
 \ are null with it, and its place is a line alone, none when no file holds it.
+\ A definition define-word built has no source text, so its definition_source
+\ is null, and so is a token its items give no spelling, as a read of a local
+\ no LOCAL item declared.
 \ source_excerpt is the record's definition_source: packet builders normalize,
 \ the checker emits no aliases. --all-errors and LSP-CHECK:VERIFY-BYTES report every
 \ refused definition and go on; at a duplicate name LSP-CHECK:VERIFY-BYTES skips the

@@ -489,11 +489,15 @@ public
    node EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
 ;package
 
+\ Whether the text walked is the pending definition's body text.
+: PEND-TEXT? ( -- bool )
+   data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ = ;
+
 \ The effect `define-word` gave the pending definition when the text walked is
 \ that definition's, else 0.
 : BUILT-EFFECT ( -- n )
-   data-base PEND-CELL + @ 0= IF 0 EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF 0 EXIT THEN
+   PEND-TEXT? 0= IF 0 EXIT THEN
    data-base BODY-ITEMS:EFFECT-CELL + @ ;
 
 \ The declared rows of the definition CHECK is on: from its effect when
@@ -542,60 +546,13 @@ public
    CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
    RES-FALSE ;
 
-: CHECK-SCAN-WALK ( -- )
-   0 SPAY-S !
-   EV-START
-   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
-   BEGIN TI @ TBLEN @ < WHILE
-     TI @ CUR-GAP !
-     BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
-     TI @ TBLEN @ < IF
-       TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
-         CUR-PAREN-AT
-         TI @ 1 + TI !  TI @ TSTART !
-         BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
-         TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
-         PAREN-SIG? IF EXIT THEN
-         TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
-         CUR-PAREN
-       ELSE
-         TI @ TSTART !
-         BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
-         SCAN-TOK-HEAD {: was-name:n :}
-         TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
-         was-name SCAN-TOK-TAIL IF EXIT THEN
-       THEN
-     THEN
-   REPEAT
-   CUR-END ;
-
-\ ---- the walk of a built definition's items ---------------------------------
-\ A definition `define-word` opened is walked by its items, not its listing's
-\ bytes: each row's span in the listing is its token, and its kind picks the
-\ step that parsed source reaches by spelling. A CALL binds the record the
-\ definer found, so nothing the building package defines captures it.
-
-\ The items stand for the text walked: it is the pending definition's body
-\ text, no text an item does not span joined it, and the last item ends it.
-: ITEM-WALK? ( -- bool )
-   data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF RES-FALSE EXIT THEN
-   data-base BODY-ITEMS:RAW-CELL + @ 0 <> IF RES-FALSE EXIT THEN
-   CHECKER-ITEMS:ITEM-COUNT {: n:n :}
-   n 0= IF RES-FALSE EXIT THEN
-   n 1 - BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@
-   n 1 - BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 +
-   TBLEN @ = ;
-
 : ITEM-SPAN ( n -- ) {: i:n :}
-   TI @ CUR-GAP !
    i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TSTART !
    TSTART @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  TI ! ;
 
-\ A signature's span holds its parentheses, and the byte walk's paren branch
-\ reads inside them.
+\ A signature's span holds its parentheses, and the walk's paren branch reads
+\ inside them.
 : ITEM-SIG ( n -- bool ) {: i:n :}
-   TI @ CUR-GAP !
    i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TI !
    CUR-PAREN-AT
    TI @ 1 + TSTART !
@@ -765,21 +722,74 @@ public
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
    MDIAG @ MD-LOCAL-STRAY = or  and IF i ITEM-FAIL-SPELL THEN ;
 
-: ITEM-WALK ( -- )
+variable WALK-ITEM    \ the first item the walk has not passed
+
+\ The items of the text walked: the pending definition's body text's, else 0.
+: TEXT-ITEMS ( -- n )
+   PEND-TEXT? 0= IF 0 EXIT THEN
+   CHECKER-ITEMS:ITEM-COUNT ;
+
+: ITEM-OFF ( n -- n ) BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ ;
+
+: ITEM-BEHIND? ( n -- bool ) {: i:n :}
+   i WALK-ITEMS @ < 0= IF RES-FALSE EXIT THEN
+   i ITEM-OFF TI @ < ;
+
+\ Whether an item starts at TI; the cursor first passes every item a byte step
+\ read as an operand, as a `[type]` span can.
+: ITEM-AT? ( -- bool )
+   BEGIN WALK-ITEM @ ITEM-BEHIND? WHILE WALK-ITEM @ 1 + WALK-ITEM ! REPEAT
+   WALK-ITEM @ WALK-ITEMS @ < 0= IF RES-FALSE EXIT THEN
+   WALK-ITEM @ ITEM-OFF TI @ = ;
+
+\ Steps the cursor's item and moves the cursor on; true when that ends the
+\ walk.
+: ITEM-TOK ( -- bool )
+   WALK-ITEM @ {: i:n :}
+   i 1 + WALK-ITEM !
+   i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
+      i ITEM-SIG EXIT THEN
+   i ITEM-SPAN
+   SCAN-TOK-HEAD {: was-name:n :}
+   i ITEM-STEP
+   was-name SCAN-TOK-TAIL ;
+
+\ ---- the body walk ----------------------------------------------------------
+\ A body is walked token by token: an item `define-word` appended is stepped
+\ where it starts, and bytes elsewhere are read as source. An item's span in
+\ the listing is its token, and its kind picks the step that parsed source
+\ reaches by spelling. A CALL binds the record the definer found, so nothing
+\ the building package defines captures it.
+: CHECK-SCAN-WALK ( -- )
    0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
-   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
-      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
-         i ITEM-SIG IF UNLOOP EXIT THEN
-      ELSE
-         i ITEM-SPAN
-         SCAN-TOK-HEAD {: was-name:n :}
-         i ITEM-STEP
-         was-name SCAN-TOK-TAIL IF UNLOOP EXIT THEN
-      THEN
-   LOOP
-   TI @ CUR-GAP !  TBLEN @ TI !
+   TEXT-ITEMS WALK-ITEMS !  0 WALK-ITEM !
+   BEGIN TI @ TBLEN @ < WHILE
+     TI @ CUR-GAP !
+     BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
+     TI @ TBLEN @ < IF
+       ITEM-AT? IF
+         ITEM-TOK IF EXIT THEN
+       ELSE
+         TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
+           CUR-PAREN-AT
+           TI @ 1 + TI !  TI @ TSTART !
+           BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+           TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
+           PAREN-SIG? IF EXIT THEN
+           TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
+           CUR-PAREN
+         ELSE
+           TI @ TSTART !
+           BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
+           SCAN-TOK-HEAD {: was-name:n :}
+           TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
+           was-name SCAN-TOK-TAIL IF EXIT THEN
+         THEN
+       THEN
+     THEN
+   REPEAT
    CUR-END ;
 
 \ Walks a body, holding its using refusals for the end, where a structure open
@@ -788,7 +798,7 @@ public
    {: ca:ptr cu:n :}
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
-   [: ITEM-WALK? IF ITEM-WALK ELSE CHECK-SCAN-WALK THEN ;] catch
+   [: CHECK-SCAN-WALK ;] catch
    0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN

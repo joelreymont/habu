@@ -36,6 +36,8 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
+require tools/gate-json-assert-core.f
+require tools/repair-packet-core.f
 
 package BITEM-PKG
 public
@@ -195,9 +197,11 @@ BAD-STRAY 70 T=
 s" : BI-BAD-STRAY ( -- n ) 5 ;" evaluate-closed
 BI-BAD-STRAY 5 T=
 
-\ : NAME ( -- n ) l9 ; with no local declared.
-: MAKE-UNREAD ( ptr u8 n -- )
-   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@  postpone ; ;
+\ : NAME ( -- n ) l9 ; with no local declared; UNREAD-OPEN leaves the word
+\ open before its `;`.
+: UNREAD-OPEN ( ptr u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@ ;
+: MAKE-UNREAD ( ptr u8 n -- ) UNREAD-OPEN  postpone ; ;
 : BAD-UNREAD ( -- n ) [: s" BI-BAD-UNREAD" MAKE-UNREAD ;] catch ;
 BAD-UNREAD 70 T=
 s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
@@ -492,6 +496,7 @@ s" in bi-long-no: at 'BI-LONG' expected: " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 public
 : SUB2-GO ( -- ) s" BI-SUB2" SUB2-OPEN ;
 : ENDED-TEXT-GO ( -- ) s" BI-ENDED-TEXT" ENDED-OPEN ;
+: UNREAD-GO ( -- ) s" BI-UNREAD-TEXT" UNREAD-OPEN ;
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 : TEXT-REF-GO ( -- )
@@ -535,8 +540,46 @@ public
    e eu s" input underflow" CONTAINS? TTRUE
    e eu S\" evaluated.f:1\n" CONTAINS? TFALSE ;
 
+\ A read no group bound, in a body text finishes, names the local by its
+\ index, never by its listing token.
+: UNREAD-CHILD ( -- )
+   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" reads built local 9, which no `{:` group bound before it"
+   CONTAINS? TTRUE
+   e eu s" l9" CONTAINS? TFALSE ;
+
 \ Two built locals of one type read in a body text finishes are two locals.
 s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
+
+\ A built definition's rejection, captured as JSON in place of its prose,
+\ gives no source, its listing being text no file holds, and no token for a
+\ read of a local no group declared; the record and its repair packet meet
+\ the contract.
+private
+8192 BUFFER: JSON-DIAG
+RP-OUT-CAP BUFFER: JSON-PACKET
+64 BUFFER: JSON-CLASS
+: JSON-ON ( -- )  JSON-DIAG 8192 REJECTION:BUFFER!  true REJECTION:JSON ! ;
+: JSON-OFF ( -- )  false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
+: UNREAD-JSON ( -- n ) [: s" UNREAD-GO 1 + ;" evaluate-closed ;] catch ;
+: JSON-HAS ( ptr u8 n -- ) REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: JSON-CONTRACT ( -- )
+   REJECTION:BUFFER$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
+   root GJA-DIAG-CONTRACT-ROW
+   root s" repair_class" GJA-REQ JSON-CLASS 64 GJA-STRING-INTO
+   {: c:ptr cu:n :}
+   REJECTION:BUFFER$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
+   {: pa:ptr pu:n :}
+   pa JSON-PACKET pu BYTE-COPY
+   JSON-PACKET pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
+   packet c cu GJA-REPAIR-HEAD
+   packet GJA-REPAIR-DEF ;
+JSON-ON  UNREAD-JSON 70 T=
+S\" \"definition_source\":null" JSON-HAS
+S\" \"token\":null" JSON-HAS
+S\" \"word\":\"bi-unread-text\"" JSON-HAS
+JSON-CONTRACT  JSON-OFF
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
@@ -554,11 +597,12 @@ s" BITEM:STRAY-GO" 70
 s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
 \ A read of a local whose block ended, in a body text finishes, is rejected.
 s" BITEM:ENDED-TEXT-GO 1 + ;" 70
-s" cannot compile BI-ENDED-TEXT" SUBJECT:REFUSED? TTRUE
+s" at 'n' reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
 BITEM:PLACED-CHILD
 BITEM:UNBOUND-CHILD
 BITEM:EVALUATED-CHILD
 BITEM:LNEG-CHILD
+BITEM:UNREAD-CHILD
 
 \ A fresh hb runs the build, since the build is under test.
 package BITEM-STORED

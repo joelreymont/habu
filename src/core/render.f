@@ -1753,7 +1753,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DCODE REPAIR-CLASS DVERDICT JHEAD
    s" word" JSON-KEY
    TOP-STEP @ IF s" null" EMIT-STR ELSE NMA @ NMU @ JSON-STRING THEN  44 EMIT1
-   s" token" JSON-KEY  FAILTK FAILTU @ JSON-STRING  44 EMIT1
+   s" token" JSON-KEY
+   FAILTU @ 0= IF s" null" EMIT-STR ELSE FAILTK FAILTU @ JSON-STRING THEN  44 EMIT1
    k RF-DEAD = IF s" dead_owner" JSON-KEY DEADTA @ DEADTU @ JSON-STRING
       44 EMIT1 THEN
    k RF-REASON = IF
@@ -1771,7 +1772,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" file" JSON-KEY  DFILE$ JSON-STRING  44 EMIT1
    DLOC-FIELDS
    s" definition_source" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE TBASE @ TBLEN @ JSON-STRING THEN
+   TOP-STEP @ 0 <>  WALK-ITEMS @ 0 >  or IF s" null" EMIT-STR
+   ELSE TBASE @ TBLEN @ JSON-STRING THEN
       44 EMIT1
    s" declared_effect" JSON-KEY
    RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" EMIT-STR THEN
