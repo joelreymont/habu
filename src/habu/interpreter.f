@@ -393,10 +393,8 @@ create NL NEWLINE c,
 : FLOORED ( bool -- )
    if UNDERFLOW then ;
 
-\ CHECK:TOP-LEVEL gets ( token class flags ) for each number after the push
-\ and for each word, past its gates, before it runs, and consumes those four
-\ cells. A check that leaves the stack below its base on a word event is
-\ refused here, before the word runs.
+\ CHECK:TOP-LEVEL judges each number after its push and each word but the engine
+\ `drop` before it runs; a check that leaves the stack below its base is refused.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
@@ -482,13 +480,12 @@ TYPED-VARIABLE REC ptr n
    SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
 
-\ The gates before a record's xt leaves the loop, in the engine's order: a
-\ wide effect, then an internal word.
+\ The gate before a record's xt leaves the loop: an internal word. A wide
+\ effect passes: the interpret row carries each multi-cell value as one item
+\ of its type, and the checker refuses an engine primitive that would move
+\ part of one (src/core/check-walk.f TOP-XPORT-GUARD).
 : XT-GATE ( -- )
    REC @ XREF-FLAGS {: f:n :}
-   f DNAME-WIDE and 0<> if
-      s" E-LAYOUT-VALUE" REFUSAL  s" interpret-mode layout value: " REFUSE
-   then
    f DNAME-INT and 0<> if
       s" E-UNSAFE" REFUSAL  s" internal engine word: " REFUSE
    then ;
@@ -526,13 +523,25 @@ TYPED-VARIABLE RUNS-ON bool
    RUNS-N @ 1 + RUNS-N ! ;
 
 
-\ The flags and xt are read before the hooks run.
+\ The engine's `drop` in any case: a user's global `drop` takes the hook.
+: DROP-WORD? ( -- bool )
+   REC @ XREF-START ['] drop COMP:XT>N = ;
+
+\ Counts a run of the found word.
+: RUN-COUNTED ( -- )
+   REC @ XREF-NULL - XREF-ADDR>INDEX RUN+ ;
+
+\ The flags and xt are read before the hooks run. The engine `drop` runs once
+\ per cell of its item, so a multi-cell value leaves whole, as in a body; any
+\ other word runs once outside a loop, so it has every loop frame.
 : RUN-FOUND ( -- )
    GATE
    WORD-FLAGS REC @ XREF-START {: flags:n xt:n :}
-   TOP-EV-WORD flags HOOK
-   REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
-   idx RUN+
+   DROP-WORD? if
+      CHECK:TOP-DROP RUN-COUNTED
+      0 ?do xt execute-floor FLOORED loop exit
+   then
+   TOP-EV-WORD flags HOOK RUN-COUNTED
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
@@ -2229,12 +2238,13 @@ variable LIT-AT
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
 
-\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to.
-\ It takes the program's top cell after its record opens.
+\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to,
+\ after the top item is judged and before the constant takes the top cell.
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
    s" constant" OPERAND
+   s" constant" CHECK:TOP-TAKE
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL

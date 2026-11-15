@@ -132,8 +132,10 @@ $0000100000000000 constant DNAME-TARGET
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
-\ value in some row, so running it at interpret level would leave a multi-cell
-\ bundle on the untyped interpret stack. Compiled calls inside checked
+\ value in some row. Such a word runs at top level: the interpret row is typed
+\ per cell and carries each multi-cell value as one item of its type, and the
+\ checker refuses only an engine stack primitive that would move part of one
+\ (src/core/check-walk.f TOP-XPORT-GUARD). Compiled calls inside checked
 \ definitions are unaffected.
 $4000000000000000 constant DNAME-WIDE
 \ DNAME-INT (bit 63): a kernel primitive or engine helper no source may run.

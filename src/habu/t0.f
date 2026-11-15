@@ -2188,6 +2188,8 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 public
 
+EXPORT XT>N
+
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
    ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!

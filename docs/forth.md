@@ -492,14 +492,20 @@ can still make `MAKE`'s effect too deep (7156). A record with a `BUFFER`
 refuses `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
 field and variant name.
 
-A multi-cell record is one logical value and lives inside checked definitions.
-The interpreter prompt refuses words with multi-cell inputs or outputs
-(`E-LAYOUT-VALUE ... interpret-mode layout value`), including a word whose
-`does>` clause effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then a bare
-`PBUF`); so do `evaluate` and
-interpret-mode tick, and bare `dup`, `drop`, `swap` at the prompt move single
-cells. To compute with a record at the REPL, call a word whose public effect is
-single-cell; `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`:
+A multi-cell record is one logical value, at top level as in a body. A word that
+takes or returns one runs at the prompt: the interpret row carries each
+multi-cell value as one item of its type, and a later word whose row takes that
+type consumes it. Interpret-mode tick, `evaluate` and a word whose `does>`
+clause effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then `PBUF SPAN:LEN`)
+follow the same rule. `drop` drops the whole value at the prompt as in a body, a
+value a top-level `catch` left stale included (after `' W catch`, `drop` drops
+the code, then the value), and refuses a linear one as a body's does, or one of
+open width. The engine's other stack primitives do not: a body lowers `dup`,
+`swap`, `over`, `2>r` and their kin over a multi-cell value as one bundle, but
+at the prompt the primitive moves single cells, so one whose operands hold a
+multi-cell value is refused before it runs; `2 3 DEMO:AT dup` is `E-LAYOUT-VALUE
+... interpret-mode layout value: dup`. So is `constant`, which would take one of
+its cells. Consume the value with a word, or move it inside a definition:
 
 ```forth
 package DEMO
@@ -507,9 +513,8 @@ public
 STRUCTURE point FIELD x n FIELD y n ;STRUCTURE
 : AT ( n n -- point ) DEMO-POINT:MAKE ;
 : FIRST ( point -- n ) DEMO-POINT:UNMAKE drop ;
-: FIRST-X ( -- n ) 2 3 AT FIRST ;
 ;package
-DEMO:FIRST-X .                      \ prints 2
+2 3 DEMO:AT DEMO:FIRST .            \ prints 2
 ```
 
 Inside a checked body a record binds to a local, untyped or annotated with the

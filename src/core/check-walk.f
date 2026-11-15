@@ -2513,11 +2513,70 @@ public
    TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
    TKF TKFU @ TOK-CORE-OP? ;
 
+package SRCLOC
+private
+OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
+public
+
+\ The cursor's line from the file's first owned byte; 0 outside file text.
+: LINE ( -- n )
+   FILE-BUFFER? 0= IF 0 EXIT THEN
+   FILE-START @ CURSOR @ ERROR-TEXT:LINE ;
+;package
+
+\ A type whose cell count is not known here; a stale value keeps its type's.
+: TOP-OPEN-TYPE? ( n -- bool )
+   T-UNSTALE T-RES {: t:n :}
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   t HIDDEN-PARAM? 0=  t LAYOUT-WIDTH-OPEN? and ;
+
+\ A type the interpret row holds as one item over more than one cell, or over a
+\ count not known here; a stale value keeps the cells of its type.
+: TOP-WIDE-TYPE? ( n -- bool )
+   {: ty:n :}
+   ty TOP-OPEN-TYPE? IF RES-TRUE EXIT THEN
+   ty T-UNSTALE T-RES T-WIDTH 1 > ;
+
+\ The k items atop row hold a multi-cell value.
+: TOP-WIDE-IN-K? ( n n -- bool ) {: row:n k:n :}
+   row 0 BEGIN dup k < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES P>TYPE TOP-WIDE-TYPE? IF 2drop RES-TRUE EXIT THEN
+      swap R-RES P>REST swap
+      1 +
+   REPEAT 2drop RES-FALSE ;
+
+\ The items atop the row the guard judges: a transport's; 0 for `drop`, which
+\ CHECKER-TOP-DROP judges, and for any other word.
+: TOP-XPORT-K ( -- n )
+   TKF TKFU @ {: a:^ u:n :}
+   a u s" drop" CORE-STR= IF 0 EXIT THEN
+   LAYOUT-XPORT @ IF a u WF-XPORT-K EXIT THEN
+   0 ;
+
+\ The engine word spelled a u, run at top level, would take part of a
+\ multi-cell value: refused before it runs, naming the word.
+: TOP-LAYOUT-REFUSE ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-LAYOUT-VALUE" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" interpret-mode layout value: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
+   CHECKER-REJECT-RC throw ;
+
+\ At top level the engine's one-cell primitive runs: over a multi-cell value it
+\ would move part of it.
+: TOP-XPORT-GUARD ( -- )
+   TOP-XPORT-K {: k:n :}
+   k 0= IF EXIT THEN
+   TKF TKFU @ WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @  k
+   TOP-WIDE-IN-K? 0= IF EXIT THEN
+   TOK-SPELL-A @ TOK-SPELL-U @ TOP-LAYOUT-REFUSE ;
+
 \ `evaluate` has no row: the text it reads steps itself, one level deeper on
 \ this segment, so the step takes its string and leaves the rest of the row as
 \ it was.
 : TOP-WORD-STEP ( -- )
    TOP-BEGIN
+   TOP-XPORT-GUARD
    TOP-EVALUATE? IF
       FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW MK-PUSH MK-PUSH
       STEP-BORROWS? IF STEP-UNDERFLOW! EXIT THEN
@@ -2538,17 +2597,6 @@ public
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN
    TOP-PUSH ;
-
-package SRCLOC
-private
-OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
-public
-
-\ The cursor's line from the file's first owned byte; 0 outside file text.
-: LINE ( -- n )
-   FILE-BUFFER? 0= IF 0 EXIT THEN
-   FILE-START @ CURSOR @ ERROR-TEXT:LINE ;
-;package
 
 package CHECK
 
@@ -2741,6 +2789,41 @@ CHECKER-REG:}SCRATCH
 : CHECKER-TOP-TICK ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
+
+\ A keyword takes the top cell with no word event, so the row is not saved:
+\ the next event fits it to the live depth.
+: TOP-TAKE-STEP ( -- )
+   DCUR @ 1 TOP-WIDE-IN-K? 0= IF EXIT THEN
+   TOK-SPELL-A @ TOK-SPELL-U @ TOP-LAYOUT-REFUSE ;
+
+: CHECKER-TOP-TAKE ( ^u8 n n -- )
+   {: a:^ u:n live:n :}
+   a TOK-SPELL-A !  u TOK-SPELL-U !
+   live CHECKER-TOP-LOAD
+   ['] TOP-TAKE-STEP catch {: rc:n :}
+   TOP-RELEASE
+   rc 0 <> IF rc throw THEN ;
+
+variable TOP-DROP-N
+
+: TOP-OPEN-TOP? ( -- bool )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>TYPE TOP-OPEN-TYPE? ;
+
+\ An item of open width has no cell count to drop, so it is refused, naming
+\ `drop`; otherwise a body's step judges it.
+: TOP-DROP-STEP ( -- )
+   TOP-OPEN-TOP? IF TOK-SPELL-A @ TOK-SPELL-U @ TOP-LAYOUT-REFUSE THEN
+   DCUR @ ROW-CELLS {: pre:n :}
+   TOP-WORD-STEP
+   pre DCUR @ ROW-CELLS - TOP-DROP-N ! ;
+
+: CHECKER-TOP-DROP ( n -- n )
+   {: live:n :}
+   s" drop" TOK-SPELL-U !  TOK-SPELL-A !
+   ['] TOP-DROP-STEP live TOP-STEP-LOAD
+   CHECKER-TOP-SAVE
+   TOP-DROP-N @ ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
 \ A literal's cells have constant types, so over a saved row that fits the live

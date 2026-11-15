@@ -146,15 +146,18 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: REPL on a pseudo-terminal refuses, recovers and prompts again" type cr ;
 
-\ A normal checked structure needs no TRUSTED seed. The same constructor and
-\ projection are refused as bare tokens and work inside a checked definition.
+\ A normal checked structure needs no TRUSTED seed. Its constructor and
+\ projection run at the prompt as they do inside a checked definition; what the
+\ prompt refuses is an engine primitive that would move part of the value.
 : TTY-LAYOUT-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
    s" package PTYP public STRUCTURE point FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
    s"  ok" SETTLE
-   s" 2 3 PTYP:AT PTYP:FIRST" TELL
-   s" E-LAYOUT-VALUE habu: interpret-mode layout value: PTYP:AT" SETTLE
+   s" 2 3 PTYP:AT PTYP:FIRST . cr" TELL
+   S\" \r\n2\r\n" SETTLE
+   s" 2 3 PTYP:AT dup" TELL
+   s" interpret-mode layout value: dup" SETTLE
    s" PTYP:FIRST-X . cr depth . cr" TELL
    S\" \r\n2\r\n" EXPECT!
    S\" \r\n0\r\n" PROMPT-AFTER!
@@ -163,7 +166,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : TTY-LAYOUT ( -- )
    BUF-CLEAR
    HB$ [: TTY-LAYOUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
-   s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
+   s" PASS: a layout value runs at the REPL, and dup on it is refused" type cr ;
 
 \ The target starts a sleeper on its own terminal and prints 48879, then the
 \ sleeper's pid. The sleeper leads a group of its own; it ends with the target,

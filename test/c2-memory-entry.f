@@ -31,10 +31,10 @@ public
    70 s" internal engine word: C2-MEM:WITH-MUT" SUBJECT:REFUSED? TTRUE
    s" a layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\n"
-   70 s" interpret-mode layout value: C2-MEMORY-WRAPPER:TWICE" SUBJECT:REFUSED? TTRUE
+   70 s" at 'C2-MEMORY-WRAPPER:TWICE' expected: n forall<a,forall-region<b,[ n mut-view<a,a,b,u8> -- n mut-view<a,a,b,u8> ]>>" SUBJECT:REFUSED? TTRUE
    s" an exported layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\npackage C2-ENTRY-ALIAS public EXPORT C2-MEMORY-WRAPPER:TWICE ;package\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-ENTRY-ALIAS:TWICE .\n"
-   70 s" interpret-mode layout value: C2-ENTRY-ALIAS:TWICE" SUBJECT:REFUSED? TTRUE
+   70 s" at 'C2-ENTRY-ALIAS:TWICE' expected: n forall<a,forall-region<b,[ n mut-view<a,a,b,u8> -- n mut-view<a,a,b,u8> ]>>" SUBJECT:REFUSED? TTRUE
    ORDINARY
    T-REPORT
    s" c2-memory-entry: ok" type cr ;

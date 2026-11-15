@@ -197,9 +197,14 @@ with this one. Two consequences:
 
 - A non-linear multi-cell value binds whole to a local, and each reference
   reloads every cell.
-- A word that returns a multi-cell value cannot run at the interpreter prompt
-  (`E-LAYOUT-VALUE ... interpret-mode layout value`), because the interpreter
-  would move one physical cell of the bundle without knowing it.
+- A word that takes or returns a multi-cell value runs at the interpreter
+  prompt, where the interpret row carries the value as one item of its type
+  (**Typed top level**). An engine stack primitive (`dup`, `swap`, `2>r`,
+  their kin) whose operands hold one is refused there (`E-LAYOUT-VALUE ...
+  interpret-mode layout value: dup`), because the interpreter runs the
+  one-cell primitive and would move one physical cell of the bundle; so is
+  `constant` over one, which would take one cell of it.
+  `drop` drops the whole value.
 
 **Layout policy is bound per family, once, at declaration.** `POLICY <name>`
 follows the arity; a missing clause means `stack-cell-tag`. A per-use-site

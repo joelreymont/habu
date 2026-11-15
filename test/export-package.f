@@ -18,7 +18,7 @@ require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
-70 constant XPK-UNDEF-RC              \ undefined-word child exit status
+70 constant XPK-CHECK-RC              \ checker refusal exit status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
 67 constant XPK-THROW-RC              \ engine uncaught-throw boundary exit
@@ -179,8 +179,9 @@ create XPK-EMPTY 1 allot
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
    s" ;SUMTYPE" XPK-LINE
-   S\" s\" pre-wide\" type cr" XPK-LINE
    s" 1 xpw:ok" XPK-LINE
+   S\" s\" ran-wide\" type cr" XPK-LINE
+   s" dup" XPK-LINE
    SB$ ;
 
 : XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- ptr u8 n )  \ interpret gate on the ALIAS
@@ -192,8 +193,9 @@ create XPK-EMPTY 1 allot
    s" public" XPK-LINE
    s" EXPORT xpw:ok" XPK-LINE
    s" ;package" XPK-LINE
-   S\" s\" pre-wide\" type cr" XPK-LINE
    s" 1 XC:ok" XPK-LINE
+   S\" s\" ran-wide\" type cr" XPK-LINE
+   s" dup" XPK-LINE
    SB$ ;
 
 \ --- child spawn + outcome capture --------------------------------------------
@@ -270,10 +272,10 @@ create XPK-EMPTY 1 allot
 
 : XPK-NEGATIVES ( -- )
    s" undefined source rejects (stdin)" T-LABEL
-   XPK-UNDEF-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-UNDEF-FORGE$ XPK-RUN-STDIN XPK-CHECK-RC XPK-ASSERT-RC
    s" NOSUCH-EXPORT-SRC" XPK-ERR?
    s" undefined source rejects (--load)" T-LABEL
-   XPK-UNDEF-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-UNDEF-FORGE$ XPK-RUN-LOAD XPK-CHECK-RC XPK-ASSERT-RC
    s" missing name rejects" T-LABEL
    XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-NONAME-RC XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL
@@ -288,33 +290,105 @@ create XPK-EMPTY 1 allot
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
    s" 7120" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-CHECK-RC XPK-ASSERT-RC
    s" top-level ?dup over an enum value is undefined" T-LABEL
-   XPK-QDUP-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-QDUP-FORGE$ XPK-RUN-STDIN XPK-CHECK-RC XPK-ASSERT-RC
    s" E-UNDEFINED" XPK-ERR? ;
 
-\ The source ctor and its alias must fail the interpret-level wide gate alike
-\ (same kind and rc), proving the alias copied DNAME-WIDE; equality is the
-\ contract.
+\ The source ctor and its alias must behave alike at top level: both run and
+\ leave their two-cell value, and a primitive over it (dup) is refused alike
+\ (E-LAYOUT-VALUE, same rc), proving the alias copied DNAME-WIDE; equality is
+\ the contract.
 variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 
 : XPK-WIDE-PARITY ( -- )
    s" interpret wide gate: source ctor" T-LABEL
    XPK-CTOR-WIDE-SRC-FORGE$ XPK-RUN-STDIN
-   s" pre-wide" XPK-OUT?
+   s" ran-wide" XPK-OUT?
+   s" interpret-mode layout value: dup" XPK-ERR?
    XPK-EXITED @ XPK-WIDE-EXITED !  XPK-RC @ XPK-WIDE-RC !
    XPK-RC @ 0 T<>
    s" interpret wide gate: alias behaves identically" T-LABEL
    XPK-CTOR-WIDE-ALIAS-FORGE$ XPK-RUN-STDIN
-   s" pre-wide" XPK-OUT?
+   s" ran-wide" XPK-OUT?
+   s" interpret-mode layout value: dup" XPK-ERR?
    XPK-EXITED @ TTRUE  XPK-WIDE-EXITED @ TTRUE
    XPK-RC @ XPK-WIDE-RC @ T= ;
+
+: XPK-PT-LINES ( -- )
+   s" package PT" XPK-LINE
+   s" public" XPK-LINE
+   s" STRUCTURE point FIELD x n FIELD y n ;STRUCTURE" XPK-LINE
+   s" : AT ( n n -- point ) PT-POINT:MAKE ;" XPK-LINE
+   s" : SMASH ( point -- point ) 1 throw ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" 2 3 PT:AT" XPK-LINE ;
+
+\ A point, then the line a u, run; the word w v is named refused.
+: XPK-PT-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
+   w v T-LABEL
+   SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
+   XPK-CHECK-RC XPK-ASSERT-RC
+   SB-RESET s" interpret-mode layout value: " SB-APPEND  w v SB-APPEND
+   SB$ XPK-ERR? ;
+
+: XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
+   a u a u XPK-PT-REFUSE ;
+
+\ Over a point at top level each transport primitive and `constant` is refused
+\ before it runs, naming itself.
+: XPK-WIDE-TAKE ( -- )
+   s" dup" XPK-PT-XPORT  s" swap" XPK-PT-XPORT  s" over" XPK-PT-XPORT
+   s" nip" XPK-PT-XPORT  s" tuck" XPK-PT-XPORT  s" rot" XPK-PT-XPORT
+   s" -rot" XPK-PT-XPORT  s" 2dup" XPK-PT-XPORT  s" 2drop" XPK-PT-XPORT
+   s" 2swap" XPK-PT-XPORT  s" 2over" XPK-PT-XPORT  s" 2>r" XPK-PT-XPORT
+   s" constant K" s" constant" XPK-PT-REFUSE ;
+
+: XPK-PT-DROP ( ^u8 n ^u8 n -- ) {: w:^ v:n a:^ u:n :}
+   w v T-LABEL
+   SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
+   0 XPK-ASSERT-RC  s" 100" XPK-OUT? ;
+
+: XPK-LT-DROP ( -- )
+   s" top-level drop of a linear token" T-LABEL
+   SB-RESET
+   s" package LT" XPK-LINE
+   s" public" XPK-LINE
+   s" DEFLINEAR LT:tok" XPK-LINE
+   s" private" XPK-LINE
+   s" LINEAR: MINT ( n -- LT:tok )" XPK-LINE
+   s" public" XPK-LINE
+   s" : NEW ( n -- LT:tok ) MINT ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" 5 LT:NEW drop" XPK-LINE
+   SB$ XPK-RUN-STDIN
+   XPK-CHECK-RC XPK-ASSERT-RC  s" at 'drop'" XPK-ERR? ;
+
+\ `drop` over a point, and over one a top-level `catch` left stale, empties the
+\ row, so `depth` runs; a linear token's `drop` is refused as in a body.
+: XPK-WIDE-DROP ( -- )
+   s" top-level drop of a point" s" drop depth 100 + . cr" XPK-PT-DROP
+   s" top-level drop of a stale point"
+   s" ' PT:SMASH catch drop drop depth 100 + . cr" XPK-PT-DROP
+   XPK-LT-DROP ;
+
+\ A user's global `drop`, defined after `undefine drop`, runs once, as any word.
+: XPK-USER-DROP ( -- )
+   s" a user's global drop runs once at top level" T-LABEL
+   SB-RESET
+   s" undefine drop : drop ( n n -- ) + . cr ;" XPK-LINE
+   s" 1 2 drop depth 100 + . cr" XPK-LINE
+   SB$ XPK-RUN-STDIN
+   0 XPK-ASSERT-RC  s" 3" XPK-OUT?  s" 100" XPK-OUT? ;
 
 T-RESET
 XPK-PREPARE
 XPK-POSITIVES
 XPK-NEGATIVES
 XPK-WIDE-PARITY
+XPK-WIDE-TAKE
+XPK-WIDE-DROP
+XPK-USER-DROP
 XPK-CLEANUP
 T-REPORT
 s" export-package: ok" type cr
