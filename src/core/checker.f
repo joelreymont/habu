@@ -4959,12 +4959,26 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : TOKBUF-ALLOC ( n -- ptr u8 )
    map-anon 0 <> IF drop s" checker: token buffer mmap failed" 76 die THEN ;
 
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+
+: TOKBUF-CARRY ( ptr u8 n -- ptr u8 )
+   {: old:ptr cap:n :}
+   cap TOKBUF-ALLOC {: new:ptr :}
+   old new TOKBUF-CAP-U @ CCOPY  new ;
+
+\ A grown buffer starts with the old one's bytes, and the old mapping stays:
+\ a caller may hold a pointer into it across a TOKBUF-ENSURE.
 : TOKBUF-GROW {: need :}
    need TOKBUF-ROUND-CAP {: cap :}
-   cap TOKBUF-ALLOC FAILTK!
-   cap TOKBUF-ALLOC TKF!
-   cap TOKBUF-ALLOC NMB!
-   cap TOKBUF-ALLOC SDEC!
+   FAILTK cap TOKBUF-CARRY FAILTK!
+   TKF cap TOKBUF-CARRY TKF!
+   NMB cap TOKBUF-CARRY NMB!
+   SDEC cap TOKBUF-CARRY SDEC!
    cap TOKBUF-CAP-U ! ;
 : TOKBUF-ENSURE {: need :}
    need TOKBUF-CAP-U @ <= IF exit THEN
@@ -6940,13 +6954,6 @@ CHECKER-REG:}SCRATCH
 : PIN-TOKEN ( -- ptr u8 n )
    FAILSET @ 0= IF NULL-PTR 0 EXIT THEN
    FAILTK FAILTU @ ;
-
-: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@
-      over d + c!
-      1 +
-   REPEAT drop ;
 
 \ The offset of the text at A U in the checked text, -1 when it lies outside.
 : CHECKED-OFF ( ptr u8 n -- n )
@@ -15934,8 +15941,6 @@ variable CURSYM
    sym s" cwork-span" UNSAFE-NAME? or
    sym s" cwork-variable" UNSAFE-NAME? or ;
 
-\ Growing the token buffers drops what they hold, so a caller that reports a
-\ token its scan left there sizes them before that scan.
 : CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
    DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
    nu su + TOKBUF-ENSURE

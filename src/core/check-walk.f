@@ -2070,16 +2070,6 @@ package CHECKER-REG
    MULTI-ERR? REJECTION:QUIET @ 0= and IF 1 REJECTION:TALLY +! THEN
    v ;
 
-\ Both compilers report a clause their check refused the same way, but they name
-\ the definer only after the scan, so the token buffers are sized for the clause
-\ name here. A grown buffer starts empty and the old one stays mapped, so the
-\ refused token is carried over from it.
-: CHECKER-NATIVE-DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
-   FAILTK {: tk:ptr :}
-   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
-   FAILTK tk <> IF tk FAILTK FAILTU @ CCOPY THEN
-   v na nu DOES-REPORT ;
-
 \ A clause is inside its definer's definition, so a refusal of the definition
 \ that leaves the clause's walk by a throw is, in a multi-error load, a refused
 \ clause like one its verdict refuses. Its packet, rendered where the refusal
@@ -2098,13 +2088,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 REJECTION:TALLY +!
    0 ;
 
-\ The clause's name is written after the scan, so the token buffers are sized
-\ for it first: growing them afterwards would drop the refused token being
-\ reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
-   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
@@ -2879,7 +2865,7 @@ package CHECKER-REG
 ' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
 ' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
 ' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
-' CHECKER-NATIVE-DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
+' DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
 
 \ A checker claims the source only where nothing owns it, after every callback
 \ is installed.

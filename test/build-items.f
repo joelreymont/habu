@@ -22,7 +22,8 @@
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
 \ in its package would, and EFFECT:IN a type that is no effect. A build of a
 \ program whose source stores a definer's type is rejected with the record its
-\ load prints.
+\ load prints. A rejected built local whose type text outgrows the checker's
+\ first token buffers still names its definition.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -566,5 +567,22 @@ public
 ;package
 
 BITEM-STORED:RUN
+
+\ A fresh hb runs the fixture: the case needs the token buffers at their first
+\ capacity, which an earlier check in this process could have grown.
+package BITEM-LONG-TYPE
+private
+: LONG ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" test/fixtures/build-items/long-type.f" CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 70 T=
+   CMD:ERR$ s" hook: non-certified definition: bi-long" CONTAINS? TTRUE ;
+
+public
+: RUN ( -- ) [: LONG ;] CMD:WITH-COMMAND ;
+;package
+
+BITEM-LONG-TYPE:RUN
 
 T-REPORT
