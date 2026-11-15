@@ -212,17 +212,27 @@ public
 
 private
 
+\ Runs a source. A code from 1 to 255 is an exit status the program chose; any
+\ other ends the process with the record of the throw nothing caught.
+: RUN-SOURCE ( [ -- ] -- )
+   {: q :}
+   q catch {: rc:n :}
+   rc 0= if exit then
+   rc 0 >  rc 256 <  and if rc throw then
+   rc INTERPRETER:UNCAUGHT
+   NULL$ UNCAUGHT-RC die ;
+
 \ An application's MAIN takes the arguments, then stdin is the source. Off
 \ one, an argument names what runs and stdin is its data; else stdin is source.
 : ROUTED ( -- )
    APP? if
       APP-RUN
-      TTY? if INTERPRETER:REPL else STDIN RUN-TEXT then
+      TTY? if INTERPRETER:REPL else [: STDIN RUN-TEXT ;] RUN-SOURCE then
       exit
    then
-   ARGC 1 > if ARGV-BASE ARGC RUN exit then
+   ARGC 1 > if [: ARGV-BASE ARGC RUN ;] RUN-SOURCE exit then
    TTY? if INTERPRETER:REPL exit then
-   STDIN RUN-TEXT ;
+   [: STDIN RUN-TEXT ;] RUN-SOURCE ;
 
 public
 
