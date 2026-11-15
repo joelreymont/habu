@@ -3378,7 +3378,7 @@ variable LOAD-U
    [: BODY-LOAD-RESOLVE? ;] catch {: rc:n :}
    rc 0= IF EXIT THEN
    drop
-   rc E-PATH-RANGE =  rc E-PATH-NUL =  or 0= IF rc throw THEN
+   rc E-PATH-RANGE <> IF rc throw THEN
    false ;
 
 \ The loads waiting in this file, in loader order. A file one of them loads
@@ -4401,9 +4401,12 @@ private
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ The record of a path or label u bytes long, which a composition cannot hold.
-: COMPOSE-PATH-STOP ( n -- ) {: u:n :}
+\ The record of a path or label a u, which a composition cannot hold. It
+\ stands at a u where a source holds it, else at the token the engine read last.
+: COMPOSE-PATH-STOP ( ptr u8 n -- ) {: a:ptr u:n :}
    s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" u PATH-CAP REJECTION:PATH-RANGE
+   a REJECTION:PLACES? IF a u ELSE SRCLOC:TOKEN$ THEN REJECTION:AT
+   u 0= IF s" empty path" ELSE s" too long" THEN REJECTION:EMIT-STR
    REJECTION:HELP
    s" pass a path of 1 to " REJECTION:EMIT-STR  PATH-CAP REJECTION:EMIT-U
    s"  bytes" REJECTION:EMIT-STR
@@ -4418,8 +4421,8 @@ public
 : SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" COMPOSE-NESTED THEN
-   pathu 0= pathu PATH-CAP > or IF pathu COMPOSE-PATH-STOP THEN
-   labelu PATH-CAP > IF labelu COMPOSE-PATH-STOP THEN
+   pathu 0= pathu PATH-CAP > or IF path pathu COMPOSE-PATH-STOP THEN
+   labelu PATH-CAP > IF label labelu COMPOSE-PATH-STOP THEN
    path COMPOSE-SUBJ-PATH pathu BYTE-COPY
    pathu COMPOSE-SUBJ-PATH-U !
    label COMPOSE-SUBJ-LABEL labelu BYTE-COPY

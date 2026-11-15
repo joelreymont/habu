@@ -652,10 +652,17 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    repeat
    drop INCLUDE-TRUE ;
 
-\ Word w got a path that, joined to the current root, is len bytes, more than
-\ PATH-CAP; len is -1 when only its realpath is longer.
-: ROOT-LONG ( ptr u8 n n -- ) {: w:ptr wu:n len:n :}
+\ Word w got the path a u that, joined to the current root, is len bytes, more
+\ than PATH-CAP; len is -1 when only its realpath is longer. The record stands
+\ at a u where a source holds it, else at the token the engine read last.
+: ROOT-LONG ( ptr u8 n ptr u8 n n -- ) {: w:ptr wu:n a:ptr u:n len:n :}
    w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+   a REJECTION:PLACES? if a u else SRCLOC:TOKEN$ then REJECTION:AT
+   len 0 < if
+      s" too long once resolved"
+   else
+      len u = if s" too long" else s" too long once joined to the current root" then
+   then REJECTION:EMIT-STR
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
@@ -663,11 +670,11 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
-   u INCLUDE-PATH-CAP > if w wu u ROOT-LONG then
+   u INCLUDE-PATH-CAP > if w wu a u u ROOT-LONG then
    CURRENT$ a u JOIN {: p:ptr pu:n :}
-   pu INCLUDE-PATH-CAP > if w wu pu ROOT-LONG then
+   pu INCLUDE-PATH-CAP > if w wu a u pu ROOT-LONG then
    p pu ROOT-N {: n:n :}
-   n -2 = if w wu -1 ROOT-LONG then
+   n -2 = if w wu a u -1 ROOT-LONG then
    n -1 = if
       w wu p pu s" does not resolve to a directory"
       s" name an existing directory" PATH-DIE
