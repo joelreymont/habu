@@ -20,6 +20,7 @@ require src/lib/span.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/sort.f
+require src/lib/hashmap.f
 require src/habu/escape.f
 require src/habu/verify-source.f
 
@@ -252,15 +253,55 @@ variable SD-SCOPES
    row 0 < if 0 0 exit then
    row SD-R-NAME @ row SD-R-NAME-U @ ;
 
+\ Records by file and offset, so a lookup need not walk a file's chain. The pair
+\ folds into one exact key: an offset indexes bytes held in memory, below 2^48 on
+\ every target, and a file id counts files read. An entry may outlive its
+\ record's place in the chain; SD-R-AT checks the record it names.
+DYNAMIC-BUFFER SD-X-KEYS n
+DYNAMIC-BUFFER SD-X-USED n
+DYNAMIC-BUFFER SD-X-ROW n
+variable SD-X-CAP
+variable SD-X-N
+
+: SD-X-KEY ( n n -- n ) {: file:n off:n :}  file 48 lshift off or ;
+
+: SD-X-SLOT ( n -- n ) {: key:n :}
+   0 SD-X-KEYS  0 SD-X-USED  SD-X-CAP @  key HM:PROBE ;
+
+: SD-X-EMPTY ( n -- ) {: cap:n :}
+   cap SD-X-KEYS-RESERVE  cap SD-X-USED-RESERVE  cap SD-X-ROW-RESERVE
+   0 SD-X-USED cap HM:CLEAR
+   cap SD-X-CAP !
+   0 SD-X-N ! ;
+
+: SD-X-FILE ( n -- ) {: r:n :}
+   r SD-R-FILE @ r SD-R-OFF @ SD-X-KEY {: key:n :}
+   key SD-X-SLOT {: s:n :}
+   s SD-X-USED @ 0= if
+      1 s SD-X-USED !  key s SD-X-KEYS !  1 SD-X-N +!
+   then
+   r s SD-X-ROW ! ;
+
+\ An entry that would fill more than half the table first refiles it at twice
+\ the size. Only active records' entries can answer, so only they are refiled.
+: SD-X-SET ( n -- ) {: r:n :}
+   SD-X-N @ 1+ 2 * SD-X-CAP @ > if
+      SD-X-CAP @ 2 * 16 max SD-X-EMPTY
+      SD-R-N @ 0 ?do i SD-R-ACTIVE @ 0<> if i SD-X-FILE then loop
+   then
+   r SD-X-FILE ;
+
 \ The walked file's record at OFF, -1 for none or for a file no harvest read.
+\ A record is in its file's chain exactly while it is active.
 : SD-R-AT ( n -- n ) {: off:n :}
    SD-FILE-ID @ {: file:n :}
-   file 0 < if -1 exit then
-   file SD-F-HEAD @
-   begin dup 0 >= while
-      dup SD-R-OFF @ off = if exit then
-      SD-R-NEXT @
-   repeat ;
+   file 0 < SD-X-CAP @ 0= or if -1 exit then
+   file off SD-X-KEY SD-X-SLOT {: s:n :}
+   s SD-X-USED @ 0= if -1 exit then
+   s SD-X-ROW @ {: r:n :}
+   r SD-R-N @ >= if -1 exit then
+   r SD-R-ACTIVE @ 0<>  r SD-R-FILE @ file = and  r SD-R-OFF @ off = and
+   if r else -1 then ;
 
 : SD-R-RECORD ( n n n n -- n ) {: off:n noff:n nu:n kind:n :}
    SD-HARVESTING @ 0= if -1 exit then
@@ -296,6 +337,7 @@ variable SD-SCOPES
    0 r SD-R-BARE-OFF !
    0 r SD-R-CANON !
    r 1+ SD-R-N !
+   r SD-X-SET
    r ;
 
 \ Exactly one non-edge colon qualifies a name. The tail is the word defined
@@ -665,6 +707,7 @@ variable SD-SCOPES
       SD-R-OLD-HEAD @
       begin dup 0 >= while
          1 over SD-R-ACTIVE !
+         dup SD-X-SET
          SD-R-NEXT @
       repeat drop
       SD-R-START-N @ SD-R-N !
@@ -1509,6 +1552,8 @@ public
    0 SD-R-BYTES-U !
    0 SD-R-VERSION !
    0 SD-S-N !
+   0 SD-X-CAP !
+   0 SD-X-N !
    SD-R-BYTES-RELEASE
    SD-F-AT-RELEASE SD-F-U-RELEASE SD-F-HEAD-RELEASE SD-F-START-RELEASE
    SD-F-SITE-RELEASE
@@ -1521,7 +1566,8 @@ public
    SD-R-CANON-RELEASE
    SD-C-ROW-RELEASE SD-C-OWNER-RELEASE SD-C-ORDER-RELEASE
    SD-E-SPEC-RELEASE
-   SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE ;
+   SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE
+   SD-X-KEYS-RELEASE SD-X-USED-RELEASE SD-X-ROW-RELEASE ;
 
 : ROWS-VERSION ( -- n ) SD-R-VERSION @ ;
 : EVENT-SPEC@ ( n -- bool ) SD-E-SPEC @ 0<> ;
