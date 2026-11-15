@@ -150,8 +150,6 @@ CAST: CELL>PTR ( n -- ptr u8 )
 : FFI-STACK-U32! ( n n -- )
    {: v:n off:n :}
    v off 4 FFI-STACK-AT LE:U32! ;
-: FFI-X8! ( n -- )
-   8 FFI-ARG! ;
 
 \ ---- out-params -----------------------------------------------------------
 : FFI-OUT@ ( ptr n -- n )
@@ -187,8 +185,6 @@ CAST: CELL>PTR ( n -- ptr u8 )
    idx FFI-KPARAM-VAL-SLOT FFI-KPARAM+ ;
 : FFI-KPARAMS ( -- ptr n n )
    FFI-KPARAM-PBUF FFI-KPARAM-COUNT ;
-: FFI-KPARAMS>N ( -- n )
-   FFI-KPARAM-PBUF PTR>CELL ;
 
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
@@ -634,8 +630,6 @@ public
    value PTR>CELL off FFI-STACK! ;
 
 : ARGS ( -- ptr n ) FFI-BUF ;
-: FLOATS ( -- ptr r ) FFI-FBUF ;
-: STACK ( -- ptr n ) FFI-STACK-BUF ;
 
 : OUT@ ( ptr n -- n ) FFI-OUT@ ;
 : OUT! ( n ptr n -- ) FFI-OUT! ;
@@ -644,7 +638,6 @@ public
 : KPARAM+ ( ptr a -- ) FFI-KPARAM+ ;
 : KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
 : KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
-: KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
 
 \ FFI is the only library code that writes a terminator.
 private

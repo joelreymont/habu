@@ -14,7 +14,6 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/source.f
-require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/json.f
 require tools/hb-build-report.f
