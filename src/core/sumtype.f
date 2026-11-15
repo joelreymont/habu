@@ -219,17 +219,14 @@ public
    ta tu TDA-KEEP
    code throw ;
 
-private
-
-\ Places the record at one token and names another as its `word` note.
-: TDECL-THROW-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )   \ place, name, reason, fix, code
-   {: pa:ptr pu:n na:ptr nu:n wa:ptr wu:n fa:ptr fu:n code:n :}
+\ Places the record at the declaration's name and names the generated word NA
+\ NU, which has no source token, as its `word` note.
+: TDECL-THROW-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )   \ name, reason, fix, code
+   {: na:ptr nu:n wa:ptr wu:n fa:ptr fu:n code:n :}
    wa wu fa fu code TDECL-ARM
-   pa pu TDECL-TOK!
+   TDN-A @ TDN-U @ TDECL-TOK!
    na nu TDA-KEEP
    code throw ;
-
-public
 
 \ --- transactional mark/restore over every store a declaration can grow.
 \ The family and variant stores go back through TFAM-REWIND (type-family.f), not
@@ -1537,7 +1534,7 @@ private
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      TDN-A @ TDN-U @  TDGEN-NA @ TDGEN-NU @  s" generated declaration already defined"
+      TDGEN-NA @ TDGEN-NU @  s" generated declaration already defined"
          TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
@@ -2274,7 +2271,7 @@ private
 \ rejects, is the declaration's error, asked of every child before any is made.
 : TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
-      TDN-A @ TDN-U @  na nu  s" generated declaration already defined"
+      na nu  s" generated declaration already defined"
          TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    na nu TDECL-NAME-PREFLIGHT-XT ;

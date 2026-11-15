@@ -972,6 +972,23 @@ s\" error[E-BAD-DECLARATION]: bad product declaration `tdgclash`\n"
 s" tdgclash" s" generated declaration already defined" TDT-AT
 s\" = word: TDGCLASH-UNMAKE\n" TDT-HAS
 ;package
+package tdgaddr
+private
+create TDGADDR-AT
+s" STRUCTURE tdgaddr DERIVE addr FIELD id n ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdgaddr`\n"
+s" tdgaddr" s" generated declaration already defined" TDT-AT
+s\" = word: TDGADDR-AT\n" TDT-HAS
+;package
+\ The engine sealed DECL-EVENT, the namespace a public family `event` of a
+\ package DECL publishes its constructor into.
+package DECL
+public
+s" PRODUCT event FIELD a n ;PRODUCT"
+s\" error[E-BAD-DECLARATION]: bad product declaration `event`\n"
+s" event" s" would change a sealed package" TDT-AT
+s\" = word: DECL-EVENT:MAKE\n" TDT-HAS
+;package
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM
