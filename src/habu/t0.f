@@ -31,6 +31,9 @@ require src/habu/t0-emit.f
 
 package COMP
 
+EXPORT CHECK:BODY-ARM
+EXPORT CHECK:DISARMER
+
 \ ---- the tape ----------------------------------------------------------------
 \ THE ORDINALS. The checker files what it proved about a token under that
 \ token's ordinal (src/core/checker.f SCAN-REPORT), and the tape holds one row
@@ -2327,7 +2330,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    VERDICT-CK
    E-COMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: [: LOWER ;] [: SHUT ;] finally ;]
-   SRC$ CHECK:BODY-ARM CHECK:DISARMER finally ;
+   SRC$ BODY-ARM DISARMER finally ;
 
 \ ---- the fixed bodies --------------------------------------------------------
 \ The fixed bodies, on one unit.

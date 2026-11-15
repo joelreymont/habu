@@ -39,8 +39,6 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    nm b - REJECTION:MAP-BIAS!
    RES-TRUE ;
 
-public
-
 \ Gives the checker the token that closes the text a u, which the text does
 \ not hold (REJECTION:CLOSER!), so a structure still open there is rejected at
 \ it as the load rejects it. Only text of the pending definition's body text is
@@ -70,8 +68,6 @@ public
 \ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, and the closer.
 : DISARMER ( bool -- [ -- ] )
    if [: REJECTION:SOURCE-OFF ;] else [: REJECTION:CLOSER-OFF ;] then ;
-
-private
 
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.
