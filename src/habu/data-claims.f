@@ -178,7 +178,7 @@ create TAB
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
-   $3A00                              $288                    CLAIM FFI-BUFFERS
+   FFI-ABI:START                      FFI-ABI:BYTES           CLAIM FFI-ABI
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL

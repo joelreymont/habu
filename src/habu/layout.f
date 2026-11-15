@@ -396,9 +396,7 @@ WRITE-OFF DEVICES 8 * + constant END
 
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry, set at
 \ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
-\ cells no compiled source writes, between the FFI buffer block ($3A00..$3C88),
-\ the task TCB cells ($3C88..$3CA0) and the protected-WID registry
-\ ($3CB8..$40C0).
+\ cells no compiled source writes.
 $3CA0 constant EVALREC-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; membership gates the
@@ -1047,6 +1045,29 @@ SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
 FMT-ABI:END constant START
 START constant SB-BUF-OFF
 SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
+START BYTES + constant END
+;package
+
+\ FFI-ABI is src/lib/ffi-abi.f's per-task call staging, declared here because
+\ ffi-abi.f is baked into the engine.
+package FFI-ABI
+public
+16 cells constant BUF-BYTES
+8 cells constant FBUF-BYTES
+16 cells constant STACK-BUF-BYTES
+16 cells constant KPARAM-PBUF-BYTES
+16 cells constant KPARAM-VBUF-BYTES
+$40 constant DLBUF-BYTES
+1 cells constant KPARAM#-BYTES
+$3A00 constant START
+START constant BUF-OFF
+BUF-OFF BUF-BYTES + constant FBUF-OFF
+FBUF-OFF FBUF-BYTES + constant STACK-BUF-OFF
+STACK-BUF-OFF STACK-BUF-BYTES + constant KPARAM-PBUF-OFF
+KPARAM-PBUF-OFF KPARAM-PBUF-BYTES + constant KPARAM-VBUF-OFF
+KPARAM-VBUF-OFF KPARAM-VBUF-BYTES + constant DLBUF-OFF
+DLBUF-OFF DLBUF-BYTES + constant KPARAM#-OFF
+KPARAM#-OFF KPARAM#-BYTES + START - constant BYTES
 START BYTES + constant END
 ;package
 

@@ -40,53 +40,46 @@ s" src/lib/memory.f" required
 
 package FFI
 
-16 constant FFI-MAX-ARGS
-8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
+FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
+\ AAPCS64's integer argument registers, and both ABIs' float slots.
+FFI-ABI:FBUF-BYTES 1 cells / constant REG-MAX
 16 constant FFI-MAX-KPARAMS
 2 constant FFI-RTLD-NOW
 
-$3A00 constant FFI-BUF-OFF
-$3A80 constant FFI-FBUF-OFF
-$3AC0 constant FFI-STACK-BUF-OFF
-$3B40 constant FFI-KPARAM-PBUF-OFF
-$3BC0 constant FFI-KPARAM-VBUF-OFF
-$3C40 constant FFI-DLBUF-OFF
-$3C80 constant FFI-KPARAM#-OFF
-
 : FFI-BUF ( -- ptr n )
-   data-base FFI-BUF-OFF + ;
+   data-base FFI-ABI:BUF-OFF + ;
 
 : FFI-FBUF ( -- ptr r )
-   data-base FFI-FBUF-OFF + ;
+   data-base FFI-ABI:FBUF-OFF + ;
 
 \ A C float occupies the low half of the same FP-register slot as a double.
 : FFI-F32BUF ( -- ptr n )
-   data-base FFI-FBUF-OFF + ;
+   data-base FFI-ABI:FBUF-OFF + ;
 
 \ A spill slot holds an integer, a float or narrower C bytes as the marshalled
 \ signature says, so FFI-STACK-BUF, FFI-STACK-FBUF and FFI-STACK-BYTES declare
 \ one offset at three pointees rather than one `( -- ptr a )` that would let a
 \ caller pick engine DATA's type.
 : FFI-STACK-BUF ( -- ptr n )
-   data-base FFI-STACK-BUF-OFF + ;
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
 : FFI-STACK-FBUF ( -- ptr r )
-   data-base FFI-STACK-BUF-OFF + ;
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
 : FFI-STACK-BYTES ( -- ptr u8 )
-   data-base FFI-STACK-BUF-OFF + ;
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
 : FFI-KPARAM-PBUF ( -- ptr n )
-   data-base FFI-KPARAM-PBUF-OFF + ;
+   data-base FFI-ABI:KPARAM-PBUF-OFF + ;
 
 : FFI-KPARAM-VBUF ( -- ptr n )
-   data-base FFI-KPARAM-VBUF-OFF + ;
+   data-base FFI-ABI:KPARAM-VBUF-OFF + ;
 
 : FFI-DLBUF ( -- ptr n )
-   data-base FFI-DLBUF-OFF + ;
+   data-base FFI-ABI:DLBUF-OFF + ;
 
 : FFI-KPARAM# ( -- ptr n )
-   data-base FFI-KPARAM#-OFF + ;
+   data-base FFI-ABI:KPARAM#-OFF + ;
 
 \ CELL>PTR stays private: a foreign address carries no length, so only a word
 \ that knows the callee's width may publish one.
@@ -597,8 +590,6 @@ private
 
 public
 
-: BUF-OFF ( -- n ) FFI-BUF-OFF ;
-: KPARAM-END-OFF ( -- n ) FFI-KPARAM#-OFF CELL + ;
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
 \ FFI:NOW alone is RTLD_LOCAL on Linux, so PROCESS-SYMBOLS cannot see the

@@ -59,13 +59,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI:KPARAM-RESET
    [: 17 0 do i FFI:KPARAM-VALUE+ loop ;] E-FFI-ARITY TTHROWSQ ;
 
-\ EVALREC-CELL (src/habu/layout.f) must lie outside the FFI task-DATA block
-\ [FFI:BUF-OFF, FFI:KPARAM-END-OFF): an FFI call fills that block, and an overlap
-\ sends a throw that crosses an evaluate boundary to a data address.
-: FFI-T-EVALREC-DISJOINT ( -- )
-   EVALREC-CELL FFI:BUF-OFF <
-   EVALREC-CELL FFI:KPARAM-END-OFF >= or TTRUE ;
-
 \ The first entry points at the FFI-owned cell holding 13, the second at the
 \ caller's cell.
 : FFI-T-KPARAMS ( -- )
@@ -208,7 +201,6 @@ variable FFI-T-PADS
 
 : FFI-ABI-RUN ( -- )
    T-RESET
-   FFI-T-EVALREC-DISJOINT
    FFI-T-OUT-PARAM
    FFI-T-REQUIRED
    FFI-T-KPARAMS
