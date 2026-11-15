@@ -520,10 +520,6 @@ private
    CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
    CHK-SOURCE ;
 
-: CHK-DISC-FAIL ( n -- )
-   s" check.f: " CHK-ERR
-   CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
-
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
@@ -544,23 +540,10 @@ private
    recu 0<> if rec recu CHK-ERR-LN then
    refusal if CHK-E-CHECK CHK-THROW then ;
 
-\ Discovery stops at a string or a locals group a file never closes, at its
-\ opener in the file that ended the walk (CHK-DISC-ID), the subject's bytes
-\ under their label among them, and is reported there: a string by the lexer's
-\ record, and an end the lexer does not see, such as a `{:` group left open, by
-\ the record of a statement that throws discovery's code. The check fails as a
-\ refusal.
-: CHK-DISC-STOPPED ( -- )
-   CHK-DISC-ID @ {: id:n :}
-   E-DISC-UNTERM DISCOVER:OPENER-AT id CHK-FILE-NAME$
-   id CHK-DEP$ id CHK-BYTES-ID @ = CHK-STOP-BYTES s" " CHK-STOP-WRITE
-   CHK-E-CHECK CHK-THROW ;
-
-\ A closure the walk cannot follow fails the check as a refusal. Under
-\ --json-errors it is the walk's packet (CHK-FAULT$), placed at the form
-\ discovery refused or at the loader word naming a file that is not there or
-\ cannot be read; otherwise, or for a walk that ended at its own top, it is
-\ prose.
+\ A closure the walk cannot follow fails the check as a rejection. Under
+\ --json-errors it is the walk's packet (CHK-FAULT$), placed at the loader word
+\ naming a file that is not there or cannot be read; otherwise, or for a walk
+\ that ended at its own top, it is prose.
 : CHK-EXPAND-JSON ( n -- )
    CHK-FAULT$ {: a:ptr u:n :}
    u 0= if exit then
@@ -576,9 +559,8 @@ private
 : CHK-EXPAND-REPORT ( n -- )
    {: rc:n :}
    rc 0= if exit then
-   rc E-DISC-UNTERM = if CHK-DISC-STOPPED then
+   rc CHK-DISC-RC? if CHK-E-CHECK CHK-THROW then
    CHK-JSON @ if rc CHK-EXPAND-JSON then
-   rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
    rc CHK-E-NOINPUT = if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    rc CHK-E-IOERR = if CHK-DISC-ID @ CHK-DEP$ CHK-READ-FAIL then
    rc throw ;

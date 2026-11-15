@@ -339,15 +339,11 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-DEP$ CHK-FILE-READ ;
 
 \ The packet for the fault RC that ended the walk, CHK-EXPAND's code, at the
-\ token that shows it: the form discovery refused in the file it read, or the
 \ loader word that names a file that is not there or cannot be read. Empty for
-\ a walk that ended at its own top, which no loader word names.
+\ a walk that ended at its own top, which no loader word names. A form
+\ discovery rejected wrote its record where discovery met it.
 : CHK-FAULT$ ( n -- ptr u8 n )
    {: rc:n :}
-   rc CHK-DISC-RC? if
-      rc DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-DISC-ID @ CHK-FILE-NAME$
-      VERIFY-DIAGNOSTICS:LOADER-RECORD$ exit
-   then
    CHK-EDGE @ {: edge:n :}
    edge 0 < if NULL$ exit then
    edge CHK-DIR-FROM @ {: from:n :}
