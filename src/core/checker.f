@@ -12747,7 +12747,6 @@ CHECKER-REG:}SCRATCH
 \ cells; empty cells fail open only in engines with no TFAM registry (stage
 \ builders, which see no user declarations).
 7111 constant E-CTOR-PROTECTED
-7121 constant E-CHECKER-LAYOUT-BUFFER
 7202 constant E-CHECKER-STORAGE-UNRESOLVED
 7205 constant E-CHECKER-IDENTITY-UNRESOLVED
 defer CTOR-PKG?-XT ( ptr u8 n -- bool )
@@ -16067,10 +16066,12 @@ PENDING-MARKED 0 CELL-ROW+
       row 0 RLINK-CELLS ARENA-CELLS-ZERO
    THEN ;
 
+\ def-occ-select returns ORD's own slot and a nonzero occurrence or throws. A row
+\ under the current occurrence holds no grid: a link write clears it, and a body
+\ close attaches only where none is held.
 : RECORD-LINK-GRID-ATTACH ( n n -- ) {: ord:n grid:n :}
    grid RECORD-GRID-REC drop
-   ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
-   slot ord <> occurrence 0= or IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   ord CHECK:RECORD-LINK-OCC nip {: occurrence:n :}
    ord RECORD-LINK-ROOM
    ord RECORD-LINK-CELL {: row:ptr :}
    row RLINK.OCC cells + @ 0 <>
@@ -16080,7 +16081,6 @@ PENDING-MARKED 0 CELL-ROW+
       row RLINK.GRID cells + @ grid <> IF row RECORD-GRID-DISCARD THEN
       ord RECORD-LINK-CLEAR
    THEN
-   row RLINK.GRID cells + @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
    occurrence row RLINK.OCC cells + !
    grid row RLINK.GRID cells + !
    grid RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI !
@@ -16258,11 +16258,11 @@ package CHECKER-REG
    ord RECORD-LINK-CURRENT? 0= IF 0 EXIT THEN
    ord RECORD-LINK-CELL RLINK.GRID cells + @ ;
 
+\ GRID is the nonzero grid RECORD-GRID-BEFORE read for OWNER at its own ordinal;
+\ the engine calls this only for one.
 : RECORD-GRID-AFTER ( ptr n n -- ) {: owner:ptr grid:n :}
-   grid 0= IF EXIT THEN
    owner CHECKER-RESOLVE:REC>INDEX {: ord:n :}
-   ord 0 < ord ndict@ >= or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   ord CHECKER-RESOLVE:REC-AT owner <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   ord ndict@ >= IF s" checker: does> publication cut its created record" 76 die THEN
    ord grid RECORD-LINK-GRID-ATTACH ;
 
 \ The registrar records the next ordinal while the engine still holds its

@@ -7,7 +7,6 @@
 using TYPE-DECL
 
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
-E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
