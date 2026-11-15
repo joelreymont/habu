@@ -168,9 +168,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
-   s" test/program-diagnostic-me.f" s" <input>:1:19" DIAGNOSTIC
+   s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
-   s" 1 | : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
+   s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ptr u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC

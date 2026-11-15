@@ -280,11 +280,12 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
    70 s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
-   s" <input>:1:66" s" hb bad trusted DOES> diagnostic names drop" GE-EXPECT-ERR-HAS
+   s" = evaluated: TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" s" hb bad trusted DOES> diagnostic evaluated note" GE-EXPECT-ERR-HAS
+   s" the stack holds n after this" s" hb bad trusted DOES> diagnostic label" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
-   76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
+   70 s" error[E-MISSING-SIGNATURE]: `does>` has no closed" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
 \ Each failed `is` and `defer` names its cause; the message is asserted, as the
 \ exit codes alone are not distinct. The checker refuses the three `is` cases.
@@ -295,14 +296,14 @@ variable CANDIDATE-VERDICT
    s" : DMINE ( -- ) ;" GE-SRC-LINE
    s" : DARM ( -- ) [: DMINE ;] is DNOSUCH ;" GE-SRC-LINE
    70 s" error[E-UNDEFINED]" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
-   s" at `DNOSUCH`" s" hb is-target-not-found names DNOSUCH" GE-EXPECT-ERR-HAS
+   s" `DNOSUCH`" s" hb is-target-not-found names DNOSUCH" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" : DPLAIN ( -- ) ;" GE-SRC-LINE
    s" : DMINE3 ( -- ) ;" GE-SRC-LINE
    s" : DARM3 ( -- ) [: DMINE3 ;] is DPLAIN ;" GE-SRC-LINE
    70 s" error[E-NOT-DEFERRED]" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
-   s" at `DPLAIN`" s" hb is-target-not-a-defer names DPLAIN" GE-EXPECT-ERR-HAS
+   s" `DPLAIN`" s" hb is-target-not-a-defer names DPLAIN" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" : DMINE4 ( -- ) ;" GE-SRC-LINE
@@ -819,7 +820,8 @@ variable CANDIDATE-VERDICT
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   $4E s" RESET" s" package rejects duplicate public word" RUN-BAD-SOURCE
+   70 s" RESET" s" package rejects duplicate public word" RUN-BAD-SOURCE
+   s" /test/gate-dictionary.f:11:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
@@ -843,7 +845,7 @@ variable CANDIDATE-VERDICT
    s" variable CELL" GE-SRC-LINE
    s" variable cell" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   $4E s" cell" s" package rejects duplicate variable word" RUN-BAD-SOURCE
+   70 s" cell" s" package rejects duplicate variable word" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
@@ -853,26 +855,26 @@ variable CANDIDATE-VERDICT
    s" undefine GD-HDUP" GE-SRC-LINE
    s" : GD-HDUP ( -- n ) 2 ;" GE-SRC-LINE
    s" : GD-HDUP ( -- n ) 3 ;" GE-SRC-LINE
-   $4E s" GD-HDUP" s" hash dup-probe rejects duplicate behind a retired slot" RUN-BAD-SOURCE
+   70 s" GD-HDUP" s" hash dup-probe rejects duplicate behind a retired slot" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" variable GD-TV" GE-SRC-LINE
    s" TYPED-VARIABLE GD-TV n" GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `GD-TV` is already defined" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `GD-TV` is already defined" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" TYPED-VARIABLE over n" GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `dup` is already defined" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `dup` is already defined" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" variable over" GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" global variable named like a built-in rejects" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" global variable named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" create swap 1 ," GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `swap` is already defined" s" global create named like a built-in rejects" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `swap` is already defined" s" global create named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" 5 constant drop" GE-SRC-LINE
-   $4E s" error[E-DUPLICATE-DEFINITION]: `drop` is already defined" s" global constant named like a built-in rejects" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `drop` is already defined" s" global constant named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" package P4" GE-SRC-LINE
    s" : dup ( n -- n n ) 7 ;" GE-SRC-LINE
@@ -1062,25 +1064,25 @@ variable CANDIDATE-VERDICT
    s" : H ( -- n ) 2 ;" SB-LINE
    s" ;package" SB-LINE
    INC-MAIN$ SB$ FS:WRITE-ALL
-   $4E s" error[E-DUPLICATE-DEFINITION]: `H` is already defined" s" hb include rejects duplicate package reopen" RUN-LOAD-BAD ;
+   70 s" error[E-DUPLICATE-DEFINITION]: `H` is already defined" s" hb include rejects duplicate package reopen" RUN-LOAD-BAD ;
 
 : PACKAGE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET  s" public" GE-SRC-LINE
-   $4B s" public" s" package rejects public outside" RUN-BAD-SOURCE
+   70 s" public" s" package rejects public outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" private" GE-SRC-LINE
-   $4B s" private" s" package rejects private outside" RUN-BAD-SOURCE
+   70 s" private" s" package rejects private outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" end-package" GE-SRC-LINE
    $46 s" error[E-UNDEFINED]: cannot find word `end-package`" s" package rejects legacy closer" RUN-BAD-CHILD
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
-   $4B s" ;package" s" package rejects semicolon closer outside" RUN-BAD-SOURCE
+   70 s" ;package" s" package rejects semicolon closer outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
    s" package C" GE-SRC-LINE
-   $4B s" package" s" package rejects a part inside a part" RUN-BAD-SOURCE
+   70 s" package" s" package rejects a part inside a part" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package" GE-SRC-LINE
-   $4A s" package" s" package rejects missing name" RUN-BAD-SOURCE
+   70 s" package" s" package rejects missing name" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A:B" GE-SRC-LINE
-   $4B s" A:B" s" package rejects qualified name" RUN-BAD-SOURCE
+   70 s" A:B" s" package rejects qualified name" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
@@ -1234,7 +1236,7 @@ variable CANDIDATE-VERDICT
    SB$ s" hb enums output" GE-EXPECT-OUT
    GE-SRC-RESET
    s" 0 ENUM+ GD-EDUP ENUM+ GD-EDUP drop" GE-SRC-LINE
-   $4E s" GD-EDUP" s" enums reject duplicate constant names" RUN-BAD-SOURCE ;
+   70 s" GD-EDUP" s" enums reject duplicate constant names" RUN-BAD-SOURCE ;
 
 : EXEC-VECTOR-SOURCE ( -- )
    GE-SRC-RESET
