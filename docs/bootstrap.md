@@ -144,7 +144,7 @@ engine.
 The engine knows the files it carries by path only (`src/core/include.f`
 ENGINE-PROVIDES?). Once the tree renames one, a tool the previous engine runs
 that requires the new path loads the file a second time and stops at its first
-definition (`duplicate definition`, rc 78), and an engine built from the tree
+definition (`E-DUPLICATE-DEFINITION`), and an engine built from the tree
 stops at a `require` of the old path. While the renamed file's bytes equal the
 old file's, build the first engine in three steps; edit the file in a later
 change:

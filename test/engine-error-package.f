@@ -97,7 +97,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
-   HB$ s" :" RUN-SOURCE $4A T=
+   HB$ s" :" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `:` has no definition name" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )

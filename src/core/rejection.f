@@ -657,6 +657,18 @@ public
    s" give `" EMIT-STR  kw ku EMIT-STR
    s" ` one name, a token with no blanks" EMIT-STR ;
 
+\ The counted string the literal's opener t tu opens is longer than the max
+\ bytes its count byte holds. It is written through its help, and the caller
+\ stops it.
+: COUNTED-RANGE ( ptr u8 n n -- ) {: t:ptr tu:n max:n :}
+   s" E-COUNTED-STRING-TOO-LONG" OPEN
+   s" the counted string `" EMIT-STR  t tu EMIT-STR
+   s" ` opens is longer than its count byte holds" EMIT-STR
+   t tu AT  s" too long" EMIT-STR
+   s" limit" NOTE  max EMIT-U  s"  bytes" EMIT-STR
+   HELP  s" shorten the text, or write it with " EMIT-STR
+   S\" `s\"`" EMIT-STR  s" , which has no count byte" EMIT-STR ;
+
 \ Writes the record of word w given a path len bytes long, past the cap bytes
 \ a path may have, through the start of its help: the caller writes the help
 \ and ends the record. len is 0 for an empty path and -1 when only the path it

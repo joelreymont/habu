@@ -2199,11 +2199,6 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 
-public
-\ An undefined word in a `:` body is a rejected definition: 70 is both the
-\ catchable throw code and the uncaught exit.
-70 constant RC-REJECT
-
 private
 \ LEVALREC: a throw whose nearest handler lies beyond active evaluate boundaries
 \ lands here, x15 = throw code. Each escaped frame gives back its input cursor,
@@ -2315,10 +2310,10 @@ private
    \ BTHROW reaches LUNCAUGHT through UNCGH-CELL. A code in [1,255] is a
    \ deliberate exit contract and exits as itself with no output. Any other code
    \ would be masked to `code & 0xFF`, so it is reported as "hb: uncaught throw
-   \ code <n>\n" on fd 2 and exits UNCAUGHT-RC, or RC-REJECT when it is the
-   \ refusal the checker last rendered, already named on fd 2. x15 keeps the
-   \ code across the write (the kernel preserves x2-x15). Never returns: no RET
-   \ keeps the FPRIM-L throw leaf-safe.
+   \ code <n>\n" on fd 2 and exits UNCAUGHT-RC, or CHECKER-REJECT-RC when it
+   \ is the refusal the checker last rendered, already named on fd 2. x15 keeps
+   \ the code across the write (the kernel preserves x2-x15). Never returns: no
+   \ RET keeps the FPRIM-L throw leaf-safe.
      LUNCAUGHT LABEL@ LBL,
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    0 9 0 ADDI,
@@ -2351,7 +2346,7 @@ private
    0 UNCAUGHT-RC MOVZ,
    9 DATA REFUSAL-ABI:CODE-CELL LDR,  9 unrefused CBZ,
    9 15 CMP,  C-NE unrefused BCOND,
-   0 RC-REJECT MOVZ,
+   0 CHECKER-REJECT-RC MOVZ,
    unrefused LBL,
    NR-EXIT-GROUP SYS, ;
 
@@ -2371,7 +2366,7 @@ private
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   15 RC-REJECT MOVZ,  LEVALREC LABEL@ B, ;
+   15 CHECKER-REJECT-RC MOVZ,  LEVALREC LABEL@ B, ;
 
 \ LPLACE, a leaf (x0-x2, x9-x14 and SYS,'s registers; x15 kept), writes
 \ `<path>:<line>: `, or `<path>: ` off the file's bytes, or nothing outside one.

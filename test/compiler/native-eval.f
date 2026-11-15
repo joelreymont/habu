@@ -174,8 +174,6 @@ private
    s" an inner text's reach throws 70 through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
-74 constant UNCLOSED                    \ interpreter.f RC-UNCLOSED: a source ended inside a definition it opened
-
 \ A text that ends inside a definition it opened is refused as every buffer
 \ is, and the open definition goes with it: the code it emitted is taken back
 \ (a pending definition has no counted record, so ndict@ cannot show it), the
@@ -185,14 +183,14 @@ private
 \ its own.
 : UNFIN ( -- n )
    9 [: s" : NATIVE-EVAL-D ( -- n ) 42" evaluate-closed ;] catch
-   UNCLOSED T= ;
+   CHECKER-REJECT-RC T= ;
 
 : UNFIN-NESTED ( -- n )
    9 [: s" NATIVE-EVAL-TEST:INNER-OPEN$ evaluate-closed" evaluate-closed ;] catch
-   UNCLOSED T= ;
+   CHECKER-REJECT-RC T= ;
 
 : UNFINISHED ( -- )
-   s" a text that ends inside a definition is refused, rc 74" T-LABEL
+   s" a text that ends inside a definition is refused, rc 70" T-LABEL
    0 SEEN !
    cp@ {: code :}
    UNFIN
@@ -315,9 +313,9 @@ create ERR IO-CAP allot
    S\" s\" : NATIVE-EVAL-F ( -- n ) 42\" evaluate-closed" ;
 
 : UNFINISHED-LINE ( -- )
-   s" an uncaught unfinished text exits 74" T-LABEL
+   s" an uncaught unfinished text exits 70" T-LABEL
    UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N UNCLOSED T=
+   PROCESS:ENDING>RC RC>N CHECKER-REJECT-RC T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
    ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " CONTAINS? TTRUE
