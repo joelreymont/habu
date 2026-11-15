@@ -15461,12 +15461,11 @@ public
    STORAGE-DEFER rec ER.STORAGE-KIND ! ;
 
 \ Its one caller (CHECKER-GRID-ATTACH) hands a record it just built and a run
-\ CHECKER-BODY-CLOSE ended at or below `here`.
+\ CHECKER-BODY-CLOSE ended above a cell-aligned body start and at or below
+\ `here`: at least one whole cell inside DATA.
 : CHECKER-STORAGE-GRID ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
-   count 0 <= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    base DATA-OFF {: off:n :}
-   off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
@@ -16126,8 +16125,8 @@ PENDING-MARKED 0 CELL-ROW+
 \ dictionary occurrence: a closed `,` run.
 : CHECKER-GRID-ATTACH ( n ptr a n -- )
    {: ord:n base:ptr count:n :}
+   \ The text is fixed and parses: `a` is a type variable, `ptr` a keyword.
    s" -- ptr a" CREATED-RECORD-BUILD {: grid:n :}
-   grid 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    grid base count CHECKER-STORAGE-GRID
    ord grid RECORD-LINK-GRID-ATTACH ;
 
@@ -16173,18 +16172,40 @@ BODY-PEND-BASE 0 CELL-ROW+
    end here BYTE-VIEW data-base BYTE-VIEW - > IF EXIT THEN
    ord data-base base + CELL-VIEW end base - CELL / CHECKER-GRID-ATTACH ;
 
+\ The occurrence an earlier publish linked the record under, 0 for none. An append
+\ clears the record's link, so only its `does>`, which reissues the occurrence,
+\ finds one that differs from the current.
+: CREATED-MET-OCC ( ptr n -- n ) {: rec:ptr :}
+   rec NULL-PTR = IF 0 EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
+   ord 0 < ord ndict@ >= or ord RECORD-LINK-CAP @ >= or IF 0 EXIT THEN
+   ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
+   slot ord <> IF 0 EXIT THEN
+   ord RECORD-LINK-CELL RLINK.OCC cells + @ {: was:n :}
+   was occurrence = IF 0 EXIT THEN
+   was ;
+
+\ A create pends its body at its anchor. Its `does>` leaves the body pending,
+\ under the reissued occurrence when still its own.
 : RECORD-LINK-CREATED ( n n ptr n -- )
    {: effect:n control:n rec:ptr :}
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
-   CHECKER-BODY-CLOSE
+   rec CREATED-MET-OCC {: met:n :}
+   met 0= IF CHECKER-BODY-CLOSE THEN
    rec NULL-PTR = IF EXIT THEN
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF EXIT THEN
    ord CHECK:RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> occurrence 0= or IF EXIT THEN
-   ord CHECKER-BODY-ALLOC? IF
-      ord BODY-PEND-ORD !  occurrence BODY-PEND-OCC !
-      CREATED-BODY-ABI:COMMA-BASE-CELL COMMA-CELL-OFF BODY-PEND-BASE !
+   met 0= IF
+      ord CHECKER-BODY-ALLOC? IF
+         ord BODY-PEND-ORD !  occurrence BODY-PEND-OCC !
+         CREATED-BODY-ABI:COMMA-BASE-CELL COMMA-CELL-OFF BODY-PEND-BASE !
+      THEN
+   ELSE
+      BODY-PEND-ORD @ ord = BODY-PEND-OCC @ met = and IF
+         occurrence BODY-PEND-OCC !
+      THEN
    THEN
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
    ord effect control occurrence RECORD-LINK-WRITE ;
