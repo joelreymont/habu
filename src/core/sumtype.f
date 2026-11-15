@@ -21,7 +21,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
-7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX
+7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX, or a record past MAKE's items
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
@@ -1856,7 +1856,8 @@ public
 \ One child word per field plus AT / BYTES / CELLS, in the family's own
 \ spelling, each made by the engine's CHILD-RUN from its CHILD-ABI shape and
 \ parameter: no text, so no word of the declaring package can capture one. A
-\ field's parameter is its committed field id, AT's the family id; BYTES and
+\ field's parameter is its committed field id, a BUFFER field's child a SPAN
+\ and any other's a FIELD; AT's parameter is the family id; BYTES and
 \ CELLS are numbers. Generation runs at commit: a field id is an authority only
 \ once TYPE-FIELD has committed the row, which the runner's commit order
 \ (DECL-EVENT before the address surface) guarantees.
@@ -1871,7 +1872,8 @@ private
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fam  fs i + PF-NAME$  TDECL-ADDR-NAME
-      CHILD-ABI:FIELD  fs i +  xt execute
+      fs i + TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF CHILD-ABI:SPAN ELSE CHILD-ABI:FIELD THEN
+      fs i +  xt execute
    loop
    fam s" at" TDECL-ADDR-NAME  CHILD-ABI:INDEX fam  xt execute
    fam s" bytes" TDECL-ADDR-NAME
@@ -2078,13 +2080,6 @@ NOMINAL-PROVIDER
 : CHECKER-DEFTYPE ( ptr u8 n ptr u8 n -- ) TDECL-DEFTYPE ;
 NOMINAL-PROVIDER
 : CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
-
-\ NEWTYPE parses its family name from the input, so its cell effect is ( -- ).
-\ The axiom row keeps it checker-known: the sealed checker refuses a word it has
-\ no row for. UNSAFE-TOK? rejects it inside checked bodies (it parses the live
-\ input and mutates the type registry at run time, which ( -- ) does not
-\ express), so the axiom adds no checked-code capability.
-PRIM: NEWTYPE PRIM;
 
 ;using
 ;using

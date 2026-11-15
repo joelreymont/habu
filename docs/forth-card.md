@@ -384,6 +384,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
 | `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
+| `STRUCTURE p … BUFFER b N … ;STRUCTURE` | N bytes inline in a record, N a number literal above 0, from the next cell; the record stays whole cells; `MAKE` takes ceil(N / CELL) `n` for it; a record of more than 4096 items is refused `E-TDECL-CAP`, and one with a `BUFFER` refuses `DERIVE eq`, `hash` and `init` | under `DERIVE addr`, `P:B ( ptr p -- SPAN:span<u8> )`, N bytes |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
@@ -675,7 +676,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` checks |
+| Checked code and primitive boundaries | `TRUST`, a new `EPRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |

@@ -295,9 +295,17 @@ public
 LOCAL-BIND-CAP-TEST:RUN
 
 \ --- negatives: non-transport touches still fail closed --------
-\ ?dup branches on the tag cell: width-breaking, so it rejects a layout value.
-s" TD12-QDUP ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-QDUP-ENUM ( tdlight -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ ?dup has no checked form: over a layout value it is rejected as an undefined
+\ word, as over a scalar.
+REJECTION:CAPTURE
+s" TD12-QDUP ( tdres<n,n> -- ) ?dup drop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `?dup`\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"  --> <input>:1:29\n" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" TD12-QDUP-ENUM ( tdlight -- ) ?dup drop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `?dup`\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"  --> <input>:1:31\n" CONTAINS? TTRUE
+REJECTION:CAPTURE
 \ control predicates read the top cell: a layout value is not a flag.
 s" TD12-IF ( tdres<n,n> -- ) if then" CHECK-QUIET-CANDIDATE! 0 T=
 \ arithmetic/compare/unary inspect the cell: reject a layout value.

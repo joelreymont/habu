@@ -197,6 +197,7 @@ public
       routine OF E-NDICT-KIND throw ENDOF
       getter OF E-NDICT-KIND throw ENDOF
       setter OF E-NDICT-KIND throw ENDOF
+      bytes OF E-NDICT-KIND throw ENDOF
    ;MATCH
    entry READ-FIXED ;
 
@@ -304,18 +305,18 @@ public
 \ ---- and the literal inputs a call takes on top of its checked site inputs ---
 \ Tier 0 pushes them, deepest first, just before the call.
 : CALL-EXTRAS ( n -- n ) {: ix:n :}
-   ix CHECKER-OWNER:INIT-LAYOUT 2drop 0 >= if 3 exit then
-   ix CHECKER-OWNER:FIELD-SPAN drop 0 >= if 2 exit then
+   ix EFFECT-INIT-LAYOUT 2drop 0 >= if 3 exit then
+   ix EFFECT-FIELD-SPAN drop 0 >= if 2 exit then
    ix CON-PADS ;
 
 : CALL-EXTRA ( n n -- n ) {: ix:n k:n :}
-   ix CHECKER-OWNER:INIT-LAYOUT {: width:n bytes:n align:n :}
+   ix EFFECT-INIT-LAYOUT {: width:n bytes:n align:n :}
    width 0 >= if
       k 0= if width exit then
       k 1 = if bytes exit then
       align exit
    then
-   ix CHECKER-OWNER:FIELD-SPAN {: off:n extent:n :}
+   ix EFFECT-FIELD-SPAN {: off:n extent:n :}
    off 0 >= if
       k 0= if off exit then
       extent exit

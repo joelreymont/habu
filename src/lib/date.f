@@ -1,5 +1,11 @@
 \ date.f - Gregorian UTC dates, in `package DATE`, the one date module for the
 \ stdlib and the tool CLIs. PARSE-YMD accepts exactly YYYY-MM-DD.
+\ PARSE-HTTP accepts the three forms RFC 9110 section 5.6.7 makes a recipient
+\ accept: IMF-fixdate, RFC 850 and asctime. Each form is a template whose `_`
+\ bytes hold fields and whose other bytes must match. A day name is checked
+\ against the form, never the date; a leap second 60 reads as 59.
+\ RFC 850's two-digit year is the latest year whose timestamp exists and is
+\ no more than 50 calendar years after now.
 \ FORMAT-YMD and FORMAT-EPOCH-UTC throw E-TIME-CAPACITY for a buffer shorter than
 \ LEN / TIME-LEN and E-TIME-RANGE for a year outside 0..9999, which four digits
 \ cannot write; FORMAT-EPOCH-UTC also refuses negative epoch seconds.
@@ -7,6 +13,7 @@
 
 require src/lib/error.f
 require src/lib/adt/option.f
+require src/lib/string.f
 
 package DATE
 
@@ -192,5 +199,193 @@ public
    second DATE-PART-LEN dst DATE-SECOND-POS WIDTH!
    DATE-Z-CHAR dst DATE-Z-POS + c!
    dst TIME-LEN ;
+
+private
+3 constant DATE-NAME-LEN                \ a month or short day name
+95 constant DATE-HOLE                   \ `_`, a field byte in a template
+1970 constant DATE-EPOCH-YEAR
+50 constant DATE-YEARS-AHEAD
+100 constant DATE-DAY-SPAN              \ more than any two-digit day
+23 constant DATE-HOUR-MAX
+59 constant DATE-MINUTE-MAX
+59 constant DATE-SECOND-MAX
+60 constant DATE-LEAP-SECOND
+3 constant DATE-CLOCK-MINUTE            \ offsets in HH:MM:SS
+6 constant DATE-CLOCK-SECOND
+2 constant DATE-STAMP-DAY               \ offsets after the day name
+5 constant DATE-STAMP-MONTH
+9 constant DATE-STAMP-YEAR
+4 constant DATE-ASCTIME-MONTH
+8 constant DATE-ASCTIME-DAY
+11 constant DATE-ASCTIME-CLOCK
+20 constant DATE-ASCTIME-YEAR
+
+: IMF-TEMPLATE ( -- ptr u8 n ) s" ___, __ ___ ____ __:__:__ GMT" ;
+: RFC850-TEMPLATE ( -- ptr u8 n ) s" , __-___-__ __:__:__ GMT" ;
+: ASCTIME-TEMPLATE ( -- ptr u8 n ) s" ___ ___ __ __:__:__ ____" ;
+
+: TEMPLATE? ( ptr u8 n n ptr u8 n -- bool )
+   {: a:ptr u:n k:n t:ptr tu:n :}   \ t matches the text from byte k on
+   k 0 <  u k tu + <> or IF false exit THEN
+   tu 0 ?do
+      t i + c@ dup DATE-HOLE <>
+      swap a k + i + c@ <> and IF unloop false exit THEN
+   loop true ;
+
+: DAY-NAME= ( ptr u8 n bool ptr u8 n -- bool )
+   {: a:ptr u:n short:bool name:ptr len:n :}
+   short IF a u name DATE-NAME-LEN STR= exit THEN
+   a u name len STR= ;
+
+: DAY-NAME? ( ptr u8 n bool -- bool )
+   {: a:ptr u:n short:bool :}   \ short: the name's first three bytes
+   a u short s" Monday" DAY-NAME=
+   a u short s" Tuesday" DAY-NAME= or
+   a u short s" Wednesday" DAY-NAME= or
+   a u short s" Thursday" DAY-NAME= or
+   a u short s" Friday" DAY-NAME= or
+   a u short s" Saturday" DAY-NAME= or
+   a u short s" Sunday" DAY-NAME= or ;
+
+: MONTH-NAME ( ptr u8 n -- option<n> )
+   {: a:ptr pos:n :}   \ SOME month 1..12 named at pos
+   s" JanFebMarAprMayJunJulAugSepOctNovDec" drop {: names:ptr :}
+   DATE-DEC 0 ?do
+      a pos + DATE-NAME-LEN
+      names i DATE-NAME-LEN * + DATE-NAME-LEN STR=
+      IF i 1+ unloop OPTION:SOME exit THEN
+   loop OPTION:NONE ;
+
+: HMS ( n n n -- option<n> )
+   {: h:n mi:n s:n :}   \ SOME seconds into the day
+   h DATE-HOUR-MAX >  mi DATE-MINUTE-MAX > or
+   s DATE-LEAP-SECOND > or IF OPTION:NONE exit THEN
+   h DATE-SECONDS-HOUR *  mi DATE-SECONDS-MINUTE * +
+   s DATE-SECOND-MAX min + OPTION:SOME ;
+
+: CLOCK ( ptr u8 n -- option<n> )
+   {: a:ptr pos:n :}   \ SOME seconds into the day of HH:MM:SS at pos
+   a pos DATE-PART-LEN N MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF
+        {: h:n :}
+        a pos DATE-CLOCK-MINUTE + DATE-PART-LEN N MATCH option
+          none OF OPTION:NONE ENDOF
+          some OF
+             {: mi:n :}
+             a pos DATE-CLOCK-SECOND + DATE-PART-LEN N MATCH option
+               none OF OPTION:NONE ENDOF
+               some OF {: s:n :} h mi s HMS ENDOF
+             ;MATCH
+          ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
+: MOMENT ( n n n n -- option<n> )
+   {: y:n m:n d:n s:n :}   \ SOME epoch seconds, s seconds into the day
+   y DATE-EPOCH-YEAR <  y DATE-YEAR-MAX > or IF OPTION:NONE exit THEN
+   y m d VALID-YMD? 0= IF OPTION:NONE exit THEN
+   y m d YMD>DAYS SECONDS-DAY * s + OPTION:SOME ;
+
+: YEAR-KEY ( n n n -- n )
+   {: m:n d:n s:n :}   \ orders month m, day d, second s within a year
+   m DATE-DAY-SPAN * d + SECONDS-DAY * s + ;
+
+: DAY-SECOND ( n -- n n )
+   {: t:n :}   \ the floored day of epoch seconds t and its second
+   t SECONDS-DAY mod {: r:n :}
+   r 0 < IF r SECONDS-DAY + ELSE r THEN {: s:n :}
+   t s - SECONDS-DAY / s ;
+
+: FULL-YEAR ( n n n n n -- n )
+   {: yy:n m:n d:n s:n now:n :}   \ the year of two digits yy at m d s, now in epoch seconds
+   now DAY-SECOND {: sec:n :} DAYS>YMD {: cy:n cm:n cd:n :}
+   cy DATE-YEARS-AHEAD + {: top:n :}
+   top  top yy - DATE-CENTURY-YEARS mod - {: y:n :}
+   m d s YEAR-KEY  cm cd sec YEAR-KEY >  y top = and
+   y m d VALID-YMD? 0= or
+   IF y DATE-CENTURY-YEARS - ELSE y THEN ;
+
+: STAMP ( ptr u8 n n n [ n n n n n -- n ] -- option<n> )
+   {: a:ptr base:n width:n now:n year :}   \ year: ( yy m d s now -- y )
+   a base DATE-STAMP-DAY + DATE-PART-LEN N MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF
+        {: d:n :}
+        a base DATE-STAMP-MONTH + MONTH-NAME MATCH option
+          none OF OPTION:NONE ENDOF
+          some OF
+             {: m:n :}
+             base DATE-STAMP-YEAR + {: at:n :}
+             a at width N MATCH option
+               none OF OPTION:NONE ENDOF
+               some OF
+                  {: yy:n :}
+                  a at width + 1+ CLOCK MATCH option
+                    none OF OPTION:NONE ENDOF
+                    some OF
+                       {: s:n :}
+                       yy m d s now year execute m d s MOMENT
+                    ENDOF
+                  ;MATCH
+               ENDOF
+             ;MATCH
+          ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
+: IMF ( ptr u8 -- option<n> )
+   {: a:ptr :}
+   a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
+   a DATE-NAME-LEN DATE-YEAR-LEN 0 [: 2drop 2drop ;] STAMP ;
+
+: RFC850 ( ptr u8 n n -- option<n> )
+   {: a:ptr k:n now:n :}   \ k bytes of day name
+   a k false DAY-NAME? 0= IF OPTION:NONE exit THEN
+   a k DATE-PART-LEN now [: FULL-YEAR ;] STAMP ;
+
+: ASCTIME-DAY ( ptr u8 -- option<n> )
+   {: a:ptr :}   \ two digits, or a space and one
+   a DATE-ASCTIME-DAY + c@ STR-SPACE =
+   IF a DATE-ASCTIME-DAY 1+ 1 N exit THEN
+   a DATE-ASCTIME-DAY DATE-PART-LEN N ;
+
+: ASCTIME ( ptr u8 -- option<n> )
+   {: a:ptr :}
+   a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
+   a DATE-ASCTIME-MONTH MONTH-NAME MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF
+        {: m:n :}
+        a ASCTIME-DAY MATCH option
+          none OF OPTION:NONE ENDOF
+          some OF
+             {: d:n :}
+             a DATE-ASCTIME-YEAR DATE-YEAR-LEN N MATCH option
+               none OF OPTION:NONE ENDOF
+               some OF
+                  {: y:n :}
+                  a DATE-ASCTIME-CLOCK CLOCK MATCH option
+                    none OF OPTION:NONE ENDOF
+                    some OF {: s:n :} y m d s MOMENT ENDOF
+                  ;MATCH
+               ENDOF
+             ;MATCH
+          ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
+public
+
+: PARSE-HTTP ( ptr u8 n n -- option<n> )
+   {: a:ptr u:n now:n :}   \ SOME epoch seconds; now serves RFC 850's year
+   a u 0 IMF-TEMPLATE TEMPLATE? IF a IMF exit THEN
+   a u 0 ASCTIME-TEMPLATE TEMPLATE? IF a ASCTIME exit THEN
+   u RFC850-TEMPLATE nip - {: k:n :}
+   a u k RFC850-TEMPLATE TEMPLATE? IF a k now RFC850 exit THEN
+   OPTION:NONE ;
 
 ;package

@@ -383,7 +383,7 @@ require src/lib/prelude.f
 -8570 constant E-COMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles
 -8572 constant E-COMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-COMP-NAME    \ the pending record and the checker's tape name different definitions
--8574 constant E-COMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
+-8574 constant E-COMP-OWNER   \ a declaration-owner record is invalid or lacks the field a reader calls
 -8575 constant E-COMP-BINDING \ no successful scan or resolved binding exists for a required call ordinal
 -8576 constant E-COMP-RECOVERY \ the active checker counted a refusal or borrowed its recovery fact; abandon the unpublished definition and continue
 -8579 constant E-COMP-ARITY   \ the checker holds no declared effect for the pending definition

@@ -252,7 +252,6 @@
    THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   FEP-HIT? IF FEP @ TOK-EFF ! THEN
    CURSYM @ TFAM:TFAM-CTOR-STEP? IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
@@ -929,7 +928,7 @@ variable WALK-ITEM    \ the first item the walk has not passed
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
@@ -1653,7 +1652,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-DECL-FRAME:EXT-SAVE ;
 
 : RBF-POP-WITH ( [ -- ] -- )
-   0 BWIN-VALID !  0 UWIN-VALID !
+   0 UWIN-VALID !
    execute
    RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH !
@@ -1888,7 +1887,7 @@ public
 \ the body against the declared effect and rejects a mismatch.
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
-   0 BWIN-VALID !  0 UWIN-VALID !
+   0 UWIN-VALID !
    -1 VSIG !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
    1 TORDER-DEPTH +!
@@ -1913,7 +1912,6 @@ public
    0 VSIG !
    CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
    unknown 0= recording and IF a u verdict CHECKER-TAPE:DONE THEN
-   verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
@@ -2884,7 +2882,7 @@ public
    BROW @ SGDBASE !
    u TOKBUF-ENSURE  a TBASE !  u TBLEN !  0 TOK0 !  u TI !  0 TSTART !
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !  0 STALE-HIT !
-   NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
+   NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    a TOK-SPELL-A !  u TOK-SPELL-U !  -1 USING-HOLD !
    a u TOKFOLD drop
    a u CAP-FAIL
@@ -3014,9 +3012,9 @@ public
    CHECKER-REJECT-RC throw ;
 
 \ A step is a guest in the term pools: an event fires between the tokens of a
-\ declaration whose terms sit in the pools, on the stack and in its variables
-\ (PRIM: ... PRIM;), so the step allocates above the pools' marks, where NEW
-\ would reset them, and releases back to the marks.
+\ declaration whose terms sit in the pools, on the stack and in its variables,
+\ so the step allocates above the pools' marks, where NEW would reset them, and
+\ releases back to the marks.
 CHECKER-REG:SCRATCH{
 variable TG-FV     variable TG-SPN     variable TG-QEN     variable TG-PTRN
 variable TG-STLN   variable TG-ATOMN   variable TG-PARAMN  variable TG-PSCR
@@ -3240,24 +3238,9 @@ package CHECKER-REG
 ' RECORD-GRID-RETIRE DECLARATIONS CHECKER-OWNER-ABI:GRID-RETIRE-OFF + xt!
 ;package
 
-\ ---- the optimizing front end's half of the owner record ---------------------
-\ Installed at this file's own load: every checker instance wires its own
-\ seams, so the instance that owns the source is complete whoever loaded it.
-\ The compiler reads these through NCOMP-DISPATCH:DECL-*-OFF, never by name; a
-\ field this file forgets is a named refusal there, not a silent answer from
-\ the retired instance.
+\ Emitted code calls REC-WIDE-PUBLISH through its owner-record field.
 package CHECKER-REG
-' CHECK-DOES!                       DECLARATIONS DOES-CHECK-OFF + xt!
-' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
-' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
-' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
-' UNJUDGED-CLOSED?                  DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF + xt!
-' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
-' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
-' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
-' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
 ' CHECK:REC-WIDE-PUBLISH            DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
-' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
 ;package
 
 package CHECKER-REG
@@ -3268,9 +3251,6 @@ package CHECKER-REG
 ' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
 ' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
 ' CHECKER-VERIFY-RENDERS DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF + xt!
-' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
-' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
-' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
@@ -3286,12 +3266,9 @@ package CHECKER-REG
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
-' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
 ' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 ' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
 ' CHECKER-VERIFY-TRUST DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TRUST-OFF + xt!
-' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
-' DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
 
 \ A checker claims the source only where nothing owns it, after every callback
 \ is installed.

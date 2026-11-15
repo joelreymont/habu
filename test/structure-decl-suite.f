@@ -1226,4 +1226,144 @@ STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE
 ;package
 17 SDOPQ:OCR 17 T=
 
+\ 18. BUFFER name N: N bytes inline from the next slot, in whole cells; the record
+\     stays whole cells and the fields around the bytes keep theirs. The count
+\     is a number literal above 0, judged at declaration. DERIVE addr answers
+\     the bytes as a `SPAN:span<u8>` of N bytes from the field's address.
+DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
+STRUCTURE sdbuf
+   DERIVE addr
+   FIELD a n
+   BUFFER b 13
+   FIELD c n
+;STRUCTURE
+1 TYPED-BUFFER SDB-BUF sdbuf
+
+SDBUF:CELLS 4 T=                                      \ a, ceil(13 / CELL) for b, c
+SDBUF:BYTES SDBUF:CELLS CELL * T=
+: SDB-GAP ( -- n ) 0 SDB-BUF SDBUF:C NULL-PTR -  0 SDB-BUF SDBUF:A NULL-PTR -  - ;
+SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
+: SDB-BYTES ( -- ptr u8 n ) 0 SDB-BUF SDBUF:B SPAN:$ ;
+: SDB-N ( -- n ) 0 SDB-BUF SDBUF:B SPAN:LEN ;
+SDB-N 13 T=
+: SDB-AT ( -- n ) SDB-BYTES drop NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
+SDB-AT CELL T=                                        \ b starts one cell into the record
+: SDB-W ( -- ) 5 0 0 6 SDBUF:MAKE 0 SDB-BUF ! ;      \ b's cells are MAKE's middle two
+: SDB-FILL ( -- ) SDB-BYTES {: p:ptr u:n :} u 0 ?do 255 p i + c! loop ;
+: SDB-LAST ( -- n ) SDB-BYTES drop 12 + c@ ;
+SDB-W SDB-FILL
+SDB-LAST 255 T=
+0 SDB-BUF SDBUF:A @ 5 T=                              \ 13 bytes through b leave a and c
+0 SDB-BUF SDBUF:C @ 6 T=
+
+s" STRUCTURE sdbhex BUFFER b $10 ;STRUCTURE" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdbzero BUFFER b 0 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbzero`\n" DECL-DIAG:HAS? TTRUE
+s" 0" s" buffer byte count must be a number above 0" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give the byte count as a number literal above 0, as in `BUFFER bytes 16`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbword BUFFER b many ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbword`\n" DECL-DIAG:HAS? TTRUE
+s" many" s" buffer byte count must be a number above 0" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give the byte count as a number literal above 0, as in `BUFFER bytes 16`\n" DECL-DIAG:HAS? TTRUE
+13 constant SDB-LEN
+DECL-DIAG:PROSE
+s" STRUCTURE sdbname BUFFER b SDB-LEN ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbname`\n" DECL-DIAG:HAS? TTRUE
+s" SDB-LEN" s" buffer byte count must be a number above 0" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give the byte count as a number literal above 0, as in `BUFFER bytes 16`\n" DECL-DIAG:HAS? TTRUE
+
+\ DERIVE eq, hash and init are each rejected with a buffer.
+DECL-DIAG:PROSE
+s" STRUCTURE sdbeq DERIVE eq FIELD a n BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbeq`\n" DECL-DIAG:HAS? TTRUE
+s" b" s" derive eq cannot compare a buffer" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: drop `eq` from `DERIVE`, or hold the bytes in `FIELD`s\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbhash DERIVE hash BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbhash`\n" DECL-DIAG:HAS? TTRUE
+s" b" s" derive hash cannot hash a buffer" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: drop `hash` from `DERIVE`, or hold the bytes in `FIELD`s\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbinit DERIVE init BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbinit`\n" DECL-DIAG:HAS? TTRUE
+s" sdbinit" s" derive init requires a canonical fixed-cell record" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: drop `init` from `DERIVE`, or give every field a fixed cell width\n" DECL-DIAG:HAS? TTRUE
+
+\ `buffer` is a clause keyword, so it names no family and no field.
+DECL-DIAG:PROSE
+s" STRUCTURE buffer FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `buffer`\n" DECL-DIAG:HAS? TTRUE
+s" buffer" s" reserved name" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbfld FIELD buffer n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbfld`\n" DECL-DIAG:HAS? TTRUE
+s" buffer" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ MAKE takes one item per FIELD and one per buffer cell, and its effect holds
+\ EFFECT-DEPTH-MAX (4096) at most: the clause that passes it is rejected.
+package SDBIG
+$10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
+create SRC CAP allot
+TYPED-VARIABLE SRC-U len
+: S+ ( ptr u8 n -- ) SRC CAP SRC-U BUF-APPEND ;
+: S+C ( n -- ) SRC CAP SRC-U BUF-APPEND-C ;
+: S+LETTER ( n -- ) 26 mod 97 + S+C ;
+\ Field I is `fXYZ`, I in base 26 as three letters.
+: S+FIELD ( n -- )
+   {: i:n :}
+   s"  FIELD f" S+
+   i 676 / S+LETTER  i 26 / S+LETTER  i S+LETTER
+   s"  n" S+ ;
+public
+: FIELDS ( ptr u8 n n -- )
+   {: na:ptr nu:n k:n :}
+   SRC-U BUF-RESET  s" STRUCTURE " S+  na nu S+
+   k 0 ?do i S+FIELD loop ;
+: SRC+ ( ptr u8 n -- ) S+ ;
+: SRC$ ( -- ptr u8 n ) SRC SRC-U @ LEN>N ;
+;package
+
+\ 4095 fields and one cell of bytes are exactly 4096 items.
+s" sdbfull" 4095 SDBIG:FIELDS  s"  BUFFER b 8 ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdbover FIELD a n BUFFER b 32761 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbover`\n" DECL-DIAG:HAS? TTRUE
+s" 32761" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+\ A count past the room is rejected before its cells are counted.
+DECL-DIAG:PROSE
+s" STRUCTURE sdbhuge BUFFER b $7FFFFFFFFFFFFFF0 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbhuge`\n" DECL-DIAG:HAS? TTRUE
+s" $7FFFFFFFFFFFFFF0" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" sdbmany" 4097 SDBIG:FIELDS  s"  ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbmany`\n" DECL-DIAG:HAS? TTRUE
+s" fgbo" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+\ A generated word whose effect is too deep to record has no signature text:
+\ its rejection quotes none. SDGDEEP:MAKE takes 4095 `n` fields and one
+\ `option<n>`, 4097 cells, one past EFFECT-DEPTH-MAX.
+DECL-DIAG:PROSE
+s" sdgdeep" 4095 SDBIG:FIELDS  s"  FIELD qopt option<n> ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 70 T=
+s\" error[E-BAD-STORED-SIGNATURE]: the signature of `SDGDEEP:MAKE` cannot be recorded\n" DECL-DIAG:HAS? TTRUE
+s\"   = reason: effect too deep to record (depth 4097, at most 4096)\n" DECL-DIAG:HAS? TTRUE
+s" = signature:" DECL-DIAG:HAS? TFALSE
+DECL-DIAG:OFF
+
+\ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
+CHECKER-SCOPE-START-NEUTRAL
+s" rpsdbuf" s" FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+s" SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
+
 T-REPORT

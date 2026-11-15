@@ -50,7 +50,8 @@ package FILE-OBJECTS-TEST
 34 constant PT-USE                       \ and pt-use.f's
 35 constant PFIELD-PF                    \ the +FIELD sequence's pf.f's
 36 constant PFIELD-MAIN                  \ and pf-main.f's
-37 constant TAILS                        \ TAIL$'s tails
+37 constant SPELLED-BLOB                 \ the spelled sequence's blob.f's
+38 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -223,6 +224,7 @@ variable CLASS-N                        \ the class CLASS+ read
    i ROOT-SET-LAST = if s" /test/fixtures/file-objects/root-set.f+2.hfo" exit then
    i SPELLED-STRIDE = if s" /spelled/stride.f.hfo" exit then
    i SPELLED-EFFECT = if s" /spelled/effect.f.hfo" exit then
+   i SPELLED-BLOB = if s" /spelled/blob.f.hfo" exit then
    i PACKAGED-BARE = if s" /packaged/bare.f.hfo" exit then
    i PACKAGED-BOXED = if s" /packaged/boxed.f.hfo" exit then
    i CAST-A = if s" /cast/a.f.hfo" exit then
@@ -1797,31 +1799,41 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" TURN:MAKE 3 BOX:MAKE ;\n" SRC+  s" turn.f" NEST-WRITE ;
 
 \ stride.f and effect.f spell turn only inside box<turn>: a typed buffer's
-\ stride and an effect.
+\ stride and an effect. blob.f, which no turn changes, holds a BUFFER record
+\ whose DERIVE addr accessor effect.f calls: its span's length and its offset
+\ in the record.
 : WRITE-SPELLED ( -- )
    L$ s" spelled" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" STRUCTURE blob DERIVE addr\n   FIELD k n\n   BUFFER b 13\n;STRUCTURE\n" SRC+
+   s\" 1 TYPED-BUFFER BB blob\n" SRC+  s" blob.f" NEST-WRITE
    false WRITE-TURN
    s\" 4 TYPED-BUFFER BT box<turn>\n" SRC+
    s\" : B-STEP ( -- n ) 1 BT NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
    s" stride.f" NEST-WRITE
-   s\" : W ( box<turn> -- n ) drop 7 ;\n" SRC+  s" effect.f" NEST-WRITE
-   s" turn.f" REQUIRE+  s" stride.f" REQUIRE+  s" effect.f" REQUIRE+
-   s\" : MAIN ( -- ) B-STEP . 11 MAKE-BOX W . . ;\n" SRC+
+   s\" : W ( box<turn> -- n ) drop 7 ;\n" SRC+
+   s\" : B-LEN ( -- n ) 0 BB BLOB:B SPAN:LEN ;\n" SRC+
+   s\" : B-AT ( -- n ) 0 BB BLOB:B SPAN:$ drop NULL-PTR -  0 BB NULL-PTR -  - ;\n" SRC+
+   s" effect.f" NEST-WRITE
+   s" blob.f" REQUIRE+  s" turn.f" REQUIRE+  s" stride.f" REQUIRE+  s" effect.f" REQUIRE+
+   s\" : MAIN ( -- ) B-STEP . 11 MAKE-BOX W . .  B-LEN . B-AT . ;\n" SRC+
    s" main.f" NEST-WRITE ;
 
 \ Guards a type named only inside `<...>`: after turn gains a field, J2 compiles
 \ stride.f and effect.f, and its program prints a cold build's stride, W's 7 and
-\ the 11 under the box W drops.
+\ the 11 under the box W drops. It guards a BUFFER accessor a warm build replays:
+\ J2 links blob.f's object and compiles effect.f's call of its accessor to the
+\ cold build's span, 13 bytes one cell into the record.
 : SPELLED-CASE ( CMD:command -- CMD:command )
    WRITE-SPELLED
    s" J" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
-   SPELLED-STRIDE KEEP  SPELLED-EFFECT KEEP
+   SPELLED-STRIDE KEEP  SPELLED-EFFECT KEEP  SPELLED-BLOB KEEP
    true WRITE-TURN
    s" J2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
    s" the build compiles stride.f" SPELLED-STRIDE COMPILED
    s" the build compiles effect.f" SPELLED-EFFECT COMPILED
-   s\" 32\n7\n11\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
+   s" the build links blob.f" SPELLED-BLOB LINKED
+   s\" 32\n7\n11\n13\n8\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
 
 \ The packaged sequence's t.f: package TURNS's record turn, with a third field
 \ when the flag is true, and box<a>.

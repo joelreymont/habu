@@ -1,7 +1,8 @@
 \ structure-decl.f: the STRUCTURE front end (package STRUCTURE-DECL), grammar loop
 \ and reject dispatch only. DECL-FRONT (generated-declaration.f) owns the token
 \ source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
-\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)* (FIELD name type)* ;STRUCTURE
+\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)*
+\      (FIELD name type | BUFFER name bytes)* ;STRUCTURE
 \ A reject rolls the whole declaration back to a byte-identical registry. Loads
 \ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls.
 
@@ -19,6 +20,7 @@ variable FAM        \ family id being declared
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
+variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
 
@@ -445,7 +447,7 @@ SD-QUOT-INSTALL
       s" field name is a generated member name"
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
-: FIELD-CLAUSE ( -- )
+: FIELD-NAME ( -- ptr u8 n )                 \ a FIELD or BUFFER name, judged
    NEXT dup 0= IF
       2drop s" missing field name"
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
@@ -455,12 +457,69 @@ SD-QUOT-INSTALL
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
+   na nu ;
+\ Each item is at least one level of MAKE's effect, so no record of more items
+\ than EFFECT-DEPTH-MAX can be made; USIG-DEPTH-FITS? measures nested types.
+: ITEMS-FULL ( -- )
+   s" record takes more than 4096 items to make"
+   s" split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096"
+   TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw ;
+: ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
+: FIELD-CLAUSE ( -- )
+   FIELD-NAME {: na:ptr nu:n :}
    0 FIELD-MISS !  0 POINTEE !
    NEXT {: ta:ptr tu:n :}
    ta tu RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
+      ITEM-ROOM 1 < IF na nu DECL-REJECT:TOKEN! ITEMS-FULL THEN
+      SD-ITEMS @ 1 + SD-ITEMS !
       na nu node EMIT-FIELD THEN
+   -1 SEEN-FIELD ! ;
+
+\ `BUFFER name N`: N bytes inline from the next slot, in whole cells. The count
+\ is a number literal, never a name, so the layout is fixed by the text alone.
+: BUFFER-COUNT ( -- n )
+   NEXT dup 0= IF
+      2drop s" missing buffer byte count"
+      s" write a byte count after the buffer's name, as in `BUFFER bytes 16`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   num-parse {: v:n flt:bool ok:bool :}
+   ok 0= flt or v 1 < or IF
+      s" buffer byte count must be a number above 0"
+      s" give the byte count as a number literal above 0, as in `BUFFER bytes 16`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
+   v ;
+: EMIT-BUFFER ( ptr u8 n n -- ) {: na:ptr nu:n bytes:n :}
+   bytes 1 - CELL / 1 + {: fw:n :}
+   CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
+   na nu DECL-REJECT:TOKEN!
+   s" duplicate field name"
+   s" give each field of this declaration its own name" E-TFAM-DUP DECL-REJECT:EXPECT
+   FAM @ na nu sch
+   SD-CELLS @  fw  SD-CELLS @ CELL *  bytes  CELL  PF-FLAG-BUFFER
+   DECL-EVENT:FIELD
+   fw SD-CELLS @ + SD-CELLS !
+   NFLD @ 1 + NFLD ! ;
+\ Derived eq and hash compare and hash whole cells, and a buffer's last cell
+\ may hold bytes past its count, so neither may read one. DERIVE precedes the
+\ fields (HEADER-ORDER): the family's derive flags are final here.
+: BUFFER-DERIVABLE ( -- )
+   FAM @ TFAM-DERIVE-EQ? IF
+      s" derive eq cannot compare a buffer"
+      s" drop `eq` from `DERIVE`, or hold the bytes in `FIELD`s"
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ TFAM-DERIVE-HASH? IF
+      s" derive hash cannot hash a buffer"
+      s" drop `hash` from `DERIVE`, or hold the bytes in `FIELD`s"
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
+: BUFFER-CLAUSE ( -- )
+   FIELD-NAME {: na:ptr nu:n :}
+   BUFFER-DERIVABLE
+   BUFFER-COUNT {: bytes:n :}
+   bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
+   na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
 : SD-REGISTER ( ptr u8 n n -- )
@@ -472,7 +531,7 @@ SD-QUOT-INSTALL
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
-   0 NFLD !   0 SD-CELLS ! ;
+   0 NFLD !   0 SD-CELLS !   0 SD-ITEMS ! ;
 
 : SD-MAKEABLE? ( -- bool )
    NFLD @ 0 > ;
@@ -523,6 +582,7 @@ SD-QUOT-INSTALL
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
+   2dup s" buffer" CORE-STR=CI IF 2drop BUFFER-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN

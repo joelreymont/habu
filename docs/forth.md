@@ -12,17 +12,17 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - Never add `TRUST`, `TRUSTED:` or an unchecked span to bypass a missing checker
   model. Reduce the case and fix the declaration, checker or primitive interface
   at its owner, still rejecting invalid programs.
-- `PRIM:`/`PPRIM:` axioms are for genuine engine, syscall and FFI operations,
-  with checked callers. **Primitive effects are assumptions, not proofs**: each
-  axiom describes the primitive's actual behaviour, with focused coverage
-  through its real call path. Renaming a Forth algorithm or unchecked wrapper,
-  or asserting its effect, does not make it a primitive.
-- A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` belongs to its
-  package: only that package's checked bodies call the primitive. Outside it,
-  a call of a primitive whose one row is the private one (`xref-retarget`) is
-  `E-UNDEFINED`, in a body and at top level, and a
-  top-level `'` of it yields the xt; a body's call of one that also keeps a
-  global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
+- A word defined in source takes its type from its definition; an engine
+  primitive's rows are its `EPRIM:`/`EPPRIM:` lines in src/habu/prims.f.
+  **Primitive effects are assumptions, not proofs**: each row describes the
+  primitive's actual behaviour, with focused coverage through its real call
+  path. Renaming a Forth algorithm or unchecked wrapper, or asserting its
+  effect, does not make it a primitive.
+- An `EPPRIM:` row belongs to its package: only that package's checked bodies
+  call the primitive. Outside it, a call of a primitive whose one row is the
+  private one (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level,
+  and a top-level `'` of it yields the xt; a body's call of one that also keeps
+  a global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
   `[']` of it is admitted and refused exactly where that call is.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
@@ -466,15 +466,28 @@ ENUM color red green blue ;ENUM
 The grammar; every type, field and variant name is lowercase:
 
 ```text
-structure-decl  = STRUCTURE type-header header-clause* field* ;STRUCTURE
+structure-decl  = STRUCTURE type-header header-clause* structure-field* ;STRUCTURE
 enum-decl       = ENUM type-header (full-enum | compact-enum) ;ENUM
 full-enum       = header-clause* variant-block+
 compact-enum    = header-clause* compact-variant+
 header-clause   = POLICY policy-name | DERIVE derive-name+ | OPAQUE
+structure-field = field | BUFFER field-name byte-count
 field           = FIELD field-name type-expr
 variant-block   = VARIANT variant-name field* ;VARIANT
 compact-variant = variant-name
 ```
+
+`BUFFER name N`, N a number literal above 0, lays N bytes inline from the next
+cell; the record stays whole cells, so the field after it starts at the next
+cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
+ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
+`UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
+last cell, which neither clears. Under `DERIVE addr` the accessor answers a
+span of the first N bytes. A record of more than 4096 such items is refused
+at the clause that passes it (`TYPE-DECL:E-TDECL-CAP`), and nested field types
+can still make `MAKE`'s effect too deep (7156). A record with a `BUFFER`
+refuses `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
+field and variant name.
 
 A multi-cell record is one logical value and lives inside checked definitions.
 The interpreter prompt refuses words with multi-cell inputs or outputs
@@ -567,7 +580,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
-  read and written with the field type's ordinary checked operations
+  read and written with the field type's ordinary checked operations; a
+  `BUFFER b N` field's accessor answers its bytes as a span,
+  `( ptr point -- SPAN:span<u8> )` of N bytes
   (`docs/design.md` "Families and layout policies" gives the layout
   policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
@@ -2638,8 +2653,8 @@ sections above.
   `policy` and a value-record name already registered as `vr` similarly
   cannot name a family (`STRUCTURE vr` is refused).
 - **Nothing turns checking off.** `set-check` and `set-preflight` are private
-  to `CHECK`, so a program that names them is `E-UNDEFINED`. Use a
-  `PRIM: … PRIM;` axiom for a genuine missing primitive model.
+  to `CHECK`, so a program that names them is `E-UNDEFINED`. A genuine missing
+  primitive model is an `EPRIM:` row in src/habu/prims.f.
 - **A native build refuses a definition whose checker scan is refused**, before
   publication. A failed native compile retracts only the pending definition's
   rows, preserving prior rows. If no row supplies arity it refuses with the

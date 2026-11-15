@@ -2557,6 +2557,7 @@ variable DEF-VALUE
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
    shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
    shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
+   shape CHILD-ABI:SPAN = if COMP-BODY:bytes 0 exit then
    shape CHILD-ABI:MAKE =
    shape CHILD-ABI:UNMAKE = or
    shape CHILD-ABI:NOMINAL-IN = or
@@ -2826,8 +2827,6 @@ private
 \ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
    s" trust" TOKEN-IS? if true exit then
-   s" prim:" TOKEN-IS? if true exit then
-   s" pprim:" TOKEN-IS? if true exit then
    s" prim-top-only!" TOKEN-IS? if true exit then
    s" prim-trusted-only!" TOKEN-IS? if true exit then
    s" intrinsic" TOKEN-IS? if true exit then

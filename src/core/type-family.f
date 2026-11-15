@@ -7,11 +7,10 @@
 using SCHEMA-REG
 
 \ A name referenced outside this package is public, everything else private;
-\ outside includes the checker's `PPRIM: TFAM` rows and the inner packages this
-\ file opens (TYPE-NAME, TYPE-FIELD, CHECKER-DECL-FRAME, SCHEMA-REG). These are
-\ top-level packages, not parts of TFAM, and a `package` inside an open one
-\ opens a part of it, so each inner block closes TFAM, reopens it after, and
-\ reads publics through `using TFAM`.
+\ outside includes the inner packages this file opens (TYPE-NAME, TYPE-FIELD,
+\ CHECKER-DECL-FRAME, SCHEMA-REG). These are top-level packages, not parts of
+\ TFAM, and a `package` inside an open one opens a part of it, so each inner
+\ block closes TFAM, reopens it after, and reads publics through `using TFAM`.
 package TFAM
 
 \ --- kind of a family (what its values are).
@@ -1261,6 +1260,9 @@ public
 \ reflection high-water. PF-ADD returns no row id, so an id becomes observable
 \ only after PF-COMMIT.
 -1 constant PF-NO-VARIANT
+\ A buffer row (STRUCTURE `BUFFER name N`) holds N bytes inline from a whole-cell
+\ slot: its schema is the element, u8, and its cells, ceil(N / CELL), its width.
+1 constant PF-FLAG-BUFFER
 
 private
 
@@ -1717,11 +1719,17 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
    THEN
    1 ;
 
+\ A buffer's width is its row's cells: its schema names only the element.
+: TFW-FIELD ( n n n -- n ) {: id:n base:n top:n :}
+   id PF-ROW {: r:ptr :}
+   r PF.FLAGS @ PF-FLAG-BUFFER = IF r PF.CELLS @ EXIT THEN
+   r PF.SCH @ SCHEMA-ROOT@ base top TFW-NODE ;
+
 : TFW-PRODUCT ( n n n -- n ) {: fam:n base:n top:n :}
    fam TFAM-FLD-START@ {: fs:n :}
    0
    0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      fs over + PF-PENDING-SCH@ SCHEMA-ROOT@ base top TFW-NODE
+      fs over + base top TFW-FIELD
       rot + swap
       1 +
    REPEAT drop ;
@@ -1964,6 +1972,7 @@ public
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" derive" CORE-STR=CI ;
 
@@ -2305,13 +2314,20 @@ TFAM-SCH-ROW-ARITY-INSTALL
    n 0 < n PF-MAX-N CELL / > or IF
       s" pf: a field's slot or cells is too large to count in bytes" 76 die THEN
    n cells ;
-: PF-CELL-SLOTS-REQUIRE ( n n n n n -- )   \ a field laid out in whole cells
-   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+: PF-CELL-SLOTS-REQUIRE ( n n n n n n -- )   \ a field laid out in whole cells
+   {: slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    slot PF-CELL-BYTES boff <> IF
       s" pf: a field's byte-off is not its slot in bytes" 76 die THEN
-   cellsn PF-CELL-BYTES bytesn <> IF
-      s" pf: a field's bytes is not its cells in bytes" 76 die THEN
+   flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end in its last cell
+      bytesn 1 - CELL / 1 + cellsn <> IF
+         s" pf: a buffer's cells do not end with its bytes" 76 die THEN
+   ELSE
+      cellsn PF-CELL-BYTES bytesn <> IF
+         s" pf: a field's bytes is not its cells in bytes" 76 die THEN
+   THEN
    al CELL <> IF s" pf: a field's align is not the cell size" 76 die THEN ;
+: PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
+   node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
 
 public
 
@@ -2329,7 +2345,8 @@ public
    drop RES-FALSE ;
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   flags PF-FLAGS-NONE <> IF s" pf: field flags set undefined bits" 76 die THEN
+   flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF
+      s" pf: field flags set undefined bits" 76 die THEN
    slot cellsn PF-RANGE-OK? 0= IF
       s" pf: a field's slot or cells is out of range" 76 die THEN
    boff bytesn PF-RANGE-OK? 0= IF
@@ -2337,12 +2354,16 @@ public
    al PF-POW2? 0= IF s" pf: a field's align is not a power of two" 76 die THEN
    boff al mod 0 <> IF
       s" pf: a field's byte-off is not a multiple of its align" 76 die THEN
-   fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
-      s" pf: a field's cells is not its schema's width" 76 die THEN
+   flags PF-FLAG-BUFFER = IF
+      sch SCHEMA-ROOT@ PF-U8? 0= IF s" pf: a buffer's schema is not u8" 76 die THEN
+   ELSE
+      fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
+         s" pf: a field's cells is not its schema's width" 76 die THEN
+   THEN
    fam TFAM-LAYOUT-POLICY@ {: policy:n :}
    policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
    0= IF s" pf: a field was added to a family whose layout policy lays out no fields" 76 die THEN
-   slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ;
+   slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ;
 : PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
@@ -4135,9 +4156,9 @@ private
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
 \ CAST-MAY-LINEAR?): every product field and every variant payload, in either
 \ payload form, instantiated over the value's own arguments and pushed on one
-\ row. A field projection or a MATCH arm yields exactly these types. Schemas
-\ index parameters by position, so the term must carry the family's argument
-\ count: the cast gate refuses any other count before its walks.
+\ row. Schemas index parameters by position, so the term must carry the
+\ family's argument count: the cast gate refuses any other count before its
+\ walks.
 : MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
    term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;
 : FIELD-MEMBERS ( n n n -- n ) {: term:n fam:n row:n :}
@@ -4194,24 +4215,40 @@ public
 
 private
 
-\ A field accessor's rows and byte offset, from the committed field id FID: it
-\ takes `ptr F<..>` and answers `ptr T`, T the field's type over the same
-\ arguments. A field role other than plain storage, or an extent past the
-\ family's width, has no address to answer.
-: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+\ A field accessor's input row over a fresh row BASE, `ptr F<..>`, from the
+\ committed field id FID with the flags FLAGS, and its family term TERM, whose
+\ arguments the field's type reads. A field of other flags, or one ending past
+\ the family's width, is an engine defect.
+: FIELD-IN ( n n -- n n n ) {: fid:n flags:n :}
    fid TYPE-FIELD:FAMILY@ {: fam:n :}
-   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
-   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF
-      s" type-family: undefined field flag bits" 76 die THEN
-   off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
+   fid TYPE-FIELD:FLAGS@ flags <> IF
+      s" tfam: a field accessor met a field of other flags" 76 die THEN
+   fid TYPE-FIELD:BYTE-OFF@ fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
       s" tfam: a field ends past its family's width" 76 die THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
    FRESH MK-ROW {: base:n :}
-   term MK-PTR base MK-PUSH
-   ft MK-PTR base MK-PUSH
-   off ;
+   term MK-PTR base MK-PUSH  base  term ;
+
+\ A plain field accessor's rows and byte offset, from the committed field id
+\ FID: it takes `ptr F<..>` and answers `ptr T`, T the field's type over the
+\ same arguments.
+: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+   fid PF-FLAGS-NONE FIELD-IN drop {: din:n base:n :}
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   din  ft MK-PTR base MK-PUSH  fid TYPE-FIELD:BYTE-OFF@ ;
+
+\ A BUFFER field's accessor's rows and field id, from the committed field id
+\ FID: it takes `ptr F<..>` and answers the field's bytes as `SPAN:span<u8>`,
+\ laid base below len as SPAN:MAKE lays it.
+: TFAM-SPAN-ROWS ( n -- n n n ) {: fid:n :}
+   fid PF-FLAG-BUFFER FIELD-IN drop {: din:n base:n :}
+   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" 76 die THEN
+   {: fam:n :}
+   PARAM-SCR-N @ {: pbase:n :}
+   CC-U8 MK-CON PARAM-SCR+
+   pbase fam TFAM-NAME$ fam MK-PARAM {: span:n :}
+   din  span base PUSH-LOGICAL  fid ;
 
 \ AT's rows and stride in bytes, from the family id FAM: it takes `ptr F<..> n`
 \ and answers `ptr F<..>`, the count an integer as `record-at` takes it.
@@ -4362,6 +4399,7 @@ public
 : TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
    NEW NMAP-RESET
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:SPAN = IF param TFAM-SPAN-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
    shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
    shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
@@ -4669,6 +4707,7 @@ public
 : TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
    term TFC-ARGS!
    field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+   field TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF field TYPE-FIELD:CELLS@ EXIT THEN   \ a buffer: its cells
    dup T-WIDTH ;
 : TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
    fam TFAM-VAR-COUNT@ 0 ?do

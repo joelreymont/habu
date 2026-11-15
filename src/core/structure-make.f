@@ -16,18 +16,29 @@ package STRUCTURE-MAKE
 : SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
    fs idx + PF-PENDING-SCH@ ;
 
+\ A field's bundle roots: its schema, or for a buffer one `n` per cell, the cells
+\ MAKE and UNMAKE carry its bytes in.
+: SM-FIELD-ROOTS+ ( n n -- ) {: idx:n fs:n :}
+   fs idx + PF-ROW {: r:ptr :}
+   r PF.FLAGS @ PF-FLAG-BUFFER = IF
+      r PF.CELLS @ 0 ?do CC-N SCHEMA-CON SCHEMA-ROOT+ drop loop
+      EXIT
+   THEN
+   idx fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop ;
+
 \ The field rows are still provisional, above PF-COMMIT-N, where the committed
 \ readers reject them.
 : SM-EMIT-ROWS ( n n n -- )
    {: fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 BEGIN dup fc < WHILE
-      dup fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
+      dup fs SM-FIELD-ROOTS+
       1 +
    REPEAT drop
+   SCHEMA-ROOT-N@ rstart - {: rn:n :}
    SUMV-N@ {: vstart:n :}
-   fam s" make"   0 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
-   fam s" unmake" 1 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam s" make"   0 rstart rn  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam s" unmake" 1 rstart rn  fam TFAM-SLOTS@ SUMV-ADD drop
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 

@@ -545,7 +545,9 @@ $38C8 constant VARIABLE-CELL
 \ writes through its receiver. A MAKE or UNMAKE child's parameter is its
 \ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
 \ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
-\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse.
+\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse. A SPAN
+\ child's parameter is the committed field id of a BUFFER field: it takes
+\ `ptr F<..>` and answers the field's bytes as `SPAN:span<u8>`.
 
 package CHILD-ABI
 public
@@ -576,6 +578,7 @@ public
 24 constant UNMAKE
 25 constant NOMINAL-IN
 26 constant NOMINAL-OUT
+27 constant SPAN
 
 ;package
 
@@ -637,10 +640,8 @@ $388 constant COMP-LATCH-CELL
 \ other reader it refuses with E-COMP-VERDICT. Zero outside that compile, so no
 \ image carries it set.
 $690 constant RECOVER-CELL
-\ One owner record keeps every engine declaration registrar paired with the
-\ active compiler, including while the source dictionary/checker is replaced.
-\ The record is DATA; its fields are execution tokens of existing private
-\ checker operations.
+\ The owner record each cell points at is DATA; its fields are execution tokens
+\ of private checker operations.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 \ The two cells as declared names: each holds an owner record pointer.
@@ -659,28 +660,11 @@ CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
-\ The rest are called by the native compiler, the engine and the source verifier.
-CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
-CHECKER-OWNER-ABI:DECL-ROW-OFF constant DECL-DECL-ROW-OFF
-CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF constant DECL-UNJUDGED-CLOSED-OFF
-CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
-CHECKER-OWNER-ABI:CALL-BINDING-OFF constant DECL-CALL-BINDING-OFF
-CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
-CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
-CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
-CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
+\ The rest are called by the engine and the source verifier.
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
-\ The scan whose verdict nobody enforces, with the render suppressed for it.
-\ A TRUSTED: body is scanned only to fill the tape, so the suppression has to
-\ happen in the instance that renders; the counter itself is unreachable from a
-\ baked compiler, which is the whole reason this is an operation and not a cell.
-CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
-\ A refused definition's cut back to the store end it began at, and that end.
+\ The cut back to the store end a definition or buffer began at, and that end.
 CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
 CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
-\ The compile window: opened with the code a callback's checker write is refused
-\ with once the definition's rows are recorded, shut with 0 before its own.
-CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
@@ -700,8 +684,6 @@ CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
 CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF constant DECL-VERIFY-CTOR-DECL-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
-CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
-CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF constant DECL-NATIVE-DOES-REPORT-OFF
 \ Completion: the names a top-level cursor sees.
 CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
 CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF

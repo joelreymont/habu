@@ -15,11 +15,7 @@ $30 constant PUBLIC-OFF
 $38 constant PRIVATE-OFF
 $40 constant END-PACKAGE-OFF
 $48 constant EXPORT-OFF
-$50 constant DOES-CHECK-OFF
-$58 constant CALL-CELLS-OFF
-$60 constant CALL-MATCH-OFF
 $70 constant REC-WIDE-PUBLISH-OFF
-$78 constant CHECK-UNJUDGED-OFF
 
 $B0 constant VERIFY-START-OFF
 $B8 constant VERIFY-DONE-OFF
@@ -28,12 +24,7 @@ $C8 constant VERIFY-FIND-SYM-OFF
 $D0 constant VERIFY-CREATES-SYM-OFF
 $D8 constant VERIFY-RECORD-CREATED-OFF
 $E0 constant VERIFY-SOURCE-DOES-OFF
-$E8 constant NATIVE-DOES-FINISH-OFF
-$F0 constant NATIVE-DOES-BEGIN-OFF
-$F8 constant NATIVE-DOES-COMMIT-OFF
 $100 constant TRUSTED-TICK-OFF
-$108 constant INIT-LAYOUT-OFF
-$110 constant FIELD-SPAN-OFF
 \ The engine's package scope was put back after a throw: the checker re-reads
 \ its package mirror from it.
 $118 constant PKG-RESYNC-OFF
@@ -52,14 +43,6 @@ $148 constant VERIFY-REACH-OFF
 \ verifier shows with a definition; the tail it was recorded under, the
 \ verifier's key for an export's own record; and its visibility.
 $150 constant VERIFY-SYM-IDENTITY-OFF
-\ The returned span is borrowed from this checker instance. Every field is one
-\ cell; EFFECT is an offset plus one in its effect store, not a durable ID.
-$158 constant CALL-BINDING-OFF
-\ A completed explicitly unjudged scan exposes original resolution and the
-\ declared ABI, without granting a checked call or body verdict.
-$160 constant UNJUDGED-BINDING-OFF
-\ A scan serial from the same owner that supplies the borrowed binding rows.
-$168 constant BINDING-WINDOW-OFF
 \ The source pre-pass borrows the selected deferred body token's source span.
 $170 constant VERIFY-DEFERRED-BODY-OFF
 \ Navigation: the verifier arms a named declaration's spelling and location
@@ -100,14 +83,10 @@ $20000 constant BOUND-SEEDED
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING
 4 constant BOUND-UNRESOLVED
-\ A refused definition's rows: the store cut back to the end ROWS-END-OFF read
-\ when the definition began.
+\ The store cut back to the end ROWS-END-OFF read as a definition or evaluated
+\ buffer began, when the definition is refused or the buffer rolled back.
 $1A0 constant RETRACT-ROWS-OFF
 $1A8 constant ROWS-END-OFF
-\ The compile window: from the end of the compiler's scan to publication's last
-\ callback the checker refuses every store write with the code set here,
-\ 0 when shut.
-$1B0 constant WRITE-WINDOW-OFF
 \ The does> clause record a replayed TRUSTED: definer publishes at its `;`: its
 \ clause is declared, never checked, so VERIFY-SOURCE-DOES-OFF, which checks one
 \ first, is not this.
@@ -157,8 +136,6 @@ CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
-CHECKER-OWNER-EXT:DOES-UNJUDGED-OFF constant DOES-UNJUDGED-OFF \ ( ptr u8 n ptr u8 n -- n )
-CHECKER-OWNER-EXT:NATIVE-DOES-REPORT-OFF constant NATIVE-DOES-REPORT-OFF \ ( n ptr u8 n -- n )
 CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
 \ The body-close action of the owner record at ptr, 0 for no record. Every
 \ owner record is laid out from this field list, so it holds the slot.
@@ -166,8 +143,6 @@ CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
    rec NULL-PTR = if 0 exit then
    rec BODY-CLOSE-OFF + CELL-VIEW @ ;
 CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ptr u8 n ptr u8 n -- bool )
-CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF constant UNJUDGED-CLOSED-OFF \ ( -- bool )
-CHECKER-OWNER-EXT:OWNER-BYTES constant BYTES
 
 \ These cells precede the record; callable offsets count from the record
 \ pointer, after them.

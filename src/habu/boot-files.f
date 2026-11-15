@@ -100,7 +100,6 @@ private
    \ BEGIN-STRUCTURE records its declaration in include.f's SOURCE-ROOT.
    CORE COMMON s" src/core/structures.f" ROW
    CORE COMMON s" src/core/enums.f" ROW
-   CORE COMMON s" src/core/sha256.f" ROW
    CORE COMMON s" src/core/combinators.f" ROW
    CORE COMMON s" src/habu/code-span.f" ROW
    CORE COMMON s" src/habu/xref.f" ROW
@@ -115,6 +114,7 @@ private
    BASELIB COMMON s" src/lib/prelude.f" ROW
    BASELIB COMMON s" src/lib/error.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW
+   RESTLIB COMMON s" src/core/sha256.f" ROW
    RESTLIB COMMON s" src/lib/adt/option.f" ROW
    RESTLIB COMMON s" src/lib/adt/nullable.f" ROW
    RESTLIB COMMON s" src/lib/num-types.f" ROW

@@ -761,17 +761,9 @@ CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
-CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
-CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
-CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
-CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
-\ CHECK-UNJUDGED: the scan whose verdict nobody enforces, with its render
-\ suppressed.
-CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant CHECK-UNJUDGED-OFF
-\ The record's size is derived from the field list above and the cells below
-\ are checked against it: a field without a cell, or a cell without a field,
-\ is a load failure.
+\ One cell per offset through the last field, freed fields included; the load
+\ fails when the cells end anywhere else.
 CHECKER-OWNER-EXT:OWNER-BYTES constant OWNER-BYTES
 \ A record whose header cells lie in its own datum, before the address its name
 \ answers.
@@ -791,12 +783,11 @@ private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
-OWNER-BYTES constant OWNER-CELLS-BYTES
 : OWNER-SIZE-AGREE ( -- )
-   OWNER-COMMITTED OWNER-CELLS-BYTES <> if
+   OWNER-COMMITTED OWNER-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
 ;package
@@ -5155,7 +5146,6 @@ CHECKER-REG:}SCRATCH
 72 constant MD-THROW-ZERO    \ a literal 0 at an input the callee always throws (ZERO-AT?)
 73 constant MD-FINALLY-CLEANUP \ a cleanup `finally` or a C2 invoke runs is not `[ -- ]` (CLEANUP-QUOT?, C2-FINISH-QUOT?)
 74 constant MD-CALLABLE-NARROW \ a callable stored or installed takes fewer types than the cell's or defer's effect (QCON-OK?)
-75 constant MD-QDUP-LAYOUT   \ `?dup` met a layout value (QDUP-STEP)
 76 constant MD-RECORD-AT-WIDE \ `record-at` met an instantiation wider than its family's declared width (RECORD-AT-STEP)
 77 constant MD-CONSTRUCT-WIDE \ a construct's instantiated variant is wider than the declared widest one
 78 constant MD-LINEAR-DROP   \ a step left fewer linear values than it found (LIN-REJECT)
@@ -6954,7 +6944,6 @@ variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 variable UNFIT                \ the effect a record would hold is too deep (ROWS-FIT?)
 variable QUALBAD
-variable QDUPBAD             \ ?dup applied to a layout value (width-breaking)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
 CHECKER-REG:}SCRATCH
 0 constant TORDER-CHECKING
@@ -9799,7 +9788,6 @@ variable EC-RVN
 PTR-VARIABLE EC-AK-P   variable EC-AK-CAP
 variable EC-AKN
 PTR-VARIABLE FEP
-PTR-VARIABLE TOK-EFF
 variable FEP-OFF
 variable CHECKER-REC-SYM
 CHECKER-REG:}SCRATCH
@@ -11333,7 +11321,8 @@ public
    DEPTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS ;
 
 \ Prints the rejection of stored signature SA SU declared at the name AT ATU as
-\ read, placed at SGBAD-TOKEN, up to its help; the caller ends it.
+\ read, placed at SGBAD-TOKEN, up to its help; the caller ends it. A generated
+\ word (a STRUCTURE's MAKE) has no signature text, so no note quotes one.
 : SGBAD-REJECTION ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n at:ptr atu:n :}
    SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" ELSE s" E-BAD-STORED-SIGNATURE" THEN
@@ -11341,7 +11330,8 @@ public
    s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
    sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
-   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
+   sa su SIG-TRIM {: ta:ptr tu:n :}
+   tu 0 > IF s" signature" REJECTION:NOTE  ta tu REJECTION:EMIT-CUT THEN
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
    sa su at atu SGBAD-HELP ;
 
@@ -11941,7 +11931,6 @@ CHECKER-REG:}SCRATCH
    REPEAT drop ;
 
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
-   h TOK-EFF !
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    SCOPE-N @ {: scope-start:n :}
@@ -12169,8 +12158,6 @@ variable PRM-FIRST
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE PE-NA
 variable PE-NU
-PTR-VARIABLE PE-PKG-A
-variable PE-PKG-U
 CHECKER-REG:}SCRATCH
 variable PE-BASE
 variable PE-DIN
@@ -12203,7 +12190,7 @@ variable PE-EFF-ID
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
-   \ A post-table PRIM: replaces a user declaration too. Forget that symbol's
+   \ A post-table row replaces a user declaration too. Forget that symbol's
    \ old answer; publishing a user hit here would hide initial prim overloads.
    HIDX-VALID @ IF
       HIDX-EPOCH @ 1- PE-SYM-ID @ HT-EFF-E HIDX-CELL !
@@ -12211,19 +12198,6 @@ variable PE-EFF-ID
 
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
-
-: CLOSE-PUBLIC ( -- )
-   PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
-   PE-CLOSE-SYM ;
-
-\ The package row's closer: interns the axiom into the owner's private
-\ wordlist, so the row resolves only while that package is open; every other
-\ scope misses the symbol. PPRIM: reads its token, `CLOSE-PRIVATE`, by
-\ spelling; the token is also the toolchain's. A primitive may have its private
-\ row alone: its global record has no top-level row.
-: CLOSE-PRIVATE ( -- )
-   PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
-   PE-CLOSE-SYM ;
 
 : PE-IN ( n -- )
    PE-DIN @ PUSH-TERM PE-DIN ! ;
@@ -12371,57 +12345,6 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-QUOT-ANY = IF PE-QANY EXIT THEN
    code PRIM-SPEC:A-STOW-LAYOUT = IF PE-STOW-LAYOUT PE-SPEC-PUSH EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
-
-\ A source row reads its effect tokens and runs each as the table's atoms,
-\ matched by spelling, never looked up: inside a build the product's checker.f
-\ defines its own PE words.
-
-\ A token's atoms, the second 0 when it has one; 0 0 outside the grammar.
-: PE-TOKEN-ATOMS ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u s" PE-IN"     CORE-STR=CI IF PRIM-SPEC:A-IN       0 EXIT THEN
-   a u s" PE-OUT"    CORE-STR=CI IF PRIM-SPEC:A-OUT      0 EXIT THEN
-   a u s" PE-N"      CORE-STR=CI IF PRIM-SPEC:A-NUM      0 EXIT THEN
-   a u s" PE-F"      CORE-STR=CI IF PRIM-SPEC:A-BOOL     0 EXIT THEN
-   a u s" PE-PTR"    CORE-STR=CI IF PRIM-SPEC:A-PTR      0 EXIT THEN
-   a u s" PE-Q"      CORE-STR=CI IF PRIM-SPEC:A-QUOT     0 EXIT THEN
-   a u s" PE-QIN"    CORE-STR=CI IF PRIM-SPEC:A-QUOT-IN  0 EXIT THEN
-   a u s" PE-QOUT"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-OUT 0 EXIT THEN
-   a u s" ;PE-Q"     CORE-STR=CI IF PRIM-SPEC:A-QUOT-END 0 EXIT THEN
-   a u s" PE-QANY"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-ANY 0 EXIT THEN
-   a u s" PE-STOW-LAYOUT" CORE-STR=CI IF PRIM-SPEC:A-STOW-LAYOUT 0 EXIT THEN
-   a u s" PE-PTR-A"  CORE-STR=CI IF PRIM-SPEC:A-VAR-A PRIM-SPEC:A-PTR EXIT THEN
-   a u s" PE-PTR-N"  CORE-STR=CI IF PRIM-SPEC:A-NUM   PRIM-SPEC:A-PTR EXIT THEN
-   a u s" PE-PTR-U8" CORE-STR=CI IF PRIM-SPEC:A-U8    PRIM-SPEC:A-PTR EXIT THEN
-   0 0 ;
-
-: PE-TOKEN ( ptr u8 n -- )
-   PE-TOKEN-ATOMS {: one:n two:n :}
-   one 0= IF s" checker: a primitive row token outside the row grammar" 76 die THEN
-   one PE-SPEC-ATOM
-   two 0 <> IF two PE-SPEC-ATOM THEN ;
-
-: PE-CLOSER? ( ptr u8 n bool -- bool ) {: a:ptr u:n pkg:bool :}
-   pkg 0= IF a u s" PRIM;" CORE-STR=CI EXIT THEN
-   a u s" PPRIM;" CORE-STR=CI  a u s" CLOSE-PRIVATE" CORE-STR=CI  or ;
-
-: PE-READ ( bool -- ptr u8 n ) {: pkg:bool :}
-   0 PE-SPEC-TOS !
-   BEGIN
-      parse-name  dup 0= IF s" checker: a primitive row has no closer" 76 die THEN
-      2dup pkg PE-CLOSER? 0=
-   WHILE
-      PE-TOKEN
-   REPEAT
-   PE-SPEC-TOS @ 0 <> IF s" checker: primitive row operand left over" 76 die THEN ;
-
-: PRIM: ( -- )
-   parse-name PE-OPEN
-   RES-FALSE PE-READ 2drop PE-CLOSE ;
-
-: PPRIM: ( -- )
-   parse-name PE-PKG-U ! PE-PKG-A !
-   parse-name PE-OPEN
-   RES-TRUE PE-READ s" CLOSE-PRIVATE" CORE-STR=CI IF CLOSE-PRIVATE ELSE CLOSE-PUBLIC THEN ;
 
 PTABLE-START
 
@@ -14466,11 +14389,10 @@ package CHECKER-REG
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
-\ A cut that takes the record the live window names (CK-CLOSED-OFF, offset+1)
-\ ends the window, since a hand CHECK! at the same offset would otherwise
-\ reopen it.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 
+\ Cuts the store back to MARK. A cut that takes the record the live window names
+\ (CK-CLOSED-OFF, offset+1) ends it; a CHECK! at that offset would reopen it.
 : CHECKER-RETRACT-ROWS ( n -- )
    {: mark:n :}
    mark UEND @ < IF
@@ -14592,8 +14514,7 @@ variable PARSE-COMPLETE
 16 constant BWIN-INIT
 $7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
 PTR-VARIABLE BWIN-P
-variable BWIN-N   variable BWIN-CAP   variable BWIN-VALID   variable UWIN-VALID
-variable BWIN-EPOCH
+variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 
 : BIND-ROW-GLUE ( n -- n )
    {: row:n :}
@@ -14626,7 +14547,7 @@ variable BWIN-EPOCH
    BWIN-P @ BYTE-VIEW i CHECKER-OWNER-ABI:BOUND-CELLS * f + cells + CELL-VIEW ;
 
 : BWIN-RESET ( -- )
-   0 BWIN-N !  0 BWIN-VALID !  0 UWIN-VALID !  0 BWIN-HIT ! ;
+   0 BWIN-N !  0 UWIN-VALID !  0 BWIN-HIT ! ;
 
 : BWIN-RELEASE ( -- )
    BWIN-CAP @ 0= 0= IF
@@ -14653,13 +14574,12 @@ variable BWIN-EPOCH
    cap CHECKER-OWNER-ABI:BOUND-CELLS * cells REG-GROW1
    cap BWIN-CAP ! ;
 
+\ Only an unjudged scan's rows are ever read, so a judged scan records none.
 : BWIN-COMMIT ( -- )
    REC-ON @ 0= BWIN-HIT @ 0= or IF EXIT THEN
-   BWIN-UNJUDGED @ 0= TOK-EFF @ NULL-PTR = and TOK-SYM @ 0= 0= and IF
-      TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-EFF ! THEN
-   THEN
    0 BWIN-HIT !
-   BWIN-UNJUDGED @ IF TOK-ABI-EFF ELSE TOK-EFF THEN @ {: eff:ptr :}
+   BWIN-UNJUDGED @ 0= IF EXIT THEN
+   TOK-ABI-EFF @ {: eff:ptr :}
    BWIN-ENSURE
    BWIN-N @ {: i:n :}
    REC-IX @ i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT !
@@ -14730,19 +14650,9 @@ variable BWIN-EPOCH
    THEN
    NULL-PTR 0 ;
 
-: REC-CALL-BINDING ( n -- ptr u8 n )
-   BWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   REC-BINDING-ROW ;
-
 : REC-UNJUDGED-BINDING ( n -- ptr u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
    REC-BINDING-ROW ;
-
-\ Whether REC-UNJUDGED-BINDING answers: the last unjudged scan closed every
-\ construct it opened.
-: UNJUDGED-CLOSED? ( -- bool ) UWIN-VALID @ 0 <> ;
-
-: REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
 : REC-STEP ( -- )
    REC-ON @ 0= IF EXIT THEN
@@ -21088,9 +20998,6 @@ CHECKER-REG:}SCRATCH
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
    EFFECT-DOUT-N 0= and ;
-\ The native compiler asks this of the prefix; its declared row is what lets
-\ checked code call it.
-s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT
 
@@ -21132,9 +21039,6 @@ variable ACTIVE
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
    sym cnt PIMM-ADD ;
-\ The TRUST row keeps parse-imm out of the internal-word marking: a library
-\ declares its parsing immediates at top level.
-s" parse-imm" s" ptr u8 n n --" TRUST
 
 \ PARSE-IMM's row, added by the verifier's replay in a verifier window only.
 : CHECKER-PARSE-IMM ( ptr u8 n n -- )
@@ -21848,17 +21752,11 @@ variable IS-PEND-U                   \ and its length
    a u s" 2r>"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r@"   CORE-STR= ;
 
-: DCUR-TOP-LAYOUT? ( -- bool )
-   \ LAYOUT-PARAM? is true for a HIDDEN field too (same layout family-id), so an
-   \ expanded bundle's tag cell on top refuses ?dup as a logical cell does.
-   DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
-
+\ ?dup has no checked form whatever its operand (no row models a result whose
+\ cell count depends on a value), so every checked ?dup is rejected as an
+\ undefined word.
 : QDUP-STEP ( -- )
-   DCUR-TOP-LAYOUT? IF
-      MD-QDUP-LAYOUT MDIAG!  0 OK !  -1 FAILSET !  -1 QDUPBAD !
-   ELSE
-      -1 UNDEFERR !  UNCK-RAISE                  \ no row models a scalar ?dup: refused as an undefined word
-   THEN ;
+   -1 UNDEFERR !  UNCK-RAISE ;
 
 \ --- construct form: `construct family variant` is a reserved checker token
 \ protocol, not a word lookup. DO-TOK1 captures both operands before locals,
@@ -22143,7 +22041,7 @@ variable POST-A0
 : DO-TOK-HEAD ( ptr u8 n -- bool bool n n n )
    {: a:ptr u:n :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
-   NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
+   NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
    0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
@@ -22765,7 +22663,7 @@ CHECKER-REG:}SCRATCH
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
-   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
    CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
@@ -22777,9 +22675,6 @@ CHECKER-REG:}SCRATCH
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
    a u TORDER-SCAN!
-   BWIN-EPOCH @ 1+ dup 0= IF
-      s" checker: binding window serial overflow" 76 die THEN
-   BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    FO-RESET

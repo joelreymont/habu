@@ -686,14 +686,21 @@ LOCSHOW-INSTALL
    0 DEST !  TEXT TEXT-LEN @ ;
 
 
-\ Record off's facts text, appended at TEXT-LEN.
-: REND-RECORD ( n -- ptr u8 n )
+\ Record off instantiated: its data rows, its return rows (0 0 when it has
+\ none) and whether it has them.
+: RECORD-ROWS ( n -- n n n n bool )
    {: off:n :}
    off E-PTR E-INST-RESET
    off E-PTR E-HASR@ 0 <> {: hasr:bool :}
    off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
    hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
-   hasr REND-FACTS ;
+   hasr ;
+\ Record off's facts text, appended at TEXT-LEN.
+: REND-RECORD ( n -- ptr u8 n ) RECORD-ROWS REND-FACTS ;
+
+
+\ Record off's effect as REND-EFFECT writes it, appended at TEXT-LEN.
+: REND-RECORD-EFFECT ( n -- ptr u8 n ) RECORD-ROWS REND-EFFECT ;
 
 
 \ `creates-effect ` and the facts text of n, a created effect as checker.f
@@ -954,7 +961,6 @@ variable MDV-I   variable MDV-F
       MD-BINDER-PLACE of s" E-BINDER-PLACE" endof
       MD-FINALLY-CLEANUP of s" E-FINALLY-CLEANUP" endof
       MD-CALLABLE-NARROW of s" E-CALLABLE-NARROW" endof
-      MD-QDUP-LAYOUT  of s" E-QDUP-LAYOUT" endof
       MD-RECORD-AT-WIDE of s" E-RECORD-AT-WIDE" endof
       MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       MD-C2-BINDER    of s" E-C2-BINDER" endof
@@ -1076,7 +1082,6 @@ variable MDV-I   variable MDV-F
       MD-DOES-UNMADE  of s" call `create NAME` before `does>`, outside any IF, loop or quotation" endof
       MD-FINALLY-CLEANUP of s" put a cleanup of effect `[ -- ]` on top, as `[: body ;] [: cleanup ;] finally`" endof
       MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
-      MD-QDUP-LAYOUT  of s" take the value apart with `MATCH` and test the arm you need" endof
       MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
       MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `ptr`" endof
       MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
@@ -1177,7 +1182,6 @@ variable MDV-I   variable MDV-F
       MD-DOES-UNMADE  of s" this definition reaches `does>` without creating a word" endof
       MD-FINALLY-CLEANUP of s" the cleanup `finally` runs must take and leave nothing" endof
       MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
-      MD-QDUP-LAYOUT  of s" `?dup` tests one cell, and this value is held in more than one" endof
       MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1254,7 +1258,6 @@ variable MDV-I   variable MDV-F
       MD-THROW-ZERO   of s" throws code 0" endof
       MD-FINALLY-CLEANUP of s" cleanup not stack-neutral" endof
       MD-CALLABLE-NARROW of s" callable narrower than the cell" endof
-      MD-QDUP-LAYOUT  of s" not a one-cell value" endof
       MD-RECORD-AT-WIDE of s" wide instantiation" endof
       MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       MD-LINEAR-DROP  of s" linear value dropped" endof

@@ -152,10 +152,8 @@
 \ row's package before it, are read raw, so either may be spelled as a definer
 \ or parsing word (`EPRIM: create EPRIM;`). The body runs to the row's first
 \ closer, read by the canonical body scanner so that parsing words consume
-\ their comments, strings and raw operands before a closer is considered. A
-\ `PPRIM:` row ends at `PPRIM;` (public) or `CLOSE-PRIVATE` (private); a bare
-\ `PRIM:` row has no package, so `CLOSE-PRIVATE` is an ordinary effect token
-\ there. prims.f's `EPRIM:` and `EPPRIM:` rows end at the first of `EPRIM;` and
+\ their comments, strings and raw operands before a closer is considered.
+\ prims.f's `EPRIM:` and `EPPRIM:` rows end at the first of `EPRIM;` and
 \ `ECLOSE-PRIVATE`, since both write the open row. A row is known by its
 \ opener's spelling: a binding cannot tell prims.f's opener from its own
 \ definition when the scan reads prims.f. No `parses-through:` row can bound
@@ -180,6 +178,10 @@
 require src/lib/error.f
 require src/lib/source-syntax.f
 require src/core/checker-owner-guard.f
+require src/core/checker.f
+require src/core/check-walk.f
+require src/core/rejection.f
+require src/core/render.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/habu/boot-cells.f
@@ -1283,8 +1285,7 @@ variable GROUP-AT
    p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:ptr :}
    NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
-\ Replay-only checker queries use the live declaration owner. The verifier is
-\ source loaded, so the sealed image need not publish these checker names.
+\ Replay-only checker queries use the live declaration owner.
 : OWNER-XT ( n -- n ) {: off:n :}
    NCOMP-DISPATCH:DECL-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
@@ -2259,6 +2260,25 @@ ENGINE-TARGET-INIT
    {: name:ptr nameu:n eff:ptr effu:n at:n class:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu eff effu at at nameu + class DEFINED ;
 
+\ The effect of NAME's retained newest record, or empty when there is none or
+\ TEXT cannot say it; it lies past TEXT-LEN, where the next TEXT write lands.
+: MADE-EFFECT ( ptr u8 n -- ptr u8 n )
+   RETAINED-SYM {: sym:n :}
+   sym 0= IF s" " EXIT THEN
+   sym USIG-NEWEST {: rec1:n :}
+   rec1 0= IF s" " EXIT THEN
+   REJECTION:TEXT-LEN @ RQM @ REJECTION:DEST @ {: base:n qm:n dst:n :}
+   rec1 1 - REND-RECORD-EFFECT {: a:ptr u:n :}
+   RQM @ {: unsaid:n :}
+   base REJECTION:TEXT-LEN !  qm RQM !  dst REJECTION:DEST !
+   unsaid 0<> IF s" " EXIT THEN
+   a base +  u base - ;
+
+\ DEFINED-HERE for a word a definer made, with the effect its record carries.
+: DEFINED-MADE ( ptr u8 n n n -- )
+   {: name:ptr nameu:n at:n class:n :}
+   name nameu  name nameu MADE-EFFECT  at class DEFINED-HERE ;
+
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ The keyword the engine's rejection names for the storage statement's name:
@@ -2301,7 +2321,7 @@ ENGINE-TARGET-INIT
    name nameu dsym RECORD-CREATED
    DISARM
    0= IF 0 0= 0= EXIT THEN
-   name nameu s" " at DEF-STORAGE DEFINED-HERE
+   name nameu at DEF-STORAGE DEFINED-MADE
    0 0= ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
@@ -2691,7 +2711,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
 \ one line, so a later definition calling one is E-UNDEFINED without this row,
@@ -2704,7 +2724,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
@@ -2715,7 +2735,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2724,7 +2744,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-BYTE-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
@@ -2735,7 +2755,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 
 : RECORD-CWORK-SPAN ( -- )
@@ -2747,7 +2767,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-SLOT ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2756,7 +2776,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFSLOT
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-CWORK-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2765,7 +2785,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFCWORK-VARIABLE
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ NAME, read from byte AT, names no word itself, so a taken derived word is the
 \ duplicate, rejected at NAME.
@@ -2791,7 +2811,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
@@ -3395,10 +3415,9 @@ variable FILE-USE
    a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
-: ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
-   TOKEN-A @ TOKEN-U @ end endu STR=CI IF 0 0= EXIT THEN
-   altu 0= IF 0 0= 0= EXIT THEN
-   TOKEN-A @ TOKEN-U @ alt altu STR=CI ;
+: ROW-CLOSER? ( -- bool )
+   TOKEN-A @ TOKEN-U @ s" EPRIM;" STR=CI IF 0 0= EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" ECLOSE-PRIVATE" STR=CI ;
 
 \ The row opened by the top-level token at byte n has no closer.
 : ROW-UNCLOSED ( n -- )
@@ -3422,8 +3441,8 @@ variable FILE-USE
 \ body's literal and line: that literal may lie in decoded bytes a decode has
 \ since moved. Discovery refuses a loader word with no literal before it, so
 \ tools/check.f never reads one that opens a row.
-: RECORD-PRIM-ROW ( n ptr u8 n ptr u8 n -- )
-   {: at:n end:ptr endu:n alt:ptr altu:n :}
+: RECORD-PRIM-ROW ( n -- )
+   {: at:n :}
    BODY-LOAD-RESET
    LOCALS-RESET
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
@@ -3431,18 +3450,15 @@ variable FILE-USE
    BEGIN
       BODY!
       TOKEN-U @ 0= IF at ROW-UNCLOSED THEN
-      end endu alt altu ROW-CLOSER? IF EXIT THEN
+      ROW-CLOSER? IF EXIT THEN
       SKIP-BODY-TOKEN
    AGAIN ;
 
-: RECORD-PRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
-   TOKEN-BYTE @ end endu alt altu RECORD-PRIM-ROW ;
-
-: RECORD-PPRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
+: RECORD-PPRIM ( -- )
    TOKEN-BYTE @ {: at:n :}
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
-   at end endu alt altu RECORD-PRIM-ROW ;
+   at RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -3649,14 +3665,6 @@ variable HEAP-XT s" HEAP" HEAP-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
-variable SCRATCH-VARIABLE-XT s" SCRATCH-VARIABLE" SCRATCH-VARIABLE-XT LIBRARY-XT!
-variable PTR-VARIABLE-XT s" PTR-VARIABLE" PTR-VARIABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-VARIABLE-XT s" PERSISTED-PTR-VARIABLE" PERSISTED-PTR-VARIABLE-XT LIBRARY-XT!
-variable PTR-U8-TABLE-XT s" PTR-U8-TABLE" PTR-U8-TABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-U8-TABLE-XT s" PERSISTED-PTR-U8-TABLE" PERSISTED-PTR-U8-TABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-U8-TABLE-VARIABLE-XT s" PERSISTED-PTR-U8-TABLE-VARIABLE" PERSISTED-PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
-variable PTR-U8-TABLE-VARIABLE-XT s" PTR-U8-TABLE-VARIABLE" PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
-variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-XT LIBRARY-XT!
 
 \ A re-export of the library word is that word: the load binds its alias to the
 \ library word's code. An export keeps its source's tail, so only a token whose
@@ -3768,31 +3776,9 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u SCRATCH-VARIABLE-XT @ s" SCRATCH-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PTR-VARIABLE-XT @ s" PTR-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-VARIABLE-XT @ s" PERSISTED-PTR-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   \ The clause names the pointee, so the effect has no type variable and the
-   \ raw registration seals nothing: the row native `trust-raw` publishes.
-   a u PTR-U8-TABLE-XT @ s" PTR-U8-TABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-U8-TABLE-XT @ s" PERSISTED-PTR-U8-TABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-U8-TABLE-VARIABLE-XT @ s" PERSISTED-PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PTR-U8-TABLE-VARIABLE-XT @ s" PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   \ The offset token precedes the name, as a table count does, so the created
-   \ word is still the next token.
-   a u RESERVED-PTR-U8-CELL-XT @ s" RESERVED-PTR-U8-CELL" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" PRIM:" STR=CI IF s" PRIM;" s" " RECORD-PRIM 0 0= EXIT THEN
-   a u s" PPRIM:" STR=CI IF s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PPRIM 0 0= EXIT THEN
-   a u s" EPRIM:" STR=CI IF s" EPRIM;" s" ECLOSE-PRIVATE" RECORD-PRIM 0 0= EXIT THEN
-   a u s" EPPRIM:" STR=CI IF s" ECLOSE-PRIVATE" s" EPRIM;" RECORD-PPRIM 0 0= EXIT THEN
+   a u s" EPRIM:" STR=CI IF TOKEN-BYTE @ RECORD-PRIM-ROW 0 0= EXIT THEN
+   a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF
       [: CAST-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN

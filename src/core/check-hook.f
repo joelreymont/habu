@@ -233,13 +233,17 @@ CAST: ROW-XT ( n -- [ ptr u8 n ptr u8 n -- bool ] )
    sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
-\ The declared-row registrar's field entry: DECLARED's, answering whether the
-\ checker rejected the row.
+public
+
+\ Declares a TRUSTED: definition's row NAME SIG as DECLARED does and answers
+\ whether the checker rejected it.
 : ROW-DECLARED ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su ROW-REG @ ROW-XT execute {: rejected:bool :}
    na nu PENDING-FACTS
    rejected ;
+
+private
 
 \ The shapes whose child answers or takes `ptr t` for its declared type t.
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}
@@ -703,14 +707,12 @@ public
    ['] DEFINITION set-check ;
 
 \ Replace the checker's entries in the owner's fields, now the renderer exists.
-' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + CELL-VIEW @ DECL-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + CELL-VIEW @ DEFCAST-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + CELL-VIEW @ ROW-REG xt!
 ' RAW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + xt!
 ' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
-' ROW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 ' DEFERRED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DEFER-OFF + xt!
 ' CAST-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + xt!
 ' LINEAR-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:LINEAR-OFF + xt!

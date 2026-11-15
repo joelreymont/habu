@@ -230,8 +230,8 @@ E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum"
 s" drop the payload that names the family being declared: no family can hold itself"
 E-TDECL-RECURSIVE EXPLAIN
-s" declared name too long"
-s" shorten the name to 255 bytes or fewer"
+s" declared name too long or record too wide to make"
+s" shorten the name to 255 bytes or fewer, or give the record at most 4096 items: one per `FIELD` and one per buffer cell"
 E-TDECL-CAP EXPLAIN
 s" derive requirement not met"
 s" derive a feature only when every payload type has it, or drop it from `DERIVE`"

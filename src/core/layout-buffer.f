@@ -242,11 +242,6 @@ CAST: width>n ( width<t> -- n )
    count  cb 2 CELL * +  !                             \ cnt-cell = live bound
    oldoff oldcap wc cb LDEFER-RETIRE ;
 
-\ The axiom keeps the shared binder executable; a raw-memory surface like allot
-\ and !, so not UNSAFE-TOK?.
-\ Effect: ( count cbase wc -- ).
-PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
-
 \ NAME-GROW extends a column, preserving written cells. Past capacity the
 \ region becomes max(2*capacity, count). A within-capacity grow
 \ zeroes [old-live, count): a prior shrink may have left it dirty.
@@ -270,10 +265,6 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    then then
    count  cb 2 CELL * +  !
    oldoff oldcap wc cb LDEFER-RETIRE ;
-
-\ The same axiom as LDEFER-BIND's.
-\ Effect: ( count cbase wc -- ).
-PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
 \ A companion's one cell, laid after it: it holds the block v and keeps the
 \ address across a save.
@@ -365,11 +356,6 @@ public
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
 
-\ The axiom keeps LAYOUT-BUFFER checker-known, so top level may run it;
-\ UNSAFE-TOK? refuses it inside checked bodies (it declares a word), so the
-\ axiom adds no checked-code capability.
-PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
-
 : DEFER-LAYOUT-BUFFER ( -- )
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -389,10 +375,6 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    0 ,  0 ,  0 ,  LBUF-W @ ,
    handle v CHECKER-STORAGE-DEFER
    name nameu v LBUF:COMPANIONS ;
-
-\ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level; it takes nothing
-\ from the stack (the count arrives at bind).
-PRIM: DEFER-LAYOUT-BUFFER PRIM;
 
 \ ---- TYPED-VARIABLE / TYPED-BUFFER --------------------------------------------
 \ LAYOUT-BUFFER's machinery gated by CHECKER-STORAGE-INFO, so closed typed
@@ -462,10 +444,5 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: v:ptr :}
    LBUF-BYTES @ allot
    handle v 1 node hasaddr NODE-BIND ;
-
-\ As for LAYOUT-BUFFER: top-level executable, refused inside checked bodies by
-\ UNSAFE-TOK?.
-PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
-PRIM: TYPED-VARIABLE PRIM;
 
 ;using

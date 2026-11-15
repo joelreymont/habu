@@ -98,8 +98,7 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE ;
 
-\ RESERVED-PTR-U8-CELL's effect is two rows: src/core/cell-effects.f (the
-\ definer's) and src/habu/verify-source.f (what it publishes for the created word).
+\ RESERVED-PTR-U8-CELL's created word has the effect its does> states.
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=

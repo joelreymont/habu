@@ -11,6 +11,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
 require src/core/checker.f
+require src/core/check-walk.f
 require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
@@ -123,12 +124,12 @@ private
 \ tape: the pending dictionary record holds only the bare tail of a qualified
 \ definition. Answers whether the checker rejected the row.
 : REGISTER-TRUST ( ptr u8 n ptr u8 n -- bool )
-   CHECKER-OWNER:DECLARE-ROW ;
+   CHECK:ROW-DECLARED ;
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
+      a u CHECK-UNJUDGED! exit then
    0 CHECKER-OWNER:BIND-REGIME!
    a u CHECK:DEFINITION ;
 
@@ -201,11 +202,8 @@ private
 
 public
 
-\ Under a recovering reader a definition the checker rejected, or any
-\ definition, trusted or not, whose body or does> clause bound a rejected
-\ declaration's recovery row, is counted and abandoned unpublished:
-\ E-COMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
-\ whose declared row the checker rejected and reported.
+\ A recovering reader takes E-COMP-RECOVERY for a rejected or uncheckable body
+\ without does>, a recovery-row binding, or a rejected TRUSTED: row.
 : VERDICT-CK ( -- )
    TRUSTED? 0= if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
@@ -302,7 +300,7 @@ public
 private
 
 \ Drops a refused definition's rows from M-ROWS on, or its does> frame, so a
-\ redefinition is no duplicate (exact cut: checker.f CHECKER-RETRACT-ROWS).
+\ redefinition is no duplicate.
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
@@ -311,7 +309,7 @@ private
       then
       exit
    then
-   M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
+   M-ROWS @ CHECKER-RETRACT-ROWS ;
 
 TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
@@ -371,7 +369,7 @@ public
    sa M-SRC ! su M-SRC-U !
    0 M-VERDICT !
    false M-ROW-REJECTED !
-   CHECKER-OWNER:ROWS-END M-ROWS !
+   CHECKER-ROWS-END M-ROWS !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !
