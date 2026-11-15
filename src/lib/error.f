@@ -691,6 +691,8 @@ require src/lib/prelude.f
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
 \ package JSON (src/lib/json.f).
 \ Enum tags: -9880..-9889, minted in src/core/sumtype.f (FAM:TAG>).
+\ Extended attributes: -9900..-9909, minted in src/lib/xattr.f, which owns
+\ package XATTR.
 
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.

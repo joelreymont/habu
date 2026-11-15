@@ -1074,6 +1074,13 @@ SUITE systemd
 ;SUITE
 [then]
 
+\ The attribute calls are bound on the Linux kernel only, arm64 and x86-64.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE xattr
+   src/lib/xattr-test.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
