@@ -1055,20 +1055,13 @@ public
 16 cells constant BUF-BYTES
 8 cells constant FBUF-BYTES
 16 cells constant STACK-BUF-BYTES
-16 cells constant KPARAM-PBUF-BYTES
-16 cells constant KPARAM-VBUF-BYTES
 $40 constant DLBUF-BYTES
-1 cells constant KPARAM#-BYTES
 $3A00 constant START
 START constant BUF-OFF
 BUF-OFF BUF-BYTES + constant FBUF-OFF
 FBUF-OFF FBUF-BYTES + constant STACK-BUF-OFF
-STACK-BUF-OFF STACK-BUF-BYTES + constant KPARAM-PBUF-OFF
-KPARAM-PBUF-OFF KPARAM-PBUF-BYTES + constant KPARAM-VBUF-OFF
-KPARAM-VBUF-OFF KPARAM-VBUF-BYTES + constant DLBUF-OFF
-DLBUF-OFF DLBUF-BYTES + constant KPARAM#-OFF
-KPARAM#-OFF KPARAM#-BYTES + START - constant BYTES
-START BYTES + constant END
+STACK-BUF-OFF STACK-BUF-BYTES + constant DLBUF-OFF
+DLBUF-OFF DLBUF-BYTES + START - constant BYTES
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots. 64 text bytes hold every errno's

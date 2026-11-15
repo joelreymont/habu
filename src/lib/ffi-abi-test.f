@@ -9,11 +9,6 @@ package FFI-ABI-TEST
 private
 
 create FFI-T-OUT 1 cells allot
-create FFI-T-KP-CELL 1 cells allot
-create FFI-T-KP-DST 2 cells allot
-
-\ A kernel-parameter entry is an address handed to C as a cell.
-CAST: FFI-T-CELL-AT ( n -- ptr n )
 
 \ A part whose own `and` and `drop` spell the engine words a declared word
 \ runs after a u32 result and after none: the declared words never call them.
@@ -33,10 +28,9 @@ public
    SHADOW:GO 5 T= ;
 
 \ C writes through a staged cell: strtol stores its end pointer in argument 1,
-\ an eight-byte output. memcpy copies the kernel-parameter block out whole.
+\ an eight-byte output.
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) ;FUNCTION
-FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 \ A declaration held open across a require: the file ends before ;FUNCTION.
@@ -54,25 +48,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    s" a declaration open across a require calls C" T-LABEL
    0 FFI-T-OUT FFI:OUT!
    FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
-
-: FFI-T-KPARAM-CAP ( -- )
-   FFI:KPARAM-RESET
-   [: 17 0 do i FFI:KPARAM-VALUE+ loop ;] E-FFI-ARITY TTHROWSQ ;
-
-\ The first entry points at the FFI-owned cell holding 13, the second at the
-\ caller's cell.
-: FFI-T-KPARAMS ( -- )
-   FFI:KPARAM-RESET
-   13 FFI:KPARAM-VALUE+
-   21 FFI-T-KP-CELL FFI:OUT!
-   FFI-T-KP-CELL FFI:KPARAM+
-   FFI:KPARAM-COUNT 2 T=
-   FFI-T-KP-DST BYTE-VIEW FFI:KPARAMS drop BYTE-VIEW 16 FFI-T-MEMCPY drop
-   FFI-T-KP-DST @ FFI-T-CELL-AT @ 13 T=
-   FFI-T-KP-DST 1 cells + @ FFI-T-KP-CELL FFI:>CELL T=
-   FFI-T-KPARAM-CAP
-   FFI:KPARAM-RESET
-   FFI:KPARAM-COUNT 0 T= ;
 
 \ A row no other declaration shares: k's two base-16 digits are its argument
 \ and spill counts.
@@ -203,7 +178,6 @@ variable FFI-T-PADS
    T-RESET
    FFI-T-OUT-PARAM
    FFI-T-REQUIRED
-   FFI-T-KPARAMS
    FFI-T-ROLLBACK
    FFI-T-SHADOW
    FFI-T-NO-DASHES

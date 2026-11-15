@@ -1,9 +1,9 @@
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
 \ only checked call surface: its word names a row, never an address.
-\ STORAGE CLASS. TASK-LOCAL: marshalling buffers, kernel params and the
-\ DLSYM loader block; calls nest only through a C callback, which shares
-\ them. PROCESS-WIDE: rows, whose addresses, handles and failures are scratch.
+\ STORAGE CLASS. TASK-LOCAL: marshalling buffers and the DLSYM loader block;
+\ calls nest only through a C callback, which shares them. PROCESS-WIDE: rows,
+\ whose addresses, handles and failures are scratch.
 \
 \ FUNCTION: names a row here and its generated word carries the row's index, so
 \ a checked caller reaches only a symbol some declaration published. Exact
@@ -43,7 +43,6 @@ package FFI
 FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
 \ AAPCS64's integer argument registers, and both ABIs' float slots.
 FFI-ABI:FBUF-BYTES 1 cells / constant REG-MAX
-16 constant FFI-MAX-KPARAMS
 2 constant FFI-RTLD-NOW
 
 : FFI-BUF ( -- ptr n )
@@ -69,17 +68,8 @@ FFI-ABI:FBUF-BYTES 1 cells / constant REG-MAX
 : FFI-STACK-BYTES ( -- ptr u8 )
    data-base FFI-ABI:STACK-BUF-OFF + ;
 
-: FFI-KPARAM-PBUF ( -- ptr n )
-   data-base FFI-ABI:KPARAM-PBUF-OFF + ;
-
-: FFI-KPARAM-VBUF ( -- ptr n )
-   data-base FFI-ABI:KPARAM-VBUF-OFF + ;
-
 : FFI-DLBUF ( -- ptr n )
    data-base FFI-ABI:DLBUF-OFF + ;
-
-: FFI-KPARAM# ( -- ptr n )
-   data-base FFI-ABI:KPARAM#-OFF + ;
 
 \ CELL>PTR stays private: a foreign address carries no length, so only a word
 \ that knows the callee's width may publish one.
@@ -149,35 +139,6 @@ CAST: CELL>PTR ( n -- ptr u8 )
    @ ;
 : FFI-OUT! ( n ptr n -- )
    ! ;
-
-\ ---- kernelParams ---------------------------------------------------------
-\ `cuLaunchKernel` wants void**: each array element points to caller-owned or
-\ FFI-owned param storage. FFI-owned value cells are stable until the next
-\ FFI-KPARAM-RESET or overwrite by another FFI-KPARAM-N+ sequence.
-: FFI-KPARAM-COUNT ( -- n )
-   FFI-KPARAM# @ ;
-: FFI-KPARAM-RESET ( -- )
-   0 FFI-KPARAM# ! ;
-: FFI-KPARAM-CHECK ( n -- ) {: idx:n :}
-   idx FFI-MAX-KPARAMS FFI-CHECK-INDEX ;
-: FFI-KPARAM-PTR-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-KPARAM-CHECK
-   FFI-KPARAM-PBUF idx cells + ;
-: FFI-KPARAM-VAL-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-KPARAM-CHECK
-   FFI-KPARAM-VBUF idx cells + ;
-: FFI-KPARAM-BUMP ( n -- )
-   1 + FFI-KPARAM# ! ;
-: FFI-KPARAM+ ( ptr a -- ) {: p:ptr :}
-   FFI-KPARAM-COUNT {: idx:n :}
-   p PTR>CELL idx FFI-KPARAM-PTR-SLOT !
-   idx FFI-KPARAM-BUMP ;
-: FFI-KPARAM-N+ ( n -- ) {: v:n :}
-   FFI-KPARAM-COUNT {: idx:n :}
-   v idx FFI-KPARAM-VAL-SLOT !
-   idx FFI-KPARAM-VAL-SLOT FFI-KPARAM+ ;
-: FFI-KPARAMS ( -- ptr n n )
-   FFI-KPARAM-PBUF FFI-KPARAM-COUNT ;
 
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
@@ -624,11 +585,6 @@ public
 
 : OUT@ ( ptr n -- n ) FFI-OUT@ ;
 : OUT! ( n ptr n -- ) FFI-OUT! ;
-: KPARAM-COUNT ( -- n ) FFI-KPARAM-COUNT ;
-: KPARAM-RESET ( -- ) FFI-KPARAM-RESET ;
-: KPARAM+ ( ptr a -- ) FFI-KPARAM+ ;
-: KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
-: KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
 
 \ FFI is the only library code that writes a terminator.
 private
