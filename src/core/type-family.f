@@ -754,10 +754,10 @@ public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
-\ generated-constructor metadata. A PUBLIC sum/enum family stores its
-\ derived constructor package name (interned offset+len) in every variant; the
-\ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
-\ families export nothing, so both stay zero. All three cells are integers /
+\ generated-constructor metadata. A PUBLIC family stores its derived
+\ constructor package name (interned offset+len) in every variant; a private
+\ family's stays zero. The checker symbol for each variant's generated word,
+\ public or private, lands in SV.CTOR-SYM. All three cells are integers /
 \ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
 : SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
    off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
@@ -1183,61 +1183,37 @@ public
 
 private
 
-\ The members a private family's generator publishes, and the only names the
-\ by-name guard protects: MAKE and UNMAKE (structure-make.f SM-EMIT-ROWS,
-\ sumtype.f TDECL-PROD-PLAN). A further private member extends this list and
-\ the recognizer needs no other change. Derived tails are recognized from the
-\ family's derive flags (TFAM-DERIVED-PRIV-TAIL?) and addr accessors from the
-\ field registry (TFAM-ADDR-WORD?). A private SUM or ENUM publishes no word, so
-\ a variant name is not a member: inside a package declaring a private `SUMTYPE
-\ colour`, an ordinary `COLOUR-RED` is the package's own word and stays
-\ undefinable.
-2 constant TF-PRIV-MEMBER-N
-: TF-PRIV-MEMBER$ ( n -- ptr u8 n ) {: i:n :}
-   i 0= IF s" make" EXIT THEN
-   s" unmake" ;
+\ A private family's generated words are its rows' private spellings, a
+\ product's make and unmake rows included, and its derived words: the
+\ family's private prefix and a tail TFAM-DERIVED-KIND-TAIL? accepts, the
+\ qualified half's rule. A name no row or derived tail spells is the package's
+\ own word: beside a private `SUMTYPE colour`, `undefine COLOUR-MAKE` succeeds.
+: TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a row of THIS family?
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam TFAM-VAR-COUNT@ 0 ?do
+      a u  fam TFAM-NAME$ vstart i + SUMV-NAME$ TF-CTOR-PRIV$  CORE-STR=CI
+         IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
 
-: TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a member of THIS family?
-   0 BEGIN dup TF-PRIV-MEMBER-N < WHILE
-      {: m:n :}
-      a u  fam TFAM-NAME$ m TF-PRIV-MEMBER$ TF-CTOR-PRIV$  CORE-STR=CI
-         IF RES-TRUE EXIT THEN
-      m 1 +
-   REPEAT drop RES-FALSE ;
-
-public
-
-\ A private family derives too, so the private scan answers for a derived tail
-\ as the qualified one does through TFAM-DERIVED-AT?. The candidate spelling
-\ comes from TF-CTOR-PRIV$, so the recognizer cannot drift from TDGEN-DRV-REF.
-: TFAM-PRIV-MEMBER? ( ptr u8 n ptr u8 n n -- bool ) {: a:ptr u:n ma:ptr mu:n fam:n :}
-   a u  fam TFAM-NAME$ ma mu TF-CTOR-PRIV$  CORE-STR=CI ;
-
-: TFAM-DERIVED-PRIV-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
-   fam TFAM-DERIVE-EQ? IF
-      a u s" eq" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
-   fam TFAM-DERIVE-HASH? IF
-      a u s" hash" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
-   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
-   a u s" tag" fam TFAM-PRIV-MEMBER? ;        \ tag rides ANY derive on sum/enum
-
-private
+: TF-PRIV-DERIVED? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   fam TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
+   fam TFAM-NAME$ a 0 TF-CTOR-PRIV$ {: pa:ptr pu:n :}   \ FAMILY-
+   u pu <= IF RES-FALSE EXIT THEN
+   a pu pa pu CORE-STR=CI 0= IF RES-FALSE EXIT THEN
+   a pu +  u pu -  fam TFAM-DERIVED-KIND-TAIL? ;
 
 \ A private (or OPAQUE) family's generated word is recognized only while its
 \ declaring package is open, the only scope it resolves in; outside it the name
-\ belongs to whoever spells it. Before that, a family with public generated
-\ words (TFAM-GEN-PUBLIC?) wears the qualified spelling, a private sum or enum
-\ publishes nothing, and a fieldless product published no member pair. Members
-\ are the constructor pair, the derived tails, and the addr accessors
-\ (TFAM-ADDR-WORD-XT).
+\ belongs to whoever spells it. A family with public generated words
+\ (TFAM-GEN-PUBLIC?) wears the qualified spelling instead. Members are the
+\ rows' words, the derived tails, and the addr accessors (TFAM-ADDR-WORD-XT).
 : TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
-   fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
-   a u fam TFAM-DERIVED-PRIV-TAIL? ;
+   a u fam TF-PRIV-DERIVED? ;
 
 public
 
@@ -4138,6 +4114,7 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ stored RECURSE MK-PTR EXIT THEN
+   node SCHEMA-XT?    IF OPAQUE-XT EXIT THEN
    node SCHEMA-APP? IF
       PARAM-SCR-N @ {: base:n :}
       0 BEGIN dup node SCHEMA-C@ < WHILE

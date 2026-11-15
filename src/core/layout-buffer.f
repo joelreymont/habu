@@ -46,7 +46,7 @@ variable LBUF-BYTES
 : LBUF-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
    {: count:n name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= if
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT LBUF-FALSE exit
+      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT LBUF-FALSE exit
    then
    LBUF-W ! drop
    count LBUF-N !
@@ -178,8 +178,7 @@ PTR-VARIABLE STGT-START
 \ Every definer reads its type here, so pointer chains, family applications and
 \ spaced quotations reach the checker whole. The name stands on the definer's
 \ line and the type's first token on the name's (STORAGE-LINE-TOKEN); a missing
-\ name is rejected at the definer's token, an empty type by the checker
-\ (CHECKER-STORAGE-TYPE-REJECT).
+\ name is rejected at the definer's token, an empty type by the checker.
 
 \ Leaves a token parse-name read to the next statement.
 : STORAGE-UNREAD ( ptr u8 -- )
@@ -382,7 +381,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
    name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
    type typeu CHECKER-LAYOUT-INFO 0= if
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT exit
+      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT exit
    then
    LBUF-W !  drop
    name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}

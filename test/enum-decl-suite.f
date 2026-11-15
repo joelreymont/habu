@@ -376,12 +376,41 @@ s" ENUM tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;E
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpay`\n" DECL-DIAG:HAS? TTRUE
 s" tagpay" s" derive tag requires variants without payload" DECL-DIAG:CAUSE? TTRUE
 
-\      A private family derives nothing, tag included.
+\      A private ENUM or SUMTYPE generates its variants and derived words into
+\      its package's private wordlist, protected there as a public family's are.
 package enum-tag-test
+private
+ENUM tagpriv DERIVE eq tag one two ;ENUM
+s" ETPI ( n -- ) TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! -1 T=
 DECL-DIAG:PROSE
-s" ENUM tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpriv`\n" DECL-DIAG:HAS? TTRUE
-s" tag" s" derive requires a public family" DECL-DIAG:CAUSE? TTRUE
+s" undefine TAGPRIV-ONE" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `TAGPRIV-ONE`" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" undefine TAGPRIV-TAG>" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `TAGPRIV-TAG>`" DECL-DIAG:HAS? TTRUE
+SUMTYPE sumpriv DERIVE eq
+  VARIANT bare ;VARIANT
+  VARIANT held n ;VARIANT
+;SUMTYPE
+public
+: TPRT ( n -- n ) TAGPRIV-TAG> TAGPRIV-TAG ;
+: TPEQT ( -- bool ) TAGPRIV-ONE TAGPRIV-ONE TAGPRIV-EQ ;
+: TPEQF ( -- bool ) TAGPRIV-ONE TAGPRIV-TWO TAGPRIV-EQ ;
+: TPSEQT ( -- bool ) 5 SUMPRIV-HELD 5 SUMPRIV-HELD SUMPRIV-EQ ;
+: TPSEQF ( -- bool ) 5 SUMPRIV-HELD SUMPRIV-BARE SUMPRIV-EQ ;
+;package
+1 enum-tag-test:TPRT 1 T=
+enum-tag-test:TPEQT TTRUE
+enum-tag-test:TPEQF TFALSE
+enum-tag-test:TPSEQT TTRUE
+enum-tag-test:TPSEQF TFALSE
+
+\      Another package reaches the derived TAG> under no spelling.
+package enum-tag-other
+private
+s" ETPO ( n -- ) TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" ETPQ ( n -- ) enum-tag-test:TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! 0 T=
+public
 ;package
 
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed
@@ -398,19 +427,18 @@ s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 s" PRODUCT prodctor FIELD a n FIELD b n ;PRODUCT" evaluate-closed
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20f. A failure inside the generation commit (a payload with no derived equality,
-\      a variant named like a derived word) rolls the whole declaration back.
+\ 20f. A payload with no derived equality, or a variant named like a derived
+\      word, rolls the whole declaration back.
 DECL-DIAG:PROSE
 s" ENUM rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor`\n" DECL-DIAG:HAS? TTRUE
-s" rollctor" s" payload type has no derived equality" DECL-DIAG:CAUSE? TTRUE
+s" r" s" payload type has no derived equality" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" ENUM rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor2`\n" DECL-DIAG:HAS? TTRUE
 s" tag" s" variant name collides with a derived word" DECL-DIAG:CAUSE? TTRUE
-
 \ A later constructor collides after the first has entered the generation plan.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 DECL-DIAG:PROSE
@@ -440,12 +468,12 @@ s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 21. POLICY packed-tag with DERIVE eq: an n payload declares, and a pointer payload
-\     is rejected at the constructor commit (no derived equality).
+\     is rejected at its type (no derived equality).
 s" ENUM lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `lay-drop`\n" DECL-DIAG:HAS? TTRUE
-s" lay-drop" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
+s" ptr" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
 \ 22. Each case asserts whole rendered lines and the token the caret marks,
 \     so text the declaration supplies cannot satisfy it elsewhere in the buffer.
@@ -706,12 +734,10 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdgd`\n" DECL-DIAG:HAS? TTR
 s" eq" s" derive requires a concrete (arity 0) family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 family derives\n" DECL-DIAG:HAS? TTRUE
 
-\ A pointer payload under DERIVE eq is rejected by the constructor's
-\ payload-role check, two phases after the body, with the reason it arms.
 DECL-DIAG:PROSE
 s" ENUM dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroleq`\n" DECL-DIAG:HAS? TTRUE
-s" dgroleq" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
+s" ptr" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.

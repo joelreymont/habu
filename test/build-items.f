@@ -17,10 +17,14 @@
 \ an abandoned one is skipped, a call where the family belongs and a type where
 \ a variant belongs get the match's rejection. An item spelled by no token or
 \ by two is rejected. EFFECT:READ-TYPE reads a linear and a width type as a
-\ signature does, and rejects a letter, a type variable's or a view's region's,
+\ signature does, and a quotation type of 300 cells, which a built word takes
+\ from a quotation of 300 cells and not of 299; it rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
-\ in its package would, and EFFECT:IN a type that is no effect. A build of a
+\ in its package would, and EFFECT:IN a type that is no effect.
+\ EFFECT:READ-TYPE reads `xt` and `[ xt -- n ]` as a signature does, and a
+\ built word takes an `xt` and runs a quotation of one; EFFECT:VARIABLE-OF of
+\ `xt` is rejected with the storage definers' reason. A build of a
 \ program whose source stores a definer's type is rejected with the record its
 \ load prints. A rejected built local whose type text outgrows the checker's
 \ first token buffers is named by that whole text.
@@ -35,6 +39,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
+require tools/gate-json-assert-core.f
 
 package BITEM-PKG
 public
@@ -194,9 +199,11 @@ BAD-STRAY 70 T=
 s" : BI-BAD-STRAY ( -- n ) 5 ;" evaluate-closed
 BI-BAD-STRAY 5 T=
 
-\ : NAME ( -- n ) l9 ; with no local declared.
-: MAKE-UNREAD ( ptr u8 n -- )
-   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@  postpone ; ;
+\ : NAME ( -- n ) l9 ; with no local declared; UNREAD-OPEN leaves the word
+\ open before its `;`.
+: UNREAD-OPEN ( ptr u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@ ;
+: MAKE-UNREAD ( ptr u8 n -- ) UNREAD-OPEN  postpone ; ;
 : BAD-UNREAD ( -- n ) [: s" BI-BAD-UNREAD" MAKE-UNREAD ;] catch ;
 BAD-UNREAD 70 T=
 s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
@@ -410,6 +417,11 @@ s" BI-LIN" s" blin" EFFECT:READ-TYPE MAKE-ID
 BI-LIN-RUN 5 T=
 s" BI-WIDTH" s" width<u8>" EFFECT:READ-TYPE MAKE-ID
 BI-U8-WIDTH BI-WIDTH width>n 1 T=
+s" BI-XT" s" xt" EFFECT:READ-TYPE MAKE-ID
+: BI-XT-RUN ( -- ) ['] type BI-XT drop ;
+s" BI-XQ" s" [ xt -- n ]" EFFECT:READ-TYPE MAKE-ID
+: BI-XQ-RUN ( -- n ) ['] type [: drop 7 ;] BI-XQ execute ;
+BI-XQ-RUN 7 T=
 
 : PTR-A ( -- n ) [: s" BI-PTR-A" s" ptr a" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : VIEW ( -- n )
@@ -421,6 +433,8 @@ BI-U8-WIDTH BI-WIDTH width>n 1 T=
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
 : READ-BAD ( -- n )
    [: s" BI-UNK" s" no-such-family" EFFECT:READ-TYPE MAKE-ID ;] catch ;
+: XT-VAR ( -- n )
+   [: s" BI-XVAR" s" xt" EFFECT:READ-TYPE EFFECT:VARIABLE-OF ;] catch ;
 : SECRET ( -- EFFECT:type ) s" bitem-own:secret" EFFECT:NAMED ;
 
 \ : NAME ( bitem-own:secret -- n ) match secret hid of endof ;match ;
@@ -464,7 +478,36 @@ DECL-DIAG:PROSE  READ-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
 S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: declare a type of that name, or correct its spelling"
-DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE  XT-VAR 70 T=
+s" in BI-XVAR: xt in a stored type 'xt'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+
+300 constant LONG-N
+s" [ -- ]" nip LONG-N 2 * + constant LONG-TYPE-CAP
+s" : BI-LONG-OK ( -- ) [: ;] BI-LONG drop ;" nip LONG-N 5 * +
+constant LONG-CALL-CAP
+LONG-TYPE-CAP BUFFER: LONG-TYPE
+LONG-CALL-CAP BUFFER: LONG-CALL
+variable LONG-U
+: LONG+ ( ptr u8 ptr u8 n -- ) {: dst:ptr a:ptr u:n :}
+   a dst LONG-U @ + u BYTE-COPY  LONG-U @ u + LONG-U ! ;
+\ [ n n … -- ] of LONG-N cells
+: LONG-TYPE$ ( -- ptr u8 n )
+   0 LONG-U !  LONG-TYPE s" [ " LONG+
+   LONG-N 0 ?do LONG-TYPE s" n " LONG+ loop
+   LONG-TYPE s" -- ]" LONG+  LONG-TYPE LONG-U @ ;
+\ : NAME ( -- ) [: drop drop … ;] BI-LONG drop ; of k drops
+: LONG-CALL$ ( ptr u8 n n -- ptr u8 n ) {: na:ptr nu:n k:n :}
+   0 LONG-U !  LONG-CALL s" : " LONG+  LONG-CALL na nu LONG+
+   LONG-CALL s"  ( -- ) [: " LONG+
+   k 0 ?do LONG-CALL s" drop " LONG+ loop
+   LONG-CALL s" ;] BI-LONG drop ;" LONG+  LONG-CALL LONG-U @ ;
+
+s" BI-LONG" LONG-TYPE$ EFFECT:READ-TYPE MAKE-ID
+s" BI-LONG-OK" LONG-N LONG-CALL$ TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" BI-LONG-NO" LONG-N 1 - LONG-CALL$ TEST-EVAL:RC 70 T=
+s" in bi-long-no: at 'BI-LONG' expected: " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
 : SUB2-OPEN ( ptr u8 n -- )
@@ -477,6 +520,7 @@ DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 public
 : SUB2-GO ( -- ) s" BI-SUB2" SUB2-OPEN ;
 : ENDED-TEXT-GO ( -- ) s" BI-ENDED-TEXT" ENDED-OPEN ;
+: UNREAD-GO ( -- ) s" BI-UNREAD-TEXT" UNREAD-OPEN ;
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 : TEXT-REF-GO ( -- )
@@ -520,8 +564,30 @@ public
    e eu s" input underflow" CONTAINS? TTRUE
    e eu S\" evaluated.f:1\n" CONTAINS? TFALSE ;
 
+\ A read no group bound, in a body text finishes, names the local by its
+\ index, never by its listing token.
+: UNREAD-CHILD ( -- )
+   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" reads built local 9, which no `{:` group bound before it"
+   CONTAINS? TTRUE
+   e eu s" l9" CONTAINS? TFALSE ;
+
 \ Two built locals of one type read in a body text finishes are two locals.
 s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
+
+\ A built definition's rejection, captured as JSON in place of its prose, is
+\ a record of the one form whose message leads with the read: no listing token.
+private
+: JSON-ON ( -- )  REJECTION:CAPTURE  true REJECTION:JSON ! ;
+: JSON-OFF ( -- )  false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
+: UNREAD-JSON ( -- n ) [: s" UNREAD-GO 1 + ;" evaluate-closed ;] catch ;
+: JSON-HAS ( ptr u8 n -- ) REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+JSON-ON  UNREAD-JSON 70 T=  JSON-OFF
+S\" \"code\":\"E-UNDEFINED\"" JSON-HAS
+S\" \"message\":\"reads built local 9, which no `{:` group bound before it" JSON-HAS
+REJECTION:BUFFER$ s" l9" CONTAINS? TFALSE
+REJECTION:BUFFER$ GJA-PARSE GJA-RECORD-FORM
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
@@ -539,11 +605,12 @@ s" BITEM:STRAY-GO" 70
 s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
 \ A read of a local whose block ended, in a body text finishes, is rejected.
 s" BITEM:ENDED-TEXT-GO 1 + ;" 70
-s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+s" `n` reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
 BITEM:PLACED-CHILD
 BITEM:UNBOUND-CHILD
 BITEM:EVALUATED-CHILD
 BITEM:LNEG-CHILD
+BITEM:UNREAD-CHILD
 
 \ A fresh hb runs the build, since the build is under test.
 package BITEM-STORED

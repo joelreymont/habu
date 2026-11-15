@@ -35,6 +35,13 @@ create ERR CAP allot
    exited ERR erru LEN>N why whyu CONTAINS? and
    OUT outu LEN>N said saidu CONTAINS? and ;
 
+\ Exited with the expected status, FIELDS and HELP in its JSON rejection.
+: JSON-REPORTED? ( ptr u8 n n ptr u8 n ptr u8 n -- bool )
+   {: expected:n fields:ptr fieldsu:n help:ptr helpu:n :}
+   expected EXITED? {: outu:len erru:len exited:bool :}
+   exited ERR erru LEN>N fields fieldsu CONTAINS? and
+   ERR erru LEN>N help helpu CONTAINS? and ;
+
 \ An unclosed spelling ends with its line, and the next line is the next
 \ statement's: the refusal is caught so the definition after it runs.
 : STORED ( -- )
@@ -68,11 +75,19 @@ create ERR CAP allot
    0 s" " s" 42" REPORTED? TTRUE
    s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\nDEFER-LAYOUT-BUFFER C2-HOOKC c2hook<[ n -- n ]>\n: C2-H ( -- n ) 2 C2-HOOKC-BIND [: 2 + ;] C2HOOK:MAKE 1 C2-HOOKC ! 41 1 C2-HOOKC C2HOOK:FN @ execute ;\nC2-H ."
    0 s" " s" 43" REPORTED? TTRUE
+   s" an xt in a layout family's argument is an xt in a stored type" T-LABEL
+   s\" true REJECTION:JSON !\nSTRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n4 LAYOUT-BUFFER C2-XT-HOOKS c2hook<xt>"
+   70 s\" \"code\":\"E-BAD-STORAGE\",\"message\":\"the type of `C2-XT-HOOKS` holds an `xt`, which no storage holds"
+   s\" \"help\":\"declare `C2-XT-HOOKS` with a quotation type such as `[ n -- n ]` in place of `xt`" JSON-REPORTED? TTRUE
    s" a layout pointer type is refused whole" T-LABEL
    s" 4 LAYOUT-BUFFER C2-PTR-ROWS ptr n"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-ROWS` is one its definer cannot store" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-ROWS` is no type a layout buffer can lay out" s" " REPORTED? TTRUE
    s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ptr n"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-COLUMN` is one its definer cannot store" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-COLUMN` is no type a layout buffer can lay out" s" " REPORTED? TTRUE
+   s" an xt layout buffer's help is the layout help" T-LABEL
+   s\" true REJECTION:JSON !\n4 LAYOUT-BUFFER C2-XT-ROWS xt"
+   70 s\" \"code\":\"E-BAD-STORAGE\",\"message\":\"the type of `C2-XT-ROWS` is no type a layout buffer can lay out"
+   s\" \"help\":\"give `C2-XT-ROWS` a declared family: a NEWTYPE or DEFTYPE with no arguments" JSON-REPORTED? TTRUE
    s" a missing stored type is a named refusal" T-LABEL
    s" 4 LAYOUT-BUFFER C2-NO-ROWS-TYPE"
    70 s" error[E-BAD-STORAGE]: `C2-NO-ROWS-TYPE` has no type on its line" s" " REPORTED? TTRUE

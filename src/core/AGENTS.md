@@ -7,8 +7,9 @@ Load order is the engine's prefix list, `src/habu/boot-files.f` (FILL).
   unification; `check-hook.f` installs it.
 - `type-schema.f`, `type-family.f` — the schema arena and the family, variant,
   field and layout registries.
-- `sumtype.f`, `structure-decl.f`, `enum-decl.f` — typed declaration definers,
-  over `decl-event.f`, `structure-make.f` and `generated-declaration*.f`.
+- `sumtype.f` with `sumtype-front.f`, `structure-decl.f`, `enum-decl.f` — typed
+  declaration definers, over `decl-event.f`, `structure-make.f` and
+  `generated-declaration*.f`.
 - `structures.f`, `enums.f`, `layout-buffer*.f`, `pointer-storage.f`,
   `dynamic-storage.f`, `exec-vector.f` — storage and vector definers.
 - `include.f` — `include` and `require`; `top-row.f` — the typed top-level row;

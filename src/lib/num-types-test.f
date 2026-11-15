@@ -235,11 +235,9 @@ public
 \ nr-twin is NUM:numeric-result's SHAPE under another name: same arity, the
 \ same seven cases in the same order, the same named payload field. It exists only
 \ so the negatives below can prove result identity is NOMINAL - two identically
-\ shaped families never unify, in either direction. It has to be public, because a
-\ private family publishes no constructors and the positive control builds through
-\ the twin's own ok, so neither negative could pass by being unresolvable instead
-\ of ill-typed. Its generated constructor package NUM--TEST-NR--TWIN uses the
-\ escaped spelling pinned below.
+\ shaped families never unify, in either direction. The positive control builds
+\ through the twin's own ok, so neither negative could pass by being unresolvable
+\ instead of ill-typed.
 ENUM nr-twin<a>
    VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT

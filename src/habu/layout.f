@@ -723,16 +723,15 @@ $818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
 
-\ A `define-word` definition's items {kind a b off len}, walked in place of the
-\ text while RAW-CELL is 0; all 0 outside one, so no image holds a transient node.
+\ A `define-word` definition's items {kind a b off len}, walked where each
+\ starts in its text.
 package BODY-ITEMS
 public
 $4340 constant BASE-CELL     \ the block's address
 $4348 constant CAP-CELL      \ the capacity in rows
 $4350 constant COUNT-CELL    \ the rows held
-$4358 constant RAW-CELL      \ nonzero once text no item spans joined the capture
-$4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
-$4368 constant LOCALS-CELL   \ the LOCAL items so far: the next one's index
+$4358 constant EFFECT-CELL   \ the effect's schema node, read for the signature
+$4360 constant LOCALS-CELL   \ the LOCAL items so far: the next one's index
 5 constant ROW               \ cells per row
 0 constant KIND
 1 constant A

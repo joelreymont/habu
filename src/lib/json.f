@@ -12,6 +12,9 @@
 \ E-JSON-WRITE-BYTE, as is a negative indent; WRITE-RAW and
 \ WRITE-FIELD-RAW copy JSON text as given.
 \ WRITE-INDENT! sets the spaces per level: 0, compact, at open; RESET keeps it.
+\ WRITE-ASCII! true makes WRITE-STRING, WRITE-KEY and WRITE-STRING-PART write
+\ DEL and every scalar above U+007F as \uXXXX, one above U+FFFF as its UTF-16
+\ pair, for an HTTP header; off at open; RESET keeps it.
 \ When indented, a START or COMMA puts the next key, value, RAW or START on a
 \ new line indented by depth times width; an END closes on its own line, except
 \ `{}` and `[]`; string parts never break.

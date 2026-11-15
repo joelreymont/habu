@@ -5,18 +5,19 @@
 \ app.js as base64 at <!--app.js-->. Everything that changes with a release
 \ comes from the server each time the page starts: after
 \ ui/notifications/initialized the page calls the app-only tool CODE-TOOL$
-\ with arguments {}, and CODE+ is that result's _meta, the page id and
-\ view.html, view.js, turn.js, viewport.js, page.js and the module as base64.
-\ A page whose id is not the _meta's is older than its server and does not
-\ start. The page id is the SHA-256, in lowercase hex, of app.html's and
-\ app.js's bytes, so it changes exactly when app.html or app.js does.
-\ The page fetches nothing and runs under ChatGPT's view CSP:
+\ with arguments {}, and CODE+ is that result's _meta, the page id, the code
+\ id and view.html, view.js, turn.js, viewport.js, page.js, socket.js and the
+\ module as base64. A page whose id is not the _meta's is older than its
+\ server and does not start. The page id is the SHA-256, in lowercase hex, of
+\ app.html's and app.js's bytes, so it changes exactly when app.html or
+\ app.js does. The page fetches nothing and runs under ChatGPT's view CSP:
 \ script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:;
 \ worker-src blob:; connect-src 'self'; img-src 'self' data:, so page.js
-\ shows an SVG from a data: URL. The seven files, beside this one, are
-\ read into dictionary buffers as it loads.
+\ shows an SVG from a data: URL. A page's descriptor may list
+\ connectDomains, which the host adds to connect-src. The eight files, beside
+\ this one, are read into dictionary buffers as it loads.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
-\ PAGE+ and CODE+ write only the caller's BUF.
+\ PAGE+, CODE-ID+ and CODE+ write only the caller's BUF.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -70,6 +71,10 @@ s" turn.js" TURN TURN-U READ
 s" page.js" PATH FS:FILE-SIZE constant PAGE-U
 PAGE-U BUFFER: PAGE
 s" page.js" PAGE PAGE-U READ
+
+s" socket.js" PATH FS:FILE-SIZE constant SOCKET-U
+SOCKET-U BUFFER: SOCKET
+s" socket.js" SOCKET SOCKET-U READ
 
 \ The page id: the lowercase hex SHA-256 of app.html's bytes, then app.js's.
 $40 constant ID-U
@@ -146,6 +151,28 @@ APP-AT APP-MARK nip + constant APP-END
    s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
    a u buf BASE64+  s\" \"" buf SPAN+ ;
 
+
+\ CODE-ID+'s files, in its order, fed to the SHA-256 context.
+: FILES-FED ( ptr u8 -- )
+   {: sha:ptr :}
+   sha VIEW-HTML VIEW-HTML-U SHA256-FEED
+   sha VIEW-JS VIEW-JS-U SHA256-FEED
+   sha TURN TURN-U SHA256-FEED
+   sha VIEWPORT VIEWPORT-U SHA256-FEED
+   sha PAGE PAGE-U SHA256-FEED
+   sha SOCKET SOCKET-U SHA256-FEED ;
+
+
+\ The scratch bytes hold the SHA-256 context, then the digest; the BUF grows
+\ only once the digest is done.
+: HASHED ( ptr u8 n ptr a ptr u8 NUM:alloc-byte-len -- )
+   drop {: m:ptr mu:n buf:ptr sha:ptr :}
+   sha SHA256-BEGIN  sha m mu SHA256-FEED  sha FILES-FED
+   sha SHA256-CTX-BYTES + {: dg:ptr :}
+   sha dg SHA256-END
+   buf ID-U BUF:N>BLEN BUF:GROW SPAN:$ drop {: hex:ptr :}
+   dg hex SHA256>HEX ;
+
 public
 
 \ The title and the BUF the page is appended to; a title that is not XML text
@@ -160,19 +187,33 @@ public
 \ The app-only tool the page calls, with arguments {}, for its code.
 : CODE-TOOL$ ( -- ptr u8 n )  s" view_code" ;
 
+\ The app-only tool the view calls, with arguments {}, for its socket; its
+\ result's _meta is {"url":"<the socket's ws: or wss: URL>","seconds":<n>},
+\ the seconds after which the view asks for the URL again.
+: SOCKET-TOOL$ ( -- ptr u8 n )  s" view_socket" ;
+
+\ The module's bytes and the BUF their code id is appended to: the SHA-256,
+\ as 64 lowercase hex digits, of the module's bytes, then view.html's,
+\ view.js's, turn.js's, viewport.js's, page.js's and socket.js's.
+: CODE-ID+ ( ptr u8 n ptr a -- )
+   SHA256-CTX-BYTES $20 + MEM:BYTES-ALLOC-LEN
+   [: HASHED ;] MEM:WITH-BYTES ;
+
 \ The module's bytes and the BUF CODE-TOOL$'s result's _meta is appended to:
-\ {"page":"<page id>","files":{"view.html":"<base64>","view.js":…,
-\ "turn.js":…,"viewport.js":…,"page.js":…,"module":…}}. The BUF must not
-\ hold the module.
+\ {"page":"<page id>","code":"<CODE-ID+>","files":{"view.html":"<base64>",
+\ "view.js":…,"turn.js":…,"viewport.js":…,"page.js":…,"socket.js":…,
+\ "module":…}}. The BUF must not hold the module.
 : CODE+ ( ptr u8 n ptr a -- )
    {: m:ptr mu:n buf:ptr :}
    s\" {\"page\":\"" buf SPAN+  ID ID-U buf SPAN+
+   s\" \",\"code\":\"" buf SPAN+  m mu buf CODE-ID+
    s\" \",\"files\":{" buf SPAN+
    s" view.html" VIEW-HTML VIEW-HTML-U buf MEMBER+  s" ," buf SPAN+
    s" view.js" VIEW-JS VIEW-JS-U buf MEMBER+  s" ," buf SPAN+
    s" turn.js" TURN TURN-U buf MEMBER+  s" ," buf SPAN+
    s" viewport.js" VIEWPORT VIEWPORT-U buf MEMBER+  s" ," buf SPAN+
    s" page.js" PAGE PAGE-U buf MEMBER+  s" ," buf SPAN+
+   s" socket.js" SOCKET SOCKET-U buf MEMBER+  s" ," buf SPAN+
    s" module" m mu buf MEMBER+  s" }}" buf SPAN+ ;
 
 ;package

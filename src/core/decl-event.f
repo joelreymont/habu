@@ -362,8 +362,7 @@ variable DEV-TX-SERIAL
    tok ;
 
 \ OPAQUE needs a package: the generated words land in the declaring package's
-\ private wordlist, which a top-level family lacks (DERIVE init asks the same,
-\ sumtype.f TDINIT-REQUIRE).
+\ private wordlist, which a top-level family lacks.
 : DEV-OPAQUE ( n n -- n ) {: tok:n fam:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    fam TFAM-PKG$ nip 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
@@ -587,8 +586,7 @@ private
    [: CURRENT ;] is TDECL-EVENT-CURRENT-XT
    [: DECL ;] is TDECL-EVENT-DECL-XT
    [: ARITY ;] is TDECL-EVENT-ARITY-XT
-   [: FIELD ;] is TDECL-EVENT-FIELD-XT
-   [: 0 0= ;] is TDECL-EVENT-ARMED ;
+   [: FIELD ;] is TDECL-EVENT-FIELD-XT ;
 
 DEV-EVENT-HOOKS-INSTALL
 

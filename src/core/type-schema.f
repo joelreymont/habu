@@ -20,10 +20,11 @@ public
 4 constant SCH-QUOT       \ A = hasr flag, B = side-row-root start, C = SCH-QUOT-ROWS
 5 constant SCH-PTR        \ A = pointee schema node
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
+7 constant SCH-XT         \ no fields
 
 private
 
-6 constant SCH-KIND-MAX   \ highest valid creatable tag
+7 constant SCH-KIND-MAX   \ highest valid creatable tag
 
 \ A quotation payload has four effect SIDES stored as four schema roots contiguous
 \ in the schema-root pool: din-row, dout-row, rin-row, rout-row (in that order). B
@@ -386,6 +387,10 @@ public
    THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
+
+\ --- SCH-XT: an `xt`, the opaque token `'` pushes.
+: SCHEMA-XT ( -- n ) SCH-XT 0 0 0 SCHEMA-NEW ;
+: SCHEMA-XT? ( n -- bool ) SCHEMA-TAG@ SCH-XT = ;
 
 \ Rollback frame stack: the schema half of the checker's transactional rollback,
 \ pushed and popped in lockstep with checker.f's core frame through the

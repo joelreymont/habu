@@ -10,6 +10,7 @@ require src/lib/float.f
 require src/lib/adt/option.f
 require src/lib/byte-buffer.f
 require src/lib/sort.f
+require src/lib/utf16.f
 
 \ The E-JSON-READ-* codes stay global names, as callers spell them.
 -3900 constant E-JSON-READ-FIRST
@@ -107,8 +108,6 @@ $F0 constant UTF4-LEAD
 $D800 constant SUR-HI
 $DC00 constant SUR-LO
 $E000 constant SUR-END
-$10000 constant SUR-BASE
-10 constant SUR-SHIFT
 
 public
 
@@ -769,7 +768,7 @@ private
    hi SUR-HI < hi SUR-END >= or if state hi EMIT-UTF8 exit then
    state CURSOR-IN dup @ 2 + swap !
    state a READ-HEX4 {: lo:n :}
-   state SUR-BASE hi SUR-HI - SUR-SHIFT lshift + lo SUR-LO - + EMIT-UTF8 ;
+   state hi lo UTF16:PAIR>SCALAR EMIT-UTF8 ;
 
 \ Decode from in until the token ends or a \u escape starts. Each byte and
 \ one-letter escape writes or matches one byte as EMIT-BYTE would, with out on

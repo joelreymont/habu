@@ -9,7 +9,9 @@
 \ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. HANDLE logs each message it
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
-\ written between its quotes as sent, never the arguments. VISIBLE! hides a tool
+\ written between its quotes as sent, never the arguments. ANSWER answers one JSON-RPC
+\ message that came by another transport into a BUF, as HANDLE answers a 2026-07-28
+\ request with no transport headers, its log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
 \ as UNKNOWN-TOOL states.
@@ -67,8 +69,8 @@ public
 -9480 constant E-FIRST
 -9489 constant E-LAST
 \ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP
-\ serves, HANDLE before SERVER-INFO!, a body that does not give its result exactly once,
-\ or a client word given a closed client.
+\ serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER off a request worker, a body that
+\ does not give its result exactly once, or a client word given a closed client.
 -9481 constant E-STATE
 \ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
 -9482 constant E-DUPLICATE
@@ -140,6 +142,11 @@ TYPED-VARIABLE SCHEMA-READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
+\ Where the reply goes: HANDLE's HTTP response in TO, or BUF-W, the writer
+\ ANSWER holds open on its caller's BUF.
+ENUM sink response buf ;ENUM
+HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
+HTTP:MAX-WORKERS TYPED-BUFFER BUF-W JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
 HTTP:MAX-WORKERS TYPED-BUFFER METHOD SPAN:span<u8>    \ JSON text, quotes kept
 HTTP:MAX-WORKERS TYPED-BUFFER PARAMS SPAN:span<u8>    \ an object's JSON text, or empty
@@ -492,11 +499,19 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    if ERROR-BODY else RESULT-BODY then ;
 
 
-: SEND ( -- )
-   SENT SLOT STAGE !
+: HTTP-REPLY ( -- )
    SLOT TO @ {: answer:HTTP:response :}
    answer SLOT STATUS @ HTTP:STATUS!
    answer [: RESPONSE-BODY ;] HTTP:JSON! ;
+
+: BUF-REPLY ( -- ) SLOT BUF-W RESPONSE-BODY drop ;
+
+: SEND ( -- )
+   SENT SLOT STAGE !
+   SLOT REPLY-TO @ MATCH sink
+      response OF HTTP-REPLY ENDOF
+      buf OF BUF-REPLY ENDOF
+   ;MATCH ;
 
 
 \ A header's value when it arrived exactly once; otherwise empty and false.
@@ -768,11 +783,18 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : DISCOVER ( -- )
    LEGACY? if NO-METHOD else DISCOVER-REPLY GOOD then SEND ;
 
-\ A 2025-11-25 notification is accepted, 202 with no body, before any method
-\ runs (2025-11-25 transports); 2026-07-28 takes only requests.
-: NOTIFIED ( -- )
+\ Over HTTP a 2025-11-25 notification is accepted, 202 with no body, before
+\ any method runs (2025-11-25 transports); 2026-07-28 takes only requests.
+: HTTP-NOTIFIED ( -- )
    LEGACY? if SLOT TO @ 202 HTTP:STATUS! exit then
    400 -32600 s" Request id required" BAD SEND ;
+
+\ ANSWER's notification has no reply, as JSON-RPC's never has.
+: NOTIFIED ( -- )
+   SLOT REPLY-TO @ MATCH sink
+      response OF HTTP-NOTIFIED ENDOF
+      buf OF ENDOF
+   ;MATCH ;
 
 
 \ The params member that names what the method acts on; empty for none.
@@ -963,6 +985,41 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
+\ The reply's sink and a fresh message on the worker's slot.
+: OPENED-TO ( sink -- )
+   SLOT REPLY-TO !
+   IDLE SLOT STAGE !
+   s" " SPAN:MAKE SLOT ID ! ;
+
+
+\ A message's caught code: E-INPUT before the reply began is -32602; any
+\ other fault is rethrown.
+: FAULTED ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
+   BAD-INPUT SEND ;
+
+
+\ WORKER-SLOT's E-HTTP-HANDLE, on a task that is no request worker, as E-STATE.
+: ON-WORKER ( -- )
+   [: HTTP:WORKER-SLOT drop ;] catch {: code:n :}
+   code 0= if exit then
+   code E-HTTP-HANDLE = if E-STATE throw then
+   code throw ;
+
+
+\ The message's envelope checked, then dispatched; the text is kept for catch.
+: CARRIED ( ptr u8 n -- ptr u8 n )
+   2dup ENVELOPE? if DISPATCH else SEND then ;
+
+
+\ The message answered into BUF-W, the writer ANSWER holds open on the
+\ caller's BUF.
+: BUF-ANSWER ( ptr u8 n -- )
+   [: CARRIED ;] catch {: code:n :} 2drop
+   code FAULTED ;
+
 public
 
 \ The server's name and version in serverInfo. The texts are borrowed and
@@ -982,8 +1039,9 @@ public
    SPAN:MAKE INSTRUCTIONS ! ;
 
 
-\ False hides the named tool from HANDLE's caller as an unknown one; the default admits every
-\ tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"] keeps a tool listed but widget-only.
+\ False hides the named tool from HANDLE's or ANSWER's caller as an unknown one; the
+\ default admits every tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"]
+\ keeps a tool listed but widget-only.
 : VISIBLE! ( [ ptr u8 n -- bool ] -- )
    HTTP:RUNNING? if E-STATE throw then
    VISIBILITY ! ;
@@ -1058,12 +1116,26 @@ public
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    asked SLOT FROM !
    answer SLOT TO !
-   IDLE SLOT STAGE !
-   s" " SPAN:MAKE SLOT ID !
-   [: PROCESS ;] catch {: code:n :}
-   code 0= if exit then
-   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
-   BAD-INPUT SEND ;
+   construct sink response OPENED-TO
+   [: PROCESS ;] catch FAULTED ;
+
+
+\ Answers one JSON-RPC message whose caller the host has authenticated and
+\ which came by a transport other than HTTP, on a request worker: as HANDLE
+\ answers a 2026-07-28 request, with no transport, version or header checks.
+\ ANSWER clears the BUF and writes the response's JSON text there, nothing for
+\ a notification; after a throw its text is no reply to send. Any fault but
+\ HANDLE's JSON-RPC errors is rethrown, a tool body's included.
+\ The VISIBLE! hook is called with no HTTP request, so it judges by what the
+\ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
+\ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
+: ANSWER ( ptr u8 n ptr a -- )
+   SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
+   ON-WORKER
+   construct sink buf OPENED-TO
+   MODERN SLOT ERA !
+   SLOT BUF-W swap BYTE-VIEW CELL-VIEW JSON:WRITE-OPEN-BUF drop
+   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally ;
 
 
 private

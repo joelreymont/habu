@@ -210,7 +210,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
-| `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `E-BAD-DECLARATION` at `eq`, rc 70: a derive needs a public family; test a private family's values with an exhaustive `MATCH` |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
@@ -220,7 +219,7 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
-| `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;` or `0 throw`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, or a literal 0 thrown; a computed 0 is not refused | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` |
+| `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;`, `0 throw`, `7 0 HALVE` for `: HALVE ( n n -- n ) / ;` or `0 FAIL` for `: FAIL ( n -- ) throw ;`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, a literal 0 thrown, or a literal 0 at an input a word with a signature divides by or throws with only stack words, locals, integer and string literals and calls before it; a computed 0 is not rejected | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` or the call |
 | outside its package, at top level or in a body, a call of a primitive whose one row is its package's private one: `0 0 0 xref-retarget` | `E-UNDEFINED`, as a call to an unknown word is; the word never runs; `'` of it at top level is admitted |
 | outside its package, in a body, a call of a private primitive that also keeps a global trusted-only row: `0 0 reloc-maps-clear` | `E-CAP-TRUSTED` |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
@@ -387,7 +386,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
 | `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
+| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 16 +` past
@@ -431,9 +430,9 @@ runs; `EFFECT:LOCAL` and `EFFECT:LOCAL@` declare and read a local, and
 An `EFFECT:type` ends with the load that built it, so no storage, field or
 payload holds one (`E-BAD-STORAGE`, a field or payload `E-BAD-DECLARATION`):
 build it where it is used.
-`['] W compile, ( [ R -- S ] -- )` appends a call of W, a word whose tick is
-a quotation (a primitive's tick is an `xt`, which `compile,` rejects), and
-`; ( -- )` ends the word.
+`literal ( n -- )` appends a number, `['] W compile, ( [ R -- S ] -- )`
+appends a call of W, a word whose tick is a quotation (a primitive's tick is
+an `xt`, which `compile,` rejects), and `; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
@@ -571,8 +570,10 @@ holds an address**.
   is live``).
   `NSHADOW:OPEN` and `NSHADOW:CLOSE`, which `LINKER:WITH` reaches, reject a
   call on a task's thread as `E-TASK-COMPILE`, status 70.
-- A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed
-  0 unwinds unchecked: a `catch` it reaches answers 0, and a text it unwinds (a
+- A literal `0 throw` is rejected (`E-THROW-ZERO`): 0 means no error; so is a
+  literal 0 at an input a word with a signature throws with only stack words,
+  locals, integer and string literals and calls before it. A computed 0
+  unwinds unchecked: a `catch` it reaches answers 0, and a text it unwinds (a
   file, `evaluate`, `include`, a REPL line) stops with `E-THROW-ZERO`, its
   record placed at the throw.
 - Only the catch's own local throws on: `throw` of the one-cell local that `{:`
@@ -584,8 +585,10 @@ holds an address**.
   read or write faulted` with notes `address` and `in` on fd 2: `catch`
   answers 110, a task ends with 110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
   and a fault while one is delivered still dump and die by the signal.
-- Arithmetic is modular; a literal 0 divisor of `/`, `mod` or `/mod` is refused
-  (`E-DIV-ZERO`), and a computed one's answer is undefined;
+- Arithmetic is modular; a literal 0 divisor of `/`, `mod` or `/mod`, or at an
+  input a word with a signature divides by with only stack words, locals,
+  integer and string literals and calls before it, is rejected (`E-DIV-ZERO`),
+  and a computed one's answer is undefined;
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.
 - `catch` only at explicit recovery boundaries — REPL and CLI wrappers, test
   assertions, stack-preserving adapters returning the code as data. No

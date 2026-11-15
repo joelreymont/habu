@@ -126,11 +126,11 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop EMIT-UNSAID THEN
    ELSE EMIT-UNSAID THEN THEN ;
 
-\ Facts text (RFACTS?) writes a plain atom as `'NAME`, which TOK-TYPE reads back.
-\ A fresh atom's ordinal tells two identities of one name apart.
+\ Facts text (RFACTS?) writes a plain atom but `xt` as `'NAME`, which TOK-TYPE
+\ reads back; a fresh atom's ordinal tells two identities of one name apart.
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF
-      RFACTS? IF 39 EMIT1 THEN
+      RFACTS? t OPAQUE-XT? 0= and IF 39 EMIT1 THEN
       t ATOM>A t ATOM>U RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U RSTR
@@ -608,6 +608,18 @@ LOCSHOW-INSTALL
    {: ctl:n :}
    ctl CTL-THROW and 0= IF EXIT THEN
    s" throws " EMIT-STR  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
+
+
+\ checker.f NORET.NONZERO n as the tag `nonzero D T` appended at TEXT-LEN, D
+\ the divisor and T the thrown inputs' mask; 0 appends nothing.
+: REND-NONZERO ( n -- ptr u8 n )
+   {: n:n :}
+   1 DEST !
+   n 0 <> IF
+      n NONZERO-UNPACK {: div:n thr:n :}
+      s" nonzero " EMIT-STR  div RNUM  32 EMIT1  thr RNUM  32 EMIT1
+   THEN
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
 : CTL-INTRINSIC-TAG ( n -- )
@@ -1318,6 +1330,14 @@ variable MDV-I   variable MDV-F
    s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-N
    s" , which no `{:` group bound before it" EMIT-STR ;
 
+\ The call a literal 0 reached, as written, and the input it reached, after the
+\ reason's prose: `NAME` divides by its top input, or its input J below the top.
+: ZERO-COUNTS ( -- )
+   s" ; `" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+   MDIAG @ MD-DIV-ZERO = IF s" ` divides by its " ELSE s" ` throws its " THEN EMIT-STR
+   MDIAG-ZIN @ 0= IF s" top input" EMIT-STR EXIT THEN
+   s" input " EMIT-STR  MDIAG-ZIN @ EMIT-U  s"  below the top" EMIT-STR ;
+
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
@@ -1338,6 +1358,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-UNBOUND = IF LOCAL-UNBOUND-COUNTS EXIT THEN
+   MDIAG @ MD-DIV-ZERO =  MDIAG @ MD-THROW-ZERO = or IF ZERO-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN

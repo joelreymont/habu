@@ -203,6 +203,11 @@ PRODUCT tdpoint
 ;PRODUCT
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ DERIVE init needs no package: a top-level record's init accessors check.
+PRODUCT tdtop DERIVE init FIELD x n ;PRODUCT
+s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ Layout-aware generic stack ops. A logical
 \ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
 \ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
@@ -1324,8 +1329,7 @@ s" tdarprod<a,a>" s" invalid type parameter header" TDT-AT
 s" SUMTYPE tdarv<> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdarv<>`\n"
 s" tdarv<>" s" invalid type parameter header" TDT-AT
-\ unterminated body (no ;SUMTYPE) reports the declaration record via
-\ TDECL-DEFSUM-NOEND.
+\ an unterminated body (no ;SUMTYPE) reports the declaration record.
 s" SUMTYPE tdnoend<a> VARIANT ok a ;VARIANT"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdnoend<a>`\n"
 s" tdnoend<a>" s" missing ;SUMTYPE" TDT-AT
@@ -1383,6 +1387,46 @@ SUMTYPE tdpq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+
+\ A quotation side of 300 elements declares, and the constructor takes a
+\ quotation of 300 cells, not of 299; a variant of 300 payload elements declares.
+package LONG-DECL-TEST
+300 constant LONG-N
+: Q-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpq300 VARIANT run [ " ;
+: Q-TAIL$ ( -- ptr u8 n ) s" -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" ;
+: C-TAIL$ ( -- ptr u8 n ) s" -- ] -- tdpq300 ) construct tdpq300 run ;" ;
+: P-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpay300 VARIANT wide " ;
+: P-TAIL$ ( -- ptr u8 n ) s" ;VARIANT ;SUMTYPE" ;
+Q-HEAD$ nip Q-TAIL$ nip +
+s" : TDPQ300-NO ( [ " nip C-TAIL$ nip + max
+P-HEAD$ nip P-TAIL$ nip + max
+LONG-N 2 * + constant CAP
+CAP BUFFER: BUF
+variable BUF-N
+: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   a BUF BUF-N @ + u BYTE-COPY  BUF-N @ u + BUF-N ! ;
+: NS ( n -- ) 0 ?do s" n " APPEND loop ;
+: DECL$ ( -- ptr u8 n )
+   0 BUF-N !  Q-HEAD$ APPEND  LONG-N NS  Q-TAIL$ APPEND  BUF BUF-N @ ;
+\ : NAME ( [ n n … -- ] -- tdpq300 ) … ; of k cells
+: CTOR$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( [ " APPEND
+   k NS  C-TAIL$ APPEND  BUF BUF-N @ ;
+: PAY$ ( -- ptr u8 n )
+   0 BUF-N !  P-HEAD$ APPEND  LONG-N NS  P-TAIL$ APPEND  BUF BUF-N @ ;
+: SHORT-CTOR ( -- )
+   TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
+   s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
+   REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   false REJECTION:JSON !  TDIAG-BUF 8192 REJECTION:BUFFER! ;
+public
+: RUN ( -- )
+   DECL$ TDT-EVAL-CATCH 0 T=
+   s" TDPQ300-OK" LONG-N CTOR$ TDT-EVAL-CATCH 0 T=
+   SHORT-CTOR
+   PAY$ TDT-EVAL-CATCH 0 T= ;
+;package
+LONG-DECL-TEST:RUN
 
 \ declaration-time parameter-arity gate for SUM variant payloads. A payload
 \ parameter letter beyond the family's arity rejects at declaration, not at a
@@ -1815,6 +1859,14 @@ REJECTION:BUFFER-OFF  false REJECTION:JSON !
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvd2`\n"
 s" ok" s" duplicate variant" TDT-AT
+\ a rejection names the source token, not storage the declaration's rollback
+\ scrubs.
+s" ENUM tdcol2 DERIVE eq red tag blue ;ENUM"
+s\" error[E-BAD-DECLARATION]: bad enum declaration `tdcol2`\n"
+s" tag" s" variant name collides with a derived word" TDT-AT
+s" PRODUCT tdini<a> DERIVE init FIELD value a ;PRODUCT"
+s\" error[E-BAD-DECLARATION]: bad product declaration `tdini`\n"
+s" tdini" s" derive init requires a canonical fixed-cell record" TDT-AT
 \ the enum kind token flows into the same declaration-shaped prose record.
 s" ENUM tdediag red red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdediag`\n"
@@ -1828,6 +1880,15 @@ s" make" s" reserved field name" TDT-AT
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpoldg`\n"
 s" boxed" s" layout policy not yet supported" TDT-AT
+\ A private SUMTYPE's generated word whose name is taken is placed at the
+\ family and named as its word.
+package tdpq private
+: TDHUE-RED ( -- n ) 1 ;
+s" SUMTYPE tdhue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhue`\n"
+s" tdhue" s" generated declaration already defined" TDT-AT
+s\" = word: TDHUE-RED\n" TDT-HAS
+;package
 
 \ No byte count caps a declaration's body: the fixture's SUMTYPE loads, and its
 \ constructor and derived EQ and HASH run.
@@ -1966,14 +2027,6 @@ s" frobnicate" s" unknown derive feature" TDT-AT
 s" ENUM tdrb4 DERIVE ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb4`\n"
 s" ;ENUM" s" unknown derive feature" TDT-AT
-\ visibility gate (docs/forth.md "Structures And Enums"): DERIVE requires a
-\ PUBLIC family — a family declared in a private package section rejects.
-package tdprv
-private
-s" ENUM tdrb11 DERIVE eq aa bb ;ENUM"
-s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb11`\n"
-s" eq" s" derive requires a public family" TDT-AT
-;package
 \ a feature token right after the clause reads as a feature (a repeated one
 \ rejects); a variant spelled like a derived word follows another variant and
 \ collides.
@@ -2343,12 +2396,8 @@ s\" error[E-BAD-DECLARATION]: bad product declaration `tdfb`\n"
 s" tdrv" s" field family must also derive hash" TDT-AT
 REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 
-\ Unified named-field ENUM metadata drives the same derivation validator and
-\ semantic generators. The constructor participant runs TDECL-DERIVE-REQUIRE,
-\ TDECL-CTOR-PUBLISH and the derived-word publisher on the real declaration
-\ path; it commits after DECL-EVENT has promoted these FIELD rows past
-\ PF-COMMIT-N, the committed view TDECL-DERIVE-REQUIRE reads, so the declaration
-\ below is the whole setup.
+\ A full-mode ENUM builds its derived words at commit, once its FIELD rows are
+\ committed, so the declaration below is the whole setup.
 ENUM tdnu DERIVE eq hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
@@ -2374,13 +2423,10 @@ TDNU-TAG-PAIR 1 T=
 TDNU-HASH-EQ TTRUE
 TDNU-HASH-ORDER TFALSE
 
-\ The named-field derivation validator resolves the field schema too: a pointer
-\ payload rejects at declaration time, like a SUMTYPE, because the constructor
-\ participant runs TDECL-DERIVE-REQUIRE inside the declaration's own reversible
-\ commit.
+\ A pointer field rejects at its type, as a SUMTYPE pointer payload does.
 s" ENUM tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdnu-bad`\n"
-s" tdnu-bad" s" pointer payloads have no derived equality" TDT-AT
+s" ptr" s" pointer payloads have no derived equality" TDT-AT
 
 \ typed locals for family types: a bare arity-0 family tail is a
 \ legal {: x:fam :} annotation. Enum-tier layouts (W=1 sum/enum) assert the

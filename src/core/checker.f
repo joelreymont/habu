@@ -23,6 +23,24 @@
 \ declared quantifier reach no instance. RECUR-CHECK meets each instance with
 \ them after the body and pins a failure on the RECURSE that made it.
 \
+\ Divisor inputs: SIG-INSTALL seeds each of the top NONZERO-INPUTS declared
+\ inputs that is one integer cell with a CP-ARG fact, its id the input's index
+\ j from the top. A machine over the body's tokens then learns which seeded
+\ inputs reach a divisor or `throw` unchanged on every path. State: NZ-TAKEN,
+\ the inputs something other than a move took; NZ-DIV and NZ-THROW, the inputs
+\ a marking call took while untaken. Each token is one input, NZ-IN:
+\ DO-TOK-HEAD sets NZ-OTHER, the step names a move, and DO-TOK-TAIL applies it:
+\   NZ-MOVE   a locals group's token, a local read, an integer literal, a
+\             data stack word the transport step took, or a call: no change.
+\   NZ-OTHER  any other token, the default: NZ-TAKEN becomes all ones.
+\ A call steps the machine as it is walked (NZ-CALL-CELLS): each cell it popped
+\ that holds CP-ARG j, paired with the callee's input at its place, sets bit j
+\ of NZ-DIV or NZ-THROW where the callee's NORET.NONZERO marks that input and
+\ bit j of NZ-TAKEN is clear; otherwise it sets bit j of NZ-TAKEN. A cell at or
+\ under a value wider than one cell pairs inexactly: taken. A check starts with
+\ every input taken; SIG-INSTALL clears NZ-TAKEN as it seeds, so only a
+\ declared signature's inputs are ever marked.
+\
 \ The linear discipline: counting concrete linear types on the stack misses a
 \ value copied or dropped while its type is still a var that later unifies
 \ with a linear type (KEEP's `over`, a quotation's `dup FREE`). Two rules close
@@ -1812,6 +1830,8 @@ public
 \ decides.
 variable TOP-STEP
 
+variable WALK-ITEMS   \ the items of the text walked, 0 when it has none
+
 \ Outside a package context a top step names no package: every name binds as the
 \ engine's top-level find selects it.
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
@@ -1948,6 +1968,9 @@ CHECKER-REG:}SCRATCH
 \ A number token's cell holds its value in CP-ID; stack words and equal joins
 \ carry it, and of the stores only the interpret row keeps it.
 6 constant CP-LIT
+\ A declared one-cell integer input's cell holds its index from the top in
+\ CP-ID; the moves that carry a literal carry it, and no store keeps it.
+7 constant CP-ARG
 : CP-BASE ( -- ptr n ) CP-P @ ;
 : CP-AT ( n -- ptr n ) 1- 32 * CP-BASE + ;
 : CP-KIND ( n -- n ) CP-AT @ ;
@@ -2006,9 +2029,16 @@ variable FM-CUR  variable FM-ACC
    pf 0= IF RES-FALSE EXIT THEN
    pf CP-KIND CP-LIT = ;
 
-\ A loop's carried-cell comparison reads a literal fact as none: a loop entry
-\ drops every literal fact (ROW-NO-LIT).
-: PF-NO-LIT ( n -- n ) dup CP-LIT? IF drop 0 THEN ;
+: CP-ARG? ( n -- bool ) {: pf:n :}
+   pf 0= IF RES-FALSE EXIT THEN
+   pf CP-KIND CP-ARG = ;
+
+\ The facts a loop entry drops: a literal's and a declared input's.
+: CP-VALUE? ( n -- bool ) dup CP-LIT? swap CP-ARG? or ;
+
+\ A loop's carried-cell comparison reads a literal or input fact as none: a
+\ loop entry drops every such fact (ROW-NO-LIT).
+: PF-NO-LIT ( n -- n ) dup CP-VALUE? IF drop 0 THEN ;
 
 : CP-SAME? ( n n -- bool ) {: a:n b:n :}
    a b = IF RES-TRUE EXIT THEN
@@ -2184,9 +2214,9 @@ PTX-BARRIER-DEFAULT
    R-RES {: node:n :}
    node TAG S-PUSH <> IF node EXIT THEN
    node P>REST RECURSE {: rest:n :}
-   node P>PROOF CP-LIT? 0=  rest node P>REST R-RES =  and IF node EXIT THEN
+   node P>PROOF CP-VALUE? 0=  rest node P>REST R-RES =  and IF node EXIT THEN
    node rest P-COPY {: copy:n :}
-   node P>PROOF CP-LIT? IF 0 copy P-PROOF! THEN
+   node P>PROOF CP-VALUE? IF 0 copy P-PROOF! THEN
    copy ;
 
 CHECKER-REG:SCRATCH{
@@ -4744,7 +4774,7 @@ defer U-DRAIN-XT ( n -- )
 
 
 \ Loop edge b carries entry row a's proofs and lost lineage; a logical cell
-\ compares with each field of its group, and a literal fact is none.
+\ compares with each field of its group, and a literal or input fact is none.
 : ROW-META= ( n n -- bool )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -5003,9 +5033,10 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    old new TOKBUF-CAP-U @ CCOPY  new ;
 
 \ A grown buffer starts with the old one's bytes, and the old mapping stays:
-\ a caller may hold a pointer into it across a TOKBUF-ENSURE.
+\ a caller may hold a pointer into it across a TOKBUF-ENSURE. A grow at least
+\ doubles the capacity, so the old mappings kept total less than the current one.
 : TOKBUF-GROW {: need :}
-   need TOKBUF-ROUND-CAP {: cap :}
+   need TOKBUF-CAP-U @ 2 * max TOKBUF-ROUND-CAP {: cap :}
    FAILTK cap TOKBUF-CARRY FAILTK!
    TKF cap TOKBUF-CARRY TKF!
    NMB cap TOKBUF-CARRY NMB!
@@ -5136,8 +5167,8 @@ CHECKER-REG:}SCRATCH
 68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT); E-CAST-LINEAR
 69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT); E-CAST-CLASS
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
-71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
-72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
+71 constant MD-DIV-ZERO      \ a literal 0 at an input the callee always divides by (ZERO-AT?)
+72 constant MD-THROW-ZERO    \ a literal 0 at an input the callee always throws (ZERO-AT?)
 73 constant MD-FINALLY-CLEANUP \ a cleanup `finally` or a C2 invoke runs is not `[ -- ]` (CLEANUP-QUOT?, C2-FINISH-QUOT?)
 74 constant MD-CALLABLE-NARROW \ a callable stored or installed takes fewer types than the cell's or defer's effect (QCON-OK?)
 75 constant MD-QDUP-LAYOUT   \ `?dup` met a layout value (QDUP-STEP)
@@ -5215,6 +5246,7 @@ variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepe
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
 variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
+variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
@@ -5511,6 +5543,15 @@ $7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAM
 : XFER-FLAGS ( n -- n ) XFER-FLAG-MASK and ;
 : XFER-DMASK ( n -- n ) XFER-DMASK-SHIFT rshift XFER-MASK-ALL and ;
 : XFER-RMASK ( n -- n ) XFER-RMASK-SHIFT rshift XFER-MASK-ALL and ;
+
+20 constant NONZERO-INPUTS
+: NONZERO-PACK ( n n -- n ) {: div:n throw:n :}
+   div XFER-MASK-ALL and
+   throw XFER-MASK-ALL and NONZERO-INPUTS lshift or ;
+
+: NONZERO-UNPACK ( n -- n n ) {: n:n :}
+   n XFER-MASK-ALL and
+   n NONZERO-INPUTS rshift XFER-MASK-ALL and ;
 
 \ Control-effect flags are append-only and later-wins. CTL-DEAD: a call has no
 \ normal continuation. CTL-THROW: a call may reach a catchable throw edge.
@@ -7112,6 +7153,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 : SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
 variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
+variable SIG-NONZERO   \ the NORET.NONZERO masks, NONZERO-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
 variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
 variable SIG-PARSES   -1 SIG-PARSES !   \ the parses count the last facts text's tags gave, -1 for none
@@ -8031,6 +8073,17 @@ CHECKER-REG:}SCRATCH
    SIG-CTL @ CTL-THROW or  dmask rmask XFER-PACK SIG-CTL ! ;
 
 
+\ The writer leaves out a tag with no input, so `nonzero 0 0` is refused too.
+: SIG-NONZERO-TAG ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   SIG-NONZERO @ 0 <> IF ta tu SGBAD-SYNTAX! THEN
+   ta tu SIG-MASK {: div:n :}
+   ta tu SIG-MASK {: thr:n :}
+   div thr NONZERO-PACK {: nz:n :}
+   nz 0 = IF ta tu SGBAD-SYNTAX! THEN
+   nz SIG-NONZERO ! ;
+
+
 : SIG-INTRINSIC ( ptr u8 n -- )
    {: ta:ptr tu:n :}
    SIG-CTL @ CTL-INTRINSIC-MASK and 0 <> IF ta tu SGBAD-SYNTAX! THEN
@@ -8052,6 +8105,7 @@ CHECKER-REG:}SCRATCH
       SIG-CTL @ flag or SIG-CTL !  RES-TRUE EXIT
    THEN
    ta tu s" throws" CORE-STR= IF ta tu SIG-THROWS RES-TRUE EXIT THEN
+   ta tu s" nonzero" CORE-STR= IF ta tu SIG-NONZERO-TAG RES-TRUE EXIT THEN
    ta tu s" intrinsic" CORE-STR= IF ta tu SIG-INTRINSIC RES-TRUE EXIT THEN
    RES-FALSE ;
 
@@ -8234,7 +8288,8 @@ CHECKER-REG:}SCRATCH
 
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
-   0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !  RES-FALSE SIG-TAGS-ONLY !
+   0 SIG-CTL !  0 SIG-NONZERO !  0 SIG-PE !  -1 SIG-PIMM !
+   RES-FALSE SIG-TAGS-ONLY !
    -1 SIG-PARSES !  NULL-PTR SIG-PARSES-A !  0 SIG-PARSES-U !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    NULL-PTR SIG-OVERLOAD-A !  0 SIG-OVERLOAD-U !
@@ -13638,6 +13693,7 @@ package CHECKER-REG
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 17 constant STG-EFFECT-TYPE     \ the type parses and holds a definer's type, which no storage holds
+18 constant STG-LAYOUT-TYPE     \ the type parses but a layout buffer cannot hold it: no nominal scalar, and no layout family whose members it lays out
 : STGR-CODE ( ptr u8 n -- ) {: a:ptr u:n :}
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
@@ -13683,6 +13739,9 @@ package CHECKER-REG
    why STG-EFFECT-TYPE = IF
       s"  holds a definer's type, which no storage holds" REJECTION:EMIT-STR EXIT
    THEN
+   why STG-LAYOUT-TYPE = IF
+      s"  is no type a layout buffer can lay out" REJECTION:EMIT-STR EXIT
+   THEN
    s"  is one its definer cannot store" REJECTION:EMIT-STR ;
 
 : STGR-REASON$ ( n -- ptr u8 n ) {: why:n :}
@@ -13693,6 +13752,7 @@ package CHECKER-REG
    why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
    why STG-WIDTH-TYPE = IF s" width in a stored type" EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
    why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2drop EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
@@ -13754,6 +13814,13 @@ package CHECKER-REG
    THEN
    why STG-EFFECT-TYPE = IF
       EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2swap 2drop REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-LAYOUT-TYPE = IF
+      s" give " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty"
+      REJECTION:EMIT-STR
+      s"  ENUM, SUMTYPE, PRODUCT or STRUCTURE holding no view, region or linear value"
+      REJECTION:EMIT-STR EXIT
    THEN
    s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
    s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
@@ -14289,9 +14356,10 @@ package CHECKER-REG
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
-\ A missing nominal in a complete stored type leaves no allocation or row.
-\ A syntax fault, extra token, or known unstorable scheme keeps its refusal.
-: CHECKER-STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+\ A missing nominal leaves no allocation or row; for a layout buffer (lay), a
+\ bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE.
+: STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n bool -- )
+   {: na:ptr nu:n ta:ptr tu:n lay:bool :}
    tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
    SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
       LBI-SCHEME @ 0= and IF
@@ -14302,7 +14370,6 @@ package CHECKER-REG
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
    THEN
-   na nu ta tu
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
       LBI-XT @ IF STG-XT-TYPE ELSE
@@ -14310,8 +14377,15 @@ package CHECKER-REG
       LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
       LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
       THEN THEN THEN THEN THEN
-   THEN
+   THEN {: why:n :}
+   na nu ta tu
+   why STG-XT-TYPE =  LBI-T @ LAYOUT-PARAM? 0= and
+   why STG-UNSTORABLE-TYPE = or  lay and
+   IF STG-LAYOUT-TYPE ELSE why THEN
    CHECKER-STORAGE-REJECT ;
+
+: CHECKER-STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) RES-FALSE STORAGE-TYPE-REJECT ;
+: CHECKER-LAYOUT-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) RES-TRUE STORAGE-TYPE-REJECT ;
 
 : CHECKER-TYPE-MARK ( bool -- )
    IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
@@ -15376,7 +15450,7 @@ public
       SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
          name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    nip LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -15572,7 +15646,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    2drop
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
@@ -15588,9 +15662,9 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
-\ 64 five-cell entries. The boot holds the grammar a product starts with
+\ 64 six-cell entries. The boot holds the grammar a product starts with
 \ (KEYWORD-AXIOMS); a load grows it on demand.
-$A00 constant NORET-INIT-CAP
+$C00 constant NORET-INIT-CAP
 
 \   SYM      the symbol the facts are about; 0 terminates the store.
 \   FLAG     the symbol's whole CONTROL WORD in the XFER-PACK format: the flags
@@ -15605,18 +15679,23 @@ $A00 constant NORET-INIT-CAP
 \            as an effect-record offset+1, 0 when the symbol is not a definer.
 \   SOURCE   for an export, the symbol of the word it is, through any
 \            re-exports (EXPORT-META-COPY); 0 when the symbol is its own word.
+\   NONZERO  the declared inputs every returning call divides by, bits 0-19,
+\            and throws, bits 20-39, bit j counted from the top as FLAG's
+\            masks are (NONZERO-PACK); an input past the 20th claims nothing.
 $0 constant NORET-SYM-OFF
 $8 constant NORET-FLAG-OFF
 $10 constant NORET-SYMPREV-OFF
 $18 constant NORET-CREATES-OFF
 $20 constant NORET-SOURCE-OFF
-$28 constant NORET-ENTRY
+$28 constant NORET-NONZERO-OFF
+$30 constant NORET-ENTRY
 $8 constant NORET-ENTRY-ALIGN
 : NORET.SYM ( ptr a -- ptr a ) NORET-SYM-OFF + ;
 : NORET.FLAG ( ptr a -- ptr a ) NORET-FLAG-OFF + ;
 : NORET.SYMPREV ( ptr a -- ptr a ) NORET-SYMPREV-OFF + ;
 : NORET.CREATES ( ptr a -- ptr a ) NORET-CREATES-OFF + ;
 : NORET.SOURCE ( ptr a -- ptr a ) NORET-SOURCE-OFF + ;
+: NORET.NONZERO ( ptr a -- ptr a ) NORET-NONZERO-OFF + ;
 
 
 create NORETS-BOOT NORET-INIT-CAP allot
@@ -15753,6 +15832,8 @@ CHECKER-REG:}SCRATCH
 \ Read from the newest entry, so the entry an `undefine` appends retires it.
 : NORET-SOURCE@ ( n -- n ) NORET-SOURCE-OFF NORET-NEWEST@ ;
 
+: NORET-NONZERO@ ( n -- n ) NORET-NONZERO-OFF NORET-NEWEST@ ;
+
 \ A source the capture swept (a private word of a sealed package) keeps its id
 \ and answers no identity.
 : CHECKER-SYM-SOURCE ( n -- n ) {: sym:n :}
@@ -15769,7 +15850,7 @@ CHECKER-REG:}SCRATCH
 \ Every appender carries forward the facts it has nothing to say about: the
 \ newest entry wins, so an appender writing only its own part would retire the
 \ rest.
-: NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n source:n :}
+: NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n source:n nonzero:n :}
    WRITE-WINDOW-CK
    sym 0= IF EXIT THEN
    flag dmask rmask XFER-PACK {: ctl:n :}
@@ -15781,6 +15862,7 @@ CHECKER-REG:}SCRATCH
    0 NORET-REC NORET.SYMPREV !
    creates NORET-REC NORET.CREATES !
    source NORET-REC NORET.SOURCE !
+   nonzero NORET-REC NORET.NONZERO !
    NORET-END @ sym NRX-LINK
    NORET-END @ NORET-ENTRY + NORET-END !
    NORET-TERM
@@ -15790,12 +15872,13 @@ CHECKER-REG:}SCRATCH
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
 
-: NORET-ADD-CREATES ( n n n n n -- )
-   {: sym:n flag:n dmask:n rmask:n creates:n :}
-   sym flag dmask rmask creates sym NORET-SOURCE@ NORET-APPEND ;
+: NORET-ADD-CREATES ( n n n n n n -- )
+   {: sym:n flag:n dmask:n rmask:n creates:n nonzero:n :}
+   sym flag dmask rmask creates sym NORET-SOURCE@ nonzero NORET-APPEND ;
 
 : NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
-   sym flag dmask rmask sym NORET-CREATES@ NORET-ADD-CREATES ;
+   sym flag dmask rmask sym NORET-CREATES@ sym NORET-NONZERO@
+   NORET-ADD-CREATES ;
 
 \ One row per actual dictionary occurrence. Effect and control are existing
 \ store offsets plus one.
@@ -16358,21 +16441,26 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-: NORET-SYM-AXIOM {: sym:n a:ptr u:n flag:n :}
+: NORET-SYM-AXIOM {: sym:n a:ptr u:n flag:n nonzero:n :}
    sym BUILD-SYM-END @ < 0= IF
       s" checker: the kernel object has no row for " ERROR-TEXT:TYPE
       a u ERROR-TEXT:TYPE
       S\" , which a no-return axiom names\n" ERROR-TEXT:TYPE
       s" " 76 die
    THEN
-   sym flag 0 0 NORET-ADD-SYM ;
+   sym flag 0 0 sym NORET-CREATES@ sym NORET-SOURCE@ nonzero NORET-APPEND ;
 
 : NORET-AXIOM {: a:ptr u:n flag:n :}
-   a u PE-SYM-OF a u flag NORET-SYM-AXIOM ;
+   a u PE-SYM-OF a u flag 0 NORET-SYM-AXIOM ;
+
+\ The axiom of a word that divides by the inputs DIV and throws the inputs
+\ THROW, as a body's NORET.NONZERO masks.
+: NORET-NONZERO-AXIOM {: a:ptr u:n flag:n div:n throw:n :}
+   a u PE-SYM-OF a u flag div throw NONZERO-PACK NORET-SYM-AXIOM ;
 
 \ The axiom of a primitive whose one row is private to package PKG.
 : NORET-PRIVATE-AXIOM {: pkg:ptr pkgu:n a:ptr u:n flag:n :}
-   pkg pkgu SYM-PRIVATE a u SYM-INTERN  a u flag NORET-SYM-AXIOM ;
+   pkg pkgu SYM-PRIVATE a u SYM-INTERN  a u flag 0 NORET-SYM-AXIOM ;
 
 \ The axioms of the grammar KEYWORD-ROWS interns, a product's whole prefix.
 : KEYWORD-AXIOMS ( -- )
@@ -16388,7 +16476,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 
 \ A symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )
-   s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or NORET-AXIOM
+   s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or 0 1 NORET-NONZERO-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
    s" INTERPRETER" s" die-closed" CTL-DEAD NORET-PRIVATE-AXIOM
    s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
@@ -16398,9 +16486,9 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
-   s" /" CTL-CORE-OP NORET-AXIOM
-   s" mod" CTL-CORE-OP NORET-AXIOM
-   s" /mod" CTL-CORE-OP NORET-AXIOM
+   s" /" CTL-CORE-OP 1 0 NORET-NONZERO-AXIOM
+   s" mod" CTL-CORE-OP 1 0 NORET-NONZERO-AXIOM
+   s" /mod" CTL-CORE-OP 1 0 NORET-NONZERO-AXIOM
    s" dup" CTL-CORE-OP NORET-AXIOM
    s" drop" CTL-CORE-OP NORET-AXIOM
    s" swap" CTL-CORE-OP NORET-AXIOM
@@ -16445,7 +16533,7 @@ NORET-P NORET-CAP-U 1 NORET-END STORE+
    sym NORET-NEWEST off 1 + <> IF EXIT THEN
    off NORET-CELL NORET-CTL@ {: ctl:n :}
    sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
-   off NORET-CELL NORET.CREATES @ 0 NORET-APPEND ;
+   off NORET-CELL NORET.CREATES @ 0 off NORET-CELL NORET.NONZERO @ NORET-APPEND ;
 
 \ --- declared parsing immediates.
 \ A parsing immediate consumes a fixed number of source tokens at compile time
@@ -16616,7 +16704,7 @@ package CHECK
    sym RES-FALSE DFER-ADD-SYM
    sym -1 0 PROW-ADD
    sym -1 PIMM-ADD
-   sym 0 0 0 0 0 NORET-APPEND
+   sym 0 0 0 0 0 0 NORET-APPEND
    NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop ;
 
 
@@ -16957,7 +17045,8 @@ private
    old EFFECT-EXTERNAL CTL-GENERATES or invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
    old flags <>  creates sym NORET-CREATES@ <>  or IF
-      sym flags sym CTL-MASKS-SYM creates NORET-ADD-CREATES
+      sym flags sym CTL-MASKS-SYM creates sym NORET-NONZERO@
+      NORET-ADD-CREATES
    THEN ;
 \ Each record is then published to the checker overlay, so a replay's later
 \ bodies bind its name through the engine.
@@ -17010,6 +17099,119 @@ variable CURSYM
    XE-PD @ DCUR @ dk XBASE-D CALL-DIN @ CALL-EDGE-MASK
    XE-PR @ RCUR @ rk XBASE-R 0 CALL-EDGE-MASK
    THROW-EDGE ;
+
+\ ---- the inputs a body always divides by or throws ------------------------
+0 constant NZ-OTHER
+1 constant NZ-MOVE
+CHECKER-REG:SCRATCH{
+variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
+CHECKER-REG:}SCRATCH
+
+: NZ-RESET ( -- )
+   NZ-OTHER NZ-IN !  XFER-MASK-ALL NZ-TAKEN !  0 NZ-DIV !  0 NZ-THROW ! ;
+
+: NZ-MOVED ( -- ) NZ-MOVE NZ-IN ! ;
+
+: NZ-SEED? ( n -- bool )
+   P>TYPE T-RES {: t:n :}
+   t TAG T-CON <> IF RES-FALSE EXIT THEN
+   t PAY INT-FAM? ;
+
+\ Row ROW with CP-ARG on each seeded input, its top at index I; the nodes are
+\ copies, so the declared row keeps no fact.
+: NZ-SEED-ROW ( n n -- n ) {: row:n i:n :}
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   i NONZERO-INPUTS >= IF node EXIT THEN
+   node P>REST i 1 + RECURSE {: rest:n :}
+   node NZ-SEED? {: seed:bool :}
+   seed 0=  rest node P>REST R-RES =  and IF node EXIT THEN
+   node rest P-COPY {: copy:n :}
+   seed IF CP-ARG i 0 0 CP-NEW copy P-PROOF! THEN
+   copy ;
+
+: NZ-SEED ( -- )
+   DCUR @ 0 NZ-SEED-ROW DCUR !
+   0 NZ-TAKEN ! ;
+
+: NZ-PLAIN? ( n -- bool )
+   P>TYPE T-RES {: t:n :}
+   t LAYOUT-PARAM? t HIDDEN-PARAM? or 0= ;
+
+\ Whether MARKS has input I always divided by, and always thrown.
+: NZ-MARKS ( n n -- bool bool ) {: i:n marks:n :}
+   marks i rshift 1 and 0 <>
+   marks NONZERO-INPUTS i + rshift 1 and 0 <> ;
+
+\ Sets bit BIT of NZ-DIV and NZ-THROW where MARKS marks input I; true when
+\ either is set.
+: NZ-MARK ( n n n -- bool ) {: bit:n i:n marks:n :}
+   i marks NZ-MARKS {: div:bool thr:bool :}
+   div IF NZ-DIV @ bit or NZ-DIV ! THEN
+   thr IF NZ-THROW @ bit or NZ-THROW ! THEN
+   div thr or ;
+
+\ Input j, popped as the callee's input i, exactly paired or not.
+: NZ-ARG ( n n bool n -- ) {: j:n i:n exact:bool marks:n :}
+   1 j lshift {: bit:n :}
+   exact  i NONZERO-INPUTS < and  NZ-TAKEN @ bit and 0= and IF
+      bit i marks NZ-MARK IF EXIT THEN
+   THEN
+   NZ-TAKEN @ bit or NZ-TAKEN ! ;
+
+\ The cells a call popped from row PRE to leave row POST.
+: NZ-POPPED ( n n -- n ) {: pre:n post:n :}
+   pre ROW-TERMS  pre post ROW-COMMON ROW-TERMS - ;
+
+\ The popped cell on top of ROW, and whether its pairing with the callee's
+\ input is still exact.
+: NZ-CELL ( n bool -- n bool ) {: row:n exact:bool :}
+   row R-RES {: node:n :}
+   node  exact node NZ-PLAIN? and ;
+
+\ The transition of the token just walked.
+: NZ-STEP ( -- )
+   NZ-IN @ NZ-OTHER = IF XFER-MASK-ALL NZ-TAKEN ! THEN ;
+
+\ The masks NORET.NONZERO records for the body just walked.
+: NZ-FACT ( -- n ) NZ-DIV @ NZ-THROW @ NONZERO-PACK ;
+
+\ ---- a literal 0 at an input the callee always divides by or throws --------
+\ A zero divisor has no quotient, and `0 throw` unwinds with the code that
+\ means no error; a redefinition of an engine spelling is marked by its own
+\ body.
+
+\ True when NODE, the callee's input I under MARKS, holds a literal 0 at a
+\ marked input; then the call is rejected.
+: ZERO-AT? ( n n n -- bool ) {: node:n i:n marks:n :}
+   node P>PROOF {: pf:n :}
+   pf CP-LIT? 0= IF RES-FALSE EXIT THEN
+   pf CP-ID 0 <> IF RES-FALSE EXIT THEN
+   i marks NZ-MARKS {: div:bool thr:bool :}
+   div thr or 0= IF RES-FALSE EXIT THEN
+   div IF MD-DIV-ZERO ELSE MD-THROW-ZERO THEN MDIAG!
+   i MDIAG-ZIN !
+   0 OK !
+   RES-TRUE ;
+
+\ The call of CURSYM just stepped from row PRE: each cell it popped, the
+\ callee's input i, is checked for a literal 0 and steps the NZ machine.
+: NZ-CALL-CELLS ( n -- ) {: pre:n :}
+   CURSYM @ NORET-NONZERO@ {: marks:n :}
+   pre DCUR @ NZ-POPPED {: popped:n :}
+   pre RES-TRUE
+   popped 0 ?do   \ ( row exact )
+      over R-RES TAG S-PUSH <> IF leave THEN
+      NZ-CELL
+      dup  OK @ 0 <> and  i NONZERO-INPUTS < and IF
+         over i marks ZERO-AT? drop
+      THEN
+      over P>PROOF dup CP-ARG? IF
+         CP-ID over i swap marks NZ-ARG
+      ELSE drop THEN
+      swap P>REST swap
+   loop 2drop
+   NZ-MOVED ;
 
 \ The current token is a block collective.
 : BARRIER-CUR? ( -- bool )
@@ -17196,7 +17398,7 @@ variable CURSYM
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
    a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates
-   src CHECKER-SYM-SOURCE NORET-APPEND ;
+   src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
 \ An export of a does> definer publishes the definer's clause too, under the
 \ clause's name in the export's wordlist.
@@ -17388,7 +17590,7 @@ CHECKER-REG:}SCRATCH
    copy DCUR ! ;
 
 : INT-STEP ( n -- )
-   dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT! ;
+   dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT!  NZ-MOVED ;
 
 \ A token with a number's shape whose value does not fit in a cell, which the
 \ load cannot compile either.
@@ -18681,6 +18883,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    dup a u WF-XPORT-K XP-BUNDLE-IN-K?
    swap a u WF-XPORT-K XP-META-IN-K? or 0= IF RES-FALSE EXIT THEN
    a u XPORT-APPLY
+   a u XP-RS? 0= IF NZ-MOVED THEN
    RES-TRUE ;
 
 \ The type of the topmost cell above the row's tail var holding a layout value
@@ -19135,12 +19338,14 @@ CHECKER-REG:}SCRATCH
 \ each token, so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
    {: ra a u :}
+   NZ-MOVED
    a u s" :}" CORE-STR= IF LOC-CLOSE ELSE
    ra a u LOC-ADD
    a u s" --" CORE-STR= IF LOCALBAD-DASH LOC-GROUP-REJECT THEN
    a u s" |" CORE-STR= IF LOCALBAD-BAR LOC-GROUP-REJECT THEN THEN ;
 
 : LOC-BEGIN ( -- )
+   NZ-MOVED
    EV-OPERAND
    QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
@@ -19327,7 +19532,7 @@ SCOPE-INTRO-FENCE-INSTALL
    QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF LOC-REJECT EXIT THEN
    QDEPTH @ 0 > IF li LOC-OWNER QRD-MARK THEN
    CHECKER-TAPE:K-LOCAL-REF  li cells LOCSEQIX + @  0 EVENT!
-   li LOC-PUSH-REF ;
+   li LOC-PUSH-REF  NZ-MOVED ;
 
 : LOC-REF?
    {: a u :}
@@ -19913,8 +20118,8 @@ CHECKER-REG:}SCRATCH
    dup 0 < IF drop MD-NO-LOOP CF-FAIL EXIT THEN
    CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
 
-\ A loop entry drops every literal fact: a carried cell is not a literal on the
-\ second pass.
+\ A loop entry drops every literal and input fact: a carried cell is not a
+\ literal, or the input unchanged, on the second pass.
 : CF-LOOP-ENTRY ( -- )
    DCUR @ ROW-NO-LIT DCUR !  RCUR @ ROW-NO-LIT RCUR ! ;
 
@@ -20415,6 +20620,7 @@ variable TOK0
 CHECKER-REG:}SCRATCH
 variable CTLNEW
 variable CTLDNEW   variable CTLRNEW   \ the intact masks recorded beside them
+variable CTLZNEW   \ the NORET.NONZERO masks
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 variable TKFU
@@ -21705,30 +21911,6 @@ variable IS-PEND-U                   \ and its length
    famterm LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN        \ ordinary pointee: the plain row answers
    famterm RECORD-AT-STEP RES-TRUE ;
 
-\ The reason a literal 0 operand of the token's spelling raises, else 0.
-: ZERO-REASON ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" /" CORE-STR=  a u s" mod" CORE-STR= or
-   a u s" /mod" CORE-STR= or IF MD-DIV-ZERO EXIT THEN
-   a u s" throw" CORE-STR= IF MD-THROW-ZERO EXIT THEN
-   0 ;
-
-: ZERO-ON-TOP? ( -- bool )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   P>PROOF {: pf:n :}
-   pf CP-LIT? 0= IF RES-FALSE EXIT THEN
-   pf CP-ID 0= ;
-
-\ A zero divisor has no quotient, and `0 throw` unwinds with the code that
-\ means no error: the engine's word refuses a literal 0 on top.
-: ZERO-OPERAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u ZERO-REASON {: why:n :}
-   why 0= IF RES-FALSE EXIT THEN
-   a u TOK-CORE-OP? 0= IF RES-FALSE EXIT THEN
-   ZERO-ON-TOP? 0= IF RES-FALSE EXIT THEN
-   why MDIAG!
-   0 OK !
-   RES-TRUE ;
-
 \ The steps that type an engine word by what it does, in their one order. Each
 \ is asked only when the token binds that word (TOK-INTRINSIC, TOK-CORE-OP?);
 \ any other binding of the spelling goes on to DO-TOK and is judged by its own
@@ -21736,7 +21918,6 @@ variable IS-PEND-U                   \ and its length
 : SPELLED-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
-   a u ZERO-OPERAND? IF RES-TRUE EXIT THEN
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over a wide or open-width value
@@ -21991,6 +22172,7 @@ variable POST-A0
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT !
+   NZ-OTHER NZ-IN !
    unj unsafe ok-in unck-in pin-in ;
 
 : DO-TOK-TAIL ( ptr u8 n bool bool n n n -- )
@@ -22002,6 +22184,7 @@ variable POST-A0
    \ rows in turn and the next token must start clean.
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
+   NZ-STEP
    unj IF
       OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
       OK @ ok-in and OK !
@@ -22581,7 +22764,7 @@ CHECKER-REG:}SCRATCH
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !
+   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
@@ -22599,7 +22782,8 @@ CHECKER-REG:}SCRATCH
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
-   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK ! ;
+   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK !  0 WALK-ITEMS !
+   NZ-RESET ;
 
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
@@ -22772,6 +22956,7 @@ variable CUR-OPEN   variable CUR-PSIG
    NP-COLLECT
    SIG-BODY-FRESH
    SGBAD @ UNFIT @ or SGDECL-BAD !
+   NZ-SEED
    RES-FALSE ;
 
 \ The `cast:` or `linear:` declaration being certified and the token its

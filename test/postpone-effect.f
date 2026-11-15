@@ -83,6 +83,13 @@ CAST: >NODE ( EFFECT:type -- n )
 
 SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
 
+\ An `xt` in and out, which facts text writes with no quote.
+: XT-TEXT ( -- ptr u8 n )
+   s" xt" EFFECT:READ-TYPE {: x :}
+   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT >NODE CHECK:EFFECT-TEXT ;
+
+XT-TEXT s" ( xt -- xt )" T$=
+
 \ The captured record opens with the line L and gives the transient-node help.
 : SAID-BAD ( ptr u8 n -- ) {: l:ptr lu:n :}
    REJECTION:BUFFER$ l lu STARTS-WITH? TTRUE

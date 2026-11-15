@@ -20,11 +20,8 @@
 \ receive is paused while it holds uncopied bytes, so a fast server waits in
 \ the kernel's window and not in this process's memory.
 \
-\ One byte on the wake pipe says "a record changed": a START, a CANCEL, an
-\ abandoned record or the stop. The loop holds one AIO POLL ticket on the read
-\ end, and after it reads whatever is there it scans the table, so a byte that
-\ arrives between the read and the scan costs one extra turn and never a missed
-\ record.
+\ One byte on the wake pipe says "a record changed": a START, a NEXT-ARM, a
+\ CANCEL, an abandoned record or the stop; the loop scans the table after each.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
@@ -162,6 +159,7 @@ VERSIONED-LIBRARY curl 4
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION
 FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
+FUNCTION: EASY-RESET curl_easy_reset ( n -- ) ;FUNCTION
 FUNCTION: EASY-PERFORM curl_easy_perform ( n -- i32 ) ;FUNCTION
 FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
@@ -328,6 +326,11 @@ CAST: >BYTES ( n -- ptr u8 )
    0 state S.LENGTH STATE-FIELD LE:U64!
    0 state S.VALID STATE-FIELD LE:U64! ;
 
+: STATE-CLEAR-LIST ( n -- )
+   {: state:n :}
+   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   0 state S.LIST STATE-FIELD LE:U64! ;
+
 : STATE-PUBLISH ( n n n -- ) {: easy:n source:n u:n :}
    easy STATE-GET {: state:n :}
    state STATE-CLEAR-RESPONSE
@@ -338,7 +341,7 @@ CAST: >BYTES ( n -- ptr u8 )
 : STATE-DESTROY ( n -- )
    {: state:n :}
    state STATE-CLEAR-RESPONSE
-   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   state STATE-CLEAR-LIST
    state RELEASE ;
 
 
@@ -613,7 +616,6 @@ private
 
 $400 constant FD-SETSIZE
 $80 constant FD-SET-BYTES
-$40 constant WAKE-CHUNK                   \ bytes taken off the wake pipe at once
 100 constant IDLE-MS                      \ the turn to take when libcurl names none
 1000 constant LONGEST-MS                  \ the longest turn to take at all
 1 constant SHORTEST-MS                    \ and the shortest, so zero is not a spin
@@ -710,8 +712,6 @@ FD-SET-BYTES BUFFER: SET-EXC
 FD-SETSIZE BUFFER: SET-KEPT
 $20 BUFFER: MULTI-STAGE
 MSG-BYTES BUFFER: MSG-BUF
-WAKE-CHUNK BUFFER: WAKE-BUF
-create WAKE-BYTE $01 c,
 
 \ One ticket per descriptor libcurl wants, in slots a zero mask says are free.
 \ A slot holds the descriptor itself, or -1 for none, so the row is plain cells.
@@ -726,8 +726,7 @@ variable STOP-FLAG                        \ atomic: the loop takes no new record
 variable LOCK-READY                       \ the facility has been initialized once
 variable LOOP-THROW                       \ what ended the loop, reported by LOOP-STOP
 variable LOOP-MRC                         \ the CURLMcode the loop's own body ended on
-variable WAKE-R
-variable WAKE-W
+TYPED-VARIABLE WAKER AIO:waker             \ the wake pipe the loop is woken through
 variable TIMER-MS                         \ the ms the pending timer holds, -1 for none
 
 TASK:FACILITY CURL-LOCK
@@ -935,25 +934,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    0 idx REC R.BODY !
    0 idx REC R.DELIVERED !
    0 idx REC R.PAUSED ! ;
-
-
-: WAKE-POKE ( -- )
-   WAKE-W @ WAKE-BYTE 1 write drop ;
-
-
-: WAKE-DRAIN ( -- )
-   WAKE-R @ WAKE-BUF WAKE-CHUNK read drop ;
-
-
-: PIPE-OPEN ( -- n )
-   [: FD:PIPE FD>N WAKE-W ! FD>N WAKE-R ! ;] catch ;
-
-
-: PIPE-CLOSE ( -- )
-   WAKE-R @ close-rc drop
-   WAKE-W @ close-rc drop
-   0 WAKE-R !
-   0 WAKE-W ! ;
 
 
 : REC-STREAM-TAKE ( n -- n n n ) {: idx:n :}
@@ -1395,13 +1375,13 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 : WAKE-ARM ( -- )
-   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
+   WAKER AIO:WAKER-POLL {: t:AIO:ticket :}
    t WAKE-WAIT LOOP-GROUP AIO:GROUP+
    t WAKE-TICKET ! ;
 
 
 : TURN-ANSWER ( n -- n ) {: wait:n :}
-   wait WAKE-WAIT = if WAKE-DRAIN WAKE-ARM LOCKED-SERVICE exit then
+   wait WAKE-WAIT = if WAKER AIO:WOKE WAKE-ARM LOCKED-SERVICE exit then
    wait TIMER-WAIT = if -1 TIMER-MS ! CURLM-OK exit then
    wait FD-RELEASE CURLM-OK ;
 
@@ -1551,7 +1531,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    then
    STATE-LEAVING idx REC-STATE!
    CURL-LOCK TASK:RELEASE
-   WAKE-POKE
+   WAKER AIO:WAKE
    begin idx REC-STATE@ STATE-LEFT <> while TASK:WAIT repeat
    CURL-LOCK TASK:GET
    idx REC-RELEASE
@@ -1574,13 +1554,15 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 \ Every task exit precedes release of its TCB. Marking its records under the
 \ loop's lock stops a later copy or wake, but this runs after the task's
-\ cleanups, so it gives no span back: a span must outlive its record.
+\ cleanups, so it gives no span back: a span must outlive its record. It wakes
+\ the loop before releasing the lock, so the loop cannot stop and close the
+\ waker under that wake.
 : OWNER-END ( -- )
    TASK:SELF {: owner:ptr :}
    CURL-LOCK TASK:GET
    false REC-COUNT 0 ?do owner i OWNER-MARK or loop
-   CURL-LOCK TASK:RELEASE
-   if WAKE-POKE then ;
+   if WAKER AIO:WAKE then
+   CURL-LOCK TASK:RELEASE ;
 
 
 : CANCEL-MARK ( n -- ) {: idx:n :}
@@ -1600,8 +1582,8 @@ public
    0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
    GLOBAL-READY dup CURLE-OK <> if CODE>STATUS exit then drop
    LOCK-READY @ 0= if CURL-LOCK TASK:FACILITY-INIT 1 LOCK-READY ! then
-   PIPE-OPEN 0 <> if OUT-OF-MEMORY exit then
-   MULTI-INIT dup 0= if drop PIPE-CLOSE OUT-OF-MEMORY exit then
+   [: WAKER AIO:WAKER-OPEN ;] catch 0 <> if OUT-OF-MEMORY exit then
+   MULTI-INIT dup 0= if drop WAKER AIO:WAKER-CLOSE OUT-OF-MEMORY exit then
    MULTI-CELL atomic!
    TABLE-CLEAR
    FD-TABLE-CLEAR
@@ -1623,14 +1605,14 @@ public
    CURL-LOCK TASK:RELEASE
    if E-STATE throw then
    0 LOOP-LIVE atomic!
-   WAKE-POKE
+   WAKER AIO:WAKE
    LOOP-TASK TASK:JOIN MATCH result
       ok OF drop ENDOF
       err OF LOOP-THROW ! ENDOF
    ;MATCH
    MULTI-CELL atomic@ MULTI-CLEANUP {: mrc:n :}
    0 MULTI-CELL atomic!
-   PIPE-CLOSE
+   WAKER AIO:WAKER-CLOSE
    LOOP-THROW @ {: rc:n :}
    rc 0 <> if rc throw then
    mrc CURLM-OK <> if E-RESULT throw then ;
@@ -1679,7 +1661,7 @@ private
    live if STATE-CLAIMED idx REC-STATE! then
    CURL-LOCK TASK:RELEASE
    live 0= if idx STREAM-DROP drop idx REC-RELEASE E-STATE throw then
-   WAKE-POKE
+   WAKER AIO:WAKE
    CURL-STATUS:ok ;
 
 
@@ -1753,7 +1735,7 @@ public
    request idx REC R.REQUEST atomic!
    CURL-LOCK TASK:RELEASE
    ready if exit then
-   WAKE-POKE ;
+   WAKER AIO:WAKE ;
 
 
 \ Answers whether the armed read holds a chunk or the end; it never waits.
@@ -1815,7 +1797,7 @@ public
    easy REC-FIND dup 0 >= if dup CANCEL-MARK then
    CURL-LOCK TASK:RELEASE
    0 < if E-STATE throw then
-   WAKE-POKE ;
+   WAKER AIO:WAKE ;
 
 
 private
@@ -1825,6 +1807,24 @@ private
    CURL-LOCK TASK:GET
    easy REC-FIND 0 >=
    CURL-LOCK TASK:RELEASE ;
+
+public
+
+\ Drops every option set since INIT, header list included, and the captured
+\ response; libcurl keeps its connections, DNS and TLS caches and cookies.
+: RESET ( handle -- status ) {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET {: state:n :}
+   easy EASY-RESET
+   state STATE-CLEAR-LIST
+   state STATE-CLEAR-RESPONSE
+   easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
+      CODE>STATUS exit
+   then drop
+   easy DEFAULTS CODE>STATUS ;
+
+private
 
 
 : HEADER-STATUS? ( ptr u8 n n -- bool ) {: source at:n u:n :}

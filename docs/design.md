@@ -104,11 +104,11 @@ publishes no inverse to `n`; each consumer that needs the raw cell keeps its
 own private `CAST:`. A public inverse would let any caller launder one role
 into another through `n`.
 
-**A nominal field is a proof token.** Generated constructors are always
-public, so a field whose type only the package can construct is the one way a
-package controls who builds its records. A public `UNMAKE` followed by `MAKE`
-can still keep the token and replace the other fields; forth.md records that
-limit.
+**A nominal field is a proof token.** A public family's generated
+constructors are public unless it is `OPAQUE`, so a field whose type only the
+package can construct is the one way a package controls who builds its
+records. A public `UNMAKE` followed by `MAKE` can still keep the token and
+replace the other fields; forth.md records that limit.
 
 **Linear values are consumed exactly once.** A `DEFLINEAR` value is neither
 copied nor dropped on any path, so leaks and double releases of mapped files,
@@ -235,15 +235,13 @@ private family publishes `FAMILY-MAKE` in its package's private wordlist. Most
 memory records are package-private, so a public-only generator would serve
 almost nothing. The private spelling has no colon because it cannot: a
 qualified definition name is routed to the named namespace's public wordlist,
-and the checker records a colon name as a public symbol. A
-private sum or enum publishes no words at all; it constructs through
-checker-owned tokens keyed by package, family and variant.
+and the checker records a colon name as a public symbol.
 
 **Generated words are protected by name.** A declaration protects no wordlist.
 The checker refuses with `E-CTOR-PROTECTED` an `undefine` of a generated word
 and, for a family's constructor namespace, reopening it or defining a new word
-into it. A variant name is not a generated member, so a package may still
-define a word that happens to share it.
+into it. A bare variant name is not a generated member, so a package may
+still define a word that happens to share it.
 
 ## Type substrate
 

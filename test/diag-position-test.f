@@ -619,6 +619,57 @@ variable RC
    s" " CHECK
    0 s" Up" 2 12 27 29 AT ;
 
+\ A SUMTYPE in a private section defines HUE-RED for its variant red.
+: HUE-FIXTURE ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   SB-RESET
+   s" package HUES" SB-APPEND LF+
+   s" : HUE-RED ( -- n ) 1 ;" SB-APPEND LF+
+   s" SUMTYPE hue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
+   SB-APPEND LF+
+   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   s" ;package" SB-APPEND LF+
+   s" sum-generated.f" FIXTURE! ;
+
+\ A top-level PRODUCT defines CKDPROD:MAKE.
+: CKDPROD-FIXTURE ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   SB-RESET
+   s" : CKDPROD:MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
+   s" PRODUCT ckdprod FIELD x n ;PRODUCT" SB-APPEND LF+
+   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   s" prod-generated.f" FIXTURE! ;
+
+\ The token is the generated name, which lies in no source text: no line is
+\ asserted.
+: GENERATED-AT ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   0 s" code" s" E-BAD-DECLARATION" FIELD=
+   0 s" reason" s" generated declaration already defined" FIELD=
+   0 s" token" ta tu FIELD=
+   0 s" file" FX-PATH$ FIELD= ;
+
+\ The rejected family registers no type for a later use.
+: TEST-GENERATED-NAME ( -- )
+   s" a generated name already defined" T-LABEL
+   s" " HUE-FIXTURE
+   s" " CHECK
+   GJA-LINE# @ 1 T=  s" HUE-RED" GENERATED-AT
+   s" : HUE-USE ( hue -- ) drop ;" HUE-FIXTURE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=  s" HUE-RED" GENERATED-AT
+   1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
+   1 s" hue" 4 13 112 115 AT
+   s" a product's generated name already defined" T-LABEL
+   s" " CKDPROD-FIXTURE
+   s" " CHECK
+   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT
+   s" : CKDPROD-USE ( ckdprod -- ) drop ;" CKDPROD-FIXTURE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT
+   1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
+   1 s" ckdprod" 3 17 83 90 AT ;
+
 \ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
    s" a NEWTYPE packet at its family name" T-LABEL
@@ -792,6 +843,25 @@ variable RC
    s" PRODUCT pt FIELD x n" s" prod-open.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" pt" 1 9 8 10 REFUSED-MODES
    0 s" label" s" missing ;PRODUCT" FIELD= ;
+
+\ After GEN's call may have made types, the check leaves the missing widget to
+\ the run; packet 0 is the deferral at that call.
+: TEST-SUM-PAYLOAD-DEFER ( -- )
+   s" a SUMTYPE payload's deferral at the parameter inside its token" T-LABEL
+   SB-RESET
+   s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" SUMTYPE boxy<x> VARIANT full x ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" SUMTYPE s15" SB-APPEND LF+
+   s"   VARIANT one n ;VARIANT" SB-APPEND LF+
+   s"   VARIANT two boxy<widget> ;VARIANT" SB-APPEND LF+
+   s" ;SUMTYPE" SB-APPEND LF+
+   s" sum-payload-defer.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 2 T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" widget" 6 20 160 166 FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TWO-LINE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: one:ptr oneu:n two:ptr twou:n name:ptr nameu:n :}
@@ -1757,6 +1827,43 @@ variable RC
    s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
+: TEST-VARIANT-COLLIDE ( -- )
+   s" a variant spelled like a derived word" T-LABEL
+   SB-RESET
+   s" SUMTYPE tdpos DERIVE eq VARIANT tag ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" variant-collide.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" tag" 1 33 32 35 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-PAYLOAD ( -- )
+   s" a sum payload DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" SUMTYPE dpsum DERIVE eq VARIANT hold ptr n ;VARIANT ;SUMTYPE"
+   SB-APPEND LF+
+   s" derive-payload.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 38 37 40 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-FIELD ( -- )
+   s" a structure field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" STRUCTURE dpst DERIVE eq FIELD f ptr n ;STRUCTURE" SB-APPEND LF+
+   s" derive-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 34 33 36 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-ENUM-FIELD ( -- )
+   s" an enum field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" ENUM dpen DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+   SB-APPEND LF+
+   s" derive-enum-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 44 43 46 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-PRODUCT-FIELD ( -- )
+   s" a product field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" PRODUCT dppr DERIVE eq FIELD b ptr u8 ;PRODUCT" SB-APPEND LF+
+   s" derive-product-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 32 31 34 RUN-REFUSED-AT ;
+
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
@@ -2344,6 +2451,7 @@ variable RC
    TEST-COMPOSE-ALL
    TEST-COMPOSE-VERIFY
    TEST-DECLARATION
+   TEST-GENERATED-NAME
    TEST-NEWTYPE
    TEST-ENUM
    TEST-ENUM-CLOSE
@@ -2353,6 +2461,7 @@ variable RC
    TEST-VALUE-RECORD-NO-TYPE
    TEST-VALUE-RECORD-BAD-TYPE
    TEST-PREPASS-OPEN
+   TEST-SUM-PAYLOAD-DEFER
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
    TEST-ARENA
@@ -2374,6 +2483,11 @@ variable RC
    TEST-RUN-CAPTURED
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
+   TEST-VARIANT-COLLIDE
+   TEST-DERIVE-PAYLOAD
+   TEST-DERIVE-FIELD
+   TEST-DERIVE-ENUM-FIELD
+   TEST-DERIVE-PRODUCT-FIELD
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

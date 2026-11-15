@@ -1380,8 +1380,8 @@ DYNAMIC-BUFFER ITEM-CELLS n
 
 : ITEMS-RESET ( -- )
    0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
-   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL!
-   0 BODY-ITEMS:EFFECT-CELL CELL!  0 BODY-ITEMS:LOCALS-CELL CELL! ;
+   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:EFFECT-CELL CELL!
+   0 BODY-ITEMS:LOCALS-CELL CELL! ;
 
 : ITEM@ ( n n -- n ) {: i:n f:n :}
    i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
@@ -1475,12 +1475,6 @@ private
    grown BODY-ITEMS:CAP-CELL CELL!
    0 ITEM-CELLS NULL-PTR - BODY-ITEMS:BASE-CELL CELL! ;
 
-\ Where the next item's run starts when every run so far was an item's.
-: ITEMS-END ( -- n )
-   BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
-   i 0= if 0 exit then
-   i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
-
 \ Marks a run whose bytes the buffer read lacks as built at the token read last,
 \ if the definition opened there; PENDTKA-CELL is set after the name's run
 \ (off 0).
@@ -1499,11 +1493,9 @@ private
    t b - 0 <  e t - 0 <= or if exit then
    t b - BODY-SOURCE:BUILT row 8 FR! ;
 
-\ Appends an item and captures its spelling, which the row's off and len span;
-\ a run captured between items is text no item spans.
+\ Appends an item and captures its spelling, which the row's off and len span.
 : ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
    BODYLEN-CELL CELL@ {: off:n :}
-   off ITEMS-END <> if -1 BODY-ITEMS:RAW-CELL CELL! then
    ITEM-ROOM
    s u DEF-CAPTURE
    off PLACE-RUN

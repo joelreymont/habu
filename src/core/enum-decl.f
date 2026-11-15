@@ -160,10 +160,6 @@ ED-RESET
    size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )
-   FAM @ TFAM-PUBLIC? 0= IF
-      s" derive requires a public family"
-      s" declare the enum in a `public` section, or drop the `DERIVE` clause"
-      E-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family"
       s" drop the type parameters or the `DERIVE` clause: only an arity-0 family derives"
@@ -220,8 +216,11 @@ ED-RESET
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    0 FIELD-MISS !
-   NEXT RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
+   NEXT {: ta:ptr tu:n :}
+   ta tu RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF
+      ta tu FAM @ node REQUIRE-DERIVABLE
+      na nu node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- ptr u8 n )
    NEXT dup 0= IF
@@ -232,21 +231,21 @@ ED-RESET
       TF-NAME-LONG$
       s" shorten the variant name to 255 bytes or fewer"
       E-CAP DECL-REJECT:REJECT throw THEN ;
-\ DERIVE precedes every variant, so the family's derive flags are set here.
-: DERIVE-COLLIDE ( ptr u8 n -- )
-   FAM @ TFAM-DERIVE-ANY? 0= IF 2drop EXIT THEN
-   TFAM-DERIVED-TAIL? 0= IF EXIT THEN
-   TDECL-COLLIDE-WHY E-NAME DECL-REJECT:REJECT throw ;
-: OPEN-VARIANT ( -- )
-   SEEN-CLEAR
-   VARIANT-NAME {: na:ptr nu:n :}
+\ Records variant NAME, rejected at its token when a word DERIVE generates
+\ takes its name or a variant already has it. DERIVE precedes every variant,
+\ so the family's derive flags are set here.
+: VARIANT-START ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
-   na nu DERIVE-COLLIDE
+   FAM @ TFAM-DERIVE-ANY? na nu TFAM-DERIVED-TAIL? and IF
+      TDECL-COLLIDE-WHY E-NAME DECL-REJECT:REJECT throw THEN
    s" duplicate variant"
    s" give each variant of the enum its own name"
    E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK !
+   DECL-EVENT:VARIANT TOK ! ;
+: OPEN-VARIANT ( -- )
+   SEEN-CLEAR
+   VARIANT-NAME VARIANT-START
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
@@ -280,13 +279,7 @@ ED-RESET
       s" shorten the variant name to 255 bytes or fewer"
       E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
-   na nu DECL-REJECT:TOKEN!
-   na nu DERIVE-COLLIDE
-   s" duplicate variant"
-   s" give each variant of the enum its own name"
-   E-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK !
+   na nu VARIANT-START
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
@@ -348,8 +341,6 @@ ED-RESET
    E-POLICY DECL-REJECT:REJECT throw ;
 
 \ TAG> builds each value from its tag alone, so no variant may carry a payload.
-\ Checked here, not at the constructor commit, whose E-DERIVE renders the
-\ equality reason from the code table.
 : TAG-REQUIRE ( -- )
    FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
    NFLD @ 0= IF EXIT THEN
@@ -384,9 +375,6 @@ ED-RESET
    loop
    FAM @ MAXSLOTS @ TFAM-SLOTS!
    FAM @ TDECL-LAYOUT-DESC
-   \ No reason is armed for the constructor participant's collide check: it runs at
-   \ commit, where no token of this front end applies, so the packet answers a
-   \ reserved-name reject from its code table.
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM

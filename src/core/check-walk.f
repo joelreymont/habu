@@ -268,6 +268,7 @@
 : DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
    a u DO-TOK-BODY
+   CURSYM @ 0 <> IF  pre NZ-CALL-CELLS  THEN
    pre prer ZERO-USE-TEST ;
 
 \ Open the frames of a match on family FAM: its branches start from MTCH-ROW,
@@ -510,11 +511,15 @@ public
    node EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
 ;package
 
+\ Whether the text walked is the pending definition's body text.
+: PEND-TEXT? ( -- bool )
+   data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ = ;
+
 \ The effect `define-word` gave the pending definition when the text walked is
 \ that definition's, else 0.
 : BUILT-EFFECT ( -- n )
-   data-base PEND-CELL + @ 0= IF 0 EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF 0 EXIT THEN
+   PEND-TEXT? 0= IF 0 EXIT THEN
    data-base BODY-ITEMS:EFFECT-CELL + @ ;
 
 \ The declared rows of the definition CHECK is on: from its effect when
@@ -602,73 +607,13 @@ public
    THEN
    RES-FALSE ;
 
-\ Walks the text from TI to its end by spelling; true when the walk ends.
-: SCAN-TEXT ( -- bool )
-   BEGIN TI @ TBLEN @ < WHILE
-     TI @ CUR-GAP !
-     BEGIN TI @ TBLEN @ <  TI @ TBLANK?  and WHILE TI @ 1 + TI ! REPEAT
-     TI @ TBLEN @ < IF
-       TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
-         CUR-PAREN-AT
-         TI @ 1 + TI !  TI @ TSTART !
-         BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
-         TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
-         PAREN-SIG? IF RES-TRUE EXIT THEN
-         TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
-         CUR-PAREN
-       ELSE TI @ TBYTE@ 92 =  TI @ 1 + TBLANK?  and IF   \ '\' then a blank -> comment to the line's end
-         CUR-PAREN-AT
-         BEGIN TI @ TBLEN @ <  TI @ 10 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
-         CUR-PAREN
-       ELSE
-         TI @ TSTART !
-         BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
-         SCAN-TOK-HEAD {: was-name:n :}
-         TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
-         was-name SCAN-TOK-TAIL IF RES-TRUE EXIT THEN
-       THEN THEN
-     THEN
-   REPEAT
-   RES-FALSE ;
-
-: CHECK-SCAN-WALK ( -- )
-   0 SPAY-S !
-   EV-START
-   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
-   SCAN-TEXT IF EXIT THEN
-   CUR-END ;
-
-\ ---- the walk of a built definition's items ---------------------------------
-\ A definition `define-word` opened is walked by its items, not its listing's
-\ bytes: each row's span in the listing is its token, and its kind picks the
-\ step that parsed source reaches by spelling. A CALL binds the record the
-\ definer found, so nothing the building package defines captures it. Text
-\ after the last item, which a body finished by text holds, is walked by
-\ spelling in the scope the items left.
-
-\ The items stand for the text walked up to the last item's end: it is the
-\ pending definition's body text, and no text an item does not span joined it
-\ before then. Text between items is walked whole by spelling: a local it binds
-\ would shift the bind sequence a built local's index names.
-: ITEM-WALK? ( -- bool )
-   data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF RES-FALSE EXIT THEN
-   data-base BODY-ITEMS:RAW-CELL + @ 0 <> IF RES-FALSE EXIT THEN
-   CHECKER-ITEMS:ITEM-COUNT {: n:n :}
-   n 0= IF RES-FALSE EXIT THEN
-   n 1 - BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@
-   n 1 - BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 +
-   TBLEN @ <= ;
-
 : ITEM-SPAN ( n -- ) {: i:n :}
-   TI @ CUR-GAP !
    i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TSTART !
    TSTART @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  TI ! ;
 
-\ A signature's span holds its parentheses, and the byte walk's paren branch
-\ reads inside them.
+\ A signature's span holds its parentheses, and the walk's paren branch reads
+\ inside them.
 : ITEM-SIG ( n -- bool ) {: i:n :}
-   TI @ CUR-GAP !
    i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TI !
    CUR-PAREN-AT
    TI @ 1 + TSTART !
@@ -758,6 +703,7 @@ public
 \ An item of kind KIND inside a `{:` group: a LOCAL item opens a local of
 \ type node V's term under its listing name A U, and `:}` binds the group.
 : ITEM-IN-GROUP ( n n ptr u8 n -- ) {: v:n kind:n a:ptr u:n :}
+   NZ-MOVED
    kind BODY-ITEM-KIND:LOCAL = IF
       a u LOC-OPEN
       a u  v TFAM:EFFECT-TYPE LOC-TYPED
@@ -838,21 +784,78 @@ public
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
    MDIAG @ MD-LOCAL-STRAY = or  and IF i ITEM-FAIL-SPELL THEN ;
 
-: ITEM-WALK ( -- )
+variable WALK-ITEM    \ the first item the walk has not passed
+
+\ The items of the text walked: the pending definition's body text's, else 0.
+: TEXT-ITEMS ( -- n )
+   PEND-TEXT? 0= IF 0 EXIT THEN
+   CHECKER-ITEMS:ITEM-COUNT ;
+
+: ITEM-OFF ( n -- n ) BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ ;
+
+: ITEM-BEHIND? ( n -- bool ) {: i:n :}
+   i WALK-ITEMS @ < 0= IF RES-FALSE EXIT THEN
+   i ITEM-OFF TI @ < ;
+
+\ Whether an item starts at TI; the cursor first passes every item a byte step
+\ read as an operand, as a `[type]` span can.
+: ITEM-AT? ( -- bool )
+   BEGIN WALK-ITEM @ ITEM-BEHIND? WHILE WALK-ITEM @ 1 + WALK-ITEM ! REPEAT
+   WALK-ITEM @ WALK-ITEMS @ < 0= IF RES-FALSE EXIT THEN
+   WALK-ITEM @ ITEM-OFF TI @ = ;
+
+\ Steps the cursor's item and moves the cursor on; true when that ends the
+\ walk.
+: ITEM-TOK ( -- bool )
+   WALK-ITEM @ {: i:n :}
+   i 1 + WALK-ITEM !
+   i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
+      i ITEM-SIG EXIT THEN
+   i ITEM-SPAN
+   SCAN-TOK-HEAD {: was-name:n :}
+   i ITEM-STEP
+   was-name SCAN-TOK-TAIL ;
+
+\ ---- the body walk ----------------------------------------------------------
+\ A body is walked token by token: an item `define-word` appended is stepped
+\ where it starts, and bytes elsewhere are read as source. An item's span in
+\ the listing is its token, and its kind picks the step that parsed source
+\ reaches by spelling. A CALL binds the record the definer found, so nothing
+\ the building package defines captures it.
+: CHECK-SCAN-WALK ( -- )
    0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
-   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
-      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
-         i ITEM-SIG IF UNLOOP EXIT THEN
-      ELSE
-         i ITEM-SPAN
-         SCAN-TOK-HEAD {: was-name:n :}
-         i ITEM-STEP
-         was-name SCAN-TOK-TAIL IF UNLOOP EXIT THEN
-      THEN
-   LOOP
-   SCAN-TEXT IF EXIT THEN
+   TEXT-ITEMS WALK-ITEMS !  0 WALK-ITEM !
+   BEGIN TI @ TBLEN @ < WHILE
+     TI @ CUR-GAP !
+     BEGIN TI @ TBLEN @ <  TI @ TBLANK?  and WHILE TI @ 1 + TI ! REPEAT
+     TI @ TBLEN @ < IF
+       ITEM-AT? IF
+         ITEM-TOK IF EXIT THEN
+       ELSE
+         TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
+           CUR-PAREN-AT
+           TI @ 1 + TI !  TI @ TSTART !
+           BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+           TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
+           PAREN-SIG? IF EXIT THEN
+           TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
+           CUR-PAREN
+         ELSE TI @ TBYTE@ 92 =  TI @ 1 + TBLANK?  and IF   \ '\' then a blank -> comment to the line's end
+           CUR-PAREN-AT
+           BEGIN TI @ TBLEN @ <  TI @ 10 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+           CUR-PAREN
+         ELSE
+           TI @ TSTART !
+           BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
+           SCAN-TOK-HEAD {: was-name:n :}
+           TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
+           was-name SCAN-TOK-TAIL IF EXIT THEN
+         THEN THEN
+       THEN
+     THEN
+   REPEAT
    CUR-END ;
 
 \ Walks a body, holding its using refusals for the end, where a structure open
@@ -861,7 +864,7 @@ public
    {: ca:ptr cu:n :}
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
-   [: ITEM-WALK? IF ITEM-WALK ELSE CHECK-SCAN-WALK THEN ;] catch
+   [: CHECK-SCAN-WALK ;] catch
    0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN
@@ -1433,11 +1436,17 @@ variable TAGGED-FAM
          THRMASK @ XBASE-R ROW-TERMS XMASK-LOW
       ELSE 0 0 THEN
       CTLRNEW !  CTLDNEW !
-      \ One word holds both, so one comparison decides whether this definition
-      \ says anything the store does not already hold about its symbol.
+      \ The inputs the body divides by or throws before anything takes them, about
+      \ the same rows.
+      CHECK-SIG? IF NZ-FACT ELSE 0 THEN CTLZNEW !
+      \ The control word and the NONZERO cell together say whether this
+      \ definition adds anything the store does not already hold about its
+      \ symbol.
       sym CTL-WORD-SYM
-      CTLNEW @ CTLDNEW @ CTLRNEW @ XFER-PACK <> IF
-         sym CTLNEW @ CTLDNEW @ CTLRNEW @ NORET-ADD-SYM
+      CTLNEW @ CTLDNEW @ CTLRNEW @ XFER-PACK <>
+      sym NORET-NONZERO@ CTLZNEW @ <> or IF
+         sym CTLNEW @ CTLDNEW @ CTLRNEW @
+         sym NORET-CREATES@ sym NORET-SOURCE@ CTLZNEW @ NORET-APPEND
       THEN
       CHECK-SIG? IF
          NMA @ NMU @  CHECKER-USIG-CERT-PARSED
@@ -2329,7 +2338,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym CHECKER-FIND-USIG-SYM 0= IF EXIT THEN
    sym EFFECT-EXTERNAL-SYM? 0= IF EXIT THEN
    creates sym NORET-CREATES@ = IF EXIT THEN
-   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates NORET-ADD-CREATES
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates sym NORET-NONZERO@
+   NORET-ADD-CREATES
    sym VIS-SYM-REC sym RECORD-CONTROL-AT! ;
 
 : CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
@@ -2512,7 +2522,8 @@ TRUSTED: generates: ( -- )
    {: sym:n rec:n :}
    rec 0= IF EXIT THEN
    BIND-REC @ {: selected:ptr :}
-   sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec NORET-ADD-CREATES
+   sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec
+   sym NORET-NONZERO@ NORET-ADD-CREATES
    selected sym RECORD-CONTROL-AT! ;
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
@@ -3426,7 +3437,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-EXP-U save GUEST-CELL  SGBAD-USED save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
-   SIG-TAGS-ONLY save GUEST-CELL
+   SIG-NONZERO save GUEST-CELL  SIG-TAGS-ONLY save GUEST-CELL
    SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
    SIG-PARSES save GUEST-CELL  SIG-PARSES-U save GUEST-CELL
    SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
@@ -3565,8 +3576,8 @@ CHECKER-REG:}SCRATCH
    ix 0 sym NORET-NEWEST occurrence RECORD-LINK-WRITE
    ix mark 1 + RECORD-LINK-READ! ;
 
-: READ-TAGS ( n n n n -- ) {: ix:n sym:n ctl:n mark:n :}
-   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
+: READ-TAGS ( n n n n n -- ) {: ix:n sym:n ctl:n nz:n mark:n :}
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 nz NORET-ADD-CREATES
    ix sym mark READ-LINK ;
 
 : READ-BODY ( ptr u8 n n -- )
@@ -3582,20 +3593,21 @@ CHECKER-REG:}SCRATCH
    ok 0= IF a u name nameu READ-REFUSE EXIT THEN
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
-   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: oa:ptr ou:n :}
+   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:ptr ou:n nz:n :}
    SIG-PARSES @  SIG-PARSES-A @  SIG-PARSES-U @ {: pn:n pa:ptr pu:n :}
    SIG-TAGS-ONLY @ IF
       pe 0 <>  pimm 0 >= or  pn 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
-      ix sym ctl mark READ-TAGS EXIT
+      ix sym ctl nz mark READ-TAGS EXIT
    THEN
    din dout rin rout hasr sym pe ou 0 <> READ-FIRST
    oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
    ca cu READ-MADE {: made:n good:bool :}
    good 0= IF a u name nameu READ-REFUSE EXIT THEN
-   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made nz
+   NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
    pn 0 >= IF sym pn pa pu PROW-ADD-TEXT THEN
@@ -3617,7 +3629,7 @@ CHECKER-REG:}SCRATCH
    src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
-   sym ctl dm rm creates src CHECKER-SYM-SOURCE NORET-APPEND ;
+   sym ctl dm rm creates src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
 \ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
 : ALIAS-BODY ( n n -- )

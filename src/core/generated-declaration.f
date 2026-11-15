@@ -1,11 +1,11 @@
 \ generated-declaration.f: the declaration layer's shared parts, loaded before
 \ structure-decl.f: DECL-REJECT (the reject packet), DECL-REPLAY (a pre-lexed
 \ token stream), the checker-frame and constructor-generation participants, and
-\ DECL-FRONT (the driver both front ends wrap). The runner,
+\ DECL-FRONT (the driver the STRUCTURE and ENUM front ends wrap). The runner,
 \ DECLARATION-TRANSACTION:RUN, is in generated-declaration-protection.f.
 
-\ DECL-REJECT is the one reject packet both front ends raise through. RENDER
-\ prints it as a rejection through package REJECTION.
+\ DECL-REJECT is the one reject packet the STRUCTURE and ENUM front ends raise
+\ through. RENDER prints it as a rejection through package REJECTION.
 \ The reason and fix are TYPE-DECL's armed reason (TDECL-ARM), the one store
 \ every declaration catcher reads; a front end arms it with REJECT or EXPECT. A
 \ code raised with no reason armed for it arrives bare, and PICK-REASON reads the
@@ -236,17 +236,14 @@ E-TDECL-RECURSIVE EXPLAIN
 s" declared name too long"
 s" shorten the name to 255 bytes or fewer"
 E-TDECL-CAP EXPLAIN
-\ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
-\ means the derive requirement failed later, in the constructor participant's
-\ payload role and equality checks, not that the feature token was unknown.
-s" a payload type or role has no derived equality"
+s" derive requirement not met"
 s" derive a feature only when every payload type has it, or drop it from `DERIVE`"
 E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
-\ reserved tail or a family-name collision) or the constructor planner (a
-\ generated word already defined, or two sharing a name). The text has to be
-\ true of both.
+\ reserved tail, a family-name collision or a word the DERIVE clause generates)
+\ or the constructor planner (a generated word already defined, or two sharing a
+\ name). The text has to be true of both.
 s" name is reserved or already taken"
 s" rename it so it is no reserved word and no word this declaration generates"
 E-TDECL-NAME EXPLAIN
@@ -360,6 +357,14 @@ public
    RP-HEAD? @ IF 0 RP-HEAD? ! RP-HEAD@ EXIT THEN
    RP-BODY-NEXT ;
 
+\ Runs the quotation on this stream; a failed claim leaves another's stream.
+: RP-RUN ( ptr u8 n ptr u8 n [ -- ] -- )
+   {: na:ptr nu:n ba:ptr bu:n body :}
+   na nu ba bu RP-CLAIM
+   body catch {: rc:n :}
+   RP-RELEASE
+   rc 0 <> IF rc throw THEN ;
+
 private
 ;package
 
@@ -388,13 +393,13 @@ public
 seal-package
 ;package
 
-\ One family's checked FAMILY:VARIANT constructors, generated from ARM's family
-\ inside the transaction; a throw mid-set rolls back and publishes none.
+\ One family's checked generated constructors, made from ARM's family inside
+\ the transaction; a throw mid-set rolls back and publishes none.
 package TYPE-DECL
 private
 package GENERATED-DECL-CTOR
 
-7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants
+7176 constant E-CTOR-ARM   \ armed family is not an ENUM family with variants
 s" family cannot own generated constructors"
 s" report this declaration as a Habu defect: no declaration text should reach this state"
 E-CTOR-ARM DECL-REJECT:EXPLAIN
@@ -406,13 +411,11 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
 : ARMED-FAM ( -- n ) ARMED @ ;
 : DISARM ( -- ) NO-FAMILY ARMED ! ;
 
-\ The one gate: a family owns generated constructors when it is public (a
-\ private family exports nothing), has a variant, and is a sum or an enum, the
-\ two ENUM front-end kinds: the compact payloadless mode publishes constructors
-\ as sumtype.f's definer does. A product is excluded: structure-make.f generates
-\ its own make/unmake.
+\ The one gate: a family owns generated constructors when it has a variant
+\ and is a sum or an enum, the two ENUM front-end kinds; its visibility picks
+\ only their spelling. A product is excluded: structure-make.f generates its
+\ own make/unmake.
 : GEN-OK? ( n -- bool ) {: fam:n :}
-   fam TFAM-PUBLIC? 0= IF 0 0= 0= EXIT THEN
    fam TFAM-VAR-COUNT@ 0 <= IF 0 0= 0= EXIT THEN
    fam TFAM-SUM? fam TFAM-ENUM? or ;
 
@@ -438,17 +441,14 @@ public
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
-\ Mirrors sumtype.f CHECKER-DEFSUM-BODY's close. Both role gates read committed
-\ rows, so they cannot run in the body phase. Replay builds and checks the same
-\ words to publish their effects and emits no runtime code: a call needs the
-\ checked effect, not only the package stamp.
+\ Replay builds and checks the same words to publish their effects and emits no
+\ runtime code: a call needs the checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF EXIT THEN
    fam GEN-REQUIRE
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
    fam TDECL-CTOR-WORDS-BODY ;
@@ -476,11 +476,12 @@ seal-package
 ;package
 ;package
 
-\ DECL-FRONT: what both front ends (structure-decl.f, enum-decl.f) share around
-\ their grammar: reject codes, the token source with one-token pushback and a
+\ DECL-FRONT: what the STRUCTURE and ENUM front ends share around their
+\ grammar: reject codes, the token source with one-token pushback and a
 \ lookahead span, per-declaration parse cells, a replay's field-name window, the
-\ guarded run with resynchronization, and the replay entries. One set of cells
-\ serves both: declarations never nest (the runner refuses a second with
+\ guarded run with resynchronization, and the replay entries; SUMTYPE and
+\ PRODUCT read only the token source. One set of cells serves every
+\ declaration: declarations never nest (the runner refuses a second with
 \ E-ACTIVE, DECL-REPLAY a second stream with E-REPLAY-BUSY). Every borrowed span
 \ is forgotten as the declaration ends (RESET and MISS-CLEAR in DRIVE,
 \ REPLAY-END for an E-UNRESOLVED replay's span).
@@ -512,13 +513,21 @@ E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
 E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
-E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TDECL-DERIVE constant E-DERIVE    \ a DERIVE requirement not met
 E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
 E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
 E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, raised by
                                     \ TFAM-DECL / SUMV-ADD / the field-event path; named
                                     \ here only so a reason can be armed before those calls
 7192 constant E-UNRESOLVED          \ private replay outcome after rollback
+
+: REQUIRE-DERIVABLE ( ptr u8 n n n -- )
+   {: ta:ptr tu:n fam:n node:n :}
+   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
+   fam node TDECL-DERIVE-WHY {: wa:ptr wu:n fa:ptr fu:n :}
+   wu 0= IF EXIT THEN
+   ta tu DECL-REJECT:TOKEN!
+   wa wu fa fu E-DERIVE DECL-REJECT:REJECT throw ;
 
 110 constant ASCII-N
 102 constant ASCII-F

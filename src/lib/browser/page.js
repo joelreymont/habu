@@ -208,18 +208,19 @@ export function svg(bytes) {
 // once, though the turn may wait minutes for an answer. Submission, not a key,
 // sends it, since the Enter that ends an input method's composition submits
 // nothing. The field stays disabled until the module starts, as an Enter with
-// no listener would submit the page.
-export function listen(view) {
+// no listener would submit the page. signal, when given, removes the listeners
+// once it aborts.
+export function listen(view, signal) {
   field.form.addEventListener("submit", (e) => {
     e.preventDefault();
     if (field.disabled) return;
     const text = field.value;
     field.value = "";
     view.post({ kind: "typed", text });
-  });
-  document.addEventListener("dragover", (e) => e.preventDefault());
+  }, { signal });
+  document.addEventListener("dragover", (e) => e.preventDefault(), { signal });
   document.addEventListener("drop", (e) => {
     e.preventDefault();
     for (const file of e.dataTransfer.files) view.file(file);
-  });
+  }, { signal });
 }

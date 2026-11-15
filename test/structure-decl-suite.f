@@ -214,23 +214,15 @@ s" undefine HIDDEN-SIZE" TEST-EVAL:RC 0 T=            \ so it is the package's o
 public
 ;package
 
-\ Protection keys on what a family generates, never on its variant names. A
-\ private SUM or ENUM publishes no dictionary word (src/core/sumtype.f
-\ TDECL-GENERATES?: a public family or a private PRODUCT), so a FAMILY-VARIANT
-\ word inside the declaring package belongs to its writer and undefines. The
-\ second family's variants are spelled `make` and `unmake`, catching a guard
-\ that checks the product member set without asking whether the family
-\ generates.
+\ A private SUM generates its variants' words into the declaring package's
+\ private wordlist; COLOUR-MAKE, a product's member spelling no row of colour
+\ names, stays the package's own.
 package SDPRIVSUM
 private
 SUMTYPE colour VARIANT red ;VARIANT VARIANT green ;VARIANT ;SUMTYPE
-: COLOUR-RED ( -- n ) 5 ;
-COLOUR-RED 5 T=
-s" undefine COLOUR-RED" TEST-EVAL:RC 0 T=
-SUMTYPE deal VARIANT make n ;VARIANT VARIANT unmake n ;VARIANT ;SUMTYPE
-: DEAL-MAKE ( -- n ) 6 ;
-DEAL-MAKE 6 T=
-s" undefine DEAL-MAKE" TEST-EVAL:RC 0 T=
+: COLOUR-MAKE ( -- n ) 6 ;
+COLOUR-MAKE 6 T=
+s" undefine COLOUR-MAKE" TEST-EVAL:RC 0 T=
 STRUCTURE veil ;STRUCTURE                           \ an opaque product publishes no member pair
 : VEIL-MAKE ( -- n ) 4 ;
 VEIL-MAKE 4 T=

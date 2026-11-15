@@ -571,9 +571,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
   read and written with the field type's ordinary checked operations
   (`docs/design.md` "Families and layout policies" gives the layout
-  policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
+  policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`. `DERIVE tag` on a public arity-0 enum whose variants carry no
+  never raw `=`. `DERIVE tag` on an arity-0 enum whose variants carry no
   payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
   `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
   `DERIVE` on an enum generates; a number that is not one of the enum's tags
@@ -659,10 +659,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   the address; a `some` of a null pointer matches `none`.
 - **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
   `nullable<u8>`: NULL is `none`.
-- **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
-  in the package and family names doubled**: an `ENUM read-result` in `package TCP4`
-  constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE
-  captured` in `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`.
+- **A public, non-`OPAQUE` package family's generated words are
+  `PKG-FAMILY:tail` with every hyphen in the package and family names
+  doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`
+  variant through `TCP4-READ--RESULT:data`; a `STRUCTURE captured` in
+  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A private family's are `FAMILY-tail` in its package's
+  private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
+  section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.
   `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
@@ -1950,11 +1953,17 @@ Cells are two's-complement 64-bit. The signed bounds are
 is the one partial operation; its `-1` case is a contract every backend
 answers alike.
 
-- **A literal 0 divisor is refused (`E-DIV-ZERO`); a computed one's answer is
-  undefined**: the checker refuses `/`, `mod` and `/mod` over a literal 0, which
-  stack words carry, and at run time they do not test the divisor (arm64 `sdiv`
-  answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's divisor that
-  cannot be zero says so in its type: `NUM:positive-divisor`
+- **A literal 0 divisor is rejected (`E-DIV-ZERO`); a computed one's answer is
+  undefined**: the checker rejects a literal 0 at `/`, `mod` and `/mod`, and at
+  a call of a word with a declared signature that divides by that input, one
+  integer cell, with only stack words, locals, integer and string literals and
+  calls before the division, as `: HALVE ( n n -- n ) / ;` does in
+  `7 0 HALVE`. A call that does not divide by an input it pops takes that
+  input, and any other token before the division (a control word, a quotation,
+  a fetch or store, a return-stack word, `[char]`, `[']`) takes every input; a
+  taken input admits any value. At run time nothing tests the divisor (arm64
+  `sdiv` answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's
+  divisor that cannot be zero says so in its type: `NUM:positive-divisor`
   (`src/lib/num-types.f`), which NUM's `DIV-` and `REM-` words take.
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
@@ -2353,9 +2362,12 @@ sections above.
   `E-OVERLAY-OPEN` before the dictionary changes, and `undefine` throws it
   before retiring anything. Reopening an existing package is allowed. The
   throw is catchable; the replay still closes.
-- **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
-  unchecked, a caller bug: a `catch` it reaches answers 0, and a text it unwinds
-  stops with `E-THROW-ZERO`, its record placed at the throw.**
+- **A literal `0 throw` is rejected (`E-THROW-ZERO`), and so is a literal 0 at
+  a call of a word with a declared signature that throws that input, with only
+  the tokens that carry a divisor (Integer arithmetic) before the `throw`, as
+  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
+  caller bug: a `catch` it reaches answers 0, and a text it unwinds stops with
+  `E-THROW-ZERO`, its record placed at the throw.**
 - **Only the catch's own local throws on.** In `[: ... ;] catch {: rc:n :}`,
   a `throw` of `rc` with no throw since keeps the record the caught throw
   carried, placed where it was first thrown. A code passed on as a value (a
@@ -2500,7 +2512,8 @@ sections above.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so
-  `postpone ;` ends the definition as its `;` would. `compile, ( [ R -- S ]
+  `postpone ;` ends the definition as its `;` would. `literal ( n -- )`
+  appends the number n, as its decimal text would. `compile, ( [ R -- S ]
   -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,

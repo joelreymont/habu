@@ -1,9 +1,9 @@
-\ structure-make.f: a STRUCTURE's sealed MAKE / UNMAKE (package STRUCTURE-MAKE),
-\ built by sumtype.f's constructor machinery, and its `DERIVE addr` accessor
-\ surface. Loads just before structure-decl.f, whose ;STRUCTURE calls GENERATE
-\ for a family with fields. A product bundle is its field cells in slot order,
-\ so MAKE and UNMAKE are casts the checker certifies, with no TRUST, TRUSTED:
-\ or set-check.
+\ structure-make.f: a product family's sealed MAKE / UNMAKE (package
+\ STRUCTURE-MAKE), built by sumtype.f's constructor machinery, and its `DERIVE
+\ addr` accessor surface. Loads just before structure-decl.f; ;STRUCTURE for a
+\ family with fields and ;PRODUCT call GENERATE. A product bundle is its field
+\ cells in slot order, so MAKE and UNMAKE are casts the checker certifies, with
+\ no TRUST, TRUSTED: or set-check.
 
 using SCHEMA-REG
 using TFAM
@@ -132,11 +132,6 @@ public
 : ARM ( n -- ) {: fam:n :}
    fam SM-ADDR-REQUIRE
    fam SM-ARMED ! ;
-
-private
-
-: SM-INSTALL-INIT ( -- ) [: ARM ;] is TDECL-INIT-ARM-XT ;
-SM-INSTALL-INIT
 
 ;package
 ;package

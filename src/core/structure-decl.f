@@ -459,8 +459,11 @@ SD-QUOT-INSTALL
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    0 FIELD-MISS !  0 POINTEE !
-   NEXT RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
+   NEXT {: ta:ptr tu:n :}
+   ta tu RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF
+      ta tu FAM @ node REQUIRE-DERIVABLE
+      na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
 : SD-REGISTER ( ptr u8 n n -- )

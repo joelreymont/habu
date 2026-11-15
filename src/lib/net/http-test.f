@@ -18,6 +18,7 @@ require src/lib/net/curl.f
 require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
+require src/lib/byte-buffer.f
 require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
@@ -195,6 +196,34 @@ variable ITEM-HOST-N
    seen if hu else 0 then ITEM-HOST-N !
    answer 200 HTTP:STATUS!
    answer [: ITEM-BODY ;] HTTP:JSON! ;
+
+
+create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
+
+
+: PARAM-TEXT ( ptr u8 n -- )
+   BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
+
+
+\ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
+: PARAM-ONE ( HTTP:request ptr u8 n -- )
+   {: asked:HTTP:request key:ptr keyu:n :}
+   key keyu PARAM-TEXT
+   s" =[" PARAM-TEXT
+   asked key keyu PARAM-BUF HTTP:PARAM+ {: found:bool :}
+   found if s" ] true" else s" ] false" then PARAM-TEXT ;
+
+
+: PARAMS ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   PARAM-BUF 64 BUF:N>BLEN BUF:RESET
+   asked s" session" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" b" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" missing" PARAM-ONE
+   answer PARAM-BUF BUF:SPAN$ BUF:BLEN>N HTTP:BODY!
+   answer 200 HTTP:STATUS! ;
 
 
 PTR-VARIABLE VERSION-A
@@ -659,6 +688,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/unauthorized" [: UNAUTHORIZED ;] HTTP:ROUTE
    s" GET" s" /api/unregistered" [: UNREGISTERED ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
+   s" GET" s" /api/params" [: PARAMS ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
    s" POST" s" /api/chat" [: ECHO ;] HTTP:ROUTE
@@ -1201,6 +1231,15 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    S\" \qhost\q:\q127.0.0.1:" HAS? TTRUE
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" json-route" TRANSCRIBE ;
+
+
+\ The first of two pairs named session answers, decoded; a pair with no "="
+\ answers its empty value. It runs after the transcribed requests, whose error
+\ bodies carry request ids.
+: PARAM-CASES ( -- )
+   s" GET" s" /api/params?a=1&session=4f2c%2Dx+y&b&session=2" FETCH 200 T=
+   RES$ s" session=[4f2c-x y] true, b=[] true, missing=[] false" T$=
+   PARAM-BUF BUF:DISPOSE ;
 
 
 \ The default error answer is one line of text naming the code, the message and
@@ -1884,16 +1923,38 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" keep-alive" TRANSCRIBE ;
 
 
-\ A connection the peer keeps open and says nothing more on is closed by the
-\ server's own idle deadline, without the peer asking for it.
+\ A connection the peer keeps open and says nothing more on is parked once
+\ answered and closed by the server's own idle deadline, IDLE-MS past that
+\ answer, without the peer asking for it.
 : IDLE-CASE ( -- )
    RAW-OPEN {: quiet:TCP4:connection :}
+   mono-ns {: began:n :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
    quiet REQ$ RAW-SEND
    quiet S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   s" a parked connection idle past IDLE-MS is closed" T-LABEL
    quiet CLOSED-WITHIN? TTRUE
+   mono-ns began - IDLE-MS NS-PER-MS * >= TTRUE
    quiet TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: PING-KEPT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   conn S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE ;
+
+
+\ The server's one worker parks a connection kept alive once it has answered
+\ it, so another peer is served next; the parked one's next request, sent
+\ after that, is answered.
+: PARKED-REQUEST-CASE ( -- )
+   RAW-OPEN {: kept:TCP4:connection :}
+   kept PING-KEPT
+   s" GET" s" /api/ping" FETCH 200 T=
+   s" a parked connection's next request is answered" T-LABEL
+   kept s\" GET /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   kept S\" {\qid\q:\q7\q" RAW-COLLECT TTRUE
+   kept TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 $C8 constant STALL-MARGIN-MS
@@ -2053,8 +2114,8 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
 
 
-\ A worker waiting for the next request on a connection its peer keeps open
-\ reads the stop flag while it waits.
+\ A connection its peer keeps open, parked under an idle bound far past the
+\ stop's, is closed by STOP as the listener leaves.
 : IDLE-STOP-CASE ( -- )
    TRACE-RESET
    LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
@@ -2065,6 +2126,7 @@ $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
    held S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
    mono-ns {: began:n :}
    HTTP:STOP
+   s" STOP closes a parked connection within its bound" T-LABEL
    mono-ns began - IDLE-STOP-MS NS-PER-MS * < TTRUE
    HTTP:KILLED-TASKS 0 T=
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
@@ -2745,6 +2807,60 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LATER-TASK TASK:KILL ;
 
 
+variable CALL-ARG                 \ what the submitted call was given
+variable CALL-CODE                \ what WORKER-SLOT threw there
+variable CALL-SLOT                \ and the slot it gave
+variable CALL-DONE
+
+: NOTE-CALL ( n -- )
+   CALL-ARG !
+   [: HTTP:WORKER-SLOT CALL-SLOT ! ;] catch CALL-CODE !
+   1 CALL-DONE atomic! ;
+
+
+\ A call submitted from a task that is no worker runs on the server's one.
+: SUBMIT-CASE ( -- )
+   0 CALL-DONE atomic!
+   -1 CALL-CODE !
+   -1 CALL-SLOT !
+   42 [: NOTE-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" SUBMIT runs its call on a worker" T-LABEL
+   CALL-ARG @ 42 T=
+   CALL-CODE @ 0 T=
+   CALL-SLOT @ 0 T= ;
+
+
+variable CALL-AT                  \ mono-ns when the submitted call ran
+$32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
+
+: STAMP-CALL ( n -- )
+   drop
+   mono-ns CALL-AT !
+   1 CALL-DONE atomic! ;
+
+
+\ Two workers, each having answered a peer that keeps its connection open and
+\ says nothing more: a call queued then runs at once, not past IDLE-MS.
+: IDLE-CALL-CASE ( -- )
+   TRACE-RESET
+   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   RAW-OPEN {: one:TCP4:connection :}
+   RAW-OPEN {: two:TCP4:connection :}
+   one PING-KEPT
+   two PING-KEPT
+   0 CALL-DONE atomic!
+   mono-ns {: began:n :}
+   0 [: STAMP-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" a call waits for no idle keep-alive connection" T-LABEL
+   CALL-AT @ began - CALL-WAIT-MS NS-PER-MS * < TTRUE
+   one TCP4:CLOSE DROP-TCP-STATUS
+   two TCP4:CLOSE DROP-TCP-STATUS
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T= ;
+
+
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
@@ -2783,12 +2899,15 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    CLOSE-CASE
    HEAD-CASE
    IDLE-CASE
+   PARKED-REQUEST-CASE
    STALLED-WORKER-CASE
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
    SERVING-CASE
    TAKE-OVER-CASES
+   SUBMIT-CASE
+   PARAM-CASES
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
@@ -2805,6 +2924,7 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LINKED-TREE-CASE
    PARKED-WORKER-CASE
    IDLE-STOP-CASE
+   IDLE-CALL-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE
