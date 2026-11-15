@@ -118,20 +118,6 @@ private
    loop
    HEADER ! ;
 
-: PERSIST-ROWS ( -- )
-   LIVE-HEADER {: old:ptr cap:n mode:n :}
-   mode 0= if exit then
-   cap cells {: bytes:n :}
-   here data-base - cap DATA-SIZE WITHIN
-   here {: fresh:ptr :}
-   bytes allot
-   cap 0 ?do old i cells + @ fresh i cells + cell-view ! loop
-   old bytes munmap 0 <> if
-      bytes negate allot s" address-cells: cannot release storage" 96 die
-   then
-   fresh data-base - HEADER BASE-FIELD + !
-   0 HEADER MODE-FIELD + ! ;
-
 : KEEP-LOCKED ( n -- )
    INDEX-ADDR INDEX-RELEASE dup KEEP-STORAGE KEEP-ROWS ;
 
@@ -179,12 +165,6 @@ public
    first here data-base - > if REFUSE then
    bytes here data-base - first - > if REFUSE then
    first first bytes + [: REMOVE-LOCKED ;] WITH-LOCK ;
-
-\ Called outside the registrar, before snapshot DATA length is frozen. DATA
-\ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.
-\ An already DATA-backed vector still releases its process-owned index.
-: PERSIST ( -- )
-   [: INDEX-ADDR INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
 
 \ Reads a complete snapshot DATA copy.
 : DATA-SPAN ( ptr u8 n -- ptr n n ) {: data:ptr bytes:n :}

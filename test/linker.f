@@ -263,14 +263,13 @@ variable LOW-DP
    s" h: a refused open step leaves the caller's shadow open" SAY ;
 
 variable HOST-AT
-\ hb's last created word when the builds run: a does> patches LASTC's record.
+\ hb's last created word when the builds run.
 create LK-HOST 7 ,
 
 : HOST-ADDR ( -- n ) ['] LK-HOST execute NULL-PTR - ;
 
 : BODY-I ( -- )
-   s" : LK-I1 ( -- ) does> ( -- n ) @ ;" evaluate-closed
-   [: s" LK-I1" evaluate-closed ;] catch REFUSED ! ;
+   [: s" : LK-I1 ( -- ) does> ( -- n ) @ ;" evaluate-closed ;] catch REFUSED ! ;
 
 : CASE-I ( -- )
    0 REFUSED !
@@ -279,7 +278,7 @@ create LK-HOST 7 ,
    REFUSED @ CHECKER-REJECT-RC T=
    HOST-ADDR HOST-AT @ T=
    HOST-CHECK
-   s" i: a does> before the space's first create patches no word of hb's" SAY ;
+   s" i: a does> word in a build that creates no word is rejected, and hb's created word stays" SAY ;
 
 variable FLAGS0
 

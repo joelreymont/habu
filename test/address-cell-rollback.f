@@ -8,11 +8,8 @@ variable BASE-N
 variable BASE-DP
 variable FAILED-OFF
 create OLDER CELL allot
-create SLOTS ADDRESS-CELLS:BOOT-CAP 1+ cells allot
-DYNAMIC-BUFFER SAVED n
 
 : ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
-: HEADER@ ( n -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + + @ ;
 : OFFSET ( n -- n )
    ADDRESS-CELLS:ROW@ SNAP-RELOC:XTCELL-OFF-MASK and ;
 : START ( -- ) ROWS BASE-N ! here data-base - BASE-DP ! ;
@@ -75,25 +72,6 @@ DYNAMIC-BUFFER SAVED n
    s" PERSISTED-PTR-VARIABLE AFTER-NESTED" INCLUDE-EVALUATE
    ROWS BASE-N @ 1+ T= ;
 
-: FAIL-PERSIST ( -- )
-   s" ADDRESS-CELLS:PERSIST 12345 throw" INCLUDE-EVALUATE ;
-: BACKING ( -- )
-   s" row backing in abandoned DATA survives before DP rewinds" T-LABEL
-   ADDRESS-CELLS:BOOT-CAP ROWS - 1+ 0 ?do
-      SLOTS i cells + ptr-cell-mark
-   loop
-   ADDRESS-CELLS:MODE-FIELD HEADER@ 1 T=
-   ROWS SAVED-RESERVE
-   ROWS 0 ?do i ADDRESS-CELLS:ROW@ i SAVED ! loop
-   START [: FAIL-PERSIST ;] catch RESTORED
-   ADDRESS-CELLS:MODE-FIELD HEADER@ 1 T=
-   ROWS 0 ?do i ADDRESS-CELLS:ROW@ i SAVED @ T= loop
-   \ Write over the abandoned backing, then exercise its rebuilt index.
-   123 ,
-   SLOTS ptr-cell-mark ROWS BASE-N @ T=
-   ROWS 0 ?do i ADDRESS-CELLS:ROW@ i SAVED @ T= loop
-   SAVED-RELEASE ;
-
 : LAY-TEXT ( -- ) s" address-cell-rollback-text" INTERN:TEXT drop ;
 : FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" INCLUDE-EVALUATE ;
 : TEXT-GONE ( -- )
@@ -124,6 +102,6 @@ DYNAMIC-BUFFER SAVED n
    align ;
 
 : RUN ( -- )
-   T-RESET THREE-SHAPES UNORDERED NESTED BACKING TEXT-GONE FACTS-GONE CUT-TEXT T-REPORT ;
+   T-RESET THREE-SHAPES UNORDERED NESTED TEXT-GONE FACTS-GONE CUT-TEXT T-REPORT ;
 RUN
 ;package

@@ -382,7 +382,11 @@
 \ `recurse`: the walk of every certified body counts the calls (WRAPN, WRAPC)
 \ and notes any bend (WRAPBENT), since a wrapper compiled in this process has
 \ no text. Every walk that is not a definition's own body clears these, and a
-\ candidate never inherits: its record is truncated when the scope ends.
+\ candidate never inherits: its record is truncated when the scope ends. The
+\ same walk notes a `create` or definer call made before any bend (WRAPMADE):
+\ a head that reaches `does>` without one is rejected there, since the clause
+\ would have no word of this definition's to act for. Only a scan's start
+\ clears WRAPMADE: a record the walk publishes for a callee takes the others.
 \
 \ The checker overlay: a replay binds every name through the engine's own
 \ lookup, so while it runs the engine's dictionary holds what a compile of the
@@ -5131,6 +5135,7 @@ CHECKER-REG:}SCRATCH
 92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?); E-UNSAFE
 93 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
 94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP); E-UNKNOWN-FIELD
+95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REFUSE)
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -10853,10 +10858,14 @@ CHECKER-REG:SCRATCH{
 variable WRAPN     0 WRAPN !
 variable WRAPC     0 WRAPC !
 variable WRAPBENT  0 WRAPBENT !
+variable WRAPMADE  0 WRAPMADE !
 CHECKER-REG:}SCRATCH
 
 : WRAP-CLEAR ( -- )
    0 WRAPN !  0 WRAPC !  0 WRAPBENT ! ;
+
+: WRAP-MADE! ( -- )
+   WRAPBENT @ 0= IF -1 WRAPMADE ! THEN ;
 
 : WRAP-TAKE ( -- n )                        \ the created effect a straight-line wrapper inherits
    WRAPN @ 1 =  WRAPBENT @ 0=  and  CHK-CAND @ 0=  and IF WRAPC @ ELSE 0 THEN
@@ -16865,6 +16874,7 @@ CHECKER-REG:}SCRATCH
    THEN
    SGSEEN @ 0= IF RES-FALSE EXIT THEN
    id INTRINSIC-CREATE <> IF RES-FALSE EXIT THEN
+   WRAP-MADE!
    \ The intrinsic parses its created name without moving either stack. Native
    \ elaboration calls that exact binding, so its judged site needs call facts.
    REC-ON @ IF
@@ -21276,6 +21286,14 @@ variable IS-PEND-U                   \ and its length
    ca cu CLOSER-PIN!
    why CF-FAIL ;
 
+\ Rejects a does> head, closed by CA CU, that walked no straight-line `create`
+\ or definer call, unless an earlier rejection holds the pin.
+: DOES-UNMADE-REFUSE ( ptr u8 n -- )
+   {: ca:ptr cu:n :}
+   WRAPMADE @ 0 <>  OK @ 0=  or  FAILSET @ 0 <>  or IF EXIT THEN
+   ca cu CLOSER-PIN!
+   MD-DOES-UNMADE CF-FAIL ;
+
 \ A failed unjudged token no step settled drops its steps' width facts and
 \ splices its declared ABI effect; an unsafe token has no effect to splice.
 : UNJ-SETTLE ( bool -- ) {: unsafe:bool :}
@@ -22034,7 +22052,7 @@ CHECKER-REG:}SCRATCH
 \ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
 \ refused before any state is reset.
 : CHECK-CLEAR ( -- )
-   WRAP-CLEAR
+   WRAP-CLEAR  0 WRAPMADE !
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
    0 ZSHAPE !

@@ -928,6 +928,7 @@ variable MDV-I   variable MDV-F
       MD-C2-FIELD-UNKNOWN of s" E-UNKNOWN-FIELD" endof
       MD-CALLBACK-NOT-GENERIC of s" E-CALLBACK-NOT-GENERIC" endof
       MD-SCOPED-TICK  of s" E-UNSAFE" endof
+      MD-DOES-UNMADE  of s" E-DOES-UNCREATED" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -1020,6 +1021,7 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" write `unloop` before `exit` once for each loop the `exit` leaves, or `leave` the loop and return after it" endof
       MD-UNLOOP-JOIN  of s" write `unloop` for the same loops on every path that meets here, or `exit` from each path right after its `unloop`" endof
       MD-CF-OPEN      of s" close every `if`, `do`, `begin`, `case` and `[:` before the `;`" endof
+      MD-DOES-UNMADE  of s" call `create NAME` before `does>`, outside any IF, loop or quotation" endof
       MD-FINALLY-CLEANUP of s" put a cleanup of effect `[ -- ]` on top, as `[: body ;] [: cleanup ;] finally`" endof
       MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
       MD-QDUP-LAYOUT  of s" take the value apart with `MATCH` and test the arm you need" endof
@@ -1117,6 +1119,7 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" exit inside a loop needs unloop first" endof
       MD-UNLOOP-JOIN  of s" the paths that meet here have unlooped different loops" endof
       MD-CF-OPEN      of s" a control structure is still open at the end of the definition" endof
+      MD-DOES-UNMADE  of s" this definition reaches `does>` without creating a word" endof
       MD-FINALLY-CLEANUP of s" the cleanup `finally` runs must take and leave nothing" endof
       MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
       MD-QDUP-LAYOUT  of s" `?dup` tests one cell, and this value is held in more than one" endof
@@ -1221,6 +1224,7 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" loop still open" endof
       MD-UNLOOP-JOIN  of s" paths disagree on `unloop`" endof
       MD-CF-OPEN      of s" ends with a structure open" endof
+      MD-DOES-UNMADE  of s" `does>` needs a word this definition creates" endof
       MD-CF-DEPTH     of s" one structure too deep" endof
       MD-RECURSE-SIG  of s" no effect to call" endof
       MD-RECURSE-DOES of s" inside a `does>` clause" endof
@@ -1834,6 +1838,14 @@ PTR-VARIABLE HOLDER-FIRST
    k RF-RETURN = IF RETURN-HELP EXIT THEN
    REFUSAL@ RF-MISMATCH = IF ['] ROW-VALUES ROWS-SUGGEST$ EMIT-STR EXIT THEN
    s" Inspect the token, signature, and raw stack evidence." EMIT-STR ;
+
+\ The record of a does> head that creates no word, placed at its `does>` token
+\ t tu, for a reader that judges the head without CHECK; the caller ends it.
+: DOES-UNMADE-OPEN ( ptr u8 n -- ) {: t:ptr tu:n :}
+   MD-DOES-UNMADE MD-CODE$ REJECTION:OPEN
+   MD-DOES-UNMADE MD-REASON$ EMIT-STR
+   t tu REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ EMIT-STR
+   REJECTION:HELP  MD-DOES-UNMADE MD-SUGGEST$ EMIT-STR ;
 
 : DIAG-PRINT
    0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !

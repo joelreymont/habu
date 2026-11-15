@@ -246,7 +246,9 @@
    \ top-level step's is not: it walks no body, and the next record published is
    \ the one the definer makes when it runs, which is no wrapper.
    TOP-STEP @ 0= IF
-      CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
+      CURSYM @ NORET-CREATES@ dup 0 <> IF
+         WRAPC !  WRAPN @ 1 + WRAPN !  WRAP-MADE!
+      ELSE drop THEN
    THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
@@ -1194,6 +1196,7 @@ public
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CHECK-SCAN
+   DOES-SPLIT @ 0 <>  TORDER-SCAN-UNKNOWN @ 0=  and IF s" does>" DOES-UNMADE-REFUSE THEN
    SIG-UNRES @ SGBAD @ 0= and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       CHECKER-UNSEEN-MARK

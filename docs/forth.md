@@ -814,24 +814,16 @@ multi-cell type rationale is `docs/design.md` "Types".
   guard follow the replacement effect, including zero inputs or a scalar result.
   An empty replacement removes the earlier clause and restores the created
   word's original body.
-- **`does>` patches the word the last `create`, `variable` or `constant`
-  made, only while that word lives.** A forget, an `undefine`, a failed
-  `evaluate` or a failed REPL line that retires it leaves `does>` nothing to
-  patch, even when an earlier created word survives, and `does>` is then
-  stopped by the kernel with `E-DOES-UNCREATED` (a catchable throw inside
-  `evaluate`):
-
-  ```forth
-  create K 7 ,
-  : M ( -- ) ;
-  create G 5 ,
-  s" M" FORGET-DEFS-FROM
-  : B ( -- ) does> ( -- n ) @ ;
-  B
-  ```
-
-  A native engine boots with no created word, one hb-build `--repl` wrote
-  included, so a `does>` before any `create` is refused the same way.
+- **A definition holding `does>` creates the word its clause acts for.** Its
+  head calls `create`, or a definer whose created effect the checker knows,
+  before `does>` and before any `if`, loop, `case`, quotation, `exit`, `leave`
+  or `recurse`. Otherwise the load and `tools/check.f` reject the definition
+  at its `does>`, `E-DOES-UNCREATED`, rc 70, `` `does>` needs a word this
+  definition creates ``; a `does>` word that patches a word made earlier is no
+  part of the language. A head that, between `create` and `does>`, retires its
+  new word (`UNDEFINE-NAME`, `FORGET-DEFS-FROM`, `ndict!`) or runs a caught
+  failing `evaluate` that created one leaves `does>` none, and the kernel
+  stops it, `E-DOES-UNCREATED`, rc 70.
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
   comment inside the body is rejected `E-BAD-DECLARATION`, rc 70, by the load
   and by `tools/check.f`. Put comments above the opener, including comments
