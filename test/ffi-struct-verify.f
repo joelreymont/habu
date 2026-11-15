@@ -45,7 +45,7 @@ variable FFI-SV-SRC-U
    a 0 FFI-SV-SRC u BYTE-COPY
    u FFI-SV-SRC-U !
    FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] FFI-SV-MS >MS
-   LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
+   true LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
 : FFI-SV-RUN ( ptr u8 n -- n )

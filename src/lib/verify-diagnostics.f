@@ -168,22 +168,4 @@ public
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
-\ The composition keeps the scanned source and stop location after its scope closes.
-: COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )
-   {: rc:rc :}
-   rc RC>N E-DISC-UNTERM = if
-      VERIFY:SOURCE-COMPOSE-STOPPED$ VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
-      LEX-RECORD$ dup 0<> if exit then 2drop
-      rc RC>N VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
-      VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ s" " THROW-RECORD$ exit
-   then
-   rc RC>N E-DUP-DEFINITION = if
-      VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ drop
-      VERIFY:SOURCE-COMPOSE-STOPPED$ DUP-RECORD$ exit
-   then
-   rc RC>N VERIFY:TOKEN-BYTE@ VERIFY:FAULT-LEN@
-   VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
-   VERIFY:SOURCE-COMPOSE-STOPPED$
-   LOADER-RECORD$ ;
-
 ;package

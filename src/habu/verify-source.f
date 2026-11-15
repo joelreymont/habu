@@ -197,7 +197,6 @@ public
 \ EPPRIM: row with no closer, and a literal holding an escape the engine
 \ rejects are recorded where the scan meets them, which then stops with
 \ CHECKER-REJECT-RC. check.f's packets still read the codes.
-7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
 7194 constant E-BAD-ESCAPE
@@ -1989,8 +1988,6 @@ TRUSTED: NAMED-USE ( ptr u8 n -- )
 \ A definer the checker only trusts (variable, defer, TRUSTED:, ...) is left to
 \ the run, which names its duplicate as --load does, or first refuses an
 \ earlier definition whose text the engine cannot hold.
-variable DUPLICATE-AT
-variable DUPLICATE-U
 
 \ Whether the path is the subject's, whose bytes are the supplied ones.
 : COMPOSE-SUBJ? ( ptr u8 n -- bool )
@@ -2002,14 +1999,6 @@ variable DUPLICATE-U
    path pathu ;
 
 public
-
-\ What the refusal does, given where the name starts, its length, the file it
-\ is in, named as its packets name it, and whether that is the supplied bytes.
-\ This writes the duplicate's record and stops the scan as the duplicate stops
-\ the load, and DUPLICATE answers the name. A word installed in its place that
-\ returns has reported the duplicate, counted in REJECTION:TALLY if it kept a
-\ record: the scan skips the definition and goes on.
-defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 
 \ What a reported definition is, as the path that declared it knows it: a word
 \ that runs code (`:`, `TRUSTED:`, `defer`, a cast, a field, `FUNCTION:`), a
@@ -2219,24 +2208,16 @@ ENGINE-TARGET-INIT
       s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
-\ The record is placed at the name in the scanned source, or at an empty token
-\ at the statement when the definer generates the name (u = 0).
-: DUPLICATE-STOP ( n n ptr u8 n bool -- )
-   drop 2drop {: at:n u:n :}
-   at DUPLICATE-AT !  u DUPLICATE-U !
-   SOURCE@ at + u 2dup REJECTION:DUPLICATE
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-: DUPLICATE-INIT ( -- )
-   ['] DUPLICATE-STOP is ON-DUPLICATE ;
-
-DUPLICATE-INIT
-
+\ The record of a duplicate whose name, u bytes long, starts at TOKEN-BYTE in
+\ the scanned source, or of the statement's word there when the definer
+\ generates the name (u = 0). Under MULTI-ERR? it is kept and the scan skips
+\ the definition and goes on; otherwise it stops the scan as the duplicate
+\ stops the load.
 : DUPLICATE! ( n -- )
    {: u:n :}
-   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   {: path:ptr pathu:n :}
-   TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE ;
+   u 0= IF TOKEN-BYTE @ TOKEN-FROM ELSE SOURCE@ TOKEN-BYTE @ + u THEN
+   2dup REJECTION:DUPLICATE
+   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
 
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
@@ -4229,7 +4210,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ closed every scope it opened, and for the file's end at the latest.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
-   0 DUPLICATE-U !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -4550,13 +4530,6 @@ public
 \ Empty: no scan stop keeps a reason.
 : REASON$ ( -- ptr u8 n )
    REASON-A @ REASON-U @ ;
-
-\ The name of the definition the last scan stopped at because its scope
-\ already held it (ON-DUPLICATE): the byte where it starts, at the same base as
-\ TOKEN-BYTE@, and its length, which is 0 when the scan refused no written
-\ name.
-: DUPLICATE ( -- n n )
-   DUPLICATE-AT @ DUPLICATE-U @ ;
 
 private
 

@@ -525,21 +525,6 @@ private
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ REJECTION:JSON ! ;
 
-\ The pre-pass or discovery stops in one file of the composition: the subject,
-\ by its label, or any other file, by its canonical path. Its bytes are the
-\ subject's, or the file's own, read into CHK-SRC-BUF.
-: CHK-STOP-BYTES ( ptr u8 n bool -- ptr u8 n )
-   {: a:ptr u:n subj:bool :}
-   subj if CHK-SOURCE-BYTES exit then
-   a u CHK-SRC-READ CHK-SRC-BUF swap ;
-
-\ Write the record of a pre-pass or discovery stop in the run's mode
-\ (STOP-RECORD$); the check fails as a refusal when the record is one.
-: CHK-STOP-WRITE ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   CHK-JSON @ STOP-RECORD$ {: rec:ptr recu:n refusal:bool :}
-   recu 0<> if rec recu CHK-ERR-LN then
-   refusal if CHK-E-CHECK CHK-THROW then ;
-
 \ A closure the walk cannot follow, a form discovery rejected, fails the check
 \ as a rejection whose record discovery wrote.
 : CHK-EXPAND-REPORT ( n -- )
@@ -812,10 +797,6 @@ private
    CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
    CHK-RUN-U SOURCE-APPEND-QPATH ;
 
-: CHK-ERR-NONNEG ( n -- )
-   dup 0 < if drop s" <negative>" CHK-ERR exit then
-   CHK-U$ CHK-ERR ;
-
 \ The run file's prefix names the subject for the checker's diagnostics and
 \ turns its warnings off. The check before the run wrote the warnings, each in
 \ its own file and placed: the run loads what that check checked, so its
@@ -998,78 +979,13 @@ private
 : CHK-RUN-ALL-COMPOSE ( -- )
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-\ The composition hands up a reader with nothing after it: the missing-name
-\ record at that token of the file's lex (CHK-NONAME-AT$), or with no token of
-\ the lex there the statement's throw record. The check fails as a refusal.
-: CHK-ALL-NONAME ( -- )
-   VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
-   2dup VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? CHK-STOP-BYTES
-   {: at:n label:ptr labelu:n src:ptr srcu:n :}
-   at label labelu src srcu CHK-JSON @ CHK-NONAME-AT$
-   dup 0= if
-      2drop VERIFY:E-MISSING-NAME at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
-   then
-   CHK-ERR-LN
-   CHK-E-CHECK CHK-THROW ;
-
 \ The report goes to standard error as the core makes it: every record of every
 \ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
    CHK-ALL-STREAM
    CHK-RUN-ALL-ORDER
    [: CHK-RUN-ALL-COMPOSE ;] catch {: rc:n :}
-   rc VERIFY:E-MISSING-NAME = if CHK-ALL-NONAME then
    rc 0 <> if rc CHK-THROW then ;
-
-: CHK-SOURCE-LIST-REPORT ( -- )
-   CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
-   s" check.f: source-list entries:" CHK-ERR-LN
-   0 begin dup CHK-POS-N @ < while
-      s"   " CHK-ERR
-      dup CHK-POS$ CHK-ERR
-      CHK-LF CHK-ERR-C
-      1+
-   repeat drop ;
-
-: CHK-PREVERIFY-FAIL ( n -- ) {: rc:n :}
-   CHK-JSON @ if rc CHK-THROW then
-   s" check.f: source preverify failed before run" CHK-ERR-LN
-   s" check.f: label " CHK-ERR  CHK-LABEL CHK-ERR  CHK-LF CHK-ERR-C
-   s" check.f: throw code " CHK-ERR  rc CHK-ERR-NONNEG  CHK-LF CHK-ERR-C
-   CHK-SOURCE-LIST-REPORT
-   rc CHK-THROW ;
-
-: CHK-STOPPED-SOURCE ( -- ptr u8 n )
-   VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
-
-\ The pre-pass stopped with the given code. A statement that threw a code
-\ outside 1..255 threw it with nothing reported, so it is reported by its record
-\ where it stopped (CHK-STOP-WRITE), which fails the check as a rejection when
-\ the record is one; any other stop returns.
-: CHK-STOP-RECORD ( n -- ) {: rc:n :}
-   rc CHECK-ALL-ERRORS:THREW? 0= if exit then
-   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE VERIFY-STOP-REASON$ CHK-STOP-WRITE ;
-
-\ The checker reports nothing for a duplicate definition, so it is reported by
-\ the record --all-errors writes in the run's mode, naming the file that defined
-\ the name again and the name and line read from that file where the pre-pass
-\ refused it (PREVERIFY-DUPLICATE), and fails the run with the duplicate's
-\ status, as it fails the load.
-: CHK-PREVERIFY-DUP ( -- )
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   PREVERIFY-DUPLICATE VERIFY-STOPPED$ CHK-STOPPED-SOURCE
-   CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
-
-\ The pre-pass stopped with the given code: the record of its defect, or of a
-\ duplicate, then the failure. A status in 1..255 other than a duplicate's
-\ follows the record its rejection printed, so the check fails with it and
-\ prints nothing more. A statement that threw any other code fails with a
-\ rejection's status, so --json-errors writes its record and nothing else.
-: CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
-   rc CHK-STOP-RECORD
-   rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP rc CHK-PREVERIFY-FAIL then
-   rc 1 >= rc 255 <= and if rc CHK-THROW then
-   CHK-E-CHECK CHK-PREVERIFY-FAIL ;
 
 \ How a verifier child that gave no answer ended, as the closing line of its
 \ report, where CHK-EXPLAIN-LN puts prose.
@@ -1092,11 +1008,12 @@ private
    VERIFY-LOG$ CHK-EXPLAIN ;
 
 \ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
-\ run's words; its packets and the child's prose precede what its stop leaves.
+\ run's words; its records and the child's prose come first, then a stop fails
+\ the check with the status the child answered.
 : CHK-PREVERIFY-REPORT ( result<n,PROCESS:ending> -- )
    CHK-PREVERIFY-RELAY
    MATCH result
-      ok OF {: rc:n :} rc 0<> if rc CHK-PREVERIFY-STOPPED then ENDOF
+      ok OF {: rc:n :} rc 0<> if rc CHK-THROW then ENDOF
       err OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
    ;MATCH ;
 
@@ -1195,7 +1112,8 @@ private
    rc 0 <> if rc throw then ;
 
 \ --verify-only is VERIFY-BYTES over a file's or stdin's bytes, nothing more:
-\ stderr gets packets; stdout gets prose and, with no verdict, a closing line.
+\ stderr gets records in the run's mode; stdout gets prose and, with no
+\ verdict, a closing line.
 
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
@@ -1224,8 +1142,7 @@ private
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
    CHK-VERIFY-STDIN ;
 
-\ The verifier's packets on stderr, a stop's record last among them, its prose
-\ on stdout.
+\ The verifier's records on stderr, its prose on stdout.
 : CHK-VERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-OUT ;
@@ -1234,11 +1151,7 @@ private
    CHK-VERIFY-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF
-         VERIFY-STOP {: rc:n :}
-         rc 1 >= rc 255 <= and if rc CHK-THROW then
-         CHK-E-CHECK CHK-THROW
-      ENDOF
+      refused OF VERIFY-STATUS CHK-THROW ENDOF
       engine-provided OF
          path pathu CHK-ENGINE-PROVIDED  CHECKER-REJECT-RC CHK-THROW
       ENDOF
@@ -1254,7 +1167,7 @@ private
 
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:ptr pathu:n :}
-   CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ VERIFY-BYTES
+   CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ CHK-JSON @ 0<> VERIFY-BYTES
    path pathu CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets

@@ -26,7 +26,6 @@ $10000 constant CHUNK                   \ bytes asked of one read
 32 constant NUM-CAP
 10 constant LF
 1 constant OUT-FD
-2 constant ERR-FD
 
 DYNAMIC-BUFFER IN u8                    \ stdin's bytes: the open documents, then the subject's
 variable IN-U
@@ -42,7 +41,6 @@ variable REF-BATCH?                     \ only the selected-tail packets are nee
 variable BATCH-INDEX
 variable RD
 variable FAILED
-variable STOP                           \ the code a throw ended the composition with, 0 for none
 variable NUM-I
 create NUM NUM-CAP allot
 create NL 1 allot
@@ -178,75 +176,12 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    ['] OPEN-TEXT is VERIFY:SUPPLIED ;
 
 
-\ The definitions after the throw went unverified, and a throw the checker
-\ rendered no packet for has nothing else to show it.
-: STOPPED ( ptr u8 n n n -- ) {: label:ptr labelu:n rc:n rejects:n :}
-   ERR-FD label labelu WRITE
-   ERR-FD s" : verification stopped by throw " WRITE
-   ERR-FD rc FD-N
-   ERR-FD s"  after " WRITE
-   ERR-FD rejects FD-N
-   ERR-FD s"  rejected definitions" WRITE
-   ERR-FD NEWLINE ;
-
-
-\ A loader's fault, for the parent to place its packet and status line: the
-\ loader token's length and the file the loader could not read, if any.
-: LOADER-LINE ( -- )
-   VERIFY:FAULT-TARGET$ {: t:ptr tu:n :}
-   OUT-FD s" check-verify: loader " WRITE
-   OUT-FD VERIFY:FAULT-LEN@ FD-N
-   tu 0 > if
-      OUT-FD s"  " WRITE
-      OUT-FD t tu WRITE
-   then
-   OUT-FD NEWLINE ;
-
-
-\ Why the scan refused the declaration it stopped at, when it kept a reason
-\ (VERIFY:REASON$), for the parent to put in the stop's packet.
-: REASON-LINE ( -- )
-   VERIFY:REASON$ {: r:ptr ru:n :}
-   ru 0= if exit then
-   OUT-FD s" check-verify: reason " WRITE
-   OUT-FD r ru WRITE
-   OUT-FD NEWLINE ;
-
-
 : VERIFY-CUR-ACT ( -- )
    SUBJECT$ SUBJECT-PATH$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 : VERIFY-CUR ( -- )
    SUBJECT-PATH$ SOURCE-ROOT:DIRNAME
    [: VERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
-
-
-: STOP-FIELDS ( n n ptr u8 n bool n -- )
-   {: at:n u:n file:ptr fileu:n subj:bool rc:n :}
-   OUT-FD rc FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD VERIFY:TOKEN-BYTE@ FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD at FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD u FD-N
-   OUT-FD subj if s"  1 " else s"  0 " then WRITE
-   OUT-FD file fileu WRITE
-   OUT-FD NEWLINE ;
-
-
-: STOP-RESULT ( n -- )
-   {: rc:n :}
-   REASON-LINE
-   OUT-FD s" check-verify: stopped " WRITE
-   VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
-   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? rc STOP-FIELDS ;
-
-
-\ A duplicate the first form goes past, which the checker writes no packet for.
-: DUPLICATE-LINE ( n n ptr u8 n bool -- )
-   OUT-FD s" check-verify: duplicate " WRITE
-   E-DUP-DEFINITION STOP-FIELDS ;
 
 
 : HEX-DIGIT ( n -- n )
@@ -366,8 +301,6 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    at row 1+ IDX-EVENTS !
    end row 2 + IDX-EVENTS !
    1 IDX-N +! ;
-
-: IDX-DUPLICATE ( n n ptr u8 n bool -- ) drop 2drop 2drop ;
 
 : IDX-LINE ( n n n -- )
    {: sym:n at:n end:n :}
@@ -514,14 +447,11 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 
 
 \ One multi-error window covers the complete load composition, and goes past
-\ a duplicate as past any refused definition. A duplicate it cannot go past,
-\ a name the definer generates, stops it with its stopped line. A loader's fault
-\ stops it with its loader line, from which the parent writes its packet and
-\ its status line.
+\ a duplicate as past any rejected definition. A throw that ends it goes on
+\ after the window closes.
 : VERIFY-ALL ( -- )
    SUBJECT-PATH$ REJECTION:FILE!
    1 1 0 REJECTION:ORIGIN!
-   ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE
@@ -531,14 +461,7 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
    rejects 0<> if -1 FAILED ! then
-   rc STOP !
-   rc 0= if exit then
-   rc VERIFY:LOADER-FAULT? if LOADER-LINE exit then
-   rc E-DUP-DEFINITION = if
-      VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
-      VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? DUPLICATE-LINE
-   then
-   VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
+   rc 0<> if rc throw then ;
 
 
 \ The engine provides the path, or this child loaded it: what `require` skips.
@@ -551,19 +474,39 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    OUT-FD a u WRITE
    OUT-FD NEWLINE ;
 
+\ ANSWER, then after a space the file the composition could not load
+\ (VERIFY:FAULT-TARGET$), when it names one.
+: TARGET-RESULT ( ptr u8 n -- ) {: a:ptr u:n :}
+   VERIFY:FAULT-TARGET$ {: t:ptr tu:n :}
+   OUT-FD s" check-verify: " WRITE
+   OUT-FD a u WRITE
+   tu 0 > if
+      OUT-FD s"  " WRITE
+      OUT-FD t tu WRITE
+   then
+   OUT-FD NEWLINE ;
+
+\ The answer to a throw RC that ended the composition after its rejection wrote
+\ its record: a rejection's, a rejected definition's (CHECKER-DEF-STOPPED?) or
+\ a loader's fault's (VERIFY:LOADER-FAULT?) is refused, or missing when the file a
+\ loader names is not there, and a file found but not readable is unread. Any
+\ other code goes on with no answer.
+: STOP-RESULT ( n -- ) {: rc:n :}
+   rc INCLUDE-IO-RC = if s" unread" TARGET-RESULT exit then
+   rc CHECKER-REJECT-RC =  rc CHECKER-DEF-STOPPED? or  rc VERIFY:LOADER-FAULT? or
+   0= if rc throw then
+   VERIFY:FAULT-TARGET$ nip 0 > if s" missing" TARGET-RESULT exit then
+   s" refused" RESULT ;
+
 : INDEX-SUBJECT ( -- )
    0 IDX-N !
    true REJECTION:JSON !
    OUT-FD REJECTION:FD!
    ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
-   ['] IDX-DUPLICATE is VERIFY:ON-DUPLICATE
    MULTI-ERR-BEGIN
    [: INDEX-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
-   rc 0<> if
-      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
-      rc throw
-   then
+   rc 0<> if rc STOP-RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
    rejects 0<> if s" refused" else s" verified" then RESULT ;
 
@@ -581,14 +524,9 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 
 : VERIFY-CLOSURE ( -- )
    0 FAILED !
-   0 STOP !
    true VERIFY:REPORT-DEFERRALS
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
-   rc 0<> if
-      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
-      rc throw
-   then
-   STOP @ 0<> if STOP @ STOP-RESULT exit then
+   rc 0<> if rc STOP-RESULT exit then
    FAILED @ 0<> if s" refused" RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;
@@ -603,23 +541,16 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    [: PREVERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
-70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
-
-\ A refusal that rendered its packet (CHECKER-DEF-STOPPED?) stops as a refused
-\ verdict does, REFUSED-RC; any other stop keeps its code.
-: STOP-CODE ( n -- n )
-   dup CHECKER-DEF-STOPPED? if drop REFUSED-RC then ;
-
 \ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
 : PREVERIFY ( -- )
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
-   rc 0<> if rc STOP-CODE STOP-RESULT exit then
+   rc 0<> if rc STOP-RESULT exit then
    s" verified" RESULT ;
 
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [--prose | LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -681,6 +612,12 @@ public
    then
    SCRIPT-ARGC 2 = if
       1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
+      1 SCRIPT-ARGV$ s" --prose" CORE-STR= if
+         false JSON? !
+         READ-STDIN
+         0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
+         VERIFY-CLOSURE exit
+      then
       READ-STDIN PREVERIFY exit
    then
    SCRIPT-ARGC 3 = if

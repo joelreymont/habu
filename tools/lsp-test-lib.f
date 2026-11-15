@@ -1593,7 +1593,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ publish and write, given what is left of the conversation's time.
 : CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
-   DEADLINE @ PROCESS:LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
+   DEADLINE @ PROCESS:LEFT-MS true LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF ENDOF
       refused OF ENDOF
       engine-provided OF ENDOF
@@ -4020,7 +4020,7 @@ create WAS-B HDR-BYTES allot
    s\" package R\npublic\ninclude id-inc.f\n;package\n: ID-R ( -- n ) R:K ;\n" ;
 
 : ID-CHECK ( ptr u8 n ptr u8 n -- bool )
-   [: drop ;] CHECKED-MS >MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
+   [: drop ;] CHECKED-MS >MS true LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF true ENDOF
       refused OF false ENDOF
       engine-provided OF false ENDOF
