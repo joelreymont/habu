@@ -168,11 +168,31 @@ variable RC
    s" `SOURCE-ROOT:READ-OS` got `" s" plain.f" SB-NAMES SB$ ERR-HAS
    s" not the file a load is opening" ERR-HAS ;
 
+0 constant NO-ACCESS
+$1A4 constant MODE-FILE
+
+\ A require of a file it finds but cannot read: one record, at the request. The
+\ file's mode comes back even when the run throws, so the cleanup can read it.
+: REQUIRE-UNREADABLE ( -- )
+   s" a require of an unreadable file is rejected at the request" T-LABEL
+   s" cases/locked.f" AT s" 1 drop" FS:WRITE-ALL
+   s" cases/locked.f" AT NO-ACCESS FS:CHMOD-MODE
+   0 PROG-U !
+   s" require locked.f" PLINE
+   [: s" require-unreadable" LOAD-CASE ;]
+   [: s" cases/locked.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
+   INCLUDE-IO-RC EXITS
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" error[E-UNREADABLE-SOURCE]: cannot read `locked.f`" ERR-HAS
+   SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
+   s" :1:9" SB-APPEND SB$ ERR-HAS
+   s" ^^^^^^^^ permission denied" ERR-HAS ;
+
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD
+   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD REQUIRE-UNREADABLE
    T-REPORT ;
 
 ;package
