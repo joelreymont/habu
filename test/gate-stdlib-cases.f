@@ -489,6 +489,15 @@ SUITE secret-dir
    src/lib/secret/dir-test.f
 ;SUITE
 
+\ SECRET:WRITE and SECRET:READ on Linux against a private bus and keyring, with
+\ secret-tool. Its own suite: SECRET:LINUX-ITEM! and libsecret's connection
+\ hold for the whole process.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE secret-linux
+   src/lib/secret/linux-test.f
+;SUITE
+[then]
+
 \ MODEL against an in-process OpenAI- and Ollama-shaped peer on a loopback port.
 SUITE model
    src/lib/net/model-test.f
