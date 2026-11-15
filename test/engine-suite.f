@@ -448,10 +448,9 @@ package ES-RES-REFUSE
 
 public
 
-\ The engine's own exit codes for the two refusals, which inside
-\ evaluate-closed arrive as catchable throws of the same code.
+\ The status an undefined word's rejection stops with, which inside
+\ evaluate-closed arrives as a catchable throw of the same code.
 70 constant UNDEFINED
-78 constant DUPLICATE
 
 \ The source travels through the quotation and back out, because x86-64
 \ refuses a quotation that reads a local.
@@ -475,7 +474,10 @@ s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEF
 s" engine resolution: an unknown package qualifier is refused" T-LABEL
 s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
 s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
-s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:DUPLICATE T=
+-1 REJECTION:QUIET +!  REJECTION:CAPTURE
+s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF  1 REJECTION:QUIET +!
 s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
 -1 REJECTION:QUIET +!

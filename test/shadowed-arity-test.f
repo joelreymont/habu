@@ -38,21 +38,21 @@ public
 REJECTION:CAPTURE
 s\" package SAT-A\n: F ( n n -- n ) + ;\npublic\n: F ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:4:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : F ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ More inputs than the private word.
 REJECTION:CAPTURE
 s\" package SAT-B\n: G ( n -- n ) 1 + ;\npublic\n: G ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:4:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : G ( n n -- n ) + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ The OUTPUT side counts too: the inputs agree and the results do not.
 REJECTION:CAPTURE
 s\" package SAT-C\n: H ( n -- n ) 1 + ;\npublic\n: H ( n -- n n ) dup ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:4:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : H ( n -- n n ) dup ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ CELLS, not terms: `ptr u8 n` is two terms and two cells, and the public tail
@@ -60,7 +60,7 @@ s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s\" package SAT-D\n: K ( ptr u8 n -- n ) drop c@ ;\npublic\n: K ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:4:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : K ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ The private twin may be a definer-made word: what the rule judges is the PUBLIC
@@ -69,7 +69,7 @@ s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s\" package SAT-M\n10 constant W\npublic\n: W ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:4:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : W ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ === accepted: every neighbouring shape that must stay legal =================
@@ -126,9 +126,11 @@ s" undefine SAT-W" SHADOWED-ARITY:SAE-CATCH 0 T=
 s" : SAT-W ( n n -- n ) + ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ A second definition of the same tail in ONE wordlist is the older rule and
-\ keeps its own code (78), ahead of this one.
+\ keeps its own code, ahead of this one.
+REJECTION:CAPTURE
 s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 78 T=
+   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
+s" error[E-DUPLICATE-DEFINITION]" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ === nothing without a live record binds a name ===============================
 \ A refused public leaves nothing behind: a later `using` of the package binds
@@ -139,7 +141,7 @@ s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 REJECTION:CAPTURE
 s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q TEST-EVAL:RC SHADOWED-ARITY:E-REJECT T=\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" <input>:1:3" SHADOWED-ARITY:SAID
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : SAT-T ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 s\" using SAT-N\n: SAT-N-USE ( -- n ) SAT-T ;\n;using"
    SHADOWED-ARITY:SAE-CATCH 0 T=
