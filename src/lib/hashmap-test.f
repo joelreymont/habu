@@ -15,14 +15,15 @@ create HMT-KB HMT-CAP cells allot
 : HMT-PAIR ( n n -- n ) {: a:n b:n :}
    HMT-K HMT-KB HMT-U HMT-CAP a b HM:PROBE-PAIR ;
 
+\ Slots written directly, so the case owes the hash nothing: each slot holds one
+\ cell of (0, 0), none both.
 : HMT-PAIRS ( -- )
-   HMT-U HMT-CAP HM:CLEAR
-   65536 0 HMT-PAIR {: s:n :}
-   65536 HMT-K s cells + !  0 HMT-KB s cells + !  -1 HMT-U s cells + !
-   s" a pair differing only in its first cell takes another slot" T-LABEL
-   0 0 HMT-PAIR s <> TTRUE
+   HMT-CAP 0 ?do  65536 HMT-K i cells + !  0 HMT-KB i cells + !  -1 HMT-U i cells + !  loop
+   0 HMT-K 1 cells + !  65536 HMT-KB 1 cells + !
+   s" a slot holding one cell of the pair never answers it" T-LABEL
+   [: 0 0 HMT-PAIR drop ;] E-HM-FULL TTHROWSQ
    s" a filled pair answers its own slot" T-LABEL
-   65536 0 HMT-PAIR s T= ;
+   0 65536 HMT-PAIR 1 T= ;
 
 : HMT-SLOT ( n -- n ) {: key:n :} HMT-K HMT-U HMT-CAP key HM:PROBE ;
 : HMT-INS ( n -- ) {: key:n :}        \ insert if absent (mark slot used)

@@ -2553,8 +2553,8 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : SUMTYPE-END? ( ^u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
 
-\ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
-\ the declaration packet (E-BAD-DECLARATION), as on the native path.
+\ Missing names and malformed headers are rejected by CHECKER-DEFFAMILY in the
+\ declaration's record (E-BAD-DECLARATION), as on the native path.
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME

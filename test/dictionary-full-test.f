@@ -1,11 +1,12 @@
-\ dictionary-full-test.f - a definition, a does> clause, a package and a
-\ declaration that find no dictionary record left are rejected as
-\ E-DICTIONARY-FULL, placed at the name they make, a does> clause at its
-\ `does>` and a declaration where it ran out of room, and the load exits
-\ REJECTION:DICT-FULL-RC. A full
-\ dictionary stops the load, so each case is its own child hb. Each child fills
-\ the dictionary to a set number of free records counted from its own ndict@,
-\ so no case depends on how many records the engine uses at boot.
+\ dictionary-full-test.f - a definition, a does> clause, a package, a qualified
+\ head's namespace, an EXPORT and a declaration that find no dictionary record
+\ left are rejected as E-DICTIONARY-FULL, placed at the name they make, a does>
+\ clause at its `does>`, a namespace at its qualified head, an EXPORT at its
+\ operand and a declaration where it ran out of room, and the load exits
+\ REJECTION:DICT-FULL-RC. A full dictionary stops the load, so each case is its
+\ own child hb. Each child fills the dictionary to a set number of free records
+\ counted from its own ndict@, so no case depends on how many records the engine
+\ uses at boot.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f

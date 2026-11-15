@@ -2275,8 +2275,6 @@ variable RC
    ERR$ s" E-PROBE" CONTAINS? TFALSE
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
-\ A caught code moved through the return stack, or thrown past a second catch
-\ whose code is thrown too, keeps its record.
 : TEST-RETHROW-RSTACK ( -- )
    s" a caught code thrown on through the return stack keeps its record" T-LABEL
    SB-RESET
@@ -2290,6 +2288,8 @@ variable RC
    s" error[E-PROBE]: probe text" THROW-RC LOADED
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
+\ `ri throw` never runs, but it counts INNER's catch, so each catch keeps a slot
+\ of its own: a slot shared with BODY's would lose the record.
 : TEST-RETHROW-TWO ( -- )
    s" a caught code thrown on past a second counted catch keeps its record" T-LABEL
    SB-RESET
@@ -2303,7 +2303,6 @@ variable RC
    s" error[E-PROBE]: probe text" THROW-RC LOADED
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
-\ A caught local thrown from a quotation is a new throw.
 : TEST-RETHROW-QUOT ( -- )
    s" a caught local thrown from a quotation is a new throw" T-LABEL
    SB-RESET
