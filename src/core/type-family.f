@@ -3395,6 +3395,7 @@ variable VIEW-FIELD-BASE
 \ The runtime's three machine descriptors form one private value.
 : REGISTER-STOW ( -- )
    s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
+   STOW-FAM @ C2-STOW-FAM !
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
    TYPE-FIELD-OWNER:OPEN VIEW-TX !
    VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"

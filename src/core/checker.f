@@ -1631,6 +1631,7 @@ variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
 variable WIDTH-FAM  -1 WIDTH-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
+variable C2-STOW-FAM -1 C2-STOW-FAM ! \ package C2-MEM's stow-layout
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -7729,16 +7730,20 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
 
 \ Only a layout whose width is not yet known stays one cell; one the width
 \ cannot read (a parameter only under a pointer) expands.
-: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
+: PUSH-TERM ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
-   \ In facts text a variable's kind is its tag alone.
-   r ISVAR  SIG-FACTS-MODE @ 0=  and IF r PAY TVK-CELL TVK-RAISE-TO THEN
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
       r LAYOUT-WIDTH-OPEN? 0= IF
          r row LAYOUT-PUSH-FIELDS EXIT
       THEN
    THEN
    t row MK-PUSH ;
+
+: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
+   t T-RES {: r:n :}
+   \ In facts text a variable's kind is its tag alone.
+   r ISVAR  SIG-FACTS-MODE @ 0=  and IF r PAY TVK-CELL TVK-RAISE-TO THEN
+   t row PUSH-TERM ;
 
 \ A cell after `|`, two different rows, or a bar on one side only would let a
 \ body read cells its caller parked, which the native compiler cannot reach.
@@ -11961,10 +11966,10 @@ variable PE-EFF-ID
    PE-CLOSE-SYM ;
 
 : PE-IN ( n -- )
-   PE-DIN @ MK-PUSH PE-DIN ! ;
+   PE-DIN @ PUSH-TERM PE-DIN ! ;
 
 : PE-OUT ( n -- )
-   PE-DOUT @ MK-PUSH PE-DOUT ! ;
+   PE-DOUT @ PUSH-TERM PE-DOUT ! ;
 
 : PE-A ( -- n ) $61 VAR-OF ;
 : PE-B ( -- n ) $62 VAR-OF ;
@@ -12042,6 +12047,9 @@ variable PE-QDOUT
 : PE-QANY ( -- )
    FREE-QUOT PE-IN ;
 
+: PE-STOW-LAYOUT ( -- n )
+   PARAM-SCR-N @ s" stow-layout" C2-STOW-FAM @ MK-PARAM ;
+
 : PTABLE-START ( -- )
    NAV-CLEAR
    0 #PE !
@@ -12101,6 +12109,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
    code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
    code PRIM-SPEC:A-QUOT-ANY = IF PE-QANY EXIT THEN
+   code PRIM-SPEC:A-STOW-LAYOUT = IF PE-STOW-LAYOUT PE-SPEC-PUSH EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
 
 \ A source row reads its effect tokens and runs each as the table's atoms,
@@ -12119,6 +12128,7 @@ variable PE-SPEC-TOS
    a u s" PE-QOUT"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-OUT 0 EXIT THEN
    a u s" ;PE-Q"     CORE-STR=CI IF PRIM-SPEC:A-QUOT-END 0 EXIT THEN
    a u s" PE-QANY"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-ANY 0 EXIT THEN
+   a u s" PE-STOW-LAYOUT" CORE-STR=CI IF PRIM-SPEC:A-STOW-LAYOUT 0 EXIT THEN
    a u s" PE-PTR-A"  CORE-STR=CI IF PRIM-SPEC:A-VAR-A PRIM-SPEC:A-PTR EXIT THEN
    a u s" PE-PTR-N"  CORE-STR=CI IF PRIM-SPEC:A-NUM   PRIM-SPEC:A-PTR EXIT THEN
    a u s" PE-PTR-U8" CORE-STR=CI IF PRIM-SPEC:A-U8    PRIM-SPEC:A-PTR EXIT THEN
@@ -16067,7 +16077,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" execute" CTL-CORE-OP NORET-AXIOM
    s" catch" CTL-CORE-OP NORET-AXIOM
    s" finally" CTL-CORE-OP NORET-AXIOM
-   s" c2-invoke" CTL-CORE-OP NORET-AXIOM
+   s" C2-MEM" s" c2-invoke" CTL-CORE-OP NORET-PRIVATE-AXIOM
    s" @" INTRINSIC-CELL-FETCH INTRINSIC>CTL NORET-AXIOM
    s" !" INTRINSIC-CELL-STORE INTRINSIC>CTL NORET-AXIOM
    s" atomic!" INTRINSIC-ATOMIC-STORE INTRINSIC>CTL NORET-AXIOM
