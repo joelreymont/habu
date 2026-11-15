@@ -553,9 +553,12 @@ public
       CHECKER-JSON-REPORTED? 0= if
          s" hook: non-certified definition: " ERROR-TEXT:TYPE
          NMB NMU @ ERROR-TEXT:TYPE
-         s"  at '" ERROR-TEXT:TYPE
-         FAILTK FAILTU @ ERROR-TEXT:TYPE
-         S\" '\n" ERROR-TEXT:TYPE
+         FAILTU @ 0 <> if
+            s"  at '" ERROR-TEXT:TYPE
+            FAILTK FAILTU @ ERROR-TEXT:TYPE
+            s" '" ERROR-TEXT:TYPE
+         then
+         S\" \n" ERROR-TEXT:TYPE
       then
       CHECK-RC throw then ;
 

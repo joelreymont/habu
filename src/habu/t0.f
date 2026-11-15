@@ -2163,7 +2163,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    IDLE-CK
    STAGE-UNIT
    CHECKER-OWNER:RESET-REPORT
-   0 MISSING !  0 BAD-LEN !
+   0 MISSING !  0 BAD-LEN !  NULL-PTR BAD !
    COMP-BODY:compiled BODY-KIND !
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}

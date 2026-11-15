@@ -387,16 +387,14 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    s" :" ERROR-TEXT:TYPE
    line ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
-\ The refusal names the definition and the token it stopped at, placed from p
-\ by SAY-WHERE.
+\ The rejection names the definition, the token it stopped at if any, and the
+\ place of p by SAY-WHERE.
 : REPORT-FAILURE ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
    s" compiler: cannot compile " ERROR-TEXT:TYPE
    NAME$ ERROR-TEXT:TYPE
-   u 0 > if
-      s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE
-      s"  in " p SAY-WHERE
-   then
+   u 0 > if s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE then
+   p NULL-PTR <> if s"  in " p SAY-WHERE then
    S\" \n" ERROR-TEXT:TYPE ;
 
 \ An undefined word, placed on p's line while a file buffer is open.

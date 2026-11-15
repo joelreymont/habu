@@ -720,6 +720,27 @@ public
 : LOCAL-STRAY ( -- )
    MD-LOCAL-STRAY MDIAG-COMPILE!  IS-FAIL ;
 
+\ The type node of item IX's local: a LOCAL's own, a LOCAL-REF's from the LOCAL
+\ item whose B is its A; false when no LOCAL item has that index.
+: ITEM-LOCAL-NODE ( n -- n bool ) {: ix:n :}
+   ix BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ {: v:n :}
+   ix BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL = IF
+      v RES-TRUE EXIT THEN
+   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL =
+      i BODY-ITEMS:B CHECKER-ITEMS:ITEM-CELL@ v = and IF
+         i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ RES-TRUE UNLOOP EXIT
+      THEN
+   LOOP
+   0 RES-FALSE ;
+
+\ A built local's rejection pinned on its item names the local by the type the
+\ definer gave it; a read of an index no LOCAL item declared names none.
+: ITEM-FAIL-SPELL ( n -- )
+   ITEM-LOCAL-NODE 0= IF drop 0 FAILTU ! EXIT THEN
+   TFAM:EFFECT-TYPE TYPE-TEXT {: a:ptr u:n :}
+   u TOKBUF-ENSURE  a FAILTK u CCOPY  u FAILTU ! ;
+
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
    a u DO-TOK-HEAD
@@ -738,7 +759,11 @@ public
    kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
       s" checker: an item of no kind the walk knows" 76 die
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
+   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL
+   kind BODY-ITEM-KIND:LOCAL =  kind BODY-ITEM-KIND:LOCAL-REF = or
+   FAILIX @  TOKIX @ 1 - =  and
+   MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
+   MDIAG @ MD-LOCAL-STRAY = or  and IF i ITEM-FAIL-SPELL THEN ;
 
 : ITEM-WALK ( -- )
    0 SPAY-S !

@@ -1,6 +1,6 @@
-\ undefined-action.f - src/lib/fsm-test.f PLACED: the ACTION on line 14 names
-\ no word; DEFINE builds the line's word after reading the whole table, and
-\ its rejection names that line, not the `;DEFINE` below it.
+\ undefined-action.f - the ACTION on line 14 names no word; DEFINE builds the
+\ line's word after reading the whole table, and its rejection names that line,
+\ not the `;DEFINE` below it.
 require src/lib/fsm.f
 package FSM-UNDEF
 ENUM ph idle busy ;ENUM

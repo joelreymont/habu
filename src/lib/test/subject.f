@@ -111,17 +111,22 @@ private
 public
 
 \ The capture is kept only for this answer; a case that reads the child's
-\ streams runs RUN itself.
+\ streams runs RUN itself, or REJECTED for stderr when stdout stays empty.
 : EXITED? ( ptr u8 n n -- bool )
    STATUS >r 2drop r> ;
+
+\ src's stderr, valid until the next run, and whether src, run as the subject,
+\ exited with code want and wrote nothing to stdout.
+: REJECTED ( ptr u8 n n -- ptr u8 n bool )
+   STATUS {: outu:len erru:len exited:bool :}
+   STATUS-ERR erru LEN>N  exited outu LEN>N 0= and ;
 
 \ Whether src, run as the subject, exited with code want, wrote nothing to
 \ stdout and named why on stderr: a refusal the engine or the checker reports
 \ before anything runs.
 : REFUSED? ( ptr u8 n n ptr u8 n -- bool )
-   {: src:ptr srcu:n want:n why:ptr whyu:n :}
-   src srcu want STATUS {: outu:len erru:len exited:bool :}
-   exited outu LEN>N 0= and
-   STATUS-ERR erru LEN>N why whyu CONTAINS? and ;
+   {: why:ptr whyu:n :}
+   REJECTED {: err:ptr erru:n ok:bool :}
+   ok  err erru why whyu CONTAINS? and ;
 
 ;package

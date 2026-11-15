@@ -1653,10 +1653,13 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      s" E-LINEAR-LOCAL " EMIT-STR  DSITE
      s" linear value cannot be bound to a local" EMIT-STR EXIT
    THEN
-   DSITE  s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-   s" '" EMIT-STR
+   DSITE
+   \ A read of a built local no LOCAL item declared has no token to name.
+   FAILTU @ 0 <> IF
+     s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR
+   THEN
    k RF-REASON = IF
-     s"  " EMIT-STR  MDIAG @ MD-REASON$ EMIT-STR
+     FAILTU @ 0 <> IF s"  " EMIT-STR THEN  MDIAG @ MD-REASON$ EMIT-STR
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
      MDIAG-COUNTS
    THEN

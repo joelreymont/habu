@@ -407,13 +407,14 @@ variable SRC-LEN
    s" include test/fixtures/fsm/undefined-action.f" 70
    s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
 
+\ A wrong action is named as the table spells it, not as it was defined, at
+\ the action's own line.
 : PLACED-EFFECT ( -- )
-   \ A wrong action is named as the table spells it, not as it was defined.
-   s" include test/fixtures/fsm/wrong-effect.f" 70
-   s" 'bump'" SUBJECT:REFUSED? TTRUE
-   \ Its rejection names the action's own line.
-   s" include test/fixtures/fsm/wrong-effect.f" 70
-   s" wrong-effect.f:15" SUBJECT:REFUSED? TTRUE ;
+   s" include test/fixtures/fsm/wrong-effect.f" 70 SUBJECT:REJECTED
+   {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" 'bump'" CONTAINS? TTRUE
+   e eu s" wrong-effect.f:15" CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
