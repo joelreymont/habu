@@ -17,10 +17,9 @@ private
 
 \ The set has no entry ceiling: ids live in growable vectors and their bytes in
 \ chunks allocated on demand, so a repository-scale input is bounded by memory
-\ alone and a failed chunk allocation reports as a memory error. The bounds
-\ below are real resources: the chunk granularity and the fixed fold buffer.
+\ alone and a failed chunk allocation reports as a memory error. The bound
+\ below is a real resource: the chunk granularity.
 $1000 constant INTERN-CHUNK-MIN
-$100 constant INTERN-FOLD-CAP
 
 \ NULL-PTR until INTERN-INIT-ONCE makes them; every public word runs it first.
 TYPED-VARIABLE INTERN-ADDR-V ^VEC:vector<^u8>
@@ -28,7 +27,6 @@ TYPED-VARIABLE INTERN-LEN-V ^VEC:vector<n>
 TYPED-VARIABLE INTERN-CHUNK-A-V ^VEC:vector<^u8>
 TYPED-VARIABLE INTERN-CHUNK-CAP-V ^VEC:vector<n>
 TYPED-VARIABLE INTERN-CHUNK-USED-V ^VEC:vector<n>
-create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
 
@@ -92,9 +90,6 @@ public
       1+
    repeat drop -1 ;
 
-: INTERN? ( ^u8 n -- bool )
-   INTERN-FIND 0 >= ;
-
 private
 
 : INTERN-CHUNK-SIZE ( n -- n )
@@ -152,15 +147,5 @@ public
 : INTERN ( ^u8 n -- n ) {: a:^ u :}
    a u INTERN-FIND dup 0 >= IF exit THEN drop
    a u INTERN# INTERN-STORE-NEW ;
-
-: INTERN-FOLD ( ^u8 n -- n ) {: a:^ u :}
-   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
-   a u INTERN-FOLD-BUF FOLD-TO
-   INTERN-FOLD-BUF u INTERN ;
-
-: INTERN-FOLD? ( ^u8 n -- bool ) {: a:^ u :}
-   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
-   a u INTERN-FOLD-BUF FOLD-TO
-   INTERN-FOLD-BUF u INTERN? ;
 
 ;package

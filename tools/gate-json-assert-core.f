@@ -27,8 +27,6 @@ TYPED-VARIABLE GJA-ARR SPAN:span<u8>
 variable GJA-I
 variable GJA-J
 variable GJA-N
-variable GJA-OK1
-variable GJA-OK2
 variable GJA-IDX
 variable GJA-LINE
 variable GJA-COL
@@ -829,32 +827,6 @@ variable GJA-LX
       GJA-I @ 1+ GJA-I !
    repeat ;
 
-: GJA-CHECK-PUBLIC-ITEM ( SPAN:span<u8> -- )
-   {: item:SPAN:span<u8> :}
-   item s" word" GJA-REQ s" SQUARE" GJA-STR= IF
-      item s" signature" GJA-REQ s" (i64 -- i64)" GJA-ASSERT-STR
-      -1 GJA-OK1 !
-      exit
-   THEN
-   item s" word" GJA-REQ s" APPLY" GJA-STR= IF
-      item s" signature" GJA-REQ s" (i64 [ i64 -- i64 ] -- i64)" GJA-ASSERT-STR
-      -1 GJA-OK2 !
-      exit
-   THEN ;
-
-: GJA-PUBLIC-SIGNATURES ( ^u8 n -- )
-   0 GJA-OK1 ! 0 GJA-OK2 !
-   GJA-PARSE-FILE GJA-ROOT !
-   GJA-ROOT @ GJA-SCHEMA1
-   GJA-ROOT @ s" definitions" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
-   0 GJA-I !
-   begin GJA-I @ GJA-ARR @ GJA-COUNT < while
-      GJA-ARR @ GJA-I @ GJA-ARR@ GJA-CHECK-PUBLIC-ITEM
-      GJA-I @ 1+ GJA-I !
-   repeat
-   GJA-OK1 @ 0= IF s" missing SQUARE public signature" GJA-FAIL THEN
-   GJA-OK2 @ 0= IF s" missing APPLY public signature" GJA-FAIL THEN ;
-
 : GJA-DISPATCH-ONE-FILE-ROW ( ^u8 n [ ^u8 n -- ] -- bool )
    {: cmd:^ cmdu q :}
    cmd cmdu GJA-CMD? IF
@@ -902,8 +874,6 @@ variable GJA-LX
    s" diag-contract" [: GJA-DIAG-CONTRACT ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    s" sarif" [: GJA-SARIF ;]
-   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
-   s" public-signatures" [: GJA-PUBLIC-SIGNATURES ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 
