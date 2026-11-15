@@ -19906,61 +19906,11 @@ variable TPAY-ON      \ did the token just judged compile TYPE-LIT-DIGITS?
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
-: ESC-HEX-DIGIT? ( n -- bool ) {: c:n :}
-   c $30 >= c $39 <= and IF RES-TRUE EXIT THEN
-   c $61 >= c $66 <= and IF RES-TRUE EXIT THEN
-   c $41 >= c $46 <= and ;
-
-\ The one escape table: the validator and the decoder both read it, so a
-\ spelling the checker accepts and a byte it produces cannot disagree.
-: ESC-BYTE? ( n -- n bool ) {: c:n :}
-   c $22 = IF $22 RES-TRUE EXIT THEN
-   c $71 = IF $22 RES-TRUE EXIT THEN
-   c $5C = IF $5C RES-TRUE EXIT THEN
-   c $61 = IF $07 RES-TRUE EXIT THEN
-   c $62 = IF $08 RES-TRUE EXIT THEN
-   c $65 = IF $1B RES-TRUE EXIT THEN
-   c $6C = IF $0A RES-TRUE EXIT THEN
-   c $66 = IF $0C RES-TRUE EXIT THEN
-   c $6E = IF $0A RES-TRUE EXIT THEN
-   c $72 = IF $0D RES-TRUE EXIT THEN
-   c $74 = IF $09 RES-TRUE EXIT THEN
-   c $76 = IF $0B RES-TRUE EXIT THEN
-   c $7A = IF $00 RES-TRUE EXIT THEN
-   0 RES-FALSE ;
-
-: ESC-SIMPLE? ( n -- bool )
-   ESC-BYTE? nip ;
-
-: ESC-HEX-LEAD? ( n -- bool ) {: c:n :}
-   c $78 = c $58 = or ;
-
-: SKIP-ESC-BYTE@ ( -- n )
-   SKI @ TBYTE@ ;
-
-\ An invalid escape spends the rest of the payload, so the tail branch rejects
-\ the definition as it rejects an unterminated string.
-: SKIP-ESC-BAD
-   TBLEN @ SKI ! ;
-
-: SKIP-ESC-HEX ( -- )   \ SKI at 'x'/'X'
-   SKI @ 2 + TBLEN @ >= IF SKIP-ESC-BAD EXIT THEN
-   SKI @ 1 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
-   SKI @ 2 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
-   SKI @ 3 + SKI ! ;
-
-: SKIP-ESC-SEQ ( -- )   \ SKI at '\'
-   SKI @ 1 + SKI !
-   SKI @ TBLEN @ >= IF SKIP-ESC-BAD EXIT THEN
-   SKIP-ESC-BYTE@ ESC-SIMPLE? IF SKI @ 1 + SKI ! EXIT THEN
-   SKIP-ESC-BYTE@ ESC-HEX-LEAD? IF SKIP-ESC-HEX EXIT THEN
-   SKIP-ESC-BAD ;
-
 : SKIP-ESCAPED-STRING-PAYLOAD ( -- )
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
-      SKIP-ESC-BYTE@ 92 = IF SKIP-ESC-SEQ ELSE
-         SKIP-ESC-BYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+      SKI @ TBYTE@ 92 = IF SKI @ 2 + SKI ! ELSE
+         SKI @ TBYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
       THEN
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
@@ -19984,60 +19934,20 @@ variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it
    TKF 0 CHECKER-BYTE@ $73 = SPAY-S !
    -1 SPAY-ON ! ;
 
-: ESC-HEX-VAL ( n -- n ) {: c:n :}
-   c $39 <= IF c $30 - EXIT THEN
-   c $61 >= IF c $57 - EXIT THEN
-   c $37 - ;
-
-\ The byte the two hex digits at index k of the u bytes at src spell, the index
-\ past them, and whether both are hex digits inside those bytes.
-: ESC-HEX-AT ( ptr u8 n n -- n n bool ) {: src:ptr u:n k:n :}
-   k 1 + u >= IF 0 k RES-FALSE EXIT THEN
-   src k + c@ {: hi:n :}
-   src k + 1 + c@ {: lo:n :}
-   hi ESC-HEX-DIGIT? lo ESC-HEX-DIGIT? and 0= IF 0 k RES-FALSE EXIT THEN
-   hi ESC-HEX-VAL 4 lshift  lo ESC-HEX-VAL or  k 2 +  RES-TRUE ;
-
-\ The byte the escape at index k of the u bytes at src stands for, k one past
-\ its backslash, the index past its spelling, and whether that spelling is whole
-\ inside those bytes: a letter of the table, or `x`/`X` and two hex digits.
-: ESC-AT ( ptr u8 n n -- n n bool ) {: src:ptr u:n k:n :}
-   k u >= IF 0 k RES-FALSE EXIT THEN
-   src k + c@ {: c:n :}
-   c ESC-HEX-LEAD? IF src u k 1 + ESC-HEX-AT EXIT THEN
-   c ESC-BYTE?  k 1 +  swap ;
-
-\ The bytes the u bytes at src decode to, written at dst, which holds u bytes: a
-\ decoded body is never longer than its spelling. Answers the count written and
-\ whether every escape was whole; a bad one stops the decode with the bytes
-\ before it written.
-: ESC-DECODE ( ptr u8 n ptr u8 -- n bool ) {: src:ptr u:n dst:ptr :}
-   0 0
-   BEGIN {: at:n k:n :}
-      at u >= IF k RES-TRUE EXIT THEN
-      src at + c@ {: c:n :}
-      c 92 = IF
-         src u at 1 + ESC-AT {: b:n nx:n ok:bool :}
-         ok 0= IF k RES-FALSE EXIT THEN
-         b dst k + c!  nx  k 1 +
-      ELSE
-         c dst k + c!  at 1 +  k 1 +
-      THEN
-   AGAIN ;
-
-\ A bad escape cannot be reached from a recorded span; it refuses so a table
-\ edit that reaches only one reader stops the definition instead of emitting a
-\ byte nobody chose.
+\ The decode judges an escaped payload's escapes, and a bad one rejects the
+\ definition: the skip that found the closing quote steps over the byte after
+\ each backslash unjudged.
 : SPAY-BYTES ( -- ptr u8 n )
    SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
-   SPAY-B @ TADDR  SPAY-U @  SDEC  ESC-DECODE 0= IF 0 OK ! THEN
+   SPAY-B @ TADDR  SPAY-U @  SDEC  ESCAPE:DECODE 0= IF 0 OK ! THEN
    SDEC swap ;
 
 : STRING-PAYLOAD-STEP ( -- )
    TI @ {: before:n :}
    TKF TKFU @ ESCAPED-STRING-OPENER? IF
       SKIP-ESCAPED-STRING-PAYLOAD
-      SKF @ IF before -1 SPAY-RECORD THEN
+      \ Decoding here places a bad escape's rejection at the opener.
+      SKF @ IF before -1 SPAY-RECORD  SPAY-BYTES 2drop THEN
       EXIT
    THEN
    TKF TKFU @ NORMAL-STRING-OPENER? 0= IF EXIT THEN

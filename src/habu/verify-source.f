@@ -186,6 +186,7 @@ require src/habu/xref.f
 require src/compiler/workspace.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
+require src/habu/escape.f
 require src/lib/ffi-abi.f
 
 package VERIFY
@@ -607,7 +608,7 @@ variable STR-DEC-TURN
 \ the literal keeps its position.
 : ESC-BYTES ( ptr u8 n -- ptr u8 n bool ) {: src:ptr u:n :}
    u STR-DEC-ROOM {: dst:ptr :}
-   src u dst ESC-DECODE {: k:n ok:bool :}
+   src u dst ESCAPE:DECODE {: k:n ok:bool :}
    k u = ok 0= or IF src u ok EXIT THEN
    1 STR-DEC-TURN @ - STR-DEC-TURN !
    dst k ok ;
