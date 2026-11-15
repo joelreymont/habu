@@ -1784,6 +1784,7 @@ variable DEF-SIG-U
 variable WRAP-DEFINERS                        \ definer calls in this body …
 variable WRAP-CTL                             \ … and whether the line ever bent
 variable WRAP-ROW                             \ the definer row the last call names
+variable WRAP-MAKES                           \ a `create` or definer call before any bend
 
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A !  TOKEN-BYTE @ DEF-NAME-BYTE ! ;
@@ -1799,7 +1800,7 @@ variable WRAP-ROW                             \ the definer row the last call na
    VERIFY-NAMED-BODY DOES-DEF-VERDICT ! ;
 
 : WRAP-RESET ( -- )
-   0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
+   0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW !  0 WRAP-MAKES ! ;
 
 : DEFINER-RECORD-AS ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n na:ptr nu:n :}
    sig sigu false na nu RECORD-SYM? DEFINER-ADD ;
@@ -1807,14 +1808,25 @@ variable WRAP-ROW                             \ the definer row the last call na
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
 
+\ A definer this pre-pass read is in its table; one compiled in the checking
+\ process the checker answers.
 : WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
+   a u s" create" STR=CI IF -1 WRAP-MAKES ! EXIT THEN
    a u DEFINER-OF dup 0<> IF
       1 - WRAP-ROW !
-      WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  EXIT
+      WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  -1 WRAP-MAKES !  EXIT
    THEN
-   drop ;
+   drop
+   WRAP-MAKES @ IF EXIT THEN
+   a u FIND-SYM CREATES-SYM? 0<> IF -1 WRAP-MAKES ! THEN ;
+
+\ A head that reaches `does>` with no `create` or definer call before any bend
+\ is rejected at its `does>`, the token t tu, as the load's checker rejects it.
+: DOES-UNMADE-STOP ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu DOES-UNMADE-OPEN
+   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
 
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
@@ -1885,6 +1897,14 @@ DYNAMIC-BUFFER TICK-QUAL u8
       DOES-PARENT-KEEP
    ELSE
       VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
+   THEN
+   \ The rule is checked once the head's own rejections are: the load's checker
+   \ checks it at the end of the head's walk.
+   WRAP-MAKES @ 0=  TICK-REMAINDER @ 0=  and IF
+      gate unknown or IF DOES-PARENT-REFUSED @ 0= ELSE DOES-DEF-VERDICT @ 0<> THEN IF
+         opener openeru DOES-UNMADE-STOP
+         true DOES-PARENT-REFUSED !
+      THEN
    THEN
    opener opener openeru SIGNATURE-AT {: sig:ptr sigu:n :}
    BODY-RESET

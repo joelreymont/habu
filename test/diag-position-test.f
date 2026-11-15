@@ -2046,15 +2046,15 @@ variable RC
 \ row then names a refused word, a second packet only --all-errors gives.
 : TEST-EMPTY-CLAUSE ( -- )
    s" an empty does> clause refused at its ;" T-LABEL
-   s" : MYK ( n -- ) drop does> ( -- ) ;" s" empty-clause.f" LINE-FIXTURE
-   s" E-MISMATCH" s" ;" 1 34 33 34 REFUSED-AT
+   s" : MYK ( n -- ) create drop does> ( -- ) ;" s" empty-clause.f" LINE-FIXTURE
+   s" E-MISMATCH" s" ;" 1 41 40 41 REFUSED-AT
    s" an empty does> clause refused at its ; on a later line" T-LABEL
    SB-RESET
-   s" : MYK ( n -- ) drop" SB-APPEND LF+
+   s" : MYK ( n -- ) create drop" SB-APPEND LF+
    s"   does> ( -- )" SB-APPEND LF+
    s"   ;" SB-APPEND LF+
    s" empty-clause-lines.f" FIXTURE!
-   s" E-MISMATCH" s" ;" 3 3 37 38 REFUSED-AT
+   s" E-MISMATCH" s" ;" 3 3 44 45 REFUSED-AT
    s" E-MISMATCH" s" :3:3" REJECT-RC LOADED-AT
    s" an empty does> clause of a definer with a parses: row" T-LABEL
    s" : MK ( n -- ) create , does> ( -- ) ; parses: MK 1" s" empty-clause-parses.f" LINE-FIXTURE

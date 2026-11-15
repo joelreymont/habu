@@ -55,15 +55,6 @@ public
 : CDD-GD4 ( n -- ) CDD-GD4 ;
 ;package
 
-\ Section 15's packaged word, patched at once by a global does> word defined
-\ after `;package`: the patching word's spelling resolves outside CDD-PKC.
-package CDD-PKC
-public
-variable CDD-PKV
-;package
-: CDD-PKB ( -- ) does> ( -- n ) drop 9 ;
-CDD-PKB
-
 \ Section 16's definer, defined from outside its package: its publication gets
 \ the tail bool>n, which names hb's sealed global word, not this definer.
 package CDD-QQ
@@ -559,34 +550,15 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    REJECTION:BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 
-\ Section 15: a does> word patches the latest created word, which takes the
-\ clause effect while the patching word keeps its own. Each text creates its
-\ own word and stores what that word gives in CDD-GOT.
-variable CDD-GOT
-
-: CDD-GOT-RC ( ptr u8 n -- n n )
-   0 CDD-GOT !  TEST-EVAL:RC  CDD-GOT @ ;
-
+\ Section 15: a does> word acts for the word it creates, so one that creates
+\ none is rejected at its does>.
 : CDD-SECTION-PATCH ( -- )
-   s" a word patched by a does> word defined after it gives the clause's cell" T-LABEL
-   s" variable CDD-PV1 : CDD-PB1 ( -- ) does> ( -- n ) drop 9 ; CDD-PB1 CDD-PV1 CDD-GOT !"
-      CDD-GOT-RC 9 T= 0 T=
-   s" the patching word keeps its own effect" T-LABEL
-   s" variable CDD-PV3 : CDD-PB3 ( -- ) does> ( -- n ) drop 9 ; CDD-PB3 CDD-PV3 drop"
-      TEST-EVAL:RC 0 T=
-   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  70 T=
-   s" a does> word defined before the created word patches it the same way" T-LABEL
-   s" : CDD-PB4 ( -- ) does> ( -- n ) drop 9 ; variable CDD-PV4 CDD-PB4 CDD-PV4 CDD-GOT !"
-      CDD-GOT-RC 9 T= 0 T=
-   s" a packaged word patched by a global does> word gives the clause's cell" T-LABEL
-   s" CDD-PKC:CDD-PKV CDD-GOT !" CDD-GOT-RC 9 T= 0 T=
+   s" a does> word that creates no word is rejected at its does>" T-LABEL
+   s" : CDD-PB1 ( -- ) does> ( -- n ) drop 9 ;"
+      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
    s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
    s" : CDD-FD ( -- n ) 5 ; ndict@ 1- ndict! create CDD-FX" TEST-EVAL:RC 0 T=
-   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  70 T=
-   \ Last: a word still typed as its cell runs `@` on the clause's 9 and dies.
-   s" the patched word's cell is gone, so `@` on it is refused" T-LABEL
-   s" variable CDD-PV2 : CDD-PB2 ( -- ) does> ( -- n ) drop 9 ; CDD-PB2 CDD-PV2 @ drop"
-      TEST-EVAL:RC 70 T= ;
+   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  70 T= ;
 
 \ Section 16: the qualified definer's created word gives the clause's cells.
 : CDD-SECTION-QUALIFIED ( -- )
