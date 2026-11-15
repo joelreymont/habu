@@ -2,7 +2,9 @@
 \ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
 \ the only reader and writer of every socket, which waits on one AIO group: a
 \ readiness poll per socket and one on a wake pipe. Every handler call runs on
-\ a request worker (HTTP:SUBMIT), one at a time for each socket.
+\ a request worker (HTTP:SUBMIT), one at a time for each socket, and carries
+\ the value ACCEPT was given; `opened` comes first, so whatever the handler does
+\ there precedes every message.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/error.f
@@ -27,17 +29,20 @@ public
 \ seen when it opened, so a handle kept past its socket names no later one.
 NEWTYPE socket
 
-\ What a handler is handed: a whole text or binary message, its bytes BORROWED
-\ until the handler returns, and their count; or, once, that the socket has
-\ closed, with its status: the close frame's, 1005 when it carried none, 1006
-\ when the stream ended without one (section 7.1.5). A handler runs on a
-\ request worker (HTTP:SUBMIT) and may block; its socket's next frame waits for
-\ it. Its throw is one LOG line, tag ws, `socket <handle> failed, throw
-\ <code>`, and a throw on a message also closes the socket under 1011. A peer
-\ that breaks the protocol fails the connection: 1002 for a frame the codec refuses or one out of order, 1007 for
+\ What a handler is handed, with the socket and the value ACCEPT was given:
+\ first, once, that the socket has opened; then each whole text or binary
+\ message, its bytes BORROWED until the handler returns, and their count; and
+\ last, once, that the socket has closed, with its status: the close frame's,
+\ 1005 when it carried none, 1006 when the stream ended without one (section
+\ 7.1.5). A handler runs on a request worker (HTTP:SUBMIT) and may block; its
+\ socket's next call waits for it. Its throw is one LOG line, tag ws, `socket
+\ <handle> failed, throw <code>`, and a throw on `opened` or a message also
+\ closes the socket under 1011. A peer that breaks the protocol fails the
+\ connection: 1002 for a frame the codec refuses or one out of order, 1007 for
 \ text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
 \ answered with a pong even once this end has sent its close.
 ENUM message
+   VARIANT opened ;VARIANT
    VARIANT text FIELD chars ptr u8 FIELD count n ;VARIANT
    VARIANT binary FIELD bytes ptr u8 FIELD len n ;VARIANT
    VARIANT closed FIELD status n ;VARIANT
@@ -75,11 +80,13 @@ variable CAP                                \ START's limit: the slots the table
 3 constant PHASE-CLOSED           \ the status is final; the socket ends once its queue is written
 4 constant PHASE-RESERVED         \ ACCEPT is filling the slot
 
-\ A slot's delivery, read and written only under LOCK, by WS's task and by the
-\ request worker running the slot's handler call. Ready moves to handing as the
-\ task hands the handler a message or `closed` (HAND-OFF), and handing back to
-\ ready as that call ends on its worker (CALL-ENDED), which pokes the task to
-\ parse on from IN-AT; the end of a `closed` call retires the slot instead.
+\ A slot's delivery, read and written only under LOCK, by ACCEPT, by WS's task
+\ and by the request worker running the slot's handler call. A socket is
+\ published handing, ACCEPT having queued its `opened` (OPEN-CALL); ready moves
+\ to handing as the task hands the handler a message or `closed` (HAND-OFF),
+\ and handing back to ready as that call ends on its worker (CALL-ENDED), which
+\ pokes the task to parse on from IN-AT; the end of a `closed` call retires the
+\ slot instead.
 0 constant DELIVERY-READY         \ PARSE may run
 1 constant DELIVERY-HANDING       \ a handler call is queued or running: nothing parsed, no read armed
 
@@ -129,7 +136,8 @@ DYNAMIC-BUFFER LINK TCP4:connection
 \ message buffer and scratch are one mapping (REGION), its input and outgoing
 \ queue two more; ACCEPT makes them and the task gives them back as the socket
 \ ends.
-DYNAMIC-BUFFER HANDLER [ socket message -- ]
+DYNAMIC-BUFFER HANDLER [ socket n message -- ]
+DYNAMIC-BUFFER HANDLER-ARG n          \ the value ACCEPT was given, passed to every call
 DYNAMIC-BUFFER REGION SPAN:span<u8>
 DYNAMIC-BUFFER IN SPAN:span<u8>       \ bytes read and not yet parsed
 DYNAMIC-BUFFER IN-AT n
@@ -166,6 +174,7 @@ DYNAMIC-BUFFER CALLER n               \ the task running that call (TASK:SELF-N)
 : TABLES-RESERVE ( n -- ) {: n:n :}
    n LINK-RESERVE
    n HANDLER-RESERVE
+   n HANDLER-ARG-RESERVE
    n REGION-RESERVE
    n IN-RESERVE
    n IN-AT-RESERVE
@@ -528,16 +537,17 @@ RUN-IDLE RUN !
 : CLOSED-CALL? ( n -- bool )
    PENDING @
    MATCH message
+      opened OF false ENDOF
       text OF drop drop false ENDOF
       binary OF drop drop false ENDOF
       closed OF drop true ENDOF
    ;MATCH ;
 
 
-\ The slot is handing, so nothing else writes its PENDING, HANDLER or GEN
-\ until the call ends.
+\ The slot is handing, so nothing else writes its PENDING, HANDLER,
+\ HANDLER-ARG or GEN until the call ends.
 : CALL-HANDLER ( n -- n ) {: idx:n :}
-   idx HANDLE >SOCKET idx PENDING @ idx HANDLER @ execute
+   idx HANDLE >SOCKET idx HANDLER-ARG @ idx PENDING @ idx HANDLER @ execute
    idx ;
 
 
@@ -1228,20 +1238,36 @@ ENUM course
    POKE ;
 
 
+\ Under LOCK, the connection taken: the handler, its value and `opened` are
+\ the slot's, and that call is queued before the task can see the slot, so it
+\ comes first; its worker waits for LOCK. The code HTTP:SUBMIT threw, or 0;
+\ after a throw the slot is reserved again and its connection closed.
+: OPEN-CALL ( [ socket n message -- ] n n -- n ) {: q arg:n idx:n :}
+   q idx HANDLER !
+   arg idx HANDLER-ARG !
+   WS-MESSAGE:opened idx PENDING !
+   DELIVERY-HANDING idx DELIVERY !
+   idx [: QUEUE-HAND ;] catch {: code:n :} drop
+   code 0= if 0 exit then
+   idx LINK @ TCP4:CLOSE drop
+   PHASE-RESERVED idx PHASE !
+   code ;
+
+
 \ The reserved slot becomes the request's socket, or, when WS began stopping
 \ since RESERVE, is given back and the request refused with 503. A throw, from
-\ a request already taken or from a mapping, gives the slot back before it
-\ goes on, so no slot stays reserved and no connection open.
-: OPEN-SOCKET ( HTTP:request HTTP:response [ socket message -- ] n n -- accepted )
-   {: asked:HTTP:request answer:HTTP:response q idx:n w:n :}
-   q idx HANDLER !
+\ a request already taken, from a mapping or from HTTP:SUBMIT, gives the slot
+\ back before it goes on, so no slot stays reserved and no connection open.
+: OPEN-SOCKET ( HTTP:request HTTP:response [ socket n message -- ] n n n -- accepted )
+   {: asked:HTTP:request answer:HTTP:response q arg:n idx:n w:n :}
    idx HANDLE {: h:n :}
    idx w [: PREPARE ;] catch {: failed:n :} 2drop
    failed 0 <> if idx GIVE-BACK failed throw then
    LOCK TASK:GET
    asked idx ADOPT {: code:n gone:bool :}
+   code 0= gone 0= and if q arg idx OPEN-CALL else code then {: err:n :}
    LOCK TASK:RELEASE
-   code 0 <> if idx GIVE-BACK code throw then
+   err 0 <> if idx GIVE-BACK err throw then
    gone if idx GIVE-BACK answer 503 REFUSE exit then
    POKE
    h >SOCKET WS-ACCEPTED:open ;
@@ -1411,23 +1437,26 @@ public
 \ Sec-WebSocket-Version is 13, each of those four arriving once; the server
 \ refuses an HTTP/1.1 request without exactly one valid Host before any
 \ handler runs. A handshake that passes takes the connection from the server
-\ and `open` carries the socket; the task answers 101 and hands the handler
-\ every message and, once, `closed`. A socket whose connection refuses
-\ TCP_NODELAY or keepalive is closed from birth under 1006. One that does not pass is
+\ and `open` carries the socket; the task answers 101, and the handler is
+\ called with the socket, n and `opened`, then every message and, once,
+\ `closed`, each call with n, so whatever the handler does for `opened`, such
+\ as recording the socket under n, precedes every message. A socket whose
+\ connection refuses TCP_NODELAY or keepalive is closed from birth under 1006,
+\ and still told `opened`, then `closed`. One that does not pass is
 \ answered 400, or 426 naming version 13, and one past START's limit, or while
 \ WS is stopping, 503, through the response once the route handler returns,
-\ and `refused` carries that status: no socket exists for it. Origin is the
-\ route handler's to check before it accepts. Outside a run or while START
-\ still starts it, it is E-WS-STATE.
-: ACCEPT ( HTTP:request HTTP:response [ socket message -- ] -- accepted )
-   {: asked:HTTP:request answer:HTTP:response q :}
+\ and `refused` carries that status: no socket exists for it, and n is not
+\ kept. Origin is the route handler's to check before it accepts. Outside a
+\ run or while START still starts it, it is E-WS-STATE.
+: ACCEPT ( HTTP:request HTTP:response [ socket n message -- ] n -- accepted )
+   {: asked:HTTP:request answer:HTTP:response q arg:n :}
    RUNNING? 0= if E-WS-STATE throw then
    HTTP:WORKER-SLOT {: w:n :}
    asked w VERDICT {: status:n :}
    status 0 <> if answer status REFUSE exit then
    RESERVE {: idx:n :}
    idx 0 < if answer 503 REFUSE exit then
-   asked answer q idx w OPEN-SOCKET ;
+   asked answer q arg idx w OPEN-SOCKET ;
 
 
 \ SEND-TEXT, SEND-BINARY and CLOSE may be called from any task, the handler

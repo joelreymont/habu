@@ -1,8 +1,9 @@
 \ ws-test.f - RFC 6455 connections over a real loopback port: a Habu client on
 \ TCP4 shakes hands with src/lib/net/ws.f inside an HTTP server and speaks frames
 \ built and read with src/lib/net/ws-frame.f. One handler, NOTE, serves every
-\ socket and logs each `closed` with its socket; every handler is defined before
-\ the server starts.
+\ socket and logs each `closed` with its socket, and RECORD, in front of it,
+\ also notes each call of its socket; every handler is defined before the
+\ server starts.
 \ Run: bin/hb --load src/lib/net/ws-test.f
 \
 \ Each frame the client sends or reads one at a time is one transcript line:
@@ -30,8 +31,8 @@ require src/lib/date.f
 \ ACCEPT-STALLED is ACCEPT with a stall run once the handshake holds its slot,
 \ as a worker the OS keeps off the processor would.
 package WS
-: WS-TEST:ACCEPT-STALLED ( HTTP:request HTTP:response [ socket message -- ] [ -- ] -- accepted )
-   {: asked:HTTP:request answer:HTTP:response q stall :}
+: WS-TEST:ACCEPT-STALLED ( HTTP:request HTTP:response [ socket n message -- ] n [ -- ] -- accepted )
+   {: asked:HTTP:request answer:HTTP:response q arg:n stall :}
    RUNNING? 0= if E-WS-STATE throw then
    HTTP:WORKER-SLOT {: w:n :}
    asked w VERDICT {: status:n :}
@@ -39,7 +40,7 @@ package WS
    RESERVE {: idx:n :}
    idx 0 < if answer 503 REFUSE exit then
    stall execute
-   asked answer q idx w OPEN-SOCKET ;
+   asked answer q arg idx w OPEN-SOCKET ;
 : WS-TEST:LAST-GEN ( n -- ) {: idx:n :}
    LOCK TASK:GET
    GEN-MASK idx GEN !
@@ -175,6 +176,9 @@ variable PONGS                    \ whole pongs read of those the burst is owed
 LOG-CAP TYPED-BUFFER CLOSED-SOCK WS:socket  \ each socket that closed, in order
 LOG-CAP TYPED-BUFFER CLOSED-CODE n          \ and the status it closed under
 variable CLOSED-N                 \ entries logged; written last, under CLOSED-LOCK
+8 TYPED-BUFFER CALL-KIND n        \ each call RECORD's socket got: 0 opened, 1 text, 2 binary, 3 closed
+8 TYPED-BUFFER CALL-ARG n         \ and the value it carried
+variable CALLS-N                  \ entries noted; written last
 TASK:FACILITY CLOSED-LOCK         \ `closed` calls run on any worker
 1 TYPED-BUFFER HELD WS:socket     \ the socket the route accepted last
 1 TYPED-BUFFER NOTED WS:socket    \ the socket whose cue the handler is acting on
@@ -597,13 +601,31 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    E-HANDLER throw ;
 
 \ Every socket's handler, on a request worker.
-: NOTE ( WS:socket WS:message -- ) {: sock:WS:socket msg :}
+: NOTE ( WS:socket n WS:message -- ) {: sock:WS:socket arg:n msg :}
    msg
    MATCH WS:message
+      opened OF ENDOF
       text OF sock TEXT-IN ENDOF
       binary OF sock BINARY-IN ENDOF
       closed OF sock CLOSED-IN THROW-IN-CLOSED ENDOF
    ;MATCH ;
+
+: KIND ( WS:message -- n )
+   MATCH WS:message
+      opened OF 0 ENDOF
+      text OF 2drop 1 ENDOF
+      binary OF 2drop 2 ENDOF
+      closed OF drop 3 ENDOF
+   ;MATCH ;
+
+\ NOTE, behind a note of the call's kind and value, so `closed` is noted before
+\ NOTE logs it. One socket's calls run one at a time.
+: RECORD ( WS:socket n WS:message -- ) {: sock:WS:socket arg:n msg :}
+   CALLS-N atomic@ {: k:n :}
+   msg KIND k CALL-KIND !
+   arg k CALL-ARG !
+   k 1+ CALLS-N atomic!
+   sock arg msg NOTE ;
 
 : KEEP ( WS:accepted -- )
    MATCH WS:accepted
@@ -618,10 +640,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    ACCEPTED TASK:SIGNAL-SEM ;
 
 : OPEN ( HTTP:request HTTP:response -- )
-   [: 2dup [: NOTE ;] WS:ACCEPT KEEP ;] ROUTED ;
+   [: 2dup [: NOTE ;] 0 WS:ACCEPT KEEP ;] ROUTED ;
+
+: SEVEN ( HTTP:request HTTP:response -- )
+   [: 2dup [: RECORD ;] 7 WS:ACCEPT KEEP ;] ROUTED ;
 
 : ACCEPT-AGAIN ( -- )
-   0 KEPT-REQUEST @ 0 KEPT-RESPONSE @ [: NOTE ;] WS:ACCEPT KEEP ;
+   0 KEPT-REQUEST @ 0 KEPT-RESPONSE @ [: NOTE ;] 0 WS:ACCEPT KEEP ;
 
 \ One request is one socket: a second accept of it is refused, and the first
 \ socket serves on.
@@ -629,7 +654,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    {: asked:HTTP:request answer:HTTP:response :}
    asked 0 KEPT-REQUEST !
    answer 0 KEPT-RESPONSE !
-   asked answer [: NOTE ;] WS:ACCEPT KEEP
+   asked answer [: NOTE ;] 0 WS:ACCEPT KEEP
    [: ACCEPT-AGAIN ;] catch SECOND-ACCEPT ! ;
 
 : TWICE ( HTTP:request HTTP:response -- )
@@ -640,14 +665,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    HOLD-MS >MS TASK:SLEEP ;
 
 : STALLED ( HTTP:request HTTP:response -- )
-   [: 2dup [: NOTE ;] [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
+   [: 2dup [: NOTE ;] 0 [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
 : AWAIT-FILL ( -- )
    1 STALLING !
    FILLED TASK:WAIT-SEM ;
 
 : FILLING ( HTTP:request HTTP:response -- )
-   [: 2dup [: NOTE ;] [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
+   [: 2dup [: NOTE ;] 0 [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
 : PLAIN ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    answer 200 HTTP:STATUS!
@@ -658,6 +683,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /ws" [: OPEN ;] HTTP:ROUTE
    s" POST" s" /ws" [: OPEN ;] HTTP:ROUTE
    s" GET" s" /twice" [: TWICE ;] HTTP:ROUTE
+   s" GET" s" /seven" [: SEVEN ;] HTTP:ROUTE
    s" GET" s" /stall" [: STALLED ;] HTTP:ROUTE
    s" GET" s" /fill" [: FILLING ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
@@ -913,6 +939,32 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" early payload" SHORT-HEAD 2 + EARLY
    s" a frame whose header the handshake cut" T-LABEL
    s" early header" 1 EARLY ;
+
+: KIND$ ( n -- ptr u8 n ) {: kind:n :}
+   kind 0= if s" opened" exit then
+   kind 1 = if s" text" exit then
+   kind 2 = if s" binary" exit then
+   s" closed" ;
+
+: LOG-CALLS ( -- )
+   CALLS-N atomic@ 0 ?do
+      s" handler " LOG i CALL-KIND @ KIND$ LOG
+      SP LOG-C i CALL-ARG @ LOG-N LF LOG-C
+   loop ;
+
+\ The handler is called `opened` before the text the client sent behind its
+\ request, and every call carries the value the route accepted with.
+: FIRST-CALL-CASE ( -- )
+   s" opened comes first, with the route's value" SECTION
+   0 CALLS-N atomic!
+   s" GET" s" /seven" REQ-START GOOD-LINES S\" \r\n" REQ+
+   s" > " true WS-OPCODE:text s" first" LOG-FRAME
+   true WS-OPCODE:text s" first" FRAME$ REQ+
+   REQ-SEND OPENED {: conn:TCP4:connection sock:WS:socket :}
+   conn HEAR WS-OPCODE:text s" first" GOT
+   conn FAREWELL
+   sock 1000 CLOSES-WITHIN
+   LOG-CALLS ;
 
 : BREAKS ( ptr u8 n ptr u8 n n -- ) {: label lu:n a u:n code:n :}
    label lu SECTION
@@ -1730,6 +1782,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" > text 12 6561726c7920686561646572" W
    s" < text 12 6561726c7920686561646572" W
    W-FAREWELL
+   s" == opened comes first, with the route's value" W
+   s" > text 5 6669727374" W
+   s" < text 5 6669727374" W
+   W-FAREWELL
+   s" handler opened 7" W
+   s" handler text 7" W
+   s" handler closed 7" W
    s" == an unmasked frame" W
    s" > raw 810548656c6c6f" W
    s" < close 2 03ea" W-FAILED
@@ -1943,6 +2002,7 @@ create FD-LIMIT 16 allot
    CAPACITY-CASE
    HANDSHAKE-CASE REFUSAL-CASES TOLERANT-CASE
    ECHO-CASE BAD-TEXT-CASE LENGTH-CASES FRAGMENT-CASES PING-CASES EARLY-CASE
+   FIRST-CALL-CASE
    HEADER-FAULTS MESSAGE-FAULTS BOUND-CASES
    CLOSE-STATUS-CASES CLOSE-CASES SERVER-CLOSE-CASE TWICE-CASE THROW-CASE
    MANY-CASE BLOCK-CASE PUSH-CASE BOTH-CASE BURST-CASE HELD-CASE OVERFLOW-CASE STALL-CASE ;
