@@ -982,10 +982,12 @@ public
 
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
-\ words that print a rejection.
+\ words that print a rejection. The record stands at the path where a source
+\ holds it; one from a command line or the environment is in none.
 : PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
    u PATH-CAP > IF
       s" REJECTION:FILE!" u PATH-CAP PATH-RANGE
+      a PLACES? IF  a u AT  s" too long" EMIT-STR  THEN
       HELP  s" name the file by a path of at most " EMIT-STR
       PATH-CAP EMIT-U  s"  bytes" EMIT-STR
       CHECKER-REJECT-RC STOP

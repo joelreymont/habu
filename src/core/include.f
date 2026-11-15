@@ -100,6 +100,58 @@ public
 
 ;package
 
+\ Word w, a loader or ROOT!, got the path a u, which no file name holds: kind
+\ E-PATH-RANGE with len 0 when the path is empty, -1 when only the path it
+\ resolves to is longer than the cap, else its length; kind E-PATH-NUL when it
+\ holds a NUL byte. The record stands at a u where a source holds it, else at w
+\ where one holds that, else at the token the engine read last.
+: LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
+   {: w:ptr wu:n a:ptr u:n kind:n len:n :}
+   kind E-PATH-NUL = if
+      s" E-PATH-NUL" REJECTION:OPEN
+      96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+      s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
+      s" holds a NUL byte"
+   else
+      w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+      len 0= if
+         s" empty path"
+      else
+         len 0 < if s" too long once resolved" else s" too long" then
+      then
+   then {: l:ptr lu:n :}
+   a REJECTION:PLACES? if
+      a u
+   else
+      w REJECTION:PLACES? if
+         w wu
+      else
+         SRCLOC:TOKEN$
+      then
+   then
+   REJECTION:AT
+   l lu REJECTION:EMIT-STR
+   REJECTION:HELP
+   kind E-PATH-NUL = if
+      s" remove the NUL byte from the path" REJECTION:EMIT-STR
+   else
+      s" pass a path of 1 to " REJECTION:EMIT-STR
+      INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   then
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Whether a loader or ROOT! can take the path a u before it resolves it, writing
+\ nothing: 0 0 when it can, else the kind and len LOADER-PATH-STOP takes, for
+\ an empty path or one holding a NUL byte. A string loader takes a path written
+\ past the cap that resolves within it, so length is the resolver's to judge.
+: LOADER-PATH-FAULT ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   u 0 <= if E-PATH-RANGE 0 exit then
+   0 begin dup u < while
+      dup a + c@ 0= if drop E-PATH-NUL 0 exit then
+      1 +
+   repeat
+   drop 0 0 ;
+
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
@@ -670,6 +722,8 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then
    u INCLUDE-PATH-CAP > if w wu a u u ROOT-LONG then
    CURRENT$ a u JOIN {: p:ptr pu:n :}
    pu INCLUDE-PATH-CAP > if w wu a u pu ROOT-LONG then
@@ -749,58 +803,6 @@ using SOURCE-ROOT
    REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
-
-\ Loader word w got the path a u, which no file name holds: kind E-PATH-RANGE
-\ with len 0 when the path is empty, -1 when only the path it resolves to is
-\ longer than the cap, else its length; kind E-PATH-NUL when it holds a NUL
-\ byte. The record stands at a u where a source holds it, else at w where one
-\ holds that, else at the token the engine read last.
-: LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
-   {: w:ptr wu:n a:ptr u:n kind:n len:n :}
-   kind E-PATH-NUL = if
-      s" E-PATH-NUL" REJECTION:OPEN
-      96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-      s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
-      s" holds a NUL byte"
-   else
-      w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
-      len 0= if
-         s" empty path"
-      else
-         len 0 < if s" too long once resolved" else s" too long" then
-      then
-   then {: l:ptr lu:n :}
-   a REJECTION:PLACES? if
-      a u
-   else
-      w REJECTION:PLACES? if
-         w wu
-      else
-         SRCLOC:TOKEN$
-      then
-   then
-   REJECTION:AT
-   l lu REJECTION:EMIT-STR
-   REJECTION:HELP
-   kind E-PATH-NUL = if
-      s" remove the NUL byte from the path" REJECTION:EMIT-STR
-   else
-      s" pass a path of 1 to " REJECTION:EMIT-STR
-      INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   then
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ Whether a loader can take the path a u before it resolves it, writing
-\ nothing: 0 0 when it can, else the kind and len LOADER-PATH-STOP takes, for
-\ an empty path or one holding a NUL byte. A string loader takes a path written
-\ past the cap that resolves within it, so length is the resolver's to judge.
-: LOADER-PATH-FAULT ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   u 0 <= if E-PATH-RANGE 0 exit then
-   0 begin dup u < while
-      dup a + c@ 0= if drop E-PATH-NUL 0 exit then
-      1 +
-   repeat
-   drop 0 0 ;
 
 \ The path a u parsed for loader word w, which reads at most the cap: a missing
 \ one is rejected at the word, and one past the cap or holding a NUL at itself.
