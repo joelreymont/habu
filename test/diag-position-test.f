@@ -1460,6 +1460,30 @@ variable RC
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" :1:21" REJECT-RC LOADED-AT ;
 
+: TEST-VALUE-RECORD-NO-TYPE ( -- )
+   s" a VALUE-RECORD field with no type under the loader, at the field" T-LABEL
+   s" VALUE-RECORD vr x n y END-VALUE-RECORD" s" value-record-no-type.f" LINE-FIXTURE
+   s" error[E-BAD-DECLARATION]" REJECT-RC LOADED
+   SB-RESET
+   s" error[E-BAD-DECLARATION]: field `y` of value record `vr` has no type" SB-APPEND
+   S\" \n --> " SB-APPEND  FX-PATH$ SB-APPEND
+   S\" :1:21\n  |\n1 | VALUE-RECORD vr x n y END-VALUE-RECORD\n" SB-APPEND
+   S\"   |                     ^ no type follows\n" SB-APPEND
+   S\"   = help: write a declared type after the field's name, as `y n`\n\n" SB-APPEND
+   ERR$ SB$ T$= ;
+
+: TEST-VALUE-RECORD-BAD-TYPE ( -- )
+   s" a VALUE-RECORD field with an unknown type under the loader, at the type" T-LABEL
+   s" VALUE-RECORD vr x n y nope END-VALUE-RECORD" s" value-record-bad-type.f" LINE-FIXTURE
+   s" error[E-BAD-DECLARATION]" REJECT-RC LOADED
+   SB-RESET
+   s" error[E-BAD-DECLARATION]: field `y` of value record `vr`" SB-APPEND
+   S\"  has an unknown or malformed type\n --> " SB-APPEND  FX-PATH$ SB-APPEND
+   S\" :1:23\n  |\n1 | VALUE-RECORD vr x n y nope END-VALUE-RECORD\n" SB-APPEND
+   S\"   |                       ^^^^ not a valid type\n" SB-APPEND
+   S\"   = help: write a declared type after the field's name, as `y n`\n\n" SB-APPEND
+   ERR$ SB$ T$= ;
+
 \ The u bytes at a end the fixture text, built in place for a fixture longer
 \ than the string builder holds.
 : FX+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -2295,6 +2319,8 @@ variable RC
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
    TEST-VALUE-RECORD-LOAD
+   TEST-VALUE-RECORD-NO-TYPE
+   TEST-VALUE-RECORD-BAD-TYPE
    TEST-PREPASS-OPEN
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
