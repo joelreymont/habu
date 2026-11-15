@@ -4162,7 +4162,8 @@ variable PRIOR-STORES-SIZE
 
 
 \ After INPUT!: true when part FILE-PART's object can stand for its compile: stamped (an UNLINKABLE part's INPUT-STAMP
-\ is 0 0 -1), whole and checked, in the current root, its reads, roots and request answering as they did.
+\ is 0 0 -1), whole and checked, its records fitting the dictionary, in the current root, its reads, roots and request
+\ answering as they did. A part whose records do not fit compiles, so a full dictionary is rejected at its source token.
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
@@ -4171,6 +4172,7 @@ variable PRIOR-STORES-SIZE
    HEADER-CK
    REQS-N @ 0<> if 0 else -1 then PIECE-CK
    GOOD? 0= if false exit then
+   ndict@ RECS-N @ + DICT-CAP > if false exit then
    0 INPUT-AT FIELD$ ENTRY-HOLDS? 0= if false exit then
    2 INPUT-AT FIELD$ READS-HOLD? 0= if false exit then
    ACTS-WALK

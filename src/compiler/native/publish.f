@@ -287,12 +287,12 @@ public
 \ A prepared `does>` definer: its `;does` clause starts `off` bytes into the
 \ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
 \ The checker slice installed beside it carries the clause's checker facts.
+\ PART-FRESH? links a part only when its records fit, so the clause has its record.
 : IMPORT-PENDING-DOES ( ptr u8 n n ptr n n ptr n n bool n -- n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
       addrs:ptr addrn:n wide:bool off:n :}
    off 0 <= off size >= or off 3 and 0<> or if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
-   idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
    code size recorded calls calln addrs addrn idx DOES-NAME-PAD IMPORT-CODE
       {: at:n fn:n :}
    fn off + recorded off - does-record
