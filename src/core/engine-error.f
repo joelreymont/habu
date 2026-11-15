@@ -7,20 +7,10 @@ public
 84 constant SEAL-PACKAGE
 85 constant BAD-TAG
 88 constant CODE-CERT
-\ `using NAME` / `;using` consumer-import failures.
-\ Each is recoverable inside `evaluate` (a catchable throw of the same code) and a
-\ fail-closed process exit at top level, mirroring the package-keyword failure ABI.
-89 constant USING-NO-NAME       \ `using` with no following token
 90 constant USING-BAD-NAME      \ `using` package name contains ':'
-91 constant USING-UNKNOWN       \ `using` names no known package
-92 constant USING-OVERFLOW      \ more than USE-MAX concurrent usings
-93 constant USING-UNBALANCED    \ `;using` with no using open
-94 constant USING-AMBIGUOUS     \ bare tail resolves in more than one used public wordlist
 \ 96, 98 and 99 belong to SNAP-RELOC relocation failures (layout.f).
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
-104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
-105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
 \ 106: a callback thunk runs on C's stack with no catch frame above it, so it
 \ cannot throw. Every rejection of a callback and of an outbound FFI call on a
 \ context another thread owns writes a record with code E-CALLBACK to fd 2 and

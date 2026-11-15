@@ -22,15 +22,6 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 \ The captured rejection record contains the text.
 : UCE-SAID ( ptr u8 n -- )  {: a:ptr u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
-\ Engine reject codes (src/core/engine-error.f USING-*), delivered as catchable
-\ throws inside INCLUDE-EVALUATE.
-89 constant E-NO-NAME
-90 constant E-BAD-NAME
-91 constant E-UNKNOWN
-92 constant E-OVERFLOW
-93 constant E-UNBALANCED
-94 constant E-AMBIGUOUS
-104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 
 package UA public : AW ( -- n ) 11 ; ;package
@@ -84,7 +75,7 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 \ a bare public is not visible without a using
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
-s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
@@ -97,15 +88,15 @@ REJECTION:BUFFER$ s" `AW`" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH VERIFY:E-SECTION-WORD T=
 s" package UT-SECT : UT-SECT-W ( -- ) ; target ;package" VS-CATCH 0 T=
 \ unknown package
-s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
+s" using NOPE-PKG" UCE-CATCH E-REJECT T=
 \ a colon-bearing name is not a package name
-s" using UA:AW" UCE-CATCH E-BAD-NAME T=
+s" using UA:AW" UCE-CATCH E-REJECT T=
 \ ;using with no using open is unbalanced
-s" ;using" UCE-CATCH E-UNBALANCED T=
+s" ;using" UCE-CATCH E-REJECT T=
 \ a define under a using lands in the current scope, never in the used package
 s" using UA : UT-NEW ( -- n ) 5 ; ;using UA:UT-NEW drop" UCE-CATCH E-REJECT T=
 \ overflow: more than USE-MAX (16) concurrent usings
-s" using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA" UCE-CATCH E-OVERFLOW T=
+s" using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA" UCE-CATCH E-REJECT T=
 
 \ === scope end: using does not leak ===
 \ ;using ends the scope: AW is unresolved after it
@@ -117,10 +108,10 @@ s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH 
 \ `;package` restores the using depth the package opened at, so a `;using` inside
 \ the package that closes a using opened before it is refused by name instead of
 \ coming undone at `;package` and leaving AW resolving past it.
-s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-OUTER T=
+s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-REJECT T=
 \ the production source verifier refuses the same nesting
 REJECTION:CAPTURE
-s" using UA package UQ ;using ;package" VS-CATCH E-OUTER T=
+s" using UA package UQ ;using ;package" VS-CATCH E-REJECT T=
 REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 \ a using opened and closed inside the package, and one opened before `package`
 \ and closed after `;package`, are unchanged on both routes
@@ -214,13 +205,13 @@ s" MW drop" UCE-CATCH 0 T=
 \ no used package exports, a word the open package defines itself and a read
 \ after `;using` are unchanged. A buffer evaluated under its includer's using
 \ resolves through it, so it refuses too.
-s" using USG MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
-s" using USG ' MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+s" using USG MW drop ;using" UCE-CATCH CHECKER-REJECT-RC T=
+s" using USG ' MW drop ;using" UCE-CATCH CHECKER-REJECT-RC T=
 s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
 s" using USG NC drop ;using" UCE-CATCH 0 T=
 s" package USM : MW ( -- n ) 5 ; using USG MW drop ' MW drop ;using ;package" UCE-CATCH 0 T=
 using USG
-s" MW drop" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+s" MW drop" UCE-CATCH CHECKER-REJECT-RC T=
 ;using
 s" using USG ;using MW drop ' MW drop" UCE-CATCH 0 T=
 
@@ -301,14 +292,14 @@ s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
 \ clean and the throwing path alike. A using the buffer opened closes, and the
 \ verifier's replay refuses the inherited one the same way.
 using UA
-s" ;using using UB" UCE-CATCH E-OUTER T=
-s" ;using using UB NO-SUCH-WORDX" UCE-CATCH E-OUTER T=
-s" using UB ;using ;using" UCE-CATCH E-OUTER T=
+s" ;using using UB" UCE-CATCH E-REJECT T=
+s" ;using using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
+s" using UB ;using ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH 0 T=
 s" BW drop" UCE-CATCH E-REJECT T=
 s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
 REJECTION:CAPTURE
-s" ;using" VS-CATCH E-OUTER T=
+s" ;using" VS-CATCH E-REJECT T=
 REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" using UB ;using" VS-CATCH 0 T=
 ;using
@@ -322,10 +313,10 @@ s" using UB ;using" VS-CATCH 0 T=
 using UP
 package UQK using UA
 REJECTION:CAPTURE
-s" ;package ;using" VS-CATCH E-OUTER T=
+s" ;package ;using" VS-CATCH E-REJECT T=
 REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" ;package using UB BW drop ;using" VS-CATCH 0 T=
-s" ;package ;using" UCE-CATCH E-OUTER T=
+s" ;package ;using" UCE-CATCH E-REJECT T=
 s" ;package" UCE-CATCH 0 T=
 s" AW drop" UCE-CATCH E-REJECT T=
 package UQK using UA
@@ -334,7 +325,7 @@ s" BW drop" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 s" PUBW drop" UCE-CATCH 0 T=
 ;using
-s" ;using" UCE-CATCH E-UNBALANCED T=
+s" ;using" UCE-CATCH E-REJECT T=
 
 \ === a throw puts back the includer's used publics ===
 \ A buffer that closes its includer's package and opens a using writes that
@@ -389,13 +380,13 @@ s" package UPA using UPB : UPR ( -- n ) UPX ; ;using UPR USING-TEST:UPT-V ! ;pac
 USING-TEST:UPT-V @ 6 T=
 s" package UPA using UPB ;using UPX drop ;package" UCE-CATCH E-REJECT T=
 s" package UPA using UPB : UPV ( -- n ) UPX ; ;using ;package" VS-CATCH 0 T=
-s" using UPB" UCE-CATCH E-UNKNOWN T=
+s" using UPB" UCE-CATCH E-REJECT T=
 
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
 \ while UA and UC both export AW, at each available tier, and runs as itself. A
-\ reference to the bare AW stays ambiguous: a checked body is E-USING-AMBIGUOUS
-\ and a top-level token the engine's E-AMBIGUOUS. This section comes last
+\ reference to the bare AW stays ambiguous, in a checked body and as a
+\ top-level token: both are E-USING-AMBIGUOUS. This section comes last
 \ because it defines a global AW, which the cases above need absent.
 package USING-TEST public variable UAD-V ;package
 s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
@@ -403,7 +394,7 @@ USING-TEST:UAD-V @ 1 T=
 REJECTION:CAPTURE
 s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
 s" error[E-USING-AMBIGUOUS]" UCE-SAID  s" `AW`" UCE-SAID  s" <input>:1:37" UCE-SAID  REJECTION:BUFFER-OFF
-s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
 s" undefine AW" UCE-CATCH 0 T=
 
 T-REPORT

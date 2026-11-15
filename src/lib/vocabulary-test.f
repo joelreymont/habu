@@ -117,10 +117,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    [: SAYS-IN ;] CMD:WITH-COMMAND ;
 
 \ A rejection the engine throws: the record's first line and its place,
-\ ENGINE-ERROR:POLICY, no output.
+\ status 70, no output.
 : REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
-   name nu ENGINE-ERROR:POLICY line lu place pu s" " SAYS ;
+   name nu CHECKER-REJECT-RC line lu place pu s" " SAYS ;
 
 : TIER0-REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
@@ -143,7 +143,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : ESCAPED ( -- )
    TIER0 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
-   TIER0 s" escaped-tail" 107 s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-tail.f:3:" S\" Bracket \\ \"Café\"" SAYS
+   TIER0 s" escaped-tail" 70 s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-tail.f:3:" S\" Bracket \\ \"Café\"" SAYS
    s" escaped-body-tail" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-body-tail.f:2:" TIER0-REFUSES
    s" escaped-c" S\" error[E-POLICY]: `C\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-c.f:2:" TIER0-REFUSES
    s" escaped-dotq" S\" error[E-POLICY]: `.\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-dotq.f:2:" TIER0-REFUSES ;
@@ -252,7 +252,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-task-package" HARNESS!
    KEYWORD$ S\" = package: PTKW\n  = keyword: DUP\n" S\" admitted\n0\n" STOPS
    s" allow-catch" HARNESS!
-   s" evaluate" 0 s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" S\" 107\n" SAYS ;
+   s" evaluate" 0 s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" S\" 70\n" SAYS ;
 
 \ A wordlist id at or above PROT-WID-MAX has no bit in the admission bitmap: it
 \ cannot be admitted, and a record in it is never in the vocabulary.
@@ -277,11 +277,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" confined/parent" ROOT$ s" `../outside.f` lies outside the source root" REFUSES
-   s" confined/known" ROOT$ s" `../dep.f` lies outside the source root" REFUSES
-   s" confined/library" ROOT$ s" `src/lib/string.f` lies outside the source root" REFUSES
-   s" confined/absolute" ROOT$ s" `/etc/passwd` lies outside the source root" REFUSES
-   s" confined/symlink" ROOT$ s" `link.f` lies outside the source root" REFUSES
+   s" confined/parent" ENGINE-ERROR:POLICY ROOT$ s" `../outside.f` lies outside the source root" s" " SAYS
+   s" confined/known" ENGINE-ERROR:POLICY ROOT$ s" `../dep.f` lies outside the source root" s" " SAYS
+   s" confined/library" ENGINE-ERROR:POLICY ROOT$ s" `src/lib/string.f` lies outside the source root" s" " SAYS
+   s" confined/absolute" ENGINE-ERROR:POLICY ROOT$ s" `/etc/passwd` lies outside the source root" s" " SAYS
+   s" confined/symlink" ENGINE-ERROR:POLICY ROOT$ s" `link.f` lies outside the source root" s" " SAYS
    s" confined/forbidden" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/confined/forbidden.f:1:" REFUSES
    s" confined/body" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/confined/body.f:1:" REFUSES
    s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REFUSES

@@ -993,15 +993,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" W2" WHICH!  TASK-LEFT-BUILD
    WORD-LOAD-BUILD ;
 
-\ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 84
+\ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 70
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
 : SEAL-REFUSED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
-   named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
-   s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
+   named placed and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
    s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
 
@@ -1012,14 +1012,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build links seal-second.f" SEAL-SECOND LINKED ;
 
 \ squat-main.f's build, in a fresh hb as SEAL-REFUSED's, as a --repl image when the flag is true:
-\ it exits 84 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
+\ it exits 70 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
 : SQUAT-REFUSED ( CMD:command bool -- CMD:command ) {: repl:bool :}
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
-   named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
-   s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
+   named placed and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
    s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
 

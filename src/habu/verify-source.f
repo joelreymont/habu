@@ -1039,7 +1039,7 @@ variable SEALS-N
 : SEAL-STOP ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    at TOKEN-BYTE !
    a u  SOURCE@ at + tu  INTERPRETER:SEALED-REJECT
-   ENGINE-ERROR:SEAL-PACKAGE REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SEALED-OPEN ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN

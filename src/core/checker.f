@@ -12494,7 +12494,7 @@ package CHECKER-REG
    t tu REJECTION:AT  s" nothing to close" REJECTION:EMIT-STR
    REJECTION:HELP  s" remove this `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
    s" `, or open a using before it" REJECTION:EMIT-STR
-   ENGINE-ERROR:USING-UNBALANCED REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Inside a package a `;using` closes only an import the package opened: one
 \ opened before `package` is at or below the depth `;package` restores, so
@@ -12510,7 +12510,7 @@ package CHECKER-REG
    t tu REJECTION:AT  s" using opened outside" REJECTION:EMIT-STR
    REJECTION:HELP  s" close each using in the " REJECTION:EMIT-STR
    w wu REJECTION:EMIT-STR  s"  that opens it" REJECTION:EMIT-STR
-   ENGINE-ERROR:USING-OUTER REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ --- global-vs-used-public shadow rejection. Resolution puts the open scope and
 \ the global wordlist ahead of the used publics, so a bare tail inside a live
