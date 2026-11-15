@@ -1849,6 +1849,36 @@ variable PATH-U
    NOTE-HALT-CASES ;
 
 
+$100 constant HEARD-CAP
+HEARD-CAP BUFFER: HEARD
+variable HEARD-U
+
+: HEARD+ ( ptr u8 n -- ) {: a u:n :}
+   HEARD-U @ u + HEARD-CAP > if E-CAPACITY throw then
+   a HEARD HEARD-U @ + u BYTE-COPY
+   HEARD-U @ u + HEARD-U ! ;
+
+\ Each pair lands as `channel=payload;`.
+: HEAR ( ptr u8 n ptr u8 n -- ) {: ca cu:n pa pu:n :}
+   ca cu HEARD+ s" =" HEARD+ pa pu HEARD+ s" ;" HEARD+ ;
+
+\ b's three notifications commit in one implicit transaction, so a's backend
+\ sends them together and one wait takes all three.
+: NOTIFIED-CASES ( -- )
+   OPEN {: a :}
+   OPEN {: b :}
+   a s" listen pqtjob" EXEC-OK
+   a s" listen pqtview" EXEC-OK
+   s" NOTIFIED hands each channel and payload over in order" T-LABEL
+   0 HEARD-U !
+   b s" notify pqtjob, '17'; notify pqtview, 'p2'; notify pqtjob, ''"
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
+   a FOREVER-MS >MS [: HEAR ;] NOTIFIED TTRUE
+   HEARD HEARD-U @ s" pqtjob=17;pqtview=p2;pqtjob=;" T$=
+   a PG:CLOSE
+   b PG:CLOSE ;
+
+
 : ENDED-NOW ( PG:connection -- PG:connection )
    dup ENDED? drop ;
 
@@ -2036,6 +2066,7 @@ variable WARN-LINES
    LOST-CONNECTION-CASES
    DEADLINE-CASES
    NOTIFY-CASES
+   NOTIFIED-CASES
    ENDED-CASES
    HB-TARGET-LINUX-X86-64? 0= if NOTICE-CASES then
    ABANDON-CASES

@@ -66,12 +66,12 @@ public
 -9252 constant E-COLUMN       \ a row or column index outside the result
 -9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
 -9254 constant E-CLEARED      \ a result used after CLEAR or its connection's close
--9255 constant E-TRANSACTION  \ a WITH-TRANSACTION or NOTIFIED? inside a transaction on the same connection
+-9255 constant E-TRANSACTION  \ a WITH-TRANSACTION, NOTIFIED? or NOTIFIED inside a transaction on the same connection
 -9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
 -9257 constant E-CAPACITY     \ more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use
 -9259 constant E-STATEMENT    \ an empty statement or name
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
--9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? wait
+-9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? or NOTIFIED wait
 
 NEWTYPE connection
 DEFLINEAR PG:result
@@ -126,6 +126,8 @@ LINEAR: RESULT>N ( PG:result -- n )
 7 constant PGRES-FATAL-ERROR
 8 constant PGRES-COPY-BOTH
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
+0 constant NOTIFY-RELNAME                 \ PGnotify.relname's cell, libpq-fe.h
+2 constant NOTIFY-EXTRA                   \ PGnotify.extra's cell, libpq-fe.h: past the C int be_pid, padded to a cell
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
@@ -1217,19 +1219,42 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    ;MATCH ;
 
 
-\ libpq hands each parsed notification over to its caller, who frees it. The
-\ channel and payload are not kept.
-: DRAIN-NOTIFIES ( n -- bool ) {: slot:n :}
-   false
+\ libpq NUL-ends a notification's channel and payload.
+: NOTIFY-TEXT ( ptr u8 n -- ptr u8 n ) {: note idx:n :}
+   note idx ptr-field @ CSTR$ ;
+
+
+: HAND-NOTIFY ( ptr u8 [ ptr u8 n ptr u8 n -- ] -- )
+   {: note act :}
+   [: note NOTIFY-RELNAME NOTIFY-TEXT
+      note NOTIFY-EXTRA NOTIFY-TEXT act execute ;]
+   [: note LIB-FREEMEM ;] finally ;
+
+
+\ libpq hands each parsed notification over to its caller, who frees it.
+: FREE-NOTIFIES ( n -- ) {: slot:n :}
    begin slot CONN-PG@ LIB-NOTIFIES dup NULL-ADDR? 0= while
-      LIB-FREEMEM drop true
+      LIB-FREEMEM
    repeat
    drop ;
 
 
-: TAKE-NOTIFIES ( n -- bool ) {: slot:n :}
+\ The cleanup frees what a throw from act left queued; after a whole pass
+\ libpq holds none, so it frees nothing.
+: DRAIN-NOTIFIES ( n [ ptr u8 n ptr u8 n -- ] -- bool )
+   {: slot:n act :}
+   [: false
+      begin slot CONN-PG@ LIB-NOTIFIES dup NULL-ADDR? 0= while
+         act HAND-NOTIFY drop true
+      repeat
+      drop ;]
+   [: slot FREE-NOTIFIES ;] finally ;
+
+
+: TAKE-NOTIFIES ( n [ ptr u8 n ptr u8 n -- ] -- bool )
+   {: slot:n act :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot CONN-LOST then
-   slot DRAIN-NOTIFIES ;
+   slot act DRAIN-NOTIFIES ;
 
 
 \ No protocol state is in flight, so a failed wait leaves the connection open.
@@ -1247,10 +1272,11 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ Readable bytes need not hold a notification (a notice, a parameter status, a
 \ partial message), so the wait goes on until one arrives or the deadline.
-: NOTIFY-WAIT ( n n -- bool ) {: slot:n deadline:n :}
+: NOTIFY-WAIT ( n n [ ptr u8 n ptr u8 n -- ] -- bool )
+   {: slot:n deadline:n act :}
    begin deadline LEFT-MS WAIT-MAX min dup 0 > while
       slot swap READABLE-WITHIN if
-         slot TAKE-NOTIFIES if true exit then
+         slot act TAKE-NOTIFIES if true exit then
       then
    repeat
    drop false ;
@@ -1777,17 +1803,10 @@ public
    handle CONN-SLOT BOUND@ >MS ;
 
 
-\ NOTIFIED? waits up to ms for a notification on a connection that ran LISTEN;
-\ 0 reads only what has arrived, including what libpq queued during earlier
-\ operations. It takes every notification queued, so one answer covers several
-\ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
-\ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
-\ connection is E-STATEMENT; one inside a transaction, which holds
-\ notifications back until it ends, is E-TRANSACTION; a negative ms is E-BOUND.
-\ A failed read closes the connection and throws E-EXEC; a readiness wait the
-\ AIO loop refuses throws E-EXEC, or the loop's own code, and leaves it open.
-: NOTIFIED? ( connection ms -- bool )
-   {: handle:connection timeout:ms :}
+private
+
+: WAIT-NOTIFIES ( connection ms [ ptr u8 n ptr u8 n -- ] -- bool )
+   {: handle:connection timeout:ms act :}
    handle CONN-SLOT {: slot:n :}
    timeout MS>N {: limit:n :}
    limit 0 < if E-BOUND throw then
@@ -1799,8 +1818,32 @@ public
    MEM-MAX-N {: latest:n :}
    limit latest now - NS-PER-MS / > if latest else now limit NS-PER-MS * + then
    {: deadline:n :}
-   slot TAKE-NOTIFIES if true exit then
-   slot deadline NOTIFY-WAIT ;
+   slot act TAKE-NOTIFIES if true exit then
+   slot deadline act NOTIFY-WAIT ;
+
+public
+
+
+\ NOTIFIED? waits up to ms for a notification on a connection that ran LISTEN;
+\ 0 reads only what has arrived, including what libpq queued during earlier
+\ operations. It takes every notification queued, so one answer covers several
+\ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
+\ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
+\ connection is E-STATEMENT; one inside a transaction, which holds
+\ notifications back until it ends, is E-TRANSACTION; a negative ms is E-BOUND.
+\ A failed read closes the connection and throws E-EXEC; a readiness wait the
+\ AIO loop refuses throws E-EXEC, or the loop's own code, and leaves it open.
+: NOTIFIED? ( connection ms -- bool )
+   [: 2drop 2drop ;] WAIT-NOTIFIES ;
+
+
+\ NOTIFIED waits as NOTIFIED? does, with its errors, then hands act each
+\ notification it took, in arrival order: the channel's bytes and the
+\ payload's, borrowed for the call. Each is freed as act returns or throws;
+\ after a throw the rest are freed unread and the throw goes on. It answers
+\ true when any arrived.
+: NOTIFIED ( connection ms [ ptr u8 n ptr u8 n -- ] -- bool )
+   WAIT-NOTIFIES ;
 
 
 private
