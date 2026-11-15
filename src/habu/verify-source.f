@@ -226,7 +226,6 @@ variable SCAN-I
 variable SKIP-STRINGS
 variable FOUND
 variable TOKEN-START
-\ The stopped token survives scanner restoration after a nested file throws.
 variable TOKEN-BYTE
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
@@ -735,22 +734,16 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    sig 1 +  sigu 2 - ;
 
 \ The record of t tu, a definition's name or `does>`, with no closed signature
-\ after it; the stop stands at the opener.
-: SIGNATURE-STOP ( ^u8 ^u8 n -- ) {: opener:^ t:^ tu:n :}
-   opener SOURCE@ - TOKEN-BYTE !
+\ after it.
+: SIGNATURE-STOP ( ^u8 n -- ) {: t:^ tu:n :}
    t tu INTERPRETER:SIGNATURE-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ The signature that must follow t tu; with none the scan stops at the opener.
-: SIGNATURE-AT ( ^u8 ^u8 n -- ^u8 n )
-   {: opener:^ t:^ tu:n :}
+\ The signature that must follow t tu; with none the scan stops.
+: SIGNATURE-AT ( ^u8 n -- ^u8 n )
+   {: t:^ tu:n :}
    SIG-GROUP nip {: sig:^ sigu:n closed:bool :}
-   closed 0= IF opener t tu SIGNATURE-STOP THEN
+   closed 0= IF t tu SIGNATURE-STOP THEN
    sig 1 +  sigu 2 - ;
-
-\ The signature that must follow the definition's name a u.
-: REQUIRE-SIGNATURE ( ^u8 n -- ^u8 n )
-   {: a:^ u:n :}
-   TOP-CUR-A @ a u SIGNATURE-AT ;
 
 : STRING-REST ( ^u8 n -- ^u8 n ) {: opener:^ openeru:n :}
    SCAN-I @ {: start:n :}
@@ -983,7 +976,6 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ The record names a u and is placed at the TU-byte source token written at
 \ byte AT, which is not a u when the name is generated.
 : SEAL-STOP ( ^u8 n n n -- ) {: a:^ u:n at:n tu:n :}
-   at TOKEN-BYTE !
    a u  SOURCE@ at + tu  REJECTION:SEALED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -1158,7 +1150,6 @@ variable GROUP-AT
 \ (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ^u8 n )
    NEXT-RAW dup 0= IF
-      GROUP-AT @ TOKEN-BYTE !
       GROUP-AT @ TOKEN-FROM INTERPRETER:GROUP-REJECT
       QUIET @ INDEX-ON @ or IF E-DISC-UNTERM DISCOVERY-STOP THEN
       CHECKER-REJECT-RC REJECTION:STOP
@@ -1850,7 +1841,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
          true DOES-PARENT-REFUSED !
       THEN
    THEN
-   opener opener openeru SIGNATURE-AT {: sig:^ sigu:n :}
+   opener openeru SIGNATURE-AT {: sig:^ sigu:n :}
    BODY-RESET
    LOCALS-RESET
    BEGIN
@@ -2303,7 +2294,7 @@ ENGINE-TARGET-INIT
 
 : TRUST-DEFER-SIGNATURE ( ^u8 n n -- )
    {: name:^ nameu:n at:n :}
-   name nameu REQUIRE-SIGNATURE {: sig:^ sigu:n :}
+   name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
@@ -2354,7 +2345,7 @@ variable TRUSTED-DOES
             TOKEN-A @ TOKEN-U @ 0 DEFER-AT
             true TICK-REMAINDER ! EXIT
          THEN
-         TOKEN-A @ TOKEN-A @ TOKEN-U @ SIGNATURE-AT
+         TOKEN-A @ TOKEN-U @ SIGNATURE-AT
          kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
          -1 TRUSTED-DOES !
       ELSE
@@ -2374,9 +2365,9 @@ variable TRUSTED-DOES
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REJECT-DUPLICATE IF
-      name nameu REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
+      name nameu SIGNATURE-AT 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
-   name nameu REQUIRE-SIGNATURE {: sig:^ sigu:n :}
+   name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2396,8 +2387,8 @@ variable TRUSTED-DOES
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REJECT-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
-   name nameu REQUIRE-SIGNATURE {: sig:^ sigu:n :}
+   name nameu at REJECT-DUPLICATE IF name nameu SIGNATURE-AT 2drop EXIT THEN
+   name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
@@ -2411,7 +2402,7 @@ variable TRUSTED-DOES
    s" linear:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu REQUIRE-SIGNATURE {: sig:^ sigu:n :}
+   name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
    DISARM
@@ -2772,7 +2763,7 @@ variable STG-TYPE-U
    SB$ {: gen:^ genu:n :}
    gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
-   at TOKEN-BYTE !  gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
+   gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ DYNAMIC-BUFFER publishes THREE words from one line - the accessor,
 \ NAME-RESERVE and NAME-RELEASE. Certification never runs the definer, and
@@ -2807,7 +2798,7 @@ variable STG-TYPE-U
    SB-RESET  CHECKER-QTAIL$ SB-APPEND  sfx sfxu SB-APPEND
    SB$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   at TOKEN-BYTE !  SB$ SOURCE@ at + nameu DUPLICATE-AT!  false ;
+   SB$ SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
@@ -3260,7 +3251,7 @@ variable LOAD-END
       TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN ;
 
-PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
+PTR-VARIABLE LOAD-A                           \ the path a quiet or body load loads
 variable LOAD-U
 
 : LOAD$ ( -- ^u8 n )
@@ -3271,12 +3262,10 @@ variable LOAD-U
    [: 2dup LOAD$ COMPOSE-REQUIRED ;] ;
 
 \ Run Q, the load a loader word wu bytes long at byte w makes, given the word;
-\ the load's operand span ends with it, on a throw too.
-: CLAIMED-LOAD ( [ ^u8 n -- ^u8 n ] n n -- )
+\ the load's operand span ends with it.
+: RUN-LOADER ( [ ^u8 n -- ^u8 n ] n n -- )
    {: q w:n wu:n :}
-   SOURCE@ w + wu q catch  0 LOAD-END !
-   {: code:n :}  2drop
-   code 0<> IF code throw THEN ;
+   SOURCE@ w + wu q [: 0 LOAD-END ! ;] finally 2drop ;
 
 \ `include PATH` (inc true) or `require PATH` at top level, its word u bytes
 \ long at TOKEN-BYTE; PATH's token is the operand its load reports.
@@ -3287,7 +3276,7 @@ variable LOAD-U
    TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
    p LOAD-PLACE-A !  pu LOAD-PLACE-U !
-   inc FILE-LOAD at u CLAIMED-LOAD ;
+   inc FILE-LOAD at u RUN-LOADER ;
 
 \ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
 \ the literal before it as discovery refuses it, else Q loads
@@ -3299,7 +3288,7 @@ variable LOAD-U
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
    SOURCE@ STR-LAST-AT @ + LOAD-PLACE-A !
    STR-LAST-END @ STR-LAST-AT @ - LOAD-PLACE-U !
-   q TOKEN-BYTE @ u CLAIMED-LOAD ;
+   q TOKEN-BYTE @ u RUN-LOADER ;
 
 : QUIET-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" include" STR=CI IF u true QUIET-WORD-LOAD true EXIT THEN
@@ -3344,7 +3333,7 @@ variable LOAD-U
       i PEND-INC @ 0<> FILE-LOAD
       QUIET @ IF
          SOURCE@ i PEND-OP-AT @ + LOAD-PLACE-A !  i PEND-U @ LOAD-PLACE-U !
-         i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
+         i PEND-WORD-AT @  i PEND-WORD-U @  RUN-LOADER
       ELSE
          i PEND-INC @ 0<> BODY-LOAD? IF
             SOURCE@ i PEND-WORD-AT @ +  i PEND-WORD-U @  rot execute 2drop
@@ -3554,7 +3543,7 @@ private
    NAME-TOKEN
    {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu REQUIRE-SIGNATURE
+   name nameu SIGNATURE-AT
    {: sig:^ sigu:n :}
    name nameu FIND-SYM
    {: sym:n :}
