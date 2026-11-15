@@ -1661,7 +1661,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 \ libcurl gives 35 for a refused TLS handshake, such as this plain HTTP answer, as
-\ for one cut off, so LOST? leaves it out.
+\ for one cut off; neither sent the request, so LOST? takes both.
 : TEST-TLS-PLAIN ( -- )
    s" a listener for the plain peer opens on loopback" T-LABEL
    PLAIN-LISTENER PLAIN-PORT LISTEN-LOOPBACK TTRUE
@@ -1671,10 +1671,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    PLAIN-TASK AWAIT-END PLAIN-TASK TASK:KILL
-   s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, neither lost nor local" T-LABEL
+   s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, lost" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 35 T=
-   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE
+   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE
    LAST-CODE @ CURL:>CODE CURL:LOCAL? TFALSE ;
 
 

@@ -55,11 +55,11 @@ DEFTYPE HTTP-STATUS
    HTTP-STATUS>N {: status:n :}
    status 408 = status 429 = or status 500 >= status 600 < and or ;
 
-\ The network or the server lost the exchange: lookup (5, 6), connect (7), send (55),
-\ receive (56), cut (18), stream reset (92), timeout (28), empty (52); not TLS (35).
+\ The network or the server lost the exchange: lookup (5, 6), connect (7), handshake
+\ (35), send (55), receive (56), cut (18), stream reset (92), timeout (28), empty (52).
 : LOST? ( code -- bool )
    CODE>N {: rc:n :}
-   rc 5 = rc 6 = or rc 7 = or rc 18 = or rc 28 = or
+   rc 5 = rc 6 = or rc 7 = or rc 18 = or rc 28 = or rc 35 = or
    rc 52 = or rc 55 = or rc 56 = or rc 92 = or ;
 
 \ This side failed or ended a transfer: setup (2, 4, 34, 43, 48, 49), memory (27), interface (45),
