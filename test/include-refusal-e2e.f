@@ -186,7 +186,9 @@ $1A4 constant MODE-FILE
    s" error[E-UNREADABLE-SOURCE]: cannot read `locked.f`" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
    s" :1:9" SB-APPEND SB$ ERR-HAS
-   s" ^^^^^^^^ permission denied" ERR-HAS ;
+   s" ^^^^^^^^ permission denied" ERR-HAS
+   SB-RESET s" = help: make the file readable: `chmod u+r " SB-APPEND
+   s" cases/locked.f" AT SB-APPEND s" `" SB-APPEND SB$ ERR-HAS ;
 
 \ A string loader given an empty path: one record, at the loader word, as the
 \ literal's bytes lie in no source the run holds.

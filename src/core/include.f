@@ -1368,6 +1368,21 @@ variable REQUEST-AT-U
    e 5 = if s" input/output error" exit then
    s" cannot open" ;
 
+\ The help for the file path whose open or read failed with errno e, by the
+\ reason OPEN-ERRNO$ gives it.
+: OPEN-HELP ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
+   e 2 = if s" create the file or correct the path" REJECTION:EMIT-STR exit then
+   e 13 = if
+      s" make the file readable: `chmod u+r " REJECTION:EMIT-STR
+      path pathu REJECTION:EMIT-STR  96 REJECTION:EMIT1 exit
+   then
+   e 20 = if
+      s" correct the path, so that each name in it before the last is a directory"
+      REJECTION:EMIT-STR exit
+   then
+   e 21 = if s" name a source file, not a directory" REJECTION:EMIT-STR exit then
+   s" check that the file exists and is readable" REJECTION:EMIT-STR ;
+
 \ The one record of a found file path the system will not read to its end,
 \ which why labels. Placed at the request t tu, with path in a note.
 \ An empty t tu is no source's token: the record has no place, and its message
@@ -1394,7 +1409,7 @@ public
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
    t tu path pathu e OPEN-ERRNO$ UNREAD-RECORD
-   s" check that the file exists and is readable" REJECTION:EMIT-STR
+   path pathu e OPEN-HELP
    INCLUDE-IO-RC REJECTION:STOP ;
 
 \ The file path changed while it was read, so its bytes may be no single

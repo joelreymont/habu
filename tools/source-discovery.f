@@ -1481,27 +1481,22 @@ $FF constant SD-NAMES                    \ loaders and family openers
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
-\ What the read of a closure member failed at, from its code rc.
-: READ-WHY ( n -- ) {: rc:n :}
-   rc E-FS-STAT = if s" it is missing or not a regular file" REJECTION:EMIT-STR exit then
-   rc E-FS-OPEN = if s" it will not open" REJECTION:EMIT-STR exit then
-   rc E-FS-IO = if s" a read of it failed" REJECTION:EMIT-STR exit then
-   s" its read threw code " REJECTION:EMIT-STR  rc REJECTION:EMIT-N ;
-
 public
 
-\ A zero code is no rejection; any other rejects the closure member pa pu,
-\ which the code alone does not name. A harvest, which drops a read's code
-\ (HARVEST), gets the code bare: the final walk reads the member again.
+\ A code of the file system's block rejects the closure member pa pu with the
+\ loader's record of a file it cannot read, by the errno the read left; a stat
+\ that found no regular file leaves none. Any other code goes on: FS:ERRNO
+\ holds no reason for it. A harvest, which drops a read's code (HARVEST), gets
+\ the code bare: the final walk reads the member again.
 : READ-THROW ( ^u8 n n -- ) {: pa:^ pu:n rc:n :}
    rc 0= if exit then
    rc SD-HARVEST-THROW
-   s" E-UNREADABLE-SOURCE" REJECTION:OPEN
-   s" cannot read `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
-   s" `: " REJECTION:EMIT-STR  rc READ-WHY
-   REJECTION:HELP
-   s" check that the file exists, is a regular file and is readable" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   rc E-FS-FIRST <= rc E-FS-LAST >= and 0= if rc throw then
+   FS:ERRNO {: e:n :}
+   rc E-FS-STAT = e 0= and if
+      NULL-PTR 0 pa pu UNSTAMPED-SOURCE  INCLUDE-IO-RC REJECTION:STOP
+   then
+   NULL-PTR 0 pa pu e UNREADABLE-SOURCE ;
 
 private
 

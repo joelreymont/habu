@@ -774,7 +774,9 @@ variable RC
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ CANON$ SB-APPEND
    s" `: permission denied" SB-APPEND
    0 s" message" SB$ FIELD=
-   0 s" help" s" check that the file exists and is readable" FIELD=
+   SB-RESET  s" make the file readable: `chmod u+r " SB-APPEND
+   FX-PATH$ CANON$ SB-APPEND  s" `" SB-APPEND
+   0 s" help" SB$ FIELD=
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 GJA-LINE$ GJA-PARSE s" notes" FIELD-ABSENT ;
 
