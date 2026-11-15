@@ -746,12 +746,13 @@ using SOURCE-ROOT
    INCLUDE-CLOSE
    INCLUDE-DIE ;
 
-: INCLUDE-NO-PATH ( -- )
-   SRCLOC:TOKEN$ s" a path" SRCLOC:TOKEN$ s" no path follows"
+\ The loader word t tu has no path after it. The record is written through its
+\ help, and the caller stops it.
+: INCLUDE-NO-PATH ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu s" a path" t tu s" no path follows"
    REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
-   s" `require src/lib/fs.f`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
 
 : INCLUDE-LONG-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-PATH-RANGE" REJECTION:OPEN
@@ -766,7 +767,7 @@ using SOURCE-ROOT
    INCLUDE-IO-RC REJECTION:STOP ;
 
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
-   dup 0 <= if INCLUDE-NO-PATH then
+   dup 0 <= if SRCLOC:TOKEN$ INCLUDE-NO-PATH  CHECKER-REJECT-RC REJECTION:STOP then
    dup INCLUDE-PATH-CAP > if 2dup INCLUDE-LONG-PATH then ;
 
 package REQUIRE-REG

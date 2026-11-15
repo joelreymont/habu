@@ -918,9 +918,12 @@ variable VFY-EXE-U
    rc ;
 
 
+\ The packet of the child's stop: none for a discovery stop, whose record the
+\ child wrote where it met the form.
 : VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
    VFY-STOP-RC @ {: rc:n :}
-   rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
+   rc CHK-DISC-RC? if NULL$ exit then
+   rc VERIFY:LOADER-FAULT? if
       class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
       VERIFY-DIAGNOSTICS:LOADER-RECORD$ exit
    then
@@ -940,7 +943,7 @@ variable VFY-EXE-U
    VFY-OUT-U @ fileu + VFY-OUT-RESERVE
    VFY-OUT-U @ VFY-STOP-OFF !
    0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY
-   rc VERIFY:LOADER-FAULT? 0= if exit then
+   rc VERIFY:LOADER-FAULT? 0= rc CHK-DISC-RC? or if exit then
    rc VERIFY:E-SOURCE-READ = if class VFY-TARGET$ VFY-CLOSURE-LOG exit then
    class VFY-STOP-FILE$ VFY-CLOSURE-LOG ;
 

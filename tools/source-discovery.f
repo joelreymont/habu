@@ -1146,7 +1146,10 @@ $FF constant SD-NAMES                    \ loaders and family openers
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}
-   plen 0= if SD-DYNAMIC-STOP then
+   plen 0= if
+      E-DISC-DYNAMIC SD-HARVEST-THROW
+      toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
+   then
    plen PATH-CAP > if SD-CAPACITY-STOP then
    poff plen SD-TOK$ SD-PATH-FILL
    toff tlen poff plen kind SD-CALL-LOADER ;
