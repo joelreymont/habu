@@ -7422,7 +7422,9 @@ variable PKHAVE
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
 
-: LINEAR-TAKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+\ Writes the record of a DEFLINEAR name a that names a type already or a
+\ reserved name, through its help; the caller ends it.
+: CHECKER-LINEAR-TAKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    s" `DEFLINEAR " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
@@ -7431,13 +7433,12 @@ variable PKHAVE
    s" a type's name is no type, type variable, atom or `field`, and holds none of "
    REJECTION:EMIT-STR
    S\" `<`, `>`, `,`, `[`, `]`, `(`, `)`, `\q` or `\\`" REJECTION:EMIT-STR
-   REJECTION:HELP  s" give the linear type a name no other type has" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   REJECTION:HELP  s" give the linear type a name no other type has" REJECTION:EMIT-STR ;
 
 \ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
    a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" 76 die THEN
-   a u TYPE-RESERVED? IF a u LINEAR-TAKEN THEN
+   a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  CHECKER-REJECT-RC REJECTION:STOP THEN
    a u pa pu CT-LINEAR-SET ;
 
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
@@ -8424,15 +8425,6 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 5 constant VREC-WHY-SCOPED   \ a field's type has a scoped dependency
 6 constant VREC-WHY-EMPTY    \ no field
 
-: VREC-WHY$ ( n -- ptr u8 n ) {: why:n :}
-   why VREC-WHY-NAME = IF s" checker: bad or duplicate value-record type" EXIT THEN
-   why VREC-WHY-FIELD = IF s" checker: bad value-record field" EXIT THEN
-   why VREC-WHY-DUP = IF s" checker: duplicate value-record field" EXIT THEN
-   why VREC-WHY-TYPE = IF s" checker: bad value-record field type" EXIT THEN
-   why VREC-WHY-SCOPED = IF s" checker: value-record field contains a scoped dependency" EXIT THEN
-   why VREC-WHY-EMPTY = IF s" checker: empty value-record" EXIT THEN
-   s" " ;
-
 \ A refused field is answered, not died on. VREC-AT is the byte offset in the
 \ field text of the field being parsed.
 variable VREC-AT
@@ -8490,10 +8482,10 @@ variable VREC-AT
    THEN
    at why ;
 
-\ CHECKER-TRY-RECORD answers VREC-TRY's offset and its refusal's text; an
-\ empty refusal means registered.
-: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
-   VREC-TRY VREC-WHY$ ;
+\ CHECKER-TRY-RECORD answers VREC-TRY's offset and why it rejects the record,
+\ 0 when it registered it.
+: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n n )
+   VREC-TRY ;
 
 \ The token of field text f that starts at byte at: a delimiter alone, else the
 \ bytes up to a blank or a delimiter.
@@ -8509,28 +8501,27 @@ variable VREC-AT
    s" ` of value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1 ;
 
-\ A refusal of the record as a whole: its name is taken, or it has no field.
-: VREC-REJECT-RECORD ( ptr u8 n n -- ) {: a:ptr u:n why:n :}
+\ Writes the record of value record a's rejection why (VREC-TRY), through its
+\ help, at field token t: at the name when the name is taken or the record has
+\ no field, where t is not read. The caller ends it.
+: CHECKER-RECORD-REJECT ( ptr u8 n ptr u8 n n -- )
+   {: a:ptr u:n t:ptr tu:n why:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    why VREC-WHY-NAME = IF
+      s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
       a u REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the value record a name no other type has"
       REJECTION:EMIT-STR
-   ELSE
+   THEN
+   why VREC-WHY-EMPTY = IF
+      s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` has no fields" REJECTION:EMIT-STR
       a u REJECTION:AT  s" no fields" REJECTION:EMIT-STR
       REJECTION:HELP
       s" list each field's name and type before `END-VALUE-RECORD`, as `x n`"
       REJECTION:EMIT-STR
    THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ A refusal of the field whose token is t.
-: VREC-REJECT-FIELD ( ptr u8 n ptr u8 n n -- )
-   {: a:ptr u:n t:ptr tu:n why:n :}
-   s" E-BAD-DECLARATION" REJECTION:OPEN
    why VREC-WHY-FIELD = IF
       96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
       s" ` cannot name a field of value record `" REJECTION:EMIT-STR
@@ -8559,8 +8550,7 @@ variable VREC-AT
       t tu REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the field a type that names no callback scope"
       REJECTION:EMIT-STR
-   THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   THEN ;
 
 \ VALUE-RECORD's registrar: a refused record is rejected at the field the
 \ refusal names, or at the record's name.
@@ -8569,8 +8559,8 @@ variable VREC-AT
    name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" 76 die THEN
    name nameu fields fieldsu VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
-   why VREC-WHY-NAME = why VREC-WHY-EMPTY = or IF name nameu why VREC-REJECT-RECORD THEN
-   name nameu fields fieldsu at VREC-TOKEN why VREC-REJECT-FIELD ;
+   name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.

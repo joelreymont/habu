@@ -151,6 +151,7 @@ $1000 constant VRDEF-CAP
 create VRDEF-BUF VRDEF-CAP allot
 variable VRDEF-U
 variable VRDEF-I
+PTR-VARIABLE VRDEF-FIRST   \ the first field token in the source
 
 : VRDEF-CLEAR ( -- )
    0 VRDEF-U ! ;
@@ -216,6 +217,16 @@ variable VRDEF-I
    a u REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
    REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR ;
 
+\ The field list from its first token to the closer at e as the source holds
+\ it, when REJECTION holds that span (REJECTION:HELD?), so a rejected field is
+\ placed; else the copy, which has no place.
+: VRDEF-FIELDS ( ptr u8 -- ptr u8 n ) {: e:ptr :}
+   VRDEF-U @ 0= IF e 0 EXIT THEN
+   VRDEF-FIRST @ {: f:ptr :}
+   e f - {: u:n :}
+   u 0 >= IF f u REJECTION:HELD? IF f u EXIT THEN THEN
+   VRDEF-BUF VRDEF-U @ ;
+
 : VALUE-RECORD ( -- )
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
@@ -225,10 +236,10 @@ variable VRDEF-I
          name nameu VRDEF-UNCLOSED  CHECKER-REJECT-RC REJECTION:STOP
       THEN
       2dup VRDEF-END? IF
-         2drop
-         name nameu VRDEF-BUF VRDEF-U @ CHECKER-DEFRECORD
+         drop  name nameu rot VRDEF-FIELDS CHECKER-DEFRECORD
          EXIT
       THEN
+      VRDEF-U @ 0= IF over VRDEF-FIRST ! THEN
       VRDEF-TOKEN+
    AGAIN ;
 NOMINAL-PROVIDER
