@@ -5,23 +5,26 @@
 // host over window.parent.postMessage and takes messages only from
 // window.parent:
 //
-//   start  ui/initialize {appInfo, appCapabilities, protocolVersion}; on its
-//          result the notification ui/notifications/initialized, then
-//          ui/request-display-mode {mode: "fullscreen"}, then tools/call
+//   start  ui/initialize {appInfo, appCapabilities, protocolVersion},
+//          appCapabilities {availableDisplayModes: ["inline", "fullscreen"]},
+//          the modes any view this page starts may ask for; on its result the
+//          notification ui/notifications/initialized, then tools/call
 //          {name: "view_code", arguments: {}}, whose result's _meta holds the
-//          server's page id and the view's code, then view.js's start
+//          server's page id and the view's code, then view.js's start; the
+//          page asks for no display mode itself
 //   code   _meta {page, code, files}, code the id of the view's code
 //          (MCP-APP:CODE-ID+), files each base64 by name; view.js is
 //          imported from a blob: URL; a page id that is not this page's ends
 //          start: the page is older than its server
 //   view   view.js exports start(host), host {meta, files, request,
-//          restart, carried}: meta is the view_code result's whole _meta,
-//          files its files, request(method, params) resolves with the
-//          response message as request below does, restart(result,
+//          restart, carried, initialized}: meta is the view_code result's
+//          whole _meta, files its files, request(method, params) resolves
+//          with the response message as request below does, restart(result,
 //          carried) starts the view again from another view_code result,
-//          handing the new view carried, and carried is what restart was
-//          handed, null at the first start; start resolves with
-//          {notify(method, paramsJSON), dispose()}
+//          handing the new view carried, carried is what restart was handed,
+//          null at the first start, and initialized is ui/initialize's result
+//          as the host answered it, its hostContext among it; start resolves
+//          with {notify(method, paramsJSON), dispose()}
 //   failure
 //          a failure of loading or mounting (the call's error, a missing
 //          file, an import's or view.js's start's failure, the older page)
@@ -85,6 +88,7 @@ let phase = "starting";
 let pageId = ""; // this page's id, and its title, as start was given them
 let title = "";
 let view = null; // view.js's started view, while running
+let initialized = null; // ui/initialize's result, handed to each view.js start
 const held = []; // host notifications that arrived before start resolved
 
 // JSON-RPC 2.0 omits params when there are none: delivered as {}.
@@ -166,7 +170,7 @@ async function mount(r, carried) {
   const module = await load(bytes);
   if (phase !== "loading") return;
   phase = "mounting";
-  const started = await module.start({ meta: r._meta, files, request, restart, carried });
+  const started = await module.start({ meta: r._meta, files, request, restart, carried, initialized });
   if (phase !== "mounting") {
     started.dispose();
     return;
@@ -178,7 +182,6 @@ async function mount(r, carried) {
 
 async function run() {
   post({ method: "ui/notifications/initialized" });
-  call("ui/request-display-mode", { mode: "fullscreen" }).catch((e) => console.error(e));
   const r = await call("tools/call", { name: CODE_TOOL, arguments: {} });
   if (phase !== "loading") return;
   await mount(r, null);
@@ -203,9 +206,9 @@ export async function start(id) {
   pageId = id;
   title = document.querySelector("title").textContent;
   try {
-    await call("ui/initialize", {
+    initialized = await call("ui/initialize", {
       appInfo: { name: title, version: VERSION },
-      appCapabilities: {},
+      appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
       protocolVersion: PROTOCOL,
     });
     if (phase !== "starting") return;

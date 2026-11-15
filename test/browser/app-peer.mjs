@@ -12,7 +12,9 @@
 // among them, or closes the socket; for a session told to, it closes each of
 // its first sockets right after it opens, or answers view_code with a tool
 // error.
-// Headless Chrome then checks the handshake, the view_code call and the
+// Headless Chrome then checks the handshake, whose ui/initialize declares the
+// inline and fullscreen display modes and which asks for no display mode, the
+// view_code call, view.js's full-screen request after it and the
 // view_socket ask, that both notifications reach the module in the order
 // sent, that a message from a window other than the parent is ignored, a
 // tools/call round trip over the socket, the model context, an after tick, a
@@ -22,8 +24,9 @@
 // fourth whose view_code answer names another page id, a fifth whose started
 // view restarts with a second view_code result, handing the second view what
 // it carried, and a sixth whose restart's result names another page id. In a
-// seventh frame, app.js runs the server's view.js and socket.js: a tool call
-// is answered over the socket while the host sees only view_code and
+// seventh frame, app.js runs the server's view.js and socket.js: its first
+// start asks for full screen after view_code, a tool call is answered over
+// the socket while the host sees only view_code and
 // view_socket, neither view/code nor a pushed view/alive reaches the module
 // and a pushed notification does, view/resume is kept and answered {}, a
 // close answers the outstanding call -32000 and the view reopens after its
@@ -31,14 +34,16 @@
 // and restarts the view through app.js, carrying the resume and the session,
 // a file dropped on the restarted view reaches its module once and no
 // listener of the old view throws, and a close under 4403 makes the view ask
-// view_socket again before it reopens. An eighth frame's sockets are closed
+// view_socket again before it reopens, and the restarted view asks for no
+// display mode. An eighth frame's sockets are closed
 // right after they open: the delays between its reopens double, and its
 // first view/alive resets them to 1 s. A ninth frame, once running, is pushed
 // a view/code naming other code, and its view_code over the socket is
 // answered with a tool error: the view runs on and answers its module's next
-// call. A tenth frame's
-// view_socket is answered with a tool error: its module's tools/call is
-// answered -32000 with that error's text, and it makes no socket. DIR holds
+// call. A tenth frame's host context lists only the inline display mode and
+// its view_socket is answered with a tool error: its view asks for no display
+// mode, its module's tools/call is answered -32000 with that error's text,
+// and it makes no socket. DIR holds
 // data.bin, the file dropped, and receives chrome.log;
 // TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
@@ -194,10 +199,11 @@ window.addRestart = (name, next) => {
   });
 };
 // addLive adds a page frame answered as the table does, view_socket for the
-// session name, or with failure when it is given; the messages it posts land
+// session name, or with failure when it is given, and ui/initialize with
+// context as its hostContext when it is given; the messages it posts land
 // in window[name].log, each text its #text is given in window[name].shown,
 // and each error its window reports in window[name].errors.
-window.addLive = (name, failure) => {
+window.addLive = (name, failure, context) => {
   const other = document.body.appendChild(document.createElement("iframe"));
   const live = window[name] = { log: [], shown: [], errors: [], frame: other };
   other.src = "/app.html";
@@ -210,7 +216,8 @@ window.addLive = (name, failure) => {
     }
     if (!("id" in data)) return;
     const result = failure && data.method === "tools/call" && data.params.name === "view_socket" ?
-      failure : answer(data, name);
+      failure : context && data.method === "ui/initialize" ? { ...answers[data.method], hostContext: context } :
+      answer(data, name);
     other.contentWindow.postMessage({ jsonrpc: "2.0", id: data.id, result }, "*");
   });
 };
@@ -322,11 +329,13 @@ try {
   await until(async () => (await notes()).length === 2);
   assert.deepEqual(await notes(), [input, result], "the held notifications reach the module in the order sent");
   const methods = () => evaluate("log.map((m) => m.method)");
-  const handshake = ["ui/initialize", "ui/notifications/initialized", "ui/request-display-mode", "tools/call"];
-  assert.deepEqual(await methods(), [...handshake, "tools/call"],
-    "the handshake: initialize, then initialized, then the display-mode request, then view_code, then view_socket");
-  const [init, , mode, coded, asked] = await evaluate("log");
-  assert.deepEqual(init.params, { appInfo: { name: title, version: "1" }, appCapabilities: {}, protocolVersion: "2026-01-26" });
+  const handshake = ["ui/initialize", "ui/notifications/initialized", "tools/call"];
+  const viewStart = ["ui/request-display-mode", "tools/call"];
+  assert.deepEqual(await methods(), [...handshake, ...viewStart],
+    "the handshake: initialize, then initialized, then view_code, then view.js's display-mode request, then view_socket");
+  const [init, , coded, mode, asked] = await evaluate("log");
+  assert.deepEqual(init.params, { appInfo: { name: title, version: "1" },
+    appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }, protocolVersion: "2026-01-26" });
   assert.deepEqual(mode.params, { mode: "fullscreen" });
   assert.deepEqual(coded.params, { name: "view_code", arguments: {} });
   assert.deepEqual(asked.params, { name: "view_socket", arguments: {} });
@@ -392,7 +401,7 @@ try {
 
   await evaluate("addOlder()");
   const olderText = () => evaluate("older.frame.contentDocument?.querySelector('#text')?.textContent ?? null");
-  await until(async () => await olderText() === OLDER && (await evaluate("older.log.length")) >= 5)
+  await until(async () => await olderText() === OLDER && (await evaluate("older.log.length")) > handshake.length)
     .catch(async (error) => { throw new Error(`the older frame's #text is ${JSON.stringify(await olderText())}`, { cause: error }); });
   const olderLog = await evaluate("older.log");
   assert.deepEqual(olderLog.map((m) => m.method), [...handshake, "ui/update-model-context"],
@@ -449,6 +458,11 @@ try {
   assert.deepEqual(view.log.live.map((m) => [m.method, m.params]), [["tools/call", { name: "get_project" }]]);
   assert.deepEqual(await hostTools("live"), ["view_code", "view_socket"], "no tools/call but view_code and view_socket reaches the host");
   assert.deepEqual(await liveShown(), [opened, rpcAnswer], "view/code, the socket's first message, does not reach the module");
+  const liveMethods = () => evaluate("live.log.map((m) => m.method)");
+  assert.deepEqual(await liveMethods(), [...handshake, ...viewStart],
+    "the page asks for no display mode; view.js's first start asks for full screen after view_code");
+  assert.deepEqual((await evaluate("live.log")).find((m) => m.method === "ui/request-display-mode").params, { mode: "fullscreen" });
+  console.log(`Headless Chrome: the live frame posts ${(await liveMethods()).join(", ")}`);
   console.log("Headless Chrome: socket: a tool call is answered over the socket; the host's only tools/calls are view_code and view_socket; view/code does not reach the module");
 
   const changed = { project: "p1" };
@@ -495,6 +509,8 @@ try {
   assert.equal(view.asks.live, "1", "the restarted view's socket reuses the carried session");
   assert.deepEqual(await hostTools("live"), ["view_code", "view_socket"], "the restart asks the host nothing");
   assert.deepEqual(await told("live"), [], "the restart does not fail");
+  assert.equal((await liveMethods()).filter((m) => m === "ui/request-display-mode").length, 1,
+    "the restarted view does not ask for full screen again");
   console.log("Headless Chrome: socket: view/code naming other code fetches view_code over the socket and app.js restarts the view; the new module receives view/resume {\"project\":\"p1\"} and its socket reuses the session");
 
   // A drop on the restarted page reaches only the new view's listener; an old
@@ -544,12 +560,15 @@ try {
   console.log(`Headless Chrome: socket: view_code over the socket answered with a tool error ${JSON.stringify(CODE_ERROR)} leaves the view running; its next call is answered ${rpcAnswer}`);
 
   const requests = view.requests;
-  await evaluate(`addLive("failing", ${JSON.stringify(SOCKET_ERROR)})`);
+  await evaluate(`addLive("failing", ${JSON.stringify(SOCKET_ERROR)}, { availableDisplayModes: ["inline"] })`);
   await until(() => evaluate("failing.frame.contentDocument?.querySelector('form input')?.disabled === false"));
   const failed = { code: -32000, message: NO_SOCKET };
   await liveTyped("failing", "rpc", `answered 2 1 ${JSON.stringify(failed)}`);
   assert.deepEqual(await hostTools("failing"), ["view_code", "view_socket"], "the module's tools/call does not reach the host");
   assert.equal(view.requests, requests, "the view makes no socket");
+  assert.deepEqual(await evaluate("failing.log.map((m) => m.method)"), [...handshake, "tools/call"],
+    "a view whose host lists its modes without fullscreen asks for no display mode");
+  console.log("Headless Chrome: a host whose context lists only the inline display mode is asked for none");
   console.log(`Headless Chrome: socket: view_socket answered with a tool error answers the module's tools/call ${JSON.stringify(failed)}, and the view makes no socket`);
   console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call over the socket, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code, an older page, a restart, a restart onto an older page and the view's socket passed, its backoff, a view_code tool error and a restart's listeners among them");
 } catch (error) {
