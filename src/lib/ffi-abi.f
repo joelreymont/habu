@@ -238,7 +238,7 @@ LIB-N ROLLBACK-CELLS:MARK
    idx LIB-ROW off + CELL-VIEW ;
 
 \ A new library row's path field, written before the row is counted, so a
-\ refused path leaves the row count as it was.
+\ rejected path leaves the row count as it was.
 : PATH-FIELD ( n -- SPAN:span<u8> )
    LIB-ROW LIB-PATH-OFF + LIB-PATH-CAP SPAN:MAKE ;
 
@@ -510,7 +510,7 @@ public
    0 b u + c!
    b ;
 
-\ Every refusal comes before a byte is written, so a refused destination keeps
+\ Every rejection comes before a byte is written, so a rejected destination keeps
 \ what it held.
 : CSTR ( ptr u8 n SPAN:span<u8> -- ptr u8 )
    {: src u s :}
@@ -743,7 +743,7 @@ s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ loads for each, and the first call opens them in the order written until one
 \ opens.
 \ LIBRARY takes one literal, an absolute path or an unversioned name, and
-\ refuses one spelled in the other target's convention. THE SELECTION BELONGS TO
+\ rejects one spelled in the other target's convention. THE SELECTION BELONGS TO
 \ THE SCOPE THAT STATES IT: the package section or global scope the declarations
 \ land in. There is no default: a declaration with no selection in its own scope
 \ is E-FFI-LIBRARY, so a file cannot inherit a library an earlier file selected
@@ -780,7 +780,7 @@ s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
 \ either travels in v registers and must not be declared. A struct call places
 \ its other inputs as any call does. The stack cells, the copies and the
-\ padding that aligns each copy share sixteen cells, refused past that at
+\ padding that aligns each copy share sixteen cells, rejected past that at
 \ ;FUNCTION (E-FFI-ARITY). Excluded, because a byte count cannot
 \ reveal them, are records aligned beyond 16 bytes and 16-byte aligned ones
 \ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
@@ -927,11 +927,13 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ A rejection is SYNTAX-OPEN or ARITY-OPEN, its message, then HELP-STOP with the
 \ fix, which places the record at the token read last. The stop abandons the
 \ open declaration, so the next FUNCTION: in the file is not rejected for it.
-: HELP-END ( ptr u8 n -- )
-   {: h:ptr hu:n :}
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
+: STOP-REJECTION ( -- )
    OPEN? if SOURCE-ROOT:CLOSED then  CLOSED!
    CHECKER-REJECT-RC REJECTION:STOP ;
+
+: HELP-END ( ptr u8 n -- )
+   {: h:ptr hu:n :}
+   REJECTION:HELP  h hu REJECTION:EMIT-STR  STOP-REJECTION ;
 
 public
 
@@ -994,10 +996,20 @@ private
 : AFFIX-BYTES ( -- n )
    s" x" LIB-VERSION-MAX LIB-NAME LIBRARY-NAME$ nip 1 - ;
 
-\ The base name is copied out of the token buffer because reading the version
-\ token overwrites it. The base is checked before that token is read, so its
-\ name must fit a path at any version.
-: BASE! ( -- )
+\ The base's length before a target's suffix in it: `.dylib` or `.so` at its
+\ end, else `.so.` within it; its whole length when it holds none.
+: SUFFIX-CUT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" .dylib" ENDS-WITH? if u 6 - exit then
+   a u s" .so" ENDS-WITH? if u 3 - exit then
+   a u s" .so." FIND-SUB MATCH option
+      none OF u ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ The base the source spells t tu is copied out of the token buffer because
+\ reading the version token overwrites it. The base is checked before that
+\ token is read, so its name must fit a path at any version.
+: BASE! ( ptr u8 n -- ) {: t:ptr tu:n :}
    TOK$ {: a:ptr u:n :}
    u AFFIX-BYTES + LIB-PATH-CAP 1 - > if
       s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
@@ -1005,6 +1017,15 @@ private
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
       s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit"
       HELP-END
+   then
+   a u SUFFIX-CUT {: cut:n :}
+   cut u < if
+      s" E-FFI-LIBRARY" REJECTION:OPEN
+      s" the base `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is already spelled for a target" REJECTION:EMIT-STR
+      t tu SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" a target's suffix" REJECTION:EMIT-STR
+      REJECTION:HELP  s" give VERSIONED-LIBRARY the bare name, `" REJECTION:EMIT-STR
+      a cut REJECTION:EMIT-STR  96 REJECTION:EMIT1  STOP-REJECTION
    then
    u BASE-BUF-RESERVE
    a 0 BASE-BUF u BYTE-COPY
@@ -1031,7 +1052,7 @@ private
 
 \ A version list's rows, made from the last version to the first, each next
 \ naming the version written after it; the answer is the first version's row.
-\ Every piece is parsed on the way in, so a refused list adds no row.
+\ Every piece is parsed on the way in, so a rejected list adds no row.
 : VERSION-ROWS ( ptr u8 n -- n )
    {: list:ptr u:n :}
    list u [char] , INDEX-OF MATCH option
@@ -1460,8 +1481,7 @@ private
       HELP-END
    then
    u LIB-PATH-CAP >= if
-      SYNTAX-OPEN  s" a library path is at most " REJECTION:EMIT-STR
-      LIB-PATH-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      SYNTAX-OPEN  s" the library path is longer than a path can be" REJECTION:EMIT-STR
       path u SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" too long" REJECTION:EMIT-STR
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
       s" name the library by its file name, which the loader searches for"
@@ -1592,7 +1612,7 @@ private
 public
 
 \ Nothing is published before ;FUNCTION, and the row is registered as the word
-\ is built, so a refused declaration leaves no half-built word.
+\ is built, so a rejected declaration leaves no half-built word.
 
 \ The token that opened the declaration still open or skipped, as its reader
 \ gave it; empty when none is.
@@ -1753,6 +1773,18 @@ private
    then
    bytes idx ARG-SBYTES! ;
 
+\ VERSIONED-LIBRARY's next operand from src, copied; with none left the record
+\ stands at the token read last, which why labels.
+: LIB-OPERAND ( [ -- ptr u8 n ] ptr u8 n -- ptr u8 n ) {: src why:ptr whyu:n :}
+   src execute {: a:ptr u:n :}
+   u 0= if
+      s" VERSIONED-LIBRARY" s" a base and a version list"
+      SRCLOC:TOKEN$ why whyu REJECTION:MISSING-OPERAND
+      s" write the base and its versions after VERSIONED-LIBRARY, as `VERSIONED-LIBRARY z 1,2`"
+      REJECTION:EMIT-STR  STOP-REJECTION
+   then
+   a u TOK!  a u ;
+
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
@@ -1766,8 +1798,8 @@ public
 
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: parse-name ;] {: src :}
-   [: src TOK@ BASE!
-      src TOK@ TOK$ VERSION-ROWS CUR-LIB !
+   [: src s" no base follows" LIB-OPERAND BASE!
+      src s" no version list follows" LIB-OPERAND 2drop TOK$ VERSION-ROWS CUR-LIB !
       RECORD-SCOPE ;]
    KEEP-REST ;
 
@@ -1776,7 +1808,7 @@ public
    RECORD-SCOPE ;
 
 \ Both wordlists are protected here, after FFI's last definition: an engine
-\ that loads this file after its seal refuses any definition into a protected
+\ that loads this file after its seal rejects any definition into a protected
 \ wordlist and exits 84.
 seal-package
 
