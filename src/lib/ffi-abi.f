@@ -1451,16 +1451,17 @@ private
 \ caller passed, stands at the token being run, and its bytes are not read.
 : CHECK-PATH ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= if
-      s" E-FFI-SYNTAX" s" `LIBRARY` names no library"
+      s" E-FFI-SYNTAX" s" the library path is empty"
       SRCLOC:TOKEN$ s" expected a library path after this" REJECTION:OPEN-AT
-      s" write the library's path after `LIBRARY`, or name it with `VERSIONED-LIBRARY`"
+      s" write the library's path or file name after LIBRARY, on its line"
       HELP-END
    then
    u LIB-PATH-CAP >= if
-      s" E-FFI-SYNTAX" s" the library path is longer than a declaration keeps"
-      path u SRCLOC:TOKEN$ REJECTION:KEPT s" too long" REJECTION:OPEN-AT
+      SYNTAX-OPEN  s" a library path is at most " REJECTION:EMIT-STR
+      LIB-PATH-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      path u SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" too long" REJECTION:EMIT-STR
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
-      s" name the library by a shorter path, or by its soname with `VERSIONED-LIBRARY`"
+      s" name the library by its file name, which the loader searches for"
       HELP-END
    then
    path u CHECK-SPELLING ;
@@ -1742,19 +1743,6 @@ private
    then
    bytes idx ARG-SBYTES! ;
 
-: PATH-WRITTEN ( n -- )
-   {: u:n :}
-   u 0 <= if
-      s" the library path is empty"
-      s" write the library's path or file name after LIBRARY, on its line"
-      SYNTAX-REJECT
-   then
-   u LIB-PATH-CAP 1 - > if
-      SYNTAX-OPEN  s" a library path is at most " REJECTION:EMIT-STR
-      LIB-PATH-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-      s" name the library by its file name, which the loader searches for"
-      HELP-STOP
-   then ;
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
@@ -1765,13 +1753,6 @@ public
    path u [: CHECK-PATH ;] KEEP-REST
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
-
-\ LIBRARY's path as written: a bad length or a foreign spelling is rejected with
-\ a record placed at it.
-: SELECT-WRITTEN-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
-   u PATH-WRITTEN
-   path u FOREIGN-SPELLING? if path u SPELLING-REJECT then
-   path u SELECT-LIBRARY ;
 
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: parse-name ;] {: src :}
@@ -1796,7 +1777,7 @@ seal-package
 \ anyway. All three parse the live input stream, which their ( -- ) rows do
 \ not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
-   parse-name FFI:SELECT-WRITTEN-LIBRARY ;
+   parse-name FFI:SELECT-LIBRARY ;
 parses: LIBRARY 1
 
 : VERSIONED-LIBRARY ( -- )
