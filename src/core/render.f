@@ -1964,7 +1964,7 @@ PTR-VARIABLE HOLDER-FIRST
    s" unmodeled type tag in inferred effect" EMIT-STR ;
 
 \ The fix for REC-REFUSE-WHY's reason, for the word na nu.
-: REC-REFUSE-HELP ( ptr u8 n -- ) {: na:ptr nu:n :}
+: REC-REJECT-HELP ( ptr u8 n -- ) {: na:ptr nu:n :}
    NLET @ TYPE-VAR-MAX > IF
       s" split `" EMIT-STR  na nu EMIT-STR
       s" ` so each word's effect names at most " EMIT-STR  TYPE-VAR-MAX EMIT-U
@@ -1998,7 +1998,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    EMIT-STR
    NM-SPAN REJECTION:AT  s" effect not recorded" EMIT-STR
    s" reason" REJECTION:NOTE  REC-REFUSE-WHY
-   REJECTION:HELP  na nu REC-REFUSE-HELP
+   REJECTION:HELP  na nu REC-REJECT-HELP
    REJECTION:KEEP ;
 
 \ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless

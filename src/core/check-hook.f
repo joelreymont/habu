@@ -12,8 +12,8 @@ private
 \ A replay entry (CHECKER-DEFPRODUCT, STRUCTURE-DECL:SD-REPLAY, ...) publishes a
 \ checked effect without defining the word, so a later definition passes the
 \ engine's duplicate wall. The hook asks
-\ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
-\ wall does (REFUSE-DUPLICATE), before its body is checked.
+\ CHECKER-CERT-DUP? (which interns nothing) first and rejects it as the
+\ wall does (REJECT-DUPLICATE), before its body is checked.
 
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
@@ -124,7 +124,7 @@ private
    {: na:ptr nu:n a:ptr u:n :}
    REJECTION:TEXT-LEN @ {: t:n :}
    1 REJECTION:DEST !
-   s" hook: the facts text written for `" REJECTION:EMIT-STR
+   s" the facts text written for `" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR
    t 0 ?do REJECTION:TEXT i + c@ REJECTION:EMIT1 loop
@@ -135,7 +135,7 @@ private
 : AMENDED-DIE ( ptr u8 n -- )
    {: na:ptr nu:n :}
    0 REJECTION:TEXT-LEN !  1 REJECTION:DEST !
-   s" hook: no facts text says the amended effect of `" REJECTION:EMIT-STR
+   s" no facts text says the amended effect of `" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
    0 TEXT-DIE ;
 
@@ -591,7 +591,7 @@ public
 : DEFINITION ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u FIRST-TOKEN {: na:ptr nu:n :}
-   na nu CHECKER-CERT-DUP? if na nu  na nu SOURCE-NAME$  REFUSE-DUPLICATE then
+   na nu CHECKER-CERT-DUP? if na nu  na nu SOURCE-NAME$  REJECT-DUPLICATE then
    UEND @ {: mark:n :}
    a u [: CHECK! REPORT-DEFERRED ;]
    a u BODY-ARM DISARMER  finally

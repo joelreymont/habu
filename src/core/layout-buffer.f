@@ -54,13 +54,13 @@ variable LBUF-BYTES
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
-\ A name the checker refuses answers false, and the definer defines nothing:
-\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REFUSE). A
+\ A name the checker rejects answers false, and the definer defines nothing:
+\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REJECT). A
 \ taken name is rejected at t tu, the declared name the source holds.
 : LBUF-NAME-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n t:ptr tu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
-   name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REFUSE-DUPLICATE then
-   name nameu get-current search-wl 0 <> if name nameu t tu CHECK:REFUSE-DUPLICATE then
+   name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REJECT-DUPLICATE then
+   name nameu get-current search-wl 0 <> if name nameu t tu CHECK:REJECT-DUPLICATE then
    LBUF-TRUE ;
 
 : LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
@@ -357,7 +357,7 @@ public
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
-      s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
@@ -374,7 +374,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
-      s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
@@ -426,7 +426,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
-      s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
@@ -440,7 +440,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
-      s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then

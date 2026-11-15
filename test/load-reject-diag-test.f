@@ -748,8 +748,8 @@ variable RC
       s" :2:8" BODY-REJECT-AT ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
-\ refused by check-hook.f DEFINITION through src/core/check-walk.f
-\ REFUSE-DUPLICATE, placed at the `evaluate` that ran the string, with the
+\ rejected by check-hook.f DEFINITION through src/core/check-walk.f
+\ REJECT-DUPLICATE, placed at the `evaluate` that ran the string, with the
 \ string in an evaluated note.
 : TEST-REPLAY-DUP-PLACE ( -- )
    s" an evaluated checker-only duplicate is placed at its evaluate" T-LABEL

@@ -220,7 +220,7 @@ public
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: na:ptr nu:n :}
    nu 0= if
-      s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
    na nu na nu LBUF-NAME-OK? 0= if exit then
@@ -248,7 +248,7 @@ public
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: na:ptr nu:n :}
    nu 0= if
-      s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if exit then

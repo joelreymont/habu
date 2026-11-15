@@ -611,7 +611,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    erru LEN>N 0 T= ;
 
 \ The record's first line, which names the primitive; answers stderr's length.
-: TASK-REFUSED-ERR ( ptr u8 n ptr u8 n -- len )
+: TASK-REJECTED-ERR ( ptr u8 n ptr u8 n -- len )
    {: src:ptr srcu:n line:ptr lineu:n :}
    src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
@@ -619,13 +619,13 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
    erru ;
 
 : TASK-EXPECT-REFUSED-EXIT ( ptr u8 n ptr u8 n -- )
-   TASK-REFUSED-ERR drop ;
+   TASK-REJECTED-ERR drop ;
 
 \ The record's first line and its note `in`, the word that called the
 \ primitive.
-: TASK-EXPECT-REFUSED-IN ( ptr u8 n ptr u8 n ptr u8 n -- )
+: TASK-EXPECT-REJECTED-IN ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n line:ptr lineu:n in:ptr inu:n :}
-   src srcu line lineu TASK-REFUSED-ERR {: erru:len :}
+   src srcu line lineu TASK-REJECTED-ERR {: erru:len :}
    TASK-ERR erru LEN>N in inu CONTAINS? TTRUE ;
 
 : TASK-TEST-LOWER-LIVE ( -- )
@@ -636,7 +636,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$
    s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread"
-   S\" \n  = in: TTC-BODY\n" TASK-EXPECT-REFUSED-IN ;
+   S\" \n  = in: TTC-BODY\n" TASK-EXPECT-REJECTED-IN ;
 
 : TASK-FRAMED-REFUSAL$ ( -- ptr u8 n )
    s" error[E-TASK-COMPILE]: source is read on a task's thread" ;
@@ -649,7 +649,7 @@ FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 : TASK-TEST-TASK-CREATES ( -- )
    TASK-CREATES$
    s" error[E-TASK-COMPILE]: `create` ran on a task's thread"
-   S\" \n  = in: DEF\n" TASK-EXPECT-REFUSED-IN ;
+   S\" \n  = in: DEF\n" TASK-EXPECT-REJECTED-IN ;
 
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}

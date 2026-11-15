@@ -64,7 +64,7 @@ s" a caller verified after it certifies" T-LABEL
 s" : CDR-TWO-USE ( -- n ) CDR-TWO ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
 
-\ REFUSE-DUPLICATE (verify-source.f) leaves the body unchecked.
+\ REJECT-DUPLICATE (verify-source.f) leaves the body unchecked.
 : CDR-THREE ( -- n ) 3 ;
 
 s" a refused body under a certified name is refused as a duplicate" T-LABEL

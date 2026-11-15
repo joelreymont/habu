@@ -418,7 +418,7 @@
 \ type it cannot size, that has no name or one it cannot publish, or whose
 \ count is a literal outside its extent or a token the gate cannot certify.
 \ The gate pre-pass and the run-time definers both reject through
-\ CHECKER-STORAGE-REFUSE, which prints E-BAD-STORAGE at the rejected token.
+\ CHECKER-STORAGE-REJECT, which prints E-BAD-STORAGE at the rejected token.
 \ Like TRUST-STALE it is a hard stop on the ordinary load path, and is printed
 \ and counted under a MULTI-ERROR load; either way nothing is registered or
 \ defined.
@@ -5152,7 +5152,7 @@ CHECKER-REG:}SCRATCH
 92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?); E-UNSAFE
 93 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
 94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP); E-UNKNOWN-FIELD
-95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REFUSE)
+95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REJECT)
 96 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED); E-UNDEFINED
 97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY); E-UNDEFINED
 98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
@@ -8569,14 +8569,14 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 5 constant VREC-WHY-SCOPED   \ a field's type has a scoped dependency
 6 constant VREC-WHY-EMPTY    \ no field
 
-\ A refused field is answered, not died on. VREC-AT is the byte offset in the
+\ A rejected field is answered, not died on. VREC-AT is the byte offset in the
 \ field text of the field being parsed; VREC-TYPE-A U is its type's token, empty
 \ where no type follows.
 variable VREC-AT
 PTR-VARIABLE VREC-TYPE-A
 variable VREC-TYPE-U
 
-: VREC-REFUSE ( n -- n n ) VREC-AT @ swap ;
+: VREC-REJECT ( n -- n n ) VREC-AT @ swap ;
 
 \ Takes the token the type parser rejected as the field's type when it lies in
 \ field text f fu; else the type's first token stays.
@@ -8588,7 +8588,7 @@ variable VREC-TYPE-U
    SGBAD-A @ VREC-TYPE-A !  SGBAD-U @ VREC-TYPE-U ! ;
 
 : VREC-TYPE-REJECT ( ptr u8 n -- n n )
-   VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REFUSE ;
+   VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REJECT ;
 
 \ A field text whose length describes no memory holds no field, so its record
 \ is refused as an empty one before a byte of it is read.
@@ -8604,13 +8604,13 @@ variable VREC-TYPE-U
    BEGIN
       NEXT-SIG-TOK dup 0= IF 2drop fieldsu 0 EXIT THEN
       over fields - VREC-AT !  0 VREC-TYPE-U !
-      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REFUSE EXIT THEN
-      2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REFUSE EXIT THEN
+      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REJECT EXIT THEN
+      2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REJECT EXIT THEN
       NEXT-SIG-TOK dup 0= IF 2drop 2drop fields fieldsu VREC-TYPE-REJECT EXIT THEN
       2dup VREC-TYPE-U ! VREC-TYPE-A !
       SIG-TYPE
       dup SCOPED-TYPE? IF
-         drop 2drop VREC-WHY-SCOPED VREC-REFUSE EXIT
+         drop 2drop VREC-WHY-SCOPED VREC-REJECT EXIT
       THEN
       >r rec recu 2swap r> VREC-FIELD-STORE
       SGBAD @ IF fields fieldsu VREC-TYPE-REJECT EXIT THEN
@@ -13734,7 +13734,7 @@ package CHECKER-REG
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The declared name, the rejected token and the STG- reason.
-: CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
+: CHECKER-STORAGE-REJECT ( ptr u8 n ptr u8 n n -- )
    {: na:ptr nu:n ta:ptr tu:n why:n :}
    s" E-BAD-STORAGE" REJECTION:OPEN  na nu why STGR-MESSAGE
    ta tu REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
@@ -13767,7 +13767,7 @@ package CHECKER-REG
 \ A definer with no name on its line declares no word, so it is refused at its
 \ own token, which stands in for the word.
 : CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
-   da du da du STG-NO-NAME CHECKER-STORAGE-REFUSE ;
+   da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
 \ A published storage name has at most one inner ':'. A length that describes
 \ no memory is refused before the refusal that would echo it.
@@ -13775,7 +13775,7 @@ package CHECKER-REG
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
-      a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+      a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN
    a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
    RES-TRUE ;
@@ -14311,7 +14311,7 @@ package CHECKER-REG
 \ A missing nominal in a complete stored type leaves no allocation or row.
 \ A syntax fault, extra token, or known unstorable scheme keeps its refusal.
 : CHECKER-STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
-   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
+   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
    SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
       LBI-SCHEME @ 0= and IF
       CHECKER-UNSEEN-MARK
@@ -14319,7 +14319,7 @@ package CHECKER-REG
    THEN
    SGBAD-AMBIG? IF na nu SGBAD-A @ SGBAD-U @ STGR-AMBIG EXIT THEN
    SGBAD-UNKNOWN? IF
-      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
+      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
    THEN
    na nu ta tu
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
@@ -14330,7 +14330,7 @@ package CHECKER-REG
       LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
       THEN THEN THEN THEN THEN
    THEN
-   CHECKER-STORAGE-REFUSE ;
+   CHECKER-STORAGE-REJECT ;
 
 : CHECKER-TYPE-MARK ( bool -- )
    IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
@@ -15366,14 +15366,14 @@ package CHECKER-LBUF
 public
 : COUNT-OK? ( ptr u8 n ptr u8 n n -- bool )
    {: na:ptr nu:n a:ptr u:n width:n :}
-   u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT THEN
+   u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT THEN
    a u num-parse {: v:n flt:bool ok:bool :}
    flt 0= ok and IF
       v width CHECKER-LBUF-EXTENT? IF RES-TRUE EXIT THEN
-      na nu a u STG-BAD-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+      na nu a u STG-BAD-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN
    a u BY-EFFECT? IF RES-TRUE EXIT THEN
-   na nu a u STG-COUNT-WORD CHECKER-STORAGE-REFUSE RES-FALSE ;
+   na nu a u STG-COUNT-WORD CHECKER-STORAGE-REJECT RES-FALSE ;
 ;package
 
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
@@ -21790,7 +21790,7 @@ variable IS-PEND-U                   \ and its length
 
 \ Rejects a does> head, closed by CA CU, that walked no straight-line `create`
 \ or definer call, unless an earlier rejection holds the pin.
-: DOES-UNMADE-REFUSE ( ptr u8 n -- )
+: DOES-UNMADE-REJECT ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    WRAPMADE @ 0 <>  OK @ 0=  or  FAILSET @ 0 <>  or IF EXIT THEN
    ca cu CLOSER-PIN!

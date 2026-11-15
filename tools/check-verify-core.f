@@ -211,10 +211,10 @@ variable CHK-EXPAND-TOP
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;
 
-\ Whether Q, a read of a source, ended with the file system refusing to read it
-\ (a code of its block, such as E-FS-OPEN for a file whose mode forbids it),
-\ with the refusal's errno, else 0. Any other failure of the read goes on.
-: CHK-READ-REFUSED ( [ -- ] -- n bool ) {: q :}
+\ Whether Q, a read of a source, ended with the file system rejecting it (a
+\ code of its block, such as E-FS-OPEN for a file whose mode forbids it), with
+\ the rejection's errno, else 0. Any other failure of the read goes on.
+: CHK-READ-REJECTED ( [ -- ] -- n bool ) {: q :}
    q catch {: rc:n :}
    rc CHK-FS-RC? if FS:ERRNO true exit then
    rc 0<> if rc throw then
@@ -304,7 +304,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 
 : CHK-DISCOVER-ACT ( -- )
    CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
-   [: CHK-READ-ACT ;] CHK-READ-REFUSED {: e:n refused:bool :}
+   [: CHK-READ-ACT ;] CHK-READ-REJECTED {: e:n refused:bool :}
    refused if e CHK-UNREADABLE then
    CHK-RUN-READ ;
 

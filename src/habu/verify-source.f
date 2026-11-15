@@ -2209,7 +2209,7 @@ ENGINE-TARGET-INIT
    2dup DUPLICATE-AT! ;
 
 \ A name that lands in a sealed package stops first.
-: REFUSE-DUPLICATE ( ptr u8 n n -- bool )
+: REJECT-DUPLICATE ( ptr u8 n n -- bool )
    {: a:ptr u:n at:n :}
    a u at u SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
@@ -2287,7 +2287,7 @@ ENGINE-TARGET-INIT
    {: name:ptr nameu:n at:n :}
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
-   name nameu at REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    -1 SIG-RAW-MODE!
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
@@ -2303,7 +2303,7 @@ ENGINE-TARGET-INIT
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
+   name nameu at REJECT-DUPLICATE IF 0 0= EXIT THEN
    name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
@@ -2314,7 +2314,7 @@ ENGINE-TARGET-INIT
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   name nameu at REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2383,7 +2383,7 @@ variable TRUSTED-DOES
    s" trusted:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REFUSE-DUPLICATE IF
+   name nameu at REJECT-DUPLICATE IF
       name nameu REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -2406,7 +2406,7 @@ variable TRUSTED-DOES
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REFUSE-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
+   name nameu at REJECT-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
@@ -2710,7 +2710,7 @@ variable STG-TYPE-U
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    2dup NAME-DECLARED
    2dup CHECKER-LBUF-NAME-OK? IF
-      2dup TOKEN-BYTE @ REFUSE-DUPLICATE 0= IF EXIT THEN
+      2dup TOKEN-BYTE @ REJECT-DUPLICATE 0= IF EXIT THEN
    THEN
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
@@ -3494,14 +3494,14 @@ variable FILE-USE
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
-   name nameu at REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
 : STRUCTURE-SIZE ( ptr u8 n n -- ) {: name:ptr nameu:n at:n :}
-   name nameu at REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
    DISARM
@@ -3624,7 +3624,7 @@ variable FFI-LIT-B                          \ and the newer
    name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
    name nameu NAME-DECLARED
-   name nameu at REFUSE-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
+   name nameu at REJECT-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
    0 FFI-SIG-U !
    [: FFI-APPEND ;] FFI:DECLARED-TEXTS
    0 FFI-SIG FFI-SIG-U @ {: sig:ptr sigu:n :}
@@ -3900,7 +3900,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ REJECTION:NOT-A-NAME
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
-   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REJECT-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    WRAP-RESET
    BODY-LOAD-RESET
    LOCALS-RESET

@@ -1342,7 +1342,7 @@ variable TAGGED-FAM
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CHECK-SCAN
-   DOES-SPLIT @ 0 <>  TORDER-SCAN-UNKNOWN @ 0=  and IF s" does>" DOES-UNMADE-REFUSE THEN
+   DOES-SPLIT @ 0 <>  TORDER-SCAN-UNKNOWN @ 0=  and IF s" does>" DOES-UNMADE-REJECT THEN
    SIG-UNRES @ SGBAD @ 0= and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       CHECKER-UNSEEN-MARK
@@ -2261,7 +2261,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ A top-level token no scope defines, or one with a malformed qualifier when
 \ bad is set.
-: TOP-REFUSE ( ptr u8 n bool -- n )
+: TOP-REJECT ( ptr u8 n bool -- n )
    {: a:ptr u:n bad:bool :}
    bad IF
       s" E-BAD-QUALIFIED-TOP-LEVEL" REJECTION:OPEN
@@ -2304,7 +2304,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
-   a u  CHECKER-QBAD-TOK @ 0 <>  TOP-REFUSE ;
+   a u  CHECKER-QBAD-TOK @ 0 <>  TOP-REJECT ;
 
 : CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
@@ -2974,7 +2974,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    if nm u else a u then ;
 
 public
-: REFUSE-DUPLICATE ( ptr u8 n ptr u8 n -- )
+: REJECT-DUPLICATE ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n t:ptr tu:n :}
    a u t tu REJECTION:DUPLICATE
    CHECKER-REJECT-RC REJECTION:STOP ;

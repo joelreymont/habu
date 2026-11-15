@@ -44,7 +44,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 : OTHER-FREE ( ptr u8 n ptr u8 n n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n wid:n :}
    name nameu sfx sfxu LBUF-SUFFIXED {: a:ptr u:n :}
-   a u wid search-wl 0 <> if a u name nameu CHECK:REFUSE-DUPLICATE then ;
+   a u wid search-wl 0 <> if a u name nameu CHECK:REJECT-DUPLICATE then ;
 
 \ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
 \ NAME.
@@ -54,7 +54,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
    CHECKER-QTAIL$ sfx sfxu LBUF-SUFFIXED wid search-wl 0= if exit then
-   name nameu sfx sfxu LBUF-SUFFIXED name nameu CHECK:REFUSE-DUPLICATE ;
+   name nameu sfx sfxu LBUF-SUFFIXED name nameu CHECK:REJECT-DUPLICATE ;
 
 \ NAME's words taken in the section the declaration does not write are
 \ rejected at NAME: a qualified Q:TAIL writes Q's public one.
@@ -77,7 +77,7 @@ public
    SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
-      s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+      s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
