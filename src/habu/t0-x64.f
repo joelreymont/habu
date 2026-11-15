@@ -47,7 +47,7 @@ variable BODY-AT                      \ first byte after the frame adjustment
 variable NFRAME
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
-DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
+DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 4096 constant SINK-START-BYTES
 
@@ -76,6 +76,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : PUT ( n n n -- ) {: v:n off:n k:n :}
    SINK BUF:SPAN$ drop off + {: p:ptr :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
+
+: REL32! ( n n -- )
+   {: d:n off:n :}
+   d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
+   d off 4 PUT ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
 : FWD-SITE ( -- LABEL:branch ) HERE-OFF 4 - LABEL:>BRANCH ;
@@ -136,8 +141,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ The rows (t0-emit.f "THE ROWS"): a call or tail site is E8 or E9 rel32, zero
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
-\ imm64 holds its unit's offset until PATCH adds the placement. Every branch is
-\ rel32.
+\ RIP-relative lea names its unit inside the emission and needs no row.
+\ Every branch is rel32.
 : OPEN ( -- )
    SINK-LIVE @ 0= if
       SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -150,7 +155,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then
-   HERE-OFF n UNIT-REF @ 2 + 8 PUT
+   n UNIT-REF @ {: at:n :}
+   HERE-OFF at - 4 - at REL32!
    UNIT-BEGIN ;
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
@@ -184,18 +190,12 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
-   to at off + 5 + - {: d:n :}
-   d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
-   d off 1 + 4 PUT ;
+   to at off + 5 + - off 1+ REL32! ;
 
 : PATCH ( n -- ) {: at:n :}
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: off:n kind:n to:n :}
       at off to PATCH-CALL
-   loop
-   EMIT-ADDR-ROWS 0 ?do
-      i EMIT-ADDR-ROW {: off:n kind:n to:n :}
-      kind ADDR-QUOT-KIND = if at to EMIT-UNIT + off 2 + 8 PUT then
    loop ;
 
 \ ---- values ------------------------------------------------------------------
@@ -209,13 +209,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: v:n d:vreg :}
    v -1 d NEMIT:ADDR-CODE ADDR ;
 
-\ The site's imm64 holds 0 until QUOT-OPEN writes unit n's offset.
+\ Unit 0 already begins at offset 0; QUOT-OPEN binds each later unit.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    n 1 + UNIT-REF-RESERVE
-   HERE-OFF n UNIT-REF !
-   HERE-OFF ADDR-QUOT-KIND n -1 EMIT-ADDR-ROW+
-   d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
+   d REG 0 MEM-RIP SINK ENC-LEA
+   HERE-OFF 4 - {: at:n :}
+   n 0= if HERE-OFF negate at REL32! exit then
+   at n UNIT-REF ! ;
 
 \ The stack pointer moved by k cells: an lea, which leaves the condition codes
 \ alone, as EMIT-CMP requires.
