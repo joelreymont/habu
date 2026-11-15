@@ -46,7 +46,9 @@ package FILE-OBJECTS-TEST
 30 constant OPENED-LAST                  \ and the opened sequence's
 31 constant CTOR-SUM                     \ ctor-sum.f's
 32 constant EXPORT-MAIN                  \ export-main.f's
-33 constant TAILS                        \ TAIL$'s tails
+33 constant PFIELD-PF                    \ the +FIELD sequence's pf.f's
+34 constant PFIELD-MAIN                  \ and pf-main.f's
+35 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -226,6 +228,8 @@ variable CLASS-N                        \ the class CLASS+ read
    i OPENED-LAST = if s" /opened/main.f+3.hfo" exit then
    i CTOR-SUM = if s" /test/fixtures/file-objects/ctor-sum.f.hfo" exit then
    i EXPORT-MAIN = if s" /test/fixtures/file-objects/export-main.f.hfo" exit then
+   i PFIELD-PF = if s" /pfield/pf.f.hfo" exit then
+   i PFIELD-MAIN = if s" /pfield/pf-main.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1619,6 +1623,33 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : ARENA-CASE ( CMD:command -- CMD:command )
    WRITE-ARENA  ARENA-KT ARENA-KB ARENA-DA ARENA-HT ;
 
+\ The +FIELD sequence: pf.f's package publishes PF.X and PF.Y; pf-main.f's
+\ MAIN stores x and its successor through them and prints both.
+: WRITE-PF-MAIN ( ptr u8 n -- ) {: x:ptr xu:n :}
+   s" pf.f" REQUIRE+  s\" create PF-BUF FILE-OBJECTS-PFIELD:PF-SIZE allot\n" SRC+
+   s" : MAIN ( -- ) " SRC+  x xu SRC+
+   s\"  dup PF-BUF FILE-OBJECTS-PFIELD:PF.X ! 1 + PF-BUF FILE-OBJECTS-PFIELD:PF.Y !\n" SRC+
+   s\"    PF-BUF FILE-OBJECTS-PFIELD:PF.X @ . PF-BUF FILE-OBJECTS-PFIELD:PF.Y @ . ;\n" SRC+
+   s" pf-main.f" NEST-WRITE ;
+
+: WRITE-PFIELD ( -- )
+   L$ s" pfield" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package FILE-OBJECTS-PFIELD\npublic\nBEGIN-STRUCTURE PF-SIZE\n" SRC+
+   s\" CELL +FIELD PF.X\nCELL +FIELD PF.Y\nEND-STRUCTURE\n;package\n" SRC+  s" pf.f" NEST-WRITE
+   s" 3" WRITE-PF-MAIN ;
+
+\ Guards a compiled file naming a linked file's +FIELD children: FD2 links pf.f and compiles pf-main.f.
+: PFIELD-CASE ( CMD:command -- CMD:command )
+   WRITE-PFIELD
+   s" FD" WHICH!  s" pf-main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s\" 3\n4\n" s" the program prints both fields" PRINTS-RUN
+   PFIELD-PF KEEP  PFIELD-MAIN KEEP
+   s" 5" WRITE-PF-MAIN
+   s" FD2" WHICH!  s" pf-main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build links pf.f" PFIELD-PF LINKED
+   s" the build compiles pf-main.f" PFIELD-MAIN COMPILED
+   s\" 5\n6\n" s" the program prints both new fields" PRINTS-RUN ;
+
 \ The route sequence's f.f: its top level makes D, a device whose emit and write add their byte
 \ counts to N, the output, types to it and leaves it there, and stores 7 into the user row U.
 \ main.f's MAIN prints U, N, how making D the output ends, and N. genio-core.f needs --repl.
@@ -1932,7 +1963,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE ROUTE-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE ROUTE-CASE
       DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE BUILT-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
