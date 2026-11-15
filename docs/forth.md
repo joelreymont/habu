@@ -2200,9 +2200,7 @@ runtime or analysis layer.
   word on stderr and may spill the rest of the definition through the
   interpreter. `tools/check.f --all-errors` and `--verify-only` report every
   refused definition, each for the one fault the load refuses it for; the
-  `tools/diag-code.f` header states the diagnostic contract. A refused
-  definition's prose line ends with `; suggestion: ` and the text its packet's
-  `suggestion` field carries.
+  `src/core/rejection.f` header states the form of a rejection's record.
 
 ## Habu Native Tooling Gotchas
 

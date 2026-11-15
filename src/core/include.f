@@ -1294,7 +1294,7 @@ private
       s" the including file was found under, then Habu's source root, " REJECTION:EMIT-STR
       s" then the directory hb runs in" REJECTION:EMIT-STR
    then
-   INCLUDE-IO-RC REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 public
 

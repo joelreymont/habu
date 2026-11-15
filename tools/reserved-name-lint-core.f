@@ -6,111 +6,38 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/fd.f
 require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/byte-buffer.f
-require src/lib/json.f
 require src/lib/source-lex.f
 
 package RESERVED-NAME-LINT
 private
 
-$20 constant RNL-NUM-CAP
-$0A constant RNL-LF
-$20 constant RNL-SP
-$3A constant RNL-COLON-C
 $2E constant RNL-DOT-C
 $2D constant RNL-MINUS-C
 $24 constant RNL-DOLLAR-C
 
-create RNL-NUM RNL-NUM-CAP allot
-create RNL-LF-BUF 1 allot
 create RNL-SDQ  $73 c, $22 c,
 create RNL-CDQ  $63 c, $22 c,
 create RNL-DOTQ $2E c, $22 c,
-create RNL-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE RNL-JSON-W JSON:writer
-variable RNL-JSON-READY
-
-: RNL-JSON-WRITER ( -- ptr JSON:writer )
-   RNL-JSON-READY @ 0= if
-      RNL-JSON-BUF 1 BUF:N>BLEN BUF:INIT
-      1 RNL-JSON-READY !
-   then
-   RNL-JSON-W RNL-JSON-BUF JSON:WRITE-OPEN-BUF ;
-
 TYPED-VARIABLE RNL-SRC-A ptr u8
 variable RNL-SRC-U
 variable RNL-SRC-CAP
-TYPED-VARIABLE RNL-FILE-A ptr u8
-variable RNL-FILE-U
 variable RNL-BAD
 variable RNL-I
 variable RNL-IN-DEF
-variable RNL-JSON
-variable RNL-OUT-FD
-variable RNL-NUM-I
 
 : RNL-SRC-A@ ( -- ptr u8 )
    RNL-SRC-A @ ;
 
-: RNL-FILE-A@ ( -- ptr u8 )
-   RNL-FILE-A @ ;
-
 : RNL-SRC-A! ( ptr u8 -- )
    RNL-SRC-A ! ;
-
-: RNL-FILE-A! ( ptr u8 -- )
-   RNL-FILE-A ! ;
-
-public
-
-: JSON! ( bool -- )
-   RNL-JSON ! ;
-
-: OUT-FD! ( fd -- )
-   RNL-OUT-FD ! ;
-
-private
-
-: RNL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   fd a u LINT-OUT-WRITE ;
-
-: RNL-OUT ( ptr u8 n -- )
-   RNL-OUT-FD @ -rot RNL-WRITE ;
-
-: RNL-C ( n -- )
-   RNL-LF-BUF c!
-   RNL-LF-BUF 1 RNL-OUT ;
-
-: RNL-NL ( -- )
-   RNL-LF RNL-C ;
-
-: RNL-U$ ( n -- ptr u8 n ) {: u:n :}
-   RNL-NUM-CAP RNL-NUM-I !
-   u 0= if
-      RNL-NUM-I @ 1- RNL-NUM-I !
-      $30 RNL-NUM RNL-NUM-I @ + c!
-      RNL-NUM RNL-NUM-I @ + 1
-      exit
-   then
-   u begin dup 0 > while
-      dup 10 mod $30 +
-      RNL-NUM-I @ 1- RNL-NUM-I !
-      RNL-NUM RNL-NUM-I @ + c!
-      10 /
-   repeat drop
-   RNL-NUM RNL-NUM-I @ + RNL-NUM-CAP RNL-NUM-I @ - ;
 
 : RNL-WORD? ( n -- bool ) {: k :}
    k LINT-LEX:COUNT >= if LINT-FALSE exit then
    k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: RNL-TOK-END ( n -- n ) {: k :}
-   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : RNL-COLON-DEFINER? ( n -- bool ) {: k :}
    k LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
@@ -285,64 +212,32 @@ private
    a u RNL-NUM-CLAIMED? if LINT-TRUE exit then
    a u RNL-DOT-DIGIT? ;
 
-: RNL-JSON-FINDING-AS ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: k:n code:ptr codeu:n why:ptr whyu:n fix:ptr fixu:n :}
-   RNL-JSON-WRITER JSON:WRITE-OBJECT-START
-   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" file" RNL-FILE-A@ RNL-FILE-U @ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" k LINT-LEX:LINE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" k LINT-LEX:COL@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" k LINT-LEX:BYTE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" k RNL-TOK-END JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" word" k LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" reason" why whyu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" suggestion" fix fixu JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END JSON:WRITTEN$ RNL-OUT RNL-NL ;
+\ A finding is one rejection record at the name token k, kept so the scan goes
+\ on; the file being scanned is armed.
+: RNL-FINDING ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: k:n code:ptr cu:n why:ptr wu:n reason:ptr ru:n fix:ptr fu:n :}
+   RNL-BAD @ 1+ RNL-BAD !
+   code cu REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  k LINT-LEX:TOKEN REJECTION:EMIT-STR
+   why wu REJECTION:EMIT-STR
+   k LINT-LEX:TOKEN REJECTION:AT  s" defined here" REJECTION:EMIT-STR
+   s" reason" REJECTION:NOTE  reason ru REJECTION:EMIT-STR
+   REJECTION:HELP  fix fu REJECTION:EMIT-STR
+   REJECTION:KEEP ;
 
-: RNL-JSON-FINDING ( n -- )
+: RNL-REPORT ( n -- )
    s" E-RESERVED-DEFINITION"
+   s" ` is reserved by parser/control dispatch"
    s" parser/control words cannot be source definition names"
-   s" Rename the definition after prefix stripping; use names like IX/JX for loop counters."
-   RNL-JSON-FINDING-AS ;
+   s" rename the definition after prefix stripping; use names like IX/JX for loop counters"
+   RNL-FINDING ;
 
-: RNL-JSON-NUM-FINDING ( n -- )
+: RNL-REPORT-NUM ( n -- )
    s" E-NUMERIC-DEFINITION"
+   s" ` is number-shaped"
    s" numeric literals parse before dictionary lookup; a number-shaped name is unreachable or float-confusable"
-   s" Rename so the name cannot parse as a number: avoid digit-only, dot-digit, and $hex shapes."
-   RNL-JSON-FINDING-AS ;
-
-: RNL-TEXT-FINDING-AS ( n ptr u8 n ptr u8 n -- )
-   {: k:n code:ptr codeu:n why:ptr whyu:n :}
-   code codeu RNL-OUT
-   RNL-SP RNL-C
-   RNL-FILE-A@ RNL-FILE-U @ RNL-OUT
-   RNL-COLON-C RNL-C k LINT-LEX:LINE@ RNL-U$ RNL-OUT
-   RNL-COLON-C RNL-C k LINT-LEX:COL@ RNL-U$ RNL-OUT
-   s" : `" RNL-OUT
-   k LINT-LEX:TOKEN RNL-OUT
-   why whyu RNL-OUT
-   RNL-NL ;
-
-: RNL-TEXT-FINDING ( n -- )
-   s" E-RESERVED-DEFINITION"
-   s" ` is reserved by parser/control dispatch; rename after prefix stripping"
-   RNL-TEXT-FINDING-AS ;
-
-: RNL-TEXT-NUM-FINDING ( n -- )
-   s" E-NUMERIC-DEFINITION"
-   s" ` is number-shaped; numeric literals parse before dictionary lookup, rename it"
-   RNL-TEXT-FINDING-AS ;
-
-: RNL-REPORT ( n -- ) {: k :}
-   RNL-BAD @ 1+ RNL-BAD !
-   RNL-JSON @ if k RNL-JSON-FINDING exit then
-   k RNL-TEXT-FINDING ;
-
-: RNL-REPORT-NUM ( n -- ) {: k:n :}
-   RNL-BAD @ 1+ RNL-BAD !
-   RNL-JSON @ if k RNL-JSON-NUM-FINDING exit then
-   k RNL-TEXT-NUM-FINDING ;
+   s" rename so the name cannot parse as a number: avoid digit-only, dot-digit and $hex shapes"
+   RNL-FINDING ;
 
 : RNL-CHECK-NAME ( n -- ) {: k:n :}
    k RNL-WORD? 0= if exit then
@@ -408,16 +303,18 @@ private
 public
 
 : RESET ( -- )
-   0 RNL-BAD !
-   0 RNL-JSON !
-   FD:STDOUT OUT-FD! ;
+   0 RNL-BAD ! ;
 
+\ PATH is read; LABEL names it in every record.
 : FILE-AS ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu label:ptr labelu :}
-   label RNL-FILE-A! labelu RNL-FILE-U !
    path pathu RNL-LOAD-SOURCE
    RNL-SRC-A@ RNL-SRC-U @ LINT-LEX:SOURCE
-   RNL-SCAN ;
+   label labelu REJECTION:FILE!
+   RNL-SRC-A@ RNL-SRC-U @ 1 1 0 REJECTION:SOURCE!
+   [: RNL-SCAN ;] catch
+   REJECTION:SOURCE-OFF
+   dup 0<> if throw then drop ;
 
 : FILE ( ptr u8 n -- )
    2dup FILE-AS ;

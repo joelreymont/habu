@@ -4,17 +4,12 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/fd.f
 require src/lib/source.f
-require src/lib/byte-buffer.f
-require src/lib/json.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
 
 package CHECKED-BOUNDARY-LINT
 
 private
-
-32 constant UB-NUM-CAP
 
 10 constant UB-LF
 13 constant UB-CR
@@ -23,21 +18,7 @@ private
 40 constant UB-LPAREN
 41 constant UB-RPAREN
 9 constant UB-TAB
-58 constant UB-COLON-C
 92 constant UB-BSLASH
-
-create UB-NUM UB-NUM-CAP allot
-create UB-LF-BUF 1 allot
-create UB-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE UB-JSON-W JSON:writer
-variable UB-JSON-READY
-
-: UB-JSON-WRITER ( -- ptr JSON:writer )
-   UB-JSON-READY @ 0= if
-      UB-JSON-BUF 1 BUF:N>BLEN BUF:INIT
-      1 UB-JSON-READY !
-   then
-   UB-JSON-W UB-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
 TYPED-VARIABLE UB-FILE-A ptr u8
 variable UB-FILE-U
@@ -47,26 +28,18 @@ TYPED-VARIABLE UB-SRC-A ptr u8
 DYNAMIC-BUFFER UB-SRC-MEM u8   \ the file being scanned, read whole; released after its scan
 variable UB-SRC-U
 variable UB-I
-variable UB-LINE
-variable UB-COL
 TYPED-VARIABLE UB-TOK-A ptr u8
 variable UB-TOK-U
-variable UB-TOK-BYTE
-variable UB-TOK-LINE
-variable UB-TOK-COL
 TYPED-VARIABLE UB-PREV-A ptr u8
 variable UB-PREV-U
 TYPED-VARIABLE UB-PREV2-A ptr u8
 variable UB-PREV2-U
 variable UB-BAD
 variable UB-CHECK-OFF
-variable UB-NUM-I
 variable UB-TRUSTED
 variable UB-IN-DEF
 variable UB-CARRY-OFF
-variable UB-JSON
 variable UB-STRICT-BOUNDARY
-variable UB-OUT-FD
 
 : UB-FILE-A@ ( -- ptr u8 )
    UB-FILE-A @ ;
@@ -118,50 +91,14 @@ variable UB-OUT-FD
 
 public
 
-: JSON! ( bool -- )
-   UB-JSON ! ;
-
 : STRICT! ( bool -- )
    UB-STRICT-BOUNDARY ! ;
-
-: OUT-FD! ( fd -- )
-   UB-OUT-FD ! ;
 
 private
 
 : UB-CHECK-OFF! ( bool -- )
    dup UB-CHECK-OFF !
    UB-CARRY-OFF ! ;
-
-: UB-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   fd a u LINT-OUT-WRITE ;
-
-: UB-OUT ( ptr u8 n -- )
-   UB-OUT-FD @ -rot UB-WRITE ;
-
-: UB-C ( n -- )
-   UB-LF-BUF c!
-   UB-LF-BUF 1 UB-OUT ;
-
-: UB-NL ( -- )
-   UB-LF UB-C ;
-
-: UB-U$ ( n -- ptr u8 n )
-   {: u:n :}
-   UB-NUM-CAP UB-NUM-I !
-   u 0= if
-      UB-NUM-I @ 1- UB-NUM-I !
-      48 UB-NUM UB-NUM-I @ + c!
-      UB-NUM UB-NUM-I @ + 1
-      exit
-   then
-   u begin dup 0 > while
-      dup 10 mod 48 +
-      UB-NUM-I @ 1- UB-NUM-I !
-      UB-NUM UB-NUM-I @ + c!
-      10 /
-   repeat drop
-   UB-NUM UB-NUM-I @ + UB-NUM-CAP UB-NUM-I @ - ;
 
 : UB-END? ( -- bool )
    UB-I @ UB-SRC-U @ >= ;
@@ -171,13 +108,7 @@ private
 
 : UB-ADV ( -- n )
    UB-C@
-   UB-I @ 1+ UB-I !
-   dup UB-LF = if
-      UB-LINE @ 1+ UB-LINE !
-      1 UB-COL !
-   else
-      UB-COL @ 1+ UB-COL !
-   then ;
+   UB-I @ 1+ UB-I ! ;
 
 : UB-WS? ( n -- bool )
    dup UB-SP = over UB-LF = or over UB-TAB = or swap UB-CR = or ;
@@ -258,9 +189,6 @@ private
    UB-SKIP-IGNORED
    UB-END? if UB-FALSE exit then
    UB-SRC-A@ UB-I @ + UB-TOK-A!
-   UB-I @ UB-TOK-BYTE !
-   UB-LINE @ UB-TOK-LINE !
-   UB-COL @ UB-TOK-COL !
    0 UB-TOK-U !
    begin UB-TOK-MORE? while
       UB-ADV drop
@@ -325,111 +253,58 @@ private
 : UB-HOOK-NAME? ( ptr u8 n -- bool )
    s" CHECK-HOOK" LINT-ENDS-WITH? ;
 
-: UB-JSON-BASE ( ptr u8 n -- ptr JSON:writer )
-   {: code:ptr codeu:n :}
-   UB-JSON-WRITER JSON:WRITE-OBJECT-START
-   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" s" trusted_boundary_required" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA ;
+\ A finding is one rejection record, kept so the scan goes on: UB-OPEN opens it
+\ with its code and its message follows; UB-FINDING places it at the token,
+\ whose label is given, and ends it with the expected and found notes and the
+\ help every finding shares.
+: UB-OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+   UB-BAD @ 1+ UB-BAD !
+   code cu REJECTION:OPEN ;
 
-: UB-JSON-ORIGIN ( ptr JSON:writer -- ptr JSON:writer )
-   s" token" UB-TOK$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" token_index" 0 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" file" UB-LABEL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" UB-TOK-LINE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" UB-TOK-COL @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_start" UB-TOK-BYTE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" byte_end" UB-TOK-BYTE @ UB-TOK-U @ + JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
-
-: UB-JSON-FINISH ( ptr JSON:writer ptr u8 n ptr u8 n -- )
-   {: expected:ptr expectedu:n actual:ptr actualu:n :}
-   s" expected" expected expectedu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" actual" actual actualu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" suggestion"
-   s" Keep generated/user code checked; move checker mutations behind an audited boundary."
-   JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END JSON:WRITTEN$ UB-OUT UB-NL ;
-
-: UB-JSON-DEFINITION ( ptr u8 n -- )
-   {: name:ptr nu:n :}
-   s" E-UNCHECKED-DEFINITION" UB-JSON-BASE
-   s" word" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   UB-JSON-ORIGIN
-   s" checked definition" s" checker disabled" UB-JSON-FINISH ;
-
-: UB-JSON-MUTATION ( -- )
-   s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" s" " JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   UB-JSON-ORIGIN
-   s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
-
-: UB-JSON-PREFLIGHT ( -- )
-   s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" s" set-check" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   UB-JSON-ORIGIN
-   s" CHECK:INSTALL" s" set-check" UB-JSON-FINISH ;
-
-: UB-JSON-ROGUE-HOOK ( -- )
-   s" E-UNAUDITED-HOOK" UB-JSON-BASE
-   s" word" UB-PREV$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   UB-JSON-ORIGIN
-   s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
-
-: UB-JSON-ROGUE-TOP-HOOK ( -- )
-   s" E-UNAUDITED-TOP-HOOK" UB-JSON-BASE
-   s" word" UB-PREV$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   UB-JSON-ORIGIN
-   s" audited top-check hook" UB-PREV$ UB-JSON-FINISH ;
+: UB-FINDING ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: t:ptr tu:n label:ptr lu:n e:ptr eu:n f:ptr fu:n :}
+   t tu REJECTION:AT  label lu REJECTION:EMIT-STR
+   s" expected" REJECTION:NOTE  e eu REJECTION:EMIT-STR
+   s" found" REJECTION:NOTE  f fu REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" keep generated and user code checked; move checker mutations behind an audited boundary"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP ;
 
 : UB-REPORT-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
-   UB-BAD @ 1+ UB-BAD !
-   UB-JSON @ if name nu UB-JSON-DEFINITION exit then
-   s" UNCHECKED-DEFINITION " UB-OUT
-   UB-LABEL$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : `" UB-OUT name nu UB-OUT
-   s" ` defined while checker disabled" UB-OUT UB-NL ;
+   s" E-UNCHECKED-DEFINITION" UB-OPEN
+   s" `" REJECTION:EMIT-STR  name nu REJECTION:EMIT-STR
+   s" ` is defined while the checker is disabled" REJECTION:EMIT-STR
+   name nu s" defined with no check"
+   s" checked definition" s" checker disabled" UB-FINDING ;
 
 : UB-REPORT-MUTATION ( -- )
-   UB-BAD @ 1+ UB-BAD !
-   UB-JSON @ if UB-JSON-MUTATION exit then
-   s" CHECKER-MUTATION " UB-OUT
-   UB-LABEL$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : `" UB-OUT UB-TOK$ UB-OUT
-   s" ` mutates checker state in strict boundary mode" UB-OUT UB-NL ;
+   s" E-CHECKER-MUTATION" UB-OPEN
+   s" `" REJECTION:EMIT-STR  UB-TOK$ REJECTION:EMIT-STR
+   s" ` mutates checker state in strict boundary mode" REJECTION:EMIT-STR
+   UB-TOK$ s" outside a trusted definition"
+   s" checker hook remains installed" UB-TOK$ UB-FINDING ;
 
 : UB-REPORT-PREFLIGHT ( -- )
-   UB-BAD @ 1+ UB-BAD !
-   UB-JSON @ if UB-JSON-PREFLIGHT exit then
-   s" MISSING-PREFLIGHT-REARM " UB-OUT
-   UB-LABEL$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : use `CHECK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
+   s" E-CHECKER-MUTATION" UB-OPEN
+   s" the checker hook is replaced without `CHECK:INSTALL`" REJECTION:EMIT-STR
+   UB-TOK$ s" replaces the hook while the checker is disabled"
+   s" CHECK:INSTALL" UB-TOK$ UB-FINDING ;
 
 : UB-REPORT-ROGUE-HOOK ( -- )
-   UB-BAD @ 1+ UB-BAD !
-   UB-JSON @ if UB-JSON-ROGUE-HOOK exit then
-   s" UNAUDITED-HOOK " UB-OUT
-   UB-LABEL$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : `" UB-OUT UB-PREV$ UB-OUT
-   s" ` is not an audited checker hook" UB-OUT UB-NL ;
+   s" E-UNAUDITED-HOOK" UB-OPEN
+   s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
+   s" ` is not an audited checker hook" REJECTION:EMIT-STR
+   UB-PREV$ s" no row of tools/hook-sites.f names it in this file"
+   s" audited checker hook" UB-PREV$ UB-FINDING ;
 
 : UB-REPORT-ROGUE-TOP-HOOK ( -- )
-   UB-BAD @ 1+ UB-BAD !
-   UB-JSON @ if UB-JSON-ROGUE-TOP-HOOK exit then
-   s" UNAUDITED-TOP-HOOK " UB-OUT
-   UB-LABEL$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
-   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : `" UB-OUT UB-PREV$ UB-OUT
-   s" ` is not an audited top-check hook" UB-OUT UB-NL ;
+   s" E-UNAUDITED-TOP-HOOK" UB-OPEN
+   s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
+   s" ` is not an audited top-check hook" REJECTION:EMIT-STR
+   UB-PREV$ s" no row of tools/hook-sites.f names it in this file"
+   s" audited top-check hook" UB-PREV$ UB-FINDING ;
 
 : UB-HANDLE-INSTALL ( -- )
    UB-SET-CHECK-INSTALL? UB-NOT if exit then
@@ -466,9 +341,9 @@ private
    UB-REPORT-DEFINITION ;
 
 : UB-RESET-FILE-SCAN ( -- )
-   UB-NUM UB-PREV-A! 0 UB-PREV-U !
-   UB-NUM UB-PREV2-A! 0 UB-PREV2-U !
-   0 UB-I ! 1 UB-LINE ! 1 UB-COL !
+   NULL$ drop UB-PREV-A! 0 UB-PREV-U !
+   NULL$ drop UB-PREV2-A! 0 UB-PREV2-U !
+   0 UB-I !
    UB-CARRY-OFF @ UB-CHECK-OFF !
    UB-FALSE UB-TRUSTED !
    UB-FALSE UB-IN-DEF ! ;
@@ -540,12 +415,16 @@ private
 : UB-READ-SCAN ( -- )
    UB-FILE$  UB-FILE$ FS:FILE-SIZE  [: UB-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED UB-SRC-U !
    0 UB-SRC-MEM UB-SRC-A!
+   UB-LABEL$ REJECTION:FILE!
+   UB-SRC-A@ UB-SRC-U @ 1 1 0 REJECTION:SOURCE!
    UB-SCAN ;
 
-\ The storage lives for one file's scan: the spans into it are cleared, then it
-\ is released, on return or throw.
+\ The storage lives for one file's scan, armed as the rejection source: it is
+\ disarmed and the spans into it are cleared, then it is released, on return
+\ or throw.
 : UB-FILE-ACT ( -- )
    [: UB-READ-SCAN ;] catch {: rc:n :}
+   REJECTION:SOURCE-OFF
    UB-CLEAR-SRC-SPANS
    UB-SRC-MEM-RELEASE
    rc 0 <> if rc throw then
@@ -557,9 +436,7 @@ public
    UB-CLEAR-SPANS
    0 UB-BAD !
    UB-FALSE UB-CHECK-OFF!
-   UB-FALSE JSON!
-   UB-FALSE STRICT!
-   FD:STDOUT OUT-FD! ;
+   UB-FALSE STRICT! ;
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it
 \ in every report.

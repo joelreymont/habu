@@ -548,7 +548,7 @@ variable CANDIDATE-VERDICT
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
    GT-ERR-BUF GT-ERR-CAP CHECK-ALL-ERRORS:BUFFERS!
-   0 0= 0= CHECK-ALL-ERRORS:JSON!
+   false REJECTION:JSON !
    [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
 
 : CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )
@@ -829,14 +829,14 @@ variable CANDIDATE-VERDICT
    s" public" GE-SRC-LINE
    s" : GET ( -- n ) H ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   $4E s" duplicate definition" s" package rejects duplicate private word across reopen" CHECK-BUF-BAD
+   $46 s" error[E-DUPLICATE-DEFINITION]" s" package rejects duplicate private word across reopen" CHECK-BUF-BAD
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : reset ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   $4E s" duplicate definition" s" package rejects case-variant duplicate word" CHECK-BUF-BAD
+   $46 s" error[E-DUPLICATE-DEFINITION]" s" package rejects case-variant duplicate word" CHECK-BUF-BAD
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -847,7 +847,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   $4E s" duplicate definition" s" global wordlist rejects duplicate word" CHECK-BUF-BAD
+   $46 s" error[E-DUPLICATE-DEFINITION]" s" global wordlist rejects duplicate word" CHECK-BUF-BAD
    GE-SRC-RESET
    s" : GD-HDUP ( -- n ) 1 ;" GE-SRC-LINE
    s" undefine GD-HDUP" GE-SRC-LINE
@@ -998,7 +998,7 @@ variable CANDIDATE-VERDICT
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   $4E s" duplicate definition" s" checker rejects package duplicate definition" CHECK-BUF-BAD ;
+   $46 s" error[E-DUPLICATE-DEFINITION]" s" checker rejects package duplicate definition" CHECK-BUF-BAD ;
 
 : RUN-LOAD-ONE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    GE-HB-RESET

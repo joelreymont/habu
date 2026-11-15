@@ -1634,23 +1634,29 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
    JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
 
-\ The raw text of the packet's note under this key, as MEMBER$ answers a member.
-: NOTE$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n k:ptr ku:n :}
+\ A note with a string value as the server writes its line; any other value
+\ is passed over.
+: NOTE+ ( JSON:reader -- JSON:reader )
+   JSON:READ-SPAN$ {: k:ptr ku:n :}
+   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-SKIP-VALUE exit then
+   s" \n" EXP+ k ku EXP+ s" : " EXP+ JSON:READ-SPAN$ EXP+ ;
+
+: NOTES+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
    JSON-ST a u JSON:READ-INIT
    JSON:READ-NEXT drop
-   s" notes" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE NULL$ false exit then
-   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
-   JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
+   s" notes" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE exit then
+   begin JSON:READ-NEXT JSON:T-KEY = while NOTE+ repeat
+   JSON:READ-CLOSE ;
 
 : MESSAGE+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    s\" \"" EXP+
    a u s" message" MEMBER$ if EXP+ else 2drop then
-   a u s" help" MEMBER$ over 0 > and if s" \n" EXP+ EXP+ else 2drop then
-   a u s" expected" NOTE$ if s" \nexpected: " EXP+ EXP+ else 2drop then
-   a u s" found" NOTE$ if s" \nfound: " EXP+ EXP+ else 2drop then
+   a u NOTES+
+   a u s" help" MEMBER$ over 0 > and
+   if s" \nhelp: " EXP+ EXP+ else 2drop then
    s\" \"" EXP+ ;
 
 \ The publish the next frame must be, for the document or the file at PATH,

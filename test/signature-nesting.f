@@ -4,7 +4,7 @@
 \ control frames, a RECURSE with no declared effect and a RECURSE in a does>
 \ clause are uncheckable for a reason they name too, and each says so in its
 \ JSON packet with help of its own; the packet of a RECURSE with no declared
-\ effect has no declared note, and the diagnostics gate accepts it. A token
+\ effect has no declared note and is in the record form. A token
 \ that fails before the frames overflow keeps its mismatch in prose, packet and
 \ CHECK-CANDIDATE!'s answer; a failure pinned before a name a
 \ rendering statement may define, or a compile-time refusal after it in an unfit
@@ -186,7 +186,7 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 
 : PACKET-PASSES ( -- )
-   PACKET$ GJA-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW ;
+   PACKET$ GJA-PARSE GJA-RECORD-FORM ;
 
 
 \ A caller passes CODE, TOKEN and WHY as packet fields in text; SRC-BUF's packet
@@ -361,7 +361,7 @@ public
    s" a RECURSE in a does> clause is uncheckable for calling the defining word, and says where to recurse" T-LABEL
    RECURSE-DOES
    s" error[E-UNCHECKABLE]: recurse in a does> clause would call the defining word" REFUSES
-   s" at `RECURSE`" SAID  s" help: move the recursion into a named word" SAID
+   s" --> <input>:1:55" SAID  s" help: move the recursion into a named word" SAID
    s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
    RECURSE-DOES
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"RECURSE\""

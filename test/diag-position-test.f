@@ -5,6 +5,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/runner.f
@@ -696,7 +697,7 @@ variable RC
    s" arena-taken.f" FIXTURE!
    s" " DUP-RC CHECK-EXIT
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
-   s" --all-errors" DUP-RC CHECK-EXIT
+   s" --all-errors" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --verify-only" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS
@@ -731,7 +732,7 @@ variable RC
    s" --all-errors" CHECK
    s" E-STATEMENT-THROW" REJECTED-AS
    0 tok toku line col bs be AT
-   code THREW
+   0 s" message" code FMT:INT$ FIELD-HAS
    s" --verify-only" CHECK
    s" E-STATEMENT-THROW" REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
@@ -779,7 +780,7 @@ variable RC
    s" a duplicate VALUE-RECORD field's reason under --all-errors" T-LABEL
    s" --all-errors" CHECK
    s" E-BAD-RECORD-FIELD" REJECTED-AS
-   0 s" reason" s" checker: duplicate value-record field" FIELD= ;
+   0 s" reason" s" checker: duplicate value-record field" NOTE= ;
 
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
@@ -1615,7 +1616,7 @@ variable RC
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 42 49 RUN-REFUSED-AT
+   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
@@ -1626,7 +1627,7 @@ variable RC
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 48 55 RUN-REFUSED-AT
+   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT
