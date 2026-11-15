@@ -950,11 +950,9 @@ public
    s" `, or the word already named `" EMIT-STR
    stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
 
-private
 \ The status a load stops with when the dictionary has no record left.
 77 constant DICT-FULL-RC
 
-public
 \ Rejects a definition of NAME when the dictionary has no record left, placed
 \ at PLACE.
 : DICTIONARY-FULL ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}

@@ -487,10 +487,11 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 
 \ The answer to a throw RC that ended the composition after its rejection wrote
 \ its record: a rejection's is refused, or missing when the file a loader names
-\ is not there, and a file found but not readable is unread. Any other code
-\ goes on with no answer.
+\ is not there, a file found but not readable is unread, and a full dictionary
+\ is full. Any other code goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
    rc INCLUDE-IO-RC = if s" unread" TARGET-RESULT exit then
+   rc REJECTION:DICT-FULL-RC = if s" full" RESULT exit then
    rc CHECKER-REJECT-RC = 0= if rc throw then
    VERIFY:FAULT-TARGET$ nip 0 > if s" missing" TARGET-RESULT exit then
    s" refused" RESULT ;

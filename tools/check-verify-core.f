@@ -403,6 +403,7 @@ $0A constant VFY-LF
 4 constant VFY-MISSING
 5 constant VFY-DEFERRED
 6 constant VFY-UNREAD
+7 constant VFY-FULL
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8
@@ -629,6 +630,7 @@ variable VFY-EXE-U
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
+   a u s" check-verify: full" STR= if VFY-FULL exit then
    a u s" check-verify: deferred" STR= if VFY-DEFERRED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
    a u s" check-verify: missing" VFY-MISSING VFY-TARGET-ANSWER {: m:n :}
@@ -833,6 +835,7 @@ variable VFY-EXE-U
       VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:deferred exit then
       VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:held exit then
    then
@@ -846,6 +849,7 @@ variable VFY-EXE-U
       VFY-ANSWER @ VFY-REFUSED = if CHECKER-REJECT-RC RESULT:OK exit then
       VFY-ANSWER @ VFY-MISSING = if CHECKER-REJECT-RC RESULT:OK exit then
       VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC RESULT:OK exit then
    then
    o RESULT:ERR ;
 
@@ -1397,9 +1401,10 @@ public
 
 \ The status the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 for a
 \ rejection, a missing source among them, 74 for a source found but not
-\ readable, 0 when nothing was rejected.
+\ readable, 77 for a full dictionary, 0 when nothing was rejected.
 : VERIFY-STATUS ( -- n )
    VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC exit then
+   VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC exit then
    VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if CHECKER-REJECT-RC exit then
    0 ;
 
