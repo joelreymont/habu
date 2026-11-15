@@ -399,9 +399,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-HEAD$ s" = word: nltcast" REJECTS ;
 
 \ No token is -1 or the maximum cell long, so `package` meets only a long part
-\ name, whose path is past its row: refused, naming it.
+\ name, whose path is past its row: rejected, naming it.
 : TEST-PART ( -- )
-   LONG-LEN s" long" s" PART$ evaluate" 70 s" error[E-PKG-CONTEXT]: `"
+   LONG-LEN s" long" s" PART$ evaluate" 70 s" error[E-PACKAGE-NAME-CAP]: `"
       LONG-LEN TAIL REJECTS-AT ;
 
 \ ---- a long name -------------------------------------------------------------

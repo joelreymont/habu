@@ -12848,7 +12848,7 @@ private
       1 +
    REPEAT drop ;
 
-\ The package name a u has a colon at an edge or more than one.
+\ The package name a u has a colon it may not have.
 : PACKAGE-COLON-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
@@ -13434,7 +13434,7 @@ CAST: AS-ACTION ( n -- [ -- ] )
 : PART-LONG-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
    PACKAGE-PATH:CAP 1 - {: m:n :}
    m pu - 1 - {: k:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
    s" ` makes a part path " REJECTION:EMIT-STR  pu 1 + u + REJECTION:EMIT-U
    s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U

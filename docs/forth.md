@@ -158,8 +158,8 @@ private
   package opened, inside a part, and in a file or string that began inside the
   package, so a file required inside a package cannot open one. A package a
   file or string leaves open is its includer's from then on. A path of 256
-  bytes or more is rejected at its name (`E-PKG-CONTEXT`). `;package` of a
-  part reopens A in its private section with A's using floor. Inside A and its
+  bytes or more is rejected at its name (`E-PACKAGE-NAME-CAP`). `;package` of
+  a part reopens A in its private section with A's using floor. Inside A and its
   parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
   which the part shadows there, a system package such as MATCH
