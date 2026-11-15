@@ -1369,22 +1369,27 @@ variable REQUEST-AT-U
    s" cannot open" ;
 
 \ The one record of a found file path the system will not read to its end,
-\ which why labels. Placed at the request t tu, or at path when t tu is empty.
+\ which why labels. Placed at the request t tu, with path in a note.
+\ An empty t tu is no source's token: the record has no place, and its message
+\ names path and ends with why.
 \ It is written through the start of its help: the caller writes the help.
 : UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n path:^ pathu:n why:^ whyu:n :}
-   tu 0= if path pathu else t tu then {: p:^ pu:n :}
    s" E-UNREADABLE-SOURCE" REJECTION:OPEN
-   s" cannot read `" REJECTION:EMIT-STR  p pu REJECTION:EMIT-STR
-   96 REJECTION:EMIT1
-   p pu REJECTION:AT  why whyu REJECTION:EMIT-STR
+   s" cannot read `" REJECTION:EMIT-STR
+   tu 0= if
+      path pathu REJECTION:EMIT-STR  s" `: " REJECTION:EMIT-STR
+      why whyu REJECTION:EMIT-STR  REJECTION:HELP exit
+   then
+   t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   t tu REJECTION:AT  why whyu REJECTION:EMIT-STR
    s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
    REJECTION:HELP ;
 
 public
 
 \ The file path was found but its open or a read of it failed with errno e.
-\ Placed at the request t tu, or at path when t tu is empty. Public so the walks
+\ Placed at the request t tu; unplaced when t tu is empty. Public so the walks
 \ that read a found file reject it with the loader's record.
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}

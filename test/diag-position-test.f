@@ -762,7 +762,7 @@ variable RC
    REJECT-RC REFUSED-MODES-RC ;
 
 \ A named file that will not open is one record, which no source places: its
-\ notes follow its message.
+\ message carries the reason the open failed.
 : TEST-ALL-UNREADABLE ( -- )
    s" a named file that will not open, under --all-errors" T-LABEL
    SB-RESET  s" 1 drop" SB-APPEND LF+
@@ -771,7 +771,12 @@ variable RC
    [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;]
    [: FX-PATH$ $1A4 FS:CHMOD-MODE ;] finally
    s" E-UNREADABLE-SOURCE" REJECTED-AS
-   0 s" word" FX-PATH$ CANON$ NOTE= ;
+   SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ CANON$ SB-APPEND
+   s" `: permission denied" SB-APPEND
+   0 s" message" SB$ FIELD=
+   0 s" help" s" check that the file exists and is readable" FIELD=
+   GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
+   0 GJA-LINE$ GJA-PARSE s" notes" FIELD-ABSENT ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
