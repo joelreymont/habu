@@ -1436,6 +1436,23 @@ private
 : MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
    r base off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
+\ Serialize aliased code writes (Intel SDM 12.6).
+\ Save CPUID's registers; MOV preserves flags.
+: CODE-SYNC, ( -- )
+   RAX ASM-SINK ENC-PUSH  RBX ASM-SINK ENC-PUSH
+   RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   RAX 0 IMM32,  ASM-SINK ENC-CPUID
+   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP
+   RBX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP ;
+
+\ An ordered xt at or above this thread's CP can name code
+\ published after the thread started.
+: CALLABLE, ( -- )
+   X64CODE:LBL {: old:label :}
+   RAX CP-REG ASM-SINK ENC-CMP-RR  C-B old JCC,
+   CODE-SYNC,
+   old X64CODE:LBL, ;
+
 \ Bit 63 marks a stack record: rdi receives its address and rax its code.
 \ Invocation setup preserves rdi until the quotation saves it in its frame.
 : QUOTATION-RECORD, ( -- )
@@ -1447,7 +1464,7 @@ private
    plain X64CODE:LBL, ;
 
 : INVOKE, ( -- )
-   QUOTATION-RECORD,
+   QUOTATION-RECORD,  CALLABLE,
    RAX ASM-SINK ENC-CALL-REG ;
 
 \ SOURCE-FILE-RUN,'s frame: the caller's data stack pointer and descriptor.
@@ -1474,7 +1491,7 @@ private
 \ guard page.
 : EXECUTE-FLOOR, ( -- )
    X64CODE:LBL {: above:label :}
-   RAX POP,  RAX ASM-SINK ENC-CALL-REG
+   RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG
    RCX ZERO-REG,
    RAX DATA-REG S0-CELL MOV-LOAD,
    DSP RAX ASM-SINK ENC-CMP-RR  C-AE above JCC,
@@ -1530,7 +1547,7 @@ private
    RCX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,
    RCX RSP STACK-ABI:CATCH-CAP MOV-STORE,
    RSP DATA-REG HND-CELL MOV-STORE,
-   RAX ASM-SINK ENC-CALL-REG
+   CALLABLE,  RAX ASM-SINK ENC-CALL-REG
    RCX RSP CATCH-PREV MOV-LOAD,  RCX DATA-REG HND-CELL MOV-STORE,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
    RAX ZERO-REG,
@@ -2568,7 +2585,7 @@ public
    s" atomic-cas" [: ATOMIC-CAS, ;] PRIM
    s" fence" [: ASM-SINK ENC-MFENCE ;] PRIM ;
 
-\ x86-64 code spans end on any byte; its coherent instruction cache needs no flush.
+\ x86-64 code spans end on any byte.
 \ Writes at CP pad to a CODE-SLOT: int3 after code, zeros after a record's name.
 
 private
@@ -2716,7 +2733,8 @@ variable SITE-TRAP-CELL
 : PATCH32, ( -- )
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 WRITE-ALIAS,
-   R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR ;
+   R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
+   CODE-SYNC, ;
 
 : SLOT-UP, ( r64 r64 -- ) {: dst:r64 src:r64 :}
    dst src CODE-SLOT 1- MEM-OFF ASM-SINK ENC-LEA
@@ -2771,6 +2789,7 @@ variable SITE-TRAP-CELL
    filled X64CODE:LBL,
    RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
    DROP-SITES-LBL CALL,
+   CODE-SYNC,
    cp RSP PUB-SLOT MOV-LOAD,                           \ the slot is claimed
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
@@ -4100,7 +4119,8 @@ private
    CP-REG RDI TASK-ABI:CP-OFF MOV-LOAD,
    INTERP-REG ZERO-REG,
    RDI DATA-REG TASK-TCB-CELL MOV-STORE,
-   RAX RDI TASK-ABI:XT-OFF MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
+   RAX RDI TASK-ABI:XT-OFF MOV-LOAD,
+   CODE-SYNC,  RAX ASM-SINK ENC-CALL-REG
    X64BOOT:SIGNAL-STACK-OFF,
    RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-ADD-RI32      \ the band back
    RCX DATA-REG TASK-TCB-CELL MOV-LOAD,
@@ -4240,7 +4260,7 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    RAX 1 IMM32,
    signal-had X64CODE:LBL,
    RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8  RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
-   R8 ASM-SINK ENC-CALL-REG
+   CODE-SYNC,  R8 ASM-SINK ENC-CALL-REG
    RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
    RAX RAX ASM-SINK ENC-TEST-RR  C-E signal-kept JCC,
    X64BOOT:SIGNAL-STACK-OFF,
@@ -5228,6 +5248,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    write X64CODE:LBL,
    RCX WRITE-ALIAS,
    2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
+   CODE-SYNC,
    \ The created body's E9 is written after its original publication. Carry
    \ that exact opcode site so a stripped image can retarget the does> clause.
    RAX RSP DP-ENTRY MOV-LOAD,
