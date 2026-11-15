@@ -381,10 +381,12 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
-\ A link that threw names the file it was loading, except under --json-errors,
-\ whose stderr holds only JSON.
+\ A link that threw a status in 1..255 has its record out: the build stops with
+\ that status and prints nothing more. Any other code names the file it was
+\ loading, except under --json-errors, whose stderr holds only JSON.
 : HBB-LINK-FAILED ( n -- )
    {: rc:n :}
+   rc 1 >= rc 255 <= and if HBB-CLEANUP rc HBB-EXIT then
    HBB-JSON @ 0= if
       s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR  s"  threw " HBB-WERR
       SB-RESET  rc FMT:SB-INT  SB$ HBB-WERR
