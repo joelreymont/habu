@@ -355,6 +355,10 @@ SUITE utf8-scalar
    src/lib/utf8-scalar-test.f
 ;SUITE
 
+SUITE utf8-lossy
+   src/lib/utf8-lossy-test.f
+;SUITE
+
 SUITE base64
    src/lib/base64-test.f
 ;SUITE
