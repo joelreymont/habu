@@ -42,7 +42,8 @@
 \ and draws 0 rows through a skewed matrix. Each then sends the text volume,
 \ STUDIO:KEY-VOLUME's count and, as binary64 bits in hex, its 20 plane
 \ numbers and its pixel. Typed "ground-box" sends a casters' box whose
-\ lowest z lies above its highest.
+\ lowest z lies above its highest. A resize, which clears the canvas, draws the
+\ last draw again, unless an SVG has been shown since.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -83,6 +84,15 @@ variable IMAGE-U
 ECHO-CAP BUFFER: ECHO-BUF
 variable ECHO-U
 
+\ The machine a resize reads: none, the zeroed variable, before the first draw
+\ and after an SVG, which the host shows in the canvas's place; drawn, holding
+\ the last draw's rows, row count and matrix.
+ENUM held
+   VARIANT none ;VARIANT
+   VARIANT drawn FIELD rows ^u8 FIELD count n FIELD matrix ^u8 ;VARIANT
+;ENUM
+TYPED-VARIABLE SHOWN held
+
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
 
@@ -90,9 +100,26 @@ variable ECHO-U
    {: kind:n a:n b:n c:n :}
    kind FIELD, a FIELD, b FIELD, c FIELD, ;
 
+: RENDER ( ^u8 n ^u8 -- )
+   \ A draw of count rows through the matrix, held as drawn. Every command
+   \ that writes a buffer a draw names, rows or matrix, or unmeshes a mesh,
+   \ draws afterwards, so a repaint sends the held draw's bytes unchanged,
+   \ naming meshes still held.
+   {: rows:^ count:n matrix:^ :}
+   2 rows BYTES>N count matrix BYTES>N RECORD
+   rows count matrix HELD-DRAWN SHOWN ! ;
+
+: REPAINT ( -- )
+   \ The resize's move: drawn draws its draw again, none draws nothing.
+   SHOWN @ MATCH held
+      none OF ENDOF
+      drawn OF RENDER ENDOF
+   ;MATCH ;
+
 : SVG ( ^u8 n -- )
    {: a:^ u:n :}
-   8 a BYTES>N u 0 RECORD ;
+   8 a BYTES>N u 0 RECORD
+   HELD-NONE SHOWN ! ;
 
 : IMAGE+ ( ^u8 n -- )
    {: a:^ u:n :}
@@ -189,7 +216,7 @@ variable ECHO-U
    $3E99999A SEAM-MATRIX 40 + U32!  $3F000000 SEAM-MATRIX 56 + U32!
    $3F800000 SEAM-MATRIX 60 + U32!
    13 SEAM-A BYTES>N 80 4 RECORD  13 SEAM-B BYTES>N 80 5 RECORD
-   2 SEAM-ROWS BYTES>N 2 SEAM-MATRIX BYTES>N RECORD ;
+   SEAM-ROWS 2 SEAM-MATRIX RENDER ;
 
 : PLACE ( n n n n -- )
    \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
@@ -223,8 +250,7 @@ variable ECHO-U
    $3F800000 MATRIX 40 + U32!  $3F800000 MATRIX 60 + U32! ;
 
 : DRAW ( ^u8 n -- )
-   {: rows:^ count:n :}
-   2 rows BYTES>N count MATRIX BYTES>N RECORD ;
+   MATRIX RENDER ;
 
 : INSTANCES ( -- )
    \ x -0.9, 0.1 and y -1.2, -0.4, 0.5 as f32 bits; z scales 0.2 and 0.
@@ -322,7 +348,7 @@ variable ECHO-U
    5 1 $BECCCCCD $BECCCCCD PLACE  5 6 0 $FFFFFFFF MARK
    6 1 $BECCCCCD $BECCCCCD PLACE  6 7 0 $FFFFFFFF MARK
    $3F200000 INSTANCE-ROWS 6 72 * + 44 + U32!  SHIFT
-   2 INSTANCE-ROWS 360 + BYTES>N 2 SHIFTED BYTES>N RECORD
+   INSTANCE-ROWS 360 + 2 SHIFTED RENDER
    5 2 5 PICK ;
 
 : PLANE! ( n n n n -- )
@@ -445,7 +471,7 @@ variable ECHO-U
 \ The ground, a draw of 0 rows through the matrix, and the text.
 : VOLUME-SCENE ( -- )
    17 VOLUME-GROUND BYTES>N 40 0 RECORD
-   2 VOLUME-MATRIX BYTES>N 0 VOLUME-MATRIX BYTES>N RECORD
+   VOLUME-MATRIX 0 VOLUME-MATRIX RENDER
    VOLUME-TEXT ;
 
 : IS? ( ^u8 n -- bool )
@@ -528,6 +554,7 @@ variable ECHO-U
       RED exit
    then
    0 EVENT@ 4 = if COMMAND exit then
+   0 EVENT@ 9 = if REPAINT exit then
    0 EVENT@ 10 = if 1 EVENT@ 2 = if 2 EVENT@ 1 = if OPENED then then exit then
    0 EVENT@ 11 = if s" load " ECHO exit then
    0 EVENT@ 12 = if s" focus " ECHO exit then
