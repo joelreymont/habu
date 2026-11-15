@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-11-15T18:14:01.622868+02:00"
 ---
 
-Problem: eight test files (test/signature-nesting.f, test/diag-json-escape.f, test/debugger-resume.f, test/gate-dictionary-lib.f, test/interpreter-number.f, test/gate-debug-lib.f, test/gate-common-lib.f, test/memory-fault.f) each define their own buffer and words that build source text for TEST-EVAL (src/lib/test/eval.f). Acceptance: one builder beside TEST-EVAL, and every such test uses it. Depends: none. Claim: unassigned.
+Problem: test/signature-nesting.f (:30-49) and test/structure-decl-suite.f (package SDDEEP) each build test source text in a buffer of their own, beside the shared GE-SRC builder in test/gate-common-lib.f, which a light suite cannot load (it pulls in processes and file systems). Acceptance: one builder in src/lib/test (beside TEST-EVAL) that every test building source text uses, GE-SRC's buffer included. Depends: none. Claim: unassigned.
