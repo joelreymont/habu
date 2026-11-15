@@ -139,9 +139,6 @@ variable RX  variable RACC
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
-   \ LROOM restores x9-x12; its exhaustion branch throws without returning.
-   a u s" EM-DEF-OCC:LROOM" LINT-STR=CI if
-      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND also frames
    \ x15-x17 around its forwarded checker callback; RESET frames LCOUNT.
    a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI if
@@ -161,10 +158,6 @@ variable RX  variable RACC
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
    a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
-   \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
-   a u s" Lcemit" LINT-STR=CI if
-      0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
-        16 CL-ADD 30 CL-ADD exit then
    \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.
    a u s" Lheadrow" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD 30 CL-ADD exit then
