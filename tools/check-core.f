@@ -655,9 +655,17 @@ private
    s" rebuild bin/hb to check a change to it" REJECTION:EMIT-STR
    REJECTION:KEEP ;
 
+\ An input the file system will not open is the walk's rejection of an
+\ unreadable top, made before a lint reads the file: no source holds the path,
+\ so the composition could only place it at its own loader line.
+: CHK-INPUT-OPENS ( ^u8 n -- ) {: a:^ u:n :}
+   [: a u 0 NULL-PTR 0 FS:READ-AT ;] CHK-READ-REJECTED {: e:n rejected:bool :}
+   rejected if a u CANONICAL drop e CHK-UNREADABLE-NAMED then ;
+
 : CHK-CHECK-INPUTS ( -- )
    CHK-POS-N @ 0 ?do
       i CHK-POS$ 2dup FS:FILE? if 2drop else CHK-NO-INPUT then
+      i CHK-POS$ CHK-INPUT-OPENS
    loop
    [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop

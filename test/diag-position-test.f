@@ -761,6 +761,19 @@ variable RC
 : REFUSED-MODES ( ^u8 n ^u8 n n n n n -- )
    REJECT-RC REFUSED-MODES-RC ;
 
+\ A named file that will not open is one record, which no source places: its
+\ notes follow its message. The file's mode comes back even when the check
+\ throws.
+: TEST-ALL-UNREADABLE ( -- )
+   s" a named file that will not open, under --all-errors" T-LABEL
+   SB-RESET  s" 1 drop" SB-APPEND LF+
+   s" all-locked.f" FIXTURE!
+   FX-PATH$ 0 FS:CHMOD-MODE
+   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;]
+   [: FX-PATH$ $1A4 FS:CHMOD-MODE ;] finally
+   s" E-UNREADABLE-SOURCE" REJECTED-AS
+   0 s" word" FX-PATH$ CANON$ NOTE= ;
+
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
 : TEST-ARENA ( -- )
@@ -2581,6 +2594,7 @@ variable RC
    TEST-SHADOWED-ARITY
    TEST-ALL-LINTS
    TEST-ALL-ORDER
+   TEST-ALL-UNREADABLE
    TEST-NOT-RECORDED
    TEST-GENERATES
    TEST-GENERATES-READS-NONE
