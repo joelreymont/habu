@@ -1038,7 +1038,7 @@ variable SEALS-N
 \ byte AT, which is not a u when the name is generated.
 : SEAL-STOP ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    at TOKEN-BYTE !
-   a u  SOURCE@ at + tu  INTERPRETER:SEALED-REJECT
+   a u  SOURCE@ at + tu  REJECTION:SEALED
    ENGINE-ERROR:SEAL-PACKAGE REJECTION:STOP ;
 
 : SEALED-OPEN ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}

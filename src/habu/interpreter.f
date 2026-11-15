@@ -358,21 +358,8 @@ variable ANSWERED
    TOKEN$ ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
 
-public
-\ Writes the record through its help and leaves it open: the caller ends it.
-\ It names a u and is placed at the source token t tu, which differs from the
-\ name when the name is generated.
-: SEALED-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
-   s" E-SEALED-PACKAGE" REJECTION:OPEN
-   a u TICKS  s"  would change a sealed package" SAY
-   t tu REJECTION:AT  s" sealed" SAY
-   REJECTION:HELP
-   s" put this in a package of your own: a sealed package takes no new words"
-   SAY ;
-private
-
 : SEALED-FAIL ( ptr u8 n -- )
-   TOKEN$ SEALED-REJECT  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
+   TOKEN$ REJECTION:SEALED  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
