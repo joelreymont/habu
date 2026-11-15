@@ -175,12 +175,6 @@ public
       dup a +  su  sa su LINT-STR= IF OPTION:SOME exit THEN  1+
    repeat  drop  OPTION:NONE ;
 
-: LINT-CONTAINS? ( ^u8 n ^u8 n -- bool )
-   LINT-FIND-SUB MATCH option
-     none OF LINT-FALSE ENDOF
-     some OF drop LINT-TRUE ENDOF
-   ;MATCH ;
-
 \ ---- more string ops for the linters ----
 : LINT-BMOVE ( ^u8 ^u8 n -- )
    \ A negative length copies nothing.
@@ -204,19 +198,11 @@ public
 34 constant DQUOTE
 46 constant DOT
 47 constant SLASH
-96 constant BEFORE-A
-123 constant AFTER-Z
-
-: ASCII-UP ( n -- n )  dup BEFORE-A > over AFTER-Z < and IF 32 - THEN ;
-: COPY-LOWER ( ^u8 n ^u8 -- ) {: a:^ u dst:^ :}  a u dst FOLD-TO ;
-: COPY-UPPER ( ^u8 n ^u8 -- ) {: a:^ u dst:^ :}
-   0 begin dup u < while  dup a + c@ ASCII-UP  over dst + c!  1+  repeat  drop ;
 : LINT-WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
 \ Whether byte i of the span a u exists and is not whitespace (LINT-INK-AT?)
 \ or is whitespace (LINT-GAP-AT?). Each reads the byte only when i is inside
 \ the span: `and` evaluates both operands, and the byte past a span that fills
-\ its mapping is unmapped (a source ending on a 64 KiB boundary faulted
-\ public-signatures).
+\ its mapping is unmapped.
 : LINT-INK-AT? ( ^u8 n n -- bool )
    {: a:^ u:n i:n :}
    i u >= IF LINT-FALSE exit THEN

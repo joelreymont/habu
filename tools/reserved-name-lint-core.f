@@ -98,7 +98,6 @@ variable RNL-IN-DEF
    a u s" immediate" LINT-STR=CI if LINT-TRUE exit then
    a u s" does>" LINT-STR=CI if LINT-TRUE exit then
    a u s" trusted:" LINT-STR=CI if LINT-TRUE exit then
-   a u s" trust" LINT-STR=CI if LINT-TRUE exit then
    a u s" kernel:" LINT-STR=CI ;
 
 : RNL-RESERVED-DEFINER? ( ^u8 n -- bool ) {: a:^ u :}

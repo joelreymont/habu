@@ -51,8 +51,7 @@ create XPK-EMPTY 1 allot
 
 \ --- forge programs -----------------------------------------------------------
 \ Child exits: a primitive source, a trusted primitive and a top-level EXPORT
-\ 70 with their records; a private word behind a closed package 70 (qualified
-\ lookup is public-only).
+\ 70 with their records; a sealed package's private word 70.
 
 : XPK-SRC-PKG ( -- )                          \ shared source package XA with XA:W
    s" package XA" XPK-LINE
@@ -137,15 +136,24 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-PRIV-FORGE$ ( -- ^u8 n )             \ private word behind a closed package
+: XPK-PRIV-FORGE$ ( -- ^u8 n )             \ an unsealed package's private word
    SB-RESET
    s" package XA" XPK-LINE
-   s" : PW ( -- n ) 1 ;" XPK-LINE
-   s" public" XPK-LINE
+   s" : PW ( -- n ) 73 ;" XPK-LINE
    s" ;package" XPK-LINE
    s" package XB" XPK-LINE
-   s" public" XPK-LINE
    s" EXPORT XA:PW" XPK-LINE
+   s" public" XPK-LINE
+   s" : TAKE ( -- n ) PW ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" XB:TAKE . cr" XPK-LINE
+   SB$ ;
+
+\ CHECK is an engine package, sealed before program source.
+: XPK-SEALED-FORGE$ ( -- ^u8 n )           \ a sealed package's private word
+   SB-RESET
+   s" package XB" XPK-LINE
+   s" EXPORT CHECK:PRIM-ENSURE" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -195,8 +203,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ --- child spawn + outcome capture --------------------------------------------
-\ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
-\ data cases also run --load.
+\ Children run ENGINE-CANDIDATE:PATH$ over piped stdin or under --load.
 
 : XPK-STORE! ( len len PROCESS:ending ^u8 n -- )
    {: outu:len erru:len oc src:^ srcu:n :}
@@ -262,7 +269,9 @@ create XPK-EMPTY 1 allot
    s" generated ctor re-export allowed; checked alias caller compiles" T-LABEL
    XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?
    s" data record exports (--load)" T-LABEL
-   XPK-DATA-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT? ;
+   XPK-DATA-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT?
+   s" an unsealed package's private word exports (--load)" T-LABEL
+   XPK-PRIV-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 73" XPK-OUT? ;
 
 : XPK-NEGATIVES ( -- )
    s" undefined source rejects (stdin)" T-LABEL
@@ -283,8 +292,9 @@ create XPK-EMPTY 1 allot
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
-   s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   s" a sealed package's private word rejects (--load)" T-LABEL
+   XPK-SEALED-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
+   s" error[E-EXPORT-UNDEFINED]" XPK-ERR?  s" `CHECK:PRIM-ENSURE`" XPK-ERR?
    s" top-level EXPORT rejects (E-EXPORT-NO-PACKAGE)" T-LABEL
    XPK-TOP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR?

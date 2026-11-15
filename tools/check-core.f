@@ -1106,10 +1106,7 @@ private
 \ subject source, so the whole run starts at neutral top level and the caller's
 \ package is restored when the run ends, however it ends.
 : CHK-RUN-SCOPED ( -- )
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CHK-RUN-CURRENT ;] catch {: rc:n :}
-   CHECKER-SCOPE-DONE
-   rc 0 <> if rc throw then ;
+   [: CHK-RUN-CURRENT ;] CHECK:SCOPED ;
 
 \ --verify-only is VERIFY-BYTES over a file's or stdin's bytes, nothing more:
 \ stderr gets records in the run's mode; stdout gets prose and, with no

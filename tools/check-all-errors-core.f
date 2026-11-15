@@ -218,6 +218,13 @@ variable CA-LEXED                       \ the last lex wrote a record
    CA-RC @  REJECTION:TALLY @ before -  CA-STATUS {: status:n :}
    status 0 <> IF status throw THEN ;
 
+: CA-WARNED ( [ -- ] -- ) {: q :}
+   WARN-DIAGS @ {: warn:n :}
+   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
+   q catch {: rc:n :}
+   warn WARN-DIAGS !
+   rc 0 <> IF rc throw THEN ;
+
 public
 
 \ The caller's report buffer, which this core appends to and OUT$ hands back.
@@ -247,12 +254,7 @@ public
 \ the caller's package on the clean and the throwing path alike.
 : SESSION ( [ -- ] -- ) {: q :}
    MULTI-ERR-BEGIN
-   CHECKER-SCOPE-START-NEUTRAL
-   WARN-DIAGS @ {: warn:n :}
-   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
-   q catch {: rc:n :}
-   warn WARN-DIAGS !
-   CHECKER-SCOPE-DONE
+   [: [: q CA-WARNED ;] CHECK:SCOPED ;] catch {: rc:n :}
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 

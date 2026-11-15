@@ -1,5 +1,5 @@
 \ check-hook.f - the checks the compiler calls: CHECK:DEFINITION on each
-\ definition's source, CHECK:IMMEDIATE before an immediate word inside one, and
+\ definition's source, IMMEDIATE-CHECK before an immediate word inside one, and
 \ the facts text each record takes.
 
 package CHECK
@@ -71,9 +71,11 @@ public
 : DISARMER ( bool -- [ -- ] )
    if [: REJECTION:SOURCE-OFF ;] else [: REJECTION:CLOSER-OFF ;] then ;
 
+private
+
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.
-: IMMEDIATE ( ^u8 n ^u8 n bool -- )
+: IMMEDIATE-CHECK ( ^u8 n ^u8 n bool -- )
    drop
    {: ba:^ bu:n ta:^ tu:n :}
    ta tu NEUTRAL-PARSE-IMM? if exit then
@@ -82,8 +84,6 @@ public
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then
    CHECK-RC throw ;
-
-private
 
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
@@ -170,9 +170,6 @@ private
    sym FACTS-TAGS
    RQM @ 0= ;
 
-
-public
-
 \ A does> clause's publication, once the definer's record ndict@ 1 - is
 \ appended: it refuses nothing and writes facts only there, as `: PKG:X` hands
 \ it the tail X.
@@ -190,9 +187,6 @@ public
    0 REJECTION:TEXT-LEN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
    LAY-FACTS ;
-
-private
-
 
 \ The checker's registrars the fields held: a checked body cannot name them
 \ (UNSAFE-TOK?), so each entry calls its token.
@@ -293,8 +287,6 @@ private
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
-public
-
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
 \ stored TYPE, lays its facts, and answers its body value and effect handle.
 \ TYPE is read only for the shapes that answer `^t`, and not for a STORED
@@ -314,6 +306,8 @@ public
 
 \ The line of a definer whose element is whole cells.
 : CELL-LINE ( ^u8 n -- ^u8 n ^u8 n n ) RES-TRUE DECL-LINE ;
+
+public
 
 : DEFINER-AT ( ^u8 n -- )
    REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
@@ -613,13 +607,13 @@ public
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if CHECK-RC throw then ;
 
-\ At a piece's end (src/habu/linker.f PIECE-END), each record a `TRUST` row or an
-\ amender (`INTRINSIC`, `generates:`, `names:`, NOMINAL-PROVIDER, a does>
-\ publication) changed, held from entry FROM on, takes its facts text again from
-\ its symbol's newest effect, as a definition's does: the record the symbol names
-\ takes the text, and a held record it no longer names an empty one. A text that
-\ cannot say the effect, or a symbol no record holds, fails the build: a link
-\ would read the record's older facts.
+private
+\ At a piece's end, each record an amender (`INTRINSIC`, `generates:`, `names:`,
+\ NOMINAL-PROVIDER, a does> publication) changed, held from entry FROM on, takes
+\ its facts text again from its symbol's newest effect, as a definition's does:
+\ the record the symbol names takes the text, and a held record it no longer
+\ names an empty one. A text that cannot say the effect, or a symbol no record
+\ holds, fails the build: a link would read the record's older facts.
 : AMENDED ( n -- )
    {: from:n :}
    HELD-FACTS from ?do
@@ -631,6 +625,7 @@ public
          REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;
+public
 
 \ The active primitive rows of sym after row k: whether one is, and whether
 \ each survives its facts text (FACTS-SAME-AT?).
@@ -714,7 +709,7 @@ public
 \ checks, so a target's never replaces it.
 : INSTALL ( -- )
    BUILDING? if exit then
-   ['] CHECK:IMMEDIATE set-preflight
+   ['] IMMEDIATE-CHECK set-preflight
    ['] DEFINITION set-check ;
 
 \ Replace the checker's entries in the owner's fields, now the renderer exists.

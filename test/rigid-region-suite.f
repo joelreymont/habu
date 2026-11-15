@@ -23,9 +23,8 @@ package RIGID-REGION
 \ device atom; the rigid identities sit in the following early slots.
 \
 \ The constructors are `defer` declarations: each is an abstract boundary this
-\ suite invents, with no checked body. A `trust` row would claim the word
-\ exists, which src/core/checker.f TRUST-RESOLVES? refuses; a `defer` states the
-\ word and its effect with no implementation. None is bound or run: every case
+\ suite invents, with no checked body: a `defer` states the word and its effect
+\ with no implementation. None is bound or run: every case
 \ certifies a candidate, and a call would die with `defer: unset execution
 \ vector` (rc 76).
 : RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;

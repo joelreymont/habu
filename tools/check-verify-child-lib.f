@@ -515,9 +515,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 : SCOPED ( [ -- ] -- n ) {: q :}
    JSON? @ REJECTION:JSON !
    OUT-FD REJECTION:FD!
-   CHECKER-SCOPE-START-NEUTRAL
-   q catch
-   CHECKER-SCOPE-DONE ;
+   [: q CHECK:SCOPED ;] catch ;
 
 
 : VERIFY-CLOSURE ( -- )

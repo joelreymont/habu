@@ -218,11 +218,6 @@
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
-   CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
-      TOK-SYM @ PRIM-TRUSTED-SYM? IF
-         TOP-STEP @ 0= IF -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      ELSE UNSEEN-RAISE  EXIT THEN
-   THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
    \ its axiom.
@@ -1775,6 +1770,18 @@ package CHECKER-DECL-FRAME
 : CHECKER-SCOPE-DEPTH ( -- n )
    RBF-DEPTH @ ;
 
+package CHECK
+public
+
+\ Runs q in a checker scope at neutral top level, no open package and no
+\ imports, and closes the scope however q ends.
+: SCOPED ( [ -- ] -- ) {: q :}
+   CHECKER-SCOPE-START-NEUTRAL
+   q catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   rc 0 <> IF rc throw THEN ;
+;package
+
 : CHECK-CANDIDATE-START ( -- )
    WRITE-WINDOW-CK
    CHK-CAND @ 0= IF UEND @ CK-PEND-FLOOR !  ndict@ CK-PEND-IX ! THEN   \ the outermost scope's floor
@@ -2306,8 +2313,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
-\ may read the source after it; 3 when it resolves to a word it runs whose
-\ effect names a type that may arrive, or resolves nowhere but a rendering
+\ may read the source after it; 3 when it resolves nowhere but a rendering
 \ statement in scope may define it, the run's to judge; and 0 when the load
 \ refuses it.
 : TOP-ANSWER ( ^u8 n bool -- n )
@@ -2318,10 +2324,6 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
          dup TOP-CONTROL {: flags:n deferred:bool :}
-         dup SYM-EFFECT-UNRESOLVED? IF
-            drop flags deferred runs TOP-RUNS
-            dup -1 = IF drop 3 THEN EXIT
-         THEN
          runs 0=  over a u TOP-ROW?  or IF
             dup a u NAV-USE-NOW drop
             flags deferred runs TOP-RUNS EXIT
@@ -2728,10 +2730,8 @@ TRUSTED: generates: ( -- )
    ta tu kind NAMES-HELP
    ROW-END ;
 
-\ A record quiet TRUST left unresolved holds no row.
 : STRING-IN? ( ^u8 -- bool )
    {: rec:^ :}
-   rec ER.ACTIVE @ EFF-UNRESOLVED = IF RES-FALSE EXIT THEN
    rec E-DIN@ {: din:n :}
    0 din EFF-ROW-CON CC-N <> IF RES-FALSE EXIT THEN
    1 din EFF-ROW-TERM {: t:n :}
@@ -3385,7 +3385,6 @@ package CHECKER-REG
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
 ' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 ' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
-' CHECKER-VERIFY-TRUST DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TRUST-OFF + xt!
 
 \ A checker claims the source only where nothing owns it, after every callback
 \ is installed.
@@ -3780,6 +3779,7 @@ public
    NS-FIND {: row:n :}
    row 0= IF 0 RES-FALSE EXIT THEN
    row 1 - RES-TRUE ;
+private
 
 \ Export record ix of record src, as a compile of its file recorded it: an
 \ export the file retired has no facts, since its `undefine` removed them.
@@ -3789,7 +3789,7 @@ public
    ix src ALIAS-READ ;
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:
-\ an earlier file's record whose text a later file's `TRUST` row rewrote.
+\ an earlier file's record whose text a later file's amender rewrote.
 : READ-FACTS ( ^u8 n n -- )
    {: a:^ u:n ix:n :}
    u 0= IF EXIT THEN

@@ -325,10 +325,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
       S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
       s" ^ name longer than 255 bytes" REJECTS-AT ;
 
-\ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
-\ checked body may call, so the child names them at its top level or in a
-\ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
-\ refused name publishes no use and reads none of its bytes. TRUST-DECL and
+\ CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a checked body may
+\ call, so the child names them at its top level or in a TRUSTED: body, as
+\ verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a refused name publishes
+\ no use and reads none of its bytes. TRUST-DECL and
 \ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
 \ TRUSTED: body calls them, as the engine's own callers do. A cast reaches
 \ its name once its signature certifies, and stores it.
@@ -341,17 +341,13 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ A name with a second inner ':' has a length a name has and keys no record:
 \ the engine defines no such word, and CHECKER-RECORD-SYM answers
 \ symbol 0 for one. No row may carry symbol 0: a defer row keyed 0 is the
-\ defer store's terminator and hides every row after it. A trust row refuses
-\ the name as naming no word, and echoes it; every other word that records a
-\ symbol for it names it as malformed and throws. Each refusal is rendered
+\ defer store's terminator and hides every row after it. Every word that records
+\ a symbol for it names it as malformed and throws. Each refusal is rendered
 \ before its throw, so the child exits 70.
 : MAL$ ( -- ^u8 n ) s" q:q:q" ;
 : MALFORMED-HEAD$ ( -- ^u8 n )
    S\" error[E-BAD-QUALIFIED-RECORD]: the record name `q:q:q` has more than one `:`\n" ;
 : MALFORMED-NOTE$ ( -- ^u8 n ) s" ^ malformed qualified name" ;
-: STALE-HEAD$ ( -- ^u8 n )
-   S\" error[E-TRUST-UNRESOLVED]: the `trust` row for `q:q:q` names no word where its record lands\n" ;
-: STALE-NOTE$ ( -- ^u8 n ) s" ^ no word here has this name" ;
 : MAL-REJECTS ( ^u8 n n ^u8 n ^u8 n -- )
    {: src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    0 s" two inner colons" src srcu rc head headu note noteu REJECTS-AT ;
@@ -359,7 +355,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" MAL$ CHECKER-DEFER" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
    s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
    s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" MAL$ SIG$ TRUST" 70 STALE-HEAD$ STALE-NOTE$ MAL-REJECTS
    s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
    s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS ;
 
@@ -505,9 +500,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    T-REPORT
    s" name-length-test: ok" type cr ;
 
-\ The word with a long name, and the top-level-only word taking its name.
+\ The word with a long name.
 LONG-LEN 113 DEF-SRC evaluate
-s" LONG$ SIG$ TRUST" evaluate
 
 MAIN
 

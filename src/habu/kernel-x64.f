@@ -3481,7 +3481,7 @@ private
 : UNDRAINED$ ( -- ^u8 n ) s" hb: undrained pre-trust defer: " ;
 
 \ SEAL-CAPTURE ( -- ): record the count as the seal floor. The pending table
-\ must be empty by then, since checker.f drains it after `: TRUST`; a pending
+\ must be empty by then, as checker.f drains it after `trust-decl`; a pending
 \ defer means the drain never ran, so each is named on fd 2, one per line, and
 \ the row exits UNDRAINED-RC. The walk lives in r8-r10, which a syscall keeps.
 : SEAL-CAPTURE-BODY ( -- )

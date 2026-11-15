@@ -10,36 +10,6 @@ require src/os/image-bytes.f
 using A64ICODE
 using IMAGE-BYTES
 
-\ Republished test effects.
-\ MBUF exposes the audited raw image buffer; M-BOUNDS-RC its bounds status.
-s" IMAGE-BYTES:MBUF" s" -- ^u8" TRUST
-s" IMAGE-BYTES:M-BOUNDS-RC" s" -- n" TRUST
-s" IMAGE-BYTES:M-RESET" s" --" TRUST
-\ M-LEN and M-OFF preserve the nominal roles used by negative fixtures.
-s" IMAGE-BYTES:M-LEN" s" n -- len" TRUST
-s" IMAGE-BYTES:M-OFF" s" n -- off" TRUST
-s" IMAGE-BYTES:M-HERE" s" -- n" TRUST
-s" IMAGE-BYTES:IMG-M8" s" n --" TRUST
-s" IMAGE-BYTES:IMG-M16" s" n --" TRUST
-s" IMAGE-BYTES:IMG-M32" s" n --" TRUST
-s" IMAGE-BYTES:IMG-M64" s" n --" TRUST
-\ These preserve byte-copy, fixed-name, and pad-to-offset roles for confusion tests.
-s" IMAGE-BYTES:M-BYTES-LEN" s" ^u8 len --" TRUST
-s" IMAGE-BYTES:M-NAME16-LEN" s" ^u8 len --" TRUST
-s" IMAGE-BYTES:M-PAD-OFF" s" off --" TRUST
-\ M-LE32@ reads a typed offset; M-LE32!/M-LE64! patch typed offsets.
-s" IMAGE-BYTES:M-LE32@" s" off -- n" TRUST
-s" IMAGE-BYTES:M-LE32!" s" n off --" TRUST
-s" IMAGE-BYTES:M-LE64!" s" n off --" TRUST
-\ Big-endian reset/cursor, 32/64-bit emit, and typed byte-copy fixture effects.
-s" IMAGE-BYTES:M-BE-RESET" s" off --" TRUST
-s" IMAGE-BYTES:M-BE-HERE" s" -- n" TRUST
-s" IMAGE-BYTES:M-BE32" s" n --" TRUST
-s" IMAGE-BYTES:M-BE64" s" n --" TRUST
-s" IMAGE-BYTES:M-BE-BYTES-LEN" s" ^u8 len --" TRUST
-\ MSIZE drives the cursor-overflow regression at the real buffer capacity.
-s" IMAGE-BYTES:MSIZE" s" -- n" TRUST
-
 : IBT-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 

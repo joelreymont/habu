@@ -59,10 +59,12 @@ public
 - `[package] ( -- ^u8 n )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
-  tail: same xt, same effect, no body.
+  tail: same xt, same effect, no body. `EXPORT PKG:NAME` also takes a private
+  `NAME` of a package that is not sealed (`E-EXPORT-UNDEFINED` once sealed).
 - The package keyword `seal-package` seals the open package: a later
   `package` of it, or a definition or `EXPORT` into it, is
-  `E-SEALED-PACKAGE`, rc 70, and `tools/check.f` rejects the same. Outside a
+  `E-SEALED-PACKAGE`, rc 70, and `tools/check.f` rejects the same. A sealed
+  package's private words are out of another package's `EXPORT`. Outside a
   package: `E-PKG-CONTEXT`, rc 70; in a body or after `'`, as
   `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
   A build seals every package its engine files made before program source.
@@ -193,10 +195,10 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `: DOWN dup 0 > IF 1 - RECURSE THEN ;`: `recurse` in a definition with no signature | `E-UNCHECKABLE`, `recursion needs a declared stack effect` |
 | `: MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;`: `recurse` in a `does>` clause | `E-UNCHECKABLE`, `recurse in a does> clause would call the defining word` |
 | `: P ( -- ) does> ( -- n ) @ ;`: a head that calls no `create` or definer before its `does>`, or calls one only after an `if`, loop or quotation | `E-DOES-UNCREATED` at `does>`, rc 70, `` `does>` needs a word this definition creates `` |
-| a `trust`, `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
+| a `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a local's type nested past the depth ceiling: `{: x:[[[… :}` | `E-BAD-SIGNATURE`, `fix_signature_size`, the depth reason |
 | more than 32 `forall<…>` binders nested in one signature | `E-BAD-SIGNATURE`, `fix_signature_size`, `more than 32 nested binders at '<token>'`; `E-BAD-STORED-SIGNATURE` for a stored row |
-| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
+| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `CAST:` — park a value with `>r … r>` inside one definition |
 | a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-RETURN-STACK` at `;]`, `fix_return_stack` |
 | a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-RETURN-STACK` at the read, `fix_return_stack` |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
@@ -681,7 +683,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `EPRIM:`, what `evaluate-closed` checks |
+| Checked code and primitive boundaries | a new `EPRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |

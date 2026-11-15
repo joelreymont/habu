@@ -29,12 +29,6 @@ require src/habu/code-span.f
 require src/habu/prof-abi.f
 require src/os/macos/macho.f
 require src/os/linux/elf.f
-package ENGINE-EMIT
-public
-variable STDIN?   0 0= 0= STDIN? !
-s" STDIN?" s" -- ^bool" TRUST
-;package
-using ENGINE-EMIT
 using A64ASM
 using A64ICODE
 using CRASH
@@ -48,6 +42,7 @@ $D65F03C0 constant W-RET
 \ 16 bytes: AArch64 sp stays 16-byte aligned.
 30 SP -16 ENC-STRPRE  constant W-LINKSAVE
 ;package
+using ENGINE-EMIT
 package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U
 

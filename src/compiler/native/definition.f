@@ -58,6 +58,8 @@ DYNAMIC-BUFFER PUB-OFF n
 
 private
 
+EXPORT CHECK:DOES-PUBLISHED
+
 0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
@@ -299,7 +301,7 @@ private
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 false CHECK:DOES-PUBLISHED
+         NULL-PTR 0 false DOES-PUBLISHED
          0 M-DOES-FRAME !
       then
       exit
@@ -343,14 +345,14 @@ public
 : SETTLE-UNIT ( n n -- )
    {: entry-rc:n rc:n :}
    entry-rc 0<> if
-      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECK:DOES-PUBLISHED then
+      M-DOES-FRAME @ 0<> if NULL-PTR 0 false DOES-PUBLISHED then
       entry-rc throw
    then
    rc E-COMP-RECOVERY = if
       \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
       \ every other withheld definer is rolled back.
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 HEAD-MARKED? CHECK:DOES-PUBLISHED
+         NULL-PTR 0 HEAD-MARKED? DOES-PUBLISHED
          HEAD-MARKED? if CHECKER-NATIVE-DOES-COMMIT then
          0 M-DOES-FRAME !
       then

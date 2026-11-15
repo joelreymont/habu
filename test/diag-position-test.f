@@ -524,8 +524,7 @@ variable RC
    0 s" NOWHERE" 4 13 73 80 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A row on a word that reads no name after it is refused: kept, it makes the
-\ pre-pass take `s"` after the call of GEN as the made word, and the trust row
-\ on MADE then fails the check while the load accepts the file.
+\ pre-pass take the token after the call of GEN as the made word.
 : TEST-GENERATES-READS-NONE ( -- )
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
@@ -533,8 +532,6 @@ variable RC
    s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
    s" generates: GEN ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
-   s" s" SB-APPEND 34 SB-APPEND-C s"  MADE" SB-APPEND 34 SB-APPEND-C
-   s"  s" SB-APPEND 34 SB-APPEND-C s"  --" SB-APPEND 34 SB-APPEND-C s"  trust" SB-APPEND LF+
    s" MADE" SB-APPEND LF+
    s" generates-reads-none.f" FIXTURE!
    s" " CHECK
@@ -985,12 +982,6 @@ variable RC
    s" a defer" T-LABEL
    s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
    s" `W`" s" zz" 1 16 15 17 STORED-AT
-   s" a trust row" T-LABEL
-   SB-RESET
-   s" : Y ( n -- n ) ;" SB-APPEND LF+
-   s\" s\" Y\" s\" n -- zz\" trust" SB-APPEND LF+
-   s" stored-trust.f" FIXTURE!
-   s" `Y`" s" zz" 2 15 31 33 STORED-AT
    s" a cast" T-LABEL
    s" cast: >X ( ^ -- n )" s" stored-cast.f" LINE-FIXTURE
    s" `>X`" s" ^" 1 12 11 12 STORED-AT ;
@@ -1078,10 +1069,7 @@ variable RC
 \ A record asked for a malformed qualified name is refused at the name its
 \ declaration reads, whether the record is keyed by that name's fold (a `defer`,
 \ a `variable`), by the name as read (`undefine`) or by the name CHECK copied (a
-\ colon definition, certified, rejected or deferred to the run). A `trust` row
-\ asks the engine for its word before any record, as the load does, and a
-\ malformed name names none: each check refuses the row as stale at that name.
-\ --verify-only defers the `evaluate` that renders MADE.
+\ colon definition, certified, rejected or deferred to the run). --verify-only defers the `evaluate` that renders MADE.
 : TEST-MALFORMED-RECORD ( -- )
    s" a malformed defer" T-LABEL
    s" defer DIAG:MAL:NAME ( -- )" s" malformed-defer.f" LINE-FIXTURE
@@ -1089,12 +1077,6 @@ variable RC
    s" a malformed variable" T-LABEL
    s" variable P:Q:R" s" malformed-variable.f" LINE-FIXTURE
    s" P:Q:R" 1 10 9 14 MALFORMED-AT
-   s" a malformed trust row" T-LABEL
-   SB-RESET
-   s" : R ( -- ) ;" SB-APPEND LF+
-   s\" s\" P:Q:R\" s\" --\" trust" SB-APPEND LF+
-   s" malformed-trust.f" FIXTURE!
-   s" E-TRUST-UNRESOLVED" s" P:Q:R" s" P:Q:R" 2 4 16 21 1 0 RECORD-AT
    s" a malformed undefine" T-LABEL
    SB-RESET
    s" : R ( -- ) ;" SB-APPEND LF+
@@ -1468,37 +1450,11 @@ variable RC
    k s" code" c cu FIELD=
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A top-level row the check replays gets the bytes the load's literals make. A
-\ decoded name nothing defines is stale, and no source holds it: the record is
-\ placed at the `trust` the reader is on. A bad escape is rejected at the
-\ literal's opener, by each check as by the load, before an unclosed string
-\ after it. The lexer's defect comes before an earlier definition that does not
-\ check; --verify-only composes the file as it reads it and keeps that
-\ definition's rejection before the string's.
-: TEST-ESCAPED-ROW ( -- )
-   s" an escaped trust row: a hex escape" T-LABEL
-   SB-RESET
-   s" : NOPE ( -- ) ;" SB-APPEND LF+
-   s\" s\\\" NO\\x50E\" s\" -- n\" trust" SB-APPEND LF+
-   s" escaped-hex-trust.f" FIXTURE!
-   CERTIFIED
-   s" an escaped trust row: a letter escape in the name, a hex one in the effect" T-LABEL
-   SB-RESET
-   s\" : N\"E ( -- ) ;" SB-APPEND LF+
-   s\" s\\\" N\\qE\" s\\\" --\\X20n\" trust" SB-APPEND LF+
-   s" escaped-letter-trust.f" FIXTURE!
-   CERTIFIED
-   s" an escaped trust row naming no word" T-LABEL
-   SB-RESET
-   s" : NOPE ( -- ) ;" SB-APPEND LF+
-   s\" s\\\" NO\\x51E\" s\" -- n\" trust" SB-APPEND LF+
-   s" escaped-stale-trust.f" FIXTURE!
-   s" E-TRUST-UNRESOLVED" s" trust" 2 23 38 43 REFUSED-MODES
-   s" E-TRUST-UNRESOLVED" s" :2:23" REJECT-RC LOADED-AT
-   ERR$ s" `NOQE`" CONTAINS? TTRUE
-   s" an escaped literal with no escape, naming no word" T-LABEL
-   s\" s\\\" NOPF\" s\" -- n\" trust" s" escape-free-stale.f" LINE-FIXTURE
-   s" E-TRUST-UNRESOLVED" s" NOPF" 1 5 4 8 REFUSED-AT
+\ A bad escape is rejected at the literal's opener, by each check as by the
+\ load, before an unclosed string after it. The lexer's defect comes before an
+\ earlier definition that does not check; --verify-only composes the file as it
+\ reads it and keeps that definition's rejection before the string's.
+: TEST-BAD-ESCAPE ( -- )
    s" a bad escape" T-LABEL
    s\" s\\\" A\\yB\" 2drop" s" escaped-bad.f" LINE-FIXTURE
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
@@ -1971,12 +1927,6 @@ variable RC
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-defer-stretch.f" FIXTURE!
    REJECT-RC 2 s" D" s" call `D` from a definition" DEFER-SUGGESTS
-   s" a trust of a name only rendered text may define" T-LABEL
-   GEN-LINES
-   s\" s\" MADE\" s\" --\" trust" SB-APPEND LF+
-   s" : Y ( -- n ) ;" SB-APPEND LF+
-   s" defer-trust-rendered.f" FIXTURE!
-   REJECT-RC 1 s" MADE" s" make `MADE` with a definer `D` called as `D MADE`, declared by `generates: D ( effect )` after its definition or by a `does>` clause" DEFER-SUGGESTS
    s" a deferred word whose signature names a type rendered text may make" T-LABEL
    GEN-LINES
    s" defer D ( widget -- )" SB-APPEND LF+
@@ -2635,7 +2585,7 @@ variable RC
    TEST-DEFINITION-BINDER
    TEST-MALFORMED-RECORD
    TEST-MALFORMED-LOAD
-   TEST-ESCAPED-ROW
+   TEST-BAD-ESCAPE
    TEST-PRIM-ROW
    TEST-ESCAPED-PATH
    TEST-REFUSAL-ORDER

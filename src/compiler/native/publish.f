@@ -23,6 +23,8 @@ package NPUB
 
 private
 
+EXPORT CHECK:DOES-PUBLISHED
+
 $4000 constant CODE-RESERVE
 
 \ Inside NPUB the publication primitives bind this package's private rows
@@ -227,7 +229,7 @@ public
    idx NSHADOW:PUBLISH
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
-   idx XREF-REC XREF-NAME$ true CHECK:DOES-PUBLISHED
+   idx XREF-REC XREF-NAME$ true DOES-PUBLISHED
    CHECK:REC-WIDE-PUBLISH
    idx 1+ APPEND-PENDING
    CHECKER-NATIVE-DOES-COMMIT ;

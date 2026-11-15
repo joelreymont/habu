@@ -1175,7 +1175,9 @@ variable USE-FLOOR
 \ here. DEF-TKA and DEF-TKL take the operand, which the rejections after them
 \ name.
 : PKG-EXPORT-SOURCE ( -- ^n )
-   TOKEN$ FIND-SCOPE {: src:^ :}
+   TOKEN$ FIND-SCOPE {: found:^ :}
+   found XREF-FOUND? if found else TOKEN$ CHECKER-RESOLVE:EXPORT-PRIVATE then
+   {: src:^ :}
    src XREF-FOUND? 0= if EXPORT-UNDEFINED then
    src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
@@ -1236,30 +1238,20 @@ public
    a u src wid alias-record ;
 private
 
-\ Both name the `EXPORT` token, before its operand is read.
+\ It names the `EXPORT` token, before its operand is read.
 : EXPORT-NO-PACKAGE ( -- )
    s" E-EXPORT-NO-PACKAGE" REJECTION:OPEN
    s" EXPORT" TICKS  s"  publishes a word from a package, and no package is open here" SAY
    TOKEN$ REJECTION:AT  s" outside a package" SAY
    REJECTION:HELP  s" write " SAY  s" EXPORT NAME" TICKS
-   s"  in a package's public section, after " SAY  s" package P" TICKS
-   s"  and " SAY  s" public" TICKS
+   s"  in a package, after " SAY  s" package P" TICKS
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: EXPORT-PRIVATE ( -- )
-   s" E-EXPORT-NO-PACKAGE" REJECTION:OPEN
-   s" EXPORT" TICKS  s"  publishes a word, and this is the package's private section" SAY
-   TOKEN$ REJECTION:AT  s" private section" SAY
-   REJECTION:HELP  s" move " SAY  s" EXPORT NAME" TICKS  s"  after " SAY
-   s" public" TICKS
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ In a package's public section, publish an existing word under its tail into
-\ the current wordlist: its code, its immediate, wide and certified-input bits,
-\ and a does> definer's clause in the slot above.
+\ In a package, publish an existing word under its tail into the current
+\ wordlist: its code, its immediate, wide and certified-input bits, and a
+\ does> definer's clause in the slot above.
 : PKG-EXPORT ( -- )
    PKG-PUB-CELL CELL@ 0= if EXPORT-NO-PACKAGE then
-   get-current PKG-PRI-CELL CELL@ = if EXPORT-PRIVATE then
    PKG-NAME
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:^ :}
@@ -1355,6 +1347,11 @@ require src/compiler/fixed-body.f
 package INTERPRETER
 
 private
+
+EXPORT CHECK:IMMEDIATE-CHECK
+EXPORT CHECK:CHILD
+EXPORT CHECK:STORAGE-LINE
+EXPORT CHECK:CELL-LINE
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
@@ -1902,7 +1899,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
 
 : DEF-PREFLIGHT ( -- )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
-   CHECK:IMMEDIATE ;
+   IMMEDIATE-CHECK ;
 
 \ NEUTRAL-PARSE-IMM? asks the live checker: the retained one lacks a build window's
 \ `parse-imm` rows.
@@ -2519,7 +2516,7 @@ variable DEF-VALUE
 
 \ ---- child words a declaration makes ------------------------------------------
 \ CHILD-RUN makes the word NAME for a declaration, with no text: a fixed body of
-\ its CHILD-ABI shape, whose value and effect CHECK:CHILD makes from the shape,
+\ its CHILD-ABI shape, whose value and effect CHILD makes from the shape,
 \ parameter and stored type while the record is pending. A storage child's body
 \ pushes its own data address, which the declaration fills after the return.
 
@@ -2585,11 +2582,11 @@ variable DEF-VALUE
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
    ta tu TOKEN$ wid shape CHILD-KIND DEF-RECORD ;
 
-\ The anchor is taken after CHECK:CHILD, whose facts may open an intern segment
+\ The anchor is taken after CHILD, whose facts may open an intern segment
 \ at here.
 : CHILD-CLOSE ( n n ^u8 n -- n )
    {: shape:n param:n ta:^ tu:n :}
-   DEF-CAPTURED-NAME shape param ta tu CHECK:CHILD {: val:n h:n :}
+   DEF-CAPTURED-NAME shape param ta tu CHILD {: val:n h:n :}
    shape param CHILD-BODY {: kind:COMP:body entry:n :}
    shape CHILD-ANCHORED? if DEF-ANCHOR entry else val 0 then
    kind DEF-FIXED
@@ -2830,7 +2827,6 @@ private
 \ copy, which records into a checker that checks nothing, so hb's word of that
 \ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
-   s" trust" TOKEN-IS? if true exit then
    s" intrinsic" TOKEN-IS? if true exit then
    s" nominal-provider" TOKEN-IS? if true exit then
    s" parse-imm" TOKEN-IS? if true exit then
@@ -3329,8 +3325,8 @@ public
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
-   ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
-   ['] CHECK:CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
+   ['] STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
+   ['] CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt!
    ['] TYPED-VARIABLE-NODE data-base PROVIDED-XT:VARIABLE-CELL + xt! ;

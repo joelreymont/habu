@@ -51,6 +51,11 @@ public
 -9695 s" a cell a file of this build left holds an address no object can name: memory the build mapped, or a value outside hb's data and the build's space" ERROR:CODE E-ADDRESS
 private
 
+EXPORT CHECK:READ-ALIAS
+EXPORT CHECK:READ-FACTS
+EXPORT CHECK:READ-UNDEFINE
+EXPORT CHECK:AMENDED
+
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
 TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
@@ -4938,7 +4943,7 @@ CAST: >XT-CELL ( ^n -- ^[ -- ] )
    read if r XREF-REC XREF:RETIRE then
    file 0<> if r CHANGER+ then ;
 
-\ A record's text held again for it. An earlier file's record's text, which a `TRUST` row or an
+\ A record's text held again for it. An earlier file's record's text, which an
 \ amender wrote again, also changes that record and is read back.
 : LINK-TEXT ( bool -- )
    {: read:bool :}
@@ -4949,7 +4954,7 @@ CAST: >XT-CELL ( ^n -- ^[ -- ] )
    file 0= if a u r CHECK:FACTS! exit then
    r CHANGER+
    a u r CHECK:FACTS!
-   read if a u r CHECK:READ-FACTS then ;
+   read if a u r READ-FACTS then ;
 
 
 \ The FACTS replay: the offset in OBJECT of the next row and the rows left; for a link, the rows through the next
@@ -4983,7 +4988,7 @@ variable DUE-MADE
    RD-NAME {: a:^ u:n :}
    GOOD? 0= if E-COMP-STATE throw then
    ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
-   ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then ;
+   ix CHECK:HELD-UNDEFINE =  read  and if a u READ-UNDEFINE then ;
 
 
 \ The next n FACTS rows held again. The reader opens at REPLAY-AT: MAKE-DEF reopens it per entry.
@@ -5160,7 +5165,7 @@ TYPED-VARIABLE EXITER [ -- ]
 
 \ The checker reads the file's aliases after its records' texts, which their sources may be.
 : READ-ALIASES ( -- )
-   ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  CHECK:READ-ALIAS  2 +loop ;
+   ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  READ-ALIAS  2 +loop ;
 
 
 \ As a file's load or its piece after a request starts; no request no part made started it until LOAD sets TOP-EV.
@@ -5303,7 +5308,7 @@ TYPED-VARIABLE EXITER [ -- ]
 \ E-WORDLIST for an id no record holds.
 : PIECE-END ( n -- )
    {: req:n :}
-   FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
+   FILE-HELD @ AMENDED   \ the facts its amenders changed
    TYPE-ENTRIES
    req 0< if SOURCE-ROOT:END-TYPES then   \ a request's part keeps its nodes through the request
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-END !
@@ -5624,12 +5629,12 @@ TYPED-VARIABLE EXITER [ -- ]
    {: k:n :}
    k PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-PRIM =  kind PRIM-SPEC:K-PKG-PRIVATE = or if
-      k PRIM-SPEC:NAME$ CHECK:PRIM-OPEN
-      k PRIM-SPEC:CODE-LEN@ 0 ?do  k i PRIM-SPEC:CODE@ CHECK:PRIM-ATOM  loop
-      k PRIM-SPEC:PKG$  k PRIM-SPEC:TRUSTED-ONLY?  k PRIM-SPEC:FIXED-ABI?  CHECK:PRIM-CLOSE
+      k PRIM-SPEC:NAME$ PRIM-OPEN
+      k PRIM-SPEC:CODE-LEN@ 0 ?do  k i PRIM-SPEC:CODE@ PRIM-ATOM  loop
+      k PRIM-SPEC:PKG$  k PRIM-SPEC:TRUSTED-ONLY?  k PRIM-SPEC:FIXED-ABI?  PRIM-CLOSE
       exit
    then
-   kind PRIM-SPEC:K-ELAB = if k PRIM-SPEC:NAME$ CHECK:PRIM-NAME then ;
+   kind PRIM-SPEC:K-ELAB = if k PRIM-SPEC:NAME$ PRIM-NAME then ;
 
 : OWNED@ ( n n -- n ) {: r:n f:n :} r OWNED-CELLS * f + OWNED @ ;
 
@@ -5676,7 +5681,7 @@ TYPED-VARIABLE EXITER [ -- ]
       exit
    then
    PRIM-SPEC:COUNT 0 ?do i STATE-HB-ROW loop
-   CHECK:PRIMS-END
+   PRIMS-END
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+  then
    loop ;

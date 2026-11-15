@@ -122,10 +122,6 @@ $1F00 constant BINDING-ID-MASK
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED
-\ Whether a `trust` row is the run's to judge: ( ^u8 n -- bool ), true when
-\ the row names no word in the wordlist its record lands in and a rendering
-\ statement read before it marked that wordlist.
-$1D8 constant VERIFY-TRUST-OFF
 \ The word a symbol is: ( n -- n ), for an export the symbol of the word it
 \ exports, through any re-exports; otherwise the symbol itself.
 $1E0 constant VERIFY-SYM-SOURCE-OFF

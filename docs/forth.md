@@ -9,7 +9,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - Write ordinary Forth as checked definitions: tools, tests, emitters
   (ELF/Mach-O writers included), build drivers and helpers, source generators,
   cleanup and dispatch code.
-- Never add `TRUST`, `TRUSTED:` or an unchecked span to bypass a missing checker
+- Never add `TRUSTED:` or an unchecked span to bypass a missing checker
   model. Reduce the case and fix the declaration, checker or primitive interface
   at its owner, still rejecting invalid programs.
 - A word defined in source takes its type from its definition; an engine
@@ -34,7 +34,6 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   top-level code is typed as a body is: with `variable V` and
   `S$ ( -- ^u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
   at `!` and throws 70 before V changes.
-- `TRUST` forms mentioned below are legacy syntax awaiting removal.
 
 ## Naming
 
@@ -74,7 +73,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - **A parser or control word cannot be a definition name** (by
   `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
   `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
-  `REPEAT`, `TRUST`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
+  `REPEAT`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
   `PUBLIC`, `PRIVATE`, `UNDEFINE` and the other compiler-dispatch and lifecycle
   tokens. The loaders `include`, `included`, `require`, `required` and
   `provided` are reserved because `tools/check.f` reads their spelling
@@ -191,8 +190,9 @@ private
 - `seal-package` is a package keyword beside `public`. Inside a package it
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
   into it is then rejected `E-SEALED-PACKAGE` at the name, rc 70, by the load
-  and by `tools/check.f`. Outside a package it is rejected
-  (`E-PKG-CONTEXT`). Like `public` it names no word: in a body
+  and by `tools/check.f`. Sealing also keeps the package's private words from
+  another package's `EXPORT` (`E-EXPORT-UNDEFINED`). Outside a package it is
+  rejected (`E-PKG-CONTEXT`). Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. A build also seals every package its
   engine files made before it reads program source; an application package
   without `seal-package` stays reopenable. So a stripped program cannot
@@ -344,13 +344,15 @@ public
   control flags and immediate bits carried, no forwarding body, zero runtime
   cost. `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
-  Rejected: an undefined source and a private word behind a CLOSED package
-  (`E-EXPORT-UNDEFINED`), a primitive (`E-EXPORT-PRIM`), an internal engine
-  word (`E-EXPORT-UNSAFE`) and a duplicate tail in the target section
-  (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK` brings its
-  clause along as `MK;does`. Re-exporting a generated constructor under a
-  second name is allowed; adding tails INTO a generated constructor package is
-  not. `EXPORT` outside a package or in its private section is rejected
+  `EXPORT PKG:NAME` also takes a private `NAME` of a package that is not
+  sealed; an engine package imports a private checker word into its own
+  private section this way. Rejected: an undefined source and a private word
+  of a sealed package (`E-EXPORT-UNDEFINED`), a primitive (`E-EXPORT-PRIM`),
+  an internal engine word (`E-EXPORT-UNSAFE`) and a duplicate tail in the
+  target section (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK`
+  brings its clause along as `MK;does`. Re-exporting a generated constructor
+  under a second name is allowed; adding tails INTO a generated constructor
+  package is not. `EXPORT` outside a package is rejected
   (`E-EXPORT-NO-PACKAGE`).
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the refusals.
@@ -1162,8 +1164,8 @@ A `|` clause may name one row variable, the same on both sides: the word leaves
 its caller's return stack alone, which is what a signature with no bar says.
 Any other clause is rejected at the declaration, before the body is checked,
 as `E-BAD-SIGNATURE` (repair class `fix_return_stack`). A stored signature — a
-`TRUSTED:` definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused
-as `E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
+`TRUSTED:` definition's, a `defer`'s or a `CAST:` — is rejected as
+`E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
 other work, park it with `>r` and take it back with `r>` in the same definition.
 
 The clause is written in two places, and they are not the same shape.
@@ -1320,7 +1322,7 @@ unifies only with itself. Roles keep same-representation values apart (indexes
 and lengths, descriptors and return codes, milliseconds and nanoseconds,
 registers and labels, image-build phases). Enter and leave a role only through
 an explicit converter or an audited boundary effect; unchecked native emitters
-still publish roles in their `TRUST` effects so checked callers reject swaps.
+still publish roles in their `TRUSTED:` effects so checked callers reject swaps.
 
 ### Declaring your own scalar types
 
@@ -1598,8 +1600,7 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
 ### Escape hatches
 
 - `TRUSTED: NAME ( eff ) body ;` records `eff` without checking the body, then
-  compiles it. `s" name" s" eff" TRUST` charts an already-defined word's effect
-  so the checker can use it as a leaf. A body that reaches a word the checker
+  compiles it. A body that reaches a word the checker
   cannot model (`evaluate` and other metaprogramming) is `E-UNCHECKABLE`;
   checked build paths treat that as a refusal unless the call sits behind a
   named, tested `TRUSTED:` boundary.
@@ -1772,7 +1773,7 @@ defined again binds its earlier text against every later record too.
   `c@`/`c!`; cell `@`/`!` over a concrete `^u8` is a checker error. A cell
   that stores a byte pointer is `^^u8` through `ptr-field`, then `@`/`!`.
 - **State cells need typed public effects**: `-- ^n`, `-- ^bool`, `--
-  ^^u8` plus a separate length cell for strings; never TRUST rows.
+  ^^u8` plus a separate length cell for strings.
 - **Path-sensitive control is a checker invariant.** `LEAVE`, `EXIT`, `throw`,
   `die` and `again` fold or kill paths per their control effect; divergent path
   arities are soundness bugs; after a dead path only structural closers (`else`,
@@ -1837,7 +1838,7 @@ defined again binds its earlier text against every later record too.
   A zero-initialized typed quotation may be fetched or dropped. Calling it
   jumps to address 0, and the process dies by the signal.
 - **Higher-order signatures publish themselves** once `CHECK!` passes (`DIP`,
-  `KEEP`, row callbacks); no TRUST row to pin a scheme.
+  `KEEP`, row callbacks).
 - **Function passing is checked.** A quotation parameter (`[ a a -- bool ]`, `[
   a -- a ]`) is verified through a call chain AND inside a `?do`/`begin` loop:
   bind it as a local, thread it, `execute` it; heapsort, map, fold and filter
@@ -2100,16 +2101,16 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
 - **A definition's effect depth**: a row of cells, where a cell's type adds the
   levels it nests, so a returned quotation's row counts from the cell that
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too
-  deep to record (depth <depth>, at most <cap>)`. A `trust`, `defer` or
-  `TRUSTED:` row that deep is `E-BAD-STORED-SIGNATURE` under
+  deep to record (depth <depth>, at most <cap>)`. A `defer` or `TRUSTED:`
+  row that deep is `E-BAD-STORED-SIGNATURE` under
   `fix_signature_size`, with the same reason, and a local's type that deep
   `E-BAD-SIGNATURE` under `fix_signature_size`. Keep bulk values in a buffer,
   not on the stack, and name an inner callback's effect in a word of its own.
 - **Binders nested in one signature**: at most 32 `forall<…>` binders inside
   one another. A 33rd is refused, `E-BAD-SIGNATURE` under `fix_signature_size`,
-  `more than 32 nested binders at '<token>'`; a `trust`, `defer` or `TRUSTED:`
-  row is `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner
-  callback's binders in a word of its own.
+  `more than 32 nested binders at '<token>'`; a `defer` or `TRUSTED:` row is
+  `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner callback's
+  binders in a word of its own.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
   advance the dictionary pointer. Past the DATA reservation the kernel throws
@@ -2483,11 +2484,9 @@ sections above.
   `--verify-only` it is `W-CHECK-DEFERRED` at the use and the verdict is
   `deferred`. A failure the check pins before that use decides the definition
   there, refused or uncheckable; the load names the use instead when the run
-  does not define it. The load rejects a misspelled `trust` product as
-  `E-TRUST-UNRESOLVED`. The mark covers only later uses in that section; an
+  does not define it. The mark covers only later uses in that section; an
   earlier use, other package, or inaccessible private product still refuses.
-  A `trust` row for an unknown product defers only in the wordlist where it
-  lands, not a wordlist reached through lookup. A `TRUSTED:` body carries
+  A `TRUSTED:` body carries
   bound calls' renderer facts, and a deferred body retains the facts of calls
   it binds. Calls through a `defer` or an executed xt expose no callee facts.
   A name already known to the checker resolves before any renderer mark, even
@@ -2766,8 +2765,8 @@ sections above.
 - **Return-stack cells never cross a signature or quotation boundary.** The
   only admitted `|` notation is the same single row variable on both sides;
   cell entries, a bar on only one side, and such entries in quotation types
-  are `E-BAD-SIGNATURE` (or `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`,
-  `trust` and `CAST:`), repair `fix_return_stack`. A literal that pushes a
+  are `E-BAD-SIGNATURE` (or `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`
+  and `CAST:`), repair `fix_return_stack`. A literal that pushes a
   cell for its caller to pop, or pops one the caller pushed, is `E-RETURN-STACK`
   at `;]`; an unsigned definition's `r@` or `r>` on an input it did not push
   is rejected at the token. Use `>r … r>` within one definition (see

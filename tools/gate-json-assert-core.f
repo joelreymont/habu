@@ -1,7 +1,6 @@
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
 require src/lib/error.f
-require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/json.f
@@ -9,21 +8,11 @@ require src/lib/json.f
 $8000 constant GJA-IN-CAP
 $100 constant GJA-LINE-MAX
 
-create GJA-IN GJA-IN-CAP allot
 TYPED-VARIABLE GJA-CURSOR JSON:cursor
 create GJA-STR-BUF GJA-IN-CAP allot
 GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ^u8   \ one line start per captured line
 create GJA-LINE-U GJA-LINE-MAX cells allot
 
-variable GJA-FD
-variable GJA-RD
-variable GJA-LEN
-TYPED-VARIABLE GJA-ROOT SPAN:span<u8>
-TYPED-VARIABLE GJA-ARR SPAN:span<u8>
-variable GJA-I
-variable GJA-N
-variable GJA-OK1
-variable GJA-OK2
 variable GJA-LINE#
 variable GJA-LS
 variable GJA-LX
@@ -42,24 +31,6 @@ variable GJA-LX
 
 : GJA-FAIL ( ^u8 n -- )
    1 die ;
-
-: GJA-USAGE ( -- )
-   s" usage: tools/gate-json-assert.f public-signatures FILE" GJA-FAIL ;
-
-: GJA-ARGC= ( n -- ) {: n :}
-   SCRIPT-ARGC n <> IF GJA-USAGE THEN ;
-
-: GJA-BYTES= ( ^u8 n ^u8 n -- bool )
-   {: a:^ u b:^ v :}
-   u v <> IF GJA-FALSE exit THEN
-   0 begin dup u < while
-      dup a + c@ over b + c@ <> IF drop GJA-FALSE exit THEN
-      1+
-   repeat drop GJA-TRUE ;
-
-: GJA-CMD? ( ^u8 n -- bool ) {: a:^ u :}
-   0 SCRIPT-ARGV$ a u GJA-BYTES= ;
-
 
 : GJA-LINE! ( ^u8 n n -- )
    {: a:^ u k :}
@@ -94,27 +65,6 @@ variable GJA-LX
       a GJA-LS @ + u GJA-LS @ - GJA-LINE+
    THEN ;
 
-: GJA-READ ( ^u8 n -- ^u8 n )
-   FS:>PATHZ 0 0 open GJA-FD !
-   GJA-FD @ 0 < IF s" cannot open JSON fixture" GJA-FAIL THEN
-   0 GJA-LEN !
-   begin
-      GJA-LEN @ GJA-IN-CAP >= IF
-         GJA-FD @ close
-         s" JSON fixture too large" GJA-FAIL
-      THEN
-      GJA-FD @ GJA-IN GJA-LEN @ + GJA-IN-CAP GJA-LEN @ - read GJA-RD !
-      GJA-RD @ 0 >
-   while
-      GJA-LEN @ GJA-RD @ + GJA-LEN !
-   repeat
-   GJA-RD @ 0 < IF
-      GJA-FD @ close
-      s" JSON fixture read failed" GJA-FAIL
-   THEN
-   GJA-FD @ close
-   GJA-IN GJA-LEN @ ;
-
 : GJA-OPEN ( SPAN:span<u8> -- JSON:reader )
    SPAN:$ GJA-CURSOR -rot JSON:READ-INIT JSON:READ-NEXT drop ;
 
@@ -133,9 +83,6 @@ variable GJA-LX
    JSON:READ-SKIP-VALUE JSON:READ-NEXT JSON:T-END <> if E-JSON-READ-TRAILING throw then JSON:READ-CLOSE
    a u SPAN:MAKE ;
 
-: GJA-PARSE-FILE ( ^u8 n -- SPAN:span<u8> )
-   GJA-READ GJA-PARSE ;
-
 : GJA-KIND ( SPAN:span<u8> -- n )
    GJA-OPEN JSON:READ-TOKEN swap JSON:READ-CLOSE ;
 
@@ -148,28 +95,8 @@ variable GJA-LX
 : GJA-REQ ( SPAN:span<u8> ^u8 n -- SPAN:span<u8> )
    GJA-FIELD? 0= if drop s" missing JSON field" GJA-FAIL then ;
 
-: GJA-ARR@ ( SPAN:span<u8> n -- SPAN:span<u8> )
-   {: arr:SPAN:span<u8> idx:n :}
-   idx 0 < if s" missing JSON array item" GJA-FAIL then
-   arr GJA-OPEN JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE s" expected JSON array" GJA-FAIL then
-   idx 0 ?do JSON:READ-NEXT dup JSON:T-ARR-END = if drop JSON:READ-CLOSE s" missing JSON array item" GJA-FAIL then
-      drop JSON:READ-SKIP-VALUE
-   loop
-   JSON:READ-NEXT dup JSON:T-ARR-END = if drop JSON:READ-CLOSE s" missing JSON array item" GJA-FAIL then
-   drop GJA-VALUE swap JSON:READ-CLOSE ;
-
-: GJA-COUNT ( SPAN:span<u8> -- n )
-   GJA-OPEN JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE s" expected JSON array" GJA-FAIL then
-   0 GJA-N !
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      drop JSON:READ-SKIP-VALUE GJA-N @ 1+ GJA-N !
-   repeat drop JSON:READ-CLOSE GJA-N @ ;
-
 : GJA-OBJ ( SPAN:span<u8> -- )
    GJA-KIND JSON:T-OBJ <> IF s" expected JSON object" GJA-FAIL THEN ;
-
-: GJA-ARR-KIND ( SPAN:span<u8> -- )
-   GJA-KIND JSON:T-ARR <> IF s" expected JSON array" GJA-FAIL THEN ;
 
 : GJA-INT ( SPAN:span<u8> -- n )
    GJA-OPEN JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE s" expected JSON integer" GJA-FAIL then
@@ -293,43 +220,3 @@ variable GJA-LX
    root s" notes" GJA-HAS? IF root s" notes" GJA-REQ GJA-OBJ THEN
    root s" help" GJA-HAS? IF root s" help" GJA-REQ-STRF THEN
    root GJA-FORM-KEYS ;
-
-: GJA-CHECK-PUBLIC-ITEM ( SPAN:span<u8> -- )
-   {: item:SPAN:span<u8> :}
-   item s" word" GJA-REQ s" SQUARE" GJA-STR= IF
-      item s" signature" GJA-REQ s" (i64 -- i64)" GJA-ASSERT-STR
-      -1 GJA-OK1 !
-      exit
-   THEN
-   item s" word" GJA-REQ s" APPLY" GJA-STR= IF
-      item s" signature" GJA-REQ s" (i64 [ i64 -- i64 ] -- i64)" GJA-ASSERT-STR
-      -1 GJA-OK2 !
-      exit
-   THEN ;
-
-: GJA-PUBLIC-SIGNATURES ( ^u8 n -- )
-   0 GJA-OK1 ! 0 GJA-OK2 !
-   GJA-PARSE-FILE GJA-ROOT !
-   GJA-ROOT @ s" definitions" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
-   0 GJA-I !
-   begin GJA-I @ GJA-ARR @ GJA-COUNT < while
-      GJA-ARR @ GJA-I @ GJA-ARR@ GJA-CHECK-PUBLIC-ITEM
-      GJA-I @ 1+ GJA-I !
-   repeat
-   GJA-OK1 @ 0= IF s" missing SQUARE public signature" GJA-FAIL THEN
-   GJA-OK2 @ 0= IF s" missing APPLY public signature" GJA-FAIL THEN ;
-
-: GJA-DISPATCH-ONE-FILE-ROW ( ^u8 n [ ^u8 n -- ] -- bool )
-   {: cmd:^ cmdu q :}
-   cmd cmdu GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ q execute
-      GJA-TRUE exit
-   THEN
-   GJA-FALSE ;
-
-: GJA-DISPATCH ( -- )
-   SCRIPT-ARGC 2 < IF GJA-USAGE THEN
-   s" public-signatures" [: GJA-PUBLIC-SIGNATURES ;]
-   GJA-DISPATCH-ONE-FILE-ROW IF exit THEN
-   GJA-USAGE ;

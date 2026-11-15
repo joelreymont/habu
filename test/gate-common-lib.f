@@ -22,8 +22,6 @@ $40000 constant GE-SRC-CAP
 32 constant GE-SP
 34 constant GE-DQ
 
-s" REJECTION:JSON" s" -- ^a" TRUST
-
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-ARGV-BUF GE-SRC-CAP allot
 

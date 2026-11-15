@@ -688,10 +688,10 @@ variable DOES-USES
 
 \ 9. Declarations the verifier arms itself.
 \ Composed with a visit, the verifier arms each declaration as it reads it: a
-\ DEFTYPE's two converters each by its own name, a qualified EXPORT by the tail
-\ it is kept under, and a trust row keeps the name its declaration wrote.
+\ DEFTYPE's two converters each by its own name and a qualified EXPORT by the
+\ tail it is kept under.
 : VISITED$ ( -- ^u8 n )
-   s\" DEFTYPE CmpCol\npackage CMPEA public : CMPEXA ( -- n ) 15 ; ;package\npackage CMPEB public EXPORT CMPEA:CMPEXA ;package\n: CmpTr ( -- n ) 16 ;\ns\" cmptr\" s\" -- n\" trust\n" ;
+   s\" DEFTYPE CmpCol\npackage CMPEA public : CMPEXA ( -- n ) 15 ; ;package\npackage CMPEB public EXPORT CMPEA:CMPEXA ;package\n" ;
 
 : COMPOSED ( -- ) VISITED$ s" cmp-visited.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
@@ -711,11 +711,7 @@ variable DOES-USES
    s" cmpeb:" KEPT-RESET
    s" CMPEB:CMPE" TOP
    KEPT-ALL
-   s" CMPEB:CMPEXA" 1 96 108 PLACED
-   s" cmptr" KEPT-RESET
-   s" CMPT" TOP
-   KEPT-ALL
-   s" CmpTr" 1 120 125 PLACED ;
+   s" CMPEB:CMPEXA" 1 96 108 PLACED ;
 
 \ A required file's declaration keeps the spelling it was armed with after the
 \ loader unmaps that file's bytes, when its scan ends: the cursor sits in the
