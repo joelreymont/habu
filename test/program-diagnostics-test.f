@@ -95,9 +95,12 @@ package PROGRAM-DIAGNOSTICS
       s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
    s" test/checker-decl-depth0-bad.f" 76
       s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
-   s" test/enum-ctor-collide-bad.f"
-      s" = at `ecol`: generated declaration already defined" DIAGNOSTIC
+   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:22:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
+   s" ^ generated declaration already defined" s" test/enum-ctor-collide-bad.f"
+      GE-EXPECT-ERR-HAS
+   s" = evaluated: ENUM-DECL:ED-RUN ecol green red ;ENUM"
+      s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" = word: ECOL:RED" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
