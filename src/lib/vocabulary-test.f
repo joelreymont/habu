@@ -156,7 +156,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER0 s" dead" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" throw" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" checked" 70 s" error[E-MISMATCH]: the body ends with nothing on the stack; the signature promises n" s" test/policy/checked.f:2:" s" " SAYS
-   TIER0 s" eof" 74 s" error[E-VS-UNTERMINATED-DEFINITION]: the source ends inside the definition of `X`" s" test/policy/eof.f:2:" s" " SAYS
+   TIER0 s" eof" 70 s" error[E-VS-UNTERMINATED-DEFINITION]: the source ends inside the definition of `X`" s" test/policy/eof.f:2:" s" " SAYS
    LOCALS ESCAPED ;
 
 : LOADERS ( -- )

@@ -1,7 +1,7 @@
 \ A definition held open across tty lines. The line reader is compiled code
 \ that runs between the lines, and the open definition holds the compile
-\ loop's bands RW; its end of input is the pipe's refusal,
-\ rc 74, since no input remains for the REPL to recover into.
+\ loop's bands RW; its end of input is a rejection, rc 70, since no input
+\ remains for the REPL to recover into.
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/pty-harness.f
@@ -54,14 +54,14 @@ using PTY-HARNESS
    then
    0 EXIT= ;
 
-\ ^D with the definition still open names it and exits 74.
+\ ^D with the definition still open names it and exits 70.
 : EOF-CASE ( -- )
    OPEN dup TTRUE if
       s" : EOF-Y ( -- )" STEP dup TTRUE if
          4 SEND-BYTE
       then
    then
-   74 EXIT=
+   70 EXIT=
    s" error[E-VS-UNTERMINATED-DEFINITION]" s" `EOF-Y`" AFTER? TTRUE ;
 
 \ A failed definition must unwind through the line savepoint, then accept a

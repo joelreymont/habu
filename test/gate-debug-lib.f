@@ -583,7 +583,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GE-HB-RESET GE-SRC-RESET
    s" package DEBUG ;package" GE-SRC-LINE
    GDB-PROF-RUN
-   84 s" reopening package DEBUG exits 84" GE-EXPECT-RC
+   70 s" reopening package DEBUG exits 70" GE-EXPECT-RC
+   s" error[E-SEALED-PACKAGE]: `DEBUG` would change a sealed package" s" reopening package DEBUG names it sealed" GE-EXPECT-ERR-HAS
    s" PASS: the baked package DEBUG is sealed" type cr ;
 
 : GDB-BREAKPOINT-NATIVE ( -- )

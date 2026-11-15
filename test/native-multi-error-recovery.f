@@ -111,11 +111,12 @@ CHECK-DEFINER-FACTS
 
 \ A top-level step runs at once, so it is typed against the global word the
 \ engine runs, not the refused definition's recovery row: `c@` on its cell is
-\ refused rather than admitted and run.
+\ refused rather than admitted and run. The count holds the refused definition
+\ and the step's rejection, one record each.
 : CHECK-TOP ( -- )
    [: s" 41 TOP-RECOVERY c@ drop" evaluate-closed ;] catch
    70 <> if s" native top step bound a recovery row" 1 die then
-   FINISH 1 <> if s" native top recovery count" 1 die then
+   FINISH 2 <> if s" native top recovery count" 1 die then
    s" TOP-RECOVERY" get-current search-wl 0<> if s" native top refusal published" 1 die then ;
 
 START
@@ -124,12 +125,13 @@ CHECK-TOP
 
 \ EXPORT runs at once too, so it publishes the global it finds under the
 \ refused private definition's name with that global's effect, and a top-level
-\ step using the alias as the refused row's type is refused. The check runs in
-\ the private section, where the refusal would have been published.
+\ step using the alias as the refused row's type is refused, and counted as
+\ CHECK-TOP's is. The check runs in the private section, where the refusal
+\ would have been published.
 : CHECK-EXPORT ( -- )
    [: s" 41 EXPORT-RECOVERY c@ drop" evaluate-closed ;] catch
    70 <> if s" native export bound a recovery row" 1 die then
-   FINISH 1 <> if s" native export recovery count" 1 die then
+   FINISH 2 <> if s" native export recovery count" 1 die then
    s" EXPORT-RECOVERY" get-current search-wl 0<> if s" native export refusal published" 1 die then ;
 
 START
