@@ -5,9 +5,15 @@ require src/core/checker.f
 require src/core/check-walk.f
 
 package CHECKER-OWNER
+EXPORT CHECK:CHECK-DOES-UNJUDGED!
+EXPORT CHECK:CHECK-DOES!
+EXPORT CHECK:DOES-REPORT
 
 variable BIND-UNJUDGED
 
+EXPORT CHECK:CHECKER-WRITE-WINDOW!
+EXPORT CHECK:CWIN-CELLS
+EXPORT CHECK:CWIN-MATCH-PAYLOAD
 public
 
 \ ---- the does> split, its report and the compile window ----------------------

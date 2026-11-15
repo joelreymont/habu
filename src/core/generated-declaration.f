@@ -15,6 +15,7 @@ using TFAM
 using TYPE-DECL
 
 package DECL-REJECT
+EXPORT CHECK:TDECL-DIAG
 
 \ The slots hold copies: the family name is read on a declaration's first
 \ line but rendered after a reject on a later one, and a REPL refills its
@@ -187,6 +188,7 @@ private
    code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
    KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
+EXPORT CHECK:MULTI-ERR?
 public
 
 \ End one declaration. Every exit forgets the borrowed spans: one left behind is
@@ -620,6 +622,8 @@ private
       SEEN-I @ len SEEN-REC + SEEN-I !
    REPEAT NO ;
 
+EXPORT CHECK:ARENA-ROWS-ENSURE
+EXPORT CHECK:MULTI-ERR?
 public
 
 \ NAME-CHECK ( name fix -- ) : a replay's field-name gate. The name is
@@ -642,6 +646,8 @@ public
    SEEN-U @ u SEEN-REC + SEEN-U ! ;
 
 private
+
+EXPORT TYPE-DECL:TDECL-TXN-XT
 
 : RESET ( -- )                          \ base state, on both exits of DRIVE and at load
    NULL-PTR 0 PEND!  HEAD-CLEAR  NULL-PTR 0 TYPE!

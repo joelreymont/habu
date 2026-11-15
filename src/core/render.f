@@ -6,6 +6,7 @@
 \ +!; bytes go out through REJECTION.
 using TFAM
 using REJECTION
+package CHECK
 
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
@@ -1496,9 +1497,9 @@ variable MDV-I   variable MDV-F
 : INFERRED ( -- ) INFERRED-EFFECT TRIM-SPACE ;
 
 \ The definer of the does> clause being reported, as written: DOES-NAME! sets it.
-CHECKER-REG:SCRATCH{
+SCRATCH{
 PTR-VARIABLE DOES-NA   variable DOES-NU
-CHECKER-REG:}SCRATCH
+}SCRATCH
 
 \ The body whose end is checked: a colon definition's name, or a does>
 \ clause's definer, as written.
@@ -1802,16 +1803,16 @@ CHECKER-REG:}SCRATCH
 \ token t tu, else NULL-PTR. A part, named A:B, is left out: no qualifier
 \ outside A reaches it.
 : PUBLIC-IN ( ^u8 n n -- ^n ) {: t:^ tu:n i:n :}
-   i CHECKER-RESOLVE:REC-AT {: rec:^ :}
+   i REC-AT {: rec:^ :}
    rec CK-REC-WID BOOT:NAMESPACE-WL <> IF NULL-PTR EXIT THEN
    rec @ {: wid:n :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ CHECKER-COLON-SCAN drop {: colons:n :}
+   rec CK-REC-NAME$ CHECKER-COLON-SCAN drop {: colons:n :}
    wid 0=  colons 0 <>  or IF NULL-PTR EXIT THEN
    t tu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF NULL-PTR EXIT THEN
    rec ;
 variable HOLDER-N
 PTR-VARIABLE HOLDER-FIRST
-: HOLDER-NAME ( ^n -- ) CHECKER-RESOLVE:CK-REC-NAME$ CODE-SPAN ;
+: HOLDER-NAME ( ^n -- ) CK-REC-NAME$ CODE-SPAN ;
 \ Counts the packages whose public wordlist holds t tu, writes their names when
 \ list is set.
 : HOLDER-SCAN ( ^u8 n bool -- ) {: t:^ tu:n list:bool :}
@@ -1825,7 +1826,7 @@ PTR-VARIABLE HOLDER-FIRST
       THEN
    loop ;
 : QUALIFIED ( ^u8 n -- ) {: t:^ tu:n :}
-   96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
+   96 EMIT1  HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
 \ The help for t tu, which nothing defines, used in the body of d du, empty
 \ outside one: a body's own name is found only after its `;`. Names fold case.
@@ -1845,7 +1846,7 @@ PTR-VARIABLE HOLDER-FIRST
    HOLDER-N @ 1 = IF
       HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  t tu QUALIFIED
       s" , or call it inside `using " EMIT-STR
-      HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
+      HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
    THEN
    t tu RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  t tu QUALIFIED ;
 
@@ -2053,7 +2054,9 @@ PTR-VARIABLE HOLDER-FIRST
 
 \ Check's run turns this off, as the check before it wrote the placed warnings;
 \ a session the run's program starts turns it on (CHECK-ALL-ERRORS:SESSION).
+public
 variable WARN-DIAGS   -1 WARN-DIAGS !
+private
 
 \ W-EFFECT-NOT-RECORDED warns that the word certified and loaded, but a later
 \ call rejects it as undefined; the run's status stands. It names the word as
@@ -2082,8 +2085,10 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    BROW @ DCUR @ CHECK-UNRECORDED!
    REC-REFUSE-DIAG ;
 
+;package
 \ The text of a rejected `cast:` or `linear:` declaration.
 package CAST-ERROR
+EXPORT CHECK:SGBAD-LABEL$
 : CODE$ ( n -- ^u8 n ) {: code:n :}
    code E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
    code E-CAST-CLASS = IF s" E-CAST-CLASS" EXIT THEN
@@ -2124,8 +2129,11 @@ package CAST-ERROR
    TOK-U @ 0 >  d 0 >= and  d SIG-U @ < and IF TOK-A @ TOK-U @ EXIT THEN
    WORD$ ;
 ;package
+package CHECK
 
-;using
-
+global
 \ `+` and `cell+` refuse a layout pointee; bounds stay the caller's.
 : record-at ( ^a n -- ^a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
+
+;package
+;using

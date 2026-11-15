@@ -1903,6 +1903,7 @@ public
 : EVENT-DEPTH@ ( n -- n )    10 EVENT-FIELD@ ;
 
 package SOURCE-ROOT
+EXPORT CHECK:FILE-POS-CLEAR
 private
 
 \ A frame carries its own resolved path: a nested include overwrites
@@ -1982,7 +1983,7 @@ variable LAST-LOAD-EVAL-OK
    0 data-base SRCLOC:OWNEDLEN-CELL + ! ;
 
 : PUBLISH-FRAME ( ^u8 -- ) {: frame:^ :}
-   CHECK:FILE-POS-CLEAR
+   FILE-POS-CLEAR
    frame 0= if PUBLISH-NONE exit then
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
    frame FR-PATH + NULL-PTR - data-base SRCLOC:PATH-CELL + !
@@ -2201,6 +2202,10 @@ defer INCLUDE-INTERPRET ( ^u8 n n n -- )
 : EXEC-SOURCE ( -- ^u8 )
    TOP@ FRAME-EXEC-SOURCE ;
 
+EXPORT CHECK:CHECKER-SPLIT-STR
+EXPORT CHECK:RESIDUE-AT
+EXPORT CHECK:RESIDUE-NOTE
+EXPORT CHECK:SPLIT-STR-FILE?
 \ Every range of a file starts marked when the file's source is, whatever part
 \ ran before it, so the marker is read from byte 0.
 : RUN-SAVED-RANGE ( -- )

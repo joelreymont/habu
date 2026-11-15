@@ -11,8 +11,8 @@ package NATIVE-MULTI-RECOVERY
 public
 
 : BEFORE ( -- n ) 17 ;
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 : CHECK-RECOVERY ( -- )
    FINISH 1 <> if s" native multi-error count" 1 die then
    data-base PEND-CELL + @ 0<> if s" native pending definition" 1 die then
@@ -157,8 +157,8 @@ CHECK-CAST
 
 ;package
 
-: GLOBAL-START ( -- ) MULTI-ERR-BEGIN ;
-: GLOBAL-FINISH ( -- n ) MULTI-ERR-END ;
+: GLOBAL-START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: GLOBAL-FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 GLOBAL-START
 : GLOBAL-RECOVERY ( n -- n ) drop ;
 : GLOBAL-GOOD ( -- n ) 17 ;
@@ -190,8 +190,8 @@ package NATIVE-RECOVERY-PENDING
 private
 : ACTUAL ( n -- n ) 1+ ;
 public
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 : CHECK-COUNT ( -- )
    FINISH 2 <> if s" native pending fallback count" 1 die then ;
 START
@@ -208,8 +208,8 @@ package NATIVE-RECOVERY-EXPIRED
 private
 : ACTUAL ( n -- n ) 1+ ;
 public
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 : CHECK-COUNT ( -- )
    FINISH 1 <> if s" native expired fallback count" 1 die then ;
 START

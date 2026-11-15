@@ -8,6 +8,8 @@ package CHECK
 
 private
 
+EXPORT SRCLOC:FILE-BUFFER?
+
 \ ---- a duplicate only the checker sees ----------------------------------------
 \ A declaration replay publishes a checked effect but defines no word, so the
 \ engine's duplicate wall passes a later definition; the hook rejects it first.
@@ -25,7 +27,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 : ROWS-ARM ( ^u8 n -- bool )
    {: a:^ u:n :}
    REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
-   SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
+   FILE-BUFFER? 0= if RES-FALSE exit then
    data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:^ :}
    base NULL-PTR = if RES-FALSE exit then
@@ -175,7 +177,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    committed 0= if exit then
    a u CHECKER-RECORD-SYM? {: sym:n :}
    sym FACTS-TEXT? 0= if exit then
-   sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   sym VIS-SYM-REC REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
    REJECTION:TEXT REJECTION:TEXT-LEN @ ix FACTS!
    sym NORET-CREATES@ {: made:n :}
@@ -202,7 +204,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or if exit then
    data-base LASTC-CELL + 0 ptr-field @ {: rec:^ :}
    rec NULL-PTR = if exit then
-   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   rec REC>INDEX {: ix:n :}
    ix 0 < if exit then
    LASTC-LINK-SYM FACTS-TEXT? if
       REJECTION:TEXT REJECTION:TEXT-LEN @
@@ -595,7 +597,7 @@ private
    HELD-FACTS from ?do
       i HELD-FACT@ 2drop HELD-AMENDED = if
          i HELD-AMENDED@ {: ix:n sym:n :}
-         sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: now:n :}
+         sym VIS-SYM-REC REC>INDEX {: now:n :}
          now ix <> if NULL-PTR 0 ix FACTS! then
          now 0 >=  sym FACTS-TEXT?  and 0= if sym SYM-NAME$ AMENDED-DIE then
          REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!

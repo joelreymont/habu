@@ -1,8 +1,8 @@
 \ A recovered declaration still reports the word that failed checking.
 package PROGRAM-DIAG-ME
 public
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 ;package
 
 PROGRAM-DIAG-ME:START

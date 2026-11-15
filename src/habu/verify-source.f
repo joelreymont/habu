@@ -192,6 +192,26 @@ require src/habu/escape.f
 require src/lib/ffi-abi.f
 
 package VERIFY
+EXPORT CHECK:CHECKER-SIG-SPAN
+EXPORT CHECK:VERIFY-DEFINER-N
+EXPORT CHECK:CHECKER-DEFCAST
+EXPORT CHECK:CHECKER-GENERATES
+EXPORT CHECK:CHECKER-PARSES-ROW
+EXPORT CHECK:CHECKER-NAMES-ROW
+EXPORT CHECK:CHECKER-NAMED-USE
+EXPORT CHECK:CHECKER-LINEAR
+EXPORT CHECK:VERIFY-PARSES-N
+EXPORT CHECK:CHECKER-CANDIDATE-SCOPE-START
+EXPORT CHECK:CHECKER-CANDIDATE-SCOPE-DONE
+EXPORT CHECK:RQM
+EXPORT CHECK:REND-RECORD-EFFECT
+EXPORT ROLES:DTC-NAME$
+EXPORT ROLES:DTC-SIG$
+EXPORT ROLES:DTC-BUILD-IN
+EXPORT ROLES:DTC-BUILD-OUT
+EXPORT ROLES:VRDEF-UNCLOSED
+EXPORT TYPE-DECL:CHECKER-DEFFAMILY
+EXPORT TYPE-DECL:CHECKER-NOMINAL-REPLAY
 
 public
 
@@ -554,6 +574,64 @@ variable STR-DEC-TURN
    STR-DEC-TURN @ 0= IF u 1 + STR-DEC0-RESERVE  0 STR-DEC0 EXIT THEN
    u 1 + STR-DEC1-RESERVE  0 STR-DEC1 ;
 
+EXPORT CHECK:CHECKER-ARENA-INFO
+EXPORT CHECK:CHECKER-AUTH-PACKAGE$
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-MODE@
+EXPORT CHECK:CHECKER-CERT-DUP?
+EXPORT CHECK:CHECKER-CERT-SHAPE-DUP?
+EXPORT CHECK:CHECKER-DEFARENA
+EXPORT CHECK:CHECKER-DEFBYTE-BUFFER
+EXPORT CHECK:CHECKER-DEFCWORK-SPAN
+EXPORT CHECK:CHECKER-DEFCWORK-VARIABLE
+EXPORT CHECK:CHECKER-DEFDEFER-LAYOUT-BUFFER
+EXPORT CHECK:CHECKER-DEFDYNAMIC-BUFFER
+EXPORT CHECK:CHECKER-DEFER
+EXPORT CHECK:CHECKER-DEFER-WHY!
+EXPORT CHECK:CHECKER-DEFHEAP
+EXPORT CHECK:CHECKER-DEFLAYOUT-BUFFER
+EXPORT CHECK:CHECKER-DEFLINEAR
+EXPORT CHECK:CHECKER-DEFSLOT
+EXPORT CHECK:CHECKER-DEFTYPED-BUFFER
+EXPORT CHECK:CHECKER-DEFTYPED-VARIABLE
+EXPORT CHECK:CHECKER-DYNAMIC-INFO
+EXPORT CHECK:CHECKER-END-PACKAGE
+EXPORT CHECK:CHECKER-EXPORT
+EXPORT CHECK:CHECKER-FIND-QUIET-SYM
+EXPORT CHECK:CHECKER-GLOBAL
+EXPORT CHECK:CHECKER-IMMEDIATE
+EXPORT CHECK:CHECKER-LBUF-NAME-OK?
+EXPORT CHECK:CHECKER-LINEAR-TAKEN
+EXPORT CHECK:CHECKER-PACKAGE
+EXPORT CHECK:CHECKER-PARSE-IMM
+EXPORT CHECK:CHECKER-PRIVATE
+EXPORT CHECK:CHECKER-PUBLIC
+EXPORT CHECK:CHECKER-QPKG$
+EXPORT CHECK:CHECKER-QTAIL$
+EXPORT CHECK:CHECKER-QUALIFIED?
+EXPORT CHECK:CHECKER-RECORD-REJECT
+EXPORT CHECK:CHECKER-SIG-UNRES-TAKE
+EXPORT CHECK:CHECKER-SPLIT-STR
+EXPORT CHECK:CHECKER-STORAGE-NAME-REFUSE
+EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
+EXPORT CHECK:CHECKER-TRY-RECORD
+EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
+EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
+EXPORT CHECK:CHECKER-UNDEFINE
+EXPORT CHECK:CHECKER-USING-POP
+EXPORT CHECK:CHECKER-USING-PUSH
+EXPORT CHECK:DOES-UNMADE-OPEN
+EXPORT CHECK:MULTI-ERR?
+EXPORT CHECK:PIMM-CNT@
+EXPORT CHECK:PIMM-IX
+EXPORT CHECK:PIMM-N
+EXPORT CHECK:PROW-FIND
+EXPORT CHECK:SIG-RAW-MODE
+EXPORT CHECK:SPLIT-STR-FILE?
+EXPORT CHECK:TYPE-RESERVED?
+EXPORT CHECK:TYPE-SPAN-END?
+EXPORT CHECK:USIG-NEWEST
+EXPORT CHECK:VREC-TOKEN
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
 \ whether every escape in it is one the engine reads. An escape is spelt
 \ with more bytes than it decodes to, so a decode as long as its payload met no
@@ -970,11 +1048,13 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN ;
 
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+
 \ A head resolves as the definition's does: a part is asked by its path.
 : SEALED-NAME ( ^u8 n n n -- ) {: a:^ u:n at:n tu:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF a u at tu SEALED-OPEN EXIT THEN
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
+   a q HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN
    row NULL-PTR <> IF row XREF:SEALED? IF a u at tu SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
@@ -1425,14 +1505,14 @@ public
 : SYM-IDENTITY ( n -- ^u8 n ^u8 n n )
    NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
 
+private
+
 \ The word a symbol is: for an export, the symbol of the word it names, through
 \ any re-exports, or the export itself once that word is undefined; otherwise
 \ the symbol itself. A source the capture swept, such as a private word of a
 \ sealed package, keeps its symbol with an empty SYM-IDENTITY: no word.
 : SYM-SOURCE ( n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-SYM-SOURCE-OFF OWNER-XT SOURCE-ACTION execute ;
-
-private
 
 \ The same two questions about a definer this pre-pass never read - one compiled
 \ in THIS process, whose clause the checker certified at its `;` and whose
@@ -1892,36 +1972,6 @@ DYNAMIC-BUFFER TICK-QUAL u8
 : DECL-SIGNATURE ( ^u8 n ^u8 n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
 
-\ The cast declarer's registrar: UNSAFE-TOK? rejects `checker-defcast` inside a
-\ checked body, so the one place allowed to name it is a declared boundary word.
-\ The refusals it runs are the engine's own, so a cast this pre-pass accepts is
-\ exactly a cast the engine accepts.
-TRUSTED: DEFCAST-SIGNATURE ( ^u8 n ^u8 n -- )
-   CHECKER-DEFCAST ;
-
-\ The `generates:` row's checks: UNSAFE-TOK? rejects `checker-generates` inside
-\ a checked body. The refusals are the engine's own, so a row this pre-pass
-\ accepts is a row the engine accepts.
-TRUSTED: GENERATES-SIGNATURE ( ^u8 n ^u8 n bool -- n n )
-   CHECKER-GENERATES ;
-
-\ A `parses:` row's checks: UNSAFE-TOK? rejects `checker-parses-row` inside a
-\ checked body. The refusals are the engine's own, so a row this pre-pass keeps
-\ is a row the load accepts.
-TRUSTED: PARSES-CHECK ( ^u8 n ^u8 n ^u8 n bool -- n n n )
-   CHECKER-PARSES-ROW ;
-
-\ A `names:` row's check: UNSAFE-TOK? rejects `checker-names-row` inside a
-\ checked body. The checker marks the word the row names, so this pre-pass
-\ keeps nothing of the row.
-TRUSTED: NAMES-CHECK ( ^u8 n ^u8 n -- )
-   CHECKER-NAMES-ROW ;
-
-\ A top-level literal that names a word, published as a use of it, on the same
-\ boundary: UNSAFE-TOK? rejects `checker-named-use` inside a checked body.
-TRUSTED: NAMED-USE ( ^u8 n -- )
-   CHECKER-NAMED-USE ;
-
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
 \ definition only once its body is checked, a storage definition once its type
@@ -1966,7 +2016,9 @@ public
 defer ON-DEFINITION ( ^u8 n ^u8 n n ^u8 n n n n n -- )
 
 \ Per read file, each bound use: span, resolved declaration path (borrowed) and
-\ span, symbol, visit; spans at the source's base; unplaced: "", 0 0, visit -1.
+\ span, symbol, visit; spans at the source's base; a primitive's visit is -2
+\ minus its PRIM-SPEC row, its declaration span 0 0 when unplaced; any other
+\ unplaced use: "", 0 0, visit -1.
 defer ON-USE ( n n ^u8 n n n n n -- )
 
 \ A top-level loader of the subject whose load reached a file, once the file
@@ -2360,7 +2412,7 @@ variable TRUSTED-DOES
    name nameu at REJECT-DUPLICATE IF name nameu SIGNATURE-AT 2drop EXIT THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
-   name nameu sig sigu DEFCAST-SIGNATURE
+   name nameu sig sigu CHECKER-DEFCAST
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
@@ -2400,13 +2452,16 @@ variable TRUSTED-DOES
    THEN
    CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEAL ;
 
+EXPORT CHECKER-RESOLVE:PART-GUARD
+EXPORT CHECKER-RESOLVE:PART-PATH
+
 \ The engine's order: the part guard at `package`, then the name and its path,
 \ the checker, the seal on the path.
 : RECORD-PACKAGE ( -- )
-   CHECKER-RESOLVE:PART-GUARD
+   PART-GUARD
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu CHECKER-RESOLVE:PART-PATH {: pa:^ pu:n :}
+   name nameu PART-PATH {: pa:^ pu:n :}
    pa pu name nameu CHECKER-PACKAGE
    pa pu name nameu at SEALED-PACKAGE ;
 
@@ -3003,7 +3058,7 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
    STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
    STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
-   STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
+   STR-LAST-A @ STR-LAST-U @ CHECKER-NAMED-USE ;
 
 \ An unmodelled call makes the rest of the source uncertain, declarations the
 \ source index has already seen included.
@@ -3074,7 +3129,7 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    NEXT-RAW {: ta:^ tu:n :}
    NEXT-RAW {: ca:^ cu:n :}
    through IF PRS-LIST-READ ELSE 0 0 0= 0= THEN {: len:n bad:bool :}
-   ka ku ta tu ca cu bad PARSES-CHECK {: sym:n eff1:n count:n :}
+   ka ku ta tu ca cu bad CHECKER-PARSES-ROW {: sym:n eff1:n count:n :}
    sym 0= IF EXIT THEN
    VERIFY-PARSES-N @ {: row:n :}
    row 1 + PRS-OWNER-RESERVE  row 1 + PRS-SYM-RESERVE  row 1 + PRS-EFF-RESERVE
@@ -3086,7 +3141,7 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
 
 \ Read and checked as the engine word does.
 : NAMES-ROW ( ^u8 n -- )
-   NEXT-RAW NAMES-CHECK ;
+   NEXT-RAW CHECKER-NAMES-ROW ;
 
 : PRS-TERM-END ( n ^u8 n -- n )
    {: t:^ tu:n :}
@@ -3585,7 +3640,7 @@ private
    {: sig:^ sigu:n :}
    name nameu FIND-SYM
    {: sym:n :}
-   name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
+   name nameu sig sigu sym DEFINER-FIND 0<> CHECKER-GENERATES nip 0= IF EXIT THEN
    sig sigu true sym DEFINER-ADD ;
 
 \ FFI's declaration machine reads `FUNCTION: … ;FUNCTION` from the raw tokens
@@ -4527,8 +4582,3 @@ public
    THROW-RESULT ;
 
 ;package
-
-\ Only `package` and RECORD-PACKAGE open a part: once both bind these, they are
-\ retired.
-undefine CHECKER-RESOLVE:PART-GUARD
-undefine CHECKER-RESOLVE:PART-PATH

@@ -69,7 +69,7 @@ variable EVAL-U
 
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( ^u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
+: MULTI ( ^u8 n -- n n ) CHECK:MULTI-ERR-BEGIN EVAL CHECK:MULTI-ERR-END ;
 
 : ABSENT ( ^u8 n ^u8 n -- )
    {: name:^ nameu:n sfx:^ sfxu:n :}

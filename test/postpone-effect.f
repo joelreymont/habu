@@ -130,7 +130,7 @@ variable EVAL-U
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( ^u8 n -- n n )
-   EVAL-U ! EVAL-A !  MULTI-ERR-BEGIN [: EVAL-RUN ;] catch MULTI-ERR-END ;
+   EVAL-U ! EVAL-A !  CHECK:MULTI-ERR-BEGIN [: EVAL-RUN ;] catch CHECK:MULTI-ERR-END ;
 
 \ The refused built word keeps its effect: its caller certifies, one refusal.
 S\" s\" CELL-BROKEN\" POSTPONE-CELL:MAKE-CELL-BROKEN\n: CELL-USE ( -- ) POSTPONE-CELL:PD-CELL CELL-BROKEN drop ;"

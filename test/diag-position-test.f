@@ -3152,20 +3152,23 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNMODELED-IMMEDIATE" s" :6:20" REJECT-RC LOADED-AT ;
 
 \ PK's own word spelt `parse-imm` is the call the load makes, not the engine's
-\ word. Replayed as the engine's, its 17 calls would fill the 16-row parse-imm
-\ table and every check would refuse a file the load accepts.
+\ word, so W1 stays undeclared and the check and the load both reject it in
+\ USE. Replayed as the engine's, it would declare W1 and the check would accept.
 : TEST-OWN-PARSE-IMM ( -- )
    s" a package's own word spelt parse-imm" T-LABEL
    SB-RESET
    s" : W1 ( -- ) ; immediate" SB-APPEND LF+
    s" package PK" SB-APPEND LF+
    s" : parse-imm ( ^u8 n n -- ) drop drop drop ;" SB-APPEND LF+
-   17 0 ?do s\" s\" W1\" 0 parse-imm" SB-APPEND LF+ loop
+   s\" s\" W1\" 0 parse-imm" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
-   s" : USE ( -- n ) 73 ;" SB-APPEND LF+
+   s" : USE ( -- n ) W1 73 ;" SB-APPEND LF+
    s" own-parse-imm.f" FIXTURE!
-   CERTIFIED
-   s" " 0 LOADED ;
+   s" " CHECK
+   0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
+   0 s" token" s" W1" FIELD=
+   s" error[E-UNMODELED-IMMEDIATE]: `W1` is a compile-time immediate"
+   REJECT-RC LOADED ;
 
 \ The parse-imm table grows: a check and a load accept 40 declared parsing
 \ immediates, and the load runs each one at compile time.

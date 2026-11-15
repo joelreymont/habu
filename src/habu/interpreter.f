@@ -234,6 +234,11 @@ package INTERPRETER
 
 private
 
+EXPORT CHECK:BODY-KEYWORD?
+EXPORT CHECK:BODY-ONLY-RECORD
+EXPORT CHECK:CHECKER-USING$
+EXPORT CHECK:CHECKER-USING-N
+EXPORT CHECK:CLAUSE-NAME
 EXPORT CHECK:TYPE-OP
 EXPORT CHECK:EFFECT?
 EXPORT CHECK:TYPE-DENSE
@@ -242,6 +247,9 @@ EXPORT CHECK:EFFECT-TEXT
 EXPORT CHECK:TOP-LEVEL
 EXPORT CHECK:TOP-TAKE
 EXPORT CHECK:TOP-DROP
+EXPORT CHECK:USING-AMBIGUOUS-REJECT
+EXPORT CHECK:USING-SHADOW-REJECT
+EXPORT CHECKER-TAPE:COUNTED-MAX
 
 79 constant RC-TASK-THREAD       \ source read on a task's thread
 32 constant BLANK                \ every byte at or below it separates tokens
@@ -649,7 +657,7 @@ private
    TOKEN$ LITERAL-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : TOO-LONG ( -- )
-   TOKEN$ CHECKER-TAPE:COUNTED-MAX REJECTION:COUNTED-RANGE
+   TOKEN$ COUNTED-MAX REJECTION:COUNTED-RANGE
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : PAST ( ^u8 -- )
@@ -677,7 +685,7 @@ private
 \ c": a count byte, then the text.
 : COUNTED ( -- ^u8 )
    TEXT {: a:^ u:n :}
-   u CHECKER-TAPE:COUNTED-MAX > if TOO-LONG then
+   u COUNTED-MAX > if TOO-LONG then
    u 1 + ROOM {: d:^ :}
    u d c!
    a d 1 + u BYTE-COPY
@@ -700,7 +708,7 @@ private
 
 : ESC-COUNTED ( -- ^u8 )
    ESC-SCAN {: s:^ q:^ u:n :}
-   u CHECKER-TAPE:COUNTED-MAX > if TOO-LONG then
+   u COUNTED-MAX > if TOO-LONG then
    q PAST
    u 1 + ROOM {: d:^ :}
    u d c!
@@ -1019,14 +1027,18 @@ public
    a u own namespace-record ;
 private
 
+EXPORT CHECKER-RESOLVE:PART-PATH
+
 \ Inside package A the token cells name `A:<token>`.
 : PKG-PATH ( -- )
-   TOKEN$ CHECKER-RESOLVE:PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
+   TOKEN$ PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
+
+EXPORT CHECKER-RESOLVE:PART-GUARD
 
 \ The using depth it opens at is the one `;package` restores, a part's its
 \ package's.
 : PKG-PACKAGE ( -- )
-   CHECKER-RESOLVE:PART-GUARD
+   PART-GUARD
    PKG-NAME
    TOKEN$ {: t:^ tu:n :}
    PKG-PATH
@@ -1090,12 +1102,14 @@ private
    s"  before this using, or check its spelling" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+
 : PKG-USED-WID ( -- n )
    TOKEN 0= if s" using" NAME-MISSING then
    TOKEN$ 0 COLON-AT 0 >= if
       TOKEN$ REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then
-   TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
+   TOKEN$ HEAD-ROW {: row:^ :}
    row XREF-FOUND? 0= if USING-UNKNOWN then
    row XREF-PKG-PUBLIC ;
 
@@ -1162,13 +1176,15 @@ variable USE-FLOOR
    REJECTION:HELP  s" export a public word instead" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
+
 \ The source must not be internal: an alias would carry its body past the
 \ interpret gate without the DNAME-INT mark, so the gate's rejection is made
 \ here. DEF-TKA and DEF-TKL take the operand, which the rejections after them
 \ name.
 : PKG-EXPORT-SOURCE ( -- ^n )
    TOKEN$ FIND-SCOPE {: found:^ :}
-   found XREF-FOUND? if found else TOKEN$ CHECKER-RESOLVE:EXPORT-PRIVATE then
+   found XREF-FOUND? if found else TOKEN$ EXPORT-PRIVATE then
    {: src:^ :}
    src XREF-FOUND? 0= if EXPORT-UNDEFINED then
    src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
@@ -1286,19 +1302,26 @@ private
    s" target" TOKEN-IS? if 1 else 0 then SECTION-CELL CELL!
    true ;
 
+EXPORT CHECK:CHECKER-SPLIT-STR
+EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
+EXPORT CHECK:NEUTRAL-PARSE-IMM?
+EXPORT CHECK:TYPE-SPAN-END?
+EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
+EXPORT CHECKER-RESOLVE:PRIVATE-SECTION
+EXPORT CHECKER-RESOLVE:GLOBAL-SECTION
 : PACKAGE? ( -- bool )
    s" package" TOKEN-IS? if PKG-PACKAGE true exit then
    s" public" TOKEN-IS? if
       PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      CHECKER-RESOLVE:PUBLIC-SECTION true exit
+      PUBLIC-SECTION true exit
    then
    s" private" TOKEN-IS? if
       PKG-PRI-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      CHECKER-RESOLVE:PRIVATE-SECTION true exit
+      PRIVATE-SECTION true exit
    then
    s" global" TOKEN-IS? if
       PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      CHECKER-RESOLVE:GLOBAL-SECTION true exit
+      GLOBAL-SECTION true exit
    then
    s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
    SECTION? if true exit then
@@ -1355,6 +1378,7 @@ EXPORT CHECK:IMMEDIATE-CHECK
 EXPORT CHECK:CHILD
 EXPORT CHECK:STORAGE-LINE
 EXPORT CHECK:CELL-LINE
+EXPORT CHECK:EFFECT-RULES?
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
@@ -1522,7 +1546,7 @@ private
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
 : DEF-NAMESPACE ( ^u8 n -- n bool ) {: a:^ q:n :}
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
+   a q HEAD-ROW {: row:^ :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
    a q TOKEN$ PKG-DICT-ROOM
    a q a q PKG-CODE-ROOM
@@ -2120,7 +2144,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    eff EFFECT-DENSE 0= if a u DEF-WIDE then
    {: dense:n :}
-   a u dense CHECK:EFFECT-RULES? 0= if
+   a u dense EFFECT-RULES? 0= if
       [: s" is not one a written signature could state" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
       REJECTION:HELP
@@ -2495,9 +2519,11 @@ variable DEF-VALUE
    DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
    NCOMP-DISPATCH:DECL-CAST-OFF DEF-REGISTER-IDENTITY ;
 
+EXPORT CHECK:REC-WIDE-PUBLISH
+
 \ The record takes the wide mark the checker's registrar latched.
 : DEF-CAST-FACTS ( -- )
-   CHECK:REC-WIDE-PUBLISH ;
+   REC-WIDE-PUBLISH ;
 
 : DEF-CAST-ROW ( -- )
    TOKEN$ {: kw:^ ku:n :}
@@ -2820,7 +2846,10 @@ private
 
 \ Inside a build a declaration word found in product text is the product's
 \ copy, which records into a checker that checks nothing, so hb's word of that
-\ spelling runs instead. hb's global wordlist is 0, as every linked program's.
+\ spelling runs instead. hb's global wordlist is 0, as every linked program's;
+\ a declaration private to a package is hb's word in that package's private
+\ wordlist, whose row is in hb's own namespace (WL:NAMESPACE): a build points
+\ BOOT:NAMESPACE-WL at the product's.
 : DECLARATION? ( -- bool )
    s" intrinsic" TOKEN-IS? if true exit then
    s" nominal-provider" TOKEN-IS? if true exit then
@@ -2859,6 +2888,10 @@ private
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
    DECLARATION? LOADER? or  s" undefine" TOKEN-IS? or  0= if false exit then
    TOKEN$ 0 XREF-FIND-WL REC !
+   REC @ XREF-FOUND? 0= if
+      OPEN-PKG-NAME WL:NAMESPACE WL-PROBE {: pkg:^ :}
+      pkg NULL-PTR <> if TOKEN$ pkg XREF-PKG-PRIVATE XREF-FIND-WL REC ! then
+   then
    REC @ XREF-FOUND? 0= if UNDEFINED then
    true ;
 
@@ -3353,12 +3386,8 @@ public
 
 ;package
 
-\ Only INTERPRETER saves and puts back the marked cells, and only it and the
-\ declaration generators switch a section: once they bind these, they are
-\ retired.
+\ Only INTERPRETER saves and puts back the marked cells: once it binds
+\ these, they are retired.
 undefine ROLLBACK-CELLS:BYTES
 undefine ROLLBACK-CELLS:SAVE
 undefine ROLLBACK-CELLS:RESTORE
-undefine CHECKER-RESOLVE:PUBLIC-SECTION
-undefine CHECKER-RESOLVE:PRIVATE-SECTION
-undefine CHECKER-RESOLVE:GLOBAL-SECTION

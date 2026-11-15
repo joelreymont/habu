@@ -61,6 +61,13 @@ private
 EXPORT CHECK:DOES-PUBLISHED
 EXPORT CHECK:CLOSER-ARM
 EXPORT CHECK:ROW-DECLARED
+EXPORT CHECK:CHECK-UNJUDGED!
+EXPORT CHECK:CHECKER-NATIVE-DOES-BEGIN
+EXPORT CHECK:CHECK-DOES-DIN-CELLS
+EXPORT CHECK:CHECK-DOES-DOUT-CELLS
+EXPORT CHECK:CHECK-UNRECORDED-DIN
+EXPORT CHECK:CHECK-UNRECORDED-DOUT
+EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
@@ -154,6 +161,9 @@ private
    src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR=CI 0= if E-NFEED-CUT throw then
    src cut 1- + c@ 32 <> if E-NFEED-CUT throw then ;
 
+EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
+EXPORT CHECKER-TAPE:ADVANCE
+
 public
 
 \ The `does>` split's head. The caller advances its own record past the
@@ -166,13 +176,13 @@ public
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
    TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
    \ The clause's scan clears the checker's recovery flag, so keep the head's.
-   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY ! ;
+   RECOVERY-USED? M-HEAD-RECOVERY ! ;
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
 : CHECK-DOES-CLAUSE ( ^u8 n -- n )
    {: na:^ nu:n :}
-   CHECKER-TAPE:ADVANCE
+   ADVANCE
    M-DOES @ {: cut:n :}
    M-SRC @ cut +  M-SRC-U @ cut -  {: ca:^ cu:n :}
    ca cu CLOSER-ARM
@@ -192,6 +202,9 @@ public
 
 private
 
+EXPORT CHECK:CHECKER-RETRACT-ROWS
+EXPORT CHECK:CHECKER-ROWS-END
+EXPORT CHECK:MULTI-ERR?
 \ A multi-error run whose reader recovers from E-COMP-RECOVERY: that reader
 \ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
 \ reader a refusal is E-COMP-VERDICT, which SETTLE-UNIT reports.
@@ -211,7 +224,7 @@ public
       E-COMP-VERDICT throw
    then then
    RECOVERING? if
-      CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY @ or
+      RECOVERY-USED? M-HEAD-RECOVERY @ or
       if E-COMP-RECOVERY throw then
       M-ROW-REJECTED @ if E-COMP-RECOVERY throw then
    then ;
@@ -224,10 +237,12 @@ private
 : REC-INDEX ( -- n )
    ndict@ ;
 
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+
 : QUALIFIED-RECORD-NAME? ( ^n ^u8 n n -- bool )
    {: rec:^ a:^ u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
-   a split CHECKER-RESOLVE:HEAD-ROW
+   a split HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 

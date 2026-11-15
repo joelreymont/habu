@@ -23,8 +23,8 @@ TYPED-VARIABLE TDTE-A ^u8   variable TDTE-U
    [: TDT-EVAL-GO ;] catch ;
 
 \ Checked aliases of the checker's multi-error bracket.
-: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+: TWX-MULTI-ERR-BEGIN ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: TWX-MULTI-ERR-END ( -- n ) CHECK:MULTI-ERR-END ;
 
 : TDT-NEG ( ^u8 n n -- ) {: a:^ u:n code:n :}
    a u TDT-EVAL-CATCH code T= ;

@@ -17,6 +17,7 @@ public
 
 private
 
+EXPORT CHECK:FIRST-RECORD-XT
 \ checker.f CHECKER-OVERLAY asks for the boundary when a replay opens; it loads
 \ before this file, so it asks through the defer FIRST-RECORD-XT.
 : INSTALL ( -- ) [: FIRST-RECORD ;] is FIRST-RECORD-XT ;
@@ -24,5 +25,3 @@ INSTALL
 undefine INSTALL
 
 ;package
-
-undefine FIRST-RECORD-XT

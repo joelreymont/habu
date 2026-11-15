@@ -454,9 +454,9 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    ['] USE-LINE is VERIFY:ON-USE
    ['] LOAD-LINE is VERIFY:ON-LOADER
    ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
-   MULTI-ERR-BEGIN
+   CHECK:MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
-   MULTI-ERR-END {: rejects:n :}
+   CHECK:MULTI-ERR-END {: rejects:n :}
    rejects 0<> if -1 FAILED ! then
    rc 0<> if rc throw then ;
 
@@ -499,9 +499,9 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    true REJECTION:JSON !
    OUT-FD REJECTION:FD!
    ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
-   MULTI-ERR-BEGIN
+   CHECK:MULTI-ERR-BEGIN
    [: INDEX-CUR ;] catch {: rc:n :}
-   MULTI-ERR-END {: rejects:n :}
+   CHECK:MULTI-ERR-END {: rejects:n :}
    rc 0<> if rc STOP-RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
    rejects 0<> if s" refused" else s" verified" then RESULT ;

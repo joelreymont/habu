@@ -66,9 +66,9 @@ public
 \ of thrown: the throw code, then the rejections counted.
 : MULTI-QUIET ( ^u8 n -- n n )
    {: a:^ u:n :}
-   MULTI-ERR-BEGIN
+   CHECK:MULTI-ERR-BEGIN
    a u VERIFY-QUIET
-   MULTI-ERR-END ;
+   CHECK:MULTI-ERR-END ;
 
 : DIAG$ ( -- ^u8 n )
    REJECTION:BUFFER$ ;

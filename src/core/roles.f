@@ -5,6 +5,11 @@
 \ nothing else: each one is declared with `CAST:`, which publishes an identity
 \ word and costs nothing at a call site.
 
+package ROLES
+
+EXPORT CHECKER-REG:SCRATCH{
+EXPORT CHECKER-REG:}SCRATCH
+
 \ The DTC-* words give the name and effect text of a nominal cell type's
 \ converter pair, >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), for
 \ verify-source.f's definition report. A nominal is one cell, distinct from n
@@ -15,9 +20,9 @@
 \ The table grows: a DEFTYPE name may be as long as any family name, and any
 \ source can call DTC+. Its cells are scratch, so an image holds none.
 $200 constant DTC-INIT
-CHECKER-REG:SCRATCH{
+SCRATCH{
 PTR-VARIABLE DTC-P   variable DTC-U   variable DTC-CAP
-CHECKER-REG:}SCRATCH
+}SCRATCH
 variable DTC-NAME-OFF
 variable DTC-NAME-U
 variable DTC-SIG-OFF
@@ -27,6 +32,10 @@ variable DTC-SIG-U
 
 : DTC-BUF ( -- ^u8 ) DTC-P @ ;
 
+EXPORT CHECK:CHECKER-DEFLINEAR
+EXPORT CHECK:CHECKER-DEFRECORD
+EXPORT CHECK:NOMINAL-PROVIDER
+EXPORT CHECK:SR-GROW
 : DTC+ ( ^u8 n -- ) {: a:^ u:n :}
    DTC-U @ u + DTC-CAP @ > IF
       DTC-U @ u + DTC-CAP @ 2 * max DTC-INIT max {: nc:n :}
@@ -85,10 +94,11 @@ variable DTC-SIG-U
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only: executing one parses
 \ the live input and mutates the type registry, which their ( -- ) rows do not
 \ express. UNSAFE-TOK? rejects the bare tokens in checked bodies before the usig
-\ is consulted (DO-TOK1 order) and EXPORT refuses a qualified alias
-\ (E-EXPORT-UNSAFE), so the usig adds no checked capability; it keeps the
-\ definers checker-known, so top level may run them.
+\ is consulted (DO-TOK1 order), and a global section's word has no qualified
+\ spelling, so the usig adds no checked capability; it keeps the definers
+\ checker-known, so top level may run them.
 
+global
 CAST: >IDX ( n -- idx )
 CAST: IDX>N ( idx -- n )
 
@@ -166,6 +176,7 @@ CAST: >SNAP ( n -- snap )
    kw ku name nameu REJECTION:NOT-A-NAME
    name nameu CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
+private
 
 : VRDEF-FOLD-C ( n -- n )
    dup $41 < IF EXIT THEN
@@ -192,6 +203,7 @@ NOMINAL-PROVIDER
    a u REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
    REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR ;
 
+global
 \ The field list is the source from its first token f to the closer at e:
 \ parse-name never refills the input, so the span is the record's own bytes and
 \ a rejected field is placed.
@@ -212,3 +224,5 @@ NOMINAL-PROVIDER
       2drop parse-name
    AGAIN ;
 NOMINAL-PROVIDER
+private
+;package

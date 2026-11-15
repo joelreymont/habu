@@ -24,6 +24,7 @@ package NPUB
 private
 
 EXPORT CHECK:DOES-PUBLISHED
+EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 \ Inside NPUB the publication primitives bind this package's private rows
 \ (src/habu/prims.f), so their callers here are checked. Anywhere else a
@@ -198,12 +199,14 @@ create TRAILER TRAILER-BYTES allot
    idx APPEND-PENDING
    idx ;
 
+EXPORT CHECK:REC-WIDE-PUBLISH
+
 public
 
 \ Each publishes the emission NEMIT holds sealed, so it runs before the
 \ backend's RETIRE clears it.
 : PUBLISH-PENDING ( -- )
-   PUBLISH-CODE drop  CHECK:REC-WIDE-PUBLISH ;
+   PUBLISH-CODE drop  REC-WIDE-PUBLISH ;
 
 : PUBLISH-RAW ( -- )
    PUBLISH-CODE drop ;
@@ -215,7 +218,7 @@ public
    idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   CHECK:REC-WIDE-PUBLISH ;
+   REC-WIDE-PUBLISH ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
@@ -225,7 +228,7 @@ public
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true DOES-PUBLISHED
-   CHECK:REC-WIDE-PUBLISH
+   REC-WIDE-PUBLISH
    idx 1+ APPEND-PENDING
    CHECKER-NATIVE-DOES-COMMIT ;
 

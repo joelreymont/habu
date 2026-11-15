@@ -104,8 +104,10 @@ variable CUT                         \ the byte just past `does> `, or 0
    ORD @ ROW$
    ORD @ ROWS @ < if 1 ORD +! then ;
 
+EXPORT CHECKER-TAPE:K-CONTROL
+
 : QUOT-END? ( n -- bool ) {: k:n :}
-   k ROW-KIND @ CHECKER-TAPE:K-CONTROL =  k ROW-A0 @ CF-QUOT-CLOSE =  and ;
+   k ROW-KIND @ K-CONTROL =  k ROW-A0 @ CF-QUOT-CLOSE =  and ;
 
 \ Whether the unit ends at the next row: the tape does, or a quotation's `;]`.
 : AT-END? ( -- bool )
@@ -778,7 +780,7 @@ variable PENDING
 : BRANCH-NEXT? ( -- bool )
    ORD @ {: k:n :}
    k ROWS @ >= if false exit then
-   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if false exit then
+   k ROW-KIND @ K-CONTROL <> if false exit then
    k ROW-A0 @ {: code:n :}
    code CF-IF =  code CF-WHILE = or  code CF-UNTIL = or ;
 
@@ -1325,9 +1327,13 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 
+EXPORT CHECKER-TAPE:K-COUNTED-STRING
+EXPORT CHECKER-TAPE:K-STRING
+EXPORT CHECKER-TAPE:K-PRINTED-STRING
+
 : STRING-KIND? ( n -- bool ) {: kind:n :}
-   kind CHECKER-TAPE:K-STRING =  kind CHECKER-TAPE:K-COUNTED-STRING = or
-   kind CHECKER-TAPE:K-PRINTED-STRING = or ;
+   kind K-STRING =  kind K-COUNTED-STRING = or
+   kind K-PRINTED-STRING = or ;
 
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
@@ -1348,12 +1354,12 @@ CAST: XT>N ( xt -- n )
 \ The payload's offset is the call's for `."`.
 : DO-STRING ( n -- ) {: k:n :}
    k ROW-KIND @ {: kind:n :}
-   kind CHECKER-TAPE:K-COUNTED-STRING = {: counted:bool :}
+   kind K-COUNTED-STRING = {: counted:bool :}
    k counted INTERN-BODY {: v:n o:n u:n :}
    v o PUSH-ADDR
    counted if exit then
    u PUSH-CONST
-   kind CHECKER-TAPE:K-PRINTED-STRING = if ['] type XT>N k ROW-OFF @ DO-CALL then ;
+   kind K-PRINTED-STRING = if ['] type XT>N k ROW-OFF @ DO-CALL then ;
 
 \ ---- is ----------------------------------------------------------------------
 \ `is W` pushes W's cell (NDICT:REC-DEFER-CELL) and calls `xt!`; a W that is missing or no deferred word is E-T0-DEFER.
@@ -1388,7 +1394,7 @@ variable READER                     \ the unit being compiled if it reads locals
 
 \ 1 at a `[:`, -1 at a `;]`, else 0.
 : ROW-NEST ( n -- n ) {: k:n :}
-   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
+   k ROW-KIND @ K-CONTROL <> if 0 exit then
    k ROW-A0 @ CF-QUOT-OPEN = if 1 exit then
    k QUOT-END? if -1 exit then
    0 ;
@@ -1399,11 +1405,13 @@ variable READER                     \ the unit being compiled if it reads locals
       dup ROW-NEST rot + swap 1+
    repeat nip 1- ;
 
+EXPORT CHECKER-TAPE:K-LOCAL-REF
+
 \ Whether row j is the first read of its local in rows lo .. j.
 : FIRST-READ? ( n n -- bool ) {: lo:n j:n :}
-   j ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF <> if false exit then
+   j ROW-KIND @ K-LOCAL-REF <> if false exit then
    j lo ?do
-      i ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF =  i ROW-A0 @ j ROW-A0 @ =  and if
+      i ROW-KIND @ K-LOCAL-REF =  i ROW-A0 @ j ROW-A0 @ =  and if
          false unloop exit
       then
    loop
@@ -1471,10 +1479,12 @@ variable READER                     \ the unit being compiled if it reads locals
    ORD @ 1- ROW-OFF @ {: at:n :}
    k at LOCAL-CELLS 0 ?do  ROOM k i at LOCAL-CELL PUSH-REG  loop ;
 
+EXPORT CHECKER-TAPE:K-UNREACHED
+
 : SKIP-ROW ( n -- n ) {: k:n :}
    k ROWS @ >= if NDEFINITION:CLOSE$ UNCLOSED then
-   k ROW-KIND @ CHECKER-TAPE:K-UNREACHED = if k ROW$ UNREACHED then
-   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
+   k ROW-KIND @ K-UNREACHED = if k ROW$ UNREACHED then
+   k ROW-KIND @ K-CONTROL <> if 0 exit then
    k ROW-A0 @ CF-QUOT-OPEN = if 1 NESTED +! 1 exit then
    k QUOT-END? if -1 exit then
    0 ;
@@ -1565,19 +1575,24 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    EMIT-ENDCASE,
    SCOPE-END ;
 
+EXPORT CHECKER-TAPE:K-MATCH
+EXPORT CHECKER-TAPE:K-MATCH-END
+
 \ Row j's change to the MATCH nesting depth d.
 : NEST ( n n -- n ) {: d:n j:n :}
-   j ROW-KIND @ CHECKER-TAPE:K-MATCH = if d 1+ exit then
-   j ROW-KIND @ CHECKER-TAPE:K-MATCH-END = if d 1- exit then
+   j ROW-KIND @ K-MATCH = if d 1+ exit then
+   j ROW-KIND @ K-MATCH-END = if d 1- exit then
    d ;
+
+EXPORT CHECKER-TAPE:K-MATCH-ARM
 
 \ Whether the arm whose `of` is row k is its MATCH's last: its `;MATCH` comes
 \ before another arm of its own.
 : LAST-ARM? ( n -- bool ) {: k:n :}
    0  ROWS @ k 1+ ?do
       dup 0= if
-         i ROW-KIND @ CHECKER-TAPE:K-MATCH-ARM = if drop false unloop exit then
-         i ROW-KIND @ CHECKER-TAPE:K-MATCH-END = if drop true unloop exit then
+         i ROW-KIND @ K-MATCH-ARM = if drop false unloop exit then
+         i ROW-KIND @ K-MATCH-END = if drop true unloop exit then
       then
       i NEST
    loop
@@ -1620,12 +1635,16 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    k 1+ CS-WID-RESERVE
    w k CS-WID ! ;
 
+EXPORT CHECKER-TAPE:K-CALL
+EXPORT CHECKER-TAPE:K-MATCH-OF
+EXPORT CHECKER-TAPE:K-NAME
+
 \ A variant's tag; the checker files K-MATCH-OF only for an `of`, which a body
 \ ending here lacks.
 : DO-ARM ( n -- ) {: tag:n :}
    tag 0 >= MATCH-CK
    ORD @ ROWS @ >= if NDEFINITION:CLOSE$ NO-OF then
-   ORD @ ROW-KIND @ CHECKER-TAPE:K-MATCH-OF <> if ORD @ ROW$ NO-OF then
+   ORD @ ROW-KIND @ K-MATCH-OF <> if ORD @ ROW$ NO-OF then
    tag PUSH-CONST ;
 
 \ The family is the token before the variant. A niche
@@ -1740,7 +1759,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
    lo begin dup UNIT-ROW? while
       dup ROW-KIND @ {: kind:n :}
       dup ROW-A1 @ {: c:n :}
-      kind CHECKER-TAPE:K-NAME =  kind CHECKER-TAPE:K-CALL =  or
+      kind K-NAME =  kind K-CALL =  or
       c 0<> and  if
          lo c OWN-ROW? if
             c COUNT-SLOT @ 0< if  L-N @ c COUNT-SLOT !  1 L-N +!  then
@@ -1876,6 +1895,12 @@ DYNAMIC-BUFFER COUNT-SLOT n
       CONTROL-FAULT
    endcase ;
 
+EXPORT CHECK:LOCW-HW-N@
+EXPORT CHECK:LOCW-HW@
+EXPORT CHECK:NEUTRAL-PARSE-IMM?
+EXPORT CHECK:SCAN-INCOMPLETE
+EXPORT CHECK:WF-FACT@
+EXPORT CHECK:WF-N@
 \ ---- one token ---------------------------------------------------------------
 \ THE EVENTS. A token is what the checker filed it as (CHECKER-TAPE's kinds). A
 \ name inlines only when its bound record is the engine's seeded primitive of
@@ -1928,6 +1953,16 @@ DYNAMIC-BUFFER COUNT-SLOT n
    then
    a u r loc CALL-TOKEN ;
 
+EXPORT CHECKER-TAPE:K-INT
+EXPORT CHECKER-TAPE:K-REAL
+EXPORT CHECKER-TAPE:K-CHAR
+EXPORT CHECKER-TAPE:K-LOCAL-DECL
+EXPORT CHECKER-TAPE:K-LOCAL-CLOSE
+EXPORT CHECKER-TAPE:K-OPERAND
+EXPORT CHECKER-TAPE:K-TICK
+EXPORT CHECKER-TAPE:K-IS
+EXPORT CHECKER-TAPE:K-CONSTRUCT
+
 \ The row at the cursor, which the walk then passes, by the event the checker
 \ filed for it (THE EVENTS). A string or character literal's span is its
 \ payload; a name lowers from its record.
@@ -1939,24 +1974,24 @@ DYNAMIC-BUFFER COUNT-SLOT n
    a TXT$ - {: loc:n :}
    event STRING-KIND? if k DO-STRING exit then
    event case
-      CHECKER-TAPE:K-NAME of a u a0 loc NAME-TOKEN endof
-      CHECKER-TAPE:K-CALL of a u a0 loc CALL-TOKEN endof
-      CHECKER-TAPE:K-INT of a0 PUSH-CONST endof
-      CHECKER-TAPE:K-REAL of a0 PUSH-CONST endof
-      CHECKER-TAPE:K-CHAR of k DO-CHAR endof
-      CHECKER-TAPE:K-CONTROL of a a0 DO-CONTROL endof
-      CHECKER-TAPE:K-LOCAL-DECL of a0 loc DECLARE endof
-      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-GROUP endof
-      CHECKER-TAPE:K-LOCAL-REF of a0 DO-LOCAL endof
-      CHECKER-TAPE:K-OPERAND of endof
-      CHECKER-TAPE:K-UNREACHED of a u UNREACHED endof
-      CHECKER-TAPE:K-TICK of a0 DO-TICK endof
-      CHECKER-TAPE:K-IS of a0 loc DO-IS endof
-      CHECKER-TAPE:K-MATCH of a0 k DO-MATCH endof
-      CHECKER-TAPE:K-MATCH-ARM of a0 DO-ARM endof
-      CHECKER-TAPE:K-MATCH-OF of k ARM-OF endof
-      CHECKER-TAPE:K-MATCH-END of CLOSE-MATCH endof
-      CHECKER-TAPE:K-CONSTRUCT of a0 k ROW-A1 @ k DO-CONSTRUCT endof
+      K-NAME of a u a0 loc NAME-TOKEN endof
+      K-CALL of a u a0 loc CALL-TOKEN endof
+      K-INT of a0 PUSH-CONST endof
+      K-REAL of a0 PUSH-CONST endof
+      K-CHAR of k DO-CHAR endof
+      K-CONTROL of a a0 DO-CONTROL endof
+      K-LOCAL-DECL of a0 loc DECLARE endof
+      K-LOCAL-CLOSE of CLOSE-GROUP endof
+      K-LOCAL-REF of a0 DO-LOCAL endof
+      K-OPERAND of endof
+      K-UNREACHED of a u UNREACHED endof
+      K-TICK of a0 DO-TICK endof
+      K-IS of a0 loc DO-IS endof
+      K-MATCH of a0 k DO-MATCH endof
+      K-MATCH-ARM of a0 DO-ARM endof
+      K-MATCH-OF of k ARM-OF endof
+      K-MATCH-END of CLOSE-MATCH endof
+      K-CONSTRUCT of a0 k ROW-A1 @ k DO-CONSTRUCT endof
       a u NO-EVENT
    endcase ;
 
@@ -2146,6 +2181,10 @@ variable LOST-OFF   -1 LOST-OFF !     \ the token's offset in SRC$, -1 for none
 variable LOST-U                       \ its bytes
 variable LOST-AT-FAM                  \ the value's family id, -1 for none
 
+EXPORT CHECK:LOST-FAM
+EXPORT CHECK:LOST-TOK-A
+EXPORT CHECK:LOST-TOK-U
+
 : LOST-KEEP ( -- )
    LOST-OFF @ 0< 0= if exit then
    LOST-TOK-A @ SRC$ drop - LOST-OFF !
@@ -2168,12 +2207,14 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 : LOST-CK ( -- )
    LOST-OFF @ 0< 0= if LOST-WIDTH then ;
 
+EXPORT CHECKER-TAPE:EVENT
+
 \ Offsets are made whole by the scan's base.
 : ON-DONE ( ^u8 n n -- )
    SCAN-VERDICT !  2drop
    SCAN-INCOMPLETE @ 0<> if LOST-KEEP then
    ROWS @ SCAN-LO @ ?do
-      i CHECKER-TAPE:EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
+      i EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop
    KEEP-MEASURES ;
 
@@ -2183,9 +2224,11 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 : FORGET-MEASURES ( -- )
    0 MEASURES !  0 BIND-COUNT !  0 HEAD-BINDS ! ;
 
+EXPORT CHECKER-TAPE:TAPE-INSTALL
+
 : OBSERVE ( -- )
    [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;]
-   CHECKER-TAPE:INSTALL ;
+   TAPE-INSTALL ;
 
 \ A does> clause is named for a rejection by the definition's name.
 : CHECK-UNIT ( -- n )
@@ -2195,13 +2238,16 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    then
    CHECK-SOURCE ;
 
+EXPORT CHECKER-TAPE:ARM
+EXPORT CHECKER-TAPE:DISARM
+
 \ The scan's verdict stands over CHECK:DEFINITION's nonzero answer; its zero
 \ answer stands over the scan's.
 : SCAN ( -- )
    OBSERVE
    0 SCAN-VERDICT !  -1 LOST-OFF !
-   CHECKER-TAPE:ARM
-   [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-TAPE:DISARM ;] finally
+   ARM
+   [: CHECK-UNIT M-VERDICT ! ;] [: DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
    DECLARE-ROW M-ROW-REJECTED ! ;
 

@@ -72,6 +72,7 @@ variable DEV-FLD-ORD  \ fields logged by the open declaration
 variable DEV-VAR-ORD  \ variants logged by the open declaration
 variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-VARIANT
 
+EXPORT CHECK:REG-GROW1
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
    DEV-A-P DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1

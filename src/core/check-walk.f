@@ -1,6 +1,12 @@
 \ check-walk.f - the checker's walk over a definition, which calls the type registry
 \ and the diagnostics that load before it.
 
+\ The longest effect a row states. The source pre-verifier refuses a longer one
+\ at the same bound.
+$100 constant GENR-SIG-CAP
+
+package CHECK
+
 : EV-VARIANT ( n n n -- )
    {: kind:n fam:n vid:n :}
    kind  vid TFAM:SUMV-TAG@  fam vid TFAM:TFL-VPADS  EVENT! ;
@@ -251,7 +257,7 @@
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
       dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      dup CALL-RECOVERS = IF RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED! THEN
+      dup CALL-RECOVERS = IF RES-TRUE RECOVERY-USED! THEN
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
@@ -309,9 +315,11 @@
    DCUR @ MTCH-ROW !  0 MTCH-TAGT !
    fam 0 MATCH-OPEN ;
 
+EXPORT CHECKER-TAPE:K-MATCH
+
 : MATCH-FAM-STEP ( n -- )
    {: fam:n :}
-   CHECKER-TAPE:K-MATCH fam 0 EVENT!
+   K-MATCH fam 0 EVENT!
    #CFC @ CF-FRAMES-MAX 2 - > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
    DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
@@ -319,20 +327,24 @@
    fam lost MATCH-OPEN ;
 
 : MATCH-FAM-FOUND ( n bool -- )
-   0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
+   0= IF drop K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
    MATCH-FAM-STEP ;
 
 : MATCH-FAM-TOK ( ^u8 n -- )
    {: a:^ u:n :}
    a u TFAM:TFAM-MATCH-FAM MATCH-FAM-FOUND ;
 
+EXPORT CHECKER-TAPE:K-MATCH-END
+
 : MATCH-END ( -- )
-   CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
+   K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
    MATCH-SEMI ;
+
+EXPORT CHECKER-TAPE:K-MATCH-ARM
 
 \ An arm whose variant the matched family does not declare.
 : MATCH-VARIANT-NONE ( -- )
-   CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE!
+   K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE!
    0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE ! ;
 
 : MATCH-VARIANT ( ^u8 n -- )
@@ -340,7 +352,7 @@
    a u MF-CUR MF.FAM @ TFAM:TFAM-MATCH-VARIANT 0= IF
       drop MATCH-VARIANT-NONE EXIT THEN
    {: vid:n :}
-   CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
+   K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
    vid TFAM:SUMV-TAG@ {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN
    MF-CUR MF.SEEN @ tag MSEEN-SET
@@ -352,9 +364,11 @@
    a u s" ;match" CORE-STR= IF MATCH-END EXIT THEN
    a u MATCH-VARIANT ;
 
+EXPORT CHECKER-TAPE:K-MATCH-OF
+
 \ The arm's `of` when true, else the token that stands in its place.
 : MATCH-OF ( bool -- )
-   IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
+   IF K-MATCH-OF 0 0 EVENT!
    ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN
    MF-CUR {: r:^ :}
    r MF.BASE @ DCUR !
@@ -393,7 +407,7 @@
    CONM @ 1 = IF a u TFAM:TFAM-CONSTRUCT-FAM CONSTRUCT-FAM-FOUND EXIT THEN
    CONFAM @ 0 < 0= IF
       a u CONFAM @ TFAM:TFAM-MATCH-VARIANT IF                           \ latch variant SUMV id for the mismatch capture
-         dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
+         dup CVLIVE !  K-CONSTRUCT CONFAM @ rot EV-VARIANT
       ELSE drop CONSTRUCT-NONE THEN
       a u CONFAM @ TFAM:TFAM-CONSTRUCT-STEP 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
@@ -405,14 +419,14 @@
    -1 POST-ON !
    run sym CALL-PRESET
    DCUR @ XE-PD !  RCUR @ XE-PR !
-   run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
+   run CK-REC-NAME$ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
 
 : POSTPONE-IMM ( ^n -- ) {: rec:^ :}
    rec FACTS-READ-XT
    rec REC-HOME-SYM {: sym:n :}
    sym 0= IF POSTPONE-UNDEFINED EXIT THEN
-   CHECKER-TAPE:K-OPERAND POST-KIND !  0 POST-A0 !
+   K-OPERAND POST-KIND !  0 POST-A0 !
    rec sym POSTPONE-CALL ;
 
 \ compile,'s input is a quotation of any effect: W's effect is judged where
@@ -425,15 +439,17 @@
    rec POSTPONE-IMM?  sym SOURCE-IMM? or IF rec POSTPONE-IMM EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    sym TICK-REFUSED? IF EXIT THEN
-   CHECKER-TAPE:K-TICK POST-KIND !
-   rec CHECKER-RESOLVE:REC>INDEX POST-A0 !
+   K-TICK POST-KIND !
+   rec REC>INDEX POST-A0 !
    FREE-QUOT BTICK-PUSH
    COMPILE-CALL-REC POSTPONE-CALL ;
+
+EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 
 \ Whether the call is of an immediate: a CALL item's record REC says, and the
 \ spelling does for a text token, whose REC is NULL-PTR.
 : CALL-IMM? ( ^n -- bool ) {: rec:^ :}
-   rec NULL-PTR = IF TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? EXIT THEN
+   rec NULL-PTR = IF TKF TKFU @ BODY-TOK? EXIT THEN
    rec POSTPONE-IMM? ;
 
 \ The steps of a token no keyword, mode or literal form took, a call's or a
@@ -494,9 +510,6 @@
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
-package CHECK
-public
-
 \ The rows ( din dout rin rout ) of a schema effect, unchecked.
 : EFFECT-ROWS ( n -- n n n n ) {: node:n :}
    SIG-UNRES-CLEAR
@@ -507,12 +520,11 @@ public
    node dr TFAM:EFFECT-ROWS
    PD-OUT !  PD-IN !  0 PR-IN !  0 PR-OUT !
    PD-IN @ PD-OUT @ 0 0 ;
-;package
 
 \ EFFECT-ROWS checked by a written signature's rules, or a generated
 \ constructor's when CTOR; a rejection sets SGBAD.
 : EFFECT-SIG ( n bool -- n n n n ) {: node:n ctor:bool :}
-   node CHECK:EFFECT-ROWS 2drop 2drop
+   node EFFECT-ROWS 2drop 2drop
    SGBAD-CLEAR
    NULL-PTR 0 PD-IN @ PD-OUT @ 0 0 RES-FALSE ctor SIG-ROWS-CHECK
    PD-IN @ PD-OUT @ 0 0 ;
@@ -521,13 +533,9 @@ public
 : CTOR-NAME? ( ^u8 n -- bool )
    CHECKER-RECORD-SYM? TFAM:SUMV-FROM-CTOR-SYM nip ;
 
-package CHECK
-public
-
 \ Whether NODE's rows pass the rules word A U's signature must pass.
 : EFFECT-RULES? ( ^u8 n n -- bool ) {: a:^ u:n node:n :}
    node a u CTOR-NAME? EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
-;package
 
 \ Whether the text walked is the pending definition's body text.
 : PEND-TEXT? ( -- bool )
@@ -562,13 +570,12 @@ public
 \ The name of the program's entry CHECK:ENTRY! states, none when empty.
 PTR-VARIABLE CK-ENTRY-A   variable CK-ENTRY-U
 
-package CHECK
 public
 \ States the name of the program's entry, which an app build calls; an empty
 \ name states none. The name must outlive the load: it is kept, not copied.
 : ENTRY! ( ^u8 n -- ) {: a:^ u:n :}
    a CK-ENTRY-A !  u CK-ENTRY-U ! ;
-;package
+private
 
 \ Rejects, at its signature in TSTART..TI, a global definition of the stated
 \ entry whose declared effect is not ( -- ).
@@ -576,7 +583,7 @@ public
    CK-ENTRY-U @ 0= IF EXIT THEN
    NMA @ NMU @ CK-ENTRY-A @ CK-ENTRY-U @ CORE-STR=CI 0= IF EXIT THEN
    SGA @ SGU @ SIG-TRIM s" --" CORE-STR= IF EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY {: pa:^ pu:n mode:n ok:bool :}
+   AUTHORITY {: pa:^ pu:n mode:n ok:bool :}
    ok 0=  mode CHECKER-PACKAGE-NONE <>  or IF EXIT THEN
    NMOFF @ TADDR NMU @ {: na:^ nu:n :}
    TSTART @ 1 - {: from:n :}
@@ -609,7 +616,7 @@ public
 \ mark are kept on every walk.
 : SCAN-TOK-HEAD ( -- n )
    TI @ TSTART @ - SCAN-U !  0 SPAY-ON !
-   CHECKER-TAPE:ARMED @ IF
+   ARMED @ IF
       TOK0 @ SCAN-TOK0 !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
       0 IS-PEND !  0 EV-HIT !
    THEN
@@ -620,22 +627,24 @@ public
 : SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
    TORDER-SCAN-UNKNOWN @ IF RES-TRUE EXIT THEN
    was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
-   CHECKER-TAPE:ARMED @ IF SCAN-REPORT ELSE
+   ARMED @ IF SCAN-REPORT ELSE
       SPAY-ON @ IF SPAY-BYTES SPAY-COUNTED-CK 2drop THEN
    THEN
    RES-FALSE ;
 
+EXPORT CHECKER-ITEMS:ITEM-CELL@
+
 : ITEM-SPAN ( n -- ) {: i:n :}
-   i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TSTART !
-   TSTART @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  TI ! ;
+   i BODY-ITEMS:OFF ITEM-CELL@ TSTART !
+   TSTART @  i BODY-ITEMS:LEN ITEM-CELL@ +  TI ! ;
 
 \ A signature's span holds its parentheses, and the walk's paren branch reads
 \ inside them.
 : ITEM-SIG ( n -- bool ) {: i:n :}
-   i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TI !
+   i BODY-ITEMS:OFF ITEM-CELL@ TI !
    CUR-PAREN-AT
    TI @ 1 + TSTART !
-   TI @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 - TI !
+   TI @  i BODY-ITEMS:LEN ITEM-CELL@ +  1 - TI !
    PAREN-SIG? IF RES-TRUE EXIT THEN
    TI @ 1 + TI !
    CUR-PAREN
@@ -688,7 +697,7 @@ public
    v kind ITEM-MATCH RES-TRUE ;
 
 : ITEM-CALL ( ^u8 n n -- ) {: a:^ u:n ix:n :}
-   ix CHECKER-RESOLVE:REC-AT {: rec:^ :}
+   ix REC-AT {: rec:^ :}
    rec TKF TKFU @ BIND-RECORD
    TKF TKFU @ UNSAFE-TOK? IF
       BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
@@ -757,16 +766,18 @@ public
 : LOCAL-STRAY ( -- )
    MD-LOCAL-STRAY MDIAG-COMPILE!  IS-FAIL ;
 
+EXPORT CHECKER-ITEMS:ITEM-COUNT
+
 \ The type node of item IX's local: a LOCAL's own, a LOCAL-REF's from the LOCAL
 \ item whose B is its A; false when no LOCAL item has that index.
 : ITEM-LOCAL-NODE ( n -- n bool ) {: ix:n :}
-   ix BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ {: v:n :}
-   ix BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL = IF
+   ix BODY-ITEMS:A ITEM-CELL@ {: v:n :}
+   ix BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:LOCAL = IF
       v RES-TRUE EXIT THEN
-   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
-      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:LOCAL =
-      i BODY-ITEMS:B CHECKER-ITEMS:ITEM-CELL@ v = and IF
-         i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ RES-TRUE UNLOOP EXIT
+   ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:LOCAL =
+      i BODY-ITEMS:B ITEM-CELL@ v = and IF
+         i BODY-ITEMS:A ITEM-CELL@ RES-TRUE UNLOOP EXIT
       THEN
    LOOP
    0 RES-FALSE ;
@@ -782,8 +793,8 @@ public
    TSTART @ TADDR  TI @ TSTART @ -  {: a:^ u:n :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
-   i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ {: kind:n :}
-   i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ {: v:n :}
+   i BODY-ITEMS:KIND ITEM-CELL@ {: kind:n :}
+   i BODY-ITEMS:A ITEM-CELL@ {: v:n :}
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
    LMODE @ IF v kind a u ITEM-IN-GROUP ELSE
    a MODE-TOK? IF ELSE
@@ -807,9 +818,9 @@ variable WALK-ITEM    \ the first item the walk has not passed
 \ The items of the text walked: the pending definition's body text's, else 0.
 : TEXT-ITEMS ( -- n )
    PEND-TEXT? 0= IF 0 EXIT THEN
-   CHECKER-ITEMS:ITEM-COUNT ;
+   ITEM-COUNT ;
 
-: ITEM-OFF ( n -- n ) BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ ;
+: ITEM-OFF ( n -- n ) BODY-ITEMS:OFF ITEM-CELL@ ;
 
 : ITEM-BEHIND? ( n -- bool ) {: i:n :}
    i WALK-ITEMS @ < 0= IF RES-FALSE EXIT THEN
@@ -827,12 +838,14 @@ variable WALK-ITEM    \ the first item the walk has not passed
 : ITEM-TOK ( -- bool )
    WALK-ITEM @ {: i:n :}
    i 1 + WALK-ITEM !
-   i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
+   i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
       i ITEM-SIG EXIT THEN
    i ITEM-SPAN
    SCAN-TOK-HEAD {: was-name:n :}
    i ITEM-STEP
    was-name SCAN-TOK-TAIL ;
+
+EXPORT CHECKER-TAPE:SCAN-TOKEN
 
 \ ---- the body walk ----------------------------------------------------------
 \ A body is walked token by token: an item `define-word` appended is stepped
@@ -843,7 +856,7 @@ variable WALK-ITEM    \ the first item the walk has not passed
 : CHECK-SCAN-WALK ( -- )
    0 SPAY-S !
    EV-START
-   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
+   TAPE-FEED? IF TBASE@ TBLEN @ SCAN-TOKEN THEN
    TEXT-ITEMS WALK-ITEMS !  0 WALK-ITEM !
    BEGIN TI @ TBLEN @ < WHILE
      TI @ CUR-GAP !
@@ -979,7 +992,18 @@ variable WALK-ITEM    \ the first item the walk has not passed
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
+;package
 package CAST-ERROR
+EXPORT CHECK:BYTE-SPAN?
+EXPORT CHECK:CAST-ROW-TERM
+EXPORT CHECK:CAST-ROW-WIDTH
+EXPORT CHECK:NLET
+EXPORT CHECK:RATOM-RESET
+EXPORT CHECK:REND-TYPE
+EXPORT CHECK:SEEN-RESET
+EXPORT CHECK:SGBAD-PIN
+EXPORT CHECK:SGBAD-REJECTION
+EXPORT CHECK:SIG-TRIM
 \ Zeros outside a declaration, so a saved image holds none of the build
 \ process's addresses.
 : CLEAR ( -- )
@@ -1041,6 +1065,7 @@ public
    rc CHECKER-REJECT-RC = IF EXIT THEN
    rc throw ;
 ;package
+package CHECK
 
 \ The family TAGGED-HIT? last found, or -1 for a type variable.
 variable TAGGED-FAM
@@ -1298,6 +1323,8 @@ variable TAGGED-FAM
       E-LINEAR-SCOPE CAST-ERROR:RAISE
    THEN ;
 
+EXPORT CHECKER-QUOT-FRESH:FITS?
+
 \ A body-supplied name left unbound takes a new identity, and only a region name may
 \ be bound: to one this body minted that no other name claims and FITS? admits.
 : FB-OWNED? ( n -- bool ) {: idx:n :}
@@ -1310,7 +1337,7 @@ variable TAGGED-FAM
    id ATOM>K RGN-MARK @ < IF RES-FALSE EXIT THEN
    id ATOM>A id ATOM>U FRESH-REGION-NAME? 0= IF RES-FALSE EXIT THEN
    r ISVAR 0= IF
-      id SGIN @ SGOUT @ SGRIN @ SGROUT @ CHECKER-QUOT-FRESH:FITS? 0= IF RES-FALSE EXIT THEN
+      id SGIN @ SGOUT @ SGRIN @ SGROUT @ FITS? 0= IF RES-FALSE EXIT THEN
    THEN
    idx 1+ FO-ENSURE
    id ATOM>K idx FO-MATCH? ;
@@ -1625,6 +1652,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : CK-USE-RESTORE ( ^n -- ) {: src:^ :}
    src CELL + CK-USE-NAMES src @ 2 * ARENA-CELLS-COPY ;
 
+EXPORT CHECKER-OVERLAY:MARKS
+
 : RBF-SAVE-INTO ( ^n -- ) {: r:^ :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
@@ -1644,7 +1673,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
    CHECKER-PACKAGE-NAME @ r RBF.PKGA !
    r RBF.USE CK-USE-SCAN-N CK-USE-SAVE
-   CHECKER-OVERLAY:MARKS
+   MARKS
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
    PIMM-N @ r RBF.PIMMN !
@@ -1662,11 +1691,13 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-FACTS-FORGET ( n -- )
    ndict@ swap ?do 0 i record-facts! loop ;
 
+EXPORT CHECKER-OVERLAY:ROLLBACK
+
 : RBF-RESTORE-FROM ( ^n -- ) {: r:^ :}
    r RBF.PKGA @ CHECKER-PACKAGE-NAME !
    r RBF.USE CK-USE-RESTORE
    r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
-   CHECKER-OVERLAY:ROLLBACK
+   ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
    r RBF.SYMN @ r RBF.SYMU @ SYM-REWIND
@@ -1691,10 +1722,12 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-DEPTH @ 1 + RBF-DEPTH !
    CHECKER-DECL-FRAME:EXT-SAVE ;
 
+EXPORT CHECKER-OVERLAY:CLOSE-SCOPE
+
 : RBF-POP-WITH ( [ -- ] -- )
    0 UWIN-VALID !
    execute
-   RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
+   RBF-DEPTH @ CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-CUR RBF-RESTORE-FROM
    RBF-CUR RBF.NDICT @ RBF-FACTS-FORGET ;
@@ -1704,10 +1737,18 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 
 : RBF-FINALIZE ( -- )     \ keep every published row and release the live savepoint
    CHECKER-DECL-FRAME:EXT-FINALIZE
-   RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
+   RBF-DEPTH @ CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
 
+;package
 package CHECKER-DECL-FRAME
+EXPORT CHECK:RBF-REC
+EXPORT CHECK:RBF-BASE
+EXPORT CHECK:RBF-DEPTH
+EXPORT CHECK:RBF.COORD
+EXPORT CHECK:RBF-NO-COORDINATOR
+EXPORT CHECK:RBF-POP-WITH
+EXPORT CHECK:RBF-PUSH
 
 : FRAME ( n -- ^n )
    RBF-REC * RBF-BASE + ;
@@ -1775,23 +1816,19 @@ package CHECKER-DECL-FRAME
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
 
 ;package
+package CHECK
 
-: CHECKER-SCOPE-START ( -- )
-   RBF-PUSH ;
+EXPORT CHECKER-OVERLAY:OPEN-SCOPE
 
-\ The scope opener for replaying STANDALONE source. CHECKER-SCOPE-START keeps
-\ the caller's package mirror live, right for checking the caller's own code; a
-\ separate file's package context is whatever it declares, so this scope starts
-\ at top level: no open package and no imports.
+\ The scope opener for replaying STANDALONE source. A separate file's package
+\ context is whatever it declares, so this scope starts at top level: no open
+\ package and no imports.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
-   [: RES-TRUE RBF-DEPTH @ CHECKER-OVERLAY:OPEN-SCOPE ;] catch {: rc:n :}
+   [: RES-TRUE RBF-DEPTH @ OPEN-SCOPE ;] catch {: rc:n :}
    rc 0= IF EXIT THEN
    RBF-POP
    rc throw ;
-
-: CHECKER-SCOPE-FINALIZE ( -- )
-   RBF-FINALIZE ;
 
 : CHECKER-SCOPE-DONE ( -- )
    RBF-POP ;
@@ -1799,9 +1836,7 @@ package CHECKER-DECL-FRAME
 : CHECKER-SCOPE-DEPTH ( -- n )
    RBF-DEPTH @ ;
 
-package CHECK
 public
-
 \ Runs q in a checker scope at neutral top level, no open package and no
 \ imports, and closes the scope however q ends.
 : SCOPED ( [ -- ] -- ) {: q :}
@@ -1809,7 +1844,9 @@ public
    q catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> IF rc throw THEN ;
-;package
+private
+
+EXPORT CHECKER-OVERLAY:OPEN?
 
 \ --- the verifier window --------------------------------------------------
 \ A window that opens the checker overlay itself owns a rollback frame, so its
@@ -1817,31 +1854,35 @@ public
 \ a caller's scope (the overlay already open) leaves them to that scope.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF NESTED-REJECT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
-   CHECKER-OVERLAY:OPEN? IF VERIFY-WINDOW-SHARED ELSE VERIFY-WINDOW-OWNED THEN {: win:n :}
+   AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
+   OPEN? IF VERIFY-WINDOW-SHARED ELSE VERIFY-WINDOW-OWNED THEN {: win:n :}
    win VERIFY-WINDOW-OWNED = IF RBF-PUSH THEN
-   [: RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE ;] catch {: rc:n :}
+   [: RES-FALSE -1 OPEN-SCOPE ;] catch {: rc:n :}
    rc 0 <> IF
       win VERIFY-WINDOW-OWNED = IF RBF-POP THEN
       rc throw
    THEN
    win CHECKER-VERIFY-WINDOW !
    PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
-   CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
+   CK-USE-ENGINE-DEPTH SOURCE-FLOOR ! ;
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-WINDOW @ {: win:n :}
    win VERIFY-WINDOW-NONE = IF s" CHECKER-VERIFY-PKG-DONE" WINDOW-REJECT THEN
-   -1 CHECKER-OVERLAY:CLOSE-SCOPE
+   -1 CLOSE-SCOPE
    0 BIND-HORIZON !
    VERIFY-FLOOR0 @ PASS-FLOOR !
    win VERIFY-WINDOW-OWNED = IF RBF-POP THEN
    VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW ! ;
 
+;package
 package CHECKER-REG
+EXPORT CHECK:CHECKER-VERIFY-PKG-START
+EXPORT CHECK:CHECKER-VERIFY-PKG-DONE
 ' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
 ' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
 ;package
+package CHECK
 
 : CHECK-CANDIDATE-START ( -- )
    WRITE-WINDOW-CK
@@ -1879,10 +1920,11 @@ package CHECKER-REG
 : DISARM-TEXT ( bool -- )
    IF REJECTION:SOURCE-OFF THEN ;
 
+global
 : CHECK-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    a u ARM-TEXT {: arm:bool :}
-   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
+   RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
    PU-N @ {: pu0:n :}
@@ -1898,19 +1940,38 @@ package CHECKER-REG
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
    pu0 PU-N !                          \ a candidate's uses are never published
-   recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   recovery0 RECOVERY-USED!
    horizon0 BIND-HORIZON !
    rc 0= IF v EXIT THEN
    rc throw ;
 
+;package
 package CHECKER-PREFIX
+EXPORT CHECK:CHECK-SCAN
+EXPORT CHECK:CHECK-CANDIDATE-START
+EXPORT CHECK:CHECK-CANDIDATE-DONE
 
+EXPORT CHECK:BIND-HORIZON
+EXPORT CHECK:CHECK-RESET
+EXPORT CHECK:CHECKER-PREFIX-ACTIVE
+EXPORT CHECK:CHECKER-PREFIX-CUT
+EXPORT CHECK:CHECKER-PREFIX-MISS
+EXPORT CHECK:CHECKER-PREFIX-ROLLBACK
+EXPORT CHECK:CHK-PROBE
+EXPORT CHECK:CUR-DONE
+EXPORT CHECK:CUR-GAP
+EXPORT CHECK:PIMM-STREAM
+EXPORT CHECK:PU-N
+EXPORT CHECK:WRITE-WINDOW-CK
 : SCAN ( ^u8 n -- bool )
    0 CHECKER-PREFIX-MISS !
    CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
    CHECK-RESET
    s" " CHECK-SCAN                     \ a prefix: no closer
    CHECKER-PREFIX-MISS @ 0= ;
+
+EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
+EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 
 public
 
@@ -1920,7 +1981,7 @@ public
 : BIND? ( ^u8 n n -- n bool ) {: a:^ u:n cut:n :}
    WRITE-WINDOW-CK
    cut CHECKER-PREFIX-CUT !
-   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
+   RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
    PU-N @ {: pu0:n :}
@@ -1938,13 +1999,15 @@ public
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
    pu0 PU-N !                       \ a prefix's uses are never published
-   recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   recovery0 RECOVERY-USED!
    horizon0 BIND-HORIZON !
    rc 0= IF CHECKER-PREFIX-ROLLBACK @ answer EXIT THEN
    rc throw ;
 
 ;package
+package CHECK
 
+global
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic
 \ asks here, so the render counter stays inside this file.
 : CHECK-QUIET-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
@@ -1954,6 +2017,7 @@ public
    -1 REJECTION:QUIET +!
    rc 0= IF v EXIT THEN
    rc throw ;
+private
 
 : DEF-RESUMES? ( n -- bool )
    CHECKER-REJECT-RC =  MULTI-ERR? and ;
@@ -1966,6 +2030,9 @@ public
 : CHECK-DEF-THREW ( -- )
    DEF-RESUMED  DVERD @ VERDICT-NONE = IF MULTI-REJECTED THEN ;
 
+EXPORT CHECKER-TAPE:DONE
+
+global
 \ Like CHECK, for the text `NAME ( in -- out ) body` with no `:` or `;`: verifies
 \ the body against the declared effect and rejects a mismatch.
 : CHECK! ( ^u8 n -- n ) {: a:^ u:n :}
@@ -1993,9 +2060,12 @@ public
    prc 0 <> IF prc throw THEN
    rc 0= IF v ELSE 0 THEN {: verdict:n :}
    0 VSIG !
-   CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
-   unknown 0= recording and IF a u verdict CHECKER-TAPE:DONE THEN
+   ARMED @ 0 <> {: recording:bool :}
+   unknown 0= recording and IF a u verdict DONE THEN
    verdict ;
+private
+
+EXPORT CHECKER-EFFECT-AUTHORITY:SCAN
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
 \ only to fill the source tape the optimizing elaborator reads, and its verdict
@@ -2009,15 +2079,16 @@ public
    WRITE-WINDOW-CK
    DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
-   0 [: drop a u CHECK! ;] CHECKER-EFFECT-AUTHORITY:SCAN {: v rc:n :}
+   0 [: drop a u CHECK! ;] SCAN {: v rc:n :}
    0 BWIN-UNJUDGED !
    rc 0 <> IF DOES-EFF-CLEAR rc throw THEN
    eff DOESEFF !  pend DOESPEND !
-   CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
+   ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
    CONM @ 0= and  CHECKER-MATCH-MODE @ 0= and  MF-DEPTH @ 0= and
    FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
    v ;
 
+;package
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
@@ -2028,6 +2099,7 @@ package CHECKER-PREFLIGHT
    NULL-PTR BODY-A!  0 BODY-U !
    NULL-PTR TARGET-A!  0 TARGET-U ! ;
 
+EXPORT CHECK:WRITE-WINDOW-CK
 public
 
 \ Keep this target-forcing entry distinct from the source checker CHECK! that
@@ -2043,16 +2115,17 @@ public
    VERDICT @ ;
 
 ;package
+package CHECK
 
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
 \ Capture both rows' physical widths before checking binds either row tail;
 \ they are read after the scan, so they are taken by value.
-CHECKER-REG:SCRATCH{
+SCRATCH{
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
-CHECKER-REG:}SCRATCH
+}SCRATCH
 
 : CHECK-DOES-EFFECT! ( n n -- ) {: din:n dout:n :}
    din ROW-CELLS CD-DIN-CELLS !
@@ -2070,7 +2143,42 @@ CHECKER-REG:}SCRATCH
 
 \ Certifies `cast:` and `linear:` for both front ends, the engine's reader
 \ keyword and verify-source's pre-pass.
+;package
 package CHECKER-IDENTITY
+EXPORT CHECK:RAW-SIG!
+EXPORT CHECK:CAST-ROW-1?
+EXPORT CHECK:CAST-ROW-UNDER
+EXPORT CHECK:CAST-ROW-WIDTH
+EXPORT CHECK:CAST-SCOPED?
+EXPORT CHECK:VIEW-CAST-CERTIFY
+EXPORT CHECK:CAST-CERTIFY
+EXPORT CHECK:LINEAR-CERTIFY
+EXPORT CHECK:BYTE-SPAN?
+EXPORT CHECK:CHECKER-QUALIFIED?
+EXPORT CHECK:CHECKER-REC-SYM
+EXPORT CHECK:CHECKER-USIG-CERT-ADD
+EXPORT CHECK:CHECKER-USIG-CERT-ROWS
+EXPORT CHECK:CK-CLOSE!
+EXPORT CHECK:CK-LIVE-PEND?
+EXPORT CHECK:NEW
+EXPORT CHECK:NLINEAR-RAISE
+EXPORT CHECK:NMAP-SLOT
+EXPORT CHECK:NSCOPE-RAISE
+EXPORT CHECK:PARSE-SIG-RAW
+EXPORT CHECK:SGBAD
+EXPORT CHECK:SGBAD-A
+EXPORT CHECK:SGBAD-ARITY?
+EXPORT CHECK:SGBAD-CLEAR
+EXPORT CHECK:SGBAD-FIX
+EXPORT CHECK:SGBAD-U
+EXPORT CHECK:SGBAD-UNKNOWN?
+EXPORT CHECK:SGBAD-UNSUPPLIED?
+EXPORT CHECK:SGHASR
+EXPORT CHECK:SGIN
+EXPORT CHECK:SGOUT
+EXPORT CHECK:SIG-UNRES
+EXPORT CHECK:STORED-DERIVE
+EXPORT CHECK:TVK@
 \ Rejects the type token the signature parse named under E-CAST-FAM: why wa wu
 \ says what is wrong.
 : FAM-RAISE ( ^u8 n -- ) {: wa:^ wu:n :}
@@ -2189,14 +2297,19 @@ public
    sa su na nu CHECKER-USIG-CERT-ADD
    CHECKER-REC-SYM @ CK-CLOSE! ;
 ;package
+package CHECK
 : CHECKER-DEFCAST ( ^u8 n ^u8 n -- )
    s" cast:" [: CHECKER-IDENTITY:CAST ;] CAST-ERROR:DECLARE ;
 : CHECKER-LINEAR ( ^u8 n ^u8 n -- )
    s" linear:" [: CHECKER-IDENTITY:LINEAR ;] CAST-ERROR:DECLARE ;
+;package
 package CHECKER-REG
+EXPORT CHECK:CHECKER-DEFCAST
+EXPORT CHECK:CHECKER-LINEAR
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
 ' CHECKER-LINEAR DECLARATIONS LINEAR-OFF + xt!
 ;package
+package CHECK
 
 \ A candidate scope latches nothing: its records are truncated when it ends, so
 \ a stored offset would name a record that no longer exists.
@@ -2270,7 +2383,7 @@ package CHECKER-REG
    \ the next record after it is the CREATED word's, so what this walk armed
    \ dies here, before the tape's observer, which may refuse the clause.
    WRAP-CLEAR
-   CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
+   ARMED @ IF ba bu DVERD @ DONE THEN ;
 
 \ The retained engine reaches CHECK-DOES! at the `;` of a definition it is
 \ compiling, before that definition's own body is checked and recorded, so the
@@ -2288,7 +2401,7 @@ package CHECKER-REG
 : CHECK-DOES-UNJUDGED! ( ^u8 n ^u8 n -- n ) {: ba:^ bu:n sa:^ su:n :}
    -1 BWIN-UNJUDGED !
    0 [: drop ba bu sa su CHECK-DOES-RUN ;]
-   CHECKER-EFFECT-AUTHORITY:SCAN {: v rc:n :}
+   SCAN {: v rc:n :}
    0 BWIN-UNJUDGED !
    rc 0 <> IF rc throw THEN
    sa su DOES-EFF-LATCH!
@@ -2386,8 +2499,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : TOP-ANSWER ( ^u8 n bool -- n )
    {: a:^ u:n runs:bool :}
    runs  a u LITERAL-RANGE?  and IF a u REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
-   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
+   a u WALK {: sym:n why:n :}
+   why 0 <> IF a u why RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
          dup TOP-CONTROL {: flags:n deferred:bool :}
@@ -2589,10 +2702,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    at close + NULL-PTR - data-base INP-CELL + !
    at open + 1 +  close open - 2 - ;
 
+global
 \ generates: D ( effect ) at top level, after D's definition: a declared
-\ boundary, not a checked body. UNSAFE-TOK? bars both `checker-generates` and
-\ `generates:` from checked bodies. The keyword is the last token the engine
-\ read when the word starts (TKA-CELL).
+\ boundary, not a checked body. UNSAFE-TOK? bars `generates:` from checked
+\ bodies. The keyword is the last token the engine read when the word starts
+\ (TKA-CELL).
 TRUSTED: generates: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
    {: ka:^ ku:n :}
@@ -2608,6 +2722,7 @@ TRUSTED: generates: ( -- )
    sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec
    sym NORET-NONZERO@ NORET-ADD-CREATES
    selected sym RECORD-CONTROL-AT! ;
+private
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
 \ What is wrong with a `parses:`, `parses-through:` or `names:` row's target.
@@ -2695,10 +2810,10 @@ TRUSTED: generates: ( -- )
 
 : ROW-UNBOUND ( ^u8 n -- n )
    {: a:^ u:n :}
-   a u CHECKER-RESOLVE:WALK nip {: why:n :}
+   a u WALK nip {: why:n :}
    why E-USING-SHADOW-GLOBAL = IF PARSES-SHADOW EXIT THEN
    why E-USING-AMBIGUOUS = IF PARSES-AMBIGUOUS EXIT THEN
-   why 0 <> IF a u why CHECKER-RESOLVE:RAISE -1 EXIT THEN
+   why 0 <> IF a u why RAISE -1 EXIT THEN
    CHECKER-QBAD-TOK @ IF PARSES-QUALIFIED EXIT THEN
    a u UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
@@ -2777,7 +2892,7 @@ TRUSTED: generates: ( -- )
    ka ku ta tu ca cu bad PARSES-ROW-CHECK {: sym:n eff1:n cnt:n rec:^ :}
    sym 0= IF EXIT THEN
    sym cnt la lu PROW-ADD-TEXT
-   rec CHECKER-RESOLVE:REC>INDEX sym CHECK:HOLD-AMENDED ;
+   rec REC>INDEX sym HOLD-AMENDED ;
 
 : NAMES-HELP ( ^u8 n n -- ) {: ta:^ tu:n kind:n :}
    kind PARSES-NO-TARGET = IF
@@ -2870,19 +2985,22 @@ NAMED-OPERAND-INSTALL
 13 constant TS.LEFT-A  14 constant TS.LEFT-U
 15 constant TS-ROW
 PTR-VARIABLE TOP-SEG-P   variable TOP-SEG-CAP   variable TOP-SEG-N
-variable TOP-BASE   variable TOP-ENTRY   variable TOP-LEVEL   variable TOP-LIVE
+variable TOP-BASE   variable TOP-ENTRY   variable TOP-EVAL-LEVEL   variable TOP-LIVE
 NULL-PTR TOP-SEG-P !  0 TOP-SEG-CAP !  0 TOP-SEG-N !  0 TOP-BASE !  0 TOP-LIVE !
-0 TOP-ENTRY !  0 TOP-LEVEL !
+0 TOP-ENTRY !  0 TOP-EVAL-LEVEL !
 \ The token of the segment's last event on an empty stack, 0 0 for none: a
 \ stack left non-empty holds that event's cells at its bottom.
 PTR-VARIABLE TOP-LEFT-A   variable TOP-LEFT-U
 NULL-PTR TOP-LEFT-A !  0 TOP-LEFT-U !
 
 : TS-AT ( n n -- ^n ) {: ix:n fld:n :} TOP-SEG-P ix TS-ROW NAV-CELL fld cells + ;
+;package
 package CHECKER-REG                       \ REG-PTR-CELLS is CHECKER-REG's private cast
+EXPORT CHECK:TS-AT
 public
 : TS-PTR ( n n -- ^^u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
 ;package
+package CHECK
 
 : TOP-SEG-UNMAP ( n -- ) {: ix:n :}
    ix TS.RP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
@@ -2899,7 +3017,7 @@ public
    TOP-SEG-P TOP-SEG-CAP TOP-SEG-N @ 1 + TS-ROW ARENA-ROWS-ENSURE
    TOP-SEG-N @ {: ix:n :}
    TOP-BASE @ ix TS.BASE TS-AT !
-   TOP-ENTRY @ ix TS.ENTRY TS-AT !  TOP-LEVEL @ ix TS.LEVEL TS-AT !
+   TOP-ENTRY @ ix TS.ENTRY TS-AT !  TOP-EVAL-LEVEL @ ix TS.LEVEL TS-AT !
    TOP-READ-P @ BYTE-VIEW ix TS.RP CHECKER-REG:TS-PTR !   TOP-READ-CAP @ ix TS.RC TS-AT !
    TOP-WRITE-P @ BYTE-VIEW ix TS.WP CHECKER-REG:TS-PTR !  TOP-WRITE-CAP @ ix TS.WC TS-AT !
    TOP-ROW-OFF @ ix TS.OFF TS-AT !  TOP-RROW-OFF @ ix TS.ROFF TS-AT !
@@ -2915,7 +3033,7 @@ public
    TOP-SEG-RELEASE
    TOP-SEG-N @ at 1 + ?DO i TOP-SEG-UNMAP LOOP
    at TS.BASE TS-AT @ TOP-BASE !
-   at TS.ENTRY TS-AT @ TOP-ENTRY !  at TS.LEVEL TS-AT @ TOP-LEVEL !
+   at TS.ENTRY TS-AT @ TOP-ENTRY !  at TS.LEVEL TS-AT @ TOP-EVAL-LEVEL !
    at TS.RP CHECKER-REG:TS-PTR @ TOP-READ-P !   at TS.RC TS-AT @ TOP-READ-CAP !
    at TS.WP CHECKER-REG:TS-PTR @ TOP-WRITE-P !  at TS.WC TS-AT @ TOP-WRITE-CAP !
    at TS.OFF TS-AT @ TOP-ROW-OFF !  at TS.ROFF TS-AT @ TOP-RROW-OFF !
@@ -3042,7 +3160,7 @@ public
    TOP-EVALUATE? IF
       FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW MK-PUSH MK-PUSH
       STEP-BORROWS? IF STEP-UNDERFLOW! EXIT THEN
-      1 TOP-LEVEL +!
+      1 TOP-EVAL-LEVEL +!
       DCUR @ ROW-DROP-1 ROW-DROP-1 DCUR !  EXIT
    THEN
    TKF TKFU @ SPELLED-STEP? 0= IF
@@ -3060,12 +3178,8 @@ public
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN
    TOP-PUSH ;
 
-package CHECK
-
-private
 \ FILE-POS's last answer: a byte offset into the owned bytes, its line, its column.
 variable FPOS-OFF  variable FPOS-LN  variable FPOS-CL
-public
 
 \ Forgets FILE-POS's last answer, which counts over the owned bytes: every
 \ publication of the owned bytes runs it.
@@ -3090,11 +3204,8 @@ FILE-POS-CLEAR
       FPOS-OFF @ 1 + FPOS-OFF !
    REPEAT
    FPOS-LN @ FPOS-CL @ at ;
-;package
 
 \ The wall's rejection of a duplicate, for one refused off the wall.
-package CHECK
-private
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
@@ -3112,12 +3223,10 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm u else a u then ;
 
-public
 : REJECT-DUPLICATE ( ^u8 n ^u8 n -- )
    {: a:^ u:n t:^ tu:n :}
    a u t tu REJECTION:DUPLICATE
    CHECKER-REJECT-RC REJECTION:STOP ;
-;package
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
 \ does one deferred to the run; a refused or uncheckable one renders the
@@ -3141,12 +3250,12 @@ public
 \ declaration whose terms sit in the pools, on the stack and in its variables,
 \ so the step allocates above the pools' marks, where NEW would reset them, and
 \ releases back to the marks.
-CHECKER-REG:SCRATCH{
+SCRATCH{
 variable TG-FV     variable TG-SPN     variable TG-QEN     variable TG-PTRN
 variable TG-STLN   variable TG-ATOMN   variable TG-PARAMN  variable TG-PSCR
 variable TG-PARG   variable TG-RIGID   variable TG-RGN     variable TG-EXT
 variable TG-GEN    variable TG-TERM-NAME
-CHECKER-REG:}SCRATCH
+}SCRATCH
 
 : TOP-GUEST ( -- )
    FV @ TG-FV !  SPN @ TG-SPN !  QEN @ TG-QEN !  PTRN @ TG-PTRN !  STLN @ TG-STLN !
@@ -3176,10 +3285,10 @@ CHECKER-REG:}SCRATCH
 : CHECKER-TOP-SEGMENT ( n -- ) {: base:n :}
    data-base EVALD-CELL + @ {: lvl:n :}
    lvl TOP-SEG-PRUNE
-   TOP-LIVE @ 0= IF base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL !  -1 TOP-LIVE !  EXIT THEN
-   TOP-BASE @ base =  TOP-ENTRY @ lvl <= and  lvl TOP-LEVEL @ <= and IF lvl TOP-LEVEL !  EXIT THEN
-   base lvl TOP-SEG-FIND dup 0 >= IF TOP-SEG-UNPARK  lvl TOP-LEVEL !  EXIT THEN drop
-   TOP-SEG-PARK  base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL ! ;
+   TOP-LIVE @ 0= IF base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-EVAL-LEVEL !  -1 TOP-LIVE !  EXIT THEN
+   TOP-BASE @ base =  TOP-ENTRY @ lvl <= and  lvl TOP-EVAL-LEVEL @ <= and IF lvl TOP-EVAL-LEVEL !  EXIT THEN
+   base lvl TOP-SEG-FIND dup 0 >= IF TOP-SEG-UNPARK  lvl TOP-EVAL-LEVEL !  EXIT THEN drop
+   TOP-SEG-PARK  base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-EVAL-LEVEL ! ;
 
 \ Start a step on a live stack of n cells: DCUR is the saved row with the cells
 \ it knows at the top. A longer row loses entries from its top until it fits; a
@@ -3451,7 +3560,33 @@ variable TOP-DROP-N
    0 RQM !  SEEN-RESET  0 NLET !  0 RROW-N !
    DCUR @ ROW-NOTE  TOP-RELEASE ;
 
+;package
 package CHECKER-REG
+EXPORT CHECK:CHECKER-CREATES-SYM?
+EXPORT CHECK:CHECKER-CTOR-DECL-AT!
+EXPORT CHECK:CHECKER-CURSOR!
+EXPORT CHECK:CHECKER-DECL-AT!
+EXPORT CHECK:CHECKER-DECL-AT-OFF
+EXPORT CHECK:CHECKER-FIND-QUIET-SYM
+EXPORT CHECK:CHECKER-RECORD-CREATED
+EXPORT CHECK:CHECKER-RECORD-SYM?
+EXPORT CHECK:CHECKER-RETRACT-ROWS
+EXPORT CHECK:CHECKER-ROWS-END
+EXPORT CHECK:CHECKER-SOURCE-CLAUSE
+EXPORT CHECK:CHECKER-SYM-IDENTITY
+EXPORT CHECK:CHECKER-SYM-SOURCE
+EXPORT CHECK:CHECKER-VERIFY-DEFERRED
+EXPORT CHECK:CHECKER-VERIFY-DEFERRED-BODY
+EXPORT CHECK:CHECKER-VERIFY-REACH
+EXPORT CHECK:CHECKER-VERIFY-RENDERS
+EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
+EXPORT CHECK:CHECKER-WITH-USES
+EXPORT CHECK:DP-CUT
+EXPORT CHECK:RECORD-GRID-AFTER
+EXPORT CHECK:RECORD-GRID-BEFORE
+EXPORT CHECK:RECORD-GRID-RETIRE
+EXPORT CHECK:TRUST-DECL?
+EXPORT CHECK:WITH-TICK-ORDER
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!
 ' RECORD-GRID-AFTER DECLARATIONS CHECKER-OWNER-ABI:GRID-AFTER-OFF + xt!
 ' DP-CUT DECLARATIONS CHECKER-OWNER-ABI:GRID-REVOKE-OFF + xt!
@@ -3460,10 +3595,15 @@ package CHECKER-REG
 
 \ Emitted code calls REC-WIDE-PUBLISH through its owner-record field.
 package CHECKER-REG
-' CHECK:REC-WIDE-PUBLISH            DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
+EXPORT CHECK:REC-WIDE-PUBLISH
+
+' REC-WIDE-PUBLISH            DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ;package
 
 package CHECKER-REG
+EXPORT CHECK:CHECKER-SOURCE-DOES!
+EXPORT CHECK:CHECKER-VERIFY-TOP
+EXPORT CHECKER-RESOLVE:EACH-VISIBLE
 ' CHECKER-RECORD-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF + xt!
 ' CHECKER-CTOR-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF + xt!
 ' CHECKER-FIND-QUIET-SYM DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF + xt!
@@ -3481,7 +3621,7 @@ package CHECKER-REG
 ' CHECKER-DECL-AT-OFF DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF + xt!
 ' CHECKER-WITH-USES DECLARATIONS CHECKER-OWNER-ABI:VERIFY-USES-OFF + xt!
 ' CHECKER-CURSOR! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CURSOR-OFF + xt!
-' CHECKER-RESOLVE:EACH-VISIBLE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF + xt!
+' EACH-VISIBLE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF + xt!
 ' WITH-TICK-ORDER DECLARATIONS CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF + xt!
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
@@ -3497,11 +3637,11 @@ package CHECKER-REG
    then ;
 CLAIM-COLD-SOURCE
 ;package
+package CHECK
 
 \ ---- the facts reader ---------------------------------------------------------
 \ A record's facts text (CHECK:FACTS@) is read into the stores the first time a
 \ lookup binds the record (LIVE-BIND), and an export's when the linker links it.
-package CHECK
 
 \ Per wordlist id, one plus the index of the newest namespace record whose public
 \ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
@@ -3509,9 +3649,9 @@ package CHECK
 \ naming a record at or above it, which can empty a row an older record holds; it
 \ indexes from 0 again when the answer is missing or no longer holds, as after a
 \ package gains its private wordlist. The cells rest in a scratch span.
-CHECKER-REG:SCRATCH{
+SCRATCH{
 PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
-CHECKER-REG:}SCRATCH
+}SCRATCH
 
 : NS-ENSURE ( n -- ) {: need:n :}
    need NS-CAP @ <= IF EXIT THEN
@@ -3525,7 +3665,7 @@ CHECKER-REG:}SCRATCH
    i 1 +  NS-ROWS-P @ wid cells + ! ;
 
 : NS-NOTE ( n -- ) {: i:n :}
-   i CHECKER-RESOLVE:REC-AT {: ns:^ :}
+   i REC-AT {: ns:^ :}
    ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
    ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
 
@@ -3550,7 +3690,7 @@ CHECKER-REG:}SCRATCH
 
 : NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
    row 0= IF RES-FALSE EXIT THEN
-   row 1 - CHECKER-RESOLVE:REC-AT {: ns:^ :}
+   row 1 - REC-AT {: ns:^ :}
    ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
 
 \ The global wordlists and any wid at or below 0 are no package's: a miss on
@@ -3564,14 +3704,14 @@ CHECKER-REG:}SCRATCH
    wid row NS-HOLDS? IF row ELSE 0 THEN ;
 
 : REC-SYM ( ^n -- n ) {: rec:^ :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:^ nameu:n :}
+   rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF 0 EXIT THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    wid NS-FIND {: row:n :}
    row 0= IF 0 EXIT THEN
-   row 1 - CHECKER-RESOLVE:REC-AT {: ns:^ :}
-   ns CHECKER-RESOLVE:CK-REC-NAME$
+   row 1 - REC-AT {: ns:^ :}
+   ns CK-REC-NAME$
    wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
    name nameu CHECKER-PKG-SYM ;
 
@@ -3583,14 +3723,14 @@ CHECKER-REG:}SCRATCH
 \ GUEST-LATCHES 8; GUEST-POINTERS saves 10 pointers.
 16 43 + 8 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP
 10 constant GUEST-PTRS-CAP
-CHECKER-REG:SCRATCH{
+SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
 variable GUEST-OPEN
 PTR-U8-TABLE-VARIABLE GUEST-FAM-A-P
 PTR-VARIABLE GUEST-FAM-U-P   variable GUEST-FAM-CAP
 PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
-CHECKER-REG:}SCRATCH
+}SCRATCH
 
 : GUEST-CELLS ( n ^n n bool -- n )
    {: k:n p:^ cnt:n save:bool :}
@@ -3785,8 +3925,8 @@ CHECKER-REG:}SCRATCH
 : READ-BODY ( ^u8 n n -- )
    {: a:^ u:n ix:n :}
    UEND @ {: mark:n :}
-   ix CHECKER-RESOLVE:REC-AT {: rec:^ :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:^ nameu:n :}
+   ix REC-AT {: rec:^ :}
+   rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec REC-SYM {: sym:n :}
    sym 0= IF a u name nameu READ-REFUSE EXIT THEN
    sym SYM-PKG$ SIGSCOPE!
@@ -3836,8 +3976,8 @@ CHECKER-REG:}SCRATCH
 \ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
 : ALIAS-BODY ( n n -- )
    {: ix:n src:n :}
-   ix CHECKER-RESOLVE:REC-AT REC-SYM {: sym:n :}
-   src CHECKER-RESOLVE:REC-AT REC-SYM {: from:n :}
+   ix REC-AT REC-SYM {: sym:n :}
+   src REC-AT REC-SYM {: from:n :}
    sym 0=  from 0= or IF s" checker: an export or its source has no checked symbol" 76 die THEN
    from USIG-NEWEST {: eff:n :}
    eff 0= IF s" checker: an export's source has no checked effect" 76 die THEN
@@ -3848,7 +3988,7 @@ CHECKER-REG:}SCRATCH
    ix sym USIG-NEWEST sym NORET-NEWEST RECORD-LINK-SET ;
 
 \ A record `undefine` retired has no symbol.
-: HAS-SYM? ( n -- bool ) CHECKER-RESOLVE:REC-AT REC-SYM 0 <> ;
+: HAS-SYM? ( n -- bool ) REC-AT REC-SYM 0 <> ;
 
 \ Export record ix of record src, once src's own facts are read. An export
 \ keeps the facts of a source retired after it, so it reads src's text as its own.
@@ -3871,24 +4011,22 @@ CHECKER-REG:}SCRATCH
    off 0 > IF ix READ-IX EXIT THEN
    -1 off - {: src:n :}
    src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" 76 die THEN
-   src HAS-SYM? IF src CHECKER-RESOLVE:REC-AT recurse THEN
+   src HAS-SYM? IF src REC-AT recurse THEN
    ix src ALIAS-READ ;
 
 : FACTS-READ-INSTALL ( -- ) [: READ-BOUND ;] is FACTS-READ-XT ;
 FACTS-READ-INSTALL
 
-public
 : WORDLIST-PACKAGE ( n -- n bool )
    NS-FIND {: row:n :}
    row 0= IF 0 RES-FALSE EXIT THEN
    row 1 - RES-TRUE ;
-private
 
 \ Export record ix of record src, as a compile of its file recorded it: an
 \ export the file retired has no facts, since its `undefine` removed them.
 : READ-ALIAS ( n n -- ) {: ix:n src:n :}
    ix HAS-SYM? 0= IF EXIT THEN
-   src HAS-SYM? IF src CHECKER-RESOLVE:REC-AT READ-BOUND THEN
+   src HAS-SYM? IF src REC-AT READ-BOUND THEN
    ix src ALIAS-READ ;
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:

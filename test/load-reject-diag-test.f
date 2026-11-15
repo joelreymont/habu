@@ -1058,7 +1058,7 @@ variable RC
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
 : TEST-DEFERRED ( -- )
    s" a definition left to the run prints one E-UNDEFINED" T-LABEL
-   BODY$ S\" package LRD-UNSEEN\nCHECKER-UNSEEN-MARK\n: LRD-DEFER ( -- ) LRD-MADE ;\n;package\n"
+   BODY$ S\" package LRD-UNSEEN\ns\q \q evaluate\n: LRD-DEFER ( -- ) LRD-MADE ;\n;package\n"
    FS:WRITE-ALL
    BODY$ RUN
    SB-RESET

@@ -54,11 +54,11 @@ TYPED-VARIABLE LINK-V smlink
 
 \ The rejections a multi-error load of the text tallies.
 : TALLY ( ^u8 n -- n ) {: a:^ u:n :}
-   MULTI-ERR-BEGIN a u TEST-EVAL:RC drop MULTI-ERR-END ;
+   CHECK:MULTI-ERR-BEGIN a u TEST-EVAL:RC drop CHECK:MULTI-ERR-END ;
 
 \ The rejections a multi-error verifier scan of the text tallies.
 : SCAN-TALLY ( ^u8 n -- n ) {: a:^ u:n :}
-   MULTI-ERR-BEGIN [: a u VERIFY:SOURCE-BUF ;] catch drop MULTI-ERR-END ;
+   CHECK:MULTI-ERR-BEGIN [: a u VERIFY:SOURCE-BUF ;] catch drop CHECK:MULTI-ERR-END ;
 
 \ Definitions after the pair call both members' MAKE and an accessor. Both
 \ members hold a `next`: a field name repeats across members.

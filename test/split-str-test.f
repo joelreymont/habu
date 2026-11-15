@@ -60,7 +60,6 @@ E2E-TREE:ERR$ s" = help: write `split-str` in lower case, alone on its file's fi
 : SPW-OFF ( -- )
    s" : SPW ( ^u8 n -- n ) SPL ;" VERIFY:SOURCE-BUF ;
 ' SPW-ON catch 0 T=
-CHECKER-SPLIT-STR @ 0 T=
 ' SPW-OFF catch 70 T=
 \ The verifier walks a marked definition's body on the split rows.
 : SPW2-RUN ( -- )

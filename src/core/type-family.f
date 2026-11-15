@@ -125,9 +125,11 @@ variable TF-STR-U   0 TF-STR-U !
 
 private
 
+EXPORT CHECKER-REG:GROW
+
 : TF-STR-GROW ( n -- ) {: need:n :}
    need TF-STR-CAP-V @ 2 * max {: nc:n :}
-   TF-STR-P  TF-STR-CAP-V @  nc  CHECKER-REG:GROW
+   TF-STR-P  TF-STR-CAP-V @  nc  GROW
    nc TF-STR-CAP-V ! ;
 : TF-STR-ENSURE ( n -- ) {: add:n :}
    TF-STR-U @ add + TF-STR-CAP-V @ <= IF exit THEN
@@ -175,6 +177,124 @@ private
    i u 1 - = IF RES-TRUE EXIT THEN                  \ trailing 'a-'
    a i + 1 - c@ 45 = ;                              \ previous byte also '-' -> 'a--b'
 
+EXPORT CHECK:ARENA-BYTES-ENSURE
+EXPORT CHECK:ARENA-ROWS-ENSURE
+EXPORT CHECK:BYTE-SPAN?
+EXPORT CHECK:C2-INIT-FAM
+EXPORT CHECK:C2-MUT-FAM
+EXPORT CHECK:C2-READ-FAM
+EXPORT CHECK:C2-RECORDS-FAM
+EXPORT CHECK:C2-STOW-FAM
+EXPORT CHECK:CHECKER-AUTH-PACKAGE$
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
+EXPORT CHECK:CHECKER-COLON-SCAN
+EXPORT CHECK:CHECKER-PKG-SYM
+EXPORT CHECK:CHECKER-SYM-IDENTITY
+EXPORT CHECK:CHECKER-TYPE-MARK-COVERS?
+EXPORT CHECK:CHECKER-USING$
+EXPORT CHECK:CHECKER-USING-N
+EXPORT CHECK:CK-REC-WID
+EXPORT CHECK:CONSTRUCT-DECL-LAYOUT
+EXPORT CHECK:CONSTRUCT-WIDE-STAGED-REJECT
+EXPORT CHECK:CT-FIND
+EXPORT CHECK:CT-LINEAR?
+EXPORT CHECK:CT-LIVE?
+EXPORT CHECK:CT-NAME$
+EXPORT CHECK:CTOR-EXTEND?-XT
+EXPORT CHECK:CTOR-PKG?-XT
+EXPORT CHECK:CTOR-ROW?-XT
+EXPORT CHECK:CTOR-WORD?-XT
+EXPORT CHECK:DCUR
+EXPORT CHECK:EFFECT-TYPE-FAM
+EXPORT CHECK:ENTRIES-PENDING
+EXPORT CHECK:EXT-PROD-FAM
+EXPORT CHECK:EXT-REDX-FAM
+EXPORT CHECK:FAILSET
+EXPORT CHECK:FIELD-FAM
+EXPORT CHECK:FRESH
+EXPORT CHECK:HIDDEN-PARAM?
+EXPORT CHECK:HIDDEN-SLOT@
+EXPORT CHECK:HIDX-ENSURE
+EXPORT CHECK:HIDX-GEN
+EXPORT CHECK:IDX-HEAD!
+EXPORT CHECK:IDX-HEAD@
+EXPORT CHECK:IDX-HEADS-CLEAR
+EXPORT CHECK:IDX-SYM-OK
+EXPORT CHECK:ISVAR
+EXPORT CHECK:LAYOUT-WIDTH-OPEN?
+EXPORT CHECK:LOAN-FIELD-FAM
+EXPORT CHECK:MDIAG-COMPILE!
+EXPORT CHECK:MK-ATOM
+EXPORT CHECK:MK-CON
+EXPORT CHECK:MK-LOGICAL
+EXPORT CHECK:MK-PARAM
+EXPORT CHECK:MK-PTR
+EXPORT CHECK:MK-PUSH
+EXPORT CHECK:MK-QROW
+EXPORT CHECK:MK-QUOT
+EXPORT CHECK:MK-ROW
+EXPORT CHECK:MK-VAR
+EXPORT CHECK:MWIN-CELLS!
+EXPORT CHECK:NEW
+EXPORT CHECK:NMAP-RESET
+EXPORT CHECK:NOMINAL-PROVIDER
+EXPORT CHECK:NSCOPE-RAISE
+EXPORT CHECK:OPAQUE-XT
+EXPORT CHECK:OWN-TYPE-N
+EXPORT CHECK:P>REST
+EXPORT CHECK:P>TYPE
+EXPORT CHECK:PARAM-SCR
+EXPORT CHECK:PARAM-SCR+
+EXPORT CHECK:PARAM-SCR-N
+EXPORT CHECK:PARAM>ARG
+EXPORT CHECK:PARAM>ARGC
+EXPORT CHECK:PARAM>FAM
+EXPORT CHECK:PAY
+EXPORT CHECK:PTX-CPCOMMITTED-FAM
+EXPORT CHECK:PTX-CPREADY-FAM
+EXPORT CHECK:PTX-TILE-FAM
+EXPORT CHECK:PTX-UNIFORM-FAM
+EXPORT CHECK:PUSH-LOGICAL
+EXPORT CHECK:Q>BLOCK
+EXPORT CHECK:R-RES
+EXPORT CHECK:RECORDED-STEP
+EXPORT CHECK:REG-EXT-AOT-FAMILY-NAME-XT
+EXPORT CHECK:REG-GROW1
+EXPORT CHECK:SEED-TERM?
+EXPORT CHECK:SIG-FACTS-MODE
+EXPORT CHECK:SLOT>VAR
+EXPORT CHECK:STR-FAM
+EXPORT CHECK:T-RES
+EXPORT CHECK:T-UNSTALE
+EXPORT CHECK:T-WIDTH
+EXPORT CHECK:TAG
+EXPORT CHECK:TFAM-ARITY-XT
+EXPORT CHECK:TFAM-CELL?-XT
+EXPORT CHECK:TFAM-CLAIMED?-XT
+EXPORT CHECK:TFAM-CON-LIN-XT
+EXPORT CHECK:TFAM-INST-WIDTH-XT
+EXPORT CHECK:TFAM-LAYOUT?-XT
+EXPORT CHECK:TFAM-LIN-N-XT
+EXPORT CHECK:TFAM-MAY-LIN-XT
+EXPORT CHECK:TFAM-MEMBERS-XT
+EXPORT CHECK:TFAM-PKG-XT
+EXPORT CHECK:TFAM-REGION-SLOT-XT
+EXPORT CHECK:TFAM-RESOLVE-XT
+EXPORT CHECK:TFAM-SCOPE-SLOT-XT
+EXPORT CHECK:TFAM-STORE-SLOT-XT
+EXPORT CHECK:TFAM-TYPE-SLOT-XT
+EXPORT CHECK:TFAM-WIDTH-SLOT-XT
+EXPORT CHECK:TFAM-WIDTH-XT
+EXPORT CHECK:TKF
+EXPORT CHECK:TKFU
+EXPORT CHECK:TOKFOLD
+EXPORT CHECK:TVK-REGION!
+EXPORT CHECK:TVK-SCOPE!
+EXPORT CHECK:TYPE-MAY-ARRIVE-XT
+EXPORT CHECK:TYPE-REP-CLOSED?
+EXPORT CHECK:UNMAKE-SEED-LAYOUT
+EXPORT CHECK:WIDTH-FAM
+EXPORT CHECK:WRITE-WINDOW-CK
 public
 
 : TF-CANON? ( ^u8 n -- bool ) {: a:^ u:n :}    \ tailbytes + internal single '-' + >=1 letter
@@ -216,7 +336,7 @@ private
 
 : TF-PK-GROW ( n -- ) {: need:n :}
    need TF-PK-CAP-V @ 2 * max {: nc:n :}
-   TF-PK-P  TF-PK-CAP-V @ cells  nc cells  CHECKER-REG:GROW
+   TF-PK-P  TF-PK-CAP-V @ cells  nc cells  GROW
    nc TF-PK-CAP-V ! ;
 : TF-PK-ENSURE ( -- )
    TF-PK-N @ TF-PK-CAP-V @ < IF exit THEN
@@ -309,7 +429,7 @@ private
 
 : TF-GROW ( n -- ) {: need:n :}
    need TF-CAP-V @ 2 * max {: nc:n :}
-   TF-A-P  TF-CAP-V @ TF-REC *  nc TF-REC *  CHECKER-REG:GROW
+   TF-A-P  TF-CAP-V @ TF-REC *  nc TF-REC *  GROW
    nc TF-CAP-V ! ;
 : TF-ENSURE ( -- )
    TFAM-N @ TF-CAP-V @ < IF exit THEN
@@ -569,7 +689,7 @@ variable TFX-CUR              \ private bucket-walk cursor
    TF-CAP TFX-CAP !
    TFX-SLOTS-NEED {: need:n :}
    need TFX-SLOTS = IF EXIT THEN
-   TFX-A-P  TFX-SLOTS cells  need cells  CHECKER-REG:GROW
+   TFX-A-P  TFX-SLOTS cells  need cells  GROW
    need TFX-SLOTS-V ! ;
 
 : TFX-BUILD ( -- )
@@ -725,7 +845,7 @@ private
 
 : SUMV-GROW ( n -- ) {: need:n :}
    need SUMV-CAP-V @ 2 * max {: nc:n :}
-   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  nc SUMV-REC *  CHECKER-REG:GROW
+   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  nc SUMV-REC *  GROW
    nc SUMV-CAP-V ! ;
 : SUMV-ENSURE ( -- )
    SUMV-N @ SUMV-CAP-V @ < IF exit THEN
@@ -914,12 +1034,12 @@ variable VNX-CUR              \ private bucket-walk cursor
 : VNX-RESIZE ( -- )
    SUMV-CAP VNX-CAP !
    SUMV-CAP VNX-LCAP @ > IF
-      VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  CHECKER-REG:GROW
+      VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  GROW
       SUMV-CAP VNX-LCAP !
    THEN
    VNX-SLOTS-INIT BEGIN dup SUMV-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
    need VNX-SLOTS <= IF EXIT THEN
-   VNX-B-P  VNX-SLOTS cells  need cells  CHECKER-REG:GROW
+   VNX-B-P  VNX-SLOTS cells  need cells  GROW
    need VNX-SLOTS-V ! ;
 
 : VNX-BUILD ( -- )
@@ -980,13 +1100,18 @@ public
       THEN
    loop RES-FALSE ;
 
+private
+EXPORT CHECKER-RESOLVE:CK-REC-NAME$
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+
+public
 \ The package a qualifier's head names here, as a word's qualifier does: the
 \ open package's part first, then a top-level package; a head no record holds
 \ stays as given.
 : TFQ-HEAD$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
+   a u HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a u EXIT THEN
-   row CHECKER-RESOLVE:CK-REC-NAME$ ;
+   row CK-REC-NAME$ ;
 
 : TF-CW-SPLIT? ( ^u8 n -- bool ) {: a:^ u:n :}   \ first non-edge ':' -> TF-CW-COL
    -1 TF-CW-COL !
@@ -1211,12 +1336,13 @@ public
       a u i TF-CTOR-PRIV-FAM? IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
+private
+
 \ `DERIVE addr` accessors are recognized from the field registry, declared
 \ further down, so the predicate is a friend xt bound at its definition.
 defer TFAM-ADDR-WORD-XT ( ^u8 n -- bool )
 
-;package
-
+global
 \ A generated word wears either the qualified public spelling or the bare private
 \ one, and the colon decides which scan answers for it. A length that describes
 \ no memory (BYTE-SPAN?) spells no generated word; CHECKER-UNDEFINE asks this
@@ -1229,6 +1355,7 @@ defer TFAM-ADDR-WORD-XT ( ^u8 n -- bool )
       a u TF-CTOR-PRIV-WORD? IF RES-TRUE EXIT THEN
    THEN
    a u TFAM-ADDR-WORD-XT ;
+;package
 
 package TFAM
 
@@ -1322,7 +1449,7 @@ private
 
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
-   PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  CHECKER-REG:GROW
+   PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  GROW
    nc PF-CAP-V ! ;
 
 public
@@ -1424,12 +1551,12 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 : FVX-RESIZE ( -- )
    PF-CAP FVX-CAP !
    PF-CAP FVX-LCAP @ > IF
-      FVX-L-P  FVX-LCAP @ cells  PF-CAP cells  CHECKER-REG:GROW
+      FVX-L-P  FVX-LCAP @ cells  PF-CAP cells  GROW
       PF-CAP FVX-LCAP !
    THEN
    FVX-SLOTS-INIT BEGIN dup PF-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
    need FVX-SLOTS <= IF EXIT THEN
-   FVX-B-P  FVX-SLOTS cells  need cells  CHECKER-REG:GROW
+   FVX-B-P  FVX-SLOTS cells  need cells  GROW
    need FVX-SLOTS-V ! ;
 
 : FVX-BUILD ( -- )
@@ -1509,7 +1636,7 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 \ current stamp.
 : TFM-ENSURE ( -- )
    TFM-CAP @ TF-CAP >= IF EXIT THEN
-   TFM-P  TFM-CAP @ TFM-REC *  TF-CAP TFM-REC *  CHECKER-REG:GROW
+   TFM-P  TFM-CAP @ TFM-REC *  TF-CAP TFM-REC *  GROW
    TFM-P @  TFM-CAP @ TFM-REC * CELL /  TF-CAP TFM-REC * CELL /  ARENA-CELLS-ZERO
    TF-CAP TFM-CAP ! ;
 
@@ -1687,7 +1814,7 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   \ cells TFW-P holds
 : TFW-ENSURE ( n -- ) {: need:n :}
    need TFW-CAP @ <= IF EXIT THEN
    need TFW-CAP @ 2 * max {: cap:n :}
-   TFW-P  TFW-CAP @ cells  cap cells  CHECKER-REG:GROW
+   TFW-P  TFW-CAP @ cells  cap cells  GROW
    cap TFW-CAP ! ;
 
 : TFW@ ( n -- n ) cells TFW-P @ + @ ;
@@ -2016,6 +2143,18 @@ public
 
 private
 
+EXPORT CHECK:ATOM-TOK?
+EXPORT CHECK:CHECKER-AUTH-PACKAGE$
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
+EXPORT CHECK:CON-OF
+EXPORT CHECK:CT-NAME$
+EXPORT CHECK:CTN
+EXPORT CHECK:FRESH-ATOM-TOK?
+EXPORT CHECK:SIG-PTR-TOK?
+EXPORT CHECK:VREC-FIND
+EXPORT CHECK:VREC-N
+EXPORT CHECK:VREC-NAME$
+EXPORT CHECK:XT-TOK?
 : RESERVED? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 1 = IF RES-TRUE EXIT THEN
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
@@ -2119,12 +2258,14 @@ public
 
 private
 
+EXPORT CHECKER-RESOLVE:TOP$
+
 \ A private family is visible in its own package and in that package's parts.
 : PF-FAM-VISIBLE? ( n n -- bool ) {: owner:n fam:n :}
    fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
    fam TFAM-PKG$ owner TFAM-PKG$ CORE-STR= IF RES-TRUE EXIT THEN
    owner TFAM-PKG$ CHECKER-COLON-SCAN drop 0= IF RES-FALSE EXIT THEN
-   fam TFAM-PKG$ owner TFAM-PKG$ CHECKER-RESOLVE:TOP$ CORE-STR= ;
+   fam TFAM-PKG$ owner TFAM-PKG$ TOP$ CORE-STR= ;
 : PF-APP-KIND ( n -- n ) {: fam:n :}
    fam TFAM-KIND@ TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
    fam TFAM-LAYOUT? IF PK-LAYOUT EXIT THEN
@@ -2721,7 +2862,7 @@ private
 
 : LAY-GROW ( n -- ) {: need:n :}
    need LAY-CAP-V @ 2 * max {: nc:n :}
-   LAY-A-P  LAY-CAP-V @ LAY-REC *  nc LAY-REC *  CHECKER-REG:GROW
+   LAY-A-P  LAY-CAP-V @ LAY-REC *  nc LAY-REC *  GROW
    nc LAY-CAP-V ! ;
 : LAY-ENSURE ( -- )
    LAY-N @ LAY-CAP-V @ < IF exit THEN
@@ -2842,8 +2983,7 @@ public
    0 SUMV-N @ SUMV-SCRUB   0 PF-N @ PF-SCRUB   0 LAY-N @ LAY-SCRUB   \ scrub the rows it retires
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
-   EXT-FREE-CLEAR ;   \ drop free-extent marks with the families they name
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM ! ;
 TFAM-RESET
 
 \ The registry rewind: every caller that puts the family and variant stores or
@@ -2925,7 +3065,7 @@ private
 
 : TF-RBF-GROW ( -- )
    TF-RBF-CAP-V @ 2 * {: nc:n :}
-   TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  CHECKER-REG:GROW
+   TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  GROW
    nc TF-RBF-CAP-V ! ;
 
 public
@@ -3627,6 +3767,14 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
    ER-U @ 0 <> IF ER-BAD THEN ;
 
+EXPORT CHECKER-RESOLVE:REC>INDEX
+EXPORT CHECK:FACTS@
+EXPORT CHECK:LINEAR-TEXT?
+EXPORT CHECK:NMAP-SLOT
+EXPORT CHECK:SGBAD-AMBIG!
+EXPORT CHECK:SIG-SCOPE$
+EXPORT CHECKER-RESOLVE:REC-AT
+
 \ The record of family `pkg:tail`'s type entry while one is still to be read,
 \ else NULL-PTR.
 : ER-PROBE ( ^u8 n ^u8 n -- ^n )
@@ -3637,18 +3785,18 @@ create ER-MSG ER-MSG-CAP allot
    pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
    \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
-   rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ CHECK:LINEAR-TEXT? IF NULL-PTR EXIT THEN
+   rec REC>INDEX FACTS@ LINEAR-TEXT? IF NULL-PTR EXIT THEN
    rec ;
 
 \ Reads record rec's type entry into the registry: its head, then each family it
 \ names that the registry lacks, then its body (ER-STATE). The rows read are
 \ written out again and must equal the entry's text.
 : ER-READ ( ^n -- n ) {: rec:^ :}
-   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   rec REC>INDEX {: ix:n :}
    ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:^ su:n sn:^ snu:n :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: ra:^ ru:n :}
+   rec CK-REC-NAME$ {: ra:^ ru:n :}
    ra ER-NAME !  ru ER-NAME-U !
-   ix CHECK:FACTS@ ER-U ! ER-P !
+   ix FACTS@ ER-U ! ER-P !
    ra ru SPLIT-NAME 0= IF ER-BAD THEN
    ix ER-HEAD {: id:n :}
    ER-NUM 0 ?do
@@ -3661,7 +3809,7 @@ create ER-MSG ER-MSG-CAP allot
       THEN
    loop
    id ER-BODY
-   id ENTRY-TEXT$ ix CHECK:FACTS@ CORE-STR= 0= IF ER-BAD THEN
+   id ENTRY-TEXT$ ix FACTS@ CORE-STR= 0= IF ER-BAD THEN
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
    id ;
 
@@ -3694,12 +3842,12 @@ public
    BOOT:TYPES-WL {: wid:n :}
    wid 0 <> IF
       ndict@ 0 ?do
-         i CHECKER-RESOLVE:REC-AT {: rec:^ :}
+         i REC-AT {: rec:^ :}
          rec CK-REC-WID wid = IF
-            i CHECK:FACTS@ CHECK:LINEAR-TEXT? IF
-               rec CHECKER-RESOLVE:CK-REC-NAME$ CT-FIND drop
+            i FACTS@ LINEAR-TEXT? IF
+               rec CK-REC-NAME$ CT-FIND drop
             ELSE
-               rec CHECKER-RESOLVE:CK-REC-NAME$ SPLIT-NAME 0= IF
+               rec CK-REC-NAME$ SPLIT-NAME 0= IF
                   s" tfam: bad type entry name" 76 die THEN
                TFAM-FIND drop drop
             THEN
@@ -3750,7 +3898,7 @@ public
    pa pu na nu TFAM-FIND IF RES-TRUE EXIT THEN
    drop
    pa pu CHECKER-COLON-SCAN drop 0 <> IF
-      pa pu CHECKER-RESOLVE:TOP$ na nu TFAM-FIND IF RES-TRUE EXIT THEN
+      pa pu TOP$ na nu TFAM-FIND IF RES-TRUE EXIT THEN
       drop
    THEN
    pu 0 <> IF
@@ -3764,6 +3912,7 @@ public
 private
 PTR-VARIABLE TFQ-P
 SCRATCH-VARIABLE TFQ-CAP          \ TFQ-P's room, in cells
+
 public
 : TFQ-BUF ( -- ^u8 ) TFQ-P @ ;
 variable TFQ-U
@@ -4507,6 +4656,10 @@ private
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
+EXPORT CHECK:MD-CONSTRUCT-WIDE
+EXPORT CHECK:MD-FAM-AMBIG
+EXPORT CHECK:MDIAG!
+EXPORT CHECK:OK
 \ Extra pads = instantiated pads - declared pads; instantiated pads =
 \ instantiated payload slots - instantiated payload cells. Only a SUM or ENUM
 \ has a tag cell; a product family's whole width is payload (scg<scinr>, a
@@ -4889,35 +5042,41 @@ TFAM-HOOK-INSTALL
 ;using
 
 \ A build's registries start with the families above, which every program
-\ starts with; a product declares the rest for itself (CHECK:OPEN), so its
-\ SPAN:span never meets hb's. The tail indexes and the memo start empty, and
+\ starts with; a product declares the rest for itself (CHECK:STORES-OPEN), so
+\ its SPAN:span never meets hb's. The tail indexes and the memo start empty, and
 \ their first use rebuilds them.
 package TFAM
-TF-STR-P TF-STR-CAP-V 1 TF-STR-U CHECK:STORE+
-TF-PK-P TF-PK-CAP-V CELL TF-PK-N CHECK:STORE+
-TF-A-P TF-CAP-V TF-REC TFAM-N CHECK:STORE+
-TFM-P TFM-CAP TFM-REC CHECK:TABLE+
-TFX-A-P TFX-SLOTS-V CELL CHECK:TABLE+
-TFX-READY 0 CHECK:CELL-ROW+
-TFX-HI 0 CHECK:CELL-ROW+
-TFX-CAP 0 CHECK:CELL-ROW+
-SUMV-A-P SUMV-CAP-V SUMV-REC SUMV-N CHECK:STORE+
-VNX-B-P VNX-SLOTS-V CELL CHECK:TABLE+
-VNX-L-P VNX-LCAP CELL CHECK:TABLE+
-VNX-READY 0 CHECK:CELL-ROW+
-VNX-HI 0 CHECK:CELL-ROW+
-VNX-CAP 0 CHECK:CELL-ROW+
-PF-A-P PF-CAP-V PF-REC PF-N CHECK:STORE+
-PF-COMMIT-N PF-COMMIT-N @ CHECK:CELL-ROW+
-FVX-B-P FVX-SLOTS-V CELL CHECK:TABLE+
-FVX-L-P FVX-LCAP CELL CHECK:TABLE+
-FVX-READY 0 CHECK:CELL-ROW+
-FVX-HI 0 CHECK:CELL-ROW+
-FVX-CAP 0 CHECK:CELL-ROW+
-LAY-A-P LAY-CAP-V LAY-REC LAY-N CHECK:STORE+
+EXPORT CHECK:STORE+
+EXPORT CHECK:TABLE+
+EXPORT CHECK:CELL-ROW+
+
+TF-STR-P TF-STR-CAP-V 1 TF-STR-U STORE+
+TF-PK-P TF-PK-CAP-V CELL TF-PK-N STORE+
+TF-A-P TF-CAP-V TF-REC TFAM-N STORE+
+TFM-P TFM-CAP TFM-REC TABLE+
+TFX-A-P TFX-SLOTS-V CELL TABLE+
+TFX-READY 0 CELL-ROW+
+TFX-HI 0 CELL-ROW+
+TFX-CAP 0 CELL-ROW+
+SUMV-A-P SUMV-CAP-V SUMV-REC SUMV-N STORE+
+VNX-B-P VNX-SLOTS-V CELL TABLE+
+VNX-L-P VNX-LCAP CELL TABLE+
+VNX-READY 0 CELL-ROW+
+VNX-HI 0 CELL-ROW+
+VNX-CAP 0 CELL-ROW+
+PF-A-P PF-CAP-V PF-REC PF-N STORE+
+PF-COMMIT-N PF-COMMIT-N @ CELL-ROW+
+FVX-B-P FVX-SLOTS-V CELL TABLE+
+FVX-L-P FVX-LCAP CELL TABLE+
+FVX-READY 0 CELL-ROW+
+FVX-HI 0 CELL-ROW+
+FVX-CAP 0 CELL-ROW+
+LAY-A-P LAY-CAP-V LAY-REC LAY-N STORE+
 ;package
 
 package SCHEMA-REG
-SCH-A-P SCH-CAP-V SCH-REC SCH-N CHECK:STORE+
-SCH-ROOT-P SCH-ROOT-CAP-V CELL SCH-ROOT-N CHECK:STORE+
+EXPORT CHECK:STORE+
+
+SCH-A-P SCH-CAP-V SCH-REC SCH-N STORE+
+SCH-ROOT-P SCH-ROOT-CAP-V CELL SCH-ROOT-N STORE+
 ;package

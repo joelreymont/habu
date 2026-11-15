@@ -8,6 +8,5 @@
 CAST: IX>N ( ix<e> -- n )
 
 \ It cannot launder a free factor into a contraction: checker.f
-\ EXT-REDX-BAD-ARG? rejects a declared signature with redx over a free extent or
-\ a whole product.
+\ EXT-REDX-BAD-ARG? rejects a declared signature with redx over a whole product.
 CAST: >RED ( ix<e> -- redx<e> )

@@ -4,8 +4,8 @@
 \ definition prints its diagnostic and adds 1.
 package PROGRAM-DIAG-QUIET-COUNT
 public
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 : FOUND ( ^u8 n -- n ) get-current search-wl 0<> if 1 else 0 then ;
 ;package
 

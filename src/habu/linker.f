@@ -57,6 +57,7 @@ EXPORT CHECK:READ-UNDEFINE
 EXPORT CHECK:AMENDED
 EXPORT CHECK:PRIMITIVE-FACTS
 EXPORT CHECK:OWNED-FACTS
+EXPORT CHECK:WORDLIST-PACKAGE
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -962,7 +963,7 @@ PTR-VARIABLE OBJ-BASE
 : NAME-PKG ( n -- n )
    {: idx:n :}
    idx XREF-REC XREF-WORDLIST {: wid:n :}
-   wid CHECK:WORDLIST-PACKAGE {: p:n hit:bool :}
+   wid WORDLIST-PACKAGE {: p:n hit:bool :}
    hit 0= if 0 exit then
    p XREF-REC XREF-PKG-PRIVATE wid <> if 0 exit then
    p XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
@@ -1536,13 +1537,18 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    s"  holds " SAY  v code VALUE.  REFUSED ;
 
 
+EXPORT CHECK:HELD-FACTS
+EXPORT CHECK:HELD-FACT@
+EXPORT CHECK:HELD-RETIRED
+EXPORT CHECK:HELD-RETIRED@
+
 \ RETIRED from the piece's held retirements, in held order (CHECK:HOLD-RETIRED).
 : RETIRED! ( -- )
    0 RETIRED-N !
-   CHECK:HELD-FACTS FILE-HELD @ ?do
-      i CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
-      ix CHECK:HELD-RETIRED = if
-         i CHECK:HELD-RETIRED@ drop {: idx:n wid:n :}
+   HELD-FACTS FILE-HELD @ ?do
+      i HELD-FACT@ {: ix:n a:^ u:n :}
+      ix HELD-RETIRED = if
+         i HELD-RETIRED@ drop {: idx:n wid:n :}
          RETIRED-N @ 1 + 2 * RETIRED-RESERVE
          idx  RETIRED-N @ 2 * RETIRED !   wid  RETIRED-N @ 2 * 1 + RETIRED !
          1 RETIRED-N +!
@@ -1584,7 +1590,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
    wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
    wid BOOT:TYPES-WL = if 5 PIECES U64+ exit then
-   wid CHECK:WORDLIST-PACKAGE {: pkg:n hit:bool :}
+   wid WORDLIST-PACKAGE {: pkg:n hit:bool :}
    hit 0=  pkg FIRST-REC @ <  or  pkg idx >=  or if E-COMP-STATE throw then
    pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
    pkg ID-REF+ ;
@@ -1646,11 +1652,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    cell DATA-REF+ if exit then
    REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
 
+EXPORT CHECKER-RESOLVE:REC>INDEX
+
 \ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
 : TYPE-SOURCE ( -- n )
    s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    -1  pkg XREF-FOUND? if
-      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
+      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE REC>INDEX
    then {: src:n :}
    src FIRST-REC @ < if
       REFUSAL  s" a type entry needs the build's own TFAM:TYPE-WORD" SAY SAY-CR  E-COMP-STATE throw
@@ -1757,7 +1765,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ A package keeps one record when reopened, so wid names at most one.
 : LATE-OF ( n -- n )
    {: wid:n :}
-   wid CHECK:WORDLIST-PACKAGE {: p:n hit:bool :}
+   wid WORDLIST-PACKAGE {: p:n hit:bool :}
    hit 0= if -1 exit then
    p FIRST-REC @ < if -1 exit then
    p XREF-REC XREF-PKG-PRIVATE wid <> if -1 exit then
@@ -2428,19 +2436,21 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    ndict@ FILE-REC @ - {: recs:n :}
    recs 0 > if recs LAST-HELD-RESERVE then
    recs 0 ?do -1 i LAST-HELD ! loop
-   CHECK:HELD-FACTS FILE-HELD @ ?do
-      i CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
+   HELD-FACTS FILE-HELD @ ?do
+      i HELD-FACT@ {: ix:n a:^ u:n :}
       ix ndict@ >= if E-STORE throw then
       ix FILE-REC @ >= if  i  ix FILE-REC @ - LAST-HELD !  then
    loop ;
 
 
+EXPORT CHECK:HELD-AMENDED
+
 \ Every laid text is kept, every text for an earlier file's record, and a record's last text: an
 \ earlier one is never read. An amended record's entry is not: the text written again for it is.
 : KEPT? ( n -- bool )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
-   ix CHECK:HELD-AMENDED = if false exit then
+   k HELD-FACT@ {: ix:n a:^ u:n :}
+   ix HELD-AMENDED = if false exit then
    ix FILE-REC @ < if true exit then
    ix FILE-REC @ - LAST-HELD @  k = ;
 
@@ -2449,15 +2459,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ the piece's records made before it; a record's text, own or earlier, by reference; a kind's text.
 : FACT+ ( n -- )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
-   ix CHECK:HELD-RETIRED = if
-      k CHECK:HELD-RETIRED@ nip {: r:n made:n :}
+   k HELD-FACT@ {: ix:n a:^ u:n :}
+   ix HELD-RETIRED = if
+      k HELD-RETIRED@ nip {: r:n made:n :}
       r FILE-REC @ < if true CHANGED-EARLIER ! then
       ix PIECES U64+  r ID-REF+  made FILE-REC @ - PIECES U64+  r NAMED-RETIRED NAMED-BY!  exit
    then
    ix 0 >= if
       ix FILE-REC @ < if true CHANGED-EARLIER ! then
-      CHECK:HELD-AMENDED PIECES U64+  ix ID-REF+  a u PIECES FIELD+  exit
+      HELD-AMENDED PIECES U64+  ix ID-REF+  a u PIECES FIELD+  exit
    then
    ix PIECES U64+  a u PIECES FIELD+ ;
 
@@ -2465,7 +2475,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ FACT+, then for a text of the piece's own record its span into WORD-SPANS.
 : WORD-FACT+ ( n -- )
    {: k:n :}
-   k CHECK:HELD-FACT@ {: ix:n a:^ u:n :}
+   k HELD-FACT@ {: ix:n a:^ u:n :}
    ix FILE-REC @ < if k FACT+ exit then
    ix FILE-REC @ - {: w:n :}
    PIECES BYTES$ nip {: at:n :}
@@ -2478,8 +2488,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ which can overwrite it (CHECK:HELD-FACT@).
 : FACTS+ ( -- )
    LAST-HELD!
-   0  CHECK:HELD-FACTS FILE-HELD @ ?do i KEPT? if 1 + then loop  PIECES U64+
-   CHECK:HELD-FACTS FILE-HELD @ ?do  i KEPT? if i WORD-FACT+ then  loop ;
+   0  HELD-FACTS FILE-HELD @ ?do i KEPT? if 1 + then loop  PIECES U64+
+   HELD-FACTS FILE-HELD @ ?do  i KEPT? if i WORD-FACT+ then  loop ;
 
 
 : SEALED-N ( -- n ) 0  OLD-RECS-N 0 ?do i OLD-REC SEALED-NOW? if 1 + then loop ;
@@ -2663,8 +2673,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : FACT-ROW ( n -- n n )
    {: at:n :}
    at OBJ-PTR LE:U64@ {: ix:n :}
-   ix CHECK:HELD-RETIRED = if  at 40 +  -1 exit  then
-   ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
+   ix HELD-RETIRED = if  at 40 +  -1 exit  then
+   ix HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
    text 8 +  text OBJ-PTR LE:U64@ +  text ;
 
 \ BUILT row row's build-table row for the text laid at start, FACTS row count's, with no time and
@@ -3687,15 +3697,17 @@ variable RD-END
    40 RD-COUNT 0 ?do STORE-CK loop ;
 
 
+EXPORT CHECK:HELD-UNDEFINE
+
 \ FACTS (FACTS+): each row a retirement of a record made before it (its count of the piece's records,
 \ never below the last retirement's), a text for a record, or a text of kind CHECK:HELD-LAID or -UNDEFINE.
 : FACTS-CK ( -- )
    RD-AT @ FACTS-AT !
    0  16 RD-COUNT 0 ?do
       RD-U64 {: last:n ix:n :}
-      ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
+      ix HELD-RETIRED =  ix HELD-AMENDED =  or if
          RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
-         ix CHECK:HELD-AMENDED = if
+         ix HELD-AMENDED = if
             file sum count RECS-N @ ID-REF-CK drop  RD-U64 RD-SKIP  last
          else
             RD-U64 {: made:n :}
@@ -3704,7 +3716,7 @@ variable RD-END
             made
          then
       else
-         ix CHECK:HELD-UNDEFINE <  ix 0 >=  or if BAD then
+         ix HELD-UNDEFINE <  ix 0 >=  or if BAD then
          RD-U64 RD-SKIP  last
       then
    loop drop ;
@@ -4945,6 +4957,8 @@ CAST: >XT-CELL ( ^n -- ^[ -- ] )
    read if r XREF-REC XREF:RETIRE then
    file 0<> if r CHANGER+ then ;
 
+EXPORT CHECK:FACTS!
+
 \ A record's text held again for it. An earlier file's record's text, which an
 \ amender wrote again, also changes that record and is read back.
 : LINK-TEXT ( bool -- )
@@ -4953,9 +4967,9 @@ CAST: >XT-CELL ( ^n -- ^[ -- ] )
    RD-NAME {: a:^ u:n :}
    GOOD? 0= if E-COMP-STATE throw then
    read file sum count FACT-REC {: r:n :}
-   file 0= if a u r CHECK:FACTS! exit then
+   file 0= if a u r FACTS! exit then
    r CHANGER+
-   a u r CHECK:FACTS!
+   a u r FACTS!
    read if a u r READ-FACTS then ;
 
 
@@ -4974,23 +4988,26 @@ variable DUE-MADE
    0 DUE-ROWS !
    REPLAY-AT @  REPLAY-LEFT @ 0 ?do
       {: at:n :}
-      at OBJ@ CHECK:HELD-RETIRED = if
+      at OBJ@ HELD-RETIRED = if
          i 1 + DUE-ROWS !  at 32 + OBJ@ DUE-MADE !  unloop exit
       then
       at FACT-ROW drop
    loop drop ;
 
 
+EXPORT CHECK:HELD-LAID
+EXPORT CHECK:LAY-FACTS
+
 \ The FACTS row at the reader held again.
 : REPLAY-ROW ( bool -- )
    {: read:bool :}
    RD-U64 {: ix:n :}
-   ix CHECK:HELD-RETIRED = if read LINK-RETIRED exit then
-   ix CHECK:HELD-AMENDED = if read LINK-TEXT exit then
+   ix HELD-RETIRED = if read LINK-RETIRED exit then
+   ix HELD-AMENDED = if read LINK-TEXT exit then
    RD-NAME {: a:^ u:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
-   ix CHECK:HELD-UNDEFINE =  read  and if a u READ-UNDEFINE then ;
+   ix HELD-LAID = if a u LAY-FACTS then
+   ix HELD-UNDEFINE =  read  and if a u READ-UNDEFINE then ;
 
 
 \ The next n FACTS rows held again. The reader opens at REPLAY-AT: MAKE-DEF reopens it per entry.
@@ -5027,13 +5044,15 @@ variable DUE-MADE
    LINK-DATA ;
 
 
+EXPORT CHECK:PLACE-FACTS
+
 \ FACTS replayed, then placed at here with the rest the file held: a link replays the rows LINK-OBJECT left; a cold
 \ build, which applied them as it held them, replays every row. Cold and warm builds lay one text.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
    read 0= if REPLAY-FROM then
    read REPLAY-LEFT @ REPLAY-ROWS
-   FILE-HELD @ CHECK:PLACE-FACTS ;
+   FILE-HELD @ PLACE-FACTS ;
 
 \ ---- the open ------------------------------------------------------------------
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
@@ -5120,8 +5139,10 @@ TYPED-VARIABLE EXITER [ -- ]
    global set-current
    construct step moved PROGRESS ! ;
 
+EXPORT CHECK:STORES-OPEN
+
 : CHECK-IN ( -- )
-   SAVED-CEILING @ CHECK:OPEN
+   SAVED-CEILING @ STORES-OPEN
    construct step checked PROGRESS ! ;
 
 \ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
@@ -5170,13 +5191,15 @@ TYPED-VARIABLE EXITER [ -- ]
    ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  READ-ALIAS  2 +loop ;
 
 
+EXPORT CHECK:TYPE-END
+
 \ As a file's load or its piece after a request starts; no request no part made started it until LOAD sets TOP-EV.
 \ After an unclean cut (NEST) ENTRY-ROOT is the requested file's root, but that part is UNLINKABLE, so its INPUT never
 \ holds it.
 : MARKS ( -- )
    -1 TOP-EV !
-   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
-   TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
+   ndict@ FILE-REC !  HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
+   TFAM:TFAM-N@ FILE-TFAM !  TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
@@ -5259,6 +5282,11 @@ TYPED-VARIABLE EXITER [ -- ]
    x xu SOURCE-ROOT:CURRENT$ STR= 0= if x xu SOURCE-ROOT:ROOT! then ;
 
 
+EXPORT CHECK:LINEAR?
+EXPORT CHECK:LINEAR-ENTRY
+EXPORT CHECK:TYPE-NAME$
+EXPORT CHECK:LINEAR-TEXT$
+
 \ A type entry for each family and linear type the piece declared, none for a linear type
 \ its compile read from an entry; its name sits at CP, so `here` stays.
 : TYPE-ENTRIES ( -- )
@@ -5266,16 +5294,16 @@ TYPED-VARIABLE EXITER [ -- ]
       i TFAM:ENTRY? 0= if
          ndict@ {: ix:n :}
          i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
-         i TFAM:ENTRY-TEXT$ ix CHECK:FACTS!
+         i TFAM:ENTRY-TEXT$ ix FACTS!
          i ix TFAM:ENTRY!
       then
    loop
-   CHECK:TYPE-END FILE-TYPES @ ?do
-      i CHECK:LINEAR? if
-         i CHECK:TYPE-NAME$ CHECK:LINEAR-ENTRY 0 < if
+   TYPE-END FILE-TYPES @ ?do
+      i LINEAR? if
+         i TYPE-NAME$ LINEAR-ENTRY 0 < if
             ndict@ {: ix:n :}
-            i CHECK:TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
-            i CHECK:LINEAR-TEXT$ ix CHECK:FACTS!
+            i TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
+            i LINEAR-TEXT$ ix FACTS!
          then
       then
    loop ;
@@ -5321,10 +5349,12 @@ TYPED-VARIABLE EXITER [ -- ]
    req PIECE+  RAN+ ;
 
 
+EXPORT CHECK:DROP-FACTS
+
 \ Part FILE-PART's texts placed from OBJECT, as a link places them, then its BUILT row with time t.
 : PIECE-PLACE ( n -- )
    {: t:n :}
-   FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
+   FILE-HELD @ DROP-FACTS  false LINK-FACTS
    here NULL-PTR - FILE-END !          \ the piece's span ends after its texts
    t PIECE-STORES-TIME BUILT+ ;
 
@@ -5616,7 +5646,7 @@ TYPED-VARIABLE EXITER [ -- ]
    then
    OWNED-N @ OWNED-CELLS * {: at:n :}
    at OWNED-CELLS + OWNED-RESERVE
-   src CHECKER-RESOLVE:REC>INDEX  at OWNED !
+   src REC>INDEX  at OWNED !
    pa pu OWNED-COPY  at 2 + OWNED !  at 1 + OWNED !
    na nu OWNED-COPY  at 4 + OWNED !  at 3 + OWNED !
    a u OWNED-COPY  at 6 + OWNED !  at 5 + OWNED !
@@ -5660,14 +5690,14 @@ TYPED-VARIABLE EXITER [ -- ]
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY {: want:n :}
    INTERPRETER:DEF-CLOSE
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or  and  want SET-FLAGS
-   r 5 OWNED$  want CHECK:FACTS! ;
+   r 5 OWNED$  want FACTS! ;
 
 \ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no
 \ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i MAKE-OWNED loop
-   0 CHECK:PLACE-FACTS
+   0 PLACE-FACTS
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
@@ -5730,6 +5760,8 @@ TYPED-VARIABLE EXITER [ -- ]
    0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
    construct step routed PROGRESS ! true ;
 
+EXPORT CHECK:STORES-CLOSE
+
 \ Undo the last step that ran; false once none is left.
 : UNDO ( -- bool )
    PROGRESS @
@@ -5745,7 +5777,7 @@ TYPED-VARIABLE EXITER [ -- ]
          RESTORE FORGET-SPACE construct step shadowed PROGRESS ! true
       ENDOF
       checked OF
-         CHECK:CLOSE construct step moved PROGRESS ! true
+         STORES-CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
          INTERPRETER:;RECORD-RUNS  EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true

@@ -4,8 +4,8 @@
 \ one's.
 package PROGRAM-DIAG-BADSIG
 public
-: START ( -- ) MULTI-ERR-BEGIN ;
-: FINISH ( -- n ) MULTI-ERR-END ;
+: START ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 ;package
 
 PROGRAM-DIAG-BADSIG:START

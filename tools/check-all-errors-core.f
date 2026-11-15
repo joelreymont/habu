@@ -216,10 +216,10 @@ variable CA-RC                          \ how the last run's check ended
    status 0 <> IF status throw THEN ;
 
 : CA-WARNED ( [ -- ] -- ) {: q :}
-   WARN-DIAGS @ {: warn:n :}
-   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
+   CHECK:WARN-DIAGS @ {: warn:n :}
+   -1 CHECK:WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
    q catch {: rc:n :}
-   warn WARN-DIAGS !
+   warn CHECK:WARN-DIAGS !
    rc 0 <> IF rc throw THEN ;
 
 public
@@ -250,9 +250,9 @@ public
 \ has open, so the scope opens at neutral top level, and closing it restores
 \ the caller's package on the clean and the throwing path alike.
 : SESSION ( [ -- ] -- ) {: q :}
-   MULTI-ERR-BEGIN
+   CHECK:MULTI-ERR-BEGIN
    [: [: q CA-WARNED ;] CHECK:SCOPED ;] catch {: rc:n :}
-   MULTI-ERR-END drop
+   CHECK:MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 
 private

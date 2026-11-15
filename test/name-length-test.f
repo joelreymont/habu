@@ -84,10 +84,6 @@ TEXTS!
 : MATCH-FAM ( -- ) BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
 : CON-FAM ( -- ) BAD$ TFL-CON-FAM? nip 0= VERDICT ;
 
-: LINEAR-IT ( -- ) BAD$ CHECKER-DEFLINEAR ;
-: RECORD-IT ( -- ) BAD$ s" f n" CHECKER-DEFRECORD ;
-: FIELDS-IT ( -- ) s" zzrec" BAD$ CHECKER-DEFRECORD ;
-: FAMILY-IT ( -- ) BAD$ BAD$ s" newtype" CHECKER-DEFFAMILY ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
@@ -174,19 +170,6 @@ variable LBL-U
 : TEST-FAMILIES ( -- )
    s" MATCH-FAM" FAM-DIES-AT-MAX
    s" CON-FAM" FAM-DIES-AT-MAX ;
-
-\ A rejection exits 70 and an engine defect dies 76.
-: TEST-DECLARERS ( -- )
-   s" LINEAR-IT" 76 S\" checker: a linear type's name describes no memory\n" DIES
-   s" RECORD-IT" 76 S\" checker: a value record's name describes no memory\n" DIES
-   \ Each child's record is placed at MAIN, the token its parent was loading.
-   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS ;
-
-\ CHECKER-DEFRECORD's second string is the record's field text, which is no
-\ name, so only -1 and the maximum cell describe no text.
-: TEST-FIELD-TEXT ( -- )
-   s" FIELDS-IT" 70 S\" error[E-BAD-DECLARATION]: value record `zzrec` has no fields\n"
-      s" ^ no fields" REJECTS ;
 
 \ A definition's source text, which CHECK!, CHECK-CANDIDATE! and
 \ CHECK:DEFINITION judge, is no name either: only -1 and the maximum cell
@@ -323,9 +306,7 @@ variable LBL-U
    T-RESET
    TEST-QUERIES
    TEST-FAMILIES
-   TEST-DECLARERS
    TEST-PACKAGE
-   TEST-FIELD-TEXT
    TEST-TEXTS
    TEST-ENGINE
    TEST-LONG

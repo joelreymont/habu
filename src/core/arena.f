@@ -8,6 +8,7 @@
 \ declared type's width in bytes.
 
 package ARENA-DECL
+EXPORT CHECK:REJECT-DUPLICATE
 
 private
 
@@ -44,8 +45,17 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 : OTHER-FREE ( ^u8 n ^u8 n n -- )
    {: name:^ nameu:n sfx:^ sfxu:n wid:n :}
    name nameu sfx sfxu LBUF:LBUF-SUFFIXED {: a:^ u:n :}
-   a u wid search-wl 0 <> if a u name nameu CHECK:REJECT-DUPLICATE then ;
+   a u wid search-wl 0 <> if a u name nameu REJECT-DUPLICATE then ;
 
+EXPORT CHECK:CHECKER-ARENA-INFO
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-MODE@
+EXPORT CHECK:CHECKER-LBUF-NAME-OK?
+EXPORT CHECK:CHECKER-QPKG$
+EXPORT CHECK:CHECKER-QTAIL$
+EXPORT CHECK:CHECKER-QUALIFIED?
+EXPORT CHECK:CHECKER-STORAGE-REJECT
+EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
+EXPORT CHECK:STG-NO-NAME
 \ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
 \ NAME.
 : PRIVATE-FREE ( ^u8 n ^u8 n -- )
@@ -54,7 +64,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
    CHECKER-QTAIL$ sfx sfxu LBUF:LBUF-SUFFIXED wid search-wl 0= if exit then
-   name nameu sfx sfxu LBUF:LBUF-SUFFIXED name nameu CHECK:REJECT-DUPLICATE ;
+   name nameu sfx sfxu LBUF:LBUF-SUFFIXED name nameu REJECT-DUPLICATE ;
 
 \ NAME's words taken in the section the declaration does not write are
 \ rejected at NAME: a qualified Q:TAIL writes Q's public one.

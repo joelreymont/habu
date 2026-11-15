@@ -46,4 +46,23 @@ s\" : EPV-KEPT ( -- bool ) s\q EPV-ONE\q s\q -- n n\q TRUST-DECL? ;"
 s\" : EPV-REJ ( -- bool ) s\q EPV-ONE\q s\q -- n n\q TRUST-DECL-REJECTED? ;"
    s" error[E-UNDEFINED]: cannot find word `TRUST-DECL-REJECTED?`" ENGINE-PRIVATE:TCE-REJECTS
 
+\ A program rebinds the family-arity defer the checker runs.
+s" : MYAR ( n -- n ) drop 0 ; : SETIT ( -- ) ['] MYAR is TFAM-ARITY-XT ;" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
+\ A program rebinds the defer that checks each declared name.
+s" : MYPRE ( ^u8 n -- ) 2drop ; : SETIT ( -- ) ['] MYPRE is TYPE-DECL:TDECL-NAME-PREFLIGHT-XT ;" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
+\ A program states a primitive row for its own word, so a caller is checked
+\ against an effect the definition does not have.
+s\" : FOOB ( -- n ) 1 ;  s\q FOOB\q CHECK:PRIM-OPEN 8 CHECK:PRIM-ATOM 2 CHECK:PRIM-ATOM s\q \q true false CHECK:PRIM-CLOSE  : T2 ( -- n ) FOOB ;" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
+\ A program opens a primitive row and ends the primitive rows.
+s\" s\q T:R\q CHECK:PRIM-OPEN s\q \q false false CHECK:PRIM-CLOSE : P6 ( -- ) ; CHECK:PRIMS-END" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
+\ A program trusts its own word to an effect it does not have.
+s\" : FOOB ( -- n ) 1 ; s\q FOOB\q s\q -- n n\q TRUST : T ( -- n ) FOOB + ;" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
+\ A program takes the xt installer that walks every visible word.
+s" ' CHECKER-RESOLVE:EACH-VISIBLE drop" ENGINE-PRIVATE:TCE-CATCH ENGINE-PRIVATE:E-REJECT T=
+
 T-REPORT

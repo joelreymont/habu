@@ -258,6 +258,12 @@ variable HELP-U
 
 : SD-KIND$ ( -- ^u8 n ) s" structure" ;
 
+EXPORT CHECK:CON-OF
+EXPORT CHECK:SIG-DELIM-CHAR?
+EXPORT CHECK:SIG-NEST
+EXPORT CHECK:TYPE-MAY-ARRIVE-XT
+EXPORT CHECK:UNSTORED-REASON
+EXPORT CHECK:WIDTH-FAM
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
 \ field naming a DEFLINEAR con already relies on.

@@ -281,6 +281,8 @@ private
 : USE-SLOT ( n -- ^u8 n bool )
    cells USE-WIDS-OFF + data-base + @ WID-PKG ;
 
+EXPORT CHECK:PKG-LIVE-XT
+EXPORT CHECK:USE-SLOT-XT
 : INSTALL ( -- )
    [: LIVE ;] is PKG-LIVE-XT
    [: USE-SLOT ;] is USE-SLOT-XT ;
@@ -369,15 +371,20 @@ names: XREF-FIND-INDEX
 : XREF-FIND-CURRENT-INDEX ( ^u8 n -- n )
    get-current XREF-FIND-WL-INDEX ;
 
+package XREF
+private
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+
 \ A qualified head resolves as the checker's does, a part of the open package
 \ first, so `undefine` finds the word the checker's guard then judges.
 : XREF-FIND-TARGET-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = if -1 exit then
    q 0 < if a u XREF-FIND-CURRENT-INDEX exit then
-   a q CHECKER-RESOLVE:HEAD-ROW {: ns:^ :}
+   a q HEAD-ROW {: ns:^ :}
    ns XREF-FOUND? 0= if -1 exit then
    a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
+;package
 
 : XREF-REQUIRE-INDEX ( n -- n )
    dup 0 >= if exit then
@@ -411,13 +418,16 @@ CAST: GRID-RETIRE-XT ( n -- [ ^n -- ] )
    rec target GRID-RETIRE-OWNER
    source target <> IF rec source GRID-RETIRE-OWNER THEN ;
 
+EXPORT CHECK:HOLD-RETIRED
+EXPORT CHECKER-RESOLVE:REC>INDEX
+
 public
 
 \ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED)
 \ before the grid action drops the record's checker link, so a link replays it
 \ before the first record the compile made after it (the linker's LINK-OBJECT).
 : RETIRE ( ^n -- ) {: rec:^ :}
-   rec CHECKER-RESOLVE:REC>INDEX  rec XREF-WORDLIST  CHECK:HOLD-RETIRED
+   rec REC>INDEX  rec XREF-WORDLIST  HOLD-RETIRED
    rec GRID-RETIRE
    rec RETIRE-RAW ;
 
@@ -521,11 +531,12 @@ public
 package GENERATED-DECL-NAME-PREFLIGHT
 
 private
+EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 \ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
 : NAMESPACE-EXISTS? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
-   a split CHECKER-RESOLVE:HEAD-ROW XREF-FOUND? ;
+   a split HEAD-ROW XREF-FOUND? ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
@@ -546,7 +557,7 @@ private
 : CHECK ( ^u8 n -- ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF EXIT THEN
-   a q CHECKER-RESOLVE:HEAD-ROW {: ns:^ :}
+   a q HEAD-ROW {: ns:^ :}
    ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
    ns XREF-FOUND? 0= IF EXIT THEN
    ns XREF:SEALED? 0= IF EXIT THEN
@@ -562,8 +573,10 @@ public
 
 private
 
+EXPORT TYPE-DECL:TDECL-NAME-PREFLIGHT-XT
+
 : INSTALL ( -- )
-   [: CHECK ;] is TYPE-DECL:TDECL-NAME-PREFLIGHT-XT ;
+   [: CHECK ;] is TDECL-NAME-PREFLIGHT-XT ;
 
 INSTALL
 seal-package
@@ -604,6 +617,9 @@ seal-package
 
 package XREF
 private
+EXPORT CHECK:CHECKER-UNDEFINE
+EXPORT CHECK:CHECKER-USIGS-TRUNCATE-FROM-RAW
+EXPORT CHECK:DOES-COMPANION?-XT
 \ The checker overlay asks this same test of a live definer a replayed
 \ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
 \ definer's clause, codeless, is paired where the overlay publishes it.
@@ -929,27 +945,6 @@ public
 
 \ The installed provider holds direct code references. Retire every source-level
 \ rebinding seam and mutable provider cell before the engine-prefix seal.
-undefine PKG-LIVE-XT
-undefine USE-SLOT-XT
-undefine USE-SLOT-BOOT
-undefine CWIN-STATE
-undefine CALL-FREEZE-XT
-undefine CALL-FREEZE-INSTALL
-undefine U-DRAIN-XT
-undefine U-DRAIN-INSTALL
-undefine TAIL-CAPTURE-XT
-undefine TAIL-CAPTURE-DEFAULT
-undefine TAIL-CAPTURE-INSTALL
-undefine DOES-COMPANION?-XT
-undefine CHECKER-PKG-LIVE-DEFAULT
-undefine CHECKER-PKG-BOOT-LIVE
-undefine CHECKER-PKG-MIRROR
-undefine CHECKER-PKG-CONTEXT
-undefine CHECKER-RESOLVE:AUTHORITY
-undefine CHECKER-PKG-CONTEXT-REJECT
-undefine CHECKER-VERIFY-WINDOW
-undefine TFAM-PKG-XT
-undefine TFAM-PKG$*
 package PKG-AUTH
 undefine INSTALL
 undefine LIVE
@@ -962,35 +957,7 @@ seal-package
 \ The declaration owner holds CHECKER-RESYNC's entry by its xt, which keeps the
 \ name through the seal where SLOT and SLOTS lose theirs: the product still
 \ resolves SCOPE in the package's private wordlist. Retire it so the owner is
-\ the only way in. MIRROR is public for the checker overlay's direct calls,
-\ compiled above; retire it too.
+\ the only way in.
 package CHECKER-RESYNC
 undefine SCOPE
-public
-undefine MIRROR
-;package
-
-\ The checker overlay's public words are the checker's own calls, compiled
-\ above in src/core/checker.f. Retire their names so no source reaches the
-\ engine's replay writers through them.
-package CHECKER-OVERLAY
-public
-undefine OPEN-SCOPE
-undefine CLOSE-SCOPE
-undefine MARKS
-undefine ROLLBACK
-undefine HIDE
-undefine UNHIDE
-undefine SCOPE-BYTES
-undefine SAVE-SCOPE
-undefine RESTORE-SCOPE
-undefine FILE-DONE
-undefine PUBLISH
-undefine CLAUSE
-undefine OPEN-PACKAGE
-undefine SECTION
-undefine CLOSE-PACKAGE
-undefine OPEN-USING
-undefine CLOSE-USING
-undefine RETIRE
 ;package

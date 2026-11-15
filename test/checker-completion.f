@@ -622,8 +622,8 @@ variable DOES-USES
 
 : CASE-USE-NAMES ( -- )
    NAMED-TEXT$ TEXT-U !  TEXT-A !
-   REJECTION:CAPTURE  MULTI-ERR-BEGIN
-   [: NAMED-USES ;] catch  MULTI-ERR-END {: rc:n tally:n :}
+   REJECTION:CAPTURE  CHECK:MULTI-ERR-BEGIN
+   [: NAMED-USES ;] catch  CHECK:MULTI-ERR-END {: rc:n tally:n :}
    REJECTION:BUFFER-OFF
    s" the load goes on past the rejected body under a naming use handler" T-LABEL
    rc 0 T=

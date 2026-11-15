@@ -865,8 +865,8 @@ REJECTION:BUFFER$ s\" \"message\":\"a locals group names only locals; the signat
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking.
-: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-: TR-ME-END ( -- n ) MULTI-ERR-END ;
+: TR-ME-BEGIN ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: TR-ME-END ( -- n ) CHECK:MULTI-ERR-END ;
 TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
 s" multi-err collects both rejects" T-LABEL

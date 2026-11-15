@@ -1,5 +1,8 @@
 \ operand-rows.f - the `parses:`, `parses-through:` and `names:` words.
 
+package CHECK
+
+global
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them, checked
 \ by the checker and kept in it by W's symbol and in W's facts text, for the
@@ -28,3 +31,4 @@ TRUSTED: names: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
    parse-name CHECKER-NAMES-ROW ;
 INTRINSIC-NAMES INTRINSIC
+;package

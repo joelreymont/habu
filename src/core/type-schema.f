@@ -96,6 +96,8 @@ private
 : SCH-ROOT-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the roots [lo,hi)
    SCH-ROOT-BASE lo hi ARENA-CELLS-ZERO ;
 
+EXPORT CHECKER-REG:GROW
+
 public
 
 : SCHEMA-RESET ( -- )           \ base state; node 0, the nil sentinel, stays
@@ -107,7 +109,7 @@ SCHEMA-RESET
 
 : SCH-GROW ( n -- ) {: need:n :}
    need SCH-CAP-V @ 2 * max {: nc:n :}
-   SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  CHECKER-REG:GROW
+   SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  GROW
    nc SCH-CAP-V ! ;
 
 private
@@ -120,7 +122,7 @@ public
 
 : SCH-ROOT-GROW ( n -- ) {: need:n :}
    need SCH-ROOT-CAP-V @ 2 * max {: nc:n :}
-   SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  CHECKER-REG:GROW
+   SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  GROW
    nc SCH-ROOT-CAP-V ! ;
 
 private
@@ -168,6 +170,9 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
    id T-NODE? IF RES-TRUE EXIT THEN
    id 0 > id SCH-N @ < and ;
 
+EXPORT CHECK:ARENA-ROWS-ENSURE
+EXPORT CHECK:ARENA-ROWS-RELEASE
+EXPORT CHECK:WRITE-WINDOW-CK
 : T-NEW-ID ( -- n )
    SCH-T-P SCH-T-CAP SCH-T-N @ 1 + SCH-REC CELL / ARENA-ROWS-ENSURE
    SCH-T-N @ {: i:n :}
@@ -424,7 +429,7 @@ private
 
 : SCH-RBF-GROW ( -- )
    SCH-RBF-CAP-V @ 2 * {: nc:n :}
-   SCH-RBF-P  SCH-RBF-CAP-V @ SCH-RBF-REC *  nc SCH-RBF-REC *  CHECKER-REG:GROW
+   SCH-RBF-P  SCH-RBF-CAP-V @ SCH-RBF-REC *  nc SCH-RBF-REC *  GROW
    nc SCH-RBF-CAP-V ! ;
 : SCH-RBF-ENSURE ( -- )
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN

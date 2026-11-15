@@ -201,6 +201,14 @@ public
    ;MATCH
    entry READ-FIXED ;
 
+private
+EXPORT CHECK:EFFECT-DIN-CELLS
+EXPORT CHECK:EFFECT-DOUT-CELLS
+EXPORT CHECK:EFFECT-FIELD-SPAN
+EXPORT CHECK:EFFECT-INIT-LAYOUT
+EXPORT CHECK:EFFECT-MATCH-CELLS
+EXPORT CHECK:EFFECT-QUERY
+public
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `^u8 n` is two terms and two cells, while one term of
 \ a three-cell family is one term and three cells. The checker publishes cells.

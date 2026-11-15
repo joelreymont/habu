@@ -849,7 +849,7 @@ private
    CHK-LABEL CHK-RUN-QPATH+
    s"  REJECTION:LABEL!" CHK-RUN-SP
    CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
-   s" 0 WARN-DIAGS !" CHK-RUN-SP ;
+   s" 0 CHECK:WARN-DIAGS !" CHK-RUN-SP ;
 
 \ The engine comments a leading `#!` line only at the start of a file it reads,
 \ so the source's own is commented here, with the engine's rewrite.

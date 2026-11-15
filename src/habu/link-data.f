@@ -543,7 +543,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ place.
 : WRITE-PROGRAM ( ^u8 n bool -- )
    {: path:^ pathu:n macho:bool :}
-   ENGINE? @ if 0 CHECK:PLACE-FACTS then
+   ENGINE? @ if 0 PLACE-FACTS then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap
       macho EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-CACHED

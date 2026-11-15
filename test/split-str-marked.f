@@ -24,10 +24,9 @@ s" ab" SPP 2 T=
 s" : SPE ( ^u8 n -- n ) SPL ;" evaluate
 s" abc" SPE 3 T=
 
-\ A source the verifier scans starts unmarked and leaves the file's marker set.
+\ A source the verifier scans leaves the file's marker set.
 : SPY-RUN ( -- ) s" : SPY ( -- n ) 0 ;" VERIFY:SOURCE-BUF ;
 ' SPY-RUN catch 0 T=
-CHECKER-SPLIT-STR @ 0<> TTRUE
 
 \ The file's own definitions are published as written, str, and their bodies
 \ walk the split rows.

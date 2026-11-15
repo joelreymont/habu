@@ -245,7 +245,7 @@ DT-MULTI-SRC!
 : DT-MULTI ( -- )
    DT-MULTI-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
 REJECTION:CAPTURE
-MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
+CHECK:MULTI-ERR-BEGIN ' DT-MULTI catch CHECK:MULTI-ERR-END
 2 T=  0 T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE

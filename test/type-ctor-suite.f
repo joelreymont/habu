@@ -44,8 +44,8 @@ TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 \ An engine family's generated word is protected before anything names the family.
 s" undefine SPAN-SPAN:MAKE" TCE-PROTECTED
 
-: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+: TWX-MULTI-ERR-BEGIN ( -- ) CHECK:MULTI-ERR-BEGIN ;
+: TWX-MULTI-ERR-END ( -- n ) CHECK:MULTI-ERR-END ;
 
 SUMTYPE zres
   VARIANT ok  n ;VARIANT
