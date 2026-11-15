@@ -1061,10 +1061,17 @@ variable WANT-U
    S\" \n" WANT+
    WANT-BUF WANT-U @ ;
 
-: CODE$ ( n -- ptr u8 n )
-   SB-RESET
-   s" hb: uncaught throw code " SB-APPEND
-   FMT:SB-INT
+\ The head line of the record of an uncaught throw of code c.
+: THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
    SB$ ;
 
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
@@ -1076,7 +1083,7 @@ variable WANT-U
      timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
    ERR erru LEN>N code a u why whyu WANT$ CONTAINS? TTRUE
-   ERR erru LEN>N code CODE$ CONTAINS? TTRUE ;
+   ERR erru LEN>N code THROWN-HEAD$ CONTAINS? TTRUE ;
 
 \ With TMPDIR a link to a directory, the line the child prints is its own
 \ realpath. The directory is removed by name, so the parent's removal shows the

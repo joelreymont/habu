@@ -1,6 +1,7 @@
 \ gate-debug-lib.f - profiler and debugger gate cases, included by
 \ test/gate-debug.f.
 
+require src/lib/error.f
 require src/lib/string.f
 require tools/code-dump-core.f
 require src/lib/process.f
@@ -340,9 +341,20 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: a held clock counts nothing, so the identity survives 1000 resets at 50 us" type cr ;
 
-\ The engine's whole stderr for an uncaught throw of the code.
-: GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
-   SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
+\ The head and place lines of the record of an uncaught throw of code c
+\ thrown at `at`, a PATH:L:C.
+: GDB-THROWN$ ( n ptr u8 n -- ptr u8 n )
+   {: c:n at:ptr atu:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
+   GE-SB-LF s"  --> " SB-APPEND at atu SB-APPEND GE-SB-LF
+   SB$ ;
 
 \ prof-rate refuses a negative interval and one past the OS timer's longest,
 \ keeping the rate; GDB-FIELD reads digits, so the code is printed negated.
@@ -353,7 +365,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    S\" s\" prof-rate took -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
    UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
-   E-PROF-RATE GDB-UNCAUGHT$ s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR
+   E-PROF-RATE s" <input>:1:4" GDB-THROWN$
+   s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
    S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN

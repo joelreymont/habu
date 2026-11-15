@@ -154,12 +154,20 @@ variable Q-POOL-RC
    ix Q-SRC CODEGEN:APPEND-DECIMAL
    Q-SRC-LF ;
 
-\ The engine reports an uncaught throw by its code, so the needle carries the
-\ code the test expects rather than a copy of its digits.
-: Q-THROW-NEEDLE ( n -- ptr u8 n ) {: code:n :}
+\ The head line of the record of an uncaught throw of code c.
+: Q-THROW-NEEDLE ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
    Q-NEEDLE CODEGEN:RESET
-   s" uncaught throw code -" Q-NEEDLE CODEGEN:APPEND-STRING
-   0 code - Q-NEEDLE CODEGEN:APPEND-DECIMAL
+   s" error[" Q-NEEDLE CODEGEN:APPEND-STRING
+   nameu 0= if s" E-THROW" else name nameu then
+   Q-NEEDLE CODEGEN:APPEND-STRING
+   s" ]: " Q-NEEDLE CODEGEN:APPEND-STRING
+   textu 0= if
+      s" nothing caught a throw of code " Q-NEEDLE CODEGEN:APPEND-STRING
+      c Q-NEEDLE CODEGEN:APPEND-DECIMAL
+   else text textu Q-NEEDLE CODEGEN:APPEND-STRING then
    Q-NEEDLE CODEGEN:CONTENTS ;
 
 : Q-RUN-STDIN ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr srcu:n :}

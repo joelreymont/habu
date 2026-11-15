@@ -7,6 +7,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -154,14 +155,28 @@ variable LA-DANGLING-LINK-U
    s" a dangling-symlink --load path keeps the open diagnostic" T-LABEL
    erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
 
-\ Nesting each argv file in its own evaluate keeps an uncaught throw's line and status.
+\ The head line of the record of an uncaught throw of code c.
+: LA-THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
+   SB$ ;
+
+\ Nesting each argv file in its own evaluate keeps an uncaught throw's record
+\ and status.
 : LA-THROW-SHAPE ( -- )
    LA-ARGV0  LA-THROW$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
    s" an uncaught throw in a --load file exits 67" T-LABEL
    rc 67 T=
    s" an uncaught throw in a --load file names its code" T-LABEL
-   erru LA-ERR$ s" hb: uncaught throw code 7141" CONTAINS? TTRUE ;
+   erru LA-ERR$ 7141 LA-THROWN-HEAD$ CONTAINS? TTRUE ;
 
 public
 
