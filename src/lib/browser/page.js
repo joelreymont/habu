@@ -141,7 +141,6 @@ function clearImage() {
   const old = image;
   image = null;
   old.remove();
-  URL.revokeObjectURL(old.src);
 }
 
 export function svg(bytes) {
@@ -153,7 +152,9 @@ export function svg(bytes) {
     if (image === next) fail(new Error("SVG image could not be decoded"));
   };
   image = next;
-  next.src = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
+  // A data: URL, the one image source beyond 'self' that an MCP Apps host's
+  // img-src grants (ext-apps 2026-01-26, Security); blob: images are refused.
+  next.src = `data:image/svg+xml;base64,${bytes.toBase64()}`;
   frame.append(next);
 }
 

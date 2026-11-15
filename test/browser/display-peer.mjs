@@ -1,5 +1,8 @@
 // A foreign Wasm/browser peer, not a Habu build driver. The checked display.f
 // fixture drives the production turn protocol, CLI and (with --chrome) DOM.
+// With --chrome the page is served under an MCP Apps host's image policy,
+// img-src 'self' data:, so its SVG renders only from a data: URL; that SVG
+// must run no script, fetch no external reference and follow no link.
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -113,17 +116,15 @@ async function browser() {
     if (path === "/module.wasm") return new Response(bytes, { headers: { "Content-Type": "application/wasm" } });
     if (path === "/") {
       const page = readFileSync(join(root, "index.html"), "utf8").replace('src="host.js"', 'src="peer-boot.js"');
-      return new Response(page, { headers: { "Content-Type": "text/html" } });
+      // An MCP Apps host's image policy: an SVG shown from any other source,
+      // a blob: URL included, is blocked and fails the SVG cases.
+      return new Response(page, { headers: { "Content-Type": "text/html",
+        "Content-Security-Policy": "img-src 'self' data:" } });
     }
     if (path === "/peer-boot.js") return new Response(`
       import { Module } from '/turn.js';
       const load = Module.load;
       Module.load = async (...args) => window.subject = await load.call(Module, ...args);
-      const create = URL.createObjectURL;
-      const revoke = URL.revokeObjectURL;
-      window.created = []; window.revoked = [];
-      URL.createObjectURL = (blob) => { const url = create.call(URL, blob); created.push([url, blob.type]); return url; };
-      URL.revokeObjectURL = (url) => { revoked.push(url); revoke.call(URL, url); };
       await import('/host.js');
     `, { headers: { "Content-Type": "text/javascript" } });
     if (path === "/mount") return new Response(
@@ -194,7 +195,7 @@ async function browser() {
       return { disabled: document.querySelector('input').disabled, canvas: [r.width, r.height, canvas.width, canvas.height],
         visible: getComputedStyle(canvas).visibility, image: image?.src, natural: image && [image.naturalWidth, image.naturalHeight],
         fit: image && getComputedStyle(image).objectFit, text: document.querySelector('#text').textContent,
-        error: document.querySelector('#text').className, created, revoked, script: window.svgScript ?? 0 };
+        error: document.querySelector('#text').className, script: window.svgScript ?? 0 };
     })()`);
     // The screenshot's RGB at each clip-space [x, y] of the canvas, as the
     // page decodes it.
@@ -229,7 +230,6 @@ async function browser() {
     assert.deepEqual(start.natural, [400, 100]);
     assert.equal(start.visible, "hidden");
     assert.equal(start.fit, "contain");
-    assert.equal(start.created[0][1], "image/svg+xml");
     assert.equal(start.script, 0);
     const pixel = await evaluate(`(() => { const c = document.createElement('canvas'); c.width=400; c.height=100;
       const ctx=c.getContext('2d'); ctx.drawImage(document.querySelector('img'),0,0);
@@ -240,7 +240,6 @@ async function browser() {
     await until(() => evaluate("document.querySelector('img')?.naturalHeight === 400"));
     const blue = await state();
     assert.deepEqual(blue.canvas, start.canvas, "SVG replacement must retain canvas layout and buffer size");
-    assert.deepEqual(blue.revoked, [start.image]);
     const portrait = await call("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(output, "portrait.png"), Buffer.from(portrait.data, "base64"));
     await evaluate("oldError?.call(oldImage, new Event('error')); oldLoad?.call(oldImage, new Event('load'))");
@@ -396,8 +395,6 @@ async function browser() {
     assert.equal((await state()).script, 0);
     assert.equal(requests.includes("/svg-external"), false, "SVG image must not fetch external references");
     assert.equal(requests.includes("/svg-link"), false, "SVG image must not navigate links");
-    const final = await state();
-    assert.deepEqual(final.revoked, final.created.slice(0, -1).map(([url]) => url), "every replaced image URL must be revoked");
     await command("text");
     const shot = await call("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(output, "display.png"), Buffer.from(shot.data, "base64"));

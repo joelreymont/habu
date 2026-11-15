@@ -24,7 +24,7 @@ if (!file || !output || !title || flag !== "--chrome" || !chrome)
   throw new Error("usage: bun test/browser/app-peer.mjs PAGE DIR TITLE --chrome EXECUTABLE");
 const page = readFileSync(file);
 const code = readFileSync(join(dirname(file), "code.json"), "utf8");
-const CSP = "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'self'";
+const CSP = "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'self'; img-src 'self' data:";
 const INPUT = { arguments: { name: "Zürich" } };
 const PARAMS = { structuredContent: { name: "Zürich ✓" } };
 const STRANGER = { structuredContent: { name: "stranger" } };

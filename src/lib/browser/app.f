@@ -11,7 +11,8 @@
 \ app.js's bytes, so it changes exactly when the page a host keeps changes.
 \ The page fetches nothing and runs under ChatGPT's view CSP:
 \ script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:;
-\ worker-src blob:; connect-src 'self'. The five files, beside this one, are
+\ worker-src blob:; connect-src 'self'; img-src 'self' data:, so page.js
+\ shows an SVG from a data: URL. The five files, beside this one, are
 \ read into dictionary buffers as it loads.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
 \ PAGE+ and CODE+ write only the caller's BUF.
