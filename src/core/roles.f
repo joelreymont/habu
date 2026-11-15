@@ -10,9 +10,13 @@
 \ verify-source.f's definition report. A nominal is one cell, distinct from n
 \ and every other nominal, with no widening. The builder takes the upper-case
 \ surface name and the lowercase family tail separately.
-$200 constant DTC-CAP
-create DTC-BUF DTC-CAP allot
-variable DTC-U
+
+\ The table grows: a DEFTYPE name may be as long as any family name, and any
+\ source can call DTC+. Its cells are scratch, so an image holds none.
+$200 constant DTC-INIT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE DTC-P   variable DTC-U   variable DTC-CAP
+CHECKER-REG:}SCRATCH
 variable DTC-NAME-OFF
 variable DTC-NAME-U
 variable DTC-SIG-OFF
@@ -20,16 +24,16 @@ variable DTC-SIG-U
 
 : DTC-CLEAR ( -- ) 0 DTC-U ! ;
 
-\ Any source can call DTC+, so the length is compared with the room left: in a
-\ sum, a length near the maximum cell wraps back under the capacity.
+: DTC-BUF ( -- ptr u8 ) DTC-P @ ;
+
 : DTC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < u DTC-CAP DTC-U @ - > or IF
-      s" nominal: converter text too long" 70 die
+   DTC-U @ u + DTC-CAP @ > IF
+      DTC-U @ u + DTC-CAP @ 2 * max DTC-INIT max {: nc:n :}
+      DTC-P @ DTC-CAP @ nc SR-GROW DTC-P !
+      nc DTC-CAP !
    THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@  DTC-BUF DTC-U @ + c!
-      DTC-U @ 1 + DTC-U !  1+
-   REPEAT drop ;
+   a DTC-BUF DTC-U @ + u ARENA-COPY
+   DTC-U @ u + DTC-U ! ;
 
 : DTC-NAME$ ( -- ptr u8 n )
    DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ ;
