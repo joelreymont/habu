@@ -1755,8 +1755,13 @@ CK-USE-SNAP-HEADER USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 \ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
 \ before user source.
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base USE-DEPTH-CELL + @ ;
-variable CHECKER-VERIFY-PKG-DEPTH
-0 CHECKER-VERIFY-PKG-DEPTH !
+\ The verifier window's state: none open, open inside the caller's scope (the
+\ overlay was open), or owning a scope of its own (check-walk.f's window).
+0 constant VERIFY-WINDOW-NONE
+1 constant VERIFY-WINDOW-SHARED
+2 constant VERIFY-WINDOW-OWNED
+variable CHECKER-VERIFY-WINDOW
+VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW !
 
 : CHECKER-PKG-MIRROR ( -- ^u8 n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
@@ -13386,6 +13391,8 @@ private
 
 public
 
+: OPEN? ( -- bool ) ON @ 0 <> ;
+
 \ A scope reads a buffer of its own, so a package open as it starts was opened
 \ outside it (PKG-OUTSIDE-CELL).
 : OPEN-SCOPE ( bool n -- ) {: neutral:bool tag:n :}
@@ -13696,11 +13703,11 @@ public
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : CHECKER-USING-PUSH ( ^u8 n -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF s" CHECKER-USING-PUSH" WINDOW-REJECT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-USING-PUSH" WINDOW-REJECT THEN
    CHECKER-OVERLAY:OPEN-USING ;
 
 : CHECKER-USING-POP ( ^u8 n -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF s" CHECKER-USING-POP" WINDOW-REJECT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-USING-POP" WINDOW-REJECT THEN
    CHECKER-OVERLAY:CLOSE-USING ;
 
 \ The path a u, then the name as written t tu.
@@ -13708,7 +13715,7 @@ public
    a u CHECKER-PACKAGE-LONG? IF a u t tu PACKAGE-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
    a u CTOR-PKG?-XT IF a u t tu CTOR-PKG-REJECT THEN
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:OPEN-PACKAGE THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u CHECKER-OVERLAY:OPEN-PACKAGE THEN
    a u CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 package CHECKER-REG
@@ -13716,21 +13723,21 @@ package CHECKER-REG
 ;package
 
 : CHECKER-PUBLIC ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF PKG-PUB-CELL CHECKER-OVERLAY:SECTION THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF PKG-PUB-CELL CHECKER-OVERLAY:SECTION THEN
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
 package CHECKER-REG
 ' CHECKER-PUBLIC DECLARATIONS PUBLIC-OFF + xt!
 ;package
 
 : CHECKER-PRIVATE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF PKG-PRI-CELL CHECKER-OVERLAY:SECTION THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF PKG-PRI-CELL CHECKER-OVERLAY:SECTION THEN
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
 package CHECKER-REG
 ' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
 ;package
 
 : CHECKER-END-PACKAGE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
    CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN {: ci:n :} drop
    ci 0 >= IF
       CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !  ci CHECKER-PACKAGE-U! EXIT
@@ -13752,25 +13759,10 @@ package CHECKER-REG
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: CHECKER-VERIFY-PKG-START ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF NESTED-REJECT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
-   RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE
-   1 CHECKER-VERIFY-PKG-DEPTH !
-   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
-   CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
-
-: CHECKER-VERIFY-PKG-DONE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF s" CHECKER-VERIFY-PKG-DONE" WINDOW-REJECT THEN
-   -1 CHECKER-OVERLAY:CLOSE-SCOPE
-   0 BIND-HORIZON !
-   VERIFY-FLOOR0 @ PASS-FLOOR !
-   0 CHECKER-VERIFY-PKG-DEPTH ! ;
-
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF s" CHECKER-VERIFY-FILE" WINDOW-REJECT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-VERIFY-FILE" WINDOW-REJECT THEN
    CHECKER-OVERLAY:SCOPE-BYTES map-anon 0= 0= IF
       s" checker: file scope allocation failed" 76 die
    THEN {: frame:^ :}
@@ -13783,8 +13775,6 @@ package CHECKER-REG
    release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
 
 package CHECKER-REG
-' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
-' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
 ' CHECKER-VERIFY-FILE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FILE-OFF + xt!
 ;package
 
@@ -13990,7 +13980,7 @@ package CHECKER-REG
 : CHECKER-REPLAY-NAME-OK? ( ^u8 n -- bool )
    {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF
       s" E-PKG-CONTEXT" REJECTION:OPEN
       s" the storage record for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` is made outside the engine's verifier window" REJECTION:EMIT-STR
@@ -14077,7 +14067,7 @@ variable CK-PEND-IX
 CHECKER-REG:}SCRATCH
 
 : CK-LIVE-PEND? ( -- bool )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 =
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE =
    CHK-CAND @ 0 = and
    data-base PEND-CELL + @ 0 <> and ;
 
@@ -14094,7 +14084,7 @@ CHECKER-REG:}SCRATCH
 \ A live check that certifies nothing ends the window: the definition recorded
 \ last is no longer the one being compiled.
 : CK-CLOSE-CLEAR ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    0 CK-CLOSED-SYM !  0 CK-CLOSED-OPEN ! ;
 
@@ -16321,7 +16311,7 @@ BODY-PEND-BASE 0 CELL-ROW+
 \ The pending created body's `,` cells, up to the first other allocation, become its storage
 \ grid; a record that left the dictionary or a run broken by a DP lowering attaches nothing.
 : CHECKER-BODY-CLOSE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF EXIT THEN
    BODY-PEND-ORD @ BODY-PEND-OCC @ BODY-PEND-BASE @
    {: ord:n occ:n base:n :}
    -1 BODY-PEND-ORD !  0 BODY-PEND-OCC !  0 BODY-PEND-BASE !
@@ -16355,7 +16345,7 @@ BODY-PEND-BASE 0 CELL-ROW+
 \ under the reissued occurrence when still its own.
 : RECORD-LINK-CREATED ( n n ^n -- )
    {: effect:n control:n rec:^ :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF EXIT THEN
    rec CREATED-MET-OCC {: met:n :}
    met 0= IF CHECKER-BODY-CLOSE THEN
    rec NULL-PTR = IF EXIT THEN
@@ -16435,7 +16425,7 @@ package CHECKER-REG
 \ dictionary word unpublished. Publication joins that ordinal with the exact
 \ row the registrar just accepted; another spelling cannot substitute a row.
 : RECORD-PEND! ( n n -- ) {: sym:n effect:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF EXIT THEN
    ndict@ RECORD-PEND-IX !
    sym RECORD-PEND-SYM ! effect RECORD-PEND-EFF ! ;
 
@@ -16797,12 +16787,6 @@ private
    sym UNDEFINE-SYM
    was CHECKER-REC-SYM ! ;
 ;package
-
-: CHECKER-UNDEFINE ( ^u8 n -- ) {: a:^ u:n :}
-   a u CHECKER-UNDEFINE-GUARD
-   a u CHECKER-RECORD-NAME 2drop
-   CHECKER-REC-SYM @ CHECK:UNDEFINE
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:RETIRE THEN ;
 
 : CHECKER-DEFLINEAR ( ^u8 n -- )
    CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
@@ -17461,7 +17445,7 @@ CHECKER-REG:}SCRATCH
 \ An export of a does> definer publishes the definer's clause too, under the
 \ clause's name in the export's wordlist. PRIV is EXPORT-SYM's record.
 : EXPORT-CARRIES? ( ^u8 n ^n -- bool ) {: a:^ u:n priv:^ :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF RES-FALSE EXIT THEN
    priv NULL-PTR <> IF priv CHECKER-OVERLAY:CARRIES? EXIT THEN
    a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
 
@@ -17629,7 +17613,7 @@ CHECKER-REG:}SCRATCH
    v  flt 0= ok and ;
 
 : DEFINER-TOK ( n -- bool ) {: id:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF
       id INTRINSIC-VARIABLE =  id INTRINSIC-CONSTANT = or IF
          -1 UNDEFERR !  0 OK !  -1 FAILSET !  RES-TRUE EXIT
       THEN
@@ -21003,7 +20987,7 @@ package CHECKER-REG
 \ The symbol of the effect the last created record links, 0 when it links none.
 \ A created record starts unlinked.
 : LASTC-LINK-SYM ( -- n )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF 0 EXIT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF 0 EXIT THEN
    data-base LASTC-CELL + 0 ptr-field @ {: rec:^ :}
    rec NULL-PTR = IF 0 EXIT THEN
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
@@ -21092,12 +21076,125 @@ CHECKER-REG:SCRATCH{
 variable IMMERR
 CHECKER-REG:}SCRATCH
 
-: NEUTRAL-PARSE-IMM? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u tok-imm? 0= IF RES-FALSE EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < IF RES-FALSE EXIT THEN
+\ --- source words made immediate.
+\ The verifier runs no definition, so an `immediate` after a source definition
+\ sets no dictionary flag: the verifier appends an entry for the definition's
+\ symbol here, and a body check reads it beside the flag. An `undefine` of an
+\ immediate word appends one that ends it; the newest entry for a symbol
+\ decides. A frame rewinds it as it rewinds the parse-imm table, for the same
+\ reason.
+16 constant SIMM-CAP-INIT
+create SIMM-SYMS-BOOT SIMM-CAP-INIT cells allot
+create SIMM-ONS-BOOT SIMM-CAP-INIT cells allot
+PERSISTED-PTR-VARIABLE SIMM-SYMS-P   PERSISTED-PTR-VARIABLE SIMM-ONS-P
+variable SIMM-CAP-V   variable SIMM-N
+SIMM-SYMS-BOOT SIMM-SYMS-P !   SIMM-ONS-BOOT SIMM-ONS-P !   SIMM-CAP-INIT SIMM-CAP-V !
+0 SIMM-N !
+: SIMM-SYMS ( -- ^n ) SIMM-SYMS-P @ ;
+: SIMM-ONS ( -- ^n ) SIMM-ONS-P @ ;
+
+: SIMM-GROW ( n -- ) {: need:n :}
+   need SIMM-CAP-V @ 2 * max {: nc:n :}
+   SIMM-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
+   SIMM-SYMS-P ob nb CHECKER-REG:GROW   SIMM-ONS-P ob nb CHECKER-REG:GROW
+   nc SIMM-CAP-V ! ;
+
+: SIMM-ENSURE ( n -- ) {: need:n :}
+   need SIMM-CAP-V @ < IF exit THEN
+   need 1 + SIMM-GROW ;
+SIMM-SYMS-P SIMM-CAP-V CELL SIMM-N CHECK:STORE+
+SIMM-ONS-P SIMM-CAP-V CELL CHECK:TABLE+
+
+: SIMM-REWIND ( n -- )
+   {: n:n :}
+   n 0 < n SIMM-N @ > or IF
+      s" checker: immediate table rewind outside the table" 76 die
+   THEN
+   SIMM-SYMS n SIMM-N @ ARENA-CELLS-ZERO
+   SIMM-ONS n SIMM-N @ ARENA-CELLS-ZERO
+   n SIMM-N ! ;
+
+: SOURCE-IMM? ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
+   SIMM-N @ BEGIN dup 0 > WHILE
+      1 -
+      dup cells SIMM-SYMS + @ sym = IF
+         cells SIMM-ONS + @ 0 <> IF RES-TRUE ELSE RES-FALSE THEN EXIT
+      THEN
+   REPEAT drop RES-FALSE ;
+
+: SIMM-APPEND ( n n -- ) {: sym:n on:n :}
+   SIMM-N @ SIMM-ENSURE
+   sym SIMM-N @ cells SIMM-SYMS + !
+   on SIMM-N @ cells SIMM-ONS + !
+   SIMM-N @ 1 + SIMM-N ! ;
+
+\ The verifier's `immediate`, after the definition of SYM, 0 for none.
+: CHECKER-IMMEDIATE ( n -- ) {: sym:n :}
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF EXIT THEN
+   sym SOURCE-IMM? sym 0= or IF EXIT THEN
+   sym -1 SIMM-APPEND ;
+
+: CHECKER-UNDEFINE ( ^u8 n -- ) {: a:^ u:n :}
+   a u CHECKER-UNDEFINE-GUARD
+   a u CHECKER-RECORD-NAME 2drop
+   CHECKER-REC-SYM @ {: sym:n :}
+   sym CHECK:UNDEFINE
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF EXIT THEN
+   a u CHECKER-OVERLAY:RETIRE
+   sym SOURCE-IMM? IF sym 0 SIMM-APPEND THEN ;
+
+\ A U spells the word SYM names.
+: TOK-SYM-IMM? ( ^u8 n n -- bool ) {: a:^ u:n sym:n :}
+   a u tok-imm? 0 <> IF RES-TRUE EXIT THEN
+   sym SOURCE-IMM? ;
+
+: PIMM-AT ( ^u8 n -- )
+   REJECTION:AT  s" declared here" REJECTION:EMIT-STR
+   REJECTION:HELP ;
+
+\ The sym a parse-imm row of CNT tokens names by A U, for the load and the
+\ verifier alike; a row the load cannot honour is rejected at its `parse-imm`
+\ token T TU.
+: PIMM-SYM ( ^u8 n n ^u8 n -- n ) {: a:^ u:n cnt:n t:^ tu:n :}
+   cnt 0 < IF
+      s" E-PARSE-IMM-COUNT" REJECTION:OPEN
+      s" parse-imm needs a token count of 0 or more" REJECTION:EMIT-STR
+      t tu PIMM-AT
+      s" give the number of source tokens the word reads" REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0= IF
+      s" E-UNDEFINED" REJECTION:OPEN
+      s" parse-imm names an undefined word '" REJECTION:EMIT-STR
+      a u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+      t tu PIMM-AT
+      s" define " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s"  before declaring its payload" REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   a u sym TOK-SYM-IMM? 0= IF
+      s" E-PARSE-IMM-NOT-IMMEDIATE" REJECTION:OPEN
+      s" parse-imm names '" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ', which is not immediate" REJECTION:EMIT-STR
+      t tu PIMM-AT
+      s" mark " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s"  `immediate` before its parse-imm, or drop the parse-imm: a word that is not immediate reads no payload"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   sym ;
+
+: NEUTRAL-SYM-IMM? ( ^u8 n n -- bool ) {: a:^ u:n sym:n :}
+   a u sym TOK-SYM-IMM? 0= IF RES-FALSE EXIT THEN
+   sym PIMM-IX 0 < IF RES-FALSE EXIT THEN
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
    EFFECT-DOUT-N 0= and ;
+
+: NEUTRAL-PARSE-IMM? ( ^u8 n -- bool )
+   2dup CHECKER-FIND-ACTIVE-SYM NEUTRAL-SYM-IMM? ;
 
 package CHECKER-PREFLIGHT
 
@@ -21135,19 +21232,14 @@ variable ACTIVE
 ;package
 
 : PARSE-IMM ( ^u8 n n -- ) {: a:^ u:n cnt:n :}
-   cnt 0 < IF s" checker: parse-imm needs a non-negative token count" 76 die THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
-   sym cnt PIMM-ADD ;
+   a u cnt SRCLOC:TOKEN$ PIMM-SYM cnt PIMM-ADD ;
 
-\ PARSE-IMM's row, added by the verifier's replay in a verifier window only.
-: CHECKER-PARSE-IMM ( ^u8 n n -- )
-   {: a:^ u:n cnt:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF EXIT THEN
-   cnt 0 < IF EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF EXIT THEN
-   sym cnt PIMM-ADD ;
+\ PARSE-IMM's row, added by the verifier's replay in a verifier window only;
+\ T TU is the `parse-imm` token.
+: CHECKER-PARSE-IMM ( ^u8 n n ^u8 n -- )
+   {: a:^ u:n cnt:n t:^ tu:n :}
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF EXIT THEN
+   a u cnt t tu PIMM-SYM cnt PIMM-ADD ;
 
 : PIMM-SKIP ( n -- ) {: cnt:n :}
    0 BEGIN dup cnt < WHILE
@@ -21174,8 +21266,8 @@ public
       rec CK-REC-WID WL:PRIMITIVES <> IF RES-FALSE EXIT THEN
       rec CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-IMM and 0 <> EXIT
    THEN
-   a u NEUTRAL-PARSE-IMM? IF RES-FALSE EXIT THEN
-   a u tok-imm? 0 <> ;
+   a u sym NEUTRAL-SYM-IMM? IF RES-FALSE EXIT THEN
+   a u sym TOK-SYM-IMM? ;
 
 ;package
 
@@ -21913,7 +22005,7 @@ variable IS-PEND-U                   \ and its length
 \ and the body binds against the whole store.
 : NAME-TOK ( -- )
    TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  TSTART @ NMOFF !  0 TOK0 !
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <>  CHK-PROBE @ 0=  and IF
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <>  CHK-PROBE @ 0=  and IF
       NMA @ NMU @ OWN-RECORD
    ELSE 0 THEN
    BIND-HORIZON ! ;

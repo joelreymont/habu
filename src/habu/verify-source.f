@@ -857,7 +857,13 @@ $1F constant LOADER-BITS
 variable SHADOWED
 variable RETIRED
 
+\ The symbol of the newest definition, which an `immediate` marks: 0 from its
+\ name until it is recorded, so one after a refused definition marks nothing.
+\ A definer that can end without DEFINED clears it as it starts.
+variable NEWEST-SYM
+
 : NAME-DECLARED ( ^u8 n -- )
+   0 NEWEST-SYM !
    LOADER-BIT SHADOWED @ or SHADOWED ! ;
 
 : NAME-RETIRED ( ^u8 n -- )
@@ -1172,6 +1178,17 @@ variable GROUP-AT
    p SOURCE@ - k PEND-OP-AT !
    p pu ;
 
+\ A declared parsing immediate runs as the load captures it, and its parse-name
+\ takes the payload raw from the input, across line ends, `\` and `(` as tokens:
+\ the payload never joins the body. Nothing of the subject runs, so its row, not
+\ the live dictionary, says the word is one; the quiet resolver leaves a using
+\ refusal to the definition's own check (FIND-SYM).
+: SKIP-PAYLOAD ( ^u8 n -- ) {: a:^ u:n :}
+   PIMM-N @ 0= IF EXIT THEN
+   a u CHECKER-FIND-QUIET-SYM PIMM-IX {: ix:n :}
+   ix 0 < IF EXIT THEN
+   ix PIMM-CNT@ 0 ?DO NEXT-RAW 2drop LOOP ;
+
 \ A local or a group skips BODY-TOKEN-SEEN, so it clears what the token before
 \ it told an `if`: a local, even one spelled as a target predicate, opens no
 \ target `if`. An immediate loader's path joins the body as its token, which
@@ -1207,6 +1224,7 @@ variable GROUP-AT
    ELSE
       TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
       TOKEN-A @ TOKEN-U @ BODY-APPEND
+      TOKEN-A @ TOKEN-U @ SKIP-PAYLOAD
    THEN ;
 
 : SKIP-BODY-TOKEN ( -- )
@@ -1215,7 +1233,8 @@ variable GROUP-AT
       TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN  IMM-OPERAND 2drop EXIT
    THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
-   TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
+   TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
+   TOKEN-A @ TOKEN-U @ SKIP-PAYLOAD ;
 
 \ SKIP-BODY-TOKEN for a definition body, which declares locals.
 : SKIP-DEF-TOKEN ( -- )
@@ -2172,6 +2191,7 @@ ENGINE-TARGET-INIT
    {: kind:^ kindu:n name:^ nameu:n eff:^ effu:n at:n end:n class:n :}
    name nameu RETAINED-SYM
    {: sym:n :}
+   sym NEWEST-SYM !
    sym 0= IF EXIT THEN
    kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
@@ -2370,7 +2390,9 @@ variable TRUSTED-DOES
    nameu 0= IF NAME-STOP THEN
    name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
-   name nameu RECORD-SYM? DEFINER-RETIRE ;
+   name nameu RECORD-SYM? {: sym:n :}
+   sym NEWEST-SYM @ = IF 0 NEWEST-SYM ! THEN
+   sym DEFINER-RETIRE ;
 
 : SEAL-ROW ( -- )
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF
@@ -2436,6 +2458,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : RECORD-DEFLINEAR ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
@@ -2510,6 +2533,7 @@ variable SUM-VAR-NEXT
    THEN ;
 
 : RECORD-SUMTYPE ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN {: name:^ nameu:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
@@ -2520,6 +2544,7 @@ variable SUM-VAR-NEXT
 \ The body keeps its ;ENUM, which the front end parses itself; one the input
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
+   0 NEWEST-SYM !
    DECL-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    BODY-RESET
@@ -2536,6 +2561,7 @@ variable SUM-VAR-NEXT
 \ The replay registers MAKE/UNMAKE, so `FAMILY:MAKE` resolves later in this
 \ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
 : RECORD-STRUCTURE-DECL ( -- )
+   0 NEWEST-SYM !
    DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu at nameu SEALED-NAME
@@ -2616,6 +2642,7 @@ variable STG-TYPE-U
 \ CHECKER-DEFFAMILY's record rejects a missing name, at the keyword, or a
 \ malformed header; a base on the name's line replays as NEWTYPE registers it.
 : RECORD-NEWTYPE ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ s" newtype" CHECKER-DEFFAMILY EXIT THEN
@@ -2642,6 +2669,7 @@ variable STG-TYPE-U
 \ A base replays as DEFTYPE registers it; a deferred or rejected family
 \ declares no converters.
 : RECORD-DEFTYPE ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
@@ -2673,6 +2701,7 @@ variable STG-TYPE-U
 \ span; consume it before resuming the statement scan so a type token cannot
 \ be interpreted as a new statement.
 : SCAN-STORAGE-NAME ( -- ^u8 n )
+   0 NEWEST-SYM !
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    2dup NAME-DECLARED
@@ -2821,6 +2850,7 @@ variable STG-TYPE-U
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
+   0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
@@ -2849,6 +2879,7 @@ variable STG-TYPE-U
 \ HEAP's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
 : RECORD-HEAP ( -- )
+   0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
@@ -2886,6 +2917,7 @@ variable STG-TYPE-U
 \ A record the input ends inside is rejected at its name, as the loader
 \ rejects it.
 : RECORD-VALUE-RECORD ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
@@ -3132,6 +3164,7 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    {: name:^ nameu:n at:n :}
    name nameu RECORD-SYM? SYM-IDENTITY drop 2swap 2drop RETAINED-SYM
    {: sym:n :}
+   sym NEWEST-SYM !
    sym 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
    VISIT-CUR @ ON-DEFINITION ;
@@ -3140,6 +3173,7 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
 \ does, and writes its record itself: the catch only disarms before a stop
 \ passes on.
 : RECORD-EXPORT ( -- )
+   0 NEWEST-SYM !
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
@@ -3699,14 +3733,15 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
 
 \ A top-level `s" X" n parse-imm` adds X's row as its load does, since nothing
-\ of the subject runs: n the previous token, X the last literal before it.
-: PARSE-IMM-ROW ( -- bool )
+\ of the subject runs: n the previous token, X the last literal before it, A U
+\ the `parse-imm` token.
+: PARSE-IMM-ROW ( ^u8 n -- bool ) {: a:^ u:n :}
    STR-LAST-KIND @ 0<> IF false EXIT THEN
    TOP-PREV-STR-KIND @ LIT-PATH <> IF false EXIT THEN
    TOP-PREV-U @ 0= IF false EXIT THEN
    TOP-PREV-A @ TOP-PREV-U @ num-parse {: cnt:n flt:bool num:bool :}
    num 0= flt or IF false EXIT THEN
-   TOP-PREV-STR-A @ TOP-PREV-STR-U @ cnt CHECKER-PARSE-IMM
+   TOP-PREV-STR-A @ TOP-PREV-STR-U @ cnt a u CHECKER-PARSE-IMM
    true ;
 
 : RECORD-DEFINER? ( ^u8 n -- bool ) {: a:^ u:n :}
@@ -3775,8 +3810,10 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR=CI IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
-   a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
-   a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
+   a u s" immediate" STR=CI IF
+      TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
+   THEN
+   a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF a u PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ A word that makes definitions when it runs (`;FUNCTION`) defines words this
    \ scan never reads: the checker marks the statement's wordlist and leaves a
@@ -4079,7 +4116,7 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
-   0 SHADOWED !  0 RETIRED !
+   0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
    TOP-CLOSE
    BEGIN
       NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
@@ -4166,7 +4203,9 @@ COMPOSE-INIT
 
 \ The owner's start opens the checker's engine overlay, so every name the
 \ action replays binds through the engine dictionary; the done closes it and
-\ restores the caller's scope on the clean and the throwing path alike.
+\ restores the caller's scope on the clean and the throwing path alike. With no
+\ overlay open before, the done also takes back every checker row the action
+\ recorded; inside an open one the rows stay in the caller's scope.
 : RUN-IN-SCOPE ( [ -- ] -- )
    CHECKER-SPLIT-STR @ {: split:n :}
    TICK-CONTEXT-RESET

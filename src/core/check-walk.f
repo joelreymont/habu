@@ -422,7 +422,7 @@
    -1 CRTGT !                              \ a refusal names the operand, as a tick's does
    POSTPONE-TARGET {: rec:^ sym:n :}
    rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
-   rec POSTPONE-IMM? IF rec POSTPONE-IMM EXIT THEN
+   rec POSTPONE-IMM?  sym SOURCE-IMM? or IF rec POSTPONE-IMM EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    sym TICK-REFUSED? IF EXIT THEN
    CHECKER-TAPE:K-TICK POST-KIND !
@@ -1559,7 +1559,8 @@ $C0 constant RBF.VDEFN-OFF
 $C8 constant RBF.VPRSN-OFF
 $D0 constant RBF.PROWE-OFF                 \ the kept parses rows' end
 $D8 constant RBF.NDICT-OFF                 \ the dictionary's record count
-$E0 constant RBF-REC
+$E0 constant RBF.SIMMN-OFF                 \ the source-immediate table's row count
+$E8 constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -1592,6 +1593,7 @@ $E0 constant RBF-REC
 : RBF.VPRSN ( ^a -- ^a ) RBF.VPRSN-OFF + ;
 : RBF.PROWE ( ^a -- ^a ) RBF.PROWE-OFF + ;
 : RBF.NDICT ( ^a -- ^a ) RBF.NDICT-OFF + ;
+: RBF.SIMMN ( ^a -- ^a ) RBF.SIMMN-OFF + ;
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -1664,6 +1666,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
    PIMM-N @ r RBF.PIMMN !
+   SIMM-N @ r RBF.SIMMN !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
    VERIFY-PARSES-N @ r RBF.VPRSN !
@@ -1695,7 +1698,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.VPRSN @ VERIFY-PARSES-N !
    r RBF.PROWE @ PROW-REWIND
    r RBF.DFEREND @ DFER-REWIND
-   r RBF.PIMMN @ PIMM-REWIND ;
+   r RBF.PIMMN @ PIMM-REWIND
+   r RBF.SIMMN @ SIMM-REWIND ;
 
 : RBF-PUSH ( -- )
    RBF-ENSURE
@@ -1823,6 +1827,38 @@ public
    q catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> IF rc throw THEN ;
+;package
+
+\ --- the verifier window --------------------------------------------------
+\ A window that opens the checker overlay itself owns a rollback frame, so its
+\ done takes back the rows the scanned source recorded; a window opened inside
+\ a caller's scope (the overlay already open) leaves them to that scope.
+: CHECKER-VERIFY-PKG-START ( -- )
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF NESTED-REJECT THEN
+   CHECKER-RESOLVE:AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
+   CHECKER-OVERLAY:OPEN? IF VERIFY-WINDOW-SHARED ELSE VERIFY-WINDOW-OWNED THEN {: win:n :}
+   win VERIFY-WINDOW-OWNED = IF RBF-PUSH THEN
+   [: RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE ;] catch {: rc:n :}
+   rc 0 <> IF
+      win VERIFY-WINDOW-OWNED = IF RBF-POP THEN
+      rc throw
+   THEN
+   win CHECKER-VERIFY-WINDOW !
+   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
+   CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
+
+: CHECKER-VERIFY-PKG-DONE ( -- )
+   CHECKER-VERIFY-WINDOW @ {: win:n :}
+   win VERIFY-WINDOW-NONE = IF s" CHECKER-VERIFY-PKG-DONE" WINDOW-REJECT THEN
+   -1 CHECKER-OVERLAY:CLOSE-SCOPE
+   0 BIND-HORIZON !
+   VERIFY-FLOOR0 @ PASS-FLOOR !
+   win VERIFY-WINDOW-OWNED = IF RBF-POP THEN
+   VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW ! ;
+
+package CHECKER-REG
+' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
+' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
 ;package
 
 : CHECK-CANDIDATE-START ( -- )

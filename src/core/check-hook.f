@@ -199,7 +199,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 : RAW-DECLARED ( ^u8 n ^u8 n -- )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su RAW-REG @ REG-XT execute
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or if exit then
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or if exit then
    data-base LASTC-CELL + 0 ptr-field @ {: rec:^ :}
    rec NULL-PTR = if exit then
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}

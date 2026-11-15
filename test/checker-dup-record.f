@@ -2,12 +2,17 @@
 \ (VERIFY:SOURCE-BUF-IN-SCOPE) leaves the record it collided with intact. CHECK
 \ refuses before its record step's first write: a later-wins entry without the
 \ first word's source authority fails its later callers E-CAP-TRUSTED (checker.f
-\ CHECK-REC-ADMIT).
+\ CHECK-REC-ADMIT). A scan under no checker scope takes back its rows when it
+\ ends.
 
 require src/lib/error.f
-require src/lib/test.f
 require src/lib/string.f
+require src/lib/test.f
 require src/habu/verify-source.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package CDR
 private
@@ -20,6 +25,19 @@ variable SRC-U
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
+create OUT $1000 allot
+create ERR $1000 allot
+
+\ A scan at top level, under no checker scope, then the scanned name defined:
+\ the scan's rows must not outlive it. A child, since a leaked row ends the
+\ load that holds it.
+: TOP-SCAN$ ( -- ^u8 n )
+   SB-RESET
+   S\" : CDR-NOP ( -- ) ;\n" SB-APPEND
+   S\" s\\\" : CDR-Q ( -- ) ; immediate s\\\" CDR-Q\\\" 1 parse-imm\" ' CDR-NOP VERIFY:SOURCE-BUF-THEN-IN-SCOPE\n" SB-APPEND
+   S\" : CDR-Q ( -- ) ; immediate\n" SB-APPEND
+   SB$ ;
+
 public
 
 \ Verify one span in the caller's scope with the checker's diagnostics
@@ -31,6 +49,17 @@ public
    REJECTION:CAPTURE
    [: ACT ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
+   rc ;
+
+\ The exit code of a child engine that reads TOP-SCAN$ as its program.
+: TOP-SCAN-RC ( -- n )
+   TOP-SCAN$ {: src:^ u:n :}
+   PROC-ARGV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN src u >LEN OUT $1000 >LEN ERR $1000 >LEN
+   PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE
+   PCAP-RESULT:>N {: outu:n erru:n rc:n :}
+   ERR erru type
    rc ;
 
 \ The same span in multi-error mode, where a rejection's record is kept instead
@@ -86,6 +115,9 @@ CDR-CALLS
 3 T=
 2 T=
 1 T=
+
+s" a top-level scan takes back its rows: its name defines after it" T-LABEL
+CDR:TOP-SCAN-RC 0 T=
 
 T-REPORT
 s" checker-dup-record: ok" type cr

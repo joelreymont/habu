@@ -556,6 +556,86 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
+\ --verify-only runs no definition, yet reads a source word made immediate as
+\ the load does: a body that calls it is rejected at the call.
+: TEST-SOURCE-IMMEDIATE ( -- )
+   s" a source word made immediate" T-LABEL
+   SB-RESET
+   s" : W1 ( -- ) ; immediate" SB-APPEND LF+
+   s" : USE ( -- n ) W1 73 ;" SB-APPEND LF+
+   s" source-immediate.f" FIXTURE!
+   s" " CHECK
+   0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
+   0 s" W1" 2 16 39 41 AT
+   s" --verify-only" CHECK
+   0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
+   0 s" W1" 2 16 39 41 FX-PATH$ CANON$ FX$ AT-IN
+   \ An `immediate` after a SUMTYPE marks nothing: W0 stays an ordinary call.
+   s" an immediate after a SUMTYPE" T-LABEL
+   SB-RESET
+   s" : W0 ( -- ) ;" SB-APPEND LF+
+   s" SUMTYPE fold VARIANT plain ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" immediate" SB-APPEND LF+
+   s" : USE ( -- n ) W0 73 ;" SB-APPEND LF+
+   s" sum-immediate.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   \ An `immediate` after `undefine W` marks nothing, so the new W is ordinary.
+   s" an immediate after an undefine" T-LABEL
+   SB-RESET
+   s" : W ( -- n ) 5 ;" SB-APPEND LF+
+   s" undefine W" SB-APPEND LF+
+   s" immediate" SB-APPEND LF+
+   s" : W ( -- n ) 6 ;" SB-APPEND LF+
+   s" : USE ( -- n ) W ;" SB-APPEND LF+
+   s" USE ." SB-APPEND LF+
+   s" undefine-immediate.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   \ `undefine` ends the immediacy of the word it retires.
+   s" a word made immediate, then undefined" T-LABEL
+   SB-RESET
+   s" : W ( -- ) 7 . ;" SB-APPEND LF+
+   s" immediate" SB-APPEND LF+
+   s" undefine W" SB-APPEND LF+
+   s" : W ( -- n ) 6 ;" SB-APPEND LF+
+   s" : USE ( -- n ) W ;" SB-APPEND LF+
+   s" USE ." SB-APPEND LF+
+   s" undefined-immediate.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT ;
+
+\ The fixture's one rejection, CODE at its `parse-imm` token, under the check
+\ and under --verify-only.
+: PIMM-REJECTED ( ^u8 n n n n n -- )
+   {: code:^ codeu:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" code codeu FIELD=
+   0 s" parse-imm" line col bs be AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" code codeu FIELD=
+   0 s" parse-imm" line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ A parse-imm row the load cannot honour is rejected at its `parse-imm`: the
+\ load compiles a payload a word not immediate never reads, which the check
+\ would skip.
+: TEST-PARSE-IMM-REJECT ( -- )
+   s" a parse-imm naming a word not immediate" T-LABEL
+   SB-RESET
+   s" : W ( -- ) ;" SB-APPEND LF+
+   s\" s\" W\" 1 parse-imm" SB-APPEND LF+
+   s" pimm-not-immediate.f" FIXTURE!
+   s" E-PARSE-IMM-NOT-IMMEDIATE" 2 9 21 30 PIMM-REJECTED
+   s" a parse-imm naming an undefined word" T-LABEL
+   SB-RESET
+   s\" s\" NOPE\" 1 parse-imm" SB-APPEND LF+
+   s" pimm-undefined.f" FIXTURE!
+   s" E-UNDEFINED" 1 12 11 20 PIMM-REJECTED
+   s" a parse-imm with a negative count" T-LABEL
+   SB-RESET
+   s\" s\" W\" -1 parse-imm" SB-APPEND LF+
+   s" pimm-count.f" FIXTURE!
+   s" E-PARSE-IMM-COUNT" 1 10 9 18 PIMM-REJECTED ;
+
 \ A refused `generates:` row is the verifier's own packet.
 : TEST-GENERATES ( -- )
    s" a generates: row naming no word" T-LABEL
@@ -3087,6 +3167,50 @@ HB-TARGET-LINUX? 0= [if]
    CERTIFIED
    s" " 0 LOADED ;
 
+\ The parse-imm table grows: a check and a load accept 40 declared parsing
+\ immediates, and the load runs each one at compile time.
+: PIMM-NAME+ ( n -- ) {: k:n :}
+   s" PI" SB-APPEND  k 10 / 48 + SB-APPEND-C  k 10 mod 48 + SB-APPEND-C ;
+
+\ Ends the line in the string builder and moves it onto the fixture text.
+: PIMM-LINE+ ( -- )
+   LF+ SB$ FX+ SB-RESET ;
+
+: TEST-GROWN-PARSE-IMM ( -- )
+   s" forty parsing immediates" T-LABEL
+   BASE$ s" grown-parse-imm.f" FX-P FS:JOIN-PATH FX-PU !
+   0 FX-U !
+   SB-RESET
+   s" variable HITS" SB-APPEND PIMM-LINE+
+   s" : HIT ( -- ) 1 HITS +! ;" SB-APPEND PIMM-LINE+
+   40 0 ?do
+      s" : " SB-APPEND  i PIMM-NAME+  s\"  ( -- ) HIT ; immediate s\" " SB-APPEND
+      i PIMM-NAME+  s\" \" 0 parse-imm" SB-APPEND PIMM-LINE+
+   loop
+   s" : USE ( -- n )" SB-APPEND
+   40 0 ?do s"  " SB-APPEND  i PIMM-NAME+ loop
+   s"  73 ;" SB-APPEND PIMM-LINE+
+   s" HITS @ . USE . cr" SB-APPEND PIMM-LINE+
+   FX-PATH$ FX$ FS:WRITE-ALL
+   CERTIFIED
+   s" " 0 LOADED
+   OUT$ s\" 40\n73\n" CONTAINS? TTRUE ;
+
+\ A declared parsing immediate takes its payload as the load runs it, so the
+\ check leaves the payload out of the body, whatever it spells.
+: TEST-PARSE-IMM-PAYLOAD ( -- )
+   s" parse-imm payloads that spell a word, a number, ; and (" T-LABEL
+   SB-RESET
+   s" : HIT ( -- ) parse-name drop drop ;" SB-APPEND LF+
+   s\" : PI00 ( -- ) HIT ; immediate s\" PI00\" 1 parse-imm" SB-APPEND LF+
+   s" : USE1 ( -- n ) PI00 zz 73 ;" SB-APPEND LF+
+   s" : USE2 ( -- ) PI00 73 ;" SB-APPEND LF+
+   s" : USE3 ( -- n ) PI00 ; 73 ;" SB-APPEND LF+
+   s" : USE4 ( -- n ) PI00 ( 73 ;" SB-APPEND LF+
+   s" parse-imm-payload.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED ;
+
 \ The load prints each `?` local's type on its output: a layout local's is the
 \ layout type, not the tag term its group's top cell carries.
 : TEST-SHOW-LAYOUT-LOCAL ( -- )
@@ -3159,6 +3283,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-REQUIRED-FIFO
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
+   TEST-SOURCE-IMMEDIATE
+   TEST-PARSE-IMM-REJECT
    TEST-GENERATES
    TEST-GENERATES-READS-NONE
    TEST-GENERATES-SHADOW
@@ -3229,6 +3355,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SEALED-DUPLICATE
    TEST-STALE-PARSE-IMM
    TEST-OWN-PARSE-IMM
+   TEST-GROWN-PARSE-IMM
+   TEST-PARSE-IMM-PAYLOAD
    TEST-SHOW-LAYOUT-LOCAL
    TEST-LITERAL-FIT
    FS:CLEANUP-RUN
