@@ -171,6 +171,7 @@ private
 
 : RENDER ( n -- ) {: code:n :}
    TOKEN-SPAN@ {: ta:ptr tu:n :}
+   code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
    KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 public

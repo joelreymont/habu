@@ -362,8 +362,12 @@ create NL NEWLINE c,
       a u i ANSWERS? if i xt execute then
    loop ;
 
+variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
+
 : AMBIGUOUS ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u [: a u ANSWERING ;] USING-AMBIGUOUS-REJECT
+   0 ANSWERERS !
+   [: 1 swap lshift ANSWERERS @ or ANSWERERS ! ;] a u ANSWERING
+   a u ANSWERERS @ USING-AMBIGUOUS-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 variable ANSWERED

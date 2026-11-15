@@ -11176,47 +11176,51 @@ variable SIG-COUNTED
 : EMIT-QUALIFIED ( ptr u8 n ptr u8 n -- ) {: p:ptr pu:n w:ptr wu:n :}
    p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
 
-\ Using slot ix offers the ambiguous family and no earlier slot names its
-\ package.
-: SGBAD-USED-FIRST? ( n -- bool ) {: ix:n :}
-   1 ix lshift SGBAD-USED @ and 0= IF RES-FALSE EXIT THEN
+\ Using slot ix is set in mask and no earlier slot set in it names its package.
+: UPKG-FIRST? ( n n -- bool ) {: ix:n mask:n :}
+   1 ix lshift mask and 0= IF RES-FALSE EXIT THEN
    RES-TRUE  ix 0 ?DO
-      1 i lshift SGBAD-USED @ and 0 <> IF
+      1 i lshift mask and 0 <> IF
          i CHECKER-USING$ ix CHECKER-USING$ CORE-STR= IF drop RES-FALSE THEN
       THEN
    LOOP ;
-: SGBAD-USED-N ( -- n )
-   0  CHECKER-USING-N 0 ?DO i SGBAD-USED-FIRST? IF 1 + THEN LOOP ;
-: SGBAD-USED-PKG$ ( n -- ptr u8 n ) CHECKER-USING$ PACKAGE-NAME$ ;
+: UPKG-N ( n -- n ) {: mask:n :}
+   0  CHECKER-USING-N 0 ?DO i mask UPKG-FIRST? IF 1 + THEN LOOP ;
+: UPKG-NAME$ ( n -- ptr u8 n ) CHECKER-USING$ PACKAGE-NAME$ ;
 
-: SGBAD-USED-NOTE ( -- )
+: UPKG-NOTE ( n -- ) {: mask:n :}
    s" packages" REJECTION:NOTE
    0  CHECKER-USING-N 0 ?DO
-      i SGBAD-USED-FIRST? IF
+      i mask UPKG-FIRST? IF
          dup 0 <> IF s" , " REJECTION:EMIT-STR THEN
-         i SGBAD-USED-PKG$ REJECTION:EMIT-STR  1 +
+         i UPKG-NAME$ REJECTION:EMIT-STR  1 +
       THEN
    LOOP drop ;
 \ What precedes the k-th of n spellings: nothing, `, `, or ` or ` the last.
-: SGBAD-USED-SEP ( n n -- ) {: k:n n:n :}
+: UPKG-SEP ( n n -- ) {: k:n n:n :}
    k 0= IF EXIT THEN
    k 1 + n = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR ;
-\ Each package's qualified spelling of family tail a u.
-: SGBAD-USED-SPELLINGS ( ptr u8 n -- ) {: a:ptr u:n :}
-   SGBAD-USED-N {: n:n :}
+\ Each package's qualified spelling of a u.
+: UPKG-SPELLINGS ( ptr u8 n n -- ) {: a:ptr u:n mask:n :}
+   mask UPKG-N {: n:n :}
    0  CHECKER-USING-N 0 ?DO
-      i SGBAD-USED-FIRST? IF
-         dup n SGBAD-USED-SEP
-         96 REJECTION:EMIT1  i SGBAD-USED-PKG$ a u EMIT-QUALIFIED
+      i mask UPKG-FIRST? IF
+         dup n UPKG-SEP
+         96 REJECTION:EMIT1  i UPKG-NAME$ a u EMIT-QUALIFIED
          96 REJECTION:EMIT1  1 +
       THEN
    LOOP drop ;
+\ The packages note and the help of a u, a `what` public in each package
+\ whose using slot is set in mask.
+: UPKG-HELP ( ptr u8 n ptr u8 n n -- ) {: wa:ptr wu:n a:ptr u:n mask:n :}
+   mask UPKG-NOTE
+   REJECTION:HELP
+   s" write the package's name before the " REJECTION:EMIT-STR
+   wa wu REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
+   a u mask UPKG-SPELLINGS ;
 \ The packages note and the help of the ambiguous family tail a u.
 : SGBAD-AMBIG-HELP ( ptr u8 n -- ) {: a:ptr u:n :}
-   SGBAD-USED-NOTE
-   REJECTION:HELP
-   s" write the package's name before the type family, as " REJECTION:EMIT-STR
-   a u SGBAD-USED-SPELLINGS ;
+   s" type family" a u SGBAD-USED @ UPKG-HELP ;
 
 \ The return and unsupplied kinds name the whole row, so their label
 \ sits on the declaring name.
@@ -14128,24 +14132,6 @@ FACTS-READ-DEFAULT
    -1 WALK-REC !
    sym 0 ;
 
-\ The used packages a bare token resolves in: the slots CK-USED-MARK set in
-\ CK-USED-MASK, in using-scan order, each package once.
-: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
-   1 swap lshift CK-USED-MASK @ and 0 <> ;
-: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
-   dup CK-USE-SLOT swap CK-USE-LEN@ ;
-: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
-   {: slot:n :}
-   slot UPKG-MATCHED?
-   slot 0 ?DO
-      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
-   LOOP ;
-: UPKG-EACH ( [ n -- ] -- )               \ XT on each package's slot
-   {: xt :}
-   USE-MAX 0 ?DO
-      i UPKG-FIRST? IF  i xt execute  THEN
-   LOOP ;
-
 \ The bare token s su names a global word and a public of the used package
 \ p pu; the global has no qualified form, so only the package's word can be
 \ written apart. Writes the record through its help and leaves it open: the
@@ -14167,45 +14153,15 @@ FACTS-READ-DEFAULT
    REJECTION:EMIT-STR
    s" the global word has no qualified form" REJECTION:EMIT-STR ;
 
-\ The ambiguous token, how many packages export it and how many are listed.
-CHECKER-REG:SCRATCH{
-PTR-VARIABLE UA-TOK-A   variable UA-TOK-U
-variable UA-COUNT   variable UA-SEEN
-CHECKER-REG:}SCRATCH
-
-: UA-NAME$ ( n -- ptr u8 n )              \ slot n's package, spelled
-   UPKG-NAME$ PACKAGE-NAME$ ;
-
-: UA-NOTE ( n -- )
-   UA-SEEN @ 0 <> IF s" , " REJECTION:EMIT-STR THEN
-   UA-NAME$ REJECTION:EMIT-STR  1 UA-SEEN +! ;
-
-\ Each package's qualified spelling, the last after `or`.
-: UA-HELP ( n -- )
-   UA-SEEN @ 0 <> IF
-      UA-SEEN @ 1 + UA-COUNT @ = IF s"  or " ELSE s" , " THEN
-      REJECTION:EMIT-STR
-   THEN
-   96 REJECTION:EMIT1
-   UA-NAME$ UA-TOK-A @ UA-TOK-U @ EMIT-QUALIFIED
-   96 REJECTION:EMIT1  1 UA-SEEN +! ;
-
-\ The bare token s su is public in each package whose using slot EACH runs
-\ its xt on. Writes the record through its help and leaves it open: the
-\ caller ends it.
-: USING-AMBIGUOUS-REJECT ( ptr u8 n [ [ n -- ] -- ] -- )
-   {: s:ptr su:n each :}
-   s UA-TOK-A !  su UA-TOK-U !
-   0 UA-COUNT !  [: drop  1 UA-COUNT +! ;] each execute
+\ The bare token s su is public in each package whose using slot is set in
+\ mask. Writes the record through its help and leaves it open: the caller ends
+\ it.
+: USING-AMBIGUOUS-REJECT ( ptr u8 n n -- ) {: s:ptr su:n mask:n :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
    96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
    s" ` is public in more than one used package" REJECTION:EMIT-STR
    s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   s" packages" REJECTION:NOTE
-   0 UA-SEEN !  [: UA-NOTE ;] each execute
-   REJECTION:HELP
-   s" write the package's name before the word, as " REJECTION:EMIT-STR
-   0 UA-SEEN !  [: UA-HELP ;] each execute ;
+   s" word" s su mask UPKG-HELP ;
 
 package CHECKER-RESOLVE
 public
@@ -14231,7 +14187,7 @@ public
       CHECKER-REJECT-RC REJECTION:STOP
    THEN
    why E-USING-AMBIGUOUS = IF
-      s su [: UPKG-EACH ;] USING-AMBIGUOUS-REJECT
+      s su CK-USED-MASK @ USING-AMBIGUOUS-REJECT
       CHECKER-REJECT-RC REJECTION:STOP
    THEN
    s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" 76 die ;

@@ -53,9 +53,14 @@ ED-RESET
 
 \ Payload types: n/f/r and con names, letter params within arity, ptr T, and
 \ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
-\ owner included; anything else, TK-EVIDENCE among them, is unresolved.
-: FIELD-FAM? ( ptr u8 n -- n bool )
-   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
+\ owner included; an ambiguous family is rejected, and anything else,
+\ TK-EVIDENCE among them, is unresolved.
+: FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF
+      drop
+      TFSR-AMBIG @ IF a u DECL-REJECT:TOKEN!  a u TDECL-AMBIG throw THEN
+      0 NO EXIT
+   THEN
    {: id:n :}
    id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN

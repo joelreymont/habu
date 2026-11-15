@@ -72,8 +72,12 @@ SD-RESET
 \ excludes, TK-EVIDENCE, has no declarer source can write.
 \ The declared family may be named only beneath a `ptr` (`ptr node`, `SPAN:span<ptr node>`);
 \ by value, as in `option<node>`, it is 7109.
-: FIELD-FAM? ( ptr u8 n -- n bool )
-   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
+: FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF
+      drop
+      TFSR-AMBIG @ IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
+      0 NO EXIT
+   THEN
    {: id:n :}
    id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN

@@ -2391,7 +2391,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ D's name NA NU and the effect SA SU the row states.
 : GENERATES-REFUSE ( ptr u8 n ptr u8 n n -- )
    {: na:ptr nu:n sa:ptr su:n kind:n :}
-   s" E-GENERATES-ROW" REJECTION:OPEN  na nu kind GENR-MESSAGE
+   kind GENR-BADSIG =  SGBAD-AMBIG?  and
+   IF s" E-USING-AMBIGUOUS" ELSE s" E-GENERATES-ROW" THEN
+   REJECTION:OPEN  na nu kind GENR-MESSAGE
    kind GENR-BADSIG = IF
       na nu sa su GENR-SIG-PARTS
    ELSE

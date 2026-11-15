@@ -3921,13 +3921,13 @@ private
    LOOP
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
+public
+
 \ Bit i set when using slot i offers the family tail na nu.
 : TFAM-USED-MASK ( ptr u8 n -- n ) {: na:ptr nu:n :}
    0  CHECKER-USING-N 0 ?DO
       i na nu TFAM-USED-FIND nip IF 1 i lshift or THEN
    LOOP ;
-
-public
 
 \ A bare tail resolves as a bare word does: the active package's exact row
 \ (private or public), inside a part `A:B` the row of its package A, the exact

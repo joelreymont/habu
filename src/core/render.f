@@ -1935,8 +1935,8 @@ PTR-VARIABLE HOLDER-FIRST
 
 
 
-: TDECL-TITLE ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n fa:ptr fu:n :}
-   s" E-BAD-DECLARATION" REJECTION:OPEN
+: TDECL-TITLE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: c:ptr cu:n ka:ptr ku:n fa:ptr fu:n :}
+   c cu REJECTION:OPEN
    s" bad " EMIT-STR  ka ku EMIT-STR  s"  declaration" EMIT-STR
    fu 0 > IF s"  `" EMIT-STR  fa fu EMIT-STR  96 EMIT1 THEN ;
 \ A rejected declaration of a kind and family: its token labeled with the
@@ -1944,7 +1944,7 @@ PTR-VARIABLE HOLDER-FIRST
 \ The caller ends the record.
 : TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n xa:ptr xu:n na:ptr nu:n :}
-   ka ku fa fu TDECL-TITLE
+   s" E-BAD-DECLARATION" ka ku fa fu TDECL-TITLE
    ta tu REJECTION:AT  wa wu EMIT-STR
    nu 0 > IF s" word" REJECTION:NOTE  na nu EMIT-STR THEN
    REJECTION:HELP  xa xu EMIT-STR ;

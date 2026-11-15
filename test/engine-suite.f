@@ -1098,6 +1098,16 @@ REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
 s" its help gives each qualified spelling" T-LABEL
 REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
+\ A variant payload naming that family is ambiguous too.
+s" a variant payload naming that family is rejected" T-LABEL
+s" SUMTYPE es-amb-sum VARIANT one es-amb<n> ;VARIANT ;SUMTYPE" ES-RES-REFUSE:CAPTURED 70 T=
+s" its record says the family is ambiguous" T-LABEL
+s" error[E-USING-AMBIGUOUS]: bad sumtype declaration `es-amb-sum`" ES-RES-REFUSE:HAS
+s" ^^^^^^ ambiguous type family" ES-RES-REFUSE:HAS
+s" its note names both packages" T-LABEL
+s" = packages: ES-AMB-A, ES-AMB-B" ES-RES-REFUSE:HAS
+s" its help gives each qualified spelling" T-LABEL
+s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" ES-RES-REFUSE:HAS
 ;using ;using
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
@@ -2240,7 +2250,7 @@ s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2242:39" ES-RES-REFUSE:HAS
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2252:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL

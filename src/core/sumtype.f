@@ -145,7 +145,7 @@ PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
-PTR-VARIABLE TDA-A   variable TDA-U   \ copy of the token TDECL-THROW armed with
+PTR-VARIABLE TDA-A   variable TDA-U   \ copy of the token TDECL-THROW or TDECL-AMBIG armed with
 variable TDECL-CODE                 \ the code TDW and TDF explain (0 = none armed)
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 \ A collected body, its tokens one blank apart.
@@ -226,6 +226,21 @@ public
    TDN-A @ TDN-U @ TDECL-TOK!
    na nu TDA-KEEP
    code throw ;
+
+\ Arms E-USING-AMBIGUOUS for the family tail a u, public in more than one used
+\ package, keeping a copy of it; answers the code for the caller to throw.
+: TDECL-AMBIG ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" ambiguous type family" s" " E-USING-AMBIGUOUS TDECL-ARM
+   a u TDA-KEEP
+   E-USING-AMBIGUOUS ;
+
+\ The record of a TDECL-AMBIG arming in a declaration of a kind and family,
+\ placed at the token ta tu. The caller ends it.
+: TDECL-AMBIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n :}
+   s" E-USING-AMBIGUOUS" ka ku fa fu TDECL-TITLE
+   ta tu REJECTION:AT  TDW-A @ TDW-U @ REJECTION:EMIT-STR
+   s" type family"  TDA-A @ TDA-U @  TDA-A @ TDA-U @ TFAM-USED-MASK  UPKG-HELP ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
 \ The family and variant stores go back through TFAM-REWIND (type-family.f), not
@@ -308,6 +323,9 @@ private
 
 \ TDECL-RUN reports only a code TDECL-CODE was armed with.
 : TDECL-REPORT ( -- )
+   TDECL-ARMED E-USING-AMBIGUOUS = IF
+      TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  TDECL-AMBIG-DIAG EXIT
+   THEN
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-ARMED TDECL-WORD-NOTE
    {: pa:ptr pu:n na:ptr nu:n :}
    pa pu  TDW-A @ TDW-U @  TDF-A @ TDF-U @  na nu  TDECL-DIAG ;
@@ -512,6 +530,11 @@ variable TDECL-FAM-ARITY
 : TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TDN-A @ TDN-U @ CORE-STR= ;
 
+\ Rejects the tail a u the last TFAM-SIG-RESOLVE found ambiguous.
+: TDECL-AMBIG-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   TFSR-AMBIG @ 0= IF EXIT THEN
+   a u TDECL-TOK!  a u TDECL-AMBIG throw ;
+
 \ A bare family payload is one logical schema root whose physical width is the
 \ referenced closed width: an arity-0 layout family (sum/enum/product) or cell
 \ family (nominal scalar, the reference a signature admits). Resolution is
@@ -520,7 +543,7 @@ variable TDECL-FAM-ARITY
 \ self-reference and rejects recursive. A family UNSTORED-REASON names, linear
 \ payloads and evidence families are rejected.
 : TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    {: id:n :}
    a u id UNSTORED-REASON IF E-TDECL-PAYLOAD TDECL-THROW THEN 2drop 2drop 2drop
    id TDECL-CUR-FAM @ = IF
@@ -600,7 +623,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ a parametric application). Mirrors TDECL-PAY-FAM?'s kind gate but keeps arity
 \ open -- the arity match happens in TDV-ARGS-BUILD once the args are counted.
 : TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    {: id:n :}
    id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
@@ -1281,11 +1304,11 @@ private
 \ the resolved family id, so MAKE consumes it as its family, UNMAKE reproduces
 \ it, and a swapped same-width enum field is a checker reject. Resolution is
 \ signature scope (TFAM-SIG-RESOLVE, in TFAM-RESOLVE's order; an ambiguity is
-\ unresolved). Anything else falls through to the payload grammar, which admits
+\ rejected). Anything else falls through to the payload grammar, which admits
 \ concrete non-linear layout/cell families (self-references reject recursive)
 \ and rejects parametric, linear and unknown types (E-TDECL-PAYLOAD).
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
    id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
