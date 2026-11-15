@@ -25,7 +25,6 @@ require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
-require tools/diag-origin-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
@@ -79,7 +78,7 @@ TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
 \ A buffer that holds a source, or text built from one, grows to what it
 \ holds: the engine loads a source file of any size (src/core/include.f), so
 \ the check refuses none for its size. The run file is the subject behind a
-\ prefix, with an origin mark on each definition.
+\ prefix.
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
@@ -801,26 +800,21 @@ private
 \ turns its warnings off. The check before the run wrote the warnings, each in
 \ its own file and placed: the run loads what that check checked, so its
 \ warnings would repeat them, naming the subject for every file and placing
-\ none. It shares the subject's first line when the subject follows it, and the
-\ origin markers add no line break, so line N of the run file is line N of the
-\ subject: the engine counts the lines of the file it reads when it refuses a
-\ statement.
+\ none. It shares the subject's first line when the subject follows it, so line
+\ N of the run file is line N of the subject: the engine counts the lines of the
+\ file it reads when it rejects a statement.
 : CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    s"  REJECTION:LABEL!" CHK-RUN-SP
    CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
    s" 0 WARN-DIAGS !" CHK-RUN-SP ;
 
-\ The origin pass appends the marked copy of the source file at the given path
-\ to the run buffer, reading it whole through check.f's own buffer. The engine comments a leading `#!` line only at the start
-\ of a file it reads, so the pass comments the source's own first, with the
-\ engine's rewrite: the scan then reads that line as a comment, and the marked
-\ copy carries the rewrite the run needs.
-: CHK-RUN-ORIGIN+ ( ptr u8 n -- )
+\ The engine comments a leading `#!` line only at the start of a file it reads,
+\ so the source's own is commented here, with the engine's rewrite.
+: CHK-RUN-SOURCE+ ( ptr u8 n -- )
    CHK-SRC-READ {: len:n :}
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
-   CHK-SRC-BUF len [: CHK-RUN-U @ + CHK-RUN-ROOM drop CHK-RUN-U @ + ;]
-   DIAG-ORIGIN-SOURCE>BUF CHK-RUN-U @ + CHK-RUN-U ! ;
+   CHK-SRC-BUF len CHK-RUN+ ;
 
 \ A named file runs as the command line runs it, loaded by its canonical path
 \ (CHK-APPEND-ENTRY): its own relative requires resolve against its directory,
@@ -846,7 +840,7 @@ private
    CHK-SUBJ-U @ 0 > if CHK-WRITE-MARKED then
    CHK-BUILD-PREFIX
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
-   CHK-SOURCE CHK-RUN-ORIGIN+ ;
+   CHK-SOURCE CHK-RUN-SOURCE+ ;
 
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET

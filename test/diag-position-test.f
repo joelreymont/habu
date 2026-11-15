@@ -1694,16 +1694,14 @@ variable RC
    s" ev-after.f" FIXTURE!
    s" E-MISMATCH" s" drop" 4 3 109 113 RUN-REFUSED-AT ;
 
-\ The fixture sets the origin as the check tool's marked copy does.
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
    SB-RESET
    s" true REJECTION:JSON !" SB-APPEND LF+
-   s" 3 3 38 REJECTION:ORIGIN!" SB-APPEND LF+
    s" : CONST ( n -- ) ( a note ) create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
-   s\" \"line\":4,\"column\":10,\"byte_start\":97,\"byte_end\":102" REJECT-RC LOADED
+   s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
 : GEN-LINES ( -- )

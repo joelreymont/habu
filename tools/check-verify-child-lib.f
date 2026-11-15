@@ -451,7 +451,6 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 \ after the window closes.
 : VERIFY-ALL ( -- )
    SUBJECT-PATH$ REJECTION:FILE!
-   1 1 0 REJECTION:ORIGIN!
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE

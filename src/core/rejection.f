@@ -210,7 +210,6 @@ public
 private
 create FILE-BUF PATH-CAP 1 + allot   variable FILE-U
 public
-variable ORIGIN-LINE  variable ORIGIN-COLUMN  variable ORIGIN-BYTE
 : FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
 private
 \ LABEL! labels one file, the one the load was reading when it ran; a label set
@@ -231,9 +230,6 @@ create LABEL-BUF PATH-CAP allot   variable LABEL-U
 : LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
    a u LABEL-BUF LABEL-U @ CORE-STR= ;
-public
-: ORIGIN! {: line col byte :}
-   line ORIGIN-LINE !  col ORIGIN-COLUMN !  byte ORIGIN-BYTE ! ;
 \ The file line, column and byte of the byte p points at in a buffer whose first
 \ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
 \ counts bytes, and only the buffer's first line starts at column bc.
@@ -358,7 +354,6 @@ public
 : LOCATE ( ptr u8 -- n n n bool )
    >SOURCE 0= IF drop 0 0 0 0 0= 0= EXIT THEN
    SOURCE-POSITION 0 0= ;
-1 1 0 ORIGIN!
 
 private
 \ The file a top-level step names; empty when no file or label names it.
@@ -986,22 +981,21 @@ variable LABELS-U   0 LABELS-U !
    a LABELS-P @ LABELS-U @ + u COPY
    LABELS-U @ u + LABELS-U ! ;
 
-\ The label's bytes are saved; where they start, their lengths, LABELED, NAMED
-\ and the origin stay on the stack for LABEL-RESTORE.
-: LABEL-SAVE ( -- n n n n n n n n )
+\ The label's bytes are saved; where they start, their lengths, LABELED and
+\ NAMED stay on the stack for LABEL-RESTORE.
+: LABEL-SAVE ( -- n n n n n )
    LABELS-U @  FILE$ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
-   FILE-U @ LABEL-U @ LABELED @ NAMED @
-   ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @ ;
+   FILE-U @ LABEL-U @ LABELED @ NAMED @ ;
 
-: LABEL-RESTORE ( n n n n n n n n -- )
-   {: at:n fu:n lu:n on:n nm:n line:n col:n byte:n :}
+: LABEL-RESTORE ( n n n n n -- )
+   {: at:n fu:n lu:n on:n nm:n :}
    LABELS-P @ at + {: k:ptr :}
    k FILE-BUF fu COPY  fu FILE-U !
    k fu + LABEL-BUF lu COPY  lu LABEL-U !
-   on LABELED !  nm NAMED !  line col byte ORIGIN!  at LABELS-U ! ;
+   on LABELED !  nm NAMED !  at LABELS-U ! ;
 public
 
-\ Runs q, then puts back the label and origin it found, on a throw too.
+\ Runs q, then puts back the label it found, on a throw too.
 : PRESERVE-LABEL ( [ -- ] -- ) {: q :}
    LABEL-SAVE  q catch {: rc:n :}
    LABEL-RESTORE  rc 0 <> IF rc throw THEN ;

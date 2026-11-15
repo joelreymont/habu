@@ -271,7 +271,6 @@ variable CA-COMPOSING                   \ the run is a composition
 \ The scan's records and the stop's, captured from the first to the last.
 : CA-RUN-CAPTURED ( -- n )
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
-   1 1 0 REJECTION:ORIGIN!
    [: CA-CHECK ;] catch {: rc:n :}
    rc CA-STOPPED
    rc ;
