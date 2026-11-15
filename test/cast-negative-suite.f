@@ -216,6 +216,43 @@ s" cast: CNW9 ( fqbox -- n )"            CN-RUN:DECL 0 T=
 s" cast: CNW13 ( ptr fqlist -- n )"      CN-RUN:DECL 0 T=
 s" cast: CNW17 ( n -- ptr fqlist )"      CN-RUN:DECL 0 T=
 ;package
+\ No package makes an enum or sum value from a cell, its owner included, nor
+\ hands out a type variable a caller may bind to one; any projects out, a view of storage
+\ is the mint rule's, and a layout argument counts through its members.
+package CN-EN
+public
+ENUM cnshade DERIVE eq dark light ;ENUM
+SUMTYPE cnopt VARIANT some n ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
+STRUCTURE cnrec FIELD s cnshade ;STRUCTURE
+STRUCTURE cnqb<a> FIELD f [ -- a ] ;STRUCTURE
+STRUCTURE cnqc<a> FIELD f [ a -- ] ;STRUCTURE
+STRUCTURE cnph<a> FIELD x n ;STRUCTURE
+STRUCTURE cnpr<a> FIELD p ptr a ;STRUCTURE
+ENUM cnnul<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM
+private
+s" cast: CNN2 ( n -- cnshade )"          CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN4 ( n -- ptr cnopt )"        CN-RUN:DECL 0 T=
+s" cast: CNN5 ( n -- [ -- cnshade ] )"   CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN6 ( [ cnshade -- ] -- [ n -- ] )" CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN7 ( [ cnshade -- ] -- n )"   CN-RUN:DECL 0 T=
+s" cast: CNN8 ( n -- [ -- cnopt ] )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN9 ( n -- cnrec )"            CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN10 ( n -- cnqb<t> )"         CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN11 ( cnqc<t> -- [ n -- ] )"  CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN12 ( n -- cnph<cnshade> )"   CN-RUN:DECL 0 T=
+s" cast: CNN13 ( ptr u8 -- cnpr<cnshade> )" CN-RUN:DECL 0 T=
+s" cast: CNN14 ( ptr u8 -- cnnul<u8> )"  CN-RUN:DECL 0 T=
+\ A pointer output, even to a quotation, feeds the source quotation nothing.
+s" cast: CNN15 ( [ cnshade -- ] -- ptr [ n -- ] )" CN-RUN:DECL 0 T=
+\ A consumed row inside a layout argument keeps the argument bit.
+s" cast: CNN16 ( n -- cnph<[ [ cnshade -- ] -- ]> )" CN-RUN:DECL 0 T=
+\ A layout argument hands out no quotation, and its consumed rows introduce nothing.
+s" cast: CNN17 ( [ cnshade -- ] -- cnph<[ extent-a -- ]> )" CN-RUN:DECL 0 T=
+;package
+package CN-EZ
+s" cast: CNN1 ( n -- CN-EN:cnshade )"    CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNN3 ( CN-EN:cnshade -- n )"    CN-RUN:DECL 0 T=
+;package
 \ CN-OH's public section casts a value into CN's `cnfam`; its private section
 \ casts bytes into a pointer to CN-OQ's `oqbox` and a value into its own `ohold`
 \ that holds one. The pointer is a class mint, refused in a public section. Any

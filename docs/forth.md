@@ -759,6 +759,18 @@ multi-cell type rationale is `docs/design.md` "Types".
     writer's claim, which the checker does not prove: `CAST: >SLOT ( n --
     slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
     ptr OP:box )` outside `package OP`.
+  - A cast that makes an `ENUM` or `SUMTYPE` value from a cell is
+    `E-CAST-CLASS` in every package, the family's own included: as the output,
+    as what a quotation it hands out returns, as a by-value layout's member,
+    or, when the cast hands out a quotation by value, as what the source's
+    consumed rows are fed. A layout's argument counts only through its
+    members, so a phantom one does not, and a niche-null sum such as
+    `nullable<a>` has no invalid tag. A type variable that takes no linear
+    value is refused at the same places, since a caller may bind it to an
+    enum. An enum is made from a number by its `DERIVE tag` `TAG>`, a sum by
+    a variant's constructor. A private view of storage, `( ptr u8 -- ptr rec )`
+    over a record that holds one, is a pointer mint: its writer vouches for
+    the stored tags as for the pointers.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`), under a
     bare name: a qualified `CAST: Q:FORGE ( n -- ptr u8 )` there publishes

@@ -884,6 +884,49 @@ public
    rc throw ;
 ;package
 
+\ The family TAGGED-HIT? last found, or -1 for a type variable.
+variable TAGGED-FAM
+\ An enum or sum value carries a tag only its constructors and TAG> check, and a
+\ caller may bind one to a type variable that takes no linear value (NLINEAR,
+\ stored or `nolinear`). A pointee is storage, which the mint rule leaves to the
+\ writer, and a niche-null sum has no invalid tag.
+: TAGGED-HIT? ( n n -- bool )
+   {: t:n sign:n :}
+   sign CAST-ARG and 0 <> sign CAST-BOTH = or IF RES-FALSE EXIT THEN
+   t T-UNSTALE {: u:n :}
+   u ISVAR IF
+      u PAY NLINEAR@ dup IF -1 TAGGED-FAM ! THEN EXIT
+   THEN
+   u LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   u PARAM>FAM {: fam:n :}
+   fam TFAM:TFAM-ENUM? fam TFAM:TFAM-SUM? or
+   fam TFAM:TFAM-NICHE? 0= and
+   dup IF fam TAGGED-FAM ! THEN ;
+
+\ Refuses the enum or sum TAGGED-HIT? found on the output when true, else the input.
+: TAGGED-RAISE ( bool -- )
+   {: out:bool :}
+   TAGGED-FAM @ -1 = IF
+      out IF
+         s" the output hands out a value of a type variable, which a caller may bind to an enum or sum: hold it behind a pointer"
+      ELSE
+         s" the input is handed a value of a type variable, which a caller may bind to an enum or sum: hold it behind a pointer"
+      THEN
+   ELSE
+      TAGGED-FAM @ TFAM-NAME$ CAST-ERROR:TOKEN!
+      out IF
+         s" the output makes an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+      ELSE
+         s" the input is handed an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+      THEN
+   THEN
+   E-CAST-CLASS CAST-ERROR:RAISE ;
+
+\ A quotation the output hands out by value: itself or a by-value member.
+: QUOT-HIT? ( n n -- bool ) {: t:n sign:n :}
+   sign CAST-ARG and 0 <> sign CAST-BOTH = or IF RES-FALSE EXIT THEN
+   t TAG T-QUOT = ;
+
 \ The cast gate: true when the output mints a pointer or quotation, else a
 \ representation cast.
 : CAST-CERTIFY ( -- bool )
@@ -893,26 +936,37 @@ public
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF
       s" the output is not one machine cell a cast may retype" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF
+   SGOUT @ CAST-ROW-TERM [: drop ATOM-HIT? ;] CAST-INTRODUCES? IF
       s" the output hands out an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   SGOUT @ CAST-ROW-TERM INTRO-WIDTH CAST-INTRODUCES? IF
+   SGOUT @ CAST-ROW-TERM [: drop WIDTH-HIT? ;] CAST-INTRODUCES? IF
       s" the output is a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
+   THEN
+   SGOUT @ CAST-ROW-TERM [: TAGGED-HIT? ;] CAST-INTRODUCES? IF
+      RES-TRUE TAGGED-RAISE
    THEN
    \ The source's consumed rows and pointees introduce values too: what the
    \ result is fed or has written through it reaches the source's code as the
    \ source's type.
    CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM CAST-NEG INTRO-ATOM CAST-INTRO? IF
+   SGIN @ CAST-ROW-TERM CAST-NEG [: drop ATOM-HIT? ;] CAST-INTRO? IF
       s" the input is handed an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM CAST-NEG INTRO-WIDTH CAST-INTRO? IF
+   SGIN @ CAST-ROW-TERM CAST-NEG [: drop WIDTH-HIT? ;] CAST-INTRO? IF
       s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    \ A row variable stands for cells the signature does not show, which each use
    \ of the cast picks; an output holding no pointer or quotation passes.
-   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
+   SGOUT @ CAST-ROW-TERM [: drop MINT-HIT? ;] CAST-INTRODUCES? {: mint:bool :}
+   \ A caller feeds the source's consumed rows only by calling a quotation the
+   \ output hands out by value.
+   SGOUT @ CAST-ROW-TERM [: QUOT-HIT? ;] CAST-INTRODUCES? IF
+      CAST-WALK-RESET
+      SGIN @ CAST-ROW-TERM CAST-NEG [: TAGGED-HIT? ;] CAST-INTRO? IF
+         RES-FALSE TAGGED-RAISE
+      THEN
+   THEN
    CAST-WALK-RESET
    mint IF SGIN @ CAST-ROW-TERM SGOUT @ CAST-ROW-TERM CAST-ROWS-KEPT? 0= IF
       s" a row variable changes place between the input and the output"

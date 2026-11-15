@@ -483,7 +483,10 @@ A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
-holds a pointer or a quotation is the same mint. A cast into another package's
+holds a pointer or a quotation is the same mint. A cast that makes an `ENUM`
+or `SUMTYPE` value from a cell, a `niche-null` one aside, is `E-CAST-CLASS`,
+the family's own package included: use its `DERIVE tag` `TAG>` or a variant's constructor; a private
+view of storage leaves the stored tags to its writer. A cast into another package's
 cell family or `OPAQUE` structure is the writer's claim, which the checker does
 not prove.
 

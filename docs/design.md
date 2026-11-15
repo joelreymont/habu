@@ -222,9 +222,12 @@ policy would give one logical type several stack shapes.
 - Any other name is `unknown layout policy`. Every refusal rolls back the
   family row and its layout state.
 
-**Construction from a raw tag is checked.** It goes only through an enum's
-derived `TAG>`, which throws `E-ENUM-TAG` for a number that is not one of its
-tags; there is no unchecked enum cast.
+**A cast never makes an enum or sum value whose tag can be invalid.** An enum
+is made from a number by its derived `TAG>`, which throws `E-ENUM-TAG` for a
+number that is not one of its tags, and a sum by a variant's constructor. A
+`niche-null` value has no invalid tag, so a cast into one is only a pointer
+mint. A private view of storage leaves the tags it stores to its writer, as it
+leaves its pointers.
 
 **Visibility picks the spelling, not whether words are generated.** A public
 family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a

@@ -3492,18 +3492,14 @@ public
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
 
+: ATOM-HIT? ( n -- bool ) TAG T-ATOM = ;
+: WIDTH-HIT? ( n -- bool ) {: t:n :}
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t PARAM>FAM WIDTH-FAM @ = ;
 \ A pointer or a quotation asserts that a cell is an address or code, which no
 \ check can see: a class mint, declared only where its package's own words are
 \ its callers.
-0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
-1 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
-2 constant INTRO-WIDTH     \ a width<t>, which no cast yields: E-CAST-CLASS
-: CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
-   q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
-   q INTRO-WIDTH = IF
-      t TAG T-PARAM <> IF RES-FALSE EXIT THEN
-      t PARAM>FAM WIDTH-FAM @ = EXIT
-   THEN
+: MINT-HIT? ( n -- bool ) {: t:n :}
    t TAG T-PTR =  t TAG T-QUOT =  or ;
 64 constant CAST-PATH-CAP
 create CAST-PATH-TERM CAST-PATH-CAP cells allot
@@ -3520,9 +3516,15 @@ variable CAST-PATH-N
 0 constant CAST-NEG
 1 constant CAST-POS
 2 constant CAST-BOTH
+\ Set on a layout argument's walk: its members reach each by-value use.
+4 constant CAST-ARG
 : CAST-FLIP ( n -- n )
-   dup CAST-NEG = IF drop CAST-POS EXIT THEN
-   dup CAST-POS = IF drop CAST-NEG THEN ;
+   {: sign:n :}
+   sign CAST-ARG invert and
+   dup CAST-NEG = IF drop CAST-POS ELSE
+      dup CAST-POS = IF drop CAST-NEG THEN
+   THEN
+   sign CAST-ARG and or ;
 : CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
    0 BEGIN dup CAST-PATH-N @ < WHILE
       dup cells CAST-PATH-SIGN + @ sign = IF
@@ -3539,35 +3541,36 @@ variable CAST-PATH-N
 : CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ A destination position introduces unless negative; consumed rows flip the sign
 \ and a pointee counts at both. Cell-family arguments and row bases yield none.
-: CAST-INTRO? ( n n n -- bool ) {: t0:n sign:n q:n :}
+\ A layout argument is walked with CAST-ARG set.
+: CAST-INTRO? ( n n [ n n -- bool ] -- bool ) {: t0:n sign:n hit :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT
    THEN
    ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
-   sign CAST-NEG <> IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
-   t TAG T-PTR = IF t PTR>INNER CAST-BOTH q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   t TAG T-STALE = IF t STALE>INNER sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   sign CAST-ARG invert and CAST-NEG <> IF t sign hit execute IF RES-TRUE EXIT THEN THEN
+   t TAG T-PTR = IF t PTR>INNER CAST-BOTH hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-STALE = IF t STALE>INNER sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
-      t Q>DIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+      t Q>DIN sign CAST-FLIP hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN sign CAST-FLIP hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
-      t over PARAM>ARG sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      t over PARAM>ARG sign CAST-ARG or hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop
    t sign CAST-ON-PATH? IF RES-FALSE EXIT THEN
    t sign CAST-PATH-PUSH
-   t TFAM-MEMBERS-XT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   t TFAM-MEMBERS-XT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER
    CAST-PATH-POP ;
-: CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
-   CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
+: CAST-INTRODUCES? ( n [ n n -- bool ] -- bool ) {: t:n hit :}
+   CAST-WALK-RESET t CAST-POS hit CAST-INTRO? ;
 \ Two rows are the same stack only if they share this tail.
 : ROW-TAIL ( n -- n )
    R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
@@ -3679,8 +3682,8 @@ variable CAST-PATH-N
 \ value, 5 when it hands out an atom or a width (SCOPE-HIT's codes).
 : STORED-TERM-HIT ( n -- n ) {: t:n :}
    CAST-WALK-RESET t RES-TRUE CAST-MAY-LINEAR? IF 4 EXIT THEN
-   CAST-WALK-RESET t CAST-BOTH INTRO-ATOM CAST-INTRO? IF 5 EXIT THEN
-   CAST-WALK-RESET t CAST-BOTH INTRO-WIDTH CAST-INTRO? IF 5 EXIT THEN
+   CAST-WALK-RESET t CAST-BOTH [: drop ATOM-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
+   CAST-WALK-RESET t CAST-BOTH [: drop WIDTH-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
    0 ;
 
 \ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).
