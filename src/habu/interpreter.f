@@ -1111,7 +1111,7 @@ private
    s" using " SAY  TOKEN$ TICKS
    s"  opens more usings than may be open at once" SAY
    TOKEN$ REJECTION:AT  s" one using too many" SAY
-   s" limit" REJECTION:NOTE  USE-MAX REJECTION:EMIT-U
+   USE-MAX s" " REJECTION:LIMIT
    REJECTION:HELP  s" close a using with " SAY  s" ;using" TICKS
    s"  before opening another" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -1858,7 +1858,7 @@ private
       s" the local `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` is one more than a definition may declare" REJECTION:EMIT-STR
       a u REJECTION:AT  s" too many locals" REJECTION:EMIT-STR
-      s" limit" REJECTION:NOTE  LOC-RECS REJECTION:EMIT-U
+      LOC-RECS s" " REJECTION:LIMIT
       REJECTION:HELP
       s" split the definition, or keep some values on the stack" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
@@ -1870,8 +1870,7 @@ private
       s" the local name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` is too long" REJECTION:EMIT-STR
       a u REJECTION:AT  s" name too long" REJECTION:EMIT-STR
-      s" limit" REJECTION:NOTE  LOC-NAME-CAP REJECTION:EMIT-U
-      s"  bytes" REJECTION:EMIT-STR
+      LOC-NAME-CAP s" bytes" REJECTION:LIMIT
       REJECTION:HELP
       s" shorten the local's name to the limit" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
@@ -2145,7 +2144,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    eff CHECK:EFFECT-DENSE 0= if
       [: s" has too many type parameters" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
-      s" limit" REJECTION:NOTE  TFAM:TFAM-DECL-PARAM-COUNT REJECTION:EMIT-U
+      TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
       REJECTION:HELP
       s" give `define-word` an effect with fewer distinct type parameters"
       REJECTION:EMIT-STR
