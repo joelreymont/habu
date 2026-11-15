@@ -221,10 +221,6 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 private
 
-\ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
-\ its opener.
-TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX
-
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 variable SCAN-I
@@ -480,6 +476,14 @@ variable FLAG-N
    at TOKEN-BYTE !
    at TOP-CUR-U @ + TOKEN-FROM {: t:ptr tu:n :}
    t tu t tu INTERPRETER:UNCLOSED-REJECT
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The declaration t tu opened, which c cu closes, is still open when the token
+\ o ou opens another or, with ou 0, when the source ends: the load's record.
+: UNCLOSED-DECL-STOP ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: t:ptr tu:n c:ptr cu:n o:ptr ou:n :}
+   t SOURCE@ - TOKEN-BYTE !
+   t tu c cu o ou SOURCE-ROOT:UNCLOSED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ `trust` takes the word's name and signature from the two string literals
@@ -3530,14 +3534,40 @@ variable FILE-USE
    2dup 2dup STRUCTURE-SYNTAX? 0= TOP-VERDICT 2 =
    IF TOP-PARSER ELSE 2drop THEN ;
 
+\ The FUNCTION: group the scan reads and the token that opened it. Nested
+\ files share it, as they share the load's open declaration.
+TYPED-VARIABLE FFI-GROUP bool
+PTR-VARIABLE FFI-OPEN-A
+variable FFI-OPEN-U
+
+\ The source now scanned opened the FUNCTION: group still open.
+: FFI-OPEN-HERE? ( -- bool )
+   FFI-GROUP @ 0= IF false EXIT THEN
+   FFI-OPEN-A @ SOURCE@ - {: at:n :}
+   at 0 < 0=  at SOURCE-U @ > 0= and ;
+
+\ The group open in this source is rejected when the token o ou opens another
+\ declaration or, with ou 0, when the source ends.
+: FFI-UNCLOSED ( ptr u8 n -- ) {: o:ptr ou:n :}
+   FFI-OPEN-HERE? 0= IF EXIT THEN
+   FFI-OPEN-A @ FFI-OPEN-U @ s" ;FUNCTION" o ou UNCLOSED-DECL-STOP ;
+
+\ A declaration opening inside the structure rejects the structure.
+: STRUCTURE-OPENED ( ptr u8 n -- ) {: o:ptr ou:n :}
+   o ou s" BEGIN-STRUCTURE" STR=CI  o ou s" FUNCTION:" STR=CI or
+   o ou s" CALLBACK:" STR=CI or 0= IF EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" o ou UNCLOSED-DECL-STOP ;
+
 : RECORD-STRUCTURE ( -- )
+   TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    name nameu at STRUCTURE-SIZE
    BEGIN
       NEXT-SCAN
-      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
+      dup 0= IF TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" NULL-PTR 0 UNCLOSED-DECL-STOP THEN
+      2dup STRUCTURE-OPENED
       2dup STRUCTURE-USE
       TICK-REMAINDER @ IF 2drop EXIT THEN
       2dup STRUCTURE-END? IF
@@ -3576,11 +3606,11 @@ variable FILE-USE
 \ runs read from the source. Whether the scan accounts for the declared word
 \ waits for the `;FUNCTION` that renders it (FFI-CLOSER?): it does when it kept
 \ the declaration or refused it as a duplicate, where the load stops; a refused
-\ effect leaves the word to the run.
+\ effect leaves the word to the run. The scan rejects a group still open at its
+\ source's end or when another declaration opens.
 variable FFI-OUT
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
-TYPED-VARIABLE FFI-GROUP bool
 
 16 constant FFI-IN-CAP                      \ the declarer's input cap
 variable FFI-IN-N
@@ -3670,6 +3700,8 @@ variable FFI-LIT-B                          \ and the newer
    AGAIN ;
 
 : RECORD-FFI-FUNCTION ( -- )
+   TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
+   TOP-CUR-A @ FFI-OPEN-A !  TOP-CUR-U @ FFI-OPEN-U !
    NEXT-SCAN TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
@@ -4247,7 +4279,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with
    TOP-DUE
-   PEND-RELEASE ;
+   PEND-RELEASE
+   NULL-PTR 0 FFI-UNCLOSED ;
 
 : SOURCE-ARM ( -- )
    SOURCE@ SOURCE-U @ 1 1 0 REJECTION:SOURCE! ;

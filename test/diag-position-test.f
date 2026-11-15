@@ -2021,18 +2021,39 @@ variable RC
    s" E-MISMATCH" REJECTED-AS
    0 s" ;" 1 37 36 37 AT ;
 
-\ A structure still open when its file ends, or when another opens, is
-\ rejected at the BEGIN-STRUCTURE that opened it.
+\ A structure or FUNCTION: group still open when its file ends, or when another
+\ declaration opens, is rejected at the token that opened it.
 : TEST-UNCLOSED ( -- )
    s" a structure still open at the file's end" T-LABEL
    s" BEGIN-STRUCTURE P" s" unclosed.f" LINE-FIXTURE
    s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
    s" a structure opened inside an open one" T-LABEL
    SB-RESET
    s" BEGIN-STRUCTURE P" SB-APPEND LF+
    s" BEGIN-STRUCTURE Q" SB-APPEND LF+
    s" unclosed-nested.f" FIXTURE!
-   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT ;
+   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
+   s" a FUNCTION: group still open at the file's end" T-LABEL
+   SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: F getpid ( -- i32 )" SB-APPEND LF+
+   s" unclosed-ffi.f" FIXTURE!
+   s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES
+   s" a structure opened inside an open FUNCTION: group" T-LABEL
+   SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: F getpid ( -- i32 )" SB-APPEND LF+
+   s" BEGIN-STRUCTURE P" SB-APPEND LF+
+   s" END-STRUCTURE" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" unclosed-ffi-nested.f" FIXTURE!
+   s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
 
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
