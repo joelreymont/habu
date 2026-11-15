@@ -510,8 +510,9 @@ SUITE browser-host
    src/lib/browser/host-test.f
 ;SUITE
 
-\ MCP-APP:PAGE+ of a small module: the kept prefix, the escaped title and the
-\ base64 of each script and the module in one UTF-8 page.
+\ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
+\ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
+\ page id and the base64 of the other scripts and the module.
 SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE

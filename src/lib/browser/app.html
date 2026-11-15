@@ -31,23 +31,17 @@ form input { box-sizing: border-box; width: 100%; }
 <section id="scene" aria-label="Scene tree"><h2>Scene</h2><div id="tree"></div></section>
 <form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading</div>
-<script type="application/base64" id="turn.js"><!--turn.js--></script>
-<script type="application/base64" id="viewport.js"><!--viewport.js--></script>
-<script type="application/base64" id="page.js"><!--page.js--></script>
+<script type="text/plain" id="page-id"><!--page-id--></script>
 <script type="application/base64" id="app.js"><!--app.js--></script>
-<script type="application/base64" id="module"><!--module--></script>
 <script type="module">
-// Each script becomes a blob: module, so none imports another by path; app.js
-// receives the others' exports and the module's bytes.
-const bytes = (id) => Uint8Array.fromBase64(document.getElementById(id).textContent);
-const load = async (id) => {
-  const url = URL.createObjectURL(new Blob([bytes(id)], { type: "text/javascript" }));
-  try { return await import(url); } finally { URL.revokeObjectURL(url); }
-};
+// app.js becomes a blob: module and starts with the page id; it takes the
+// view's other scripts and the module from the server.
+const text = (id) => document.getElementById(id).textContent;
 try {
-  const [{ Module }, { mount }, page, { start }] =
-    await Promise.all(["turn.js", "viewport.js", "page.js", "app.js"].map(load));
-  await start(Module, mount, page, bytes("module"));
+  const url = URL.createObjectURL(new Blob([Uint8Array.fromBase64(text("app.js"))], { type: "text/javascript" }));
+  let app;
+  try { app = await import(url); } finally { URL.revokeObjectURL(url); }
+  await app.start(text("page-id"));
 } catch (e) {
   const shown = document.querySelector("#text");
   shown.textContent = String(e);
