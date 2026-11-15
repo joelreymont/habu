@@ -1336,7 +1336,7 @@ s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvdup`\n"
 s" ok" s" duplicate variant" TDT-AT
 s" SUMTYPE tdbadptr<a> VARIANT ok ^ ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdbadptr`\n"
-s" ^" s" bad payload token" TDT-AT
+s" ^" s" pointer without a pointee" TDT-AT
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" TDT-HAS
 \ unknown payload types: an out-of-arity letter and an unknown tail reject;
 \ parametric family applications and quotations resolve as payloads, so the

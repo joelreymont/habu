@@ -534,8 +534,8 @@ private
    a u s" ptr" CORE-STR= IF a u s" unknown payload type"
       TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
-      a u SIG-CARET-BARE? IF a u s" bad payload token"
-         TDECL-PTR-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
+      a u SIG-CARET-BARE? IF a u s" pointer without a pointee"
+         TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
       a u SIG-CARET-POINTEE RECURSE
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
@@ -739,8 +739,8 @@ private
    a u s" ptr" CORE-STR= IF a u s" unknown payload type"
       TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
-      a u SIG-CARET-BARE? IF a u s" bad payload token"
-         TDECL-PTR-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
+      a u SIG-CARET-BARE? IF a u s" pointer without a pointee"
+         TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
       a u SIG-CARET-POINTEE RECURSE
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
