@@ -10,8 +10,9 @@
 \ - the volume, every point on or above the plane whose key x, y lie in M, and
 \   the key's pixel, M's larger side over the shadow map's side.
 \ src/lib/browser/viewport.js states KEY, KEY_BOX, SHADOW_SIDE and studio's
-\ turntable rule a second time; test/browser/display-peer.mjs holds the two together by
-\ drawing only the rows this volume keeps against drawing every row.
+\ turntable rule a second time; test/browser/display-peer.mjs holds the two
+\ together by comparing this volume's planes and pixel, as numbers, with the
+\ ground, M and pixel of the shadow map the host fits, for two views.
 \ STORAGE CLASS. CALLER-OWNED: the planes go to the caller's room; no state.
 
 require src/lib/error.f

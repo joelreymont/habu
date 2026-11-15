@@ -36,10 +36,20 @@
 \ orange rectangles in one grid plane with origins 100000, 200000, 300000
 \ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
 \ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
-\ transform rotated about x then y.
+\ transform rotated about x then y. Typed "volume" sends the ground z = 0,
+\ +z up, with the casters' box x, y -10..10 and z -1..1 and draws 0 rows
+\ through display-peer.mjs's zoomed; "volume-skewed" sends a tilted ground
+\ and draws 0 rows through a skewed matrix. Each then sends the text volume,
+\ STUDIO:KEY-VOLUME's count and, as binary64 bits in hex, its 20 plane
+\ numbers and its pixel. Typed "ground-box" sends a casters' box whose
+\ lowest z lies above its highest.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
+require src/lib/ieee754.f
+require src/lib/float32.f
+require src/lib/float32-buffer.f
+require src/lib/browser/studio.f
 require test/browser/turn-revision.f
 
 package DISPLAY
@@ -65,6 +75,9 @@ CAST: BYTES>N ( ^u8 -- n )
 40 BUFFER: PLANE
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
+64 BUFFER: VOLUME-MATRIX
+40 BUFFER: VOLUME-GROUND
+20 TYPED-BUFFER VOLUME-PLANES r
 variable IMAGE-U
 1024 constant ECHO-CAP
 ECHO-CAP BUFFER: ECHO-BUF
@@ -330,52 +343,9 @@ variable ECHO-U
    {: b:n c:n :}
    CASTERS  17 PLANE BYTES>N b c RECORD ;
 
-: IS? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   2 EVENT@ u <> if false exit then
-   u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
-   true ;
-
-: COMMAND ( -- )
-   s" red" IS? if RED exit then
-   s" blue" IS? if BLUE exit then
-   s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
-   s" draw" IS? if SHOW exit then
-   s" unmesh" IS? if UNMESH exit then
-   s" metal" IS? if METAL exit then
-   s" occlude" IS? if OCCLUDE exit then
-   s" edges" IS? if EDGES exit then
-   s" many" IS? if MANY exit then
-   s" pick" IS? if PICKS exit then
-   s" nearer" IS? if NEARER exit then
-   s" seam" IS? if SEAM exit then
-
-   s" broken" IS? if s" <svg>" SVG exit then
-   s" on" IS? if 9 1 0 0 RECORD exit then
-   s" off" IS? if 9 0 0 0 RECORD exit then
-   s" text" IS? if s" still here" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD exit then
-   s" tree" IS? if s" []" {: a:^ u:n :} 5 a BYTES>N u 0 RECORD exit then
-   s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
-   s" fetch" IS? if s" slow" {: a:^ u:n :} 1 a BYTES>N u 0 RECORD exit then
-   s" empty" IS? if 8 0 0 0 RECORD exit then
-   s" negative" IS? if 8 0 -1 0 RECORD exit then
-   s" outside" IS? if 8 -1 1 0 RECORD exit then
-   s" past" IS? if 8 $7FFFFFFFFFFFFFFF 1 0 RECORD exit then
-   s" svg-reserved" IS? if 8 0 1 1 RECORD exit then
-   s" flag" IS? if 9 2 0 0 RECORD exit then
-   s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
-   s" input-b" IS? if 9 1 1 0 RECORD exit then
-   s" input-c" IS? if 9 0 0 1 RECORD exit then
-   s" ground" IS? if UP 40 0 GROUND exit then
-   s" ground-none" IS? if 17 0 0 0 RECORD exit then
-   s" ground-c" IS? if UP 40 1 GROUND exit then
-   s" ground-b" IS? if UP 12 0 GROUND exit then
-   s" ground-outside" IS? if 17 -1 40 0 RECORD exit then
-   \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
-   \ so d / |n| is past f32's range.
-   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 40 0 GROUND exit then
-   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 40 0 GROUND exit then
-   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 40 0 GROUND exit then ;
+: UPSIDE ( -- )
+   \ The casters' box with its lowest z 2 above its highest, 1.
+   CASTERS  $40000000 PLANE 24 + U32!  17 PLANE BYTES>N 40 0 RECORD ;
 
 : CHAR+ ( n -- )
    ECHO-U @ ECHO-CAP >= if -1 throw then
@@ -412,6 +382,120 @@ variable ECHO-U
 
 : ECHO-RECORD ( -- )
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
+
+: F32! ( r ^u8 n -- )
+   {: v:r p i:n :}
+   v F32:NARROW  p i 4 * +  F32-BUF:STORE ;
+
+: CLEARED ( -- )
+   16 0 do 0.0 VOLUME-MATRIX i F32! loop
+   10 0 do 0.0 VOLUME-GROUND i F32! loop ;
+
+: VOLUME-VIEW ( -- )
+   \ zoomed: world x 0.15..0.65 and y 0.55..1.05 seen straight down.
+   4.0 VOLUME-MATRIX 0 F32!  4.0 VOLUME-MATRIX 5 F32!
+   -0.25 VOLUME-MATRIX 10 F32!  -1.6 VOLUME-MATRIX 12 F32!
+   -3.2 VOLUME-MATRIX 13 F32!  0.5 VOLUME-MATRIX 14 F32!
+   1.0 VOLUME-MATRIX 15 F32! ;
+
+: VOLUME-FLOOR ( -- )
+   \ The plane z = 0, +z up, and the casters' box x, y -10..10, z -1..1.
+   1.0 VOLUME-GROUND 2 F32!
+   -10.0 VOLUME-GROUND 4 F32!  -10.0 VOLUME-GROUND 5 F32!
+   -1.0 VOLUME-GROUND 6 F32!  10.0 VOLUME-GROUND 7 F32!
+   10.0 VOLUME-GROUND 8 F32!  1.0 VOLUME-GROUND 9 F32! ;
+
+: SKEWED-VIEW ( -- )
+   \ Clip x 0.3x + 0.1y + 0.05z - 0.1, y 0.05x + 0.25y + 0.15z + 0.2 and
+   \ depth 0.1x - 0.08y - 0.2z + 0.5, column-major.
+   0.3 VOLUME-MATRIX 0 F32!  0.05 VOLUME-MATRIX 1 F32!
+   0.1 VOLUME-MATRIX 2 F32!  0.1 VOLUME-MATRIX 4 F32!
+   0.25 VOLUME-MATRIX 5 F32!  -0.08 VOLUME-MATRIX 6 F32!
+   0.05 VOLUME-MATRIX 8 F32!  0.15 VOLUME-MATRIX 9 F32!
+   -0.2 VOLUME-MATRIX 10 F32!  -0.1 VOLUME-MATRIX 12 F32!
+   0.2 VOLUME-MATRIX 13 F32!  0.5 VOLUME-MATRIX 14 F32!
+   1.0 VOLUME-MATRIX 15 F32! ;
+
+: TILTED-FLOOR ( -- )
+   \ The plane 0.1x - 0.2y + z + 0.3 = 0 and the casters' box x -1..20,
+   \ y -0.8..1.2 and z -0.5..2.
+   0.1 VOLUME-GROUND 0 F32!  -0.2 VOLUME-GROUND 1 F32!
+   1.0 VOLUME-GROUND 2 F32!  0.3 VOLUME-GROUND 3 F32!
+   -1.0 VOLUME-GROUND 4 F32!  -0.8 VOLUME-GROUND 5 F32!
+   -0.5 VOLUME-GROUND 6 F32!  20.0 VOLUME-GROUND 7 F32!
+   1.2 VOLUME-GROUND 8 F32!  2.0 VOLUME-GROUND 9 F32! ;
+
+\ r's binary64 bits as 16 hex digits, after a space.
+: BITS, ( r -- )
+   IEEE754:F64>BITS {: b:n :}
+   32 CHAR+
+   16 0 do b 60 i 4 * - rshift 15 and HEX, loop ;
+
+\ The text volume, KEY-VOLUME's count in decimal, then its 20 planes'
+\ numbers and its pixel as binary64 bits, for the event's buffer.
+: VOLUME-TEXT ( -- )
+   VOLUME-MATRIX VOLUME-GROUND 3 EVENT@ 4 EVENT@ 0 VOLUME-PLANES
+   STUDIO:KEY-VOLUME {: count:n pixel:r :}
+   s" volume " NAMED  count DIGITS
+   20 0 do i VOLUME-PLANES @ BITS, loop
+   pixel BITS,  ECHO-RECORD ;
+
+\ The ground, a draw of 0 rows through the matrix, and the text.
+: VOLUME-SCENE ( -- )
+   17 VOLUME-GROUND BYTES>N 40 0 RECORD
+   2 VOLUME-MATRIX BYTES>N 0 VOLUME-MATRIX BYTES>N RECORD
+   VOLUME-TEXT ;
+
+: IS? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   2 EVENT@ u <> if false exit then
+   u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
+   true ;
+
+: COMMAND ( -- )
+   s" red" IS? if RED exit then
+   s" blue" IS? if BLUE exit then
+   s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
+   s" draw" IS? if SHOW exit then
+   s" unmesh" IS? if UNMESH exit then
+   s" metal" IS? if METAL exit then
+   s" occlude" IS? if OCCLUDE exit then
+   s" edges" IS? if EDGES exit then
+   s" many" IS? if MANY exit then
+   s" pick" IS? if PICKS exit then
+   s" nearer" IS? if NEARER exit then
+   s" seam" IS? if SEAM exit then
+   s" volume" IS? if CLEARED VOLUME-VIEW VOLUME-FLOOR VOLUME-SCENE exit then
+   s" volume-skewed" IS?
+   if CLEARED SKEWED-VIEW TILTED-FLOOR VOLUME-SCENE exit then
+
+   s" broken" IS? if s" <svg>" SVG exit then
+   s" on" IS? if 9 1 0 0 RECORD exit then
+   s" off" IS? if 9 0 0 0 RECORD exit then
+   s" text" IS? if s" still here" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD exit then
+   s" tree" IS? if s" []" {: a:^ u:n :} 5 a BYTES>N u 0 RECORD exit then
+   s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
+   s" fetch" IS? if s" slow" {: a:^ u:n :} 1 a BYTES>N u 0 RECORD exit then
+   s" empty" IS? if 8 0 0 0 RECORD exit then
+   s" negative" IS? if 8 0 -1 0 RECORD exit then
+   s" outside" IS? if 8 -1 1 0 RECORD exit then
+   s" past" IS? if 8 $7FFFFFFFFFFFFFFF 1 0 RECORD exit then
+   s" svg-reserved" IS? if 8 0 1 1 RECORD exit then
+   s" flag" IS? if 9 2 0 0 RECORD exit then
+   s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
+   s" input-b" IS? if 9 1 1 0 RECORD exit then
+   s" input-c" IS? if 9 0 0 1 RECORD exit then
+   s" ground" IS? if UP 40 0 GROUND exit then
+   s" ground-none" IS? if 17 0 0 0 RECORD exit then
+   s" ground-c" IS? if UP 40 1 GROUND exit then
+   s" ground-b" IS? if UP 12 0 GROUND exit then
+   s" ground-outside" IS? if 17 -1 40 0 RECORD exit then
+   \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
+   \ so d / |n| is past f32's range.
+   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 40 0 GROUND exit then
+   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 40 0 GROUND exit then
+   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 40 0 GROUND exit then
+   s" ground-box" IS? if UP UPSIDE exit then ;
 
 : ECHO ( ^u8 n -- )
    ECHOED ECHO-RECORD ;

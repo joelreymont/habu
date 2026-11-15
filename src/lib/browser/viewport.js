@@ -109,7 +109,10 @@
 // per unit along KEY, in studio coordinates. SHADOW_SIDE is the shadow map's
 // largest side, the most at which 255 side² still fits a u32 table's sums;
 // WebGPU guarantees textures that wide.
-// studio.f's KEY-VOLUME states these and studio's turntable rule again.
+// studio.f's KEY-VOLUME states these and studio's turntable rule again;
+// test/browser/display-peer.mjs compares its planes and pixel, as numbers,
+// with the ground the host holds, M as the Light uniform lit writes states
+// it, and M's larger side over the shadow map's width.
 const KEY = [-0.4, 0.6, 0.7];
 const KEY_BOX = [0.45, 0.27];
 const SHADOW_SIDE = Math.floor(Math.sqrt(2 ** 32 / 255));
