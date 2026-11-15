@@ -146,16 +146,16 @@
 \ reports it: not a file the load reads, the load after it, or a pending body
 \ load, which therefore reports nothing.
 \
-\ A primitive row is read as its opener reads it: the name, and a package
-\ row's package before it, are read raw, so either may be spelled as a definer
-\ or parsing word (`EPRIM: create EPRIM;`). The body runs to the row's first
-\ closer, read by the canonical body scanner so that parsing words consume
-\ their comments, strings and raw operands before a closer is considered.
-\ prims.f's `EPRIM:` and `EPPRIM:` rows end at the first of `EPRIM;` and
-\ `ECLOSE-PRIVATE`, since both write the open row. A row is known by its
-\ opener's spelling: a binding cannot tell prims.f's opener from its own
-\ definition when the scan reads prims.f. No `parses-through:` row can bound
-\ an engine row: prims.f loads before that word is defined.
+\ A primitive row is read as its opener reads it: the name, and a package row's
+\ package before it, are read raw, so either may be spelled as a definer or
+\ parsing word (`EPRIM: create EPRIM;`). The body is read raw too: it holds only
+\ atoms, spelled `PE-...` or `;PE-...`, and `REF` clauses, `REF` and the token
+\ after it; any other body token makes the row malformed. prims.f's `EPRIM:` and
+\ `EPPRIM:` rows end at the first `EPRIM;` or `ECLOSE-PRIVATE` that is not a
+\ `REF` operand. A row is known by its opener's
+\ spelling: a binding cannot tell prims.f's opener from its own definition when
+\ the scan reads prims.f. No `parses-through:` row can bound an engine row:
+\ prims.f loads before that word is defined.
 \
 \ A top-level token no arm acts on is one the load runs; `'` ticks its operand.
 \ Under composition (the verifier's child, --all-errors and the check tool's
@@ -196,9 +196,11 @@ public
 
 \ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
 \ the word that cannot finish: a reader (a definer, a parsing word) with no
-\ token after it, a string opener with no closing quote, an EPRIM: or EPPRIM:
-\ row with no closer, a top-level escaped literal holding an escape the engine
-\ refuses.
+\ token after it, a string opener with no closing quote, a top-level escaped
+\ literal holding an escape the engine refuses. An EPRIM: or EPPRIM: row stops
+\ it at the token the row rule rejects: an opener or a closer for its name or
+\ package, a body token other than an atom or a REF clause, or the source's end
+\ for a row with no closer.
 7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
@@ -1153,8 +1155,7 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
    TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
 
-\ SKIP-BODY-TOKEN for a definition body, which declares locals; a primitive row
-\ declares none.
+\ SKIP-BODY-TOKEN for a definition body, which declares locals.
 : SKIP-DEF-TOKEN ( -- )
    LOCAL-TOKEN? IF BODY-PREV-CLEAR EXIT THEN
    TOKEN-A @ TOKEN-U @ s" {:" CORE-STR= IF
@@ -3228,36 +3229,49 @@ variable FILE-USE
    a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
-: ROW-CLOSER? ( -- bool )
-   TOKEN-A @ TOKEN-U @ s" EPRIM;" STR=CI IF 0 0= EXIT THEN
-   TOKEN-A @ TOKEN-U @ s" ECLOSE-PRIVATE" STR=CI ;
-
-: ROW-UNCLOSED ( n -- )
-   TOKEN-BYTE !
+: ROW-MALFORMED ( -- )
    E-MALFORMED-REGISTRY-ROW throw ;
 
-\ A row declares no locals and, as every body reader, starts clear of the last
-\ body's literal and line: that literal may lie in decoded bytes a decode has
-\ since moved. Discovery refuses a loader word with no literal before it, so
-\ tools/check.f never reads one that opens a row.
-: RECORD-PRIM-ROW ( n -- )
-   {: at:n :}
+: ROW-ENDED ( -- )
+   SOURCE-U @ TOKEN-BYTE !
+   ROW-MALFORMED ;
+
+\ The row's next raw token; none left makes the row malformed at the
+\ source's end.
+: ROW-TOKEN! ( -- )
+   RAW!
+   TOKEN-U @ 0= IF ROW-ENDED THEN ;
+
+: ROW-TOKEN-SEEN ( -- )
+   TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
+
+\ A header token names the row's primitive or package. None, an opener or a
+\ closer is rejected as a missing header, though the opener takes either as a name.
+: ROW-HEADER ( -- )
+   NEXT-RAW {: a:^ u:n :}
+   u 0= IF ROW-ENDED THEN
+   a u SOURCE-SYNTAX:ROW-OPENER? IF ROW-MALFORMED THEN
+   a u SOURCE-SYNTAX:ROW-CLOSER? IF ROW-MALFORMED THEN ;
+
+\ A row starts clear of the last body's literal and line, as every body reader
+\ does: that literal may lie in decoded bytes a decode has since moved.
+: RECORD-PRIM-ROW ( -- )
    BODY-LOAD-RESET
-   LOCALS-RESET
-   NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
-   2drop
+   ROW-HEADER
    BEGIN
-      BODY!
-      TOKEN-U @ 0= IF at ROW-UNCLOSED THEN
-      ROW-CLOSER? IF EXIT THEN
-      SKIP-BODY-TOKEN
+      ROW-TOKEN!
+      TOKEN-A @ TOKEN-U @ SOURCE-SYNTAX:ROW-CLOSER? IF EXIT THEN
+      TOKEN-A @ TOKEN-U @ SOURCE-SYNTAX:ROW-REF? IF
+         ROW-TOKEN-SEEN  ROW-TOKEN!
+      ELSE
+         TOKEN-A @ TOKEN-U @ SOURCE-SYNTAX:ROW-ATOM? 0= IF ROW-MALFORMED THEN
+      THEN
+      ROW-TOKEN-SEEN
    AGAIN ;
 
 : RECORD-PPRIM ( -- )
-   TOKEN-BYTE @ {: at:n :}
-   NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
-   2drop
-   at RECORD-PRIM-ROW ;
+   ROW-HEADER
+   RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ^u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -3563,7 +3577,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" EPRIM:" STR=CI IF TOKEN-BYTE @ RECORD-PRIM-ROW 0 0= EXIT THEN
+   a u s" EPRIM:" STR=CI IF RECORD-PRIM-ROW 0 0= EXIT THEN
    a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF

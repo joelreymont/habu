@@ -893,6 +893,7 @@ SUITE catch-stale
 
 SUITE create-axiom
    test/create-axiom-test.f
+   test/prim-row-test.f
 ;SUITE
 
 SUITE ndict-binding

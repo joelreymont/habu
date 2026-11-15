@@ -40,8 +40,8 @@ variable READY
 
 : LEX-CODE$ ( -- ^u8 n ^u8 n ^u8 n )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = if
-      s" E-MALFORMED-REGISTRY-ROW" s" close_primitive_row"
-      s" Close the primitive-axiom row opened at this token: a bare row reads EPRIM: name effect... EPRIM;, and a package row reads EPPRIM: package name effect... ECLOSE-PRIVATE." exit
+      s" E-MALFORMED-REGISTRY-ROW" s" fix_primitive_row"
+      s" This token breaks the primitive-axiom row it stands in, or the source ends inside the row: a row's name and package are neither an opener nor a closer, and its body holds only PE- or ;PE- atoms and REF clauses (REF and the token after it) and ends at EPRIM; or ECLOSE-PRIVATE. A bare row reads EPRIM: name body EPRIM;, and a package row reads EPPRIM: package name body ECLOSE-PRIVATE. Close the row before this token, or replace the token." exit
    then
    s" E-UNTERMINATED-STRING" s" close_string"
    s" Close the string literal before the definition ends." ;

@@ -1526,6 +1526,19 @@ variable RC
    s" escaped-bad-unterminated.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\"" 2 1 16 18 REFUSED-MODES
    s" bad string literal" 74 LOADED
+   s" a token that breaks a primitive row" T-LABEL
+   SB-RESET
+   s" EPRIM: FOO PE-N" SB-APPEND LF+
+   s"    postpone EPRIM;" SB-APPEND LF+
+   s" bad-row.f" FIXTURE!
+   s" E-MALFORMED-REGISTRY-ROW" s" postpone" 2 4 19 27 REFUSED-MODES
+   s" undefined word 'EPRIM:'" 70 LOADED
+   s" a primitive row the source ends inside" T-LABEL
+   SB-RESET
+   s" EPRIM: FOO PE-N" SB-APPEND LF+
+   s" open-row.f" FIXTURE!
+   s" E-MALFORMED-REGISTRY-ROW" s" " 2 1 16 16 REFUSED-MODES
+   s" undefined word 'EPRIM:'" 70 LOADED
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+

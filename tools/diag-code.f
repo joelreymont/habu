@@ -74,7 +74,7 @@ private
    c u s" E-LOADER-FORM" STR= IF
       construct shape source-span s" literal_loader_form" s" " EXIT THEN
    c u s" E-MALFORMED-REGISTRY-ROW" STR= IF
-      construct shape source-span s" close_primitive_row" s" " EXIT THEN
+      construct shape source-span s" fix_primitive_row" s" " EXIT THEN
    c u s" E-UNDEFINED-TOP-LEVEL" STR= IF
       construct shape source-span s" unknown_rejection" s" " EXIT THEN
    c u s" E-BAD-QUALIFIED-TOP-LEVEL" STR= IF

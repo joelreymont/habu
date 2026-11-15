@@ -11,6 +11,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/source.f
+require src/lib/source-syntax.f
 
 package LINT-LEX
 private
@@ -35,7 +36,8 @@ variable ERR-LINE
 variable ERR-COL
 variable HALTED                 \ a diagnostic ended the scan; expose no later token
 variable FAM                    \ family of the row being scanned
-variable FOFF   variable FLEN   \ current row field: offset into the source, length
+\ current row field: offset, length, line, column
+variable FOFF   variable FLEN   variable FLINE   variable FCOL
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
 \ Each table is a vector the cell holds, NULL-PTR while it is not made.
@@ -180,7 +182,7 @@ public
 3 constant REGISTRY             \ KIND@: one complete primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
-2 constant MALFORMED-REGISTRY   \ ERROR-KIND@: a primitive-axiom row lacked a header or its closer
+2 constant MALFORMED-REGISTRY   \ ERROR-KIND@: a malformed primitive-axiom row
 
 : COUNT ( -- n )
    TOK-N @ ;
@@ -231,6 +233,10 @@ public
 
 : ERROR-COL@ ( -- n )
    ERR-COL @ ;
+
+\ The opener of the row a MALFORMED-REGISTRY error stopped in.
+: ROW-LINE@ ( -- n ) R-LINE @ ;
+: ROW-COL@ ( -- n ) R-COL @ ;
 
 \ `parse-name` and the engine token loop delimit on every byte at or below space.
 : ENGINE-DELIM? ( n -- bool )
@@ -337,10 +343,12 @@ private
 \ read as a string opener or a parsing word. The engine's table
 \ (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and `EPPRIM: pkg name ...
 \ ECLOSE-PRIVATE`, and names a definer: `EPRIM: create EPRIM;` read word at a
-\ time defines `EPRIM;`. A complete row is one REGISTRY token spanning the row,
-\ at its opener, with empty CONTENT; an incomplete row is MALFORMED-REGISTRY at
-\ the opener. Header fields are raw; in body fields comments are inert and a
-\ parsing word consumes its operand. Row fields share the engine delimiter rule.
+\ time defines `EPRIM;`. Fields are raw and share the engine delimiter rule. A
+\ body field is an atom, spelled `PE-...` or `;PE-...`, or a `REF` clause, `REF`
+\ and the field after it. A complete row is one REGISTRY token spanning the
+\ row, at its opener, with empty CONTENT; a row with any other field is
+\ MALFORMED-REGISTRY at that field, and one the source ends inside at the
+\ source's end.
 
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
@@ -352,75 +360,32 @@ private
 : NEXT-FIELD ( -- )
    SKIP-RAW-WS
    POS @ FOFF !
+   LINE-N @ FLINE !
+   COL-N @ FCOL !
    begin INK? while ADV drop repeat
    POS @ FOFF @ - FLEN ! ;
 
-: ROW-PAREN ( -- )
-   ADV drop
-   TO-PAREN
-   END? 0= if ADV drop then ;
-
-\ A row body is interpreted text, so `\` and `( ... )` inside it are comments and
-\ a closer spelled inside one is not a closer.
-: SKIP-INERT ( -- )
-   begin
-      SKIP-RAW-WS
-      END? if exit then
-      CUR 92 = if LINE-COMMENT else
-         CUR 40 = PAREN-STANDALONE? and if ROW-PAREN else exit then
-      then
-   again ;
-
-: BODY-FIELD ( -- )
-   SKIP-INERT
-   NEXT-FIELD ;
-
-\ The family of the row a token opens, or -1 for a token that opens none.
-: ROW-FAMILY ( ^u8 n -- n ) {: a:^ u:n :}
-   a u s" EPRIM:" STR=CI if ROW-BARE exit then
-   a u s" EPPRIM:" STR=CI if ROW-PKG exit then
-   -1 ;
-
-: ROW-OPEN? ( ^u8 n -- bool )
-   ROW-FAMILY -1 <> ;
+\ The family of the row an opener opens.
+: ROW-FAMILY ( ^u8 n -- n )
+   s" EPPRIM:" STR=CI if ROW-PKG exit then ROW-BARE ;
 
 \ A package row names its package before the primitive.
 : PKG-ROW? ( -- bool )
    FAM @ ROW-PKG = ;
 
-: EPRIM-CLOSE? ( ^u8 n -- bool )
-   s" EPRIM;" STR=CI ;
-
-: EPRIVATE-CLOSE? ( ^u8 n -- bool )
-   s" ECLOSE-PRIVATE" STR=CI ;
-
-\ Both closers write the open row, so the engine ends either row at the first
-\ `EPRIM;` or `ECLOSE-PRIVATE`.
-: ROW-CLOSE? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u EPRIM-CLOSE? if true exit then
-   a u EPRIVATE-CLOSE? ;
-
-\ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is
-\ that operand and not a closer. Bracket-less `char` is not here: `EPRIM: FOO
-\ char EPRIM; create LEAK EPRIM;` closes at the first closer and hands `create
-\ LEAK` to the consumer as tokens.
-: PARSE-NEXT? ( ^u8 n -- bool )
-   2dup s" [']" STR= if 2drop true exit then
-   s" [char]" STR=CI ;
-
 : MARK-BAD ( -- )
    MALFORMED-REGISTRY ERR-KIND !
-   R-BYTE @ ERR-BYTE !
-   R-LINE @ ERR-LINE !
-   R-COL @ ERR-COL !
+   FOFF @ ERR-BYTE !
+   FLINE @ ERR-LINE !
+   FCOL @ ERR-COL !
    true HALTED ! ;
 
 \ A header field names the primitive (and, for a package row, its package). An
 \ opener or a closer there is never a name: the row is missing its header.
 : HDR-BAD? ( -- bool )
    FLEN @ 0= if true exit then
-   F$ ROW-OPEN? if true exit then
-   F$ ROW-CLOSE? ;
+   F$ SOURCE-SYNTAX:ROW-OPENER? if true exit then
+   F$ SOURCE-SYNTAX:ROW-CLOSER? ;
 
 : HDR-FIELD ( -- )
    NEXT-FIELD
@@ -431,29 +396,16 @@ private
    HALTED @ if exit then
    PKG-ROW? if HDR-FIELD then ;
 
-\ A row body is interpreted, so `.( ... )` there parses its own text exactly like
-\ `s" ... "` does: a closer spelled inside a print body is that text and not this
-\ row's closer. false = the print body ran past end of input.
-: SKIP-PRINT ( -- bool )
-   TO-PAREN
-   END? if false exit then
-   ADV drop true ;
-
-\ false = the operand ran past end of input, so the row can never close.
-: FIELD-OPERAND ( -- bool )
-   F$ SOURCE:ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
-   F$ SOURCE:NORMAL-STRING-OPENER? if SKIP-QUOTE exit then
-   F$ PRINT-OPEN? if SKIP-PRINT exit then
-   F$ PARSE-NEXT? if NEXT-FIELD FLEN @ 0 <> exit then
-   true ;
-
 : ROW-BODY ( -- )
    begin
-      BODY-FIELD
+      NEXT-FIELD
       FLEN @ 0= if MARK-BAD exit then
-      F$ ROW-CLOSE? if exit then
-      F$ ROW-OPEN? if MARK-BAD exit then
-      FIELD-OPERAND 0= if MARK-BAD exit then
+      F$ SOURCE-SYNTAX:ROW-CLOSER? if exit then
+      F$ SOURCE-SYNTAX:ROW-REF? if
+         NEXT-FIELD
+      else
+         F$ SOURCE-SYNTAX:ROW-ATOM? 0= if MARK-BAD exit then
+      then
    again ;
 
 : EMIT-ROW ( -- )
@@ -601,7 +553,7 @@ private
    NAME-POS? 0= ;
 
 : ROW-START? ( -- bool )
-   CUR$ ROW-OPEN? 0= if false exit then
+   CUR$ SOURCE-SYNTAX:ROW-OPENER? 0= if false exit then
    NAME-POS? 0= ;
 
 \ The same name-position rule a row opener obeys: after a body opener or

@@ -24,7 +24,7 @@ public
 \ rather than certify a partial ledger. -4808..-4810 sit in the lint-tool block
 \ that starts at E-SHADOW-UNTERM (-4800).
 -4808 constant E-QUOTE   \ a string literal ran past end of input
--4809 constant E-ROW     \ a primitive-axiom row lacked a header or its closer
+-4809 constant E-ROW     \ a malformed primitive-axiom row
 -4810 constant E-LEX     \ a lexer diagnostic or token kind this lint was never taught
 
 private

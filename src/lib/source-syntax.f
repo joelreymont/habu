@@ -48,4 +48,20 @@ public
    a u s" ;match" STR=CI if STR-TRUE exit then
    a u s" ;]" STR= ;
 
+: ROW-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u s" EPRIM:" STR=CI if STR-TRUE exit then
+   a u s" EPPRIM:" STR=CI ;
+
+\ Both closers write the open row, so either ends a row of either family.
+: ROW-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u s" EPRIM;" STR=CI if STR-TRUE exit then
+   a u s" ECLOSE-PRIVATE" STR=CI ;
+
+: ROW-ATOM? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 3 >= if a 3 s" PE-" STR=CI if STR-TRUE exit then then
+   u 4 >= if a 4 s" ;PE-" STR=CI exit then
+   STR-FALSE ;
+
+: ROW-REF? ( ^u8 n -- bool ) s" REF" STR=CI ;
+
 ;package

@@ -288,35 +288,51 @@ variable CA-COMPOSE-LABEL-U
       1+
    repeat ;
 
-\ Each lexer defect sits at an opener word, a string opener or a row opener, so
-\ the reported token is that word read out of the source, at its own width.
+\ A string defect sits at its opener and a row defect at the token the row rule
+\ rejects, so the reported token is that word read out of the source, at its own
+\ width; at the source's end it is empty.
 : CA-LEX-TOKEN-U ( -- n )
    LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
 
 : CA-LEX-TOKEN$ ( -- ^u8 n )
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
-\ ---- malformed primitive-axiom row --------------------------------------------
-\ An incomplete primitive-axiom row stops the scan like an open string but gets
-\ its own code and repair text: a caller told to close a string literal would
-\ look for a quote that is not there.
-: CA-PROSE-LEX ( ^u8 n ^u8 n -- )
-   {: code:^ codeu:n what:^ whatu:n :}
+: CA-PROSE-AT ( ^u8 n -- ^JSON:writer ) {: code:^ codeu:n :}
    CA-JSON-WRITER
    code codeu JSON:WRITE-RAW
    s"  " JSON:WRITE-RAW
    CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW
    s" :" JSON:WRITE-RAW LINT-LEX:ERROR-LINE@ JSON:WRITE-U
    s" :" JSON:WRITE-RAW LINT-LEX:ERROR-COL@ JSON:WRITE-U
-   s" : " JSON:WRITE-RAW what whatu JSON:WRITE-RAW
-   s"  opened at '" JSON:WRITE-RAW CA-LEX-TOKEN$ JSON:WRITE-RAW
-   s" ' does not close" JSON:WRITE-RAW drop ;
+   s" : " JSON:WRITE-RAW ;
 
+\ ---- malformed primitive-axiom row --------------------------------------------
+\ A malformed primitive-axiom row stops the scan like an open string but gets
+\ its own code and repair text: a caller told to close a string literal would
+\ look for a quote that is not there.
 : CA-PROSE-LEX-ROW ( -- )
-   s" E-MALFORMED-REGISTRY-ROW" s" primitive-axiom row" CA-PROSE-LEX ;
+   s" E-MALFORMED-REGISTRY-ROW" CA-PROSE-AT
+   CA-LEX-TOKEN-U 0= if
+      s" found the end of the source" JSON:WRITE-RAW
+   else
+      s" found '" JSON:WRITE-RAW CA-LEX-TOKEN$ JSON:WRITE-RAW s" '" JSON:WRITE-RAW
+   then
+   s"  in the primitive-axiom row opened at " JSON:WRITE-RAW
+   LINT-LEX:ROW-LINE@ JSON:WRITE-U
+   s" :" JSON:WRITE-RAW LINT-LEX:ROW-COL@ JSON:WRITE-U
+   s" ; a row's name and package are neither an opener nor a closer, and its body holds only PE- or ;PE- atoms and REF clauses and ends at EPRIM; or ECLOSE-PRIVATE"
+   JSON:WRITE-RAW
+   CA-LEX-TOKEN-U 0= if
+      s" ; close the row" JSON:WRITE-RAW
+   else
+      s" ; close the row before this token or replace it" JSON:WRITE-RAW
+   then
+   drop ;
 
 : CA-PROSE-LEX-UNTERM ( -- )
-   s" E-UNTERMINATED-STRING" s" string literal" CA-PROSE-LEX ;
+   s" E-UNTERMINATED-STRING" CA-PROSE-AT
+   s" string literal opened at '" JSON:WRITE-RAW CA-LEX-TOKEN$ JSON:WRITE-RAW
+   s" ' does not close" JSON:WRITE-RAW drop ;
 
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
@@ -475,8 +491,8 @@ public
 
 private
 
-\ True for the code the pre-verifier stops with at a string or a
-\ primitive-axiom row the file never closes, and discovery at a string or a
+\ True for the code the pre-verifier stops with at a string the file never
+\ closes or a malformed primitive-axiom row, and discovery at a string or a
 \ locals group, a defect the lexer reads too but for the group.
 : LEX-STOP? ( n -- bool ) {: rc:n :}
    rc VERIFY:E-UNTERMINATED-STRING =
