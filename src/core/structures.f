@@ -35,17 +35,19 @@ variable STRUCT-OPEN
    w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ w names the field word that has no name after it.
-: STRUCT-NO-NAME ( ptr u8 n -- ) {: w:ptr wu:n :}
-   w wu s" a field name" SRCLOC:TOKEN$ s" no name follows"
+\ The field word w, at the source token t tu, has no name after it. It is
+\ written through its help, and the caller stops it.
+: STRUCT-NO-NAME ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n t:ptr tu:n :}
+   w wu s" a field name" t tu s" no name follows"
    REJECTION:MISSING-OPERAND
    s" write the field's name after the word, as `" REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   w wu REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR ;
 
 \ The field's name, which the live input holds next; w names the field word.
 : STRUCT-NAME ( ptr u8 n -- ptr u8 n ) {: w:ptr wu:n :}
-   parse-name dup 0= if w wu STRUCT-NO-NAME then ;
+   parse-name dup 0= if
+      w wu SRCLOC:TOKEN$ STRUCT-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
+   then ;
 
 : STRUCT-UNALIGNED ( n ptr u8 n -- ) {: off:n fa:ptr fu:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN

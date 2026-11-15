@@ -3,10 +3,40 @@
 require src/core/checker-owner-abi.f
 
 package CHECKER-OWNER-GUARD
+
+public
+
+\ The checker that owns the source published a declaration-owner record
+\ without the operation op opu, needed at t tu. An empty op names none; a
+\ NULL-PTR t leaves the record unplaced.
+: MISSING-OP ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n t:ptr tu:n :}
+   s" E-COMP-OWNER" REJECTION:OPEN
+   s" the checker that owns the source carries no " REJECTION:EMIT-STR
+   opu 0= IF
+      s" operation for this step" REJECTION:EMIT-STR
+   ELSE
+      96 REJECTION:EMIT1  op opu REJECTION:EMIT-STR
+      s" ` operation" REJECTION:EMIT-STR
+   THEN
+   t NULL-PTR = 0= IF t tu REJECTION:AT  s" needed here" REJECTION:EMIT-STR THEN
+   REJECTION:HELP
+   s" publish a declaration-owner record that carries every operation"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The checker that owns the source published a declaration-owner record that
+\ is out of bounds or not one.
+: MALFORMED ( -- )
+   s" E-COMP-OWNER" REJECTION:OPEN
+   s" the checker that owns the source published a malformed declaration-owner record"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" publish the record through CHECKER-OWNER-ABI" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 private
 
-\ E-COMP-OWNER; this small core helper does not require the library layer.
-: BAD ( -- ) -8574 throw ;
+: BAD ( -- ) MALFORMED ;
 : ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 : DATA-SPAN ( -- n n ) data-base BYTE-VIEW ADDRESS here BYTE-VIEW ADDRESS ;
 

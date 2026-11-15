@@ -100,6 +100,12 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    HB$ s" :" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE ;
 
+: COMMENT-NAME ( -- )
+   s" a colon named by a comment opener rejects at the name" T-LABEL
+   HB$ s" : \ ( -- ) ;" RUN-SOURCE 70 T=
+   ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE
+   ERR$ s" a comment, not a name" CONTAINS? TTRUE ;
+
 : EXACT-EXITS ( -- )
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
@@ -188,6 +194,7 @@ public
    T-RESET
    EXACT-EXITS
    MISSING-DEFINITION-NAME
+   COMMENT-NAME
    COMPILE-KEYWORD-DEFINITION
    POST-SEAL-BRIDGE
    T-REPORT

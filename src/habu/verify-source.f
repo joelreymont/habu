@@ -455,17 +455,30 @@ variable FLAG-N
    {: e:n :}
    s b +  e b - ;
 
+: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
+   s" PTR-FIELD:" STR=CI ;
+
+: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
+   s" CFIELD:" STR=CI ;
+
+: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
+   s" +FIELD" STR=CI ;
+
+: STRUCTURE-FIELD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u STRUCTURE-PTR-FIELD?  a u STRUCTURE-CFIELD? or
+   a u STRUCTURE-CELL-FIELD? or ;
+
+\ The definer t tu has no name after it: the record the loader writes for
+\ that definer, else the general one, written through its help.
+: NO-NAME-RECORD ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu s" defer" STR=CI IF t tu INTERPRETER:DEFER-NO-NAME EXIT THEN
+   t tu s" undefine" STR=CI IF t tu UNDEFINE-NO-NAME EXIT THEN
+   t tu STRUCTURE-FIELD? IF t tu t tu STRUCT-NO-NAME EXIT THEN
+   t tu t tu s" no name follows" REJECTION:MISSING-NAME ;
+
 \ The definer the scan read last, at TOKEN-BYTE, has no name after it.
 : NAME-STOP ( -- )
-   TOKEN-BYTE @ TOKEN-FROM {: t:ptr tu:n :}
-   t tu t tu s" no name follows" REJECTION:MISSING-NAME
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ The definition's checker reads a `(` after its definer as the signature, so
-\ the name the scan read last, at TOKEN-BYTE, names nothing.
-: SIG-NAME-STOP ( -- )
-   TOP-CUR-A @ TOP-CUR-U @  TOKEN-A @ TOKEN-U @
-   s" a signature, not a name" REJECTION:MISSING-NAME
+   TOKEN-BYTE @ TOKEN-FROM NO-NAME-RECORD
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The source ends inside the statement's definition, named by the token after
@@ -1137,10 +1150,10 @@ variable SEALS-N
 : OPERAND ( -- ptr u8 n )
    NEXT-RAW dup 0= IF NAME-STOP THEN ;
 
-\ A definer takes its name by the same rule, so `: \`, `DEFLINEAR (` and
-\ `create s"` name a word `\`, a type `(` and a word `s"`. A comment or string
-\ rule there would hand the definer a later token instead. With no token left
-\ TOKEN-BYTE stays at the definer.
+\ A definer takes its name by the same rule, so `DEFLINEAR (` and `create s"`
+\ name a type `(` and a word `s"`, and a word's definer rejects a `(` or `\`
+\ name. A comment or string rule there would hand the definer a later token
+\ instead. With no token left TOKEN-BYTE stays at the definer.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
@@ -1286,16 +1299,12 @@ variable GROUP-AT
    SKIP-BODY-TOKEN ;
 
 \ The record of a declaration-owner record with no operation for a step the
-\ scan takes, at the statement it is in.
+\ scan takes, at the statement it is in when a source the record knows holds
+\ it. The scan knows the field's offset only, so no operation is named.
 : OWNER-STOP ( -- )
-   s" E-COMP-OWNER" REJECTION:OPEN
-   s" the checker that owns the source carries no operation for this step"
-   REJECTION:EMIT-STR
-   s" needed here" STATEMENT-AT
-   REJECTION:HELP
-   s" publish a declaration-owner record that carries every operation"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   TOP-CUR-A @ {: p:ptr :}
+   p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:ptr :}
+   NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
 \ Replay-only checker queries use the live declaration owner. The verifier is
 \ source loaded, so the sealed image need not publish these checker names.
@@ -2277,6 +2286,15 @@ DUPLICATE-INIT
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
+\ The keyword the engine's rejection names for the storage statement's name:
+\ `constant` and `variable` read their own, every other definer's reaches
+\ `create`.
+: STORAGE-KEYWORD ( -- ptr u8 n )
+   TOP-CUR-A @ TOP-CUR-U @ {: a:ptr u:n :}
+   a u s" constant" STR=CI IF s" constant" EXIT THEN
+   a u s" variable" STR=CI IF s" variable" EXIT THEN
+   s" create" ;
+
 \ Registers the effect for the word the next token names with TVK-RAW type
 \ vars, so its cell cannot launder into a nominal atom or family.
 : RAW-TRUST-NEXT ( ptr u8 n n -- )
@@ -2285,6 +2303,7 @@ DUPLICATE-INIT
    dup 0= IF NAME-STOP THEN
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
+   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
@@ -2299,6 +2318,7 @@ DUPLICATE-INIT
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
@@ -2324,6 +2344,7 @@ DUPLICATE-INIT
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
@@ -2377,6 +2398,7 @@ variable TRUSTED-DOES
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   s" trusted:" name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
@@ -2399,6 +2421,7 @@ variable TRUSTED-DOES
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
@@ -2413,6 +2436,7 @@ variable TRUSTED-DOES
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   s" linear:" name nameu INTERPRETER:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -3495,15 +3519,6 @@ variable FILE-USE
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
 
-: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
-   s" PTR-FIELD:" STR=CI ;
-
-: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
-   s" CFIELD:" STR=CI ;
-
-: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
-   s" +FIELD" STR=CI ;
-
 : TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- bool )
    DECL-SIGNATURE ;
 
@@ -4051,7 +4066,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if NAME-STOP then
-   TOKEN-A @ TOKEN-U @ s" (" CORE-STR= if SIG-NAME-STOP then
+   TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ INTERPRETER:NOT-A-NAME
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN

@@ -501,14 +501,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    RECORD-IMAGE ;
 
 
-: OBJECT-KIND ( -- )
-   KERNEL? @ if s" link: a kernel build writes no program" 76 die then
-   ARM64:READ? 0= if s" link: no kernel object was read for this build" 76 die then
-   ENGINE? @ if 1 else 0 then  s" ENGINE" ARM64:SYM <> if
-      s" link: the kernel object is another kind of build's" 76 die
-   then ;
-
-
 : EMIT-IMAGE ( ptr u8 n ptr u8 n -- )
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
@@ -529,18 +521,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Link the open space's program and write it, signed, to the path; the caller
-\ first stores its entry. Only an engine's records read facts texts, so only an
+\ first reads the kernel object of the build's kind and stores the program's
+\ entry. Only an engine's records read facts texts, so only an
 \ engine's link places those the build's body held, after every file, where no
 \ file's literal can name one. The program goes to a sibling renamed over the
 \ path: macOS kills a signed program rewritten in place.
 : WRITE-PROGRAM ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   OBJECT-KIND
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
-   s" ENTRY-CELL" ARM64:SYM ARM64:HEADER-CELL {: entry:n :}
-   entry SPACE-AT @ 0= if
-      s" link: the build stored no entry for the program" 76 die
-   then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
       FS:CHMOD-X ;] FS:REPLACE-CACHED

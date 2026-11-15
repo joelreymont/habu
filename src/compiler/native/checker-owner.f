@@ -1,6 +1,6 @@
 \ checker-owner.f - the checker this compiler asks.
 \ A source-loaded compiler binds the checker beside it from the same tree.
-\ Missing fields refuse with E-COMP-OWNER; they never fall back by name.
+\ A missing field is rejected with E-COMP-OWNER; it never falls back by name.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -34,10 +34,7 @@ defer SOURCE-DOES-CHECK ( ptr u8 n ptr u8 n -- n )
 defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 s" compiler: the source owner carries no " write drop
-   2 a u write drop
-   2 S\" \n" write drop
-   E-COMP-OWNER throw ;
+   a u NULL-PTR 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.
@@ -120,7 +117,7 @@ public
 \ (checker.f SIG-COUNTED). Read per call, not by name nor in BIND-SOURCE-CALLS:
 \ a build host's checker lacks the name and its record the field.
 : SIG-REFUSED? ( -- bool )
-   NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature refusal" SOURCE-FIELD
+   NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature rejection" SOURCE-FIELD
    AS-BOOL execute ;
 
 \ The store's end when a definition begins, and a refused one's cut back to it:

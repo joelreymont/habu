@@ -470,7 +470,7 @@ PATH-CAP BUFFER: FIFTH-BUF
    s" held: compiled " one two three RESULTS. cr ;
 
 \ The second build alone writes a program, PROG$ in the out root: its entry is the header store
-\ s2.f's object holds, and LINKER:WRITE ends the build rc 74 when the entry cell is empty.
+\ s2.f's object holds.
 : SAME-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET [: SAME-K$ included  SAME-S1$ included  SAME-S2$ included ;]
       LINKER:WITH ;]
