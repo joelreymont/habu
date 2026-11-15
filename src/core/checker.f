@@ -386,7 +386,8 @@
 \ same walk notes a `create` or definer call made before any bend (WRAPMADE):
 \ a head that reaches `does>` without one is rejected there, since the clause
 \ would have no word of this definition's to act for. Only a scan's start
-\ clears WRAPMADE: a record the walk publishes for a callee takes the others.
+\ clears WRAPMADE. A facts read inside the walk keeps all of this state for
+\ the definition's own record (READ-ENTER).
 \
 \ The checker overlay: a replay binds every name through the engine's own
 \ lookup, so while it runs the engine's dictionary holds what a compile of the

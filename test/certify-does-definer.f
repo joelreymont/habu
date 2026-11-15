@@ -552,6 +552,9 @@ CODEGEN:BUFFER CDD-FIT-WANT
    s" a does> word that creates no word is rejected at its does>" T-LABEL
    s" : CDD-PB1 ( -- ) does> ( -- n ) drop 9 ;"
       s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
+   s" a head that bends before a word's first call is still rejected" T-LABEL
+   s\" : CDD-PB5 ( -- ) false if then s\" CDD-PB5\" HIDE-DEFS-FROM create 5 , does> ( -- n ) @ ;"
+      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
    s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
    s" : CDD-FD ( -- n ) 5 ; ndict@ 1- ndict! create CDD-FX" TEST-EVAL:RC 0 T=
    s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  70 T= ;

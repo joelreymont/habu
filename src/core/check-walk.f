@@ -3268,8 +3268,8 @@ CHECKER-REG:}SCRATCH
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
 \ GUEST-POOLS saves 16 cells, GUEST-PARSER 38 and its three tables,
-\ GUEST-LATCHES 4; GUEST-POINTERS saves 9 pointers.
-16 38 + 4 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+\ GUEST-LATCHES 9; GUEST-POINTERS saves 9 pointers.
+16 38 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
 9 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
@@ -3328,7 +3328,9 @@ CHECKER-REG:}SCRATCH
 \ The latches E-ADD-EFFECT sets for the record the engine publishes next.
 : GUEST-LATCHES ( n bool -- n ) {: save:bool :}
    DL-NEW save GUEST-CELL  RECW save GUEST-CELL  RECMI save GUEST-CELL
-   CHECKER-REC-SYM save GUEST-CELL ;
+   CHECKER-REC-SYM save GUEST-CELL
+   DOESEFF save GUEST-CELL  DOESPEND save GUEST-CELL
+   WRAPN save GUEST-CELL  WRAPC save GUEST-CELL  WRAPBENT save GUEST-CELL ;
 
 : GUEST-POINTERS ( bool -- ) {: save:bool :}
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
@@ -3350,6 +3352,7 @@ CHECKER-REG:}SCRATCH
 : READ-ENTER ( -- )
    GUEST-OPEN @ IF s" checker: a facts read inside another" 76 die THEN
    RES-TRUE GUEST-KEEP  -1 GUEST-OPEN !
+   DOES-EFF-CLEAR  WRAP-CLEAR
    0 SIG-RAW-MODE ! ;
 
 \ A read's records are what an earlier file's compile taught, not the host
