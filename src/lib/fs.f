@@ -63,29 +63,41 @@ public
 $2E constant DOT
 $2F constant SLASH
 
-private
+\ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h on every arch.
+1 constant EPERM
 2 constant ENOENT
-
-public
+9 constant EBADF
+12 constant ENOMEM
 13 constant EACCES
+17 constant EEXIST
+18 constant EXDEV
+20 constant ENOTDIR
+21 constant EISDIR
+23 constant ENFILE
+24 constant EMFILE
+28 constant ENOSPC
+34 constant ERANGE
 : ENAMETOOLONG ( -- n )
    HB-TARGET-MACOS? if 63 else 36 then ;
-
-private
-20 constant ENOTDIR
 : ELOOP ( -- n )
    HB-TARGET-MACOS? if 62 else 40 then ;
+: ENOTEMPTY ( -- n )
+   HB-TARGET-MACOS? if 66 else 39 then ;
+: ESTALE ( -- n )
+   HB-TARGET-MACOS? if 70 else 116 then ;
+: ENODATA ( -- n )
+   HB-TARGET-MACOS? if 96 else 61 then ;
 
-public
 \ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f, fs-anchored.f or
 \ an fs-mutate.f word that says so: the throw's host errno, or 0 for a semantic refusal.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 
-private
+\ Sets the errno ERRNO answers.
 : CAUSE! ( n -- )
    data-base FS-ABI:ERRNO-OFF + ! ;
 
+private
 \ The one fstat binding: libc's struct stat, not the normalized stat64 layout.
 PROCESS-SYMBOLS
 FUNCTION: FSTAT-CALL fstat ( n ^u8 -- i32 ) ;FUNCTION
@@ -105,7 +117,6 @@ FUNCTION: STRERROR-CALL strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 
 22 constant EINVAL
-34 constant ERANGE
 
 : STRERROR ( n ^u8 n -- n )
    HB-TARGET-MACOS? if STRERROR-CALL exit then
@@ -364,6 +375,12 @@ private
    STAT-BUF stat64 0 < if false exit then
    true ;
 
+\ Every target's struct stat holds st_ino at 8 as 64 bits and st_dev from 0,
+\ where the stat64 rows leave them; Linux's st_dev keeps the kernel's 32-bit
+\ encoding in the low half, which is all of it the rows leave.
+8 constant STAT-INO-OFF
+0 constant STAT-DEV-OFF
+
 public
 : EXISTS? ( ^u8 n -- bool )
    READ-PATHZ 0 access 0= ;
@@ -385,6 +402,12 @@ public
 
 : STAT-CTIME-NS@ ( -- n )
    STAT-BUF FS-ABI:STAT-CTIME-NS-OFF + LE:U64@ ;
+
+: STAT-INO@ ( -- n )
+   STAT-BUF STAT-INO-OFF + LE:U64@ ;
+
+: STAT-DEV@ ( -- n )
+   STAT-BUF STAT-DEV-OFF + LE:U32@ ;
 
 : TRY-STAT ( ^u8 n -- bool ) READ-PATHZ STAT-Z? ;
 
@@ -624,6 +647,45 @@ private
    file FD>N STAT-BUF FSTAT-CALL
    0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then ;
 
+\ The modification time of libc's struct stat, seconds then nanoseconds.
+: LIBC-MTIME@ ( ^u8 -- n n ) {: buf:^ :}
+   HB-TARGET-MACOS? if buf 48 + LE:U64@ buf 56 + LE:U64@ exit then
+   buf 88 + LE:U64@ buf 96 + LE:U64@ ;
+
+\ Rewrites libc's struct stat in STAT-BUF into the layout the stat64 rows
+\ leave, which macOS's struct stat already is. Every field is read before one
+\ is written: on Linux the size and the modification time trade places.
+: LIBC>STAT ( -- )
+   HB-TARGET-MACOS? if exit then
+   STAT-BUF {: buf:^ :}
+   buf LIBC-MODE@ buf LIBC-SIZE@ buf LIBC-MTIME@ buf LIBC-CTIME@
+   {: mode size msec mns csec cns :}
+   mode buf FS-ABI:STAT-MODE-OFF + LE:U32!
+   size buf FS-ABI:STAT-SIZE-OFF + LE:U64!
+   msec buf FS-ABI:STAT-MTIME-SEC-OFF + LE:U64!
+   mns buf FS-ABI:STAT-MTIME-NS-OFF + LE:U64!
+   csec buf FS-ABI:STAT-CTIME-SEC-OFF + LE:U64!
+   cns buf FS-ABI:STAT-CTIME-NS-OFF + LE:U64! ;
+
+\ fpathconf(2) and its _PC_NAME_MAX: Darwin sys/unistd.h, glibc
+\ bits/confname.h.
+PROCESS-SYMBOLS
+FUNCTION: PATHCONF-CALL fpathconf ( n n -- n ) ;FUNCTION
+: PC-NAME-MAX ( -- n )
+   HB-TARGET-MACOS? if 4 else 3 then ;
+
+\ libc's thread-local errno: __error on macOS, __errno_location on glibc. A
+\ row resolves its symbol at its first call, so declaring both is harmless.
+FUNCTION: ERROR-AT-CALL __error ( -- ^u8 ) ;FUNCTION
+FUNCTION: ERRNO-AT-CALL __errno_location ( -- ^u8 ) ;FUNCTION
+: LIBC-ERRNO-CLEAR ( -- )
+   HB-TARGET-MACOS? if 0 ERROR-AT-CALL LE:U32! exit then
+   0 ERRNO-AT-CALL LE:U32! ;
+
+: NAME-MAX-FAIL ( n -- ) {: limit:n :}
+   limit 0 < if FFI:ERRNO else 0 then CAUSE!
+   E-FS-STAT throw ;
+
 public
 \ Open a regular file for reading once and size it from that descriptor, so a
 \ writer renaming a new file over the path or a remover unlinking it cannot
@@ -658,6 +720,19 @@ public
 \ The open descriptor's file's link count, 0 once every name of it is removed.
 : FD-LINKS ( fd -- n )
    FD-FSTAT STAT-BUF LIBC-NLINK@ ;
+
+\ fstat into the buffer the STAT- accessors read. A failure is E-FS-STAT with
+\ errno its cause, and the descriptor stays open.
+: FD-STAT ( fd -- )
+   FD-FSTAT LIBC>STAT ;
+
+\ The longest name in bytes the descriptor's file system takes; the descriptor
+\ stays open. E-FS-STAT with its errno, or with 0 for no limit or a zero one.
+: FD-NAME-MAX ( fd -- n ) {: file:fd :}
+   LIBC-ERRNO-CLEAR
+   file FD>N PC-NAME-MAX PATHCONF-CALL {: limit:n :}
+   limit 0 <= if limit NAME-MAX-FAIL then
+   limit ;
 
 private
 : WRITE-BY-FLAGS ( ^u8 n ^u8 n n -- ) {: pa:^ pu src:^ u flags :}
@@ -719,6 +794,7 @@ FUNCTION: UNLINK-AT-CALL unlinkat ( n ^u8 n -- i32 ) ;FUNCTION
 : AT-REMOVEDIR ( -- n )
    HB-TARGET-MACOS? if $80 else $200 then ;
 
+public
 \ openat's flags for a directory: O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC,
 \ so a symlink in the last component is refused, never followed. Darwin: xnu
 \ bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h overrides the generic
@@ -727,6 +803,8 @@ FUNCTION: UNLINK-AT-CALL unlinkat ( n ^u8 n -- i32 ) ;FUNCTION
    HB-TARGET-MACOS? if $100000 $100 or $1000000 or exit then
    HB-TARGET-LINUX-X86-64? if $10000 $20000 or $80000 or exit then
    $4000 $8000 or $80000 or ;
+
+private
 
 \ openat's flags for a directory used only as later calls' directory, which
 \ needs search permission, not read: OPEN-DIR-FLAGS with Darwin's O_SEARCH

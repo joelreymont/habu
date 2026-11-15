@@ -1,10 +1,11 @@
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
-\ and syncing and resizing a file. A refused PIPE, mark, read, write, sync or
-\ resize, a write that takes no byte and a count past the asked one are E-FS-IO,
-\ which TRY-WRITE-FULL answers as how far its write got; TRY-WRITE answers 0 for
-\ a full descriptor or a signal. A negative length is E-SPAN-LENGTH. A refused
+\ and syncing, resizing, changing the mode of and seeking in a file. A refused
+\ PIPE, mark, read, write, sync, resize, mode change or seek, a write that takes
+\ no byte and a count past the asked one are E-FS-IO, which TRY-WRITE-FULL
+\ answers as how far its write got; TRY-WRITE answers 0 for a full descriptor
+\ or a signal. A negative length or offset is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
 \ E-PROC-OUTPUT.
 \ Signals and descriptors stay the caller's.
@@ -104,6 +105,9 @@ FUNCTION: WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: OPEN-CALL open ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
+FUNCTION: CHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
+FUNCTION: SEEK-CALL lseek ( n n n -- n ) ;FUNCTION
+0 constant SEEK-SET                  \ the same number on macOS and Linux
 
 8 TASK:+USERS POLL-STORAGE u8
 : POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
@@ -273,6 +277,18 @@ public
    {: f:fd len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    f FD>N len RESIZE-CALL 0<> if E-FS-IO throw then ;
+
+\ Sets the file's permission bits to n, as chmod(2) takes them.
+: MODE! ( fd n -- )
+   {: f:fd mode:n :}
+   f FD>N mode CHMOD-CALL 0<> if E-FS-IO throw then ;
+
+\ Moves the descriptor's offset to n bytes from the file's start, where its
+\ next read or write begins.
+: SEEK ( fd n -- )
+   {: f:fd at:n :}
+   at 0 < if E-SPAN-LENGTH throw then
+   f FD>N at SEEK-SET SEEK-CALL 0 < if E-FS-IO throw then ;
 
 \ Marks the descriptor non-blocking, or leaves it so; a mark refused or not kept
 \ restores its flags.
