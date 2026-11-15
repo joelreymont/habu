@@ -49,11 +49,14 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 \    a package's own `ptr` would leave its converter `( n -- ptr )` without a
 \    pointee.
 : MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
+\ The record names the surface PTR once, in its `word` note.
 : PTR-REJECTED ( -- )
    REJECTION:CAPTURE
    ['] MINT-PTR CHECKER-REJECT-RC TTHROWSQ
-   REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" `PTR`: reserved name" CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" ^ reserved name" CONTAINS? TTRUE
+   REJECTION:BUFFER$ S\" = word: PTR\n" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" = word: ptr" CONTAINS? TFALSE ;
 PTR-REJECTED
 package CTORPKG
 PTR-REJECTED

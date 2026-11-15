@@ -203,11 +203,12 @@ public
 : TDECL-ARMED ( -- n ) TDECL-CODE @ ;
 : TDECL-WHY@ ( -- ptr u8 n ptr u8 n ) TDW-A @ TDW-U @  TDF-A @ TDF-U @ ;
 \ The token TDECL-THROW armed code with, as a `word` note; empty when another
-\ code is armed or the record is placed at that token. A generated word that
-\ collides is placed at the token that generated it.
+\ code is armed or the record is placed at that token, in any case: DEFTYPE
+\ throws its name folded. A generated word that collides is placed at the
+\ token that generated it.
 : TDECL-WORD-NOTE ( ptr u8 n n -- ptr u8 n ) {: pa:ptr pu:n code:n :}
    TDECL-CODE @ code <>  TDA-U @ 0= or IF s" " EXIT THEN
-   TDA-A @ TDA-U @ pa pu CORE-STR= IF s" " EXIT THEN
+   TDA-A @ TDA-U @ pa pu CORE-STR=CI IF s" " EXIT THEN
    TDA-A @ TDA-U @ ;
 
 : TDECL-THROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
