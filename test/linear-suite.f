@@ -310,7 +310,7 @@ variable PROG-U
 \ Ends as tools/check.f does: a refusal's status is the child's exit code.
 : CHECK-RUN ( -- )
    PATH$ LSP-CHECK:FILE
-   LSP-CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RUN ;
 
 : CHECK-CHILD ( -- )
    LSP-CHECK:RESET
@@ -326,7 +326,7 @@ variable PROG-U
    LSP-CHECK:RESET
    PATH$ PROG PROG-CAP FS:READ-ALL PROG-U !
    PROG$ s" -lin-bad.f" LSP-CHECK:SOURCE
-   LSP-CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RUN ;
 
 \ Checks PROG$ written as NAME, in the forked CHILD word.
 : CHECK-IN ( ptr u8 n ptr u8 n -- )

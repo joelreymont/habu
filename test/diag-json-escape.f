@@ -38,7 +38,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
 
 : CHECK-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" json-escape.f" LSP-CHECK:SOURCE
-   LSP-CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RUN ;
 
 : CHECK-JSON ( -- )
    LSP-CHECK:RESET

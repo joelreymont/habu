@@ -1073,11 +1073,10 @@ variable WANT-U
    s" E-FS-DIR" s" TMPDIR is not a directory" a u
    s" point TMPDIR at an existing directory, or unset it to use /tmp" WANT! ;
 
-\ The child fails printing WANT$ once, as the record its uncaught throw of code
+\ The child failed printing WANT$ once, as the record its uncaught throw of code
 \ carries, in place of the engine's own record of that throw.
-: REJECTED ( ptr u8 n ptr u8 n n -- )
-   {: prog:ptr progu a:ptr u code:n :}
-   a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
+: RECORD-ONCE ( ptr u8 n len len PROCESS:ending n -- )
+   {: prog:ptr progu outu:len erru:len oc code:n :}
    oc MATCH PROCESS:ending
      exited OF 0 T<> ENDOF
      signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
@@ -1085,6 +1084,20 @@ variable WANT-U
    ;MATCH
    ERR erru LEN>N WANT$ COUNT-SUB 1 T=
    ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TFALSE ;
+
+: REJECTED ( ptr u8 n ptr u8 n n -- )
+   {: prog:ptr progu a:ptr u code:n :}
+   a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
+   prog progu outu erru oc code RECORD-ONCE ;
+
+\ tools/check.f checking prog under TMPDIR a u: its run makes a temp directory.
+: CHECK-REJECTED ( ptr u8 n ptr u8 n n -- )
+   {: prog:ptr progu a:ptr u code:n :}
+   a u CHILD-ENV
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   prog progu CAPTURE {: outu:len erru:len oc :}
+   prog progu outu erru oc code RECORD-ONCE ;
 
 \ A child that catches FS:MKTEMP's E-FS-DIR goes on and prints no record.
 : CAUGHT ( -- )
@@ -1122,6 +1135,8 @@ public
    MISSING$ DIR-WANT!  PROG$ MISSING$ E-FS-DIR REJECTED
    s" FS:MKTEMP rejects a missing TMPDIR by a record naming it" T-LABEL
    MISSING$ DIR-WANT!  FILE-PROG$ MISSING$ E-FS-DIR REJECTED
+   s" tools/check.f rejects a missing TMPDIR by a record naming it" T-LABEL
+   MISSING$ DIR-WANT!  PROG$ MISSING$ E-FS-DIR CHECK-REJECTED
    s" a TMPDIR with no room for the temp name is rejected by a record naming it"
    T-LABEL
    s" E-FS-CAPACITY" s" TMPDIR is too long for a temp path" LONG$

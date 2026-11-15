@@ -113,10 +113,10 @@ variable RC
      timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ LSP-CHECK:MAIN throws a nonzero run code, which the CLI exits with. Keep that
-\ mapping while capturing the same stdout and stderr writes in this process.
+\ LSP-CHECK:RUN throws its nonzero code on, as for the CLI's exit status, with
+\ the same stdout and stderr writes captured in this process.
 : CHECK-RUN ( -- )
-   LSP-CHECK:RUN dup 0 <> IF throw THEN drop ;
+   LSP-CHECK:RUN ;
 
 : CHECK-EXIT ( ptr u8 n n -- )
    {: flag:ptr flagu:n want:n :}

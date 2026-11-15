@@ -1177,31 +1177,22 @@ private
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
 
-: CHK-IF-CLEAN ( n [ -- ] -- n ) {: rc:n q :}
-   rc 0 <> if rc exit then
-   q catch ;
-
-: CHK-FINAL-CLEAN ( n -- n n ) {: rc:n :}
-   [: CHK-TEMP-CLEAN ;] catch {: temp-rc:n :}
-   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
-   temp-rc provider-rc CHK-FIRST-RC {: clean-rc:n :}
-   rc clean-rc CHK-FIRST-RC
-   clean-rc ;
-
-: CHK-RUN-ACT ( -- n n )
-   [: CHK-TEMP-CLEAN ;] catch
-   [: CHK-RUN-INNER ;] CHK-IF-CLEAN
-   CHK-FINAL-CLEAN ;
-
-: CHK-RUN-FINISH ( n n -- n ) {: rc:n clean-rc:n :}
-   clean-rc 0 <> if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
-   rc ;
-
 public
 
-: RUN ( -- n )
+\ The run between two cleans of the temporary directory; a failed final clean
+\ clears the session. The earliest code is thrown on after every clean, from
+\ the local its catch bound, so a rejection's saved record stays carried.
+: RUN ( -- )
    CHK-RUN-TEMP-CLEAR
-   CHK-RUN-ACT CHK-RUN-FINISH ;
+   [: CHK-TEMP-CLEAN ;] catch {: pre-rc:n :}
+   pre-rc 0= if [: CHK-RUN-INNER ;] else [: ;] then catch {: run-rc:n :}
+   [: CHK-TEMP-CLEAN ;] catch {: temp-rc:n :}
+   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
+   temp-rc 0<> provider-rc 0<> or if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
+   pre-rc 0<> if pre-rc throw then
+   run-rc 0<> if run-rc throw then
+   temp-rc 0<> if temp-rc throw then
+   provider-rc 0<> if provider-rc throw then ;
 
 private
 
@@ -1242,7 +1233,7 @@ private
    s" --verify-only" CHK-OPT? CHK-VERIFY !
    s" --json-errors" CHK-OPT? CHK-JSON !
    CHK-PARSE-CLI
-   RUN dup 0 <> if throw then drop ;
+   RUN ;
 
 \ A throw that is no exit status ends the check with the engine's record of an
 \ uncaught throw, in the mode the command line asks for: a run whose cleanup
