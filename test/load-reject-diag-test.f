@@ -11,6 +11,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
+require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -453,30 +454,67 @@ variable RC
    ERR$ S\" = expected: ptr a\n" CONTAINS? TTRUE
    ERR$ S\" = found: ptr u8\n" CONTAINS? TTRUE ;
 
-: PARAMETRIC-REJECT ( ptr u8 n -- )
-   BODY$ 2swap FS:WRITE-ALL
+\ body.f holding the one line SRC is rejected with this whole record: MSG, the
+\ token at column COL marked by MARK (its carets and label), then TAIL (notes
+\ and help).
+: PARAMETRIC-REJECT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n msg:ptr msgu:n col:n mark:ptr marku:n tail:ptr tailu:n :}
+   BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED ;
+   s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED
+   SB-RESET  s" error[E-NONPARAMETRIC-EFFECT]: " SB-APPEND  msg msgu SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND  s" :1:" SB-APPEND  col FMT:SB-INT
+   S\" \n  |\n1 | " SB-APPEND  src srcu SB-APPEND  S\" \n  |" SB-APPEND
+   col 0 ?do 32 SB-APPEND-C loop
+   mark marku SB-APPEND  S\" \n  " SB-APPEND  tail tailu SB-APPEND  S\" \n\n" SB-APPEND
+   ERR$ SB$ STR= TTRUE ;
 
 : TEST-PARAMETRIC ( -- )
    s" generic output cannot forge a pointer through an integer" T-LABEL
-   s" : LRD-MINT ( -- a ) 123 ; : LRD-PTR ( -- ptr u8 ) LRD-MINT ;" PARAMETRIC-REJECT
+   s" : LRD-MINT ( -- a ) 123 ; : LRD-PTR ( -- ptr u8 ) LRD-MINT ;"
+   s" declared type variable `a` is specialized to a concrete type; a declared effect must stay parametric over its quantifier"
+   21 s" ^^^ makes `a` a concrete type here"
+   S\" = declared: -- a\n  = inferred: -- n\n  = help: declare a concrete type in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" numeric fetch requires a numeric pointee" T-LABEL
-   s" : LRD-FETCH ( ptr a -- n ) @ ;" PARAMETRIC-REJECT
+   s" : LRD-FETCH ( ptr a -- n ) @ ;"
+   s" declared type variable `a` is specialized to a concrete type; a declared effect must stay parametric over its quantifier"
+   28 s" ^ makes `a` a concrete type here"
+   S\" = declared: ptr a -- n\n  = inferred: ptr n -- n\n  = help: declare a concrete type in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" quotation output cannot specialize a declared variable" T-LABEL
-   s" : LRD-QUOT ( [ -- a ] -- n ) execute ;" PARAMETRIC-REJECT
+   s" : LRD-QUOT ( [ -- a ] -- n ) execute ;"
+   s" declared type variable `a` is specialized to a concrete type; a declared effect must stay parametric over its quantifier"
+   30 s" ^^^^^^^ makes `a` a concrete type here"
+   S\" = declared: [ -- a ] -- n\n  = inferred: [ -- n ] -- n\n  = help: declare a concrete type in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" family argument cannot specialize a declared variable" T-LABEL
-   s" NEWTYPE lrd-box<a> CAST: LRD-CONCRETE ( n -- lrd-box<n> ) : LRD-PARAM ( n -- lrd-box<a> ) LRD-CONCRETE ;" PARAMETRIC-REJECT
+   s" NEWTYPE lrd-box<a> CAST: LRD-CONCRETE ( n -- lrd-box<n> ) : LRD-PARAM ( n -- lrd-box<a> ) LRD-CONCRETE ;"
+   s" declared type variable `a` is specialized to a concrete type; a declared effect must stay parametric over its quantifier"
+   91 s" ^^^^^^^^^^^^ makes `a` a concrete type here"
+   S\" = declared: n -- lrd-box<a>\n  = inferred: n -- lrd-box<n>\n  = help: declare a concrete type in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" raw storage cannot restrict a declared generic input" T-LABEL
-   s" create LRD-RAW 1 cells allot : LRD-RAW-PUT ( a -- ) LRD-RAW ! ;" PARAMETRIC-REJECT
-   ERR$ s" restricted by raw storage" CONTAINS? TTRUE
+   s" create LRD-RAW 1 cells allot : LRD-RAW-PUT ( a -- ) LRD-RAW ! ;"
+   s" declared type variable `a` is restricted by raw storage; its declared kind must stay unchanged"
+   61 s" ^ restricts `a` here"
+   S\" = declared: a --\n  = inferred: a --\n  = help: declare the type the raw storage holds in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" raw storage cannot restrict a quotation output variable" T-LABEL
-   s" create LRD-RAW 1 cells allot : LRD-RAW-QUOT ( [ -- a ] -- ) execute LRD-RAW ! ;" PARAMETRIC-REJECT
+   s" create LRD-RAW 1 cells allot : LRD-RAW-QUOT ( [ -- a ] -- ) execute LRD-RAW ! ;"
+   s" declared type variable `a` is restricted by raw storage; its declared kind must stay unchanged"
+   77 s" ^ restricts `a` here"
+   S\" = declared: [ -- a ] --\n  = inferred: [ -- a ] --\n  = help: declare the type the raw storage holds in place of `a`, or keep the body generic over `a`"
+   PARAMETRIC-REJECT
    s" concrete storage and generic transport retain their declared effects" T-LABEL
    BODY$ s" create LRD-RAW 1 cells allot : LRD-RAW-N ( n -- ) LRD-RAW ! ; : LRD-ID ( a -- a ) ; : LRD-ROUNDTRIP ( n -- n ) LRD-ID dup LRD-RAW-N ; 41 LRD-ROUNDTRIP . cr" FS:WRITE-ALL
    BODY$ RUN s" 41" ASSERT-OK-OUT
    s" family arguments keep distinct declared variables" T-LABEL
-   s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
+   s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;"
+   s" declared type variables `b` and `a` are unified; each declared quantifier must stay a distinct variable"
+   116 s" ^^^^^^ unifies `b` and `a` here"
+   S\" = declared: lrd-pair<a,b> -- lrd-pair<a,b>\n  = inferred: lrd-pair<a,a> -- lrd-pair<a,a>\n  = help: write one type variable for `b` and `a`, or keep the body from making them one type"
+   PARAMETRIC-REJECT ;
 
 \ An integer literal the engine cannot read is undefined, named where the body
 \ holds it, whichever loop reads the body.

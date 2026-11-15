@@ -1509,6 +1509,11 @@ CHECKER-REG:}SCRATCH
    NPBAD-Q1 @ IF s" declared row variable `" EMIT-STR  NPBAD-Q1 @ EMIT1  96 EMIT1
    ELSE s" the unnamed row" EMIT-STR THEN
    s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" EMIT-STR ;
+: VAR-SPAN ( n -- ) {: q:n :}
+   96 EMIT1  q EMIT1  96 EMIT1 ;
+: NP-ROW ( -- )
+   NPBAD-Q1 @ IF s" row " EMIT-STR  NPBAD-Q1 @ VAR-SPAN EXIT THEN
+   s" the unnamed row" EMIT-STR ;
 : NP-MESSAGE ( -- )
    NPBAD-KIND @ case
       4 of NPBAD-Q1 @ NP-VAR
@@ -1525,6 +1530,19 @@ CHECKER-REG:}SCRATCH
       7 of NP-ROW-FIXED endof
       NPBAD-Q1 @ NP-VAR  s"  is minted into " EMIT-STR  NP-FAM-REND
       s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR
+   endcase ;
+: NP-LABEL ( -- )
+   NPBAD-KIND @ case
+      0 of s" makes " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  32 EMIT1  NP-FAM-REND
+         s"  here" EMIT-STR endof
+      1 of s" unifies " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  and " EMIT-STR
+         NPBAD-Q2 @ VAR-SPAN  s"  here" EMIT-STR endof
+      6 of s" unifies " EMIT-STR  NP-ROW  s"  and " EMIT-STR
+         NPBAD-Q2 @ IF s" row " EMIT-STR  NPBAD-Q2 @ VAR-SPAN ELSE s" the unnamed row" EMIT-STR THEN
+         s"  here" EMIT-STR endof
+      7 of s" gives " EMIT-STR  NP-ROW  s"  fixed cells here" EMIT-STR endof
+      2 of s" mints " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR endof
+      s" restricts " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR
    endcase ;
 
 : REASON-MESSAGE ( -- )
@@ -1595,6 +1613,7 @@ CHECKER-REG:}SCRATCH
       RF-LINLOCAL of s" bound here" EMIT-STR endof
       RF-LOCAL of LOCAL-LABEL endof
       RF-SIG of SIG-LABEL endof
+      RF-NP of NP-LABEL endof
       RF-DEAD of s" never runs" EMIT-STR endof
       RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
       RF-REASON of MDIAG @ MD-LABEL$ EMIT-STR endof
@@ -1779,16 +1798,11 @@ PTR-VARIABLE HOLDER-FIRST
    DEADTA @ DEADTU @ CODE-SPAN ;
 
 \ A declared type or row variable's letter in backticks.
-: VAR-SPAN ( n -- ) {: q:n :}
-   96 EMIT1  q EMIT1  96 EMIT1 ;
 : NP-GENERIC ( -- )
    s" , or keep the body generic over " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
 : NP-POINTEE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" declare the pointee the " EMIT-STR  a u EMIT-STR
    s" , as `ptr n` or `ptr u8`, in place of " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
-: NP-ROW ( -- )
-   NPBAD-Q1 @ IF s" row " EMIT-STR  NPBAD-Q1 @ VAR-SPAN EXIT THEN
-   s" the unnamed row" EMIT-STR ;
 : NP-HELP ( -- )
    NPBAD-KIND @ case
       4 of s" base address reaches" NP-POINTEE endof
