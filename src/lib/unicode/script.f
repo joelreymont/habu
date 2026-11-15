@@ -11,7 +11,7 @@ package UNICODE-SCRIPT
 private
 
 \ The table's tags are the family's tags, which the generator and verifier pin.
-CAST: >SCRIPT ( n -- script )
+CAST: >SCRIPT-CELL ( ptr n -- ptr script )
 
 \ The first cell of entry idx; its last scalar and tag follow.
 : ENTRY ( n -- ptr n )
@@ -27,6 +27,6 @@ public
    at 0= if construct script unknown exit then
    at 1- ENTRY {: entry:ptr :}
    cp entry cell+ @ > if construct script unknown exit then
-   entry 2 cells + @ >SCRIPT ;
+   entry 2 cells + >SCRIPT-CELL @ ;
 
 ;package

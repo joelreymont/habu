@@ -8,11 +8,14 @@ Habu directly.
 Zen, Tender and Maki build, test and run on Habu without issues. A dot that
 removes an issue one of them meets goes before any other work.
 
-Until the three are released, a Habu change is measured by what they do on it:
-Maki's image and viewer, Zen's server and Tender's server built from their
-masters, cold then warm, and Tender's `tender.f` loaded, on the candidate
-engine before it lands and on the installed one after. Work that does not move
-that measure waits. A fix one of them waits for lands and is installed alone.
+Until the three are released, a Habu change is measured once, on the
+candidate engine before it lands, by what they do on it: each of Maki's image
+and viewer, Zen's server and Tender's server whose build loads a file the
+change touches, built from its master, and Tender's `tender.f` loaded when it
+loads one. A change to the build tools or their caching builds each cold, then
+warm. The installed tree is checked by being byte-identical to the candidate,
+never by building again (Joel, 2026-11-15). Work that does not move that
+measure waits. A fix one of them waits for lands and is installed alone.
 The test suite, the convergence check and a feature's review run once, before
 the install, never per change; a rebase over changes to `.dots/` alone reruns
 nothing.

@@ -5,7 +5,6 @@ require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require src/lib/c2-memory.f
-require src/lib/c2-owner.f
 require test/c2-records-types.f
 require test/c2-forall-input.f
 

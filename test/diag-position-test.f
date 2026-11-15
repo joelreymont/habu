@@ -512,7 +512,7 @@ variable RC
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
    s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
-   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
    s" generates: GEN ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" s" SB-APPEND 34 SB-APPEND-C s"  MADE" SB-APPEND 34 SB-APPEND-C
@@ -522,13 +522,13 @@ variable RC
    s" " CHECK
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --all-errors" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --verify-only" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 FX-PATH$ CANON$ FX$ AT-IN ;
+   0 s" GEN" 2 12 62 65 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The row's registrar resolves its name as a use does.
 : TEST-GENERATES-SHADOW ( -- )
@@ -856,12 +856,12 @@ variable RC
    s" that undefined word alone" T-LABEL
    s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
-   s" that signature and a local name over 16 bytes" T-LABEL
-   s" : X ( n -- zz ) {: abcdefghijklmnopq :} 1 ;" s" badsig-local.f" LINE-FIXTURE
-   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-MODES
    s" that signature and an unsafe word" T-LABEL
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" that signature and a quotation local" T-LABEL
+   s" : X ( n -- zz ) [: {: y:n :} ;] drop 1 ;" s" badsig-local.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 20 19 21 REFUSED-MODES ;
 
 \ The load binds `--` and `|` in a locals group as locals; the checker refuses
 \ the definition at that token with the reason, and a body reference to it
@@ -912,12 +912,6 @@ variable RC
 \ read, or at the name its declaration reads when the signature holds no type,
 \ and the record names the word as written.
 : TEST-STORED-SIGNATURE ( -- )
-   s" a FUNCTION: whose group is empty" T-LABEL
-   SB-RESET
-   s" require src/lib/ffi-abi.f" SB-APPEND LF+
-   s" FUNCTION: F getpid ( )" SB-APPEND LF+
-   s" stored-ffi.f" FIXTURE!
-   s" `F`" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
    s" `X`" s" zz" 1 19 18 20 STORED-AT
@@ -1077,6 +1071,9 @@ variable RC
    s" a mismatch before a refused locals group token" T-LABEL
    s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-local.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
+   s" a mismatch before a quotation local" T-LABEL
+   s" : X ( n -- n ) dup c@ [: {: y:n :} ;] drop 1 ;" s" mismatch-qlocal.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REFUSED-AT
    s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
@@ -1717,30 +1714,9 @@ variable RC
    s\" \"line\":4,\"column\":10,\"byte_start\":97,\"byte_end\":102" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
-\ A word nothing defines after a name another package's public mark covers, in
-\ a definition too wide to record, is refused there as the load refuses it.
-: TEST-UNSEEN-UNDEFINED ( -- )
-   s" a covered qualified name, then a word nothing defines, in an unfit definition" T-LABEL
-   BASE$ s" unseen-undefined.f" FX-P FS:JOIN-PATH FX-PU !
-   0 FX-U !
-   s\" package PM\npublic\ns\" : MADE ( -- ) ;\" evaluate\n;package\n" FX+
-   s\" package QX\n: X ( " FX+
-   256 0 ?do s" n " FX+ loop
-   s" -- ) PM:MADE NOPE" FX+
-   256 0 ?do s"  drop" FX+ loop
-   s\"  ;\n;package\n" FX+
-   FX-PATH$ FX$ FS:WRITE-ALL
-   s" E-UNDEFINED" s" NOPE" 6 532 598 602 RUN-REFUSED-AT
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
-   0 s" evaluate" 3 21 38 46 FX-PATH$ CANON$ FX$ AT-IN
-   1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
-   s" E-UNDEFINED" s" :6:532" REJECT-RC LOADED-AT ;
-
 : GEN-LINES ( -- )
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
 : DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
@@ -1786,7 +1762,7 @@ variable RC
    0 0 s" GEN" s" if `GEN` makes a word from the name after it, write `generates: GEN ( effect )` after its definition, or declare a foreign function with a `FUNCTION:` group" DEFER-SUGGESTS
    s" a deferred word called inside an open stretch" T-LABEL
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" defer D ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" MADE" SB-APPEND LF+
@@ -2335,7 +2311,6 @@ variable RC
    TEST-RUN-CAPTURED
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
-   TEST-UNSEEN-UNDEFINED
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

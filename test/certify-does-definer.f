@@ -41,7 +41,7 @@ public
    s"  ( -- ptr n ) data-base " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
-   TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+   TEXT CODEGEN:CONTENTS evaluate-closed ;
 ;package
 
 \ The same definer compiled by the engine with its row, private definer and
@@ -187,8 +187,8 @@ package CERTIFY-DOES-DEFINER
 \ Section 5: a definer the scanner never read. CDD-RES-D and CDD-RESP:CDD-RP-D
 \ were compiled by the engine here; what they create is known only from the
 \ store the checker wrote when it certified their clause. Without that store,
-\ `bin/hb tools/check.f src/lib/queue.f` refused NG-BUFFER, created in
-\ src/lib/type/deftype.f by the resident CODEGEN:BUFFER, as E-UNDEFINED. The
+\ tools/check.f rejects as E-UNDEFINED a word a resident definer creates, as
+\ the resident CODEGEN:BUFFER creates src/lib/ffi-callback.f's NAME. The
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the
 \ scanner checks the body and then the clause. Either order must leave a plain
@@ -402,15 +402,6 @@ variable CDD-SRC-U
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
-\ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
-STRUCTURE cdd-c2 FIELD a n FIELD b n ;STRUCTURE
-STRUCTURE cdd-c4 FIELD a cdd-c2 FIELD b cdd-c2 ;STRUCTURE
-STRUCTURE cdd-c8 FIELD a cdd-c4 FIELD b cdd-c4 ;STRUCTURE
-STRUCTURE cdd-c16 FIELD a cdd-c8 FIELD b cdd-c8 ;STRUCTURE
-STRUCTURE cdd-c32 FIELD a cdd-c16 FIELD b cdd-c16 ;STRUCTURE
-STRUCTURE cdd-c64 FIELD a cdd-c32 FIELD b cdd-c32 ;STRUCTURE
-STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
-
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
    [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;]
@@ -425,9 +416,6 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    s" an effect the checker cannot parse is refused" T-LABEL
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;]
       s" `CDD-GI` with an effect that cannot be recorded" CDD-ROW-REJECTED
-   s" an effect too wide to record is refused" T-LABEL
-   [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
-      s" input row too wide to record (256 cells, at most 255)" CDD-ROW-REJECTED
    s" a row on a word that reads no name after it is refused" T-LABEL
    [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;]
       s" `CDD-GN`, which is deferred or reads no name" CDD-ROW-REJECTED
@@ -452,49 +440,6 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 : CDD-NP-REFUSED ( ptr u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
 
-\ A clause declaring 256 input cells, whose body takes 257 with the data field.
-CODEGEN:BUFFER CDD-WIDE
-: CDD-WIDE-ROW ( -- ) 256 0 do s" n " CDD-WIDE CODEGEN:APPEND-STRING loop ;
-: CDD-WIDE$ ( -- ptr u8 n )
-   CDD-WIDE CODEGEN:RESET
-   s" : CDD-W1 ( n -- ) create , does> ( " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" -- " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" ) drop ;" CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE CODEGEN:CONTENTS ;
-
-\ A clause declaring 255 input cells, whose body takes 256 with the data field;
-\ its packet declares the signature as written.
-CODEGEN:BUFFER CDD-FIT
-CODEGEN:BUFFER CDD-FIT-WANT
-: CDD-FIT-ROW ( ptr n -- )
-   {: d:ptr :}
-   255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
-: CDD-FIT$ ( -- ptr u8 n )
-   CDD-FIT CODEGEN:RESET
-   s" -1 REJECTION:JSON ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CDD-FIT-ROW  s" -- n ) " CDD-FIT CODEGEN:APPEND-STRING
-   255 0 do s" drop " CDD-FIT CODEGEN:APPEND-STRING loop
-   s" ;" CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CODEGEN:CONTENTS ;
-
-\ The packet field named by its key text, holding the 255-input row then the tail.
-: CDD-FIT-FIELD ( ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n ta:ptr tu:n :}
-   CDD-FIT-WANT CODEGEN:RESET
-   ka ku CDD-FIT-WANT CODEGEN:APPEND-STRING
-   CDD-FIT-WANT CDD-FIT-ROW
-   ta tu CDD-FIT-WANT CODEGEN:APPEND-STRING
-   REJECTION:BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
-
-: CDD-FIT-DECLARED ( -- )
-   REJECTION:CAPTURE
-   CDD-FIT$ TEST-EVAL:RC  70 T=
-   REJECTION:BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
-   s\" \"notes\":{\"declared\":\"" s\" -- n\"" CDD-FIT-FIELD
-   REJECTION:BUFFER-OFF
-   s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T= ;
-
 : CDD-SECTION-CLAUSE-TAIL ( -- )
    s" a clause that specializes a declared quantifier is refused" T-LABEL
    s" : CDD-NP1 ( n -- ) create , does> ( a -- n ) drop ;" CDD-NP-REFUSED
@@ -509,10 +454,6 @@ CODEGEN:BUFFER CDD-FIT-WANT
    s" a clause that reads below its declared return row is refused at the read" T-LABEL
    s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
       s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
-   s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
-   CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
-   s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL
-   CDD-FIT-DECLARED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `cdd-zz`" CDD-NOT-CERTIFIED
@@ -532,7 +473,7 @@ CODEGEN:BUFFER CDD-FIT-WANT
 \ Section 14: a clause naming a type a reached renderer may declare is deferred
 \ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
 : CDD-QUIET$ ( -- ptr u8 n )
-   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" INCLUDE-EVALUATE ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
+   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" evaluate-closed ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL

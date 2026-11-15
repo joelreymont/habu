@@ -285,36 +285,17 @@ FUNCTION: SEND-CALL send ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: OPTION-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: SHUTDOWN-CALL shutdown ( n n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-
-FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
 
 \ ioctl's third argument is variadic: Darwin passes it on the stack.
 FUNCTION: QUEUE-CALL ioctl ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $04 WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
-   3 $04 WRITES-BYTES
-   4 $04 WRITES-BYTES
-;FUNCTION
+FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
 
 : LAST-ERROR ( -- errno )

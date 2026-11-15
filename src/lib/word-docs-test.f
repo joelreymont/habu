@@ -199,11 +199,9 @@ variable FIX-U
    s" RESULT" FIND {: r:n :}
    r s" RESULT" s" UNICODE" s" -- ptr n" REC=
    r WORD-DOCS:PUBLIC? TFALSE
-   s" Slot 15 is task-local FFI scratch, beyond either call's arguments."
-   {: first:ptr fu:n :}
-   r WORD-DOCS:COMMENT$ drop {: c:ptr :}
-   c fu first fu T$=
-   c fu + c@ STR-LF T=
+   r WORD-DOCS:COMMENT$
+   s" C's four-byte int output, in a task-local cell each call zeroes first."
+   T$=
    s" UNICODE-CLASS:WHITE-SPACE?" FIND {: w:n :}
    w s" UNICODE-CLASS:WHITE-SPACE?" s" UNICODE" s" " REC=
    w WORD-DOCS:PUBLIC? TTRUE

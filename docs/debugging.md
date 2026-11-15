@@ -213,9 +213,9 @@ Every VM stack is a guarded mapping and compiled code carries no bounds check,
 so the message names the mechanism that caught the fault
 (`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
 
-- `E-UNDERFLOW` (exit 70) at the token: the interpreter rejected a token
-  whose record states more inputs than the stack holds. Catchable; the REPL
-  recovers the line.
+- `E-INPUT-UNDERFLOW` (exit 70) at the token: the checker rejected a
+  top-level call whose word's effect takes more cells than the stack holds,
+  before the word ran.
 - `E-UNDERFLOW` (exit 67) from the kernel: compiled code reached through
   `execute`, `catch`, `finally` or a quotation read below the data stack's
   base. The kernel throws it, so a `catch` receives it; uncaught, its record

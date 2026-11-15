@@ -16,7 +16,8 @@ ENUM encoding utf8 utf16-le utf16-be us-ascii ;ENUM
 
 private
 CAST: ENCODING>N ( encoding -- n )
-CAST: >ENCODING ( n -- encoding )
+\ Views the encoding cell, which holds only ENCODING>N values.
+CAST: >ENCODING-CELL ( ptr n -- ptr encoding )
 
 7 constant SRC-HEADER-CELLS
 0 constant SRC-ORIGINAL-IDX
@@ -346,7 +347,7 @@ public
    OWNER-STATE SRC-LEXICAL$ ;
 
 : OWNER-ENCODING ( source-owner -- encoding )
-   OWNER-STATE SRC-ENCODING-N >ENCODING ;
+   OWNER-STATE SRC-ENCODING-IDX + >ENCODING-CELL @ ;
 
 : OWNER-BOM$ ( source-owner -- ptr u8 n )
    OWNER-STATE SRC-BOM$ ;
@@ -361,7 +362,7 @@ public
    SRC-STATE SRC-LEXICAL$ ;
 
 : SOURCE-ENCODING ( XML:source -- XML:source encoding )
-   SRC-STATE SRC-ENCODING-N >ENCODING ;
+   SRC-STATE SRC-ENCODING-IDX + >ENCODING-CELL @ ;
 
 : SOURCE-BOM$ ( XML:source -- XML:source ptr u8 n )
    SRC-STATE SRC-BOM$ ;

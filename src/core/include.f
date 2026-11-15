@@ -71,19 +71,6 @@ variable REQUIRE-SAVE-BASE
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
 
-\ The loader's first callback cells are typed storage, whose generated
-\ accessors need TYPE-DECL's evaluator before REQUIRE-REG:MARK exists. Their
-\ source is closed here; INCLUDE-EVALUATE replaces this binding with the
-\ require rollback boundary once the registry is ready.
-using TYPE-DECL
-package INCLUDE-EVAL-BIND
-private
-: BOOT ( -- ) [: evaluate-closed ;] is TYPE-DECL:TDECL-EVAL-XT ;
-BOOT
-;package
--1 TDECL-EVAL-ARMED !
-;using
-
 \ An invocation that owns source bytes supplies both filesystem answers through
 \ this loader-local pair. A newly source-loaded target gets its own pair, so its
 \ require registry and source frames remain independent of the retained host.
@@ -1475,27 +1462,6 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
 
-\ Generated source runs as a closed program: one that leaves or takes cells is
-\ rejected with a record and 70.
-: INCLUDE-EVALUATE ( ptr u8 n -- )
-   REQUIRE-REG:MARK {: mark:n :}
-   [: 2dup evaluate-closed ;] catch {: rc:n :}
-   2drop
-   rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then ;
-
-\ Once REQUIRE-REG is ready, generated declarations also roll back its rows
-\ on failure. Stage builders without include.f leave the evaluator unarmed.
-\ The `is` target is qualified because parsing words do not resolve through
-\ using-imports.
-using TYPE-DECL
-
-package INCLUDE-EVAL-BIND
-private
-: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
-INSTALL
-;package
-;using
-
 \ Every source load runs through the bound runner. The ordinary one keeps the
 \ frame and scope behavior; a build binds its own once the loader has loaded.
 package SOURCE-UNIT
@@ -1743,7 +1709,11 @@ CELL constant FR-NAMED
 14 cells constant FR-CTIME-SEC
 15 cells constant FR-CTIME-NS
 16 cells constant FR-STAMP-SIZE
-17 cells constant FR-PATH
+\ The transient schema mark the file's load took (SCHEMA-REG:TRANSIENT-MARK).
+17 cells constant FR-T-NODES
+18 cells constant FR-T-ROOTS
+19 cells constant FR-T-PARAMS
+20 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
 $1000 constant ROOM-MIN
@@ -1827,6 +1797,10 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-CTIME-SEC + CELL-VIEW !
    0 frame FR-CTIME-NS + CELL-VIEW !
    -1 frame FR-STAMP-SIZE + CELL-VIEW !
+   SCHEMA-REG:TRANSIENT-MARK {: nodes:n roots:n params:n :}
+   nodes frame FR-T-NODES + CELL-VIEW !
+   roots frame FR-T-ROOTS + CELL-VIEW !
+   params frame FR-T-PARAMS + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
@@ -1932,6 +1906,16 @@ public
    frame FR-CTIME-SEC + CELL-VIEW @
    frame FR-CTIME-NS + CELL-VIEW @
    frame FR-STAMP-SIZE + CELL-VIEW @ ;
+
+\ Ends the transient schema nodes the active file's load made, keeping its
+\ loader's.
+: END-TYPES ( -- )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-T-NODES + CELL-VIEW @
+   frame FR-T-ROOTS + CELL-VIEW @
+   frame FR-T-PARAMS + CELL-VIEW @
+   SCHEMA-REG:TRANSIENT-RELEASE ;
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
@@ -2171,11 +2155,11 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close CLOSE-ACTION execute ;
 
 \ A file that ends with no definition open ends the transient schema nodes its
-\ definers built definitions from; a build ends them at each piece's end.
+\ definers built definitions from; a build ends them at the file's last piece.
 : TRANSIENT-END ( -- )
    data-base BOOT:IMAGE-BASE-CELL + @ 0 <> if exit then
    data-base PEND-CELL + @ 0 <> if exit then
-   SCHEMA-REG:TRANSIENT-RESET ;
+   END-TYPES ;
 
 \ The created body closes and the residue check runs inside the unit, so a runner's call
 \ returns only for an accepted file; each compiled part starts in host.

@@ -11,7 +11,6 @@ require src/lib/fs-mutate.f
 require src/lib/at-exit.f
 require src/lib/codesign.f
 require src/lib/source.f
-require src/lib/build.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/build-out.f

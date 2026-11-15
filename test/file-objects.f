@@ -850,6 +850,21 @@ variable CLASS-N                        \ the class CLASS+ read
    s" it has T's bytes from PIECES on" LABEL  au bu FROM-PIECES? TTRUE
    s\" PT\n" s" the program prints PT" PRINTS-RUN ;
 
+\ R's program, run in its own process: its stderr is MAIN's record alone.
+: RECORD-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s\" error[E-MAIN]: ran\n\n" STR= {: ran:bool :}
+   ran  rc 0 =  and 0= if rc SHOW then
+   s" the program prints MAIN's record" LABEL  ran TTRUE
+   s" the program exits 0" LABEL  rc 0 T= ;
+
+\ Guards the text a record is built in: record-first.f's top level prints a record, and the
+\ build saves no address of the build process's mapping.
+: RECORD-CASE ( CMD:command -- CMD:command )
+   s" R" WHICH!  s" test/fixtures/file-objects/record-main.f" FIXTURE-BUILD 0= if exit then
+   RECORD-RUN ;
+
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path.
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
@@ -1831,15 +1846,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" : MAIN ( -- ) " SRC+  warm if s" 42" SRC+ else s" 41" SRC+ then
    s\"  . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
-\ lib.f's definer MAKE-EAT names PL's private plsecret by its spelling. It is
-\ written once: a rewritten file is compiled again, which reads its entry.
+\ lib.f's definer MAKE-EAT names PL's plbox by its spelling. It is written
+\ once: a rewritten file is compiled again, which reads its entry.
 : WRITE-BUILT ( -- )
    L$ s" built" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" package PL\nprivate\nSTRUCTURE plsecret FIELD v n ;STRUCTURE\n" SRC+
-   s\" public\n: MAKE-EAT ( ptr u8 n -- )\n" SRC+
-   s\"    s\" PL:plsecret\" EFFECT:FAMILY EFFECT:PTR {: p :}\n" SRC+
-   s\"    EFFECT:NEW p EFFECT:IN define-word\n" SRC+
+   s\" package PL\npublic\nSTRUCTURE plbox FIELD v n ;STRUCTURE\n" SRC+
+   s\" : MAKE-EAT ( ptr u8 n -- )\n" SRC+
+   s\"    s\" PL:plbox\" EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
+   s\"    EFFECT:EMPTY p EFFECT:IN define-word\n" SRC+
    s\"    postpone drop\n   postpone ; ;\n;package\n" SRC+  s" lib.f" NEST-WRITE
    false WRITE-EAT ;
 
@@ -1942,7 +1957,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE PATH-CASE STALE-CASE HIDDEN-CASE
+      SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE

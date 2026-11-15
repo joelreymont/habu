@@ -127,7 +127,7 @@ SUMTYPE dfl-owned
 
 TYPED-VARIABLE DFL-EVAL-A ptr u8
 variable DFL-EVAL-U
-: DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ INCLUDE-EVALUATE ;
+: DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ evaluate-closed ;
 : DFL-EVAL ( ptr u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
 s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=

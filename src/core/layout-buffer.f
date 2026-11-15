@@ -145,22 +145,45 @@ PTR-VARIABLE STGT-START
       loop drop
    else drop then ;
 
-\ The definer's validation took the type, so CHECKER-STORAGE-TERM takes it too.
-: STORAGE-MARK-FIXED ( ptr n ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
-   type typeu CHECKER-STORAGE-TERM drop {: term:n :}
+: STORAGE-MARK-FIXED ( ptr n n -- ) {: base:ptr term:n :}
    LBUF-N @ 0 ?do
       base i LBUF-W @ * cells + term STORAGE-MARK-TERM
    loop ;
 
-: STORAGE-HAS-ADDRESS? ( ptr u8 n -- bool )
-   CHECKER-STORAGE-TERM drop TFAM:HAS-ADDRESS? ;
+\ A type node is read where its text would be parsed (STORAGE-PARSE?), into
+\ LBI-T, live as long; a rejection shows the type as a diagnostic renders it.
+: NODE-READ ( n -- ) {: node:n :}
+   STORAGE-RESET
+   node TFAM:EFFECT-TYPE T-RES LBI-T !  0 LBI-BAD ! ;
+
+: NODE-TYPE-REFUSE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
+   name nameu LBUF-GEN LBUF-GEN-U @ CHECKER-STORAGE-TYPE-REFUSE ;
+
+: NODE-STORAGE-TERM ( n -- n bool ) NODE-READ LBI-TERM ;
+
+\ The definer's validation took the type or node, so its term is taken too.
+: TYPE-TERM ( ptr u8 n -- n ) CHECKER-STORAGE-TERM drop ;
+
+: NODE-TERM ( n -- n ) NODE-STORAGE-TERM drop ;
+
+: STORAGE-HAS-ADDRESS? ( ptr u8 n -- bool ) TYPE-TERM TFAM:HAS-ADDRESS? ;
+
+: NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM TFAM:HAS-ADDRESS? ;
 
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
 : STORAGE-BIND ( n ptr n n ptr u8 n bool -- )
    {: handle:n base:ptr count:n type:ptr typeu:n hasaddr:bool :}
    hasaddr if
-      base type typeu STORAGE-MARK-FIXED
+      base type typeu TYPE-TERM STORAGE-MARK-FIXED
+   then
+   handle base count CHECKER-STORAGE-BIND ;
+
+: NODE-BIND ( n ptr n n n bool -- )
+   {: handle:n base:ptr count:n node:n hasaddr:bool :}
+   hasaddr if
+      base node NODE-TERM STORAGE-MARK-FIXED
    then
    handle base count CHECKER-STORAGE-BIND ;
 
@@ -383,17 +406,29 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ LAYOUT-BUFFER's machinery gated by CHECKER-STORAGE-INFO, so closed typed
 \ pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are expressible.
 
-: STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
-   {: count:n name:ptr nameu:n type:ptr typeu:n :}
-   type typeu CHECKER-STORAGE-INFO 0= if
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
-   then
-   LBUF-W !
+\ Sizes COUNT elements of W cells each; false once a count outside the extent
+\ is rejected.
+: STORAGE-SIZE ( n n ptr u8 n -- bool ) {: count:n w:n name:ptr nameu:n :}
+   w LBUF-W !
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
       drop name nameu LBUF-COUNT-REJECT LBUF-FALSE exit
    then
    LBUF-BYTES ! LBUF-TRUE ;
+
+: STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
+   {: count:n name:ptr nameu:n type:ptr typeu:n :}
+   type typeu CHECKER-STORAGE-INFO 0= if
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
+   then
+   count swap name nameu STORAGE-SIZE ;
+
+: NODE-VALIDATE ( n ptr u8 n n -- bool )
+   {: count:n name:ptr nameu:n node:n :}
+   node NODE-READ LBI-CELLS 0= if
+      drop name nameu NODE-TYPE-REFUSE LBUF-FALSE exit
+   then
+   count swap name nameu STORAGE-SIZE ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -415,6 +450,18 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: v:ptr :}
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
+
+\ TYPED-VARIABLE's run over the name and the type node, which no text spells:
+\ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
+: TYPED-VARIABLE-NODE ( ptr u8 n n -- ) {: name:ptr nameu:n node:n :}
+   nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
+   name nameu LBUF-NAME-OK? 0= if exit then
+   1 name nameu node NODE-VALIDATE 0= if exit then
+   node NODE-HAS-ADDRESS? {: hasaddr:bool :}
+   name nameu node TDECL-NODE-CHILD {: handle:n :}
+   here {: v:ptr :}
+   LBUF-BYTES @ allot
+   handle v 1 node hasaddr NODE-BIND ;
 
 \ As for LAYOUT-BUFFER: top-level executable, refused inside checked bodies by
 \ UNSAFE-TOK?.

@@ -143,7 +143,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
    SB-RESET  OVER-CEILING @ FMT:SB-INT  s\" \n" SB-APPEND
    CMD:OUT$ SB$ T$=
    s" and one byte more throws E-DATA-SPACE uncaught" T-LABEL
-   CMD:ERR$ s" hb: uncaught throw code -9880" CONTAINS? TTRUE
+   CMD:ERR$ s" hb: uncaught throw code -9850" CONTAINS? TTRUE
    s" over exits 67" T-LABEL  rc 67 T= ;
 
 

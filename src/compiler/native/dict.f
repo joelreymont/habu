@@ -66,7 +66,7 @@ public
 \ no word: two used publics export the tail and nothing earlier binds it, or a
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
-\ interpreter (interpreter.f LOOKUP-GO) and the checker's binder (checker.f LIVE-BIND) refuse the same two shapes.
+\ lookup and the checker's binder refuse the same two shapes.
 : USING-REFUSED? ( ptr u8 n -- bool )
    scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then

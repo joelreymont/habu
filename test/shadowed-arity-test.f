@@ -15,7 +15,7 @@ private
 T-RESET
 
 TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
-: SAE-GO ( -- )  SAE-A @ SAE-U @ INCLUDE-EVALUATE ;
+: SAE-GO ( -- )  SAE-A @ SAE-U @ evaluate-closed ;
 
 public
 

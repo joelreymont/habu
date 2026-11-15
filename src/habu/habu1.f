@@ -1513,10 +1513,6 @@ private
    s" E-TASK-COMPILE" s" evaluate-range" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
-: B-BODY-APPEND ( -- )
-   s" E-TASK-COMPILE" s" body-append" B-TASK-GUARD
-   9 DATA PROVIDED-XT:APPEND-CELL LDR,  9 BR, ;
-
 : B-LITERAL ( -- )
    s" E-TASK-COMPILE" s" literal" B-TASK-GUARD
    9 DATA PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
@@ -2095,42 +2091,6 @@ private
 : BFFI-CALL-ABI-R ( -- )
    false BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
-
-\ Argbuf holds max(8,nargs) cells. x20 holds DATA through every load that can
-\ fault; x17 carries the frame sp to the BLR, and x20 (callee-saved) carries it
-\ only across the BLR. Shifted-register SUB reads r31 as XZR, not SP, so sp is
-\ lowered through a temp.
-: BFFI-CALL-N-CORE ( -- )
-   BCB-ENTER
-   20 SP $8 STR,
-   17 SP 0 ADDI,
-   LBL FFI-SKIP !
-   LBL FFI-LOOP !
-   LBL FFI-DONE !
-   14 8 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,
-      10 14 8 SUBI,                                    \ x10 = extra = nargs - 8
-      11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,  \ salloc = (extra*8+$F)&~$F
-      12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,      \ sp -= salloc
-      12 15 $40 ADDI,                                  \ x12 = src = argbuf + 8 cells
-      13 SP 0 ADDI,                                    \ x13 = dst = sp
-      FFI-LOOP LABEL@ LBL,
-      10 FFI-DONE LABEL@ CBZ,
-         9 12 0 LDR,  9 13 0 STR,
-         12 12 $8 ADDI,  13 13 $8 ADDI,
-         10 10 1 SUBI,  FFI-LOOP LABEL@ B,
-      FFI-DONE LABEL@ LBL,
-   FFI-SKIP LABEL@ LBL,
-   BFFI-LOAD-X0-X7
-   20 17 0 ADDI,
-   16 BLR,
-   SP 20 0 ADDI,
-   20 SP $8 LDR,
-   BCB-LEAVE
-   0 G-PUSH ;
-
-: BFFI-CALL-N ( -- )
-   16 G-POP  14 G-POP  15 G-POP
-   BFFI-CALL-N-CORE ;
 
 \ Returns an immutable pthread entry, not a Habu xt; its C argument is the
 \ TASK-ABI descriptor and the body enters that task's VM state. It writes two
@@ -3762,18 +3722,6 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    none LBL,  15 0 MOVZ,
    done LBL,  15 G-PUSH ;
 
-\ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
-\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher and the Habu
-\ loop's definers set it on a certified word, and the interpreter refuses a call
-\ with fewer interpret-stack cells. Monotonic. The registry stamps this prim's
-\ own record DNAME-INT, so user source cannot re-drive it.
-: BMININMARK ( -- )
-   B G-POP                               \ x10 = min-in cells
-   A G-POP                               \ x9  = record index
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   B B $FF ANDI,  B B 52 LSLI,
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
-   C 12 16 LDR,  C C B ORR,  C 12 16 STR, ;
 ;package
 
 package ENGINE-EMIT
@@ -4119,7 +4067,6 @@ package ENGINE-EMIT
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
-   s" body-append" ['] B-BODY-APPEND FPRIM-L
    s" literal" ['] B-LITERAL FPRIM-L
    s" compile," ['] B-COMPILE FPRIM-L
    s" ;" ['] B-END FPRIM-L
@@ -4162,7 +4109,6 @@ package ENGINE-EMIT
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" policy-admit" ['] BPOLICYADMIT FPRIM
@@ -4181,7 +4127,7 @@ package ENGINE-EMIT
    s" mmap" ['] BMMAP FPRIM
    s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL FPRIM
-   s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+   s" ffi-call-n" ['] BFFI-CALL FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
    s" dlopen-entry" ['] LIBC-OS:DLOPEN-ENTRY FPRIM
    s" dlsym-entry" ['] LIBC-OS:DLSYM-ENTRY FPRIM
@@ -4954,8 +4900,7 @@ private
 
 \ LFIND's register ABI. In: x9 = name address, x10 = name length. Out:
 \ x13 = 0 when the name is not in scope, else 1 | the folded record flags
-\ (bit 1 immediate, bit 3 wide-effect, bit 4 internal, bits 8-15 certified
-\ min-in); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
+\ (bit 1 immediate, bit 3 wide-effect, bit 4 internal); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
 \ and x5 = the matched record, zero on a miss. It clobbers x2-x17 and
 \ preserves XDS (x19) and DATA (x20).
 \ x5 is the only way to read another cell of the record the name resolved to
@@ -5051,8 +4996,6 @@ private
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,
          15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
-         15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
@@ -5083,8 +5026,6 @@ private
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,
-         15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,

@@ -321,7 +321,6 @@ public
 
 variable CT-DICT   variable CT-CP
 
-: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
 : DICT-RECS ( -- n ) ndict@ ;
 : DICT-CODE ( -- n ) cp@ ;
 
@@ -360,6 +359,32 @@ s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
 s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ 20c. DERIVE tag adds TAG> ( n -- fam ), TAG's inverse: each tag decodes to
+\      its own variant, and any other number throws E-ENUM-TAG.
+ENUM tagconv DERIVE eq tag low mid high ;ENUM
+: TAGCONV-ARM ( n -- n )
+   TAGCONV:TAG>
+   MATCH tagconv low of 10 endof mid of 20 endof high of 30 endof ;MATCH ;
+: TAGCONV-THROWS ( n -- ) {: k:n :}
+   [: k TAGCONV-ARM drop ;] TYPE-DECL:E-ENUM-TAG TTHROWSQ ;
+0 TAGCONV-ARM 10 T=  1 TAGCONV-ARM 20 T=  2 TAGCONV-ARM 30 T=
+-1 TAGCONV-THROWS  3 TAGCONV-THROWS  $7FFFFFFFFFFFFFFF TAGCONV-THROWS
+
+\      TAG> builds a value from its tag alone, so a payload variant rejects.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM"
+   TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpay`\n" DECL-DIAG:HAS? TTRUE
+s" tagpay" s" derive tag requires variants without payload" DECL-DIAG:CAUSE? TTRUE
+
+\      A private family derives nothing, tag included.
+package enum-tag-test
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpriv`\n" DECL-DIAG:HAS? TTRUE
+s" tag" s" derive requires a public family" DECL-DIAG:CAUSE? TTRUE
+;package
+
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" evaluate-closed
 s" P1 ( -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
@@ -394,7 +419,6 @@ s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollcoll`\n" DECL-DIAG:HAS? TTRUE
 s" rollcoll" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLCOLL:TAKEN 37 T=
@@ -404,15 +428,13 @@ undefine ROLLCOLL:TAKEN
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" evaluate-closed
 s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ PRODUCT make/unmake uses the pending constructor authority queue. A collision
-\ on UNMAKE occurs after MAKE was queued, and must clear that authority too.
+\ A PRODUCT collision on UNMAKE also rolls back the MAKE planned before it.
 : ROLLP:UNMAKE ( -- n ) 41 ;
 DECL-DIAG:PROSE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rollp`\n" DECL-DIAG:HAS? TTRUE
 s" rollp" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLP:UNMAKE 41 T=

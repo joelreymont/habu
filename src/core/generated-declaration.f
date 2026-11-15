@@ -233,8 +233,8 @@ E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum"
 s" drop the payload that names the family being declared: no family can hold itself"
 E-TDECL-RECURSIVE EXPLAIN
-s" declaration too long"
-s" shorten the declaration and its names, or split it into smaller families"
+s" declared name too long"
+s" shorten the name to 255 bytes or fewer"
 E-TDECL-CAP EXPLAIN
 \ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
 \ means the derive requirement failed later, in the constructor participant's
@@ -431,23 +431,18 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
 
 public
 
-\ The pending-constructor authority queue is plan scratch shared with the
-\ generator. Its only legal value at the start of a declaration is empty, so
-\ SNAPSHOT establishes that value rather than copying one, and ROLLBACK restores
-\ it after a failure that left entries queued.
 : PART-SNAPSHOT ( -- )
-   DISARM
-   CTOR-PEND-CLEAR ;
+   DISARM ;
 
 \ A non-mutating re-proof of the gate ARM checked: a family made ineligible
-\ since then fails before any word is rendered.
+\ since then fails before any word is made.
 : PART-PREPARE ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
 \ Mirrors sumtype.f CHECKER-DEFSUM-BODY's close. Both role gates read committed
-\ rows, so they cannot run in the body phase. Replay renders and checks the same
-\ bodies to publish their effects and emits no runtime code: a call needs the
+\ rows, so they cannot run in the body phase. Replay builds and checks the same
+\ words to publish their effects and emits no runtime code: a call needs the
 \ checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
@@ -458,10 +453,9 @@ public
    fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
-   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
+   fam TDECL-CTOR-WORDS-BODY ;
 
 : PART-ROLLBACK ( -- )
-   CTOR-PEND-CLEAR
    DISARM ;
 
 \ Total: publication has already happened, and the only thing left is this
@@ -562,8 +556,9 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
-$2000 constant SEEN-CAP                   \ the field-name window a replay checks
-create SEEN SEEN-CAP allot
+PTR-VARIABLE SEEN-P                       \ a replay's field names, each count-prefixed
+SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
+: SEEN ( -- ptr u8 ) SEEN-P @ ;
 variable SEEN-U
 variable SEEN-I
 
@@ -646,28 +641,23 @@ private
    BEGIN SEEN-I @ SEEN-U @ < WHILE
       SEEN SEEN-I @ + c@ {: len:n :}
       len u = IF
-         SEEN BYTE-VIEW SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+         SEEN SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
       THEN
       SEEN-I @ len 1+ + SEEN-I !
    REPEAT NO ;
 
 public
 
-\ NAME-CHECK ( name reason -- ) : a replay's field-name gate. The name is
-\ validated, refused as a duplicate of one already in this window, and recorded;
-\ `reason` is the front end's text for a window overflow.
-: NAME-CHECK ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n wa:ptr wu:n :}
+\ NAME-CHECK ( name -- ) : a replay's field-name gate. The name is validated,
+\ rejected as a duplicate of one recorded since SEEN-CLEAR, and recorded.
+: NAME-CHECK ( ptr u8 n -- )
+   {: a:ptr u:n :}
    a u DECL-REJECT:TOKEN!
    s" duplicate field name" s" give each field of this declaration its own name"
    E-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-DUP throw THEN
-   SEEN-U @ u + 1+ SEEN-CAP > IF
-      wa wu
-      s" declare fewer or shorter fields, so their names fit in the 8192 bytes a replay checks"
-      E-CAP DECL-REJECT:REJECT throw
-   THEN
+   SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
    u SEEN SEEN-U @ + c!
    0 SEEN-I !
    BEGIN SEEN-I @ u < WHILE

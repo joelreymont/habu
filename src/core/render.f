@@ -464,6 +464,12 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
 
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
+
+\ Type T as a diagnostic spells it, in TEXT until TEXT is next written.
+: TYPE-TEXT ( n -- ptr u8 n ) {: t:n :}
+   1 DEST !  0 TEXT-LEN !  SEEN-RESET RATOM-RESET 0 NLET !
+   t REND-TYPE
+   0 DEST !  TEXT TEXT-LEN @ ;
 variable RSHOW-DST
 
 : REND-COLLECT ( n -- )  0 RBN !  RBUF-ROW ;
@@ -714,7 +720,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 
 \ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
-\ lookup sees it; a row no record can hold is refused before E-BUILD-EFFECT dies.
+\ lookup sees it; a row too deep to record is refused before E-BUILD-EFFECT dies.
 : FACTS-BUILD ( -- )
    NEW
    FACTS-PARSE {: din:n dout:n rin:n rout:n :}
@@ -903,11 +909,11 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
-      MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
       MD-CF-DEPTH     of s" E-UNCHECKABLE" endof
       MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
       MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
+      MD-LOCAL-ENDED  of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
       MD-TYPE-FORM    of s" E-BAD-STORAGE" endof
@@ -945,7 +951,6 @@ variable MDV-I   variable MDV-F
       MD-DOES-UNMADE  of s" E-DOES-UNCREATED" endof
       s" E-REJECTED" rot
    endcase ;
-
 
 
 
@@ -999,11 +1004,11 @@ variable MDV-I   variable MDV-F
       MD-C2-ESCAPE    of s" return only values that do not depend on the owner or loan this operation opened" endof
       MD-C2-INIT-RECORD of s" pass a `STRUCTURE … DERIVE init` value made by its `MAKE`, with no linear, unique or open field" endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
-      MD-INPUT-WIDTH  of s" take fewer input cells by passing bulk values in a buffer" endof
       MD-CF-DEPTH     of s" move the inner control structures into a named word and call that word here" endof
       MD-RECURSE-SIG  of s" declare the definition's stack effect after its name, as `: NAME ( n -- n )`" endof
       MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
       MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
+      MD-LOCAL-ENDED  of s" read the local inside the `{:` block that binds it, and keep a value needed after the block on the stack" endof
       MD-IS-NOT-DEFER of s" declare the target with `defer NAME ( in -- out )`, or name a deferred word after `is`" endof
       MD-IS-MISSING   of s" write the name of a deferred word after `is`" endof
       MD-TYPE-FORM    of s" write after `[type]` a closed type storage holds, as `n`, `u8` or a declared record, with no type variable, quotation, linear value, atom, xt or width in it" endof
@@ -1097,11 +1102,11 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
-      MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
       MD-IS-UNKNOWN   of s"  names no word" endof
+      MD-LOCAL-ENDED  of s" reads built local" endof
       MD-IS-NOT-DEFER of s"  is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
       MD-TYPE-FORM    of s" [type] names no type storage holds" endof
@@ -1195,11 +1200,11 @@ variable MDV-I   variable MDV-F
       MD-C2-DROP      of s" only reference dropped" endof
       MD-C2-ESCAPE    of s" result outlives its scope" endof
       MD-EFFECT-DEPTH of s" too many nested levels" endof
-      MD-INPUT-WIDTH  of s" too many input cells" endof
       MD-TOP-UNKNOWN  of s" cell from before checking" endof
       MD-TAIL-ESCAPE  of s" row escapes the callable" endof
       MD-LIT-FIT      of s" out of the type's range" endof
       MD-IS-UNKNOWN   of s" not found" endof
+      MD-LOCAL-ENDED  of s" local past its block" endof
       MD-IS-NOT-DEFER of s" declared without `defer`" endof
       MD-IS-MISSING   of s" no name after it" endof
       MD-TYPE-FORM    of s" needs a closed storable type" endof
@@ -1278,6 +1283,11 @@ variable MDV-I   variable MDV-F
    s" ` does not fit `" EMIT-STR  MDIAG-LITT @ CT-NAME$ EMIT-STR
    s" ` (`0`..`" EMIT-STR  MDIAG-LITT @ LIT-HI EMIT-U  s" `)" EMIT-STR ;
 
+\ The ended local's index, after the reason's `reads built local`.
+: LOCAL-ENDED-COUNTS ( -- )
+   s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-U
+   s" , whose `{:` block has ended" EMIT-STR ;
+
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
@@ -1296,11 +1306,11 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " EMIT-STR
       TCAP-HELD$ EMIT-STR EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
+   MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH @ WIDTH-COUNTS THEN ;
+   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
 
 
 : IMM-CODE$ ( -- ptr u8 n )
@@ -1308,20 +1318,16 @@ variable MDV-I   variable MDV-F
 
 
 
-\ The LOCALBAD kinds come from checker.f LOC-REJECT and LOC-GROUP-REJECT.
 : LOCALBAD-CODE$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" E-LOCAL-NAME-TOO-LONG" EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
    s" E-BAD-LOCAL-SHAPE" ;
 
 
-\ Kinds 3 and 4, a locals group token that names no local, state why in the
-\ message.
+\ A locals group token that names no local states why in the message.
 : LOCALBAD-GROUP? ( -- bool )
-   LOCALBAD-KIND @ 3 >= ;
+   LOCALBAD-KIND @ LOCALBAD-SCOPE <> ;
 
 : LOCALBAD-REASON$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 3 = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
+   LOCALBAD-KIND @ LOCALBAD-DASH = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
    s" a locals group names only locals; Habu has no uninitialised locals" ;
 
 \ A definition's signature, a local's type or a stored signature that does not
@@ -1433,15 +1439,6 @@ variable MDV-I   variable MDV-F
 
 : LOCAL-MESSAGE ( -- )
    LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
-   LOCALBAD-KIND @ 2 = IF
-      s" local " EMIT-STR  TOK-SPAN  s"  has a " EMIT-STR  LOCALBAD-LEN @ EMIT-U
-      s" -byte name; the limit is " EMIT-STR  LOC-NAME-CAP EMIT-U
-      s"  bytes" EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 1 = IF
-      s" local " EMIT-STR  TOK-SPAN  s"  is one over the " EMIT-STR  LOC-RECS EMIT-U
-      s"  locals a definition may bind" EMIT-STR EXIT
-   THEN
    s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
 : ARITY-MESSAGE ( -- )
@@ -1540,8 +1537,6 @@ variable MDV-I   variable MDV-F
    s" takes " EMIT-STR  DEXP @ ROW-WORD ;
 
 : LOCAL-LABEL ( -- )
-   LOCALBAD-KIND @ 2 = IF s" name too long" EMIT-STR EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" one local too many" EMIT-STR EXIT THEN
    LOCALBAD-GROUP? IF s" not a local name" EMIT-STR EXIT THEN
    s" bound here" EMIT-STR ;
 
@@ -1714,14 +1709,6 @@ PTR-VARIABLE HOLDER-FIRST
    s"  with one `:` between the package and the word, as `PKG:WORD`" EMIT-STR ;
 
 : LOCAL-HELP ( -- )
-   LOCALBAD-KIND @ 2 = IF
-      s" shorten the name in " EMIT-STR  TOK-SPAN  s"  to at most " EMIT-STR
-      LOC-NAME-CAP EMIT-U  s"  bytes" EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 1 = IF
-      s" bind at most " EMIT-STR  LOC-RECS EMIT-U
-      s"  locals here, and move part of the body into a word of its own" EMIT-STR EXIT
-   THEN
    LOCALBAD-GROUP? IF
       s" remove " EMIT-STR  TOK-SPAN  s"  from the locals group" EMIT-STR EXIT
    THEN
@@ -1750,10 +1737,6 @@ PTR-VARIABLE HOLDER-FIRST
       EMIT-STR EXIT
    THEN
    SGBAD-DEPTH? IF DEPTH-SUGGEST$ EMIT-STR EXIT THEN
-   SGBAD-SIZE? IF
-      s" pass bulk values in a buffer instead of on the stack, so the signature declares fewer cells"
-      EMIT-STR EXIT
-   THEN
    s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
    EMIT-STR ;
 

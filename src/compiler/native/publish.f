@@ -42,12 +42,9 @@ $4000 constant CODE-RESERVE
 : PUBLISH-REC ( n n n -- )
    xref-retarget ;
 
-\ min-in-mark and ndict-append are seed records the engine marks internal
+\ ndict-append is a seed record the engine marks internal
 \ (ENGINE-PRIMS:GLOBAL-INT-WID); package NPUB's own rows (src/habu/prims.f)
 \ admit the calls here.
-: MIN-IN-REC ( n n -- )
-   min-in-mark ;
-
 : WIDE-REC ( -- )
    wide-mark ;
 
@@ -180,13 +177,6 @@ create TRAILER TRAILER-BYTES allot
    size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
-\ Publishing the checker's one-shot minimum-input latch is engine authority,
-\ kept at the native publisher that consumes it for this record.
-: PENDING-FACTS ( n -- ) {: idx:n :}
-   CHECK:REC-WIDE-PUBLISH
-   REC-MIN-IN@ {: mi:n :}
-   mi 0<> if idx mi MIN-IN-REC then ;
-
 : PAD-INSTRUCTION ( n -- n )
    3 + -4 and ;
 
@@ -216,7 +206,7 @@ public
 \ Each publishes the emission NEMIT holds sealed, so it runs before the
 \ backend's RETIRE clears it.
 : PUBLISH-PENDING ( -- )
-   PUBLISH-CODE PENDING-FACTS ;
+   PUBLISH-CODE drop  CHECK:REC-WIDE-PUBLISH ;
 
 : PUBLISH-RAW ( -- )
    PUBLISH-CODE drop ;
@@ -228,7 +218,7 @@ public
    idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   idx PENDING-FACTS ;
+   CHECK:REC-WIDE-PUBLISH ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
@@ -238,7 +228,7 @@ public
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECK:DOES-PUBLISHED
-   idx PENDING-FACTS
+   CHECK:REC-WIDE-PUBLISH
    idx 1+ APPEND-PENDING
    CHECKER-NATIVE-DOES-COMMIT ;
 
@@ -278,34 +268,28 @@ private
    fn recorded idx PUBLISH-REC
    idx fn ;
 
-: IMPORT-MARKS ( n bool n -- ) {: idx:n wide:bool minin:n :}
-   wide if WIDE-REC then
-   minin 0<> if idx minin MIN-IN-REC then ;
-
-: MIN-IN-CK ( n -- ) {: minin:n :}
-   minin 0 < minin 255 > or if E-NPUB-RELOC throw then ;
+: IMPORT-MARKS ( bool -- )
+   if WIDE-REC then ;
 
 public
 
 \ A prepared definition reuses the interpreter's pending row, whose name and
 \ wordlist the source definition wrote. All references are prepared before
 \ this call.
-: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
+: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool -- n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool minin:n :}
-   minin MIN-IN-CK
+      addrs:ptr addrn:n wide:bool :}
    code size recorded calls calln addrs addrn 0 IMPORT-CODE drop {: idx:n :}
    idx APPEND-PENDING
-   idx wide minin IMPORT-MARKS
+   wide IMPORT-MARKS
    idx ;
 
 \ A prepared `does>` definer: its `;does` clause starts `off` bytes into the
 \ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
 \ The checker slice installed beside it carries the clause's checker facts.
-: IMPORT-PENDING-DOES ( ptr u8 n n ptr n n ptr n n bool n n -- n )
+: IMPORT-PENDING-DOES ( ptr u8 n n ptr n n ptr n n bool n -- n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool minin:n off:n :}
-   minin MIN-IN-CK
+      addrs:ptr addrn:n wide:bool off:n :}
    off 0 <= off size >= or off 3 and 0<> or if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
    idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
@@ -313,21 +297,20 @@ public
       {: at:n fn:n :}
    fn off + recorded off - does-record
    at APPEND-PENDING
-   at wide minin IMPORT-MARKS
+   wide IMPORT-MARKS
    at 1+ APPEND-PENDING
    at ;
 
 \ A prepared defer body: its record spans the whole body; the trailer naming `cell` follows at
 \ fn + size, the code pointer where COMMIT-DEFER lays it: an arm64 code slot is one instruction word.
-: IMPORT-PENDING-DEFER ( ptr u8 n ptr n n ptr n n bool n n -- n )
+: IMPORT-PENDING-DEFER ( ptr u8 n ptr n n ptr n n bool n -- n )
    {: code:ptr size:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool minin:n cell:n :}
-   minin MIN-IN-CK
+      addrs:ptr addrn:n wide:bool cell:n :}
    code size  size CODE-SPAN:EXACT  calls calln addrs addrn TRAILER-BYTES IMPORT-CODE
       {: idx:n fn:n :}
    cell fn size + TRAILER-PLACE
    idx APPEND-PENDING
-   idx wide minin IMPORT-MARKS
+   wide IMPORT-MARKS
    idx ;
 
 \ A record for code already in place, a kernel primitive's: the pending row

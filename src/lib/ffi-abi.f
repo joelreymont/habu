@@ -1,9 +1,10 @@
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
-\ only checked call surface: its word names a row, never an address.
-\ STORAGE CLASS. TASK-LOCAL: marshalling buffers, kernel params and the
-\ DLSYM loader block; calls nest only through a C callback, which shares
-\ them. PROCESS-WIDE: rows, whose addresses, handles and failures are scratch.
+\ only call surface: its word names a row, never an address, and the row and
+\ staging words are private.
+\ STORAGE CLASS. TASK-LOCAL: marshalling buffers and the DLSYM loader block;
+\ calls nest only through a C callback, which shares them. PROCESS-WIDE: rows,
+\ whose addresses, handles and failures are scratch.
 \
 \ FUNCTION: names a row here and its generated word carries the row's index, so
 \ a checked caller reaches only a symbol some declaration published. Exact
@@ -13,17 +14,18 @@
 \ open passes the call to the next library its row names. Rows may move when a
 \ table grows; indices stay stable.
 \
-\ A declaration with a C struct is planned by AAPCS64 over its C arguments in
-\ order; the STRUCT-RESULT destination, the last input, is not one. Floats take
-\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
-\ cell. A record of up to 16 bytes takes its registers whole, the last one's
-\ unused high bytes zero, or when too few remain its stack cells whole, and the
-\ next register becomes x8. A larger record is passed as a pointer, an integer
-\ argument, to a private copy in the native call frame that lives exactly as
-\ long as the call; the copy follows every stack argument from an even cell,
-\ 16-byte aligned on the 16-byte aligned native stack. A planned register is
-\ kept as its number and a stack cell as -1-cell; a record of 16 bytes or fewer
-\ has no copy, kept as 0.
+\ Every call is planned over its C arguments in order; the STRUCT-RESULT
+\ destination, the last input, is not one. A float takes the next free float
+\ register and an integer the next free integer register, else a stack slot.
+\ A record of up to 16 bytes takes its registers whole, the last one's unused
+\ high bytes zero, or when too few remain its stack words whole, and then no
+\ later input takes an integer register (AAPCS64 C.13; LLVM does the same on
+\ Darwin). A larger record is passed as a pointer, an integer argument, to a
+\ private copy in the native call frame that lives exactly as long as the
+\ call; the copy follows every stack argument from an even cell, 16-byte
+\ aligned on the 16-byte aligned native stack. A planned register is kept as
+\ its number and a stack slot as -1 less its byte offset; a record of 16 bytes
+\ or fewer has no copy, kept as 0.
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
@@ -39,50 +41,36 @@ s" src/lib/memory.f" required
 
 package FFI
 
-8 constant FFI-REG-ARGS
-16 constant FFI-MAX-ARGS
-16 constant FFI-MAX-KPARAMS
+FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
+\ AAPCS64's integer argument registers, and both ABIs' float slots.
+FFI-ABI:FBUF-BYTES 1 cells / constant REG-MAX
 2 constant FFI-RTLD-NOW
-$0A constant LF-C
-
-$3A00 constant FFI-BUF-OFF
-$3A80 constant FFI-FBUF-OFF
-$3AC0 constant FFI-STACK-BUF-OFF
-$3B40 constant FFI-KPARAM-PBUF-OFF
-$3BC0 constant FFI-KPARAM-VBUF-OFF
-$3C40 constant FFI-DLBUF-OFF
-$3C80 constant FFI-KPARAM#-OFF
 
 : FFI-BUF ( -- ptr n )
-   data-base FFI-BUF-OFF + ;
+   data-base FFI-ABI:BUF-OFF + ;
 
 : FFI-FBUF ( -- ptr r )
-   data-base FFI-FBUF-OFF + ;
+   data-base FFI-ABI:FBUF-OFF + ;
 
 \ A C float occupies the low half of the same FP-register slot as a double.
 : FFI-F32BUF ( -- ptr n )
-   data-base FFI-FBUF-OFF + ;
+   data-base FFI-ABI:FBUF-OFF + ;
 
-\ A spill slot holds an integer or a float as the marshalled signature says, so
-\ FFI-STACK-BUF and FFI-STACK-FBUF declare one offset at the two pointees rather
-\ than one `( -- ptr a )` that would let a caller pick engine DATA's type.
+\ A spill slot holds an integer, a float or narrower C bytes as the marshalled
+\ signature says, so FFI-STACK-BUF, FFI-STACK-FBUF and FFI-STACK-BYTES declare
+\ one offset at three pointees rather than one `( -- ptr a )` that would let a
+\ caller pick engine DATA's type.
 : FFI-STACK-BUF ( -- ptr n )
-   data-base FFI-STACK-BUF-OFF + ;
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
 : FFI-STACK-FBUF ( -- ptr r )
-   data-base FFI-STACK-BUF-OFF + ;
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
-: FFI-KPARAM-PBUF ( -- ptr n )
-   data-base FFI-KPARAM-PBUF-OFF + ;
-
-: FFI-KPARAM-VBUF ( -- ptr n )
-   data-base FFI-KPARAM-VBUF-OFF + ;
+: FFI-STACK-BYTES ( -- ptr u8 )
+   data-base FFI-ABI:STACK-BUF-OFF + ;
 
 : FFI-DLBUF ( -- ptr n )
-   data-base FFI-DLBUF-OFF + ;
-
-: FFI-KPARAM# ( -- ptr n )
-   data-base FFI-KPARAM#-OFF + ;
+   data-base FFI-ABI:DLBUF-OFF + ;
 
 \ CELL>PTR stays private: a foreign address carries no length, so only a word
 \ that knows the callee's width may publish one.
@@ -90,29 +78,25 @@ $3C80 constant FFI-KPARAM#-OFF
 CAST: CELL>PTR ( n -- ptr u8 )
 
 \ ---- argument marshalling -------------------------------------------------
-\ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are
-\ copied to the C stack exactly as prepacked by the caller on either ABI.
-: FFI-CHECK-INDEX ( n n -- ) {: idx:n cap:n :}
-   idx 0 < if E-FFI-ARITY throw then
-   idx cap >= if E-FFI-ARITY throw then ;
-: FFI-CHECK-COUNT ( n n -- ) {: count:n cap:n :}
-   count 0 < if E-FFI-ARITY throw then
-   count cap > if E-FFI-ARITY throw then ;
+\ Integer slot 8 is x8, the AAPCS64 indirect-result register. The stack buffer
+\ is addressed by byte offset and copied to the C stack exactly as prepacked.
+\ Every slot and offset is a literal FUNCTION:'s planner bounds at ;FUNCTION, so
+\ none is checked here.
 : FFI-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
    FFI-BUF idx cells + ;
 : FFI-FSLOT ( n -- ptr r ) {: idx:n :}
-   idx FFI-REG-ARGS FFI-CHECK-INDEX
    FFI-FBUF idx cells + ;
 : FFI-F32SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-REG-ARGS FFI-CHECK-INDEX
    FFI-F32BUF idx cells + ;
-: FFI-STACK-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-BUF idx cells + ;
-: FFI-STACK-FSLOT ( n -- ptr r ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-FBUF idx cells + ;
+: FFI-STACK-SLOT ( n -- ptr n )
+   {: off:n :}
+   FFI-STACK-BUF off + ;
+: FFI-STACK-FSLOT ( n -- ptr r )
+   {: off:n :}
+   FFI-STACK-FBUF off + ;
+: FFI-STACK-AT ( n -- ptr u8 )
+   {: off:n :}
+   FFI-STACK-BYTES off + ;
 : FFI-ARG! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
 : FFI-PTR-ARG! ( ptr a n -- ) {: p:ptr idx:n :}
@@ -121,49 +105,27 @@ CAST: CELL>PTR ( n -- ptr u8 )
    v idx FFI-FSLOT ! ;
 : FFI-F32ARG! ( n n -- ) {: bits:n idx:n :}
    bits idx FFI-F32SLOT ! ;
-: FFI-STACK! ( n n -- ) {: v:n idx:n :}
-   v idx FFI-STACK-SLOT ! ;
-: FFI-FSTACK! ( r n -- ) {: v:r idx:n :}
-   v idx FFI-STACK-FSLOT ! ;
-: FFI-X8! ( n -- )
-   8 FFI-ARG! ;
+: FFI-STACK! ( n n -- )
+   {: v:n off:n :}
+   v off FFI-STACK-SLOT ! ;
+: FFI-FSTACK! ( r n -- )
+   {: v:r off:n :}
+   v off FFI-STACK-FSLOT ! ;
+: FFI-STACK-U8! ( n n -- )
+   {: v:n off:n :}
+   v $FF and off FFI-STACK-AT c! ;
+: FFI-STACK-U16! ( n n -- )
+   {: v:n off:n :}
+   v off FFI-STACK-AT LE:U16! ;
+: FFI-STACK-U32! ( n n -- )
+   {: v:n off:n :}
+   v off FFI-STACK-AT LE:U32! ;
 
 \ ---- out-params -----------------------------------------------------------
 : FFI-OUT@ ( ptr n -- n )
    @ ;
 : FFI-OUT! ( n ptr n -- )
    ! ;
-
-\ ---- kernelParams ---------------------------------------------------------
-\ `cuLaunchKernel` wants void**: each array element points to caller-owned or
-\ FFI-owned param storage. FFI-owned value cells are stable until the next
-\ FFI-KPARAM-RESET or overwrite by another FFI-KPARAM-N+ sequence.
-: FFI-KPARAM-COUNT ( -- n )
-   FFI-KPARAM# @ ;
-: FFI-KPARAM-RESET ( -- )
-   0 FFI-KPARAM# ! ;
-: FFI-KPARAM-CHECK ( n -- ) {: idx:n :}
-   idx FFI-MAX-KPARAMS FFI-CHECK-INDEX ;
-: FFI-KPARAM-PTR-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-KPARAM-CHECK
-   FFI-KPARAM-PBUF idx cells + ;
-: FFI-KPARAM-VAL-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-KPARAM-CHECK
-   FFI-KPARAM-VBUF idx cells + ;
-: FFI-KPARAM-BUMP ( n -- )
-   1 + FFI-KPARAM# ! ;
-: FFI-KPARAM+ ( ptr a -- ) {: p:ptr :}
-   FFI-KPARAM-COUNT {: idx:n :}
-   p PTR>CELL idx FFI-KPARAM-PTR-SLOT !
-   idx FFI-KPARAM-BUMP ;
-: FFI-KPARAM-N+ ( n -- ) {: v:n :}
-   FFI-KPARAM-COUNT {: idx:n :}
-   v idx FFI-KPARAM-VAL-SLOT !
-   idx FFI-KPARAM-VAL-SLOT FFI-KPARAM+ ;
-: FFI-KPARAMS ( -- ptr n n )
-   FFI-KPARAM-PBUF FFI-KPARAM-COUNT ;
-: FFI-KPARAMS>N ( -- n )
-   FFI-KPARAM-PBUF PTR>CELL ;
 
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
@@ -280,101 +242,76 @@ LIB-N ROLLBACK-CELLS:MARK
 : PATH-FIELD ( n -- SPAN:span<u8> )
    LIB-ROW LIB-PATH-OFF + LIB-PATH-CAP SPAN:MAKE ;
 
-: FN-CHECK ( n -- )
-   {: idx:n :}
-   idx FN-N @ FFI-CHECK-INDEX ;
-
 : NAME-CELL ( n -- ptr ptr u8 )
    {: idx:n :}
    idx FN-ROW FN-NAME-OFF + CELL-VIEW 0 ptr-field ;
 
 : FN-NAME ( n -- ptr u8 )
    {: idx:n :}
-   idx FN-CHECK
    idx NAME-CELL @ ;
 
 : NAME-LEN ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-NAME-LEN-OFF FN-FIELD @ ;
 
 : FN-ADDR@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-ADDR-OFF FN-FIELD @ ;
 
 : FN-ADDR! ( n n -- )
    {: value:n idx:n :}
-   idx FN-CHECK
    value idx FN-ADDR-OFF FN-FIELD ! ;
 
 : FN-LIB@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-LIB-OFF FN-FIELD @ ;
 
 : FN-SPILL@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-SPILL-OFF FN-FIELD @ ;
 
 : FN-ARGC@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-ARGC-OFF FN-FIELD @ ;
 
 : FN-RELOC@ ( n -- n )
    {: idx:n :}
-   idx FN-CHECK
    idx FN-RELOC-OFF FN-FIELD @ ;
-
-: LIB-CHECK ( n -- )
-   {: idx:n :}
-   idx LIB-N @ FFI-CHECK-INDEX ;
 
 : LIB-PATH ( n -- ptr u8 )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-ROW LIB-PATH-OFF + ;
 
 : LIB-LEN@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-LEN-OFF LIB-FIELD @ ;
 
 : LIB-LEN! ( n n -- )
    {: u:n idx:n :}
-   idx LIB-CHECK
    u idx LIB-LEN-OFF LIB-FIELD ! ;
 
 : LIB-HANDLE@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-HANDLE-OFF LIB-FIELD @ ;
 
 : LIB-HANDLE! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-HANDLE-OFF LIB-FIELD ! ;
 
 : LIB-FAILED? ( n -- bool )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-FAILED-OFF LIB-FIELD @ 0 <> ;
 
 : LIB-FAILED! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-FAILED-OFF LIB-FIELD ! ;
 
 : LIB-NEXT@ ( n -- n )
    {: idx:n :}
-   idx LIB-CHECK
    idx LIB-NEXT-OFF LIB-FIELD @ ;
 
 : LIB-NEXT! ( n n -- )
    {: value:n idx:n :}
-   idx LIB-CHECK
    value idx LIB-NEXT-OFF LIB-FIELD ! ;
 
 public
@@ -388,38 +325,87 @@ private
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 
-: LINE-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
-   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n line:ptr extent:NUM:alloc-byte-len :}
-   p line pu BYTE-COPY
-   a line pu + au BYTE-COPY
-   s line pu + au + su BYTE-COPY
-   b line pu + au + su + bu BYTE-COPY
-   pu au + su + bu + {: len:n :}
-   LF-C line len + c!
-   line len 1+ ERROR-TEXT:TYPE ;
+\ A load failure reports when a call first resolves its symbol, in any task:
+\ one write of a record built in the caller's own bytes.
+: PUT ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: line:ptr at:n s:ptr su:n :}
+   s line at + su BYTE-COPY
+   line at su + ;
 
-\ The four parts and a line feed go out in one write, so lines from concurrent
-\ tasks never interleave.
-: REPORT-LINE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n :}
-   p pu a au s su b bu
-   pu au + su + bu + 1+ MEM:BYTES-ALLOC-LEN [: LINE-BODY ;] MEM:WITH-BYTES ;
+: HELP-LEAD$ ( -- ptr u8 n ) s\" \n  = help: " ;
 
-\ why, the loader's reason, goes on tried's line only: a later loader call
-\ replaces it.
-: REPORT-NAMES ( n n n -- )
+\ The help line h ends a record; HELP-LEN is its length.
+: HELP-PUT ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: line:ptr at:n h:ptr hu:n :}
+   line at HELP-LEAD$ PUT h hu PUT s\" \n" PUT ;
+
+: HELP-LEN ( n -- n ) HELP-LEAD$ nip + 1+ ;
+
+: RECORD-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   {: a:ptr au:n b:ptr bu:n c:ptr cu:n d:ptr du:n e:ptr eu:n h:ptr hu:n line:ptr extent:NUM:alloc-byte-len :}
+   line 0 a au PUT b bu PUT c cu PUT d du PUT e eu PUT
+   h hu HELP-PUT ERROR-TEXT:TYPE ;
+
+\ A record whose header line is the parts a to e, then the help h.
+: REPORT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr au:n b:ptr bu:n c:ptr cu:n d:ptr du:n e:ptr eu:n h:ptr hu:n :}
+   a au b bu c cu d du e eu h hu
+   au bu + cu + du + eu + hu HELP-LEN + MEM:BYTES-ALLOC-LEN
+   [: RECORD-BODY ;] MEM:WITH-BYTES ;
+
+: OPEN-HEAD$ ( -- ptr u8 n )
+   s" error[E-FFI-DLOPEN]: cannot open library '" ;
+
+: NOTE$ ( -- ptr u8 n ) s\" \n  = note: tried '" ;
+
+: OPEN-HELP$ ( -- ptr u8 n )
+   s" install the library, or name a path the loader finds" ;
+
+\ why, the loader's reason, goes on tried's note only: a later loader call
+\ replaces it, and dlerror's NULL means it kept none.
+: REASON$ ( n n n -- ptr u8 n ptr u8 n )
    {: why:n tried:n lib:n :}
-   lib 0= if exit then
-   s" E-FFI-DLOPEN: " lib LIB-ROW@
-   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN else s" " s" " then
-   REPORT-LINE
+   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN exit then
+   s" " s" " ;
+
+: NOTE-LEN ( n n n -- n )
+   {: why:n tried:n lib:n :}
+   why tried lib REASON$ {: s:ptr su:n r:ptr ru:n :}
+   NOTE$ nip lib LIB-ROW@ nip + 1+ su + ru + ;
+
+\ The notes' length from lib along next.
+: NOTES-LEN ( n n n -- n )
+   {: why:n tried:n lib:n :}
+   lib 0= if 0 exit then
+   why tried lib NOTE-LEN
+   why tried lib 1 - LIB-NEXT@ RECURSE + ;
+
+: NOTE-PUT ( ptr u8 n n n n -- ptr u8 n )
+   {: line:ptr at:n why:n tried:n lib:n :}
+   why tried lib REASON$ {: s:ptr su:n r:ptr ru:n :}
+   line at NOTE$ PUT lib LIB-ROW@ PUT s" '" PUT s su PUT r ru PUT ;
+
+\ One note per library from lib along next.
+: NOTES-PUT ( ptr u8 n n n n -- ptr u8 n )
+   {: line:ptr at:n why:n tried:n lib:n :}
+   lib 0= if line at exit then
+   line at why tried lib NOTE-PUT
    why tried lib 1 - LIB-NEXT@ RECURSE ;
 
-\ dlerror's NULL means the loader kept no reason.
+: OPEN-BODY ( n n n ptr u8 NUM:alloc-byte-len -- )
+   {: why:n tried:n lib:n line:ptr extent:NUM:alloc-byte-len :}
+   line 0 OPEN-HEAD$ PUT lib LIB-ROW@ PUT s" '" PUT
+   why tried lib NOTES-PUT OPEN-HELP$ HELP-PUT
+   ERROR-TEXT:TYPE ;
+
+\ lib heads the chain the record names.
 : OPEN-REPORT ( n n n -- )
    {: dlerr:n tried:n lib:n :}
-   FFI-BUF 0 dlerr ffi-call-n
-   tried lib REPORT-NAMES ;
+   FFI-BUF 0 dlerr ffi-call-n {: why:n :}
+   why tried lib
+   OPEN-HEAD$ nip lib LIB-ROW@ nip + 1+
+   why tried lib NOTES-LEN + OPEN-HELP$ nip HELP-LEN + MEM:BYTES-ALLOC-LEN
+   [: OPEN-BODY ;] MEM:WITH-BYTES ;
 
 \ The first handle from lib along next and the library that holds it, or 0 and
 \ tried: the last library this walk failed to open, else tried as given. A
@@ -450,10 +436,23 @@ private
    tried 0 <> if dlerr tried lib OPEN-REPORT then
    E-FFI-DLOPEN throw ;
 
+: SYMBOL-HEAD$ ( -- ptr u8 n )
+   s" error[E-FFI-DLSYM]: no C symbol '" ;
+
+: PROCESS-HELP$ ( -- ptr u8 n )
+   s" name the library that defines it with LIBRARY, or open it with FFI:GLOBAL" ;
+
+: LIBRARY-HELP$ ( -- ptr u8 n )
+   s" check the symbol's spelling against the library's exports" ;
+
+\ lib 0 is the process's own symbols.
 : SYMBOL-REPORT ( n n -- ) {: idx:n lib:n :}
-   s" E-FFI-DLSYM: " idx FN-NAME idx NAME-LEN
-   lib 0 <> if s"  in " lib LIB-ROW@ else s" " s" " then
-   REPORT-LINE ;
+   SYMBOL-HEAD$ idx FN-NAME idx NAME-LEN
+   lib 0= if
+      s" ' among the process's symbols" s" " s" " PROCESS-HELP$
+      REPORT exit
+   then
+   s" ' in '" lib LIB-ROW@ s" '" LIBRARY-HELP$ REPORT ;
 
 variable ERRNO-FN-CELL
 variable DLERROR-FN-CELL
@@ -473,15 +472,6 @@ variable DLERROR-FN-CELL
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
-: NAME-CHECK ( n -- )
-   {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then ;
-
-: PATH-ROOM ( n -- )
-   {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then
-   u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then ;
-
 : BASE-CHECK ( n -- ) {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then ;
 
@@ -491,8 +481,6 @@ variable DLERROR-FN-CELL
 
 public
 
-: BUF-OFF ( -- n ) FFI-BUF-OFF ;
-: KPARAM-END-OFF ( -- n ) FFI-KPARAM#-OFF CELL + ;
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
 \ FFI:NOW alone is RTLD_LOCAL on Linux, so PROCESS-SYMBOLS cannot see the
@@ -503,6 +491,7 @@ public
 
 : >CELL ( ptr a -- n ) PTR>CELL ;
 
+private
 : VALUE! ( n n -- ) FFI-ARG! ;
 : POINTER! ( ptr a n -- ) FFI-PTR-ARG! ;
 
@@ -510,23 +499,22 @@ public
 : FLOAT32! ( r n -- ) {: value:r idx:n :}
    value F32:NARROW idx FFI-F32ARG! ;
 
+\ The stack stores take a byte offset into the stack buffer.
 : STACK-VALUE! ( n n -- ) FFI-STACK! ;
+: STACK-U8! ( n n -- ) FFI-STACK-U8! ;
+: STACK-U16! ( n n -- ) FFI-STACK-U16! ;
+: STACK-U32! ( n n -- ) FFI-STACK-U32! ;
 : STACK-FLOAT! ( r n -- ) FFI-FSTACK! ;
-: STACK-POINTER! ( ptr a n -- ) {: value:ptr idx:n :}
-   value PTR>CELL idx FFI-STACK! ;
+: STACK-FLOAT32! ( r n -- )
+   {: value:r off:n :}
+   value F32:NARROW off FFI-STACK-U32! ;
+: STACK-POINTER! ( ptr a n -- )
+   {: value:ptr off:n :}
+   value PTR>CELL off FFI-STACK! ;
 
-: ARGS ( -- ptr n ) FFI-BUF ;
-: FLOATS ( -- ptr r ) FFI-FBUF ;
-: STACK ( -- ptr n ) FFI-STACK-BUF ;
-
+public
 : OUT@ ( ptr n -- n ) FFI-OUT@ ;
 : OUT! ( n ptr n -- ) FFI-OUT! ;
-: KPARAM-COUNT ( -- n ) FFI-KPARAM-COUNT ;
-: KPARAM-RESET ( -- ) FFI-KPARAM-RESET ;
-: KPARAM+ ( ptr a -- ) FFI-KPARAM+ ;
-: KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
-: KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
-: KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
 
 \ FFI is the only library code that writes a terminator.
 private
@@ -581,8 +569,6 @@ public
 : CALLBACK-ENTRY ( -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
-\ The declarer below is DECLARE-ROW's only intended caller.
-: PROCESS ( -- n ) 0 ;
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
 
@@ -607,6 +593,10 @@ public
    buf CODEGEN:CONTENTS ;
 
 
+private
+
+: PROCESS ( -- n ) 0 ;
+
 : LIB-INDEX ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
    LIB-N @ 0 ?do
@@ -616,11 +606,8 @@ public
    loop
    0 ;
 
-private
-
 : LIBRARY-PATH-OR ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
-   u PATH-ROOM
    path u next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
    path u LIB-N @ PATH-FIELD CSTR drop
@@ -631,8 +618,6 @@ private
    0 row 1- LIB-FAILED!
    next row 1- LIB-NEXT!
    row ;
-
-public
 
 : LIBRARY-PATH ( ptr u8 n -- n ) 0 LIBRARY-PATH-OR ;
 
@@ -659,16 +644,6 @@ public
 \ dlopen can run constructors that call C through this task's scratch.
 : RESOLVE-ROW ( n -- ) FN-LOOKUP drop ;
 
-\ The caller's result storage rides x8, AAPCS64's indirect-result register. A
-\ record returned in x0/x1 ignores x8. Storage C writes through x8 is
-\ 16-byte aligned, the strictest a supported record can need; a register record
-\ stores into eight-byte-aligned storage.
-: RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
-   dst PTR>CELL {: addr:n :}
-   len 16 > if 15 else 7 then {: mask:n :}
-   addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
-   dst 8 POINTER! ;
-
 \ The raw x0 and x1 after the call, in address order. The row's relocation
 \ mask names the staged cells that hold a private struct copy's address in
 \ the stack buffer: bits 0-7 are x0-x7 and bits 8-23 stack cells 0-15. The
@@ -681,8 +656,6 @@ public
 
 : CALL-STRUCT-PTR ( n -- ptr u8 ) CALL-STRUCT drop CELL>PTR ;
 
-private
-
 : REG-STORE ( n ptr u8 n -- ) {: v:n dst:ptr len:n :}
    len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
 
@@ -691,25 +664,27 @@ private
 : RECORD-CELL ( ptr u8 n n -- n ) {: src:ptr len:n k:n :}
    0 len k 8 * - 8 min 0 ?do src k 8 * + i + c@ i 8 * lshift or loop ;
 
-: RECORD-CELLS ( ptr u8 n -- n ) {: src:ptr len:n :}
-   src PTR>CELL 0= len 0 <= or if E-FFI-SYNTAX throw then
-   len 1- 8 / 1+ ;
+: RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
-: RECORD-COPY ( ptr u8 n n -- n ) {: src:ptr len:n pay:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pay i + STACK-VALUE! loop
-   pay FFI-STACK-SLOT PTR>CELL ;
-
-public
+: RECORD-COPY ( ptr u8 n n -- n )
+   {: src:ptr len:n pay:n :}
+   len RECORD-WORDS 0 ?do
+      src len i RECORD-CELL pay i + cells STACK-VALUE!
+   loop
+   pay cells FFI-STACK-SLOT PTR>CELL ;
 
 \ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
-\ integer registers from reg, or in stack cells from pos; a larger one is
-\ copied into stack cells from pay and passed by address in register reg or
-\ stack cell pos.
+\ integer registers from reg, or in stack cells from byte offset pos; a larger
+\ one is copied into stack cells from cell pay and passed by address in
+\ register reg or the stack cell at byte offset pos.
 : STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
+   len RECORD-WORDS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
-: STRUCT-STACK! ( ptr u8 n n -- ) {: src:ptr len:n pos:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pos i + STACK-VALUE! loop ;
+: STRUCT-STACK! ( ptr u8 n n -- )
+   {: src:ptr len:n pos:n :}
+   len RECORD-WORDS 0 ?do
+      src len i RECORD-CELL pos i cells + STACK-VALUE!
+   loop ;
 
 : STRUCT-COPY-REG! ( ptr u8 n n n -- ) {: src:ptr len:n pay:n reg:n :}
    src len pay RECORD-COPY reg VALUE! ;
@@ -728,8 +703,6 @@ public
    $FFFFFFFF and $80000000 xor $80000000 - ;
 \ The stored symbol's length decides along with its bytes, so neither a prefix
 \ nor a name holding a 0 byte matches a row.
-private
-
 : SAME-FN? ( ptr u8 n n n n n n -- bool )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
@@ -750,31 +723,15 @@ private
    b idx NAME-CELL !
    u idx FN-NAME-LEN-OFF FN-FIELD ! ;
 
-\ A relocation mask may name only the row's own cells: registers among its
-\ first argc, at most x0-x7, and stack cells among its spills, so the engine
-\ never moves a cell past the native frame it copies.
-: RELOC-OWNED? ( n n n -- bool ) {: reloc:n argc:n spills:n :}
-   1 argc 8 min lshift 1-  1 spills lshift 1- 8 lshift or {: own:n :}
-   reloc own invert and 0= ;
-
-public
-
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   u NAME-CHECK
    FN-N @ 0 ?do
       name u lib argc spills reloc i SAME-FN? if i unloop exit then
    loop
    -1 ;
 
-\ Validation precedes reading a row's name.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   lib 0 < if E-FFI-LIBRARY throw then
-   lib LIB-N @ > if E-FFI-LIBRARY throw then
-   argc FFI-MAX-ARGS FFI-CHECK-COUNT
-   spills FFI-MAX-ARGS FFI-CHECK-COUNT
-   reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
    name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    FN-N @ {: idx:n :}
@@ -787,17 +744,16 @@ public
    0 idx FN-ADDR!
    idx ;
 
-: DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
-
+public
 \ errno is this package's own binding, written by hand because the declarer is
-\ defined after this package closes. libc's location is thread-local and the
+\ defined below it, in this package. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
    ERRNO-FN CALL-PTR LE:U32@ ;
 
-ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
+ERRNO-SYMBOL$ PROCESS 0 0 0 DECLARE-ROW ERRNO-FN-CELL !
 
-s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
+s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 
 
 \ FUNCTION: - declare a foreign function, get a checked word.
@@ -806,21 +762,15 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
-\     FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-\        1 $10 WRITES-BYTES                   \ sockaddr_in
-\        2 $04 WRITES-BYTES                   \ socklen_t
-\     ;FUNCTION
+\     FUNCTION: LOCAL-CALL getsockname ( i32 ptr u8 ptr u8 -- i32 ) ;FUNCTION
 \
 \ The Habu word name and the C symbol are separate tokens. A symbol is often not
 \ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` on either side and an `i32` result mapped to `n`. A clause names a
-\ `ptr u8` the callee writes: `idx len WRITES-BYTES` for a fixed width, or
-\ `idx arg WRITES-ARG` when another argument carries the length. The clauses
-\ are ordinary words the
-\ interpreter runs between the two keywords, so their numbers are literals and
-\ comments sit among them.
+\ to Habu `r` and `i32` to `n` on either side. The clauses STRUCT-ARG,
+\ STRUCT-RESULT and VARIADIC are ordinary words the interpreter runs between
+\ the two keywords, so their numbers are literals and comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
@@ -854,23 +804,21 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ mixed members: an HFA (one to four members of one float type) or an HVA (one
 \ to four 8- or 16-byte vectors) returns in v0-v3, which no byte count reveals,
 \ and must not be declared. AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0
-\ then x1, stored at exactly `bytes`; C writes a larger record through x8. The
-\ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
-\ record type aligned beyond 16 bytes is excluded.
+\ then x1, stored at exactly `bytes`. C writes a record over 16 bytes through
+\ x8, so its storage is aligned as the C record is: a `create … allot` block is
+\ cell-aligned, and a record holding a 16-byte aligned member needs 16. A record
+\ of 16 bytes or fewer is stored a byte at a time, at any address.
 \ The destination is one of the sixteen inputs, so at most fifteen C arguments
-\ remain, placed as STRUCT-ARG's are. A null or misaligned destination is
-\ E-FFI-SYNTAX at the call.
+\ remain, placed as STRUCT-ARG's are.
 \
 \ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
 \ read at exactly `bytes` when the call is staged, so the callee never sees
 \ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
-\ either travels in v registers and must not be declared. A declaration may
-\ have up to eight float arguments beside its records; its integer and pointer
-\ inputs must be cell-wide C types, since Apple arm64 packs two spilled C ints
-\ into one stack cell. The stack cells, the copies and the padding that aligns
-\ each copy share sixteen cells, refused past that at ;FUNCTION
-\ (E-FFI-ARITY). Excluded, because a byte count cannot
+\ either travels in v registers and must not be declared. A struct call places
+\ its other inputs as any call does. The stack cells, the copies and the
+\ padding that aligns each copy share sixteen cells, refused past that at
+\ ;FUNCTION (E-FFI-ARITY). Excluded, because a byte count cannot
 \ reveal them, are records aligned beyond 16 bytes and 16-byte aligned ones
 \ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
 \ register like any other, but on the stack it starts at a 16-byte aligned
@@ -883,38 +831,37 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A float result reads only the low 32 bits of its FP slot and widens to Habu
 \ `r`. Variadic positions use C default promotions, so declare a promoted float
 \ as `r`, never `f32`.
-\ A declaration carrying a float rides the ABI call, which packs no spill
-\ there, so it is refused past eight of either kind (E-FFI-ARITY); an
-\ integer-only declaration rides ffi-call-n, which spills past x7 itself.
-\ Every SysV overflow call rides the ABI trampoline so mixed kinds keep their
-\ own stack positions; a C float past the eighth
-\ float register has no stack staging and is refused (E-FFI-ARITY).
+\ A scalar input past its kind's registers takes the next 8-byte stack slot,
+\ the value in its low bytes; Apple arm64 packs a fixed one at its C width and
+\ alignment and puts every variadic input in a slot.
 \
-\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
-\ through the loader's evaluate-closed INCLUDE-EVALUATE, which rejects a text
-\ that leaves or takes cells with a record and 70, so each declaration is one
-\ complete colon definition with no interpreted residue.
+\ ;FUNCTION builds the declared word with define-word: its
+\ effect from the types read where the declaration stands, its body from
+\ literals and the words found here, which no word of the declaring package
+\ can capture.
 
 private
 
-$10 constant ARG-MAX
-8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
+\ Each input but a record takes at most one 8-byte stack slot, so ARG-MAX
+\ inputs fit FFI's stack buffer.
+FFI-MAX-ARGS constant ARG-MAX
+\ The longest type text IN-TOKEN or OUT-TOKEN records, nullable<u8>, fits.
+$10 constant TYPE-CAP
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
-10 constant DEC-BASE
-16 constant HEX-BASE
-$20 constant SP-C
-$24 constant HEX-C                        \ '$' - the hex literal prefix
 
-public
-
-\ An input's kind, as STRUCT-FITS? reads it: a cell, a `ptr u8`, an `r` or an
-\ `f32`.
+\ An input's kind: a cell, a `ptr u8`, an `r` or an `f32`.
 0 constant K-VALUE
 1 constant K-POINTER
 2 constant K-FLOAT
 3 constant K-FLOAT32
 
-private
+\ An input type's C size in bytes.
+: TYPE-SIZE ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u s" u8" STR= a u s" char" STR= or if 1 exit then
+   a u s" u16" STR= if 2 exit then
+   a u s" u32" STR= a u s" i32" STR= or a u s" f32" STR= or if 4 exit then
+   8 ;
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -923,6 +870,8 @@ private
 4 constant R-I32
 5 constant R-U32
 6 constant R-FLOAT32
+7 constant R-U16
+8 constant R-U8
 
 0 constant C-INT
 1 constant C-POINTER
@@ -930,18 +879,14 @@ private
 3 constant C-ABI-R
 4 constant C-STRUCT
 
--1 constant NO-EXT
-
 CODEGEN:BUFFER LIB-NAME
-CODEGEN:BUFFER GEN
-CODEGEN:BUFFER EFF
 
 \ One declaration's working state: a declaration word writes each cell before
-\ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
-\ zero and every buffer holds nothing, and the token cells and buffers rest
-\ outside every declaration word. Each word that can write one keeps this on
-\ every exit, a throw included (KEEP-REST); a throw while a declaration stays
-\ open keeps that declaration. A buffer grows to the token it holds.
+\ it reads it. Outside the open state every cell rests at zero and every buffer
+\ holds nothing, and the token cells and buffers rest outside every declaration
+\ word. Each word that can write one keeps this on every exit, a throw included
+\ (KEEP-REST); a throw while a declaration stays open keeps that declaration. A
+\ buffer grows to the token it holds.
 DYNAMIC-BUFFER NAME-BUF u8
 DYNAMIC-BUFFER SYM-BUF u8
 DYNAMIC-BUFFER TOK-BUF u8
@@ -950,98 +895,119 @@ variable NAME-U
 variable SYM-U
 variable TOK-U
 variable BASE-U
-\ The source span TOK-BUF and NAME-BUF were copied from.
-1 PTR-U8-TABLE TOK-SRC-A
-variable TOK-SRC-U
-1 PTR-U8-TABLE NAME-SRC-A
-variable NAME-SRC-U
 
 create ARG-KIND ARG-MAX cells allot
+create ARG-WIDTH ARG-MAX cells allot          \ each input's C width in bytes
 create ARG-REG ARG-MAX cells allot
-create ARG-EXT ARG-MAX cells allot
-create ARG-EXT-ARG ARG-MAX cells allot
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
+create ARG-TEXT ARG-MAX TYPE-CAP * allot      \ each input's type as DECLARED-EFFECT reads it
+create ARG-TEXT-U ARG-MAX cells allot
 variable ARG-N
 variable RES-KIND
 variable RES-NULLABLE                      \ 1 for a nullable<u8> result
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
+create RES-TEXT TYPE-CAP allot             \ the result's type as DECLARED-EFFECT reads it
+variable RES-TEXT-U
 variable CUR-LIB
 CUR-LIB ROLLBACK-CELLS:MARK
-variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
+\ skipped: the driver cannot tell what the declaration holds, so its clauses
+\ are ignored and it closes without a plan. The load never skips.
+ENUM decl-state closed open skipped ;ENUM
+TYPED-VARIABLE DECL decl-state
+: CLOSED! ( -- ) construct decl-state closed DECL ! ;
+CLOSED!
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
+: OPEN? ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF false ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH ;
+
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
    TOK-BUF-RELEASE BASE-BUF-RELEASE
-   0 TOK-U ! 0 BASE-U !
-   NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U ! ;
+   0 TOK-U ! 0 BASE-U ! ;
 
 : REST ( -- )
    NAME-BUF-RELEASE SYM-BUF-RELEASE
-   0 NAME-U ! 0 SYM-U !
-   NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U !
+   TYPE-CAP 0 ?do 0 RES-TEXT i + c! loop
+   0 NAME-U ! 0 SYM-U ! 0 RES-TEXT-U !
    REST-TOKENS
+   ARG-MAX TYPE-CAP * 0 ?do 0 ARG-TEXT i + c! loop
    ARG-MAX 0 ?do
-      0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
-      0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
+      0 ARG-KIND i cells + ! 0 ARG-WIDTH i cells + !
+      0 ARG-REG i cells + !
+      0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
+      0 ARG-TEXT-U i cells + !
    loop
    0 ARG-N ! 0 RES-KIND ! 0 RES-NULLABLE !
    0 VAR-START ! 0 STRUCT-BYTES ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
-   [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
+   [: OPEN? if REST-TOKENS else REST then ;] finally ;
 
 \ The loader runs this on a declaration still open when its file ends.
 : DISCARD ( -- )
-   0 OPEN !  REST ;
+   CLOSED!  REST ;
 
 \ ---- a bad declaration's rejection ----------------------------------------
-\ The caller writes a record's help and ends it with FFI-STOP. The stop abandons
-\ the declaration, so the next FUNCTION: in the file is not rejected for it.
-: FFI-STOP ( -- )
-   OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
-   0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
+\ A rejection is SYNTAX-OPEN or ARITY-OPEN, its message, then HELP-STOP with the
+\ fix, which places the record at the token read last. The stop abandons the
+\ open declaration, so the next FUNCTION: in the file is not rejected for it.
+: HELP-END ( ptr u8 n -- )
+   {: h:ptr hu:n :}
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   OPEN? if SOURCE-ROOT:CLOSED then  CLOSED!
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
-: SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
+public
+
+: SYNTAX-OPEN ( -- )
+   s" E-FFI-SYNTAX" REJECTION:OPEN ;
+
+: ARITY-OPEN ( -- )
+   s" E-FFI-ARITY" REJECTION:OPEN ;
+
+: HELP-STOP ( ptr u8 n -- )
+   CHECK:DEFINER-PLACE HELP-END ;
+
+: SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
+   {: m:ptr mu:n h:ptr hu:n :}
+   SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu HELP-STOP ;
+
+private
 
 \ ---- the declaration token stream -----------------------------------------
-\ parse-name's span is transient, so every token is copied before the next one
-\ is read and every comparison reads the copy. The span is kept beside the
-\ copy: a rejection places it while REJECTION holds its source, else the copy.
+\ Tokens come from the caller's source, and a span lasts while the source's
+\ line is read, so every token is copied as it is read and every comparison
+\ reads the copy. A declaration's effect is on its line, so its types are
+\ read from their spans.
 
 : TOK$ ( -- ptr u8 n )
    0 TOK-BUF TOK-U @ ;
 
-: TOK-AT ( -- ptr u8 n )
-   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK$ REJECTION:KEPT ;
-
-: NAME-AT ( -- ptr u8 n )
-   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ 0 NAME-BUF NAME-U @ REJECTION:KEPT ;
-
-\ The input ended: the record stands at the last token read, or at the keyword
-\ when the declaration has read none.
-: ENDED ( -- )
-   TOK-U @ 0= if SRCLOC:TOKEN$ else TOK-AT then {: t:ptr tu:n :}
-   s" E-FFI-SYNTAX" s" the source ends before the declaration is complete"
-   t tu s" the declaration ends here" REJECTION:OPEN-AT REJECTION:HELP
-   s" finish the declaration: `FUNCTION:` takes a name, a symbol and an effect " SAY
-   s" closed by `)`, and `VERSIONED-LIBRARY` a name and its versions" SAY
-   FFI-STOP ;
-
 : TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if ENDED then
+   u 0= if
+      s" the line ended before the declaration did"
+      s" write FUNCTION: NAME symbol ( inputs -- output ) on one line"
+      SYNTAX-REJECT
+   then
    u TOK-BUF-RESERVE
    a 0 TOK-BUF u BYTE-COPY
-   u TOK-U !
-   a TOK-SRC-A 0 ptr-field !  u TOK-SRC-U ! ;
+   u TOK-U ! ;
 
-: TOK@ ( -- )
-   parse-name TOK! ;
+: TOK@ ( [ -- ptr u8 n ] -- )
+   execute TOK! ;
+
+: TOK-SPAN ( [ -- ptr u8 n ] -- ptr u8 n )
+   execute 2dup TOK! ;
 
 : TOK-IS? ( ptr u8 n -- bool )
    TOK$ STR= ;
@@ -1050,8 +1016,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK$ {: a:ptr u:n :}
    u NAME-BUF-RESERVE
    a 0 NAME-BUF u BYTE-COPY
-   u NAME-U !
-   TOK-SRC-A 0 ptr-field @ NAME-SRC-A 0 ptr-field !  TOK-SRC-U @ NAME-SRC-U ! ;
+   u NAME-U ! ;
 
 : SYM! ( -- )
    TOK$ {: a:ptr u:n :}
@@ -1070,38 +1035,32 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK$ {: a:ptr u:n :}
    u AFFIX-BYTES + LIBRARY-PATH-CAP 1 - > if
       s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
-      TOK-AT s" too long" REJECTION:OPEN-AT
-      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
-      s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit" SAY
-      FFI-STOP
+      SRCLOC:TOKEN$ s" too long" REJECTION:OPEN-AT
+      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
+      s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit"
+      HELP-END
    then
    u BASE-BUF-RESERVE
    a 0 BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
-\ STR-PARSE-POS answers no negative version, so only the top bound is read.
-: VERSION-ROOM ( n -- ) {: version:n :}
+: VERSION-WRITTEN ( n -- )
+   {: version:n :}
    version LIB-VERSION-MAX > if
-      s" E-FFI-SYNTAX" s" a library version is past the highest a declaration renders"
-      TOK-AT s" a version past the limit" REJECTION:OPEN-AT
-      LIB-VERSION-MAX s" as the highest version" REJECTION:LIMIT
-      REJECTION:HELP
-      s" list only the soname versions the library ships" SAY
-      FFI-STOP
+      SYNTAX-OPEN  s" a library version is at most " REJECTION:EMIT-STR
+      LIB-VERSION-MAX REJECTION:EMIT-U
+      s" write the library's major version: 1 for libz.so.1"
+      HELP-STOP
    then ;
 
-: BAD-VERSION ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-FFI-SYNTAX" s" a library version is not a number"
-   TOK-AT u 0= if s" an empty version" REJECTION:OPEN-AT
-   else s" `" REJECTION:OPEN-AT  a u SAY s" ` is not a version" SAY then
-   REJECTION:HELP
-   s" write the versions as numbers separated by commas, such as `1,2`" SAY
-   FFI-STOP ;
-
-: >VERSION ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u STR-PARSE-POS MATCH option
-      none OF a u BAD-VERSION ENDOF
-      some OF dup VERSION-ROOM ENDOF
+: >VERSION ( ptr u8 n -- n )
+   STR-PARSE-POS MATCH option
+      none OF
+         s" a library version is not a number"
+         s" write versions as numbers split by commas: VERSIONED-LIBRARY z 1,2"
+         SYNTAX-REJECT
+      ENDOF
+      some OF dup VERSION-WRITTEN ENDOF
    ;MATCH ;
 
 \ A version list's rows, made from the last version to the first, each next
@@ -1120,197 +1079,242 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ ---- the declared effect ---------------------------------------------------
 
 : ARG-KIND@ ( n -- n ) {: i:n :} ARG-KIND i cells + @ ;
+: ARG-WIDTH@ ( n -- n )
+   {: i:n :}
+   ARG-WIDTH i cells + @ ;
 : ARG-REG@ ( n -- n ) {: i:n :} ARG-REG i cells + @ ;
-: ARG-EXT@ ( n -- n ) {: i:n :} ARG-EXT i cells + @ ;
-: ARG-EXT-ARG@ ( n -- n ) {: i:n :} ARG-EXT-ARG i cells + @ ;
-: ARG-EXT! ( n n -- ) {: v:n i:n :} v ARG-EXT i cells + ! ;
-: ARG-EXT-ARG! ( n n -- ) {: v:n i:n :} v ARG-EXT-ARG i cells + ! ;
 : ARG-SBYTES@ ( n -- n ) {: i:n :} ARG-SBYTES i cells + @ ;
 : ARG-SBYTES! ( n n -- ) {: v:n i:n :} v ARG-SBYTES i cells + ! ;
 : ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
 : ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
-: EFF+ ( ptr u8 n -- )
-   EFF CODEGEN:APPEND-STRING
-   SP-C EFF CODEGEN:APPEND-BYTE ;
+: ARG-TEXT$ ( n -- ptr u8 n ) {: i:n :}
+   ARG-TEXT i TYPE-CAP * +  ARG-TEXT-U i cells + @ ;
 
-: TOK-KEEP ( -- )
-   TOK$ EFF+ ;
+\ Records the type text of the input ARG+ added last.
+: IN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   ARG-N @ 1 - {: i:n :}
+   a ARG-TEXT i TYPE-CAP * + u BYTE-COPY
+   u ARG-TEXT-U i cells + ! ;
 
-: ARG+ ( n -- )
-   {: kind:n :}
-   ARG-N @ ARG-MAX >= if
-      s" E-FFI-ARITY" s" the declaration has more inputs than a call passes"
-      NAME-AT s" too many inputs" REJECTION:OPEN-AT
-      ARG-MAX s" inputs" REJECTION:LIMIT REJECTION:HELP
-      s" pass the extra values in memory, through a `ptr u8` input" SAY
-      FFI-STOP
-   then
+: RES-TEXT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a RES-TEXT u BYTE-COPY
+   u RES-TEXT-U ! ;
+
+: INPUTS-FULL ( -- )
+   ARITY-OPEN
+   s" a FUNCTION: declaration has at most " REJECTION:EMIT-STR
+   ARG-MAX REJECTION:EMIT-U  s"  inputs" REJECTION:EMIT-STR
+   s" call it through a C function that takes the inputs in a record"
+   HELP-STOP ;
+
+: ARG+ ( n n -- )
+   {: kind:n width:n :}
+   ARG-N @ ARG-MAX >= if INPUTS-FULL then
    kind ARG-KIND ARG-N @ cells + !
-   NO-EXT ARG-N @ ARG-EXT!
-   NO-EXT ARG-N @ ARG-EXT-ARG!
+   width ARG-WIDTH ARG-N @ cells + !
    0 ARG-N @ ARG-SBYTES!
    ARG-N @ 1 + ARG-N ! ;
 
-\ A pointer is `ptr u8`: a byte span with a length the declaration states.
-: PTR-TAIL ( -- )
-   TOK@
+\ A pointer is `ptr u8`, a byte span.
+\ Answers the span from `ptr`, at A, through `u8`.
+: PTR-TAIL ( ptr u8 [ -- ptr u8 n ] -- ptr u8 n )
+   {: a:ptr src :}
+   src TOK-SPAN {: b:ptr u:n :}
    s" u8" TOK-IS? 0= if
-      s" E-FFI-SYNTAX" s" a pointer in a declaration is `ptr u8`"
-      TOK-AT s" expected `u8`" REJECTION:OPEN-AT REJECTION:HELP
-      s" write `ptr u8`, a span of bytes whose length the declaration states" SAY
-      FFI-STOP
+      s" expected 'u8' after 'ptr'"
+      s" declare a pointer as ptr u8, a byte span, whatever C points at"
+      SYNTAX-REJECT
    then
-   TOK-KEEP ;
+   a  b u + a - ;
 
-: IN-TOKEN ( -- )
-   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL K-POINTER ARG+ exit then
-   s" r" TOK-IS? if TOK-KEEP K-FLOAT ARG+ exit then
-   s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 ARG+ exit then
-   TOK-KEEP K-VALUE ARG+ ;
+\ The integer types and addr an input or an output keeps as spelled.
+: SCALAR? ( -- bool )
+   s" n" TOK-IS? s" i64" TOK-IS? or s" cell" TOK-IS? or
+   s" addr" TOK-IS? or s" u8" TOK-IS? or s" u16" TOK-IS? or
+   s" u32" TOK-IS? or s" char" TOK-IS? or ;
 
-: OUT-TOKEN ( -- )
+\ A declaration spells the C prototype's types; a role, a bool, an enum or a
+\ sum is Habu's, so the caller converts it.
+: TYPE-REJECT ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n l:ptr lu:n :}
+   SYNTAX-OPEN  s" '" REJECTION:EMIT-STR  TOK$ REJECTION:EMIT-STR
+   s" ' is not " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s"  type: " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s"  is " REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
+   s" declare the C prototype's type and convert the value where the word is called"
+   HELP-STOP ;
+
+: IN-REJECT ( -- )
+   s" an input"
+   s" ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   TYPE-REJECT ;
+
+: OUT-REJECT ( -- )
+   s" an output"
+   s" ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
+   TYPE-REJECT ;
+
+\ Each type is read where it is written, so a rejected one names its token;
+\ DECLARED-EFFECT reads the recorded text again.
+: IN-TOKEN ( ptr u8 n [ -- ptr u8 n ] -- )
+   {: a:ptr u:n src :}
+   a u TYPE-SIZE {: size:n :}
+   s" ptr" TOK-IS? if
+      a src PTR-TAIL EFFECT:READ-TYPE drop
+      K-POINTER size ARG+ s" ptr u8" IN-TEXT exit
+   then
+   s" f32" TOK-IS? if
+      K-FLOAT32 size ARG+ s" r" IN-TEXT exit
+   then
+   s" i32" TOK-IS? if
+      K-VALUE size ARG+ s" n" IN-TEXT exit
+   then
+   s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
+   a u EFFECT:READ-TYPE drop
+   s" r" TOK-IS? if K-FLOAT else K-VALUE then size ARG+
+   a u IN-TEXT ;
+
+: SCALAR-KIND ( -- n )
+   s" u32" TOK-IS? if R-U32 exit then
+   s" u16" TOK-IS? if R-U16 exit then
+   s" u8" TOK-IS? s" char" TOK-IS? or if R-U8 exit then
+   R-VALUE ;
+
+: OUT-TOKEN ( ptr u8 n [ -- ptr u8 n ] -- )
+   {: a:ptr u:n src :}
    RES-KIND @ R-NONE <> if
-      s" E-FFI-SYNTAX" s" the declaration has more than one result"
-      TOK-AT s" a second result" REJECTION:OPEN-AT REJECTION:HELP
-      s" declare one result: a C function returns one value" SAY
-      FFI-STOP
+      s" a FUNCTION: declaration has at most one output"
+      s" C returns one value: return the others through ptr u8 inputs C writes"
+      SYNTAX-REJECT
    then
-   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
-   s" nullable<u8>" TOK-IS? if
-      TOK-KEEP R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit
+   s" ptr" TOK-IS? if
+      a src PTR-TAIL EFFECT:READ-TYPE drop
+      s" ptr u8" RES-TEXT! R-POINTER RES-KIND ! exit
    then
-   s" r" TOK-IS? if TOK-KEEP R-FLOAT RES-KIND ! exit then
-   s" f32" TOK-IS? if s" r" EFF+ R-FLOAT32 RES-KIND ! exit then
-   s" i32" TOK-IS? if s" n" EFF+ R-I32 RES-KIND ! exit then
-   s" u32" TOK-IS? if TOK-KEEP R-U32 RES-KIND ! exit then
-   TOK-KEEP R-VALUE RES-KIND ! ;
+   s" f32" TOK-IS? if s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit then
+   s" i32" TOK-IS? if s" n" RES-TEXT! R-I32 RES-KIND ! exit then
+   s" nullable<u8>" TOK-IS? s" r" TOK-IS? or SCALAR? or 0= if
+      OUT-REJECT
+   then
+   a u EFFECT:READ-TYPE drop  a u RES-TEXT!
+   s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
+   s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
+   SCALAR-KIND RES-KIND ! ;
 
-: INPUTS ( -- )
+: INPUTS ( [ -- ptr u8 n ] -- )
+   {: src :}
    begin
-      TOK@
-      s" --" TOK-IS? if TOK-KEEP exit then
+      src TOK-SPAN
+      s" --" TOK-IS? if 2drop exit then
       s" )" TOK-IS? if
-         s" E-FFI-SYNTAX" s" the effect closes before its `--`"
-         TOK-AT s" expected `--` before this" REJECTION:OPEN-AT
-         REJECTION:HELP
-         s" separate the inputs from the result with `--`, as `( n -- n )`" SAY
-         FFI-STOP
+         s" expected '--' before ')'"
+         s" write the effect as ( inputs -- output ), '--' even with no output"
+         SYNTAX-REJECT
       then
-      IN-TOKEN
+      src IN-TOKEN
    again ;
 
-: OUTPUTS ( -- )
+: OUTPUTS ( [ -- ptr u8 n ] -- )
+   {: src :}
    begin
-      TOK@
-      s" )" TOK-IS? if exit then
+      src TOK-SPAN
+      s" )" TOK-IS? if 2drop exit then
       s" --" TOK-IS? if
-         s" E-FFI-SYNTAX" s" the effect has a second `--`"
-         TOK-AT s" a second `--`" REJECTION:OPEN-AT REJECTION:HELP
-         s" keep one `--`, between the inputs and the result" SAY
-         FFI-STOP
+         s" a second '--' in the effect"
+         s" write one '--', between the inputs and the output"
+         SYNTAX-REJECT
       then
-      OUT-TOKEN
+      src OUT-TOKEN
    again ;
 
-: EFFECT ( -- )
-   TOK@
+: EFFECT ( [ -- ptr u8 n ] -- )
+   {: src :}
+   src TOK@
    s" (" TOK-IS? 0= if
-      s" E-FFI-SYNTAX" s" the declaration has no effect after its symbol"
-      TOK-AT s" expected `(`" REJECTION:OPEN-AT REJECTION:HELP
-      s" write the effect after the symbol, as `FUNCTION: name symbol ( n -- n )`" SAY
-      FFI-STOP
+      s" expected '(' after the C symbol"
+      s" write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
+      SYNTAX-REJECT
    then
-   EFF CODEGEN:RESET
-   INPUTS
-   OUTPUTS ;
+   src INPUTS
+   src OUTPUTS ;
 
 \ ---- which call the declaration rides --------------------------------------
 
-\ A call that takes or returns a float, or a macOS variadic call's fixed
-\ inputs, passes its arguments in registers alone.
-: REG-ROOM ( n n -- )
-   {: int:n flt:n :}
-   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then {: cap:n :}
-   int cap > if
-      s" E-FFI-ARITY" s" the call takes more integer inputs than its registers hold"
-      NAME-AT s" too many integer inputs" REJECTION:OPEN-AT
-      cap s" integer registers" REJECTION:LIMIT REJECTION:HELP
-      s" this call passes its integers in registers alone: pass the extra values " SAY
-      s" in memory, through a `ptr u8` input" SAY
-      FFI-STOP
-   then
-   flt REG-MAX > if
-      s" E-FFI-ARITY" s" the call takes more float inputs than its registers hold"
-      NAME-AT s" too many float inputs" REJECTION:OPEN-AT
-      REG-MAX s" float registers" REJECTION:LIMIT REJECTION:HELP
-      s" a C float past the last float register has no stack staging: pass the " SAY
-      s" extra values in memory, through a `ptr u8` input" SAY
-      FFI-STOP
-   then ;
+: STAGING-FULL ( -- )
+   ARITY-OPEN
+   s" a struct call stages at most " REJECTION:EMIT-STR
+   STACK-CELLS REJECTION:EMIT-U
+   s"  cells of stack inputs and record copies" REJECTION:EMIT-STR
+   s" pass the large records by address through a C function"
+   HELP-STOP ;
 
-: FLOAT-ARG? ( n -- bool )
-   ARG-KIND@ {: kind:n :}
+: FLOAT-KIND? ( n -- bool )
+   {: kind:n :}
    kind K-FLOAT = kind K-FLOAT32 = or ;
 
-: PLACE-REG ( n n n -- n n )
-   {: int:n flt:n i:n :}
-   i FLOAT-ARG? if flt ARG-REG i cells + ! int flt 1+ exit then
-   int ARG-REG i cells + ! int 1+ flt ;
+: ALIGN-UP ( n n -- n )
+   {: v:n a:n :}
+   v a + 1- a / a * ;
 
-\ Answers the integer and float registers taken.
-: PLAN-REGS ( n -- n n )
-   {: argc:n :}
-   0 0 argc 0 ?do i PLACE-REG loop ;
+\ Whether input i is variadic when the variadic inputs start at start, -1
+\ for none.
+: VARIADIC? ( n n -- bool )
+   {: i:n start:n :}
+   start 0 >= i start >= and ;
 
-: X86-SPILL ( n n -- n ) {: stk:n i:n :}
-   stk 1+ negate ARG-REG i cells + !
-   stk 1+ ;
+: INT-REGS ( -- n )
+   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if REG-MAX exit then
+   E-FFI-LIBRARY throw ;
 
-: X86-PLACE ( n n n n -- n n n )
-   {: int:n flt:n stk:n i:n :}
-   i FLOAT-ARG? if
-      flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
-      i ARG-KIND@ K-FLOAT32 = if
-         s" E-FFI-ARITY" s" an `f32` input passes the float registers, and SysV stages no `f32` on the stack"
-         NAME-AT s" input " REJECTION:OPEN-AT
-         i REJECTION:EMIT-N s"  is an `f32` past them" SAY
-         REG-MAX s" float registers" REJECTION:LIMIT REJECTION:HELP
-         s" pass the floats past the limit in memory, through a `ptr u8` input" SAY
-         FFI-STOP
-      then
-      int flt stk i X86-SPILL exit
+: SLOT-BYTES ( n bool -- n )
+   {: size:n var:bool :}
+   HB-TARGET-MACOS? var 0= and if size exit then
+   8 ;
+
+\ Places an input of bytes at the next stack offset aligned to them, at most
+\ 8, and answers the offset past it and its place.
+: SPILL-ARG ( n n n n -- n n n n )
+   {: int:n flt:n off:n bytes:n :}
+   off bytes 8 min ALIGN-UP {: at:n :}
+   int flt at bytes + at 1+ negate ;
+
+: PLACE-SCALAR ( n n n n n bool -- n n n n )
+   {: int:n flt:n off:n kind:n size:n var:bool :}
+   size var SLOT-BYTES {: bytes:n :}
+   HB-TARGET-MACOS? var and if int flt off bytes SPILL-ARG exit then
+   kind FLOAT-KIND? if
+      flt REG-MAX < if int flt 1+ off flt exit then
+   else
+      int INT-REGS < if int 1+ flt off int exit then
    then
-   int X86-INT-REG-MAX < if int ARG-REG i cells + ! int 1+ flt stk exit then
-   int flt stk i X86-SPILL ;
+   int flt off bytes SPILL-ARG ;
 
-: PLAN-X86 ( -- n n n )
-   0 0 0 ARG-N @ 0 ?do i X86-PLACE loop ;
+: PLACE-RECORD ( n n n n -- n n n n )
+   {: int:n flt:n off:n bytes:n :}
+   bytes RECORD-WORDS {: words:n :}
+   int words + INT-REGS <= if int words + flt off int exit then
+   INT-REGS flt off words cells SPILL-ARG ;
 
-\ A macOS variadic argument takes a stack cell, so the registers taken are the
-\ fixed arguments'.
-: PLAN-SPILLS ( -- n n n )
-   ARG-N @ PLAN-REGS
-   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if 0 exit then
-   2drop
-   VAR-START @ PLAN-REGS
-   2dup REG-ROOM
-   ARG-N @ VAR-START @ - ;
+\ The call rule: places one C argument of kind and C size, a record of sbytes
+\ (0 for none), variadic or not, past int integer and flt float registers and
+\ off stack bytes, and answers them past it and its place.
+: PLACE-NEXT ( n n n n n n bool -- n n n n )
+   {: int:n flt:n off:n kind:n size:n sbytes:n var:bool :}
+   sbytes 0 > sbytes 16 <= and if int flt off sbytes PLACE-RECORD exit then
+   int flt off kind size var PLACE-SCALAR ;
 
-: C-ARGS ( -- n )
-   ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
-
-: RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
-
-: INT-WORDS ( n -- n ) {: bytes:n :}
-   bytes 0 > bytes 16 <= and if bytes RECORD-WORDS exit then
-   1 ;
-
-: PLACE-ARG ( n n n n n -- n n n n ) {: int:n flt:n stack:n kind:n bytes:n :}
-   kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
-   bytes INT-WORDS {: words:n :}
-   int words + REG-MAX <= if int words + flt stack int exit then
-   REG-MAX flt stack words + stack 1+ negate ;
+\ Places argc inputs in argument order, input i's kind, C size and record
+\ bytes at cell i of kinds, sizes and sbytes, each place into regs. Answers
+\ the integer registers, float registers and stack bytes taken.
+: PLAN-IN-ORDER ( ptr n ptr n ptr n n n ptr n -- n n n )
+   {: kinds:ptr sizes:ptr sbytes:ptr argc:n start:n regs:ptr :}
+   0 0 0 argc 0 ?do
+      kinds i cells + @ sizes i cells + @ sbytes i cells + @
+      i start VARIADIC? PLACE-NEXT
+      regs i cells + !
+   loop ;
 
 : PLACE-COPY ( n n -- n n ) {: pos:n bytes:n :}
    bytes 16 <= if pos 0 exit then
@@ -1320,110 +1324,100 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    STACK-CELLS pay - 8 * bytes < if STACK-CELLS 1+ pay exit then
    pay bytes RECORD-WORDS + pay ;
 
-\ The plan of n C arguments, each with its kind in kinds and its record width,
-\ 0 for none, in sbytes: each one's place goes to regs and its copy's to pays.
-\ Answers the integer registers, float registers and stack cells it takes.
-: PLAN-RECORDS ( ptr n ptr n n ptr n ptr n -- n n n )
-   {: kinds:ptr sbytes:ptr argc:n regs:ptr pays:ptr :}
-   0 0 0 argc 0 ?do
-      kinds i cells + @ sbytes i cells + @ PLACE-ARG
-      regs i cells + !
-   loop
-   argc 0 ?do
+\ Places each larger record's copy from stack cell pos into pays, and answers
+\ the cells past the last.
+: PLAN-COPIES ( ptr n n n ptr n -- n )
+   {: sbytes:ptr argc:n pos:n pays:ptr :}
+   pos argc 0 ?do
       sbytes i cells + @ PLACE-COPY
       pays i cells + !
    loop ;
 
-: PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
-   flt REG-MAX <= stk STACK-CELLS <= and ;
+\ The plan of argc C arguments, variadic from start (-1 for none), into regs
+\ and pays. Answers the integer and float registers and the stack cells taken.
+: PLAN-INPUTS ( ptr n ptr n ptr n n n ptr n ptr n -- n n n )
+   {: kinds:ptr sizes:ptr sbytes:ptr argc:n start:n regs:ptr pays:ptr :}
+   kinds sizes sbytes argc start regs PLAN-IN-ORDER {: int:n flt:n off:n :}
+   int flt  sbytes argc off 8 ALIGN-UP 8 / pays PLAN-COPIES ;
 
-public
+: PLAN-ROOM ( n -- )
+   {: stk:n :}
+   stk STACK-CELLS <= if exit then
+   STAGING-FULL ;
 
-\ Whether n C arguments, kinds and record widths as PLAN-RECORDS reads them,
-\ fit the struct call; past it the declaration is refused (E-FFI-ARITY).
-\ regs and pays take the plan, n cells each. The source checker holds a
-\ declaration's clauses to the rule this way.
-: STRUCT-FITS? ( ptr n ptr n n ptr n ptr n -- bool )
-   PLAN-RECORDS {: flt:n stk:n :}
-   drop flt stk PLAN-FITS? ;
-
-private
-
-: PLAN-STRUCT ( -- n n )
-   ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
-   {: int:n flt:n stk:n :}
-   flt stk PLAN-FITS? 0= if
-      s" E-FFI-ARITY" s" the struct call needs more registers or stack cells than it has"
-      NAME-AT s" does not fit" REJECTION:OPEN-AT
-      flt REG-MAX > if REG-MAX s" float registers" else STACK-CELLS s" stack cells" then
-      REJECTION:LIMIT REJECTION:HELP
-      s" pass fewer arguments or smaller records: floats take the float registers, " SAY
-      s" and spilled arguments share the stack cells with copies of records over " SAY
-      s" 16 bytes" SAY
-      FFI-STOP
-   then
-   int stk ;
+: C-ARGS ( -- n )
+   ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
 
 : RECORDS? ( -- bool )
    false ARG-N @ 0 ?do i ARG-SBYTES@ 0 > or loop ;
 
-: PLAN-TARGET ( -- n n n )
-   HB-TARGET-LINUX-X86-64? if PLAN-X86 exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS exit then
-   E-FFI-LIBRARY throw ;
+: CALL-KIND ( n n -- n )
+   {: flt:n stk:n :}
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if C-ABI-R exit then
+   stk 0 > flt 0 > or if C-ABI exit then
+   RES-KIND @ R-POINTER = if C-POINTER exit then
+   C-INT ;
 
 \ Answers the integer registers and stack cells the call takes, which its row
 \ keeps, and the call it rides.
 : PLAN-CALL ( -- n n n )
-   STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT C-STRUCT exit then
-   PLAN-TARGET {: int:n flt:n stk:n :}
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or {: fres:bool :}
-   stk 0 > if int stk fres if C-ABI-R else C-ABI then exit then
-   fres if int flt REG-ROOM int stk C-ABI-R exit then
-   flt 0 > if int flt REG-ROOM int stk C-ABI exit then
-   RES-KIND @ R-POINTER = if int stk C-POINTER exit then
-   int stk C-INT ;
+   ARG-KIND ARG-WIDTH ARG-SBYTES C-ARGS VAR-START @ ARG-REG ARG-PAY
+   PLAN-INPUTS {: int:n flt:n stk:n :}
+   STRUCT-BYTES @ 0 > RECORDS? or if
+      stk PLAN-ROOM
+      int stk C-STRUCT exit
+   then
+   int stk  flt stk CALL-KIND ;
 
-\ ---- the generated definition ----------------------------------------------
+\ ---- the built definition -------------------------------------------------
 
-: GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
-: GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
-: GEN-SP ( -- ) SP-C GEN CODEGEN:APPEND-BYTE ;
-: GEN-ARG ( n -- ) s" A" GEN+ GEN-N ;
+\ The type of argument I's local, by its kind.
+: LOCAL-TYPE ( n -- EFFECT:type ) {: i:n :}
+   i ARG-KIND@ K-VALUE = if EFFECT:N exit then
+   i ARG-KIND@ K-POINTER = if s" u8" EFFECT:NAMED EFFECT:PTR exit then
+   s" r" EFFECT:NAMED ;
 
+\ One local per argument: the definition declares no other, so argument I's
+\ local has index I.
 : LOCALS ( -- )
    ARG-N @ 0= if exit then
-   s" {: " GEN+
-   ARG-N @ 0 ?do
-      i GEN-ARG
-      i ARG-KIND@ K-VALUE = if s" :n" GEN+ then
-      i ARG-KIND@ K-FLOAT = if s" :r" GEN+ then
-      i ARG-KIND@ K-FLOAT32 = if s" :r" GEN+ then
-      GEN-SP
-   loop
-   s" :} " GEN+ ;
+   s" {:" EFFECT:KEYWORD
+   ARG-N @ 0 ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   s" :}" EFFECT:KEYWORD ;
 
 : STAGE-VALUE ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:VALUE! " GEN+ ;
+   i ARG-REG@ literal postpone VALUE! ;
 
 : STAGE-FLOAT ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:FLOAT! " GEN+ ;
+   i ARG-REG@ literal postpone FLOAT! ;
 
 : STAGE-FLOAT32 ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
+   i ARG-REG@ literal postpone FLOAT32! ;
 
 : STAGE-POINTER ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:POINTER! " GEN+ ;
+   i ARG-REG@ literal postpone POINTER! ;
 
-: STACK-POS ( n -- ) {: i:n :}
-   i ARG-REG@ 0 < if i ARG-REG@ negate 1- GEN-N exit then
-   i VAR-START @ - GEN-N ;
+: STACK-POS ( n -- )
+   {: i:n :}
+   i ARG-REG@ negate 1- literal ;
+
+\ C promotes a variadic integer narrower than an int, so its slot is written
+\ whole.
+: STAGE-INT-SPILL ( n -- )
+   {: i:n :}
+   i VAR-START @ VARIADIC? if postpone STACK-VALUE! exit then
+   i ARG-WIDTH@ {: width:n :}
+   width 1 = if postpone STACK-U8! exit then
+   width 2 = if postpone STACK-U16! exit then
+   width 4 = if postpone STACK-U32! exit then
+   postpone STACK-VALUE! ;
+
 : STAGE-SPILL ( n -- ) {: i:n :}
-   i ARG-KIND@ K-FLOAT = if
-      i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
-   i ARG-KIND@ K-VALUE = if
-      i STACK-POS s"  FFI:STACK-VALUE! " GEN+ exit then
-   i STACK-POS s"  FFI:STACK-POINTER! " GEN+ ;
+   i STACK-POS
+   i ARG-KIND@ K-FLOAT = if postpone STACK-FLOAT! exit then
+   i ARG-KIND@ K-FLOAT32 = if postpone STACK-FLOAT32! exit then
+   i ARG-KIND@ K-POINTER = if postpone STACK-POINTER! exit then
+   i STAGE-INT-SPILL ;
 
 : STAGE-REG ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
@@ -1432,10 +1426,7 @@ private
    i STAGE-POINTER ;
 
 : STAGE-ONE ( n -- ) {: i:n :}
-   HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
-   HB-TARGET-MACOS? VAR-START @ 0 >= and i VAR-START @ >= and if
-      i STAGE-SPILL exit
-   then
+   i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
 : STAGE ( -- )
@@ -1443,24 +1434,30 @@ private
 
 : CALL-WORD ( n -- )
    {: kind:n :}
-   RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
-   kind C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
+   RES-KIND @ R-FLOAT32 = if postpone CALL-ABI-F32 exit then
+   kind C-ABI-R = if postpone CALL-ABI-R exit then
    kind C-ABI = if
-      RES-KIND @ R-POINTER = if s" FFI:CALL-ABI-PTR"
-      else s" FFI:CALL-ABI" then GEN+ exit
+      RES-KIND @ R-POINTER = if postpone CALL-ABI-PTR
+      else postpone CALL-ABI then exit
    then
-   kind C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
-   s" FFI:CALL" GEN+ ;
+   kind C-POINTER = if postpone CALL-PTR exit then
+   postpone CALL ;
 
 \ ---- the row this declaration takes ----------------------------------------
 
 \ A library name spelled in the other target's convention is rejected where it
 \ is stated, not at the first call in whatever module declared it. A rendered
 \ name passes by construction.
-: TARGET$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" linux" exit then
-   HB-TARGET-MACOS? if s" macos" exit then
+: TARGET-HELP$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      s" name it with VERSIONED-LIBRARY, which spells it for linux" exit
+   then
+   HB-TARGET-MACOS? if
+      s" name it with VERSIONED-LIBRARY, which spells it for macos" exit
+   then
    E-FFI-LIBRARY throw ;
+
+: SPELLED$ ( -- ptr u8 n ) s" ' is spelled for the other target" ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: path:ptr u:n :}
    0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
@@ -1477,13 +1474,15 @@ private
    then
    E-FFI-LIBRARY throw ;
 
+\ A path in the other target's spelling.
+: SPELLING-REJECT ( ptr u8 n -- ) {: path:ptr u:n :}
+   s" E-FFI-LIBRARY" REJECTION:OPEN
+   s" library '" REJECTION:EMIT-STR  path u REJECTION:EMIT-STR
+   SPELLED$ REJECTION:EMIT-STR
+   TARGET-HELP$ HELP-STOP ;
+
 : CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
-   path u FOREIGN-SPELLING? 0= if exit then
-   s" E-FFI-LIBRARY" s" the library name is spelled for the other target"
-   path u s" this build loads for " REJECTION:OPEN-AT  TARGET$ SAY
-   REJECTION:HELP
-   s" name it with `VERSIONED-LIBRARY`, which spells it for each target" SAY
-   FFI-STOP ;
+   path u FOREIGN-SPELLING? if path u SPELLING-REJECT then ;
 
 \ A path stands where `LIBRARY` read it. One the source does not hold, which a
 \ caller passed, stands at the token being run, and its bytes are not read.
@@ -1491,27 +1490,27 @@ private
    u 0 <= if
       s" E-FFI-SYNTAX" s" `LIBRARY` names no library"
       SRCLOC:TOKEN$ s" expected a library path after this" REJECTION:OPEN-AT
-      REJECTION:HELP
-      s" write the library's path after `LIBRARY`, or name it with `VERSIONED-LIBRARY`" SAY
-      FFI-STOP
+      s" write the library's path after `LIBRARY`, or name it with `VERSIONED-LIBRARY`"
+      HELP-END
    then
    u LIBRARY-PATH-CAP >= if
       s" E-FFI-SYNTAX" s" the library path is longer than a declaration keeps"
       path u SRCLOC:TOKEN$ REJECTION:KEPT s" too long" REJECTION:OPEN-AT
-      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
-      s" name the library by a shorter path, or by its soname with `VERSIONED-LIBRARY`" SAY
-      FFI-STOP
+      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
+      s" name the library by a shorter path, or by its soname with `VERSIONED-LIBRARY`"
+      HELP-END
    then
    path u CHECK-SPELLING ;
 
 
 \ The cells holding a larger record's copy address, which the call moves to
 \ the copy in its native frame: bit reg for x0-x7, bit 8+cell for a stack
-\ cell. The row keeps this mask; no caller supplies one.
+\ cell. Each bit is one of this plan's own cells, so the engine never moves a
+\ cell past the native frame it copies; no caller supplies a mask.
 : RELOC-MASK ( -- n )
    0 C-ARGS 0 ?do
       i ARG-SBYTES@ 16 > if
-         i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 + lshift
+         i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 / 8 + lshift
          else 1 i ARG-REG@ lshift then
          or
       then
@@ -1522,56 +1521,70 @@ private
    0 SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
+\ AAPCS64 and SysV leave the register bits above a u8, u16 or u32 result
+\ unspecified.
 : RESULT-TAIL ( -- )
-   RES-NULLABLE @ 0<> if s"  NULLABLE:SOME" GEN+ exit then
-   RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
-   RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
-   RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
+   RES-NULLABLE @ 0<> if postpone NULLABLE:SOME exit then
+   RES-KIND @ R-NONE = if postpone drop exit then
+   RES-KIND @ R-I32 = if postpone I32-RESULT exit then
+   RES-KIND @ R-U32 = if $FFFFFFFF literal postpone and exit then
+   RES-KIND @ R-U16 = if $FFFF literal postpone and exit then
+   RES-KIND @ R-U8 = if $FF literal postpone and then ;
 
 : STAGE-RECORD ( n -- ) {: i:n :}
-   i ARG-SBYTES@ GEN-N GEN-SP
+   i ARG-SBYTES@ literal
    i ARG-SBYTES@ 16 <= if
-      i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-STACK! " GEN+ exit then
-      i ARG-REG@ GEN-N s"  FFI:STRUCT-REGS! " GEN+ exit
+      i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-STACK! exit then
+      i ARG-REG@ literal postpone STRUCT-REGS! exit
    then
-   i ARG-PAY@ GEN-N GEN-SP
-   i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-COPY-STACK! " GEN+ exit then
-   i ARG-REG@ GEN-N s"  FFI:STRUCT-COPY-REG! " GEN+ ;
+   i ARG-PAY@ literal
+   i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-COPY-STACK! exit then
+   i ARG-REG@ literal postpone STRUCT-COPY-REG! ;
 
 : STAGE-C-ARG ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP
+   i EFFECT:LOCAL@
    i ARG-SBYTES@ 0 > if i STAGE-RECORD exit then
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
-: STRUCT-BODY ( n n -- )
-   SLOT {: slot:n :}
+\ The STRUCT-RESULT destination, the last argument, and its width.
+: DEST ( -- )
+   ARG-N @ 1- EFFECT:LOCAL@ STRUCT-BYTES @ literal ;
+
+: STRUCT-BODY ( n -- ) {: slot:n :}
    LOCALS
-   slot GEN-N s"  FFI:RESOLVE-ROW " GEN+
+   slot literal postpone RESOLVE-ROW
    C-ARGS 0 ?do i STAGE-C-ARG loop
+   \ C ignores x8 when it returns the record in x0/x1.
+   STRUCT-BYTES @ 0 > if ARG-N @ 1- EFFECT:LOCAL@ 8 literal postpone POINTER! then
+   slot literal
    STRUCT-BYTES @ 0 > if
-      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
+      postpone CALL-STRUCT DEST postpone STORE-RESULT exit
    then
-   slot GEN-N
-   STRUCT-BYTES @ 0 > if
-      s"  FFI:CALL-STRUCT " GEN+
-      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ exit
+   RES-KIND @ R-POINTER = if
+      postpone CALL-STRUCT-PTR RESULT-TAIL exit
    then
-   RES-KIND @ R-POINTER = if s"  FFI:CALL-STRUCT-PTR" GEN+ RESULT-TAIL exit then
-   s"  FFI:CALL-STRUCT drop" GEN+
+   postpone CALL-STRUCT postpone drop
    RESULT-TAIL ;
+
+\ An effect node ends with the load that made it, so the effect is built here
+\ from the recorded texts, never kept from the FUNCTION: line.
+: DECLARED-EFFECT ( -- EFFECT:type )
+   EFFECT:EMPTY
+   ARG-N @ 0 ?do i ARG-TEXT$ EFFECT:READ-TYPE EFFECT:IN loop
+   RES-KIND @ R-NONE = if exit then
+   RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
 
 : EMIT ( n n n -- )
    {: int:n stk:n kind:n :}
-   GEN CODEGEN:RESET
-   s" : " GEN+ 0 NAME-BUF NAME-U @ GEN+
-   s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
-   kind C-STRUCT = if int stk STRUCT-BODY s"  ;" GEN+ exit then
+   int stk SLOT {: slot:n :}
+   0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
+   kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    STAGE
-   int stk SLOT GEN-N GEN-SP
+   slot literal
    kind CALL-WORD
    RESULT-TAIL
-   s"  ;" GEN+ ;
+   postpone ; ;
 
 \ The selection scope is the current wordlist, not the loading file:
 \ INCLUDE-PATH names the last file opened, so every consumer would share one
@@ -1584,247 +1597,204 @@ private
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
 
+: SCOPE-REJECT ( ptr u8 n -- )
+   {: m:ptr mu:n :}
+   s" E-FFI-LIBRARY" REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   s" select one before it in its own package section, or at top level for a top-level declaration, with LIBRARY, VERSIONED-LIBRARY or PROCESS-SYMBOLS"
+   HELP-STOP ;
+
 : CHECK-SCOPE ( -- )
-   SCOPE-SET @ 0= if
-      s" E-FFI-LIBRARY" s" the declaration has no library selected"
-      SRCLOC:TOKEN$ s" no library is selected before this" REJECTION:OPEN-AT
-      REJECTION:HELP
-      s" select one first in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
-      FFI-STOP
-   then
+   SCOPE-SET @ 0= if s" FUNCTION: with no library selected" SCOPE-REJECT then
    get-current SCOPE-WID @ <> if
-      s" E-FFI-LIBRARY" s" the declaration's scope has no library selected"
-      SRCLOC:TOKEN$ s" the library was selected in another scope" REJECTION:OPEN-AT
-      REJECTION:HELP
-      s" select the library again in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
-      FFI-STOP
+      s" the library selected last belongs to another package section or to top level"
+      SCOPE-REJECT
    then ;
+
+: CLOSE-STATE ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF
+         s" ;FUNCTION with no declaration open"
+         s" open one with FUNCTION: NAME symbol ( inputs -- output )"
+         SYNTAX-REJECT
+      ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH
+   CLOSED! ;
 
 public
 
-\ Nothing is published before ;FUNCTION, and the row is registered as the text
-\ is rendered, so a refused declaration leaves no half-built word.
-: OPEN-FUNCTION ( -- )
-   SRCLOC:TOKEN$ {: t:ptr tu:n :}
-   [: CHECK-SCOPE
-      OPEN @ 0 <> if
-         s" E-FFI-SYNTAX" s" a declaration opens while another is open"
-         SRCLOC:TOKEN$ s" the open one needs `;FUNCTION` before this" REJECTION:OPEN-AT
-         REJECTION:HELP
-         s" close the open declaration with ;FUNCTION first" SAY
-         FFI-STOP
+\ Nothing is published before ;FUNCTION, and the row is registered as the word
+\ is built, so a refused declaration leaves no half-built word.
+
+\ The read-head transition: answers the name token as the source gave it.
+: READ-FUNCTION ( [ -- ptr u8 n ] -- ptr u8 n )
+   {: src :}
+   [: OPEN? if
+         s" FUNCTION: inside an open declaration"
+         s" end the declaration before it with ;FUNCTION"
+         SYNTAX-REJECT
       then
+      CLOSED!
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND ! 0 RES-NULLABLE !
-      TOK@ NAME!
-      TOK@ SYM!
-      EFFECT
-      1 OPEN ! ;] KEEP-REST
-   t tu s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
+      src TOK-SPAN NAME!
+      src TOK@ SYM!
+      src EFFECT
+      construct decl-state open DECL ! ;] KEEP-REST ;
 
-\ The rendered text calls only FFI words, which no scratch cell reaches, so
-\ the scratch rests before the text runs.
+: OPEN-FUNCTION ( -- )
+   SRCLOC:TOKEN$ {: t:ptr tu:n :}
+   CHECK-SCOPE [: parse-name ;] READ-FUNCTION 2drop
+   t tu s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
 : CLOSE-FUNCTION ( -- )
-   [: OPEN @ 0= if
-         s" E-FFI-SYNTAX" s" `;FUNCTION` closes no declaration"
-         SRCLOC:TOKEN$ s" nothing is open" REJECTION:OPEN-AT
-         REJECTION:HELP
-         s" remove this `;FUNCTION`, or open its declaration with `FUNCTION:` first" SAY
-         FFI-STOP
-      then
-      0 OPEN !  SOURCE-ROOT:CLOSED
-      PLAN-CALL
-      EMIT ;] KEEP-REST
-   GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+   [: CLOSE-STATE if SOURCE-ROOT:CLOSED PLAN-CALL EMIT then ;] KEEP-REST ;
+
+\ The close transition without the word: the plan and its rejections run.
+: PLAN-FUNCTION ( -- )
+   [: CLOSE-STATE if PLAN-CALL drop drop drop then ;] KEEP-REST ;
+
+\ Sent by a driver that cannot tell what the declaration holds.
+: SKIP-FUNCTION ( -- )
+   [: construct decl-state skipped DECL ! ;] KEEP-REST ;
+
+: ABANDON-FUNCTION ( -- )
+   [: CLOSED! ;] KEEP-REST ;
+
+\ The texts DECLARED-EFFECT reads, in its order, with -- before the output.
+: DECLARED-TEXTS ( [ ptr u8 n -- ] -- )
+   {: put :}
+   ARG-N @ 0 ?do i ARG-TEXT$ put execute loop
+   s" --" put execute
+   RES-KIND @ R-NONE = if exit then
+   RES-TEXT RES-TEXT-U @ put execute ;
 
 private
 
-\ ---- a bad clause's rejection ---------------------------------------------
-\ A clause's record stands at the clause word as the source wrote it; the caller
-\ extends the label, opens the help and ends the record with FFI-STOP.
-: CLAUSE-PLACE ( ptr u8 n ptr u8 n -- ) {: m:ptr mu:n l:ptr lu:n :}
-   s" E-FFI-SYNTAX" m mu SRCLOC:TOKEN$ l lu REJECTION:OPEN-AT ;
+: NOT-OPEN ( -- )
+   s" a clause outside a FUNCTION: declaration"
+   s" write the clause between FUNCTION: and ;FUNCTION" SYNTAX-REJECT ;
 
-: NEED-OPEN ( -- )
-   OPEN @ 0= if
-      s" a declaration clause stands outside a declaration"
-      s" no declaration is open" CLAUSE-PLACE
-      REJECTION:HELP
-      s" write the clause after the effect of a `FUNCTION:`, before its `;FUNCTION`" SAY
-      FFI-STOP
-   then ;
+: CLAUSE? ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF NOT-OPEN ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH ;
 
-: NEED-INPUT ( n -- ) {: idx:n :}
-   idx 0 < idx ARG-N @ >= or if
-      s" a clause names an input the declaration does not have"
-      s" no input " CLAUSE-PLACE  idx REJECTION:EMIT-N
-      REJECTION:HELP
-      ARG-N @ 0= if
-         s" declare the input in the effect: this declaration has none" SAY
-      else
-         s" the inputs count from 0, so the last is input " SAY  ARG-N @ 1- REJECTION:EMIT-N
-      then
-      FFI-STOP
-   then ;
+: NO-STRUCT-CALL ( -- )
+   s" this target has no struct call"
+   s" pass the record by its address through a C function" SYNTAX-REJECT ;
 
-: NEED-BYTES ( n -- ) {: bytes:n :}
-   bytes 0 <= if
-      s" a clause's byte count is not positive"
-      s" a size of " CLAUSE-PLACE  bytes REJECTION:EMIT-N s"  bytes" SAY
-      REJECTION:HELP
-      s" `" SAY SRCLOC:TOKEN$ SAY s" ` takes a size in bytes of at least 1" SAY
-      FFI-STOP
-   then ;
+: STRUCT-VARIADIC ( -- )
+   s" a struct call with VARIADIC"
+   s" a struct call has no variadic arguments: declare a fixed effect"
+   SYNTAX-REJECT ;
 
-\ The struct call has no variadic form, so a declaration holds one or the other.
-: NO-VARIADIC ( ptr u8 n -- ) {: l:ptr lu:n :}
-   s" a variadic declaration passes or returns no record" l lu CLAUSE-PLACE
-   REJECTION:HELP
-   s" remove `VARIADIC` or the `STRUCT-RESULT` and `STRUCT-ARG` clauses" SAY
-   FFI-STOP ;
+: NO-INPUT ( -- )
+   s" the clause names no input of the declaration"
+   s" name an input by its place in the effect, the first 0" SYNTAX-REJECT ;
 
-: NEED-STRUCT-TARGET ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" this target has no struct call" s" a struct clause on linux-x86-64" CLAUSE-PLACE
-      REJECTION:HELP
-      s" pass the record's address as a `ptr u8` to a C function that takes a pointer" SAY
-      FFI-STOP
-   then ;
+: NOT-SPAN ( -- )
+   s" the clause names an input that is not ptr u8"
+   s" name a ptr u8 input" SYNTAX-REJECT ;
+
+: TAKEN ( -- )
+   s" a second clause names the same input"
+   s" give a ptr u8 input one STRUCT-ARG, or make it STRUCT-RESULT's destination, not both"
+   SYNTAX-REJECT ;
+
+: DEST-TAKEN ( -- )
+   s" the clause names STRUCT-RESULT's destination, the last input"
+   s" name another input: C writes the result record to the last one"
+   SYNTAX-REJECT ;
 
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
-   NEED-OPEN
-   idx NEED-INPUT
-   idx ARG-KIND@ K-POINTER <> if
-      s" a clause names an input that is not a `ptr u8`"
-      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  is not a `ptr u8`" SAY
-      REJECTION:HELP
-      s" `" SAY SRCLOC:TOKEN$ SAY s" ` needs a `ptr u8` there: declare input " SAY
-      idx REJECTION:EMIT-N s"  `ptr u8`" SAY
-      FFI-STOP
-   then
-   idx ARG-EXT@ NO-EXT <>  idx ARG-EXT-ARG@ NO-EXT <> or  idx ARG-SBYTES@ 0 <> or if
-      s" a second clause names the same input"
-      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  already has a clause" SAY
-      REJECTION:HELP
-      s" give each `ptr u8` input one clause: remove this one or the earlier one" SAY
-      FFI-STOP
-   then
-   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if
-      s" a clause names the struct result's storage"
-      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  holds the `STRUCT-RESULT` record" SAY
-      REJECTION:HELP
-      s" the last input is the record's storage, no C argument: name another input" SAY
-      FFI-STOP
-   then ;
+   idx 0 < idx ARG-N @ >= or if NO-INPUT then
+   idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
+   idx ARG-SBYTES@ 0 <> if TAKEN then
+   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
+
+: VARIADIC-TWICE ( -- )
+   s" a second VARIADIC"
+   s" declare VARIADIC once, with the count of fixed inputs" SYNTAX-REJECT ;
+
+: FIXED-RANGE ( -- )
+   s" VARIADIC's fixed count is not from 1 to the inputs declared"
+   s" write n VARIADIC with n the inputs before the first variadic one"
+   SYNTAX-REJECT ;
+
+: VARIADIC-F32 ( -- )
+   s" an f32 variadic argument"
+   s" C promotes a variadic float to double: declare it r" SYNTAX-REJECT ;
 
 : VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
-   NEED-OPEN
-   VAR-START @ -1 <> if
-      s" a declaration has a second `VARIADIC`" s" a second `" CLAUSE-PLACE
-      SRCLOC:TOKEN$ SAY s" `" SAY
-      REJECTION:HELP
-      s" remove one: a declaration has one variadic tail" SAY
-      FFI-STOP
-   then
-   STRUCT-BYTES @ 0 <> RECORDS? or if s" `VARIADIC` in a struct call" NO-VARIADIC then
-   fixed 1 < fixed ARG-N @ > or if
-      s" a variadic declaration's fixed input count is out of range"
-      s" a count of " CLAUSE-PLACE  fixed REJECTION:EMIT-N s"  fixed inputs" SAY
-      REJECTION:HELP
-      ARG-N @ 0= if
-         s" declare the fixed inputs in the effect: a variadic C function has at least one" SAY
-      else
-         s" write how many inputs come before the variadic ones: at least 1, at most " SAY
-         ARG-N @ REJECTION:EMIT-N
-      then
-      FFI-STOP
-   then
+   CLAUSE? 0= if exit then
+   VAR-START @ -1 <> if VARIADIC-TWICE then
+   STRUCT-BYTES @ 0 <> RECORDS? or if STRUCT-VARIADIC then
+   fixed 1 < fixed ARG-N @ > or if FIXED-RANGE then
    ARG-N @ fixed ?do
-      i ARG-KIND@ K-FLOAT32 = if
-         s" a variadic input is declared `f32`"
-         s" input " CLAUSE-PLACE  i REJECTION:EMIT-N s"  is an `f32` past the fixed inputs" SAY
-         REJECTION:HELP
-         s" C promotes a variadic float to double: declare input " SAY
-         i REJECTION:EMIT-N s"  `r`" SAY
-         FFI-STOP
-      then
+      i ARG-KIND@ K-FLOAT32 = if VARIADIC-F32 then
    loop
-   fixed VAR-START !
-   1 OPEN +! ;
+   fixed VAR-START ! ;
 
-\ Argument idx is written by the callee over the span named here, a fixed width
-\ or the argument that carries the length.
-: EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
-   idx CLAUSE-TARGET
-   len NEED-BYTES
-   len idx ARG-EXT!
-   1 OPEN +! ;
-
-: LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
-   idx CLAUSE-TARGET
-   src NEED-INPUT
-   src ARG-KIND@ K-VALUE <> if
-      s" the length input is not a value"
-      s" input " CLAUSE-PLACE  src REJECTION:EMIT-N s"  is not an `n`" SAY
-      REJECTION:HELP
-      s" name the input that carries the length, declared `n`" SAY
-      FFI-STOP
+: RESULT-CHECK ( n -- ) {: bytes:n :}
+   STRUCT-BYTES @ 0 <> if
+      s" a second STRUCT-RESULT" s" declare STRUCT-RESULT once" SYNTAX-REJECT
    then
-   src idx ARG-EXT-ARG!
-   1 OPEN +! ;
+   bytes 0 <= if
+      s" STRUCT-RESULT's byte count is not positive"
+      s" write n STRUCT-RESULT with n the record's size in bytes" SYNTAX-REJECT
+   then
+   RES-KIND @ R-NONE <> if
+      s" STRUCT-RESULT with a declared output"
+      s" declare no output: C writes the record to the last input" SYNTAX-REJECT
+   then ;
 
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
-   NEED-OPEN
-   NEED-STRUCT-TARGET
-   STRUCT-BYTES @ 0 <> if
-      s" a declaration has a second `STRUCT-RESULT`" s" a second `" CLAUSE-PLACE
-      SRCLOC:TOKEN$ SAY s" `" SAY
-      REJECTION:HELP
-      s" remove one: a C function returns one record" SAY
-      FFI-STOP
-   then
-   bytes NEED-BYTES
-   RES-KIND @ R-NONE <> if
-      s" a struct result's declaration has an output"
-      s" the effect has an output" CLAUSE-PLACE
-      REJECTION:HELP
-      s" empty the outputs after `--`: the record lands in the last input" SAY
-      FFI-STOP
-   then
-   VAR-START @ -1 <> if s" a struct result in a variadic call" NO-VARIADIC then
+   CLAUSE? 0= if exit then
+   HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
+   bytes RESULT-CHECK
+   VAR-START @ -1 <> if STRUCT-VARIADIC then
    ARG-N @ 0= if
-      s" a struct result has no storage input"
-      s" no input holds the record" CLAUSE-PLACE
-      REJECTION:HELP
-      s" declare a last input `ptr u8`, storage of at least " SAY
-      bytes REJECTION:EMIT-N s"  bytes" SAY
-      FFI-STOP
+      s" STRUCT-RESULT with no input to write to"
+      s" declare the record's address as the last input, a ptr u8" SYNTAX-REJECT
    then
    ARG-N @ 1- CLAUSE-TARGET
-   bytes STRUCT-BYTES !
-   1 OPEN +! ;
+   bytes STRUCT-BYTES ! ;
 
 \ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
-   NEED-OPEN
-   NEED-STRUCT-TARGET
+   CLAUSE? 0= if exit then
+   HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
    idx CLAUSE-TARGET
-   bytes NEED-BYTES
-   VAR-START @ -1 <> if s" a struct input in a variadic call" NO-VARIADIC then
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if
-      s" a struct call returns no float"
-      s" the effect returns a float" CLAUSE-PLACE
-      REJECTION:HELP
-      s" declare an integer or pointer result, or none: the struct call returns x0 and x1" SAY
-      FFI-STOP
+   bytes 0 <= if
+      s" STRUCT-ARG's byte count is not positive"
+      s" write idx n STRUCT-ARG with n the record's size in bytes" SYNTAX-REJECT
    then
-   bytes idx ARG-SBYTES!
-   1 OPEN +! ;
+   VAR-START @ -1 <> if STRUCT-VARIADIC then
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if
+      s" STRUCT-ARG with a float result"
+      s" the struct call returns x0 and x1: declare an integer result" SYNTAX-REJECT
+   then
+   bytes idx ARG-SBYTES! ;
+
+: PATH-WRITTEN ( n -- )
+   {: u:n :}
+   u 0 <= if
+      s" the library path is empty"
+      s" write the library's path or file name after LIBRARY, on its line"
+      SYNTAX-REJECT
+   then
+   u LIB-PATH-CAP 1 - > if
+      SYNTAX-OPEN  s" a library path is at most " REJECTION:EMIT-STR
+      LIB-PATH-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" name the library by its file name, which the loader searches for"
+      HELP-STOP
+   then ;
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
-: WRITE-EXTENT ( n n -- ) [: EXTENT-CLAUSE ;] KEEP-REST ;
-: WRITE-LENGTH-ARG ( n n -- ) [: LENGTH-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-RESULT ( n -- ) [: STRUCT-RESULT-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
@@ -1833,9 +1803,17 @@ public
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
+\ LIBRARY's path as written: a bad length or a foreign spelling is rejected with
+\ a record placed at it.
+: SELECT-WRITTEN-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
+   u PATH-WRITTEN
+   path u FOREIGN-SPELLING? if path u SPELLING-REJECT then
+   path u SELECT-LIBRARY ;
+
 : SELECT-VERSIONED-LIBRARY ( -- )
-   [: TOK@ BASE!
-      TOK@ TOK$ VERSION-ROWS CUR-LIB !
+   [: parse-name ;] {: src :}
+   [: src TOK@ BASE!
+      src TOK@ TOK$ VERSION-ROWS CUR-LIB !
       RECORD-SCOPE ;]
    KEEP-REST ;
 
@@ -1855,7 +1833,7 @@ seal-package
 \ anyway. All three parse the live input stream, which their ( -- ) rows do
 \ not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
-   parse-name FFI:SELECT-LIBRARY ;
+   parse-name FFI:SELECT-WRITTEN-LIBRARY ;
 parses: LIBRARY 1
 
 : VERSIONED-LIBRARY ( -- )
@@ -1867,12 +1845,6 @@ parses: VERSIONED-LIBRARY 2
 
 : FUNCTION: ( -- )
    FFI:OPEN-FUNCTION ;
-
-: WRITES-BYTES ( n n -- )
-   FFI:WRITE-EXTENT ;
-
-: WRITES-ARG ( n n -- )
-   FFI:WRITE-LENGTH-ARG ;
 
 : VARIADIC ( n -- ) FFI:SET-VARIADIC ;
 

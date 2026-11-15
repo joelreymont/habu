@@ -1910,9 +1910,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ shell's soft limit (launchd's 256 on macOS) is under what CROWD holds open.
 \ Linux's RLIM_INFINITY reads as -1 here, and is left as it is.
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 
 create FD-LIMIT 16 allot

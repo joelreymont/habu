@@ -54,7 +54,7 @@ variable ROLL-SLOT
 variable ROLL-OCC
 
 
-: EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
+: EV ( ptr u8 n -- ) evaluate-closed ;
 
 
 : OPEN-SCOPE ( -- )

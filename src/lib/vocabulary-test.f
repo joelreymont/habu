@@ -317,6 +317,15 @@ create HEAD-BUF HEAD-CAP allot
    s" allow-root-scope-seal" HARNESS!
    s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 70\n70\n70\n70\n\n" SAYS ;
 
+\ A definer's built words call the names a sealed table gives as the table's
+\ text would: an ACTION outside the vocabulary is refused at its name, and
+\ `require` is one: only a top-level token may name it.
+: BUILT ( -- )
+   s" allow-fsm" HARNESS!
+   s" fsm-table" 0 s" " s" " RUNS
+   s" fsm-action" s" E-POLICY habu: test/policy/fsm-action.f:3: not in vocabulary: emit" REFUSES
+   s" fsm-require" s" E-POLICY habu: test/policy/fsm-require.f:3: not in vocabulary: require" REFUSES ;
+
 public
 
 : RUN ( -- )
@@ -327,7 +336,7 @@ public
    LOADERS KEYWORDS SCOPES WIDENING
    BODIES MODELED
    NAMES
-   HARNESSES BOUND SEAM CONFINED
+   HARNESSES BOUND SEAM CONFINED BUILT
    T-REPORT ;
 
 ;package

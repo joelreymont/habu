@@ -20,7 +20,7 @@ public
 NEWTYPE cnfam
 NEWTYPE cncell<a>
 ;package
-s" STRUCTURE cnpbox<a> FIELD value a ;STRUCTURE" INCLUDE-EVALUATE
+s" STRUCTURE cnpbox<a> FIELD value a ;STRUCTURE" evaluate-closed
 package CAST-NEG
 public
 DEFLINEAR CAST-NEG:lease
@@ -36,7 +36,7 @@ package CN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-: EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
+: EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
 : DECL ( ptr u8 n -- n )               \ ( decl-source -- status | 0 )
    SRC-U !  SRC-A !
    REJECTION:CAPTURE
@@ -218,6 +218,45 @@ s" cast: CNW9 ( fqbox -- n )"            CN-RUN:DECL 0 T=
 \ per path, so a cast into a list or out of one terminates.
 s" cast: CNW13 ( ptr fqlist -- n )"      CN-RUN:DECL 0 T=
 s" cast: CNW17 ( n -- ptr fqlist )"      CN-RUN:DECL 0 T=
+;package
+\ No package makes an enum or sum value from a cell, its owner included, nor
+\ hands out a type variable a caller may bind to one; any projects out, a view of storage
+\ is the mint rule's, and a layout argument counts through its members.
+package CN-EN
+public
+ENUM cnshade DERIVE eq dark light ;ENUM
+SUMTYPE cnopt VARIANT some n ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
+STRUCTURE cnrec FIELD s cnshade ;STRUCTURE
+STRUCTURE cnqb<a> FIELD f [ -- a ] ;STRUCTURE
+STRUCTURE cnqc<a> FIELD f [ a -- ] ;STRUCTURE
+STRUCTURE cnph<a> FIELD x n ;STRUCTURE
+STRUCTURE cnpr<a> FIELD p ptr a ;STRUCTURE
+ENUM cnnul<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM
+private
+s" cast: CNN2 ( n -- cnshade )"          CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN2`" CN-RUN:REJECTS
+s" cast: CNN4 ( n -- ptr cnopt )"        CN-RUN:DECL 0 T=
+s" cast: CNN5 ( n -- [ -- cnshade ] )"   CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN5`" CN-RUN:REJECTS
+s" cast: CNN6 ( [ cnshade -- ] -- [ n -- ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN6`" CN-RUN:REJECTS
+s" cast: CNN7 ( [ cnshade -- ] -- n )"   CN-RUN:DECL 0 T=
+s" cast: CNN8 ( n -- [ -- cnopt ] )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN8`" CN-RUN:REJECTS
+s" cast: CNN9 ( n -- cnrec )"            CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN9`" CN-RUN:REJECTS
+s" cast: CNN10 ( n -- cnqb<t> )"         CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN10`" CN-RUN:REJECTS
+s" cast: CNN11 ( cnqc<t> -- [ n -- ] )"  CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN11`" CN-RUN:REJECTS
+s" cast: CNN12 ( n -- cnph<cnshade> )"   CN-RUN:DECL 0 T=
+s" cast: CNN13 ( ptr u8 -- cnpr<cnshade> )" CN-RUN:DECL 0 T=
+s" cast: CNN14 ( ptr u8 -- cnnul<u8> )"  CN-RUN:DECL 0 T=
+\ A pointer output, even to a quotation, feeds the source quotation nothing.
+s" cast: CNN15 ( [ cnshade -- ] -- ptr [ n -- ] )" CN-RUN:DECL 0 T=
+\ A consumed row inside a layout argument keeps the argument bit.
+s" cast: CNN16 ( n -- cnph<[ [ cnshade -- ] -- ]> )" CN-RUN:DECL 0 T=
+\ A layout argument hands out no quotation, and its consumed rows introduce nothing.
+s" cast: CNN17 ( [ cnshade -- ] -- cnph<[ extent-a -- ]> )" CN-RUN:DECL 0 T=
+\ A caller binds a stored variable to a two-cell type: the walks leave its kind.
+s" cast: CNK1 ( n -- ptr cnqb<t> ) : CNK1-USE ( ptr cnqb<CAST-NEG:wide> -- ) drop ; : CNK1-GO ( -- ) 0 CNK1 CNK1-USE ;" CN-RUN:DECL 0 T=
+;package
+package CN-EZ
+s" cast: CNN1 ( n -- CN-EN:cnshade )"    CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNN1`" CN-RUN:REJECTS
+s" cast: CNN3 ( CN-EN:cnshade -- n )"    CN-RUN:DECL 0 T=
 ;package
 \ CN-OH's public section casts a value into CN's `cnfam`; its private section
 \ casts bytes into a pointer to CN-OQ's `oqbox` and a value into its own `ohold`
@@ -434,8 +473,8 @@ CHECKER-END-PACKAGE
 ;package
 \ A cast carries no body: the declaration ends at its closing paren, so the
 \ trailing 42 is read as its own token and left as residue, which
-\ INCLUDE-EVALUATE, a closed evaluation, rejects: the kernel writes that record
-\ to fd 2, past the capture.
+\ evaluate-closed rejects: the kernel writes that record to fd 2, past the
+\ capture.
 package CN
 s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL CHECKER-REJECT-RC T=
 s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway
@@ -466,15 +505,10 @@ variable ERR-U
    ERR$ w wu CONTAINS? TTRUE ;
 ;package
 
-\ A forked child keeps the capture, so records go to stderr again for ERR$.
-REJECTION:BUFFER-OFF
-
-\ A cast's record carries its certified minimum input arity, so a bare call at
-\ an empty interpret stack is refused by name instead of reading the cell below
-\ the base. The cast's publish tail pokes the bits; this case is the one that
-\ notices that step missing (measured).
+\ A cast's bare call on an empty stack is rejected at its place before it reads
+\ the cell below the base.
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
-s" error[E-UNDERFLOW]" s" `>CNMROLE`" CN-CHILD:SAYS
+s" error[E-INPUT-UNDERFLOW]" s" >CNMROLE" CN-CHILD:SAYS
 
 \ The trailing `;` of the retired spelling ends no definition.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CHECKER-REJECT-RC T=

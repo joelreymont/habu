@@ -563,7 +563,9 @@ variable VFY-EXE-U
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-PREPASS @ if
+      s" --label" CHK-ARG+  VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+
+   then
    VFY-JSON @ 0= if s" --prose" CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
@@ -875,11 +877,12 @@ variable VFY-EXE-U
 
 public
 
-\ The records of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's
-\ schema-1 packets, one JSON object per line: the subject's name PATH's
-\ canonical absolute path and count positions in the bytes, a dependency's name
-\ its file and count there. A stop's record is the last. With JSON false they
-\ are prose records instead. Every VERIFY-*$ holds until the next call.
+\ The records of the last VERIFY-BYTES or PREVERIFY-BYTES: the checker's
+\ schema-1 packets, one JSON object per line, or prose records when the call's
+\ JSON is false. A packet names the subject PATH's canonical absolute path,
+\ LABEL after PREVERIFY-BYTES, and counts positions in the bytes, a dependency
+\ its file and counts there. A stop's record is the last. Every VERIFY-*$
+\ holds until the next call.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;

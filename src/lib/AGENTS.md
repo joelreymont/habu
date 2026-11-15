@@ -10,7 +10,7 @@ it as `<name>-test.f`.
 - `net/` (TCP, UDP, HTTP, WebSocket, curl, event streams, model chat and
   embeddings), `crypto/`, `db/` (connections and row readers over `pg.f`),
   `xml/`, `unicode/`, `adt/` (option, result, nullable), `type/`
-  (`deftype.f`), `secret/` (per-OS backends of `secret.f`), `browser/` (the
-  browser host and its JavaScript peers), `c2-memory/`.
+  (`deftype.f`), `secret/` (per-OS backends of `secret.f`), and `browser/` (the
+  browser host and its JavaScript peers).
 - Task-local storage follows `task.f`'s header: a module the engine bakes takes
   a band in `src/habu/layout.f`, any other takes rows from `task.f`.

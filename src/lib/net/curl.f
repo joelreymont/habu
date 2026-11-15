@@ -172,38 +172,21 @@ FUNCTION: EASY-PAUSE curl_easy_pause ( n n -- i32 ) ;FUNCTION
 
 FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $08 WRITES-BYTES                     \ one C long, or one char*
 ;FUNCTION
 
 
 \ CURLM* is opaque like CURL*, every answer is a CURLMcode.
 \ curl_multi_info_read answers a CURLMsg* or zero, which is foreign memory this
 \ package copies before it reads, and curl_multi_fdset fills three fd_sets the
-\ CALLER cleared, which is why each of them is declared as the whole
-\ FD_SETSIZE bitmap it writes into.
+\ CALLER cleared.
 FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
 FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- i32 ) ;FUNCTION
-
-FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 )
-   1 $04 WRITES-BYTES                     \ int *running_handles
-;FUNCTION
-
-FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n )
-   1 $04 WRITES-BYTES                     \ int *msgs_in_queue
-;FUNCTION
-
-FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
-   1 $80 WRITES-BYTES                     \ fd_set *read_fd_set
-   2 $80 WRITES-BYTES                     \ fd_set *write_fd_set
-   3 $80 WRITES-BYTES                     \ fd_set *exc_fd_set
-   4 $04 WRITES-BYTES                     \ int *max_fd
-;FUNCTION
-
-FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
-   1 $08 WRITES-BYTES                     \ long *milliseconds
-;FUNCTION
+FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n ) ;FUNCTION
+FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 ) ;FUNCTION
 
 
 PROCESS-SYMBOLS
@@ -218,19 +201,9 @@ FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
 FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
-
-FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n )
-   0 $08 WRITES-BYTES                     \ char **bufp
-   1 $08 WRITES-BYTES                     \ size_t *sizep
-;FUNCTION
-
-FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n )
-   0 1 WRITES-ARG
-;FUNCTION
-
-FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
-   0 2 WRITES-ARG
-;FUNCTION
+FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n ) ;FUNCTION
+FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n ) ;FUNCTION
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}

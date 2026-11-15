@@ -510,8 +510,9 @@ SUITE browser-host
    src/lib/browser/host-test.f
 ;SUITE
 
-\ MCP-APP:PAGE+ of a small module: the kept prefix, the escaped title and the
-\ base64 of each script and the module in one UTF-8 page.
+\ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
+\ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
+\ page id and the base64 of the view's files and the module.
 SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE
@@ -544,9 +545,14 @@ SUITE fmt-numbers
    src/lib/fmt-test.f
 ;SUITE
 
-\ State machines DEFINE writes from a table, their checker rejections and size.
+\ State machines DEFINE builds from a table, their checker rejections and size.
 SUITE fsm
    src/lib/fsm-test.f
+;SUITE
+
+\ Rotations of a 3D affine transform about a line, and points mapped by one.
+SUITE affine
+   src/lib/affine-test.f
 ;SUITE
 
 SUITE log
@@ -989,6 +995,10 @@ SUITE postpone-effect
 \ these cases refuse gives data space back, which a build refuses.
 SUITE postpone-refuse
    test/postpone-refuse.f
+;SUITE
+
+SUITE build-items
+   test/build-items.f
 ;SUITE
 
 \ The design seal: each test/policy case loaded sealed at tier 0, one child per

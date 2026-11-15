@@ -573,7 +573,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   (`docs/design.md` "Families and layout policies" gives the layout
   policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`. A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
+  never raw `=`. `DERIVE tag` on a public arity-0 enum whose variants carry no
+  payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
+  `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
+  `DERIVE` on an enum generates; a number that is not one of the enum's tags
+  throws `TYPE-DECL:E-ENUM-TAG` (-9880). A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
   rebuild it with any field values; an owner that validates its fields
   declares `OPAQUE`.
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;
@@ -752,6 +756,18 @@ multi-cell type rationale is `docs/design.md` "Types".
     writer's claim, which the checker does not prove: `CAST: >SLOT ( n --
     slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
     ptr OP:box )` outside `package OP`.
+  - A cast that makes an `ENUM` or `SUMTYPE` value from a cell is
+    `E-CAST-CLASS` in every package, the family's own included: as the output,
+    as what a quotation it hands out returns, as a by-value layout's member,
+    or, when the cast hands out a quotation by value, as what the source's
+    consumed rows are fed. A layout's argument counts only through its
+    members, so a phantom one does not, and a niche-null sum such as
+    `nullable<a>` has no invalid tag. A type variable that takes no linear
+    value is refused at the same places, since a caller may bind it to an
+    enum. An enum is made from a number by its `DERIVE tag` `TAG>`, a sum by
+    a variant's constructor. A private view of storage, `( ptr u8 -- ptr rec )`
+    over a record that holds one, is a pointer mint: its writer vouches for
+    the stored tags as for the pointers.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`), under a
     bare name: a qualified `CAST: Q:FORGE ( n -- ptr u8 )` there publishes
@@ -842,8 +858,8 @@ multi-cell type rationale is `docs/design.md` "Types".
 
 #### State machines
 
-`FSM:DEFINE` (`src/lib/fsm.f`) reads a state table and writes it as checked
-words under `evaluate-closed`:
+`FSM:DEFINE` (`src/lib/fsm.f`) reads a state table and builds checked words
+from words it found:
 
 ```text
 DEFINE <NAME> ( <ctx> ) <states> <inputs>
@@ -866,7 +882,7 @@ inputs names an ENUM of just those, so it gives no line for an input it never
 gets, which could only throw. Each line names an input, an ACTION
 `( <ctx> -- )` or `-` for none, and a NEXT: `>state`, any token starting with
 `>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
-one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE writes a word
+one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE builds a word
 `<NAME>/<state>/<input> ( <ctx> -- )` for each line's ACTION,
 `<NAME>/<final> ( <ctx> -- )` for each `FINAL` row,
 `<NAME>/<state> ( <ctx> -- <states> )` for each `IN` row, then the step word
@@ -881,7 +897,7 @@ started in a `FINAL` state. A caller that feeds one event at a time calls
 `<NAME>-STEP` and keeps the state it answers. A table needs no `FINAL` row; its
 `<NAME>` then runs until a callback throws.
 
-An ACTION of `-` writes no line word. Every ACTION runs in a word declaring
+An ACTION of `-` builds no line word. Every ACTION runs in a word declaring
 `( <ctx> -- )`, so the checker holds it to that effect, and that word ends its
 arm except before a NEXT word, so an ACTION that never returns (a refused pair
 or a failure end) loads on a `>next` line or a `FINAL` row, and so does a state
@@ -896,7 +912,7 @@ second line for one input when both name an ACTION, fails the load as a
 duplicate definition. The machine keeps no state
 of its own; a throw from a SENSE, ACTION or NEXT leaves `<NAME>-STEP` and
 `<NAME>` as thrown, with nothing answered. Neither `MATCH` has a default arm,
-so the checker fails the load, 70 under `evaluate-closed`, for a row missing
+so the checker fails the load, 70, for a row missing
 an input, an unknown `>state`, a state with neither an `IN` nor a `FINAL` row,
 and a word with the wrong effect; for a row naming its own ENUM, that covers a
 row missing one of its inputs, a line for a tag outside it and a SENSE
@@ -969,11 +985,6 @@ named words, with one word that runs them in order.
      {: v:n lo:n hi:n :}
      v lo max hi min ;
   ```
-
-  A local name is at most
-  16 bytes and a definition binds at most 64 locals. The compiler refuses
-  either before storing anything; the checker reports
-  `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with the limit.
 - A local binds once. Keep a loop's changing cursor on the stack or in a cell:
   `begin {: cursor:n :} … cursor' again` pushes the next value before the
   back edge. Use `RECURSE` for a cursor only when depth is bounded; a
@@ -1589,11 +1600,8 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
   `DOES>` body is checked as a colon body declared `( in ptr a -- out )`. The
   body binds the data-field pointee `a` (`does> ( -- n ) @` is admitted); the
   created effect's own quantifiers and rows stay parametric, a body that never
-  returns owes no output, and an effect too wide or deep to record is
-  uncheckable. The body's input counts the data-field pointer: a clause
-  declaring 255 input cells is uncheckable, as its colon twin `( 255 cells ptr
-  a -- … )` is at 256 cells. Step through the data field with `cell+`, not
-  raw `+`.
+  returns owes no output, and an effect too deep to record is uncheckable.
+  Step through the data field with `cell+`, not raw `+`.
 
 ### Rigid host-allocation identity domains
 
@@ -1837,7 +1845,7 @@ dependencies, nested generic and sum payloads included.
 
 ### The public owner recipe
 
-Load `src/lib/c2-owner.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` is the
+Load `src/lib/c2-memory.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` is the
 byte length of an owner header; `C2-MEM:WITH-MUT` owns those bytes for one
 callback. Inside it, pass `C2-MEM:SEED-OWNER` to `C2-MEM:WITH-INIT`; its
 callback receives a unique `owner-state` view, `C2-MEM:BIND` turns that view
@@ -1845,7 +1853,7 @@ into the linear owner handle, and `C2-MEM:UNBIND` returns it before the
 callback ends. This certifies and runs:
 
 ```forth
-require src/lib/c2-owner.f
+require src/lib/c2-memory.f
 require src/lib/c2-bytes.f
 require src/lib/memory.f
 
@@ -2076,12 +2084,6 @@ a map the system refuses throws `E-BODY-TEXT`.
   `more than 32 nested binders at '<token>'`; a `trust`, `defer` or `TRUSTED:`
   row is `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner
   callback's binders in a word of its own.
-- **A definition's input row**: declared or inferred, a wider row makes the
-  definition uncheckable: `E-UNCHECKABLE`, `input row too wide to record
-  (<cells> cells, at most <cap>)`. A `RECURSE` in a body declared that wide is
-  refused for the same reason. Nothing is recorded for it, so callers find no
-  effect. A stored signature that wide is `E-BAD-STORED-SIGNATURE` under
-  `fix_signature_size`. Pass bulk values in a buffer, not on the stack.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
   advance the dictionary pointer. Past the DATA reservation the kernel throws
@@ -2419,7 +2421,7 @@ sections above.
   for `DEFLINEAR` and `VALUE-RECORD`). A definer or parsing word without its
   operand is `E-MISSING-NAME` at the keyword in every `tools/check.f` mode,
   `--verify-only` included. A definer that declares an effect (`defer`,
-  `TRUSTED:`, `FUNCTION:`, a `does>` clause, …) with no signature after its
+  `TRUSTED:`, a `does>` clause, …) with no signature after its
   name, or one never closed, is `E-MISSING-SIGNATURE` (`add_signature`) at the
   definer, at `does>` for a clause. `--load` rejects `defer D` and such a
   clause the same way.
@@ -2435,7 +2437,7 @@ sections above.
   with the clause effect, and a branch that `exit`s before `does>` leaves
   `-- ptr a`.
 - **Renderers can define words absent from source text.** A word whose body
-  reaches `INCLUDE-EVALUATE`, `evaluate` or `evaluate-closed` marks the
+  reaches `evaluate` or `evaluate-closed` marks the
   wordlist of its top-level call. There, a later unresolved name that may be
   its product is checked by the subsequent `bin/hb --load` run; in
   `--verify-only` it is `W-CHECK-DEFERRED` at the use and the verdict is
@@ -2453,13 +2455,15 @@ sections above.
   declaration group or `generates:` row is itself `W-CHECK-DEFERRED`, even
   without a later product use. A declared primary product closes that gap;
   other generated names remain deferred at their uses. Closing a read group
-  with `;FUNCTION` is not a gap; closing one whose opener was not read is.
+  with `;FUNCTION` is not a gap; a `;FUNCTION` with no declaration open is
+  rejected as the load rejects it, unless a deferral before it left the
+  declaration to the run.
   `EXPORT` preserves an engine-provided definer's coverage declaration; an
   export of a source-scanned definer remains deferred.
 - **A text-generating definer can declare its product with `generates:`.** At
   top level, after the definer, `generates: D ( effect )` assigns every word
   D makes that effect, as `does>` does. `FUNCTION:` instead supplies its
-  declaration group, treating an `i32` result as `n`. A `generates:` claim
+  declaration group. A `generates:` claim
   does not define the made word; the load judges its actual effect and any
   other products. An undefined D, a deferred D, a D no `parse-name` reaches
   through the words it calls (a call through a `defer` or an executed xt
@@ -2476,21 +2480,36 @@ sections above.
   `define-word ( ptr u8 n EFFECT:type -- )` opens, in the open package and
   section, the definition named by the string (one token, `E-MISSING-NAME`)
   with an effect the definer built from EFFECT's words (`NEW`, `IN`, `OUT`,
-  `N`, `FAMILY` (by the family's spelling, `PKG:name` or a global family's
-  bare name), `PTR`); a type that is no effect (given to `define-word`, `IN` or
-  `OUT`), one with more than 23 type parameters or one a written signature
-  could not state is `E-NOT-EFFECT`; a spelling that names no family is
-  `E-UNKNOWN-SIGNATURE-TYPE`; with a definition open it is `E-DEFINITION-OPEN`.
+  `N`, `NAMED` (a built-in type's name, `n` or `bool`, else a family's
+  spelling, `PKG:name` or a global family's bare name), `READ` (one type of
+  the text, `ptr u8` or `nullable<u8>`, read where the definer runs; a
+  letter, a type variable's or a view's region's, is rejected at the line that
+  ran the definer, since a definer's type takes its parameters from `NAMED`),
+  `PTR`); a type that is no effect (given to `define-word`, `IN` or `OUT`), a
+  definition whose effect and locals' types take more than 23 type parameters
+  or a type a written signature could not state is `E-NOT-EFFECT`; a spelling that names no type is
+  `E-UNKNOWN-SIGNATURE-TYPE`, and so is a name `READ` meets that the running
+  package does not know; with a definition open it is `E-DEFINITION-OPEN`.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so
-  `postpone ;` ends the definition as its `;` would. `body-append
-  ( ptr u8 n -- )` appends text, whose names bind where the definition is
-  built; an immediate word in it, `;` included, is `E-UNMODELED-IMMEDIATE`
-  unless `parse-imm` declares it stack-neutral, while keywords such as `if`
-  compile. `compile, ( [ R -- S ] -- )` appends a call of the word whose entry
+  `postpone ;` ends the definition as its `;` would. `compile, ( [ R -- S ]
+  -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
-  quotation no named word enters is `E-NAMELESS-WORD`. `; ( -- )` ends the
+  quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
+  `EFFECT:OPERAND` (the variant an `of` arm or a `construct` takes),
+  `EFFECT:TYPE-ITEM ( ptr u8 n EFFECT:type -- )` and `EFFECT:CALL` append the
+  item the string spells, as its text would; `EFFECT:CALL` binds the name where
+  the definer runs, under that file's policy. Inside a `{:` group
+  it appended with `EFFECT:KEYWORD`, `EFFECT:LOCAL ( EFFECT:type -- n )`
+  declares a local of the type and answers its index, which
+  `EFFECT:LOCAL@ ( n -- )` reads.
+  `EFFECT:VARIABLE-OF ( ptr u8 n EFFECT:type -- )` declares the variable the
+  string names as `TYPED-VARIABLE` does; a type that may hold a linear value
+  is rejected. An `EFFECT:type` ends with the load that built it and its
+  node is then reused, so no storage, field or payload holds one (`a
+  definer's type ends with the load that built it`): build it where it is
+  used. `; ( -- )` ends the
   definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
   throw a `catch` takes abandons a definition opened since that `catch` began.
   `postpone` is syntax, never a definition name. One limit: after `undefine W`,

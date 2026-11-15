@@ -260,9 +260,7 @@ require src/lib/prelude.f
 -5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
 -5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
-\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199. The block sits
-\ after src/lib/type/deftype.f's own -6001/-6002; that file keeps its codes to
-\ itself and reserves no range.
+\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199.
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
 -6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
@@ -681,12 +679,13 @@ require src/lib/prelude.f
 \ WLINK -9830..-9834.
 \ Adobe Ascii85: -9840..-9849, minted in src/lib/base85.f, which owns package
 \ BASE85.
+\ Engine faults: -9850..-9859, thrown by the kernel (src/habu/habu2.f),
+\ declared at this file's end.
 \ Finite binary64 text: -9860..-9869, minted in src/lib/f64-text.f, which owns
 \ package F64-TEXT.
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
 \ package JSON (src/lib/json.f).
-\ Engine faults: -9880..-9889, thrown by the kernel (src/habu/habu2.f),
-\ declared at this file's end.
+\ Enum tags: -9880..-9889, minted in src/core/sumtype.f (FAM:TAG>).
 
 \ T0 (src/habu/t0.f): -9600..-9609.
 -9600 constant E-T0-FIRST
@@ -701,13 +700,9 @@ package ERROR
 private
 
 255 constant NAME-CAP
-\ `-`, 19 digits, ` constant ` and the name.
-NAME-CAP 30 + constant LINE-CAP
 
 PERSISTED-PTR-VARIABLE HEAD
 HEAD ROLLBACK-CELLS:MARK
-create LINE LINE-CAP allot
-variable LINE-U
 create NL $0A c,
 
 : ROW-PREV ( ptr n -- ptr n )  0 ptr-field @ ;
@@ -799,21 +794,13 @@ create NL $0A c,
    s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
 
 
-: LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a LINE LINE-U @ + u BYTE-COPY
-   u LINE-U +! ;
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
-
-: LINE-INT+ ( n -- )
-   dup 0< if s" -" LINE+ then
-   ERROR-TEXT:DIGITS$ LINE+ ;
-
-
-\ Evaluated text keeps every E- word a folded constant in the current wordlist.
+\ The name becomes a folded constant in the current wordlist, made with no
+\ text: a value child, whose type is empty.
 : DEFINE ( n ptr u8 n -- ) {: code:n name:ptr nameu:n :}
-   0 LINE-U !
-   code LINE-INT+ s"  constant " LINE+ name nameu LINE+
-   LINE LINE-U @ evaluate-closed ;
+   name nameu CHILD-ABI:VALUE code NULL-PTR 0
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute drop ;
 
 
 : BYTES, ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -856,8 +843,8 @@ create NL $0A c,
 
 public
 
-\ A name `constant` refuses is refused as `constant` refuses it,
-\ E-DUPLICATE-DEFINITION for one the wordlist holds.
+\ A name the wordlist holds is E-DUPLICATE-DEFINITION; a keyword or a number
+\ is rejected as any definition's name is.
 : CODE ( n ptr u8 n -- )  false DECLARE ;
 generates: CODE ( -- n )
 
@@ -885,7 +872,7 @@ generates: FAULT ( -- n )
 seal-package
 ;package
 
--9880 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
--9881 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
--9882 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
--9883 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
+-9850 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
+-9851 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
+-9852 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
+-9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT

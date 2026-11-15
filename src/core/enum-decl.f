@@ -2,7 +2,7 @@
 \ dispatch only. DECL-FRONT (generated-declaration.f) owns the token source and
 \ the guarded run; DECL-EVENT (decl-event.f) owns the events, field and variant
 \ rows and the current-variant selector. The constructor participant
-\ (generated-declaration.f) renders constructors at commit, so a reject publishes
+\ (generated-declaration.f) builds constructors at commit, so a reject publishes
 \ none. Loads after decl-event.f and structure-decl.f.
 
 using SCHEMA-REG
@@ -52,13 +52,12 @@ ED-RESET
       E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ Payload types: n/f/r and con names, letter params within arity, ptr T, and
-\ closed arity-0 layout or cell families; anything else is unresolved. Mirrors
-\ structure-decl.f's resolver without type applications. A family owning a linear
-\ value is accepted, owned by containment as in structure-decl.f; TK-EVIDENCE
-\ falls through to "unknown payload type" because no source can declare it.
+\ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
+\ owner included; anything else, TK-EVIDENCE among them, is unresolved.
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `ptr`
       s" payload type cannot recursively name its owner"
@@ -122,6 +121,7 @@ ED-RESET
 : DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 
 \ The first token after the header clauses picks the mode: VARIANT starts full
@@ -170,6 +170,7 @@ ED-RESET
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
       s" derive `eq` or `hash` instead: `order` is not implemented"
@@ -213,7 +214,7 @@ ED-RESET
       s" shorten the field name to 255 bytes or fewer"
       E-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
-      na nu s" enum field names exceed declaration window" NAME-CHECK THEN
+      na nu NAME-CHECK THEN
    0 FIELD-MISS !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
@@ -342,7 +343,16 @@ ED-RESET
    s" declare an empty variant, then one with a single `ptr` field, or drop `POLICY niche-null`"
    E-POLICY DECL-REJECT:REJECT throw ;
 
-\ ED-CLOSE renders nothing: it arms the constructor participant, which generates
+\ TAG> builds each value from its tag alone, so no variant may carry a payload.
+\ Checked here, not at the constructor commit, whose E-DERIVE renders the
+\ equality reason from the code table.
+: TAG-REQUIRE ( -- )
+   FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
+   NFLD @ 0= IF EXIT THEN
+   s" derive tag requires variants without payload" E-DERIVE
+   DECL-REJECT:REJECT throw ;
+
+\ ED-CLOSE builds nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
 \ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
 \ one gate for arming here and for the participant's re-proof; both modes pass it,
@@ -359,6 +369,7 @@ ED-RESET
       E-SYNTAX DECL-REJECT:REJECT throw THEN
    MISSING? IF E-UNRESOLVED throw THEN
    NICHE-REQUIRE
+   TAG-REQUIRE
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do

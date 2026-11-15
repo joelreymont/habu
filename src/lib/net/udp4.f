@@ -61,8 +61,7 @@ $FFE3 constant MAX-PAYLOAD
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
-\ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
-\ sockaddr_in and a $04 socklen_t.
+\ Endpoint storage is per task: a $10 sockaddr_in and a $04 socklen_t.
 $14 TASK:+USERS IO-STORAGE u8
 : SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
 : ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
@@ -139,27 +138,16 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 \ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols: the
-\ executable already needs libc.so.6, so no library reference is retained. Each
-\ declaration states the C effect and the extent of every buffer the callee
-\ writes, which the bounded call guards. test/net/udp4.py exercises every
-\ binding with an independent Python UDP peer.
+\ executable already needs libc.so.6, so no library reference is retained.
+\ test/net/udp4.py exercises every binding with an independent Python UDP peer.
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
-
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES                     \ sockaddr_in
-   2 $04 WRITES-BYTES                     \ socklen_t
-;FUNCTION
-
-FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
-   1 2 WRITES-ARG                         \ the caller's payload span
-   4 $10 WRITES-BYTES                     \ sockaddr_in
-   5 $04 WRITES-BYTES                     \ socklen_t
-;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;

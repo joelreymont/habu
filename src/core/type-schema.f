@@ -278,11 +278,16 @@ public
    i 1 + SCH-T-PARAM-N !
    i SCHEMA-PARAM ;
 
-\ Ends every transient node and root.
-: TRANSIENT-RESET ( -- )
-   SCH-T-P SCH-T-CAP SCH-REC CELL / ARENA-ROWS-RELEASE
-   SCH-T-ROOT-P SCH-T-ROOT-CAP 1 ARENA-ROWS-RELEASE
-   0 SCH-T-N !  0 SCH-T-ROOT-N !  0 SCH-T-PARAM-N ! ;
+\ A load takes the mark as it starts and releases back to it as it ends, so
+\ the nodes, roots and parameters a load made last only until it ends, while
+\ those its loader made stay live through it.
+: TRANSIENT-MARK ( -- n n n ) SCH-T-N @  SCH-T-ROOT-N @  SCH-T-PARAM-N @ ;
+
+\ An empty region gives its rows back.
+: TRANSIENT-RELEASE ( n n n -- ) {: nodes:n roots:n params:n :}
+   nodes SCH-T-N !  roots SCH-T-ROOT-N !  params SCH-T-PARAM-N !
+   nodes 0= IF SCH-T-P SCH-T-CAP SCH-REC CELL / ARENA-ROWS-RELEASE THEN
+   roots 0= IF SCH-T-ROOT-P SCH-T-ROOT-CAP 1 ARENA-ROWS-RELEASE THEN ;
 
 \ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,
 \ referenced by [start, start+count) contiguous schema roots. An empty side has

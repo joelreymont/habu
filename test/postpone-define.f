@@ -1,16 +1,16 @@
 \ postpone-define.f - a definer builds a definition with define-word,
-\ body-append, literal, compile, and postpone, and each postponed or compiled
-\ word binds the word the definer found when it was compiled, whatever the
-\ building package defines: a global, the definer package's private word and
-\ its public one. The same body evaluated as text binds the building
-\ package's words, and body-append, literal or compile, with no definition
-\ open is refused. define-word takes the effect a definer built, a parametric
-\ one included, and refuses a type that is not an effect. A definition the
-\ checker refuses at the definer's postpone ; is abandoned, and the next
-\ definition compiles. An effect holds at most 23 type parameters, numbered
-\ per effect however many the file made before. A STRUCTURE's AT answers its
-\ element in a package with its own `*` and `record-at`. The file is also a
-\ build source: MAIN prints the four answers.
+\ literal, compile, and postpone, and each postponed or compiled word binds
+\ the word the definer found when it was compiled, whatever the building
+\ package defines: a global, the definer package's private word and its public
+\ one. The same body evaluated as text binds the building package's words,
+\ and literal or compile, with no definition open is refused. define-word
+\ takes the effect a definer built, a parametric one included, and refuses a
+\ type that is not an effect. A definition the checker refuses at the
+\ definer's postpone ; is abandoned, and the next definition compiles. An
+\ effect holds at most 23 type parameters, numbered per effect however many
+\ the file made before. A STRUCTURE's AT answers its element in a package
+\ with its own `*` and `record-at`. The file is also a build source: MAIN
+\ prints the four answers.
 
 require src/lib/test.f
 require src/lib/adt/nullable.f
@@ -23,17 +23,17 @@ public
 
 private
 \ ( n -- n )
-: N>N ( -- EFFECT:type ) EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT ;
+: N>N ( -- EFFECT:type ) EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT ;
 
 public
 \ nullable on a parameter no other value holds.
 : NULLABLE-T ( -- EFFECT:type )
-   s" nullable" EFFECT:FAMILY ;
+   s" nullable" EFFECT:NAMED ;
 
 \ : NAME ( n -- n ) 3 * ;
 : MAKE-TRIPLER ( ptr u8 n -- )
    N>N define-word
-   s" 3" body-append
+   3 literal
    postpone *
    postpone ; ;
 
@@ -53,7 +53,7 @@ public
 
 \ : NAME ( -- n ) -6 7 * ;
 : MAKE-NEG-ANSWER ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    -6 literal  7 literal
    postpone *
    postpone ; ;
@@ -62,13 +62,13 @@ public
 \ all three places.
 : MAKE-DUP ( ptr u8 n -- )
    NULLABLE-T {: t :}
-   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
+   EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
    postpone dup
    postpone ; ;
 
 \ : NAME ( nullable<a> nullable<b> ... -- ) drop drop ... ; K inputs.
 : MAKE-WIDE ( ptr u8 n n -- ) {: k:n :}
-   EFFECT:NEW  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
+   EFFECT:EMPTY  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
    k 0 ?do postpone drop loop
    postpone ; ;
 
@@ -91,13 +91,13 @@ public
 
 \ : NAME ( -- n ) drop ;, an underflow the checker refuses.
 : MAKE-BROKEN ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone drop
    postpone ; ;
 
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
 : MAKE-RV ( ptr u8 n -- )
-   EFFECT:NEW s" read-view" EFFECT:FAMILY EFFECT:OUT define-word
+   EFFECT:EMPTY s" read-view" EFFECT:NAMED EFFECT:OUT define-word
    1 literal
    postpone throw
    postpone ; ;
@@ -167,7 +167,7 @@ s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:165:16" HAS
 s" = word: WIDE-24" HAS  REJECTION:BUFFER-OFF
 
 \ A spelling that names no family is E-UNKNOWN-SIGNATURE-TYPE.
-: NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:FAMILY drop ;] catch ;
+: NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 REJECTION:CAPTURE
 NO-FAMILY 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]" HAS  s" postpone-define.f:172:1" HAS
@@ -180,23 +180,21 @@ IN-NOT-EFFECT 70 T=
 s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:179:1" HAS
 REJECTION:BUFFER-OFF
 
-: APPEND-NONE ( -- n ) [: s" 1" body-append ;] catch ;
-APPEND-NONE 0 T<>
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
 REJECTION:CAPTURE
 LITERAL-NONE 70 T=
-s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:187:1" HAS
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:185:1" HAS
 REJECTION:BUFFER-OFF
 : COMPILE-NONE ( -- n ) [: ['] DOUBLE compile, ;] catch ;
 REJECTION:CAPTURE
 COMPILE-NONE 70 T=
-s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:192:1" HAS
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:190:1" HAS
 REJECTION:BUFFER-OFF
 
 : BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
 REJECTION:CAPTURE
 BROKEN 70 T=
-s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:198:1" HAS
+s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:196:1" HAS
 s" = word: drop" HAS  REJECTION:BUFFER-OFF
 s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
@@ -204,7 +202,7 @@ AFTER 7 T=
 : RV-REFUSED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
 REJECTION:CAPTURE
 RV-REFUSED 70 T=
-s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:206:1" HAS
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:204:1" HAS
 s" = word: RV-BAD" HAS  REJECTION:BUFFER-OFF
 s" : AFTER-RV ( -- n ) 8 ;" evaluate-closed
 AFTER-RV 8 T=

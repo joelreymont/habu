@@ -1,5 +1,5 @@
 \ again.f - loaded twice by src/lib/error-test.f: the second load declares the
-\ same name again, which `constant` rejects as E-DUPLICATE-DEFINITION.
+\ same name again, which is rejected as E-DUPLICATE-DEFINITION.
 
 require src/lib/error.f
 

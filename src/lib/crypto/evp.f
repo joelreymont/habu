@@ -53,8 +53,6 @@ $10 constant CTRL-GET-TAG                 \ EVP_CTRL_GCM_GET_TAG = EVP_CTRL_AEAD
 $11 constant CTRL-SET-TAG                 \ EVP_CTRL_GCM_SET_TAG = EVP_CTRL_AEAD_SET_TAG
 
 1 constant OSSL-OK                        \ every libcrypto call declared below answers 1 for success
-$10 constant BLOCK-BYTES                  \ one AES block: the final call's slack, which GCM never uses
-$04 constant C-INT-BYTES                  \ an `int *outl` or `unsigned int *md_len` out-parameter
 $7FFFFFFF constant MAX-SPAN               \ every length this package passes is a C int
 
 \ libcrypto's EVP cipher interface and its one-shot HMAC. EVP_CIPHER_CTX*,
@@ -66,8 +64,7 @@ $7FFFFFFF constant MAX-SPAN               \ every length this package passes is 
 \ EVP_EncryptInit_ex selects the cipher with a NULL key and IV and then installs
 \ the key with a NULL cipher; EVP_EncryptUpdate takes the associated data with a
 \ NULL output; EVP_CIPHER_CTX_ctrl writes the tag out for one selector and reads
-\ it in for another. A NULL is a `n` argument because the bounded call guards
-\ exactly the span a `ptr u8` declares, and a declaration states one extent.
+\ it in for another.
 VERSIONED-LIBRARY crypto 3
 
 FUNCTION: CTX-NEW EVP_CIPHER_CTX_new ( -- n ) ;FUNCTION
@@ -75,64 +72,25 @@ FUNCTION: CTX-FREE EVP_CIPHER_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: AES-256-GCM EVP_aes_256_gcm ( -- n ) ;FUNCTION
 FUNCTION: SHA-256 EVP_sha256 ( -- n ) ;FUNCTION
 FUNCTION: SHA-1 EVP_sha1 ( -- n ) ;FUNCTION
-
-FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- i32 )
-   0 1 WRITES-ARG                         \ the caller's span, length from arg 1
-;FUNCTION
-
+FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
 FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
 FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-
-FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ptr u8 ptr u8 n -- i32 )
-   2 C-INT-BYTES WRITES-BYTES              \ int *outl
-;FUNCTION
-
-FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ptr u8 ptr u8 n -- i32 )
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 )
-   1 4 WRITES-ARG                         \ the caller's output span, length from arg 4
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 )
-   1 4 WRITES-ARG
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ptr u8 ptr u8 -- i32 )
-   1 BLOCK-BYTES WRITES-BYTES              \ one block of slack; GCM emits nothing here
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-
-FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ptr u8 ptr u8 -- i32 )
-   1 BLOCK-BYTES WRITES-BYTES
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-
+FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- i32 ) ;FUNCTION
-
-FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 )
-   3 TAG-BYTES WRITES-BYTES                \ the tag the cipher hands back
-;FUNCTION
-
+FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 ) ;FUNCTION
-
-FUNCTION: HMAC-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
-   5 MAC-BYTES WRITES-BYTES                \ the digest
-   6 C-INT-BYTES WRITES-BYTES              \ unsigned int *md_len
-;FUNCTION
-
-FUNCTION: HMAC1-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
-   5 MAC1-BYTES WRITES-BYTES               \ SHA-1's 20-byte digest
-   6 C-INT-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: HMAC-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: HMAC1-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n ) ;FUNCTION
 
 \ RS256 uses provider-owned opaque keys and parameters. No OpenSSL struct is
-\ laid out in Habu; only pointer and size_t result cells are writable spans.
+\ laid out in Habu.
 FUNCTION: BN-FROM-BYTES BN_bin2bn ( ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: BN-FREE BN_free ( n -- ) ;FUNCTION
 FUNCTION: BN-BITS BN_num_bits ( n -- i32 ) ;FUNCTION
@@ -147,71 +105,40 @@ FUNCTION: PKEY-CTX-FROM-NAME EVP_PKEY_CTX_new_from_name ( n ptr u8 ptr u8 -- n )
 FUNCTION: PKEY-CTX-FROM-KEY EVP_PKEY_CTX_new_from_pkey ( n n ptr u8 -- n ) ;FUNCTION
 FUNCTION: PKEY-CTX-FREE EVP_PKEY_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: PKEY-FROMDATA-INIT EVP_PKEY_fromdata_init ( n -- i32 ) ;FUNCTION
-FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ptr u8 n n -- i32 )
-   1 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-FREE EVP_PKEY_free ( n -- ) ;FUNCTION
 FUNCTION: PKEY-IS-A EVP_PKEY_is_a ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PROVIDER EVP_PKEY_get0_provider ( n -- n ) ;FUNCTION
 FUNCTION: PKEY-BITS EVP_PKEY_get_bits ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-SIZE EVP_PKEY_get_size ( n -- i32 ) ;FUNCTION
-FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 )
-   2 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PUBLIC-CHECK EVP_PKEY_public_check ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PAIR-CHECK EVP_PKEY_pairwise_check ( n -- i32 ) ;FUNCTION
 FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: BIO-FREE BIO_free ( n -- i32 ) ;FUNCTION
-FUNCTION: PEM-READ PEM_read_bio_ex ( n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 )
-   1 8 WRITES-BYTES
-   2 8 WRITES-BYTES
-   3 8 WRITES-BYTES
-   4 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: PEM-READ PEM_read_bio_ex ( n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: CRYPTO-FREE CRYPTO_free ( n n n -- ) ;FUNCTION
 FUNCTION: CRYPTO-CLEAR-FREE CRYPTO_clear_free ( n n n n -- ) ;FUNCTION
-FUNCTION: P8-READ d2i_PKCS8_PRIV_KEY_INFO ( n ptr u8 n -- n )
-   1 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: P8-READ d2i_PKCS8_PRIV_KEY_INFO ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: P8-FREE PKCS8_PRIV_KEY_INFO_free ( n -- ) ;FUNCTION
-FUNCTION: P8-KEY PKCS8_pkey_get0 ( n ptr u8 ptr u8 n n -- i32 )
-   1 8 WRITES-BYTES
-   2 C-INT-BYTES WRITES-BYTES
-;FUNCTION
-FUNCTION: ASN1-OBJECT ASN1_get_object ( ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 )
-   0 8 WRITES-BYTES
-   1 8 WRITES-BYTES
-   2 C-INT-BYTES WRITES-BYTES
-   3 C-INT-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: P8-KEY PKCS8_pkey_get0 ( n ptr u8 ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: ASN1-OBJECT ASN1_get_object ( ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: P8>KEY EVP_PKCS82PKEY_ex ( n n ptr u8 -- n ) ;FUNCTION
 FUNCTION: MD-CTX-NEW EVP_MD_CTX_new ( -- n ) ;FUNCTION
 FUNCTION: MD-CTX-FREE EVP_MD_CTX_free ( n -- ) ;FUNCTION
-FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 )
-   1 8 WRITES-BYTES
-;FUNCTION
-FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 )
-   1 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: RSA-PADDING EVP_PKEY_CTX_set_rsa_padding ( n n -- i32 ) ;FUNCTION
 FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: ERROR-CLEAR ERR_clear_error ( -- ) ;FUNCTION
 FUNCTION: ERROR-GET ERR_get_error ( -- n ) ;FUNCTION
-FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 )
-   2 8 WRITES-BYTES
-;FUNCTION
+FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+\ C writes the signature over input 1, at most the length the cell at input 2
+\ holds, and stores the length it wrote in that cell.
+FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
-\ The length returned by the size query is the exact writable extent of the
-\ second EVP_DigestSign call. FUNCTION: cannot relate an out-cell to that span.
-: RS-LIBRARY ( -- n )
-   HB-TARGET-MACOS? if s" libcrypto.3.dylib" else s" libcrypto.so.3" then
-   FFI:LIBRARY-PATH ;
-RS-LIBRARY constant RS-LIB
-s" EVP_DigestSign" RS-LIB 5 FFI:DECLARE constant SIGN-ROW
-
-
-\ Foreign out-parameter storage, per task like FFI's own argument staging: two
-\ tasks may be sealing at once and each needs its own live context.
+\ Foreign out-parameter storage, per task: two tasks may be sealing at once and
+\ each needs its own live context.
 $00 constant CTX-OFF
 $08 constant OUTL-OFF
 $10 constant FINAL-OFF
@@ -732,16 +659,6 @@ CAST: RS>BYTES ( n -- ptr u8 )
       dup 0= if drop false exit then
    again ;
 
-: RS-SIGN-WRITE ( ptr u8 n ptr u8 n -- n )
-   {: out k:n msg mu:n :}
-   RS-MD@ 0 FFI:VALUE!
-   out 1 FFI:POINTER!
-   RS-SIG-LEN RS-BUF 2 FFI:POINTER!
-   msg 3 FFI:POINTER!
-   mu 4 FFI:VALUE!
-   SIGN-ROW FFI:CALL $FFFFFFFF and
-   dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
-
 : RS-VERIFY-RUN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu exponent eu RS-PUBLIC-IMPORT {: k:n :}
@@ -771,7 +688,8 @@ CAST: RS>BYTES ( n -- ptr u8 )
    RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
    cap k < if E-OPERAND throw then
    k RS-SIG-LEN RS-BUF LE:U64!
-   out k msg mu RS-SIGN-WRITE OSSL-OK <> if E-SIGN throw then
+   RS-MD@ out RS-SIG-LEN RS-BUF msg mu DIGEST-SIGN
+   OSSL-OK <> if E-SIGN throw then
    RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
    k ;
 

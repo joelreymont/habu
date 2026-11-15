@@ -71,7 +71,11 @@ public
   `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
   rename the word or call it qualified; a body or `'` names the word.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
-  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
+  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A package's
+  public and private sections are two wordlists, so a public `R` may share a
+  private word's tail, a family's private derived word included: a bare `R`
+  in the package calls the private one, `PKG:R` the public one, and a public
+  colon `R` moves the private one's cells (`E-SHADOWED-ARITY`). A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
   is checked and called as itself even when it spells an engine word: the
   checker's rules for `@`, `!`, `create` and the like belong to the engine's
@@ -146,10 +150,9 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - A `FUNCTION:` result declared `nullable<u8>` is `none` for NULL.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
-  lives on the stack or in a cell. Names are at most 16 bytes, 64 per
-  definition, block-scoped, bindable after a closed early-exit guard. A local
-  hides the word of its spelling, the loop index included:
-  `{: i:n :} 3 0 ?do i . loop` prints the local three times.
+  lives on the stack or in a cell. Locals are block-scoped, bindable after a
+  closed early-exit guard. A local hides the word of its spelling, the loop
+  index included: `{: i:n :} 3 0 ?do i . loop` prints the local three times.
 - Code is well-factored and its lines are short, about 60 columns at most,
   because people read it: a word does one thing in about five lines, and a repeat or
   a dense expression becomes a named word.
@@ -187,7 +190,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `--` or `\|` in a locals group: `{: a -- b :}`, `{: a \| :}` | `E-BAD-LOCAL-SHAPE` at the token, `a locals group names only locals; …` — the signature declares the outputs, and Habu has no uninitialised locals |
 | a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
-| a definition taking more input cells than the ceiling, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (<cells> cells, at most <cap>)` |
 | a body nesting more than 32 control frames (each `if`, `begin`, `do`, `case`, `MATCH`, `of` arm and `[:` takes one): 33 nested `dup IF` | `E-UNCHECKABLE`, `control flow nested too deep to check (depth <depth>, at most <cap>)` |
 | `: DOWN dup 0 > IF 1 - RECURSE THEN ;`: `recurse` in a definition with no signature | `E-UNCHECKABLE`, `recursion needs a declared stack effect` |
 | `: MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;`: `recurse` in a `does>` clause | `E-UNCHECKABLE`, `recurse in a does> clause would call the defining word` |
@@ -317,18 +319,18 @@ escape in it bind nothing. The row is trusted, never compared with the body;
 row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
-A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
-anything reaching `INCLUDE-EVALUATE`) makes names
+A word that makes definitions at load time (anything reaching `define-word` or
+an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:`
 row's word (§ 4) are checked before the run, `--verify-only` included. A
 failure the check pins before a use it leaves to the run decides that
-definition. At top level any other such name opens that stretch. The renderer
-reads none of the tokens after it, so they are checked. A reached renderer no
+definition. At top level any other such name opens that stretch. The definer
+reads none of the tokens after it, so they are checked. A reached definer no
 row or group declares is `W-CHECK-DEFERRED` at its own token, so a `deferred`
 verdict always locates its gap.
 
-After a reached call that may render or register nominal types, verification
+After a reached call that may define words or register nominal types, verification
 defers a later use of a missing type to the run; a check no run follows reports
 it as `W-CHECK-DEFERRED` at that type. It consumes the declaration without
 publishing a type, layout, signature or generated words. Known syntax,
@@ -405,7 +407,7 @@ data up to the next definition or `datum` is kept only through an address a
 declared cell holds, so a stripped program keeps the row only when it reaches
 that cell.
 
-A definer that writes its word as text (`ERROR:CODE`) states what it makes with
+A definer that makes a word at load time (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). A
 deferred D, or one no `parse-name` reaches through the words it calls (not
@@ -413,14 +415,25 @@ through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 `FUNCTION:` needs no row.
 
 A definer that builds a word from words it found writes no text:
-`name$ EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
-the word, `postpone W` appends the W found where the definer was compiled,
-which no package the definer later runs in can shadow, `body-append` appends
-text that binds where it runs, and `postpone ;` ends the word: `postpone` of
-an immediate W compiles a call of W, and `postpone W` is refused where
-`['] W` is. `['] W compile, ( [ R -- S ] -- )` appends a call of W, a word
-whose tick is a quotation (a primitive's tick is an `xt`, which `compile,`
-refuses), and `; ( -- )` ends the word.
+`name$ EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
+the word (`s" bool" EFFECT:NAMED` names a built-in type or a family: a
+qualified spelling, `ARENA:arena`, names that package's family whatever the
+running package holds, and a bare one is looked up as source where the
+definer runs would; `s" ptr u8" EFFECT:READ-TYPE` reads one type with no
+letters as that source would), `postpone W` appends the W found where the
+definer was compiled, which no package the definer later runs in can shadow,
+and `postpone ;` ends the word: `postpone` of an immediate W compiles a call
+of W, and `postpone W` is rejected where `['] W` is. `EFFECT:KEYWORD`,
+`EFFECT:OPERAND`, `EFFECT:TYPE-ITEM` and `EFFECT:CALL` append the keyword,
+variant, type or call the string spells, the call bound where the definer
+runs; `EFFECT:LOCAL` and `EFFECT:LOCAL@` declare and read a local, and
+`EFFECT:VARIABLE-OF` declares a typed variable.
+An `EFFECT:type` ends with the load that built it, so no storage, field or
+payload holds one (`E-BAD-STORAGE`, a field or payload `E-BAD-DECLARATION`):
+build it where it is used.
+`['] W compile, ( [ R -- S ] -- )` appends a call of W, a word whose tick is
+a quotation (a primitive's tick is an `xt`, which `compile,` rejects), and
+`; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
@@ -469,7 +482,10 @@ A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
-holds a pointer or a quotation is the same mint. A cast into another package's
+holds a pointer or a quotation is the same mint. A cast that makes an `ENUM`
+or `SUMTYPE` value from a cell, a `niche-null` one aside, is `E-CAST-CLASS`,
+the family's own package included: use its `DERIVE tag` `TAG>` or a variant's constructor; a private
+view of storage leaves the stored tags to its writer. A cast into another package's
 cell family or `OPAQUE` structure is the writer's claim, which the checker does
 not prove.
 
@@ -664,7 +680,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, the signed bounds |
-| Engine limits … | the REPL-line, `[:` and control-flow nesting, effect-depth, input-row and data-space ceilings; a definition's text and name have none |
+| Engine limits … | the REPL-line, `[:` and control-flow nesting, effect-depth and data-space ceilings; a definition's text and name have none |
 | Constants | hex versus decimal, where codes live |
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |

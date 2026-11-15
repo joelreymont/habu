@@ -242,11 +242,15 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    shape CHILD-ABI:HEAP-RELEASE = or  shape CHILD-ABI:ARENA-NEW = or
    shape CHILD-ABI:ARENA-DISPOSE = or ;
 
-\ A refused type is reported, naming the child, before the throw.
-: STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )
-   {: na:ptr nu:n ta:ptr tu:n shape:n :}
-   ta tu CHECKER-STORAGE-TERM 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE CHECK-RC throw
+\ A refused type is reported, naming the child, before the throw. A NODE other
+\ than 0 is the type, which TYPE does not spell.
+: STORED-ROWS ( ptr u8 n ptr u8 n n n -- n n )
+   {: na:ptr nu:n ta:ptr tu:n shape:n node:n :}
+   node 0 <> if node NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
+   0= if
+      drop
+      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REFUSE then
+      CHECK-RC throw
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
 
@@ -281,11 +285,13 @@ public
 
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
 \ stored TYPE, lays its facts, and answers its body value and effect handle.
-\ TYPE is read only for the shapes that answer `ptr t`.
+\ TYPE is read only for the shapes that answer `ptr t`, and not for a STORED
+\ child whose PARAM is its type's node.
 : CHILD ( ptr u8 n n n ptr u8 n -- n n )
    {: na:ptr nu:n shape:n param:n ta:ptr tu:n :}
    shape STORED-SHAPE? if
-      na nu ta tu shape STORED-ROWS 0
+      na nu ta tu shape
+      shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
    else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
    na nu din dout CHECKER-CHILD-ROWS {: h:n :}
    na nu PENDING-FACTS
@@ -297,6 +303,13 @@ public
 \ The line of a definer whose element is whole cells.
 : CELL-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-TRUE DECL-LINE ;
 
+: DEFINER-AT ( ptr u8 n -- )
+   REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
+
+\ Places the rejection at the token read last, the definer's own or
+\ one it parsed.
+: DEFINER-PLACE ( -- ) SRCLOC:TOKEN$ DEFINER-AT ;
+
 private
 
 using SCHEMA-REG
@@ -305,25 +318,26 @@ using SCHEMA-REG
 \ that made it.
 : TYPE-ARG ( n -- n ) {: node:n :}
    node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
-   s" E-SCHEMA-BAD" REJECTION:OPEN
-   s" `EFFECT:PTR`, `EFFECT:IN`, `EFFECT:OUT` or `CHECK:TYPE-OP` was given a value that is no live type"
-   REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" not given a type" REJECTION:EMIT-STR
-   s" value" REJECTION:NOTE  node REJECTION:EMIT-N
+   s" E-NOT-TYPE" REJECTION:OPEN
+   s" a definer was given a value that is no type" REJECTION:EMIT-STR
+   DEFINER-PLACE
    REJECTION:HELP
-   s" pass a type an `EFFECT` word made in the file that uses it"
+   s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ-TYPE or EFFECT:PTR made in this file: a type ends with the file that built it"
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
-\ An effect; any other type is refused, E-NOT-EFFECT.
+: UNKNOWN-HELP$ ( -- ptr u8 n )
+   s" name n, bool, r or a family the package running the definer can name" ;
+
+\ An effect; any other type is rejected.
 : EFFECT-ARG ( n -- n ) {: node:n :}
    node TYPE-ARG SCHEMA-QUOT? if node exit then
    s" E-NOT-EFFECT" REJECTION:OPEN
-   s" `EFFECT:IN` or `EFFECT:OUT` was given a type that is not an effect"
+   s" EFFECT:IN or EFFECT:OUT was given a type that is no effect"
    REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" not given an effect" REJECTION:EMIT-STR
+   DEFINER-PLACE
    REJECTION:HELP
-   s" pass an effect built from `EFFECT:NEW` beneath the type it adds"
+   s" pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT answered"
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
@@ -333,49 +347,107 @@ using SCHEMA-REG
    k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
    fam start k SCHEMA-APP ;
 
-\ TYPE-OP's operands are cells: NAMED's spelling arrives as its address.
+\ TYPE-OP's operands are cells: a spelling arrives as its address.
 CAST: >BYTES ( n -- ptr u8 )
 
-\ The family a spelling names; one that names none is refused, E-UNKNOWN-SIGNATURE-TYPE.
-: NAMED-FAMILY ( n n -- n )
+\ A built-in type's con code as a signature reads its spelling, else 0.
+: BUILT-IN ( n n -- n ) {: a:n u:n :}
+   u 1 = if
+      a >BYTES c@ {: c:n :}
+      c 110 = if CC-N exit then
+      c 102 = if CC-BOOL exit then
+      c 114 = if CC-R exit then
+   then
+   a >BYTES u CON-OF ;
+
+\ The type a spelling names: a built-in type's con code and 0, else 0 and the
+\ family; one that names neither is rejected.
+: NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
-   a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
+   a u BUILT-IN dup 0 <> if 0 exit then drop
+   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u
+   a >BYTES u TFAM:TFQ-SPLIT? if TFAM:TFAM-EXACT-RESOLVE
+   else TFAM:TFAM-SIG-RESOLVE then
+   if 0 swap exit then
    drop
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
-   s" no type is named `" REJECTION:EMIT-STR
-   a >BYTES u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   SRCLOC:TOKEN$ REJECTION:AT  s" unknown type" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" declare `" REJECTION:EMIT-STR  a >BYTES u REJECTION:EMIT-STR
-   s" ` before this point, or check its spelling" REJECTION:EMIT-STR
+   s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
+   a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP  UNKNOWN-HELP$ REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
+
+\ A rejected READ of the type xa xu, naming the token, or the type when the
+\ reason names none.
+: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
+   tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
+   code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
+   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
+   REJECTION:OPEN
+   wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   tu xu <> if
+      s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
+      s" '" REJECTION:EMIT-STR
+   then
+   DEFINER-PLACE
+   REJECTION:HELP
+   unknown if s" declare a type of that name, or correct its spelling"
+   else s" write the type as a signature writes it" then
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+\ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
+\ given, placed at the token the engine read last, which ran the definer.
+: TEXT-LETTER-REFUSE ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n xa:ptr xu:n :}
+   s" E-BAD-SIGNATURE" REJECTION:OPEN
+   s" the type '" REJECTION:EMIT-STR
+   xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" ', which names no type" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" a built definition's types are concrete: " REJECTION:EMIT-STR
+   s" write one such as n or ptr u8 in place of '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+: TEXT-TYPE ( n n -- n ) {: a:n u:n :}
+   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
+   [: a >BYTES u TEXT-LETTER-REFUSE ;] TYPE-DECL:READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
-   code TYPE-OP-ABI:NAMED = if a FAMILY-NODE exit then
+   code TYPE-OP-ABI:NAMED = if
+      a 0 <> if a SCHEMA-CON exit then
+      b FAMILY-NODE exit
+   then
    code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
    code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
    code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
    code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
-   s" E-SCHEMA-BAD" REJECTION:OPEN
-   s" `CHECK:TYPE-OP` was given a code that names no type operation"
-   REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" unknown type operation" REJECTION:EMIT-STR
-   s" code" REJECTION:NOTE  code REJECTION:EMIT-N
+   code TYPE-OP-ABI:READ = if a b TEXT-TYPE exit then
+   s" E-TYPE-OP" REJECTION:OPEN
+   s" the checker has no type operation " REJECTION:EMIT-STR
+   code REJECTION:EMIT-N
+   DEFINER-PLACE
    REJECTION:HELP
-   s" build types with the `EFFECT` words, or pass a `TYPE-OP-ABI` code"
+   s" this engine is older than the tree it loads: " REJECTION:EMIT-STR
+   s\" build the engine in stages (docs/bootstrap.md \"Staged hosts\")"
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
 public
 
-\ The transient schema node a TYPE-OP-ABI code makes of a and b.
-\ NAMED's lookup runs first: the transient region would drop an entry it reads.
+\ The transient schema node a TYPE-OP-ABI code makes of a and b, else rejected.
+\ NAMED's lookup, and the type entries READ's lookups would read, come first:
+\ the transient region would drop an entry a lookup reads.
 : TYPE-OP ( n n n -- n )
    {: code:n a:n b:n :}
-   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a then {: arg:n :}
+   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a b then {: x:n y:n :}
+   code TYPE-OP-ABI:READ = if TFAM:READ-PENDING then
    TRANSIENT-ON
-   [: code arg b TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+   [: code x y TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
 
 \ Whether node is an effect a definition can take: a live quotation node with
 \ no return clause.
@@ -438,14 +510,17 @@ variable DENSE-N
 
 public
 
-\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
-\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
-: EFFECT-DENSE ( n -- n bool ) {: node:n :}
-   0 DENSE-N !
+\ A transient copy of type node, its parameters numbered on by the map the
+\ open definition's EFFECT-DENSE began; false past TFAM-DECL-PARAM-COUNT.
+: TYPE-DENSE ( n -- n bool ) {: node:n :}
    TRANSIENT-ON
    [: node DENSE-COPY ;] [: TRANSIENT-OFF ;] finally
    DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
    RES-TRUE ;
+
+\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
+\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
+: EFFECT-DENSE ( n -- n bool ) 0 DENSE-N !  TYPE-DENSE ;
 
 ;using
 

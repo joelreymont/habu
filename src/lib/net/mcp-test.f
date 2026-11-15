@@ -1,6 +1,7 @@
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
-\ Mcp-Name checks, the transport check, unknown methods and tools, a body's
+\ Mcp-Name checks, the transport check, unknown methods and tools, an unknown tool's
+\ name cut at 128 bytes, a body's
 \ result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
 \ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
@@ -10,7 +11,7 @@
 \ descriptor. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals.
+\ refusals. The info line a tools/call and a resources/read log, without arguments.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -261,14 +262,30 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: UNKNOWN-REPLY ( -- ptr u8 n )
-   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}" ;
+\ Reply 6 to a call of an unknown tool, for the name it names, in WANT.
+: UNKNOWN-REPLY ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nu:n :}
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602," W+
+   S\" \"message\":\"Unknown tool: " W+ name nu W+
+   S\" ; if the client's list of test-server's tools names it," W+
+   S\"  that list is out of date\"}}" W+ W$ ;
 
 : UNKNOWN-TOOL ( -- )
-   s" an unregistered tool is 400 -32602 Unknown tool" T-LABEL
+   s" an unregistered tool is 400 -32602 naming it and the server" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" none" UNKNOWN-REPLY ANSWERED ;
+
+: A-RUN ( -- ) 127 0 ?do s" a" SB-APPEND loop ;
+
+\ 127 bytes, then a two-byte character over MCP's 128-byte cap.
+: LONG-UNKNOWN ( -- )
+   s" an unknown tool's name past 128 bytes is cut before the character crossing it" T-LABEL
+   LEGACY
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"" SB-APPEND
+   A-RUN S\" é\"}}" SB-APPEND SB$ POST
+   SB-RESET A-RUN
+   400 SB$ UNKNOWN-REPLY ANSWERED ;
 
 
 : TOOL-ERROR ( -- )
@@ -1018,9 +1035,17 @@ $A constant LF
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
    LOG-B BUF:SPAN$ BUF:BLEN>N ;
 
+\ The capture's lines, less each `<stamp> info mcp: ` line: the server
+\ in this process logs one for each message it dispatches.
 : LINES ( -- n )
    LOG$ {: a:ptr u:n :}
-   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+   0 u 0 ?do
+      a i + c@ LF = if 1+ then
+      i 0= if true else a i 1- + c@ LF = then if
+         a i DATE:TIME-LEN 1- + +  u i - DATE:TIME-LEN 1- -
+         s" Z info mcp: " STARTS-WITH? if 1- then
+      then
+   loop ;
 
 : CAPTURED ( [ -- ] -- )
    LOG-PATH$ STDERR:CAPTURE
@@ -1034,6 +1059,17 @@ $A constant LF
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
    LOG$ SB$ CONTAINS? TTRUE ;
+
+\ The server shares this process's fd 2, so its lines land in the capture.
+: SERVER-LOGGED ( -- )
+   s" tools/call and resources/read log their method and name, not arguments"
+   T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"secret\":\"kept\"}}}" POST 200 T=
+      LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"}}" POST 200 T= ;]
+   CAPTURED
+   LOG$ S\"  info mcp: tools/call echo\n" CONTAINS? TTRUE
+   LOG$ S\"  info mcp: resources/read ui://test/widget.html\n" CONTAINS? TTRUE
+   LOG$ s" kept" CONTAINS? TFALSE ;
 
 : CLIENT-UNKNOWN ( -- )
    s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
@@ -1250,7 +1286,7 @@ $A constant LF
    HITS atomic@ 1 T=
    s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
    [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED ;] CAPTURED
-   s" the stopped CALL logs nothing: the program ended it" T-LABEL
+   s" the stopped CALL logs nothing but the server's info line" T-LABEL
    LINES 0 T=
    s" then CALL and TOOLS throw, sending nothing" T-LABEL
    2 STOP-REFUSED
@@ -1267,7 +1303,7 @@ TYPED-VARIABLE NEVER MCP:client
 
 
 : CLIENT-CASES ( -- )
-   CURL:LOOP-START OK LOG-INIT
+   CURL:LOOP-START OK LOG-INIT SERVER-LOGGED
    s" /mcp" URL MCP:OPEN CLIENT !
    CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
    CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES
@@ -1391,7 +1427,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" tools/call of a hidden tool answers as an unknown one" T-LABEL
    ZEN LEGACY BEARING
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" secret" UNKNOWN-REPLY ANSWERED ;
 
 : OWNER-LIST ( -- )
    s" tools/list shows the tool to the caller the hook admits" T-LABEL
@@ -1541,7 +1577,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
-   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
+   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL LONG-UNKNOWN TOOL-ERROR
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
    BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING

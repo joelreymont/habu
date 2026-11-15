@@ -1,9 +1,9 @@
-\ underdepth-gate.f - a word with a checker-known effect (certified `:`,
-\ TRUSTED:, defer) carries its input arity in its record (DNAME-MIN-IN, flags
-\ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
-\ stack it fails closed with an E-UNDERFLOW record naming the word and rc 70
-\ before its body runs. hb's startup words are defined by the same
-\ interpreter, so an engine-prefix word carries its arity too.
+\ underdepth-gate.f - a bare top-level call on a shallower stack than its
+\ word's effect states (a certified `:`, TRUSTED:, defer, does> clause,
+\ engine-prefix word or primitive) is rejected by the checker before the word
+\ runs: rc 70 and an E-INPUT-UNDERFLOW record at the word. The checker
+\ measures the input of `execute`, `catch` and `finally` in a body as any
+\ word's.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -39,7 +39,8 @@ create UDG-IN UDG-CAP allot         \ stdin-piped program
 create UDG-OUT UDG-CAP allot
 create UDG-ERR UDG-CAP allot
 create UDG-EMPTY 1 allot            \ zero-length stdin
-create UDG-TICKED-BUF 64 allot
+create UDG-AT PATH-CAP allot
+TYPED-VARIABLE UDG-AT-U len
 
 : UDG-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
    u PATH-CAP > if E-FS-CAPACITY throw then
@@ -115,18 +116,26 @@ public
    UDG-LINE
    SB$ ;
 
-: UDG-TICKED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ the word as a record quotes it
-   u 62 > if E-STR-CAPACITY throw then
-   96 UDG-TICKED-BUF c!
-   a UDG-TICKED-BUF 1 + u BYTE-COPY
-   96 UDG-TICKED-BUF u + 1 + c!
-   UDG-TICKED-BUF u 2 + ;
+: UDG-AT+ ( ptr u8 n -- )
+   UDG-AT PATH-CAP UDG-AT-U BUF-APPEND ;
 
-: UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}   \ fail-closed reject naming the word
+\ A record's caret run under a word of u bytes, a blank on either side.
+: UDG-CARETS$ ( n -- ptr u8 n ) {: u:n :}
+   UDG-AT-U BUF-RESET
+   s"  " UDG-AT+  u 0 ?do s" ^" UDG-AT+ loop  s"  " UDG-AT+
+   UDG-AT UDG-AT-U @ LEN>N ;
+
+\ The rejection opens with h hu and its carets stand under the word a u.
+: UDG-ASSERT-AT ( ptr u8 n ptr u8 n -- ) {: h:ptr hu:n a:ptr u:n :}
    UDG-EXITED @ TTRUE
    UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" error[E-UNDERFLOW]: " CONTAINS? TTRUE
-   UDG-ERR$ a u UDG-TICKED CONTAINS? TTRUE ;
+   UDG-ERR$ h hu CONTAINS? TTRUE
+   UDG-ERR$ a u CONTAINS? TTRUE
+   UDG-ERR$ u UDG-CARETS$ CONTAINS? TTRUE ;
+
+\ The checker's rejection of the word a u: an input underflow at it.
+: UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" error[E-INPUT-UNDERFLOW]: input underflow" a u UDG-ASSERT-AT ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
@@ -137,10 +146,6 @@ public
 
 package UDG-MINIMUM
 
-70 constant WIDE-RC                 \ rendered before its code is thrown (CHECKER-REJECT-RC)
-
-\ The DNAME-MIN-IN byte accepts 255 and rejects 256: a wider declared row is a
-\ stored signature no record holds, refused by its width.
 : MIN-SIG$ ( n -- ptr u8 n ) {: width:n :}
    SB-RESET
    s" defer MINIMUM-PROBE ( " SB-APPEND
@@ -151,27 +156,14 @@ package UDG-MINIMUM
    s" -- )" UDG-LINE
    SB$ ;
 
-: ASSERT-WIDE ( -- )
-   UDG-EXITED @ TTRUE
-   UDG-RC @ WIDE-RC T=
-   UDG-ERR$ s" error[E-BAD-STORED-SIGNATURE]" CONTAINS? TTRUE
-   UDG-ERR$ s" the signature of `MINIMUM-PROBE`" CONTAINS? TTRUE
-   UDG-ERR$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE ;
-
 public
 
 : BOUNDARY ( -- )
-   s" 255-cell physical minimum is representable" T-LABEL
-   255 MIN-SIG$ UDG-EXEC:SUBJECT
-   UDG-ASSERT-OK
    s" 255-cell defer still refuses an empty interpret stack" T-LABEL
    255 MIN-SIG$ 2drop
    s" MINIMUM-PROBE" UDG-LINE
    SB$ UDG-EXEC:SUBJECT
-   s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH
-   s" 256-cell physical minimum rejects deterministically" T-LABEL
-   256 MIN-SIG$ UDG-EXEC:SUBJECT
-   ASSERT-WIDE ;
+   s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH ;
 
 ;package
 
@@ -238,11 +230,9 @@ public
    UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
-\ --- primitive negatives: the band covers every specified primitive ---------
-\ A primitive's seed record carries its spec row's input count in DNAME-MIN-IN
-\ (src/habu/prims.f, baked by ENGINE-PRIMS:DNAME), so a bare primitive on a
-\ shallow stack takes the same reject. A row with no atoms (?dup, 2>r) states
-\ its count with an EMIN-IN! marker.
+\ --- primitive negatives: the checker measures a primitive by its row ------
+\ A bare primitive on a shallow stack takes the same rejection, a row with no
+\ input atoms (2>r) included.
 
 : UDG-BARE$ ( ptr u8 n -- ptr u8 n )     \ program = the bare token on one line
    SB-RESET
@@ -262,13 +252,32 @@ public
    s" patch32" UDG-PRIM-ROW
    s" bare evaluate fails closed pre-execution" T-LABEL
    s" evaluate" UDG-PRIM-ROW
-   s" bare ?dup fails closed (was a guard-page read, rc 102)" T-LABEL
-   s" ?dup" UDG-PRIM-ROW
+   s" evaluate on one cell fails closed pre-execution" T-LABEL
+   SB-RESET s" 1 evaluate" UDG-LINE SB$ UDG-EXEC:SUBJECT
+   s" evaluate" UDG-ASSERT-UNDERDEPTH
    s" bare 2>r fails closed (was a guard-page read, rc 102)" T-LABEL
    s" 2>r" UDG-PRIM-ROW
    s" partial-depth ffi-call fails closed" T-LABEL
    SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-EXEC:SUBJECT
    s" ffi-call" UDG-ASSERT-UNDERDEPTH ;
+
+\ --- body negatives: a primitive's input is measured as any word's ----------
+
+: UDG-BODY-UNDER ( ptr u8 n ptr u8 n -- ) {: src:ptr u:n at:ptr atu:n :}
+   src u UDG-BARE$ UDG-EXEC:SUBJECT
+   at atu UDG-ASSERT-UNDERDEPTH ;
+
+: UDG-NEG-BODY ( -- )
+   s" execute on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) execute ;" s" execute" UDG-BODY-UNDER
+   s" catch on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) catch ;" s" catch" UDG-BODY-UNDER
+   s" finally on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) finally ;" s" finally" UDG-BODY-UNDER
+   s" finally over no quotation in a body names its cleanup" T-LABEL
+   s" : f ( -- ) 1 2 finally ;" UDG-BARE$ UDG-EXEC:SUBJECT
+   s" error[E-MISMATCH]: finally takes a quotation as its cleanup"
+   s" finally" UDG-ASSERT-AT ;
 
 \ --- positives: the public top-level surface is untouched -------------------
 
@@ -387,6 +396,7 @@ public
    UDG-NEG-BARE
    UDG-NEG-SHAPES
    UDG-NEG-PRIMS
+   UDG-NEG-BODY
    UDG-POSITIVES
    UDG-MINIMUM:BOUNDARY
    UDG-CLEANUP

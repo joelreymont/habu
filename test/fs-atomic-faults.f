@@ -18,6 +18,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/test/c-library.f
 
 package ATOMIC-FAULTS-TEST
 private
@@ -100,23 +101,6 @@ variable SIBLINGS
    s"    FS:REPLACE-CACHED ;] catch SHOW ;" P+
    s" GO" P+ ;
 
-\ cc inherits this process's environment: its driver finds ld through PATH.
-: CC ( -- )
-   PROC-ARGV-ENV-RESET
-   s" -shared" >LEN PROC-ARGV+
-   s" -fPIC" >LEN PROC-ARGV+
-   s" -std=gnu11" >LEN PROC-ARGV+
-   s" -Wall" >LEN PROC-ARGV+
-   s" -Werror" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   SHIM-SO$ >LEN PROC-ARGV+
-   SHIM-C$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/cc" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-ENV-IO-RC MATCH result
-      ok OF drop ENDOF
-      err OF drop s" fs-atomic-faults: cc failed" T-EX-FAIL die ENDOF
-   ;MATCH ;
-
 : OLD-BYTES ( -- )
    TARGET$ s" old bytes" FS:WRITE-ALL
    STAGED$ s" old bytes" FS:WRITE-ALL
@@ -135,7 +119,7 @@ variable SIBLINGS
    ROOT$ s" cached" CACHED FS:JOIN-PATH CACHED-U !
    SHIM-SOURCE
    SHIM-C$ SHIM CODEGEN:CONTENTS FS:WRITE-ALL
-   CC
+   SHIM-C$ SHIM-SO$ C-LIBRARY:BUILD
    CHILD-SOURCE
    OLD-BYTES ;
 

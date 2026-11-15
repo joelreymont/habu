@@ -508,10 +508,7 @@ create RUSAGE-BUF RUSAGE-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 )
-   1 RUSAGE-BYTES WRITES-BYTES
-;FUNCTION
-
+FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
 
 : LE64@ ( ptr u8 -- n ) {: source :}

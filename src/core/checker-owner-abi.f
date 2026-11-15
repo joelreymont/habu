@@ -18,7 +18,6 @@ $48 constant EXPORT-OFF
 $50 constant DOES-CHECK-OFF
 $58 constant CALL-CELLS-OFF
 $60 constant CALL-MATCH-OFF
-$68 constant REC-MIN-IN-OFF
 $70 constant REC-WIDE-PUBLISH-OFF
 $78 constant CHECK-UNJUDGED-OFF
 

@@ -96,7 +96,7 @@ create TAB
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
-   BODY-ITEMS:BASE-CELL               5 cells                 CLAIM BODY-ITEMS
+   BODY-ITEMS:BASE-CELL               6 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
    TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL
@@ -138,7 +138,6 @@ create TAB
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
-   LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
    RAWNEXT-CELL                       1 cells                 CLAIM RAWNEXT-CELL
@@ -169,18 +168,19 @@ create TAB
    PROVIDED-XT:EVALUATE-CLOSED-CELL   1 cells                 CLAIM PROVIDED-XT-EVALUATE-CLOSED-CELL
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
    PROVIDED-XT:DEFINE-CELL            1 cells                 CLAIM PROVIDED-XT-DEFINE-CELL
-   PROVIDED-XT:APPEND-CELL            1 cells                 CLAIM PROVIDED-XT-APPEND-CELL
    PROVIDED-XT:COMPILE-CELL           1 cells                 CLAIM PROVIDED-XT-COMPILE-CELL
    PROVIDED-XT:END-CELL               1 cells                 CLAIM PROVIDED-XT-END-CELL
+   PROVIDED-XT:ITEM-CELL              1 cells                 CLAIM PROVIDED-XT-ITEM-CELL
    PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
    PROVIDED-XT:STORAGE-LINE-CELL      1 cells                 CLAIM PROVIDED-XT-STORAGE-LINE-CELL
    PROVIDED-XT:CELL-LINE-CELL         1 cells                 CLAIM PROVIDED-XT-CELL-LINE-CELL
    PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
    PROVIDED-XT:TYPE-OP-CELL           1 cells                 CLAIM PROVIDED-XT-TYPE-OP-CELL
+   PROVIDED-XT:VARIABLE-CELL          1 cells                 CLAIM PROVIDED-XT-VARIABLE-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
-   $3A00                              $288                    CLAIM FFI-BUFFERS
+   FFI-ABI:START                      FFI-ABI:BYTES           CLAIM FFI-ABI
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL

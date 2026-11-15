@@ -184,7 +184,6 @@ package PROCESS
 private
 PROCESS-SYMBOLS
 FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
-   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
 public

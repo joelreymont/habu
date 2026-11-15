@@ -1,11 +1,8 @@
-\ codegen.f - a shared growing byte buffer for building generated Forth source.
-\ A definer that builds source for an audited `evaluate` (DEFTYPE in
-\ src/lib/type/deftype.f, generator tools) builds the text
-\ here and keeps only its own `evaluate` wrapper: the trust boundary stays per
-\ package. STORAGE CLASS. CALLER-OWNED: each buffer's header is its definer's
-\ dictionary storage and its text a dynamic mapping that grows as text is
-\ appended, so CONTENTS holds only until the next append; the module keeps no
-\ state.
+\ codegen.f - a shared growing byte buffer for building text: a generated word's
+\ name, or a generator tool's output. STORAGE CLASS. CALLER-OWNED: each buffer's
+\ header is its definer's dictionary storage and its text a dynamic mapping that
+\ grows as text is appended, so CONTENTS holds only until the next append; the
+\ module keeps no state.
 
 require src/lib/prelude.f
 require src/core/dynamic-storage.f

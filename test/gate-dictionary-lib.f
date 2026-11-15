@@ -930,7 +930,7 @@ variable CANDIDATE-VERDICT
    s" ;package" GE-SRC-LINE
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
    s" TYPED-VARIABLE GD-UQ-A ptr u8   variable GD-UQ-U" GE-SRC-LINE
-   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ INCLUDE-EVALUATE ;" GE-SRC-LINE
+   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
    s" : GD-UQ-CATCH ( ptr u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
@@ -1192,8 +1192,8 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
-   \ state check is reached; an underdepth bare call fails earlier with an
-   \ E-UNDERFLOW record (test/underdepth-gate.f).
+   \ state check is reached; an underdepth bare call fails earlier with the
+   \ checker's E-INPUT-UNDERFLOW record at the word.
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    70 s" error[E-BAD-DECLARATION]: `+FIELD` is outside a structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET

@@ -11,7 +11,7 @@ require src/lib/test.f
 T-RESET
 
 TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
-: UCE-GO ( -- )  UCE-A @ UCE-U @ INCLUDE-EVALUATE ;
+: UCE-GO ( -- )  UCE-A @ UCE-U @ evaluate-closed ;
 : UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
 
 \ the same source through the production source verifier: the checker resolves the
@@ -169,8 +169,7 @@ s" AW drop" UCE-CATCH E-REJECT T=
 \ is neither of the package's own, names nothing to copy into the mirror: the
 \ mirror keeps UQV through the throw, and once current is back the replay
 \ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
-\ TEST-EVAL:RC; INCLUDE-EVALUATE ends the process there instead. A buffer that
-\ only interprets (`1 drop`) runs in that scope.
+\ TEST-EVAL:RC. A buffer that only interprets (`1 drop`) runs in that scope.
 package UQV
 variable UQV-CUR  get-current UQV-CUR !
 0 set-current

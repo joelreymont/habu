@@ -128,10 +128,9 @@
 \ - a top-level word no scope defines not published at it as
 \   E-UNDEFINED-TOP-LEVEL; the line after a word that parses its own input
 \   refused, or not deferred to the run at that word ................. top-level
-\ - a stored signature that does not parse, of a FUNCTION: whose group is
-\   empty or of a TRUSTED: that replaces a colon definition `undefine`
-\   removed, not published as E-BAD-STORED-SIGNATURE at its name
-\   ....................................... stored-signature, replaced-signature
+\ - a stored signature that does not parse, of a TRUSTED: that replaces a
+\   colon definition `undefine` removed, not published as
+\   E-BAD-STORED-SIGNATURE at its name ..................... replaced-signature
 \ - a name with two qualifiers, in a defer or in a definition refused for an
 \   undefined word, given no E-BAD-QUALIFIED-RECORD at it after the body's
 \   packet, or the statement's stop not published
@@ -161,7 +160,7 @@
 \ - a duplicate declaration with a malformed effect published other than as
 \   a duplicate, or listed beside the declaration retained before it
 \   ................................................ workspace-symbol-retained
-\ - a duplicate declaration with a row too wide to record, or with the
+\ - a duplicate declaration with another effect, or with the
 \   effect of the one before it, published other than as a duplicate or
 \   listed; the declaration retained before it, a definition after it, or a
 \   refused body whose signature the checker kept not listed; a malformed
@@ -2727,10 +2726,9 @@ USE-MAX 1 + constant OVER-USINGS
 : TEXT-RETAINED ( -- ptr u8 n )
    s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
 
-\ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
-\ record; NAV-SAME declared twice with one effect; NAV-ODD malformed with
-\ nothing declared before it; NAV-KEPT's body refused with its signature kept;
-\ NAV-LATER after them.
+\ NAV-WIDE declared, then declared again taking 256 cells; NAV-SAME declared
+\ twice with one effect; NAV-ODD malformed with nothing declared before it;
+\ NAV-KEPT's body refused with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
@@ -6901,17 +6899,6 @@ variable PROBE-DECLS
    s" document-symbol" [: OUTLINE-TURNS ;] TALK
    s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
 
-: EMPTY-FFI ( -- ptr u8 n )  s\" require src/lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
-
-: STORED-SIGNATURE-TURNS ( -- )
-   SESSION-INITIALIZE
-   A-PATH EMPTY-FFI 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   EMPTY-FFI A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
-
 : REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
 
 : REPLACED-SIGNATURE-TURNS ( -- )
@@ -6981,7 +6968,6 @@ variable PROBE-DECLS
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
    s" top-level" [: TOP-LEVEL-TURNS ;] TALK
-   s" stored-signature" [: STORED-SIGNATURE-TURNS ;] TALK
    s" replaced-signature" [: REPLACED-SIGNATURE-TURNS ;] TALK
    s" malformed-record" [: MALFORMED-RECORD-TURNS ;] TALK
    s" malformed-rejected" [: MALFORMED-REJECTED-TURNS ;] TALK

@@ -533,7 +533,7 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 
 
 : PREVERIFY-CUR-ACT ( -- )
-   SUBJECT$ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
+   SUBJECT$ 0 SCRIPT-ARGV$ 2 SCRIPT-ARGV$
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 : PREVERIFY-CUR ( -- )
@@ -550,7 +550,7 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [--prose | LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -618,10 +618,15 @@ public
          0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
          VERIFY-CLOSURE exit
       then
-      READ-STDIN PREVERIFY exit
    then
    SCRIPT-ARGC 3 = if
-      2 SCRIPT-ARGV$ s" --prose" CORE-STR= if false JSON? ! READ-STDIN PREVERIFY exit then
+      1 SCRIPT-ARGV$ s" --label" CORE-STR= if READ-STDIN PREVERIFY exit then
+   then
+   SCRIPT-ARGC 4 = if
+      1 SCRIPT-ARGV$ s" --label" CORE-STR=
+      3 SCRIPT-ARGV$ s" --prose" CORE-STR= and if
+         false JSON? !  READ-STDIN PREVERIFY exit
+      then
    then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! then

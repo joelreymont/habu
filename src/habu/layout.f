@@ -103,7 +103,7 @@ REGION DICT-SIZE - constant BYTES
 \ kind for a declared identity retype: its body stays callable, but a compiled
 \ mention only renames the checked value.
 \ A stamped record's body is the definer's own.
-\ Band: bits 50-51 of the record flags cell [16] (map at DNAME-MIN-IN-MASK).
+\ Band: bits 50-51 of the record flags cell [16].
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -129,9 +129,6 @@ $0000100000000000 constant DNAME-TARGET
 \ [16] bits 44-63: flags above the name length, which every length read clears by this count.
 20 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked: the
-\ interpret loop refuses a call the stack cannot feed; a compiled call carries no guard.
-$0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
@@ -178,12 +175,6 @@ $400000 constant SOURCE-ARENA-CAP
 0 constant DP-CELL
 8 constant HND-CELL
 16 constant LOCN-CELL
-$3000 constant LOCNAMES
-24 constant LOC-REC
-\ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
-\ name wider than the field is refused before it is stored.
-LOC-REC 8 - constant LOC-NAME-CAP
-64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
 \ The capture's block depth, which scopes the locals it records, and raw state:
 \ 0 none, -1 a parsing keyword's operand, d+1 inside a `[type]` span at depth d.
 $2DB8 constant CAPDEPTH-CELL
@@ -414,9 +405,7 @@ WRITE-OFF DEVICES 8 * + constant END
 
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry, set at
 \ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
-\ cells no compiled source writes, between the FFI buffer block ($3A00..$3C88),
-\ the task TCB cells ($3C88..$3CA0) and the protected-WID registry
-\ ($3CB8..$40C0).
+\ cells no compiled source writes.
 $3CA0 constant EVALREC-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; membership gates the
@@ -516,13 +505,14 @@ $3848 constant EVALUATE-CELL
 \ `evaluate-closed` runs its text through the word this cell holds.
 $3858 constant EVALUATE-CLOSED-CELL
 $3860 constant EVALUATE-RANGE-CELL
-\ `define-word`, `body-append`, `compile,`, `;` and `literal` run the running
+\ `define-word`, `compile,`, `;` and `literal` run the running
 \ engine's interpreter words these cells hold.
 $3878 constant DEFINE-CELL
-$3880 constant APPEND-CELL
 $3890 constant COMPILE-CELL
 $38B8 constant END-CELL
 $3898 constant LITERAL-CELL
+\ A definer appends an item of an ITEM-ABI op through the word this cell holds.
+$3888 constant ITEM-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code; a definer reads the cell, since inside a build a name
 \ would bind the tree's copy.
@@ -536,6 +526,9 @@ $38C0 constant CELL-LINE-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
 $38A0 constant TYPE-OP-CELL
+\ A definer declares a variable of a type node through the running engine's
+\ word this cell holds.
+$38C8 constant VARIABLE-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect
@@ -543,12 +536,16 @@ $38A0 constant TYPE-OP-CELL
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
 \ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE are
-\ storage children: STORED's parameter is 0, that of BUFFER to ARENA-DISPOSE
-\ its routine's entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS,
-\ WORK, WORKS, ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type the
-\ declaration spells; HEAP-NEW answers it and HEAP-RELEASE takes it. An
+\ storage children: STORED's parameter is 0, or its type's node when the
+\ declaration spells none, that of BUFFER to ARENA-DISPOSE its routine's
+\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK, WORKS,
+\ ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type t the declaration
+\ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
-\ writes through its receiver.
+\ writes through its receiver. A MAKE or UNMAKE child's parameter is its
+\ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
+\ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
+\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse.
 
 package CHILD-ABI
 public
@@ -575,11 +572,16 @@ public
 20 constant ARENA-DISPOSE
 21 constant INIT-GET
 22 constant INIT-SET
+23 constant MAKE
+24 constant UNMAKE
+25 constant NOMINAL-IN
+26 constant NOMINAL-OUT
 
 ;package
 
 \ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,
-\ IN and OUT b pushed on effect a, NAMED the family the a, b bytes spell.
+\ IN and OUT b pushed on effect a, NAMED the built-in type or family the a, b
+\ bytes spell, READ the one type element they spell.
 package TYPE-OP-ABI
 public
 0 constant INT
@@ -588,6 +590,7 @@ public
 4 constant IN
 5 constant OUT
 6 constant NAMED
+7 constant READ
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every
@@ -666,7 +669,6 @@ CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
-CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant DECL-REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ The scan whose verdict nobody enforces, with the render suppressed for it.
 \ A TRUSTED: body is scanned only to fill the tape, so the suppression has to
@@ -730,6 +732,7 @@ $4348 constant CAP-CELL      \ the capacity in rows
 $4350 constant COUNT-CELL    \ the rows held
 $4358 constant RAW-CELL      \ nonzero once text no item spans joined the capture
 $4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
+$4368 constant LOCALS-CELL   \ the LOCAL items so far: the next one's index
 5 constant ROW               \ cells per row
 0 constant KIND
 1 constant A
@@ -741,13 +744,37 @@ $4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
 
 \ The kinds of an item row. NAME spans the definition's name and SIG its
 \ signature with its parentheses; CALL's a is a record index; INT's a is the
-\ value.
+\ value; TYPE's a is the schema node of the family `match` or `construct`
+\ takes. A KEYWORD or OPERAND item is its spelling alone.
+\ LOCAL's a is the local's type node and b its index; LOCAL-REF's a is that index.
 package BODY-ITEM-KIND
 public
 1 constant NAME
 2 constant SIG
 3 constant CALL
 4 constant INT
+5 constant KEYWORD
+6 constant TYPE
+7 constant OPERAND
+8 constant LOCAL
+9 constant LOCAL-REF
+;package
+
+\ The ops of an item PROVIDED-XT:ITEM-CELL appends.
+package ITEM-ABI
+public
+0 constant KEYWORD
+1 constant OPERAND
+2 constant TYPE
+\ A call of the word the name binds where the definer runs.
+3 constant CALL
+\ A call of the word `PKG:TAIL` spells exactly, the top-level package's public
+\ one, which no part can shadow.
+4 constant CALL-EXACT
+\ A local of a type node.
+5 constant LOCAL
+\ A read of a local's index.
+6 constant LOCAL-REF
 ;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL
@@ -954,8 +981,8 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ fills.
 $4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
-\ an installed top-row hook. Word/tick events pass the LFIND flag word
-\ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
+\ an installed top-row hook. Word/tick events pass a flag word (bit 0 found,
+\ bit 1 DNAME-IMM); literals pass 0.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
 2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ptr u8 n )
 3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ptr )
@@ -1023,6 +1050,22 @@ FMT-ABI:END constant START
 START constant SB-BUF-OFF
 SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
 START BYTES + constant END
+;package
+
+\ FFI-ABI is src/lib/ffi-abi.f's per-task call staging, declared here because
+\ ffi-abi.f is baked into the engine.
+package FFI-ABI
+public
+16 cells constant BUF-BYTES
+8 cells constant FBUF-BYTES
+16 cells constant STACK-BUF-BYTES
+$40 constant DLBUF-BYTES
+$3A00 constant START
+START constant BUF-OFF
+BUF-OFF BUF-BYTES + constant FBUF-OFF
+FBUF-OFF FBUF-BYTES + constant STACK-BUF-OFF
+STACK-BUF-OFF STACK-BUF-BYTES + constant DLBUF-OFF
+DLBUF-OFF DLBUF-BYTES + START - constant BYTES
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots. 64 text bytes hold every errno's

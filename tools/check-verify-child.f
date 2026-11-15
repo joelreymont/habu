@@ -5,7 +5,7 @@
 \ directory.
 
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--prose] < STDIN
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL [--prose] < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --label LABEL [--prose] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
@@ -136,9 +136,9 @@
 \ cannot be verified here. The parent answers engine-provided itself.
 \
 \ The second form is check.f's pre-pass. The first definition the checker
-\ rejects stops the composition, as it stops the load, and the subject's records
-\ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing
-\ holds. It answers
+\ rejects stops the composition, as it stops the load, and a record that names
+\ the subject names it LABEL. SUBJECT is check.f's own copy of the text, which
+\ nothing holds. It answers
 \
 \    check-verify: verified | refused | missing TARGET | unread TARGET
 \

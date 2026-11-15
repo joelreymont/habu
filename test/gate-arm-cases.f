@@ -24,9 +24,11 @@ SUITE arm64-link-run
 ;SUITE
 
 \ file-objects.f builds three files into a program, runs it and counts the
-\ files the build compiled; LINKER:WRITE writes arm64 programs.
+\ files the build compiled; LINKER:WRITE writes arm64 programs. warm-engine.f
+\ builds an engine warm after an edit and compares it with a cold build's.
 SUITE file-objects
    test/file-objects.f
+   test/warm-engine.f
 ;SUITE
 
 SUITE engine-stack-debugger

@@ -27,9 +27,9 @@ TYPED-VARIABLE HK [ n -- n ]
 \ a cell whose effect takes a quotation: the spelling runs to its outer closer
 TYPED-VARIABLE HKN [ [ n -- n ] -- n ]
 
-\ define-time reject verdicts (INCLUDE-EVALUATE under catch)
+\ define-time reject verdicts (evaluate-closed under catch)
 TYPED-VARIABLE XC-A ptr u8  variable XC-U
-: XC-RUN ( -- ) XC-A @ XC-U @ INCLUDE-EVALUATE ;
+: XC-RUN ( -- ) XC-A @ XC-U @ evaluate-closed ;
 : XC-EVAL ( ptr u8 n -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
 
 \ ---- checker seam: store / fetch / execute fit-checks ------------------------

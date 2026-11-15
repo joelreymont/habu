@@ -15,7 +15,7 @@ private
 T-RESET
 
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
-: TCE-GO ( -- )  TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
+: TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
 
 public
 

@@ -302,8 +302,8 @@ create ERR IO-CAP allot
    TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N 67 T=
    nip LEN>N {: erru:n :}
-   s" and the uncaught throw is E-UNDERFLOW's -9881" T-LABEL
-   ERR erru s" hb: uncaught throw code -9881" CONTAINS? TTRUE
+   s" and the uncaught throw is E-UNDERFLOW's -9851" T-LABEL
+   ERR erru s" hb: uncaught throw code -9851" CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" E-STACK-BOUNDS" CONTAINS? TFALSE ;
 

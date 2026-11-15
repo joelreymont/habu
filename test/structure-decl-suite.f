@@ -305,6 +305,11 @@ s" nosuch" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash`, `addr` or `init` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgtag DERIVE tag FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtag`\n" DECL-DIAG:HAS? TTRUE
+s" tag" s" derive tag requires an enum" DECL-DIAG:CAUSE? TTRUE
+
+DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgstray`\n" DECL-DIAG:HAS? TTRUE
 s" VARIANT" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE

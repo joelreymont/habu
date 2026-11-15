@@ -232,7 +232,6 @@ $10 constant TIMESPEC-BYTES
 TIMESPEC-BYTES BUFFER: CLOCK-SPEC
 PROCESS-SYMBOLS
 FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
-   1 TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
 \ Nanoseconds since the epoch on clock 0, CLOCK_REALTIME on macOS and Linux: a piece's time.
@@ -4807,17 +4806,17 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:ptr calln:n :}
    HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:ptr addrn:n :}
    does if
-      copy s recorded calls calln addrs addrn false 0 hoff NPUB:IMPORT-PENDING-DOES
+      copy s recorded calls calln addrs addrn false hoff NPUB:IMPORT-PENDING-DOES
    else
       tag 5 <> if
-         copy s calls calln addrs addrn false 0  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
+         copy s calls calln addrs addrn false  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
       else
-         copy s recorded calls calln addrs addrn false 0 NPUB:IMPORT-PENDING
+         copy s recorded calls calln addrs addrn false NPUB:IMPORT-PENDING
       then
    then drop
    INTERPRETER:DEF-CLOSE
    \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
-   \ wide and min-in bits the imports were given false 0 for.
+   \ wide bit the imports were given false for.
    flags want SET-FLAGS
    FILE-EM @ e + COPY-EDGES+  want start REC-EDGES!
    does if
@@ -5304,7 +5303,7 @@ TYPED-VARIABLE EXITER [ -- ]
    {: req:n :}
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
-   SCHEMA-REG:TRANSIENT-RESET  \ the nodes its definers built definitions from
+   req 0< if SOURCE-ROOT:END-TYPES then   \ a request's part keeps its nodes through the request
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
@@ -5643,7 +5642,7 @@ TYPED-VARIABLE EXITER [ -- ]
    a u true INTERPRETER:PACKAGE-RECORD XREF-REC ;
 
 \ Owned row r's record, published as MAKE-DEF publishes a definition's, with the kernel's code
-\ and hb's record's immediate, wide and minimum-input bits, the ones alias-record keeps.
+\ and hb's record's immediate and wide bits, the ones alias-record keeps.
 : MAKE-OWNED ( n -- )
    {: r:n :}
    r 0 OWNED@ XREF-REC {: src:ptr :}
@@ -5651,7 +5650,7 @@ TYPED-VARIABLE EXITER [ -- ]
    r 3 OWNED$ wid 0 INTERPRETER:DEF-RECORD
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY {: want:n :}
    INTERPRETER:DEF-CLOSE
-   src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
+   src XREF-FLAGS  DNAME-IMM DNAME-WIDE or  and  want SET-FLAGS
    r 5 OWNED$  want CHECK:FACTS! ;
 
 \ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no

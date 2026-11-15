@@ -37,7 +37,7 @@ package LIN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-: EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
+: EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
 : DECL ( ptr u8 n -- n )
    SRC-U !  SRC-A !
    REJECTION:CAPTURE
@@ -259,7 +259,7 @@ s" error[E-MISSING-NAME]" s" `linear:`" LIN-CHILD:SAYS
 s" a row's bare call at an empty stack is refused by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
    LIN-CHILD:RUN 70 T=
-s" error[E-UNDERFLOW]" s" `LCM`" LIN-CHILD:SAYS
+s" error[E-INPUT-UNDERFLOW]" s" LCM" LIN-CHILD:SAYS
 
 \ ---- tools/check.f, an hb built with --repl and a built program -----------------
 package LIN-FILES
@@ -306,18 +306,38 @@ variable PROG-U
    ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+ ;
 
 \ Ends as tools/check.f does: a refusal's status is the child's exit code.
-: CHECK-CHILD ( -- )
-   LSP-CHECK:RESET
+: CHECK-RUN ( -- )
    PATH$ LSP-CHECK:FILE
    LSP-CHECK:RUN dup 0 <> if throw then drop ;
 
-: CHECK ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: CHECK-CHILD ( -- )
+   LSP-CHECK:RESET
+   s" json-errors" LSP-CHECK:OPT
+   CHECK-RUN ;
+
+: PROSE-CHILD ( -- )
+   LSP-CHECK:RESET
+   CHECK-RUN ;
+
+\ Checks the file CHECK-IN wrote as source under a label that starts with `-`.
+: DASH-LABEL-CHILD ( -- )
+   LSP-CHECK:RESET
+   PATH$ PROG PROG-CAP FS:READ-ALL PROG-U !
+   PROG$ s" -lin-bad.f" LSP-CHECK:SOURCE
+   LSP-CHECK:RUN dup 0 <> if throw then drop ;
+
+\ Checks PROG$ written as NAME, in the forked CHILD word.
+: CHECK-IN ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n child:ptr childu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
-   s" CHECK-CHILD" OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
+   child childu OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
+
+: CHECK ( ptr u8 n -- )  s" CHECK-CHILD" CHECK-IN ;
+: CHECK-PROSE ( ptr u8 n -- )  s" PROSE-CHILD" CHECK-IN ;
 
 : OK-FIXTURE ( -- )
    0 PROG-U !
@@ -480,15 +500,27 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
+   ERR$ S\" \"message\":\"in `linear: MINT`, the row is outside its owner's private section\"" CONTAINS? TTRUE
+   ERR$ S\" lin-bad.f\",\"line\":4," CONTAINS? TTRUE
+   s" and without --json-errors prints the record as prose" T-LABEL
+   BAD-FIXTURE s" lin-bad.f" CHECK-PROSE
+   RC @ 70 T=
    ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`, the row is outside its owner's private section" CONTAINS? TTRUE
    ERR$ s" lin-bad.f:4:" CONTAINS? TTRUE
+   ERR$ S\" \"code\":" CONTAINS? TFALSE
+   s" and takes a label that starts with -" T-LABEL
+   BAD-FIXTURE s" lin-bad.f" s" DASH-LABEL-CHILD" CHECK-IN
+   RC @ 70 T=
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`" CONTAINS? TTRUE
+   ERR$ s" -lin-bad.f:4:" CONTAINS? TTRUE
    s" and refuses a qualified public destination" T-LABEL
-   QUAL-FIXTURE s" lin-qual.f" CHECK
+   QUAL-FIXTURE s" lin-qual.f" CHECK-PROSE
    RC @ 70 T=
    ERR$ s" error[E-LINEAR-SCOPE]: in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section" CONTAINS? TTRUE
    ERR$ s" lin-qual.f:6:" CONTAINS? TTRUE
    s" and refuses an identity whose stack tails differ" T-LABEL
-   TAIL-FIXTURE s" lin-tail.f" CHECK
+   TAIL-FIXTURE s" lin-tail.f" CHECK-PROSE
    RC @ 70 T=
    ERR$ s" error[E-CAST-ARITY]: in `linear: MINT`, the input and output rows end in different tails" CONTAINS? TTRUE
    ERR$ s" lin-tail.f:6:" CONTAINS? TTRUE

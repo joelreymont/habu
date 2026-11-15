@@ -24,9 +24,7 @@ A-PROBE-OFF 1 + constant A-WORK-BYTES
 4 constant A-INTERRUPTED
 
 PROCESS-SYMBOLS
-FUNCTION: A-READ-CALL read ( n ptr u8 n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: A-READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : A-SLOT ( ptr u8 n -- ptr n ) {: work:ptr idx:n :}

@@ -202,14 +202,11 @@ variable BUILD-FMT-READY
 : TASK-DQ ( -- )
    $22 SB-APPEND-C ;
 
-s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
+PROCESS-SYMBOLS
+FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
-\ Exact strlen fixture pauses after task-local argument staging to prove tasks
-\ do not share FFI tables.
-: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
-   cstr 0 FFI:POINTER!
-   TASK:PAUSE
-   TASK-STRLEN-ROW FFI:CALL ;
+\ The pause comes before the call: a FUNCTION: word stages and calls at once.
+: TASK-CSTRLEN ( ptr u8 -- n ) TASK:PAUSE TASK-STRLEN ;
 
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
@@ -755,7 +752,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT liveu LEN>N S\" -1\n" T$=
    TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
-   TASK-OUT hugeu LEN>N S\" -9880\n-1\n-1\n70\n-9880\n-9880\n5\n0\n" T$=
+   TASK-OUT hugeu LEN>N S\" -9850\n-1\n-1\n70\n-9850\n-9850\n5\n0\n" T$=
    TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" CONTAINS? TTRUE
    TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" CONTAINS? TTRUE ;
 

@@ -75,11 +75,8 @@ SD-RESET
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id WIDTH-FAM @ = IF
-      s" a width is not stored: keep its bytes (width>n)"
-      s" declare the field `n` and store the width's byte count in it with `width>n`"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       s" name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`"
@@ -383,6 +380,7 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
@@ -401,6 +399,10 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT EMIT-DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF
+      2drop s" derive tag requires an enum"
+      s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
+      E-DERIVE DECL-REJECT:REJECT throw THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
       s" drop `order` from `DERIVE` and write the comparison as a word over the fields"
@@ -452,7 +454,7 @@ SD-QUOT-INSTALL
    na nu NAME-LONG? IF TF-NAME-LONG$ SD-LONG-FIX$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
-      na nu s" structure field names exceed declaration window" NAME-CHECK THEN
+      na nu NAME-CHECK THEN
    0 FIELD-MISS !  0 POINTEE !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN

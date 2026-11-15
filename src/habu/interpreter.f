@@ -235,7 +235,6 @@ package INTERPRETER
 private
 
 79 constant RC-TASK-THREAD       \ source read on a task's thread
-52 constant MIN-IN-SHIFT         \ record flag bits 52-59
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
 $5C constant LINE-COMMENT        \ a backslash
@@ -328,34 +327,35 @@ create NL NEWLINE c,
 : USED-WID ( n -- n )
    cells USE-WIDS-OFF + CELL@ ;
 
-\ Whether using slot s exports the token and no earlier slot uses its package.
-: ANSWERS? ( n -- bool ) {: s:n :}
-   TOKEN$ s USED-WID WL-PROBE XREF-FOUND? 0= if false exit then
+\ Whether using slot s exports the name a u and no earlier slot uses its
+\ package.
+: ANSWERS? ( ptr u8 n n -- bool ) {: a:ptr u:n s:n :}
+   a u s USED-WID WL-PROBE XREF-FOUND? 0= if false exit then
    s 0 ?do
       i USED-WID s USED-WID = if false unloop exit then
    loop
    true ;
 
-\ xt runs on each using slot that exports the token, in using order.
-: ANSWERING ( [ n -- ] -- ) {: xt :}
+\ xt runs on each using slot that exports the name a u, in using order.
+: ANSWERING ( [ n -- ] ptr u8 n -- ) {: xt a:ptr u:n :}
    CHECKER-USING-N 0 ?do
-      i ANSWERS? if i xt execute then
+      a u i ANSWERS? if i xt execute then
    loop ;
 
-: AMBIGUOUS ( -- )
-   TOKEN$ [: ANSWERING ;] USING-AMBIGUOUS-REJECT
+: AMBIGUOUS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u [: a u ANSWERING ;] USING-AMBIGUOUS-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 variable ANSWERED
 
-\ The first using slot that exports the token.
-: ANSWER ( -- n )
+\ The first using slot that exports the name a u.
+: ANSWER ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 ANSWERED !
-   [: ANSWERED @ 0< if ANSWERED ! else drop then ;] ANSWERING
+   [: ANSWERED @ 0< if ANSWERED ! else drop then ;] a u ANSWERING
    ANSWERED @ ;
 
-: SHADOWED ( -- )
-   TOKEN$ ANSWER CHECKER-USING$ USING-SHADOW-REJECT
+: SHADOWED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SEALED-FAIL ( ptr u8 n -- )
@@ -435,63 +435,66 @@ TYPED-VARIABLE REC ptr n
 
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
-: POLICY-REFUSE ( -- )
+: POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-POLICY" REJECTION:OPEN
-   TOKEN$ TICKS  s"  is not in the vocabulary this source may use" SAY
-   TOKEN$ REJECTION:AT  s" not admitted" SAY
+   a u TICKS  s"  is not in the vocabulary this source may use" SAY
+   a u REJECTION:AT  s" not admitted" SAY
    REJECTION:HELP
    s" call only public words of the packages admitted before the seal" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
+: POLICY-CHECK-REC ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
-   rec XREF-FOUND? 0= if POLICY-REFUSE then
+   rec XREF-FOUND? 0= if a u POLICY-REFUSE then
    rec XREF-NULL - seal XREF-REC-ADDR < if
       rec XREF-WORDLIST {: wid:n :}
-      wid 0 < wid PROT-WID-MAX >= or if POLICY-REFUSE then
+      wid 0 < wid PROT-WID-MAX >= or if a u POLICY-REFUSE then
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
-      wid 63 and rshift 1 and 0= if POLICY-REFUSE then
+      wid 63 and rshift 1 and 0= if a u POLICY-REFUSE then
    then
-   rec XREF-FLAGS DNAME-INT and 0<> if POLICY-REFUSE then
-   rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
-   rec XREF-START 0= if POLICY-REFUSE then ;
+   rec XREF-FLAGS DNAME-INT and 0<> if a u POLICY-REFUSE then
+   rec XREF-WORDLIST OWNER-API-PRI-WID = if a u POLICY-REFUSE then
+   rec XREF-START 0= if a u POLICY-REFUSE then ;
 
 \ At top level the ordinary `require`'s global record, spelled so, is in the
 \ vocabulary as well. A body never admits it.
-: POLICY-REQUIRE? ( ptr n -- bool ) {: rec:ptr :}
+: POLICY-REQUIRE? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n rec:ptr :}
    POLICY-REQUIRE-CELL CELL@ {: req:n :}
    req 0= if false exit then
    rec XREF-FOUND? 0= if false exit then
    rec XREF-START req <> if false exit then
    rec XREF-WORDLIST WL:GLOBAL? 0= if false exit then
-   s" require" TOKEN-IS? ;
+   a u s" require" FOLDED= ;
 
-: POLICY-CHECK-TOP ( ptr n -- ) {: rec:ptr :}
-   rec POLICY-REQUIRE? if exit then
-   rec POLICY-CHECK-REC ;
+\ The record, rejected, naming it, where a bare name meets two used publics
+\ that export it, or a global and a used public that do.
+: USING-CHECK ( ptr u8 n ptr n ptr n n -- ptr n )
+   {: a:ptr u:n rec:ptr used:ptr flags:n :}
+   flags SCOPE-FIND-AMBIGUOUS and 0<> {: amb:bool :}
+   rec XREF-FOUND? 0= if amb if a u AMBIGUOUS then rec exit then
+   rec XREF-WORDLIST WL:GLOBAL? 0= if rec exit then
+   amb if a u AMBIGUOUS then
+   used XREF-FOUND? if a u SHADOWED then
+   rec ;
 
-: LOOKUP-GO ( -- )
-   TOKEN$ FIND REC !
-   REC @ POLICY-CHECK-TOP
-   REC @ XREF-FOUND? 0= if exit then
-   REC @ XREF-WORDLIST WL:GLOBAL? 0= if exit then
-   TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
-   flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
-   used XREF-FOUND? if SHADOWED then ;
+\ The record the name binds, rejected, naming it, where a sealed source may
+\ not call it, then where USING-CHECK rejects it.
+: LOOKUP-NAME ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   a u rec POLICY-CHECK-REC
+   a u rec used flags USING-CHECK ;
 
+\ LOOKUP-NAME for the top-level token, whose policy also admits the exempt
+\ require.
 : SEARCH ( -- )
-   XREF-NULL REC !
-   [: LOOKUP-GO ;] catch {: code:n :}
-   code E-USING-AMBIGUOUS = if AMBIGUOUS then
-   code 0<> if code throw then ;
+   TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
+   TOKEN$ rec used flags USING-CHECK REC ! ;
 
 : LOOKUP ( -- )
    SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
-
-: MIN-IN ( n -- n )
-   DNAME-MIN-IN-MASK and MIN-IN-SHIFT rshift ;
 
 : LAYOUT-VALUE ( -- )
    s" E-LAYOUT-VALUE" REJECTION:OPEN
@@ -531,25 +534,14 @@ TYPED-VARIABLE REC ptr n
    s"  inside a definition, where the checker proves its scope" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: UNDERDEPTH ( -- )
-   s" E-UNDERFLOW" REJECTION:OPEN
-   TOKEN$ TICKS  s"  takes more values than the stack holds" SAY
-   TOKEN$ REJECTION:AT  s" too few values" SAY
-   REJECTION:HELP  s" push the values " SAY  TOKEN$ TICKS
-   s"  takes before it" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : GATE ( -- )
    XT-GATE
-   SCOPE-ENTRY-GUARD
-   depth REC @ XREF-FLAGS MIN-IN < if UNDERDEPTH then ;
+   SCOPE-ENTRY-GUARD ;
 
-\ The flag word as the hook reads it: bit 0 found, bit 1 immediate, bits 8-15
-\ the certified inputs.
+\ The flag word as the hook reads it: bit 0 found, bit 1 immediate.
 : WORD-FLAGS ( -- n )
    REC @ XREF-FLAGS {: f:n :}
-   1 f DNAME-IMM and 0<> if 2 or then
-   f MIN-IN 8 lshift or ;
+   1 f DNAME-IMM and 0<> if 2 or then ;
 
 \ The dictionary record index of each word run since RECORD-RUNS, in order.
 DYNAMIC-BUFFER RUNS n
@@ -1355,7 +1347,11 @@ private
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
-LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
+DYNAMIC-BUFFER BODY-LOCAL-DEPTH n
+\ Each local's bare name ends at its LOCAL-END offset in LOCAL-NAMES, which
+\ holds the names end to end in binding order.
+DYNAMIC-BUFFER LOCAL-NAMES u8
+DYNAMIC-BUFFER LOCAL-END n
 
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
@@ -1369,7 +1365,7 @@ DYNAMIC-BUFFER ITEM-CELLS n
 : ITEMS-RESET ( -- )
    0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
    0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL!
-   0 BODY-ITEMS:EFFECT-CELL CELL! ;
+   0 BODY-ITEMS:EFFECT-CELL CELL!  0 BODY-ITEMS:LOCALS-CELL CELL! ;
 
 : ITEM@ ( n n -- n ) {: i:n f:n :}
    i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
@@ -1643,16 +1639,6 @@ private
    s" give the definition a name that is not a compile keyword" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-POLICY" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is an engine keyword outside the vocabulary and cannot name a definition"
-   REJECTION:EMIT-STR
-   a u REJECTION:AT  s" engine keyword" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" give the definition a name that is not an engine keyword" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -1665,7 +1651,7 @@ private
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
-      a u DEF-NAME-KEYWORD? if a u DEF-POLICY-REFUSE then
+      a u DEF-NAME-KEYWORD? if a u POLICY-REFUSE then
    else
       a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then
    then
@@ -1836,14 +1822,17 @@ private
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
+: LOCAL-START ( n -- n ) {: idx:n :}
+   idx 0= if 0 exit then
+   idx 1- LOCAL-END @ ;
+
 \ The capture records each `{:` declaration here; the compiler reads it from the
 \ body text at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
-      data-base LOCNAMES + i LOC-REC * + BYTE-VIEW {: row:ptr :}
-      row CELL-VIEW @ u = if
-         a u row 8 + u STR= if true unloop exit then
+      i LOCAL-END @ i LOCAL-START - u = if
+         a u  i LOCAL-START LOCAL-NAMES  u STR= if true unloop exit then
       then
    loop
    false ;
@@ -1851,31 +1840,13 @@ private
 : BODY-LOCAL-ONE ( -- )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ {: idx:n :}
-   idx LOC-RECS >= if
-      s" E-TOO-MANY-LOCALS" REJECTION:OPEN
-      s" the local `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s" ` is one more than a definition may declare" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" too many locals" REJECTION:EMIT-STR
-      LOC-RECS s" " REJECTION:LIMIT
-      REJECTION:HELP
-      s" split the definition, or keep some values on the stack" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   then
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
-   len LOC-NAME-CAP > if
-      s" E-LOCAL-NAME-TOO-LONG" REJECTION:OPEN
-      s" the local name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s" ` is too long" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" name too long" REJECTION:EMIT-STR
-      LOC-NAME-CAP s" bytes" REJECTION:LIMIT
-      REJECTION:HELP
-      s" shorten the local's name to the limit" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   then
-   data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
-   len row CELL-VIEW !
-   a row 8 + len BYTE-COPY
+   idx LOCAL-START {: at:n :}
+   idx 1+ BODY-LOCAL-DEPTH-RESERVE  idx 1+ LOCAL-END-RESERVE
+   at len + LOCAL-NAMES-RESERVE
+   at len + idx LOCAL-END !
+   a  at LOCAL-NAMES  len BYTE-COPY
    CAPDEPTH-CELL CELL@ idx BODY-LOCAL-DEPTH !
    idx 1+ LOCN-CELL CELL! ;
 
@@ -1921,9 +1892,9 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
    POLICY-NDICT-CELL CELL@ 0= if exit then
    num if exit then
    TOKEN$ FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
+   rec XREF-FOUND? if TOKEN$ rec POLICY-CHECK-REC exit then
    TOKEN$ FIND {: used:ptr :}
-   used XREF-FOUND? if used POLICY-CHECK-REC exit then
+   used XREF-FOUND? if TOKEN$ used POLICY-CHECK-REC exit then
    s" if" TOKEN-IS? if exit then
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
@@ -1932,7 +1903,7 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
    s" [package]" TOKEN-IS? if exit then
    s" [type]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
-   POLICY-REFUSE ;
+   TOKEN$ POLICY-REFUSE ;
 
 : DEF-PREFLIGHT ( -- )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
@@ -1944,7 +1915,7 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
-   rec POLICY-CHECK-REC
+   TOKEN$ rec POLICY-CHECK-REC
    rec TOKEN$ NEUTRAL-PARSE-IMM?
    dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
@@ -2104,9 +2075,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ ---- definitions built by a running word -------------------------------------
 \ The source cursor stays at the running definer's call, where a refusal of
-\ define-word, literal, body-append, compile, or ; locates.
+\ define-word, literal, compile, or ; locates.
 
-\ w names the rejected operation: `define-word`, or a declaration's child.
+\ w names the rejected operation: `define-word`, a declaration's child or an
+\ item.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
    w wu a u s" not one token" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -2123,13 +2095,25 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Opens the rejection of an effect value DEFINE-RUN cannot take, such as
-\ EFFECT:N, through its label; the quotation writes why, and the caller adds
-\ the notes, the help and CHECKER-REJECT-RC REJECTION:STOP.
+\ EFFECT:N or one a local's type widens past the parameter cap, through its
+\ label; the quotation writes why, and the caller adds the notes, the help and
+\ CHECKER-REJECT-RC REJECTION:STOP.
 : DEF-NOT-EFFECT ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NOT-EFFECT" REJECTION:OPEN
    s" the effect `define-word` got for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` " REJECTION:EMIT-STR  execute
    a u REJECTION:AT  s" effect rejected for this name" REJECTION:EMIT-STR ;
+
+\ Rejects the definition a u, whose effect and locals' types have more
+\ distinct type parameters than the cap.
+: DEF-WIDE ( ptr u8 n -- ) {: a:ptr u:n :}
+   [: s" has too many type parameters" REJECTION:EMIT-STR ;]
+   a u DEF-NOT-EFFECT
+   TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
+   REJECTION:HELP
+   s" use fewer distinct type parameters in the effect and the locals' types"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= if false exit then
@@ -2148,15 +2132,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
-   eff CHECK:EFFECT-DENSE 0= if
-      [: s" has too many type parameters" REJECTION:EMIT-STR ;]
-      a u DEF-NOT-EFFECT
-      TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
-      REJECTION:HELP
-      s" give `define-word` an effect with fewer distinct type parameters"
-      REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   then {: dense:n :}
+   eff CHECK:EFFECT-DENSE 0= if a u DEF-WIDE then
+   {: dense:n :}
    dense CHECK:EFFECT-RULES? 0= if
       [: s" is not one a written signature could state" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
@@ -2221,11 +2198,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: APPEND-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" body-append" BUILT-PENDING
-   -1 BODY-ITEMS:RAW-CELL CELL!
-   a u DEF-CAPTURE ;
-
 \ What `;` runs: it ends the definition.
 : END-RUN ( -- )
    s" ;" BUILT-PENDING DEF-END ;
@@ -2251,22 +2223,26 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    wid XREF:NS-ROW nip if exit then
    E-COMP-STATE throw ;
 
-\ Appends a call of the word at entry E, which the checker binds.
-: COMPILE-CALL ( n -- ) {: e:n :}
-   e XREF:ENTRY-REC {: r:n :}
-   r -1 = if NAMELESS-REFUSE then
+\ Appends a call of the word at record index R, which the checker binds.
+: CALL-ITEM ( n -- ) {: r:n :}
    r XREF-REC {: rec:ptr :}
    rec CALLEE-CHECK
    BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
+
+\ Appends a call of the word at entry E.
+: COMPILE-CALL ( n -- ) {: e:n :}
+   e XREF:ENTRY-REC {: r:n :}
+   r -1 = if NAMELESS-REFUSE then
+   r CALL-ITEM ;
 
 \ What `compile,` runs: it appends a call of the word whose entry the quotation is.
 : COMPILE-RUN ( [ R -- S ] -- )
    s" compile," BUILT-PENDING QUOT-ENTRY COMPILE-CALL ;
 
 \ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
-\ hold any i64 and its sign. `/` truncates, so a negative value's remainders
-\ are at most 0.
-20 BUFFER: LIT-DIGITS
+\ hold any i64 and its sign, and one more a local's `l`. `/` truncates, so a
+\ negative value's remainders are at most 0.
+21 BUFFER: LIT-DIGITS
 variable LIT-AT
 
 : LIT-DIGIT ( n -- ) {: c:n :}
@@ -2277,16 +2253,75 @@ variable LIT-AT
    v v 10 / 10 * - {: r:n :}
    r 0 < if 0 r - else r then ;
 
+: LIT-SPAN ( -- ptr u8 n ) LIT-DIGITS LIT-AT @ +  21 LIT-AT @ - ;
+
 : LIT$ ( n -- ptr u8 n ) {: v:n :}
-   20 LIT-AT !
+   21 LIT-AT !
    v begin dup LIT-REM 48 + LIT-DIGIT  10 / dup 0= until drop
    v 0 < if 45 LIT-DIGIT then
-   LIT-DIGITS LIT-AT @ +  20 LIT-AT @ - ;
+   LIT-SPAN ;
+
+\ A local's spelling in the listing: `l` and its index.
+: LOCAL$ ( n -- ptr u8 n ) LIT$ 2drop  108 LIT-DIGIT  LIT-SPAN ;
 
 \ What `literal` runs: an INT item, spelled in decimal.
 : LITERAL-RUN ( n -- ) {: v:n :}
    s" literal" BUILT-PENDING
    BODY-ITEM-KIND:INT v 0 v LIT$ ITEM+ ;
+
+\ Appends a call of the word a lookup of the name found.
+: FOUND-CALL ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+   rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
+   rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
+
+: ITEM-OP-REFUSE ( n -- ) {: op:n :}
+   s" E-ITEM-OP" REJECTION:OPEN
+   s" an item's op is not one " SAY  s" ITEM-ABI" TICKS  s"  names" SAY
+   TOKEN$ REJECTION:AT  s" unknown item op" SAY
+   s" op" REJECTION:NOTE  op REJECTION:EMIT-N
+   REJECTION:HELP  s" pass an op " SAY  s" ITEM-ABI" TICKS  s"  defines" SAY
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Rejects the item A U unless define-word opened the definition: only its
+\ effect numbers the parameters a local's type is read by.
+: LOCAL-UNBUILT ( ptr u8 n -- ) {: a:ptr u:n :}
+   BODY-ITEMS:EFFECT-CELL CELL@ 0<> if exit then
+   s" E-NO-DEFINITION" REJECTION:OPEN
+   s" the local " SAY  a u TICKS
+   s"  needs a definition " SAY  s" define-word" TICKS  s"  opened" SAY
+   TOKEN$ REJECTION:AT  s" not opened by " SAY  s" define-word" TICKS
+   REJECTION:HELP  s" open the definition with " SAY  s" define-word" TICKS
+   s" , whose effect numbers the local's type parameters" SAY
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Appends a local of type node T, whose index is the LOCAL items before it;
+\ its node numbers T's parameters on from the definition's effect.
+: LOCAL-ITEM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
+   a u LOCAL-UNBUILT
+   t CHECK:TYPE-DENSE 0= if DEF-CAPTURED-NAME DEF-WIDE then
+   {: dense:n :}
+   BODY-ITEMS:LOCALS-CELL CELL@ {: i:n :}
+   BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
+   i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
+
+\ Runs a definer's item: ITEM-ABI op OP, one-token spelling A U, and V, a
+\ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
+: ITEM-RUN ( ptr u8 n n n -- ) {: a:ptr u:n v:n op:n :}
+   a u BUILT-PENDING
+   a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REFUSE then
+   op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
+   op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
+   op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
+   op ITEM-ABI:LOCAL = if a u v LOCAL-ITEM exit then
+   op ITEM-ABI:LOCAL-REF = if
+      a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit
+   then
+   op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
+   op ITEM-ABI:CALL-EXACT = if
+      a u XREF-FIND {: rec:ptr :}
+      a u rec POLICY-CHECK-REC  a u rec FOUND-CALL exit
+   then
+   op ITEM-OP-REFUSE ;
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
@@ -2451,12 +2486,9 @@ variable DEF-VALUE
    DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
    NCOMP-DISPATCH:DECL-CAST-OFF DEF-REGISTER-IDENTITY ;
 
-\ The record takes what the checker's registrar latched: the wide mark, then
-\ the minimum input arity, under which the interpret dispatch refuses a call.
+\ The record takes the wide mark the checker's registrar latched.
 : DEF-CAST-FACTS ( -- )
-   CHECK:REC-WIDE-PUBLISH
-   REC-MIN-IN@ {: mi:n :}
-   mi 0<> if ndict@ 1- mi min-in-mark then ;
+   CHECK:REC-WIDE-PUBLISH ;
 
 : DEF-CAST-ROW ( -- )
    DEF-ROOM
@@ -2511,6 +2543,10 @@ variable DEF-VALUE
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
    shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
    shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
+   shape CHILD-ABI:MAKE =
+   shape CHILD-ABI:UNMAKE = or
+   shape CHILD-ABI:NOMINAL-IN = or
+   shape CHILD-ABI:NOMINAL-OUT = or if COMP-BODY:cast 0 exit then
    COMP-BODY:routine shape param ROUTINE ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
@@ -3007,7 +3043,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-ROLLBACK-TOKEN ( -- )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
-   TOKBODY-CELL CELL@ ITEMS-CUT
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOKDEPTH-CELL CELL@ CAPDEPTH-CELL CELL!
    TOKRAW-CELL CELL@ RAWNEXT-CELL CELL!
@@ -3243,6 +3278,7 @@ public
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
       f FRAME-CELLS-RESTORE
+      entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
    then
    code 0<> if DECL-MARK @ SOURCE-ROOT:TEXT-UNWOUND then
    prior ENTRY-PEND !  prior-hnd OWN-HND !  prior-mark DECL-MARK !
@@ -3277,14 +3313,15 @@ public
    ['] EVAL-CLOSED data-base PROVIDED-XT:EVALUATE-CLOSED-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
-   ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] COMPILE-RUN data-base PROVIDED-XT:COMPILE-CELL + xt!
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
+   ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] CHECK:CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
-   ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;
+   ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt!
+   ['] TYPED-VARIABLE-NODE data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
 
 ;package
 

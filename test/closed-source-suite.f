@@ -17,16 +17,13 @@ CODEGEN:BUFFER GEN
    s" : " GEN+  a u GEN+  s"  ( -- n ) " GEN+
    v GEN CODEGEN:APPEND-DECIMAL  s"  ;" GEN+ ;
 
-: CROSS ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+: CROSS ( -- ) GEN CODEGEN:CONTENTS evaluate-closed ;
 
-\ A source-generating definer hands its rendered text to INCLUDE-EVALUATE
-\ (src/core/include.f), which TYPE-DECL:TDECL-EVAL-XT is bound to for every
-\ generated core declaration: evaluate-closed, the floor at the definer's depth,
-\ leaving nothing. The three definers below differ only in what they append: a
-\ sound one's product certifies, one leaving a cell is rejected with a record
-\ and 70, and one taking a cell it never pushed throws 70 with the caller's
-\ cells intact. test/deftype-suite.f and src/lib/ffi-test.f certify the products of
-\ src/lib/type/deftype.f (evaluate-closed) and src/lib/ffi-abi.f (INCLUDE-EVALUATE).
+\ A source-generating definer hands its rendered text to evaluate-closed: the
+\ floor at the definer's depth, leaving nothing. The three definers below differ
+\ only in what they append: a sound one's product certifies, one leaving a cell
+\ is rejected with a record and 70, and one taking a cell it never pushed
+\ throws 70 with the caller's cells intact.
 : SOUND ( n ptr u8 n -- ) RENDER CROSS ;
 
 : LEAKY ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
@@ -37,7 +34,7 @@ CODEGEN:BUFFER GEN
 : CERTIFIES ( -- )
    s" a sound definer's text loads" T-LABEL
    7 s" CSRC-SEVEN" SOUND
-   s" CSRC-SEVEN 7 T=" INCLUDE-EVALUATE
+   s" CSRC-SEVEN 7 T=" evaluate-closed
    s" its product certifies in a checked caller" T-LABEL
    s" CSRC-SEVEN-USE ( -- n ) CSRC-SEVEN" CHECK! -1 T=
    s" against the effect the definer declared" T-LABEL

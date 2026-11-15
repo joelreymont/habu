@@ -666,45 +666,46 @@ s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
 s" trail-arena-grow" T-LABEL
 TRAIL-CAP @ 2 > TTRUE
 s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
-s" COK-LOC16 ( n -- n ) {: xxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxx" T-CHECK-PASSES
-s" CBAD-LOC17 ( n -- n ) {: xxxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxxx" T-CHECK-REJECTS
-\ The declaration token is pinned by the first failure, so the body's later
-\ reference to the rejected name must not relabel the reject as an undefined
-\ word.
-512 constant LOCG-CAP
+: LOCPROBE ( bool n -- n )
+   {: first-local-with-a-long-name:n :}
+   if 10 {: second-local-name-longer-than-sixteen:n :} second-local-name-longer-than-sixteen
+   else 20 {: c:n :} c then
+   {: third-very-long-local-name-after-drop:n :}
+   third-very-long-local-name-after-drop first-local-with-a-long-name + ;
+s" long local names run in the true arm" T-LABEL
+true 5 LOCPROBE 15 T=
+s" long local names run in the false arm" T-LABEL
+false 5 LOCPROBE 25 T=
+4096 constant LOCG-CAP
 create LOCG-BUF LOCG-CAP allot
 variable LOCG-U
 : LOCG-C ( n -- )
-   LOCG-U @ LOCG-CAP >= if s" engine-suite: locals group too long" 1 die then
+   LOCG-U @ LOCG-CAP >= if
+      s" engine-suite: generated definition too long" 1 die
+   then
    LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
-: LOCG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: LOCG+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@ LOCG-C  1 + repeat drop ;
-: LOCG-BUILD ( ptr u8 n n -- ) {: name:ptr nameu:n count:n :}
+: LOCG-NAME ( n -- )
+   s"  local-name-past-sixteen-" LOCG+
+   dup 10 / 48 + LOCG-C  10 mod 48 + LOCG-C ;
+\ Builds ": LOC100 ... ;", whose 100 locals hold 5 .. 104 for 5 LOC100.
+: LOCG-BUILD ( -- )
    0 LOCG-U !
-   name nameu LOCG+  s"  (" LOCG+
-   count 0 ?do  s"  n" LOCG+  loop
-   s"  -- ) {:" LOCG+
-   count 0 ?do  32 LOCG-C  [char] t LOCG-C  i 10 / 48 + LOCG-C  i 10 mod 48 + LOCG-C  loop
-   s"  :}" LOCG+ ;
-: LOCG$ ( -- ptr u8 n ) LOCG-BUF LOCG-U @ ;
-REJECTION:CAPTURE
-s" over-width local rejects" T-LABEL
-s" CBAD-LOC17-DIAG ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
-s" over-width local names E-LOCAL-NAME-TOO-LONG" T-LABEL
-REJECTION:BUFFER$ s" E-LOCAL-NAME-TOO-LONG" CONTAINS? TTRUE
-s" over-width local states the width and the limit" T-LABEL
-REJECTION:BUFFER$ s" local `abcdefghijklmnopq:n` has a 17-byte name; the limit is 16 bytes" CONTAINS? TTRUE
-s" over-width local is not reported as an undefined word" T-LABEL
-REJECTION:BUFFER$ s" E-UNDEFINED" CONTAINS? TFALSE
-REJECTION:CAPTURE
-s" 64 locals certify" T-LABEL
-s" COK-LOC64" 64 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! -1 T=
-REJECTION:CAPTURE
-s" 65 locals reject" T-LABEL
-s" CBAD-LOC65" 65 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! 0 T=
-s" 65th local names E-TOO-MANY-LOCALS and the cap" T-LABEL
-REJECTION:BUFFER$ s" E-TOO-MANY-LOCALS" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" local `t64` is one over the 64 locals a definition may bind" CONTAINS? TTRUE
+   s" : LOC100 ( n -- n )" LOCG+
+   99 0 ?do  s"  dup 1 +" LOCG+  loop
+   s"  {:" LOCG+  100 0 ?do  i LOCG-NAME  loop  s"  :}" LOCG+
+   99 LOCG-NAME  0 LOCG-NAME  s"  - ;" LOCG+ ;
+\ The definition without its leading ": " and trailing " ;".
+: LOCG-DEF$ ( -- ptr u8 n ) LOCG-BUF 2 + LOCG-U @ 4 - ;
+: LOCG-SRC$ ( -- ptr u8 n ) LOCG-BUF LOCG-U @ ;
+LOCG-BUILD
+s" 100 locals with long names certify" T-LABEL
+LOCG-DEF$ CHECK-CANDIDATE! -1 T=
+LOCG-SRC$ evaluate
+s" 100 locals with long names run" T-LABEL
+5 LOC100 99 T=
 REJECTION:CAPTURE
 s" locals inside a quotation reject" T-LABEL
 s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
@@ -861,38 +862,7 @@ s" CBAD-LOC-BAR ( n n -- n ) {: a | :} a" CHECK-CANDIDATE! 0 T=
 s" | in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
 REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" `|`" CONTAINS? TTRUE
-\ A local the load cannot bind refuses the definition at its token, as the
-\ load does while it compiles the body, ahead of any check failure before it.
-REJECTION:CAPTURE
-s" quotation local before a wide local rejects" T-LABEL
-s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
-s" quotation local before a wide local keeps the shape code on '{:'" T-LABEL
-REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" --> <input>:1:40" CONTAINS? TTRUE
-REJECTION:CAPTURE
-s" wide local before a quotation local rejects" T-LABEL
-s" CBAD-LOC-WIDE-THEN-SHAPE ( n -- n ) {: abcdefghijklmnopq:n :} [: {: y:n :} ;] drop 1" CHECK-CANDIDATE! 0 T=
-s" wide local before a quotation local keeps the width code on its token" T-LABEL
-REJECTION:BUFFER$ s" error[E-LOCAL-NAME-TOO-LONG]: local `abcdefghijklmnopq:n` has a 17-byte name" CONTAINS? TTRUE
-REJECTION:CAPTURE
-s" type fault before a wide local rejects" T-LABEL
-s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
-s" type fault before a wide local names the local, as the load does" T-LABEL
-REJECTION:BUFFER$ s" error[E-LOCAL-NAME-TOO-LONG]: local `abcdefghijklmnopq:n` has a 17-byte name" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" `c@`" CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" over-width local JSON packet" T-LABEL
-s" CBAD-LOC17-JSON ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
-s" over-width local JSON code" T-LABEL
-REJECTION:BUFFER$ s\" \"code\":\"E-LOCAL-NAME-TOO-LONG\"" CONTAINS? TTRUE
-s" over-width local JSON help" T-LABEL
-REJECTION:BUFFER$ s\" \"help\":\"shorten the name in `abcdefghijklmnopq:n` to at most 16 bytes\"" CONTAINS? TTRUE
-REJECTION:CAPTURE
-s" 65th local JSON packet" T-LABEL
-LOCG$ CHECK-CANDIDATE! 0 T=
-s" 65th local JSON code" T-LABEL
-REJECTION:BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? TTRUE
-REJECTION:CAPTURE
 s" -- in a locals group JSON packet" T-LABEL
 s" CBAD-LOC-DASH-JSON ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group JSON code and reason" T-LABEL

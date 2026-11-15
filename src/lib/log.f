@@ -1,6 +1,7 @@
-\ log.f - lines on fd 2 that say why a program failed, package LOG. A failure
-\ caused outside the program (a provider, the network, the OS) is logged once,
-\ with its text, by the library that saw it, just before it throws.
+\ log.f - lines on fd 2 that say why a program failed, and, at info, what a
+\ service did, package LOG. A failure caused outside the program (a provider,
+\ the network, the OS) is logged once, with its text, by the library that saw
+\ it, just before it throws.
 \ LINE opens a line, TEXT+, INT+ and CODE+ append to it, ;LINE writes it as
 \ `<YYYY-MM-DDTHH:MM:SSZ> <level> <tag>: <text>` and LF, the stamp UTC. The tag
 \ is the caller's package name in lower case; LOG does not check it.
@@ -39,6 +40,7 @@ DEFTYPE LEVEL
 
 0 constant ERROR-N
 1 constant WARN-N
+2 constant INFO-N
 $A constant LF
 \ A mapping is at least a page, so lines up to 4 KiB reuse the row.
 $1000 constant START-CAP
@@ -126,8 +128,10 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : LEVEL$ ( level -- ptr u8 n )
-   LEVEL>N ERROR-N = if s" error" exit then
-   s" warn" ;
+   LEVEL>N {: n:n :}
+   n ERROR-N = if s" error" exit then
+   n WARN-N = if s" warn" exit then
+   s" info" ;
 
 
 : ESCAPE? ( n -- bool )
@@ -237,6 +241,7 @@ public
 
 : ERROR ( -- level )  ERROR-N >LEVEL ;
 : WARN ( -- level )  WARN-N >LEVEL ;
+: INFO ( -- level )  INFO-N >LEVEL ;
 
 
 : TEXT+ ( ptr u8 n -- )

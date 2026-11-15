@@ -17,11 +17,11 @@ package REJECTION
 private
 
 create BYTE-BUF 1 allot
-\ TEXT, mapped on first use, holds the text being recorded, TEXT-LEN bytes of it;
-\ FLUSH zeroes TEXT-LEN.
+\ TEXT holds the record being built, TEXT-LEN bytes of it. It is mapped on
+\ first use, in the running process: an image starts with none.
 16384 constant TEXT-FIRST                \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE TEXT-P   NULL-PTR TEXT-P !
-variable TEXT-CAP   0 TEXT-CAP !        \ bytes mapped at TEXT-P, 0 for none
+PTR-VARIABLE TEXT-P
+SCRATCH-VARIABLE TEXT-CAP               \ bytes mapped at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 \ Which text of the record is open. A prose AT opens GAP-PART: the label's
 \ first byte writes the space after the carets and opens LABEL-PART.
@@ -299,13 +299,11 @@ private
 : ROW@ ( n -- n )
    ROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
-\ The first cell of the last of count two-cell rows at or before text offset x.
+\ The first cell of the last of count two-cell rows at or before text offset x,
+\ row 0 when none is. The rows ascend by text offset.
 : ROW-AT ( ptr n n n -- n )
    {: rows:ptr count:n x:n :}
-   0 BEGIN
-      dup 1 + count < IF dup 1 + 2 * cells rows + @ x <= ELSE 0 0= 0= THEN
-   WHILE 1 + REPEAT
-   2 * ;
+   1 count [: 2 * cells rows + @ x <= ;] KERNEL-SEARCH:PARTITION-POINT 1 - 2 * ;
 : MAP-ROW ( n -- n )
    {: x:n :}
    ROW-A @ ROW-N @ x ROW-AT ;

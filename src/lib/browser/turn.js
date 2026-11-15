@@ -41,8 +41,8 @@
 //     UTF-8; one per host notification
 //   tick: a the token of the after record that asked for it
 //   file: a, b the file's UTF-8 name, c its size in bytes, d the host's
-//     positive file number, valid while the module lives; one per file picked
-//     or dropped
+//     positive file number, valid while the module lives; one per file the
+//     host numbers
 //   chunk: a, b the bytes read, c the file number, d the offset; buttons 1, or
 //     0 when the read failed, with a, b String(error)
 //   picked: a the id (the row's u32 id) of the instance nearest at the pick's
@@ -82,7 +82,9 @@
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
 //     boolean more, true when the row has children and none of them are among
-//     the rows (absent is false); c the selected key or 0; keys are unique
+//     the rows (absent is false), and an optional boolean open, whether the
+//     row starts open (absent: open when its children are among the rows);
+//     c the selected key or 0; keys are unique
 //     positive safe integers, a parent is 0 or an earlier row's key whose more
 //     is not true; a row the module sends again keeps its key from one tree to
 //     the next
@@ -193,8 +195,9 @@ const MAX_VERTICES = 65536; // a mesh's u16 indices name at most this many
 const MAX_ORIGIN = 0xFF0000; // a mesh origin plus a u16 is exact in f32
 const MESH_HEAD = 20; // a mesh's counts and origin, in bytes
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
-// A tree row's keys, sorted: more is optional.
-const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent"]);
+// A tree row's keys, sorted: more and open are optional.
+const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent",
+  "key,label,open,parent", "key,label,more,open,parent"]);
 
 // Events; start, kind 0, is the zero event block the first run reads.
 const BYTES = 1n;
@@ -714,6 +717,8 @@ export class Module {
         throw new Error("tree row must have a positive safe key, earlier parent, and string label");
       if ("more" in row && typeof row.more !== "boolean")
         throw new Error(`tree row ${row.key} more must be a boolean`);
+      if ("open" in row && typeof row.open !== "boolean")
+        throw new Error(`tree row ${row.key} open must be a boolean`);
       if (keys.has(row.key)) throw new Error(`duplicate tree key ${row.key}`);
       if (row.parent !== 0 && !keys.has(row.parent))
         throw new Error(`tree parent ${row.parent} must be an earlier row key`);

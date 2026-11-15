@@ -145,14 +145,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-TRUSTED`" path pathu GE-EXPECT-ERR-HAS
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-DEFER`" path pathu GE-EXPECT-ERR-HAS ;
 
-: BADSIG-WIDE-ONCE ( -- )
-   s" test/program-diagnostic-wide-native.f" {: path:ptr pathu:n :}
-   path pathu RUN-LOAD
-   path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 0\n1\nok\n" STR= 0= if s" wide badsig count" GE-FAIL then
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-WIDE`" path pathu GE-EXPECT-ERR-HAS
-   s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
-
 \ A multi-error load counts the rejections it renders: a quiet scan's rejection
 \ is neither printed nor counted, so the count is 1 and stderr holds one record.
 : QUIET-COUNT-ONCE ( -- )
@@ -166,7 +158,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
-   BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS

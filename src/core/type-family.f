@@ -375,6 +375,7 @@ public
 2 constant DRV-HASH
 4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
+16 constant DRV-TAG              \ checked conversion from a tag, TAG>
 
 private
 
@@ -390,6 +391,8 @@ public
 : TFAM-DERIVE-ADDR? ( n -- bool ) TFAM-DERIVE@ DRV-ADDR and 0 <> ;
 : TFAM-DERIVE-INIT! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-INIT or swap ! ;
 : TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
+: TFAM-DERIVE-TAG! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-TAG or swap ! ;
+: TFAM-DERIVE-TAG? ( n -- bool ) TFAM-DERIVE@ DRV-TAG and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ The OPAQUE header clause: the family stays as visible as it was declared, and
@@ -985,6 +988,7 @@ public
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" tag>" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
 
 private
@@ -992,6 +996,7 @@ private
 : TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the FAMILY generates
    a u s" eq" CORE-STR=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
    a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
+   a u s" tag>" CORE-STR=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
 
@@ -1007,7 +1012,7 @@ public
 \ read the spelling from the derivation that generates it, never restate it.
 \ A constructor word's tail is its variant's tail, so only the rows in that
 \ tail's VNX bucket can be one. A derived word is recognized from its family,
-\ not a row, so only the three derived tails still walk the store.
+\ not a row, so only the derived tails still walk the store.
 : TF-CTOR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ PKG:VARIANT / derived word?
    a u TF-CW-TAIL$ {: ta:ptr tu:n :}
    VNX-ENSURE
@@ -3382,6 +3387,12 @@ variable VIEW-FIELD-BASE
    s" " CHECKER-PACKAGE-PUBLIC s" width" 1 TK-CELL TFAM-DECL WIDTH-FAM !
    WIDTH-FAM @ 0 PK-TYPE TFAM-PK! ;
 
+\ `EFFECT:type`: a definer's type value, a handle to a transient schema node
+\ the checker made, which no storage holds.
+: REGISTER-EFFECT-TYPE ( -- )
+   s" EFFECT" CHECKER-PACKAGE-PUBLIC s" type" 0 TK-CELL TFAM-DECL
+   EFFECT-TYPE-FAM ! ;
+
 
 : REGISTER-RECORDS ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" records" 4 TK-PRODUCT TFAM-DECL RECORDS-FAM !
@@ -3416,6 +3427,7 @@ REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
 REGISTER-WIDTH
+REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
 REGISTER-STOW
 
@@ -3972,15 +3984,31 @@ variable TFQ-COLON
    RES-TRUE ;
 
 variable TFSR-HIDDEN
-: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+
+private
+
+\ The split tail's family in package qa, seen from package pa.
+: TFAM-QUAL-IN ( ptr u8 n ptr u8 n -- n bool )
+   {: qa:ptr qu:n pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ TFQ-HEAD$ {: qa:ptr qu:n :}
    qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
    qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
    -1 TFSR-HIDDEN !
    0 RES-FALSE ;
+
+public
+
+: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+   TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
+
+\ A qualified spelling's family in the package its qualifier names as
+\ written, which no part of package pa shadows; a bare one answers false.
+: TFAM-EXACT-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
 \ quotation that cannot read locals, so buffer the (pkg,name) args and the
@@ -4359,6 +4387,13 @@ public
    owner node SCHEMA-QUOT-DIN@ base EFFECT-SIDE
    owner node SCHEMA-QUOT-DOUT@ base EFFECT-SIDE ;
 
+\ The term type node NODE gives, its parameters the effect's variables, as
+\ EFFECT-ROWS gives a side's type.
+: EFFECT-TYPE ( n -- n ) {: node:n :}
+   node PARAM-SPAN EFFECT-OWNER {: owner:n :}
+   node EFFECT-KINDS
+   owner node SCHEMA-TERM-FOR ;
+
 private
 
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
@@ -4534,19 +4569,6 @@ public
    shape term base STORED-IN
    term MK-PTR base MK-PUSH ;
 
-\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
-\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
-\ cleared with it: a stale letter would name a fresh variable.
-: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
-   NEW NMAP-RESET
-   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
-   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
-   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
-   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
-   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
-   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
-   shape param OFFSET-ROWS ;
-
 private
 
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
@@ -4572,6 +4594,50 @@ private
       TFC-I @ 1 + TFC-I !
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
+
+\ A product's MAKE or UNMAKE rows over FAM's lettered variables, from its make
+\ or unmake variant: MAKE takes the fields and answers the value, UNMAKE the
+\ reverse. Its body is a cast, so its value is unread.
+: PROD-ROWS ( n n -- n n n ) {: shape:n fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fam TFAM-VAR-START@
+   shape CHILD-ABI:UNMAKE = IF 1 + THEN {: vid:n :}
+   FRESH MK-ROW {: base:n :}
+   vid base RES-FALSE TFC-PAY-ROW {: pay:n :}
+   term base PUSH-LOGICAL {: value:n :}
+   shape CHILD-ABI:MAKE = IF pay value ELSE value pay THEN
+   0 ;
+
+\ A DEFTYPE converter's rows over FAM: NOMINAL-IN takes n and answers the
+\ nominal, NOMINAL-OUT the reverse. Its body is a cast, so its value is unread.
+: NOMINAL-ROWS ( n n -- n n n ) {: shape:n fam:n :}
+   FRESH MK-ROW {: base:n :}
+   CC-N MK-CON base MK-PUSH {: num:n :}
+   fam TFAM-FRESH-TERM base PUSH-LOGICAL {: nom:n :}
+   shape CHILD-ABI:NOMINAL-IN = IF num nom ELSE nom num THEN
+   0 ;
+
+public
+
+\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
+\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
+\ cleared with it: a stale letter would name a fresh variable.
+: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
+   NEW NMAP-RESET
+   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
+   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:MAKE = IF shape param PROD-ROWS EXIT THEN
+   shape CHILD-ABI:UNMAKE = IF shape param PROD-ROWS EXIT THEN
+   shape CHILD-ABI:NOMINAL-IN = IF shape param NOMINAL-ROWS EXIT THEN
+   shape CHILD-ABI:NOMINAL-OUT = IF shape param NOMINAL-ROWS EXIT THEN
+   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
+   shape param OFFSET-ROWS ;
+
+private
 
 \ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad
@@ -4650,11 +4716,27 @@ public
 
 public
 
-: TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   {: id:n :}
+\ The family a schema node applies, else 0 false.
+: TFAM-NODE-FAM ( n -- n bool ) {: node:n :}
+   node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-APP? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-A@ RES-TRUE ;
+
+: TFAM-CONSTRUCT-KIND ( n -- n bool ) {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+: TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-CONSTRUCT-KIND ;
+
+\ A node's family under the owner rule a spelled one meets: the active
+\ package's own.
+: TFAM-CONSTRUCT-NODE ( n -- n bool ) {: node:n :}
+   node TFAM-NODE-FAM 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   TFAM-ACTIVE-PKG$ id TFAM-PKG-MATCH? 0= IF MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   id TFAM-CONSTRUCT-KIND ;
 
 private
 
@@ -4812,11 +4894,19 @@ public
 \ payload row instantiates the variant schema over the scrutinee's argument terms
 \ in the TFC scratch vars, consumed at OF, so construct and nested matches may
 \ interleave.
-: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   {: id:n :}
+: TFAM-MATCH-KIND ( n -- n bool ) {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
+
+\ The family a node applies. EFFECT:NAMED resolved it as source does, so a
+\ built match needs no scope resolve.
+: TFAM-MATCH-NODE ( n -- n bool )
+   TFAM-NODE-FAM 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND ;

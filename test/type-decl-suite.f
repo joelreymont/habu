@@ -10,24 +10,18 @@ using TYPE-DECL
 
 T-RESET
 
-\ Evaluate a declaration string through INCLUDE-EVALUATE, returning its throw
+\ Evaluate a declaration string through evaluate-closed, returning its throw
 \ code (0 = accepted). The catch is compiled: a top-level catch around evaluate
 \ loses the code.
 TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 : TDT-EVAL-GO ( -- )
-   TDTE-A @ TDTE-U @ INCLUDE-EVALUATE ;
+   TDTE-A @ TDTE-U @ evaluate-closed ;
 : TDT-EVAL-CATCH ( ptr u8 n -- n )
    TDTE-U ! TDTE-A !
    [: TDT-EVAL-GO ;] catch ;
 
 \ A check's results live until its definition publishes, inside the token that
 \ ran it, so each probe reads them in the word that runs the check.
-\ TD-MIN-IN: the minimum input depth a certified candidate records.
-: TD-MIN-IN ( ptr u8 n -- n )
-   CHECK-QUIET-CANDIDATE! -1 T=
-   REC-MIN-IN@ ;
-
-
 \ TD-WF-N: the fact rows a candidate with verdict `want` leaves.
 : TD-WF-N ( ptr u8 n n -- n )
    {: want:n :}
@@ -582,9 +576,7 @@ s" SUMTYPE tdpnest VARIANT value tdpw ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
 s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A closed wide PRODUCT is one logical value backed by one hidden parameter per
-\ physical cell.  Effect minima count those hidden entries once, not once per
-\ family width: two W12 values require 24 cells, W34 MAKE/UNMAKE require 34,
-\ and two W34 values require 68.
+\ physical cell.
 PRODUCT tdw12
   FIELD f0 n
   FIELD f1 n
@@ -599,7 +591,7 @@ PRODUCT tdw12
   FIELD f10 n
   FIELD f11 n
 ;PRODUCT
-s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" TD-MIN-IN 24 T=
+s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" CHECK-QUIET-CANDIDATE! -1 T=
 PRODUCT tdw34
   FIELD f0 n
   FIELD f1 n
@@ -636,26 +628,315 @@ PRODUCT tdw34
   FIELD f32 n
   FIELD f33 n
 ;PRODUCT
-s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" TD-MIN-IN 34 T=
-s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" TD-MIN-IN 34 T=
-s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" TD-MIN-IN 68 T=
-\ Nested quotations retain the surrounding physical floor.
-s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" TD-MIN-IN 34 T=
-\ A published effect must replay with the same minimum in later checks.
+s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+\ A published wide effect replays in later checks.
 : TDW34-STORED ( tdw34 -- tdw34 ) ;
-s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
+s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 REJECTION:CAPTURE
 s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"  --> <input>:1:30\n" CONTAINS? TTRUE
-s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
-\ A product containing W34 has the same physical width and minimum, not W34^2.
+s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+\ A product containing W34 is one W34 wide, not W34^2.
 PRODUCT tdw34nest
   FIELD inner tdw34
 ;PRODUCT
-s" TDW34-NEST ( tdw34nest -- tdw34nest )" TD-MIN-IN 34 T=
+s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ A PRODUCT of 256 one-cell fields: MAKE takes 256 cells and UNMAKE leaves the
+\ last field on top.
+PRODUCT tdw256
+  FIELD f0 n
+  FIELD f1 n
+  FIELD f2 n
+  FIELD f3 n
+  FIELD f4 n
+  FIELD f5 n
+  FIELD f6 n
+  FIELD f7 n
+  FIELD f8 n
+  FIELD f9 n
+  FIELD f10 n
+  FIELD f11 n
+  FIELD f12 n
+  FIELD f13 n
+  FIELD f14 n
+  FIELD f15 n
+  FIELD f16 n
+  FIELD f17 n
+  FIELD f18 n
+  FIELD f19 n
+  FIELD f20 n
+  FIELD f21 n
+  FIELD f22 n
+  FIELD f23 n
+  FIELD f24 n
+  FIELD f25 n
+  FIELD f26 n
+  FIELD f27 n
+  FIELD f28 n
+  FIELD f29 n
+  FIELD f30 n
+  FIELD f31 n
+  FIELD f32 n
+  FIELD f33 n
+  FIELD f34 n
+  FIELD f35 n
+  FIELD f36 n
+  FIELD f37 n
+  FIELD f38 n
+  FIELD f39 n
+  FIELD f40 n
+  FIELD f41 n
+  FIELD f42 n
+  FIELD f43 n
+  FIELD f44 n
+  FIELD f45 n
+  FIELD f46 n
+  FIELD f47 n
+  FIELD f48 n
+  FIELD f49 n
+  FIELD f50 n
+  FIELD f51 n
+  FIELD f52 n
+  FIELD f53 n
+  FIELD f54 n
+  FIELD f55 n
+  FIELD f56 n
+  FIELD f57 n
+  FIELD f58 n
+  FIELD f59 n
+  FIELD f60 n
+  FIELD f61 n
+  FIELD f62 n
+  FIELD f63 n
+  FIELD f64 n
+  FIELD f65 n
+  FIELD f66 n
+  FIELD f67 n
+  FIELD f68 n
+  FIELD f69 n
+  FIELD f70 n
+  FIELD f71 n
+  FIELD f72 n
+  FIELD f73 n
+  FIELD f74 n
+  FIELD f75 n
+  FIELD f76 n
+  FIELD f77 n
+  FIELD f78 n
+  FIELD f79 n
+  FIELD f80 n
+  FIELD f81 n
+  FIELD f82 n
+  FIELD f83 n
+  FIELD f84 n
+  FIELD f85 n
+  FIELD f86 n
+  FIELD f87 n
+  FIELD f88 n
+  FIELD f89 n
+  FIELD f90 n
+  FIELD f91 n
+  FIELD f92 n
+  FIELD f93 n
+  FIELD f94 n
+  FIELD f95 n
+  FIELD f96 n
+  FIELD f97 n
+  FIELD f98 n
+  FIELD f99 n
+  FIELD f100 n
+  FIELD f101 n
+  FIELD f102 n
+  FIELD f103 n
+  FIELD f104 n
+  FIELD f105 n
+  FIELD f106 n
+  FIELD f107 n
+  FIELD f108 n
+  FIELD f109 n
+  FIELD f110 n
+  FIELD f111 n
+  FIELD f112 n
+  FIELD f113 n
+  FIELD f114 n
+  FIELD f115 n
+  FIELD f116 n
+  FIELD f117 n
+  FIELD f118 n
+  FIELD f119 n
+  FIELD f120 n
+  FIELD f121 n
+  FIELD f122 n
+  FIELD f123 n
+  FIELD f124 n
+  FIELD f125 n
+  FIELD f126 n
+  FIELD f127 n
+  FIELD f128 n
+  FIELD f129 n
+  FIELD f130 n
+  FIELD f131 n
+  FIELD f132 n
+  FIELD f133 n
+  FIELD f134 n
+  FIELD f135 n
+  FIELD f136 n
+  FIELD f137 n
+  FIELD f138 n
+  FIELD f139 n
+  FIELD f140 n
+  FIELD f141 n
+  FIELD f142 n
+  FIELD f143 n
+  FIELD f144 n
+  FIELD f145 n
+  FIELD f146 n
+  FIELD f147 n
+  FIELD f148 n
+  FIELD f149 n
+  FIELD f150 n
+  FIELD f151 n
+  FIELD f152 n
+  FIELD f153 n
+  FIELD f154 n
+  FIELD f155 n
+  FIELD f156 n
+  FIELD f157 n
+  FIELD f158 n
+  FIELD f159 n
+  FIELD f160 n
+  FIELD f161 n
+  FIELD f162 n
+  FIELD f163 n
+  FIELD f164 n
+  FIELD f165 n
+  FIELD f166 n
+  FIELD f167 n
+  FIELD f168 n
+  FIELD f169 n
+  FIELD f170 n
+  FIELD f171 n
+  FIELD f172 n
+  FIELD f173 n
+  FIELD f174 n
+  FIELD f175 n
+  FIELD f176 n
+  FIELD f177 n
+  FIELD f178 n
+  FIELD f179 n
+  FIELD f180 n
+  FIELD f181 n
+  FIELD f182 n
+  FIELD f183 n
+  FIELD f184 n
+  FIELD f185 n
+  FIELD f186 n
+  FIELD f187 n
+  FIELD f188 n
+  FIELD f189 n
+  FIELD f190 n
+  FIELD f191 n
+  FIELD f192 n
+  FIELD f193 n
+  FIELD f194 n
+  FIELD f195 n
+  FIELD f196 n
+  FIELD f197 n
+  FIELD f198 n
+  FIELD f199 n
+  FIELD f200 n
+  FIELD f201 n
+  FIELD f202 n
+  FIELD f203 n
+  FIELD f204 n
+  FIELD f205 n
+  FIELD f206 n
+  FIELD f207 n
+  FIELD f208 n
+  FIELD f209 n
+  FIELD f210 n
+  FIELD f211 n
+  FIELD f212 n
+  FIELD f213 n
+  FIELD f214 n
+  FIELD f215 n
+  FIELD f216 n
+  FIELD f217 n
+  FIELD f218 n
+  FIELD f219 n
+  FIELD f220 n
+  FIELD f221 n
+  FIELD f222 n
+  FIELD f223 n
+  FIELD f224 n
+  FIELD f225 n
+  FIELD f226 n
+  FIELD f227 n
+  FIELD f228 n
+  FIELD f229 n
+  FIELD f230 n
+  FIELD f231 n
+  FIELD f232 n
+  FIELD f233 n
+  FIELD f234 n
+  FIELD f235 n
+  FIELD f236 n
+  FIELD f237 n
+  FIELD f238 n
+  FIELD f239 n
+  FIELD f240 n
+  FIELD f241 n
+  FIELD f242 n
+  FIELD f243 n
+  FIELD f244 n
+  FIELD f245 n
+  FIELD f246 n
+  FIELD f247 n
+  FIELD f248 n
+  FIELD f249 n
+  FIELD f250 n
+  FIELD f251 n
+  FIELD f252 n
+  FIELD f253 n
+  FIELD f254 n
+  FIELD f255 n
+;PRODUCT
+: TDW256-MK ( -- tdw256 )
+   0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+   16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+   32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47
+   48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63
+   64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79
+   80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95
+   96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111
+   112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127
+   128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143
+   144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159
+   160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175
+   176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191
+   192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207
+   208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223
+   224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239
+   240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255
+   TDW256:MAKE ;
+: TDW-DROP16 ( n n n n n n n n n n n n n n n n -- )
+   2drop 2drop 2drop 2drop 2drop 2drop 2drop 2drop ;
+: TDW256-LAST ( tdw256 -- n )
+   TDW256:UNMAKE >r
+   TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16
+   TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16
+   TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16 TDW-DROP16
+   2drop 2drop 2drop 2drop 2drop 2drop 2drop drop
+   r> ;
+: TDW256-READ ( -- n ) TDW256-MK TDW256-LAST ;
+TDW256-READ 255 T=
 
 \ facts are per-CHECK scratch: a rejected def may still record rows for tokens
 \ past the reject (never consumed — emitters read facts only for certified
@@ -1556,23 +1837,16 @@ s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpoldg`\n"
 s" boxed" s" layout policy not yet supported" TDT-AT
 
-\ C2: a declaration body over TDECL-CAP ($1000) reports the record, not a raw
-\ die (the length check fires ahead of variant parsing, so repeats never matter).
-create TDT-BIG 8192 allot   variable TDT-BIG-U
-: TDT-BIG-C, ( n -- ) TDT-BIG TDT-BIG-U @ + c!  TDT-BIG-U @ 1+ TDT-BIG-U ! ;
-: TDT-BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ TDT-BIG-C, loop ;
-: TDT-BIG-SUM$ ( -- ptr u8 n )
-   0 TDT-BIG-U !
-   s" SUMTYPE tdbig<a> " TDT-BIG-APP
-   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " TDT-BIG-APP loop
-   s" ;SUMTYPE" TDT-BIG-APP
-   TDT-BIG TDT-BIG-U @ ;
-REJECTION:CAPTURE
-TDT-BIG-SUM$ TDT-EVAL-CATCH 70 T=
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdbig<a>`\n" TDT-HAS
-s" tdbig<a>" s" declaration too long" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: shorten the declaration body to 4096 bytes or fewer, or split it into smaller families\n" TDT-HAS
-REJECTION:CAPTURE
+\ No byte count caps a declaration's body: the fixture's SUMTYPE loads, and its
+\ constructor and derived EQ and HASH run.
+require test/fixtures/big-decl.f
+: BIGSUM-HASH ( -- bool )
+   5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH 5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH = ;
+: BIGSUM-EQ ( -- bool ) 5 BIG-BIGSUM:V7 5 BIG-BIGSUM:V7 BIG-BIGSUM:EQ ;
+: BIGSUM-NEQ ( -- bool ) 5 BIG-BIGSUM:V7 5 BIG-BIGSUM:V199 BIG-BIGSUM:EQ ;
+BIGSUM-HASH TTRUE
+BIGSUM-EQ TTRUE
+BIGSUM-NEQ TFALSE
 
 \ multi-error load mode: a bad top-level declaration is reported + counted +
 \ rolled back, without a fake declared signature, and the load continues.
@@ -1708,14 +1982,12 @@ s" ENUM tdrb11 DERIVE eq aa bb ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb11`\n"
 s" eq" s" derive requires a public family" TDT-AT
 ;package
-\ adjacent `eq` after the clause reads as a redundant FEATURE (order-free
-\ list, idempotent); a variant spelled eq must follow another variant.
+\ a feature token right after the clause reads as a feature (a repeated one
+\ rejects); a variant spelled like a derived word follows another variant and
+\ collides.
 s" ENUM tdrb7 DERIVE eq other eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb7`\n"
 s" eq" s" variant name collides with a derived word" TDT-AT
-s" ENUM tdrb8 DERIVE eq tag other ;ENUM"
-s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb8`\n"
-s" tag" s" variant name collides with a derived word" TDT-AT
 
 \ rollback: a REJECTED derive declaration leaves no residue — the same family
 \ name registers cleanly afterwards and its derived words work.
@@ -1864,6 +2136,46 @@ TDHP-H TTRUE
 TDHP-D1 TFALSE
 TDHP-D2 TFALSE
 
+\ A PRODUCT of 256 one-cell fields derives eq and hash; its EQ binds a local
+\ per field of each value.
+package WIDE-DERIVE-TEST
+
+$2000 constant BUF-CAP
+create BUF BUF-CAP allot
+variable BUF-N
+
+: C+ ( n -- )
+   BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" 76 die THEN
+   BUF BUF-N @ + c!  BUF-N @ 1 + BUF-N ! ;
+: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do  a i + c@ C+  loop ;
+: NUM+ ( n -- ) {: v:n :}   \ three decimal digits
+   v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
+: DECL$ ( -- ptr u8 n )
+   0 BUF-N !  s" PRODUCT tdeq256 DERIVE eq hash" APPEND
+   256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
+   s"  ;PRODUCT" APPEND  BUF BUF-N @ ;
+: VALUE+ ( n -- ) {: odd:n :}   \ field i holds i, field odd holds 999
+   256 0 ?do
+      i odd = IF 999 ELSE i THEN NUM+  32 C+
+   loop  s" TDEQ256:MAKE " APPEND ;
+\ A word comparing the value with every field i to one whose field odd is 999.
+: EQ$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n odd:n :}
+   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( -- bool ) " APPEND
+   -1 VALUE+  odd VALUE+  s" TDEQ256:EQ ; " APPEND  a u APPEND
+   BUF BUF-N @ ;
+
+public
+
+: RUN ( -- )
+   DECL$ TDT-EVAL-CATCH 0 T=
+   s" TDEQ256-SAME" -1 EQ$ TEST-EVAL:FLAG TTRUE
+   s" TDEQ256-DIFF" 200 EQ$ TEST-EVAL:FLAG TFALSE ;
+
+;package
+
+WIDE-DERIVE-TEST:RUN
+
 \ hash-alone: HASH + TAG generated, EQ absent (undefined -> refused);
 \ the derived HASH is undefine-protected like a constructor.
 ENUM tdho DERIVE hash oa ob ;ENUM
@@ -1949,6 +2261,45 @@ TDBW-P2 TFALSE
 TDBW-P3 TFALSE
 TDBW-PH TTRUE
 TDBW:HITS @ 0 T=
+
+\ A field family's derived words are called by their exact public names: a
+\ part named as the field's constructor package captures neither EQ nor HASH.
+package tdbx
+public
+ENUM tdxe DERIVE eq hash red green ;ENUM
+;package
+package tdby
+private
+package TDBX-TDXE
+public
+: EQ ( tdbx:tdxe tdbx:tdxe -- bool ) drop drop true ;
+: HASH ( tdbx:tdxe -- n ) drop 7 ;
+;package
+public
+PRODUCT tdyp DERIVE eq hash
+  FIELD col tdbx:tdxe
+  FIELD amt n
+;PRODUCT
+SUMTYPE tdys DERIVE eq hash
+  VARIANT ywrap tdbx:tdxe ;VARIANT
+;SUMTYPE
+;package
+: TDBY-P ( tdbx:tdxe -- tdby:tdyp ) 7 TDBY-TDYP:MAKE ;
+: TDBY-PE ( -- bool )
+   TDBX-TDXE:RED TDBY-P TDBX-TDXE:GREEN TDBY-P TDBY-TDYP:EQ ;
+: TDBY-PH ( -- bool )
+   TDBX-TDXE:RED TDBY-P TDBY-TDYP:HASH
+   TDBX-TDXE:GREEN TDBY-P TDBY-TDYP:HASH = ;
+: TDBY-SE ( -- bool )
+   TDBX-TDXE:RED TDBY-TDYS:YWRAP TDBX-TDXE:GREEN TDBY-TDYS:YWRAP
+   TDBY-TDYS:EQ ;
+: TDBY-SH ( -- bool )
+   TDBX-TDXE:RED TDBY-TDYS:YWRAP TDBY-TDYS:HASH
+   TDBX-TDXE:GREEN TDBY-TDYS:YWRAP TDBY-TDYS:HASH = ;
+TDBY-PE TFALSE
+TDBY-PH TFALSE
+TDBY-SE TFALSE
+TDBY-SH TFALSE
 
 \ grammar: order stays deferred inside the list; unknown first token rejects;
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.

@@ -5,8 +5,9 @@
 \ both, a METADATA! URL holding a quote or CR LF and a scope holding a quote
 \ or two spaces refused, malformed tokens, alg none, crit and HS256, repeated
 \ member names, aud, iss, exp and nbf, claim strings, CLAIM$ after the
-\ admitted request and in a task it spawns, the refetch window, and the cached
-\ and unknown kids answered while a fetch is in flight.
+\ admitted request and in a task it spawns, the refetch window, a cached kid
+\ answered while a fetch is in flight, and an unknown kid and an empty set
+\ waiting for that fetch.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/test.f
@@ -24,10 +25,18 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/bearer.f
 
+\ White-box reads no public word answers, defined into BEARER-TEST so BEARER's
+\ public surface gains nothing.
+package BEARER
+: BEARER-TEST:WAITERS ( -- n ) [: WAITERS @ ;] LOCKED ;
+;package
+
 package BEARER-TEST
 private
 
 $7F000001 constant LOOPBACK
+\ ADMIT? fetches /keys from this same server: WINDOW and FRESH hold that
+\ fetcher and the stalled /keys while a third worker serves another request.
 3 constant THREE-WORKERS
 500 constant IDLE-MS
 1000000 constant NS-PER-MS
@@ -68,6 +77,12 @@ variable DUE                        \ when that fetch's window has passed, a mon
 variable RELEASED                   \ the test lets the stalled /keys answer
 TYPED-VARIABLE PENDING CURL:handle  \ the request ASKER sends
 TASK:MIN-STACK TASK:TASK ASKER
+\ WAITER sends WAITING while ASKER's fetch is stalled, its body apart from
+\ BODY.
+CAP BUFFER: WAITED-BODY
+variable WAITED-U
+TYPED-VARIABLE WAITING CURL:handle
+TASK:MIN-STACK TASK:TASK WAITER
 TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 \ The bytes copied into the span at off; answers the offset past them.
@@ -436,6 +451,38 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 : ASK ( -- ) PENDING @ FINISH TASK:RETURN ;
 
+: WAIT-ASK ( -- )
+   WAITING @ {: h:CURL:handle :}
+   h WAITED-BODY CAP >LEN CURL:PERFORM
+   MATCH CURL:fetch-result
+      response OF {: status:CURL:http-status got:len :}
+         got LEN>N WAITED-U ! status CURL:HTTP-STATUS>N ENDOF
+      truncated OF drop drop -1 ENDOF
+      failed OF drop -2 ENDOF
+   ;MATCH
+   h CURL:CLEANUP TASK:RETURN ;
+
+\ Sends AUTH's request from WAITER and releases the stalled /keys once
+\ BEARER counts it as a waiter or it has been answered.
+: HOLD ( -- )
+   s" /claims" OPEN BEARING WAITING !
+   ['] WAIT-ASK WAITER TASK:ACTIVATE
+   [: WAITER TASK:DONE? BEARER-TEST:WAITERS 0 > or ;] TEST-WAIT:POLL
+   1 RELEASED atomic! ;
+
+: ASKED ( -- )
+   ASKER TASK:JOIN MATCH result
+      ok OF WANT-WHO ANSWERED ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: WAITED ( -- )
+   WAITER TASK:JOIN MATCH result
+      ok OF 200 T= ENDOF
+      err OF throw ENDOF
+   ;MATCH
+   WAITED-BODY WAITED-U @ WANT-WHO T$= ;
+
 : WINDOW ( -- )
    s" a fetch in flight does not delay a cached kid" T-LABEL
    WAIT-WINDOW
@@ -444,16 +491,27 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ['] ASK ASKER TASK:ACTIVATE
    [: HITS atomic@ 3 = ;] TEST-WAIT:POLL
    KID-A CURRENT MINT SEND WANT-WHO ANSWERED
-   s" an unknown kid while a fetch is in flight is invalid and fetches nothing" T-LABEL
    2 MODE atomic!                      \ a second fetch would answer set two at once
-   KID-B CURRENT MINT SEND INVALID
-   HITS atomic@ 3 T=
-   1 RELEASED atomic!
+   KID-B CURRENT MINT HOLD
    s" past the window an unknown kid refetches and the new set admits it" T-LABEL
-   ASKER TASK:JOIN MATCH result
-      ok OF WANT-WHO ANSWERED ENDOF
-      err OF throw ENDOF
-   ;MATCH ;
+   ASKED
+   s" an unknown kid sent while a fetch is in flight waits for it and is admitted" T-LABEL
+   WAITED
+   HITS atomic@ 3 T= ;
+
+\ ISSUER! has emptied the key set, as a new server process holds it.
+: FRESH ( -- )
+   0 RELEASED atomic!
+   3 MODE atomic!
+   KID-A CURRENT MINT s" /claims" OPEN BEARING PENDING !
+   ['] ASK ASKER TASK:ACTIVATE
+   [: HITS atomic@ 4 = ;] TEST-WAIT:POLL
+   KID-A CURRENT MINT HOLD
+   s" with an empty set the first token's fetch admits it" T-LABEL
+   ASKED
+   s" with an empty set a token sent while that fetch is in flight waits and is admitted" T-LABEL
+   WAITED
+   HITS atomic@ 4 T= ;
 
 : METADATA$ ( -- ptr u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
 : REPLACED$ ( -- ptr u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
@@ -486,9 +544,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE ;
 
-\ Three workers: ADMIT? fetches /keys from this same server and waits for the
-\ answer, and WINDOW holds that fetcher and the stalled /keys while a third
-\ answers the cached kid.
 : EARLY ( -- )
    LOOPBACK 0 THREE-WORKERS IDLE-MS HTTP:START
    s" ADMIT? before ISSUER! throws E-HTTP-STATE" T-LABEL
@@ -503,6 +558,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    a KEYS-URL u BYTE-COPY u KEYS-URL-U !
    HTTP:STOP ;
 
+: ISSUE ( -- )
+   s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER! ;
+
 \ The key set's URL names the port the first START's port 0 chose, and
 \ ISSUER! is refused while serving: the server starts again on that port.
 : SERVE-CASES ( -- )
@@ -510,7 +568,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    SET-ONE-FILL SET-TWO-FILL
    ROUTES
    EARLY
-   s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
+   ISSUE
    \ Empty texts after a stated URL and scope restore the plain challenges,
    \ which CHALLENGED and INVALID assert.
    METADATA$ SCOPE$ BEARER:METADATA!
@@ -519,11 +577,12 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
    TIMES STRINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
    HTTP:STOP
+   ISSUE
    \ METADATA! is refused while serving, so its challenges are immutable
    \ configuration for a server's run: each statement gets a start of its own.
    METADATA$ SCOPE$ BEARER:METADATA!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
-   METADATA-SCOPE
+   FRESH METADATA-SCOPE
    HTTP:STOP
    s" " SCOPE$ BEARER:METADATA!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START

@@ -49,7 +49,7 @@ The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root. With libpq 16 the test
-dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
+dies `error[E-FFI-DLSYM]: no C symbol 'PQcancelCreate' in 'libpq.so.5'`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
 on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
 libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on
@@ -85,7 +85,8 @@ raises where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
-primitive-spec atom`), an existing atom code given a new meaning (the running
+primitive-spec atom`), a built-in type family the tree's source names
+(the running checker stops `unknown type`), an existing atom code given a new meaning (the running
 checker replays the rows with the old meaning and says nothing), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
 it, or a change to which files a build
