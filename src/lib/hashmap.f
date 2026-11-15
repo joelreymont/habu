@@ -1,5 +1,5 @@
-\ hashmap.f - open-addressing integer-key hash probe (package HM) over
-\ caller-owned keys[] and used[] cell arrays (0 = empty slot) of cap cells.
+\ hashmap.f - open-addressing hash probe (package HM) for keys of one cell or
+\ a pair, over caller-owned key and used[] cell arrays (0 = empty) of cap cells.
 \ PROBE answers the slot a key lives in or the first empty one, and throws
 \ E-HM-FULL after cap steps; cap is a nonzero power of two, else E-HM-CAP.
 \ HASH64 mixes the whole key; folding a non-integer key is the caller's job.
@@ -38,6 +38,17 @@ public
    cap 0 ?do
       dup cells used + @ 0= if unloop exit then
       dup cells keys + @ key = if unloop exit then
+      1+ cap 1- and
+   loop
+   drop E-HM-FULL throw ;
+
+: PROBE-PAIR ( ptr n ptr n ptr n n n n -- n )
+   {: ka:ptr kb:ptr used:ptr cap:n a:n b:n :}
+   cap CAP-OK
+   a HASH64 b xor HASH64 cap 1- and
+   cap 0 ?do
+      dup cells used + @ 0= if unloop exit then
+      dup cells ka + @ a =  over cells kb + @ b =  and if unloop exit then
       1+ cap 1- and
    loop
    drop E-HM-FULL throw ;

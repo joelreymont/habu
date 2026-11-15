@@ -1,4 +1,4 @@
-\ hashmap-test.f - coverage for HM:HASH64 / HM:PROBE / HM:CLEAR.
+\ hashmap-test.f - coverage for HM:HASH64 / HM:PROBE / HM:PROBE-PAIR / HM:CLEAR.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -10,6 +10,19 @@ require src/lib/task.f
 8 constant HMT-CAP
 create HMT-K HMT-CAP cells allot
 create HMT-U HMT-CAP cells allot
+create HMT-KB HMT-CAP cells allot
+
+: HMT-PAIR ( n n -- n ) {: a:n b:n :}
+   HMT-K HMT-KB HMT-U HMT-CAP a b HM:PROBE-PAIR ;
+
+: HMT-PAIRS ( -- )
+   HMT-U HMT-CAP HM:CLEAR
+   65536 0 HMT-PAIR {: s:n :}
+   65536 HMT-K s cells + !  0 HMT-KB s cells + !  -1 HMT-U s cells + !
+   s" a pair differing only in its first cell takes another slot" T-LABEL
+   0 0 HMT-PAIR s <> TTRUE
+   s" a filled pair answers its own slot" T-LABEL
+   65536 0 HMT-PAIR s T= ;
 
 : HMT-SLOT ( n -- n ) {: key:n :} HMT-K HMT-U HMT-CAP key HM:PROBE ;
 : HMT-INS ( n -- ) {: key:n :}        \ insert if absent (mark slot used)
@@ -159,6 +172,7 @@ create HMC-BU HMC-CAP cells allot
    \ cap=3 is not a power of two, so the mask probes only a subset: rejected
    [: HMT-K HMT-U 3 5 HM:PROBE drop ;] E-HM-CAP TTHROWSQ
    [: HMT-U 3 HM:CLEAR ;] E-HM-CAP TTHROWSQ
+   HMT-PAIRS
    \ key entropy confined to the low 12 bits: the dense frame-index shape
    s" low 12-bit keys stay under the probe bound" T-LABEL
    0 HMP-PROBES HMP-UNDER-BOUND

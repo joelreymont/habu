@@ -253,32 +253,30 @@ variable SD-SCOPES
    row 0 < if 0 0 exit then
    row SD-R-NAME @ row SD-R-NAME-U @ ;
 
-\ Records by file and offset, so a lookup need not walk a file's chain. The pair
-\ folds into one exact key: an offset indexes bytes held in memory, below 2^48 on
-\ every target, and a file id counts files read. An entry may outlive its
-\ record's place in the chain; SD-R-AT checks the record it names.
-DYNAMIC-BUFFER SD-X-KEYS n
+\ Records by file and offset, so a lookup need not walk a file's chain. An entry
+\ may outlive its record's place in the chain; SD-R-AT checks the record it names.
+DYNAMIC-BUFFER SD-X-FILES n
+DYNAMIC-BUFFER SD-X-OFFS n
 DYNAMIC-BUFFER SD-X-USED n
 DYNAMIC-BUFFER SD-X-ROW n
 variable SD-X-CAP
 variable SD-X-N
 
-: SD-X-KEY ( n n -- n ) {: file:n off:n :}  file 48 lshift off or ;
-
-: SD-X-SLOT ( n -- n ) {: key:n :}
-   0 SD-X-KEYS  0 SD-X-USED  SD-X-CAP @  key HM:PROBE ;
+: SD-X-SLOT ( n n -- n ) {: file:n off:n :}
+   0 SD-X-FILES  0 SD-X-OFFS  0 SD-X-USED  SD-X-CAP @  file off HM:PROBE-PAIR ;
 
 : SD-X-EMPTY ( n -- ) {: cap:n :}
-   cap SD-X-KEYS-RESERVE  cap SD-X-USED-RESERVE  cap SD-X-ROW-RESERVE
+   cap SD-X-FILES-RESERVE  cap SD-X-OFFS-RESERVE  cap SD-X-USED-RESERVE
+   cap SD-X-ROW-RESERVE
    0 SD-X-USED cap HM:CLEAR
    cap SD-X-CAP !
    0 SD-X-N ! ;
 
 : SD-X-FILE ( n -- ) {: r:n :}
-   r SD-R-FILE @ r SD-R-OFF @ SD-X-KEY {: key:n :}
-   key SD-X-SLOT {: s:n :}
+   r SD-R-FILE @ r SD-R-OFF @ {: file:n off:n :}
+   file off SD-X-SLOT {: s:n :}
    s SD-X-USED @ 0= if
-      1 s SD-X-USED !  key s SD-X-KEYS !  1 SD-X-N +!
+      1 s SD-X-USED !  file s SD-X-FILES !  off s SD-X-OFFS !  1 SD-X-N +!
    then
    r s SD-X-ROW ! ;
 
@@ -296,7 +294,7 @@ variable SD-X-N
 : SD-R-AT ( n -- n ) {: off:n :}
    SD-FILE-ID @ {: file:n :}
    file 0 < SD-X-CAP @ 0= or if -1 exit then
-   file off SD-X-KEY SD-X-SLOT {: s:n :}
+   file off SD-X-SLOT {: s:n :}
    s SD-X-USED @ 0= if -1 exit then
    s SD-X-ROW @ {: r:n :}
    r SD-R-N @ >= if -1 exit then
@@ -1564,7 +1562,7 @@ public
    SD-C-ROW-RELEASE SD-C-OWNER-RELEASE SD-C-ORDER-RELEASE
    SD-E-SPEC-RELEASE
    SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE
-   SD-X-KEYS-RELEASE SD-X-USED-RELEASE SD-X-ROW-RELEASE ;
+   SD-X-FILES-RELEASE SD-X-OFFS-RELEASE SD-X-USED-RELEASE SD-X-ROW-RELEASE ;
 
 : ROWS-VERSION ( -- n ) SD-R-VERSION @ ;
 : EVENT-SPEC@ ( n -- bool ) SD-E-SPEC @ 0<> ;
