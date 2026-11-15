@@ -1159,7 +1159,7 @@ variable MDV-I   variable MDV-F
       MD-C2-FIELD-UNKNOWN of s" the record has no field of this name" endof
       MD-CALLBACK-NOT-GENERIC of s" the callback must work for every scope, and this one names an outer scope" endof
       MD-SCOPED-TICK  of s"  is a scoped entry, which only a direct call may reach" endof
-      s" bad match: rejected" rot
+      s" render: a reason with no message" 76 die
    endcase ;
 
 \ A reason's label: a few words under its token.
@@ -1260,7 +1260,7 @@ variable MDV-I   variable MDV-F
       MD-LOCAL-ESCAPE of s" quotation outlives its locals" endof
       MD-BINDER-PLACE of s" binder outside a callback" endof
       MD-DEPTH-WIDE   of s" row with a wide or open value" endof
-      s" here" rot
+      s" render: a reason with no label" 76 die
    endcase ;
 
 
@@ -1369,7 +1369,8 @@ variable MDV-I   variable MDV-F
    k RF-REASON = IF MDIAG @ MD-CODE$ EXIT THEN
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
-   s" E-REJECTED" ;
+   k RF-RETURN = IF s" E-REJECTED" EXIT THEN
+   s" render: a rejection with no code" 76 die ;
 : NM-SPAN ( -- ptr u8 n )
    NMOFF @ TADDR NMU @ ;
 \ The return rows `return_stack` names, expected then actual: a rejected read's
@@ -1385,6 +1386,12 @@ variable MDV-I   variable MDV-F
    RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EXIT THEN
    RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EXIT THEN
    s" return stack: the return row does not balance at exit" ;
+
+: RS-LABEL$ ( -- ptr u8 n )
+   RSBAD @ 2 = IF s" reads below the definition's return cells" EXIT THEN
+   RSBAD @ 3 = IF s" quotation's return row unbalanced" EXIT THEN
+   RSBAD @ 4 = IF s" reads below the quotation's return cells" EXIT THEN
+   s" return row unbalanced" ;
 
 : ROWS-REFUSAL? ( n -- bool )
    {: k:n :}
@@ -1550,7 +1557,7 @@ variable MDV-I   variable MDV-F
       RF-RETURN of RS-REASON$ EMIT-STR endof
       RF-REASON of REASON-MESSAGE endof
       RF-UNCHECKABLE of s"  cannot be checked here" TOK-MESSAGE endof
-      s" rejected at " EMIT-STR  TOK-SPAN
+      s" render: a rejection with no message" 76 die
    endcase ;
 
 : END-LABEL ( -- )
@@ -1586,7 +1593,8 @@ variable MDV-I   variable MDV-F
       RF-DEAD of s" never runs" EMIT-STR endof
       RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
       RF-REASON of MDIAG @ MD-LABEL$ EMIT-STR endof
-      s" here" EMIT-STR
+      RF-RETURN of RS-LABEL$ EMIT-STR endof
+      s" render: a rejection with no label" 76 die
    endcase ;
 
 : TEXT-NOTE ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n va:ptr vu:n :}
@@ -1844,7 +1852,6 @@ PTR-VARIABLE HOLDER-FIRST
    s" take back with `r>` every cell the definition pushes with `>r` before it exits"
    EMIT-STR ;
 
-\ A mismatch with no captured pair (DKIND) takes the depth repair.
 : DIAG-HELP ( -- )
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
@@ -1864,8 +1871,7 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
    k RF-RETURN = IF RETURN-HELP EXIT THEN
-   REFUSAL@ RF-MISMATCH = IF ['] ROW-VALUES ROWS-SUGGEST$ EMIT-STR EXIT THEN
-   s" Inspect the token, signature, and raw stack evidence." EMIT-STR ;
+   s" render: a rejection with no help" 76 die ;
 
 \ The record of a does> head that creates no word, placed at its `does>` token
 \ t tu, for a reader that judges the head without CHECK; the caller ends it.

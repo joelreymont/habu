@@ -17175,19 +17175,17 @@ CHECKER-REG:}SCRATCH
 : INT-STEP ( n -- )
    dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT! ;
 
-\ A literal the engine does not admit fails and files nothing.
+\ A token the engine does not parse as a number is a word, as the engine looks
+\ it up: one that overflows a cell is E-UNDEFINED there.
 : LITERAL-TOK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u ALLDIG? IF
-      a u INTEGER-LITERAL-ADMITTED? IF INT-STEP
-      ELSE drop  0 OK !  -1 FAILSET ! THEN
-      RES-TRUE EXIT
+      a u INTEGER-LITERAL-ADMITTED? 0= IF drop RES-FALSE EXIT THEN
+      INT-STEP  RES-TRUE EXIT
    THEN
    a u FLODIG? IF
-      a u FLOAT-LITERAL-ADMITTED? IF
-         CHECKER-TAPE:K-REAL swap 0 EVENT!  STEP-R-OUT
-      ELSE drop  0 OK !  -1 FAILSET ! THEN
-      RES-TRUE EXIT
+      a u FLOAT-LITERAL-ADMITTED? 0= IF drop RES-FALSE EXIT THEN
+      CHECKER-TAPE:K-REAL swap 0 EVENT!  STEP-R-OUT  RES-TRUE EXIT
    THEN
    RES-FALSE ;
 
