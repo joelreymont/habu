@@ -5,9 +5,9 @@
 \
 \ A segment is an owner record, its row tables and an arena. The store opens the
 \ next segment at `here` when the last cannot take a body, and a capture opens
-\ one before its window's source. A body larger than an arena is refused by
-\ name. A body interned again after its segment filled is copied into the next
-\ one.
+\ one before its window's source. A body larger than an arena gets a segment
+\ whose arena is its own size. A body interned again after its segment filled
+\ is copied into the next one.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -20,7 +20,7 @@ package INTERN
 private
 
 \ ---- the store ---------------------------------------------------------------
-$80000 constant ARENA-CAP            \ 512 KB of bodies per segment
+$80000 constant ARENA-CAP            \ 512 KB of bodies, unless one body is larger
 8192 constant ROWS-MAX               \ distinct bodies per segment
 ROWS-MAX 2 * constant SLOTS          \ a power of two
 
@@ -53,18 +53,18 @@ ROWS-MAX cells 2 * OWNER-BYTES + constant OWNER-SIZE
    {: buf:ptr bytes:n :}
    bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
 
-: OWNER-INIT ( ptr u8 ptr u8 -- ) {: owner:ptr arena:ptr :}
+: OWNER-INIT ( ptr u8 ptr u8 n -- ) {: owner:ptr arena:ptr cap:n :}
    \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
    \ this new owner too, and must not retain the build host's scratch values.
    owner OWNER-SIZE CLEAR-CELLS
-   arena ARENA-CAP CELL + CLEAR-CELLS
+   arena cap CELL + CLEAR-CELLS
    arena owner ARENA-FIELD LINK! ;
 
 create BOOT-OWNER OWNER-SIZE allot
 \ The separate empty-row byte gives it an address no nonempty row can own,
 \ without counting a byte in USED or reducing the arena's body capacity.
 create BOOT-ARENA ARENA-CAP CELL + allot
-BOOT-OWNER BOOT-ARENA OWNER-INIT
+BOOT-OWNER BOOT-ARENA ARENA-CAP OWNER-INIT
 
 PERSISTED-PTR-VARIABLE WRITE-P       \ the segment that takes new bodies
 BOOT-OWNER WRITE-P !
@@ -130,12 +130,12 @@ public
 private
 
 \ ---- putting one in ------------------------------------------------------------
-: NEW-SEGMENT ( -- )
+: NEW-SEGMENT ( n -- ) {: cap:n :}
    align here {: owner:ptr :}
    OWNER-SIZE allot
    here {: arena:ptr :}
-   ARENA-CAP CELL + allot
-   owner arena OWNER-INIT
+   cap CELL + allot
+   owner arena cap OWNER-INIT
    DATA-FLOOR:RAISE
    owner WRITE-P !
    SLOT-CLEAR ;
@@ -143,12 +143,10 @@ private
 : ROOM? ( n -- bool ) {: u:n :}
    ROWS @ ROWS-MAX <  u ARENA-CAP USED @ - <=  and ;
 
-\ A body no segment can hold is refused before anything moves, so the refusal
-\ leaves no trace.
+\ A body larger than ARENA-CAP gets a segment of its own size; its USED then
+\ exceeds ARENA-CAP, so ROOM? sends the next body to a new segment.
 : ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 0 < if E-NSTR-BODY throw then
-   u ARENA-CAP > if E-NSTR-CAP throw then
-   u ROOM? 0= if NEW-SEGMENT then
+   u ROOM? 0= if u ARENA-CAP max NEW-SEGMENT then
    a u FREE-SLOT {: s:n :}
    USED @ {: off:n :}
    u 0= if ARENA-CAP else off then {: stored:n :}
@@ -164,12 +162,11 @@ public
 
 \ A capture calls this after latching its window's start, before evaluating
 \ its source, so the window's bodies land inside it.
-: WINDOW-OPEN ( -- ) NEW-SEGMENT ;
+: WINDOW-OPEN ( -- ) ARENA-CAP NEW-SEGMENT ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : STRING ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   u 0 < if E-NSTR-BODY throw then
    SPACE? if a u SPACE-STRING exit then
    a u ROW-FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + exit then

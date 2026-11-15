@@ -402,8 +402,6 @@ require src/lib/prelude.f
 -8623 constant E-NPUB-TARGET  \ a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked
 
 \ Native emission and string storage: -8635..-8639
--8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB): the store opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
--8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
 -8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it: a build does not go on once DP moves back inside its space, so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
 
 \ The register-file description and the machine description over it:
