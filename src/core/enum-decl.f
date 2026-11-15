@@ -40,30 +40,6 @@ ED-RESET
       2drop s" name must be a lowercase family tail" E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ Payload types: n/f/r and con names, letter params within arity, ^T, and
-\ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
-\ owner included; anything else, TK-EVIDENCE among them, is unresolved.
-: FIELD-FAM? ( ^u8 n -- n bool )
-   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
-   {: id:n :}
-   id UNSTORED-REASON IF E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
-   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `^`
-      s" payload type cannot recursively name its owner"
-      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id TFAM-ARITY@ 0 <> IF
-      s" payload type is parametric and needs type arguments" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id YES ;
-
-: LETTER-TYPE ( ^u8 n -- n )
-   drop c@
-   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
-   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
-   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
-   TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   SCHEMA-PARAM ;
-
 \ The pointee text of a payload type that opens a pointer: the rest of a `^T`
 \ token, empty for a bare `^`. The token `ptr` names no type: it is refused as
 \ an unknown payload type.
@@ -74,10 +50,12 @@ ED-RESET
    a u NO ;
 
 \ The text resolved is the reject token, so a refused pointee names itself, not
-\ the `^T` token that holds it.
+\ the `^T` token that holds it. The node parser sets FIELD-MISS (MISSING!) for
+\ a family that may still arrive.
 : RESOLVE-TYPE ( ^u8 n -- n )
    dup 0= IF 2drop s" missing payload type" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
+   s" ;variant" s" payload type" STRUCTURE-DECL:SD-SPAN
    EN-PTR-TEXT? IF
       POINTEE @ {: outer:n :}
       -1 POINTEE !
@@ -86,14 +64,9 @@ ED-RESET
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" payload type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
-   2dup TYPE-MAY-ARRIVE-XT IF MISSING! 0 EXIT THEN
-   2drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   FAM @ POINTEE @ s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
 
-: SCH-WIDTH ( n -- n )
-   dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
+: SCH-WIDTH ( n -- n ) FAM @ swap TFAM-SCH-WIDTH ;
 
 \ Header clauses emit through DECL-EVENT, which owns duplicate and ordinal state;
 \ each mutates only the fresh family record.

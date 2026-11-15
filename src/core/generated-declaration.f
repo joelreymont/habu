@@ -21,7 +21,9 @@ package DECL-REJECT
 \ also keeps the span it was copied from, which a located token renders instead
 \ (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
 4 constant SLOTS
+public
 96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
+private
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
 

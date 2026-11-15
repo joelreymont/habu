@@ -7,6 +7,7 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f
 require src/lib/test.f
+require src/lib/adt/option.f
 
 DECL-DIAG:PROSE
 
@@ -784,6 +785,100 @@ s" ENUM edsptr VARIANT hold FIELD next ^edsptr ;VARIANT VARIANT none ;VARIANT ;E
 DECL-DIAG:PROSE
 s" ENUM edslin VARIANT hold FIELD next ^edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edslin': payload type is a pointer to a linear value and cannot own it at 'edslin'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ 26. A payload may be a family application, read by STRUCTURE's node parser,
+\     and is as wide as STRUCTURE counts it.
+s" package edapp-pkg public STRUCTURE edapps FIELD v option<n> ;STRUCTURE  ENUM edappe VARIANT yy FIELD v option<n> ;VARIANT ;ENUM ;package"
+   TEST-EVAL:RC 0 T=
+
+ENUM edapcol red green ;ENUM
+ENUM edapopt
+   VARIANT num FIELD v option<n> ;VARIANT
+   VARIANT col FIELD c option<edapcol> ;VARIANT
+   VARIANT bare ;VARIANT
+;ENUM
+: EDAP-COL ( option<edapcol> -- n )
+   MATCH option
+      some of MATCH edapcol red of 1 endof green of 2 endof ;MATCH endof
+      none of -1 endof
+   ;MATCH ;
+: EDAP-READ ( edapopt -- n )
+   MATCH edapopt
+      num of MATCH option some of endof none of -1 endof ;MATCH endof
+      col of EDAP-COL endof
+      bare of -2 endof
+   ;MATCH ;
+: EDAP-NUM ( n -- n ) OPTION:SOME EDAPOPT:NUM EDAP-READ ;
+: EDAP-NUM-NONE ( -- n ) OPTION:NONE EDAPOPT:NUM EDAP-READ ;
+: EDAP-GREEN ( -- n ) EDAPCOL:GREEN OPTION:SOME EDAPOPT:COL EDAP-READ ;
+: EDAP-COL-NONE ( -- n ) OPTION:NONE EDAPOPT:COL EDAP-READ ;
+: EDAP-BARE ( -- n ) EDAPOPT:BARE EDAP-READ ;
+7 EDAP-NUM 7 T=
+EDAP-NUM-NONE -1 T=
+EDAP-GREEN 2 T=
+EDAP-COL-NONE -1 T=
+EDAP-BARE -2 T=
+
+ENUM edapgen<a>
+   VARIANT held FIELD v option<a> ;VARIANT
+   VARIANT bare ;VARIANT
+;ENUM
+: EDAPGEN-READ ( edapgen<n> -- n )
+   MATCH edapgen
+      held of MATCH option some of endof none of -1 endof ;MATCH endof
+      bare of -2 endof
+   ;MATCH ;
+: EDAPGEN-SOME ( n -- n ) OPTION:SOME EDAPGEN:HELD EDAPGEN-READ ;
+: EDAPGEN-NONE ( -- n ) OPTION:NONE EDAPGEN:HELD EDAPGEN-READ ;
+9 EDAPGEN-SOME 9 T=
+EDAPGEN-NONE -1 T=
+
+\     ENUM's refusals hold inside an application, in its own words.
+DECL-DIAG:PROSE
+s" ENUM edapunk VARIANT hold FIELD v nosuch<n> ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'edapunk': unknown payload type at 'nosuch<n>'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edapself VARIANT hold FIELD v option<edapself> ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'edapself': payload type cannot recursively name its owner at 'option<edapself>'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\     An application is as wide as its arguments make it: option<edapw> takes
+\     three cells, so big's payload takes four.
+STRUCTURE edapw FIELD a n FIELD b n ;STRUCTURE
+ENUM edapwide
+   VARIANT big FIELD v option<edapw> FIELD t n ;VARIANT
+   VARIANT small FIELD x n ;VARIANT
+;ENUM
+: EDAPW-SUM ( option<edapw> -- n )
+   MATCH option some of EDAPW:UNMAKE + endof none of -1 endof ;MATCH ;
+: EDAPWIDE-BIG ( option<edapw> n -- n ) {: t:n :} EDAPW-SUM t 1000 * + ;
+: EDAPWIDE-READ ( edapwide -- n )
+   MATCH edapwide
+      big of EDAPWIDE-BIG endof
+      small of 100 + endof
+   ;MATCH ;
+: EDAPWIDE-SOME ( n n n -- n ) {: a:n b:n t:n :}
+   a b EDAPW:MAKE OPTION:SOME t EDAPWIDE:BIG EDAPWIDE-READ ;
+: EDAPW-NONE ( -- option<edapw> ) OPTION:NONE ;
+: EDAPWIDE-NONE ( n -- n ) {: t:n :} EDAPW-NONE t EDAPWIDE:BIG EDAPWIDE-READ ;
+: EDAPWIDE-SMALL ( n -- n ) EDAPWIDE:SMALL EDAPWIDE-READ ;
+3 4 7 EDAPWIDE-SOME 7007 T=
+9 EDAPWIDE-NONE 8999 T=
+5 EDAPWIDE-SMALL 105 T=
+TFAM:TFAM-ACTIVE-PKG$ s" edapwide" TFAM:TFAM-SIG-RESOLVE TTRUE TFAM:TFAM-SLOTS@ 4 T=
+
+\     A payload type's tokens may hold blanks and stand on two lines, as a field
+\     type's do; one left open at `;VARIANT` is unclosed.
+STRUCTURE edappair<a,b> FIELD x a FIELD y b ;STRUCTURE
+s" ENUM edapspaced VARIANT vq FIELD v edappair<n, n> ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s\" ENUM edapline VARIANT vq FIELD v edappair<n,\n   n> ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" ENUM edapopen VARIANT vq FIELD v edappair<n, ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'edapopen': unclosed payload type application at 'edappair<n,'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
