@@ -4693,13 +4693,13 @@ private
    LBL LBL LBL
    {: reset-loop:label init-bad:label append-done:label :}
    EM-DEF-OCC:LISSUE LABEL@ LBL,
-      SP SP 48 SUBI,
-      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
+      SP SP 32 SUBI,
+      9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
       10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
       11 11 1 ADDI,  11 10 0 STR,
       12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
-      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
-      SP SP 48 ADDI,  RET,
+      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+      SP SP 32 ADDI,  RET,
    EM-DEF-OCC:LCOUNT LABEL@ LBL,
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
