@@ -6,13 +6,13 @@
 <title><!--title--></title>
 <style>
 html, body { height: 100%; }
-body { margin: 0; display: flex; flex-direction: column; font: 14px system-ui, sans-serif; }
-#viewport { position: relative; flex: 1 1 55%; min-height: 200px; }
+body { margin: 0; display: flex; font: 14px system-ui, sans-serif; }
+#side { flex: 0 0 240px; min-height: 0; overflow: auto; border-right: 1px solid #ddd; }
+#main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#viewport { position: relative; flex: 1; min-height: 200px; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
-#scene { flex: 0 1 30%; min-height: 0; overflow: auto; border-top: 1px solid #ddd; }
-#scene h2 { margin: 8px; font-size: 14px; }
 #tree ul { list-style: none; margin: 0; padding-left: 16px; }
 #tree > ul { padding-left: 4px; }
 .tree-row { display: flex; align-items: center; min-width: max-content; }
@@ -27,10 +27,12 @@ form input { box-sizing: border-box; width: 100%; }
 </style>
 </head>
 <body>
+<nav id="side" aria-label="Tree"><div id="tree"></div></nav>
+<div id="main">
 <div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
-<section id="scene" aria-label="Scene tree"><h2>Scene</h2><div id="tree"></div></section>
 <form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading</div>
+</div>
 <script type="text/plain" id="page-id"><!--page-id--></script>
 <script type="application/base64" id="app.js"><!--app.js--></script>
 <script type="module">
