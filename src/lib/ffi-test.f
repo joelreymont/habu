@@ -207,9 +207,9 @@ variable FFI-T-PAIR-AFTER
 : FFI-T-GOOD-AFTER ( -- )
    s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
 
-\ A declaration that never closes defines nothing, and the next FUNCTION:
-\ refuses because one is still open. Closing it by hand restores the declarer,
-\ and a closer with nothing open is refused in turn.
+\ A declaration that never closes defines nothing, and the next FUNCTION: is
+\ rejected because one is still open; the rejection abandons the open one, so
+\ the declaration after it compiles and a closer with nothing open is rejected.
 : FFI-T-BAD-UNCLOSED ( -- )
    s" FUNCTION: FFI-T-X7 getpid ( -- n ) FUNCTION: FFI-T-X8 getpid ( -- n )"
    INCLUDE-EVALUATE ;
@@ -716,8 +716,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 0 FFI-T-MEMCPY drop
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
 
-   [: FFI-T-BAD-PTR ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-RESULTS ;] E-FFI-SYNTAX TTHROWSQ
+   1 REJECTION:QUIET +!
+   [: FFI-T-BAD-PTR ;] CHECKER-REJECT-RC TTHROWSQ
+   [: FFI-T-BAD-RESULTS ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +!
    [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
@@ -725,9 +727,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
    else
-      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+      1 REJECTION:QUIET +!
+      [: FFI-T-BAD-FLOAT-ARITY ;] CHECKER-REJECT-RC TTHROWSQ
+      -1 REJECTION:QUIET +!
    then
-   [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
+   1 REJECTION:QUIET +!
+   [: FFI-T-BAD-F32-ARITY ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +!
    [: FFI-T-BAD-F32-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
    [: FFI-T-PTR-MIXED ;] 0 TTHROWSQ
@@ -754,10 +760,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-PAIR-AFTER FFI-T-DEPTH!
    FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=
 
-   [: FFI-T-BAD-UNCLOSED ;] E-FFI-SYNTAX TTHROWSQ
-   FFI-T-CLOSE-DANGLING
+   1 REJECTION:QUIET +!
+   [: FFI-T-BAD-UNCLOSED ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +!
    [: FFI-T-REDECLARE ;] 0 TTHROWSQ
-   [: FFI-T-CLOSE-DANGLING ;] E-FFI-SYNTAX TTHROWSQ
+   1 REJECTION:QUIET +!
+   [: FFI-T-CLOSE-DANGLING ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +!
 
    s" FFI-T-RAW ( ptr a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ptr a ptr a ptr a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS

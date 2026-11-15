@@ -29,7 +29,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    width , ;
 
 \ Whether neither of NAME's words is taken in the current section; a taken one
-\ throws E-DUP-DEFINITION.
+\ is rejected at NAME.
 : FREE? ( ptr u8 n -- bool )
    {: name:ptr nameu:n :}
    name nameu s" -NEW" LBUF-SUFFIX-OK? dup 0= if exit then drop
@@ -40,24 +40,24 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    mode CHECKER-PACKAGE-PUBLIC = if PKG-PRI-CELL else PKG-PUB-CELL then
    data-base + @ ;
 
-\ NAME+SFX taken in the wordlist WID throws E-DUP-DEFINITION.
+\ NAME+SFX taken in the wordlist WID is rejected at NAME.
 : OTHER-FREE ( ptr u8 n ptr u8 n n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n wid:n :}
    name nameu sfx sfxu LBUF-SUFFIXED {: a:ptr u:n :}
-   a u wid search-wl 0 <> if a u CHECK:REFUSE-DUPLICATE then ;
+   a u wid search-wl 0 <> if a u name nameu CHECK:REFUSE-DUPLICATE then ;
 
-\ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, throws
-\ E-DUP-DEFINITION.
+\ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
+\ NAME.
 : PRIVATE-FREE ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n :}
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
    CHECKER-QTAIL$ sfx sfxu LBUF-SUFFIXED wid search-wl 0= if exit then
-   name nameu sfx sfxu LBUF-SUFFIXED CHECK:REFUSE-DUPLICATE ;
+   name nameu sfx sfxu LBUF-SUFFIXED name nameu CHECK:REFUSE-DUPLICATE ;
 
-\ NAME's words taken in the section the declaration does not write throw
-\ E-DUP-DEFINITION: a qualified Q:TAIL writes Q's public one.
+\ NAME's words taken in the section the declaration does not write are
+\ rejected at NAME: a qualified Q:TAIL writes Q's public one.
 : OTHERS-FREE ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CHECKER-QUALIFIED? if
       name nameu s" -NEW" PRIVATE-FREE

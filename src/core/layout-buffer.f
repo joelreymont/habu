@@ -70,11 +70,12 @@ SRCLOC:INB-CELL RESERVED-PTR-U8-CELL LBUF-INPUT
    LBUF-BYTES ! LBUF-TRUE ;
 
 \ A name the checker refuses answers false, and the definer defines nothing:
-\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REFUSE).
-: LBUF-NAME-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
+\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REFUSE). A
+\ taken name is rejected at t tu, the declared name the source holds.
+: LBUF-NAME-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n t:ptr tu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
-   name nameu CHECKER-DEFINED-HERE? if name nameu CHECK:REFUSE-DUPLICATE then
-   name nameu get-current search-wl 0 <> if name nameu CHECK:REFUSE-DUPLICATE then
+   name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REFUSE-DUPLICATE then
+   name nameu get-current search-wl 0 <> if name nameu t tu CHECK:REFUSE-DUPLICATE then
    LBUF-TRUE ;
 
 : LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
@@ -103,7 +104,7 @@ SRCLOC:INB-CELL RESERVED-PTR-U8-CELL LBUF-INPUT
 \ guarded like the declared one, so a collision fails loudly instead of
 \ rebinding a word.
 : LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
-   name nameu sfx sfxu LBUF-SUFFIXED LBUF-NAME-OK? ;
+   name nameu sfx sfxu LBUF-SUFFIXED name nameu LBUF-NAME-OK? ;
 
 PTR-VARIABLE STGT-A
 variable STGT-U
@@ -348,7 +349,7 @@ public
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   name nameu LBUF-NAME-OK? 0= if exit then
+   name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
@@ -362,7 +363,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" DEFER-LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   name nameu LBUF-NAME-OK? 0= if exit then
+   name nameu name nameu LBUF-NAME-OK? 0= if exit then
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
    name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
    type typeu CHECKER-LAYOUT-INFO 0= if
@@ -399,7 +400,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" TYPED-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   name nameu LBUF-NAME-OK? 0= if exit then
+   name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
@@ -408,7 +409,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" TYPED-VARIABLE" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   name nameu LBUF-NAME-OK? 0= if exit then
+   name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu TDECL-STORED-CHILD {: handle:n :}

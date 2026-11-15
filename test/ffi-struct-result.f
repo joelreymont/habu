@@ -151,6 +151,8 @@ create FFI-T-SR-BUF 64 allot
    [: FFI-T-SR-WRITES-AFTER ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-SR-OUTSIDE ;] E-FFI-SYNTAX TTHROWSQ
    s" sixteen C arguments beside the destination exceed the inputs" T-LABEL
-   [: FFI-T-SR-INPUTS ;] E-FFI-ARITY TTHROWSQ ;
+   1 REJECTION:QUIET +!
+   [: FFI-T-SR-INPUTS ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +! ;
 
 FFI-T-STRUCT-RESULTS

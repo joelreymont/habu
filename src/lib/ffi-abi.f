@@ -942,6 +942,11 @@ variable NAME-U
 variable SYM-U
 variable TOK-U
 variable BASE-U
+\ The source span TOK-BUF and NAME-BUF were copied from.
+1 PTR-U8-TABLE TOK-SRC-A
+variable TOK-SRC-U
+1 PTR-U8-TABLE NAME-SRC-A
+variable NAME-SRC-U
 
 create ARG-KIND ARG-MAX cells allot
 create ARG-REG ARG-MAX cells allot
@@ -965,11 +970,13 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
    TOK-CAP 0 ?do 0 TOK-BUF i + c! 0 BASE-BUF i + c! loop
-   0 TOK-U ! 0 BASE-U ! ;
+   0 TOK-U ! 0 BASE-U !
+   NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U ! ;
 
 : REST ( -- )
    TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
    0 NAME-U ! 0 SYM-U !
+   NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U !
    REST-TOKENS
    ARG-MAX 0 ?do
       0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
@@ -981,21 +988,71 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
+\ ---- a bad declaration's rejection ----------------------------------------
+\ A record with its code, message, place and label, written through its label:
+\ FFI-REJECT opens the help, LIMIT-HELP first notes the limit passed, and the
+\ caller writes the help and ends the record with FFI-STOP. The stop abandons
+\ the declaration, so the next FUNCTION: in the file is not rejected for it.
+: FFI-PLACE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n m:ptr mu:n t:ptr tu:n l:ptr lu:n :}
+   c cu REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   t tu REJECTION:AT  l lu REJECTION:EMIT-STR ;
+
+: FFI-REJECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   FFI-PLACE REJECTION:HELP ;
+
+: LIMIT-HELP ( n ptr u8 n -- ) {: n:n w:ptr wu:n :}
+   s" limit" REJECTION:NOTE  n REJECTION:EMIT-U  s"  " REJECTION:EMIT-STR
+   w wu REJECTION:EMIT-STR
+   REJECTION:HELP ;
+
+: FFI-STOP ( -- )
+   0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
+
+: SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
+
 \ ---- the declaration token stream -----------------------------------------
 \ parse-name's span is transient, so every token is copied before the next one
-\ is read and every comparison reads the copy.
-
-: TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if E-FFI-SYNTAX throw then
-   u TOK-CAP > if E-FFI-SYNTAX throw then
-   a TOK-BUF u BYTE-COPY
-   u TOK-U ! ;
-
-: TOK@ ( -- )
-   parse-name TOK! ;
+\ is read and every comparison reads the copy. The span is kept beside the
+\ copy: a rejection places it while REJECTION holds its source, else the copy.
 
 : TOK$ ( -- ptr u8 n )
    TOK-BUF TOK-U @ ;
+
+: KEPT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n c:ptr cu:n :}
+   a u REJECTION:HELD? if a u exit then
+   c cu ;
+
+: TOK-AT ( -- ptr u8 n )
+   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK$ KEPT ;
+
+: NAME-AT ( -- ptr u8 n )
+   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME-BUF NAME-U @ KEPT ;
+
+\ The input ended: the record stands at the last token read, or at the keyword
+\ when the declaration has read none.
+: ENDED ( -- )
+   TOK-U @ 0= if SRCLOC:TOKEN$ else TOK-AT then {: t:ptr tu:n :}
+   s" E-FFI-SYNTAX" s" the source ends before the declaration is complete"
+   t tu s" the declaration ends here" FFI-REJECT
+   s" finish the declaration: `FUNCTION:` takes a name, a symbol and an effect " SAY
+   s" closed by `)`, and `VERSIONED-LIBRARY` a name and its versions" SAY
+   FFI-STOP ;
+
+: TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if ENDED then
+   u TOK-CAP > if
+      s" E-FFI-SYNTAX" s" a declaration token is longer than a declaration keeps"
+      a u s" too long" FFI-PLACE  TOK-CAP s" bytes" LIMIT-HELP
+      s" shorten the name, symbol or library name to the limit" SAY
+      FFI-STOP
+   then
+   a TOK-BUF u BYTE-COPY
+   u TOK-U !
+   a TOK-SRC-A 0 ptr-field !  u TOK-SRC-U ! ;
+
+: TOK@ ( -- )
+   parse-name TOK! ;
 
 : TOK-IS? ( ptr u8 n -- bool )
    TOK$ STR= ;
@@ -1003,7 +1060,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : NAME! ( -- )
    TOK$ {: a:ptr u:n :}
    a NAME-BUF u BYTE-COPY
-   u NAME-U ! ;
+   u NAME-U !
+   TOK-SRC-A 0 ptr-field @ NAME-SRC-A 0 ptr-field !  TOK-SRC-U @ NAME-SRC-U ! ;
 
 : SYM! ( -- )
    TOK$ {: a:ptr u:n :}
@@ -1058,7 +1116,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : ARG+ ( n -- )
    {: kind:n :}
-   ARG-N @ ARG-MAX >= if E-FFI-ARITY throw then
+   ARG-N @ ARG-MAX >= if
+      s" E-FFI-ARITY" s" the declaration has more inputs than a call passes"
+      NAME-AT s" too many inputs" FFI-PLACE  ARG-MAX s" inputs" LIMIT-HELP
+      s" pass the extra values in memory, through a `ptr u8` input" SAY
+      FFI-STOP
+   then
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
@@ -1068,7 +1131,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ A pointer is `ptr u8`: a byte span with a length the declaration states.
 : PTR-TAIL ( -- )
    TOK@
-   s" u8" TOK-IS? 0= if E-FFI-SYNTAX throw then
+   s" u8" TOK-IS? 0= if
+      s" E-FFI-SYNTAX" s" a pointer in a declaration is `ptr u8`"
+      TOK-AT s" expected `u8`" FFI-REJECT
+      s" write `ptr u8`, a span of bytes whose length the declaration states" SAY
+      FFI-STOP
+   then
    TOK-KEEP ;
 
 : IN-TOKEN ( -- )
@@ -1078,7 +1146,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK-KEEP K-VALUE ARG+ ;
 
 : OUT-TOKEN ( -- )
-   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
+   RES-KIND @ R-NONE <> if
+      s" E-FFI-SYNTAX" s" the declaration has more than one result"
+      TOK-AT s" a second result" FFI-REJECT
+      s" declare one result: a C function returns one value" SAY
+      FFI-STOP
+   then
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
    s" nullable<u8>" TOK-IS? if
       TOK-KEEP R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit
@@ -1093,7 +1166,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    begin
       TOK@
       s" --" TOK-IS? if TOK-KEEP exit then
-      s" )" TOK-IS? if E-FFI-SYNTAX throw then
+      s" )" TOK-IS? if
+         s" E-FFI-SYNTAX" s" the effect closes before its `--`"
+         TOK-AT s" expected `--` before this" FFI-REJECT
+         s" separate the inputs from the result with `--`, as `( n -- n )`" SAY
+         FFI-STOP
+      then
       IN-TOKEN
    again ;
 
@@ -1101,24 +1179,50 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    begin
       TOK@
       s" )" TOK-IS? if exit then
-      s" --" TOK-IS? if E-FFI-SYNTAX throw then
+      s" --" TOK-IS? if
+         s" E-FFI-SYNTAX" s" the effect has a second `--`"
+         TOK-AT s" a second `--`" FFI-REJECT
+         s" keep one `--`, between the inputs and the result" SAY
+         FFI-STOP
+      then
       OUT-TOKEN
    again ;
 
 : EFFECT ( -- )
    TOK@
-   s" (" TOK-IS? 0= if E-FFI-SYNTAX throw then
+   s" (" TOK-IS? 0= if
+      s" E-FFI-SYNTAX" s" the declaration has no effect after its symbol"
+      TOK-AT s" expected `(`" FFI-REJECT
+      s" write the effect after the symbol, as `FUNCTION: name symbol ( n -- n )`" SAY
+      FFI-STOP
+   then
    EFF CODEGEN:RESET
    INPUTS
    OUTPUTS ;
 
 \ ---- which call the declaration rides --------------------------------------
 
+\ A call that takes or returns a float, or a macOS variadic call's fixed
+\ inputs, passes its arguments in registers alone.
 : REG-ROOM ( n n -- )
    {: int:n flt:n :}
-   int HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then
-      > if E-FFI-ARITY throw then
-   flt REG-MAX > if E-FFI-ARITY throw then ;
+   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then {: cap:n :}
+   int cap > if
+      s" E-FFI-ARITY" s" the call takes more integer inputs than its registers hold"
+      NAME-AT s" too many integer inputs" FFI-PLACE
+      cap s" integer registers" LIMIT-HELP
+      s" this call passes its integers in registers alone: pass the extra values " SAY
+      s" in memory, through a `ptr u8` input" SAY
+      FFI-STOP
+   then
+   flt REG-MAX > if
+      s" E-FFI-ARITY" s" the call takes more float inputs than its registers hold"
+      NAME-AT s" too many float inputs" FFI-PLACE
+      REG-MAX s" float registers" LIMIT-HELP
+      s" a C float past the last float register has no stack staging: pass the " SAY
+      s" extra values in memory, through a `ptr u8` input" SAY
+      FFI-STOP
+   then ;
 
 : FLOAT-ARG? ( n -- bool )
    ARG-KIND@ {: kind:n :}
@@ -1216,7 +1320,16 @@ private
 : PLAN-STRUCT ( -- n n )
    ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
    {: int:n flt:n stk:n :}
-   flt stk PLAN-FITS? 0= if E-FFI-ARITY throw then
+   flt stk PLAN-FITS? 0= if
+      s" E-FFI-ARITY" s" the struct call needs more registers or stack cells than it has"
+      NAME-AT s" does not fit" FFI-PLACE
+      flt REG-MAX > if REG-MAX s" float registers" else STACK-CELLS s" stack cells" then
+      LIMIT-HELP
+      s" pass fewer arguments or smaller records: floats take the float registers, " SAY
+      s" and spilled arguments share the stack cells with copies of records over " SAY
+      s" 16 bytes" SAY
+      FFI-STOP
+   then
    int stk ;
 
 : RECORDS? ( -- bool )
@@ -1440,7 +1553,12 @@ public
 \ is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
-      OPEN @ 0 <> if E-FFI-SYNTAX throw then
+      OPEN @ 0 <> if
+         s" E-FFI-SYNTAX" s" a declaration opens while another is open"
+         SRCLOC:TOKEN$ s" the open one needs `;FUNCTION` before this" FFI-REJECT
+         s" close the open declaration with ;FUNCTION first" SAY
+         FFI-STOP
+      then
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND ! 0 RES-NULLABLE !
       TOK@ NAME!
@@ -1451,7 +1569,12 @@ public
 \ The rendered text calls only FFI words, which no scratch cell reaches, so
 \ the scratch rests before the text runs.
 : CLOSE-FUNCTION ( -- )
-   [: OPEN @ 0= if E-FFI-SYNTAX throw then
+   [: OPEN @ 0= if
+         s" E-FFI-SYNTAX" s" `;FUNCTION` closes no declaration"
+         SRCLOC:TOKEN$ s" nothing is open" FFI-REJECT
+         s" remove this `;FUNCTION`, or open its declaration with `FUNCTION:` first" SAY
+         FFI-STOP
+      then
       0 OPEN !
       PLAN-CALL
       EMIT ;] KEEP-REST

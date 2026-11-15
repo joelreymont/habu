@@ -2859,8 +2859,9 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 \ opener kept where its name starts (PENDTKA-CELL); create, variable and
 \ constant run the hook with nothing pending, PENDTKA-CELL
 \ still at the last colon definition's name and the cursor just past their own.
-\ Only a name between the file's first owned byte and the cursor is taken
-\ from there; any other is a u.
+\ For DEFINITION's first token, a pending colon definition's name is taken
+\ from the source when it lies between the file's first owned byte and the
+\ cursor; any other name is a u as DEFINITION read it.
 : SOURCE-NAME$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
@@ -2868,9 +2869,9 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    if nm u else a u then ;
 
 public
-: REFUSE-DUPLICATE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u  a u SOURCE-NAME$  REJECTION:DUPLICATE
+: REFUSE-DUPLICATE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n t:ptr tu:n :}
+   a u t tu REJECTION:DUPLICATE
    CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 
