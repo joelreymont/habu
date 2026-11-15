@@ -467,6 +467,17 @@ s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
 s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:DUPLICATE T=
 s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
+s" evaluate: a computed 0 throw answers 0" T-LABEL
+s" 5 5 - throw" ES-RES-REFUSE:OUTCOME 0 T=
+variable ES-EVAL-AFTER
+: ES-EVAL-SKIPS ( -- n )
+   0 ES-EVAL-AFTER !
+   [: s" 5 5 - throw" evaluate-closed  1 ES-EVAL-AFTER ! ;] catch drop
+   ES-EVAL-AFTER @ ;
+s" evaluate: a 0 throw skips the rest of the caller's quotation" T-LABEL
+ES-EVAL-SKIPS 0 T=
+s" evaluate: a throw after the 0 throws answers its code" T-LABEL
+s" 7 throw" ES-RES-REFUSE:OUTCOME 7 T=
 -1 REJECTION:QUIET +!
 
 \ mid-body ( ... ) comments are comments, never a second signature.

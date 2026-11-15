@@ -2846,6 +2846,15 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
    code EVALERR-CELL CELL! ;
 
+0 constant FRAME-DONE
+1 constant FRAME-LINKED
+2 constant FRAME-UNWOUND
+
+\ Success is the frame still on top with code 0: a 0 throw unwinds yet answers 0.
+: FRAME-EXIT ( ^u8 n -- n ) {: f:^ code:n :}
+   f NULL-PTR - EVAL-TOP-CELL CELL@ <> if FRAME-UNWOUND exit then
+   code 0= if FRAME-DONE else FRAME-LINKED then ;
+
 : FRAME-FREE ( ^u8 -- )
    dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
 
@@ -2885,15 +2894,21 @@ variable REPL-OK
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
-   code 0= if
-      f FRAME-UNLINK
-   else
-      f NULL-PTR - EVAL-TOP-CELL CELL@ = if f FRAME-UNLINK then
-      f prior found REPL-RECOVER
-      f FRAME-CELLS-RESTORE
-   then
+   f code FRAME-EXIT {: out:n :}
+   out case
+      FRAME-DONE of f FRAME-UNLINK endof
+      FRAME-LINKED of
+         f FRAME-UNLINK
+         f prior found REPL-RECOVER
+         f FRAME-CELLS-RESTORE
+      endof
+      FRAME-UNWOUND of
+         f prior found REPL-RECOVER
+         f FRAME-CELLS-RESTORE
+      endof
+   endcase
    f FRAME-FREE
-   code 0<> if
+   out FRAME-DONE <> if
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
       false exit
@@ -2933,20 +2948,26 @@ public
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
-   code 0= if
-      f FRAME-LEAVE
-   else
-      f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
-      f FRAME-CELLS-RESTORE
-      entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
-   then
+   f code FRAME-EXIT {: out:n :}
+   out case
+      FRAME-DONE of f FRAME-LEAVE endof
+      FRAME-LINKED of
+         f code FRAME-RECOVER
+         f FRAME-CELLS-RESTORE
+         entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
+      endof
+      FRAME-UNWOUND of
+         f FRAME-CELLS-RESTORE
+         entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
+      endof
+   endcase
    prior ENTRY-PEND !
-   code 0<> if
+   out FRAME-DONE <> if
       entry PEND-CELL CELL!
    then
    outer USE-FLOOR !  found REC !
    f FRAME-FREE
-   code 0<> if code throw then ;
+   out FRAME-DONE <> if code throw then ;
 
 : EVAL-FRAMED ( ^u8 n -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
