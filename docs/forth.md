@@ -2041,7 +2041,7 @@ These ceilings are reachable from plain Habu rather than a runaway. Each
 refuses by name with the count it saw and the ceiling, and none truncates; the
 ceiling is a named constant beside the code that enforces it. A definition's
 captured text and its name have no ceiling: they grow with the definition, and
-a map that fails ends the run, rc 71, with the kernel stop `E-BODY-TEXT`.
+a map the system refuses throws `E-BODY-TEXT`.
 
 - **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
@@ -2084,8 +2084,8 @@ a map that fails ends the run, rc 71, with the kernel stop `E-BODY-TEXT`.
   `fix_signature_size`. Pass bulk values in a buffer, not on the stack.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
-  advance the dictionary pointer. Past the DATA reservation the kernel stops
-  with `E-DATA-SPACE`, catchable inside `evaluate`. Hold bulk data in
+  advance the dictionary pointer. Past the DATA reservation the kernel throws
+  `E-DATA-SPACE`, which a `catch` receives. Hold bulk data in
   `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map their own pages, not in
   the dictionary. On a
   task's thread every one of these sinks exits before it writes, as do
@@ -2348,10 +2348,9 @@ sections above.
 - **A checker replay admits rows, never live namespace changes.** While one is
   open, a definer (`:`, `create`, `variable`, `constant`, `defer`, `TRUSTED:`,
   `CAST:`), `EXPORT`, a new `package` or `wordlist` throws
-  `ENGINE-ERROR:OVERLAY-OPEN` (`E-OVERLAY-OPEN`) at its name before the
-  dictionary changes, and `undefine` throws it before retiring anything.
-  Reopening an existing package is allowed. The throw is catchable inside
-  `evaluate`; the replay still closes.
+  `E-OVERLAY-OPEN` before the dictionary changes, and `undefine` throws it
+  before retiring anything. Reopening an existing package is allowed. The
+  throw is catchable; the replay still closes.
 - **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
   unchecked, a caller bug: its `catch` answers 0.**
 - **A definition and a `(` comment close in the source that opened them.**

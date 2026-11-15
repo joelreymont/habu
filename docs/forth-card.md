@@ -80,9 +80,8 @@ public
   recorded or scanned without a definition, is `E-UNDEFINED` in a body, except
   that generated definitions inside one checker replay may call rows recorded
   earlier in it. A definition (`:`, `create`, …), a new `package` or a
-  `wordlist` made while a checker replay is open dies where it is made, naming
-  it, and so does an `undefine` run there, before it retires anything:
-  `ENGINE-ERROR:OVERLAY-OPEN`.
+  `wordlist` made while a checker replay is open throws `E-OVERLAY-OPEN` where
+  it is made, and so does an `undefine` run there, before it retires anything.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
   `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
