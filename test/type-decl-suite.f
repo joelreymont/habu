@@ -1642,10 +1642,10 @@ package tdprv
 private
 s" ENUM tdrb11 DERIVE eq aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 ;package
-\ adjacent `eq` after the clause reads as a redundant FEATURE (order-free
-\ list, idempotent); a variant spelled eq must follow another variant.
+\ a feature token right after the clause reads as a feature (a repeated one
+\ rejects); a variant spelled like a derived word follows another variant and
+\ collides.
 s" ENUM tdrb7 DERIVE eq other eq ;ENUM" E-TDECL-NAME TDT-NEG
-s" ENUM tdrb8 DERIVE eq tag other ;ENUM" E-TDECL-NAME TDT-NEG
 
 \ rollback: a REJECTED derive declaration leaves no residue — the same family
 \ name registers cleanly afterwards and its derived words work.

@@ -24,6 +24,11 @@ public
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
+\ Enum tags: -9880..-9889, thrown by the words DERIVE tag generates.
+-9880 constant E-ENUM-TAG-FIRST
+-9889 constant E-ENUM-TAG-LAST
+-9880 constant E-ENUM-TAG        \ a number that is not one of an enum's tags (FAM:TAG>)
+
 private
 
 create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
@@ -847,9 +852,10 @@ private
    TDECL-NICHE-THROW ;
 
 \ `DERIVE <feature>...` follows the POLICY position, before the variants/fields.
-\ eq and hash need a PUBLIC arity-0 family, init a product; order rejects as not
-\ supported; an unknown first token rejects, and the list ends at the first
-\ non-feature token by pushback. With eq or hash, payload roles are checked per
+\ eq and hash need a PUBLIC arity-0 family, init a product, tag an ENUM (so
+\ under SUMTYPE and PRODUCT it always rejects); order rejects as not supported;
+\ an unknown first token rejects, and the list ends at the first non-feature
+\ token by pushback. With eq or hash, payload roles are checked per
 \ variant/field after the block parses (TDECL-DERIVE-REQUIRE): integer scalars
 \ compare with `=`; pointer payloads have no derived equality (no checked
 \ pointer-equality surface exists); other scalars reject, linear ones because
@@ -870,6 +876,8 @@ private
       fam TFAM-PRODUCT? 0= IF
          a u s" derive init requires a product" E-TDECL-DERIVE TDECL-THROW THEN
       fam TFAM-DERIVE-INIT! EXIT THEN
+   a u s" tag" CORE-STR=CI IF
+      a u s" derive tag requires an enum" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
@@ -879,6 +887,7 @@ private
    a u s" eq" CORE-STR=CI
    a u s" hash" CORE-STR=CI or
    a u s" init" CORE-STR=CI or
+   a u s" tag" CORE-STR=CI or
    a u s" order" CORE-STR=CI or
    0= IF a u PK! RES-FALSE EXIT THEN
    a u fam TDECL-DERIVE-SET
@@ -1245,6 +1254,7 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 4 constant TDPLAN-CTOR
 5 constant TDPLAN-MAKE
 6 constant TDPLAN-UNMAKE
+7 constant TDPLAN-FROM-TAG
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1438,8 +1448,14 @@ private
 : TDECL-SELF-NODE ( n -- n ) {: fam:n :}
    fam 0 0 SCHEMA-APP ;
 
+\ TAG>'s effect, ( n -- fam ).
+: TDECL-FROM-TAG-EFFECT ( n -- n ) {: fam:n :}
+   EMPTY-EFFECT  CC-N SCHEMA-CON EFFECT-IN
+   fam TDECL-SELF-NODE EFFECT-OUT ;
+
 \ The effect a derived word of KIND over FAM takes.
 : TDECL-KIND-EFFECT ( n n -- n ) {: fam:n kind:n :}
+   kind TDPLAN-FROM-TAG = IF fam TDECL-FROM-TAG-EFFECT EXIT THEN
    fam TDECL-SELF-NODE  EMPTY-EFFECT over EFFECT-IN
    kind TDPLAN-EQ = IF
       over EFFECT-IN  CC-BOOL SCHEMA-CON EFFECT-OUT
@@ -1604,6 +1620,18 @@ variable TDECL-U
       s" endof" TDGEN-KW
    loop
    s" ;match" TDGEN-KW ;
+\ TAG>: case <tag> of FAM:V endof .. E-ENUM-TAG throw endcase. Each arm calls
+\ its variant's constructor, never a cast, so it holds under every layout policy.
+: TDGEN-FROM-TAG-BODY ( n -- ) {: fam:n :}
+   s" case" TDGEN-KW
+   fam TFAM-VAR-START@ {: vstart:n :}
+   vstart fam TFAM-VAR-COUNT@ + vstart ?do
+      i SUMV-TAG@ literal  s" of" TDGEN-KW
+      fam i SUMV-NAME$ TDGEN-DRV-CALL
+      s" endof" TDGEN-KW
+   loop
+   E-ENUM-TAG literal  postpone throw
+   s" endcase" TDGEN-KW ;
 \ One inner arm: the diagonal compares with the outer arm's locals from QB,
 \ any other variant drops and answers false.
 : TDGEN-EQ-ARM ( n n n n -- ) {: fam:n vout:n vin:n qb:n :}
@@ -1690,11 +1718,15 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDECL-HASH-WORD ( n -- ) {: fam:n :}
    fam s" hash" TDGEN-DRV-NAME
    fam TDPLAN-HASH TDPLAN-BUILT+ ;
+: TDECL-FROM-TAG-WORD ( n -- ) {: fam:n :}
+   fam s" tag>" TDGEN-DRV-NAME
+   fam TDPLAN-FROM-TAG TDPLAN-BUILT+ ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN   \ discriminant rides any derive
    fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
-   fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
+   fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN
+   fam TFAM-DERIVE-TAG? IF fam TDECL-FROM-TAG-WORD THEN ;
 
 : TDECL-BUILT-OPEN ( n -- ) {: row:n :}
    row TDPLAN-NAME$  row TDECL-DRV-EFFECT
@@ -1713,6 +1745,10 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    row TDECL-BUILT-OPEN
    fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
    TDECL-BUILT-END ;
+: TDECL-FROM-TAG-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   fam TDGEN-FROM-TAG-BODY
+   TDECL-BUILT-END ;
 : TDECL-CTOR-BUILD ( n n -- ) {: fam:n row:n :}
    row TDECL-BUILT-OPEN
    s" construct" TDGEN-KW
@@ -1725,6 +1761,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    kind TDPLAN-TAG = IF fam row TDECL-TAG-BUILD EXIT THEN
    kind TDPLAN-EQ = IF fam row TDECL-EQ-BUILD EXIT THEN
    kind TDPLAN-HASH = IF fam row TDECL-HASH-BUILD EXIT THEN
+   kind TDPLAN-FROM-TAG = IF fam row TDECL-FROM-TAG-BUILD EXIT THEN
    kind TDPLAN-PROD? IF
       row TDPLAN-NAME$ kind TDPLAN-SHAPE fam TDECL-CHILD EXIT
    THEN

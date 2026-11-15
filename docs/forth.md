@@ -576,7 +576,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   (`docs/design.md` "Families and layout policies" gives the layout
   policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`. A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
+  never raw `=`. `DERIVE tag` on a public arity-0 enum whose variants carry no
+  payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
+  `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
+  `DERIVE` on an enum generates; a number that is not one of the enum's tags
+  throws `TYPE-DECL:E-ENUM-TAG` (-9880). A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
   rebuild it with any field values; an owner that validates its fields
   declares `OPAQUE`.
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;

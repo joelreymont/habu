@@ -212,6 +212,11 @@ s" habu: bad structure declaration 'sdgdrv': unknown derive feature at 'nosuch'"
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgtag DERIVE tag FIELD a n ;STRUCTURE" TEST-EVAL:RC 7119 T=
+s" habu: bad structure declaration 'sdgtag': derive tag requires an enum at 'tag'"
+DECL-DIAG:HAS? TTRUE
+
+DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdgstray': unexpected token in structure declaration at 'VARIANT'"
 DECL-DIAG:HAS? TTRUE

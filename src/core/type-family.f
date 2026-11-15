@@ -388,6 +388,7 @@ public
 2 constant DRV-HASH
 4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
+16 constant DRV-TAG              \ checked conversion from a tag, TAG>
 
 private
 
@@ -403,6 +404,8 @@ public
 : TFAM-DERIVE-ADDR? ( n -- bool ) TFAM-DERIVE@ DRV-ADDR and 0 <> ;
 : TFAM-DERIVE-INIT! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-INIT or swap ! ;
 : TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
+: TFAM-DERIVE-TAG! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-TAG or swap ! ;
+: TFAM-DERIVE-TAG? ( n -- bool ) TFAM-DERIVE@ DRV-TAG and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ The OPAQUE header clause: the family stays as visible as it was declared, and
@@ -998,6 +1001,7 @@ public
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" tag>" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
 
 private
@@ -1005,6 +1009,7 @@ private
 : TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the FAMILY generates
    a u s" eq" CORE-STR=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
    a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
+   a u s" tag>" CORE-STR=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
 
@@ -1020,7 +1025,7 @@ public
 \ read the spelling from the derivation that generates it, never restate it.
 \ A constructor word's tail is its variant's tail, so only the rows in that
 \ tail's VNX bucket can be one. A derived word is recognized from its family,
-\ not a row, so only the three derived tails still walk the store.
+\ not a row, so only the derived tails still walk the store.
 : TF-CTOR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ PKG:VARIANT / derived word?
    a u TF-CW-TAIL$ {: ta:ptr tu:n :}
    VNX-ENSURE

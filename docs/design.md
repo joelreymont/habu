@@ -222,8 +222,9 @@ policy would give one logical type several stack shapes.
 - Any other name is `unknown layout policy`. Every refusal rolls back the
   family row and its layout state.
 
-**Construction never starts from a raw tag.** There is no public construction
-from a tag value and no unchecked enum cast.
+**Construction from a raw tag is checked.** It goes only through an enum's
+derived `TAG>`, which throws `E-ENUM-TAG` for a number that is not one of its
+tags; there is no unchecked enum cast.
 
 **Visibility picks the spelling, not whether words are generated.** A public
 family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a

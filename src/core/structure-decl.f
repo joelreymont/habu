@@ -338,6 +338,7 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
@@ -354,6 +355,8 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT EMIT-DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF
+      2drop s" derive tag requires an enum" E-DERIVE DECL-REJECT:REJECT throw THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;

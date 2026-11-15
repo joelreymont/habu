@@ -159,6 +159,32 @@ s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
 s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ 20c. DERIVE tag adds TAG> ( n -- fam ), TAG's inverse: each tag decodes to
+\      its own variant, and any other number throws E-ENUM-TAG.
+ENUM tagconv DERIVE eq tag low mid high ;ENUM
+: TAGCONV-ARM ( n -- n )
+   TAGCONV:TAG>
+   MATCH tagconv low of 10 endof mid of 20 endof high of 30 endof ;MATCH ;
+: TAGCONV-THROWS ( n -- ) {: k:n :}
+   [: k TAGCONV-ARM drop ;] TYPE-DECL:E-ENUM-TAG TTHROWSQ ;
+0 TAGCONV-ARM 10 T=  1 TAGCONV-ARM 20 T=  2 TAGCONV-ARM 30 T=
+-1 TAGCONV-THROWS  3 TAGCONV-THROWS  $7FFFFFFFFFFFFFFF TAGCONV-THROWS
+
+\      TAG> builds a value from its tag alone, so a payload variant rejects.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM"
+   TEST-EVAL:RC 7119 T=
+s" habu: bad enum declaration 'tagpay': derive tag requires variants without payload at 'tagpay'"
+DECL-DIAG:HAS? TTRUE
+
+\      A private family derives nothing, tag included.
+package enum-tag-test
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 7119 T=
+s" habu: bad enum declaration 'tagpriv': derive requires a public family at 'tag'"
+DECL-DIAG:HAS? TTRUE
+;package
+
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" evaluate-closed
 s" P1 ( -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=

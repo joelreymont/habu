@@ -98,6 +98,7 @@ ED-RESET
 : DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 
 \ The first token after the header clauses picks the mode: VARIANT starts full
@@ -142,6 +143,7 @@ ED-RESET
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -270,6 +272,15 @@ ED-RESET
    NICHE-SHAPE? IF EXIT THEN
    TDECL-NICHE-MESSAGE$ E-POLICY DECL-REJECT:REJECT throw ;
 
+\ TAG> builds each value from its tag alone, so no variant may carry a payload.
+\ Checked here, not at the constructor commit, whose E-DERIVE renders the
+\ equality reason from the code table.
+: TAG-REQUIRE ( -- )
+   FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
+   NFLD @ 0= IF EXIT THEN
+   s" derive tag requires variants without payload" E-DERIVE
+   DECL-REJECT:REJECT throw ;
+
 \ ED-CLOSE builds nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
 \ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
@@ -284,6 +295,7 @@ ED-RESET
    NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
    MISSING? IF E-UNRESOLVED throw THEN
    NICHE-REQUIRE
+   TAG-REQUIRE
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
