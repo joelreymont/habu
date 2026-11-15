@@ -466,12 +466,14 @@ private
 
 \ The slot gives the connection up under the lock it is handed over in, and
 \ nothing there pauses, so no halt falls between: a worker's exit never closes
-\ a connection the listener holds. One that finds no row is closed here.
+\ a connection the listener holds. One that finds no row is closed here through
+\ the lingering close, so a next request already sent draws no reset over the
+\ answer the peer is still reading.
 : PARK-CONNECTION ( TCP4:connection n -- ) {: conn:TCP4:connection idx:n :}
    PARK-LOCK TASK:GET
    conn idx [: PARK-PUT ;] [: PARK-UNLOCK ;] finally
    if exit then
-   conn CLOSE-CONNECTION ;
+   conn idx IN-BUF LINGER conn CLOSE-CONNECTION ;
 
 
 \ One connection until a request says otherwise. One kept alive with nothing of
@@ -814,17 +816,26 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ Under PARK-LOCK: the row polled until it is readable or its deadline passes.
-: ARM-ROW ( n -- ) {: at:n :}
+\ The row's poll, its ticket kept in the row.
+: ROW-POLL ( n -- n ) {: at:n :}
    at PARK-CONN @ TCP4:CONNECTION-FD AIO:READABLE
-   at PARK-DUE @ REMAINING AIO:POLL {: t:AIO:ticket :}
-   t at LISTENING AIO:GROUP+
-   t at PARK-TICKET !
+   at PARK-DUE @ REMAINING AIO:POLL at PARK-TICKET !
+   at ;
+
+
+\ Under PARK-LOCK: the row polled until it is readable or its deadline passes.
+\ A poll AIO rejects (E-AIO-FULL at Linux's record ceiling, E-AIO-POLL-BOUND on
+\ Darwin) closes the row's connection and vacates the row, as ROW-HEARD does for
+\ a refused poll, and the listener goes on.
+: ARM-ROW ( n -- ) {: at:n :}
+   at [: ROW-POLL ;] catch {: code:n :} drop
+   code 0 <> if at PARK-CONN @ CLOSE-CONNECTION at VACATE exit then
+   at PARK-TICKET @ at LISTENING AIO:GROUP+
    construct parking polled at PARK-PHASE ! ;
 
 
 \ Under PARK-LOCK, the wake byte read: the next row handed pokes again, and
-\ every row handed so far is polled.
+\ every row handed so far is polled, or closed when its poll is rejected.
 : ARM-HANDED ( -- )
    0 POKED !
    PARK-SLOTS 0 ?do i HANDED? if i ARM-ROW then loop ;
@@ -920,8 +931,9 @@ variable EXIT-HOOK-N
    at VACATE ;
 
 
-\ The listener's last act, however it left its loop: it takes no more rows,
-\ its waits are awaited and every parked connection is closed.
+\ The listener's last act, however its loop ended short of a halt (STOP's
+\ DRAIN-PARKED covers that): it takes no more rows, its waits are awaited and
+\ every parked connection is closed.
 : UNLISTEN ( -- )
    PARK-LOCK TASK:GET
    0 PARK-OPEN !
