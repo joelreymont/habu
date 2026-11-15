@@ -106,6 +106,12 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? 
 s" nope" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash`, `addr` or `init` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
+\ A throw out of the text that opened a BEGIN-STRUCTURE abandons it, so the next
+\ text opens its own; a text that ends with one still open rejects it.
+s" BEGIN-STRUCTURE P NO-SUCH-WORD" TEST-EVAL:RC 70 T=
+s" BEGIN-STRUCTURE Q END-STRUCTURE" TEST-EVAL:RC 0 T=
+s" BEGIN-STRUCTURE R" TEST-EVAL:RC 70 T=
+
 \ An effect reads a bare `ptr` as the pointer constructor in every scope, so the
 \ tail is reserved ahead of the global `ptr` family's duplicate check (7102),
 \ and a package may not shadow it as it may shadow any other global family.

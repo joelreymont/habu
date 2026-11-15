@@ -10,20 +10,6 @@ variable STRUCT-OPEN
 : STRUCT-BYTE+ ( ptr a n -- ptr u8 )
    swap BYTE-VIEW swap + ;
 
-: STRUCT-OPEN$ ( -- ptr u8 n )
-   STRUCT-OPEN @ 1 - CHECKER-RESOLVE:REC-AT CHECKER-RESOLVE:CK-REC-NAME$ ;
-
-: STRUCT-REQUIRE-CLOSED ( -- )
-   STRUCT-OPEN @ 0= if exit then
-   s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" `BEGIN-STRUCTURE` opens a structure while `" REJECTION:EMIT-STR
-   STRUCT-OPEN$ REJECTION:EMIT-STR  s" ` is still open" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT
-   STRUCT-OPEN$ REJECTION:EMIT-STR  s"  has no END-STRUCTURE yet" REJECTION:EMIT-STR
-   REJECTION:HELP  s" close `" REJECTION:EMIT-STR  STRUCT-OPEN$ REJECTION:EMIT-STR
-   s" ` with `END-STRUCTURE` before the next `BEGIN-STRUCTURE`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ w names the word that runs, for the rejection.
 : STRUCT-REQUIRE-OPEN ( ptr u8 n -- ) {: w:ptr wu:n :}
    STRUCT-OPEN @ 0 <> if exit then
@@ -72,7 +58,6 @@ variable STRUCT-OPEN
 \ is typed `-- n`); END-STRUCTURE publishing the size as a literal would narrow
 \ the three definers' `( ptr a n )` threading effects to `( n )`.
 : BEGIN-STRUCTURE ( -- ptr n n )
-   STRUCT-REQUIRE-CLOSED
    SRCLOC:TOKEN$ s" END-STRUCTURE" [: 0 STRUCT-OPEN ! ;] SOURCE-ROOT:OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;

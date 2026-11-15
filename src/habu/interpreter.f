@@ -2037,6 +2037,8 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 \ record is the buffer's own, and a throw out of the buffer puts this one back
 \ in PEND-CELL.
 variable ENTRY-PEND
+\ SOURCE-ROOT:TEXT-MARK as the buffer began.
+variable DECL-MARK
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
@@ -2053,6 +2055,9 @@ variable ENTRY-PEND
 : DEF-SOURCE-END ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    DEF-ENDED ;
+
+: DECL-SOURCE-END ( -- )
+   DECL-MARK @ SOURCE-ROOT:TEXT-END ;
 
 \ An evaluate begun inside this native definition owns only its new tokens.
 \ The checker reads the body prefix for binding, leaving the definition's
@@ -2857,7 +2862,8 @@ private
    NULL-PTR GROUP-OPEN !
    RUN-TOKENS
    GROUP-SOURCE-END
-   DEF-SOURCE-END ;
+   DEF-SOURCE-END
+   DECL-SOURCE-END ;
 
 \ An evaluate the buffer caught left its code, which would fail the load.
 \ A `package` in it leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
@@ -3085,6 +3091,7 @@ variable OPENER-U
 
 : REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PEND-CELL CELL@ {: open:n :}
+   SOURCE-ROOT:TEXT-MARK {: mark:n :}
    depth FRAME-OPEN {: f:ptr :}
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
@@ -3105,6 +3112,7 @@ variable OPENER-U
    then
    f FRAME-FREE
    code 0<> if
+      mark SOURCE-ROOT:TEXT-UNWOUND
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
       false exit
@@ -3117,7 +3125,7 @@ variable OPENER-U
       OPENER-A @ {: c:ptr :}
       c SRCLOC:INB-CELL ADDR!  c u + INE-CELL ADDR!
    then
-   ['] DEF-SOURCE-END catch {: code:n :}
+   [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
 
@@ -3127,6 +3135,7 @@ public
 \ may span lines; EOF refuses one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
+   SOURCE-ROOT:TEXT-MARK DECL-MARK !
    true REPL-OK !
    begin
       REPL-OK @ if S\"  ok\n" type then
@@ -3142,8 +3151,10 @@ public
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    ENTRY-PEND @ {: prior:n :}
+   DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
+   SOURCE-ROOT:TEXT-MARK DECL-MARK !
    USE-DEPTH-CELL CELL@ USE-FLOOR !
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
@@ -3155,7 +3166,8 @@ public
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
       f FRAME-CELLS-RESTORE
    then
-   prior ENTRY-PEND !
+   code 0<> if DECL-MARK @ SOURCE-ROOT:TEXT-UNWOUND then
+   prior ENTRY-PEND !  prior-mark DECL-MARK !
    code 0<> if
       entry PEND-CELL CELL!
    then

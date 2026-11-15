@@ -2021,6 +2021,19 @@ variable RC
    s" E-MISMATCH" REJECTED-AS
    0 s" ;" 1 37 36 37 AT ;
 
+\ A structure still open when its file ends, or when another opens, is
+\ rejected at the BEGIN-STRUCTURE that opened it.
+: TEST-UNCLOSED ( -- )
+   s" a structure still open at the file's end" T-LABEL
+   s" BEGIN-STRUCTURE P" s" unclosed.f" LINE-FIXTURE
+   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT
+   s" a structure opened inside an open one" T-LABEL
+   SB-RESET
+   s" BEGIN-STRUCTURE P" SB-APPEND LF+
+   s" BEGIN-STRUCTURE Q" SB-APPEND LF+
+   s" unclosed-nested.f" FIXTURE!
+   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT ;
+
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
 \ counting a real ;MATCH, so their text cannot replace the depth refusal.
@@ -2277,6 +2290,7 @@ variable RC
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN
    TEST-EMPTY-CLAUSE
+   TEST-UNCLOSED
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH
