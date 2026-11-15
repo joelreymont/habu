@@ -6932,7 +6932,7 @@ variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
 variable SGBAD-EXP-U
 variable SGBAD-USED      \ ambiguous kind: bit i set when using slot i offers the family
-variable SGBAD-LOCAL     \ a local's annotation gave the verdict
+variable SGBAD-LOCAL     \ a local's annotation gave the verdict: its token's offset from the colon
 0 constant LOCALBAD-SCOPE    \ a local inside a quotation or on a dead path
 1 constant LOCALBAD-DASH     \ `--` in a locals group
 2 constant LOCALBAD-BAR      \ `|` in a locals group
@@ -11340,8 +11340,12 @@ public
       s" name each output scope or region variable in an input too, or drop it from the outputs"
       REJECTION:EMIT-STR EXIT
    THEN
-   s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
-   REJECTION:EMIT-STR ;
+   lu 0= IF
+      s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   s" write one whole type after `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
+   s" :`, as in `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR  s" :n`" REJECTION:EMIT-STR ;
 
 \ The help of stored signature sa su's rejection, declared at at atu.
 : SGBAD-HELP ( ^u8 n ^u8 n -- ) {: sa:^ su:n at:^ atu:n :}
@@ -19007,13 +19011,14 @@ CHECKER-REG:}SCRATCH
    t SCHEME-TYPE? IF a u BAD-LOC-ANN ELSE t LOC-ANN-TERM THEN
    #LOC @ LOC-TYPE-SET ;
 
-\ The annotation A U after a local's colon, read once its slot is open; a
-\ verdict it gives is the local's, one a failed signature gave keeps its own.
+\ The annotation A U after a local's colon. A verdict it gives names a token of
+\ A U and records that token's offset from the colon; one a failed signature
+\ gave keeps its own.
 : LOC-ANN ( ^u8 n -- ) {: a:^ u:n :}
    a u LOC-SHOW-SUFFIX? IF #LOC @ LOC-SHOW-ON! EXIT THEN
    SGBAD @ {: sg0:n :}
    a u  a u LOCAL-TYPE  LOC-TYPED
-   SGBAD @ sg0 0= and IF -1 SGBAD-LOCAL ! THEN ;
+   SGBAD @ sg0 0= and IF SGBAD-A @ a - 1 + SGBAD-LOCAL ! THEN ;
 
 : LOC-ADD ( ^u8 ^u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:^ a:^ u:n :}

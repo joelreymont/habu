@@ -2399,7 +2399,7 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 REJECTION:CAPTURE
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\"   = help: give `x:tdres<n>` 2 type arguments\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = help: give `tdres` 2 type arguments\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" CONTAINS? TTRUE

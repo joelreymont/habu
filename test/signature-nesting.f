@@ -20,7 +20,7 @@
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
 \ A pointer is spelled ^T: `ptr` in a signature, a stored signature or a local's
 \ annotation is an unknown type, and a `^` a blank parts from its element type
-\ is a bare `^`. A local's annotation verdict names and places its type.
+\ is a bare `^`. A local's annotation verdict names and places the token it rejects.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -400,13 +400,24 @@ public
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
    S\" \"message\":\"unknown type `ptr` in the annotation of local `p`\"" VERDICT-REFUSED PACKET-HAS
-   s" a local's annotation of the wrong arity names its type, its local and the type's place" T-LABEL
+   s" an unknown type inside a local's annotation is named, placed and helped as in a signature" T-LABEL
+   SRC-RESET  s" : SN-NU ( n -- ) {: p:option<ptr> :} ;" S+
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
+   S\" ^ unknown type\n" SAID
+   S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n" SAID
+   S\"  ^^^\n" SAID
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
+   s" a local's annotation of the wrong arity names its family, then its local, and places the family" T-LABEL
    SRC-RESET  s" : SN-AR ( n -- ) {: p:option<n,n> :} ;" S+
-   s" error[E-WRONG-ARITY]: type family `option<n,n>` takes 1 type argument, not 2 in the annotation of local `p`" REFUSES
+   s" error[E-WRONG-ARITY]: type family `option` in the annotation of local `p` takes 1 type argument, not 2" REFUSES
    S\" ^ wrong number of type arguments\n" SAID
    S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n" SAID
-   S\"  ^^^^^^^^^^^\n" SAID
-   S\" = help: give `option<n,n>` 1 type argument\n" SAID
+   S\"  ^^^^^^\n" SAID
+   S\" = help: give `option` 1 type argument\n" SAID
+   s" a local's annotation that ends early names its local and asks for one whole type" T-LABEL
+   SRC-RESET  s" : SN-EN ( n -- ) {: p:option< :} ;" S+
+   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REFUSES
+   S\" = help: write one whole type after `p:`, as in `p:n`\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES

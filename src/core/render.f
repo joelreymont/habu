@@ -1458,14 +1458,14 @@ variable MDV-I   variable MDV-F
    TBASE@ TBLEN @ + {: e:^ :}
    e 0 REJECTION:HELD? IF e 0 EXIT THEN
    FAILTK FAILTU @ ;
+\ The token a local's annotation verdict rejects, in the local's token a u.
+: LOC-REJECTED$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a  a u LCOLON +  SGBAD-LOCAL @ +  SGBAD-U @ ;
 \ The span the record places: a local's annotation verdict pins the local's
-\ token, `name:type`, and places its type.
+\ token, `name:type`, and places the token it rejects.
 : DIAG-PLACE ( -- ^u8 n )
-   DIAG-TOKEN {: a:^ u:n :}
-   DKIND RF-SIG =  SGBAD-LOCAL @ 0 <>  and 0= IF a u EXIT THEN
-   a u LCOLON {: col:n :}
-   col u < IF a u col LOC-SUFFIX$ EXIT THEN
-   a u ;
+   DIAG-TOKEN
+   DKIND RF-SIG =  SGBAD-LOCAL @ 0 <>  and IF LOC-REJECTED$ THEN ;
 
 : PIN-TOK$ ( -- ^u8 n ) FAILTK FAILTU @ ;
 : TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
@@ -1518,51 +1518,55 @@ CHECKER-REG:}SCRATCH
    LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
    s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
-: ARITY-MESSAGE ( ^u8 n -- ) {: t:^ tu:n :}
-   s" type family " EMIT-STR  t tu CODE-SPAN
+\ Names the local l lu whose annotation the verdict rejects, none where lu is 0.
+: LOCAL-PHRASE ( ^u8 n -- ) {: l:^ lu:n :}
+   lu 0= IF EXIT THEN
+   s"  in the annotation of local " EMIT-STR  l lu CODE-SPAN ;
+\ The rejected token t tu, then the local whose annotation holds it.
+: SUBJECT-SPAN ( ^u8 n ^u8 n -- )   2swap CODE-SPAN LOCAL-PHRASE ;
+: ARITY-MESSAGE ( ^u8 n ^u8 n -- )
+   s" type family " EMIT-STR  SUBJECT-SPAN
    s"  takes " EMIT-STR  SGBAD-AR-DECL @ EMIT-U
    SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN EMIT-STR
    s" , not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
-\ A signature that ended where the parser expected a word.
-: SIG-END-MESSAGE ( -- )
-   SGBAD-EXP-U @ 0= IF s" the signature ends before it is complete" EMIT-STR EXIT THEN
+\ What ended: the signature, or the annotation of the local l lu.
+: SIG-WHOLE ( ^u8 n -- ) {: l:^ lu:n :}
+   lu 0= IF s" the signature" EMIT-STR EXIT THEN
+   s" the annotation of local " EMIT-STR  l lu CODE-SPAN ;
+\ A signature, or the annotation of the local l lu, that ended where the parser
+\ expected a word.
+: SIG-END-MESSAGE ( ^u8 n -- ) {: l:^ lu:n :}
+   SGBAD-EXP-U @ 0= IF l lu SIG-WHOLE  s"  ends before it is complete" EMIT-STR EXIT THEN
    s" expected " EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ CODE-SPAN
-   s" , found the end of the signature" EMIT-STR ;
-\ A local's annotation is pinned as the local's token, `name:type`: its type
-\ and its name.
+   s" , found the end of " EMIT-STR  l lu SIG-WHOLE ;
+\ A local's annotation is pinned as the local's token, `name:type`: the token
+\ its verdict rejects and its name.
 : PIN-LOCAL$ ( -- ^u8 n ^u8 n ) PIN-TOK$ {: a:^ u:n :}
-   a u LCOLON {: col:n :}
-   a u col LOC-SUFFIX$  a col ;
-\ The type a signature verdict names, and the local whose annotation that
+   a u LOC-REJECTED$  a  a u LCOLON ;
+\ The token a signature verdict rejects, and the local whose annotation that
 \ is, empty in a signature.
 : SIG-SUBJECT$ ( -- ^u8 n ^u8 n )
    SGBAD-LOCAL @ IF PIN-LOCAL$ EXIT THEN
    PIN-TOK$ over 0 ;
-\ The verdict on type t tu, which is in a signature where the local l lu is
-\ empty.
-: SIG-VERDICT ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
+: SIG-MESSAGE ( -- )
+   SIG-SUBJECT$ {: t:^ tu:n l:^ lu:n :}
    SGBAD-AMBIG? IF
-      s" type family " EMIT-STR  t tu CODE-SPAN
+      s" type family " EMIT-STR  t tu l lu SUBJECT-SPAN
       s"  is public in more than one used package" EMIT-STR EXIT
    THEN
    SGBAD-UNKNOWN? IF
-      s" unknown type " EMIT-STR  t tu CODE-SPAN
+      s" unknown type " EMIT-STR  t tu l lu SUBJECT-SPAN
       lu 0= IF s"  in signature" EMIT-STR THEN EXIT
    THEN
-   SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR EXIT THEN
-   SGBAD-ARITY? IF t tu ARITY-MESSAGE EXIT THEN
+   SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR  l lu LOCAL-PHRASE EXIT THEN
+   SGBAD-ARITY? IF t tu l lu ARITY-MESSAGE EXIT THEN
    SGBAD-RETURN? IF
       s" return-stack effect " EMIT-STR  lu 0= IF s" in signature " EMIT-STR THEN
-      t tu CODE-SPAN EXIT
+      t tu l lu SUBJECT-SPAN EXIT
    THEN
-   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  t tu CODE-SPAN EXIT THEN
-   tu 0= IF SIG-END-MESSAGE EXIT THEN
-   s" bad signature at " EMIT-STR  t tu CODE-SPAN ;
-: SIG-MESSAGE ( -- )
-   SIG-SUBJECT$ {: t:^ tu:n l:^ lu:n :}
-   t tu l lu SIG-VERDICT
-   lu 0= IF EXIT THEN
-   s"  in the annotation of local " EMIT-STR  l lu CODE-SPAN ;
+   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  t tu l lu SUBJECT-SPAN EXIT THEN
+   tu 0= IF l lu SIG-END-MESSAGE EXIT THEN
+   s" bad signature at " EMIT-STR  t tu l lu SUBJECT-SPAN ;
 
 : NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}
