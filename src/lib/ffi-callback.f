@@ -246,18 +246,22 @@ variable NAME-SRC-U
 : NAME$ ( -- ptr u8 n )
    0 NAME NAME-U @ ;
 
-\ A declaration's span and copy cells, at rest before it reads a token and
-\ after it closes or is abandoned.
+\ A declaration's span and copy cells, at rest whenever no declaration is open.
 : REST ( -- )
    TOK-BUF-RELEASE NAME-RELEASE
    0 TOK-U !  NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U !
    0 NAME-U !  NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U ! ;
 
+\ Runs a declaration step and, on every exit, a throw included, rests the cells
+\ when it leaves no declaration open.
+: KEEP-REST ( R [ R -- S ] -- S )
+   [: OPEN @ 0= if REST then ;] finally ;
+
 \ ---- a bad declaration's rejection ----------------------------------------
 \ The caller writes a record's help and ends it with ABANDON. The stop abandons
 \ the declaration, so the next CALLBACK: in the file is not rejected for it.
 : ABANDON ( -- )
-   0 OPEN !  REST  CHECKER-REJECT-RC REJECTION:STOP ;
+   0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
 
@@ -513,29 +517,9 @@ variable NAME-SRC-U
    s"  before `;CALLBACK`: the value C gets when the body throws" SAY
    ABANDON ;
 
-public
-
-: OPEN-CALLBACK ( -- )
-   OPEN @ 0 <> if NESTED then
-   R-NONE RES-KIND ! 0 FB-SET !  REST
-   QTYPE CODEGEN:RESET READS CODEGEN:RESET
-   TOK@ NAME!
-   TOK@ s" (" STR= 0= if NO-EFFECT then
-   INPUTS
-   OUTPUTS
-   1 OPEN ! ;
-
-: SET-FALLBACK ( n -- ) {: v:n :}
-   OPEN @ 0= if OUTSIDE then
-   RES-KIND @ R-VALUE <> if MISFIT then
-   v FB-VALUE ! 1 FB-SET ! ;
-
-: SET-FFALLBACK ( r -- ) {: v:r :}
-   OPEN @ 0= if OUTSIDE then
-   RES-KIND @ R-FLOAT <> if MISFIT then
-   v FFB-VALUE ! 1 FB-SET ! ;
-
-: CLOSE-CALLBACK ( -- )
+\ The declaration's last step: a rejection here or a throw out of EMIT leaves
+\ CLOSE-CALLBACK's cleanup to put the buffers at rest.
+: FINISH ( -- )
    OPEN @ 0= if STRAY-CLOSE then
    0 OPEN !
    RES-KIND @ R-NONE <> FB-SET @ 0= and if NO-FALLBACK then
@@ -543,7 +527,32 @@ public
    FB-VALUE @ k FALLBACKS !
    FFB-VALUE @ k FFALLBACKS !
    0 k FAULTS !
-   k EMIT  REST ;
+   k EMIT ;
+
+public
+
+: OPEN-CALLBACK ( -- )
+   [: OPEN @ 0 <> if NESTED then
+      R-NONE RES-KIND ! 0 FB-SET !
+      QTYPE CODEGEN:RESET READS CODEGEN:RESET
+      TOK@ NAME!
+      TOK@ s" (" STR= 0= if NO-EFFECT then
+      INPUTS
+      OUTPUTS
+      1 OPEN ! ;] KEEP-REST ;
+
+: SET-FALLBACK ( n -- ) {: v:n :}
+   [: OPEN @ 0= if OUTSIDE then
+      RES-KIND @ R-VALUE <> if MISFIT then
+      v FB-VALUE ! 1 FB-SET ! ;] KEEP-REST ;
+
+: SET-FFALLBACK ( r -- ) {: v:r :}
+   [: OPEN @ 0= if OUTSIDE then
+      RES-KIND @ R-FLOAT <> if MISFIT then
+      v FFB-VALUE ! 1 FB-SET ! ;] KEEP-REST ;
+
+: CLOSE-CALLBACK ( -- )
+   [: FINISH ;] [: REST ;] finally ;
 
 ;package
 
