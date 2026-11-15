@@ -192,11 +192,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-PWID-BOUND ( -- )
    s" prot-wid-add refuses an id at the bitmap bound" T-LABEL
    s" PROT-WID-MAX prot-wid-add" SLV-RUN-LOAD
-   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0000000000002000 lr "
+   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0x0000000000002000 lr 0x"
    SLV-ASSERT-PWID-OOR
    s" and prints the id past it, not the bound" T-LABEL
    s" PROT-WID-MAX 1+ prot-wid-add" SLV-RUN-LOAD
-   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0000000000002001 lr "
+   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0x0000000000002001 lr 0x"
    SLV-ASSERT-PWID-OOR ;
 
 \ Publishing into a protected WID is rejected with exit 70 and an

@@ -4740,7 +4740,9 @@ private
       30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
       SP SP 32 ADDI,  RET,
    init-bad LBL,
-      s" E-MAP-FAIL habu: definition occurrence alloc failed" 78 DIE-LINE, ;
+      3 DEF-OCC:STATE-BYTES LIT64,
+      s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
+      78 3 DIE-LINE-VALUE, ;
 
 \ A rollback's lower-or-retire step (evaluate's and the REPL's recovery,
 \ replay-close), x9 = the NDICT to lower to. With no task live it answers

@@ -206,8 +206,8 @@ specific exit code may simply be asserting a code the tree stopped producing.
 ## Stack diagnostics — which one you are looking at
 
 A kernel exit line that ends in `lr <lr>` reads
-`<class> habu: <text>[ <value>] lr <lr>`, the value and `<lr>` in 16 hex
-digits. `<lr>` is the return address the refusing primitive or guard was
+`<class> habu: <text>[ <value>] lr <lr>`, the value and `<lr>` each `0x` and
+16 hex digits. `<lr>` is the return address the refusing primitive or guard was
 called with, or the interrupted code's link register when a signal handler
 exits.
 

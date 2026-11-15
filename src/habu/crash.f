@@ -139,21 +139,22 @@ public
 
 private
 256 constant DIE-LINE-FRAME
-\ The text's room in the frame: the rest holds " ", 16 hex digits, " lr ",
+\ The text's room in the frame: the rest holds " 0x", 16 hex digits, " lr 0x",
 \ 16 hex digits and the newline.
-DIE-LINE-FRAME 38 - constant DIE-LINE-ROOM
+DIE-LINE-FRAME 42 - constant DIE-LINE-ROOM
 
 \ [x14] = the byte n, x14 one past it. Clobbers x13.
 : DIE-LINE-BYTE, ( n -- )
    13 swap MOVZ,  13 14 0 STRB,  14 14 1 ADDI, ;
 
-\ [x14, x14 + 16) = the register's 16 hex digits, x14 past them.
+\ [x14, x14 + 18) = `0x` and the register's 16 hex digits, x14 past them.
 : DIE-LINE-HEX, ( n -- )
+   $30 DIE-LINE-BYTE,  $78 DIE-LINE-BYTE,
    9 swap 0 ADDI,  C-HEX-DIGITS  14 14 16 ADDI, ;
 
 public
 \ Entered by B, so x30 is the lr it prints. Writes `<text>[ <x3>] lr <x30>`,
-\ 16 hex digits each, and a newline to fd 2 in one write, then exits x0.
+\ each `0x` and 16 hex digits, and a newline to fd 2 in one write, then exits x0.
 \ x1/x2 = the text, 1 to DIE-LINE-ROOM bytes; x3 prints when x4 is nonzero.
 : EMIT-DIE-LINE ( -- )
    LBL LBL {: copy:label bare:label :}
@@ -872,7 +873,7 @@ public
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
-      s" E-MAP-FAIL habu: cannot install the signal stack" STACK-ABI:MAP-FAIL-RC DIE-LINE,
+      s" hb: the system refused to register the signal stack (sigaltstack)" STACK-ABI:MAP-FAIL-RC DIE-LINE,
    ok LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives

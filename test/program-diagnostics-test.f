@@ -56,11 +56,11 @@ package PROGRAM-DIAGNOSTICS
    path pathu RUN-LOAD-HABU
    path pathu needle needleu EXPECT-DIAGNOSTIC ;
 
-\ stderr is one engine exit line: the text, " lr ", the lr's 16 hex digits and
-\ a newline.
+\ stderr is one engine exit line: the text, " lr 0x", the lr's 16 hex digits
+\ and a newline.
 : EXPECT-DIE-LINE ( ptr u8 n ptr u8 n -- )
    {: text:ptr textu:n label:ptr labelu:n :}
-   SB-RESET text textu SB-APPEND s"  lr " SB-APPEND
+   SB-RESET text textu SB-APPEND s"  lr 0x" SB-APPEND
    SB$ {: want:ptr wantu:n :}
    GT-ERR$ {: err:ptr erru:n :}
    erru wantu 17 + <> if label labelu GE-FAIL then

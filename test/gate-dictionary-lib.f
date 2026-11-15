@@ -1487,7 +1487,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" 0 ndict!" GE-SRC-LINE
    83
-   s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count: 0000000000000000 lr "
+   s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count: 0x0000000000000000 lr 0x"
    s" public ndict! still protects the sealed lower bound" GE-EVAL-FORK-BAD ;
 
 public

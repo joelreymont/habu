@@ -68,7 +68,9 @@ public
    MAP-DST @ 9 0 ADDI,
    MAP-DONE LABEL@ B,
    MAP-BAD LABEL@ LBL,
-   s" E-MAP-FAIL habu: cannot map guarded VM stack" STACK-ABI:MAP-FAIL-RC DIE-LINE,
+   3 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
+   s" hb: the system refused a guarded VM stack; raise the address-space limit (ulimit -v) above its size in bytes:"
+   STACK-ABI:MAP-FAIL-RC 3 DIE-LINE-VALUE,
    MAP-DONE LABEL@ LBL, ;
 
 ;package

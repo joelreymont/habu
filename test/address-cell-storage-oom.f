@@ -9,7 +9,7 @@ package ADDRESS-CELL-STORAGE-OOM
 create OUT 1024 allot
 create ERR 4096 allot
 \ The exit's whole line up to the lr's 16 hex digits and its newline.
-: LINE$ ( -- ptr u8 n ) s" E-XTCELL habu: address-cell storage allocation failed lr " ;
+: LINE$ ( -- ptr u8 n ) s" E-XTCELL habu: address-cell storage allocation failed lr 0x" ;
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX? 0= if

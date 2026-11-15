@@ -1489,7 +1489,9 @@ public
    \ carry flag, and the Linux emitter reconciles -errno into it -- so a failed mapping
    \ is read from the flag the kernel set, not guessed from the shape of x0.
    C-CC rok BCOND,
-      s" E-MAP-FAIL habu: cannot map fixed code region" 78 DIE-LINE,
+      3 REGION PROT-PAGE-MAX + LIT64,
+      s" hb: the system refused the code region; raise the address-space limit (ulimit -v) above its size in bytes:"
+      78 3 DIE-LINE-VALUE,
    rok LBL,
    9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
    9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,       \ page-aligned region base
@@ -1517,7 +1519,7 @@ public
       13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
       adone B,
       afail LBL,
-         s" E-MAP-FAIL habu: cannot map the code region's alias" 78 DIE-LINE,
+         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)" 78 DIE-LINE,
       adone LBL,
    ELSE
       LBL LBL {: vfail:label vdone:label :}
@@ -1530,7 +1532,7 @@ public
       0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
       0 9 0 ADDI,  vdone B,
       vfail LBL,
-         s" E-MAP-FAIL habu: cannot map the code region's views" 78 DIE-LINE,
+         s" hb: the system refused the code region's views; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)" 78 DIE-LINE,
       vdone LBL,
    THEN ;
 
@@ -1545,7 +1547,9 @@ public
    NR-MMAP SYS,
    5 DATA-VA VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
-      s" E-MAP-FAIL habu: cannot map fixed data region" 78 DIE-LINE,
+      3 DATA-SIZE LIT64,
+      s" hb: the system refused the fixed data region; raise the address-space limit (ulimit -v) above its size in bytes:"
+      78 3 DIE-LINE-VALUE,
    dvok LBL, ;
 
 ;package

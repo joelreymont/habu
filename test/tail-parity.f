@@ -68,12 +68,12 @@ variable SAVED-KEPT-U
       >r dst lenp LINE+ r>
    repeat drop 2drop ;
 
-\ Short of a trailing ` lr <16 hex>` and newline: a kernel exit line ends in
+\ Short of a trailing ` lr 0x<16 hex>` and newline: a kernel exit line ends in
 \ its trapping code's return address, which ASLR moves between runs.
-21 constant LR-TAIL
+23 constant LR-TAIL
 : PAST-LR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u LR-TAIL < if a u exit then
-   a u + LR-TAIL - 4 s"  lr " STR= if a u LR-TAIL - else a u then ;
+   a u + LR-TAIL - 6 s"  lr 0x" STR= if a u LR-TAIL - else a u then ;
 
 public
 
