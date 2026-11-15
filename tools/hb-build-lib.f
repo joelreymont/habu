@@ -381,8 +381,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
 \ A link that threw a status in 1..255 has its record out: the build stops with
-\ that status and prints nothing more. Any other code names where it was, except
-\ under --json-errors.
+\ that status and prints nothing more.
 : HBB-LINK-FAILED ( n -- )
    {: rc:n :}
    rc 1 >= rc 255 <= and if HBB-CLEANUP rc HBB-EXIT then

@@ -140,9 +140,9 @@
 \ symbol alone: a redefinition, an `undefine` or another owner selects a
 \ binding no row names. A later row for a binding wins.
 \
-\ A quiet top-level loader's claimed load in the subject's first visit arms its
+\ A quiet top-level loader's load in the subject's first visit arms its
 \ operand span right before it runs; the load takes the span before it
-\ descends, and the claim clears it however the load ends, so no other load
+\ descends, and RUN-LOADER clears it however the load ends, so no other load
 \ reports it: not a file the load reads, the load after it, or a pending body
 \ load, which therefore reports nothing.
 \

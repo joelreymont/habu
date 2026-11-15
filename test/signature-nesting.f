@@ -1,5 +1,5 @@
-\ signature-nesting.f - a signature nested past the parser's limits refuses by
-\ name through the real load path: a 33rd nested binder, and pointees or
+\ signature-nesting.f - a signature nested past the parser's limits is rejected
+\ by name through the real load path: a 33rd nested binder, and pointees or
 \ quotations nested past EFFECT-DEPTH-MAX. A body nested past CF-FRAMES-MAX
 \ control frames, a RECURSE with no declared effect and a RECURSE in a does>
 \ clause are uncheckable for a reason they name too, and each says so in its
@@ -8,19 +8,19 @@
 \ before the frames overflow keeps its mismatch in prose, packet and
 \ CHECK-CANDIDATE!'s answer; a failure pinned before a name a rendering
 \ statement may define keeps its packet and answer, and that name alone defers
-\ its definition. An undefined word is refused in packet and answer. A mismatch
+\ its definition. An undefined word is rejected in packet and answer. A mismatch
 \ over cells below prints its expected row over them too, so it is a type fault
 \ and a surplus a depth fault; one over an open input (a quotation's or an
 \ unsigned definition's) prints its found row over the cells it would take, so
 \ it is a type fault too, while one over a row the signature declares is a
-\ missing value. The tokens after a refusal
-\ check in CPU time linear in their count.
-\ A refusal ends the load, so each refused text runs in a child; the deepest
-\ are stored rows (`defer`). A packet is read in this process. An effect split
-\ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
-\ A pointer is spelled ^T: `ptr` in a signature, a stored signature or a local's
-\ annotation is an unknown type, and a `^` a blank parts from its element type
-\ is a bare `^`. A local's annotation verdict names and places the token it rejects.
+\ missing value. The tokens after a rejection check in CPU time linear in their
+\ count. A rejection ends the load, so each rejected text runs in a child; the
+\ deepest are stored rows (`defer`). A packet is read in this process. An effect
+\ split by line breaks and tabs loads, and an unknown type ending a line is
+\ rejected by name. A pointer is spelled ^T: `ptr` in a signature, a stored
+\ signature or a local's annotation is an unknown type, and a `^` a blank parts
+\ from its element type is a bare `^`. A local's annotation verdict names and
+\ places the token it rejects.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f

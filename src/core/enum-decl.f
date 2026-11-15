@@ -83,10 +83,10 @@ ED-RESET
       E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
-\ The pointee text of a payload type that opens a pointer: the rest of a `^T`
-\ token. A bare `^` and the token `ptr` name no type and are rejected.
 : EN-PTR-FIX$ ( -- ^u8 n )
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" ;
+\ The pointee text of a payload type that opens a pointer: the rest of a `^T`
+\ token.
 : EN-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    a u s" ptr" CORE-STR=CI IF
       s" unknown payload type" EN-PTR-FIX$ E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
