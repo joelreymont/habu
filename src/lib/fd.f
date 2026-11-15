@@ -1,14 +1,15 @@
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
-\ and syncing, resizing, changing the mode of and seeking in a file. A refused
-\ PIPE, mark, read, write, sync, resize, mode change or seek, a write that takes
+\ syncing, resizing, changing the mode of and seeking in a file, and a
+\ close-on-exec duplicate. A refused PIPE, mark, read, write, sync, resize, mode
+\ change, seek or duplicate, a write that takes
 \ no byte and a count past the asked one are E-FS-IO, which TRY-WRITE-FULL
 \ answers as how far its write got; TRY-WRITE answers 0 for a full descriptor
 \ or a signal. A negative length or offset is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
-\ E-PROC-OUTPUT. A refused read, write, sync, resize, mode change, seek or FIFO
-\ open leaves its errno in FS:ERRNO, the write words' included; a refused mark,
+\ E-PROC-OUTPUT. A refused read, write, sync, resize, mode change, seek,
+\ duplicate or FIFO open leaves its errno in FS:ERRNO, the write words' included; a refused mark,
 \ PIPE, poll or fcntl leaves FS:ERRNO as it was.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
@@ -109,6 +110,7 @@ FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 FUNCTION: CHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
 FUNCTION: SEEK-CALL lseek ( n n n -- n ) ;FUNCTION
+FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 0 constant SEEK-SET                  \ the same number on macOS and Linux
 
 \ Throws n with the failed libc call's errno as this task's FS:ERRNO.
@@ -295,6 +297,13 @@ public
    {: f:fd at:n :}
    at 0 < if E-SPAN-LENGTH throw then
    f FD>N at SEEK-SET SEEK-CALL 0 < if E-FS-IO ERRNO-FAIL then ;
+
+\ A new close-on-exec descriptor for the same open file description, sharing
+\ its offset and status flags; the caller closes it.
+: DUPLICATE ( fd -- fd )
+   FD>N F-DUPFD-CLOEXEC 0 FCNTL-CALL {: new:n :}
+   new 0 < if E-FS-IO ERRNO-FAIL then
+   new >FD ;
 
 \ Marks the descriptor non-blocking, or leaves it so; a mark refused or not kept
 \ restores its flags.
