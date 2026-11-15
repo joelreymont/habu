@@ -1,7 +1,9 @@
 \ warm-engine.f - a warm engine build writes the engine a cold build does. A
 \ copy of the checkout's sources is built cold, its checker.f gains data at its
 \ end, which moves every later file's data, and the copy is built again, warm
-\ over the first build's out root and cold into a fresh one.
+\ over the first build's out root and cold into a fresh one. Then its linker.f
+\ gains a comment line and is built both ways again: linker.f exports CHECK's
+\ private words while the checker files are linked from their objects.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -51,6 +53,10 @@ PATH-CAP BUFFER: JOINED-2
    s" tree/src/core/checker.f" AT$
    s\" \ncreate WARM-PAD 64 cells allot\n" FS:APPEND-FILE ;
 
+: NOTE ( -- )
+   s" tree/src/habu/linker.f" AT$
+   s\" \n\\ warm-engine\n" FS:APPEND-FILE ;
+
 : SAME? ( ^u8 n ^u8 n -- bool )
    {: a:^ au:n b:^ bu:n :}
    ROOT$ a au JOINED FS:JOIN-PATH {: ju:n :}
@@ -64,7 +70,12 @@ PATH-CAP BUFFER: JOINED-2
    s" the padded copy builds warm" T-LABEL
    s" out-warm" s" warm-hb" BUILD
    s" the padded copy builds cold" T-LABEL
-   s" out-cold" s" cold-hb" BUILD ;
+   s" out-cold" s" cold-hb" BUILD
+   NOTE
+   s" the noted copy builds warm" T-LABEL
+   s" out-warm" s" warm-hb-2" BUILD
+   s" the noted copy builds cold" T-LABEL
+   s" out-cold-2" s" cold-hb-2" BUILD ;
 
 : CHECKS ( -- )
    s" tree" AT$ TREE-COPY:BUILD-SOURCES
@@ -73,7 +84,9 @@ PATH-CAP BUFFER: JOINED-2
    s" the warm build writes the cold build's engine" T-LABEL
    s" warm-hb" s" cold-hb" SAME? TTRUE
    s" the pad changes the engine" T-LABEL
-   s" first-hb" s" cold-hb" SAME? 0= TTRUE ;
+   s" first-hb" s" cold-hb" SAME? 0= TTRUE
+   s" the warm build after a linker.f comment writes the cold build's engine" T-LABEL
+   s" warm-hb-2" s" cold-hb-2" SAME? TTRUE ;
 
 : REMOVE-ROOT ( -- ) ROOT$ FS:REMOVE-TREE ;
 

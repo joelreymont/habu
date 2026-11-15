@@ -16043,6 +16043,10 @@ CHECKER-REG:}SCRATCH
    sym 0 <> IF sym NULL-PTR EXIT THEN
    a u CHECKER-RESOLVE:EXPORT-PRIVATE {: rec:^ :}
    rec NULL-PTR = IF 0 rec EXIT THEN
+   \ A record linked from its object has no symbol until its facts are read;
+   \ the read scans names of its own, so this one is scanned again.
+   rec FACTS-READ-XT
+   a u CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? rec ;
 
 : EXPORT-EFF-INST ( ^u8 -- n n n n bool ) {: h:^ :}
