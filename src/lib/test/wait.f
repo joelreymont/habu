@@ -1,6 +1,5 @@
 \ wait.f - a test's own waits; neither has a deadline, so a hang shows as the
-\ test's WAIT line. EXPIRED names a library call's own timeout no case expects:
-\ it throws E-PROC-TIMEOUT, so the test ends as a timeout and not as a FAIL.
+\ test's WAIT line.
 \
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
@@ -10,11 +9,6 @@ require src/lib/task.f
 package TEST-WAIT
 
 public
-
-\ No assertion counter and no test label is read or changed.
-: EXPIRED ( ^u8 n -- )
-   type s" : a deadline expired" type cr
-   E-PROC-TIMEOUT throw ;
 
 \ Asks the predicate until it answers true, pausing the task between asks.
 \ The predicate's own throws pass through untouched.
