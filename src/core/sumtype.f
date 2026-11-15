@@ -1,10 +1,10 @@
 \ sumtype.f: package TYPE-DECL, the NEWTYPE, SUMTYPE and PRODUCT declaration
 \ grammar (ENUM is enum-decl.f; the user grammar is docs/forth.md "Structures
-\ And Enums"). Loaded unchecked in the checker prefix, right after render.f.
+\ And Enums"). Loaded unchecked in the checker prefix.
 \ Every failure is transactional: the registry marks restore, TDECL-DIAG
 \ (render.f) reports, and the declaration counts as a multi-error reject or
-\ throws its code. Seven global entries are at the foot of the file; SUMTYPE
-\ itself loads after the declaration runner, in sumtype-front.f.
+\ throws its code. NEWTYPE and the replay entries are at the foot of the file;
+\ SUMTYPE and PRODUCT load after the declaration runner, in sumtype-front.f.
 
 using SCHEMA-REG
 using TFAM
@@ -146,7 +146,7 @@ private
 
 public
 
-variable TDECL-FAM-REG   \ family id the LAST successful NEWTYPE, DEFTYPE or PRODUCT registered (-1 = none)
+variable TDECL-FAM-REG   \ family id the LAST successful NEWTYPE or DEFTYPE registered (-1 = none)
 
 \ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
 \ one declaration transaction, whose event participant owns the field frame
@@ -1000,7 +1000,6 @@ defer TDECL-EVENT-CURRENT-XT ( -- n )
 defer TDECL-EVENT-DECL-XT ( n n -- n )
 defer TDECL-EVENT-ARITY-XT ( n n n -- n )
 defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
-defer TDECL-EVENT-ARMED ( -- bool )
 
 
 private
@@ -1071,45 +1070,20 @@ private
       2drop fam TDECL-PRODUCT-FIELD
    AGAIN ;
 
-\ the two generated-word rows: field schemas are appended one root per field,
-\ so the ctor payload range is [rstart, rstart+field-count) — both rows share
-\ it; the rows' PAYCELLS is the CELL width sum (TDP-W), not the field count.
-: TDECL-PRODUCT-ROWS ( n n -- ) {: fam:n rstart:n :}
-   SUMV-N @ {: vstart:n :}
-   fam s" make"   0 rstart TDP-N @ TDP-W @ SUMV-ADD drop
-   fam s" unmake" 1 rstart TDP-N @ TDP-W @ SUMV-ADD drop
-   fam vstart 2 TFAM-VAR-RANGE!
-   fam vstart 2 TDECL-CTOR-PUBLISH ;
-
 : TDECL-PRODUCT-RECORD ( n -- ) {: fam:n :}
    TDECL-EVENT-CURRENT-XT TDP-EVT !
    TDP-EVT @ fam TDECL-EVENT-DECL-XT TDP-EVT !
    TDP-EVT @ fam TDECL-FAM-ARITY @ TDECL-EVENT-ARITY-XT TDP-EVT !
    PF-N @ {: fstart:n :}
-   SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !   0 TDP-W !
    fam TDECL-PRODUCT-FIELDS
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!
-   fam TDECL-LAYOUT-DESC
-   fam rstart TDECL-PRODUCT-ROWS ;
+   fam TDECL-LAYOUT-DESC ;
 
-\ Both entries run the body inside one declaration transaction: field rows go
-\ through DECL-EVENT, which only an open transaction admits. TDECL-RUN stays
-\ outside it, so a reject it swallows under a multi-error load is already rolled
-\ back (DECL-EVENT rows, field rows, constructors), as DECL-FRONT's driver
-\ stands outside its transaction (generated-declaration.f). Each transaction step
-\ is a named word because hb-stage0 compiles this file and cannot nest
-\ quotations.
-: TDECL-PRODUCT-TXN ( [ -- ] -- )
-   TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
-      s" product: declaration event transaction not installed" 76 die
-   THEN
-   TDECL-TXN-XT ;
-
-: CHECKER-DEFPRODUCT-BODY ( -- )
+: CHECKER-DEFPRODUCT-BODY ( -- n )
    TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
@@ -1119,20 +1093,9 @@ private
    fam TFAM-NICHE? IF TDECL-NICHE-THROW THEN
    fam TDECL-DERIVE
    fam TDECL-PRODUCT-RECORD
-   fam TDECL-FAM-REG ! ;
+   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
+   fam ;
 
-: TDECL-DEFPRODUCT-TXN ( -- ) [: CHECKER-DEFPRODUCT-BODY ;] TDECL-PRODUCT-TXN ;
-
-
-public
-
-: TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" product" na nu ba bu TDECL-CTX!
-   [: TDECL-DEFPRODUCT-TXN ;] TDECL-RUN ;
-
-
-private
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDECL-HEADER! {: ar:n :}
@@ -1211,8 +1174,7 @@ private
 
 : TDECL-PREFLIGHT-DEFAULTS ( -- )
    [: TDECL-NAME-PREFLIGHT-MISSING ;] is TDECL-NAME-PREFLIGHT-XT
-   [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT
-   [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
+   [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT ;
 TDECL-PREFLIGHT-DEFAULTS
 
 \ Two TF-NAME-MAX tails joined by ':' or '-', the second maybe ending in @ or !.
@@ -1962,19 +1924,6 @@ public
 : TDECL-INIT-REPLAY ( n -- )
    dup TDINIT-REQUIRE  RES-TRUE [: TDINIT-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
-\ PRODUCT's outer declaration runner arms the same commit participant as
-\ STRUCTURE after its constructors exist; structure-make.f installs the
-\ participant after this pre-hook file has loaded.
-defer TDECL-INIT-ARM-XT ( n -- )
-
-private
-
-: TDECL-INIT-ARM-MISSING ( n -- )
-   drop s" sumtype: initialized field participant not installed" 76 die ;
-: TDECL-INIT-ARM-DEFAULT ( -- )
-   [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
-TDECL-INIT-ARM-DEFAULT
-
 private
 
 : TDECL-GEN-PLAN ( n -- n )
@@ -2006,43 +1955,6 @@ public
 : TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
    fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
-\ NEWTYPE, DEFTYPE and PRODUCT announce their family through TDECL-FAM-REG;
-\ that ambient read lives only in the adapters below and in TDECL-DEFTYPE and
-\ TDECL-NOMINAL-REPLAY. PRODUCT generates inside the body TDECL-RUN guards, so
-\ a refused declaration never reaches generation.
-
-private
-
-: TDECL-CTOR-WORDS ( -- )
-   TDECL-FAM-REG @ {: fam:n :}
-   fam 0 < IF EXIT THEN
-   fam TDECL-CTOR-WORDS-BODY ;
-
-: TDECL-PRODUCT-INIT-ARM ( -- )
-   TDECL-FAM-REG @ {: fam:n :}
-   fam 0 < IF EXIT THEN
-   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
-
-\ A generation fault is the declaration's own: report it at the family name,
-\ not at the last field or variant the body armed.
-: TDECL-PRODUCT-GENERATE ( -- )
-   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
-   TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
-
-public
-
-\ The replay twin, for a tool that registered a PRODUCT from tokens it already
-\ lexed (verify-source.f): the checked effects of the words the
-\ definer would generate, and no word. These include a PRODUCT's
-\ initialized-field accessors when it derives init (TDECL-PRODUCT-INIT-ARM);
-\ its rows are committed once the registration returns, which is all
-\ TDINIT-REQUIRE reads.
-: TDECL-CTOR-WORDS-REPLAY ( -- )
-   TDECL-FAM-REG @ {: fam:n :}
-   fam 0 < IF EXIT THEN
-   fam TDECL-CTOR-REPLAY
-   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
-
 : TDECL-NEWTYPE ( -- )
    parse-name 2dup TDECL-DEFFAMILY ;
 
@@ -2072,35 +1984,8 @@ private
    a TDECL-U @ TDECL-ROW+
    a u TDECL-APP ;
 
-: PRODUCT-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
-   BEGIN
-      parse-name
-      dup 0= IF 2drop RES-FALSE EXIT THEN
-      2dup s" ;product" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
-      TDECL-TOKEN+
-   AGAIN ;
-
 : TDECL-PRODUCT-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;PRODUCT" E-TDECL-SYNTAX TDECL-THROW ;
-
-: TDECL-PRODUCT-GEN-TXN ( -- )
-   [: CHECKER-DEFPRODUCT-BODY TDECL-PRODUCT-GENERATE ;] TDECL-PRODUCT-TXN ;
-
-
-public
-
-: TDECL-DEFPRODUCT-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" product" na nu ba bu TDECL-CTX!
-   [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN ;
-
-: TDECL-PRODUCT ( -- )
-   parse-name {: na:ptr nu:n :}
-   TDECL-CLEAR
-   PRODUCT-COLLECT
-   s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-   0= IF [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT THEN
-   [: TDECL-PRODUCT-GEN-TXN ;] TDECL-RUN ;
 
 ;package
 
@@ -2109,7 +1994,6 @@ using TYPE-DECL
 \ --- the global surface, the only names in this file a user program can spell:
 \ global so a declaration registers from top level (test/type-decl-suite.f).
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
-: PRODUCT ( -- ) TDECL-PRODUCT ;
 
 \ The preverify and all-errors replay paths (verify-source.f) reach
 \ CHECKER-DEFFAMILY and CHECKER-NOMINAL-REPLAY; DEFTYPE reaches CHECKER-DEFTYPE.
@@ -2118,17 +2002,13 @@ NOMINAL-PROVIDER
 : CHECKER-DEFTYPE ( ptr u8 n ptr u8 n -- ) TDECL-DEFTYPE ;
 NOMINAL-PROVIDER
 : CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
-: CHECKER-DEFPRODUCT-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT-NOEND ;
-: CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
-NOMINAL-PROVIDER
 
-\ NEWTYPE and PRODUCT parse their own body tokens up to the ;NAME closer, so
-\ their cell effect is ( -- ). The axiom rows keep them checker-known: the sealed
-\ checker refuses a word it has no row for. UNSAFE-TOK? rejects the openers inside checked bodies
-\ (they parse the live input and mutate the type registry at run time, which
-\ ( -- ) does not express), so the axioms add no checked-code capability.
+\ NEWTYPE parses its family name from the input, so its cell effect is ( -- ).
+\ The axiom row keeps it checker-known: the sealed checker refuses a word it has
+\ no row for. UNSAFE-TOK? rejects it inside checked bodies (it parses the live
+\ input and mutates the type registry at run time, which ( -- ) does not
+\ express), so the axiom adds no checked-code capability.
 PRIM: NEWTYPE PRIM;
-PRIM: PRODUCT PRIM;
 
 ;using
 ;using

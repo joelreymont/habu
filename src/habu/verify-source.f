@@ -2476,7 +2476,9 @@ variable SUM-VAR-NEXT
 : PRODUCT-END? ( ptr u8 n -- bool )
    s" ;PRODUCT" STR=CI ;
 
-\ No dictionary words are generated on this path.
+\ The load's front end replays the body, its ;PRODUCT kept, and publishes the
+\ generated words' checked effects without defining them; a body the input ends
+\ inside replays without it, and the front end refuses "missing ;PRODUCT".
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2484,19 +2486,9 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF
-         2drop
-         name nameu BODY$ CHECKER-DEFPRODUCT-NOEND
-         EXIT
-      THEN
-      2dup PRODUCT-END? IF
-         2drop
-         name nameu BODY$ CHECKER-DEFPRODUCT
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
-         EXIT
-      THEN
-      BODY-APPEND
-   AGAIN ;
+      dup 0= IF 2drop 0 0= ELSE 2dup BODY-APPEND PRODUCT-END? THEN
+   UNTIL
+   name nameu BODY$ [: TYPE-DECL:TDECL-PRODUCT ;] DECL-REPLAY:RP-RUN ;
 
 : LEGACY-TYPE-OUTCOME ( n -- ) {: rc:n :}
    rc 0= IF EXIT THEN

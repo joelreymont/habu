@@ -9,12 +9,11 @@ package CHECK
 private
 
 \ ---- a duplicate only the checker sees ----------------------------------------
-\ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
-\ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
-\ word, so a later definition passes the engine's duplicate wall
-\ and the checker's admission refuses it with $4E and no message. The hook asks
-\ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
-\ wall does (REFUSE-DUPLICATE).
+\ A declaration replay (DECL-REPLAY:RP-RUN, STRUCTURE-DECL:SD-REPLAY, ...)
+\ publishes a checked effect without defining the word, so a later definition
+\ passes the engine's duplicate wall and the checker's admission refuses it with
+\ $4E and no message. The hook asks CHECKER-CERT-DUP? (which interns nothing)
+\ first and refuses it as the wall does (REFUSE-DUPLICATE).
 
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START

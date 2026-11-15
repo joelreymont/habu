@@ -1,11 +1,11 @@
 \ generated-declaration.f: the declaration layer's shared parts, loaded before
 \ structure-decl.f: DECL-REJECT (the reject packet), DECL-REPLAY (a pre-lexed
 \ token stream), the checker-frame and constructor-generation participants, and
-\ DECL-FRONT (the driver both front ends wrap). The runner,
+\ DECL-FRONT (the driver the STRUCTURE and ENUM front ends wrap). The runner,
 \ DECLARATION-TRANSACTION:RUN, is in generated-declaration-protection.f.
 
-\ DECL-REJECT is the one reject packet both front ends raise through. RENDER
-\ forwards to render.f TDECL-DIAG.
+\ DECL-REJECT is the one reject packet the STRUCTURE and ENUM front ends raise
+\ through. RENDER forwards to render.f TDECL-DIAG.
 \ A front end arms its own reason (REJECT, EXPECT); a code raised deeper arrives
 \ bare and PICK-REASON reads the rows each code's owner lays with EXPLAIN. An
 \ armed reason counts only for the code it was armed for. Declarations never
@@ -432,23 +432,18 @@ public
 
 : OWNS? ( n -- bool ) GEN-OK? ;
 
-\ PRODUCT generates its words in sumtype.f, outside this participant. A tool
-\ that registered one from tokens it had lexed (src/habu/verify-source.f)
-\ replays them here: their checked effects, for the family sumtype.f last
-\ announced, and no word.
-: REPLAY-LEGACY ( -- ) TDECL-CTOR-WORDS-REPLAY ;
-
 private
 
 seal-package
 
 ;package
 
-\ DECL-FRONT: what both front ends (structure-decl.f, enum-decl.f) share around
-\ their grammar: reject codes, the token source with one-token pushback and a
+\ DECL-FRONT: what the STRUCTURE and ENUM front ends share around their
+\ grammar: reject codes, the token source with one-token pushback and a
 \ lookahead span, per-declaration parse cells, a replay's field-name window, the
-\ guarded run with resynchronization, and the replay entries. One set of cells
-\ serves both: declarations never nest (the runner refuses a second with
+\ guarded run with resynchronization, and the replay entries; SUMTYPE and
+\ PRODUCT read only the token source. One set of cells serves every
+\ declaration: declarations never nest (the runner refuses a second with
 \ E-ACTIVE, DECL-REPLAY a second stream with E-REPLAY-BUSY). Every borrowed span
 \ is forgotten as the declaration ends (RESET and MISS-CLEAR in DRIVE,
 \ REPLAY-END for an E-UNRESOLVED replay's span).

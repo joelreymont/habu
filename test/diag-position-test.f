@@ -616,7 +616,7 @@ variable RC
    0 s" Up" 2 12 27 29 AT ;
 
 \ A SUMTYPE in a private section defines HUE-RED for its variant red.
-: GENERATED-FIXTURE ( ptr u8 n -- )
+: HUE-FIXTURE ( ptr u8 n -- )
    {: tail:ptr tailu:n :}
    SB-RESET
    s" package HUES" SB-APPEND LF+
@@ -627,27 +627,44 @@ variable RC
    s" ;package" SB-APPEND LF+
    s" sum-generated.f" FIXTURE! ;
 
-\ The generated name lies in no source text, so the packet names the file.
-: GENERATED-AT ( -- )
+\ A top-level PRODUCT defines CKDPROD:MAKE.
+: CKDPROD-FIXTURE ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   SB-RESET
+   s" : CKDPROD:MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
+   s" PRODUCT ckdprod FIELD x n ;PRODUCT" SB-APPEND LF+
+   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   s" prod-generated.f" FIXTURE! ;
+
+\ The token is the generated name, which lies in no source text: no line is
+\ asserted.
+: GENERATED-AT ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   0 s" code" s" E-BAD-DECLARATION" FIELD=
    0 s" reason" s" generated declaration already defined" FIELD=
-   0 s" token" s" HUE-RED" FIELD=
+   0 s" token" ta tu FIELD=
    0 s" file" FX-PATH$ FIELD= ;
 
 \ The rejected family registers no type for a later use.
 : TEST-GENERATED-NAME ( -- )
    s" a generated name already defined" T-LABEL
-   s" " GENERATED-FIXTURE
+   s" " HUE-FIXTURE
    s" " CHECK
-   GJA-LINE# @ 1 T=
-   0 s" code" s" E-BAD-DECLARATION" FIELD=
-   GENERATED-AT
-   s" : HUE-USE ( hue -- ) drop ;" GENERATED-FIXTURE
+   GJA-LINE# @ 1 T=  s" HUE-RED" GENERATED-AT
+   s" : HUE-USE ( hue -- ) drop ;" HUE-FIXTURE
    s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" code" s" E-BAD-DECLARATION" FIELD=
-   GENERATED-AT
+   GJA-LINE# @ 2 T=  s" HUE-RED" GENERATED-AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
-   1 s" hue" 4 13 112 115 AT ;
+   1 s" hue" 4 13 112 115 AT
+   s" a product's generated name already defined" T-LABEL
+   s" " CKDPROD-FIXTURE
+   s" " CHECK
+   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT
+   s" : CKDPROD-USE ( ckdprod -- ) drop ;" CKDPROD-FIXTURE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT
+   1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
+   1 s" ckdprod" 3 17 83 90 AT ;
 
 \ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
@@ -835,6 +852,25 @@ variable RC
    s" E-BAD-DECLARATION" s" pt" 1 9 8 10 REFUSED-MODES
    0 s" repair_class" s" fix_family_declaration" FIELD=
    0 s" reason" s" missing ;PRODUCT" FIELD= ;
+
+\ After GEN's call may have made types, the check leaves the missing widget to
+\ the run; packet 0 is the deferral at that call.
+: TEST-SUM-PAYLOAD-DEFER ( -- )
+   s" a SUMTYPE payload's deferral at the parameter inside its token" T-LABEL
+   SB-RESET
+   s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" SUMTYPE boxy<x> VARIANT full x ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" SUMTYPE s15" SB-APPEND LF+
+   s"   VARIANT one n ;VARIANT" SB-APPEND LF+
+   s"   VARIANT two boxy<widget> ;VARIANT" SB-APPEND LF+
+   s" ;SUMTYPE" SB-APPEND LF+
+   s" sum-payload-defer.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 2 T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" widget" 6 20 160 166 FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TWO-LINE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: one:ptr oneu:n two:ptr twou:n name:ptr nameu:n :}
@@ -2347,6 +2383,7 @@ variable RC
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
    TEST-PREPASS-OPEN
+   TEST-SUM-PAYLOAD-DEFER
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
    TEST-ARENA
