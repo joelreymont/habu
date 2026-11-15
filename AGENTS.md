@@ -5,30 +5,16 @@ Application-specific policy and model workflows stay out of the language core.
 Agents write, build and debug everything in Habu and on it; no person uses
 Habu directly.
 
-Zen, Tender and Maki build, test and run on Habu without issues. A dot that
-removes an issue one of them meets goes before any other work.
-
-Until the three are released, a Habu change is measured once, on the
-candidate engine before it lands, by what they do on it: each of Maki's image
-and viewer, Zen's server and Tender's server whose build loads a file the
-change touches, built from its master, and Tender's `tender.f` loaded when it
-loads one. A change to the build tools or their caching builds each cold, then
-warm. The installed tree is checked by being byte-identical to the candidate,
-never by building again (Joel, 2026-11-15). Work that does not move that
-measure waits. A fix one of them waits for lands and is installed alone.
-The test suite, the convergence check and a feature's review run once, before
-the install, never per change; a rebase over changes to `.dots/` alone reruns
-nothing.
-
-Incremental builds ship in the release, rock-solid: a warm build never fails or
-differs where a cold build would not.
-
 ## Read first
 
+- Before writing Habu: [docs/forth-card.md](docs/forth-card.md); look things
+  up in [docs/forth.md](docs/forth.md) at the heading the card names.
 - Before writing or changing Habu's tools, modules or boundaries: [docs/design.md](docs/design.md#writing-and-changing-habu) "Writing and changing Habu".
 - Before extending any existing machinery: [docs/design.md](docs/design.md#machinery-being-replaced) "Machinery being replaced".
 - Before writing or running a test: [test/AGENTS.md](test/AGENTS.md).
 - Before building a candidate or installing: [docs/bootstrap.md](docs/bootstrap.md#stable-local-command) "Stable local command".
+- When `bin/hb` is missing or stale: [docs/bootstrap.md](docs/bootstrap.md) "Recovery".
+- Before diagnosing a native failure: [docs/debugging.md](docs/debugging.md).
 - Before diagnosing checked code that misbehaves: [docs/debugging.md](docs/debugging.md#debugging-the-self-hosted-standalone) "Debugging the self-hosted standalone".
 
 ## Repository
@@ -39,16 +25,15 @@ differs where a cold build would not.
 - `spec/` holds TLA+ specs of Habu's state machines;
   [spec/README.md](spec/README.md) says how to check them.
 
-## Writing Habu
-
-- Read [docs/forth-card.md](docs/forth-card.md) before writing Habu, and look
-  things up in [docs/forth.md](docs/forth.md) at the heading the card names.
-- Diagnose a native failure by [docs/debugging.md](docs/debugging.md); recover
-  a missing or stale `bin/hb` by [docs/bootstrap.md](docs/bootstrap.md)
-  "Recovery".
-
 ## Changes
 
+- Incremental builds ship in the release: a warm build never fails or differs
+  where a cold build would not.
+- The installed tree is checked by being byte-identical to the candidate,
+  never by building again.
+- The test suite, the convergence check and a feature's review run once,
+  before the install, never per change; a rebase over changes to `.dots/` alone
+  reruns nothing.
 - Never compress code or data without the user's explicit approval.
   Compression shrinks code or data through a codec; dropping zero-filled,
   unused or unreachable storage, packing allocations tightly and choosing a
