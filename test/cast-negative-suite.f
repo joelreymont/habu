@@ -97,6 +97,10 @@ s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL s" error[E-CAST-FAM]" s" `never
 s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
 s" cast: CNF3 ( n -- ^cnpbox )"   CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
 s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
+REJECTION:BUFFER$ s" = help: give `cnpbox` 1 type argument" CONTAINS? TTRUE
+\ A cast's help is a definition's: `ptr` is told how to spell a pointer.
+s" cast: CNF5 ( ptr -- n )"          CN-RUN:DECL s" error[E-CAST-FAM]" s" `ptr`" CN-RUN:REJECTS
+REJECTION:BUFFER$ s" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`" CONTAINS? TTRUE
 \ Any other signature fault, here a bare `^`, is refused before a walk reads
 \ the row, as a stored signature that does not parse is. The first fault names
 \ the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.

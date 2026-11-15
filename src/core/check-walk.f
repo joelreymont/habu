@@ -982,12 +982,16 @@ public
    na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !  su SIG-U !
    na nu sa su r> [: CLEAR ;] finally ;
 : TOKEN! ( ^u8 n -- ) TOK-U !  TOK-A ! ;
+\ Opens the declaration's rejection under code, why wa wu saying what is wrong;
+\ the caller writes its help and stops.
+: OPEN ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
+   code CODE$ REJECTION:OPEN  wa wu TITLE
+   SPOT$ REJECTION:AT  code LABEL$ REJECTION:EMIT-STR
+   SIG-NOTE ;
 \ Rejects the declaration under code: why wa wu says what is wrong, help ha hu
 \ what to write instead.
 : RAISE ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
-   code CODE$ REJECTION:OPEN  wa wu TITLE
-   SPOT$ REJECTION:AT  code LABEL$ REJECTION:EMIT-STR
-   SIG-NOTE
+   wa wu code OPEN
    REJECTION:HELP  ha hu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 \ Rejects signature sa su of name na nu that does not parse.
@@ -1998,7 +2002,15 @@ CHECKER-REG:}SCRATCH
 \ Certifies `cast:` and `linear:` for both front ends, the engine's reader
 \ keyword and verify-source's pre-pass.
 package CHECKER-IDENTITY
-\ A row that did not parse is refused before a gate walks it; family tails read
+\ Rejects the type token the signature parse named under E-CAST-FAM: why wa wu
+\ says what is wrong.
+: FAM-RAISE ( ^u8 n -- ) {: wa:^ wu:n :}
+   SGBAD-A @ SGBAD-U @ {: ta:^ tu:n :}
+   ta tu CAST-ERROR:TOKEN!
+   wa wu E-CAST-FAM CAST-ERROR:OPEN
+   REJECTION:HELP  ta tu ta 0 SGBAD-FIX
+   CHECKER-REJECT-RC REJECTION:STOP ;
+\ A row that did not parse is rejected before a gate walks it; family tails read
 \ the engine's open namespace.
 : PARSE ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
    sa su BYTE-SPAN? 0= IF
@@ -2009,17 +2021,10 @@ package CHECKER-IDENTITY
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
-   SGBAD-UNKNOWN? IF
-      SGBAD-A @ SGBAD-U @ CAST-ERROR:TOKEN!
-      s" the signature names an unknown type"
-      s" declare the type before this declaration, or write the name of a type visible here"
-      E-CAST-FAM CAST-ERROR:RAISE
-   THEN
+   SGBAD-UNKNOWN? IF s" the signature names an unknown type" FAM-RAISE THEN
    SGBAD-ARITY? IF
-      SGBAD-A @ SGBAD-U @ CAST-ERROR:TOKEN!
       s" the signature gives the wrong number of arguments to the type family"
-      s" give the type family as many arguments as its declaration names"
-      E-CAST-FAM CAST-ERROR:RAISE
+      FAM-RAISE
    THEN
    SGBAD @ SGBAD-UNSUPPLIED? 0= and IF
       sa su na nu CAST-ERROR:REJECT-SIGNATURE
