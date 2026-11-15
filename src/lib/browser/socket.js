@@ -38,7 +38,8 @@
 //   opening   a WebSocket(url) is connecting
 //   open      the socket is open; calls are sent
 //   waiting   backing off after a close or failure: 1 s, doubling to 30 s,
-//             reset to 1 s once a socket opens
+//             reset to 1 s once a socket proves itself, by its first
+//             answered call or its first view/alive, never by opening
 //   resting   hidden with no call outstanding: no socket
 //   ended     the ask failed or view.js disposed; reason answers every call
 // and the inputs
@@ -65,7 +66,8 @@
 //            so it is forgotten and the next connect asks
 //   open     message: liveness, then a notification, a response or a server
 //            request, which is answered -32601; a response sends the next
-//            call, or rests when hidden and idle
+//            call, or rests when hidden and idle; a response to the sent
+//            call or a view/alive resets the backoff to 1 s
 //            closed: waiting, as in opening
 //            silent: waiting, closing the socket (4000)
 //            call: queued, and sent when none is
@@ -181,7 +183,6 @@ export function open({ request, notify, onCode, carried }) {
   };
   const opened = () => {
     s.state = "open";
-    s.delay = FIRST_DELAY;
     listen();
     tell(notify, "view/open", "{}");
     pump();
@@ -222,7 +223,8 @@ export function open({ request, notify, onCode, carried }) {
     if (typeof m.method === "string") {
       if ("id" in m) { send({ id: m.id, error: { code: NOT_FOUND, message: "Method not found" } }); return; }
       if (m.method === "view/code") tell(onCode, m.params?.code);
-      else if (m.method !== "view/alive") tell(notify, m.method, JSON.stringify(m.params ?? {}));
+      else if (m.method === "view/alive") s.delay = FIRST_DELAY;
+      else tell(notify, m.method, JSON.stringify(m.params ?? {}));
       return;
     }
     if (s.sent === null || m.id !== s.sent.id) {
@@ -231,6 +233,7 @@ export function open({ request, notify, onCode, carried }) {
     }
     const { resolve, reject } = s.sent;
     s.sent = null;
+    s.delay = FIRST_DELAY;
     if (("result" in m) === ("error" in m)) reject(new Error(`${m.id}: the message is not a JSON-RPC response`));
     else resolve(m);
     if (hidden() && idle()) resting();

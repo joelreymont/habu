@@ -5,7 +5,8 @@
 // blob: URLs after it, since page.js reads the document as it loads, opens the
 // view's socket (socket.js), mounts the module with an rpc bridge, and listens
 // to the page's field and drops. It resolves with the viewport, whose dispose
-// also ends the socket.
+// also ends the socket and removes the page's listeners, so a restart leaves
+// none of this view's.
 //
 //   rpc    a module's tools/call rpc goes over the socket (socket.call), its
 //          view/resume P is kept by the socket and answered {} at once, and
@@ -18,8 +19,9 @@
 //          is set, the module first receives view/resume with its resume
 //   code   view/code whose code is not meta.code: tools/call view_code {} over
 //          the socket, then host.restart(result, socket.carried()), one fetch
-//          at a time; a failed fetch is logged and the view runs on, so the
-//          next socket's view/code tries again
+//          at a time; a failed fetch, an error or a tool error (isError), is
+//          logged and the view runs on, so the next socket's view/code tries
+//          again
 //
 // page.js shows what the module sends and gives it the field's text and each
 // file dropped anywhere on the page. The module is the one path the
@@ -59,6 +61,8 @@ export async function start({ meta, files, request, restart, carried }) {
     fetching = true;
     socket.call("tools/call", { name: CODE_TOOL, arguments: {} }).then((r) => {
       if ("error" in r) throw new Error(`${CODE_TOOL}: ${JSON.stringify(r.error)}`);
+      if (r.result?.isError)
+        throw new Error(`${CODE_TOOL}: ${(r.result.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ")}`);
       if (!ended) restart(r.result, socket.carried());
     }).catch((e) => console.error(e)).finally(() => { fetching = false; });
   };
@@ -94,11 +98,13 @@ export async function start({ meta, files, request, restart, carried }) {
   if (carried?.resume != null) mounted.notify("view/resume", JSON.stringify(carried.resume));
   for (const [method, paramsJSON] of held) mounted.notify(method, paramsJSON);
   held = null;
-  listen(mounted);
+  const listening = new AbortController();
+  listen(mounted, listening.signal);
   return {
     ...mounted,
     dispose() {
       ended = true;
+      listening.abort();
       socket.dispose();
       mounted.dispose();
     },

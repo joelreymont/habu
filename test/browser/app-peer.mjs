@@ -9,7 +9,9 @@
 // ui/initialize, so the view holds both until its start turn. /view is a
 // WebSocket endpoint: it sends view/code {code} first, answers each tools/call
 // as the table does, and on the test's cue pushes a notification, view/alive
-// among them, or closes the socket.
+// among them, or closes the socket; for a session told to, it closes each of
+// its first sockets right after it opens, or answers view_code with a tool
+// error.
 // Headless Chrome then checks the handshake, the view_code call and the
 // view_socket ask, that both notifications reach the module in the order
 // sent, that a message from a window other than the parent is ignored, a
@@ -27,10 +29,17 @@
 // close answers the outstanding call -32000 and the view reopens after its
 // backoff, a view/code naming other code fetches view_code over the socket
 // and restarts the view through app.js, carrying the resume and the session,
-// and a close under 4403 makes the view ask view_socket again before it
-// reopens. An eighth frame's view_socket is answered with a tool error: its
-// module's tools/call is answered -32000 with that error's text, and it makes
-// no socket. DIR holds data.bin, the file dropped, and receives chrome.log;
+// a file dropped on the restarted view reaches its module once and no
+// listener of the old view throws, and a close under 4403 makes the view ask
+// view_socket again before it reopens. An eighth frame's sockets are closed
+// right after they open: the delays between its reopens double, and its
+// first view/alive resets them to 1 s. A ninth frame, once running, is pushed
+// a view/code naming other code, and its view_code over the socket is
+// answered with a tool error: the view runs on and answers its module's next
+// call. A tenth frame's
+// view_socket is answered with a tool error: its module's tools/call is
+// answered -32000 with that error's text, and it makes no socket. DIR holds
+// data.bin, the file dropped, and receives chrome.log;
 // TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -54,6 +63,7 @@ const LATER = { structuredContent: { name: "after the stranger" } };
 const TOOL_RESULT = { content: [{ type: "text", text: "project" }] };
 const NO_SOCKET = "the server has no view socket";
 const SOCKET_ERROR = { content: [{ type: "text", text: NO_SOCKET }], isError: true };
+const CODE_ERROR = { content: [{ type: "text", text: "the view's code could not be read" }], isError: true };
 const OLDER = `This view's page is older than ${title}'s server: ${title}'s app must be refreshed where it was installed; then open this view again.`;
 const OLDER_CONTEXT = { content: [{ type: "text", text: `${title}'s view could not start: ${OLDER}`,
   annotations: { audience: ["assistant"] } }] };
@@ -185,15 +195,19 @@ window.addRestart = (name, next) => {
 };
 // addLive adds a page frame answered as the table does, view_socket for the
 // session name, or with failure when it is given; the messages it posts land
-// in window[name].log, and each text its #text is given in window[name].shown.
+// in window[name].log, each text its #text is given in window[name].shown,
+// and each error its window reports in window[name].errors.
 window.addLive = (name, failure) => {
   const other = document.body.appendChild(document.createElement("iframe"));
-  const live = window[name] = { log: [], shown: [], frame: other };
+  const live = window[name] = { log: [], shown: [], errors: [], frame: other };
   other.src = "/app.html";
   window.addEventListener("message", ({ source, data }) => {
     if (source !== other.contentWindow || !("method" in data)) return;
     live.log.push(data);
-    if (data.method === "ui/initialize") record(other.contentDocument, live.shown);
+    if (data.method === "ui/initialize") {
+      record(other.contentDocument, live.shown);
+      other.contentWindow.addEventListener("error", (e) => live.errors.push(e.message));
+    }
     if (!("id" in data)) return;
     const result = failure && data.method === "tools/call" && data.params.name === "view_socket" ?
       failure : answer(data, name);
@@ -206,9 +220,14 @@ window.addLive = (name, failure) => {
 // messages, its open socket, its opens, the ask its last open's url names, the
 // times of its last open and of the last close the peer made, the code
 // view/code names, and whether the next tools/call closes the socket
-// unanswered.
-const view = { requests: 0, log: { main: [], live: [] }, sockets: {}, opens: { main: 0, live: 0 }, asks: {},
-  openedAt: {}, closedAt: {}, codes: { main: meta.code, live: meta.code }, hold: { main: false, live: false } };
+// unanswered; for the sessions named, how many more sockets close right after
+// they open, the ms from each close the peer made to the next open, and the
+// tool error view_code is answered with.
+const view = { requests: 0, log: { main: [], live: [], flaky: [], erring: [] }, sockets: {},
+  opens: { main: 0, live: 0, flaky: 0, erring: 0 }, asks: {}, openedAt: {}, closedAt: {},
+  codes: { main: meta.code, live: meta.code, flaky: meta.code, erring: meta.code },
+  hold: { main: false, live: false, flaky: false, erring: false },
+  shut: { flaky: 2 }, reopens: { flaky: [] }, codeErrors: { erring: CODE_ERROR } };
 const drop = (session) => {
   view.closedAt[session] = performance.now();
   view.sockets[session].close(4000, "dropped");
@@ -222,7 +241,10 @@ const websocket = {
     view.opens[session]++;
     view.asks[session] = ask;
     view.openedAt[session] = performance.now();
+    if (view.reopens[session] && session in view.closedAt)
+      view.reopens[session].push(view.openedAt[session] - view.closedAt[session]);
     push(session, "view/code", { code: view.codes[session] });
+    if (view.shut[session] > 0) { view.shut[session]--; drop(session); }
   },
   message(ws, text) {
     const { session } = ws.data;
@@ -233,7 +255,8 @@ const websocket = {
       return;
     }
     if (view.hold[session]) { view.hold[session] = false; drop(session); return; }
-    const result = m.params.name === "view_code" ? { content: [], _meta: { ...meta, code: view.codes[session] } } : TOOL_RESULT;
+    const result = m.params.name !== "view_code" ? TOOL_RESULT :
+      view.codeErrors[session] ?? { content: [], _meta: { ...meta, code: view.codes[session] } };
     ws.send(JSON.stringify({ jsonrpc: "2.0", id: m.id, result }));
   },
   close(ws) {
@@ -468,11 +491,51 @@ try {
   assert.deepEqual(await told("live"), [], "the restart does not fail");
   console.log("Headless Chrome: socket: view/code naming other code fetches view_code over the socket and app.js restarts the view; the new module receives view/resume {\"project\":\"p1\"} and its socket reuses the session");
 
+  // A drop on the restarted page reaches only the new view's listener; an old
+  // view's would hand the file to its disposed viewport, which throws.
+  const bytes = [...readFileSync(data)];
+  const droppedText = `file data.bin ${bytes.length} 1`;
+  await evaluate(`(() => { const w = live.frame.contentWindow, t = new w.DataTransfer();
+    t.items.add(new w.File([new w.Uint8Array(${JSON.stringify(bytes)})], "data.bin"));
+    w.document.body.dispatchEvent(new w.DragEvent("drop", { dataTransfer: t, bubbles: true, cancelable: true })); })()`);
+  await liveShows("live", droppedText);
+  assert.equal((await liveShown()).filter((t) => t === droppedText).length, 1, "the dropped file reaches the module once");
+  assert.deepEqual(await evaluate("live.errors"), [], "no listener of the old view handles the drop");
+  console.log(`Headless Chrome: socket: after a restart, a dropped file reaches the module once (${droppedText}) and the old view's listeners are gone`);
+
   view.sockets.live.close(4403, "expired");
   await until(() => view.opens.live === 5);
   assert.equal(view.asks.live, "2", "the view asks view_socket again before it reopens");
   assert.deepEqual(await hostTools("live"), ["view_code", "view_socket", "view_socket"]);
   console.log("Headless Chrome: socket: a close under 4403 makes the view ask view_socket again before it reopens");
+
+  await evaluate("addLive('flaky')");
+  await until(() => view.opens.flaky === 3);
+  const [firstGap, secondGap] = view.reopens.flaky.map(Math.round);
+  assert.ok(firstGap >= 1000 && secondGap >= 2000,
+    `a socket closed right after it opens reopens after ${firstGap} ms, then ${secondGap} ms, not 1 s then 2 s`);
+  push("flaky", "view/alive", {});
+  drop("flaky");
+  await until(() => view.opens.flaky === 4);
+  const provedGap = Math.round(view.reopens.flaky[2]);
+  assert.ok(provedGap >= 1000 && provedGap < 4000, `a socket that sent view/alive reopens after ${provedGap} ms, not 1 s`);
+  await evaluate("flaky.frame.remove()");
+  console.log(`Headless Chrome: socket: sockets closed right after they open reopen after ${firstGap} ms, then ${secondGap} ms; after a view/alive, ${provedGap} ms`);
+
+  await evaluate("addLive('erring')");
+  // view/code naming other code reaches the view once it runs, as after a
+  // release; before, app.js's restart would ignore the fetch's result.
+  await until(async () => (await evaluate("erring.shown")).includes(opened));
+  push("erring", "view/code", { code: CODE_B });
+  await until(() => view.log.erring.some((m) => m.params?.name === "view_code"));
+  await liveTyped("erring", "rpc", rpcAnswer).catch(async (error) => {
+    throw new Error(`the view did not run on: it told ${JSON.stringify(await told("erring"))}`, { cause: error });
+  });
+  assert.deepEqual(view.log.erring.map((m) => m.params?.name), ["view_code", "get_project"],
+    "view_code's tool error over the socket is not retried until the next socket's view/code");
+  assert.deepEqual(await told("erring"), [], "view_code's tool error does not fail the view");
+  await evaluate("erring.frame.remove()");
+  console.log(`Headless Chrome: socket: view_code over the socket answered with a tool error ${JSON.stringify(CODE_ERROR)} leaves the view running; its next call is answered ${rpcAnswer}`);
 
   const requests = view.requests;
   await evaluate(`addLive("failing", ${JSON.stringify(SOCKET_ERROR)})`);
@@ -482,7 +545,7 @@ try {
   assert.deepEqual(await hostTools("failing"), ["view_code", "view_socket"], "the module's tools/call does not reach the host");
   assert.equal(view.requests, requests, "the view makes no socket");
   console.log(`Headless Chrome: socket: view_socket answered with a tool error answers the module's tools/call ${JSON.stringify(failed)}, and the view makes no socket`);
-  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call over the socket, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code, an older page, a restart, a restart onto an older page and the view's socket passed");
+  console.log("Headless Chrome: MCP App held notifications in order, a stranger ignored, tools/call over the socket, model context, after, a malformed response, file reads, teardown, an early teardown, a teardown during view_code, an older page, a restart, a restart onto an older page and the view's socket passed, its backoff, a view_code tool error and a restart's listeners among them");
 } catch (error) {
   failure = error; throw error;
 } finally {
