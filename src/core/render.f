@@ -652,6 +652,20 @@ LOCSHOW-INSTALL
    0 DEST !  TEXT TEXT-LEN @ ;
 
 
+\ A `parses:` row as a facts tag appended at TEXT-LEN, spelled as the row:
+\ `parses N`, or `parses-through N ( E1 E2 )` for terminators T TU, each
+\ followed by a blank; nothing for a count of -1.
+: REND-PARSES ( n ptr u8 n -- ptr u8 n )
+   {: cnt:n t:ptr tu:n :}
+   1 DEST !
+   cnt 0 >= IF
+      tu 0= IF s" parses " ELSE s" parses-through " THEN EMIT-STR
+      cnt RNUM  32 EMIT1
+      tu 0 <> IF s" ( " EMIT-STR  t tu EMIT-STR  s" ) " EMIT-STR THEN
+   THEN
+   0 DEST !  TEXT TEXT-LEN @ ;
+
+
 \ Record off's facts text, appended at TEXT-LEN.
 : REND-RECORD ( n -- ptr u8 n )
    {: off:n :}

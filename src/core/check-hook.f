@@ -96,15 +96,19 @@ private
 
 
 \ Appends sym's tags at REJECTION:TEXT-LEN, after the effect FACTS-SAME? left
-\ in REJECTION:TEXT.
+\ in REJECTION:TEXT. A kept `parses:` row's tag carries CTL-PARSES, so the
+\ flag's own tag is left out.
 : FACTS-TAGS ( n -- )
    {: sym:n :}
+   sym PROW-FIND {: cnt:n t:ptr tu:n kept:bool :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
+   kept if CTL-PARSES invert and then
    REND-CTL 2drop
    sym PRIM-FIRST-IDX {: prim:n :}
    prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
    sym PIMM-IX {: ix:n :}
    ix 0 < if -1 else ix PIMM-CNT@ then REND-PIMM 2drop
+   kept if cnt else -1 then t tu REND-PARSES 2drop
    sym NORET-CREATES@ REND-CREATES 2drop ;
 
 

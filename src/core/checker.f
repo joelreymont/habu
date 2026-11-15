@@ -7075,6 +7075,9 @@ variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
 variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
+variable SIG-PARSES   -1 SIG-PARSES !   \ the parses count the last facts text's tags gave, -1 for none
+\ Its terminators inside the last facts text, blank-separated, 0 0 for none.
+PTR-VARIABLE SIG-PARSES-A   variable SIG-PARSES-U
 variable SIG-TAGS-ONLY   \ whether the last facts text was tags alone, with no effect
 \ The created words' facts text inside the last facts text, 0 0 for none. A
 \ caller parses that span itself, after building the first text's effect.
@@ -8036,6 +8039,64 @@ CHECKER-REG:}SCRATCH
    v SIG-PIMM ! ;
 
 
+\ A token ended by blanks alone, as `parse-name` reads one: 0 at the end.
+: SIG-RAW-TOK ( -- ptr u8 n )
+   BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
+   SI @ {: from:n :}
+   BEGIN SI @ SL @ < IF SB@ SI @ + c@ 32 > ELSE RES-FALSE THEN
+   WHILE SI @ 1 + SI ! REPEAT
+   SB@ from +  SI @ from - ;
+
+
+\ The end of the last terminator before a standalone `)`, from LAST, the end of
+\ the one read; -1 when the text ends first.
+: SIG-TERMS-END ( n -- n )
+   {: last:n :}
+   SIG-RAW-TOK {: a:ptr u:n :}
+   u 0= IF -1 EXIT THEN
+   a u s" )" CORE-STR= IF last EXIT THEN
+   SI @ RECURSE ;
+
+
+\ `( E1 E2 )`: the terminators, blank-separated; 0 0 for a malformed list.
+: SIG-TERMS ( -- ptr u8 n )
+   SIG-RAW-TOK s" (" CORE-STR= 0= IF NULL-PTR 0 EXIT THEN
+   SIG-RAW-TOK {: a:ptr u:n :}
+   u 0=  a u s" )" CORE-STR=  or IF NULL-PTR 0 EXIT THEN
+   SI @ u - {: from:n :}
+   SI @ SIG-TERMS-END {: to:n :}
+   to 0 < IF NULL-PTR 0 EXIT THEN
+   SB@ from +  to from - ;
+
+
+\ `parses N`, and `parses-through N ( E1 E2 )` when THROUGH, the count CA CU
+\ read: the word's `parses:` row, which carries CTL-PARSES.
+: SIG-PARSES-TAG ( ptr u8 n ptr u8 n bool -- )
+   {: ta:ptr tu:n ca:ptr cu:n through:bool :}
+   SIG-PARSES @ 0 < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   SIG-CTL @ CTL-PARSES and 0 <> IF ta tu SGBAD-SYNTAX! EXIT THEN
+   SIG-CTL @ CTL-PARSES or SIG-CTL !
+   cu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
+   ca cu num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 0 <  or IF ca cu SGBAD-SYNTAX! EXIT THEN
+   through IF
+      SIG-TERMS {: la:ptr lu:n :}
+      lu 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+      la SIG-PARSES-A !  lu SIG-PARSES-U !
+   THEN
+   v SIG-PARSES ! ;
+
+
+\ `parses` alone is CTL-PARSES's tag; `parses N` is the flag with its row, so
+\ a text holding the row never holds the lone flag too.
+: SIG-PARSES-ROW? ( ptr u8 n -- bool )
+   {: ta:ptr tu:n :}
+   NEXT-SIG-TOK {: ca:ptr cu:n :}
+   ca cu num-parse {: v:n flt:bool ok:bool :}
+   ok 0= IF ca cu PK! RES-FALSE EXIT THEN
+   ta tu ca cu RES-FALSE SIG-PARSES-TAG RES-TRUE ;
+
+
 : SIG-PE-TAG ( ptr u8 n -- bool )
    {: ta:ptr tu:n :}
    ta tu TAG>PE {: bit:n :}
@@ -8076,6 +8137,10 @@ CHECKER-REG:}SCRATCH
 : SIG-TAG ( ptr u8 n -- )
    {: ta:ptr tu:n :}
    ta tu SIG-PE-TAG IF EXIT THEN
+   ta tu s" parses" CORE-STR= IF ta tu SIG-PARSES-ROW? IF EXIT THEN THEN
+   ta tu s" parses-through" CORE-STR= IF
+      ta tu NEXT-SIG-TOK RES-TRUE SIG-PARSES-TAG EXIT
+   THEN
    ta tu s" block" CORE-STR= IF ta tu SIG-BLOCK-TAG EXIT THEN
    ta tu s" noblock" CORE-STR= IF ta tu SIG-NOBLOCK-TAG EXIT THEN
    ta tu TAG>KIND {: kind:n :}
@@ -8135,6 +8200,7 @@ CHECKER-REG:}SCRATCH
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
    0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !  RES-FALSE SIG-TAGS-ONLY !
+   -1 SIG-PARSES !  NULL-PTR SIG-PARSES-A !  0 SIG-PARSES-U !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    NULL-PTR SIG-OVERLOAD-A !  0 SIG-OVERLOAD-U !
    PKRESET NEXT-SIG-TOK {: ta:ptr tu:n :}
@@ -16095,18 +16161,175 @@ NORET-P NORET-CAP-U 1 NORET-END STORE+
    sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
    off NORET-CELL NORET.CREATES @ 0 NORET-APPEND ;
 
+\ --- declared parsing immediates.
+\ A parsing immediate consumes a fixed number of source tokens at compile time
+\ and contributes no runtime step. A wrong count skips live code or eats real
+\ tokens, so `parse-imm` is UNSAFE-TOK?-listed: top-level declarations only.
+\ A rollback lowers SYM-N and hands the retired ids out again, so a checker
+\ frame saves PIMM-N and its restore drops the rows made since: no row outlives
+\ the scope of the id it names. The newest row for a symbol wins; undefining
+\ the word appends one of count -1, which no word declares. The tables grow as
+\ rows are added.
+16 constant PIMM-CAP
+create PIMM-SYMS-BOOT PIMM-CAP cells allot
+create PIMM-NS-BOOT PIMM-CAP cells allot
+PERSISTED-PTR-VARIABLE PIMM-SYMS-P   PERSISTED-PTR-VARIABLE PIMM-NS-P
+variable PIMM-CAP-V   variable PIMM-N
+PIMM-SYMS-BOOT PIMM-SYMS-P !   PIMM-NS-BOOT PIMM-NS-P !   PIMM-CAP PIMM-CAP-V !
+0 PIMM-N !
+: PIMM-SYMS ( -- ptr n ) PIMM-SYMS-P @ ;
+: PIMM-NS ( -- ptr n ) PIMM-NS-P @ ;
+PIMM-SYMS-P PIMM-CAP-V CELL PIMM-N CHECK:STORE+
+PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
+
+: PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
+   cells PIMM-NS + @ ;
+
+: PIMM-IX ( n -- n ) {: sym:n :}   \ sym's newest row, -1 = undeclared
+   sym 0= IF -1 EXIT THEN
+   PIMM-N @ BEGIN dup 0 > WHILE
+      1 -
+      dup cells PIMM-SYMS + @ sym = IF
+         dup PIMM-CNT@ 0 < IF drop -1 THEN EXIT
+      THEN
+   REPEAT drop -1 ;
+
+: PIMM-REWIND ( n -- )
+   {: n:n :}
+   n 0 < n PIMM-N @ > or IF
+      s" checker: parse-imm table rewind outside the table" 76 die
+   THEN
+   PIMM-SYMS n PIMM-N @ ARENA-CELLS-ZERO
+   PIMM-NS n PIMM-N @ ARENA-CELLS-ZERO
+   n PIMM-N ! ;
+
+\ --- kept `parses:` rows.
+\ The `parses:` and `parses-through:` rows the load accepts, by the symbol of
+\ the word each names; the newest row for a symbol wins. The word's facts text
+\ says its row (render.f REND-PARSES) and a read of the text keeps it again, as
+\ for a parse-imm count, so a check that never reads the file stating a row
+\ still finds it. A row is three cells, the symbol, the count and the
+\ terminators' byte count, then those bytes, each terminator followed by a
+\ blank, padded to a cell. A frame rewinds the end as it rewinds PIMM-N.
+$100 constant PROW-INIT
+$0 constant PROW.SYM
+$8 constant PROW.COUNT
+$10 constant PROW.LEN
+$18 constant PROW-HEAD
+create PROW-BOOT PROW-INIT allot
+PERSISTED-PTR-VARIABLE PROW-P   variable PROW-CAP-V   variable PROW-END
+PROW-BOOT PROW-P !   PROW-INIT PROW-CAP-V !   0 PROW-END !
+: PROW ( -- ptr u8 ) PROW-P @ ;
+PROW-P PROW-CAP-V 1 PROW-END CHECK:STORE+
+
+: PROW@ ( n n -- n ) {: at:n off:n :} PROW at + off + CELL-VIEW @ ;
+: PROW! ( n n n -- ) {: v:n at:n off:n :} v PROW at + off + CELL-VIEW ! ;
+
+\ The table is baked, so the retired rows' bytes are zeroed.
+: PROW-REWIND ( n -- ) {: n:n :}
+   n PROW-END @ < IF PROW n +  PROW-END @ n -  ARENA-ZERO THEN
+   n PROW-END ! ;
+
+: PROW-ENSURE ( n -- ) {: need:n :}
+   need PROW-CAP-V @ <= IF EXIT THEN
+   need PROW-CAP-V @ 2 * max {: nc:n :}
+   PROW-P PROW-CAP-V @ nc CHECKER-REG:GROW
+   nc PROW-CAP-V ! ;
+
+\ Copies terminator A U and a blank to byte LEN of the terminators of the row
+\ the table's end would hold; the bytes copied so far.
+: PROW-TERM+ ( ptr u8 n n -- n )
+   {: a:ptr u:n len:n :}
+   WRITE-WINDOW-CK
+   PROW-END @ PROW-HEAD + len + {: at:n :}
+   at u + 1 + PROW-ENSURE
+   a  PROW at +  u ARENA-COPY
+   32  PROW at + u +  c!
+   len u + 1 + ;
+
+\ Keeps sym's row: count CNT and the LEN bytes PROW-TERM+ copied.
+: PROW-ADD ( n n n -- )
+   {: sym:n cnt:n len:n :}
+   WRITE-WINDOW-CK
+   PROW-END @ {: at:n :}
+   at PROW-HEAD +  len CELL + 1 - CELL / cells + {: end:n :}
+   end PROW-ENSURE
+   sym at PROW.SYM PROW!
+   cnt at PROW.COUNT PROW!
+   len at PROW.LEN PROW!
+   end PROW-END ! ;
+
+: PROW-BLANKS ( ptr u8 n n -- n )
+   {: a:ptr u:n i:n :}
+   i BEGIN dup u < IF dup a + c@ 32 <= ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
+
+: PROW-INK ( ptr u8 n n -- n )
+   {: a:ptr u:n i:n :}
+   i BEGIN dup u < IF dup a + c@ 32 > ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
+
+\ Copies each blank-separated terminator of A U from index I on, after the
+\ LEN bytes copied before; the bytes copied.
+: PROW-TERMS+ ( ptr u8 n n n -- n )
+   {: a:ptr u:n i:n len:n :}
+   a u i PROW-BLANKS {: from:n :}
+   from u < 0= IF len EXIT THEN
+   a u from PROW-INK {: to:n :}
+   a from +  to from -  len PROW-TERM+ {: next:n :}
+   a u to next RECURSE ;
+
+\ Keeps sym's row: count CNT and terminators A U, blank-separated.
+: PROW-ADD-TEXT ( n n ptr u8 n -- )
+   {: sym:n cnt:n a:ptr u:n :}
+   a u 0 0 PROW-TERMS+ {: len:n :}
+   sym cnt len PROW-ADD ;
+
+: PROW-NEXT ( n -- n )
+   dup PROW.LEN PROW@  CELL + 1 - CELL / cells +  PROW-HEAD + ;
+
+\ Sym's newest row: its count and terminators, borrowed until the next row or
+\ rewind, and true; false when none names it or its count is -1, the row
+\ undefining the word appends.
+: PROW-FIND ( n -- n ptr u8 n bool )
+   {: sym:n :}
+   0 0 BEGIN dup PROW-END @ < WHILE
+      dup PROW.SYM PROW@ sym = IF nip dup 1 + swap THEN
+      PROW-NEXT
+   REPEAT drop {: row:n :}
+   sym 0=  row 0=  or IF 0 PROW 0 RES-FALSE EXIT THEN
+   row 1 - {: at:n :}
+   at PROW.COUNT PROW@ 0 < IF 0 PROW 0 RES-FALSE EXIT THEN
+   at PROW.COUNT PROW@  PROW at + PROW-HEAD +  at PROW.LEN PROW@
+   RES-TRUE ;
+
+: PIMM-ENSURE ( n -- ) {: need:n :}
+   need PIMM-CAP-V @ <= IF EXIT THEN
+   need PIMM-CAP-V @ 2 * max {: nc:n :}
+   PIMM-SYMS-P PIMM-CAP-V @ cells nc cells CHECKER-REG:GROW
+   PIMM-NS-P PIMM-CAP-V @ cells nc cells CHECKER-REG:GROW
+   nc PIMM-CAP-V ! ;
+
+: PIMM-ADD ( n n -- ) {: sym:n cnt:n :}
+   PIMM-N @ 1 + PIMM-ENSURE
+   sym PIMM-N @ cells PIMM-SYMS + !
+   cnt PIMM-N @ cells PIMM-NS + !
+   PIMM-N @ 1 + PIMM-N ! ;
+
+
 package CHECK
 \ Undefining retires every fact the name carried, through NORET-APPEND: the
 \ carry-forward of NORET-ADD-SYM would keep a definer's created effect or an
 \ export's link alive under a retired name. It also retires every link naming
 \ the word: the name defined afresh takes the symbol, while an export of the
 \ old word still runs that word. The walk reads the entries present before it
-\ and appends past them; a rollback rewinds them.
+\ and appends past them; a rollback rewinds them. A row of count -1 retires
+\ the word's `parses:` row and parse-imm count.
 : UNDEFINE-SYM ( n -- )
    {: sym:n :}
    sym CHECKER-REC-SYM !
    E-ADD-DELETED
    sym RES-FALSE DFER-ADD-SYM
+   sym -1 0 PROW-ADD
+   sym -1 PIMM-ADD
    sym 0 0 0 0 0 NORET-APPEND
    NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop ;
 
@@ -20312,44 +20535,6 @@ CHECKER-REG:SCRATCH{
 variable IMMERR
 CHECKER-REG:}SCRATCH
 
-\ --- declared parsing immediates.
-\ A parsing immediate consumes a fixed number of source tokens at compile time
-\ and contributes no runtime step. A wrong count skips live code or eats real
-\ tokens, so `parse-imm` is UNSAFE-TOK?-listed: top-level declarations only.
-\ A rollback lowers SYM-N and hands the retired ids out again, so a checker
-\ frame saves PIMM-N and its restore drops the rows made since: no row outlives
-\ the scope of the id it names.
-16 constant PIMM-CAP
-create PIMM-SYMS-BOOT PIMM-CAP cells allot
-create PIMM-NS-BOOT PIMM-CAP cells allot
-PERSISTED-PTR-VARIABLE PIMM-SYMS-P   PERSISTED-PTR-VARIABLE PIMM-NS-P
-variable PIMM-CAP-V   variable PIMM-N
-PIMM-SYMS-BOOT PIMM-SYMS-P !   PIMM-NS-BOOT PIMM-NS-P !   PIMM-CAP PIMM-CAP-V !
-0 PIMM-N !
-: PIMM-SYMS ( -- ptr n ) PIMM-SYMS-P @ ;
-: PIMM-NS ( -- ptr n ) PIMM-NS-P @ ;
-PIMM-SYMS-P PIMM-CAP-V CELL PIMM-N CHECK:STORE+
-PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
-
-: PIMM-IX ( n -- n ) {: sym:n :}   \ declaration index for sym, -1 = undeclared
-   sym 0= IF -1 EXIT THEN
-   0 BEGIN dup PIMM-N @ < WHILE
-      dup cells PIMM-SYMS + @ sym = IF EXIT THEN
-      1 +
-   REPEAT drop -1 ;
-
-: PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
-   cells PIMM-NS + @ ;
-
-: PIMM-REWIND ( n -- )
-   {: n:n :}
-   n 0 < n PIMM-N @ > or IF
-      s" checker: parse-imm table rewind outside the table" 76 die
-   THEN
-   PIMM-SYMS n PIMM-N @ ARENA-CELLS-ZERO
-   PIMM-NS n PIMM-N @ ARENA-CELLS-ZERO
-   n PIMM-N ! ;
-
 : NEUTRAL-PARSE-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u tok-imm? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < IF RES-FALSE EXIT THEN
@@ -20394,12 +20579,6 @@ variable ACTIVE
    a u TARGET-A@ TARGET-U @ CORE-STR=CI ;
 
 ;package
-
-: PIMM-ADD ( n n -- ) {: sym:n cnt:n :}
-   PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN
-   sym PIMM-N @ cells PIMM-SYMS + !
-   cnt PIMM-N @ cells PIMM-NS + !
-   PIMM-N @ 1 + PIMM-N ! ;
 
 : PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
    cnt 0 < IF s" checker: parse-imm needs a non-negative token count" 76 die THEN
