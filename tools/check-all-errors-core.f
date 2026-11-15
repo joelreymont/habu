@@ -370,10 +370,10 @@ public
 \ it, every file a top-level loader statement loads included (COMPOSE-BUF). No
 \ run of the program follows, so the check reports what it leaves to one.
 : FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   labela labelu CA-START
-   patha pathu CA-READ-SOURCE
-   patha pathu CA-COMPOSE-AT
-   true true CA-RUN ;
+   [: labela labelu CA-START
+      patha pathu CA-READ-SOURCE
+      patha pathu CA-COMPOSE-AT
+      true true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Report the lexer defect of the source file at the given path under the given
 \ label, by its record, and throw the rejection status; return when the file
@@ -381,9 +381,9 @@ public
 \ still reports the defect where it stands.
 : LEX-FILE ( ptr u8 n ptr u8 n -- )
    {: labela:ptr labelu:n patha:ptr pathu:n :}
-   labela labelu CA-START
-   patha pathu CA-READ-SOURCE
-   [: CA-LEX CA-LEXED ! ;] CA-RECORDS
+   [: labela labelu CA-START
+      patha pathu CA-READ-SOURCE
+      [: CA-LEX CA-LEXED ! ;] CA-RECORDS ;] REJECTION:PRESERVE-LABEL
    CA-LEXED @ IF CHECKER-REJECT-RC throw THEN ;
 
 \ Check the given source bytes as the file at the given path, reporting them
@@ -391,17 +391,17 @@ public
 \ loader statement loads where it stands, under its own path, in one session.
 : COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
-   label labelu CA-START
-   src srcu CA-SOURCE-BUF!
-   path pathu CA-COMPOSE-AT
-   true false CA-RUN ;
+   [: label labelu CA-START
+      src srcu CA-SOURCE-BUF!
+      path pathu CA-COMPOSE-AT
+      true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Check the given source bytes under the given label as one unit: a loader
 \ statement in them loads nothing, and a top-level token is not resolved.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
-   labela labelu CA-START
-   srca srcu CA-SOURCE-BUF!
-   false true CA-RUN ;
+   [: labela labelu CA-START
+      srca srcu CA-SOURCE-BUF!
+      false true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 private
 

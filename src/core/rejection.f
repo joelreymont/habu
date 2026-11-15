@@ -805,4 +805,46 @@ public
    FILE-COPY
    PATH$ LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
+
+private
+\ The bytes of the labels PRESERVE-LABEL holds, innermost last: KEPT-U bytes at
+\ KEPT-P, mapped on first use and grown to fit. A save is found by its offset,
+\ since a nested save may move them.
+PERSISTED-PTR-VARIABLE KEPT-P   NULL-PTR KEPT-P !
+variable KEPT-CAP   0 KEPT-CAP !
+variable KEPT-U   0 KEPT-U !
+
+: KEPT-ROOM ( n -- ) {: u:n :}
+   KEPT-CAP @ 0= IF
+      TEXT-FIRST ARENA-ALLOC-BYTES KEPT-P !  TEXT-FIRST KEPT-CAP !
+   THEN
+   KEPT-CAP @ BEGIN dup KEPT-U @ u + < WHILE 2 * REPEAT {: nc:n :}
+   nc KEPT-CAP @ > IF
+      KEPT-P @ KEPT-CAP @ nc ARENA-BYTES-GROW KEPT-P !  nc KEPT-CAP !
+   THEN ;
+
+: KEPT-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
+   u KEPT-ROOM
+   a KEPT-P @ KEPT-U @ + u COPY
+   KEPT-U @ u + KEPT-U ! ;
+
+\ The label's bytes go to KEPT; where they start, their lengths, LABELED and the
+\ origin stay on the stack for LABEL-RESTORE.
+: LABEL-SAVE ( -- n n n n n n n )
+   KEPT-U @  FILE$ KEPT-PUSH  LABEL-BUF LABEL-U @ KEPT-PUSH
+   FILE-U @ LABEL-U @ LABELED @
+   ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @ ;
+
+: LABEL-RESTORE ( n n n n n n n -- )
+   {: at:n fu:n lu:n on:n line:n col:n byte:n :}
+   KEPT-P @ at + {: k:ptr :}
+   k FILE-BUF fu COPY  fu FILE-U !
+   k fu + LABEL-BUF lu COPY  lu LABEL-U !
+   on LABELED !  line col byte ORIGIN!  at KEPT-U ! ;
+public
+
+\ Runs q, then puts back the label and origin it found, on a throw too.
+: PRESERVE-LABEL ( [ -- ] -- ) {: q :}
+   LABEL-SAVE  q catch {: rc:n :}
+   LABEL-RESTORE  rc 0 <> IF rc throw THEN ;
 ;package
