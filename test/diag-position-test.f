@@ -2091,6 +2091,22 @@ variable RC
    ERR$ s" = evaluated:" CONTAINS? TTRUE
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
+\ A nested require's throw the program caught prints nothing, even when the
+\ same code later goes uncaught.
+: TEST-CAUGHT-STAYS ( -- )
+   s" a caught nested throw stays caught" T-LABEL
+   s" -1234 throw" s" caught-dep.f" LINE-FIXTURE
+   DEP!
+   SB-RESET
+   S\" : R ( -- ) [: s\" " SB-APPEND  DEP-PATH$ SB-APPEND
+   S\" \" required ;] catch drop ; R" SB-APPEND LF+
+   s" : fail ( -- ) -1234 throw ;" SB-APPEND LF+
+   s" fail" SB-APPEND LF+
+   s" caught-outer.f" FIXTURE!
+   s" E-THROW" s" :3:1" THROW-RC LOADED-AT
+   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
+
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
 \ counting a real ;MATCH, so their text cannot replace the depth refusal.
@@ -2351,6 +2367,7 @@ variable RC
    TEST-EMPTY-CLAUSE
    TEST-UNCLOSED
    TEST-UNCAUGHT
+   TEST-CAUGHT-STAYS
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH
