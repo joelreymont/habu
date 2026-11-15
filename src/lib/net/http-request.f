@@ -906,14 +906,19 @@ E-HTTP-BODY-READ constant E-BODY-READ
    WHOLE idx BODY-STATE ! ;
 
 
-\ The byte form-encoded text spells at that offset, and the offset after it.
-: FORM-BYTE ( ptr u8 n -- n n )
-   {: a:ptr at:n :}
+\ The byte form-encoded text spells at that offset, and the offset after it:
+\ "+" is a space and "%XX" a byte; a "%" without two hex digits after it is
+\ itself (WHATWG URL 1.3).
+: FORM-BYTE ( ptr u8 n n -- n n )
+   {: a:ptr u:n at:n :}
    a at + c@ {: c:n :}
    c PLUS = if SP at 1+ exit then
    c PERCENT <> if c at 1+ exit then
-   a at + 1+ c@ STR-HEX-DIGIT-VALUE HEX-BASE *
-   a at + 2 + c@ STR-HEX-DIGIT-VALUE + at 3 + ;
+   at 2 + u >= if c at 1+ exit then
+   a at + 1+ c@ {: hi:n :}
+   a at + 2 + c@ {: lo:n :}
+   hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c at 1+ exit then
+   hi STR-HEX-DIGIT-VALUE HEX-BASE * lo STR-HEX-DIGIT-VALUE + at 3 + ;
 
 
 \ Whether form-encoded text decodes to exactly the name; recurses once per
@@ -922,16 +927,9 @@ E-HTTP-BODY-READ constant E-BODY-READ
    {: a:ptr u:n b:ptr v:n :}
    u 0= if v 0= exit then
    v 0= if false exit then
-   a 0 FORM-BYTE {: c:n next:n :}
+   a u 0 FORM-BYTE {: c:n next:n :}
    c b c@ <> if false exit then
    a next + u next - b 1+ v 1- RECURSE ;
-
-
-: FORM-APPEND ( ptr u8 n ptr a -- )
-   {: a:ptr u:n buf:ptr :}
-   0 begin dup u < while
-      a swap FORM-BYTE swap buf BUF:APPEND-BYTE
-   repeat drop ;
 
 
 \ A query pair's name and value; a pair with no "=" has the empty value.
@@ -944,6 +942,14 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 
 public
+
+\ Appends application/x-www-form-urlencoded text to the BUF decoded (FORM-BYTE).
+: FORM-DECODE+ ( ptr u8 n ptr a -- )
+   {: a:ptr u:n buf:ptr :}
+   0 begin dup u < while
+      a u rot FORM-BYTE swap buf BUF:APPEND-BYTE
+   repeat drop ;
+
 
 : METHOD$ ( request -- ptr u8 n )
    SLOT-OF-REQUEST SLOT-METHOD$ ;
@@ -969,7 +975,7 @@ public
       q qu AMPERSAND start SPLIT-NEXT {: fa:ptr fu:n next:n found:bool :}
       found 0= if false exit then
       fa fu PAIR {: na:ptr nu:n va:ptr vu:n :}
-      na nu key keyu FORM= if va vu buf FORM-APPEND true exit then
+      na nu key keyu FORM= if va vu buf FORM-DECODE+ true exit then
       next
    again ;
 

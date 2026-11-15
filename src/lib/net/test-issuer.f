@@ -123,29 +123,6 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    {: t:ptr u:n from:n byte:n :}
    u from ?do t i + c@ byte = if i unloop exit then loop u ;
 
-\ The byte at at decoded, and how many bytes it took: + is a space and %XX a
-\ byte; a % without two hex digits after it is itself (WHATWG URL 1.3).
-: DECODED ( ptr u8 n n -- n n )
-   {: a:ptr u:n at:n :}
-   a at + c@ {: c:n :}
-   c [char] + = if 32 1 exit then
-   c [char] % <> if c 1 exit then
-   at 2 + u >= if c 1 exit then
-   a at + 1+ c@ {: hi:n :}
-   a at + 2 + c@ {: lo:n :}
-   hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c 1 exit then
-   hi STR-HEX-DIGIT-VALUE 16 * lo STR-HEX-DIGIT-VALUE + 3 ;
-
-\ application/x-www-form-urlencoded text appended decoded.
-: DECODE+ ( ptr u8 n ptr n -- )
-   {: a:ptr u:n buf:ptr :}
-   0 begin dup u < while
-      {: at:n :}
-      a u at DECODED {: byte:n took:n :}
-      byte buf BUF:APPEND-BYTE
-      at took +
-   repeat drop ;
-
 : NAME$ ( n -- ptr u8 n )
    {: k:n :}
    k CLIENT-ID = if s" client_id" exit then
@@ -167,12 +144,12 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    {: p:ptr pu:n :}
    p pu 0 [char] = FIND {: eq:n :}
    NOTE BUF-OF BUF:CLEAR
-   p eq NOTE BUF-OF DECODE+
+   p eq NOTE BUF-OF HTTP:FORM-DECODE+
    NOTE BUF-OF BUF$ WHICH {: k:n :}
    k 0< if true exit then
    k SLOT-FIELD FIELD-AT @ 0< 0= if false exit then
    FORM BUF-OF BUF:LEN@ BUF:BLEN>N {: at:n :}
-   eq pu < if p eq + 1+ pu eq - 1- FORM BUF-OF DECODE+ then
+   eq pu < if p eq + 1+ pu eq - 1- FORM BUF-OF HTTP:FORM-DECODE+ then
    at k SLOT-FIELD FIELD-AT !
    FORM BUF-OF BUF:LEN@ BUF:BLEN>N at - k SLOT-FIELD FIELD-LEN !
    true ;
