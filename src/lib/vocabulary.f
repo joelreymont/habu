@@ -25,7 +25,7 @@ public
 : SOURCE-ROOT! ( ptr u8 n -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
 
 \ Scopes the root and the nested-require owner around one callback: restores both
-\ on return or throw, nests, refuses once sealed, and throws 107 on leaving if its
+\ on return or throw, nests, refuses once sealed, and throws 70 on leaving if its
 \ callback sealed.
 : WITH-SOURCE-ROOT ( ptr u8 n [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
 
@@ -52,15 +52,15 @@ public
 \ parsing word reads boundedly many tokens, no word stores to an address its caller
 \ supplies, and no word widens what the design can name (set-current,
 \ prot-wid-add, evaluate or included on caller data).
-\ Rejections print an E-POLICY rejection record and use code 107. A token
-\ outside the vocabulary (placed at the token), a package that predates the
-\ seal, SOURCE-ROOT! or WITH-SOURCE-ROOT once sealed, and a source outside the
-\ root throw it, which a `catch` around `included` takes. ALLOW-PACKAGE or
-\ RESTRICT once sealed, an unknown package and a package publishing a word
-\ spelled like a dispatched keyword row, case folded (tier 0 would read it as
-\ the row, not the word), exit with it; their records note `package`, `keyword`
-\ and `in`, the caller. A wid at or above PROT-WID-MAX (it has no admission bit)
-\ prints one line and exits with it.
+\ Rejections print an E-POLICY rejection record. A token outside the
+\ vocabulary (placed at the token), a package that predates the seal,
+\ SOURCE-ROOT! or WITH-SOURCE-ROOT once sealed, and a source outside the root
+\ throw 70, which a `catch` around `included` takes. ALLOW-PACKAGE or RESTRICT
+\ once sealed, an unknown package and a package publishing a word spelled like
+\ a dispatched keyword row, case folded (tier 0 would read it as the row, not
+\ the word), exit with 107; their records note `package`, `keyword` and `in`,
+\ the caller. A wid at or above PROT-WID-MAX (it has no admission bit) prints
+\ one line and exits with 107.
 : RESTRICT ( -- ) policy-seal ;
 
 ;package

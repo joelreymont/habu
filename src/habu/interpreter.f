@@ -1089,14 +1089,6 @@ private
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
-: USING-BAD-NAME ( -- )
-   s" E-USING-BAD-NAME" REJECTION:OPEN
-   s" the package name " SAY  TOKEN$ TICKS  s"  contains a colon" SAY
-   TOKEN$ REJECTION:AT  s" not a package name" SAY
-   REJECTION:HELP  s" use a top-level package, named without " SAY
-   s" :" TICKS
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : USING-UNKNOWN ( -- )
    s" E-USING-UNKNOWN" REJECTION:OPEN
    s" no package is named " SAY  TOKEN$ TICKS
@@ -1107,7 +1099,9 @@ private
 
 : PKG-USED-WID ( -- n )
    TOKEN 0= if s" using" NAME-MISSING then
-   TOKEN$ 0 COLON-AT 0 >= if USING-BAD-NAME then
+   TOKEN$ 0 COLON-AT 0 >= if
+      TOKEN$ REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
+   then
    TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? 0= if USING-UNKNOWN then
    row XREF-PKG-PUBLIC ;

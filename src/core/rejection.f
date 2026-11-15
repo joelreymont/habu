@@ -746,6 +746,14 @@ public
    s" put this in a package of your own: a sealed package takes no new words"
    EMIT-STR ;
 
+\ The package name t tu that `using` takes holds a colon. It is written through
+\ its help, and the caller stops it.
+: USING-BAD-NAME ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-USING-BAD-NAME" OPEN
+   s" the package name `" EMIT-STR  t tu EMIT-STR  s" ` contains a colon" EMIT-STR
+   t tu AT  s" not a package name" EMIT-STR
+   HELP  s" use a top-level package, named without `:`" EMIT-STR ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.

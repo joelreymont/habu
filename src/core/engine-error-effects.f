@@ -17,7 +17,4 @@ PPRIM: DEF-OCC E-STALE PE-N PE-OUT PPRIM;
 \ The Habu loop's export throws it before the checker hears of an export whose
 \ clause would find no occurrence left (src/habu/interpreter.f PKG-OCC-ROOM).
 PPRIM: DEF-OCC E-EXHAUSTED PE-N PE-OUT PPRIM;
-\ The `using` failure code the checker throws: without this row a from-source
-\ prefix boot refuses its user, E-UNDEFINED.
-PPRIM: ENGINE-ERROR USING-BAD-NAME PE-N PE-OUT PPRIM;
 ;package

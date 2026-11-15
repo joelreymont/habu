@@ -380,8 +380,7 @@ serves a one-off call or escapes a collision.
   are open at once; a further one is rejected.
 - Inside a package `;using` closes only a `using` the package opened; close one
   opened before `package` after `;package`. A `;using` inside the package that
-  would close an outer one is rejected as `E-USING-OUTER`, status
-  `ENGINE-ERROR:USING-OUTER`.
+  would close an outer one is rejected as `E-USING-OUTER`, status 70.
 - A load file is a using scope the same way: an included file or an
   `evaluate`d buffer closes only the usings it opens. A `;using` in it that
   would close one its includer opened is rejected the same way.
@@ -402,8 +401,8 @@ serves a one-off call or escapes a collision.
   ordinary verbs cannot be imported: `using TCP4` refuses at the first bare
   `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies) or
   rename the collision. The checker enforces this in every checked body, and
-  the interpreter at top level and for `'` (`ENGINE-ERROR:USING-SHADOW-GLOBAL`,
-  a throw inside `evaluate`). A `TRUSTED:` body and a definition after
+  the interpreter at top level and for `'` (status 70, a throw inside
+  `evaluate`). A `TRUSTED:` body and a definition after
   `0 set-check` are refused the same way.
 - The colliding global need not be one the checker knows: an unsigned engine
   word counts. Likewise a word in the open
