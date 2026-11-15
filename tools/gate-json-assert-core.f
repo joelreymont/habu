@@ -228,8 +228,14 @@ variable GJA-LX
    s" token" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
    s" source_line" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
    s" label" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
+   s" evaluated" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
    s" notes" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
    s" help" JSON:READ-STR-EQ? ;
+
+: GJA-EVALUATED-KEY? ( JSON:reader -- JSON:reader bool )
+   s" source_line" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
+   s" column" JSON:READ-STR-EQ? IF GJA-TRUE exit THEN
+   s" token" JSON:READ-STR-EQ? ;
 
 \ Fails naming the key the reader is on.
 : GJA-KEY-FAIL ( JSON:reader -- )
@@ -238,12 +244,24 @@ variable GJA-LX
    GJA-STR-BUF pu + GJA-IN-CAP pu - JSON:READ-STR {: u:n :} JSON:READ-CLOSE
    GJA-STR-BUF pu u + GJA-FAIL ;
 
-: GJA-FORM-KEYS ( SPAN:span<u8> -- )
-   GJA-OPEN
+\ Fails unless key? accepts each key of the object.
+: GJA-KEYS ( SPAN:span<u8> [ JSON:reader -- JSON:reader bool ] -- )
+   {: obj:SPAN:span<u8> key? :}
+   obj GJA-OPEN
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      drop GJA-FORM-KEY? 0= IF GJA-KEY-FAIL THEN
+      drop key? execute 0= IF GJA-KEY-FAIL THEN
       JSON:READ-NEXT drop JSON:READ-SKIP-VALUE
    repeat drop JSON:READ-CLOSE ;
+
+: GJA-FORM-KEYS ( SPAN:span<u8> -- )
+   [: GJA-FORM-KEY? ;] GJA-KEYS ;
+
+: GJA-EVALUATED ( SPAN:span<u8> -- ) {: ev:SPAN:span<u8> :}
+   ev GJA-OBJ
+   ev s" source_line" GJA-REQ-STRF
+   ev s" column" GJA-REQ GJA-INT 1 < IF s" evaluated column is below 1" GJA-FAIL THEN
+   ev s" token" GJA-REQ-STRF
+   ev [: GJA-EVALUATED-KEY? ;] GJA-KEYS ;
 
 : GJA-PLACED ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" file" GJA-REQ GJA-NONEMPTY-STR
@@ -254,18 +272,21 @@ variable GJA-LX
    > IF s" byte_start is past byte_end" GJA-FAIL THEN
    root s" token" GJA-REQ-STRF
    root s" source_line" GJA-REQ-STRF
-   root s" label" GJA-REQ-STRF ;
+   root s" label" GJA-REQ-STRF
+   root s" evaluated" GJA-HAS? IF root s" evaluated" GJA-REQ GJA-EVALUATED THEN ;
 
 : GJA-UNPLACED ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" column" GJA-NO-FIELD
    root s" byte_start" GJA-NO-FIELD
    root s" byte_end" GJA-NO-FIELD
-   root s" source_line" GJA-NO-FIELD ;
+   root s" source_line" GJA-NO-FIELD
+   root s" evaluated" GJA-NO-FIELD ;
 
 \ A record in REJECTION's JSON form (src/core/rejection.f): severity, code and
 \ message; a record placed at a line also has file, column, byte_start no
-\ greater than byte_end, token, source_line and label; notes is an object and
-\ help a string; no other key.
+\ greater than byte_end, token, source_line and label, and may have evaluated,
+\ an object of exactly source_line, column from 1 and token; notes is an object
+\ and help a string; no other key.
 : GJA-RECORD-FORM ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-OBJ
    root s" severity" GJA-REQ dup s" error" GJA-STR= swap s" warning" GJA-STR= or

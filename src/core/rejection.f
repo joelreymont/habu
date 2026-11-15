@@ -346,10 +346,12 @@ PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
 variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
 PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 \ A token in an evaluated text is placed at the token INVOKED-A INVOKED-U where
-\ the evaluation was run, and its note, the line EVALUATED-A EVALUATED-U of that
-\ text that holds it, follows the label.
+\ the evaluation was run; the label is followed by the evaluated place, as rustc
+\ follows a macro's call with its expansion: the line EVALUATED-A EVALUATED-U of
+\ that text that holds the token EVAL-TOKEN-A EVAL-TOKEN-U, EVAL-LEAD-U bytes in.
 variable EVALUATED   0 EVALUATED !
 PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
+PTR-VARIABLE EVAL-TOKEN-A  variable EVAL-TOKEN-U  variable EVAL-LEAD-U
 PTR-VARIABLE INVOKED-A  variable INVOKED-U
 EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 
@@ -457,18 +459,22 @@ private
    dup NULL-PTR = IF EXIT THEN
    dup OUTER NULL-PTR = IF drop NULL-PTR EXIT THEN
    BEGIN dup INVOKED? 0= WHILE OUTER REPEAT ;
+\ Records the line LINE! found as the evaluated place of the token t tu.
+: EVALUATED! ( ptr u8 n -- ) {: t:ptr tu:n :}
+   LINE-A @ EVALUATED-A !  LINE-U @ EVALUATED-U !  LEAD-U @ EVAL-LEAD-U !
+   t EVAL-TOKEN-A !  tu EVAL-TOKEN-U ! ;
 \ Whether an evaluated text inside the invoker inv holds the token t tu: the
-\ buffer read, or one an inner frame interrupted. Sets EVALUATED-A and
-\ EVALUATED-U to that text's line holding the token, and answers the token in it.
+\ buffer read, or one an inner frame interrupted. Records the token's evaluated
+\ place, and answers the token in that text.
 : IN-EVALUATED? ( ptr u8 n ptr u8 -- ptr u8 bool ) {: t:ptr tu:n inv:ptr :}
    t tu BODY>INPUT {: s:ptr :}
    INPUT$ s tu HOLDS? IF
-      INPUT$ s LINE!  LINE-A @ EVALUATED-A !  LINE-U @ EVALUATED-U !
+      INPUT$ s LINE!  s tu EVALUATED!
       s 0 0= EXIT
    THEN
    EVAL-TOP @ BEGIN dup inv = 0= WHILE
       dup SAVED$ t tu HOLDS? IF
-         SAVED$ t LINE!  LINE-A @ EVALUATED-A !  LINE-U @ EVALUATED-U !
+         SAVED$ t LINE!  t tu EVALUATED!
          t 0 0= EXIT
       THEN
       OUTER
@@ -533,10 +539,11 @@ private
    s" token" FIELD  t tu JSON-STRING
    PLACED @ IF s" source_line" FIELD  LINE-A @ LINE-U @ JSON-STRING THEN
    s" label" FIELD  JSON-OPEN ;
-\ The caret line copies the source's tabs before the token so the carets line up.
-: LEAD ( -- )
-   0 BEGIN dup LEAD-U @ < WHILE
-      dup LINE-A @ + c@ 9 = IF 9 ELSE 32 THEN EMIT1
+\ The caret line copies the tabs in the line's first n bytes, before the token,
+\ so the carets line up.
+: LEAD ( ptr u8 n -- ) {: a:ptr k:n :}
+   0 BEGIN dup k < WHILE
+      dup a + c@ 9 = IF 9 ELSE 32 THEN EMIT1
       1 +
    REPEAT drop ;
 : CARETS ( n -- ) {: tu:n :}
@@ -551,7 +558,7 @@ private
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
    MARGIN 124 EMIT1 10 EMIT1
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
-   MARGIN s" | " EMIT-STR  LEAD  tu CARETS  32 EMIT1 ;
+   MARGIN s" | " EMIT-STR  LINE-A @ LEAD-U @ LEAD  tu CARETS  32 EMIT1 ;
 
 \ A note's key; its value follows.
 : NOTE-KEY ( ptr u8 n -- ) {: k:ptr ku:n :}
@@ -562,14 +569,26 @@ private
       MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
    THEN
    VALUE-PART PART ! ;
-\ Ends the open text; the label's end writes the evaluated note.
+\ The evaluated place: in JSON an object after the label, in prose its line
+\ with carets under the token.
+: EVALUATED-JSON ( -- )
+   s" evaluated" FIELD  123 EMIT1
+   s" source_line" JSON-KEY  EVALUATED-A @ EVALUATED-U @ JSON-STRING
+   s" column" FIELD  EVAL-LEAD-U @ 1 + EMIT-U
+   s" token" FIELD  EVAL-TOKEN-A @ EVAL-TOKEN-U @ JSON-STRING
+   125 EMIT1 ;
+: EVALUATED-PROSE ( -- )
+   s" = evaluated: " {: k:ptr ku:n :}
+   MARGIN  k ku EMIT-STR  EVALUATED-A @ EVALUATED-U @ EMIT-STR  10 EMIT1
+   MARGIN  ku BLANKS  EVALUATED-A @ EVAL-LEAD-U @ LEAD  EVAL-TOKEN-U @ CARETS
+   10 EMIT1 ;
+\ Ends the open text; the label's end writes the evaluated place.
 : CLOSE-PART ( -- )
    END-TEXT
    PART @ LABEL-PART = 0= IF EXIT THEN
    EVALUATED @ 0= IF EXIT THEN
    0 EVALUATED !
-   s" evaluated" NOTE-KEY  EVALUATED-A @ EVALUATED-U @ EMIT-STR
-   END-TEXT ;
+   JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN ;
 
 \ Closes a notes object no HELP closed, then the record; sends the record,
 \ or drops it under QUIET.

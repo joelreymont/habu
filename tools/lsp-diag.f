@@ -93,7 +93,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ missing end the start, both held to the text and the end to no less than the
 \ start; the packet's numbers stay in data. severity: 1 for an error, 2 for a
 \ warning, else the client's. code, and source "habu". message: the packet's,
-\ then a `key: value` line for each string note in the packet's order, then
+\ then `evaluated: ` and the evaluated place's source line when the packet has
+\ one, then a `key: value` line for each string note in the packet's order, then
 \ `help: ` and its help when non-empty. data: the whole packet.
 
 : QUOTE ( ptr JSON:writer -- ptr JSON:writer )  s\" \"" WRITE-RAW ;
@@ -136,10 +137,23 @@ variable ITEMS                           \ and the diagnostics in it so far
    begin READ-NEXT T-KEY = while w NOTE-LINE repeat
    READ-CLOSE w ;
 
+: EVALUATED-LINE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: w a:ptr u:n :}
+   JSON-ST a u READ-INIT
+   READ-NEXT drop
+   s" evaluated" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
+   s" source_line" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-STR <> if READ-CLOSE w exit then
+   READ-SPAN$ {: v:ptr vu:n :}
+   READ-CLOSE
+   w s" \nevaluated: " WRITE-RAW v vu WRITE-RAW ;
+
 : MESSAGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
    QUOTE
    a u s" message" STRING-MEMBER if WRITE-RAW else 2drop then
+   a u EVALUATED-LINE
    a u NOTES
    a u HELP-LINE
    QUOTE ;

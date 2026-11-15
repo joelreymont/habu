@@ -1650,10 +1650,23 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    begin JSON:READ-NEXT JSON:T-KEY = while NOTE+ repeat
    JSON:READ-CLOSE ;
 
+\ The evaluated place's source line as the server writes its line.
+: EVALUATED+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   JSON-ST a u JSON:READ-INIT
+   JSON:READ-NEXT drop
+   s" evaluated" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE exit then
+   s" source_line" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE exit then
+   JSON:READ-SPAN$ rot JSON:READ-CLOSE
+   s" \nevaluated: " EXP+ EXP+ ;
+
 : MESSAGE+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    s\" \"" EXP+
    a u s" message" MEMBER$ if EXP+ else 2drop then
+   a u EVALUATED+
    a u NOTES+
    a u s" help" MEMBER$ over 0 > and
    if s" \nhelp: " EXP+ EXP+ else 2drop then
