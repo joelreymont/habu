@@ -1,13 +1,12 @@
 # T0 bootstrap checkpoint
 
-The workflow resumes native ARM run `43725207061` from its verified clean
-`6e94c677415f7f5113f0d3045adf3605cc86dd9f` compiler. The artifact ID,
+The workflow resumes native ARM run `43726034664` from its verified clean
+`a89f92b0b52fd5e2efb9618921afe02dc738f245` compiler. The artifact ID,
 source tree, executable and map hashes are pinned; `checkpoint.sha256`
 contains the expected file hashes. Artifact retention is 30 days.
 
-Source provisioning checks each Git tree ID. The two patch files stage
-upstream readers and manifests before their callers. Those intermediate
-hosts build the next stage, never themselves.
+Source provisioning checks each Git tree ID. Every remaining stage builds
+an unchanged upstream revision with the preceding successful compiler.
 
 Every build uses the ordinary checked Habu builder with a five-minute
 deadline. The tier prelude selects T0 until the host removes that switch and
