@@ -77,10 +77,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 \ bytes are never read. SPAN-CAP bounds only the copy, so a placed token
 \ renders whole.
 : TOKEN-SPAN@ ( -- ptr u8 n )
-   S-TOKEN SRC@
-   {: a:ptr u:n :}
-   a u REJECTION:HELD? IF a u EXIT THEN
-   S-TOKEN SLOT@ ;
+   S-TOKEN SRC@  S-TOKEN SLOT@  REJECTION:KEPT ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:
 \ the previous row, the code, the reason's and the fix's capped lengths, then

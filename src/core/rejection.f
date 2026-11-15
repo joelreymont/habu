@@ -637,6 +637,19 @@ public
 \ A note's key; its value follows.
 : NOTE ( ptr u8 n -- )
    CLOSE-PART NOTE-KEY ;
+\ Opens a record with code c and message m, and places the token t tu with
+\ label l; the label may go on.
+: OPEN-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n m:ptr mu:n t:ptr tu:n l:ptr lu:n :}
+   c cu OPEN  m mu EMIT-STR  t tu AT  l lu EMIT-STR ;
+\ The limit note: the number n, then the unit w wu if it has one.
+: LIMIT ( n ptr u8 n -- ) {: n:n w:ptr wu:n :}
+   s" limit" NOTE  n EMIT-U
+   wu 0 > IF s"  " EMIT-STR  w wu EMIT-STR THEN ;
+\ The token a u if HELD? holds its source, else its copy c cu.
+: KEPT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n c:ptr cu:n :}
+   a u HELD? IF a u EXIT THEN
+   c cu ;
 \ The help text follows.
 : HELP ( -- )
    CLOSE-PART
@@ -694,7 +707,7 @@ public
    s" the counted string `" EMIT-STR  t tu EMIT-STR
    s" ` opens is longer than its count byte holds" EMIT-STR
    t tu AT  s" too long" EMIT-STR
-   s" limit" NOTE  max EMIT-U  s"  bytes" EMIT-STR
+   max s" bytes" LIMIT
    HELP  s" shorten the text, or write it with " EMIT-STR
    S\" `s\"`" EMIT-STR  s" , which has no count byte" EMIT-STR ;
 

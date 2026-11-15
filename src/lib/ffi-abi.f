@@ -986,23 +986,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
 \ ---- a bad declaration's rejection ----------------------------------------
-\ A record with its code, message, place and label, written through its label:
-\ FFI-REJECT opens the help, LIMIT-HELP first notes the limit passed, and the
-\ caller writes the help and ends the record with FFI-STOP. The stop abandons
+\ The caller writes a record's help and ends it with FFI-STOP. The stop abandons
 \ the declaration, so the next FUNCTION: in the file is not rejected for it.
-: FFI-PLACE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n m:ptr mu:n t:ptr tu:n l:ptr lu:n :}
-   c cu REJECTION:OPEN  m mu REJECTION:EMIT-STR
-   t tu REJECTION:AT  l lu REJECTION:EMIT-STR ;
-
-: FFI-REJECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   FFI-PLACE REJECTION:HELP ;
-
-: LIMIT-HELP ( n ptr u8 n -- ) {: n:n w:ptr wu:n :}
-   s" limit" REJECTION:NOTE  n REJECTION:EMIT-U  s"  " REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR
-   REJECTION:HELP ;
-
 : FFI-STOP ( -- )
    0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -1016,22 +1001,18 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : TOK$ ( -- ptr u8 n )
    TOK-BUF TOK-U @ ;
 
-: KEPT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n c:ptr cu:n :}
-   a u REJECTION:HELD? if a u exit then
-   c cu ;
-
 : TOK-AT ( -- ptr u8 n )
-   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK$ KEPT ;
+   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK$ REJECTION:KEPT ;
 
 : NAME-AT ( -- ptr u8 n )
-   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME-BUF NAME-U @ KEPT ;
+   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME-BUF NAME-U @ REJECTION:KEPT ;
 
 \ The input ended: the record stands at the last token read, or at the keyword
 \ when the declaration has read none.
 : ENDED ( -- )
    TOK-U @ 0= if SRCLOC:TOKEN$ else TOK-AT then {: t:ptr tu:n :}
    s" E-FFI-SYNTAX" s" the source ends before the declaration is complete"
-   t tu s" the declaration ends here" FFI-REJECT
+   t tu s" the declaration ends here" REJECTION:OPEN-AT REJECTION:HELP
    s" finish the declaration: `FUNCTION:` takes a name, a symbol and an effect " SAY
    s" closed by `)`, and `VERSIONED-LIBRARY` a name and its versions" SAY
    FFI-STOP ;
@@ -1040,7 +1021,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    u 0= if ENDED then
    u TOK-CAP > if
       s" E-FFI-SYNTAX" s" a declaration token is longer than a declaration keeps"
-      a u s" too long" FFI-PLACE  TOK-CAP s" bytes" LIMIT-HELP
+      a u s" too long" REJECTION:OPEN-AT
+      TOK-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
       s" shorten the name, symbol or library name to the limit" SAY
       FFI-STOP
    then
@@ -1064,7 +1046,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK$ {: a:ptr u:n :}
    u FN-NAME-CAP 1 - > if
       s" E-FFI-SYNTAX" s" the symbol is longer than a declared function keeps"
-      TOK-AT s" too long" FFI-PLACE  FN-NAME-CAP 1 - s" bytes" LIMIT-HELP
+      TOK-AT s" too long" REJECTION:OPEN-AT
+      FN-NAME-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
       s" declare a shorter symbol, such as a C wrapper that calls this one" SAY
       FFI-STOP
    then
@@ -1077,7 +1060,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK$ {: a:ptr u:n :}
    u LIB-BASE-CAP > if
       s" E-FFI-SYNTAX" s" the library name is longer than a declaration keeps"
-      TOK-AT s" too long" FFI-PLACE  LIB-BASE-CAP s" bytes" LIMIT-HELP
+      TOK-AT s" too long" REJECTION:OPEN-AT
+      LIB-BASE-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
       s" name the library by its file with `LIBRARY` instead" SAY
       FFI-STOP
    then
@@ -1088,16 +1072,17 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : VERSION-ROOM ( n -- ) {: version:n :}
    version LIB-VERSION-MAX > if
       s" E-FFI-SYNTAX" s" a library version is past the highest a declaration renders"
-      TOK-AT s" a version past the limit" FFI-PLACE
-      LIB-VERSION-MAX s" as the highest version" LIMIT-HELP
+      TOK-AT s" a version past the limit" REJECTION:OPEN-AT
+      LIB-VERSION-MAX s" as the highest version" REJECTION:LIMIT
+      REJECTION:HELP
       s" list only the soname versions the library ships" SAY
       FFI-STOP
    then ;
 
 : BAD-VERSION ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-FFI-SYNTAX" s" a library version is not a number"
-   TOK-AT u 0= if s" an empty version" FFI-PLACE
-   else s" `" FFI-PLACE  a u SAY s" ` is not a version" SAY then
+   TOK-AT u 0= if s" an empty version" REJECTION:OPEN-AT
+   else s" `" REJECTION:OPEN-AT  a u SAY s" ` is not a version" SAY then
    REJECTION:HELP
    s" write the versions as numbers separated by commas, such as `1,2`" SAY
    FFI-STOP ;
@@ -1145,7 +1130,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    {: kind:n :}
    ARG-N @ ARG-MAX >= if
       s" E-FFI-ARITY" s" the declaration has more inputs than a call passes"
-      NAME-AT s" too many inputs" FFI-PLACE  ARG-MAX s" inputs" LIMIT-HELP
+      NAME-AT s" too many inputs" REJECTION:OPEN-AT
+      ARG-MAX s" inputs" REJECTION:LIMIT REJECTION:HELP
       s" pass the extra values in memory, through a `ptr u8` input" SAY
       FFI-STOP
    then
@@ -1160,7 +1146,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK@
    s" u8" TOK-IS? 0= if
       s" E-FFI-SYNTAX" s" a pointer in a declaration is `ptr u8`"
-      TOK-AT s" expected `u8`" FFI-REJECT
+      TOK-AT s" expected `u8`" REJECTION:OPEN-AT REJECTION:HELP
       s" write `ptr u8`, a span of bytes whose length the declaration states" SAY
       FFI-STOP
    then
@@ -1175,7 +1161,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : OUT-TOKEN ( -- )
    RES-KIND @ R-NONE <> if
       s" E-FFI-SYNTAX" s" the declaration has more than one result"
-      TOK-AT s" a second result" FFI-REJECT
+      TOK-AT s" a second result" REJECTION:OPEN-AT REJECTION:HELP
       s" declare one result: a C function returns one value" SAY
       FFI-STOP
    then
@@ -1195,7 +1181,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
       s" --" TOK-IS? if TOK-KEEP exit then
       s" )" TOK-IS? if
          s" E-FFI-SYNTAX" s" the effect closes before its `--`"
-         TOK-AT s" expected `--` before this" FFI-REJECT
+         TOK-AT s" expected `--` before this" REJECTION:OPEN-AT
+         REJECTION:HELP
          s" separate the inputs from the result with `--`, as `( n -- n )`" SAY
          FFI-STOP
       then
@@ -1208,7 +1195,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
       s" )" TOK-IS? if exit then
       s" --" TOK-IS? if
          s" E-FFI-SYNTAX" s" the effect has a second `--`"
-         TOK-AT s" a second `--`" FFI-REJECT
+         TOK-AT s" a second `--`" REJECTION:OPEN-AT REJECTION:HELP
          s" keep one `--`, between the inputs and the result" SAY
          FFI-STOP
       then
@@ -1219,7 +1206,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    TOK@
    s" (" TOK-IS? 0= if
       s" E-FFI-SYNTAX" s" the declaration has no effect after its symbol"
-      TOK-AT s" expected `(`" FFI-REJECT
+      TOK-AT s" expected `(`" REJECTION:OPEN-AT REJECTION:HELP
       s" write the effect after the symbol, as `FUNCTION: name symbol ( n -- n )`" SAY
       FFI-STOP
    then
@@ -1236,16 +1223,16 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then {: cap:n :}
    int cap > if
       s" E-FFI-ARITY" s" the call takes more integer inputs than its registers hold"
-      NAME-AT s" too many integer inputs" FFI-PLACE
-      cap s" integer registers" LIMIT-HELP
+      NAME-AT s" too many integer inputs" REJECTION:OPEN-AT
+      cap s" integer registers" REJECTION:LIMIT REJECTION:HELP
       s" this call passes its integers in registers alone: pass the extra values " SAY
       s" in memory, through a `ptr u8` input" SAY
       FFI-STOP
    then
    flt REG-MAX > if
       s" E-FFI-ARITY" s" the call takes more float inputs than its registers hold"
-      NAME-AT s" too many float inputs" FFI-PLACE
-      REG-MAX s" float registers" LIMIT-HELP
+      NAME-AT s" too many float inputs" REJECTION:OPEN-AT
+      REG-MAX s" float registers" REJECTION:LIMIT REJECTION:HELP
       s" a C float past the last float register has no stack staging: pass the " SAY
       s" extra values in memory, through a `ptr u8` input" SAY
       FFI-STOP
@@ -1275,8 +1262,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
       flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
       i ARG-KIND@ K-FLOAT32 = if
          s" E-FFI-ARITY" s" an `f32` input passes the float registers, and SysV stages no `f32` on the stack"
-         NAME-AT s" input " FFI-PLACE  i REJECTION:EMIT-N s"  is an `f32` past them" SAY
-         REG-MAX s" float registers" LIMIT-HELP
+         NAME-AT s" input " REJECTION:OPEN-AT
+         i REJECTION:EMIT-N s"  is an `f32` past them" SAY
+         REG-MAX s" float registers" REJECTION:LIMIT REJECTION:HELP
          s" pass the floats past the limit in memory, through a `ptr u8` input" SAY
          FFI-STOP
       then
@@ -1355,9 +1343,9 @@ private
    {: int:n flt:n stk:n :}
    flt stk PLAN-FITS? 0= if
       s" E-FFI-ARITY" s" the struct call needs more registers or stack cells than it has"
-      NAME-AT s" does not fit" FFI-PLACE
+      NAME-AT s" does not fit" REJECTION:OPEN-AT
       flt REG-MAX > if REG-MAX s" float registers" else STACK-CELLS s" stack cells" then
-      LIMIT-HELP
+      REJECTION:LIMIT REJECTION:HELP
       s" pass fewer arguments or smaller records: floats take the float registers, " SAY
       s" and spilled arguments share the stack cells with copies of records over " SAY
       s" 16 bytes" SAY
@@ -1481,7 +1469,7 @@ private
 : CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
    path u FOREIGN-SPELLING? 0= if exit then
    s" E-FFI-LIBRARY" s" the library name is spelled for the other target"
-   path u s" this build loads for " FFI-PLACE  TARGET$ SAY
+   path u s" this build loads for " REJECTION:OPEN-AT  TARGET$ SAY
    REJECTION:HELP
    s" name it with `VERSIONED-LIBRARY`, which spells it for each target" SAY
    FFI-STOP ;
@@ -1491,14 +1479,15 @@ private
 : CHECK-PATH ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= if
       s" E-FFI-SYNTAX" s" `LIBRARY` names no library"
-      SRCLOC:TOKEN$ s" expected a library path after this" FFI-REJECT
+      SRCLOC:TOKEN$ s" expected a library path after this" REJECTION:OPEN-AT
+      REJECTION:HELP
       s" write the library's path after `LIBRARY`, or name it with `VERSIONED-LIBRARY`" SAY
       FFI-STOP
    then
    u LIBRARY-PATH-CAP >= if
       s" E-FFI-SYNTAX" s" the library path is longer than a declaration keeps"
-      path u SRCLOC:TOKEN$ KEPT s" too long" FFI-PLACE
-      LIBRARY-PATH-CAP 1 - s" bytes" LIMIT-HELP
+      path u SRCLOC:TOKEN$ REJECTION:KEPT s" too long" REJECTION:OPEN-AT
+      LIBRARY-PATH-CAP 1 - s" bytes" REJECTION:LIMIT REJECTION:HELP
       s" name the library by a shorter path, or by its soname with `VERSIONED-LIBRARY`" SAY
       FFI-STOP
    then
@@ -1587,13 +1576,15 @@ private
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if
       s" E-FFI-LIBRARY" s" the declaration has no library selected"
-      SRCLOC:TOKEN$ s" no library is selected before this" FFI-REJECT
+      SRCLOC:TOKEN$ s" no library is selected before this" REJECTION:OPEN-AT
+      REJECTION:HELP
       s" select one first in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
       FFI-STOP
    then
    get-current SCOPE-WID @ <> if
       s" E-FFI-LIBRARY" s" the declaration's scope has no library selected"
-      SRCLOC:TOKEN$ s" the library was selected in another scope" FFI-REJECT
+      SRCLOC:TOKEN$ s" the library was selected in another scope" REJECTION:OPEN-AT
+      REJECTION:HELP
       s" select the library again in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
       FFI-STOP
    then ;
@@ -1606,7 +1597,8 @@ public
    [: CHECK-SCOPE
       OPEN @ 0 <> if
          s" E-FFI-SYNTAX" s" a declaration opens while another is open"
-         SRCLOC:TOKEN$ s" the open one needs `;FUNCTION` before this" FFI-REJECT
+         SRCLOC:TOKEN$ s" the open one needs `;FUNCTION` before this" REJECTION:OPEN-AT
+         REJECTION:HELP
          s" close the open declaration with ;FUNCTION first" SAY
          FFI-STOP
       then
@@ -1622,7 +1614,8 @@ public
 : CLOSE-FUNCTION ( -- )
    [: OPEN @ 0= if
          s" E-FFI-SYNTAX" s" `;FUNCTION` closes no declaration"
-         SRCLOC:TOKEN$ s" nothing is open" FFI-REJECT
+         SRCLOC:TOKEN$ s" nothing is open" REJECTION:OPEN-AT
+         REJECTION:HELP
          s" remove this `;FUNCTION`, or open its declaration with `FUNCTION:` first" SAY
          FFI-STOP
       then
@@ -1637,7 +1630,7 @@ private
 \ A clause's record stands at the clause word as the source wrote it; the caller
 \ extends the label, opens the help and ends the record with FFI-STOP.
 : CLAUSE-PLACE ( ptr u8 n ptr u8 n -- ) {: m:ptr mu:n l:ptr lu:n :}
-   s" E-FFI-SYNTAX" m mu SRCLOC:TOKEN$ l lu FFI-PLACE ;
+   s" E-FFI-SYNTAX" m mu SRCLOC:TOKEN$ l lu REJECTION:OPEN-AT ;
 
 : NEED-OPEN ( -- )
    OPEN @ 0= if

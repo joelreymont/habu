@@ -248,45 +248,25 @@ variable NAME-SRC-U
    NAME CODEGEN:CONTENTS ;
 
 \ ---- a bad declaration's rejection ----------------------------------------
-\ A record with its code, message, place and label, written through its label:
-\ REJECT opens the help, LIMIT-HELP first notes the limit passed, and the
-\ caller writes the help and ends the record with ABANDON.
-: REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n m:ptr mu:n t:ptr tu:n l:ptr lu:n :}
-   c cu REJECTION:OPEN  m mu REJECTION:EMIT-STR
-   t tu REJECTION:AT  l lu REJECTION:EMIT-STR ;
-
-: REJECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   REJECT-AT REJECTION:HELP ;
-
-: LIMIT-HELP ( n ptr u8 n -- ) {: n:n w:ptr wu:n :}
-   s" limit" REJECTION:NOTE  n REJECTION:EMIT-U  s"  " REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR
-   REJECTION:HELP ;
-
-\ The stop abandons the declaration, so the next CALLBACK: in the file is not
-\ rejected for it.
+\ The caller writes a record's help and ends it with ABANDON. The stop abandons
+\ the declaration, so the next CALLBACK: in the file is not rejected for it.
 : ABANDON ( -- )
    0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
 
-: KEPT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n c:ptr cu:n :}
-   a u REJECTION:HELD? if a u exit then
-   c cu ;
-
 : TOK-AT ( -- ptr u8 n )
-   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK-BUF TOK-U @ KEPT ;
+   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK-BUF TOK-U @ REJECTION:KEPT ;
 
 : NAME-AT ( -- ptr u8 n )
-   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME$ KEPT ;
+   NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME$ REJECTION:KEPT ;
 
 \ The input ended: the record stands at the last token read, or at the
 \ keyword when the declaration has read none.
 : ENDED ( -- )
    TOK-U @ 0= if SRCLOC:TOKEN$ else TOK-AT then {: t:ptr tu:n :}
    s" E-FFI-SYNTAX" s" the source ends before the declaration is complete"
-   t tu s" the declaration ends here" REJECT
+   t tu s" the declaration ends here" REJECTION:OPEN-AT REJECTION:HELP
    s" finish the declaration: `CALLBACK:` takes a name and an effect " SAY
    s" closed by `)`" SAY
    ABANDON ;
@@ -306,7 +286,8 @@ variable NAME-SRC-U
 
 : NAME-LONG ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-FFI-SYNTAX" s" a callback name is longer than a declaration keeps"
-   a u s" too long" REJECT-AT  NAME-CAP s" bytes" LIMIT-HELP
+   a u s" too long" REJECTION:OPEN-AT
+   NAME-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
    s" shorten the name to the limit" SAY
    ABANDON ;
 
@@ -327,8 +308,8 @@ variable NAME-SRC-U
 : MANY-INTS ( -- )
    s" E-FFI-ARITY"
    s" the callback takes more integer inputs than its registers hold"
-   NAME-AT s" too many integer inputs" REJECT-AT
-   INT-REGS s" integer registers" LIMIT-HELP
+   NAME-AT s" too many integer inputs" REJECTION:OPEN-AT
+   INT-REGS s" integer registers" REJECTION:LIMIT REJECTION:HELP
    s" C passes a callback its integers in registers alone: pass the extra " SAY
    s" values in memory, through a `ptr u8` input" SAY
    ABANDON ;
@@ -336,45 +317,45 @@ variable NAME-SRC-U
 : MANY-FLOATS ( -- )
    s" E-FFI-ARITY"
    s" the callback takes more float inputs than its registers hold"
-   NAME-AT s" too many float inputs" REJECT-AT
-   FLOAT-REGS s" float registers" LIMIT-HELP
+   NAME-AT s" too many float inputs" REJECTION:OPEN-AT
+   FLOAT-REGS s" float registers" REJECTION:LIMIT REJECTION:HELP
    s" C passes a callback its floats in registers alone: pass the extra " SAY
    s" values in memory, through a `ptr u8` input" SAY
    ABANDON ;
 
 : BAD-PTR ( -- )
    s" E-FFI-SYNTAX" s" a pointer in a declaration is `ptr u8`"
-   TOK-AT s" expected `u8`" REJECT
+   TOK-AT s" expected `u8`" REJECTION:OPEN-AT REJECTION:HELP
    s" write `ptr u8`: a callback takes a pointer as a span of bytes" SAY
    ABANDON ;
 
 : BAD-INPUT ( -- )
    s" E-FFI-SYNTAX" s" the declaration names an input a callback cannot take"
-   TOK-AT s" not an input type" REJECT
+   TOK-AT s" not an input type" REJECTION:OPEN-AT REJECTION:HELP
    s" declare each input as `n`, `i32`, `u32`, `r` or `ptr u8`" SAY
    ABANDON ;
 
 : SECOND-RESULT ( -- )
    s" E-FFI-SYNTAX" s" the declaration has more than one result"
-   TOK-AT s" a second result" REJECT
+   TOK-AT s" a second result" REJECTION:OPEN-AT REJECTION:HELP
    s" declare one result: C takes one value back from a callback" SAY
    ABANDON ;
 
 : BAD-RESULT ( -- )
    s" E-FFI-SYNTAX" s" the declaration names a result a callback cannot give"
-   TOK-AT s" not a result type" REJECT
+   TOK-AT s" not a result type" REJECTION:OPEN-AT REJECTION:HELP
    s" declare the result as `n`, `i32`, `u32` or `r`, or declare none" SAY
    ABANDON ;
 
 : NO-DASHES ( -- )
    s" E-FFI-SYNTAX" s" the effect closes before its `--`"
-   TOK-AT s" expected `--` before this" REJECT
+   TOK-AT s" expected `--` before this" REJECTION:OPEN-AT REJECTION:HELP
    s" separate the inputs from the result with `--`, as `( n -- n )`" SAY
    ABANDON ;
 
 : SECOND-DASHES ( -- )
    s" E-FFI-SYNTAX" s" the effect has a second `--`"
-   TOK-AT s" a second `--`" REJECT
+   TOK-AT s" a second `--`" REJECTION:OPEN-AT REJECTION:HELP
    s" keep one `--`, between the inputs and the result" SAY
    ABANDON ;
 
@@ -476,13 +457,14 @@ variable NAME-SRC-U
 
 : NESTED ( -- )
    s" E-FFI-SYNTAX" s" a declaration opens while another is open"
-   SRCLOC:TOKEN$ s" the open one needs `;CALLBACK` before this" REJECT
+   SRCLOC:TOKEN$ s" the open one needs `;CALLBACK` before this" REJECTION:OPEN-AT
+   REJECTION:HELP
    s" close the open declaration with `;CALLBACK` first" SAY
    ABANDON ;
 
 : NO-EFFECT ( -- )
    s" E-FFI-SYNTAX" s" the declaration has no effect after its name"
-   TOK-AT s" expected `(`" REJECT
+   TOK-AT s" expected `(`" REJECTION:OPEN-AT REJECTION:HELP
    s" write the effect after the name, as `CALLBACK: name ( n -- n )`" SAY
    ABANDON ;
 
@@ -518,14 +500,15 @@ variable NAME-SRC-U
 
 : STRAY-CLOSE ( -- )
    s" E-FFI-SYNTAX" s" `;CALLBACK` closes no declaration"
-   SRCLOC:TOKEN$ s" nothing is open" REJECT
+   SRCLOC:TOKEN$ s" nothing is open" REJECTION:OPEN-AT REJECTION:HELP
    s" remove this `;CALLBACK`, or open its declaration with " SAY
    s" `CALLBACK:` first" SAY
    ABANDON ;
 
 : NO-FALLBACK ( -- )
    s" E-FFI-SYNTAX" s" the callback returns a value but has no fallback"
-   SRCLOC:TOKEN$ s" closes with no fallback" REJECT
+   SRCLOC:TOKEN$ s" closes with no fallback" REJECTION:OPEN-AT
+   REJECTION:HELP
    RES-KIND @ R-FLOAT = if s" write `r FFALLBACK`"
    else s" write `n FALLBACK`" then SAY
    s"  before `;CALLBACK`: the value C gets when the body throws" SAY
