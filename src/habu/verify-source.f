@@ -1000,27 +1000,6 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    w at PEND-WORD-AT !  wu at PEND-WORD-U !
    at 1 + PEND-N ! ;
 
-\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE.
-DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
-DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
-DYNAMIC-BUFFER SEALS-U n
-variable SEALS-N
-
-: SEAL-LISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   SEALS-N @ 0 ?do
-      i SEALS-AT @ SEALS i SEALS-U @ a u STR=CI IF 0 0= unloop EXIT THEN
-   loop
-   0 0= 0= ;
-
-: SEAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   SEALS-N @ {: at:n :}
-   at 0= IF 0 ELSE at 1 - SEALS-AT @ at 1 - SEALS-U @ + THEN {: off:n :}
-   off u + 1 + SEALS-RESERVE
-   a off SEALS u BYTE-COPY
-   at 1 + SEALS-AT-RESERVE  at 1 + SEALS-U-RESERVE
-   off at SEALS-AT !  u at SEALS-U !
-   at 1 + SEALS-N ! ;
-
 \ Whether the scan models the load of a sealed engine: this one, composing. A stage source
 \ certified without composing keeps its packages open until its capture seals them.
 : SEALED-LOAD? ( -- bool )
@@ -1035,14 +1014,14 @@ variable SEALS-N
 
 : SEALED-OPEN ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF a u at tu SEAL-STOP THEN ;
+   CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN ;
 
 \ A head resolves as the definition's does: a part is asked by its path.
 : SEALED-NAME ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF a u at tu SEALED-OPEN EXIT THEN
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF a u at tu SEAL-STOP THEN
+   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN
    row NULL-PTR <> IF row XREF:SEALED? IF a u at tu SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
    row NULL-PTR = IF EXIT THEN
@@ -2249,7 +2228,7 @@ ENGINE-TARGET-INIT
 \ The package path a u, named NAME as written at byte AT.
 : SEALED-PACKAGE ( ptr u8 n ptr u8 n n -- )
    {: a:ptr u:n name:ptr nameu:n at:n :}
-   a u SEAL-LISTED? IF name nameu at nameu SEAL-STOP THEN
+   a u XREF:SOURCE-SEALED? IF name nameu at nameu SEAL-STOP THEN
    a u ROW-SEALED? IF name nameu at nameu SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
    a u PUBLIC-WID XREF-WID-PROTECTED? IF name nameu at nameu SEAL-STOP THEN ;
@@ -2453,7 +2432,7 @@ variable TRUSTED-DOES
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF
       TOP-CUR-A @ TOP-CUR-U @ INTERPRETER:PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP
    THEN
-   CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
+   CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEAL ;
 
 \ The engine's order: the part guard at `package`, then the name and its path,
 \ the checker, the seal on the path.
@@ -4328,9 +4307,10 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !  false FFI-GROUP !  false FFI-CLAUSES !
-   0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  0 SEALS-N !
+   0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  XREF:SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
+   XREF:SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
 
