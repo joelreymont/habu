@@ -83,6 +83,13 @@ CAST: >NODE ( EFFECT:type -- n )
 
 SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
 
+\ An `xt` in and out, which facts text writes with no quote.
+: XT-TEXT ( -- ptr u8 n )
+   s" xt" EFFECT:READ-TYPE {: x :}
+   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT >NODE CHECK:EFFECT-TEXT ;
+
+XT-TEXT s" ( xt -- xt )" T$=
+
 : ROOT-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
    [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
@@ -177,8 +184,7 @@ s" STRUCTURE psfield FIELD t EFFECT:type ;STRUCTURE" REJECTED 0 T<>
 MEMBER
 s" SUMTYPE pspay VARIANT one EFFECT:type ;VARIANT ;SUMTYPE" REJECTED 0 T<>
 MEMBER
-s" PRODUCT psprod FIELD t EFFECT:type ;PRODUCT" REJECTED 0 T<>  MEMBER
-s" PRODUCT psprodp FIELD t ptr EFFECT:type ;PRODUCT" REJECTED 0 T<>
+s" STRUCTURE psprodp FIELD t ptr EFFECT:type ;STRUCTURE" REJECTED 0 T<>
 MEMBER
 s" ENUM psenum VARIANT one FIELD t EFFECT:type ;VARIANT ;ENUM" REJECTED 0 T<>
 MEMBER

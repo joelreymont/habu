@@ -56,7 +56,6 @@ public
 : LINK-START, ( bool label label label label -- label label )
    {: engine:bool image:label end:label records:label records-end:label :}
    LBL LBL LBL LBL {: go:label crash:label rest:label stub:label :}
-   LBL SCALAR-ROW-LABEL !
    OPEN, CODE-REGION, DATA-REGION,
    image end COPY-RUNS,
    engine if records records-end COPY-RECORDS, then
@@ -67,7 +66,6 @@ public
    go JMP,
    REGION-BAD @ >LABEL s\" hb: cannot map or protect code region\n" MAP-FAIL-RC FAIL,
    crash rest stub STUBS,
-   SCALAR-MARKER,
    go stub ;
 
 ;using

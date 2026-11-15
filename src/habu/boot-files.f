@@ -76,7 +76,6 @@ private
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
    CHECKER COMMON s" src/core/check-walk.f" ROW
-   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
    CHECKER COMMON s" src/core/effect.f" ROW
    CHECKER COMMON s" src/habu/address-cells.f" ROW
@@ -105,6 +104,7 @@ private
    CORE COMMON s" src/core/int-convert-retire.f" ROW
    CORE COMMON s" src/core/generated-declaration-dictionary.f" ROW
    CORE COMMON s" src/core/generated-declaration-protection.f" ROW
+   CORE COMMON s" src/core/sumtype-front.f" ROW
    OWNER COMMON s" src/core/checker-owner-guard.f" ROW
    ARGV COMMON s" src/os/script-argv.f" ROW
    INTERNAL COMMON s" src/core/internal-mark.f" ROW

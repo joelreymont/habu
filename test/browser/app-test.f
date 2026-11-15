@@ -6,7 +6,8 @@
 \ `-- --chrome`: then the --chrome check writes MCP-APP:PAGE+ as page.html
 \ and MCP-APP:CODE+ of the module as code.json beside it, and runs the page in
 \ Chrome (macOS's application or google-chrome on PATH) under
-\ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host.
+\ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host and the
+\ server's view socket.
 
 require src/lib/error.f
 require src/lib/string.f

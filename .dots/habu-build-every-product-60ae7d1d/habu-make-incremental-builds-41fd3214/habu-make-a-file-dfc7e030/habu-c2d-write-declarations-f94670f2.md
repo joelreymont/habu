@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-11-06T20:16:59.603881+02:00"
 ---
 
-Problem: every writer of checker facts must find its record through the dictionary and write its bytes 32-39 ([32], the facts text's offset) through CHECK:FACTS! (src/core/checker.f:12129) or FIND-FACTS! (:12139). The amenders already do, through HOLD-AMENDED (:12166) and src/core/check-hook.f AMENDED (:365). Still open:
+Problem: every writer of checker facts must find its record through the dictionary and write its bytes 32-39 ([32], the facts text's offset) through CHECK:FACTS! (src/core/checker.f:12120) or FIND-FACTS! (:12130). The amenders already do, through HOLD-AMENDED (:12157) and src/core/check-hook.f AMENDED (:365). Still open:
 - A word a definer creates at run time takes its definer's created text by INTERN:FIND at RECORD-PUBLISHED-LOCAL (checker.f:15400), never laying it; settle which cell carries the created effect from the top-level scan to the publication. Today, in a session, '42 constant ANSWER', 'create BUF 8 allot' and 'variable V' each leave an empty facts text (CHECK:FACTS@ answers length 0), where a colon word answers '( n -- n )' and an engine constant '( -- a ) raw a'; SEE (habu-describe-a-published-501824c2) has no effect to show for them until this lands.
 - An EXPORT alias copies its source's [32].
 - The 125 forward PRIM: rows, which name words not yet defined, move below their definitions and write through PE-CLOSE-SYM (checker.f:11690); kernel PRIM: rows write no entry. The checker's separate stores for those facts go.

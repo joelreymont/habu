@@ -520,7 +520,10 @@ variable ENTRY-AT
 : RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT LOAD,  0 G-PUSH ;
 
 : RECORD-CELL!, ( n n n -- ) {: v:n ix:n off:n :}
-   RAX v IMM,  RAX DBASE-REG ix DREC * off + MEM-OFF STORE, ;
+   RAX v IMM,
+   RCX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT STORE, ;
 
 \ A, B and C behind a jump, each span its first label to its second, in the
 \ host's start order: A and C each a `call B` alone, whose return address is

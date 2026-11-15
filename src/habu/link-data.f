@@ -508,7 +508,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    KERNEL? @ if s" link: a kernel build writes no program" 74 die then
    NATIVE:READ? 0= if s" link: no kernel object was read for this build" 74 die then
    TARGET @ RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ
-   NATIVE:X64? <> if
+   bool>n NATIVE:X64? bool>n <> if
       s" link: the kernel object is for another architecture" 74 die
    then
    ENGINE? @ if 1 else 0 then  s" ENGINE" NATIVE:SYM <> if

@@ -1,9 +1,11 @@
-\ unicode.f - Unicode whitespace and locale-independent full casefold equality.
-\ CASEFOLD= compares whole UTF-8 spans by full case folding (Straße equals
-\ STRASSE), with no normalization, keeping embedded NULs. Folding is
-\ libunistring's u8_casecmp and u8_casefold with NULL language and normalization,
-\ so the casefold data is the installed library's. STORAGE CLASS. TASK-LOCAL:
-\ C's result cell, a TASK:+USERS row.
+\ unicode.f - Unicode whitespace, locale-independent full casefold equality
+\ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
+\ folding (Straße equals STRASSE), with no normalization, keeping embedded
+\ NULs. FOLD writes a span's full case folding and LOWER its full lowercase
+\ (Straße folds to strasse but lowercases to straße). They are
+\ libunistring's u8_casecmp, u8_casefold and u8_tolower with NULL language
+\ and normalization, so the case data is the installed library's. STORAGE
+\ CLASS. TASK-LOCAL: C's result cell, a TASK:+USERS row.
 
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f
@@ -40,29 +42,47 @@ private
 : RESULT ( -- ptr n ) 0 RESULT-ROW CELL-VIEW ;
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
-\ policy pointers, and one four-byte writable result. NULL resultbuf asks
-\ u8_casefold for one owned allocation, which only the matched private free
-\ binding may consume. No callable raw binding or configurable foreign symbol
-\ escapes this package.
+\ policy pointers, and one four-byte writable result. u8_casefold and
+\ u8_tolower share one schema; NULL resultbuf asks either for one owned
+\ allocation, which only the matched private free binding may consume. No
+\ callable raw binding or configurable foreign symbol escapes this package.
 VERSIONED-LIBRARY unistring 5
 FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LOWER-CALL u8_tolower ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
 PROCESS-SYMBOLS
 FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
 
-: ALLOCATE-FOLD ( ptr u8 n -- ptr u8 n )
-   2dup VALID-UTF8
+\ Runs MAP, FOLD-CALL or LOWER-CALL, on a valid span and answers its
+\ owned result and that result's length.
+: ALLOCATE-MAP ( ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- ptr u8 n )
+   {: source:ptr size:n map :}
+   source size VALID-UTF8
    0 RESULT !
-   0 0 0 RESULT BYTE-VIEW FOLD-CALL
+   source size 0 0 0 RESULT BYTE-VIEW map execute
    dup >CELL 0= if E-CASEFOLD throw then
    RESULT @ ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
-: COPY-FOLD ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+: COPY-MAPPED ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: source:ptr size:n out:ptr capacity:n :}
    capacity size < if E-CAPACITY throw then
    source out size BYTE-COPY
    source size out capacity ;
+
+: MAPPED-BYTES ( ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- n )
+   ALLOCATE-MAP swap RELEASE ;
+
+: MAP-INTO ( ptr u8 n ptr u8 n [ ptr u8 n n n n ptr u8 -- ptr u8 ] -- n )
+   {: out:ptr capacity:n map :}
+   map ALLOCATE-MAP {: mapped:ptr size:n :}
+   mapped size out capacity [: COPY-MAPPED ;] catch
+   {: error:n :} 2drop 2drop
+   \ catch restores depth, not cells overwritten by a callee before throw.
+   \ The owner is kept in this outer lexical frame, never recovered from args.
+   mapped RELEASE
+   error 0<> if error throw then
+   size ;
 
 public
 
@@ -75,18 +95,16 @@ public
    RESULT @ 0= ;
 
 : FOLDED-BYTES ( ptr u8 n -- n )
-   ALLOCATE-FOLD swap RELEASE ;
+   [: FOLD-CALL ;] MAPPED-BYTES ;
 
 : FOLD ( ptr u8 n ptr u8 n -- n )
-   {: out:ptr capacity:n :}
-   ALLOCATE-FOLD {: folded:ptr size:n :}
-   folded size out capacity [: COPY-FOLD ;] catch
-   {: error:n :} 2drop 2drop
-   \ catch restores depth, not cells overwritten by a callee before throw.
-   \ The owner is kept in this outer lexical frame, never recovered from args.
-   folded RELEASE
-   error 0<> if error throw then
-   size ;
+   [: FOLD-CALL ;] MAP-INTO ;
+
+: LOWERED-BYTES ( ptr u8 n -- n )
+   [: LOWER-CALL ;] MAPPED-BYTES ;
+
+: LOWER ( ptr u8 n ptr u8 n -- n )
+   [: LOWER-CALL ;] MAP-INTO ;
 
 seal-package
 ;using

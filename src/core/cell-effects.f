@@ -1,15 +1,5 @@
 \ cell-effects.f - effects for words needed before the checker starts.
 
-s" CELL" s" -- n" TRUST
-
-\ Public constants of files that load before the checker: without these rows a
-\ body naming one is E-UNDEFINED on a from-source prefix boot.
-PRIM: PATH-CAP PE-N PE-OUT PRIM;
-PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
-PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
-PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
-PRIM: E-XREF-NULL PE-N PE-OUT PRIM;
-
 \ intern-table.f's words load before the checker; a row records no throw, so the
 \ checker misses TEXT's and FIND's E-INTERN-REWIND.
 PPRIM: INTERN CLEANUP PPRIM;
@@ -18,15 +8,9 @@ PPRIM: INTERN TEXT PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: INTERN FIND PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: INTERN KEEP-BELOW PE-N PE-IN PPRIM;
 
-\ The checker's control-effect flags and verdict word src/habu/verify-source.f
-\ calls: without a row each is E-UNDEFINED on a from-source prefix boot.
-PRIM: CTL-RENDERS PE-N PE-OUT PRIM;
-PRIM: CTL-CREATES PE-N PE-OUT PRIM;
-PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
+\ The checker's verdict word src/habu/verify-source.f calls: without a row it
+\ is E-UNDEFINED on a from-source prefix boot.
 PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
-
-\ The checker's error code the constructor tests read at top level.
-PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;
 
 s" SCRATCH-ALLOT" s" n --" TRUST
 s" datum" s" --" TRUST

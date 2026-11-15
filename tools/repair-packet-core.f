@@ -260,7 +260,7 @@ variable RP-ROW-OBJECT
    JSON:READ-CLOSE
    RP-PACKET-START
    RP-W JSON:WRITE-COMMA drop s" word" RP-REQ-STR-FIELD
-   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-OPT-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" token_index" RP-REQ-NUM-FIELD
    RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
    RP-PLACE
@@ -276,7 +276,7 @@ variable RP-ROW-OBJECT
    RP-W JSON:WRITE-COMMA drop s" reason" RP-OPT-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    RP-W JSON:WRITE-COMMA s" source_excerpt" JSON:WRITE-KEY drop
-   s" definition_source" RP-REQ-STR
+   s" definition_source" RP-OPT-STR
    count s" Fix the definition so it certifies. Output only corrected Habu code."
    RP-PACKET-END ;
 

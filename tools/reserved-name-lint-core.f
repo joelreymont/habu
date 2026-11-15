@@ -192,9 +192,7 @@ private
    a u s" ;sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ enum block definer
    a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ enum block close (;FOO)
-   a u s" product" LINT-STR=CI if LINT-TRUE exit then    \ product block definer
-   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ product field keyword
-   a u s" ;product" LINT-STR=CI if LINT-TRUE exit then   \ product block close (;FOO)
+   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ structure field keyword
    a u s" undefine" LINT-STR=CI ;
 
 : RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}

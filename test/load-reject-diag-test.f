@@ -527,7 +527,7 @@ variable RC
 \ rows and keeps their width fact, so it stores both cells.
 : TEST-T0-RAW-STORE ( -- )
    s" T0 compiles a refused TRUSTED: store at its field width" T-LABEL
-   BODY$ s" PRODUCT lrd-pt FIELD x n FIELD y n ;PRODUCT TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
+   BODY$ s" STRUCTURE lrd-pt FIELD x n FIELD y n ;STRUCTURE TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
    BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
@@ -649,7 +649,7 @@ variable RC
    EXITED @ TTRUE
    RC @ REJECT-RC T=
    s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" STRUCTURE-DECL:SD-REPLAY ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
    BODY$ RUN
    SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
    s" :4: duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C
@@ -691,12 +691,12 @@ variable RC
    BODY$ S\" TRUSTED: LRD-BS\n  ( -- nosuch:fam )\n  1 ;\n" FS:WRITE-ALL
    s" LRD-BS" s" nosuch:fam" s" :2" ASSERT-NCOMP-LINE ;
 
-\ A name only the checker holds, a PRODUCT replay with no word behind it, is
+\ A name only the checker holds, a STRUCTURE replay with no word behind it, is
 \ refused by check-hook.f DEFINITION through src/core/checker.f
 \ REFUSE-DUPLICATE, which names an evaluated string's file alone too.
 : TEST-REPLAY-DUP-PLACE ( -- )
    s" an evaluated checker-only duplicate names its file and no line" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" STRUCTURE-DECL:SD-REPLAY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
    s" : duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C

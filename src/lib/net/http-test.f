@@ -18,6 +18,7 @@ require src/lib/net/curl.f
 require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
+require src/lib/byte-buffer.f
 require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
@@ -195,6 +196,34 @@ variable ITEM-HOST-N
    seen if hu else 0 then ITEM-HOST-N !
    answer 200 HTTP:STATUS!
    answer [: ITEM-BODY ;] HTTP:JSON! ;
+
+
+create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
+
+
+: PARAM-TEXT ( ptr u8 n -- )
+   BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
+
+
+\ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
+: PARAM-ONE ( HTTP:request ptr u8 n -- )
+   {: asked:HTTP:request key:ptr keyu:n :}
+   key keyu PARAM-TEXT
+   s" =[" PARAM-TEXT
+   asked key keyu PARAM-BUF HTTP:PARAM+ {: found:bool :}
+   found if s" ] true" else s" ] false" then PARAM-TEXT ;
+
+
+: PARAMS ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   PARAM-BUF 64 BUF:N>BLEN BUF:RESET
+   asked s" session" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" b" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" missing" PARAM-ONE
+   answer PARAM-BUF BUF:SPAN$ BUF:BLEN>N HTTP:BODY!
+   answer 200 HTTP:STATUS! ;
 
 
 PTR-VARIABLE VERSION-A
@@ -659,6 +688,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/unauthorized" [: UNAUTHORIZED ;] HTTP:ROUTE
    s" GET" s" /api/unregistered" [: UNREGISTERED ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
+   s" GET" s" /api/params" [: PARAMS ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
    s" POST" s" /api/chat" [: ECHO ;] HTTP:ROUTE
@@ -1201,6 +1231,15 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    S\" \qhost\q:\q127.0.0.1:" HAS? TTRUE
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" json-route" TRANSCRIBE ;
+
+
+\ The first of two pairs named session answers, decoded; a pair with no "="
+\ answers its empty value. It runs after the transcribed requests, whose error
+\ bodies carry request ids.
+: PARAM-CASES ( -- )
+   s" GET" s" /api/params?a=1&session=4f2c%2Dx+y&b&session=2" FETCH 200 T=
+   RES$ s" session=[4f2c-x y] true, b=[] true, missing=[] false" T$=
+   PARAM-BUF BUF:DISPOSE ;
 
 
 \ The default error answer is one line of text naming the code, the message and
@@ -1884,16 +1923,38 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" keep-alive" TRANSCRIBE ;
 
 
-\ A connection the peer keeps open and says nothing more on is closed by the
-\ server's own idle deadline, without the peer asking for it.
+\ A connection the peer keeps open and says nothing more on is parked once
+\ answered and closed by the server's own idle deadline, IDLE-MS past that
+\ answer, without the peer asking for it.
 : IDLE-CASE ( -- )
    RAW-OPEN {: quiet:TCP4:connection :}
+   mono-ns {: began:n :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
    quiet REQ$ RAW-SEND
    quiet S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   s" a parked connection idle past IDLE-MS is closed" T-LABEL
    quiet CLOSED-WITHIN? TTRUE
+   mono-ns began - IDLE-MS NS-PER-MS * >= TTRUE
    quiet TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: PING-KEPT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   conn S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE ;
+
+
+\ The server's one worker parks a connection kept alive once it has answered
+\ it, so another peer is served next; the parked one's next request, sent
+\ after that, is answered.
+: PARKED-REQUEST-CASE ( -- )
+   RAW-OPEN {: kept:TCP4:connection :}
+   kept PING-KEPT
+   s" GET" s" /api/ping" FETCH 200 T=
+   s" a parked connection's next request is answered" T-LABEL
+   kept s\" GET /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   kept S\" {\qid\q:\q7\q" RAW-COLLECT TTRUE
+   kept TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 $C8 constant STALL-MARGIN-MS
@@ -2053,8 +2114,8 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
 
 
-\ A worker waiting for the next request on a connection its peer keeps open
-\ reads the stop flag while it waits.
+\ A connection its peer keeps open, parked under an idle bound far past the
+\ stop's, is closed by STOP as the listener leaves.
 : IDLE-STOP-CASE ( -- )
    TRACE-RESET
    LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
@@ -2065,6 +2126,7 @@ $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
    held S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
    mono-ns {: began:n :}
    HTTP:STOP
+   s" STOP closes a parked connection within its bound" T-LABEL
    mono-ns began - IDLE-STOP-MS NS-PER-MS * < TTRUE
    HTTP:KILLED-TASKS 0 T=
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
@@ -2692,21 +2754,67 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
+variable LATER-U
+variable LATER-STATUS             \ the status REPLY answers with
+variable LATER-GONE               \ the peer closes before the task answers
 variable LATER-TAKEN
 variable LATER-GO
+variable LATER-RESULT             \ 1 when REPLY answered true, 2 when false
 variable LATER-SLOT-CODE
+variable LATER-LONG               \ the content type is past the builder's room
+variable LATER-CODE               \ what the task's answer threw
+TYPED-VARIABLE LATER-WAY [ -- ]   \ how the task answers
 1 TYPED-BUFFER LATER-CONN TCP4:connection
 TASK:MIN-STACK TASK:TASK LATER-TASK
+$40 constant LATER-CAP
+LATER-CAP SPAN-BUFFER: LATER-BUF
+SB-CAP SPAN-BUFFER: LONG-TYPE
+
+
+: LATER$ ( -- ptr u8 n )
+   LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
+
+
+\ True once a write fails: the reset an end that has closed sends back.
+: RESET-SEEN? ( TCP4:connection -- bool )
+   s" x" TCP4:TRANSFER-BYTES TCP4:WRITE
+   MATCH TCP4:status
+      ok OF false ENDOF
+      failed OF drop true ENDOF
+   ;MATCH ;
+
+
+: LATER-TYPE$ ( -- ptr u8 n )
+   LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
+   s" application/json" ;
+
+
+: LATER-REPLY ( -- )
+   0 LATER-CONN @ LATER-STATUS @ LATER-TYPE$ LATER$ HTTP:REPLY
+   if 1 else 2 then LATER-RESULT ! ;
+
+
+: LATER-WRITE ( -- )
+   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
+   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 : LATER-ANSWER ( -- )
    [: HTTP:WORKER-SLOT drop ;] catch LATER-SLOT-CODE !
    [: LATER-GO @ 0<> ;] TEST-WAIT:POLL
-   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
-   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
+   LATER-GONE @ 0<> if
+      0 LATER-CONN @ [: dup RESET-SEEN? ;] TEST-WAIT:POLL
+      drop
+   then
+   LATER-WAY @ catch LATER-CODE ! ;
 
 
+\ The request's body is the answer's, copied out: the request's bytes end with
+\ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   bytes len LATER-BUF SPAN:COPY
+   len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
    [: LATER-ANSWER ;] LATER-TASK TASK:ACTIVATE
    1 LATER-TAKEN ! ;
@@ -2716,9 +2824,14 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    s" POST" s" /api/later" [: LATER ;] HTTP:ROUTE ;
 
 
-: LATER-ASK ( -- TCP4:connection )
+: LATER-ASK ( [ -- ] -- TCP4:connection )
+   LATER-WAY !
    0 LATER-TAKEN !
    0 LATER-GO !
+   0 LATER-GONE !
+   0 LATER-RESULT !
+   0 LATER-LONG !
+   0 LATER-CODE !
    RAW-OPEN {: conn:TCP4:connection :}
    conn S\" POST /api/later HTTP/1.1\r\nHost: x\r\nContent-Length: 14\r\n\r\n{\qlater\q:true}"
    RAW-SEND
@@ -2726,8 +2839,22 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    conn ;
 
 
+\ The task answers with REPLY and this status.
+: REPLY-ASK ( n -- TCP4:connection )
+   LATER-STATUS !
+   [: LATER-REPLY ;] LATER-ASK ;
+
+
+: LATER-OK$ ( -- ptr u8 n )
+   S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
+
+
+: LATER-EMPTY$ ( -- ptr u8 n )
+   S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
+
+
 : TAKE-OVER-CASE ( -- )
-   LATER-ASK {: conn:TCP4:connection :}
+   [: LATER-WRITE ;] LATER-ASK {: conn:TCP4:connection :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
    S\" {\qservice\q:\qhttp-test\q}" RAW-ASK TTRUE
    1 LATER-GO !
@@ -2740,9 +2867,118 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LATER-SLOT-CODE @ HTTP:E-HANDLE T= ;
 
 
+\ A 204 answer carries no length and none of the body it was given.
+: NO-CONTENT-CASE ( -- )
+   s" REPLY 204 sends no length and no body" T-LABEL
+   204 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GO !
+   conn LATER-EMPTY$ RAW-COLLECT TTRUE
+   RES$ LATER-EMPTY$ T$=
+   conn CLOSED-WITHIN? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 1 T= ;
+
+
+\ A peer that reset the connection before its answer: REPLY answers false.
+: GONE-PEER-CASE ( -- )
+   s" REPLY to a peer that reset answers false" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GONE !
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   1 LATER-GO !
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 2 T= ;
+
+
+\ A content type past the task's string builder throws, and REPLY still closes.
+: LONG-TYPE-CASE ( -- )
+   s" REPLY past the string builder throws and closes" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-LONG !
+   1 LATER-GO !
+   LATER-TASK TASK-AWAIT
+   LATER-CODE @ E-STR-CAPACITY T=
+   conn CLOSED-WITHIN? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+\ A task halted while REPLY lingers on a peer that keeps its end open still
+\ closes the connection. The half-close before the linger already ended the
+\ peer's stream, so the reset its writes meet is what shows the close.
+: HALTED-REPLY-CASE ( -- )
+   s" a halted REPLY still closes the connection" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GO !
+   conn LATER-OK$ RAW-COLLECT TTRUE
+   LATER-TASK TASK:HALT
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 0 T=
+   conn [: dup RESET-SEEN? ;] TEST-WAIT:POLL
+   TCP4:CLOSE DROP-TCP-STATUS ;
+
+
 : TAKE-OVER-CASES ( -- )
    TAKE-OVER-CASE
+   NO-CONTENT-CASE
+   GONE-PEER-CASE
+   LONG-TYPE-CASE
+   HALTED-REPLY-CASE
    LATER-TASK TASK:KILL ;
+
+
+variable CALL-ARG                 \ what the submitted call was given
+variable CALL-CODE                \ what WORKER-SLOT threw there
+variable CALL-SLOT                \ and the slot it gave
+variable CALL-DONE
+
+: NOTE-CALL ( n -- )
+   CALL-ARG !
+   [: HTTP:WORKER-SLOT CALL-SLOT ! ;] catch CALL-CODE !
+   1 CALL-DONE atomic! ;
+
+
+\ A call submitted from a task that is no worker runs on the server's one.
+: SUBMIT-CASE ( -- )
+   0 CALL-DONE atomic!
+   -1 CALL-CODE !
+   -1 CALL-SLOT !
+   42 [: NOTE-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" SUBMIT runs its call on a worker" T-LABEL
+   CALL-ARG @ 42 T=
+   CALL-CODE @ 0 T=
+   CALL-SLOT @ 0 T= ;
+
+
+variable CALL-AT                  \ mono-ns when the submitted call ran
+$32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
+
+: STAMP-CALL ( n -- )
+   drop
+   mono-ns CALL-AT !
+   1 CALL-DONE atomic! ;
+
+
+\ Two workers, each having answered a peer that keeps its connection open and
+\ says nothing more: a call queued then runs at once, not past IDLE-MS.
+: IDLE-CALL-CASE ( -- )
+   TRACE-RESET
+   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   RAW-OPEN {: one:TCP4:connection :}
+   RAW-OPEN {: two:TCP4:connection :}
+   one PING-KEPT
+   two PING-KEPT
+   0 CALL-DONE atomic!
+   mono-ns {: began:n :}
+   0 [: STAMP-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" a call waits for no idle keep-alive connection" T-LABEL
+   CALL-AT @ began - CALL-WAIT-MS NS-PER-MS * < TTRUE
+   one TCP4:CLOSE DROP-TCP-STATUS
+   two TCP4:CLOSE DROP-TCP-STATUS
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T= ;
 
 
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
@@ -2783,12 +3019,15 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    CLOSE-CASE
    HEAD-CASE
    IDLE-CASE
+   PARKED-REQUEST-CASE
    STALLED-WORKER-CASE
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
    SERVING-CASE
    TAKE-OVER-CASES
+   SUBMIT-CASE
+   PARAM-CASES
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
@@ -2805,6 +3044,7 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LINKED-TREE-CASE
    PARKED-WORKER-CASE
    IDLE-STOP-CASE
+   IDLE-CALL-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE

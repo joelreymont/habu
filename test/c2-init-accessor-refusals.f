@@ -36,11 +36,6 @@ public
       70 REFUSED? TTRUE
    s" invalid width reports the fixed-cell requirement" T-LABEL
    ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
-   s" a product with an open-width field cannot derive init" T-LABEL
-   s" package C2IA PRODUCT badproduct<a> DERIVE init FIELD value a ;PRODUCT ;package"
-      70 REFUSED? TTRUE
-   s" the product refusal reports the fixed-cell requirement" T-LABEL
-   ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
    s" an accessor name a private word holds is refused" T-LABEL
    s" package C2IA private : PO-A@ ( -- n ) 1 ; STRUCTURE po OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE ;package"
       70 REFUSED? TTRUE

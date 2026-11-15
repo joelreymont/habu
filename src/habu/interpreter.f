@@ -1274,8 +1274,8 @@ DYNAMIC-BUFFER ITEM-CELLS n
 
 : ITEMS-RESET ( -- )
    0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
-   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL!
-   0 BODY-ITEMS:EFFECT-CELL CELL!  0 BODY-ITEMS:LOCALS-CELL CELL! ;
+   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:EFFECT-CELL CELL!
+   0 BODY-ITEMS:LOCALS-CELL CELL! ;
 
 : ITEM@ ( n n -- n ) {: i:n f:n :}
    i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
@@ -1347,12 +1347,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    grown BODY-ITEMS:CAP-CELL CELL!
    0 ITEM-CELLS NULL-PTR - BODY-ITEMS:BASE-CELL CELL! ;
 
-\ Where the next item's run starts when every run so far was an item's.
-: ITEMS-END ( -- n )
-   BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
-   i 0= if 0 exit then
-   i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
-
 \ Places a run whose bytes the buffer read lacks at the token read last, if the
 \ definition opened there; PENDTKA-CELL is set after the name's run (off 0).
 : PLACE-RUN ( n -- )
@@ -1370,11 +1364,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    t b - 0 <  e t - 0 <= or if exit then
    t b - row 8 FR! ;
 
-\ Appends an item and captures its spelling, which the row's off and len span;
-\ a run captured between items is text no item spans.
+\ Appends an item and captures its spelling, which the row's off and len span.
 : ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
    BODYLEN-CELL CELL@ {: off:n :}
-   off ITEMS-END <> if -1 BODY-ITEMS:RAW-CELL CELL! then
    ITEM-ROOM
    s u DEF-CAPTURE
    off PLACE-RUN
@@ -2612,7 +2604,6 @@ private
    s" newtype" TOKEN-IS? if true exit then
    s" deftype" TOKEN-IS? if true exit then
    s" deflinear" TOKEN-IS? if true exit then
-   s" product" TOKEN-IS? if true exit then
    s" arena" TOKEN-IS? if true exit then
    s" heap" TOKEN-IS? ;
 
@@ -2784,6 +2775,26 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
+\ Only the main interpreter may retire its own failed frame. Tasks can still
+\ hold these records and bodies, so keep every extent and retire each name
+\ with one aligned store, matching the native ARM throw path.
+: FRAME-RETIRE ( ptr u8 -- bool ) {: f:ptr :}
+   TASK-GUARD
+   TASKS-LIVE-CELL CELL@ 0= if false exit then
+   f FR-NDICT FR@ {: first:n :}
+   first 0 < first ndict@ > or if E-COMP-STATE throw then
+   REGION-ALIAS:DELTA-CELL CELL@ {: delta:n :}
+   ndict@ first ?do
+      i XREF-REC {: row:ptr :}
+      row XREF-WORDLIST {: wid:n :}
+      wid XREF:RETIRED-WL? 0= if
+         wid 0 < if WL:RETIRED-NAMESPACE else WL:RETIRED then
+         row XREF-WORDLIST-SLOT cells + delta + atomic!
+      then
+   loop
+   LASTC-CELL CELL@ first DREC * dbase@ + >= if 0 LASTC-CELL CELL! then
+   true ;
+
 \ x86 THROW returns with the evaluation frame still linked; arm64's throw
 \ recovery has already popped it before catch returns. The top link is the
 \ ownership test: exactly one path performs the rollback.
@@ -2791,6 +2802,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    {: f:ptr :}
    DEF-ABORT
    f ROWS-CUT
+   f FRAME-RETIRE if exit then
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
@@ -2811,7 +2823,11 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOKDEPTH-CELL CELL@ CAPDEPTH-CELL CELL!
    TOKRAW-CELL CELL@ RAWNEXT-CELL CELL!
-   dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   \ A live task can hold code published while an immediate word ran. Keep
+   \ those bytes; only the unfinished token's capture state is rolled back.
+   TASKS-LIVE-CELL CELL@ 0= if
+      dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   then
    TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
 : FRAME-RESTORE-SCOPE ( ptr u8 -- ) {: f:ptr :}

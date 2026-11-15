@@ -3,10 +3,10 @@
 package LAYOUT-VALID-PRODUCT
 
 ENUM lvp-color red green ;ENUM
-PRODUCT lvp-pixel
+STRUCTURE lvp-pixel
    FIELD color lvp-color
    FIELD count n
-;PRODUCT
+;STRUCTURE
 1 LAYOUT-BUFFER BUF lvp-pixel
 
 CAST: RAW ( ptr lvp-pixel -- ptr n )

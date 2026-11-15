@@ -15,6 +15,12 @@ create SECOND-BUF CAPACITY allot
    OUTPUT CAPACITY UNICODE:FOLD
    OUTPUT swap expected expected-size T$= ;
 
+: LOWERED= ( ptr u8 n ptr u8 n -- )
+   {: expected:ptr expected-size:n :}
+   2dup LOWERED-BYTES expected-size T=
+   OUTPUT CAPACITY UNICODE:LOWER
+   OUTPUT swap expected expected-size T$= ;
+
 : CANARY! ( -- )
    CAPACITY 0 ?do $55 OUTPUT i + c! loop ;
 
@@ -28,6 +34,12 @@ create SECOND-BUF CAPACITY allot
    [: s\" x\xFF" OUTPUT CAPACITY UNICODE:FOLD drop ;] E-UTF8 TTHROWSQ CANARY=
    [: s\" \xC0\xAF" FOLDED-BYTES drop ;] E-UTF8 TTHROWSQ
    s" Straße" s" strasse" FOLDED= ;
+
+: LOWER-PREFLIGHT ( -- )
+   CANARY!
+   [: s" İ" OUTPUT 2 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
+   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] E-UTF8 TTHROWSQ CANARY=
+   [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ ;
 
 : CHUNK$ ( -- ptr u8 n )
    8 RND% case
@@ -121,6 +133,12 @@ s" ẞ" s" ss" FOLDED=
 s" УКРАЇНА" s" україна" FOLDED=
 s\" A\zB" s\" a\zb" FOLDED=
 FOLD-PREFLIGHT
+s" " s" " LOWERED=
+s" Straße" s" straße" LOWERED=
+s" İ" s" i̇" LOWERED=
+s" ΟΔΟΣ" s" οδος" LOWERED=
+s\" A\zB" s\" a\zb" LOWERED=
+LOWER-PREFLIGHT
 RANDOM-FOLDS
 T-REPORT
 ;using
