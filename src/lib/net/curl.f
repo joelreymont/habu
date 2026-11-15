@@ -162,6 +162,7 @@ VERSIONED-LIBRARY curl 4
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION
 FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
+FUNCTION: EASY-RESET curl_easy_reset ( n -- ) ;FUNCTION
 FUNCTION: EASY-PERFORM curl_easy_perform ( n -- i32 ) ;FUNCTION
 FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
@@ -328,6 +329,11 @@ CAST: >BYTES ( n -- ptr u8 )
    0 state S.LENGTH STATE-FIELD LE:U64!
    0 state S.VALID STATE-FIELD LE:U64! ;
 
+: STATE-CLEAR-LIST ( n -- )
+   {: state:n :}
+   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   0 state S.LIST STATE-FIELD LE:U64! ;
+
 : STATE-PUBLISH ( n n n -- ) {: easy:n source:n u:n :}
    easy STATE-GET {: state:n :}
    state STATE-CLEAR-RESPONSE
@@ -338,7 +344,7 @@ CAST: >BYTES ( n -- ptr u8 )
 : STATE-DESTROY ( n -- )
    {: state:n :}
    state STATE-CLEAR-RESPONSE
-   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   state STATE-CLEAR-LIST
    state RELEASE ;
 
 
@@ -1825,6 +1831,24 @@ private
    CURL-LOCK TASK:GET
    easy REC-FIND 0 >=
    CURL-LOCK TASK:RELEASE ;
+
+public
+
+\ Drops every option set since INIT, header list included, and the captured
+\ response; libcurl keeps its connections, DNS and TLS caches and cookies.
+: RESET ( handle -- status ) {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET {: state:n :}
+   easy EASY-RESET
+   state STATE-CLEAR-LIST
+   state STATE-CLEAR-RESPONSE
+   easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
+      CODE>STATUS exit
+   then drop
+   easy DEFAULTS CODE>STATUS ;
+
+private
 
 
 : HEADER-STATUS? ( ptr u8 n n -- bool ) {: source at:n u:n :}

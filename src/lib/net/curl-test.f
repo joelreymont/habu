@@ -1351,6 +1351,32 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject CURL:CLEANUP ;
 
 
+\ HEADER+ after RESET needs the private state record back, and the echo of
+\ X-After without X-Reset shows it started a new list rather than the old one.
+: TEST-RESET ( -- )
+   PATH-ECHO$ GET-READY {: subject:CURL:handle :}
+   subject s" X-Reset: 1" CURL:HEADER+ EXPECT-OK
+   subject FORM$ CURL:BODY! EXPECT-OK
+   subject s" PUT" CURL:METHOD! EXPECT-OK
+   subject ECHO-FETCH
+   subject CURL:RESET EXPECT-OK
+   subject HEADER-REFUSED
+   subject PATH-ECHO$ URL-FOR CURL:URL! EXPECT-OK
+   subject s" X-After: 2" CURL:HEADER+ EXPECT-OK
+   subject ECHO-FETCH
+   s" RESET drops the earlier header, method and body" T-LABEL
+   s" GET /echo " ECHO-STARTS? TTRUE
+   s" X-Reset:" ECHO-HAS? TFALSE
+   s" X-After: 2" ECHO-HAS? TTRUE
+   NO-BODY-HEADERS
+   subject FILE-URL$ CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   s" RESET restores INIT's refusal of a file:// URL" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 1 T=
+   subject CURL:CLEANUP ;
+
+
 \ First request: no cookie is sent, the server sets one, and CLEANUP writes it
 \ to the jar.
 : COOKIE-FIRST ( -- )
@@ -2050,6 +2076,8 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject OWNER-HANDLE !
    subject CURL:STREAM-START EXPECT-OK
    subject HEADER-REFUSED
+   s" RESET refuses a handle whose transfer is in flight" T-LABEL
+   [: OWNER-HANDLE @ CURL:RESET drop ;] CURL:E-STATE TTHROWSQ
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    subject STREAM-FIRST
    STALL-READY {: other:CURL:handle :}
@@ -2945,7 +2973,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   97 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   99 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -2996,6 +3024,7 @@ public
    TEST-HUGE-POST
    TEST-METHOD
    TEST-REDIRECT-VERBS
+   TEST-RESET
    TEST-COOKIES
    TEST-SPANS
    TEST-HUGE
