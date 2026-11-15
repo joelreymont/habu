@@ -59,10 +59,12 @@ public
 - `[package] ( -- ^u8 n )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
-  tail: same xt, same effect, no body.
+  tail: same xt, same effect, no body. `EXPORT PKG:NAME` also takes a private
+  `NAME` of a package that is not sealed (`E-EXPORT-UNDEFINED` once sealed).
 - The package keyword `seal-package` seals the open package: a later
   `package` of it, or a definition or `EXPORT` into it, is
-  `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. Outside a
+  `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. A sealed
+  package's private words are out of another package's `EXPORT`. Outside a
   package: `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75; in a body or after `'`, as
   `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
   A build seals every package its engine files made before program source.

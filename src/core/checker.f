@@ -2792,6 +2792,7 @@ public
 
 : CK-REC-WID ( ^n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
 
+1 constant CK-REC-PRIVATE-SLOT              \ a namespace row's private wid, 0 for none
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
 \ The facts text's offset from its DATA, 0 for none; in a linked image an
@@ -12380,6 +12381,22 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QTAIL$ ( -- ^u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
 
+package CHECKER-RESOLVE
+public
+\ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
+\ its package is sealed, EXPORT takes a private word, as a reopening could.
+: EXPORT-PRIVATE ( ^u8 n -- ^n ) {: a:^ u:n :}
+   a u CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
+   a  a u CHECKER-COLON-SCAN nip HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF NULL-PTR EXIT THEN
+   row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and 0 <> IF
+      NULL-PTR EXIT
+   THEN
+   row CK-REC-PRIVATE-SLOT DICT-CELL@ {: wid:n :}
+   wid 0= IF NULL-PTR EXIT THEN
+   CHECKER-QTAIL$ wid WL-PROBE ;
+;package
+
 \ Whether record N+1 is record N's does> clause: the engine's own test.
 defer DOES-COMPANION?-XT ( n -- bool )
 
@@ -16063,14 +16080,22 @@ CHECKER-REG:}SCRATCH
 
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
-: EXPORT-RESOLVE ( ^u8 n -- ) {: a:^ u:n :}
+: EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
    a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym UNSAFE-SYM? sym PRIM-TRUSTED-SYM? or IF E-EXPORT-UNSAFE throw THEN
-   a u CHECKER-FIND-ACTIVE-SIG
+   FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
+   sym PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
    E-EXPORT-UNDEFINED throw ;
+
+\ The symbol an EXPORT operand names and, when its scope finds no word, the
+\ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.
+: EXPORT-SYM ( ^u8 n -- n ^n ) {: a:^ u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0 <> IF sym NULL-PTR EXIT THEN
+   a u CHECKER-RESOLVE:EXPORT-PRIVATE {: rec:^ :}
+   rec NULL-PTR = IF 0 rec EXIT THEN
+   CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? rec ;
 
 : EXPORT-EFF-INST ( ^u8 -- n n n n bool ) {: h:^ :}
    h E-INST-RESET
@@ -16100,9 +16125,10 @@ CHECKER-REG:}SCRATCH
    src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
 \ An export of a does> definer publishes the definer's clause too, under the
-\ clause's name in the export's wordlist.
-: EXPORT-CARRIES? ( ^u8 n -- bool ) {: a:^ u:n :}
+\ clause's name in the export's wordlist. PRIV is EXPORT-SYM's record.
+: EXPORT-CARRIES? ( ^u8 n ^n -- bool ) {: a:^ u:n priv:^ :}
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   priv NULL-PTR <> IF priv CHECKER-OVERLAY:CARRIES? EXIT THEN
    a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
 
 \ Only an armed name is scanned: the qualified-name scan leaves its state for
@@ -16113,11 +16139,11 @@ CHECKER-REG:}SCRATCH
 
 : CHECKER-EXPORT-ROW ( ^u8 n bool -- ) {: a:^ u:n publish:bool :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
-   a u EXPORT-RESOLVE
    \ The source symbol is read once, before the export's record is published:
    \ inside a replay the operand's spelling can bind the published tail after.
-   a u CHECKER-FIND-ACTIVE-SYM {: src:n :}
-   a u EXPORT-CARRIES? {: carries:bool :}
+   a u EXPORT-SYM {: src:n priv:^ :}
+   a u src EXPORT-RESOLVE
+   a u priv EXPORT-CARRIES? {: carries:bool :}
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
    \ can carry that.

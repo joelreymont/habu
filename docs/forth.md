@@ -193,7 +193,8 @@ private
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
   into it then exits 84 with `E-SEALED-PACKAGE habu: <file>:<line>: '<name>' is sealed`,
   naming the package or word, and `tools/check.f` refuses it as
-  `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
+  `E-SEALED-PACKAGE` at the name. Sealing also keeps the package's private
+  words from another package's `EXPORT` (`E-EXPORT-UNDEFINED`). Outside a package it is refused:
   `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. A build also seals every package its
   engine files made before it reads program source; an application package
@@ -347,8 +348,11 @@ public
   control flags and immediate bits carried, no forwarding body, zero runtime
   cost. `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
-  Refused: an undefined source, a private word behind a CLOSED package, a
-  primitive and a duplicate tail in the target section (`E-EXPORT-UNDEFINED`).
+  `EXPORT PKG:NAME` also takes a private `NAME` of a package that is not
+  sealed; an engine package imports a private checker word into its own
+  private section this way. Rejected: an undefined source, a private word of a
+  sealed package, a primitive and a duplicate tail in the target section
+  (`E-EXPORT-UNDEFINED`).
   An exported `does>` definer `MK` brings its clause along as `MK;does`.
   Re-exporting a generated constructor under a second name is allowed; adding
   tails INTO a generated constructor package is not. At TOP LEVEL `EXPORT

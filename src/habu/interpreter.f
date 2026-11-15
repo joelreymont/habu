@@ -1104,7 +1104,9 @@ variable USE-FLOOR
 \ here. DEF-TKA and DEF-TKL take the operand, which the refusals after them
 \ name.
 : PKG-EXPORT-SOURCE ( -- ^n )
-   TOKEN$ FIND-SCOPE {: src:^ :}
+   TOKEN$ FIND-SCOPE {: found:^ :}
+   found XREF-FOUND? if found else TOKEN$ CHECKER-RESOLVE:EXPORT-PRIVATE then
+   {: src:^ :}
    src XREF-FOUND? 0= if s" E-EXPORT-UNDEFINED" REFUSAL  RC-REJECT PKG-FAIL then
    src XREF-FLAGS DNAME-INT and 0<> if
       s" E-EXPORT-UNSAFE" REFUSAL
