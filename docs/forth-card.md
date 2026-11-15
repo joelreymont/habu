@@ -572,7 +572,9 @@ holds an address**.
   `NSHADOW:OPEN` and `NSHADOW:CLOSE`, which `LINKER:WITH` reaches, reject a
   call on a task's thread as `E-TASK-COMPILE`, status 70.
 - A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed
-  0 unwinds unchecked, a caller bug: its `catch` answers 0.
+  0 unwinds unchecked: a `catch` it reaches answers 0, and a text it unwinds (a
+  file, `evaluate`, `include`, a REPL line) stops with `E-THROW-ZERO`, its
+  record placed at the throw.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
   (110) on the faulting thread, after the record `error[E-MEMORY-FAULT]: a
   read or write faulted` with notes `address` and `in` on fd 2: `catch`

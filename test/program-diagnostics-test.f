@@ -156,8 +156,26 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" error[E-INPUT-UNDERFLOW]" path pathu GE-EXPECT-ERR-HAS
    s" (needs 1, has 0)" path pathu GE-EXPECT-ERR-HAS ;
 
+\ A computed 0 that a top-level call throws stops its text with one record at
+\ the call: the line after it never runs and hb exits 67.
+: THROW-ZERO-STOPS ( -- )
+   s" throw-zero" {: label:ptr labelu:n :}
+   GE-HB-RESET  GE-SRC-RESET
+   s" : Z ( n -- ) throw ;" GE-SRC-LINE
+   s" 0 Z" GE-SRC-LINE
+   S\" s\" after\" type cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   67 label labelu GE-EXPECT-RC
+   s" " label labelu GE-EXPECT-OUT
+   GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
+   STARTS-WITH? 0= if label labelu GE-FAIL then
+   S\" \n --> <input>:2:3\n" label labelu GE-EXPECT-ERR-HAS
+   s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
+   label labelu GE-EXPECT-ERR-HAS ;
+
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
+   THROW-ZERO-STOPS
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS

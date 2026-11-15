@@ -42,11 +42,11 @@ the code's name in `src/lib/error.f` (`E-THROW` for a code with none), with a
 that catches the code and throws it again moves the record to its own throw.
 An arm64 stripped (AOT) application prints `hb: uncaught throw code N` and
 exits 67; an x86-64 one does not yet run the hook or print the line. Under
-`--load` an uncaught throw of a computed 0 reads as success (a literal `0 throw`
-is rejected, `E-THROW-ZERO`): it ends its file silently and the run goes on; a
-stripped application prints `hb: uncaught throw code 0` and exits 67. A
-rejection prints its record and exits 70. A one-byte diagnostic and a clean
-exit means a raw engine capacity path, not a throw.
+`--load` an uncaught throw of a computed 0 (a literal `0 throw` is rejected,
+`E-THROW-ZERO`) stops its text with `E-THROW-ZERO`, placed at the throw, and
+exits 67; a stripped application prints `hb: uncaught throw code 0` and exits
+67. A rejection prints its record and exits 70. A one-byte diagnostic and a
+clean exit means a raw engine capacity path, not a throw.
 
 ## `.s` and `.` — stack inspection
 

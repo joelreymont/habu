@@ -2354,7 +2354,8 @@ sections above.
   before retiring anything. Reopening an existing package is allowed. The
   throw is catchable; the replay still closes.
 - **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
-  unchecked, a caller bug: its `catch` answers 0.**
+  unchecked, a caller bug: a `catch` it reaches answers 0, and a text it unwinds
+  stops with `E-THROW-ZERO`, its record placed at the throw.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`) or an open comment

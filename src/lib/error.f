@@ -678,8 +678,8 @@ require src/lib/prelude.f
 \ WLINK -9830..-9834.
 \ Adobe Ascii85: -9840..-9849, minted in src/lib/base85.f, which owns package
 \ BASE85.
-\ Engine faults: -9850..-9859, thrown by the kernel (src/habu/habu2.f),
-\ declared at this file's end.
+\ Engine faults: -9850..-9859, thrown by the kernel (src/habu/habu2.f) and
+\ the interpreter (src/habu/interpreter.f), declared at this file's end.
 \ Finite binary64 text: -9860..-9869, minted in src/lib/f64-text.f, which owns
 \ package F64-TEXT.
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
@@ -875,3 +875,4 @@ seal-package
 -9851 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
 -9852 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
 -9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
+-9854 s" a computed 0 was thrown and unwound the text, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO

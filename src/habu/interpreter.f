@@ -3184,12 +3184,32 @@ variable OPENER-U
    SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
    c THROWN-HELP ;
 
-\ Ends the running text's inner catch with code c: 0 returns and 1..255 goes
-\ on as thrown. Any other code is passed on with a record: the one its throw
-\ carried, else one kept at the running token.
+\ The record, at the running token, of a computed 0 that unwound the text.
+: ZERO-AT ( -- )
+   E-THROW-ZERO THROWN-OPEN  E-THROW-ZERO THROWN-TEXT
+   SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
+   REJECTION:EMIT-STR ;
+
+\ True only between the running text's normal end and its LEFT, so LEFT tells
+\ a body that returned from one a computed 0 unwound.
+variable ENDED
+
+\ Ends the running text's inner catch with code c, by c and ENDED:
+\   0, ended      returns
+\   0, not ended  passes E-THROW-ZERO with a record kept at the running token
+\   1..255        goes on as thrown
+\   any other     passes c with the record its throw carried, else one kept at
+\                 the running token
 : LEFT ( n -- )
    {: c:n :}
-   c 0= if exit then
+   ENDED @ 0<> {: ended:bool :}
+   false ENDED !
+   c 0= if
+      ended if exit then
+      ZERO-AT REJECTION:SAVE  E-THROW-ZERO REJECTION:PASS
+   then
    c 1 255 BETWEEN? if c throw then
    REJECTION:CARRIED? 0= if c THROWN-AT REJECTION:SAVE then
    c REJECTION:PASS ;
@@ -3217,7 +3237,7 @@ private
    REC @ {: found:ptr :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS true ENDED ! ;] catch LEFT ;]
    catch {: code:n :}
    code 0= if
       f FRAME-UNLINK
@@ -3278,7 +3298,7 @@ public
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN true ENDED ! ;] catch LEFT ;]
    catch {: code:n :}
    code 0= if
       f FRAME-LEAVE
