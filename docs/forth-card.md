@@ -429,9 +429,9 @@ runs; `EFFECT:LOCAL` and `EFFECT:LOCAL@` declare and read a local, and
 An `EFFECT:type` ends with the load that built it, so no storage, field or
 payload holds one (`E-BAD-STORAGE`, a field or payload `E-BAD-DECLARATION`):
 build it where it is used.
-`['] W compile, ( [ R -- S ] -- )` appends a call of W, a word whose tick is
-a quotation (a primitive's tick is an `xt`, which `compile,` rejects), and
-`; ( -- )` ends the word.
+`literal ( n -- )` appends a number, `['] W compile, ( [ R -- S ] -- )`
+appends a call of W, a word whose tick is a quotation (a primitive's tick is
+an `xt`, which `compile,` rejects), and `; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and

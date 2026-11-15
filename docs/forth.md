@@ -2523,7 +2523,8 @@ sections above.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so
-  `postpone ;` ends the definition as its `;` would. `compile, ( [ R -- S ]
+  `postpone ;` ends the definition as its `;` would. `literal ( n -- )`
+  appends the number n, as its decimal text would. `compile, ( [ R -- S ]
   -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
