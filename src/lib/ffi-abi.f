@@ -1037,10 +1037,10 @@ private
 LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 
 \ One declaration's working state: a declaration word writes each cell before
-\ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
-\ zero, and the token cells rest outside every declaration word. Each word that
-\ can write a cell keeps this on every exit, a throw included (KEEP-REST); a
-\ throw while a declaration stays open keeps that declaration.
+\ it reads it. Outside the open state every cell rests at zero, and the token
+\ cells rest outside every declaration word. Each word that can write a cell
+\ keeps this on every exit, a throw included (KEEP-REST); a throw while a
+\ declaration stays open keeps that declaration.
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
 create TOK-BUF TOK-CAP allot
@@ -1066,11 +1066,23 @@ create RES-TEXT TOK-CAP allot              \ the result's type as DECLARED-EFFEC
 variable RES-TEXT-U
 variable CUR-LIB
 CUR-LIB ROLLBACK-CELLS:MARK
-TYPED-VARIABLE OPEN bool                   \ true while a declaration is open
+\ skipped: the driver cannot tell what the declaration holds, so its clauses
+\ are ignored and it closes without a plan. The load never skips.
+ENUM decl-state closed open skipped ;ENUM
+TYPED-VARIABLE DECL decl-state
+: CLOSED! ( -- ) construct decl-state closed DECL ! ;
+CLOSED!
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
+
+: OPEN? ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF false ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH ;
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
@@ -1094,7 +1106,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    0 VAR-START ! 0 STRUCT-BYTES ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
-   [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
+   [: OPEN? if REST-TOKENS else REST then ;] finally ;
 
 \ ---- the declaration token stream -----------------------------------------
 \ Tokens come from the caller's source, and a span lasts while the source's
@@ -1738,34 +1750,63 @@ private
       SCOPE-REJECT
    then ;
 
+: CLOSE-STATE ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF
+         s" ;FUNCTION with no declaration open"
+         s" open one with FUNCTION: NAME symbol ( inputs -- output )"
+         SYNTAX-REJECT
+      ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH
+   CLOSED! ;
+
 public
 
 \ Nothing is published before ;FUNCTION, and the row is registered as the word
 \ is built, so a refused declaration leaves no half-built word.
-: OPEN-FUNCTION ( -- )
-   [: parse-name ;] {: src :}
-   [: CHECK-SCOPE
-      OPEN @ if
+
+\ The read-head transition: answers the name token as the source gave it.
+: READ-FUNCTION ( [ -- ptr u8 n ] -- ptr u8 n )
+   {: src :}
+   [: OPEN? if
          s" FUNCTION: inside an open declaration"
          s" end the declaration before it with ;FUNCTION"
          SYNTAX-REJECT
       then
+      CLOSED!
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND ! 0 RES-NULLABLE !
-      src TOK@ NAME!
+      src TOK-SPAN NAME!
       src TOK@ SYM!
       src EFFECT
-      true OPEN ! ;] KEEP-REST ;
+      construct decl-state open DECL ! ;] KEEP-REST ;
+
+: OPEN-FUNCTION ( -- )
+   CHECK-SCOPE [: parse-name ;] READ-FUNCTION 2drop ;
 
 : CLOSE-FUNCTION ( -- )
-   [: OPEN @ 0= if
-         s" ;FUNCTION with no declaration open"
-         s" open one with FUNCTION: NAME symbol ( inputs -- output )"
-         SYNTAX-REJECT
-      then
-      false OPEN !
-      PLAN-CALL
-      EMIT ;] KEEP-REST ;
+   [: CLOSE-STATE if PLAN-CALL EMIT then ;] KEEP-REST ;
+
+\ The close transition without the word: the plan and its rejections run.
+: PLAN-FUNCTION ( -- )
+   [: CLOSE-STATE if PLAN-CALL drop drop drop then ;] KEEP-REST ;
+
+\ Sent by a driver that cannot tell what the declaration holds.
+: SKIP-FUNCTION ( -- )
+   [: construct decl-state skipped DECL ! ;] KEEP-REST ;
+
+: ABANDON-FUNCTION ( -- )
+   [: CLOSED! ;] KEEP-REST ;
+
+\ The texts DECLARED-EFFECT reads, in its order, with -- before the output.
+: DECLARED-TEXTS ( [ ptr u8 n -- ] -- )
+   {: put :}
+   ARG-N @ 0 ?do i ARG-TEXT$ put execute loop
+   s" --" put execute
+   RES-KIND @ R-NONE = if exit then
+   RES-TEXT RES-TEXT-U @ put execute ;
 
 private
 
@@ -1773,12 +1814,19 @@ private
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
 \ diagnostic would name the wrong declaration.
 : REJECT ( ptr u8 n ptr u8 n -- )
-   false OPEN !
+   CLOSED!
    SYNTAX-REJECT ;
 
 : NOT-OPEN ( -- )
    s" a clause outside a FUNCTION: declaration"
    s" write the clause between FUNCTION: and ;FUNCTION" REJECT ;
+
+: CLAUSE? ( -- bool )
+   DECL @ MATCH decl-state
+      closed OF NOT-OPEN ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+   ;MATCH ;
 
 : NO-STRUCT-CALL ( -- )
    s" this target has no struct call"
@@ -1808,7 +1856,6 @@ private
    REJECT ;
 
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
-   OPEN @ 0= if NOT-OPEN then
    idx 0 < idx ARG-N @ >= or if NO-INPUT then
    idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
    idx ARG-SBYTES@ 0 <> if TAKEN then
@@ -1828,7 +1875,7 @@ private
    s" C promotes a variadic float to double: declare it r" REJECT ;
 
 : VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
-   OPEN @ 0= if NOT-OPEN then
+   CLAUSE? 0= if exit then
    VAR-START @ -1 <> if VARIADIC-TWICE then
    STRUCT-BYTES @ 0 <> RECORDS? or if STRUCT-VARIADIC then
    fixed 1 < fixed ARG-N @ > or if FIXED-RANGE then
@@ -1851,7 +1898,7 @@ private
    then ;
 
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
-   OPEN @ 0= if NOT-OPEN then
+   CLAUSE? 0= if exit then
    HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
    bytes RESULT-CHECK
    VAR-START @ -1 <> if STRUCT-VARIADIC then
@@ -1864,7 +1911,7 @@ private
 
 \ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
-   OPEN @ 0= if NOT-OPEN then
+   CLAUSE? 0= if exit then
    HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
    idx CLAUSE-TARGET
    bytes 0 <= if

@@ -21701,6 +21701,9 @@ public
 \ The token the engine read last.
 : TOKEN$ ( -- ptr u8 n ) LAST-TOKEN @ data-base TKL-CELL + @ ;
 
+\ Restates the token read last, so a record placed at it names another token.
+: TOKEN! ( ptr u8 n -- ) data-base TKL-CELL + ! LAST-TOKEN ! ;
+
 \ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
 \ for the open file: an `evaluate` of a slice of the file reads file text, any
 \ other string does not. Only then does an error's place carry `:<line>`,
