@@ -29,13 +29,10 @@ require src/lib/time-cpu.f
 package SIGNATURE-NESTING
 
 $10000 constant CAP            \ bytes: the deepest text
-\ bytes: its record on stderr echoes it three times, as its line, the caret line
-\ under it and the signature note
-CAP 4 * constant ERR-CAP
 10000 constant CHILD-MS
 create SRC-BUF CAP allot
 create OUT CAP allot
-create ERR ERR-CAP allot
+create ERR CAP allot
 TYPED-VARIABLE SRC-U len
 
 : SRC-RESET ( -- )
@@ -153,7 +150,7 @@ variable ERR-U
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
 : REFUSES ( ptr u8 n -- )
    {: why:ptr whyu:n :}
-   SRC$ OUT CAP >LEN ERR ERR-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
@@ -227,7 +224,7 @@ public
    s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
    s" SN-IFS-33" 33 NESTED-IFS
    s" error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at most 32)" REFUSES
-   s" = evaluated: : SN-IFS-33 ( bool -- ) dup IF" SAID  s" one structure too deep" SAID
+   s" = evaluated: ... dup IF dup IF dup IF dup IF dup IF dup IF THEN THEN" SAID  s" one structure too deep" SAID
    s" 32 nested IFs check" T-LABEL
    s" SN-IFS-32" 32 NESTED-IFS
    SRC$ TEST-EVAL:RC 0 T=

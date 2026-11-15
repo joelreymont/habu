@@ -379,11 +379,41 @@ TKA-CELL RESERVED-PTR-U8-CELL RUNNING
 PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
 \ The token PLACE placed, t tu or the running token.
 PTR-VARIABLE SHOWN-A  variable SHOWN-U
+\ Bytes of a prose line or note shown: rustc's width when its output is not a
+\ terminal. A longer one shows a window, `...` in place of each cut end.
+140 constant WIDTH
+40 constant ROOM                        \ bytes shown before a windowed token
+variable NOTE-AT                        \ TEXT-LEN where the open note's text starts
 
+\ Whether byte c continues a UTF-8 character, taking no column of its own.
+: CONT? ( n -- bool )  192 and 128 = ;
+\ The offset at or before n of the bytes at a where a UTF-8 character starts.
+: CHAR-START ( ptr u8 n -- n ) {: a:ptr n:n :}
+   n BEGIN dup 0 > WHILE
+      dup a + c@ CONT? 0= IF EXIT THEN
+      1 -
+   REPEAT ;
+\ The offset of the first LF in the u bytes at a, else u.
+: LF-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ 10 = IF EXIT THEN
+      1 +
+   REPEAT ;
+\ A prose note shows one line of at most WIDTH bytes: past its first line or its
+\ first WIDTH - 3 bytes, the rest becomes `...`.
+: NOTE-CUT ( -- )
+   TEXT NOTE-AT @ + {: a:ptr :}
+   TEXT-LEN @ NOTE-AT @ - {: u:n :}
+   a u LF-AT {: f:n :}
+   f u =  u WIDTH <= and IF EXIT THEN
+   a  f WIDTH 3 - min  CHAR-START  NOTE-AT @ + TEXT-LEN !
+   s" ..." EMIT-STR ;
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
    PART @ NO-PART = IF EXIT THEN
-   JSON @ IF JSON-CLOSE ELSE 10 EMIT1 THEN ;
+   JSON @ IF JSON-CLOSE EXIT THEN
+   PART @ VALUE-PART = IF NOTE-CUT THEN
+   10 EMIT1 ;
 : BLANKS ( n -- ) {: k:n :}
    0 BEGIN dup k < WHILE 32 EMIT1 1 + REPEAT drop ;
 : DIGITS ( n -- n ) {: v:n :}
@@ -592,22 +622,50 @@ private
    PLACED @ IF s" source_line" FIELD  LINE-A @ LINE-U @ JSON-STRING THEN
    s" label" FIELD  JSON-OPEN ;
 \ The caret line copies the tabs in the line's first n bytes, before the token,
-\ so the carets line up.
+\ and a blank for each other character, so the carets line up.
 : LEAD ( ptr u8 n -- ) {: a:ptr k:n :}
    0 BEGIN dup k < WHILE
-      dup a + c@ 9 = IF 9 ELSE 32 THEN EMIT1
+      dup a + c@ {: c:n :}
+      c CONT? 0= IF c 9 = IF 9 ELSE 32 THEN EMIT1 THEN
       1 +
    REPEAT drop ;
-: CARETS ( n -- ) {: tu:n :}
-   tu 0= IF 1 ELSE tu THEN {: k:n :}
-   0 BEGIN dup k < WHILE 94 EMIT1 1 + REPEAT drop ;
+\ A caret under each character of the token t tu, one under an empty token.
+: CARETS ( ptr u8 n -- ) {: t:ptr tu:n :}
+   tu 0= IF 94 EMIT1 EXIT THEN
+   0 BEGIN dup tu < WHILE
+      dup t + c@ CONT? 0= IF 94 EMIT1 THEN
+      1 +
+   REPEAT drop ;
+\ The bytes s to e shown of the line a u whose token starts k bytes in: all of
+\ a line of at most WIDTH, else from ROOM bytes before the token, at most WIDTH
+\ with the `...` of each cut end; neither cut splits a UTF-8 character.
+: WINDOW ( ptr u8 n n -- n n ) {: a:ptr u:n k:n :}
+   u WIDTH <= IF 0 u EXIT THEN
+   k ROOM > IF k ROOM - ELSE 0 THEN {: s0:n :}
+   a s0 CHAR-START {: s:n :}
+   s 0 > IF WIDTH 6 - ELSE WIDTH 3 - THEN {: w:n :}
+   u s - w 3 + <= IF s u EXIT THEN
+   s  a s w + CHAR-START ;
+\ The line a u, whose token starts k bytes in, as its window.
+: SHOW-LINE ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   a u k WINDOW {: s:n e:n :}
+   s 0 > IF s" ..." EMIT-STR THEN
+   a s + e s - EMIT-STR
+   e u < IF s" ..." EMIT-STR THEN ;
+\ The carets under the token tu bytes long that starts k bytes into the line
+\ a u, up to its window's end.
+: SHOW-CARETS ( ptr u8 n n n -- ) {: a:ptr u:n k:n tu:n :}
+   a u k WINDOW {: s:n e:n :}
+   s 0 > IF 3 BLANKS THEN
+   a s + k s - LEAD
+   a k +  u WIDTH > IF  tu e k - > IF e k - ELSE tu THEN  ELSE tu THEN CARETS ;
 : PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
    PLACED @ 0= IF EXIT THEN
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
    MARGIN 124 EMIT1 10 EMIT1
-   AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
-   MARGIN s" | " EMIT-STR  LINE-A @ LEAD-U @ LEAD  tu CARETS ;
+   AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ LEAD-U @ SHOW-LINE  10 EMIT1
+   MARGIN s" | " EMIT-STR  LINE-A @ LINE-U @ LEAD-U @ tu SHOW-CARETS ;
 
 \ A note's key; its value follows.
 : NOTE-KEY ( ptr u8 n -- ) {: k:ptr ku:n :}
@@ -616,6 +674,7 @@ private
       k ku JSON-KEY  JSON-OPEN
    ELSE
       MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
+      TEXT-LEN @ NOTE-AT !
    THEN
    VALUE-PART PART ! ;
 \ The evaluated place: in JSON an object after the label, in prose its line
@@ -628,8 +687,9 @@ private
    125 EMIT1 ;
 : EVALUATED-PROSE ( -- )
    s" = evaluated: " {: k:ptr ku:n :}
-   MARGIN  k ku EMIT-STR  EVALUATED-A @ EVALUATED-U @ EMIT-STR  10 EMIT1
-   MARGIN  ku BLANKS  EVALUATED-A @ EVAL-LEAD-U @ LEAD  EVAL-TOKEN-U @ CARETS
+   EVALUATED-A @ EVALUATED-U @ EVAL-LEAD-U @ {: a:ptr u:n lead:n :}
+   MARGIN  k ku EMIT-STR  a u lead SHOW-LINE  10 EMIT1
+   MARGIN  ku BLANKS  a u lead EVAL-TOKEN-U @ SHOW-CARETS
    10 EMIT1 ;
 \ Ends the open text; the label's end writes the evaluated place, then the
 \ `word` note.
