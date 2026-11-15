@@ -112,8 +112,8 @@ variable LCALLBACKADDR
 package ENGINE-EMIT
 public
 variable LPROTWIDQ  variable LPROTWIDADD
-variable LDPBAD   \ DP-CHECK out-of-range die target (habu2.f EM-COMPILE-DIE)
-variable LBGROWFAIL   \ body text grow refused die target, x16 = the capacity tried (habu2.f EM-BODY-GROW-DIE)
+variable LDPBAD   \ DP-CHECK's out-of-range target: throws E-DATA-SPACE (habu2.f EM-COMPILE-DIE)
+variable LBGROWFAIL   \ the body text could not grow: throws E-BODY-TEXT (habu2.f EM-BODY-GROW-DIE)
 ;package
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
 \ BNDSET's raise leg calls, LFULL for the cannot-maintain exit, LREKEY for the
@@ -1760,21 +1760,19 @@ private
    7 DATA 0 LDR,  7 G-PUSH ;
 
 public
-\ Bound the DP heap before any allot , c, or definer stores a new DP. x15 is
-\ free on the refusal arm: a site carrying a live x15 (the string copies'
-\ literal base) needs it only on the returning arm, and it survives the write
-\ syscalls (the kernel preserves x2-x15).
+\ Bound the DP heap before any allot , c, or definer stores a new DP: outside
+\ it, LDPBAD throws E-DATA-SPACE.
 : DP-CHECK ( n -- )
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
    5 DATA BOOT:DP-FLOOR-CELL LDR,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
-      15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
+      LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
    5 DATA BOOT:DP-CEILING-CELL LDR,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
-      15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
+      LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
 private
@@ -4385,8 +4383,8 @@ package ENGINE-EMIT
    SP SP 144 ADDI,  RET, ;
 
 \ LBCS ( x11=a x12=u ) appends a run and a space to the body text, with a
-\ BODY-SOURCE row at base + cap. A refused map dies rc 71 at LBGROWFAIL before
-\ anything is stored, so the refusal is catchable inside evaluate.
+\ BODY-SOURCE row at base + cap. A map the system refuses throws E-BODY-TEXT at
+\ LBGROWFAIL before anything is stored.
 : EMIT-BCAP ( -- )
    LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
    LBL LBL {: grow:label gsub:label :}
