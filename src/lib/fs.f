@@ -73,6 +73,7 @@ $2F constant SLASH
 18 constant EXDEV
 20 constant ENOTDIR
 21 constant EISDIR
+22 constant EINVAL
 23 constant ENFILE
 24 constant EMFILE
 28 constant ENOSPC
@@ -115,8 +116,6 @@ $7FFFFFFF constant PREAD-MAX
 \ target's symbol is harmless: a row resolves its symbol at its first call.
 FUNCTION: STRERROR-CALL strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
-
-22 constant EINVAL
 
 : STRERROR ( n ^u8 n -- n )
    HB-TARGET-MACOS? if STRERROR-CALL exit then

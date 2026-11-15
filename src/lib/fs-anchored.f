@@ -1,10 +1,15 @@
-\ fs-anchored.f - descriptor-anchored lookup; a call owns one mapping, two fds.
-\ Each component opens relative to the live parent with O_NOFOLLOW (directories
-\ also O_DIRECTORY), so a replaced symlink cannot redirect a lookup and an open
-\ directory stays the anchor across a rename. Not covered: the anchor being the
-\ intended root, cross-root renames, hard links, mounts, content changes.
-\ STORAGE CLASS. CALLER-OWNED: OPEN-DIR's descriptors are the caller's.
+\ fs-anchored.f - descriptor-anchored lookup, and on Linux the opens, links,
+\ renames, removals, directories and stats of one name under a directory
+\ descriptor. A walk owns one mapping and two fds. Each component opens
+\ relative to the live parent with O_NOFOLLOW (directories also O_DIRECTORY),
+\ so a replaced symlink cannot redirect a lookup and an open directory stays
+\ the anchor across a rename. The walk does not prove the anchor is the
+\ intended root, nor guard a lookup against cross-root renames, hard links,
+\ mounts or content changes.
+\ STORAGE CLASS. CALLER-OWNED: every descriptor answered is the caller's.
+\ TASK-LOCAL: a name's NUL copy and TRY-STAT-AT's stat, in fs.f's band.
 require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/core/compile-reads.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -54,14 +59,19 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    work A-CUR-CELL A-CLOSE-SLOT {: second:n :}
    first 0<> if first else second then ;
 
-\ The primary cause was taken before cleanup's close calls replaced libc errno.
-: A-FINISH ( ^u8 NUM:alloc-byte-len n n -- )
+\ The call's code and its cause, 0 0 when it succeeded. The primary cause was
+\ taken before cleanup's close calls replaced libc errno.
+: A-SETTLE ( ^u8 NUM:alloc-byte-len n n -- n n )
    {: work:^ len:NUM:alloc-byte-len code:n cause:n :}
    work A-CLEANUP {: closing:n :}
    work len MEM:RELEASE-BYTES
-   code 0<> if cause CAUSE! code throw then
-   closing 0<> if closing CAUSE! E-FS-IO throw then
-   0 CAUSE! ;
+   code 0<> if code cause exit then
+   closing 0<> if E-FS-IO closing exit then
+   0 0 ;
+: A-FINISH ( ^u8 NUM:alloc-byte-len n n -- )
+   A-SETTLE {: code:n cause:n :}
+   cause CAUSE!
+   code 0<> if code throw then ;
 
 \ O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK|O_NOCTTY, READ-FILE-AT's last
 \ component. Darwin: xnu bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h
@@ -81,15 +91,16 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       path over + c@ SLASH = if exit then
       1+
    repeat ;
-: A-COMPONENT-OK ( ^u8 n n -- ) {: path:^ from:n stop:n :}
-   stop from = if E-FS-PATH throw then
-   stop from - 1 = if
-      path from + c@ DOT = if E-FS-PATH throw then
-   then
-   stop from - 2 = if
-      path from + c@ DOT = path from 1 + + c@ DOT = and
-      if E-FS-PATH throw then
-   then ;
+\ Whether path's bytes from up to stop are a name: not empty, . or ..
+: A-COMPONENT? ( ^u8 n n -- bool ) {: path:^ from:n stop:n :}
+   stop from - {: u:n :}
+   u 0= if false exit then
+   path from + {: name:^ :}
+   u 1 = if name c@ DOT <> exit then
+   u 2 = if name c@ DOT = name 1 + c@ DOT = and 0= exit then
+   true ;
+: A-COMPONENT-OK ( ^u8 n n -- )
+   A-COMPONENT? 0= if E-FS-PATH throw then ;
 : A-VALIDATE ( ^u8 n bool -- n )
    {: path:^ u:n base:bool :}
    path c@ SLASH = {: absolute:bool :}
@@ -155,6 +166,24 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    path u start work anchor FD>N false A-WALK
    anchor src u work ;
 
+\ The walk's descriptor, its code (0 when it opened) and that code's cause.
+: A-DIR-AT ( fd ^u8 n -- n n n ) {: anchor:fd src:^ u:n :}
+   COMPILE-READS:MISS
+   0 CAUSE!
+   A-MAP {: work:^ len:NUM:alloc-byte-len :}
+   anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
+   drop 2drop drop
+   ERRNO {: cause:n :}
+   work A-CUR@ {: opened:n :}
+   code 0= if -1 work A-CUR! then
+   opened work len code cause A-SETTLE ;
+
+\ TRY-OPEN-DIR-AT's cause for the walk's code: EINVAL for a refused path.
+: A-DIR-CAUSE ( n n -- n ) {: code:n cause:n :}
+   code E-FS-PATH = code E-FFI-NUL = or if EINVAL exit then
+   code E-FS-OPEN <> code E-FS-IO <> and if cause CAUSE! code throw then
+   cause ;
+
 : A-REGULAR ( ^u8 -- ) {: work:^ :}
    work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT ERRNO-FAIL then
    work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
@@ -191,7 +220,7 @@ public
 \ / for an absolute path, . for a relative one; the returned descriptor is the
 \ caller's. The AT words borrow their anchor and refuse absolute paths. An
 \ empty, negative or over-PATH-CAP path and an empty, repeated, trailing, . or
-\ .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE (.cache and a..b are
+\ .. component throw E-FS-PATH, a NUL E-FFI-NUL (.cache and a..b are
 \ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a refusal 0.
 : OPEN-DIR ( ^u8 n -- fd ) {: src:^ u:n :}
    COMPILE-READS:MISS
@@ -204,17 +233,18 @@ public
    code 0= if -1 work A-CUR! then
    work len code cause A-FINISH
    opened >FD ;
-: OPEN-DIR-AT ( fd ^u8 n -- fd ) {: anchor:fd src:^ u:n :}
-   COMPILE-READS:MISS
-   0 CAUSE!
-   A-MAP {: work:^ len:NUM:alloc-byte-len :}
-   anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
-   drop 2drop drop
-   ERRNO {: cause:n :}
-   work A-CUR@ {: opened:n :}
-   code 0= if -1 work A-CUR! then
-   work len code cause A-FINISH
+: OPEN-DIR-AT ( fd ^u8 n -- fd )
+   A-DIR-AT {: opened:n code:n cause:n :}
+   cause CAUSE!
+   code 0<> if code throw then
    opened >FD ;
+\ OPEN-DIR-AT's walk; none where it throws E-FS-OPEN or E-FS-IO, or a refusal
+\ with EINVAL. On Linux a symlink component is ENOTDIR (O_DIRECTORY first).
+: TRY-OPEN-DIR-AT ( fd ^u8 n -- option<fd> )
+   A-DIR-AT {: opened:n code:n cause:n :}
+   code 0= if 0 CAUSE! opened >FD OPTION:SOME exit then
+   code cause A-DIR-CAUSE CAUSE!
+   OPTION:NONE ;
 \ Reads the descriptor fstat found regular (else E-FS-STAT), probing one byte
 \ past a full span (excess is E-FS-CAPACITY); the span is unspecified after a
 \ throw.
@@ -232,5 +262,106 @@ public
 : CLOSE-DIR ( fd -- )
    0 CAUSE!
    FD>N A-CLOSE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
+
+
+HB-TARGET-LINUX-KERNEL? [if]
+private
+PROCESS-SYMBOLS
+FUNCTION: A-LINK-CALL linkat ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: A-MKDIR-CALL mkdirat ( n ^u8 n -- i32 ) ;FUNCTION
+
+\ Open flags: include/uapi/asm-generic/fcntl.h; arm64's asm/fcntl.h
+\ overrides O_DIRECTORY and O_NOFOLLOW.
+2 constant A-RDWR
+$80000 constant A-CLOEXEC
+$200000 constant A-PATH-ONLY                 \ O_PATH
+$400000 constant A-TMPFILE                   \ __O_TMPFILE
+$1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
+: A-NOFOLLOW ( -- n )
+   HB-TARGET-LINUX-X86-64? if $20000 else $8000 then ;
+: A-DIRECTORY ( -- n )
+   HB-TARGET-LINUX-X86-64? if $10000 else $4000 then ;
+: A-ENTRY-FLAGS ( -- n )
+   A-PATH-ONLY A-NOFOLLOW or A-CLOEXEC or ;
+\ O_TMPFILE is __O_TMPFILE with O_DIRECTORY, and needs write access.
+: A-TEMP-FLAGS ( -- n )
+   A-TMPFILE A-DIRECTORY or A-RDWR or A-NOFOLLOW or A-CLOEXEC or ;
+
+: A-NAME? ( ^u8 n -- bool ) {: name:^ u:n :}
+   u 0 <= u PATH-CAP > or if false exit then
+   name u 0 A-COMPONENT-END u <> if false exit then
+   name u NUL-AT u <> if false exit then
+   name 0 u A-COMPONENT? ;
+
+: A-REFUSE ( -- ) EINVAL CAUSE! ;
+: A-DONE ( n -- bool )
+   0= if 0 CAUSE! true exit then
+   FFI:ERRNO CAUSE! false ;
+: A-OPENED ( n -- option<fd> ) {: rc:n :}
+   rc 0 < if FFI:ERRNO CAUSE! OPTION:NONE exit then
+   0 CAUSE! rc >FD OPTION:SOME ;
+
+: A-OPEN-NAME ( fd ^u8 n n -- option<fd> )
+   {: dir:fd name:^ u:n flags:n :}
+   COMPILE-READS:MISS
+   name u A-NAME? 0= if A-REFUSE OPTION:NONE exit then
+   dir FD>N name u >PATHZ flags OPEN-AT-CALL A-OPENED ;
+: A-UNLINK ( fd ^u8 n n -- bool ) {: dir:fd name:^ u:n flags:n :}
+   name u A-NAME? 0= if A-REFUSE false exit then
+   dir FD>N name u >PATHZ flags UNLINK-AT-CALL A-DONE ;
+
+: A-RENAME ( fd ^u8 n fd ^u8 n n -- bool )
+   {: from:fd src:^ su:n to:fd dst:^ du:n flags:n :}
+   src su A-NAME? dst du A-NAME? and 0= if A-REFUSE false exit then
+   from FD>N src su >PATHZ to FD>N dst du >PATHZ2 flags
+   RENAMEAT2-CALL A-DONE ;
+
+public
+\ Descriptors are borrowed; opens add O_NOFOLLOW|O_CLOEXEC. A name empty, . or
+\ .., over PATH-CAP, or with / or NUL is EINVAL. FS:ERRNO: the errno, else 0.
+
+\ O_RDONLY|O_NONBLOCK; a symlink at the name is ELOOP.
+: TRY-OPEN-READ-AT ( fd ^u8 n -- option<fd> )
+   A-FILE-FLAGS A-OPEN-NAME ;
+\ An existing file, O_RDWR|O_NONBLOCK, a symlink ELOOP; nothing is created.
+: TRY-OPEN-WRITE-AT ( fd ^u8 n -- option<fd> )
+   A-FILE-FLAGS A-RDWR or A-OPEN-NAME ;
+\ O_PATH: any kind of entry, a symlink itself included, pinning its inode.
+: TRY-OPEN-ENTRY-AT ( fd ^u8 n -- option<fd> )
+   A-ENTRY-FLAGS A-OPEN-NAME ;
+\ An unnamed regular file of mode 0600 in the directory, which TRY-LINK-AT
+\ names. A failure is E-FS-OPEN with its errno in FS:ERRNO.
+: TEMP-AT ( fd -- fd ) {: dir:fd :}
+   dir FD>N S\" .\z" drop A-TEMP-FLAGS MODE-PRIVATE-FILE OPENAT-CALL
+   dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
+   0 CAUSE! >FD ;
+\ Names the open file in the directory; an existing name is EEXIST.
+: TRY-LINK-AT ( fd fd ^u8 n -- bool ) {: file:fd dir:fd name:^ u:n :}
+   name u A-NAME? 0= if A-REFUSE false exit then
+   file FD>N S\" \z" drop dir FD>N name u >PATHZ
+   A-EMPTY-PATH A-LINK-CALL A-DONE ;
+\ Source then target; an existing target is replaced.
+: TRY-RENAME-AT ( fd ^u8 n fd ^u8 n -- bool )
+   0 A-RENAME ;
+\ An existing target is EEXIST, both entries kept.
+: TRY-RENAME-NEW-AT ( fd ^u8 n fd ^u8 n -- bool )
+   NO-REPLACE A-RENAME ;
+: TRY-REMOVE-FILE-AT ( fd ^u8 n -- bool )
+   0 A-UNLINK ;
+\ An empty directory.
+: TRY-REMOVE-DIR-AT ( fd ^u8 n -- bool )
+   AT-REMOVEDIR A-UNLINK ;
+\ The last n is the new directory's mode, before the umask.
+: TRY-MAKE-DIR-AT ( fd ^u8 n n -- bool ) {: dir:fd name:^ u:n mode:n :}
+   name u A-NAME? 0= if A-REFUSE false exit then
+   dir FD>N name u >PATHZ mode A-MKDIR-CALL A-DONE ;
+\ The entry itself, never a symlink's target, into the buffer STAT-MODE@
+\ and the rest read.
+: TRY-STAT-AT ( fd ^u8 n -- bool ) {: dir:fd name:^ u:n :}
+   COMPILE-READS:MISS
+   name u A-NAME? 0= if A-REFUSE false exit then
+   dir FD>N name u >PATHZ STAT-BUF AT-NOFOLLOW STAT-AT-CALL
+   A-DONE dup if LIBC>STAT then ;
+[then]
 
 ;package
