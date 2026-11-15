@@ -1665,12 +1665,13 @@ private
    RAX ENGINE-ERROR:OVERLAY-OPEN IMM32,  RAX ASM-SINK ENC-PUSH
    COMPILE-DIE-LBL JMP,
    DPBAD-LBL X64CODE:LBL,
-   RAX DATA-REG DATA-START MEM-OFF ASM-SINK ENC-LEA
+   RAX BOOT:DP-FLOOR-CELL CELL@,
    R8 RDI ASM-SINK ENC-MOV-RR  R8 RAX ASM-SINK ENC-SUB-RR
    head DPBAD-HEAD$ nip STDERR-WRITE,
    RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
    of DPBAD-OF$ nip STDERR-WRITE,
-   RAX DP-CEILING DATA-START - IMM64,  DIAG-U,
+   RAX BOOT:DP-CEILING-CELL CELL@,  RCX BOOT:DP-FLOOR-CELL CELL@,
+   RAX RCX ASM-SINK ENC-SUB-RR  DIAG-U,
    unit DPBAD-UNIT$ nip STDERR-WRITE,
    RAX DPBAD-RC IMM32,  RAX ASM-SINK ENC-PUSH
    COMPILE-DIE-LBL X64CODE:LBL,
@@ -3076,15 +3077,12 @@ public
 
 private
 
-\ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
-\ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
-\ it with rdi in hand. The compares are signed, as the ARM64 ones are. It
-\ clobbers rax. DP-CEILING exceeds a disp32 (DATA-SIZE is 2^38), so the upper
-\ bound is a 64-bit immediate added to DATA.
+\ The linker moves the heap bounds with DP into its build space.
+\ Refuse rdi outside those bounds, preserving it for the diagnostic.
 : DP-CHECK, ( -- )
-   RAX DATA-REG DATA-START MEM-OFF ASM-SINK ENC-LEA
+   RAX BOOT:DP-FLOOR-CELL CELL@,
    RDI RAX ASM-SINK ENC-CMP-RR  C-L DPBAD-LBL JCC,
-   RAX DP-CEILING IMM64,  RAX DATA-REG ASM-SINK ENC-ADD-RR
+   RAX BOOT:DP-CEILING-CELL CELL@,
    RDI RAX ASM-SINK ENC-CMP-RR  C-G DPBAD-LBL JCC, ;
 
 \ `allot ( n -- )`, the twin of habu1.f BALLOT: a positive count zeroes the
