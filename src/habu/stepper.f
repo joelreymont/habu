@@ -73,8 +73,8 @@ variable SLEN  variable SPOS  variable STEPPING
    0 SOUT u ;
 
 
-\ Stepping is over, and the last token it handed out is spent: both mappings go
-\ before the next line, so an image saved from that line holds none.
+\ Stepping is over and the last token it handed out is spent, so both mappings
+\ can go before the next line.
 : S-LINE ( -- ptr u8 n )
    SBUF-RELEASE SOUT-RELEASE RD-LINE ;
 
