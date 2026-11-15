@@ -12,7 +12,8 @@ private
 CAST: >DRIVER-CURSOR ( ptr u8 -- ptr JSON:cursor )
 
 : DRIVER-CURSOR ( ptr ARENA:arena -- ptr JSON:cursor )
-   JSON:CURSOR-BYTES [: >DRIVER-CURSOR JSON:READ-DISPOSE ;]
+   [type] JSON:cursor width>n
+   [: >DRIVER-CURSOR JSON:READ-DISPOSE ;]
       ARENA:ALLOC-DISPOSE drop >DRIVER-CURSOR ;
 
 : DRIVER-TEXT ( JSON:reader ptr ARENA:arena n

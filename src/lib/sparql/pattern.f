@@ -89,8 +89,6 @@ defer SUBQUERY ( ptr syntax -- n )
       state N-PATH text size left right OPERATOR-NODE
    repeat state UNNEST ;
 
-' READ-PATH is PATH
-
 : VERB ( ptr syntax -- n )
    {: state :}
    state TOKEN-K T-VAR = if state READ-TERM
@@ -138,8 +136,6 @@ defer SUBQUERY ( ptr syntax -- n )
    {: state :} state NEST
    state GRAPH-NODE-BODY state UNNEST ;
 
-' READ-GRAPH-NODE is GRAPH-NODE
-
 : VERB? ( ptr syntax -- bool )
    {: state :}
    state TOKEN-K dup T-IRI = over T-NAME = or swap T-VAR = or
@@ -164,8 +160,6 @@ defer SUBQUERY ( ptr syntax -- n )
       then
       state s" ;" ACCEPT$ 0=
    until ;
-
-' READ-PROPERTIES is PROPERTY-LIST
 
 : TRIPLES ( ptr syntax -- )
    {: state :}
@@ -301,6 +295,12 @@ defer SUBQUERY ( ptr syntax -- n )
       state group NODE NODE-A !
    outer state SYNTAX-GROUP ! state UNNEST group ;
 
-' READ-GROUP is GROUP-PATTERN
+: INSTALL-PATTERN ( -- )
+   [: READ-PATH ;] is PATH
+   [: READ-GRAPH-NODE ;] is GRAPH-NODE
+   [: READ-PROPERTIES ;] is PROPERTY-LIST
+   [: READ-GROUP ;] is GROUP-PATTERN ;
+
+INSTALL-PATTERN
 
 ;package

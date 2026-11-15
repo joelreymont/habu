@@ -205,8 +205,6 @@ private
    state SELECT-QUERY {: query:n :}
    state query NODE-C@ 0<> if E-SYNTAX throw then query ;
 
-' SELECT-SUBQUERY is SUBQUERY
-
 : ASK-QUERY ( ptr syntax -- n )
    {: state :}
    state N-ASK ADD-NODE {: query:n :}
@@ -255,5 +253,10 @@ private
 
 : PARSE ( ptr u8 n ptr u8 n ptr ARENA:arena -- ptr syntax )
    0 swap PARSE-UNTIL ;
+
+: INSTALL-PARSER ( -- )
+   [: SELECT-SUBQUERY ;] is SUBQUERY ;
+
+INSTALL-PARSER
 
 ;package

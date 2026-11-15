@@ -53,10 +53,10 @@ SERVICE throws `E-SERVICE`, and SERVICE SILENT preserves its input.
 
 ## Verification boundary
 
-This is source under development, not a new conformance result. The former
-Rust engine's recorded 839/855 score does not validate this implementation.
-Native load, PostgreSQL execution and the pinned W3C profile must be rerun
-with a current T0 Habu executable. Codepoint escapes are decoded before
+Qualify native load, PostgreSQL execution and the pinned W3C profile with
+the T0 executable intended for deployment. The external harness evaluates
+the compiler's SQL; public result writing and MCP need separate checks.
+Codepoint escapes are decoded before
 lexing, including outside strings and IRIs. Complete RFC 3987 IRI validation
 and backend XPath/IEEE edge cases still require execution evidence. These
 limits are not a new SPARQL profile.
@@ -69,6 +69,6 @@ bin/hb --load tools/sparql-compile.f -- batch.json test_backend </dev/null
 ```
 
 The [external W3C harness](../../../test/sparql/README.md) uses those statements
-without evaluating SPARQL itself. Its historical fixture/comparison functions
-remain unchanged. The obsolete Rust crate, ABI and evaluator are removed;
+without evaluating SPARQL itself. Its fixture/comparison functions remain
+unchanged. The obsolete Rust crate, ABI and evaluator are removed;
 there is no separate query executable or library to build.

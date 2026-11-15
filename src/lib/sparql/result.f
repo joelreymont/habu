@@ -58,7 +58,8 @@ CAST: >CURSOR ( ptr u8 -- ptr JSON:cursor )
 
 \ The arena closes a reader even when malformed backend JSON throws.
 : CURSOR ( ptr ARENA:arena -- ptr JSON:cursor )
-   JSON:CURSOR-BYTES [: >CURSOR JSON:READ-DISPOSE ;]
+   [type] JSON:cursor width>n
+   [: >CURSOR JSON:READ-DISPOSE ;]
       ARENA:ALLOC-DISPOSE drop >CURSOR ;
 
 : MEMBER$ ( ptr u8 n ptr u8 n ptr ARENA:arena -- ptr u8 n )

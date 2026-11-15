@@ -103,8 +103,6 @@ defer CHECK-GROUPED ( ptr syntax n n -- )
    state expression aggregates EXPRESSION-CHECK-BODY
    state UNNEST ;
 
-' CHECK-EXPRESSION is EXPRESSION-CHECK
-
 : TRIPLE-SCOPE ( ptr syntax n -- n )
    {: state triple:n :}
    state state triple NODE-A@ 0 SCOPE-ADD
@@ -168,8 +166,6 @@ defer CHECK-GROUPED ( ptr syntax n n -- )
    {: state pattern:n :} state NEST
    state pattern PATTERN-SCOPE-BODY state UNNEST ;
 
-' PATTERN-SCOPE is SCOPE
-
 : CONTAINS-AGGREGATE-BODY ( ptr syntax n -- bool )
    {: state expression:n :}
    expression 0= if false exit then
@@ -197,8 +193,6 @@ defer CHECK-GROUPED ( ptr syntax n n -- )
 : CONTAINS-AGGREGATE ( ptr syntax n -- bool )
    {: state expression:n :} state NEST
    state expression CONTAINS-AGGREGATE-BODY state UNNEST ;
-
-' CONTAINS-AGGREGATE is CONTAINS-AGGREGATE?
 
 : MODIFIER-AGGREGATE? ( ptr syntax n -- bool )
    {: state list:n :}
@@ -255,8 +249,6 @@ defer CHECK-GROUPED ( ptr syntax n n -- )
 : GROUPED-CHECK ( ptr syntax n n -- )
    {: state expression:n grouped:n :} state NEST
    state expression grouped CHECK-GROUPED-BODY state UNNEST ;
-
-' GROUPED-CHECK is CHECK-GROUPED
 
 : GROUP-BY-NODE ( ptr syntax n -- n )
    {: state query:n :}
@@ -334,6 +326,13 @@ defer CHECK-GROUPED ( ptr syntax n n -- )
    state query grouped projected aggregate QUERY-MODIFIERS
    projected ;
 
-' CHECK-QUERY is QUERY-SCOPE
+: INSTALL-VALIDATION ( -- )
+   [: CHECK-EXPRESSION ;] is EXPRESSION-CHECK
+   [: PATTERN-SCOPE ;] is SCOPE
+   [: CONTAINS-AGGREGATE ;] is CONTAINS-AGGREGATE?
+   [: GROUPED-CHECK ;] is CHECK-GROUPED
+   [: CHECK-QUERY ;] is QUERY-SCOPE ;
+
+INSTALL-VALIDATION
 
 ;package

@@ -221,9 +221,7 @@ STRUCTURE path-work DERIVE addr
    {: state text size:n :}
    state text size IRI-SPLIT {: ref :}
    ref IRI-SCHEME-SIZE @ 0<> if
-      state ref IRI-PATH @ ref IRI-PATH-SIZE @ REMOVE-DOTS
-      ref IRI-PATH-SIZE ! ref IRI-PATH !
-      state ref IRI-JOIN exit
+      text size exit
    then
    state state SYNTAX-BASE @ state SYNTAX-BASE-SIZE @
       IRI-SPLIT {: base :}

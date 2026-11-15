@@ -147,8 +147,6 @@ private
    {: plan path:n :} plan TREE NEST
    plan path PATH-SQL-BODY plan TREE UNNEST ;
 
-' PATH-SQL is SQL-PATH
-
 : PATH-ENDPOINT+ ( ptr plan n n ptr u8 n -- )
    {: plan term:n input:n column size:n :}
    plan term VARIABLE? if
@@ -179,6 +177,10 @@ private
    plan subject object s" t.s=t.o" REPEATED-VAR+
    plan CTE-END relation ;
 
-' PATH-TRIPLE-SQL is PATH-TRIPLE
+: INSTALL-SQL-PATH ( -- )
+   [: PATH-SQL ;] is SQL-PATH
+   [: PATH-TRIPLE-SQL ;] is PATH-TRIPLE ;
+
+INSTALL-SQL-PATH
 
 ;package

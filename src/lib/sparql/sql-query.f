@@ -38,8 +38,6 @@ defer COLLECT-AGGREGATES ( ptr syntax n n -- n )
    {: state expression:n found:n :} state NEST
    state expression found COLLECT-AGGREGATES-BODY state UNNEST ;
 
-' QUERY-COLLECT-AGGREGATES is COLLECT-AGGREGATES
-
 : QUERY-AGGREGATES ( ptr syntax n -- n )
    {: state query:n :}
    state state query NODE-A@ 0 COLLECT-AGGREGATES
@@ -263,6 +261,10 @@ defer COLLECT-AGGREGATES ( ptr syntax n n -- n )
    plan s" SELECT u,v FROM(" SQL+ plan child SQL$ SQL+
    plan s" )subquery" SQL+ plan CTE-END relation ;
 
-' SUBQUERY-SQL is SQL-QUERY
+: INSTALL-SQL-QUERY ( -- )
+   [: QUERY-COLLECT-AGGREGATES ;] is COLLECT-AGGREGATES
+   [: SUBQUERY-SQL ;] is SQL-QUERY ;
+
+INSTALL-SQL-QUERY
 
 ;package

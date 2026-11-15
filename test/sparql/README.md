@@ -60,8 +60,8 @@ cap. `--syntax-only` runs the 316 syntax cases without a database.
 
 ## Result boundary
 
-No result is recorded for this Habu/PostgreSQL replacement yet. A compiler
-load failure is an audit failure, not a skipped test or a conformance score.
+Every report identifies its compiler, source hashes and PostgreSQL version.
+A compiler load failure is an audit failure, not a skipped test or a score.
 The adapter covers Habu parsing/SQL construction and PostgreSQL evaluation;
 it does not execute the public Habu result writer or MCP transport.
 

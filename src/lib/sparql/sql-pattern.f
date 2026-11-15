@@ -371,8 +371,6 @@ defer GROUP-SQL ( ptr plan n n bool -- n )
       repeat drop
    then ;
 
-' READ-GROUP-SQL is GROUP-SQL
-
 : PATTERN-SQL-BODY ( ptr plan n n -- n )
    {: plan pattern:n input:n :} plan TREE {: state :}
    state pattern NODE-K case
@@ -402,6 +400,10 @@ defer GROUP-SQL ( ptr plan n n bool -- n )
    {: plan pattern:n input:n :} plan TREE NEST
    plan pattern input PATTERN-SQL-BODY plan TREE UNNEST ;
 
-' PATTERN-SQL is SQL-PATTERN
+: INSTALL-SQL-PATTERN ( -- )
+   [: READ-GROUP-SQL ;] is GROUP-SQL
+   [: PATTERN-SQL ;] is SQL-PATTERN ;
+
+INSTALL-SQL-PATTERN
 
 ;package

@@ -196,6 +196,9 @@ private
    {: plan node:n :} plan TREE NEST
    plan node EXPRESSION-BODY+ plan TREE UNNEST ;
 
-' EXPRESSION+ is SQL-EXPRESSION
+: INSTALL-SQL-EXPRESSION ( -- )
+   [: EXPRESSION+ ;] is SQL-EXPRESSION ;
+
+INSTALL-SQL-EXPRESSION
 
 ;package

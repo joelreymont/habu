@@ -212,8 +212,6 @@ defer GROUP-PATTERN ( ptr syntax -- n )
       state left precedence INFIX compared precedence 3 = or
    repeat drop state UNNEST ;
 
-' READ-EXPRESSION is EXPRESSION
-
 : CONSTRAINT ( ptr syntax -- n )
    {: state :}
    state s" (" ACCEPT$ if
@@ -231,5 +229,10 @@ defer GROUP-PATTERN ( ptr syntax -- n )
    state READ-TERM {: name:n :}
    state s" )" EXPECT$
    state N-ALIAS value name BINARY-NODE ;
+
+: INSTALL-EXPRESSION ( -- )
+   [: READ-EXPRESSION ;] is EXPRESSION ;
+
+INSTALL-EXPRESSION
 
 ;package
