@@ -1273,12 +1273,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
    s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
 
-\ two.f's build, refused at h.f's line 1 since w.f's word holds the name of FILE-OBJECTS-CL's
+\ two.f's build, refused at h.f's FILE-OBJECTS-CL since w.f's word holds the name of its
 \ clause. Answers its exit code.
 : CLAUSE-REFUSED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-c" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-CL;does`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ s" /h.f:1:33" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ S\" /h.f:1:3\n" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build refuses the clause's name" LABEL  named TTRUE
    rc ;
