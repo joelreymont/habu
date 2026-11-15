@@ -1021,7 +1021,8 @@ STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE
 
 \ 18. BUFFER name N: N bytes inline from the next slot, in whole cells; the record
 \     stays whole cells and the fields around the bytes keep theirs. The count
-\     is a number literal above 0, judged at declaration.
+\     is a number literal above 0, judged at declaration. DERIVE addr answers
+\     the bytes as a `SPAN:span<u8>` of N bytes from the field's address.
 DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
 STRUCTURE sdbuf
    DERIVE addr
@@ -1035,9 +1036,14 @@ SDBUF:CELLS 4 T=                                      \ a, ceil(13 / CELL) for b
 SDBUF:BYTES SDBUF:CELLS CELL * T=
 : SDB-GAP ( -- n ) 0 SDB-BUF SDBUF:C NULL-PTR -  0 SDB-BUF SDBUF:A NULL-PTR -  - ;
 SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
+: SDB-BYTES ( -- ptr u8 n ) 0 SDB-BUF SDBUF:B SPAN:$ ;
+: SDB-N ( -- n ) 0 SDB-BUF SDBUF:B SPAN:LEN ;
+SDB-N 13 T=
+: SDB-AT ( -- n ) SDB-BYTES drop NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
+SDB-AT CELL T=                                        \ b starts one cell into the record
 : SDB-W ( -- ) 5 0 0 6 SDBUF:MAKE 0 SDB-BUF ! ;      \ b's cells are MAKE's middle two
-: SDB-FILL ( -- ) 0 SDB-BUF SDBUF:B {: p:ptr :} 13 0 ?do 255 p i + c! loop ;
-: SDB-LAST ( -- n ) 0 SDB-BUF SDBUF:B 12 + c@ ;
+: SDB-FILL ( -- ) SDB-BYTES {: p:ptr u:n :} u 0 ?do 255 p i + c! loop ;
+: SDB-LAST ( -- n ) SDB-BYTES drop 12 + c@ ;
 SDB-W SDB-FILL
 SDB-LAST 255 T=
 0 SDB-BUF SDBUF:A @ 5 T=                              \ 13 bytes through b leave a and c
@@ -1058,8 +1064,7 @@ s" STRUCTURE sdbname BUFFER b SDB-LEN ;STRUCTURE" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdbname': buffer byte count must be a number above 0 at 'SDB-LEN'"
 DECL-DIAG:HAS? TTRUE
 
-\ A derived eq or hash reads whole cells, past the count in a buffer's last
-\ cell, and init needs a fixed-cell record: each is refused with a buffer.
+\ DERIVE eq, hash and init are each refused with a buffer.
 DECL-DIAG:PROSE
 s" STRUCTURE sdbeq DERIVE eq FIELD a n BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 7119 T=
 s" habu: bad structure declaration 'sdbeq': derive eq cannot compare a buffer at 'b'"
@@ -1085,7 +1090,8 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ MAKE takes one item per FIELD and one per buffer cell, and its effect holds
-\ EFFECT-DEPTH-MAX (4096) at most: the clause that passes it is refused E-CAP.
+\ EFFECT-DEPTH-MAX (4096) at most: the clause that passes it is refused
+\ E-TDECL-CAP.
 package SDBIG
 $10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
 create SRC CAP allot
@@ -1115,7 +1121,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdbover FIELD a n BUFFER b 32761 ;STRUCTURE" TEST-EVAL:RC 7118 T=
 s" habu: bad structure declaration 'sdbover': record takes more than 4096 items to make at '32761'"
 DECL-DIAG:HAS? TTRUE
-\ A count whose cells would not fit a cell is refused before any is counted.
+\ A count past the room is refused before its cells are counted.
 DECL-DIAG:PROSE
 s" STRUCTURE sdbhuge BUFFER b $7FFFFFFFFFFFFFF0 ;STRUCTURE" TEST-EVAL:RC 7118 T=
 s" habu: bad structure declaration 'sdbhuge': record takes more than 4096 items to make at '$7FFFFFFFFFFFFFF0'"

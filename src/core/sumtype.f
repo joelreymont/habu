@@ -1659,7 +1659,8 @@ public
 \ One child word per field plus AT / BYTES / CELLS, in the family's own
 \ spelling, each made by the engine's CHILD-RUN from its CHILD-ABI shape and
 \ parameter: no text, so no word of the declaring package can capture one. A
-\ field's parameter is its committed field id, AT's the family id; BYTES and
+\ field's parameter is its committed field id, a BUFFER field's child a SPAN
+\ and any other's a FIELD; AT's parameter is the family id; BYTES and
 \ CELLS are numbers. Generation runs at commit: a field id is an authority only
 \ once TYPE-FIELD has committed the row, which the runner's commit order
 \ (DECL-EVENT before the address surface) guarantees.
@@ -1674,7 +1675,8 @@ private
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fam  fs i + PF-NAME$  TDECL-ADDR-NAME
-      CHILD-ABI:FIELD  fs i +  xt execute
+      fs i + TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF CHILD-ABI:SPAN ELSE CHILD-ABI:FIELD THEN
+      fs i +  xt execute
    loop
    fam s" at" TDECL-ADDR-NAME  CHILD-ABI:INDEX fam  xt execute
    fam s" bytes" TDECL-ADDR-NAME

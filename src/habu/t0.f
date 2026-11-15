@@ -2010,6 +2010,7 @@ variable SCAN-LO                     \ the ordinal of its first row
       routine OF NPUB:PUBLISH-RAW ENDOF
       getter OF NPUB:PUBLISH-RAW ENDOF
       setter OF NPUB:PUBLISH-RAW ENDOF
+      bytes OF NPUB:PUBLISH-RAW ENDOF
    ;MATCH ;
 
 : HOSTED ( [ -- ] -- )
@@ -2076,7 +2077,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    kind COMP-BODY:index COMP-BODY:EQ or
    kind COMP-BODY:routine COMP-BODY:EQ or
    kind COMP-BODY:getter COMP-BODY:EQ or
-   kind COMP-BODY:setter COMP-BODY:EQ or ;
+   kind COMP-BODY:setter COMP-BODY:EQ or
+   kind COMP-BODY:bytes COMP-BODY:EQ or ;
 
 \ A getter's view is on top, its base under its bound: it pushes the field
 \ FID's cells, lowest first, from the base plus the field's offset.
@@ -2100,6 +2102,9 @@ variable SCAN-LO                     \ the ordinal of its first row
    loop
    k negate EMIT-DSP+ ;
 
+\ A buffer child's value is its field id: it adds the field's offset to the
+\ record pointer on top and pushes the field's byte count, base below length
+\ as SPAN:MAKE lays a span.
 : FIXED-BODY ( -- )
    FIXED-VAL @ {: val:n :}
    RESET-STATE
@@ -2128,6 +2133,11 @@ variable SCAN-LO                     \ the ordinal of its first row
       ENDOF
       getter OF val GET-CELLS  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
       setter OF val SET-CELLS  EMIT-RETURN  EMIT-CLOSE ENDOF
+      bytes OF
+         val TYPE-FIELD:BYTE-OFF@ PUSH-CONST  [: + ;] OP-ADD true ALU2
+         val TYPE-FIELD:BYTES@ PUSH-CONST
+         SPILL-ALL  EMIT-RETURN  EMIT-CLOSE
+      ENDOF
    ;MATCH ;
 
 : FIXED-LOWER ( -- )

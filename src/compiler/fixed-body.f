@@ -5,12 +5,14 @@
 \ field child's offset adds its number to the top cell, an index child's index
 \ pops n and adds n times its number to the pointer below, a routine pushes
 \ its data address and calls its fixed routine, a getter pushes its field's
-\ cells read from the base of the view on top and a setter stores them there;
-\ compiled is an ordinary body.
+\ cells read from the base of the view on top and a setter stores them there,
+\ a bytes child adds its BUFFER field's offset to the top cell and pushes its
+\ byte count; compiled is an ordinary body. A new kind goes last: a kind's
+\ number is its order.
 
 require src/lib/prelude.f
 
 package COMP
 public
-ENUM body DERIVE eq compiled value address defer cast offset index routine getter setter ;ENUM
+ENUM body DERIVE eq compiled value address defer cast offset index routine getter setter bytes ;ENUM
 ;package

@@ -426,7 +426,7 @@ SD-QUOT-INSTALL
    num-parse {: v:n flt:bool ok:bool :}
    ok 0= flt or v 1 < or IF
       s" buffer byte count must be a number above 0" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ bytes: a cell count could overflow
+   v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
 : EMIT-BUFFER ( ptr u8 n n -- ) {: na:ptr nu:n bytes:n :}
    bytes 1 - CELL / 1 + {: fw:n :}
@@ -439,7 +439,7 @@ SD-QUOT-INSTALL
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
 \ Derived eq and hash compare and hash whole cells, and a buffer's last cell
-\ holds bytes past its count, so neither may read one. DERIVE precedes the
+\ may hold bytes past its count, so neither may read one. DERIVE precedes the
 \ fields (HEADER-ORDER): the family's derive flags are final here.
 : BUFFER-DERIVABLE ( -- )
    FAM @ TFAM-DERIVE-EQ? IF

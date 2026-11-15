@@ -2335,6 +2335,7 @@ variable DEF-VALUE
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
    shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
    shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
+   shape CHILD-ABI:SPAN = if COMP-BODY:bytes 0 exit then
    shape CHILD-ABI:MAKE =
    shape CHILD-ABI:UNMAKE = or
    shape CHILD-ABI:NOMINAL-IN = or

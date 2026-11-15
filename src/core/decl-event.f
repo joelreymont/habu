@@ -543,10 +543,11 @@ public
 
 \ Public API. CURRENT answers the frame the declaration savepoint opened and
 \ rejects outside one; OPEN is the standalone interface. The event words and the
-\ provisional FIELD-SCHEMA@ / FIELD-CELLS@ / FIELD-FLAGS@ / PAYLOAD-* queries are legal only between OPEN and
-\ COMMIT or ROLLBACK, take and return the same token, and throw E-DEV-TX unless
-\ it is the innermost open frame. The outer release or rollback discards the
-\ event scratch.
+\ provisional FIELD-SCHEMA@ / FIELD-CELLS@ / FIELD-FLAGS@ / PAYLOAD-* queries
+\ are legal only between OPEN and COMMIT or ROLLBACK and throw E-DEV-TX unless
+\ it is the innermost open frame; an event takes and returns the token, a query
+\ answers only its value. The outer release or rollback discards the event
+\ scratch.
 public
 
 \ The declaration forms parse to their terminators and load nothing, so no

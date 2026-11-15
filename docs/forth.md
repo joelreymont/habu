@@ -469,15 +469,28 @@ ENUM color red green blue ;ENUM
 The grammar; every type, field and variant name is lowercase:
 
 ```text
-structure-decl  = STRUCTURE type-header header-clause* field* ;STRUCTURE
+structure-decl  = STRUCTURE type-header header-clause* structure-field* ;STRUCTURE
 enum-decl       = ENUM type-header (full-enum | compact-enum) ;ENUM
 full-enum       = header-clause* variant-block+
 compact-enum    = header-clause* compact-variant+
 header-clause   = POLICY policy-name | DERIVE derive-name+ | OPAQUE
+structure-field = field | BUFFER field-name byte-count
 field           = FIELD field-name type-expr
 variant-block   = VARIANT variant-name field* ;VARIANT
 compact-variant = variant-name
 ```
+
+`BUFFER name N`, N a number literal above 0, lays N bytes inline from the next
+cell; the record stays whole cells, so the field after it starts at the next
+cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
+ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
+`UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
+last cell, which neither clears. Under `DERIVE addr` the accessor answers a
+span of the first N bytes. A record of more than 4096 such items is refused
+at the clause that passes it (`TYPE-DECL:E-TDECL-CAP`), and nested field types
+can still make `MAKE`'s effect too deep (7156). A record with a `BUFFER`
+refuses `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
+field and variant name.
 
 A multi-cell record is one logical value and lives inside checked definitions.
 The interpreter prompt refuses words with multi-cell inputs or outputs
@@ -570,7 +583,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
-  read and written with the field type's ordinary checked operations
+  read and written with the field type's ordinary checked operations; a
+  `BUFFER b N` field's accessor answers its bytes as a span,
+  `( ptr point -- SPAN:span<u8> )` of N bytes
   (`docs/design.md` "Families and layout policies" gives the layout
   policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,

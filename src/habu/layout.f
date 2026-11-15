@@ -534,7 +534,9 @@ $38C8 constant VARIABLE-CELL
 \ writes through its receiver. A MAKE or UNMAKE child's parameter is its
 \ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
 \ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
-\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse.
+\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse. A SPAN
+\ child's parameter is the committed field id of a BUFFER field: it takes
+\ `ptr F<..>` and answers the field's bytes as `SPAN:span<u8>`.
 
 package CHILD-ABI
 public
@@ -565,6 +567,7 @@ public
 24 constant UNMAKE
 25 constant NOMINAL-IN
 26 constant NOMINAL-OUT
+27 constant SPAN
 
 ;package
 

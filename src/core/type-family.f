@@ -2505,7 +2505,7 @@ TFAM-SCH-ROW-ARITY-INSTALL
 : PF-CELL-SLOTS-REQUIRE ( n n n n n n -- )   \ a field laid out in whole cells
    {: slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-   flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end inside its last cell
+   flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end in its last cell
       bytesn 1 - CELL / 1 + cellsn <> IF E-PF-LAYOUT throw THEN
    ELSE
       cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
@@ -4359,9 +4359,9 @@ private
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
 \ CAST-MAY-LINEAR?): every product field and every variant payload, in either
 \ payload form, instantiated over the value's own arguments and pushed on one
-\ row. A field projection or a MATCH arm yields exactly these types. Schemas
-\ index parameters by position, so the term must carry the family's argument
-\ count: the cast gate refuses any other count before its walks.
+\ row. Schemas index parameters by position, so the term must carry the
+\ family's argument count: the cast gate refuses any other count before its
+\ walks.
 : MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
    term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;
 : FIELD-MEMBERS ( n n n -- n ) {: term:n fam:n row:n :}
@@ -4418,24 +4418,39 @@ public
 
 private
 
-\ A field accessor's rows and byte offset, from the committed field id FID: it
-\ takes `ptr F<..>` and answers `ptr T`, T the field's type over the same
-\ arguments; a buffer answers `ptr u8`, its first byte. A field role other than
-\ plain storage, or an extent past the family's width, has no address to answer.
-: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+\ A field accessor's input row over a fresh row BASE, `ptr F<..>`, from the
+\ committed field id FID with the flags FLAGS, and its family term TERM, whose
+\ arguments the field's type reads. A field of other flags, or an extent past
+\ the family's width, has no address to answer.
+: FIELD-IN ( n n -- n n n ) {: fid:n flags:n :}
    fid TYPE-FIELD:FAMILY@ {: fam:n :}
-   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
-   fid TYPE-FIELD:FLAGS@ {: flags:n :}
-   flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF E-PF-FLAGS throw THEN
-   off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
+   fid TYPE-FIELD:FLAGS@ flags <> IF E-PF-FLAGS throw THEN
+   fid TYPE-FIELD:BYTE-OFF@ fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
       E-PF-LAYOUT throw THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
    FRESH MK-ROW {: base:n :}
-   term MK-PTR base MK-PUSH
-   ft MK-PTR base MK-PUSH
-   off ;
+   term MK-PTR base MK-PUSH  base  term ;
+
+\ A plain field accessor's rows and byte offset, from the committed field id
+\ FID: it takes `ptr F<..>` and answers `ptr T`, T the field's type over the
+\ same arguments.
+: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+   fid PF-FLAGS-NONE FIELD-IN drop {: din:n base:n :}
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   din  ft MK-PTR base MK-PUSH  fid TYPE-FIELD:BYTE-OFF@ ;
+
+\ A BUFFER field's accessor's rows and field id, from the committed field id
+\ FID: it takes `ptr F<..>` and answers the field's bytes as `SPAN:span<u8>`,
+\ laid base below len as SPAN:MAKE lays it.
+: TFAM-SPAN-ROWS ( n -- n n n ) {: fid:n :}
+   fid PF-FLAG-BUFFER FIELD-IN drop {: din:n base:n :}
+   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" 76 die THEN
+   {: fam:n :}
+   PARAM-SCR-N @ {: pbase:n :}
+   CC-U8 MK-CON PARAM-SCR+
+   pbase fam TFAM-NAME$ fam MK-PARAM {: span:n :}
+   din  span base PUSH-LOGICAL  fid ;
 
 \ AT's rows and stride in bytes, from the family id FAM: it takes `ptr F<..> n`
 \ and answers `ptr F<..>`, the count an integer as `record-at` takes it.
@@ -4586,6 +4601,7 @@ public
 : TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
    NEW NMAP-RESET
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:SPAN = IF param TFAM-SPAN-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
    shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
    shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN

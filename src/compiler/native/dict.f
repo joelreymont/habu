@@ -197,6 +197,7 @@ public
       routine OF E-NDICT-KIND throw ENDOF
       getter OF E-NDICT-KIND throw ENDOF
       setter OF E-NDICT-KIND throw ENDOF
+      bytes OF E-NDICT-KIND throw ENDOF
    ;MATCH
    entry READ-FIXED ;
 
