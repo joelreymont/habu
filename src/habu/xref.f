@@ -461,6 +461,32 @@ public
 : WID-SEALED? ( n -- bool )
    NS-ROW if SEALED? else drop XREF-FALSE then ;
 
+private
+\ The packages the verified source sealed: the verifier does not run
+\ seal-package, so their rows are not SEALED?.
+DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
+DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
+DYNAMIC-BUFFER SEALS-U n
+variable SEALS-N
+
+public
+: SOURCE-SEALED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SEALS-N @ 0 ?do
+      i SEALS-AT @ SEALS i SEALS-U @ a u XREF-STR=CI IF 0 0= unloop EXIT THEN
+   loop
+   0 0= 0= ;
+
+: SOURCE-SEAL ( ptr u8 n -- ) {: a:ptr u:n :}
+   SEALS-N @ {: at:n :}
+   at 0= IF 0 ELSE at 1 - SEALS-AT @ at 1 - SEALS-U @ + THEN {: off:n :}
+   off u + 1 + SEALS-RESERVE
+   a off SEALS u BYTE-COPY
+   at 1 + SEALS-AT-RESERVE  at 1 + SEALS-U-RESERVE
+   off at SEALS-AT !  u at SEALS-U !
+   at 1 + SEALS-N ! ;
+
+: SOURCE-SEALS-CLEAR ( -- ) 0 SEALS-N ! ;
+
 ;package
 
 \ A rejection's name between backticks.
@@ -502,19 +528,24 @@ private
 : NAMESPACED? ( ptr u8 n -- bool )
    XREF-QUAL-INDEX 0 >= ;
 
-\ A generated name in a sealed package's namespace (its row SEALED?) is the
-\ declaration's error, whether or not the package holds it. A bare name lands
-\ in the declaring package's private wordlist, and a sealed package cannot be
-\ opened, so no bare name reaches one.
+: SEALED-STOP ( ptr u8 n -- )
+   s" would change a sealed package"
+      s" declare it in a package of your own: a sealed package takes no new words"
+      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW-AT ;
+
+\ A generated name in a sealed package's namespace (its row SEALED?, or a
+\ package the verified source sealed) is the declaration's error, whether or
+\ not the package holds it. A bare name lands in the declaring package's
+\ private wordlist, and a sealed package cannot be opened, so no bare name
+\ reaches one.
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF EXIT THEN
+   a q XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
    a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns XREF-FOUND? 0= IF EXIT THEN
    ns XREF:SEALED? 0= IF EXIT THEN
-   a u s" would change a sealed package"
-      s" declare it in a package of your own: a sealed package takes no new words"
-      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW-AT ;
+   a u SEALED-STOP ;
 
 public
 
