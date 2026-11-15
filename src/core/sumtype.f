@@ -1967,8 +1967,10 @@ private
 
 : TDINIT-TERM ( n -- n ) TFAM-FRESH-TERM ;
 
-: TDINIT-REFUSE ( -- )
-   TDN-A @ TDN-U @ s" derive init requires a canonical fixed-cell record"
+\ Names the family by its committed row: TDN is the SUMTYPE front end's, which
+\ a STRUCTURE never sets.
+: TDINIT-REJECT ( n -- ) {: fam:n :}
+   fam TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
    s" drop `init` from `DERIVE`, or give every field a fixed cell width"
    E-TDECL-DERIVE TDECL-THROW ;
 
@@ -1976,14 +1978,14 @@ private
 \ every id and field extent against that same instantiation. These queries read
 \ committed rows, so this runs only after PF-COMMIT.
 : TDINIT-REQUIRE ( n -- ) {: fam:n :}
-   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF TDINIT-REFUSE THEN
-   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF TDINIT-REFUSE THEN
+   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF fam TDINIT-REJECT THEN
+   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF fam TDINIT-REJECT THEN
    fam TDINIT-TERM {: term:n :}
-   term INIT-RECORD? 0= IF 2drop drop TDINIT-REFUSE THEN
+   term INIT-RECORD? 0= IF 2drop drop fam TDINIT-REJECT THEN
    2drop drop
    fam TFAM-FLD-COUNT@ 0 ?do
       fam TFAM-FLD-START@ i + term INIT-FIELD? 0= IF
-         2drop 2drop unloop TDINIT-REFUSE THEN
+         2drop 2drop unloop fam TDINIT-REJECT THEN
       2drop 2drop
    loop ;
 
