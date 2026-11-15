@@ -130,7 +130,7 @@
 \   refused, or not deferred to the run at that word ................. top-level
 \ - a stored signature that does not parse, of a TRUSTED: that replaces a
 \   colon definition `undefine` removed, not published as
-\   E-BAD-STORED-SIGNATURE at its name ..................... replaced-signature
+\   E-BAD-STORED-SIGNATURE at its bad type ................. replaced-signature
 \ - a name with two qualifiers, in a defer or in a definition refused for an
 \   undefined word, given no E-BAD-QUALIFIED-RECORD at it after the body's
 \   packet, or the statement's stop not published
@@ -2769,7 +2769,7 @@ USE-MAX 1 + constant OVER-USINGS
    REDECLARED-PATH 1 EXPECT
    1 9 1 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
    3 9 3 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
-   4 9 4 16 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   4 22 4 25 1 s" E-BAD-STORED-SIGNATURE" DIAG+
    5 22 5 23 1 s" E-MISMATCH" DIAG+
    PUBLISHES
    s" 3" s\" {\"query\":\"nav\"}" SYMBOLS-ASK
@@ -6908,7 +6908,7 @@ variable PROBE-DECLS
    SESSION-CAPABILITIES
    REPLACED-TRUSTED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
+   A-PATH 1 EXPECT 2 16 2 18 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
 
 : MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
 
