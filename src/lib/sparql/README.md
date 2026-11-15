@@ -56,10 +56,10 @@ SERVICE throws `E-SERVICE`, and SERVICE SILENT preserves its input.
 This is source under development, not a new conformance result. The former
 Rust engine's recorded 839/855 score does not validate this implementation.
 Native load, PostgreSQL execution and the pinned W3C profile must be rerun
-with a current T0 Habu executable. The draft still lacks codepoint escapes
-outside strings/IRIs and complete RFC 3987 IRI validation. Backend XPath/IEEE
-edge cases also require execution evidence. These limits are not a new
-SPARQL profile.
+with a current T0 Habu executable. Codepoint escapes are decoded before
+lexing, including outside strings and IRIs. Complete RFC 3987 IRI validation
+and backend XPath/IEEE edge cases still require execution evidence. These
+limits are not a new SPARQL profile.
 
 `tools/sparql-compile.f` accepts a JSON array of `[query, base-IRI]` pairs and
 prints one descriptor or numeric error per line, in one Habu process:
