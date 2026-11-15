@@ -557,11 +557,9 @@ variable FLAG-N
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
 \ one, plain or escaped, is a path; a `c"`, `C"` or `."` one is no string a
-\ loader takes; a body literal holding an escape the engine refuses is the
-\ checker's to refuse.
+\ loader takes.
 1 constant LIT-PATH
 2 constant LIT-OTHER
-3 constant LIT-BAD
 
 : LIT-KIND ( ptr u8 n -- n )
    drop c@ dup $73 = swap $53 = or IF LIT-PATH EXIT THEN
@@ -918,12 +916,10 @@ variable RETIRED
 
 \ `UNDEFINE-IF-DEFINED` at top level retires the word the literal before it
 \ names, a literal of the given kind: a path literal's, and with none, a word
-\ the walk cannot read, any loader word among them; one holding a bad escape is
-\ the checker's. In a body it retires nothing until the word runs, which no
-\ check does.
+\ the walk cannot read, any loader word among them. In a body it retires
+\ nothing until the word runs, which no check does.
 : TOP-RETIRED ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
    a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
-   kind LIT-BAD = IF EXIT THEN
    kind LIT-PATH = IF lit litu NAME-RETIRED EXIT THEN
    RETIRED @ LOADER-BITS or RETIRED ! ;
 
@@ -939,8 +935,7 @@ variable RETIRED
    THEN ;
 
 \ A string loader u bytes long, after a literal of the given kind. True when it
-\ may load the literal's path, which the resolver alone may still refuse, false
-\ after a literal holding a bad escape, which is the checker's.
+\ may load the literal's path, which the resolver alone may still refuse.
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
    kind 0= IF u DYNAMIC-STOP THEN
    kind LIT-OTHER = IF
@@ -958,7 +953,7 @@ DYNAMIC-BUFFER PEND-OP-AT n                   \ where IMM-OPERAND's path is writ
 variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
-variable BODY-LIT-KIND                        \ its kind (LIT-KIND or LIT-BAD), 0 for none
+variable BODY-LIT-KIND                        \ its kind (LIT-KIND), 0 for none
 variable BODY-BENT                            \ 0 on a straight line, else 1 + BODY-QUOT at the bend
 variable BODY-QUOT                            \ the `[:`s open at the body token
 0 constant GUARD-NONE                         \ the body token before is no target predicate
@@ -1056,14 +1051,15 @@ variable SEALS-N
 \ The text of a literal from the rest STRING-REST read after its opener, a
 \ string opener: past the one delimiting space, short of the closing quote, as
 \ the engine's literal makes it, decoded when the opener is an escaped one
-\ (ESC-BYTES), and its kind. A literal holding a bad escape leaves no text, of
-\ kind LIT-BAD: the checker refuses its body.
+\ (ESC-BYTES), and its kind. A bad escape is rejected at the opener.
 : BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
    BODY-PREV-CLEAR
    su 2 < IF EXIT THEN
    s 1 + su 2 -
    o ou NORMAL-STRING-OPENER? 0= IF
-      ESC-BYTES 0= IF 2drop LIT-BAD BODY-LIT-KIND ! EXIT THEN
+      ESC-BYTES 0= IF
+         o ou INTERPRETER:LITERAL-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+      THEN
    THEN
    BODY-LIT-U !  BODY-LIT-A !
    o ou LIT-KIND BODY-LIT-KIND ! ;

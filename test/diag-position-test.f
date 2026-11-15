@@ -1460,6 +1460,13 @@ variable RC
    s" escaped-bad-unterminated.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
    s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
+   s" a bad escape in a body before a string that never closes" T-LABEL
+   SB-RESET
+   s\" : L ( -- ) s\\\" A\\yB\" 2drop ;" SB-APPEND LF+
+   s\" s\" abc" SB-APPEND LF+
+   s" escaped-bad-body-unterminated.f" FIXTURE!
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s" :1:12" REJECT-RC LOADED-AT
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
@@ -1518,12 +1525,9 @@ variable RC
 \ body loads when the word runs: the plain check and --all-errors follow its
 \ path after the definition, kept for that load whatever the check decodes
 \ first. --verify-only runs no body, so it defers a call of the body's word and
-\ the first later use of a word that file defines. A bad escape at top level
-\ stops the load: each check refuses that literal once, at its opener, and
-\ follows nothing after it. In a body it is one more error of a rejected
-\ definition: its loader is neither followed nor refused, the missing file
-\ required after the body is refused at its `require`, and --verify-only keeps
-\ the definition's refusal before it.
+\ the first later use of a word that file defines. A bad escape, at top level
+\ or in a body, stops the load: each check rejects that literal once, at its
+\ opener, and follows nothing after it.
 : TEST-ESCAPED-PATH ( -- )
    SB-RESET
    s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+
@@ -1610,22 +1614,14 @@ variable RC
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 RUN-REFUSED-AT
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
-   1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 VERIFY-REJECTED-AT
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
    s" E-UNTERMINATED-STRING" s" :1:12" REJECT-RC LOADED-AT
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 RUN-REFUSED-AT
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT
-   1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 VERIFY-REJECTED-AT
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 18 17 20 REFUSED-MODES
    s" E-UNTERMINATED-STRING" s" :1:18" REJECT-RC LOADED-AT ;
 
 \ A word a create caller made is bound, and typed `-- ptr a`, by the run of that

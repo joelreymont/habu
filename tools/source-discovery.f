@@ -994,14 +994,11 @@ variable SD-TERM-END
 \ decode is never longer than its spelling.
 DYNAMIC-BUFFER SD-DEC u8
 
-\ A literal holding a bad escape is a bad string literal: the engine refuses it
-\ where the load stops. At top level the walk ends there, follows nothing and
-\ refuses nothing; the check refuses it at its opener. In a definition the check
-\ rejects the body and reads past it, and so does the walk, with no path
-\ pending: a loader or retirement taking it is a call in a body.
+\ A literal holding a bad escape is a bad string literal: the engine rejects it
+\ where the load stops. The walk ends there, follows nothing and rejects
+\ nothing; the check rejects it at its opener.
 : SD-REFUSED-LITERAL ( -- )
-   SD-DEF @ 0= if SD-U @ SD-I ! exit then
-   0 SD-PEND ! ;
+   SD-U @ SD-I ! ;
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
 \ the payload decoded by the engine's escape table, unless an escape is bad.
