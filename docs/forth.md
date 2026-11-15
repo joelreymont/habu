@@ -2052,26 +2052,25 @@ answers alike.
 
 ## Engine limits ordinary source reaches
 
-These ceilings are reachable from plain Habu rather than a runaway. Each
-refuses by name with the count it saw and the ceiling, and none truncates; the
-ceiling is a named constant beside the code that enforces it. A definition's
-captured text and its name have no ceiling: they grow with the definition, and
-a map the system refuses throws `E-BODY-TEXT`.
+These ceilings are reachable from plain Habu rather than a runaway. Source past
+one is rejected by name with the count it saw and the ceiling, and none
+truncates; the ceiling is a named constant beside the code that enforces it. A
+definition's captured text and its name have no ceiling: they grow with the
+definition, and a map the system refuses throws `E-BODY-TEXT`.
 
-- **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
+- **One REPL line.** A longer line is rejected, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
   history. Load long definitions from a file.
 - **Quotation nesting in one definition**, the most `[:` bodies open at once:
-  `hb: quotation nesting full at <cap> levels: <name> needs <depth>`, catchable
-  inside `evaluate`; `tools/check.f` refuses the same source first,
-  `E-UNCHECKABLE`. Factor the inner quotations into named words.
+  each open `[:` takes one of the control frames the next item counts. Factor
+  the inner quotations into named words.
 - **Control-flow nesting in one definition** (`begin`, `if`, `while`, `do`,
-  `?do` and the other open structures): `hb: control-flow nesting too deep:
-  <word>`. Checked code meets the checker first: 33 nested `begin`s are refused
-  `hook: non-certified definition: <name> at 'begin'`. Factor the inner loops
-  into their own words.
+  `?do`, `[:` and the other open structures): a body nests at most 32 control
+  frames, and the checker rejects 33 nested `begin`s with
+  `error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at
+  most 32)`. Factor the inner loops into their own words.
 - **A family, variant, field or package name**: `SUMTYPE`,
-  `NEWTYPE`, `STRUCTURE` and `ENUM` refuse a longer one, `tools/check.f`
+  `NEWTYPE`, `STRUCTURE` and `ENUM` reject a longer one, `tools/check.f`
   reporting `E-BAD-DECLARATION` with the name as its token and the reason
   `name longer than <cap> bytes`. `package` rejects a name over 255 bytes,
   `E-PACKAGE-NAME-CAP` at the name, rc 70, and so does a public type whose

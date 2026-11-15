@@ -30,8 +30,8 @@
 \ each file's path and positions while it is open. `require` skips held paths;
 \ `include` verifies every occurrence. The first, third and fourth forms compose
 \ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
-\ runs before them: the composition reads each file a loader loads and refuses
-\ the loader forms tools/source-discovery.f refuses where it meets them.
+\ runs before them: the composition reads each file a loader loads and rejects
+\ the loader forms tools/source-discovery.f rejects where it meets them.
 \ `--index` scans only the supplied subject bytes, including for an
 \ engine-provided path. It emits surviving declarations after a completed
 \ scan, while their checker scopes are still open. A top-level dictionary call
@@ -40,7 +40,7 @@
 \
 \ stdout is the records, one per rejection in verification order, each written
 \ where the rejection is made, so a child that dies has passed on every record
-\ made before; then one result line. A record is a schema-1 JSON packet on a
+\ made before; then one result line. A record is a schema-1 JSON object on a
 \ line, or with `--prose` a prose record. The first form verifies with all
 \ errors, going past a duplicate definition as past any rejected definition.
 \ Among the records it writes one JSON object per line: a file line for each
@@ -73,23 +73,22 @@
 \ (VERIFY:FAULT-TARGET$). A throw of any other code ends the child with no
 \ result line.
 \
-\ A file line names each file visit reported by ON-FILE. Subject and open
+\ A file line names each file the composition visits. Subject and open
 \ document bytes have an editor source; disk bytes carry the metadata captured
 \ around their acquisition by the quiet reader. Different stamps of the same
 \ path in one composition make its locations unusable. A definition line names
-\ what ON-DEFINITION reports:
+\ each definition the checker records:
 \ K the statement token that declared it, C its class as that token's path
 \ knows it (word, constant, storage, export or a generated SUMTYPE constructor),
 \ W its name as the source writes it
 \ (a name its definer generates, as spelled), P and V the package (empty for a
 \ global) and visibility (global, private or public) the checker recorded it
 \ under, T its recorded canonical tail, D its local file visit, E its declared
-\ effect, absent when it declared none, F the file as its packets name it, and
+\ effect, absent when it declared none, F the file as its records name it, and
 \ S and N where the token that declared it starts and ends there.
 \
-\ A use line names what src/habu/verify-source.f ON-USE reports, a use that
-\ the checker bound: S and N where the use starts and
-\ ends in I, the file it is in as its packets name it, a token, or the bytes
+\ A use line names each use the checker bound: S and N where the use starts and
+\ ends in I, the file it is in as its records name it, a token, or the bytes
 \ between the quotes of a string literal naming a word before a call of a word
 \ a `names:` row marks, F the path the
 \ declaration's file was resolved to, TS and TN where the token that declared
@@ -125,12 +124,12 @@
 \ The other forms write the subject's uses alone.
 \ The batch-ref form is for primitive references: it writes uses of TAIL in
 \ the subject and loaded files, including unlocated bindings, and omits
-\ definition lines. File visits and result packets still describe each check.
+\ definition lines. File lines and result lines describe each check as in the
+\ first form.
 \
-\ deferred: nothing is refused, but a stretch of top-level source or a
-\ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
-\ (src/habu/verify-source.f TOP-TOKEN, RENDER-GAP, REPORT-DEFERRED): those
-\ tokens are not verified.
+\ deferred: nothing is rejected, but a stretch of top-level source or a
+\ definition was deferred to the run, and a W-CHECK-DEFERRED record locates
+\ each: those tokens are not verified.
 \ held is answered before anything is verified: this child holds SUBJECT though
 \ the engine does not provide it (this file, tools/check-verify-child-lib.f,
 \ and the verifier's source on an engine that does not carry it), so it
@@ -144,7 +143,7 @@
 \    check-verify: verified | refused | full | missing TARGET | unread TARGET
 \
 \ With `--prose`, for a check.f run without --json-errors, the first and second
-\ forms write each record as prose where the other forms write a packet.
+\ forms write each record as prose where the other forms write it as JSON.
 \
 \ stderr is whatever the engine writes there, a `die`'s message among it. A
 \ child that ends any other way, the verifier's own `die` included, writes no

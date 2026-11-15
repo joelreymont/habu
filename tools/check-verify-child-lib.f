@@ -37,7 +37,7 @@ variable SUBJECT-U
 variable SUBJECT-PATH-AT
 variable SUBJECT-PATH-U
 variable BATCH?                         \ framed subjects share this isolated child
-variable REF-BATCH?                     \ only the selected-tail packets are needed
+variable REF-BATCH?                     \ only the selected tail's use lines are needed
 variable BATCH-INDEX
 variable RD
 variable FAILED
@@ -52,7 +52,7 @@ DYNAMIC-BUFFER IDX-EVENTS n              \ symbol, start, end for each declarati
 variable IDX-N
 TYPED-VARIABLE OF-A ptr u8              \ the fourth form's TAIL,
 variable OF-U                           \ 0 for the other forms
-variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, false after `--prose`
+variable JSON?   true JSON? !           \ records are JSON, false after `--prose`
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -338,7 +338,7 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    f fu OPEN-TEXT {: open:bool :} 2drop
    f fu VERIFY:QUIET-READ-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
-   \ Refuse unstamped disk bytes before publishing any part of their record.
+   \ Reject unstamped disk bytes before publishing any part of their record.
    subject open or 0= valid 0= and if f fu VERIFY:REFUSE-SOURCE-READ then
    OUT-FD s\" check-verify: file {\"file\":" WRITE
    f fu JSON-STR
@@ -486,9 +486,9 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
    OUT-FD NEWLINE ;
 
 \ The answer to a throw RC that ended the composition after its rejection wrote
-\ its record: a rejection's is refused, or missing when the file a loader names
-\ is not there, a file found but not readable is unread, and a full dictionary
-\ is full. Any other code goes on with no answer.
+\ its record: `refused` for a rejection, `missing` when the file a loader names
+\ is not there, `unread` for a file found but not readable, and `full` for a
+\ full dictionary. Any other code goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
    rc INCLUDE-IO-RC = if s" unread" TARGET-RESULT exit then
    rc REJECTION:DICT-FULL-RC = if s" full" RESULT exit then
@@ -510,8 +510,8 @@ variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, fals
 
 
 \ Run the verification in one neutral checker scope, every diagnostic the
-\ checker renders on stdout, a packet unless `--prose` asked for a prose
-\ record: the code it threw, 0 for none.
+\ checker renders on stdout, a JSON record unless `--prose` asked for a prose
+\ one: the code it threw, 0 for none.
 : SCOPED ( [ -- ] -- n ) {: q :}
    JSON? @ REJECTION:JSON !
    OUT-FD REJECTION:FD!

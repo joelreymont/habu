@@ -1,8 +1,7 @@
-\ Shared declaration-diagnostic capture for the declaration suites, through the
-\ channel tools/check-all-errors-core.f reads (CA-DIAG-FULL-START, CA-DIAG-FINISH): a suite
-\ reads the declaration packet from the production capture channel in the prose
-\ or JSON leg the check tool selects. It pins the channel, not a check-tool run.
-\ A capture also silences the diagnostics a reject suite provokes.
+\ Shared declaration-rejection capture for the declaration suites: a suite reads
+\ the declaration's record from REJECTION's capture, the channel the check tool
+\ reads, as prose or as JSON. It pins the channel, not a check-tool run. A
+\ capture also silences the records a reject suite provokes.
 
 require src/lib/string.f
 

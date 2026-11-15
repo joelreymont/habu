@@ -73,7 +73,7 @@ variable CA-COMPOSE-LABEL-U
    CA-OUT-A ! ;
 
 \ The report buffer is the caller's and cannot grow, so a run's records that do
-\ not fit are refused whole by a throw, after every run's before them. A
+\ not fit are rejected whole by a throw, after every run's before them. A
 \ streamed report has no buffer to outgrow.
 : CA-OUT-ROOM ( n -- )
    CA-OUT-FD @ 0 >= IF drop exit THEN
@@ -115,7 +115,7 @@ variable CA-COMPOSE-LABEL-U
 
 \ Each read takes a region of its own, so the bytes an earlier read or the
 \ caller left (CA-SOURCE-BUF!) stay where they are. The file is read to its end
-\ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
+\ however it grows while it is read: its size, whose rejection (E-FS-STAT) stays
 \ a missing or irregular file's, is only the first room.
 : CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
    0 CA-SRC-CAP !
