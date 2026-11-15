@@ -595,8 +595,8 @@ EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ Record writers: trusted-only rows, so no `trust` row admits a checked caller.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
-EPRIM: rep-mark      PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ sets DNAME-REP on one live CAST: record
+\ Setting DNAME-REP on one live CAST: record is CHECKER-IDENTITY's.
+EPPRIM: CHECKER-IDENTITY rep-mark PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one live record
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -634,18 +634,16 @@ EPRIM: check@         PE-N PE-OUT EPRIM;
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
-EPRIM: set-check     PE-A PE-IN EPRIM;
-ETRUSTED-ONLY!
+EPPRIM: CHECK set-check PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
-EPRIM: set-preflight PE-A PE-IN EPRIM;
-ETRUSTED-ONLY!
+EPPRIM: CHECK set-preflight PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
 EPRIM: set-top-check PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
 EFIXED-ABI!
 \ The top-level tracker's own install: its row takes a hook of the shape the
 \ tracker is called with, where the global row above takes any one cell, as
-\ set-check and set-preflight do.
+\ set-check's and set-preflight's rows do.
 EPPRIM: CHECK set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
@@ -653,8 +651,7 @@ EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ exact resolved dictionary record
+EPPRIM: CHECK def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
@@ -747,8 +744,7 @@ EPRIM: ; EPRIM;
 EIMMEDIATE!
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
-EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
+EPPRIM: INTERPRETER trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
 \ copy in the body text. It refuses when no definition is

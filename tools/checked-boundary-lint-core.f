@@ -1,4 +1,4 @@
-\ checked-boundary-lint-core.f - forbid broad unchecked definitions.
+\ checked-boundary-lint-core.f - forbid unaudited top-check hook installs.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -35,10 +35,6 @@ variable UB-PREV-U
 TYPED-VARIABLE UB-PREV2-A ptr u8
 variable UB-PREV2-U
 variable UB-BAD
-variable UB-CHECK-OFF
-variable UB-TRUSTED
-variable UB-IN-DEF
-variable UB-CARRY-OFF
 variable UB-STRICT-BOUNDARY
 
 : UB-FILE-A@ ( -- ptr u8 )
@@ -95,10 +91,6 @@ public
    UB-STRICT-BOUNDARY ! ;
 
 private
-
-: UB-CHECK-OFF! ( bool -- )
-   dup UB-CHECK-OFF !
-   UB-CARRY-OFF ! ;
 
 : UB-END? ( -- bool )
    UB-I @ UB-SRC-U @ >= ;
@@ -159,21 +151,9 @@ private
 : UB-PREV2$ ( -- ptr u8 n )
    UB-PREV2-A@ UB-PREV2-U @ ;
 
-: UB-TOK= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   UB-TOK$ a u LINT-STR= ;
-
-: UB-PREV= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   UB-PREV$ a u LINT-STR= ;
-
 : UB-TOK=CI ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    UB-TOK$ a u LINT-STR=CI ;
-
-: UB-PREV=CI ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   UB-PREV$ a u LINT-STR=CI ;
 
 : UB-PREV2= ( ptr u8 n -- bool )
    {: a:ptr u:n :}
@@ -198,18 +178,13 @@ private
    UB-TOK$ SOURCE:NORMAL-STRING-OPENER? if UB-SKIP-STRING then then
    UB-TRUE ;
 
-: UB-PREFLIGHT-INSTALL? ( -- bool )
-   s" CHECK:INSTALL" UB-TOK=CI ;
-
-\ A hook install is `' NAME set-check` / `['] NAME set-check`: current token
-\ `set-check`, two-back token the tick, one-back token the installed hook name.
-\ Requiring the tick two-back also excludes the `' set-check` name reference
-\ (there the tick is one-back and the name slot is `set-check` itself).
+\ A hook install is `' NAME set-top-check` / `['] NAME set-top-check`: current
+\ token `set-top-check`, two-back token the tick, one-back token the installed
+\ hook name. Requiring the tick two-back also excludes the `' set-top-check`
+\ name reference (there the tick is one-back and the name slot is
+\ `set-top-check` itself).
 : UB-TICK-PREV2? ( -- bool )
    s" '" UB-PREV2= s" [']" UB-PREV2= or ;
-
-: UB-SET-CHECK-INSTALL? ( -- bool )
-   s" set-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
 \ The tier-2 top-level reject enforcer installs through `set-top-check`
 \ (src/core/top-row.f TR-INSTALL): a name installed there diverts pre-execution
@@ -217,46 +192,16 @@ private
 : UB-SET-TOP-CHECK-INSTALL? ( -- bool )
    s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
-\ tools/hook-sites.f rows name a file and a word: any file may define a word called
-\ CHECK-HOOK, so an install is audited only when the scanned file and installed
-\ name match a row. Paths compare exactly as committed, so `./path`, an absolute
-\ or a workspace-prefixed path fails closed.
-: UB-HOOK-ALLOWED? ( -- bool )
-   UB-FILE$ UB-PREV$ HOOK-SITES:CHECK-MATCH? ;
-
+\ tools/hook-sites.f rows name a file and a word, so an install is audited only
+\ when the scanned file and installed name match a row. Paths compare exactly as
+\ committed, so `./path`, an absolute or a workspace-prefixed path fails closed.
 : UB-TOP-HOOK-ALLOWED? ( -- bool )
    UB-FILE$ UB-PREV$ HOOK-SITES:TOP-MATCH? ;
 
-: UB-CHECKER-MUTATION? ( -- bool )
-   s" set-check" UB-TOK=CI ;
-
-: UB-COLON? ( -- bool )
-   s" :" UB-TOK= ;
-
-: UB-TRUSTED? ( -- bool )
-   s" TRUSTED:" UB-TOK=CI ;
-
-: UB-DEF-OPEN? ( -- bool )
-   UB-COLON? if UB-TRUE exit then
-   s" +:" UB-TOK=CI if UB-TRUE exit then
-   s" CHECKED:" UB-TOK=CI if UB-TRUE exit then
-   UB-TRUSTED? if UB-TRUE exit then
-   s" KERNEL:" UB-TOK=CI if UB-TRUE exit then
-   s" :noname" UB-TOK=CI ;
-
-: UB-TOP? ( -- bool )
-   UB-IN-DEF @ UB-NOT ;
-
-: UB-SEMI? ( -- bool )
-   s" ;" UB-TOK= ;
-
-: UB-HOOK-NAME? ( ptr u8 n -- bool )
-   s" CHECK-HOOK" LINT-ENDS-WITH? ;
-
 \ A finding is one rejection record, kept so the scan goes on: UB-OPEN opens it
 \ with its code and its message follows; UB-PLACE places it at the token, whose
-\ label is given, with the expected and found notes; UB-FINDING ends it with the
-\ help every finding but the rearm shares.
+\ label is given, with the expected and found notes; UB-FINDING ends it with its
+\ help.
 : UB-OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
    UB-BAD @ 1+ UB-BAD !
    code cu REJECTION:OPEN ;
@@ -274,42 +219,6 @@ private
    REJECTION:EMIT-STR
    REJECTION:KEEP ;
 
-: UB-REPORT-DEFINITION ( ptr u8 n -- )
-   {: name:ptr nu:n :}
-   s" E-UNCHECKED-DEFINITION" UB-OPEN
-   s" `" REJECTION:EMIT-STR  name nu REJECTION:EMIT-STR
-   s" ` is defined while the checker is disabled" REJECTION:EMIT-STR
-   name nu s" defined with no check"
-   s" checked definition" s" checker disabled" UB-FINDING ;
-
-: UB-REPORT-MUTATION ( -- )
-   s" E-CHECKER-MUTATION" UB-OPEN
-   s" `" REJECTION:EMIT-STR  UB-TOK$ REJECTION:EMIT-STR
-   s" ` mutates checker state in strict boundary mode" REJECTION:EMIT-STR
-   UB-TOK$ s" outside a trusted definition"
-   s" checker hook remains installed" UB-TOK$ UB-FINDING ;
-
-\ Its own cause beside E-CHECKER-MUTATION: it holds without strict boundary
-\ mode, and adding `CHECK:INSTALL` clears it while that mutation stays.
-: UB-REPORT-PREFLIGHT ( -- )
-   s" E-CHECKER-NOT-REARMED" UB-OPEN
-   s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
-   s" ` is armed while the checker is suspended, so no compile preflight runs"
-   REJECTION:EMIT-STR
-   UB-TOK$ s" armed without `CHECK:INSTALL`"
-   s" CHECK:INSTALL" UB-TOK$ UB-PLACE
-   REJECTION:HELP
-   s" add `CHECK:INSTALL` before this line to rearm the checker hook with its preflight"
-   REJECTION:EMIT-STR
-   REJECTION:KEEP ;
-
-: UB-REPORT-ROGUE-HOOK ( -- )
-   s" E-UNAUDITED-HOOK" UB-OPEN
-   s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
-   s" ` is not an audited checker hook" REJECTION:EMIT-STR
-   UB-PREV$ s" no row of tools/hook-sites.f names it in this file"
-   s" audited checker hook" UB-PREV$ UB-FINDING ;
-
 : UB-REPORT-ROGUE-TOP-HOOK ( -- )
    s" E-UNAUDITED-TOP-HOOK" UB-OPEN
    s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
@@ -317,47 +226,15 @@ private
    UB-PREV$ s" no row of tools/hook-sites.f names it in this file"
    s" audited top-check hook" UB-PREV$ UB-FINDING ;
 
-: UB-HANDLE-INSTALL ( -- )
-   UB-SET-CHECK-INSTALL? UB-NOT if exit then
-   UB-HOOK-ALLOWED? if exit then
-   UB-REPORT-ROGUE-HOOK ;
-
-\ A top-level `set-check`, by the tokens before it, under the rule docs/forth.md
-\ states as "`0 set-check` suspends the armed hook with its compile preflight":
-\ `0 set-check` suspends checking. `check@ set-check` reinstalls the live hook,
-\ which is 0 while suspended, so it changes nothing. `' NAME set-check` while
-\ suspended is reported: the engine arms NAME without a preflight unless NAME
-\ is the parked hook, which a token scan cannot tell, so the scan keeps its
-\ off state there. Any other operand is the hook saved from the stack, as in
-\ `check@ 0 set-check ... set-check`, and resumes the hook with its preflight.
-: UB-HANDLE-SET-CHECK ( -- )
-   s" set-check" UB-TOK=CI UB-NOT if exit then
-   s" 0" UB-PREV=CI if UB-TRUE UB-CHECK-OFF! exit then
-   s" check@" UB-PREV=CI if exit then
-   UB-TICK-PREV2? if
-      UB-CHECK-OFF @ if UB-REPORT-PREFLIGHT then
-      exit
-   then
-   UB-FALSE UB-CHECK-OFF! ;
-
 : UB-HANDLE-TOP-INSTALL ( -- )
    UB-SET-TOP-CHECK-INSTALL? UB-NOT if exit then
    UB-TOP-HOOK-ALLOWED? if exit then
    UB-REPORT-ROGUE-TOP-HOOK ;
 
-: UB-HANDLE-COLON ( -- )
-   UB-CHECK-OFF @ UB-NOT if exit then
-   UB-NEXT-TOK UB-NOT if exit then
-   UB-TOK$ 2dup UB-HOOK-NAME? if 2drop exit then
-   UB-REPORT-DEFINITION ;
-
 : UB-RESET-FILE-SCAN ( -- )
    NULL$ drop UB-PREV-A! 0 UB-PREV-U !
    NULL$ drop UB-PREV2-A! 0 UB-PREV2-U !
-   0 UB-I !
-   UB-CARRY-OFF @ UB-CHECK-OFF !
-   UB-FALSE UB-TRUSTED !
-   UB-FALSE UB-IN-DEF ! ;
+   0 UB-I ! ;
 
 : UB-CLEAR-SRC-SPANS ( -- )
    NULL$ drop UB-SRC-A!   0 UB-SRC-U !
@@ -394,25 +271,7 @@ private
 : UB-SCAN ( -- )
    UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
-      UB-TRUSTED? if
-         UB-TRUE UB-TRUSTED !
-         UB-TRUE UB-IN-DEF !
-      then
-      UB-STRICT-BOUNDARY @ if
-         UB-CHECKER-MUTATION? UB-TRUSTED @ UB-NOT and if UB-REPORT-MUTATION then
-      then
-      UB-DEF-OPEN? if
-         UB-COLON? if UB-HANDLE-COLON then
-         UB-TRUE UB-IN-DEF !
-      then
-      UB-PREFLIGHT-INSTALL? UB-TOP? and if UB-FALSE UB-CHECK-OFF! then
-      UB-TOP? if UB-HANDLE-SET-CHECK then
-      UB-HANDLE-INSTALL
       UB-HANDLE-TOP-INSTALL
-      UB-SEMI? if
-         UB-FALSE UB-TRUSTED !
-         UB-FALSE UB-IN-DEF !
-      then
       UB-SAVE-PREV
    repeat ;
 
@@ -446,7 +305,6 @@ public
 : RESET ( -- )
    UB-CLEAR-SPANS
    0 UB-BAD !
-   UB-FALSE UB-CHECK-OFF!
    UB-FALSE STRICT! ;
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it

@@ -454,10 +454,7 @@ the address it was declared for and refuses the address *of* one.
 
 Top level obeys the same rule, before the word runs and with the cell left
 unwritten: `variable V  here V !` is `E-RAW-CELL-PTR` at `!` and
-`create T ' dup ,` is `E-MISMATCH` at `,`. `0 set-check` opens no unchecked
-window: a `:` definition or a top-level token inside
-`check@ 0 set-check … set-check` is checked as outside it, and the data and
-return-stack cells it leaves keep their types. Admitted at top level:
+`create T ' dup ,` is `E-MISMATCH` at `,`. Admitted at top level:
 `5 V !`, `1 V +!`, `here PV !` with the pointer kept across a `:` definition or
 a `require`, and `' X HK !` for `TYPED-VARIABLE HK [ -- ]`.
 

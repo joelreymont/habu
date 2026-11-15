@@ -1946,7 +1946,7 @@ package CHECKER-IDENTITY
 
 \ An unscoped cast that mints nothing is a representation cast: its pending
 \ record takes DNAME-REP, and the compiler lowers it as identity.
-TRUSTED: MARK-REP ( n -- ) rep-mark ;
+: MARK-REP ( n -- ) rep-mark ;
 public
 \ Refuse first, register second: a refusal throws before the engine counts the
 \ record, so it leaves no name.

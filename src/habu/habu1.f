@@ -3474,10 +3474,10 @@ private
 : BSETCUR ( -- )
    A G-POP  A DATA CUR-CELL STR, ;
 
-\ set-check ( xt -- ): install the checker hook. 0 disables checking (the
-\ audited `0 set-check` boundary) and parks an armed hook with its preflight in
-\ the SUSP-HOOK pair; arming the parked hook while the preflight cell is empty
-\ brings that preflight back, and every arm clears the pair. A non-zero xt must
+\ set-check ( xt -- ): install the checker hook. 0 disables checking and parks
+\ an armed hook with its preflight in the SUSP-HOOK pair; arming the parked
+\ hook while the preflight cell is empty brings that preflight back, and every
+\ arm clears the pair. A non-zero xt must
 \ lie in [DBASE, CP) (x26/x28): every real hook is a source-loaded word compiled
 \ there, and a wild install (1, a DATA address, a baked-primitive xt) dies here
 \ with a named rc-70 diagnostic instead of at the next publish's BLR. The
@@ -4208,9 +4208,10 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
-   s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
+   s" set-preflight" ['] BSETPREFLIGHT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 ;package
 
