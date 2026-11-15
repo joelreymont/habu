@@ -136,7 +136,8 @@ public
 \ or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
-\ response's error code rate_limit_exceeded or server_error.
+\ response's error code rate_limit_exceeded, server_error or
+\ server_is_overloaded.
 -9711 constant E-UNAVAILABLE
 \ The provider cannot serve the request at the service tier it names for now:
 \ a failed response's error code flex_unavailable. Nothing was generated.
@@ -2403,6 +2404,7 @@ private
    s" context_length_exceeded" JSON:READ-STR-EQ? if E-CAPACITY exit then
    s" rate_limit_exceeded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
    s" server_error" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
+   s" server_is_overloaded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
    s" flex_unavailable" JSON:READ-STR-EQ? if E-TIER exit then
    E-HTTP ;
 
