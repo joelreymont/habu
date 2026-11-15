@@ -13,3 +13,7 @@ Acceptance case 2026-11-13 (from the NFETCH-CHECK test cleanup): the disabled ca
 Acceptance case 2026-11-13 (jerry; from habu-drop-the-zero-15fc76ff): the checker refuses a literal 0 divisor of `/`, `mod` or `/mod` (E-DIV-ZERO) and a literal `0 throw` (E-THROW-ZERO) in every build, so --checks restores the run-time zero test for computed divisors only; a switched-off case that divides or throws by a literal 0 (test/wasm/numeric-rows.f N02-DIV-ZERO, test/wasm/hb-build.f throw-zero.f and CATCH-ZERO+, test/wasm/kernel.f ZERO-DIVISOR) passes its 0 computed when turned on.
 
 Acceptance case 2026-11-13 (from the dot-citation recheck): test/wasm/hb-build.f THROW-ZERO-CASE (:477) and CATCH-ZERO+ (:485) also expect the code ENGINE-ERROR:THROW-ZERO (109), which no longer exists, and nothing calls either.
+
+Acceptance case (from the C4 storage lane): --checks restores src/core/dynamic-storage.f's size test, which CELL-CEIL held before C4, and adds one for RESERVE's `count width *`, which wraps unchecked (a count near the cell's maximum reserves too little).
+
+Acceptance case (C4 code 7121): code 7121 no longer exists; the switched-off rows test/dynamic-buffer.f BOUNDS-ROWS BAD-SIZE and BAD-OVERFLOW (~161-162) expect it, so the restored size test names its own code and those rows expect that.

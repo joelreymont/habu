@@ -102,3 +102,5 @@ Acceptance case 2026-11-11 (carl-hcdd fix zkmnmrls f455cb19, dot 6dd65911): the 
 Acceptance cases (2026-11-12, from habu-a-foreign-pkg-a9c9e60d's probes): a foreign package's public `TRUSTED: FAKE ( n -- Q:tok ) ;` forges a linear token and a TRUSTED: word erases or retypes one with no memory and no cast; the tree does it at src/lib/xml/c2.f:118 and :121 (package XML-C2 mints and erases XML:reader, declared in src/lib/xml/state.f:11-13), and tender src/answers.f:54-56 is the mint, state and consume trio docs/forth.md says never to write. Each stops loading when TRUSTED: goes.
 
 Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census): SEAL-CAPTURE (src/habu/habu1.f BSEALCAP :3603) exits 73 writing 'hb: undrained pre-trust defer: <name>' per entry, off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>`. Pre-trust defers belong to TRUSTED:; accepted when they go with it.
+
+Acceptance case (C4 parse hunt): a TRUSTED: body publishes no uses under CHECKER-WITH-USES (src/compiler/native/definition.f:130 has no BODY-ARM); once the definer is gone every body publishes its uses.

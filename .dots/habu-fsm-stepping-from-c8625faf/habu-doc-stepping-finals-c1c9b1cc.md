@@ -4,7 +4,6 @@ status: open
 priority: 3
 issue-type: task
 created-at: "2026-11-09T19:10:47.103778+02:00"
-blocks:
 ---
 
 Problem: docs/forth.md "State machines" (801-887) now states the generated words, what runs on each step and on a full run, and the --verify-only caveat (fd307801). docs/forth-card.md names FSM:DEFINE only in a list (585), and no document carries a complete event-fed machine a consumer can copy.
