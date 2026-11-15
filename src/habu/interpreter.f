@@ -1219,13 +1219,13 @@ variable USE-FLOOR
 
 \ The clause takes the slot above the export's own, and its name must not be
 \ live in the current wordlist: a clash is rejected at the export's operand,
-\ still in TOKEN$.
+\ still in TOKEN$, under the clause's name as the operand's tail spells it.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
-   k XREF-REC XREF-NAME$ {: a:ptr u:n :}
-   a u get-current WL-PROBE XREF-FOUND? if
-      a u TOKEN$ REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP
+   k XREF-REC XREF-NAME$ get-current WL-PROBE XREF-FOUND? if
+      PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DUPLICATE
+      CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
