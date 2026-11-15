@@ -253,9 +253,14 @@ variable FFI-SV-SRC-U
    s" 16 STRUCT-RESULT"
    S\" \"message\":\"a clause outside a FUNCTION: declaration\""
    S\" \"token\":\"STRUCT-RESULT\"" FFI-SV-UNOPENED
+   \ A declaration still open when the next opens is rejected at its opener.
    s" FUNCTION: FFI-SV no_symbol ( -- ) FUNCTION: FFI-SW no_symbol ( -- ) ;FUNCTION"
-   S\" \"message\":\"FUNCTION: inside an open declaration\""
-   S\" \"token\":\"FUNCTION:\"" FFI-SV-UNOPENED
+   2dup T-LABEL  FFI-SV-SOURCE
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"message\":\"`FUNCTION:` is still open when `FUNCTION:` opens\""
+   FFI-SV-SAYS
+   S\" \"column\":1," FFI-SV-SAYS
+   S\" \"help\":\"close it with `;FUNCTION` before `FUNCTION:`\"" FFI-SV-SAYS
    s" ;FUNCTION"
    S\" \"message\":\";FUNCTION with no declaration open\""
    S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED

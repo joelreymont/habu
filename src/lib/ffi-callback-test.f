@@ -295,7 +295,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
       s" a ninth float argument: E-FFI-ARITY" FACT
    [: DECL-STRAY-CLOSE ;] s" E-FFI-SYNTAX" REJECTS? s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-STRAY-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
-   [: DECL-NESTED ;] s" E-FFI-SYNTAX" REJECTS? s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
+   [: DECL-NESTED ;]
+      s" error[E-UNCLOSED]: `CALLBACK:` is still open when `CALLBACK:` opens"
+      s" = help: close it with `;CALLBACK` before `CALLBACK:`" RECORD?
+      s" CALLBACK: inside an open declaration: E-UNCLOSED" FACT
    [: DECL-SEVENTEENTH ;] catch 0=
       s" the seventeenth declaration succeeds" FACT
    [: DECL-COLONS ;]
@@ -602,7 +605,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a ninth float argument: E-FFI-ARITY" W
    s" ok   ;CALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   FALLBACK with nothing open: E-FFI-SYNTAX" W
-   s" ok   CALLBACK: inside an open declaration: E-FFI-SYNTAX" W
+   s" ok   CALLBACK: inside an open declaration: E-UNCLOSED" W
    s" ok   the seventeenth declaration succeeds" W
    s" ok   a name with two ':': E-FFI-SYNTAX" W
    s" ok   a name ending in ':': E-FFI-SYNTAX" W

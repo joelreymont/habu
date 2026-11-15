@@ -451,10 +451,8 @@ public
 
 : OPEN-CALLBACK ( -- )
    SRCLOC:TOKEN$ {: t:ptr tu:n :}
-   OPEN @ 0 <> if
-      s" CALLBACK: inside an open callback declaration"
-      s" end the open declaration with ;CALLBACK first" REJECT
-   then
+   \ The load holds the open declaration's opener: it rejects it there.
+   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
    R-NONE RES-KIND ! 0 FB-SET !
    0 READS !
    TOK@ NAME!

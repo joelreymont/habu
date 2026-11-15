@@ -189,9 +189,9 @@ variable FFI-T-PAIR-AFTER
 : FFI-T-GOOD-AFTER ( -- )
    s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" evaluate-closed ;
 
-\ A declaration that never closes defines nothing, and the next FUNCTION: is
-\ rejected because one is still open; the rejection abandons the open one, so
-\ the declaration after it compiles and a closer with nothing open is rejected.
+\ A declaration that never closes defines nothing, and is rejected when the
+\ next FUNCTION: opens; the rejection abandons both, so the declaration after
+\ it compiles and a closer with nothing open is rejected.
 : FFI-T-BAD-UNCLOSED ( -- )
    s" FUNCTION: FFI-T-X7 getpid ( -- n ) FUNCTION: FFI-T-X8 getpid ( -- n )"
    evaluate-closed ;
@@ -861,7 +861,8 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=
 
    [: FFI-T-BAD-UNCLOSED ;]
-   s" error[E-FFI-SYNTAX]: FUNCTION: inside an open declaration" FFI-T-RECORD
+   s" error[E-UNCLOSED]: `FUNCTION:` is still open when `FUNCTION:` opens"
+   FFI-T-RECORD
    [: FFI-T-REDECLARE ;] 0 TTHROWSQ
    [: FFI-T-CLOSE-DANGLING ;]
    s" error[E-FFI-SYNTAX]: ;FUNCTION with no declaration open" FFI-T-RECORD

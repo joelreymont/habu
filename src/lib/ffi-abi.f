@@ -879,7 +879,10 @@ CUR-LIB ROLLBACK-CELLS:MARK
 \ are ignored and it closes without a plan. The load never skips.
 ENUM decl-state closed open skipped ;ENUM
 TYPED-VARIABLE DECL decl-state
-: CLOSED! ( -- ) construct decl-state closed DECL ! ;
+PTR-VARIABLE OPENER-A
+variable OPENER-U
+: CLOSED! ( -- )
+   construct decl-state closed DECL !  NULL-PTR OPENER-A !  0 OPENER-U ! ;
 CLOSED!
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET
@@ -1591,13 +1594,21 @@ public
 \ Nothing is published before ;FUNCTION, and the row is registered as the word
 \ is built, so a refused declaration leaves no half-built word.
 
+\ The token that opened the declaration still open or skipped, as its reader
+\ gave it; empty when none is.
+: OPENER$ ( -- ptr u8 n )
+   OPENER-A @ OPENER-U @ ;
+
 \ The read-head transition: answers the name token as the source gave it.
+\ SRCLOC:TOKEN$ is the FUNCTION: token as it starts. A declaration still open
+\ is rejected at its opener, and abandoned.
 : READ-FUNCTION ( [ -- ptr u8 n ] -- ptr u8 n )
    {: src :}
+   SRCLOC:TOKEN$ {: t:ptr tu:n :}
    [: OPEN? if
-         s" FUNCTION: inside an open declaration"
-         s" end the declaration before it with ;FUNCTION"
-         SYNTAX-REJECT
+         OPENER$ s" ;FUNCTION" t tu SOURCE-ROOT:UNCLOSED
+         SOURCE-ROOT:CLOSED  CLOSED!
+         CHECKER-REJECT-RC REJECTION:STOP
       then
       CLOSED!
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
@@ -1605,12 +1616,11 @@ public
       src TOK-SPAN NAME!
       src TOK@ SYM!
       src EFFECT
-      construct decl-state open DECL ! ;] KEEP-REST ;
+      construct decl-state open DECL !  t OPENER-A !  tu OPENER-U ! ;] KEEP-REST ;
 
 : OPEN-FUNCTION ( -- )
-   SRCLOC:TOKEN$ {: t:ptr tu:n :}
    CHECK-SCOPE [: parse-name ;] READ-FUNCTION 2drop
-   t tu s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
+   OPENER$ s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
 : CLOSE-FUNCTION ( -- )
    [: CLOSE-STATE if SOURCE-ROOT:CLOSED PLAN-CALL EMIT then ;] KEEP-REST ;
 

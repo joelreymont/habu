@@ -3543,23 +3543,19 @@ variable FILE-USE
    2dup 2dup STRUCTURE-SYNTAX? 0= TOP-VERDICT 2 =
    IF TOP-PARSER ELSE 2drop THEN ;
 
-\ The token that opened the FUNCTION: group the scan reads; FFI-OPEN-U is 0
-\ while none is open. Nested files share it, as they share the load's open
-\ declaration.
-PTR-VARIABLE FFI-OPEN-A
-variable FFI-OPEN-U
-
-\ The source now scanned opened the FUNCTION: group still open.
+\ The source now scanned opened the FUNCTION: group still open. Nested files
+\ share FFI's open group, as they share the load's open declaration.
 : FFI-OPEN-HERE? ( -- bool )
-   FFI-OPEN-U @ 0= IF false EXIT THEN
-   FFI-OPEN-A @ SOURCE@ - {: at:n :}
+   FFI:OPENER$ {: t:ptr tu:n :}
+   tu 0= IF false EXIT THEN
+   t SOURCE@ - {: at:n :}
    at 0 < 0=  at SOURCE-U @ > 0= and ;
 
 \ The group open in this source is rejected when the token o ou opens another
 \ declaration or, with ou 0, when the source ends.
 : FFI-UNCLOSED ( ptr u8 n -- ) {: o:ptr ou:n :}
    FFI-OPEN-HERE? 0= IF EXIT THEN
-   FFI-OPEN-A @ FFI-OPEN-U @ s" ;FUNCTION" o ou UNCLOSED-DECL-STOP ;
+   FFI:OPENER$ s" ;FUNCTION" o ou UNCLOSED-DECL-STOP ;
 
 \ A declaration opening inside the structure rejects the structure.
 : STRUCTURE-OPENED ( ptr u8 n -- ) {: o:ptr ou:n :}
@@ -3637,7 +3633,6 @@ variable FFI-LIT-B                          \ and the newer
 : RECORD-FFI-FUNCTION ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u FFI-UNCLOSED
-   a FFI-OPEN-A !  u FFI-OPEN-U !
    [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
       FFI:READ-FUNCTION ;] a u FFI-AT
    {: name:ptr nameu:n :}
@@ -3877,7 +3872,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders a u FFI-CLOSER? and IF
-      0 FFI-OPEN-U !  [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
+      [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
    THEN
    \ A definer learned from a `does>` definition or a `generates:` row earlier
    \ in the closure. The created word is the next token, as for `constant` (the
@@ -4210,7 +4205,7 @@ COMPOSE-INIT
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !  0 FFI-OPEN-U !  FFI:ABANDON-FUNCTION
+   false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  XREF:SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
