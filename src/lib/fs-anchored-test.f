@@ -12,7 +12,7 @@ create TMP FS:PATHZ-CAP allot
 variable TMP-U
 variable ANCHOR
 variable OPEN-FDS
-create PATHS 31 PATH-CAP * allot
+create PATHS 35 PATH-CAP * allot
 73 constant MODE-0111
 448 constant MODE-0700
 create LONG PATH-CAP 1 + allot
@@ -47,6 +47,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : SEARCH-FILE ( -- ^u8 n ) 28 s" search/a/b/f" PATH ;
 : SEARCH-LINK ( -- ^u8 n ) 29 s" search/l" PATH ;
 : SEARCH-LINK-B ( -- ^u8 n ) 30 s" search/l/b" PATH ;
+: LINKED ( -- ^u8 n ) 31 s" linked" PATH ;
+: LINKED-CHILD ( -- ^u8 n ) 32 s" linked/child" PATH ;
+: DOT-CHILD ( -- ^u8 n ) 33 s" root/./child" PATH ;
+: MISSING-DIR ( -- ^u8 n ) 34 s" root/missing" PATH ;
 
 : NONE-WITH ( option<fd> n -- ) {: o want:n :}
    o MATCH option
@@ -402,11 +406,45 @@ HB-TARGET-LINUX-KERNEL? 0= [if]
 : NAMED ( -- ) ;
 [then]
 
+\ A new file of that name, written and read through the descriptor; only
+\ Linux has AT words that write.
+HB-TARGET-LINUX-KERNEL? [if]
+: WRITE-AT ( fd ^u8 n -- ) {: dir:fd name:^ u:n :}
+   dir FS:TEMP-AT {: t:fd :}
+   t s" written" FD:WRITE-FULL
+   t dir name u FS:TRY-LINK-AT TTRUE
+   t FS:CLOSE-DIR
+   dir name u s" written" READ-CHECK ;
+[then]
+HB-TARGET-LINUX-KERNEL? 0= [if]
+: WRITE-AT ( fd ^u8 n -- ) 2drop drop ;
+[then]
+
+: FOLLOWS-TO ( ^u8 n ^u8 n ^u8 n -- )
+   {: path:^ u:n file:^ fu:n name:^ nu:n :}
+   path u FS:OPEN-DIR-FOLLOW {: dir:fd :}
+   dir file fu s" original" READ-CHECK
+   dir name nu WRITE-AT
+   dir FS:CLOSE-DIR ;
+\ linked is a link to root.
+: FOLLOWS ( -- )
+   s" root" LINKED FS:MAKE-SYMLINK
+   s" a link above the last component is followed" T-LABEL
+   LINKED-CHILD s" file" s" via-link" FOLLOWS-TO
+   s" a link in the last component is followed" T-LABEL
+   LINKED s" child/file" s" via-last" FOLLOWS-TO
+   s" a . component resolves" T-LABEL
+   DOT-CHILD s" file" s" via-dot" FOLLOWS-TO
+   [: FILE FS:OPEN-DIR-FOLLOW drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOTDIR T=
+   [: MISSING-DIR FS:OPEN-DIR-FOLLOW drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOENT T= ;
+
 public
 : MAIN ( -- )
    T-RESET SETUP
    [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS
-      SEARCH-ONLY NAMED ;]
+      SEARCH-ONLY NAMED FOLLOWS ;]
    [: TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;
 ;package

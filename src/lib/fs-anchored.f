@@ -222,7 +222,25 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    work dst A-READ-CONTENT work A-RESULT-CELL A-SLOT !
    anchor src u dst work ;
 
+\ openat's flags for OPEN-DIR-FOLLOW, without O_NOFOLLOW. Darwin: O_SEARCH
+\ (O_EXEC $40000000 with O_DIRECTORY)|O_CLOEXEC, xnu bsd/sys/fcntl.h. Linux:
+\ O_PATH|O_DIRECTORY|O_CLOEXEC, include/uapi/asm-generic/fcntl.h; arm64's
+\ asm/fcntl.h overrides O_DIRECTORY, x86-64 uses the generic bits.
+: A-FOLLOW-FLAGS ( -- n )
+   HB-TARGET-MACOS? if $40000000 $100000 or $1000000 or exit then
+   HB-TARGET-LINUX-X86-64? if $200000 $10000 or $80000 or exit then
+   $200000 $4000 or $80000 or ;
+
 public
+\ A directory the user configured, its path resolved as the kernel resolves
+\ it, every link followed; a path inside a tree the program does not trust
+\ opens with OPEN-DIR. Search only: the descriptor is the AT words' anchor
+\ and the caller's. A failure is E-FS-OPEN with its errno in FS:ERRNO.
+: OPEN-DIR-FOLLOW ( ^u8 n -- fd ) {: src:^ u:n :}
+   COMPILE-READS:MISS
+   AT-CWD src u >PATHZ A-FOLLOW-FLAGS OPEN-AT-CALL {: dir:n :}
+   dir 0 < if E-FS-OPEN ERRNO-FAIL then
+   dir >FD ;
 
 \ / for an absolute path, . for a relative one; the returned descriptor is the
 \ caller's. The AT words borrow their anchor and refuse absolute paths. An
