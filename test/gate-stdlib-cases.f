@@ -532,6 +532,12 @@ SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE
 
+\ STUDIO:KEY-VOLUME's planes and pixel for three stated scenes, and the
+\ matrices it rejects.
+SUITE studio
+   src/lib/browser/studio-test.f
+;SUITE
+
 SUITE crypto-evp
    src/lib/crypto/evp-test.f
 ;SUITE
@@ -1074,6 +1080,13 @@ SUITE systemd
 ;SUITE
 [then]
 
+\ The attribute calls are bound on the Linux kernel only, arm64 and x86-64.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE xattr
+   src/lib/xattr-test.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
@@ -1085,6 +1098,13 @@ SUITE fs-lock
 SUITE os-cpu
    src/lib/os-cpu-test.f
 ;SUITE
+
+\ statx(2) is Linux's: birth time and subvolume of a file under TMPDIR.
+HB-TARGET-MACOS? 0= [if]
+SUITE fs-statx
+   src/lib/fs-statx-test.f
+;SUITE
+[then]
 
 SUITE fs-list
    src/lib/fs-list-test.f

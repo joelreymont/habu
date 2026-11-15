@@ -68,12 +68,16 @@
 //     u16s, record 13, an integer below 2^24 so exact in f32, which lets a
 //     host fit bounds to the same integers its shader places) to world, then
 //     u32s: a held mesh handle, the instance's id, flags (bit 0 every face
-//     selected, the others 0), the highlight word where the instance's face
-//     bits start, or 0xFFFFFFFF for none, the colour, its bytes r, g, b
-//     (sRGB-encoded) and 0, and one whose low u16 is metallic and high u16
-//     roughness, each 0 to 65535 for 0 to 1. A row's offset plus the words
-//     its mesh's faces need (record 13) is at most the highlight's word
-//     count, and that sum is the words the row needs. c a column-major f32
+//     selected, bit 1 cast-only, the others 0), the highlight word where the
+//     instance's face bits start, or 0xFFFFFFFF for none, the colour, its
+//     bytes r, g, b (sRGB-encoded) and 0, and one whose low u16 is metallic
+//     and high u16 roughness, each 0 to 65535 for 0 to 1. A row's offset plus
+//     the words its mesh's faces need (record 13) is at most the highlight's
+//     word count, and that sum is the words the row needs. A cast-only row
+//     casts the ground's shadow (record 17) and is otherwise not drawn: it
+//     leaves no colour and no depth, and no pick or occlude sees it; its
+//     other fields are checked as any row's. A row with bit 1 clear is drawn
+//     and casts. c a column-major f32
 //     4x4 matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest). A
 //     draw of 0 rows clears, names no handle and needs no words; a draw
 //     removes a shown SVG. A host may draw the last draw's rows again on its
@@ -147,10 +151,12 @@
 //     view. After a draw of 0 rows, or after a resize and before the next
 //     draw, nothing is drawn, so every box in view passes. The ground
 //     leaves no depth, so it hides no box
-//   17 ground: a, b a span of 16 bytes, four f32 nx, ny, nz, d, the world
-//     plane n·p + d = 0, n of any nonzero length toward the side that is up;
-//     or b 0 for none, the state before the first. c 0. It holds for every
-//     later draw
+//   17 ground: a, b a span of 40 bytes, ten f32: nx, ny, nz, d, the world
+//     plane n·p + d = 0, n of any nonzero length toward the side that is up,
+//     then the casters' box, its lowest x, y, z then its highest, in world,
+//     which no caster leaves: a caster outside it may cast nothing. Or b 0
+//     for none, the state before the first. c 0. A value not finite, or a
+//     lowest above its highest, is rejected. It holds for every later draw
 // A post or request is answered for every HTTP status. Request, rpc, read,
 // pick and occlude records are tagged. A host that takes tagged records, or
 // fetches and posts from a run that throws, provides error(error): the first
@@ -221,7 +227,7 @@ const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
-const PROTOCOL = 1n;
+const PROTOCOL = 2n;
 
 // Records.
 const HELLO = 0n;
@@ -244,7 +250,8 @@ const OCCLUDE = 16n;
 const GROUND = 17n;
 const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
 const BOX_BYTES = 24n; // an occlude's box: six f32
-const PLANE_BYTES = 16n; // a ground's plane: four f32
+const GROUND_BYTES = 40n; // a ground's plane and casters' box: ten f32
+const CAST_ONLY = 2; // a draw row's flags bit 1
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
@@ -279,7 +286,8 @@ export class Module {
   // origin the record's three u32s as numbers, with copied Uint16Arrays,
   // unmesh(handle), draw(rows, count, matrix) with the rows'
   // bytes copied, highlight(words) with a copied Uint32Array,
-  // ground(plane) with a copied Float32Array of four, or null for none,
+  // ground(plane, box) with copied Float32Arrays of four and six, or
+  // ground(null) for none,
   // text(string), tree(rows, selected), svg(copiedBytes), input(enabled), and
   // size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
@@ -790,26 +798,32 @@ export class Module {
     this.meshes.set(handle, Math.floor(face / 32) + 1);
   }
 
-  // A ground's plane, copied, or none for b 0. d / |n| is the plane's
-  // distance from the origin, which a host's f32 must hold.
+  // A ground's plane and casters' box, copied, or none for b 0. d / |n| is
+  // the plane's distance from the origin, which a host's f32 must hold.
   ground(a, b, c) {
     if (c !== 0n) throw new Error("ground c must be zero");
     if (b === 0n) {
       this.host.ground(null);
       return;
     }
-    if (b !== PLANE_BYTES)
-      throw new RangeError(`a ground of ${b} bytes, not 0 or ${PLANE_BYTES}`);
-    const plane = new Float32Array(this.span(a, b).slice().buffer);
-    if (!plane.every(Number.isFinite))
-      throw new RangeError(`a ground of ${plane.join(", ")}, not all finite`);
+    if (b !== GROUND_BYTES)
+      throw new RangeError(`a ground of ${b} bytes, not 0 or ${GROUND_BYTES}`);
+    const values = new Float32Array(this.span(a, b).slice().buffer);
+    if (!values.every(Number.isFinite))
+      throw new RangeError(`a ground of ${values.join(", ")}, not all finite`);
+    const [plane, box] = [values.slice(0, 4), values.slice(4)];
     const [x, y, z, d] = plane;
     const length = Math.hypot(x, y, z);
     if (length === 0) throw new RangeError("a ground whose normal is (0, 0, 0)");
     if (!Number.isFinite(Math.fround(d / length)))
       throw new RangeError(`a ground whose d / |n|, ${d / length}, ` +
         "is not a finite f32");
-    this.host.ground(plane);
+    for (let k = 0; k < 3; k++)
+      if (box[k] > box[3 + k])
+        throw new RangeError(`a ground whose casters' box has lowest ` +
+          `${box.subarray(0, 3).join(", ")} above its highest ` +
+          `${box.subarray(3).join(", ")}`);
+    this.host.ground(plane, box);
   }
 
   unmesh(a, b, c) {
@@ -837,8 +851,9 @@ export class Module {
       const offset = v.getUint32(at + 60, true);
       if (!this.meshes.has(handle))
         throw new Error(`a draw of handle ${handle}, which is not held`);
-      if (flags > 1)
-        throw new Error(`a draw's flags ${flags} set a bit other than bit 0`);
+      if (flags > (1 | CAST_ONLY))
+        throw new Error(`a draw's flags ${flags} set a bit other than bits ` +
+          "0 and 1");
       if (rows[at + 67] !== 0)
         throw new Error(`a draw row's colour byte 3 is ${rows[at + 67]}, ` +
           "not 0");

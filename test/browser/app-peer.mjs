@@ -334,6 +334,12 @@ try {
   // The socket's view/open lands before the checks below read #text.
   const opened = "notified view/open {}";
   await until(async () => (await evaluate("shown")).includes(opened));
+  // #text keeps its height whatever it holds, so the canvas keeps its size.
+  const heights = await evaluate(`(() => { const d = frames[0].document, t = d.querySelector('#text');
+    const sized = (s) => { t.textContent = s; return d.querySelector('canvas').clientHeight; };
+    const hs = ["", "one", "1\\n2\\n3\\n4\\n5"].map(sized); return hs; })()`);
+  assert.ok(heights[0] > 0 && heights.every((h) => h === heights[0]),
+    `the canvas keeps its height with an empty #text, one line and five: ${heights.join(", ")}`);
 
   const later = `notified ui/notifications/tool-result ${JSON.stringify(LATER)}`;
   await evaluate(`stranger({ method: "ui/notifications/tool-result", params: ${JSON.stringify(STRANGER)} });

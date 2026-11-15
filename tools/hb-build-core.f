@@ -36,8 +36,16 @@ require src/habu/link-data.f
 package HB-BUILD-CORE
 private
 
-PTR-VARIABLE ROW-PATH
-variable ROW-LEN
+\ Where the build is (WHERE$): idle outside a build; opening in LINKER:WITH's
+\ open; between in its body outside a top-level file; loading such a file.
+ENUM stage idle opening between loading ;ENUM
+1 LAYOUT-BUFFER STAGE-BUF stage
+PTR-VARIABLE MODE-PATH                  \ the open build's LINKER:WITH mode
+variable MODE-LEN
+PTR-VARIABLE FILE-PATH                  \ the file a loading build loads
+variable FILE-LEN
+\ WHERE$'s text; the longest, the kernel build outside its files, is 34 bytes.
+create WHERE-BUF 64 allot  variable WHERE-U
 PTR-VARIABLE SRC-PATH
 variable SRC-LEN
 TYPED-VARIABLE OUT-Q [ -- ^u8 n ]
@@ -61,6 +69,35 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 : END$ ( -- ^u8 n ) END-PATH END-U @ ;
 : SRC$ ( -- ^u8 n ) SRC-PATH @ SRC-LEN @ ;
 : OUT$ ( -- ^u8 n ) OUT-Q @ execute ;
+
+: STAGE! ( stage -- ) 0 STAGE-BUF ! ;
+: STAGE@ ( -- stage ) 0 STAGE-BUF @ ;
+: MODE$ ( -- ^u8 n ) MODE-PATH @ MODE-LEN @ ;
+: FILE$ ( -- ^u8 n ) FILE-PATH @ FILE-LEN @ ;
+
+: OPENING ( ^u8 n -- )
+   {: a:^ u:n :}
+   a MODE-PATH !  u MODE-LEN !
+   construct stage opening STAGE! ;
+
+: LOADING ( ^u8 n -- )
+   {: a:^ u:n :}
+   a FILE-PATH !  u FILE-LEN !
+   construct stage loading STAGE! ;
+
+: BETWEEN ( -- ) construct stage between STAGE! ;
+
+: WHERE+ ( ^u8 n -- )
+   {: a:^ u:n :}
+   a  WHERE-BUF WHERE-U @ +  u BYTE-COPY
+   u WHERE-U +! ;
+
+\ "the <mode> build" and the tail.
+: BUILD$ ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
+   0 WHERE-U !
+   s" the " WHERE+  MODE$ WHERE+  s"  build" WHERE+  a u WHERE+
+   WHERE-BUF WHERE-U @ ;
 
 
 \ True when the file at the path holds exactly the bytes; false when it is missing.
@@ -114,8 +151,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : INCLUDE-FILE ( ^u8 n -- )
    {: a:^ u:n :}
-   a ROW-PATH !  u ROW-LEN !
-   a u included ;
+   a u LOADING
+   a u included
+   BETWEEN ;
 
 
 : ROW ( n n ^u8 n -- )
@@ -130,8 +168,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : REQUIRE-FILE ( ^u8 n -- )
    {: a:^ u:n :}
-   a ROW-PATH !  u ROW-LEN !
-   a u required ;
+   a u LOADING
+   a u required
+   BETWEEN ;
 
 
 \ The provide rows go to the build's registry, which `provided` writes inside a
@@ -196,7 +235,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    SOURCE-ROOT:CWD$ {: c:^ cu:n :}
    u cu 1 + > if a cu c cu STR= a cu + c@ FS:SLASH = and else false then
    {: below:bool :}
-   below 0= engine and if a ROW-PATH !  u ROW-LEN !  E-BUILD-PATH throw then
+   below 0= engine and if a u LOADING  E-BUILD-PATH throw then
    s\" s\\\" " TEXT+
    below if a cu + 1 + u cu - 1 - ROW+ else a u ROW+ then
    s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
@@ -249,6 +288,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 \ hb carries the build command's files, so `hb --load tools/hb-build.f`
 \ compiles only that driver.
 : ENGINE-BODY ( -- )
+   BETWEEN
    STARTUP
    RUNTIME-FILES
    s" tools/hb-build-lib.f" REQUIRE-FILE
@@ -276,6 +316,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 
 : REPL-BODY ( -- )
+   BETWEEN
    STARTUP
    RUNTIME-FILES
    SEAL-ENGINE
@@ -291,6 +332,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 \ A Wasm module's kernel words load ahead of the program, so its words and the
 \ link reach them.
 : APP-BODY ( -- )
+   BETWEEN
    STARTUP
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
    APP-FILES
@@ -433,9 +475,17 @@ SUM-U 32 + constant HEAD-U
    ['] RECORD-HOLDS? ['] INPUTS-DONE finally ;
 
 : KERNEL-BODY ( -- )
+   BETWEEN
    STARTUP
    s" src/arch/arm64/kernel-object.f" REQUIRE-FILE
    KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
+
+\ LINKER:WITH's build of the mode, which is idle once it returns.
+: LINK ( ^u8 n RTARGET:resolved-target [ -- ] -- )
+   {: mode:^ modeu:n target:RTARGET:resolved-target body :}
+   mode modeu OPENING
+   mode modeu target body LINKER:WITH
+   construct stage idle STAGE! ;
 
 public
 
@@ -460,8 +510,7 @@ public
    PATHS  KERNEL-PATHS
    SOURCE-ROOT:CWD$ [:
       ADOPT? 0= if
-         NULL-PTR ROW-PATH !  0 ROW-LEN !
-         s" kernel" target ['] KERNEL-BODY LINKER:WITH
+         s" kernel" target ['] KERNEL-BODY LINK
       then
    ;] SOURCE-ROOT:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
@@ -475,9 +524,15 @@ public
 \ from the tree's root.
 : KERNEL-INPUTS$ ( -- ^u8 n ) INPUTS-PATH INPUTS-U @ ;
 
-\ The file the build is loading, for the message of a build that failed; empty
-\ until the build opened last loads its first file.
-: ROW$ ( -- ^u8 n ) ROW-PATH @ ROW-LEN @ ;
+\ Where a build that ended was: loading answers its file; opening "the <mode>
+\ build's open"; between "the <mode> build outside its files"; idle empty.
+: WHERE$ ( -- ^u8 n )
+   STAGE@ MATCH stage
+      idle OF WHERE-BUF 0 ENDOF
+      opening OF s" 's open" BUILD$ ENDOF
+      between OF s"  outside its files" BUILD$ ENDOF
+      loading OF FILE$ ENDOF
+   ;MATCH ;
 
 \ Build this tree's hb for the target and write it to the path the quotation
 \ answers when the build writes.
@@ -486,8 +541,7 @@ public
    target REFUSE-WASM
    out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
-   NULL-PTR ROW-PATH !  0 ROW-LEN !
-   s" engine" target ['] ENGINE-BODY LINKER:WITH ;
+   s" engine" target ['] ENGINE-BODY LINK ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
 \ and write it to the path the quotation answers when the build writes.
@@ -496,8 +550,7 @@ public
    target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
-   NULL-PTR ROW-PATH !  0 ROW-LEN !
-   s" engine" target ['] REPL-BODY LINKER:WITH ;
+   s" engine" target ['] REPL-BODY LINK ;
 
 \ Build the source as a stripped program for the target and write it to
 \ the path the quotation answers when the build writes.
@@ -506,7 +559,6 @@ public
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
-   NULL-PTR ROW-PATH !  0 ROW-LEN !
-   s" app" target ['] APP-BODY LINKER:WITH ;
+   s" app" target ['] APP-BODY LINK ;
 
 ;package

@@ -460,17 +460,27 @@ variable DLERROR-FN-CELL
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 : DLERROR-FN ( -- n ) DLERROR-FN-CELL @ ;
 
-\ The errno accessor resolves first because the loader may change errno even
-\ when it succeeds, and nothing may run it between a call and its errno read.
-: FN-LOOKUP ( n -- n ) {: idx:n :}
+\ The row's address, resolved through its library at its first call.
+: FN-RESOLVE ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
-   idx ERRNO-FN <> if ERRNO-FN RECURSE drop then
    idx FN-LIB@ {: lib:n :}
    lib 0 <> if DLERROR-FN RECURSE else 0 then lib LIB-RESOLVE {: handle:n held:n :}
    handle idx FN-NAME DLSYM-RAW
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
+
+\ The errno accessor resolves first, so a lookup gives back errno as the caller
+\ left it: the loader may change it even when it succeeds.
+: FN-LOOKUP ( n -- n ) {: idx:n :}
+   idx FN-ADDR@ dup 0 <> if exit then
+   drop
+   idx ERRNO-FN = if idx FN-RESOLVE exit then
+   FFI-BUF 0 ERRNO-FN FN-RESOLVE ffi-call-n CELL>PTR {: cell:^ :}
+   cell LE:U32@ {: saved:n :}
+   idx FN-RESOLVE {: fn:n :}
+   saved cell LE:U32!
+   fn ;
 
 public
 
@@ -713,6 +723,10 @@ public
 \ value is a four-byte C int.
 : ERRNO ( -- n )
    ERRNO-FN CALL-PTR LE:U32@ ;
+
+\ Sets errno to 0, for a call whose failure only errno tells.
+: ERRNO-CLEAR ( -- )
+   0 ERRNO-FN CALL-PTR LE:U32! ;
 
 ERRNO-SYMBOL$ PROCESS 0 0 0 DECLARE-ROW ERRNO-FN-CELL !
 

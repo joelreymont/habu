@@ -3,17 +3,16 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/fs-anchored.f
 require src/lib/fs-list.f
+require src/lib/fd.f
 
 package FS-ANCHORED-TEST
-
-2 constant ENOENT
 
 16 SPAN-BUFFER: OUT
 create TMP FS:PATHZ-CAP allot
 variable TMP-U
 variable ANCHOR
 variable OPEN-FDS
-create PATHS 16 PATH-CAP * allot
+create PATHS 25 PATH-CAP * allot
 create LONG PATH-CAP 1 + allot
 
 PROCESS-SYMBOLS
@@ -41,6 +40,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : DOT-DIR ( -- ^u8 n ) 14 s" root/child/.cache" PATH ;
 : DOT-FILE ( -- ^u8 n ) 15 s" root/child/.cache/a..b" PATH ;
 
+: NONE-WITH ( option<fd> n -- ) {: o want:n :}
+   o MATCH option
+      none OF true ENDOF
+      some OF FS:CLOSE-DIR false ENDOF
+   ;MATCH TTRUE
+   FS:ERRNO want T= ;
+: SOME ( option<fd> -- fd )
+   MATCH option
+      none OF false TTRUE -1 >FD ENDOF
+      some OF FS:ERRNO 0 T= ENDOF
+   ;MATCH ;
+
 : FD-ENTRY ( ^u8 n -- )
    2drop 1 OPEN-FDS +! ;
 : FD-COUNT ( -- n )
@@ -53,6 +64,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    {: fd:fd path:^ u:n want:^ wantu:n :}
    fd path u READ$ wantu T=
    OUT wantu SPAN:TAKE SPAN:$ want wantu T$= ;
+
+: READ-CHECK-CLOSE ( fd ^u8 n ^u8 n -- )
+   {: fd:fd path:^ u:n want:^ wantu:n :}
+   fd path u want wantu READ-CHECK
+   fd FS:CLOSE-DIR ;
 
 : SETUP ( -- )
    s" habu-anchored" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -92,6 +108,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: s" /tmp/" FS:OPEN-DIR drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" " FS:OPEN-DIR-AT drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" ." FS:OPEN-DIR-AT drop ;] E-FS-PATH TTHROWSQ
+   FS:ERRNO 0 T=
    [: ANCHOR @ >FD s" /child" FS:OPEN-DIR-AT drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child//file" READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child/" READ$ drop ;] E-FS-PATH TTHROWSQ
@@ -104,6 +121,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: ANCHOR @ >FD s" child/file" OUT 0 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
    FS:ERRNO 0 T=
    root s" child/file" s" original" READ-CHECK
+   root s" child/.." FS:TRY-OPEN-DIR-AT FS:EINVAL NONE-WITH
+   root s\" bad\zname" FS:TRY-OPEN-DIR-AT FS:EINVAL NONE-WITH
+   root s" child/absent" FS:TRY-OPEN-DIR-AT FS:ENOENT NONE-WITH
+   root s" child/deep" FS:TRY-OPEN-DIR-AT SOME
+   s" file" s" deep" READ-CHECK-CLOSE
    root FS:CLOSE-DIR ;
 
 : REPLACED ( -- )
@@ -139,7 +161,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    ROOT FS:OPEN-DIR {: root:fd :}
    root FD>N ANCHOR !
    [: ANCHOR @ >FD s" child/deep/missing" READ$ drop ;] E-FS-OPEN TTHROWSQ
-   FS:ERRNO ENOENT T=
+   FS:ERRNO FS:ENOENT T=
    root s" child/deep/file" s" deep" READ-CHECK
    BLOCKED FS:>PATHZ 0 chmod 0 T=
    [: ANCHOR @ >FD s" blocked/file" READ$ drop ;] E-FS-OPEN TTHROWSQ
@@ -165,6 +187,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       [: ANCHOR @ >FD s" child/deep/absent" FS:OPEN-DIR-AT drop ;] E-FS-OPEN TTHROWSQ
       s" missing directory closes partial traversal descriptors" T-LABEL
       FD-COUNT before 1+ T=
+      root s" child/deep/absent" FS:TRY-OPEN-DIR-AT FS:ENOENT NONE-WITH
+      s" a none from TRY-OPEN-DIR-AT closes its traversal" T-LABEL
+      FD-COUNT before 1+ T=
       [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
       s" capacity refusal closes file descriptor" T-LABEL
       FD-COUNT before 1+ T=
@@ -175,10 +200,183 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" repeated anchored reads leave no descriptors open" T-LABEL
    FD-COUNT before T= ;
 
+HB-TARGET-LINUX-KERNEL? [if]
+FS-ABI:S-IFLNK constant S-IFLNK
+$1FF constant PERMS
+384 constant MODE-0600
+variable DIR
+variable TEMP
+variable PLAIN
+
+: AT-DIR ( -- ^u8 n ) 16 s" root/at" PATH ;
+: AT-FILE ( -- ^u8 n ) 17 s" root/at/file" PATH ;
+: AT-LINK ( -- ^u8 n ) 18 s" root/at/link" PATH ;
+: AT-SUB ( -- ^u8 n ) 19 s" root/at/sub" PATH ;
+: AT-SUB-LINK ( -- ^u8 n ) 20 s" root/at/sublink" PATH ;
+: AT-A ( -- ^u8 n ) 21 s" root/at/a" PATH ;
+: AT-C ( -- ^u8 n ) 22 s" root/at/c" PATH ;
+: MV ( -- ^u8 n ) 23 s" root/mv" PATH ;
+: MV-FILE ( -- ^u8 n ) 24 s" root/mv/f" PATH ;
+
+: NAMED-SETUP ( -- )
+   AT-DIR FS:MAKE-DIR AT-SUB FS:MAKE-DIR MV FS:MAKE-DIR
+   AT-FILE s" at-bytes" FS:WRITE-ALL
+   s" file" AT-LINK FS:MAKE-SYMLINK
+   s" sub" AT-SUB-LINK FS:MAKE-SYMLINK
+   AT-A s" one" FS:WRITE-ALL AT-C s" three" FS:WRITE-ALL
+   MV-FILE s" anchored" FS:WRITE-ALL ;
+
+: D ( -- fd ) DIR @ >FD ;
+: FALSE-WITH ( bool n -- ) {: ok:bool want:n :}
+   ok TFALSE FS:ERRNO want T= ;
+: SIZE ( fd -- n ) FS:FD-STAMP nip nip ;
+: OPENED-SIZE ( option<fd> -- n )
+   SOME {: f:fd :} f SIZE f FS:CLOSE-DIR ;
+: STAT-SIZE ( ^u8 n -- n ) {: a:^ u:n :}
+   D a u FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
+: ABSENT ( ^u8 n -- ) {: a:^ u:n :}
+   D a u FS:TRY-STAT-AT FS:ENOENT FALSE-WITH ;
+\ Runs q on each name every name word refuses.
+: REFUSED ( [ fd ^u8 n -- ] -- ) {: q :}
+   D s" " q execute  D s" ." q execute  D s" .." q execute
+   D s" sub/x" q execute  D s\" a\zb" q execute
+   D LONG PATH-CAP 1 + q execute ;
+
+: READS ( -- )
+   D s" file" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
+   D s" missing" FS:TRY-OPEN-READ-AT FS:ENOENT NONE-WITH
+   D s" link" FS:TRY-OPEN-READ-AT FS:ELOOP NONE-WITH
+   [: FS:TRY-OPEN-READ-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+: WRITES ( -- )
+   D s" file" FS:TRY-OPEN-WRITE-AT SOME {: f:fd :}
+   f s" AT" FD:WRITE-FULL f FS:CLOSE-DIR
+   D s" file" s" AT-bytes" READ-CHECK
+   D s" missing" FS:TRY-OPEN-WRITE-AT FS:ENOENT NONE-WITH
+   s" missing" ABSENT
+   D s" link" FS:TRY-OPEN-WRITE-AT FS:ELOOP NONE-WITH
+   [: FS:TRY-OPEN-WRITE-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+: ENTRIES ( -- )
+   D s" file" FS:TRY-OPEN-ENTRY-AT OPENED-SIZE 8 T=
+   s" an O_PATH open of a symlink pins the link itself" T-LABEL
+   D s" link" FS:TRY-OPEN-ENTRY-AT OPENED-SIZE 4 T=
+   D s" missing" FS:TRY-OPEN-ENTRY-AT FS:ENOENT NONE-WITH
+   [: FS:TRY-OPEN-ENTRY-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+: DIRS ( -- )
+   D s" sub" FS:TRY-OPEN-DIR-AT SOME FS:CLOSE-DIR
+   s" a directory open of a symlink is ENOTDIR" T-LABEL
+   D s" sublink" FS:TRY-OPEN-DIR-AT FS:ENOTDIR NONE-WITH ;
+
+\ TRY-STAT-AT and TRY-LSTAT agree on the file, field by field.
+: SAME ( [ -- n ] -- ) {: q :}
+   AT-FILE FS:TRY-LSTAT TTRUE q execute
+   D s" file" FS:TRY-STAT-AT TTRUE FS:ERRNO 0 T= q execute T= ;
+: STATS ( -- )
+   [: FS:STAT-MODE@ ;] SAME  [: FS:STAT-SIZE@ ;] SAME
+   [: FS:STAT-MTIME-SEC@ ;] SAME  [: FS:STAT-MTIME-NS@ ;] SAME
+   [: FS:STAT-CTIME-SEC@ ;] SAME  [: FS:STAT-CTIME-NS@ ;] SAME
+   D s" link" FS:TRY-STAT-AT TTRUE
+   FS:STAT-MODE@ FS:S-IFMT and S-IFLNK T=  FS:STAT-SIZE@ 4 T=
+   s" missing" ABSENT
+   [: FS:TRY-STAT-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+
+: MAKES ( -- )
+   D s" made" 448 FS:TRY-MAKE-DIR-AT TTRUE FS:ERRNO 0 T=
+   D s" made" FS:TRY-STAT-AT TTRUE
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFDIR T=
+   FS:STAT-MODE@ PERMS and 448 T=
+   D s" made" 448 FS:TRY-MAKE-DIR-AT FS:EEXIST FALSE-WITH
+   D s" link" 448 FS:TRY-MAKE-DIR-AT FS:EEXIST FALSE-WITH
+   D s" gone" 448 FS:TRY-MAKE-DIR-AT TTRUE
+   D s" gone" FS:TRY-OPEN-DIR-AT SOME {: gone:fd :}
+   D s" gone" FS:TRY-REMOVE-DIR-AT TTRUE
+   s" a removed directory takes no new entry" T-LABEL
+   gone s" x" 448 FS:TRY-MAKE-DIR-AT FS:ENOENT FALSE-WITH
+   gone FS:CLOSE-DIR
+   [: 448 FS:TRY-MAKE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+
+: RENAME-TO ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+   D s" b" d a u FS:TRY-RENAME-AT ;
+: RENAME-NEW-TO ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+   D s" b" d a u FS:TRY-RENAME-NEW-AT ;
+: RENAMES ( -- )
+   D s" a" D s" b" FS:TRY-RENAME-AT TTRUE
+   s" a" ABSENT s" b" STAT-SIZE 3 T=
+   D s" b" D s" c" FS:TRY-RENAME-NEW-AT FS:EEXIST FALSE-WITH
+   s" b" STAT-SIZE 3 T= s" c" STAT-SIZE 5 T=
+   D s" b" D s" c" FS:TRY-RENAME-AT TTRUE
+   s" b" ABSENT s" c" STAT-SIZE 3 T=
+   D s" c" D s" b" FS:TRY-RENAME-NEW-AT TTRUE
+   s" c" ABSENT s" b" STAT-SIZE 3 T=
+   D s" a" D s" z" FS:TRY-RENAME-AT FS:ENOENT FALSE-WITH
+   D s" a" D s" z" FS:TRY-RENAME-NEW-AT FS:ENOENT FALSE-WITH
+   [: D s" b" FS:TRY-RENAME-AT FS:EINVAL FALSE-WITH ;] REFUSED
+   [: D s" b" FS:TRY-RENAME-NEW-AT FS:EINVAL FALSE-WITH ;] REFUSED
+   [: RENAME-TO FS:EINVAL FALSE-WITH ;] REFUSED
+   [: RENAME-NEW-TO FS:EINVAL FALSE-WITH ;] REFUSED
+   D s" sub" FS:TRY-OPEN-DIR-AT SOME {: sub:fd :}
+   D s" b" sub s" b" FS:TRY-RENAME-AT TTRUE
+   s" b" ABSENT  sub s" b" FS:TRY-STAT-AT TTRUE
+   sub s" b" D s" b" FS:TRY-RENAME-NEW-AT TTRUE
+   sub FS:CLOSE-DIR
+   s" b" STAT-SIZE 3 T= ;
+
+: REMOVES ( -- )
+   D s" b" FS:TRY-REMOVE-FILE-AT TTRUE FS:ERRNO 0 T=
+   s" b" ABSENT
+   D s" b" FS:TRY-REMOVE-FILE-AT FS:ENOENT FALSE-WITH
+   D s" made" FS:TRY-REMOVE-DIR-AT TTRUE
+   s" made" ABSENT
+   D s" made" FS:TRY-REMOVE-DIR-AT FS:ENOENT FALSE-WITH
+   [: FS:TRY-REMOVE-FILE-AT FS:EINVAL FALSE-WITH ;] REFUSED
+   [: FS:TRY-REMOVE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+
+: LINK-AS ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+   TEMP @ >FD d a u FS:TRY-LINK-AT ;
+: TEMPS ( -- )
+   D FS:TEMP-AT {: t:fd :}
+   t FD>N TEMP !
+   t s" temp-bytes" FD:WRITE-FULL
+   t D s" kept" FS:TRY-LINK-AT TTRUE FS:ERRNO 0 T=
+   D s" kept" FS:TRY-STAT-AT TTRUE
+   FS:STAT-MODE@ PERMS and MODE-0600 T=
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG T=
+   D s" kept" s" temp-bytes" READ-CHECK
+   t D s" kept" FS:TRY-LINK-AT FS:EEXIST FALSE-WITH
+   [: LINK-AS FS:EINVAL FALSE-WITH ;] REFUSED
+   t FS:CLOSE-DIR
+   D s" kept" FS:TRY-OPEN-READ-AT SOME {: plain:fd :}
+   plain FD>N PLAIN !
+   [: PLAIN @ >FD FS:TEMP-AT drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOTDIR T=
+   plain FS:CLOSE-DIR ;
+
+\ The directory TRY-OPEN-DIR-AT opened is the anchor after its rename.
+: MOVED-ANCHOR ( -- )
+   ROOT FS:OPEN-DIR {: root:fd :}
+   root s" mv" FS:TRY-OPEN-DIR-AT SOME {: mv:fd :}
+   root s" mv" root s" mv-moved" FS:TRY-RENAME-AT TTRUE
+   root s" mv" FS:TRY-STAT-AT FS:ENOENT FALSE-WITH
+   mv s" f" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
+   mv FS:CLOSE-DIR root FS:CLOSE-DIR ;
+
+: NAMED ( -- )
+   NAMED-SETUP
+   ROOT FS:OPEN-DIR {: root:fd :}
+   root s" at" FS:TRY-OPEN-DIR-AT SOME FD>N DIR !
+   root s" fifo" FS:TRY-OPEN-READ-AT SOME FS:CLOSE-DIR
+   root FS:CLOSE-DIR
+   READS WRITES ENTRIES DIRS STATS MAKES RENAMES REMOVES TEMPS
+   MOVED-ANCHOR
+   D FS:CLOSE-DIR ;
+[then]
+HB-TARGET-LINUX-KERNEL? 0= [if]
+: NAMED ( -- ) ;
+[then]
+
 public
 : MAIN ( -- )
    T-RESET SETUP
-   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS ;]
+   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS NAMED ;]
    [: TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;
 ;package

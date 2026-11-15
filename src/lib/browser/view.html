@@ -16,7 +16,9 @@ canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
 .tree-spacer { width: 22px; }
 form, #text { margin: 4px 8px; }
 form input { box-sizing: border-box; width: 100%; }
-#text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* #text holds three of its lines and scrolls past them, so the canvas's size
+   depends only on the frame's and the model never moves under the pointer. */
+#text { flex: none; height: 3lh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 #text.error { color: #b00020; }
 </style>
 <nav id="side" aria-label="Tree"><div id="tree"></div></nav>
