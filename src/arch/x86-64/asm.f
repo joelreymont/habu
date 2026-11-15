@@ -692,6 +692,8 @@ public
 
 : ENC-SYSCALL ( ptr a -- ) {: s:ptr :}  $0F05 s EMIT-OP ;
 
+: ENC-CPUID ( ptr a -- ) {: s:ptr :}  $0FA2 s EMIT-OP ;
+
 : ENC-NOP ( ptr a -- ) {: s:ptr :}  $90 s EMIT-B ;
 
 : ENC-UD2 ( ptr a -- ) {: s:ptr :}  $0F0B s EMIT-OP ;
