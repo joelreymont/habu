@@ -1,6 +1,7 @@
 \ http.f - the HTTP/1.1 server: a listener task on an IPv4 address, a fixed pool
-\ of workers taking connections from a queue, one handler per request in a catch
-\ boundary (a throw answers 500 with the request id). A handler runs once the
+\ of workers taking connections, and the calls SUBMIT queues, from one queue,
+\ one handler per request in a catch boundary (a throw answers 500 with the
+\ request id). A handler runs once the
 \ head is read; the body is read when the handler asks for it (BODY$), and one
 \ it leaves unread closes the connection after the answer. Requires
 \ http-arena.f, http-request.f, http-response.f, http-router.f and
@@ -10,7 +11,6 @@
 \ TASK-LOCAL: per-task slots.
 require src/lib/net/http-static.f
 require src/lib/task.f
-require src/lib/queue.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
 require src/lib/aio.f
@@ -22,9 +22,8 @@ private
 
 $20 constant BACKLOG
 $100000 constant WORKER-STACK
-$40 constant JOB-SLOTS            \ over MAX-WORKERS stop jobs and one connection (STOP)
+$40 constant JOB-SLOTS            \ connections queued before the listener waits for room
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
--1 constant STOP-JOB
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener parks before reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
@@ -32,7 +31,25 @@ $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
 ENUM served keep-open answered silent taken ;ENUM
 
-JOB-SLOTS QUEUE:QUEUE JOBS
+\ What a worker takes from the queue: a connection to serve, a call SUBMIT
+\ queued, the end of its loop, or nothing (WORKER-LOOP).
+ENUM job connection call stop none ;ENUM
+
+\ The job queue: JOB-N jobs from JOB-AT on, oldest first, read and written
+\ under JOB-LOCK, a job's argument in JOB-ARG and a call's quotation in JOB-RUN.
+\ The columns grow to hold every job, so neither SUBMIT nor STOP ever waits for
+\ room; ROOM counts the free places of the JOB-SLOTS connections may take,
+\ which is all the listener waits for. ITEMS counts the jobs queued, signalled
+\ under JOB-LOCK as each is queued.
+DYNAMIC-BUFFER JOB job
+DYNAMIC-BUFFER JOB-ARG n
+DYNAMIC-BUFFER JOB-RUN [ n -- ]
+variable JOB-AT
+variable JOB-N
+variable JOB-CAP                  \ the jobs the columns hold room for
+TASK:FACILITY JOB-LOCK
+TASK:SEMAPHORE ITEMS
+TASK:SEMAPHORE ROOM
 TASK:SEMAPHORE START-READY
 
 WORKER-STACK TASK:TASK LISTENER-TASK
@@ -46,6 +63,10 @@ WORKER-STACK TASK:TASK WORKER-6
 WORKER-STACK TASK:TASK WORKER-7
 
 MAX-WORKERS TYPED-BUFFER WORKER-TCB ptr n
+
+\ The job each worker took last: its argument and, for a call, its quotation.
+MAX-WORKERS TYPED-BUFFER TAKEN-ARG n
+MAX-WORKERS TYPED-BUFFER TAKEN-RUN [ n -- ]
 
 \ The task that raised STOPPING, in the same row type the pool's tasks live in.
 \ Zero is the main thread's own record, which is the thread every caller of STOP
@@ -74,6 +95,10 @@ variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
 variable ACCEPTED-COUNT           \ connections the listener has taken since START
+
+\ No task is live while this file loads, so the lock is made ready here; it is
+\ never destroyed.
+JOB-LOCK TASK:FACILITY-INIT
 
 
 public
@@ -432,11 +457,100 @@ variable EXIT-HOOK-N
    code 0 <> if code throw then ;
 
 
+: JOB-UNLOCK ( -- )
+   JOB-LOCK TASK:RELEASE ;
+
+
+: MOVE-JOB ( n n -- ) {: from:n to:n :}
+   from JOB @ to JOB !
+   from JOB-ARG @ to JOB-ARG !
+   from JOB-RUN @ to JOB-RUN ! ;
+
+
+\ A mapping refused part way throws with JOB-CAP unchanged.
+: JOB-GROW ( -- )
+   JOB-CAP @ 2 * JOB-SLOTS max {: cap:n :}
+   cap JOB-RESERVE
+   cap JOB-ARG-RESERVE
+   cap JOB-RUN-RESERVE
+   cap JOB-CAP ! ;
+
+
+\ Under JOB-LOCK: a place behind the last job. The jobs are first moved down
+\ over the places taken jobs left, and the columns doubled when they still
+\ fill them.
+: JOB-ROOM ( -- )
+   JOB-AT @ JOB-N @ + JOB-CAP @ < if exit then
+   JOB-N @ 0 ?do JOB-AT @ i + i MOVE-JOB loop
+   0 JOB-AT !
+   JOB-N @ JOB-CAP @ < if exit then
+   JOB-GROW ;
+
+
+\ Under JOB-LOCK: the job queued last, with that argument, and counted in
+\ ITEMS; its place, where a call's quotation goes.
+: JOB-PUT ( n job -- n ) {: arg:n kind :}
+   JOB-ROOM
+   JOB-AT @ JOB-N @ + {: at:n :}
+   kind at JOB !
+   arg at JOB-ARG !
+   1 JOB-N +!
+   ITEMS TASK:SIGNAL-SEM
+   at ;
+
+
+\ Under JOB-LOCK: the oldest job, its argument and quotation copied to this
+\ worker's row, or none when the count the worker took was a connection a stop
+\ dropped.
+: NEXT-JOB ( -- job )
+   JOB-N @ 0= if construct job none exit then
+   JOB-AT @ {: at:n :}
+   SELF-SLOT {: w:n :}
+   at JOB-ARG @ w TAKEN-ARG !
+   at JOB-RUN @ w TAKEN-RUN !
+   1 JOB-AT +!
+   -1 JOB-N +!
+   at JOB @ ;
+
+
+: TAKE-JOB ( -- job )
+   ITEMS TASK:WAIT-SEM
+   JOB-LOCK TASK:GET
+   [: NEXT-JOB ;] [: JOB-UNLOCK ;] finally ;
+
+
+\ The connection leaves the queue, so its place goes back to ROOM.
+: SERVE-TAKEN ( -- )
+   ROOM TASK:SIGNAL-SEM
+   SELF-SLOT TAKEN-ARG @ TCP4:>CONNECTION SERVE-CONNECTION ;
+
+
+: REPORT-CALL ( n -- ) {: code:n :}
+   LOG:ERROR s" http" LOG:LINE
+   s" call failed, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE ;
+
+
+\ x86-64 refuses a quotation that reads a local, so the call travels through
+\ the worker's row.
+: CALL-TAKEN ( -- )
+   SELF-SLOT TAKEN-ARG @ SELF-SLOT TAKEN-RUN @ execute ;
+
+
+: RUN-CALL ( -- )
+   [: CALL-TAKEN ;] catch {: code:n :}
+   code 0 <> if code REPORT-CALL then ;
+
+
 : WORKER-LOOP ( -- )
    begin
-      JOBS QUEUE:POP {: job:n :}
-      job 0 < if exit then
-      job TCP4:>CONNECTION SERVE-CONNECTION
+      TAKE-JOB
+      MATCH job
+         connection OF SERVE-TAKEN ENDOF
+         call OF RUN-CALL ENDOF
+         stop OF exit ENDOF
+         none OF ENDOF
+      ;MATCH
    again ;
 
 
@@ -495,11 +609,20 @@ variable EXIT-HOOK-N
    START-ERROR atomic@ ;
 
 
+\ Under JOB-LOCK, once ROOM has given the connection a place: queued, or
+\ closed when a stop has begun, its place given back.
+: QUEUE-CONNECTION ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   STOPPING? if ROOM TASK:SIGNAL-SEM conn CLOSE-CONNECTION exit then
+   conn TCP4:CONNECTION>N construct job connection JOB-PUT drop ;
+
+
 : ACCEPTED ( TCP4:connection TCP4:address TCP4:port -- )
    {: conn:TCP4:connection peer:TCP4:address peer-port:TCP4:port :}
    1 ACCEPTED-COUNT atomic-add drop
    STOPPING? if conn CLOSE-CONNECTION exit then
-   conn TCP4:CONNECTION>N JOBS QUEUE:PUSH ;
+   ROOM TASK:WAIT-SEM
+   JOB-LOCK TASK:GET
+   conn [: QUEUE-CONNECTION ;] [: JOB-UNLOCK ;] finally ;
 
 
 \ A warning, not an error: the listener parks and retries.
@@ -695,13 +818,17 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ the cell because x86-64 refuses a quotation that reads a local.
 : OPEN-RESOURCES ( -- )
    WORKER-COUNT @ ARENA-OPEN
-   JOBS QUEUE:INIT
+   0 JOB-AT !
+   0 JOB-N !
+   0 ITEMS TASK:SEMAPHORE-INIT
+   JOB-SLOTS ROOM TASK:SEMAPHORE-INIT
    0 START-READY TASK:SEMAPHORE-INIT ;
 
 
 : RELEASE-RESOURCES ( -- )
    DROP-LISTENER
-   JOBS QUEUE:DESTROY
+   ITEMS TASK:SEMAPHORE-DESTROY
+   ROOM TASK:SEMAPHORE-DESTROY
    START-READY TASK:SEMAPHORE-DESTROY
    ARENA-CLOSE
    STATIC-CLOSE
@@ -721,23 +848,66 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    loop ;
 
 
+\ Under JOB-LOCK: n stop jobs, behind every job queued before them.
+: PUSH-STOPS ( n -- )
+   0 ?do 0 construct job stop JOB-PUT drop loop ;
+
+
 : ROLLBACK-START ( n -- ) {: code:n :}
-   STARTED @ 0 ?do STOP-JOB JOBS QUEUE:PUSH loop
+   JOB-LOCK TASK:GET
+   STARTED @ [: PUSH-STOPS ;] [: JOB-UNLOCK ;] finally
    JOIN-STARTED
    RELEASE-RESOURCES
    code throw ;
 
 
-: DROP-JOB ( n -- ) {: job:n :}
-   job 0 < if exit then
-   job TCP4:>CONNECTION CLOSE-CONNECTION ;
+\ Under JOB-LOCK.
+: QUEUE-CALL ( n [ n -- ] -- ) {: arg:n q :}
+   RUNNING @ 0= STOPPING? or if E-STATE throw then
+   q arg construct job call JOB-PUT JOB-RUN ! ;
 
 
-\ Takes every job queued, waiting for none: a connection no worker took is
-\ closed unserved, and a stop job is dropped.
+: CONNECTION? ( job -- bool )
+   MATCH job
+      connection OF true ENDOF
+      call OF false ENDOF
+      stop OF false ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+
+
+\ The job at that place, a connection closed unserved and any other dropped.
+: DROP-JOB ( n -- ) {: at:n :}
+   at JOB @ CONNECTION? 0= if exit then
+   at JOB-ARG @ TCP4:>CONNECTION CLOSE-CONNECTION ;
+
+
+\ Under JOB-LOCK: the job at that place dropped when it is a connection, its
+\ place given back to ROOM, else moved down behind the jobs kept before it.
+\ The count kept so far goes in and out.
+: SIFT ( n n -- n ) {: kept:n at:n :}
+   at JOB @ CONNECTION? if at DROP-JOB ROOM TASK:SIGNAL-SEM kept exit then
+   at JOB-AT @ kept + MOVE-JOB
+   kept 1+ ;
+
+
+\ Under JOB-LOCK: the flag raised, every connection queued closed unserved,
+\ and a stop job for each worker queued behind the calls, which keep their
+\ order. The counts of the connections dropped stay in ITEMS (NEXT-JOB).
+: STOP-QUEUE ( -- )
+   1 STOPPING atomic-add drop
+   0
+   JOB-AT @ JOB-N @ + JOB-AT @ ?do i SIFT loop
+   JOB-N !
+   WORKER-COUNT @ PUSH-STOPS ;
+
+
+\ Every job left once no task takes one: a connection no worker took is closed
+\ unserved, and a call or a stop job is dropped.
 : DRAIN-JOBS ( -- )
-   begin JOBS QUEUE:TRY-POP while DROP-JOB repeat
-   drop ;
+   JOB-AT @ JOB-N @ + JOB-AT @ ?do i DROP-JOB loop
+   0 JOB-AT !
+   0 JOB-N ! ;
 
 
 public
@@ -815,6 +985,19 @@ public
 : FALLBACK-RULE! ( [ ptr u8 n -- ptr u8 n ] -- ) {: q :}
    HOOKS-OPEN
    q 0 FALLBACK-HOOK ! ;
+
+
+\ Queues the call `n q execute` for a request worker, which runs it as it runs
+\ a request: WORKER-SLOT holds there, the ON-WORKER-START resources are open,
+\ and a throw is one LOG:ERROR line, tag http, `call failed, throw <code>`,
+\ before the worker goes on. Calls and connections are taken in the order they
+\ were queued. It never waits: the queue's columns grow to hold every job, so
+\ a caller always finds room for each call it has outstanding, and only a
+\ mapping the memory refuses throws. Outside a run, or once STOP has begun, it
+\ is E-STATE.
+: SUBMIT ( n [ n -- ] -- )
+   JOB-LOCK TASK:GET
+   [: QUEUE-CALL ;] [: JOB-UNLOCK ;] finally ;
 
 
 \ The connection and the peer's bytes past what the worker read (valid until the
@@ -896,26 +1079,26 @@ public
 
 
 \ Asks the listener and every worker to end - the flag the listener reads, and
-\ one stop job for each worker parked on the queue - waits for them to end their
-\ own bodies to STOP-BOUND-MS, and then gives back everything the server took.
-\ The stopper names itself before it raises the flag, so every task that sees
-\ the flag has somebody to hint at. The kill is only the backstop past the
-\ bound: a task killed there ends inside its wait with the rest of its body
-\ unrun, which is why KILLED-TASKS is public.
+\ one stop job for each worker, queued behind every call SUBMIT queued before
+\ the flag - waits for them to end their own bodies to STOP-BOUND-MS, and then
+\ gives back everything the server took. The flag rises under JOB-LOCK, so a
+\ SUBMIT has queued its call before it or is E-STATE. The stopper names itself
+\ before it raises the flag, so every task that sees the flag has somebody to
+\ hint at. The kill is only the backstop past the bound: a task killed there
+\ ends inside its wait with the rest of its body unrun, which is why
+\ KILLED-TASKS is public.
 \
-\ Nothing before the bound waits on the queue, however full the workers left
-\ it. The connections queued when the flag rises are closed unserved, which
-\ also lets go a listener held on the full queue: past the flag the listener
-\ queues at most the one connection it holds, so the room JOB-SLOTS leaves
-\ takes that and a stop job for every worker without waiting. What is still
-\ queued once every task has been joined - behind a worker the stop killed -
-\ is closed then.
+\ Nothing waits on the queue, which grows to take the stop jobs. The
+\ connections queued when the flag rises are closed unserved, and the room
+\ they give back lets go a listener waiting for it, which then closes the one
+\ it holds. The calls run in order, within the bound as requests do. What is
+\ still queued once every task has been joined - behind a worker the stop
+\ killed - is dropped then: a connection closed, a call unrun.
 : STOP ( -- )
    RUNNING @ 0= if E-STATE throw then
    TASK:SELF 0 STOPPER-TCB !
-   1 STOPPING atomic-add drop
-   DRAIN-JOBS
-   WORKER-COUNT @ 0 ?do STOP-JOB JOBS QUEUE:PUSH loop
+   JOB-LOCK TASK:GET
+   [: STOP-QUEUE ;] [: JOB-UNLOCK ;] finally
    AWAIT-TASKS
    KILL-TASKS
    DRAIN-JOBS

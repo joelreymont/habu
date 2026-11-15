@@ -2745,6 +2745,30 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LATER-TASK TASK:KILL ;
 
 
+variable CALL-ARG                 \ what the submitted call was given
+variable CALL-CODE                \ what WORKER-SLOT threw there
+variable CALL-SLOT                \ and the slot it gave
+variable CALL-DONE
+
+: NOTE-CALL ( n -- )
+   CALL-ARG !
+   [: HTTP:WORKER-SLOT CALL-SLOT ! ;] catch CALL-CODE !
+   1 CALL-DONE atomic! ;
+
+
+\ A call submitted from a task that is no worker runs on the server's one.
+: SUBMIT-CASE ( -- )
+   0 CALL-DONE atomic!
+   -1 CALL-CODE !
+   -1 CALL-SLOT !
+   42 [: NOTE-CALL ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" SUBMIT runs its call on a worker" T-LABEL
+   CALL-ARG @ 42 T=
+   CALL-CODE @ 0 T=
+   CALL-SLOT @ 0 T= ;
+
+
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
@@ -2789,6 +2813,7 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    HOOK-LIVE-CASES
    SERVING-CASE
    TAKE-OVER-CASES
+   SUBMIT-CASE
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
