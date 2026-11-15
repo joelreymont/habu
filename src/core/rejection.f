@@ -17,11 +17,15 @@ package REJECTION
 private
 
 create BYTE-BUF 1 allot
-\ TEXT holds the record being built, TEXT-LEN bytes of it. It is mapped on
-\ first use, in the running process: an image starts with none.
-16384 constant TEXT-FIRST                \ bytes of the first mapping
+\ TEXT holds the record being built, TEXT-LEN bytes of it. Each growable room
+\ here starts in TEXT-FIRST bytes of its own scratch storage, so a record is
+\ written after the system refuses memory; a larger room is mapped.
+16384 constant TEXT-FIRST                \ bytes of each first room
+create TEXT-BASE TEXT-FIRST SCRATCH-ALLOT
+create HELD-BASE TEXT-FIRST SCRATCH-ALLOT
+create SAVED-BASE TEXT-FIRST SCRATCH-ALLOT
 PTR-VARIABLE TEXT-P
-SCRATCH-VARIABLE TEXT-CAP               \ bytes mapped at TEXT-P, 0 for none
+SCRATCH-VARIABLE TEXT-CAP               \ bytes at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 \ Which text of the record is open. A prose AT opens GAP-PART: the label's
 \ first byte writes the space after the carets and opens LABEL-PART. An AT no
@@ -36,10 +40,9 @@ variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 variable PART   NO-PART PART !
 variable BUF-ON
 variable BUF-FD   2 BUF-FD !
-\ The capture, mapped on first use and grown as TEXT is, holds HELD-U bytes;
-\ CAPTURE empties it.
+\ The capture, grown as TEXT is, holds HELD-U bytes; CAPTURE empties it.
 PERSISTED-PTR-VARIABLE HELD-P   NULL-PTR HELD-P !
-variable HELD-CAP   0 HELD-CAP !        \ bytes mapped at HELD-P, 0 for none
+variable HELD-CAP   0 HELD-CAP !        \ bytes at HELD-P, 0 for none
 variable HELD-U   0 HELD-U !
 \ The record SAVE kept, SAVED-U bytes, in a buffer grown as the capture is.
 PERSISTED-PTR-VARIABLE SAVED-P   NULL-PTR SAVED-P !
@@ -68,7 +71,7 @@ private
 variable STAMP   0 STAMP !
 
 : TEXT-MAP ( -- )
-   TEXT-FIRST ARENA-ALLOC-BYTES TEXT-P !  TEXT-FIRST TEXT-CAP ! ;
+   TEXT-BASE TEXT-P !  TEXT-FIRST TEXT-CAP ! ;
 
 
 public
@@ -85,10 +88,11 @@ private
    TEXT-P @ oc oc 2 * ARENA-BYTES-GROW TEXT-P !
    oc 2 * TEXT-CAP ! ;
 
-\ The cap bytes mapped at p, none when cap is 0, grown by doubling and keeping
-\ their bytes until u more fit after the first used, and their new capacity.
-: FIT ( ptr u8 n n n -- ptr u8 n ) {: p:ptr cap:n used:n u:n :}
-   cap 0= IF TEXT-FIRST ARENA-ALLOC-BYTES TEXT-FIRST ELSE p cap THEN
+\ The cap bytes at p, or the first room f when cap is 0, grown by doubling and
+\ keeping their bytes until u more fit after the first used, and their new
+\ capacity.
+: FIT ( ptr u8 ptr u8 n n n -- ptr u8 n ) {: p:ptr f:ptr cap:n used:n u:n :}
+   cap 0= IF f TEXT-FIRST ELSE p cap THEN
    {: q:ptr c:n :}
    c BEGIN dup used u + < WHILE 2 * REPEAT {: nc:n :}
    nc c > IF q c nc ARENA-BYTES-GROW nc EXIT THEN
@@ -96,11 +100,11 @@ private
 
 \ Grows the capture, keeping its bytes, until n more fit.
 : HELD-ROOM ( n -- ) {: u:n :}
-   HELD-P @ HELD-CAP @ HELD-U @ u FIT  HELD-CAP !  HELD-P ! ;
+   HELD-P @ HELD-BASE HELD-CAP @ HELD-U @ u FIT  HELD-CAP !  HELD-P ! ;
 
 : SAVED-ROOM ( n -- )
    {: u:n :}
-   SAVED-P @ SAVED-CAP @ 0 u FIT  SAVED-CAP !  SAVED-P ! ;
+   SAVED-P @ SAVED-BASE SAVED-CAP @ 0 u FIT  SAVED-CAP !  SAVED-P ! ;
 
 
 public
@@ -1011,14 +1015,15 @@ public
 
 private
 \ The bytes of the labels PRESERVE-LABEL holds, innermost last: LABELS-U bytes
-\ at LABELS-P, mapped on first use and grown to fit. A save is found by its
-\ offset, since a nested save may move them.
+\ at LABELS-P, grown to fit. A save is found by its offset, since a nested
+\ save may move them.
+create LABELS-BASE TEXT-FIRST SCRATCH-ALLOT
 PERSISTED-PTR-VARIABLE LABELS-P   NULL-PTR LABELS-P !
 variable LABELS-CAP   0 LABELS-CAP !
 variable LABELS-U   0 LABELS-U !
 
 : LABELS-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
-   LABELS-P @ LABELS-CAP @ LABELS-U @ u FIT  LABELS-CAP !  LABELS-P !
+   LABELS-P @ LABELS-BASE LABELS-CAP @ LABELS-U @ u FIT  LABELS-CAP !  LABELS-P !
    a LABELS-P @ LABELS-U @ + u COPY
    LABELS-U @ u + LABELS-U ! ;
 
