@@ -93,6 +93,12 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+: XPK-QDUP-FORGE$ ( -- ptr u8 n )             \ top-level ?dup over an enum value
+   SB-RESET
+   s" SUMTYPE xpklight VARIANT red ;VARIANT VARIANT green ;VARIANT ;SUMTYPE" XPK-LINE
+   s" XPKLIGHT:RED ?dup" XPK-LINE
+   SB$ ;
+
 : XPK-NONAME-FORGE$ ( -- ptr u8 n )           \ EXPORT with no name rejects
    SB-RESET
    s" package XB" XPK-LINE
@@ -282,7 +288,10 @@ create XPK-EMPTY 1 allot
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
    s" 7120" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC ;
+   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   s" top-level ?dup over an enum value is undefined" T-LABEL
+   XPK-QDUP-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   s" E-UNDEFINED" XPK-ERR? ;
 
 \ The source ctor and its alias must fail the interpret-level wide gate alike
 \ (same kind and rc), proving the alias copied DNAME-WIDE; equality is the
