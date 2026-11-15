@@ -172,24 +172,25 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    label labelu GE-EXPECT-ERR-HAS ;
 
-\ A refused storage mapping stops the load with one E-MAP record; the second
-\ line's path is absolute, so its file:line:col is pinned as the line's end.
-: MAP-REFUSED-CASE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n count:ptr countu:n place:ptr placeu:n :}
+\ A refused storage mapping stops the load with one E-MAP record, which has no
+\ place: the map is refused at run time, so the token the reader holds names no
+\ caller.
+: MAP-REFUSED-CASE ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n count:ptr countu:n :}
    path pathu RUN-LOAD
    67 path pathu GE-EXPECT-RC
    RECORDS 1 <> if path pathu GE-FAIL then
    s" error[E-MAP]: the system refused " path pathu GE-EXPECT-ERR-HAS
    count countu path pathu GE-EXPECT-ERR-HAS
-   place placeu path pathu GE-EXPECT-ERR-HAS ;
+   s"  --> " path pathu GE-EXPECT-ERR-LACKS ;
 
 : MAP-REFUSED ( -- )
    s" test/program-diagnostic-map-size.f"
-      S\" refused 9223372036854775808 bytes of storage\n --> /"
-      S\" /test/program-diagnostic-map-size.f:4:19\n" MAP-REFUSED-CASE
+      S\" refused 9223372036854775808 bytes of storage\n  = bytes: 9223372036854775808\n"
+      MAP-REFUSED-CASE
    s" test/program-diagnostic-map-big.f"
-      S\" refused 2305843009213693952 bytes of storage\n --> /"
-      S\" /test/program-diagnostic-map-big.f:3:18\n" MAP-REFUSED-CASE ;
+      S\" refused 2305843009213693952 bytes of storage\n  = bytes: 2305843009213693952\n"
+      MAP-REFUSED-CASE ;
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE

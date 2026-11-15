@@ -447,6 +447,30 @@ variable RUN-FILE-U
    pu s" build-time exit action ran" OUT-HAS? TFALSE
    RUN-FILE$ FS:EXISTS? TFALSE ;
 
+\ A built program ends an uncaught throw as hb ends one: FS:MKTEMP-DIR rejects
+\ a TMPDIR that names no directory with a throw carrying the E-FS-DIR record,
+\ which the program prints once, with no kernel line, and exits 67.
+: CASE-BUILT-RECORD ( -- )
+   s" built-record.f" s" built-record-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/fs-mutate.f\n" TEXT+
+   S\" : MAIN ( -- ) s\q built\q FS:MKTEMP-DIR 2drop ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a built program prints the record its uncaught throw carries" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   ROOT$ s" missing" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
+   PROC-ARGV-ENV-RESET
+   s" TMPDIR" >LEN RUN-FILE$ >LEN PROC-ENV+
+   TREE$ RUN-PATH {: pu:n pe:n prc:n :}
+   pu pe prc 67 EXPECT-RC
+   0 TEXT-U !
+   S\" error[E-FS-DIR]: TMPDIR is not a directory\n  = TMPDIR: " TEXT+
+   RUN-FILE$ TEXT+
+   S\" \n  = help: point TMPDIR at an existing directory, or unset it to use /tmp\n" TEXT+
+   ERR pe TEXT$ COUNT-SUB 1 T=
+   pe s" uncaught throw" ERR-HAS? TFALSE ;
+
 \ hb-build dies after a failed build has unmapped its source's own AT-EXIT; it
 \ starts a build because only a build closes the source's space before the exit.
 : CASE-BUILD-ACTION ( -- )
@@ -523,6 +547,7 @@ variable RUN-FILE-U
    CASE-BUILD-EXIT
    CASE-BUILD-TASK
    CASE-BUILT
+   CASE-BUILT-RECORD
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS
    CASE-BUILD-CHUNK ;

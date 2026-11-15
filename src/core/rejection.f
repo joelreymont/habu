@@ -81,11 +81,19 @@ public
 private
 
 
+\ Moves the room of c bytes at p, whose first room is f, to nc fresh bytes that
+\ hold its c bytes. The first room is image storage: it is zeroed, not unmapped.
+: ROOM-GROW ( ptr u8 ptr u8 n n -- ptr u8 ) {: p:ptr f:ptr c:n nc:n :}
+   nc ARENA-ALLOC-BYTES {: q:ptr :}
+   p q c ARENA-COPY
+   p f = IF p c ARENA-ZERO ELSE p c ARENA-UNMAP THEN
+   q ;
+
 \ Doubles TEXT, keeping its bytes; a span taken from it before is stale.
 : TEXT-GROW ( -- )
    TEXT-CAP @ 0= IF TEXT-MAP EXIT THEN
    TEXT-CAP @ {: oc:n :}
-   TEXT-P @ oc oc 2 * ARENA-BYTES-GROW TEXT-P !
+   TEXT-P @ TEXT-BASE oc oc 2 * ROOM-GROW TEXT-P !
    oc 2 * TEXT-CAP ! ;
 
 \ The cap bytes at p, or the first room f when cap is 0, grown by doubling and
@@ -95,7 +103,7 @@ private
    cap 0= IF f TEXT-FIRST ELSE p cap THEN
    {: q:ptr c:n :}
    c BEGIN dup used u + < WHILE 2 * REPEAT {: nc:n :}
-   nc c > IF q c nc ARENA-BYTES-GROW nc EXIT THEN
+   nc c > IF q f c nc ROOM-GROW nc EXIT THEN
    q c ;
 
 \ Grows the capture, keeping its bytes, until n more fit.

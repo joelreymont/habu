@@ -16,6 +16,7 @@ public
    a u s" fdrop" STR=CI if s" WKWORDS:F-DROP" exit then
    a u s" fdup" STR=CI if s" WKWORDS:F-DUP" exit then
    a u s" type" STR=CI if s" WKWORDS:TYPE-BYTES" exit then
+   a u s" write" STR=CI if s" WKWORDS:WRITE-BYTES" exit then
    a u s" cr" STR=CI if s" WKWORDS:NEWLINE" exit then
    a u s" space" STR=CI if s" WKWORDS:BLANK" exit then
    a u s" negate" STR=CI if s" WKWORDS:NEG" exit then

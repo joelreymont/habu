@@ -69,7 +69,6 @@ variable MUTEX
    s" E-MAP" REJECTION:OPEN
    s" the system refused " REJECTION:EMIT-STR  bytes REJECTION:EMIT-U
    s"  bytes of storage" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT
    s" bytes" REJECTION:NOTE  bytes REJECTION:EMIT-U
    REJECTION:HELP
    s" reserve fewer elements, or release storage the program no longer needs"
