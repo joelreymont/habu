@@ -12,6 +12,8 @@
 
 \ The status a rejection stops with.
 70 constant CHECKER-REJECT-RC
+\ The status a load stops with when the dictionary has no record left.
+77 constant DICT-FULL-RC
 
 package REJECTION
 private

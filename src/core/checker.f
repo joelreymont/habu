@@ -1750,9 +1750,6 @@ CK-USE-SNAP-HEADER USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 \ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
 \ before user source.
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base USE-DEPTH-CELL + @ ;
-\ The checker overlay is full: the records one lookup hides or the engine
-\ dictionary it publishes into (CHECKER-OVERLAY).
-7184 constant E-OVERLAY-CAP
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
 
@@ -12908,6 +12905,28 @@ defer DOES-COMPANION?-XT ( n -- bool )
 \ source definition.
 defer FIRST-RECORD-XT ( -- n )
 
+package SRCLOC
+private
+TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
+public
+
+\ The token the engine read last.
+: TOKEN$ ( -- ptr u8 n ) LAST-TOKEN @ data-base TKL-CELL + @ ;
+
+\ Restates the token read last, so a record placed at it names another token.
+: TOKEN! ( ptr u8 n -- ) data-base TKL-CELL + ! LAST-TOKEN ! ;
+
+\ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
+\ for the open file: an `evaluate` of a slice of the file reads file text, any
+\ other string does not. Only then does an error's place carry `:<line>`,
+\ counted from the first owned byte.
+: FILE-BUFFER? ( -- bool )
+   data-base OWNED-CELL + @ {: o:n :}
+   data-base INB-CELL + @ {: b:n :}
+   data-base INE-CELL + @ {: e:n :}
+   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
+;package
+
 \ ---- the checker overlay ------------------------------------------------------
 package CHECKER-OVERLAY
 
@@ -12990,9 +13009,14 @@ variable SNAP-N
    r 0= IF -1 EXIT THEN
    r dbase@ - DREC / ;
 : NS-ROW ( ptr u8 n -- ptr n ) BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE ;
-: ROOM ( -- )
+: ROOM ( ptr u8 n -- ) {: a:ptr u:n :}
    ndict@ DICT-CAP < IF EXIT THEN
-   E-OVERLAY-CAP throw ;
+   s" E-DICTIONARY-FULL" REJECTION:OPEN
+   s" the dictionary has no record left for `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" no record left" REJECTION:EMIT-STR
+   REJECTION:HELP  s" define fewer words in this load" REJECTION:EMIT-STR
+   DICT-FULL-RC REJECTION:STOP ;
 
 \ A colon at an edge or a second colon is rejected, as namespace-record
 \ rejects them; a new row takes both wids.
@@ -13001,7 +13025,7 @@ variable SNAP-N
    cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF a u PACKAGE-COLON-REJECT THEN
    a u NS-ROW {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
-   ROOM
+   a u ROOM
    a u RES-TRUE namespace-record drop
    a u NS-ROW ;
 
@@ -13237,7 +13261,6 @@ public
 \ every hidden record its wid back, newest first. HORIZON-FIND pairs them on
 \ every exit, so nothing stays hidden past the lookup that hid it.
 : HIDE ( ptr n -- ) {: rec:ptr :}
-   HIDDEN-N @ HIDE-MAX >= IF E-OVERLAY-CAP throw THEN
    rec REC>IX {: ix:n :}
    ix rec CK-REC-WID HIDDEN HIDDEN-N @ PAIR!
    HIDDEN-N @ 1 + HIDDEN-N !
@@ -13268,7 +13291,7 @@ ROW-CELLS cells constant SCOPE-BYTES
    sym 0=  ON @ 0=  or  PEND-CELL DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
    sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
-   ROOM
+   sym SYM-NAME$ ROOM
    sym SYM-NAME$ wid replay-record ;
 
 \ Duplicates: a record the replay made; one the builder made before any source
@@ -13300,9 +13323,9 @@ ROW-CELLS cells constant SCOPE-BYTES
    rec NULL-PTR = IF EXIT THEN
    rec REC>IX {: ix:n :}
    ix MARK @ < IF EXIT THEN
-   ROOM
    u tu - {: q:n :}
    ca q +  cu q -  {: cta:ptr ctu:n :}
+   cta ctu ROOM
    cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF
       ta tu DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
       CHECKER-REJECT-RC REJECTION:STOP
@@ -22801,28 +22824,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ W's body; it marks W's symbol, so a redefinition drops it, an export carries
 \ it, and a caller passing its own operand on declares its own row.
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
-
-package SRCLOC
-private
-TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
-public
-
-\ The token the engine read last.
-: TOKEN$ ( -- ptr u8 n ) LAST-TOKEN @ data-base TKL-CELL + @ ;
-
-\ Restates the token read last, so a record placed at it names another token.
-: TOKEN! ( ptr u8 n -- ) data-base TKL-CELL + ! LAST-TOKEN ! ;
-
-\ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
-\ for the open file: an `evaluate` of a slice of the file reads file text, any
-\ other string does not. Only then does an error's place carry `:<line>`,
-\ counted from the first owned byte.
-: FILE-BUFFER? ( -- bool )
-   data-base OWNED-CELL + @ {: o:n :}
-   data-base INB-CELL + @ {: b:n :}
-   data-base INE-CELL + @ {: e:n :}
-   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
-;package
 
 : NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}

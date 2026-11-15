@@ -826,10 +826,8 @@ package INTERPRETER
 
 private
 
-\ The statuses for a long name past the code ceiling and for no record slot
-\ left.
+\ The status for a long name past the code ceiling.
 76 constant PKG-RC-CODE-FULL
-77 constant PKG-RC-DICT-FULL
 
 \ The code ceiling's distance below the end of the region.
 $4000 constant PKG-CODE-RESERVE
@@ -867,7 +865,7 @@ private
    s" the dictionary has no record left for " SAY  a u TICKS
    a u REJECTION:AT  s" no record left" SAY
    REJECTION:HELP  s" define fewer words in this load" SAY
-   PKG-RC-DICT-FULL REJECTION:STOP ;
+   DICT-FULL-RC REJECTION:STOP ;
 
 : PKG-DICT-ROOM ( -- )
    ndict@ DICT-CAP < if exit then
@@ -1535,7 +1533,7 @@ private
       TOKEN$ REJECTION:AT  s" no dictionary record left" REJECTION:EMIT-STR
       REJECTION:HELP
       s" load fewer definitions into this image" REJECTION:EMIT-STR
-      PKG-RC-DICT-FULL REJECTION:STOP
+      DICT-FULL-RC REJECTION:STOP
    then ;
 
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
