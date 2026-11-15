@@ -24,6 +24,11 @@ include test/split-str-marked.f
 s" : SPX ( ^u8 n -- n ) SPL ;" TEST-EVAL:RC 70 T=
 s" abc" >str SPL 3 T=
 
+\ Its own definitions are published as written.
+s" abc" >str SPB 3 T=
+s" abcd" >str SPR 4 T=
+s" ab" SPO str> nip 2 T=
+
 \ split-str anywhere but a file's first line is refused.
 s" split-str" TEST-EVAL:RC 75 T=
 
@@ -35,6 +40,10 @@ s" split-str" TEST-EVAL:RC 75 T=
 ' SPW-ON catch 0 T=
 CHECKER-SPLIT-STR @ 0 T=
 ' SPW-OFF catch 70 T=
+\ The verifier walks a marked definition's body on the split rows.
+: SPW2-RUN ( -- )
+   s\" split-str\n: SPW2 ( str -- n ) nip ;" VERIFY:SOURCE-BUF ;
+' SPW2-RUN catch 0 T=
 
 \ A file the verifier scans ends its marker with it:
 \ VERIFY:SOURCE-COMPOSE-IN-SCOPE scans the subject and the file it includes,

@@ -1213,7 +1213,7 @@ variable TAGGED-FAM
 : PUBLISH-REFUSALS ( ^u8 n -- )
    {: a:^ u:n :}
    a u CHECK-REC-ADMIT
-   CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
+   CHECK-SIG? IF SGWIN @ SGWOUT @ a u SHADOW-ARITY-CK THEN ;
 
 \ A definition refused in a multi-error load: counted, so the run exits
 \ nonzero, and its declared signature kept as source authority, so a later
@@ -1877,6 +1877,7 @@ CHECKER-REG:}SCRATCH
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
    SGROUT !  SGRIN !  SGOUT !  SGIN !   \ no `|` anywhere: both return rows are 0
+   SG-WRITTEN!
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
    ;
 
@@ -2015,13 +2016,13 @@ package CHECKER-REG
       CHECKER-UNSEEN-MARK
       2 EXIT
    THEN
-   RAW-SIG!
+   RAW-SIG!  SG-SPLIT
    SG-ROWS-COLLECT
    NP-COLLECT
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
-   \ The record is the signature's as written, whatever the runtime row below
-   \ measures; a refused or uncheckable clause keeps it for its packet.
+   \ The record is the signature's as its body reads it, whatever the runtime
+   \ row below measures; a refused or uncheckable clause keeps it for its packet.
    SIG-EFF-CACHE!
    \ The runtime row holds the signature's and the data-field address, so its
    \ counts replace any the signature set and name the unfit clause.

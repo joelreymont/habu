@@ -28,3 +28,17 @@ s" abc" SPE 3 T=
 : SPY-RUN ( -- ) s" : SPY ( -- n ) 0 ;" VERIFY:SOURCE-BUF ;
 ' SPY-RUN catch 0 T=
 CHECKER-SPLIT-STR @ 0<> TTRUE
+
+\ The file's own definitions are published as written, str, and their bodies
+\ walk the split rows.
+: SPB ( str -- n ) nip ;
+: SPR ( str -- n ) dup 0= IF nip EXIT THEN 1 - swap 1 + swap RECURSE 1 + ;
+: SPO ( ^u8 n -- str ) ;
+
+\ A cast keeps its written rows: split, its rows would differ in width.
+package SPC
+public
+STRUCTURE spp OPAQUE FIELD v str ;STRUCTURE
+private
+s" cast: >SPP ( str -- spp )" TEST-EVAL:RC 0 T=
+;package

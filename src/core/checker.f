@@ -4946,6 +4946,8 @@ variable CONFAM    \ resolved family id while CONM = 2
 variable DPOS
 variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
+\ The rows a split-str definition was written with, which its callers see.
+variable SGWIN  variable SGWOUT  variable SGWRIN  variable SGWROUT
 PTR-VARIABLE SGA  variable SGU
 CHECKER-REG:}SCRATCH
 $1000 constant TOKBUF-INIT-CAP
@@ -11456,6 +11458,16 @@ CHECKER-REG:}SCRATCH
    CHECKER-SPLIT-STR @ 0= IF EXIT THEN
    SPLIT-ROW ;
 
+\ Keeps the installed signature's rows as written, for its publication.
+: SG-WRITTEN! ( -- )
+   SGIN @ SGWIN !  SGOUT @ SGWOUT !  SGRIN @ SGWRIN !  SGROUT @ SGWROUT ! ;
+
+\ The rows a body walks: under split-str each str reads as ^u8 n.
+: SG-SPLIT ( -- )
+   CHECKER-SPLIT-STR @ 0= IF EXIT THEN
+   SGIN @ SPLIT-ROW SGIN !  SGOUT @ SPLIT-ROW SGOUT !
+   SGHASR @ IF SGRIN @ SPLIT-ROW SGRIN !  SGROUT @ SPLIT-ROW SGROUT ! THEN ;
+
 : EFF-APPLY ( ^u8 -- ) {: h:^ :}
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
@@ -14382,7 +14394,7 @@ CHECKER-REG:}SCRATCH
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
 : CHECKER-PUBLISH-PARSED ( -- )
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @
+   SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
@@ -14412,7 +14424,7 @@ CHECKER-REG:}SCRATCH
 \ and drops the marks a gate raised.
 : CHECKER-USIG-CERT-ROWS ( ^u8 n ^u8 n -- )
    {: sa:^ su:n na:^ nu:n :}
-   sa su na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
+   sa su na nu  SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
@@ -16205,6 +16217,7 @@ PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
+variable SV-SGWIN  variable SV-SGWOUT  variable SV-SGWRIN  variable SV-SGWROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL   variable SV-PIN
 variable TSEEN  variable TSOK  variable TFA
@@ -16223,6 +16236,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
+   SGWIN @ SV-SGWIN !  SGWOUT @ SV-SGWOUT !  SGWRIN @ SV-SGWRIN !  SGWROUT @ SV-SGWROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
 
 : TRIAL-REST-SG
@@ -16230,7 +16244,8 @@ CHECKER-REG:}SCRATCH
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
    SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
-   SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
+   SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT !
+   SV-SGWIN @ SGWIN !  SV-SGWOUT @ SGWOUT !  SV-SGWRIN @ SGWRIN !  SV-SGWROUT @ SGWROUT ! ;
 
 : TRIAL-REST
    SV-TRAIL @ TRAIL-UNWIND       \ undo speculative binds in both pools
@@ -18554,9 +18569,9 @@ CHECKER-REG:}SCRATCH
    ATOMN @ {: mark:n :}
    h E-HASR@ {: hasr:n :}
    h E-DIN@ E-AK-BIND
-   h E-DIN@ E-INST {: din:n :}
-   h E-DOUT@ E-INST {: dout:n :}
-   hasr 0 <> IF h E-RIN@ E-INST h E-ROUT@ E-INST ELSE 0 0 THEN
+   h E-DIN@ E-INST SPLIT-MARKED {: din:n :}
+   h E-DOUT@ E-INST SPLIT-MARKED {: dout:n :}
+   hasr 0 <> IF h E-RIN@ E-INST SPLIT-MARKED h E-ROUT@ E-INST SPLIT-MARKED ELSE 0 0 THEN
    {: rin:n rout:n :}
    RECUR-INST-KEEP
    mark din dout rin rout E-AK-LIST
@@ -21461,11 +21476,11 @@ CHECKER-REG:}SCRATCH
 
 : ZSUMMARY-EFFECT? ( -- bool )
    SGSEEN @ 0= IF RES-FALSE EXIT THEN
-   SGIN @ ROW-TERMS 1 <> SGOUT @ ROW-TERMS 1 <> or IF RES-FALSE EXIT THEN
-   SGIN @ R-RES P>TYPE T-RES CC-N MK-CON <> IF RES-FALSE EXIT THEN
-   SGOUT @ R-RES P>TYPE T-RES CC-BOOL MK-CON <> IF RES-FALSE EXIT THEN
-   SGIN @ R-RES P>REST R-RES SGOUT @ R-RES P>REST R-RES <> IF RES-FALSE EXIT THEN
-   SGHASR @ IF SGRIN @ R-RES SGROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
+   SGWIN @ ROW-TERMS 1 <> SGWOUT @ ROW-TERMS 1 <> or IF RES-FALSE EXIT THEN
+   SGWIN @ R-RES P>TYPE T-RES CC-N MK-CON <> IF RES-FALSE EXIT THEN
+   SGWOUT @ R-RES P>TYPE T-RES CC-BOOL MK-CON <> IF RES-FALSE EXIT THEN
+   SGWIN @ R-RES P>REST R-RES SGWOUT @ R-RES P>REST R-RES <> IF RES-FALSE EXIT THEN
+   SGHASR @ IF SGWRIN @ R-RES SGWROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
    RES-TRUE ;
 
 \ Every scan starts here, so a scan inside the compile window is refused first,
@@ -21484,6 +21499,7 @@ CHECKER-REG:}SCRATCH
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
+   0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
@@ -21649,11 +21665,11 @@ variable CUR-OPEN   variable CUR-PSIG
       RES-TRUE EXIT
    THEN
    PD-BASE @ SGDBASE !
-   SGHASR @ IF
-     SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
-   ELSE
-     2drop  SGOUT !  dup SGIN !  DCUR !
-   THEN  -1 SGSEEN !
+   SGHASR @ IF SGROUT !  SGRIN ! ELSE 2drop THEN
+   SGOUT !  SGIN !
+   SG-WRITTEN!  SG-SPLIT
+   SGIN @ DCUR !  SGHASR @ IF SGRIN @ RCUR ! THEN
+   -1 SGSEEN !
    \ The return tail a body may not bind: the row the `|` clause carries
    \ (SGRIN), or without a return clause the implicit base RBROW.
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !
