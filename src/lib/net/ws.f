@@ -17,7 +17,6 @@ require src/lib/log.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/task.f
-require src/lib/fd.f
 require src/lib/aio.f
 require src/lib/utf8-scalar.f
 require src/lib/base64.f
@@ -135,7 +134,6 @@ $18 constant NONCE-CAP            \ what 24 characters can decode to, to the cel
 $1C constant ACCEPT-CHARS         \ a twenty-byte digest in base64
 $4000 constant RX-CAP             \ the most one read takes
 $1000 constant TX-CAP             \ a queue's first mapping
-$40 constant WAKE-CHUNK           \ bytes taken off the wake pipe at once
 $400000 constant QUEUE-MAX        \ unwritten bytes a socket's queue holds before a frame loses it
 
 \ One socket's mapping: the message being reassembled, a control frame's
@@ -248,21 +246,16 @@ HTTP:MAX-WORKERS TYPED-BUFFER CALL-FAILED bool
 TASK:FACILITY LOCK
 TASK-STACK TASK:TASK WS-TASK
 AIO:GROUP WAITERS
-TYPED-VARIABLE WAKE-TICKET AIO:ticket
 \ The task's own: its one timer, in WAITERS under TIMER-WAIT, and when that
 \ fires, 0 while none is outstanding.
 TYPED-VARIABLE TIMER AIO:ticket
 variable TIMER-DUE
 1 TYPED-BUFFER STOPPER ptr n                \ the task STOP waits in
-variable WAKE-R
-variable WAKE-W
-variable POKED                              \ set once a byte is owed to the wake pipe; under LOCK
+TYPED-VARIABLE WAKER AIO:waker              \ the wake pipe the task is poked through
 variable PIPED                              \ set while the wake pipe is open; under LOCK
 variable STOPPING                           \ set by STOP; under LOCK
 variable STOP-AT                            \ when the task gives up on the 1001 frames; 0 until it saw the stop
 variable LEFT                               \ set under LOCK once the task has given everything back
-WAKE-CHUNK BUFFER: WAKE-BUF
-create WAKE-BYTE $01 c,
 
 \ WS's run, under LOCK: idle; starting, claimed by a START that has not yet
 \ activated the task; or running, from then until the end of STOP.
@@ -334,31 +327,17 @@ RUN-IDLE RUN !
    s 0 SPAN:TAKE ;
 
 
-\ At most one byte is owed at a time, so the pipe never fills and a poke from
-\ the task itself never blocks it. The task drains the pipe before it clears
-\ POKED and scans after, so a change made before a poke is always seen. Once
-\ STOP has closed the pipe a poke writes nothing, since its descriptor may
-\ name another file by then.
+\ Once STOP has closed the pipe a poke writes nothing, since its descriptor
+\ may name another file by then.
 : POKE ( -- )
    LOCK TASK:GET
-   PIPED @ 0 <> POKED @ 0= and if
-      1 POKED !
-      WAKE-W @ WAKE-BYTE 1 write drop
-   then
+   PIPED @ 0 <> if WAKER AIO:WAKE then
    LOCK TASK:RELEASE ;
 
 
 : WAKE-ARM ( -- )
-   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
-   t WAKE-WAIT WAITERS AIO:GROUP+
-   t WAKE-TICKET ! ;
-
-
-: WAKE-DRAIN ( -- )
-   WAKE-R @ WAKE-BUF WAKE-CHUNK read drop
-   LOCK TASK:GET
-   0 POKED !
-   LOCK TASK:RELEASE ;
+   WAKER AIO:WAKER-POLL {: t:AIO:ticket :}
+   t WAKE-WAIT WAITERS AIO:GROUP+ ;
 
 
 : OUTCOME-DROP ( AIO:outcome -- )
@@ -1193,7 +1172,7 @@ ENUM course
 \ The wake stays armed until SERVE leaves, so an ACCEPT that ends while WS
 \ is stopping is still heard.
 : WOKEN ( -- )
-   WAKE-DRAIN
+   WAKER AIO:WOKE
    STOP-FLAG? STOP-AT @ 0= and if mono-ns GOODBYE-MS NS-PER-MS * + STOP-AT ! then
    WAKE-ARM
    SYNC-ALL ;
@@ -1480,9 +1459,8 @@ ENUM course
 
 
 : PIPE-OPEN ( -- )
-   FD:PIPE FD>N WAKE-W ! FD>N WAKE-R !
+   WAKER AIO:WAKER-OPEN
    LOCK TASK:GET
-   0 POKED !
    1 PIPED !
    LOCK TASK:RELEASE ;
 
@@ -1492,8 +1470,7 @@ ENUM course
    LOCK TASK:GET
    0 PIPED !
    LOCK TASK:RELEASE
-   WAKE-R @ close-rc drop
-   WAKE-W @ close-rc drop ;
+   WAKER AIO:WAKER-CLOSE ;
 
 
 \ When STOP gives up waiting for WS's task and the handler calls.

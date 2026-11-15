@@ -5,6 +5,7 @@
 \ io_uring from 5.10, the first long-term kernel with every opcode used and
 \ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
 \ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
+\ SINK, outside it, which every waker's task writes and none reads.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
 
 require src/lib/error.f
@@ -15,6 +16,7 @@ require src/lib/ffi-abi.f
 require src/lib/codegen.f
 require src/lib/num-types.f
 require src/lib/task.f
+require src/lib/fd.f
 require src/lib/adt/result.f
 
 package AIO
@@ -1175,6 +1177,60 @@ public
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
    t TICKET>N AWAIT-ONE ;
+
+\ ---- the waker ---------------------------------------------------------------
+\ A self-pipe one parked task is woken through: other tasks change shared state
+\ and WAKE it, and the task, parked in AWAIT-ANY on WAKER-POLL's ticket among
+\ its others, calls WOKE and then scans that state. At most one byte is owed,
+\ so the pipe never fills and a WAKE from the parked task itself never blocks.
+\ The storage is the caller's; owed is 1 from the WAKE that writes the byte
+\ until WOKE has read it.
+STRUCTURE waker OPAQUE DERIVE addr
+   FIELD read-end fd
+   FIELD write-end fd
+   FIELD owed n
+;STRUCTURE
+
+private
+
+create WAKE-BYTE $01 c,
+\ What WOKE reads lands here unread, so every parked task shares it.
+1 BUFFER: SINK
+
+public
+
+\ Opens the waker's pipe, with no byte owed. FD:PIPE's code is thrown when the
+\ host refuses the pipe, and nothing is left open then.
+: WAKER-OPEN ( ptr waker -- ) {: w:ptr :}
+   FD:PIPE w WAKER-WRITE-END ! w WAKER-READ-END !
+   0 w WAKER-OWED atomic! ;
+
+\ Closes both ends. No WAKE may run after it or while it runs: the caller orders
+\ that, as by clearing its own open flag under the lock its wakers check it in,
+\ since a closed descriptor may name another file by then.
+: WAKER-CLOSE ( ptr waker -- ) {: w:ptr :}
+   w WAKER-READ-END @ FD>N close-rc drop
+   w WAKER-WRITE-END @ FD>N close-rc drop ;
+
+\ From any task, with no lock: fences, then writes the byte unless one is owed;
+\ of WAKEs racing for the flag one writes. Never during or after WAKER-CLOSE.
+: WAKE ( ptr waker -- ) {: w:ptr :}
+   fence
+   0 1 w WAKER-OWED atomic-cas 0<> if exit then
+   w WAKER-WRITE-END @ FD>N WAKE-BYTE 1 write drop ;
+
+\ The read end polled for readable, with no deadline, for the parked task to
+\ add to its group: ready once a WAKE has written.
+: WAKER-POLL ( ptr waker -- ticket ) {: w:ptr :}
+   w WAKER-READ-END @ READABLE -1 >MS POLL ;
+
+\ On the parked task, once WAKER-POLL's ticket is ready: reads the one byte
+\ owed, then clears the flag and fences, so a WAKE after it writes again and the
+\ scan the caller makes next sees each change made before a WAKE. It stands
+\ before READ, so its `read` is the engine's.
+: WOKE ( ptr waker -- ) {: w:ptr :}
+   w WAKER-READ-END @ FD>N SINK 1 read drop
+   0 w WAKER-OWED atomic! fence ;
 
 \ ---- the completion operations -----------------------------------------------
 \ READ hands the transfer a MEM allocation and it owns those bytes

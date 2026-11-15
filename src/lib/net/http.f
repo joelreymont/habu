@@ -16,7 +16,6 @@ require src/lib/task.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
 require src/lib/aio.f
-require src/lib/fd.f
 require src/lib/log.f
 
 package HTTP
@@ -80,17 +79,11 @@ PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket
 TASK:FACILITY PARK-LOCK
 variable PARK-OPEN                \ set while the listener takes rows; under PARK-LOCK
 
-\ The pipe a worker pokes once it has handed a row, which the listener polls.
-\ At most one byte is owed: POKED is set with the byte written, and cleared,
-\ under PARK-LOCK, once the listener has read it and before it reads the rows.
-variable WAKE-R
-variable WAKE-W
-variable POKED
-variable PIPED                    \ set while the pipe is open
-create WAKE-BYTE $01 c,
-1 BUFFER: WAKE-BUF
+\ What a worker wakes once it has handed a row, which the listener polls.
+TYPED-VARIABLE WAKER AIO:waker
+variable PIPED                    \ set while the waker is open
 
-\ What the listener waits on at once: its accept poll, the pipe's poll and
+\ What the listener waits on at once: its accept poll, the waker's poll and
 \ each polled row's, tagged with the row. A flag is set while its ticket is in
 \ the group, unawaited.
 AIO:GROUP LISTENING
@@ -443,13 +436,6 @@ private
    -1 ;
 
 
-\ Under PARK-LOCK: the wake byte, unless one is owed already.
-: POKE ( -- )
-   POKED @ 0 <> if exit then
-   1 POKED !
-   WAKE-W @ WAKE-BYTE 1 write drop ;
-
-
 \ Under PARK-LOCK: true once the connection is a handed row and no longer the
 \ slot's; false while the listener takes no rows or every row is taken.
 : PARK-PUT ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
@@ -460,7 +446,7 @@ private
    IDLE-MS @ DEADLINE-AT at PARK-DUE !
    construct parking handed at PARK-PHASE !
    0 idx SERVING-LIVE !
-   POKE
+   WAKER AIO:WAKE
    true ;
 
 
@@ -801,7 +787,7 @@ variable EXIT-HOOK-N
 
 
 : ARM-WAKE ( -- )
-   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
+   WAKER AIO:WAKER-POLL {: t:AIO:ticket :}
    t WAKE-TAG LISTENING AIO:GROUP+
    t WAKE-TICKET !
    1 WAKE-ARMED ! ;
@@ -834,10 +820,9 @@ variable EXIT-HOOK-N
    construct parking polled at PARK-PHASE ! ;
 
 
-\ Under PARK-LOCK, the wake byte read: the next row handed pokes again, and
-\ every row handed so far is polled, or closed when its poll is rejected.
+\ Under PARK-LOCK, after AIO:WOKE: every row handed so far is polled, or closed
+\ when its poll is rejected.
 : ARM-HANDED ( -- )
-   0 POKED !
    PARK-SLOTS 0 ?do i HANDED? if i ARM-ROW then loop ;
 
 
@@ -850,11 +835,11 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ The byte is read only when the poll found it. Any other end would leave the
-\ listener deaf to the rows handed to it, so it stops as a broken listener does.
+\ Any end of the wake poll but ready would leave the listener deaf to the rows
+\ handed to it, so it stops as a broken listener does.
 : WOKEN ( AIO:outcome -- )
    READY? 0= if 1 STOPPING atomic-add drop exit then
-   WAKE-R @ WAKE-BUF 1 read drop
+   WAKER AIO:WOKE
    PARK-LOCK TASK:GET
    [: ARM-HANDED ;] [: PARK-UNLOCK ;] finally
    ARM-WAKE ;
@@ -1069,19 +1054,17 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 : PIPE-OPEN ( -- )
-   FD:PIPE FD>N WAKE-W ! FD>N WAKE-R !
-   0 POKED !
+   WAKER AIO:WAKER-OPEN
    1 PIPED ! ;
 
 
 : PIPE-CLOSE ( -- )
    PIPED @ 0= if exit then
    0 PIPED !
-   WAKE-R @ close-rc drop
-   WAKE-W @ close-rc drop ;
+   WAKER AIO:WAKER-CLOSE ;
 
 
-\ The rows vacant and taken from once the pipe is open.
+\ The rows vacant and taken from once the waker is open.
 : OPEN-PARKING ( -- )
    PARK-SLOTS 0 ?do i VACATE loop
    0 ACCEPT-ARMED !
