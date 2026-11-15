@@ -466,14 +466,16 @@ public
 : TEXT-REF-GO ( -- )
    s" : BI-TEXT-REF ( -- ) BITEM:LOCAL-READ-NOW ;" evaluate-closed ;
 : ENDED-GO ( -- ) s" BI-ENDED" MAKE-ENDED ;
+: STRAY-GO ( -- ) s" BI-STRAY" MAKE-STRAY ;
+: UNREAD-GO ( -- ) s" BI-UNREAD" MAKE-UNREAD ;
 : LNEG-GO ( -- ) s" BI-LNEG" MAKE-LNEG ;
-\ A read of local -1 names no bind: undefined, never an ended block.
+\ A read of local -1 names no bind: unbound, never an ended block.
 : LNEG-CHILD ( -- )
    s" BITEM:LNEG-GO" {: src:ptr srcu:n :}
    src srcu LNEG-OUT LNEG-CAP >LEN LNEG-ERR LNEG-CAP >LEN
    10000 >MS SUBJECT:RUN {: ou:len eu:len oc :}
    src srcu LNEG-OUT ou LEN>N LNEG-ERR eu LEN>N oc 70 T-ENDING-EXITED=
-   eu s" E-UNDEFINED habu: in bi-lneg: undefined word 'l-1'" LNEG-HAS? TTRUE
+   eu s" reads built local -1, which no `{:` group bound before it" LNEG-HAS? TTRUE
    eu s" block has ended" LNEG-HAS? TFALSE ;
 ;package
 
@@ -487,6 +489,12 @@ s" BITEM:TEXT-REF-GO" 70
 s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 s" BITEM:ENDED-GO" 70
 s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+\ A local outside a group is rejected as a stray local.
+s" BITEM:STRAY-GO" 70
+s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
+\ A read of an index no group bound is rejected naming the index.
+s" BITEM:UNREAD-GO" 70
+s" reads built local 9, which no `{:` group bound before it" SUBJECT:REFUSED? TTRUE
 \ A built body's rejection names the line of the definer's call.
 s" include test/fixtures/build-items/placed.f" 70
 s" placed.f:19" SUBJECT:REFUSED? TTRUE

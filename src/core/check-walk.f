@@ -669,10 +669,9 @@ public
 : ITEM-UNDEFINED ( -- )
    TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
 
-\ A TYPE, OPERAND or LOCAL item outside the form that takes it.
+\ A TYPE or OPERAND item outside the form that takes it.
 : ITEM-STRAY? ( n -- bool ) {: kind:n :}
-   kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or
-   kind BODY-ITEM-KIND:LOCAL = or ;
+   kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or ;
 
 : ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
@@ -707,12 +706,19 @@ public
    MD-LOCAL-ENDED MDIAG-COMPILE!  IS-FAIL ;
 
 \ A read of the local LOCAL answered index IX for: its bind sequence, which
-\ names an ended local when an earlier bind took it.
+\ names an ended local when an earlier bind took it and an unbound one when
+\ no bind has, a negative index included.
 : ITEM-LOCAL-REF ( n -- ) {: ix:n :}
    ix SEQ-SLOT {: li:n :}
-   li 0 <  ix 0 >= and  ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
-   li 0 < IF ITEM-UNDEFINED EXIT THEN
-   li LOC-REF-AT ;
+   li 0 >= IF li LOC-REF-AT EXIT THEN
+   ix 0 >=  ix LOCSEQ @ <  and IF ix LOCAL-ENDED EXIT THEN
+   RCOMPILE @  CREFUSE @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
+   MD-LOCAL-UNBOUND MDIAG-COMPILE!  IS-FAIL ;
+
+\ A built local appended outside a `{:` group; the load cannot compile it
+\ either, so the reason is a compile-time one.
+: LOCAL-STRAY ( -- )
+   MD-LOCAL-STRAY MDIAG-COMPILE!  IS-FAIL ;
 
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
@@ -728,9 +734,10 @@ public
    kind BODY-ITEM-KIND:INT = IF v ITEM-INT ELSE
    kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
    kind BODY-ITEM-KIND:LOCAL-REF = IF v ITEM-LOCAL-REF ELSE
+   kind BODY-ITEM-KIND:LOCAL = IF LOCAL-STRAY ELSE
    kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )
