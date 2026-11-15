@@ -970,7 +970,7 @@ variable RC
    SB-RESET
    S\" error[E-PATH-RANGE]: `included` got an empty path\n --> " SB-APPEND
    BODY$ SB-APPEND  S\" :1:6\n  |\n1 | s\" \" included\n" SB-APPEND
-   S\"   |      ^^^^^^^^ empty path\n  = help: pass a path of 1 to " SB-APPEND
+   S\"   |      ^^^^^^^^ passes a path that is empty\n  = help: pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED
    s" an empty path is rejected in one JSON line under REJECTION:JSON" T-LABEL
@@ -982,7 +982,7 @@ variable RC
    BODY$ SB-APPEND
    S\" \",\"line\":2,\"column\":6,\"byte_start\":25,\"byte_end\":33" SB-APPEND
    S\" ,\"token\":\"included\",\"source_line\":\"s\\\" \\\" included\"" SB-APPEND
-   S\" ,\"label\":\"empty path\",\"help\":\"pass a path of 1 to " SB-APPEND
+   S\" ,\"label\":\"passes a path that is empty\",\"help\":\"pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 

@@ -100,37 +100,38 @@ public
 
 ;package
 
+\ Places the record of word w, given the path a u, at a u where a source holds
+\ it, else at w where one holds that, else at the token the engine read last,
+\ and opens its label. Off the path the label says that token passes a path;
+\ the caller writes the rest, which reads after the path or after "that".
+: LOADER-PATH-AT ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
+   a REJECTION:PLACES? if a u REJECTION:AT exit then
+   w REJECTION:PLACES? if w wu else SRCLOC:TOKEN$ then REJECTION:AT
+   s" passes a path that " REJECTION:EMIT-STR ;
+
 \ Word w, a loader or ROOT!, got the path a u, which no file name holds: kind
 \ E-PATH-RANGE with len 0 when the path is empty, -1 when only the path it
 \ resolves to is longer than the cap, else its length; kind E-PATH-NUL when it
-\ holds a NUL byte. The record stands at a u where a source holds it, else at w
-\ where one holds that, else at the token the engine read last.
+\ holds a NUL byte.
 : LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
    {: w:ptr wu:n a:ptr u:n kind:n len:n :}
    kind E-PATH-NUL = if
       s" E-PATH-NUL" REJECTION:OPEN
       96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
       s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
-      s" holds a NUL byte"
    else
       w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
-      len 0= if
-         s" empty path"
-      else
-         len 0 < if s" too long once resolved" else s" too long" then
-      then
-   then {: l:ptr lu:n :}
-   a REJECTION:PLACES? if
-      a u
-   else
-      w REJECTION:PLACES? if
-         w wu
-      else
-         SRCLOC:TOKEN$
-      then
    then
-   REJECTION:AT
-   l lu REJECTION:EMIT-STR
+   w wu a u LOADER-PATH-AT
+   kind E-PATH-NUL = if
+      s" holds a NUL byte"
+   else
+      len 0= if
+         s" is empty"
+      else
+         len 0 < if s" is too long once resolved" else s" is too long" then
+      then
+   then REJECTION:EMIT-STR
    REJECTION:HELP
    kind E-PATH-NUL = if
       s" remove the NUL byte from the path" REJECTION:EMIT-STR
@@ -421,14 +422,19 @@ private
 
 : NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
-\ Word w, which a program called, got a path it cannot use: why follows
-\ "which", help says what to pass instead.
-: PATH-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n path:ptr pathu:n why:ptr whyu:n help:ptr helpu:n :}
+\ Opens the record of word w, which a program called, given a path it cannot
+\ use: why follows "which".
+: PATH-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n path:ptr pathu:n why:ptr whyu:n :}
    s" E-SOURCE-ROOT" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` got `" REJECTION:EMIT-STR
    path pathu REJECTION:EMIT-STR  s" `, which " REJECTION:EMIT-STR
-   why whyu REJECTION:EMIT-STR
+   why whyu REJECTION:EMIT-STR ;
+
+\ PATH-REJECT's record, unplaced; help says what to pass instead.
+: PATH-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n path:ptr pathu:n why:ptr whyu:n help:ptr helpu:n :}
+   w wu path pathu why whyu PATH-REJECT
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -705,19 +711,31 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    drop INCLUDE-TRUE ;
 
 \ Word w got the path a u that, joined to the current root, is len bytes, more
-\ than PATH-CAP; len is -1 when only its realpath is longer. The record stands
-\ at a u where a source holds it, else at the token the engine read last.
+\ than PATH-CAP; len is -1 when only its realpath is longer.
 : ROOT-LONG ( ptr u8 n ptr u8 n n -- ) {: w:ptr wu:n a:ptr u:n len:n :}
    w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
-   a REJECTION:PLACES? if a u else SRCLOC:TOKEN$ then REJECTION:AT
+   w wu a u LOADER-PATH-AT
    len 0 < if
-      s" too long once resolved"
+      s" is too long once resolved"
    else
-      len u = if s" too long" else s" too long once joined to the current root" then
+      len u = if
+         s" is too long"
+      else
+         s" is too long once joined to the current root"
+      then
    then REJECTION:EMIT-STR
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Word w got the path a u, which joined to the current root is p pu, a path
+\ that is no directory it can use: why follows "which" and "that".
+: ROOT-DIR-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n p:ptr pu:n why:ptr whyu:n help:ptr helpu:n :}
+   w wu p pu why whyu PATH-REJECT
+   w wu a u LOADER-PATH-AT  why whyu REJECTION:EMIT-STR
+   REJECTION:HELP  help helpu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ ROOT! for word w, the one the program called.
@@ -730,12 +748,12 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    p pu ROOT-N {: n:n :}
    n -2 = if w wu a u -1 ROOT-LONG then
    n -1 = if
-      w wu p pu s" does not resolve to a directory"
-      s" name an existing directory" PATH-DIE
+      w wu a u p pu s" does not resolve to a directory"
+      s" name an existing directory" ROOT-DIR-DIE
    then
    n -3 = if
-      w wu p pu s" is not a directory this process can search"
-      s" name a directory, one this process may search" PATH-DIE
+      w wu a u p pu s" is not a directory this process can search"
+      s" name a directory, one this process may search" ROOT-DIR-DIE
    then
    p pu CANON-BUF n COMPILE-READS:ROOT+
    CANON-BUF n MAP-COPY {: fresh:ptr :}
