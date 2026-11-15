@@ -2210,6 +2210,7 @@ package CHECKER-REG
 \ renders nothing. An uncheckable clause is rendered here too: the pre-pass
 \ renders nothing of its own for a clause.
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na DOES-NA !  nu DOES-NU !
    na nu TOKFOLD drop
    TKF nu CLAUSE-NAME NMU !  NMA ! ;
 

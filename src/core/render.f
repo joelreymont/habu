@@ -1450,12 +1450,17 @@ variable MDV-I   variable MDV-F
 
 : INFERRED ( -- ) INFERRED-EFFECT TRIM-SPACE ;
 
-\ The body whose end is checked: a colon definition's name as written, or a
-\ does> clause's definer, which DOES-NAME! leaves folded with the clause suffix.
+\ The definer of the does> clause being reported, as written: DOES-NAME! sets it.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE DOES-NA   variable DOES-NU
+CHECKER-REG:}SCRATCH
+
+\ The body whose end is checked: a colon definition's name, or a does>
+\ clause's definer, as written.
 : END-SUBJECT ( -- )
    CLAUSE-WALK @ 0= IF NM-SPAN EMIT-STR EXIT THEN
    s" the `does>` clause of " EMIT-STR
-   NMA @ NMU @ DOES-CLAUSE:SUFFIX$ nip - EMIT-STR ;
+   DOES-NA @ DOES-NU @ EMIT-STR ;
 : END-MESSAGE ( -- )
    END-SUBJECT  s"  ends with " EMIT-STR  DACT @ ROW-WORD
    s"  on the stack; its signature promises " EMIT-STR  DEXP @ ROW-WORD ;
@@ -1668,17 +1673,13 @@ variable MDV-I   variable MDV-F
    THEN
    k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
 
-\ The help for a body whose end does not fit its signature, by its depths.
+\ The help for a body whose end does not fit its signature: the row it should
+\ leave after its last word, or the effect it has.
 : END-WHERE ( -- )
    CLOSER-PINNED? IF s"  in the body" EMIT-STR EXIT THEN
    s"  after " EMIT-STR  TOK-SPAN ;
 : END-HELP ( -- )
-   ['] ROW-VALUES ROWS-DEPTHS
-   DSUGA @ DSUGE @ = IF s" make the body end with " EMIT-STR ELSE
-      DSUGA @ DSUGE @ < IF s" add the missing values" ELSE s" drop the extra values" THEN
-      EMIT-STR  END-WHERE  s"  so the body ends with " EMIT-STR
-   THEN
-   AT-PIN DEXP @ ROW-WORD ;AT-PIN
+   s" leave " EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
    s" , or declare ( " EMIT-STR  INFERRED  s"  )" EMIT-STR ;
 : TAKES-HELP ( -- )
    ['] ROW-VALUES ROWS-DEPTHS

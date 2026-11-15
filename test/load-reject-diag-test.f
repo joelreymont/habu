@@ -828,8 +828,7 @@ variable RC
    S\"   |                ^^^^ the stack is empty after this\n" SB-APPEND
    S\"   = expected: n\n  = found: (nothing)\n" SB-APPEND
    S\"   = declared: n -- n\n  = inferred: n --\n" SB-APPEND
-   s"   = help: add the missing values after `drop` so the body" SB-APPEND
-   S\"  ends with n, or declare ( n -- )\n\n" SB-APPEND
+   S\"   = help: leave n after `drop`, or declare ( n -- )\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED
    s" an undefined word prints one E-UNDEFINED" T-LABEL
    ONCE-UNDEF$ RUN
@@ -854,8 +853,7 @@ variable RC
    S\" ,\"label\":\"the stack is empty after this\"" SB-APPEND
    S\" ,\"notes\":{\"expected\":\"n\",\"found\":\"(nothing)\"" SB-APPEND
    S\" ,\"declared\":\"n -- n\",\"inferred\":\"n --\"}" SB-APPEND
-   S\" ,\"help\":\"add the missing values after `drop` so the body" SB-APPEND
-   S\"  ends with n, or declare ( n -- )\"}\n" SB-APPEND
+   S\" ,\"help\":\"leave n after `drop`, or declare ( n -- )\"}\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
 : TEST-SHADOW ( -- )

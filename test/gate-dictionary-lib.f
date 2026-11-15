@@ -279,7 +279,7 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   70 s" error[E-MISMATCH]: the `does>` clause of badarr ends with n on the stack; its signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   70 s" error[E-MISMATCH]: the `does>` clause of BADARR ends with n on the stack; its signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
    s" = evaluated: TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" s" hb bad trusted DOES> diagnostic evaluated note" GE-EXPECT-ERR-HAS
    s" the stack holds n after this" s" hb bad trusted DOES> diagnostic label" GE-EXPECT-ERR-HAS
    GE-HB-RESET
