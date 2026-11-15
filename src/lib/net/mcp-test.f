@@ -12,9 +12,9 @@
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments.
-\ MCP:ANSWER on a request worker: a tools/call appended as HANDLE sends it, a
-\ notification appending nothing, a message that is not JSON-RPC or not JSON, an
-\ unknown tool, and ANSWER off a worker.
+\ MCP:ANSWER on a request worker into a BUF holding old text: a tools/call
+\ written as HANDLE sends it, a notification leaving it empty, a message that is
+\ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -1540,8 +1540,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 
 BUF:HDR-BYTES BUFFER: REPLIES
 
-\ MCP:ANSWER of the body's message into REPLIES after a mark, so the reply
-\ shows what ANSWER appended.
+\ MCP:ANSWER of the body's message into REPLIES holding a mark, so the reply
+\ shows the mark when ANSWER does not clear it.
 : ANSWER-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    REPLIES BUF:CLEAR
@@ -1555,35 +1555,33 @@ BUF:HDR-BYTES BUFFER: REPLIES
    OPEN-PATH ;
 
 : ANSWER-CALL ( -- )
-   s" ANSWER of a tools/call appends the text HANDLE sends for it" T-LABEL
+   s" ANSWER of a tools/call writes the text HANDLE sends for it" T-LABEL
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: echo" ADD
    ECHO-A1 POST 200 T=
-   W-RESET s" >" W+ BODY BODY-U @ W+
+   W-RESET BODY BODY-U @ W+
    ANSWER-OPEN ECHO-A1 POST
    200 W$ ANSWERED ;
 
 : ANSWER-NOTIFIED ( -- )
-   s" ANSWER of a notification appends nothing" T-LABEL
+   s" ANSWER of a notification clears the BUF's old text" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST
-   200 s" >" ANSWERED ;
+   200 s" " ANSWERED ;
 
 : ANSWER-ENVELOPE ( -- )
-   s" ANSWER of a message that is not JSON-RPC appends -32600" T-LABEL
+   s" ANSWER of a message that is not JSON-RPC writes -32600" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":\"1.0\",\"id\":9,\"method\":\"ping\"}" POST
-   200 S\" >{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
+   200 S\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
    ANSWERED
-   s" ANSWER of a message that is not JSON appends -32700" T-LABEL
+   s" ANSWER of a message that is not JSON writes -32700" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":" POST
-   200 S\" >{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
+   200 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
    ANSWERED ;
 
 : ANSWER-UNKNOWN ( -- )
-   s" ANSWER of a call of an unregistered tool appends -32602" T-LABEL
+   s" ANSWER of a call of an unregistered tool writes -32602" T-LABEL
    ANSWER-OPEN
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   200 T=
-   BODY 1 s" >" T$=
-   BODY 1+ BODY-U @ 1- s" none" UNKNOWN-REPLY T$= ;
+   200 s" none" UNKNOWN-REPLY ANSWERED ;
 
 : ANSWER-OFF-WORKER ( -- )
    s" ANSWER off a request worker throws E-STATE" T-LABEL

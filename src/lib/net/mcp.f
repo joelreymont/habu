@@ -142,12 +142,11 @@ TYPED-VARIABLE SCHEMA-READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
-\ Where the reply goes: HANDLE's HTTP response in TO, or DRAFT, the BUF ANSWER
-\ writes through DRAFT-W and then appends to its caller's.
-ENUM sink response draft ;ENUM
+\ Where the reply goes: HANDLE's HTTP response in TO, or BUF-W, the writer
+\ ANSWER holds open on its caller's BUF.
+ENUM sink response buf ;ENUM
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
-HTTP:MAX-WORKERS TYPED-BUFFER DRAFT-W JSON:writer
-HTTP:MAX-WORKERS BUF:HDR-BYTES * SPAN-BUFFER: DRAFTS    \ BUF headers, live in ANSWER
+HTTP:MAX-WORKERS TYPED-BUFFER BUF-W JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
 HTTP:MAX-WORKERS TYPED-BUFFER METHOD SPAN:span<u8>    \ JSON text, quotes kept
 HTTP:MAX-WORKERS TYPED-BUFFER PARAMS SPAN:span<u8>    \ an object's JSON text, or empty
@@ -175,8 +174,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : PARAMS$ ( -- ptr u8 n ) SLOT PARAMS @ SPAN:$ ;
 : TEXT$ ( -- ptr u8 n ) SLOT TEXT @ SPAN:$ ;
 : LEGACY? ( -- bool ) SLOT ERA @ LEGACY = ;
-: DRAFT ( -- ptr n )
-   DRAFTS SLOT BUF:HDR-BYTES * BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
 
 
 \ A value's JSON text at the reader: a container whole, a string with quotes.
@@ -507,16 +504,13 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    answer SLOT STATUS @ HTTP:STATUS!
    answer [: RESPONSE-BODY ;] HTTP:JSON! ;
 
-\ The writer is closed however the body ended.
-: DRAFT-REPLY ( -- )
-   SLOT DRAFT-W DRAFT JSON:WRITE-OPEN-BUF
-   [: RESPONSE-BODY drop ;] [: SLOT DRAFT-W JSON:WRITE-CLOSE ;] finally ;
+: BUF-REPLY ( -- ) SLOT BUF-W RESPONSE-BODY drop ;
 
 : SEND ( -- )
    SENT SLOT STAGE !
    SLOT REPLY-TO @ MATCH sink
       response OF HTTP-REPLY ENDOF
-      draft OF DRAFT-REPLY ENDOF
+      buf OF BUF-REPLY ENDOF
    ;MATCH ;
 
 
@@ -799,7 +793,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : NOTIFIED ( -- )
    SLOT REPLY-TO @ MATCH sink
       response OF HTTP-NOTIFIED ENDOF
-      draft OF ENDOF
+      buf OF ENDOF
    ;MATCH ;
 
 
@@ -1015,18 +1009,16 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    code throw ;
 
 
-$1000 constant DRAFT-CAP     \ a mapping is at least a page
-
 \ The message's envelope checked, then dispatched; the text is kept for catch.
 : CARRIED ( ptr u8 n -- ptr u8 n )
    2dup ENVELOPE? if DISPATCH else SEND then ;
 
 
-: DRAFT-ANSWER ( ptr u8 n ptr a -- )
-   {: text:ptr u:n buf:ptr :}
-   text u [: CARRIED ;] catch {: code:n :} 2drop
-   code FAULTED
-   DRAFT BUF:SPAN$ buf BUF:APPEND-SPAN ;
+\ The message answered into BUF-W, the writer ANSWER holds open on the
+\ caller's BUF.
+: BUF-ANSWER ( ptr u8 n -- )
+   [: CARRIED ;] catch {: code:n :} 2drop
+   code FAULTED ;
 
 public
 
@@ -1131,18 +1123,19 @@ public
 \ Answers one JSON-RPC message whose caller the host has authenticated and
 \ which came by a transport other than HTTP, on a request worker: as HANDLE
 \ answers a 2026-07-28 request, with no transport, version or header checks.
-\ The response's JSON text is appended to the BUF, nothing for a notification;
-\ any fault but HANDLE's JSON-RPC errors is rethrown, a tool body's included.
+\ ANSWER clears the BUF and writes the response's JSON text there, nothing for
+\ a notification; after a throw its text is no reply to send. Any fault but
+\ HANDLE's JSON-RPC errors is rethrown, a tool body's included.
 \ The VISIBLE! hook is called with no HTTP request, so it judges by what the
 \ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
 \ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
 : ANSWER ( ptr u8 n ptr a -- )
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    ON-WORKER
-   construct sink draft OPENED-TO
+   construct sink buf OPENED-TO
    MODERN SLOT ERA !
-   DRAFT DRAFT-CAP BUF:N>BLEN BUF:INIT
-   [: DRAFT-ANSWER ;] [: DRAFT BUF:DISPOSE ;] finally ;
+   SLOT BUF-W swap BYTE-VIEW CELL-VIEW JSON:WRITE-OPEN-BUF drop
+   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally ;
 
 
 private
