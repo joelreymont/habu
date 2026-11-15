@@ -21,17 +21,52 @@ variable SAVED-RC
    src dst u BYTE-COPY
    u used ! ;
 
-\ A record split at its place line ` --> file:L:C`: the text before it and
-\ the text after it; with no place line the whole is the head.
-: UNLOCATED ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u s"  --> " FIND-SUB MATCH option
-     none OF a u a 0 ENDOF
-     some OF IDX>N {: at:n :}
-        a at + u at - 10 INDEX-OF MATCH option
-          none OF a at a 0 ENDOF
-          some OF IDX>N 1 + at + {: end:n :} a at  a end +  u end - ENDOF
-        ;MATCH ENDOF
-   ;MATCH ;
+create GOT-KEPT CAP allot
+create SAVED-KEPT CAP allot
+
+variable GOT-KEPT-U
+variable SAVED-KEPT-U
+
+: PAST-CARETS ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 begin
+      dup u < if dup a + c@ 94 = else false then
+   while 1+ repeat
+   {: i:n :} a i + u i - ;
+
+\ A line, its gutter indent dropped, that tells where a record is: the place
+\ line, a source line, an `= evaluated:` note and the note's caret line.
+: PLACE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" -->" STARTS-WITH?
+   a u s" = evaluated:" STARTS-WITH? or
+   a u s" ^" STARTS-WITH? or
+   u 0 > if a c@ STR-DIGIT? else false then or ;
+
+: KEEP+ ( ptr u8 n ptr u8 ptr len -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   a u dst CAP lenp BUF-APPEND
+   10 dst CAP lenp BUF-APPEND-C ;
+
+\ A gutter line keeps only the label past its carets, whose run is the
+\ placed token's length.
+: LINE+ ( ptr u8 n ptr u8 ptr len -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   a u LTRIM {: t:ptr tu:n :}
+   t tu PLACE? if exit then
+   t tu s" |" STARTS-WITH? if
+      t tu 94 INDEX-OF MATCH option
+        none OF ENDOF
+        some OF IDX>N {: at:n :}
+           t at + tu at - PAST-CARETS dst lenp KEEP+ ENDOF
+      ;MATCH exit
+   then
+   t tu dst lenp KEEP+ ;
+
+\ The record's lines short of where it is placed, into DST.
+: KEPT ( ptr u8 n ptr u8 ptr len -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   lenp BUF-RESET
+   0 begin
+      >r a u 10 r> SPLIT-NEXT
+   while
+      >r dst lenp LINE+ r>
+   repeat drop 2drop ;
 
 \ Short of a trailing ` lr <16 hex>` and newline: a kernel exit line ends in
 \ its trapping code's return address, which ASLR moves between runs.
@@ -54,16 +89,16 @@ public
    out outu SAVED-OUT SAVED-OUT-U @ T$=
    err erru PAST-LR SAVED-ERR SAVED-ERR-U @ PAST-LR T$= ;
 
-\ As SAME, but stderr's place line may differ: a run names the file it reads
-\ or `<input>`.
+\ As SAME, but stderr's record may be placed elsewhere: a direct run places
+\ it in the file it reads, a subject run at the test file's word that ran the
+\ text, with an `= evaluated:` note. Its code, message, label and other notes
+\ agree.
 : SAME-UNLOCATED ( ptr u8 n ptr u8 n n -- )
    {: out:ptr outu:n err:ptr erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru UNLOCATED {: head:ptr hu:n tail:ptr tu:n :}
-   SAVED-ERR SAVED-ERR-U @ UNLOCATED
-   {: whead:ptr whu:n wtail:ptr wtu:n :}
-   head hu whead whu T$=
-   tail tu wtail wtu T$= ;
+   err erru GOT-KEPT GOT-KEPT-U KEPT
+   SAVED-ERR SAVED-ERR-U @ SAVED-KEPT SAVED-KEPT-U KEPT
+   GOT-KEPT GOT-KEPT-U @ SAVED-KEPT SAVED-KEPT-U @ T$= ;
 
 ;package
