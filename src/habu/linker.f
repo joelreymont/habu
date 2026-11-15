@@ -5093,7 +5093,7 @@ TYPED-VARIABLE EXITER [ -- ]
    get-current SAVED-CURRENT ! ;
 
 \ DATA-FLOOR-CELL is an offset from hb's data-base (layout.f). The wordlists
-\ come before any host cell moves: `wordlist` throws OVERLAY-OPEN in a replay.
+\ come before any host cell moves: `wordlist` throws E-OVERLAY-OPEN in a replay.
 : MOVE-IN ( -- )
    wordlist wordlist negate wordlist {: global:n ns:n types:n :}
    ndict@ FIRST-REC !

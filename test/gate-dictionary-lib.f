@@ -1419,7 +1419,7 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" $10000000001 allot" GE-SRC-LINE
-   76 s" " s" data-space overflow rc" GE-EVAL-FORK-BAD ;
+   67 s" " s" data-space overflow rc" GE-EVAL-FORK-BAD ;
 
 : NAMED-ROW-RUN ( -- )
    GE-HB-RESET

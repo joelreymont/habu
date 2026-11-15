@@ -685,6 +685,8 @@ require src/lib/prelude.f
 \ package F64-TEXT.
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
 \ package JSON (src/lib/json.f).
+\ Engine faults: -9880..-9889, thrown by the kernel (src/habu/habu2.f),
+\ declared at this file's end.
 
 \ T0 (src/habu/t0.f): -9600..-9609.
 -9600 constant E-T0-FIRST
@@ -882,3 +884,8 @@ generates: FAULT ( -- n )
 
 seal-package
 ;package
+
+-9880 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
+-9881 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
+-9882 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
+-9883 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT

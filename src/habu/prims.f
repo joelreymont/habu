@@ -665,8 +665,7 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
 \ other refusal. A caller checks first and prints the engine's own text. While a
 \ checker overlay is open, `namespace-private`, `alias-record` and `def-open`
-\ refuse instead with a compile die, which `evaluate` delivers as a throw: they
-\ name the token and die ENGINE-ERROR:OVERLAY-OPEN.
+\ throw E-OVERLAY-OPEN instead.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64

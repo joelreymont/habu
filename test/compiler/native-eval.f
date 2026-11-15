@@ -138,40 +138,40 @@ private
    LOOP-CATCH-NESTED 774 T= ;
 
 \ Each consumer of an xt reaches under the floor the same way, and each answer
-\ is the same throw 70 with the caller's 5 intact and W unfinished.
+\ is the same throw E-UNDERFLOW with the caller's 5 intact and W unfinished.
 : XT-EXECUTE ( -- n )
-   5 [: s" 1 ' NATIVE-EVAL-TEST:W execute" evaluate-closed ;] catch 70 T= ;
+   5 [: s" 1 ' NATIVE-EVAL-TEST:W execute" evaluate-closed ;] catch E-UNDERFLOW T= ;
 
 : XT-PRIMITIVE ( -- n )
-   5 [: s" 1 NATIVE-EVAL-TEST:PLUS-XT execute" evaluate-closed ;] catch 70 T= ;
+   5 [: s" 1 NATIVE-EVAL-TEST:PLUS-XT execute" evaluate-closed ;] catch E-UNDERFLOW T= ;
 
 : XT-FINALLY ( -- n )
    5 [: s" 1 ' NATIVE-EVAL-TEST:W NATIVE-EVAL-TEST:CLEAN finally" evaluate-closed ;]
-   catch 70 T= ;
+   catch E-UNDERFLOW T= ;
 
 : XT-QUOTATION ( -- n )
-   5 [: s" 1 NATIVE-EVAL-TEST:GETW execute" evaluate-closed ;] catch 70 T= ;
+   5 [: s" 1 NATIVE-EVAL-TEST:GETW execute" evaluate-closed ;] catch E-UNDERFLOW T= ;
 
 : XT-NESTED ( -- n )
    5 [: s" 3 NATIVE-EVAL-TEST:INNER-UNDER$ evaluate-closed" evaluate-closed ;]
-   catch 70 T= ;
+   catch E-UNDERFLOW T= ;
 
 : XT-UNDER ( -- )
    0 SEEN !
-   s" a compiled word executed below the floor throws 70" T-LABEL
+   s" a compiled word executed below the floor throws E-UNDERFLOW" T-LABEL
    XT-EXECUTE
    s" and leaves the caller's cell, the word unfinished" T-LABEL
    5 T=  SEEN @ 0 T=
-   s" a primitive executed below the floor throws 70" T-LABEL
+   s" a primitive executed below the floor throws E-UNDERFLOW" T-LABEL
    XT-PRIMITIVE 5 T=
-   s" a catch inside the text receives that 70 itself" T-LABEL
-   5 s" 1 ' NATIVE-EVAL-TEST:W catch 70 T= 1 T=" evaluate-closed
+   s" a catch inside the text receives that E-UNDERFLOW itself" T-LABEL
+   5 s" 1 ' NATIVE-EVAL-TEST:W catch E-UNDERFLOW T= 1 T=" evaluate-closed
    5 T=  SEEN @ 0 T=
-   s" finally's body reaching below the floor throws 70" T-LABEL
+   s" finally's body reaching below the floor throws E-UNDERFLOW" T-LABEL
    XT-FINALLY 5 T=  SEEN @ 0 T=
-   s" a quotation xt reaching below the floor throws 70" T-LABEL
+   s" a quotation xt reaching below the floor throws E-UNDERFLOW" T-LABEL
    XT-QUOTATION 5 T=  SEEN @ 0 T=
-   s" an inner text's reach throws 70 through the outer text" T-LABEL
+   s" an inner text's reach throws E-UNDERFLOW through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
 \ A text that ends inside a definition it opened is refused as every buffer
@@ -298,12 +298,12 @@ create ERR IO-CAP allot
    s" TRUSTED: NATIVE-EVAL-W ( n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
 
 : TOP-LEVEL ( -- )
-   s" a word reaching below the base outside a closed text throws 70" T-LABEL
+   s" a word reaching below the base outside a closed text exits 67 uncaught" T-LABEL
    TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N 70 T=
+   PROCESS:ENDING>RC RC>N 67 T=
    nip LEN>N {: erru:n :}
-   s" and names the token the interpreter was running" T-LABEL
-   ERR erru s" interpret stack underdepth: execute" CONTAINS? TTRUE
+   s" and the uncaught throw is E-UNDERFLOW's -9881" T-LABEL
+   ERR erru s" hb: uncaught throw code -9881" CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" E-STACK-BOUNDS" CONTAINS? TFALSE ;
 

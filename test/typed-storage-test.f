@@ -288,7 +288,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
       TS-EVAL 0 T=
    s\" : TSN ( -- n ) 7 ;\n: TSN-REG ( -- ) s\q n\q s\q TSN\q CHECKER-DEFTYPED-VARIABLE ;" TS-EVAL 0 T=
    \ TSNP exists before the scope opens: a neutral scope reopens a package and
-   \ refuses a new one (ENGINE-ERROR:OVERLAY-OPEN).
+   \ refuses a new one (E-OVERLAY-OPEN).
    s\" package TSNP ;package\nCHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
       s" `TSN`" TS-PKG-CONTEXT
    s\" package TSNP\npublic\n: TSNP-USE ( -- n ) TSN ;\n;package" TS-EVAL 0 T=

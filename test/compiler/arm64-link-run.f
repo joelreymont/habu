@@ -102,16 +102,13 @@ create PROG-BUF PATH-CAP allot
 
 $20000 BUFFER: HI-BYTES
 
-\ Texts hi never prints: the profiler's report, and the message laid right after
-\ the uncaught-throw message, which every stripped program reaches.
+\ A text hi never prints: the profiler's report.
 : NO-PROFILER ( -- )
    s" hi" PROG$ {: file:ptr file-n:n :}
    file file-n FS:FILE-SIZE $20000 min {: size:n :}
    file file-n 0 HI-BYTES size FS:READ-AT
-   s" hi keeps no message it never prints and no profiler code: control never passes from a message into what follows it"
-      T-LABEL
-   HI-BYTES size s" profiler not armed" CONTAINS? TFALSE
-   HI-BYTES size s" E-UNDERFLOW habu: " CONTAINS? TFALSE ;
+   s" hi keeps no profiler code" T-LABEL
+   HI-BYTES size s" profiler not armed" CONTAINS? TFALSE ;
 
 
 \ ---- the kernel build's inputs log, replayed -------------------------------------

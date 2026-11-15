@@ -750,8 +750,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT liveu LEN>N S\" -1\n" T$=
    TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
-   TASK-OUT hugeu LEN>N S\" 76\n-1\n-1\n70\n76\n76\n5\n0\n" T$=
-   TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE
+   TASK-OUT hugeu LEN>N S\" -9880\n-1\n-1\n70\n-9880\n-9880\n5\n0\n" T$=
    TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" CONTAINS? TTRUE
    TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" CONTAINS? TTRUE ;
 
