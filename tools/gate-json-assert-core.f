@@ -202,10 +202,6 @@ variable GJA-LX
 : GJA-REQ-INTF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ GJA-INT drop ;
 
-
-: GJA-SCHEMA1 ( SPAN:span<u8> -- )
-   s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
-
 : GJA-ASSERT-INT-FIELD ( SPAN:span<u8> ptr u8 n n -- )
    {: root:SPAN:span<u8> key:ptr keyu want :}
    root key keyu GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;

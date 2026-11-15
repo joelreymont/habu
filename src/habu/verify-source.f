@@ -195,23 +195,10 @@ package VERIFY
 
 public
 
-\ Nothing throws these: a reader (a definer, a parsing word) with no token
-\ after it, a string literal with no closing quote or with a bad escape, and a
-\ PRIM:, PPRIM:, EPRIM: or EPPRIM: row with no closer are recorded where the
-\ scan meets them, which then stops with CHECKER-REJECT-RC. check.f's packets
-\ still read the codes.
-7188 constant E-UNTERMINATED-STRING
-7189 constant E-MALFORMED-REGISTRY-ROW
-
 \ The verifier throws none of this: a file a quiet composition loads that the
 \ system does not read to its end is recorded where the read fails, which then
 \ stops with INCLUDE-IO-RC. check.f's packets still read the code.
 7201 constant E-SOURCE-READ
-
-\ The scan throws none of these: it records each rejection and stops with
-\ CHECKER-REJECT-RC. Readers of a stop's code still name them.
-7157 constant E-MISSING-SIGNATURE  \ a definer or `does>` with no closed signature
-7135 constant E-SECTION-WORD       \ `host` or `target`, with a word of that name in scope
 
 \ Captured by the verifier child's body as it starts loading. A direct caller
 \ that does not supply an entry observation retains checking order.

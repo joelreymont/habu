@@ -715,16 +715,8 @@ variable RC
    s" arena-atom.f" FIXTURE!
    s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REFUSED-MODES ;
 
-\ Under --verify-only the declaration pre-pass alone refuses the fixture.
-: PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n cls:ptr clsu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
-   s" --verify-only" CHECK
-   c cu REJECTED-AS
-   0 s" repair_class" cls clsu FIELD=
-   0 s" reason" why whyu FIELD=
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
-
-\ PREPASS-REFUSED for a rejection record, whose label says why.
+\ Under --verify-only the declaration pre-pass alone rejects the fixture; the
+\ record's label says why.
 : PREPASS-REJECTED ( ptr u8 n ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" --verify-only" CHECK

@@ -14,8 +14,7 @@
 \ printed, as a `;using` with no `using` open throws 70 after
 \ E-USING-UNBALANCED, and fails the source with that status (THREW?). Any other
 \ code was thrown with nothing reported: its record is written at the token the
-\ checker read last, after whatever it reported before it, or the lexer's
-\ record when the lexer reads a defect there (LEX-FIRST?), and the source fails
+\ checker read last, after whatever it reported before it, and the source fails
 \ as rejected. The rest of the source is not checked. A source the scan read to
 \ its end is lexed then, so a lexer defect, which runs to the end of its file,
 \ is reported after every record before it.
@@ -31,10 +30,7 @@ require src/lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/byte-buffer.f
-require src/lib/json.f
 require src/lib/source-lex.f
-require src/lib/verify-diagnostics.f
 
 \ VERIFY opens its own package, which a file required inside a package cannot,
 \ so verify-source.f is required here at top level; every checker scope below
@@ -46,8 +42,6 @@ require src/habu/verify-source.f
 package CHECK-ALL-ERRORS
 
 private
-
-10 constant CA-LF
 
 variable CA-OUT-LEN
 TYPED-VARIABLE CA-OUT-A ptr u8
@@ -204,20 +198,17 @@ variable CA-COMPOSE-LABEL-U
    CA-THROW-AT @ {: at:n :}
    CA-SRC-A@ at +  at CA-WORD-END at - ;
 
-\ A statement's throw: its code and message, its throw number standing in for
-\ an empty message, and why the scan refused the declaration, when it knows.
+\ A statement's throw: the code it threw, and why the scan rejected the
+\ declaration, when it knows.
 : CA-THROW-RECORD ( -- )
    CA-ARM
-   CA-THROW-RC @ VERIFY-DIAGNOSTICS:THROW-CODE$
-   {: code:ptr cu:n class:ptr clu:n sug:ptr sugu:n msg:ptr msgu:n :}
-   code cu REJECTION:OPEN
-   msgu 0<> IF msg msgu CA-SAY ELSE
-      s" the statement threw " CA-SAY  CA-THROW-RC @ REJECTION:EMIT-N
-   THEN
+   s" E-STATEMENT-THROW" REJECTION:OPEN
+   s" the statement threw " CA-SAY  CA-THROW-RC @ REJECTION:EMIT-N
    CA-THROW-TOKEN$ REJECTION:AT  s" the check stopped here" CA-SAY
    VERIFY:REASON$ {: why:ptr whyu:n :}
    whyu 0<> IF s" reason" REJECTION:NOTE  why whyu CA-SAY THEN
-   REJECTION:HELP  sug sugu CA-SAY
+   REJECTION:HELP
+   s" the statement threw the code shown: catch it, or fix what threw it" CA-SAY
    REJECTION:KEEP
    REJECTION:SOURCE-OFF ;
 
@@ -228,16 +219,6 @@ public
 \ its record, so it gets no throw record.
 : THREW? ( n -- bool ) {: rc:n :}
    rc 0 < rc 255 > or ;
-
-\ True for the code of a stop that the lexer's record of the stopped file goes
-\ before, as it goes before any error in the file: the pre-verifier's at a
-\ string or a primitive-axiom row the file never closes, and discovery's at a
-\ string or a locals group, a defect the lexer reads too but for the group.
-\ With no defect for the lexer to read, the stop's own record stands.
-: LEX-FIRST? ( n -- bool ) {: rc:n :}
-   rc VERIFY:E-UNTERMINATED-STRING =
-   rc VERIFY:E-MALFORMED-REGISTRY-ROW = or
-   rc E-DISC-UNTERM = or ;
 
 private
 
@@ -252,13 +233,11 @@ variable CA-COMPOSING                   \ the run is a composition
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
    u CA-FILE-U !  a CA-FILE-A! ;
 
-\ The record of a statement's throw where the scan stopped: the lexer's when it
-\ reads a defect the stop's code says comes first, else the throw's.
+\ The record of a statement's throw, at the token where the scan stopped.
 : CA-THREW ( n -- ) {: rc:n :}
    rc CA-THROW-RC !
    VERIFY:TOKEN-BYTE@ CA-THROW-AT !
    CA-COMPOSING @ IF CA-COMPOSE-STOPPED THEN
-   rc LEX-FIRST? IF CA-LEX IF exit THEN THEN
    CA-THROW-RECORD ;
 
 \ What the scan's end leaves to record: a clean scan's lexer defect, or an
@@ -393,81 +372,5 @@ public
    [: labela labelu CA-START
       srca srcu CA-SOURCE-BUF!
       false true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
-
-private
-
-\ ---- old-form record lines ---------------------------------------------------
-\ Each is a whole record line returned to the caller in the mode JSON! selected.
-
-variable CA-JSON
-create CA-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE CA-JSON-W JSON:writer
-variable CA-JSON-READY
-
-: CA-JSON? ( -- bool )
-   CA-JSON @ 0 <> ;
-
-: CA-JSON-WRITER ( -- ptr JSON:writer )
-   CA-JSON-READY @ 0= if
-      CA-JSON-BUF 1 BUF:N>BLEN BUF:INIT
-      1 CA-JSON-READY !
-   then
-   CA-JSON-W CA-JSON-BUF JSON:WRITE-OPEN-BUF ;
-
-\ The 1-based line and column of byte at in the buffer that starts at a.
-: BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
-   1 0 at 0 ?do
-      a i + c@ CA-LF = if drop 1+ i 1+ then
-   loop
-   at swap - 1+ ;
-
-: CA-THROW-ORIGIN ( -- n n )
-   CA-SRC-A@ CA-THROW-AT @ BYTE-ORIGIN ;
-
-: CA-PROSE-THROW ( -- )
-   CA-THROW-ORIGIN {: line:n col:n :}
-   CA-JSON-WRITER
-   CA-THROW-RC @ VERIFY-DIAGNOSTICS:THROW-CODE$ 2swap 2drop 2swap 2drop
-   {: code:ptr codeu:n msg:ptr msgu:n :}
-   code codeu JSON:WRITE-RAW
-   s"  " JSON:WRITE-RAW
-   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW
-   s" :" JSON:WRITE-RAW line JSON:WRITE-U
-   s" :" JSON:WRITE-RAW col JSON:WRITE-U
-   s" : " JSON:WRITE-RAW
-   msgu 0<> IF
-      msg msgu JSON:WRITE-RAW
-   ELSE
-      s" throw " JSON:WRITE-RAW CA-THROW-RC @ JSON:WRITE-INT
-   THEN
-   s"  at '" JSON:WRITE-RAW CA-THROW-TOKEN$ JSON:WRITE-RAW
-   s" '" JSON:WRITE-RAW drop ;
-
-: CA-THROW-RECORD$ ( -- ptr u8 n )
-   CA-JSON? IF
-      CA-THROW-RC @ CA-THROW-AT @ CA-FILE-A@ CA-FILE-U @
-      CA-SRC-A@ CA-SRC-U @ VERIFY:REASON$ VERIFY-DIAGNOSTICS:THROW-RECORD$ EXIT
-   THEN
-   CA-PROSE-THROW
-   CA-JSON-W JSON:WRITTEN$ ;
-
-public
-
-\ True selects one JSON diagnostic record per rejected definition; false
-\ selects the prose rendering.
-: JSON! ( bool -- )
-   CA-JSON ! ;
-
-\ The record line --all-errors writes for a statement that threw the given code,
-\ for a caller that had the checker run over the given source under the given
-\ label: at the token that starts at the given byte, the one the checker read
-\ last, in the mode JSON! selected, with no line feed.
-: THROW-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n labela:ptr labelu:n srca:ptr srcu:n :}
-   labela labelu CA-START
-   srca srcu CA-SOURCE-BUF!
-   rc CA-THROW-RC !
-   at CA-THROW-AT !
-   CA-THROW-RECORD$ ;
 
 ;package
