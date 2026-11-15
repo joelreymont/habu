@@ -116,8 +116,11 @@ private
    RESTORED ;
 
 : NUL-REFUSED ( -- )
-   s" a path holding a 0 byte is refused by required" T-LABEL
-   [: s\" a\zb.f" A-PATH required ;] E-PATH-NUL TTHROWSQ
+   s" a path holding a 0 byte is rejected by required" T-LABEL
+   REJECTION:CAPTURE
+   [: s\" a\zb.f" A-PATH required ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" E-PATH-NUL" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
    RESTORED ;
 
 : DISCOVERY ( -- )

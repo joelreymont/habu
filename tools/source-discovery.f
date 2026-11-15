@@ -203,9 +203,6 @@ variable SD-SCOPES
 : SD-OPENER-STOP ( -- )
    E-DISC-OPENER SD-HARVEST-THROW
    SD-LAST$ VERIFY:OPENER-REJECT  E-DISC-OPENER REJECTION:STOP ;
-: SD-CAPACITY-STOP ( -- )
-   E-DISC-CAPACITY SD-HARVEST-THROW
-   SD-LAST$ VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP ;
 \ The string literal the walk read last, its opener, has no closing quote.
 : SD-UNTERM-STOP ( -- )
    E-DISC-UNTERM SD-HARVEST-THROW
@@ -1074,24 +1071,25 @@ $FF constant SD-NAMES                    \ loaders and family openers
    bit SD-RETIRED @ and 0<> if SD-RETIRE-STOP then ;
 
 \ The loader is given the path as the source holds it, so a rejection of it is
-\ placed there; a decoded literal's bytes are in no source.
-: SD-CALL-ACT ( -- )
+\ placed there; a decoded literal's bytes are in no source, so one of them is
+\ placed at the loader word at off len, which the record names as written.
+: SD-CALL-ACT ( n n -- ) {: off:n len:n :}
    SD-CALL-KIND @ {: kind:n :}
+   off len SD-TOK$ {: w:ptr wu:n :}
    SD-PATH-SRC @ SD-PATH-U @ {: a:ptr u:n :}
-   kind SD-K-INCLUDED = if a u included exit then
-   kind SD-K-REQUIRED = if a u required exit then
+   kind SD-K-INCLUDED = if w wu a u INCLUDED-AS exit then
+   kind SD-K-REQUIRED = if w wu a u REQUIRED-AS exit then
    a u provided ;
 
-\ The loader word at off len takes the path written at poff plen. False, and
-\ nothing recorded, for a path the loader's resolver refuses (E-PATH-NUL, a NUL
-\ in the path; E-PATH-RANGE).
-: SD-LOAD? ( n n n n n -- bool )
+\ The loader word at off len takes the path written at poff plen. A path the
+\ loader rejects is out with its record.
+: SD-CALL-LOADER ( n n n n n -- )
    {: off:n len:n poff:n plen:n kind:n :}
    off len DISC-TOK!
    poff plen DISC-PATH!
    kind SD-CALL-KIND !
    EVENT-COUNT {: before:n :}
-   [: SD-CALL-ACT ;] catch {: rc:n :}
+   [: off len SD-CALL-ACT ;] catch {: rc:n :}
    EVENT-COUNT before > if
       EVENT-COUNT SD-E-SPEC-RESERVE
       SD-DEF @ before SD-E-SPEC !
@@ -1101,27 +1099,26 @@ $FF constant SD-NAMES                    \ loaders and family openers
          SD-HARVESTING @ 0= if SD-FILE-ID @ off 1+ SD-S-ADD then
          SD-C-KNOWN? if SD-FILE-ID @ off 1+ SD-S-SEED else SD-C-UNKNOWN SD-C-PKG ! then
       then
-      true exit
+      exit
    then
+   rc throw ;
+
+\ Whether the loader can take the path SD-PATH$ when a body calls it: false,
+\ with nothing written, for one that is empty, holds a NUL byte or resolves
+\ past the cap.
+: SD-BODY-PATH? ( -- bool )
+   SD-PATH$ LOADER-PATH-FAULT drop 0<> if false exit then
+   SD-PATH$ false [: drop SOURCE-ROOT:RESOLVE ;] catch {: rc:n :}
+   drop 2drop
+   rc 0= if true exit then
    rc E-PATH-RANGE =  rc E-PATH-NUL =  or 0= if rc throw then
    false ;
 
-\ A load at top level, which runs while the file loads, or an `include` or
-\ `require` in a body, which the engine refuses there but whose file the quiet
-\ composition reads: a path it cannot resolve is a form discovery cannot
-\ follow, refused at the loader word that names it.
-: SD-CALL-LOADER ( n n n n n -- )
-   {: off:n len:n poff:n plen:n kind:n :}
-   off len poff plen kind SD-LOAD? if exit then
-   off SD-TOK-OFF !
-   len SD-TOK-LEN !
-   SD-CAPACITY-STOP ;
-
 \ A loader word in a body is a call the word makes when it runs, which no check
-\ runs: right after a path literal the resolver takes it is recorded, the
+\ runs: right after a path literal the loader takes it is recorded, the
 \ superset an ordinary composition loads. After anything else, or after a path
-\ the resolver refuses, which the call loads nothing from, it is nothing to
-\ follow or refuse.
+\ no file name holds (SD-BODY-PATH?), which the call loads nothing from, it is
+\ nothing to follow or reject.
 \ At top level the load runs while the file loads, so a path the walk cannot
 \ follow is refused: a dynamic one (E-DISC-DYNAMIC) and a C\" or .\" literal
 \ (E-DISC-OPENER). A form the walk reads, any at top level and one right after
@@ -1131,7 +1128,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-DEF @ 0<> if
       pend SD-PEND-PATH = 0= if exit then
       off len SD-CHECK-USE
-      off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-LOAD? drop
+      SD-BODY-PATH? 0= if exit then
+      off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER
       exit
    then
    off len SD-CHECK-USE
@@ -1139,9 +1137,9 @@ $FF constant SD-NAMES                    \ loaders and family openers
    pend SD-PEND-PATH = 0= if SD-DYNAMIC-STOP then
    off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
 
-\ `include` and `require` take the next token as their path and refuse one
+\ `include` and `require` take the next token as their path and reject one
 \ over PATH-CAP bytes before they resolve it; the resolver decides the rest. The
-\ walk reads either wherever it stands, refused first when the file has
+\ walk reads either wherever it stands, rejected first when the file has
 \ replaced it.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
@@ -1150,7 +1148,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
       E-DISC-DYNAMIC SD-HARVEST-THROW
       toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
    then
-   plen PATH-CAP > if SD-CAPACITY-STOP then
+   toff tlen SD-TOK$ poff plen SD-TOK$ INCLUDE-CHECK-PATH
    poff plen SD-TOK$ SD-PATH-FILL
    toff tlen poff plen kind SD-CALL-LOADER ;
 

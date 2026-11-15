@@ -1225,16 +1225,15 @@ variable GROUP-AT
    BEGIN GROUP-NEXT GROUP-TOKEN UNTIL ;
 
 \ The path `include` or `require` takes, the word wu bytes long and standing at
-\ TOKEN-BYTE: none is refused at the word, and one past PATH-CAP at itself, as
-\ the word refuses it before the resolver sees it.
+\ TOKEN-BYTE: none is rejected at the word, and one the word rejects before the
+\ resolver sees it with the loader's record.
 : LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
+   SOURCE@ TOKEN-BYTE @ + {: w:ptr :}
    NEXT-RAW {: p:ptr pu:n :}
    pu 0= IF
       wu FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
    THEN
-   pu PATH-CAP > IF
-      pu FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + pu CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP
-   THEN
+   w wu p pu INCLUDE-CHECK-PATH
    p pu ;
 
 \ `include` or `require` in a body, an immediate word the engine refuses there
@@ -3289,29 +3288,33 @@ variable LOAD-END
    open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
    path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
-: COMPOSE-INCLUDED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u SOURCE-ROOT:RESOLVE drop {: path:ptr pathu:n :}
+\ The loads loader word w, the token the source wrote, makes of the path a u:
+\ the resolver's answer comes through the loader's, which writes its records.
+: COMPOSE-INCLUDED ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
+   w wu a u [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
-: COMPOSE-REQUIRED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u SOURCE-ROOT:RESOLVE IF LOAD-HELD LOADED EXIT THEN
+: COMPOSE-REQUIRED ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
+   w wu a u [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE {: path:ptr pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
-: COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u SOURCE-ROOT:ENTRY-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+: COMPOSE-SCRIPT-REQUIRED ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
+   w wu a u [: SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE {: path:ptr pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
-: COMPOSE-PROVIDED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+: COMPOSE-PROVIDED ( ptr u8 n ptr u8 n -- )
+   [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE IF 2drop EXIT THEN
    REQUIRE-STORE 2drop ;
 
+\ The literal before a string loader, an empty one among them: none is a
+\ dynamic path.
 : COMPOSE-STRING-PATH ( -- ptr u8 n )
-   STR-LAST-U @ 0= IF
+   STR-LAST-KIND @ 0= IF
       TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC REJECTION:STOP
    THEN
    STR-LAST-A @ STR-LAST-U @ ;
@@ -3327,19 +3330,19 @@ variable LOAD-U
 : LOAD$ ( -- ptr u8 n )
    LOAD-A @ LOAD-U @ ;
 
-: FILE-LOAD ( bool -- [ -- ] )
-   IF [: LOAD$ COMPOSE-INCLUDED ;] EXIT THEN
-   [: LOAD$ COMPOSE-REQUIRED ;] ;
+: FILE-LOAD ( bool -- [ ptr u8 n -- ptr u8 n ] )
+   IF [: 2dup LOAD$ COMPOSE-INCLUDED ;] EXIT THEN
+   [: 2dup LOAD$ COMPOSE-REQUIRED ;] ;
 
-\ Run Q, the load a loader word wu bytes long at byte w makes, under the word's
-\ claim: a fault no loader below claimed stands at the word when the file is
-\ missing, will not open or is not read to its end (LOADER-REJECTED?). Any
-\ other fault, the resolver's rejection of its path among them, keeps the place
-\ where it was made.
-: CLAIMED-LOAD ( [ -- ] n n -- )
+\ Run Q, the load a loader word wu bytes long at byte w makes, given the word,
+\ under the word's claim: a fault no loader below claimed stands at the word
+\ when the file is missing, will not open or is not read to its end
+\ (LOADER-REJECTED?). Any other fault, the loader's rejection of its path among
+\ them, keeps the place where it was made.
+: CLAIMED-LOAD ( [ ptr u8 n -- ptr u8 n ] n n -- )
    {: q w:n wu:n :}
-   q catch  0 LOAD-END !
-   {: code:n :}
+   SOURCE@ w + wu q catch  0 LOAD-END !
+   {: code:n :}  2drop
    code LOADER-REJECTED?  FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
@@ -3359,7 +3362,7 @@ variable LOAD-U
 \ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
 \ the literal before it as discovery refuses it, else Q loads
 \ that literal's path, and the literal is the operand its load reports.
-: QUIET-STRING-LOAD ( n [ -- ] -- )
+: QUIET-STRING-LOAD ( n [ ptr u8 n -- ptr u8 n ] -- )
    {: u:n q :}
    STR-LAST-KIND @ u LITERAL-LOAD? 0= IF EXIT THEN
    STR-LAST-AT @ STR-LAST-END @ ARM-LOAD
@@ -3374,24 +3377,26 @@ variable LOAD-U
    a u s" included" STR=CI IF u true FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
    a u s" required" STR=CI IF u false FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
    a u s" script-required" STR=CI IF
-      u [: LOAD$ COMPOSE-SCRIPT-REQUIRED ;] QUIET-STRING-LOAD true EXIT
+      u [: 2dup LOAD$ COMPOSE-SCRIPT-REQUIRED ;] QUIET-STRING-LOAD true EXIT
    THEN
    a u s" provided" STR=CI IF
-      u [: LOAD$ COMPOSE-PROVIDED ;] QUIET-STRING-LOAD true EXIT
+      u [: 2dup LOAD$ COMPOSE-PROVIDED ;] QUIET-STRING-LOAD true EXIT
    THEN
    false ;
 
 \ Whether a string loader's body load of LOAD$ loads its file: an `included`
-\ source the engine provides waits until the body runs. False too when the
-\ resolver refuses the path, as the engine's loader does when the word runs, so
-\ discovery reads past it. The catch covers only the provided check and this
-\ resolution; the load resolves the path again and reads the file outside it,
-\ keeping that file's own refusals.
+\ source the engine provides waits until the body runs. False too, with nothing
+\ written, for a path that is empty, holds a NUL byte or resolves past the cap,
+\ which the engine's loader rejects when the word runs, so discovery reads past
+\ it. The catch covers only the provided check and this resolution; the load
+\ resolves the path again and reads the file outside it, keeping that file's
+\ own rejections.
 : BODY-LOAD-RESOLVE? ( bool -- bool )
    IF LOAD$ ENGINE-PROVIDES? IF false EXIT THEN THEN
    LOAD$ SOURCE-ROOT:RESOLVE drop 2drop true ;
 
 : BODY-LOAD? ( bool -- bool )
+   LOAD$ LOADER-PATH-FAULT drop 0<> IF drop false EXIT THEN
    [: BODY-LOAD-RESOLVE? ;] catch {: rc:n :}
    rc 0= IF EXIT THEN
    drop
@@ -3411,7 +3416,9 @@ variable LOAD-U
          SOURCE@ i PEND-OP-AT @ + LOAD-PLACE-A !  i PEND-U @ LOAD-PLACE-U !
          i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
       ELSE
-         i PEND-INC @ 0<> BODY-LOAD? IF execute ELSE drop THEN
+         i PEND-INC @ 0<> BODY-LOAD? IF
+            SOURCE@ i PEND-WORD-AT @ +  i PEND-WORD-U @  rot execute 2drop
+         ELSE drop THEN
       THEN
    loop
    PEND-BASE @ PEND-N ! ;
@@ -3441,12 +3448,12 @@ variable FILE-USE
       a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
    THEN
    QUIET @ IF a u QUIET-TOP? EXIT THEN
-   a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
-   a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
-   a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
-   a u s" required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
-   a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
-   a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
+   a u s" include" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" require" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" included" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" required" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" script-required" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
+   a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
 : ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
@@ -4575,6 +4582,7 @@ private
 \ The record of a path or label u bytes long, which a composition cannot hold.
 : COMPOSE-PATH-STOP ( n -- ) {: u:n :}
    s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" u PATH-CAP REJECTION:PATH-RANGE
+   REJECTION:HELP
    s" pass a path of 1 to " REJECTION:EMIT-STR  PATH-CAP REJECTION:EMIT-U
    s"  bytes" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;

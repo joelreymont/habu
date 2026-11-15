@@ -699,21 +699,20 @@ public
    S\" `s\"`" EMIT-STR  s" , which has no count byte" EMIT-STR ;
 
 \ Writes the record of word w given a path len bytes long, past the cap bytes
-\ a path may have, through the start of its help: the caller writes the help
-\ and ends the record. len is 0 for an empty path and -1 when only the path it
-\ resolves to is longer.
+\ a path may have, through its message: the caller may write one AT, then
+\ writes the help and ends the record. len is 0 for an empty path and -1 when
+\ only the path it resolves to is longer.
 : PATH-RANGE ( ptr u8 n n n -- ) {: w:ptr wu:n len:n cap:n :}
    s" E-PATH-RANGE" OPEN
    96 EMIT1  w wu EMIT-STR
-   len 0= IF s" ` got an empty path" EMIT-STR  HELP EXIT THEN
+   len 0= IF s" ` got an empty path" EMIT-STR  EXIT THEN
    len 0 < IF
       s" ` got a path that resolves to more than the " EMIT-STR
    ELSE
       s" ` got a path " EMIT-STR  len EMIT-U
       s"  bytes long, more than the " EMIT-STR
    THEN
-   cap EMIT-U  s"  bytes a path may have" EMIT-STR
-   HELP ;
+   cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 
 \ The name a u is already defined where it is defined again: the record stands
 \ at t tu. It is written through its help, and the caller stops it.
@@ -729,7 +728,7 @@ private
 : PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
    u PATH-CAP > IF
       s" REJECTION:FILE!" u PATH-CAP PATH-RANGE
-      s" name the file by a path of at most " EMIT-STR
+      HELP  s" name the file by a path of at most " EMIT-STR
       PATH-CAP EMIT-U  s"  bytes" EMIT-STR
       CHECKER-REJECT-RC STOP
    THEN

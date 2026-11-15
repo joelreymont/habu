@@ -448,13 +448,22 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    SDT-DISCOVER
    EVENT-COUNT 0 T= ;
 
+\ The entry's top-level `required` of a path that resolves past the cap: the
+\ loader's E-PATH-RANGE record, status 70.
+: SDT-RANGE-STOP ( -- )
+   REJECTION:CAPTURE
+   [: SDT-RUN-ENTRY ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" E-PATH-RANGE" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `required` got a path" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
+
 : SDT-TEST-BIG-STRING-LOADER ( -- )
    s" big-bad.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
-   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
+   SDT-RANGE-STOP
    s" big-resolved.f" S\" s\" " SDT-FIT SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
-   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
+   SDT-RANGE-STOP
    s" big-over.f" S\" s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required\n" SDT-WRITE-BIG
-   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ ;
+   SDT-RANGE-STOP ;
 
 \ In a body the same loads are calls the word makes when it runs, which load
 \ nothing: a path the resolver refuses is nothing to follow or refuse.

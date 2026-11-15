@@ -188,11 +188,26 @@ $1A4 constant MODE-FILE
    s" :1:9" SB-APPEND SB$ ERR-HAS
    s" ^^^^^^^^ permission denied" ERR-HAS ;
 
+\ A string loader given an empty path: one record, at the loader word, as the
+\ literal's bytes lie in no source the run holds.
+: REQUIRED-EMPTY ( -- )
+   s" a required of an empty path is rejected at the request" T-LABEL
+   0 PROG-U !
+   S\" s\q \q required" PLINE
+   s" required-empty" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" error[E-PATH-RANGE]: `required` got an empty path" ERR-HAS
+   SB-RESET s"  --> " SB-APPEND s" cases/required-empty.f" AT SB-APPEND
+   s" :1:6" SB-APPEND SB$ ERR-HAS
+   s" = help: pass a path of 1 to " ERR-HAS ;
+
 public
 
 : RUN ( -- )
    T-RESET SETUP
    WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD REQUIRE-UNREADABLE
+   REQUIRED-EMPTY
    T-REPORT ;
 
 ;package
