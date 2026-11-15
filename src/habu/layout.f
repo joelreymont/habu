@@ -246,12 +246,16 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores. The frame
-\ ends at STACK-ABI:EVAL-BYTES ($170), a multiple of 16; $128 is held for WIDN and $130 is free.
+\ ends at STACK-ABI:EVAL-BYTES ($170), a multiple of 16; $128 is held for WIDN.
 $90 constant EVAL-INB
 \ EVAL-INP, EVAL-INE: the outer input's read position and end, which the evaluate
 \ puts back as it ends.
 0 constant EVAL-INP
 8 constant EVAL-INE
+\ EVAL-TKA, EVAL-TKL: the outer input's last token (TKA-CELL, TKL-CELL), which a
+\ clean end puts back, so the token never names a buffer released after it.
+$130 constant EVAL-TKA
+$168 constant EVAL-TKL
 package EVAL-FRAME
 public
 \ USE-WIDS: the includer's USE-MAX used-public wids, which a throw puts back
