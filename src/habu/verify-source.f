@@ -1853,10 +1853,10 @@ public
 
 \ What the refusal does, given where the name starts, its length, the file it
 \ is in, named as its packets name it, and whether that is the supplied bytes.
-\ This throws E-DUP-DEFINITION, which stops the scan as the duplicate stops the
-\ load, and DUPLICATE answers the name. A word installed in its place that
-\ returns has reported the duplicate: the scan counts it in REJECTION:TALLY, as
-\ a refused definition, skips the definition and goes on.
+\ This writes the duplicate's record and stops the scan as the duplicate stops
+\ the load, and DUPLICATE answers the name. A word installed in its place that
+\ returns has reported the duplicate, counted in REJECTION:TALLY if it kept a
+\ record: the scan skips the definition and goes on.
 defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 
 \ What a reported definition is, as the path that declared it knows it: a word
@@ -2067,10 +2067,13 @@ ENGINE-TARGET-INIT
       s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
+\ The record is placed at the name in the scanned source, or at an empty token
+\ at the statement when the definer generates the name (u = 0).
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
-   drop 2drop
-   DUPLICATE-U !  DUPLICATE-AT !
-   E-DUP-DEFINITION throw ;
+   drop 2drop {: at:n u:n :}
+   at DUPLICATE-AT !  u DUPLICATE-U !
+   SOURCE@ at + u INTERPRETER:DUPLICATE-REJECT
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DUPLICATE-INIT ( -- )
    ['] DUPLICATE-STOP is ON-DUPLICATE ;
@@ -2081,8 +2084,7 @@ DUPLICATE-INIT
    {: u:n :}
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    {: path:ptr pathu:n :}
-   TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
-   1 REJECTION:TALLY +! ;
+   TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE ;
 
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )

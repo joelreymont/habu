@@ -237,11 +237,7 @@ variable CA-COMPOSE-LABEL-U
    drop 2drop {: at:n u:n :}
    REJECTION:SOURCE$ {: b:ptr bu:n :}
    u 0= IF b bu at CA-NAME-END at - ELSE u THEN {: n:n :}
-   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
-   u 0= IF s" the name this statement makes is already defined" CA-SAY
-   ELSE b at + n CA-TICKS  s"  is already defined" CA-SAY THEN
-   b at + n REJECTION:AT  s" already defined" CA-SAY
-   REJECTION:HELP  s" rename this word, or remove the earlier definition" CA-SAY
+   b at + n INTERPRETER:DUPLICATE-REJECT
    REJECTION:KEEP ;
 
 public
