@@ -254,10 +254,12 @@
 \   ......................................................... definition-sumtype
 \ - a use of a word from an engine prefix file answered with a Location when
 \   that file makes a top-level dictionary call, or once it is open with
-\   other text, or not with its declaration there when it makes none; in a
-\   structure, a constant used or ticked, before or after a line deferred at
-\   a word that parses, not answered with its declaration, or a token `char`
-\   or that word parses answered ...................... definition-prefix-origin
+\   other text, or not with its declaration there when it makes none
+\   ................................................... definition-prefix-origin
+\ - in a structure, a constant used or ticked, or a word ticked, before or
+\   after a line deferred at a word that parses, not answered with its
+\   declaration; BEGIN-STRUCTURE, +FIELD or END-STRUCTURE, or a token `char`
+\   or that word parses, answered .................. definition-prefix-structure
 \ - a definer's call whose operand declares a word of the same spelling
 \   answered with that new word's declaration ......... definition-prefix-shadow
 \
@@ -3196,9 +3198,13 @@ DYNAMIC-BUFFER TREE-TEXT u8
    PREFIX-USE-PATH 1 EXPECT PUBLISHES
    s" 7" PREFIX-USE-PATH 0 2 DEFINITION-ASK
    SAY
-   s" 7" NOWHERE
+   s" 7" NOWHERE ;
+
+: PREFIX-STRUCT-TURNS ( -- )
+   SESSION-INITIALIZE
    PREFIX-STRUCT-PATH PREFIX-STRUCT 1 OPENS
    SAY
+   SESSION-CAPABILITIES
    PREFIX-STRUCT PREFIX-STRUCT-PATH CHECKS
    PREFIX-STRUCT-PATH s" deferred" COMPLETED
    PREFIX-STRUCT-PATH 1 EXPECT
@@ -6897,6 +6903,7 @@ false constant ENGINE-ORIGINS?
       s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
       s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
    then
+   s" definition-prefix-structure" [: PREFIX-STRUCT-TURNS ;] TALK
    s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    ENGINE-ORIGINS? if
