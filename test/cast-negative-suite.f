@@ -503,12 +503,14 @@ variable ERR-U
 : SAYS ( ptr u8 n ptr u8 n -- ) {: c:ptr cu:n w:ptr wu:n :}
    ERR$ c cu CONTAINS? TTRUE
    ERR$ w wu CONTAINS? TTRUE ;
+: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   ERR$ a u CONTAINS? TTRUE ;
 ;package
 
 \ A cast's bare call on an empty stack is rejected at its place before it reads
 \ the cell below the base.
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
-s" error[E-INPUT-UNDERFLOW]" s" >CNMROLE" CN-CHILD:SAYS
+s" error[E-INPUT-UNDERFLOW]" CN-CHILD:HAS  s" cast-negative-suite.f:511:64" CN-CHILD:HAS
+s" >CNMROLE" CN-CHILD:HAS
 
 \ The trailing `;` of the retired spelling ends no definition.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CHECKER-REJECT-RC T=
