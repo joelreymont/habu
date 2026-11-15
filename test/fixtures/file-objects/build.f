@@ -1023,7 +1023,8 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    w k + wu k - c k + 5 + wu k - STR= ;
 
 \ a.f leaves eight records free, b.f links, and then two, fewer than b.f's three: b.f's object must not link past the
-\ dictionary's end, so b.f compiles and is rejected as a cold build of the same sources is. full-cold holds them.
+\ dictionary's end, so b.f compiles and is rejected as a cold build of the same sources is. A fourth build, after
+\ that caught rejection, links a.f and is rejected the same way. full-cold holds them.
 : BY-FULL ( -- )
    s" full" DIR$ FS:MAKE-DIR  s" full-cold" DIR$ FS:MAKE-DIR
    s" full" s" 8" FULL-A!  s" full" FULL-B!
@@ -1033,9 +1034,10 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" full" FULL-BUILD {: three:n :}
    REJECTION:BUFFER$ RECORD-CAP min {: a:ptr u:n :}
    a WARM-RECORD u BYTE-COPY  u WARM-RECORD-U !
+   s" full" FULL-BUILD {: four:n :}
    s" full-cold" s" 2" FULL-A!  s" full-cold" FULL-B!
    s" full-cold" FULL-BUILD {: cold:n :}
-   s" full: compiled " one two three RESULTS.  s"  cold " type cold FMT:.INT
+   s" full: compiled " one two three RESULTS.  space four FMT:.INT  s"  cold " type cold FMT:.INT
    s"  same record " type  SAME-RECORD? bool>n FMT:.INT cr ;
 
 \ ---- a piece that gains a store into reached data ----

@@ -1533,9 +1533,6 @@ variable SCRIPT-NAMED-PEND
    SCRIPT-NAMED-PEND ! ;
 
 
-: INCLUDE-EVALERR? ( -- bool )
-   data-base EVALERR-CELL + @ 0 = 0= ;
-
 \ Every source load runs through the bound runner. The ordinary one keeps the
 \ frame and scope behavior; a build binds its own once the loader has loaded.
 package SOURCE-UNIT
@@ -2266,8 +2263,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
    INCLUDE-CLOSE
    POP
-   rc 0= 0= if rc throw then
-   INCLUDE-EVALERR? if s" include: a load returned with its evaluation failed" 76 die then ;
+   rc 0= 0= if rc throw then ;
 
 \ A verifier can traverse the loader's resolved file frames without invoking
 \ the interpreter. The callback receives bytes owned by the frame and its

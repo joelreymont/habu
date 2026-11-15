@@ -156,7 +156,6 @@ create TAB
    ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB
    EVALD-CELL                         1 cells                 CLAIM EVALD-CELL
-   EVALERR-CELL                       1 cells                 CLAIM EVALERR-CELL
    BPWBASE-CELL                       1 cells                 CLAIM BPWBASE-CELL
    BPWN-CELL                          1 cells                 CLAIM BPWN-CELL
    SNAP-CELL                          1 cells                 CLAIM SNAP-CELL

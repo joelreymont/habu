@@ -311,7 +311,6 @@ $27C0 constant PKGRESYNC-CELL
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
-$37D8 constant EVALERR-CELL
 $3C88 constant TASK-TCB-CELL
 \ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
 \ else 0, which a fresh task region and every non-task region hold. Only that

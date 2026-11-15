@@ -376,8 +376,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" own: compiled 2 0 2 0 q 42 42 43 43 cold 2 q 43\n" CONTAINS? TTRUE
    s" the through builds compile 4, 0, 3 and 0 files, the edited quotation's Q as a cold build's" LABEL
    STATE-W STATE-W-U @ s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" CONTAINS? TTRUE
-   s" the full builds compile 2 and 0 files, then are rejected with 77 and the record a cold build prints" LABEL
-   STATE-W STATE-W-U @ s\" full: compiled 2 0 77 cold 77 same record -1\n" CONTAINS? TTRUE ;
+   s" the full builds compile 2 and 0 files, then are rejected twice with 77 and the record a cold build prints" LABEL
+   STATE-W STATE-W-U @ s\" full: compiled 2 0 77 77 cold 77 same record -1\n" CONTAINS? TTRUE ;
 
 \ Whether A's printed state holds the line, a record's name line with its newlines, followed
 \ by a fields line that ends in the text, the record's facts text.

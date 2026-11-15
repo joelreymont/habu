@@ -2920,10 +2920,8 @@ private
    DEF-SOURCE-END
    DECL-SOURCE-END ;
 
-\ An evaluate the buffer caught left its code, which would fail the load.
-\ A `package` in it leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
+\ A `package` in the buffer leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
 : CLEAN-END ( n -- ) {: outside:n :}
-   0 EVALERR-CELL CELL!
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    back USE-DEPTH-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
@@ -3078,7 +3076,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
    snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
 
-: FRAME-RECOVER ( ptr u8 n -- ) {: f:ptr code:n :}
+: FRAME-RECOVER ( ptr u8 -- ) {: f:ptr :}
    f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
@@ -3087,8 +3085,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-TKL FR@ TKL-CELL CELL!
    f FRAME-RESTORE-SCOPE
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
-   EVALD-CELL CELL@ 1- EVALD-CELL CELL!
-   code EVALERR-CELL CELL! ;
+   EVALD-CELL CELL@ 1- EVALD-CELL CELL! ;
 
 : FRAME-FREE ( ptr u8 -- )
    dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
@@ -3118,8 +3115,7 @@ variable REPL-OK
    f EVAL-TKL FR@ TKL-CELL CELL!
    f FRAME-RESTORE-SCOPE
    prior USE-FLOOR !
-   found REC !
-   0 EVALERR-CELL CELL! ;
+   found REC ! ;
 
 \ A copy of the line that opened the pending definition: the reader reuses its
 \ buffer for each line, and the line's frame puts back the input cells, so an
@@ -3290,7 +3286,7 @@ public
    code 0= if
       f FRAME-LEAVE
    else
-      f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
+      f NULL-PTR - EVAL-TOP-CELL CELL@ = if f FRAME-RECOVER then
       f FRAME-CELLS-RESTORE
       entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
    then

@@ -2103,11 +2103,11 @@ package ENGINE-EMIT
 private
 \ LEVALREC: a throw whose nearest handler lies beyond active evaluate boundaries
 \ lands here, x15 = throw code. Each escaped frame gives back its input cursor,
-\ data-stack base (XDS), package and using scope, and EVALERR-CELL records the
-\ code. A frame begun with no definition open also rolls back everything
-\ compiled since: CP/NDICT, DP, compile state and the checker's records; while a
-\ task is live it retires the dictionary records made since instead and keeps
-\ CP, NDICT and DP, rolling back the rest. A frame begun inside an open
+\ data-stack base (XDS), package and using scope. A frame begun with no
+\ definition open also rolls back everything compiled since: CP/NDICT, DP,
+\ compile state and the checker's records; while a task is live it retires the
+\ dictionary records made since instead and keeps CP, NDICT and DP, rolling
+\ back the rest. A frame begun inside an open
 \ definition is an immediate's evaluate compiling into an outer buffer's
 \ definition, which it may not close: that definition stays open, put back to
 \ the token-start mark. The mark is the innermost buffer's current token, or its
@@ -2182,7 +2182,6 @@ private
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
-      15 DATA EVALERR-CELL STR,
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
       12 13 EVAL-FRAME:PEND LDR,  12 LEVLL LABEL@ CBNZ, \ the outer buffer's definition keeps compiling
       EM-ABORT-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved

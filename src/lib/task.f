@@ -1116,7 +1116,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    0 reg LOOPSP-CELL + !
    0 reg HND-CELL + !
    0 reg EVALD-CELL + !
-   0 reg EVALERR-CELL + !
    tcb reg TASK-TCB-CELL TASK-PTR!
    1 reg TASKS-LIVE-CELL + ! ;
 
