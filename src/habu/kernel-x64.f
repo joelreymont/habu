@@ -232,6 +232,62 @@ CELL 4 * constant DIAG-BYTES
    RDI STDERR IMM32,  NR-WRITE SYS,
    RSP DIAG-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ A code address is always sixteen hexadecimal digits on the error output.
+: DIAG-HEX, ( -- )
+   X64CODE:LBL X64CODE:LBL {: next:label digit:label :}
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
+   RSI RSP 16 MEM-OFF ASM-SINK ENC-LEA  RCX 16 IMM32,
+   next X64CODE:LBL,
+   RSI ASM-SINK ENC-DEC
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX 15 >IMM8 ASM-SINK ENC-AND-RI8
+   RDX [char] 0 >IMM8 ASM-SINK ENC-ADD-RI8
+   RDX [char] 9 >IMM8 ASM-SINK ENC-CMP-RI8  C-BE digit JCC,
+   RDX 39 >IMM8 ASM-SINK ENC-ADD-RI8
+   digit X64CODE:LBL,
+   RDX R64>N >R8 RSI MEM-AT ASM-SINK ENC-MOV8-MR
+   RAX 4 >IMM8 ASM-SINK ENC-SHR-RI8
+   RCX ASM-SINK ENC-DEC  C-NE next JCC,
+   RDI STDERR IMM32,  RDX 16 IMM32,  NR-WRITE SYS,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ Only an input buffer inside the file's owned bytes has a file line.
+: SOURCE-LINE, ( label label -- )
+   {: noline:label colon:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: scan:label next:label line:label :}
+   R9 SRCLOC:OWNED-CELL CELL@,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E noline JCC,
+   R10 SRCLOC:INB-CELL CELL@,
+   R10 R9 ASM-SINK ENC-CMP-RR  C-B noline JCC,
+   R10 SRCLOC:OWNEDLEN-CELL CELL@,
+   R10 R9 ASM-SINK ENC-ADD-RR
+   RAX INE-CELL CELL@,
+   RAX R10 ASM-SINK ENC-CMP-RR  C-A noline JCC,
+   R10 INP-CELL CELL@,  R8 1 IMM32,
+   scan X64CODE:LBL,
+   R9 R10 ASM-SINK ENC-CMP-RR  C-AE line JCC,
+   RAX R9 MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RAX STR-LF >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   R8 ASM-SINK ENC-INC
+   next X64CODE:LBL,  R9 ASM-SINK ENC-INC  scan JMP,
+   line X64CODE:LBL,
+   colon 1 STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U, ;
+
+: SOURCE-PLACE, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: done:label noline:label colon:label :}
+   RDX SRCLOC:PATHLEN-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RSI SRCLOC:PATH-CELL CELL@,
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   noline colon SOURCE-LINE,
+   noline X64CODE:LBL,  colon 2 STDERR-WRITE,
+   done JMP,
+   colon X64CODE:LBL,  s" : " TEXT,
+   done X64CODE:LBL, ;
+
 \ The same named refusal as ARM's B-TASK-GUARD / B-LOWER-GUARD. On success
 \ only rax and flags change. It precedes the primitive's first frame or call,
 \ so [rsp] is the caller's return address (ARM's lr).
@@ -1572,19 +1628,26 @@ private
 
 \ No handler: call the reporter xt in UNCGH-CELL, when one is installed, with
 \ the code on the data stack, and then exit with the code, which waited on the
-\ machine stack.
+\ machine stack. A wide code matching the last rendered refusal exits 70.
 : UNCAUGHT, ( -- )
-   X64CODE:LBL {: bare:label :}
+   X64CODE:LBL X64CODE:LBL {: bare:label plain:label :}
    RAX ASM-SINK ENC-PUSH
    RCX DATA-REG UNCGH-CELL MOV-LOAD,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E bare JCC,
    RAX PUSH,  RCX ASM-SINK ENC-CALL-REG
    bare X64CODE:LBL,
    RDI ASM-SINK ENC-POP
+   RAX RDI -1 MEM-OFF ASM-SINK ENC-LEA
+   RAX 254 >IMM32 ASM-SINK ENC-CMP-RI32  C-BE plain JCC,
+   RCX DATA-REG REFUSAL-ABI:CODE-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E plain JCC,
+   RCX RDI ASM-SINK ENC-CMP-RR  C-NE plain JCC,
+   RDI 70 IMM32,
+   plain X64CODE:LBL,
    1 RC-EXIT, ;
 
 \ The default UNCGH hook consumes the code and returns. Ordinary exit codes
-\ are quiet; a wider code is printed intact before UNCAUGHT, maps it to 67.
+\ are quiet; a wider code is printed intact before UNCAUGHT, maps its status.
 : UNCAUGHT-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: done:label number:label head:label minus:label nl:label :}
@@ -2658,10 +2721,11 @@ variable SITE-TRAP-CELL
 \ signed, so a span below the region removes nothing. Two scans down from the
 \ last row find the first row at or above the span's end, in r10, and the first
 \ at or above its start, in r11, counting the rows between in rdx; the rows
-\ from r10 up move down over them. Clobbers rax rcx rdx rsi rdi r8-r11.
+\ from r10 up move down over them, then the freed tail is zeroed.
+\ Clobbers rax rcx rdx rsi rdi r8-r11.
 : DROP-SITES-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: high:label highs:label low:label lows:label :}
-   X64CODE:LBL X64CODE:LBL {: move:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: move:label moved:label clear:label done:label :}
    SNAP-RELOC:SITE-ROW-BYTES {: row:n :}
    DROP-SITES-LBL X64CODE:LBL,
    RDI DBASE-REG ASM-SINK ENC-SUB-RR                   \ rdi = the span's first offset
@@ -2689,11 +2753,18 @@ variable SITE-TRAP-CELL
    RCX RDX ASM-SINK ENC-SUB-RR
    RCX DATA-REG SNAP-RELOC:SITE-N-CELL MOV-STORE,
    move X64CODE:LBL,
-   R10 R9 ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   R10 R9 ASM-SINK ENC-CMP-RR  C-AE moved JCC,
    RAX R10 MEM-AT ASM-SINK ENC-MOVZX-8-RM
    0 >R8 R11 MEM-AT ASM-SINK ENC-MOV8-MR
    R10 ASM-SINK ENC-INC  R11 ASM-SINK ENC-INC
    move JMP,
+   moved X64CODE:LBL,
+   RAX ZERO-REG,
+   clear X64CODE:LBL,
+   R11 R9 ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   0 >R8 R11 MEM-AT ASM-SINK ENC-MOV8-MR
+   R11 ASM-SINK ENC-INC
+   clear JMP,
    done X64CODE:LBL,
    ASM-SINK ENC-RET ;
 
@@ -2797,8 +2868,8 @@ variable SITE-TRAP-CELL
 \ RAX is the new published count. Keep all caller scratch registers intact.
 \ The first mapped cell is the last number issued; slot cells follow it.
 : OCC-COUNT, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lower:label up:label up-done:label
-      down:label done:label exhausted:label end:label prof-next:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lower:label up:label up-done:label
+      down:label done:label exhausted:label end:label :}
    X64CODE:LBL {: hw:label :}
    RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
    R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
@@ -2821,33 +2892,16 @@ variable SITE-TRAP-CELL
       R8 RDX MEM-AT ASM-SINK ENC-MOV-MR
       done JMP,
    lower X64CODE:LBL,
+      X64PROF:TRIM,
       R9 NDICT-HW-CELL CELL@,                     \ raise the high-water to the count this lowers from
       R9 NDICT-REG ASM-SINK ENC-CMP-RR  C-AE hw JCC,   \ (layout.f NDICT-HW-CELL)
       NDICT-REG NDICT-HW-CELL CELL!,
    hw X64CODE:LBL,
       RCX RAX ASM-SINK ENC-MOV-RR
       R11 ZERO-REG,
-      R8 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT IMM64,
-      R8 R8 PROF-ABI:PROF-ARENA MEM-OFF ASM-SINK ENC-MOV-RM
-      R8 R8 ASM-SINK ENC-TEST-RR  C-E down JCC,
-      R9 R8 PROF-ABI:ARN-IDS MEM-OFF ASM-SINK ENC-MOV-RM
-      R9 R9 ASM-SINK ENC-TEST-RR  C-NE down JCC,
-      R8 ZERO-REG,                                \ prof-rate alone has no initialized live map
    down X64CODE:LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       R11 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
-      \ Trimming excludes the removed IDs' spans before slots can be reused.
-      R8 R8 ASM-SINK ENC-TEST-RR  C-E prof-next JCC,
-      R9 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-RM
-      R9 R9 ASM-SINK ENC-TEST-RR  C-S prof-next JCC,
-      R10 -1 IMM64,
-      R10 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-MR
-      R9 R9 PROF-ABI:PROF-ID-ENT >IMM8 ASM-SINK ENC-IMUL-RRI8
-      R9 R8 R9 1 PROF-ABI:ARN-RECS MEM-IDX ASM-SINK ENC-LEA
-      R10 R9 PROF-ABI:RID-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
-      R11 R9 PROF-ABI:RID-START MEM-OFF ASM-SINK ENC-MOV-MR
-      R11 R9 PROF-ABI:RID-END MEM-OFF ASM-SINK ENC-MOV-MR
-   prof-next X64CODE:LBL,
       RCX ASM-SINK ENC-INC  down JMP,
    done X64CODE:LBL,
    NDICT-REG RAX ASM-SINK ENC-MOV-RR
@@ -3295,6 +3349,7 @@ private
 
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
+   X64PROF:RECLAIM,
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: scan:label next:label full:label span:label done:label :}
    RCX ZERO-REG,
@@ -4153,12 +4208,24 @@ $A0 constant CBT-OWNER-CLAIM
 $A8 constant CBT-OUTER
 $B0 constant CBT-SELF
 $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
+CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
 16 constant CBT-STUB-BYTES
 
-\ These exits have the same messages and status as the ARM callback thunk.
-: CB-DIE, ( ptr u8 n label -- ) {: a:ptr u:n at:label :}
+\ The caller's return address is off bytes above the current machine stack.
+: CB-DIE, ( ptr u8 n n label -- )
+   {: a:ptr u:n off:n at:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: head:label msg:label lr:label nl:label :}
    at X64CODE:LBL,
-   a u ENGINE-ERROR:CALLBACK STDERR-EXIT, ;
+   R8 RSP off MEM-OFF ASM-SINK ENC-MOV-RM
+   head s" E-CALLBACK habu: " nip STDERR-WRITE,
+   msg u STDERR-WRITE,  lr 4 STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-HEX,
+   nl 1 STDERR-WRITE,  ENGINE-ERROR:CALLBACK EXIT-GROUP,
+   head X64CODE:LBL,  s" E-CALLBACK habu: " TEXT,
+   msg X64CODE:LBL,  a u TEXT,
+   lr X64CODE:LBL,  s"  lr " TEXT,
+   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
 
 \ The twin of crash.f C-SIGNAL-STACK-ABSENT>R12: rax is nonzero when this
 \ thread has no alternate stack registered, as sigaltstack(NULL, old) answers
@@ -4288,21 +4355,24 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    RESTORE-VM,
    ASM-SINK ENC-RET
    row-wait X64CODE:LBL,  ASM-SINK ENC-NOP  row-read JMP,
-   S\" hb: callback: no slot has been bound\n" no-table CB-DIE,
-   S\" hb: callback: slot held by another thread\n" row-busy CB-DIE,
-   S\" hb: callback: slot is not bound\n" unbound CB-DIE,
-   S\" hb: callback: context busy on another thread\n" owner-busy CB-DIE,
-   S\" hb: callback: context is not inside a foreign call\n" no-frame CB-DIE,
-   S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
-   S\" hb: callback: the body defined\n" defined CB-DIE, ;
+   s" no slot has been bound" CBT-LR no-table CB-DIE,
+   s" slot held by another thread" CBT-LR row-busy CB-DIE,
+   s" slot is not bound" CBT-LR unbound CB-DIE,
+   s" context busy on another thread" CBT-LR owner-busy CB-DIE,
+   s" context is not inside a foreign call" CBT-LR no-frame CB-DIE,
+   s" slot has no dispatch" CBT-LR no-xt CB-DIE,
+   s" the body defined" CBT-LR defined CB-DIE, ;
+
+variable CB-THUNK-CELL
+: CB-THUNK-LBL ( -- label ) CB-THUNK-CELL @ >LABEL ;
 
 \ Each fixed-size stub sets r10 to its slot and jumps to the shared thunk; -1
 \ answers the thunk, for a compiler-owned stub that sets r10 itself.
 : CALLBACK-ENTRY-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: stubs:label thunk:label done:label bad:label answer:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: stubs:label done:label bad:label answer:label :}
    RAX POP,
-   RDX thunk MOVABS,
+   RDX CB-THUNK-LBL MOVABS,
    RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E answer JCC,
    RAX CB-POOL >IMM8 ASM-SINK ENC-CMP-RI8  C-AE bad JCC,
    RDX stubs MOVABS,
@@ -4311,21 +4381,30 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    answer X64CODE:LBL,
    RDX PUSH,
    done JMP,
-   S\" hb: callback: slot out of range\n" bad CB-DIE,
+   s" slot out of range" 0 bad CB-DIE,
    stubs X64CODE:LBL,
    CB-POOL 0 ?do
-      R10 i IMM32,  thunk JMP,
+      R10 i IMM32,  CB-THUNK-LBL JMP,
       5 0 do ASM-SINK ENC-NOP loop
    loop
-   thunk X64CODE:LBL,
-   CB-THUNK,
    done X64CODE:LBL, ;
+
+\ Saved callback stubs name this exact kernel entry. Its record follows the
+\ public primitive's completed record, so their code spans are disjoint.
+: CB-THUNK-HELPER, ( -- )
+   X64CODE:LBL {: end:label :}
+   s" (CALLBACK-THUNK)" CB-THUNK-LBL LABEL>N end LABEL>N
+      ENGINE-PRIMS:HELPER-REGISTER
+   CB-THUNK-LBL X64CODE:LBL,  CB-THUNK,
+   end X64CODE:LBL, ;
 
 public
 
 : TASK, ( -- )
    s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
-   s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
+   X64CODE:LBL CB-THUNK-CELL !
+   s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM
+   CB-THUNK-HELPER, ;
 
 \ The rows an interpreter written in Habu publishes definitions, namespace
 \ rows, aliases and package scope through and marks a word immediate with, and
@@ -5003,11 +5082,16 @@ variable GROW-CELL
 : CREATED-SIG-BODY ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
+\ Completed or abandoned definitions leave no local or token-mark state.
+: CLEAR-LOCALS, ( -- )
+   RAX ZERO-REG,
+   RAX LOCN-CELL CELL!,  RAX CAPDEPTH-CELL CELL!,  RAX RAWNEXT-CELL CELL!,
+   RAX TOKLOCN-CELL CELL!,  RAX TOKDEPTH-CELL CELL!,  RAX TOKRAW-CELL CELL!, ;
+
 \ def-close ( -- ): the pending definition ends: COMP-LATCH-CELL, TSIG, TCSIG,
 \ DOESB, CLAUSE, TRUSTED and PEND-CELL clear; before they clear, LASTC-CELL
 \ takes the record for a nonzero kind other than DKIND:CAST. Nothing pending,
-\ and COMP-LATCH-CELL 0 (no compiler), are refused. Unlike arm64's, it clears
-\ no locals cell: the Habu loop's `;` clears LOCN-CELL after it.
+\ and COMP-LATCH-CELL 0 (no compiler), are refused.
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,
@@ -5025,6 +5109,7 @@ variable GROW-CELL
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
+   CLEAR-LOCALS,
    RAX PEND-CELL CELL!, ;
 
 \ A caught compiler failure leaves its handler, return and loop state to the
@@ -5034,12 +5119,13 @@ variable GROW-CELL
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    RAX VSP-CELL CELL!,
-   RAX LOCN-CELL CELL!,  RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
+   RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
    RAX PEND-CELL CELL!,  RAX CMM-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!, ;
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
+   CLEAR-LOCALS, ;
 
 \ Trusted recovery drops a rejected REPL line's stack without looping through
 \ dynamic depth, which the native compiler cannot certify as a fixed effect.
@@ -5197,14 +5283,17 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    scan JMP,
    done X64CODE:LBL, ;
 
+: DOES-NONE-CLASS$ ( -- ptr u8 n )
+   s" E-DOES-UNCREATED habu: " ;
+
 : DOES-NONE$ ( -- ptr u8 n )
-   S\" hb: does> has no created word\n" ;
+   S\" does> has no created word\n" ;
 
 : DOES-PATCH-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: patch:label write:label declared:label nocr:label noshadow:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: none:label have:label msg:label bare:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: none:label have:label class:label msg:label bare:label :}
    RCX POP,  RCX CRSIG-U-CELL CELL!,
    RCX POP,  RCX CRSIG-A-CELL CELL!,
    RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
@@ -5214,8 +5303,11 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    RAX R8 REC-WID MOV-LOAD,
    RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE have JCC,
    none X64CODE:LBL,
+   class DOES-NONE-CLASS$ nip STDERR-WRITE,
+   SOURCE-PLACE,
    msg DOES-NONE$ nip STDERR-WRITE,
    RAX 70 IMM32,  THROW,
+   class X64CODE:LBL,  DOES-NONE-CLASS$ TEXT,
    msg X64CODE:LBL,  DOES-NONE$ TEXT,
    have X64CODE:LBL,
    RDX R8 REC-CODE CELL + MOV-LOAD,

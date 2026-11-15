@@ -2,7 +2,8 @@
 \ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
 \ folding (Straße equals STRASSE), with no normalization, keeping embedded
 \ NULs. FOLD writes a span's full case folding and LOWER its full lowercase
-\ (Straße folds to strasse but lowercases to straße). They are
+\ (Straße folds to strasse but lowercases to straße), and LOWERS-TO? tells
+\ whether a span's full lowercase is another span byte for byte. They are
 \ libunistring's u8_casecmp, u8_casefold and u8_tolower with NULL language
 \ and normalization, so the case data is the installed library's. STORAGE
 \ CLASS. TASK-LOCAL: C's result cell, a TASK:+USERS row.
@@ -10,6 +11,7 @@
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f
 require src/lib/ffi-abi.f
+require src/lib/string.f
 s" src/lib/task.f" required
 
 package UNICODE
@@ -105,6 +107,15 @@ public
 
 : LOWER ( ptr u8 n ptr u8 n -- n )
    [: LOWER-CALL ;] MAP-INTO ;
+
+\ The second span is checked before the first is lowered, so nothing after
+\ ALLOCATE-MAP can throw and the owned result is always released.
+: LOWERS-TO? ( ptr u8 n ptr u8 n -- bool )
+   {: source:ptr size:n target:ptr target-size:n :}
+   target target-size VALID-UTF8
+   source size [: LOWER-CALL ;] ALLOCATE-MAP {: lowered:ptr lowered-size:n :}
+   lowered lowered-size target target-size STR=
+   lowered RELEASE ;
 
 seal-package
 ;using

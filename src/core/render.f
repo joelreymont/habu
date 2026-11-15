@@ -1871,11 +1871,13 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    SGBAD-SIZE? IF s" reason" JSON-KEY JSON-OPEN BADSIG-REASON JSON-CLOSE
       44 EMIT1 THEN
    at atu SGBAD-SUGGEST$ JTAIL ;
+\ A generated word (a STRUCTURE's MAKE) has no signature text: none is quoted.
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
-   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : bad stored signature '" EMIT-STR
-   sa su SIG-TRIM EMIT-STR  s" '" EMIT-STR
-   SGBAD-SIZE? IF s"  " EMIT-STR BADSIG-REASON THEN
+   sa su SIG-TRIM {: ta:ptr tu:n :}
+   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : bad stored signature" EMIT-STR
+   tu 0 > IF s"  '" EMIT-STR  ta tu EMIT-STR  s" '" EMIT-STR THEN
+   SGBAD-SIZE? IF tu 0 > IF s"  " ELSE s" : " THEN EMIT-STR BADSIG-REASON THEN
    SGBAD-RETURN? IF s" ; return-stack effect: " EMIT-STR
       RCLAUSE-FIX$ EMIT-STR THEN ;
 : BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
