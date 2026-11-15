@@ -21,9 +21,10 @@
 \ from a quotation of 300 cells and not of 299; it rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
-\ in its package would, and EFFECT:IN a type that is no effect. A build of a
-\ program whose source stores a definer's type is rejected with the record its
-\ load prints. A rejected built local whose type text outgrows the checker's
+\ in its package would, EFFECT:READ-TYPE an `xt`, named once with the
+\ storage definers' reason and fix, and EFFECT:IN a type that is no effect. A
+\ build of a program whose source stores a definer's type is rejected with the
+\ record its load prints. A rejected built local whose type text outgrows the checker's
 \ first token buffers still names its definition.
 
 require src/lib/test.f
@@ -413,6 +414,7 @@ BI-U8-WIDTH BI-WIDTH width>n 1 T=
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
 : READ-BAD ( -- n )
    [: s" BI-UNK" s" no-such-family" EFFECT:READ-TYPE MAKE-ID ;] catch ;
+: READ-XT ( -- n ) [: s" BI-XT" s" xt" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : SECRET ( -- EFFECT:type ) s" bitem-own:secret" EFFECT:NAMED ;
 
 \ : NAME ( bitem-own:secret -- n ) match secret hid of endof ;match ;
@@ -456,6 +458,11 @@ DECL-DIAG:PROSE  READ-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
 S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: declare a type of that name, or correct its spelling"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE  READ-XT 70 T=
+S\" error[E-BAD-SIGNATURE]: xt in a stored type 'xt'\n" DECL-DIAG:HAS? TTRUE
+READING-HERE
+s" = help: Store a quotation of the word's effect, such as [ n -- n ], in place of xt."
 DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 300 constant LONG-N

@@ -2218,6 +2218,7 @@ RECORD-DIAG-INSTALL
    why STG-WIDTH-TYPE = IF WIDTH-FAM @ UNSTORED-REASON drop EXIT THEN
    why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
@@ -2232,7 +2233,9 @@ RECORD-DIAG-INSTALL
    why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':'." EXIT THEN
    why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
    why STG-LINEAR-TYPE = IF s" Keep a linear value on the stack; name a callable over one, or over an open type, with defer." EXIT THEN
+   why STG-XT-TYPE = IF s" Store a quotation of the word's effect, such as [ n -- n ], in place of xt." EXIT THEN
    why STG-EFFECT-TYPE = IF s" Build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local." EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" Give the buffer a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty ENUM, SUMTYPE, PRODUCT or STRUCTURE holding no view, region or linear value." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}

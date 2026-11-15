@@ -349,23 +349,26 @@ CAST: >BYTES ( n -- ptr u8 )
    CHECK-RC REJECTION:STOP ;
 
 \ A rejected READ of the type xa xu, naming the token, or the type when the
-\ reason names none.
-: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
+\ reason names none; why is the STG- reason no stored form holds it, else 0.
+: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: ta:ptr tu:n wa:ptr wu:n code:n why:n xa:ptr xu:n :}
    tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
    unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
    REJECTION:OPEN
    wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
-   tu xu <> if
+   nu xu <> if
       s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
    REJECTION:HELP
-   unknown if s" declare a type of that name, or correct its spelling"
-   else s" write the type as a signature writes it" then
+   why STG-UNSTORABLE-TYPE = if
+      s" write a closed, copyable type, such as n or ptr u8"
+   else why 0 <> if why STGR-SUGGEST$
+   else unknown if s" declare a type of that name, or correct its spelling"
+   else s" write the type as a signature writes it" then then then
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 

@@ -12987,6 +12987,7 @@ package CHECKER-REG
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 17 constant STG-EFFECT-TYPE     \ the type parses and holds an EFFECT:type, which no storage holds
+18 constant STG-LAYOUT-TYPE     \ the type parses but a layout buffer cannot hold it: no nominal scalar, and no layout family whose members it lays out
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
 : STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
@@ -13462,8 +13463,10 @@ package CHECKER-REG
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
 \ A missing nominal in a complete stored type leaves no allocation or row.
-\ A syntax fault, extra token, or known unstorable scheme keeps its refusal.
-: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+\ A syntax fault, extra token, or known unstorable scheme keeps its refusal;
+\ for a layout buffer, a bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE; an xt in a family's argument keeps STG-XT-TYPE.
+: STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n bool -- )
+   {: na:ptr nu:n ta:ptr tu:n lay:bool :}
    tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
    SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
       LBI-SCHEME @ 0= and IF
@@ -13473,7 +13476,6 @@ package CHECKER-REG
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
    THEN
-   na nu ta tu
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
       LBI-XT @ IF STG-XT-TYPE ELSE
@@ -13481,8 +13483,15 @@ package CHECKER-REG
       LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
       LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
       THEN THEN THEN THEN THEN
-   THEN
+   THEN {: why:n :}
+   na nu ta tu
+   why STG-XT-TYPE =  LBI-T @ LAYOUT-PARAM? 0= and
+   why STG-UNSTORABLE-TYPE = or  lay and
+   IF STG-LAYOUT-TYPE ELSE why THEN
    CHECKER-STORAGE-REFUSE ;
+
+: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) RES-FALSE STORAGE-TYPE-REJECT ;
+: CHECKER-LAYOUT-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) RES-TRUE STORAGE-TYPE-REJECT ;
 
 : CHECKER-TYPE-MARK ( bool -- )
    IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
@@ -14489,7 +14498,7 @@ public
       SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
          name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    nip LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -14689,7 +14698,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    2drop
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
