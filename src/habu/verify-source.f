@@ -1962,11 +1962,6 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    CHECKER-PARSES-ROW ;
 
-\ The row the load kept for a symbol, its own or read back from the word's
-\ facts text: its count and terminators, and true; false for none.
-TRUSTED: KEPT-PARSES ( n -- n ptr u8 n bool )
-   PROW-FIND ;
-
 \ A `names:` row's check: UNSAFE-TOK? rejects `checker-names-row` inside a
 \ checked body. The checker marks the word the row names, so this pre-pass
 \ keeps nothing of the row.
@@ -3161,7 +3156,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u DW-DEFER TOP-OPAQUE EXIT THEN
    sym eff1 PRS-FIND {: row:n :}
    row 0 <> IF a u DW-PARSES DEFER-AT  row 1 - PRS-ROW PRS-CONSUME EXIT THEN
-   sym KEPT-PARSES {: cnt:n t:ptr tu:n kept:bool :}
+   sym PROW-FIND {: cnt:n t:ptr tu:n kept:bool :}
    kept 0= IF a u DW-PARSER TOP-OPAQUE EXIT THEN
    a u DW-PARSES DEFER-AT
    cnt t tu PRS-CONSUME ;
