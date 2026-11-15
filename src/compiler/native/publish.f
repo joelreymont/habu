@@ -183,9 +183,9 @@ create TRAILER TRAILER-BYTES allot
 : DOES-NAME-PAD ( n -- n )
    XREF-REC XREF-NAME$ nip DOES-CLAUSE:SUFFIX$ nip + PAD-INSTRUCTION ;
 
+\ The definer's `does>` rejected a clause with no record left.
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
    idx DOES-NAME-PAD {: pad:n :}
    fn size + pad + CODE-CEILING > if E-NPUB-ROOM throw then
    fun NEMIT:FUNCTION-OFFSET@ {: off:n :}

@@ -1511,9 +1511,10 @@ private
       PKG-RC-CODE-FULL REJECTION:STOP
    then ;
 
-: DEF-ROOM ( -- )
+\ a u names the definition; its rejection is placed at t tu.
+: DEF-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    DEF-CODE-ROOM
-   ndict@ DICT-CAP >= if TOKEN$ TOKEN$ REJECTION:DICTIONARY-FULL then ;
+   ndict@ DICT-CAP >= if a u t tu REJECTION:DICTIONARY-FULL then ;
 
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.
@@ -1784,8 +1785,8 @@ private
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
    then
-   DEF-ROOM
    trusted DEF-NAME
+   TOKEN$ TOKEN$ DEF-ROOM
    0 DEF-START
    0 LOCN-CELL CELL!
    trusted if
@@ -1979,6 +1980,9 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
       s" keep one `does>` per definition" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
+   ndict@ 1+ DICT-CAP < 0= if
+      DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ TOKEN$ REJECTION:DICTIONARY-FULL
+   then
    DEF-DOES-NAME
    BODYLEN-CELL CELL@ {: at:n :}
    DEF-CREATED
@@ -2138,7 +2142,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
    then
-   DEF-ROOM
+   a u TOKEN$ DEF-ROOM
    OVERLAY-GUARD
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
@@ -2513,9 +2517,9 @@ variable DEF-VALUE
    CHECK:REC-WIDE-PUBLISH ;
 
 : DEF-CAST-ROW ( -- )
-   DEF-ROOM
    TOKEN$ {: kw:ptr ku:n :}
    DEF-CAST-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
+   TOKEN$ TOKEN$ DEF-ROOM
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
    0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
@@ -2611,7 +2615,7 @@ variable DEF-VALUE
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape param CHILD-BODY 2drop
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
-   DEF-ROOM
+   a u TOKEN$ DEF-ROOM
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
 
@@ -2626,8 +2630,8 @@ variable DEF-VALUE
 \ A qualified name's certifier gets the name token, which its rejection places:
 \ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
-   DEF-ROOM
    s" linear:" OPERAND  s" linear:" TOKEN$ REJECTION:NOT-A-NAME
+   TOKEN$ TOKEN$ DEF-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
@@ -2739,12 +2743,12 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    ready dtarget 0<> and if DEF-CAPTURED-NAME dtarget PKG-AS-NAME-ACTION execute then
    ready 0= if sig su PD-HOLD then ;
 
-\ defer-unset is looked up before DEF-ROOM, so its refusal leaves no capture.
+\ defer-unset is looked up before DEF-ROOM, so its rejection leaves no capture.
 : DEF-DEFER ( -- )
    DEFER-UNSET-XT {: unset:n :}
-   DEF-ROOM
    TOKEN$ {: kw:ptr ku:n :}
    DEFER-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
+   TOKEN$ TOKEN$ DEF-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
