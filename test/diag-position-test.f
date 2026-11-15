@@ -396,10 +396,10 @@ variable RC
    s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
    s" shadow.f" FIXTURE!
    s" " REJECT-RC CHECK-EXIT
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   GJA-LINE# @ 1 T=
    0 s" SHADE" 8 4 87 92 AT
    s" --all-errors" REJECT-RC CHECK-EXIT
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   GJA-LINE# @ 1 T=
    0 s" SHADE" 8 4 87 92 AT ;
 
 \ `[']` and `is` read their target themselves, past the body walk's own token.
@@ -408,7 +408,7 @@ variable RC
    s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
    s" tick-shadow.f" FIXTURE!
    s" " REJECT-RC CHECK-EXIT
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   GJA-LINE# @ 1 T=
    0 s" SHADE" 8 8 91 96 AT ;
 
 : TEST-IS-SHADOW ( -- )
@@ -416,7 +416,7 @@ variable RC
    s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
    s" is-shadow.f" FIXTURE!
    s" " REJECT-RC CHECK-EXIT
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   GJA-LINE# @ 1 T=
    0 s" SHADE" 8 13 100 105 AT ;
 
 \ The public F moves other cells than the private F, whose tail it shares: the
@@ -447,6 +447,22 @@ variable RC
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
    FX-PATH$ CANON$ SHADOWED-AT ;
+
+\ A lint's rejection under --all-errors does not stop the definitions' check.
+: TEST-ALL-LINTS ( -- )
+   s" a reserved definition name, then an undefined word, under --all-errors" T-LABEL
+   SB-RESET
+   s" : if ( -- ) ;" SB-APPEND LF+
+   s" : foo ( -- ) undefined-word ;" SB-APPEND LF+
+   s" all-lints.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-RESERVED-DEFINITION" FIELD=
+   0 s" message" s" `if` is reserved by parser/control dispatch" FIELD=
+   0 s" if" 1 3 2 4 AT
+   1 s" code" s" E-UNDEFINED" FIELD=
+   1 s" message" s" cannot find word `undefined-word`" FIELD=
+   1 s" undefined-word" 2 14 27 41 AT ;
 
 \ WIDE's inferred effect has more than TYPE-VAR-MAX type variables: the checker
 \ certifies it and warns, at its name, that the effect is not recorded.
@@ -497,7 +513,6 @@ variable RC
    s" generates.f" FIXTURE!
    s" " CHECK
    GJA-LINE# @ 1 T=
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" NOWHERE" 4 13 73 80 AT
    s" --all-errors" CHECK
    GJA-LINE# @ 1 T=
@@ -507,7 +522,7 @@ variable RC
 
 \ A row on a word that reads no name after it is refused: kept, it makes the
 \ pre-pass take `s"` after the call of GEN as the made word, and the trust row
-\ on MADE then throws E-STATEMENT-THROW while the load accepts the file.
+\ on MADE then fails the check while the load accepts the file.
 : TEST-GENERATES-READS-NONE ( -- )
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
@@ -520,7 +535,7 @@ variable RC
    s" MADE" SB-APPEND LF+
    s" generates-reads-none.f" FIXTURE!
    s" " CHECK
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   GJA-LINE# @ 1 T=
    0 s" code" s" E-GENERATES-ROW" FIELD=
    0 s" GEN" 2 12 62 65 AT
    s" --all-errors" CHECK
@@ -545,7 +560,6 @@ variable RC
    s" generates-shadow.f" FIXTURE!
    s" " CHECK
    GJA-LINE# @ 1 T=
-   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 7 12 79 84 AT ;
 
 \ compose-base.f certifies. It is longer than the files that require it and its
@@ -2321,6 +2335,7 @@ variable RC
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
+   TEST-ALL-LINTS
    TEST-NOT-RECORDED
    TEST-GENERATES
    TEST-GENERATES-READS-NONE

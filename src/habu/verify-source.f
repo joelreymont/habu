@@ -226,8 +226,6 @@ variable FOUND
 variable TOKEN-START
 \ The stopped token survives scanner restoration after a nested file throws.
 variable TOKEN-BYTE
-PTR-VARIABLE REASON-A
-variable REASON-U
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
@@ -272,9 +270,6 @@ variable COMPOSE-PEND-U
 PTR-VARIABLE COMPOSE-PEND-PATH-A
 variable COMPOSE-PEND-PATH-U
 variable COMPOSE-REQ0
-create COMPOSE-STOP-PATH PATH-CAP allot
-variable COMPOSE-STOP-U
-variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
 
 \ A quiet composition and the load fault it stopped at: the loader token's
 \ length, 0 when no loader stopped it, and the file it could not read, empty
@@ -381,7 +376,7 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 : SOURCE! ( ptr u8 n -- )
    SOURCE-U !
    SOURCE-A !
-   0 TOKEN-BYTE !  0 REASON-U ! ;
+   0 TOKEN-BYTE ! ;
 
 \ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
 8 constant FLAG-CAP
@@ -885,7 +880,7 @@ public
       s"  bytes" REJECTION:EMIT-STR ;] FORM-REJECT ;
 private
 
-\ A loader word u bytes long at TOKEN-BYTE@ with no literal path: its record,
+\ A loader word u bytes long at TOKEN-BYTE with no literal path: its record,
 \ stopped as E-DISC-DYNAMIC.
 : DYNAMIC-STOP ( n -- ) {: u:n :}
    SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP ;
@@ -2011,15 +2006,14 @@ defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 \ time it is read: where the use starts and ends in the file FILE$ names,
 \ SUBJECT? telling the subject's own; the path the declaration's file was
 \ resolved to when the composition visited it; and where the token that
-\ declared it starts and ends there, all at the base TOKEN-BYTE@ counts from;
-\ the selected symbol
-\ and declaration visit. The path is borrowed: a word installed here consumes
-\ it before it returns. A use bound to a word with no declaration location has
-\ an empty path, zero target bytes and visit -1.
+\ declared it starts and ends there, all at the base the source was given; the
+\ selected symbol and declaration visit. The path is borrowed: a word installed
+\ here consumes it before it returns. A use bound to a word with no declaration
+\ location has an empty path, zero target bytes and visit -1.
 defer ON-USE ( n n ptr u8 n n n n n -- )
 
 \ A use the checker bound, in the file FILE$ names, as its scan reads it: where
-\ the use starts and ends there, at the base TOKEN-BYTE@ counts from, and the
+\ the use starts and ends there, at the base the source was given, and the
 \ selected symbol (SYM-IDENTITY; SYM-SOURCE for the word it is through
 \ re-exports). Reported for the subject and for every file a load reads, each
 \ time it is read, whether or not the declaration has a location: a word the
@@ -2031,7 +2025,7 @@ defer ON-BINDING ( n n n -- )
 
 \ A top-level loader of the subject whose load reached a file, once the file
 \ was selected: where its operand starts and ends in the subject, at the base
-\ TOKEN-BYTE@ counts from (the token after `include` or `require`, a string
+\ the subject was given (the token after `include` or `require`, a string
 \ loader's literal between its quotes as written); the canonical path; and
 \ what became of it. Read: the file's source bytes were acquired for this
 \ load, from disk or as the bytes supplied for the subject or for the file
@@ -4146,20 +4140,12 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
    dup 0= IF
       drop  SOURCE-ARM  diag diagu REJECTION:FILE!
-      [: VERIFY-SOURCE ;] catch true
-   ELSE false THEN
-   {: rc:n scanned:bool :}
+      [: VERIFY-SOURCE ;] catch
+   THEN
+   {: rc:n :}
    DISARM
    oldvisit VISIT-CUR !
    oldsubj CSR-SUBJ !
-   \ A reader policy may reject the acquired bytes in ON-FILE. Its loader
-   \ owns that read fault; this unscanned frame has no faulting source token.
-   rc 0<> COMPOSE-STOP-U @ 0= and
-   scanned rc LOADER-REJECTED? 0= or and IF
-      diag COMPOSE-STOP-PATH diagu BYTE-COPY
-      diagu COMPOSE-STOP-U !
-      path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
-   THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
@@ -4377,16 +4363,6 @@ public
    dup CSR-AT !
    0 < IF CSR-DONE ELSE CSR-WAIT THEN CSR-STATE ! ;
 
-\ The byte where the token the scan read last starts, at the base the source
-\ was given, or that base before the scan reads one: after a throw out of a
-\ statement, where the statement stood.
-: TOKEN-BYTE@ ( -- n )
-   TOKEN-BYTE @ ;
-
-\ Empty: no scan stop keeps a reason.
-: REASON$ ( -- ptr u8 n )
-   REASON-A @ REASON-U @ ;
-
 private
 
 \ The record of entry word w called while a composition is open, at the
@@ -4429,7 +4405,6 @@ public
    labelu COMPOSE-SUBJ-LABEL-U !
    src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
-   0 COMPOSE-STOP-U !
    0 PRIM-OPEN-READY !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
@@ -4449,9 +4424,8 @@ public
 
 \ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
 \ forms discovery refuses, where it meets them and after the packets it made
-\ before, and reads each file a loader loads, so no walk need run first. A stop
-\ at a loader stands at TOKEN-BYTE@, and FAULT-TARGET$ names a file it could
-\ not read.
+\ before, and reads each file a loader loads, so no walk need run first.
+\ FAULT-TARGET$ names a file it could not read.
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
@@ -4463,17 +4437,6 @@ public
    false QUIET !
    SOURCE-INPUT:RESET
    rc THROW-RESULT ;
-
-: SOURCE-COMPOSE-STOPPED$ ( -- ptr u8 n )
-   COMPOSE-STOP-U @ 0 > IF COMPOSE-STOP-PATH COMPOSE-STOP-U @ EXIT THEN
-   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ ;
-
-\ The file SOURCE-COMPOSE-STOPPED$ names is the supplied bytes themselves, not a
-\ file a loader statement read: a caller that reports where the composition
-\ stopped reads the token from its own bytes there, and from the named file
-\ otherwise.
-: SOURCE-COMPOSE-STOPPED-SUBJECT? ( -- bool )
-   COMPOSE-STOP-U @ 0= COMPOSE-STOP-SUBJ @ or ;
 
 \ The file the last quiet composition could not read, as it was resolved, or
 \ empty. The string is borrowed until the next quiet composition.

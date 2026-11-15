@@ -257,8 +257,7 @@ public
 
 \ Reject diagnostics. STRUCTURE prints its rejection through package REJECTION;
 \ the assertions read the bytes captured through REJECTION:CAPTURE /
-\ REJECTION:BUFFER$, the pair tools/check-all-errors-core.f CA-DIAG-FULL-START
-\ and CA-DIAG-FINISH use. This proves the channel, not a check-tool run. Each
+\ REJECTION:BUFFER$. This proves the channel, not a check-tool run. Each
 \ case asserts the header line, the token line and the help line.
 
 \ one case per reject reason this suite pins, each rendering family + token +

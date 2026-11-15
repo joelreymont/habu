@@ -1,23 +1,18 @@
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
-\ every rejected definition, statement throw and lexer defect, one record each
-\ through package REJECTION, in the mode REJECTION:JSON holds. The report
-\ buffer is the caller's and never grows (BUFFERS!); a streamed report has no
-\ bound (STREAM!). A run's records are captured by REJECTION, which grows its
-\ capture to hold them, and handed to the report when the run ends.
+\ every rejected definition and lexer defect, one record each through package
+\ REJECTION, in the mode REJECTION:JSON holds. The report buffer is the
+\ caller's and never grows (BUFFERS!); a streamed report has no bound
+\ (STREAM!). A run's records are captured by REJECTION, which grows its capture
+\ to hold them, and handed to the report when the run ends.
 \
 \ A definition of a name its scope already held is rejected at the name, and
 \ the scan goes on past it as past any rejected definition.
 \
-\ The checker reports a definition it rejects and returns, but a statement can
-\ also throw out of it. A status in 1..255 follows the record its rejection
-\ printed, as a `;using` with no `using` open throws 70 after
-\ E-USING-UNBALANCED, and fails the source with that status (THREW?). Any other
-\ code was thrown with nothing reported: its record is written at the token the
-\ checker read last, after whatever it reported before it, and the source fails
-\ as rejected. The rest of the source is not checked. A source the scan read to
-\ its end is lexed then, so a lexer defect, which runs to the end of its file,
-\ is reported after every record before it.
+\ A rejection stops its definition or statement with CHECKER-REJECT-RC after its
+\ record and the scan goes on at the next; any other code is thrown on. A
+\ source the scan read to its end is lexed then, so a lexer defect, which runs
+\ to the end of its file, is reported after every record before it.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -51,8 +46,6 @@ variable CA-OUT-FD                      \ where the report goes, or -1 for the b
 TYPED-VARIABLE CA-SRC-A ptr u8
 variable CA-SRC-U
 variable CA-SRC-CAP
-variable CA-THROW-RC                    \ what a statement threw while it was checked
-variable CA-THROW-AT                    \ and the byte of the token the checker read last
 
 TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
@@ -194,62 +187,18 @@ variable CA-COMPOSE-LABEL-U
    LINT-LEX:ERROR? 0= IF false exit THEN
    CA-LEX-RECORD true ;
 
-: CA-THROW-TOKEN$ ( -- ptr u8 n )
-   CA-THROW-AT @ {: at:n :}
-   CA-SRC-A@ at +  at CA-WORD-END at - ;
-
-\ A statement's throw: the code it threw, and why the scan rejected the
-\ declaration, when it knows.
-: CA-THROW-RECORD ( -- )
-   CA-ARM
-   s" E-STATEMENT-THROW" REJECTION:OPEN
-   s" the statement threw " CA-SAY  CA-THROW-RC @ REJECTION:EMIT-N
-   CA-THROW-TOKEN$ REJECTION:AT  s" the check stopped here" CA-SAY
-   VERIFY:REASON$ {: why:ptr whyu:n :}
-   whyu 0<> IF s" reason" REJECTION:NOTE  why whyu CA-SAY THEN
-   REJECTION:HELP
-   s" the statement threw the code shown: catch it, or fix what threw it" CA-SAY
-   REJECTION:KEEP
-   REJECTION:SOURCE-OFF ;
-
-public
-
-\ True for the status of a check a statement threw out of unreported: a code
-\ outside 0..255. A code in 1..255 is a status a rejection threw after printing
-\ its record, so it gets no throw record.
-: THREW? ( n -- bool ) {: rc:n :}
-   rc 0 < rc 255 > or ;
-
-private
-
 \ ---- a run ------------------------------------------------------------------
 
 variable CA-COMPOSING                   \ the run is a composition
 
-\ A composition stops in one of its files: the subject, by its label, or any
-\ other, which is read, by the name its records give it.
-: CA-COMPOSE-STOPPED ( -- )
-   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
-   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
-   u CA-FILE-U !  a CA-FILE-A! ;
-
-\ The record of a statement's throw, at the token where the scan stopped.
-: CA-THREW ( n -- ) {: rc:n :}
-   rc CA-THROW-RC !
-   VERIFY:TOKEN-BYTE@ CA-THROW-AT !
-   CA-COMPOSING @ IF CA-COMPOSE-STOPPED THEN
-   CA-THROW-RECORD ;
-
-\ What the scan's end leaves to record: a clean scan's lexer defect, or an
-\ unreported throw's record. A status in 1..255 has its record out.
+\ What the scan's end leaves to record: a clean scan's lexer defect.
 : CA-STOPPED ( n -- ) {: rc:n :}
-   rc 0= IF CA-LEX drop exit THEN
-   rc THREW? IF rc CA-THREW THEN ;
+   rc 0= IF CA-LEX drop THEN ;
 
-\ The status the run fails with: a stop's in 1..255, else a rejection's when
-\ the run counted one, else none.
+\ The status the run fails with: its stop's, else a rejection's when the run
+\ counted one, else none.
 : CA-STATUS ( n n -- n ) {: rc:n rejects:n :}
-   rc THREW? 0= rc 0 <> and IF rc exit THEN
+   rc 0 <> IF rc exit THEN
    rejects 0 > IF CHECKER-REJECT-RC exit THEN
    0 ;
 
@@ -268,10 +217,12 @@ variable CA-COMPOSING                   \ the run is a composition
 : CA-CHECK ( -- )
    CA-COMPOSING @ IF CA-CHECK-COMPOSE ELSE CA-CHECK-SOURCE THEN ;
 
-\ The scan's records and the stop's, captured from the first to the last.
+\ The scan's records, captured from the first to the last; a stop other than a
+\ rejection's is thrown on.
 : CA-RUN-CAPTURED ( -- n )
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    [: CA-CHECK ;] catch {: rc:n :}
+   rc 0 <> rc CHECKER-REJECT-RC <> and IF rc throw THEN
    rc CA-STOPPED
    rc ;
 

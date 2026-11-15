@@ -1075,13 +1075,25 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
+\ Under --all-errors a lint's rejection is answered and the next lint runs.
+: CHK-LINT-ALL ( [ -- ] -- bool ) {: q :}
+   q catch {: rc:n :}
+   rc 0<> rc CHECKER-REJECT-RC <> and if rc throw then
+   rc CHECKER-REJECT-RC = ;
+
 : CHK-RUN-STATIC-LINTS ( -- )
    \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
    \ The lints write their records in the run's mode.
    CHK-JSON @ REJECTION:JSON !
-   CHK-RUN-RESERVED-NAMES
-   CHK-RUN-BOUNDARY
-   CHK-ALL @ if CHK-RUN-ALL then ;
+   CHK-ALL @ 0= if
+      CHK-RUN-RESERVED-NAMES
+      CHK-RUN-BOUNDARY
+      exit
+   then
+   [: CHK-RUN-RESERVED-NAMES ;] CHK-LINT-ALL
+   [: CHK-RUN-BOUNDARY ;] CHK-LINT-ALL or
+   [: CHK-RUN-ALL ;] CHK-LINT-ALL or
+   if CHECKER-REJECT-RC throw then ;
 
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS
