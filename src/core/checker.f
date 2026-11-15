@@ -6922,6 +6922,8 @@ variable NRES  variable NDI  variable NDH
 8 constant SGBAD-BINDERS-KIND
 \ A bare family tail more than one used package makes public.
 9 constant SGBAD-AMBIG-KIND
+\ A type scheme, `forall`, in a local's annotation: a local holds one type.
+10 constant SGBAD-SCHEME-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
@@ -7231,6 +7233,10 @@ CHECKER-REG:}SCRATCH
 
 : SGBAD-UNKNOWN? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-UNKNOWN-KIND = and ;
+: SGBAD-SCHEME! ( ^u8 n -- )
+   SGBAD-SCHEME-KIND SGBAD-SET ;
+: SGBAD-SCHEME? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-SCHEME-KIND = and ;
 : SGBAD-AMBIG! ( ^u8 n n -- ) {: a:^ u:n used:n :}
    SGBAD @ 0= IF used SGBAD-USED ! THEN
    a u SGBAD-AMBIG-KIND SGBAD-SET ;
@@ -7738,9 +7744,12 @@ SIG-BINDER-BODY-INSTALL
 \ ---- typed local annotations -------------------------------------------------
 \ `{: p:^ :}` means an inferred pointee, which SIG-TYPE would refuse, so the
 \ shorthand is taken ahead of the delegation.
-: BAD-LOC-ANN ( ^u8 n -- n )    \ unusable local annotation: fail fast so the
-   BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
-   0 OK !  -1 FAILSET ! ;
+\ An unusable local annotation, its verdict set: fail fast so the pinned token
+\ is the annotation itself, not ':}'.
+: LOC-ANN-FAILS ( -- n )
+   1 MK-CON  0 OK !  -1 FAILSET ! ;
+: BAD-LOC-ANN ( ^u8 n -- n )
+   SGBAD-UNKNOWN! LOC-ANN-FAILS ;
 
 \ A text's one type and whether nothing follows it, read against NMAP and the
 \ family registry as they stand, so it names the definition's type variables.
@@ -11290,6 +11299,10 @@ public
    SGBAD-UNSUPPLIED? IF
       s" name each output scope or region variable in an input too, or drop it from the outputs"
       REJECTION:EMIT-STR EXIT
+   THEN
+   SGBAD-SCHEME? IF
+      s" write the type without `forall`: its type variables are then the definition's, as in `"
+      REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR  s" :[--]`" REJECTION:EMIT-STR EXIT
    THEN
    lu 0= IF
       s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
@@ -18972,10 +18985,10 @@ CHECKER-REG:}SCRATCH
    CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
    LOCSEQ @ 1 + LOCSEQ ! ;
 
-\ Types the slot LOC-OPEN made with term T; a type scheme is refused at the
+\ Types the slot LOC-OPEN made with term T; a type scheme is rejected at the
 \ type's spelling A U.
 : LOC-TYPED ( ^u8 n n -- ) {: a:^ u:n t:n :}
-   t SCHEME-TYPE? IF a u BAD-LOC-ANN ELSE t LOC-ANN-TERM THEN
+   t SCHEME-TYPE? IF a u SGBAD-SCHEME! LOC-ANN-FAILS ELSE t LOC-ANN-TERM THEN
    #LOC @ LOC-TYPE-SET ;
 
 \ The annotation A U after a local's colon. A verdict it gives names a token of

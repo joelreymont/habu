@@ -1558,6 +1558,7 @@ CHECKER-REG:}SCRATCH
       s" unknown type " EMIT-STR  t tu l lu SUBJECT-SPAN
       lu 0= IF s"  in signature" EMIT-STR THEN EXIT
    THEN
+   SGBAD-SCHEME? IF s" polymorphic type " EMIT-STR  t tu l lu SUBJECT-SPAN EXIT THEN
    SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR  l lu LOCAL-PHRASE EXIT THEN
    SGBAD-ARITY? IF t tu l lu ARITY-MESSAGE EXIT THEN
    SGBAD-RETURN? IF
@@ -1673,6 +1674,7 @@ CHECKER-REG:}SCRATCH
 : SIG-LABEL ( -- )
    SGBAD-AMBIG? IF s" ambiguous here" EMIT-STR EXIT THEN
    SGBAD-UNKNOWN? IF s" unknown type" EMIT-STR EXIT THEN
+   SGBAD-SCHEME? IF s" a local holds one type" EMIT-STR EXIT THEN
    SGBAD-BAREPTR? IF s" no element type" EMIT-STR EXIT THEN
    SGBAD-ARITY? IF s" wrong number of type arguments" EMIT-STR EXIT THEN
    SGBAD-RETURN? IF s" return-stack effect" EMIT-STR EXIT THEN
