@@ -417,7 +417,8 @@ variable RUN-FILE-U
 \ exit actions and cleanups its source's top level registers run when the
 \ build's part ends, the built program starts with none of them, and
 \ registering at run time works from empty; it inits a queue its build
-\ defined, whose record address the build must carry.
+\ defined, whose record address the build must carry; it reads SRCLOC:TOKEN$,
+\ data of src/core/checker.f, which the program reaches without the checker.
 : CASE-BUILT ( -- )
    s" built.f" s" built-out" CASE-PATHS
    ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
@@ -430,13 +431,14 @@ variable RUN-FILE-U
    S\" : RUN-FILE ( -- ptr u8 n ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q ;\n" TEXT+
    S\" ' BUILD-ACTION AT-EXIT:ADD\n" TEXT+
    S\" BUILT-FILE s\q b\q FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
-   S\" : MAIN ( -- ) ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
+   S\" : MAIN ( -- ) SRCLOC:TOKEN$ 2drop ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
    S\"    RUN-FILE s\q r\q FS:WRITE-ALL RUN-FILE FS:CLEANUP+ JOBS QUEUE:INIT\n" TEXT+
    S\"    s\q main done\q type cr ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
+   s" a program that reaches the checker's data builds" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
+   s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
    outu s" build-time exit action ran" OUT-HAS? TTRUE
    0 TEXT-U !  TREE$ TEXT+  s" .built" TEXT+
    TEXT$ FS:EXISTS? TFALSE

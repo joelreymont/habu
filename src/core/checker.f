@@ -802,7 +802,6 @@ OWNER-BYTES constant OWNER-CELLS-BYTES
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
-DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!
 ;package
 
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
