@@ -4,7 +4,7 @@
 \ names, by its absolute path in that file's tree, in the caller's working
 \ directory.
 
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--prose] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL [--prose] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
@@ -36,14 +36,14 @@
 \ engine-provided path. It emits surviving declarations after a completed
 \ scan, while their checker scopes are still open. A top-level dictionary call
 \ defers the whole index; the parent consumes no rows from a deferred result.
-\ A thrown scan has no result line, even if earlier declarations survived.
+\ A scan a throw ends emits no declarations, even if earlier ones survived.
 \
-\ stdout is the schema-1 JSON packets, one per line in verification order, each
-\ written as the checker makes it, so a child that dies has passed on every
-\ packet made before; then one result line. The first form verifies with all
-\ errors, going past a duplicate definition as past any refused definition.
-\ Among the packets it writes one JSON object per line: a diagnostic line for
-\ each duplicate, which the checker writes no packet for; a file line for each
+\ stdout is the records, one per rejection in verification order, each written
+\ where the rejection is made, so a child that dies has passed on every record
+\ made before; then one result line. A record is a schema-1 JSON packet on a
+\ line, or with `--prose` a prose record. The first form verifies with all
+\ errors, going past a duplicate definition as past any rejected definition.
+\ Among the records it writes one JSON object per line: a file line for each
 \ file it reads, once however often it reads the same bytes and before anything
 \ in them; a definition line for each definition it retains; a use line for each
 \ use in the subject the checker binds to a source target or identifies as an
@@ -51,8 +51,7 @@
 \ load reached a file. It answers
 
 \    check-verify: verified | refused | deferred | held
-\                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
-\    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\                | missing TARGET | unread TARGET
 \    check-verify: file {"file":F,"source":"subject|document|disk",
 \       "size":S,"mtime_sec":MS,"mtime_ns":MN,
 \       "ctime_sec":CS,"ctime_ns":CN}
@@ -65,16 +64,13 @@
 \    check-verify: load {"byte_start":S,"byte_end":N,"path":P,"outcome":O}
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
-\    check-verify: loader LEN TARGET
-\    check-verify: reason TEXT
 \
-\ A loader line comes right before the stopped line of a stop at a loader's
-\ fault (VERIFY:LOADER-FAULT?): LEN is the length of the loader token at the
-\ stopped line's BYTE, 0 for a string or locals group a file never closes, and
-\ TARGET, the rest of the line and absent when empty, the file the loader could
-\ not read, as it was resolved. A reason line comes right before the stopped
-\ line of a stop at a declaration the scan refused with a reason
-\ (VERIFY:REASON$): TEXT, the rest of the line, is that reason.
+\ A throw that ends the composition after its rejection wrote its record
+\ answers refused, missing or unread. missing is a file a loader names that is
+\ not there, and unread one found that cannot be read; TARGET, the rest of the
+\ line after a space and absent when empty, is that file as it was resolved
+\ (VERIFY:FAULT-TARGET$). A throw of any other code ends the child with no
+\ result line.
 \
 \ A file line names each file visit reported by ON-FILE. Subject and open
 \ document bytes have an editor source; disk bytes carry the metadata captured
@@ -137,30 +133,21 @@
 \ held is answered before anything is verified: this child holds SUBJECT though
 \ the engine does not provide it (this file, tools/check-verify-child-lib.f,
 \ and the verifier's source on an engine that does not carry it), so it
-\ cannot be verified here. The parent answers engine-provided itself. stopped
-\ is a throw that ended the composition, whatever was refused before it.
+\ cannot be verified here. The parent answers engine-provided itself.
 \
 \ The second form is check.f's pre-pass. The first definition the checker
-\ refuses stops the composition, as it stops the load, and the subject's packets
-\ name it LABEL. With `--prose`, for a check.f run without --json-errors, the
-\ checker writes each rejection on stdout as a prose record where the other
-\ forms write a packet. SUBJECT is check.f's own copy of the text, which nothing
+\ rejects stops the composition, as it stops the load, and the subject's records
+\ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing
 \ holds. It answers
 \
-\    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\    check-verify: verified | refused | missing TARGET | unread TARGET
 \
-\ RC is the code the composition stopped with, 70 for a definition or top-level
-\ token the checker refused by the throw that rendered its packet, BYTE where
-\ the token the verifier read last starts, DUP-AT and DUP-LEN where the name it
-\ refused as a duplicate starts and its length, DUP-LEN 0 when it kept no name
-\ (VERIFY:DUPLICATE), IN-SUBJECT 1 when the stop is in BYTES and 0 when it is
-\ in a file they load, and FILE, the rest of the line, the name of the file it
-\ is in: for BYTES, SUBJECT in the first form and LABEL in the second.
+\ With `--prose`, for a check.f run without --json-errors, the first and second
+\ forms write each record as prose where the other forms write a packet.
 \
-\ stderr is prose: for the first form, a line for each file whose verification
-\ a throw other than a loader's fault stopped, and whatever else the engine
-\ writes there, a `die`'s message among it. A child that ends any other way, the
-\ verifier's own `die` included, writes no result line.
+\ stderr is whatever the engine writes there, a `die`'s message among it. A
+\ child that ends any other way, the verifier's own `die` included, writes no
+\ result line.
 
 \ The child runs in the client's working directory, which can contain a
 \ different Habu revision. Its body belongs to this entry's tree.

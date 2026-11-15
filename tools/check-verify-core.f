@@ -54,7 +54,6 @@ using SOURCE-ROOT
 64 constant CHK-E-USAGE
 69 constant CHK-E-UNAVAILABLE
 70 constant CHK-E-CHECK
-74 constant CHK-E-IOERR
 
 \ The closure's files: each one's path and the root that resolved it, PATH-CAP
 \ bytes apiece, their lengths and its walk state (0 not walked, 1 walking, 2
@@ -188,14 +187,6 @@ variable CHK-EXPAND-TOP
 
 : CHK-DISC-RC? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
-
-: CHK-DISC-MSG$ ( n -- ptr u8 n ) {: rc:n :}
-   rc E-DISC-SHADOW = if s" discovery rejected: loader word used after the file defined its name" exit then
-   rc E-DISC-DYNAMIC = if s" discovery rejected: dynamic (non-literal) loader path" exit then
-   rc E-DISC-OPENER = if s" discovery rejected: unsupported string opener before a loader word" exit then
-   rc E-DISC-RETIRE = if s" discovery rejected: loader word used after the file retired it" exit then
-   rc E-DISC-UNTERM = if s" discovery rejected: unterminated string or locals group" exit then
-   s" discovery rejected: capacity exceeded" ;
 
 : CHK-READ-ACT ( -- )
    CHK-DISC-ID @ {: id:n :}
@@ -388,71 +379,6 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    path pathu DISCOVER:LOADING!
    id [: CHK-EXPAND ;] [: NULL$ DISCOVER:LOADING! ;] finally ;
 
-\ The token of the source LINT-LEX read last that starts at the given byte, or
-\ -1 when none does.
-: CHK-TOKEN-AT ( n -- n )
-   {: at:n :}
-   0 begin dup LINT-LEX:COUNT < while
-      dup LINT-LEX:BYTE@ at = if exit then
-      1+
-   repeat drop -1 ;
-
-\ The definer at byte at of src, the file the label names, has nothing after
-\ it, so it has no name to read: the loader rejects it, and so does the check,
-\ at the definer, with the loader's record. REJECTION writes it in JSON when
-\ json, else in prose, into its capture; it comes back without its last line
-\ feed, empty when no token of the lex starts at at.
-: CHK-NONAME-AT$ ( n ptr u8 n ptr u8 n bool -- ptr u8 n )
-   {: at:n label:ptr labelu:n src:ptr srcu:n json:bool :}
-   src srcu LINT-LEX:SOURCE
-   at CHK-TOKEN-AT {: k:n :}
-   k 0< if NULL$ exit then
-   src at +  k LINT-LEX:TOKEN nip {: t:ptr tu:n :}
-   REJECTION:JSON @ {: was:n :}
-   json REJECTION:JSON !
-   label labelu REJECTION:FILE!
-   src srcu 1 1 0 REJECTION:SOURCE!
-   REJECTION:CAPTURE
-   s" E-MISSING-NAME" REJECTION:OPEN
-   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
-   s" ` has no definition name after it" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" write the new word's name right after `" REJECTION:EMIT-STR
-   t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   REJECTION:KEEP
-   REJECTION:BUFFER-OFF
-   REJECTION:SOURCE-OFF
-   was REJECTION:JSON !
-   REJECTION:BUFFER$ 1- ;
-
-\ The record of a stop at byte AT of SRC, the file LABEL names: a packet when
-\ JSON, else prose, with no line feed, and whether it refuses the source itself.
-: STOP-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n bool -- ptr u8 n bool )
-   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n why:ptr whyu:n json:bool :}
-   rc VERIFY:E-MISSING-NAME = if
-      at label labelu src srcu json CHK-NONAME-AT$
-      dup 0<> if true exit then
-      2drop
-   then
-   rc CHECK-ALL-ERRORS:THREW? 0= if NULL$ false exit then
-   json CHECK-ALL-ERRORS:JSON!
-   rc CHECK-ALL-ERRORS:LEX-FIRST? rc VERIFY:E-MISSING-NAME = or if
-      json if
-         label labelu src srcu VERIFY-DIAGNOSTICS:LEX-RECORD$
-      else
-         label labelu src srcu CHECK-ALL-ERRORS:LEX-RECORD$
-      then
-      dup 0<> if true exit then
-      2drop
-   then
-   json if
-      rc at label labelu src srcu why whyu VERIFY-DIAGNOSTICS:THROW-RECORD$
-   else
-      rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
-   then
-   false ;
-
 : CHK-DEP-ORDER@ ( n -- n )
    CHK-DEP-ORDER @ ;
 
@@ -479,14 +405,13 @@ $0A constant VFY-LF
 1 constant VFY-VERIFIED
 2 constant VFY-REFUSED
 3 constant VFY-HELD
-4 constant VFY-STOPPED
+4 constant VFY-MISSING
 5 constant VFY-DEFERRED
+6 constant VFY-UNREAD
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8
-DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate line its record
-DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplicate records
-DYNAMIC-BUFFER VFY-STOP-REASON u8       \ the stop's reason line's text, kept out of VFY-OUT
+DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT's records alone
 DYNAMIC-BUFFER VFY-DEFS u8
 DYNAMIC-BUFFER VFY-FILES u8
 DYNAMIC-BUFFER VFY-USES u8
@@ -500,7 +425,6 @@ variable VFY-OPEN-N
 variable VFY-OPEN-START
 variable VFY-OPEN-END
 variable VFY-REC-U
-variable VFY-STOP-REASON-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
 variable VFY-USES-U
@@ -524,20 +448,12 @@ s" check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
-TYPED-VARIABLE VFY-JSON bool            \ the pre-pass child writes packets, false for prose records
+TYPED-VARIABLE VFY-JSON bool            \ the child writes packets, false for prose records
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
 TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
 variable VFY-OF-U                       \ 0 for none
-variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
-variable VFY-STOP-AT                    \ the byte of the token it read last,
-variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
-variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
-TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
-variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT,
-variable VFY-STOP-U
-variable VFY-FAULT-LEN                  \ a stop at a loader's fault: the loader token's length,
-create VFY-TARGET PATH-CAP allot     \ and the file it could not read, empty for none
+create VFY-TARGET PATH-CAP allot        \ a missing or unread answer's file, empty for none
 variable VFY-TARGET-U
 
 
@@ -561,9 +477,6 @@ variable VFY-TARGET-U
    -1 VFY-AT !
    0 VFY-OF-U !
    VFY-NONE VFY-ANSWER !
-   0 VFY-STOP-RC !
-   0 VFY-STOP-REASON-U !
-   0 VFY-FAULT-LEN !
    0 VFY-TARGET-U !
    false VFY-PREPASS !
    false VFY-INDEX? !
@@ -590,28 +503,6 @@ variable VFY-TARGET-U
    VFY-OUT-U @ u + VFY-OUT-RESERVE
    a VFY-OUT-U @ VFY-OUT u BYTE-COPY
    VFY-OUT-U @ u + VFY-OUT-U ! ;
-
-
-: VFY-LOG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   VFY-LOG-U @ u + VFY-LOG-RESERVE
-   a VFY-LOG-U @ VFY-LOG u BYTE-COPY
-   VFY-LOG-U @ u + VFY-LOG-U ! ;
-
-
-: VFY-LOG-LN ( ptr u8 n -- )
-   VFY-LOG+ s\" \n" VFY-LOG+ ;
-
-
-: VFY-CLOSURE-LOG ( n ptr u8 n -- )
-   {: rc:n path:ptr pathu:n :}
-   rc CHK-E-IOERR = if
-      s" cannot read " VFY-LOG+
-      path pathu VFY-LOG-LN exit
-   then
-   path pathu VFY-LOG+
-   s" : " VFY-LOG+
-   rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
 : VFY-IN+ ( ptr u8 n -- )
@@ -649,42 +540,6 @@ variable VFY-TARGET-U
    VFY-OPEN-N @ VFY-OPEN-END !
    s\" \n" VFY-IN+
    CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
-
-
-: VFY-OPEN-PATH$ ( n -- ptr u8 n )
-   4 * {: at:n :}
-   at VFY-OPEN-AT @ VFY-IN at 1+ VFY-OPEN-AT @ ;
-
-: VFY-OPEN-TEXT$ ( n -- ptr u8 n )
-   4 * {: at:n :}
-   at 2 + VFY-OPEN-AT @ VFY-IN at 3 + VFY-OPEN-AT @ ;
-
-
-\ The text of the first open document at this canonical path and true, else
-\ false, as the child finds it.
-: VFY-OPEN-TEXT ( ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n :}
-   VFY-OPEN-END @ VFY-OPEN-START @ ?do
-      i VFY-OPEN-PATH$ a u CORE-STR= if i VFY-OPEN-TEXT$ true unloop exit then
-   loop
-   NULL$ false ;
-
-
-: VFY-LINE+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u 0= if exit then
-   a u VFY-OUT+
-   s\" \n" VFY-OUT+ ;
-
-
-: VFY-STOP-REASON$ ( -- ptr u8 n )
-   VFY-STOP-REASON-U @ 0= if NULL$ exit then
-   0 VFY-STOP-REASON VFY-STOP-REASON-U @ ;
-
-
-: VFY-STOP-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: label:ptr labelu:n src:ptr srcu:n :}
-   VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu VFY-STOP-REASON$ true STOP-RECORD$ drop ;
 
 
 TYPED-VARIABLE CHK-ENGINE-REFUSED bool
@@ -725,10 +580,8 @@ variable VFY-EXE-U
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if
-      VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+
-      VFY-JSON @ 0= if s" --prose" CHK-ARG+ then
-   then
+   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-JSON @ 0= if s" --prose" CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
@@ -752,12 +605,6 @@ variable VFY-EXE-U
    PROCESS:ENDING>DEADLINE-RC drop 2drop ;
 
 
-: VFY-STOPPED$ ( -- ptr u8 n )
-   s" check-verify: stopped " ;
-
-: VFY-DUPLICATE$ ( -- ptr u8 n )
-   s" check-verify: duplicate " ;
-
 : VFY-DEFINITION$ ( -- ptr u8 n )
    s" check-verify: definition " ;
 
@@ -776,66 +623,6 @@ variable VFY-EXE-U
 : VFY-INDEX$ ( -- ptr u8 n )
    s" check-verify: index " ;
 
-: VFY-LOADER$ ( -- ptr u8 n )
-   s" check-verify: loader " ;
-
-: VFY-REASON$ ( -- ptr u8 n )
-   s" check-verify: reason " ;
-
-
-: VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
-   at begin
-      dup end < if dup VFY-OUT c@ $20 <> else false then
-   while 1+ repeat ;
-
-
-: VFY-FIELD-N ( n n -- n bool ) {: at:n stop:n :}
-   at VFY-OUT stop at - STR>NUMBER? MATCH option
-      some OF true ENDOF
-      none OF 0 false ENDOF
-   ;MATCH ;
-
-
-\ The fields after a stop or duplicate tag: RC BYTE DUP-AT DUP-LEN IN-SUBJECT
-\ FILE. VFY-STOPPED with them kept, or VFY-NONE for an invalid line; a stop is
-\ never code 0, and IN-SUBJECT is 1 or 0.
-: VFY-STOP-PARSE ( n n -- n ) {: at:n end:n :}
-   at end VFY-FIELD-END {: e1:n :}
-   at e1 VFY-FIELD-N {: rc:n rc-ok:bool :}
-   e1 1+ end VFY-FIELD-END {: e2:n :}
-   e1 1+ e2 VFY-FIELD-N {: byte:n byte-ok:bool :}
-   e2 1+ end VFY-FIELD-END {: e3:n :}
-   e2 1+ e3 VFY-FIELD-N {: name-at:n name-at-ok:bool :}
-   e3 1+ end VFY-FIELD-END {: e4:n :}
-   e3 1+ e4 VFY-FIELD-N {: name-u:n name-u-ok:bool :}
-   e4 1+ end VFY-FIELD-END {: e5:n :}
-   e4 1+ e5 VFY-FIELD-N {: subj:n subj-ok:bool :}
-   rc-ok byte-ok and name-at-ok and name-u-ok and subj-ok and rc 0<> and
-   subj 0 = subj 1 = or and
-   e5 1+ end < and 0= if VFY-NONE exit then
-   rc VFY-STOP-RC !
-   byte VFY-STOP-AT !
-   name-at VFY-STOP-DUP-AT !
-   name-u VFY-STOP-DUP-U !
-   subj 1 = VFY-STOP-SUBJ !
-   e5 1+ VFY-STOP-OFF !
-   end e5 1+ - VFY-STOP-U !
-   VFY-STOPPED ;
-
-
-\ The fields after a loader tag, from AT to END: LEN, then, after a space, the
-\ rest of the line, TARGET. True with them kept, or false for an invalid line.
-: VFY-LOADER-PARSE ( n n -- bool ) {: at:n end:n :}
-   at end VFY-FIELD-END {: e:n :}
-   at e VFY-FIELD-N {: len:n len-ok:bool :}
-   e end < if e 1+ else end then {: t:n :}
-   end t - {: tu:n :}
-   len-ok len 0 >= and tu PATH-CAP <= and 0= if false exit then
-   len VFY-FAULT-LEN !
-   t VFY-OUT VFY-TARGET tu BYTE-COPY
-   tu VFY-TARGET-U !
-   true ;
-
 
 \ A result line grants a verdict only after a clean child exit. A complete
 \ result line is still framing, even when the process ends uncleanly.
@@ -847,16 +634,32 @@ variable VFY-EXE-U
    ;MATCH ;
 
 
+\ ANSWER when the line A U is TAG alone, or TAG, a space and TARGET, which is
+\ kept in VFY-TARGET; VFY-NONE for any other line or a TARGET longer than
+\ PATH-CAP.
+: VFY-TARGET-ANSWER ( ptr u8 n ptr u8 n n -- n )
+   {: a:ptr u:n tag:ptr tagu:n answer:n :}
+   a u tag tagu STARTS-WITH? 0= if VFY-NONE exit then
+   u tagu = if 0 VFY-TARGET-U ! answer exit then
+   a tagu + c@ $20 <> if VFY-NONE exit then
+   u tagu - 1- {: tu:n :}
+   tu PATH-CAP > if VFY-NONE exit then
+   a tagu + 1+ VFY-TARGET tu BYTE-COPY
+   tu VFY-TARGET-U !
+   answer ;
+
+
 \ The answer the final line from AT to END in VFY-OUT gives, its line feed
-\ excluded. Diagnostic duplicates have a different tag.
+\ excluded.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
    a u s" check-verify: deferred" STR= if VFY-DEFERRED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
-   a u VFY-STOPPED$ STARTS-WITH? if at VFY-STOPPED$ nip + end VFY-STOP-PARSE exit then
-   VFY-NONE ;
+   a u s" check-verify: missing" VFY-MISSING VFY-TARGET-ANSWER {: m:n :}
+   m VFY-NONE <> if m exit then
+   a u s" check-verify: unread" VFY-UNREAD VFY-TARGET-ANSWER ;
 
 
 : VFY-LINE-START ( n -- n )
@@ -866,23 +669,8 @@ variable VFY-EXE-U
    repeat ;
 
 
-\ The line that ends at the stopped answer starting at AT, when it is a reason
-\ line: its text kept in VFY-STOP-REASON. Where the packets end.
-: VFY-REASON-TAKE ( n -- n ) {: at:n :}
-   at 0= if at exit then
-   at 1- VFY-LINE-START {: from:n :}
-   from VFY-OUT at 1- from - VFY-REASON$ STARTS-WITH? 0= if at exit then
-   from VFY-REASON$ nip + {: t:n :}
-   at 1- t - {: tu:n :}
-   tu 0= if from exit then
-   tu VFY-STOP-REASON-RESERVE
-   t VFY-OUT 0 VFY-STOP-REASON tu BYTE-COPY
-   tu VFY-STOP-REASON-U !
-   from ;
-
-
-\ Keep the packets in the child's OUTU bytes and the answer and stop reason that
-\ end them; a cut line, or a reason line no answer follows, is dropped.
+\ Keep the records in the child's OUTU bytes and the answer that ends them,
+\ the answer out of VFY-OUT; a cut line is dropped.
 : VFY-TAKE ( n -- )
    {: outu:n :}
    outu VFY-LINE-START {: end:n :}
@@ -890,63 +678,11 @@ variable VFY-EXE-U
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
    at end 1- VFY-ANSWER-AT VFY-ANSWER !
-   VFY-ANSWER @ VFY-NONE = if
-      at VFY-OUT end 1- at - VFY-REASON$ STARTS-WITH? if at VFY-OUT-U ! then
-      exit
-   then
-   VFY-ANSWER @ VFY-STOPPED = if at VFY-REASON-TAKE else at then VFY-OUT-U ! ;
-
-
-: VFY-STOP-FILE$ ( -- ptr u8 n )
-   VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
-
-
-: VFY-STOP-SOURCE ( -- ptr u8 n )
-   VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
-   VFY-STOP-FILE$ VFY-OPEN-TEXT if exit then
-   2drop VFY-STOP-FILE$ CHK-FILE-READ ;
+   VFY-ANSWER @ VFY-NONE <> if at VFY-OUT-U ! then ;
 
 
 : VFY-TARGET$ ( -- ptr u8 n )
    VFY-TARGET VFY-TARGET-U @ ;
-
-
-\ The loader's fault RC as the closure walk classes it: a file a loader could
-\ not read to its end is CHK-E-IOERR, the child having rejected a missing one
-\ and one that will not open itself; a form keeps discovery's code.
-: VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
-   rc VERIFY:E-SOURCE-READ = if CHK-E-IOERR exit then
-   rc ;
-
-
-\ The packet of the child's stop: none for a discovery stop, whose record the
-\ child wrote where it met the form.
-: VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
-   VFY-STOP-RC @ {: rc:n :}
-   rc CHK-DISC-RC? if NULL$ exit then
-   rc VERIFY:LOADER-FAULT? if
-      class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
-      VERIFY-DIAGNOSTICS:LOADER-RECORD$ exit
-   then
-   VFY-STOP-FILE$ VFY-STOP-SOURCE VFY-STOP-RECORD$ ;
-
-
-\ The child's stop: its record ends the packets, and the file the stopped line
-\ named stays after them, where VFY-STOP-FILE$ reads it.
-: VFY-STOP-LINE ( -- )
-   VFY-STOP-RC @ {: rc:n :}
-   rc VFY-FAULT-CLASS {: class:n :}
-   class VFY-STOP-REC$ {: a:ptr u:n :}
-   VFY-STOP-U @ {: fileu:n :}
-   fileu VFY-STOP-PATH-RESERVE
-   VFY-STOP-FILE$ drop 0 VFY-STOP-PATH fileu BYTE-COPY
-   a u VFY-LINE+
-   VFY-OUT-U @ fileu + VFY-OUT-RESERVE
-   VFY-OUT-U @ VFY-STOP-OFF !
-   0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY
-   rc VERIFY:LOADER-FAULT? 0= rc CHK-DISC-RC? or if exit then
-   rc VERIFY:E-SOURCE-READ = if class VFY-TARGET$ VFY-CLOSURE-LOG exit then
-   class VFY-STOP-FILE$ VFY-CLOSURE-LOG ;
 
 
 : VFY-REC+ ( ptr u8 n -- )
@@ -1053,16 +789,12 @@ variable VFY-EXE-U
    while 1+ repeat ;
 
 
-\ The line of VFY-OUT that starts at AT, to the buffer its tag names, a duplicate line as the record
-\ --all-errors writes for it, a loader line's fields kept for VFY-STOP-LINE: where the next line
-\ starts.
+\ The line of VFY-OUT that starts at AT, to the buffer its tag names, a record
+\ to VFY-REC: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
-   at VFY-OUT end at - VFY-LOADER$ STARTS-WITH? if
-      at VFY-LOADER$ nip + end VFY-LOADER-PARSE if end 1+ exit then
-   then
    at VFY-OUT end at - VFY-FILE$ STARTS-WITH? if
       at end VFY-FILE-LINE
       end 1+ exit
@@ -1087,48 +819,22 @@ variable VFY-EXE-U
       at end VFY-INDEX-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-DUPLICATE$ STARTS-WITH?
-   if at VFY-DUPLICATE$ nip + end VFY-STOP-PARSE else VFY-NONE then
-   VFY-STOPPED = if
-      VFY-STOP-RC @ E-DUP-DEFINITION = if
-         true CHECK-ALL-ERRORS:JSON!
-         VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
-         CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
-         s\" \n" VFY-REC+
-      then
-   else
-      at VFY-OUT end at - VFY-REC+
-      s\" \n" VFY-REC+
-   then
+   at VFY-OUT end at - VFY-REC+
+   s\" \n" VFY-REC+
    end 1+ ;
 
 
-: VFY-DUP-RECORDS ( -- )
+\ VFY-OUT's records alone, each tagged line moved to its buffer. The pre-pass
+\ writes records alone.
+: VFY-RECORDS ( -- )
    VFY-PREPASS @ if exit then
    VFY-OUT-U @ 0= if exit then
-   VFY-ANSWER @ VFY-STOPPED =
-   VFY-STOP-RC @ VFY-STOP-AT @ VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @
-   VFY-STOP-SUBJ @ VFY-STOP-U @
-   {: stopped:bool rc:n byte:n at:n u:n subj:bool fileu:n :}
-   stopped if
-      fileu VFY-STOP-PATH-RESERVE
-      VFY-STOP-FILE$ drop 0 VFY-STOP-PATH fileu BYTE-COPY
-   then
    0 VFY-REC-U !
    0 begin dup VFY-OUT-U @ < while VFY-REC-LINE repeat drop
-   stopped if VFY-REC-U @ fileu + else VFY-REC-U @ then VFY-OUT-RESERVE
-   \ Definition lines alone leave no record, and VFY-REC no storage to copy.
+   VFY-REC-U @ VFY-OUT-RESERVE
+   \ Tagged lines alone leave no record, and VFY-REC no storage to copy.
    VFY-REC-U @ 0<> if 0 VFY-REC 0 VFY-OUT VFY-REC-U @ BYTE-COPY then
-   VFY-REC-U @ VFY-OUT-U !
-   stopped if
-      rc VFY-STOP-RC !  byte VFY-STOP-AT !
-      at VFY-STOP-DUP-AT !  u VFY-STOP-DUP-U !
-      subj VFY-STOP-SUBJ !  fileu VFY-STOP-U !
-      VFY-OUT-U @ VFY-STOP-OFF !
-      0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY
-   else
-      0 VFY-STOP-RC !
-   then ;
+   VFY-REC-U @ VFY-OUT-U ! ;
 
 
 \ How the child ended. More stderr than the capture holds kills it, and its
@@ -1142,7 +848,7 @@ variable VFY-EXE-U
    PROCESS:CAPTURE-ENDING@ {: outu:len erru:len o :}
    erru LEN>N VFY-LOG-U !
    outu LEN>N VFY-TAKE
-   VFY-DUP-RECORDS
+   VFY-RECORDS
    rc 0<> if rc throw then
    o ;
 
@@ -1151,7 +857,8 @@ variable VFY-EXE-U
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:verified exit then
       VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-STOPPED = if LSP--CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:deferred exit then
       VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:held exit then
    then
@@ -1162,7 +869,9 @@ variable VFY-EXE-U
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
-      VFY-ANSWER @ VFY-STOPPED = if VFY-STOP-RC @ RESULT:OK exit then
+      VFY-ANSWER @ VFY-REFUSED = if CHECKER-REJECT-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-MISSING = if CHECKER-REJECT-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC RESULT:OK exit then
    then
    o RESULT:ERR ;
 
@@ -1179,25 +888,20 @@ variable VFY-EXE-U
    srcu CHK-BYTES-U !
    open VFY-IN!
    deadline VFY-DEADLINE !
-   VFY-RUN {: o :}
-   o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
-   o VFY-VERDICT ;
+   VFY-RUN VFY-VERDICT ;
 
 public
 
-\ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's
+\ The records of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's
 \ schema-1 packets, one JSON object per line: the subject's name PATH's
 \ canonical absolute path and count positions in the bytes, a dependency's name
-\ its file and count there. A duplicate definition, which the checker writes no
-\ packet for, is the record --all-errors writes; the stop's record
-\ (STOP-RECORD$) is the last line. A PREVERIFY-BYTES with JSON false holds
-\ prose records instead. Every VERIFY-*$ holds until the next call.
+\ its file and count there. A stop's record is the last. With JSON false they
+\ are prose records instead. Every VERIFY-*$ holds until the next call.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
 
-\ The child's stderr from the last VERIFY-BYTES or PREVERIFY-BYTES, then after a loader's fault the
-\ status line naming the file it is in, or the file it could not read, and why.
+\ The child's stderr from the last VERIFY-BYTES or PREVERIFY-BYTES.
 : VERIFY-LOG$ ( -- ptr u8 n )
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
@@ -1242,29 +946,31 @@ public
 
 \ Check the bytes as the file at PATH, the child given DEADLINE, with the
 \ documents open that OPEN gives: OPEN is given a word taking an open
-\ document's canonical path and text, and calls it once for each. A throw that
-\ ends the verification refuses it: the stop's record ends VERIFY-OUT$, after
-\ every packet made before it, and VERIFY-STOP and the words after it say with
-\ what and where. A loader's fault is such a stop: a loader form the closure
-\ walk refuses, a string or a locals group a file never closes, or a file a
-\ loader word names that is not there or cannot be read, and VERIFY-LOG$ ends
-\ with its status line, the one the walk writes. An empty PATH is
-\ E-FS-PATH; an engine src/lib/engine-candidate.f refuses (E-FS-OPEN) or a failed
-\ spawn throws as well. stdout is kept whole; more than 256 KiB of the child's
-\ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
-\ received before it. A file of the closure that a stop or a duplicate
-\ definition is in, not open and no longer readable, throws as reading it does.
-\ VERIFY-BYTES-AT has the child offer, as well, the spellings that would bind
-\ at byte AT of the bytes, VERIFY-CANDIDATES$; a negative AT is no cursor.
+\ document's canonical path and text, and calls it once for each. The records
+\ are packets when JSON is true and prose when false. A throw that ends the
+\ verification after its record refuses it: the record ends VERIFY-OUT$, after
+\ every record made before it, and VERIFY-STATUS says with what status. A
+\ loader's fault is such a stop: a loader form the composition rejects, a
+\ string or a locals group a file never closes, or a file a loader word names
+\ that is not there or cannot be read, which VERIFY-UNREAD$ names. An empty
+\ PATH is E-FS-PATH; an engine src/lib/engine-candidate.f refuses (E-FS-OPEN)
+\ or a failed spawn throws as well. stdout is kept whole; more than 256 KiB of
+\ the child's stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every
+\ complete record received before it.
+: VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms bool -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n open deadline json:bool :}
+   VFY-RESET
+   json VFY-JSON !
+   src srcu path pathu open deadline VFY-BYTES ;
+
+\ VERIFY-BYTES with packets, the child offering as well the spellings that
+\ would bind at byte AT of the bytes, VERIFY-CANDIDATES$; a negative AT is no
+\ cursor.
 : VERIFY-BYTES-AT ( ptr u8 n ptr u8 n n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n at:n open deadline :}
    VFY-RESET
    at VFY-AT !
    src srcu path pathu open deadline VFY-BYTES ;
-
-: VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n open deadline :}
-   src srcu path pathu -1 open deadline VERIFY-BYTES-AT ;
 
 \ Scan current source in the verifier child. It bypasses the engine-provided
 \ path skip only for this mode; incomplete children have no usable index.
@@ -1274,7 +980,7 @@ public
    true VFY-INDEX? !
    src srcu path pathu [: drop ;] deadline VFY-BYTES ;
 
-\ VERIFY-BYTES with VERIFY-USES$ holding as well every use the check binds to
+\ VERIFY-BYTES with packets and VERIFY-USES$ holding as well every use the check binds to
 \ a located declaration in a file other than the subject when the declaration's
 \ canonical tail is TAIL, byte for byte: a use of the word wherever the
 \ composition reads it. An empty TAIL names no word.
@@ -1353,7 +1059,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    0 VFY-OUT-U ! 0 VFY-DEFS-U ! 0 VFY-FILES-U !
    0 VFY-USES-U ! 0 VFY-LOADS-U ! 0 VFY-CANDS-U !
    VFY-NONE VFY-ANSWER !
-   0 VFY-STOP-RC ! 0 VFY-STOP-REASON-U ! 0 VFY-FAULT-LEN ! 0 VFY-TARGET-U ! ;
+   0 VFY-TARGET-U ! ;
 
 : VFY-BATCH-SUBJECT ( n -- )
    {: k:n :}
@@ -1396,9 +1102,8 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
       at VFY-BATCH-OUT 0 VFY-OUT u BYTE-COPY
       u VFY-TAKE
       VFY-ANSWER @ VFY-NONE = if true VFY-BATCH-BROKEN ! then
-      VFY-DUP-RECORDS
+      VFY-RECORDS
       VFY-BATCH-BROKEN @ 0= VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? and if
-         VFY-ANSWER @ VFY-STOPPED = if VFY-STOP-LINE then
          true VFY-BATCH-COMPLETE !
       then
       end k VFY-BATCH-MARK$ nip + VFY-BATCH-POS !
@@ -1734,41 +1439,20 @@ public
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 
-\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with, the
-\ child's, a loader's fault's among them, 0 when none did.
-: VERIFY-STOP ( -- n )
-   VFY-STOP-RC @ ;
+\ The status the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 for a
+\ rejection, a missing source among them, 74 for a source found but not
+\ readable, 0 when nothing was rejected.
+: VERIFY-STATUS ( -- n )
+   VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC exit then
+   VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if CHECKER-REJECT-RC exit then
+   0 ;
 
-\ The actual target of a loader's failed source read, unreadable source or
-\ missing source, if there was one. The next verification replaces these
-\ bytes; a consumer keeps its own copy.
+\ The file a loader of the last verification named that is not there or could
+\ not be read, as it was resolved, else empty. The next verification replaces
+\ these bytes; a consumer keeps its own copy.
 : VERIFY-UNREAD$ ( -- ptr u8 n )
-   VFY-STOP-RC @ {: rc:n :}
-   rc VERIFY:E-SOURCE-READ =  rc CHECKER-REJECT-RC =  or  rc INCLUDE-IO-RC =  or
+   VFY-ANSWER @ VFY-MISSING =  VFY-ANSWER @ VFY-UNREAD =  or
    if VFY-TARGET$ else NULL$ then ;
-
-\ Where it stopped: the byte where the token it stopped at starts, the one the
-\ verifier read last or the opener of the statement it was in, whether that is
-\ in the bytes it was given, and the file it is in, PATH's canonical spelling or
-\ the LABEL for those bytes.
-: VERIFY-STOP-AT ( -- n )
-   VFY-STOP-AT @ ;
-
-\ The name the last PREVERIFY-BYTES refused as a duplicate, in the same file:
-\ the byte where it starts and its length, 0 when it kept no name.
-: PREVERIFY-DUPLICATE ( -- n n )
-   VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ ;
-
-: VERIFY-STOP-SUBJECT? ( -- bool )
-   VFY-STOP-SUBJ @ ;
-
-: VERIFY-STOPPED$ ( -- ptr u8 n )
-   VFY-STOP-FILE$ ;
-
-\ Why the scan refused the declaration it stopped at, empty when the child gave
-\ no reason.
-: VERIFY-STOP-REASON$ ( -- ptr u8 n )
-   VFY-STOP-REASON$ ;
 
 ;using
 ;package

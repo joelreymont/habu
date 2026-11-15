@@ -24,7 +24,6 @@ package DIAG-POSITION-TEST
 PATH-CAP 1+ 4 * constant CAP
 70 constant REJECT-RC
 67 constant THROW-RC
-78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
 7194 constant BAD-ESCAPE-THROW
 
 create OUT CAP allot
@@ -694,7 +693,7 @@ variable RC
    s" ARENA X n" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-taken.f" FIXTURE!
-   s" " DUP-RC CHECK-EXIT
+   s" " REJECT-RC CHECK-EXIT
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --all-errors" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT

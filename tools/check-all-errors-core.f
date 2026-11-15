@@ -7,7 +7,7 @@
 \ capture to hold them, and handed to the report when the run ends.
 \
 \ A definition of a name its scope already held is rejected at the name, and
-\ the scan goes on past it as past any rejected definition (CA-ON-DUP).
+\ the scan goes on past it as past any rejected definition.
 \
 \ The checker reports a definition it rejects and returns, but a statement can
 \ also throw out of it. A status in 1..255 follows the record its rejection
@@ -226,20 +226,6 @@ variable CA-COMPOSE-LABEL-U
    REJECTION:KEEP
    REJECTION:SOURCE-OFF ;
 
-: CA-NAME-END ( ptr u8 n n -- n ) {: b:ptr bu:n at:n :}
-   at begin dup bu < if b over + c@ 32 > else false then while 1+ repeat ;
-
-\ VERIFY:ON-DUPLICATE: the definition's name, which starts at the given byte of
-\ the bytes the scan has armed and has the given length, or the statement's
-\ word there when the definer generates the name. The record returns, so the
-\ scan skips the definition and goes on.
-: CA-ON-DUP ( n n ptr u8 n bool -- )
-   drop 2drop {: at:n u:n :}
-   REJECTION:SOURCE$ {: b:ptr bu:n :}
-   u 0= IF b bu at CA-NAME-END at - ELSE u THEN {: n:n :}
-   b at + n 2dup REJECTION:DUPLICATE
-   REJECTION:KEEP ;
-
 public
 
 \ True for the status of a check a statement threw out of unreported: a code
@@ -318,15 +304,10 @@ variable CA-COMPOSING                   \ the run is a composition
    CA-COMPOSING @ IF CA-CHECK-COMPOSE ELSE CA-CHECK-SOURCE THEN ;
 
 \ The scan's records and the stop's, captured from the first to the last.
-\ A reader with no token after it is the caller's to report (COMPOSE-BUF).
-\ The duplicate hook stays after the run: VERIFY has no word that puts its
-\ stop back.
 : CA-RUN-CAPTURED ( -- n )
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    1 1 0 REJECTION:ORIGIN!
-   ['] CA-ON-DUP is VERIFY:ON-DUPLICATE
    [: CA-CHECK ;] catch {: rc:n :}
-   rc VERIFY:E-MISSING-NAME = IF rc throw THEN
    rc CA-STOPPED
    rc ;
 
@@ -413,9 +394,6 @@ public
 \ Check the given source bytes as the file at the given path, reporting them
 \ under the given label: the composition verifies every file a top-level
 \ loader statement loads where it stands, under its own path, in one session.
-\ A reader with no token after it throws VERIFY:E-MISSING-NAME to the caller,
-\ which reports it at VERIFY:TOKEN-BYTE@ in the file
-\ VERIFY:SOURCE-COMPOSE-STOPPED$ names.
 : COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    label labelu CA-START
@@ -612,7 +590,7 @@ public
 \ The record line --all-errors writes for a duplicate definition, for a caller
 \ that had the checker run over the given source under the given label: at the
 \ name the scan refused, which starts at the given byte and has the given
-\ length, 0 for no name kept (VERIFY:DUPLICATE), in the mode JSON! selected,
+\ length, 0 for no name kept, in the mode JSON! selected,
 \ with no line feed.
 : DUP-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
    {: at:n u:n labela:ptr labelu:n srca:ptr srcu:n :}

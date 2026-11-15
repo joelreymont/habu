@@ -27,6 +27,7 @@ private
 : VERIFY-ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
    s" tools/check.f" ARGS
    s" --" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+
    source size >LEN PROC-ARGV+ ;
 
