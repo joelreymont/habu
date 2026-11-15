@@ -18,10 +18,8 @@ private
 0 constant NO-ERROR
 $22 constant DQUOTE             \ the byte that closes a string literal
 
-0 constant ROW-BARE             \ FAM: bare `PRIM:` row, closed by `PRIM;`
-1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
-2 constant ROW-EBARE            \ FAM: engine `EPRIM:` row, closed by either engine closer
-3 constant ROW-EPKG             \ FAM: engine `EPPRIM:` row, closed by either engine closer
+0 constant ROW-BARE             \ FAM: an `EPRIM:` row
+1 constant ROW-PKG              \ FAM: an `EPPRIM:` row
 
 \ partial: the tables possibly part made.
 ENUM tables released partial made ;ENUM
@@ -334,16 +332,15 @@ private
    s" .(" STR= ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
-\ package) with `parse-name`, so a primitive may be named `s"`, `c"`, `."`,
-\ `s\"`, `c\"`, `.\"`, `[']` or `[char]` (src/core/checker.f names all eight),
-\ which a word-at-a-time lexer would read as live string openers. The engine's
-\ table (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and `EPPRIM: pkg name
-\ ... ECLOSE-PRIVATE`, and names a definer: `EPRIM: create EPRIM;` read word at a
+\ package) with `parse-name`, so a row may name a primitive `s"`, `c"`, `."`,
+\ `s\"`, `c\"`, `.\"`, `[']` or `[char]`, which a word-at-a-time lexer would
+\ read as a string opener or a parsing word. The engine's table
+\ (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and `EPPRIM: pkg name ...
+\ ECLOSE-PRIVATE`, and names a definer: `EPRIM: create EPRIM;` read word at a
 \ time defines `EPRIM;`. A complete row is one REGISTRY token spanning the row,
 \ at its opener, with empty CONTENT; an incomplete row is MALFORMED-REGISTRY at
-\ the opener. The row model is src/habu/verify-source.f RECORD-PRIM-ROW: header
-\ fields raw, then body fields where comments are inert and a parsing word
-\ consumes its operand. Row fields share the engine delimiter rule.
+\ the opener. Header fields are raw; in body fields comments are inert and a
+\ parsing word consumes its operand. Row fields share the engine delimiter rule.
 
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
@@ -380,10 +377,8 @@ private
 
 \ The family of the row a token opens, or -1 for a token that opens none.
 : ROW-FAMILY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" PRIM:" STR=CI if ROW-BARE exit then
-   a u s" PPRIM:" STR=CI if ROW-PKG exit then
-   a u s" EPRIM:" STR=CI if ROW-EBARE exit then
-   a u s" EPPRIM:" STR=CI if ROW-EPKG exit then
+   a u s" EPRIM:" STR=CI if ROW-BARE exit then
+   a u s" EPPRIM:" STR=CI if ROW-PKG exit then
    -1 ;
 
 : ROW-OPEN? ( ptr u8 n -- bool )
@@ -391,16 +386,7 @@ private
 
 \ A package row names its package before the primitive.
 : PKG-ROW? ( -- bool )
-   FAM @ ROW-PKG =  FAM @ ROW-EPKG =  or ;
-
-: PRIM-CLOSE? ( ptr u8 n -- bool )
-   s" PRIM;" STR=CI ;
-
-: PPRIM-CLOSE? ( ptr u8 n -- bool )
-   s" PPRIM;" STR=CI ;
-
-: PRIVATE-CLOSE? ( ptr u8 n -- bool )
-   s" CLOSE-PRIVATE" STR=CI ;
+   FAM @ ROW-PKG = ;
 
 : EPRIM-CLOSE? ( ptr u8 n -- bool )
    s" EPRIM;" STR=CI ;
@@ -408,36 +394,16 @@ private
 : EPRIVATE-CLOSE? ( ptr u8 n -- bool )
    s" ECLOSE-PRIVATE" STR=CI ;
 
-\ `PRIM;` closes a bare row; a package row closes with `PPRIM;` (public wordlist)
-\ or `CLOSE-PRIVATE` (package private wordlist). A bare row has no package
-\ wordlist, so `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
-\ Both engine closers write the open row (src/habu/prims.f ROW-WRITE), so the
-\ engine ends either engine row at the first `EPRIM;` or `ECLOSE-PRIVATE`.
+\ Both closers write the open row, so the engine ends either row at the first
+\ `EPRIM;` or `ECLOSE-PRIVATE`.
 : ROW-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   FAM @ ROW-BARE = if a u PRIM-CLOSE? exit then
-   FAM @ ROW-PKG = if
-      a u PPRIM-CLOSE? if true exit then
-      a u PRIVATE-CLOSE? exit
-   then
    a u EPRIM-CLOSE? if true exit then
    a u EPRIVATE-CLOSE? ;
 
-\ The other family's closer, which cannot end this row: `PPRIM;` in a bare row,
-\ `PRIM;` in a package row. Either engine closer ends an engine row, so an
-\ engine row has none.
-: WRONG-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   FAM @ ROW-BARE = if a u PPRIM-CLOSE? exit then
-   FAM @ ROW-PKG = if a u PRIM-CLOSE? exit then
-   false ;
-
-\ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is that
-\ operand and not a closer. Bracket-less `char` is not here, a known divergence
-\ from src/habu/verify-source.f BODY-PARSER?: the row grammar names exactly eight
-\ operand-parsing labels, and leaving it out is the safe direction (`PRIM: FOO
-\ char PRIM; create LEAK PRIM;` closes at the first closer and hands `create
-\ LEAK` to the consumer as tokens). src/core/checker.f writes `char` only in
-\ header position, where every field is raw. This rule is canonical:
-\ verify-source.f is the side that conforms when it consumes REGISTRY tokens.
+\ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is
+\ that operand and not a closer. Bracket-less `char` is not here: `EPRIM: FOO
+\ char EPRIM; create LEAK EPRIM;` closes at the first closer and hands `create
+\ LEAK` to the consumer as tokens.
 : PARSE-NEXT? ( ptr u8 n -- bool )
    2dup s" [']" STR= if 2drop true exit then
    s" [char]" STR=CI ;
@@ -450,13 +416,11 @@ private
    true HALTED ! ;
 
 \ A header field names the primitive (and, for a package row, its package). An
-\ opener or a closer of this row's family there is never a name: the row is
-\ missing its header.
+\ opener or a closer there is never a name: the row is missing its header.
 : HDR-BAD? ( -- bool )
    FLEN @ 0= if true exit then
    F$ ROW-OPEN? if true exit then
-   F$ ROW-CLOSE? if true exit then
-   F$ WRONG-CLOSE? ;
+   F$ ROW-CLOSE? ;
 
 : HDR-FIELD ( -- )
    NEXT-FIELD
@@ -488,7 +452,6 @@ private
       BODY-FIELD
       FLEN @ 0= if MARK-BAD exit then
       F$ ROW-CLOSE? if exit then
-      F$ WRONG-CLOSE? if MARK-BAD exit then
       F$ ROW-OPEN? if MARK-BAD exit then
       FIELD-OPERAND 0= if MARK-BAD exit then
    again ;
@@ -508,8 +471,8 @@ private
    EMIT-ROW ;
 
 \ After a body opener or `undefine` the engine consumes the next word as a parsed
-\ name and never executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in
-\ src/core/checker.f declares the opener rather than opening a row.
+\ name and never executes it, so `: EPRIM: ( -- )` declares the opener rather
+\ than opening a row.
 : NAMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
    a u s" undefine" STR=CI ;

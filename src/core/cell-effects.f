@@ -1,42 +1,5 @@
-\ cell-effects.f - effects for words needed before the checker starts.
-
-\ intern-table.f's words load before the checker; a row records no throw, so the
-\ checker misses TEXT's and FIND's E-INTERN-REWIND.
-PPRIM: INTERN CLEANUP PPRIM;
-PPRIM: INTERN EACH-STRING PE-Q PE-N PE-QIN ;PE-Q PE-IN PPRIM;
-PPRIM: INTERN TEXT PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
-PPRIM: INTERN FIND PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
-PPRIM: INTERN KEEP-BELOW PE-N PE-IN PPRIM;
-
-\ The checker's verdict word src/habu/verify-source.f calls: without a row it
-\ is E-UNDEFINED on a from-source prefix boot.
-PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
-
-s" SCRATCH-ALLOT" s" n --" TRUST
-s" datum" s" --" TRUST
-s" SCRATCH-VARIABLE" s" --" TRUST
-s" PTR-VARIABLE" s" --" TRUST
-s" PERSISTED-PTR-VARIABLE" s" --" TRUST
-s" PTR-U8-TABLE" s" n --" TRUST
-s" PERSISTED-PTR-U8-TABLE" s" n --" TRUST
-s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
-s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
-s" RESERVED-PTR-U8-CELL" s" n --" TRUST
-
-\ The rejection count (src/core/rejection.f) and the words that open and close
-\ a collection (src/core/checker.f) load before the checker starts, so a checked
-\ call of them needs these rows.
-PPRIM: REJECTION TALLY PE-PTR-N PE-OUT PPRIM;
-PRIM: MULTI-ERR-BEGIN PRIM;
-PRIM: MULTI-ERR-END PE-N PE-OUT PRIM;
-
-\ src/habu/verify-source.f counts its learned definers and its `parses:` rows
-\ in these checker cells, which the rollback frame rewinds (src/core/checker.f),
-\ and names them in checked bodies loaded after the hook.
-PRIM: VERIFY-DEFINER-N PE-PTR-N PE-OUT PRIM;
-PRIM: VERIFY-PARSES-N PE-PTR-N PE-OUT PRIM;
-
-s" SIG-RAW-MODE" s" -- ptr n" TRUST
+\ cell-effects.f - the `parses:`, `parses-through:` and `names:` words and the
+\ checked call-window store.
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked

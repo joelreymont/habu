@@ -12,17 +12,17 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - Never add `TRUST`, `TRUSTED:` or an unchecked span to bypass a missing checker
   model. Reduce the case and fix the declaration, checker or primitive interface
   at its owner, still rejecting invalid programs.
-- `PRIM:`/`PPRIM:` axioms are for genuine engine, syscall and FFI operations,
-  with checked callers. **Primitive effects are assumptions, not proofs**: each
-  axiom describes the primitive's actual behaviour, with focused coverage
-  through its real call path. Renaming a Forth algorithm or unchecked wrapper,
-  or asserting its effect, does not make it a primitive.
-- A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` belongs to its
-  package: only that package's checked bodies call the primitive. Outside it,
-  a call of a primitive whose one row is the private one (`xref-retarget`) is
-  `E-UNDEFINED`, in a body and at top level, and a
-  top-level `'` of it yields the xt; a body's call of one that also keeps a
-  global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
+- A word defined in source takes its type from its definition; an engine
+  primitive's rows are its `EPRIM:`/`EPPRIM:` lines in src/habu/prims.f.
+  **Primitive effects are assumptions, not proofs**: each row describes the
+  primitive's actual behaviour, with focused coverage through its real call
+  path. Renaming a Forth algorithm or unchecked wrapper, or asserting its
+  effect, does not make it a primitive.
+- An `EPPRIM:` row belongs to its package: only that package's checked bodies
+  call the primitive. Outside it, a call of a primitive whose one row is the
+  private one (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level,
+  and a top-level `'` of it yields the xt; a body's call of one that also keeps
+  a global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
   `[']` of it is admitted and refused exactly where that call is.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
@@ -2680,8 +2680,8 @@ sections above.
   cell `check@` reads and `0 set-check` empties it, but hb's interpreter
   calls the checker by name: after `0 set-check` or `' NAME set-check`,
   every definition, immediate and top-level token is checked, and a cell
-  pushed meanwhile keeps its type. Use a `PRIM: … PRIM;` axiom for a genuine
-  missing primitive model.
+  pushed meanwhile keeps its type. A genuine missing primitive model is an
+  `EPRIM:` row in src/habu/prims.f.
 - **A native build refuses a definition whose checker scan is refused**, before
   publication. A failed native compile retracts only the pending definition's
   rows, preserving prior rows. If no row supplies arity it refuses with the

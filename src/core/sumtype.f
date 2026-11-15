@@ -1882,13 +1882,6 @@ NOMINAL-PROVIDER
 NOMINAL-PROVIDER
 : CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
 
-\ NEWTYPE parses its family name from the input, so its cell effect is ( -- ).
-\ The axiom row keeps it checker-known: the sealed checker refuses a word it has
-\ no row for. UNSAFE-TOK? rejects it inside checked bodies (it parses the live
-\ input and mutates the type registry at run time, which ( -- ) does not
-\ express), so the axiom adds no checked-code capability.
-PRIM: NEWTYPE PRIM;
-
 ;using
 ;using
 ;using

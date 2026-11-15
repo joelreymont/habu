@@ -55,12 +55,8 @@ $3820 constant DATUM-CELL
 \
 \ These live here, not beside TYPED-VARIABLE (src/core/layout-buffer.f), because
 \ that form lays its words through the engine's child cell, filled only after the
-\ boot prefix; a clause is compiled, so it works in the boot prefix,
-\ where the checker's own pointer tables are declared. A new definer needs two
-\ rows, because a definer written before the checker exists is invisible to it:
-\ src/core/cell-effects.f states its own effect (without it the sealed checker
-\ refuses a checked call of the name), and
-\ src/habu/verify-source.f states what it publishes for the created word.
+\ boot prefix; a clause is compiled, so it works in the boot prefix, where the
+\ checker's own pointer tables are declared.
 
 \ A table of byte pointers: `n` cells, each holding a `ptr u8`. `n PTR-U8-TABLE
 \ NAME` publishes NAME as the table's BASE, so `i cells NAME + 0 ptr-field` takes
@@ -81,9 +77,7 @@ $3820 constant DATUM-CELL
    create 1 cells SCRATCH-ALLOT does> ( -- ptr ptr ptr u8 ) ;
 
 \ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
-\ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes
-\ through POINTER-STORAGE:DATA-CELL on every read, so no absolute address is
-\ baked. This definer has both rows, so the seal leaves its name alone;
-\ test/pointer-storage-test.f measures its effect.
+\ the engine layout reserves at `off`. The offset goes through
+\ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked.
 : RESERVED-PTR-U8-CELL ( n -- )
    create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;

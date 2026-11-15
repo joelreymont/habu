@@ -670,7 +670,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` checks |
+| Checked code and primitive boundaries | `TRUST`, a new `EPRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |

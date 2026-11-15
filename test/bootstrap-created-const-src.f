@@ -1,9 +1,9 @@
 \ bootstrap-created-const-src.f - a constant cannot mint a nominal family.
 \
-\ The `constant` publisher's own row matters here: `PRIM: constant` already
-\ answers `-- a` through hook inference, so only the raw seal separates a
-\ published constant from an inferred one, and only a nominal read-back can
-\ see the difference.
+\ The `constant` publisher's own row matters here: the checker's row for
+\ `constant` already answers `-- a` through hook inference, so only the raw
+\ seal separates a published constant from an inferred one, and only a nominal
+\ read-back can see the difference.
 
 package BCK
 NEWTYPE kon-id

@@ -2638,9 +2638,9 @@ public
    CHECKER-REJECT-RC throw ;
 
 \ A step is a guest in the term pools: an event fires between the tokens of a
-\ declaration whose terms sit in the pools, on the stack and in its variables
-\ (PRIM: ... PRIM;), so the step allocates above the pools' marks, where NEW
-\ would reset them, and releases back to the marks.
+\ declaration whose terms sit in the pools, on the stack and in its variables,
+\ so the step allocates above the pools' marks, where NEW would reset them, and
+\ releases back to the marks.
 CHECKER-REG:SCRATCH{
 variable TG-FV     variable TG-SPN     variable TG-QEN     variable TG-PTRN
 variable TG-STLN   variable TG-ATOMN   variable TG-PARAMN  variable TG-PSCR

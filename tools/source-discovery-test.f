@@ -343,8 +343,6 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-RES\nprivate\nvariable REQUIRED\ncreate INCLUDED\n1 constant INCLUDE\ndefer PROVIDED ( -- )\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" package CVT-DEF\npublic\nDEFLINEAR CVT-DEF:tok\nEXPORT required\nprivate\nCAST: include ( n -- ptr u8 )\nLINEAR: provided ( ptr n -- CVT-DEF:tok )\n;package\nrequire sd-raw.f\n"
-   s" sd-raw.f" SDT-ONE-EVENT
-   S\" : SUMTYPE ( -- ) ;\nPRIM: SUMTYPE PRIM;\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ Family declarations parse their bodies as data, including member names that

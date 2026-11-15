@@ -91,5 +91,3 @@ public
 ;package
 
 : ARENA ( -- ) ARENA-DECL:RUN ;
-
-PRIM: ARENA PRIM;

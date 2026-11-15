@@ -11659,8 +11659,6 @@ variable PRM-FIRST
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE PE-NA
 variable PE-NU
-PTR-VARIABLE PE-PKG-A
-variable PE-PKG-U
 CHECKER-REG:}SCRATCH
 variable PE-BASE
 variable PE-DIN
@@ -11693,7 +11691,7 @@ variable PE-EFF-ID
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
-   \ A post-table PRIM: replaces a user declaration too. Forget that symbol's
+   \ A post-table row replaces a user declaration too. Forget that symbol's
    \ old answer; publishing a user hit here would hide initial prim overloads.
    HIDX-VALID @ IF
       HIDX-EPOCH @ 1- PE-SYM-ID @ HT-EFF-E HIDX-CELL !
@@ -11701,19 +11699,6 @@ variable PE-EFF-ID
 
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
-
-: CLOSE-PUBLIC ( -- )
-   PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
-   PE-CLOSE-SYM ;
-
-\ The package row's closer: interns the axiom into the owner's private
-\ wordlist, so the row resolves only while that package is open; every other
-\ scope misses the symbol. PPRIM: reads its token, `CLOSE-PRIVATE`, by
-\ spelling; the token is also the toolchain's. A primitive may have its private
-\ row alone: its global record has no top-level row.
-: CLOSE-PRIVATE ( -- )
-   PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
-   PE-CLOSE-SYM ;
 
 : PE-IN ( n -- )
    PE-DIN @ MK-PUSH PE-DIN ! ;
@@ -11857,56 +11842,6 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
    code PRIM-SPEC:A-QUOT-ANY = IF PE-QANY EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
-
-\ A source row reads its effect tokens and runs each as the table's atoms,
-\ matched by spelling, never looked up: inside a build the product's checker.f
-\ defines its own PE words.
-
-\ A token's atoms, the second 0 when it has one; 0 0 outside the grammar.
-: PE-TOKEN-ATOMS ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u s" PE-IN"     CORE-STR=CI IF PRIM-SPEC:A-IN       0 EXIT THEN
-   a u s" PE-OUT"    CORE-STR=CI IF PRIM-SPEC:A-OUT      0 EXIT THEN
-   a u s" PE-N"      CORE-STR=CI IF PRIM-SPEC:A-NUM      0 EXIT THEN
-   a u s" PE-F"      CORE-STR=CI IF PRIM-SPEC:A-BOOL     0 EXIT THEN
-   a u s" PE-PTR"    CORE-STR=CI IF PRIM-SPEC:A-PTR      0 EXIT THEN
-   a u s" PE-Q"      CORE-STR=CI IF PRIM-SPEC:A-QUOT     0 EXIT THEN
-   a u s" PE-QIN"    CORE-STR=CI IF PRIM-SPEC:A-QUOT-IN  0 EXIT THEN
-   a u s" PE-QOUT"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-OUT 0 EXIT THEN
-   a u s" ;PE-Q"     CORE-STR=CI IF PRIM-SPEC:A-QUOT-END 0 EXIT THEN
-   a u s" PE-QANY"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-ANY 0 EXIT THEN
-   a u s" PE-PTR-A"  CORE-STR=CI IF PRIM-SPEC:A-VAR-A PRIM-SPEC:A-PTR EXIT THEN
-   a u s" PE-PTR-N"  CORE-STR=CI IF PRIM-SPEC:A-NUM   PRIM-SPEC:A-PTR EXIT THEN
-   a u s" PE-PTR-U8" CORE-STR=CI IF PRIM-SPEC:A-U8    PRIM-SPEC:A-PTR EXIT THEN
-   0 0 ;
-
-: PE-TOKEN ( ptr u8 n -- )
-   PE-TOKEN-ATOMS {: one:n two:n :}
-   one 0= IF s" checker: a primitive row token outside the row grammar" 76 die THEN
-   one PE-SPEC-ATOM
-   two 0 <> IF two PE-SPEC-ATOM THEN ;
-
-: PE-CLOSER? ( ptr u8 n bool -- bool ) {: a:ptr u:n pkg:bool :}
-   pkg 0= IF a u s" PRIM;" CORE-STR=CI EXIT THEN
-   a u s" PPRIM;" CORE-STR=CI  a u s" CLOSE-PRIVATE" CORE-STR=CI  or ;
-
-: PE-READ ( bool -- ptr u8 n ) {: pkg:bool :}
-   0 PE-SPEC-TOS !
-   BEGIN
-      parse-name  dup 0= IF s" checker: a primitive row has no closer" 76 die THEN
-      2dup pkg PE-CLOSER? 0=
-   WHILE
-      PE-TOKEN
-   REPEAT
-   PE-SPEC-TOS @ 0 <> IF s" checker: primitive row operand left over" 76 die THEN ;
-
-: PRIM: ( -- )
-   parse-name PE-OPEN
-   RES-FALSE PE-READ 2drop PE-CLOSE ;
-
-: PPRIM: ( -- )
-   parse-name PE-PKG-U ! PE-PKG-A !
-   parse-name PE-OPEN
-   RES-TRUE PE-READ s" CLOSE-PRIVATE" CORE-STR=CI IF CLOSE-PRIVATE ELSE CLOSE-PUBLIC THEN ;
 
 PTABLE-START
 
@@ -19968,9 +19903,6 @@ PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
    EFFECT-DOUT-N 0= and ;
-\ The native compiler asks this of the prefix; its declared row is what lets
-\ checked code call it.
-s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT
 
@@ -20018,9 +19950,6 @@ variable ACTIVE
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
    sym cnt PIMM-ADD ;
-\ The TRUST row keeps parse-imm out of the internal-word marking: a library
-\ declares its parsing immediates at top level.
-s" parse-imm" s" ptr u8 n n --" TRUST
 
 \ PARSE-IMM's row, added by the verifier's replay in a verifier window only.
 : CHECKER-PARSE-IMM ( ptr u8 n n -- )

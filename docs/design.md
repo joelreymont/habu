@@ -145,12 +145,12 @@ it exactly. A raw execution token fetched from untyped memory has lost its
 effect, and executing one is refused (see "Typed top level").
 
 **Escape hatches are loud and few.** `TRUSTED:` asserts an effect without
-checking the body; `PRIM:` and `PPRIM:` rows give an engine primitive its
-effect; a private `CAST:` changes a type at one named point. Each is a site a reader and the checked-boundary lint
-can find. A trusted site's comment states why the effect cannot be inferred,
-and a focused test pins its behaviour through the production path. Before
-adding trust, try a checked factoring: a single primitive row usually turns a
-trusted call site, or a whole unchecked span, into checked code.
+checking the body; an `EPRIM:` or `EPPRIM:` row gives an engine primitive its
+effect; a private `CAST:` changes a type at one named point. Each is a site a
+reader can find. A trusted site's comment states why the effect cannot be
+inferred, and a focused test pins its behaviour through the production path.
+Before adding trust, try a checked factoring: a single primitive row usually
+turns a trusted call site, or a whole unchecked span, into checked code.
 
 **Packages can be sealed.** Not resolving a private name from outside proves
 only that the name is not visible; a later `package NAME` could reopen the

@@ -16,8 +16,7 @@ package CHECKER-OWNER
 
 variable BIND-UNJUDGED
 
-\ A retained prefix may carry these pre-hook words without native call models.
-\ Bind their actual execution tokens with their existing callable contracts.
+\ The paired checker's calls, bound by BIND-SOURCE-CALLS below.
 defer SOURCE-UNJUDGED ( ptr u8 n -- n )
 defer SOURCE-CALL-CELLS ( n -- n n )
 defer SOURCE-CALL-BINDING ( n -- ptr u8 n )
@@ -68,11 +67,9 @@ CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    RECORD off a u RECORD-FIELD ;
 
-\ Bound once while this source compiler and its checker are paired. The engine
-\ refuses a tick of an internal pre-hook word and a checked body may not call a
-\ trust-boundary one (E-CAP-TRUSTED), so the owner's
-\ callable field is the binding. The record is this tree's checker's, found by
-\ name: inside a build the live record is the building hb's.
+\ Bound once while this source compiler and its checker are paired. The record
+\ is this tree's checker's, found by name: inside a build the live record is the
+\ building hb's.
 : PAIRED-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    CHECKER-REG:DECLARATIONS BYTE-VIEW off a u RECORD-FIELD ;
 

@@ -1285,10 +1285,6 @@ $FF constant SD-NAMES                    \ loaders and family openers
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-PARSER? if SD-RAW 2drop exit then
-   \ PRIM: declares an effect for the named word; that name is source data.
-   SD-DEF @ 0= off len SD-TOK$ s" PRIM:" STR=CI and if
-      SD-RAW 2drop exit
-   then
    SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
       noff nu SD-R-DECL-NAME

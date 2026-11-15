@@ -150,10 +150,8 @@
 \ row's package before it, are read raw, so either may be spelled as a definer
 \ or parsing word (`EPRIM: create EPRIM;`). The body runs to the row's first
 \ closer, read by the canonical body scanner so that parsing words consume
-\ their comments, strings and raw operands before a closer is considered. A
-\ `PPRIM:` row ends at `PPRIM;` (public) or `CLOSE-PRIVATE` (private); a bare
-\ `PRIM:` row has no package, so `CLOSE-PRIVATE` is an ordinary effect token
-\ there. prims.f's `EPRIM:` and `EPPRIM:` rows end at the first of `EPRIM;` and
+\ their comments, strings and raw operands before a closer is considered.
+\ prims.f's `EPRIM:` and `EPPRIM:` rows end at the first of `EPRIM;` and
 \ `ECLOSE-PRIVATE`, since both write the open row. A row is known by its
 \ opener's spelling: a binding cannot tell prims.f's opener from its own
 \ definition when the scan reads prims.f. No `parses-through:` row can bound
@@ -194,9 +192,9 @@ public
 
 \ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
 \ the word that cannot finish: a reader (a definer, a parsing word) with no
-\ token after it, a string opener with no closing quote, a PRIM:, PPRIM:,
-\ EPRIM: or EPPRIM: row with no closer, a top-level escaped literal holding an
-\ escape the engine refuses.
+\ token after it, a string opener with no closing quote, an EPRIM: or EPPRIM:
+\ row with no closer, a top-level escaped literal holding an escape the engine
+\ refuses.
 7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
@@ -3208,10 +3206,9 @@ variable FILE-USE
    a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
-: ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
-   TOKEN-A @ TOKEN-U @ end endu STR=CI IF 0 0= EXIT THEN
-   altu 0= IF 0 0= 0= EXIT THEN
-   TOKEN-A @ TOKEN-U @ alt altu STR=CI ;
+: ROW-CLOSER? ( -- bool )
+   TOKEN-A @ TOKEN-U @ s" EPRIM;" STR=CI IF 0 0= EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" ECLOSE-PRIVATE" STR=CI ;
 
 : ROW-UNCLOSED ( n -- )
    TOKEN-BYTE !
@@ -3221,8 +3218,8 @@ variable FILE-USE
 \ body's literal and line: that literal may lie in decoded bytes a decode has
 \ since moved. Discovery refuses a loader word with no literal before it, so
 \ tools/check.f never reads one that opens a row.
-: RECORD-PRIM-ROW ( n ptr u8 n ptr u8 n -- )
-   {: at:n end:ptr endu:n alt:ptr altu:n :}
+: RECORD-PRIM-ROW ( n -- )
+   {: at:n :}
    BODY-LOAD-RESET
    LOCALS-RESET
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
@@ -3230,18 +3227,15 @@ variable FILE-USE
    BEGIN
       BODY!
       TOKEN-U @ 0= IF at ROW-UNCLOSED THEN
-      end endu alt altu ROW-CLOSER? IF EXIT THEN
+      ROW-CLOSER? IF EXIT THEN
       SKIP-BODY-TOKEN
    AGAIN ;
 
-: RECORD-PRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
-   TOKEN-BYTE @ end endu alt altu RECORD-PRIM-ROW ;
-
-: RECORD-PPRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
+: RECORD-PPRIM ( -- )
    TOKEN-BYTE @ {: at:n :}
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
-   at end endu alt altu RECORD-PRIM-ROW ;
+   at RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -3435,14 +3429,6 @@ variable HEAP-XT s" HEAP" HEAP-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
-variable SCRATCH-VARIABLE-XT s" SCRATCH-VARIABLE" SCRATCH-VARIABLE-XT LIBRARY-XT!
-variable PTR-VARIABLE-XT s" PTR-VARIABLE" PTR-VARIABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-VARIABLE-XT s" PERSISTED-PTR-VARIABLE" PERSISTED-PTR-VARIABLE-XT LIBRARY-XT!
-variable PTR-U8-TABLE-XT s" PTR-U8-TABLE" PTR-U8-TABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-U8-TABLE-XT s" PERSISTED-PTR-U8-TABLE" PERSISTED-PTR-U8-TABLE-XT LIBRARY-XT!
-variable PERSISTED-PTR-U8-TABLE-VARIABLE-XT s" PERSISTED-PTR-U8-TABLE-VARIABLE" PERSISTED-PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
-variable PTR-U8-TABLE-VARIABLE-XT s" PTR-U8-TABLE-VARIABLE" PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
-variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-XT LIBRARY-XT!
 
 \ A re-export of the library word is that word: the load binds its alias to the
 \ library word's code. An export keeps its source's tail, so only a token whose
@@ -3554,31 +3540,9 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u SCRATCH-VARIABLE-XT @ s" SCRATCH-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PTR-VARIABLE-XT @ s" PTR-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-VARIABLE-XT @ s" PERSISTED-PTR-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   \ The clause names the pointee, so the effect has no type variable and the
-   \ raw registration seals nothing: the row native `trust-raw` publishes.
-   a u PTR-U8-TABLE-XT @ s" PTR-U8-TABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-U8-TABLE-XT @ s" PERSISTED-PTR-U8-TABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PERSISTED-PTR-U8-TABLE-VARIABLE-XT @ s" PERSISTED-PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u PTR-U8-TABLE-VARIABLE-XT @ s" PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
-      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   \ The offset token precedes the name, as a table count does, so the created
-   \ word is still the next token.
-   a u RESERVED-PTR-U8-CELL-XT @ s" RESERVED-PTR-U8-CELL" LIBRARY-DEFINER? IF
-      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" PRIM:" STR=CI IF s" PRIM;" s" " RECORD-PRIM 0 0= EXIT THEN
-   a u s" PPRIM:" STR=CI IF s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PPRIM 0 0= EXIT THEN
-   a u s" EPRIM:" STR=CI IF s" EPRIM;" s" ECLOSE-PRIVATE" RECORD-PRIM 0 0= EXIT THEN
-   a u s" EPPRIM:" STR=CI IF s" ECLOSE-PRIVATE" s" EPRIM;" RECORD-PPRIM 0 0= EXIT THEN
+   a u s" EPRIM:" STR=CI IF TOKEN-BYTE @ RECORD-PRIM-ROW 0 0= EXIT THEN
+   a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF
       [: CAST-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
