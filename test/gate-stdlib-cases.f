@@ -21,14 +21,24 @@ SUITE lsp-boundary
 ;SUITE
 [then]
 
+\ A cross-build: a linux-aarch64 host builds this target natively, where no
+\ word is a target word.
+HB-TARGET-LINUX? 0= [if]
 SUITE linux-engine-build
    test/linux-engine-build.f
 ;SUITE
+[then]
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
 SUITE websocket
    src/lib/net/ws-test.f
+;SUITE
+
+\ The Wasm and browser modules, validated by wasm-tools and run by bun; both on
+\ PATH are a suite requirement (docs/bootstrap.md "Requirements").
+SUITE wasm-device
+   test/wasm/device.f
 ;SUITE
 
 SUITE xml-owner-consumer
@@ -115,9 +125,8 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
-\ The sealed Wasm target, scalar-FP split and function convention.
-SUITE compiler-wasm-target
-   test/compiler/wasm-target.f
+SUITE compiler-workspace
+   test/compiler/workspace.f
 ;SUITE
 
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
@@ -126,57 +135,17 @@ SUITE wasm-numeric
    test/wasm/numeric.f
 ;SUITE
 
-\ WLEB, the Wasm backend's LEB128: the shortest and padded forms at their
+\ WLEB, tier 0's Wasm LEB128: the shortest and padded forms at their
 \ edges, the call and address fields rewritten in place, and each refusal.
 SUITE wasm-leb
    test/wasm/leb.f
 ;SUITE
 
-\ The Wasm backend's dialect, src/arch/wasm/wstruct.f: its closed vocabulary,
-\ a module frozen through WSTRUCT:FREEZE and the substrate's refusals.
-SUITE wasm-wstruct
-   test/wasm/wstruct.f
-;SUITE
-
-\ WCTL, the Wasm backend's structured control, src/arch/wasm/structure.f: W01's
-\ copies and label depths over nested loops and ifs, and W02's refusal of a
-\ cycle entered at two blocks.
-SUITE wasm-structure
-   test/wasm/structure.f
-;SUITE
-
-\ The Wasm selector, src/arch/wasm/select.f: definitions compiled through
-\ NBACK and selected to frozen WSTRUCT, calls, status and the integer rows.
-SUITE wasm-select
-   test/wasm/select.f
-;SUITE
-
-\ WENC, the Wasm backend's encoder, src/arch/wasm/encode.f: byte-exact bodies
-\ for a straight line, an if/else, nested loops, calls and address literals,
-\ the emission's header, call and address sites, and each refusal.
-SUITE wasm-encode
-   test/wasm/encode.f
-;SUITE
-
-\ WLINK, the Wasm backend's linker, src/arch/wasm/link.f: modules wasm-tools
+\ WLINK, tier 0's Wasm linker, src/arch/wasm/link.f: modules wasm-tools
 \ assembles byte for byte, index and type order, patched call and address
 \ fields, the table, data cells and memory pages, W03 and each refusal.
 SUITE wasm-link
    test/wasm/link.f
-;SUITE
-
-\ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
-\ sign operations, the comparisons and the conversions.
-SUITE wasm-select-f64
-   test/wasm/select-f64.f
-;SUITE
-
-\ The Wasm backend registered at run time, src/arch/wasm/backend.f and
-\ passes.f: real source compiled through an open Wasm shadow, one emission per
-\ record whose rows match its bytes, NEMIT empty after each, the placed row
-\ refused, and the engine's own routine unchanged.
-SUITE wasm-backend
-   test/wasm/backend.f
 ;SUITE
 
 \ Some of src/arch/wasm/kernel-words.f's words beside the engine's primitives, on the host.
@@ -192,50 +161,12 @@ SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
 ;SUITE
 
-\ The x86-64 machine dialect and the capability predicate it loads with:
-\ src/compiler/native/x64ir.f and src/arch/x86-64/backend.f.
-SUITE compiler-x64ir
-   test/compiler/x64ir.f
-;SUITE
-
-\ The x86-64 selection pass: src/compiler/native/select-x64.f and the routine
-\ contracts it is told, src/arch/x86-64/abi.f.
-SUITE compiler-x64-select
-   test/compiler/x64-select.f
-;SUITE
-
-\ The register allocator and its validator over an x86-64 module:
-\ src/compiler/native/regalloc.f and regalloc-verify.f reading this machine
-\ through the vocabulary src/compiler/native/dialect.f declares and
-\ src/compiler/native/x64ir.f builds.
-SUITE compiler-x64-regalloc
-   test/compiler/x64-regalloc.f
-;SUITE
-
-\ The x86-64 bytes themselves: src/compiler/native/emit-x64.f over the modules
-\ the two suites above select and accept, pinned against llvm-mc vectors.
-SUITE compiler-x64-emit
-   test/compiler/x64-emit.f
-;SUITE
-
-\ The x86-64 pass chain: the rows src/arch/x86-64/passes.f installs in
-\ src/compiler/native/backend.f, driven as src/compiler/native/compiler.f drives
-\ them, with the shared spill pass lowering the allocator's plan.
-SUITE compiler-x64-chain
-   test/compiler/x64-chain.f
-;SUITE
-
-\ Host rows (the ARM tier-0 JIT, native x86-64 capture) live in
-\ test/gate-arm-cases.f and test/gate-x64-cases.f; rows for both hosts stay
-\ here.
+\ Tests that need an arm64 host live in test/gate-arm-cases.f; tests for every
+\ host stay here.
 package STDLIB-GATE
 private
 : HOST-ROWS ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" test/gate-x64-cases.f"
-   else
-      s" test/gate-arm-cases.f"
-   then included ;
+   HB-TARGET-LINUX-X86-64? 0= if s" test/gate-arm-cases.f" included then ;
 HOST-ROWS
 ;package
 
@@ -250,11 +181,6 @@ SUITE compiler-native-eval-prefix
    test/compiler/native-eval-prefix.f
 ;SUITE
 
-\ Native primitive goldens live in prim-cases.f and prim-float-cases.f, owned
-\ by prim-parity.f. They pin wrap at MAX-N+1, MIN-N/-1, divisor throws,
-\ modulo-64 shifts, and canonical NaN outputs through compiled primitive calls.
-\ Each case runs against this backend and its available reference implementation
-\ on the product engine.
 SUITE prim-parity
    test/prim-parity.f
 ;SUITE
@@ -303,10 +229,6 @@ SUITE finally
 
 SUITE quotation-locals
    test/quotation-locals.f
-;SUITE
-
-SUITE empty-quotation
-   test/empty-quotation.f
 ;SUITE
 
 SUITE compiler-native-lexical-recovery
@@ -375,6 +297,10 @@ SUITE width-type
 
 SUITE input-underflow-refusals
    test/compiler/input-underflow-refusals.f
+;SUITE
+
+SUITE zero-operand-refusals
+   test/compiler/zero-operand-refusals.f
 ;SUITE
 
 SUITE base-pointer-arith-refusals
@@ -499,6 +425,12 @@ SUITE zlib
    test/zlib-source.f
 ;SUITE
 
+\ FONT on the host's installed fonts; HarfBuzz and the fonts are a gate
+\ requirement (docs/bootstrap.md "Requirements").
+SUITE font-native
+   test/font-native.f
+;SUITE
+
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.
@@ -545,13 +477,15 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+\ SECRET:DIR-BIND over a directory under TMPDIR. Its own suite: the bind holds
+\ SECRET's store for the whole process.
+SUITE secret-dir
+   src/lib/secret/dir-test.f
+;SUITE
+
 \ MODEL against an in-process OpenAI- and Ollama-shaped peer on a loopback port.
 SUITE model
    src/lib/net/model-test.f
-;SUITE
-
-SUITE crew
-   src/lib/crew-test.f
 ;SUITE
 
 \ TEST-ISSUER's routes on a loopback port and tools/test-issuer.f as a child.
@@ -576,8 +510,9 @@ SUITE browser-host
    src/lib/browser/host-test.f
 ;SUITE
 
-\ MCP-APP:PAGE+ of a small module: the kept prefix, the escaped title and the
-\ base64 of each script and the module in one UTF-8 page.
+\ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
+\ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
+\ page id and the base64 of the view's files and the module.
 SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE
@@ -610,9 +545,14 @@ SUITE fmt-numbers
    src/lib/fmt-test.f
 ;SUITE
 
-\ State machines DEFINE writes from a table, their checker rejections and size.
+\ State machines DEFINE builds from a table, their checker rejections and size.
 SUITE fsm
    src/lib/fsm-test.f
+;SUITE
+
+\ Rotations of a 3D affine transform about a line, and points mapped by one.
+SUITE affine
+   src/lib/affine-test.f
 ;SUITE
 
 SUITE log
@@ -621,6 +561,10 @@ SUITE log
 
 SUITE error
    src/lib/error-test.f
+;SUITE
+
+SUITE reason
+   src/lib/reason-test.f
 ;SUITE
 
 SUITE hashmap
@@ -659,6 +603,10 @@ SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
 ;SUITE
 
+SUITE unicode-script-exhaustive
+   tools/unicode/script-verify-main.f
+;SUITE
+
 SUITE argv-stdlib-mocks
    src/lib/argv-test.f
 ;SUITE
@@ -681,6 +629,7 @@ SUITE memory
 SUITE tail-pure-fixtures
    src/lib/json-write-test.f
    src/lib/json-read-test.f
+   src/lib/json-pointer-test.f
    src/lib/jsonl-test.f
    src/lib/decimal-test.f
    src/lib/vector-test.f
@@ -750,10 +699,6 @@ SUITE x86-64-kernel-syscalls
 
 SUITE x86-64-kernel-control
    test/x86-64-kernel-control.f
-;SUITE
-
-SUITE x86-64-kernel-unit
-   test/x86-64-kernel-unit.f
 ;SUITE
 
 SUITE x86-64-kernel-policy
@@ -841,7 +786,7 @@ SUITE stdlib-process-fixtures
    src/lib/process-pty-handle-test.f
 ;SUITE
 
-SUITE friend-arena-seal
+SUITE seal
    test/seal.f
 ;SUITE
 
@@ -1042,6 +987,24 @@ SUITE using-import
    test/using-test.f
 ;SUITE
 
+SUITE postpone-define
+   test/postpone-define.f
+;SUITE
+
+SUITE postpone-effect
+   test/postpone-effect.f
+;SUITE
+
+\ Apart from postpone-define, whose file is also a build source: a definition
+\ these cases refuse gives data space back, which a build refuses.
+SUITE postpone-refuse
+   test/postpone-refuse.f
+;SUITE
+
+SUITE build-items
+   test/build-items.f
+;SUITE
+
 \ The design seal: each test/policy case loaded sealed at tier 0, one child per
 \ case; writes build/vocabulary-run.txt.
 SUITE vocabulary
@@ -1081,6 +1044,20 @@ SUITE fs-mutate
    src/lib/fs-rename-noreplace-test.f
 ;SUITE
 
+\ Host failures come from an LD_PRELOAD shim of glibc's fsync and renameat2.
+HB-TARGET-LINUX? [if]
+SUITE fs-atomic-faults
+   test/fs-atomic-faults.f
+;SUITE
+[then]
+
+\ sd_notify(3) is Linux's: the cases bind unix datagram sockets, abstract ones too.
+HB-TARGET-LINUX? [if]
+SUITE systemd
+   src/lib/systemd-test.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
@@ -1112,7 +1089,7 @@ SUITE tcp4
    src/lib/net/tcp4-test.f
 ;SUITE
 
-\ IPv4 datagrams: two loopback sockets in one process, every wait bounded.
+\ IPv4 datagrams: two loopback sockets in one process.
 SUITE udp4
    src/lib/net/udp4-test.f
 ;SUITE
@@ -1186,6 +1163,10 @@ SUITE name-length
 
 SUITE boot-relocation
    test/boot-relocation-e2e.f
+;SUITE
+
+SUITE install-e2e
+   test/install-e2e.f
 ;SUITE
 
 SUITE source-discovery
@@ -1285,10 +1266,6 @@ SUITE layout-defer
    test/layout-defer.f
 ;SUITE
 
-SUITE wide-store-seal
-   test/wide-store-seal.f
-;SUITE
-
 SUITE protection-span
    test/protection-span.f
 ;SUITE
@@ -1320,8 +1297,7 @@ SUITE check-signal
    test/check-signal-test.f
 ;SUITE
 
-\ A capture that ends its child early - its deadline, an overflow, a refused
-\ reaper arm - leaves nothing the child started.
+\ A capture an overflow ends early leaves nothing its child started.
 SUITE capture-tree
    test/capture-tree-test.f
 ;SUITE
@@ -1384,9 +1360,8 @@ SUITE type-match
 \ it finish, and the rows after it start only when it ends.
 GROUP SEQ native-serial-gates
 
-\ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
-\ idle serial group so the fixed 20 s child-reap budget is not consumed by a
-\ saturated suite pool.
+\ The PTY REPL fixture starts and reaps four engine children: in the idle serial
+\ group a saturated suite pool cannot eat its fixed 20 s child-reap budget.
 SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
 ;SUITE

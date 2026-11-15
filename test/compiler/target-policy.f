@@ -205,8 +205,8 @@ private
    s" CTP-BSWAP ( CNUM:numeric-policy CTARGET:contract -- CBIND:binding ) CBIND:BIND"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Every address residue includes the aligned native path and the byte fallback.
-\ Inspect canonical bytes independently of SLOT@ and preserve neighboring bytes.
+\ At every address residue, inspect the canonical bytes independently of SLOT@
+\ and check the neighboring bytes are untouched.
 : SLOT-AT ( n n -- )
    {: value:n offset:n :}
    32 0 ?do $A5 SLOT-BUF i + c! loop

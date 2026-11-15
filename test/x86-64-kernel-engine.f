@@ -293,14 +293,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ One refused CP, n bytes into the region: the row exits 83.
-: BUILD-CP-BAD ( n ptr u8 n -- ) {: at:n path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   at CP!,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 : NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
 : NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
 
@@ -341,10 +333,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
 
-\ Record 5, delta, written and pending but not counted, under the native tier.
+\ Record 5, delta, written and pending but not counted, with a compiler latched.
 : PENDING, ( -- )
    SEED,  X64KERNEL:HIDX-BUILD,
-   1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:CELL!,
+   1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:CELL!,
    5 DREC * PEND-CELL X64HARNESS:REGION-ADDR!,
    s" delta" 0 0 X64HARNESS:RECORD,  5 NDICT!, ;
 
@@ -374,8 +366,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    SEED,  s" SEAL-CAPTURE" ROW
    5 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
    s" seal-captured?" ROW  -1 X64HARNESS:EXPECT-POP,
-   s" SEAL-FRIEND" ROW
-   FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -463,8 +453,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
-
 : ADDRESS-HEADER, ( n -- ) {: cap:n :}
    0 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:CELL!,
    ADDRESS-CELLS:MAGIC SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MAGIC-FIELD + X64HARNESS:CELL!,
@@ -472,12 +460,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    cap SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + X64HARNESS:CELL!,
    0 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:CELL!, ;
 
-\ With the latch sealed, xt! stores into a scratch cell and ptr-cell-mark
-\ admits one.
+\ xt! stores into a scratch cell and ptr-cell-mark admits one.
 : BUILD-XT-STORE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
-   SEAL,
    CELL-VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,  s" xt!" ROW
    CELL-VALUE 0 X64HARNESS:EXPECT-SCRATCH,
    1 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
@@ -542,70 +528,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ With the latch sealed, the row aimed at the band cell SOURCE-EXEC-CTX-CELL
-\ exits 83 before it stores: xt! when the flag is true, ptr-cell-mark otherwise.
-: BUILD-BAND-CELL ( bool ptr u8 n -- ) {: store:bool path:ptr pathu:n :}
+: BUILD-CONSTANTS ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   SEAL,
-   store if CELL-VALUE X64HARNESS:PUSH, then
-   SOURCE-EXEC-CTX-CELL X64HARNESS:PUSH-DATA,
-   store if s" xt!" ROW else s" ptr-cell-mark" ROW then
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-BAND-TASK ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
-   SEAL,
-   SOURCE-EXEC-CTX-CELL X64HARNESS:PUSH-DATA,
-   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-PUSH
-   X64ASM:RAX X64ASM:RBP X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF
-      X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RBP X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   s" ptr-cell-mark" ROW
-   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ The constant rows and tier 1.
-: BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   s" addr-cells-abi" ROW  ADDRESS-CELLS:ABI-VERSION X64HARNESS:EXPECT-POP,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
-   1 X64HARNESS:PUSH,  s" set-tier" ROW
-   s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Not a tier: the caller's cell, which only the saved copy can restore.
-$5A constant CALLER-TIER
-
-: ENTER, ( -- ) s" executable-build-enter" ROW ;
-: LEAVE, ( -- ) s" executable-build-leave" ROW ;
-: TIER-CELL?, ( n -- ) NCOMP-DISPATCH:TIER-CELL X64HARNESS:EXPECT-CELL, ;
-
-\ Two nested scopes keep the caller's tier and save it once; a tier selected
-\ inside survives the inner leave, the outermost leave restores the caller's
-\ and clears the saved copy, and a leave with no scope open changes nothing.
-: BUILD-SCOPE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   CALLER-TIER NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
-   ENTER,  ENTER,
-   CALLER-TIER TIER-CELL?,
-   2 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
-   CALLER-TIER NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
-   1 X64HARNESS:PUSH,  s" set-tier" ROW
-   LEAVE,  1 TIER-CELL?,
-   LEAVE,  CALLER-TIER TIER-CELL?,
-   0 NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
-   LEAVE,
-   0 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
-   CALLER-TIER TIER-CELL?,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Tier 0 exits 70 with the x86-64 text.
-: BUILD-TIER-ZERO ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   0 X64HARNESS:PUSH,  s" set-tier" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ Exercise the booted kernel's reader through its public primitive. Rejected
@@ -693,9 +619,6 @@ public
    s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
    s" hb-x64-kernel-state" TMP-PATH BUILD-STATE
    s" hb-x64-kernel-cp" TMP-PATH BUILD-CP
-   DICT-SIZE SLOT-BYTES - s" hb-x64-kernel-cp-low" TMP-PATH BUILD-CP-BAD
-   REGION s" hb-x64-kernel-cp-high" TMP-PATH BUILD-CP-BAD
-   DICT-SIZE 8 + s" hb-x64-kernel-cp-unslotted" TMP-PATH BUILD-CP-BAD
    s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
    s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
    s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR
@@ -714,12 +637,7 @@ public
    s" hb-x64-kernel-addr-kind" TMP-PATH BUILD-ADDR-KIND
    s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
    s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
-   true s" hb-x64-kernel-xt-store-armed" TMP-PATH BUILD-BAND-CELL
-   false s" hb-x64-kernel-mark-armed" TMP-PATH BUILD-BAND-CELL
-   s" hb-x64-kernel-mark-task-armed" TMP-PATH BUILD-BAND-TASK
-   s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
-   s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
-   s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
+   s" hb-x64-kernel-constants" TMP-PATH BUILD-CONSTANTS
    0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
    1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
    2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM

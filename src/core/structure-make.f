@@ -1,9 +1,9 @@
 \ structure-make.f: a STRUCTURE's sealed MAKE / UNMAKE (package STRUCTURE-MAKE),
-\ generated through sumtype.f's constructor machinery (TDECL-CTOR-PUBLISH,
-\ TDECL-PROD-WORDS), and its `DERIVE addr` accessor surface. Loads just before
-\ structure-decl.f, whose ;STRUCTURE calls GENERATE for a family with fields.
-\ A product bundle is its field cells in slot order, so both bodies are physical
-\ no-ops the checker certifies; the generated text has no TRUST, TRUSTED: or set-check.
+\ built by sumtype.f's constructor machinery, and its `DERIVE addr` accessor
+\ surface. Loads just before structure-decl.f, whose ;STRUCTURE calls GENERATE
+\ for a family with fields. A product bundle is its field cells in slot order,
+\ so MAKE and UNMAKE are casts the checker certifies, with no TRUST, TRUSTED:
+\ or set-check.
 
 using SCHEMA-REG
 using TFAM
@@ -72,10 +72,10 @@ public
 
 private
 
-\ The address-surface participant, for `DERIVE addr`. Each accessor is armed with
-\ a committed field id (the checker's projection window refuses a provisional
-\ one), so this work runs in the reversible commit, after DECL-EVENT's commit and
-\ inside the dictionary owner's savepoint: a reject truncates every accessor.
+\ The address-surface participant, for `DERIVE addr`. Each accessor's parameter
+\ is a committed field id, so this work runs in the reversible commit, after
+\ DECL-EVENT's commit and inside the dictionary owner's savepoint: a reject
+\ truncates every accessor.
 \ One armed family in one cell: declarations never nest.
 -1 constant SM-NO-FAMILY
 variable SM-ARMED   SM-NO-FAMILY SM-ARMED !
@@ -98,7 +98,7 @@ public
 : PART-SNAPSHOT ( -- ) SM-DISARM ;
 
 \ Re-proves the gate ARM checked, so a family made ineligible since fails before
-\ any word renders.
+\ any word is made.
 : PART-PREPARE ( -- )
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN ;
@@ -128,31 +128,12 @@ public
    fam SM-ADDR-REQUIRE
    fam SM-ARMED ! ;
 
-\ The name of the projection word below, which every generated accessor spells
-\ unqualified, so it binds through the declaring scope's search order. A sealed engine refuses it as a definition
-\ name (src/habu/interpreter.f DEF-WALL),
-\ so no user word stands in for it; the engine's own definition loads before
-\ the seal.
-: PROJECT-NAME$ ( -- ptr u8 n ) s" field-project" ;
-
 private
 
 : SM-INSTALL-INIT ( -- ) [: ARM ;] is TYPE-DECL:TDECL-INIT-ARM-XT ;
 SM-INSTALL-INIT
 
 ;package
-
-\ The two runtime words a generated address surface calls; global because a
-\ generated body names them unqualified from the declaring package.
-\ `field-project` outside the checker's window is a plain `+` with no retype;
-\ inside it, armed per accessor with a committed field id, the checker types it
-\ `ptr family<args> -- ptr field-type`.
-\ `record-at` ( ptr F cells -- ptr F ) exists because `+` and `cell+` refuse a
-\ layout pointee; bounds stay the caller's. `F:AT` bakes the family width.
-\ INTRINSIC tags each for the checker (checker.f CTL-INTRINSIC); a redefinition
-\ after `undefine` carries none.
-: field-project ( ptr a n -- ptr a ) + ;  INTRINSIC-FIELD-PROJECT INTRINSIC
-: record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 
 ;using
 ;using

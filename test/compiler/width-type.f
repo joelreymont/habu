@@ -19,13 +19,13 @@ create DIAG-BUF 8192 allot
 8192 constant DIAG-CAP
 
 : ARM ( -- )
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : STORED ( -- )
    S\" \"code\":\"E-BAD-STORAGE\"" HAS?

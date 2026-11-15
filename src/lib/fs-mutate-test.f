@@ -13,7 +13,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f                  \ the TMPDIR child's engine
 require src/lib/test/ending.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
-require src/lib/test/wait.f                         \ a worker's deadline at the join
+require src/lib/test/wait.f                         \ the workers' waits on each other
 require src/lib/test/stderr.f                       \ the staged cleanup line
 
 variable FMT-ROOT-U
@@ -51,6 +51,7 @@ variable FMT-PARENT-LINK-U
 variable FMT-PARENT-BOUND-U
 variable FMT-STAGED-TMP-U
 variable FMT-STAGED-FORGOT-U
+variable FMT-SIBLING-MODE
 
 create FMT-ROOT-BUF PATH-CAP allot
 create FMT-REMOVE-BUF PATH-CAP allot
@@ -108,6 +109,9 @@ create FMT-ERR-BUF FMT-ERR-CAP allot
 9217 constant FMT-STREAM-LEN
 384 constant FMT-MODE-0600
 416 constant FMT-MODE-0640
+400 constant FMT-MODE-0620
+292 constant FMT-MODE-0444
+128 constant FMT-MODE-0200
 $16D constant FMT-MODE-0555
 13 constant FMT-EACCES                  \ a denied mkdir's errno on both targets
 20 constant FMT-ENOTDIR                 \ ENOTDIR on both targets
@@ -228,9 +232,9 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 \ The root prefers HB_SOCK_TMP to TMPDIR: REMOVE-SPECIAL-TREE binds a Unix
 \ socket at <root>/remove-tree/root.txt, sun_path holds 107 bytes on Linux and
 \ 103 on macOS, and a pool slot's TMPDIR alone is 97 bytes (measured: the
-\ listener never binds, WAIT-LISTENER throws E-FS-IO). HB_SOCK_TMP is the short
-\ directory the gate pool makes per slot and removes when the slot retires or is
-\ killed (test/gate-pool.f GT-POOL-CHILD-SOCK!). Without it the root goes under
+\ listener never binds). HB_SOCK_TMP is the short directory the gate pool makes
+\ per slot and removes when the slot retires or is killed (test/gate-pool.f
+\ GT-POOL-CHILD-SOCK!). Without it the root goes under
 \ TMPDIR, then /tmp. FMT-PREPARE registers the root as a tree, so a throw before
 \ FMT-TEST-CLEANUP still removes it at exit.
 : FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
@@ -437,6 +441,9 @@ public
 \ whatever seed it would draw.
 : FMT-TEMP-BASE-NO-ROOM ( -- )
    FMT-LONG-BUF s" nr" nip FS:TEMP-DIR-BASE-MAX 1+ s" nr" FS:MKTEMP-DIR-IN 2drop ;
+
+: FMT-SUFFIX-NO-ROOM ( -- )
+   s" ab" s" .c" FMT-READ-BUF 3 SPAN:MAKE FS:SUFFIX-PATH drop ;
 
 : FMT-MAKE-SYMLINK-EXISTS ( -- )
    FMT-LINK-TARGET FMT-LINK FS:MAKE-SYMLINK ;
@@ -663,6 +670,39 @@ public
    s" a staged callback cannot consume its caller's context" T-LABEL
    s" FMT-BAD-STAGED ( n ptr u8 n -- ) [: 2drop drop ;] FS:REPLACE-STAGED"
       CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: FMT-STAGED-MODE-FILL ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FS:STAT-MODE FMT-MODE-PERM and FMT-SIBLING-MODE !
+   path pathu s" private" FS:WRITE-ALL ;
+
+: FMT-TEST-STAGED-MODE ( -- )
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and {: before:n :}
+   FMT-ATOMIC-PATH FMT-MODE-0620 FS:CHMOD-MODE
+   s" a staged sibling is owner-only until filled, then takes path's mode" T-LABEL
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-SIBLING-MODE @ FMT-MODE-0600 T=
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0620 T=
+   s" a read-only target is replaced and stays read-only" T-LABEL
+   FMT-ATOMIC-PATH s" old" FS:WRITE-ALL
+   FMT-ATOMIC-PATH FMT-MODE-0444 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
+   FMT-READ-BUF 7 s" private" T$=
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0444 T=
+   s" a write-only target is replaced and stays write-only" T-LABEL
+   FMT-ATOMIC-PATH FMT-MODE-0200 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH s" old" FS:WRITE-ALL
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0200 T=
+   FMT-ATOMIC-PATH FMT-MODE-0600 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
+   FMT-READ-BUF 7 s" private" T$=
+   s" execute bits the fill sets on the sibling are kept" T-LABEL
+   FMT-ATOMIC-PATH FS:MODE-0644 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH [: 2dup FS:CHMOD-X FMT-STAGED-MODE-FILL ;]
+      FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0755 T=
+   FMT-ATOMIC-PATH before FS:CHMOD-MODE ;
 
 : FMT-TEST-ATOMIC-RELATIVE ( -- )
    s" ./src/lib/../lib/fs-mutate.f" FS:ATOMIC-TARGET
@@ -893,10 +933,18 @@ public
    FMT-READ-BUF 6 s" capped" T$= ;
 ;package
 
+\ A base of the longest length FS:MKTEMP-DIR-IN builds in still takes a temp.
+: FMT-TEMP-BASE-MAX ( -- )
+   s" max" nip FS:TEMP-DIR-BASE-MAX FMT-DEEP-DIR {: base:ptr baseu:n :}
+   base baseu s" max" FS:MKTEMP-DIR-IN {: temp:ptr tempu:n :}
+   temp tempu FS:DIR? TTRUE
+   temp baseu base baseu T$= ;
+
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
    FMT-TEMP-BASE s" two" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
-   s" habu-fs-mut" FS:MKTEMP-DIR 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+ ;
+   s" habu-fs-mut" FS:MKTEMP-DIR 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
+   FMT-TEMP-BASE-MAX ;
 
 \ A base that already ends in a slash, as macOS's TMPDIR does, takes no second
 \ one. FMT-TEST-DIRS left FMT-MKDIR-PATH for the base.
@@ -938,8 +986,8 @@ public
 package FMT-TMPDIR
 private
 
-$1000 constant CAP
-15000 constant TIMEOUT-MS
+\ A child's stderr line can echo a TMPDIR of nearly PATH-CAP bytes.
+PATH-CAP 1+ 4 * constant CAP
 10 constant NL
 
 create OUT CAP allot
@@ -994,7 +1042,7 @@ variable WANT-U
 : CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : WANT+ ( ptr u8 n -- ) {: a:ptr u :}
@@ -1061,7 +1109,7 @@ public
    FILE-PROG$ MISSING$ s" TMPDIR is not a directory" E-FS-DIR REFUSED
    s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
    PROG$ LONG$ s" TMPDIR is too long for a temp path"
-   E-SPAN-CAPACITY REFUSED
+   E-FS-CAPACITY REFUSED
    s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;
 
@@ -1223,7 +1271,7 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
 
 package FMT-SPECIAL
 
-variable LISTENER
+variable LISTENER          \ socat's pid, NO-PID once a probe has reaped it
 create MKFIFO-PATH PATH-CAP allot
 create SOCAT-PATH PATH-CAP allot
 variable MKFIFO-U
@@ -1269,18 +1317,30 @@ variable SOCAT-U
 
 
 : STOP-LISTENER ( -- )
-   LISTENER @ PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   LISTENER @ PROCESS:WAIT drop ;
+   LISTENER @ 0 > if
+      LISTENER @ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+      LISTENER @ PROCESS:WAIT drop
+   then ;
 
 
+\ A zero-window probe; it reaps a listener that has ended.
+: LISTENER-ENDED? ( -- bool )
+   LISTENER @ 0 >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
+      timeout OF false ENDOF
+      exited OF drop PROCESS:NO-PID LISTENER ! true ENDOF
+      signaled OF drop PROCESS:NO-PID LISTENER ! true ENDOF
+   ;MATCH ;
+
+
+\ A listener that ends without binding is E-FS-IO.
 : WAIT-LISTENER ( -- )
-   100 0 do
+   begin
       FMT-TREE-ROOT-FILE FS:TRY-LSTAT if
-         FS:STAT-MODE@ FS:S-IFMT and $C000 = if unloop exit then
+         FS:STAT-MODE@ FS:S-IFMT and $C000 = if exit then
       then
+      LISTENER-ENDED? if E-FS-IO throw then
       NULL-PTR 0 10 poll drop
-   loop
-   E-FS-IO throw ;
+   again ;
 
 
 : REMOVE-SPECIAL-TREE ( -- )
@@ -1313,7 +1373,8 @@ public
 \ Each row runs one module word in two tasks at once and asserts what the other
 \ task could not disturb. T1 is the witnessed failure, a task's returned temp
 \ directory path replaced by another task's: it fails when fs-mutate.f stages
-\ that name process-wide. T4's paths stay registered on purpose:
+\ that name process-wide. T7 fails when FS:COPY-FILE-STREAM pumps through one
+\ process-wide buffer. T4's paths stay registered on purpose:
 \ FMT-TEST-CLEANUP's FS:CLEANUP-RUN removes them before the root goes.
 package FMT-TASKS
 private
@@ -1325,8 +1386,8 @@ STACK-BYTES TASK:TASK WORKER-B
 20 constant ROUNDS
 200 constant SWAPS
 16 constant REGS
-5000000000 constant WAIT-NS
 
+\ Round counters, not flags, so no round clears what the next one sets.
 variable A-READY
 variable B-DONE
 variable T1-BAD
@@ -1359,6 +1420,10 @@ create P-W5F2 PATH-CAP allot variable P-W5F2-U
 create P-W5D PATH-CAP allot  variable P-W5D-U
 create P-W5DS PATH-CAP allot variable P-W5DS-U
 create P-W5DF PATH-CAP allot variable P-W5DF-U
+create P-CAS PATH-CAP allot  variable P-CAS-U
+create P-CAD PATH-CAP allot  variable P-CAD-U
+create P-CBS PATH-CAP allot  variable P-CBS-U
+create P-CBD PATH-CAP allot  variable P-CBD-U
 
 : A1$ ( -- ptr u8 n ) P-A1 P-A1-U @ ;
 : A2$ ( -- ptr u8 n ) P-A2 P-A2-U @ ;
@@ -1382,6 +1447,10 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
 : W5D$ ( -- ptr u8 n ) P-W5D P-W5D-U @ ;
 : W5DS$ ( -- ptr u8 n ) P-W5DS P-W5DS-U @ ;
 : W5DF$ ( -- ptr u8 n ) P-W5DF P-W5DF-U @ ;
+: CAS$ ( -- ptr u8 n ) P-CAS P-CAS-U @ ;
+: CAD$ ( -- ptr u8 n ) P-CAD P-CAD-U @ ;
+: CBS$ ( -- ptr u8 n ) P-CBS P-CBS-U @ ;
+: CBD$ ( -- ptr u8 n ) P-CBD P-CBD-U @ ;
 : A-BODY$ ( -- ptr u8 n ) s" task-a wrote this" ;
 : B-BODY$ ( -- ptr u8 n ) s" b" ;
 
@@ -1407,7 +1476,11 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    W5S$ s" f-2.txt" P-W5F2 FS:JOIN-PATH P-W5F2-U !
    FMT-ROOT$ s" w5-doomed" P-W5D FS:JOIN-PATH P-W5D-U !
    W5D$ s" sub" P-W5DS FS:JOIN-PATH P-W5DS-U !
-   W5DS$ s" x.txt" P-W5DF FS:JOIN-PATH P-W5DF-U ! ;
+   W5DS$ s" x.txt" P-W5DF FS:JOIN-PATH P-W5DF-U !
+   FMT-ROOT$ s" copy-a-src.bin" P-CAS FS:JOIN-PATH P-CAS-U !
+   FMT-ROOT$ s" copy-a-dst.bin" P-CAD FS:JOIN-PATH P-CAD-U !
+   FMT-ROOT$ s" copy-b-src.bin" P-CBS FS:JOIN-PATH P-CBS-U !
+   FMT-ROOT$ s" copy-b-dst.bin" P-CBD FS:JOIN-PATH P-CBD-U ! ;
 
 : FILE-IS? ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu body:ptr bodyu :}
    path pathu FMT-READ-BUF 64 FS:READ-ALL bodyu T=
@@ -1420,38 +1493,13 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
       err OF ENDOF
    ;MATCH ;
 
-\ A code that is neither success nor WAIT-FOR's deadline, the only
-\ E-PROC-TIMEOUT a worker here throws.
-: FAILED? ( n -- bool )
-   {: code :}
-   code 0<> code E-PROC-TIMEOUT <> and ;
-
-\ Joins both workers before reading either; true when both answered 0. The two
-\ wait on each other, so a failing worker leaves its peer to wait out WAIT-FOR:
-\ only the failure is asserted, never that deadline. When neither failed, a
-\ deadline is the row's own, named and thrown.
+\ Joins both workers before reading either; true when both answered 0. A
+\ worker's throw ends its peer's wait with the same code, so both may answer it.
 : JOIN-BOTH ( -- bool )
    WORKER-A JOIN-CODE WORKER-B JOIN-CODE {: a b :}
-   a FAILED? b FAILED? or if
-      a FAILED? if a 0 T= then
-      b FAILED? if b 0 T= then
-      false exit
-   then
-   a E-PROC-TIMEOUT = b E-PROC-TIMEOUT = or if
-      s" fs-mutate-test WAIT-FOR" TEST-WAIT:EXPIRED
-   then
-   true ;
-
-\ A task waits for its peer's round counter rather than a flag, so no round
-\ clears what the next one sets. A peer that never arrives ends the wait with
-\ E-PROC-TIMEOUT; JOIN records it and JOIN-BOTH reads it.
-: WAIT-FOR ( ptr n n -- )
-   {: flag want :}
-   mono-ns WAIT-NS + {: deadline :}
-   begin flag atomic@ want < while
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      1 >MS TASK:SLEEP
-   repeat ;
+   a 0<> if a 0 T= then
+   b 0<> if b 0 T= then
+   a 0= b 0= and ;
 
 : A-TMP$ ( -- ptr u8 n ) A-TMP A-TMP-U @ SPAN:TAKE SPAN:$ ;
 : B-TMP$ ( -- ptr u8 n ) B-TMP B-TMP-U @ SPAN:TAKE SPAN:$ ;
@@ -1462,12 +1510,12 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    FMT-ROOT$ s" race-a" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u A-TMP SPAN:COPY  u A-TMP-U !
    round A-READY atomic!
-   B-DONE round WAIT-FOR
+   B-DONE round WORKER-B TEST-WAIT:FOR-CELL
    path u A-TMP$ STR= 0= if 1 T1-BAD atomic-add drop then
    A-TMP$ FS:REMOVE-DIR ;
 
 : T1-B-ROUND ( n -- ) {: round :}
-   A-READY round WAIT-FOR
+   A-READY round WORKER-A TEST-WAIT:FOR-CELL
    FMT-ROOT$ s" race-b" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u B-TMP SPAN:COPY  u B-TMP-U !
    round B-DONE atomic!
@@ -1614,14 +1662,59 @@ variable T6-BAD
    W5$ FS:REMOVE-TREE
    W5$ FS:EXISTS? TFALSE ;
 
+\ Each source is five 8192-byte copy chunks and an odd remainder. A's byte at i
+\ is i mod 251, B's its complement, so the two differ at every offset.
+5 8192 * 37 + constant T7-LEN
+create T7-A-SRC T7-LEN allot
+create T7-B-SRC T7-LEN allot
+create T7-A-GOT T7-LEN allot
+create T7-B-GOT T7-LEN allot
+variable T7-A-BAD
+variable T7-B-BAD
+variable T7-READY
+
+: T7-FILL ( ptr u8 n -- ) {: buf:ptr mask :}
+   T7-LEN 0 ?do i 251 mod mask xor buf i + c! loop ;
+
+\ Counts a round whose destination is not byte for byte its own source.
+: T7-CHECK ( ptr u8 n ptr u8 ptr u8 ptr n -- )
+   {: dst:ptr dstu src:ptr got:ptr bad:ptr :}
+   dst dstu got T7-LEN FS:READ-ALL {: u :}
+   got u src T7-LEN STR= 0= if 1 bad atomic-add drop then ;
+
+: T7-A-ROUND ( -- )
+   CAS$ CAD$ FS:COPY-FILE-STREAM
+   CAD$ T7-A-SRC T7-A-GOT T7-A-BAD T7-CHECK ;
+
+: T7-B-ROUND ( -- )
+   CBS$ CBD$ FS:COPY-FILE-STREAM
+   CBD$ T7-B-SRC T7-B-GOT T7-B-BAD T7-CHECK ;
+
+\ Neither worker begins its rounds until both have started, so the copies
+\ overlap.
+: T7-GO ( ptr n -- ) {: peer:ptr :}
+   1 T7-READY atomic-add drop  T7-READY 2 peer TEST-WAIT:FOR-CELL ;
+
+: T7-A ( -- ) WORKER-B T7-GO ROUNDS 0 ?do T7-A-ROUND loop 0 TASK:RETURN ;
+: T7-B ( -- ) WORKER-A T7-GO ROUNDS 0 ?do T7-B-ROUND loop 0 TASK:RETURN ;
+
+: T7-RUN ( -- )
+   T7-A-SRC 0 T7-FILL  T7-B-SRC 255 T7-FILL
+   CAS$ T7-A-SRC T7-LEN FS:WRITE-ALL
+   CBS$ T7-B-SRC T7-LEN FS:WRITE-ALL
+   0 T7-A-BAD !  0 T7-B-BAD !  0 T7-READY !
+   ['] T7-A WORKER-A TASK:ACTIVATE
+   ['] T7-B WORKER-B TASK:ACTIVATE
+   JOIN-BOTH 0= if exit then
+   s" two tasks copying files at once each copied only its own bytes" T-LABEL
+   T7-A-BAD @ 0 T=
+   T7-B-BAD @ 0 T=
+   CAS$ FS:REMOVE-FILE  CAD$ FS:REMOVE-FILE
+   CBS$ FS:REMOVE-FILE  CBD$ FS:REMOVE-FILE ;
+
 public
 
 : RUN ( -- )
-   s" the fs-mutate band is carved directly below FS-ABI" T-LABEL
-   FS-MUT-ABI:END FS-ABI:START T=
-   s" the WITH-BYTES scope head is carved between USER-BAND and FS-MUT-ABI" T-LABEL
-   MEM-ABI:END FS-MUT-ABI:START T=
-   MEM-ABI:START USER-BAND:END T=
    PATHS!
    T1-RUN
    T2-RUN
@@ -1629,7 +1722,8 @@ public
    STAGE-RUN
    T4-RUN
    T5-RUN
-   T6-RUN ;
+   T6-RUN
+   T7-RUN ;
 
 ;package
 
@@ -1822,6 +1916,7 @@ public
    FMT-TEST-ATOMIC-RELATIVE
    FMT-TEST-ATOMIC-PARENT-LINK
    FMT-TEST-STAGED-CONTEXT
+   FMT-TEST-STAGED-MODE
    FMT-TEST-ATOMIC-FAILURE
    FS-TEST:ATOMIC-SEARCH-DIR
    FS-TEST:ATOMIC-PRIVATE
@@ -1840,17 +1935,30 @@ public
    FMT-TMPDIR:RUN
    FMT-TEST-SYMLINK
    FMT-TEST-BROKEN-SYMLINK
+   s" removing a missing file is E-FS-IO" T-LABEL
    [: FMT-REMOVE-MISSING ;] E-FS-IO TTHROWSQ
+   s" renaming a missing file is E-FS-IO" T-LABEL
    [: FMT-RENAME-MISSING ;] E-FS-IO TTHROWSQ
+   s" making a missing file executable is E-FS-STAT" T-LABEL
    [: FMT-CHMOD-MISSING ;] E-FS-STAT TTHROWSQ
+   s" setting a missing file's mode is E-FS-IO" T-LABEL
    [: FMT-CHMOD-MODE-MISSING ;] E-FS-IO TTHROWSQ
+   s" removing a missing directory is E-FS-IO" T-LABEL
    [: FMT-RMDIR-MISSING ;] E-FS-IO TTHROWSQ
+   s" making a directory that exists is E-FS-IO" T-LABEL
    [: FMT-MKDIR-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LONG!
-   [: FMT-CLEANUP-PATH-TOO-LONG ;] E-SPAN-CAPACITY TTHROWSQ
-   [: FS-TEST:ATOMIC-TARGET-NO-ROOM ;] E-SPAN-CAPACITY TTHROWSQ
-   [: FMT-TEMP-BASE-NO-ROOM ;] E-SPAN-CAPACITY TTHROWSQ
+   s" a cleanup path past PATH-CAP is E-FS-PATH" T-LABEL
+   [: FMT-CLEANUP-PATH-TOO-LONG ;] E-FS-PATH TTHROWSQ
+   s" an atomic target join past PATH-CAP is E-FS-CAPACITY" T-LABEL
+   [: FS-TEST:ATOMIC-TARGET-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" a suffixed path past its span is E-FS-CAPACITY" T-LABEL
+   [: FMT-SUFFIX-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" a temp base with no room for the name is E-FS-CAPACITY" T-LABEL
+   [: FMT-TEMP-BASE-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" removing a tree at an empty path is E-FS-PATH" T-LABEL
    [: FMT-REMOVE-TREE-EMPTY ;] E-FS-PATH TTHROWSQ
+   T-LABEL-CLEAR
    FMT-TEST-REMOVE-TREE
    FMT-SPECIAL:RUN
    FMT-TEST-REMOVE-TREE-SYMLINK-DIR

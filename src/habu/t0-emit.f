@@ -168,7 +168,7 @@ ARCHES TYPED-BUFFER EMIT-VREGS-N n
 \ begins where the previous EMIT-CLOSE left off. A `does>` clause is a later
 \ unit too, begun by EMIT-QUOT-OPEN when the parent pushed its address, else by
 \ EMIT-UNIT-OPEN. Sealing files one NEMIT function per unit. `recurse` in any
-\ unit calls byte 0, as both tiers run it, and files no row.
+\ unit calls byte 0 and files no row.
 \
 \ THE PATCH SLOT. EMIT-SLOT-CLOSE closes a unit whose return is the does> patch
 \ slot (EMIT-PATCH-SLOT!). The kernel finds the slot from the record's length,
@@ -331,9 +331,9 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 
 \ DIVISION. `/` and `mod` by a literal divisor other than 0 and -1 are
 \ EMIT-DIV-LIT and EMIT-MOD-LIT. A zero divisor stays a call of the kernel row,
-\ which throws E-DIV-ZERO; -1 stays a call because x86-64 idiv faults on
-\ MIN-N -1 (arm64 sdiv answers MIN-N), and one rule holds for every target. A
-\ register divisor and `/mod` stay calls too.
+\ so no fold divides by it on the host; -1 stays a call because x86-64 idiv
+\ faults on MIN-N -1 (arm64 sdiv answers MIN-N), and one rule holds for every
+\ target. A register divisor and `/mod` stay calls too.
 \
 \ EMIT-DIV-LIT and EMIT-MOD-LIT replace the dividend in d with its quotient by
 \ n, truncated toward zero, or the remainder that carries the dividend's sign,
@@ -361,7 +361,7 @@ ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]
 
 \ EMIT-LOAD reads the cell or the zero-extended byte at address a into d, and
 \ does not screen the address, as the kernel's `@` and `c@` rows do not. `!` and
-\ `c!` screen a span and stay calls, so the seam has no store.
+\ `c!` stay calls, so the seam has no store.
 : EMIT-LOAD ( vreg vreg width -- ) CUR @ EMIT-LOAD-XT @ execute ;
 
 \ ---- calls -------------------------------------------------------------------
@@ -531,7 +531,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ offset, since publishing only copies bytes; an unplaced one keeps the bytes.
 \
 \ THE CALLBACK STUB. While NCBSTUB is armed, the emission's first seal has the
-\ emitter append tier 1's stub after the last unit and files it as the last
+\ emitter append the stub after the last unit and files it as the last
 \ function, and later seals reuse it, so an unplaced seal's copy holds it.
 
 : EMIT-PLACE ( n -- )

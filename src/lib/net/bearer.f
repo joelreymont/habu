@@ -12,7 +12,9 @@
 \ STORAGE CLASS. PROCESS-WIDE: the issuer and the challenges naming the
 \ metadata and scope, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
-\ time; tables indexed by HTTP:WORKER-SLOT holding each request's token and
+\ time; the counts of workers waiting for that fetch and of fetches returned,
+\ under KEYS-LOCK, and the semaphore that wakes them, which ISSUER! sets up;
+\ tables indexed by HTTP:WORKER-SLOT holding each request's token and
 \ scratch; the client CLIENT! states, written before any TOKEN or REFRESH; and
 \ the cursor that reads a token answer, under ANSWER-LOCK.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
@@ -21,7 +23,10 @@
 \ KEYS-LOCK. When the set is empty or lacks the kid, no worker is fetching and
 \ no fetch returned within the last REFETCH-MS, that worker becomes the one
 \ fetcher: it fetches outside the lock, an accepted set replaces the cached one,
-\ and it looks again. The others answer from the set as it stands.
+\ and it looks again. A worker that finds the kid missing while a fetch is in
+\ flight waits for that fetch, then looks again; the others answer from the set
+\ as it stands. A WAKE count may be an earlier fetch's: a waiter whose fetch
+\ has not returned counts itself again and waits.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -59,9 +64,13 @@ $10000 constant KEYS-CAP            \ the largest key set text accepted
 2 constant INVALID                  \ 401 challenging Bearer error="invalid_token"
 3 constant UNAVAILABLE              \ 503: no key set, and none could be fetched
 
-TYPED-VARIABLE ISSUER SPAN:span<u8>
-TYPED-VARIABLE AUDIENCE SPAN:span<u8>
-TYPED-VARIABLE KEYS-URL SPAN:span<u8>
+PTR-VARIABLE ISSUER-AT   SCRATCH-VARIABLE ISSUER-LEN
+PTR-VARIABLE AUDIENCE-AT   SCRATCH-VARIABLE AUDIENCE-LEN
+PTR-VARIABLE KEYS-URL-AT   SCRATCH-VARIABLE KEYS-URL-LEN
+
+: ISSUER ( -- SPAN:span<u8> ) ISSUER-AT @ ISSUER-LEN @ SPAN:MAKE ;
+: AUDIENCE ( -- SPAN:span<u8> ) AUDIENCE-AT @ AUDIENCE-LEN @ SPAN:MAKE ;
+: KEYS-URL ( -- SPAN:span<u8> ) KEYS-URL-AT @ KEYS-URL-LEN @ SPAN:MAKE ;
 
 \ NAMED-LEN bytes at NAMED, an allocation holding the two challenges naming
 \ METADATA!'s URL and scope, the no-token one's NAMED-U bytes first; empty while
@@ -74,12 +83,15 @@ variable NAMED-U   NAMED-U scratch-cell-mark
 
 : NAMED-SPAN ( -- SPAN:span<u8> ) NAMED @ NAMED-LEN @ SPAN:MAKE ;
 
-\ The key set's text, under KEYS-LOCK with KEYS-AT and FETCHING; the lock is
-\ never held across the network. FETCHED is the flagged fetcher's alone.
+\ The key set's text, under KEYS-LOCK (never held across the network) with
+\ KEYS-AT, FETCHING, WAITERS and ROUND; FETCHED is the flagged fetcher's alone.
 KEYS-CAP BUFFER: KEYS
 variable KEYS-U
 variable KEYS-AT                    \ when the last fetch returned, a mono-ns; 0 before any
 TYPED-VARIABLE FETCHING bool
+variable WAITERS                    \ WAKE posts RETURNED owes, one per wait
+variable ROUND                      \ fetches returned
+TASK:SEMAPHORE WAKE
 KEYS-CAP BUFFER: FETCHED
 variable FETCHED-U
 TYPED-VARIABLE ACCEPTED bool        \ FETCHED holds a key set of FETCHED-U bytes
@@ -109,10 +121,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8>
 
 \ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
 \ number.
-TASK:#USER
-CELL TASK:+USER PASSED
-CELL TASK:+USER FROM
-drop
+TASK:+USER PASSED n
+TASK:+USER FROM n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
@@ -271,7 +281,7 @@ drop
 
 : TRANSFER ( CURL:handle -- n )
    {: h:CURL:handle :}
-   h KEYS-URL @ SPAN:$ CURL:URL! OK? 0= if -1 exit then
+   h KEYS-URL SPAN:$ CURL:URL! OK? 0= if -1 exit then
    h KEYS-TIMEOUT-MS >MS CURL:TIMEOUT! OK? 0= if -1 exit then
    h FETCHED KEYS-CAP >LEN CURL:PERFORM FETCHED-LEN ;
 
@@ -315,27 +325,53 @@ drop
    KEYS-U @ 0= if UNAVAILABLE exit then
    SELECT? if ADMITTED else INVALID then ;
 
-\ Under KEYS-LOCK: the cached answer, and whether this worker becomes the one
-\ fetcher.
-: LOOKUP ( -- n bool )
+ENUM lookup-step
+   VARIANT answer FIELD outcome n ;VARIANT
+   VARIANT fetch ;VARIANT
+   VARIANT wait FIELD round n ;VARIANT
+;ENUM
+
+\ Under KEYS-LOCK.
+: LOOKUP ( -- lookup-step )
    CACHED {: found:n :}
-   found ADMITTED = FETCHING @ or DUE? 0= or if found false exit then
-   true FETCHING ! found true ;
+   found ADMITTED = if found construct lookup-step answer exit then
+   FETCHING @ if
+      1 WAITERS +! ROUND @ construct lookup-step wait exit
+   then
+   DUE? 0= if found construct lookup-step answer exit then
+   true FETCHING ! construct lookup-step fetch ;
 
 \ Under KEYS-LOCK: the fetch has returned, by a throw too.
 : RETURNED ( -- )
    ACCEPTED @ if FETCHED KEYS FETCHED-U @ BYTE-COPY FETCHED-U @ KEYS-U ! then
    mono-ns KEYS-AT !
-   false FETCHING ! ;
+   1 ROUND +!
+   false FETCHING !
+   WAITERS @ 0 ?do WAKE TASK:SIGNAL-SEM loop
+   0 WAITERS ! ;
 
 : SETTLE ( -- ) [: RETURNED ;] LOCKED ;
 
+\ Under KEYS-LOCK.
+: ROUND-OVER? ( n -- bool )
+   {: r:n :}
+   ROUND @ r <> if true exit then
+   1 WAITERS +! false ;
+
+: AWAIT ( n -- )
+   {: r:n :}
+   begin WAKE TASK:WAIT-SEM r [: ROUND-OVER? ;] LOCKED until ;
+
 \ The token's key into the worker's scratch, as CACHED answers.
+\ KEYS-TIMEOUT-MS bounds the fetch a waiter waits for.
 : KEY ( -- n )
-   [: LOOKUP ;] LOCKED {: found:n fetcher:bool :}
-   fetcher 0= if found exit then
-   [: FETCH ;] [: SETTLE ;] finally
-   [: CACHED ;] LOCKED ;
+   [: LOOKUP ;] LOCKED MATCH lookup-step
+      answer OF ENDOF
+      fetch OF
+         [: FETCH ;] [: SETTLE ;] finally [: CACHED ;] LOCKED
+      ENDOF
+      wait OF AWAIT [: CACHED ;] LOCKED ENDOF
+   ;MATCH ;
 
 
 \ Only RS256 is ever verified, which refuses alg none and HS256; a header with
@@ -350,14 +386,14 @@ drop
 : AUDIENCE-ELEMENT ( JSON:reader -- JSON:reader n )
    JSON:READ-NEXT {: kind:n :}
    kind JSON:T-ARR-END = if -1 exit then
-   kind JSON:T-STR = if AUDIENCE @ SPAN:$ JSON:READ-STR-EQ? if 1 else 0 then exit then
+   kind JSON:T-STR = if AUDIENCE SPAN:$ JSON:READ-STR-EQ? if 1 else 0 then exit then
    kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
 : AUDIENCE? ( -- bool )
    CLAIMS$ s" aud" MEMBER {: kind:n :}
    kind JSON:T-STR = if
-      AUDIENCE @ SPAN:$ JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same exit
+      AUDIENCE SPAN:$ JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same exit
    then
    kind JSON:T-ARR <> if JSON:READ-CLOSE false exit then
    begin AUDIENCE-ELEMENT dup 0= while drop repeat
@@ -365,7 +401,7 @@ drop
 
 : VALID? ( n -- bool )
    {: now:n :}
-   CLAIMS$ s" iss" ISSUER @ SPAN:$ false MEMBER-IS? 0= if false exit then
+   CLAIMS$ s" iss" ISSUER SPAN:$ false MEMBER-IS? 0= if false exit then
    AUDIENCE? 0= if false exit then
    CLAIMS$ s" exp" MEMBER-INT 0= if drop false exit then
    now LEEWAY-S - > 0= if false exit then
@@ -481,14 +517,16 @@ public
 
 \ The issuer whose tokens ADMIT? accepts: its iss, the audience this server
 \ answers to, and its JWK Set's URL. The texts are borrowed and outlive the
-\ server, as literals do. E-HTTP-STATE while HTTP serves.
+\ server, as literals do. A built program keeps none: it states them at run
+\ time. E-HTTP-STATE while HTTP serves.
 : ISSUER! ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: iss:ptr iu:n aud:ptr au:n url:ptr uu:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   iss iu SPAN:MAKE ISSUER !
-   aud au SPAN:MAKE AUDIENCE !
-   url uu SPAN:MAKE KEYS-URL !
-   0 KEYS-U ! 0 KEYS-AT ! ;
+   iss ISSUER-AT ! iu ISSUER-LEN !
+   aud AUDIENCE-AT ! au AUDIENCE-LEN !
+   url KEYS-URL-AT ! uu KEYS-URL-LEN !
+   0 KEYS-U ! 0 KEYS-AT !
+   WAKE TASK:SEMAPHORE-DESTROY 0 WAKE TASK:SEMAPHORE-INIT ;
 
 
 \ The URL of this server's protected-resource metadata and the scope of access
@@ -520,7 +558,7 @@ public
 \ E-HTTP-STATE before ISSUER!.
 : ADMIT? ( HTTP:request HTTP:response -- bool )
    {: asked:HTTP:request answer:HTTP:response :}
-   ISSUER @ SPAN:LEN 0= if E-HTTP-STATE throw then
+   ISSUER SPAN:LEN 0= if E-HTTP-STATE throw then
    0 PASSED !
    asked OUTCOME {: outcome:n :}
    outcome ADMITTED <> if answer outcome REFUSE false exit then
@@ -603,9 +641,6 @@ private
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-\ A text TOKEN or REFRESH reads must not lie in the BUF it writes.
-: OUTSIDE ( ptr u8 n ptr n -- ) BUF:BORROWED? if E-BUF-BOUNDS throw then ;
-
 : WIPE ( ptr n -- )
    {: buf:ptr :}
    0 buf BUF:SPAN SPAN:FILL
@@ -617,7 +652,6 @@ private
 
 : FORM ( ptr u8 n grant ptr n -- )
    {: scope:ptr su:n g buf:ptr :}
-   scope su buf OUTSIDE
    g MATCH grant
       own OF
          buf EMPTIED
@@ -625,7 +659,6 @@ private
          buf CREDENTIALS+
          s" scope" scope su buf PAIR+ ENDOF
       for-person OF {: a:ptr au:n :}
-         a au buf OUTSIDE
          buf EMPTIED
          s" grant_type" s" urn:ietf:params:oauth:grant-type:jwt-bearer" buf PAIR+
          buf CREDENTIALS+
@@ -636,8 +669,6 @@ private
 
 : REFRESH-FORM ( ptr u8 n ptr u8 n ptr n -- )
    {: scope:ptr su:n r:ptr ru:n buf:ptr :}
-   scope su buf OUTSIDE
-   r ru buf OUTSIDE
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
    buf CREDENTIALS+
@@ -828,7 +859,7 @@ public
 \ the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx without an
 \ access_token string or a positive integer expires_in, or any other status.
 \ Each of those failures first logs one line tagged bearer, never a 2xx
-\ answer's text. A scope or assertion lying in the BUF throws E-BUF-BOUNDS.
+\ answer's text. A scope or assertion must not lie in the BUF.
 \ E-HTTP-STATE before CLIENT!.
 : TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
@@ -843,8 +874,8 @@ public
 \ token, empty when it has none (the old one then stays the one to present),
 \ then expires_in. Both texts are borrowed from the BUF until the caller writes
 \ to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
-\ refresh_token is not a string; a scope or refresh token lying in the BUF
-\ throws E-BUF-BOUNDS.
+\ refresh_token is not a string. A scope or refresh token must not lie in the
+\ BUF.
 : REFRESH ( ptr u8 n ptr u8 n ptr n -- ptr u8 n ptr u8 n n )
    {: scope:ptr su:n r:ptr ru:n buf:ptr :}
    STATED

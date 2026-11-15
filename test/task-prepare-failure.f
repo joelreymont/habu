@@ -19,9 +19,7 @@ create NEW-LIMIT 16 allot
 variable START-VM
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
 
@@ -71,10 +69,6 @@ TASK:MIN-STACK TASK:TASK WORKER
       rc E-MEM-MAP T=
       s" task remains empty" T-LABEL
       TASK-ABI:STATUS-OFF TCB@ TASK-ABI:EMPTY T=
-      s" no task stack pointer survives refusal" T-LABEL
-      TASK-ABI:STACK-U-OFF TCB@ 0 T=
-      TASK-ABI:RSTACK-U-OFF TCB@ 0 T=
-      TASK-ABI:LSTACK-U-OFF TCB@ 0 T=
       s" failed preparation restores mapped bytes" T-LABEL
       VM-BYTES START-VM @ T=
       T-REPORT

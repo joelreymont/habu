@@ -19,7 +19,6 @@ require src/lib/engine-candidate.f
 package XT-EFFECT-TEST
 
 4096 constant XE-CAP
-10000 constant XE-TIMEOUT-MS
 
 variable XE-ROOT-U
 variable XE-CHILD-U
@@ -59,7 +58,7 @@ create XE-EMPTY 1 allot
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
-   XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   XE-ERR XE-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XE-STORE! ;
 
 : XE-LF ( -- ) 10 SB-APPEND-C ;

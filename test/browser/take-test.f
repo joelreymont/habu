@@ -1,8 +1,7 @@
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
 \ module frees it in a later one. The module is built by tools/hb-build.f and
-\ validated by wasm-tools; bun and wasm-tools must be on PATH, so
-\ test/wasm/device.f runs it, not the ordinary gate.
+\ validated by wasm-tools; test/wasm/device.f runs it.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -17,7 +16,6 @@ require test/browser/memory.f
 package BROWSER-TAKE-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -32,7 +30,7 @@ variable MOD-U
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;

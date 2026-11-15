@@ -72,7 +72,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
 \ The offending token: the span it was copied from when that lies in text a
-\ driver armed for locating packets (checker.f DIAG>SRC), so the packet carries
+\ driver armed for locating packets (REJECTION:>SOURCE), so the packet carries
 \ its file position; else the copy. An armed text stays put while its
 \ declaration runs; a span in an input buffer the engine refills lies in no
 \ armed text, so stale bytes are never read. SPAN-CAP bounds only the copy, so a
@@ -80,7 +80,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : TOKEN-SPAN@ ( -- ptr u8 n )
    S-TOKEN SRC@
    {: a:ptr u:n :}
-   a DIAG>SRC nip IF a u EXIT THEN
+   a REJECTION:>SOURCE nip IF a u EXIT THEN
    S-TOKEN SLOT@ ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:
@@ -91,6 +91,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 \ cell are declared address cells, NULL-PTR for none, so the linker relocates
 \ them.
 PERSISTED-PTR-VARIABLE NEWEST
+NEWEST ROLLBACK-CELLS:MARK
 
 0 constant NO-CODE          \ no reason is armed
 
@@ -170,7 +171,7 @@ public
    rc 0= IF FORGET-SRC EXIT THEN
    rc RENDER
    FORGET-SRC
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    rc DEF-STOPPED !
    rc CHECKER-REFUSE ;
 
@@ -188,7 +189,7 @@ public
 : EXPLAIN ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
    u CAPPED {: len:n :}
-   align here CELL-VIEW {: row:ptr :}
+   datum here CELL-VIEW {: row:ptr :}
    here ptr-cell-mark 0 ,
    NEWEST @ row 0 ptr-field !
    code ,  len ,
@@ -196,13 +197,6 @@ public
    len 1 cells 1- + 1 cells / cells allot
    a u d CAP-COPY
    row NEWEST ! ;
-
-\ The last declaration's packet slots back to zero at a file boundary or image
-\ capture, so a cached load and a fresh one capture the same bytes.
-: SNAPSHOT-RESET ( -- )
-   SLOTS SPAN-CAP * 0 ?do 0 SPAN-BUF i + c! loop
-   SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop
-   NO-CODE ARMED ! ;
 
 private
 
@@ -215,7 +209,7 @@ s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
 s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy" E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
-s" declaration too long" E-TDECL-CAP EXPLAIN
+s" declared name too long" E-TDECL-CAP EXPLAIN
 \ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
 \ means the derive requirement failed later, in the constructor participant's
 \ payload role and equality checks, not that the feature token was unknown.
@@ -354,7 +348,7 @@ public
 
 : PART-ROLLBACK ( -- ) DECL-MARK ROLLBACK ;
 
-\ Total: RELEASE is throw-free by contract (src/core/checker.f RELEASE).
+\ Total: RELEASE is throw-free by contract.
 : PART-RELEASE ( -- ) RELEASE ;
 
 seal-package
@@ -397,23 +391,18 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
 
 public
 
-\ The pending-constructor authority queue is plan scratch shared with the
-\ generator. Its only legal value at the start of a declaration is empty, so
-\ SNAPSHOT establishes that value rather than copying one, and ROLLBACK restores
-\ it after a failure that left entries queued.
 : PART-SNAPSHOT ( -- )
-   DISARM
-   CTOR-PEND-CLEAR ;
+   DISARM ;
 
 \ A non-mutating re-proof of the gate ARM checked: a family made ineligible
-\ since then fails before any word is rendered.
+\ since then fails before any word is made.
 : PART-PREPARE ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
 \ Mirrors sumtype.f CHECKER-DEFSUM-BODY's close. Both role gates read committed
-\ rows, so they cannot run in the body phase. Replay renders and checks the same
-\ bodies to publish their effects and emits no runtime code: a call needs the
+\ rows, so they cannot run in the body phase. Replay builds and checks the same
+\ words to publish their effects and emits no runtime code: a call needs the
 \ checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
@@ -425,10 +414,9 @@ public
    fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
-   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
+   fam TDECL-CTOR-WORDS-BODY ;
 
 : PART-ROLLBACK ( -- )
-   CTOR-PEND-CLEAR
    DISARM ;
 
 \ Total: publication has already happened, and the only thing left is this
@@ -535,8 +523,9 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
-$2000 constant SEEN-CAP                   \ the field-name window a replay checks
-create SEEN SEEN-CAP allot
+PTR-VARIABLE SEEN-P                       \ a replay's field names, each count-prefixed
+SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
+: SEEN ( -- ptr u8 ) SEEN-P @ ;
 variable SEEN-U
 variable SEEN-I
 
@@ -615,23 +604,22 @@ private
    BEGIN SEEN-I @ SEEN-U @ < WHILE
       SEEN SEEN-I @ + c@ {: len:n :}
       len u = IF
-         SEEN BYTE-VIEW SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+         SEEN SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
       THEN
       SEEN-I @ len 1+ + SEEN-I !
    REPEAT NO ;
 
 public
 
-\ NAME-CHECK ( name reason -- ) : a replay's field-name gate. The name is
-\ validated, refused as a duplicate of one already in this window, and recorded;
-\ `reason` is the front end's text for a window overflow.
-: NAME-CHECK ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n wa:ptr wu:n :}
+\ NAME-CHECK ( name -- ) : a replay's field-name gate. The name is validated,
+\ rejected as a duplicate of one recorded since SEEN-CLEAR, and recorded.
+: NAME-CHECK ( ptr u8 n -- )
+   {: a:ptr u:n :}
    a u DECL-REJECT:TOKEN!
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-DUP throw THEN
-   SEEN-U @ u + 1+ SEEN-CAP > IF wa wu E-CAP DECL-REJECT:REJECT throw THEN
+   SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
    u SEEN SEEN-U @ + c!
    0 SEEN-I !
    BEGIN SEEN-I @ u < WHILE

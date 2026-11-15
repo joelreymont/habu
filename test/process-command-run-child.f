@@ -12,7 +12,7 @@ package PROCESS-COMMAND-RUN-CHILD
 : EXIT3 ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+
    s" printf child-err >&2; exit 3" CMD:ARG+
-   s" /bin/sh" 1000 >MS CODE CMD:RUN ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER CODE CMD:RUN ;
 
 public
 

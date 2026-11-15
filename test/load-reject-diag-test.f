@@ -3,7 +3,8 @@
 \ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
 \ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
-\ HABU_UNDER_TEST when set, else the running engine.
+\ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
+\ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -21,7 +22,6 @@ require src/lib/engine-candidate.f
 package LOAD-REJECT-TEST
 
 $1000 constant CAP
-60000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
@@ -54,6 +54,8 @@ create RTYPE-P PATH-CAP allot
 create RNEST-P PATH-CAP allot
 create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
+create TARGET-P PATH-CAP allot
+create TARGET-JSON-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -76,6 +78,8 @@ variable RTYPE-U
 variable RNEST-U
 variable RCATCH-U
 variable CF-U
+variable TARGET-U
+variable TARGET-JSON-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -144,6 +148,12 @@ variable RC
 : CF$ ( -- ptr u8 n )
    CF-P CF-U @ ;
 
+: TARGET$ ( -- ptr u8 n )
+   TARGET-P TARGET-U @ ;
+
+: TARGET-JSON$ ( -- ptr u8 n )
+   TARGET-JSON-P TARGET-JSON-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -183,7 +193,9 @@ variable RC
    s" residue.f" RES-P RES-U PATH!
    s" residue-type.f" RTYPE-P RTYPE-U PATH!
    s" residue-nest.f" RNEST-P RNEST-U PATH!
-   s" residue-caught.f" RCATCH-P RCATCH-U PATH! ;
+   s" residue-caught.f" RCATCH-P RCATCH-U PATH!
+   s" target.f" TARGET-P TARGET-U PATH!
+   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -193,6 +205,8 @@ variable RC
    \ before the token these cases pin.
    BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
+   TARGET$ s" false ?TARGET" FS:WRITE-ALL
+   TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -203,12 +217,12 @@ variable RC
    OUTER$ SB$ FS:WRITE-ALL ;
 
 : IMM-FIXTURES! ( -- )
-   s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
+   s" -1 REJECTION:JSON ! : LRD-IMM-I ( -- ) 73 include "
    SIDE$ s"  . ;" INC$ FRAG-FIXTURE!
-   s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
+   s" -1 REJECTION:JSON ! : LRD-IMM-R ( -- ) 73 require "
    SIDE$ s"  . ;" REQ$ FRAG-FIXTURE!
    CALLER$ S" TRUSTED: RAW-IMM ( -- ) ; immediate
--1 JSON-DIAGS !
+-1 REJECTION:JSON !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " FS:WRITE-ALL ;
 
@@ -236,7 +250,7 @@ variable RC
    s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
    RUNTIME-FIXTURE!
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." FS:WRITE-ALL
-   TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
+   TRUSTED$ S\" -1 REJECTION:JSON ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
 
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
@@ -263,7 +277,7 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
 
 : ERR$ ( -- ptr u8 n )
@@ -460,53 +474,53 @@ variable RC
    s" T0 refuses a MATCH variant with no OF" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
    s" T0 refuses a MATCH with no value proved under it" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-UNDER ( -- n ) MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
    s" T0 refuses a MATCH over an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-NOFAM ( n -- n ) 5 swap MATCH lrd-nofam empty OF 1 ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
    s" T0 refuses a MATCH over an unknown variant at the variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOVAR ( lrd-choice -- n ) MATCH lrd-choice bogus OF 1 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
    s" T0 refuses dead code after exit" T-LABEL
    BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string literal at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" ncomp: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
+   S\" compiler: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
    BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" ncomp: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
+   S\" compiler: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a construct of an unknown variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
    s" T0 refuses a construct of an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
+   s" compiler: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
 
 \ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.
 : TEST-T0-RAW-SPLIT ( -- )
    s" T0 compiles a refused TRUSTED: step as its raw effect" T-LABEL
-   BODY$ s" require src/lib/c2-owner.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
+   BODY$ s" require src/lib/c2-memory.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
    BODY$ RUN S\" 8\n8\n" ASSERT-OK-OUT ;
 
 \ A refused `!` of a two-cell product in a TRUSTED: body splices its own typed
@@ -619,9 +633,9 @@ variable RC
    EXITED @ TTRUE
    RC @ REJECT-RC T=
    s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
-   BODY$ S\" 1 set-tier\n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
+   BODY$ S\" \n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
+   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
    s" :5" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
    EXITED @ TTRUE
@@ -629,7 +643,7 @@ variable RC
    s" the native compiler places a refusal at the closing ; of a slice" T-LABEL
    BODY$ S\" \n\nparse-name x drop 24 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" ncomp: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
+   SB-RESET  s" compiler: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
    s" :5" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ T$=
    EXITED @ TTRUE
@@ -648,7 +662,7 @@ variable RC
 : ASSERT-NCOMP-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n :}
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile " SB-APPEND  name nameu SB-APPEND
+   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile " SB-APPEND  name nameu SB-APPEND
    s"  at " SB-APPEND  tok toku SB-APPEND  s"  in " SB-APPEND  BODY$ SB-APPEND
    line lineu SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
@@ -751,6 +765,37 @@ variable RC
    ERR$ S\" /residue.f\n" ENDS-WITH? TTRUE
    ERR$ 10 COUNT-CHAR 1 T= ;
 
+: ASSERT-TARGET ( -- )
+   ERR$ SB$ T$=
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ 74 T= ;
+
+: TEST-TARGET ( -- )
+   s" a ?TARGET stop prints the rejection form" T-LABEL
+   TARGET$ RUN
+   SB-RESET
+   s" error[E-TARGET]: this file does not build for " SB-APPEND
+   HB-TARGET$ SB-APPEND  10 SB-APPEND-C
+   s"  --> " SB-APPEND  TARGET$ SB-APPEND  S\" :1:7\n  |\n" SB-APPEND
+   S\" 1 | false ?TARGET\n" SB-APPEND
+   S\"   |       ^^^^^^^ the target test fails here\n" SB-APPEND
+   S\"   = help: build this file only for a target its test admits, or widen the test\n\n"
+   SB-APPEND
+   ASSERT-TARGET
+   s" a ?TARGET stop prints one JSON line under REJECTION:JSON" T-LABEL
+   TARGET-JSON$ RUN
+   SB-RESET
+   S\" {\"severity\":\"error\",\"code\":\"E-TARGET\",\"message\":\"this file does not build for "
+   SB-APPEND  HB-TARGET$ SB-APPEND
+   S\" \",\"file\":\"" SB-APPEND  TARGET-JSON$ SB-APPEND
+   S\" \",\"line\":2,\"column\":7,\"byte_start\":26,\"byte_end\":33" SB-APPEND
+   S\" ,\"token\":\"?TARGET\",\"source_line\":\"false ?TARGET\"" SB-APPEND
+   S\" ,\"label\":\"the target test fails here\"" SB-APPEND
+   S\" ,\"help\":\"build this file only for a target its test admits, or widen the test\"}\n"
+   SB-APPEND
+   ASSERT-TARGET ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -773,8 +818,8 @@ variable RC
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token_index" 1 GJA-ASSERT-INT-FIELD
    \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
-   root s" byte_start" 85 GJA-ASSERT-INT-FIELD
-   root s" byte_end" 92 GJA-ASSERT-INT-FIELD ;
+   root s" byte_start" 89 GJA-ASSERT-INT-FIELD
+   root s" byte_end" 96 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
@@ -786,7 +831,7 @@ variable RC
 \ holds, gets a record and a repair packet that meet the contract with no place.
 : TEST-UNSOURCED-PACKET ( -- )
    s" a refusal at an evaluated token gets a repair packet with no place" T-LABEL
-   BODY$ S\" true DIAG-JSON!\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
+   BODY$ S\" true REJECTION:JSON !\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
@@ -801,36 +846,30 @@ variable RC
    packet GJA-REPAIR-DEF
    packet s" line" GJA-HAS? TFALSE ;
 
-: TEST-UNREPORTED-REJECT ( -- )
-   s" a silent diagnostic defer retains the hook fallback" T-LABEL
-   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" FS:WRITE-ALL
-   BODY$ RUN
-   s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
-
 \ T0 refuses a body no scan certified where the checker's scan bound nothing
 \ or `is` names no deferred word.
 : TEST-UNCERTIFIED-MALFORMED ( -- )
    s" a trusted quotation reading its definition's local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QLOCAL ( n -- n ) {: a:n :} [: a ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
    s" a trusted quotation reading its definition's numeric local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QNUM ( n -- n ) {: 1:n :} [: 1 ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
    s" a trusted is with no target is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" a trusted is naming no word is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
    s" a trusted is naming a colon word is refused" T-LABEL
    BODY$ s" : LRD-PLAIN ( -- ) ; TRUSTED: LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
+   s" compiler: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
@@ -866,12 +905,12 @@ variable RC
    TEST-BAD-SIGNATURE-LINE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
+   TEST-TARGET
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER
    TEST-IMM-TRUSTED
    TEST-UNSOURCED-PACKET
-   TEST-UNREPORTED-REJECT
    TEST-BIG-LITERAL
    TEST-SECTION-CLASH
    HB-TARGET-LINUX-X86-64? 0= if

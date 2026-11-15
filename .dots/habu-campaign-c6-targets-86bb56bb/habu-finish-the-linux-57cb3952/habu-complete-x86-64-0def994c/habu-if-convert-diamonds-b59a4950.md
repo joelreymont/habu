@@ -5,7 +5,7 @@ priority: 3
 issue-type: task
 created-at: "2026-10-01T18:17:44.368186+03:00"
 closed-at: "2026-11-04T11:48:47.941013+02:00"
-close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments (DECISIONS \"editing tier 1\", \"the T0 release\"). Optimizes tier 1's x86 selector (select-x64.f); \"editing tier 1\" allows only defect fixes on tier-1-owned paths."
+close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments. Optimizes tier 1's x86 selector (select-x64.f); Joel 2026-11-03: tier 1 is edited only to fix a defect on a path it still owns."
 ---
 
 Problem: the x86 selector is correct and unfused (`src/compiler/native/select-x64.f:12-17`): no selection becomes `x64.cmpsel` or `x64.selz`, so the renders habu-render-x86-cmpsel-279135be landed (`DEF-CMPSEL` `x64ir.f:1252`, `DEF-SELZ` `1270`) run only from staged machine IR. ARM64 if-converts a diamond into a select inline (`REGION-PICK`, `src/compiler/native/select.f:3268-3276`): `: S1 ( n n -- n ) 2dup < if drop else nip then ;` compiles to `cmp`, `csel`.

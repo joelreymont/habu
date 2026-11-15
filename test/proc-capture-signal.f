@@ -18,7 +18,6 @@ require test/pcap-result.f
 package PROC-CAPTURE-SIGNAL
 
 1000000 constant PCS-SAMPLE-LIMIT  \ more samples than this capture can deliver: the limit never fires
-30000 constant PCS-TIMEOUT-MS      \ far above the child's quarter second; a timeout is a failure here
 200000000 constant PCS-MIN-NS      \ the child's quarter second less a margin, in nanoseconds
 64 constant PCS-OUT-CAP
 32 constant PCS-ERR-CAP
@@ -37,7 +36,7 @@ create PCS-ERR PCS-ERR-CAP allot
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PCS-SCRIPT >LEN PROC-ARGV+
-   s" /bin/sh" >LEN PCS-OUT PCS-OUT-CAP >LEN PCS-ERR PCS-ERR-CAP >LEN PCS-TIMEOUT-MS >MS
+   s" /bin/sh" >LEN PCS-OUT PCS-OUT-CAP >LEN PCS-ERR PCS-ERR-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE PCAP-RESULT:>N ;
 
 : CHECK-CAPTURE-UNDER-SIGNALS ( -- )
@@ -83,7 +82,7 @@ create PCS-ERR PCS-ERR-CAP allot
    pid PCS-HOLD-MS >MS PROCESS:WAIT-BOUNDED {: held :}
    mono-ns started - {: elapsed :}
    in-w close
-   pid PCS-TIMEOUT-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
    prof-off
    held T-ENDING-TIMEOUT
    elapsed PCS-HOLD-MS PROCESS:NS-PER-MS * >= TTRUE

@@ -30,8 +30,7 @@ public
 private
 
 \ Exit statuses are not claims: an uncaught throw of 0..EXIT-MAX exits with that
-\ status (src/habu/driver-io.f DRV-FAIL), so E-USAGE 64 means the same in every
-\ tool by design. A larger positive value is a throw identity, held to the same
+\ status, so E-USAGE 64 means the same in every tool by design. A larger positive value is a throw identity, held to the same
 \ uniqueness and reserved ranges as a negative one.
 255 constant EXIT-MAX
 
@@ -172,11 +171,8 @@ variable JX
 : FILE$ ( file-id -- ptr u8 n ) FILE>N INTERN$ ;
 : STEM-NAME$ ( stem-id -- ptr u8 n ) STEM>N INTERN$ ;
 
-\ Identical (code, name) re-registrations are one identity reachable through two
-\ files (re-export shims; src/habu/stack-abi.f E-STACK-UNGUARDED for emitters
-\ that compile before src/lib/), allowed inside another file's range too. Every
-\ copy is recorded with its file: COLLIDE? ignores same-name pairs and FOREIGN?
-\ asks whether the range's owner registers the pair itself.
+\ A (code, name) pair registered in two files (a re-export shim, a boot file loaded
+\ before src/lib/) is one identity, admitted even inside another file's range.
 : CLAIM+ ( n intern-id file-id -- ) {: code:n name:intern-id file:file-id :}
    CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !

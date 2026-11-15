@@ -366,14 +366,14 @@ variable CA-COMPOSE-LABEL-U
 
 
 : CA-DIAG-FINISH ( -- )
-   DIAG-BUFFER$ nip CA-ERR-LEN !
-   DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ nip CA-ERR-LEN !
+   REJECTION:BUFFER-OFF ;
 
 : CA-DIAG-FULL-START ( -- )
-   CA-FILE-A@ CA-FILE-U @ DIAG-FILE!
-   CA-JSON? DIAG-JSON!
-   1 1 0 DIAG-ORIGIN!
-   CA-ERR-A@ CA-ERR-CAP @ DIAG-BUFFER! ;
+   CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
+   CA-JSON? REJECTION:JSON !
+   1 1 0 REJECTION:ORIGIN!
+   CA-ERR-A@ CA-ERR-CAP @ REJECTION:BUFFER! ;
 
 : CA-CHECK-FULL-ACT ( -- )
    CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
@@ -529,9 +529,9 @@ private
 \ counted while it was checked; a source with none still gets its warnings.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
-   MULTI-ERR-N @ {: before:n :}
+   REJECTION:TALLY @ {: before:n :}
    CA-CHECK-FULL {: rc:n :}
-   MULTI-ERR-N @ before - {: rejects:n :}
+   REJECTION:TALLY @ before - {: rejects:n :}
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc THREW? IF rc CA-HANDLE-THROW exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED exit THEN
@@ -562,9 +562,9 @@ private
 
 : CA-RUN-COMPOSE-DEFS ( -- )
    CA-RESET-RESULTS
-   MULTI-ERR-N @ {: before:n :}
+   REJECTION:TALLY @ {: before:n :}
    CA-CHECK-COMPOSE {: rc:n :}
-   MULTI-ERR-N @ before - {: rejects:n :}
+   REJECTION:TALLY @ before - {: rejects:n :}
    rc VERIFY:E-MISSING-NAME = IF 0 CA-EMIT-CAPTURED rc throw THEN
    rc DUP-RC = IF 0 CA-EMIT-CAPTURED CA-COMPOSE-STOPPED CA-HANDLE-DUP exit THEN
    rc THREW? IF rc CA-HANDLE-COMPOSE-THROW exit THEN

@@ -71,7 +71,11 @@ public
   `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
   rename the word or call it qualified; a body or `'` names the word.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
-  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
+  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A package's
+  public and private sections are two wordlists, so a public `R` may share a
+  private word's tail, a family's private derived word included: a bare `R`
+  in the package calls the private one, `PKG:R` the public one, and a public
+  colon `R` moves the private one's cells (`E-SHADOWED-ARITY`). A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
   is checked and called as itself even when it spells an engine word: the
   checker's rules for `@`, `!`, `create` and the like belong to the engine's
@@ -85,8 +89,8 @@ public
   `ENGINE-ERROR:OVERLAY-OPEN`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?`,
-  `HB-TARGET-WASM?` and `HB-TARGET-KNOWN?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
+  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
+  `HB-TARGET-WASM?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
   `create`, `variable`, `constant`, `defer` or `LAYOUT-BUFFER`: `tools/check.f`
   refuses them, not `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
   too) is refused by `--load`, by every definer: rc 70.
@@ -127,6 +131,11 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   takes `ptr turn`. Fetching, storing or stepping through it, or passing it to
   a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
   one cell: a record is `E-MISMATCH` at the call.
+- A type var named only on the stack, whose body only moves it (stack words
+  but `?dup`, locals, calls of words that only move theirs), also takes a
+  one-cell enum, sum or product; passing it to a primitive, a `defer` or
+  `RECURSE` makes it one plain cell, and a wider or possibly linear value is
+  rejected at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
@@ -142,10 +151,9 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - A `FUNCTION:` result declared `nullable<u8>` is `none` for NULL.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
-  lives on the stack or in a cell. Names are at most 16 bytes, 64 per
-  definition, block-scoped, bindable after a closed early-exit guard. A local
-  hides the word of its spelling, the loop index included:
-  `{: i:n :} 3 0 ?do i . loop` prints the local three times.
+  lives on the stack or in a cell. Locals are block-scoped, bindable after a
+  closed early-exit guard. A local hides the word of its spelling, the loop
+  index included: `{: i:n :} 3 0 ?do i . loop` prints the local three times.
 - Code is well-factored and its lines are short, about 60 columns at most,
   because people read it: a word does one thing in about five lines, and a repeat or
   a dense expression becomes a named word.
@@ -171,8 +179,6 @@ Top-level code is checked too: each token is judged against the live stack's
 cells as the same token in a colon body. A checked step runs, as does one
 deferred to the run; a refused or uncheckable one prints the body's diagnostic
 before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
-`set-tier`'s row is global, so a program's first line may choose the tier
-before any `require`.
 
 | you write | diagnostic |
 |---|---|
@@ -185,16 +191,15 @@ before any `require`.
 | `--` or `\|` in a locals group: `{: a -- b :}`, `{: a \| :}` | `E-BAD-LOCAL-SHAPE` at the token, `a locals group names only locals; …` — the signature declares the outputs, and Habu has no uninitialised locals |
 | a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
-| a definition taking more input cells than the ceiling, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (<cells> cells, at most <cap>)` |
 | a body nesting more than 32 control frames (each `if`, `begin`, `do`, `case`, `MATCH`, `of` arm and `[:` takes one): 33 nested `dup IF` | `E-UNCHECKABLE`, `control flow nested too deep to check (depth <depth>, at most <cap>)` |
 | `: DOWN dup 0 > IF 1 - RECURSE THEN ;`: `recurse` in a definition with no signature | `E-UNCHECKABLE`, `recursion needs a declared stack effect` |
 | `: MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;`: `recurse` in a `does>` clause | `E-UNCHECKABLE`, `recurse in a does> clause would call the defining word` |
 | a `trust`, `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a local's type nested past the depth ceiling: `{: x:[[[… :}` | `E-BAD-SIGNATURE`, `fix_signature_size`, the depth reason |
 | more than 32 `forall<…>` binders nested in one signature | `E-BAD-SIGNATURE`, `fix_signature_size`, `more than 32 nested binders at '<token>'`; `E-BAD-STORED-SIGNATURE` for a stored row |
-| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`, at both tiers; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
+| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
 | a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-REJECTED` at `;]`, `fix_return_stack` |
-| a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack`, at both tiers |
+| a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack` |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
 | `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` is sealed, by its `seal-package` or as an engine package, and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
@@ -206,8 +211,6 @@ before any `require`.
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature` |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | rc 70 at load; `E-BAD-DECLARATION` from `tools/check.f` |
 | `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
-| `16 DYNAMIC-STORAGE:RECORD-NEW`, or any call or tick of `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a re-export, at top level too, outside a `HEAP`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL-TOP-LEVEL` for a top-level token in the source, else `E-ARENA-CALL` |
-| `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `E-RESERVED-DEFINITION habu: <file>:<line>: reserved word cannot be a definition name: field-project`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
@@ -217,6 +220,7 @@ before any `require`.
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
+| `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;` or `0 throw`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, or a literal 0 thrown; a computed 0 is not refused | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` |
 | outside its package, at top level or in a body, a call of a primitive whose one row is its package's private one: `0 0 0 xref-retarget` | `E-UNDEFINED`, as a call to an unknown word is; the word never runs; `'` of it at top level is admitted |
 | outside its package, in a body, a call of a private primitive that also keeps a global trusted-only row: `0 0 reloc-maps-clear` | `E-CAP-TRUSTED` |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
@@ -313,18 +317,18 @@ escape in it bind nothing. The row is trusted, never compared with the body;
 row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
-A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
-anything reaching `INCLUDE-EVALUATE`) makes names
+A word that makes definitions at load time (anything reaching `define-word` or
+an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:`
 row's word (§ 4) are checked before the run, `--verify-only` included. A
 failure the check pins before a use it leaves to the run decides that
-definition. At top level any other such name opens that stretch. The renderer
-reads none of the tokens after it, so they are checked. A reached renderer no
+definition. At top level any other such name opens that stretch. The definer
+reads none of the tokens after it, so they are checked. A reached definer no
 row or group declares is `W-CHECK-DEFERRED` at its own token, so a `deferred`
 verdict always locates its gap.
 
-After a reached call that may render or register nominal types, verification
+After a reached call that may define words or register nominal types, verification
 defers a later use of a missing type to the run; a check no run follows reports
 it as `W-CHECK-DEFERRED` at that type. It consumes the declaration without
 publishing a type, layout, signature or generated words. Known syntax,
@@ -367,6 +371,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !` |
 | `SCRATCH-VARIABLE V` | a `variable` whose value a build leaves out | `( -- ptr a )` |
+| `datum` | a nameless row laid at top level | none: the row's address is `here` after it |
 | `create B 256 allot` | static dictionary storage | `B`, pointee bound by the use (`B 4 type`, `B @`) |
 | `n BUFFER: B` | a fixed zeroed byte row | `( -- ptr u8 )`; bytes are never a `TYPED-BUFFER` element |
 | `n SCRATCH-BUFFER: B` | a `BUFFER:` whose bytes a build leaves out | `( -- ptr u8 )` |
@@ -377,17 +382,17 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
-| `ARENA AR t` | records of `t` in an arena the caller holds, never moved | inside a package: `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
+| `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
 | `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
 A build tracks a compile-time read of storage as a read of the record whose
-address it derives from, within that record's extent: `L 8 +` past
+address it derives from, within that record's extent: `L 16 +` past
 `create L 8 allot` reads the next record, whose edit a warm build misses.
 
-A word a definer's `create` makes has `-- ptr a` from the moment it is made, at
-either tier, in a package or under `evaluate`, until a `does>` the definer then
+A word a definer's `create` makes has `-- ptr a` from the moment it is made, in
+a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before
 `does>` leaves `-- ptr a`.
 
@@ -395,12 +400,38 @@ Lay a created body's data right after its `create`, before the next definition
 or row: a definition's `;` may lay its facts text at `here`, so data laid after
 it no longer follows the body.
 
-A definer that writes its word as text (`ERROR:CODE`) states what it makes with
+Start a nameless row laid at top level with `datum`, which aligns `here`: the
+data up to the next definition or `datum` is kept only through an address a
+declared cell holds, so a stripped program keeps the row only when it reaches
+that cell.
+
+A definer that makes a word at load time (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). A
 deferred D, or one no `parse-name` reaches through the words it calls (not
 through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 `FUNCTION:` needs no row.
+
+A definer that builds a word from words it found writes no text:
+`name$ EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
+the word (`s" bool" EFFECT:NAMED` names a built-in type or a family: a
+qualified spelling, `ARENA:arena`, names that package's family whatever the
+running package holds, and a bare one is looked up as source where the
+definer runs would; `s" ptr u8" EFFECT:READ-TYPE` reads one type with no
+letters as that source would), `postpone W` appends the W found where the
+definer was compiled, which no package the definer later runs in can shadow,
+and `postpone ;` ends the word: `postpone` of an immediate W compiles a call
+of W, and `postpone W` is rejected where `['] W` is. `EFFECT:KEYWORD`,
+`EFFECT:OPERAND`, `EFFECT:TYPE-ITEM` and `EFFECT:CALL` append the keyword,
+variant, type or call the string spells, the call bound where the definer
+runs; `EFFECT:LOCAL` and `EFFECT:LOCAL@` declare and read a local, and
+`EFFECT:VARIABLE-OF` declares a typed variable.
+An `EFFECT:type` ends with the load that built it, so no storage, field or
+payload holds one (`E-BAD-STORAGE`, a field or payload `E-BAD-DECLARATION`):
+build it where it is used.
+`['] W compile, ( [ R -- S ] -- )` appends a call of W, a word whose tick is
+a quotation (a primitive's tick is an `xt`, which `compile,` rejects), and
+`; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
@@ -411,9 +442,11 @@ the process that fills it: a build leaves it out and the program reads it as
 zero, and it is declared where it is made, as `create R n SCRATCH-ALLOT` for a
 definer's own scratch body, with `here` cell-aligned. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
-a byte offset.
+a byte offset. Every target's cells are eight little-endian bytes; `@` and `!`
+reach a cell at any byte address, and an atomic word's cell must be cell-aligned.
 
-forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**.
+forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**, **Rules
+learned by refusal**.
 
 ## 5 A cell that holds an address is declared
 
@@ -450,7 +483,10 @@ A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
-holds a pointer or a quotation is the same mint. A cast into another package's
+holds a pointer or a quotation is the same mint. A cast that makes an `ENUM`
+or `SUMTYPE` value from a cell, a `niche-null` one aside, is `E-CAST-CLASS`,
+the family's own package included: use its `DERIVE tag` `TAG>` or a variant's constructor; a private
+view of storage leaves the stored tags to its writer. A cast into another package's
 cell family or `OPAQUE` structure is the writer's claim, which the checker does
 not prove.
 
@@ -523,8 +559,8 @@ holds an address**.
   no-return (§ 3). `throw` for recoverable and interactive paths, `die` for
   build makers and CLI boundaries.
 - Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
-  `,`, `evaluate`, a load or a package keyword run on a task's, an exposed
-  region's or a callback's thread. The kernel's guard writes
+  `,`, `evaluate`, a load or a package keyword run on a task's or a
+  callback's thread. The kernel's guard writes
   `E-TASK-COMPILE habu: <primitive> from a task lr <lr>` on fd 2;
   `evaluate`, `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and
   `allot` reach it first, so a definition or keyword in a text is refused
@@ -535,15 +571,15 @@ holds an address**.
   `ndict!` exit 79 on it too while any task is live, writing
   `E-TASK-COMPILE habu: <primitive> while a task is live lr <lr>`. `NLEASE`'s
   checks throw `NLEASE:E-TASK` on a task's thread.
-- `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
-  `[: 0 throw ;] catch` answers 109.
+- A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed
+  0 unwinds unchecked, a caller bug: its `catch` answers 0.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
   (110) on the faulting thread, after the line `E-MEMORY-FAULT habu: memory
   fault at <address> pc <pc>` on fd 2: `catch` answers 110, a task ends with
   110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
   and a fault while one is delivered still dump and die by the signal.
-- Arithmetic is modular and never refuses, with one exception: `/`, `mod` and
-  `/mod` throw catchable `E-DIV-ZERO` on a zero divisor;
+- Arithmetic is modular; a literal 0 divisor of `/`, `mod` or `/mod` is refused
+  (`E-DIV-ZERO`), and a computed one's answer is undefined;
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.
 - `catch` only at explicit recovery boundaries — REPL and CLI wrappers, test
   assertions, stack-preserving adapters returning the code as data. No
@@ -572,7 +608,11 @@ forth.md: **Errors**, **Integer arithmetic**.
   require src/lib/secret/macos.f [then]`, never from inside a word: a build
   refuses a load a word runs (`include: a word loaded or provided a file
   during a build`). The verifier follows a `[if]` only after a target predicate, or one
-  and `0=`; `[if]` and `[then]` are reserved.
+  and `0=`; `[if]` and `[then]` are reserved. A file that builds for some
+  targets only states them on its first code line, before its requires:
+  `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET`. On another target
+  the load stops there with an E-TARGET rejection naming the target (the
+  seam's `HB-TARGET$`), throw 74. A file that requires it states nothing.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
@@ -640,7 +680,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, the signed bounds |
-| Engine limits … | the REPL-line, `[:` and control-flow nesting, effect-depth, input-row and data-space ceilings; a definition's text and name have none |
+| Engine limits … | the REPL-line, `[:` and control-flow nesting, effect-depth and data-space ceilings; a definition's text and name have none |
 | Constants | hex versus decimal, where codes live |
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |

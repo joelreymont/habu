@@ -3,44 +3,19 @@
 \ and appends a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
 \ (version $20400, adhoc, one SHA-256 hash per $1000-byte page, a partial last
 \ page hashed at its length). It works in place on MBUF, MLEN and LE-OFF once
-\ SHA256 and macho.f are loaded. Signature integers are big-endian; the header
-\ patches little-endian.
+\ SHA256 and macho.f, which sizes the signature, are loaded. Signature
+\ integers are big-endian; the header patches little-endian.
 using IMAGE-BYTES
 package MACHO
-PTR-VARIABLE SIGA  variable SIGU
-: SIGA@ ( -- ptr u8 )
-   SIGA @ ;
-
-: SIGA! ( ptr u8 -- )
-   SIGA ! ;
-
-public
-: SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
-   a SIGA!
-   u SIGU ! ;
-
-private
-: SIG-IDLEN ( -- n )  SIGU @ 1 + ;
-88        constant CD-HDR
-$1000     constant CS-PAGE
-32        constant CS-HASH
 variable  SIG-DOFF
 create CS-SHA-CTX SHA256-CTX-BYTES allot
-
-: NCSLOTS ( -- n )   SIG-DOFF @ CS-PAGE 1 - +  CS-PAGE / ;
-
-: HASH-OFF ( -- n )  CD-HDR SIG-IDLEN + ;
-
-: CD-SIZE ( -- n )   HASH-OFF  NCSLOTS CS-HASH * + ;
-
-: SB-SIZE ( -- n )   20 CD-SIZE + ;
 
 : ALN ( n n -- n ) {: n a :}  n a 1 - +  a 1 - invert and ;
 : CS-REM ( -- n )
    SIG-DOFF @ CS-PAGE mod ;
 
 : CS-SLOT-SIZE ( n -- n ) {: idx:n :}
-   idx NCSLOTS 1 - = if
+   idx SIG-DOFF @ NCSLOTS 1 - = if
       CS-REM dup 0 <> if exit then drop
    then
    CS-PAGE ;
@@ -56,20 +31,20 @@ variable EXECSEG-LIM   0 EXECSEG-LIM !
 : ADD-CODESIG-LC ( -- )
    MH-HDR-SZ  20 M-OFF M-LE32@ +  {: at :}
    LC-CODE-SIG  at M-OFF M-LE32!   16  at 4 + M-OFF M-LE32!
-   SIG-DOFF @   at 8 + M-OFF M-LE32!   SB-SIZE  at 12 + M-OFF M-LE32!
+   SIG-DOFF @   at 8 + M-OFF M-LE32!   SIG-DOFF @ SB-SIZE  at 12 + M-OFF M-LE32!
    16 M-OFF M-LE32@ 1 +  16 M-OFF M-LE32!
    20 M-OFF M-LE32@ 16 +  20 M-OFF M-LE32! ;
 
 : PATCH-LINKEDIT ( -- )
    LE-OFF @ {: le :}
-   LE-BASE-SIZE @ SB-SIZE + {: size:n :}
+   LE-BASE-SIZE @ SIG-DOFF @ SB-SIZE + {: size:n :}
    size $4000 ALN  le 32 + M-OFF M-LE64!
    size            le 48 + M-OFF M-LE64! ;
 
 : CD-HDR, ( -- )
-   CSMAGIC-CODEDIR M-BE32   CD-SIZE M-BE32   CD-VERSION M-BE32   CD-ADHOC M-BE32
+   CSMAGIC-CODEDIR M-BE32   SIG-DOFF @ CD-SIZE M-BE32   CD-VERSION M-BE32   CD-ADHOC M-BE32
    HASH-OFF M-BE32          CD-HDR M-BE32
-   0 M-BE32                 NCSLOTS M-BE32
+   0 M-BE32                 SIG-DOFF @ NCSLOTS M-BE32
    SIG-DOFF @ M-BE32
    CS-HASH M-BE8  HT-SHA256 M-BE8  0 M-BE8  CS-PAGE-LOG M-BE8
    0 M-BE32
@@ -82,11 +57,11 @@ variable CSI
    MLEN@ SIG-DOFF !
    ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ M-OFF M-BE-RESET
-   CSMAGIC-EMBEDDED M-BE32   SB-SIZE M-BE32   1 M-BE32
+   CSMAGIC-EMBEDDED M-BE32   SIG-DOFF @ SB-SIZE M-BE32   1 M-BE32
    0 M-BE32   20 M-BE32
    CD-HDR,
    SIGA@ SIGU @ M-LEN M-BE-BYTES-LEN  0 M-BE8
-   0 CSI ! begin CSI @ NCSLOTS < while
+   0 CSI ! begin CSI @ SIG-DOFF @ NCSLOTS < while
      CS-SHA-CTX  MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256-IN  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN! ;

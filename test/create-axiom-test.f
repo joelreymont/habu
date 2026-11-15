@@ -6,7 +6,6 @@
 
 require src/lib/test.f
 require src/habu/verify-source.f
-require src/compiler/native/compiler.f
 
 package CREATE-AXIOM-TEST
 private

@@ -3,7 +3,16 @@
 \ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the
 \ per-task DATA region. Every data buffer an FS word takes is CALLER-OWNED.
 \ Each walk maps a context of its own for one call and releases it on return
-\ or throw.
+\ or throw. WALK-FILES-IF visits regular files depth-first, in the order the
+\ directory stream returns (a caller that needs lexical order sorts). Its allow
+\ quotation sees every path, the root and directories included, before the walk
+\ stats it; false skips the path and all it holds. Below the root the walk skips
+\ special files, links stat cannot follow and entries gone since the read; any
+\ other entry stat refuses, and a root that is neither a file nor a directory,
+\ is E-FS-STAT. The walk closes every descriptor it opened however it ends, and
+\ a callback's path is valid only during the callback. Two walks in flight
+\ cover disjoint trees: getdirentries64 on a directory removed meanwhile
+\ answers -1 and the walk reports E-FS-DIR.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -12,6 +21,7 @@ require src/lib/le.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/memory.f
+require src/core/compile-reads.f
 
 package FS
 
@@ -42,16 +52,12 @@ private
 
 public
 FS-ABI:S-IFMT constant S-IFMT
-
-private
-$1000 constant S-IFIFO
-$4000 constant S-IFDIR
-
-public
+FS-ABI:S-IFDIR constant S-IFDIR
 FS-ABI:S-IFREG constant S-IFREG
 
 private
-$A000 constant S-IFLNK
+$1000 constant S-IFIFO
+FS-ABI:S-IFLNK constant S-IFLNK
 
 public
 $2E constant DOT
@@ -82,15 +88,11 @@ private
 
 \ The one fstat binding: libc's struct stat, not the normalized stat64 layout.
 PROCESS-SYMBOLS
-FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
-   1 STAT-CAP WRITES-BYTES
-;FUNCTION
+FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 ) ;FUNCTION
 
 \ pread(fd, buf, count, offset), answering ssize_t: bytes read, 0 at end of
 \ file, or -1 with errno set.
-FUNCTION: PREAD-CALL pread ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: PREAD-CALL pread ( n ptr u8 n n -- n ) ;FUNCTION
 
 \ The most one pread asks: macOS answers EINVAL to a count above INT_MAX, so a
 \ longer range is read over several calls.
@@ -99,12 +101,8 @@ $7FFFFFFF constant PREAD-MAX
 \ XSI strerror_r is `strerror_r` on macOS and `__xpg_strerror_r` on glibc,
 \ whose `strerror_r` is the GNU form answering a pointer. Declaring the other
 \ target's symbol is harmless: a row resolves its symbol at its first call.
-FUNCTION: STRERROR-CALL strerror_r ( n ptr u8 n -- i32 )
-   1 2 WRITES-ARG
-;FUNCTION
-FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ptr u8 n -- i32 )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: STRERROR-CALL strerror_r ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ptr u8 n -- i32 ) ;FUNCTION
 
 22 constant EINVAL
 34 constant ERANGE
@@ -330,11 +328,9 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    ctx cap grown FDS-CLEAR
    old MEM:FREE-SPAN ;
 
-: CHECK-JOIN-CAP ( n -- )
-   dup PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
-
-\ FS owns the length gate: a path longer than PATH-CAP is E-FS-PATH, the
-\ refusal every fs consumer tests for, whatever buffer it is copied into.
+public
+\ FS owns the length gate: a caller's path longer than PATH-CAP, stored or
+\ opened as given, is E-FS-PATH, the refusal every fs consumer tests for.
 \ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
 \ bounded by the destination's reach.
 : PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 )
@@ -344,12 +340,33 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    u PATH-CAP > if E-FS-PATH throw then
    a u dst FFI:CSTR ;
 
-public
 : >PATHZ ( ptr u8 n -- ptr u8 )
    PATHZ-BUF PATHZ-INTO ;
 
+private
+\ >PATHZ of a path whose file a word reads, the read recorded
+\ (COMPILE-READS:FILE+).
+: READ-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
+   a u >PATHZ {: z:ptr :}
+   a u z COMPILE-READS:FILE+
+   z ;
+
+\ >PATHZ of a path whose final symlink a word reads, not its target, the read
+\ recorded.
+: READ-LPATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
+   a u >PATHZ {: z:ptr :}
+   a u z COMPILE-READS:LFILE+
+   z ;
+
+\ Whether stat answers for the NUL-terminated path, into STAT-BUF; it records no
+\ read.
+: STAT-Z? ( ptr u8 -- bool )
+   STAT-BUF stat64 0 < if false exit then
+   true ;
+
+public
 : EXISTS? ( ptr u8 n -- bool )
-   >PATHZ 0 access 0= ;
+   READ-PATHZ 0 access 0= ;
 
 : STAT-MODE@ ( -- n )
    STAT-BUF FS-ABI:STAT-MODE-OFF + LE:U16@ ;
@@ -369,12 +386,10 @@ public
 : STAT-CTIME-NS@ ( -- n )
    STAT-BUF FS-ABI:STAT-CTIME-NS-OFF + LE:U64@ ;
 
-: TRY-STAT ( ptr u8 n -- bool )
-   >PATHZ STAT-BUF stat64 0 < if false exit then
-   true ;
+: TRY-STAT ( ptr u8 n -- bool ) READ-PATHZ STAT-Z? ;
 
 : TRY-LSTAT ( ptr u8 n -- bool )
-   >PATHZ STAT-BUF lstat64 0 < if false exit then
+   READ-LPATHZ STAT-BUF lstat64 0 < if false exit then
    true ;
 
 private
@@ -382,9 +397,7 @@ private
 \ AT-CWD) into a buffer of STAT-CAP bytes, in libc's struct stat layout,
 \ not lstat64's, so its mode is LIBC-MODE@'s to read.
 PROCESS-SYMBOLS
-FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
-   2 STAT-CAP WRITES-BYTES
-;FUNCTION
+FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
 \ AT_SYMLINK_NOFOLLOW, fstatat's flag for the link itself, never its target.
 \ Darwin: xnu bsd/sys/fcntl.h. Linux: include/uapi/linux/fcntl.h, every arch.
@@ -416,12 +429,19 @@ public
    STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
    STAT-SIZE@ ;
 
+\ The regular file at the path: size, modification time seconds and
+\ nanoseconds, change time seconds and nanoseconds, then true; five zeros and
+\ false when stat fails (the file is missing or a directory above it cannot be
+\ searched) or it is not a regular file. A malformed path
+\ throws, as FILE-META's does: E-FS-PATH, or E-FFI-NUL for a 0 byte.
+: TRY-FILE-META ( ptr u8 n -- n n n n n bool )
+   TRY-STAT 0= if 0 0 0 0 0 false exit then
+   STAT-MODE@ S-IFMT and S-IFREG <> if 0 0 0 0 0 false exit then
+   STAT-SIZE@ STAT-MTIME-SEC@ STAT-MTIME-NS@
+   STAT-CTIME-SEC@ STAT-CTIME-NS@ true ;
+
 : FILE-META ( ptr u8 n -- n n n n n )
-   TRY-STAT 0= if E-FS-STAT throw then
-   STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
-   STAT-SIZE@
-   STAT-MTIME-SEC@ STAT-MTIME-NS@
-   STAT-CTIME-SEC@ STAT-CTIME-NS@ ;
+   TRY-FILE-META 0= if E-FS-STAT throw then ;
 
 : FILE? ( ptr u8 n -- bool )
    TRY-STAT-MODE MATCH option
@@ -448,7 +468,7 @@ public
    ;MATCH ;
 
 : EXECUTABLE? ( ptr u8 n -- bool )
-   >PATHZ X-OK access 0= ;
+   READ-PATHZ X-OK access 0= ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u begin dup 0 > while
@@ -471,10 +491,15 @@ private
    pu 1 + nu + ;
 
 public
+\ A join that does not fit dst is E-FS-CAPACITY, with nothing written. Each
+\ length meets dst's on its own first, so a huge one cannot wrap the sum.
 : JOIN-PATH-INTO ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu na:ptr nu dst :}
    CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
    nu 0 < if E-FS-PATH throw then
+   dst SPAN:LEN {: cap :}
+   pu cap > nu cap > or if E-FS-CAPACITY throw then
+   pa pu nu JOIN-LEN cap > if E-FS-CAPACITY throw then
    pa pu dst SPAN:COPY
    pa pu JOIN-SEPARATED? if
       na nu dst pu SPAN:SKIP SPAN:COPY
@@ -484,20 +509,9 @@ public
    na nu dst pu 1 + SPAN:SKIP SPAN:COPY
    pu 1 + nu + ;
 
-\ The destination is a bare ptr, so CHECK-JOIN-CAP stays: E-FS-CAPACITY is what
-\ JOIN-PATH promises its callers, and the reach minted below is the PATH-CAP
-\ destination they owe. A negative length is refused first; each length then
-\ meets the capacity on its own before the sum, since a length near the
-\ maximum cell would wrap the join under PATH-CAP, and the parent's last byte
-\ is read only once the parent fits.
-: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
-   CAUSE-CLEAR
-   pu 0 < if E-FS-PATH throw then
-   nu 0 < if E-FS-PATH throw then
-   pu CHECK-JOIN-CAP
-   nu CHECK-JOIN-CAP
-   pa pu nu JOIN-LEN CHECK-JOIN-CAP
-   pa pu na nu  dst PATH-CAP SPAN:MAKE  JOIN-PATH-INTO ;
+\ dst holds PATH-CAP bytes: the reach minted here is the caller's promise.
+: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n )
+   PATH-CAP SPAN:MAKE JOIN-PATH-INTO ;
 
 private
 : PATH= ( ptr u8 n ptr u8 n -- bool )
@@ -534,7 +548,7 @@ private
 public
 : READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
    cap 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu >PATHZ open-rd IO-FD !
+   pa pu READ-PATHZ open-rd IO-FD !
    IO-FD @ 0 < if E-FS-OPEN throw then
    dst cap READ-FILL {: got :}
    got cap = if READ-MORE? if IO-FD @ close E-FS-CAPACITY throw then then
@@ -576,7 +590,7 @@ public
 : READ-AT ( ptr u8 n n ptr u8 n -- )
    {: pa:ptr pu off dst:ptr len :}
    off 0 < len 0 < or if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu >PATHZ open-rd {: file :}
+   pa pu READ-PATHZ open-rd {: file :}
    file 0 < if E-FS-OPEN throw then
    file off dst len PREAD-FILL
    file close ;
@@ -592,21 +606,34 @@ private
    HB-TARGET-MACOS? if buf 64 + LE:U64@ buf 72 + LE:U64@ exit then
    buf 104 + LE:U64@ buf 112 + LE:U64@ ;
 
+\ The link count of libc's struct stat; the last branch is the generic layout
+\ Linux arm64 uses.
+: LIBC-NLINK@ ( ptr u8 -- n )
+   HB-TARGET-MACOS? if 6 + LE:U16@ exit then
+   HB-TARGET-LINUX-X86-64? if 16 + LE:U64@ exit then
+   20 + LE:U32@ ;
+
 : FSTAT-FAIL ( n n -- ) {: file cause :}
    file close
    cause CAUSE!
    E-FS-STAT throw ;
+
+\ fstat into STAT-BUF. A failure is E-FS-STAT with errno its cause, and the
+\ descriptor stays open.
+: FD-FSTAT ( fd -- ) {: file:fd :}
+   file FD>N STAT-BUF FSTAT-CALL
+   0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then ;
 
 public
 \ Open a regular file for reading once and size it from that descriptor, so a
 \ writer renaming a new file over the path or a remover unlinking it cannot
 \ change what READ-SIZED reads. A missing file (ENOENT) is `fd 0 false` with no
 \ descriptor open; any other open failure is E-FS-OPEN, and a descriptor that
-\ is not a regular file is closed and E-FS-STAT. The open blocks, as READ-ALL's
-\ does, so a FIFO at the path waits for a writer: name files the caller owns.
+\ is not a regular file is closed and E-FS-STAT. The open does not block: a
+\ FIFO at the path opens at once and is E-FS-STAT, as any file not regular is.
 \ A true flag hands the caller an open descriptor that READ-SIZED closes.
 : OPEN-SIZED ( ptr u8 n -- fd n bool ) {: pa:ptr pu :}
-   pa pu >PATHZ open-rd {: file :}
+   pa pu READ-PATHZ O-NONBLOCK 0 open {: file :}
    file 0 < if
       ERRNO ENOENT = if -1 >FD 0 false exit then
       E-FS-OPEN throw
@@ -625,10 +652,12 @@ public
    IO-FD @ close ;
 
 \ The open descriptor's file: change time, seconds then nanoseconds, and size.
-\ A failed fstat is E-FS-STAT with the descriptor left open.
-: FD-STAMP ( fd -- n n n ) {: file:fd :}
-   file FD>N STAT-BUF FSTAT-CALL 0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then
-   STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
+: FD-STAMP ( fd -- n n n )
+   FD-FSTAT STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
+
+\ The open descriptor's file's link count, 0 once every name of it is removed.
+: FD-LINKS ( fd -- n )
+   FD-FSTAT STAT-BUF LIBC-NLINK@ ;
 
 private
 : WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
@@ -666,27 +695,13 @@ private
 : DOTDOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 = if a c@ DOT = a 1 + c@ DOT = and else false then ;
 
-: SKIP-DIR? ( ptr u8 n -- bool )
-   BASENAME
-   2dup s" .jj" PATH= if 2drop true exit then
-   2dup s" .jj-ws" PATH= if 2drop true exit then
-   2dup s" .git" PATH= if 2drop true exit then
-   2dup s" .out" PATH= if 2drop true exit then
-   s" .dots" PATH= ;
-
 public
 : SKIP-SELF-ENTRY? ( ptr u8 n -- bool )
    2dup DOT-ENTRY? if 2drop true exit then
    DOTDOT-ENTRY? ;
 
-private
-: SKIP-ENTRY? ( ptr u8 n -- bool )
-   2dup SKIP-SELF-ENTRY? if 2drop true exit then
-   SKIP-DIR? ;
-
-public
 : OPEN-DIR-READ ( ptr u8 n -- n )
-   >PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
+   READ-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
 
 private
 \ openat(2) and unlinkat(2): the NUL-terminated name relative to a directory
@@ -783,20 +798,14 @@ private
    dup 0 < if drop E-FS-DIR throw then
    dup ctx N! 0 > ;
 
-\ A root too long for the depth-0 slot is refused by the copy (E-SPAN-CAPACITY).
+\ The root reaches the depth-0 slot before any >PATHZ judges it, so the length
+\ gate's refusal is made here.
 : WALK-ROOT! ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a u ctx 0 PATH-SLOT SPAN:COPY
    u ctx 0 PATH-U ! ;
-
-: WALK-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
-   pu 0 < if CAUSE-CLEAR E-FS-PATH throw then
-   nu 0 < if CAUSE-CLEAR E-FS-PATH throw then
-   pa pu nu JOIN-LEN ;
-
-: CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
-   WALK-JOIN-LEN PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then ;
 
 : OPEN-WALK-DIR ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    a u OPEN-DIR-READ ctx FD!
@@ -836,13 +845,28 @@ private
    ctx d ENSURE-DEPTH
    ctx CUR-PATH$ {: pa:ptr pu :}
    ctx CUR-ENTRY DIRENT-NAME {: na:ptr nu :}
-   pa pu nu CHECK-WALK-JOIN-CAP
    pa pu na nu ctx d PATH-SLOT JOIN-PATH-INTO ctx d PATH-U !
    d ctx WALK-DEPTH!
    ctx ctx CUR-PATH$ ;
 
 : ASCEND-PATH ( ptr n -- ) {: ctx:ptr :}
    ctx WALK-DEPTH@ 1 - ctx WALK-DEPTH! ;
+
+\ The entry's S-IFREG or S-IFDIR, or 0 for one below the root the walk skips.
+\ stat leaves errno in ERRNO's slot, not libc's; SYMLINK?'s lstat overwrites it.
+: WALK-TYPE ( ptr n ptr u8 n -- n ) {: ctx:ptr a:ptr u :}
+   a u TRY-STAT-MODE MATCH option
+     none OF -1 ENDOF
+     some OF S-IFMT and ENDOF
+   ;MATCH ERRNO {: fmt e :}
+   fmt S-IFREG = fmt S-IFDIR = or if fmt exit then
+   ctx WALK-DEPTH@ 0<> if
+      fmt 0 >= if 0 exit then
+      e ENOENT = if 0 exit then
+      a u SYMLINK? if 0 exit then
+   then
+   fmt 0< if e CAUSE! then
+   E-FS-STAT throw ;
 
 \ The callback is executed straight off the stack: it needs no cell, and its
 \ throw needs no catch here because WALK-UNMAP closes this context's
@@ -851,15 +875,15 @@ private
 \ the loop carries nothing but the handle across its recursion.
 : WALK-PATH ( ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    {: ctx:ptr a:ptr u allow q :}
-   a u SKIP-DIR? if exit then
    a u allow execute 0= if exit then
-   a u FILE? if a u q execute exit then
-   a u DIR? 0= if E-FS-STAT throw then
+   ctx a u WALK-TYPE {: fmt :}
+   fmt S-IFREG = if a u q execute exit then
+   fmt S-IFDIR <> if exit then
    ctx a u OPEN-WALK-DIR
    begin ctx READ-DIR while
       ctx DIR-BLOCK-BEGIN
       begin ctx DIR-MORE? while
-         ctx LOAD-ENTRY DIRENT-NAME SKIP-ENTRY? 0= if
+         ctx LOAD-ENTRY DIRENT-NAME SKIP-SELF-ENTRY? 0= if
             ctx DESCEND-PATH allow q recurse
             ctx ASCEND-PATH
          then
@@ -889,12 +913,6 @@ private
    code 0<> if code throw then ;
 
 public
-\ The walk visits regular files only, depth-first, in the order the directory
-\ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
-\ directories and closes every descriptor it opened however it ends. A
-\ callback's path is valid only during the callback. Two walks in flight cover
-\ disjoint trees: getdirentries64 on a directory removed meanwhile answers -1
-\ and the walk reports E-FS-DIR.
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 

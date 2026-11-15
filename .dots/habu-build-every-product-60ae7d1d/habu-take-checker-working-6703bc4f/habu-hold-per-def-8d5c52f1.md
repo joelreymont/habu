@@ -8,7 +8,7 @@ closed-at: "2026-10-28T19:55:26.213886+02:00"
 close-reason: "Per-definition checker arenas live in one region released at each definition's end; full suite passed."
 ---
 
-Lane 2a, brief /Users/joel/.cache/tmp/carl-file/brief-cscr2a.md: span markers, chunked region, SR-RETIRE in FILE-SCRATCH-RETIRE and CHECKER-QUIESCE-CORE; PTRA/STLA/TRAIL/LTNT converted. Workspace .jj-ws.noindex/carl-cscr (on vmplnnyr). Claim: carl worker.
+Lane 2a, brief /home/joel/.cache/tmp/carl-file/brief-cscr2a.md: span markers, chunked region, SR-RETIRE in FILE-SCRATCH-RETIRE and CHECKER-QUIESCE-CORE; PTRA/STLA/TRAIL/LTNT converted. Workspace .jj-ws.noindex/carl-cscr (on vmplnnyr). Claim: carl worker.
 
 Status 2026-10-28: carl-cscr is gone with nothing landed (SR-RETIRE, SR-GROW, SCRATCH{ absent; ARENA-SNAP-BOOT, PTRA-BOOT, TRAIL-BOOT still in src/core/checker.f). Re-brief from master. Claim: unassigned.
 

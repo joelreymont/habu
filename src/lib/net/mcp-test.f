@@ -1,6 +1,7 @@
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
-\ Mcp-Name checks, the transport check, unknown methods and tools, a body's
+\ Mcp-Name checks, the transport check, unknown methods and tools, an unknown tool's
+\ name cut at 128 bytes, a body's
 \ result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
 \ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
@@ -10,18 +11,19 @@
 \ descriptor. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals.
+\ refusals. The info line a tools/call and a resources/read log, without arguments.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
 \ pages, CLOSE after a halt mid-receive, a closed client refused once its row
-\ is reused, and CANCEL of a CALL, of TOOLS's second page, of an idle client
-\ and of a closed one. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a
-\ tool by the caller's claim from tools/list and tools/call, and refused while
-\ HTTP serves; a client's TOKEN!, E-DENIED for no token, an empty one and a
-\ 403, E-UNAVAILABLE for a 503 and a 429, E-RESPONSE for a 418, and TOKEN! of a
-\ closed client.
+\ is reused, REQUEST-STOP of TOOLS's second page, of an idle client and of a
+\ CALL, after which CALL and TOOLS throw sending nothing, a client on the row a stopped one
+\ left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded
+\ by BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from
+\ tools/list and tools/call, and refused while HTTP serves; a client's TOKEN!,
+\ E-DENIED for no token, an empty one and a 403, E-UNAVAILABLE for a 503 and a
+\ 429, E-RESPONSE for a 418, and TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -55,12 +57,11 @@ $4000 constant CAP
 CAP BUFFER: BODY
 variable BODY-U
 1000000 constant NS-PER-MS
-2000 constant WAIT-MS               \ the bound on every wait in this file
+2000 constant WAIT-MS               \ how long /endless pages before its last
 50 constant PAGE-MS                 \ /endless's delay before each page
 300 constant LIST-MS                \ the TOOLS limit /endless runs past
 1000 constant LIST-BOUND-MS         \ when that TOOLS must have thrown by
 300 constant FIRST-PAGE-MS          \ /late's delay before its first page
-1500 constant STALL-MS              \ the bound on /late's stall at its second page
 500 constant LATE-MS                \ the TOOLS limit /late runs past
 790 constant LATE-BOUND-MS          \ when that TOOLS must have thrown by
 
@@ -106,13 +107,14 @@ variable CLOSED
 variable PAGES-END                  \ when /endless answers its last page, a mono-ns
 variable CANCEL-CODE                \ what the cancelled TOOLS or CALL threw, 0 for none
 1 constant RUNNING                  \ CANCEL-CODE until that call ends: no throw code
+variable HITS                       \ the requests /counted has had
 TASK:MIN-STACK TASK:TASK STALLER
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+\ WAIT-MS from now, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
 : ARM ( -- ) 0 ENTERED atomic! 0 RELEASED atomic! 0 LEFT atomic! ;
-: SETTLE ( -- ) [: LEFT atomic@ 0<> ;] DEADLINE s" mcp-test LEFT" TEST-WAIT:POLL ;
+: SETTLE ( -- ) [: LEFT atomic@ 0<> ;] TEST-WAIT:POLL ;
 
 \ A setter's refusal throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
@@ -121,22 +123,15 @@ TASK:MIN-STACK TASK:TASK STALLER
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
-28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
-
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
-\ failed transfer. CURLE 28 is the handle's WAIT-MS timeout, met by a starved
-\ or stopped process: E-PROC-TIMEOUT, a timeout and not a FAIL.
+\ failed transfer.
 : PERFORM ( CURL:handle -- n )
    BODY CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
-      failed OF {: rc:CURL:code :}
-         rc CURL:CODE>N CURLE-TIMED-OUT = if
-            s" mcp-test PERFORM" TEST-WAIT:EXPIRED
-         then
-         -2 ENDOF
+      failed OF drop -2 ENDOF
    ;MATCH ;
 
 
@@ -154,7 +149,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    ;MATCH {: h:CURL:handle :}
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  s" /mcp" SB-APPEND
    h SB$ CURL:URL! OK
-   h WAIT-MS >MS CURL:TIMEOUT! OK
    h kind ku ADD accept au ADD ;
 
 : OPEN ( -- CURL:handle )
@@ -268,14 +262,30 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: UNKNOWN-REPLY ( -- ptr u8 n )
-   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}" ;
+\ Reply 6 to a call of an unknown tool, for the name it names, in WANT.
+: UNKNOWN-REPLY ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nu:n :}
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602," W+
+   S\" \"message\":\"Unknown tool: " W+ name nu W+
+   S\" ; if the client's list of test-server's tools names it," W+
+   S\"  that list is out of date\"}}" W+ W$ ;
 
 : UNKNOWN-TOOL ( -- )
-   s" an unregistered tool is 400 -32602 Unknown tool" T-LABEL
+   s" an unregistered tool is 400 -32602 naming it and the server" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" none" UNKNOWN-REPLY ANSWERED ;
+
+: A-RUN ( -- ) 127 0 ?do s" a" SB-APPEND loop ;
+
+\ 127 bytes, then a two-byte character over MCP's 128-byte cap.
+: LONG-UNKNOWN ( -- )
+   s" an unknown tool's name past 128 bytes is cut before the character crossing it" T-LABEL
+   LEGACY
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"" SB-APPEND
+   A-RUN S\" é\"}}" SB-APPEND SB$ POST
+   SB-RESET A-RUN
+   400 SB$ UNKNOWN-REPLY ANSWERED ;
 
 
 : TOOL-ERROR ( -- )
@@ -798,7 +808,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-STALL ( -- )
    S\" {\"name\":\"stall\",\"description\":\"Answer once released.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 1 ENTERED atomic!
-      [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
+      [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
@@ -940,33 +950,34 @@ TASK:MIN-STACK TASK:TASK STALLER
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
    then
    mono-ns PAGE-MS NS-PER-MS * +
-   [: dup mono-ns <= ;] DEADLINE s" mcp-test PAGE" TEST-WAIT:POLL drop
+   [: dup mono-ns <= ;] TEST-WAIT:POLL drop
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"more\"}}"
    HTTP:BODY! ;
 
 \ A first page with a nextCursor after FIRST-PAGE-MS, then a last, empty page,
-\ setting ENTERED as it is asked, once the test sets RELEASED or STALL-MS has
-\ passed, so a client that held its second page to the whole limit ends.
+\ setting ENTERED as it is asked, once the test sets RELEASED.
 : LATE-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer JSON-HEADER
    asked HTTP:BODY$ S\" \"cursor\":\"late\"" CONTAINS? if
       1 ENTERED atomic!
-      mono-ns STALL-MS NS-PER-MS * +
-      [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" mcp-test STALL-PAGE"
-      TEST-WAIT:POLL drop
+      [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
    then
    mono-ns FIRST-PAGE-MS NS-PER-MS * +
-   [: dup mono-ns <= ;] DEADLINE s" mcp-test FIRST-PAGE" TEST-WAIT:POLL drop
+   [: dup mono-ns <= ;] TEST-WAIT:POLL drop
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"late\"}}"
    HTTP:BODY! ;
+
+\ /mcp, counting each request in HITS.
+: COUNTED-ROUTE ( HTTP:request HTTP:response -- )
+   1 HITS atomic-add drop MCP:HANDLE ;
 
 \ An empty tools/list answered once the test sets RELEASED.
 : SLOW-ROUTE ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
-   [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test SLOW" TEST-WAIT:POLL
+   [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
    1 LEFT atomic!
    answer JSON-HEADER
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! ;
@@ -1024,9 +1035,17 @@ $A constant LF
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
    LOG-B BUF:SPAN$ BUF:BLEN>N ;
 
+\ The capture's lines, less each `<stamp> info mcp: ` line: the server
+\ in this process logs one for each message it dispatches.
 : LINES ( -- n )
    LOG$ {: a:ptr u:n :}
-   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+   0 u 0 ?do
+      a i + c@ LF = if 1+ then
+      i 0= if true else a i 1- + c@ LF = then if
+         a i DATE:TIME-LEN 1- + +  u i - DATE:TIME-LEN 1- -
+         s" Z info mcp: " STARTS-WITH? if 1- then
+      then
+   loop ;
 
 : CAPTURED ( [ -- ] -- )
    LOG-PATH$ STDERR:CAPTURE
@@ -1040,6 +1059,17 @@ $A constant LF
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
    LOG$ SB$ CONTAINS? TTRUE ;
+
+\ The server shares this process's fd 2, so its lines land in the capture.
+: SERVER-LOGGED ( -- )
+   s" tools/call and resources/read log their method and name, not arguments"
+   T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"secret\":\"kept\"}}}" POST 200 T=
+      LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"}}" POST 200 T= ;]
+   CAPTURED
+   LOG$ S\"  info mcp: tools/call echo\n" CONTAINS? TTRUE
+   LOG$ S\"  info mcp: resources/read ui://test/widget.html\n" CONTAINS? TTRUE
+   LOG$ s" kept" CONTAINS? TFALSE ;
 
 : CLIENT-UNKNOWN ( -- )
    s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
@@ -1057,7 +1087,7 @@ $A constant LF
    HTTP:PORT FMT:SB-U s"  failed: curl 28: Timeout was reached" SB-APPEND
    LOG$ SB$ CONTAINS? TTRUE
    1 RELEASED atomic!
-   CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop SETTLE ;
+   CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop SETTLE ;
 
 8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
 
@@ -1065,7 +1095,7 @@ $A constant LF
 \ logged line; valid until the next read.
 : FAILED-ON ( ptr u8 n -- ptr u8 n )
    MCP:OPEN ROUTE-CLIENT !
-   [: [: ROUTE-CLIENT @ s" echo" s" {}" WAIT-MS >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
       MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
    ROUTE-CLIENT @ MCP:CLOSE
    LINES 1 T=  LOG$ ;
@@ -1177,7 +1207,7 @@ $A constant LF
    mono-ns start - LATE-BOUND-MS NS-PER-MS * < TTRUE
    1 RELEASED atomic!
    s" the client then serves a TOOLS to the last page" T-LABEL
-   ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS s" []" T$=
+   ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
    ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
 
 
@@ -1191,7 +1221,7 @@ $A constant LF
    ARM 0 CLOSED atomic!
    s" /mcp" URL MCP:OPEN STALL-CLIENT !
    ['] STALL-WORK STALLER TASK:ACTIVATE
-   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
+   ENTERED 1 STALLER TEST-WAIT:FOR-CELL
    STALLER TASK:HALT
    STALLER TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH E-TASK-NO-RESULT T=
    1 RELEASED atomic! SETTLE
@@ -1207,40 +1237,62 @@ $A constant LF
 : CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
 : CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
 
-\ Runs the call on STALLER and cancels the client once the server has its
+\ Runs the call on STALLER and stops the client once the server has its
 \ request: the call ends E-TRANSFER while the server still holds it.
-: CANCELLED ( [ -- ] MCP:client -- )
-   {: work who:MCP:client :}
+: CANCELLED ( [ -- ] MCP:client [ MCP:client -- ] -- )
+   {: work who:MCP:client stop :}
    ARM RUNNING CANCEL-CODE atomic!
    work STALLER TASK:ACTIVATE
-   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
-   who MCP:CANCEL
-   [: CANCEL-CODE atomic@ RUNNING <> ;] DEADLINE s" mcp-test CANCEL" TEST-WAIT:POLL
+   ENTERED 1 STALLER TEST-WAIT:FOR-CELL
+   who stop execute
+   [: CANCEL-CODE atomic@ RUNNING <> ;] TEST-WAIT:POLL
    CANCEL-CODE atomic@ MCP:E-TRANSFER T=
    STALLER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH
    1 RELEASED atomic! SETTLE ;
 
 
-\ The one HTTP worker stays inside the stall tool, or /late's second page,
-\ until RELEASED: CANCEL ends the client's side alone.
-: CLIENT-CANCEL ( -- )
-   s" CANCEL from another task ends a CALL in flight with E-TRANSFER" T-LABEL
-   s" /mcp" URL MCP:OPEN STALL-CLIENT !
-   [: ['] CANCEL-CALL STALL-CLIENT @ CANCELLED ;] CAPTURED
-   s" the cancelled CALL logs nothing: the program ended it" T-LABEL
-   LINES 0 T=
-   s" the cancelled client then serves a CALL" T-LABEL
-   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
-   s" CANCEL of an idle client leaves its next CALL to run" T-LABEL
-   STALL-CLIENT @ MCP:CANCEL
-   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
-   STALL-CLIENT @ MCP:CLOSE
-   s" CANCEL refuses a closed client" T-LABEL
-   [: STALL-CLIENT @ MCP:CANCEL ;] MCP:E-STATE TTHROWSQ
-   s" CANCEL during TOOLS's second page ends it with E-TRANSFER" T-LABEL
+\ The one HTTP worker stays in /late's second page until RELEASED:
+\ REQUEST-STOP ends the client's side alone.
+: CLIENT-STOP-PAGE ( -- )
+   s" REQUEST-STOP during TOOLS's second page ends it with E-TRANSFER"
+   T-LABEL
    s" /late" URL MCP:OPEN ROUTE-CLIENT !
-   ['] CANCEL-TOOLS ROUTE-CLIENT @ CANCELLED
+   ['] CANCEL-TOOLS ROUTE-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED
    ROUTE-CLIENT @ MCP:CLOSE ;
+
+: STOP-CALL ( -- ) STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: STOP-TOOLS ( -- ) STALL-CLIENT @ 0 >MS MCP:TOOLS 2drop ;
+
+\ A stopped client's CALL and TOOLS throw at once: /counted has had no
+\ request past the hits it had.
+: STOP-REFUSED ( n -- )
+   {: hits:n :}
+   ['] STOP-CALL MCP:E-TRANSFER TTHROWSQ
+   ['] STOP-TOOLS MCP:E-TRANSFER TTHROWSQ
+   HITS atomic@ hits T= ;
+
+\ Every row is free, so the second OPEN gives the stopped client's row.
+: CLIENT-STOP ( -- )
+   s" REQUEST-STOP of an idle client: CALL and TOOLS throw, sending nothing"
+   T-LABEL
+   0 HITS atomic!
+   s" /counted" URL MCP:OPEN STALL-CLIENT !
+   STALL-CLIENT @ MCP:REQUEST-STOP
+   0 STOP-REFUSED
+   STALL-CLIENT @ MCP:CLOSE
+   s" a client OPEN gives the stopped one's row calls normally" T-LABEL
+   s" /counted" URL MCP:OPEN STALL-CLIENT !
+   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   HITS atomic@ 1 T=
+   s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
+   [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED ;] CAPTURED
+   s" the stopped CALL logs nothing but the server's info line" T-LABEL
+   LINES 0 T=
+   s" then CALL and TOOLS throw, sending nothing" T-LABEL
+   2 STOP-REFUSED
+   STALL-CLIENT @ MCP:CLOSE
+   s" REQUEST-STOP refuses a closed client" T-LABEL
+   [: STALL-CLIENT @ MCP:REQUEST-STOP ;] MCP:E-STATE TTHROWSQ ;
 
 TYPED-VARIABLE NEVER MCP:client
 
@@ -1251,14 +1303,14 @@ TYPED-VARIABLE NEVER MCP:client
 
 
 : CLIENT-CASES ( -- )
-   CURL:LOOP-START OK LOG-INIT
+   CURL:LOOP-START OK LOG-INIT SERVER-LOGGED
    s" /mcp" URL MCP:OPEN CLIENT !
    CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
    CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES
    CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
    CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
-   CLIENT-HALTED CLIENT-CANCEL CLIENT-NEVER
+   CLIENT-HALTED CLIENT-STOP-PAGE CLIENT-STOP CLIENT-NEVER
    s" no transfer is left in flight" T-LABEL
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 
@@ -1375,7 +1427,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" tools/call of a hidden tool answers as an unknown one" T-LABEL
    ZEN LEGACY BEARING
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" secret" UNKNOWN-REPLY ANSWERED ;
 
 : OWNER-LIST ( -- )
    s" tools/list shows the tool to the caller the hook admits" T-LABEL
@@ -1485,6 +1537,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" POST" s" /slow" [: SLOW-ROUTE ;] HTTP:ROUTE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /counted" [: COUNTED-ROUTE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
@@ -1524,7 +1577,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
-   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
+   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL LONG-UNKNOWN TOOL-ERROR
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
    BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING

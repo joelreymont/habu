@@ -118,12 +118,9 @@ T-RESET
 create RR-DIAG 16384 allot
 \ The cases read prose, and a run under `tools/check.f --json-errors` starts in
 \ JSON.
-variable RR-JSON-WAS   JSON-DIAGS @ RR-JSON-WAS !   false DIAG-JSON!
-: RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 DIAG-BUFFER! CHECK-CANDIDATE! ;
-: RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap CONTAINS? ;
-
-\ A refused does> clause's code: test/certify-does-definer.f CDD-RES-BAD.
-: RR-REFUSED ( -- n ) tier@ 0= IF 70 ELSE E-COMP-VERDICT THEN ;
+variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
+: RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
+: RR-DIAG? ( ptr u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
 \ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.
@@ -232,16 +229,16 @@ s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP 
 s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC  0 T=
 s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC  0 T=
 s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC  0 T=
-RR-DIAG 16384 DIAG-BUFFER!
-s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC  RR-REFUSED T=
+RR-DIAG 16384 REJECTION:BUFFER!
+s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC  70 T=
 s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ A clause passes a caller's quantifier to a fresh input as a colon body does
 \ (30): not a generation's, nor a region slot's without a region kind.
-RR-DIAG 16384 DIAG-BUFFER!
-s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC  RR-REFUSED T=
+RR-DIAG 16384 REJECTION:BUFFER!
+s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC  70 T=
 s" rigid host: identity domain confusion" RR-DIAG? TTRUE
-RR-DIAG 16384 DIAG-BUFFER!
-s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC  RR-REFUSED T=
+RR-DIAG 16384 REJECTION:BUFFER!
+s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC  70 T=
 s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (26) a call's fresh input is the allocation its caller passes, and so is the
 \ name on its output: the caller's own allocation, its input, its quantifier.
@@ -328,5 +325,5 @@ s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-O
 T-REPORT
 \ Diagnostics leave RR-DIAG and take back the format found, so a file loaded
 \ after this one in the same process reports as usual.
-DIAG-BUFFER-OFF  RR-JSON-WAS @ JSON-DIAGS !
+REJECTION:BUFFER-OFF  RR-JSON-WAS @ REJECTION:JSON !
 ;package

@@ -130,8 +130,6 @@ variable RX  variable RACC
    a u s" Lheadrow" LINT-STR=CI if 0 12 CL-ADD exit then
    \ The callback accessor returns its thunk address in A (x9).
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
-   \ The source observer leaves the original or callback status in x15.
-   a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
@@ -162,9 +160,6 @@ variable RX  variable RACC
    a u s" RELOC-EMIT:Lscratchmark" LINT-STR=CI if $3FFFF exit then
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
    a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
-   \ EM-CODE-INVALIDATE saves these recovery registers around its observer call.
-   a u s" Lcodeinv" LINT-STR=CI if
-      0 10 CL-ADD 11 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
    a u s" Lcemit" LINT-STR=CI if
@@ -182,8 +177,6 @@ variable RX  variable RACC
 
 \ An UPPER-CASE `PKG:CALL` word emits a register-move prelude and a BL to a
 \ shared helper, so neither the mnemonic scan nor a `LABEL@ BL,` triple sees it.
-\ PROT-GUARD:CALL moves (addr,len) into x10/x11 for the LPROTSPAN guard, which
-\ touches only x12/x13; the BL clobbers x30.
 \ C-FIND-GLOBAL feeds literal label/count arguments to LFIND and returns by its
 \ ABI. Any other `:CALL` shape, or operands that do not resolve to registers,
 \ fails closed via E-CLOBBER-WRAP-UNRESOLVED.
@@ -194,11 +187,6 @@ EXPORT E-CLOBBER-WRAP-UNRESOLVED
 
 package CLOBBER-WRAP
 using CLOBBER
-
-0 12 CL-ADD 13 CL-ADD constant GUARD-BODY
-0 10 CL-ADD 11 CL-ADD constant GUARD-ABI    \ x10=addr, x11=len on return
-
-: PROT?  ( ptr u8 n -- bool )  s" PROT-GUARD:CALL" LINT-STR= ;
 
 public
 
@@ -214,22 +202,14 @@ public
    \ state through x14. Its successful path preserves x0/x1 and clobbers
    \ x2..x17 and x30. A missing name exits the process.
    a u GLOBAL-FIND? if $3FFFC 30 CL-ADD exit then
-   a u PROT? if
-      GUARD-BODY
-      addr 10 <> if 10 CL-ADD then
-      len 11 <> if 11 CL-ADD then
-      exit
-   then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
    a u GLOBAL-FIND? if 0 exit then
-   a u PROT? if 0 addr CL-ADD len CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : RETURNS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ registers the call redefines
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 ;using
@@ -251,8 +231,7 @@ package CLOBBER
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
-   a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-emitw" LINT-STR=CI ;
+   a u s" g-print9" LINT-STR=CI ;
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
@@ -426,8 +405,7 @@ DYNAMIC-BUFFER ROLES u8
    \ and its scratch.
    a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
-   a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then ;
+   a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then ;
 
 : SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" NR-EXIT" LINT-STR= if LINT-TRUE exit then
@@ -1262,8 +1240,7 @@ variable QUIET
 
 \ Modeled wrapped emitter call at token DI: its argument registers are read
 \ first, then its move+guard clobbers poison any live value, its emitted branch
-\ poisons the link register, and its ABI-return registers (x10/x11 for
-\ PROT-GUARD) are redefined.
+\ poisons the link register, and its ABI-return registers are redefined.
 : APPLY-WRAP  ( ptr u8 n -- ) {: fa:ptr fu:n :}
    fa fu WRAP-READS NOTE-READS
    DI @ TOK C-ENSURE CALIDX !

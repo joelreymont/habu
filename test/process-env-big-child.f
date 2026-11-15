@@ -13,7 +13,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 
 $20000 constant BIG-CAP
-$1388 constant BIG-TIMEOUT-MS
 
 create BIG-OUT BIG-CAP allot
 create BIG-ERR BIG-CAP allot
@@ -52,7 +51,7 @@ variable BIG-I
    PROC-ENV-RESET
    PROC-ENV-DEFAULT-RESET
    PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/env" >LEN BIG-OUT BIG-CAP >LEN BIG-ERR BIG-CAP >LEN BIG-TIMEOUT-MS >MS
+   s" /usr/bin/env" >LEN BIG-OUT BIG-CAP >LEN BIG-ERR BIG-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} BIG-OUT o LEN>N BIG-SEEN ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 0 ENDOF

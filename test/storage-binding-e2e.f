@@ -1,6 +1,6 @@
-\ Fixed storage binds the accessor that owns its allocation, and capture marks
-\ cells by their stored type: a quotation cell as code, a nullable cell as a
-\ DATA address whether it holds an address or zero.
+\ Fixed storage binds the accessor that owns its allocation, and the binding
+\ marks cells by their stored type: a quotation cell as code, a nullable cell as
+\ a DATA address whether it holds an address or zero.
 require src/lib/test.f
 require src/habu/address-cells.f
 require src/lib/adt/nullable.f
@@ -56,7 +56,6 @@ TYPED-VARIABLE NULL-NONE nullable<u8>
    4095 PLAIN @ PLAIN-ROW-UNMAKE 3
    s" abc" T$= 3 T=
    NULL-STORE
-   ['] CHECKER-CAPTURE-PREPARE catch 0 T=
    PRIVATE-OFF XT-MARKED? TTRUE
    PUBLIC-OFF XT-MARKED? TFALSE
    NULL-SOME PTR>N data-base PTR>N - DATA-MARKED? TTRUE

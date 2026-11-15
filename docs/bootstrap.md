@@ -8,10 +8,11 @@ How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 the running hb and writes it, with its `.map`, to `<out>`
 (tools/hb-build-core.f). The build is a cross-build for the running
 machine: the target is data the build writes, never a slice of the
-running hb's memory. Its start-up,
-kernel and layout come from the tree too: a kernel build first compiles the
-tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
-root, which the build then links. An engine build takes at most 5 minutes; one
+running hb's memory. The text of its start-up files, its kernel and its layout
+come from the tree, but which files it loads, and in what order, are the
+running hb's, which carries the build command. A kernel build first compiles
+the tree's src/arch/arm64/kernel-object.f and writes a kernel object under the
+out root, which the build then links. An engine build takes at most 5 minutes; one
 that runs past it has a defect to root-cause, never a longer limit.
 
 Build from the tree's root: a build opens its boot files under the working
@@ -48,9 +49,12 @@ The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root. With libpq 16 the test
-dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
+dies `error[E-FFI-DLSYM]: no C symbol 'PQcancelCreate' in 'libpq.so.5'`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
-on PATH.
+on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
+libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on
+Linux the Ubuntu font packages test/font-native.f's header names.
+The Wasm device suite needs wasm-tools and bun on PATH.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
@@ -77,25 +81,35 @@ seed and target.
 ## Staged hosts
 
 A change to the kernel, the start-up or the layout lands in one build unless it
-moves where DATA starts. One to what the running hb's compiler does with the
+raises where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
-primitive-spec atom`), or a tool that calls a word hb
-carries (the linker) by a name or effect its own change gives it, needs a
-stage: the tool loads from the tree, but `require` of a file hb carries finds
-the running hb's copy. Build the stage first, from a revision that adds the
-change but does not yet need it, with the running hb; then build the tree with
-that stage:
+primitive-spec atom`), a built-in type family the tree's source names
+(the running checker stops `unknown type`), an existing atom code given a new meaning (the running
+checker replays the rows with the old meaning and says nothing), or a tool that
+calls a word hb carries (the linker) by a name or effect its own change gives
+it, or a change to which files a build
+loads or their order, needs a stage: the tool itself runs the words hb carries
+(outside a build, `require` of a file hb carries loads nothing), though inside
+the build each `require` loads the tree's file (src/habu/linker.f
+REQUIRE-FRESH). Build the stage first, from a revision that adds the change but
+does not yet need it, with the running hb; then build the tree with that stage:
 
     jj workspace add --name stage -r <revision> "$TMP/stage"
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
     TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
 
+A tree word that calls hb's word through a `PROVIDED-XT` cell calls the running
+hb's copy in a build, so a change to that word's stack effect is two commits.
+The first stores the new form in a new cell and keeps the old cell, holding an
+adapter, for the callers; the second moves the callers and drops the old cell.
+Each builds with the engine of the commit before it.
+
 The link refuses a kernel object the running hb cannot read
 (src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
 stage that changes the reader before the tree changes the writer. READ also
-refuses an object whose DATA-START is not hb's, staged or not: the hb building
+refuses an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
@@ -105,7 +119,9 @@ facts of a primitive its tree adds after one build. A primitive with a package
 row is the exception: the link takes its record from the running hb's kernel
 (src/habu/linker.f OWNED+), so hb must hold the primitive before the tree gives
 it a package row, or the build stops with `linker: hb has no primitive <name>,
-which an owned row of <pkg> names`. The running hb's no-return
+which an owned row of <pkg> names`. A kernel build checks the tree's files
+against the running hb's rows, package rows included, so a call through a new
+package row needs a stage that adds the row first. The running hb's no-return
 axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
 drops one needs a stage that drops the axiom first, or the build stops with
 `checker: the kernel object has no row for <name>, which a no-return axiom
@@ -121,8 +137,7 @@ its `.map`; it then builds the tree as any trusted hb does.
 
 ## What the engine carries
 
-tools/hb-build-core.f (STARTUP and RUNTIME-FILES) lists the source baked into
-hb. Loading a baked file by name does not reread edits from disk;
+tools/hb-build-core.f lists the source baked into hb. Loading a baked file by name does not reread edits from disk;
 a native rebuild is needed to test those changes. Files outside that closure
 load normally from disk. Use the convergence check for changes baked into the
 engine.
@@ -165,12 +180,18 @@ application against newer source while still compiling the current engine.
 ## Stable local command
 
 Keep the checkout's `bin/hb` for development and build candidates privately.
-Use one installed tree at a stable path for the executable, map and matching
-library sources, `~/.local/lib/habu`, with `~/.local/bin/hb` pointing to its
-`bin/hb`. Update it by running `bin/hb --load tools/install.f` from the root of
-the tree that passed its checks; the tool's header says what it writes. Do not
-create per-revision release directories; ordinary development does not require
-installation or publication.
+The one installed Habu is the tree the link `~/.local/lib/habu` names, with
+`~/.local/bin/hb` pointing to its `bin/hb`; a tree the link no longer names
+lasts only while a process runs it. Update it by running
+`bin/hb --load tools/install.f` from the root of the tree that passed its
+checks; the tool's header says what it writes. Ordinary development does not
+require installation or publication.
+
+A shell that changes into `~/.local/lib/habu` stays in the tree of that moment,
+and an hb started there, by any name, reads that tree's sources. Run `./bin/hb`
+there, never `hb` or `~/.local/lib/habu/bin/hb`, whose engine may be a newer
+tree's, and change into the link again for each command: between commands
+nothing runs the tree, so an install may remove it.
 
 Build and test candidates in a workspace or a temporary directory. An install
 never waits for a client: a client that needs an older Habu keeps its own copy.

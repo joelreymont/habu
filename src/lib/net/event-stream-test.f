@@ -10,6 +10,7 @@ package SSE-TEST
 SSE:STORAGE-BYTES constant DEC-BYTES
 create DEC-A DEC-BYTES allot
 create DEC-B DEC-BYTES allot
+create DEC-ODD DEC-BYTES 1+ allot
 create GOT BUF:HDR-BYTES allot
 create WANT BUF:HDR-BYTES allot
 create BIG BUF:HDR-BYTES allot
@@ -54,6 +55,14 @@ variable CALLS
    d s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n" SEND
    d SSE:FINISH d SSE:CLOSE
    3 CHECK ;
+
+: ODD-STORAGE ( -- )
+   RESET
+   s" message" s" x" EXPECT
+   DEC-ODD 1 + DEC-BYTES SSE:OPEN {: d:SSE:decoder :}
+   d s\" data: x\n\n" SEND
+   d SSE:FINISH d SSE:CLOSE
+   1 CHECK ;
 
 : SPLIT ( n -- )
    {: cut:n :}
@@ -200,7 +209,7 @@ variable CALLS
    GOT 16 BUF:N>BLEN BUF:INIT
    WANT 16 BUF:N>BLEN BUF:INIT
    BIG 16 BUF:N>BLEN BUF:INIT
-   BASIC EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
+   BASIC ODD-STORAGE EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
    BOM-SPLITS MIDSTREAM-BOM LARGE-EVENT INVALID-UTF8 CALLBACK-FAILURE
    MISUSE BAD-SOURCE
    BIG BUF:DISPOSE WANT BUF:DISPOSE GOT BUF:DISPOSE

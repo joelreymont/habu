@@ -2,6 +2,7 @@
 \ STORAGE CLASS. None of its own: the registries it walks are zip-state.f's.
 require src/lib/ffi-abi.f
 require src/lib/zip-state.f
+require src/lib/fs-mutate.f
 
 package ZIP
 
@@ -10,26 +11,16 @@ package ZIP
 VERSIONED-LIBRARY zip 5,4                 \ Debian and Ubuntu ship libzip as libzip.so.4
 FUNCTION: OPEN-CALL zip_open ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: COUNT-CALL zip_get_num_entries ( ptr u8 n -- n ) ;FUNCTION
-FUNCTION: STAT-CALL zip_stat_index ( ptr u8 n n ptr u8 -- i32 )
-   3 STAT-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: STAT-CALL zip_stat_index ( ptr u8 n n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: FOPEN-CALL zip_fopen_index ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: C-FREAD zip_fread ( ptr u8 ptr u8 n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: C-FREAD zip_fread ( ptr u8 ptr u8 n -- n ) ;FUNCTION
 FUNCTION: C-FCLOSE zip_fclose ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: C-DISCARD zip_discard ( ptr u8 -- ) ;FUNCTION
 
 PROCESS-SYMBOLS
 FUNCTION: C-CLOSE-FD close ( n -- i32 ) ;FUNCTION
-FUNCTION: C-PREAD pread ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: C-PREAD pread ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
-
-\ mkstemp rewrites its template in place, so the template's length is the
-\ writable extent; no argument of the C call carries it, which FUNCTION: needs.
-s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
 : DETACH-OWNED ( ptr n -- ptr n ) {: owner:ptr :}
    STATE-GET
@@ -71,7 +62,10 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
-   node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
+   node SOURCE-LIVE @ 0<> if
+      node SOURCE-PTR @ node SOURCE-LEN @ FS:CLEANUP-FORGET
+      node SOURCE-PTR @ unlink 0<> or
+   then
    node FORGET-ARCHIVE
    if E-FS-IO throw then
    inputs 0<> if inputs throw then ;
@@ -86,10 +80,5 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
 : C-FOPEN ( ptr u8 n -- ptr u8 ) 0 FOPEN-CALL ;
-
-: C-MKSTEMP ( ptr u8 n -- n ) {: path:ptr len:n :}
-   FFI:RESET path len 0 FFI:WRITABLE!
-   MKSTEMP-ROW FFI:CALL $FFFFFFFF and
-   dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
 
 ;package

@@ -1,4 +1,4 @@
-\ wasm runtime/build-script target flag.
+\ wasm runtime/build-script target flag and the path capacity.
 
 : HB-TARGET-LINUX? ( -- bool )
    0 0= 0= ;
@@ -15,6 +15,8 @@
 : HB-TARGET-WASM? ( -- bool )
    0 0= ;
 
-: HB-TARGET-KNOWN? ( -- bool )
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or
-   HB-TARGET-WASM? or ;
+: HB-TARGET$ ( -- ptr u8 n )
+   s" wasm" ;
+
+\ Wasm has no OS path limit: it takes Linux's, PATH_MAX less its NUL.
+4095 constant PATH-CAP

@@ -10,8 +10,7 @@ public
 
 \ The unnamed-code span table and blob positions are stored as DATA offsets and
 \ rebased at boot; donor and loader refuse any other version (rc 74 at capture,
-\ rc 80 at restore). The user heap is stored in src/habu/cell-grid.f form when
-\ that is smaller than its bytes, its form in the trailer's HEAP-FIELD.
+\ rc 80 at restore).
 13 constant VERSION
 
 \ The trailer cell that says how the stored DATA carries the heap, the bytes from

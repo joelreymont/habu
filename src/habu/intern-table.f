@@ -124,15 +124,13 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    t  t SIZE-CELL @ 2 *  -1 1 rshift  REBUILD ;
 
 
-\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the
-\ length cell never joins a created body's grid. It ends aligned, as `create`.
-\ An empty body takes a byte, so no other datum starts at a body's address: a
-\ stripped link keeps a body by its address alone.
+\ One `allot` bounds and zeroes the length cell, the text and the byte past it;
+\ no `,`, so the cell never joins a created body's grid. It ends aligned.
 : LAY ( ptr n ptr u8 n -- n )
    {: t:ptr a:ptr u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
-   align here NULL-PTR - {: head:n :}
-   CELL u 1 max + allot
+   POINTER-STORAGE:ALIGN-APART here NULL-PTR - {: head:n :}
+   CELL u 1 + + allot
    u head 0 CELL-AT !
    head CELL + {: address:n :}
    NULL-PTR BYTE-VIEW address + {: dst:ptr :}

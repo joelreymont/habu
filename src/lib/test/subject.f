@@ -7,7 +7,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/fd.f
@@ -16,14 +15,13 @@ package SUBJECT
 
 PTR-VARIABLE SRC-A
 variable SRC-U
-PTR-VARIABLE STACK-A
 $4000 constant STATUS-CAP
 10000 constant STATUS-MS
 create STATUS-OUT STATUS-CAP allot
 create STATUS-ERR STATUS-CAP allot
 
 \ RUN is synchronous in the parent. The child inherits these cells by COW and
-\ exits before the next RUN, so no source or stack state is shared across cases.
+\ exits before the next RUN, so no source state is shared across cases.
 
 : SRC! ( ptr u8 n -- )
    SRC-U !
@@ -32,18 +30,6 @@ create STATUS-ERR STATUS-CAP allot
 : SRC$ ( -- ptr u8 n )
    SRC-A @
    SRC-U @ LEN>N ;
-
-: STACK! ( ptr u8 -- )
-   STACK-A ! ;
-
-: STACK@ ( -- ptr u8 )
-   STACK-A @ ;
-
-: STACK ( -- ptr u8 n )
-   STACK@ 0= if
-      STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop STACK!
-   then
-   STACK@ STACK-ABI:PAGE-BYTES ;
 
 : DUP2! ( fd n -- ) {: fd:fd dst:n :}
    fd FD>N dst dup2 dup 0 < if
@@ -59,15 +45,14 @@ create STATUS-ERR STATUS-CAP allot
    PROCESS:OUT-W PROCESS:CLOSE-CELL
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
+\ The child's diagnostics are its stderr, whatever buffer its parent printed
+\ rejections into.
 : EVAL ( -- )
+   REJECTION:BUFFER-OFF
    SRC$ evaluate-closed ;
 
-\ `run-in-stack` owns the active allocation, including its floor and capacity.
-: EVAL-STACK ( -- )
-   ['] EVAL STACK run-in-stack ;
-
 : CHILD ( -- )
-   [: CHILD-FDS EVAL-STACK ;] PROC-FORK:CHILD-MAIN ;
+   [: CHILD-FDS EVAL ;] PROC-FORK:CHILD-MAIN ;
 
 : SPAWN ( -- )
    [: PROC-FORK:RAW dup PID>N 0= if CHILD then ;]
@@ -79,7 +64,6 @@ public
    {: src:ptr srcu:n out:ptr outcap:len err:ptr errcap:len timeout:ms :}
    outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    src srcu SRC!
-   STACK 2drop
    timeout PROCESS:CAPTURE-BEGIN
    SPAWN
    out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
@@ -127,17 +111,22 @@ private
 public
 
 \ The capture is kept only for this answer; a case that reads the child's
-\ streams runs RUN itself.
+\ streams runs RUN itself, or REJECTED for stderr when stdout stays empty.
 : EXITED? ( ptr u8 n n -- bool )
    STATUS >r 2drop r> ;
+
+\ src's stderr, valid until the next run, and whether src, run as the subject,
+\ exited with code want and wrote nothing to stdout.
+: REJECTED ( ptr u8 n n -- ptr u8 n bool )
+   STATUS {: outu:len erru:len exited:bool :}
+   STATUS-ERR erru LEN>N  exited outu LEN>N 0= and ;
 
 \ Whether src, run as the subject, exited with code want, wrote nothing to
 \ stdout and named why on stderr: a refusal the engine or the checker reports
 \ before anything runs.
 : REFUSED? ( ptr u8 n n ptr u8 n -- bool )
-   {: src:ptr srcu:n want:n why:ptr whyu:n :}
-   src srcu want STATUS {: outu:len erru:len exited:bool :}
-   exited outu LEN>N 0= and
-   STATUS-ERR erru LEN>N why whyu CONTAINS? and ;
+   {: why:ptr whyu:n :}
+   REJECTED {: err:ptr erru:n ok:bool :}
+   ok  err erru why whyu CONTAINS? and ;
 
 ;package

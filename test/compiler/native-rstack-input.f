@@ -16,7 +16,6 @@ package NRS-INPUT-TEST
 private
 
 $4000 constant CAP
-20000 constant TIMEOUT-MS
 70 constant REFUSED-RC
 67 constant UNCAUGHT-RC
 
@@ -31,7 +30,7 @@ variable ERR-U
 : EXEC ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN  ERR CAP >LEN
-   TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : SHOW ( ptr u8 n n -- ) {: src:ptr u:n before:n :}
    T-FAILURES before = if exit then

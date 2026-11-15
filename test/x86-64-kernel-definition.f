@@ -50,7 +50,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 
-\ ---- the body text block, which body-append maps at run time ---------------
+\ ---- the body text block, which body-capture maps at run time --------------
 : TEXT@, ( r64 -- ) {: r:r64 :}
    r DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM ;
 
@@ -60,10 +60,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : PUSH-ROW-CELL, ( n -- ) {: off:n :}
    RCX TEXT@,  RCX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
    RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
-
-: POISON-TEXT, ( n -- ) {: off:n :}
-   RCX TEXT@,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX RCX off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 \ Push the address off bytes into the text, or store it in the DATA cell at
 \ cell; pop one and expect it off bytes in.
@@ -103,7 +99,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    row X64HARNESS:PUSH,  parent X64HARNESS:PUSH,
    s" package-scope!" X64HARNESS:CALL-ROW, ;
 
-: APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-append" X64HARNESS:CALL-ROW, ;
+: APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-capture" X64HARNESS:CALL-ROW, ;
 
 \ The signature row named over SIG-LEN bytes at the text's start, a span whose
 \ address the block fixes at run time.
@@ -143,10 +139,10 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,  CLAUSE-CELL OR-CELL,
    0 G-PUSH ;
 
-\ The tier-1 definition def-close ends: its seven signature and clause cells
+\ The tier-0 definition def-close ends: its seven signature and clause cells
 \ set.
-: TIER-1-OPEN, ( -- )
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+: TIER-0-OPEN, ( -- )
+   1 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
@@ -183,8 +179,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
-\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL, and CP, which an inline name leaves.
+\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, COMP-LATCH-CELL 1
+\   with COMP-CELL set, and CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
 \   move 32 bytes and the pad over poisoned cells is 0.
 \ - hb-x64-kernel-body-append maps the block at the first capture: FIRST-CAP,
@@ -195,13 +191,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   to twice the capacity, its text following.
 \ - hb-x64-kernel-body-append-rows, after that growth: TCSIG-A rebased and
 \   the three rows at base + capacity, the copied one included.
-\ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
 \ - hb-x64-kernel-trust-sig stores the pending definition's signature span, an
 \   address in the block.
 \ - hb-x64-kernel-created-sig stores the pending definition's `does>`
 \   signature span, an address in the block.
-\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set:
-\   DEF-TIER, the seven signature and clause cells and PEND clear.
+\ - hb-x64-kernel-def-close ends a tier-0 definition whose state cells are set:
+\   COMP-LATCH-CELL, the seven signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
 \   other bits, and leaves the record before it alone.
 \ - hb-x64-kernel-def-abort closes a failed definition's code window and
@@ -283,12 +278,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
    7 CLAUSE-CELL X64HARNESS:CELL!,
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   1 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    X64HARNESS:PUSH-CP,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" w" nip DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 CLOSED, ;
@@ -350,16 +345,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    2 cells PUSH-ROW-CELL,  FIRST-CAP HELLO-LEN - X64HARNESS:EXPECT-POP,   \ row 1, copied
    4 cells PUSH-ROW-CELL,  FIRST-CAP X64HARNESS:EXPECT-POP, ;       \ row 2
 
-: BODY-APPEND-PASS2-CASE, ( -- )
-   X64HARNESS:REST,
-   HELLO$ APPEND,
-   CELL POISON-TEXT,
-   1 P2-CELL X64HARNESS:CELL!,
-   HELLO$ APPEND,
-   HELLO-LEN BODYLEN-CELL X64HARNESS:EXPECT-CELL,
-   1 BODY-TEXT:ROWS-CELL X64HARNESS:EXPECT-CELL,
-   CELL PUSH-TEXT-CELL,  -1 X64HARNESS:EXPECT-POP, ;
-
 \ LONG$ is a capture longer than SIG-LEN.
 : TRUST-SIG-CASE, ( -- )
    X64HARNESS:REST,
@@ -380,10 +365,10 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    0 CLOSED, ;
 
 : DEF-CLOSE-CASE, ( -- )
-   TIER-1-OPEN,
+   TIER-0-OPEN,
    s" def-close" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
 \ Record 1 is the newest, a cast whose kind the mark keeps.
@@ -399,7 +384,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ A failed definition closes its code window and compile state while leaving
 \ the enclosing catch's handler, return depth and loop depth intact.
 : DEF-ABORT-CASE, ( -- )
-   TIER-1-OPEN,
+   TIER-0-OPEN,
    14 LOCN-CELL X64HARNESS:CELL!,
    15 BODYLEN-CELL X64HARNESS:CELL!,
    RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
@@ -407,13 +392,13 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" def-abort" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED,
-   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL,
    0 LOCN-CELL X64HARNESS:EXPECT-CELL,
    0 BODYLEN-CELL X64HARNESS:EXPECT-CELL, ;
 
 : DEF-ABORT-SCOPE-CASE, ( -- )
-   TIER-1-OPEN,
+   TIER-0-OPEN,
    11 HND-CELL X64HARNESS:CELL!,
    12 RSP-CELL X64HARNESS:CELL!,
    13 LOOPSP-CELL X64HARNESS:CELL!,
@@ -434,10 +419,10 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
 \   (-alias-record-int-armed), package-scope! `-1 5`
 \   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
-\   code ceiling (-def-open-ceiling-armed), body-append with BODYLEN one byte
+\   code ceiling (-def-open-ceiling-armed), body-capture with BODYLEN one byte
 \   past the capacity (-body-append-full-armed), and trust-sig!, created-sig! and
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
-\   -def-close-armed), and def-close on a tier 0 definition
+\   -def-close-armed), and def-close on a definition opened with no compiler
 \   (-def-close-tier-armed).
 \ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
@@ -491,9 +476,9 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    X64HARNESS:REST,
    s" al" 0 ALIAS-WID ALIAS, ;
 
-\ A pending definition def-open opened at tier 0.
-: TIER-0-CLOSE, ( -- )
-   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+\ A pending definition def-open opened with no compiler.
+: NO-COMP-CLOSE, ( -- )
+   0 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    s" def-close" X64HARNESS:CALL-ROW, ;
@@ -524,7 +509,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    [: BODY-APPEND-FILL-CASE, ;] false s" hb-x64-kernel-body-append-fill" TMP-PATH IMAGE
    [: BODY-APPEND-GROW-CASE, ;] false s" hb-x64-kernel-body-append-grow" TMP-PATH IMAGE
    [: BODY-APPEND-ROWS-CASE, ;] false s" hb-x64-kernel-body-append-rows" TMP-PATH IMAGE
-   [: BODY-APPEND-PASS2-CASE, ;] false s" hb-x64-kernel-body-append-pass2" TMP-PATH IMAGE
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
@@ -550,7 +534,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" hb-x64-kernel-created-sig-armed" TMP-PATH IMAGE
    [: X64HARNESS:REST,  s" def-close" X64HARNESS:CALL-ROW, ;] false
    s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
-   [: TIER-0-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
+   [: NO-COMP-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
    [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE ;
 

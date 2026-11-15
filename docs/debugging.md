@@ -27,7 +27,7 @@ prefix. The program file of a plain `hb <file>` is an open file and is named. A
 string `evaluate`d *inside* a file keeps the file line only while it is a slice
 of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
 names the file alone (`<path>: ` after `habu: `) for a refusal in it, and so
-do the native compiler's `ncomp:` and `E-UNDEFINED` lines that follow that
+do the `compiler:` and `E-UNDEFINED` lines that follow that
 refusal (src/core/checker.f SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is located like any
@@ -39,8 +39,8 @@ ends the load). The other interpret-level refusals
 siblings) are located the same way. The checker's refusal in a body names
 the definition and the token
 (`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
-the native line after it places the token
-(`ncomp: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
+the compiler's line after it places the token
+(`compiler: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
 `E-UNDEFINED habu: <path>:<line>: undefined word 'x'`. A top-level refusal names the file and line
 in its own line (`habu: <path>:<line>: at '!' …`), the file alone for a token of
 an evaluated string that is not the file's own bytes, and no place outside a
@@ -53,10 +53,12 @@ An uncaught throw in a `--load` or spawned child, or in an arm64 stripped (AOT)
 application, runs the process-exit hook and then exits by its code. An x86-64
 stripped application's uncaught throw does not yet run the hook or print the
 report. A code from 1 to 255 is the exit status and prints nothing: `42 throw`
-exits 42. Any other code prints `hb: uncaught throw code N` on stderr and exits
-67, so read the `E-*` from the message, not from the status. `0 throw` throws
-`ENGINE-ERROR:THROW-ZERO` instead, so it exits 109 on every entry. A refusal the
-checker rendered before throwing its code prints the same line after its
+exits 42. Any other nonzero code prints `hb: uncaught throw code N` on stderr
+and exits 67, so read the `E-*` from the message, not from the status. Under
+`--load` an uncaught throw of a computed 0 reads as success (a literal `0 throw`
+is refused, `E-THROW-ZERO`): it ends its file silently and
+the run goes on; a stripped application prints `hb: uncaught throw code 0` and
+exits 67. A refusal the checker rendered before throwing its code prints the same line after its
 diagnostic and exits 70, the status of every refusal; a stripped application
 carries no checker, so it never takes that exit. A one-byte diagnostic and a
 clean exit means a raw engine capacity path, not a throw.
@@ -107,7 +109,7 @@ prints `habu-bp:` with the pc and stack top, `habu-bp-lr:` with the address the
 word will return to, then the live data stack and watched cells, and resumes
 the word. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to name
 the caller: in a seeded engine that pair is the only way to answer "who called
-this?", because lldb cannot plant a breakpoint in the JIT region at all.
+this?", because lldb cannot plant a breakpoint in the compiled code region at all.
 Each word takes the target as an xt, which must be an instruction-aligned entry
 in the live compiled code region; engine-text primitives are refused.
 
@@ -120,7 +122,7 @@ stream — ASLR slides the xt, file bytes do not move.
 
 ## gdb/lldb — native stepping boundary
 
-Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
+Use the Habu stepper, breakpoints, watch cells, `code-dump`, and `imgdump` first.
 Use gdb on Linux and lldb on macOS only when the fault is in startup or emitted
 machine code before the Forth debugger is reachable. Inspect data-stack cells,
 DATA header cells, and watch-cell addresses before adding print probes. On macOS,
@@ -153,7 +155,7 @@ Use the in-process dumps to inspect generated code before falling back to
 external tools:
 
 ```
-bin/hb --load tools/jitdump.f -- ': S ( n -- n ) dup * ;' S
+bin/hb --load tools/code-dump.f -- ': S ( n -- n ) dup * ;' S
 bin/hb --load tools/imagedisasm.f -- bin/hb $1000 16
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
@@ -165,7 +167,7 @@ remove the process's ASLR slide from a live PC before passing it to `--pc`.
 ## Which word owns this address — `tools/code-owner.f`
 
 A debugger stop, a crash dump and a breakpoint all hand back raw addresses in the
-JIT region, where no external symbol table reaches. The dictionary has the
+compiled code region, where no external symbol table reaches. The dictionary has the
 answer:
 
 ```sh
@@ -229,16 +231,18 @@ so the message names the mechanism that caught the fault
 - `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; in a file
   the place comes before the prose: `<path>:<line>: `, or `<path>: ` in an
   evaluated string):
-  the interpreter refused a token whose record states more inputs than the
-  stack holds, or compiled code reached through `execute`, `catch`, `finally`
-  or a quotation read below the data stack's base. Catchable; the REPL recovers the line.
+  compiled code reached through `execute`, `catch`, `finally` or a quotation
+  read below the data stack's base. Catchable; the REPL recovers the line.
+- `habu: at '<token>' input underflow: ... (needs <n>, has <m>)` (exit 70; in
+  a file `<path>:<line>: ` comes before `at`): the checker rejected a
+  top-level call whose word's effect takes more cells than the stack holds,
+  before the word ran.
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.
 - `E-STACK-BOUNDS habu: stack bounds exceeded (data|return|loop) lr <lr>`
   (exit 102): an overflow or a below-base access where no throw entry exists
-  (a task's own stack, a stripped AOT image). `(stack cursor)`: a stack
-  switch or a breakpoint refused a stack's descriptor or cursor.
+  (a task's own stack, a stripped AOT image).
   Match the prefix `E-STACK-BOUNDS` unless the stack matters.
 - `E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr <lr>` (exit 102):
   the OS thread's own stack overflowed, typically unbounded recursion; `catch`
@@ -253,12 +257,8 @@ so the message names the mechanism that caught the fault
   SIGILL, SIGTRAP and SIGFPE. After the dump the process dies by that signal
   at the faulting pc, with a core when RLIMIT_CORE allows (see "gdb/lldb"
   above).
-- `E-STACK-UNGUARDED`: `run-in-stack` refused an extent that is not a guarded
-  mapping, before the callback ran. Allocate the stack with
-  `MEM:ALLOC-GUARDED`.
 
-A tier-1 top-row warning does not change which of these a program hits; it
-only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
+`test/stack-guard.f`, `test/engine-stack-machine.f` and
 `test/engine-stack-wide.f` hold worked cases.
 
 ## Standalone gotchas a stepper catches fast
@@ -278,7 +278,7 @@ only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
 `n prof-on` samples the running program and attributes each tick to the word
 whose code holds the interrupted pc, with its callers (`src/habu/prof.f` states
 the surface and the report format). A word whose last call compiles as a tail
-call, at either tier, is gone from the stack while its callee runs, so the
+call is gone from the stack while its callee runs, so the
 callee's samples show `(unknown)` or an outer caller instead of it. The usual
 phase measurement:
 
@@ -293,14 +293,32 @@ phase measurement:
   `by inclusive`. The second section shows a phase word, such as a compiler
   pass, that does no work of its own. `prof-json` prints every attributed word
   and caller edge.
-- A sample scans at most `PROF-WALK-CELLS` machine-stack cells above the
-  interrupted stack pointer, and none past its 4 KiB block (`src/habu/prof.f`
-  C-PROF-WALK), so a word whose frame lies further out is not counted and an
-  outer word's inclusive count can fall far short. The word a whole program
-  build runs under took 42 inclusive samples of 37,215.
+- On arm64 a sample whose stack pointer lies on the main thread's stack scans
+  every cell from it up to the stack's top, so every word with a frame there
+  counts inclusively. Any other sample, and every sample on x86-64, scans at
+  most `PROF-WALK-CELLS` cells and none past its 4 KiB block
+  (`src/habu/prof.f` C-PROF-WALK). In a warm arm64 `--engine` build profile,
+  `LINKER:WITH` took 19,660 inclusive samples of 19,663, none of them foreign.
+- On arm64 a sample inside C (an FFI call, libSystem's `fsync`) is charged to
+  the nearest Habu return address: the interrupted return register's, else the
+  first code address the scan up from the stack pointer finds, to the stack's
+  top on the main stack and within its 4 KiB block elsewhere. The scan is conservative, so a stale code-shaped cell left on
+  the stack can take the sample. Its callers are walked from there. The
+  header's `foreign charged to callers` says how many; `foreign` counts only
+  the foreign samples charged to no word. On x86-64 every sample inside C
+  counts in `foreign`, and the header has no `foreign charged to callers`.
 - `n prof-row` prints one word's row whatever its rank.
+- On arm64 only the thread that ran `prof-on` is sampled: a tick the kernel
+  delivers to another thread is sent on to it, so a task's work shows only in
+  a profile that task started. On x86-64 a tick counts on whichever thread it
+  lands.
+- On arm64 a sample counts the sampling intervals elapsed since the last one,
+  so time blocked in a syscall (an fsync, a file read) is charged where the
+  sample that ends it lands, though the ticks of that wait arrive as one
+  signal. On x86-64 each signal counts one sample.
 - A non-zero `prof-on` limit reports from inside the signal handler and exits
-  99 at that many samples. Words compiled after `prof-on` stay in the `defer`
+  99 when the sample total reaches or passes the limit: on arm64 the sample
+  that reaches it may count several intervals. Words compiled after `prof-on` stay in the `defer`
   column of that report; a program that can reach its own `prof-off` should
   use one and call `prof-report`.
 
@@ -316,7 +334,7 @@ bin/hb --load tools/build-profile.f -- --target wasm app.f /tmp/app.wasm /tmp/ap
 ```
 
 It samples every 100 us, so a warm build of 1.3 s gives about 13,000 samples
-and takes about a tenth longer. Read a row as a ranking only above about 100
+and takes a few percent longer. Read a row as a ranking only above about 100
 samples, and repeat the run to compare a smaller one.
 
 This is the method for "what does the build spend its time on". `strace -c` and
@@ -341,7 +359,7 @@ perf script | bin/hb --load tools/perf-map.f
 - A tick delivered to a thread C started that is not inside a callback runs on
   that thread's own stack.
 - When the limit's last sample is foreign the report waits for the next Habu
-  sample, so a program that exits or stays blocked in a foreign call from that
+  sample that weighs an interval, so a program that exits or stays blocked in a foreign call from that
   point on never reports; call `prof-report` yourself.
 
 ## Timing a change

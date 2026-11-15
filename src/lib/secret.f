@@ -1,6 +1,6 @@
 \ secret.f - credential storage, package SECRET: the native desktop store
 \ (src/lib/secret/macos.f; src/lib/secret/linux.f reads only, its WRITE and
-\ ERASE throw E-UNAVAILABLE) unless the host binds its own with STORE!. No
+\ ERASE throw E-CONFIG) unless the host binds its own with STORE!. No
 \ plaintext fallback; calls are synchronous and may block on the store.
 \ STORAGE CLASS. PROCESS-WIDE: the store binding, written before use and only
 \ read afterwards. CALLER-OWNED: each native call's request record.
@@ -15,10 +15,10 @@ public
 
 -9500 constant E-FIRST
 -9509 constant E-LAST
--9500 constant E-CONFIG
+-9500 constant E-CONFIG       \ an identifier refused, or no store bound or able; a person must act
 -9501 constant E-ACCESS
 -9502 constant E-CAPACITY
--9503 constant E-UNAVAILABLE
+-9503 constant E-UNAVAILABLE  \ a bound store did not answer and may answer later
 
 private
 
@@ -67,15 +67,15 @@ defer NATIVE-WRITE ( ptr request -- )
 defer NATIVE-ERASE ( ptr request -- )
 defer NATIVE-CLOSE ( ptr request -- )
 
-: UNAVAILABLE ( ptr request -- )
-   drop E-UNAVAILABLE throw ;
+: NO-STORE ( ptr request -- )
+   drop E-CONFIG throw ;
 : NO-CLOSE ( ptr request -- ) drop ;
 : NATIVE-ERROR ( n -- n )
-   dup E-FFI-DLSYM = over E-FFI-DLOPEN = or if drop E-UNAVAILABLE then ;
+   dup E-FFI-DLSYM = over E-FFI-DLOPEN = or if drop E-CONFIG then ;
 : INSTALL-DEFAULT ( -- )
-   ['] UNAVAILABLE is NATIVE-READ
-   ['] UNAVAILABLE is NATIVE-WRITE
-   ['] UNAVAILABLE is NATIVE-ERASE
+   ['] NO-STORE is NATIVE-READ
+   ['] NO-STORE is NATIVE-WRITE
+   ['] NO-STORE is NATIVE-ERASE
    ['] NO-CLOSE is NATIVE-CLOSE ;
 INSTALL-DEFAULT
 
@@ -105,9 +105,11 @@ INSTALL-DEFAULT
 \ borrows the caller's bytes, READ copies straight into the destination); copies
 \ inside the native store or the framework, such as the CFData READ gets back, are
 \ outside that guarantee, and the caller's buffer is never wiped. A failed access
-\ throws E-ACCESS; no native support (an absent symbol, macOS errSecNotAvailable)
-\ E-UNAVAILABLE. On Linux the search is by `service` and `account` attributes, so a
-\ dismissed unlock is an access failure, and the value is read by length, keeping NULs.
+\ throws E-ACCESS; no native support (an absent library or symbol, macOS
+\ errSecNotAvailable) E-CONFIG; a failed macOS CoreFoundation allocation
+\ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by `service` and
+\ `account` attributes, so a dismissed unlock is an access failure, and the
+\ value is read by length, keeping NULs.
 : OS-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
    {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
    service su account au REQ-OPEN {: req:ptr :}
@@ -154,8 +156,9 @@ public
 \ has its public word's effect and gets the identifiers and value once that word's
 \ checks pass; its throws pass through unchanged. It owes each word's contract
 \ below, keeps the caller's bytes only by copying them, and throws the native
-\ codes: E-CONFIG for an identifier it cannot hold, E-ACCESS for a failed or
-\ refused access, E-UNAVAILABLE for a store it cannot reach, E-CAPACITY before any
+\ codes: E-CONFIG for an identifier it cannot hold or an operation it cannot do,
+\ which a person must fix; E-ACCESS for a failed or refused access; E-UNAVAILABLE
+\ for a store that did not answer and may answer later; E-CAPACITY before any
 \ byte is copied. It may log the detail first, never key material.
 : STORE! ( [ ptr u8 n ptr u8 n SPAN:span<u8> -- n bool ] [ ptr u8 n ptr u8 n ptr u8 n -- ] [ ptr u8 n ptr u8 n -- bool ] -- )
    STORE-ERASE ! STORE-WRITE ! STORE-READ ! ;

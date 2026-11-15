@@ -25,9 +25,7 @@ package PROCESS-TASK-TEST
 \ passed one run in nine and twelve failed or hung in each of twelve runs, so
 \ twelve miss it about once in 700 runs.
 12 constant PTT-CAPTURES                 \ children the captor runs
-5000 constant PTT-CAPTURE-MS             \ one child's capture deadline
 50 constant PTT-POLL-MS                  \ one PROCESS:POLL-IN wait
-20000000000 constant PTT-BUDGET-NS       \ the captor's whole run: 20 s
 
 create PTT-BYTE 120 c,                   \ the one byte that keeps the pipe ready
 
@@ -45,12 +43,11 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    PTT-CAP-BAD @ 1 + PTT-CAP-BAD ! ;
 
 \ Runs INSIDE the captor task, so it asserts nothing: it counts, and this
-\ thread reads the counts after the join. A deadline throws E-PROC-TIMEOUT,
-\ which the join records and this thread names and throws (PTT-WORKER-ERR).
+\ thread reads the counts after the join.
 : PTT-ONE-CAPTURE ( CMD:command -- CMD:command )
    CMD:RESET
    s" hello" CMD:ARG+
-   s" /bin/echo" PTT-CAPTURE-MS >MS CMD:RUN-OUTCOME
+   s" /bin/echo" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0<> if PTT-CAP-BAD+ then
    CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
    PTT-DID @ 1 + PTT-DID ! ;
@@ -74,35 +71,19 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    then
    PTT-POLLS @ 1 + PTT-POLLS ! ;
 
-\ Polls this thread's own pipe while the captor runs, for at most the budget:
-\ true once the captor has ended, false when the budget ran out first. Only a
-\ captor that has ended is joined, so a shared row that stalls a capture ends
-\ in the named captor wait and never in a join that waits without a bound.
-: PTT-POLL-UNTIL-DONE ( -- bool )
-   mono-ns PTT-BUDGET-NS + {: deadline:n :}
+\ Polls this thread's own pipe until the captor has ended.
+: PTT-POLL-UNTIL-DONE ( -- )
    begin PTT-CAPTOR TASK:DONE? 0= while
-      mono-ns deadline > if 0 0= 0= exit then
       PTT-POLL-ONCE
-   repeat
-   0 0= ;
+   repeat ;
 
-\ A worker's code, read here because a task asserts nothing. E-PROC-TIMEOUT is
-\ a deadline the worker recorded: this thread names it and throws it before
-\ any assertion on the result. Any other code is not 0 and fails.
-: PTT-WORKER-ERR ( n -- )
-   {: code:n :}
-   code E-PROC-TIMEOUT = if
-      s" process-task-test command task wait" TEST-WAIT:EXPIRED
-   then
-   code 0 T= ;
-
-\ Joins a worker: the answer it returned must be want, and a code it threw is
-\ read by PTT-WORKER-ERR.
+\ Joins a worker, read here because a task asserts nothing: the answer it
+\ returned must be want, and a code it threw fails.
 : PTT-JOIN= ( ptr n n -- )
    {: t:ptr want:n :}
    t TASK:JOIN MATCH result
      ok  OF want T= ENDOF
-     err OF PTT-WORKER-ERR ENDOF
+     err OF 0 T= ENDOF
    ;MATCH ;
 
 \ A worker's answer: what it returned, or the code it threw.
@@ -112,28 +93,15 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
      err OF ENDOF
    ;MATCH ;
 
-\ A code that is neither 0 nor a deadline the worker recorded.
-: PTT-FAILED? ( n -- bool )
-   {: code:n :}
-   code 0<> code E-PROC-TIMEOUT <> and ;
-
 \ Joins two workers that wait on each other before reading either, and answers
-\ true when both answered 0. A worker that fails leaves its peer to wait out
-\ PTT-WAIT: only the failure is asserted, never that deadline, and the case
-\ reads nothing the workers left. When neither failed, a deadline is named and
-\ thrown.
+\ true when both answered 0. A worker that fails ends its peer's wait with its
+\ code, and the case reads nothing the workers left.
 : PTT-JOIN-PAIR ( ptr n ptr n -- bool )
    {: ta:ptr tb:ptr :}
    ta PTT-JOIN-CODE tb PTT-JOIN-CODE {: a:n b:n :}
-   a PTT-FAILED? b PTT-FAILED? or if
-      a PTT-FAILED? if a 0 T= then
-      b PTT-FAILED? if b 0 T= then
-      false exit
-   then
-   a E-PROC-TIMEOUT = b E-PROC-TIMEOUT = or if
-      s" process-task-test command task wait" TEST-WAIT:EXPIRED
-   then
-   true ;
+   a 0<> if a 0 T= then
+   b 0<> if b 0 T= then
+   a 0= b 0= and ;
 
 : PTT-CONCURRENT-CAPTURE-AND-POLL ( -- )
    0 PTT-DONE !  0 PTT-DID !  0 PTT-CAP-BAD !  0 PTT-POLLS !  0 PTT-POLL-BAD !
@@ -142,10 +110,9 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    wr FD>N PTT-PIPE-W !
    wr FD>N PTT-BYTE 1 write 1 T=
    ['] PTT-CAPTOR-BODY PTT-CAPTOR TASK:ACTIVATE
-   PTT-POLL-UNTIL-DONE {: finished:bool :}
+   PTT-POLL-UNTIL-DONE
    PTT-PIPE-R @ close
    PTT-PIPE-W @ close
-   finished 0= if s" process-task-test captor wait" TEST-WAIT:EXPIRED then
    PTT-CAPTOR PTT-CAPTURES PTT-JOIN=
    PTT-CAP-BAD @ 0 T=
    PTT-POLL-BAD @ 0 T=
@@ -157,8 +124,6 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ interleave every round; the four-command case relies on four tasks
 \ interleaving over their spawns.
 3 constant PTT-ROUNDS
-5000 constant PTT-RUN-MS
-5000000000 constant PTT-WAIT-NS          \ one handshake wait: 5 s
 
 TASK:MIN-STACK TASK:TASK PTT-A
 TASK:MIN-STACK TASK:TASK PTT-B
@@ -166,21 +131,10 @@ TASK:MIN-STACK TASK:TASK PTT-B
 variable PTT-A-READY                     \ rounds task A has stated its arguments for
 variable PTT-B-DONE                      \ rounds task B has run its own command for
 
-\ Runs INSIDE a worker: a handshake that does not arrive in time throws
-\ E-PROC-TIMEOUT, which the join records and this thread names and throws.
-: PTT-WAIT ( ptr n n -- ) {: flag want :}
-   mono-ns PTT-WAIT-NS + {: until:n :}
-   begin flag atomic@ want < while
-      mono-ns until >= if E-PROC-TIMEOUT throw then
-      1 >MS TASK:SLEEP
-   repeat ;
-
 \ Runs INSIDE a worker, so it asserts nothing: a bad completion throws and the
-\ join reports the code, a deadline throws E-PROC-TIMEOUT, which the join
-\ records and this thread names and throws; a wrong capture is counted and
-\ returned.
+\ join reports the code; a wrong capture is counted and returned.
 : PTT-PRINT ( CMD:command -- CMD:command )
-   s" /usr/bin/printf" PTT-RUN-MS >MS CMD:RUN-OUTCOME
+   s" /usr/bin/printf" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    MATCH PROCESS:ending
       exited OF 0<> if E-PROC-OUTPUT throw then ENDOF
       signaled OF drop E-PROC-OUTPUT throw ENDOF
@@ -194,7 +148,7 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    CMD:RESET
    s" alpha" CMD:ARG+
    r 1 + PTT-A-READY atomic!
-   PTT-B-DONE r 1 + PTT-WAIT
+   PTT-B-DONE r 1 + PTT-B TEST-WAIT:FOR-CELL
    PTT-PRINT
    CMD:OUT$ s" alpha" STR= if bad else bad 1 + then
    r 1 + ;
@@ -208,7 +162,7 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 
 : PTT-B-ROUND ( CMD:command n n -- CMD:command n n )
    {: bad:n r:n :}
-   PTT-A-READY r 1 + PTT-WAIT
+   PTT-A-READY r 1 + PTT-A TEST-WAIT:FOR-CELL
    CMD:RESET
    s" beta" CMD:ARG+
    PTT-PRINT
@@ -256,7 +210,7 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    s" stdin for three" ;
 
 : PTT-RUN-OK ( CMD:command ptr u8 n -- CMD:command )
-   PTT-RUN-MS >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc throw then ;
 
 : PTT-ENV-ROUND ( CMD:command n n -- CMD:command n )
@@ -335,12 +289,10 @@ variable PTT-HELD-W                      \ that stdin's write end
    in-r FD>N close
    in-w FD>N PTT-HELD-W ! ;
 
-\ Runs INSIDE a worker: the sleeper's rc, or E-PROC-TIMEOUT once PTT-RUN-MS
-\ passes without its exit, which the join records and this thread names and
-\ throws.
+\ Runs INSIDE a worker: answers the sleeper's rc.
 : PTT-WAITER-BODY ( -- )
-   PTT-SLEEPER @ >PID PTT-RUN-MS >MS PROCESS:WAIT-BOUNDED
-   PROCESS:ENDING>RC RC>N TASK:RETURN ;
+   PTT-SLEEPER @ >PID PROCESS:WAIT
+   PROCESS:STATUS>RC RC>N TASK:RETURN ;
 
 \ 0 when `/bin/sh -c script` printed exactly want, else 1.
 : PTT-SH-PRINTS ( CMD:command ptr u8 n ptr u8 n -- n CMD:command )
@@ -363,7 +315,7 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-WAITER 22 PTT-JOIN=
    PTT-CAPTURER 0 PTT-JOIN=
    PTT-HELD-W @ close
-   PTT-HELD @ >PID PTT-RUN-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   PTT-HELD @ >PID PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
    PTT-HOLD-SCRIPT s" " s" " done 21 T-ENDING-EXITED= ;
 
 \ Each child receives a different argv, environment and 70 KiB stdin, and its
@@ -391,7 +343,7 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 \ The rc of /bin/sh run with the PTT-GROW-U bytes at in as its stdin.
 : PTT-GROW-RUN ( CMD:command ptr u8 -- CMD:command n )
    PTT-GROW-U CMD:IN!
-   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ 0 when stdout is the mark line followed by the whole stdin at in, else 1.
 : PTT-GROW-BAD ( CMD:command ptr u8 n ptr u8 -- CMD:command n )
@@ -404,7 +356,7 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 : PTT-GROW-A-RUN ( CMD:command -- n CMD:command )
    s" alpha" s" echo A:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
    1 PTT-A-READY atomic!
-   PTT-B-DONE 1 PTT-WAIT
+   PTT-B-DONE 1 PTT-GROW-TB TEST-WAIT:FOR-CELL
    PTT-GROW-IN-A PTT-GROW-RUN {: rc:n :}
    CMD:OUT$ nip PTT-GROW-OUT-A-U !
    CMD:ERR$ nip PTT-GROW-ERR-A-U !
@@ -414,7 +366,7 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 : PTT-GROW-B-RUN ( CMD:command -- n CMD:command )
    s" beta" s" echo B:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
    1 PTT-B-DONE atomic!
-   PTT-A-READY 1 PTT-WAIT
+   PTT-A-READY 1 PTT-GROW-TA TEST-WAIT:FOR-CELL
    PTT-GROW-IN-B PTT-GROW-RUN {: rc:n :}
    CMD:OUT$ nip PTT-GROW-OUT-B-U !
    CMD:ERR$ nip PTT-GROW-ERR-B-U !
@@ -564,9 +516,9 @@ create PTT-CANCEL-BYTE 99 c,
    PTT-CANCEL-SCRIPT CMD:ARG+
    PTT-GROW-IN-A PTT-GROW-U CMD:IN!
    PTT-CANCEL-MODE @ 3 = if
-      s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-RC drop exit
+      s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-RC drop exit
    then
-   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop ;
 
 : PTT-CANCEL-CLEANUP ( -- )
    1 PTT-CANCEL-CLEAN atomic! ;
@@ -615,8 +567,7 @@ create PTT-CANCEL-BYTE 99 c,
    0 PTT-CANCEL-CLEAN ! 0 PTT-CANCEL-CODE !
    ['] PTT-CANCEL-BODY PTT-A TASK:ACTIVATE
    ['] PTT-CANCEL-CONTROL PTT-B TASK:ACTIVATE
-   [: PTT-CANCEL-READY? ;] mono-ns PTT-WAIT-NS +
-   s" process-task-test capture cancellation boundary" TEST-WAIT:POLL
+   [: PTT-CANCEL-READY? ;] TEST-WAIT:POLL
    mono-ns {: start:n :}
    PTT-CANCEL-SIGNAL
    PTT-A 0 PTT-JOIN=
@@ -637,7 +588,7 @@ variable PTT-CANCEL-MARK-U
    PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ ;
 
 : PTT-CANCEL-PRE-RUN ( CMD:command -- CMD:command )
-   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop ;
 
 : PTT-CANCEL-PRE-SETUP ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+

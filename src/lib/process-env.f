@@ -89,6 +89,15 @@ public
    infd outfd errfd LAUNCH
    pathz argv envp infd outfd errfd ;
 
+: SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- ptr u8 ptr a ptr a ptr u8 fd fd fd )
+   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv ROWS PROCESS:ARGV-ROWS
+   envp ROWS PROCESS:ENV-ROWS
+   cwdz dup ZLEN PROCESS:CWD
+   infd outfd errfd LAUNCH
+   pathz argv envp cwdz infd outfd errfd ;
+
 ;package
 
 : PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )

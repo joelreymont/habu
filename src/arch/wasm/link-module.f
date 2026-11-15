@@ -1,9 +1,9 @@
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
-\ refuses by name a defer, a does> clause, a routine entered inside a function
-\ and every kernel word the program reaches that no kernel-words.f word
-\ provides and no routine of link-routines.f answers; a kernel word resolves to
-\ its routine when the module has one.
+\ refuses by name a does> clause, a routine entered inside a function and every
+\ kernel word the program reaches that no kernel-words.f word provides and no
+\ routine of link-routines.f answers; a kernel word resolves to its routine when
+\ the module has one.
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -58,6 +58,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 
 
 \ Emission e's function holding byte offset at.
+\ Function 0 exists: every T0 emission opens at least one unit.
 : HOLDER ( n n -- n )
    {: e:n at:n :}
    0
@@ -182,7 +183,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 \ offset and an xt cell its function's table slot, which WLINK:LINK stores.
 : ROW+ ( n -- )
    {: row:n :}
-   row ROW-OFF {: off:n :}
+   row IMAGE-OFF {: off:n :}
    off CELL-FITS
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
    row CELL-VALUE {: v:n :}

@@ -4,11 +4,11 @@
 \ engine copy at <tmp>/tree/bin/hb:
 \    <tmp>/tree/bin/hb --load <tmp>/app/app.f -- <working directory> <tmp>/tree
 
-\ Neither the owner nor the working directory holds src/lib/test.f or
-\ utf8-scalar.f, so these relative requires resolve at the engine root; the
+\ Neither the owner nor the working directory holds src/lib/test.f or the
+\ fixture's inner.f, so these relative requires resolve at the engine root; the
 \ app's error.f resolves at the owner.
 require src/lib/test.f
-require src/lib/utf8-scalar.f
+require test/fixtures/source-root-exe/inner.f
 require src/lib/error.f
 
 using SOURCE-ROOT
@@ -43,7 +43,7 @@ variable PATH-U
    \ A second copy of src/lib/error.f would exit 78 on its first definition.
    ENGINE-COPY$ required
    s" a library the engine does not bake is not engine-provided" T-LABEL
-   s" src/lib/utf8-scalar.f" ENGINE-PROVIDES? TFALSE
+   s" test/fixtures/source-root-exe/inner.f" ENGINE-PROVIDES? TFALSE
    s" a discovery base does not hide the frozen rows" T-LABEL
    REQUIRE-SNAPSHOT
    s" src/lib/string.f" ENGINE-PROVIDES? TTRUE

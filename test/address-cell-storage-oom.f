@@ -18,7 +18,7 @@ create ERR 4096 allot
       PROC-ARGV-RESET
       s" --load" >LEN PROC-ARGV+
       s" test/address-cell-oom-child.f" >LEN PROC-ARGV+
-      ENGINE-CANDIDATE:PATH$ >LEN OUT 1024 >LEN ERR 4096 >LEN 60000 >MS
+      ENGINE-CANDIDATE:PATH$ >LEN OUT 1024 >LEN ERR 4096 >LEN PROCESS:WAIT-FOREVER
       RUN-ARGV-CAPTURE
       MATCH result
          ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}

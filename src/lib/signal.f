@@ -34,24 +34,16 @@ SUMTYPE signal-result
 15 constant SIGTERM
 
 : SIGUSR1 ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 10 exit then
-   HB-TARGET-MACOS? if 30 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 10 else 30 then ;
 
 : SIGUSR2 ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 12 exit then
-   HB-TARGET-MACOS? if 31 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 12 else 31 then ;
 
 : SIGSTOP ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 19 exit then
-   HB-TARGET-MACOS? if 17 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 19 else 17 then ;
 
 : SIGCONT ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 18 exit then
-   HB-TARGET-MACOS? if 19 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 18 else 19 then ;
 
 private
 
@@ -72,17 +64,15 @@ SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 
 : SA-FLAGS-OFF ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
-      SA-LINUX-FLAGS-OFF exit
-   then
-   HB-TARGET-MACOS? if SA-MACOS-FLAGS-OFF exit then
-   E-PROC-HOST throw ;
+      SA-LINUX-FLAGS-OFF
+   else
+      SA-MACOS-FLAGS-OFF
+   then ;
 
 \ The same flag, spelled differently: a Linux $10000000 installed on macOS is
 \ SA_SIGINFO|SA_NOCLDWAIT|SA_NODEFER and not SA_RESTART at all.
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $10000000 exit then
-   HB-TARGET-MACOS? if 2 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if $10000000 else 2 then ;
 
 0 constant SA-NO-FLAGS
 0 constant SIG-DFL
@@ -115,12 +105,11 @@ SCRATCH-VARIABLE OWNER             \ TASK:SELF-N at INIT; read only while READY
 SCRATCH-VARIABLE READY             \ 1 from INIT to RELEASE, else 0
 
 \ One staging span per task: WAIT reads the number into its own row.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER SIGNO-STORAGE drop
+8 TASK:+USERS SIGNO-STORAGE u8
 
 PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
-   2 SA-BUF-BYTES WRITES-BYTES
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
@@ -130,7 +119,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    repeat drop ;
 
 : SIGNO-BUF ( -- ptr u8 )
-   SIGNO-STORAGE BYTE-VIEW ;
+   0 SIGNO-STORAGE ;
 
 : ABI-SLOT ( n -- ptr n ) {: off:n :}
    data-base off + ;
@@ -319,15 +308,6 @@ REGISTER-RESET
 : NEED-OWNER ( -- )
    TASK:SELF-N OWNER @ <> if E-SIGNAL-STATE throw then ;
 
-\ Refused up front, before a pipe is opened or a disposition touched: on a host
-\ neither arm above knows, every one of this file's numbers would be somebody
-\ else's, and installing the stub for whatever 10 means there is exactly the
-\ silent mis-install the arms exist to prevent.
-: NEED-HOST ( -- )
-   HB-TARGET-LINUX-KERNEL? if exit then
-   HB-TARGET-MACOS? if exit then
-   E-PROC-HOST throw ;
-
 public
 
 \ From the MAIN task: the two published cells are read once here and kept.
@@ -335,7 +315,6 @@ public
 \ pipe is absorbed rather than written to a half-built facility.
 : INIT ( -- )
    READY @ 0<> if E-SIGNAL-STATE throw then
-   NEED-HOST
    KEEP-ABI
    OPEN-PIPE
    0 CAUGHT !

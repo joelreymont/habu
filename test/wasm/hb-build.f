@@ -5,9 +5,9 @@
 \ `bin/hb --load test/wasm/hb-build.f` from the tree's root. The sources and
 \ modules stay in the printed directory.
 \
-\ A generated program fails check k by reading the byte at address k, below
-\ WPROF:CTX-BASE, which traps. In the module the six share, OUT's letters name
-\ the program a failed check ran in, and fault-addr is the check's number.
+\ A generated program fails check k by an uncaught `k throw`: status 1 and throw
+\ code k. In the module the six share, OUT's letters name the program a failed
+\ check ran in.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -24,7 +24,6 @@ require test/wasm/harness.f
 package WASM-HB-BUILD-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -44,7 +43,7 @@ variable MOD-U
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
 : DRIVER ( -- n )
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    erru LEN>N ERR-U !
    rc ;
@@ -109,32 +108,43 @@ variable TEXT-U
    s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
    SB$ name nu SOURCE! ;
 
+\ Every byte OUT received is EMITS!'s x, 120.
+: ALL-X? ( -- bool )
+   WASM-HARNESS:OUT$ {: a:ptr u:n :}
+   u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
+   true ;
+
+\ Past twice OUT's first size: two growths, the second freeing a mapped run. A
+\ die of more than 2^32 bytes asks for more OUT than memory32 holds.
 : FULL-CASE ( -- )
-   WPROF:OUT-CAP s" full.f" EMITS!
-   s" emit fills OUT to its last byte" T-LABEL
+   WPROF:OUT-CAP 2 * 1+ s" full.f" EMITS!
+   s" emit grows OUT and the harness receives every byte" T-LABEL
    s" full.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP T=
-   WPROF:OUT-CAP 1+ s" over.f" EMITS!
-   s" an emit past OUT traps" T-LABEL
-   s" over.wasm" BUILD 0 T=
-   RAN 2 T= ;
+   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP 2 * 1+ T=
+   ALL-X? TTRUE
+   S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
+   s" a die OUT cannot grow for traps and records OUT-GROW at OUT's end past it" T-LABEL
+   s" huge.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:OUT-GROW T=
+   WASM-HARNESS:FAULT-ADDR WPROF:OUT-BASE 1 32 lshift + 1+ T= ;
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
 : K! ( n ptr u8 n -- )
    {: want:n name:ptr nu:n :}
    SB-RESET
-   S\" package K\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable SEED\n9 SEED !\n" SB-APPEND
+   S\" package K\nprivate\nvariable SEED\n9 SEED !\n" SB-APPEND
    S\" variable ACC\n8 BUFFER: SPOT\n" SB-APPEND
    S\" : FACT ( n -- n ) dup 1 > if dup 1 - recurse * else drop 1 then ;\n" SB-APPEND
    S\" : SUM-TO ( n -- n ) 0 swap 0 ?do i + loop ;\n" SB-APPEND
    S\" : BUMP ( n -- ) ACC @ + ACC ! ;\npublic\n: MAIN ( -- )\n   5 FACT " SB-APPEND
    want FMT:SB-U
-   S\"  <> if 1 >BYTES c@ drop then\n   10 SUM-TO 45 <> if 2 >BYTES c@ drop then\n" SB-APPEND
-   S\"    SEED @ 9 <> if 3 >BYTES c@ drop then\n" SB-APPEND
-   S\"    0 ACC !  7 BUMP 8 BUMP  ACC @ 15 <> if 4 >BYTES c@ drop then\n" SB-APPEND
-   S\"    65 SPOT c!  SPOT c@ 65 <> if 5 >BYTES c@ drop then\n" SB-APPEND
+   S\"  <> if 1 throw then\n   10 SUM-TO 45 <> if 2 throw then\n" SB-APPEND
+   S\"    SEED @ 9 <> if 3 throw then\n" SB-APPEND
+   S\"    0 ACC !  7 BUMP 8 BUMP  ACC @ 15 <> if 4 throw then\n" SB-APPEND
+   S\"    65 SPOT c!  SPOT c@ 65 <> if 5 throw then\n" SB-APPEND
    S\"    [: 1 ;] drop ;\n;package\n" SB-APPEND
    SB$ name nu SOURCE! ;
 
@@ -142,27 +152,55 @@ variable TEXT-U
    121 s" k-bad.f" K!
    0 TEXT-U !  s" k-bad.f" REQUIRE+  S\" : MAIN ( -- ) K:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" k-fail.f" SOURCE!
-   s" the same program with a failing first test runs to its trap" T-LABEL
+   s" the same program with a failing first test throws 1" T-LABEL
    s" k-fail.wasm" BUILD 0 T=
-   RAN 2 T=
-   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
-   WASM-HARNESS:FAULT-ADDR 1 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE 1 T= ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: LOW-CASE ( -- )
    S\" package K private CAST: >BYTES ( n -- ptr u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
    s" low.f" SOURCE!
-   s" a c! below WPROF:CTX-BASE faults and traps" T-LABEL
+   s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
    s" low.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
+   WASM-HARNESS:FAULT-ADDR 8 T=
+   SB-RESET
+   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- ) [: LOW ;] catch 110 <> if 1 >BYTES c@ drop then\n" SB-APPEND
+   S\"    65536 map-anon drop {: p:ptr :} p 65536 munmap drop p 65536 munmap drop ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
+   SB$ s" caught.f" SOURCE!
+   s" a caught fault leaves no fault kind for a later trap that records none" T-LABEL
+   s" caught.wasm" BUILD 0 T=
    RAN 2 T=
+   WASM-HARNESS:FAULT-KIND 0 T=
+   SB-RESET
+   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- ) [: LOW ;] [: [: 9 throw ;] catch drop ;] finally ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
+   SB$ s" finally.f" SOURCE!
+   s" a finally body's fault stands after a cleanup that catches its own throw" T-LABEL
+   s" finally.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T= ;
+[then]
 
 
-\ Package D in d.f: division, max, atomics and views through words whose
-\ operands are not literals at the call.
+\ Package D in d.f: division, max, invert and rshift, atomics and views through
+\ words whose operands are not literals at the call.
 : D! ( -- )
    SB-RESET
-   S\" package D\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable CELL0\nvariable SPOT\n" SB-APPEND
+   S\" package D\nprivate\nvariable CELL0\nvariable SPOT\n" SB-APPEND
    S\" : DIV ( n n -- n ) / ;\n: REM ( n n -- n ) mod ;\n: BIG ( n n -- n ) max ;\n" SB-APPEND
-   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) >BYTES c@ drop ;\npublic\n" SB-APPEND
+   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) throw ;\n" SB-APPEND
+   S\" : FLIP ( n -- n ) invert 3 rshift ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- )\n   17 5 DIV 3 <> if 1 FAIL then  17 5 REM 2 <> if 2 FAIL then\n" SB-APPEND
    S\"    -17 5 DIV -3 <> if 3 FAIL then  -17 5 REM -2 <> if 4 FAIL then\n" SB-APPEND
    S\"    MIN-N -1 DIV MIN-N <> if 5 FAIL then  MIN-N -1 REM 0 <> if 6 FAIL then\n" SB-APPEND
@@ -171,19 +209,14 @@ variable TEXT-U
    S\"    5 9 CELL0 atomic-cas 5 <> if 10 FAIL then  CELL0 @ 9 <> if 11 FAIL then\n" SB-APPEND
    S\"    5 1 CELL0 atomic-cas 9 <> if 12 FAIL then  CELL0 @ 9 <> if 13 FAIL then\n" SB-APPEND
    S\"    77 SPOT !  SPOT byte-view c@ 77 <> if 14 FAIL then\n" SB-APPEND
-   S\"    SPOT cell-view @ 77 <> if 15 FAIL then ;\n;package\n" SB-APPEND
+   S\"    SPOT cell-view @ 77 <> if 15 FAIL then\n" SB-APPEND
+   S\"    5 FLIP $1FFFFFFFFFFFFFFF <> if 16 FAIL then ;\n;package\n" SB-APPEND
    SB$ s" d.f" SOURCE! ;
-
-: DIV0-CASE ( -- )
-   s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
-   s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
-   s" div0.wasm" BUILD 0 T=
-   RAN 1 T=
-   WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
 
 
 \ The program f.f: each float word through a word whose operands are not
-\ literals at the call, printed by `f.` and `.`.
+\ literals at the call, and a double out of an if's two arms, printed by `f.`
+\ and `.`.
 : F! ( -- )
    SB-RESET
    S\" : ADD ( r r -- r ) f+ ;\n: SUB ( r r -- r ) f- ;\n: MUL ( r r -- r ) f* ;\n" SB-APPEND
@@ -192,12 +225,14 @@ variable TEXT-U
    S\" : MORE ( r r -- ) f> bool>n . ;\n: SAME ( r r -- ) f= bool>n . ;\n" SB-APPEND
    S\" : BELOW0 ( r -- ) f0< bool>n . ;\n: AT0 ( r -- ) f0= bool>n . ;\n" SB-APPEND
    S\" : FLOAT ( n -- r ) s>f ;\n: TRUNC ( r -- n ) f>s ;\n" SB-APPEND
+   S\" : CHOOSE ( n -- r ) 0<> if 1.5 else 2.5 then ;\n" SB-APPEND
    S\" : BIG ( -- r ) 1000000000000000.0 dup MUL ;\n: MAIN ( -- )\n" SB-APPEND
    S\"    1.5 2.25 ADD f.  1.5 2.25 SUB f.  1.5 2.25 MUL f.  1.5 0.25 DIV f.\n" SB-APPEND
    S\"    2.0 ROOT f.  -4.0 ROOT dup TRUNC .  dup SAME\n   -2.5 FLIP f.  -2.5 SIZE f.\n" SB-APPEND
    S\"    1.0 2.0 LESS  2.0 1.0 LESS  2.0 1.0 MORE  1.0 2.0 MORE  1.0 1.0 SAME  1.0 2.0 SAME\n" SB-APPEND
    S\"    0.0 FLIP BELOW0  0.0 BELOW0  -1.0 BELOW0  0.0 FLIP AT0  0.0 AT0  -1.0 AT0\n" SB-APPEND
-   S\"    -7 FLOAT f.  2.9 TRUNC .  -2.9 TRUNC .  BIG TRUNC .  BIG FLIP TRUNC . ;\n" SB-APPEND
+   S\"    -7 FLOAT f.  2.9 TRUNC .  -2.9 TRUNC .  BIG TRUNC .  BIG FLIP TRUNC .\n" SB-APPEND
+   S\"    1 CHOOSE f.  0 CHOOSE f. ;\n" SB-APPEND
    SB$ s" f.f" SOURCE! ;
 
 \ What F!'s MAIN prints on the host: the square root of -4 is a NaN, which
@@ -207,6 +242,7 @@ variable TEXT-U
    S\" 3.750000\n-0.750000\n3.375000\n6.000000\n1.414213\n0\n0\n2.500000\n2.500000\n" SB-APPEND
    S\" -1\n0\n-1\n0\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n" SB-APPEND
    S\" -7.000000\n2\n-2\n9223372036854775807\n-9223372036854775808\n" SB-APPEND
+   S\" 1.500000\n2.500000\n" SB-APPEND
    SB$ ;
 
 : FLOAT-CASE ( -- )
@@ -239,6 +275,35 @@ variable TEXT-U
    WASM-HARNESS:OUT$ LOOPS-HOST$ T$= ;
 
 
+\ The program sha.f prints the SHA-256 of "abc", of FIPS 180's two-block message
+\ and of 200 a's, whose first three blocks SHA256-FEED compresses.
+: SHA! ( -- )
+   SB-RESET
+   S\" require src/core/sha256.f\nSHA256-CTX-BYTES BUFFER: CTX\n32 BUFFER: DG\n" SB-APPEND
+   S\" 64 BUFFER: HX\n200 BUFFER: AS\n" SB-APPEND
+   S\" : SHOW ( ptr u8 n -- ) {: a:ptr u:n :} CTX a u DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
+   S\" : MAIN ( -- ) s\" abc\" SHOW\n" SB-APPEND
+   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" SHOW\n" SB-APPEND
+   S\"    200 0 do 97 AS i + c! loop  AS 200 SHOW ;\n" SB-APPEND
+   SB$ s" sha.f" SOURCE! ;
+
+: SHA-HOST$ ( -- ptr u8 n )
+   SB-RESET
+   S\" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n" SB-APPEND
+   S\" 248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\n" SB-APPEND
+   S\" c2a908d98f5df987ade41b5fce213067efbcc21ef2240212a41e54b5e7c28ae5\n" SB-APPEND
+   SB$ ;
+
+\ Guards a program that hashes with SHA-256: a module's sha256-blocks compresses no block, so
+\ SHA-BLOCK compresses them all.
+: SHA-CASE ( -- )
+   SHA!
+   s" a program that hashes with SHA-256 builds into a module that prints the host's digests" T-LABEL
+   s" sha.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ SHA-HOST$ T$= ;
+
+
 \ The program nan.f prints the bits of a made NaN, then of a NaN operand on the
 \ left, on the right, the left of two, and under a unary word.
 : NAN! ( -- )
@@ -268,8 +333,8 @@ variable TEXT-U
 \ Package M in m.f: map-anon and munmap through words.
 : M! ( -- )
    0 TEXT-U !
-   S\" package M\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nCAST: >N ( ptr u8 -- n )\n" TEXT+
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" TEXT+
+   S\" package M\nprivate\nCAST: >N ( ptr u8 -- n )\n" TEXT+
+   S\" : FAIL ( n -- ) throw ;\n" TEXT+
    S\" : CHECK ( bool n -- ) swap if drop else FAIL then ;\n: ONE-PAGE ( -- n ) 65536 ;\n" TEXT+
    S\" : MAP ( n -- ptr u8 n ) map-anon ;\n: UNMAP ( ptr u8 n -- n ) munmap ;\n" TEXT+
    S\" : AT ( ptr u8 n -- bool ) swap >N swap = ;\n" TEXT+
@@ -309,6 +374,14 @@ variable TEXT-U
    RAN 2 T=
    WASM-HARNESS:OUT$ S\" 0\n0\n" T$= ;
 
+: DEFER-CASE ( -- )
+   S\" defer HOOK ( n -- n )\n: TWICE ( n -- n ) 2 * ;\n: SET ( -- ) [: TWICE ;] is HOOK ;\nSET\n: MAIN ( -- ) 3 HOOK .  [: 1 + ;] is HOOK  3 HOOK . ;"
+   s" defer.f" SOURCE!
+   s" a defer set while building and again while running calls each word it holds" T-LABEL
+   s" defer.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 6\n4\n" T$= ;
+
 
 : ERR-HAS ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -323,13 +396,6 @@ variable TEXT-U
    s" link: a Wasm module has no here" ERR-HAS
    s" link: a Wasm module has no align" ERR-HAS
    s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
-   NO-MODULE
-   s" defer HOOK ( n -- n )  : TWICE ( n -- n ) 2 * ;  : MAIN ( -- ) [: TWICE ;] is HOOK  3 HOOK drop ;"
-   s" defer.f" SOURCE!
-   s" a defer is refused by name with 74 and no module" T-LABEL
-   s" defer.wasm" BUILD 74 T=
-   s" link: the defer HOOK needs a trailer, which a Wasm module cannot hold" ERR-HAS
-   s" link: a Wasm module cannot hold a defer" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;" s" does.f" SOURCE!
    s" a does> clause is refused by name with 74 and no module" T-LABEL
@@ -366,6 +432,12 @@ variable TEXT-U
    s" APP-ENTRY:XT!" ERR-HAS
    s" expected: [ -- ] actual: [ n -- ]" ERR-HAS
    NO-MODULE
+   s" require src/lib/fs.f" s" native-only.f" SOURCE!
+   s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL
+   s" native-only.wasm" BUILD 74 T=
+   s" error[E-TARGET]: this file does not build for wasm" ERR-HAS
+   s" src/lib/ffi-abi.f:" ERR-HAS
+   NO-MODULE
    s" : MAIN ( -- ) ;" s" unwritten.f" SOURCE!
    s" an output path in a missing directory is refused with 64 and no module" T-LABEL
    s" missing/unwritten.wasm" BUILD 64 T=
@@ -386,11 +458,11 @@ variable TEXT-U
 \ quotation kept in a variable.
 : X! ( -- )
    SB-RESET
-   S\" package X\nprivate\nCAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" package X\nprivate\n" SB-APPEND
    S\" TYPED-VARIABLE HOOK [ n -- n ]\n: DOUBLE ( n -- n ) 2 * ;\npublic\n" SB-APPEND
-   S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 >BYTES c@ drop then\n" SB-APPEND
-   S\"    4 [: 1 + ;] execute 5 <> if 2 >BYTES c@ drop then\n" SB-APPEND
-   S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 >BYTES c@ drop then ;\n" SB-APPEND
+   S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 throw then\n" SB-APPEND
+   S\"    4 [: 1 + ;] execute 5 <> if 2 throw then\n" SB-APPEND
+   S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 throw then ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
    SB$ s" execute.f" SOURCE! ;
 
@@ -399,12 +471,20 @@ variable TEXT-U
    s" an uncaught `9 throw` ends run with status 1 and throw-code 9" T-LABEL
    s" throw.wasm" BUILD 0 T=
    RAN 1 T=
-   WASM-HARNESS:THROW-CODE 9 T=
+   WASM-HARNESS:THROW-CODE 9 T= ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: THROW-ZERO-CASE ( -- )
    s" : MAIN ( -- ) 0 throw ;" s" throw-zero.f" SOURCE!
    s" `0 throw` ends run with status 1 and throw-code ENGINE-ERROR:THROW-ZERO" T-LABEL
    s" throw-zero.wasm" BUILD 0 T=
    RAN 1 T=
    WASM-HARNESS:THROW-CODE ENGINE-ERROR:THROW-ZERO T= ;
+
+\ A line of catch.f's MAIN, after FIVE.
+: CATCH-ZERO+ ( -- )
+   S\" [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND ;
+[then]
 
 \ run.mjs shows OUT after a trap but not the throw code, which it prints only
 \ for status 1.
@@ -420,8 +500,8 @@ variable TEXT-U
 \ which LEAK and LEAK-R overflow without.
 : CATCH! ( -- )
    SB-RESET
-   S\" package C\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable DONE\n" SB-APPEND
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" package C\nprivate\nvariable DONE\n" SB-APPEND
+   S\" : FAIL ( n -- ) throw ;\n" SB-APPEND
    S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
    S\" : DEEP ( -- ) 11 throw ;\n: MID ( -- ) DEEP ;\n: CLEAN ( -- ) 1 DONE ! ;\n" SB-APPEND
    S\" : FIVE ( -- ) 4 [: 1 + ;] catch 0= if 5 3 WANT else drop 2 FAIL then ;\n" SB-APPEND
@@ -430,12 +510,12 @@ variable TEXT-U
    S\" : NEST ( -- n ) 0 3 0 do 4 0 do 1 + loop loop ;\n: PARK ( n -- n ) >r 1 r> + ;\n" SB-APPEND
    \ MAIN's lines go unindented to keep the text within SB-CAP.
    S\" public\n: MAIN ( -- )\n" SB-APPEND
-   S\" [: 7 throw ;] catch 7 1 WANT  FIVE  [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND
+   S\" [: 7 throw ;] catch 7 1 WANT  FIVE\n" SB-APPEND
    S\" 1 2 [: MID ;] catch 11 5 WANT  2 6 WANT  1 7 WANT\n" SB-APPEND
    S\" LEAK  LEAK-R  NEST 12 8 WANT  6 PARK 7 9 WANT\n" SB-APPEND
    S\" [: 42 ;] [: CLEAN ;] finally 42 10 WANT  DONE @ 1 11 WANT\n" SB-APPEND
    S\" 0 DONE !  [: [: 7 throw ;] [: CLEAN ;] finally ;] catch 7 12 WANT\n" SB-APPEND
-   S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 8 14 WANT\n" SB-APPEND
+   S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 7 14 WANT\n" SB-APPEND
    S\" [: [: 7 throw ;] [: [: 9 throw ;] catch drop ;] finally ;] catch 7 15 WANT ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
    SB$ s" catch.f" SOURCE! ;
@@ -477,8 +557,8 @@ variable TEXT-U
 \ Package G in grow.f: a cell row reserved, then reserved larger.
 : GROW! ( -- )
    SB-RESET
-   S\" package G\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" package G\nprivate\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
+   S\" : FAIL ( n -- ) throw ;\n" SB-APPEND
    S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
    S\" : AT ( n -- n ) ROW NULL-PTR - ;\npublic\n: MAIN ( -- )\n" SB-APPEND
    S\"    4 ROW-RESERVE  11 0 ROW !  22 3 ROW !  0 AT {: old:n :}\n" SB-APPEND
@@ -497,10 +577,10 @@ variable TEXT-U
    S\" : MAIN ( -- ) 75 emit K:MAIN 68 emit D:MAIN 77 emit M:MAIN " TEXT+
    S\" 88 emit X:MAIN 67 emit C:MAIN 71 emit G:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" pass.f" SOURCE!
-   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
+   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, invert and rshift, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
    s" pass.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:FAULT-ADDR 0 T=
+   WASM-HARNESS:THROW-CODE 0 T=
    WASM-HARNESS:OUT$ s" KDMXCG" T$= ;
 
 
@@ -527,24 +607,6 @@ variable TEXT-U
    s" fatal.wasm" BUILD 0 T=
    RAN 2 T=
    WASM-HARNESS:OUT$ s" fatal" T$= ;
-
-\ `bin/hb --load` of the source; answers its exit status.
-: NATIVE ( -- n )
-   PROC-ARGV-RESET  s" --load" ARG+  SRC+  DRIVER ;
-
-: NEGATIVE-BYTE-CASE ( -- )
-   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
-   s" negative-native.f" SOURCE!
-   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
-   NATIVE 76 T=
-   ERR ERR-U @ RTRIM s" byte: negative length" T$=
-   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
-   s" negative-wasm.f" SOURCE!
-   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
-   s" negative.wasm" BUILD 0 T=
-   RAN 2 T=
-   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
-
 
 \ ACTION-XT gives execute's own xt, which has no stored effect, as this
 \ fixture's type; its table slot is execute's kernel routine.
@@ -590,6 +652,7 @@ variable TEXT-U
    WASM-HARNESS:OUT$ S\" -37\n" T$= ;
 
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 : FETCH! ( -- )
    SB-RESET
    S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
@@ -605,6 +668,7 @@ variable TEXT-U
    s" fetch.wasm" BUILD 0 T=
    RAN 2 T=
    WASM-HARNESS:OUT$ S\" 2\nE-BAD-TAG habu: layout tag 7 outside 0..2" T$= ;
+[then]
 
 
 65536 constant PAGE-BYTES
@@ -644,16 +708,23 @@ DYNAMIC-BUFFER MODULE u8
    1 POS +!  m u U32> drop  m u U32> drop  1 POS +!
    m u U32> PAGE-BYTES * ;
 
-\ Memory ends at the memory section's minimum pages, not the image; the four
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: CHECKED-CASES ( -- )
+   s" a cell at an upper-bit pointer, $100031000, fails its check and throws" T-LABEL
+   $100031000 true s" upper.f" ACCESS!
+   s" upper.wasm" ACCESS 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   s" a byte in the null region, $FFFF, fails its check and throws" T-LABEL
+   $FFFF false s" null.f" ACCESS!
+   s" null.wasm" ACCESS 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T= ;
+[then]
+
+\ Memory ends at the memory section's minimum pages, not the image; the
 \ sources differ only in the access, so they share that end.
 : MEMORY-CASES ( -- )
-   s" a cell at an upper-bit pointer, $100031000, fails its check and traps" T-LABEL
-   $100031000 true s" upper.f" ACCESS!
-   s" upper.wasm" ACCESS 2 T=
+   0 false s" last.f" ACCESS!  s" last.wasm" BUILD 0 T=
    MEMORY-END {: end:n :}
-   s" a byte in the null region, $FFFF, fails its check and traps" T-LABEL
-   $FFFF false s" null.f" ACCESS!
-   s" null.wasm" ACCESS 2 T=
    s" the last byte of the module's memory reads" T-LABEL
    end 1- false s" last.f" ACCESS!
    s" last.wasm" ACCESS 0 T=
@@ -670,11 +741,12 @@ public
    FULL-CASE
    PASS-CASE
    PROGRAM-CASES
-   DIV0-CASE
    FLOAT-CASE
    LOOP-CASE
+   SHA-CASE
    NAN-CASE
    TWICE-CASE
+   DEFER-CASE
    REFUSAL-CASES
    THROW-CASES
    DIE-CASE
@@ -682,11 +754,41 @@ public
    SEGMENTS-CASE
    UNUSED-CASE
    FATAL-CASE
-   NEGATIVE-BYTE-CASE
    CELL-CASES
-   FETCH-CASES
    MEMORY-CASES
    T-REPORT ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ `bin/hb --load` of the source; answers its exit status.
+: NATIVE ( -- n )
+   PROC-ARGV-RESET  s" --load" ARG+  SRC+  DRIVER ;
+
+: NEGATIVE-BYTE-CASE ( -- )
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
+   s" negative-native.f" SOURCE!
+   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
+   NATIVE 76 T=
+   ERR ERR-U @ RTRIM s" byte: negative length" T$=
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
+   s" negative-wasm.f" SOURCE!
+   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
+   s" negative.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
+
+T-RESET SETUP NEGATIVE-BYTE-CASE T-REPORT
+[then]
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: DIV0-CASE ( -- )
+   s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
+   s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
+   s" div0.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
+
+T-RESET SETUP DIV0-CASE T-REPORT
+[then]
 
 ;package
 

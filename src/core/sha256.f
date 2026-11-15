@@ -3,37 +3,11 @@
 \ runs in a context span the caller owns (SHA256-CTX-BYTES; a file context is
 \ SHA256-FILE-CTX-BYTES); this file keeps no digest state of its own, so tasks
 \ hash concurrently with a context each, and copying a context copies its state.
+
+require src/core/compile-reads.f
+
 $FFFFFFFF constant W32
 
-: M32 ( n -- n )
-   W32 and ;
-
-: ROTR ( n n -- n )
-   2dup rshift >r
-   32 swap - lshift r> or M32 ;
-
-: SHR ( n n -- n )
-   rshift ;
-
-: CH ( n n n -- n )
-   {: x:n y:n z:n :}
-   x y and  x invert z and  xor ;
-
-: MAJ ( n n n -- n )
-   {: x:n y:n z:n :}
-   x y and  x z and  y z and  xor xor ;
-
-: BSIG0 ( n -- n )
-   dup 2 ROTR  over 13 ROTR  rot 22 ROTR  xor xor ;
-
-: BSIG1 ( n -- n )
-   dup 6 ROTR  over 11 ROTR  rot 25 ROTR  xor xor ;
-
-: SSIG0 ( n -- n )
-   dup 7 ROTR  over 18 ROTR  rot 3 SHR  xor xor ;
-
-: SSIG1 ( n -- n )
-   dup 17 ROTR  over 19 ROTR  rot 10 SHR  xor xor ;
 create KK
 $428a2f98 , $71374491 , $b5c0fbcf , $e9b5dba5 , $3956c25b , $59f111f1 , $923f82a4 , $ab1c5ed5 ,
 $d807aa98 , $12835b01 , $243185be , $550c7dc3 , $72be5d74 , $80deb1fe , $9bdc06a7 , $c19bf174 ,
@@ -49,9 +23,6 @@ create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c
 \ TAIL and PBLK are byte offsets into the span, byte regions because BE32@ reads
 \ the caller's block and BE32! writes the digest. Reading the schedule byte-wise
 \ cost 4.4x on a 4 MiB digest.
-\ A context must be cell-aligned, and nothing diagnoses a misaligned one (the
-\ checker sees a `ptr u8`; AArch64 does not fault): `create` aligns, and
-\ SHA256-CTX-BYTES is a cell multiple, so an array of contexts stays aligned.
 $00 constant SHA-H-CELL
 $40 constant SHA-TAIL-OFF
 $10 constant SHA-TAIL-U-CELL
@@ -64,11 +35,11 @@ $1000 constant SHA-IO-CAP
 -1 constant SHA-E-OPEN
 -2 constant SHA-E-READ
 
-\ A FILE CONTEXT, by byte offset: the digest context at 0 (so the file context
-\ is cell-aligned by the same rule), the 32-byte binary digest, the read buffer,
-\ and the NUL-terminated path the open is handed — PATHZ writes it here because
-\ PATH0's own scratch is process-wide and two tasks would race on it. The path
-\ region is PATH-CAP bytes and a cell, room for the longest path and its NUL.
+\ A FILE CONTEXT, by byte offset: the digest context at 0, the 32-byte binary
+\ digest, the read buffer, and the NUL-terminated path the open is handed —
+\ PATHZ writes it here because PATH0's own scratch is process-wide and two tasks
+\ would race on it. The path region is PATH-CAP bytes and a cell, room for the
+\ longest path and its NUL.
 SHA256-CTX-BYTES constant SHA-FILE-DG-OFF
 SHA-FILE-DG-OFF $20 + constant SHA-FILE-IO-OFF
 SHA-FILE-IO-OFF SHA-IO-CAP + constant SHA-FILE-PATH-OFF
@@ -284,6 +255,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}
    a u pz PATH-CAP 1+ PATHZ
+   a u pz COMPILE-READS:FILE+
    pz open-rd {: fd:n :}
    fd 0 < if SHA-E-OPEN exit then
    fctx fd out SHA256-FD-IN {: rc:n :}

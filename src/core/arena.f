@@ -1,108 +1,92 @@
 \ arena.f — the ARENA definer.
 \
-\ `ARENA NAME t`, inside a package, declares two words that make zeroed records
-\ of `t` in an arena the caller holds (src/lib/arena.f): NAME-NEW
-\ ( ptr ARENA:arena -- ptr t ) and NAME-NEW-DISPOSE
-\ ( ptr ARENA:arena [ ptr t -- ] -- ptr t ), whose action runs once when the
-\ arena is reset or released. The width is the declared type's, fixed per
-\ declaration. NAME-NEW types ARENA:ALLOC's bytes through the cast NAME-NEW-PTR;
-\ NAME-NEW-DISPOSE also hands its action to ARENA:ALLOC-DISPOSE through the cast
-\ NAME-NEW-ACT. Both casts mint, which only a private section admits
-\ (E-CAST-MINT), so the definer makes them in the declaring package's private
-\ section and refuses a declaration outside any package (STG-NO-PACKAGE) or by a
-\ qualified name, whose casts would land in another package's public wordlist
-\ (STG-QUALIFIED-NAME).
+\ `ARENA NAME t` declares two words that make zeroed records of `t` in an arena
+\ the caller holds (src/lib/arena.f): NAME-NEW ( ptr ARENA:arena -- ptr t ) and
+\ NAME-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t ), whose action runs
+\ once when the arena is reset or released. Each is a typed child whose body
+\ calls its routine, NEW or NEW-DISPOSE, with the child's one data cell: the
+\ declared type's width in bytes.
 
 package ARENA-DECL
 
 private
 
-: NAMED, ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n sfx:ptr sfxu:n :}
-   name nameu LBUF-APP  sfx sfxu LBUF-APP ;
+: NEW ( ptr ARENA:arena ptr n -- ptr u8 ) @ ARENA:ALLOC drop ;
 
+: NEW-DISPOSE ( ptr ARENA:arena [ ptr u8 -- ] ptr n -- ptr u8 )
+   @ swap ARENA:ALLOC-DISPOSE drop ;
 
-\ The casts' text and the words' text, built before either is evaluated so a
-\ refusal while building defines nothing.
-: SOURCE ( ptr u8 n ptr u8 n n -- ptr u8 n ptr u8 n )
-   {: name:ptr nameu:n type:ptr typeu:n width:n :}
-   LBUF-CLEAR
-   s" CAST: " LBUF-APP  name nameu s" -NEW-PTR" NAMED,
-   s"  ( ptr u8 -- ptr " LBUF-APP  type typeu LBUF-APP  s"  )" LBUF-APP  10 LBUF-C,
-   s" CAST: " LBUF-APP  name nameu s" -NEW-ACT" NAMED,
-   s"  ( [ ptr " LBUF-APP  type typeu LBUF-APP  s"  -- ] -- [ ptr u8 -- ] )" LBUF-APP
-   LBUF-GEN-U @ {: wat:n :}
-   s" : " LBUF-APP  name nameu s" -NEW" NAMED,
-   s"  ( ptr ARENA:arena -- ptr " LBUF-APP  type typeu LBUF-APP  s"  ) " LBUF-APP
-   width LBUF-DEC,  s"  ARENA:ALLOC drop " LBUF-APP  name nameu s" -NEW-PTR ;" NAMED,
-   10 LBUF-C,
-   s" : " LBUF-APP  name nameu s" -NEW-DISPOSE" NAMED,
-   s"  ( ptr ARENA:arena [ ptr " LBUF-APP  type typeu LBUF-APP
-   s"  -- ] -- ptr " LBUF-APP  type typeu LBUF-APP  s"  ) " LBUF-APP
-   name nameu s" -NEW-ACT " NAMED,  width LBUF-DEC,
-   s"  swap ARENA:ALLOC-DISPOSE drop " LBUF-APP  name nameu s" -NEW-PTR ;" NAMED,
-   LBUF-GEN wat
-   LBUF-GEN wat +  LBUF-GEN-U @ wat - ;
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+CAST: AS-ENTRY ( [ R -- S ] -- n )
 
+: CHILD ( ptr u8 n n n ptr u8 n -- n )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-: EVAL ( ptr u8 n -- ) LBUF-GEN 0 LBUF-EVAL! drop ;
+\ Makes NAME+SFX of SHAPE over the routine's ENTRY, and lays its width cell.
+: MAKE ( ptr u8 n ptr u8 n n n ptr u8 n n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n shape:n entry:n type:ptr typeu:n width:n :}
+   name nameu sfx sfxu LBUF-SUFFIXED shape entry type typeu CHILD drop
+   width , ;
 
-
-: SECTION ( n -- )
-   CHECKER-PACKAGE-PUBLIC = if s" public" else s" private" then
-   TYPE-DECL:TDECL-EVAL-XT ;
-: OTHER ( n -- n )
-   CHECKER-PACKAGE-PUBLIC = if CHECKER-PACKAGE-PRIVATE else CHECKER-PACKAGE-PUBLIC then ;
-
-
-: IN-OTHER ( R [ R -- R ] n -- R )
-   {: q mode:n :}
-   mode OTHER SECTION
-   q catch {: rc:n :}
-   mode SECTION
-   rc 0 <> if rc throw then ;
-
-
-: CASTS-EVAL ( ptr u8 n n -- )
-   {: src:ptr srcu:n mode:n :}
-   mode CHECKER-PACKAGE-PUBLIC <> if src srcu EVAL exit then
-   [: src srcu EVAL ;] mode IN-OTHER ;
-
-
-\ Whether none of NAME's four words is taken in the current section; a taken
-\ one throws E-DUP-DEFINITION.
+\ Whether neither of NAME's words is taken in the current section; a taken one
+\ throws E-DUP-DEFINITION.
 : FREE? ( ptr u8 n -- bool )
    {: name:ptr nameu:n :}
    name nameu s" -NEW" LBUF-SUFFIX-OK? dup 0= if exit then drop
-   name nameu s" -NEW-DISPOSE" LBUF-SUFFIX-OK? dup 0= if exit then drop
-   name nameu s" -NEW-PTR" LBUF-SUFFIX-OK? dup 0= if exit then drop
-   name nameu s" -NEW-ACT" LBUF-SUFFIX-OK? ;
+   name nameu s" -NEW-DISPOSE" LBUF-SUFFIX-OK? ;
+
+\ The open package's wordlist for the section other than MODE's.
+: OTHER-WID ( n -- n ) {: mode:n :}
+   mode CHECKER-PACKAGE-PUBLIC = if PKG-PRI-CELL else PKG-PUB-CELL then
+   data-base + @ ;
+
+\ NAME+SFX taken in the wordlist WID throws E-DUP-DEFINITION.
+: OTHER-FREE ( ptr u8 n ptr u8 n n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n wid:n :}
+   name nameu sfx sfxu LBUF-SUFFIXED {: a:ptr u:n :}
+   a u wid search-wl 0 <> if a u CHECK:REFUSE-DUPLICATE then ;
+
+\ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, throws
+\ E-DUP-DEFINITION.
+: PRIVATE-FREE ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   name nameu CHECKER-QUALIFIED? drop
+   CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
+   wid 0= if exit then
+   CHECKER-QTAIL$ sfx sfxu LBUF-SUFFIXED wid search-wl 0= if exit then
+   name nameu sfx sfxu LBUF-SUFFIXED CHECK:REFUSE-DUPLICATE ;
+
+\ NAME's words taken in the section the declaration does not write throw
+\ E-DUP-DEFINITION: a qualified Q:TAIL writes Q's public one.
+: OTHERS-FREE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu CHECKER-QUALIFIED? if
+      name nameu s" -NEW" PRIVATE-FREE
+      name nameu s" -NEW-DISPOSE" PRIVATE-FREE exit
+   then
+   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
+   mode CHECKER-PACKAGE-NONE = if exit then
+   mode OTHER-WID {: wid:n :}
+   name nameu s" -NEW" wid OTHER-FREE
+   name nameu s" -NEW-DISPOSE" wid OTHER-FREE ;
 
 public
 
-\ The four words must be free in both sections: the casts land in the private
-\ one, and the package's bare calls resolve private-first.
+\ Both words must be free in both sections of the package they land in: its
+\ bare calls resolve private-first.
 : RUN ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" ARENA" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
-   name nameu CHECKER-QUALIFIED? if
-      name nameu name nameu STG-QUALIFIED-NAME CHECKER-STORAGE-REFUSE exit
-   then
-   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE = if
-      name nameu name nameu STG-NO-PACKAGE CHECKER-STORAGE-REFUSE exit
-   then
-   name nameu FREE? {: own:bool :}
-   own 0= if exit then
-   own [: drop name nameu FREE? ;] mode IN-OTHER 0= if exit then
+   name nameu FREE? 0= if exit then
+   name nameu OTHERS-FREE
    type typeu CHECKER-ARENA-INFO 0= if
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then {: width:n :}
-   name nameu type typeu width SOURCE {: casts:ptr castsu:n words:ptr wordsu:n :}
-   casts castsu mode CASTS-EVAL
-   words wordsu EVAL ;
+   name nameu s" -NEW" CHILD-ABI:ARENA-NEW ['] NEW AS-ENTRY
+   type typeu width MAKE
+   name nameu s" -NEW-DISPOSE" CHILD-ABI:ARENA-DISPOSE ['] NEW-DISPOSE AS-ENTRY
+   type typeu width MAKE ;
 
 ;package
 

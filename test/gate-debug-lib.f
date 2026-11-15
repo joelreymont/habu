@@ -2,11 +2,12 @@
 \ test/gate-debug.f.
 
 require src/lib/string.f
-require tools/jitdump-core.f
+require tools/code-dump-core.f
+require src/lib/process.f
 require test/gate-common.f
 require src/habu/prof-abi.f
 
-using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
+using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
@@ -27,7 +28,8 @@ using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 \   profiler samples N words W other O new X foreign F frames ... indexed I usec U
 \
 \ W + O + X + F == N is the identity the counting cases read, by field name, so
-\ a report that grows a column stays checked. A busy word whose loop inlines its
+\ a report that grows a column stays checked. F counts the foreign samples
+\ charged to no word; the ones charged to a calling word are inside W. A busy word whose loop inlines its
 \ primitives keeps every interrupted pc inside its own range, so its samples
 \ land in one deterministic bucket.
 
@@ -74,12 +76,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-SAMPLES ( ptr u8 n -- n )
    s" samples" GDB-FIELD ;
 
-\ The header's own identity, plus the sample count the case expects (-1: any).
+\ The header's own identity, plus the limit the sample total must reach (-1:
+\ none). A sample counts the intervals since the last one, so the one that
+\ reaches the limit may carry the total past it.
 : GDB-ACCOUNT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
-   want 0 >= tot want <> and if
-      s" profiler sample total is not the limit" GE-FAIL
+   want 0 >= tot want < and if
+      s" profiler sample total is below the limit" GE-FAIL
    then
    a u s" words" GDB-FIELD
    a u s" other" GDB-FIELD +
@@ -97,7 +101,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s"  prof-on GDB-BUSY" GE-SRC-LINE ;
 
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 \ A package whose inner word is only ever reached through the outer one, so the
 \ caller rows under the inner word's row have exactly one right answer.
@@ -112,15 +117,17 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" ;package" GE-SRC-LINE ;
 
 \ --- the SIGALRM handler reads nothing from the interrupted context's live
-\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27, and a
-\ tick inside one counts in the header's foreign field. The profiler's total
+\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27. On
+\ arm64 a tick inside it is charged to the Habu word that called it and counted
+\ in the header's foreign charged to callers field; the x86-64 twin charges
+\ none, so there it counts in the foreign field. The profiler's total
 \ and limit do not share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after
 \ prof-on cannot turn the next tick into an early report and exit 99.
 \ GDB-SYM-FOR calls dlsym for n ms of the monotonic clock, not a call count, so
 \ the sample total follows the timer rather than the host's call speed. On spark
 \ (ARM64 Linux, glibc, the default 1000 us rate) 100,000 calls took 8 or 9
-\ ticks and an empty foreign bucket came up by chance; 200 ms gave 200 ticks in
-\ each of 20 runs, 64 to 86 of them (38% overall) foreign.
+\ ticks and none inside dlsym came up by chance; 200 ms gave 200 ticks in
+\ each of 20 runs, 64 to 86 of them (38% overall) inside dlsym.
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -132,12 +139,40 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
    s" dlsym loop done" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
-   GT-OUT$ s" foreign" GDB-FIELD 0 <= if
-      s" profiler foreign bucket counted nothing" GE-FAIL
+   HB-TARGET-LINUX-X86-64? if
+      GT-OUT$ s" foreign" GDB-FIELD 0 <= if
+         s" profiler foreign bucket counted nothing" GE-FAIL
+      then
+   else
+      GT-OUT$ s" foreign charged to callers" GDB-FIELD 0 <= if
+         s" profiler charged no dlsym tick to its caller" GE-FAIL
+      then
    then
    GT-OUT$ -1 GDB-ACCOUNT
    s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
-   s" PASS: profiler counts ticks inside foreign code as foreign instead of dying" type cr ;
+   s" PASS: profiler counts ticks inside foreign code instead of dying" type cr ;
+
+\ On arm64 a tick the kernel delivers to a thread other than prof-on's is sent
+\ on to that thread: a task that profiles itself while the main thread waits
+\ in its join still gets the samples. x86-64 counts a tick where it lands.
+: GDB-PROFILER-TASK ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" require src/lib/task.f" GE-SRC-LINE
+   s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" TASK:MIN-STACK TASK:TASK GDB-WORKER" GE-SRC-LINE
+   s" : GDB-PROFILE ( -- ) 0 prof-on GDB-BUSY prof-off prof-report 0 TASK:RETURN ;" GE-SRC-LINE
+   S\" : GDB-JOIN ( -- ) GDB-WORKER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop s\" task failed\" 78 die ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GDB-GO ( -- ) ['] GDB-PROFILE GDB-WORKER TASK:ACTIVATE GDB-JOIN ; GDB-GO" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler on a task" GE-EXPECT-OK
+   s" GDB-BUSY" s" a task's profile names its busy word" GE-EXPECT-OUT-HAS
+   GT-OUT$ GDB-SAMPLES 0 <= if
+      s" a task's profile took no sample" GE-FAIL
+   then
+   GT-OUT$ -1 GDB-ACCOUNT
+   s" PASS: a task that runs prof-on gets its own samples" type cr ;
 
 : GDB-PROFILER-CLOCK ( -- )
    GE-HB-RESET
@@ -158,7 +193,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ 1 GDB-ACCOUNT
    s" PASS: profiler limit 1 attributes the interrupted sample" type cr ;
 
-: GDB-PROFILER-EXACT ( n -- )   \ words + other + new + foreign == limit at the auto-report
+: GDB-PROFILER-EXACT ( n -- )   \ the buckets sum to samples, at least the limit, at the auto-report
    {: lim:n :}
    GE-HB-RESET
    lim GDB-PROF-SRC
@@ -170,7 +205,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    1 GDB-PROFILER-EXACT
    2 GDB-PROFILER-EXACT
    5 GDB-PROFILER-EXACT
-   s" PASS: profiler sample totals are exact (sum == limit)" type cr ;
+   s" PASS: profiler sample totals are exact (sum == samples >= limit)" type cr ;
 
 \ Words defined INSIDE the profiled phase: every one of them is compiled after
 \ prof-on built the index, so the handler can only keep the raw pc and the report
@@ -178,11 +213,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
 \ which leaves a deferred sample with no caller. Intel's machine return stack
 \ instead identifies OUTER as BUSY's caller for this same execution.
-\ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
-\ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" 0 prof-on" GE-SRC-LINE
    s" package GDBLATE" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -312,11 +344,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
 
-\ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
-\ before it stores anything. Uncaught, the engine reports the code and exits
-\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/error.f's
-\ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
-\ prof-on arms the 250 us set before it, which the report states.
+\ prof-rate refuses a negative interval and one past the OS timer's longest,
+\ keeping the rate; GDB-FIELD reads digits, so the code is printed negated.
 : GDB-PROFILER-RATE-REFUSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -326,16 +355,22 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
    E-PROF-RATE GDB-UNCAUGHT$ s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
-   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
+   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN
    s" a caught prof-rate -1" GE-EXPECT-OK
    GT-OUT$ s" refused" GDB-FIELD E-PROF-RATE negate <> if
       s" prof-rate -1 threw another code than E-PROF-RATE" GE-FAIL
    then
-   GT-OUT$ s" usec" GDB-FIELD 250 <> if
-      s" a caught prof-rate -1 changed the rate the next prof-on arms" GE-FAIL
+   GT-OUT$ s" past" GDB-FIELD E-PROF-RATE negate <> if
+      s" prof-rate past the OS timer's longest threw another code than E-PROF-RATE" GE-FAIL
    then
-   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and keeps the rate" type cr ;
+   GT-OUT$ s" within" GDB-FIELD 0 <> if
+      s" prof-rate refused 100000000999999, within both OS timers" GE-FAIL
+   then
+   GT-OUT$ s" usec" GDB-FIELD 250 <> if
+      s" a caught prof-rate -1 or past the longest changed the rate the next prof-on arms" GE-FAIL
+   then
+   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
 
 \ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
 \ setitimer refuses it, and the refusal is named and exits PROF-MAP-RC.
@@ -486,14 +521,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    S\" ,\"edges\":[" s" profiler json has no edge array" GE-EXPECT-OUT-HAS
    s" PASS: profiler json reports the same walk as the text report" type cr ;
 
-: GDB-JITDUMP ( -- )
+: GDB-CODE-DUMP ( -- )
    GE-HB-RESET
-   [: s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" JIT-EVALUATE
-      s" JITDUMP-SMOKE" JIT-FIND JD ;] GE-CAPTURE-ACTION
-   s" jitdump direct core" GE-EXPECT-OK
-   s" mov" s" jitdump decodes a real move" GE-EXPECT-OUT-HAS
-   s" ret" s" jitdump direct core output" GE-EXPECT-OUT-HAS
-   s" PASS: jitdump direct core" type cr ;
+   [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" LOAD-PROGRAM
+      s" CODE-DUMP-SMOKE" FIND-XT DECODE ;] GE-CAPTURE-ACTION
+   s" code-dump direct core" GE-EXPECT-OK
+   s" mov" s" code-dump decodes a real move" GE-EXPECT-OUT-HAS
+   s" ret" s" code-dump direct core output" GE-EXPECT-OUT-HAS
+   s" PASS: code-dump direct core" type cr ;
 
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
@@ -553,7 +588,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
-   s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
+   s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBNBP" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) 3 + ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN
@@ -565,6 +600,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" hb-gate-debug" GT-START
    GDB-PROFILER
    GDB-PROFILER-FOREIGN
+   GDB-PROFILER-TASK
    GDB-PROFILER-CLOCK
    GDB-PROFILER-LIMIT1
    GDB-PROFILER-EXACT-ALL
@@ -581,7 +617,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
    GDB-PROFILER-RETIRED
-   GDB-JITDUMP
+   GDB-CODE-DUMP
    GDB-BREAKPOINT-REFUSAL
    GDB-PATCH32-OUTSIDE
    GDB-DEBUG-NAMES

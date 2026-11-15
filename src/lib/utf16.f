@@ -73,6 +73,16 @@ public
    0 0 begin over unit < over u < and while a u STEP repeat
    nip ;
 
+\ The scalar a high and a low surrogate encode; the caller checks their ranges.
+: PAIR>SCALAR ( n n -- n )
+   {: high:n low:n :}
+   high HIGH-FIRST - PAIR-SHIFT lshift  low LOW-FIRST - or  PAIR-FIRST + ;
+
+\ The high and low surrogates of a scalar the caller knows is above U+FFFF.
+: SCALAR>PAIR ( n -- n n )
+   PAIR-FIRST - {: bits:n :}
+   bits PAIR-SHIFT rshift HIGH-FIRST +  bits PAIR-MASK and LOW-FIRST + ;
+
 private
 
 : HIGH? ( n -- bool )
@@ -82,10 +92,6 @@ private
 : LOW? ( n -- bool )
    {: unit:n :}
    unit LOW-FIRST >= unit LOW-END < and ;
-
-: PAIR>SCALAR ( n n -- n )
-   {: high:n low:n :}
-   high HIGH-FIRST - PAIR-SHIFT lshift  low LOW-FIRST - or  PAIR-FIRST + ;
 
 
 \ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
@@ -133,9 +139,8 @@ private
 : APPEND-SCALAR-LE ( n ptr a -- )
    {: scalar:n buf:ptr :}
    scalar PAIR-FIRST < if scalar buf APPEND-UNIT exit then
-   scalar PAIR-FIRST - {: bits:n :}
-   bits PAIR-SHIFT rshift HIGH-FIRST + buf APPEND-UNIT
-   bits PAIR-MASK and LOW-FIRST + buf APPEND-UNIT ;
+   scalar SCALAR>PAIR {: high:n low:n :}
+   high buf APPEND-UNIT  low buf APPEND-UNIT ;
 
 
 : ENCODE-STEP ( n ptr u8 n ptr a -- n )
@@ -149,17 +154,15 @@ public
 
 \ Both conversions append to an initialised BUF without clearing it, strictly:
 \ no replacement character, BOM, terminator or normalisation; NUL is ordinary.
-\ A negative length is E-STR-BOUNDS and input overlapping the destination's
-\ storage, which an append may move, BUF's E-BUF-BOUNDS, both before a byte
-\ moves. A throw while converting may leave part of the append; the caller
-\ discards it.
+\ A negative length is E-STR-BOUNDS before a byte moves. Input may not overlap
+\ the destination's storage, which an append may move. A throw while
+\ converting may leave part of the append; the caller discards it.
 \ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
 : APPEND-LE>UTF8 ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then
-   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    u UNIT-BYTES mod 0<> if E-UTF16 throw then
    0 begin dup u < while a u buf DECODE-STEP repeat
    drop ;
@@ -170,7 +173,6 @@ public
 : APPEND-UTF8>LE ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then
-   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    0 begin dup u < while a u buf ENCODE-STEP repeat
    drop ;
 

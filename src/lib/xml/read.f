@@ -351,10 +351,10 @@ private
    1 state FAILED + !
    state READ-EVENT
    0 state FAILED + !
-   state TOKEN-KIND + @ >KIND ;
+   state TOKEN-KIND + >KIND-CELL @ ;
 
 : TEXT-MODE ( ptr n -- n )
-   TOKEN-KIND + @ >KIND MATCH kind
+   TOKEN-KIND + >KIND-CELL @ MATCH kind
       start OF E-STATE throw ENDOF
       end OF E-STATE throw ENDOF
       text OF DECODE-TEXT ENDOF

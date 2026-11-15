@@ -65,9 +65,9 @@ $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
 \ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 144 TASK:+USER IO-STORAGE drop
-: TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW 72 + ;
+144 TASK:+USERS IO-STORAGE u8
+: TERM ( -- ptr u8 ) 0 IO-STORAGE ;
+: SAVED ( -- ptr u8 ) 72 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -100,20 +100,15 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
-\ libc's calls, each staged with the pointer direction and extent it needs.
-\ The termios extent is the target's record; Darwin passes ioctl's variadic
-\ pointer on the stack.
+\ libc's calls. Darwin passes ioctl's variadic pointer on the stack.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 PROCESS-SYMBOLS
 FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: GET-CALL ioctl ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 TERM-BYTES WRITES-BYTES             \ termios (Darwin) or termios2 (Linux)
 ;FUNCTION
 FUNCTION: SET-CALL ioctl ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: READ-CALL read ( n ptr u8 n -- n )
-   1 2 WRITES-ARG                        \ the caller's capacity
-;FUNCTION
+FUNCTION: READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
@@ -206,12 +201,15 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    else handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:unsupported then ;
 
 
+\ No deadline is -1 ns, which no mono-ns reading is, and REMAINING answers -1 ms.
 : DEADLINE ( ms -- ns )
-   MS>N dup 0 $7FFFFFFF RANGE NS-PER-MS * mono-ns + >NS ;
+   MS>N dup 0 < if drop -1 >NS exit then
+   dup 0 $7FFFFFFF RANGE NS-PER-MS * mono-ns + >NS ;
 
 
 : REMAINING ( ns -- ms )
-   NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
+   NS>N dup 0 < if drop -1 >MS exit then
+   mono-ns - dup 0 <= if drop 0 >MS exit then
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
@@ -273,7 +271,8 @@ public
 
 \ One available chunk, up to capacity, possibly short; a zero-byte request is
 \ refused.
-\ Timeout is 0..INT32_MAX milliseconds; zero never waits for future readiness.
+\ Timeout is 0..INT32_MAX milliseconds, negative for no deadline; zero never
+\ waits for future readiness.
 : READ ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
@@ -291,7 +290,8 @@ public
 
 \ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
 \ is refused. Success does not prove bytes reached the device. Input is
-\ borrowed for this call.
+\ borrowed for this call. Timeout is 0..INT32_MAX milliseconds, negative for no
+\ deadline.
 : WRITE ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}

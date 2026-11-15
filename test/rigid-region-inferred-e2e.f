@@ -15,7 +15,7 @@ create PROG PROG-CAP allot
 variable PROG-U
 
 : PRELUDE$ ( -- ptr u8 n )
-   s" -1 JSON-DIAGS ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
+   s" -1 REJECTION:JSON ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
 
 : PROGRAM ( ptr u8 n -- ptr u8 n )
    {: case:ptr caseu:n :}

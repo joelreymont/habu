@@ -2,7 +2,6 @@
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
 require src/lib/test.f
 require src/compiler/target/model.f
-require src/compiler/native/backend.f
 require tools/build-target.f
 
 package TARGET-RESOLVE-TEST
@@ -39,7 +38,7 @@ private
    RTARGET:FOR-COMPILER RTARGET:BODY-TARGET@ WINDOWS RTARGET:SAME? TTRUE ;
 
 : T03 ( -- )
-   s" T03 unsupported Windows CORE and unloaded Wasm backend" T-LABEL
+   s" T03 unsupported Windows CORE and supported Wasm CORE" T-LABEL
    WINDOWS RTARGET:CORE MATCH RTARGET:core-result
       supported OF drop false ENDOF
       unsupported OF true ENDOF
@@ -48,7 +47,6 @@ private
       supported OF drop true ENDOF
       unsupported OF false ENDOF
    ;MATCH TTRUE
-   CTARGET-ARCH:WASM NBACK:REGISTERED? TFALSE
    WINDOWS WINDOWS RTARGET:LINK-COMPATIBLE? TFALSE ;
 
 : T04 ( -- )
@@ -97,8 +95,7 @@ private
 
 : ARTIFACT ( -- )
    s" target-resolve profile=" type RTARGET:HOST-TARGET RTARGET:PROFILE$ type cr
-   s" target-resolve windows-core=unsupported" type cr
-   s" target-resolve wasm-backend=unloaded" type cr ;
+   s" target-resolve windows-core=unsupported" type cr ;
 
 : RUN ( -- )
    T-RESET T01 T02 T03 T04 T05 T06 T15 ARTIFACT T-REPORT ;

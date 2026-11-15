@@ -11,7 +11,7 @@ require src/lib/test.f
 T-RESET
 
 TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
-: UCE-GO ( -- )  UCE-A @ UCE-U @ INCLUDE-EVALUATE ;
+: UCE-GO ( -- )  UCE-A @ UCE-U @ evaluate-closed ;
 : UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
 
 \ the same source through the production source verifier: the checker resolves the
@@ -20,7 +20,7 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 : VS-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
 \ Engine reject codes (src/core/engine-error.f USING-*), delivered as catchable
-\ throws inside INCLUDE-EVALUATE.
+\ throws inside evaluate-closed.
 89 constant E-NO-NAME
 90 constant E-BAD-NAME
 91 constant E-UNKNOWN
@@ -30,14 +30,6 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
-
-package USING-TEST
-private
-variable START-TIER
-tier@ START-TIER !
-public
-: RESTORE-TIER ( -- ) START-TIER @ set-tier ;
-;package
 
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
@@ -175,9 +167,7 @@ s" AW drop" UCE-CATCH E-REJECT T=
 \ is neither of the package's own, names nothing to copy into the mirror: the
 \ mirror keeps UQV through the throw, and once current is back the replay
 \ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
-\ TEST-EVAL:RC; INCLUDE-EVALUATE ends the process there instead. A buffer that
-\ only interprets (`1 drop`) runs in that scope: the tier-1 top-row tracker never
-\ refuses a line.
+\ TEST-EVAL:RC. A buffer that only interprets (`1 drop`) runs in that scope.
 package UQV
 variable UQV-CUR  get-current UQV-CUR !
 0 set-current
@@ -391,10 +381,5 @@ USING-TEST:UAD-V @ 1 T=
 s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" undefine AW" UCE-CATCH 0 T=
-1 set-tier
-s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
-USING-TEST:UAD-V @ 2 T=
-s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
-USING-TEST:RESTORE-TIER
 
 T-REPORT

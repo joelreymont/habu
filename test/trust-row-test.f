@@ -17,7 +17,7 @@ T-RESET
 \ TCE-CATCH answers the string's throw code, 0 when accepted. The row under test
 \ is last in the string, so a nonzero code is the row's.
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
-: TCE-GO ( -- )  TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
+: TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
 
 public
 

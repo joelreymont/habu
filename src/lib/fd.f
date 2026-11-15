@@ -1,12 +1,12 @@
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
-\ as a failed call), and syncing and resizing a file. A refused PIPE, mark,
-\ read, write, sync or resize, a write that takes no byte and a count past the
-\ asked one are E-FS-IO, which TRY-WRITE-FULL answers as how far its write got;
-\ a negative length is E-SPAN-LENGTH. A refused
+\ as a failed call), one write that never waits on a non-blocking descriptor,
+\ and syncing and resizing a file. A refused PIPE, mark, read, write, sync or
+\ resize, a write that takes no byte and a count past the asked one are E-FS-IO,
+\ which TRY-WRITE-FULL answers as how far its write got; TRY-WRITE answers 0 for
+\ a full descriptor or a signal. A negative length is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
-\ E-PROC-OUTPUT, and O-NONBLOCK and F-DUPFD-CLOEXEC throw E-PROC-HOST on a host
-\ that is neither Linux nor macOS.
+\ E-PROC-OUTPUT.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
@@ -56,16 +56,12 @@ ENUM wrote all none part ;ENUM
 \ silently drops a bit the host does not know, so the wrong constant arms
 \ nothing at all and the descriptor stays blocking.
 : O-NONBLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $800 exit then
-   HB-TARGET-MACOS? if 4 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if $800 else 4 then ;
 
 \ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
 \ both Linux targets, 67 on macOS.
 : F-DUPFD-CLOEXEC ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 1030 exit then
-   HB-TARGET-MACOS? if 67 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 1030 else 67 then ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
    fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
@@ -109,8 +105,8 @@ FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
-: POLL-FD ( -- ptr u8 ) POLL-STORAGE BYTE-VIEW ;
+8 TASK:+USERS POLL-STORAGE u8
+: POLL-FD ( -- ptr u8 ) 0 POLL-STORAGE ;
 
 : FLAGS ( fd -- n )
    FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO throw then ;
@@ -141,28 +137,36 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
       left NS-PER-MS / left NS-PER-MS mod 0<> if 1+ then
       MAX-POLL-MS min {: ms:n :}
       f FD>N POLL-FD LE:U32!
-      POLLOUT POLL-FD 4 + LE:U16!
-      0 POLL-FD 6 + LE:U16!
+      POLLOUT 4 POLL-STORAGE LE:U16!
+      0 6 POLL-STORAGE LE:U16!
       POLL-FD 1 ms poll {: rc:n :}
       rc 0 > if exit then
       rc 0 < rc EINTR# negate <> and if E-FS-IO throw then
    again ;
 
-\ A positive result advances; EINTR and EAGAIN retry against the same deadline.
-\ A zero write for positive length is an I/O failure, not progress.
-: SEND-UNTIL ( fd ptr u8 n n n -- n )
-   {: f:fd src:ptr u:n done:n deadline:n :}
-   u done - {: want:n :}
-   f FD>N src done + want WRITE-CALL {: k:n :}
-   k 0 > if
-      k want > if E-FS-IO throw then
-      k exit
-   then
+public
+
+\ One write to a descriptor the caller made non-blocking: the bytes it moved.
+: TRY-WRITE ( fd ptr u8 n -- n )
+   {: f:fd src:ptr u:n :}
+   u 0 < if E-SPAN-LENGTH throw then
+   u 0= if 0 exit then
+   f FD>N src u WRITE-CALL {: k:n :}
+   k u > if E-FS-IO throw then
+   k 0 > if k exit then
    k 0= if E-FS-IO throw then
    FFI:ERRNO {: cause:n :}
-   cause EINTR# = if 0 exit then
-   cause EAGAIN = if f deadline WAIT-OUT 0 exit then
+   cause EINTR# = cause EAGAIN = or if 0 exit then
    E-FS-IO throw ;
+
+private
+
+\ A positive result advances; a 0 waits for POLLOUT against the same deadline.
+: SEND-UNTIL ( fd ptr u8 n n n -- n )
+   {: f:fd src:ptr u:n done:n deadline:n :}
+   f src done + u done - TRY-WRITE {: k:n :}
+   k 0= if f deadline WAIT-OUT then
+   k ;
 
 : SEND-ALL-UNTIL ( fd ptr u8 n n -- )
    {: f:fd src:ptr u:n deadline:n :}

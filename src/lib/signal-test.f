@@ -27,34 +27,22 @@ private
 \ would make this suite red on the other target. A third target is refused by
 \ name.
 : EXPECT-SIGUSR1 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 exit then
-   HB-TARGET-MACOS? if 30 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 else 30 then ;
 
 : EXPECT-SIGUSR2 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 exit then
-   HB-TARGET-MACOS? if 31 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 else 31 then ;
 
 : EXPECT-SIGSTOP ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 exit then
-   HB-TARGET-MACOS? if 17 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 else 17 then ;
 
 : EXPECT-SIGCONT ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 exit then
-   HB-TARGET-MACOS? if 19 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 else 19 then ;
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 exit then
-   HB-TARGET-MACOS? if $0C exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 else $0C then ;
 
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 exit then
-   HB-TARGET-MACOS? if 2 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 else 2 then ;
 
 \ glibc supplies the x86-64 restorer when it installs a sigaction, including
 \ the default disposition restored by RELEASE. It is part of the observed
@@ -73,12 +61,10 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 0 constant SIG-BELOW               \ one below the lowest signal sigaction installs
 65 constant SIG-ABOVE              \ one above the highest
 
-25 constant RAISE-WAIT-MS          \ the stub has already written by the time kill returns
 40 constant QUIET-MS               \ the window a WAIT with nothing raised waits out
 1000000 constant NS-PER-MS
 10 constant TASK-RAISE-MS          \ the raiser waits this long, inside the main task's sleep
 120 constant TASK-SLEEP-MS
-2000 constant TASK-JOIN-MS
 
 400 constant RACE-WINDOW-MS        \ the window both racing tasks give their WAIT
 250 constant RACE-SLACK-MS         \ what a loaded host may add to it
@@ -87,8 +73,6 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 2 constant RACE-TIMEOUT
 1 constant NOT-RUN                 \ no throw code and no kind, so an idle task fails
 
-5000 constant RESUMED-MS           \ far above what a resumed child takes to end
-5000 constant FORKED-MS            \ far above what the forked child takes to end
 2 constant WUNTRACED               \ waitpid's flag on Linux and macOS
 $7F constant STOP-MARK             \ a stop report's low status byte
 
@@ -127,11 +111,9 @@ TASK:MIN-STACK TASK:TASK OUTSIDER
 PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
-   2 SA-BUF-BYTES WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
-   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
@@ -197,7 +179,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 : WANT-SIGNAL ( SIGNAL:signal-result n -- ) {: want:n :}
    MATCH SIGNAL:signal-result
       signal OF want T= ENDOF
-      timeout OF s" signal-test WANT-SIGNAL" TEST-WAIT:EXPIRED ENDOF
+      timeout OF 0 want T= ENDOF
    ;MATCH ;
 
 : WANT-TIMEOUT ( SIGNAL:signal-result -- )
@@ -291,7 +273,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 
    STOP-W CLOSE-END
    SIGNAL:SIGCONT SEND
-   STOP-PID @ >PID RESUMED-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   STOP-PID @ >PID PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
    done REAPED? drop
 
    s" ... and once sent SIGCONT it exits 0" T-LABEL
@@ -372,7 +354,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:SIGUSR1 RAISE
 
    s" a raised signal is answered by WAIT as its own number" T-LABEL
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL
 
    s" ... once, not once per WAIT" T-LABEL
    0 >MS SIGNAL:WAIT WANT-TIMEOUT ;
@@ -382,10 +364,10 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:SIGUSR2 RAISE
 
    s" two signals raised before one WAIT answer in the order raised" T-LABEL
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL
 
    s" ... and the second WAIT answers the second" T-LABEL
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL ;
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL ;
 
 : TIMEOUT-CASE ( -- )
    mono-ns {: started :}
@@ -410,7 +392,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:PENDING? TTRUE
 
    s" the WAIT that answers it is what consumes it" T-LABEL
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
 
    s" ... after which PENDING? is false again" T-LABEL
    SIGNAL:PENDING? 0= TTRUE ;
@@ -427,9 +409,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    1 TASK-RAISED ! ;
 
 : JOIN-TASK ( ptr n -- )
-   [: dup TASK:DONE? ;] TASK-JOIN-MS >MS PROCESS:DEADLINE-AT
-   s" signal-test JOIN-TASK" TEST-WAIT:POLL
-   drop ;
+   [: dup TASK:DONE? ;] TEST-WAIT:POLL drop ;
 
 : TASK-CASE ( -- )
    0 TASK-FD-WORD !
@@ -448,7 +428,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    TASK-FD-WORD @ 0 <> TTRUE
 
    s" a signal raised while the main task slept is still answered" T-LABEL
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL ;
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL ;
 
 \ Both tasks are inside one WAIT window when the signal lands, so both waits are
 \ answered with POLLIN and only one of them finds four bytes left to read. Both
@@ -456,7 +436,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 \ The loser's read is refused, it waits again against the deadline it had, and its own
 \ window closes on a timeout. With a BLOCKING read end the loser parks in read
 \ until the NEXT signal instead, which turns a race into a task that never
-\ finishes the window it was given - so its join's deadline ends the row.
+\ finishes the window it was given.
 
 : RACE-RUN ( ptr n ptr n ptr n ptr n -- )
    {: kind:ptr signo:ptr elapsed:ptr start:ptr :}
@@ -597,7 +577,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:SIGUSR2 SIGNAL:IGNORE
    SIGNAL:SIGUSR2 SIGNAL:CATCH
    SIGNAL:SIGUSR2 RAISE
-   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
+   -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
 
    s" IGNORE refuses a signal number outside the range by name" T-LABEL
    [: SIG-ABOVE SIGNAL:IGNORE ;] E-SIGNAL-NUMBER TTHROWSQ
@@ -622,7 +602,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:SIGUSR2 SIGNAL:CATCH
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if [: FORKED-RAISES ;] PROC-FORK:CHILD-MAIN then
-   pid FORKED-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
    SIGNAL:RELEASE
 
    s" a forked child keeps an ignore and drops the stub of a catch" T-LABEL

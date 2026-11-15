@@ -8,6 +8,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
@@ -18,7 +19,6 @@ package DEEP-CWD-E2E
 private
 
 $4000 constant IO-CAP
-30000 constant TIMEOUT-MS
 create ROOT PATH-CAP allot variable ROOT-U
 create ENTRY PATH-CAP allot variable ENTRY-U
 create ENGINE PATH-CAP allot variable ENGINE-U
@@ -77,7 +77,7 @@ create TAIL TAIL-BYTES allot
    {: prog:ptr progu:n cwd:ptr cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 

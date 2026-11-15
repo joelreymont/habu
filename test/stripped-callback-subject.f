@@ -16,7 +16,6 @@ $4A constant FAILURE-RC
 PROCESS-SYMBOLS
 
 FUNCTION: QSORT qsort ( ptr u8 n n n -- )
-   0 $40 WRITES-BYTES                \ ROW-N cells
 ;FUNCTION
 
 create OUTER ROW-N cells allot

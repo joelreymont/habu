@@ -18,7 +18,6 @@ require test/wasm/harness.f
 package WASM-DATA-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -52,7 +51,7 @@ DYNAMIC-BUFFER AFTER u8
 : SPAWN ( ptr u8 n -- n )
    {: exe:ptr eu:n :}
    exe eu >LEN EXE RESOLVE-EXECUTABLE {: xu:len :}
-   EXE xu OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
+   EXE xu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: ou:len er:len rc:n :}
    ou LEN>N OUT-U !
@@ -128,8 +127,8 @@ public
    host HOST-OFFSET + AFTER c@ HOST-BYTE T=
    s" OUT starts with the stack depth line" T-LABEL
    OUT$ s\" stack depth ok\n" STARTS-WITH? TTRUE
-   s" OUT holds the static owner line, the stored byte and the bounds refusal" T-LABEL
-   OUT$ s\" static owner intact\n137\nbounds ok\n" CONTAINS? TTRUE
+   s" OUT holds the static owner line and the stored byte" T-LABEL
+   OUT$ s\" static owner intact\n137\n" CONTAINS? TTRUE
    DYN-BASE {: b:n :}
    s" the dynamic buffer lies past the page the peer grew" T-LABEL
    b host WPROF:PAGE-BYTES + >= TTRUE

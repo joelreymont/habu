@@ -1,7 +1,10 @@
-\ navigation.f - Wasm fixture for the browser navigation, tree and highlight
-\ protocol, built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
+\ navigation.f - Wasm fixture for the browser navigation, tree, highlight,
+\ pick and occlude protocol, built by `tools/hb-build.f -- --target wasm`,
+\ whose entry is MAIN. Typed "pick" picks pixel 5, 6 with id 9; a picked
+\ event's fields come back as text, as any event's do.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package NAV
 private
@@ -14,10 +17,14 @@ CAST: BYTES>N ( ptr u8 -- n )
 variable TEXT-U
 variable PRESS-BUTTONS
 variable PRESS-MODS
-68 BUFFER: GEOMETRY
-128 BUFFER: INSTANCE-ROWS
+\ Mesh 7: counts and origin, 0, 0, 0, in 20 bytes, six vertices in 72, six
+\ indices in 12.
+104 BUFFER: GEOMETRY
+144 BUFFER: INSTANCE-ROWS
 4 BUFFER: WORDS
 64 BUFFER: MATRIX
+\ Two boxes of six f32, left zero: host-cli reads only their count.
+48 BUFFER: BOXES
 
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
@@ -74,24 +81,32 @@ variable PRESS-MODS
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
 : VERTEX ( n n n n -- )
-   \ Vertex k at x, y and z 16384 on the grid, of a face.
+   \ Vertex k at x, y and z 16384 on the grid, of a face; its normal, +z, is
+   \ octahedral 0, 0, the zeroed bytes after it.
    {: k:n x:n y:n face:n :}
-   GEOMETRY 8 + k 8 * + {: at:ptr :}
+   GEOMETRY 20 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  16384 at 4 + U16!  face at 6 + U16! ;
 
 : INDEX! ( n n -- )
-   \ Vertex v at triangle corner k, the vertices ending at byte 56.
+   \ Vertex v at triangle corner k, the vertices ending at byte 92.
    {: v:n k:n :}
-   v GEOMETRY 56 + k 2 * + U16! ;
+   v GEOMETRY 92 + k 2 * + U16! ;
 
 : ROW ( n n n n n -- )
    \ Instance row r: scale 2^-15 and x, y moved by tx (f32 bits) and -1.
    {: r:n tx:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
    48 0 do 0 at i + c! loop
    $38000000 at U32!  $38000000 at 16 + U32!  $38000000 at 32 + U32!
    tx at 36 + U32!  $BF800000 at 40 + U32!
    7 at 48 + U32!  id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
+
+: PAINT ( n n n n -- )
+   \ Row r's colour $rrggbb, metallic and roughness.
+   {: r:n rgb:n metal:n rough:n :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
+   rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
 : INIT-GEOMETRY ( -- )
    \ Mesh 7: two separate front-facing triangles, faces 0 and 1. Instance 10
@@ -102,6 +117,7 @@ variable PRESS-MODS
    6 0 do i i INDEX! loop
    1 WORDS U32!
    0 $BF800000 10 0 0 ROW  1 0 11 1 $FFFFFFFF ROW
+   0 $FF7314 0 32768 PAINT  1 $2060C0 65535 0 PAINT
    64 0 do 0 MATRIX i + c! loop
    $3F800000 MATRIX U32!
    $3F800000 MATRIX 20 + U32!
@@ -119,9 +135,9 @@ variable PRESS-MODS
 
 : START ( -- )
    INIT-GEOMETRY
-   0 EVENT BYTES>N 0 0 RECORD
+   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
-   68 7 MESH 1 HIGHLIGHT 2 DRAW ;
+   104 7 MESH 1 HIGHLIGHT 2 DRAW ;
 
 : OPENED ( -- )
    \ The tree again with Shelf's two children.
@@ -139,6 +155,20 @@ variable PRESS-MODS
    0 EVENT@ 6 = if
       s"  pressed " SAY PRESS-BUTTONS @ SIGNED 44 CHAR+ PRESS-MODS @ SIGNED
    then
+   TEXT-RECORD ;
+
+: HEX+ ( n -- )
+   dup 10 < if 48 + else 87 + then CHAR+ ;
+
+: OCCLUDED-TEXT ( -- )
+   \ The answer's bytes in hex, then c,d buttons,mods.
+   0 TEXT-U !
+   s" occluded " SAY
+   2 EVENT@ 0 ?do
+      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX+  v 15 and HEX+
+   loop
+   32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   32 CHAR+ 5 EVENT@ SIGNED 44 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
 : KEY-TEXT ( -- )
@@ -174,21 +204,28 @@ variable PRESS-MODS
    then
    s" selected" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"}]" 2 TREE exit then
-   s" length" IS? if 67 8 MESH exit then
-   s" index" IS? if 6 5 INDEX! 68 8 MESH exit then
+   s" length" IS? if 103 8 MESH exit then
+   s" index" IS? if 6 5 INDEX! 104 8 MESH exit then
    s" unheld" IS? if 9 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
    s" unmesh" IS? if 9 UNMESH exit then
    s" offset" IS? if
-      5 32768 16384 32 VERTEX 68 8 MESH
+      5 32768 16384 32 VERTEX 104 8 MESH
       8 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
-   s" handle" IS? if 68 $100000000 MESH exit then
-   s" held" IS? if 68 7 MESH exit then
+   s" handle" IS? if 104 $100000000 MESH exit then
+   s" held" IS? if 104 7 MESH exit then
    s" shown" IS? if 7 UNMESH exit then
    s" short" IS? if 0 HIGHLIGHT exit then
-   s" remesh" IS? if 0 DRAW 7 UNMESH 68 7 MESH 2 DRAW exit then
+   s" remesh" IS? if 0 DRAW 7 UNMESH 104 7 MESH 2 DRAW exit then
+
    s" flags" IS? if 2 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
+   s" colour" IS? if 1 INSTANCE-ROWS 67 + c! 2 DRAW exit then
    s" zero" IS? if 0 DRAW 0 HIGHLIGHT exit then
    s" redraw" IS? if 2 DRAW exit then
+   s" pick" IS? if 15 5 6 9 RECORD exit then
+   s" pick-id" IS? if 15 5 6 0 RECORD exit then
+   s" occlude" IS? if 16 BOXES BYTES>N 48 9 RECORD 2 DRAW exit then
+   s" span" IS? if 16 BOXES BYTES>N 47 9 RECORD exit then
+   s" id" IS? if 16 BOXES BYTES>N 48 0 RECORD exit then
    s" tree" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 3 TREE exit then ;
 
@@ -198,6 +235,7 @@ variable PRESS-MODS
    kind 4 = if INVALID exit then
    kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
+   kind 19 = if OCCLUDED-TEXT exit then
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;
 

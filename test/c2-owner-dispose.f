@@ -1,7 +1,7 @@
 \ A checked owner releases a foreign acquisition through its supplied disposer.
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/c2-owner.f
+require src/lib/c2-memory.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/test/wait.f
@@ -132,7 +132,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    16 MEM:BYTES-ALLOC-LEN [: THROW-BODY ;] C2-MEM:WITH-MUT ;
 
 : FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
-   C2-MEM:BIND 0 MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
+   C2-MEM:BIND MEM-MAX-N MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
 : FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
@@ -282,7 +282,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 
 : DEFER-THROW-CATCH ( -- )
    ['] DEFER-THROW-CALL catch
-   dup -9362 <> if throw then drop
+   dup -9363 <> if throw then drop
    1 RESUMED atomic!
    begin TASK:PAUSE again ;
 
@@ -351,10 +351,10 @@ TASK:MIN-STACK TASK:TASK WORKER-C
       err OF drop false ENDOF
    ;MATCH ;
 
-: CLEANUP-ERROR? ( result<n,n> -- bool )
+: BODY-ERROR? ( result<n,n> -- bool )
    MATCH result
       ok OF drop false ENDOF
-      err OF -9362 = ENDOF
+      err OF -9363 = ENDOF
    ;MATCH ;
 
 \ Only the scalar countdown is deferred; scoped callbacks stay literal.
@@ -399,7 +399,7 @@ public
    8 CALLS @ 1 T=
    9 CALLS @ 1 T=
    s" a throwing disposer releases first and does not prevent older disposal" T-LABEL
-   ['] ERROR-CALL catch -9362 T=
+   ['] ERROR-CALL catch -9363 T=
    5 CALLS @ 1 T=
    6 CALLS @ 1 T=
    3 ORDER @ 9 T=
@@ -420,7 +420,7 @@ public
    WORKER TASK:JOIN HALTED? TTRUE
    4 CALLS @ 1 T=
    s" chunk callbacks continue through a throwing disposer and release in reverse order" T-LABEL
-   ['] CHUNK-CALL catch -9362 T=
+   ['] CHUNK-CALL catch -9363 T=
    10 CALLS @ 1 T= 11 CALLS @ 1 T= 12 CALLS @ 1 T= 13 CALLS @ 1 T=
    9 ORDER @ 13 T= 10 ORDER @ 12 T= 11 ORDER @ 11 T= 12 ORDER @ 10 T=
    0 READY atomic! 0 GO atomic!
@@ -467,8 +467,8 @@ public
    READY 1 WORKER-C TEST-WAIT:FOR-CELL
    WORKER-C TASK:HALT
    1 GO atomic!
-   s" deferred halt preserves cleanup over body and exit errors without resuming catch" T-LABEL
-   WORKER-C TASK:JOIN CLEANUP-ERROR? TTRUE
+   s" deferred halt preserves the body's error over cleanup and exit errors without resuming catch" T-LABEL
+   WORKER-C TASK:JOIN BODY-ERROR? TTRUE
    RESUMED atomic@ 0 T=
    2 CALLS @ 1 T=
    0 READY atomic! 0 GO atomic! -1 SEEN-CALLS ! -1 SEEN-BYTE !

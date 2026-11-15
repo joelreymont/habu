@@ -4,16 +4,42 @@
 \ page-relative path slow. Typed "more" sends a tree whose row Shelf has more;
 \ opening Shelf sends the text opened and the tree again with its child and
 \ grandchild. Typed "draw" sends mesh 1, a square of two triangles of faces 0
-\ and 1; mesh 2, one triangle of face 34; a highlight of two words, bit 1 of
-\ the first and bit 2 of the second set; and a draw of rows of handles 1, 2
-\ and 1: the left square, at offset 0, shows face 1 highlighted and face 0
-\ not, the triangle above it, at offset 0, shows face 34 highlighted, and the
-\ right square selects every face. Typed "unmesh", after "draw", draws the
+\ and 1; mesh 2, one triangle of face 34 with normals (0, 0.8, -0.6); mesh
+\ 3, that triangle with normals +x; a highlight of two words, bit 1 of the
+\ first and bit 2 of the second set; and a draw of rows of handles 1, 2, 1,
+\ 1 and 3: the orange left square, at offset 0, shows face 1 highlighted and
+\ face 0 not, the green triangle above it, z scaled by 0.2, at offset 0,
+\ shows face 34 highlighted, the white right square selects every face, the
+\ blue square above it none, and the green triangle below the left square,
+\ its z scaled by 0, none. Typed "unmesh", after "draw", draws the
 \ triangle's row alone, unmeshes mesh 1 and draws that row again. Typed
-\ "zero" draws 0 rows.
+\ "metal", after "draw", draws a copy of its rows with the orange square
+\ metallic. Typed "zero" draws 0 rows. Typed "occlude", after "draw", sends
+\ occlude 7 of two boxes past z 0.5: one behind the left square and one below
+\ every instance; its answer comes back as the text occluded, the bytes in
+\ hex and the id.
+\ Typed "edges" sends occlude 8: a box behind the left square from z -0.5,
+\ past the near plane, and one from the square's own z 0.5. Typed "many"
+\ sends occlude 9 of 4097 boxes, the last behind the left square, the others
+\ below every instance; its text gives bytes 4095 and 4096 in hex, the count
+\ of 1s and the id, since the echo holds 1024 bytes. Typed "pick", after
+\ "draw", picks with ids 1 to 4 a pixel of the left square's face 1, of the
+\ right square's face 0, of the background and one below the canvas, over the
+\ flat triangle's plane. Typed "nearer", after
+\ "draw", draws ids 6 and 7, mesh 1 at z 0.5 and 0.625, the farther last,
+\ through twice the identity moved by x 0.4, y -0.2 and z 0.5, so w is 2,
+\ and picks with id 5 a pixel of their face 1 that the identity leaves
+\ empty. Each picked event comes back as the text picked and its a, b, c and
+\ d in decimal. Typed "ground" sends the ground z = 0 with +z up,
+\ "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
+\ orange rectangles in one grid plane with origins 100000, 200000, 300000
+\ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
+\ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
+\ transform rotated about x then y.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package DISPLAY
 private
@@ -22,11 +48,21 @@ using BROWSER-EVENT
 CAST: >BYTES ( n -- ptr u8 )
 CAST: BYTES>N ( ptr u8 -- n )
 
-68 BUFFER: SQUARE-MESH
-38 BUFFER: TRIANGLE-MESH
-192 BUFFER: INSTANCE-ROWS
+\ A mesh's counts and origin take 20 bytes; these three keep origin 0.
+104 BUFFER: SQUARE-MESH
+62 BUFFER: TRIANGLE-MESH
+62 BUFFER: FLAT-MESH
+80 BUFFER: SEAM-A
+80 BUFFER: SEAM-B
+144 BUFFER: SEAM-ROWS
+64 BUFFER: SEAM-MATRIX
+504 BUFFER: INSTANCE-ROWS
+360 BUFFER: METAL-ROWS
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
+64 BUFFER: SHIFTED
+16 BUFFER: PLANE
+4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
 variable IMAGE-U
 1024 constant ECHO-CAP
@@ -70,40 +106,103 @@ variable ECHO-U
 : VERTEX ( ptr u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
    {: m:ptr k:n x:n y:n face:n :}
-   m 8 + k 8 * + {: at:ptr :}
+   m 20 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  0 at 4 + U16!  face at 6 + U16! ;
 
 : SQUARE ( -- )
    \ The unit square's lower-left triangle is face 0, its upper-right face 1;
-   \ the six indices end at byte 68.
+   \ its normals are +z, octahedral 0, 0; the six indices end at byte 104.
    SQUARE-MESH {: m:ptr :}
    6 m U32!  2 m 4 + U32!
    m 0 0 0 0 VERTEX  m 1 1 0 0 VERTEX  m 2 0 1 0 VERTEX
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
-   6 0 do i m 56 + i 2 * + U16! loop ;
+   6 0 do i m 92 + i 2 * + U16! loop ;
 
-: TRIANGLE ( -- )
+: TRIANGLE ( ptr u8 n n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
-   \ 2 of the second word; the three indices end at byte 38.
-   TRIANGLE-MESH {: m:ptr :}
+   \ 2 of the second word; the indices end at byte 62.
+   {: m:ptr ox:n oy:n :}
    3 m U32!  1 m 4 + U32!
    m 0 0 0 34 VERTEX  m 1 1 0 34 VERTEX  m 2 0 1 34 VERTEX
-   3 0 do i m 32 + i 2 * + U16! loop ;
+   3 0 do ox m 28 + i 12 * + U16!  oy m 30 + i 12 * + U16! loop
+   3 0 do i m 56 + i 2 * + U16! loop ;
+
+: ORIGIN ( ptr u8 n n n -- )
+   \ The mesh at m's origin x, y, z.
+   {: m:ptr x:n y:n z:n :}
+   x m 8 + U32!  y m 12 + U32!  z m 16 + U32! ;
+
+: CORNER ( ptr u8 n n n n -- )
+   \ Vertex k of the mesh at m at x, y and z on its grid, of face 0, its
+   \ normal +z, octahedral 0, 0.
+   {: m:ptr k:n x:n y:n z:n :}
+   m 20 + k 12 * + {: at:ptr :}
+   x at U16!  y at 2 + U16!  z at 4 + U16! ;
+
+: QUAD ( ptr u8 n n n n n -- )
+   \ The mesh at m, the rectangle x0..x1 by y0..y1 at z on its grid: vertices
+   \ 0 to 3 counterclockwise from x0, y0 and triangles 0 1 2 and 0 2 3, so
+   \ each side is a whole triangle edge; the indices end at byte 80.
+   {: m:ptr x0:n y0:n x1:n y1:n z:n :}
+   4 m U32!  2 m 4 + U32!
+   m 0 x0 y0 z CORNER  m 1 x1 y0 z CORNER
+   m 2 x1 y1 z CORNER  m 3 x0 y1 z CORNER
+   0 m 68 + U16!  1 m 70 + U16!  2 m 72 + U16!
+   0 m 74 + U16!  2 m 76 + U16!  3 m 78 + U16! ;
+
+: SEAM-ROW ( n n -- )
+   \ Seam row r draws mesh handle orange, id handle + 4, through 2^-15 R
+   \ about the grid's 140000, 220000, 300000, R a turn about x of cos 0.6,
+   \ sin 0.8, then one about y of cos 0.8, sin 0.6 (f32 bits, column-major).
+   {: r:n handle:n :}
+   SEAM-ROWS r 72 * + {: at:ptr :}
+   $37CCCCCD at U32!  0 at 4 + U32!  $B799999A at 8 + U32!
+   $3775C28F at 12 + U32!  $3799999A at 16 + U32!  $37A3D70A at 20 + U32!
+   $373851EC at 24 + U32!  $B7CCCCCD at 28 + U32!  $3775C28F at 32 + U32!
+   $C11EFC00 at 36 + U32!  $4052F000 at 40 + U32!  $C0C41800 at 44 + U32!
+   handle at 48 + U32!  handle 4 + at 52 + U32!  $FFFFFFFF at 60 + U32!
+   $FF at 64 + c!  $73 at 65 + c!  $14 at 66 + c!  32768 at 70 + U16! ;
+
+: SEAM ( -- )
+   \ Mesh 4 spans grid x 100000..140000, mesh 5 140000..180000; both y
+   \ 200000..240000 at z 300000. The matrix takes x and y by 0.6 and z to
+   \ 0.3z + 0.5.
+   SEAM-A 100000 200000 300000 ORIGIN  SEAM-A 0 0 40000 40000 0 QUAD
+   SEAM-B 139000 190000 299000 ORIGIN
+   SEAM-B 1000 10000 41000 50000 1000 QUAD
+   0 4 SEAM-ROW  1 5 SEAM-ROW
+   $3F19999A SEAM-MATRIX U32!  $3F19999A SEAM-MATRIX 20 + U32!
+   $3E99999A SEAM-MATRIX 40 + U32!  $3F000000 SEAM-MATRIX 56 + U32!
+   $3F800000 SEAM-MATRIX 60 + U32!
+   13 SEAM-A BYTES>N 80 4 RECORD  13 SEAM-B BYTES>N 80 5 RECORD
+   2 SEAM-ROWS BYTES>N 2 SEAM-MATRIX BYTES>N RECORD ;
 
 : PLACE ( n n n n -- )
    \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
    \ bits) and z 0.5.
    {: r:n handle:n tx:n ty:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
-   $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!  $3F4CCCCD at 32 + U32!
    tx at 36 + U32!  ty at 40 + U32!  $3F000000 at 44 + U32!
    handle at 48 + U32! ;
+
+: DEPTH ( n n -- )
+   \ Row r's z scale, f32 bits.
+   {: r:n z:n :}
+   z INSTANCE-ROWS r 72 * + 32 + U32! ;
 
 : MARK ( n n n n -- )
    \ Row r's id, flags and highlight offset.
    {: r:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
    id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
+
+: PAINT ( n n n n -- )
+   \ Row r's colour $rrggbb, metallic and roughness.
+   {: r:n rgb:n metal:n rough:n :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
+   rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
 : IDENTITY ( -- )
    $3F800000 MATRIX U32!  $3F800000 MATRIX 20 + U32!
@@ -113,19 +212,63 @@ variable ECHO-U
    {: rows:ptr count:n :}
    2 rows BYTES>N count MATRIX BYTES>N RECORD ;
 
-: SHOW ( -- )
-   \ x -0.9, 0.1 and y -0.4, 0.5 as f32 bits.
-   SQUARE TRIANGLE  2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY
+: INSTANCES ( -- )
+   \ x -0.9, 0.1 and y -1.2, -0.4, 0.5 as f32 bits; z scales 0.2 and 0.
    0 1 $BF666666 $BECCCCCD PLACE  0 1 0 0 MARK
    1 2 $BF666666 $3F000000 PLACE  1 2 0 0 MARK
    2 1 $3DCCCCCD $BECCCCCD PLACE  2 3 1 $FFFFFFFF MARK
-   13 SQUARE-MESH BYTES>N 68 1 RECORD
-   13 TRIANGLE-MESH BYTES>N 38 2 RECORD
+   3 1 $3DCCCCCD $3F000000 PLACE  3 4 0 $FFFFFFFF MARK
+   4 3 $BF666666 $BF99999A PLACE  4 5 0 $FFFFFFFF MARK
+   1 $3E4CCCCD DEPTH  4 0 DEPTH
+   0 $FF7314 0 32768 PAINT  1 $30A040 65535 16384 PAINT
+   2 $FFFFFF 0 0 PAINT  3 $2060C0 0 65535 PAINT
+   4 $30A040 0 0 PAINT ;
+
+: METAL ( -- )
+   \ A copy: the host reads a draw's rows when the turn ends.
+   INSTANCE-ROWS METAL-ROWS 360 BYTE-COPY
+   65535 METAL-ROWS 68 + U16!  METAL-ROWS 5 DRAW ;
+
+: SHOW ( -- )
+   SQUARE  TRIANGLE-MESH 14043 32767 TRIANGLE
+   FLAT-MESH 32767 0 TRIANGLE
+   2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY  INSTANCES
+   13 SQUARE-MESH BYTES>N 104 1 RECORD
+   13 TRIANGLE-MESH BYTES>N 62 2 RECORD
+   13 FLAT-MESH BYTES>N 62 3 RECORD
    6 WORDS BYTES>N 2 0 RECORD
-   INSTANCE-ROWS 3 DRAW ;
+   INSTANCE-ROWS 5 DRAW ;
+
+: BOX ( n n n n n n n -- )
+   \ Box k's lowest x, y, z, then its highest, as f32 bits.
+   {: k:n x0:n y0:n z0:n x1:n y1:n z1:n :}
+   BOXES k 24 * + {: at:ptr :}
+   x0 at U32!  y0 at 4 + U32!  z0 at 8 + U32!
+   x1 at 12 + U32!  y1 at 16 + U32!  z1 at 20 + U32! ;
+
+: HIDDEN ( n -- )
+   \ Box k at x -0.7..-0.3, y -0.2..0.2, z 0.6..0.8.
+   $BF333333 $BE4CCCCD $3F19999A $BE99999A $3E4CCCCD $3F4CCCCD BOX ;
+
+: OPEN ( n -- )
+   \ Box k at x -0.6..0.6, y -0.9..-0.6, z 0.6..0.8.
+   $BF19999A $BF666666 $3F19999A $3F19999A $BF19999A $3F4CCCCD BOX ;
+
+: OCCLUDE ( -- )
+   0 HIDDEN 1 OPEN  16 BOXES BYTES>N 48 7 RECORD ;
+
+: EDGES ( -- )
+   \ x -0.7..-0.3, y -0.2..0.2; z -0.5..0.6 and z 0.5..0.8.
+   0 $BF333333 $BE4CCCCD $BF000000 $BE99999A $3E4CCCCD $3F19999A BOX
+   1 $BF333333 $BE4CCCCD $3F000000 $BE99999A $3E4CCCCD $3F4CCCCD BOX
+   16 BOXES BYTES>N 48 8 RECORD ;
+
+: MANY ( -- )
+   4096 0 do i OPEN loop  4096 HIDDEN
+   16 BOXES BYTES>N 4097 24 * 9 RECORD ;
 
 : UNMESH ( -- )
-   INSTANCE-ROWS 64 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 64 + 1 DRAW ;
+   INSTANCE-ROWS 72 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 72 + 1 DRAW ;
 
 : ROWS ( -- )
    \ Van and its child Shelf through Shelf's label; the caller closes Shelf's
@@ -144,6 +287,42 @@ variable ECHO-U
    ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
    s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
 
+: PICK ( n n n -- )
+   \ The pixel at clip x and y in tenths, from the typed event's buffer width
+   \ and height, picked with an id.
+   {: x:n y:n id:n :}
+   15  10 x + 3 EVENT@ * 20 /  10 y - 4 EVENT@ * 20 /  id RECORD ;
+
+: PICKS ( -- )
+   -3 2 1 PICK  4 -2 2 PICK  0 7 3 PICK  -7 -11 4 PICK ;
+
+: SHIFT ( -- )
+   \ Twice the identity, w included, then x 0.4, y -0.2 and z 0.5 added.
+   $40000000 SHIFTED U32!  $40000000 SHIFTED 20 + U32!
+   $40000000 SHIFTED 40 + U32!  $40000000 SHIFTED 60 + U32!
+   $3ECCCCCD SHIFTED 48 + U32!  $BE4CCCCD SHIFTED 52 + U32!
+   $3F000000 SHIFTED 56 + U32! ;
+
+: NEARER ( -- )
+   \ Rows 5 and 6 at x and y -0.4; NDC 0.5, 0.2 is world 0.3, 0.3.
+   5 1 $BECCCCCD $BECCCCCD PLACE  5 6 0 $FFFFFFFF MARK
+   6 1 $BECCCCCD $BECCCCCD PLACE  6 7 0 $FFFFFFFF MARK
+   $3F200000 INSTANCE-ROWS 6 72 * + 44 + U32!  SHIFT
+   2 INSTANCE-ROWS 360 + BYTES>N 2 SHIFTED BYTES>N RECORD
+   5 2 5 PICK ;
+
+: PLANE! ( n n n n -- )
+   \ The ground's nx, ny, nz and d, f32 bits.
+   {: x:n y:n z:n d:n :}
+   x PLANE U32!  y PLANE 4 + U32!  z PLANE 8 + U32!  d PLANE 12 + U32! ;
+
+: UP ( -- )
+   0 0 $3F800000 0 PLANE! ;
+
+: GROUND ( n n -- )
+   {: b:n c:n :}
+   17 PLANE BYTES>N b c RECORD ;
+
 : IS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    2 EVENT@ u <> if false exit then
@@ -156,6 +335,14 @@ variable ECHO-U
    s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
    s" draw" IS? if SHOW exit then
    s" unmesh" IS? if UNMESH exit then
+   s" metal" IS? if METAL exit then
+   s" occlude" IS? if OCCLUDE exit then
+   s" edges" IS? if EDGES exit then
+   s" many" IS? if MANY exit then
+   s" pick" IS? if PICKS exit then
+   s" nearer" IS? if NEARER exit then
+   s" seam" IS? if SEAM exit then
+
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
@@ -171,26 +358,79 @@ variable ECHO-U
    s" flag" IS? if 9 2 0 0 RECORD exit then
    s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
    s" input-b" IS? if 9 1 1 0 RECORD exit then
-   s" input-c" IS? if 9 0 0 1 RECORD exit then ;
+   s" input-c" IS? if 9 0 0 1 RECORD exit then
+   s" ground" IS? if UP 16 0 GROUND exit then
+   s" ground-none" IS? if 17 0 0 0 RECORD exit then
+   s" ground-c" IS? if UP 16 1 GROUND exit then
+   s" ground-b" IS? if UP 12 0 GROUND exit then
+   s" ground-outside" IS? if 17 -1 16 0 RECORD exit then
+   \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
+   \ so d / |n| is past f32's range.
+   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 16 0 GROUND exit then
+   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 16 0 GROUND exit then
+   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 16 0 GROUND exit then ;
 
-: HEX, ( n -- )
-   dup 10 < if [char] 0 + else 10 - [char] a + then
+: CHAR+ ( n -- )
+   ECHO-U @ ECHO-CAP >= if -1 throw then
    ECHO-BUF ECHO-U @ + c!  1 ECHO-U +! ;
 
-\ The event's bytes after the name, as one text record; refuses an echo past
-\ the buffer.
-: ECHO ( ptr u8 n -- )
+: HEX, ( n -- )
+   dup 10 < if [char] 0 + else 10 - [char] a + then CHAR+ ;
+
+: DIGITS ( n -- )
+   {: v:n :}
+   v 10 / {: q:n :}
+   q 0<> if q RECURSE then
+   v q 10 * - [char] 0 + CHAR+ ;
+
+: BYTE, ( n -- )
+   {: v:n :}
+   v 4 rshift HEX,  v 15 and HEX, ;
+
+: BYTE@ ( n -- n )
+   \ Byte k of the event's bytes.
+   1 EVENT@ + >BYTES c@ ;
+
+: NAMED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a ECHO-BUF u BYTE-COPY u ECHO-U ! ;
+
+\ The name and the event's bytes in ECHO-BUF; refuses an echo past the
+\ buffer.
+: ECHOED ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
-   a ECHO-BUF u BYTE-COPY u ECHO-U !
-   2 EVENT@ 0 ?do
-      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX,  v 15 and HEX,
-   loop
+   a u NAMED
+   2 EVENT@ 0 ?do i BYTE@ BYTE, loop ;
+
+: ECHO-RECORD ( -- )
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
+
+: ECHO ( ptr u8 n -- )
+   ECHOED ECHO-RECORD ;
+
+: ONES ( -- n )
+   0  2 EVENT@ 0 ?do i BYTE@ + loop ;
+
+: SUMMARY ( -- )
+   s" occluded " NAMED  4095 BYTE@ BYTE,  4096 BYTE@ BYTE,
+   32 CHAR+  ONES DIGITS ;
+
+: OCCLUDED ( -- )
+   4 EVENT@ 9 = if SUMMARY else s" occluded " ECHOED then
+   32 CHAR+  4 EVENT@ DIGITS  ECHO-RECORD ;
+
+: SIGNED ( n -- )
+   dup 0< if [char] - CHAR+ negate then DIGITS ;
+
+: PICKED ( -- )
+   s" picked" NAMED
+   5 1 do 32 CHAR+ i EVENT@ SIGNED loop
+   ECHO-RECORD ;
 
 : DISPATCH ( -- )
    0 EVENT@ 0 = if
-      0 EVENT BYTES>N 0 0 RECORD
+      0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
       9 0 0 0 RECORD
       RED exit
    then
@@ -198,7 +438,9 @@ variable ECHO-U
    0 EVENT@ 10 = if 1 EVENT@ 2 = if 2 EVENT@ 1 = if OPENED then then exit then
    0 EVENT@ 11 = if s" load " ECHO exit then
    0 EVENT@ 12 = if s" focus " ECHO exit then
-   0 EVENT@ 13 = if s" highlight " ECHO then ;
+   0 EVENT@ 13 = if s" highlight " ECHO exit then
+   0 EVENT@ 18 = if PICKED exit then
+   0 EVENT@ 19 = if OCCLUDED then ;
 
 public
 

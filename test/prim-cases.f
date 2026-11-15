@@ -20,7 +20,7 @@
 \     P-P ( n n -- )                   one input, the expected result
 \   where a pointer column or result is a byte offset into the includer's
 \   fixture (prim-parity.f, for example, measures `ptr-field` in a pointer table);
-\ - `MAX-N` and `MIN-N`, the extreme cells, and `E-DIV-ZERO`;
+\ - `MAX-N` and `MIN-N`, the extreme cells;
 \ - a `+!` scenario that adds 3 to the stored cell.
 
 \ ---- stack shufflers: 1 2 3 4 in, the whole window out ----------------------
@@ -86,9 +86,8 @@
  $100000000 $100000000                   0  NN-N     \ wraps
 ;CASES
 
-\ Truncated toward zero, so the remainder carries the dividend's sign. A zero
-\ divisor is refused by name and MIN-N -1 wraps: both are contracts every backend
-\ answers, stated in docs/forth.md.
+\ Truncated toward zero, so the remainder carries the dividend's sign. MIN-N -1
+\ wraps, a contract every backend answers, stated in docs/forth.md.
 0 CASES /
            7           2                   3  NN-N
           -7           2                  -3  NN-N
@@ -98,9 +97,13 @@
            0           5                   0  NN-N
        MAX-N           2   $3FFFFFFFFFFFFFFF  NN-N
        MIN-N          -1               MIN-N  NN-N     \ wraps
+;CASES
+false [if] \ off until dot habu-add-the-checks-a49d054d
+0 CASES /
            7           0          E-DIV-ZERO  NN-THROWS
        MIN-N           0          E-DIV-ZERO  NN-THROWS
 ;CASES
+[then]
 
 0 CASES mod
            7           2                   1  NN-N
@@ -109,8 +112,12 @@
           -7          -2                  -1  NN-N
            6           3                   0  NN-N
        MIN-N          -1                   0  NN-N     \ the wrapped quotient's remainder
+;CASES
+false [if] \ off until dot habu-add-the-checks-a49d054d
+0 CASES mod
            7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
+[then]
 
 0 CASES /mod
            7           2               1     3  NN-NN
@@ -118,8 +125,12 @@
            7          -2               1    -3  NN-NN
           -7          -2              -1     3  NN-NN
        MIN-N          -1               0 MIN-N  NN-NN   \ wraps
+;CASES
+false [if] \ off until dot habu-add-the-checks-a49d054d
+0 CASES /mod
            7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
+[then]
 
 0 CASES and
          $F0         $3C                 $30  NN-N

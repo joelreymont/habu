@@ -14,8 +14,8 @@ private
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 
-\ A quotation cannot read the enclosing word's locals, so the source span
-\ travels through these two cells to the caught body.
+\ x86-64 refuses a quotation that reads a local, so the source span travels
+\ through these two cells to the caught body.
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
@@ -33,14 +33,14 @@ $4E constant DUP-RC
    {: a:ptr u:n :}
    a SRC-A !
    u SRC-U !
-   DIAG-BUF $1000 DIAG-BUFFER!
+   DIAG-BUF $1000 REJECTION:BUFFER!
    [: ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ nip DIAG-U !
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER$ nip DIAG-U !
+   REJECTION:BUFFER-OFF
    rc ;
 
 \ The same span in multi-error mode, where a refused body is recorded with
-\ source authority instead of thrown (src/core/checker.f CHECK).
+\ source authority instead of thrown.
 : MULTI-QUIET ( ptr u8 n -- n )
    {: a:ptr u:n :}
    MULTI-ERR-BEGIN

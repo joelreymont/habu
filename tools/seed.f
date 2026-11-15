@@ -1,9 +1,8 @@
 \ seed.f - checked native seed installation helpers: validate against
-\ HABU_SEED_SHA256 when set, promote to a signed bin/hb, smoke it, then rebuild
+\ HABU_SEED_SHA256 when set, install it as bin/hb, smoke it, then rebuild
 \ bin/hb from current source with `tools/hb-build.f -- --engine -o bin/hb`.
 
 require src/lib/error.f
-require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -26,7 +25,6 @@ require src/core/sha256.f
 
 create SEED-SHA-HEX SEED-SHA256-HEX-U allot
 create SEED-FSHA-CTX SHA256-FILE-CTX-BYTES allot
-PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS:SUFFIX-PATH's destination is a span
 create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot
 create SEED-BUILD-OUT SEED-BUILD-OUT-CAP allot
@@ -107,19 +105,17 @@ variable SEED-LAST
    a u SEED-LAST-SLASH {: idx :}
    idx 0 > if a idx FS:MAKE-DIRS then ;
 
-: SEED-TMP$ ( ptr u8 n -- ptr u8 n )
-   s" .seed-tmp" SEED-TMP-PATH FS:SUFFIX-PATH {: u :}
-   SEED-TMP-PATH u SPAN:TAKE SPAN:$ ;
+: SEED-FILL ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: src:ptr srcu tmp:ptr tmpu :}
+   src srcu tmp tmpu FS:COPY-FILE-STREAM
+   tmp tmpu FS:CHMOD-X
+   src srcu ;
 
 : SEED-INSTALL ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu SEED-EXPECT-FILE
    dstu 0 <= if E-BUILD-PATH throw then
    dst dstu SEED-MAKE-PARENT-DIRS
-   dst dstu SEED-TMP$ {: tmp:ptr tmpu :}
-   tmp tmpu FS:EXISTS? if tmp tmpu FS:REMOVE-FILE then
-   src srcu tmp tmpu FS:COPY-FILE-STREAM
-   tmp tmpu FS:CHMOD-X
-   tmp tmpu dst dstu CODESIGN:PROMOTE-EXECUTABLE
+   src srcu dst dstu [: SEED-FILL ;] FS:REPLACE-STAGED 2drop
    dst dstu CODESIGN:VERIFY ;
 
 : SEED-SMOKE-OUT-OK? ( ptr u8 n -- bool ) {: a:ptr u :}

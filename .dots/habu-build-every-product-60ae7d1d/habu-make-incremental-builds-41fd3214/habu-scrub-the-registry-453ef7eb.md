@@ -8,4 +8,4 @@ closed-at: "2026-10-28T17:13:33.027174+02:00"
 close-reason: landed 17bf6b07
 ---
 
-Workspace carl-hscr (commit wqlnstmy on wpvzuqor). A rolled-back declaration leaves family/variant/schema rows past the rewound counts in a cold image; TFAM-REWIND and schema REWIND scrub them like PF-REWIND. Brief ~/.cache/tmp/carl-file/brief-scrub.md.
+Workspace carl-hscr (commit wqlnstmy on wpvzuqor). A rolled-back declaration leaves family/variant/schema rows past the rewound counts in a cold image; TFAM-REWIND and schema REWIND scrub them like PF-REWIND.

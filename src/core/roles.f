@@ -5,11 +5,11 @@
 \ nothing else: each one is declared with `CAST:`, which publishes an identity
 \ word and costs nothing at a call site.
 
-\ The DTC-* words build a nominal cell type's converter pair, >NAME ( n -- NAME )
-\ and NAME>N ( NAME -- n ). A nominal is one cell, distinct from n and every
-\ other nominal, with no widening. The builder takes the upper-case surface name
-\ and the lowercase family tail separately; verify-source.f RECORD-DEFTYPE
-\ registers their trust signatures.
+\ The DTC-* words give the name and effect text of a nominal cell type's
+\ converter pair, >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), for
+\ verify-source.f's definition report. A nominal is one cell, distinct from n
+\ and every other nominal, with no widening. The builder takes the upper-case
+\ surface name and the lowercase family tail separately.
 $200 constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U
@@ -37,8 +37,8 @@ variable DTC-SIG-U
 : DTC-SIG$ ( -- ptr u8 n )
    DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
 
-\ The buffer carries two spans and nothing else: DECL-SIGNATURE is handed
-\ DTC-NAME$ and DTC-SIG$ separately, so no declaration text is built here.
+\ The buffer carries two spans and nothing else: DTC-NAME$ and DTC-SIG$ are
+\ read separately, so no declaration text is built here.
 : DTC-BEGIN ( -- )
    DTC-CLEAR
    DTC-U @ DTC-NAME-OFF ! ;
@@ -121,7 +121,6 @@ CAST: >IMG ( n -- img )
 CAST: IMG>N ( img -- n )
 
 CAST: >SNAP ( n -- snap )
-CAST: SNAP>N ( snap -- n )
 
 : ASM-PHASE ( -- asm )
    0 >ASM ;
@@ -137,9 +136,6 @@ CAST: SNAP>N ( snap -- n )
 
 : SNAP-PHASE ( -- snap )
    0 >SNAP ;
-
-: SNAP-DROP ( snap -- )
-   SNAP>N drop ;
 
 : DEFLINEAR ( -- )
    parse-name dup 0= IF s" deflinear: missing name" 70 die THEN

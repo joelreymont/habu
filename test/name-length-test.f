@@ -10,13 +10,13 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 require src/habu/layout.f
 
 package NAME-LENGTH-TEST
 
 $400 constant OUT-CAP
 $8000 constant ERR-CAP             \ a diagnostic that names a whole name
-10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
@@ -80,7 +80,7 @@ TEXTS!
 : CLAUSE-SIG$ ( -- ptr u8 n ) s" ( n -- n )" ;
 
 \ The checker's pool marks, which a refused name leaves where it found them.
-13 constant MARK-N
+11 constant MARK-N
 create BEFORE MARK-N cells allot
 : MARK ( n -- n )
    case
@@ -95,8 +95,6 @@ create BEFORE MARK-N cells allot
       8 of CT-STR-U @ endof
       9 of CHECKER-PACKAGE-U @ endof
       10 of EXT-FREE-N @ endof
-      11 of ASIG-ROW-U @ endof
-      12 of ASIG-STR-U @ endof
       0 swap
    endcase ;
 : MARKS! ( -- ) MARK-N 0 ?do i MARK BEFORE i cells + ! loop ;
@@ -111,13 +109,8 @@ create BEFORE MARK-N cells allot
 \ ---- the cases a child runs -------------------------------------------------
 : RESOLVES ( -- ) MARKS! BAD$ CHECKER-RESOLVES? 0= VERDICT ;
 : CERT-DUP ( -- ) MARKS! BAD$ CHECKER-CERT-DUP? 0= VERDICT ;
-: DEAD ( -- ) MARKS! BAD$ CTL-DEAD? 0= VERDICT ;
 : QUERY ( -- ) MARKS! BAD$ EFFECT-QUERY 0= VERDICT ;
 : LBUF-NAME ( -- ) MARKS! BAD$ CHECKER-LBUF-NAME-OK? 0= VERDICT ;
-: ASIG-NAME ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-KNOWN? 0= VERDICT ;
-: ASIG-PKG ( -- ) MARKS! BAD$ 0 0= s" x" CHECKER-ASIG-KNOWN? 0= VERDICT ;
-: ASIG-MISSING ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-MISSING? 0= VERDICT ;
-: ASIG-ROW ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-ROW-FOR 0= VERDICT ;
 : RESERVED ( -- ) MARKS! BAD$ TYPE-RESERVED? VERDICT ;
 : TRY-NAME ( -- ) MARKS! BAD$ s" f n" CHECKER-TRY-RECORD nip nip 0 <> VERDICT ;
 : TRY-FIELDS ( -- )
@@ -126,14 +119,13 @@ create BEFORE MARK-N cells allot
 : UNDEFINE-GUARD ( -- ) MARKS! BAD$ CHECKER-UNDEFINE-GUARD 0 0= VERDICT ;
 : FREE-TAIL ( -- ) MARKS! BAD$ EXT-MARK-FREE-TAIL 0 0= VERDICT ;
 : HEAD-ROW ( -- ) MARKS! BAD$ CHECKER-RESOLVE:HEAD-ROW NULL-PTR = VERDICT ;
-: FIELD-FIND ( -- ) MARKS! 0 0 BAD$ TYPE-FIELD:FIND nip 0= VERDICT ;
+: FIELD-FIND ( -- ) MARKS! 0 0 BAD$ TFAM:PF-FIND nip 0= VERDICT ;
 : PRIM ( -- ) MARKS! BAD$ PRIM-SPEC:FIND 0 < VERDICT ;
 : LAYOUT ( -- ) MARKS! BAD$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
 : STORAGE ( -- ) MARKS! BAD$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
 : DYNAMIC ( -- ) MARKS! BAD$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
 : MATCH-FAM ( -- ) MARKS! BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
 : CON-FAM ( -- ) MARKS! BAD$ TFL-CON-FAM? nip 0= VERDICT ;
-: VAR ( -- ) MARKS! BAD$ 0 TFAM:TFL-VAR? nip 0= VERDICT ;
 : LAYOUT-TEXT ( -- ) MARKS! STORED$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
 : STORAGE-TEXT ( -- ) MARKS! STORED$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
 : DYNAMIC-TEXT ( -- ) MARKS! STORED$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
@@ -149,7 +141,15 @@ create BEFORE MARK-N cells allot
 : PACKAGE-IT ( -- ) BAD$ CHECKER-PACKAGE ;
 : USING-IT ( -- ) BAD$ CHECKER-USING ;
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
-: PART-PATH-IT ( -- ) BAD$ CHECKER-RESOLVE:PART-PATH 2drop ;
+\ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
+\ buffer, so `package` reaches the part's path.
+: PART$ ( -- ptr u8 n )
+   s" ;package package NLTP package " {: h:ptr hu:n :}
+   BAD$ {: a:ptr u:n :}
+   hu u + MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   a p hu + u BYTE-COPY
+   p hu u + ;
 : EXPORT-IT ( -- ) BAD$ CHECKER-EXPORT ;
 : FAMILY-IT ( -- ) BAD$ BAD$ CHECKER-DEFFAMILY ;
 : SUM-IT ( -- ) BAD$ s" VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
@@ -171,26 +171,32 @@ TYPE-FIELD:COUNT 1 - TYPE-FIELD:FAMILY@ constant PAIR
    TYPE-FIELD-OWNER:ADD drop ;
 
 \ ---- the parent's side -------------------------------------------------------
-create LBL 128 allot
+\ A label keeps what fits in LBL.
+128 constant LBL-CAP
+create LBL LBL-CAP allot
 variable LBL-U
 : LBL+ ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
-   LBL-U @ u + LBL-U ! ;
+   u LBL-CAP LBL-U @ - min {: k:n :}
+   k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
+   LBL-U @ k + LBL-U ! ;
 : RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
+: LABEL-AT ( ptr u8 n ptr u8 n -- )
+   {: at:ptr atu:n src:ptr srcu:n :}
+   0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
 
 \ A declaring word's refusal ends the process, so every case runs `src` in a
 \ forked child, with LEN at `u`.
-: RUN-AT ( n ptr u8 n ptr u8 n -- len len PROCESS:ending )
-   {: u:n at:ptr atu:n src:ptr srcu:n :}
-   0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+
+: RUN-AT ( n ptr u8 n -- len len PROCESS:ending )
+   {: u:n src:ptr srcu:n :}
    u LEN !
-   src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
+   src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child prints that its word refused, and nothing else, and exits 0.
 : RETURNS-AT ( n ptr u8 n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n :}
-   u at atu src srcu RUN-AT {: outu:len erru:len oc :}
+   at atu src srcu LABEL-AT
+   u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    RELABEL ERR erru LEN>N s" " T$=
    RELABEL OUT outu LEN>N S\" refused\n" T$= ;
@@ -198,7 +204,8 @@ variable LBL-U
 \ The child ends with the word's own refusal: `rc` and its one-line message.
 : DIES-AT ( n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n rc:n want:ptr wantu:n :}
-   u at atu src srcu RUN-AT {: outu:len erru:len oc :}
+   at atu src srcu LABEL-AT
+   u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
@@ -224,13 +231,8 @@ variable LBL-U
 : TEST-QUERIES ( -- )
    s" RESOLVES" RETURNS
    s" CERT-DUP" RETURNS
-   s" DEAD" RETURNS
    s" QUERY" RETURNS
    s" LBUF-NAME" RETURNS
-   s" ASIG-NAME" RETURNS
-   s" ASIG-PKG" RETURNS
-   s" ASIG-MISSING" RETURNS
-   s" ASIG-ROW" RETURNS
    s" RESERVED" RETURNS
    s" TRY-NAME" RETURNS
    s" CTOR-WORD" RETURNS
@@ -252,11 +254,9 @@ variable LBL-U
 
 : TEST-FAMILIES ( -- )
    s" MATCH-FAM" FAM-DIES-AT-MAX
-   s" CON-FAM" FAM-DIES-AT-MAX
-   s" VAR" FAM-DIES-AT-MAX ;
+   s" CON-FAM" FAM-DIES-AT-MAX ;
 
 \ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
-\ In this file's package PART-PATH refuses a long path (7136).
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
@@ -270,9 +270,6 @@ variable LBL-U
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
-   -1 s" -1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
-   LONG-LEN s" long" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
-   MAX-CELL s" max" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
@@ -370,6 +367,22 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    RETURNS
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES ;
 
+\ No token is -1 or the maximum cell long, so `package` meets only a long part
+\ name, whose path is past its row: refused, naming it.
+: PART-WANT$ ( -- ptr u8 n )
+   s" E-PKG-CONTEXT habu: " {: h:ptr hu:n :}
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ {: f:ptr fu:n :}
+   hu fu + 2 + LONG-LEN + 1 + {: wu:n :}
+   wu MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   f p hu + fu BYTE-COPY
+   58 p hu + fu + c!  32 p hu + fu + 1 + c!
+   LONG-LEN TAIL drop p hu + fu + 2 + LONG-LEN BYTE-COPY
+   10 p wu + 1 - c!
+   p wu ;
+: TEST-PART ( -- )
+   LONG-LEN s" long" s" PART$ evaluate" 75 PART-WANT$ DIES-AT ;
+
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
 : DEF-SRC ( n n -- ptr u8 n )
@@ -407,7 +420,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
    LONG-LEN 119 RUN-SRC {: da:ptr du:n :}
-   0 s" a long name" da du RUN-AT {: outu:len erru:len oc :}
+   0 da du RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a word with a long name" T-LABEL
    da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
@@ -462,6 +475,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-QUERIES
    TEST-FAMILIES
    TEST-DECLARERS
+   TEST-PART
    TEST-TOP-LEVEL
    TEST-MALFORMED
    TEST-FIELD-TEXT
@@ -474,7 +488,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ The word with a long name, and the top-level-only word taking its name.
 LONG-LEN 113 DEF-SRC evaluate
-LONG$ SIG$ TRUST
+s" LONG$ SIG$ TRUST" evaluate
 
 MAIN
 

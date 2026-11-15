@@ -5,8 +5,8 @@
 \ twice, out of order or on another allocation; leaves bytes behind a RESET;
 \ leaks a child, releases one twice, loses a middle sibling or runs its own
 \ actions before its children's; leaks under WITH when the body throws; lets a
-\ throwing action stop the rest or loses its code; admits a zero, negative or
-\ overflowing size; changes when a mapping is refused; fails on NULL-PTR;
+\ throwing action stop the rest or loses its code; changes when a mapping is
+\ refused; fails on NULL-PTR;
 \ cannot be held in a run-time record's field; leaves a chunk mapped after
 \ RESET or RELEASE; runs an action twice when a release halted in it resumes;
 \ moves a newest block it could grow in place, gives back an older block's
@@ -17,6 +17,7 @@ require src/lib/test.f
 require src/lib/span.f
 require src/lib/allocator.f
 require src/lib/arena.f
+require src/lib/process.f
 require src/lib/task.f
 require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
 require src/lib/test/wait.f
@@ -172,7 +173,7 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    [: 6 TAGGED 42 ;] ARENA:WITH 42 T=
    ORDER @ 6 T=
    0 ORDER !
-   [: [: 7 TAGGED 1 0 / drop ;] ARENA:WITH ;] E-DIV-ZERO TTHROWSQ
+   [: [: 7 TAGGED E-DIV-ZERO throw ;] ARENA:WITH ;] E-DIV-ZERO TTHROWSQ
    ORDER @ 7 T= ;
 
 
@@ -194,15 +195,12 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ORDER @ 31 T= ;
 
 
-\ 8. Refused sizes and mappings, and RELEASE of NULL-PTR.
+\ 8. A refused mapping and RELEASE of NULL-PTR.
 : EDGES ( -- )
    s" edges" T-LABEL
    NULL-PTR ARENA:RELEASE
    ARENA:NEW {: a:ptr :}
    a 8 ARENA:ALLOC drop {: p:ptr :}
-   [: a 0 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
-   [: a -1 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
-   [: a MEM-MAX-N ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
    [: a MEM-MAX-N 2 / ARENA:ALLOC 2drop ;] E-MEM-MAP TTHROWSQ
    a 8 ARENA:ALLOC drop p - 8 T=
    a ARENA:RELEASE ;
@@ -261,7 +259,6 @@ public
 private
 
 $1000 constant CAP
-1000 constant TIMEOUT-MS
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
@@ -269,7 +266,7 @@ CAP BUFFER: CAP-ERR
 HB-TARGET-LINUX-X86-64? 0= [if]
 : EXPECT-FAULT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
    ENGINE-ERROR:MEMORY-FAULT T-ENDING-EXITED= ;
@@ -279,7 +276,7 @@ HB-TARGET-LINUX-X86-64? [if]
 11 constant FAULT-SIG
 : EXPECT-FAULT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
    FAULT-SIG T-ENDING-SIGNALED= ;
@@ -374,4 +371,16 @@ public
    T-REPORT ;
 
 RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ An arena that admits a zero, negative or overflowing size.
+: EDGE-SIZES ( -- )
+   s" edge sizes" T-LABEL
+   ARENA:NEW {: a:ptr :}
+   [: a 0 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   [: a -1 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   [: a MEM-MAX-N ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   a ARENA:RELEASE ;
+T-RESET EDGE-SIZES T-REPORT
+[then]
 ;package

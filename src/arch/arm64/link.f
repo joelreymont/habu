@@ -79,5 +79,39 @@ public
    e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
    e dst at data resolve PATCH ;
 
+
+private
+
+\ The size of the chain a row of kind holds at site in emission bytes b, s of them: a code
+\ chain is ADDR-CHAIN-BYTES long, a data chain whole; 0 when no such chain is there.
+: SITE-SIZE ( ptr u8 n n n -- n )
+   {: b:ptr s:n site:n kind:n :}
+   site 0<  site 3 and 0<>  or  site s >=  or if 0 exit then
+   b site +  b s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+   kind NEMIT:ADDR-CODE = if
+      size ADDRESS-CARRIER:ADDR-CHAIN-BYTES = if size else 0 then exit
+   then
+   kind NEMIT:ADDR-DATA = if size exit then
+   0 ;
+
+public
+
+\ The address value emission bytes b, s of them, hold at site for a row of kind, and whether
+\ they hold one there.
+: ADDRESS@ ( ptr u8 n n n -- n bool )
+   {: b:ptr s:n site:n kind:n :}
+   b s site kind SITE-SIZE {: size:n :}
+   size 0= if 0 false exit then
+   b site +  size ADDRESS-CARRIER:CHAIN-VALUE  true ;
+
+
+\ v written as the address value at site of a row of kind in emission bytes b, s of them;
+\ false, with nothing written, where ADDRESS@ answers false.
+: ADDRESS! ( n ptr u8 n n n -- bool )
+   {: v:n b:ptr s:n site:n kind:n :}
+   b s site kind SITE-SIZE {: size:n :}
+   size 0= if false exit then
+   b site +  v size ADDRESS-CARRIER:SET-CHAIN-VALUE  true ;
+
 ;package
 ;package

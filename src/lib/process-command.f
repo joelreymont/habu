@@ -40,10 +40,10 @@ private
 \ so the capture sinks (quotations, which carry no data) find it. Scopes nest,
 \ and tasks never share a context. A halted task unwinds through each scope's
 \ `finally` as a throw does.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
+2 TASK:+USERS CMD-TASK ptr n
 
-: INNER ( -- ptr ptr n ) CMD-TASK 0 ptr-field ;
-: RUNNING ( -- ptr ptr n ) CMD-TASK 1 ptr-field ;
+: INNER ( -- ptr ptr n ) 0 CMD-TASK ;
+: RUNNING ( -- ptr ptr n ) 1 CMD-TASK ;
 
 STRUCTURE vectors DERIVE addr
    FIELD argv ptr VEC:vector<ptr u8>

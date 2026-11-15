@@ -45,9 +45,6 @@ to remove, not a row to add.
   definition no build may run: every build writes objects, and a definition
   its source puts in a target section is compiled for the target alone
   ([xcomp.md](xcomp.md#host-and-target-words)).
-- Tier 1 and the JIT as compilers: T0 on every target, reusing what they
-  already implement; tier 1 changes only to fix a defect on a path it still
-  owns.
 - `TRUSTED:`, engine-only marks and owner rows: checked forms and private
   sections.
 - Compatibility with older hosts, formats or schemas: hard cutover.
@@ -215,7 +212,7 @@ policy would give one logical type several stack shapes.
   offset table.
 - `niche-null` and `boxed` change the stack shape to one cell. A policy that
   changes the stack shape must not be selectable before its constructor,
-  `MATCH`, stack-operation and invalid-tag lowering exists; `boxed` has none
+  `MATCH` and stack-operation lowering exists; `boxed` has none
   and is refused with `layout policy not yet supported`.
 - `niche-null` is one shape: an empty variant, then one holding a single `ptr`
   field. The cell is the pointer, zero for the empty variant, so every cell
@@ -225,9 +222,12 @@ policy would give one logical type several stack shapes.
 - Any other name is `unknown layout policy`. Every refusal rolls back the
   family row and its layout state.
 
-**Construction never starts from a raw tag.** There is no public construction
-from a tag value and no unchecked enum cast; a tag outside the declared range
-is a runtime invalid-tag failure, not a new variant.
+**A cast never makes an enum or sum value whose tag can be invalid.** An enum
+is made from a number by its derived `TAG>`, which throws `E-ENUM-TAG` for a
+number that is not one of its tags, and a sum by a variant's constructor. A
+`niche-null` value has no invalid tag, so a cast into one is only a pointer
+mint. A private view of storage leaves the tags it stores to its writer, as it
+leaves its pointers.
 
 **Visibility picks the spelling, not whether words are generated.** A public
 family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a
@@ -295,9 +295,7 @@ keep checked code from reaching a registry by name.
 band would require a guard-bypass writer for legitimate declaration-time
 updates. Because the registry is Forth-level, that writer must be a
 Forth-callable word with no effect, which is exactly what the laundered route
-reached; the band would only trade one route for another. An engine band is
-safe for a different reason: its writers are inline machine code inside
-compiler primitives, never standalone words. Protection of a
+reached; the band would only trade one route for another. Protection of a
 Forth-level registry is therefore privacy plus the checker's refusal of opaque
 execution.
 
@@ -372,8 +370,8 @@ lifetime. forth.md "Owners and views" has the rules for writing owner code.
 **Cleanup state lives outside the stack.** The owner scope keeps authoritative
 cleanup state outside cells `catch` may restore as stale. A callback that
 throws ends its loans and disposes its owner exactly once. `finally`
-precedence holds: successful cleanup keeps the body's failure, a cleanup
-failure supersedes it. A catch outside the scope cannot recover a view into
+precedence holds: the body's failure passes first, a cleanup's only when the
+body has none. A catch outside the scope cannot recover a view into
 the disposed owner from restored cells, and a caught failure inside the scope
 does not recreate consumed authority. Scope end discharges loans held in stale
 cells without reading them; those cells may only be discarded.
@@ -417,8 +415,7 @@ These names leave the products' (SwiftForth's `STOP`, VFX's `WAIT`/`SIGNAL`)
 for the standard terms: a task's own wait is wait/wake, as Linux's futex and
 Zig's `std.Thread.Futex` name it, and a word that takes a semaphore says so.
 `JOIN` returns a `result` and `AT-EXIT` registers cleanup, after VFX's exit
-code and task-exit hook. Messages are VFX's one-cell mailbox
-(`SEND-MESSAGE`, `GET-MESSAGE`). VFX keeps its embedded task API on pthreads
+code and task-exit hook. VFX keeps its embedded task API on pthreads
 so one program text runs hosted and on a target; Habu takes the same rule. A
 target kernel is polyFORTH's round robin, where the `STATUS` cell is both
 scheduler link and wake flag and every blocking I/O word yields; it exposes the

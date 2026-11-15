@@ -9,9 +9,6 @@
 \ The general registers the running engine occupies.
 \ A compiled routine that writes one of these destroys the engine.
 \ A register claimed here is refused by every GPR allocation path.
-\ ENGINE-GPR:A64-DSTACK is stated here, not read from src/arch/arm64/mnem.f XDS:
-\ mnem.f is not in every engine's prefix, so a derivation compiles in the build
-\ and dies E-UNDEFINED at run time.
 \ Both targets' registers are declared on every target: this file cannot branch
 \ at top level and an ARM64 engine emits x86-64 code.
 package ENGINE-GPR
@@ -106,7 +103,7 @@ REGION DICT-SIZE - constant BYTES
 \ kind for a declared identity retype: its body stays callable, but a compiled
 \ mention only renames the checked value.
 \ A stamped record's body is the definer's own.
-\ Band: bits 50-51 of the record flags cell [16] (map at DNAME-MIN-IN-MASK).
+\ Band: bits 50-51 of the record flags cell [16].
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -132,9 +129,6 @@ $0000100000000000 constant DNAME-TARGET
 \ [16] bits 44-63: flags above the name length, which every length read clears by this count.
 20 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked: the
-\ interpret loop refuses a call the stack cannot feed; a compiled call carries no guard.
-$0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
@@ -168,8 +162,9 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).
 \ The band opens with PROF-STATE-BYTES of the profiler's own cells (sample
 \ total and limit, the two buckets, the dictionary base recorded by prof-on, the
-\ arena, the clock) and the counters follow.
-56 constant PROF-STATE-BYTES
+\ arena, the clock, the handlers inside and the control words' ticket lock) and
+\ the counters follow.
+80 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ The cold prefix, argv files and stdin share this allowance, less an EOF probe;
@@ -180,32 +175,14 @@ $400000 constant SOURCE-ARENA-CAP
 0 constant DP-CELL
 8 constant HND-CELL
 16 constant LOCN-CELL
-$3000 constant LOCNAMES
-24 constant LOC-REC
-\ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
-\ name wider than the field is refused before it is stored.
-LOC-REC 8 - constant LOC-NAME-CAP
-64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
-\ Tier 1's arm64 body capture scopes the locals it records by block:
-\ CAPDEPTH-CELL is the block depth and TOKDEPTH-CELL the depth as the current
-\ token began, restored with TOKLOCN-CELL's mark.
+\ The capture's block depth, which scopes the locals it records, and raw state:
+\ 0 none, -1 a parsing keyword's operand, d+1 inside a `[type]` span at depth d.
 $2DB8 constant CAPDEPTH-CELL
 $2DC0 constant TOKDEPTH-CELL
-\ The friend arena: one write-protected band [FRIEND-ARENA,
-\ FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch and every
-\ checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
-\ TSIG/TCSIG/CRSIG cells, the PKG-* cells, the DEFER-* cells). The latch is the
-\ arena base: 0 while the engine loads its own source (guard inert),
-\ FRIEND-ARENA-LEN once SEAL-FRIEND runs at the end of the cold prefix. Post-seal
-\ any raw write into the band, the latch included, traps, so the seal is one-way.
-\ The band sits below DATA-START, out of reach of the DP heap; only sinks
-\ storing to a computed address carry the range check.
-\ SEAL-NDICT-CELL ($A8) holds the seal-time ndict watermark.
-\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it;
-\ it is in the sealed band so user source cannot lower it.
-$20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
-$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
-FRIEND-ARENA constant FRIEND-LATCH-CELL
+$2DC8 constant RAWNEXT-CELL
+$2DD0 constant TOKRAW-CELL
+\ SEAL-NDICT-CELL holds the seal-time ndict watermark.
+\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it.
 $A8 constant SEAL-NDICT-CELL
 
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW):
@@ -224,22 +201,15 @@ $78 constant PKG-PUB-CELL
 $80 constant PKG-PRI-CELL
 $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
-$A0 constant DEFER-XT-CELL
 \ DEFER-MAGIC: the first cell of the meta trailer `defer` writes just past a
 \ deferred word's code, followed by the address of its dispatch cell. A reader
 \ holding a record recognises a defer's trailer by this word, never by the
 \ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
-\ $1A0 is the seal suite's deliberate poke hole.
-\ CMBK-CELL and CMFRD-CELL: zeroed by both kernels' compile reset; nothing
-\ reads them.
-$B0 constant CMBK-CELL
-$C8 constant CMFRD-CELL
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
 STACK-ABI:BASE-CELL constant S0-CELL
-$3640 constant REPLH-CELL               \ claimed; no code reads or writes it
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
@@ -267,7 +237,7 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores. The frame
-\ ends at STACK-ABI:EVAL-BYTES ($180), a multiple of 16; $128 is held for WIDN and $130 is free.
+\ ends at STACK-ABI:EVAL-BYTES ($170), a multiple of 16; $128 is held for WIDN and $130 is free.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -285,21 +255,12 @@ $120 constant PEND
 \ owning the compile cuts the records back to it as it rolls the dictionary
 \ back, so no definition the rollback drops keeps a record or a pending window.
 $138 constant ROWS
-\ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
-\ observed word that evaluates a buffer hands the observer to that buffer:
-\ SX-TICKET and SX-SRC keep the word's ticket and its source start, which the
-\ clean exit and the throw recovery put back with the word's run pending again.
-\ The observer's frame needs no cell: adoption requires it to be the frame this
-\ buffer nests in, EVAL-PREV.
-$140 constant SX-CTX
-$148 constant SX-TICKET
-$150 constant SX-SRC
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
-$158 constant ENCLOSING
+$140 constant ENCLOSING
 \ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
 \ A clean exit does too unless a `package` ran; one left open is the includer's.
-$178 constant PKG-OUTSIDE
+$160 constant PKG-OUTSIDE
 \ SECTION: SECTION-CELL as the buffer began, which its end puts back.
 $98 constant SECTION
 ;package
@@ -346,8 +307,7 @@ $3C88 constant TASK-TCB-CELL
 \ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
 \ else 0, which a fresh task region and every non-task region hold. Only that
 \ task's own thread writes it: HALT-UNWIND, which PAUSE calls, sets it before it
-\ throws, and the catch family reads it on its throw-resume path, and the
-\ `throw` primitive keeps a halt's 0 instead of refusing it. An inner
+\ throws, and the catch family reads it on its throw-resume path. An inner
 \ catch rethrows at once and never pushes; the task's root catch, whose frame's
 \ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
 \ while their cleanup runs and set it again to continue the unwind. $3870
@@ -385,34 +345,6 @@ public
 $43B0 constant DELTA-CELL
 ;package
 
-\ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: the baked signature pool's address and
-\ length, read by the checker's lazy intake for a word it has no effect for.
-\ Nothing publishes a pool, so both stay zero and the intake is a no-op.
-\ The pool is __text, the same at every boot, so it is never copied.
-\ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
-\ so a cell declared in AOT-SIG, AOT-SPAN or AOT-WINDOW would make aot-decl.f,
-\ habu1.f and habu2.f reopen a baked package in a native build.
-package AOT-CELLS
-public
-$47D0 constant SIG-POOL-CELL
-$47D8 constant SIG-LEN-CELL
-;package
-
-\ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: the baked CODE-SPAN
-\ table, its row count and the address the blob was copied to; only the x86-64
-\ linker writes them. A word with no dictionary record is accounted for only by
-\ its row. A row is a blob offset; the base makes it an address. Zero in all
-\ three means no stripped spans.
-\ They sit in the $600..$800 header hole below BODY-TEXT:BASE-CELL, above
-\ GENIO-ABI's band. The run above BOOT:HEAP-START-CELL is not free:
-\ stack-abi.f holds $47E8..$4810, then the transaction and USER-BAND.
-package AOT-CELLS
-public
-$660 constant SPAN-TABLE-CELL
-$668 constant SPAN-N-CELL
-$670 constant SPAN-BASE-CELL
-;package
-
 \ SIGNAL-ABI: the baked async-signal-safe handler stub and the word it reads.
 \ STUB-CELL is the stub's address, a program's sa_handler; FD-PTR-CELL is the
 \ address of the fd word, through which a program stores its self-pipe's write
@@ -424,7 +356,7 @@ $670 constant SPAN-BASE-CELL
 \ thread's x20 is its own task region.
 \ DATA-VA is fixed. A spawned task's region carries neither published cell, so
 \ a library reads them once from the main task and keeps them.
-\ The cells follow AOT-SPAN's in the $600..$800 hole, below $7FF8 (the boot
+\ The cells sit in the $600..$800 hole, below $7FF8 (the boot
 \ stores them as `DATA <off> STR`) and below DATA-START.
 package SIGNAL-ABI
 public
@@ -439,11 +371,10 @@ $688 constant FD-CELL
 \ OUT-CELL and IN-CELL hold a device index, never an address: 0 is the built-in
 \ terminal, 1..DEVICES a row of the write table. They are per task, and nothing
 \ canonicalises a code address in a task region, so an execution token there
-\ would survive a snapshot or capture pointing into the builder's region.
-\ The write table holds execution tokens in the engine header, where SNAP-RELOC
-\ canonicalises declared cells. TASK-REGION-INIT copies the rows too, sound
-\ because a task region is never snapshotted or captured. DEVICES is small so
-\ the table costs no allocation on a microcontroller.
+\ would survive a snapshot pointing into the builder's region.
+\ The write table holds this run's write handlers, stored undeclared, so a
+\ build's image never holds one; TASK-REGION-INIT copies the rows to a task.
+\ DEVICES is small so the table costs no allocation on a microcontroller.
 \ BUSY-CELL stops re-entry: a device write may reach `type`, and while one runs
 \ the funnel takes the terminal path.
 \ ACTIVE-CELL names the device an operation runs for: devices share their eight
@@ -465,9 +396,7 @@ WRITE-OFF DEVICES 8 * + constant END
 
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry, set at
 \ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
-\ cells no compiled source writes, between the FFI buffer block ($3A00..$3C88),
-\ the task TCB cells ($3C88..$3CA0) and the protected-WID registry
-\ ($3CB8..$40C0).
+\ cells no compiled source writes.
 $3CA0 constant EVALREC-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; membership gates the
@@ -476,16 +405,11 @@ $3CA0 constant EVALREC-CELL
 \ protected, so the set holds any subset of the WIDs the engine indexes.
 \ PROT-WID-MAX is a WID bound: $400 bytes index 8192 WIDs, and prot-wid-add
 \ names the bound when handed a WID at or above it. A wider bitmap must first
-\ move the FFI length buffers: $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF, and
-\ APP-ENTRY:XT-CELL, the AOT capture window and the evaluator-pointer band
-\ follow from $43A0; growing it also moves UNCGH-CELL.
+\ move CB-XDS at $41C8, and APP-ENTRY:XT-CELL and the evaluator-pointer band
+\ from $43A0; growing it also moves UNCGH-CELL.
 \ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
-\ snapshots save it. [PROT-REG-OFF, +PROT-REG-LEN) is a second PROT-GUARD range,
-\ refusing user stores into the tag cell, the bitmap or the uncaught-throw hook;
-\ cp!/ndict! PROT-GUARD the address they redirect writes to, so a post-seal
-\ cp!/ndict! into either band fails closed.
-$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
-$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band
+\ snapshots save it.
+$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag
 $3CC0 constant PROT-BITS-OFF
 8192 constant PROT-WID-MAX
 PROT-WID-MAX 8 / constant PROT-BITS-BYTES
@@ -508,7 +432,7 @@ $40C0 constant UNCGH-CELL
 \   CB-FRAME       the live marshal frame of the innermost callback.
 \   CB-XTS/ROWS    growable descriptor and binding tables, read through the
 \                  main region at absolute address DATA-VA.
-\ A binding row holds region, owner, move count and claim region. The owner is
+\ A binding row holds region, owner and move count. The owner is
 \ 0 idle, a thread pointer inside the slot, CB-ROW-BUSY while a mover holds it,
 \ or 4*n + CB-ROW-CALLER for a row bound to the caller's context with n threads
 \ inside; such a row's region is 0.
@@ -522,8 +446,8 @@ $41F8 constant CB-XTS
 $4200 constant CB-ROWS
 $4208 constant CB-END
 CB-END CB-XDS - constant CB-BAND-BYTES
-16 constant CB-POOL                \ boot stubs retained for seed compatibility
-32 constant CB-ROW-BYTES
+16 constant CB-POOL                \ boot callback stubs
+24 constant CB-ROW-BYTES
 0 constant CB-ROW-REGION
 8 constant CB-ROW-OWNER
 1 constant CB-ROW-BUSY
@@ -535,13 +459,6 @@ $4338 constant CB-TLS-KEY
 \ them, then d0..d7 from CB-FRAME-FLOATS. The dispatch leaves its result in the
 \ x0 or the d0 slot, and the thunk returns both.
 $40 constant CB-FRAME-FLOATS
-\ Compact AOT dict record: five u32 words (blob-off/public-WID, code-len/private-WID,
-\ name-off, flags|min-in, wid). The name-off word is a full u32 so the deduped name
-\ pool can outgrow 64 KiB with the captured window.
-20 constant AOT-CREC-ROW
-\ The deduplicated pool admits at most DICT-CAP entries, each containing a
-\ one-byte length and at most 255 name bytes. Storage grows to the used size.
-DICT-CAP 256 * constant AOT-NAMES-CAP
 \ Dict-name hash index: slots are a power of 2 (probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP, so the load factor stays <= 50% and
 \ DICT-CAP stays a power of two; bytes = slots * 4 (u32 entries).
@@ -566,25 +483,103 @@ $37F8 constant SNAP-CELL
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
-\ The captured x86 reporter is written here while the ARM build host is
-\ sealed. The linker publishes its translated XT in protected UNCGH-CELL.
-\ $3858 is outside PROT-REG.
-$3858 constant REPORT-CELL
 \ The x86-64 Habu loop's source arena: a mapping this process made, which every
 \ boot reads zero until MAIN maps its stream.
 $3868 constant ARENA-CELL
 ;package
 
-\ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
-\ runtime provides, stored with `xt!` and restored on every x86-64 boot as a
-\ fixed address row. A seeded x86-64 row is a stub that jumps through it, and
-\ x86-64's `evaluate-closed` calls EVALUATE-CELL's word; arm64's evaluate words
-\ run the cells' words.
+\ PROVIDED-XT: cells holding the running engine's words that primitives and
+\ declarations call, stored with `xt!`; x86-64 restores them on every boot.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
-\ A seeded x86-64 `evaluate-range` jumps through its own cell the same way.
 $3860 constant EVALUATE-RANGE-CELL
+\ `define-word`, `compile,`, `;` and `literal` run the running
+\ engine's interpreter words these cells hold.
+$3878 constant DEFINE-CELL
+$3890 constant COMPILE-CELL
+$38B8 constant END-CELL
+$3898 constant LITERAL-CELL
+\ A definer appends an item of an ITEM-ABI op through the word this cell holds.
+$3888 constant ITEM-CELL
+\ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
+\ CHILD-ABI shape code; a definer reads the cell, since inside a build a name
+\ would bind the tree's copy.
+$38B0 constant CHILD-CELL
+\ A storage definer the checker does not compile reads its declaration line
+\ through the CHECK:STORAGE-LINE this cell holds.
+$38A8 constant STORAGE-LINE-CELL
+\ A storage definer whose element is whole cells reads its line through the
+\ CHECK:CELL-LINE this cell holds.
+$38C0 constant CELL-LINE-CELL
+\ A definer's type and effect values are schema nodes the running engine's
+\ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
+$38A0 constant TYPE-OP-CELL
+\ A definer declares a variable of a type node through the running engine's
+\ word this cell holds.
+$38C8 constant VARIABLE-CELL
+;package
+
+\ A child word's shape: from it the engine makes the child's body and the effect
+\ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
+\ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
+\ A FIELD child's parameter is a committed field id, an INDEX child's a family
+\ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE are
+\ storage children: STORED's parameter is 0, or its type's node when the
+\ declaration spells none, that of BUFFER to ARENA-DISPOSE its routine's
+\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK, WORKS,
+\ ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type t the declaration
+\ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
+\ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
+\ writes through its receiver. A MAKE or UNMAKE child's parameter is its
+\ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
+\ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
+\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse.
+
+package CHILD-ABI
+public
+0 constant CELL-OFF
+1 constant PTR-OFF
+2 constant BYTE-OFF
+3 constant FIELD
+4 constant INDEX
+5 constant VALUE
+6 constant STORED
+7 constant BUFFER
+8 constant BIND
+9 constant GROW
+10 constant DYNAMIC
+11 constant RESERVE
+12 constant RELEASE
+13 constant SLOT
+14 constant SLOTS
+15 constant WORK
+16 constant WORKS
+17 constant HEAP-NEW
+18 constant HEAP-RELEASE
+19 constant ARENA-NEW
+20 constant ARENA-DISPOSE
+21 constant INIT-GET
+22 constant INIT-SET
+23 constant MAKE
+24 constant UNMAKE
+25 constant NOMINAL-IN
+26 constant NOMINAL-OUT
+
+;package
+
+\ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,
+\ IN and OUT b pushed on effect a, NAMED the built-in type or family the a, b
+\ bytes spell, READ the one type element they spell.
+package TYPE-OP-ABI
+public
+0 constant INT
+2 constant PTR
+3 constant EFFECT
+4 constant IN
+5 constant OUT
+6 constant NAMED
+7 constant READ
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every
@@ -602,20 +597,15 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ A latch whose compiler cell (XT-CELL or COMP-CELL) is zero dies with
-\ ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
-$358 constant XT-CELL
 
-\ The callback operations are NDEFINITION's, shared by the XT-CELL and COMP-CELL
-\ compilers; TIER-CELL selects which compiles the accessor. A fresh source
+\ The callback operations are NDEFINITION's, which the COMP-CELL compiler
+\ uses. A fresh source
 \ compiler may coexist with a retained active compiler in a build window; both
 \ operations must follow the active compiler rather than dictionary names.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
-\ The optional three-cell origin record follows at $3820..$3837, read through
-\ the three-cell native-origin-cell getter.
 \ BODY-HOOK-CELL, when nonzero, is an xt `( -- ptr u8 bool )` the `:` and
 \ TRUSTED: heads call with their record pending.
 $3838 constant BODY-HOOK-CELL
@@ -626,29 +616,9 @@ $3840 constant COMP-CELL
 \ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
 $6C0 constant FIXED-COMP-CELL
 
-\ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
-\
-\   0 = tier 0: the compiler in COMP-CELL; with COMP-CELL zero, the Habu loop
-\       refuses a definition. Every `--load` and
-\       the REPL; every process starts at 0.
-\   1 = tier 1, the IR pipeline reached through XT-CELL.
-\       Selected deliberately with `1 set-tier`. A build, the engine's
-\       included, compiles at its caller's tier.
-\
-\ On an engine whose tier 0 is the JIT, tier 1 must be selected BEFORE the
-\ first definition on a tier-1 path: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN
-\ when it meets a body the JIT compiled.
-\
-\ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
-\ stays 8-aligned and below $7FF8.
-$370 constant TIER-CELL
-\ Latched at the colon (0 JIT or no compiler, 1 XT-CELL, 2 COMP-CELL); an
+\ Latched at the colon (0 no compiler, 1 COMP-CELL); an
 \ immediate may only select the NEXT definition.
-$388 constant DEF-TIER-CELL
-\ The outer executable-build scope saves the caller's selection once and
-\ restores it when it closes; nested scopes only count depth.
-$390 constant BUILD-DEPTH-CELL
-$398 constant BUILD-TIER-CELL
+$388 constant COMP-LATCH-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
 \ recovers from a refused definition: DEF-SEMI? sets it around its compile,
 \ catches E-COMP-RECOVERY and reads on. In a multi-error run the compiler then
@@ -678,63 +648,18 @@ CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
-\ The rest is the optimizing front end's half of the record. That front end is
-\ the checker's scan (the source tape, the does> split, per-call-site facts, the
-\ effect store), reached through the record rather than by name so that a run
-\ which replaces the source dictionary scans its files with its own checker
-\ instance, not the one the engine was built against.
-CHECKER-OWNER-ABI:CHECK-OFF constant DECL-CHECK-OFF
-CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant DECL-TAPE-INSTALL-OFF
-CHECKER-OWNER-ABI:TAPE-ARM-OFF constant DECL-TAPE-ARM-OFF
-CHECKER-OWNER-ABI:TAPE-DISARM-OFF constant DECL-TAPE-DISARM-OFF
-CHECKER-OWNER-ABI:TAPE-ADVANCE-OFF constant DECL-TAPE-ADVANCE-OFF
+\ The rest are called by the native compiler, the engine and the source verifier.
 CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
-CHECKER-OWNER-ABI:DOES-IN-OFF constant DECL-DOES-IN-OFF
-CHECKER-OWNER-ABI:DOES-OUT-OFF constant DECL-DOES-OUT-OFF
-CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DECL-DOES-WIDE-OFF
-CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DECL-DOES-IN-N-OFF
-CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DECL-DOES-OUT-N-OFF
-CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DECL-DOES-IN-SLOT-OFF
-CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
-CHECKER-OWNER-ABI:UNRECORDED-IN-OFF constant DECL-UNRECORDED-IN-OFF
-CHECKER-OWNER-ABI:UNRECORDED-OUT-OFF constant DECL-UNRECORDED-OUT-OFF
 CHECKER-OWNER-ABI:SIG-COUNTED-OFF constant DECL-SIG-COUNTED-OFF
 CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF constant DECL-UNJUDGED-CLOSED-OFF
 CHECKER-OWNER-ABI:PIN-SPAN-OFF constant DECL-PIN-SPAN-OFF
 CHECKER-OWNER-ABI:PIN-TOKEN-OFF constant DECL-PIN-TOKEN-OFF
-CHECKER-OWNER-ABI:FAMILY-NICHE-OFF constant DECL-FAMILY-NICHE-OFF
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
 CHECKER-OWNER-ABI:CALL-BINDING-OFF constant DECL-CALL-BINDING-OFF
 CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
-CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
-CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
-CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant DECL-CALL-QUOT-OUT-OFF
 CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
-CHECKER-OWNER-ABI:C2-STOW-OFF constant DECL-C2-STOW-OFF
-CHECKER-OWNER-ABI:PARSE-IMM-OFF constant DECL-PARSE-IMM-OFF
-\ EFFECT-QUERY resolves a name into the
-\ instance's query state and every reader below reads THAT state, so all of them
-\ have to reach the same owner or a reader answers about another instance's query.
-CHECKER-OWNER-ABI:EFFECT-QUERY-OFF constant DECL-EFFECT-QUERY-OFF
-CHECKER-OWNER-ABI:EFFECT-DIN-N-OFF constant DECL-EFFECT-DIN-N-OFF
-CHECKER-OWNER-ABI:EFFECT-DOUT-N-OFF constant DECL-EFFECT-DOUT-N-OFF
-CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF constant DECL-EFFECT-DIN-CELLS-OFF
-CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF constant DECL-EFFECT-DOUT-CELLS-OFF
-CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF constant DECL-EFFECT-DIN-SLOT-OFF
-CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant DECL-EFFECT-DOUT-SLOT-OFF
-CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant DECL-EFFECT-DIN-QUOT-OFF
-CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant DECL-EFFECT-DOUT-QUOT-OFF
-CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant DECL-EFFECT-QUOT-UP-OFF
-CHECKER-OWNER-ABI:EFFECT-QUOT-SIMPLE-OFF constant DECL-EFFECT-QUOT-SIMPLE-OFF
-CHECKER-OWNER-ABI:EFFECT-CATCH-CELLS-OFF constant DECL-EFFECT-CATCH-CELLS-OFF
-CHECKER-OWNER-ABI:EFFECT-EXEC-CELLS-OFF constant DECL-EFFECT-EXEC-CELLS-OFF
-CHECKER-OWNER-ABI:EFFECT-FINALLY-CELLS-OFF constant DECL-EFFECT-FINALLY-CELLS-OFF
-CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF constant DECL-EFFECT-MATCH-CELLS-OFF
-CHECKER-OWNER-ABI:CTL-DEAD-OFF constant DECL-CTL-DEAD-OFF
-CHECKER-OWNER-ABI:WF-W-AT-OFF constant DECL-WF-W-AT-OFF
-CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant DECL-REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ The scan whose verdict nobody enforces, with the render suppressed for it.
 \ A TRUSTED: body is scanned only to fill the tape, so the suppression has to
@@ -747,16 +672,6 @@ CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
 \ The compile window: opened with the code a callback's checker write is refused
 \ with once the definition's rows are recorded, shut with 0 before its own.
 CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
-CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
-CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
-CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF constant DECL-FAMILY-VARIANT-OFF
-CHECKER-OWNER-ABI:FAMILY-SLOTS-OFF constant DECL-FAMILY-SLOTS-OFF
-CHECKER-OWNER-ABI:FAMILY-VARIANTS-OFF constant DECL-FAMILY-VARIANTS-OFF
-CHECKER-OWNER-ABI:FAMILY-NAME-OFF constant DECL-FAMILY-NAME-OFF
-CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant DECL-VARIANT-TAG-OFF
-CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
-CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
-CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
@@ -776,10 +691,8 @@ CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
 CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF constant DECL-VERIFY-CTOR-DECL-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
-CHECKER-OWNER-ABI:MULTI-ERROR-OFF constant DECL-MULTI-ERROR-OFF
 CHECKER-OWNER-ABI:RESET-REPORT-OFF constant DECL-RESET-REPORT-OFF
 CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
-CHECKER-OWNER-ABI:RECOVERY-USED-OFF constant DECL-RECOVERY-USED-OFF
 CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
 CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF constant DECL-NATIVE-DOES-REPORT-OFF
 \ Completion: the names a top-level cursor sees.
@@ -792,9 +705,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ The open definition's body text lives in one mapped block the engine grows:
 \ text at [base, base+cap), then the BODY-SOURCE rows from base+cap, at most cap
 \ of them, since every run appends at least its separator and rows at or past
-\ BODYLEN drop first. The four cells are one DATA-BANDS row, so only the engine
-\ stores into them. A linked image holds 0 in them, as the engine stores them
-\ only in the running hb's header.
+\ BODYLEN drop first. A linked image holds 0 in the four cells, as the engine
+\ stores them only in the running hb's header.
 package BODY-TEXT
 public
 $800 constant BASE-CELL     \ the block's address, 0 before the first capture
@@ -803,20 +715,68 @@ $810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; g
 $818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
+
+\ A `define-word` definition's items {kind a b off len}, walked in place of the
+\ text while RAW-CELL is 0; all 0 outside one, so no image holds a transient node.
+package BODY-ITEMS
+public
+$4340 constant BASE-CELL     \ the block's address
+$4348 constant CAP-CELL      \ the capacity in rows
+$4350 constant COUNT-CELL    \ the rows held
+$4358 constant RAW-CELL      \ nonzero once text no item spans joined the capture
+$4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
+$4368 constant LOCALS-CELL   \ the LOCAL items so far: the next one's index
+5 constant ROW               \ cells per row
+0 constant KIND
+1 constant A
+2 constant B
+3 constant OFF
+4 constant LEN
+64 constant FIRST-CAP        \ rows at the first item, doubled as it grows
+;package
+
+\ The kinds of an item row. NAME spans the definition's name and SIG its
+\ signature with its parentheses; CALL's a is a record index; INT's a is the
+\ value; TYPE's a is the schema node of the family `match` or `construct`
+\ takes. A KEYWORD or OPERAND item is its spelling alone.
+\ LOCAL's a is the local's type node and b its index; LOCAL-REF's a is that index.
+package BODY-ITEM-KIND
+public
+1 constant NAME
+2 constant SIG
+3 constant CALL
+4 constant INT
+5 constant KEYWORD
+6 constant TYPE
+7 constant OPERAND
+8 constant LOCAL
+9 constant LOCAL-REF
+;package
+
+\ The ops of an item PROVIDED-XT:ITEM-CELL appends.
+package ITEM-ABI
+public
+0 constant KEYWORD
+1 constant OPERAND
+2 constant TYPE
+\ A call of the word the name binds where the definer runs.
+3 constant CALL
+\ A call of the word `PKG:TAIL` spells exactly, the top-level package's public
+\ one, which no part can shadow.
+4 constant CALL-EXACT
+\ A local of a type node.
+5 constant LOCAL
+\ A read of a local's index.
+6 constant LOCAL-REF
+;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL
 CREATED-BODY-ABI:COMMA-END-CELL constant COMMA-END-CELL
 CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
-$578 constant LVD-CELL
 $560 constant LASTC-CELL
 $230 constant CREATEP-CELL
-$238 constant QPATCH-CELL
-\ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
-\ save. Zero means no frame. QFRAME-CELL scopes it across a quotation.
-$7D0 constant FRAME-CELL
-$7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode: 0 = off; a `construct`/`MATCH`
@@ -840,12 +800,7 @@ $27F0 constant TOP-HOOK-CELL
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
-\ suspends until `set-check` of the same hook resumes it. Both start zero;
-\ after the seal the set-check and discard-check prims are their only
-\ writers. The pair is a PROT-GUARD band of its own: a resume copies
-\ SUSP-PREFLIGHT-CELL into COMPILE-PREFLIGHT-CELL without set-preflight's window
-\ check, so a raw post-seal store here would be a second, unchecked preflight
-\ installer.
+\ suspends until `set-check` of the same hook resumes it. Both start zero.
 $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
@@ -873,28 +828,42 @@ $27F8 constant CODE-CELL
 \ catches, and a hook's throw caught there would return from `die`. A stripped
 \ image's exit follows its root's return, when the chain is already empty. The
 \ hook's effect is ( -- ) and it runs on the data stack as it stands, because
-\ `die` may be running on a task thread whose stack is its own. A new process
-\ has no hook, and the library that wants one arms it at runtime.
-\ It is not in the ENGINE-HOOK-OFF band: those two are sealed against a
-\ post-seal raw store, and this vector is armed by ordinary library code after
-\ the seal. $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
-\ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
-\ immediate, and below DATA-START so no compiled source reaches it by allot.
+\ `die` may be running on a task thread whose stack is its own. A stripped
+\ program that reaches at-exit.f starts with the vector its load armed, as a
+\ file the program reaches keeps its header stores; one that does not starts
+\ with it empty.
+\ $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
+\ below $7FF8 so the engine names it with a 12-bit scaled LDR/STR immediate off
+\ a region base, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
-\ TOKBODY-CELL .. TOKVSP-CELL and TOKDEPTH-CELL: the token-start mark, five
-\ cells. Before every token the interpret loop stores BODYLEN-CELL, LOCN-CELL
-\ and its block depth CAPDEPTH-CELL, CP (as an offset
-\ from the region base, like every code position a DATA cell keeps, so no
-\ image carries a live address) and the virtual stack's VSP-CELL here.
-\ Two other writers: arm64
-\ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
-\ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
-\ its opener.
-\ A throw that unwinds an evaluate frame begun inside an open definition leaves
-\ that definition compiling and puts all five
-\ back: the text the checker certifies holds no token whose compile the throw
-\ abandoned, a `{:` group refused part way declares none of its names, and the
-\ code and the spill a refused token emitted before its check are gone. A spill
+\ EXIT-OWNER-CELL: the DATA base of the thread that owns the process exit, 0
+\ while none does; below DATA-START so no allot reaches it.
+$2840 constant EXIT-OWNER-CELL
+package BOOT
+private
+CAST: >PTR ( n -- ptr n )
+public
+\ The main region's EXIT-HOOK-CELL from any thread, the process's one vector.
+\ Main reads data-base: a cross build's host is not mapped at DATA-VA.
+: EXIT-VECTOR ( -- ptr n )
+   data-base TASK-TCB-CELL + @ 0= if
+      data-base EXIT-HOOK-CELL + exit
+   then
+   DATA-VA EXIT-HOOK-CELL + >PTR ;
+;package
+\ TOKBODY-CELL .. TOKVSP-CELL, TOKDEPTH-CELL and TOKRAW-CELL: the token-start
+\ mark, six cells. Before every token the interpret loop stores BODYLEN-CELL,
+\ LOCN-CELL, CAPDEPTH-CELL, RAWNEXT-CELL, CP (as an offset from the region
+\ base, like every code position a DATA cell keeps, so no image carries a live
+\ address) and the virtual stack's VSP-CELL here. Two other writers: arm64's
+\ end or abort of a definition zeroes TOKLOCN-CELL, TOKDEPTH-CELL and
+\ TOKRAW-CELL with the locals, and a refused prefix operand, such as an `is`
+\ target, lowers TOKBODY-CELL to its opener, zeroing TOKRAW-CELL when the
+\ opener goes too. A throw that unwinds an evaluate frame begun inside an open
+\ definition leaves that definition compiling and puts all six back: the text
+\ the checker certifies holds no token whose compile the throw abandoned, a
+\ `{:` group refused part way declares none of its names, and the code and the
+\ spill a refused token emitted before its check are gone. A spill
 \ only moves virtual stack entries to the data stack and leaves the entries
 \ themselves in place, so the depth restores the virtual stack. Every other
 \ compile cell is the refusing word's to leave alone: it checks first.
@@ -910,19 +879,8 @@ $2838 constant TOKVSP-CELL
 \ token (`:`, kernel:, TRUSTED:) or the word that ran def-open; a source that
 \ ends inside the definition is located there. CAST: and defer set PEND-CELL
 \ only within their keyword, so no source can end inside them. A transient
-\ address like TKA-CELL, zeroed at snapshot: no native-layout row, no
-\ stripped-image claim.
+\ address like TKA-CELL, zeroed at snapshot: no stripped-image claim.
 $2850 constant PENDTKA-CELL
-\ JIT-QUOT: both kernels' compile reset zeroes SP-CELL; nothing else reads
-\ the band.
-package JIT-QUOT
-public
-32 constant LEVELS                                  \ quotations open at once
-32 constant FRAME-BYTES
-$2858 constant SP-CELL                              \ frames parked
-$2860 constant STK-OFF
-STK-OFF LEVELS 1- FRAME-BYTES * + constant END
-;package
 \ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
 \ startup because the crash handler that jumps there cannot name an emit-time
 \ label: a stripped image bakes the same handler. Zero means no entry, and the
@@ -939,6 +897,13 @@ $2D48 constant FAULT-MARK-CELL
 \ DBASE. An engine's boot stores it; a stripped program, which has no live
 \ region, leaves it at its mapping's zero.
 $2D90 constant DBASE-CELL
+\ MAIN-STACK-TOP-CELL: the main thread's SP once an engine's boot has stored
+\ the DATA image; every frame a Habu word makes on that thread lies below it.
+\ A stripped program leaves it at its mapping's zero.
+$2D30 constant MAIN-STACK-TOP-CELL
+\ MAIN-THREAD-CELL: the main thread's pointer, CB-SELF's value, stored by an
+\ engine's boot beside MAIN-STACK-TOP-CELL. A stripped program leaves it zero.
+$2D38 constant MAIN-THREAD-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next. The stacks are this process's mappings, so a
 \ process starts with the cell zero.
@@ -948,9 +913,9 @@ $2CD8 constant CLOSED-FREE-CELL
 \ primitives by it.
 $2CE0 constant CODE-END-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
-\ for none. The literal store opens a segment at `here` inside whatever is
-\ running and raises the floor to the segment's end, so the segment and every
-\ address it answered outlive a failed evaluation and a rolled-back generated
+\ for none. Storage published inside whatever is running (a literal segment, a
+\ grown callback or task-row table) raises the floor to its end, so it and every
+\ address into it outlive a failed evaluation and a rolled-back generated
 \ declaration: each puts DP at the higher of its saved value and the floor. An
 \ offset rather than an address, so nothing relocates it: a snapshot carries it
 \ with the rest of DATA, and a native or stripped image starts at 0, which no
@@ -990,7 +955,6 @@ $2D60 constant NDICT-HW-CELL
 
 package NCOMP-DISPATCH
 public
-$2D98 constant FIXED-SHADOW-CELL
 $2DA0 constant DOES-SHADOW-CELL
 ;package
 $2DA8 constant TASK-CHAIN-CELL
@@ -1013,8 +977,8 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ fills.
 $4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
-\ an installed top-row hook. Word/tick events pass the LFIND flag word
-\ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
+\ an installed top-row hook. Word/tick events pass a flag word (bit 0 found,
+\ bit 1 DNAME-IMM); literals pass 0.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
 2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ptr u8 n )
 3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ptr )
@@ -1022,41 +986,26 @@ $4CA8 constant CLAUSE-CELL
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
 
-\ The catch/throw handler frame.
-\ A STACK-ABI:CATCH-BYTES machine-stack frame chained through HND-CELL
-\ ([DATA+8]). Every delivery site validates the sentinel, saved depths and
-\ allocation before any restore store.
-\ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
-\               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
-\               64 saved-base | 72 saved-capacity | 80 saved-BUSY
-\               88 saved-ACTIVE
-
-\ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
-\ band.
-$5000 constant TXN-STATE-OFF
-\ DATA-BANDS guards this length, so PROT-GUARD refuses a store anywhere in it.
-$300 constant TXN-STATE-LEN
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
-TXN-STATE-OFF       constant TXN-ACTIVE-CELL
-TXN-STATE-OFF $30 + constant P2-CELL
-
-\ The run the transaction reserved and never used, handed to the libraries that
-\ need storage a task owns.
-$8000 constant USER-REGION-END
-
-\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
-\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
-\ Carved from the top of the run so USER-BAND keeps the growable end.
-package STRING-ABI
+\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells
+\ in: two, TASK-DEFER-OFF and TASK-AREA-OFF.
+package USER-BAND
 public
-$400 constant SB-BUF-BYTES
-8 constant SB-LEN-BYTES
-SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
-USER-REGION-END BYTES - constant START
-START constant SB-BUF-OFF
-SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
-USER-REGION-END constant END
+$5000 constant START
+START 2 cells + constant END
+;package
+
+\ MEM-ABI is src/lib/memory.f's scope head: one cell naming the
+\ running task's first scope chunk, 0 until its first scope; that chunk's header
+\ names the innermost scope. A region is a fresh zeroed mapping, so every task
+\ and every stripped image starts with no scope open.
+package MEM-ABI
+public
+1 cells constant BYTES
+USER-BAND:END constant START
+START BYTES + constant END
+START constant HEAD-OFF
 ;package
 
 \ FMT-ABI is src/lib/fmt.f's integer render buffer, its four scratch cells, and
@@ -1076,14 +1025,44 @@ public
 20 constant NUM-BUF-BYTES
 SCRATCH-CELLS SCI-LIMBS + cells NUM-BUF-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES
-STRING-ABI:START constant END
-END BYTES - constant START
+MEM-ABI:END constant START
+START BYTES + constant END
 START constant NUM-U-OFF
 NUM-U-OFF 8 + constant IX-OFF
 IX-OFF 8 + constant FR-OFF
 FR-OFF 8 + constant DV-OFF
 DV-OFF 8 + constant SCI-LIMBS-OFF
 SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
+;package
+
+\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
+\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
+package STRING-ABI
+public
+$400 constant SB-BUF-BYTES
+8 constant SB-LEN-BYTES
+SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
+FMT-ABI:END constant START
+START constant SB-BUF-OFF
+SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
+START BYTES + constant END
+;package
+
+\ FFI-ABI is src/lib/ffi-abi.f's per-task call staging, declared here because
+\ ffi-abi.f is baked into the engine.
+package FFI-ABI
+public
+\ The call stubs load x0-x7 and x8, the indirect-result register.
+9 cells constant BUF-BYTES
+8 cells constant FBUF-BYTES
+16 cells constant STACK-BUF-BYTES
+$40 constant DLBUF-BYTES
+$3A00 constant START
+START constant BUF-OFF
+BUF-OFF BUF-BYTES + constant FBUF-OFF
+FBUF-OFF FBUF-BYTES + constant STACK-BUF-OFF
+STACK-BUF-OFF STACK-BUF-BYTES + constant DLBUF-OFF
+DLBUF-OFF DLBUF-BYTES + START - constant BYTES
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots. 64 text bytes hold every errno's
@@ -1097,8 +1076,8 @@ PATH-CAP 1 + constant PATHZ-BYTES
 64 constant TEXT-BYTES
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + TEXT-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
-FMT-ABI:START constant END
-END BYTES - constant START
+STRING-ABI:END constant START
+START BYTES + constant END
 START constant ERRNO-OFF
 ERRNO-OFF 8 + constant FD-OFF
 FD-OFF 8 + constant LEN-OFF
@@ -1119,9 +1098,12 @@ PATHZ-OFF PATHZ-BYTES + constant TEXT-OFF
 96 constant STAT-SIZE-OFF
 $F000 constant S-IFMT
 $8000 constant S-IFREG
+$4000 constant S-IFDIR
+$A000 constant S-IFLNK
 ;package
 
-\ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch.
+\ FS-MUT-ABI, src/lib/fs-mutate.f's per-call path scratch, is the last band: the
+\ bands' cells precede the path slots, so each stays inside a scaled load's reach.
 package FS-MUT-ABI
 public
 PATH-CAP 1 + constant PATHZ2-BYTES
@@ -1129,30 +1111,11 @@ PATH-CAP constant ATOMIC-BYTES
 PATH-CAP constant TMP-BYTES
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
-FS-ABI:START constant END
-END BYTES - constant START
+FS-ABI:END constant START
+START BYTES + constant END
 START constant PATHZ2-OFF
 PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
-;package
-
-\ MEM-ABI is src/lib/memory.f's scope head: one cell naming the
-\ running task's first scope chunk, 0 until its first scope; that chunk's header
-\ names the innermost scope. A region is a fresh zeroed mapping, so every task
-\ and every stripped image starts with no scope open.
-package MEM-ABI
-public
-1 cells constant BYTES
-FS-MUT-ABI:START constant END
-END BYTES - constant START
-START constant HEAD-OFF
-;package
-
-\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells in.
-package USER-BAND
-public
-TXN-STATE-OFF TXN-STATE-LEN + constant START
-MEM-ABI:START constant END
 ;package
 
 \ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot register
@@ -1166,9 +1129,8 @@ MEM-ABI:START constant END
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
-\ Unguarded engine scratch (no DATA-BANDS row): a raw store
-\ grants nothing beyond the public `trust`/`checker-defer` words, and the table
-\ is empty whenever user source runs.
+\ A raw store grants nothing beyond the public `trust`/`checker-defer` words,
+\ and the table is empty whenever user source runs.
 128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP
 64 constant PD-SIG-CAP
@@ -1212,9 +1174,9 @@ USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` op
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
-\ Two tables of the JIT region's recorded sites, which AOT capture reads: calls
-\ into __text and the first instruction of each address literal. Both live below
-\ DATA-START and are keyed by region offset.
+\ Two tables of the code region's recorded sites: calls into __text and the
+\ first instruction of each address literal. Both live below DATA-START and are
+\ keyed by region offset.
 package SNAP-RELOC
 public
 
@@ -1232,7 +1194,7 @@ public
 \ alone, would relocate the cell wrongly.
 99 constant XTKIND-RC
 
-\ Call-site map: one bit per four-byte word of the JIT region, marking every call
+\ Call-site map: one bit per four-byte word of the code region, marking every call
 \ whose callee is in the engine's loaded __text. A site is recorded when the call
 \ is published, because region bytes cannot be decoded soundly: a compiled word
 \ may carry inline non-instruction data.
@@ -1244,11 +1206,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ address carrier. A CODE carrier has four move-wide halves, shared DATA normally
 \ three; CODE includes the entry a `[: ... ;]` pushes and the target a `[']`
 \ pushes. Recorded where the compiler decides a literal is an address.
-\ DATA sites are recorded for the AOT capture: the captured blob lands at a
-\ different DP in the seeded engine, so a DATA chain needs rebasing there, while
-\ fixed-VA DATA needs nothing on snapshot restore.
-\ The map stores no kind: a consumer classifies a recorded value by its window's
-\ DATA and code spans, which cannot overlap, and refuses a value in neither.
+\ Fixed-VA DATA needs nothing on snapshot restore.
 \ Nothing recognises a chain from region bytes or from its value: a word may
 \ hold inline data and an integer any value.
 REGION 32 / constant ADDRMAP-BYTES
@@ -1268,20 +1226,17 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \
 \ Both views are declared on every target.
 \
-\ The rows are strictly ascending by offset, one per offset, so the reader yields
-\ a span's sites in bitmap order without sorting a live band. On x86-64
+\ The rows are strictly ascending by offset, one per offset. On x86-64
 \ `callmap-set` and `addrmap-set` insert a row at its offset's place, so a
 \ caller records sites in any order. `code-publish` and `reloc-maps-clear` remove
 \ the rows of a span. Kinds start at 1, so a zeroed row is no
 \ kind.
 \
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
-\ more with SITE-RC, and the reader refuses with the same status a count above
-\ SITE-CAP, a row at or after REGION, a row of no known kind and a row not above
-\ the one before it. SITE-RC lives here for the reason XTCELL-RC does.
+\ more with SITE-RC, which lives here for the reason XTCELL-RC does.
 \
 \ Snapshot relocation does not apply on x86-64: the region and DATA are mapped
-\ at fixed addresses there. The rows serve publication and the AOT capture.
+\ at fixed addresses there.
 CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
 SITE-N-CELL 8 + constant SITE-ROWS-OFF
 4 constant SITE-KIND-OFF
@@ -1292,22 +1247,17 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 103 constant SITE-RC
 
 \ Address-cell table: the DATA offset and kind of every cell declared
-\ to hold an address. XT cells hold JIT-region addresses, DATA-pointer cells
+\ to hold an address. XT cells hold code-region addresses, DATA-pointer cells
 \ addresses in the DATA heap. Only XT values need snapshot canonicalisation:
-\ region code moves on restore and DATA does not. Both kinds need the
-\ declaration for AOT capture, where the captured DATA window moves and a raw
-\ pointer into it would escape in sparse bytes. Membership is recorded where the
-\ cell's kind is decided, never inferred from its contents (an integer can hold
-\ any value).
+\ region code moves on restore and DATA does not. Membership is recorded where
+\ the cell's kind is decided, never inferred from its contents (an integer can
+\ hold any value).
 \ A scratch pointer cell is a DATA-pointer row that also carries bit 62: every
 \ save writes it as null and never reads it, so a reader that knows only bit 63
 \ treats it as a DATA pointer, never as an xt.
-\ Legacy layout: a count, then XTCELL-CAP tagged offset cells; bit 63 is the
-\ DATA-pointer kind and the low 62 bits the DATA offset. The engine appends an
-\ identical declaration only once and refuses one cell declared with two kinds.
-\ These coordinates freeze the original band and heap floor. New engines use
-\ ADDRESS-CELLS' header and inline boot rows in this band, then grow into mmap.
-\ XTCELL-CAP bounds only legacy host rows; it is not a runtime declaration limit.
+\ The engine appends an identical declaration only once and refuses one cell
+\ declared with two kinds. ADDRESS-CELLS' header and inline boot rows use this
+\ band, then grow into mmap.
 65536 constant XTCELL-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
 $4000000000000000 constant XTCELL-SCRATCH-TAG
@@ -1332,74 +1282,11 @@ $43A0 constant XT-CELL
    data-base XT-CELL + xt! ;
 ;package
 
-\ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to
-\ keep a mention of a created word made before the window opened a call.
-\ T0 is latched when the seed allocates its wordlists: later boot-run entries
-\ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
-package AOT-CELLS
-public
-$43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
-$43B8 constant B0-CELL           \ first address of the open window's code span
-;package
-
-\ The frames sit far above $7FF8, in a band no header growth can collide
-\ with. Snapshot capture requires
-\ zero compile depth; the loader clears the frames, which are live only inside a
-\ definition.
-\ The depth cell stays low: it is definition-scoped like VSP-CELL, LVD-CELL and
-\ EXITH-CELL, so the colon handlers and EM-ABORT-COMPILE-STATE zero it in the
-\ same run of `9 DATA <off> STR,` from one zeroed register; up here it would
-\ need a 64-bit literal and a second register inside a routine that clobbers x9
-\ only. Left out of that run, a definition that fails after an opener leaves the
-\ depth raised.
-package JIT-SNAP
-public
-\ One frame per open IF, BEGIN, WHILE or DO entry (`else` pops one and pushes
-\ one).
-CFSTK-DEPTH-MAX constant FRAMES
-24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
-$378 constant SP-CELL                               \ depth; low, beside TIER-CELL
-SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
-STK-OFF FRAMES FRAME-BYTES * + constant END
-;package
-
-\ The active source observer is one native stack frame per owned file.
-$2CA8 constant SOURCE-EXEC-CTX-CELL
-208 constant SOURCE-EXEC-FRAME-BYTES
-0 constant SX-LR
-8 constant SX-PREV
-16 constant SX-UNIT
-24 constant SX-SRC
-32 constant SX-LEN
-40 constant SX-BEFORE
-48 constant SX-AFTER
-56 constant SX-CONT
-72 constant SX-ARMED
-80 constant SX-EVAL
-88 constant SX-FLOOR
-96 constant SX-RFLOOR
-104 constant SX-PENDING
-112 constant SX-TICKET
-120 constant SX-DEPTH
-128 constant SX-RDEPTH
-160 constant SX-SUSPEND
-192 constant SX-POS
-
-\ The checker overlay's replay scope.
-\ replay-open saves the dictionary and scope cells here and sets
-\ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
-\ replay-close checks the live state against these cells, restores them and
-\ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
-\ than the saved one. The band is zero whenever no overlay is open. It is a
-\ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
-\ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
-\ either into a WIDN setter.
-\ A fixed offset, because source reads LATCH. The band
-\ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;
-\ DATA-CLAIMS refuses a USE-MAX that would outgrow the run.
+\ The checker overlay's replay scope: what an open overlay saved and restores
+\ (HW, the highest NDICT a replay record reached); all zero when none is open.
 package REPLAY-SCOPE
 public
-$4208 constant LATCH                                \ 0: no overlay open
+CB-END constant LATCH                               \ 0: no overlay open
 LATCH CELL + constant HW
 HW CELL + constant NDICT
 NDICT CELL + constant CP
@@ -1415,16 +1302,15 @@ USE-PKG-SAVE CELL + constant USE-WIDS
 USE-WIDS USE-MAX cells + constant END
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its
 \ order, saved and restored with the scope. It takes the cells after
-\ ENCLOSING, a second guarded band, which replay-close zeroes too.
+\ ENCLOSING, which replay-close zeroes too.
 $4310 constant ENCLOSING
 ;package
 
 \ While a part is open, the package it is a part of: that package's public
 \ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
-\ them before the part opened; all four are 0 when no part is open. They are
-\ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
-\ write them, so the Habu loop moves them through package-scope!. $42E8, the
-\ cell before them, is free.
+\ them before the part opened; all four are 0 when no part is open. Only the
+\ engine's own code and package-scope! write them. $42E8, the cell before them,
+\ is free.
 package ENCLOSING
 public
 $42F0 constant PUB
@@ -1449,84 +1335,8 @@ $4DD0 constant PKG-OUTSIDE-CELL
 \ The section in force: 0 host, 1 target; `host` and `target` write it.
 $4DD8 constant SECTION-CELL
 
-\ The protected DATA bands, as one table.
-\ Every engine's span guard walks this table. Each builder reads it twice, for
-\ the hull [LO, HI) of its bounding test and for the per-band interval tests, so
-\ one added row widens both. The zero-length row ends every walk, so no count
-\ can fall out of step with the rows.
-package DATA-BANDS
-
-create TAB
-   FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
-   PROT-REG-OFF ,                 PROT-REG-LEN ,
-   ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
-   SUSP-HOOK-OFF ,                SUSP-HOOK-LEN ,
-   NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
-   NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
-   SOURCE-EXEC-CTX-CELL ,         1 cells ,
-   REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
-   ENCLOSING:PUB ,                ENCLOSING:END ENCLOSING:PUB - ,
-   REPLAY-SCOPE:ENCLOSING ,       ENCLOSING:END ENCLOSING:PUB - ,
-   BODY-TEXT:BASE-CELL ,          4 cells ,
-   TXN-STATE-OFF ,                TXN-STATE-LEN ,
-   0 ,                            0 ,
-
-public
-
-: OFF ( n -- n )
-   {: ix:n :}
-   ix 2 * cells TAB + @ ;
-
-: LEN ( n -- n )
-   {: ix:n :}
-   ix 2 * 1 + cells TAB + @ ;
-
-: LO ( -- n )
-   0 OFF  1 BEGIN dup LEN 0 <> WHILE
-      dup OFF rot min swap  1+
-   REPEAT drop ;
-
-: HI ( -- n )
-   0 OFF 0 LEN +  1 BEGIN dup LEN 0 <> WHILE
-      dup OFF over LEN + rot max swap  1+
-   REPEAT drop ;
-
-;package
-
-JIT-SNAP:END constant PD-TABLE-OFF
+SNAP-RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-
-\ A definition compiled with the hook cell empty has its declaration as its row,
-\ recorded by the source owner. No engine code appends to this log. The claim at
-\ the end of checker.f records every logged declaration's row, then zeroes the
-\ slots and ADDR-CELL. The log is empty whenever user source runs and at every
-\ capture.
-\ A slot is four cells: the pending record (PEND-CELL), the open package's
-\ namespace record (PKG-REC-CELL, 0 outside a package), the signature's address
-\ and its length. The checker keys each row by the record's wordlist and that
-\ namespace record, read through `ptr-field`, so no record number crosses.
-\ Unguarded engine scratch, as the pre-trust table: the claim records rows
-\ without authority from it.
-\
-\ ADDR-CELL holds the log's address while it holds entries, else 0. The seed
-\ lays its bands out at other offsets, so the checker
-\ finds the log through this one fixed cell;
-\ an engine without the log reads 0, an empty log. Below $7FF8 for
-\ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
-\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free.
-package DECLARED-LOG
-public
-$4398 constant ADDR-CELL
-4096 constant CAP
-0  constant REC-OFF
-8  constant PKG-OFF
-16 constant SIG-A-OFF
-24 constant SIG-U-OFF
-32 constant SLOT                                   \ per-slot stride
-8  constant SLOTS-REL                              \ slots begin after the u64 count cell
-PD-TABLE-END constant OFF
-OFF SLOTS-REL + CAP SLOT * + constant END
-;package
 
 \ Rows (text offset, input-buffer offset or NONE) for the runs
 \ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
@@ -1537,9 +1347,8 @@ public
 16 constant ROW                     \ bytes per row
 -1 constant NONE
 ;package
-\ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
-\ engine-reserved state; DP-CHECK bounds the heap >= DATA-START.
-DECLARED-LOG:END constant DATA-START
+\ DATA-START: the user DP heap's floor (DP-CHECK); all below is the engine's.
+PD-TABLE-END constant DATA-START
 \ The bytes below a build's image where a routed header store marks its cell:
 \ DATA-START and the cell every such store sets.
 DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES

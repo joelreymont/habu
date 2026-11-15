@@ -20,6 +20,7 @@ variable BPA-RAW                    \ an undeclared raw storage cell, for the RA
 STRUCTURE bpa-rec FIELD x n FIELD y n ;STRUCTURE
 ENUM bpa-dir north south ;ENUM
 TYPED-VARIABLE BPA-RV bpa-rec       \ a pointer to a record, for the stored-pointee distances
+DEFLINEAR bpa-tok                   \ a linear type, for linear-family pointees
 
 \ Its own certification matters: the offset mark rides its published quantifier,
 \ so a null handed to it is a DATA-base pointer at the caller.
@@ -34,6 +35,12 @@ TYPED-VARIABLE BPA-RV bpa-rec       \ a pointer to a record, for the stored-poin
 \ base address, so it pairs with BPA-TV's pointee (CASE-DIST-INFERRED-OPERAND).
 : BPA-TVDIST BPA-TV - ;
 
+\ An inferred signature keeps the measured pointee open (CASE-ANY-POINTEE).
+: BPA-QI PTR>N ;
+
+\ A body that also fetches through the pointer publishes a one-cell pointee.
+: BPA-QR dup PTR>N drop @ drop ;
+
 package BASE-PTR-ARITH-TEST
 
 private
@@ -42,10 +49,10 @@ create DIAG-BUF 8192 allot
 8192 constant DIAG-CAP
 
 : ARM ( -- )
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
@@ -79,10 +86,10 @@ create DIAG-BUF 8192 allot
    S\" Declare the pointee this base address really reaches" ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : LACKS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
 : REFUSED-CODE ( ptr u8 n -- )   \ leaves the diagnostic armed for the reason assertions
@@ -418,25 +425,42 @@ create DIAG-BUF 8192 allot
    s" BPA-NDQ ( -- n ) BPA-HK BPA-NDIST" CERTIFIES
    s" BPA-DDQ ( -- n ) BPA-HK BPA-DDIST" CERTIFIES ;
 
-\ An address read as a number reads nothing through the pointer, so its pointee
-\ is any stored type: a record, an enum, a nullable or an option.
-: CASE-STORED-POINTEE ( -- )
-   s" a distance and PTR>N take a pointer to any stored type" T-LABEL
+\ PTR>N and a distance read nothing through the pointer, so they take a pointer
+\ to any type; no signature states a pointer to a scoped family or a view.
+: CASE-ANY-POINTEE ( -- )
+   s" a distance and PTR>N take a pointer to any type" T-LABEL
    s" BPA-RN ( ptr bpa-rec -- n ) PTR>N" CERTIFIES
    s" BPA-NN ( ptr nullable<u8> -- n ) PTR>N" CERTIFIES
    s" BPA-EN ( ptr bpa-dir -- n ) PTR>N" CERTIFIES
    s" BPA-ON ( ptr option<n> -- n ) PTR>N" CERTIFIES
    s" BPA-RR ( ptr bpa-rec ptr bpa-rec -- n ) -" CERTIFIES
-   s" BPA-RVD ( -- n ) BPA-RV BPA-NDIST" CERTIFIES ;
+   s" BPA-RVD ( -- n ) BPA-RV BPA-NDIST" CERTIFIES
+   s" BPA-QO ( ptr option<a> -- n ) PTR>N" CERTIFIES
+   s" BPA-DO3 ( ptr option<a> ptr option<a> -- n ) -" CERTIFIES
+   s" BPA-DO4 ( ptr option<a> -- n ) data-base -" CERTIFIES
+   s" BPA-DO5 ( ptr option<a> -- n ) data-base swap -" CERTIFIES
+   s" BPA-LN ( ptr option<bpa-tok> -- n ) PTR>N" CERTIFIES
+   s" BPA-QIO ( ptr option<a> -- n ) BPA-QI" CERTIFIES ;
 
-\ A byte written through a byte view could forge a value the record's fields
-\ type, so the view still refuses a pointer to one.
-: CASE-RECORD-BYTE-VIEW ( -- )
-   s" a byte view of a pointer to a record is still refused" T-LABEL
+: MISMATCH ( ptr u8 n -- )
    ARM
-   s" BPA-RBV ( ptr bpa-rec -- ptr u8 ) BYTE-VIEW" CHECK-CANDIDATE! 0 T=
+   CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-MISMATCH\"" HAS?
    DISARM ;
+
+\ A definition that declares `ptr a` may rely on `a` being closed and laid out,
+\ so its callers still pass it no open family.
+: CASE-DECLARED-POINTEE-CLOSED ( -- )
+   s" a declared ptr a still refuses an open family" T-LABEL
+   s" BPA-D2O ( ptr option<a> -- n ) BPA-NDIST" MISMATCH
+   s" BPA-QRO ( ptr option<a> -- ) BPA-QR" MISMATCH ;
+
+\ A byte written through a byte view could forge a value the record's fields
+\ or the family's slots type, so the view still refuses a pointer to one.
+: CASE-RECORD-BYTE-VIEW ( -- )
+   s" a byte view of a pointer to a record or a family is still refused" T-LABEL
+   s" BPA-RBV ( ptr bpa-rec -- ptr u8 ) BYTE-VIEW" MISMATCH
+   s" BPA-OBV ( ptr option<a> -- ptr u8 ) BYTE-VIEW" MISMATCH ;
 
 \ A base row matches only a base address's own pointee. An operand still being
 \ inferred -- a quotation's input, a signature-less word's input -- is not one,
@@ -610,7 +634,8 @@ public
    CASE-NULL-COMPARE
    CASE-NULL-DIFF
    CASE-NULL-DIST-FREE
-   CASE-STORED-POINTEE
+   CASE-ANY-POINTEE
+   CASE-DECLARED-POINTEE-CLOSED
    CASE-RECORD-BYTE-VIEW
    CASE-NULL-DIST-READ
    CASE-DIST-INFERRED-OPERAND

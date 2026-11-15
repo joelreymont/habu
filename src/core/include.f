@@ -31,8 +31,6 @@ PERSISTED-PTR-VARIABLE ROW-LENS
 variable ROW-CAP
 PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
-variable PREFIX-EPOCH
-variable PREFIX-CUT
 
 ;package
 
@@ -48,6 +46,7 @@ variable REQUIRE-SAVE-N
 variable REQUIRE-SAVE-BASE
 
 -1 INCLUDE-FD !
+-1 REQUIRE-SAVE-N !                                \ no snapshot in effect
 
 : INCLUDE-FALSE ( -- bool )
    0 0= 0= ;
@@ -71,19 +70,6 @@ variable REQUIRE-SAVE-BASE
 : REQUIRE-BOOT-LIMIT ( -- n )
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
-
-\ The loader's first callback cells are typed storage, whose generated
-\ accessors need TYPE-DECL's evaluator before REQUIRE-REG:MARK exists. Their
-\ source is closed here; INCLUDE-EVALUATE replaces this binding with the
-\ require rollback boundary once the registry is ready.
-using TYPE-DECL
-package INCLUDE-EVAL-BIND
-private
-: BOOT ( -- ) [: evaluate-closed ;] is TYPE-DECL:TDECL-EVAL-XT ;
-BOOT
-;package
--1 TDECL-EVAL-ARMED !
-;using
 
 \ An invocation that owns source bytes supplies both filesystem answers through
 \ this loader-local pair. A newly source-loaded target gets its own pair, so its
@@ -908,24 +894,7 @@ public
    REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
    REQUIRE-SAVE-BASE @ keep > if keep REQUIRE-SAVE-BASE ! then ;
 
-\ A core-prefix rewind can retire the registry beneath an evaluation mark.
-\ Its epoch distinguishes that deliberate cut from a malformed rollback mark;
-\ the cut is the surviving prefix to which the interrupted evaluation returns.
-: MARK ( -- n n ) REQUIRE-N @ PREFIX-EPOCH @ ;
-
-: ROLLBACK ( n n -- )
-   {: mark:n epoch:n :}
-   epoch PREFIX-EPOCH @ <> if
-      mark PREFIX-CUT @ min
-   else
-      mark
-   then
-   TRUNCATE ;
-
-: PREFIX-REWIND ( n -- )
-   TRUNCATE
-   REQUIRE-N @ PREFIX-CUT !
-   1 PREFIX-EPOCH +! ;
+: MARK ( -- n ) REQUIRE-N @ ;
 
 \ A failed require may have loaded a child in a reader or unit callback before
 \ entering evaluation. Those child definitions survive that failure; remove
@@ -948,13 +917,6 @@ public
    REQUIRE-BASE @ idx > if -1 REQUIRE-BASE +! then
    REQUIRE-SAVE-N @ idx > if -1 REQUIRE-SAVE-N +! then
    REQUIRE-SAVE-BASE @ idx > if -1 REQUIRE-SAVE-BASE +! then ;
-
-\ The caller's provisional row may already have died in a core-prefix rewind.
-\ A later row at the same index belongs to the new prefix epoch.
-: REMOVE-PROVISIONAL ( n n -- )
-   {: row:n epoch:n :}
-   epoch PREFIX-EPOCH @ <> row PREFIX-CUT @ >= and if exit then
-   row REMOVE ;
 
 \ Capture packs the live rows once; no process pointer enters the DATA block.
 \ An unchanged or discarded suffix keeps the prior block and DATA extent.
@@ -1056,9 +1018,13 @@ private
    CANON-BUF n TREE? 0= if 0 exit then
    n ;
 
+\ A target with no executable path, as Wasm, loads no source.
 : ENGINE-FIND ( -- n )
-   HB-TARGET-MACOS? if APPLE-EXE else s" /proc/self/exe" then
-   ENGINE-FIND-FOR ;
+   HB-TARGET-MACOS? if APPLE-EXE ENGINE-FIND-FOR exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      s" /proc/self/exe" ENGINE-FIND-FOR exit
+   then
+   s" include: no engine path on this target" INCLUDE-IO-RC die ;
 
 : ENGINE-INIT ( -- )
    ENGINE-READ @ 0= 0= if exit then
@@ -1075,12 +1041,6 @@ public
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
    CWD-RECORD ENGINE-BUF ENGINE-U @ ;
-
-\ A selected child executable uses this same fallback rule after it starts.
-\ CANON-BUF is scratch; callers copy the answer before resolving another path.
-: ENGINE-FOR$ ( ptr u8 n -- ptr u8 n )
-   ENGINE-FIND-FOR dup 0= if drop CWD$ exit then
-   CANON-BUF swap ;
 
 \ Override the fallback root; the caller restores the old one after its load.
 : ENGINE! ( ptr u8 n -- )
@@ -1311,30 +1271,8 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
 
-\ Generated source runs as a closed program, refused E-EVAL-RESIDUE for what it
-\ leaves.
-: INCLUDE-EVALUATE ( ptr u8 n -- )
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
-   [: 2dup evaluate-closed ;] catch {: rc:n :}
-   2drop
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
-
-\ Once REQUIRE-REG is ready, generated declarations also roll back its rows
-\ on failure. Stage builders without include.f leave the evaluator unarmed.
-\ The `is` target is qualified because parsing words do not resolve through
-\ using-imports.
-using TYPE-DECL
-
-package INCLUDE-EVAL-BIND
-private
-: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
-INSTALL
-;package
-;using
-
-\ A source load is also the publication boundary for an explicitly selected
-\ package unit. The continuation keeps the ordinary frame and scope behavior;
-\ callers may bind a unit importer after the complete loader has been loaded.
+\ Every source load runs through the bound runner. The ordinary one keeps the
+\ frame and scope behavior; a build binds its own once the loader has loaded.
 package SOURCE-UNIT
 private
 
@@ -1570,7 +1508,11 @@ CELL constant FR-NAMED
 14 cells constant FR-CTIME-SEC
 15 cells constant FR-CTIME-NS
 16 cells constant FR-STAMP-SIZE
-17 cells constant FR-PATH
+\ The transient schema mark the file's load took (SCHEMA-REG:TRANSIENT-MARK).
+17 cells constant FR-T-NODES
+18 cells constant FR-T-ROOTS
+19 cells constant FR-T-PARAMS
+20 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
 $1000 constant ROOM-MIN
@@ -1645,6 +1587,10 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-CTIME-SEC + CELL-VIEW !
    0 frame FR-CTIME-NS + CELL-VIEW !
    -1 frame FR-STAMP-SIZE + CELL-VIEW !
+   SCHEMA-REG:TRANSIENT-MARK {: nodes:n roots:n params:n :}
+   nodes frame FR-T-NODES + CELL-VIEW !
+   roots frame FR-T-ROOTS + CELL-VIEW !
+   params frame FR-T-PARAMS + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
@@ -1692,26 +1638,14 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
    INCLUDE-FALSE ;
 
-\ A stat64 buffer of this file's own: src/lib/fs.f, which owns the per-task
-\ one, loads after it.
-create STAT-BUF FS-ABI:STAT-BYTES allot
-
-: STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
-
-: STAT-REGULAR? ( -- bool )
-   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
-   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and  FS-ABI:S-IFREG = ;
-
 \ The open frame's stamp, from a stat of the path taken before the file is
-\ opened, so a change during the read leaves a stamp no later load matches. A
-\ path that is not a regular file keeps 0 0 -1: its bytes have no stamp.
+\ opened, so a change during the read leaves a stamp no later load matches.
 : STAMP! ( ptr u8 -- )
-   STAT-BUF stat64 0 < if exit then
-   STAT-REGULAR? 0= if exit then
+   COMPILE-READS:STAMP {: sec:n ns:n size:n :}
    TOP@ {: frame:ptr :}
-   FS-ABI:STAT-CTIME-SEC-OFF STAT-CELL@ frame FR-CTIME-SEC + CELL-VIEW !
-   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@ frame FR-CTIME-NS + CELL-VIEW !
-   FS-ABI:STAT-SIZE-OFF STAT-CELL@ frame FR-STAMP-SIZE + CELL-VIEW ! ;
+   sec frame FR-CTIME-SEC + CELL-VIEW !
+   ns frame FR-CTIME-NS + CELL-VIEW !
+   size frame FR-STAMP-SIZE + CELL-VIEW ! ;
 
 \ Refuses PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
 \ HOLD). A word's read finds its own file's frame held, or no frame; in a build,
@@ -1738,15 +1672,24 @@ public
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    SOURCE frame FR-SIZE + CELL-VIEW @ ;
 
-\ The active file's change time seconds, nanoseconds and size as STAMP! took
-\ them; 0 0 -1 for bytes READ-OS did not read from a regular file, as
-\ WITH-SUPPLIED's are.
+\ The active file's COMPILE-READS:STAMP as STAMP! took it; 0 0 -1 for bytes
+\ READ-OS did not read, as WITH-SUPPLIED's are.
 : ACTIVE-STAMP ( -- n n n )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
    frame FR-CTIME-SEC + CELL-VIEW @
    frame FR-CTIME-NS + CELL-VIEW @
    frame FR-STAMP-SIZE + CELL-VIEW @ ;
+
+\ Ends the transient schema nodes the active file's load made, keeping its
+\ loader's.
+: END-TYPES ( -- )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-T-NODES + CELL-VIEW @
+   frame FR-T-ROOTS + CELL-VIEW @
+   frame FR-T-PARAMS + CELL-VIEW @
+   SCHEMA-REG:TRANSIENT-RELEASE ;
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
@@ -1861,9 +1804,9 @@ private
    size frame FR-EVAL-SIZE + CELL-VIEW !
    first frame FR-EVAL-FIRST + CELL-VIEW !
    end frame FR-EVAL-END + CELL-VIEW !
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   REQUIRE-REG:MARK {: mark:n :}
    [: INTERPRET-SAVED-RANGE ;] catch {: rc:n :}
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then
+   rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then
    -1 frame FR-EVAL-OK + CELL-VIEW ! ;
 
 create RESIDUE-DIGIT 1 allot
@@ -1891,10 +1834,8 @@ create RESIDUE-DIGIT 1 allot
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
-\ so the body's `,` grid stops there.
-\ After a native build's handover that owner is the target's checker, which
-\ holds the pending record. No owner, or one that predates the slot, has no
-\ pending body.
+\ so the body's `,` grid stops there. No owner, or one that predates the slot,
+\ has no pending body.
 : BODY-CLOSE ( -- )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
    owner NULL-PTR = if exit then
@@ -1904,6 +1845,13 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close 0= if exit then
    close CLOSE-ACTION execute ;
 
+\ A file that ends with no definition open ends the transient schema nodes its
+\ definers built definitions from; a build ends them at the file's last piece.
+: TRANSIENT-END ( -- )
+   data-base BOOT:IMAGE-BASE-CELL + @ 0 <> if exit then
+   data-base PEND-CELL + @ 0 <> if exit then
+   END-TYPES ;
+
 \ The created body closes and the residue check runs inside the unit, so a runner's call
 \ returns only for an accepted file; each compiled part starts in host.
 : CALL-UNIT ( -- )
@@ -1911,7 +1859,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK ;]
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK TRANSIENT-END ;]
    SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
@@ -2074,12 +2022,12 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    {: a:ptr u:n path:ptr pathu:n known:bool :}
    a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   REQUIRE-REG:MARK {: row:n epoch:n :}
+   REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-STORE
    DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    INCLUDE-LOAD {: committed:bool rc:n :}
    rc 0 <> if
-      committed 0= if row epoch REQUIRE-REG:REMOVE-PROVISIONAL then
+      committed 0= if row REQUIRE-REG:REMOVE then
       rc throw
    then ;
 
@@ -2130,8 +2078,7 @@ public
 1 constant PARSED-PATH
 2 constant STACK-PATH
 
-: LOADER-KIND ( n n n -- n ) {: op:n rec:n entry:n :}
-   op 5 <> if NONE exit then
+: LOADER-KIND ( n -- n ) {: entry:n :}
    entry SOURCE-ORIGINAL-INCLUDE-ENTRY @ =
    entry SOURCE-ORIGINAL-REQUIRE-ENTRY @ = or if PARSED-PATH exit then
    entry SOURCE-ORIGINAL-INCLUDED-ENTRY @ =
@@ -2199,16 +2146,20 @@ public
 ;package
 
 \ A restricted discovery pass sees a fresh require/provided registry, so a tool's
-\ preloaded paths cannot dedup-hide a later user require.
+\ preloaded paths cannot dedup-hide a later user require. One snapshot is in
+\ effect at a time, since one pair is saved: a second would lose the first.
 
 : REQUIRE-SNAPSHOT ( -- )
+   REQUIRE-SAVE-N @ 0 >= if s" require: a registry snapshot is already in effect" INCLUDE-DIE then
    REQUIRE-N @ REQUIRE-SAVE-N !
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;
 
 : REQUIRE-RESTORE ( -- )
+   REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" INCLUDE-DIE then
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
-   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND ;
+   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND
+   -1 REQUIRE-SAVE-N ! ;
 
 package REQUIRE-REG
 
@@ -2230,17 +2181,17 @@ public
 : ENGINE-PROVIDES? ( ptr u8 n -- bool )
    ENGINE-KNOWN? ;
 
-\ A bundle carries the modules this engine does NOT have
-\ and states the ones it assumes. Stating the assumption is the bundle's half;
-\ checking it is the engine's, so a bundle built against a richer engine and run
-\ on a barer one refuses here, by name, instead of dying later on a missing word
-\ or - worse - loading a second copy of a module the engine already carries.
-: ?ENGINE-PROVIDES ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u ENGINE-PROVIDES? if exit then
-   INCLUDE-DIAG-RESET
-   s" bundle: this engine does not provide " INCLUDE-DIAG+
-   a u INCLUDE-DIAG+
-   INCLUDE-DIAG$ INCLUDE-DIE ;
+\ A file that builds for some targets only states them on its first code line,
+\ before its requires; on another target its load stops there.
+: ?TARGET ( bool -- )
+   if exit then
+   s" E-TARGET" REJECTION:OPEN
+   s" this file does not build for " REJECTION:EMIT-STR  HB-TARGET$ REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" the target test fails here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" build this file only for a target its test admits, or widen the test"
+   REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 
 ;using

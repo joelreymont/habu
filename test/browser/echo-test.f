@@ -1,8 +1,9 @@
 \ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
 \ runs test/browser/echo.f's module through src/lib/browser/turn.js
-\ (src/lib/browser/host.f); the module and files stay in the printed directory.
-\ bun and wasm-tools must be on PATH, so this
-\ is no row of the ordinary gate: test/wasm/device.f runs it, as does
+\ (src/lib/browser/host.f), and test/browser/stale.f's, whose hello states
+\ another turn protocol revision; the modules and files stay in the printed
+\ directory.
+\ test/wasm/device.f runs it, as does
 \ `bin/hb --load test/browser/echo-test.f` from the tree's root.
 
 require src/lib/string.f
@@ -14,11 +15,11 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test.f
 require test/wasm/harness.f
+require test/browser/turn-revision.f
 
 package BROWSER-ECHO-TEST
 private
 
-60000 constant DEADLINE-MS
 $10000 constant PAGE-BYTES
 4096 constant CAP
 CAP BUFFER: OUT
@@ -30,6 +31,8 @@ PATH-CAP BUFFER: DIR
 variable DIR-U
 PATH-CAP BUFFER: MOD
 variable MOD-U
+PATH-CAP BUFFER: STALE-MOD
+variable STALE-MOD-U
 PATH-CAP BUFFER: FILE
 DYNAMIC-BUFFER PAYLOAD u8
 
@@ -48,6 +51,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    a DIR u BYTE-COPY  u DIR-U !
    s" browser echo: module and files in " type  DIR u type cr
    DIR u s" echo.wasm" MOD FS:JOIN-PATH MOD-U !
+   DIR u s" stale.wasm" STALE-MOD FS:JOIN-PATH STALE-MOD-U !
    SMALL$ s" small.bin" FILE!
    LANDED$ s" landed.txt" FILE!
    REFUSED$ s" refused.txt" FILE!
@@ -62,7 +66,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ PROC-ARGV-RESET; answers its exit status, its stdout in OUT and its stderr in
 \ ERR.
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -200,7 +204,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    ;MATCH ;
 
 : ENDED-LINE ( ptr u8 n -- )
-   s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
+   s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 : TRAPPED-CASE ( -- )
    HOST-OPEN  s" trap" TYPED+  200 s" small.bin" ANSWER+  s" --pointer" 1 2 1 AT+
@@ -209,8 +213,10 @@ DYNAMIC-BUFFER PAYLOAD u8
    STARTED
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT OUT-U @ SB$ T$=
-   s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
    TRAP$ {: t:ptr u:n :}
+   s" trapped: the host names the fault kind the module recorded" T-LABEL
+   t u s" fault kind 102 at " STARTS-WITH? TTRUE
+   s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
    SB-RESET  t u LINE  t u ENDED-LINE  t u ENDED-LINE  t u ENDED-LINE
    ERR ERR-U @ SB$ T$= ;
 
@@ -229,6 +235,22 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" --fail: no request is outstanding" LINE
    ERR ERR-U @ SB$ T$= ;
 
+\ A hello one revision past the fixtures' ends the module before any other
+\ event, the host naming both revisions.
+: STALE-CASE ( -- )
+   s" test/browser/stale.f builds into a module" T-LABEL
+   s" test/browser/stale.f" STALE-MOD STALE-MOD-U @ WASM-HARNESS:BUILD 0 T=
+   s" stale: a hello of another revision ends the module, exit status 1" T-LABEL
+   PROC-ARGV-RESET
+   s" src/lib/browser/host-cli.mjs" ARG+  STALE-MOD STALE-MOD-U @ ARG+
+   HOST 1 T=
+   s" stale: the host names the module's revision and its own" T-LABEL
+   SB-RESET  s" the module follows turn protocol " SB-APPEND
+   TURN-REVISION:PROTOCOL 1+ FMT:SB-INT
+   s"  and this host turn protocol " SB-APPEND  TURN-REVISION:PROTOCOL FMT:SB-INT
+   10 SB-APPEND-C
+   ERR ERR-U @ SB$ T$= ;
+
 public
 
 : RUN ( -- )
@@ -242,6 +264,7 @@ public
    CHAINED-CASE
    TRAPPED-CASE
    FAILED-CASE
+   STALE-CASE
    T-REPORT ;
 
 ;package

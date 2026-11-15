@@ -97,8 +97,8 @@
 \ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
 \ whose body is asserted but whose clause is still a declaration. The rows are
 \ learned from the source, not listed, so library definers put no names in the
-\ engine; a definer whose product text is rendered and evaluated at load marks
-\ the statement's wordlist instead, leaving what that text defines to the run,
+\ engine; a definer that makes definitions at load, built or from evaluated text,
+\ marks the statement's wordlist instead, leaving what it defines to the run,
 \ while a `generates:` row and FUNCTION:'s declaration group are still read. A
 \ row is keyed by the checker's symbol id for the definer's name, so every
 \ spelling resolves through the checker's scope chain. A rewound scope
@@ -253,9 +253,6 @@ variable REASON-U
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
-variable BASE-LINE
-variable BASE-COL
-variable BASE-BYTE
 PTR-VARIABLE STR-PREV-A
 variable STR-PREV-U
 PTR-VARIABLE STR-LAST-A
@@ -335,13 +332,12 @@ CSR-RESET
 : CSR-HIT ( n n n -- )
    {: prev:n start:n end:n :}
    CSR-SUBJ @ 0= IF EXIT THEN
-   BASE-BYTE @ {: b:n :}
-   CSR-STATE @ CSR-SPACE =  CSR-TOK @ 0 <  and IF b start + CSR-TOK ! EXIT THEN
+   CSR-STATE @ CSR-SPACE =  CSR-TOK @ 0 <  and IF start CSR-TOK ! EXIT THEN
    CSR-HIT? IF CSR-DONE CSR-STATE ! EXIT THEN
    CSR-STATE @ CSR-WAIT <> IF EXIT THEN
-   CSR-AT @  b end +  > IF EXIT THEN
-   CSR-AT @  b prev +  < IF CSR-DONE CSR-STATE ! EXIT THEN
-   b start + CSR-TOK !
+   CSR-AT @ end > IF EXIT THEN
+   CSR-AT @ prev < IF CSR-DONE CSR-STATE ! EXIT THEN
+   start CSR-TOK !
    CSR-AT @ CSR-TOK @ > IF CSR-PART ELSE CSR-SPACE THEN CSR-STATE ! ;
 
 \ A cursor in the opener offers nothing, nor does one still waiting, past the
@@ -359,7 +355,7 @@ CSR-RESET
    {: src:n :}
    CSR-SUBJ @ 0= IF EXIT THEN
    CSR-HIT? 0= IF EXIT THEN
-   CSR-TOK @  BASE-BYTE @ src +  <> IF EXIT THEN
+   CSR-TOK @ src <> IF EXIT THEN
    CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN
    BODY-U @ + CSR-BODY !
    CSR-PLACED CSR-STATE ! ;
@@ -391,26 +387,13 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 : SOURCE@ ( -- ptr u8 )
    SOURCE-A @ ;
 
-: BASE-RESET ( -- )
-   1 BASE-LINE !
-   1 BASE-COL !
-   0 BASE-BYTE ! ;
-
 : SOURCE! ( ptr u8 n -- )
-   BASE-RESET
    SOURCE-U !
    SOURCE-A !
    0 TOKEN-BYTE !  0 REASON-U ! ;
 
 : REASON! ( ptr u8 n -- )
    REASON-U !  REASON-A ! ;
-
-: SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
-   a u SOURCE!
-   line BASE-LINE !
-   col BASE-COL !
-   byte BASE-BYTE !
-   byte TOKEN-BYTE ! ;
 
 \ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
 8 constant FLAG-CAP
@@ -443,7 +426,7 @@ variable FLAG-N
    SKIP-WS
    SCAN-I @ SOURCE-U @ >= if prev SOURCE-U @ dup CSR-HIT SOURCE@ 0 exit then
    SCAN-I @ TOKEN-START !
-   BASE-BYTE @ SCAN-I @ + TOKEN-BYTE !
+   SCAN-I @ TOKEN-BYTE !
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
       SCAN-C+ drop
    repeat
@@ -452,7 +435,7 @@ variable FLAG-N
 
 : STOP-AT ( ptr u8 n -- )
    {: at:ptr code:n :}
-   at SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
+   at SOURCE@ - TOKEN-BYTE !
    code throw ;
 
 \ The scan stops at the statement it is in, at its opener: the top-level token
@@ -510,7 +493,7 @@ variable FLAG-N
    a STR-LAST-A !
    u STR-LAST-U !
    kind STR-LAST-KIND !
-   raw SOURCE@ - BASE-BYTE @ + STR-LAST-AT !
+   raw SOURCE@ - STR-LAST-AT !
    STR-LAST-AT @ rawu + STR-LAST-END ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
@@ -581,9 +564,9 @@ variable STR-DEC-TURN
 \ A body token is looked up among the live locals, byte for byte, after
 \ comments and before every keyword but `;`. Each body reader resets the table;
 \ a block's end retires its locals.
-LOC-RECS TYPED-BUFFER LOCAL-A ptr u8
-LOC-RECS TYPED-BUFFER LOCAL-U n
-LOC-RECS TYPED-BUFFER LOCAL-D n               \ the block depth that declared it
+DYNAMIC-BUFFER LOCAL-A ptr u8
+DYNAMIC-BUFFER LOCAL-U n
+DYNAMIC-BUFFER LOCAL-D n                      \ the block depth that declared it
 variable LOCAL-N
 variable LOCAL-DEPTH                          \ blocks open, counted while a local lives
 
@@ -597,11 +580,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    0 0= 0= ;
 
 \ A file whose first two bytes are `#!` names its interpreter on that line, and
-\ the loader reads the line as a comment: a token at the first byte of scanned
-\ bytes that start their file.
+\ the loader reads the line as a comment: a token at the source's first byte.
 : SHEBANG? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   BASE-BYTE @ 0<>  a SOURCE@ <>  or  u 2 <  or IF 0 0= 0= EXIT THEN
+   a SOURCE@ <>  u 2 <  or IF 0 0= 0= EXIT THEN
    a c@ $23 =  a 1 + c@ $21 =  and ;
 
 \ The byte that ends the comment a token opens, as the loader reads it: the
@@ -678,13 +660,13 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : BODY$ ( -- ptr u8 n )
    BODY-U @ 1 max BODY-BUF-RESERVE
    BODY-ROWS @ 2 * 1 max BODY-ROW-RESERVE
-   0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ DIAG-MAP!
+   0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ REJECTION:MAP!
    0 BODY-BUF BODY-U @ ;
 
 \ The body holds no closer, so the checker is told where it stands and refuses
 \ a structure still open there.
 : DEF-BODY$ ( -- ptr u8 n )
-   BODY$  TOKEN-A @ TOKEN-U @ DIAG-CLOSER! ;
+   BODY$  TOKEN-A @ TOKEN-U @ REJECTION:CLOSER! ;
 
 \ The signature ahead of the scan, read as the engine reads a definition head's:
 \ from its `(` through its `)`, and whether one opens there. The scan passes it.
@@ -965,7 +947,6 @@ variable SEALS-N
       HB-TARGET-LINUX-KERNEL? >GUARD EXIT
    THEN
    a u s" HB-TARGET-WASM?" STR=CI IF HB-TARGET-WASM? >GUARD EXIT THEN
-   a u s" HB-TARGET-KNOWN?" STR=CI IF HB-TARGET-KNOWN? >GUARD EXIT THEN
    GUARD-NONE ;
 
 \ `if`, `else` and `then` on the straight line, true when the token is one. The
@@ -1034,6 +1015,7 @@ variable SEALS-N
 
 : BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [']" STR=CI IF 0 0= EXIT THEN
+   a u s" postpone" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 
 : OPERAND ( -- ptr u8 n )
@@ -1049,11 +1031,10 @@ variable SEALS-N
 : LOCAL-TOKEN? ( -- bool )
    TOKEN-A @ TOKEN-U @ LOCAL? ;
 
-\ The engine refuses a live local past its LOC-RECS records, and the checker
-\ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
-\ only stops recording.
 : LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   LOCAL-N @ LOC-RECS >= IF EXIT THEN
+   LOCAL-N @ 1 + LOCAL-A-RESERVE
+   LOCAL-N @ 1 + LOCAL-U-RESERVE
+   LOCAL-N @ 1 + LOCAL-D-RESERVE
    0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
    LOCAL-N @ LOCAL-U !
    a LOCAL-N @ LOCAL-A !
@@ -1509,6 +1490,7 @@ CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 
 : DEFER-AT ( ptr u8 n n -- )
    {: a:ptr u:n why:n :}
+   FFI:SKIP-FUNCTION
    -1 DEFER-SEEN !
    DEFER-REPORT @ IF a u why REPORT-STRETCH THEN ;
 
@@ -1532,8 +1514,8 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run,
 \ 0 refused. In MULTI-ERR mode a refusal, rejected (0) or uncheckable (1),
 \ RETURNS 0 instead of throwing: the checker has rendered it, counted it in
-\ MULTI-ERR-N, which keeps the run failing, and recorded the declared signature
-\ (no-cascade), so the scan continues at the next definition.
+\ REJECTION:TALLY, which keeps the run failing, and recorded the declared
+\ signature (no-cascade), so the scan continues at the next definition.
 \ The verdict is answered rather than swallowed because a created effect is a
 \ fact about a definition the checker did not refuse: a refused body records
 \ nothing.
@@ -1712,7 +1694,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    pkgu 0= IF false EXIT THEN
    pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
 
-\ A compile-time action inside the current definition can change the tier or
+\ A compile-time action inside the current definition can change the compiler or
 \ replace a checker before its later trusted tick. The source scan does not run
 \ that action, so this definition and the following source lose the answer.
 : TICK-BODY-STEP ( -- )
@@ -1838,9 +1820,6 @@ TRUSTED: NAMES-CHECK ( ptr u8 n ptr u8 n -- )
 TRUSTED: NAMED-USE ( ptr u8 n -- )
    CHECKER-NAMED-USE ;
 
-: CAST-TRUST ( -- bool )
-   DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
-
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
 \ definition only once its body is checked, a storage definition once its type
@@ -1869,8 +1848,8 @@ public
 \ is in, named as its packets name it, and whether that is the supplied bytes.
 \ This throws E-DUP-DEFINITION, which stops the scan as the duplicate stops the
 \ load, and DUPLICATE answers the name. A word installed in its place that
-\ returns has reported the duplicate: the scan counts it in MULTI-ERR-N, as a
-\ refused definition, skips the definition and goes on.
+\ returns has reported the duplicate: the scan counts it in REJECTION:TALLY, as
+\ a refused definition, skips the definition and goes on.
 defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 
 \ What a reported definition is, as the path that declared it knows it: a word
@@ -2054,31 +2033,31 @@ ENGINE-TARGET-INIT
    {: s:n e:n :}
    TOP-CUR-A @ TOP-CUR-U @ s" :" STR=CI
    TOP-CUR-A @ TOP-CUR-U @ s" kernel:" STR=CI or
-   s BASE-BYTE @ + DEF-NAME-BYTE @ = and
-   e BASE-BYTE @ + DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
+   s DEF-NAME-BYTE @ = and
+   e DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
 
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s e COLON-NAME-USE? IF EXIT THEN
-   s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
+   s e sym ON-BINDING
    v -2 <= IF
       -2 v - PRIM-TARGET drop {: path:ptr pathu:n at:n end:n :}
-      s BASE-BYTE @ + e BASE-BYTE @ +
+      s e
       path pathu at end sym v ON-USE
       EXIT
    THEN
    v 0= IF
       sym ENGINE-TARGET {: path:ptr pathu:n at:n end:n found:bool :}
       found IF
-         s BASE-BYTE @ + e BASE-BYTE @ +
+         s e
          path pathu at end sym -1 ON-USE
          EXIT
       THEN
    THEN
    v VISIT-IN? IF
-      s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE
+      s e v VISIT-PATH  ds de sym v ON-USE
    ELSE
-      s BASE-BYTE @ +  e BASE-BYTE @ +  NULL$ 0 0 sym -1 ON-USE
+      s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
@@ -2096,7 +2075,7 @@ DUPLICATE-INIT
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    {: path:ptr pathu:n :}
    TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
-   1 MULTI-ERR-N +! ;
+   1 REJECTION:TALLY +! ;
 
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
@@ -2364,9 +2343,8 @@ DYNAMIC-BUFFER NOM-TAIL u8
    REPEAT drop
    0 NOM-TAIL u ;
 
-: CAST-DEFINED ( bool n n -- )
-   {: kept:bool at:n u:n :}
-   kept 0= IF EXIT THEN
+: CAST-DEFINED ( n n -- )
+   {: at:n u:n :}
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
 : RECORD-DEFTYPE ( -- )
@@ -2374,17 +2352,17 @@ DYNAMIC-BUFFER NOM-TAIL u8
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
-   MULTI-ERR-N @ {: refused:n :}
+   REJECTION:TALLY @ {: refused:n :}
    tail tailu name nameu CHECKER-DEFFAMILY
-   MULTI-ERR-N @ refused <> IF EXIT THEN   \ a refused family declares no converters
+   REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
-   CAST-TRUST
+   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
    DISARM
    at nameu CAST-DEFINED
    name nameu tail tailu DTC-BUILD-OUT
    DTC-NAME$ at nameu ARM
-   CAST-TRUST
+   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
    DISARM
    at nameu CAST-DEFINED ;
 
@@ -2622,14 +2600,14 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
-: RECORD-CWORK-BUFFER ( -- )
+: RECORD-BYTE-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
-   type typeu count countu name nameu CHECKER-DEFCWORK-BUFFER
+   type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
@@ -2642,6 +2620,15 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
+   DISARM
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+
+: RECORD-SLOT ( -- )
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF EXIT THEN
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu at nameu ARM
+   type typeu name nameu CHECKER-DEFSLOT
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
@@ -2678,37 +2665,45 @@ variable STG-TYPE-U
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
    at TOKEN-BYTE !  nameu DUPLICATE!  false ;
 
-\ Whether none of ARENA's four words NAME derives is taken in the checker's
+\ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
 : ARENA-WORDS-FREE? ( ptr u8 n n -- bool )
    {: name:ptr nameu:n at:n :}
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-PTR" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-ACT" at ARENA-WORD-FREE? ;
+   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? ;
+
+\ Whether Q's private section, which the qualified NAME Q:TAIL never writes,
+\ holds no TAIL+SFX; NAME is read from byte AT.
+: ARENA-PRIVATE-FREE? ( ptr u8 n ptr u8 n n -- bool )
+   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+   name nameu CHECKER-QUALIFIED? drop
+   CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
+   wid 0= IF true EXIT THEN
+   SB-RESET  CHECKER-QTAIL$ SB-APPEND  sfx sfxu SB-APPEND
+   SB$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
+   at TOKEN-BYTE !  nameu DUPLICATE!  false ;
 
 \ ARENA's row asks the definer's questions in the order its run asks them and
-\ registers the four words; without it the rest of the source defers to the run.
+\ registers both words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   name nameu CHECKER-QUALIFIED? IF
-      name nameu name nameu STG-QUALIFIED-NAME CHECKER-STORAGE-REFUSE EXIT
-   THEN
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE = IF
-      name nameu name nameu STG-NO-PACKAGE CHECKER-STORAGE-REFUSE EXIT
-   THEN
    name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
-   mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
-   pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
-   true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
-   pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
-   rc 0 <> IF rc throw THEN
-   0= IF EXIT THEN
+   name nameu CHECKER-QUALIFIED? IF
+      name nameu s" -NEW" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
+      name nameu s" -NEW-DISPOSE" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
+   ELSE
+      mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
+      pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
+      true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
+      pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
+      rc 0 <> IF rc throw THEN
+      0= IF EXIT THEN
+   THEN
    type typeu CHECKER-ARENA-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
    THEN drop
@@ -2749,7 +2744,7 @@ variable STG-TYPE-U
       i 2 * BODY-ROW @ at <= IF drop i THEN
    loop
    {: row:n :}
-   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ -  BASE-BYTE @ + ;
+   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ - ;
 
 \ A refusal stops at the name, at the field the checker refuses or, with no
 \ field, at END-VALUE-RECORD; a checker refusal's message is its reason.
@@ -2847,7 +2842,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    sym 0= IF EXIT THEN
    sym ENGINE-ORIGIN:TARGET
    {: path:ptr pathu:n start:n end:n name:ptr nameu:n found:bool :}
-   found IF at BASE-BYTE @ - dup u + sym 0 0 0 USE-SEEN THEN ;
+   found IF at dup u + sym 0 0 0 USE-SEEN THEN ;
 
 \ A definer's own `generates:` row declares the text its calls render: the row
 \ this scan read or, for a definer it never read, the engine's. A wrapper has
@@ -3376,33 +3371,10 @@ variable FILE-USE
    name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
    sig sigu true sym DEFINER-ADD ;
 
-\ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` makes NAME from its
-\ declaration group with the declarer's rewrites: `f32` is `r` on either side
-\ and an `i32` result is a cell. The group is read raw: NEXT-SCAN skips it as a
-\ comment. The effect is rebuilt in FFI-SIG, not BODY-BUF, which holds only
-\ runs read from the source. Whether the scan accounts for the declared word
-\ waits for the `;FUNCTION` that renders it (FFI-CLOSER?): it does when it kept
-\ the declaration or refused it as a duplicate, where the load stops; a refused
-\ effect leaves the word to the run.
-variable FFI-OUT
+\ FFI's declaration machine reads `FUNCTION: … ;FUNCTION` from the raw tokens
+\ fed to it. FFI-SIG holds the effect: BODY-BUF holds only runs of the source.
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
-TYPED-VARIABLE FFI-GROUP bool
-
-16 constant FFI-IN-CAP                      \ the declarer's input cap
-variable FFI-IN-N
-variable FFI-OUT-N
-TYPED-VARIABLE FFI-OUT-FP bool
-TYPED-VARIABLE FFI-PTR bool                 \ the input read last is `ptr`, its pointee next
-TYPED-VARIABLE FFI-UNREAD bool              \ the load refuses the effect before any clause
-FFI-IN-CAP TYPED-BUFFER FFI-KIND n          \ an input's kind
-FFI-IN-CAP TYPED-BUFFER FFI-SARG n          \ its STRUCT-ARG bytes, 0 for none
-FFI-IN-CAP TYPED-BUFFER FFI-WRIT bool       \ a write clause names it
-FFI-IN-CAP TYPED-BUFFER FFI-REGS n          \ the plan's places (FFI-STAGING), unread
-FFI-IN-CAP TYPED-BUFFER FFI-PAYS n          \ and its copies', unread
-variable FFI-RES                            \ the STRUCT-RESULT bytes, 0 for none
-TYPED-VARIABLE FFI-VAR bool                 \ a VARIADIC clause was read
-TYPED-VARIABLE FFI-CLAUSES bool             \ the group's clauses are still checked
 variable FFI-LIT-N                          \ literals read last, at most two:
 variable FFI-LIT-A                          \ the older
 variable FFI-LIT-B                          \ and the newer
@@ -3416,178 +3388,59 @@ variable FFI-LIT-B                          \ and the newer
    32  at u + FFI-SIG  c!
    at u + 1 + FFI-SIG-U ! ;
 
-: FFI-IN-KIND ( ptr u8 n -- n )
+\ A call into FFI's declaration machine placed at the scan's token A U, which
+\ stands in as the token read last until it returns or throws.
+: FFI-AT ( R [ R -- S ] ptr u8 n -- S )
    {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FFI:K-POINTER EXIT THEN
-   a u s" r" CORE-STR= IF FFI:K-FLOAT EXIT THEN
-   a u s" f32" CORE-STR= IF FFI:K-FLOAT32 EXIT THEN
-   FFI:K-VALUE ;
+   SRCLOC:TOKEN$ {: oa:ptr ou:n :}
+   a u SRCLOC:TOKEN!
+   a SOURCE@ - TOKEN-BYTE !
+   [: oa ou SRCLOC:TOKEN! ;] finally ;
 
-
-\ An input the declarer refuses at the effect, a `ptr` over any pointee but
-\ `u8` or one past the input cap, leaves the group's clauses unread.
-: FFI-INPUT ( ptr u8 n -- )
+: RECORD-FFI-FUNCTION ( ptr u8 n -- )
    {: a:ptr u:n :}
-   FFI-PTR @ IF
-      false FFI-PTR !
-      a u s" u8" CORE-STR= 0= IF true FFI-UNREAD ! THEN
-      EXIT
-   THEN
-   FFI-IN-N @ {: i:n :}
-   i 1+ FFI-IN-N !
-   i FFI-IN-CAP >= IF true FFI-UNREAD ! EXIT THEN
-   a u s" ptr" CORE-STR= FFI-PTR !
-   a u FFI-IN-KIND i FFI-KIND !
-   0 i FFI-SARG !  false i FFI-WRIT ! ;
-
-
-: FFI-OUTPUT ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   FFI-OUT-N @ 0= IF a u s" r" CORE-STR= a u s" f32" CORE-STR= or FFI-OUT-FP ! THEN
-   1 FFI-OUT-N +! ;
-
-
-: FFI-TOKEN ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u s" --" CORE-STR= IF
-      FFI-PTR @ IF true FFI-UNREAD ! THEN
-      -1 FFI-OUT !
-   ELSE
-      FFI-OUT @ 0<> IF a u FFI-OUTPUT ELSE a u FFI-INPUT THEN
-   THEN
-   a u s" f32" CORE-STR= IF s" r" FFI-APPEND EXIT THEN
-   FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
-   a u FFI-APPEND ;
-
-: FFI-SIGNATURE ( -- ptr u8 n )
-   NEXT-RAW s" (" CORE-STR= 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
-   1 FFI-SIG-RESERVE                          \ an empty group answers a string in the row
-   0 FFI-SIG-U !
-   0 FFI-OUT !
-   0 FFI-IN-N !  0 FFI-OUT-N !  false FFI-OUT-FP !  false FFI-PTR !
-   false FFI-UNREAD !  0 FFI-RES !  false FFI-VAR !  false FFI-CLAUSES !
-   0 FFI-LIT-N !
-   BEGIN
-      NEXT-RAW
-      dup 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
-      2dup s" )" CORE-STR= IF 2drop 0 FFI-SIG FFI-SIG-U @ EXIT THEN
-      FFI-TOKEN
-   AGAIN ;
-
-: RECORD-FFI-FUNCTION ( -- )
-   NEXT-SCAN TOKEN-BYTE @
-   {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu NAME-DECLARED
-   NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
-   FFI-SIGNATURE {: sig:ptr sigu:n :}
+   [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
+      FFI:READ-FUNCTION ;] a u FFI-AT
+   {: name:ptr nameu:n :}
+   name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
-   name nameu at REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
+   name nameu NAME-DECLARED
+   name nameu at REFUSE-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
+   0 FFI-SIG-U !
+   [: FFI-APPEND ;] FFI:DECLARED-TEXTS
+   0 FFI-SIG FFI-SIG-U @ {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
-   dup FFI-GROUP !
-   dup FFI-UNREAD @ 0= and FFI-OUT @ 0<> and FFI-CLAUSES !
-   IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
+   IF name nameu sig sigu at DEF-WORD DEFINED-HERE
+   ELSE FFI:SKIP-FUNCTION THEN ;
 
 : FFI-CLOSER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u s" ;FUNCTION" STR=CI FFI-GROUP @ and ;
+   a u s" ;FUNCTION" STR=CI ;
 
 : FFI-LITERAL ( ptr u8 n -- )
    {: a:ptr u:n :}
-   FFI-CLAUSES @ 0= IF EXIT THEN
    a u num-parse {: v:n flt:bool num:bool :}
    num flt 0= and 0= IF 0 FFI-LIT-N ! EXIT THEN
    FFI-LIT-B @ FFI-LIT-A !  v FFI-LIT-B !
    FFI-LIT-N @ 1+ 2 min FFI-LIT-N ! ;
 
-: FFI-STOP ( -- ) E-FFI-SYNTAX STATEMENT-STOP ;
-
-: FFI-OPERANDS? ( n -- bool )
-   {: k:n :}
-   FFI-LIT-N @ k >= IF true EXIT THEN
-   false FFI-CLAUSES !
-   false ;
-
-: FFI-INPUT? ( n -- bool )
-   {: i:n :}
-   i 0 >= i FFI-IN-N @ < and ;
-
-: FFI-DEST ( -- n ) FFI-IN-N @ 1- ;
-
-: FFI-UNSTRUCT ( n -- )
-   {: i:n :}
-   i FFI-SARG @ 0<> IF FFI-STOP THEN
-   FFI-RES @ 0<> i FFI-DEST = and IF FFI-STOP THEN ;
-
-: FFI-ANY-SARG? ( -- bool )
-   FFI-IN-N @ 0 ?do
-      i FFI-SARG @ 0<> IF true unloop EXIT THEN
-   loop
-   false ;
-
-
-\ `idx len WRITES-BYTES`, `idx src WRITES-ARG`: idx is no struct clause's input.
-: FFI-WRITES ( -- )
-   2 FFI-OPERANDS? 0= IF EXIT THEN
-   FFI-LIT-A @ {: i:n :}
-   i FFI-INPUT? 0= IF EXIT THEN
-   i FFI-UNSTRUCT
-   true i FFI-WRIT ! ;
-
-
-: FFI-VARIADIC ( -- )
-   FFI-RES @ 0<> FFI-ANY-SARG? or IF FFI-STOP THEN
-   true FFI-VAR ! ;
-
-
-\ `idx bytes STRUCT-ARG`.
-: FFI-STRUCT-ARG ( -- )
-   2 FFI-OPERANDS? 0= IF EXIT THEN
-   FFI-LIT-A @ FFI-LIT-B @ {: i:n bytes:n :}
-   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
-   FFI-VAR @ FFI-OUT-FP @ or IF FFI-STOP THEN
-   bytes 0 <= IF FFI-STOP THEN
-   i FFI-INPUT? 0= IF FFI-STOP THEN
-   i FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
-   i FFI-WRIT @ IF FFI-STOP THEN
-   i FFI-UNSTRUCT
-   bytes i FFI-SARG ! ;
-
-
-\ `bytes STRUCT-RESULT`.
-: FFI-STRUCT-RESULT ( -- )
-   1 FFI-OPERANDS? 0= IF EXIT THEN
-   FFI-LIT-B @ {: bytes:n :}
-   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
-   FFI-RES @ 0<> FFI-VAR @ or IF FFI-STOP THEN
-   bytes 0 <= IF FFI-STOP THEN
-   FFI-OUT-N @ 0<> FFI-IN-N @ 0= or IF FFI-STOP THEN
-   FFI-DEST FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
-   FFI-DEST FFI-WRIT @ IF FFI-STOP THEN
-   FFI-DEST FFI-SARG @ 0<> IF FFI-STOP THEN
-   bytes FFI-RES ! ;
-
-
 : FFI-CLAUSE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   FFI-CLAUSES @ 0= IF EXIT THEN
    a u TOKEN-TAIL {: t:ptr tu:n :}
-   t tu s" STRUCT-ARG" STR=CI IF FFI-STRUCT-ARG EXIT THEN
-   t tu s" STRUCT-RESULT" STR=CI IF FFI-STRUCT-RESULT EXIT THEN
-   t tu s" VARIADIC" STR=CI IF FFI-VARIADIC EXIT THEN
-   FFI-WRITES ;
-
-\ A declaration with a struct clause is planned by the declarer's rule over its
-\ C arguments, every input but a STRUCT-RESULT destination; past it the load
-\ refuses the declaration (E-FFI-ARITY) before publishing it.
-: FFI-STAGING ( -- )
-   FFI-CLAUSES @ 0= IF EXIT THEN
-   FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
-   FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
-   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI:STRUCT-FITS?
-   0= IF E-FFI-ARITY STATEMENT-STOP THEN ;
+   FFI-LIT-N @ {: lits:n :}
+   t tu s" STRUCT-ARG" STR=CI IF
+      lits 2 < IF FFI:SKIP-FUNCTION EXIT THEN
+      FFI-LIT-A @ FFI-LIT-B @ [: FFI:SET-STRUCT-ARG ;] a u FFI-AT EXIT
+   THEN
+   t tu s" STRUCT-RESULT" STR=CI IF
+      lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
+      FFI-LIT-B @ [: FFI:SET-STRUCT-RESULT ;] a u FFI-AT EXIT
+   THEN
+   t tu s" VARIADIC" STR=CI 0= IF EXIT THEN
+   lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
+   FFI-LIT-B @ [: FFI:SET-VARIADIC ;] a u FFI-AT ;
 
 \ The library's storage definers are words, not keywords: a package's word of
 \ the spelling, or a global one an `undefine` made room for, is the word the
@@ -3629,8 +3482,8 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
 \ library word's code. An export keeps its source's tail, so only a token whose
 \ tail is the word's name, in any case, can bind it. A live export's record
 \ runs that code; one this scan's replay made has none, so its symbol is
-\ followed to the word it names, the library word only when the global word's
-\ newest record still runs its code.
+\ followed to the word its package and tail name, the library word only when
+\ that word's newest record still runs its code.
 \ Known gap: an alias exported before its source is undefined, redefined or
 \ not, is followed to the current global word, so the check can certify a use
 \ the load refuses.
@@ -3644,36 +3497,33 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
    sym 0= IF false EXIT THEN
    sym SYM-SOURCE {: src:n :}
    src sym = IF false EXIT THEN
-   src SYM-IDENTITY drop 2swap nip {: tail:ptr tailu:n pkgu:n :}
-   pkgu 0<> tailu 0= or IF false EXIT THEN
-   tail tailu XREF-FIND {: word:ptr :}
+   src SYM-IDENTITY drop {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   tailu 0= IF false EXIT THEN
+   pkgu 0<> IF pkg pkgu tail tailu QUAL-SPELLING
+   ELSE tail tailu THEN
+   XREF-FIND {: word:ptr :}
    word XREF-FOUND? 0= IF false EXIT THEN
    word XREF-START code = ;
 
-\ FUNCTION:'s clauses sit between a group and its `;FUNCTION`. A token is a
-\ clause only where the load's lookup binds it to the declarer's word, read as
-\ the storage definers are (LIBRARY-DEFINER?); a re-export of it is the clause.
-\ A clause is the declaration's syntax, not a call, so the check needs no
-\ runtime that defines it. Struct clauses are held to the declarer's rules:
-\ the code the load throws is the refusal here. A write clause is read only for
-\ the struct clause its target conflicts with and VARIADIC for its presence;
-\ their other rules stay the load's. An operand is established only as a
-\ literal num-parse takes, read at top level right before the clause. Any other
-\ operand, or an effect the load refuses, leaves the group's remaining clauses
-\ to the load. Nothing runs.
+\ src/lib/task.f loads after this file, so a TASK definer's code is read where
+\ its row is reached; Q is its qualified name.
+: TASK-DEFINER? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n q:ptr qu:n name:ptr nameu:n :}
+   a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
+   q qu XREF-FIND {: rec:ptr :}
+   rec XREF-FOUND? 0= IF false EXIT THEN
+   a u rec XREF-START name nameu LIBRARY-DEFINER? ;
+
+\ A token is a clause only where the load's lookup binds it to the declarer's
+\ word (LIBRARY-DEFINER?); operands are literals read right before it.
 variable STRUCT-ARG-XT s" STRUCT-ARG" STRUCT-ARG-XT LIBRARY-XT!
 variable STRUCT-RESULT-XT s" STRUCT-RESULT" STRUCT-RESULT-XT LIBRARY-XT!
-variable WRITES-BYTES-XT s" WRITES-BYTES" WRITES-BYTES-XT LIBRARY-XT!
-variable WRITES-ARG-XT s" WRITES-ARG" WRITES-ARG-XT LIBRARY-XT!
 variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 
 : FFI-CLAUSE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   FFI-GROUP @ 0= IF false EXIT THEN
    a u STRUCT-ARG-XT @ s" STRUCT-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
-   a u WRITES-BYTES-XT @ s" WRITES-BYTES" LIBRARY-DEFINER? IF true EXIT THEN
-   a u WRITES-ARG-XT @ s" WRITES-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
 \ `parse-imm` is the engine's word only where the load binds the token to its
@@ -3721,6 +3571,10 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
       [: RECORD-TYPED-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TASK:+USERS" s" +USERS" TASK-DEFINER? IF
+      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TASK:+USER" s" +USER" TASK-DEFINER? IF
+      [: RECORD-SLOT ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
@@ -3728,7 +3582,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER? IF
       [: RECORD-HEAP ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
@@ -3769,24 +3623,21 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
-   a u s" FUNCTION:" STR=CI IF RECORD-FFI-FUNCTION 0 0= EXIT THEN
+   a u s" FUNCTION:" STR=CI IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ A word that renders source when it runs (`;FUNCTION`) defines text this
+   \ A word that makes definitions when it runs (`;FUNCTION`) defines words this
    \ scan never reads: the checker marks the statement's wordlist and leaves a
    \ later name nothing resolves to the run. It marks even when an arm below
    \ records what a `generates:` row declares (RECORD-GENERATES); the mark
-   \ covers what no row declares. A `;FUNCTION` closing a group the scan read
-   \ is taken here; any other undeclared renderer is deferred at its token
-   \ (RENDER-GAP), by BOUND-CALL when a definer arm below takes it, else by
-   \ TOP-TOKEN.
+   \ covers what no row declares. A `;FUNCTION` is taken here; any other
+   \ undeclared renderer is deferred at its token (RENDER-GAP), by BOUND-CALL
+   \ when a definer arm below takes it, else by TOP-TOKEN.
    a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
-   renders a u FFI-CLOSER? and IF
-      FFI-STAGING  false FFI-CLAUSES !  false FFI-GROUP !  0 0= EXIT
-   THEN
+   renders a u FFI-CLOSER? and IF [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT THEN
    \ A definer learned from a `does>` definition or a `generates:` row earlier
    \ in the closure. The created word is the next token, as for `constant` (the
    \ definer's own arguments precede it); the effect is the clause's or the
@@ -3895,7 +3746,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN {: n:n :}
    CSR-DONE CSR-STATE !
    TOP-DEFER @ 0<> IF EXIT THEN
-   SOURCE@ CSR-TOK @ BASE-BYTE @ - +  n  CHECKER-OWNER-ABI:VISIBLE-TOP
+   SOURCE@ CSR-TOK @ +  n  CHECKER-OWNER-ABI:VISIBLE-TOP
    ['] CSR-VISIT
    NCOMP-DISPATCH:DECL-VERIFY-EACH-VISIBLE-OFF OWNER-XT VISIBLE-ACTION execute ;
 
@@ -3934,7 +3785,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ throw): then the stretch opens, unreported.
 : TOP-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   MULTI-ERR-N @ {: before:n :}
+   REJECTION:TALLY @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
    \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
@@ -3949,7 +3800,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
    TOP-CLOSE
-   MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
+   REJECTION:TALLY @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
 
 \ `kernel:` is the engine's synonym for `:`.
@@ -4003,7 +3854,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    0 DUPLICATE-U !
-   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
+   SOURCE@ SOURCE-U @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -4034,7 +3885,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    PEND-RELEASE ;
 
 : SOURCE-ARM ( -- )
-   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
+   SOURCE@ SOURCE-U @ 1 1 0 REJECTION:SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The source,
 \ token and open-stretch context, the loader words the file replaced, and
@@ -4047,13 +3898,12 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
    SOURCE-A @ SOURCE-U @ SCAN-I @
-   BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
    SHADOWED @ RETIRED @
-   {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
+   {: olda:ptr oldu:n oldi:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
       olddefer:n olddefa:ptr olddefu:n oldrefused:ptr
       oldpath:ptr oldpathu:n
@@ -4062,7 +3912,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
-   diag diagu DIAG-FILE!
+   diag diagu REJECTION:FILE!
    path pathu VISIT-OPEN
    VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
@@ -4083,7 +3933,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       srcu COMPOSE-STOP-SRC-U !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
-   oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
    olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
@@ -4092,13 +3941,13 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldshadowed SHADOWED !  oldretired RETIRED !
    oldpathu 0 > IF
-      oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE!
+      oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
    ELSE
-      DIAG-SOURCE-OFF
+      REJECTION:SOURCE-OFF
    THEN
    \ The loader's own file goes on, so a storage refusal in it is located there.
-   oldu 0 > IF olda oldu oldbl oldbc oldbb CHECKER-VERIFY-SOURCE! THEN
+   oldu 0 > IF olda oldu CHECKER-VERIFY-SOURCE! THEN
    rc 0<> IF rc throw THEN ;
 
 : COMPOSE-INIT ( -- )
@@ -4115,7 +3964,7 @@ COMPOSE-INIT
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !  false FFI-GROUP !  false FFI-CLAUSES !
+   false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  0 SEALS-N !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
@@ -4125,7 +3974,7 @@ COMPOSE-INIT
 : VERIFY-ARMED ( -- )
    SOURCE-ARM
    [: VERIFY-SOURCE ;] catch
-   DIAG-SOURCE-OFF
+   REJECTION:SOURCE-OFF
    THROW-RESULT ;
 
 : RUN ( -- )
@@ -4141,13 +3990,7 @@ COMPOSE-INIT
 : COMPOSE-WITH-USES ( -- )
    ['] USE-SEEN ['] RUN-COMPOSE WITH-USES ;
 
-\ Stash-and-body: a quotation cannot read its caller's locals.
-PTR-VARIABLE CAND-A
-variable CAND-U
 variable CAND-VERDICT
-
-: CANDIDATE-BODY ( -- )
-   CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
 
 TYPED-VARIABLE THEN-ACTION [ -- ]
 
@@ -4178,14 +4021,6 @@ variable READ-META-VALID
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
-\ A stream has no reusable stamp: it is read, but only a regular file takes the
-\ before/after stamp check.
-: QUIET-FILE-META ( ptr u8 n -- n n n n n bool )
-   FS:TRY-STAT 0= IF 0 0 0 0 0 false EXIT THEN
-   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> IF 0 0 0 0 0 false EXIT THEN
-   FS:STAT-SIZE@ FS:STAT-MTIME-SEC@ FS:STAT-MTIME-NS@
-   FS:STAT-CTIME-SEC@ FS:STAT-CTIME-NS@ true ;
-
 : READ-FILL ( -- )
    0 READ-U !
    BEGIN
@@ -4197,12 +4032,14 @@ variable READ-META-VALID
       READ-U @ + READ-U !
    REPEAT drop ;
 
+\ A stream has no reusable stamp: it is read, but only a regular file takes the
+\ before/after stamp check.
 : QUIET-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop {: path:ptr pathu:n :}
    0 READ-META-VALID !
    path pathu READ-PATHZ PATH-CAP 1+ PATHZ
    pathu READ-PATH-U !
-   path pathu QUIET-FILE-META
+   path pathu FS:TRY-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FAULT-TARGET!  E-SOURCE-READ throw THEN
@@ -4212,7 +4049,7 @@ variable READ-META-VALID
    rc E-SOURCE-READ = IF path pathu FAULT-TARGET! THEN
    rc 0<> IF rc throw THEN
    valid IF
-      path pathu QUIET-FILE-META
+      path pathu FS:TRY-FILE-META
       {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
       size after = msec amsec = and mns amns = and
       csec acsec = and cns acns = and still and 0= IF
@@ -4264,15 +4101,6 @@ create ENGINE-PATH PATH-CAP allot
 
 : ENGINE-TARGET-INSTALL ( -- ) ['] ENGINE-TARGET-READ is ENGINE-TARGET ;
 ENGINE-TARGET-INSTALL
-
-private
-
-\ The source a quiet composition verifies and its path, for the composition
-\ it runs under catch: a quotation cannot read its caller's locals.
-PTR-VARIABLE QUIET-SRC-A
-variable QUIET-SRC-U
-PTR-VARIABLE QUIET-PATH-A
-variable QUIET-PATH-U
 
 public
 
@@ -4374,12 +4202,10 @@ public
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
-   src QUIET-SRC-A !  srcu QUIET-SRC-U !
-   path QUIET-PATH-A !  pathu QUIET-PATH-U !
    0 FAULT-LEN !  0 FAULT-U !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
    true QUIET !
-   [: QUIET-SRC-A @ QUIET-SRC-U @ QUIET-PATH-A @ QUIET-PATH-U @ SOURCE-COMPOSE-IN-SCOPE ;]
+   [: src srcu path pathu SOURCE-COMPOSE-IN-SCOPE ;]
    catch {: rc:n :}
    false QUIET !
    SOURCE-INPUT:RESET
@@ -4435,13 +4261,9 @@ public
 \ registered has no engine record, so a live candidate cannot bind it; here it
 \ binds where the scan recorded it.
 : CANDIDATE-IN-SCOPE ( ptr u8 n -- n )
-   CAND-U !  CAND-A !
-   [: CANDIDATE-BODY ;] RUN-IN-SCOPE
+   {: a:ptr u:n :}
+   [: a u CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;] RUN-IN-SCOPE
    CAND-VERDICT @ ;
-
-: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
-   SOURCE-AT!
-   RUN ;
 
 \ Verify a source in a candidate scope of its own: what it defines, and the
 \ definer rows it learns, go when CHECKER-CANDIDATE-SCOPE-DONE rewinds the scope.
@@ -4453,3 +4275,8 @@ public
    THROW-RESULT ;
 
 ;package
+
+\ Only `package` and RECORD-PACKAGE open a part: once both bind these, they are
+\ retired.
+undefine CHECKER-RESOLVE:PART-GUARD
+undefine CHECKER-RESOLVE:PART-PATH

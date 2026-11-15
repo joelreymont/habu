@@ -303,7 +303,7 @@ variable DO-OUT-BUF?
    line DO-EMIT-NUM DO-SP DO-C
    col DO-EMIT-NUM DO-SP DO-C
    byte DO-EMIT-NUM
-   s"  DIAG-ORIGIN!" DO-OUT
+   s"  REJECTION:ORIGIN!" DO-OUT
    DO-SP DO-C ;
 
 : DO-MARK-COLON ( -- )

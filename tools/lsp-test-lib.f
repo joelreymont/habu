@@ -128,10 +128,9 @@
 \ - a top-level word no scope defines not published at it as
 \   E-UNDEFINED-TOP-LEVEL; the line after a word that parses its own input
 \   refused, or not deferred to the run at that word ................. top-level
-\ - a stored signature that does not parse, of a FUNCTION: whose group is
-\   empty or of a TRUSTED: that replaces a colon definition `undefine`
-\   removed, not published as E-BAD-STORED-SIGNATURE at its name
-\   ....................................... stored-signature, replaced-signature
+\ - a stored signature that does not parse, of a TRUSTED: that replaces a
+\   colon definition `undefine` removed, not published as
+\   E-BAD-STORED-SIGNATURE at its name ..................... replaced-signature
 \ - a name with two qualifiers, in a defer or in a definition refused for an
 \   undefined word, given no E-BAD-QUALIFIED-RECORD at it after the body's
 \   packet, or the statement's stop not published
@@ -161,7 +160,7 @@
 \ - a duplicate declaration with a malformed effect published other than as
 \   a duplicate, or listed beside the declaration retained before it
 \   ................................................ workspace-symbol-retained
-\ - a duplicate declaration with a row too wide to record, or with the
+\ - a duplicate declaration with another effect, or with the
 \   effect of the one before it, published other than as a duplicate or
 \   listed; the declaration retained before it, a definition after it, or a
 \   refused body whose signature the checker kept not listed; a malformed
@@ -409,10 +408,10 @@
 \   it but whose text on disk does not left out, or a file loading one whose
 \   text on disk loads it but whose open text does not given; a file
 \   that reaches it only through a file outside the workspace left out, or
-\   that file given; a file under .jj-ws/ given; the file itself not given
-\   first, or given when neither the workspace nor an open document holds it;
-\   a load of a file not there refused; a file reached under two roots, whose
-\   loads resolve against the root, walked under one; a file whose loader
+\   that file given; a file under .jj-ws.noindex/ given; the file itself not
+\   given first, or given when neither the workspace nor an open document holds
+\   it; a load of a file not there refused; a file reached under two roots,
+\   whose loads resolve against the root, walked under one; a file whose loader
 \   names no literal path, or one there that cannot be read, not named with
 \   its reason, or stopping the walk before a file it does not lie between;
 \   a root that is not there not refused, naming it; the requesting document
@@ -1474,9 +1473,7 @@ variable OPEN-N
 
 : WRITABLE ( -- )
    IN-W @ FD:POLLOUT PROCESS:PFD!
-   1 DEADLINE @ PROCESS:LEFT-MS MS>N DEADLINE @ PROCESS:POLL-RESTART {: rc:n :}
-   rc 0 < if E-PROC-OUTPUT throw then
-   rc 0= if E-PROC-TIMEOUT throw then ;
+   1 DEADLINE @ PROCESS:LEFT-MS PROCESS:POLL drop ;
 
 : PIECE ( -- )
    IN$ {: a:ptr u:n :}
@@ -2710,10 +2707,9 @@ USE-MAX 1 + constant OVER-USINGS
 : TEXT-RETAINED ( -- ptr u8 n )
    s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
 
-\ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
-\ record; NAV-SAME declared twice with one effect; NAV-ODD malformed with
-\ nothing declared before it; NAV-KEPT's body refused with its signature kept;
-\ NAV-LATER after them.
+\ NAV-WIDE declared, then declared again taking 256 cells; NAV-SAME declared
+\ twice with one effect; NAV-ODD malformed with nothing declared before it;
+\ NAV-KEPT's body refused with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
@@ -3017,8 +3013,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
    s" 6" NOWHERE ;
 
-\ roles.f's NOMINAL-PROVIDER and cell.f's CELL-WIDTH-CHECK are dictionary calls;
-\ pointer-storage.f calls nothing through the dictionary.
+\ roles.f's NOMINAL-PROVIDER is a dictionary call; pointer-storage.f calls
+\ nothing through the dictionary.
 : AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
 : AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
 
@@ -3038,10 +3034,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 8" AIO-PATH s"    f FD>N events timeout MS>N HOST-POLL" PATH-LINE 25 DEFINITION-ASK
    s" 9" AIO-PATH s"    timeout MS>N HOST-TIMEOUT" PATH-LINE 11 DEFINITION-ASK
    s" 10" AIO-PATH s"    f FD>N buf cap count off KIND-READ" PATH-LINE 5 DEFINITION-ASK
-   s" 11" AIO-PATH s"    f FD>N buf cap count off KIND-WRITE" PATH-LINE 5 DEFINITION-ASK
-   s" 12" AIO-PATH s"    f FD>N 0 0 KIND-ACCEPT" PATH-LINE 5 DEFINITION-ASK
-   s" 13" AIO-PATH s"    f FD>N addr FFI:>CELL alen KIND-CONNECT" PATH-LINE 5 DEFINITION-ASK
-   s" 14" AIO-PATH s" TASK:#USER CELL TASK:+USER" PATH-LINE 11 DEFINITION-ASK
+   s" 14" AIO-PATH s" TASK:+USER AIO-REGISTERED n" PATH-LINE 0 DEFINITION-ASK
    s" 15" AIO-PATH s" create KIND-OPS" PATH-LINE 0 DEFINITION-ASK
    s" 16" AIO-PATH s" create NL-BYTE" PATH-LINE 0 DEFINITION-ASK
    s" 17" AIO-PATH s" PTR-VARIABLE SQ-BASE" PATH-LINE 2 DEFINITION-ASK
@@ -3056,9 +3049,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 8" NOWHERE
    s" 9" NOWHERE
    s" 10" NOWHERE
-   s" 11" NOWHERE
-   s" 12" NOWHERE
-   s" 13" NOWHERE
    s" 14" NOWHERE
    s" 15" NOWHERE
    s" 16" NOWHERE
@@ -4512,17 +4502,17 @@ variable WS-ROOT-U
 
 \ 1: a1 loads b1, which loads f1; u1 loads nothing. 2: a2 loads b2, which
 \ loads f2 on disk and nothing open. 3: c3 loads nothing on disk and f3
-\ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/. 5: .jj-ws/a5
-\ loads f5. 6: m6 loads a file not there, then f6. 7: p/a7 and q/b7 load
-\ s/x7, which loads y7 from the root it is reached under: p/y7 loads nothing,
-\ q/y7 loads f7. 8: dyn/d8 loads at top level a path its command line names,
-\ which no walk can read, z8 cannot be read, and e8 loads out/h8, which loads
-\ f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads f9 from
-\ either root.
+\ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/.
+\ 5: .jj-ws.noindex/a5 loads f5. 6: m6 loads a file not there, then f6. 7: p/a7
+\ and q/b7 load s/x7, which loads y7 from the root it is reached under: p/y7
+\ loads nothing, q/y7 loads f7. 8: dyn/d8 loads at top level a path its command
+\ line names, which no walk can read, z8 cannot be read, and e8 loads out/h8,
+\ which loads f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads
+\ f9 from either root.
 : WS-TREE ( -- )
    s" graph" FIXTURE FS:MAKE-DIR
    s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
-   s" w/.jj-ws" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
+   s" w/.jj-ws.noindex" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
    s" w/a1.f" s\" require b1.f\n" WS-FILE
    s" w/b1.f" s\" require f1.f\n" WS-FILE
    s" w/f1.f" s\" : F1 ( -- ) ;\n" WS-FILE
@@ -4535,7 +4525,7 @@ variable WS-ROOT-U
    s" w/a4.f" s\" require ../out/b4.f\n" WS-FILE
    s" out/b4.f" s\" require f4.f\n" WS-FILE
    s" w/f4.f" s\" : F4 ( -- ) ;\n" WS-FILE
-   s" w/.jj-ws/a5.f" s\" require ../f5.f\n" WS-FILE
+   s" w/.jj-ws.noindex/a5.f" s\" require ../f5.f\n" WS-FILE
    s" w/f5.f" s\" : F5 ( -- ) ;\n" WS-FILE
    s" w/m6.f" s\" require nothere.f\nrequire f6.f\n" WS-FILE
    s" w/f6.f" s\" : F6 ( -- ) ;\n" WS-FILE
@@ -6890,17 +6880,6 @@ variable PROBE-DECLS
    s" document-symbol" [: OUTLINE-TURNS ;] TALK
    s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
 
-: EMPTY-FFI ( -- ptr u8 n )  s\" require src/lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
-
-: STORED-SIGNATURE-TURNS ( -- )
-   SESSION-INITIALIZE
-   A-PATH EMPTY-FFI 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   EMPTY-FFI A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
-
 : REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
 
 : REPLACED-SIGNATURE-TURNS ( -- )
@@ -6970,7 +6949,6 @@ variable PROBE-DECLS
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
    s" top-level" [: TOP-LEVEL-TURNS ;] TALK
-   s" stored-signature" [: STORED-SIGNATURE-TURNS ;] TALK
    s" replaced-signature" [: REPLACED-SIGNATURE-TURNS ;] TALK
    s" malformed-record" [: MALFORMED-RECORD-TURNS ;] TALK
    s" malformed-rejected" [: MALFORMED-REJECTED-TURNS ;] TALK

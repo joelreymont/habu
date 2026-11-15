@@ -8,4 +8,4 @@ closed-at: "2026-10-28T17:13:32.768126+02:00"
 close-reason: landed 694d828c
 ---
 
-Design /Users/joel/.cache/tmp/carl-file/design-runs.md lane 3. Worker in .jj-ws.noindex/carl-tee on stack tip zoqvzolv.
+Design /home/joel/.cache/tmp/carl-file/design-runs.md lane 3. Worker in .jj-ws.noindex/carl-tee on stack tip zoqvzolv.

@@ -16,7 +16,6 @@ variable THREAD-N
 
 PROCESS-SYMBOLS
 FUNCTION: PID-THREADS proc_pidinfo ( n n n ptr u8 n -- i32 )
-   3 THREAD-BYTES WRITES-BYTES
 ;FUNCTION
 
 : ADD-ID ( n -- ) {: id:n :}

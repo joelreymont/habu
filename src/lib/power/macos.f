@@ -17,9 +17,7 @@ FUNCTION: CF-RELEASE CFRelease ( n -- ) ;FUNCTION
 4 constant ID-BYTES          \ IOPMAssertionID, a uint32_t
 
 LIBRARY /System/Library/Frameworks/IOKit.framework/IOKit
-FUNCTION: PM-CREATE IOPMAssertionCreateWithName ( n u32 n ptr u8 -- i32 )
-   3 ID-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: PM-CREATE IOPMAssertionCreateWithName ( n u32 n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: PM-RELEASE IOPMAssertionRelease ( u32 -- i32 ) ;FUNCTION
 
 $08000100 constant UTF8      \ kCFStringEncodingUTF8

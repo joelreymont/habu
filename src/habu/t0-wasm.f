@@ -142,14 +142,16 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : DEPTH+ ( n n -- ) {: c:n k:n :}
    c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
 
-\ A fault is fatal, never a status: the caller writes the i64 address between
-\ FAULT-KIND, and FAULT-END,.
+\ A fault records its kind and the i64 address the caller writes between
+\ FAULT-KIND, and FAULT-ADDR,; FAULT-END, then traps, as a stack-bounds fault.
 : FAULT-KIND, ( n -- ) {: kind:n :}
    L-CTX GET,  kind I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
    L-CTX GET, ;
 
-: FAULT-END, ( -- )
-   OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,  OP-UNREACHABLE B, ;
+: FAULT-ADDR, ( -- )
+   OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM, ;
+
+: FAULT-END, ( -- )  FAULT-ADDR,  OP-UNREACHABLE B, ;
 
 \ The check follows the move's stores, so a failed one has written at most that
 \ move's cells past it.
@@ -157,12 +159,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
-
-: CHECKED ( vreg -- ) {: a:vreg :}
-   a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
-   a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
-   OP-I32-OR B,  OP-IF OPENER,
-   WPROF:CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
 \ A unit is a function (i32 ctx) -> (i32 status): four i32 locals, SP, AT, ENV
 \ and REC, then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
@@ -351,7 +347,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
-   a CHECKED
    a GET-REG  OP-I32-WRAP-I64 B,
    w WIDTH>N 1 = if OP-I64-LOAD8-U 0 0 MEM, else LD64, then
    d SET-REG ;

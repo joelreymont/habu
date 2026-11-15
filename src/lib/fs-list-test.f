@@ -198,7 +198,6 @@ create FLT-INNER 64 allot                \ sub's names, listed while the root's 
 variable FLT-INNER-U
 variable FLT-HANDED                      \ 1 once the lister is inside its listing
 variable FLT-RESUMED                     \ 1 once this thread has listed sub
-5000000000 constant FLT-WAIT-NS
 
 TASK:MIN-STACK TASK:TASK FLT-LISTER
 
@@ -232,29 +231,12 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    [: FLT-NESTED ;] 0 TTHROWSQ
    FLT-BOTH-WHOLE ;
 
-\ A wait the other side ends; past FLT-WAIT-NS it throws E-PROC-TIMEOUT rather
-\ than hang the suite. It prints nothing, because the lister waits here too and
-\ a task asserts nothing: main names the deadline where it reads it.
-: FLT-WAIT ( ptr n n -- ) {: flag want :}
-   mono-ns FLT-WAIT-NS + {: until:n :}
-   begin flag atomic@ want < while
-      mono-ns until >= if E-PROC-TIMEOUT throw then
-      1 >MS TASK:SLEEP
-   repeat ;
-
-\ A FLT-WAIT deadline main reads, its own or the lister's from the join, is the
-\ row's own deadline: it is named and thrown, never asserted. Any other code is
-\ answered.
-: FLT-EXPIRED ( n -- n )
-   {: code:n :}
-   code E-PROC-TIMEOUT = if s" fs-list-test FLT-WAIT" TEST-WAIT:EXPIRED then
-   code ;
-
+\ A main thread that ends before it resumes the lister ends the lister's wait.
 : FLT-HANDOFF ( ptr u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if
       1 FLT-HANDED atomic!
-      FLT-RESUMED 1 FLT-WAIT
+      begin FLT-RESUMED atomic@ 1 < while TASK:PAUSE repeat
    then ;
 
 \ Runs INSIDE the lister, so it asserts nothing: the join answers its throw.
@@ -265,15 +247,14 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 : FLT-JOIN-LISTER ( -- )
    FLT-LISTER TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
-      err OF FLT-EXPIRED 0 T= ENDOF
+      err OF 0 T= ENDOF
    ;MATCH ;
 
 : FLT-TEST-TWO-TASKS ( -- )
    FLT-COUNTS-RESET
    0 FLT-HANDED !  0 FLT-RESUMED !
    ['] FLT-LISTER-BODY FLT-LISTER TASK:ACTIVATE
-   [: FLT-HANDED 1 FLT-WAIT ;] catch FLT-EXPIRED {: code:n :}
-   code 0<> if code throw then
+   FLT-HANDED 1 FLT-LISTER TEST-WAIT:FOR-CELL
    FLT-SUB-NAMES
    1 FLT-RESUMED atomic!
    s" the lister's listing throws nothing" T-LABEL
@@ -375,7 +356,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-COUNTS-RESET
    0 FLT-HANDED ! 0 FLT-RESUMED !
    ['] FLT-CONTEXT-LISTER-BODY FLT-LISTER TASK:ACTIVATE
-   FLT-HANDED 1 FLT-WAIT
+   FLT-HANDED 1 FLT-LISTER TEST-WAIT:FOR-CELL
    [: FLT-BUSY ;] FS-LIST:E-ACTIVE TTHROWSQ
    FS:ERRNO 0 T=
    FLT-B-SUB-NAMES

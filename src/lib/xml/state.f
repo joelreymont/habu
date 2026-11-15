@@ -15,7 +15,8 @@ ENUM kind start end text comment pi cdata eof ;ENUM
 
 private
 CAST: KIND>N ( kind -- n )
-CAST: >KIND ( n -- kind )
+\ Views the token kind cell, which holds only KIND>N values.
+CAST: >KIND-CELL ( ptr n -- ptr kind )
 
 \ The reader's whole fixed state lives in the caller's XML:cursor record: the
 \ header cells below, ending with the reader's SipHash key drawn by
@@ -823,7 +824,7 @@ private
 
 public
 : KIND ( XML:reader -- XML:reader kind )
-   STATE dup LIVE TOKEN-KIND + @ >KIND ;
+   STATE dup LIVE TOKEN-KIND + >KIND-CELL @ ;
 
 : RAW ( XML:reader -- XML:reader off len )
    STATE RAW-STATE ;

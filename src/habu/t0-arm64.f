@@ -341,14 +341,17 @@ DYNAMIC-BUFFER BR-ARG n
    UNIT-BEGIN ;
 
 
+\ Point the `adr` at OUT offset at to OUT offset to; its first byte holds its
+\ register.
+: ADR-TO ( n n -- ) {: at:n to:n :}
+   OUT BUF:SPAN$ drop at + c@ 31 and  to at - ENC-ADR  at W32! ;
+
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
-\ at; the first byte holds its register.
+\ at.
 : QUOT-OPEN ( n -- )
    {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then
-   n QUOT-SITE @ {: at:n :}
-   OUT-OFF at - {: d:n :}
-   OUT BUF:SPAN$ drop at + c@ 31 and  d ENC-ADR  at W32!
+   n QUOT-SITE @ OUT-OFF ADR-TO
    UNIT-BEGIN ;
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
@@ -357,6 +360,9 @@ DYNAMIC-BUFFER BR-ARG n
 
 : FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    kind ADDR-QUOT-KIND = if
+      \ Unit 0 is the emission's entry, at OUT's start, and no QUOT-OPEN
+      \ opens it.
+      to 0= if at 0 ADR-TO exit then
       to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
    then
    at kind to origin EMIT-ADDR-ROW+ ;
@@ -400,7 +406,7 @@ DYNAMIC-BUFFER BR-ARG n
    RETURN CLOSE
    OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
-\ The callback stub is tier 1's, appended after the last unit so each unit's
+\ The callback stub is appended after the last unit so each unit's
 \ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}
@@ -434,7 +440,8 @@ DYNAMIC-BUFFER BR-ARG n
    HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
    v d REG CHAIN4 ;
 
-\ `adr rd, 0` until QUOT-OPEN n writes the distance to the unit.
+\ `adr rd, 0` until the distance to unit n is written: by FILE-ADDR for unit 0,
+\ else by QUOT-OPEN n.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    HERE-OFF ADDR-QUOT-KIND n -1 PEND+

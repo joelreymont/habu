@@ -1,9 +1,11 @@
 ---
 title: "Wasm 6g: a cross build links its unchanged files"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-12T09:00:02.866914+02:00"
+closed-at: "2026-11-13T00:29:17.931453+02:00"
+close-reason: "a cross build writes and links its files' objects"
 blocks:
   - habu-run-a-cross-f6c97962
 ---

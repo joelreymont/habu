@@ -424,11 +424,13 @@ variable ENTRY-AT
    ENTRY-AT @ 0 < if s" x86-64-kernel-prof: the index names no prof-a" 1 die then
    ENTRY-AT @ ;
 
-\ Deferred slot i's offset in the arena: its pc, then the cell kept beside it.
+\ Deferred slot i's offset in the arena: its pc, the cell kept beside it, then
+\ the weight arm64's replay adds, one per sample as x86-64 counts.
 : SLOT ( n -- n ) PROF-DEFER-ENT * ARN-DEF + ;
 
 : HOST-SLOT! ( n n n -- ) {: pc:n cell:n i:n :}
-   pc i SLOT ARENA!  cell i SLOT CELL + ARENA! ;
+   pc i SLOT ARENA!  cell i SLOT CELL + ARENA!
+   1 i SLOT 2 CELL * + ARENA! ;
 
 \ State S in this host's band and arena. The cells kept beside B's pc lie an
 \ instruction past A's and C's starts, so the replay's search one instruction
@@ -446,8 +448,8 @@ variable ENTRY-AT
    1 0 PC1-AT HOST-SLOT!
    DEFERRED ARN-DEFER ARENA! ;
 
-\ Replace the digits after the key in capture k with the image's count.
-: REINDEX ( ptr u8 n n -- ) {: key:ptr keyu:n k:n :}
+\ The byte past the key in capture k, which must hold it.
+: KEY-END ( ptr u8 n n -- n ) {: key:ptr keyu:n k:n :}
    k TEXT {: a:ptr u:n :}
    0 AT-BYTE !
    begin
@@ -455,21 +457,42 @@ variable ENTRY-AT
    while
       1 AT-BYTE +!
    repeat
-   AT-BYTE @ keyu + u > if s" x86-64-kernel-prof: a capture names no indexed count" 1 die then
-   AT-BYTE @ keyu + {: at:n :}
+   AT-BYTE @ keyu + u > if s" x86-64-kernel-prof: a capture lacks a field it must print" 1 die then
+   AT-BYTE @ keyu + ;
+
+\ The byte past the digits that start at byte at of capture k.
+: DIGITS-END ( n n -- n ) {: at:n k:n :}
+   k TEXT {: a:ptr u:n :}
    at AT-BYTE !
    begin
       AT-BYTE @ u < if  a AT-BYTE @ + c@ STR-DIGIT?  else  false  then
    while
       1 AT-BYTE +!
    repeat
-   AT-BYTE @ {: past:n :}
-   IMAGE-INDEXED [char] 0 +  a at + c!
-   a past +  a at 1+ +  u past -  BYTE-COPY
-   u past - at 1+ +  k TEXT-LEN ! ;
+   AT-BYTE @ ;
 
-\ The six captures, the image's indexed count in the two S reports. The JSON
-\ rows follow the index's start order, which the image's spans keep.
+\ Drop capture k's bytes from byte from up to byte past.
+: CLOSE-GAP ( n n n -- ) {: from:n past:n k:n :}
+   k TEXT {: a:ptr u:n :}
+   a past +  a from +  u past -  BYTE-COPY
+   u past - from +  k TEXT-LEN ! ;
+
+\ Replace the digits after the key in capture k with the image's count.
+: REINDEX ( ptr u8 n n -- ) {: key:ptr keyu:n k:n :}
+   key keyu k KEY-END {: at:n :}
+   at k DIGITS-END {: past:n :}
+   IMAGE-INDEXED [char] 0 +  k TEXT drop at + c!
+   at 1+ past k CLOSE-GAP ;
+
+\ Cut the key and its digits out of capture k: a header field arm64 prints
+\ and x86-64 does not.
+: CUT-FIELD ( ptr u8 n n -- ) {: key:ptr keyu:n k:n :}
+   key keyu k KEY-END {: at:n :}
+   at keyu -  at k DIGITS-END  k CLOSE-GAP ;
+
+\ The six captures, the image's indexed count in the two S reports and
+\ without arm64's foreign charged to callers field. The JSON rows follow the
+\ index's start order, which the image's spans keep.
 : HOST-CAPTURES ( -- )
    A-START B-START >=  B-START C-START >=  or if
       s" x86-64-kernel-prof: prof-a, prof-b and C do not start in that order" 1 die
@@ -483,7 +506,9 @@ variable ENTRY-AT
    [: B-IX prof-row ;] 4 CAPTURE
    [: prof-json ;] 5 CAPTURE
    s"  indexed " 3 REINDEX
-   s\" \"indexed\":" 5 REINDEX ;
+   s\" \"indexed\":" 5 REINDEX
+   s"  foreign charged to callers " 3 CUT-FIELD
+   s\" ,\"foreign charged to callers\":" 5 CUT-FIELD ;
 
 \ ---- the report and limit cases --------------------------------------------------
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
@@ -711,7 +736,8 @@ variable ENTRY-AT
 \ state, captured at load (HOST-CAPTURES): once with no arena, and once for
 \ state S over records the image seeds at the host's own record indices, so the
 \ edge table keys the same pairs into the same slots. The `indexed` count is
-\ each engine's live one. Then a foreign sample at PROF-LIM 1 must return, and a
+\ each engine's live one, and arm64's header has a foreign charged to callers
+\ field x86-64's lacks. Then a foreign sample at PROF-LIM 1 must return, and a
 \ report while armed arms ITIMER_REAL again at the default rate.
 : REPORT-CASE ( -- )
    SPANS, {: a:label a-end:label b:label b-end:label c:label c-end:label :}

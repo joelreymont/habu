@@ -18,7 +18,6 @@ require src/lib/process-command.f
 package VOCABULARY-TEST
 private
 
-60000 constant TIMEOUT-MS
 10 constant LF
 
 PTR-VARIABLE STEM-A                    \ the harness the next child loads, as its file stem
@@ -37,8 +36,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
    SB$ ;
 
-\ A deadline is no exit code: the file the child loaded last and its capture
-\ are printed and E-PROC-TIMEOUT thrown.
 : CODE! ( CMD:command PROCESS:ending ptr u8 n -- CMD:command )
    {: oc ran:ptr ranu:n :}
    CMD:OUT$ {: out:ptr outu:n :}
@@ -61,7 +58,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
       s" --" CMD:ARG+
       name nu FILE-ARG+
    then
-   s" bin/hb" TIMEOUT-MS >MS CMD:RUN-OUTCOME
+   s" bin/hb" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
 : ERR-LINE$ ( CMD:command -- CMD:command ptr u8 n )
@@ -289,6 +286,15 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-root-scope-seal" HARNESS!
    s" " 0 s" E-POLICY habu: policy: sealed" S\" 107\n107\n107\n107\n\n" RUNS ;
 
+\ A definer's built words call the names a sealed table gives as the table's
+\ text would: an ACTION outside the vocabulary is refused at its name, and
+\ `require` is one: only a top-level token may name it.
+: BUILT ( -- )
+   s" allow-fsm" HARNESS!
+   s" fsm-table" 0 s" " s" " RUNS
+   s" fsm-action" s" E-POLICY habu: test/policy/fsm-action.f:3: not in vocabulary: emit" REFUSES
+   s" fsm-require" s" E-POLICY habu: test/policy/fsm-require.f:3: not in vocabulary: require" REFUSES ;
+
 public
 
 : RUN ( -- )
@@ -299,7 +305,7 @@ public
    LOADERS KEYWORDS SCOPES WIDENING
    BODIES MODELED
    NAMES
-   HARNESSES BOUND SEAM CONFINED
+   HARNESSES BOUND SEAM CONFINED BUILT
    T-REPORT ;
 
 ;package

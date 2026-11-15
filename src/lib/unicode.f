@@ -2,12 +2,13 @@
 \ CASEFOLD= compares whole UTF-8 spans by full case folding (Straße equals
 \ STRASSE), with no normalization, keeping embedded NULs. Folding is
 \ libunistring's u8_casecmp and u8_casefold with NULL language and normalization,
-\ so the casefold data is the installed library's. Inputs must not point into
-\ transient FFI scratch. STORAGE CLASS. TASK-LOCAL: per-task FFI scratch.
+\ so the casefold data is the installed library's. STORAGE CLASS. TASK-LOCAL:
+\ C's result cell, a TASK:+USERS row.
 
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f
 require src/lib/ffi-abi.f
+s" src/lib/task.f" required
 
 package UNICODE
 using FFI
@@ -33,10 +34,10 @@ private
    size VALID-LENGTH
    source size UTF8:VALID? 0= if E-UTF8 throw then ;
 
-\ Slot 15 is task-local FFI scratch, beyond either call's arguments.
-\ Zero the complete cell, then expose exactly C's four-byte int output.
-: RESULT ( -- ptr n )
-   ARGS 15 cells + ;
+1 cells TASK:+USERS RESULT-ROW u8
+
+\ C's four-byte int output, in a task-local cell each call zeroes first.
+: RESULT ( -- ptr n ) 0 RESULT-ROW CELL-VIEW ;
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
 \ policy pointers, and one four-byte writable result. NULL resultbuf asks
@@ -44,12 +45,8 @@ private
 \ binding may consume. No callable raw binding or configurable foreign symbol
 \ escapes this package.
 VERSIONED-LIBRARY unistring 5
-FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
-   6 4 WRITES-BYTES                      \ int *resultp
-;FUNCTION
-FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 )
-   5 CELL WRITES-BYTES                   \ size_t *lengthp
-;FUNCTION
+FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 ) ;FUNCTION
 PROCESS-SYMBOLS
 FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
 

@@ -18,7 +18,6 @@ require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
-10000 constant XPK-TIMEOUT-MS
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
@@ -218,14 +217,16 @@ create XPK-EMPTY 1 allot
    s" --load" >LEN PROC-ARGV+
    XPK-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
-   XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XPK-STORE! ;
 
 : XPK-RUN-STDIN ( ptr u8 n -- )
    XPK-IN!
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
-   XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-IN$ XPK-STORE! ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}

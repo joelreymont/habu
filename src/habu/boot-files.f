@@ -22,7 +22,6 @@ public
 4 constant CORE
 8 constant DYNAMIC
 16 constant OWNER
-32 constant SEAL
 64 constant ARGV
 128 constant INTERNAL
 256 constant TOPROW
@@ -47,9 +46,9 @@ private
    CHECKER COMMON s" src/core/util.f" ROW
    CHECKER COMMON s" src/core/cell.f" ROW
    CHECKER COMMON s" src/core/pointer-storage.f" ROW
+   CHECKER COMMON s" src/core/arena-pages.f" ROW
    CHECKER COMMON s" src/core/engine-error.f" ROW
    CHECKER COMMON s" src/core/exec-vector.f" ROW
-   CHECKER COMMON s" src/core/checker-fetch-abi.f" ROW
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
    CHECKER COMMON s" src/core/checker-owner-abi.f" ROW
    CHECKER COMMON s" src/habu/boot-cells.f" ROW
@@ -61,10 +60,9 @@ private
    CHECKER MACOS s" src/os/macos/target.f" ROW
    CHECKER X64 s" src/os/linux-x86-64/target.f" ROW
    CHECKER WASM s" src/os/wasm/target.f" ROW
-   CHECKER LINUX s" src/os/linux/layout-constants.f" ROW
+   CHECKER COMMON s" src/core/path.f" ROW
    CHECKER LINUX s" src/os/linux/layout.f" ROW
    CHECKER MACOS s" src/os/macos/layout.f" ROW
-   CHECKER X64 s" src/os/linux/layout-constants.f" ROW
    CHECKER X64 s" src/os/linux/layout.f" ROW
    CHECKER COMMON s" src/habu/stack-abi.f" ROW
    \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.
@@ -72,24 +70,25 @@ private
    CHECKER WASM s" src/os/wasm/layout.f" ROW
    CHECKER COMMON s" src/habu/layout.f" ROW
    CHECKER COMMON s" src/habu/intern-table.f" ROW
+   CHECKER COMMON s" src/core/rejection.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
-   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
-   CHECKER COMMON s" src/core/lower-cert-base.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
+   CHECKER COMMON s" src/core/check-walk.f" ROW
+   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
+   CHECKER COMMON s" src/core/effect.f" ROW
+   CHECKER COMMON s" src/habu/address-cells.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW
-   CHECKER COMMON s" src/core/layout-valid.f" ROW
    CHECKER COMMON s" src/core/check-hook.f" ROW
    CHECKER COMMON s" src/core/cell-effects.f" ROW
    CHECKER COMMON s" src/core/declaration-transaction.f" ROW
+   CHECKER COMMON s" src/core/rollback-cells.f" ROW
    CHECKER COMMON s" src/core/generated-declaration.f" ROW
    DECL COMMON s" src/core/decl-event.f" ROW
    DECL COMMON s" src/core/structure-make.f" ROW
    DECL COMMON s" src/core/structure-decl.f" ROW
-   DECL COMMON s" src/core/arena.f" ROW
-   DECL COMMON s" src/core/heap.f" ROW
    DECL COMMON s" src/core/enum-decl.f" ROW
    CORE COMMON s" src/core/structures.f" ROW
    CORE COMMON s" src/core/roles.f" ROW
@@ -97,27 +96,21 @@ private
    DYNAMIC COMMON s" src/core/dynamic-storage.f" ROW
    CORE COMMON s" src/core/compile-reads.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
-   CORE COMMON s" src/core/quotation-storage.f" ROW
    CORE COMMON s" src/core/include.f" ROW
    CORE COMMON s" src/core/enums.f" ROW
    CORE COMMON s" src/core/sha256.f" ROW
-   CORE COMMON s" src/core/source-producer.f" ROW
    CORE COMMON s" src/core/combinators.f" ROW
    CORE COMMON s" src/habu/code-span.f" ROW
    CORE COMMON s" src/habu/xref.f" ROW
    CORE COMMON s" src/core/int-convert-retire.f" ROW
    CORE COMMON s" src/core/generated-declaration-dictionary.f" ROW
    CORE COMMON s" src/core/generated-declaration-protection.f" ROW
-   CORE COMMON s" src/core/layout-buffer-seal.f" ROW
    OWNER COMMON s" src/core/checker-owner-guard.f" ROW
-   SEAL COMMON s" src/core/lower-cert-seal.f" ROW
    ARGV COMMON s" src/os/script-argv.f" ROW
    INTERNAL COMMON s" src/core/internal-mark.f" ROW
    TOPROW COMMON s" src/core/top-row.f" ROW
    BASELIB COMMON s" src/lib/prelude.f" ROW
    BASELIB COMMON s" src/lib/error.f" ROW
-   BASELIB COMMON s" src/habu/address-cells.f" ROW
-   BASELIB COMMON s" src/core/layout-buffer-address.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW
    RESTLIB COMMON s" src/lib/adt/option.f" ROW
    RESTLIB COMMON s" src/lib/adt/nullable.f" ROW
@@ -127,8 +120,8 @@ private
    RESTLIB COMMON s" src/lib/memory.f" ROW
    RESTLIB COMMON s" src/lib/allocator.f" ROW
    RESTLIB COMMON s" src/lib/arena.f" ROW
-   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW
-   RESTLIB COMMON s" src/compiler/native/fetch-check.f" ROW ;
+   RESTLIB COMMON s" src/core/arena.f" ROW
+   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW ;
 
 
 create ROWS FILL

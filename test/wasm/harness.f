@@ -1,14 +1,13 @@
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs.
-\ Both are found on PATH and run from the tree's root; a missing tool or a
-\ passed deadline throws.
+\ Both are found on PATH and run from the tree's root; a missing tool throws.
 \
 \ BUILD answers `hb-build --target wasm`'s exit status, run from the tree's root.
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
 \ wrote and THROW-CODE its full throw code, 0 unless it exited 1; FAULT-KIND and
-\ FAULT-ADDR the kind and address a checked fault stored before its trap, else 0.
+\ FAULT-ADDR the kind and address of the fault that trapped, else 0.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -20,11 +19,11 @@ require src/arch/wasm/profile.f
 package WASM-HARNESS
 private
 
-60000 constant DEADLINE-MS
 4096 constant ERR-CAP
+WPROF:OUT-CAP 4 * constant OUT-BYTES      \ the most OUT bytes a run's capture keeps
 
 PATH-CAP BUFFER: EXE
-WPROF:OUT-CAP BUFFER: OUT
+OUT-BYTES BUFFER: OUT
 ERR-CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
@@ -37,7 +36,7 @@ variable ADDR
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
 : RUN-AT ( ptr u8 len -- n )
-   OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
+   OUT OUT-BYTES >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -46,14 +45,21 @@ variable ADDR
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
 
-\ run.mjs's stderr for status 1 is its throw line; bun's own failures exit 1 as
-\ well, so any other text ends the check.
+: FIRST-LINE ( -- ptr u8 n )
+   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+      some OF IDX>N a swap ENDOF
+      none OF a u ENDOF
+   ;MATCH ;
+
+\ run.mjs's first stderr line for status 1 is its throw line; bun's own failures
+\ exit 1 as well, so any other text ends the check.
 : NO-THROW-LINE ( ptr u8 n -- )
    type cr
    s" wasm harness: bun exited 1 without a `throw <i64>` line" 1 die ;
 
 : THROWN ( -- n )
-   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+   FIRST-LINE {: a:ptr u:n :}
    a u s" throw " STARTS-WITH? 0= if  a u NO-THROW-LINE  then
    a 6 + u 6 - STR>NUMBER? MATCH option
       some OF ENDOF
@@ -64,7 +70,7 @@ variable ADDR
 \ may exit 2 as well, so any other text ends the check.
 : NO-FAULT-LINE ( ptr u8 n -- )
    type cr
-   s" wasm harness: bun exited 2 without a `fault <kind> <addr>` line" 1 die ;
+   s" wasm harness: bun's stderr ends without a `fault <kind> <addr>` line" 1 die ;
 
 : LAST-LINE ( -- ptr u8 n )
    ERR ERR-U @ RTRIM {: a:ptr u:n :}

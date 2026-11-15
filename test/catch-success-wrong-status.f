@@ -1,5 +1,4 @@
 \ A plain zero cannot prove that this caught reader returned normally.
-1 set-tier
 package CATCH-REFUSAL
 private
 variable THROW-MODE

@@ -8,7 +8,7 @@ closed-at: "2026-11-04T11:48:49.896483+02:00"
 close-reason: "Census 2026-11-04: an acceptance case of habu-make-a-file-dfc7e030, written there. word-grain dead-code shaking of the stripped link must hold in the one linker; current walker belongs to the stripped AOT path"
 ---
 
-Problem: Joel (2026-09-22): 'dead code should be eliminated during tree shaking. this is not being done correctly' - unproved either way. Probe: a stripped program whose MAIN calls one word of src/lib/string.f, sized against the 65,728 B stripped hello (~/.cache/tender/habu-gaps/stripped-determinism/hello-a): growth by about one word means word granularity, growth by the file or the package means the walker keeps more than MAIN reaches; then tools/hb-build-report.f's per-package split of Tender's bin/tenderd 1,783,176 code bytes, naming the packages that own them. Acceptance: both measurements recorded with the engine sha, the walker's granularity stated, the per-package table for bin/tenderd; a walker defect gets its fix and bin/tenderd is re-measured. Verification: the probe images and the report output under ~/.cache/tender/habu-gaps/closure-grain/, then Tender's python3 scripts/habu.py build --server. Ownership: alder. Claim: unassigned (stale claim reset 2026-10-22).
+Problem: Joel (2026-09-22): 'dead code should be eliminated during tree shaking. this is not being done correctly' - unproved either way. Probe: a stripped program whose MAIN calls one word of src/lib/string.f, sized against the 65,728 B stripped hello: growth by about one word means word granularity, growth by the file or the package means the walker keeps more than MAIN reaches; then tools/hb-build-report.f's per-package split of Tender's bin/tenderd 1,783,176 code bytes, naming the packages that own them. Acceptance: both measurements recorded with the engine sha, the walker's granularity stated, the per-package table for bin/tenderd; a walker defect gets its fix and bin/tenderd is re-measured. Verification: the probe images and the report output, then Tender's python3 scripts/habu.py build --server. Ownership: alder. Claim: unassigned (stale claim reset 2026-10-22).
 
 
 Initial code-closure measurement on the same engine: stripped hello is 2,760
@@ -18,8 +18,7 @@ raises code to 2,976 bytes. The code result is consistent with word-grain
 reachability. The unreachable literal still adds DATA bytes (464 to 480), so
 data reachability is not yet proven word-granular. `--size-report` also shows that the current stripped report has image-wide code/data classes, not a per-package code table; the requested Tender package split therefore needs a report change or a separate attribution probe.
 
-Current owner: Alder. The historical `alder-data-root` workspace is retired;
-current reproduction artifacts are in `~/.cache/tmp/habu-opt-round2/`.
+Current owner: Alder. The historical `alder-data-root` workspace is retired.
 
 Current macOS reproduction on source
 88243cb4f4dc6297a1f365538c6629cdb4f536da and engine SHA256
@@ -29,9 +28,7 @@ empty MAIN plus a private, unreferenced 65,536-byte BUFFER filled with 65 at
 build time both emit 2,156 code bytes. The unused array raises value payload
 from 427 to 74,155 bytes (+73,728), bitmap from 153 to 1,179 bytes, and the
 signed executable from 33,276 to 99,324 bytes. Both build and run with exit 0.
-The real inputs, executable artifacts, hashes and reports are retained in
-`~/.cache/tmp/habu-opt-round2/`; failure modes were recorded in
-`data-reachability-plan.md` before creating the reproduction. This evidence
+This evidence
 does not measure how much of Maki's warm snapshot is dead.
 
 The responsible boundary still admits every in-window DATA address in
@@ -42,8 +39,7 @@ AOT-OWNED has explicit fresh/carried extents for named engine claims only.
 Use actual allocation provenance to establish unreachable objects; the nearest
 dictionary name and a zero value are not ownership or liveness proofs.
 
-The bounded owner-interface design is recorded in
-`~/.cache/tmp/habu-opt-round2/data-object-design.md`. CREATE/ALLOT do not retain
+CREATE/ALLOT do not retain
 general allocation extents; sized BUFFER and typed-storage definers know sizes
 while declaring but do not publish an authoritative object table. Ordinary
 pointer storage and deferred-word relative-offset backing references show why
@@ -100,10 +96,7 @@ Habu pin; their logs were read in stripped-default-lane. The independent run
 above verifies the current source's normal build and size. It does not claim a
 new independent database gate or a speed comparison across source versions.
 
-Evidence and checked Habu probes:
-`~/.cache/habu/data-root/source-806f0654/` (README.md, current-build.log,
-current-size.txt, strip-data.tsv, window-census.tsv, empty-size.txt,
-unused-size.txt, and the sources and executables). The census's nearest named
+The census's nearest named
 word is only a locator: anonymous pools and does> storage between named
 variables must be attributed from their actual declarations, not that label.
 
@@ -134,8 +127,6 @@ other 2,476. Every member is attributed to one of 157 packages. The largest:
 | JSON | 272 | 61,736 |
 | HTTP | 345 | 55,788 |
 
-Full table, raw member rows, image, engine sidecar, size report and Habu probes:
-`~/.cache/tender/habu-gaps/closure-grain/source-08a1c3b6-engine-a7eb1731/`.
 The image SHA256 is
 `bbc3728116e202a039c8500e425508e70b7018a54cfbdd5dd844b37f5cae518e`.
 The probe reads final BLEN values after LINK, so its own literals cannot enter
@@ -200,7 +191,6 @@ DATA, 58,062 padding and 13,000 other bytes. SHA256
 The executable reaches its usage dispatcher and returns the expected rc 2
 for --help; this does not prove server/HTTP/database readiness.
 
-Evidence: ~/.cache/habu/closure-grain/source-4de21b0c-engine-f42251c4/.
 The image has the same size classes as the prepared old-pair diagnostic on
 this Tender source, but different code bytes; no byte identity or speedup
 claim is made. Cedar's pending download tree on Tender 985a866a still refuses
@@ -214,8 +204,7 @@ an empty MAIN builds to 33,276 bytes, while an otherwise unused private
 2,156 bytes; carried DATA values rise from 427 to 74,155. Both execute with
 exit 0. A third checked executable computes TARGET BASE - as a scalar GAP at
 build time, then reads TARGET through BASE GAP + at runtime; it also builds
-and runs with exit 0. Inputs, reports, artifacts and hashes are retained in
-`~/.cache/tmp/habu-opt-round3/data/RESULTS.md`.
+and runs with exit 0.
 
 Independent review confirms that extents plus address sites alone are unsound:
 checked pointer arithmetic has no allocation bound and native lowering inlines

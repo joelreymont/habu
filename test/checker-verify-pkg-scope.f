@@ -18,8 +18,8 @@ private
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 
-\ A quotation cannot read the enclosing word's locals, so the source span
-\ travels through these two cells to the caught body.
+\ x86-64 refuses a quotation that reads a local, so the source span travels
+\ through these two cells to the caught body.
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
@@ -44,13 +44,13 @@ public
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
-   DIAG-BUF $1000 DIAG-BUFFER!
-   JSON-DIAGS @ {: was:n :}
-   false DIAG-JSON!
+   DIAG-BUF $1000 REJECTION:BUFFER!
+   REJECTION:JSON @ {: was:n :}
+   false REJECTION:JSON !
    a u REPLAY {: rc:n :}
-   was JSON-DIAGS !
-   DIAG-BUFFER$ nip DIAG-U !
-   DIAG-BUFFER-OFF
+   was REJECTION:JSON !
+   REJECTION:BUFFER$ nip DIAG-U !
+   REJECTION:BUFFER-OFF
    rc ;
 
 : DIAG$ ( -- ptr u8 n )

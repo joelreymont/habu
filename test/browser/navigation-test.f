@@ -1,8 +1,9 @@
-\ navigation-test.f - Wasm end-to-end browser input, tree and highlight records.
+\ navigation-test.f - Wasm end-to-end browser input, tree, highlight, pick and
+\ occlude records.
 \ The printed directory keeps the module and expected/actual CLI output.
-\ Each kind of delivery navigation.f receives, typed and key, runs once and four
-\ times, and both runs end with the same memory: every run frees its delivery's
-\ page.
+\ Each kind of delivery navigation.f receives, typed, key and occluded, runs
+\ once and four times, and both runs end with the same memory: every run frees
+\ its delivery's page.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -18,7 +19,6 @@ require test/browser/memory.f
 package BROWSER-NAV-TEST
 private
 
-60000 constant DEADLINE-MS
 8192 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -43,7 +43,7 @@ PATH-CAP BUFFER: FILE
    DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
@@ -80,9 +80,10 @@ PATH-CAP BUFFER: FILE
    SB-RESET
    s" hello" LINE
    ROWS-WANT s\" ,\"more\":true}]" LINE
-   s" mesh 7 6 2" LINE
+   s" mesh 7 6 2 0 0 0" LINE
    s" highlight 1 01000000" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE ;
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE ;
 
 : OUTPUT! ( ptr u8 n -- )
    {: a:ptr n:n :}
@@ -137,8 +138,9 @@ PATH-CAP BUFFER: FILE
    START-WANT
    s" draw 0" LINE
    s" unmesh 7" LINE
-   s" mesh 7 6 2" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" mesh 7 6 2 0 0 0" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" a mesh no row draws unmeshes and meshes again by its handle" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
@@ -146,8 +148,44 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN s" redraw" TYPED+
    HOST 0 T=
    START-WANT
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" a redraw draws the held mesh with the held highlight" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
+: PICK-CASE ( -- )
+   \ 0.5's f32 bits are 1056964608.
+   HOST-OPEN s" pick" TYPED+
+   s" --picked" ARG+ 7 N-ARG+ 2 N-ARG+ s" 0.5" ARG+  s" pick" TYPED+
+   HOST 0 T=
+   START-WANT
+   s" pick 5 6 9" LINE
+   s" text 18:7,2@1056964608,9 640,480" LINE
+   s" pick 5 6 9" LINE
+   s" outstanding pick 9" LINE
+   s" a pick's answer reaches the module as a picked event, and a pick no step answers is outstanding" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
+: OCCLUDE-CASE ( -- )
+   HOST-OPEN s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+
+   HOST 0 T=
+   START-WANT
+   s" occlude 2 9" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
+   s" text occluded 0100 0,9 640,480" LINE
+   s" an occlude's answer reaches the module as event 19" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
+: UNANSWERED-CASE ( -- )
+   HOST-OPEN s" occlude" TYPED+
+   HOST 0 T=
+   START-WANT
+   s" occlude 2 9" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
+   s" outstanding occlude 9" LINE
+   s" an occlude no step answers is outstanding at the end" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : REJECT ( ptr u8 n ptr u8 n -- )
@@ -165,7 +203,7 @@ PATH-CAP BUFFER: FILE
    s" more" s" more must be a boolean" REJECT
    s" unsent" s" parent 1 has more" REJECT
    s" selected" s" selected tree key" REJECT
-   s" length" s" triangles is 68 bytes, not 67" REJECT
+   s" length" s" triangles is 104 bytes, not 103" REJECT
    s" index" s" index 6 is not below its 6 vertices" REJECT
    s" unheld" s" a draw of handle 9, which is not held" REJECT
    s" unmesh" s" an unmesh of handle 9, which is not held" REJECT
@@ -178,13 +216,21 @@ PATH-CAP BUFFER: FILE
    s" short"
       s" a highlight of 0 words, fewer than the 1 the last draw's rows need"
       REJECT
-   s" flags" s" flags 2 set a bit other than bit 0" REJECT ;
+   s" flags" s" flags 2 set a bit other than bit 0" REJECT
+   s" colour" s" a draw row's colour byte 3 is 1, not 0" REJECT
+   s" pick-id" s" a pick needs a positive id, got 0" REJECT
+   s" span" s" an occlude of 47 bytes, not whole 24-byte boxes" REJECT
+   s" id" s" an occlude needs a positive id, got 0" REJECT ;
 
 : FREED-CASES ( -- )
    s" four typed turns end with the memory one does"
       MOD MOD-U @ [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
    s" four key turns end with the memory one does"
       MOD MOD-U @ [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
+   s" four occluded turns end with the memory one does"
+      MOD MOD-U @
+      [: s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED ;
 
 public
@@ -197,7 +243,8 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE INVALID-CASES FREED-CASES
+   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE PICK-CASE
+   OCCLUDE-CASE UNANSWERED-CASE INVALID-CASES FREED-CASES
    T-REPORT ;
 
 ;package

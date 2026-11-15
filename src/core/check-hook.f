@@ -12,25 +12,23 @@ private
 \ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
 \ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
 \ word, so a later definition passes the engine's duplicate wall
-\ and checker.f CHECK-REC-ADMIT refuses it with $4E and no message. The hook asks
+\ and the checker's admission refuses it with $4E and no message. The hook asks
 \ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
 \ wall does (REFUSE-DUPLICATE).
 
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
-\ The token the engine read last (TKA-CELL, TKL-CELL).
-TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 
-\ Arms the checker's source map (checker.f DIAG-SOURCE!, DIAG-MAP!) for the
+\ Arms the checker's source map (REJECTION:SOURCE!, REJECTION:MAP!) for the
 \ check of text a u, from the rows the engine's capture records (layout.f
 \ BODY-SOURCE), and answers whether it did. It arms only for the pending
 \ definition's text from the body text's base, its name in the buffer being
 \ read, that buffer a file's (SRCLOC:FILE-BUFFER?), with no source armed. The
-\ source starts at the name, placed in the file by checker.f FILE-POS.
+\ source starts at the name, placed in the file by the checker.
 : ROWS-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   DSRC-U @ 0 <> if RES-FALSE exit then
+   REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
    SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
    data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:ptr :}
@@ -40,28 +38,28 @@ TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
    rows 0 <= if RES-FALSE exit then
    SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:ptr b:ptr e:ptr :}
    nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
-   nm  e nm -  nm FILE-POS  DIAG-SOURCE!
-   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  DIAG-MAP!
-   nm b - DIAG-MAP-BIAS!
+   nm  e nm -  nm FILE-POS  REJECTION:SOURCE!
+   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  REJECTION:MAP!
+   nm b - REJECTION:MAP-BIAS!
    RES-TRUE ;
 
 \ Gives the checker the token that closes the text a u ROWS-ARM armed, which
-\ the text does not hold (checker.f DIAG-CLOSER!), so a structure still open
+\ the text does not hold (REJECTION:CLOSER!), so a structure still open
 \ there is refused at it as the load refuses it. A definer's head (DOES-SPLIT,
-\ as checker.f CHECK tells it) ends at the `does>` just past it in the captured
+\ as the checker tells it) ends at the `does>` just past it in the captured
 \ body, placed by the rows; any other body ends at the `;` the engine read last.
 \ A token outside the armed source is not given.
 : CLOSER-ARM ( ptr u8 n -- )
    {: a:ptr u:n :}
    DOES-SPLIT @ 0 <> if
-      a u + DIAG>SRC 0= if drop exit then
-      DSRC-A @ + 5                                  \ `does>`
+      a u + REJECTION:>SOURCE 0= if drop exit then
+      REJECTION:SOURCE$ drop + 5                     \ `does>`
    else
-      LAST-TOKEN @  data-base TKL-CELL + @
+      SRCLOC:TOKEN$
    then {: c:ptr cu:n :}
-   c DSRC-A @ - {: off:n :}
-   off 0 <  off cu + DSRC-U @ > or if exit then
-   c cu DIAG-CLOSER! ;
+   c REJECTION:SOURCE$ drop - {: off:n :}
+   off 0 <  off cu + REJECTION:SOURCE$ nip > or if exit then
+   c cu REJECTION:CLOSER! ;
 
 \ ROWS-ARM, then CLOSER-ARM when it armed.
 : BODY-ARM ( ptr u8 n -- bool )
@@ -70,7 +68,7 @@ TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 
 \ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, or nothing.
 : DISARMER ( bool -- [ -- ] )
-   if [: DIAG-SOURCE-OFF ;] else [: ;] then ;
+   if [: REJECTION:SOURCE-OFF ;] else [: ;] then ;
 
 
 public
@@ -96,7 +94,8 @@ private
    a swap ;
 
 
-\ Appends sym's tags at RSN, after the effect FACTS-SAME? left in RSBUF.
+\ Appends sym's tags at REJECTION:TEXT-LEN, after the effect FACTS-SAME? left
+\ in REJECTION:TEXT.
 : FACTS-TAGS ( n -- )
    {: sym:n :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
@@ -122,18 +121,19 @@ private
       CK-LIVE-PEND? 0= if exit then
       DOES-SPLIT @ 0 <> if exit then
       sym FACTS-TAGS
-      RQM @ 0= if RSBUF RSN @ ndict@ FACTS! exit then
+      RQM @ 0= if REJECTION:TEXT REJECTION:TEXT-LEN @ ndict@ FACTS! exit then
    then
    RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
    ERROR-TEXT:TYPE
    NMB NMU @ ERROR-TEXT:TYPE
    s" : " ERROR-TEXT:TYPE
-   RSBUF RSN @ ERROR-TEXT:TYPE
+   REJECTION:TEXT REJECTION:TEXT-LEN @ ERROR-TEXT:TYPE
    S\" \n" ERROR-TEXT:TYPE
    CHECK-RC throw ;
 
 
-\ Whether sym's newest effect has a facts text that says it, left in RSBUF.
+\ Whether sym's newest effect has a facts text that says it, left in
+\ REJECTION:TEXT.
 : FACTS-TEXT? ( n -- bool )
    {: sym:n :}
    sym 0= if RES-FALSE exit then
@@ -158,10 +158,10 @@ public
    sym FACTS-TEXT? 0= if exit then
    sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
-   RSBUF RSN @ ix FACTS!
+   REJECTION:TEXT REJECTION:TEXT-LEN @ ix FACTS!
    sym NORET-CREATES@ {: made:n :}
    made 0= if exit then
-   0 RSN !  made 1 - REND-RECORD
+   0 REJECTION:TEXT-LEN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
    LAY-FACTS ;
 
@@ -186,7 +186,9 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    rec NULL-PTR = if exit then
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix 0 < if exit then
-   LASTC-LINK-SYM FACTS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then
+   LASTC-LINK-SYM FACTS-TEXT? if
+      REJECTION:TEXT REJECTION:TEXT-LEN @
+   else NULL-PTR 0 then
    ix FIND-FACTS! ;
 
 
@@ -200,9 +202,50 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF@ CK-PEND-SYM {: sym:n :}
    sym 0= if exit then
    a u CHECKER-RECORD-SYM? sym <> if exit then
-   sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ FACTS!
+   sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
+\ The shapes whose child answers or takes `ptr t` for its declared type t.
+: STORED-SHAPE? ( n -- bool ) {: shape:n :}
+   shape CHILD-ABI:STORED =  shape CHILD-ABI:BUFFER = or
+   shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
+   shape CHILD-ABI:SLOTS = or  shape CHILD-ABI:WORK = or
+   shape CHILD-ABI:WORKS = or  shape CHILD-ABI:HEAP-NEW = or
+   shape CHILD-ABI:HEAP-RELEASE = or  shape CHILD-ABI:ARENA-NEW = or
+   shape CHILD-ABI:ARENA-DISPOSE = or ;
+
+\ A refused type is reported, naming the child, before the throw. A NODE other
+\ than 0 is the type, which TYPE does not spell.
+: STORED-ROWS ( ptr u8 n ptr u8 n n n -- n n )
+   {: na:ptr nu:n ta:ptr tu:n shape:n node:n :}
+   node 0 <> if node NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
+   0= if
+      drop
+      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REFUSE then
+      CHECK-RC throw
+   then
+   shape swap TFAM:TFAM-STORED-ROWS ;
+
+\ Type t's bytes in storage: whole cells only when WHOLE, else as DYNAMIC
+\ admits, which takes `u8` too.
+: TYPE-BYTES ( ptr u8 n bool -- n bool )
+   {: ta:ptr tu:n whole:bool :}
+   whole 0= if ta tu CHECKER-DYNAMIC-INFO exit then
+   ta tu CHECKER-STORAGE-INFO {: w:n ok:bool :}
+   w CELL * ok ;
+
+\ A storage declaration's name, stored type and that type's bytes. A missing
+\ name or a refused type is reported, naming the definer, and answers 0 bytes.
+: DECL-LINE ( ptr u8 n bool -- ptr u8 n ptr u8 n n )
+   {: da:ptr du:n whole:bool :}
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
+   ta tu whole TYPE-BYTES 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE na nu ta tu 0 exit
+   then {: bytes:n :}
+   na nu ta tu bytes ;
 
 public
 
@@ -211,6 +254,265 @@ public
 : DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
+
+\ Registers the effect of the pending child word NAME of SHAPE, PARAM and
+\ stored TYPE, lays its facts, and answers its body value and effect handle.
+\ TYPE is read only for the shapes that answer `ptr t`, and not for a STORED
+\ child whose PARAM is its type's node.
+: CHILD ( ptr u8 n n n ptr u8 n -- n n )
+   {: na:ptr nu:n shape:n param:n ta:ptr tu:n :}
+   shape STORED-SHAPE? if
+      na nu ta tu shape
+      shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
+   else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
+   na nu din dout CHECKER-CHILD-ROWS {: h:n :}
+   na nu PENDING-FACTS
+   val h ;
+
+\ The line of a definer whose element may be a byte.
+: STORAGE-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-FALSE DECL-LINE ;
+
+\ The line of a definer whose element is whole cells.
+: CELL-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-TRUE DECL-LINE ;
+
+: DEFINER-AT ( ptr u8 n -- )
+   REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
+
+\ Places the rejection at the token read last, the definer's own or
+\ one it parsed.
+: DEFINER-PLACE ( -- ) SRCLOC:TOKEN$ DEFINER-AT ;
+
+private
+
+using SCHEMA-REG
+
+\ A type: a live node, never an effect side's row.
+: TYPE-ARG ( n -- n ) {: node:n :}
+   node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
+   s" E-NOT-TYPE" REJECTION:OPEN
+   s" a definer was given a value that is no type" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ-TYPE or EFFECT:PTR made in this file: a type ends with the file that built it"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+: UNKNOWN-HELP$ ( -- ptr u8 n )
+   s" name n, bool, r or a family the package running the definer can name" ;
+
+\ An effect; any other type is rejected.
+: EFFECT-ARG ( n -- n ) {: node:n :}
+   node TYPE-ARG SCHEMA-QUOT? if node exit then
+   s" E-NOT-EFFECT" REJECTION:OPEN
+   s" EFFECT:IN or EFFECT:OUT was given a type that is no effect"
+   REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT answered"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+: FAMILY-NODE ( n -- n ) {: fam:n :}
+   fam TFAM:TFAM-ARITY@ {: k:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
+   fam start k SCHEMA-APP ;
+
+\ TYPE-OP's operands are cells: a spelling arrives as its address.
+CAST: >BYTES ( n -- ptr u8 )
+
+\ A built-in type's con code as a signature reads its spelling, else 0.
+: BUILT-IN ( n n -- n ) {: a:n u:n :}
+   u 1 = if
+      a >BYTES c@ {: c:n :}
+      c 110 = if CC-N exit then
+      c 102 = if CC-BOOL exit then
+      c 114 = if CC-R exit then
+   then
+   a >BYTES u CON-OF ;
+
+\ The type a spelling names: a built-in type's con code and 0, else 0 and the
+\ family; one that names neither is rejected.
+: NAMED-FAMILY ( n n -- n n )
+   {: a:n u:n :}
+   a u BUILT-IN dup 0 <> if 0 exit then drop
+   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u
+   a >BYTES u TFAM:TFQ-SPLIT? if TFAM:TFAM-EXACT-RESOLVE
+   else TFAM:TFAM-SIG-RESOLVE then
+   if 0 swap exit then
+   drop
+   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
+   s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
+   a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP  UNKNOWN-HELP$ REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+\ A rejected READ of the type xa xu, naming the token, or the type when the
+\ reason names none.
+: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
+   tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
+   code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
+   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
+   REJECTION:OPEN
+   wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   tu xu <> if
+      s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
+      s" '" REJECTION:EMIT-STR
+   then
+   DEFINER-PLACE
+   REJECTION:HELP
+   unknown if s" declare a type of that name, or correct its spelling"
+   else s" write the type as a signature writes it" then
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+\ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
+\ given, placed at the token the engine read last, which ran the definer.
+: TEXT-LETTER-REFUSE ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n xa:ptr xu:n :}
+   s" E-BAD-SIGNATURE" REJECTION:OPEN
+   s" the type '" REJECTION:EMIT-STR
+   xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" ', which names no type" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" a built definition's types are concrete: " REJECTION:EMIT-STR
+   s" write one such as n or ptr u8 in place of '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+: TEXT-TYPE ( n n -- n ) {: a:n u:n :}
+   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
+   [: a >BYTES u TEXT-LETTER-REFUSE ;] TYPE-DECL:READ-TYPE ;
+
+: TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
+   code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
+   code TYPE-OP-ABI:NAMED = if
+      a 0 <> if a SCHEMA-CON exit then
+      b FAMILY-NODE exit
+   then
+   code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
+   code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
+   code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
+   code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
+   code TYPE-OP-ABI:READ = if a b TEXT-TYPE exit then
+   s" E-TYPE-OP" REJECTION:OPEN
+   s" the checker has no type operation " REJECTION:EMIT-STR
+   code REJECTION:EMIT-N
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" this engine is older than the tree it loads: " REJECTION:EMIT-STR
+   s\" build the engine in stages (docs/bootstrap.md \"Staged hosts\")"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+public
+
+\ The transient schema node a TYPE-OP-ABI code makes of a and b, else rejected.
+\ NAMED's lookup, and the type entries READ's lookups would read, come first:
+\ the transient region would drop an entry a lookup reads.
+: TYPE-OP ( n n n -- n )
+   {: code:n a:n b:n :}
+   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a b then {: x:n y:n :}
+   code TYPE-OP-ABI:READ = if TFAM:READ-PENDING then
+   TRANSIENT-ON
+   [: code x y TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+
+\ Whether node is an effect a definition can take: a live quotation node with
+\ no return clause.
+: EFFECT? ( n -- bool ) {: node:n :}
+   node SCHEMA-NODE-OK? 0= if RES-FALSE exit then
+   node SCHEMA-ROW? if RES-FALSE exit then
+   node SCHEMA-QUOT? 0= if RES-FALSE exit then
+   node SCHEMA-QUOT-HASR@ 0= ;
+
+private
+
+\ EFFECT-DENSE's map: the raw index of each parameter it numbered, at that
+\ parameter's dense index, and how many it met.
+create DENSE-RAW TFAM:TFAM-DECL-PARAM-COUNT cells allot
+variable DENSE-N
+
+\ The dense index of raw parameter index RAW, the next one when RAW is new.
+\ Past the map's entries a new parameter is counted, not kept.
+: DENSE-INDEX ( n -- n ) {: raw:n :}
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT min 0 ?do
+      i cells DENSE-RAW + @ raw = if i unloop exit then
+   loop
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT < if
+      raw DENSE-N @ cells DENSE-RAW + !
+   then
+   DENSE-N @  1 DENSE-N +! ;
+
+\ The run of schema roots an application's arguments or a row's elements are.
+: CHILD-START ( n -- n )
+   dup SCHEMA-APP? if SCHEMA-B@ exit then SCHEMA-ROW-START@ ;
+: CHILD-COUNT ( n -- n )
+   dup SCHEMA-APP? if SCHEMA-C@ exit then SCHEMA-ROW-COUNT@ ;
+
+\ Roots the copies staged on PARAM-SCR from MARK on, contiguously, unstages
+\ them and answers the first root.
+: DENSE-ROOTS ( n -- n ) {: mark:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   PARAM-SCR-N @ mark ?do i cells PARAM-SCR + @ SCHEMA-ROOT+ drop loop
+   mark PARAM-SCR-N !
+   start ;
+
+\ NODE with each parameter renumbered by DENSE-INDEX. A node's copied children
+\ are staged before its own roots are pushed, so each run of roots is contiguous.
+: DENSE-COPY ( n -- n ) {: node:n :}
+   node SCHEMA-PARAM? if node SCHEMA-A@ DENSE-INDEX SCHEMA-PARAM exit then
+   node SCHEMA-PTR? if node SCHEMA-A@ RECURSE SCHEMA-PTR exit then
+   node SCHEMA-QUOT? if
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-RIN@ RECURSE  node SCHEMA-QUOT-ROUT@ RECURSE
+      node SCHEMA-QUOT-HASR@ SCHEMA-QUOT exit
+   then
+   node SCHEMA-APP? node SCHEMA-ROW? or 0= if node exit then
+   PARAM-SCR-N @
+   0 begin dup node CHILD-COUNT < while
+      dup node CHILD-START + SCHEMA-ROOT@ RECURSE PARAM-SCR+  1 +
+   repeat drop
+   DENSE-ROOTS {: first:n :}
+   node SCHEMA-APP? if node SCHEMA-A@ first node CHILD-COUNT SCHEMA-APP exit then
+   first node CHILD-COUNT SCHEMA-ROW ;
+
+public
+
+\ A transient copy of type node, its parameters numbered on by the map the
+\ open definition's EFFECT-DENSE began; false past TFAM-DECL-PARAM-COUNT.
+: TYPE-DENSE ( n -- n bool ) {: node:n :}
+   TRANSIENT-ON
+   [: node DENSE-COPY ;] [: TRANSIENT-OFF ;] finally
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
+   RES-TRUE ;
+
+\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
+\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
+: EFFECT-DENSE ( n -- n bool ) 0 DENSE-N !  TYPE-DENSE ;
+
+;using
+
+private
+
+\ The span through its first `)`.
+: THROUGH-CLOSE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ 41 <> else RES-FALSE then while 1 + repeat
+   {: k:n :}
+   a  k 1 + u min ;
+
+public
+
+\ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
+\ buffer past its recorded text, where the next rendering replaces it.
+: EFFECT-TEXT ( n -- ptr u8 n ) {: node:n :}
+   node EFFECT-SIG 2drop {: din:n dout:n :}
+   REJECTION:TEXT-LEN @ {: at:n :}
+   din dout 0 0 RES-FALSE REND-FACTS {: buf:ptr len:n :}
+   at REJECTION:TEXT-LEN !
+   buf at +  len at -  THROUGH-CLOSE ;
 
 private
 
@@ -247,13 +549,16 @@ public
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if
-      \ A muted or replaced DIAGXT can emit nothing even in JSON mode.
+      \ No JSON diagnostic reported this refusal (none does in prose mode).
       CHECKER-JSON-REPORTED? 0= if
          s" hook: non-certified definition: " ERROR-TEXT:TYPE
          NMB NMU @ ERROR-TEXT:TYPE
-         s"  at '" ERROR-TEXT:TYPE
-         FAILTK FAILTU @ ERROR-TEXT:TYPE
-         S\" '\n" ERROR-TEXT:TYPE
+         FAILTU @ 0 <> if
+            s"  at '" ERROR-TEXT:TYPE
+            FAILTK FAILTU @ ERROR-TEXT:TYPE
+            s" '" ERROR-TEXT:TYPE
+         then
+         S\" \n" ERROR-TEXT:TYPE
       then
       CHECK-RC throw then ;
 
@@ -277,7 +582,7 @@ public
             S\" \n" ERROR-TEXT:TYPE
             CHECK-RC throw
          then
-         RSBUF RSN @ now FACTS!
+         REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;
 
@@ -300,18 +605,19 @@ public
    RES-TRUE ;
 
 
-\ Sym's tags alone in RSBUF, the facts text of a primitive the checker types by
-\ what it does (`execute`, `?dup`). False when it has none or a text cannot say
-\ them.
+\ Sym's tags alone in REJECTION:TEXT, the facts text of a primitive the checker
+\ types by what it does (`execute`, `?dup`). False when it has none or a text
+\ cannot say them.
 : TAGS-TEXT? ( n -- bool )
    {: sym:n :}
-   0 RSN !  0 RQM !
+   0 REJECTION:TEXT-LEN !  0 RQM !
    sym FACTS-TAGS
-   RSN @ 0 >  RQM @ 0=  and ;
+   REJECTION:TEXT-LEN @ 0 >  RQM @ 0=  and ;
 
 
-\ Sym's primitive rows as one facts text in RSBUF: the first row's effect and
-\ tags, then each further row after `overload`; with no row, its tags alone.
+\ Sym's primitive rows as one facts text in REJECTION:TEXT: the first row's
+\ effect and tags, then each further row after `overload`; with no row, its tags
+\ alone.
 \ False when a text cannot say them, or a created effect, whose text ends the
 \ facts, would hide the rows.
 : ROWS-TEXT? ( n -- bool )
@@ -328,30 +634,24 @@ public
    RQM @ 0= ;
 
 
-\ Rec's own facts text as it stands, else, in an hb whose records carry none,
-\ sym's rows' (ROWS-TEXT?); rec NULL-PTR or sym 0 is none. Empty when neither
-\ says them. A rendered text lies in RSBUF, which the next render reuses.
-: OWN-OR-ROWS ( ptr n n -- ptr u8 n )
-   {: rec:ptr sym:n :}
-   rec NULL-PTR <> if
-      rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ dup 0 <> if exit then 2drop
-   then
+\ Sym's rows as one facts text (ROWS-TEXT?), empty for sym 0 or when no text
+\ can say them. The text lies in REJECTION:TEXT, which the next render reuses.
+: ROWS-FACTS ( n -- ptr u8 n )
+   {: sym:n :}
    sym 0= if NULL-PTR 0 exit then
-   sym ROWS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then ;
+   sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ else NULL-PTR 0 then ;
 
 \ A linked engine's facts text for primitive na nu: what the open build's rows
-\ say of its global symbol (ROWS-TEXT?), empty when no text can.
+\ say of its global symbol, empty when no text can.
 : PRIMITIVE-FACTS ( ptr u8 n -- ptr u8 n )
-   {: na:ptr nu:n :}
-   NULL-PTR  na nu CHECKER-GLOBAL-SYM?  OWN-OR-ROWS ;
+   CHECKER-GLOBAL-SYM? ROWS-FACTS ;
 
-\ The facts text this checker gives the primitive named na nu that package pa pu
-\ owns (src/habu/prims.f EPPRIM:), for the record a build lays for it in that
-\ package's private wordlist (OWN-OR-ROWS): rec is this hb's own such record,
-\ NULL-PTR for none.
-: OWNED-FACTS ( ptr n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rec:ptr pa:ptr pu:n na:ptr nu:n :}
-   rec  pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM?  OWN-OR-ROWS ;
+\ The facts text the open build's rows give the primitive named na nu that
+\ package pa pu owns (src/habu/prims.f EPPRIM:), for the record a build lays
+\ for it in that package's private wordlist; empty when no text can.
+: OWNED-FACTS ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM? ROWS-FACTS ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation. Only the
@@ -362,7 +662,7 @@ TRUSTED: INSTALL ( -- )
    ['] CHECK:IMMEDIATE set-preflight
    ['] DEFINITION set-check ;
 
-\ Replace checker.f's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
+\ Replace the checker's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
 \ CHECKER-DEFER, CHECKER-DEFCAST and CHECKER-LINEAR, now the renderer exists.
 ' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!
@@ -370,7 +670,6 @@ CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + CELL-VIEW @ DECL-REG xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + CELL-VIEW @ DEFCAST-REG xt!
 ' RAW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + xt!
 ' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
-' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:TRUST-DECL-OFF + xt!
 ' DEFERRED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DEFER-OFF + xt!
 ' CAST-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + xt!
 ' LINEAR-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:LINEAR-OFF + xt!

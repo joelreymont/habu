@@ -31,9 +31,13 @@ variable SAVED-RC
       ;MATCH
    else a u then ;
 
-\ A refusal split at ` habu: `: the class before it and the text after its
-\ location; with no ` habu: ` the whole is the class.
+\ A rejection split at ` habu: `: the class before it and the text after its
+\ location. One that starts `habu: ` has no class; with no `habu: ` the
+\ whole is the class.
 : UNLOCATED ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+   a u s" habu: " STARTS-WITH? if
+      a 0  a 6 +  u 6 -  PAST-PATH exit
+   then
    a u s"  habu: " FIND-SUB MATCH option
      none OF a u a 0 ENDOF
      some OF IDX>N {: at:n :}

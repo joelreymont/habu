@@ -97,6 +97,8 @@ E-CURL-PLATFORM constant E-PLATFORM
 E-CURL-STATE constant E-STATE
 E-CURL-RESULT constant E-RESULT
 
+$7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
+
 private
 
 0 constant OPT-LONG                       \ CURLOPTTYPE_LONG
@@ -139,17 +141,16 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
-$7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
 
 \ Foreign out-parameter cells, per task.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
-: INFO-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: BUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $08 + ;
-: LEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: HBUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
-: HLEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $20 + ;
+$28 TASK:+USERS IO-STORAGE u8
+: INFO-CELL ( -- ptr u8 ) 0 IO-STORAGE ;
+: BUF-CELL ( -- ptr u8 ) $08 IO-STORAGE ;
+: LEN-CELL ( -- ptr u8 ) $10 IO-STORAGE ;
+: HBUF-CELL ( -- ptr u8 ) $18 IO-STORAGE ;
+: HLEN-CELL ( -- ptr u8 ) $20 IO-STORAGE ;
 
 
 \ CURL* and FILE* are OPAQUE here, and so is curl_slist* outside SLIST-RELEASE;
@@ -161,6 +162,7 @@ VERSIONED-LIBRARY curl 4
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION
 FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
+FUNCTION: EASY-RESET curl_easy_reset ( n -- ) ;FUNCTION
 FUNCTION: EASY-PERFORM curl_easy_perform ( n -- i32 ) ;FUNCTION
 FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
@@ -171,38 +173,21 @@ FUNCTION: EASY-PAUSE curl_easy_pause ( n n -- i32 ) ;FUNCTION
 
 FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $08 WRITES-BYTES                     \ one C long, or one char*
 ;FUNCTION
 
 
 \ CURLM* is opaque like CURL*, every answer is a CURLMcode.
 \ curl_multi_info_read answers a CURLMsg* or zero, which is foreign memory this
 \ package copies before it reads, and curl_multi_fdset fills three fd_sets the
-\ CALLER cleared, which is why each of them is declared as the whole
-\ FD_SETSIZE bitmap it writes into.
+\ CALLER cleared.
 FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
 FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- i32 ) ;FUNCTION
-
-FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 )
-   1 $04 WRITES-BYTES                     \ int *running_handles
-;FUNCTION
-
-FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n )
-   1 $04 WRITES-BYTES                     \ int *msgs_in_queue
-;FUNCTION
-
-FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
-   1 $80 WRITES-BYTES                     \ fd_set *read_fd_set
-   2 $80 WRITES-BYTES                     \ fd_set *write_fd_set
-   3 $80 WRITES-BYTES                     \ fd_set *exc_fd_set
-   4 $04 WRITES-BYTES                     \ int *max_fd
-;FUNCTION
-
-FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
-   1 $08 WRITES-BYTES                     \ long *milliseconds
-;FUNCTION
+FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n ) ;FUNCTION
+FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 ) ;FUNCTION
 
 
 PROCESS-SYMBOLS
@@ -217,19 +202,9 @@ FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
 FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
-
-FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n )
-   0 $08 WRITES-BYTES                     \ char **bufp
-   1 $08 WRITES-BYTES                     \ size_t *sizep
-;FUNCTION
-
-FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n )
-   0 1 WRITES-ARG
-;FUNCTION
-
-FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
-   0 2 WRITES-ARG
-;FUNCTION
+FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n ) ;FUNCTION
+FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n ) ;FUNCTION
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
@@ -354,6 +329,11 @@ CAST: >BYTES ( n -- ptr u8 )
    0 state S.LENGTH STATE-FIELD LE:U64!
    0 state S.VALID STATE-FIELD LE:U64! ;
 
+: STATE-CLEAR-LIST ( n -- )
+   {: state:n :}
+   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   0 state S.LIST STATE-FIELD LE:U64! ;
+
 : STATE-PUBLISH ( n n n -- ) {: easy:n source:n u:n :}
    easy STATE-GET {: state:n :}
    state STATE-CLEAR-RESPONSE
@@ -364,7 +344,7 @@ CAST: >BYTES ( n -- ptr u8 )
 : STATE-DESTROY ( n -- )
    {: state:n :}
    state STATE-CLEAR-RESPONSE
-   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
+   state STATE-CLEAR-LIST
    state RELEASE ;
 
 
@@ -1583,6 +1563,14 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx REC-RELEASE
    CURL-LOCK TASK:RELEASE ;
 
+\ With a halt pending, gives the record up and serves the halt; PAUSE returns
+\ only when termination is deferred, and the caller must not touch the record.
+: HALT-LEFT? ( n -- bool ) {: idx:n :}
+   TASK:HALT-PENDING? 0= if false exit then
+   idx ABANDON
+   TASK:PAUSE
+   true ;
+
 
 : OWNER-MARK ( ptr n n -- bool ) {: owner:ptr idx:n :}
    idx REC-STATE@ dup STATE-FREE = swap STATE-CLAIMING = or if false exit then
@@ -1783,26 +1771,19 @@ public
    request REQUEST-WAITING <> ;
 
 
-\ Takes the armed read's answer, waiting for it if it has none yet; its wait
-\ answers a halt as AWAIT's does.
+\ Takes the armed read's answer, waiting for it if it has none yet. A pending
+\ halt comes first: the record is given up even when the answer is ready.
 : NEXT-TAKE ( handle -- chunk-result )
    {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC R.REQUEST atomic@ {: request:n :}
    request REQUEST-NONE = if E-STATE throw then
-   request REQUEST-WAITING <> if idx STREAM-RESULT-TAKE exit then
    begin
-      TASK:WAIT
-      TASK:HALT-PENDING? if
-         idx ABANDON
-         TASK:PAUSE
-         \ PAUSE returns when termination is deferred. The record is already
-         \ given back, so never read or park on it again.
-         CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit
-      then
+      idx HALT-LEFT? if CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit then
       idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
          idx STREAM-RESULT-TAKE exit
       then
+      TASK:WAIT
    again ;
 
 
@@ -1816,19 +1797,15 @@ public
 \ would have. It gives the record back, so every started transfer is awaited
 \ once, cancelled ones included, unless its owner's CLEANUP gives it up. A
 \ handle with no transfer in flight, and one another task started, are E-STATE.
-\ While TASK:HALT-PENDING? the TASK:WAIT loop gives the record up and ends the
-\ task at the PAUSE below, or answers failed CURLE-ABORTED where PAUSE cannot.
+\ A pending halt comes before a ready result: the record is given up and the
+\ task ends, or answers failed CURLE-ABORTED where termination is deferred.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
+      idx HALT-LEFT? if CURLE-ABORTED FETCH-FAILED exit then
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
       TASK:WAIT
-      TASK:HALT-PENDING? if
-         idx ABANDON
-         TASK:PAUSE
-         CURLE-ABORTED FETCH-FAILED exit
-      then
    again ;
 
 
@@ -1854,6 +1831,24 @@ private
    CURL-LOCK TASK:GET
    easy REC-FIND 0 >=
    CURL-LOCK TASK:RELEASE ;
+
+public
+
+\ Drops every option set since INIT, header list included, and the captured
+\ response; libcurl keeps its connections, DNS and TLS caches and cookies.
+: RESET ( handle -- status ) {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET {: state:n :}
+   easy EASY-RESET
+   state STATE-CLEAR-LIST
+   state STATE-CLEAR-RESPONSE
+   easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
+      CODE>STATUS exit
+   then drop
+   easy DEFAULTS CODE>STATUS ;
+
+private
 
 
 : HEADER-STATUS? ( ptr u8 n n -- bool ) {: source at:n u:n :}

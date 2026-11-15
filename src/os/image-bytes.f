@@ -2,8 +2,11 @@
 \ It names no machine's code package, so it compiles the same under every
 \ target writer and links as any file does; the writer sizes the buffer.
 
+require src/core/bytes.f
+require src/lib/span.f
+
 package IMAGE-BYTES
-\ The buffer's bytes: the largest image a loaded target writer names.
+\ The buffer's bytes: the largest image a target writer has named.
 variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
@@ -15,20 +18,8 @@ PTR-VARIABLE MP
 variable MLEN
 private
 PTR-VARIABLE M-A
-PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
-public
-\ The code/payload boundary macho.f reads to put payload bytes in __DATA_CONST;
-\ only IMG-PAYLOAD-CLEAR stores it, as zero, so no image carries a payload.
-PTR-VARIABLE IMG-PAYLOAD-A
-variable IMG-PAYLOAD-N
-variable IMG-CODE-N
-
-: IMG-PAYLOAD-CLEAR ( -- )
-   0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
-
-private
 : M-ALLOC-BUF ( -- ptr u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
@@ -41,13 +32,20 @@ private
 : M-ENSURE-BUF ( -- )
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
+: M-UNMAP ( -- )
+   MBUF-A@ MSIZE munmap 0 <> if s" image-bytes: munmap failed" 74 die then
+   NULL-PTR MBUF-A! ;
+
 public
-\ A target writer names its largest image at load; the largest named wins,
-\ whatever the load order. The buffer maps on first use, so a size named after
-\ that is refused.
+\ A target writer names the bytes its next image takes, at load or before that
+\ image's M-RESET; the largest wins, and one above a mapped buffer's unmaps it for
+\ the next use.
 : MSIZE! ( n -- )
-   MBUF-A@ 0= 0= if s" image-bytes: a size named after the buffer mapped" 73 die then
-   $FFFF + $10000 / $10000 *  MSIZE-N @ max  MSIZE-N ! ;
+   $FFFF + $10000 / $10000 * {: n:n :}
+   n MSIZE > if
+      MBUF-A@ 0= 0= if M-UNMAP then
+      n MSIZE-N !
+   then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
@@ -67,14 +65,8 @@ private
 : M-A@ ( -- ptr u8 )
    M-A @ ;
 
-: M-SRC@ ( -- ptr u8 )
-   M-SRC @ ;
-
 : M-A! ( ptr u8 -- )
    M-A ! ;
-
-: M-SRC! ( ptr u8 -- )
-   M-SRC ! ;
 
 : M-O@ ( -- off )
    M-O @ >OFF ;
@@ -127,6 +119,9 @@ private
    LEN>N {: u:n :}
    u 0 < u MSIZE M-HERE - > or if s" image-bytes: write exceeds buffer" M-FAIL then ;
 
+: M-ADVANCE ( len -- )
+   LEN>N MP@ swap M-BYTE+ MP ! ;
+
 public
 : IMG-M8 ( n -- )
    M-ROOM1
@@ -146,19 +141,19 @@ public
    32 rshift IMG-M32 ;
 
 : M-ZEROS-LEN ( len -- )
-   dup M-CHECK-ROOM
-   LEN>N begin dup 0 > while 0 IMG-M8 1 - repeat drop ;
+   {: u:len :}
+   u M-CHECK-ROOM
+   0 MP@ u LEN>N SPAN:MAKE SPAN:FILL
+   u M-ADVANCE ;
 
 : M-ZEROS ( n -- )
    M-LEN M-ZEROS-LEN ;
 
 : M-BYTES-LEN ( ptr u8 len -- )
-   dup M-CHECK-ROOM
-   LEN>N M-N ! M-SRC!
-   0 begin dup M-N @ < while
-      dup M-SRC@ swap M-BYTE+ c@ IMG-M8
-      1 +
-   repeat drop ;
+   {: src:ptr u:len :}
+   u M-CHECK-ROOM
+   src MP@ u BYTE-COPY-LEN
+   u M-ADVANCE ;
 
 : M-BYTES ( ptr u8 n -- )
    M-LEN M-BYTES-LEN ;
@@ -234,11 +229,9 @@ public
    $FFFFFFFF and M-BE32 ;
 
 : M-BE-BYTES-LEN ( ptr u8 len -- )
-   LEN>N M-N ! M-SRC!
-   0 begin dup M-N @ < while
-      dup M-SRC@ swap M-BYTE+ c@ M-BE8
-      1 +
-   repeat drop ;
+   {: src:ptr u:len :}
+   src M-BE-PTR u BYTE-COPY-LEN
+   u M-BE-SKIP ;
 
 private
 : M-BE-BYTES ( ptr u8 n -- )

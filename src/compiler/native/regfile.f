@@ -111,9 +111,7 @@ public
    size FILE-MASK  res R-BITS invert and ;
 
 \ ---- the description ---------------------------------------------------------
-\ The only constructor; every reader takes a value that passed through it. There
-\ is no scratch-register field: the allocator spills through the register the
-\ value holds and refuses a frame it cannot address (E-A64RA-PRESSURE).
+\ The only constructor; every reader takes a value that passed through it.
 \ NABI:SCRATCH in abi.f is the convention's allocatable set, not a machine fact.
 : FILE ( n NREGFILE:regs NREGFILE:regs n NREGFILE:regs NREGFILE:regs n -- NREGFILE:file )
    {: gn:n gr:NREGFILE:regs gc:NREGFILE:regs

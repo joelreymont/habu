@@ -16,10 +16,10 @@ variable LPROFRECLAIM
 \ The band: PROF-STATE-BYTES of state cells, then one counter per dict record.
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.
 : PROF-BAND-AT ( n n -- n ) {: base:n size:n :} size PROF-CNT-BYTES - base + ;
-0  constant PROF-TOT        \ samples delivered
+0  constant PROF-TOT        \ sample intervals elapsed: aarch64 weighs each sample (ARN-LAST)
 8  constant PROF-LIM        \ report + exit(PROF-LIMIT-RC) at this many, 0 = sample until prof-off
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
-24 constant PROF-FOREIGN    \ samples in a context that is not Habu code
+24 constant PROF-FOREIGN    \ samples in a context that is not Habu code, charged to no word
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
 40 constant PROF-ARENA      \ the profiler arena, mapped once per process
 48 constant PROF-ARMED      \ the clock: ARMED-RUNS, ARMED-HELD, or 0 while stopped
@@ -33,6 +33,11 @@ variable LPROFRECLAIM
 \ clears or reads the counters leaves ARMED-RUNS before it stops the timer. The
 \ x86-64 twin stores 0 and ARMED-RUNS and never holds: Linux delivers a raised
 \ tick before setitimer returns (src/habu/prof-x64.f, prof-off).
+56 constant PROF-IN         \ the handlers between their increment and decrement, on any thread;
+                            \ a word that leaves ARMED-RUNS waits for 0
+\ The public control words' ticket lock: words run in the order they asked.
+64 constant PROF-CTL-NEXT   \ the next ticket to hand out
+72 constant PROF-CTL-SERVE  \ the ticket that may run; only its holder writes it
 
 \ The arena holds the pc index the handler searches.
 \ THE HANDLER NEVER WALKS THE DICTIONARY: it searches a pc-sorted live-range
@@ -46,7 +51,7 @@ variable LPROFRECLAIM
 \ and its original) in dictionary order; the search lands on the last of them.
 \ Records with no code (a namespace row, a retired row, a zero-length body) are
 \ not in the index.
-128 constant ARN-HDR        \ arena header bytes, then the index
+192 constant ARN-HDR        \ arena header bytes, then the index
 0  constant ARN-COUNT       \ index entries
 8  constant ARN-LO          \ lowest code address in the index
 16 constant ARN-HI          \ one past the highest
@@ -54,13 +59,38 @@ variable LPROFRECLAIM
 32 constant ARN-NEW         \ samples at or above ARN-HI: code compiled after the build
 40 constant ARN-DROP        \ caller edges dropped: the probe window was full
 48 constant ARN-FRAMES      \ caller frames attributed out of the machine stack
-56 constant ARN-WALK        \ machine-stack cells one sample may scan
+56 constant ARN-WALK        \ cells a sample off the main stack may scan
 64 constant ARN-USEC        \ sampling interval in microseconds, 0 = the 1000 default
 72 constant ARN-SPILL       \ new-code samples the deferred buffer had no room for
-80 constant ARN-DEFER       \ deferred samples waiting for the next report to name them
+80 constant ARN-DEFER       \ deferred slots waiting for the next report to name them
 88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
 96 constant ARN-IDS         \ profile identities issued this session, at most DICT-CAP
 104 constant ARN-CHUNKS      \ linked chunks holding copied names
+\ Both are 0 when ARN-OWNER is not the main thread: no SP lies in [0, 0).
+112 constant ARN-STACK-TOP   \ the main stack's top, as boot recorded it
+120 constant ARN-STACK-LOW   \ the top less the stack limit
+\ A standard signal does not queue: the ticks that expire while the process is
+\ blocked in a syscall or descheduled arrive as one SIGALRM. The aarch64 handler
+\ therefore counts each sample as the whole intervals elapsed since the last
+\ one, so blocked time is charged where the sample lands.
+128 constant ARN-LAST        \ the timer clock at the last sample, or at arming
+136 constant ARN-TICKS       \ the sampling interval in the timer clock's ticks, at least 1
+\ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
+\ which is the serial only while every sample adds exactly one to PROF-TOT.
+144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
+\ aarch64 charges a sample inside C to the Habu word that called it when x30 or
+\ the bounded scan names one, so that weight is in the word's counter and not in
+\ PROF-FOREIGN.
+152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
+160 constant ARN-CARRY       \ the timer clock's ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS
+\ A SIGALRM reaches any thread that does not block it, and macOS gives the
+\ process's to the main thread: the aarch64 handler counts only on ARN-OWNER
+\ and forwards a delivery on any other thread to ARN-OWNER-TID.
+168 constant ARN-OWNER       \ the thread pointer of the thread that ran prof-on
+176 constant ARN-OWNER-TID   \ that thread's kernel handle (Mach thread port, Linux tid), 0 for none
+\ A task has its own DATA region, so the handler tells the owner's Habu code by
+\ this x20, not by DATA-VA.
+184 constant ARN-OWNER-DATA  \ the owner's x20, its DATA region
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END
@@ -79,15 +109,16 @@ DICT-CAP constant PROF-CALLER-NONE      \ no record index reaches it: the unknow
 16 constant PROF-CALL-ENT               \ key+1, then the count
 8  constant PROF-CALL-PROBE
 $9E3779B97F4A7C15 constant PROF-HASH    \ golden-ratio multiplier; the top 16 bits index
-64 constant PROF-WALK-CELLS             \ default machine-stack scan, in cells
-$FFF constant PROF-PAGE-MASK            \ a sample never reads past its own 4 KiB block
+64 constant PROF-WALK-CELLS             \ off the main stack: the scan, in cells
+$FFF constant PROF-PAGE-MASK            \ off the main stack: never past SP's 4 KiB block
+$800000 constant PROF-STACK-BYTES       \ the main stack's limit when getrlimit has none
 \ A tick in code compiled after prof-on has no index entry. The handler keeps the
-\ pc and the interrupted return address (two cells, fixed stride, no walk, no
-\ allocation); the next report rebuilds the index and replays them, the only
+\ pc, the interrupted return address and the sample's weight (three cells, fixed
+\ stride, no walk, no allocation; x86-64 leaves the weight cell unused); the next report rebuilds the index and replays them, the only
 \ point at which every word the phase compiled exists. Sizing: a 92-second
 \ self-build at 1 kHz put 13,991 of 92,000 samples here, so $40000 slots hold
 \ about eighteen such builds; past that a sample is counted in ARN-SPILL.
-16 constant PROF-DEFER-ENT              \ the sample's pc, then its return address (aarch64: x30)
+24 constant PROF-DEFER-ENT              \ pc, return address (aarch64: x30), weight
 $40000 constant PROF-DEFER-SLOTS
 64 constant PROF-ROWS                   \ rows one report prints: enough that a compiler phase's roots,
                                         \ which carry a large inclusive share on a small exclusive one, reach the report
@@ -148,13 +179,8 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 : PROFNAMEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot map name snapshot\n" ;
 : PROFNAMEFREEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot release name snapshot\n" ;
 
-\ A negative interval is the caller's error: prof-rate throws E-PROF-RATE before
-\ it maps or stores anything, so a caller that catches it keeps its rate.
-\ src/lib/error.f owns the code; prof.f compiles before any src/lib/ file
-\ exists, so the (code, name) pair is re-registered here, the one form
-\ tools/error-code-lint.f admits, and test/gate-debug-lib.f
-\ GDB-PROFILER-RATE-REFUSED keeps the spellings equal. Qualify it: a bare
-\ E-PROF-RATE under `using PROF-ABI` meets src/lib/error.f's global.
+\ prof-rate's refusal, re-registered from src/lib/error.f, which loads after
+\ prof.f. Qualify it: a bare E-PROF-RATE under `using PROF-ABI` meets error.f's.
 -3803 constant E-PROF-RATE
 
 ;package

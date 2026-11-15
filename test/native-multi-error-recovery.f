@@ -1,6 +1,5 @@
 \ A counted native checker refusal ends its pending definition without
 \ publishing it, and the surrounding source keeps its earlier definitions.
-1 set-tier
 require src/habu/layout.f
 require src/habu/xref.f
 

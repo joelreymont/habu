@@ -15,12 +15,12 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/fmt.f
 
 package EXIT-HOOK-TEST
 
 $10000 constant CAP
-1024 constant TEXT-CAP
-600000 constant TIMEOUT-MS
+4096 constant TEXT-CAP
 create OUT CAP allot
 create ERR CAP allot
 create TEXT-BUF TEXT-CAP allot
@@ -80,7 +80,7 @@ variable TREE-U
 : RUN-PATH ( ptr u8 n -- n n n ) {: path:ptr pathu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
@@ -207,6 +207,42 @@ variable TREE-U
    erru s" neg" ERR-HAS? TTRUE
    outu 0 T= ;
 
+: ACTION-DEF ( n -- ) {: k:n :}
+   s" : A" TEXT+ k FMT:INT$ TEXT+ S\"  ( -- ) ;\n" TEXT+ ;
+
+: ACTION-ADD ( n -- ) {: k:n :}
+   s" ' A" TEXT+ k FMT:INT$ TEXT+ S\"  AT-EXIT:ADD\n" TEXT+ ;
+
+\ The action table holds 64: a 65th distinct action is refused with
+\ E-LAYOUT-BOUNDS instead of written past the table.
+: CASE-ACTIONS-FULL ( -- )
+   s" actions-full.f" s" actions-full-tree" CASE-PATHS
+   S\" require src/lib/at-exit.f\n" TEXT+
+   65 1 ?do i ACTION-DEF i ACTION-ADD loop
+   65 ACTION-DEF
+   S\" : CHILD-MAIN ( -- ) [: ['] A65 AT-EXIT:ADD ;] catch\n" TEXT+
+   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a 65th exit action is refused" T-LABEL
+   outu erru rc 9 EXPECT-RC
+   erru s" full" ERR-HAS? TTRUE ;
+
+\ The reset table holds 16: a registration past it is refused with
+\ E-LAYOUT-BOUNDS instead of written past the table.
+: CASE-RESETS-FULL ( -- )
+   s" resets-full.f" s" resets-full-tree" CASE-PATHS
+   S\" require src/lib/fork-child.f\n: CHILD-RESET ( -- ) ;\n" TEXT+
+   S\" : CHILD-TRY ( -- n ) [: ['] CHILD-RESET FORK-CHILD:REGISTER ;] catch ;\n" TEXT+
+   S\" : CHILD-FILL ( -- n ) 17 0 ?do CHILD-TRY dup 0<> if unloop exit then drop loop 0 ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-FILL\n" TEXT+
+   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a 17th fork-child reset is refused" T-LABEL
+   outu erru rc 9 EXPECT-RC
+   erru s" full" ERR-HAS? TTRUE ;
+
 \ FS:REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
 \ filler - the image writer's on a failed open or write - takes the sibling
 \ with it, and the file it was replacing stays as it was: one file, its old
@@ -245,6 +281,82 @@ variable STAGED-FILES
    STAGED-BUF u s" previous" T$=
    STAGED-FILES# 1 T= ;
 
+\ An exit action a task alone adds runs at the main thread's exit: the action
+\ table is process-wide, and hb starts with the main thread's vector armed.
+: CASE-TASK-ADD ( -- )
+   s" task-add.f" s" task-add-tree" CASE-PATHS
+   S\" require src/lib/task.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : CHILD-WORK ( -- ) CHILD-TREE FS:CLEANUP-TREE+ 0 TASK:RETURN ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR [: CHILD-WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" an exit action a task alone adds runs at the main thread's exit" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   outu 0 T=
+   TREE$ FS:EXISTS? TFALSE ;
+
+\ A task that never added an action dies: its exit runs the process's vector,
+\ so the action the main thread added removes the tree.
+: CASE-TASK-DIE ( -- )
+   s" task-die.f" s" task-die-tree" CASE-PATHS
+   S\" require src/lib/task.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : CHILD-WORK ( -- ) s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+\n" TEXT+
+   S\"    [: CHILD-WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a task's die runs the action the main thread added" T-LABEL
+   outu erru rc 3 EXPECT-RC
+   erru s" task: dying" ERR-HAS? TTRUE
+   TREE$ FS:EXISTS? TFALSE ;
+
+\ The main thread dies and its action runs; a task dies while the action
+\ waits. The task's exit waits for the main thread's, so the action ends, its
+\ line printed and the tree removed, and the process exits 5, main's code.
+: CASE-TASK-WAIT ( -- )
+   s" task-wait.f" s" task-wait-tree" CASE-PATHS
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" here data-base - negate 7 and allot\nvariable STARTED\n" TEXT+
+   S\" : ACT ( -- ) 1 STARTED atomic! 200 >MS TASK:SLEEP\n" TEXT+
+   S\"    s\q action: done\q type cr CHILD-TREE FS:REMOVE-TREE ;\n" TEXT+
+   S\" : WORK ( -- ) begin STARTED atomic@ 0= while 1 >MS TASK:SLEEP repeat\n" TEXT+
+   S\"    s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR [: ACT ;] AT-EXIT:ADD\n" TEXT+
+   S\"    [: WORK ;] CHILD-TASK TASK:ACTIVATE s\q main: dying\q 5 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a task's exit waits for the main thread's exit actions" T-LABEL
+   outu erru rc 5 EXPECT-RC
+   outu s" action: done" OUT-HAS? TTRUE
+   TREE$ FS:EXISTS? TFALSE ;
+
+\ The main thread's exit runs an action that blocks on a pipe until a task has
+\ forked a child that dies 9 and reaped it. The child starts with no exit owner,
+\ so it exits rather than waiting on the action's owner for good.
+: CASE-FORK-OWNER ( -- )
+   s" fork-owner.f" s" fork-owner-tree" CASE-PATHS
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\nrequire src/lib/process.f\n" TEXT+
+   S\" require src/lib/process-fork.f\n$10000 TASK:TASK FORKER\n" TEXT+
+   S\" variable GO-R variable GO-W variable REL-R variable REL-W\ncreate BYTE 8 allot\n" TEXT+
+   S\" : PIPE-RC ( n -- ) 0<> if s\q pipe\q 2 die then ;\n" TEXT+
+   S\" : PIPES ( -- ) pipe PIPE-RC GO-W ! GO-R ! pipe PIPE-RC REL-W ! REL-R ! ;\n" TEXT+
+   S\" : ACT ( -- ) GO-W @ BYTE 1 write drop REL-R @ BYTE 1 read drop\n" TEXT+
+   S\"    s\q action: done\q type cr ;\n" TEXT+
+   S\" : WORK ( -- ) GO-R @ BYTE 1 read drop PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
+   S\"    pid PID>N 0= if s\q \q 9 die then\n" TEXT+
+   S\"    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N s\q reaped \q type . cr\n" TEXT+
+   S\"    REL-W @ BYTE 1 write drop 0 TASK:RETURN ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) PIPES [: ACT ;] AT-EXIT:ADD\n" TEXT+
+   S\"    [: WORK ;] FORKER TASK:ACTIVATE s\q main: dying\q 5 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a child forked while another thread runs the exit actions exits" T-LABEL
+   outu erru rc 5 EXPECT-RC
+   outu s" reaped 9" OUT-HAS? TTRUE
+   outu s" action: done" OUT-HAS? TTRUE ;
+
 \ hb-build loads its source in its own process, so a source whose top level
 \ ends the process ends hb-build inside the build: the build fails 74 naming
 \ the source, and -o keeps its bytes.
@@ -261,15 +373,51 @@ variable STAGED-FILES
    TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
    STAGED-BUF u s" previous" T$= ;
 
+\ The source's top level dies; its newer exit action dies too, and the older one still
+\ runs, before hb-build's line.
+: CASE-BUILD-EXIT ( -- )
+   s" build-exit.f" s" build-exit-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/at-exit.f\n" TEXT+
+   S\" : OLDER ( -- ) 2 s\q older \q write drop ;\n" TEXT+
+   S\" : BYE ( -- ) s\q bye\q type cr s\q bye: dying\q 5 die ;\n" TEXT+
+   S\" : ARM ( -- ) [: OLDER ;] AT-EXIT:ADD [: BYE ;] AT-EXIT:ADD ;\n" TEXT+
+   S\" ARM\ns\q x\q 3 die\n: MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build's exit action runs before hb-build's when its source exits" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" ended the process during the build" ERR-HAS? TTRUE
+   outu s" bye" OUT-HAS? TTRUE
+   erru s" older hb-build: " ERR-HAS? TTRUE ;
+
+\ The source's task dies during the build: its exit runs hb's vector, so the
+\ source's action runs and hb-build fails 74 with its line.
+: CASE-BUILD-TASK ( -- )
+   s" build-task.f" s" build-task-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : BYE ( -- ) s\q bye\q type cr ;\n: WORK ( -- ) s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : GO ( -- ) [: BYE ;] AT-EXIT:ADD [: WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;\n" TEXT+
+   S\" GO\n: MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build whose task dies fails 74 after the source's action" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" ended the process during the build" ERR-HAS? TTRUE
+   outu s" bye" OUT-HAS? TTRUE ;
+
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
 
 : RUN-FILE$ ( -- ptr u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
 
-\ It builds and runs a product because the build boundary is under test: a
-\ built program starts with none of the exit actions and cleanups its source's
-\ top level registered, and registering at run time works from empty; it inits
-\ a queue its build defined, whose record address the build must carry.
+\ It builds and runs a program because the build boundary is under test: the
+\ exit actions and cleanups its source's top level registers run when the
+\ build's part ends, the built program starts with none of them, and
+\ registering at run time works from empty; it inits a queue its build
+\ defined, whose record address the build must carry.
 : CASE-BUILT ( -- )
    s" built.f" s" built-out" CASE-PATHS
    ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
@@ -289,6 +437,9 @@ variable RUN-FILE-U
    s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
+   outu s" build-time exit action ran" OUT-HAS? TTRUE
+   0 TEXT-U !  TREE$ TEXT+  s" .built" TEXT+
+   TEXT$ FS:EXISTS? TFALSE
    RUN-PRODUCT {: pu:n pe:n prc:n :}
    pu pe prc 0 EXPECT-RC
    pu s" main done" OUT-HAS? TTRUE
@@ -302,13 +453,14 @@ variable RUN-FILE-U
    s" build-action.f" s" build-action-out" CASE-PATHS
    0 TEXT-U !
    S\" require src/lib/at-exit.f\n" TEXT+
-   S\" : ACT ( -- ) ;  ' ACT AT-EXIT:ADD\n" TEXT+
+   S\" : ACT ( -- ) s\q act ran\q type cr ;  ' ACT AT-EXIT:ADD\n" TEXT+
    S\" NOSUCHWORD\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a failed build whose source added an exit action fails 74" T-LABEL
    outu erru rc 74 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
-   erru s" habu-crash" ERR-HAS? TFALSE ;
+   erru s" habu-crash" ERR-HAS? TFALSE
+   outu s" act ran" OUT-HAS? TTRUE ;
 
 \ The task and the two cleanups both build sources start with.
 : CLEANUPS-TEXT ( -- )
@@ -360,8 +512,16 @@ variable RUN-FILE-U
    CASE-REPORT
    CASE-CHAIN
    CASE-HOOK-THROW
+   CASE-ACTIONS-FULL
+   CASE-RESETS-FULL
    CASE-STAGED
+   CASE-TASK-ADD
+   CASE-TASK-DIE
+   CASE-TASK-WAIT
+   CASE-FORK-OWNER
    CASE-BUILD
+   CASE-BUILD-EXIT
+   CASE-BUILD-TASK
    CASE-BUILT
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS

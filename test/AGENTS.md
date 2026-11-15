@@ -3,18 +3,23 @@
 `caffeinate -i bin/hb --load test/run.f </dev/null` runs the full native test
 suite; `bin/hb --load test/run.f -- name ... </dev/null` runs only the named
 tests. `gate-stdlib.f` loads
-the tests of `gate-stdlib-cases.f`, which adds `gate-arm-cases.f` or
-`gate-x64-cases.f` for the host, and runs them in `gate-pool.f`'s process pool.
+the tests of `gate-stdlib-cases.f`, which adds `gate-arm-cases.f` on an arm64
+host, and runs them in `gate-pool.f`'s process pool.
 `load-graph.f` reads the tests' load graph, which `gate-entry-guard.f` walks.
 Keep stdin at end of file: the tests' process groups inherit it, and a read
 from a terminal stops them with SIGTTIN. Give a run its own `TMPDIR` outside
-the checkout: a file walk skips `.out` (src/lib/fs.f `SKIP-DIR?`), so under
-one inside it test/file-objects.f finds no object of its sources.
+the checkout: jj snapshots a file a run leaves there that `.gitignore` does not
+name into the working-copy commit.
 
 - `compiler/` — compiler, capture and image tests; `wasm/`, `browser/` — Wasm
   and browser-host tests; `db/` — the private PostgreSQL cluster;
   `policy/` and `fixtures/` — subjects other tests load.
 - Non-Habu files are device peers (`*.py`, `wasm/*.mjs`, `browser/*.mjs`).
+- On Linux with snap Chromium, the `google-chrome` a `-- --chrome` check finds
+  on PATH must be a script that execs the snap's own binary
+  (`/snap/chromium/current/usr/lib/chromium-browser/chrome`), not
+  `/snap/bin/chromium`: the snap's confinement gives Chrome a private `/tmp`,
+  so a peer never finds the profile's `DevToolsActivePort`.
 
 ## Writing tests
 

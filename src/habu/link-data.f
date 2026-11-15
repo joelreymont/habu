@@ -75,13 +75,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
 
 
-\ The image is the space's runs: its length is the space's, not the distance
-\ between its labels.
-: DATA-IMAGE-AT ( -- n ) LIMAGE LABEL-OFFSET ;
-: DATA-LIST-AT ( -- n ) LLIST LABEL-OFFSET ;
-: DATA-LIST-N ( -- n ) LLIST-END LABEL-OFFSET DATA-LIST-AT - 8 / ;
-
-
 \ A host address in the open space at its DATA-VA address: the resolver code's
 \ data address sites get.
 : DATA-ADDRESS ( n -- n ) DATA-OFFSET  ARM64:DATA-VA + ;
@@ -102,7 +95,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : COPY-ROW ( n -- )
    {: row:n :}
-   row ROW-OFF {: off:n :}
+   row IMAGE-OFF {: off:n :}
    off CELL-FITS
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
@@ -119,7 +112,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    row XT-ROW? 0= if exit then
    row CELL-VALUE 0= if exit then
    LISTED-N @ 1 + LISTED-RESERVE
-   row ROW-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
+   row IMAGE-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
 
 : LIST, ( -- )
    LISTED-N @ {: n:n :}
@@ -129,7 +122,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A cell the build stored into would be written and slid twice.
 : HEADER! ( n n -- )
-   {: v:n off:n :}
+   ARM64:HEADER-CELL {: v:n off:n :}
    off SPACE-AT @ 0<> if
       s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
       s" link: a build stored into a header cell the link writes" 74 die
@@ -147,7 +140,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    va s" DP-CEILING-OFF" ARM64:SYM +  s" DP-CEILING-CELL" ARM64:SYM HEADER!
    start s" HEAP-START-CELL" ARM64:SYM HEADER!
    ARM64:PRESET-N 0 ?do i ARM64:PRESET@ HEADER! loop
-   va s" FD-CELL" ARM64:SYM +  s" FD-PTR-CELL" ARM64:SYM HEADER!
+   va s" FD-CELL" ARM64:SYM ARM64:HEADER-CELL +
+      s" FD-PTR-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
@@ -256,10 +250,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : TARGET-LEN ( n -- n )
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
-   e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
-   e NSHADOW:RET-BYTES {: ret:n :}
-   ret 0= if size CODE-SPAN:EXACT exit then
-   size ret - ;
+   e NSHADOW:SIZE s NSHADOW:ENTRY@ -  e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
 
 \ Build record r's length: the target kernel's for a kernel primitive's, in a
 \ cross-build its target emission's, else its own: a target word's host routine
@@ -289,13 +280,26 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" link: a record enters code the target does not place" 74 die ;
 
 
-\ Build record r at target index k: [32], the facts text's offset from the
-\ image's DATA, holds in the target's.
+\ Build record r's source when r is an alias but not of a does> clause, else -1; an owned
+\ primitive's record has a facts text, an alias none. Asked in index order from SHADOW-AT 0.
+: EXPORT-SOURCE ( n -- n )
+   {: r:n :}
+   r XREF-REC {: rec:ptr :}
+   rec CK-REC-FACTS-SLOT XREF-CELL@ 0<> if -1 exit then
+   r SHADOW-ROW  rec XREF-WORDLIST  KIND  KIND-ALIAS <> if -1 exit then
+   r SAME-START {: src:n :}
+   src 0 < if -1 exit then
+   src 1 - XREF-DOES-COMPANION? if -1 exit then
+   src ;
+
+\ Build record r at target index k: [32], the facts text's offset from the image's DATA,
+\ holds in the target's, as does an export's source index.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
    r XREF-REC {: rec:ptr :}
    k DREC * {: at:n :}
    rec XREF-WORDLIST {: wid:n :}
+   wid XREF:PACKAGE-WL? if -1 else r EXPORT-SOURCE then {: src:n :}
    wid XREF:PACKAGE-WL? if
       rec XREF-PKG-PUBLIC r WID-MAP A64ICODE:DCQ,
       rec XREF-PKG-PRIVATE r WID-MAP A64ICODE:DCQ,
@@ -310,7 +314,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    else
       rec XREF-NAME-SLOT XREF-CELL@ A64ICODE:DCQ,
    then
-   rec CK-REC-FACTS-SLOT XREF-CELL@ A64ICODE:DCQ,
+   src 0 >= if  -1  PRIMS src +  FIRST-REC @ -  -
+   else  rec CK-REC-FACTS-SLOT XREF-CELL@  then  A64ICODE:DCQ,
    wid r WID-MAP A64ICODE:DCQ, ;
 
 
@@ -337,6 +342,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 RLISTED-N !
    LRECS A64ICODE:LABEL@ A64ICODE:LBL,
    PRIMS 0 ?do i PRIM-REC, loop
+   0 SHADOW-AT !
    ndict@ FIRST-REC @ ?do  i  PRIMS i + FIRST-REC @ -  BUILD-REC,  loop
    LRECS-END A64ICODE:LABEL@ A64ICODE:LBL,
    LRLIST A64ICODE:LABEL@ A64ICODE:LBL,
@@ -441,7 +447,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LSIGH A64ICODE:LABEL@ ARM64:ROOT-LABEL
    ARM64:CUT
    A64ICODE:ASM-CP @ 4 * KERNEL-END !
-   ['] DATA-ADDRESS PLACE-ROUTINES
+   false ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
 
 
@@ -489,7 +495,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    A64ICODE:ASM-CP @ 4 * KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
-   ['] DATA-ADDRESS PLACE-ROUTINES
+   true ['] DATA-ADDRESS PLACE-ROUTINES
    SCOPE-ENTRIES
    DATA-IMAGE
    RECORD-IMAGE ;
@@ -507,12 +513,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
       macho OF
-         MACHO:ASM-CODE ARM64:TEXT-VA MACHO:BUILD-IMAGE
-         sig sigu MACHO:SET-SIGID MACHO:CODESIG2
+         sig sigu MACHO:SET-SIGID
+         MACHO:ASM-CODE ARM64:TEXT-VA ARM64:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
+         MACHO:CODESIG2
       ENDOF
       elf OF
-         ELF:ASM-CODE ARM64:TEXT-VA ELF:BUILD-IMAGE
-         sig sigu ELF:SET-SIGID ELF:CODESIG2
+         sig sigu ELF:SET-SIGID
+         ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
+         ELF:CODESIG2
       ENDOF
       pe OF s" link: no file writer for a PE target" 74 die ENDOF
       wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 74 die ENDOF
@@ -529,13 +537,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: path:ptr pathu:n :}
    OBJECT-KIND
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
-   s" ENTRY-CELL" ARM64:SYM {: entry:n :}
+   s" ENTRY-CELL" ARM64:SYM ARM64:HEADER-CELL {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
-      FS:CHMOD-X ;] FS:REPLACE-STAGED
+      FS:CHMOD-X ;] FS:REPLACE-CACHED
    REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public

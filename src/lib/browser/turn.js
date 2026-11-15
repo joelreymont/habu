@@ -3,19 +3,22 @@
 // no DOM, GPU, network or file system.
 //
 // The module (src/arch/wasm/link.f) imports nothing and exports memory, run,
-// throw-code, out-base, out-len and reserve. The module owns every byte of its
-// memory, which may grow to memory32's 65536 pages. For each delivery the host
-// calls reserve(length), which answers the address of fresh pages, at least
-// one, or 0 when it refuses; the host copies the bytes there and runs the event
-// that names them. The module frees them (src/lib/browser/event.f) once it no
+// throw-code, out-base, out-len, fault-kind, fault-addr and reserve. The module
+// owns every byte of its memory, which may grow to memory32's 65536 pages. For
+// each delivery the host calls reserve(length), which answers the address of
+// fresh pages, at least one, or 0 when it refuses; the host copies the bytes
+// there and runs the event that names them. The module frees them (src/lib/browser/event.f) once it no
 // longer needs them. An empty delivery reserves nothing and is named 0, 0.
+//
+// PROTOCOL is this protocol's revision: any change to the module's exports,
+// events or records, a kind added or removed included, raises it by one.
 //
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
-// 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk. c and d are the
-// drawing buffer's width and height in device pixels except for answered, file
-// and chunk.
+// 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk, 18 picked,
+// 19 occluded. c and d are the drawing buffer's width and height in device
+// pixels except for answered, file, chunk, picked and occluded.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
@@ -38,32 +41,50 @@
 //     UTF-8; one per host notification
 //   tick: a the token of the after record that asked for it
 //   file: a, b the file's UTF-8 name, c its size in bytes, d the host's
-//     positive file number, valid while the module lives; one per file picked
-//     or dropped
+//     positive file number, valid while the module lives; one per file the
+//     host numbers
 //   chunk: a, b the bytes read, c the file number, d the offset; buttons 1, or
 //     0 when the read failed, with a, b String(error)
+//   picked: a the id (the row's u32 id) of the instance nearest at the pick's
+//     pixel, or -1 for none; b the face there (the fourth u16 of the
+//     triangle's first vertex, as the shader's face reads it), 0 for none; c
+//     the bits of the f32 depth there, z in [0, 1] after the matrix (0
+//     nearest), 1.0's bits for none; d the pick's id; buttons and mods the
+//     drawing buffer's width and height when the answer arrived, as answered
+//     gives them
+//   occluded: a, b one byte per box of the occlude record, in its order, 1
+//     when the box passed, else 0; 0 boxes answers 0 bytes. c 0, d the
+//     record's id, buttons and mods the buffer size when the answer arrived
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
 // A record is 32 bytes, kind a b c:
-//   0 hello: a is the event's address
+//   0 hello: a is the event's address, b the turn protocol revision the
+//     module's events and records follow, which must be PROTOCOL; any other
+//     ends the instance, naming both revisions
 //   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
-//   2 draw: a, b instance rows, b rows of 64 bytes: twelve f32, a column-major
-//     3x4 transform from the mesh's u16 grid to world, then u32s: a held mesh
-//     handle, the instance's id, flags (bit 0 every face selected, the others
-//     0) and the highlight word where the instance's face bits start, or
-//     0xFFFFFFFF for none; a row's offset plus the words its mesh's faces need
-//     (record 13) is at most the highlight's word count, and that sum is the
-//     words the row needs. c a column-major f32 4x4 matrix to clip space (x, y
-//     in [-1, 1], z in [0, 1], 0 nearest). A draw of 0 rows clears, names no
-//     handle and needs no words; a draw removes a shown SVG. A host may draw
-//     the last draw's rows again on its own, so records 6 and 14 keep them
-//     valid until the next draw
+//   2 draw: a, b instance rows, b rows of 72 bytes: twelve f32, a column-major
+//     3x4 transform from the mesh's grid position (its origin plus a vertex's
+//     u16s, record 13, an integer below 2^24 so exact in f32, which lets a
+//     host fit bounds to the same integers its shader places) to world, then
+//     u32s: a held mesh handle, the instance's id, flags (bit 0 every face
+//     selected, the others 0), the highlight word where the instance's face
+//     bits start, or 0xFFFFFFFF for none, the colour, its bytes r, g, b
+//     (sRGB-encoded) and 0, and one whose low u16 is metallic and high u16
+//     roughness, each 0 to 65535 for 0 to 1. A row's offset plus the words
+//     its mesh's faces need (record 13) is at most the highlight's word
+//     count, and that sum is the words the row needs. c a column-major f32
+//     4x4 matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest). A
+//     draw of 0 rows clears, names no handle and needs no words; a draw
+//     removes a shown SVG. A host may draw the last draw's rows again on its
+//     own, so records 6 and 14 keep them valid until the next draw
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
 //     boolean more, true when the row has children and none of them are among
-//     the rows (absent is false); c the selected key or 0; keys are unique
+//     the rows (absent is false), and an optional boolean open, whether the
+//     row starts open (absent: open when its children are among the rows);
+//     c the selected key or 0; keys are unique
 //     positive safe integers, a parent is 0 or an earlier row's key whose more
 //     is not true; a row the module sends again keeps its key from one tree to
 //     the next
@@ -82,38 +103,83 @@
 //   12 read: a a file number a file event delivered, b an offset, c a length of
 //     at least 1, with b + c at most the file's size; each gets its own chunk
 //   13 mesh: a, b a span of a u32 vertex count V, 1 to 65,536, a u32 triangle
-//     count T, V vertices of four u16 (x, y, z on the mesh's grid and the
-//     vertex's face) and T triangles of three u16 indices below V, so b is
-//     8 + 8V + 6T; c a handle not held, 1 to 0xFFFFFFFF, as a draw row's u32
+//     count T, the mesh's origin as three u32 x, y, z, each at most
+//     16,711,680 (2^24 - 65,536) so that it plus a u16 is below 2^24 and
+//     exact in f32, V vertices of 12 bytes and T triangles of three u16
+//     indices below V, so b is 20 + 12V + 6T. A vertex is four u16, x, y, z
+//     on the mesh's grid and its face, then its surface normal as two i16,
+//     octahedral: x, y of the unit vector's projection onto the octahedron,
+//     folded for z < 0, each in [-1, 1] as the i16 / 32767. The normal is in
+//     the grid's space, so the host takes it to world by the inverse
+//     transpose of the instance's 3x3 and normalises it, taking the
+//     triangle's own normal where the 3x3 is flat and the normal is
+//     perpendicular to the grid axis it collapses; how a module quantizes is
+//     the module's. A vertex's grid position is the origin plus its x, y, z,
+//     added in u32 and taken exactly to f32 once before a row's transform,
+//     so the host and the shader see the same integers, and two
+//     meshes that reach one grid position by different origins draw it at
+//     the same clip position, bit for bit, under the same transform and
+//     matrix. c a handle not held, 1 to 0xFFFFFFFF, as a draw row's u32
 //     names it. Its faces need floor(F / 32) + 1 highlight words, F the
 //     highest face of its vertices. The host copies the mesh and holds it by
 //     c until an unmesh
 //   14 unmesh: a a held handle that no row of the last draw names, b and c 0,
 //     so a module draws without a mesh before it unmeshes it; the handle may
 //     be used again after
-// A post or request is answered for every HTTP status. Request, rpc and read
-// records are tagged. A host that takes tagged records, or fetches and posts
-// from a run that throws, provides error(error): the first reply failure of a
-// turn reaches it at once, each further one as an AggregateError of all of them.
+//   15 pick: a x, b y, a pixel of the drawing buffer from its top-left as
+//     pointer events give them; c a positive i64 id. It reads the last draw
+//     before it in record order, as that draw's rows, meshes, highlight and
+//     matrix stand: a pick after a draw in the same run reads that draw. A
+//     pick before any draw, of a draw of 0 rows, or of a pixel outside the
+//     buffer answers none. The ground is never picked: a pick on it answers
+//     none, as the background does. A pick that fails, the device lost,
+//     reaches error as a reply failure does, and sends no event
+//   16 occlude: a, b a span of boxes, six f32 each in world space (the lowest
+//     x, y, z, then the highest), so b is a multiple of 24; c a positive i64
+//     id. It tests against the last draw before it in record order: its matrix
+//     and the depth its rows left; one before the first draw is refused, as
+//     no matrix says what is in view. A box passes when any of it in view is
+//     not behind that depth (WebGPU occlusion queries: the box's faces drawn
+//     writing neither colour nor depth, with depthCompare less-equal where the
+//     draw keeps less, so a part flush with a drawn surface passes). A box
+//     with corners on both sides of the near plane passes: only its faces are
+//     drawn, and the plane can cut every face away while its inside is in
+//     view. After a draw of 0 rows, or after a resize and before the next
+//     draw, nothing is drawn, so every box in view passes. The ground
+//     leaves no depth, so it hides no box
+//   17 ground: a, b a span of 16 bytes, four f32 nx, ny, nz, d, the world
+//     plane n·p + d = 0, n of any nonzero length toward the side that is up;
+//     or b 0 for none, the state before the first. c 0. It holds for every
+//     later draw
+// A post or request is answered for every HTTP status. Request, rpc, read,
+// pick and occlude records are tagged. A host that takes tagged records, or
+// fetches and posts from a run that throws, provides error(error): the first
+// reply failure of a turn reaches it at once, each further one as an
+// AggregateError of all of them. An occlude that fails, the device lost,
+// sends no event and reaches error as a reply failure does.
 // The module maps clip space to pixels as x = (ndc.x + 1) * width / 2 and
 // y = (1 - ndc.y) * height / 2, origin top-left.
 //
 // The module imports nothing. A turn writes one event at the address the
 // module named in hello, calls run() and handles the records the run left in
 // [out-base, out-base + out-len), in order. The first run has no event: the
-// module's event block is zero, which reads as start. Fetch, post, request, rpc
-// and read records are requests: as the records are read, each is decoded and
-// each body copied, since later runs rewrite the storage they name and growth
-// detaches it. Once the run's other records are handled, tagged requests from
-// that run start independently; legacy fetches and posts still wait in order, including
-// the requests made by their replies. An answer is copied into pages reserved
-// through the module, and the module runs again with an event naming them.
+// module's event block is zero, which reads as start. Fetch, post, request,
+// rpc, read, pick and occlude records are requests: as the records are read,
+// each is decoded and each body copied, since later runs rewrite the storage
+// they name and growth detaches it, and a pick is made as it is read, so no
+// later record changes what it reads. An occlude starts as it is read, so its
+// GPU work is queued before any later record's. Once the run's other records
+// are handled, the other tagged requests from that run start independently;
+// legacy fetches and posts still wait in order, including the requests made by
+// their replies. An answer is copied into pages reserved through the module,
+// and the module runs again with an event naming them.
 // Reserve, copy and run are one synchronous stretch: the module imports nothing,
 // so no other turn runs between them, and host.size() is the only call there.
 // Runs are synchronous and never overlap, but other turns
 // run while a request waits. A run that
 // traps ends the instance, as end() does: nothing runs, and memory does not
-// grow, after it.
+// grow, after it. A trap the module recorded a fault kind for names the kind
+// and fault-addr.
 //
 // Every field is an i64, little-endian, and a BigInt here. Growth detaches the
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
@@ -122,13 +188,16 @@
 const EVENT_BYTES = 56n;
 const RECORD_BYTES = 32;
 const MATRIX_BYTES = 64n; // 16 f32, column-major
-const ROW_BYTES = 64; // an instance: twelve f32, u32 handle, id, flags, offset
+const ROW_BYTES = 72;
 const NO_OFFSET = 0xFFFFFFFF; // an instance row that reads no highlight words
 const MAX_HANDLE = 0xFFFFFFFFn; // a draw row's u32 names a mesh handle
 const MAX_VERTICES = 65536; // a mesh's u16 indices name at most this many
+const MAX_ORIGIN = 0xFF0000; // a mesh origin plus a u16 is exact in f32
+const MESH_HEAD = 20; // a mesh's counts and origin, in bytes
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
-// A tree row's keys, sorted: more is optional.
-const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent"]);
+// A tree row's keys, sorted: more and open are optional.
+const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent",
+  "key,label,open,parent", "key,label,more,open,parent"]);
 
 // Events; start, kind 0, is the zero event block the first run reads.
 const BYTES = 1n;
@@ -148,7 +217,11 @@ const NOTIFIED = 14n;
 const TICK = 15n;
 const FILE = 16n;
 const CHUNK = 17n;
+const PICKED = 18n;
+const OCCLUDED = 19n;
 const ID_BYTES = 16;
+
+const PROTOCOL = 1n;
 
 // Records.
 const HELLO = 0n;
@@ -166,7 +239,12 @@ const AFTER = 11n;
 const READ = 12n;
 const MESH = 13n;
 const UNMESH = 14n;
-const TAGGED = new Set([REQUEST, RPC, READ]);
+const PICK = 15n;
+const OCCLUDE = 16n;
+const GROUND = 17n;
+const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
+const BOX_BYTES = 24n; // an occlude's box: six f32
+const PLANE_BYTES = 16n; // a ground's plane: four f32
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
@@ -191,12 +269,19 @@ export class Module {
   // rpc(method, params, id) -> Promise of the response's JSON text,
   // {"result":…} or {"error":…}; params is the record's JSON text.
   // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
-  // length) -> Promise<Uint8Array> of the numbered file's bytes. Also
-  // mesh(handle, vertexCount, triangleCount, vertices, triangles) with copied
-  // Uint16Arrays, unmesh(handle), draw(rows, count, matrix) with the rows'
-  // bytes copied, highlight(words) with a copied Uint32Array, text(string),
-  // tree(rows, selected), svg(copiedBytes), input(enabled), and size() ->
-  // [width, height] of the drawing buffer.
+  // length) -> Promise<Uint8Array> of the numbered file's bytes.
+  // pick(x, y, id) -> Promise of [instance, face, depthBits], numbers as
+  // event picked's a, b and c, called as the record is read; id is as
+  // request's. occlude(boxes, id) with a copied Float32Array ->
+  // Promise<Uint8Array> of a byte per box, called as the record is read; id
+  // is as request's. Also
+  // mesh(handle, vertexCount, triangleCount, origin, vertices, triangles),
+  // origin the record's three u32s as numbers, with copied Uint16Arrays,
+  // unmesh(handle), draw(rows, count, matrix) with the rows'
+  // bytes copied, highlight(words) with a copied Uint32Array,
+  // ground(plane) with a copied Float32Array of four, or null for none,
+  // text(string), tree(rows, selected), svg(copiedBytes), input(enabled), and
+  // size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -206,11 +291,12 @@ export class Module {
     this.x = exports;
     this.host = host;
     this.event = null; // the address hello named
-    this.ended = null; // why the instance ended: a trap or end()
+    this.ended = null; // why the instance ended: a trap, a hello of another revision, or end()
     this.meshes = new Map(); // a held mesh handle -> the words its faces need
     this.words = 0; // the last highlight's word count, 0 before the first
     this.drawn = new Set(); // the handles the last draw's rows name
     this.need = 0; // the most words a row of the last draw needs
+    this.drew = false; // whether a draw record was handled, which occlude needs
     this.files = new Map(); // a delivered file number -> its size, for reads
   }
 
@@ -306,10 +392,11 @@ export class Module {
     await this.turn([FILE, this.place(bytes), bytes.length, size, n, 0, 0]);
   }
 
-  // The event's run, then its requests. All tagged requests start independently;
-  // legacy requests keep their order and wait for their own recursive replies.
-  // A run's throw is passed on at once: its requests go on, and a legacy
-  // request that fails later reports to host.error.
+  // The event's run, which starts each pick and occlude as it reads it, then
+  // the run's other requests. All tagged requests start independently; legacy
+  // requests keep their order and wait for their own recursive replies. A
+  // run's throw is passed on at once: its requests go on, and a legacy request
+  // that fails later reports to host.error.
   async turn(event) {
     const [requests, thrown] = this.run(event);
     if (requests.some((request) => TAGGED.has(request.kind)) && typeof this.host.error !== "function")
@@ -336,7 +423,7 @@ export class Module {
     await Promise.all([...tagged, legacy]);
   }
 
-  async answer({ kind, path, body, method, params, id, file, offset, length }) {
+  async answer({ kind, path, body, method, params, id, file, offset, length, count, started }) {
     if (kind === FETCH) {
       const bytes = await this.host.fetch(path);
       await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
@@ -369,6 +456,14 @@ export class Module {
         [read, bytes] = [0n, encoder.encode(String(error))];
       }
       await this.turn([CHUNK, this.place(bytes), bytes.length, file, offset, read, 0]);
+    } else if (kind === PICK) {
+      const [instance, face, depth] = await started;
+      await this.turn([PICKED, instance, face, depth, id, ...this.host.size()]);
+    } else if (kind === OCCLUDE) {
+      const bytes = await started;
+      if (bytes.length !== count)
+        throw new RangeError(`occlude ${id} gave ${bytes.length} bytes for ${count} boxes`);
+      await this.turn([OCCLUDED, this.place(bytes), bytes.length, 0, id, ...this.host.size()]);
     } else {
       const { status, bytes } = await this.host.post(path, body);
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, 0, 0, 0]);
@@ -380,14 +475,15 @@ export class Module {
     this.ended ??= "the host ended the module";
   }
 
-  // Refuses the instance a trap or end() ended.
+  // Refuses the instance a trap, a hello of another revision or end() ended.
   live() {
     if (this.ended) throw new Error(this.ended);
   }
 
   // Writes the event and runs the module; handles the records but the
-  // requests, and answers [requests, the run's throw or null]. A run that throws
-  // has still made its records: the module waits on every request it wrote.
+  // requests, starting each pick and occlude as it is read, and answers
+  // [requests, the run's throw or null]. A run that throws has still made its
+  // records: the module waits on every request it wrote.
   run(event) {
     this.live();
     if (event) this.write(event);
@@ -395,20 +491,39 @@ export class Module {
     try {
       status = this.x.run();
     } catch (e) {
-      this.ended = `the module trapped and has ended: ${e}`;
-      throw e;
+      const error = this.fault(e);
+      this.ended = `the module trapped and has ended: ${error}`;
+      throw error;
     }
     const thrown = status !== 0 ? new Error(`throw ${this.x["throw-code"]()}`) : null;
     const requests = [];
-    for (const [kind, a, b, c] of this.records()) {
-      if (kind === FETCH) requests.push({ kind, path: utf8.decode(this.span(a, b)) });
-      else if (kind === POST) requests.push(this.post(a, b, c));
-      else if (kind === REQUEST) requests.push(this.request(a, b, c));
-      else if (kind === RPC) requests.push(this.rpc(a, b, c));
-      else if (kind === READ) requests.push(this.read(a, b, c));
-      else this.record(kind, a, b, c);
+    try {
+      for (const [kind, a, b, c] of this.records()) {
+        if (kind === FETCH) requests.push({ kind, path: utf8.decode(this.span(a, b)) });
+        else if (kind === POST) requests.push(this.post(a, b, c));
+        else if (kind === REQUEST) requests.push(this.request(a, b, c));
+        else if (kind === RPC) requests.push(this.rpc(a, b, c));
+        else if (kind === READ) requests.push(this.read(a, b, c));
+        else if (kind === PICK) requests.push(this.pick(a, b, c));
+        else if (kind === OCCLUDE) requests.push(this.occlude(a, b, c));
+        else this.record(kind, a, b, c);
+      }
+    } catch (e) {
+      // A request started as it is read holds its promise in started; no
+      // turn answers these, so its failure goes to host.error, not unhandled.
+      for (const { started } of requests)
+        started?.catch((error) => this.host.error(error));
+      throw e;
     }
     return [requests, thrown];
+  }
+
+  // The error a trap e ends the run with: e, or one naming the fault kind and
+  // address the module recorded, e its cause.
+  fault(e) {
+    const kind = this.x["fault-kind"]();
+    if (kind === 0) return e;
+    return new Error(`fault kind ${kind} at ${this.x["fault-addr"]()}`, { cause: e });
   }
 
   // Memory's bytes [a, a + n), refused unless they lie inside it.
@@ -483,6 +598,27 @@ export class Module {
     return { kind: READ, file, offset, length };
   }
 
+  // A tagged pick of pixel x, y, made at once.
+  pick(x, y, id) {
+    if (id <= 0n) throw new RangeError(`a pick needs a positive id, got ${id}`);
+    if (typeof this.host.error !== "function")
+      throw new TypeError("host.error(error) is required for a pick's failure");
+    return { kind: PICK, id, started: this.host.pick(x, y, id) };
+  }
+
+  // A tagged occlude of b / 24 boxes, copied and handed to the host at once.
+  occlude(a, b, id) {
+    if (b < 0n || b % BOX_BYTES !== 0n)
+      throw new RangeError(`an occlude of ${b} bytes, not whole ${BOX_BYTES}-byte boxes`);
+    if (id <= 0n) throw new RangeError(`an occlude needs a positive id, got ${id}`);
+    if (!this.drew) throw new RangeError(`occlude ${id} before any draw`);
+    if (typeof this.host.error !== "function")
+      throw new TypeError("host.error(error) is required for an occlude's failure");
+    const boxes = new Float32Array(this.span(a, b).slice().buffer);
+    const count = boxes.length / 6;
+    return { kind: OCCLUDE, id, count, started: this.host.occlude(boxes, id) };
+  }
+
   write(event) {
     if (this.event === null) throw new Error("an event before the module's hello");
     if (event.length !== 7) throw new Error(`an event has ${event.length} fields, expected 7`);
@@ -504,10 +640,14 @@ export class Module {
     return out;
   }
 
-  // Every record but a request, an rpc or a read.
+  // Every record but a request, an rpc, a read, a pick or an occlude.
   record(kind, a, b, c) {
     switch (kind) {
       case HELLO:
+        if (b !== PROTOCOL) {
+          this.ended = `the module follows turn protocol ${b} and this host turn protocol ${PROTOCOL}`;
+          throw new Error(this.ended);
+        }
         this.event = a;
         this.host.hello();
         return;
@@ -528,6 +668,9 @@ export class Module {
         return;
       case UNMESH:
         this.unmesh(a, b, c);
+        return;
+      case GROUND:
+        this.ground(a, b, c);
         return;
       case SVG:
         if (c !== 0n) throw new Error("svg c must be zero");
@@ -574,6 +717,8 @@ export class Module {
         throw new Error("tree row must have a positive safe key, earlier parent, and string label");
       if ("more" in row && typeof row.more !== "boolean")
         throw new Error(`tree row ${row.key} more must be a boolean`);
+      if ("open" in row && typeof row.open !== "boolean")
+        throw new Error(`tree row ${row.key} open must be a boolean`);
       if (keys.has(row.key)) throw new Error(`duplicate tree key ${row.key}`);
       if (row.parent !== 0 && !keys.has(row.parent))
         throw new Error(`tree parent ${row.parent} must be an earlier row key`);
@@ -608,31 +753,63 @@ export class Module {
     const handle = Number(c);
     if (this.meshes.has(handle))
       throw new Error(`a mesh of handle ${handle}, which is already held`);
-    if (b < 8n) throw new RangeError(`a mesh's counts need 8 bytes, got ${b}`);
+    if (b < BigInt(MESH_HEAD))
+      throw new RangeError(`a mesh's counts and origin need ${MESH_HEAD} ` +
+        `bytes, got ${b}`);
     const span = this.span(a, b);
-    const counts = new DataView(span.buffer, span.byteOffset, 8);
-    const vertexCount = counts.getUint32(0, true);
-    const triangleCount = counts.getUint32(4, true);
+    const head = new DataView(span.buffer, span.byteOffset, MESH_HEAD);
+    const vertexCount = head.getUint32(0, true);
+    const triangleCount = head.getUint32(4, true);
     if (vertexCount === 0 || vertexCount > MAX_VERTICES)
       throw new RangeError(`a mesh of ${vertexCount} vertices, ` +
         `not 1 to ${MAX_VERTICES}`);
-    const size = 8n + 8n * BigInt(vertexCount) + 6n * BigInt(triangleCount);
+    const size = BigInt(MESH_HEAD) + 12n * BigInt(vertexCount) +
+      6n * BigInt(triangleCount);
     if (b !== size)
       throw new RangeError(`a mesh of ${vertexCount} vertices and ` +
         `${triangleCount} triangles is ${size} bytes, not ${b}`);
+    const origin = [8, 12, 16].map((k) => head.getUint32(k, true));
+    for (const o of origin)
+      if (o > MAX_ORIGIN)
+        throw new RangeError(`a mesh origin ${o} is past ${MAX_ORIGIN}, ` +
+          `so its grid positions would not all be exact in f32`);
     const bytes = span.slice();
-    const vertices = new Uint16Array(bytes.buffer, 8, 4 * vertexCount);
-    const triangles = new Uint16Array(bytes.buffer, 8 + 8 * vertexCount,
-      3 * triangleCount);
+    const vertices = new Uint16Array(bytes.buffer, MESH_HEAD, 6 * vertexCount);
+    const triangles = new Uint16Array(bytes.buffer,
+      MESH_HEAD + 12 * vertexCount, 3 * triangleCount);
     for (const index of triangles)
       if (index >= vertexCount)
         throw new RangeError(`a mesh index ${index} is not below its ` +
           `${vertexCount} vertices`);
     let face = 0;
-    for (let k = 3; k < vertices.length; k += 4)
+    for (let k = 3; k < vertices.length; k += 6)
       face = Math.max(face, vertices[k]);
-    this.host.mesh(handle, vertexCount, triangleCount, vertices, triangles);
+    this.host.mesh(handle, vertexCount, triangleCount, origin, vertices,
+      triangles);
+
     this.meshes.set(handle, Math.floor(face / 32) + 1);
+  }
+
+  // A ground's plane, copied, or none for b 0. d / |n| is the plane's
+  // distance from the origin, which a host's f32 must hold.
+  ground(a, b, c) {
+    if (c !== 0n) throw new Error("ground c must be zero");
+    if (b === 0n) {
+      this.host.ground(null);
+      return;
+    }
+    if (b !== PLANE_BYTES)
+      throw new RangeError(`a ground of ${b} bytes, not 0 or ${PLANE_BYTES}`);
+    const plane = new Float32Array(this.span(a, b).slice().buffer);
+    if (!plane.every(Number.isFinite))
+      throw new RangeError(`a ground of ${plane.join(", ")}, not all finite`);
+    const [x, y, z, d] = plane;
+    const length = Math.hypot(x, y, z);
+    if (length === 0) throw new RangeError("a ground whose normal is (0, 0, 0)");
+    if (!Number.isFinite(Math.fround(d / length)))
+      throw new RangeError(`a ground whose d / |n|, ${d / length}, ` +
+        "is not a finite f32");
+    this.host.ground(plane);
   }
 
   unmesh(a, b, c) {
@@ -662,6 +839,9 @@ export class Module {
         throw new Error(`a draw of handle ${handle}, which is not held`);
       if (flags > 1)
         throw new Error(`a draw's flags ${flags} set a bit other than bit 0`);
+      if (rows[at + 67] !== 0)
+        throw new Error(`a draw row's colour byte 3 is ${rows[at + 67]}, ` +
+          "not 0");
       if (offset !== NO_OFFSET) {
         const end = offset + this.meshes.get(handle);
         if (end > this.words)
@@ -674,6 +854,7 @@ export class Module {
     this.host.draw(rows, Number(b), matrix);
     this.drawn = drawn;
     this.need = need;
+    this.drew = true;
   }
 
   // Copies a delivery into pages the module reserves, which it then owns, and

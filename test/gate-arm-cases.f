@@ -24,13 +24,13 @@ SUITE arm64-link-run
 ;SUITE
 
 \ file-objects.f builds three files into a program, runs it and counts the
-\ files the build compiled; LINKER:WRITE writes arm64 programs.
+\ files the build compiled; LINKER:WRITE writes arm64 programs. warm-engine.f
+\ builds an engine warm after an edit and compares it with a cold build's.
 SUITE file-objects
    test/file-objects.f
+   test/warm-engine.f
 ;SUITE
 
-\ ARM BRK breakpoint and resume fixtures select tier 0. The x64 kernel
-\ explicitly refuses that selection; its crash/stack guards have native rows.
 SUITE engine-stack-debugger
    test/engine-stack-debugger.f
 ;SUITE
@@ -39,8 +39,6 @@ SUITE debugger-resume
    test/debugger-resume.f
 ;SUITE
 
-\ The harness selects tier 0 before its first definition: tier 1 refuses
-\ CLEAR-MEAS's row drain.
 SUITE prop
    test/prop-test.f
 ;SUITE

@@ -45,7 +45,7 @@ using NDICT
 
 \ Test-only record identity and retired-wordlist inspection.
 \ No raw record is exported.
-TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+: RECORD ( ptr u8 n n -- ptr n ) CHECKER-RESOLVE:WL-PROBE ;
 CAST: REF-WORD ( n -- [ -- n ] )
 : REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
 variable REF-SLOT
@@ -54,7 +54,7 @@ variable ROLL-SLOT
 variable ROLL-OCC
 
 
-: EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
+: EV ( ptr u8 n -- ) evaluate-closed ;
 
 
 : OPEN-SCOPE ( -- )

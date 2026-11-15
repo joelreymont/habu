@@ -13,12 +13,12 @@ create BUF CAP allot
 \ CAPTURE-ON routes declaration diagnostics into BUF, as JSON when its flag is
 \ true; CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
 : CAPTURE-ON ( bool -- )
-   DIAG-JSON!
-   BUF CAP DIAG-BUFFER! ;
+   REJECTION:JSON !
+   BUF CAP REJECTION:BUFFER! ;
 : CAPTURE-OFF ( -- )
-   DIAG-BUFFER-OFF
-   false DIAG-JSON! ;
-: CAPTURED$ ( -- ptr u8 n ) DIAG-BUFFER$ ;
+   REJECTION:BUFFER-OFF
+   false REJECTION:JSON ! ;
+: CAPTURED$ ( -- ptr u8 n ) REJECTION:BUFFER$ ;
 
 variable SI
 

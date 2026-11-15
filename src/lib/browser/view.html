@@ -1,0 +1,27 @@
+<style>
+html, body { height: 100%; }
+body { margin: 0; display: flex; font: 14px system-ui, sans-serif; }
+#side { flex: 0 0 240px; min-height: 0; overflow: auto; border-right: 1px solid #ddd; }
+#main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#viewport { position: relative; flex: 1; min-height: 200px; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
+#tree ul { list-style: none; margin: 0; padding-left: 16px; }
+#tree > ul { padding-left: 4px; }
+.tree-row { display: flex; align-items: center; min-width: max-content; }
+.tree-row button { font: inherit; border: 0; background: none; padding: 3px 5px; text-align: left; cursor: pointer; }
+.tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
+.tree-row button:focus-visible { outline: 2px solid #1168b6; }
+.tree-spacer { width: 22px; }
+form, #text { margin: 4px 8px; }
+form input { box-sizing: border-box; width: 100%; }
+#text { white-space: pre-wrap; overflow-wrap: anywhere; }
+#text.error { color: #b00020; }
+</style>
+<nav id="side" aria-label="Tree"><div id="tree"></div></nav>
+<div id="main">
+<div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
+<form><input aria-label="text" autocomplete="off" disabled></form>
+<div id="text">loading</div>
+</div>

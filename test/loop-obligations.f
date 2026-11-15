@@ -11,7 +11,6 @@ require src/lib/test/subject.f
 package LOOP-OBLIGATIONS-TEST
 
 $4000 constant IO-CAP
-180000 constant DEADLINE-MS
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
@@ -21,7 +20,7 @@ create ERR IO-CAP allot
    s" --load" >LEN PROC-ARGV+
    s" test/loop-obligations-subject.f" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    s" test/loop-obligations-subject.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    OUT outu LEN>N S\" loop-runtime: ok\n" STR= 0= rc 0 <> or if

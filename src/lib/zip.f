@@ -5,12 +5,13 @@
 \ failure, and E-SIZE a caller's length too; a host fault ZIP sees keeps the
 \ host's code (FS:MKTEMP's, E-FS-OPEN, E-FS-IO).
 \ STORAGE CLASS. TASK-LOCAL: libzip's stat block and EOF probe byte, one
-\ TASK:+USER row. A handle owns its buffers, entries and inputs and has one task
+\ TASK:+USERS row. A handle owns its buffers, entries and inputs and has one task
 \ owner. PROCESS-WIDE: the identity registry and serial, src/lib/zip-state.f.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/zip-raw.f
 require src/lib/span.f
+require src/core/compile-reads.f
 
 package ZIP
 using FFI
@@ -29,15 +30,15 @@ CAST: MAPPED>RAW ( n -- ptr u8 )
 $4000 constant FILE-CHUNK
 PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
-\ The source snapshot is a fresh FS:MKTEMP file: the node keeps its descriptor
-\ for the copy and the mapping, and copies its path, which the task's next temp
-\ reuses, into room allocated before the file exists, so no failure falls
-\ between making the file and the node owning it.
+\ The path, which the task's next temp reuses, goes into room allocated first,
+\ so the node owns the file once it is made; the exit removes it unless the
+\ node discards it.
 : SNAPSHOT-WORK ( ptr n ptr u8 -- ptr n ptr u8 )
    {: node:ptr copy:ptr :}
    s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:ptr len:n :}
    path len copy SNAPSHOT-ROOM SPAN:MAKE CSTR
    node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
+   path len FS:CLEANUP+
    node copy ;
 
 : SNAPSHOT-OPEN ( ptr n -- )
@@ -76,6 +77,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    path len node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
    len node PATH-LEN !
    node SNAPSHOT-OPEN
+   path len node PATH-PTR @ COMPILE-READS:FILE+
    node PATH-PTR @ open-rd {: src:n :}
    src 0 < if E-FS-OPEN throw then src node SOURCE-FD !
    node COPY-SOURCE node CLOSE-SOURCE-FD
@@ -379,11 +381,8 @@ public
    archive ARCHIVE-NODE {: node:ptr :}
    node node entry ENTRY-INDEX len ctx fill REPLACE-FILL ;
 
-\ Writes a compact archive to a temporary in the destination directory and
-\ renames it over, keeping permissions and untouched local records byte for
-\ byte; replacements are STORE with fresh CRC and sizes, ZIP64 fields rebuilt
-\ as needed. Success retires the archive and its entries; after ZIP:E-COMMIT the
-\ archive stays live for a retry or CLOSE.
+\ Replaces path with a compact archive: mode and untouched local records kept,
+\ replacements STORE. Success retires it; ZIP:E-COMMIT and E-FS-SYNC do not.
 : COMMIT ( archive -- )
    ARCHIVE-NODE dup COMMIT-RAW DISCARD-NODE ;
 

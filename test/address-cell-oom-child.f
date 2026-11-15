@@ -20,7 +20,6 @@ create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
       s" address-cell-oom: setrlimit failed" 76 die then ;
 
 : RUN ( -- )
-   CURRENT? 0= if s" address-cell-oom: wrong host ABI" 76 die then
    BOOT-CAP LIVE-SPAN nip - {: remaining:n :}
    remaining 0 <= if s" address-cell-oom: no inline room" 76 die then
    remaining 0 ?do SLOTS i cells + ptr-cell-mark loop

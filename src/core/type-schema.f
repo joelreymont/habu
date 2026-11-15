@@ -91,8 +91,6 @@ variable SCH-ROOT-N   \ next schema-root index
 
 private
 
-variable SCH-I        \ private scan index
-
 \ Retiring a node or root scrubs it back to canonical zero, as PF-SCRUB
 \ (src/core/type-family.f) does for field rows: a zeroed row is the canonical
 \ absent row, so retired rows leave no bytes in reflection or snapshot identity.
@@ -134,7 +132,60 @@ private
    SCH-ROOT-N @ SCH-ROOT-CAP-V @ < IF exit THEN
    SCH-ROOT-N @ 1 + SCH-ROOT-GROW ;
 
+\ --- the transient region: the nodes and roots made for a definition being
+\ built, apart from the persistent store, so no snapshot or build writes one.
+\ Its node ids and root indices count from TRANSIENT-BASE, above any
+\ persistent count; transient mode sends SCHEMA-NEW and SCHEMA-ROOT+ there.
+\ Its cells are scratch, so a written image starts with an empty region.
+$10000000000 constant TRANSIENT-BASE
+PTR-VARIABLE SCH-T-P   SCRATCH-VARIABLE SCH-T-CAP   SCRATCH-VARIABLE SCH-T-N  \ nodes, in rows
+PTR-VARIABLE SCH-T-ROOT-P   SCRATCH-VARIABLE SCH-T-ROOT-CAP   SCRATCH-VARIABLE SCH-T-ROOT-N
+SCRATCH-VARIABLE SCH-T-PARAM-N   \ parameter indices handed out
+SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
+
+: TRANSIENT-MODE? ( -- bool ) SCH-MODE @ 0 <> ;
+
+\ A persistent node or root never names a transient one: E-SCHEMA-BAD.
+: KEEP-CK ( n -- ) {: id:n :}
+   TRANSIENT-MODE? IF EXIT THEN
+   id TRANSIENT-BASE >= IF E-SCHEMA-BAD throw THEN ;
+
+: T-NODE? ( n -- bool ) {: id:n :}
+   id TRANSIENT-BASE - {: i:n :}
+   i 0 >= i SCH-T-N @ < and ;
+
+: NODE-LIVE? ( n -- bool ) {: id:n :}
+   id T-NODE? IF RES-TRUE EXIT THEN
+   id 0 > id SCH-N @ < and ;
+
+: T-NEW-ID ( -- n )
+   SCH-T-P SCH-T-CAP SCH-T-N @ 1 + SCH-REC CELL / ARENA-ROWS-ENSURE
+   SCH-T-N @ {: i:n :}
+   i 1 + SCH-T-N !
+   i TRANSIENT-BASE + ;
+
+: SCH-NEW-ID ( -- n )
+   TRANSIENT-MODE? IF T-NEW-ID EXIT THEN
+   SCH-ENSURE
+   SCH-N @ {: id:n :}
+   id 1 + SCH-N !
+   id ;
+
+: T-ROOT+ ( n -- n ) {: node:n :}
+   node NODE-LIVE? 0= IF s" tfam: bad schema root" 76 die THEN
+   SCH-T-ROOT-P SCH-T-ROOT-CAP SCH-T-ROOT-N @ 1 + 1 ARENA-ROWS-ENSURE
+   SCH-T-ROOT-N @ {: i:n :}
+   node i cells SCH-T-ROOT-P @ + !
+   i 1 + SCH-T-ROOT-N !
+   i TRANSIENT-BASE + ;
+
+: T-ROOT@ ( n -- n ) {: idx:n :}
+   idx TRANSIENT-BASE - {: i:n :}
+   i SCH-T-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
+   i cells SCH-T-ROOT-P @ + @ ;
+
 : SCH-REC@ ( n -- ptr n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
+   id T-NODE? IF id TRANSIENT-BASE - SCH-REC * SCH-T-P @ + EXIT THEN
    id 0 <= IF s" tfam: bad schema node" 76 die THEN
    id SCH-N @ >= IF s" tfam: bad schema node" 76 die THEN
    id SCH-REC * SCH-BASE + ;
@@ -147,9 +198,7 @@ public
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    tag SCHEMA-KIND? 0= IF E-SCHEMA-BAD throw THEN
-   SCH-ENSURE
-   SCH-N @ {: id:n :}
-   id 1 + SCH-N !
+   SCH-NEW-ID {: id:n :}
    id SCH-REC@ {: r:ptr :}
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
@@ -162,6 +211,7 @@ public
 : SCHEMA-APP ( n n n -- n )
    {: fam:n start:n count:n :}
    count 0 < IF E-SCHEMA-BAD throw THEN
+   start KEEP-CK
    \ A nullary application (`fam<>`) has an empty argument range: start 0,
    \ as for SCHEMA-ROW.
    SCH-APP fam count 0= IF 0 ELSE start THEN count SCHEMA-NEW ;
@@ -179,6 +229,8 @@ public
 \ product fields reference as contiguous [start,start+count) ranges.
 : SCHEMA-ROOT+ ( n -- n ) {: node:n :}
    WRITE-WINDOW-CK
+   node KEEP-CK
+   TRANSIENT-MODE? IF node T-ROOT+ EXIT THEN
    node 0 <= IF s" tfam: bad schema root" 76 die THEN
    node SCH-N @ >= IF s" tfam: bad schema root" 76 die THEN
    SCH-ROOT-ENSURE
@@ -187,21 +239,47 @@ public
    idx 1 + SCH-ROOT-N !
    idx ;
 : SCHEMA-ROOT@ ( n -- n ) {: idx:n :}
+   idx TRANSIENT-BASE >= IF idx T-ROOT@ EXIT THEN
    idx 0 < IF s" tfam: bad schema root index" 76 die THEN
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
-: SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
+\ The index the next SCHEMA-ROOT+ answers, in the mode's region.
+: SCHEMA-ROOT-N@ ( -- n )
+   TRANSIENT-MODE? IF SCH-T-ROOT-N @ TRANSIENT-BASE + EXIT THEN
+   SCH-ROOT-N @ ;
+
+\ Transient mode, for the nodes a definition being built is given.
+: TRANSIENT-ON ( -- ) 1 SCH-MODE ! ;
+: TRANSIENT-OFF ( -- ) 0 SCH-MODE ! ;
+
+\ A parameter node no other transient node holds, so each family a definer
+\ applies has its own parameters.
+: FRESH-PARAM ( -- n )
+   SCH-T-PARAM-N @ {: i:n :}
+   i 1 + SCH-T-PARAM-N !
+   i SCHEMA-PARAM ;
+
+\ A load takes the mark as it starts and releases back to it as it ends, so
+\ the nodes, roots and parameters a load made last only until it ends, while
+\ those its loader made stay live through it.
+: TRANSIENT-MARK ( -- n n n ) SCH-T-N @  SCH-T-ROOT-N @  SCH-T-PARAM-N @ ;
+
+\ An empty region gives its rows back.
+: TRANSIENT-RELEASE ( n n n -- ) {: nodes:n roots:n params:n :}
+   nodes SCH-T-N !  roots SCH-T-ROOT-N !  params SCH-T-PARAM-N !
+   nodes 0= IF SCH-T-P SCH-T-CAP SCH-REC CELL / ARENA-ROWS-RELEASE THEN
+   roots 0= IF SCH-T-ROOT-P SCH-T-ROOT-CAP 1 ARENA-ROWS-RELEASE THEN ;
 
 \ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,
 \ referenced by [start, start+count) contiguous schema roots. An empty side has
 \ count 0. SCH-ROW nodes never stand alone as a payload element — only SCH-QUOT
 \ reaches them (as its four side roots), and PF-NODE-KIND? walks into them there.
-: SCHEMA-NODE-OK? ( n -- bool ) {: node:n :}
-   node 0 > node SCH-N @ < and ;
+: SCHEMA-NODE-OK? ( n -- bool ) NODE-LIVE? ;
 \ An empty row (count 0) is start 0, never the root store's high-water: it
 \ names no root, so its start is the same whatever an earlier file left.
 : SCHEMA-ROW ( n n -- n ) {: start:n count:n :}   \ row over [start,start+count) element roots
    count 0 < IF E-SCHEMA-BAD throw THEN
+   start KEEP-CK
    SCH-ROW count 0= IF 0 ELSE start THEN count 0 SCHEMA-NEW ;
 : SCHEMA-ROW? ( n -- bool ) SCHEMA-TAG@ SCH-ROW = ;
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
@@ -225,6 +303,7 @@ public
 
 : SCHEMA-QUOT ( n n n n n -- n )
    {: din:n dout:n rin:n rout:n hasr:n :}
+   din KEEP-CK  dout KEEP-CK  rin KEEP-CK  rout KEEP-CK
    din SCHEMA-ROW-OK? dout SCHEMA-ROW-OK? and
    rin SCHEMA-ROW-OK? and rout SCHEMA-ROW-OK? and 0= IF E-SCHEMA-BAD throw THEN
    din SCHEMA-ROOT+ {: start:n :}          \ first side root; dout/rin/rout follow contiguously
@@ -243,9 +322,39 @@ public
 : SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
 
+\ The effect with no inputs and no outputs.
+: EMPTY-EFFECT ( -- n )
+   0 0 SCHEMA-ROW {: row:n :}
+   row row row row 0 SCHEMA-QUOT ;
+
+\ Row with node after its elements.
+private
+
+: SIDE+ ( n n -- n ) {: row:n node:n :}
+   row SCHEMA-ROW-COUNT@ {: k:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   k 0 ?do row i SCHEMA-ROW-ELEM@ SCHEMA-ROOT+ drop loop
+   node SCHEMA-ROOT+ drop
+   start k 1 + SCHEMA-ROW ;
+
+public
+
+\ Effect EFF with NODE as its new top input.
+: EFFECT-IN ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@ node SIDE+  eff SCHEMA-QUOT-DOUT@
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
+\ Effect EFF with NODE as its new top output.
+: EFFECT-OUT ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@  eff SCHEMA-QUOT-DOUT@ node SIDE+
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
 \ --- SCH-PTR: a `ptr T` variant payload element. A malformed child (nil or out
 \ of range) throws E-SCHEMA-BAD.
 : SCHEMA-PTR ( n -- n )
+   dup KEEP-CK
    dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
@@ -321,20 +430,5 @@ public
    r SCHRB.N @ r SCHRB.ROOTN @ REWIND ;
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
-
-\ Snapshot prepare: frames are transient (depth 0 at snapshot), so drop any grown
-\ arena back to the baked boot store.
-: SCHEMA-RBF-SNAP-RESET ( -- )
-   SCH-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   SCH-RBF-BOOT SCH-RBF-P !
-   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
-   SCH-RBF-BOOT 0 SCH-RBF-CAP-INIT SCH-RBF-REC * CELL / ARENA-CELLS-ZERO
-   0 SCH-RBF-DEPTH ! ;
-
-\ --- snapshot persist: bake any grown store into fresh image DATA, through the
-\ checker's REG-EXT-PERSIST hook.
-: SCHEMA-SNAPSHOT-PERSIST ( -- )
-   SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
-   SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
 
 ;package

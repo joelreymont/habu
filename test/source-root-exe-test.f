@@ -22,11 +22,8 @@ private
 
 PATH-CAP 1+ constant CAP
 $10000 constant IO-CAP
-$1000 constant PROG-CAP
-\ Guards against a hung child, not budgets: the host runs loaded.
-120000 constant TIMEOUT-MS
-\ A prompt line holds 255 bytes, so `cd <name>` names at most this much; four
-\ nested names fit the 1023-byte path cap and a fifth does not.
+PATH-CAP 1+ 4 * constant PROG-CAP
+\ A prompt line holds 255 bytes, so `cd <name>` names at most this much.
 200 constant LONG-NAME
 \ One more than the path stack holds (src/core/include.f PATH-DEPTH).
 9 constant OVER-DEPTH
@@ -140,7 +137,8 @@ variable RC
 
 : B-TREE ( -- )
    s" b" A$ B-ROOT B-ROOT-U COPY!
-   s" src" [: B-COPY ;] FS:WALK-FILES ;
+   s" src" [: B-COPY ;] FS:WALK-FILES
+   s" test/fixtures/source-root-exe" [: B-COPY ;] FS:WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
 : MARKER ( ptr u8 n n -- )
@@ -153,10 +151,10 @@ variable RC
 
 : WD-APP ( -- )
    SB-RESET
-   s" require src/lib/utf16.f" LINE
+   s" require test/fixtures/source-root-exe/outer.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   S\" UTF16:E-UTF16 -9530 = s\q ok\q UTF8:VALID? and YN" LINE
+   s" SOURCE-ROOT-EXE-INNER:MARK 5 = SOURCE-ROOT-EXE-OUTER:MARK 6 = and YN" LINE
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
@@ -175,11 +173,23 @@ variable RC
    s" HELLO" LINE
    s" ;package" LINE ;
 
-\ deep/<name>/<name>/<name>/<name>
+create DEEP CAP allot
+variable DEEP-U
+
+\ The most /<name> levels below <tmp>/deep whose path fits PATH-CAP.
+: DEEP-LEVELS ( -- n ) PATH-CAP TOP-U @ - 5 - LONG-NAME 1+ / ;
+
+\ deep and DEEP-LEVELS nested <name>s below it, built in DEEP: the path can
+\ outgrow the string builder.
 : DEEP-DIRS ( -- )
-   SB-RESET s" deep" SB-APPEND
-   4 0 do s" /" SB-APPEND LONG LONG-NAME SB-APPEND loop
-   SB$ A$ FS:MAKE-DIRS ;
+   s" deep" {: a:ptr u:n :}
+   a DEEP u BYTE-COPY u DEEP-U !
+   DEEP-LEVELS 0 ?do
+      [char] / DEEP DEEP-U @ + c!
+      LONG DEEP DEEP-U @ + 1+ LONG-NAME BYTE-COPY
+      LONG-NAME 1+ DEEP-U +!
+   loop
+   DEEP DEEP-U @ A$ FS:MAKE-DIRS ;
 
 \ Each case runs a fresh child of a copy of the engine under test
 \ (src/lib/engine-candidate.f), placed in the layout it needs.
@@ -195,6 +205,8 @@ variable RC
    s" tree/bin" A$ FS:MAKE-DIRS
    s" tree/bin/hb" PLACE-ENGINE
    s" src" s" tree/src" GATE-LINK
+   s" tree/test/fixtures" A$ FS:MAKE-DIRS
+   s" test/fixtures/source-root-exe" s" tree/test/fixtures/source-root-exe" GATE-LINK
    s" bin" A$ FS:MAKE-DIR
    s" tree/bin/hb" B$ s" bin/hb" A$ FS:MAKE-SYMLINK
    \ A lone engine, and a tree that has no lib.
@@ -216,11 +228,13 @@ variable RC
    s" app/src/lib" A$ FS:MAKE-DIRS
    s" test/source-root-exe-app.f" s" app/app.f" A$ FS:COPY-FILE-STREAM
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/error.f" SB$ TEXT
-   s" wd-app/src/lib" A$ FS:MAKE-DIRS
+   s" wd-app/test/fixtures/source-root-exe" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
-   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/utf8-scalar.f" SB$ TEXT
-   s" shadow/src/lib" A$ FS:MAKE-DIRS
-   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/utf16.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY
+   s" wd-app/test/fixtures/source-root-exe/inner.f" SB$ TEXT
+   s" shadow/test/fixtures/source-root-exe" A$ FS:MAKE-DIRS
+   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY
+   s" shadow/test/fixtures/source-root-exe/outer.f" SB$ TEXT
    \ A program behind a link of another name requires the file beside it, then
    \ itself.
    s" real" A$ FS:MAKE-DIR
@@ -257,24 +271,24 @@ variable RC
    tmpu 0= if exit then
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
-: RUN-ARGS ( ptr u8 n ptr u8 n n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n ms:n :}
+: RUN-ARGS ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n cwd:ptr cwdu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN ms >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
-: RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n ms:n :}
+: RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN in inu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN ms >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT! ;
 
 \ <tmp>/tree/bin/hb from <tmp>/foreign, the program on stdin.
 : RUN-TREE ( -- )
    PROC-ARGV-RESET
-   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE ;
+   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE ;
 
 : SHOW ( -- )
    s" child rc " type RC @ FMT:.INT cr
@@ -320,13 +334,13 @@ variable RC
    S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE ;
+   s" require test/fixtures/source-root-exe/inner.f" PLINE ;
 
 : FROM-FOREIGN ( ptr u8 n -- )
    {: exe:ptr exeu:n :}
    PROC-ARGV-RESET
    ROOT-PROGRAM
-   exe exeu FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   exe exeu FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" tree" A$ LINE s" yes" LINE
    SB$ 0 EXPECT ;
 
@@ -345,23 +359,23 @@ variable RC
    PROG-RESET
    s" SOURCE-ROOT:ENGINE$ type cr" PLINE
    s" require src/lib/string.f" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE
+   s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
-   s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ RUN-EXE
    SB-RESET s" b" A$ LINE
    SB$ 0 EXPECT ;
 
 : LONE ( -- )
    s" a lone engine in a tree's working directory takes that tree" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ type cr\n" TIMEOUT-MS RUN-EXE
+   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ type cr\n" RUN-EXE
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire src/lib/utf8-scalar.f\n"
-   TIMEOUT-MS RUN-EXE
+   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
+   RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
 \ discovery base, and a library is refused naming the owner's path.
@@ -378,11 +392,11 @@ variable RC
    s"    REQUIRE-RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE
+   s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
-   s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ After the program's load lines: the root, and whether q's file loaded.
 : NOT-TREE-RUN ( -- )
@@ -394,7 +408,7 @@ variable RC
    s" RUN" PLINE
    s" ;package" PLINE
    PROC-ARGV-RESET
-   s" q/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   s" q/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE
    SB-RESET FOREIGN$ LINE s" yes" LINE SB$ 0 EXPECT ;
 
 \ q holds no first row, so the working directory is the root and q's
@@ -420,41 +434,41 @@ variable RC
    s" --" >LEN PROC-ARGV+
    FOREIGN$ >LEN PROC-ARGV+
    s" tree" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    S\" test: ok\n" 0 EXPECT ;
 
 \ A relative dependency searches its owner, the root, then the working
 \ directory; a relative --load entry is relative to the working directory only;
 \ only the root's own copy matches a frozen engine row.
-\ The entry lacks src/lib/utf16.f, which the working directory holds, and
-\ holds src/lib/utf8-scalar.f, which the root's utf16.f requires: each decoy
-\ would print its package name, and leave UTF16 or UTF8 undefined.
+\ The entry lacks the fixture's outer.f, which the working directory holds, and
+\ holds its inner.f, which the root's outer.f requires: each decoy would print
+\ its package name, and leave SOURCE-ROOT-EXE-OUTER or -INNER undefined.
 : WD ( -- )
    s" a library comes from the root, not the working or the entry directory" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" wd-app/wd.f" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ RUN-ARGS
    S\" yes\n" 0 EXPECT
    s" so does one for a program file, whose own directory is its first root" T-LABEL
    PROC-ARGV-RESET
    s" wd-app/wd.f" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" yes\n" 0 EXPECT
    s" a program behind a renamed symlink loads once, from its own directory" T-LABEL
    PROC-ARGV-RESET
    s" links/tool" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" y\nx\n" 0 EXPECT ;
 
 : ENTRY ( -- )
    s" a relative --load entry is relative to the working directory only" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" src/lib/utf8-scalar.f" >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" test/fixtures/source-root-exe/inner.f" >LEN PROC-ARGV+
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    NULL$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The root's src is a symlink into the gate tree; branch is a symlink
 \ elsewhere, so branch/../src/lib/error.f only reads like the root's file.
@@ -482,13 +496,13 @@ variable RC
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET
    s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/error.f\n"
-   TIMEOUT-MS RUN-EXE
+   RUN-EXE
    SB-RESET s" b" A$ LINE SB$ 0 EXPECT
    s" the root's files reached through a symlinked working directory are the engine's"
    T-LABEL
    PROC-ARGV-RESET
    s" tree/bin/hb" HB-AT$ s" wd" A$ S\" require src/lib/string.f\nrequire src/lib/fs.f\n"
-   TIMEOUT-MS RUN-EXE
+   RUN-EXE
    NULL$ 0 EXPECT ;
 
 \ The working directory's src/lib/error.f is provided by its absolute path, so a
@@ -500,7 +514,7 @@ variable RC
    YN-LINE
    s" : RUN ( -- )" PLINE
    S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
-   S\"    s\q src/lib/utf8-scalar.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
+   S\"    s\q test/fixtures/source-root-exe/inner.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
    S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
@@ -555,10 +569,11 @@ variable RC
    SB-RESET s" search-only" A$ LINE SB$ 0 EXPECT ;
 
 \ Each step is one prompt line, so the path grows past the cap only by joining.
+\ The first DEEP-LEVELS steps reach existing paths that fit; the next is over.
 : CD-TOO-LONG ( -- )
    s" a current path longer than a loader path is refused by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
-   5 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
+   DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
    RUN-TREE
    S\" source root: path is too long\n" REFUSAL ;
 
@@ -568,7 +583,7 @@ variable RC
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    file fileu A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    want wantu REFUSAL ;
 
 \ A load holds the path it replaced, so none of the words may move it.

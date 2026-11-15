@@ -47,7 +47,7 @@ package NATIVE-LEXICAL-RECOVERY
    S\" s\" LEXTRY\" 0 parse-imm" GE-SRC-LINE
    S\" : LEXWORD ( -- n ) LEXTRY s\" ; text\" 2drop 7 ;" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    s" caught parser operand refusal" GE-EXPECT-OK
    S\" 70\n7\n" s" caught parser operand refusal" GE-EXPECT-OUT
    s" NEVER-BOUND" s" caught parser operand refusal" GE-EXPECT-ERR-HAS ;

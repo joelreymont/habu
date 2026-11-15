@@ -1,9 +1,7 @@
 \ request-test.f - the browser request protocol under bun:
 \ src/lib/browser/host-cli.mjs runs test/browser/request.f's module, built by
-\ tools/hb-build.f, through src/lib/browser/turn.js. bun and
-\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
-\ test/wasm/device.f runs it, as does `bin/hb --load test/browser/request-test.f`
-\ from the tree's root.
+\ tools/hb-build.f, through src/lib/browser/turn.js. test/wasm/device.f runs
+\ it, as does `bin/hb --load test/browser/request-test.f` from the tree's root.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -19,7 +17,6 @@ require test/browser/memory.f
 package BROWSER-REQUEST-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -92,7 +89,7 @@ PATH-CAP BUFFER: FILE
    FILE fu ARG+ ;
 
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -180,7 +177,7 @@ PATH-CAP BUFFER: FILE
    ;MATCH ;
 
 : ENDED-LINE ( ptr u8 n -- )
-   s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
+   s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 \ Writes the expected text and the actual bytes as this name in DIR's expected
 \ and actual directories, then compares them.
@@ -230,9 +227,8 @@ PATH-CAP BUFFER: FILE
    HOST 1 T=
    ERR-LINE$ {: t:ptr u:n :}
    t TRAP u BYTE-COPY  u TRAP-U !
-   \ The wording is the engine's: bun says Unreachable, V8 out of bounds.
-   s" trapped: the first failure is the fixture's trap" T-LABEL
-   TRAP$ s" Unreachable" CONTAINS?  TRAP$ s" memory access out of bounds" CONTAINS?  or TTRUE
+   s" trapped: the host names the fault the fixture's trap recorded" T-LABEL
+   TRAP$ s" fault kind 102 at " STARTS-WITH? TTRUE
    HELLO  ID1$ STATE-LINE
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT$ s" trapped.out" SAME
@@ -275,7 +271,7 @@ PATH-CAP BUFFER: FILE
    s" early trap: neither reply answers text" T-LABEL
    OUT$ s" early-trap.out" SAME
    SB-RESET  TRAP$ LINE
-   s" RuntimeError: " SB-APPEND  TRAP$ SB-APPEND  s" ; Error: " SB-APPEND  TRAP$ ENDED-LINE
+   s" Error: " SB-APPEND  TRAP$ SB-APPEND  s" ; Error: " SB-APPEND  TRAP$ ENDED-LINE
    s" early trap: reported at once, then with the refusal of its sibling" T-LABEL
    ERR$ s" early-trap.err" SAME ;
 
@@ -288,7 +284,7 @@ PATH-CAP BUFFER: FILE
    s" reply failure: no reply answers text and no later request is made" T-LABEL
    OUT$ s" reply-failure.out" SAME
    SB-RESET  KIND99$ LINE
-   s" Error: " SB-APPEND  KIND99$ SB-APPEND  s" ; RuntimeError: " SB-APPEND  TRAP$ LINE
+   s" Error: " SB-APPEND  KIND99$ SB-APPEND  s" ; Error: " SB-APPEND  TRAP$ LINE
    TRAP$ ENDED-LINE
    s" reply failure: an invalid record, both reasons, then the later turn refused" T-LABEL
    ERR$ s" reply-failure.err" SAME ;

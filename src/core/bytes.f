@@ -3,12 +3,6 @@
 \ require. BYTE-VIEW ( ptr a -- ptr u8 ) is an engine word: checked code refuses
 \ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
 
-$4C constant E-BYTE-RANGE
-
-: BYTE-CHECK-N ( n -- )
-   dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
-   drop ;
-
 : BYTE+ ( ptr u8 n -- ptr u8 )
    + ;
 
@@ -21,8 +15,8 @@ $4C constant E-BYTE-RANGE
    u LEN>N {: count :}
    count 0 <= if exit then
    0
-   \ CELL-VIEW keeps the addresses checked. The supported targets admit
-   \ unaligned cell access; never read or write beyond the complete-cell prefix.
+   \ CELL-VIEW keeps the addresses checked. Never read or write beyond the
+   \ complete-cell prefix.
    \ A forward overlap narrower than a cell needs the original byte sequence.
    dst src > dst src CELL + < and 0= if
       count CELL / CELL * {: bulk :}
@@ -35,4 +29,4 @@ $4C constant E-BYTE-RANGE
    repeat drop ;
 
 : BYTE-COPY ( ptr u8 ptr u8 n -- )
-   dup BYTE-CHECK-N >LEN BYTE-COPY-LEN ;
+   >LEN BYTE-COPY-LEN ;

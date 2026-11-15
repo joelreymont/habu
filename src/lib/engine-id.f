@@ -51,16 +51,11 @@ EID-REGION-BYTES SCRATCH-BUFFER: EID-MAPPED
 EID-FD-BYTES SCRATCH-BUFFER: EID-OPENED
 
 PROCESS-SYMBOLS
-FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
-FUNCTION: MAIN-HEADER _dyld_get_image_header ( n -- n ) ;FUNCTION
-FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
-   3 4 WRITES-ARG
-;FUNCTION
-FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
-   3 4 WRITES-ARG
-;FUNCTION
+FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n ) ;FUNCTION
+\ dyld image 0 is the first inserted library when DYLD_INSERT_LIBRARIES names one.
+FUNCTION: MAIN-HEADER _NSGetMachExecuteHeader ( -- n ) ;FUNCTION
+FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
 
 \ The kernel's byte count for the engine's pathname in EID-PATH; zero or
 \ negative when it refuses.
@@ -96,7 +91,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    E-ENGINE-KEY throw ;
 
 : VERIFY-MACOS ( n -- ) {: fd:n :}
-   0 MAIN-HEADER {: header:n :}
+   MAIN-HEADER {: header:n :}
    header 0= if E-ENGINE-KEY throw then
    getpid EID-PROC-REGION header EID-MAPPED EID-REGION-BYTES MAPPED-INFO
    EID-REGION-BYTES <> if E-ENGINE-KEY throw then

@@ -15,6 +15,7 @@ create OUTPUT OUTPUT-CAP allot
 create BINARY $41 c, 0 c, $FF c, $42 c,
 create BINARY-EXPECTED $41 c, $7F c, 0 c, $42 c,
 create BINARY-INSERT $7F c, 0 c,
+create ODD-STORE CAP STORAGE-BYTES 1+ allot
 
 : OPEN ( ptr u8 n -- EDIT:editor )
    STORAGE CAP STORAGE-BYTES 2swap INIT ;
@@ -57,6 +58,12 @@ create BINARY-INSERT $7F c, 0 c,
    s" ab" OPEN
    0 >OFF 2 >LEN s" " REPLACE
    s" " RESULT= EDIT:CLOSE ;
+
+: ODD-STORAGE ( -- )
+   ODD-STORE 1 + CAP STORAGE-BYTES s" abcd" INIT
+   1 >OFF 2 >LEN s" XYZ" REPLACE
+   4 >OFF 0 >LEN s" !" REPLACE
+   s" aXYZd!" RESULT= EDIT:CLOSE ;
 
 \ ---- the caught bodies of the failure cases ---------------------------------
 \ Each failure body is a word reached by `[']`, not a quotation literal: the
@@ -128,6 +135,7 @@ MIXED-EDITS
 EXACT-PRESERVATION
 EMPTY-PLAN
 ZERO-LENGTH-EDITS
+ODD-STORAGE
 BAD-RANGES
 BAD-ORDER
 NO-PARTIAL-WRITE

@@ -40,9 +40,7 @@ variable FINISH-LIMIT
 25 constant FILE-SIZE-SIGNAL
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 
@@ -134,7 +132,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : COMMAND ( ptr u8 n -- ptr u8 n )
    {: name:ptr size:n :}
    name size TOOL {: exeu:len :}
-   EXE exeu s" " >LEN OUTPUT CAP >LEN ERRORS CAP >LEN 30000 >MS
+   EXE exeu s" " >LEN OUTPUT CAP >LEN ERRORS CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>DEADLINE-RC RC>N
    {: outu:len erru:len code:n :}
    code 0<> if OUTPUT outu LEN>N type ERRORS erru LEN>N type then

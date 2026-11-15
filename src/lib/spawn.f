@@ -3,9 +3,10 @@
 \ spawns it through the engine's spawn-fds (src/habu/spawn-abi.f lays out what it
 \ reads) under FD-LOCK (src/lib/fd-lock.f) and answers its pid.
 \ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks and
-\ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER cell.
+\ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER slot.
 
 require src/lib/error.f
+require src/core/compile-reads.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
@@ -24,7 +25,7 @@ DEFLINEAR PROCESS:request
 
 private
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER ERRNO-CELL drop
+TASK:+USER ERRNO-CELL n
 
 LINEAR: MINT ( ptr n -- PROCESS:request )
 LINEAR: ERASE ( PROCESS:request -- ptr n )
@@ -357,6 +358,7 @@ public
 \ Spawns the request and frees it whatever the outcome. A refusal throws
 \ E-PROC-SPAWN with the positive errno in ERRNO; a spawn that succeeds sets it 0.
 : SPAWN ( PROCESS:request -- pid )
+   COMPILE-READS:MISS
    ERASE {: h:ptr :}
    h 0 [: drop dup LAUNCH ;] catch {: rc :}
    rc 0<> if drop drop h RELEASE rc throw then

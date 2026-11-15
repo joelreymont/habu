@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.663677+03:00"
 closed-at: "2026-11-04T11:48:49.119365+02:00"
-close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments (DECISIONS \"editing tier 1\", \"the T0 release\"). Hooks the old JIT (jit-open/jit-token) into habu2.f's LCOMPILE; T0 replaces the JIT as compiler (\"the T0 release\")."
+close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments. Hooks the old JIT (jit-open/jit-token) into habu2.f's LCOMPILE; T0 replaces the JIT as compiler."
 ---
 
 Problem: B1 (chosen): the ARM64 product keeps tier 0, so the Habu compile loop needs the JIT, but the `LCOMPILE` dispatch's J-* handlers end in `lmainlbl B,` (`habu2.f:5005-5060`), so Habu cannot call it.

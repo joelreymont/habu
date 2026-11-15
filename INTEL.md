@@ -1,13 +1,12 @@
 # INTEL.md — the Linux x86-64 backend
 
-The entry point for the lane that finishes the Linux x86-64 backend. The
-design reference is [docs/x86-64.md](docs/x86-64.md). The seam rules are in
-[docs/porting.md](docs/porting.md). Its open dots sit under the umbrella
+The entry point for the lane that finishes the Linux x86-64 backend. The seam
+rules are in [docs/xcomp.md](docs/xcomp.md#porting) "Porting". Its open dots sit under the umbrella
 `habu-campaign-c6-targets-86bb56bb` (`dot tree`).
 
 ## Mission
 
-The goal is a tier-1-only Linux x86-64 engine:
+The goal is a Linux x86-64 engine on tier 0:
 
 - **Kernel.** Each target has a small hand-written kernel that binds the
   names in `src/habu/prims.f`.
@@ -16,32 +15,24 @@ The goal is a tier-1-only Linux x86-64 engine:
   Habu. They are captured into both the ARM64 and the x86-64 product. The
   seeded boot enters them through the DATA cell `ENGINE-MAIN:XT-CELL`, so
   `habu2.f` gets no x86 twin.
-- **Dual-emission cross-build.** spark cross-builds the first x86 engine by
-  dual emission: each definition's single HIR is lowered and emitted twice,
-  ARM64 into the live region and x86 into a shadow keyed by record, and the
-  capture carries the shadow.
+- **Tier-0 cross-build.** spark cross-builds the first x86 engine through
+  tier 0: while a shadow is open each definition is walked twice, x86 into a
+  shadow keyed by record and ARM64 into the live region, and the capture
+  carries the shadow.
 - **Write-time link.** A host-side Habu linker writes the x86 image with the
   code region and DATA as fixed `PT_LOAD`s.
 - **Self-host.** The cross-built engine rebuilds itself on the ThinkPad to a
   byte fixpoint, which is the release artefact. A native build records the
   already published Intel emission; it does not lower or emit it a second time.
 
-The ARM64 product keeps tier 0 through the B1 hook
-(`habu-hook-tier-0-96e33c29`). A tier-1-only product on both architectures
-is a follow-on, opened once tier-1 latency is measured on spark
-(`habu-measure-tier-1-f7425ab1`, G4a) and on the ThinkPad
-(`habu-measure-tier-1-0faadb01`, G4b).
-
 ## State
 
-Landed on `master` (the facts are in [docs/x86-64.md](docs/x86-64.md)):
+Landed on `master`:
 
 - the assembler (`X64ASM`);
 - the primitive table and its parity gate;
 - the OS seam, the ELF64 writer and the `MOVABS` site kind;
-- the register-file description;
-- the backend registry and pass rows;
-- `x64ir.f`, `select-x64.f`, the partial `emit-x64.f` and `X64PASS`.
+- the register-file description.
 
 The implementation lane also carries checked Habu startup and interpretation,
 the fixed-segment image linker, recorded anonymous-function targets, SysV FFI,
@@ -71,17 +62,12 @@ does not establish those outcomes.
 
 ## Gate commands
 
-x86-64 builds are off until x86-64 moves onto the linker:
-`tools/native-build.f` and `tools/two-generation-build.f`, which the commands
-below name, are gone.
+x86-64 builds are off until x86-64 moves onto the linker.
 
 On spark, from a tree whose `bin/hb` is the candidate:
 
 ```sh
 bin/hb --load test/run.f                                          # gate
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
-  $HOST --load tools/native-build.f -- $OUT                       # rebuild
-TMPDIR=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed>  # chain
 ```
 
 If an engine is too old to build current `master`, recover from a trusted
@@ -92,16 +78,6 @@ native hb of the same OS and machine
 HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \
   -- /path/to/trusted-hb
 ```
-
-Cross-build from a working ARM64 engine whose baked layout matches the source:
-
-```sh
-bin/hb --load src/arch/x86-64/passes.f tools/native-build.f -- <out> --target linux-x86-64
-```
-
-Copy the output and its matching `.names` sidecar to the ThinkPad. Run the
-Intel native gate with that candidate installed in the isolated tree's
-`bin/hb`, and rebuild there through `tools/native-build.f`.
 
 ## Ownership and landing
 
@@ -124,7 +100,6 @@ when their stated acceptance is met.
 - Guard pages and traps use the ARM64 mmap model. The signal frame decoding
   reads `RIP` and `RSP`.
 - x86 recovery is a cross-build from a working ARM64 engine.
-- x86 has no cold route: `tools/native-build.f` is its only build route.
 - Every code-bearing record comes from the compiler. No assembly chain is
   decoded.
 - The capture reads recorded sites. It does not decode instructions.
@@ -135,5 +110,4 @@ when their stated acceptance is met.
 ## Earlier work
 
 The 2026-09 experiment branches and the earlier multi-agent integration line
-are superseded and archived. What survived is on `master` and is described in
-[docs/x86-64.md](docs/x86-64.md).
+are superseded and archived. What survived is on `master`.

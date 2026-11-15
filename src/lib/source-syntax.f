@@ -12,10 +12,11 @@ public
    a u s" '" STR= if STR-TRUE exit then
    a u s" [']" STR= ;
 
-\ In a body only the bracketed keywords parse, once no live local claims the
-\ token; `char` and `'` there are names.
+\ In a body only the bracketed keywords and `postpone` parse, once no live
+\ local claims the token; `char` and `'` there are names.
 : BODY-PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [char]" STR=CI if STR-TRUE exit then
+   a u s" postpone" STR=CI if STR-TRUE exit then
    a u s" [']" STR= ;
 
 \ The engine opens a definition body at these.

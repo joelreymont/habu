@@ -1,11 +1,12 @@
 \ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
-\ and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
-\ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
-\ registry slot + 1, width tag, bound for that width; `ptr n`). No word views a
-\ pointer cell as bytes or cells. Release zeroes the record, so no process
-\ address survives capture; the head and the control cells are scratch, so a
-\ save or a file's object holds every record released and the registry empty
-\ even while this process keeps them. It loads below the core-prefix mark:
+\ and HEAP. A buffer record is a head cell holding the mapping (`ptr ptr a`)
+\ and the control block right behind it (capacity and registry slot + 1;
+\ `ptr n`); a DYNAMIC-BUFFER's block follows them with its element width in
+\ bytes. No word views a pointer cell as bytes or cells. Release zeroes the
+\ record, so no process address survives capture; the head and the control
+\ cells are scratch, so a save or a file's object holds every record released
+\ and the registry empty even while this process keeps them. It loads below the
+\ core-prefix mark:
 \ rewound generated declarations call it.
 package DYNAMIC-STORAGE
 public
@@ -14,27 +15,17 @@ public
 7138 constant E-MAP
 7139 constant E-UNMAP
 
-\ The cells of every control block: src/core/layout-buffer.f allots
-\ DBUF-CTRL-BYTES for a record, the head cell and these behind it.
-DBUF-CTRL-BYTES CELL / 1- constant CONTROL-CELLS
+2 constant CONTROL-CELLS
 
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
-E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size and bounds refusals
-E-LAYOUT-BOUNDS constant E-BOUNDS
+E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size refusal
 
 $40 constant REG-INIT
 
-: EXTENT ( n n -- n ) {: count:n width:n :}
-   count 0 < width 0 <= or if E-SIZE throw then
-   count MAX-BYTES width / > if E-SIZE throw then
-   count width * ;
-
 \ Keep the existing cell-rounded capacity contract: 100 byte elements reserve
-\ 104 addressable bytes. The accessor admits only complete elements of its
-\ width within the capacity, whether it reads the cached bound or divides;
-\ COPY below preserves every capacity byte.
+\ 104 addressable bytes; COPY below preserves every capacity byte.
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
@@ -67,27 +58,17 @@ variable MUTEX
 : LOCK ( -- ) begin 0 1 MUTEX atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
 
-: REG-BYTES ( n -- n ) 2 cells EXTENT ;
+: REG-BYTES ( n -- n ) 2 cells * ;
 : ROW-HEAD ( n -- ptr ptr ptr a ) 2 * REG @ swap ptr-field ;
 : ROW-CTL ( n -- ptr ptr n ) 2 * 1+ REG @ swap ptr-field ;
 : REG-ENTRY ( n -- ptr ptr a ) ROW-HEAD @ ;
 : REG-CTL ( n -- ptr n ) ROW-CTL @ ;
 
-\ The control block's cells after the capacity, which is its first cell.
+\ The control block's cell after the capacity, which is its first cell.
 : SLOT ( ptr n -- ptr n ) CELL + ;
-2 cells constant TAG-OFF
-3 cells constant BOUND-OFF
-: TAG ( ptr n -- ptr n ) TAG-OFF + ;
-: BOUND ( ptr n -- ptr n ) BOUND-OFF + ;
 
 : REG-MAP ( n -- ptr ptr u8 )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
-
-: REG-CLOSE ( -- )
-   REG @ NULL-PTR = if exit then
-   REG @ REG-CAP @ REG-BYTES munmap 0< if E-UNMAP throw then
-   NULL-PTR REG !
-   0 REG-CAP ! ;
 
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
@@ -128,45 +109,16 @@ variable MUTEX
    last REG-U !
    0 ctl SLOT ! ;
 
-public
-
-: BOUNDS ( n n -- n ) {: idx:n count:n :}
-   idx 0 < if E-BOUNDS throw then
-   idx count >= if E-BOUNDS throw then
-   idx ;
-
-\ Growth can replace the mapping, so every access fetches the head after checking
-\ capacity. The width guard on the exact division keeps native and Wasm
-\ identical: a division by zero answers 0 on ARM64 and traps on Wasm. Since the
-\ index is checked first, a width <= 0 with a negative index, and a width of 0 on
-\ an empty record (tag 0), answer E-BOUNDS rather than E-SIZE; generated
-\ accessors always pass a positive width. The tag and bound are read inline: two
-\ calls per access cost more than the division they replace.
-: ADDRESS ( n ptr ptr a ptr n n -- ptr a ) {: idx:n cb:ptr ctl:ptr width:n :}
-   idx 0 < if E-BOUNDS throw then
-   ctl TAG-OFF + @ width = if
-      idx ctl BOUND-OFF + @ >= if E-BOUNDS throw then
-   else
-      width 0 <= if E-SIZE throw then
-      idx ctl @ width / >= if E-BOUNDS throw then
-   then
-   cb @ idx width * + ;
-
-\ The capacity, its width tag and the bound (capacity / tag) change together:
-\ PUBLISH and RELEASE are their only writers, each under LOCK. ADDRESS uses the
-\ bound only when the tag equals its width; any other record (grown with a
-\ foreign width, empty, released, or a stripped image's zero mapping) answers by
-\ exact division.
-: PUBLISH ( ptr a n ptr ptr a ptr n n -- )
-   {: fresh:ptr cap:n cb:ptr ctl:ptr width:n :}
+\ The mapping and its capacity change together: PUBLISH and RELEASE are their
+\ only writers, each under LOCK.
+: PUBLISH ( ptr a n ptr ptr a ptr n -- )
+   {: fresh:ptr cap:n cb:ptr ctl:ptr :}
    fresh cb !
-   cap ctl !
-   width ctl TAG !
-   cap width / ctl BOUND ! ;
+   cap ctl ! ;
 
 \ Nothing in the record changes until every fallible operation has succeeded.
-: GROW ( n ptr ptr a ptr n n n -- )
-   {: need:n cb:ptr ctl:ptr old:n width:n :}
+: GROW ( n ptr ptr a ptr n n -- )
+   {: need:n cb:ptr ctl:ptr old:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0= if
@@ -177,7 +129,7 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cap cb ctl width PUBLISH
+      fresh cap cb ctl PUBLISH
       cb ctl REGISTER
       UNLOCK
       exit
@@ -187,14 +139,16 @@ public
    cb @ old munmap 0< if
       UNLOCK fresh cap munmap drop E-UNMAP throw
    then
-   fresh cap cb ctl width PUBLISH
+   fresh cap cb ctl PUBLISH
    UNLOCK ;
 
+public
+
 : RESERVE ( n ptr ptr a ptr n n -- ) {: count:n cb:ptr ctl:ptr width:n :}
-   count width EXTENT {: need:n :}
+   count width * {: need:n :}
    ctl @ {: old:n :}
    need old <= if exit then
-   need cb ctl old width GROW ;
+   need cb ctl old GROW ;
 
 : RELEASE ( ptr ptr a ptr n -- ) {: cb:ptr ctl:ptr :}
    ctl @ {: cap:n :}
@@ -204,21 +158,7 @@ public
    ctl UNREGISTER
    NULL-PTR cb !
    0 ctl !
-   0 ctl TAG !
-   0 ctl BOUND !
    UNLOCK ;
-
-
-\ A zero-filled record of `bytes` on its own mapping, its pointee free: only HEAP's
-\ generated NAME-NEW calls it, passing its type's width (checker.f ARENA-CALL-REFUSE?).
-: RECORD-NEW ( n -- ptr a )
-   map-anon 0< if drop E-MAP throw then ;  INTRINSIC-RECORD-NEW INTRINSIC
-
-
-\ Unmaps a record RECORD-NEW mapped with the same `bytes`; a refused unmap is
-\ E-UNMAP.
-: RECORD-RELEASE ( ptr a n -- )
-   munmap 0< if E-UNMAP throw then ;  INTRINSIC-RECORD-RELEASE INTRINSIC
 
 
 \ Runs a fork with the registry held; PROC-FORK:RAW is its caller. Growth,
@@ -233,66 +173,94 @@ public
 
 private
 
-\ Whether row i's record lies wholly inside the span. A record is its head (one
-\ cell) and its control block (CONTROL-CELLS cells): it belongs to the span when
-\ both lie wholly inside it, and a span that cuts through either, or holds
-\ exactly one of them, is refused. Offsets are distances, never views: the head
-\ is a pointer cell, so its distance is taken from NULL-PTR.
-: PART-IN? ( n n n -- bool ) {: off:n extent:n size:n :}
-   off 0 < if
-      off extent + 0 > if E-SIZE throw then
-      0 0 <> exit
-   then
-   off size >= if 0 0 <> exit then
-   extent size off - > if E-SIZE throw then
-   0 0= ;
+\ Each routine takes a DYNAMIC-BUFFER's block by its head, or by the cell
+\ holding the head, last.
+1 cells constant CTL-OFF
+CONTROL-CELLS 1+ cells constant WIDTH-OFF
 
-: MEMBER? ( n ptr u8 n -- bool ) {: row:n start:ptr size:n :}
-   row REG-ENTRY NULL-PTR - start NULL-PTR - - CELL size PART-IN? {: head-in:bool :}
-   row REG-CTL byte-view start - CONTROL-CELLS cells size PART-IN? {: ctl-in:bool :}
-   head-in if
-      ctl-in 0= if E-SIZE throw then
-   else
-      ctl-in if E-SIZE throw then
-   then
-   head-in ;
+: HEAD-CTL ( ptr ptr a -- ptr n ) CTL-OFF + byte-view cell-view ;
+: HEAD-WIDTH ( ptr ptr a -- n ) WIDTH-OFF + byte-view cell-view @ ;
 
-\ Refuse a cut through any live control record before releasing a member.
-: RANGE-CHECK ( ptr u8 n -- ) {: start:ptr size:n :}
-   size 0 < if E-SIZE throw then
-   size 0= if exit then
-   REG-U @ 0 ?do
-      i start size MEMBER? drop
-   loop ;
+\ Element idx of the block. Growth can replace the mapping, so it fetches the
+\ head on every access; the width is read inline so an access stays one call
+\ deep.
+: ELEMENT ( n ptr ptr a -- ptr a )
+   {: idx:n cb:ptr :}
+   cb @  idx  cb WIDTH-OFF + byte-view cell-view @  * + ;
+
+\ Reserves count elements in the block the cell holds.
+: ENSURE ( n ptr ptr ptr a -- )
+   {: count:n b:ptr :}
+   b @ {: cb:ptr :}
+   count cb  cb HEAD-CTL  cb HEAD-WIDTH  RESERVE ;
+
+\ Releases the block the cell holds.
+: EMPTY ( ptr ptr ptr a -- ) @ dup HEAD-CTL RELEASE ;
+
+\ A HEAP child's routines, each taking the cell holding its record's width in
+\ bytes last: a zero-filled record on its own mapping, and its unmap.
+: MAP-RECORD ( ptr n -- ptr a )
+   @ map-anon 0< if drop E-MAP throw then ;
+
+: UNMAP-RECORD ( ptr a ptr n -- )
+   @ munmap 0< if E-UNMAP throw then ;
+
+private
+
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+\ The children are made over the entries of ELEMENT, ENSURE and EMPTY.
+CAST: AS-ENTRY ( [ R -- S ] -- n )
+
+: CHILD ( ptr u8 n n n ptr u8 n -- n )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 public
 
-\ Removal shrinks the registry, so each successful release consumes its last
-\ entry. A refused unmap preserves that entry for the next call.
-\ Its caller runs it after every task has stopped, so registry walks need no
-\ second lock. Concurrent mutation of one buffer remains its caller's
-\ responsibility; the lock protects membership of distinct controls.
-: RELEASE-ALL ( -- )
-   begin REG-U @ 0 > while
-      REG-U @ 1- {: last:n :}
-      last REG-ENTRY last REG-CTL RELEASE
-   repeat
-   REG-CLOSE ;
-
-\ A retained runtime can own both capture-window and writer buffers. Only
-\ records wholly in this DATA span belong to that captured value; an empty span
-\ holds none.
-: RELEASE-RANGE ( ptr u8 n -- ) {: start:ptr size:n :}
-   start size RANGE-CHECK
-   size 0 > if
-      REG-U @
-      begin dup 0 > while
-         1- dup {: row:n :}
-         row start size MEMBER? if row REG-ENTRY row REG-CTL RELEASE then
-      repeat drop
+: DECLARE ( -- )
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu LBUF-NAME-OK? 0= if exit then
+   na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   ta tu CHECKER-DYNAMIC-INFO 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
    then
-   REG-U @ 0= if REG-CLOSE then ;
+   {: bytes:n :}
+   na nu CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ta tu CHILD drop
+   here {: v:ptr :}
+   WIDTH-OFF SCRATCH-ALLOT  bytes ,
+   na nu s" -RESERVE" LBUF-SUFFIXED CHILD-ABI:RESERVE
+   ['] ENSURE AS-ENTRY s" " CHILD drop  v LDEFER-CELL
+   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:RELEASE
+   ['] EMPTY AS-ENTRY s" " CHILD drop  v LDEFER-CELL ;
+
+\ `HEAP NAME t` declares NAME-NEW ( -- ptr t ), a fresh zero-filled record of
+\ `t`, and NAME-RELEASE ( ptr t -- ), which unmaps it; a pointer kept across
+\ RELEASE is stale, and releasing it again can unmap whatever was mapped there
+\ since. Nothing registers a record: release it before an image save. Each
+\ record is its own OS mapping, so the OS rounds it up to a page; each child
+\ holds the declared type's width.
+: DECLARE-HEAP ( -- )
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if s" HEAP" CHECKER-STORAGE-NAME-REFUSE exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu CHECKER-LBUF-NAME-OK? 0= if exit then
+   na nu s" -NEW" LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   ta tu CHECKER-DYNAMIC-INFO 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
+   then
+   {: bytes:n :}
+   na nu s" -NEW" LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
+   ['] MAP-RECORD AS-ENTRY ta tu CHILD drop  bytes ,
+   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
+   ['] UNMAP-RECORD AS-ENTRY ta tu CHILD drop  bytes , ;
 
 seal-package
 
 ;package
+
+: DYNAMIC-BUFFER ( -- ) DYNAMIC-STORAGE:DECLARE ;
+
+: HEAP ( -- ) DYNAMIC-STORAGE:DECLARE-HEAP ;

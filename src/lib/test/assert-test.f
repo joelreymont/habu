@@ -96,7 +96,7 @@ variable TAT-SCRIPT-U
 : TAT-RUN ( -- )
    PROC-ARGV-RESET
    TAT-SCRIPT$ >LEN PROC-ARGV+
-   s" bin/hb" GT-DEFAULT-TIMEOUT-MS GT-RUN ;
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GT-RUN ;
 
 \ Deliberate failures are reset between cases. Check their count before a
 \ later assertion could turn a missing failure into the expected count.

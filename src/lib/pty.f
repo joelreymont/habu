@@ -87,9 +87,7 @@ variable WRITTEN
 
 
 : NAME-SLAVE ( n ptr u8 -- n ) {: m:n path :}
-   HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX exit then
-   HB-TARGET-MACOS? if m path NAME-MACOS exit then
-   m close E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX else m path NAME-MACOS then ;
 
 
 : READ-READY ( master ptr u8 n -- n ) {: m:master bytes cap:n :}
@@ -102,8 +100,8 @@ public
 \ caller buffer of at least SLAVE-PATH-CAP bytes, with its length; the caller
 \ opens the slave with PTY-OPEN-FLAGS. Linux unlocks /dev/ptmx with TIOCSPTLCK
 \ and names /dev/pts/<TIOCGPTN> (needs a mounted /dev/pts); Darwin grants and
-\ unlocks with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME. Any other host
-\ is E-PROC-HOST. The request numbers stay private to this file.
+\ unlocks with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME. The request
+\ numbers stay private to this file.
 : OPEN ( ptr u8 n -- master n ) {: path cap:n :}
    cap SLAVE-PATH-CAP < if E-CAPACITY throw then
    OPEN-MASTER {: m:n :}

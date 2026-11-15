@@ -2,7 +2,7 @@
 \ bindings; no protocol, sequencing or retry policy. Another OS is E-PLATFORM
 \ before a socket opens. Calls must not nest within one task; close sockets
 \ before image capture: they are process resources.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one $18 TASK:+USER row
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row
 \ (IO-STORAGE); the datagram spans are caller-owned.
 require src/lib/error.f
 require src/lib/memory.f
@@ -61,12 +61,10 @@ $FFE3 constant MAX-PAYLOAD
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
-\ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
-\ sockaddr_in and a $04 socklen_t, rounded up to the cell so the row after this
-\ one still starts aligned.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
-: SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
+\ Endpoint storage is per task: a $10 sockaddr_in and a $04 socklen_t.
+$14 TASK:+USERS IO-STORAGE u8
+: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -140,27 +138,16 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 \ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols: the
-\ executable already needs libc.so.6, so no library reference is retained. Each
-\ declaration states the C effect and the extent of every buffer the callee
-\ writes, which the bounded call guards. test/net/udp4.py exercises every
-\ binding with an independent Python UDP peer.
+\ executable already needs libc.so.6, so no library reference is retained.
+\ test/net/udp4.py exercises every binding with an independent Python UDP peer.
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
-
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES                     \ sockaddr_in
-   2 $04 WRITES-BYTES                     \ socklen_t
-;FUNCTION
-
-FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
-   1 2 WRITES-ARG                         \ the caller's payload span
-   4 $10 WRITES-BYTES                     \ sockaddr_in
-   5 $04 WRITES-BYTES                     \ socklen_t
-;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
@@ -225,6 +212,13 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 : REMAINING ( ns -- ms )
    NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
+
+
+\ What a RECEIVE given timeout ms may still wait: a negative timeout has no
+\ deadline and waits as itself.
+: LEFT ( ms ns -- ms ) {: timeout:ms deadline:ns :}
+   timeout MS>N 0 < if timeout exit then
+   deadline REMAINING ;
 
 
 : RETRY? ( errno -- bool )
@@ -322,19 +316,20 @@ public
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
 \ while only capacity bytes were copied. Source filtering and reordering are the
-\ caller's. Timeout zero makes one immediate try and never reaches the loop; any
-\ other timeout is an absolute deadline the waits on the AIO loop share, so
-\ AIO:START must have run before the first of them.
+\ caller's. Timeout zero makes one immediate try and never reaches the loop; -1
+\ waits on the AIO loop with no deadline; any other timeout is an absolute
+\ deadline the waits on the AIO loop share. AIO:START must have run before the
+\ first wait.
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
-   timeout MS>N 0 $7FFFFFFF WITHIN-RANGE
+   timeout MS>N $7FFFFFFF > if E-OPERAND throw then
    mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
    begin
       ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW {: got:n error:errno :}
       got 0 >= if got capacity RECEIVED exit then
       error dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
-      deadline REMAINING dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
+      timeout deadline LEFT dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
       socket swap WAIT-READABLE
       MATCH AIO:outcome
          ready OF drop ENDOF

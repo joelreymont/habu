@@ -67,7 +67,6 @@ CAST: STATE>CELL ( n -- ptr n )
 VERSIONED-LIBRARY curl 4
 FUNCTION: PRIVATE-GET curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $08 WRITES-BYTES
 ;FUNCTION
 
 $100015 constant INFO-PRIVATE
@@ -87,9 +86,7 @@ $1000 constant RES-CAP
 $1000 constant HEADER-CAP
 $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
-$1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener is late
 100 constant STALL-MS                   \ well under the stall path's forever
-$2710 constant REQUEST-MS               \ 10 s: the bound on one loopback request
 $FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
 $3003 constant STREAM-U                \ forces several memstream growths and short reads
@@ -106,7 +103,7 @@ $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 1000000 constant NS-PER-MS
 10 constant LOW-RATE                    \ bytes a second, far under the dribble's own
 1 constant LOW-SECONDS                  \ the shortest window libcurl measures
-5000 constant STALL-MOST-MS             \ half REQUEST-MS: the stall test ended it, not the ceiling
+5000 constant STALL-MOST-MS             \ the bound on a stall the low-speed test ends
 $80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
 $4000001 constant HUGE-BODY-U           \ one past 64 MiB: a request body has no fixed cap
 $4001000 constant HUGE-U                \ a page past 64 MiB: a reply span has no fixed cap
@@ -151,7 +148,6 @@ variable SERVER-STOP
 variable SERVER-DONE
 variable SERVER-BAD
 variable SERVER-ERRNO
-variable SERVER-EXPIRED                 \ atomic: EXPIRED-NONE, or the server wait whose deadline ran out
 variable SERVER-HITS
 variable HTTP-PROXY-OLD
 variable NO-PROXY-OLD
@@ -186,10 +182,6 @@ PTR-VARIABLE HUGE-GOT                   \ the span the client receives it in
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
 2 constant KIND-FAILED
-
-0 constant EXPIRED-NONE                 \ the server task has recorded no deadline
-1 constant EXPIRED-ACK                  \ STREAM-WAIT-ACK ran out before the case acknowledged
-2 constant EXPIRED-RETRY                \ RETRY-NEXT ran out before either readiness
 
 TASK:MIN-STACK TASK:TASK SERVER-TASK
 TASK:MIN-STACK TASK:TASK PLAIN-TASK
@@ -531,26 +523,17 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" Connection: close" RES+ CRLF+ CRLF+ ;
 
 
-\ True once the case acknowledged the first chunk. A wait that runs out records
-\ EXPIRED-ACK for main to report at the join, before SERVE-STREAM closes the
-\ connection, and answers false.
-: STREAM-WAIT-ACK ( -- bool )
-   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      STREAM-ACK atomic@ 0 <> if true exit then
-      mono-ns deadline > if EXPIRED-ACK SERVER-EXPIRED atomic! false exit then
-      1 >MS TASK:SLEEP
-   again ;
+: STREAM-WAIT-ACK ( -- )
+   [: STREAM-ACK atomic@ 0 <> ;] TEST-WAIT:POLL ;
 
 
 : SERVE-STREAM ( TCP4:connection -- ) {: conn:TCP4:connection :}
    STREAM-HEAD
    conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
    conn STREAM-BUF 3 TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
-   STREAM-WAIT-ACK if
-      conn STREAM-BUF 3 + STREAM-U 3 - TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
-      1 STREAM-DONE atomic!
-   then
+   STREAM-WAIT-ACK
+   conn STREAM-BUF 3 + STREAM-U 3 - TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   1 STREAM-DONE atomic!
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
    conn TCP4:CLOSE PEER-STATUS ;
@@ -790,17 +773,12 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 \ Answer 1 only when the pooled socket is readable, 0 only when a fresh
-\ connection is pending, and -1 when the fixture path ends: on a fixture fault,
-\ counted in SERVER-BAD, or on the deadline, which is no fault and is recorded
-\ as EXPIRED-RETRY for main to report at the join. A deadline cannot stand in
-\ for evidence of a fresh connection: the client may not have started yet.
+\ connection is pending, and -1 on a fixture fault, counted in SERVER-BAD.
 : RETRY-NEXT ( TCP4:connection -- n ) {: conn:TCP4:connection :}
    conn TCP4:CONNECTION-FD RETRY-POLLS RETRY-POLL-FD!
    LISTENER@ TCP4:LISTENER-FD RETRY-POLLS 8 + RETRY-POLL-FD!
-   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
    begin
-      mono-ns deadline >= if EXPIRED-RETRY SERVER-EXPIRED atomic! -1 exit then
-      RETRY-POLLS 2 deadline mono-ns - NS-PER-MS 1- + NS-PER-MS / poll
+      RETRY-POLLS 2 -1 poll
       {: result:n :}
       result 0 > if
          RETRY-POLLS 6 + LE:U16@ 1 and 0 <> if 1 exit then
@@ -945,22 +923,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    1 SERVER-DONE atomic-add drop ;
 
 
-: WAIT-READY ( -- )
-   READY-TRIES 0 do
-      SERVER-READY atomic@ 0 > if unloop exit then
-      TASK:PAUSE
-   loop
-   s" curl-test WAIT-READY" TEST-WAIT:EXPIRED ;
-
-
-: WAIT-DONE ( -- )
-   READY-TRIES 0 do
-      SERVER-DONE atomic@ 0 > if unloop exit then
-      TASK:PAUSE
-   loop
-   s" curl-test WAIT-DONE" TEST-WAIT:EXPIRED ;
-
-
 : WAKE-SERVER ( -- )
    LOOPBACK TCP4:ADDRESS SERVER-PORT @ TCP4:PORT TCP4:CONNECT
    MATCH TCP4:connect-result
@@ -970,54 +932,16 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : START-SERVER ( -- )
-   EXPIRED-NONE SERVER-EXPIRED atomic!
    ['] SERVER-WORK SERVER-TASK TASK:ACTIVATE
-   WAIT-READY ;
+   SERVER-READY 1 SERVER-TASK TEST-WAIT:FOR-CELL ;
 
 
 : END-SERVER ( -- )
    1 SERVER-STOP atomic-add drop
    WAKE-SERVER
-   WAIT-DONE
+   SERVER-DONE 1 SERVER-TASK TEST-WAIT:FOR-CELL
    SERVER-TASK TASK:KILL
    LISTENER@ TCP4:CLOSE-LISTENER SERVER-STATUS ;
-
-
-: EXPIRED-NAME ( n -- ptr u8 n )
-   EXPIRED-ACK = if s" curl-test STREAM-WAIT-ACK" exit then
-   s" curl-test RETRY-NEXT" ;
-
-
-\ A server fault beside the deadline is a genuine failure and wins: it is
-\ asserted, and the run ends there, reading nothing more the server left.
-: REPORT-EXPIRED ( n -- )
-   {: reason:n :}
-   SERVER-BAD @ 0<> SERVER-ERRNO @ 0<> or if
-      s" the server task reported no fault beside its deadline" T-LABEL
-      SERVER-BAD @ 0 T=
-      SERVER-ERRNO @ 0 T=
-      T-REPORT
-   then
-   reason EXPIRED-NAME TEST-WAIT:EXPIRED ;
-
-
-\ Main's join at a client result: once the server task has recorded a deadline,
-\ main ends the task and reports the deadline before the result is read. The
-\ client's result followed that deadline, so no code of it is asserted.
-: JOIN-SERVER ( -- )
-   SERVER-EXPIRED atomic@ {: reason:n :}
-   reason EXPIRED-NONE = if exit then
-   END-SERVER
-   reason REPORT-EXPIRED ;
-
-
-\ Ends the server task and reports a deadline it recorded that no client result
-\ joined, before any case reads its counters.
-: STOP-SERVER ( -- )
-   END-SERVER
-   SERVER-EXPIRED atomic@ {: reason:n :}
-   reason EXPIRED-NONE = if exit then
-   reason REPORT-EXPIRED ;
 
 
 \ A transfer that only its own ceiling can end is sent here, because that
@@ -1106,27 +1030,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    KIND-FAILED LAST-KIND ! ;
 
 
-28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
-
-\ A code-28 result is a transfer bound this file set expiring, which is no
-\ assertion result. A case that expects its bound to end a transfer records
-\ it through FETCH-LIMIT or AWAIT-LIMIT, or matches it inline unguarded, and
-\ asserts 28 itself.
-: NOT-TIMEOUT ( n -- n )
-   {: code:n :}
-   code CURLE-TIMED-OUT = if s" curl-test NOT-TIMEOUT" TEST-WAIT:EXPIRED then
-   code ;
-
-
-: RECORD-RESULT ( CURL:fetch-result bool -- )
-   {: limit:bool :}
+: RECORD-RESULT ( CURL:fetch-result -- )
    MATCH CURL:fetch-result
       response OF RECORD-RESPONSE ENDOF
       truncated OF RECORD-TRUNCATED ENDOF
-      failed OF
-         limit 0= if dup CURL:CODE>N NOT-TIMEOUT drop then
-         RECORD-FAILED
-      ENDOF
+      failed OF RECORD-FAILED ENDOF
    ;MATCH ;
 
 
@@ -1146,12 +1054,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : FETCH ( CURL:handle len -- )
-   PERFORM-BODY false RECORD-RESULT ;
-
-
-\ FETCH for a case that expects its own transfer limit to end the transfer.
-: FETCH-LIMIT ( CURL:handle len -- )
-   PERFORM-BODY true RECORD-RESULT ;
+   PERFORM-BODY RECORD-RESULT ;
 
 
 : BODY$ ( -- ptr u8 n )
@@ -1241,7 +1144,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : GET-READY ( ptr u8 n -- CURL:handle ) {: path:ptr pathu:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathu URL-FOR CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject ;
 
 
@@ -1449,6 +1351,32 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject CURL:CLEANUP ;
 
 
+\ HEADER+ after RESET needs the private state record back, and the echo of
+\ X-After without X-Reset shows it started a new list rather than the old one.
+: TEST-RESET ( -- )
+   PATH-ECHO$ GET-READY {: subject:CURL:handle :}
+   subject s" X-Reset: 1" CURL:HEADER+ EXPECT-OK
+   subject FORM$ CURL:BODY! EXPECT-OK
+   subject s" PUT" CURL:METHOD! EXPECT-OK
+   subject ECHO-FETCH
+   subject CURL:RESET EXPECT-OK
+   subject HEADER-REFUSED
+   subject PATH-ECHO$ URL-FOR CURL:URL! EXPECT-OK
+   subject s" X-After: 2" CURL:HEADER+ EXPECT-OK
+   subject ECHO-FETCH
+   s" RESET drops the earlier header, method and body" T-LABEL
+   s" GET /echo " ECHO-STARTS? TTRUE
+   s" X-Reset:" ECHO-HAS? TFALSE
+   s" X-After: 2" ECHO-HAS? TTRUE
+   NO-BODY-HEADERS
+   subject FILE-URL$ CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   s" RESET restores INIT's refusal of a file:// URL" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 1 T=
+   subject CURL:CLEANUP ;
+
+
 \ First request: no cookie is sent, the server sets one, and CLEANUP writes it
 \ to the jar.
 : COOKIE-FIRST ( -- )
@@ -1506,7 +1434,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HUGE-FILL
    RESULT-RESET
    PATH-HUGE$ GET-READY {: subject:CURL:handle :}
-   subject GOT-BYTES HUGE-U >LEN CURL:PERFORM false RECORD-RESULT
+   subject GOT-BYTES HUGE-U >LEN CURL:PERFORM RECORD-RESULT
    subject CURL:CLEANUP
    s" a reply past 64 MiB arrives whole in a span that holds it" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
@@ -1602,7 +1530,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : TEST-TIMEOUT ( -- )
    STALL-READY {: subject:CURL:handle :}
-   subject BODY-CAP >LEN FETCH-LIMIT
+   subject BODY-CAP >LEN FETCH
    subject HEADER-REFUSED
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
@@ -1618,7 +1546,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    CLOSED-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS
    OPEN-HANDLE {: subject:CURL:handle :}
    subject CLOSED-PORT @ PATH-HELLO$ URL-AT CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a port nobody listens on fails as CURLE_COULDNT_CONNECT, lost, not local" T-LABEL
@@ -1631,7 +1558,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : TEST-MALFORMED ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" http://[" CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a malformed URL fails as CURLE_URL_MALFORMAT, neither lost nor local" T-LABEL
@@ -1644,16 +1570,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    0 CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
-2000 constant WAIT-MS
+: RETHROW ( n -- ) dup 0= if drop exit then throw ;
 
-: DEADLINE ( -- n )
-   mono-ns WAIT-MS NS-PER-MS * + ;
-
-
-: AWAIT-END ( ptr n ptr u8 n -- )
-   {: name:ptr len:n :}
-   [: dup TASK:DONE? ;] DEADLINE name len TEST-WAIT:POLL
-   drop ;
+: AWAIT-END ( ptr n -- )
+   [: dup TASK:DONE? ;] TEST-WAIT:POLL
+   TASK:THROW@ RETHROW ;
 
 
 : PLAIN-ANSWER$ ( -- ptr u8 n )
@@ -1695,10 +1616,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ['] PLAIN-WORK PLAIN-TASK TASK:ACTIVATE
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" https" PLAIN-PORT @ s" /" SCHEME-URL CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
-   PLAIN-TASK s" TEST-TLS-PLAIN" AWAIT-END PLAIN-TASK TASK:KILL
+   PLAIN-TASK AWAIT-END PLAIN-TASK TASK:KILL
    s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, neither lost nor local" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 35 T=
@@ -1725,7 +1645,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    SERVER-HITS atomic@ {: before:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject CEILING-MS >MS CURL:TIMEOUT! EXPECT-OK
-   subject BODY-CAP >LEN FETCH-LIMIT
+   subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1758,13 +1678,12 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    mono-ns started - NS-PER-MS / ;
 
 
-\ A transfer that never moves a byte is what the stall test must end, and the
-\ elapsed time is what says it did: the handle's own ceiling is REQUEST-MS away.
+\ The stall path never moves a byte, so only the stall test can end the transfer.
 : STALL-LOW-SPEED ( -- )
    PATH-STALL$ GET-READY {: subject:CURL:handle :}
    subject 1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
    mono-ns {: started:n :}
-   subject BODY-CAP >LEN FETCH-LIMIT
+   subject BODY-CAP >LEN FETCH
    started ELAPSED-MS {: elapsed:n :}
    subject CURL:CLEANUP
    s" a stalled transfer ends under the low-speed limit alone" T-LABEL
@@ -1774,14 +1693,13 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 \ https on the silent port: TCP completes but no reply ever ends the TLS
-\ handshake, so only a bound on the connect phase can end it before REQUEST-MS.
+\ handshake, so only the connect-phase bound LOW-SPEED! sets can end it.
 : STALL-CONNECT ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" https" SILENT-PORT @ PATH-STALL$ SCHEME-URL CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject 1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
    mono-ns {: started:n :}
-   subject BODY-CAP >LEN FETCH-LIMIT
+   subject BODY-CAP >LEN FETCH
    started ELAPSED-MS {: elapsed:n :}
    subject CURL:CLEANUP
    s" a stalled TLS handshake ends under the low-speed window" T-LABEL
@@ -1810,7 +1728,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : TEST-FILE-SCHEME ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject FILE-URL$ CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a file:// URL is refused and its bytes never reach the buffer" T-LABEL
@@ -1954,14 +1871,11 @@ TEST-ALIGN8
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
-variable HALT-GO
 variable HALT-PASSED
 variable EARLY-MODE
-variable DONE-PARKED
 variable DONE-COLLECTED
 variable DONE-RC
-variable DONE-ATTEMPTS
-variable DONE-ABANDONED
+variable DONE-SETTLED
 variable OWNER-RC
 
 8 BUFFER: DONE-STATE-CELL
@@ -1978,13 +1892,8 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
-: REACH ( ptr n n -- )
-   [: 2dup swap atomic@ <= ;] DEADLINE s" curl-test REACH" TEST-WAIT:POLL
-   2drop ;
-
-
 \ An abandoned record is given back by the loop and not by the task that left
-\ it, so the stop is retried to a bound rather than asserted on the first try.
+\ it, so the stop is retried rather than asserted on the first try.
 \ CURL:E-STATE answers both a busy record and a loop that is not live; every
 \ STOP-LOOP caller started the loop, so here it means a record not yet free.
 : STOPPED? ( -- bool )
@@ -1995,22 +1904,34 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
 : STOP-LOOP ( -- )
-   [: STOPPED? ;] DEADLINE s" curl-test STOP-LOOP" TEST-WAIT:POLL ;
+   [: STOPPED? ;] TEST-WAIT:POLL ;
 
 
 : WAIT-HIT ( n -- )
-   SERVER-HITS swap 1+ REACH ;
+   SERVER-HITS swap 1+ SERVER-TASK TEST-WAIT:FOR-CELL ;
+
+
+: THROWN ( ptr n -- n )
+   dup TASK:DONE? if TASK:THROW@ exit then drop 0 ;
+
+\ Waits for HALT-TASK's hit or the end of HALT-TASK or the server; a short hit
+\ rethrows the code a task ended with, else fails the assertion.
+: HALT-HIT ( n -- )
+   1+ [: dup SERVER-HITS atomic@ swap >=
+         SERVER-TASK TASK:DONE? or HALT-TASK TASK:DONE? or ;]
+      TEST-WAIT:POLL
+   SERVER-HITS atomic@ swap >= dup 0= if
+      HALT-TASK THROWN RETHROW
+      SERVER-TASK THROWN RETHROW
+   then
+   s" the task's transfer reaches the server before the task ends"
+   T-LABEL TTRUE ;
 
 
 \ Recorded as FETCH records PERFORM's, so the two paths are compared field by
 \ field and not by their spelling.
 : AWAIT-ONE ( CURL:handle -- )
-   CURL:AWAIT false RECORD-RESULT ;
-
-
-\ AWAIT-ONE for a case that expects its own transfer limit to end the transfer.
-: AWAIT-LIMIT ( CURL:handle -- )
-   CURL:AWAIT true RECORD-RESULT ;
+   CURL:AWAIT RECORD-RESULT ;
 
 
 : DROP-FETCH ( CURL:fetch-result -- )
@@ -2024,7 +1945,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 : MULTI-FETCH ( CURL:handle len -- ) {: subject:CURL:handle capacity:len :}
    RESULT-RESET
    subject BODY-BUF capacity CURL:START EXPECT-OK
-   subject CURL:AWAIT JOIN-SERVER false RECORD-RESULT ;
+   subject AWAIT-ONE ;
 
 
 : SPAN-RUN ( CURL:handle n bool -- ) {: subject:CURL:handle capacity:n multi:bool :}
@@ -2113,7 +2034,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 : STREAM-FIRST ( CURL:handle -- ) {: subject:CURL:handle :}
    STREAM-CAP 0 do FILL-BYTE STREAM-CHUNK i + c! loop
-   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT JOIN-SERVER
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF
          swap CURL:HTTP-STATUS>N 200 T=
@@ -2121,7 +2042,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-APPEND
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    STREAM-DONE atomic@ 0 T=
    STREAM-READ @ 3 T=
@@ -2130,14 +2051,14 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 : STREAM-REMAINING ( CURL:handle -- ) {: subject:CURL:handle :}
    begin
-      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT JOIN-SERVER
+      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
       MATCH CURL:chunk-result
          chunk OF
             swap CURL:HTTP-STATUS>N 200 T=
             STREAM-APPEND true
          ENDOF
          response OF CURL:HTTP-STATUS>N 200 T= false ENDOF
-         failed OF CURL:CODE>N NOT-TIMEOUT 0 T= false ENDOF
+         failed OF CURL:CODE>N 0 T= false ENDOF
       ;MATCH
    0= until ;
 
@@ -2155,11 +2076,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject OWNER-HANDLE !
    subject CURL:STREAM-START EXPECT-OK
    subject HEADER-REFUSED
+   s" RESET refuses a handle whose transfer is in flight" T-LABEL
+   [: OWNER-HANDLE @ CURL:RESET drop ;] CURL:E-STATE TTHROWSQ
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    subject STREAM-FIRST
    STALL-READY {: other:CURL:handle :}
    other BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
-   other AWAIT-LIMIT
+   other AWAIT-ONE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 28 T=
    other CURL:CLEANUP
@@ -2195,20 +2118,20 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    [: AWAIT-STREAM-REFUSED ;] CURL:E-STATE TTHROWSQ
    [: NEXT-ZERO-REFUSED ;] CURL:E-OPERAND TTHROWSQ
    ['] OWNER-NEXT-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK s" CASE-STREAM-MODES" AWAIT-END
+   OWNER-TASK AWAIT-END
    OWNER-TASK TASK:KILL
    OWNER-RC @ CURL:E-STATE T=
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF swap CURL:HTTP-STATUS>N 200 T= LEN>N HELLO$ nip T= ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF CURL:HTTP-STATUS>N 200 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP
    PATH-HELLO$ GET-READY {: whole:CURL:handle :}
@@ -2233,13 +2156,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-CHUNK swap LEN>N s" not found" T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF CURL:HTTP-STATUS>N 404 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP ;
 
@@ -2255,7 +2178,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF drop false TTRUE ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 42 T= ENDOF
+      failed OF CURL:CODE>N 42 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP
    STALL-READY {: silent:CURL:handle :}
@@ -2281,13 +2204,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-CHUNK swap LEN>N STREAM-BUF 3 T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF drop false TTRUE ENDOF
-      failed OF dup CURL:LOST? TTRUE CURL:CODE>N NOT-TIMEOUT 18 T= ENDOF
+      failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP ;
 
@@ -2310,11 +2233,11 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 : BOUNDED-DRAIN ( CURL:handle -- ) {: subject:CURL:handle :}
    begin
-      subject BOUNDED-BUF BOUNDED-CAP >LEN CURL:NEXT JOIN-SERVER
+      subject BOUNDED-BUF BOUNDED-CAP >LEN CURL:NEXT
       MATCH CURL:chunk-result
          chunk OF nip subject swap BOUNDED-TAKE true ENDOF
          response OF CURL:HTTP-STATUS>N LAST-STATUS ! false ENDOF
-         failed OF CURL:CODE>N NOT-TIMEOUT 0 T= false ENDOF
+         failed OF CURL:CODE>N 0 T= false ENDOF
       ;MATCH
    0= until ;
 
@@ -2355,7 +2278,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 : TWO-TAKE ( CURL:handle n -- bool )
    {: subject:CURL:handle i:n :}
-   subject CURL:NEXT-TAKE JOIN-SERVER
+   subject CURL:NEXT-TAKE
    MATCH CURL:chunk-result
       chunk OF
          swap CURL:HTTP-STATUS>N 200 T=
@@ -2364,7 +2287,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
          false
       ENDOF
       response OF CURL:HTTP-STATUS>N 200 T= true ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= true ENDOF
+      failed OF CURL:CODE>N 0 T= true ENDOF
    ;MATCH ;
 
 
@@ -2564,7 +2487,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    RESULT-RESET
    bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
-   bad AWAIT-LIMIT
+   bad AWAIT-ONE
    bad HEADER-REFUSED
    bad CURL:CLEANUP
    s" a stalled transfer ends as CURLE_OPERATION_TIMEDOUT and alone" T-LABEL
@@ -2575,7 +2498,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 \ The server holds this path open and answers nothing, so the transfer is really
 \ in flight when it is cancelled - the hit count is what says its request
-\ arrived - and nothing but the cancel can end it inside the ten-second ceiling.
+\ arrived - and nothing but the cancel can end it.
 : CASE-CANCEL ( -- )
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
@@ -2608,7 +2531,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    s" the loop refuses to stop while a transfer is in flight" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK s" CASE-OWNER" AWAIT-END
+   OWNER-TASK AWAIT-END
    OWNER-TASK TASK:KILL
    s" a transfer is awaited by the task that started it, and once" T-LABEL
    OWNER-RC @ CURL:E-STATE T=
@@ -2641,10 +2564,10 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-HANDLE @ PATH-STALL$ URL-FOR CURL:URL! EXPECT-OK
    SERVER-HITS atomic@ {: before:n :}
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK s" CASE-HALTED" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
    HALT-RC @ 0 T=
@@ -2653,7 +2576,10 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
+variable EXIT-BEGUN
+
 : EXIT-FETCH ( -- )
+   1 EXIT-BEGUN atomic!
    EXIT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    EXIT-HANDLE @ AWAIT-ONE ;
 
@@ -2664,15 +2590,18 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 : CASE-HALTED-FETCH ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
+   0 EXIT-BEGUN !
    PATH-STALL$ GET-READY HALT-HANDLE !
    PATH-HELLO$ GET-READY EXIT-HANDLE !
    RESULT-RESET
    SERVER-HITS atomic@ {: before:n :}
    ['] EXIT-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
+   s" the stalled transfer is still parked at the halt" T-LABEL
+   EXIT-BEGUN atomic@ 0 T=
    HALT-TASK TASK:HALT
-   HALT-TASK s" CASE-HALTED-FETCH" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a halted waiter's cleanup fetch answers and its parked transfer is given back" T-LABEL
    HALT-RC @ 0 T=
@@ -2684,8 +2613,11 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
-\ Spins: a PAUSE here would serve the halt before AWAIT, and a TASK:WAIT would
-\ take the hint AWAIT's wait needs.
+\ Waits for this task's halt without a PAUSE, which would serve it before AWAIT.
+: WAIT-HALT ( -- )
+   begin TASK:HALT-PENDING? 0= while TASK:WAIT repeat ;
+
+
 : LATE-WORK ( -- )
    HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
@@ -2693,26 +2625,24 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
       failed OF CURL:CODE>N HALT-RC ! ENDOF
    ;MATCH
    1 HALT-PARKED atomic!
-   begin HALT-GO atomic@ 0<> until
+   WAIT-HALT
    HALT-HANDLE @ CURL:AWAIT DROP-FETCH
    1 HALT-PASSED atomic! ;
 
 
 \ A halt still pending when AWAIT begins gives the transfer up there and ends
-\ the task at AWAIT's PAUSE, long before REQUEST-MS could answer the transfer.
+\ the task at AWAIT's PAUSE; the stalled transfer never answers.
 : CASE-HALTED-LATE ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
-   0 HALT-GO !
    0 HALT-PASSED !
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] LATE-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-TASK TASK:HALT
-   1 HALT-GO atomic!
-   HALT-TASK s" CASE-HALTED-LATE" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted before its AWAIT gives the transfer up and ends there" T-LABEL
    HALT-RC @ 0 T=
@@ -2747,14 +2677,14 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    DRIBBLE-ENDS atomic@ {: ends:n :}
    SERVER-HITS atomic@ {: before:n :}
    ['] LEAVE-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK s" CASE-HALTED-SPAN" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
-   DRIBBLE-ENDS ends 1+ REACH
-   HALT-RC @ 0 T=
+   DRIBBLE-ENDS ends 1+ SERVER-TASK TEST-WAIT:FOR-CELL
    s" the trickle was still in flight when its waiter was halted" T-LABEL
+   HALT-RC @ 0 T=
    DRIBBLE-SENT atomic@ DRIBBLE-U < TTRUE
    s" a halted waiter's span is its own again before its cleanups run" T-LABEL
    UNTOUCHED? TTRUE
@@ -2803,13 +2733,13 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] CANCEL-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-HANDLE @ CURL:CANCEL
-   HALT-TASK s" CASE-CANCEL-STREAM-OTHER-TASK" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" another task cancels the owner parked in NEXT" T-LABEL
-   HALT-RC @ NOT-TIMEOUT 42 T=
+   HALT-RC @ 42 T=
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
@@ -2818,10 +2748,10 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] HALT-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK s" CASE-HALTED-STREAM" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted in NEXT abandons its stream and lets the loop stop" T-LABEL
    HALT-RC @ 0 T=
@@ -2849,14 +2779,14 @@ variable DEFER-RETURNED
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] DEFER-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
-   before WAIT-HIT
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
+   before HALT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK s" CASE-DEFERRED-STREAM-HALT" AWAIT-END
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" deferred halt returns cancellation before abandoning NEXT" T-LABEL
    DEFER-RETURNED atomic@ 1 T=
-   HALT-RC @ NOT-TIMEOUT 42 T=
+   HALT-RC @ 42 T=
    STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
 
@@ -2869,10 +2799,12 @@ variable DEFER-RETURNED
    then ;
 
 
-\ A throw after submission can reach task exit without either wait's explicit
-\ HALTED? branch. The loop must not keep a record that can wake this dead owner.
+\ The request has reached the server when the throw ends the owner, so the
+\ loop holds a live record that must not wake the dead owner.
 : EARLY-WORK ( -- )
+   SERVER-HITS atomic@ {: before:n :}
    START-EARLY
+   before WAIT-HIT
    -12345 throw ;
 
 : CASE-EARLY-EXIT ( n -- )
@@ -2931,72 +2863,38 @@ variable DEFER-RETURNED
 : DONE-PUBLISHED? ( ptr n -- bool ) $18 + atomic@ 0<> ;
 
 
-: WAIT-PUBLISHED ( ptr n -- ) {: state:ptr :}
-   DEADLINE {: deadline:n :}
-   begin
-      state DONE-PUBLISHED? if exit then
-      mono-ns deadline > if s" curl-test WAIT-PUBLISHED" TEST-WAIT:EXPIRED then
-   again ;
-
-
-\ Runs inside DONE-TASK, so its answer is recorded unguarded: a task throws
-\ nothing main does not read. A 28 publishes no response, so main's
-\ WAIT-PUBLISHED names that deadline.
+\ The wake that finds the response published leaves the record done, so the
+\ halt meets a ready result.
 : DONE-WORK ( -- )
+   DONE-HANDLE @ DONE-STATE {: state:ptr :}
    DONE-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N DONE-RC ! ENDOF
    ;MATCH
-   1 DONE-PARKED atomic!
-   DONE-HANDLE @ CURL:AWAIT true RECORD-RESULT
+   DONE-RC @ 0<> if 1 DONE-SETTLED atomic! exit then
+   begin TASK:WAIT state DONE-PUBLISHED? until
+   1 DONE-SETTLED atomic!
+   WAIT-HALT
+   DONE-HANDLE @ AWAIT-ONE
    1 DONE-COLLECTED atomic! ;
 
 
-: CASE-HALTED-DONE-ONE ( -- bool )
-   0 DONE-PARKED ! 0 DONE-COLLECTED ! 0 DONE-RC !
+: CASE-HALTED-DONE ( -- )
+   0 DONE-SETTLED ! 0 DONE-COLLECTED ! 0 DONE-RC !
    PATH-HEADERS$ GET-READY DONE-HANDLE !
-   DONE-HANDLE @ DONE-STATE {: state:ptr :}
    ['] DONE-WORK DONE-TASK TASK:ACTIVATE
-   DONE-PARKED 1 REACH
-   state WAIT-PUBLISHED
+   DONE-SETTLED 1 DONE-TASK TEST-WAIT:FOR-CELL
    DONE-TASK TASK:HALT
-   DONE-TASK s" CASE-HALTED-DONE-ONE" AWAIT-END
+   DONE-TASK AWAIT-END
    DONE-TASK TASK:KILL
+   s" a halted owner gives up a completed transfer" T-LABEL
    DONE-RC @ 0 T=
    STOP-LOOP
-   DONE-COLLECTED atomic@ if
-      s" a collected response retains its successful final headers" T-LABEL
-      LAST-KIND @ KIND-RESPONSE T=
-      LAST-STATUS @ 200 T=
-      BODY$ JSON$ T$=
-      DONE-HANDLE @ HEADERS$ HEADER-EXACT
-      DONE-HANDLE @ CURL:CLEANUP
-      false exit
-   then
+   DONE-COLLECTED atomic@ 0 T=
    s" a completed transfer abandoned by its waiter has no headers" T-LABEL
    DONE-HANDLE @ HEADER-REFUSED
-   DONE-HANDLE @ CURL:CLEANUP
-   true ;
-
-
-8 constant DONE-TRIES
-
-: CASE-HALTED-DONE ( -- )
-   0 DONE-ATTEMPTS ! 0 DONE-ABANDONED !
-   DONE-TRIES 0 do
-      i 0 > if CURL:LOOP-START EXPECT-OK then
-      1 DONE-ATTEMPTS +!
-      CASE-HALTED-DONE-ONE if
-         1 DONE-ABANDONED +!
-         leave
-      then
-   loop
-   s" curl collection attempts=" type DONE-ATTEMPTS @ FMT:.U
-   s"  collected=" type DONE-ATTEMPTS @ DONE-ABANDONED @ - FMT:.U
-   s"  abandoned=" type DONE-ABANDONED @ FMT:.U cr
-   s" a completed transfer is abandoned within the attempt bound" T-LABEL
-   DONE-ABANDONED @ 1 T= ;
+   DONE-HANDLE @ CURL:CLEANUP ;
 
 
 : CASE-RESTART ( -- )
@@ -3075,7 +2973,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   94 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   99 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3085,7 +2983,6 @@ variable DEFER-RETURNED
 : TEST-HTTPS ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" https://example.com/" CURL:URL! EXPECT-OK
-   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject true CURL:FOLLOW! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
@@ -3109,7 +3006,7 @@ variable DEFER-RETURNED
 
 
 : TEARDOWN ( -- )
-   STOP-SERVER
+   END-SERVER
    CLOSE-SILENT
    ROOT$ FS:REMOVE-TREE ;
 
@@ -3127,6 +3024,7 @@ public
    TEST-HUGE-POST
    TEST-METHOD
    TEST-REDIRECT-VERBS
+   TEST-RESET
    TEST-COOKIES
    TEST-SPANS
    TEST-HUGE
