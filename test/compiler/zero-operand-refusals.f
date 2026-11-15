@@ -1,12 +1,17 @@
-\ zero-operand-refusals.f - rejected programs for "the engine's `/`, `mod` and
-\ `/mod` take no literal 0 divisor, and its `throw` no literal 0 code". The
-\ refusal names the token, in a body and at top level, and a literal's value
-\ rides through stack words in a body and across top-level steps. Controls: a
-\ literal 0 dividend still certifies. Cases run through `evaluate-closed`, the
-\ path `bin/hb --load` takes; a refusal is a throw.
+\ zero-operand-refusals.f - rejected programs for "a literal 0 is rejected
+\ where it reaches an input the callee always divides by or throws": the
+\ engine's `/`, `mod`, `/mod` and `throw`, and a word that divides by or throws
+\ its input on every call that returns, through another such word too. The
+\ rejection names the call token, in a body and at top level, and a literal's
+\ value rides through stack words in a body and across top-level steps.
+\ Controls: a literal 0 dividend certifies, and a word that tests the input
+\ first, divides in a branch or is called through a `defer` takes any value.
+\ Cases run through `evaluate-closed`, the path `bin/hb --load` takes; a
+\ rejection is a throw.
 
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/fmath.f
 
 package ZERO-OPERAND-TEST
 
@@ -38,6 +43,23 @@ create DIAG-BUF 8192 allot
 : THROW-ZERO ( -- )
    S\" \"code\":\"E-THROW-ZERO\"" HAS?
    S\" \"repair_class\":\"fix_throw_code\"" HAS? ;
+
+\ ---- the callees the cases call ----------------------------------------------
+
+public   \ `evaluate-closed` text calls them qualified
+
+: HALVE ( n n -- n ) / ;
+: H2 ( n n -- n ) HALVE ;
+: RDIV ( n n -- n ) swap / ;
+: FAIL ( n -- ) throw ;
+: SAFE/ ( n n -- n ) dup 0= IF 2drop 0 EXIT THEN / ;
+: ?FAIL ( n -- ) dup 0<> IF throw THEN drop ;
+defer DV ( n n -- n )
+
+private
+
+: DV-HALVE ( -- ) ['] HALVE is DV ;
+DV-HALVE
 
 \ ---- the refusals ------------------------------------------------------------
 
@@ -85,6 +107,51 @@ create DIAG-BUF 8192 allot
    THROW-ZERO  s" throw" TOKEN?
    DISARM ;
 
+\ A literal 0 at an input a word divides by or throws before anything takes it.
+: CASE-CALL-TOP ( -- )
+   s" a literal 0 at HALVE's divisor at top level is rejected at the call" T-LABEL
+   ARM
+   [: s" 7 0 ZERO-OPERAND-TEST:HALVE" evaluate-closed ;] CHECK-RC TTHROWSQ
+   DIV-ZERO  s" ZERO-OPERAND-TEST:HALVE" TOKEN?
+   s" `ZERO-OPERAND-TEST:HALVE` divides by its top input" HAS?
+   DISARM ;
+
+: CASE-CALL-BODY ( -- )
+   s" a literal 0 at HALVE's divisor in a body is rejected at the call" T-LABEL
+   ARM
+   [: s" : ZH ( -- n ) 7 0 ZERO-OPERAND-TEST:HALVE ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   DIV-ZERO  s" ZERO-OPERAND-TEST:HALVE" TOKEN?
+   DISARM ;
+
+: CASE-CALL-LIB ( -- )
+   s" a literal 0 at FMATH:FLOOR/'s divisor is rejected at the call" T-LABEL
+   ARM
+   [: s" 7 0 FMATH:FLOOR/" evaluate-closed ;] CHECK-RC TTHROWSQ
+   DIV-ZERO  s" FMATH:FLOOR/" TOKEN?
+   DISARM ;
+
+: CASE-CALL-NESTED ( -- )
+   s" a literal 0 at H2's input HALVE divides by is rejected at the call" T-LABEL
+   ARM
+   [: s" 7 0 ZERO-OPERAND-TEST:H2" evaluate-closed ;] CHECK-RC TTHROWSQ
+   DIV-ZERO  s" ZERO-OPERAND-TEST:H2" TOKEN?
+   DISARM ;
+
+: CASE-CALL-BELOW ( -- )
+   s" a literal 0 at RDIV's divisor below the top is rejected at the call" T-LABEL
+   ARM
+   [: s" 0 5 ZERO-OPERAND-TEST:RDIV" evaluate-closed ;] CHECK-RC TTHROWSQ
+   DIV-ZERO  s" ZERO-OPERAND-TEST:RDIV" TOKEN?
+   s" input 1 below the top" HAS?
+   DISARM ;
+
+: CASE-CALL-THROW ( -- )
+   s" a literal 0 at FAIL's thrown input is rejected at the call" T-LABEL
+   ARM
+   [: s" 0 ZERO-OPERAND-TEST:FAIL" evaluate-closed ;] CHECK-RC TTHROWSQ
+   THROW-ZERO  s" ZERO-OPERAND-TEST:FAIL" TOKEN?
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 : CASE-ZERO-DIVIDEND ( -- )
@@ -94,6 +161,18 @@ create DIAG-BUF 8192 allot
 : CASE-TOP-ZERO-DIVIDEND ( -- )
    s" a literal 0 dividend at top level certifies" T-LABEL
    [: s" 0 7 / drop" evaluate-closed ;] 0 TTHROWSQ ;
+
+: CASE-GUARDED-DIV ( -- )
+   s" a literal 0 at SAFE/, which tests it first, certifies" T-LABEL
+   [: s" 7 0 ZERO-OPERAND-TEST:SAFE/ drop" evaluate-closed ;] 0 TTHROWSQ ;
+
+: CASE-BRANCH-THROW ( -- )
+   s" a literal 0 at ?FAIL, which throws in a branch, certifies" T-LABEL
+   [: s" 0 ZERO-OPERAND-TEST:?FAIL" evaluate-closed ;] 0 TTHROWSQ ;
+
+: CASE-DEFER ( -- )
+   s" a literal 0 at a defer holding HALVE certifies" T-LABEL
+   [: s" : ZDV ( -- n ) 7 0 ZERO-OPERAND-TEST:DV ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 public
 
@@ -105,8 +184,17 @@ public
    CASE-TOP-MOD-CARRIED
    CASE-THROW
    CASE-TOP-THROW
+   CASE-CALL-TOP
+   CASE-CALL-BODY
+   CASE-CALL-LIB
+   CASE-CALL-NESTED
+   CASE-CALL-BELOW
+   CASE-CALL-THROW
    CASE-ZERO-DIVIDEND
    CASE-TOP-ZERO-DIVIDEND
+   CASE-GUARDED-DIV
+   CASE-BRANCH-THROW
+   CASE-DEFER
    T-REPORT ;
 
 ;package

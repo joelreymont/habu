@@ -34,11 +34,11 @@ ED-RESET
 \ twice. Case and duplicate are TFAM-DECL's.
 
 : REQUIRE-NAME ( ptr u8 n -- )
-   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
-      2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
-   TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
+      2drop s" name must be a lowercase family tail" E-TFAM-CASE DECL-REJECT:REJECT throw THEN
+   TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ Payload types: n/f/r and con names, letter params within arity, ptr T, and
 \ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
@@ -46,26 +46,26 @@ ED-RESET
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
-   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
+   id UNSTORED-REASON IF E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `ptr`
       s" payload type cannot recursively name its owner"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id TFAM-ARITY@ 0 <> IF
-      s" payload type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" payload type is parametric and needs type arguments" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ptr u8 n -- n )
    drop c@
-   dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
-   dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
-   dup ASCII-R = IF drop CON-R SCHEMA-CON EXIT THEN
+   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
+   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
+   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )
-   dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing payload type" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF
       2drop POINTEE @ {: outer:n :}
       -1 POINTEE !
@@ -78,7 +78,7 @@ ED-RESET
    2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
    2dup TYPE-MAY-ARRIVE-XT IF MISSING! 0 EXIT THEN
-   2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
+   2drop s" unknown payload type" E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )
    dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
@@ -87,7 +87,7 @@ ED-RESET
 \ each mutates only the fresh family record.
 : HEADER-ORDER ( -- )
    SEEN-VARIANT @ IF
-      s" header clause after the first variant" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
+      s" header clause after the first variant" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
@@ -133,10 +133,8 @@ ED-RESET
    size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )
-   FAM @ TFAM-PUBLIC? 0= IF
-      s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-ARITY@ 0 <> IF
-      s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
+      s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )
@@ -145,12 +143,12 @@ ED-RESET
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
-      2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
-   2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
+      2drop s" derive feature not yet supported" E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   2drop s" unknown derive feature" E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup 0= IF
-      2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
+      2drop s" missing derive feature" E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
@@ -162,7 +160,7 @@ ED-RESET
    SCHEMA-ROOT+ {: sch:n :}
    sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
-   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   s" duplicate field name" E-TFAM-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
@@ -170,36 +168,46 @@ ED-RESET
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
    NEXT dup 0= IF
-      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+      2drop s" missing field name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:ptr nu:n :}
-   na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   na nu NAME-LONG? IF TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    0 FIELD-MISS !
-   NEXT RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
+   NEXT {: ta:ptr tu:n :}
+   ta tu RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF
+      ta tu FAM @ node REQUIRE-DERIVABLE
+      na nu node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- ptr u8 n )
    NEXT dup 0= IF
-      2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
-: OPEN-VARIANT ( -- )
-   SEEN-CLEAR
-   VARIANT-NAME {: na:ptr nu:n :}
+      2drop s" missing variant name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN ;
+\ Records variant NAME, rejected at its token when a word DERIVE generates
+\ takes its name or a variant already has it.
+: VARIANT-START ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
-   s" duplicate variant" E-DUP DECL-REJECT:EXPECT
+   FAM @ TFAM-DERIVE-ANY? na nu TFAM-DERIVED-TAIL? and IF
+      s" variant name collides with a derived word" E-TDECL-NAME
+      DECL-REJECT:REJECT throw THEN
+   s" duplicate variant" E-TFAM-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
+;
+: OPEN-VARIANT ( -- )
+   SEEN-CLEAR
+   VARIANT-NAME VARIANT-START
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
-   NEXT dup 0= IF 2drop s" missing ;VARIANT" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   NEXT dup 0= IF 2drop s" missing ;VARIANT" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
-   2drop s" unexpected token in variant block" E-SYNTAX
+   2drop s" unexpected token in variant block" E-TDECL-SYNTAX
    DECL-REJECT:REJECT throw ;
 : VARIANT-BODY ( -- ) BEGIN VARIANT-CLAUSE UNTIL ;
 : VARIANT-BLOCK ( -- )
@@ -214,19 +222,16 @@ ED-RESET
    s" field" CORE-STR=CI ;
 : COMPACT-VARIANT ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   na nu NAME-LONG? IF TF-NAME-LONG$ E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
-   na nu DECL-REJECT:TOKEN!
-   s" duplicate variant" E-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK !
+   na nu VARIANT-START
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
    2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
    2dup COMPACT-KW? IF
-      2drop s" block keyword in a compact enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
+      2drop s" block keyword in a compact enum" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    COMPACT-VARIANT NO ;
@@ -246,7 +251,7 @@ ED-RESET
 : REGISTER-FULL ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!
-   s" duplicate family" E-DUP DECL-REJECT:EXPECT
+   s" duplicate family" E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX
@@ -254,7 +259,7 @@ ED-RESET
 : REGISTER-COMPACT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
-   s" duplicate family" E-DUP DECL-REJECT:EXPECT
+   s" duplicate family" E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
@@ -270,15 +275,13 @@ ED-RESET
 : NICHE-REQUIRE ( -- )
    FAM @ TFAM-NICHE? 0= IF EXIT THEN
    NICHE-SHAPE? IF EXIT THEN
-   TDECL-NICHE-MESSAGE$ E-POLICY DECL-REJECT:REJECT throw ;
+   TDECL-NICHE-MESSAGE$ E-TDECL-POLICY DECL-REJECT:REJECT throw ;
 
 \ TAG> builds each value from its tag alone, so no variant may carry a payload.
-\ Checked here, not at the constructor commit, whose E-DERIVE renders the
-\ equality reason from the code table.
 : TAG-REQUIRE ( -- )
    FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
    NFLD @ 0= IF EXIT THEN
-   s" derive tag requires variants without payload" E-DERIVE
+   s" derive tag requires variants without payload" E-TDECL-DERIVE
    DECL-REJECT:REJECT throw ;
 
 \ ED-CLOSE builds nothing: it arms the constructor participant, which generates
@@ -292,7 +295,7 @@ ED-RESET
 \ reject retires the descriptor with the family.
 : ED-CLOSE ( -- )
    DECL-REJECT:AT-FAMILY
-   NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   NVAR @ 0= IF s" empty enum" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    MISSING? IF E-UNRESOLVED throw THEN
    NICHE-REQUIRE
    TAG-REQUIRE
@@ -305,20 +308,17 @@ ED-RESET
    loop
    FAM @ MAXSLOTS @ TFAM-SLOTS!
    FAM @ TDECL-LAYOUT-DESC
-   \ No reason is armed for the constructor participant's collide check: it runs at
-   \ commit, where no token of this front end applies, so the packet answers a
-   \ reserved-name reject from its code table.
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
    NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
-      s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
+      s" missing ;ENUM" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
-   2drop s" unexpected token in enum declaration" E-SYNTAX
+   2drop s" unexpected token in enum declaration" E-TDECL-SYNTAX
    DECL-REJECT:REJECT throw ;
 : FULL-BODY ( -- ) BEGIN FULL-CLAUSE UNTIL ;
 
@@ -326,16 +326,16 @@ ED-RESET
    BEGIN
       dup 0= IF 2drop
          DECL-REJECT:AT-FAMILY
-         s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
+         s" missing ;ENUM" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
       COMPACT-CLAUSE IF EXIT THEN
       NEXT
    AGAIN ;
 
 : DRIVE ( -- )
    NEXT 2dup DECL-REJECT:FAMILY!
-   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing name" E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    DECL-HEADER 0= IF
-      drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
+      drop 2drop s" invalid type parameter header" E-TDECL-ARITY DECL-REJECT:REJECT throw
    THEN
    {: ar:n :}
    2dup DECL-REJECT:FAMILY!

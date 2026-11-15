@@ -22,7 +22,7 @@ STRUCTURE nested DERIVE init
    FIELD count n
 ;STRUCTURE
 
-PRODUCT scalar DERIVE init FIELD value n ;PRODUCT
+STRUCTURE scalar DERIVE init FIELD value n ;STRUCTURE
 
 : GET-SOURCE ( mut-view<c,d,e,init<g,shelf<a,b>>> -- mut-view<c,d,e,init<g,shelf<a,b>>> read-view<a,b,u8> ) C2IA-SHELF:SOURCE@ ;
 

@@ -9,7 +9,9 @@
 \ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. HANDLE logs each message it
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
-\ written between its quotes as sent, never the arguments. VISIBLE! hides a tool
+\ written between its quotes as sent, never the arguments. ANSWER answers one JSON-RPC
+\ message that came by another transport into a BUF, as HANDLE answers a 2026-07-28
+\ request with no transport headers, its log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
 \ as UNKNOWN-TOOL states.
@@ -17,7 +19,12 @@
 \ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
 \ to add content blocks, such as an image or an embedded resource, after the result's
 \ text, or RESULT-ERROR for a tool error, refused arguments included; bodies may run at
-\ once on several HTTP workers. An input schema's x-mcp-header is not supported: the
+\ once on several HTTP workers. A body that must wait gives its worker back:
+\ HOLD takes the call's connection and keeps the call in a row of the held
+\ table, and the body returns with no result; later FINISH, on any request
+\ worker, runs a quotation as that call's body and sends the response HANDLE
+\ would have sent on the kept connection.
+\ An input schema's x-mcp-header is not supported: the
 \ server does not validate the headers it names. A tool result's JSON is its structuredContent
 \ when its output schema's "type" is "object"; any other schema describes that JSON
 \ as structuredContent's "data", and tools/list shows that wrapper in the schema's
@@ -26,8 +33,10 @@
 \ token a client sends, and REQUEST-STOP stops the client from another task.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool and resource
 \ registries and visibility hook, written before HTTP serves; tables indexed by
-\ HTTP:WORKER-SLOT holding each request's state; and the client table, a row per open
-\ client, read and written under its own lock.
+\ HTTP:WORKER-SLOT holding each request's state; the held table, a row per held call
+\ and its id's BUF: a row's phase is read and written under its own lock, and a
+\ finishing row's other fields are its finisher's; and the client table, a row
+\ per open client, read and written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 \
 \ The client. A client is a row of a process-wide table that grows with the
@@ -60,6 +69,7 @@ require src/lib/task.f
 require src/lib/time.f
 require src/lib/net/curl.f
 require src/lib/net/event-stream.f
+require src/lib/net/tcp4.f
 require src/lib/net/http.f
 
 package MCP
@@ -67,8 +77,9 @@ public
 -9480 constant E-FIRST
 -9489 constant E-LAST
 \ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP
-\ serves, HANDLE before SERVER-INFO!, a body that does not give its result exactly once,
-\ or a client word given a closed client.
+\ serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker,
+\ a body that does not give its result exactly once, HOLD outside a body before its
+\ result, FINISH of a call not held, or a client word given a closed client.
 -9481 constant E-STATE
 \ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
 -9482 constant E-DUPLICATE
@@ -85,6 +96,12 @@ public
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
 NEWTYPE client
+
+\ The most tool calls held at once.
+256 constant MAX-HELD
+\ A tool call HOLD kept: its value names one row of the held table from HOLD
+\ until FINISH frees it.
+NEWTYPE held
 private
 
 -9480 constant E-INPUT       \ params or arguments that are not objects: -32602
@@ -95,6 +112,7 @@ private
 0 constant IDLE
 1 constant CALLING           \ a tool's body runs and may give its result
 2 constant SENT              \ the response began; a later fault is the host's
+3 constant HELD              \ HOLD kept the call, which FINISH answers
 
 0 constant DISCOVER-REPLY
 1 constant INIT-REPLY
@@ -140,6 +158,11 @@ TYPED-VARIABLE SCHEMA-READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
+\ Where the reply goes: HANDLE's HTTP response in TO, or BUF-W, the writer
+\ ANSWER holds open on its caller's BUF.
+ENUM sink response buf ;ENUM
+HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
+HTTP:MAX-WORKERS TYPED-BUFFER BUF-W JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
 HTTP:MAX-WORKERS TYPED-BUFFER METHOD SPAN:span<u8>    \ JSON text, quotes kept
 HTTP:MAX-WORKERS TYPED-BUFFER PARAMS SPAN:span<u8>    \ an object's JSON text, or empty
@@ -159,6 +182,29 @@ HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources
 HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
+HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
+\ Each worker's BUF, where FINISH writes a held call's response.
+HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: FINISHED
+
+\ The held table: a row is free, kept by HOLD, or finishing while FINISH runs.
+\ A kept row holds the call's connection, era and tool, and its id's JSON text
+\ in the row's own BUF, which stays for the row's next call.
+ENUM keeping free kept finishing ;ENUM
+
+STRUCTURE keep DERIVE addr
+   FIELD phase keeping
+   FIELD conn TCP4:connection
+   FIELD era n
+   FIELD tool n
+;STRUCTURE
+
+MAX-HELD TYPED-BUFFER KEEPS keep
+MAX-HELD BUF:HDR-BYTES * BUFFER: KEEP-IDS
+TASK:FACILITY KEEP-LOCK
+KEEP-LOCK TASK:FACILITY-INIT
+
+CAST: >HELD ( n -- held )
+CAST: HELD>N ( held -- n )
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
@@ -492,11 +538,19 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    if ERROR-BODY else RESULT-BODY then ;
 
 
-: SEND ( -- )
-   SENT SLOT STAGE !
+: HTTP-REPLY ( -- )
    SLOT TO @ {: answer:HTTP:response :}
    answer SLOT STATUS @ HTTP:STATUS!
    answer [: RESPONSE-BODY ;] HTTP:JSON! ;
+
+: BUF-REPLY ( -- ) SLOT BUF-W RESPONSE-BODY drop ;
+
+: SEND ( -- )
+   SENT SLOT STAGE !
+   SLOT REPLY-TO @ MATCH sink
+      response OF HTTP-REPLY ENDOF
+      buf OF BUF-REPLY ENDOF
+   ;MATCH ;
 
 
 \ A header's value when it arrived exactly once; otherwise empty and false.
@@ -729,19 +783,77 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    400 -32602 NAMED$ BAD  STALE-REPLY SLOT REPLY ! ;
 
 
+\ A held row's id BUF.
+: KEEP-ID ( n -- ptr n ) BUF:HDR-BYTES * KEEP-IDS + CELL-VIEW ;
+: KEEP-UNLOCK ( -- ) KEEP-LOCK TASK:RELEASE ;
+
+\ The text written into the BUF, which grows to hold it.
+: TEXT-SET ( ptr u8 n ptr n -- )
+   {: a:ptr u:n buf:ptr :}
+   buf BUF:LIVE? 0= if buf 64 BUF:N>BLEN BUF:INIT then
+   a u BUF:N>BLEN buf BUF:REPLACE ;
+
+: KEEP-FREE? ( n -- bool )
+   KEEPS KEEP-PHASE @ MATCH keeping
+      free OF true ENDOF
+      kept OF false ENDOF
+      finishing OF false ENDOF
+   ;MATCH ;
+
+\ Under KEEP-LOCK: the first free row, or -1.
+: FREE-KEEP ( -- n )
+   MAX-HELD 0 ?do i KEEP-FREE? if i unloop exit then loop
+   -1 ;
+
+\ Under KEEP-LOCK: a free row kept for the worker's call, its connection
+\ taken last, so a throw leaves the row free and the connection the worker's;
+\ -1 when every row is kept.
+: KEEP-CALL ( -- n )
+   FREE-KEEP {: idx:n :}
+   idx 0< if -1 exit then
+   ID$ idx KEEP-ID TEXT-SET
+   SLOT ERA @ idx KEEPS KEEP-ERA !
+   SLOT CALLED @ idx KEEPS KEEP-TOOL !
+   SLOT FROM @ HTTP:TAKE-OVER 2drop idx KEEPS KEEP-CONN !
+   construct keeping kept idx KEEPS KEEP-PHASE !
+   idx ;
+
+\ The row's connection closed with no answer.
+: CLOSE-KEPT ( n -- )
+   KEEPS KEEP-CONN @ TCP4:CLOSE MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+: FREE-KEPT ( n -- )
+   {: idx:n :}
+   KEEP-LOCK TASK:GET
+   construct keeping free idx KEEPS KEEP-PHASE !
+   KEEP-UNLOCK ;
+
+: DROP-KEPT ( n -- ) dup CLOSE-KEPT FREE-KEPT ;
+
+\ A body's throw after HOLD closes the connection it took and frees its row.
+: BODY-FAULT ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   SLOT STAGE @ HELD = if SLOT HOLDING @ DROP-KEPT then
+   code throw ;
+
+
 \ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or
-\ RESULT-ERROR, before it returns.
+\ RESULT-ERROR, before it returns, or HOLDs the call.
 : RUN-TOOL ( -- )
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
    2dup KIND JSON:T-STR <> if E-INPUT throw then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
    idx SHOWN? 0= if UNKNOWN-TOOL SEND exit then
-   ARGUMENTS
+   ARGUMENTS {: args:ptr au:n :}
    idx SLOT CALLED !
    CALLING SLOT STAGE !
-   idx TOOL-BODY @ execute
-   SLOT STAGE @ SENT <> if E-STATE throw then ;
+   [: args au idx TOOL-BODY @ execute ;] catch BODY-FAULT
+   SLOT STAGE @ CALLING = if E-STATE throw then ;
 
 
 \ The registered resource a JSON uri text names, else -1.
@@ -768,11 +880,18 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : DISCOVER ( -- )
    LEGACY? if NO-METHOD else DISCOVER-REPLY GOOD then SEND ;
 
-\ A 2025-11-25 notification is accepted, 202 with no body, before any method
-\ runs (2025-11-25 transports); 2026-07-28 takes only requests.
-: NOTIFIED ( -- )
+\ Over HTTP a 2025-11-25 notification is accepted, 202 with no body, before
+\ any method runs (2025-11-25 transports); 2026-07-28 takes only requests.
+: HTTP-NOTIFIED ( -- )
    LEGACY? if SLOT TO @ 202 HTTP:STATUS! exit then
    400 -32600 s" Request id required" BAD SEND ;
+
+\ ANSWER's notification has no reply, as JSON-RPC's never has.
+: NOTIFIED ( -- )
+   SLOT REPLY-TO @ MATCH sink
+      response OF HTTP-NOTIFIED ENDOF
+      buf OF ENDOF
+   ;MATCH ;
 
 
 \ The params member that names what the method acts on; empty for none.
@@ -963,6 +1082,85 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
+\ The reply's sink and a fresh message on the worker's slot.
+: OPENED-TO ( sink -- )
+   SLOT REPLY-TO !
+   IDLE SLOT STAGE !
+   s" " SPAN:MAKE SLOT ID ! ;
+
+
+\ A message's caught code: E-INPUT before the reply began is -32602; any
+\ other fault is rethrown.
+: FAULTED ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
+   BAD-INPUT SEND ;
+
+
+\ WORKER-SLOT's E-HTTP-HANDLE, on a task that is no request worker, as E-STATE.
+: ON-WORKER ( -- )
+   [: HTTP:WORKER-SLOT drop ;] catch {: code:n :}
+   code 0= if exit then
+   code E-HTTP-HANDLE = if E-STATE throw then
+   code throw ;
+
+
+\ The worker's BUF for a held call's response, made live the first time.
+: FINISH-BUF ( -- ptr n )
+   SLOT BUF:HDR-BYTES * FINISHED + CELL-VIEW {: buf:ptr :}
+   buf BUF:LIVE? 0= if buf 1024 BUF:N>BLEN BUF:INIT then
+   buf ;
+
+\ Under KEEP-LOCK: whether the held row was kept, now finishing.
+: CLAIM-ROW ( n -- bool )
+   {: idx:n :}
+   idx KEEPS KEEP-PHASE @ MATCH keeping
+      free OF false ENDOF
+      kept OF true ENDOF
+      finishing OF false ENDOF
+   ;MATCH {: ok:bool :}
+   ok if construct keeping finishing idx KEEPS KEEP-PHASE ! then
+   ok ;
+
+\ The worker's slot set as for the held call's body, its reply written into
+\ FINISH-BUF.
+: RESUME ( n -- )
+   {: idx:n :}
+   construct sink buf OPENED-TO
+   idx KEEP-ID BUF:SPAN$ BUF:BLEN>N SPAN:MAKE SLOT ID !
+   idx KEEPS KEEP-ERA @ SLOT ERA !
+   idx KEEPS KEEP-TOOL @ SLOT CALLED !
+   CALLING SLOT STAGE ! ;
+
+\ The quotation run as the body; E-STATE when it gives no result.
+: COMPOSE ( [ -- ] -- )
+   {: q :}
+   SLOT BUF-W FINISH-BUF JSON:WRITE-OPEN-BUF drop
+   q [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally
+   SLOT STAGE @ SENT <> if E-STATE throw then ;
+
+\ The response sent on the row's connection, which a throw closes first.
+: REPLY-HELD ( n [ -- ] -- )
+   {: idx:n q :}
+   idx RESUME
+   [: q COMPOSE ;] catch {: code:n :}
+   code 0<> if idx CLOSE-KEPT code throw then
+   idx KEEPS KEEP-CONN @ 200 s" application/json"
+   FINISH-BUF BUF:SPAN$ BUF:BLEN>N HTTP:REPLY drop ;
+
+
+\ The message's envelope checked, then dispatched; the text is kept for catch.
+: CARRIED ( ptr u8 n -- ptr u8 n )
+   2dup ENVELOPE? if DISPATCH else SEND then ;
+
+
+\ The message answered into BUF-W, the writer ANSWER holds open on the
+\ caller's BUF.
+: BUF-ANSWER ( ptr u8 n -- )
+   [: CARRIED ;] catch {: code:n :} 2drop
+   code FAULTED ;
+
 public
 
 \ The server's name and version in serverInfo. The texts are borrowed and
@@ -982,8 +1180,9 @@ public
    SPAN:MAKE INSTRUCTIONS ! ;
 
 
-\ False hides the named tool from HANDLE's caller as an unknown one; the default admits every
-\ tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"] keeps a tool listed but widget-only.
+\ False hides the named tool from HANDLE's or ANSWER's caller as an unknown one; the
+\ default admits every tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"]
+\ keeps a tool listed but widget-only.
 : VISIBLE! ( [ ptr u8 n -- bool ] -- )
    HTTP:RUNNING? if E-STATE throw then
    VISIBILITY ! ;
@@ -1049,6 +1248,48 @@ public
 : RESULT-ERROR ( ptr u8 n -- ) s" " s" []" true RESULT! ;
 
 
+\ In a body before its result. True: the call's connection is taken and the
+\ call kept, with its id, era and tool, until FINISH; the body returns with no
+\ result, and a throw from it closes the connection and frees the call. False,
+\ nothing kept, under ANSWER or when MAX-HELD calls are held: the body gives
+\ its result as usual. Once the body has handed the held value on, it must not
+\ throw: FINISH may have run by then and the row be another call's.
+: HOLD ( -- held bool )
+   ON-WORKER
+   SLOT STAGE @ CALLING <> if E-STATE throw then
+   SLOT REPLY-TO @ MATCH sink
+      response OF false ENDOF
+      buf OF true ENDOF
+   ;MATCH if 0 >HELD false exit then
+   KEEP-LOCK TASK:GET
+   [: KEEP-CALL ;] [: KEEP-UNLOCK ;] finally {: idx:n :}
+   idx 0< if 0 >HELD false exit then
+   idx SLOT HOLDING !
+   HELD SLOT STAGE !
+   idx >HELD true ;
+
+
+\ The held call's row, below MAX-HELD, by which a host keys rows of its own.
+: HELD-SLOT ( held -- n ) HELD>N ;
+
+
+\ On a request worker, not inside HANDLE or ANSWER: the quotation runs as
+\ the held call's body, in its era, and gives its result once through RESULT,
+\ RESULT-META, RESULT-CONTENT or RESULT-ERROR. The response HANDLE would have
+\ sent goes out with HTTP:REPLY, status 200, which closes the connection; a
+\ peer that left gets nothing. A quotation that gives no result is E-STATE,
+\ and that or its throw comes after the connection is closed. The row is free
+\ again on every way out.
+: FINISH ( held [ -- ] -- )
+   {: h q :}
+   ON-WORKER
+   h HELD>N {: idx:n :}
+   KEEP-LOCK TASK:GET
+   [: idx CLAIM-ROW ;] [: KEEP-UNLOCK ;] finally
+   0= if E-STATE throw then
+   [: idx q REPLY-HELD ;] [: idx FREE-KEPT ;] finally ;
+
+
 \ Answers one MCP request whose authentication and Origin the host has checked.
 \ A malformed envelope is -32600, missing or malformed params -32602, invalid
 \ JSON -32700. Any other fault, a tool body's included, is rethrown to the
@@ -1058,12 +1299,26 @@ public
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    asked SLOT FROM !
    answer SLOT TO !
-   IDLE SLOT STAGE !
-   s" " SPAN:MAKE SLOT ID !
-   [: PROCESS ;] catch {: code:n :}
-   code 0= if exit then
-   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
-   BAD-INPUT SEND ;
+   construct sink response OPENED-TO
+   [: PROCESS ;] catch FAULTED ;
+
+
+\ Answers one JSON-RPC message whose caller the host has authenticated and
+\ which came by a transport other than HTTP, on a request worker: as HANDLE
+\ answers a 2026-07-28 request, with no transport, version or header checks.
+\ ANSWER clears the BUF and writes the response's JSON text there, nothing for
+\ a notification; after a throw its text is no reply to send. Any fault but
+\ HANDLE's JSON-RPC errors is rethrown, a tool body's included.
+\ The VISIBLE! hook is called with no HTTP request, so it judges by what the
+\ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
+\ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
+: ANSWER ( ptr u8 n ptr a -- )
+   SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
+   ON-WORKER
+   construct sink buf OPENED-TO
+   MODERN SLOT ERA !
+   SLOT BUF-W swap BYTE-VIEW CELL-VIEW JSON:WRITE-OPEN-BUF drop
+   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally ;
 
 
 private

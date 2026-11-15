@@ -9,12 +9,11 @@ package CHECK
 private
 
 \ ---- a duplicate only the checker sees ----------------------------------------
-\ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
-\ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
-\ word, so a later definition passes the engine's duplicate wall
-\ and the checker's admission refuses it with $4E and no message. The hook asks
-\ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
-\ wall does (REFUSE-DUPLICATE).
+\ A declaration replay (DECL-REPLAY:RP-RUN, STRUCTURE-DECL:SD-REPLAY, ...)
+\ publishes a checked effect without defining the word, so a later definition
+\ passes the engine's duplicate wall and the checker's admission refuses it with
+\ $4E and no message. The hook asks CHECKER-CERT-DUP? (which interns nothing)
+\ first and refuses it as the wall does (REFUSE-DUPLICATE).
 
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
@@ -100,6 +99,7 @@ private
    {: sym:n :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
    REND-CTL 2drop
+   sym NORET-NONZERO@ REND-NONZERO 2drop
    sym PRIM-FIRST-IDX {: prim:n :}
    prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
    sym PIMM-IX {: ix:n :}
@@ -349,23 +349,25 @@ CAST: >BYTES ( n -- ptr u8 )
    CHECK-RC REJECTION:STOP ;
 
 \ A rejected READ of the type xa xu, naming the token, or the type when the
-\ reason names none.
-: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
+\ reason names none; why is the STG- reason no stored form holds it, else 0.
+: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: ta:ptr tu:n wa:ptr wu:n code:n why:n xa:ptr xu:n :}
    tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
    unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
    REJECTION:OPEN
    wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
-   tu xu <> if
+   nu xu <> if
       s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
    REJECTION:HELP
-   unknown if s" declare a type of that name, or correct its spelling"
-   else s" write the type as a signature writes it" then
+   why STG-UNSTORABLE-TYPE = if
+      s" write a closed, copyable type, such as n or ptr u8"
+   else unknown if s" declare a type of that name, or correct its spelling"
+   else s" write the type as a signature writes it" then then
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 

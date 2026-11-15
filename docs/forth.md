@@ -43,7 +43,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   `APPLY-EFFECT`; `and`, `cells`, `allot`, `: ;`, `?do`. Never upper-case a
   built-in.
 - **Scope pairs are `FOO … ;FOO`**: a new pair that opens and closes a scope
-  closes with the opener's name behind `;`, as `SUMTYPE … ;SUMTYPE`, `PRODUCT`,
+  closes with the opener's name behind `;`, as `SUMTYPE … ;SUMTYPE`, `STRUCTURE`,
   `ENUM`, `VARIANT`, `MATCH`, `package … ;package` (keyword case follows the
   opener). `VALUE-RECORD … END-VALUE-RECORD` and Forth-2012 `BEGIN-STRUCTURE …
   END-STRUCTURE` are sanctioned exceptions, not templates. Never coin `END-FOO`,
@@ -439,12 +439,10 @@ their written order. Replace the old integer counts with named parameters:
 |---|---|
 | `NEWTYPE rownum 0` | `NEWTYPE rownum` |
 | `SUMTYPE result 0` | `SUMTYPE result` |
-| `PRODUCT row 0` | `PRODUCT row` |
 | `STRUCTURE box 1` | `STRUCTURE box<a>` |
 | `ENUM result 2` | `ENUM result<a,b>` |
 
-Compact `ENUM` has no payload fields or parameters. Legacy `SUMTYPE`, `PRODUCT`,
-`VALUE-RECORD`,
+Compact `ENUM` has no payload fields or parameters. Legacy `SUMTYPE`, `VALUE-RECORD`,
 low-level `BEGIN-STRUCTURE`/`END-STRUCTURE` definers and counter enums (`ENUM+`,
 `ENUM4+`) still have executable sites; they are migration debt, forbidden in new
 code.
@@ -533,7 +531,7 @@ multi-cell type rationale is `docs/design.md` "Types".
 
 - `NEWTYPE name` registers an opaque nominal cell family, with no
   closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
-  `PRODUCT`, `STRUCTURE`, and full `ENUM` use the same header syntax. The count
+  `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
   `f`, `n`, and `r` always name concrete scalar types. Parameters may be unused.
@@ -574,9 +572,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
   read and written with the field type's ordinary checked operations
   (`docs/design.md` "Families and layout policies" gives the layout
-  policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
+  policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`. `DERIVE tag` on a public arity-0 enum whose variants carry no
+  never raw `=`. `DERIVE tag` on an arity-0 enum whose variants carry no
   payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
   `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
   `DERIVE` on an enum generates; a number that is not one of the enum's tags
@@ -586,9 +584,9 @@ multi-cell type rationale is `docs/design.md` "Types".
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;
   `boxed` is `E-TDECL-POLICY` ("layout policy not yet supported").
   `niche-null` takes one shape, an empty variant then one holding a single
-  `ptr` field, and refuses any other, a `PRODUCT` included (`E-TDECL-POLICY`,
-  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE` or
-  `PRODUCT` payload naming the family being declared (inline, through `ptr` or
+  `ptr` field, and refuses any other (`E-TDECL-POLICY`,
+  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE`
+  payload naming the family being declared (inline, through `ptr` or
   bare) is `E-TDECL-RECURSIVE` under every accepted policy, and a payload naming a family not yet declared is
   `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
 - A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
@@ -662,10 +660,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   the address; a `some` of a null pointer matches `none`.
 - **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
   `nullable<u8>`: NULL is `none`.
-- **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
-  in the package and family names doubled**: an `ENUM read-result` in `package TCP4`
-  constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE
-  captured` in `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`.
+- **A public, non-`OPAQUE` package family's generated words are
+  `PKG-FAMILY:tail` with every hyphen in the package and family names
+  doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`
+  variant through `TCP4-READ--RESULT:data`; a `STRUCTURE captured` in
+  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A private family's are `FAMILY-tail` in its package's
+  private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
+  section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.
   `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
@@ -731,8 +732,8 @@ multi-cell type rationale is `docs/design.md` "Types".
     ] -- [ R ptr n -- R ] )` loads.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
-    `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
-    field `[ -- lease ]` carries the lease through the cast on either side.
+    `E-CAST-LINEAR`: a `STRUCTURE` field `[ -- lease ]` carries the lease
+    through the cast on either side.
     A quotation whose input and output rows end in different tails, such as
     `[ R -- S ]`, hands out values it never took, so in a cast's output, in a
     view cast's element on either side, in a storage declaration's type, or
@@ -1233,7 +1234,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   cell again, and a record is refused at the call (`E-MISMATCH`). A var a
   checked `:` definition's effect names only on the stack, and whose body only
   moves it (stack words but `?dup`, locals, calls of words that only move
-  theirs), takes a one-cell enum, sum or product too; handing it to any other
+  theirs), takes a one-cell enum, sum or structure too; handing it to any other
   word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
   cell, and a value wider than one cell or one that may be linear is rejected
   at the call.
@@ -1262,7 +1263,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - `ptr τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
   or execution token carrying its effect (prose writes `xt<E>`; the parser does
   not). `pkg:tail<arg,…>` is a declared family (`NEWTYPE`, `ENUM`, `STRUCTURE`,
-  `SUMTYPE`, `PRODUCT`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
+  `SUMTYPE`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
   linear cell type.
 - `xt` is the token `'` pushes for an engine primitive or a word with no stack
   effect: no effect rides it, and no storage holds one (`xt in a stored type`).
@@ -1968,11 +1969,17 @@ Cells are two's-complement 64-bit. The signed bounds are
 is the one partial operation; its `-1` case is a contract every backend
 answers alike.
 
-- **A literal 0 divisor is refused (`E-DIV-ZERO`); a computed one's answer is
-  undefined**: the checker refuses `/`, `mod` and `/mod` over a literal 0, which
-  stack words carry, and at run time they do not test the divisor (arm64 `sdiv`
-  answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's divisor that
-  cannot be zero says so in its type: `NUM:positive-divisor`
+- **A literal 0 divisor is rejected (`E-DIV-ZERO`); a computed one's answer is
+  undefined**: the checker rejects a literal 0 at `/`, `mod` and `/mod`, and at
+  a call of a word with a declared signature that divides by that input, one
+  integer cell, with only stack words, locals, integer and string literals and
+  calls before the division, as `: HALVE ( n n -- n ) / ;` does in
+  `7 0 HALVE`. A call that does not divide by an input it pops takes that
+  input, and any other token before the division (a control word, a quotation,
+  a fetch or store, a return-stack word, `[char]`, `[']`) takes every input; a
+  taken input admits any value. At run time nothing tests the divisor (arm64
+  `sdiv` answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's
+  divisor that cannot be zero says so in its type: `NUM:positive-divisor`
   (`src/lib/num-types.f`), which NUM's `DIV-` and `REM-` words take.
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
@@ -2083,7 +2090,7 @@ cannot grow definition body text to <n> bytes`.
   <word>`. Checked code meets the checker first: 33 nested `begin`s are refused
   `hook: non-certified definition: <name> at 'begin'`. Factor the inner loops
   into their own words.
-- **A family, variant, field or package name**: `SUMTYPE`, `PRODUCT`,
+- **A family, variant, field or package name**: `SUMTYPE`,
   `NEWTYPE`, `STRUCTURE` and `ENUM` refuse a longer one, `tools/check.f`
   reporting `E-BAD-DECLARATION` with the name as its token and the reason
   `name longer than <cap> bytes`; `package` and `using` throw
@@ -2378,8 +2385,11 @@ sections above.
   `undefine` throws it before retiring anything (`E-OVERLAY-OPEN habu: undefine
   while a checker replay is open: NAME`). Reopening an existing package is
   allowed. The throw is catchable inside `evaluate`; the replay still closes.
-- **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
-  unchecked, a caller bug: its `catch` answers 0.**
+- **A literal `0 throw` is rejected (`E-THROW-ZERO`), and so is a literal 0 at
+  a call of a word with a declared signature that throws that input, with only
+  the tokens that carry a divisor (Integer arithmetic) before the `throw`, as
+  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
+  caller bug: its `catch` answers 0.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or
@@ -2523,7 +2533,8 @@ sections above.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so
-  `postpone ;` ends the definition as its `;` would. `compile, ( [ R -- S ]
+  `postpone ;` ends the definition as its `;` would. `literal ( n -- )`
+  appends the number n, as its decimal text would. `compile, ( [ R -- S ]
   -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
@@ -2656,18 +2667,6 @@ sections above.
   every definition, immediate and top-level token is checked, and a cell
   pushed meanwhile keeps its type. Use a `PRIM: … PRIM;` axiom for a genuine
   missing primitive model.
-- **A pre-hook word needs an external row.** A word defined
-  before the check hook has no authority without a `PRIM:` axiom or a
-  `TRUSTED:` declaration after the checker claiming it. A
-  checked or top-level use is refused before it runs with `E-CAP-TRUSTED`
-  (call it only from a `TRUSTED:` definition). A
-  `TRUSTED:` or data word before the hook gains no such declaration. A
-  top-level step that reads one is refused the same way, so its row goes in
-  `src/core/cell-effects.f`.
-- **A colon definition compiled before the check hook records no row**,
-  whatever its signature says: a use is refused as the bullet above says.
-  `TRUSTED:` asserts an authoritative row, and a `defer` made before the hook
-  gets its declared effect as one when the checker loads.
 - **A native build refuses a definition whose checker scan is refused**, before
   publication. A failed native compile retracts only the pending definition's
   rows, preserving prior rows. If no row supplies arity it refuses with the
@@ -2731,11 +2730,11 @@ sections above.
   is open in the word (`( option<a> -- ) depth`), both are `E-REJECTED`,
   `count_values`: ``cannot count `option<n>`: it is one value held in 2
   cells``, or ``cannot count `option<a>`: it is one value, and how many cells
-  it holds is not known here``. A one-cell enum or product is counted. The rule
-  judges the values the word's own row holds: a helper `: F ( -- n ) depth ;`
-  called over `3 OPTION:SOME` answers its 2 cells. Take the value apart first
-  (`MATCH` once its arguments are concrete, `UNMAKE`), or count the values
-  another way.
+  it holds is not known here``. A one-cell enum or structure is counted. The
+  rule judges the values the word's own row holds: a helper
+  `: F ( -- n ) depth ;` called over `3 OPTION:SOME` answers its 2 cells. Take
+  the value apart first (`MATCH` once its arguments are concrete, `UNMAKE`), or
+  count the values another way.
 - **`evaluate-closed ( ptr u8 n -- )` isolates a checked caller's stack.**
   A checked body calling `evaluate` is `E-UNSAFE`. Text under
   `evaluate-closed` starts at depth 0, cannot reach caller cells even through

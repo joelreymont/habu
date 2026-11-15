@@ -12,6 +12,13 @@
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments.
+\ MCP:ANSWER on a request worker into a BUF holding old text: a tools/call
+\ written as HANDLE sends it, a notification leaving it empty, a message that is
+\ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
+\ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker
+\ the body gave back, answers the client in each era as the same tool answering
+\ at once; HOLD answers false under ANSWER; a body that throws after HOLD leaves
+\ the client a closed connection and no answer.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -140,16 +147,20 @@ TASK:MIN-STACK TASK:TASK STALLER
    h a u CURL:HEADER+ OK h ;
 
 
-: OPEN-WITH ( ptr u8 n ptr u8 n -- CURL:handle )
-   {: kind:ptr ku:n accept:ptr au:n :}
+: OPEN-PATH ( ptr u8 n ptr u8 n ptr u8 n -- CURL:handle )
+   {: path:ptr pu:n kind:ptr ku:n accept:ptr au:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop -1 CURL:>HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  s" /mcp" SB-APPEND
+   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path pu SB-APPEND
    h SB$ CURL:URL! OK
    h kind ku ADD accept au ADD ;
+
+: OPEN-WITH ( ptr u8 n ptr u8 n -- CURL:handle )
+   {: kind:ptr ku:n accept:ptr au:n :}
+   s" /mcp" kind ku accept au OPEN-PATH ;
 
 : OPEN ( -- CURL:handle )
    s" Content-Type: application/json"
@@ -297,12 +308,16 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
+\ A modern call of echo with {"a":1}, in SB.
+: ECHO-A1 ( -- ptr u8 n )
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"echo\",\"arguments\":{\"a\":1}," SB-APPEND
+   META S\" }}" SB-APPEND SB$ ;
+
 : TOOL-RESULT ( -- )
    s" a modern call with a base64 Mcp-Name answers structuredContent.data" T-LABEL
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: =?base64?ZWNobw==?=" ADD
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":" SB-APPEND
-   S\" {\"name\":\"echo\",\"arguments\":{\"a\":1}," SB-APPEND
-   META S\" }}" SB-APPEND SB$ POST
+   ECHO-A1 POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"resultType\":\"complete\"," SB-APPEND
    S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"a\\\":1}\"}]," SB-APPEND
    S\" \"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," SB-APPEND
@@ -557,7 +572,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
    S\" ,\"annotations\":{\"readOnlyHint\":true}}," W+ WIDGET W+ s" ," W+ PICK-ITEM
-   s" ," W+ FRAMED W+ s" ," W+ PICTURED W+ ;
+   s" ," W+ FRAMED W+ s" ," W+ PICTURED W+
+   S\" ,{\"name\":\"wait\",\"description\":\"Answer once woken.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   s" {}" OUTPUT s" true}}" W+ ;
 
 \ Every tool the open phase registers, as tools/list answers them, before the
 \ array's end.
@@ -1527,6 +1545,142 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    HIDDEN-LIST HIDDEN-CALL OWNER-LIST OWNER-CALL GUARDED-CLIENT ;
 
 
+BUF:HDR-BYTES BUFFER: REPLIES
+
+\ MCP:ANSWER of the body's message into REPLIES holding a mark, so the reply
+\ shows the mark when ANSWER does not clear it.
+: ANSWER-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   REPLIES BUF:CLEAR
+   62 REPLIES BUF:APPEND-BYTE
+   asked HTTP:BODY$ REPLIES MCP:ANSWER
+   answer JSON-HEADER
+   answer REPLIES BUF:SPAN$ BUF:BLEN>N HTTP:BODY! ;
+
+: ANSWER-OPEN ( -- CURL:handle )
+   s" /answer" s" Content-Type: application/json" s" Accept: application/json"
+   OPEN-PATH ;
+
+: ANSWER-CALL ( -- )
+   s" ANSWER of a tools/call writes the text HANDLE sends for it" T-LABEL
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: echo" ADD
+   ECHO-A1 POST 200 T=
+   W-RESET BODY BODY-U @ W+
+   ANSWER-OPEN ECHO-A1 POST
+   200 W$ ANSWERED ;
+
+: ANSWER-NOTIFIED ( -- )
+   s" ANSWER of a notification clears the BUF's old text" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST
+   200 s" " ANSWERED ;
+
+: ANSWER-ENVELOPE ( -- )
+   s" ANSWER of a message that is not JSON-RPC writes -32600" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":\"1.0\",\"id\":9,\"method\":\"ping\"}" POST
+   200 S\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
+   ANSWERED
+   s" ANSWER of a message that is not JSON writes -32700" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":" POST
+   200 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
+   ANSWERED ;
+
+: ANSWER-UNKNOWN ( -- )
+   s" ANSWER of a call of an unregistered tool writes -32602" T-LABEL
+   ANSWER-OPEN
+   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
+   200 s" none" UNKNOWN-REPLY ANSWERED ;
+
+: ANSWER-OFF-WORKER ( -- )
+   s" ANSWER off a request worker throws E-STATE" T-LABEL
+   [: s" {}" REPLIES MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
+
+: ANSWER-CASES ( -- )
+   ANSWER-CALL ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
+
+
+\ The wait tool's held calls, by their rows.
+MCP:MAX-HELD TYPED-BUFFER HELD-CALLS MCP:held
+variable WOKEN                      \ the held calls a submitted call has finished
+variable HOLD-FALSE                 \ set when the wait tool's HOLD answered false
+
+: WAIT-RESULT ( -- ) S\" {\"done\":true}" S\" {\"m\":1}" MCP:RESULT-META ;
+
+\ A call SUBMIT runs on a request worker, as a host's job would wake it.
+: WAKE ( n -- )
+   1 WOKEN atomic-add drop
+   HELD-CALLS @ [: WAIT-RESULT ;] MCP:FINISH ;
+
+: HELD-WAIT ( MCP:held bool -- )
+   0= if drop 1 HOLD-FALSE atomic! WAIT-RESULT exit then
+   {: h :}
+   h MCP:HELD-SLOT {: idx:n :}
+   h idx HELD-CALLS !
+   idx [: WAKE ;] HTTP:SUBMIT ;
+
+\ "now" answers at once, "fail" throws after HOLD, anything else HOLDs.
+: WAIT-BODY ( ptr u8 n -- )
+   {: args:ptr au:n :}
+   args au s" now" CONTAINS? if WAIT-RESULT exit then
+   args au s" fail" CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
+   MCP:HOLD HELD-WAIT ;
+
+: ADD-WAIT ( -- )
+   S\" {\"name\":\"wait\",\"description\":\"Answer once woken.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
+   [: WAIT-BODY ;] MCP:ADD-TOOL ;
+
+: WAIT-LEGACY ( ptr u8 n -- ptr u8 n )
+   {: args:ptr au:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND S\" }}" SB-APPEND SB$ ;
+
+: WAIT-MODERN ( ptr u8 n -- ptr u8 n )
+   {: args:ptr au:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND
+   s" ," SB-APPEND META S\" }}" SB-APPEND SB$ ;
+
+: MODERN-WAIT ( -- CURL:handle )
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: wait" ADD ;
+
+\ The at-once answer in W, a success.
+: KEPT-NOW ( n -- )
+   {: status:n :}
+   status 200 T=
+   BODY BODY-U @ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STARTS-WITH? TTRUE
+   W-RESET BODY BODY-U @ W+ ;
+
+\ The held call's answer is W, given by one FINISH.
+: KEPT-LATER ( n -- )
+   200 W$ ANSWERED
+   WOKEN atomic@ 1 T=
+   0 WOKEN atomic! ;
+
+: HELD-LEGACY ( -- )
+   s" a legacy call HELD and FINISHed answers as the tool at once" T-LABEL
+   LEGACY S\" {\"now\":1}" WAIT-LEGACY POST KEPT-NOW
+   LEGACY S\" {\"later\":1}" WAIT-LEGACY POST KEPT-LATER ;
+
+: HELD-MODERN ( -- )
+   s" a modern call HELD and FINISHed answers as the tool at once" T-LABEL
+   MODERN-WAIT S\" {\"now\":1}" WAIT-MODERN POST KEPT-NOW
+   MODERN-WAIT S\" {\"later\":1}" WAIT-MODERN POST KEPT-LATER ;
+
+\ After HELD-MODERN, whose at-once answer W holds.
+: HELD-ANSWER ( -- )
+   s" HOLD under ANSWER answers false and the body answers at once" T-LABEL
+   0 HOLD-FALSE atomic!
+   ANSWER-OPEN S\" {\"later\":1}" WAIT-LEGACY POST
+   200 W$ ANSWERED
+   HOLD-FALSE atomic@ 1 T=
+   WOKEN atomic@ 0 T= ;
+
+: HELD-FAULT ( -- )
+   s" a body that throws after HOLD closes the connection unanswered" T-LABEL
+   LEGACY S\" {\"fail\":1}" WAIT-LEGACY POST -2 T= ;
+
+: HELD-CASES ( -- ) HELD-LEGACY HELD-MODERN HELD-ANSWER HELD-FAULT ;
+
+
 : SERVE-CASES ( -- )
    AIO:START
    HTTP:ROUTES-RESET
@@ -1538,11 +1692,13 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" POST" s" /counted" [: COUNTED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
+   REPLIES $1000 BUF:N>BLEN BUF:INIT
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
    ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
-   ADD-FRAMED ADD-PICTURED
+   ADD-FRAMED ADD-PICTURED ADD-WAIT
    s" ADD-TOOL refuses a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
@@ -1585,9 +1741,12 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-RESULT SILENT
    RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
    UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
+   ANSWER-CASES
+   HELD-CASES
    CLIENT-CASES
    PROTECTED-CASES
    HTTP:STOP
+   REPLIES BUF:DISPOSE
    AIO:STOP ;
 
 T-RESET

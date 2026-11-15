@@ -31,7 +31,7 @@ jobs:
         run: |
           test "$(uname -m)" = aarch64
           HABU_CI="$RUNNER_TEMP/habu-native-arm"
-          mkdir -p "$HABU_CI"/{seed,chain,cross,tmp,objects,logs} bin
+          mkdir -p "$HABU_CI"/{seed,stages,chain,cross,tmp,objects,logs} bin
           printf 'HABU_CI=%s\nTMPDIR=%s/tmp\nHABU_OUT=%s/objects\n' "$HABU_CI" "$HABU_CI" "$HABU_CI" >>"$GITHUB_ENV"
           git rev-parse HEAD HEAD^{tree} >"$HABU_CI/source.txt"
           if [[ ! "$RECOVERY_RUN_ID" =~ ^[0-9]+$ || ! "$RECOVERY_ARTIFACT_ID" =~ ^[0-9]+$ || ! "$RECOVERY_HB_SHA256" =~ ^[0-9a-f]{64}$ || ! "$RECOVERY_MAP_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
@@ -54,10 +54,46 @@ jobs:
           install -m 755 hb "$HABU_CI/seed/hb"
           install -m 644 hb.map "$HABU_CI/seed/hb.map"
           cp source.txt "$HABU_CI/logs/seed-source.txt"
+      - name: Check out the private-enum bootstrap stage
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 8e6a01503a20271b03692c08ce4503b0bd5255cf
+          path: stages/private-enums
+          persist-credentials: false
+      - name: Build the private-enum stage
+        working-directory: stages/private-enums
+        run: >-
+          timeout 300 "$HABU_CI/seed/hb" --load tools/hb-build.f --
+          --engine -o "$HABU_CI/stages/private-enums"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/private-enums.log"
+      - name: Check out the SUMTYPE loader stage
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fb3e20749c84ec71929119f556cd9598a94d5e61
+          path: stages/sumtype-front
+          persist-credentials: false
+      - name: Build the SUMTYPE loader stage
+        working-directory: stages/sumtype-front
+        run: >-
+          timeout 300 "$HABU_CI/stages/private-enums" --load tools/hb-build.f --
+          --engine -o "$HABU_CI/stages/sumtype-front"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/sumtype-front.log"
+      - name: Check out the engine-error manifest stage
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4ef074ff74e19b1c7e37b0c398ddc7fe6369f6f4
+          path: stages/engine-errors
+          persist-credentials: false
+      - name: Build the engine-error manifest stage
+        working-directory: stages/engine-errors
+        run: >-
+          timeout 300 "$HABU_CI/stages/sumtype-front" --load tools/hb-build.f --
+          --engine -o "$HABU_CI/stages/engine-errors"
+          </dev/null 2>&1 | tee "$HABU_CI/logs/engine-errors.log"
       - name: Bootstrap and converge the combined ARM source
         run: >-
-          "$HABU_CI/seed/hb" --load tools/chain-run-build.f --
-          "$HABU_CI/seed/hb" "$HABU_CI/chain/g1" "$HABU_CI/chain/g2" "$HABU_CI/chain/g3" "$TMPDIR"
+          "$HABU_CI/stages/engine-errors" --load tools/chain-run-build.f --
+          "$HABU_CI/stages/engine-errors" "$HABU_CI/chain/g1" "$HABU_CI/chain/g2" "$HABU_CI/chain/g3" "$TMPDIR"
           </dev/null 2>&1 | tee "$HABU_CI/logs/convergence.log"
       - name: Use the converged ARM compiler
         run: |
@@ -91,6 +127,7 @@ jobs:
           path: |
             ${{ runner.temp }}/habu-native-arm/source.txt
             ${{ runner.temp }}/habu-native-arm/logs/*
+            ${{ runner.temp }}/habu-native-arm/stages/*
             ${{ runner.temp }}/habu-native-arm/chain/g*
           compression-level: 0
           if-no-files-found: error

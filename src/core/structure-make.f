@@ -1,17 +1,14 @@
-\ structure-make.f: a STRUCTURE's sealed MAKE / UNMAKE (package STRUCTURE-MAKE),
-\ built by sumtype.f's constructor machinery, and its `DERIVE addr` accessor
-\ surface. Loads just before structure-decl.f, whose ;STRUCTURE calls GENERATE
-\ for a family with fields. A product bundle is its field cells in slot order,
-\ so MAKE and UNMAKE are casts the checker certifies, with no TRUST, TRUSTED:
-\ or set-check.
+\ structure-make.f: a product family's sealed MAKE / UNMAKE (package
+\ STRUCTURE-MAKE), built by sumtype.f's constructor machinery, and its `DERIVE
+\ addr` accessor surface. Loads just before structure-decl.f; ;STRUCTURE for a
+\ family with fields calls GENERATE. A product bundle is its field cells in slot
+\ order, so MAKE and UNMAKE are casts the checker certifies, with no TRUST,
+\ TRUSTED: or set-check.
 
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-\ E-SM-DUP reads E-TFAM-DUP at top level: a post-hook checked body cannot see
-\ that pre-hook constant (decl-event.f does the same for E-DEV-ARITY).
-E-TFAM-DUP constant E-SM-DUP  \ MAKE/UNMAKE already generated
 7190 constant E-SM-FAM        \ family id is not a live, public, product-kind family
 7191 constant E-SM-EMPTY      \ product family declares no fields
 s" family cannot own generated make/unmake" E-SM-FAM DECL-REJECT:EXPLAIN
@@ -50,8 +47,8 @@ package STRUCTURE-MAKE
    REPEAT drop ;
 
 : SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}
-   fam s" make"   SUMV-FIND IF drop E-SM-DUP throw THEN drop
-   fam s" unmake" SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
+   fam s" make"   SUMV-FIND IF drop E-TFAM-DUP throw THEN drop
+   fam s" unmake" SUMV-FIND IF drop E-TFAM-DUP throw THEN drop ;
 
 public
 
@@ -127,11 +124,6 @@ public
    DECLARATION-TRANSACTION:ACTIVE? 0= IF E-SM-FAM throw THEN
    fam SM-ADDR-REQUIRE
    fam SM-ARMED ! ;
-
-private
-
-: SM-INSTALL-INIT ( -- ) [: ARM ;] is TYPE-DECL:TDECL-INIT-ARM-XT ;
-SM-INSTALL-INIT
 
 ;package
 

@@ -333,6 +333,7 @@ $20 constant FOLD-BIT
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
 variable FIND-CELL
 variable FIND-SCAN-CELL
@@ -2572,7 +2573,6 @@ public
 
 private
 
-52 constant MIN-IN-SHIFT               \ layout.f DNAME-MIN-IN-MASK: flag bits 52-59
 $CC constant INT3                      \ the byte code-publish fills a slot's gap with
 
 \ The helpers' labels, made by PUBLICATION, in the stream it emits them into.
@@ -3056,8 +3056,6 @@ public
    s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 private
-
-: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
 \ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
 \ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
@@ -4503,7 +4501,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX ASM-SINK ENC-INC
    RAX WIDN-CELL CELL!, ;
 
-\ alias-record: record NDICT with the source's [0], [8] and IMM, WIDE, MIN-IN, TARGET and immutable VAL
+\ alias-record: record NDICT with the source's [0], [8] and IMM, WIDE, TARGET and immutable VAL
 \ bits; a namespace, retired or DNAME-INT source is refused, whose alias would run an internal body.
 : ALIAS-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
@@ -4530,7 +4528,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX RSP DW-ARG MOV-LOAD,  RCX RECORD-AT,           \ r8 = the source
    RAX R8 REC-CODE MOV-LOAD,  RAX RDI REC-CODE MOV-STORE,
    RAX R8 REC-CODE CELL + MOV-LOAD,  RAX RDI REC-CODE CELL + MOV-STORE,
-   RAX DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or DNAME-TARGET or IMM64,
+   RAX DNAME-IMM DNAME-WIDE or DNAME-TARGET or IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-RM
    RAX RDI REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    RAX R8 REC-FLAGS MOV-LOAD,
@@ -5122,25 +5120,14 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    a u REGISTRAR-RC STDERR-EXIT,
    found X64CODE:LBL, ;
 
-\ The active checker publishes width and minimum input depth for NDICT-1.
-\ Its nonzero minimum is stored through the record's RW alias.
+\ The active checker publishes width for NDICT-1 through its owner record.
+\ A linked engine has that owner even when HOOK-CELL is zero.
 : WIDE-PUBLISH, ( -- )
    X64CODE:LBL {: done:label :}
-   RAX HOOK-CELL CELL@,
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF s" rec-wide-publish" OWNER-OP,
    RAX ASM-SINK ENC-CALL-REG
-   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF s" rec-min-in@" OWNER-OP,
-   RAX ASM-SINK ENC-CALL-REG
-   R9 POP,
-   R9 R9 ASM-SINK ENC-TEST-RR  C-E done JCC,
-   R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
-   R8 WRITE-ALIAS,
-   R9 MIN-IN-SHIFT >IMM8 ASM-SINK ENC-SHL-RI8
-   RAX DNAME-MIN-IN-MASK IMM64,
-   R9 RAX ASM-SINK ENC-AND-RR
-   R9 R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    done X64CODE:LBL, ;
 
 \ does-patch ( n ptr u8 n -- ) clause entry, created signature: the twin of
@@ -5152,8 +5139,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ record's DKIND clears: the body is a clause now, not a push. Entry 0 writes
 \ displacement 0, the bare body, and leaves the kind as it is; with the
 \ displacement already 0 it writes nothing. A signature then registers as
-\ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
-\ clear for the checker's tail to set again, and CRSIG clears.
+\ the created word's raw effect, the record's DNAME-WIDE clears for the
+\ checker's tail to set again, and CRSIG clears.
 \ Clear the DKIND of the record LASTC-CELL names and of every record that
 \ shares its body: the twin of habu2.f DOESPATCH CLEAR-KIND. An alias
 \ (alias-record) copies its source's [0] and DKIND:VAL, so the patch falsifies
@@ -5263,7 +5250,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    RAW-PUBLISH,
    R8 LASTC-CELL CELL@,
    R8 WRITE-ALIAS,
-   RAX DNAME-WIDE DNAME-MIN-IN-MASK or invert IMM64,
+   RAX DNAME-WIDE invert IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
    WIDE-PUBLISH,
    RAX ZERO-REG,  RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
