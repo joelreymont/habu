@@ -722,7 +722,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
    SB-RESET s" = limit: " SB-APPEND PATH-CAP FMT:SB-INT s"  bytes" SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
-   erru FFI-T-ERR$ s" uncaught" CONTAINS? TFALSE ;
+   erru FFI-T-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL

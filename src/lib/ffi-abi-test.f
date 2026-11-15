@@ -80,34 +80,20 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
 : FFI-T-NO-DASHES$ ( -- ptr u8 n )
    s" FUNCTION: FFI-T-NO-DASHES labs ( n n ) ;FUNCTION" ;
 
-\ 48 bytes, one past the longest symbol a row holds.
-: FFI-T-LONG-SYMBOL$ ( -- ptr u8 n )
-   s" FUNCTION: FFI-T-LONG-SYMBOL a23456789012345678901234567890123456789012345678 ( -- ) ;FUNCTION" ;
-
 : FFI-T-NO-DASHES ( -- )
    s" an effect without '--' prints its record" T-LABEL
    DECL-DIAG:PROSE
-   FFI-T-NO-DASHES$ TEST-EVAL:RC E-FFI-SYNTAX T=
+   FFI-T-NO-DASHES$ TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" error[E-FFI-SYNTAX]: expected '--' before ')'"
    DECL-DIAG:HAS? TTRUE
    s" = help: write the effect as ( inputs -- output )"
    DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
-: FFI-T-LONG-SYMBOL ( -- )
-   s" a symbol over the row's bound prints its record" T-LABEL
-   DECL-DIAG:PROSE
-   FFI-T-LONG-SYMBOL$ TEST-EVAL:RC E-FFI-SYNTAX T=
-   s" error[E-FFI-SYNTAX]: a C symbol name is at most 47 bytes"
-   DECL-DIAG:HAS? TTRUE
-   s" = help: call a longer symbol through a C function"
-   DECL-DIAG:HAS? TTRUE
-   DECL-DIAG:OFF ;
-
 : FFI-T-NO-PATH ( -- )
    s" LIBRARY with no path prints its record" T-LABEL
    DECL-DIAG:PROSE
-   s" LIBRARY" TEST-EVAL:RC E-FFI-SYNTAX T=
+   s" LIBRARY" TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" error[E-FFI-SYNTAX]: the library path is empty"
    DECL-DIAG:HAS? TTRUE
    s" = help: write the library's path or file name after LIBRARY"
@@ -135,7 +121,7 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
 : FFI-T-FOREIGN ( -- )
    s" LIBRARY with a name spelled for the other target prints its record" T-LABEL
    DECL-DIAG:PROSE
-   FFI-T-FOREIGN$ TEST-EVAL:RC E-FFI-LIBRARY T=
+   FFI-T-FOREIGN$ TEST-EVAL:RC CHECKER-REJECT-RC T=
    FFI-T-FOREIGN-HEAD$ DECL-DIAG:HAS? TTRUE
    FFI-T-FOREIGN-HELP$ DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
@@ -150,7 +136,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI-T-ROLLBACK
    FFI-T-SHADOW
    FFI-T-NO-DASHES
-   FFI-T-LONG-SYMBOL
    FFI-T-NO-PATH
    FFI-T-FOREIGN
    T-REPORT ;

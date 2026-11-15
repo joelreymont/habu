@@ -108,18 +108,17 @@ variable FFI-SV-SRC-U
    decl declu code codeu FFI-SV-REFUSED ;
 
 
-\ A refusal's packet names the load's code as throw_code: -3501 E-FFI-SYNTAX,
-\ -3500 E-FFI-ARITY.
+\ A rejection's record names the load's code.
 : FFI-SV-SYNTAX ( ptr u8 n ptr u8 n -- )
    {: decl:ptr declu:n msg:ptr msgu:n :}
-   decl declu S\" \"throw_code\":-3501" FFI-SV-REFUSE
+   decl declu S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSE
    FFI-T-SRC CODEGEN:RESET
    S\" \"message\":\"" FFI-T-SRC+
    msg msgu FFI-T-SRC+
    S\" \"" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
 : FFI-SV-ARITY ( ptr u8 n -- )
-   S\" \"throw_code\":-3500" FFI-SV-REFUSE ;
+   S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REFUSE ;
 
 \ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
 \ its header and its help, placed at ;FUNCTION with the definer's label.
@@ -203,7 +202,7 @@ variable FFI-SV-SRC-U
    s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
-   FFI-SV-WRAP$ S\" \"throw_code\":-3500" FFI-SV-REFUSED FFI-SV-STAGED ;
+   FFI-SV-WRAP$ S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REFUSED FFI-SV-STAGED ;
 
 
 : FFI-SV-STRUCT-RESULT ( -- )
@@ -233,7 +232,7 @@ variable FFI-SV-SRC-U
    {: src:ptr srcu:n msg:ptr msgu:n tok:ptr toku:n :}
    src srcu T-LABEL
    src srcu FFI-SV-SOURCE
-   S\" \"throw_code\":-3501" FFI-SV-REFUSES
+   S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
    msg msgu FFI-SV-SAYS
    tok toku FFI-SV-SAYS ;
 
@@ -306,12 +305,13 @@ variable FFI-SV-SRC-U
 : FFI-SV-ALIASED ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    SB-RESET src srcu SB-APPEND
-   FFI-SV-CHECK S\" \"throw_code\":-3501" FFI-SV-REFUSES
+   FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
    FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:RC@ 0 <> TTRUE
-   E2E-TREE:ERR$ s" throw code -3501" CONTAINS? TTRUE ;
+   E2E-TREE:RC@ CHECKER-REJECT-RC T=
+   E2E-TREE:ERR$ s" error[E-FFI-SYNTAX]: the clause names an input that is not ptr u8"
+   CONTAINS? TTRUE ;
 
 : FFI-SV-REEXPORTED ( -- )
    s" a bare re-export of STRUCT-ARG is the clause" T-LABEL
