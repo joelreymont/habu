@@ -1016,11 +1016,6 @@ public
    a u own namespace-record ;
 private
 
-: PKG-CONTEXT ( n -- ) {: rc:n :}
-   rc 0= if exit then
-   rc E-PKG-CONTEXT = if PKG-CONTEXT-FAIL then
-   rc throw ;
-
 \ Inside package A the token cells name `A:<token>`.
 : PKG-PATH ( -- )
    TOKEN$ CHECKER-RESOLVE:PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
@@ -1028,10 +1023,10 @@ private
 \ The using depth it opens at is the one `;package` restores, a part's its
 \ package's.
 : PKG-PACKAGE ( -- )
-   [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
+   CHECKER-RESOLVE:PART-GUARD
    PKG-NAME
    TOKEN$ 0 COLON-AT 0 >= if PKG-CONTEXT-FAIL then
-   ['] PKG-PATH catch PKG-CONTEXT
+   PKG-PATH
    PKG-POLICY-GUARD
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD

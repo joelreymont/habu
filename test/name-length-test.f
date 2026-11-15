@@ -316,7 +316,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
-   s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
+   s" USING-PUSH-IT" 70
+      S\" error[E-PKG-CONTEXT]: `CHECKER-USING-PUSH` ran outside the source verifier's window\n"
+      s" = help: leave `CHECKER-USING-PUSH` to the source verifier" REJECTS
    s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" ^ missing name" REJECTS
    s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing name" REJECTS
    s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing ;SUMTYPE" REJECTS

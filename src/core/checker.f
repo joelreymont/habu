@@ -1743,7 +1743,6 @@ CK-USE-SNAP-HEADER USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 \ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
 \ before user source.
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base USE-DEPTH-CELL + @ ;
-7136 constant E-PKG-CONTEXT
 \ The checker overlay is full: the records one lookup hides or the engine
 \ dictionary it publishes into (CHECKER-OVERLAY).
 7184 constant E-OVERLAY-CAP
@@ -1779,12 +1778,16 @@ variable CHECKER-VERIFY-PKG-DEPTH
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
 CHECKER-PKG-LIVE-DEFAULT
 
-\ Throws CHECKER-REJECT-RC: a bare E-PKG-CONTEXT (7136) is outside [1,255] and
-\ exits UNCAUGHT-RC (67) instead of 70.
-
+\ Given no token, the record stands at the token being read.
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
-   2 S\" hb: no authenticated package context for this definition\n" write drop
-   CHECKER-REJECT-RC throw ;
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" no authenticated package context: the current wordlist is neither the open package's public nor its private one, nor the top level's"
+   REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  s" no package context" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define and verify at top level or in an open package's `public` or `private` section, not in a wordlist made current by `set-current`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ AUTHORITY's bool says whether the engine's package record names a package
 \ context; a current that is none of the open scope's wordlists is no context.
@@ -12753,6 +12756,17 @@ private
       1 +
    REPEAT drop ;
 
+\ The package name a u has a colon at an edge or more than one.
+: PACKAGE-COLON-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` is not a package name or a part's path" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" not a package name" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" name a package without `:`; inside package A, `package B` opens its part `A:B`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : CHECKER-QA@ ( -- ptr u8 )
    CHECKER-QA @ ;
 
@@ -12885,11 +12899,11 @@ variable SNAP-N
    ndict@ DICT-CAP < IF EXIT THEN
    E-OVERLAY-CAP throw ;
 
-\ A colon at an edge or a second colon is refused with E-PKG-CONTEXT, as
-\ namespace-record refuses them; a new row takes both wids.
+\ A colon at an edge or a second colon is rejected, as namespace-record
+\ rejects them; a new row takes both wids.
 : NS-ENSURE ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF E-PKG-CONTEXT throw THEN
+   cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF a u PACKAGE-COLON-REJECT THEN
    a u NS-ROW {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
    ROOM
@@ -12951,9 +12965,17 @@ variable SNAP-N
       LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
    REPEAT ;
 
-\ replay-open refuses a pending definition by exit: refuse it here first.
+\ replay-open refuses a pending definition by exit: reject it here first.
+: PENDING-REJECT ( -- )
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" the checker's replay opened while a definition is being compiled" REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  s" inside a definition" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" verify source at top level, after `;` ends the definition" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : OPEN ( n -- ) {: tag:n :}
-   PEND-CELL DATA@ 0 <> IF E-PKG-CONTEXT throw THEN
+   PEND-CELL DATA@ 0 <> IF PENDING-REJECT THEN
    replay-open
    ndict@ MARK !
    FIRST-RECORD-XT PREFIX !
@@ -12983,6 +13005,21 @@ variable SNAP-N
    OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
    0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE0 ! ;
 
+\ The private symbol sym's package pa pu has no private wordlist.
+: NO-PRIVATE-REJECT ( n ptr u8 n -- ) {: sym:n pa:ptr pu:n :}
+   sym SYM-NAME$ {: a:ptr u:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" package `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" ` has no private wordlist for its private word `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   NULL-PTR 0 REJECTION:AT  s" published here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" open `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" ` with `package` before its private words are defined: a qualified definition `: "
+   REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" :NAME` makes a package with a public wordlist only" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
    sym SYM-PKG$ {: pa:ptr pu:n :}
@@ -12990,7 +13027,7 @@ variable SNAP-N
    pa pu NS-ENSURE {: rec:ptr :}
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    rec CELL + @ {: pri:n :}
-   pri 0= IF E-PKG-CONTEXT throw THEN
+   pri 0= IF sym pa pu NO-PRIVATE-REJECT THEN
    pri ;
 
 \ The name `undefine` or a definition acts on and its wordlist: a qualified
@@ -13193,11 +13230,22 @@ ROW-CELLS cells constant SCOPE-BYTES
    ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
    ca cu t tu REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ Inside an open package NAME is a part's path, refused elsewhere or in a part.
+\ The package path a u does not fit the open scope.
+: PATH-SCOPE-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" the package path `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` does not fit the open scope" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" open a part's path `A:B` only inside package A, outside its parts, and a top-level package only outside every package"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Inside an open package NAME is a part's path, rejected elsewhere or in a part.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
    part  PKG-PUB-CELL DATA@ 0 <>  xor  ENCLOSING:REC DATA@ 0 <>  or IF
-      E-PKG-CONTEXT throw
+      a u PATH-SCOPE-REJECT
    THEN
    a u NS-ENSURE {: rec:ptr :}
    rec CELL + @ 0= IF rec GRANT THEN
@@ -13279,22 +13327,67 @@ CAST: AS-ACTION ( n -- [ -- ] )
       xt 0 <> IF xt AS-ACTION execute THEN
    THEN
    data-base cell + @ set-current ;
+\ `package`, the token being read, opens a part where w wu says; the help
+\ h hu says what to do instead.
+: PART-REJECT ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n h:ptr hu:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" `package` opens a part of `" REJECTION:EMIT-STR  TOP-NAME$ REJECTION:EMIT-STR
+   s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  s" a part opens here" REJECTION:EMIT-STR
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The part name a u makes a path past the longest a package name may have
+\ inside the package pa pu.
+: PART-LONG-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
+   PACKAGE-PATH:CAP 1 - {: m:n :}
+   m pu - 1 - {: k:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` makes a part path " REJECTION:EMIT-STR  pu 1 + u + REJECTION:EMIT-U
+   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
+   s"  a package name may have" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
+   REJECTION:HELP
+   k 0 > IF
+      s" shorten the part name to " REJECTION:EMIT-STR  k REJECTION:EMIT-U
+      s"  bytes or fewer" REJECTION:EMIT-STR
+   ELSE
+      s" shorten the name of package `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+      s" `, which leaves no room for a part's name" REJECTION:EMIT-STR
+   THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 public
 \ A part opens in its package's private section, in its buffer, under no using
-\ it opened, inside no part; else E-PKG-CONTEXT.
+\ it opened, inside no part.
 : PART-GUARD ( -- )
    data-base PKG-PUB-CELL + @ 0= IF EXIT THEN
-   data-base PKG-OUTSIDE-CELL + @ 0 <>  data-base ENCLOSING:PUB + @ 0 <>  or
-   get-current data-base PKG-PRI-CELL + @ <>  or
-   CK-USE-ENGINE-DEPTH data-base USE-PKG-SAVE-CELL + @ <>  or
-   IF E-PKG-CONTEXT throw THEN ;
+   data-base ENCLOSING:PUB + @ 0 <> IF
+      s" inside one of its parts"
+      s" close the part with `;package` first: a part opens only in its package"
+      PART-REJECT
+   THEN
+   data-base PKG-OUTSIDE-CELL + @ 0 <> IF
+      s" in a file or string that began inside the package"
+      s" open the part in the file or string that opens its package"
+      PART-REJECT
+   THEN
+   get-current data-base PKG-PRI-CELL + @ <> IF
+      s" outside its private section"
+      s" write `private` before `package`" PART-REJECT
+   THEN
+   CK-USE-ENGINE-DEPTH data-base USE-PKG-SAVE-CELL + @ <> IF
+      s" under a using the package opened"
+      s" close that using with `;using` before `package`" PART-REJECT
+   THEN ;
 
 \ NAME, or `A:NAME` in package A.
 : PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    TOP-NAME$ {: pa:ptr pu:n :}
-   pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
+   pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF a u pa pu PART-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
-   a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
+   a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
    pa PATH-KEY pu ARENA-COPY
@@ -13310,12 +13403,23 @@ public
 ;package
 
 \ --- the package and using words ---------------------------------------------
+\ The verifier's own word w wu ran while its window is not open.
+: WINDOW-REJECT ( ptr u8 n -- ) {: w:ptr wu:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   s" ` ran outside the source verifier's window" REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  s" no window open" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" leave `" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" ` to the source verifier, which calls it while it replays source" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : CHECKER-USING-PUSH ( ptr u8 n -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF s" CHECKER-USING-PUSH" WINDOW-REJECT THEN
    CHECKER-OVERLAY:OPEN-USING ;
 
 : CHECKER-USING-POP ( ptr u8 n -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF s" CHECKER-USING-POP" WINDOW-REJECT THEN
    CHECKER-OVERLAY:CLOSE-USING ;
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
@@ -13355,16 +13459,26 @@ package CHECKER-REG
 ;package
 
 \ --- the verifier window --------------------------------------------------
+\ A verification that starts inside another's window.
+: NESTED-REJECT ( -- )
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" a source verification started inside another one's window" REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  s" started here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" verify one source at a time: start the next after this one returns"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : CHECKER-VERIFY-PKG-START ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF E-PKG-CONTEXT throw THEN 2drop drop
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF NESTED-REJECT THEN
+   CHECKER-RESOLVE:AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
    RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE
    1 CHECKER-VERIFY-PKG-DEPTH !
    PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
    CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF s" CHECKER-VERIFY-PKG-DONE" WINDOW-REJECT THEN
    -1 CHECKER-OVERLAY:CLOSE-SCOPE
    0 BIND-HORIZON !
    VERIFY-FLOOR0 @ PASS-FLOOR !
@@ -13373,7 +13487,7 @@ package CHECKER-REG
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF s" CHECKER-VERIFY-FILE" WINDOW-REJECT THEN
    CHECKER-OVERLAY:SCOPE-BYTES map-anon 0= 0= IF
       s" checker: file scope allocation failed" 76 die
    THEN {: frame:ptr :}
