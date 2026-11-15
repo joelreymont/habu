@@ -666,6 +666,7 @@ require src/lib/prelude.f
 \ COMP.
 \ Stderr capture for tests: -9610..-9619, minted in src/lib/test/stderr.f, which
 \ owns package STDERR.
+\ SQLite: -9620..-9629, minted in src/lib/sqlite.f, which owns package SQLITE.
 \ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns
 \ package BEARER.
 \ Keeping the machine awake: -9640..-9649, minted in src/lib/power.f, which

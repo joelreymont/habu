@@ -453,6 +453,12 @@ SUITE pg
    test/db/pg-kill-test.f
 ;SUITE
 
+\ Package SQLITE through libsqlite3, on database files in its own temporary
+\ directory.
+SUITE sqlite
+   src/lib/sqlite-test.f
+;SUITE
+
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
 \ HABU_NET_TESTS.
 SUITE curl-http

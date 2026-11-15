@@ -55,6 +55,7 @@ on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
 libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on
 Linux the Ubuntu font packages test/font-native.f's header names.
 The Wasm device suite needs wasm-tools and bun on PATH.
+The SQLite test needs libsqlite3 3.37 or newer on the loader path.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
