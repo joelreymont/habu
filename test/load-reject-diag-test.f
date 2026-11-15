@@ -7,6 +7,7 @@
 \ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
 \ A rejected definition prints its one diagnostic and nothing else.
 \ A bare word a global and a used package both define is rejected in that form.
+\ A SOURCE-ROOT word's uncaught throw on a path prints the record it carries.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -986,6 +987,60 @@ variable RC
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+\ SRC as the body exits UNCAUGHT-RC, its stderr opening with the line SB holds
+\ and the place PLACE.
+: PATH-PASS-AT ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n place:ptr placeu:n :}
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND  place placeu SB-APPEND
+   10 SB-APPEND-C
+   BODY$ src srcu FS:WRITE-ALL
+   BODY$ RUN
+   ERR$ SB$ STARTS-WITH? TTRUE
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ UNCAUGHT-RC T= ;
+
+\ The record on stderr helps with a path of 1 to most bytes, the longest the
+\ failing test admits: SOURCE-ROOT's work room holds two paths of PATH-CAP
+\ bytes, each with its NUL.
+: HELP-MOST ( n -- ) {: most:n :}
+   SB-RESET  s" = help: pass a path of 1 to " SB-APPEND
+   most FMT:SB-INT  S\"  bytes\n" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE ;
+
+4220 constant LONG-QS
+create LONG LONG-QS 64 + allot
+variable LONG-U
+
+: LONG+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a LONG LONG-U @ + u BYTE-COPY  u LONG-U +! ;
+
+\ A missing path of 4223 bytes, which CANONICAL normalizes past the cap.
+: LONG$ ( -- ptr u8 n )
+   0 LONG-U !  S\" s\" /x/" LONG+
+   LONG-QS 0 ?do [char] q LONG LONG-U @ + c!  1 LONG-U +! loop
+   S\" \" SOURCE-ROOT:CANONICAL drop 2drop" LONG+
+   LONG LONG-U @ ;
+
+: TEST-PATH-PASS ( -- )
+   s" CANON-OS's uncaught throw on an empty path prints its record" T-LABEL
+   SB-RESET
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:CANON-OS` got an empty path" SB-APPEND
+   S\" s\" \" SOURCE-ROOT:CANON-OS drop 2drop" s" :1:6" PATH-PASS-AT
+   PATH-CAP 2 * 1+ HELP-MOST
+   s" JOIN's uncaught throw on a negative root length prints its record" T-LABEL
+   SB-RESET
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:JOIN` got an empty path" SB-APPEND
+   S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" s" :1:21" PATH-PASS-AT
+   PATH-CAP 2 * HELP-MOST
+   s" CANONICAL's uncaught throw on a long path prints its record" T-LABEL
+   SB-RESET
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:CANONICAL` got a path" SB-APPEND
+   s"  that resolves to more than the " SB-APPEND
+   PATH-CAP FMT:SB-INT  s"  bytes a path may have" SB-APPEND
+   LONG$ s" :1:4229" PATH-PASS-AT ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -1098,6 +1153,7 @@ variable RC
    TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH
+   TEST-PATH-PASS
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER

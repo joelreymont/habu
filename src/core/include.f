@@ -109,18 +109,19 @@ public
    w REJECTION:PLACES? if w wu else SRCLOC:TOKEN$ then REJECTION:AT
    s" passes a path that " REJECTION:EMIT-STR ;
 
-\ Word w, a loader or ROOT!, got the path a u, which no file name holds: kind
-\ E-PATH-RANGE with len 0 when the path is empty, -1 when only the path it
-\ resolves to is longer than the cap, else its length; kind E-PATH-NUL when it
-\ holds a NUL byte.
-: LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
-   {: w:ptr wu:n a:ptr u:n kind:n len:n :}
+\ Writes the record of word w, given the path a u, which no file name holds,
+\ through its help: kind E-PATH-RANGE with len 0 when the path is empty, -1
+\ when only the path it resolves to is longer than cap, else its length; kind
+\ E-PATH-NUL when it holds a NUL byte. cap is the longest length the failing
+\ test allows.
+: LOADER-PATH-RECORD ( ptr u8 n ptr u8 n n n n -- )
+   {: w:ptr wu:n a:ptr u:n kind:n len:n cap:n :}
    kind E-PATH-NUL = if
       s" E-PATH-NUL" REJECTION:OPEN
       96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
       s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
    else
-      w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+      w wu len cap REJECTION:PATH-RANGE
    then
    w wu a u LOADER-PATH-AT
    kind E-PATH-NUL = if
@@ -137,9 +138,12 @@ public
       s" remove the NUL byte from the path" REJECTION:EMIT-STR
    else
       s" pass a path of 1 to " REJECTION:EMIT-STR
-      INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   then
-   CHECKER-REJECT-RC REJECTION:STOP ;
+      cap REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   then ;
+
+\ Word w, a loader or ROOT!, got the path a u, which no file name holds.
+: LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
+   INCLUDE-PATH-CAP LOADER-PATH-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Whether a loader or ROOT! can take the path a u before it resolves it, writing
 \ nothing: 0 0 when it can, else the kind and len LOADER-PATH-STOP takes, for
@@ -220,33 +224,45 @@ variable SLOT-N
 : CURRENT@ ( -- ptr u8 n )
    CURRENT-PTR CURRENT-U @ ;
 
+\ Throws kind, E-PATH-RANGE or E-PATH-NUL, carrying the record of the public
+\ word running, which got the path a u: len and cap as LOADER-PATH-RECORD
+\ takes them. Callers catch either code and go on.
+: PATH-PASS ( ptr u8 n n n n -- )
+   {: a:ptr u:n kind:n len:n cap:n :}
+   SRCLOC:TOKEN$ a u kind len cap LOADER-PATH-RECORD
+   REJECTION:SAVE  kind REJECTION:PASS ;
 
 : CHECK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u 0 <= u WORK-BYTES >= or if E-PATH-RANGE throw then ;
+   u 0 <= if a u E-PATH-RANGE 0 WORK-BYTES 1- PATH-PASS then
+   u WORK-BYTES >= if a u E-PATH-RANGE u WORK-BYTES 1- PATH-PASS then ;
 
 
 \ realpath of a path into CANON-BUF: its length, -2 when that does not fit,
-\ below 0 when the path does not resolve.
+\ below 0 when the path does not resolve. CHECK bounds the scan for a NUL byte.
 : CANON-N ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECK
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if a u kind len WORK-BYTES 1- PATH-PASS then
    a u ZBUF WORK-BYTES PATHZ
    ZBUF CANON-BUF PATH-BYTES realpath ;
 
 public
 
 : CANON-OS ( ptr u8 n -- ptr u8 n bool )
-   CANON-N {: n:n :}
-   n -2 = if E-PATH-RANGE throw then
+   {: a:ptr u:n :}
+   a u CANON-N {: n:n :}
+   n -2 = if a u E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
 private
 
 : TRY-CANON ( ptr u8 n -- bool )
-   SOURCE-INPUT:CANON {: a:ptr u:n found:bool :}
-   u PATH-BYTES >= if E-PATH-RANGE throw then
+   {: p:ptr pu:n :}
+   p pu SOURCE-INPUT:CANON {: a:ptr u:n found:bool :}
+   u PATH-BYTES >= if p pu E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
    a CANON-BUF <> if a CANON-BUF u BYTE-COPY then
    u CANON-U !
    found ;
@@ -365,8 +381,10 @@ private
 \ compared with the room the name and its separator leave: in a sum, a length
 \ near the maximum cell wraps back into range.
 : JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
-   rootu 0 < if E-PATH-RANGE throw then
-   rootu WORK-BYTES 1- u - >= if E-PATH-RANGE throw then
+   rootu 0 < if root 0 E-PATH-RANGE 0 WORK-BYTES 2 - PATH-PASS then
+   rootu WORK-BYTES 1- u - >= if
+      root rootu E-PATH-RANGE rootu 1+ u + WORK-BYTES 2 - PATH-PASS
+   then
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
    a WORK-BUF rootu 1+ + u BYTE-COPY
@@ -382,22 +400,25 @@ private
    CWD$ a u JOIN! ;
 
 
-: NORMAL-ROOM ( n n -- ) {: limit:n :}
-   NORMAL-U @ + limit > if E-PATH-RANGE throw then ;
+\ p pu is the path being normalized.
+: NORMAL-ROOM ( ptr u8 n n n -- )
+   {: p:ptr pu:n n:n limit:n :}
+   NORMAL-U @ n + limit > if p pu E-PATH-RANGE -1 limit PATH-PASS then ;
 
 
-: NORMAL-SEG ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
+: NORMAL-SEG ( ptr u8 n ptr u8 n n -- )
+   {: p:ptr pu:n a:ptr u:n limit:n :}
    u 0= if exit then
    a u s" ." CORE-STR= if exit then
    a u s" .." CORE-STR= if
       NORMAL-BUF NORMAL-U @ PARENT-U NORMAL-U ! exit
    then
    NORMAL-U @ 1 > if
-      1 limit NORMAL-ROOM
+      p pu 1 limit NORMAL-ROOM
       47 NORMAL-BUF NORMAL-U @ + c!
       1 NORMAL-U +!
    then
-   u limit NORMAL-ROOM
+   p pu u limit NORMAL-ROOM
    a NORMAL-BUF NORMAL-U @ + u BYTE-COPY
    u NORMAL-U +! ;
 
@@ -414,8 +435,8 @@ private
    {: a:ptr u:n limit:n :}
    47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
-      dup a u rot SEG-END {: end:n :}
-      a over + end rot - limit NORMAL-SEG
+      dup a u rot SEG-END {: start:n end:n :}
+      a u  a start +  end start -  limit NORMAL-SEG
       end 1+
    repeat drop ;
 
@@ -480,7 +501,9 @@ private
 : MISSING-NORMALIZE ( -- )
    EXISTING-PARENT {: cut:n :}
    CANON-U @ JOIN-U @ cut - + {: total:n :}
-   total WORK-BYTES >= if E-PATH-RANGE throw then
+   total WORK-BYTES >= if
+      JOIN-BUF JOIN-U @ E-PATH-RANGE -1 WORK-BYTES 1- PATH-PASS
+   then
    CANON-BUF WORK-BUF CANON-U @ BYTE-COPY
    JOIN-BUF cut + WORK-BUF CANON-U @ + JOIN-U @ cut - BYTE-COPY
    WORK-BUF total NORMALIZE ;

@@ -905,10 +905,10 @@ public
    t tu RANGE-NOTE
    HELP  s" write a number in that range" EMIT-STR ;
 
-\ Writes the record of word w given a path len bytes long, past the cap bytes
-\ a path may have, through its message: the caller may write one AT, then
-\ writes the help and ends the record. len is 0 for an empty path and -1 when
-\ only the path it resolves to is longer.
+\ Writes the record of word w given a path len bytes long, past cap, the
+\ longest length the failing test allows, through its message: the caller may
+\ write one AT, then writes the help and ends the record. len is 0 for an empty
+\ path and -1 when only the path it resolves to is longer.
 : PATH-RANGE ( ptr u8 n n n -- ) {: w:ptr wu:n len:n cap:n :}
    s" E-PATH-RANGE" OPEN
    96 EMIT1  w wu EMIT-STR
