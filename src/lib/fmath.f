@@ -1,8 +1,8 @@
-\ fmath.f - integer roots and transcendental floats in checked Habu, without
-\ libm or a new engine primitive. SIN and COS carry fdlibm's kernels and its
-\ three-piece pi/2 reduction, and ACOS is fdlibm's arc cosine; FLN uses an
-\ atanh series and FPOW is exp(exponent * ln(base)): an approximation, not a
-\ correctly rounded libm.
+\ fmath.f - integer roots, rounded integer quotients and transcendental floats
+\ in checked Habu, without libm or a new engine primitive. SIN and COS carry
+\ fdlibm's kernels and its three-piece pi/2 reduction, and ACOS is fdlibm's arc
+\ cosine; FLN uses an atanh series and FPOW is exp(exponent * ln(base)): an
+\ approximation, not a correctly rounded libm.
 \ FMOD divides on integers, as C libraries do: |x| = m * 2^(e-1075) with bit
 \ 52 of m set, a subnormal normalised to e < 1. Once per exponent step from
 \ x's down to y's, x's significand subtracts y's when it holds it, then
@@ -337,6 +337,16 @@ public
    value ISQRT-FLOOR {: root:n :}
    root 0= if 0 exit then
    value root / root = value root mod 0= and if root else root 1+ then ;
+
+\ n / d is q + r / d: below q when r and d differ in sign, above it when they
+\ agree. Only `/` can overflow; a zero d's answer is undefined, as for `/`.
+: FLOOR/ ( n n -- n ) {: n:n d:n :}
+   n d /mod {: r:n q:n :}
+   r 0<> r d xor 0< and if q 1- else q then ;
+
+: CEIL/ ( n n -- n ) {: n:n d:n :}
+   n d /mod {: r:n q:n :}
+   r 0<> r d xor 0< 0= and if q 1+ else q then ;
 
 : FLN ( r -- r ) {: value:r :}
    value POSITIVE-FINITE? 0= if E-DOMAIN throw then
