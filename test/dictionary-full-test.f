@@ -1,7 +1,8 @@
 \ dictionary-full-test.f - a definition, a does> clause, a package and a
 \ declaration that find no dictionary record left are rejected as
-\ E-DICTIONARY-FULL, placed at the name they make or, for a declaration, where
-\ it ran out of room, and the load exits REJECTION:DICT-FULL-RC. A full
+\ E-DICTIONARY-FULL, placed at the name they make, a does> clause at its
+\ `does>` and a declaration where it ran out of room, and the load exits
+\ REJECTION:DICT-FULL-RC. A full
 \ dictionary stops the load, so each case is its own child hb. Each child fills
 \ the dictionary to a set number of free records counted from its own ndict@,
 \ so no case depends on how many records the engine uses at boot.
@@ -46,6 +47,16 @@ private
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `FOO`\n --> <input>:5:9\n  |\n5 | package FOO\n  |         ^^^ no record left\n  = help: define fewer words in this load\n\n"
    s" a package in a full dictionary" EXPECT ;
 
+: NAMESPACE ( -- )
+   S\" 0 LEAVE-FREE\n: NEWNS:W ( -- ) ;\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `NEWNS`\n --> <input>:5:3\n  |\n5 | : NEWNS:W ( -- ) ;\n  |   ^^^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a qualified head in a full dictionary" EXPECT ;
+
+: EXPORTED ( -- )
+   S\" package BAR public\n: W ( -- ) ;\n;package\npackage FOO public\n0 LEAVE-FREE\nEXPORT BAR:W\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `W`\n --> <input>:9:8\n  |\n9 | EXPORT BAR:W\n  |        ^^^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" an EXPORT in a full dictionary" EXPECT ;
+
 \ A declaration makes all its words or none; the record names the first.
 : STRUCTURE-DECL ( -- )
    S\" 2 LEAVE-FREE\nSTRUCTURE pt DERIVE addr FIELD x n FIELD y n ;STRUCTURE\n"
@@ -60,6 +71,8 @@ private
 DEFINITION
 DOES-CLAUSE
 PACKAGE
+NAMESPACE
+EXPORTED
 STRUCTURE-DECL
 SUMTYPE-DECL
 

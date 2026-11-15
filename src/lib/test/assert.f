@@ -138,7 +138,7 @@ variable T-LABEL-U
       1+
    repeat ;
 
-: T-FROM ( ptr u8 n ptr u8 n n -- n )   \ FIND-SUB-FROM's offset, else -1
+: T-FROM ( ptr u8 n ptr u8 n n -- n )
    FIND-SUB-FROM MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF

@@ -162,8 +162,8 @@ variable CA-COMPOSE-LABEL-U
 \ its own code and help: a caller told to close a string literal would look for
 \ a quote that is not there.
 : CA-LEX-HELP ( -- )
-   s" close the row: `PRIM:` ends at `PRIM;`, `EPRIM:` at `EPRIM;`, " CA-SAY
-   s" `PPRIM:` at `PPRIM;` or `CLOSE-PRIVATE`, `EPPRIM:` at `ECLOSE-PRIVATE`" CA-SAY ;
+   s" close the row: `EPRIM:` ends at `EPRIM;`, " CA-SAY
+   s" `EPPRIM:` at `ECLOSE-PRIVATE`" CA-SAY ;
 
 : CA-LEX-ROW-RECORD ( -- )
    s" E-MALFORMED-REGISTRY-ROW" REJECTION:OPEN

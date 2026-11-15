@@ -249,7 +249,7 @@ variable TOP-CUR-U
 DYNAMIC-BUFFER BODY-BUF u8
 \ Each run BODY-APPEND copies into BODY-BUF is a row of two cells: the body
 \ offset it starts at and the source offset it was read from. BODY$ hands the
-\ rows to the checker, so a packet locates its token at the file bytes the
+\ rows to the checker, so a record places its token at the file bytes the
 \ scanner read.
 DYNAMIC-BUFFER BODY-ROW n
 variable BODY-ROWS
@@ -3429,12 +3429,9 @@ variable FILE-USE
    s" ` does not close" REJECTION:EMIT-STR
    t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" close the row: `PRIM:` ends at `PRIM;`, "
+   s" close the row: `EPRIM:` ends at `EPRIM;`, "
    REJECTION:EMIT-STR
-   s" `EPRIM:` at `EPRIM;`, `PPRIM:` at `PPRIM;` "
-   REJECTION:EMIT-STR
-   s" or `CLOSE-PRIVATE`, `EPPRIM:` at `ECLOSE-PRIVATE`"
-   REJECTION:EMIT-STR
+   s" `EPPRIM:` at `ECLOSE-PRIVATE`" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A row declares no locals and, as every body reader, starts clear of the last

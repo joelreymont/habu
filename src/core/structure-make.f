@@ -26,8 +26,8 @@ package STRUCTURE-MAKE
    THEN
    idx fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop ;
 
-\ The field rows are still provisional, above PF-COMMIT-N, where the committed
-\ readers reject them.
+\ The field rows are still provisional, at PF-COMMIT-N or above, where a
+\ committed reader dies 76.
 : SM-EMIT-ROWS ( n n n -- )
    {: fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}

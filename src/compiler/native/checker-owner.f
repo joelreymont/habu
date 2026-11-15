@@ -21,9 +21,9 @@ public
 
 EXPORT DOES-REPORT
 
-\ Opens the compile window with the code a callback's checker write is refused
+\ Opens the compile window with the code a callback's checker write is rejected
 \ with, or shuts it with 0: between them only the compiler's callbacks run, so
-\ a refused definition's cut takes exactly its rows.
+\ a rejected definition's cut takes exactly its rows.
 : WRITE-WINDOW ( n -- )
    CHECKER-WRITE-WINDOW! ;
 

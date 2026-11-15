@@ -4157,7 +4157,7 @@ private
 \ CAST-MAY-LINEAR?): every product field and every variant payload, in either
 \ payload form, instantiated over the value's own arguments and pushed on one
 \ row. Schemas index parameters by position, so the term must carry the
-\ family's argument count: the cast gate refuses any other count before its
+\ family's argument count: the cast gate rejects any other count before its
 \ walks.
 : MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
    term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;

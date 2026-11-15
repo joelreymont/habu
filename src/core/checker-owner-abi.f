@@ -84,7 +84,7 @@ $20000 constant BOUND-SEEDED
 3 constant BOUND-PENDING
 4 constant BOUND-UNRESOLVED
 \ The store cut back to the end ROWS-END-OFF read as a definition or evaluated
-\ buffer began, when the definition is refused or the buffer rolled back.
+\ buffer began, when the definition is rejected or the buffer rolled back.
 $1A0 constant RETRACT-ROWS-OFF
 $1A8 constant ROWS-END-OFF
 \ The does> clause record a replayed TRUSTED: definer publishes at its `;`: its

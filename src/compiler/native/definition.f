@@ -120,12 +120,6 @@ private
 : TRUST-SIG$ ( -- ptr u8 n )
    TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
-\ Register only after the scan has recorded the exact source spelling from the
-\ tape: the pending dictionary record holds only the bare tail of a qualified
-\ definition. Answers whether the checker rejected the row.
-: REGISTER-TRUST ( ptr u8 n ptr u8 n -- bool )
-   CHECK:ROW-DECLARED ;
-
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
@@ -186,10 +180,11 @@ public
 public
 
 \ A TRUSTED: definition's row, which no scan certified, and whether the checker
-\ rejected it. Run once the scan has named the unit.
+\ rejected it. Run once the scan has recorded the name's exact spelling from
+\ the tape: the pending dictionary record holds only a qualified name's tail.
 : DECLARE-ROW ( -- bool )
    TRUSTED? 0= if false exit then
-   NAME$ TRUST-SIG$ REGISTER-TRUST ;
+   NAME$ TRUST-SIG$ CHECK:ROW-DECLARED ;
 
 private
 

@@ -483,10 +483,10 @@ cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
 ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
 `UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
 last cell, which neither clears. Under `DERIVE addr` the accessor answers a
-span of the first N bytes. A record of more than 4096 such items is refused
-at the clause that passes it (`TYPE-DECL:E-TDECL-CAP`), and nested field types
-can still make `MAKE`'s effect too deep (7156). A record with a `BUFFER`
-refuses `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
+span of the first N bytes. A record of more than 4096 such items is rejected
+at the clause that passes it (`error[E-BAD-DECLARATION]`), and nested field
+types can still make `MAKE`'s effect too deep (`error[E-BAD-STORED-SIGNATURE]`).
+A record with a `BUFFER` rejects `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
 field and variant name.
 
 A multi-cell record is one logical value and lives inside checked definitions.

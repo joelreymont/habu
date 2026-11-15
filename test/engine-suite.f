@@ -588,7 +588,7 @@ REJECTION:CAPTURE
 s" a body leaving numbered type variables rejects" T-LABEL
 s" RSV46C ( -- ) RSV46" CHECK-CANDIDATE! 0 T=
 s" its help leaves nothing" T-LABEL
-REJECTION:BUFFER$ s" help: leave nothing after" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" = help: leave nothing after `RSV46`\n" CONTAINS? TTRUE
 s" its help offers no declaration" T-LABEL
 REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
 REJECTION:CAPTURE
@@ -599,7 +599,7 @@ defer T-NEST7 ( -- [ -- [ -- [ -- [ -- [ -- [ -- [ -- ] ] ] ] ] ] ] )
 s" a body leaving an unsaid effect rejects" T-LABEL
 s" RSN7C ( -- ) RSN7" CHECK-CANDIDATE! 0 T=
 s" its help leaves nothing" T-LABEL
-REJECTION:BUFFER$ s" help: leave nothing after" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" = help: leave nothing after `RSN7`\n" CONTAINS? TTRUE
 s" its help offers no declaration of the unsaid effect" T-LABEL
 REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
 REJECTION:CAPTURE
