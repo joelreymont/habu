@@ -1271,7 +1271,11 @@ private
    CHK-VERIFY-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF CHK-E-CHECK CHK-THROW ENDOF
+      refused OF
+         VERIFY-STOP {: rc:n :}
+         rc 1 >= rc 255 <= and if rc CHK-THROW then
+         CHK-E-CHECK CHK-THROW
+      ENDOF
       engine-provided OF
          s" check.f: the engine provides the source; it is not verified" CHK-OUT-LN
          CHK-E-USAGE CHK-THROW
