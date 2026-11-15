@@ -7,6 +7,7 @@
 \ libunistring's u8_casecmp, u8_casefold and u8_tolower with NULL language
 \ and normalization, so the case data is the installed library's. STORAGE
 \ CLASS. TASK-LOCAL: C's result cell, a TASK:+USERS row.
+\ U+03A3 lowers by Unicode's Final_Sigma as Rust's str::to_lowercase does.
 
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f
@@ -52,10 +53,79 @@ VERSIONED-LIBRARY unistring 5
 FUNCTION: COMPARE-CALL u8_casecmp ( ^u8 n ^u8 n n n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: FOLD-CALL u8_casefold ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: LOWER-CALL u8_tolower ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: CASED-CALL uc_is_property_cased ( u32 -- u8 ) ;FUNCTION
+FUNCTION: IGNORABLE-CALL uc_is_property_case_ignorable ( u32 -- u8 )
+;FUNCTION
 PROCESS-SYMBOLS
+FUNCTION: ALLOC-CALL malloc ( n -- nullable<u8> ) ;FUNCTION
 FUNCTION: RELEASE free ( ^u8 -- ) ;FUNCTION
 
-\ Runs MAP, FOLD-CALL or LOWER-CALL, on a valid span and answers its
+$3A3 constant CAPITAL-SIGMA
+$CF constant SMALL-LEAD
+$83 constant SMALL-TAIL
+$82 constant FINAL-TAIL
+
+: CASED? ( n -- bool ) CASED-CALL 0<> ;
+: IGNORABLE? ( n -- bool ) IGNORABLE-CALL 0<> ;
+
+\ The scalar at a cursor of valid UTF-8 and the cursor after it.
+: SCALAR@ ( ^u8 n n -- n n )
+   UTF8:NEXT MATCH UTF8:scalar-step
+      scalar OF ENDOF
+      raw-byte OF ENDOF
+   ;MATCH ;
+
+\ Whether the first scalar from a cursor that is not Case_Ignorable is
+\ Cased; false at the end.
+: CASED-AFTER? ( ^u8 n n -- bool )
+   {: text:^ size:n at:n :}
+   at begin dup size < while
+      text size rot SCALAR@ {: cp:n next:n :}
+      cp IGNORABLE? 0= if cp CASED? exit then
+      next
+   repeat
+   drop false ;
+
+\ Writes the sigma of the U+03A3 at a cursor: final when, past
+\ Case_Ignorable scalars by libunistring's tests, a Cased one precedes
+\ it and none follows. A scalar both Cased and Case_Ignorable is passed.
+: SIGMA! ( bool ^u8 n n -- )
+   {: before:bool text:^ size:n at:n :}
+   before text size at 2 + CASED-AFTER? 0= and
+   if FINAL-TAIL else SMALL-TAIL then
+   text at + 1+ c!
+   SMALL-LEAD text at + c! ;
+
+\ Lowers every U+03A3 in valid UTF-8 in place. The flag carried
+\ between turns is whether the last scalar not Case_Ignorable is Cased.
+: SIGMAS! ( ^u8 n -- )
+   {: text:^ size:n :}
+   false 0 begin dup size < while
+      {: before:bool at:n :}
+      text size at SCALAR@ {: cp:n next:n :}
+      cp CAPITAL-SIGMA = if before text size at SIGMA! then
+      cp IGNORABLE? if before else cp CASED? then next
+   repeat
+   2drop ;
+
+\ u8_tolower's schema. With no language, Final_Sigma is u8_tolower's
+\ one context-dependent mapping, so a copy whose capital sigmas are
+\ already lowered leaves it none to apply.
+: SIGMA-LOWER ( ^u8 n n n n ^u8 -- ^u8 )
+   {: text:^ size:n lang:n form:n buf:n out:^ :}
+   text size s" Σ" CONTAINS? 0= if
+      text size lang form buf out LOWER-CALL exit
+   then
+   size ALLOC-CALL MATCH nullable
+      none OF E-CASEFOLD throw ENDOF
+      some OF ENDOF
+   ;MATCH {: copy:^ :}
+   text copy size BYTE-COPY
+   copy size SIGMAS!
+   copy size lang form buf out LOWER-CALL
+   copy RELEASE ;
+
+\ Runs MAP, FOLD-CALL or SIGMA-LOWER, on a valid span and answers its
 \ owned result and that result's length.
 : ALLOCATE-MAP ( ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- ^u8 n )
    {: source:^ size:n map :}
@@ -103,17 +173,18 @@ public
    [: FOLD-CALL ;] MAP-INTO ;
 
 : LOWERED-BYTES ( ^u8 n -- n )
-   [: LOWER-CALL ;] MAPPED-BYTES ;
+   [: SIGMA-LOWER ;] MAPPED-BYTES ;
 
 : LOWER ( ^u8 n ^u8 n -- n )
-   [: LOWER-CALL ;] MAP-INTO ;
+   [: SIGMA-LOWER ;] MAP-INTO ;
 
 \ The second span is checked before the first is lowered, so nothing after
 \ ALLOCATE-MAP can throw and the owned result is always released.
 : LOWERS-TO? ( ^u8 n ^u8 n -- bool )
    {: source:^ size:n target:^ target-size:n :}
    target target-size VALID-UTF8
-   source size [: LOWER-CALL ;] ALLOCATE-MAP {: lowered:^ lowered-size:n :}
+   source size [: SIGMA-LOWER ;] ALLOCATE-MAP
+   {: lowered:^ lowered-size:n :}
    lowered lowered-size target target-size STR=
    lowered RELEASE ;
 

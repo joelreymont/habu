@@ -1,13 +1,16 @@
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
-\ and syncing, resizing, changing the mode of and seeking in a file. A refused
-\ PIPE, mark, read, write, sync, resize, mode change or seek, a write that takes
+\ syncing, resizing, changing the mode of and seeking in a file, and a
+\ close-on-exec duplicate. A refused PIPE, mark, read, write, sync, resize, mode
+\ change, seek or duplicate, a write that takes
 \ no byte and a count past the asked one are E-FS-IO, which TRY-WRITE-FULL
 \ answers as how far its write got; TRY-WRITE answers 0 for a full descriptor
 \ or a signal. A negative length or offset is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
-\ E-PROC-OUTPUT.
+\ E-PROC-OUTPUT. A refused read, write, sync, resize, mode change, seek,
+\ duplicate or FIFO open leaves its errno in FS:ERRNO, the write words' included; a refused mark,
+\ PIPE, poll or fcntl leaves FS:ERRNO as it was.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
@@ -107,7 +110,12 @@ FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 FUNCTION: CHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
 FUNCTION: SEEK-CALL lseek ( n n n -- n ) ;FUNCTION
+FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 0 constant SEEK-SET                  \ the same number on macOS and Linux
+
+\ Throws n with the failed libc call's errno as this task's FS:ERRNO.
+: ERRNO-FAIL ( n -- )
+   FFI:ERRNO FS:CAUSE! throw ;
 
 8 TASK:+USERS POLL-STORAGE u8
 : POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
@@ -161,7 +169,7 @@ public
    k 0= if E-FS-IO throw then
    FFI:ERRNO {: cause:n :}
    cause EINTR# = cause EAGAIN = or if 0 exit then
-   E-FS-IO throw ;
+   cause FS:CAUSE! E-FS-IO throw ;
 
 private
 
@@ -269,26 +277,33 @@ public
 \ Returns once the file's bytes and length, or a directory's entries, are on the
 \ device; on macOS that is the drive's cache, as PostgreSQL's default is.
 : SYNC ( fd -- )
-   FD>N SYNC-CALL 0<> if E-FS-IO throw then ;
+   FD>N SYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 \ Sets the file's length: bytes past it go and a shorter file grows with zero
 \ bytes. A descriptor opened for append writes next at the new end.
 : RESIZE ( fd n -- )
    {: f:fd len:n :}
    len 0 < if E-SPAN-LENGTH throw then
-   f FD>N len RESIZE-CALL 0<> if E-FS-IO throw then ;
+   f FD>N len RESIZE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 \ Sets the file's permission bits to n, as chmod(2) takes them.
 : MODE! ( fd n -- )
    {: f:fd mode:n :}
-   f FD>N mode CHMOD-CALL 0<> if E-FS-IO throw then ;
+   f FD>N mode CHMOD-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 \ Moves the descriptor's offset to n bytes from the file's start, where its
 \ next read or write begins.
 : SEEK ( fd n -- )
    {: f:fd at:n :}
    at 0 < if E-SPAN-LENGTH throw then
-   f FD>N at SEEK-SET SEEK-CALL 0 < if E-FS-IO throw then ;
+   f FD>N at SEEK-SET SEEK-CALL 0 < if E-FS-IO ERRNO-FAIL then ;
+
+\ A new close-on-exec descriptor for the same open file description, sharing
+\ its offset and status flags; the caller closes it.
+: DUPLICATE ( fd -- fd )
+   FD>N F-DUPFD-CLOEXEC 0 FCNTL-CALL {: new:n :}
+   new 0 < if E-FS-IO ERRNO-FAIL then
+   new >FD ;
 
 \ Marks the descriptor non-blocking, or leaves it so; a mark refused or not kept
 \ restores its flags.
@@ -314,7 +329,7 @@ public
    pa pu FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
    opened 0 < if
       FFI:ERRNO ENXIO = if OPTION:NONE exit then
-      E-FS-OPEN throw
+      E-FS-OPEN ERRNO-FAIL
    then
    \ F_SETFL 0 clears the status flags F_SETFL can change; of those, the open
    \ set only O_NONBLOCK, so this leaves the write end blocking.

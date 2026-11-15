@@ -1,8 +1,11 @@
 \ fs-lock.f - advisory exclusive flock on caller-held descriptors, binding only
 \ cooperating processes on one kernel. TRY never waits and answers false only
-\ when another holder blocks it; WAIT retries EINTR. Neither owns nor closes the
-\ descriptor. OPEN-DIR's descriptor is O_CLOEXEC so an exec child cannot prolong
-\ ownership. Other flock failures are E-FS-IO; an OPEN-DIR failure is E-FS-OPEN.
+\ when another holder blocks it; WAIT retries EINTR. RELEASE unlocks the open
+\ file description, so the lock goes even while another descriptor of it (a
+\ forked child's copy) stays open. None owns or closes the descriptor.
+\ OPEN-DIR's descriptor is O_CLOEXEC so an exec child cannot prolong ownership.
+\ Other flock failures are E-FS-IO with their errno in FS:ERRNO; an OPEN-DIR
+\ failure is E-FS-OPEN.
 \ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
 require src/lib/error.f
@@ -13,6 +16,7 @@ package FS-LOCK
 
 2 constant LOCK-EX
 4 constant LOCK-NB
+8 constant LOCK-UN               \ both targets' sys/file.h
 4 constant EINTR                 \ both targets' errno.h
 35 constant WOULD-BLOCK-MACOS
 11 constant WOULD-BLOCK-LINUX
@@ -33,6 +37,10 @@ FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 : WOULD-BLOCK ( -- n )
    HB-TARGET-MACOS? if WOULD-BLOCK-MACOS else WOULD-BLOCK-LINUX then ;
 
+\ A FUNCTION: call saves no cause of its own.
+: FLOCK-FAIL ( -- )
+   FFI:ERRNO FS:CAUSE! E-FS-IO throw ;
+
 public
 
 : OPEN-DIR ( ^u8 n -- fd )
@@ -43,13 +51,17 @@ public
 : TRY ( fd -- bool )
    FD>N LOCK-EX LOCK-NB or FLOCK-CALL 0= if true exit then
    FFI:ERRNO WOULD-BLOCK = if false exit then
-   E-FS-IO throw ;
+   FLOCK-FAIL ;
 
 : WAIT ( fd -- )
    {: f:fd :}
    begin
       f FD>N LOCK-EX FLOCK-CALL 0= if exit then
-      FFI:ERRNO EINTR <> if E-FS-IO throw then
+      FFI:ERRNO EINTR <> if FLOCK-FAIL then
    again ;
+
+: RELEASE ( fd -- )
+   FD>N LOCK-UN FLOCK-CALL 0= if exit then
+   FLOCK-FAIL ;
 
 ;package

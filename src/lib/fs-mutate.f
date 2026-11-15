@@ -20,9 +20,9 @@ package FS
 private
 $FFF constant MODE-PERM
 73 constant MODE-EXEC
-384 constant MODE-PRIVATE-FILE
 
 public
+384 constant MODE-PRIVATE-FILE
 448 constant MODE-PRIVATE-DIR
 
 private
@@ -478,6 +478,40 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 public
 : CLOSE-FD ( n -- n )
    CLOSE-CALL ;
+
+private
+\ CREATE-NEW's open flags, O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC. Darwin: xnu
+\ bsd/sys/fcntl.h. Linux: include/uapi/asm-generic/fcntl.h on every arch.
+: CREATE-NEW-FLAGS ( -- n )
+   HB-TARGET-MACOS? if $1 $200 or $800 or $1000000 or exit then
+   $1 $40 or $80 or $80000 or ;
+
+\ OPEN-RDWR-NOFOLLOW's open flags, O_RDWR|O_NOFOLLOW|O_CLOEXEC. Darwin: xnu
+\ bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h overrides the generic
+\ nofollow bit; x86-64 uses include/uapi/asm-generic/fcntl.h.
+: RDWR-NOFOLLOW-FLAGS ( -- n )
+   HB-TARGET-MACOS? if $2 $100 or $1000000 or exit then
+   HB-TARGET-LINUX-X86-64? if $2 $20000 or $80000 or exit then
+   $2 $8000 or $80000 or ;
+
+public
+\ A new file at the path, opened write-only and close-on-exec, with mode as
+\ open(2) applies it, under the umask. Any entry already at the path, a link
+\ included, dangling or not, is E-FS-OPEN with FS:ERRNO EEXIST; every other
+\ failure is E-FS-OPEN with its errno in FS:ERRNO.
+: CREATE-NEW ( ^u8 n n -- fd ) {: path:^ pathu mode :}
+   path pathu >PATHZ CREATE-NEW-FLAGS mode OPEN-CALL {: file:n :}
+   file 0 < if E-FS-OPEN ERRNO-FAIL then
+   file >FD ;
+
+\ The existing file at the path, opened for reading and writing, close-on-exec.
+\ A link as the last component is refused, never followed: E-FS-OPEN with
+\ FS:ERRNO the host's answer, ELOOP on Linux. Every failure is E-FS-OPEN with
+\ its errno in FS:ERRNO.
+: OPEN-RDWR-NOFOLLOW ( ^u8 n -- fd ) {: path:^ pathu :}
+   path pathu >PATHZ RDWR-NOFOLLOW-FLAGS 0 OPEN-CALL {: file:n :}
+   file 0 < if E-FS-OPEN ERRNO-FAIL then
+   file >FD ;
 
 private
 \ Create and open one candidate with the exclusive flags and mode: its

@@ -12,7 +12,9 @@ create TMP FS:PATHZ-CAP allot
 variable TMP-U
 variable ANCHOR
 variable OPEN-FDS
-create PATHS 25 PATH-CAP * allot
+create PATHS 35 PATH-CAP * allot
+73 constant MODE-0111
+448 constant MODE-0700
 create LONG PATH-CAP 1 + allot
 
 PROCESS-SYMBOLS
@@ -39,6 +41,16 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : DEEP-FILE ( -- ^u8 n ) 13 s" root/child/deep/file" PATH ;
 : DOT-DIR ( -- ^u8 n ) 14 s" root/child/.cache" PATH ;
 : DOT-FILE ( -- ^u8 n ) 15 s" root/child/.cache/a..b" PATH ;
+: SEARCH ( -- ^u8 n ) 25 s" search" PATH ;
+: SEARCH-A ( -- ^u8 n ) 26 s" search/a" PATH ;
+: SEARCH-B ( -- ^u8 n ) 27 s" search/a/b" PATH ;
+: SEARCH-FILE ( -- ^u8 n ) 28 s" search/a/b/f" PATH ;
+: SEARCH-LINK ( -- ^u8 n ) 29 s" search/l" PATH ;
+: SEARCH-LINK-B ( -- ^u8 n ) 30 s" search/l/b" PATH ;
+: LINKED ( -- ^u8 n ) 31 s" linked" PATH ;
+: LINKED-CHILD ( -- ^u8 n ) 32 s" linked/child" PATH ;
+: DOT-CHILD ( -- ^u8 n ) 33 s" root/./child" PATH ;
+: MISSING-DIR ( -- ^u8 n ) 34 s" root/missing" PATH ;
 
 : NONE-WITH ( option<fd> n -- ) {: o want:n :}
    o MATCH option
@@ -199,6 +211,27 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    loop
    s" repeated anchored reads leave no descriptors open" T-LABEL
    FD-COUNT before T= ;
+
+\ a grants search only: a path through it resolves, a read-open of it is
+\ EACCES. l is a link to a.
+: SEARCH-SETUP ( -- )
+   SEARCH FS:MAKE-DIR SEARCH-A FS:MAKE-DIR SEARCH-B FS:MAKE-DIR
+   SEARCH-FILE s" found" FS:WRITE-ALL
+   s" a" SEARCH-LINK FS:MAKE-SYMLINK
+   SEARCH-A MODE-0111 FS:CHMOD-MODE ;
+: SEARCH-OPENS ( -- )
+   s" a search-only directory above the path passes" T-LABEL
+   [: SEARCH-B FS:OPEN-DIR FS:CLOSE-DIR ;] catch 0 T=
+   SEARCH FS:OPEN-DIR {: top:fd :}
+   [: top s" a/b/f" s" found" READ-CHECK ;] catch 0 T=
+   s" a link above the path is refused" T-LABEL
+   [: SEARCH-LINK-B FS:OPEN-DIR drop ;] E-FS-OPEN TTHROWSQ
+   [: top s" l/b/f" READ$ drop ;] E-FS-OPEN TTHROWSQ
+   top FS:CLOSE-DIR ;
+\ REMOVE-TREE cannot list a search-only directory.
+: SEARCH-ONLY ( -- )
+   SEARCH-SETUP
+   [: SEARCH-OPENS ;] [: SEARCH-A MODE-0700 FS:CHMOD-MODE ;] finally ;
 
 HB-TARGET-LINUX-KERNEL? [if]
 FS-ABI:S-IFLNK constant S-IFLNK
@@ -373,10 +406,45 @@ HB-TARGET-LINUX-KERNEL? 0= [if]
 : NAMED ( -- ) ;
 [then]
 
+\ A new file of that name, written and read through the descriptor; only
+\ Linux has AT words that write.
+HB-TARGET-LINUX-KERNEL? [if]
+: WRITE-AT ( fd ^u8 n -- ) {: dir:fd name:^ u:n :}
+   dir FS:TEMP-AT {: t:fd :}
+   t s" written" FD:WRITE-FULL
+   t dir name u FS:TRY-LINK-AT TTRUE
+   t FS:CLOSE-DIR
+   dir name u s" written" READ-CHECK ;
+[then]
+HB-TARGET-LINUX-KERNEL? 0= [if]
+: WRITE-AT ( fd ^u8 n -- ) 2drop drop ;
+[then]
+
+: FOLLOWS-TO ( ^u8 n ^u8 n ^u8 n -- )
+   {: path:^ u:n file:^ fu:n name:^ nu:n :}
+   path u FS:OPEN-DIR-FOLLOW {: dir:fd :}
+   dir file fu s" original" READ-CHECK
+   dir name nu WRITE-AT
+   dir FS:CLOSE-DIR ;
+\ linked is a link to root.
+: FOLLOWS ( -- )
+   s" root" LINKED FS:MAKE-SYMLINK
+   s" a link above the last component is followed" T-LABEL
+   LINKED-CHILD s" file" s" via-link" FOLLOWS-TO
+   s" a link in the last component is followed" T-LABEL
+   LINKED s" child/file" s" via-last" FOLLOWS-TO
+   s" a . component resolves" T-LABEL
+   DOT-CHILD s" file" s" via-dot" FOLLOWS-TO
+   [: FILE FS:OPEN-DIR-FOLLOW drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOTDIR T=
+   [: MISSING-DIR FS:OPEN-DIR-FOLLOW drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOENT T= ;
+
 public
 : MAIN ( -- )
    T-RESET SETUP
-   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS NAMED ;]
+   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS
+      SEARCH-ONLY NAMED FOLLOWS ;]
    [: TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;
 ;package

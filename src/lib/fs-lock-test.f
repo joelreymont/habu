@@ -3,7 +3,8 @@
 \ Failure modes: a second process can take a live hold; close or process death
 \ leaves a hold behind; an exec child prolongs the parent's hold; an invalid
 \ descriptor is mistaken for contention; a regular file is opened as a directory;
-\ WAIT returns while another process still holds the lock, or without taking it.
+\ WAIT returns while another process still holds the lock, or without taking it;
+\ RELEASE leaves the lock held while its descriptor stays open.
 
 require src/lib/test.f
 require src/lib/fs-mutate.f
@@ -124,21 +125,44 @@ variable HELD-FD
    w FD>N close
    child EXPECT-CLEAN ;
 
+\ RELEASE frees the lock while its descriptor stays open: a second open file
+\ description, blocked before, takes it.
+: RELEASE-FREES ( -- )
+   ROOT$ FS-LOCK:OPEN-DIR {: first:fd :}
+   ROOT$ FS-LOCK:OPEN-DIR {: second:fd :}
+   first FS-LOCK:TRY TTRUE
+   second FS-LOCK:TRY TFALSE
+   first FS-LOCK:RELEASE
+   second FS-LOCK:TRY TTRUE
+   second FD>N close
+   first FD>N close ;
+
 : BAD-FD ( -- ) -1 >FD FS-LOCK:TRY drop ;
 : BAD-WAIT ( -- ) -1 >FD FS-LOCK:WAIT ;
+: BAD-RELEASE ( -- ) -1 >FD FS-LOCK:RELEASE ;
 : BAD-DIR ( -- )
    ROOT$ s" file" FILE-PATH FS:JOIN-PATH {: u:n :}
    FILE-PATH u s" x" FS:WRITE-ALL
    FILE-PATH u FS-LOCK:OPEN-DIR FD>N close ;
 
+\ The quotation, run on a closed descriptor, throws E-FS-IO with EBADF in
+\ FS:ERRNO; the cause is cleared first, so a stale one cannot pass.
+: BAD-EBADF ( [ -- ] -- )
+   FS:CAUSE-CLEAR
+   catch FS:ERRNO {: code:n cause:n :}
+   code E-FS-IO T=
+   cause FS:EBADF T= ;
+
 : ERRORS ( -- )
-   [: BAD-FD ;] E-FS-IO TTHROWSQ
-   [: BAD-WAIT ;] E-FS-IO TTHROWSQ
+   [: BAD-FD ;] BAD-EBADF
+   [: BAD-WAIT ;] BAD-EBADF
+   [: BAD-RELEASE ;] BAD-EBADF
    [: BAD-DIR ;] E-FS-OPEN TTHROWSQ ;
 
 : RUN ( -- )
    T-RESET SETUP
-   [: BUSY-AND-CLOSE DEATH-RELEASES WAIT-BLOCKS EXEC-DOES-NOT-INHERIT ERRORS ;] catch {: code:n :}
+   [: BUSY-AND-CLOSE DEATH-RELEASES WAIT-BLOCKS EXEC-DOES-NOT-INHERIT RELEASE-FREES
+      ERRORS ;] catch {: code:n :}
    ROOT$ FS:REMOVE-TREE
    code 0<> if code throw then
    T-REPORT ;

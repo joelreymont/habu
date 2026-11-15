@@ -4,15 +4,17 @@
 \ Failure modes: a bound value reads back as another kind or loses bytes;
 \ CHANGES or LAST-ROWID miss an insert; EXEC runs only a text's first
 \ statement; a transaction keeps a failed body's rows, swallows its throw or
-\ stays open; a throw in a statement's scope leaves the statement live, so
-\ CLOSE refuses; a malformed file, a full database or a held lock is thrown
-\ as another class; OPEN-READ follows a symlink, or writes.
+\ stays open; WITH-READ holds off a writer; a throw in a statement's scope
+\ leaves the statement live, so CLOSE refuses; a malformed file, a full
+\ database or a held lock is thrown as another class; OPEN-READ follows a
+\ symlink, or writes.
 \ A reused statement keeps a failed step's error, or logs it twice; a write
 \ that fails as it finishes, a RETURNING insert's or a COMMIT's, is dropped;
 \ a body hands back another scope's statement unnoticed; a text with a NUL or
 \ two statements runs in part; OPEN follows a symlink; an empty bind reads
 \ back NULL, or a bound buffer is read when the statement steps.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/test/stderr.f
@@ -191,6 +193,51 @@ create HELD 3 allot
    other s" SELECT count(*) FROM u WHERE v = 10" COUNT 1 T=
    other SQLITE:CLOSE ;
 
+\ ---- 3a: WITH-READ takes no write lock ------------------------------------
+
+: FAILING-READ ( SQLITE:connection -- )
+   {: c:SQLITE:connection :}
+   c [: c FAILING-BODY ;] SQLITE:WITH-READ ;
+
+: READ-ROLLBACK ( SQLITE:connection -- )
+   {: c:SQLITE:connection :}
+   [: c FAILING-READ ;] SQLITE:E-SQL TTHROWSQ
+   c s" SELECT count(*) FROM u WHERE v = 11" COUNT 0 T= ;
+
+\ a reads a row, then b, which waits for no lock, asks for the write lock.
+: READ-THEN-WRITE ( SQLITE:connection SQLITE:connection -- )
+   {: a:SQLITE:connection b:SQLITE:connection :}
+   a s" SELECT count(*) FROM u" COUNT drop
+   b s" BEGIN IMMEDIATE" SQLITE:EXEC
+   b s" ROLLBACK" SQLITE:EXEC ;
+
+: WRITE-HELD ( SQLITE:connection SQLITE:connection -- )
+   {: a:SQLITE:connection b:SQLITE:connection :}
+   a [: a b READ-THEN-WRITE ;] SQLITE:WITH-TRANSACTION ;
+
+: WRITE-REFUSED ( SQLITE:connection SQLITE:connection -- )
+   {: a:SQLITE:connection b:SQLITE:connection :}
+   [: a b WRITE-HELD ;] SQLITE:E-SQL TTHROWSQ ;
+
+\ SQLITE_BUSY is primary code 5, which the one logged line names.
+: BUSY ( SQLITE:connection SQLITE:connection -- )
+   {: a:SQLITE:connection b:SQLITE:connection :}
+   LOG$ STDERR:CAPTURE
+   [: a b WRITE-REFUSED ;]
+   [: STDERR:;CAPTURE ;] finally
+   LOG$ LOG-BUF LOG-CAP FS:READ-ALL {: n:n :}
+   LOG-BUF n LINES 1 T=
+   LOG-BUF n s" (extended code 5)" CONTAINS? TTRUE ;
+
+: READ-TX ( -- )
+   MAIN$ SQLITE:OPEN {: a:SQLITE:connection :}
+   MAIN$ SQLITE:OPEN {: b:SQLITE:connection :}
+   0 b SQLITE:BUSY-MS!
+   a READ-ROLLBACK
+   a [: a b READ-THEN-WRITE ;] SQLITE:WITH-READ
+   a b BUSY
+   a SQLITE:CLOSE b SQLITE:CLOSE ;
+
 \ ---- 6c: a body hands back another scope's statement ----------------------
 
 : SWAP-INNER ( SQLITE:statement SQLITE:connection -- SQLITE:statement )
@@ -304,7 +351,7 @@ create HELD 3 allot
    c SQLITE:CLOSE ;
 
 : CASES ( -- )
-   ON-MAIN FINALIZED BUSY-FINISH GARBAGE FULL LOCKED READ-ONLY ;
+   ON-MAIN READ-TX FINALIZED BUSY-FINISH GARBAGE FULL LOCKED READ-ONLY ;
 
 : RUN ( -- )
    T-RESET SETUP

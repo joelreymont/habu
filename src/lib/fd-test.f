@@ -1,7 +1,8 @@
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
 \ waits; a temp file cut back and appended to, a directory synced, and a temp
-\ file's mode changed and read from an offset.
+\ file's mode changed and read from an offset; a duplicated write end; a refused
+\ call's errno.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -33,6 +34,8 @@ $400000 constant PAYLOAD          \ 4 MiB: past any default pipe and Linux's pip
 1000000 constant STORM-LIMIT      \ profiler samples allowed; no case comes near it
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
+29 constant ESPIPE                \ the same number on Linux and macOS
+1 constant F-GETFD                \ the same number on Linux and macOS
 
 TYPED-VARIABLE SRC SPAN:span<u8>
 TYPED-VARIABLE DST SPAN:span<u8>
@@ -400,6 +403,51 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    [: RESIZE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
 
+: SEEK-PIPE ( -- )
+   ERR-FD @ >FD 0 SEEK ;
+
+: MODE-CLOSED ( -- )
+   ERR-FD @ >FD 416 MODE! ;
+
+\ A refused seek on a pipe and a refused mode change on a closed descriptor
+\ leave the call's errno in FS:ERRNO.
+: ERRNO-LEFT ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD>N ERR-FD !
+   FS:CAUSE-CLEAR
+   [: SEEK-PIPE ;] E-FS-IO TTHROWSQ
+   FS:ERRNO ESPIPE T=
+   r FD>N close
+   w FD>N close
+   FS:CAUSE-CLEAR
+   [: MODE-CLOSED ;] E-FS-IO TTHROWSQ
+   FS:ERRNO FS:EBADF T= ;
+
+
+\ The duplicate, close-on-exec where PIPE-PAIR's end is not, still carries bytes
+\ once the original is closed; end of file then shows no write end is left.
+: DUPLICATE-WRITE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   w DUPLICATE {: d:fd :}
+   w FD>N close
+   d FD>N F-GETFD 0 fcntl FD-CLOEXEC T=
+   d s" abc" WRITE-FULL
+   d FD>N close
+   r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
+   SMALL $ drop 3 s" abc" T$=
+   r FD>N close ;
+
+: DUPLICATE-ERR ( -- )
+   ERR-FD @ >FD DUPLICATE FD>N close ;
+
+: DUPLICATE-CLOSED ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD>N close
+   w FD>N close
+   r FD>N ERR-FD !
+   FS:CAUSE-CLEAR
+   [: DUPLICATE-ERR ;] E-FS-IO TTHROWSQ
+   FS:ERRNO FS:EBADF T= ;
 
 \ fd's SIGPIPE flag: macOS keeps one per open file description, Linux none.
 : NOSIGPIPE@ ( fd -- n )  FD>N F-GETNOSIGPIPE 0 fcntl ;
@@ -505,6 +553,9 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    DIR-SYNC
    MODE-THEN-SEEK
    ERRORS
+   ERRNO-LEFT
+   DUPLICATE-WRITE
+   DUPLICATE-CLOSED
    HELD-WRITE
    FULL-WRITE-OUTCOMES
    REFUSED-MARK

@@ -470,6 +470,97 @@ public
    FMT-LINK-TARGET FS:REMOVE-FILE ;
 ;package
 
+package FS-TEST
+PROCESS-SYMBOLS
+FUNCTION: UMASK-CALL umask ( u32 -- u32 ) ;FUNCTION
+1 constant F-GETFD
+3 constant F-GETFL
+3 constant ACCESS-MODE                  \ O_ACCMODE on both targets
+$192 constant MODE-0622
+create LOCK-PATH-BUF PATH-CAP allot
+create LOCK-LINK-BUF PATH-CAP allot
+variable CREATED-FD
+
+: LOCK-PATH$ ( ^u8 n -- ^u8 n )
+   FMT-ROOT$ 2swap LOCK-PATH-BUF FS:JOIN-PATH LOCK-PATH-BUF swap ;
+
+: LOCK-LINK$ ( ^u8 n -- ^u8 n )
+   FMT-ROOT$ 2swap LOCK-LINK-BUF FS:JOIN-PATH LOCK-LINK-BUF swap ;
+
+: CLOEXEC? ( fd -- bool )
+   FD>N F-GETFD 0 fcntl FD:FD-CLOEXEC and FD:FD-CLOEXEC = ;
+
+: ACCESS ( fd -- n )
+   FD>N F-GETFL 0 fcntl ACCESS-MODE and ;
+
+\ The new file's descriptor and mode under umask 0, which keeps the group and
+\ other write bits a default umask clears; the umask is restored first.
+: CREATED-MODE ( -- fd n )
+   0 UMASK-CALL {: saved:u32 :}
+   [: s" lock.new" LOCK-PATH$ MODE-0622 FS:CREATE-NEW FD>N CREATED-FD ! ;]
+   catch {: code:n :}
+   saved UMASK-CALL drop
+   code 0<> if code throw then
+   CREATED-FD @ >FD
+   s" lock.new" LOCK-PATH$ FS:STAT-MODE FMT-MODE-PERM and ;
+
+: CREATE-PRESENT ( -- )
+   s" lock.new" LOCK-PATH$ FMT-MODE-0600 FS:CREATE-NEW FD>N close ;
+
+: CREATE-DANGLING ( -- )
+   s" lock.dangling" LOCK-LINK$ FMT-MODE-0600 FS:CREATE-NEW FD>N close ;
+
+: OPEN-LINK ( -- )
+   s" lock.link" LOCK-LINK$ FS:OPEN-RDWR-NOFOLLOW FD>N close ;
+
+: OPEN-MISSING ( -- )
+   s" lock.missing" LOCK-PATH$ FS:OPEN-RDWR-NOFOLLOW FD>N close ;
+
+\ Run the quotation, which must throw E-FS-OPEN with cause in FS:ERRNO.
+: OPEN-REFUSED ( [ -- ] n -- ) {: cause:n :}
+   catch FS:ERRNO {: code:n got:n :}
+   code E-FS-OPEN T=
+   got cause T= ;
+
+public
+\ FS:CREATE-NEW makes a write-only, close-on-exec file at the mode asked, and
+\ refuses a present file and a dangling link alike with EEXIST.
+: CREATE-NEW ( -- )
+   s" a new file takes its mode and is write-only, close-on-exec" T-LABEL
+   CREATED-MODE {: file:fd mode:n :}
+   mode MODE-0622 T=
+   file ACCESS FS:O-WRONLY T=
+   file CLOEXEC? TTRUE
+   file FD>N close
+   s" an exclusive create of a present file is EEXIST" T-LABEL
+   [: CREATE-PRESENT ;] FS:EEXIST OPEN-REFUSED
+   s" lock.absent" LOCK-PATH$ s" lock.dangling" LOCK-LINK$ FS:MAKE-SYMLINK
+   s" an exclusive create of a dangling link is EEXIST" T-LABEL
+   [: CREATE-DANGLING ;] FS:EEXIST OPEN-REFUSED
+   s" lock.absent" LOCK-PATH$ FS:EXISTS? TFALSE
+   T-LABEL-CLEAR
+   s" lock.dangling" LOCK-LINK$ FS:REMOVE-FILE
+   s" lock.new" LOCK-PATH$ FS:REMOVE-FILE ;
+
+\ FS:OPEN-RDWR-NOFOLLOW opens a present file read-write and close-on-exec,
+\ refuses a link to it with ELOOP and a missing path with ENOENT.
+: OPEN-RDWR-NOFOLLOW ( -- )
+   s" lock.file" LOCK-PATH$ s" x" FS:WRITE-ALL
+   s" a no-follow open of a file is read-write, close-on-exec" T-LABEL
+   s" lock.file" LOCK-PATH$ FS:OPEN-RDWR-NOFOLLOW {: file:fd :}
+   file ACCESS FS:O-RDWR T=
+   file CLOEXEC? TTRUE
+   file FD>N close
+   s" lock.file" LOCK-PATH$ s" lock.link" LOCK-LINK$ FS:MAKE-SYMLINK
+   s" a no-follow open of a link is ELOOP" T-LABEL
+   [: OPEN-LINK ;] FS:ELOOP OPEN-REFUSED
+   s" a no-follow open of a missing path is ENOENT" T-LABEL
+   [: OPEN-MISSING ;] FS:ENOENT OPEN-REFUSED
+   T-LABEL-CLEAR
+   s" lock.link" LOCK-LINK$ FS:REMOVE-FILE
+   s" lock.file" LOCK-PATH$ FS:REMOVE-FILE ;
+;package
+
 : FMT-TEST-COPY ( -- )
    FMT-COPY-SRC FMT-COPY-DST FS:COPY-FILE-STREAM
    FMT-COPY-DST FS:FILE? TTRUE
@@ -1942,6 +2033,8 @@ public
    FMT-CHMOD-PATH FS:MODE-PRIVATE-DIR FS:CHMOD-MODE
    FMT-CHMOD-PATH FS:STAT-MODE FMT-MODE-PERM and FS:MODE-PRIVATE-DIR T=
    FS-TEST:HARD-LINK
+   FS-TEST:CREATE-NEW
+   FS-TEST:OPEN-RDWR-NOFOLLOW
    FMT-TEST-COPY
    FMT-TEST-NUL-SECOND-PATH
    FMT-TEST-STREAM-REFUSED-DST

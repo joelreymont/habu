@@ -1,10 +1,11 @@
 // view.js - the part of an MCP App's view that changes with a release, which
 // app.js imports from the server's code and starts. start(host), host {meta,
-// files, request, restart, carried}, puts view.html's style and markup in place
-// of the page's body, imports turn.js, viewport.js, page.js and socket.js from
-// blob: URLs after it, since page.js reads the document as it loads, opens the
-// view's socket (socket.js), mounts the module with an rpc bridge, and listens
-// to the page's field and drops. It resolves with the viewport, whose dispose
+// files, request, restart, carried, initialized}, asks for full screen at its
+// first start (mode below), puts view.html's style and markup in place of the
+// page's body, imports turn.js, viewport.js, page.js and socket.js from blob:
+// URLs after it, since page.js reads the document as it loads, opens the view's
+// socket (socket.js), mounts the module with an rpc bridge, and listens to the
+// page's field and drops. It resolves with the viewport, whose dispose
 // also ends the socket and removes the page's listeners, so a restart leaves
 // none of this view's.
 //
@@ -22,6 +23,11 @@
 //          at a time; a failed fetch, an error or a tool error (isError), is
 //          logged and the view runs on, so the next socket's view/code tries
 //          again
+//   mode   ui/request-display-mode {mode: "fullscreen"} through host.request,
+//          once, at the first start; a restart keeps the mode the view is in.
+//          It is not asked when initialized.hostContext.availableDisplayModes
+//          is a list without "fullscreen"; with no such list there is nothing
+//          to check against, and it is asked. A failure is logged
 //
 // page.js shows what the module sends and gives it the field's text and each
 // file dropped anywhere on the page. The module is the one path the
@@ -42,7 +48,17 @@ async function load(bytes) {
   try { return await import(url); } finally { URL.revokeObjectURL(url); }
 }
 
-export async function start({ meta, files, request, restart, carried }) {
+// Asks for full screen unless the host's modes are known and lack it.
+function fullscreen(request, initialized) {
+  const modes = initialized?.hostContext?.availableDisplayModes;
+  if (Array.isArray(modes) && !modes.includes("fullscreen")) return;
+  request("ui/request-display-mode", { mode: "fullscreen" }).then((r) => {
+    if ("error" in r) throw new Error(`ui/request-display-mode: ${JSON.stringify(r.error)}`);
+  }).catch((e) => console.error(e));
+}
+
+export async function start({ meta, files, request, restart, carried, initialized }) {
+  if (carried === null) fullscreen(request, initialized);
   const bytes = file(files, "module");
   const scripts = SCRIPTS.map((name) => file(files, name));
   document.body.innerHTML = new TextDecoder().decode(file(files, "view.html"));
