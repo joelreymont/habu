@@ -2,9 +2,9 @@
 \ of workers taking connections, and the calls SUBMIT queues, from one queue,
 \ one handler per request in a catch boundary (a throw answers 500 with the
 \ request id). A kept-alive connection waits for its next request parked with
-\ the listener, not a worker, so no idle connection delays a queued job. A
-\ handler runs once the
-\ head is read; the body is read when the handler asks for it (BODY$), and one
+\ the listener, not a worker, so no kept-alive connection delays a queued job;
+\ a newly accepted one waits for its first request on a worker, up to IDLE-MS.
+\ A handler runs once the head is read; the body is read when the handler asks for it (BODY$), and one
 \ it leaves unread closes the connection after the answer. Requires
 \ http-arena.f, http-request.f, http-response.f, http-router.f and
 \ http-static.f.
