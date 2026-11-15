@@ -530,9 +530,14 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `cdd-zz`" CDD-NOT-CERTIFIED
    s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
+   REJECTION:CAPTURE
    s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
-      S\" \"file\":\"<input>\",\"line\":1,\"column\":57,\"byte_start\":56,\"byte_end\":62,\"token\":\"cdd-zz\""
-      CDD-NOT-CERTIFIED
+      TEST-EVAL:RC  70 T=
+   REJECTION:BUFFER$ s\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"label\":\"unknown type\"" CONTAINS? TTRUE
+   \ The `}` closes the evaluated object: the token is the text's, not the file's.
+   REJECTION:BUFFER$ s\" \"token\":\"cdd-zz\"}" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
    s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL
    s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
