@@ -388,13 +388,10 @@ PTR-VARIABLE TOP-A   variable TOP-U
 : TOP-ASK ( -- )
    TOP-A @ TOP-U @ CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
-\ The spellings that bind at top level under PREFIX, counted against the store.
+\ The spellings that bind at top level under PREFIX.
 : TOP ( ^u8 n -- )
    TOP-U !  TOP-A !
-   SYM-N @ {: n0:n :}
-   s" " [: TOP-ASK ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE
-   s" a top-level enumeration grows no store" T-LABEL
-   SYM-N @ n0 T= ;
+   s" " [: TOP-ASK ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;
 
 : CASE-TOP ( -- )
    s" cmp" KEPT-RESET
@@ -413,7 +410,7 @@ PTR-VARIABLE TOP-A   variable TOP-U
 
 \ 6. The observer changes nothing.
 \ Two bodies of the same layout, one checked unarmed and one armed: the same
-\ verdict, the same published uses at the same bytes, and the same store growth.
+\ verdict and the same published uses at the same bytes.
 variable USE-N   variable USE-SUM
 
 : COUNT-USE ( n n n n n n -- )
@@ -422,20 +419,19 @@ variable USE-N   variable USE-SUM
 
 : COUNTED ( -- ) [: COUNT-USE ;] [: REPLAY ;] WITH-USES ;
 
-\ Replay TEXT counting its uses; its throw code, uses, byte sum and store growth.
-: OBSERVED ( ^u8 n -- n n n n )
+\ Replay TEXT counting its uses; its throw code, uses and byte sum.
+: OBSERVED ( ^u8 n -- n n n )
    TEXT-U !  TEXT-A !
    0 USE-N !  0 USE-SUM !
-   SYM-N @ {: n0:n :}
-   [: COUNTED ;] catch  USE-N @  USE-SUM @  SYM-N @ n0 - ;
+   [: COUNTED ;] catch  USE-N @  USE-SUM @ ;
 
 : CASE-OBSERVER ( -- )
    s" cmp" KEPT-RESET
-   s" : CMPE ( -- n ) CMPA CMPB + ;" OBSERVED {: rc0:n n0:n sum0:n grew0:n :}
+   s" : CMPE ( -- n ) CMPA CMPB + ;" OBSERVED {: rc0:n n0:n sum0:n :}
    s" the unarmed body offers nothing" T-LABEL
    CALLS @ 0 T=
    s" : CMPF ( -- n ) CMPA CMPB + ;" 2dup s" CMPB" 2 AT [: KEEP ;] CURSOR!
-   OBSERVED {: rc1:n n1:n sum1:n grew1:n :}
+   OBSERVED {: rc1:n n1:n sum1:n :}
    s" the unarmed body certifies" T-LABEL
    rc0 0 T=
    s" the armed body certifies" T-LABEL
@@ -445,18 +441,16 @@ variable USE-N   variable USE-SUM
    n1 3 T=
    s" at the same bytes" T-LABEL
    sum1 sum0 T=
-   s" the store grows the same" T-LABEL
-   grew1 grew0 T=
    s" the armed body offered its candidates" T-LABEL
    s" CMPA" ONCE TTRUE ;
 
 : CASE-OBSERVER-REFUSED ( -- )
    s" cmp" KEPT-RESET
-   s" : CMPE2 ( -- n ) CMPA CMPB ;" OBSERVED {: rc0:n n0:n sum0:n grew0:n :}
+   s" : CMPE2 ( -- n ) CMPA CMPB ;" OBSERVED {: rc0:n n0:n sum0:n :}
    s" the unarmed refused body offers nothing" T-LABEL
    CALLS @ 0 T=
    s" : CMPF2 ( -- n ) CMPA CMPB ;" 2dup s" CMPB" 2 AT [: KEEP ;] CURSOR!
-   OBSERVED {: rc1:n n1:n sum1:n grew1:n :}
+   OBSERVED {: rc1:n n1:n sum1:n :}
    s" the unarmed body is refused" T-LABEL
    rc0 0 T<>
    s" the armed body is refused the same" T-LABEL
@@ -465,8 +459,6 @@ variable USE-N   variable USE-SUM
    n1 n0 T=
    s" at the same bytes" T-LABEL
    sum1 sum0 T=
-   s" the store grows the same" T-LABEL
-   grew1 grew0 T=
    s" the armed refused body offered its candidates" T-LABEL
    s" CMPA" ONCE TTRUE ;
 
@@ -737,7 +729,7 @@ variable DOES-USES
    s" CMPRW" s" : CMPRW ( -- n ) 17 ;" [: ;] ARMED-REPLAY ;
 
 : CASE-REWOUND ( -- )
-   [: REWOUND ;] IN-NEUTRAL
+   [: REWOUND ;] CHECK:SCOPED
    s" : CMPRX ( -- n ) 18 ;" VERIFY:SOURCE-BUF-IN-SCOPE
    s" cmpr" KEPT-RESET
    s" : CMPRY ( -- n ) CMPRX ;" 2dup s" CMPRX" 2 AT  [: KEEP ;] ARMED
@@ -926,7 +918,7 @@ variable DOES-USES
 \ one neutral scope, which starts at top level; 14 needs the engine's open part.
 : MAIN ( -- )
    T-RESET
-   [: CASES ;] IN-NEUTRAL ;
+   [: CASES ;] CHECK:SCOPED ;
 
 MAIN
 

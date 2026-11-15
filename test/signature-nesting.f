@@ -487,10 +487,10 @@ public
 
 SIGNATURE-NESTING:RUN
 
-\ The mark covers this package alone.
+\ The source scan of a rendering statement marks the open package, and the mark
+\ covers it alone; the cases run in the scan's scope.
 package UNSEEN-NAMES
-CHECKER-UNSEEN-MARK
-SIGNATURE-NESTING:UNSEEN-CASES
+s\" s\" \" evaluate-closed" ' SIGNATURE-NESTING:UNSEEN-CASES VERIFY:SOURCE-BUF-THEN-IN-SCOPE
 ;package
 
 SIGNATURE-NESTING:REPORT

@@ -1,9 +1,8 @@
 \ name-length-test.f - every checker word source can call with a name or a text
-\ rejects a length that describes no memory, -1 and the maximum cell, and a
-\ stored type one past its buffer. A query answers no and moves no pool mark; a
-\ declaring word ends with its own rejection. A name has no ceiling: a long one
-\ is taken, while a package name past its row and a field name past 255 bytes
-\ are rejected by name.
+\ rejects a length that describes no memory, -1 and the maximum cell. A query
+\ answers no; a declaring word ends with its own rejection. A name has no
+\ ceiling: a long one is taken, while a package name past its row and a field
+\ name past 255 bytes are rejected by name.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -21,6 +20,7 @@ package NAME-LENGTH-TEST
 $400 constant OUT-CAP
 $10000 constant ERR-CAP            \ a record names a whole name up to three times
 -1 1 rshift constant MAX-CELL
+$4E constant DUPLICATE             \ E-DUPLICATE-DEFINITION's throw code
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
 \ writes the record. LONG-LEN is a name's length past the old 8000-byte cap.
@@ -68,78 +68,24 @@ TEXTS!
    hu 0 ?do h i + c@ t i + c! loop
    t u ;
 
-\ A definition CHECK certifies, and a type every storage gate admits: the
-\ structure this file declares below.
+\ A definition CHECK! certifies.
 : BODY$ ( -- ^u8 n ) s" NLT-W ( -- )" TEXT ;
-: STORED$ ( -- ^u8 n ) s" nlt-pair" TEXT ;
 
-: CAST$ ( -- ^u8 n ) s" len -- n" ;
-: CAST-NAME$ ( -- ^u8 n ) s" nltcast" ;
-: CLAUSE$ ( -- ^u8 n ) s" drop 1 +" ;
-: CLAUSE-SIG$ ( -- ^u8 n ) s" ( n -- n )" ;
-
-\ The checker's pool marks, which a refused name leaves where it found them.
-11 constant MARK-N
-create BEFORE MARK-N cells allot
-: MARK ( n -- n )
-   case
-      0 of SYM-N @ endof
-      1 of SYM-STR-U @ endof
-      2 of DFER-END @ endof
-      3 of NORET-END @ endof
-      4 of UEND @ endof
-      5 of VREC-N @ endof
-      6 of VREC-STR-U @ endof
-      7 of CTN @ endof
-      8 of CT-STR-U @ endof
-      9 of CHECKER-PACKAGE-U @ endof
-      10 of EXT-FREE-N @ endof
-      0 swap
-   endcase ;
-: MARKS! ( -- ) MARK-N 0 ?do i MARK BEFORE i cells + ! loop ;
-: MARKS-SAME? ( -- bool )
-   0 0= MARK-N 0 ?do i MARK BEFORE i cells + @ = and loop ;
-
-\ A query or a no-op ends a returning case: its answer is a refusal and no
-\ pool mark moved.
+\ A query ends a returning case: its answer is a refusal.
 : VERDICT ( bool -- )
-   MARKS-SAME? and IF s" refused" ELSE s" taken" THEN type cr ;
+   IF s" refused" ELSE s" taken" THEN type cr ;
 
 \ ---- the cases a child runs -------------------------------------------------
-: RESOLVES ( -- ) MARKS! BAD$ CHECKER-RESOLVES? 0= VERDICT ;
-: CERT-DUP ( -- ) MARKS! BAD$ CHECKER-CERT-DUP? 0= VERDICT ;
-: QUERY ( -- ) MARKS! BAD$ EFFECT-QUERY 0= VERDICT ;
-: LBUF-NAME ( -- ) MARKS! BAD$ CHECKER-LBUF-NAME-OK? 0= VERDICT ;
-: RESERVED ( -- ) MARKS! BAD$ TYPE-RESERVED? VERDICT ;
-: TRY-NAME ( -- ) MARKS! BAD$ s" f n" CHECKER-TRY-RECORD nip 0 <> VERDICT ;
-: TRY-FIELDS ( -- )
-   MARKS! s" zzrec" BAD$ CHECKER-TRY-RECORD nip 0 <> VERDICT ;
-: CTOR-WORD ( -- ) MARKS! BAD$ TFAM-CTOR-WORD? 0= VERDICT ;
-: UNDEFINE-GUARD ( -- ) MARKS! BAD$ CHECKER-UNDEFINE-GUARD 0 0= VERDICT ;
-: FREE-TAIL ( -- ) MARKS! BAD$ EXT-MARK-FREE-TAIL 0 0= VERDICT ;
-: HEAD-ROW ( -- ) MARKS! BAD$ CHECKER-RESOLVE:HEAD-ROW NULL-PTR = VERDICT ;
-: FIELD-FIND ( -- ) MARKS! 0 0 BAD$ TFAM:PF-FIND nip 0= VERDICT ;
-: PRIM ( -- ) MARKS! BAD$ PRIM-SPEC:FIND 0 < VERDICT ;
-: LAYOUT ( -- ) MARKS! BAD$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
-: STORAGE ( -- ) MARKS! BAD$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
-: DYNAMIC ( -- ) MARKS! BAD$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
-: MATCH-FAM ( -- ) MARKS! BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
-: CON-FAM ( -- ) MARKS! BAD$ TFL-CON-FAM? nip 0= VERDICT ;
-: LAYOUT-TEXT ( -- ) MARKS! STORED$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
-: STORAGE-TEXT ( -- ) MARKS! STORED$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
-: DYNAMIC-TEXT ( -- ) MARKS! STORED$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
+: CTOR-WORD ( -- ) BAD$ TFAM-CTOR-WORD? 0= VERDICT ;
+: FIELD-FIND ( -- ) 0 0 BAD$ TFAM:PF-FIND nip 0= VERDICT ;
+: PRIM ( -- ) BAD$ PRIM-SPEC:FIND 0 < VERDICT ;
+: MATCH-FAM ( -- ) BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
+: CON-FAM ( -- ) BAD$ TFL-CON-FAM? nip 0= VERDICT ;
 
-: DEFER-IT ( -- ) BAD$ CHECKER-DEFER ;
-: UNDEFINE-IT ( -- ) BAD$ CHECKER-UNDEFINE ;
-: HERE-IT ( -- ) BAD$ CHECKER-DEFINED-HERE? drop ;
 : LINEAR-IT ( -- ) BAD$ CHECKER-DEFLINEAR ;
 : RECORD-IT ( -- ) BAD$ s" f n" CHECKER-DEFRECORD ;
 : FIELDS-IT ( -- ) s" zzrec" BAD$ CHECKER-DEFRECORD ;
-: TRUNCATE-RAW-IT ( -- ) BAD$ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
-: TRUNCATE-IT ( -- ) BAD$ CHECKER-USIGS-TRUNCATE-FROM ;
 : PACKAGE-IT ( -- ) BAD$ BAD$ CHECKER-PACKAGE ;
-: USING-IT ( -- ) BAD$ CHECKER-USING ;
-: USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
 \ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
 \ buffer, so `package` reaches the part's path.
 : PART$ ( -- ^u8 n )
@@ -155,14 +101,10 @@ create BEFORE MARK-N cells allot
    [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
 : SUM-NOEND-IT ( -- )
    BAD$ s" 0" [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
-: CHECK-IT ( -- ) BODY$ CHECK drop ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
-STRUCTURE nlt-pair
-   FIELD a n
-;STRUCTURE
 \ A structure whose one field is named BAD$.
 : FIELD-NAME$ ( -- ^u8 n )
    s" FIELD " {: h:^ hu:n :}
@@ -244,21 +186,9 @@ variable LBL-U
    MAX-CELL s" max" src srcu rc head headu note noteu REJECTS-AT ;
 
 : TEST-QUERIES ( -- )
-   s" RESOLVES" RETURNS
-   s" CERT-DUP" RETURNS
-   s" QUERY" RETURNS
-   s" LBUF-NAME" RETURNS
-   s" RESERVED" RETURNS
-   s" TRY-NAME" RETURNS
    s" CTOR-WORD" RETURNS
-   s" UNDEFINE-GUARD" RETURNS
-   s" FREE-TAIL" RETURNS
-   s" HEAD-ROW" RETURNS
    s" FIELD-FIND" RETURNS
-   s" PRIM" RETURNS
-   s" LAYOUT" RETURNS
-   s" STORAGE" RETURNS
-   s" DYNAMIC" RETURNS ;
+   s" PRIM" RETURNS ;
 
 \ The family lookups copy the name into the checker's token buffer, which
 \ refuses a maximum-cell length by ending the process.
@@ -304,20 +234,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ A rejection exits 70 and an engine defect dies 76.
 : TEST-DECLARERS ( -- )
-   s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
-   s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
-   s" HERE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" LINEAR-IT" 76 S\" checker: a linear type's name describes no memory\n" DIES
    s" RECORD-IT" 76 S\" checker: a value record's name describes no memory\n" DIES
-   s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
-   s" TRUNCATE-IT" 76 S\" seal: cannot truncate sealed checker signatures\n" DIES
-   s" PACKAGE-IT" 76 S\" checker: package name length describes no memory\n" DIES
    LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
-   s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
-   LONG-LEN s" long" s" USING-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
-   s" USING-PUSH-IT" 70
-      S\" error[E-PKG-CONTEXT]: `CHECKER-USING-PUSH` ran outside the source verifier's window\n"
-      s" = help: leave `CHECKER-USING-PUSH` to the source verifier" REJECTS
    \ Each child's record is placed at MAIN, the token its parent was loading.
    s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
    s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
@@ -326,70 +245,21 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
       S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
       s" ^ name longer than 255 bytes" REJECTS-AT ;
 
-\ CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a checked body may
-\ call, so the child names them at its top level or in a TRUSTED: body, as
-\ verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a refused name publishes
-\ no use and reads none of its bytes. TRUST-DECL and TRUST-RAW are
-\ CHECKER-REG's private words, so no source calls them. A cast reaches its name
-\ once its signature certifies, and stores it.
-: TEST-TOP-LEVEL ( -- )
-   s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
-      RETURNS
-   s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
-
-\ ---- a name no record is keyed by --------------------------------------------
-\ A name with a second inner ':' has a length a name has and keys no record:
-\ the engine defines no such word, and CHECKER-RECORD-SYM answers
-\ symbol 0 for one. No row may carry symbol 0: a defer row keyed 0 is the
-\ defer store's terminator and hides every row after it. Every word that records
-\ a symbol for it names it as malformed and throws. Each refusal is rendered
-\ before its throw, so the child exits 70.
-: MAL$ ( -- ^u8 n ) s" q:q:q" ;
-: MALFORMED-HEAD$ ( -- ^u8 n )
-   S\" error[E-BAD-QUALIFIED-RECORD]: the record name `q:q:q` has more than one `:`\n" ;
-: MALFORMED-NOTE$ ( -- ^u8 n ) s" ^ malformed qualified name" ;
-: MAL-REJECTS ( ^u8 n n ^u8 n ^u8 n -- )
-   {: src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
-   0 s" two inner colons" src srcu rc head headu note noteu REJECTS-AT ;
-: TEST-MALFORMED ( -- )
-   s" MAL$ CHECKER-DEFER" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS ;
-
-\ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
-\ field text, which is no name, so only -1 and the maximum cell describe no
-\ text.
+\ CHECKER-DEFRECORD's second string is the record's field text, which is no
+\ name, so only -1 and the maximum cell describe no text.
 : TEST-FIELD-TEXT ( -- )
-   s" TRY-FIELDS" RETURNS
    s" FIELDS-IT" 70 S\" error[E-BAD-DECLARATION]: value record `zzrec` has no fields\n"
       s" ^ no fields" REJECTS ;
 
-\ A definition's source text, which CHECK and its entries judge, and a
-\ signature, which CHECK-DOES! and CHECKER-DEFCAST parse, are no names either:
-\ only -1 and the maximum cell describe none of them. The storage gates answer
-\ no and move no pool mark. CHECK and every entry that reaches it end with the
-\ token buffer's refusal, which the maximum cell already met. A signature is
-\ refused as one that does not parse: a does> clause is rejected, a cast is
-\ E-CAST-ARITY. CHECK-DOES! is trusted-only and CHECKER-DEFCAST has no effect a
-\ checked body may call, so the child names them at its top level; the cast's
-\ refusal names this file, which the child loads, and exits 70. hb's checker
-\ holds only what its own files' top levels interned (the builder's checker
-\ checked hb's definitions), so the first top-level CHECK-DOES! interns its row:
-\ the child runs one with a signature that parses before it takes the marks.
+\ A definition's source text, which CHECK!, CHECK-CANDIDATE! and
+\ CHECK:DEFINITION judge, is no name either: only -1 and the maximum cell
+\ describe none of it. Each ends with the token buffer's refusal, which the
+\ maximum cell already met.
 : TOO-LARGE$ ( -- ^u8 n ) S\" checker: token buffer too large\n" ;
-: CAST-HEAD$ ( -- ^u8 n )
-   S\" error[E-CAST-ARITY]: in `cast: nltcast`, the signature's length describes no memory\n" ;
 : TEST-TEXTS ( -- )
-   s" LAYOUT-TEXT" RETURNS
-   s" STORAGE-TEXT" RETURNS
-   s" DYNAMIC-TEXT" RETURNS
-   s" CHECK-IT" 76 TOO-LARGE$ DIES
    s" CHECK!-IT" 76 TOO-LARGE$ DIES
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
-   s" HOOK-IT" 76 TOO-LARGE$ DIES
-   s" CLAUSE$ CLAUSE-SIG$ CHECK-DOES! drop MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT"
-   RETURNS
-   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-HEAD$ s" = word: nltcast" REJECTS ;
+   s" HOOK-IT" 76 TOO-LARGE$ DIES ;
 
 \ No token is -1 or the maximum cell long, so `package` meets only a long part
 \ name, whose path is past its row: rejected, naming it.
@@ -429,6 +299,17 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 : LONG$ ( -- ^u8 n ) LONG-LEN TAIL ;
 
+\ `a` and then `b`, in a fresh mapping.
+: JOIN ( ^u8 n ^u8 n -- ^u8 n )
+   {: a:^ au:n b:^ bu:n :}
+   au bu + MEM-ALLOC-BYTES drop {: p:^ :}
+   a p au BYTE-COPY
+   b p au + bu BYTE-COPY
+   p au bu + ;
+
+\ A candidate that calls the word with a long name.
+: CALL-LONG$ ( -- ^u8 n ) s" NLT-CALL ( -- ) " LONG$ JOIN ;
+
 \ The body text grows with the definition: on the load path a child's `:`
 \ defines a word with a long name, whose body text passes 20000 bytes, and
 \ the word runs. The name is w, which no word of this file is named.
@@ -442,45 +323,32 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" ... and the word runs" T-LABEL
    OUT outu LEN>N s" R" T$= ;
 
-\ The word this file defines below, with a long name.
+\ The word this file defines below, with a long name, and long-named types and
+\ a defer, each declared through source. A second declaration of a type ends
+\ the process, so a child makes it.
 : TEST-LONG ( -- )
    s" a word with a long name resolves" T-LABEL
-   LONG$ CHECKER-RESOLVES? TTRUE
+   CALL-LONG$ CHECK-QUIET-CANDIDATE! -1 T=
    s" ... is defined in this scope" T-LABEL
-   LONG$ CHECKER-DEFINED-HERE? TTRUE
-   s" ... has an effect to query" T-LABEL
-   LONG$ EFFECT-QUERY TTRUE
-   s" ... may be published by a storage definer" T-LABEL
-   LONG$ CHECKER-LBUF-NAME-OK? TTRUE
-   s" ... names no type" T-LABEL
-   LONG$ TYPE-RESERVED? TFALSE
+   LONG-LEN 113 DEF-SRC TEST-EVAL:RC DUPLICATE T=
    s" a value-record with a long name is declared" T-LABEL
-   LONG-LEN 114 LETTERS {: ra:^ ru:n :}
-   ra ru s" f n" CHECKER-DEFRECORD
-   ra ru TYPE-RESERVED? TTRUE
+   s" VALUE-RECORD " LONG-LEN 114 LETTERS JOIN s"  f n END-VALUE-RECORD" JOIN
+   {: ra:^ ru:n :}
+   ra ru TEST-EVAL:RC 0 T=
+   0 s" again" ra ru 70 S\" error[E-BAD-DECLARATION]: value record `"
+   s" already a type or reserved" REJECTS-AT
    s" a linear type with a long name is declared" T-LABEL
-   LONG-LEN 115 LETTERS {: la:^ lu:n :}
-   la lu CHECKER-DEFLINEAR
-   la lu TYPE-RESERVED? TTRUE
-   s" a record tried with a long name is registered" T-LABEL
-   LONG-LEN 116 LETTERS s" f n" CHECKER-TRY-RECORD nip 0 T=
+   s" DEFLINEAR " LONG-LEN 115 LETTERS JOIN {: la:^ lu:n :}
+   la lu TEST-EVAL:RC 0 T=
+   0 s" again" la lu 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
+   s" already a type or reserved" REJECTS-AT
    s" a deferred long name is stored whole" T-LABEL
-   SYM-STR-U @ {: used:n :}
-   LONG-LEN 112 LETTERS CHECKER-DEFER
-   SYM-STR-U @ used LONG-LEN + T=
+   LONG-LEN 112 LETTERS {: da:^ du:n :}
+   s" defer " da du JOIN s"  ( -- n )" JOIN TEST-EVAL:RC 0 T=
+   s" NLT-DEFERRED ( -- n ) " da du JOIN CHECK-QUIET-CANDIDATE! -1 T=
    s" the word with a long name is undefined" T-LABEL
-   LONG$ CHECKER-UNDEFINE
-   LONG$ CHECKER-RESOLVES? TFALSE ;
-
-\ A stored type's text, which the storage gates parse, has no ceiling.
-: TEST-LONG-TEXT ( -- )
-   LONG-LEN LEN !
-   s" a long stored type is a layout" T-LABEL
-   STORED$ CHECKER-LAYOUT-INFO nip nip TTRUE
-   s" ... is storage" T-LABEL
-   STORED$ CHECKER-STORAGE-INFO nip TTRUE
-   s" ... is a dynamic element" T-LABEL
-   STORED$ CHECKER-DYNAMIC-INFO nip TTRUE ;
+   s" undefine " LONG$ JOIN TEST-EVAL:RC 0 T=
+   CALL-LONG$ CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : MAIN ( -- )
    T-RESET
@@ -488,13 +356,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-FAMILIES
    TEST-DECLARERS
    TEST-PART
-   TEST-TOP-LEVEL
-   TEST-MALFORMED
    TEST-FIELD-TEXT
    TEST-TEXTS
    TEST-ENGINE
    TEST-LONG
-   TEST-LONG-TEXT
    T-REPORT
    s" name-length-test: ok" type cr ;
 

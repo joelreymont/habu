@@ -25,23 +25,13 @@ variable INC-MAIN-U
 variable INC-DUP-U
 TYPED-VARIABLE LABEL-A ^u8
 variable LABEL-U
-TYPED-VARIABLE CANDIDATE-A ^u8
-variable CANDIDATE-U
-variable CANDIDATE-VERDICT
 
 : LABEL$ ( -- ^u8 n )
    LABEL-A @ LABEL-U @ ;
 
-: CANDIDATE$ ( -- ^u8 n )
-   CANDIDATE-A @ CANDIDATE-U @ ;
-
 : LABEL! ( ^u8 n -- ) {: a:^ u:n :}
    u LABEL-U !
    a LABEL-A ! ;
-
-: CANDIDATE! ( ^u8 n -- ) {: a:^ u:n :}
-   u CANDIDATE-U !
-   a CANDIDATE-A ! ;
 
 : EMIT-LONG-NAME ( -- )
    LONG-NAME-LEN NAME-CHAR GE-SRC-REPEAT-C ;
@@ -557,38 +547,6 @@ variable CANDIDATE-VERDICT
 : CHECK-BUF-BAD ( n ^u8 n ^u8 n -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS
-   label labelu GT-PROGRESS-PASS ;
-
-: CANDIDATE-ACT ( -- )
-   CANDIDATE$ CHECK-CANDIDATE! CANDIDATE-VERDICT ! ;
-
-: CANDIDATE-RC ( n -- n ) {: rc:n :}
-   rc 0 <> if rc exit then
-   CANDIDATE-VERDICT @ 0= if $46 exit then
-   0 ;
-
-\ The candidate's captured rejections are its stderr, as a child's would be.
-: CANDIDATE-STORE ( n -- ) {: rc:n :}
-   rc CANDIDATE-RC PROCESS-ENDING:EXITED GT-OUTCOME!
-   0 GT-OUT-U !
-   REJECTION:BUFFER-OFF
-   REJECTION:BUFFER$ {: a:^ u:n :}
-   u GT-ERR-CAP > if E-STR-CAPACITY throw then
-   a GT-ERR-BUF u BYTE-COPY
-   u GT-ERR-U ! ;
-
-: CANDIDATE-RUN ( ^u8 n ^u8 n -- ) {: body:^ bodyu:n label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   body bodyu CANDIDATE!
-   -1 CANDIDATE-VERDICT !
-   REJECTION:CAPTURE
-   [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
-
-: CANDIDATE-BAD ( ^u8 n n ^u8 n ^u8 n -- )
-   {: body:^ bodyu:n rc:n needle:^ needleu:n label:^ labelu:n :}
-   body bodyu label labelu CANDIDATE-RUN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
    label labelu GT-PROGRESS-PASS ;
@@ -1180,16 +1138,6 @@ variable CANDIDATE-VERDICT
    s" gd" GE-OUT-LINE
    SB$ s" hb structures output" GE-EXPECT-OUT ;
 
-: STRUCTURE-SETUP ( -- )
-   GE-EVAL-MARK
-   GE-EVAL-CAPTURE
-   s" structures byte-field checker setup" GE-EXPECT-OK
-   s" structures byte-field checker setup" GE-EXPECT-SILENT ;
-
-: STRUCTURE-BAD ( -- )
-   s" GD-BAD-FLAGS ( ^a -- n ) POINT.FLAGS @"
-   $46 s" error[E-MISMATCH]: `@` takes ^a; the stack holds ^u8" s" structures reject byte field cell load" CANDIDATE-BAD ;
-
 : STRUCTURE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1206,9 +1154,9 @@ variable CANDIDATE-VERDICT
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
    s" CFIELD: POINT.FLAGS" GE-SRC-LINE
    s" END-STRUCTURE" GE-SRC-LINE
-   STRUCTURE-SETUP
-   STRUCTURE-BAD
-   GE-EVAL-FORGET ;
+   s" : GD-BAD-FLAGS ( ^a -- n ) POINT.FLAGS @ ;" GE-SRC-LINE
+   $46 s" error[E-MISMATCH]: `@` takes ^a; the stack holds ^u8" s" structures reject byte field cell load"
+   RUN-BAD-SOURCE ;
 
 : ENUMS ( -- )
    GE-HB-RESET

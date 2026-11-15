@@ -22,16 +22,18 @@ package TOOL-REPLAY
 \ take and leave nothing.
 CAST: ACTION ( n -- [ -- ] )
 
-public
-
-\ OPEN opens a package-neutral scope, then the window the declaration owner's
-\ start opens in it; CLOSE undoes both and every record the scope published.
-: OPEN ( -- )
-   CHECKER-SCOPE-START-NEUTRAL
+: WINDOW-START ( -- )
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT ACTION execute ;
 
-: CLOSE ( -- )
-   NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT ACTION execute
-   CHECKER-SCOPE-DONE ;
+: WINDOW-DONE ( -- )
+   NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT ACTION execute ;
+
+public
+
+\ RUN runs q in a checker scope, inside the window the declaration owner's
+\ start opens; the window's done runs however q ends, and the scope's close
+\ undoes every record it published.
+: RUN ( [ -- ] -- ) {: q :}
+   [: WINDOW-START q [: WINDOW-DONE ;] finally ;] CHECK:SCOPED ;
 
 ;package

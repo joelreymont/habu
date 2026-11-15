@@ -56,7 +56,7 @@ public
       CHECKER-REJECT-RC REJECTION:STOP
    then
    kw ku na nu REJECTION:NOT-A-NAME
-   STORAGE-LINE-TOKEN {: ba:^ bu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: ba:^ bu:n :}
    bu 0= IF na nu VNOM:MINT EXIT THEN
-   bu 1 = IF ba c@ 92 = IF ba STORAGE-UNREAD  na nu VNOM:MINT EXIT THEN THEN
+   bu 1 = IF ba c@ 92 = IF ba LBUF:STORAGE-UNREAD  na nu VNOM:MINT EXIT THEN THEN
    na nu ba bu VNOM:MINT-OVER ;

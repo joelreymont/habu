@@ -240,14 +240,14 @@ public
 
 : DECLARE ( -- )
    SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: na:^ nu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if
       s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: ta:^ tu:n :}
-   na nu na nu LBUF-NAME-OK? 0= if exit then
-   na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
-   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
+   na nu na nu LBUF:LBUF-NAME-OK? 0= if exit then
+   na nu s" -RESERVE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if
       drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT exit
    then
@@ -255,10 +255,10 @@ public
    na nu CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ta tu CHILD drop
    here {: v:^ :}
    WIDTH-OFF SCRATCH-ALLOT  bytes ,
-   na nu s" -RESERVE" LBUF-SUFFIXED CHILD-ABI:RESERVE
-   ['] ENSURE AS-ENTRY s" " CHILD drop  v LDEFER-CELL
-   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:RELEASE
-   ['] EMPTY AS-ENTRY s" " CHILD drop  v LDEFER-CELL ;
+   na nu s" -RESERVE" LBUF:LBUF-SUFFIXED CHILD-ABI:RESERVE
+   ['] ENSURE AS-ENTRY s" " CHILD drop  v LBUF:LDEFER-CELL
+   na nu s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:RELEASE
+   ['] EMPTY AS-ENTRY s" " CHILD drop  v LBUF:LDEFER-CELL ;
 
 \ `HEAP NAME t` declares NAME-NEW ( -- ^t ), a fresh zero-filled record of
 \ `t`, and NAME-RELEASE ( ^t -- ), which unmaps it; a pointer kept across
@@ -268,21 +268,21 @@ public
 \ holds the declared type's width.
 : DECLARE-HEAP ( -- )
    SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: na:^ nu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if
       s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: ta:^ tu:n :}
+   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if exit then
-   na nu s" -NEW" LBUF-SUFFIX-OK? 0= if exit then
-   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -NEW" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if
       drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT exit
    then
    {: bytes:n :}
-   na nu s" -NEW" LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
+   na nu s" -NEW" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
    ['] MAP-RECORD AS-ENTRY ta tu CHILD drop  bytes ,
-   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
+   na nu s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
    ['] UNMAP-RECORD AS-ENTRY ta tu CHILD drop  bytes , ;
 
 seal-package

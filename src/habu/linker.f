@@ -55,6 +55,8 @@ EXPORT CHECK:READ-ALIAS
 EXPORT CHECK:READ-FACTS
 EXPORT CHECK:READ-UNDEFINE
 EXPORT CHECK:AMENDED
+EXPORT CHECK:PRIMITIVE-FACTS
+EXPORT CHECK:OWNED-FACTS
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -5606,7 +5608,7 @@ TYPED-VARIABLE EXITER [ -- ]
       s" , which an owned row of " SAY  pa pu SAY  s"  names" SAY  SAY-CR
       E-COMP-STATE throw
    then
-   pa pu na nu CHECK:OWNED-FACTS {: a:^ u:n :}
+   pa pu na nu OWNED-FACTS {: a:^ u:n :}
    u 0= if
       s" linker: no facts text says owned primitive " SAY
       pa pu SAY  s" :" SAY  na nu SAY  SAY-CR

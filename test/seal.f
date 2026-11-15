@@ -69,12 +69,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ engine word (xref.f), well below the watermark.
 : SLV-FORGET-ENGINE-FORGE$ ( -- ^u8 n )
    SB-RESET
-   S\" s\" WORDS\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" WORDS\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-HIDE-ENGINE-FORGE$ ( -- ^u8 n )
    SB-RESET
-   S\" s\" WORDS\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" WORDS\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 \ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and
@@ -82,12 +82,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ any engine definition.
 : SLV-FORGET-TAIL-FORGE$ ( -- ^u8 n )
    SB-RESET
-   S\" s\" SCRIPT-ARGV$\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" SCRIPT-ARGV$\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-HIDE-TAIL-FORGE$ ( -- ^u8 n )
    SB-RESET
-   S\" s\" SCRIPT-ARGV$\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" SCRIPT-ARGV$\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 \ Public ndict! may forget user definitions, but it cannot retire the sealed
@@ -107,22 +107,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : SLF-RF ( -- ) 0 0 record-facts! ; SLF-RF" SB-APPEND SLV-LF
    SB$ ;
 
-\ Direct checker signature-registry truncation bypasses the FORGET/HIDE index
-\ guard but would forget an engine word's checker signature so it could be
-\ redefined (a spoof). Only the engine calls CHECKER-USIGS-TRUNCATE-FROM, so a
-\ post-seal call is an engine defect (status 76).
-: SLV-USIG-TRUNC-FORGE$ ( -- ^u8 n )
-   SB-RESET
-   S\" s\" WORDS\" CHECKER-USIGS-TRUNCATE-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
 \ A user mark defined after the seal is above the watermark, so FORGET/HIDE of
 \ it stays a working round-trip (retire the user tail, redefine).
 : SLV-FORGET-USER-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
    s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
-   S\" s\" SLF-UMARK\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" SLF-UMARK\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
    s" : SLF-UB ( -- n ) 2 ;" SB-APPEND SLV-LF
    s" SLF-UB . cr" SB-APPEND SLV-LF
    SB$ ;
@@ -131,7 +122,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
    s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
-   S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   S\" s\" SLF-UMARK\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-STORE! ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
@@ -173,10 +164,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ERR$ h hu CONTAINS? TTRUE ;
 
 : SLV-FORGET-HELP$ ( -- ^u8 n )
-   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" FORGET-DEFS-FROM`\n" ;
+   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" XREF:FORGET-DEFS-FROM`\n" ;
 
 : SLV-HIDE-HELP$ ( -- ^u8 n )
-   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" HIDE-DEFS-FROM`\n" ;
+   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" XREF:HIDE-DEFS-FROM`\n" ;
 
 : SLV-ASSERT-OK ( -- )
    SLV-EXITED @ TTRUE
@@ -284,21 +275,19 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-NEGATIVES-TRUNCATE ( -- )
    s" FORGET-DEFS-FROM of an engine def is rejected" T-LABEL
    SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `FORGET-DEFS-FROM` cannot remove\n"
+   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `XREF:FORGET-DEFS-FROM` cannot remove\n"
    SLV-FORGET-HELP$ SLV-ASSERT-REJECT
    s" HIDE-DEFS-FROM of an engine def is rejected" T-LABEL
    SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `HIDE-DEFS-FROM` cannot remove\n"
+   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
    SLV-HIDE-HELP$ SLV-ASSERT-REJECT
-   s" direct CHECKER-USIGS-TRUNCATE-FROM is a defect" T-LABEL
-   SLV-USIG-TRUNC-FORGE$ SLV-SUBJECT 76 SLV-ASSERT-RC
    s" FORGET-DEFS-FROM of the script-argv tail is rejected" T-LABEL
    SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `FORGET-DEFS-FROM` cannot remove\n"
+   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:FORGET-DEFS-FROM` cannot remove\n"
    SLV-FORGET-HELP$ SLV-ASSERT-REJECT
    s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
    SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `HIDE-DEFS-FROM` cannot remove\n"
+   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
    SLV-HIDE-HELP$ SLV-ASSERT-REJECT
    s" public ndict! continuation cannot cross the engine watermark" T-LABEL
    SLV-NDICT-CONTINUATION-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL

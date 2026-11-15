@@ -25,15 +25,15 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 \ Makes NAME+SFX of SHAPE over the routine's ENTRY, and lays its width cell.
 : MAKE ( ^u8 n ^u8 n n n ^u8 n n -- )
    {: name:^ nameu:n sfx:^ sfxu:n shape:n entry:n type:^ typeu:n width:n :}
-   name nameu sfx sfxu LBUF-SUFFIXED shape entry type typeu CHILD drop
+   name nameu sfx sfxu LBUF:LBUF-SUFFIXED shape entry type typeu CHILD drop
    width , ;
 
 \ Whether neither of NAME's words is taken in the current section; a taken one
 \ is rejected at NAME.
 : FREE? ( ^u8 n -- bool )
    {: name:^ nameu:n :}
-   name nameu s" -NEW" LBUF-SUFFIX-OK? dup 0= if exit then drop
-   name nameu s" -NEW-DISPOSE" LBUF-SUFFIX-OK? ;
+   name nameu s" -NEW" LBUF:LBUF-SUFFIX-OK? dup 0= if exit then drop
+   name nameu s" -NEW-DISPOSE" LBUF:LBUF-SUFFIX-OK? ;
 
 \ The open package's wordlist for the section other than MODE's.
 : OTHER-WID ( n -- n ) {: mode:n :}
@@ -43,7 +43,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 \ NAME+SFX taken in the wordlist WID is rejected at NAME.
 : OTHER-FREE ( ^u8 n ^u8 n n -- )
    {: name:^ nameu:n sfx:^ sfxu:n wid:n :}
-   name nameu sfx sfxu LBUF-SUFFIXED {: a:^ u:n :}
+   name nameu sfx sfxu LBUF:LBUF-SUFFIXED {: a:^ u:n :}
    a u wid search-wl 0 <> if a u name nameu CHECK:REJECT-DUPLICATE then ;
 
 \ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
@@ -53,8 +53,8 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
-   CHECKER-QTAIL$ sfx sfxu LBUF-SUFFIXED wid search-wl 0= if exit then
-   name nameu sfx sfxu LBUF-SUFFIXED name nameu CHECK:REJECT-DUPLICATE ;
+   CHECKER-QTAIL$ sfx sfxu LBUF:LBUF-SUFFIXED wid search-wl 0= if exit then
+   name nameu sfx sfxu LBUF:LBUF-SUFFIXED name nameu CHECK:REJECT-DUPLICATE ;
 
 \ NAME's words taken in the section the declaration does not write are
 \ rejected at NAME: a qualified Q:TAIL writes Q's public one.
@@ -75,11 +75,11 @@ public
 \ bare calls resolve private-first.
 : RUN ( -- )
    SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: name:^ nameu:n :}
    nameu 0= if
       s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
+   LBUF:STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
    name nameu FREE? 0= if exit then
    name nameu OTHERS-FREE

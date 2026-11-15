@@ -873,28 +873,35 @@ variable RP-DICT
 : DICT-MARK ( -- ) DICT-RECS RP-DICT ! ;
 : DICT-SAME ( -- ) DICT-RECS RP-DICT @ T= ;
 
+\ A replayed STRUCTURE registers its family: a checked MAKE call resolves in the
+\ scope it was replayed in, and so does a field typed by that family.
+: RP-SD ( -- )
+   s" rpsd" s" FIELD one n FIELD two n ;STRUCTURE" RP-TRY 0 T=
+   s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" RP-TRY 0 T= ;
+
+\ Header clauses replay too; derived EQ calls rows only the replay recorded, so
+\ it runs in the check tool's replay scope (test/replay-scope.f).
+: RP-SD-HEADER ( -- )
+   s" rpsdh" s" POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
+   RP-TRY 0 T= ;
+
+\ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
+: RP-SDBUF ( -- )
+   s" rpsdbuf" s" FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" RP-TRY 0 T=
+   s" SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
+
 private
 ;package
 
-\ A replayed STRUCTURE registers its family: a checked MAKE call resolves while the
-\ neutral pair is open, and the native dictionary does not move (DICT-SAME).
+\ The native dictionary does not move (DICT-SAME).
 struct-replay-test:DICT-MARK
-CHECKER-SCOPE-START-NEUTRAL
-s" rpsd" s" FIELD one n FIELD two n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
-s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-CHECKER-SCOPE-FINALIZE
+' struct-replay-test:RP-SD CHECK:SCOPED
 struct-replay-test:DICT-SAME
 
-\ Header clauses replay too; derived EQ calls rows only the replay recorded, so it
-\ runs in the check tool's replay scope (test/replay-scope.f).
-TOOL-REPLAY:OPEN
-s" rpsdh" s" POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
-struct-replay-test:RP-TRY 0 T=
-TOOL-REPLAY:CLOSE
-
-\ A field typed by a family registered through an earlier replay resolves.
-s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+' struct-replay-test:RP-SD-HEADER TOOL-REPLAY:RUN
 
 \ A malformed replayed STRUCTURE reports through the same renderer as a live one.
 DECL-DIAG:PROSE
@@ -1696,11 +1703,6 @@ s" qqqq`, which takes a scope or region" DECL-DIAG:HAS? TTRUE
 s" a pointer cannot reach `" nip TFAM:TF-NAME-MAX +  s" `, which takes a scope or region" nip + T=
 DECL-DIAG:OFF
 
-\ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
-CHECKER-SCOPE-START-NEUTRAL
-s" rpsdbuf" s" FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
-s" SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-s" SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-CHECKER-SCOPE-FINALIZE
+' struct-replay-test:RP-SDBUF CHECK:SCOPED
 
 T-REPORT

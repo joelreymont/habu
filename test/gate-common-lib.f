@@ -29,10 +29,6 @@ variable GE-SRC-U
 variable GE-RD
 variable GE-INFD
 variable GE-ARGV-U
-variable GE-EVAL-CP
-variable GE-EVAL-NDICT
-variable GE-EVAL-CURRENT
-variable GE-EVAL-JSON-DIAGS
 TYPED-VARIABLE GE-EVAL-SRC-A ^u8
 variable GE-EVAL-SRC-U
 
@@ -340,20 +336,6 @@ variable GE-EVAL-SRC-U
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;
 
-: GE-EVAL-MARK ( -- )
-   CHECKER-SCOPE-START
-   cp@ GE-EVAL-CP !
-   ndict@ GE-EVAL-NDICT !
-   get-current GE-EVAL-CURRENT !
-   REJECTION:JSON @ GE-EVAL-JSON-DIAGS ! ;
-
-: GE-EVAL-FORGET ( -- )
-   CHECKER-SCOPE-DONE
-   GE-EVAL-NDICT @ ndict!
-   GE-EVAL-CP @ cp!
-   GE-EVAL-CURRENT @ set-current
-   GE-EVAL-JSON-DIAGS @ REJECTION:JSON ! ;
-
 : GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
 
@@ -372,13 +354,6 @@ variable GE-EVAL-SRC-U
    q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
    GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
    outu erru rc PROCESS-ENDING:EXITED GE-STORE-OUTCOME ;
-
-: GE-EVAL-CAPTURE-SRC ( ^u8 n -- )
-   GE-EVAL-SRC!
-   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION ;
-
-: GE-EVAL-CAPTURE ( -- )
-   GE-SRC-BUF GE-SRC-U @ GE-EVAL-CAPTURE-SRC ;
 
 : GE-EVAL-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -415,9 +390,7 @@ variable GE-EVAL-SRC-U
 
 : GE-EVAL-RUN-STDIN ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
-   GE-EVAL-MARK
-   GE-EVAL-CAPTURE
-   GE-EVAL-FORGET
+   GE-EVAL-FORK-CAPTURE
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 

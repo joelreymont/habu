@@ -32,7 +32,7 @@ s" NDB-IMMEDIATE:CHECKED-SCOPE" 0 parse-imm
 
 : RETIRE-BINDING ( -- )
    s" NDB-MUTABLE" SPELL-START 0<> TTRUE
-   s" NDB-MUTABLE" UNDEFINE-NAME
+   s" NDB-MUTABLE" XREF:UNDEFINE-NAME
    s" NDB-MUTABLE" SPELL-START 0 T= ;
 immediate
 s" NDB-IMMEDIATE:RETIRE-BINDING" 0 parse-imm
@@ -132,7 +132,7 @@ variable ROLL-OCC
    s" : NDB-HIDE ( -- n ) 51 ; : NDB-HIDE-TAIL ( -- n ) 52 ;" EV
    s" NDB-HIDE" 0 RECORD {: old:^ :}
    old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
-   s" NDB-HIDE" HIDE-DEFS-FROM
+   s" NDB-HIDE" XREF:HIDE-DEFS-FROM
    s" NDB-HIDE" SPELL-START 0 T=
    s" NDB-HIDE-TAIL" SPELL-START 0 T=
    s" : NDB-HIDE ( -- n ) 53 ;" EV
@@ -147,7 +147,7 @@ variable ROLL-OCC
    s" : NDB-FORGET ( -- n ) 61 ;" EV
    s" NDB-FORGET" 0 RECORD {: old:^ :}
    old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
-   s" NDB-FORGET" FORGET-DEFS-FROM
+   s" NDB-FORGET" XREF:FORGET-DEFS-FROM
    s" NDB-FORGET" SPELL-START 0 T=
    s" : NDB-FORGET ( -- n ) 62 ;" EV
    s" NDB-FORGET" 0 RECORD old = TTRUE

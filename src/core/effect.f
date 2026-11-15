@@ -13,7 +13,7 @@ package EFFECT
 CAST: >TYPE ( n -- type )
 CAST: TYPE>N ( type -- n )
 
-\ The engine's cell holds CHECK:TYPE-OP as a raw execution token.
+\ The engine's cell holds TYPE-OP as a raw execution token.
 CAST: AS-TYPE-OP ( n -- [ n n n -- n ] )
 
 \ The engine's cell holds INTERPRETER:DEFINE-RUN as a raw execution token.

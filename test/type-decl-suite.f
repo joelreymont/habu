@@ -22,14 +22,6 @@ TYPED-VARIABLE TDTE-A ^u8   variable TDTE-U
    TDTE-U ! TDTE-A !
    [: TDT-EVAL-GO ;] catch ;
 
-\ A check's results live until its definition publishes, inside the token that
-\ ran it, so each probe reads them in the word that runs the check.
-\ TD-WF-N: the fact rows a candidate with verdict `want` leaves.
-: TD-WF-N ( ^u8 n n -- n )
-   {: want:n :}
-   CHECK-QUIET-CANDIDATE! want T=
-   WF-N@ ;
-
 \ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
@@ -928,11 +920,8 @@ STRUCTURE tdw256
 : TDW256-READ ( -- n ) TDW256-MK TDW256-LAST ;
 TDW256-READ 255 T=
 
-\ facts are per-CHECK scratch: a rejected def may still record rows for tokens
-\ past the reject (never consumed — emitters read facts only for certified
-\ defs); the NEXT check resets the table, so no stale row can leak forward.
-s" WF6 ( tdres<n,n> -- ) ?dup drop drop" 0 TD-WF-N 1 T=
-s" WF7 ( n -- n )" -1 TD-WF-N 0 T=
+s" WF6 ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" WF7 ( n -- n )" CHECK-QUIET-CANDIDATE! -1 T=
 \ TFAM, TYPE and MATCH are reserved, so each accepting declaration also proves
 \ user source registers families without opening a reserved package.
 \ package-scoped declarations: family rows carry the active package and the

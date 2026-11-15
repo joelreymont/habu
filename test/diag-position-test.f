@@ -3055,18 +3055,21 @@ HB-TARGET-LINUX? 0= [if]
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP2:A" 10 8 134 139 AT ;
 
-\ Q-TWO takes the symbol id Q-ONE's rolled-back scope retired; the restore drops
-\ Q-ONE's parse-imm row, so Q-TWO is refused as never declared.
+\ The source scan records Q-ONE's parse-imm row inside a checker scope that
+\ rolls back; Q-TWO takes the symbol id it retired, and the restore dropped the
+\ row, so Q-TWO is rejected as never declared.
 : TEST-STALE-PARSE-IMM ( -- )
    s" a parse-imm row made in a scope that rolls back" T-LABEL
    SB-RESET
-   s" CHECKER-SCOPE-START" SB-APPEND LF+
-   s\" : Q-ONE ( -- ) ; immediate s\" Q-ONE\" 0 parse-imm" SB-APPEND LF+
-   s" CHECKER-SCOPE-DONE" SB-APPEND LF+
+   s" : Q-SCAN ( -- )" SB-APPEND LF+
+   s\"    s\\\" : Q-ONE ( -- ) ; immediate s\\\" Q-ONE\\\" 0 parse-imm\""
+   SB-APPEND LF+
+   s" [: ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;" SB-APPEND LF+
+   s" ' Q-SCAN CHECK:SCOPED" SB-APPEND LF+
    s" : Q-TWO ( -- ) ; immediate" SB-APPEND LF+
    s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
    s" stale-parse-imm.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" :5:20" REJECT-RC LOADED-AT ;
+   s" E-UNMODELED-IMMEDIATE" s" :6:20" REJECT-RC LOADED-AT ;
 
 \ PK's own word spelt `parse-imm` is the call the load makes, not the engine's
 \ word. Replayed as the engine's, its 17 calls would fill the 16-row parse-imm

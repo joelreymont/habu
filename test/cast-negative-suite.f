@@ -389,66 +389,46 @@ s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= TTRUE
 \ supplies; a view whose variables its input supplies is a well-formed row.
 s" defer CNVD1 ( ^u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNVD1`" CN-RUN:REJECTS
 s" defer CNVD2 ( read-view<p,q,u8> -- read-view<p,q,u8> )" CN-RUN:DECL 0 T=
-\ The scope is the engine's live one: a parser mirror claiming a package's
-\ private section while the engine compiles at top level still refuses.
-s" CN" s" CN" CHECKER-PACKAGE
+\ The scope is the engine's live one: a cast at top level is rejected.
 s" cast: CNSP3 ( n -- ^u8 )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNSP3`" CN-RUN:REJECTS
-CHECKER-END-PACKAGE
 
-\ A forged parser package cannot own a declaration. The family, visibility and
-\ symbols all follow the live engine namespace.
+\ The family follows the live engine namespace.
 package CN-SPOOF-A
-s" CN-SPOOF-B" s" CN-SPOOF-B" CHECKER-PACKAGE
-CHECKER-PUBLIC
 public
 NEWTYPE spoof
 s" cast: CNSA0 ( n -- CN-SPOOF-A:spoof )" CN-RUN:DECL 0 T=
-CHECKER-END-PACKAGE
-;package
-package CN-SPOOF-B
-s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `CN-SPOOF-B:spoof`" CN-RUN:REJECTS
 ;package
 
-\ Visibility comes from the real current WID. A mirror-public declaration in a
-\ private engine section stays private; only its owner resolves it.
+\ Visibility comes from the real current WID. A declaration in a private
+\ section stays private; only its owner resolves it.
 package CN-VIS-PRI
-CHECKER-PUBLIC
 NEWTYPE hidden
-s" CN-VIS-FAKE" s" CN-VIS-FAKE" CHECKER-PACKAGE
 s" cast: CNVP0 ( n -- hidden )" CN-RUN:DECL 0 T=
-CHECKER-END-PACKAGE
 ;package
 package CN-VIS-FOREIGN
 s" cast: CNVP1 ( n -- CN-VIS-PRI:hidden )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `CN-VIS-PRI:hidden`" CN-RUN:REJECTS
 s" cast: CNVP2 ( n -- hidden )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `hidden`" CN-RUN:REJECTS
 ;package
 
-\ A mirror-private declaration in a public engine section stays public: foreign
-\ code resolves it.
+\ A declaration in a public section is public: foreign code resolves it.
 package CN-VIS-PUB
 public
-CHECKER-PRIVATE
 NEWTYPE shown
-CHECKER-END-PACKAGE
 ;package
 package CN-VIS-FOREIGN
 s" cast: CNVU0 ( CN-VIS-PUB:shown -- n )" CN-RUN:DECL 0 T=
 ;package
 
-\ EXPORT records the actual package target even when the parser mirror names a
-\ different package.
+\ EXPORT records the package it runs in.
 package CN-EXP-SRC-PKG
 public
 : CN-EXP-SRC ( n -- n ) ;
 ;package
 package CN-EXP-A
 public
-s" CN-EXP-B" s" CN-EXP-B" CHECKER-PACKAGE
 EXPORT CN-EXP-SRC-PKG:CN-EXP-SRC
-CHECKER-END-PACKAGE
 ;package
 s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! -1 T=
-s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Offline verification replays a package in the verifier window's own scope. A
 \ normal simulated package verifies, restores the live provider, and leaves no
@@ -484,9 +464,7 @@ REJECTION:CAPTURE ' CN-CAST-TEST:CN-VRF-FAIL catch
    s" error[E-BAD-DECLARATION]" s" `efam`" CN-RUN:REJECTS
 package CN-VRF-LIVE
 NEWTYPE live
-s" CN-VRF-POISON" s" CN-VRF-POISON" CHECKER-PACKAGE
 s" cast: CNVR1 ( n -- CN-VRF-LIVE:live )" CN-RUN:DECL 0 T=
-CHECKER-END-PACKAGE
 ;package
 \ A cast carries no body: the declaration ends at its closing paren, so the
 \ trailing 42 is read as its own token and left as residue, which

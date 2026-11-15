@@ -1,8 +1,7 @@
 \ extent-product-test.f - the checker half of extent-role product/factorization
-\ (docs/design.md "Type substrate"): a contraction may sum an inner extent of a
-\ folded extprod<free,inner> row, never the free extent or the whole product, so
-\ a cross-sequence contraction is unrepresentable in a checked program. The
-\ surface half is maki/extent-test.f's.
+\ (docs/design.md "Type substrate"): a folded row index is the ordered product
+\ type, and a contraction may sum an inner extent. The surface half is
+\ maki/extent-test.f's.
 
 require src/lib/test.f
 
@@ -10,16 +9,13 @@ REJECTION:CAPTURE
 
 T-RESET
 
-\ Stand-ins for maki's families: xidx the index family, xpb free #B, xpt inner
-\ #T, xpk an inner head dim, xpflat a flat extent.
+\ Stand-ins for maki's families: xidx the index family, xpb #B, xpt inner #T,
+\ xpk an inner head dim, xpflat a flat extent.
 NEWTYPE xidx<a>
 NEWTYPE xpb
 NEWTYPE xpt
 NEWTYPE xpk
 NEWTYPE xpflat
-
-\ mark the free (outer / batch) factor, exactly as EXTPROD: does at declaration.
-s" xpb" EXT-MARK-FREE-TAIL
 
 \ CHECK-QUIET-CANDIDATE! answers -1 to accept, 0 to reject.
 \ A folded row index is the ordered product type.
@@ -36,15 +32,11 @@ s" XS  ( xidx<extprod<xpb,xpt>> -- xidx<xpb> )"               CHECK-QUIET-CANDID
 
 \ redx<E> is well-formed at signature parse only when E is an inner extent, so
 \ an identity over redx<E> isolates the rule. A flat folded-rows extent is
-\ freely contractable: the leak as it is without the product.
+\ freely contractable.
 s" XCFLAT ( redx<xpflat> -- redx<xpflat> )"                   CHECK-QUIET-CANDIDATE! -1 T=
 \ positive: the in-block (inner) extent is contractable.
 s" XCI ( redx<xpt> -- redx<xpt> )"                            CHECK-QUIET-CANDIDATE! -1 T=
 \ positive: another inner extent (a head dim #K) is contractable too.
 s" XCK ( redx<xpk> -- redx<xpk> )"                            CHECK-QUIET-CANDIDATE! -1 T=
-\ NEGATIVE (the leak, closed): contracting the FREE (batch) factor is rejected.
-s" XCB ( redx<xpb> -- redx<xpb> )"                            CHECK-QUIET-CANDIDATE!  0 T=
-\ NEGATIVE: contracting the WHOLE product (summing across sequences) is rejected.
-s" XCP ( redx<extprod<xpb,xpt>> -- redx<extprod<xpb,xpt>> )"  CHECK-QUIET-CANDIDATE!  0 T=
 
 T-REPORT

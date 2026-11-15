@@ -244,10 +244,10 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 \ than 0 is the type, which TYPE does not spell.
 : STORED-ROWS ( ^u8 n ^u8 n n n -- n n )
    {: na:^ nu:n ta:^ tu:n shape:n node:n :}
-   node 0 <> if node NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
+   node 0 <> if node LBUF:NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
    0= if
       drop
-      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
+      node 0 <> if na nu LBUF:NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
       CHECK-RC throw
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
@@ -264,9 +264,9 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 \ name or a refused type is reported, naming the definer, and answers 0 bytes.
 : DECL-LINE ( ^u8 n bool -- ^u8 n ^u8 n n )
    {: da:^ du:n whole:bool :}
-   STORAGE-LINE-TOKEN {: na:^ nu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
-   STORAGE-PARSE-TYPE {: ta:^ tu:n :}
+   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
    ta tu whole TYPE-BYTES 0= if
       drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT na nu ta tu 0 exit
@@ -299,16 +299,12 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 \ The line of a definer whose element is whole cells.
 : CELL-LINE ( ^u8 n -- ^u8 n ^u8 n n ) RES-TRUE DECL-LINE ;
 
-public
-
 : DEFINER-AT ( ^u8 n -- )
    REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
 
 \ Places the rejection at the token read last, the definer's own or
 \ one it parsed.
 : DEFINER-PLACE ( -- ) SRCLOC:TOKEN$ DEFINER-AT ;
-
-private
 
 using SCHEMA-REG
 
@@ -453,8 +449,6 @@ CAST: >BYTES ( n -- ^u8 )
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
-public
-
 \ The transient schema node a TYPE-OP-ABI code makes of a and b, else rejected.
 \ NAMED's lookup, and the type entries READ's lookups would read, come first:
 \ the transient region would drop an entry a lookup reads.
@@ -472,8 +466,6 @@ public
    node SCHEMA-ROW? if RES-FALSE exit then
    node SCHEMA-QUOT? 0= if RES-FALSE exit then
    node SCHEMA-QUOT-HASR@ 0= ;
-
-private
 
 \ EFFECT-DENSE's map: the raw index of each parameter it numbered, at that
 \ parameter's dense index, and how many it met.
@@ -524,8 +516,6 @@ variable DENSE-N
    node SCHEMA-APP? if node SCHEMA-A@ first node CHILD-COUNT SCHEMA-APP exit then
    first node CHILD-COUNT SCHEMA-ROW ;
 
-public
-
 \ A transient copy of type node, its parameters numbered on by the map the
 \ open definition's EFFECT-DENSE began; false past TFAM-DECL-PARAM-COUNT.
 : TYPE-DENSE ( n -- n bool ) {: node:n :}
@@ -540,15 +530,11 @@ public
 
 ;using
 
-private
-
 \ The span through its first `)`.
 : THROUGH-CLOSE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    0 begin dup u < if a over + c@ 41 <> else RES-FALSE then while 1 + repeat
    {: k:n :}
    a  k 1 + u min ;
-
-public
 
 \ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
 \ buffer past its recorded text, where the next rendering replaces it.
@@ -558,8 +544,6 @@ public
    din dout 0 0 RES-FALSE REND-FACTS {: buf:^ len:n :}
    at REJECTION:TEXT-LEN !
    buf at +  len at -  THROUGH-CLOSE ;
-
-private
 
 
 : DEFERRED ( ^u8 n -- )
@@ -617,7 +601,6 @@ private
          REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;
-public
 
 \ The active primitive rows of sym after row k: whether one is, and whether
 \ each survives its facts text (FACTS-SAME-AT?).

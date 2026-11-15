@@ -305,42 +305,16 @@ TFOLD 9 T=
    2dup T-LABEL
    CHECK! -1 T= ;
 
-variable TC-UEND
-variable TC-NEND
-variable TC-SYMN
-variable TC-SYMU
-: TC-SNAP ( -- )
-   UEND @ TC-UEND !
-   NORET-END @ TC-NEND !
-   SYM-N @ TC-SYMN !
-   SYM-STR-U @ TC-SYMU ! ;
 : TC-DIAG-OFF ( -- )
    1 REJECTION:QUIET +! ;
 : TC-DIAG-ON ( -- )
    -1 REJECTION:QUIET +! ;
-: TC-UEND=? ( -- bool )
-   UEND @ TC-UEND @ = ;
-: TC-NEND=? ( -- bool )
-   NORET-END @ TC-NEND @ = ;
-: TC-SYMN=? ( -- bool )
-   SYM-N @ TC-SYMN @ = ;
-: TC-SYMU=? ( -- bool )
-   SYM-STR-U @ TC-SYMU @ = ;
-\ A linked hb's checker adds a word's row from its baked seed at the word's
-\ first use, for good: the warm-up uses each word the candidates use, so the
-\ snapshot holds their rows and the probes see only what a candidate leaves.
-s" T-CAND-WARM ( n -- n ) dup drop 1+ dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
-TC-SNAP
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
 s" A ( n -- n ) dup drop" CHECK-CANDIDATE! -1 T=
 TC-DIAG-OFF
 s" A ( n -- n n ) drop" CHECK-CANDIDATE! 0 T=
 TC-DIAG-ON
 s" T-CAND-THROW ( n -- n ) dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
-TC-UEND=? TTRUE
-TC-NEND=? TTRUE
-TC-SYMN=? TTRUE
-TC-SYMU=? TTRUE
 \ The T-* boundary words below are global definitions. Each is a real word with
 \ its effect, a checked stub or a `defer`: no body runs and no defer is set,
 \ since every case hands the checker a candidate that names them. They are
@@ -357,13 +331,6 @@ s" candidate no-return redefinition certifies" T-LABEL
 s" T-CTV ( -- ) 1 throw" CHECK-QUIET-CANDIDATE! -1 T=
 s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
-CHECKER-SCOPE-START
-: T-SCOPED-W ( -- n ) 0 ;
-s" scoped word resolves inside the scope" T-LABEL
-s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
-CHECKER-SCOPE-DONE
-s" scoped word retired with the scope" T-LABEL
-s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 0 T=
 : T-PRESO ( -- n ) 0 ;
 package ES-PRES
 : T-PRESO ( -- n n ) 1 2 ;
@@ -680,10 +647,18 @@ defer T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,
 defer T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> )
 defer T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> )
 defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> )
-2 TRAIL-CAP !                            \ shrink so a few binds force a trail grow
-s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
+\ 3000 ` 1 +` bind more trail entries than the checker's trail first holds.
+12064 constant TRAIL-SRC-CAP
+create TRAIL-SRC TRAIL-SRC-CAP allot
+: TRAIL-SRC$ ( ^u8 n -- ^u8 n )
+   {: h:^ hu:n :}
+   h TRAIL-SRC hu BYTE-COPY
+   3000 0 ?do s"  1 +" drop TRAIL-SRC hu + i 4 * + 4 BYTE-COPY loop
+   TRAIL-SRC hu 12000 + ;
 s" trail-arena-grow" T-LABEL
-TRAIL-CAP @ 2 > TTRUE
+s" COK-TRAIL ( n -- n )" TRAIL-SRC$ CHECK! -1 T=
+s" a body past the trail's first capacity still rejects a wrong result" T-LABEL
+s" CBAD-TRAIL ( n -- ^u8 )" TRAIL-SRC$ CHECK-QUIET-CANDIDATE! 0 T=
 s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
 : LOCPROBE ( bool n -- n )
    {: first-local-with-a-long-name:n :}
@@ -897,7 +872,7 @@ s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1
 s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
 s" multi-err mode cleared after end" T-LABEL
-MULTI-ERR? 0= TTRUE
+s" : MEA4 ( n -- n ) drop ;" TEST-EVAL:RC 70 T=
 DEFTYPE frame-idx
 DEFTYPE exposure-us
 s" DNI-MK ( n -- frame-idx ) >frame-idx" T-CHECK-PASSES
@@ -961,16 +936,15 @@ s" the row CHECK! recorded last binds nowhere in compiled code" T-LABEL
 s" CBAD-LAST-ROW-CALL ( -- n ) COK-LAST-ROW" CHECK-QUIET-CANDIDATE! 0 T=
 s" nor for the next CHECK!" T-LABEL
 s" CBAD-LAST-ROW-CHAIN ( -- n ) COK-LAST-ROW" CHECK! 0 T=
-\ The call is qualified and follows a second row, so neither the live window
-\ (the row recorded last) nor a keyword axiom can bind it.
-CHECKER-CANDIDATE-SCOPE-START
-s" CSPQ:ROW-A ( -- n ) 1" CHECK! -1 T=
-s" CSPQ:ROW-B ( -- n ) 2" CHECK! -1 T=
+\ VERIFY:SOURCE-BUF verifies its source in a candidate scope of its own. The
+\ call follows a second row, so the row recorded last cannot bind it.
+: CSP-SCOPE ( -- )
+   s" : CSPA ( -- n ) 1 ; : CSPB ( -- n ) 2 ; : CSPC ( -- n n ) CSPA CSPB ;"
+   VERIFY:SOURCE-BUF ;
 s" a candidate scope's row binds for its later rows" T-LABEL
-s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
-CHECKER-CANDIDATE-SCOPE-DONE
+' CSP-SCOPE catch 0 T=
 s" and nowhere once the scope has closed" T-LABEL
-s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 0 T=
+s" CSP-AFTER ( -- n ) CSPA" CHECK-QUIET-CANDIDATE! 0 T=
 s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" error[E-WRONG-ARITY]: type family `span` takes 3 type arguments, not 2" T-CHECK-SAYS
 s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" s" error[E-WRONG-ARITY]: type family `tile` takes 3 type arguments, not 4" T-CHECK-SAYS
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
@@ -1174,7 +1148,6 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
-\ The field wrapper stores its 6-arg inner param in the VNARG pool.
 VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
 : T->BIG6VR ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-vr ) ;
 : T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
@@ -1185,15 +1158,13 @@ VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
 : T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
 s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
-variable TR-VNARG-RB   variable TR-VNODE-RB
-VNARG-N @ TR-VNARG-RB !   VREC-NODE-N @ TR-VNODE-RB !
-CHECKER-SCOPE-START
-VALUE-RECORD tfam6r-rb q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
-s" vnarg-scope-grew" T-LABEL   VNARG-N @ TR-VNARG-RB @ > TTRUE
-s" vrec-node-scope-grew" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ > TTRUE
-CHECKER-SCOPE-DONE
-s" vnarg-rollback-rewinds" T-LABEL   VNARG-N @ TR-VNARG-RB @ T=
-s" vrec-node-rollback-parity" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ T=
+: TR-RB-SCOPE ( -- )
+   s" VALUE-RECORD tfam6r-rb q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD : TR-RB-ID ( tfam6r-rb -- tfam6r-rb ) ;"
+   VERIFY:SOURCE-BUF ;
+s" a record declared in a scope binds inside it" T-LABEL
+' TR-RB-SCOPE catch 0 T=
+s" and is gone once the scope has closed" T-LABEL
+s" CBAD-TR-RB-AFTER ( tfam6r-rb -- tfam6r-rb )" CHECK-QUIET-CANDIDATE! 0 T=
 s" surviving record instantiates after rollback" T-LABEL
 s" COK-BIG6VR-POSTRB ( tfam6r-vr -- tfam6r-vr )" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS

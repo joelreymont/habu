@@ -25,6 +25,10 @@ variable SRC-U
 
 public
 
+\ A duplicate definition's rc. The code lives in the package because a global
+\ `E-*` constant is src/lib/error.f's surface alone.
+78 constant E-DUPLICATE
+
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
 : REPLAY ( ^u8 n -- n ) {: a:^ u:n :}
@@ -36,7 +40,7 @@ public
 : REPLAY-NEUTRAL ( ^u8 n -- n ) {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
-   CHECKER-SCOPE-START-NEUTRAL [: ACT ;] catch CHECKER-SCOPE-DONE ;
+   [: [: ACT ;] CHECK:SCOPED ;] catch ;
 
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
@@ -125,46 +129,45 @@ s" package CVPS-HOST package CVPS-PART : CVPS-X2 ( -- n ) CVPS-PW ; ;package ;pa
 CVPS:REPLAY-NEUTRAL 0 T=
 
 \ ---- the two scope questions a name query can ask --------------------------
-\ CHECKER-DEFINED-HERE? asks whether a name is defined in the scope a new
-\ definition would land in (duplicate guards); CHECKER-RESOLVES? asks whether
-\ the checker knows an effect for the word the token binds to here (load guards,
-\ probes, absence assertions). RESOLVES? answers the same inside a package as
-\ outside for a global; DEFINED-HERE? keeps the narrow answer, or the duplicate
-\ guards would refuse legal shadowing.
+\ A name resolves where a candidate calling it is accepted; it is defined here
+\ where a new definition of it is a duplicate. A global resolves inside a
+\ package as outside, and is a duplicate only at top level: a package may
+\ shadow it.
 
 \ The sentinel is an existing global (src/lib/error.f's codes), so the test
 \ adds no unpackaged global.
 
-s" top level: RESOLVES? sees a global" T-LABEL
-s" E-STR-BOUNDS" CHECKER-RESOLVES? TTRUE
-s" top level: DEFINED-HERE? sees a global" T-LABEL
-s" E-STR-BOUNDS" CHECKER-DEFINED-HERE? TTRUE
+s" top level: a candidate binds a global" T-LABEL
+s" CVPS-R1 ( -- n ) E-STR-BOUNDS" CHECK-QUIET-CANDIDATE! -1 T=
+s" top level: redefining a global is a duplicate" T-LABEL
+s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC CVPS:E-DUPLICATE T=
 
 package CVPS-SCOPE
 private
 
 \ The word is not defined in THIS package, and the engine still binds it here.
-s" in a package: RESOLVES? still sees the global" T-LABEL
-s" E-STR-BOUNDS" CHECKER-RESOLVES? TTRUE
-s" in a package: DEFINED-HERE? correctly does not" T-LABEL
-s" E-STR-BOUNDS" CHECKER-DEFINED-HERE? TFALSE
+s" in a package: a candidate still binds the global" T-LABEL
+s" CVPS-R2 ( -- n ) E-STR-BOUNDS" CHECK-QUIET-CANDIDATE! -1 T=
 s" in a package: the engine binds and runs it" T-LABEL
 E-STR-BOUNDS -2200 T=
+\ After the engine row: the shadow is this package's own E-STR-BOUNDS.
+s" in a package: a definition may shadow a global" T-LABEL
+s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC 0 T=
 
-\ A name that is genuinely nowhere answers no to both, so the two rows above
-\ are not passing on a query that always says yes.
-s" in a package: RESOLVES? says no to an absent name" T-LABEL
-s" CVPS-NO-SUCH-WORD" CHECKER-RESOLVES? TFALSE
-s" in a package: DEFINED-HERE? says no to an absent name" T-LABEL
-s" CVPS-NO-SUCH-WORD" CHECKER-DEFINED-HERE? TFALSE
+\ A name defined nowhere binds no candidate and is no duplicate, so the
+\ probes above do not pass on an answer that is always yes.
+s" in a package: a candidate binds no absent name" T-LABEL
+s" CVPS-R3 ( -- n ) CVPS-NO-SUCH-WORD" CHECK-QUIET-CANDIDATE! 0 T=
+s" in a package: defining an absent name is no duplicate" T-LABEL
+s" : CVPS-NO-SUCH-WORD ( -- n ) 3 ;" TEST-EVAL:RC 0 T=
 
-\ A tail this package DOES own answers yes to both, which pins that
-\ DEFINED-HERE? is answering about this scope rather than always saying no.
+\ A tail this package owns is a duplicate and binds a candidate, so the
+\ duplicate probes do not pass on an answer that is always no.
 : CVPS-OWN-TAIL ( -- n ) 9 ;
-s" in a package: DEFINED-HERE? sees its own tail" T-LABEL
-s" CVPS-OWN-TAIL" CHECKER-DEFINED-HERE? TTRUE
-s" in a package: RESOLVES? sees its own tail" T-LABEL
-s" CVPS-OWN-TAIL" CHECKER-RESOLVES? TTRUE
+s" in a package: redefining its own tail is a duplicate" T-LABEL
+s" : CVPS-OWN-TAIL ( -- n ) 2 ;" TEST-EVAL:RC CVPS:E-DUPLICATE T=
+s" in a package: a candidate binds its own tail" T-LABEL
+s" CVPS-R4 ( -- n ) CVPS-OWN-TAIL" CHECK-QUIET-CANDIDATE! -1 T=
 
 ;package
 

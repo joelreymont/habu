@@ -776,26 +776,30 @@ public
 : RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
 : RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
 
+\ A replayed ENUM's family serves candidates in the scope it was replayed in.
+: RP-COMPACT ( -- )
+   s" rpcompact" s" red green blue ;ENUM" RP-TRY 0 T=
+   s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
+
+\ POLICY and DERIVE replay; derived EQ calls rows only the replay recorded, so
+\ it runs in the check tool's replay scope (test/replay-scope.f).
+: RP-POLICY ( -- )
+   s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
+   RP-TRY 0 T= ;
+
 private
 ;package
 
 enum-ctor-test:DICT-MARK
-CHECKER-SCOPE-START-NEUTRAL
-s" rpcompact" s" red green blue ;ENUM" enum-replay-test:RP-TRY 0 T=
-s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-CHECKER-SCOPE-FINALIZE
+' enum-replay-test:RP-COMPACT CHECK:SCOPED
 enum-ctor-test:DICT-SAME
 
 s" rpfull" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 
-\ 23c. POLICY and DERIVE replay; derived EQ calls rows only the replay recorded, so
-\      it runs in the check tool's replay scope.
-TOOL-REPLAY:OPEN
-s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
-enum-replay-test:RP-TRY 0 T=
-TOOL-REPLAY:CLOSE
+\ 23c. POLICY and DERIVE replay.
+' enum-replay-test:RP-POLICY TOOL-REPLAY:RUN
 
 DECL-DIAG:PROSE
 s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 70 T=

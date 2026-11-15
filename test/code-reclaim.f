@@ -33,7 +33,7 @@ private
    s" : CR-F4 ( n -- n ) dup 17 * swap 19 + + ;" evaluate-closed ;
 
 : FILL-FORGET ( -- )
-   s" CR-F1" FORGET-DEFS-FROM ;
+   s" CR-F1" XREF:FORGET-DEFS-FROM ;
 
 variable A-CP
 variable ALIAS-SLOT
@@ -51,7 +51,7 @@ variable ALIAS-OCC
    s" CRECL-SUBJ:CR-HIGH" REC-START  s" CRECL-SUBJ:CR-LOW" REC-START  >  TTRUE
 
    cp@ A-CP !
-   s" CRECL-ALIAS:CR-LOW" FORGET-DEFS-FROM
+   s" CRECL-ALIAS:CR-LOW" XREF:FORGET-DEFS-FROM
 
    s" forgetting the alias retires only its record" T-LABEL
    s" CRECL-ALIAS:CR-LOW" DEFINED? TFALSE
@@ -74,7 +74,7 @@ variable P-START
    s" : CR-P2 ( -- n ) 2 ;" evaluate-closed
    s" : CR-P3 ( -- n ) 3 ;" evaluate-closed
    s" CR-P2" REC-START P-START !
-   s" CR-P2" FORGET-DEFS-FROM
+   s" CR-P2" XREF:FORGET-DEFS-FROM
 
    s" an ordinary forget returns the first retired routine's slot" T-LABEL
    cp@ P-START @ T=
@@ -108,7 +108,7 @@ variable U-INDEX
    s" : CR-REUSE ( n -- n ) 1 + ;" evaluate-closed
    s" CR-REUSE" REC-START U-START !
    s" CR-REUSE" REC-INDEX U-INDEX !
-   s" CR-REUSE" FORGET-DEFS-FROM
+   s" CR-REUSE" XREF:FORGET-DEFS-FROM
    s" : CR-REUSE ( n -- n ) 3 * ;" evaluate-closed
 
    s" a new definition reuses the reclaimed record and code slot" T-LABEL
@@ -125,7 +125,7 @@ variable L-CP
 : LONG-CASE ( -- )
    cp@ L-CP !
    s" : CR-LONG-NAMED-WORD ( -- n ) 7 ;" evaluate-closed
-   s" CR-LONG-NAMED-WORD" FORGET-DEFS-FROM
+   s" CR-LONG-NAMED-WORD" XREF:FORGET-DEFS-FROM
    s" forget gives back a long name's bytes" T-LABEL
    cp@ L-CP @ T= ;
 
@@ -134,7 +134,7 @@ variable L-CP
    cp@ L-CP !
    s" package CRECL-ALIAS public EXPORT CRECL-SUBJ:CR-LONG-SUBJECT-WORD ;package"
    evaluate-closed
-   s" CRECL-ALIAS:CR-LONG-SUBJECT-WORD" FORGET-DEFS-FROM
+   s" CRECL-ALIAS:CR-LONG-SUBJECT-WORD" XREF:FORGET-DEFS-FROM
    s" forgetting a long-named alias gives back its name's bytes" T-LABEL
    cp@ L-CP @ T= ;
 
@@ -166,11 +166,11 @@ LC-CAP BUFFER: LC-ERR
 
 : LASTC-CASE ( -- )
    s" a definer after a forget that keeps the created record acts on its own word" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" XREF:FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
    S\" 9\n" LC-PRINTS
 
    s" a definer after a forget that retires the created record acts on its own word" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ncreate CR-LC-GONE 5 ,\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ncreate CR-LC-GONE 5 ,\ns\" CR-LC-MARK\" XREF:FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
    S\" 8\n" LC-PRINTS
 
    s" a definer after an evaluate that fails acts on its own word" T-LABEL

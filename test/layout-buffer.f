@@ -222,8 +222,11 @@ public
 : RESERVE ( n ^^a ^n n -- ) DS-RESERVE ;
 : RELEASE ( ^^a ^n -- ) DS-RELEASE ;
 ;package
+package LBUF
+public
 : LDEFER-BIND ( n ^n n -- ) HIT 2drop drop ;
 : LDEFER-GROW ( n ^n n -- ) HIT 2drop drop ;
+;package
 : throw ( n -- ) HIT drop ;
 : 0= ( n -- bool ) HIT 0<> ;
 : >= ( n n -- bool ) HIT < ;

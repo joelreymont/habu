@@ -890,9 +890,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   at its `does>`, `E-DOES-UNCREATED`, rc 70, `` `does>` needs a word this
   definition creates ``; a `does>` word that patches a word made earlier is no
   part of the language. A head that, between `create` and `does>`, retires its
-  new word (`UNDEFINE-NAME`, `FORGET-DEFS-FROM`, `ndict!`) or runs a caught
-  failing `evaluate` that created one leaves `does>` none, and the kernel
-  stops it, `E-DOES-UNCREATED`, rc 70.
+  new word (`XREF:UNDEFINE-NAME`, `XREF:FORGET-DEFS-FROM`, `ndict!`) or runs a
+  caught failing `evaluate` that created one leaves `does>` none, and the
+  kernel stops it, `E-DOES-UNCREATED`, rc 70.
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
   comment inside the body is rejected `E-BAD-DECLARATION`, rc 70, by the load
   and by `tools/check.f`. Put comments above the opener, including comments

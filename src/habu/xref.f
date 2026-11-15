@@ -602,11 +602,14 @@ seal-package
    entry first <= if XREF-FALSE exit then
    entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
 
+package XREF
+private
 \ The checker overlay asks this same test of a live definer a replayed
 \ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
 \ definer's clause, codeless, is paired where the overlay publishes it.
 : DOES-COMPANION-INSTALL ( -- ) [: XREF-DOES-COMPANION? ;] is DOES-COMPANION?-XT ;
 DOES-COMPANION-INSTALL
+;package
 
 \ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
 \ in the package wordlist. Retire from that resolved record identity; the
@@ -654,6 +657,8 @@ DOES-COMPANION-INSTALL
    then
    idx ;
 
+package XREF
+public
 : UNDEFINE-NAME ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
@@ -667,11 +672,12 @@ DOES-COMPANION-INSTALL
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
    XREF-IDX @ XREF-RETIRE-INDEX ;
+;package
 
 : UNDEFINE-IF-DEFINED ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
+   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF:UNDEFINE-FOUND else drop then ;
 
 \ The seal watermark of the dictionary being loaded: while a build writes an
 \ image, the image's, where a header store goes (habu2.f ROUTE-HEADER), 0 until
@@ -718,15 +724,18 @@ DOES-COMPANION-INSTALL
    then
    idx ;
 
+package XREF
+public
 \ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
 \ one word with `undefine NAME`; it never replays baked sources to hide one.
 : HIDE-DEFS-FROM ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   XREF-SN@ XREF-SU @ s" HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
-   XREF-SN@ XREF-SU @ s" HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
+;package
 
 \ FORGET retires a suffix of dictionary records and gives back the corresponding
 \ code. Live XREF records decide the safe floor; relocation metadata over the
@@ -860,15 +869,18 @@ seal-package
 
 ;package
 
+package XREF
+public
 : FORGET-DEFS-FROM ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   XREF-SN@ XREF-SU @ s" FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
-   XREF-SN@ XREF-SU @ s" FORGET-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
    floor CODE-RECLAIM:TRUNCATE ;
+;package
 
 : XREF-NAME. ( ^n -- )
    XREF-NAME$ type ;
@@ -907,7 +919,7 @@ seal-package
    parse-name dup 0= if
       ta tu UNDEFINE-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then
-   UNDEFINE-NAME ;
+   XREF:UNDEFINE-NAME ;
 
 : WORDS ( -- )
    0 begin dup ndict@ < while
@@ -929,7 +941,6 @@ undefine TAIL-CAPTURE-XT
 undefine TAIL-CAPTURE-DEFAULT
 undefine TAIL-CAPTURE-INSTALL
 undefine DOES-COMPANION?-XT
-undefine DOES-COMPANION-INSTALL
 undefine CHECKER-PKG-LIVE-DEFAULT
 undefine CHECKER-PKG-BOOT-LIVE
 undefine CHECKER-PKG-MIRROR

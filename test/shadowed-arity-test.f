@@ -156,26 +156,7 @@ s\" package SAT-UP\n: SAT-U ( -- n ) 1 ;\nundefine SAT-U\npublic\n: SAT-UP-USE (
 s\" : SAT-UP-CK ( -- ) SAT-UP:SAT-UP-USE 7 <> if s\q the tombstone bound its tail\q 1 die then ;\nSAT-UP-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
-\ Nor does a symbol that source makes through a checker primitive, which carries
-\ no record: CHECKER-DEFER at a package's top level and from a checked body, and
-\ CHECKER-UNDEFINE of a name the package never defined. The engine defines no
-\ SAT-D in these packages, so each bare SAT-D is the global.
-s" : SAT-D ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DA\ns\q SAT-D\q CHECKER-DEFER\npublic\n: SAT-DA-USE ( -- n ) SAT-D ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DB\n: SAT-DB-HIDE ( -- ) s\q SAT-D\q CHECKER-DEFER ;\nSAT-DB-HIDE\npublic\n: SAT-DB-USE ( -- n ) SAT-D ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DC\ns\q SAT-D\q CHECKER-UNDEFINE\npublic\n: SAT-DC-USE ( -- n ) SAT-D ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" : SAT-D-CK ( -- ) SAT-DA:SAT-DA-USE SAT-DB:SAT-DB-USE + SAT-DC:SAT-DC-USE + 21 <> if s\q a recordless symbol bound its tail\q 1 die then ;\nSAT-D-CK"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-
-\ A private word with no checker record (SAT-DT) still binds before its public
-\ twin, so its use is refused; after `undefine` the twin binds (SAT-DV).
-s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ^u8 -- n ) drop 5 ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
+\ After `undefine` of a private word its public twin binds (SAT-DV).
 s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ^u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DV\nundefine SAT-DV-X\npublic\n: SAT-DV-USE ( -- n ) s\q ab\q drop SAT-DV-X ;\n;package"

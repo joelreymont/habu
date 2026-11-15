@@ -85,22 +85,13 @@ private
 
 \ ---- where these vectors have to be asked ------------------------------------
 \ Every `construct` row resolves its family in the active package
-\ (src/core/type-family.f TFAM-CONSTRUCT-FAM, reading CHECKER-AUTH-PACKAGE$).
+\ (src/core/type-family.f TFAM-CONSTRUCT-FAM).
 \ Asked elsewhere, the certifying rows refuse and the refusing rows pass for the
-\ wrong reason (`family not declared in the active package`). The phase checks
-\ the package itself: a certifying probe would blame the scope for a `construct`
-\ regression.
-: OWN-PACKAGE$ ( -- ^u8 n )
-   s" CHECKER-MODEL-CASES" ;
-
-: ASKED-IN-OWN-PACKAGE? ( -- bool )
-   CHECKER-AUTH-PACKAGE$ OWN-PACKAGE$ STR= ;
+\ wrong reason (`family not declared in the active package`).
 
 public
 
 : VECTOR-PHASE ( -- )
-   s" the vectors are asked inside the package that declares their families" T-LABEL
-   ASKED-IN-OWN-PACKAGE? TTRUE
    VECTORS 0 ?do i VECTOR-ROW loop ;
 
 \ ---- the whole Habu side -----------------------------------------------------

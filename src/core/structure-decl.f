@@ -1261,11 +1261,11 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    nu 0= IF na nu kw ku s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    0 0= 0= nu 0 ?do na i + c@ 60 = or loop
    IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
-   STORAGE-LINE-TOKEN {: ta:^ tu:n :}
+   LBUF:STORAGE-LINE-TOKEN {: ta:^ tu:n :}
    tu 0= IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
-   ta STORAGE-UNREAD
+   ta LBUF:STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu 2dup STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
+   na nu 2dup LBUF:STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
 
 ;using
 ;using

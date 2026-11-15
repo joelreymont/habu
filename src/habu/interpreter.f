@@ -234,6 +234,15 @@ package INTERPRETER
 
 private
 
+EXPORT CHECK:TYPE-OP
+EXPORT CHECK:EFFECT?
+EXPORT CHECK:TYPE-DENSE
+EXPORT CHECK:EFFECT-DENSE
+EXPORT CHECK:EFFECT-TEXT
+EXPORT CHECK:TOP-LEVEL
+EXPORT CHECK:TOP-TAKE
+EXPORT CHECK:TOP-DROP
+
 79 constant RC-TASK-THREAD       \ source read on a task's thread
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -425,7 +434,7 @@ variable ANSWERED
 : FLOORED ( bool -- )
    if UNDERFLOW then ;
 
-\ CHECK:TOP-LEVEL judges each number after its push and each word but the engine
+\ TOP-LEVEL judges each number after its push and each word but the engine
 \ `drop` before it runs; a check that leaves the stack below its base is refused.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
@@ -436,7 +445,7 @@ variable EVENT-FLAGS
 
 : HOOK ( n n -- )
    EVENT-FLAGS ! EVENT-CLASS !
-   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ CHECK:TOP-LEVEL ;]
+   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ TOP-LEVEL ;]
    HOOK-CALL execute-floor FLOORED ;
 
 variable VALUE
@@ -585,7 +594,7 @@ TYPED-VARIABLE RUNS-ON bool
    GATE
    WORD-FLAGS REC @ XREF-START {: flags:n xt:n :}
    DROP-WORD? if
-      CHECK:TOP-DROP RUN-COUNTED
+      TOP-DROP RUN-COUNTED
       0 ?do xt execute-floor FLOORED loop exit
    then
    TOP-EV-WORD flags HOOK RUN-COUNTED
@@ -2096,7 +2105,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEFINE-RUN ( ^u8 n n -- ) {: a:^ u:n eff:n :}
    PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
-   eff CHECK:EFFECT? 0= if
+   eff EFFECT? 0= if
       [: s" is not an effect a definition can take" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
       REJECTION:HELP
@@ -2104,7 +2113,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
-   eff CHECK:EFFECT-DENSE 0= if a u DEF-WIDE then
+   eff EFFECT-DENSE 0= if a u DEF-WIDE then
    {: dense:n :}
    a u dense CHECK:EFFECT-RULES? 0= if
       [: s" is not one a written signature could state" REJECTION:EMIT-STR ;]
@@ -2128,7 +2137,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    rc 0<> if ITEMS-RESET rc throw then
    0 LOCN-CELL CELL!
    dense BODY-ITEMS:EFFECT-CELL CELL!
-   BODY-ITEM-KIND:SIG 0 0 dense CHECK:EFFECT-TEXT ITEM+
+   BODY-ITEM-KIND:SIG 0 0 dense EFFECT-TEXT ITEM+
    DEF-DISPATCH ;
 
 : HANDLE-SPLIT ( ^u8 n -- ^u8 n ^u8 n ) {: a:^ u:n :}
@@ -2281,7 +2290,7 @@ variable LIT-AT
 \ its node numbers T's parameters on from the definition's effect.
 : LOCAL-ITEM ( ^u8 n n -- ) {: a:^ u:n t:n :}
    a u LOCAL-UNBUILT
-   t CHECK:TYPE-DENSE 0= if DEF-CAPTURED-NAME DEF-WIDE then
+   t TYPE-DENSE 0= if DEF-CAPTURED-NAME DEF-WIDE then
    {: dense:n :}
    BODY-ITEMS:LOCALS-CELL CELL@ {: i:n :}
    BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
@@ -2438,7 +2447,7 @@ variable DEF-VALUE
 : DEF-CONSTANT ( -- )
    TOKEN$ {: kw:^ ku:n :}
    s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
-   kw ku TOKEN$ CHECK:TOP-TAKE
+   kw ku TOKEN$ TOP-TAKE
    DKIND:VAL DEF-START
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
    DEF-VALUE @ 0 COMP-BODY:VALUE DEF-FIXED
@@ -3333,8 +3342,8 @@ public
    ['] STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
-   ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt!
-   ['] TYPED-VARIABLE-NODE data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
+   ['] TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt!
+   ['] LBUF:TYPED-VARIABLE-NODE data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
 
 ;package
 

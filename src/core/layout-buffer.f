@@ -2,12 +2,19 @@
 \ introduction form for `^layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
 \ TYPED-BUFFER, each making its words as typed children and laying each child's
 \ block at the address its body pushes. A ptr variable never gains layout
-\ identity by unification.
+\ identity by unification. The words live in package LBUF, and the four
+\ definers are global forwarders.
 
 using TYPE-DECL
 
-$7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 7122 constant E-LAYOUT-BOUNDS
+
+\ The bytes a stored type takes, for a container's own arithmetic.
+CAST: width>n ( width<t> -- n )
+
+package LBUF
+
+$7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
 
@@ -55,6 +62,8 @@ variable LBUF-BYTES
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
+public
+
 \ A name the checker rejects answers false, and the definer defines nothing:
 \ the checker has reported it. A taken name is rejected at t tu, the declared
 \ name the source holds.
@@ -63,6 +72,8 @@ variable LBUF-BYTES
    name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REJECT-DUPLICATE then
    name nameu get-current search-wl 0 <> if name nameu t tu CHECK:REJECT-DUPLICATE then
    LBUF-TRUE ;
+
+private
 
 : LBUF-ZERO ( ^n n -- ) {: base:^ bytes:n :}
    0 LBUF-I !
@@ -80,6 +91,8 @@ variable LBUF-BYTES
       LBUF-I @ CELL + LBUF-I !
    repeat ;
 
+public
+
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
 : LBUF-SUFFIXED ( ^u8 n ^u8 n -- ^u8 n )
    {: name:^ nameu:n sfx:^ sfxu:n :}
@@ -91,6 +104,8 @@ variable LBUF-BYTES
 \ rebinding a word.
 : LBUF-SUFFIX-OK? ( ^u8 n ^u8 n -- bool ) {: name:^ nameu:n sfx:^ sfxu:n :}
    name nameu sfx sfxu LBUF-SUFFIXED name nameu LBUF-NAME-OK? ;
+
+private
 
 PTR-VARIABLE STGT-A
 variable STGT-U
@@ -143,11 +158,15 @@ PTR-VARIABLE STGT-START
    STORAGE-RESET
    node TFAM:EFFECT-TYPE T-RES LBI-T !  0 LBI-BAD ! ;
 
+public
+
 : NODE-TYPE-REFUSE ( ^u8 n -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
    name nameu LBUF-GEN LBUF-GEN-U @ CHECKER-STORAGE-TYPE-REJECT ;
 
 : NODE-STORAGE-TERM ( n -- n bool ) NODE-READ LBI-TERM ;
+
+private
 
 \ The definer's validation took the type or node, so its term is taken too.
 : TYPE-TERM ( ^u8 n -- n ) CHECKER-STORAGE-TERM drop ;
@@ -180,6 +199,8 @@ PTR-VARIABLE STGT-START
 \ line and the type's first token on the name's (STORAGE-LINE-TOKEN); a missing
 \ name is rejected at the definer's token, an empty type by the checker.
 
+public
+
 \ Leaves a token parse-name read to the next statement.
 : STORAGE-UNREAD ( ^u8 -- )
    NULL-PTR - data-base INP-CELL + ! ;
@@ -194,11 +215,15 @@ PTR-VARIABLE STGT-START
    a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then
    a u ;
 
+private
+
 : STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended if LBUF-FALSE exit then
    STORAGE-LINE-TOKEN {: a:^ u:n :}
    u 0= if LBUF-FALSE exit then
    a STGT-A !  u STGT-U !  LBUF-TRUE ;
+
+public
 
 \ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
 \ or with its line.
@@ -208,8 +233,7 @@ PTR-VARIABLE STGT-START
    0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
-\ The bytes a stored type takes, for a container's own arithmetic.
-CAST: width>n ( width<t> -- n )
+private
 
 \ ---- DEFER-LAYOUT-BUFFER: a column sized by the model at build time ----------
 \ An unbound buffer block whose NAME-BIND ( count -- ) allots count*width cells.
@@ -227,6 +251,8 @@ CAST: width>n ( width<t> -- n )
    cb oldoff + {: oldbase:^ :}
    oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells ADDRESS-CELLS:REMOVE-SPAN
    oldbase oldcap wc * cells LBUF-ZERO ;
+
+public
 
 : LDEFER-BIND ( n ^n n -- )   \ count cbase wc
    {: count:n cb:^ wc:n :}
@@ -273,12 +299,13 @@ CAST: width>n ( width<t> -- n )
    here ptr-cell-mark 0 ,
    v at 0 ptr-field ! ;
 
+private
+
 \ ---- LBUF: the routines a buffer child's body calls --------------------------
 \ A buffer block starts with HEAD-CELLS header cells, indexed by OFF (the
 \ elements' byte offset from the block), CAP and CNT (allotted and live element
 \ counts) and STRIDE (an element's width in cells). An unbound block reads 0
 \ in all but STRIDE. Each routine takes the block, or the cell holding it, last.
-package LBUF
 public
 
 0 constant OFF
@@ -330,19 +357,21 @@ public
    name nameu s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
    ['] GROW AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL ;
 
-;package
+private
 
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
 \ Makes the buffer child NAME and lays its block: the header, bound to LBUF-N
 \ elements of LBUF-W cells, then the elements, which the checker binds.
 : LBUF-CHILD ( ^u8 n ^u8 n bool -- )
    {: name:^ nameu:n type:^ typeu:n hasaddr:bool :}
-   name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
+   name nameu type typeu BUFFER-CHILD {: handle:n :}
    here {: v:^ :}
-   LBUF:HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
+   HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
    LBUF-BYTES @ allot
-   v LBUF:HEAD-CELLS cells + {: base:^ :}
+   v HEAD-CELLS cells + {: base:^ :}
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
+
+public
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    SRCLOC:TOKEN$ {: run:^ runu:n :}
@@ -370,11 +399,13 @@ public
       2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT exit
    then
    LBUF-W !  drop
-   name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
+   name nameu type typeu BUFFER-CHILD {: handle:n :}
    here {: v:^ :}
    0 ,  0 ,  0 ,  LBUF-W @ ,
    handle v CHECKER-STORAGE-DEFER
-   name nameu v LBUF:COMPANIONS ;
+   name nameu v COMPANIONS ;
+
+private
 
 \ ---- TYPED-VARIABLE / TYPED-BUFFER --------------------------------------------
 \ LAYOUT-BUFFER's machinery gated by CHECKER-STORAGE-INFO, so closed typed
@@ -403,6 +434,8 @@ public
       drop name nameu NODE-TYPE-REFUSE LBUF-FALSE exit
    then
    count swap name nameu STORAGE-SIZE ;
+
+public
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
    SRCLOC:TOKEN$ {: run:^ runu:n :}
@@ -444,5 +477,12 @@ public
    here {: v:^ :}
    LBUF-BYTES @ allot
    handle v 1 node hasaddr NODE-BIND ;
+
+;package
+
+: TYPED-VARIABLE ( -- ) LBUF:TYPED-VARIABLE ;
+: TYPED-BUFFER ( n -- ) LBUF:TYPED-BUFFER ;
+: LAYOUT-BUFFER ( n -- ) LBUF:LAYOUT-BUFFER ;
+: DEFER-LAYOUT-BUFFER ( -- ) LBUF:DEFER-LAYOUT-BUFFER ;
 
 ;using

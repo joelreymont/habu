@@ -1,5 +1,5 @@
 \ engine-span-end.f - the engine's source scanners read only the text they get.
-\ CHECK! and CHECK-DOES! (src/core/checker.f) scan a caller's text; a guard
+\ CHECK! (src/core/checker.f) scans a caller's text; a guard
 \ joining the bound and byte tests with `and` evaluates both and reads past the
 \ text. Each case ends its text on the last byte before an inaccessible page
 \ (src/lib/test/guard-page.f): a read past the end faults (the memory-fault
@@ -29,15 +29,9 @@ private
    s" a signature left open to the edge certifies" T-LABEL
    s" SPAN-END-SIG ( n -- n" EDGE CHECK! -1 T= ;
 
-\ A DOES> clause signature ending at the edge: NEXT-SIG-TOK alone.
-\ CHECK-DOES! is the engine's own front end, which only a trusted body calls.
-TRUSTED: CLAUSE-AT-EDGE ( -- )
-   s" a DOES> clause signature that ends at the edge certifies" T-LABEL
-   s" drop" s" n -- n" EDGE CHECK-DOES! -1 T= ;
-
 : RUN ( -- )
    T-RESET
-   BODY-AT-EDGE  SIG-AT-EDGE  CLAUSE-AT-EDGE
+   BODY-AT-EDGE  SIG-AT-EDGE
    T-REPORT ;
 
 RUN

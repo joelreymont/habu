@@ -208,16 +208,14 @@ PTR-VARIABLE TS-DP
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : TS-SECTION-PIN-RAW-REJECT ( -- )
-   CHECKER-SCOPE-START-NEUTRAL
-   TS-REG-RAW
+   [: TS-REG-RAW
    \ raw variable/create/constant laundering a nominal family rejects (verdict 0)
    s" R1 ( n -- rawk ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" R2 ( n -- rawk ) RAWC ! RAWC @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" R3 ( -- rawk ) RAWK" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    \ the same raw cell and constant still certify a plain scalar
    s" R4 ( n -- n ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" R7 ( -- n ) RAWK" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   CHECKER-SCOPE-DONE
+   s" R7 ( -- n ) RAWK" VERIFY:CANDIDATE-IN-SCOPE -1 T= ;] CHECK:SCOPED
    \ the SOUND alternative — a TYPED-VARIABLE of the same family, a live word —
    \ certifies where compiled code asks
    s" R5 ( tsk -- ) TSV !" CHECK-QUIET-CANDIDATE! -1 T=
@@ -256,45 +254,6 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-ADDRESS-ROWS before T=
    41 TS-CALLBACK @ execute 42 T= ;
 
-\ 10. The checker's storage registrars answer only inside a verifier window
-\ CHECKER-DEFTYPED-VARIABLE and its siblings record a definer's accessor effect
-\ for the source pre-pass (src/habu/verify-source.f), which replays the definer
-\ in a verifier window while the definer itself compiles the word. Called from
-\ source outside a window, a registrar would record that effect for a name the
-\ engine never defined there, and checked callers would be certified against it
-\ (below, a global that answers a number where the record promised a pointer).
-\ So it is refused with E-PKG-CONTEXT, as the window's other replay-only steps
-\ are, and records nothing; a package-neutral scope, which source can open, is
-\ no window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
-70 constant E-TS-REJECT        \ the checker's compile reject (CHECKER-REJECT-RC)
-
-\ TS-PKG-CONTEXT asserts the text stops with the checker's status after an
-\ E-PKG-CONTEXT record that quotes the name given.
-: TS-PKG-CONTEXT ( ^u8 n ^u8 n -- ) {: wa:^ wu:n :}
-   REJECTION:CAPTURE  TS-EVAL CHECKER-REJECT-RC T=
-   REJECTION:BUFFER$ s" error[E-PKG-CONTEXT]" CONTAINS? TTRUE
-   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
-   REJECTION:BUFFER-OFF ;
-
-: TS-SECTION-REPLAY-ONLY ( -- )
-   s" checker storage registrars refuse outside a verifier window" T-LABEL
-   s" : TSG ( -- n ) 7 ;" TS-EVAL 0 T=
-   s\" package TSGP\ns\q n\q s\q TSG\q CHECKER-DEFTYPED-VARIABLE\n;package"
-      s" `TSG`" TS-PKG-CONTEXT
-   s\" package TSGP\npublic\n: TSGP-USE ( -- n ) TSG ;\n;package" TS-EVAL 0 T=
-   s\" package TSGP\npublic\n: TSGP-PTR ( -- ^n ) TSG ;\n;package"
-      TS-EVAL E-TS-REJECT T=
-   s\" : TSGP-CK ( -- ) TSGP:TSGP-USE 7 <> if s\q a refused registrar bound the name\q 1 die then ;\nTSGP-CK"
-      TS-EVAL 0 T=
-   s\" : TSN ( -- n ) 7 ;\n: TSN-REG ( -- ) s\q n\q s\q TSN\q CHECKER-DEFTYPED-VARIABLE ;" TS-EVAL 0 T=
-   \ TSNP exists before the scope opens: a neutral scope reopens a package and
-   \ refuses a new one (E-OVERLAY-OPEN).
-   s\" package TSNP ;package\nCHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
-      s" `TSN`" TS-PKG-CONTEXT
-   s\" package TSNP\npublic\n: TSNP-USE ( -- n ) TSN ;\n;package" TS-EVAL 0 T=
-   s\" : TSNP-CK ( -- ) TSNP:TSNP-USE 7 <> if s\q a neutral scope kept the row\q 1 die then ;\nTSNP-CK"
-      TS-EVAL 0 T= ;
-
 : RUN ( -- )
    T-RESET
    TS-SECTION-VAR-NOMINAL
@@ -306,7 +265,6 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-SECTION-PIN-LAYOUT-BUFFER
    TS-SECTION-PIN-RAW-REJECT
    TS-SECTION-QUOT-DECLARATION
-   TS-SECTION-REPLAY-ONLY
    T-REPORT ;
 
 RUN

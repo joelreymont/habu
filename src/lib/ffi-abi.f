@@ -41,6 +41,8 @@ s" src/lib/memory.f" required
 
 package FFI
 
+EXPORT CHECK:DEFINER-PLACE
+
 FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
 \ AAPCS64's integer argument registers, and both ABIs' float slots.
 FFI-ABI:FBUF-BYTES 1 cells / constant REG-MAX
@@ -957,7 +959,7 @@ public
    s" E-FFI-ARITY" REJECTION:OPEN ;
 
 : HELP-STOP ( ^u8 n -- )
-   CHECK:DEFINER-PLACE HELP-END ;
+   DEFINER-PLACE HELP-END ;
 
 : SYNTAX-REJECT ( ^u8 n ^u8 n -- )
    {: m:^ mu:n h:^ hu:n :}

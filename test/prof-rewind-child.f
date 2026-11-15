@@ -15,7 +15,7 @@ s" PROF-TRIM-OLD" XREF-FIND XREF-START TRIM-PC !
 0 prof-on
 PROF-TRIM-OLD
 prof-off
-s" PROF-TRIM-OLD" HIDE-DEFS-FROM
+s" PROF-TRIM-OLD" XREF:HIDE-DEFS-FROM
 : PROF-TRIM-NEW ( -- n ) 7 ;
 : VERIFY-TRIM ( -- )
    s" PROF-TRIM-NEW" XREF-FIND-INDEX TRIM-IX @ <> if
@@ -25,7 +25,7 @@ s" PROF-TRIM-OLD" HIDE-DEFS-FROM
       s" profiler trim: new pc has no live record" 74 die then
    TRIM-IX @ prof-row ;
 VERIFY-TRIM
-s" PROF-TRIM-NEW" HIDE-DEFS-FROM
+s" PROF-TRIM-NEW" XREF:HIDE-DEFS-FROM
 prof-json
 VERIFY-HIDDEN
 
@@ -35,7 +35,7 @@ VERIFY-HIDDEN
 : PROF-LATE-TRIM ( -- ) 100000000 0 ?do i drop loop ;
 PROF-LATE-TRIM
 prof-off
-s" PROF-LATE-TRIM" HIDE-DEFS-FROM
+s" PROF-LATE-TRIM" XREF:HIDE-DEFS-FROM
 prof-json
 
 \ A CP rewind after an NDICT lowering releases the donor's code; the word that

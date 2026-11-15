@@ -78,17 +78,27 @@ CAST: >NODE ( EFFECT:type -- n )
    SLOT-PTR {: p :}
    EFFECT:EMPTY p EFFECT:IN  EFFECT:N EFFECT:IN  p EFFECT:OUT ;
 
-\ The text a built word records as its signature.
-: SLOT-TEXT ( -- ^u8 n ) SLOT-EFFECT >NODE CHECK:EFFECT-TEXT ;
+\ : PE-SLOT-W ( ^peslot n -- ^peslot ) drop ; over SLOT-EFFECT.
+: MAKE-SLOT ( -- )
+   SLOT-EFFECT s" PE-SLOT-W" rot define-word  postpone drop  postpone ; ;
 
-SLOT-TEXT s" ( ^postpone-effect:peslot n -- ^postpone-effect:peslot )" T$=
-
-\ An `xt` in and out, which facts text writes with no quote.
-: XT-TEXT ( -- ^u8 n )
+\ : PE-XT-W ( xt -- xt ) ; over an `xt` in and out.
+: MAKE-XT ( -- )
    s" xt" EFFECT:READ-TYPE {: x :}
-   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT >NODE CHECK:EFFECT-TEXT ;
+   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT  s" PE-XT-W" rot define-word
+   postpone ; ;
 
-XT-TEXT s" ( xt -- xt )" T$=
+public
+MAKE-SLOT
+MAKE-XT
+private
+
+\ The built word records its effect as its signature, bare and package-qualified.
+s" PE-SLOT-A ( ^peslot n -- ^peslot ) PE-SLOT-W" CHECK-QUIET-CANDIDATE! -1 T=
+s" PE-SLOT-B ( ^postpone-effect:peslot n -- ^postpone-effect:peslot ) PE-SLOT-W"
+CHECK-QUIET-CANDIDATE! -1 T=
+s" PE-XT-A ( xt -- xt ) PE-XT-W" CHECK-QUIET-CANDIDATE! -1 T=
+s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ The captured record opens with the line L and gives the transient-node help.
 : SAID-BAD ( ^u8 n -- ) {: l:^ lu:n :}
@@ -172,6 +182,13 @@ s" true PE-N drop" TEST-EVAL:RC 70 T=
 : READ-HIDDEN ( -- n ) [: s" pdhidden" EFFECT:READ-TYPE drop ;] catch ;
 READ-HIDDEN 70 T=
 ;package
+
+\ From another package, a misuse of the built word is rejected, naming the
+\ private family by its package.
+DECL-DIAG:PROSE
+s" PE-SLOT-C ( n n -- n ) POSTPONE-EFFECT:PE-SLOT-W" CHECK-CANDIDATE! 0 T=
+s" postpone-effect:peslot" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
 
 package POSTPONE-STORE
 private
