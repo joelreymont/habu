@@ -2203,6 +2203,21 @@ variable RC
    ERR$ s" = evaluated:" CONTAINS? TTRUE
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
+\ A record its throw carried survives a finally whose cleanup throws and
+\ catches: the load prints that record, not E-THROW.
+: TEST-FINALLY-CARRIED ( -- )
+   s" a carried record through finally's cleanup" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
+   s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY ['] CLEAN finally ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" finally-carried.f" FIXTURE!
+   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
 \ A nested require's throw the program caught prints nothing, even when the
 \ same code later goes uncaught.
 : TEST-CAUGHT-STAYS ( -- )
@@ -2487,6 +2502,7 @@ variable RC
    TEST-EMPTY-CLAUSE
    TEST-UNCLOSED
    TEST-UNCAUGHT
+   TEST-FINALLY-CARRIED
    TEST-CAUGHT-STAYS
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER

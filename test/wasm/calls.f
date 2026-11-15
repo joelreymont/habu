@@ -152,6 +152,15 @@ public
 : HIGH ( -- ) ['] MARK >BITS $100000000 or >VOID execute ;
 : HIGH-TAGGED ( -- ) ['] MARK >BITS $8000000100000000 or >VOID execute ;
 
+\ FINALLY-CARRIED's body keeps a record and passes it; its cleanup throws and
+\ catches.
+: PROBE-BODY ( -- )
+   s" E-PROBE" REJECTION:OPEN  s" probe text" REJECTION:EMIT-STR
+   REJECTION:SAVE  9999 REJECTION:PASS ;
+: INNER ( -- ) 5000 throw ;
+: PROBE-CLEAN ( -- ) ['] INNER catch drop ;
+: FINALLY-CARRIED ( -- ) ['] PROBE-BODY ['] PROBE-CLEAN finally ;
+
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : FAULTED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
 [then]

@@ -66,10 +66,6 @@ variable QUIET
 variable TALLY   0 TALLY !               \ rejections counted this load
 
 private
-\ The number of the throw that carries the kept record, 0 for none: a thread
-\ that has thrown counts at least 1.
-variable STAMP   0 STAMP !
-
 : TEXT-MAP ( -- )
    TEXT-BASE TEXT-P !  TEXT-FIRST TEXT-CAP ! ;
 
@@ -841,21 +837,21 @@ public
       TEXT SAVED-P @ TEXT-LEN @ ARENA-COPY
       TEXT-LEN @ SAVED-U !
    THEN
-   0 STAMP !  0 TEXT-LEN !  0 DEST ! ;
+   0 data-base STAMP-CELL + !  0 TEXT-LEN !  0 DEST ! ;
 
 \ Sends the record SAVE kept, and keeps none.
 : SEND-SAVED ( -- )
-   0 STAMP !
+   0 data-base STAMP-CELL + !
    SAVED-U @ 0= IF EXIT THEN
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
 \ Throws n as the throw that carries the kept record.
 : PASS ( n -- )
-   data-base THROWS-CELL + @ 1 + STAMP !  throw ;
+   data-base THROWS-CELL + @ 1 +  data-base STAMP-CELL + !  throw ;
 
 \ Whether the newest throw this thread began carries the kept record.
 : CARRIED? ( -- bool )
-   STAMP @  data-base THROWS-CELL + @  = ;
+   data-base STAMP-CELL + @  data-base THROWS-CELL + @  = ;
 
 \ The help of the name t tu nothing defines, called in the body of the
 \ definition d du, empty outside one: a body's own name is found only after

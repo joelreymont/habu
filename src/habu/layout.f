@@ -812,9 +812,11 @@ $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
 \ THROWS-CELL: the number of the newest throw this thread began, zero in a fresh
-\ region. A throw on, a kernel catch throwing a code it took on (habu1.f
-\ BRETHROW), keeps it.
+\ region. A kernel catch throwing a code it took on (habu1.f BRETHROW) keeps it;
+\ finally's throw on counts a new one.
 $27F8 constant THROWS-CELL
+\ STAMP-CELL: the number of the throw that carries the kept record, 0 for none.
+$2848 constant STAMP-CELL
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: `die`, the uncaught

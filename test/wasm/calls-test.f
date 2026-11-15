@@ -67,6 +67,11 @@ public
    s" finally of cleanup xt 0 traps before its body runs" T-LABEL
    s" ZERO-CLEANUP" s" zero-cleanup" TRAPS
    WASM-HARNESS:OUT$ s" " T$=
+   s" a record its throw carried survives finally's cleanup that throws and catches" T-LABEL
+   s" FINALLY-CARRIED" s" finally-carried" RAN 1 T=
+   WASM-HARNESS:THROW-CODE UNCAUGHT-RC T=
+   WASM-HARNESS:OUT$ s" error[E-PROBE]: probe text" COUNT-SUB 1 T=
+   WASM-HARNESS:OUT$ s" error[" COUNT-SUB 1 T=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL
    s" HIGH" s" high" TRAPS
    s" execute of a cell whose upper half is not exactly a record's traps" T-LABEL

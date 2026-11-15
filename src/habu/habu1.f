@@ -3292,12 +3292,18 @@ private
    BRETHROW
    done LBL, ;
 
+\ Counts a new throw for the code to go on, and moves the kept record's stamp to
+\ it when the stamp is x11, the count when that code landed. It writes x10, x12.
+: BFINALLY-COUNT ( -- )
+   12 DATA THROWS-CELL LDR,  12 12 1 ADDI,  12 DATA THROWS-CELL STR,
+   10 DATA STAMP-CELL LDR,  10 11 CMP,  10 12 10 C-EQ CSEL,  10 DATA STAMP-CELL STR, ;
+
 \ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
 \ once the cleanup ends or halts | [24] the throw count when [8] was stored. A cleanup's nonzero code goes to [8]
-\ only when [8] is 0: a return or a PAUSE halt. A count moved since [24] means the cleanup threw, so the code
-\ goes on as a new throw.
+\ only when [8] is 0: a return or a PAUSE halt. The code goes on as a new throw, which carries the kept record
+\ when the throw counted [24] did.
 : BFINALLY ( -- )
-   LBL LBL LBL LBL {: keep:label calm:label throw:label same:label :}
+   LBL LBL LBL {: keep:label calm:label throw:label :}
    LBL FINALLY-DONE !
    A G-POP  BCALLABLE
    SP SP 32 SUBI,  9 SP 0 STR,
@@ -3317,9 +3323,7 @@ private
    10 throw CBNZ,
    9 FINALLY-DONE LABEL@ CBZ,
    throw LBL,
-   12 DATA THROWS-CELL LDR,  12 11 CMP,  C-EQ same BCOND,
-   12 12 1 ADDI,  12 DATA THROWS-CELL STR,
-   same LBL,  BRETHROW
+   BFINALLY-COUNT  BRETHROW
    FINALLY-DONE LABEL@ LBL, ;
 
 \ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
@@ -3328,11 +3332,11 @@ private
 \ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt | [32] the throw count
 \ when [16] was stored | [40] unused. The cleanup's nonzero code goes to [16] only
 \ when [16] is 0. A halt is taken and resumed as BFINALLY does, one begun inside
-\ the cleanup included, and the finisher runs with the cell clear. A count moved
-\ since [32] means a throw since the code landed, so the code goes on as a new
-\ throw.
+\ the cleanup included, and the finisher runs with the cell clear. The code goes
+\ on as a new throw, which carries the kept record when the throw counted [32]
+\ did.
 : BC2-INVOKE ( -- )
-   LBL LBL LBL {: calm:label throw:label same:label :}
+   LBL LBL {: calm:label throw:label :}
    LBL C2-INVOKE-DONE !
    LBL C2-INVOKE-CLEAN !
    A G-POP  10 A 0 ADDI,
@@ -3357,9 +3361,7 @@ private
    10 throw CBNZ,
    9 C2-INVOKE-DONE LABEL@ CBZ,
    throw LBL,
-   12 DATA THROWS-CELL LDR,  12 11 CMP,  C-EQ same BCOND,
-   12 12 1 ADDI,  12 DATA THROWS-CELL STR,
-   same LBL,  BRETHROW
+   BFINALLY-COUNT  BRETHROW
    C2-INVOKE-DONE LABEL@ LBL, ;
 
 \ (R base bound value[W] callback W bytes align frame) -> (R base bytes

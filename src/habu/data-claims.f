@@ -122,6 +122,7 @@ create TAB
    ENGINE-HOOK-OFF                    ENGINE-HOOK-LEN         CLAIM ENGINE-HOOK
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    THROWS-CELL                        1 cells                 CLAIM THROWS-CELL
+   STAMP-CELL                         1 cells                 CLAIM STAMP-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
    EXIT-OWNER-CELL                    1 cells                 CLAIM EXIT-OWNER-CELL
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL

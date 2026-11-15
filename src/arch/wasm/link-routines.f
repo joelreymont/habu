@@ -79,6 +79,8 @@ $7FF8000000000000 constant NAN-MADE
 2 constant L-CODE                    \ throw's code
 \ The thread's throw count, THROWS-CELL of the DATA region.
 WPROF:DATA-BASE THROWS-CELL + constant THROWS-AT
+\ The kept record's stamp, STAMP-CELL of the DATA region.
+WPROF:DATA-BASE STAMP-CELL + constant STAMP-AT
 
 \ ---- catch and finally
 2 constant L-STATUS                  \ the first callee's status
@@ -610,8 +612,8 @@ variable SITES-N
 
 \ finally ( body cleanup -- ): the body's throw code is stored again whether or
 \ not the cleanup throws; the cleanup's code stands only when the body returned.
-\ A count moved since the body's code landed means the cleanup threw, so the
-\ body's code goes on as a new throw.
+\ The body's code goes on as a new throw, which carries the kept record when the
+\ body's throw did.
 : FINALLY-BODY ( -- )
    2 U32,  2 U32,  I32 B,  5 U32,  I64 B,
    L-CTX GET,
@@ -632,8 +634,12 @@ variable SITES-N
    DISPATCH,
    L-STATUS GET,  IF,
       L-CTX GET,  L-BODY-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-      0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  L-COUNT GET,  OP-I64-NE B,
-      IF,  COUNT-THROW,  OP-END B,
+      COUNT-THROW,
+      0 I32,  OP-I64-LOAD ALIGN-64 STAMP-AT MEM,  L-COUNT GET,  OP-I64-EQ B,
+      IF,
+         0 I32,  0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,
+         OP-I64-STORE ALIGN-64 STAMP-AT MEM,
+      OP-END B,
    OP-END B,
    L-STATUS GET,  OP-I32-OR B,
    OP-END B, ;
