@@ -1366,12 +1366,7 @@ public
 : PF-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id PF-REC@ {: r:ptr :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
-
-private
-
 : PF-PENDING-SCH@ ( n -- n ) PF-ROW PF.SCH @ ;
-
-public
 
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
@@ -1460,9 +1455,8 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    FVX-CAP @ PF-CAP <> or IF FVX-BUILD THEN ;
 
 \ Pops rows [newn, PF-N) before PF-N rewinds to newn, newest first. Chains that
-\ no longer cover exactly the live rows are dropped for a rebuild instead. Its
-\ one caller, PF-REWIND, runs only from a checker frame's restore, and frames
-\ restore last saved first, so newn never lies above PF-N.
+\ no longer cover exactly the live rows are dropped for a rebuild instead.
+\ Checker frames restore last saved first, so newn never lies above PF-N.
 : FVX-RETIRE ( n -- ) {: newn:n :}
    FVX-READY @ 0= IF EXIT THEN
    FVX-HI @ PF-N @ <> IF 0 FVX-READY ! EXIT THEN
@@ -1488,8 +1482,8 @@ public
    id FVX-PUSH
    id 1 + FVX-HI ! ;
 
-\ THE field store rewind: a checker frame's restore and the prefix rewind put
-\ the rows back to a saved mark through here.
+\ THE field store rewind: a checker frame's restore puts the rows back to a
+\ saved mark through here.
 \ The index pops the retired rows before the scrub clears the owner cells it
 \ finds their buckets by.
 : PF-REWIND ( n n -- ) {: pfn:n commitn:n :}
@@ -2778,7 +2772,6 @@ private
 
 public
 
-\ base-state reset.
 : TFAM-RESET ( -- )
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains

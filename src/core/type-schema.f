@@ -416,8 +416,6 @@ create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr n ) SCH-RBF-P @ ;
 
-\ The frame depth has readers outside this file (type-family.f
-\ SCHEMA-REG:AT-REST, CHECKER-DECL-FRAME:TYPES-READY), so it is public.
 public
 
 variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !

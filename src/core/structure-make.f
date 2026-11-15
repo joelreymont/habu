@@ -14,10 +14,10 @@ private
 package STRUCTURE-MAKE
 
 : SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
-   fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
+   fs idx + PF-PENDING-SCH@ ;
 
-\ The field schemas are still provisional: they are read through DECL-EVENT,
-\ within the open declaration, so no uncommitted row is globally readable.
+\ The field rows are still provisional, above PF-COMMIT-N, where the committed
+\ readers reject them.
 : SM-EMIT-ROWS ( n n n -- )
    {: fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}

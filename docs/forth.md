@@ -1029,11 +1029,11 @@ named words, with one word that runs them in order.
   line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or
   ?TARGET`. `?TARGET ( bool -- )` returns on true; on false the load stops
   at that line with an `E-TARGET` rejection naming the target (the seam's
-  `HB-TARGET$ ( -- ptr u8 n )`), rc 70, so a build exits 70 and writes no
+  `HB-TARGET$ ( -- ptr u8 n )`), status 74, so a build exits 74 and writes no
   program or module. The files that require it inherit the
   statement through the require and state nothing.
-  List the targets the file supports, not the ones it refuses, so a new
-  target is refused until the file supports it.
+  List the targets the file supports, not the ones it rejects, so a new
+  target is rejected until the file supports it.
 - **Keep lines short**, about 60 columns at most: people read this code.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in

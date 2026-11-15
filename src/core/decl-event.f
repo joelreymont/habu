@@ -129,16 +129,15 @@ public
 
 : PART-COMMIT ( -- ) PF-COMMIT ;
 
-\ The event words and the provisional FIELD-SCHEMA@ / PAYLOAD-* queries act on
-\ the open declaration. The declaration forms parse to their terminators and
-\ load nothing, so no declaration spans a file load.
-: FIELD-SCHEMA@ ( n -- n ) PF-ROW PF.SCH @ ;
+\ The event words and the provisional PAYLOAD-* queries act on the open
+\ declaration. The declaration forms parse to their terminators and load
+\ nothing, so no declaration spans a file load.
 
 : PAYLOAD-N ( n -- n ) DEV-PAYLOAD-RANGE swap - ;
 
 : PAYLOAD-SCHEMA@ ( n n -- n ) {: vid:n index:n :}
    vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
-   fld FIELD-SCHEMA@ ;
+   fld PF-PENDING-SCH@ ;
 
 : POLICY ( n -- ) {: policy:n :}
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN
