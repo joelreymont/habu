@@ -3214,8 +3214,9 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
    VISIT-CUR @ ON-DEFINITION ;
 
-\ The checker refuses a duplicate tail only once the name resolves, as --load
-\ does, so the refusal is caught here and kept at the name as written.
+\ The checker rejects a duplicate tail only once the name resolves, as --load
+\ does, and writes its record itself: the catch only disarms before a stop
+\ passes on.
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
@@ -3227,7 +3228,6 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
    DISARM
    {: rc:n :}
-   rc E-DUP-DEFINITION = IF nameu DUPLICATE! EXIT THEN
    rc 0<> IF rc throw THEN
    name nameu at EXPORT-DEFINED
    from name nameu EXPORT-PARSES ;

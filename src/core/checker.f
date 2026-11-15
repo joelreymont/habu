@@ -12743,7 +12743,6 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
-$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CLAUSE throws it
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
 \ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! refuses.
@@ -13092,7 +13091,8 @@ ROW-CELLS cells constant SCOPE-BYTES
    ix CLAUSE-OF 0 >=  clause xor ;
 
 \ The clause of the replayed `create ... does>` definer NAME: a record in NAME's
-\ wordlist named NAME's tail plus the companion suffix.
+\ wordlist named NAME's tail plus the companion suffix. A clause name already
+\ taken is rejected at NAME, the definer's name as written.
 : CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
    ON @ 0=  PEND-CELL DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
@@ -13104,7 +13104,10 @@ ROW-CELLS cells constant SCOPE-BYTES
    ROOM
    u tu - {: q:n :}
    ca q +  cu q -  {: cta:ptr ctu:n :}
-   cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
+   cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF
+      ta tu DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    cta ctu wid replay-record
    ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
 

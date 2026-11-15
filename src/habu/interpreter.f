@@ -1231,13 +1231,14 @@ variable USE-FLOOR
    then ;
 
 \ The clause takes the slot above the export's own, and its name must not be
-\ live in the current wordlist.
+\ live in the current wordlist: a clash is rejected at the export's operand,
+\ still in TOKEN$.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u get-current WL-PROBE XREF-FOUND? if
-      a u PKG-DUPLICATE
+      a u TOKEN$ REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
@@ -2028,16 +2029,8 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
-               s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
-               s" `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
-               suffix sufu REJECTION:EMIT-STR
-               s" ` is already defined in this wordlist" REJECTION:EMIT-STR
-               TOKEN$ REJECTION:AT  s" its clause's name is taken" REJECTION:EMIT-STR
-               REJECTION:HELP
-               s" rename `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
-               s" `, or the word already named `" REJECTION:EMIT-STR
-               stem stemu REJECTION:EMIT-STR  suffix sufu REJECTION:EMIT-STR
-               s" `" REJECTION:EMIT-STR
+               stem stemu suffix sufu
+               DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ REJECTION:CLAUSE-TAKEN
                CHECKER-REJECT-RC REJECTION:STOP
             then
          then
