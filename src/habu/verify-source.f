@@ -3975,10 +3975,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    THEN
    0 FLAG-N ! ;
 
-\ The bytes of each file the last composition read, a span apiece: its path's
-\ offset and length in SPAN-PATHS, its first byte and the byte past its last.
-\ A scan's span ends before an arm SKIP-ARM passes over and where the scan
-\ stops; the next starts after the arm.
+\ The stretches of bytes the last composition read, one row apiece: the file's
+\ path as an offset and length in SPAN-PATHS, the stretch's first byte and the
+\ byte past its last. A stretch ends before an arm SKIP-ARM passes over and where
+\ the file's scan stops; the next starts after the arm.
 DYNAMIC-BUFFER SPAN-PATHS u8
 variable SPAN-PATHS-U
 DYNAMIC-BUFFER SPAN-ROWS n
@@ -4411,9 +4411,9 @@ public
 : FAULT-TARGET$ ( -- ^u8 n )
    FAULT-TARGET FAULT-U @ ;
 
-\ Whether the last composition read byte n of the file at path a u, the path it
-\ resolved: not in an arm a false target flag skips, nor in a file only such
-\ an arm loads, nor past where the scan of the file stopped.
+\ Whether the last composition read byte n of the file at path a u, as it
+\ resolved the path: false in an arm a false target flag skips, in a file the
+\ composition never loaded, and past where the scan of the file stopped.
 : READ-AT? ( ^u8 n n -- bool ) {: a:^ u:n at:n :}
    SPAN-N @ 0 ?do
       a u at i SPAN-HOLDS? if true unloop exit then

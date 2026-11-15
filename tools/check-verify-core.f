@@ -225,7 +225,7 @@ variable CHK-EXPAND-TOP
    0 false ;
 
 \ PATH, a file the caller named, will not open, with errno E: the loader's
-\ rejection, at the path in no source.
+\ rejection, which no source places.
 : CHK-UNREADABLE-NAMED ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
    path pathu REJECTION:FILE!
    NULL-PTR 0 path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
@@ -300,8 +300,8 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    SOURCE-ROOT:WITH ;
 
 \ The file the walk reads will not open, with errno E: the loader's rejection,
-\ placed at the path in the file that names it, or at the top's path, which its
-\ caller named.
+\ placed at the path in the file that names it; the top's, which its caller
+\ named, has no place.
 : CHK-UNREADABLE ( n -- ) {: e:n :}
    CHK-DISC-ID @ CHK-DEP$ {: path:^ pathu:n :}
    CHK-EDGE @ 0 < if path pathu e CHK-UNREADABLE-NAMED then

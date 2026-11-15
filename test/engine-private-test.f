@@ -21,10 +21,12 @@ public
 
 ;package
 
-\ PE-OPEN is private to the checker's sealed package CHECK: user source naming
-\ it is undefined.
+\ PE-OPEN and BODY-ARM are private to the checker's sealed package CHECK: user
+\ source naming them is undefined.
 s\" : EPV-ROWED ( -- n ) 1 ; s\q EPV-ROWED\q PE-OPEN PE-N PE-OUT PE-CLOSE"
    s" error[E-UNDEFINED]: cannot find word `PE-OPEN`" ENGINE-PRIVATE:TCE-REJECTS
+s\" : EPV-ARM ( -- bool ) s\q EPV-ONE\q CHECK:BODY-ARM ;"
+   s" error[E-UNDEFINED]: cannot find word `CHECK:BODY-ARM`" ENGINE-PRIVATE:TCE-REJECTS
 
 \ The effect registrars are private: a program that could rewrite a word's
 \ recorded effect would load code that underflows at run time.
@@ -34,7 +36,5 @@ s\" : EPV-ONE ( -- n ) 1 ;\ns\q EPV-ONE\q s\q -- n n\q trust-raw"
    s" error[E-UNDEFINED]: cannot find word `trust-raw`" ENGINE-PRIVATE:TCE-REJECTS
 s\" : EPV-ROW ( -- bool ) s\q EPV-ONE\q s\q -- n n\q CHECK:ROW-DECLARED ;"
    s" error[E-UNDEFINED]: cannot find word `CHECK:ROW-DECLARED`" ENGINE-PRIVATE:TCE-REJECTS
-s\" : EPV-ARM ( -- bool ) s\q EPV-ONE\q CHECK:BODY-ARM ;"
-   s" error[E-UNDEFINED]: cannot find word `CHECK:BODY-ARM`" ENGINE-PRIVATE:TCE-REJECTS
 
 T-REPORT

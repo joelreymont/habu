@@ -986,9 +986,9 @@ private
    4 * {: row:n :}
    row 2 + CHK-KEPT-ROWS @ CHK-KEPT  row 3 + CHK-KEPT-ROWS @  CHK-ERR ;
 
-\ The kept record of each stop whose place the composition never read, an arm
-\ this target skips or a file only such an arm loads, after the composition's
-\ records: this target never loads that text. True when it wrote one.
+\ Writes, after the composition's records, the kept record of each stop whose
+\ place the composition never read: an arm this target skips, a file only such
+\ an arm loads, or text after the composition stopped. True when it wrote one.
 : CHK-SEND-UNREAD ( -- bool )
    false
    CHK-KEPT-N @ 0 ?do

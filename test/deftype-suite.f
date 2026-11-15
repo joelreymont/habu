@@ -91,7 +91,7 @@ REJECTION:BUFFER$ s" name longer than 255 bytes" CONTAINS? TTRUE
 \    it, crossed by >NAME and NAME>BASE, the base in upper case.
 DEFTYPE REV str
 s" abc" >str >REV REV>STR str> nip 3 T=
-\ a rev is not a str: 70, the checker's rejection ("expected: str actual: rev").
+\ a rev is not a str: 70, the checker's rejection ("expected: str", "found: rev").
 s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
 \ the base is one name, since NAME>BASE is made from it; the rejection names the
 \ type and marks the base.

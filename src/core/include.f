@@ -1937,7 +1937,7 @@ variable LAST-LOAD-EVAL-OK
 
 \ The file a u the resolver found would not open or read, the system's last
 \ call failing with errno e: the record stands at the request in the file that
-\ asked for it, or at a u for an entry.
+\ asked for it; an entry's has no place.
 : INCLUDE-UNREADABLE ( ^u8 n n -- ) {: a:^ u:n e:n :}
    INCLUDE-CLOSE
    TOP@ FRAME-PREV @ {: prev:^ :}
