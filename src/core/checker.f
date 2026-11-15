@@ -8557,10 +8557,25 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 6 constant VREC-WHY-EMPTY    \ no field
 
 \ A refused field is answered, not died on. VREC-AT is the byte offset in the
-\ field text of the field being parsed.
+\ field text of the field being parsed; VREC-TYPE-A U is its type's token, empty
+\ where no type follows.
 variable VREC-AT
+PTR-VARIABLE VREC-TYPE-A
+variable VREC-TYPE-U
 
 : VREC-REFUSE ( n -- n n ) VREC-AT @ swap ;
+
+\ Takes the token the type parser rejected as the field's type when it lies in
+\ field text f fu; else the type's first token stays.
+: VREC-BAD-TOKEN ( ptr u8 n -- ) {: f:ptr fu:n :}
+   SGBAD @ 0= IF EXIT THEN
+   SGBAD-U @ 0= IF EXIT THEN
+   SGBAD-A @ f < IF EXIT THEN
+   SGBAD-A @ SGBAD-U @ + f fu + > IF EXIT THEN
+   SGBAD-A @ VREC-TYPE-A !  SGBAD-U @ VREC-TYPE-U ! ;
+
+: VREC-TYPE-REFUSE ( ptr u8 n -- n n )
+   VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REFUSE ;
 
 \ A field text whose length describes no memory holds no field, so its record
 \ is refused as an empty one before a byte of it is read.
@@ -8572,21 +8587,23 @@ variable VREC-AT
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    fieldsu VREC-AT !
+   0 VREC-TYPE-U !
    BEGIN
       NEXT-SIG-TOK dup 0= IF
-         2drop SGBAD @ IF VREC-WHY-TYPE VREC-REFUSE EXIT THEN
+         2drop SGBAD @ IF fields fieldsu VREC-TYPE-REFUSE EXIT THEN
          fieldsu 0 EXIT
       THEN
-      over fields - VREC-AT !
+      over fields - VREC-AT !  0 VREC-TYPE-U !
       2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REFUSE EXIT THEN
       2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REFUSE EXIT THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop VREC-WHY-TYPE VREC-REFUSE EXIT THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop fields fieldsu VREC-TYPE-REFUSE EXIT THEN
+      2dup VREC-TYPE-U ! VREC-TYPE-A !
       SIG-TYPE
       dup SCOPED-TYPE? IF
          drop 2drop VREC-WHY-SCOPED VREC-REFUSE EXIT
       THEN
       >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF VREC-WHY-TYPE VREC-REFUSE EXIT THEN
+      SGBAD @ IF fields fieldsu VREC-TYPE-REFUSE EXIT THEN
    AGAIN ;
 
 : VREC-DEFINE ( n ptr u8 n ptr u8 n -- n n )
@@ -8641,7 +8658,8 @@ variable VREC-AT
 
 \ Writes the record of value record a's rejection why (VREC-TRY), through its
 \ help, at field token t: at the name when the name is taken or the record has
-\ no field, where t is not read. The caller ends it.
+\ no field, where t is not read, and at the type VREC-TRY left in VREC-TYPE-A
+\ when a field's type is rejected. The caller ends it.
 : CHECKER-RECORD-REJECT ( ptr u8 n ptr u8 n n -- )
    {: a:ptr u:n t:ptr tu:n why:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
@@ -8675,17 +8693,24 @@ variable VREC-AT
       REJECTION:HELP  s" give each field of `" REJECTION:EMIT-STR
       a u REJECTION:EMIT-STR  s" ` a name of its own" REJECTION:EMIT-STR
    THEN
-   why VREC-WHY-TYPE = IF
+   why VREC-WHY-TYPE = VREC-TYPE-U @ 0= and IF
       s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
-      s"  has a missing or unknown type" REJECTION:EMIT-STR
-      t tu REJECTION:AT  s" no valid type follows" REJECTION:EMIT-STR
+      s"  has no type" REJECTION:EMIT-STR
+      t tu REJECTION:AT  s" no type follows" REJECTION:EMIT-STR
+      REJECTION:HELP  s" write a declared type after the field's name, as `"
+      REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
+   THEN
+   why VREC-WHY-TYPE = VREC-TYPE-U @ 0 > and IF
+      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s"  has an unknown or malformed type" REJECTION:EMIT-STR
+      VREC-TYPE-A @ VREC-TYPE-U @ REJECTION:AT  s" not a valid type" REJECTION:EMIT-STR
       REJECTION:HELP  s" write a declared type after the field's name, as `"
       REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
    THEN
    why VREC-WHY-SCOPED = IF
       s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
       s"  has a type with a scoped dependency" REJECTION:EMIT-STR
-      t tu REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
+      VREC-TYPE-A @ VREC-TYPE-U @ REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the field a type that names no callback scope"
       REJECTION:EMIT-STR
    THEN ;

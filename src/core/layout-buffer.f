@@ -425,9 +425,14 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
 
+\ A missing name is rejected at the token that ran the definer, which the
+\ message names.
 : TYPED-VARIABLE ( -- )
+   SRCLOC:TOKEN$ {: run:ptr runu:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" TYPED-VARIABLE" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if
+      s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REFUSE exit
+   then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
