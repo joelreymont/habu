@@ -897,8 +897,6 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 
 private
 
-$800 constant GEN-CAP
-$100 constant EFF-CAP
 $10 constant ARG-MAX
 8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
@@ -934,9 +932,9 @@ private
 
 -1 constant NO-EXT
 
-LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
-GEN-CAP CODEGEN:BUFFER GEN
-EFF-CAP CODEGEN:BUFFER EFF
+CODEGEN:BUFFER LIB-NAME
+CODEGEN:BUFFER GEN
+CODEGEN:BUFFER EFF
 
 \ One declaration's working state: a declaration word writes each cell before
 \ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at

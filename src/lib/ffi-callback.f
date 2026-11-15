@@ -35,8 +35,6 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
    dup 0= if E-COMP-STATE throw then ENTRY-XT execute ;
 
 8 constant FLOAT-REGS
-$400 constant GEN-CAP
-$200 constant PART-CAP            \ sixteen `7 FFI-CB:I32-ARG@ ` reads need $108
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -222,9 +220,9 @@ public
 
 private
 
-GEN-CAP CODEGEN:BUFFER GEN
-PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
-PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
+CODEGEN:BUFFER GEN
+CODEGEN:BUFFER QTYPE             \ the body's quotation type
+CODEGEN:BUFFER READS             \ the argument reads, in order
 
 variable RES-KIND
 variable FB-SET

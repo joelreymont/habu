@@ -34,7 +34,7 @@ variable NAME-N
 DYNAMIC-BUFFER TRUTH n
 variable UNKNOWN-TAG
 variable EVAL-TAG
-512 CODEGEN:BUFFER TEXT
+CODEGEN:BUFFER TEXT
 
 : SCRIPTS-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/Scripts.txt" ;

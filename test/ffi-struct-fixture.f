@@ -12,7 +12,7 @@ require src/lib/test/assert.f
 
 package STRUCT-FIXTURE
 
-$1800 CODEGEN:BUFFER SRC
+CODEGEN:BUFFER SRC
 create SRC-PATH PATH-CAP allot
 create LIB-PATH PATH-CAP allot
 variable SRC-U

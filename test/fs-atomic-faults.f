@@ -26,8 +26,8 @@ $1000 constant IO-CAP
 5 constant EIO
 22 constant EINVAL
 
-$800 CODEGEN:BUFFER SHIM
-$800 CODEGEN:BUFFER PROG
+CODEGEN:BUFFER SHIM
+CODEGEN:BUFFER PROG
 create ROOT PATH-CAP allot   variable ROOT-U
 create SHIM-C PATH-CAP allot   variable SHIM-C-U
 create SHIM-SO PATH-CAP allot   variable SHIM-SO-U

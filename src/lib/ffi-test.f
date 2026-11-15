@@ -220,11 +220,10 @@ variable FFI-T-PAIR-AFTER
 
 \ A child declares 270 distinct symbols and 270 library paths, past any fixed
 \ table: an exact alias takes no row, paths keep their ids and later rows call.
-$2000 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
 
-FFI-T-SRC-CAP CODEGEN:BUFFER FFI-T-SRC
+CODEGEN:BUFFER FFI-T-SRC
 
 create FFI-T-OUT FFI-T-CAP allot
 create FFI-T-ERR FFI-T-CAP allot
@@ -237,7 +236,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" : ZZ-PROBE ( ptr u8 n -- n ) FFI:PROCESS 0 FFI:DECLARE ;\n" FFI-T-SRC+
-   s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
+   s\" CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-DECL CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
@@ -247,7 +246,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" loop ;\nZZ-FILL\ns\" habu-ffi-probe-before\" ZZ-PROBE constant ZZ-BEFORE\n" FFI-T-SRC+ ;
 
 : FFI-T-LIBS-SRC+ ( -- )
-   s\" 128 CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
+   s\" CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
    s\" : ZZ-PATH$ ( n -- ptr u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" /tmp/habu-ffi-path-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
@@ -301,7 +300,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-LIBRARY-SHARED-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\n" FFI-T-SRC+
-   s\" 128 CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
+   s\" CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
    s\" : SELECT-DISTINCT ( -- ) 10 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
@@ -516,8 +515,8 @@ PROCESS-SYMBOLS
    0 s" a" FFI-T-LISTED-CRC $E8B7BE43 T= ;
 
 \ The rendered name itself, byte for byte on this target.
-FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-A
-FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
+CODEGEN:BUFFER FFI-T-NAME-A
+CODEGEN:BUFFER FFI-T-NAME-B
 
 : FFI-T-PQ-NAME$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libpq.5.dylib" exit then s" libpq.so.5" ;

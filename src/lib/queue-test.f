@@ -47,8 +47,8 @@ create Q-SEEN Q-TOTAL cells allot
 create Q-OUT Q-CAPTURE-CAP allot
 create Q-ERR Q-CAPTURE-CAP allot
 
-$2000 CODEGEN:BUFFER Q-SRC
-$40 CODEGEN:BUFFER Q-NEEDLE
+CODEGEN:BUFFER Q-SRC
+CODEGEN:BUFFER Q-NEEDLE
 
 $80 constant Q-POOL-CAP              \ handles this fixture can hold
 Q-POOL-CAP TYPED-BUFFER Q-POOL-SEMS TASK:sem

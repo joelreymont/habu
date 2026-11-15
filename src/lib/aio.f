@@ -283,8 +283,7 @@ TASK:+USER AIO-REGISTERED n
 \ alone leaves it set for the finally to cancel: a group returns with more live.
 TASK:+USER AIO-PARKED n
 
-$40 constant DIAG-CAP
-DIAG-CAP CODEGEN:BUFFER DIAG
+CODEGEN:BUFFER DIAG
 
 \ ---- the two system calls ----------------------------------------------------
 \ Linux passes these integer arguments in ordinary registers, and the x86-64

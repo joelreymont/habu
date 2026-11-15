@@ -27,7 +27,7 @@ $40 constant MSG-DONTWAIT
 2 constant ENOENT
 22 constant EINVAL
 
-$400 CODEGEN:BUFFER PROG
+CODEGEN:BUFFER PROG
 create SOCKETS PATH-CAP allot   variable SOCKETS-U
 create BOUND PATH-CAP allot   variable BOUND-U
 create MISSING PATH-CAP allot   variable MISSING-U

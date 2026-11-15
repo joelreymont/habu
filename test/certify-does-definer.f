@@ -29,8 +29,7 @@ EXPORT CDD-RESP:CDD-RP-D
 \ +USER: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
 \ and evaluates it, so its word has no `does>` clause for a checker to read.
 package CDD-GEN
-$60 constant TEXT-CAP
-TEXT-CAP CODEGEN:BUFFER TEXT
+CODEGEN:BUFFER TEXT
 public
 : MAKE ( n -- )
    {: off:n :}
@@ -130,9 +129,8 @@ package CERTIFY-DOES-DEFINER
    s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ Section 2: a package definer, its straight-line wrapper and both spellings.
-\ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (src/lib/codegen.f) is the
-\ production shape of the wrapper: a body whose tokens hold exactly one definer
-\ call and no control flow creates whatever that definer creates.
+\ A wrapper body whose tokens hold exactly one definer call and no control flow
+\ creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ptr n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"
@@ -199,7 +197,7 @@ package CERTIFY-DOES-DEFINER
 \ were compiled by the engine here; what they create is known only from the
 \ store the checker wrote when it certified their clause. Without that store,
 \ `bin/hb tools/check.f src/lib/queue.f` refused NG-BUFFER, created in
-\ src/lib/type/deftype.f by the resident CODEGEN:BUFFER-E, as E-UNDEFINED. The
+\ src/lib/type/deftype.f by the resident CODEGEN:BUFFER, as E-UNDEFINED. The
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the
 \ scanner checks the body and then the clause. Either order must leave a plain
@@ -464,8 +462,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
 
 \ A clause declaring 256 input cells, whose body takes 257 with the data field.
-$600 constant CDD-WIDE-CAP
-CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
+CODEGEN:BUFFER CDD-WIDE
 : CDD-WIDE-ROW ( -- ) 256 0 do s" n " CDD-WIDE CODEGEN:APPEND-STRING loop ;
 : CDD-WIDE$ ( -- ptr u8 n )
    CDD-WIDE CODEGEN:RESET
@@ -476,9 +473,8 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
 
 \ A clause declaring 255 input cells, whose body takes 256 with the data field;
 \ its packet declares the signature as written.
-$800 constant CDD-FIT-CAP
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
+CODEGEN:BUFFER CDD-FIT
+CODEGEN:BUFFER CDD-FIT-WANT
 : CDD-FIT-ROW ( ptr n -- )
    {: d:ptr :}
    255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
