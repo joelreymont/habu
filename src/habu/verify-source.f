@@ -2523,7 +2523,12 @@ variable SUM-VAR-NEXT
       THEN
    UNTIL
    TFAM:TFAM-N@ {: before:n :}
-   name nameu BODY$ [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN
+   \ The front reads its keyword as the token read last, as on the native path.
+   SRCLOC:TOKEN$ {: oa:^ ou:n :}
+   TOP-CUR-A @ TOP-CUR-U @ SRCLOC:TOKEN!
+   name nameu BODY$
+   [: [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;]
+   [: oa ou SRCLOC:TOKEN! ;] finally
    TFAM:TFAM-N@ before > IF
       TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
    THEN ;
@@ -2597,13 +2602,14 @@ variable STG-TYPE-U
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
 
-\ CHECKER-DEFFAMILY's record rejects a missing name or a malformed header; a
-\ base on the name's line replays as NEWTYPE registers it.
+\ CHECKER-DEFFAMILY's record rejects a missing name, at the keyword, or a
+\ malformed header; a base on the name's line replays as NEWTYPE registers it.
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ CHECKER-DEFFAMILY EXIT THEN
    0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
-   nameu 0= or IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
    SCAN-I @ {: mark:n :}
    SCAN-LINE-TOKEN {: ta:^ tu:n :}
    mark SCAN-I !

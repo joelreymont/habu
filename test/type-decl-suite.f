@@ -1123,6 +1123,12 @@ REJECTION:CAPTURE
 
 \ negative declarations: each record names its reason.
 
+\ a missing name is placed at the keyword, and its help names that keyword.
+s" NEWTYPE"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration\n"
+s" NEWTYPE" s" missing name" TDT-AT
+s\"   = help: write a name after `NEWTYPE`, as in `NEWTYPE meters`\n" TDT-HAS
+
 \ uppercase/mixed-case family names reject before storage.
 s" NEWTYPE Bad<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `Bad`\n"

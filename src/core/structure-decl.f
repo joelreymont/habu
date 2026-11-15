@@ -768,13 +768,15 @@ EXPORT STRUCTURE-DECL:SD-WRAP
 : STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
 
 \ NEWTYPE is a documented global. A base is the type on the name's line; a \
-\ there, or a parametrised name, leaves the one-cell family.
+\ there, or a parametrised name, leaves the one-cell family. A missing name is
+\ rejected at the keyword.
 : NEWTYPE ( -- )
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
+   nu 0= IF na nu kw ku TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    0 0= 0= nu 0 ?do na i + c@ 60 = or loop
-   nu 0= or IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    STORAGE-LINE-TOKEN {: ta:^ tu:n :}
    tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta STORAGE-UNREAD

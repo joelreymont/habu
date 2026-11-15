@@ -106,7 +106,7 @@ variable TDECL-SEEN-N
 \ --- declaration context, set before TDECL-RUN, read by bodies and diagnostics.
 PTR-VARIABLE TDK-A   variable TDK-U   \ decl kind token ("newtype"/"sumtype")
 PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
-PTR-VARIABLE TDS-A   variable TDS-U   \ source token naming the family (DEFFAMILY)
+PTR-VARIABLE TDS-A   variable TDS-U   \ source token the record is placed at
 PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
@@ -292,7 +292,8 @@ variable TDECL-TOK-N
    a u REJECTION:KEPT ;
 
 \ A DEFFAMILY record points at the name whatever the rejection, as the source
-\ token TDS: the folded DEFTYPE header the body checks has no place.
+\ token TDS: the folded DEFTYPE header the body checks has no place. A
+\ declaration with no name points at its keyword, as TDS.
 : TDECL-REPORT-TOK ( -- ^u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
    TDT-A @ TDT-U @ TDECL-PLACED-TOK ;
@@ -343,6 +344,9 @@ variable TDECL-TOK-N
    TDECL-SEEN-CLEAR
    -1 TDECL-CUR-FAM !
    s" " s" " 0 TDECL-ARM ;
+: TDECL-PLACE! ( ^u8 n -- )
+   2dup BYTE-SPAN? 0= IF drop 0 THEN
+   TDS-U ! TDS-A ! ;
 
 \ The unterminated-sum rejection: the declaration-shaped E-BAD-DECLARATION
 \ record (name + partial body) through TDECL-RUN, on the load and a replay
@@ -376,11 +380,9 @@ private
    loop RES-FALSE ;
 
 \ A family, variant or field name longer than TF-NAME-MAX has no room in the
-\ spellings derived from it (type-family.f TF-CTOR-BUF).
+\ spellings derived from it (type-family.f TF-CTOR-BUF). A missing name is
+\ rejected before, at the keyword that wants it.
 : TDECL-REQUIRE-NAME ( ^u8 n -- ) {: a:^ u:n :}
-   u 0= IF a u s" missing name"
-      s" write a name after `NEWTYPE`, `SUMTYPE` or `VARIANT`, as in `SUMTYPE shape`"
-      E-TDECL-SYNTAX TDECL-THROW THEN
    u TF-NAME-MAX > IF a u TF-NAME-LONG$
       TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
@@ -455,8 +457,8 @@ private
 \ letter params within arity, n/f/r and concrete CT cell types, and `^T`.
 \ Comments are not supported inside a declaration block; stray tokens reject.
 
-: TDECL-HEADER! ( -- n )
-   TDN-U @ 0= IF TDN-A @ 0 TDECL-REQUIRE-NAME THEN
+: TDECL-HEADER! ( ^u8 n -- n ) {: fa:^ fu:n :}   \ fix for a missing name
+   TDN-U @ 0= IF TDN-A @ 0 s" missing name" fa fu E-TDECL-SYNTAX TDECL-THROW THEN
    TDN-A @ TDN-U @ DECL-HEADER 0= IF
       drop 2drop
       TDN-A @ TDN-U @ s" invalid type parameter header"
@@ -882,8 +884,11 @@ variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
 PTR-VARIABLE TDV-NA    variable TDV-NU
 
-: TDECL-VARIANT-NAME ( -- )
+: TDECL-VARIANT-NAME ( ^u8 n -- ) {: kw:^ ku:n :}
    TDECL-NEXT {: a:^ u:n :}
+   u 0= IF kw ku s" missing name"
+      s" write a name after `VARIANT`, as in `VARIANT none ;VARIANT`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
    a u TDECL-REQUIRE-VARIANT-NAME
    a u TFAM-DERIVED-TAIL? IF
       TDECL-CUR-FAM @ TFAM-DERIVE-ANY? IF a u TDECL-COLLIDE-THROW THEN
@@ -993,8 +998,8 @@ private
    wu 0= IF EXIT THEN
    ta tu wa wu fa fu E-TDECL-DERIVE TDECL-THROW ;
 
-: TDECL-VARIANT ( n -- ) {: fam:n :}
-   TDECL-VARIANT-NAME
+: TDECL-VARIANT ( ^u8 n n -- ) {: kw:^ ku:n fam:n :}
+   kw ku TDECL-VARIANT-NAME
    0 TDV-PW !  0 TDV-ARG-N !  0 TDV-PAY-N !
    BEGIN
       TDECL-NEXT
@@ -1015,7 +1020,7 @@ private
             s" write each variant as `VARIANT name type ... ;VARIANT`, after any `POLICY` and `DERIVE` clause"
             E-TDECL-SYNTAX TDECL-THROW
       THEN
-      2drop fam TDECL-VARIANT
+      fam TDECL-VARIANT
    AGAIN ;
 
 \ Only a family with public generated words (TFAM-GEN-PUBLIC?) reserves a
@@ -1154,7 +1159,7 @@ private
 private
 
 : CHECKER-DEFSUM-BODY ( -- n )
-   TDECL-HEADER! {: ar:n :}
+   s" write a name after `SUMTYPE`, as in `SUMTYPE shape`" TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
    ar TK-SUM TDECL-FAMILY {: fam:n :}
@@ -1182,7 +1187,7 @@ private
 defer TDECL-TXN-XT ( [ -- ] -- )
 
 : CHECKER-DEFFAMILY-BODY ( -- )
-   TDECL-HEADER! {: ar:n :}
+   s" write a name after `NEWTYPE`, as in `NEWTYPE meters`" TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    ar TK-CELL TDECL-FAMILY TDECL-FAM-REG ! ;
 
@@ -1191,11 +1196,11 @@ public
 
 \ The family header and the source token that names it, the same bytes up to
 \ case: a DEFTYPE name folds to its header, a NEWTYPE name is its own token.
+\ With no name, the token is the keyword.
 : TDECL-DEFFAMILY ( ^u8 n ^u8 n -- )
    {: na:^ nu:n ta:^ tu:n :}
    s" newtype" na nu s" " TDECL-CTX!
-   ta tu 2dup BYTE-SPAN? 0= IF drop 0 THEN
-   TDS-U ! TDS-A !
+   ta tu TDECL-PLACE!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 defer TDECL-NAME-PREFLIGHT-XT ( ^u8 n -- )

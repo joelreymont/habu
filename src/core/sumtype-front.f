@@ -25,8 +25,10 @@ public
    DECL-FRONT:SOURCE-NEXT {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
-   TDECL-COLLECT
+   \ A sum with no name runs to the header's rejection, at its keyword.
+   TDECL-COLLECT  nu 0= or
    s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+   nu 0= IF kw ku TDECL-PLACE! THEN
    0= IF [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT THEN
    [: TDECL-SUM-GEN-TXN ;] TDECL-RUN ;
 
