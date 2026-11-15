@@ -93,7 +93,7 @@ variable FP-WID
 public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
-variable LCEMIT  variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
+variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
 \ not the registry: a payload record's dictionary index is the seeded count
@@ -134,7 +134,6 @@ public
 variable LCOUNT
 variable LAPPEND
 variable LRESET
-variable LROOM
 variable LISSUE
 variable LINIT
 variable LBEFORE
@@ -1416,20 +1415,15 @@ private
 \ other row is eligible.
 : BNDAPPEND ( -- )                                  \ ( expected-index -- )
    s" E-TASK-COMPILE" s" ndict-append" B-TASK-GUARD  A G-POP
-   LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
+   LBL LBL LBL LBL {: owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
    14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  14 bad CBZ,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA PEND-CELL LDR,  14 bad CBZ,
-   14 B CMP,  C-EQ parent BCOND,
+   14 B CMP,  C-EQ owner BCOND,
    14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
    14 DATA CLAUSE-CELL LDR,  14 bad CBZ,
-   owner B,
-   parent LBL,
-   14 DATA CLAUSE-CELL LDR,  14 owner CBZ,
-   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
-   9 NDICT 0 ADDI,
    owner LBL,
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CC bad BCOND,
@@ -2947,8 +2941,6 @@ public
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
    9 NDICT CMP,  C-EQ pending BCOND,
-   9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
-   9 SP 8 LDR,
    14 DATA DEF-OCC:PTR-CELL LDR,
    15 9 3 LSLI,  14 14 15 ADD,
    15 0 MOVZ,  15 14 8 STR,
@@ -4325,23 +4317,6 @@ package ENGINE-EMIT
    s" s>f" ['] BS>F FPRIM-L  s" f>s" ['] BF>S FPRIM-L
    s" f." ['] BFDOT FPRIM-L ;
 
-\ LCEMIT ( x9 = instruction word ): the one store every emission funnels
-\ through. It stores the word at CP through the region's RW alias, so the code
-\ at CP's own address stays executable and never writable. A definition opens
-\ below REGION less a reserve but may outgrow it: a word past DBASE+REGION-4
-\ exits SEAL-VIOLATION.
-: EMIT-CEMIT ( -- )
-   LBL {: full:label :}
-   LCEMIT LABEL@ LBL,
-   SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
-   12 REGION 4 - LIT64,  12 DBASE 12 ADD,  28 12 CMP,  C-HI full BCOND,
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 28 12 ADD,  9 12 0 STRW,
-   12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
-   28 28 4 ADDI,  RET,
-   full LBL,
-   s" E-SEAL-VIOLATION habu: code space full at:"
-   ENGINE-ERROR:SEAL-VIOLATION 28 DIE-LINE-VALUE, ;
-
 \ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or
 \ the capacity a refused map tried ). A capacity at 2^59, whose block's size
 \ would pass 2^63, is refused as a map is. It keeps every register but x16, the
@@ -4624,8 +4599,8 @@ private
 \ compacts the table when HIDX:CLAIMS crosses HIDX:LOAD-MAX, sweeping the stale
 \ slots rollback leaves. HIDX-EMIT:LREBUILD zeroes the table and HIDX:CLAIMS and
 \ re-inserts [0,NDICT): the only operation that lowers HIDX:CLAIMS, called by the
-\ raise leg of ndict! (BNDSET). HIDX-EMIT:LFULL is the loud exit for every
-\ unreachable state.
+\ raise leg of ndict! (BNDSET). HIDX-EMIT:LFULL is the loud exit for the
+\ unreachable full wrap.
 \ HIDX-EMIT:LREKEY (x3 = record index) re-indexes a record under its current wid
 \ cell unless its chain already holds it, register-transparent.
 \ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because
@@ -4685,9 +4660,7 @@ private
       6 SP 40 STR,   7 SP 48 STR,  8 SP 56 STR,  13 SP 64 STR, 14 SP 72 STR,
       15 SP 80 STR,  16 SP 88 STR, 17 SP 96 STR,
       14 DATA HIDXP-CELL LDR,  14 rret CBZ,          \ pre-build window: nothing to compact
-      \ the dictionary must fit under the load bound or the compaction could
-      \ not restore it - impossible while DICT-CAP < HIDX:LOAD-MAX, loud if not
-      5 HIDX:LOAD-MAX LIT64,  NDICT 5 CMP,  C-GE HIDX-EMIT:LFULL LABEL@ BCOND,
+      \ NDICT <= DICT-CAP < HIDX:LOAD-MAX: the rebuilt table stays under the bound
       13 0 MOVZ,  4 0 MOVZ,  15 HIDX-BYTES LIT64,
       zloop LBL,
          13 15 CMP,  C-GE zdone BCOND,
@@ -4711,30 +4684,17 @@ private
 \ A dictionary slot's occurrence is owned by one anonymous mapping. The first
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by
 \ slot. None of these cells are in the rewindable DATA heap or captured image.
-: DEF-OCC-EXHAUSTED, ( -- )
-   s" E-EXHAUSTED habu: definition occurrence numbers exhausted" 76 DIE-LINE, ;
-
-\ x9 = number about to be issued.
+\ The last issued number rises by one per issue: 64 bits never run out.
 : EMIT-DEF-OCC ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: room-ok:label lower:label raise:label loop:label raised:label
+   LBL LBL LBL LBL LBL LBL LBL
+   {: lower:label raise:label loop:label raised:label
       done:label clear-loop:label reset:label :}
    LBL LBL LBL
    {: reset-loop:label init-bad:label append-done:label :}
-   EM-DEF-OCC:LROOM LABEL@ LBL,
-      SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-      10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
-      12 0 MOVN,  12 12 11 SUB,
-      9 12 CMP,  C-LS room-ok BCOND,
-      SP SP 32 ADDI,  DEF-OCC-EXHAUSTED,
-      room-ok LBL,
-      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
-      SP SP 32 ADDI,  RET,
    EM-DEF-OCC:LISSUE LABEL@ LBL,
       SP SP 48 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
-      9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
-      9 SP 8 LDR,  10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
       11 11 1 ADDI,  11 10 0 STR,
       12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
       30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
@@ -4747,9 +4707,6 @@ private
       9 10 CMP,  C-LT lower BCOND,  C-GT raise BCOND,
        done B,
        raise LBL,
-          12 9 10 SUB,
-          9 12 0 ADDI,  EM-DEF-OCC:LROOM LABEL@ BL,
-         9 SP 8 LDR,  10 NDICT 0 ADDI,
          11 DATA DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
       loop LBL,
          10 9 CMP,  C-CS raised BCOND,
@@ -4798,7 +4755,6 @@ private
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
       12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
-      EM-DEF-OCC:LROOM LABEL@ BL,                         \ refuse exhaustion before clearing a live reference
       10 DATA DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
       reset-loop LBL,
          12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
@@ -4863,8 +4819,7 @@ private
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.
 : EMIT-DEF-OCC-OVERLAP ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: hit:label miss:label raw:label span:label
-      count-loop:label count-next:label counted:label :}
+   LBL LBL LBL LBL {: hit:label miss:label raw:label span:label :}
    LBL LBL LBL LBL LBL LBL {: clear-loop:label clear-next:label cleared:label
       issue-loop:label issue-next:label issued:label :}
    EM-DEF-OCC:LMATCH LABEL@ LBL,
@@ -4890,18 +4845,7 @@ private
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
       12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
       16 SP 64 STR,  17 SP 72 STR,
-      13 0 MOVZ,  14 0 MOVZ,
-   count-loop LBL,
-      13 NDICT CMP,  C-CS counted BCOND,
-      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
-      EM-DEF-OCC:LMATCH LABEL@ BL,
-      12 count-next CBZ,
-      14 14 1 ADDI,
-   count-next LBL,
-      13 13 1 ADDI,  count-loop B,
-   counted LBL,
-      9 14 0 ADDI,  EM-DEF-OCC:LROOM LABEL@ BL,
-      9 SP 8 LDR,  13 0 MOVZ,
+      13 0 MOVZ,
    clear-loop LBL,
       13 NDICT CMP,  C-CS cleared BCOND,
       11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,

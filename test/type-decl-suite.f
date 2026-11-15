@@ -1215,8 +1215,8 @@ s\" error[E-BAD-DECLARATION]: bad product declaration `tdpoor`\n"
 s" a" s" unknown payload type" TDT-AT
 s" PRODUCT tdpptr<a> FIELD x ptr ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdpptr`\n"
-s\"   = at ``: missing ;VARIANT\n" TDT-REJ
-s\"   = help: close each `VARIANT` with `;VARIANT`, and write a type after each `FIELD` name and each `ptr`\n" TDT-HAS
+s\" ^ missing ;PRODUCT\n" TDT-REJ
+s\"   = help: write a type after each `FIELD` name and each `ptr`, and end the declaration with `;PRODUCT`\n" TDT-HAS
 \ bad field names: uppercase, grammar keyword, control word. The control-word arm
 \ comes from TYPE-NAME:CONTROL?, the one list the family-name gate
 \ (TYPE-NAME:FAMILY-RESERVED?) and the field gate both consult; the STRUCTURE
@@ -1764,7 +1764,7 @@ s" undefine TDPV:EQ"
 \ and the sum-variant name collision.
 s" SUMTYPE tdsb1 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb1`\n"
-s" tdsb1" s" pointer payloads have no derived equality" TDT-AT
+s" ptr" s" pointer payloads have no derived equality" TDT-AT
 s\"   = help: drop `eq` and `hash` from `DERIVE`, or give the payload a type that is not a pointer\n" TDT-HAS
 s" SUMTYPE tdsb2<a> DERIVE eq VARIANT hold a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb2`\n"
@@ -1772,11 +1772,11 @@ s" eq" s" derive requires a concrete (arity 0) family" TDT-AT
 s\"   = help: drop `eq` and `hash` from `DERIVE`, or declare the family with no type parameters\n" TDT-HAS
 s" SUMTYPE tdsb3 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb3`\n"
-s\"   = at `tdown`: payload type has no derived equality\n" TDT-REJ
+s" tdown" s" payload type has no derived equality" TDT-AT
 s\"   = help: give the payload an integer type, or drop `eq` and `hash` from `DERIVE`\n" TDT-HAS
 s" PRODUCT tdsb4 DERIVE eq FIELD cc tdrw ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdsb4`\n"
-s\"   = at `tdrw`: field family must also derive eq\n" TDT-REJ
+s" tdrw" s" field family must also derive eq" TDT-AT
 s\"   = help: add `DERIVE eq` to the field's family, or drop `eq` from this `DERIVE`\n" TDT-HAS
 \ an OPAQUE family's derived words are private to its package.
 package tdsbo
@@ -1785,7 +1785,7 @@ STRUCTURE inner OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
 ;package
 s" PRODUCT tdsb7 DERIVE eq FIELD w tdsbo:inner ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdsb7`\n"
-s\"   = at `inner`: field family's derived words are private to its package\n" TDT-REJ
+s" tdsbo:inner" s" field family's derived words are private to its package" TDT-AT
 s\"   = help: declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`\n" TDT-HAS
 s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb5`\n"
@@ -1795,7 +1795,7 @@ s\"   = help: rename the variant: under `DERIVE` the names `eq`, `hash` and `tag
 \ rollback: a rejected derive leaves no residue; the name redeclares clean.
 s" SUMTYPE tdsb6 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb6`\n"
-s" tdsb6" s" pointer payloads have no derived equality" TDT-AT
+s" ptr" s" pointer payloads have no derived equality" TDT-AT
 SUMTYPE tdsb6 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 : TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
 TDSB6-EQ TTRUE
@@ -1943,10 +1943,10 @@ s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhb2`\n"
 s" hash" s" variant name collides with a derived word" TDT-AT
 s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhb3`\n"
-s" tdhb3" s" pointer payloads have no derived equality" TDT-AT
+s" ptr" s" pointer payloads have no derived equality" TDT-AT
 s" PRODUCT tdhb4 DERIVE hash FIELD cc tdrw ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdhb4`\n"
-s\"   = at `tdrw`: field family must also derive hash\n" TDT-REJ
+s" tdrw" s" field family must also derive hash" TDT-AT
 s\"   = help: add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`\n" TDT-HAS
 
 \ A family-typed field or payload compares through its family's EQ and hashes
@@ -1980,7 +1980,7 @@ TDFO-NEQ TFALSE
 REJECTION:CAPTURE
 s" PRODUCT tdfb DERIVE hash FIELD c tdrv ;PRODUCT"
 s\" error[E-BAD-DECLARATION]: bad product declaration `tdfb`\n"
-s\"   = at `tdrv`: field family must also derive hash\n" TDT-REJ
+s" tdrv" s" field family must also derive hash" TDT-AT
 REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 
 \ Unified named-field ENUM metadata drives the same derivation validator and

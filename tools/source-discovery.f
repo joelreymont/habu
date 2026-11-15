@@ -20,6 +20,7 @@ require src/lib/span.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/sort.f
+require src/habu/escape.f
 require src/habu/verify-source.f
 
 package DISCOVER
@@ -1007,7 +1008,7 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-DECODE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    u 1+ SD-DEC-RESERVE
    0 SD-DEC {: dst:ptr :}
-   a u dst ESC-DECODE {: k:n ok:bool :}
+   a u dst ESCAPE:DECODE {: k:n ok:bool :}
    ok 0= if SD-REFUSED-LITERAL exit then
    dst k SD-PATH-FILL ;
 

@@ -105,6 +105,42 @@ TDECL-SEEN-CLEAR
    u TDECL-SEEN-N @ cells TDECL-SEEN-U + !
    TDECL-SEEN-N @ 1 + TDECL-SEEN-N ! ;
 
+\ The body token each payload or field root of the declaration was read from,
+\ by root index. A root's token comes after its clause's keyword and name, so
+\ a body holds fewer roots than half its bytes.
+TDECL-CAP 2 / constant TDECL-ROOT-CAP
+TDECL-ROOT-CAP PTR-U8-TABLE TDECL-ROOT-A
+create TDECL-ROOT-U TDECL-ROOT-CAP cells allot
+create TDECL-ROOT-I TDECL-ROOT-CAP cells allot
+variable TDECL-ROOT-N
+: TDECL-ROOT-A-FIELD ( n -- ptr ptr u8 ) cells TDECL-ROOT-A + 0 ptr-field ;
+: TDECL-ROOT-CLEAR ( -- )
+   TDECL-ROOT-N @ 0 ?do
+      NULL-PTR i TDECL-ROOT-A-FIELD !
+      0 i cells TDECL-ROOT-U + !
+   loop
+   0 TDECL-ROOT-N ! ;
+
+TDECL-ROOT-CAP TDECL-ROOT-N !
+TDECL-ROOT-CLEAR
+
+: TDECL-ROOT-TOK! ( n ptr u8 n -- ) {: idx:n a:ptr u:n :}
+   TDECL-ROOT-N @ {: k:n :}
+   idx k cells TDECL-ROOT-I + !
+   a k TDECL-ROOT-A-FIELD !
+   u k cells TDECL-ROOT-U + !
+   k 1 + TDECL-ROOT-N ! ;
+\ A variant's tokens are kept as its payloads parse, with no root (-1); each
+\ gets its root when the payload roots land after the argument roots.
+: TDECL-ROOT-LAND ( n n -- ) {: idx:n k:n :} idx k cells TDECL-ROOT-I + ! ;
+\ The token root idx was read from; empty for a root no body token gave.
+: TDECL-ROOT-TOK@ ( n -- ptr u8 n ) {: idx:n :}
+   TDECL-ROOT-N @ 0 ?do
+      i cells TDECL-ROOT-I + @ idx = IF
+         i TDECL-ROOT-A-FIELD @  i cells TDECL-ROOT-U + @
+         unloop EXIT THEN
+   loop  NULL-PTR 0 ;
+
 \ --- declaration context, set before TDECL-RUN, read by bodies and diagnostics.
 PTR-VARIABLE TDK-A   variable TDK-U   \ decl kind token ("newtype"/"sumtype")
 PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
@@ -243,10 +279,11 @@ private
 \ A token in a collected body is a copy no source holds. Where the source of
 \ the body's first token is held, it maps back: k blanks precede it in the
 \ copy, so it lies k source tokens past the first, at the same offset, where
-\ one held source holds the bytes from the first token to its end.
+\ one held source holds the bytes from the first token to its end. The empty
+\ token at the copy's end maps to just past its last token.
 : TDECL-COPY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a TDECL-BUF - {: at:n :}
-   at 0 >=  at TDECL-U @ < and  at u + TDECL-U @ <= and ;
+   at 0 >=  at u + TDECL-U @ <= and ;
 \ The blanks before byte at of the copy, and at's offset past the last one.
 : TDECL-ORDINAL ( n -- n n ) {: at:n :}
    0 0  at 0 ?do
@@ -293,6 +330,7 @@ private
    catch {: rc:n :}
    0 TDECL-OVERSIZE !   \ a body refused before TDECL-REQUIRE-FIT left it set
    TDECL-SEEN-CLEAR
+   TDECL-ROOT-CLEAR
    rc 0= IF EXIT THEN
    rc E-TDECL-UNRESOLVED = IF TDECL-RESTORE rc throw THEN
    rc 1 >=  rc 255 <= and  TDECL-CODE @ rc <> or IF
@@ -519,10 +557,16 @@ variable TDECL-FAM-ARITY
    s" a width is not stored: keep its bytes (width>n)"
    s" declare it `n` and store the width's byte count in it with `width>n`"
    E-TDECL-PAYLOAD TDECL-THROW ;
+: TDECL-NO-END-THROW ( ptr u8 n -- ) {: a:ptr u:n :}
+   TDK-A @ TDK-U @ s" product" CORE-STR= IF
+      a u s" missing ;PRODUCT"
+         s" write a type after each `FIELD` name and each `ptr`, and end the declaration with `;PRODUCT`"
+         E-TDECL-SYNTAX TDECL-THROW THEN
+   a u s" missing ;VARIANT"
+      s" close each `VARIANT` with `;VARIANT`, and write a type after each `ptr`"
+      E-TDECL-SYNTAX TDECL-THROW ;
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 0= IF a u s" missing ;VARIANT"
-      s" close each `VARIANT` with `;VARIANT`, and write a type after each `FIELD` name and each `ptr`"
-      E-TDECL-SYNTAX TDECL-THROW THEN
+   u 0= IF a u TDECL-NO-END-THROW THEN
    a u DELIM? IF a u s" bad payload token"
       TDECL-TYPE-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
    a u TDECL-KEYWORD? IF a u s" bad payload token"
@@ -818,8 +862,10 @@ create TDV-BADLETTER 1 allot
    SIG-UNRES @ IF EXIT THEN
    SCHEMA-ROOT-N@ TDV-SS !
    0 TDV-PC !
+   TDECL-ROOT-N @ TDV-PAY-N @ - {: tb:n :}
    0 BEGIN dup TDV-PAY-N @ < WHILE
-      dup cells TDV-PAY-SCR + @ SCHEMA-ROOT+ drop
+      dup cells TDV-PAY-SCR + @ SCHEMA-ROOT+
+      over tb + TDECL-ROOT-LAND
       TDV-PC @ 1 + TDV-PC !
       1 +
    REPEAT drop
@@ -831,9 +877,10 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
-      TDECL-VPAY-ELEM
-      SIG-UNRES @ IF drop ELSE
+      2dup TDECL-VPAY-ELEM
+      SIG-UNRES @ IF drop 2drop ELSE
          dup fam swap TFAM-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+
+         -1 -rot TDECL-ROOT-TOK!
       THEN
    AGAIN ;
 
@@ -991,47 +1038,56 @@ private
 \ payload-role gate: every payload/field schema node must be
 \ derivably comparable, else the DECLARATION rejects naming the exact role.
 
-: TDECL-DERIVE-FIELD-OK ( n n -- ) {: fam:n node:n :}
+\ A derive rejection is placed at the token its root was read from, else at
+\ the given name: STRUCTURE and ENUM roots keep no token.
+: TDECL-ROOT-OR ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n ta:ptr tu:n :}
+   u 0 > IF a u EXIT THEN  ta tu ;
+
+: TDECL-DERIVE-FIELD-OK ( ptr u8 n n n -- )
+   {: a:ptr u:n fam:n node:n :}
    node SCHEMA-A@ {: ff:n :}
    ff TFAM-GEN-PUBLIC? 0= IF
       ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
-         ff TFAM-NAME$
+         a u ff TFAM-NAME$ TDECL-ROOT-OR
          s" field family's derived words are private to its package"
          s" declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`"
          E-TDECL-DERIVE TDECL-THROW THEN THEN
    fam TFAM-DERIVE-EQ? ff TFAM-DERIVE-EQ? 0= and IF
-      ff TFAM-NAME$
+      a u ff TFAM-NAME$ TDECL-ROOT-OR
       s" field family must also derive eq"
          s" add `DERIVE eq` to the field's family, or drop `eq` from this `DERIVE`"
          E-TDECL-DERIVE TDECL-THROW THEN
    fam TFAM-DERIVE-HASH? ff TFAM-DERIVE-HASH? 0= and IF
-      ff TFAM-NAME$
+      a u ff TFAM-NAME$ TDECL-ROOT-OR
       s" field family must also derive hash"
          s" add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`"
          E-TDECL-DERIVE TDECL-THROW THEN ;
 
-: TDECL-DERIVE-NODE-OK ( n n -- ) {: fam:n node:n :}
+: TDECL-DERIVE-NODE-OK ( ptr u8 n n n -- )
+   {: a:ptr u:n fam:n node:n :}
    node SCHEMA-CON? IF
       node SCHEMA-A@ CT-INT? 0= IF
-         node SCHEMA-A@ CT-NAME$
+         a u node SCHEMA-A@ CT-NAME$ TDECL-ROOT-OR
          s" payload type has no derived equality"
             s" give the payload an integer type, or drop `eq` and `hash` from `DERIVE`"
             E-TDECL-DERIVE TDECL-THROW THEN
       EXIT THEN
    node SCHEMA-PTR? IF
-      TDN-A @ TDN-U @
+      a u TDN-A @ TDN-U @ TDECL-ROOT-OR
       s" pointer payloads have no derived equality"
          s" drop `eq` and `hash` from `DERIVE`, or give the payload a type that is not a pointer"
          E-TDECL-DERIVE TDECL-THROW THEN
-   node SCHEMA-APP? IF fam node TDECL-DERIVE-FIELD-OK EXIT THEN
-   TDN-A @ TDN-U @
+   node SCHEMA-APP? IF a u fam node TDECL-DERIVE-FIELD-OK EXIT THEN
+   a u TDN-A @ TDN-U @ TDECL-ROOT-OR
    s" payload role has no derived equality"
       s" give each payload an integer type or a family that derives the same features, or drop `eq` and `hash` from `DERIVE`"
       E-TDECL-DERIVE TDECL-THROW ;
 
 : TDECL-DERIVE-VARIANT ( n n -- ) {: fam:n vid:n :}
    vid SUMV-PAY-N 0 ?do
-      fam vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
+      vid i SUMV-PAY-ROOT dup TDECL-ROOT-TOK@ rot
+      fam swap SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
    loop ;
 
 public
@@ -1143,7 +1199,8 @@ private
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
-   TDECL-NEXT TDECL-FIELD-ELEM {: node:n :}
+   TDECL-NEXT {: ta:ptr tu:n :}
+   ta tu TDECL-FIELD-ELEM {: node:n :}
    SIG-UNRES @ IF
       fna fnu TDECL-SEEN? IF
          fna fnu s" duplicate field"
@@ -1151,7 +1208,7 @@ private
    THEN
    fna fnu TDECL-SEEN+
    SIG-UNRES @ IF EXIT THEN
-   node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
+   node SCHEMA-ROOT+ ta tu TDECL-ROOT-TOK!   \ one field type (family/letter/con/ptr T)
    fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-FIELD-FIX$ E-TFAM-DUP TDECL-ARM
