@@ -262,12 +262,6 @@ E-PF-NAME EXPLAIN
 s" field type parameter has incompatible kinds"
 s" use each type parameter in one kind of place: a value type, a scope or a region"
 E-PF-SCHEMA EXPLAIN
-s" a declaration is already open"
-s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
-DECLARATION-TRANSACTION:E-ACTIVE EXPLAIN
-s" declaration checker frame mismatch"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-DECLARATION-TRANSACTION:E-FRAME EXPLAIN
 
 ;package
 
@@ -382,7 +376,9 @@ public
 : PART-SNAPSHOT ( -- ) DECL-MARK START ;
 
 : PART-PREPARE ( -- )
-   DECL-MARK PREPARE 0= IF DECLARATION-TRANSACTION:E-FRAME throw THEN ;
+   DECL-MARK PREPARE 0= IF
+      s" the declaration left the checker's frame stack unbalanced" 76 die
+   THEN ;
 
 : PART-ROLLBACK ( -- ) DECL-MARK ROLLBACK ;
 
@@ -394,6 +390,8 @@ seal-package
 
 \ One family's checked FAMILY:VARIANT constructors, generated from ARM's family
 \ inside the transaction; a throw mid-set rolls back and publishes none.
+package TYPE-DECL
+private
 package GENERATED-DECL-CTOR
 
 7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants
@@ -477,6 +475,7 @@ private
 seal-package
 
 ;package
+;package
 
 \ DECL-FRONT: what both front ends (structure-decl.f, enum-decl.f) share around
 \ their grammar: reject codes, the token source with one-token pushback and a
@@ -497,6 +496,8 @@ seal-package
 \ stream on both exits.
 \ QUOT-ROLLBACK after a reject is unconditional: it zeroes sumtype.f TDV-QUOT-N
 \ and TDV-QUOT-MISS, which only a quotation field dirties.
+package TYPE-DECL
+private
 package DECL-FRONT
 
 public
@@ -709,15 +710,6 @@ private
    DECL-REJECT:GUARD-CODE
    NULL-PTR 0 NO ;
 
-: REPLAY-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] bool -- ptr u8 n bool )
-   {: na:ptr nu:n ba:ptr bu:n ka:ptr ku:n ta:ptr tu:n body names:bool :}
-   na nu ba bu DECL-REPLAY:RP-CLAIM
-   ka ku DECL-REJECT:OPEN
-   names OUTCOME-NAMES !
-   ta tu body DRIVE
-   0 OUTCOME-NAMES !
-   REPLAY-END ;
-
 public
 
 \ RUN ( kind terminator body -- ) : one live declaration.
@@ -730,16 +722,19 @@ public
 \ a declaration from tokens a tool has already lexed, defining no word, and
 \ answer whether a type it names may still arrive, and which.
 : REPLAY-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] -- ptr u8 n bool )
-   YES REPLAY-WITH ;
-\ REPLAY ( name body-text kind terminator body -- ) : the same, raising
-\ E-UNRESOLVED instead of answering.
-: REPLAY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
-   NO REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
+   {: na:ptr nu:n ba:ptr bu:n ka:ptr ku:n ta:ptr tu:n body :}
+   na nu ba bu DECL-REPLAY:RP-CLAIM
+   ka ku DECL-REJECT:OPEN
+   YES OUTCOME-NAMES !
+   ta tu body DRIVE
+   0 OUTCOME-NAMES !
+   REPLAY-END ;
 
 private
 
 RESET MISS-CLEAR
 
+;package
 ;package
 
 ;using

@@ -1,7 +1,7 @@
 \ A named enum fetch refusal identifies the checked definition.
 package PROGRAM-DIAG-LOWER
 ENUM color red green ;ENUM
-ENUM-DECL:ED-RUN lcnamed
+ENUM lcnamed
    VARIANT empty ;VARIANT
    VARIANT shade FIELD value color ;VARIANT
 ;ENUM

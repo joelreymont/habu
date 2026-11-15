@@ -31,14 +31,10 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 package TDT-EVENT
 public
 variable BASE
-\ Transaction depths bracket a negative to catch leaked event or field frames.
-variable EVD    variable PFD
-: SAVE ( -- )
-   DECL-EVENT:DEPTH EVD !
-   TFAM:PF-TX-DEPTH @ PFD ! ;
-: SAME ( -- )
-   DECL-EVENT:DEPTH EVD @ T=
-   TFAM:PF-TX-DEPTH @ PFD @ T= ;
+\ The field transaction depth brackets a negative to catch a leaked field frame.
+variable PFD
+: SAVE ( -- ) TFAM:PF-TX-DEPTH @ PFD ! ;
+: SAME ( -- ) TFAM:PF-TX-DEPTH @ PFD @ T= ;
 ;package
 \ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
@@ -1261,15 +1257,11 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `tdgaddr`\n"
 s" tdgaddr" s" generated declaration already defined" TDT-AT
 s\" = word: TDGADDR-AT\n" TDT-HAS
 ;package
-\ The engine sealed DECL-EVENT, the namespace a public family `event` of a
-\ package DECL publishes its constructor into.
-package DECL
-public
-s" PRODUCT event FIELD a n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `event`\n"
-s" event" s" would change a sealed package" TDT-AT
-s\" = word: DECL-EVENT:MAKE\n" TDT-HAS
-;package
+\ DECL-EVENT is a part of TYPE-DECL: no name outside TYPE-DECL reaches it.
+s" DECL-EVENT:OPEN"
+s\" error[E-UNDEFINED]: cannot find word `DECL-EVENT:OPEN`\n" s" not found" TDT-REJ
+s" TYPE-DECL:DECL-EVENT:OPEN"
+s\" error[E-UNDEFINED]: cannot find word `TYPE-DECL:DECL-EVENT:OPEN`\n" s" not found" TDT-REJ
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM
@@ -2357,7 +2349,7 @@ REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 \ path; it commits after DECL-EVENT has promoted these FIELD rows past
 \ PF-COMMIT-N, the committed view TDECL-DERIVE-REQUIRE reads, so the declaration
 \ below is the whole setup.
-ENUM-DECL:ED-RUN tdnu DERIVE eq hash
+ENUM tdnu DERIVE eq hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
 ;ENUM
@@ -2386,7 +2378,7 @@ TDNU-HASH-ORDER TFALSE
 \ payload rejects at declaration time, like a SUMTYPE, because the constructor
 \ participant runs TDECL-DERIVE-REQUIRE inside the declaration's own reversible
 \ commit.
-s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+s" ENUM tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdnu-bad`\n"
 s" tdnu-bad" s" pointer payloads have no derived equality" TDT-AT
 

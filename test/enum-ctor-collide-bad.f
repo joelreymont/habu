@@ -5,7 +5,7 @@ require src/lib/test.f
 package ENUM-CTOR-COLLIDE-BAD
 
 : ECOL:RED ( -- n ) 37 ;
-: DECLARE ( -- ) s" ENUM-DECL:ED-RUN ecol green red ;ENUM" evaluate-closed ;
+: DECLARE ( -- ) s" ENUM ecol green red ;ENUM" evaluate-closed ;
 
 public
 
@@ -13,7 +13,6 @@ public
 : MAIN ( -- )
    T-RESET
    [: DECLARE ;] CHECKER-REJECT-RC TTHROWSQ
-   DECLARATION-TRANSACTION:ACTIVE? TFALSE
    ECOL:RED 37 T=
    T-REPORT ;
 

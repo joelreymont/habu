@@ -1,6 +1,5 @@
 \ enum-decl-suite.f - behavior and rollback suite for the ENUM declaration front
-\ end, driven through ENUM-DECL:ED-RUN, which the global `ENUM` keyword calls:
-\ `ENUM` and ED-RUN rows run one path. It asserts reject codes, rendered
+\ end, driven through the global `ENUM`. It asserts reject codes, rendered
 \ diagnostics, field-row counts and the generated constructors.
 
 require src/habu/verify-source.f
@@ -15,116 +14,116 @@ T-RESET
 variable PFB
 
 \ A declared family name is reserved in the variant-name rejects below.
-s" ENUM-DECL:ED-RUN color red green blue ;ENUM" evaluate-closed
+s" ENUM color red green blue ;ENUM" evaluate-closed
 
 TYPE-FIELD:COUNT PFB !
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dupf VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dupf VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dupf`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of the variant its own name\n" DECL-DIAG:HAS? TTRUE
 TYPE-FIELD:COUNT PFB @ T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dupv red red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dupv red red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dupv`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ mixed modes (block token in compact)
+s" ENUM emix red VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ mixed modes (block token in compact)
 s\" error[E-BAD-DECLARATION]: bad enum declaration `emix`\n" DECL-DIAG:HAS? TTRUE
 s" VARIANT" s" block keyword in a compact enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN eac<a,b> red ;ENUM" TEST-EVAL:RC 70 T=                \ parameterized compact form
+s" ENUM eac<a,b> red ;ENUM" TEST-EVAL:RC 70 T=                \ parameterized compact form
 s\" error[E-BAD-DECLARATION]: bad enum declaration `eac`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" unexpected token in enum declaration" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`, with no comments\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ech red POLICY packed-tag ;ENUM" TEST-EVAL:RC 70 T=  \ header clause after a compact variant
+s" ENUM ech red POLICY packed-tag ;ENUM" TEST-EVAL:RC 70 T=  \ header clause after a compact variant
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ech`\n" DECL-DIAG:HAS? TTRUE
 s" POLICY" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ecp red FIELD y n ;ENUM" TEST-EVAL:RC 70 T=        \ positional/named payload in compact
+s" ENUM ecp red FIELD y n ;ENUM" TEST-EVAL:RC 70 T=        \ positional/named payload in compact
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ecp`\n" DECL-DIAG:HAS? TTRUE
 s" FIELD" s" block keyword in a compact enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN emv VARIANT alpha FIELD x n ;ENUM" TEST-EVAL:RC 70 T=  \ missing ;VARIANT
+s" ENUM emv VARIANT alpha FIELD x n ;ENUM" TEST-EVAL:RC 70 T=  \ missing ;VARIANT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `emv`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN eme red green" TEST-EVAL:RC 70 T=                  \ missing ;ENUM
+s" ENUM eme red green" TEST-EVAL:RC 70 T=                  \ missing ;ENUM
 s\" error[E-BAD-DECLARATION]: bad enum declaration `eme`\n" DECL-DIAG:HAS? TTRUE
 s" eme" s" missing ;ENUM" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: end the declaration with `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ear<a,> VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ trailing comma in parameter list
+s" ENUM ear<a,> VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ trailing comma in parameter list
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ear<a,>`\n" DECL-DIAG:HAS? TTRUE
 s" ear<a,>" s" invalid type parameter header" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list distinct parameter letters in angle brackets, as in `box<a>` or `result<a,b>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN eempty ;ENUM" TEST-EVAL:RC 70 T=                   \ an enum needs a variant
+s" ENUM eempty ;ENUM" TEST-EVAL:RC 70 T=                   \ an enum needs a variant
 s\" error[E-BAD-DECLARATION]: bad enum declaration `eempty`\n" DECL-DIAG:HAS? TTRUE
 s" eempty" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN enum red ;ENUM" TEST-EVAL:RC 70 T=                 \ reserved opener keyword as a name
+s" ENUM enum red ;ENUM" TEST-EVAL:RC 70 T=                 \ reserved opener keyword as a name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `enum`\n" DECL-DIAG:HAS? TTRUE
 s" enum" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN Bad red ;ENUM" TEST-EVAL:RC 70 T=                  \ upper-case family name (case)
+s" ENUM Bad red ;ENUM" TEST-EVAL:RC 70 T=                  \ upper-case family name (case)
 s\" error[E-BAD-DECLARATION]: bad enum declaration `Bad`\n" DECL-DIAG:HAS? TTRUE
 s" Bad" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN n red ;ENUM" TEST-EVAL:RC 70 T=                    \ single-letter family name
+s" ENUM n red ;ENUM" TEST-EVAL:RC 70 T=                    \ single-letter family name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 \ An effect reads a bare `ptr` as the pointer constructor, never as a family, so
 \ the tail is reserved ahead of the global `ptr` family's duplicate check (7102).
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ptr red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM ptr red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN erf VARIANT alpha FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ reserved field name
+s" ENUM erf VARIANT alpha FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ reserved field name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `erf`\n" DECL-DIAG:HAS? TTRUE
 s" make" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ecf VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case field name (case)
+s" ENUM ecf VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case field name (case)
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ecf`\n" DECL-DIAG:HAS? TTRUE
 s" Zed" s" name must be a lowercase tail" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ebs VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ unresolved field type
+s" ENUM ebs VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ unresolved field type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ebs`\n" DECL-DIAG:HAS? TTRUE
 s" nope" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case single-letter type
+s" ENUM euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case single-letter type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `euc`\n" DECL-DIAG:HAS? TTRUE
 s" Q" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN epa VARIANT alpha FIELD x a ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ parameter outside declared arity
+s" ENUM epa VARIANT alpha FIELD x a ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ parameter outside declared arity
 s\" error[E-BAD-DECLARATION]: bad enum declaration `epa`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN epg<a,b,c,d,e,g> VARIANT alpha FIELD x h ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ parameter 6 is outside arity 6
+s" ENUM epg<a,b,c,d,e,g> VARIANT alpha FIELD x h ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ parameter 6 is outside arity 6
 s\" error[E-BAD-DECLARATION]: bad enum declaration `epg`\n" DECL-DIAG:HAS? TTRUE
 s" h" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`\n" DECL-DIAG:HAS? TTRUE
 
-s" ENUM-DECL:ED-RUN twice red ;ENUM" evaluate-closed
+s" ENUM twice red ;ENUM" evaluate-closed
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN twice red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM twice red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `twice`\n" DECL-DIAG:HAS? TTRUE
 s" twice" s" duplicate family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the enum: this package already declares a family by that name\n" DECL-DIAG:HAS? TTRUE
@@ -132,13 +131,13 @@ s\"   = help: rename the enum: this package already declares a family by that na
 \ Reserved variant names reject before publication; a family owned only by another
 \ package does not reserve its tails, while a global or active-package family does.
 package other-enum-name-test
-s" ENUM-DECL:ED-RUN foreign-variant member ;ENUM" evaluate-closed
+s" ENUM foreign-variant member ;ENUM" evaluate-closed
 ;package
 
 package enum-name-test
 
 VALUE-RECORD enum-record payload n END-VALUE-RECORD
-s" ENUM-DECL:ED-RUN local-variant member ;ENUM" evaluate-closed
+s" ENUM local-variant member ;ENUM" evaluate-closed
 
 public
 
@@ -148,165 +147,165 @@ public
    a u TEST-EVAL:RC want T= ;
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-policy`\n" DECL-DIAG:HAS? TTRUE
 s" stack-cell-tag" s" a second POLICY clause in one declaration" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-dup-feature DERIVE eq eq alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-dup-feature DERIVE eq eq alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-feature`\n" DECL-DIAG:HAS? TTRUE
 s" eq" s" the same DERIVE feature twice in one declaration" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-dup-split DERIVE eq DERIVE eq alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-dup-split DERIVE eq DERIVE eq alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-split`\n" DECL-DIAG:HAS? TTRUE
 s" eq" s" the same DERIVE feature twice in one declaration" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-missing-policy POLICY ;ENUM" 70 REJECT-CODE
+s" ENUM compact-missing-policy POLICY ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-missing-policy`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unknown layout policy" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-missing-derive DERIVE ;ENUM" 70 REJECT-CODE
+s" ENUM compact-missing-derive DERIVE ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-missing-derive`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-bad-policy POLICY unknown alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-bad-policy POLICY unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-policy`\n" DECL-DIAG:HAS? TTRUE
 s" unknown" s" unknown layout policy" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-bad-feature DERIVE unknown alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-bad-feature DERIVE unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-feature`\n" DECL-DIAG:HAS? TTRUE
 s" unknown" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-order DERIVE order alpha ;ENUM" 70 REJECT-CODE
+s" ENUM compact-order DERIVE order alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-order`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-no-variant POLICY packed-tag ;ENUM" 70 REJECT-CODE
+s" ENUM compact-no-variant POLICY packed-tag ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-no-variant`\n" DECL-DIAG:HAS? TTRUE
 s" compact-no-variant" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-late-policy alpha POLICY packed-tag ;ENUM" 70 REJECT-CODE
+s" ENUM compact-late-policy alpha POLICY packed-tag ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-late-policy`\n" DECL-DIAG:HAS? TTRUE
 s" POLICY" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-late-derive alpha DERIVE eq ;ENUM" 70 REJECT-CODE
+s" ENUM compact-late-derive alpha DERIVE eq ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-late-derive`\n" DECL-DIAG:HAS? TTRUE
 s" DERIVE" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-policy-name alpha policy ;ENUM" 70 REJECT-CODE
+s" ENUM compact-policy-name alpha policy ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-policy-name`\n" DECL-DIAG:HAS? TTRUE
 s" policy" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN compact-derive-name alpha derive ;ENUM" 70 REJECT-CODE
+s" ENUM compact-derive-name alpha derive ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-derive-name`\n" DECL-DIAG:HAS? TTRUE
 s" derive" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
-s" ENUM-DECL:ED-RUN full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM" 0 REJECT-CODE
+s" ENUM full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM" 0 REJECT-CODE
 
 private
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" reject-compact" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact n ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact n ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact q ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact q ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" q" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact if ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact if ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" if" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact alpha variant ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact alpha variant ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" variant" s" block keyword in a compact enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact bool ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact bool ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" bool" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact enum-record ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact enum-record ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" enum-record" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact space-x ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact space-x ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" space-x" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact color ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact color ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" color" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-compact local-variant ;ENUM" 70 REJECT-CODE
+s" ENUM reject-compact local-variant ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" local-variant" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT" 70 REJECT-CODE
+s" ENUM reject-full VARIANT" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" " s" missing variant name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT n ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT n ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT q ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT q ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" q" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT if ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT if ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" if" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT variant ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT variant ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" variant" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT bool ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT bool ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" bool" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT enum-record ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT enum-record ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" enum-record" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT space-x ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT space-x ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" space-x" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT color ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT color ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" color" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN reject-full VARIANT local-variant ;VARIANT ;ENUM" 70 REJECT-CODE
+s" ENUM reject-full VARIANT local-variant ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
 s" local-variant" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 
-s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" evaluate-closed
-s" ENUM-DECL:ED-RUN allowed-full VARIANT foreign-variant ;VARIANT ;ENUM" evaluate-closed
+s" ENUM allowed-compact foreign-variant ;ENUM" evaluate-closed
+s" ENUM allowed-full VARIANT foreign-variant ;VARIANT ;ENUM" evaluate-closed
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 70 REJECT-CODE
+s" ENUM duplicate-order ready ready ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `duplicate-order`\n" DECL-DIAG:HAS? TTRUE
 s" ready" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 \ A package may shadow a global family, but not `ptr`: an effect in this
 \ package would still read `ptr` as the pointer constructor.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 70 REJECT-CODE
+s" ENUM ptr ready ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
@@ -341,7 +340,7 @@ private
 \ 20a. Generation moves the native dictionary, which is what the dictionary
 \      participant's savepoint has to be able to undo.
 enum-ctor-test:DICT-MARK
-s" ENUM-DECL:ED-RUN msgctor VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" evaluate-closed
+s" ENUM msgctor VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" evaluate-closed
 enum-ctor-test:DICT-MOVED
 
 s" C1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=
@@ -353,7 +352,7 @@ s" C5 ( n n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 20b. DERIVE rides the same commit.
-s" ENUM-DECL:ED-RUN dctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" evaluate-closed
+s" ENUM dctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" evaluate-closed
 s" D1 ( n -- dctor ) DCTOR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
@@ -372,7 +371,7 @@ ENUM tagconv DERIVE eq tag low mid high ;ENUM
 
 \      TAG> builds a value from its tag alone, so a payload variant rejects.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM"
+s" ENUM tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM"
    TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpay`\n" DECL-DIAG:HAS? TTRUE
 s" tagpay" s" derive tag requires variants without payload" DECL-DIAG:CAUSE? TTRUE
@@ -380,13 +379,13 @@ s" tagpay" s" derive tag requires variants without payload" DECL-DIAG:CAUSE? TTR
 \      A private family derives nothing, tag included.
 package enum-tag-test
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpriv`\n" DECL-DIAG:HAS? TTRUE
 s" tag" s" derive requires a public family" DECL-DIAG:CAUSE? TTRUE
 ;package
 
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed
-s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" evaluate-closed
+s" ENUM fepar red green blue ;ENUM" evaluate-closed
 s" P1 ( -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
 s" P2 ( -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
 s" P3 ( -- lgpar ) LGPAR:BLUE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -402,12 +401,12 @@ s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ 20f. A failure inside the generation commit (a payload with no derived equality,
 \      a variant named like a derived word) rolls the whole declaration back.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
+s" ENUM rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor`\n" DECL-DIAG:HAS? TTRUE
 s" rollctor" s" payload type has no derived equality" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
+s" ENUM rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor2`\n" DECL-DIAG:HAS? TTRUE
 s" tag" s" variant name collides with a derived word" DECL-DIAG:CAUSE? TTRUE
@@ -415,17 +414,16 @@ s" tag" s" variant name collides with a derived word" DECL-DIAG:CAUSE? TTRUE
 \ A later constructor collides after the first has entered the generation plan.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
+s" ENUM rollcoll fresh taken ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollcoll`\n" DECL-DIAG:HAS? TTRUE
 s" rollcoll" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLCOLL:TAKEN 37 T=
 \ Rollback also removes protection of the generated package and leaves the
 \ namespace available for a corrected declaration using the same family name.
 undefine ROLLCOLL:TAKEN
-s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" evaluate-closed
+s" ENUM rollcoll fresh taken ;ENUM" evaluate-closed
 s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A PRODUCT collision on UNMAKE also rolls back the MAKE planned before it.
@@ -435,7 +433,6 @@ s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rollp`\n" DECL-DIAG:HAS? TTRUE
 s" rollp" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLP:UNMAKE 41 T=
 undefine ROLLP:UNMAKE
@@ -444,9 +441,9 @@ s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 21. POLICY packed-tag with DERIVE eq: an n payload declares, and a pointer payload
 \     is rejected at the constructor commit (no derived equality).
-s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `lay-drop`\n" DECL-DIAG:HAS? TTRUE
 s" lay-drop" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
@@ -454,71 +451,71 @@ s" lay-drop" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRU
 \     so text the declaration supplies cannot satisfy it elsewhere in the buffer.
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgempty ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgempty ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgempty`\n" DECL-DIAG:HAS? TTRUE
 s" dgempty" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN Dgcase red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM Dgcase red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `Dgcase`\n" DECL-DIAG:HAS? TTRUE
 s" Dgcase" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN n red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM n red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdup red red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgdup red red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdup`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgar<a,a> VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgar<a,a> VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgar<a,a>`\n" DECL-DIAG:HAS? TTRUE
 s" dgar<a,a>" s" invalid type parameter header" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list distinct parameter letters in angle brackets, as in `box<a>` or `result<a,b>`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgpay`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgpol`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown layout policy" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdrv DERIVE nosuch red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgdrv DERIVE nosuch red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdrv`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgord DERIVE order red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgord DERIVE order red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgord`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgfn VARIANT vv FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgfn VARIANT vv FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgfn`\n" DECL-DIAG:HAS? TTRUE
 s" make" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgkw alpha variant ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgkw alpha variant ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgkw`\n" DECL-DIAG:HAS? TTRUE
 s" variant" s" block keyword in a compact enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgnoend red" TEST-EVAL:RC 70 T=
+s" ENUM dgnoend red" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgnoend`\n" DECL-DIAG:HAS? TTRUE
 s" dgnoend" s" missing ;ENUM" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: end the declaration with `;ENUM`\n" DECL-DIAG:HAS? TTRUE
@@ -529,7 +526,7 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `dglegacy`\n" DECL-DIAG:HAS? 
 s" red" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgunified red red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgunified red red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgunified`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
@@ -540,13 +537,13 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `dglegacy2`\n" DECL-DIAG:HAS?
 s" dglegacy2" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgunified2 ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgunified2 ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgunified2`\n" DECL-DIAG:HAS? TTRUE
 s" dgunified2" s" empty enum" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgnest`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
@@ -557,7 +554,7 @@ s" declaration `nestfld`" DECL-DIAG:HAS? TFALSE
 \      unconditionally and before validating it, so the empty token replaces the
 \      previous family.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN" TEST-EVAL:RC 70 T=
+s" ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration\n" DECL-DIAG:HAS? TTRUE
 s" " s" missing name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name after `ENUM`, as in `ENUM color red green ;ENUM`\n" DECL-DIAG:HAS? TTRUE
@@ -568,14 +565,14 @@ s" dgnest" DECL-DIAG:HAS? TFALSE
 \      reported as the token it is, the reason still comes from the reject, and
 \      exactly one record is emitted (no second `error[` line).
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgforge duplicate duplicate ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgforge duplicate duplicate ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgforge`\n" DECL-DIAG:HAS? TTRUE
 s" duplicate" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 s\" \nerror[" DECL-DIAG:HAS? TFALSE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgat at at ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgat at at ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgat`\n" DECL-DIAG:HAS? TTRUE
 s" at" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
@@ -585,14 +582,14 @@ s\" \nerror[" DECL-DIAG:HAS? TFALSE
 \      value distinguishable, and a token carrying a double quote is escaped
 \      rather than closing the JSON string early.
 DECL-DIAG:JSON
-s" ENUM-DECL:ED-RUN reason red red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM reason red red ;ENUM" TEST-EVAL:RC 70 T=
 s\" \"message\":\"bad enum declaration `reason`\"" DECL-DIAG:HAS? TTRUE
 s\" \"token\":\"red\"" DECL-DIAG:HAS? TTRUE
 s\" \"label\":\"duplicate variant\"" DECL-DIAG:HAS? TTRUE
 s\" \"help\":\"give each variant of the enum its own name\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:JSON
-s\" ENUM-DECL:ED-RUN dgquote aq\"b red ;ENUM" TEST-EVAL:RC 70 T=
+s\" ENUM dgquote aq\"b red ;ENUM" TEST-EVAL:RC 70 T=
 s\" \"message\":\"bad enum declaration `dgquote`\"" DECL-DIAG:HAS? TTRUE
 s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
 s\" \"label\":\"name must be a lowercase tail\"" DECL-DIAG:HAS? TTRUE
@@ -600,14 +597,14 @@ s\" \"help\":\"write the name as a lowercase tail with no package qualifier, as 
 s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM-DECL:ED-RUN dgok2 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM-DECL:ED-RUN dgok3 POLICY packed-tag redd greend ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM-DECL:ED-RUN dgok4 DERIVE eq rede greene ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM dgok1 red green ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM dgok2 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM dgok3 POLICY packed-tag redd greend ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM dgok4 DERIVE eq rede greene ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:SILENT? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgroll red red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgroll red red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroll`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
@@ -649,7 +646,7 @@ s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyu
 DECL-DIAG:SAME? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop ;ENUM"
+s" ENUM qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop ;ENUM"
 TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe...`\n" DECL-DIAG:HAS? TTRUE
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop"
@@ -662,49 +659,49 @@ s\"   = help: declare at least one variant before `;ENUM`\n" DECL-DIAG:HAS? TTRU
 \      table because the owner that raises them is past the front end's last
 \      token.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgtwice red ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM dgtwice red ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgtwice blue ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgtwice blue ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgtwice`\n" DECL-DIAG:HAS? TTRUE
 s" dgtwice" s" duplicate family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the enum: this package already declares a family by that name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdupfld VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgdupfld VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdupfld`\n" DECL-DIAG:HAS? TTRUE
 s" zz" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of the variant its own name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dg2pol POLICY packed-tag POLICY packed-tag red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dg2pol POLICY packed-tag POLICY packed-tag red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dg2pol`\n" DECL-DIAG:HAS? TTRUE
 s" packed-tag" s" a second POLICY clause in one declaration" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dg2drv DERIVE eq DERIVE eq red ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dg2drv DERIVE eq DERIVE eq red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dg2drv`\n" DECL-DIAG:HAS? TTRUE
 s" eq" s" the same DERIVE feature twice in one declaration" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dghdr red POLICY packed-tag ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dghdr red POLICY packed-tag ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dghdr`\n" DECL-DIAG:HAS? TTRUE
 s" POLICY" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvb VARIANT vv stray ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgvb VARIANT vv stray ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgvb`\n" DECL-DIAG:HAS? TTRUE
 s" stray" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvn VARIANT" TEST-EVAL:RC 70 T=
+s" ENUM dgvn VARIANT" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgvn`\n" DECL-DIAG:HAS? TTRUE
 s" " s" missing variant name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdgd<a> DERIVE eq VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgdgd<a> DERIVE eq VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdgd`\n" DECL-DIAG:HAS? TTRUE
 s" eq" s" derive requires a concrete (arity 0) family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 family derives\n" DECL-DIAG:HAS? TTRUE
@@ -712,19 +709,19 @@ s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 f
 \ A pointer payload under DERIVE eq is rejected by the constructor's
 \ payload-role check, two phases after the body, with the reason it arms.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroleq`\n" DECL-DIAG:HAS? TTRUE
 s" dgroleq" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvrsv VARIANT n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgvrsv VARIANT n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgvrsv`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgfcase VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgfcase VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgfcase`\n" DECL-DIAG:HAS? TTRUE
 s" Zed" s" name must be a lowercase tail" DECL-DIAG:CAUSE? TTRUE
 
@@ -741,11 +738,11 @@ s" reason two" s" fix two" 990002 DECL-REJECT:EXPLAIN
 990002 DECL-REJECT:REASON$ s" reason two" DECL-DIAG:SAME? TTRUE
 ;package
 
-\ 23. ED-REPLAY - registering an ENUM from tokens a tool already lexed.
+\ 23. TYPE-DECL:REPLAY-ENUM - registering an ENUM from tokens a tool already lexed.
 package enum-replay-test
 public
 
-: RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
+: RP-EV ( ptr u8 n ptr u8 n -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
 : RP-TRY ( ptr u8 n ptr u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
@@ -815,14 +812,14 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `rpdangle`\n" DECL-DIAG:HAS? 
 s\" ^ missing variant name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
-s" ENUM-DECL:ED-RUN rpafterbad VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM rpafterbad VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 \ 23h. Re-entry is refused with its own named code rather than retargeting a
 \      stream that is already installed.
 enum-replay-test:RP-FORCE-OPEN
 s" rpbusy" s" red ;ENUM" enum-replay-test:RP-TRY 7177 T=
 enum-replay-test:RP-FORCE-CLOSE
-s" ENUM-DECL:ED-RUN rpafterbusy VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM rpafterbusy VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 package rp-copy-test
 public
@@ -841,124 +838,124 @@ public
 \      leading byte is not a lowercase letter, so the canonical-tail gate refuses
 \      them first with 7101.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN if red ;ENUM"        70 enum-name-test:REJECT-CODE
+s" ENUM if red ;ENUM"        70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `if`\n" DECL-DIAG:HAS? TTRUE
 s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN then red ;ENUM"      70 enum-name-test:REJECT-CODE
+s" ENUM then red ;ENUM"      70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `then`\n" DECL-DIAG:HAS? TTRUE
 s" then" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN else red ;ENUM"      70 enum-name-test:REJECT-CODE
+s" ENUM else red ;ENUM"      70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `else`\n" DECL-DIAG:HAS? TTRUE
 s" else" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN begin red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM begin red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `begin`\n" DECL-DIAG:HAS? TTRUE
 s" begin" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN until red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM until red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `until`\n" DECL-DIAG:HAS? TTRUE
 s" until" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN again red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM again red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `again`\n" DECL-DIAG:HAS? TTRUE
 s" again" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN while red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM while red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `while`\n" DECL-DIAG:HAS? TTRUE
 s" while" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN repeat red ;ENUM"    70 enum-name-test:REJECT-CODE
+s" ENUM repeat red ;ENUM"    70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `repeat`\n" DECL-DIAG:HAS? TTRUE
 s" repeat" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN case red ;ENUM"      70 enum-name-test:REJECT-CODE
+s" ENUM case red ;ENUM"      70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `case`\n" DECL-DIAG:HAS? TTRUE
 s" case" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN of red ;ENUM"        70 enum-name-test:REJECT-CODE
+s" ENUM of red ;ENUM"        70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `of`\n" DECL-DIAG:HAS? TTRUE
 s" of" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN endof red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM endof red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `endof`\n" DECL-DIAG:HAS? TTRUE
 s" endof" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN endcase red ;ENUM"   70 enum-name-test:REJECT-CODE
+s" ENUM endcase red ;ENUM"   70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `endcase`\n" DECL-DIAG:HAS? TTRUE
 s" endcase" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN do red ;ENUM"        70 enum-name-test:REJECT-CODE
+s" ENUM do red ;ENUM"        70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `do`\n" DECL-DIAG:HAS? TTRUE
 s" do" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN loop red ;ENUM"      70 enum-name-test:REJECT-CODE
+s" ENUM loop red ;ENUM"      70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `loop`\n" DECL-DIAG:HAS? TTRUE
 s" loop" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN leave red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM leave red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `leave`\n" DECL-DIAG:HAS? TTRUE
 s" leave" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN unloop red ;ENUM"    70 enum-name-test:REJECT-CODE
+s" ENUM unloop red ;ENUM"    70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `unloop`\n" DECL-DIAG:HAS? TTRUE
 s" unloop" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN exit red ;ENUM"      70 enum-name-test:REJECT-CODE
+s" ENUM exit red ;ENUM"      70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `exit`\n" DECL-DIAG:HAS? TTRUE
 s" exit" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN recurse red ;ENUM"   70 enum-name-test:REJECT-CODE
+s" ENUM recurse red ;ENUM"   70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `recurse`\n" DECL-DIAG:HAS? TTRUE
 s" recurse" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN construct red ;ENUM" 70 enum-name-test:REJECT-CODE
+s" ENUM construct red ;ENUM" 70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `construct`\n" DECL-DIAG:HAS? TTRUE
 s" construct" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN match red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM match red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `match`\n" DECL-DIAG:HAS? TTRUE
 s" match" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ?do red ;ENUM"       70 enum-name-test:REJECT-CODE
+s" ENUM ?do red ;ENUM"       70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `?do`\n" DECL-DIAG:HAS? TTRUE
 s" ?do" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN +loop red ;ENUM"     70 enum-name-test:REJECT-CODE
+s" ENUM +loop red ;ENUM"     70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `+loop`\n" DECL-DIAG:HAS? TTRUE
 s" +loop" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN ;match red ;ENUM"    70 enum-name-test:REJECT-CODE
+s" ENUM ;match red ;ENUM"    70 enum-name-test:REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `;match`\n" DECL-DIAG:HAS? TTRUE
 s" ;match" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN if red green ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM if red green ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `if`\n" DECL-DIAG:HAS? TTRUE
 s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
@@ -972,13 +969,13 @@ s\"   = help: rename the family: keywords, control words, single letters, `ptr` 
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN cwvc do loop ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM cwvc do loop ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `cwvc`\n" DECL-DIAG:HAS? TTRUE
 s" do" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN cwvf VARIANT loop ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM cwvf VARIANT loop ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `cwvf`\n" DECL-DIAG:HAS? TTRUE
 s" loop" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
@@ -986,13 +983,13 @@ DECL-DIAG:OFF
 \ 24d. Field-name position: the field row's gate answers 7125, the
 \      code and wording a reserved generated-operation name such as `make` gets.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `cwfld`\n" DECL-DIAG:HAS? TTRUE
 s" then" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
-s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" evaluate-closed
-s" ENUM-DECL:ED-RUN doing VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" evaluate-closed
+s" ENUM iffy dolly matcher constructor elsewhere ;ENUM" evaluate-closed
+s" ENUM doing VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" evaluate-closed
 
 ;package
 
@@ -1023,7 +1020,7 @@ variable LI
    32 PUT-C ;
 : BUILD ( -- )
    0 SRC-U !
-   s" ENUM-DECL:ED-RUN longenum " PUT$
+   s" ENUM longenum " PUT$
    0 LI !
    LONG-N 0 ?DO I PUT-VARIANT LOOP
    s" ;ENUM" PUT$ ;

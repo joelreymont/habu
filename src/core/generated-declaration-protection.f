@@ -1,6 +1,12 @@
 \ generated-declaration-protection.f - the runner DECLARATION-TRANSACTION:RUN.
 
+package TYPE-DECL
+private
 package DECLARATION-TRANSACTION
+
+s" a declaration is already open"
+s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
+E-ACTIVE DECL-REJECT:EXPLAIN
 
 : PLAN-PREFLIGHT ( ptr u8 n n -- )
    GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
@@ -77,34 +83,20 @@ public
 
 private
 
-: INSTALL-RUNNER ( -- ) [: RUN ;] TYPE-DECL:TXN-INSTALL ;
+: INSTALL-RUNNER ( -- ) [: RUN ;] is TDECL-TXN-XT  -1 TDECL-TXN-ARMED ! ;
 INSTALL-RUNNER
 
 ;package
+;package
 
-\ The compiled runner holds the only live capability onto each participant step:
-\ retire their source-level names, and the one-shot seams above with them.
+\ The compiled runner holds the only live capability onto the checker frame's
+\ steps: retire their source-level names, and the one-shot seams above with them.
 \ `undefine` resolves an unqualified name in the CURRENT wordlist, so each is
 \ retired by its QUALIFIED name, outside any package block.
 undefine CHECKER-DECL-FRAME:PART-SNAPSHOT
 undefine CHECKER-DECL-FRAME:PART-PREPARE
 undefine CHECKER-DECL-FRAME:PART-ROLLBACK
 undefine CHECKER-DECL-FRAME:PART-RELEASE
-undefine DECL-EVENT:PART-SNAPSHOT
-undefine DECL-EVENT:PART-PREPARE
-undefine DECL-EVENT:PART-COMMIT
-undefine DECL-EVENT:PART-ROLLBACK
-undefine DECL-EVENT:PART-RELEASE
-undefine GENERATED-DECL-CTOR:PART-SNAPSHOT
-undefine GENERATED-DECL-CTOR:PART-PREPARE
-undefine GENERATED-DECL-CTOR:PART-COMMIT
-undefine GENERATED-DECL-CTOR:PART-ROLLBACK
-undefine GENERATED-DECL-CTOR:PART-RELEASE
-undefine STRUCTURE-MAKE:PART-SNAPSHOT
-undefine STRUCTURE-MAKE:PART-PREPARE
-undefine STRUCTURE-MAKE:PART-COMMIT
-undefine STRUCTURE-MAKE:PART-ROLLBACK
-undefine STRUCTURE-MAKE:PART-RELEASE
 undefine GENERATED-DECL-DICTIONARY:SNAPSHOT
 undefine GENERATED-DECL-DICTIONARY:ROLLBACK
 undefine GENERATED-DECL-DICTIONARY:PREFLIGHT

@@ -1260,24 +1260,14 @@ variable TDP-N   \ product field count (schema roots)
 variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 variable TDP-EVT
 
-
-public
-
+\ TYPE-DECL's parts install the transaction runner and the event steps at load.
 defer TDECL-TXN-XT ( [ -- ] -- )
 variable TDECL-TXN-ARMED
-\ The declaration owner installs its runner once, at load; a second install is refused,
-\ so the public word cannot replace the transaction runner afterwards.
-: TXN-INSTALL ( [ [ -- ] -- ] -- )
-   TDECL-TXN-ARMED @ IF s" sumtype: declaration transaction already installed" 76 die THEN
-   is TDECL-TXN-XT  -1 TDECL-TXN-ARMED ! ;
 defer TDECL-EVENT-CURRENT-XT ( -- n )
 defer TDECL-EVENT-DECL-XT ( n n -- n )
 defer TDECL-EVENT-ARITY-XT ( n n n -- n )
 defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
 defer TDECL-EVENT-ARMED ( -- bool )
-
-
-private
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name"
@@ -2237,12 +2227,12 @@ public
 : TDECL-INIT-REPLAY ( n -- )
    dup TDINIT-REQUIRE  RES-TRUE [: TDINIT-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
+private
+
 \ PRODUCT's outer declaration runner arms the same commit participant as
 \ STRUCTURE after its constructors exist; structure-make.f installs the
 \ participant after this pre-hook file has loaded.
 defer TDECL-INIT-ARM-XT ( n -- )
-
-private
 
 : TDECL-INIT-ARM-MISSING ( n -- )
    drop s" sumtype: initialized field participant not installed" 76 die ;
@@ -2466,7 +2456,7 @@ NOMINAL-PROVIDER
 \ checker refuses a word it has no row for. UNSAFE-TOK? rejects the openers inside checked bodies
 \ (they parse the live input and mutate the type registry at run time, which
 \ ( -- ) does not express), so the axioms add no checked-code capability. ENUM
-\ has no row: it is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN,
+\ has no row: it is an ordinary checked ( -- ) definition over TYPE-DECL:DECLARE-ENUM,
 \ like STRUCTURE.
 PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;

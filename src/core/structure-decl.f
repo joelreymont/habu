@@ -7,9 +7,11 @@
 
 using SCHEMA-REG
 using TFAM
-using DECL-FRONT
 
+package TYPE-DECL
+private
 package STRUCTURE-DECL
+using DECL-FRONT
 
 \ Transient parse state, not declaration state: STRUCTURE is top-level
 \ interpret-only, so one declaration runs at a time.
@@ -551,22 +553,26 @@ SD-QUOT-INSTALL
 
 public
 
-: SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
+: DECLARE-STRUCTURE ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
-\ Registers a STRUCTURE from a body a tool lexed, by SD-RUN's grammar, defining
-\ no word; a body without ;STRUCTURE is refused "missing ;STRUCTURE".
-: SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+\ Registers a STRUCTURE from a body a tool lexed, by DECLARE-STRUCTURE's grammar,
+\ defining no word; a body without ;STRUCTURE is rejected "missing ;STRUCTURE".
+: REPLAY-STRUCTURE ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
-: SD-REPLAY ( ptr u8 n ptr u8 n -- )
-   SD-FRONT DECL-FRONT:REPLAY ;
+
+;package
+
+public
+
+EXPORT STRUCTURE-DECL:DECLARE-STRUCTURE
+EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
 
 ;package
 
 \ STRUCTURE is a documented global (package-first exception, like the SUMTYPE and
 \ PRODUCT openers); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
-: STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
+: STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
 
-;using
 ;using
 ;using

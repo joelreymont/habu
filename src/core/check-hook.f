@@ -9,8 +9,8 @@ package CHECK
 private
 
 \ ---- a duplicate only the checker sees ----------------------------------------
-\ A replay entry (CHECKER-DEFPRODUCT, STRUCTURE-DECL:SD-REPLAY, ...) publishes a
-\ checked effect without defining the word, so a later definition passes the
+\ A replay entry (CHECKER-DEFPRODUCT, TYPE-DECL:REPLAY-STRUCTURE, ...) publishes
+\ a checked effect without defining the word, so a later definition passes the
 \ engine's duplicate wall. The hook asks
 \ CHECKER-CERT-DUP? (which interns nothing) first and rejects it as the
 \ wall does (REJECT-DUPLICATE), before its body is checked.

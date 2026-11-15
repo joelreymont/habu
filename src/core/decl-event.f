@@ -7,6 +7,8 @@
 using SCHEMA-REG
 using TFAM
 
+package TYPE-DECL
+private
 package DECL-EVENT
 
 \ --- syntax-event kinds (record tag values). No 0 tag: an unwritten cell is
@@ -631,14 +633,15 @@ private
 \ lacks). Installed after the public section: a quotation binds its target at
 \ compile time.
 : DEV-EVENT-HOOKS-INSTALL ( -- )
-   [: CURRENT ;] is TYPE-DECL:TDECL-EVENT-CURRENT-XT
-   [: DECL ;] is TYPE-DECL:TDECL-EVENT-DECL-XT
-   [: ARITY ;] is TYPE-DECL:TDECL-EVENT-ARITY-XT
-   [: FIELD ;] is TYPE-DECL:TDECL-EVENT-FIELD-XT
-   [: 0 0= ;] is TYPE-DECL:TDECL-EVENT-ARMED ;
+   [: CURRENT ;] is TDECL-EVENT-CURRENT-XT
+   [: DECL ;] is TDECL-EVENT-DECL-XT
+   [: ARITY ;] is TDECL-EVENT-ARITY-XT
+   [: FIELD ;] is TDECL-EVENT-FIELD-XT
+   [: 0 0= ;] is TDECL-EVENT-ARMED ;
 
 DEV-EVENT-HOOKS-INSTALL
 
+;package
 ;package
 
 ;using

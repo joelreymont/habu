@@ -264,66 +264,66 @@ public
 \ one case per reject reason this suite pins, each rendering family + token +
 \ reason and stopping the load with status 70.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN Sdgcase ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE Sdgcase ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `Sdgcase`\n" DECL-DIAG:HAS? TTRUE
 s" Sdgcase" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgdup FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgdup FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgdup`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgar<q,q> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgar<q,q> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgar<q,q>`\n" DECL-DIAG:HAS? TTRUE
 s" sdgar<q,q>" s" invalid type parameter header" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name each type parameter once in the header, as in `STRUCTURE box<a>` or `STRUCTURE pair<a,b>`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgbad FIELD a nosuchtype ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgbad FIELD a nosuchtype ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgbad`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgpol POLICY nosuch ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgpol POLICY nosuch ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgpol`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown layout policy" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgdrv DERIVE nosuch ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgdrv DERIVE nosuch ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgdrv`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash`, `addr` or `init` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgtag DERIVE tag FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgtag DERIVE tag FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtag`\n" DECL-DIAG:HAS? TTRUE
 s" tag" s" derive tag requires an enum" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgstray`\n" DECL-DIAG:HAS? TTRUE
 s" VARIANT" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgfn FIELD make n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgfn FIELD make n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgfn`\n" DECL-DIAG:HAS? TTRUE
 s" make" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
 
 \ a terminator that never arrives anchors on the family, exactly as the legacy
 \ unterminated-declaration packet does (sumtype.f TDECL-PRODUCT-NOEND-BODY).
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgnoend FIELD a n" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgnoend FIELD a n" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnoend`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnoend" s" missing ;STRUCTURE" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL-DIAG:HAS? TTRUE
@@ -331,7 +331,7 @@ s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL
 \ A self-referential field is refused during type resolution, before a width
 \ query can enter the unfinished family.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgself`\n" DECL-DIAG:HAS? TTRUE
 s" sdgself" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
@@ -339,7 +339,7 @@ s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD
 \ no family leaks from one declaration into the next: a declaration that fails
 \ before its own name is read reports an empty family, not sdgself.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN" TEST-EVAL:RC 70 T=
+s" STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration\n" DECL-DIAG:HAS? TTRUE
 s" " s" missing name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name after `STRUCTURE`, as in `STRUCTURE point`\n" DECL-DIAG:HAS? TTRUE
@@ -348,13 +348,13 @@ s" sdgself" DECL-DIAG:HAS? TFALSE
 \ A type parameter used in two kinds of place rejects with one text in
 \ either field order: at the second field when it is added, at the family at close.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgkind<a,q> FIELD v read-view<a,q,n> FIELD x a ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgkind<a,q> FIELD v read-view<a,q,n> FIELD x a ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" x" s" field type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" sdgkind" s" field type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
@@ -434,7 +434,7 @@ SDSTARQ:SDSTAR-THIRD 300 T=
 \ Its own family as another family's argument is refused, a span's too, though a
 \ span's base only points at its element.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdsvspan`\n" DECL-DIAG:HAS? TTRUE
 s" SPAN:span<sdsvspan>" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
@@ -458,14 +458,14 @@ SDP-KEPT 2 cells T= 7 T=
 \ A type left open at `;STRUCTURE` is unclosed and `ptr` with no pointee malformed; a type's
 \ tokens may stand on two lines and hold blanks, as a declaration's do.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdpopen FIELD kept SPAN:span<ptr ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdpopen FIELD kept SPAN:span<ptr ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpopen`\n" DECL-DIAG:HAS? TTRUE
 s" SPAN:span<ptr" s" unclosed field type application" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: close each `<` of the field type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
-s\" STRUCTURE-DECL:SD-RUN sdpline FIELD kept SPAN:span<ptr\n   sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE-DECL:SD-RUN sdpspaced FIELD kept SPAN:span< ptr sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
+s\" STRUCTURE sdpline FIELD kept SPAN:span<ptr\n   sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdpspaced FIELD kept SPAN:span< ptr sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdpbare FIELD kept SPAN:span<ptr> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdpbare FIELD kept SPAN:span<ptr> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpbare`\n" DECL-DIAG:HAS? TTRUE
 s" SPAN:span<ptr>" s" malformed field type application" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write a type application as `family<type,type>` with a blank after each `ptr`, as in" DECL-DIAG:HAS? TTRUE
@@ -477,18 +477,18 @@ public
 DEFLINEAR SDSELF:tok
 ;package
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdslnode FIELD next ptr sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdslnode FIELD next ptr sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode`\n" DECL-DIAG:HAS? TTRUE
 s" sdslnode" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdslnode2 FIELD t SDSELF:tok FIELD next ptr sdslnode2 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdslnode2 FIELD t SDSELF:tok FIELD next ptr sdslnode2 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode2`\n" DECL-DIAG:HAS? TTRUE
 s" sdslnode2" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ hostile declarations: a field spelled like a fragment of the message is
 \ reported as the token it is, and exactly one rejection is emitted.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgforge FIELD duplicate n FIELD duplicate n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgforge FIELD duplicate n FIELD duplicate n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgforge`\n" DECL-DIAG:HAS? TTRUE
 s" duplicate" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
@@ -499,31 +499,31 @@ DECL-DIAG:TEXT$ REJECTION:PATH$ CONTAINS? TTRUE   \ the record names the loading
 \ value distinguishable, and a token carrying a double quote is escaped rather
 \ than closing the JSON string early.
 DECL-DIAG:JSON
-s" STRUCTURE-DECL:SD-RUN token FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE token FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" \"message\":\"bad structure declaration `token`\"" DECL-DIAG:HAS? TTRUE
 s\" \"token\":\"z\"" DECL-DIAG:HAS? TTRUE
 s\" \"label\":\"duplicate field name\"" DECL-DIAG:HAS? TTRUE
 s\" \"help\":\"give each field of this declaration its own name\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:JSON
-s\" STRUCTURE-DECL:SD-RUN sdgquote FIELD aq\"b n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" STRUCTURE sdgquote FIELD aq\"b n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
 s\" \"message\":\"bad structure declaration `sdgquote`\"" DECL-DIAG:HAS? TTRUE
 
 \ accepted declarations stay silent.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgok1 FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE-DECL:SD-RUN sdgok2 ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE-DECL:SD-RUN sdgok3<a> FIELD a a ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE-DECL:SD-RUN sdgok4 DERIVE eq FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdgok1 FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdgok2 ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdgok3<a> FIELD a a ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdgok4 DERIVE eq FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:SILENT? TTRUE
 
 \ the armed duplicate-family reason, which no case above reaches: it is armed at
 \ SD-REGISTER, immediately before the registry call that can raise it.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgtwice FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdgtwice FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgtwice FIELD b n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgtwice FIELD b n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtwice`\n" DECL-DIAG:HAS? TTRUE
 s" sdgtwice" s" duplicate family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the structure: this package already declares a family with this name\n" DECL-DIAG:HAS? TTRUE
@@ -533,14 +533,14 @@ s\"   = help: rename the structure: this package already declares a family with 
 \ table. The over-long span cap and its "..." marker belong to the shared packet
 \ and are pinned once, in test/enum-decl-suite.f section 22h.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgvrsv FIELD z sdgvrsv ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdgvrsv FIELD z sdgvrsv ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgvrsv`\n" DECL-DIAG:HAS? TTRUE
 s" sdgvrsv" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
-\ SD-REPLAY - registering a STRUCTURE from tokens a tool already lexed
+\ TYPE-DECL:REPLAY-STRUCTURE - registering a STRUCTURE from tokens a tool already lexed
 \ (src/habu/verify-source.f), so a later declaration can name the family as a payload
 \ type. Registration includes the MAKE/UNMAKE variant rows, their constructor
 \ package and checked effects; replay emits no runtime code.
@@ -549,7 +549,7 @@ public
 
 \ The replay entry under `catch` on copies of both strings, so a reject answers
 \ its code as TEST-EVAL:RC does for the live entry.
-: RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
+: RP-EV ( ptr u8 n ptr u8 n -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
 : RP-TRY ( ptr u8 n ptr u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 : DICT-RECS ( -- n ) ndict@ ;
@@ -614,7 +614,7 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`\n" DECL-DIA
 s\" ^ missing field name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write a name and a type after `FIELD`, as in `FIELD x n`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
-s" STRUCTURE-DECL:SD-RUN rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ Control words are reserved in both name positions: a family or field named
 \ `if` would compile as the control word wherever generated code names it. The

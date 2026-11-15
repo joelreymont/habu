@@ -1247,8 +1247,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ Such a definition retains the grammar of the family opener. A different
 \ body is an ordinary shadow and must still be refused at the later use.
 : SD-FORWARD-WORD? ( n n n -- bool ) {: off:n len:n kind:n :}
-   kind 1 = if off len SD-TOK$ s" STRUCTURE-DECL:SD-RUN" STR=CI exit then
-   kind 2 = if off len SD-TOK$ s" ENUM-DECL:ED-RUN" STR=CI exit then
+   kind 1 = if off len SD-TOK$ s" TYPE-DECL:DECLARE-STRUCTURE" STR=CI exit then
+   kind 2 = if off len SD-TOK$ s" TYPE-DECL:DECLARE-ENUM" STR=CI exit then
    off len SD-TOK$ s" TDECL-SUMTYPE" STR=CI ;
 
 : SD-DEF-TRACK ( n n -- ) {: off:n len:n :}

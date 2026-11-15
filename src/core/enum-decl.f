@@ -8,9 +8,11 @@
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
-using DECL-FRONT
 
+package TYPE-DECL
+private
 package ENUM-DECL
+using DECL-FRONT
 
 \ Transient parse state, not declaration state: ENUM is top-level
 \ interpret-only, so one declaration runs at a time.
@@ -442,14 +444,19 @@ ED-RESET
 
 public
 
-: ED-RUN ( -- ) ED-FRONT DECL-FRONT:RUN ;
+: DECLARE-ENUM ( -- ) ED-FRONT DECL-FRONT:RUN ;
 
-\ Registers an ENUM from a body a tool lexed, by ED-RUN's grammar, defining no
-\ word; a body without ;ENUM is refused "missing ;ENUM" (enum-decl-suite 23e).
-: ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+\ Registers an ENUM from a body a tool lexed, by DECLARE-ENUM's grammar, defining
+\ no word; a body without ;ENUM is rejected "missing ;ENUM" (enum-decl-suite 23e).
+: REPLAY-ENUM ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
-: ED-REPLAY ( ptr u8 n ptr u8 n -- )
-   ED-FRONT DECL-FRONT:REPLAY ;
+
+;package
+
+public
+
+EXPORT ENUM-DECL:DECLARE-ENUM
+EXPORT ENUM-DECL:REPLAY-ENUM
 
 ;package
 
@@ -459,9 +466,8 @@ public
 \   ENUM type-name[<params>] header-clause* (variant-name+ | variant-block+) ;ENUM
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
-: ENUM ( -- ) ENUM-DECL:ED-RUN ;
+: ENUM ( -- ) TYPE-DECL:DECLARE-ENUM ;
 
-;using
 ;using
 ;using
 ;using

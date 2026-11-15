@@ -48,7 +48,7 @@ SUMTYPE mlin<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-ENUM-DECL:ED-RUN mnamedlin
+ENUM mnamedlin
   VARIANT hold FIELD token TMLIN:mtok ;VARIANT
   VARIANT empty ;VARIANT
 ;ENUM
@@ -372,19 +372,19 @@ s" MATCH-NESTED" type cr
 \ Unified ENUM declarations store named payload rows in TYPE-FIELD: construct,
 \ MATCH, generic substitution, nested applications, payload order and
 \ diagnostics consume the same declared-payload accessors as linearity.
-ENUM-DECL:ED-RUN nec red green blue ;ENUM
-ENUM-DECL:ED-RUN nep
+ENUM nec red green blue ;ENUM
+ENUM nep
   VARIANT mk FIELD x n FIELD y n ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN nei
+ENUM nei
   VARIANT quit ;VARIANT
   VARIANT move FIELD dx n FIELD dy n ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN neg<a>
+ENUM neg<a>
   VARIANT some FIELD value a ;VARIANT
   VARIANT none ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN nen
+ENUM nen
   VARIANT wrap FIELD child nec ;VARIANT
 ;ENUM
 

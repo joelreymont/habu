@@ -21,6 +21,8 @@ s" a constructed family needs at least one field"
 s" give the `STRUCTURE` at least one `FIELD name type`"
 E-SM-EMPTY DECL-REJECT:EXPLAIN
 
+package TYPE-DECL
+private
 package STRUCTURE-MAKE
 
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
@@ -134,9 +136,10 @@ public
 
 private
 
-: SM-INSTALL-INIT ( -- ) [: ARM ;] is TYPE-DECL:TDECL-INIT-ARM-XT ;
+: SM-INSTALL-INIT ( -- ) [: ARM ;] is TDECL-INIT-ARM-XT ;
 SM-INSTALL-INIT
 
+;package
 ;package
 
 ;using
