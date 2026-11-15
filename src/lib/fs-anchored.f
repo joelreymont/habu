@@ -120,11 +120,18 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    path u 1 - + c@ SLASH = if E-FS-PATH throw then
    start ;
 
-: A-OPEN-BASE ( ^u8 ^u8 -- ) {: path:^ work:^ :}
+\ A directory the walk passes through needs search permission only, as
+\ the kernel's own lookup does.
+: A-FLAGS ( bool bool -- n ) {: last:bool file:bool :}
+   last 0= if SEARCH-DIR-FLAGS exit then
+   file if A-FILE-FLAGS exit then
+   OPEN-DIR-FLAGS ;
+
+: A-OPEN-BASE ( ^u8 n ^u8 -- ) {: path:^ flags:n work:^ :}
    path c@ SLASH = if
-      AT-CWD S\" /\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL
+      AT-CWD S\" /\z" drop flags OPEN-AT-CALL
    else
-      AT-CWD S\" .\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL
+      AT-CWD S\" .\z" drop flags OPEN-AT-CALL
    then
    dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-CUR! ;
@@ -146,7 +153,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       {: at:n :}
       path u at A-COMPONENT-END {: stop:n :}
       stop at - path at + PATHZ-CAP at - SPAN:MAKE FFI:CSTR! drop
-      stop u = file and if A-FILE-FLAGS else OPEN-DIR-FLAGS then {: flags:n :}
+      stop u = file A-FLAGS {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
       work from path at + flags A-OPEN-NEXT
       stop u < if stop 1 + else stop then
@@ -156,7 +163,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    {: src:^ u:n work:^ :}
    src u work A-SNAPSHOT {: path:^ :}
    path u true A-VALIDATE {: start:n :}
-   path work A-OPEN-BASE
+   path start u = false A-FLAGS work A-OPEN-BASE
    path u start work -1 false A-WALK
    src u work ;
 : A-OPEN-AT-RUN ( fd ^u8 n ^u8 -- fd ^u8 n ^u8 )
