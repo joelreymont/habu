@@ -601,4 +601,28 @@ public
 
 BITEM-LONG-TYPE:RUN
 
+\ A fresh hb loads the fixture, and check.f checks it: each grows the storage
+\ definers' scratch from its first capacity, which an earlier case in this
+\ process could have grown.
+package BITEM-LONG-STORAGE
+private
+: LOAD ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" test/fixtures/build-items/long-storage.f" CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 0 T= ;
+
+: CHECK ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/check.f" CMD:ARG+  s" --" CMD:ARG+
+   s" test/fixtures/build-items/long-storage.f" CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 0 T= ;
+
+public
+: RUN ( -- ) [: LOAD CHECK ;] CMD:WITH-COMMAND ;
+;package
+
+BITEM-LONG-STORAGE:RUN
+
 T-REPORT

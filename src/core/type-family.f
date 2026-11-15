@@ -3463,25 +3463,16 @@ public
 
 private
 
-PTR-VARIABLE ET-BUF   variable ET-CAP   variable ET-N    \ the text being written
-PTR-VARIABLE EN-BUF   variable EN-CAP   variable EN-N    \ an entry's name
-PTR-VARIABLE ED-BUF   variable ED-CAP   variable ED-N    \ a family's dependencies
-PTR-VARIABLE ES-BUF   variable ES-CAP   variable ES-N    \ schema nodes read, not yet rooted
+PTR-VARIABLE ET-BUF   SCRATCH-VARIABLE ET-CAP   variable ET-N    \ the text being written
+PTR-VARIABLE EN-BUF   SCRATCH-VARIABLE EN-CAP   variable EN-N    \ an entry's name
+PTR-VARIABLE ED-BUF   SCRATCH-VARIABLE ED-CAP   variable ED-N    \ a family's dependencies
+PTR-VARIABLE ES-BUF   SCRATCH-VARIABLE ES-CAP   variable ES-N    \ schema nodes read, not yet rooted
 create ET-CH 8 allot
-
-\ Room for need bytes in the store pv points at, its cap in bytes; a capture
-\ nulls pv, not its cap.
-: ENTRY-ROOM ( ptr ptr a ptr n n -- ) {: pv:ptr capv:ptr need:n :}
-   pv @ NULL-PTR - 0= IF 0 capv ! THEN
-   need capv @ <= IF EXIT THEN
-   need capv @ 2 * max 512 max {: nc:n :}
-   pv capv @ nc REG-GROW1
-   nc capv ! ;
 
 \ Appends a u to the byte store pv, whose length cell is nv.
 : ENTRY-S, ( ptr u8 n ptr ptr u8 ptr n ptr n -- )
    {: a:ptr u:n pv:ptr capv:ptr nv:ptr :}
-   pv capv  nv @ u +  ENTRY-ROOM
+   pv capv  nv @ u +  ARENA-BYTES-ENSURE
    u 0 ?do a i + c@  pv @ nv @ i + +  c! loop
    nv @ u + nv ! ;
 
@@ -3535,7 +3526,7 @@ create ET-CH 8 allot
 : ED-ADD ( n n -- ) {: fam:n self:n :}
    fam self = IF EXIT THEN
    fam ED-HAS? IF EXIT THEN
-   ED-BUF ED-CAP ED-N @ 1 + cells ENTRY-ROOM
+   ED-BUF ED-CAP ED-N @ 1 + cells ARENA-BYTES-ENSURE
    fam ED-BUF @ ED-N @ cells + !
    ED-N @ 1 + ED-N ! ;
 
@@ -3716,7 +3707,7 @@ create ER-MSG ER-MSG-CAP allot
 
 
 : ES-PUSH ( n -- ) {: node:n :}
-   ES-BUF ES-CAP ES-N @ 1 + cells ENTRY-ROOM
+   ES-BUF ES-CAP ES-N @ 1 + cells ARENA-BYTES-ENSURE
    node ES-BUF @ ES-N @ cells + !
    ES-N @ 1 + ES-N ! ;
 : ES@ ( n -- n ) {: k:n :} ES-BUF @ k cells + @ ;

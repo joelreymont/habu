@@ -826,6 +826,14 @@ public
    pv capv @ row * cells nc row * cells REG-GROW1
    nc capv ! ;
 
+\ Room for need bytes in the scratch store pv points at, its cap in bytes at
+\ capv.
+: ARENA-BYTES-ENSURE ( ptr ptr a ptr n n -- ) {: pv:ptr capv:ptr need:n :}
+   need capv @ <= IF EXIT THEN
+   need capv @ 2 * max 64 max {: nc:n :}
+   pv capv @ nc REG-GROW1
+   nc capv ! ;
+
 : ARENA-ROWS-RELEASE ( ptr ptr n ptr n n -- )
    {: pv:ptr capv:ptr row:n :}
    pv @ capv @ row * cells ARENA-UNMAP
@@ -7298,16 +7306,6 @@ variable SIGSCOPE-U
    a u + a < IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ The buffer every stored type is spelled into in the checker's registration.
-$1000 constant LBUF-SIG-CAP
-
-\ The gates read a stored type's raw source span, which its definer spells into
-\ a $1000-byte buffer, so no accepted stored type is longer than LBUF-SIG-CAP;
-\ the definition capture, which drops runs of spaces, does not bound it.
-: CK-TEXT-SPAN? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u BYTE-SPAN? u LBUF-SIG-CAP <= and ;
-
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u BYTE-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
@@ -8402,7 +8400,7 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 
 : STORAGE-PARSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    STORAGE-RESET
-   a u CK-TEXT-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -15293,13 +15291,17 @@ package CHECKER-REG
    sa su na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
-create LBUF-SIG-BUF LBUF-SIG-CAP allot
+\ The scratch every stored type is spelled into in the checker's registration.
+PTR-VARIABLE LBUF-SIG-P
+SCRATCH-VARIABLE LBUF-SIG-CAP
 variable LBUF-SIG-U
 variable LBUF-SIG-I
 variable LBUF-INFO-W
 
+: LBUF-SIG-BUF ( -- ptr u8 ) LBUF-SIG-P @ ;
+
 : LBUF-SIG-C, ( n -- ) {: c:n :}
-   LBUF-SIG-U @ LBUF-SIG-CAP >= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-SIG-P LBUF-SIG-CAP LBUF-SIG-U @ 1 + ARENA-BYTES-ENSURE
    c LBUF-SIG-BUF LBUF-SIG-U @ + c!
    LBUF-SIG-U @ 1 + LBUF-SIG-U ! ;
 
@@ -15474,13 +15476,15 @@ public
 \ runs the definer, so all three are registered here, or a later call in the
 \ same source is E-UNDEFINED. Publishing a generated word holds its name and
 \ its signature at once, so the name has its own scratch beside LBUF-SIG-BUF.
-$100 constant LBUF-NM-CAP
-create LBUF-NM-BUF LBUF-NM-CAP allot
+PTR-VARIABLE LBUF-NM-P
+SCRATCH-VARIABLE LBUF-NM-CAP
 variable LBUF-NM-U
 variable LBUF-NM-I
 
+: LBUF-NM-BUF ( -- ptr u8 ) LBUF-NM-P @ ;
+
 : LBUF-NM-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBUF-NM-U @ u + LBUF-NM-CAP > IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-NM-P LBUF-NM-CAP LBUF-NM-U @ u + ARENA-BYTES-ENSURE
    0 LBUF-NM-I !
    BEGIN LBUF-NM-I @ u < WHILE
       a LBUF-NM-I @ + c@  LBUF-NM-BUF LBUF-NM-U @ + c!

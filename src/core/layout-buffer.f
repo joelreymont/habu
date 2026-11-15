@@ -6,14 +6,14 @@
 
 using TYPE-DECL
 
-$1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
 
-create LBUF-GEN LBUF-GEN-CAP allot
+PTR-VARIABLE LBUF-GEN-P
+SCRATCH-VARIABLE LBUF-GEN-CAP
 variable LBUF-GEN-U
 variable LBUF-I
 variable LBUF-N
@@ -23,8 +23,10 @@ variable LBUF-BYTES
 : LBUF-CLEAR ( -- )
    0 LBUF-GEN-U ! ;
 
+: LBUF-GEN ( -- ptr u8 ) LBUF-GEN-P @ ;
+
 : LBUF-C, ( n -- ) {: c:n :}
-   LBUF-GEN-U @ LBUF-GEN-CAP >= if E-LAYOUT-BUFFER throw then
+   LBUF-GEN-P LBUF-GEN-CAP LBUF-GEN-U @ 1 + ARENA-BYTES-ENSURE
    c LBUF-GEN LBUF-GEN-U @ + c!
    LBUF-GEN-U @ 1 + LBUF-GEN-U ! ;
 

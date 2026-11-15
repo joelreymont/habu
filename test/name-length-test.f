@@ -23,9 +23,6 @@ $10000 constant ERR-CAP            \ a record names a whole name up to three tim
 \ into the definition's body text, which grows with the definition, before it
 \ writes the record. LONG-LEN is a name's length past the old 8000-byte cap.
 20000 constant LONG-LEN
-\ The longest stored-type text: src/core/checker.f LBUF-SIG-CAP, the buffer
-\ every stored type is spelled into.
-$1000 constant TEXT-CAP
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
@@ -33,7 +30,7 @@ create ERR ERR-CAP allot
 \ between two guard pages. Each name and text ends at a guard page, so a word
 \ that reads past a short one faults at once instead of reading on through
 \ what is mapped after it. Every byte of the names is q.
-LONG-LEN TEXT-CAP max 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES *
+LONG-LEN 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES *
    constant ROOM
 PTR-VARIABLE NAMES
 : NAMES! ( -- )
@@ -222,14 +219,6 @@ variable LBL-U
    RELABEL ERR erru LEN>N note noteu CONTAINS? TTRUE
    RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
 
-\ -1, the cap plus one and the maximum cell: no text the cap bounds has any of
-\ them.
-: RETURNS-PAST ( n ptr u8 n -- )
-   {: cap:n src:ptr srcu:n :}
-   -1 s" -1" src srcu RETURNS-AT
-   cap 1 + s" cap+1" src srcu RETURNS-AT
-   MAX-CELL s" max" src srcu RETURNS-AT ;
-
 \ -1 and the maximum cell, for a name or a text with no bound of its own.
 : RETURNS ( ptr u8 n -- )
    {: src:ptr srcu:n :}
@@ -387,9 +376,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : CAST-HEAD$ ( -- ptr u8 n )
    S\" error[E-CAST-ARITY]: in `cast: nltcast`, the signature's length describes no memory\n" ;
 : TEST-TEXTS ( -- )
-   TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
-   TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
-   TEXT-CAP s" DYNAMIC-TEXT" RETURNS-PAST
+   s" LAYOUT-TEXT" RETURNS
+   s" STORAGE-TEXT" RETURNS
+   s" DYNAMIC-TEXT" RETURNS
    s" CHECK-IT" 76 TOO-LARGE$ DIES
    s" CHECK!-IT" 76 TOO-LARGE$ DIES
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
@@ -479,12 +468,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    LONG$ CHECKER-UNDEFINE
    LONG$ CHECKER-RESOLVES? TFALSE ;
 
-\ A stored type's text, which the storage gates parse, is bounded by the
-\ buffer a storage definer spells it into (src/core/checker.f LBUF-SIG-CAP),
-\ so a text of exactly the cap is still taken.
-: TEST-TEXT-CAP ( -- )
-   TEXT-CAP LEN !
-   s" a stored type at the cap is a layout" T-LABEL
+\ A stored type's text, which the storage gates parse, has no ceiling.
+: TEST-LONG-TEXT ( -- )
+   LONG-LEN LEN !
+   s" a long stored type is a layout" T-LABEL
    STORED$ CHECKER-LAYOUT-INFO nip nip TTRUE
    s" ... is storage" T-LABEL
    STORED$ CHECKER-STORAGE-INFO nip TTRUE
@@ -503,7 +490,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-TEXTS
    TEST-ENGINE
    TEST-LONG
-   TEST-TEXT-CAP
+   TEST-LONG-TEXT
    T-REPORT
    s" name-length-test: ok" type cr ;
 
