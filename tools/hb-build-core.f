@@ -258,12 +258,31 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    OUT$ LINKER:WRITE ;
 
 
+\ A program's entry is its global MAIN. While the program loads the checker
+\ rejects a MAIN that is not ( -- ) where it is declared; a program that
+\ defines none is rejected once it has loaded, before its entry is named.
+: ENTRY-OPEN ( -- ) s" MAIN" CHECK:ENTRY! ;
+
+: ENTRY-CLOSE ( -- )
+   s" " CHECK:ENTRY!
+   s" MAIN" BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE XREF-FOUND? if exit then
+   SRC$ REJECTION:FILE!
+   s" E-NO-ENTRY" REJECTION:OPEN
+   s" the program defines no `MAIN`" REJECTION:EMIT-STR
+   s" MAIN" REJECTION:AT  s" not defined" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define `: MAIN ( -- ) ... ;` in " REJECTION:EMIT-STR  SRC$ REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+
 : REPL-BODY ( -- )
    STARTUP
    RUNTIME-FILES
    SEAL-ENGINE
    REQUIRE-N @ {: app:n :}
+   ENTRY-OPEN
    SRC$ REQUIRE-FILE
+   ENTRY-CLOSE
    app true END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
@@ -276,7 +295,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
    APP-FILES
    SEAL-ENGINE
+   ENTRY-OPEN
    SRC$ INCLUDE-FILE
+   ENTRY-CLOSE
    s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 

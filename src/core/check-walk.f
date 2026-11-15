@@ -504,11 +504,45 @@ public
    din dout rin rout external USIG-ADD-ROWS drop
    DL-TAKE ;
 
+\ The name of the program's entry CHECK:ENTRY! states, none when empty.
+PTR-VARIABLE CK-ENTRY-A   variable CK-ENTRY-U
+
+package CHECK
+public
+\ States the name of the program's entry, which an app build calls; an empty
+\ name states none. The name must outlive the load: it is kept, not copied.
+: ENTRY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CK-ENTRY-A !  u CK-ENTRY-U ! ;
+;package
+
+\ Rejects, at its signature in TSTART..TI, a global definition of the stated
+\ entry whose declared effect is not ( -- ).
+: ENTRY-SIG-CK ( -- )
+   CK-ENTRY-U @ 0= IF EXIT THEN
+   NMA @ NMU @ CK-ENTRY-A @ CK-ENTRY-U @ CORE-STR=CI 0= IF EXIT THEN
+   SGA @ SGU @ SIG-TRIM s" --" CORE-STR= IF EXIT THEN
+   CHECKER-RESOLVE:AUTHORITY {: pa:ptr pu:n mode:n ok:bool :}
+   ok 0=  mode CHECKER-PACKAGE-NONE <>  or IF EXIT THEN
+   NMOFF @ TADDR NMU @ {: na:ptr nu:n :}
+   TSTART @ 1 - {: from:n :}
+   TI @ 1 + TBLEN @ min from - {: eu:n :}
+   from TADDR {: ea:ptr :}
+   ea eu RF-REJECTED PIN-REFUSED!
+   s" E-MISMATCH" REJECTION:OPEN
+   s" the entry `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" ` must be ( -- ); it declares " REJECTION:EMIT-STR  ea eu REJECTION:EMIT-STR
+   ea eu REJECTION:AT  s" the entry's declared effect" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" declare `: " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s"  ( -- )` and read inputs inside it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+
 \ Installs the '( ... )' in TSTART..TI when it is the first after the name, the
 \ signature (a built definition's from its effect); true when that ends the walk.
 : PAREN-SIG? ( -- bool )
    VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
       TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
+      ENTRY-SIG-CK
       PENDING-SIG SIG-INSTALL EXIT
    THEN
    RES-FALSE ;
