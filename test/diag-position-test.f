@@ -785,7 +785,7 @@ variable RC
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n" s" vrec-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" missing END-VALUE-RECORD" s" vr" 1 14 13 15 PREPASS-REJECTED
+   s" E-BAD-DECLARATION" s" source ends first" s" vr" 1 14 13 15 PREPASS-REJECTED
    s" an unclosed SUMTYPE under --verify-only" T-LABEL
    s" SUMTYPE shape" s" sum-open.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" missing ;SUMTYPE" s" shape" 1 9 8 13 PREPASS-REJECTED

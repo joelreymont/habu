@@ -155,14 +155,23 @@ variable VRDEF-I
 : VRDEF-CLEAR ( -- )
    0 VRDEF-U ! ;
 
-\ Compared with the room left, like DTC+: VRDEF-APP takes any caller's length.
-: VRDEF-ROOM ( n -- ) {: u:n :}
+\ The field token t tu, which does not fit in the field list's VRDEF-CAP bytes.
+\ It is written through its help, and the caller stops it.
+: VRDEF-TOO-LONG ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-VALUE-RECORD-TOO-LONG" REJECTION:OPEN
+   s" value record field list is too long" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" does not fit" REJECTION:EMIT-STR
+   s" limit" REJECTION:NOTE  VRDEF-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   REJECTION:HELP  s" split the record" REJECTION:EMIT-STR ;
+
+\ The field token t tu needs n more bytes, compared with the room left as DTC+
+\ compares: a sum near the maximum cell wraps back under the capacity.
+: VRDEF-ROOM ( ptr u8 n n -- ) {: t:ptr tu:n u:n :}
    u 0 < u VRDEF-CAP VRDEF-U @ - > or IF
-      s" value-record: field list too long" 70 die
+      t tu VRDEF-TOO-LONG  CHECKER-REJECT-RC REJECTION:STOP
    THEN ;
 
 : VRDEF-C, ( n -- )
-   1 VRDEF-ROOM
    VRDEF-BUF VRDEF-U @ + c!
    VRDEF-U @ 1 + VRDEF-U ! ;
 
@@ -170,16 +179,17 @@ variable VRDEF-I
    VRDEF-U @ 0 > IF 32 VRDEF-C, THEN ;
 
 : VRDEF-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   u VRDEF-ROOM
    0 VRDEF-I !
    BEGIN VRDEF-I @ u < WHILE
       a VRDEF-I @ + c@ VRDEF-C,
       VRDEF-I @ 1 + VRDEF-I !
    REPEAT ;
 
-: VRDEF-TOKEN+ ( ptr u8 n -- )
+\ The token and the space before it take their room at once.
+: VRDEF-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u  VRDEF-U @ 0 > IF u 1 + ELSE u THEN  VRDEF-ROOM
    VRDEF-SPACE
-   VRDEF-APP ;
+   a u VRDEF-APP ;
 
 : VRDEF-FOLD-C ( n -- n )
    dup $41 < IF EXIT THEN
@@ -197,20 +207,23 @@ variable VRDEF-I
 : VRDEF-END? ( ptr u8 n -- bool )
    s" END-VALUE-RECORD" VRDEF-STR=CI ;
 
+\ The source ends inside value record a u. It is written through its help, and
+\ the caller stops it.
 : VRDEF-UNCLOSED ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` has no `END-VALUE-RECORD`" REJECTION:EMIT-STR
    a u REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
-   REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR ;
 
 : VALUE-RECORD ( -- )
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
    VRDEF-CLEAR
    BEGIN
-      parse-name dup 0= IF name nameu VRDEF-UNCLOSED THEN
+      parse-name dup 0= IF
+         name nameu VRDEF-UNCLOSED  CHECKER-REJECT-RC REJECTION:STOP
+      THEN
       2dup VRDEF-END? IF
          2drop
          name nameu VRDEF-BUF VRDEF-U @ CHECKER-DEFRECORD
