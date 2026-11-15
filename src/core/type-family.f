@@ -8,10 +8,10 @@ using SCHEMA-REG
 
 \ A name referenced outside this package is public, everything else private;
 \ outside includes the checker's `PPRIM: TFAM` rows and the inner packages this
-\ file opens (TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER, CHECKER-DECL-FRAME,
-\ SCHEMA-REG). These are top-level packages, not parts of TFAM, and a `package`
-\ inside an open one opens a part of it, so each inner block closes TFAM,
-\ reopens it after, and reads publics through `using TFAM`.
+\ file opens (TYPE-NAME, TYPE-FIELD, CHECKER-DECL-FRAME, SCHEMA-REG). These are
+\ top-level packages, not parts of TFAM, and a `package` inside an open one
+\ opens a part of it, so each inner block closes TFAM, reopens it after, and
+\ reads publics through `using TFAM`.
 package TFAM
 
 \ --- kind of a family (what its values are).
@@ -1257,9 +1257,9 @@ package TFAM
 public
 
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).
-\ PF-N includes rows provisional in the active transaction; PF-COMMIT-N is the
-\ reflection high-water. ADD never returns a row id, so an id becomes observable
-\ only after the outer transaction commits.
+\ PF-N includes the open declaration's provisional rows; PF-COMMIT-N is the
+\ reflection high-water. PF-ADD returns no row id, so an id becomes observable
+\ only after PF-COMMIT.
 -1 constant PF-NO-VARIANT
 
 private
@@ -1386,7 +1386,7 @@ public
 \ the rows of one (family, variant) pair; an ENUM asks once per field or
 \ variant, so a store walk is quadratic. Rows chain by the hash of their owner;
 \ a bucket can hold other owners' rows, so a reader keeps only its owner's.
-\ Chains run newest first. VNX's discipline: ADD pushes each row in id order,
+\ Chains run newest first. VNX's discipline: PF-ADD pushes each row in id order,
 \ PF-REWIND pops retired rows newest first while their owner cells are intact.
 \ Buckets and links are process-local: a capture drops them, and a capacity
 \ change or a store moved outside those seams rebuilds them.
@@ -1417,7 +1417,7 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 : PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
    r PF.FAM @ fam = r PF.VAR @ var = and ;
 
-\ Read through PF-BASE, not PF-ROW: ADD links its row before PF-N publishes it.
+\ Read through PF-BASE, not PF-ROW: PF-ADD links its row before PF-N publishes it.
 : FVX-ROW-BKT ( n -- ptr n ) {: id:n :}
    id PF-REC * PF-BASE + {: r:ptr :}
    r PF.FAM @ r PF.VAR @ FVX-HASH FVX-BKT ;
@@ -1460,14 +1460,12 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    FVX-CAP @ PF-CAP <> or IF FVX-BUILD THEN ;
 
 \ Pops rows [newn, PF-N) before PF-N rewinds to newn, newest first. Chains that
-\ no longer cover exactly the live rows are dropped for a rebuild instead. The
-\ field store has two rewinders that need not nest: a failed declaration rolls
-\ back its field transaction before it restores a checker scope its body
-\ leaked, whose mark lies above those rows, and that restore moves PF-N forward
-\ over scrubbed rows the chains no longer hold.
+\ no longer cover exactly the live rows are dropped for a rebuild instead. Its
+\ one caller, PF-REWIND, runs only from a checker frame's restore, and frames
+\ restore last saved first, so newn never lies above PF-N.
 : FVX-RETIRE ( n -- ) {: newn:n :}
    FVX-READY @ 0= IF EXIT THEN
-   FVX-HI @ PF-N @ <>  newn PF-N @ > or IF 0 FVX-READY ! EXIT THEN
+   FVX-HI @ PF-N @ <> IF 0 FVX-READY ! EXIT THEN
    PF-N @ 1 -
    BEGIN dup newn >= WHILE dup FVX-POP 1 - REPEAT drop
    newn FVX-HI ! ;
@@ -1483,15 +1481,15 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 
 public
 
-\ PF-LINK ( n -- ) : chain row id, which ADD has written and is about to
+\ PF-LINK ( n -- ) : chain row id, which PF-ADD has written and is about to
 \ publish as PF-N's next value.
 : PF-LINK ( n -- ) {: id:n :}
    FVX-ENSURE                             \ covers [0, id) and fits the capacity
    id FVX-PUSH
    id 1 + FVX-HI ! ;
 
-\ THE field store rewind: TYPE-FIELD-OWNER:ROLLBACK, a checker frame's restore
-\ and the prefix rewind all put the rows back to a saved mark through here.
+\ THE field store rewind: a checker frame's restore and the prefix rewind put
+\ the rows back to a saved mark through here.
 \ The index pops the retired rows before the scrub clears the owner cells it
 \ finds their buckets by.
 : PF-REWIND ( n n -- ) {: pfn:n commitn:n :}
@@ -1953,218 +1951,9 @@ public
    REPEAT drop
    0 RES-FALSE ;
 
-\ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
-\ global finalization. Nested commit keeps rows provisional; only outer commit
-\ advances PF-COMMIT-N. Every frame owns PF-N and PF-COMMIT-N. The name pool is
-\ the family frame's (TF-RBF, through TFAM-REWIND): family, variant and
-\ constructor-package names interleave with field names in it, so no field
-\ frame mark bounds only its own bytes. A field rollback no enclosing family
-\ frame rewinds leaves its field names in [0, TF-STR-U).
-
 private
 
-0 cells constant PFTX.PFN-OFF
-1 cells constant PFTX.TOK-OFF
-2 cells constant PFTX.COMMITN-OFF
-3 cells constant PFTX.STATE-OFF
-
-public
-
-4 cells constant PF-TX-REC
-: PFTX.PFN ( ptr a -- ptr a ) PFTX.PFN-OFF + ;
-: PFTX.TOK ( ptr a -- ptr a ) PFTX.TOK-OFF + ;
-: PFTX.COMMITN ( ptr a -- ptr a ) PFTX.COMMITN-OFF + ;
-: PFTX.STATE ( ptr a -- ptr a ) PFTX.STATE-OFF + ;
-
-
-private
-
-4 constant PF-TX-CAP-INIT
-
-public
-
-variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !
-
-private
-
-create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot
-
-public
-
-PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !
-variable PF-TX-DEPTH   0 PF-TX-DEPTH !
-variable PF-TX-SERIAL   0 PF-TX-SERIAL !
-
-\ Here because only this package sees PF-TX-BOOT.
-: PF-TX-ENSURE ( -- )
-   PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
-   PF-TX-CAP-V @ 2 * {: nc:n :}
-   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * CHECKER-REG:GROW
-   nc PF-TX-CAP-V ! ;
-
-\ A declaration participant that finds frames opened above its own must retire
-\ them, but only this owner may walk its frame stack, unreachable from ordinary
-\ source. The owner installs its private ROLLBACK-THROUGH here, the compiled
-\ declaration-event participant calls the vector, and
-\ generated-declaration-protection.f retires the name once every prefix caller
-\ is compiled. It is not a checker primitive row: a primitive axiom survives
-\ `undefine`, so the checker would keep certifying calls the runtime can no
-\ longer resolve.
-defer TDECL-FIELD-CLEANUP-XT ( n -- )
-
-\ Total release, same shape and lifetime as the cleanup vector. The runner's
-\ release step runs after every reversible commit succeeded, so the
-\ participant must discard its field frame without being able to reject:
-\ PREPARE already proved the frame is the live committed top. RELEASE stays
-\ private because a public entry would have to re-validate, which a total
-\ release may not do; generated-declaration-protection.f retires the name once
-\ its sole caller is compiled.
-defer TDECL-FIELD-RELEASE-XT ( -- )
-
-;package
-
-package TYPE-FIELD-OWNER
-
-0 constant STATE-OPEN
-1 constant STATE-COMMITTED
-
-: TX-BASE ( -- ptr n ) PF-TX-P @ ;
-: TX-AT ( n -- ptr n ) PF-TX-REC * TX-BASE + ;
-
-: TX-TOP ( -- ptr n )
-   PF-TX-DEPTH @ 0= IF s" pf: no field transaction is open" 76 die THEN
-   PF-TX-DEPTH @ 1 - TX-AT ;
-: TX-REQUIRE ( n -- ) {: tx:n :}
-   TX-TOP PFTX.TOK @ tx <> IF
-      s" pf: a field transaction token is not the innermost open one" 76 die THEN ;
-: TX-STATE-REQUIRE ( n n -- ) {: tx:n state:n :}
-   tx TX-REQUIRE
-   TX-TOP PFTX.STATE @ state = IF EXIT THEN
-   state STATE-OPEN = IF
-      s" pf: the innermost field transaction is already committed" 76 die THEN
-   s" pf: the innermost field transaction is not committed yet" 76 die ;
-: TX-MARKS-REQUIRE ( -- )
-   TX-TOP PFTX.PFN @ PF-N @ > IF
-      s" pf: field rows were rewound below the innermost field transaction's start"
-      76 die THEN ;
-: TX-OPEN-MARKS-REQUIRE ( -- )
-   TX-MARKS-REQUIRE
-   TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF
-      s" pf: the committed field count moved while the field transaction is open"
-      76 die THEN ;
-: TX-PARENT-REQUIRE ( -- )
-   PF-TX-DEPTH @ 0= IF EXIT THEN
-   TX-TOP PFTX.STATE @ STATE-OPEN <> IF
-      s" pf: a field transaction cannot open inside a committed one" 76 die THEN
-   TX-OPEN-MARKS-REQUIRE ;
-: TX-COMMITTED-MARKS-REQUIRE ( -- )
-   TX-MARKS-REQUIRE
-   PF-TX-DEPTH @ 1 = IF
-      PF-COMMIT-N @ PF-N @ = IF EXIT THEN
-      s" pf: field rows changed after the outermost field transaction committed"
-      76 die
-   THEN
-   TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF
-      s" pf: the committed field count moved under a committed inner field transaction"
-      76 die THEN ;
-: RELEASE ( -- )
-   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
-
-public
-
-\ The wrap guard has no test: reaching it needs 2^63 OPENs in one process, and no
-\ raw setter or TRUSTED seam for PF-TX-SERIAL is published to fake it. Without
-\ it a wrapped serial would mint token 0 or a negative token, and every phase
-\ compares tokens by equality, so a stale token could alias a live frame. This
-\ is the one minting site.
-: OPEN ( -- n )
-   WRITE-WINDOW-CK
-   TX-PARENT-REQUIRE
-   PF-TX-SERIAL @ 1 + dup 0 <= IF
-      drop s" type-family: the field transaction serial wrapped" 76 die THEN
-   {: tok:n :}
-   PF-TX-ENSURE
-   tok PF-TX-SERIAL !
-   PF-TX-DEPTH @ TX-AT {: r:ptr :}
-   PF-N @ r PFTX.PFN !
-   PF-COMMIT-N @ r PFTX.COMMITN !
-   STATE-OPEN r PFTX.STATE !
-   tok r PFTX.TOK !
-   PF-TX-DEPTH @ 1 + PF-TX-DEPTH !
-   tok ;
-: PREPARE ( n -- n ) {: tx:n :}
-   tx STATE-OPEN TX-STATE-REQUIRE
-   TX-OPEN-MARKS-REQUIRE
-   PF-N @ ;
-: COMMIT ( n -- ) {: tx:n :}
-   WRITE-WINDOW-CK
-   tx PREPARE drop
-   PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N !  TFM-EPOCH+ THEN
-   STATE-COMMITTED TX-TOP PFTX.STATE ! ;
-: FINALIZE ( n -- ) {: tx:n :}
-   WRITE-WINDOW-CK
-   tx STATE-COMMITTED TX-STATE-REQUIRE
-   TX-COMMITTED-MARKS-REQUIRE
-   RELEASE ;
-\ A live frame is in exactly one of the two states OPEN sets and COMMIT moves it
-\ to; the state selects which watermark check applies.
-: ROLLBACK ( n -- ) {: tx:n :}
-   WRITE-WINDOW-CK
-   tx TX-REQUIRE
-   TX-TOP PFTX.STATE @ STATE-OPEN =
-      IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
-   TX-TOP {: r:ptr :}
-   r PFTX.PFN @ r PFTX.COMMITN @ PF-REWIND   \ retire the provisional rows
-   RELEASE ;
-
-\ The field owner is the only authority that can read a provisional row.  The
-\ caller must present the exact live top transaction token, the row must have
-\ been added by that frame, and its family must match.
-: TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
-   tx STATE-OPEN TX-STATE-REQUIRE
-   TX-OPEN-MARKS-REQUIRE
-   id TX-TOP PFTX.PFN @ <  id PF-N @ >=  or IF
-      s" pf: a field id is not a row the innermost field transaction added"
-      76 die THEN
-   id PF-ROW {: r:ptr :}
-   r PF.FAM @ fam <> IF s" pf: the family does not own the field" 76 die THEN
-   r PF.SCH @ ;
-: TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
-   tx fam id TX-SCHEMA-FOR drop
-   id PF-ROW PF.CELLS @ ;
-
-private
-
-\ Cleanup for a failed declaration that left frames open above the caller's own.
-\ TX-INDEX proves the token is still a live frame before anything moves, so a
-\ stale or released token leaves every mark untouched; each live frame then
-\ takes the ordinary ROLLBACK from the top down, the target's own marks last.
-\ Private; its only caller is the vector installed below, so no source-level
-\ word can pick a frame out of the middle of the stack.
-: TX-INDEX ( n -- n ) {: tx:n :}
-   PF-TX-DEPTH @
-   BEGIN dup 0 > WHILE
-      1 -
-      dup TX-AT PFTX.TOK @ tx = IF EXIT THEN
-   REPEAT
-   drop s" pf: a field transaction token names no open transaction" 76 die ;
-
-: ROLLBACK-THROUGH ( n -- ) {: tx:n :}
-   tx TX-INDEX {: keep:n :}
-   BEGIN PF-TX-DEPTH @ keep > WHILE
-      TX-TOP PFTX.TOK @ ROLLBACK
-   REPEAT ;
-
-: VECTORS-INSTALL ( -- )
-   [: ROLLBACK-THROUGH ;] is TFAM:TDECL-FIELD-CLEANUP-XT
-   [: RELEASE ;] is TFAM:TDECL-FIELD-RELEASE-XT ;
-VECTORS-INSTALL
-
-;package
-
-package TFAM
-
-\ ADD validation. Field rows carry explicit logical-cell and memory-layout
+\ PF-ADD validation. Field rows carry explicit logical-cell and memory-layout
 \ metadata under every policy; no policy implies CELL-sized storage.
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
 
@@ -2306,7 +2095,7 @@ package TFAM
 
 \ A field tail may not spell a grammar keyword, a control word (TYPE-NAME:CONTROL?)
 \ or a generated-operation name, on every path that registers a field row: the
-\ STRUCTURE and ENUM front ends, through TYPE-FIELD-OWNER:ADD.
+\ STRUCTURE and ENUM front ends, through PF-ADD.
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
@@ -2571,17 +2360,11 @@ public
    REPEAT
    drop RES-FALSE ;
 
-;package
-
-package TYPE-FIELD-OWNER
-
 public
 
-: ADD ( n n n ptr u8 n n n n n n n n -- n )
-   {: tx:n fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+: PF-ADD ( n n ptr u8 n n n n n n n n -- )
+   {: fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
-   tx STATE-OPEN TX-STATE-REQUIRE
-   TX-OPEN-MARKS-REQUIRE
    fam var PF-OWNER-OK? 0= IF
       s" pf: a field's owner is not a product, or a sum or enum variant of the family" 76 die THEN
    na nu PF-NAME-REQUIRE
@@ -2602,14 +2385,9 @@ public
    al r PF.ALIGN !   flags r PF.FLAGS !
    id PF-LINK                       \ chain the row under its owner before publishing it
    id 1 + PF-N !
-   TFM-EPOCH+
-   tx ;
+   TFM-EPOCH+ ;
 
-seal-package
-
-;package
-
-package TFAM
+: PF-COMMIT ( -- ) WRITE-WINDOW-CK  PF-N @ PF-COMMIT-N !  TFM-EPOCH+ ;
 
 ;package
 
@@ -3287,22 +3065,19 @@ variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
 variable STOW-FAM
-variable VIEW-TX
 variable VIEW-FIELD-BASE
 
 : REGISTER-VIEW-FIELDS ( n -- ) {: fam:n :}
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
-   TYPE-FIELD-OWNER:OPEN VIEW-TX !
-   VIEW-TX @ fam TYPE-FIELD:NO-VARIANT s" base"
+   fam TYPE-FIELD:NO-VARIANT s" base"
       CC-U8 SCHEMA-CON SCHEMA-PTR SCHEMA-ROOT+
-      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ fam TYPE-FIELD:NO-VARIANT s" bound"
+      0 1 0 CELL CELL PF-FLAGS-NONE PF-ADD
+   fam TYPE-FIELD:NO-VARIANT s" bound"
       CC-LEN SCHEMA-CON SCHEMA-ROOT+
-      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+      1 1 CELL CELL CELL PF-FLAGS-NONE PF-ADD
+   PF-COMMIT
    fam VIEW-FIELD-BASE @ 2 TFAM-FLD-RANGE!
-   fam 2 TFAM-SLOTS!
-   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+   fam 2 TFAM-SLOTS! ;
 
 : REGISTER-READ-VIEW ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" read-view" 3 TK-PRODUCT TFAM-DECL READ-FAM !
@@ -3330,14 +3105,12 @@ variable VIEW-FIELD-BASE
    INIT-FAM @ 0 PK-SCOPE TFAM-PK!
    INIT-FAM @ 1 PK-TYPE TFAM-PK!
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
-   TYPE-FIELD-OWNER:OPEN VIEW-TX !
-   VIEW-TX @ INIT-FAM @ TYPE-FIELD:NO-VARIANT s" value"
+   INIT-FAM @ TYPE-FIELD:NO-VARIANT s" value"
       1 SCHEMA-PARAM SCHEMA-ROOT+
-      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+      0 1 0 CELL CELL PF-FLAGS-NONE PF-ADD
+   PF-COMMIT
    INIT-FAM @ VIEW-FIELD-BASE @ 1 TFAM-FLD-RANGE!
-   INIT-FAM @ 1 TFAM-SLOTS!
-   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+   INIT-FAM @ 1 TFAM-SLOTS! ;
 
 \ `width<t>`: one cell holding the bytes t takes in storage. Its slot is
 \ PK-TYPE, so t may be a type of any width, a record's included.
@@ -3366,20 +3139,18 @@ variable VIEW-FIELD-BASE
    s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
    STOW-FAM @ C2-STOW-FAM !
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
-   TYPE-FIELD-OWNER:OPEN VIEW-TX !
-   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"
+   STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"
       CC-N SCHEMA-CON SCHEMA-ROOT+
-      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" bytes"
+      0 1 0 CELL CELL PF-FLAGS-NONE PF-ADD
+   STOW-FAM @ TYPE-FIELD:NO-VARIANT s" bytes"
       CC-N SCHEMA-CON SCHEMA-ROOT+
-      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" alignment"
+      1 1 CELL CELL CELL PF-FLAGS-NONE PF-ADD
+   STOW-FAM @ TYPE-FIELD:NO-VARIANT s" alignment"
       CC-N SCHEMA-CON SCHEMA-ROOT+
-      2 1 2 CELL * CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
-   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+      2 1 2 CELL * CELL CELL PF-FLAGS-NONE PF-ADD
+   PF-COMMIT
    STOW-FAM @ VIEW-FIELD-BASE @ 3 TFAM-FLD-RANGE!
-   STOW-FAM @ 3 TFAM-SLOTS!
-   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+   STOW-FAM @ 3 TFAM-SLOTS! ;
 
 REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
@@ -3740,7 +3511,7 @@ create ER-MSG ER-MSG-CAP allot
    sym 0 <> IF v sym SUMV-CTOR-SYM! THEN ;
 
 
-: ER-FIELD ( n n n -- n ) {: tx:n id:n vstart:n :}
+: ER-FIELD ( n n -- ) {: id:n vstart:n :}
    ER-TOKEN {: na:ptr nu:n :}
    ER-NUM {: vo:n :}
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
@@ -3751,7 +3522,7 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM {: al:n :}
    ER-NUM {: flags:n :}
    ER-NODE SCHEMA-ROOT+ {: root:n :}
-   tx id var na nu root slot nc boff nb al flags TYPE-FIELD-OWNER:ADD ;
+   id var na nu root slot nc boff nb al flags PF-ADD ;
 
 
 \ The family's declaration and its scalar rows, before the families it names.
@@ -3779,11 +3550,9 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM {: nf:n :}
    nf 0 > IF
       TYPE-FIELD:COUNT {: base:n :}
-      TYPE-FIELD-OWNER:OPEN
-      nf 0 ?do id vstart ER-FIELD loop {: tx:n :}
-      tx TYPE-FIELD-OWNER:COMMIT
+      nf 0 ?do id vstart ER-FIELD loop
+      PF-COMMIT
       id base nf TFAM-FLD-RANGE!
-      tx TYPE-FIELD-OWNER:FINALIZE
    THEN
    ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
    ER-U @ 0 <> IF ER-BAD THEN ;

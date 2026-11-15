@@ -1952,7 +1952,7 @@ private
 
 \ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
 \ every id and field extent against that same instantiation. These queries read
-\ committed rows, so this runs only after the field transaction's commit.
+\ committed rows, so this runs only after PF-COMMIT.
 : TDINIT-REQUIRE ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF TDINIT-REFUSE THEN
    fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF TDINIT-REFUSE THEN

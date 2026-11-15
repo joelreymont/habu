@@ -13,8 +13,8 @@ package TYPE-DECL
 private
 package STRUCTURE-MAKE
 
-: SM-FIELD-SCHEMA@ ( n n n -- n ) {: idx:n fam:n fs:n :}
-   fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
+: SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
+   fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
 
 \ The field schemas are still provisional: they are read through DECL-EVENT,
 \ within the open declaration, so no uncommitted row is globally readable.
@@ -22,7 +22,7 @@ package STRUCTURE-MAKE
    {: fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 BEGIN dup fc < WHILE
-      dup fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
+      dup fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
       1 +
    REPEAT drop
    SUMV-N@ {: vstart:n :}

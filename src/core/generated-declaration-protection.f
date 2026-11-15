@@ -16,13 +16,9 @@ E-ACTIVE DECL-REJECT:EXPLAIN
    [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
 INSTALL
 
-\ DECL-EVENT's savepoint opens a field transaction, which a committed one
-\ rejects (TX-PARENT-REQUIRE); only the checker frame's is taken before it, and
-\ the three after it cannot fail.
 : SAVEPOINTS ( -- )
    CHECKER-DECL-FRAME:PART-SNAPSHOT
-   [: DECL-EVENT:PART-SNAPSHOT ;] catch {: rc:n :}
-   rc 0 <> IF CHECKER-DECL-FRAME:PART-ROLLBACK rc throw THEN
+   DECL-EVENT:PART-SNAPSHOT
    GENERATED-DECL-CTOR:PART-SNAPSHOT
    STRUCTURE-MAKE:PART-SNAPSHOT
    GENERATED-DECL-DICTIONARY:SNAPSHOT ;
@@ -42,13 +38,11 @@ INSTALL
    GENERATED-DECL-DICTIONARY:ROLLBACK
    STRUCTURE-MAKE:PART-ROLLBACK
    GENERATED-DECL-CTOR:PART-ROLLBACK
-   DECL-EVENT:PART-ROLLBACK
    CHECKER-DECL-FRAME:PART-ROLLBACK ;
 
 : RELEASES ( -- )
    STRUCTURE-MAKE:PART-RELEASE
    GENERATED-DECL-CTOR:PART-RELEASE
-   DECL-EVENT:PART-RELEASE
    CHECKER-DECL-FRAME:PART-RELEASE ;
 
 \ A rollback that cannot complete leaves a savepoint live with nothing left
@@ -98,10 +92,3 @@ undefine CHECKER-DECL-FRAME:PART-RELEASE
 undefine GENERATED-DECL-DICTIONARY:SNAPSHOT
 undefine GENERATED-DECL-DICTIONARY:ROLLBACK
 undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
-
-\ The field owner's cleanup and release vectors are bound into the compiled
-\ declaration-event participant, their only caller, so they are retired too, by
-\ qualified name since they live in TFAM's public wordlist (a `using` would not
-\ help: `undefine` parses, and parsing words resolve outside using-imports).
-undefine TFAM:TDECL-FIELD-CLEANUP-XT
-undefine TFAM:TDECL-FIELD-RELEASE-XT

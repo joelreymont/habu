@@ -1,8 +1,9 @@
 \ name-length-test.f - every checker word source can call with a name or a text
-\ refuses a length that describes no memory, -1 and the maximum cell, and a
+\ rejects a length that describes no memory, -1 and the maximum cell, and a
 \ stored type one past its buffer. A query answers no and moves no pool mark; a
-\ declaring word ends with its own refusal. A name has no ceiling: a long one is
-\ taken, while a package name past its row is refused by name.
+\ declaring word ends with its own rejection. A name has no ceiling: a long one
+\ is taken, while a package name past its row and a field name past 255 bytes
+\ are rejected by name.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -159,15 +160,22 @@ create BEFORE MARK-N cells allot
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
-\ A structure of this file's own, so a field transaction has a family to add to:
-\ the family of the field row it just committed.
 STRUCTURE nlt-pair
    FIELD a n
 ;STRUCTURE
-TYPE-FIELD:COUNT 1 - TYPE-FIELD:FAMILY@ constant PAIR
-: FIELD-ADD-IT ( -- )
-   TYPE-FIELD-OWNER:OPEN PAIR TYPE-FIELD:NO-VARIANT BAD$ 0 0 0 0 0 0 0
-   TYPE-FIELD-OWNER:ADD drop ;
+\ A structure whose one field is named BAD$.
+: FIELD-NAME$ ( -- ptr u8 n )
+   s" FIELD " {: h:ptr hu:n :}
+   BAD$ {: a:ptr u:n :}
+   s"  n ;STRUCTURE" {: t:ptr tu:n :}
+   hu u + tu + MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   a p hu + u BYTE-COPY
+   t p hu + u + tu BYTE-COPY
+   p hu u + tu + ;
+: FIELD-NAME-IT ( -- )
+   s" nlt-long" FIELD-NAME$
+   [: TYPE-DECL:DECLARE-STRUCTURE ;] DECL-REPLAY:RP-RUN ;
 
 \ ---- the parent's side -------------------------------------------------------
 \ A label keeps what fits in LBL.
@@ -313,7 +321,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" ^ missing name" REJECTS
    s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing name" REJECTS
    s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing ;SUMTYPE" REJECTS
-   s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
+   256 s" 256" s" FIELD-NAME-IT" 70
+      S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
+      s" ^ name longer than 255 bytes" REJECTS-AT ;
 
 \ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
 \ checked body may call, so the child names them at its top level or in a

@@ -494,7 +494,7 @@ SD-QUOT-INSTALL
 : SD-CLOSE ( -- )
    DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
-      FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
+      FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
          s" field type parameter has incompatible kinds"
          s" use each type parameter in one kind of place: a value type, a scope or a region"
          TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -502,7 +502,7 @@ SD-QUOT-INSTALL
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
-      FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
+      FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
       s" field type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop

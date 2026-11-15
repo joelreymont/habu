@@ -1,9 +1,8 @@
 \ decl-event.f: the event log of the one open STRUCTURE or ENUM declaration
 \ (package DECL-EVENT); the front ends only recognise tokens. Both emit the same
 \ DEV-K-FIELD event; only the variant selector, held here, differs. The runner
-\ opens one declaration at a time: PART-SNAPSHOT starts an empty log and opens
-\ the field-record transaction, and nothing reads the log after release or
-\ rollback, so neither restores it.
+\ opens one declaration at a time: PART-SNAPSHOT starts an empty log, and the
+\ checker frame's rollback rewinds the declaration's field rows.
 
 using SCHEMA-REG
 using TFAM
@@ -73,7 +72,6 @@ variable DEV-BASE-FLD \ field-record count when the declaration opened
 variable DEV-FLD-ORD  \ fields logged by the open declaration
 variable DEV-VAR-ORD  \ variants logged by the open declaration
 variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-VARIANT
-variable DEV-FLD-TX   \ the field-record transaction PART-SNAPSHOT opened
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
@@ -126,34 +124,26 @@ variable DEV-FLD-TX   \ the field-record transaction PART-SNAPSHOT opened
 
 public
 
-\ The family, variant, schema and layout cursors and the name pool roll back
-\ with the checker frame's participant, not here.
+\ The family, variant, field, schema and layout cursors and the name pool roll
+\ back with the checker frame's participant, not here.
 : PART-SNAPSHOT ( -- )
-   TYPE-FIELD-OWNER:OPEN DEV-FLD-TX !
    0 DEV-N !
    TYPE-FIELD:COUNT DEV-BASE-FLD !
    0 DEV-FLD-ORD !   0 DEV-VAR-ORD !
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
 
-: PART-COMMIT ( -- ) DEV-FLD-TX @ TYPE-FIELD-OWNER:COMMIT ;
-
-: PART-ROLLBACK ( -- ) DEV-FLD-TX @ TDECL-FIELD-CLEANUP-XT ;
-
-\ The runner calls release only after every reversible commit succeeded, so it
-\ must not reject and is not caught.
-: PART-RELEASE ( -- ) TDECL-FIELD-RELEASE-XT ;
+: PART-COMMIT ( -- ) PF-COMMIT ;
 
 \ The event words and the provisional FIELD-SCHEMA@ / PAYLOAD-* queries act on
 \ the open declaration. The declaration forms parse to their terminators and
 \ load nothing, so no declaration spans a file load.
-: FIELD-SCHEMA@ ( n n -- n ) {: fam:n fld:n :}
-   DEV-FLD-TX @ fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
+: FIELD-SCHEMA@ ( n -- n ) PF-ROW PF.SCH @ ;
 
 : PAYLOAD-N ( n n -- n ) DEV-PAYLOAD-RANGE swap - ;
 
 : PAYLOAD-SCHEMA@ ( n n n -- n ) {: fam:n vid:n index:n :}
    fam vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
-   fam fld FIELD-SCHEMA@ ;
+   fld FIELD-SCHEMA@ ;
 
 \ The arity is a header check: it logs no event.
 : ARITY ( n n -- ) {: fam:n arity:n :}
@@ -194,8 +184,7 @@ public
 : FIELD ( n ptr u8 n n n n n n n n -- )
    {: fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
-   DEV-FLD-TX @ fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags
-   TYPE-FIELD-OWNER:ADD drop
+   fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
    DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD ! ;
 
