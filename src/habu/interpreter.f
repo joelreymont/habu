@@ -860,12 +860,7 @@ private
 \ The rejection names what DEF-TKA and DEF-TKL hold, which `package` never
 \ writes: for it, what the last definition or `export` left there.
 : PKG-DICT-FULL ( -- )
-   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ {: a:ptr u:n :}
-   s" E-DICTIONARY-FULL" REJECTION:OPEN
-   s" the dictionary has no record left for " SAY  a u TICKS
-   a u REJECTION:AT  s" no record left" SAY
-   REJECTION:HELP  s" define fewer words in this load" SAY
-   DICT-FULL-RC REJECTION:STOP ;
+   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ 2dup REJECTION:DICTIONARY-FULL ;
 
 : PKG-DICT-ROOM ( -- )
    ndict@ DICT-CAP < if exit then
@@ -1518,15 +1513,7 @@ private
 
 : DEF-ROOM ( -- )
    DEF-CODE-ROOM
-   ndict@ DICT-CAP >= if
-      s" E-DICTIONARY-FULL" REJECTION:OPEN
-      s" the dictionary is full at `" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:AT  s" no dictionary record left" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" load fewer definitions into this image" REJECTION:EMIT-STR
-      DICT-FULL-RC REJECTION:STOP
-   then ;
+   ndict@ DICT-CAP >= if TOKEN$ TOKEN$ REJECTION:DICTIONARY-FULL then ;
 
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.

@@ -12,8 +12,6 @@
 
 \ The status a rejection stops with.
 70 constant CHECKER-REJECT-RC
-\ The status a load stops with when the dictionary has no record left.
-77 constant DICT-FULL-RC
 
 package REJECTION
 private
@@ -951,6 +949,20 @@ public
    HELP  s" rename `" EMIT-STR  stem stemu EMIT-STR
    s" `, or the word already named `" EMIT-STR
    stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
+
+private
+\ The status a load stops with when the dictionary has no record left.
+77 constant DICT-FULL-RC
+
+public
+\ Rejects a definition of NAME when the dictionary has no record left, placed
+\ at PLACE.
+: DICTIONARY-FULL ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+   s" E-DICTIONARY-FULL" OPEN
+   s" the dictionary has no record left for `" EMIT-STR  a u EMIT-STR  96 EMIT1
+   t tu AT  s" no record left" EMIT-STR
+   HELP  s" define fewer words in this load" EMIT-STR
+   DICT-FULL-RC STOP ;
 
 \ The name a u would change a sealed package: the record stands at the source
 \ token t tu, which is not a u when the name is generated. It is written

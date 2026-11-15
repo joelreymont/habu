@@ -13057,12 +13057,7 @@ variable SNAP-N
 : NS-ROW ( ptr u8 n -- ptr n ) BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE ;
 : ROOM ( ptr u8 n -- ) {: a:ptr u:n :}
    ndict@ DICT-CAP < IF EXIT THEN
-   s" E-DICTIONARY-FULL" REJECTION:OPEN
-   s" the dictionary has no record left for `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no record left" REJECTION:EMIT-STR
-   REJECTION:HELP  s" define fewer words in this load" REJECTION:EMIT-STR
-   DICT-FULL-RC REJECTION:STOP ;
+   a u SRCLOC:TOKEN$ REJECTION:DICTIONARY-FULL ;
 
 \ A colon at an edge or a second colon is rejected, as namespace-record
 \ rejects them; a new row takes both wids.
