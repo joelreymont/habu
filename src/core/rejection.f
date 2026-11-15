@@ -406,10 +406,10 @@ PTR-VARIABLE SHOWN-A  variable SHOWN-U
       dup a + c@ CONT? 0= IF EXIT THEN
       1 -
    REPEAT ;
-\ The offset of the first LF in the u bytes at a, else u.
-: LF-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ The offset of the first byte c in the u bytes at a, else u.
+: BYTE-AT ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
    0 BEGIN dup u < WHILE
-      dup a + c@ 10 = IF EXIT THEN
+      dup a + c@ c = IF EXIT THEN
       1 +
    REPEAT ;
 public
@@ -418,7 +418,7 @@ public
 \ becomes `...`. Other text a note holds, a path or a type, shows in full.
 : EMIT-CUT ( ptr u8 n -- ) {: a:ptr u:n :}
    JSON @ IF a u EMIT-STR EXIT THEN
-   a u LF-AT {: f:n :}
+   a u 10 BYTE-AT {: f:n :}
    f u =  u WIDTH <= and IF a u EMIT-STR EXIT THEN
    a  a f WIDTH 3 - min CHAR-START  EMIT-STR
    s" ..." EMIT-STR ;
@@ -881,6 +881,29 @@ public
    max s" bytes" LIMIT
    HELP  s" shorten the text, or write it with " EMIT-STR
    S\" `s\"`" EMIT-STR  s" , which has no count byte" EMIT-STR ;
+
+private
+\ The range the form of the number token t tu reads: a `$` one's, one with a
+\ `.`, or a decimal integer's.
+: RANGE-NOTE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" range" NOTE
+   t tu 36 BYTE-AT tu < IF
+      s" a cell holds `$0` to `$FFFFFFFFFFFFFFFF`" EMIT-STR EXIT
+   THEN
+   t tu 46 BYTE-AT tu < IF
+      s" a number with a `.` holds a whole part up to `9223372036854775807` and at most 18 digits after the `.`" EMIT-STR EXIT
+   THEN
+   s" a cell holds `-9223372036854775808` to `9223372036854775807`" EMIT-STR ;
+public
+
+\ The number token t tu does not fit in a cell. It is written through its
+\ help, and the caller stops or keeps it.
+: LITERAL-RANGE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-LITERAL-RANGE" OPEN
+   s" the number `" EMIT-STR  t tu EMIT-STR  s" ` is out of range" EMIT-STR
+   t tu AT  s" does not fit in a cell" EMIT-STR
+   t tu RANGE-NOTE
+   HELP  s" write a number in that range" EMIT-STR ;
 
 \ Writes the record of word w given a path len bytes long, past the cap bytes
 \ a path may have, through its message: the caller may write one AT, then

@@ -2267,6 +2267,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
    sym a u TOK-IDENTITY 0 <> ;
 
+\ Ends a top-level token's record, which a caller collecting many keeps.
+: TOP-END ( -- n )
+   MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ A top-level token no scope defines, or one with a malformed qualifier when
 \ bad is set.
 : TOP-REFUSE ( ptr u8 n bool -- n )
@@ -2285,8 +2290,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
       REJECTION:HELP  a u UNDEF-HELP
    THEN
-   MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   TOP-END ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2296,6 +2300,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ refuses it.
 : TOP-ANSWER ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
+   runs  a u LITERAL-RANGE?  and IF a u REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF

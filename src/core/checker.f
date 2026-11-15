@@ -5154,6 +5154,7 @@ CHECKER-REG:}SCRATCH
 96 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED); E-UNDEFINED
 97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY); E-UNDEFINED
 98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
+99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -17383,16 +17384,23 @@ CHECKER-REG:}SCRATCH
 : INT-STEP ( n -- )
    dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT! ;
 
-\ A token the engine does not parse as a number is a word, as the engine looks
-\ it up: one that overflows a cell is E-UNDEFINED there.
+\ A token with a number's shape whose value does not fit in a cell, which the
+\ load cannot compile either.
+: LITERAL-RANGE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u ALLDIG?  a u FLODIG?  or 0= IF RES-FALSE EXIT THEN
+   a u num-parse nip nip 0= ;
+
 : LITERAL-TOK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
+   a u LITERAL-RANGE? IF
+      MD-LITERAL-RANGE MDIAG-COMPILE!  0 OK !  -1 FAILSET !  RES-TRUE EXIT
+   THEN
    a u ALLDIG? IF
-      a u INTEGER-LITERAL-ADMITTED? 0= IF drop RES-FALSE EXIT THEN
-      INT-STEP  RES-TRUE EXIT
+      a u INTEGER-LITERAL-ADMITTED? drop INT-STEP  RES-TRUE EXIT
    THEN
    a u FLODIG? IF
-      a u FLOAT-LITERAL-ADMITTED? 0= IF drop RES-FALSE EXIT THEN
+      a u FLOAT-LITERAL-ADMITTED? drop
       CHECKER-TAPE:K-REAL swap 0 EVENT!  STEP-R-OUT  RES-TRUE EXIT
    THEN
    RES-FALSE ;

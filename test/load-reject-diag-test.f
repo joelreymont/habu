@@ -516,14 +516,15 @@ variable RC
    S\" = declared: lrd-pair<a,b> -- lrd-pair<a,b>\n  = inferred: lrd-pair<a,a> -- lrd-pair<a,a>\n  = help: write one type variable for `b` and `a`, or keep the body from making them one type"
    PARAMETRIC-REJECT ;
 
-\ An integer literal the engine cannot read is undefined, named where the body
-\ holds it, whichever loop reads the body.
+\ An integer literal too big for a cell is rejected as a literal, named where
+\ the body holds it, whichever loop reads the body.
 : TEST-BIG-LITERAL ( -- )
-   s" an integer literal the engine cannot read is undefined" T-LABEL
+   s" an integer literal too big for a cell is rejected as a literal" T-LABEL
    BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" error[E-UNDEFINED]: cannot find word `99999999999999999999999`" s" :1:27"
-      BODY-REJECT-AT ;
+   s" error[E-LITERAL-RANGE]: the number `99999999999999999999999` is out of range" s" :1:27"
+      BODY-REJECT-AT
+   ERR$ s" = range: a cell holds `-9223372036854775808` to `9223372036854775807`" CONTAINS? TTRUE ;
 
 \ A top-level `target` beside the program's own TARGET could mean either, and is refused by name.
 : TEST-SECTION-CLASH ( -- )

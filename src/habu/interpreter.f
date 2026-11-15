@@ -340,6 +340,10 @@ create NL NEWLINE c,
 : UNDEFINED ( -- )
    TOKEN$ UNDEFINED-NAME ;
 
+\ The token reads as a number that does not fit in a cell.
+: NUMBER-RANGE ( -- )
+   TOKEN$ REJECTION:LITERAL-RANGE  CHECKER-REJECT-RC REJECTION:STOP ;
+
 : USED-WID ( n -- n )
    cells USE-WIDS-OFF + CELL@ ;
 
@@ -440,7 +444,7 @@ variable VALUE
 
 : NUMERAL? ( -- bool )
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
-   range if UNDEFINED then
+   range if NUMBER-RANGE then
    v VALUE !
    num ;
 
@@ -1901,7 +1905,7 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 : BODY-POLICY ( -- )
    BODY-LOCAL? if exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
-   range if UNDEFINED then
+   range if NUMBER-RANGE then
    POLICY-NDICT-CELL CELL@ 0= if exit then
    num if exit then
    TOKEN$ FIND-SCOPE {: rec:ptr :}
@@ -2822,6 +2826,7 @@ private
    PEND-CELL CELL@ 0<> if false exit then
    POLICY-SYNTAX? if false exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
+   range if NUMBER-RANGE then
    num if false exit then
    SEARCH
    true ;
