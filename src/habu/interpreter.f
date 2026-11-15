@@ -2792,6 +2792,26 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
+\ Only the main interpreter may retire its own failed frame. Tasks can still
+\ hold these records and bodies, so keep every extent and retire each name
+\ with one aligned store, matching the native ARM throw path.
+: FRAME-RETIRE ( ^u8 -- bool ) {: f:^ :}
+   TASK-GUARD
+   TASKS-LIVE-CELL CELL@ 0= if false exit then
+   f FR-NDICT FR@ {: first:n :}
+   first 0 < first ndict@ > or if E-COMP-STATE throw then
+   REGION-ALIAS:DELTA-CELL CELL@ {: delta:n :}
+   ndict@ first ?do
+      i XREF-REC {: row:^ :}
+      row XREF-WORDLIST {: wid:n :}
+      wid XREF:RETIRED-WL? 0= if
+         wid 0 < if WL:RETIRED-NAMESPACE else WL:RETIRED then
+         row XREF-WORDLIST-SLOT cells + delta + atomic!
+      then
+   loop
+   LASTC-CELL CELL@ first DREC * dbase@ + >= if 0 LASTC-CELL CELL! then
+   true ;
+
 \ x86 THROW returns with the evaluation frame still linked; arm64's throw
 \ recovery has already popped it before catch returns. The top link is the
 \ ownership test: exactly one path performs the rollback.
@@ -2799,6 +2819,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
+   f FRAME-RETIRE if exit then
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
@@ -2819,7 +2840,11 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOKDEPTH-CELL CELL@ CAPDEPTH-CELL CELL!
    TOKRAW-CELL CELL@ RAWNEXT-CELL CELL!
-   dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   \ A live task can hold code published while an immediate word ran. Keep
+   \ those bytes; only the unfinished token's capture state is rolled back.
+   TASKS-LIVE-CELL CELL@ 0= if
+      dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   then
    TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
 : FRAME-RESTORE-SCOPE ( ^u8 -- ) {: f:^ :}

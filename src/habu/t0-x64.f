@@ -41,10 +41,13 @@ using X64ASM
 create SINK BUF:HDR-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ machine-stack cells this body uses
+variable REC-CELLS                    \ this unit's quotation record cells
+variable ENV                          \ 1 when this unit keeps a record's address
+variable BODY-AT                      \ first byte after the frame adjustment
 variable NFRAME
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
-DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
+DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 4096 constant SINK-START-BYTES
 
@@ -73,6 +76,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : PUT ( n n n -- ) {: v:n off:n k:n :}
    SINK BUF:SPAN$ drop off + {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
+
+: REL32! ( n n -- )
+   {: d:n off:n :}
+   d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
+   d off 4 PUT ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
 : FWD-SITE ( -- LABEL:branch ) HERE-OFF 4 - LABEL:>BRANCH ;
@@ -119,20 +127,22 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 NFRAME !
-   RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
+   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 NFRAME !
+   RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE
+   HERE-OFF BODY-AT ! ;
 
 
 \ ---- the body ----------------------------------------------------------------
 \ The frame: each unit's start emits `sub rsp, imm32` and each way out emits
 \ `add rsp, imm32`, each field recorded in FRAME-AT; CLOSE writes the unit's
-\ frame size into every one. Slot k is the cell at rsp + 8k.
+\ frame size into every one. The frame holds the environment cell, quotation
+\ records, then local slots. A reading quotation receives its record in rdi.
 \
 \ The rows (t0-emit.f "THE ROWS"): a call or tail site is E8 or E9 rel32, zero
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
-\ imm64 holds its unit's offset until PATCH adds the placement. Every branch is
-\ rel32.
+\ RIP-relative lea names its unit inside the emission and needs no row.
+\ Every branch is rel32.
 : OPEN ( -- )
    SINK-LIVE @ 0= if
       SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -145,7 +155,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then
-   HERE-OFF n UNIT-REF @ 2 + 8 PUT
+   n UNIT-REF @ {: at:n :}
+   HERE-OFF at - 4 - at REL32!
    UNIT-BEGIN ;
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
@@ -154,7 +165,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    UNFRAME  SINK ENC-RET ;
 
 : CLOSE ( -- )
-   FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
+   ENV @ REC-CELLS @ + FRAME-CELLS @ +
+   CELL * 15 + 15 invert and {: bytes:n :}
    NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
 
 \ The return is the kernel's does> patch slot, filed at the jump's offset.
@@ -178,18 +190,12 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
-   to at off + 5 + - {: d:n :}
-   d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
-   d off 1 + 4 PUT ;
+   to at off + 5 + - off 1+ REL32! ;
 
 : PATCH ( n -- ) {: at:n :}
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: off:n kind:n to:n :}
       at off to PATCH-CALL
-   loop
-   EMIT-ADDR-ROWS 0 ?do
-      i EMIT-ADDR-ROW {: off:n kind:n to:n :}
-      kind ADDR-QUOT-KIND = if at to EMIT-UNIT + off 2 + 8 PUT then
    loop ;
 
 \ ---- values ------------------------------------------------------------------
@@ -203,13 +209,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: v:n d:vreg :}
    v -1 d NEMIT:ADDR-CODE ADDR ;
 
-\ The site's imm64 holds 0 until QUOT-OPEN writes unit n's offset.
+\ Unit 0 already begins at offset 0; QUOT-OPEN binds each later unit.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    n 1 + UNIT-REF-RESERVE
-   HERE-OFF n UNIT-REF !
-   HERE-OFF ADDR-QUOT-KIND n -1 EMIT-ADDR-ROW+
-   d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
+   d REG 0 MEM-RIP SINK ENC-LEA
+   HERE-OFF 4 - {: at:n :}
+   n 0= if HERE-OFF negate at REL32! exit then
+   at n UNIT-REF ! ;
 
 \ The stack pointer moved by k cells: an lea, which leaves the condition codes
 \ alone, as EMIT-CMP requires.
@@ -255,13 +262,43 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
+: REC-OFF ( n -- n ) ENV @ + CELL * ;
+: SLOT-OFF ( n -- n ) REC-CELLS @ + REC-OFF ;
+
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
-   s REG RSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
+   s REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-MR ;
 
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
-   d REG RSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
+   d REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-RM ;
+
+\ Reserving cells after body emission would move its existing slot offsets.
+: BODY-EMPTY ( -- )
+   HERE-OFF BODY-AT @ <> if E-T0-UNIT throw then ;
+
+: REC-CELLS! ( n -- ) BODY-EMPTY REC-CELLS ! ;
+
+: ENV-OPEN ( -- )
+   BODY-EMPTY 1 ENV !
+   RDI RSP MEM-AT SINK ENC-MOV-MR ;
+
+: REC-STORE ( vreg n -- )
+   {: s:vreg n:n :}
+   s REG RSP n REC-OFF MEM-OFF SINK ENC-MOV-MR ;
+
+: REC-QUOT ( n vreg -- )
+   {: n:n d:vreg :}
+   d REG RSP n REC-OFF MEM-OFF SINK ENC-LEA
+   $8000000000000000 RAX LIT-R
+   d REG RAX SINK ENC-OR-RR ;
+
+: ENV-LOAD ( vreg n -- )
+   {: d:vreg n:n :}
+   ENV @ 0= if E-T0-UNIT throw then
+   d REG {: r:r64 :}
+   r RSP MEM-AT SINK ENC-MOV-RM
+   r r n CELL * MEM-OFF SINK ENC-MOV-RM ;
 
 \ ---- arithmetic --------------------------------------------------------------
 : OP ( vreg vreg alu -- )
@@ -565,6 +602,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
    ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
+   ['] REC-CELLS! k EMIT-REC-CELLS-XT !
+   ['] ENV-OPEN k EMIT-ENV-OPEN-XT !
+   ['] REC-STORE k EMIT-REC-STORE-XT !
+   ['] REC-QUOT k EMIT-REC-QUOT-XT !
+   ['] ENV-LOAD k EMIT-ENV-LOAD-XT !
    ['] OP k EMIT-OP-XT !
    ['] OP-LIT k EMIT-OP-LIT-XT !
    ['] SHIFT k EMIT-SHIFT-XT !

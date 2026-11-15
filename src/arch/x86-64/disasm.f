@@ -465,6 +465,7 @@ variable DSCALE  variable DDISP  variable DRIP
 : TWO-CONTROL ( -- bool )
    DOP @ $105 = if PLAIN-PREFIX s" syscall" OUT true exit then
    DOP @ $10B = if PLAIN-PREFIX s" ud2" OUT true exit then
+   DOP @ $1A2 = if PLAIN-PREFIX s" cpuid" OUT true exit then
    DOP @ $1AE = if
       PLAIN-PREFIX MODRM DREG @ 6 <> DRM @ 0 <> or DMOD @ 3 <> or if UNKNOWN then
       s" mfence" OUT true exit then

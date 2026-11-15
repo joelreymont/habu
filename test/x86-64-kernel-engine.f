@@ -146,10 +146,10 @@ $1122334455667788 constant CELL-VALUE
    -1 ALLOT,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ `,` with a task live exits 79.
+\ `,` on a task's thread exits 79.
 : BUILD-HEAP-ARMED ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   1 TASKS-LIVE-CELL X64HARNESS:CELL!,
+   1 TASK-TCB-CELL X64HARNESS:CELL!,
    1 X64HARNESS:PUSH,  s" ," ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -444,7 +444,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
 \ before it alone. The record's pages start read and execute only, as a
-\ published record's are, so the row writes only through its own flip.
+\ published record's are, so the row writes only through its alias.
 : BUILD-WIDE-MARK ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEED,  4 5 X64HARNESS:PROT-RECORD,  s" wide-mark" ROW

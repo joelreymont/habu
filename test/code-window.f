@@ -64,11 +64,23 @@ HB-TARGET-LINUX-X86-64? [if]
    s" nor is the control-flow stack" T-LABEL
    s" TRUSTED: CW-CFSTK ( -- ) 0 dbase@ CFSTK-OFF + ! ; CW-CFSTK" TRAPS ;
 
+\ Retirement writes a real dictionary record. A child must own both of its
+\ mappings: retiring this name there cannot hide it from the parent's next
+\ source token. Waiting makes the mutation finish before the parent lookup.
+: TEST-FORK-REGION ( -- )
+   s" a forked child's dictionary writes leave the parent unchanged" T-LABEL
+   S\" : CW-KEEP ( -- n ) 17 ;\n: CW-CHILD ( -- ) s\" undefine CW-KEEP\" evaluate-closed ;\n: CW-FORK ( -- ) PROC-FORK:CHECKED dup PID>N 0= if drop ['] CW-CHILD PROC-FORK:CHILD-MAIN then PID>N wait-status 0<> if 75 throw then ;\nCW-FORK CW-KEEP .\n"
+   2dup CAPTURE {: outu:len erru:len oc :}
+   OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N S\" 17\n" T$=
+   erru LEN>N 0 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    TEST-RX-VIEW
+   TEST-FORK-REGION
    T-REPORT
    s" code-window: ok" type cr ;
 
