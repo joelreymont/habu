@@ -10,7 +10,7 @@
 \ descriptor. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals.
+\ refusals. The info line a tools/call and a resources/read log, without arguments.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -1018,9 +1018,17 @@ $A constant LF
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
    LOG-B BUF:SPAN$ BUF:BLEN>N ;
 
+\ The capture's lines, less each `<stamp> info mcp: ` line: the server
+\ in this process logs one for each message it dispatches.
 : LINES ( -- n )
    LOG$ {: a:ptr u:n :}
-   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+   0 u 0 ?do
+      a i + c@ LF = if 1+ then
+      i 0= if true else a i 1- + c@ LF = then if
+         a i DATE:TIME-LEN 1- + +  u i - DATE:TIME-LEN 1- -
+         s" Z info mcp: " STARTS-WITH? if 1- then
+      then
+   loop ;
 
 : CAPTURED ( [ -- ] -- )
    LOG-PATH$ STDERR:CAPTURE
@@ -1034,6 +1042,17 @@ $A constant LF
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
    LOG$ SB$ CONTAINS? TTRUE ;
+
+\ The server shares this process's fd 2, so its lines land in the capture.
+: SERVER-LOGGED ( -- )
+   s" tools/call and resources/read log their method and name, not arguments"
+   T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"secret\":\"kept\"}}}" POST 200 T=
+      LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"}}" POST 200 T= ;]
+   CAPTURED
+   LOG$ S\"  info mcp: tools/call echo\n" CONTAINS? TTRUE
+   LOG$ S\"  info mcp: resources/read ui://test/widget.html\n" CONTAINS? TTRUE
+   LOG$ s" kept" CONTAINS? TFALSE ;
 
 : CLIENT-UNKNOWN ( -- )
    s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
@@ -1250,7 +1269,7 @@ $A constant LF
    HITS atomic@ 1 T=
    s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
    [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED ;] CAPTURED
-   s" the stopped CALL logs nothing: the program ended it" T-LABEL
+   s" the stopped CALL logs nothing but the server's info line" T-LABEL
    LINES 0 T=
    s" then CALL and TOOLS throw, sending nothing" T-LABEL
    2 STOP-REFUSED
@@ -1267,7 +1286,7 @@ TYPED-VARIABLE NEVER MCP:client
 
 
 : CLIENT-CASES ( -- )
-   CURL:LOOP-START OK LOG-INIT
+   CURL:LOOP-START OK LOG-INIT SERVER-LOGGED
    s" /mcp" URL MCP:OPEN CLIENT !
    CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
    CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES

@@ -149,22 +149,24 @@ TASK:MIN-STACK TASK:TASK RELEASER
    at DATE:TIME-LEN + ru + u DATE:TIME-LEN - ru - ;
 
 
-: TWO-LINES ( -- )
+: LEVEL-LINES ( -- )
    LOG:ERROR s" model" LOG:LINE s" refused " LOG:TEXT+ -42 LOG:INT+ LOG:;LINE
-   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR-MIN-I64 LOG:INT+ LOG:;LINE ;
+   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR-MIN-I64 LOG:INT+ LOG:;LINE
+   LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
 : MODEL-REST$ ( -- ptr u8 n )  S\"  error model: refused -42\n" ;
 : MIN-REST$ ( -- ptr u8 n )  S\"  warn crew: min -9223372036854775808\n" ;
+: PING-REST$ ( -- ptr u8 n )  S\"  info mcp: ping\n" ;
 
 
 : LEVELS-CASE ( -- )
-   s" error and warn lines, text and numbers" T-LABEL
-   [: TWO-LINES ;] CAPTURED
+   s" error, warn and info lines, text and numbers" T-LABEL
+   [: LEVEL-LINES ;] CAPTURED
    FILE$ {: at:ptr u:n :}
-   u DATE:TIME-LEN 2 * MODEL-REST$ nip + MIN-REST$ nip + T=
+   u DATE:TIME-LEN 3 * MODEL-REST$ nip + MIN-REST$ nip + PING-REST$ nip + T=
    at u MODEL-REST$ LINE-OK
-   MIN-REST$ LINE-OK nip 0 T= ;
+   MIN-REST$ LINE-OK PING-REST$ LINE-OK nip 0 T= ;
 
 
 : BIG-MAKE ( -- )

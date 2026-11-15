@@ -6,8 +6,11 @@
 \ resource, such as an app's ui:// page, with ADD-RESOURCE. It authenticates each
 \ request, validates its Origin (403 when one is present and not allowed) and passes it
 \ to HANDLE; a route guarded by bearer tokens is
-\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool from a
-\ caller its hook refuses; it does not apply to resources, which every caller may list
+\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. HANDLE logs each message it
+\ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
+\ tools/call's params.name or a resources/read's params.uri when it is a string,
+\ written between its quotes as sent, never the arguments. VISIBLE! hides a tool
+\ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tool body gets the arguments' object, borrowed for the call, and gives its
 \ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
 \ to add content blocks, such as an image or an embedded resource, after the result's
@@ -731,7 +734,37 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    400 -32600 s" Request id required" BAD SEND ;
 
 
+\ A JSON string's text between its quotes, as sent, its escapes kept.
+: UNQUOTED$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a 1+ u 2 - ;
+
+
+\ The params member that names what the method acts on; empty for none.
+: TARGET-KEY$ ( -- ptr u8 n )
+   s" tools/call" METHOD= if s" name" exit then
+   s" resources/read" METHOD= if s" uri" exit then
+   s" " ;
+
+
+: TARGET+ ( -- )
+   TARGET-KEY$ {: key:ptr ku:n :}
+   ku 0= PARAMS$ nip 0= or if exit then
+   \ JSON-RPC's params may be an array, which FIELD? refuses.
+   PARAMS$ KIND JSON:T-OBJ <> if exit then
+   PARAMS$ key ku FIELD? 0= if 2drop exit then
+   2dup KIND JSON:T-STR <> if 2drop exit then
+   s"  " LOG:TEXT+  UNQUOTED$ LOG:TEXT+ ;
+
+
+: LOGGED ( -- )
+   LOG:INFO s" mcp" LOG:LINE
+   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+
+   LOG:;LINE ;
+
+
 : DISPATCH ( -- )
+   LOGGED
    ID$ nip 0= if NOTIFIED exit then
    s" initialize" METHOD= if INITIALIZE exit then
    s" server/discover" METHOD= if DISCOVER exit then
