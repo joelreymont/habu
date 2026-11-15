@@ -999,10 +999,7 @@ $40 constant TOK-CAP
 $10 constant ARG-MAX
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
 
-public
-
-\ An input's kind, as STRUCT-ROOM reads it: a cell, a `ptr u8`, an `r` or an
-\ `f32`.
+\ An input's kind: a cell, a `ptr u8`, an `r` or an `f32`.
 0 constant K-VALUE
 1 constant K-POINTER
 2 constant K-FLOAT
@@ -1015,8 +1012,6 @@ public
    a u s" u16" STR= if 2 exit then
    a u s" u32" STR= a u s" i32" STR= or a u s" f32" STR= or if 4 exit then
    8 ;
-
-private
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -1387,13 +1382,12 @@ private
 
 \ ---- which call the declaration rides --------------------------------------
 
-: STAGING-FULL ( [ -- ] -- )
-   {: place :}
+: STAGING-FULL ( -- )
    ARITY-OPEN
    s" a struct call stages at most " REJECTION:EMIT-STR
    STACK-CELLS REJECTION:EMIT-U
    s"  cells of stack inputs and record copies" REJECTION:EMIT-STR
-   place execute
+   CHECK:DEFINER-PLACE
    s" pass the large records by address through a C function"
    ARITY-END ;
 
@@ -1490,21 +1484,10 @@ private
    kinds sizes sbytes argc start regs PLAN-IN-ORDER {: int:n flt:n off:n :}
    int flt  sbytes argc off 8 ALIGN-UP 8 / pays PLAN-COPIES ;
 
-: PLAN-ROOM ( n [ -- ] -- )
-   {: stk:n place :}
+: PLAN-ROOM ( n -- )
+   {: stk:n :}
    stk STACK-CELLS <= if exit then
-   place STAGING-FULL ;
-
-public
-
-\ Plans n C arguments (kinds, C sizes, record widths) into regs and pays, n
-\ cells each, and rejects a plan past the struct call, PLACE placing the record.
-: STRUCT-ROOM ( ptr n ptr n ptr n n ptr n ptr n [ -- ] -- )
-   {: kinds:ptr sizes:ptr sbytes:ptr argc:n regs:ptr pays:ptr place :}
-   kinds sizes sbytes argc -1 regs pays PLAN-INPUTS nip nip
-   place PLAN-ROOM ;
-
-private
+   STAGING-FULL ;
 
 : C-ARGS ( -- n )
    ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
@@ -1525,7 +1508,7 @@ private
    ARG-KIND ARG-WIDTH ARG-SBYTES C-ARGS VAR-START @ ARG-REG ARG-PAY
    PLAN-INPUTS {: int:n flt:n stk:n :}
    STRUCT-BYTES @ 0 > RECORDS? or if
-      stk [: CHECK:DEFINER-PLACE ;] PLAN-ROOM
+      stk PLAN-ROOM
       int stk C-STRUCT exit
    then
    int stk  flt stk CALL-KIND ;
