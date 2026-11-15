@@ -13157,7 +13157,9 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
 : OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-USING
-   a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
+   a u CHECKER-COLON-SCAN drop 0 <> IF
+      a u REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row NULL-PTR = IF a u NS-ENSURE ELSE row THEN {: rec:ptr :}
    USE-DEPTH-CELL DATA@ {: d:n :}

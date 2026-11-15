@@ -7,7 +7,6 @@ public
 84 constant SEAL-PACKAGE
 85 constant BAD-TAG
 88 constant CODE-CERT
-90 constant USING-BAD-NAME      \ `using` package name contains ':'
 \ 96, 98 and 99 belong to SNAP-RELOC relocation failures (layout.f).
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).

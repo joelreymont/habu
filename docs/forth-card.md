@@ -39,8 +39,8 @@ public
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
   global also owns is refused (§ 3) — rename the public. A file loaded under a
   `using` resolves through it. Close a using opened before `package` after
-  `;package`: a `;using` inside the package that would close it is
-  `ENGINE-ERROR:USING-OUTER`. A load file is a using scope too: a `;using` in
+  `;package`: a `;using` inside the package that would close it is rejected
+  as `E-USING-OUTER`, status 70. A load file is a using scope too: a `;using` in
   an included file or `evaluate` buffer that would close its includer's using
   is refused the same way.
 - `package B` in package A's private section, in the file or string A is
@@ -215,7 +215,7 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
 | a multi-cell value at the prompt | `E-LAYOUT-VALUE habu: interpret-mode layout value: NAME` |
 | `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-REJECTED`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
-| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
+| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
 | `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;` or `0 throw`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, or a literal 0 thrown; a computed 0 is not refused | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` |

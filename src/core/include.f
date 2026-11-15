@@ -536,7 +536,7 @@ private
    REJECTION:HELP
    s" load only files under the source root, which this " REJECTION:EMIT-STR
    s" program's policy set with `POLICY-ROOT`" REJECTION:EMIT-STR
-   107 REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ CONFINE of a path a program asked for as req, which a rejection names and
 \ places at p.
@@ -2340,7 +2340,7 @@ private
    SRCLOC:TOKEN$ REJECTION:AT  s" sealed" REJECTION:EMIT-STR
    REJECTION:HELP
    s" call `POLICY-ROOT` before the policy seals the dictionary" REJECTION:EMIT-STR
-   107 REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : POLICY-ROOT-SET ( [ -- ] -- )
    data-base POLICY-REQUIRE-CELL + xt!
