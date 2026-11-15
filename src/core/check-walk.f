@@ -1648,6 +1648,18 @@ package CHECKER-DECL-FRAME
 : CHECKER-SCOPE-DEPTH ( -- n )
    RBF-DEPTH @ ;
 
+package CHECK
+public
+
+\ Runs q in a checker scope at neutral top level, no open package and no
+\ imports, and closes the scope however q ends.
+: SCOPED ( [ -- ] -- ) {: q :}
+   CHECKER-SCOPE-START-NEUTRAL
+   q catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   rc 0 <> IF rc throw THEN ;
+;package
+
 : CHECK-CANDIDATE-START ( -- )
    WRITE-WINDOW-CK
    CHK-CAND @ 0= IF UEND @ CK-PEND-FLOOR !  ndict@ CK-PEND-IX ! THEN   \ the outermost scope's floor

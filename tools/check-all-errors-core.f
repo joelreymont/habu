@@ -606,6 +606,13 @@ private
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
+: CA-WARNED ( [ -- ] -- ) {: q :}
+   WARN-DIAGS @ {: warn:n :}
+   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
+   q catch {: rc:n :}
+   warn WARN-DIAGS !
+   rc 0 <> IF rc throw THEN ;
+
 public
 
 \ Both capture buffers belong to the caller. The first pair is the report
@@ -644,12 +651,7 @@ public
 \ the caller's package on the clean and the throwing path alike.
 : SESSION ( [ -- ] -- ) {: q :}
    MULTI-ERR-BEGIN
-   CHECKER-SCOPE-START-NEUTRAL
-   WARN-DIAGS @ {: warn:n :}
-   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
-   q catch {: rc:n :}
-   warn WARN-DIAGS !
-   CHECKER-SCOPE-DONE
+   [: [: q CA-WARNED ;] CHECK:SCOPED ;] catch {: rc:n :}
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 

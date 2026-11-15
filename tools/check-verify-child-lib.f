@@ -573,9 +573,7 @@ variable OF-U                           \ 0 for the other forms
    {: json:bool q :}
    json REJECTION:JSON !
    OUT-FD REJECTION:FD!
-   CHECKER-SCOPE-START-NEUTRAL
-   q catch
-   CHECKER-SCOPE-DONE ;
+   [: q CHECK:SCOPED ;] catch ;
 
 
 : VERIFY-CLOSURE ( -- )
