@@ -4972,9 +4972,10 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    old new TOKBUF-CAP-U @ CCOPY  new ;
 
 \ A grown buffer starts with the old one's bytes, and the old mapping stays:
-\ a caller may hold a pointer into it across a TOKBUF-ENSURE.
+\ a caller may hold a pointer into it across a TOKBUF-ENSURE. A grow at least
+\ doubles the capacity, so the old mappings kept total less than the current one.
 : TOKBUF-GROW {: need :}
-   need TOKBUF-ROUND-CAP {: cap :}
+   need TOKBUF-CAP-U @ 2 * max TOKBUF-ROUND-CAP {: cap :}
    FAILTK cap TOKBUF-CARRY FAILTK!
    TKF cap TOKBUF-CARRY TKF!
    NMB cap TOKBUF-CARRY NMB!
