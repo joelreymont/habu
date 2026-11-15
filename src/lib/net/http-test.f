@@ -2754,21 +2754,67 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
+variable LATER-U
+variable LATER-STATUS             \ the status REPLY answers with
+variable LATER-GONE               \ the peer closes before the task answers
 variable LATER-TAKEN
 variable LATER-GO
+variable LATER-RESULT             \ 1 when REPLY answered true, 2 when false
 variable LATER-SLOT-CODE
+variable LATER-LONG               \ the content type is past the builder's room
+variable LATER-CODE               \ what the task's answer threw
+TYPED-VARIABLE LATER-WAY [ -- ]   \ how the task answers
 1 TYPED-BUFFER LATER-CONN TCP4:connection
 TASK:MIN-STACK TASK:TASK LATER-TASK
+$40 constant LATER-CAP
+LATER-CAP SPAN-BUFFER: LATER-BUF
+SB-CAP SPAN-BUFFER: LONG-TYPE
+
+
+: LATER$ ( -- ptr u8 n )
+   LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
+
+
+\ True once a write fails: the reset an end that has closed sends back.
+: RESET-SEEN? ( TCP4:connection -- bool )
+   s" x" TCP4:TRANSFER-BYTES TCP4:WRITE
+   MATCH TCP4:status
+      ok OF false ENDOF
+      failed OF drop true ENDOF
+   ;MATCH ;
+
+
+: LATER-TYPE$ ( -- ptr u8 n )
+   LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
+   s" application/json" ;
+
+
+: LATER-REPLY ( -- )
+   0 LATER-CONN @ LATER-STATUS @ LATER-TYPE$ LATER$ HTTP:REPLY
+   if 1 else 2 then LATER-RESULT ! ;
+
+
+: LATER-WRITE ( -- )
+   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
+   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 : LATER-ANSWER ( -- )
    [: HTTP:WORKER-SLOT drop ;] catch LATER-SLOT-CODE !
    [: LATER-GO @ 0<> ;] TEST-WAIT:POLL
-   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
-   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
+   LATER-GONE @ 0<> if
+      0 LATER-CONN @ [: dup RESET-SEEN? ;] TEST-WAIT:POLL
+      drop
+   then
+   LATER-WAY @ catch LATER-CODE ! ;
 
 
+\ The request's body is the answer's, copied out: the request's bytes end with
+\ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   bytes len LATER-BUF SPAN:COPY
+   len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
    [: LATER-ANSWER ;] LATER-TASK TASK:ACTIVATE
    1 LATER-TAKEN ! ;
@@ -2778,9 +2824,14 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    s" POST" s" /api/later" [: LATER ;] HTTP:ROUTE ;
 
 
-: LATER-ASK ( -- TCP4:connection )
+: LATER-ASK ( [ -- ] -- TCP4:connection )
+   LATER-WAY !
    0 LATER-TAKEN !
    0 LATER-GO !
+   0 LATER-GONE !
+   0 LATER-RESULT !
+   0 LATER-LONG !
+   0 LATER-CODE !
    RAW-OPEN {: conn:TCP4:connection :}
    conn S\" POST /api/later HTTP/1.1\r\nHost: x\r\nContent-Length: 14\r\n\r\n{\qlater\q:true}"
    RAW-SEND
@@ -2788,8 +2839,22 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    conn ;
 
 
+\ The task answers with REPLY and this status.
+: REPLY-ASK ( n -- TCP4:connection )
+   LATER-STATUS !
+   [: LATER-REPLY ;] LATER-ASK ;
+
+
+: LATER-OK$ ( -- ptr u8 n )
+   S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
+
+
+: LATER-EMPTY$ ( -- ptr u8 n )
+   S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
+
+
 : TAKE-OVER-CASE ( -- )
-   LATER-ASK {: conn:TCP4:connection :}
+   [: LATER-WRITE ;] LATER-ASK {: conn:TCP4:connection :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
    S\" {\qservice\q:\qhttp-test\q}" RAW-ASK TTRUE
    1 LATER-GO !
@@ -2802,8 +2867,63 @@ TASK:MIN-STACK TASK:TASK LATER-TASK
    LATER-SLOT-CODE @ HTTP:E-HANDLE T= ;
 
 
+\ A 204 answer carries no length and none of the body it was given.
+: NO-CONTENT-CASE ( -- )
+   s" REPLY 204 sends no length and no body" T-LABEL
+   204 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GO !
+   conn LATER-EMPTY$ RAW-COLLECT TTRUE
+   RES$ LATER-EMPTY$ T$=
+   conn CLOSED-WITHIN? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 1 T= ;
+
+
+\ A peer that reset the connection before its answer: REPLY answers false.
+: GONE-PEER-CASE ( -- )
+   s" REPLY to a peer that reset answers false" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GONE !
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   1 LATER-GO !
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 2 T= ;
+
+
+\ A content type past the task's string builder throws, and REPLY still closes.
+: LONG-TYPE-CASE ( -- )
+   s" REPLY past the string builder throws and closes" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-LONG !
+   1 LATER-GO !
+   LATER-TASK TASK-AWAIT
+   LATER-CODE @ E-STR-CAPACITY T=
+   conn CLOSED-WITHIN? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+\ A task halted while REPLY lingers on a peer that keeps its end open still
+\ closes the connection. The half-close before the linger already ended the
+\ peer's stream, so the reset its writes meet is what shows the close.
+: HALTED-REPLY-CASE ( -- )
+   s" a halted REPLY still closes the connection" T-LABEL
+   200 REPLY-ASK {: conn:TCP4:connection :}
+   1 LATER-GO !
+   conn LATER-OK$ RAW-COLLECT TTRUE
+   LATER-TASK TASK:HALT
+   LATER-TASK TASK-AWAIT
+   LATER-RESULT @ 0 T=
+   conn [: dup RESET-SEEN? ;] TEST-WAIT:POLL
+   TCP4:CLOSE DROP-TCP-STATUS ;
+
+
 : TAKE-OVER-CASES ( -- )
    TAKE-OVER-CASE
+   NO-CONTENT-CASE
+   GONE-PEER-CASE
+   LONG-TYPE-CASE
+   HALTED-REPLY-CASE
    LATER-TASK TASK:KILL ;
 
 
