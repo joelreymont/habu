@@ -43,10 +43,60 @@ SD-RESET
    s" name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`" ;
 : SD-PARAM-FIX$ ( -- ^u8 n )
    s" list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it" ;
-: SD-ARGS-FIX$ ( -- ^u8 n ) s" give the family its type arguments, as in `box<n>`" ;
+\ NEWTYPE-HELP's text, mapped on first use and grown to fit: it names the case.
+$100 constant HELP-FIRST                \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE HELP-P   NULL-PTR HELP-P !
+variable HELP-CAP   0 HELP-CAP !        \ bytes mapped at HELP-P, 0 for none
+variable HELP-U
+
+: HELP-ROOM ( n -- ) {: u:n :}
+   HELP-CAP @ 0= IF
+      HELP-FIRST ARENA-ALLOC-BYTES HELP-P !  HELP-FIRST HELP-CAP !
+   THEN
+   HELP-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
+   nc HELP-CAP @ > IF
+      HELP-P @ HELP-CAP @ nc ARENA-BYTES-GROW HELP-P !  nc HELP-CAP !
+   THEN ;
+: HELP-C+ ( n -- ) {: c:n :}
+   HELP-U @ 1 + HELP-ROOM
+   c HELP-P @ HELP-U @ + c!
+   HELP-U @ 1 + HELP-U ! ;
+: HELP+ ( ^u8 n -- ) {: a:^ u:n :}
+   u 0 ?do a i + c@ HELP-C+ loop ;
+
+\ The NEWTYPE a DEFTYPE NAME over BASE becomes, NAME folded to its tail, its
+\ closing "` instead" left to the caller.
+: NEWTYPE-HELP ( ^u8 n ^u8 n -- ) {: na:^ nu:n ba:^ bu:n :}
+   0 HELP-U !
+   s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
+   nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
+   s"  " HELP+  ba bu HELP+ ;
+\ The edit the loader accepts for `DEFTYPE NAME BASE` over BASE as written, a
+\ pointer or an application.
+: BASE-HELP$ ( ^u8 n ^u8 n -- ^u8 n )
+   NEWTYPE-HELP  s" ` instead" HELP+  HELP-P @ HELP-U @ ;
+\ The edit the loader accepts for `DEFTYPE NAME BASE` over a family of arity ar
+\ whose every parameter takes `n`: the NEWTYPE of BASE with `n` for each argument.
+: ARGS-HELP$ ( ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ar:n :}
+   na nu ba bu NEWTYPE-HELP  s" <n" HELP+
+   ar 1 ?do s" ,n" HELP+ loop
+   s" >` instead" HELP+
+   HELP-P @ HELP-U @ ;
+
+\ A family whose parameters are all cells: `n` fills each (`option<n>` loads,
+\ `width<n>` and `init<n,n>` do not).
+: CELL-PARAMS? ( n -- bool ) {: fam:n :}
+   YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
+\ The help for family fam named bare at a: a DEFTYPE gets the NEWTYPE that
+\ loads, or another base when no `n` arguments fit.
+: SD-ARGS-FIX$ ( n ^u8 n -- ^u8 n ) {: fam:n a:^ u:n :}
+   DEFTYPE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
+   fam CELL-PARAMS? 0= IF SD-TYPE-FIX$ EXIT THEN
+   DECL-REJECT:FAMILY$ a u fam TFAM-ARITY@ ARGS-HELP$ ;
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
 : SD-PTR-FIX$ ( -- ^u8 n )
+   DEFTYPE? IF SD-TYPE-FIX$ EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;
 : SD-OPEN-FIX$ ( -- ^u8 n ) s" close each `<` of the field type with `>` before the next clause" ;
 
@@ -222,11 +272,11 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
       ELSE drop THEN
    THEN
    a u CON-OF dup 0 <> IF drop EXIT THEN drop
-   a u FIELD-FAM? IF
-      dup TFAM-ARITY@ 0 <> IF
+   a u FIELD-FAM? IF {: fam:n :}
+      fam TFAM-ARITY@ 0 <> IF
          s" field type is parametric and needs type arguments"
-         SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
-      THEN drop EXIT
+         fam a u SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
+      THEN EXIT
    THEN drop
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
    s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
@@ -291,7 +341,7 @@ SD-LOOSE-INSTALL
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
          s" field type is parametric and needs type arguments"
-         SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         fam na nu SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       fam 0 0 SCHEMA-APP j EXIT
    THEN drop
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
@@ -674,38 +724,9 @@ private
 
 : NAME-STOP? ( n -- bool ) {: c:n :}
    c 58 =  c 60 = or  c 94 = or  c 91 = or ;
-
-\ ARGS-HELP$'s text, mapped on first use and grown to fit: it names the case.
-$100 constant HELP-FIRST                \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE HELP-P   NULL-PTR HELP-P !
-variable HELP-CAP   0 HELP-CAP !        \ bytes mapped at HELP-P, 0 for none
-variable HELP-U
-
-: HELP-ROOM ( n -- ) {: u:n :}
-   HELP-CAP @ 0= IF
-      HELP-FIRST ARENA-ALLOC-BYTES HELP-P !  HELP-FIRST HELP-CAP !
-   THEN
-   HELP-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
-   nc HELP-CAP @ > IF
-      HELP-P @ HELP-CAP @ nc ARENA-BYTES-GROW HELP-P !  nc HELP-CAP !
-   THEN ;
-: HELP-C+ ( n -- ) {: c:n :}
-   HELP-U @ 1 + HELP-ROOM
-   c HELP-P @ HELP-U @ + c!
-   HELP-U @ 1 + HELP-U ! ;
-: HELP+ ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ HELP-C+ loop ;
-
-\ The edit the loader accepts for `DEFTYPE NAME BASE` over a family of arity ar:
-\ the NEWTYPE of BASE with `n` for each argument, NAME folded to its tail.
-: ARGS-HELP$ ( ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ar:n :}
-   0 HELP-U !
-   s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
-   nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
-   s"  " HELP+  ba bu HELP+  s" <n" HELP+
-   ar 1 ?do s" ,n" HELP+ loop
-   s" >` instead" HELP+
-   HELP-P @ HELP-U @ ;
+\ A `:` or `[` in a base, which no NEWTYPE edit spells as written.
+: QUAL-STOP? ( n -- bool ) {: c:n :}
+   c 58 =  c 91 = or ;
 
 \ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
 : ONE-NAME-REJECT ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
@@ -718,22 +739,15 @@ variable HELP-U
 
 public
 
-\ Whether BASE is one name of a type whole without type arguments, as a DEFTYPE
-\ converter's name needs; if not, rejects NAME.
+\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, rejects
+\ NAME. The wrap judges the type it names.
 : SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
-   NO bu 0 ?do ba i + c@ NAME-STOP? or loop IF
-      na nu ba bu s" a deftype base is one name"
+   NO bu 0 ?do ba i + c@ NAME-STOP? or loop 0= IF YES EXIT THEN
+   na nu ba bu s" a deftype base is one name"
+   NO bu 0 ?do ba i + c@ QUAL-STOP? or loop IF
       s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
-      TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
-      NO EXIT
-   THEN
-   TFAM-ACTIVE-PKG$ ba bu TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-FOUND <> IF YES EXIT THEN
-   id TFAM-ARITY@ {: ar:n :}
-   ar 0= IF YES EXIT THEN
-   na nu ba bu s" the base is a family that takes type arguments"
-   na nu ba bu ar ARGS-HELP$
-   TYPE-DECL:E-TDECL-PAYLOAD ONE-NAME-REJECT
+   ELSE na nu ba bu BASE-HELP$ THEN
+   TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
    NO ;
 
 \ Registers NAME's family over BASE: one field base, no word made; KIND is the

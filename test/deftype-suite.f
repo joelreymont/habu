@@ -93,23 +93,29 @@ DEFTYPE REV str
 s" abc" >str >REV REV>STR str> nip 3 T=
 \ a rev is not a str: 70, the checker's rejection ("expected: str", "found: rev").
 s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
-\ the base is one name, since NAME>BASE is made from it; the rejection names the
-\ type and marks the base.
-: DT-ONE-NAME ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ha:^ hu:n ta:^ tu:n :}
+\ The record of a rejected DEFTYPE base: its title, the label at the base and
+\ the help, each a whole line.
+: DT-REC ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: sa:^ su:n ta:^ tu:n ba:^ bu:n la:^ lu:n ha:^ hu:n :}
    REJECTION:CAPTURE
    sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
-   REJECTION:BUFFER$ ha hu CONTAINS? TTRUE
-   ta tu s" a deftype base is one name" DECL-DIAG:CAUSE? TTRUE
-   REJECTION:BUFFER$ s" = help: write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it" CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ ta tu CONTAINS? TTRUE
+   ba bu la lu DECL-DIAG:CAUSE? TTRUE
+   REJECTION:BUFFER$ ha hu CONTAINS? TTRUE ;
+\ the base is one name, since NAME>BASE is made from it; the rejection names the
+\ type and marks the base. A pointer or an application is a NEWTYPE's base.
 s" DEFTYPE DTBAD option<n>"
-s" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD`"
-s" option<n>" DT-ONE-NAME
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD`\n"
+s" option<n>" s" a deftype base is one name"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtbad option<n>` instead\n" DT-REC
 s" DEFTYPE DTBAD2 pkg:thing"
-s" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD2`"
-s" pkg:thing" DT-ONE-NAME
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD2`\n"
+s" pkg:thing" s" a deftype base is one name"
+S\" = help: write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it\n" DT-REC
 s" DEFTYPE rev ^u8"
-s" error[E-BAD-DECLARATION]: bad deftype declaration `rev`"
-s" ^u8" DT-ONE-NAME
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `rev`\n"
+s" ^u8" s" a deftype base is one name"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE rev ^u8` instead\n" DT-REC
 \ a base no type declares: the record names DEFTYPE and its help offers one
 \ bare name, never a pointer.
 REJECTION:CAPTURE
@@ -136,8 +142,9 @@ VN-VMAX-SRC!
 : DT-VERIFY-MAX ( -- ) VN-VMAX-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
 ' DT-VERIFY-MAX catch 0 T=
 
-\ 7. a multi-error load records a parametric base, its help the NEWTYPE that
-\    declares it, and declares no converters for it; an earlier DEFTYPE's
+\ 7. a parametric base: a family whose parameters all take `n` gets the NEWTYPE
+\    that declares it; any other gets another base, never `ptr<`. A multi-error
+\    load records it and declares no converters for it; an earlier DEFTYPE's
 \    converter still verifies.
 CODEGEN:BUFFER DT-MULTI-SRC
 : DT-LINE ( ^u8 n -- )
@@ -155,9 +162,30 @@ DT-MULTI-SRC!
 REJECTION:CAPTURE
 MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
 2 T=  0 T=
-REJECTION:BUFFER$ s" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ field type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
+\ the load's path, through DEFTYPE.
+s" DEFTYPE DTWRAP option"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n"
+s" option" s" field type is parametric and needs type arguments"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n" DT-REC
+\ read-view's parameters are scopes and a type, which `n` does not fill.
+s" DEFTYPE dtv read-view"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtv`\n"
+s" read-view" s" field type is parametric and needs type arguments"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
+\ `ptr` names no type without `<`, and no `ptr<` is offered.
+s" DEFTYPE dtk ptr"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtk`\n"
+s" ptr" s" unknown field type"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
+REJECTION:BUFFER$ s" ptr<" CONTAINS? TFALSE
+\ a base resolves as a field type does, case and all: `Option` names no family.
+s" DEFTYPE rev3 Option"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `rev3`\n"
+s" Option" s" unknown field type"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 
 T-REPORT
