@@ -539,7 +539,7 @@ s" BITEM:STRAY-GO" 70
 s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
 \ A read of a local whose block ended, in a body text finishes, is rejected.
 s" BITEM:ENDED-TEXT-GO 1 + ;" 70
-s" cannot compile BI-ENDED-TEXT" SUBJECT:REFUSED? TTRUE
+s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
 BITEM:PLACED-CHILD
 BITEM:UNBOUND-CHILD
 BITEM:EVALUATED-CHILD

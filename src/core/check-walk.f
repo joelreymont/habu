@@ -602,10 +602,8 @@ public
    THEN
    RES-FALSE ;
 
-: CHECK-SCAN-WALK ( -- )
-   0 SPAY-S !
-   EV-START
-   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
+\ Walks the text from TI to its end by spelling; true when the walk ends.
+: SCAN-TEXT ( -- bool )
    BEGIN TI @ TBLEN @ < WHILE
      TI @ CUR-GAP !
      BEGIN TI @ TBLEN @ <  TI @ TBLANK?  and WHILE TI @ 1 + TI ! REPEAT
@@ -615,7 +613,7 @@ public
          TI @ 1 + TI !  TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
-         PAREN-SIG? IF EXIT THEN
+         PAREN-SIG? IF RES-TRUE EXIT THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN
        ELSE TI @ TBYTE@ 92 =  TI @ 1 + TBLANK?  and IF   \ '\' then a blank -> comment to the line's end
@@ -627,20 +625,31 @@ public
          BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
          SCAN-TOK-HEAD {: was-name:n :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
-         was-name SCAN-TOK-TAIL IF EXIT THEN
+         was-name SCAN-TOK-TAIL IF RES-TRUE EXIT THEN
        THEN THEN
      THEN
    REPEAT
+   RES-FALSE ;
+
+: CHECK-SCAN-WALK ( -- )
+   0 SPAY-S !
+   EV-START
+   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
+   SCAN-TEXT IF EXIT THEN
    CUR-END ;
 
 \ ---- the walk of a built definition's items ---------------------------------
 \ A definition `define-word` opened is walked by its items, not its listing's
 \ bytes: each row's span in the listing is its token, and its kind picks the
 \ step that parsed source reaches by spelling. A CALL binds the record the
-\ definer found, so nothing the building package defines captures it.
+\ definer found, so nothing the building package defines captures it. Text
+\ after the last item, which a body finished by text holds, is walked by
+\ spelling in the scope the items left.
 
-\ The items stand for the text walked: it is the pending definition's body
-\ text, no text an item does not span joined it, and the last item ends it.
+\ The items stand for the text walked up to the last item's end: it is the
+\ pending definition's body text, and no text an item does not span joined it
+\ before then. Text between items is walked whole by spelling: a local it binds
+\ would shift the bind sequence a built local's index names.
 : ITEM-WALK? ( -- bool )
    data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
    TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF RES-FALSE EXIT THEN
@@ -649,7 +658,7 @@ public
    n 0= IF RES-FALSE EXIT THEN
    n 1 - BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@
    n 1 - BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 +
-   TBLEN @ = ;
+   TBLEN @ <= ;
 
 : ITEM-SPAN ( n -- ) {: i:n :}
    TI @ CUR-GAP !
@@ -843,7 +852,7 @@ public
          was-name SCAN-TOK-TAIL IF UNLOOP EXIT THEN
       THEN
    LOOP
-   TI @ CUR-GAP !  TBLEN @ TI !
+   SCAN-TEXT IF EXIT THEN
    CUR-END ;
 
 \ Walks a body, holding its using refusals for the end, where a structure open
