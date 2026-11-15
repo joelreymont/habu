@@ -4102,7 +4102,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
-   \ Index safety still needs every call after a refused declaration: an open
+   \ Index safety still needs every call after a rejected declaration: an open
    \ diagnostic stretch must not hide a call that can change earlier bindings.
    COMPOSE-ON @ 0= TOP-DEFER @ 0<> or INDEX-ON @ 0= and IF
       renders IF a u RENDER-GAP THEN
@@ -4110,9 +4110,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    THEN
    a u true renders TOP-RESOLVE ;
 
-\ A declaration a definer of the table above reads closes the stretch, unless
-\ the checker counted a refusal while it was read (where refusals do not
-\ throw): then the stretch opens, unreported.
+\ A declaration a definer of the table above reads closes the stretch. One the
+\ checker rejected while it was read (where rejections do not throw) opens an
+\ unreported stretch instead: the scan recovers at the next definer or `:`, so
+\ the tokens of a broken declaration are not reported as names.
 : TOP-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    REJECTION:TALLY @ {: before:n :}
