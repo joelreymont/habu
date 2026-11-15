@@ -73,6 +73,7 @@ variable STRUCT-OPEN
 \ the three definers' `( ptr a n )` threading effects to `( n )`.
 : BEGIN-STRUCTURE ( -- ptr n n )
    STRUCT-REQUIRE-CLOSED
+   SRCLOC:TOKEN$ s" END-STRUCTURE" [: 0 STRUCT-OPEN ! ;] SOURCE-ROOT:OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;
 
@@ -95,5 +96,5 @@ variable STRUCT-OPEN
 
 : END-STRUCTURE ( ptr n n -- )
    s" END-STRUCTURE" STRUCT-REQUIRE-OPEN
-   0 STRUCT-OPEN !
+   0 STRUCT-OPEN !  SOURCE-ROOT:CLOSED
    swap ! ;

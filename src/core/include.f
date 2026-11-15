@@ -2087,6 +2087,56 @@ private
    n 0 > if n RESIDUE-LEFT then
    n 0 < if n negate RESIDUE-TAKEN then ;
 
+\ The declaration open in the loading file, as its declarer records it: the
+\ source token that opened it, its closer's spelling and the action that
+\ abandons it. CLOSER-U is 0 while none is open.
+PTR-VARIABLE OPENER-A
+variable OPENER-U
+PTR-VARIABLE CLOSER-A
+variable CLOSER-U
+TYPED-VARIABLE ABANDON-XT [ -- ]
+
+\ A rejected open declaration's record: UNCLOSED-OPEN starts its message, the
+\ caller says what ends the declaration, UNCLOSED-AT places it and starts its
+\ help, and the caller finishes the help.
+: UNCLOSED-OPEN ( -- )
+   s" E-UNCLOSED" REJECTION:OPEN
+   96 REJECTION:EMIT1  OPENER-A @ OPENER-U @ REJECTION:EMIT-STR
+   s" ` is still open when " REJECTION:EMIT-STR ;
+
+: UNCLOSED-AT ( -- )
+   OPENER-A @ OPENER-U @ REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close it with `" REJECTION:EMIT-STR
+   CLOSER-A @ CLOSER-U @ REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR ;
+
+public
+
+: CLOSED ( -- )
+   0 CLOSER-U ! ;
+
+\ A declaration opening while another is open rejects the open one and
+\ abandons both.
+: OPENED ( ptr u8 n ptr u8 n [ -- ] -- ) {: t:ptr tu:n c:ptr cu:n q :}
+   CLOSER-U @ 0 <> if
+      UNCLOSED-OPEN  96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
+      s" ` opens" REJECTION:EMIT-STR
+      UNCLOSED-AT  s" before `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+      96 REJECTION:EMIT1
+      ABANDON-XT @ execute  q execute  CLOSED
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT ! ;
+
+private
+
+\ Run at the end of a file, where an open declaration can no longer close.
+: UNCLOSED-CHECK ( -- )
+   CLOSER-U @ 0= if exit then
+   UNCLOSED-OPEN  s" the file ends" REJECTION:EMIT-STR
+   UNCLOSED-AT  s" in the same file" REJECTION:EMIT-STR
+   ABANDON-XT @ execute  CLOSED
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
@@ -2115,7 +2165,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK TRANSIENT-END ;]
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE UNCLOSED-CHECK RESIDUE-CHECK
+      TRANSIENT-END ;]
    SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
@@ -2202,7 +2253,8 @@ public
    exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
    PUSH
    REQUEST-AT$ {: ra:ptr ru:n :}  NULL-PTR 0 REQUEST-AT!
-   [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
+   [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE
+      UNCLOSED-CHECK ;]
    catch {: rc:n :}
    ra ru REQUEST-AT!
    INCLUDE-CLOSE
