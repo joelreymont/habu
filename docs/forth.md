@@ -1851,7 +1851,7 @@ dependencies, nested generic and sum payloads included.
 
 ### The public owner recipe
 
-Load `src/lib/c2-owner.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` is the
+Load `src/lib/c2-memory.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` is the
 byte length of an owner header; `C2-MEM:WITH-MUT` owns those bytes for one
 callback. Inside it, pass `C2-MEM:SEED-OWNER` to `C2-MEM:WITH-INIT`; its
 callback receives a unique `owner-state` view, `C2-MEM:BIND` turns that view
@@ -1859,7 +1859,7 @@ into the linear owner handle, and `C2-MEM:UNBIND` returns it before the
 callback ends. This certifies and runs:
 
 ```forth
-require src/lib/c2-owner.f
+require src/lib/c2-memory.f
 require src/lib/c2-bytes.f
 require src/lib/memory.f
 

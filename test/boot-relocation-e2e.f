@@ -61,14 +61,13 @@ variable RC
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ FS:MAKE-DIRS
-   s" src/lib/c2-memory" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   s" src/lib" PATH! PATH PATH-U @ FS:MAKE-DIRS
    s" src/core" PATH! PATH PATH-U @ FS:MAKE-DIRS
    TREE$ s" bin/hb" ENGINE FS:JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ FS:COPY-FILE-STREAM
    ENGINE$ FS:CHMOD-X
    s" src/lib/error.f" COPY-SOURCE
    s" src/lib/c2-memory.f" COPY-SOURCE
-   s" src/lib/c2-memory/owner-runtime.f" COPY-SOURCE
    s" src/core/util.f" COPY-SOURCE
    s" src/lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;

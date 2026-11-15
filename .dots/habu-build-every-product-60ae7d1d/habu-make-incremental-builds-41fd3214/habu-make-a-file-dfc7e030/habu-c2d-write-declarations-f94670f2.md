@@ -14,6 +14,6 @@ Problem: every writer of checker facts must find its record through the dictiona
 - A callee's facts text parsed on first use during a caller's check runs NMAP-RESET (checker.f:6775) and overwrites the NMAP that NP-LETTER reads; that parse must save and restore NMAP.
 - record-facts! exits SEAL-VIOLATION (83) with no message for a record below the seal floor, so an amender that can name a sealed entry refuses it by name before the call.
 
-Acceptance: the items above hold, each shown by a case; a caller's check of a created word (a does> definer's FOO; a PTR-VARIABLE) reads its definer's text through CHECK:FACTS@; READ-PACK and MUT-PACK (src/lib/c2-memory.f:41-42) and OWNER-VIEW-PACK (src/lib/c2-owner.f:13) round-trip through facts text; a text the arm64 engine loop's `evaluate` recovery dropped is not answered as a live entry's facts.
+Acceptance: the items above hold, each shown by a case; a caller's check of a created word (a does> definer's FOO; a PTR-VARIABLE) reads its definer's text through CHECK:FACTS@; READ-PACK and MUT-PACK (src/lib/c2-memory.f:339-340) and OWNER-VIEW-PACK (src/lib/c2-memory.f:442) round-trip through facts text; a text the arm64 engine loop's `evaluate` recovery dropped is not answered as a live entry's facts.
 
 Depends: none. Claim: unassigned.
