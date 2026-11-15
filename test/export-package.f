@@ -353,6 +353,21 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s"   = help: define a word that leaves the whole value, `: K ( -- pt:point ) ... ;`, in place of the constant"
    XPK-ERR? ;
 
+\ A `constant` that took the cell above a point leaves the point on top: the
+\ next `constant` is rejected too.
+: XPK-PT-CONSTANTS ( -- )
+   s" top-level constant after a constant over a point" T-LABEL
+   SB-RESET XPK-PT-LINES
+   s" 7 constant SEVEN constant K" XPK-LINE  SB$ XPK-RUN-STDIN
+   XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-LAYOUT-VALUE]: `constant` would take one cell of `pt:point`, a value held in more than one cell"
+   XPK-ERR?
+   s"  --> <input>:8:18" XPK-ERR?
+   s" 8 | 7 constant SEVEN constant K" XPK-ERR?
+   s"   |                  ^^^^^^^^ takes one cell" XPK-ERR?
+   s"   = help: define a word that leaves the whole value, `: K ( -- pt:point ) ... ;`, in place of the constant"
+   XPK-ERR? ;
+
 \ Over a point at top level each transport primitive is rejected before it
 \ runs, naming itself.
 : XPK-WIDE-TAKE ( -- )
@@ -360,7 +375,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" nip" XPK-PT-XPORT  s" tuck" XPK-PT-XPORT  s" rot" XPK-PT-XPORT
    s" -rot" XPK-PT-XPORT  s" 2dup" XPK-PT-XPORT  s" 2drop" XPK-PT-XPORT
    s" 2swap" XPK-PT-XPORT  s" 2over" XPK-PT-XPORT  s" 2>r" XPK-PT-XPORT
-   XPK-PT-CONSTANT ;
+   XPK-PT-CONSTANT XPK-PT-CONSTANTS ;
 
 : XPK-PT-DROP ( ^u8 n ^u8 n -- ) {: w:^ v:n a:^ u:n :}
    w v T-LABEL

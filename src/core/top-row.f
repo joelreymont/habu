@@ -31,7 +31,8 @@ public
 : TOP-TAKE ( ^u8 n ^u8 n -- )
    {: a:^ u:n w:^ v:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
-   a u w v depth CHECKER-TOP-TAKE ;
+   depth {: live:n :}
+   a u w v live CHECKER-TOP-TAKE ;
 
 \ Judges the engine `drop` as a body's (a linear item rejected, rc 70), takes the
 \ top item off the row and answers its width in cells.
