@@ -206,7 +206,7 @@ s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
 s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy" E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
-s" declared name too long" E-TDECL-CAP EXPLAIN
+s" declared name too long or record too wide to make" E-TDECL-CAP EXPLAIN
 s" derive requirement not met" E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a

@@ -21,7 +21,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
-7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX
+7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX, or a record past MAKE's items
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 

@@ -19,6 +19,7 @@ variable TOK        \ declaration-event token; SD-RESET zeroes it at body start
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
+variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
 
@@ -400,6 +401,11 @@ SD-QUOT-INSTALL
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    na nu ;
+\ Each item is at least one level of MAKE's effect, so no record of more items
+\ than EFFECT-DEPTH-MAX can be made; USIG-DEPTH-FITS? measures nested types.
+: ITEMS-FULL ( -- )
+   s" record takes more than 4096 items to make" TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw ;
+: ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: na:ptr nu:n :}
    0 FIELD-MISS !  0 POINTEE !
@@ -407,6 +413,8 @@ SD-QUOT-INSTALL
    ta tu RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
+      ITEM-ROOM 1 < IF na nu DECL-REJECT:TOKEN! ITEMS-FULL THEN
+      SD-ITEMS @ 1 + SD-ITEMS !
       na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
@@ -418,6 +426,7 @@ SD-QUOT-INSTALL
    num-parse {: v:n flt:bool ok:bool :}
    ok 0= flt or v 1 < or IF
       s" buffer byte count must be a number above 0" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ bytes: a cell count could overflow
    v ;
 : EMIT-BUFFER ( ptr u8 n n -- ) {: na:ptr nu:n bytes:n :}
    bytes 1 - CELL / 1 + {: fw:n :}
@@ -429,9 +438,20 @@ SD-QUOT-INSTALL
    DECL-EVENT:FIELD TOK !
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
+\ Derived eq and hash compare and hash whole cells, and a buffer's last cell
+\ holds bytes past its count, so neither may read one. DERIVE precedes the
+\ fields (HEADER-ORDER): the family's derive flags are final here.
+: BUFFER-DERIVABLE ( -- )
+   FAM @ TFAM-DERIVE-EQ? IF
+      s" derive eq cannot compare a buffer" TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ TFAM-DERIVE-HASH? IF
+      s" derive hash cannot hash a buffer" TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : BUFFER-CLAUSE ( -- )
    FIELD-NAME {: na:ptr nu:n :}
-   na nu BUFFER-COUNT EMIT-BUFFER
+   BUFFER-DERIVABLE
+   BUFFER-COUNT {: bytes:n :}
+   bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
+   na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
 : SD-REGISTER ( ptr u8 n n -- )
@@ -441,7 +461,7 @@ SD-QUOT-INSTALL
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
-   0 NFLD !   0 SD-CELLS !
+   0 NFLD !   0 SD-CELLS !   0 SD-ITEMS !
    DECL-EVENT:CURRENT TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK !
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;

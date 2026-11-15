@@ -2161,6 +2161,7 @@ public
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" derive" CORE-STR=CI ;
 

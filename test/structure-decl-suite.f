@@ -237,35 +237,6 @@ s" STRUCTURE-DECL:SD-RUN" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? TTRUE
 s" sdgself" DECL-DIAG:HAS? TFALSE
 
-\ A generated word whose effect is too deep to record has no signature text:
-\ its refusal quotes none. SDGDEEP:MAKE takes 4095 `n` fields and one
-\ `option<n>`, 4097 cells, one past EFFECT-DEPTH-MAX.
-package SDDEEP
-private
-$20000 constant CAP              \ bytes: 4096 FIELD clauses of 12 bytes and the frame
-create SRC-BUF CAP allot
-TYPED-VARIABLE SRC-U len
-: S+ ( ptr u8 n -- ) SRC-BUF CAP SRC-U BUF-APPEND ;
-: C+ ( n -- ) SRC-BUF CAP SRC-U BUF-APPEND-C ;
-: LETTER+ ( n -- ) 26 mod [char] a + C+ ;
-\ FIELD q<i in three letters> n, a name unique for i below 26^3.
-: FIELD+ ( n -- )
-   {: i:n :}
-   s"  FIELD q" S+  i 676 / LETTER+  i 26 / LETTER+  i LETTER+  s"  n" S+ ;
-public
-: DEEP$ ( -- ptr u8 n )
-   SRC-U BUF-RESET
-   s" STRUCTURE-DECL:SD-RUN sdgdeep" S+
-   4095 0 ?do i FIELD+ loop
-   s"  FIELD qopt option<n> ;STRUCTURE" S+
-   SRC-BUF SRC-U @ LEN>N ;
-;package
-DECL-DIAG:PROSE
-SDDEEP:DEEP$ TEST-EVAL:RC 7156 T=
-s" habu: in SDGDEEP:MAKE: bad stored signature: effect too deep to record (depth 4097, at most 4096)"
-DECL-DIAG:HAS? TTRUE
-s" ''" DECL-DIAG:HAS? TFALSE
-
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.
 STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ptr sdsnode ;STRUCTURE
@@ -1086,6 +1057,83 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdbname BUFFER b SDB-LEN ;STRUCTURE" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdbname': buffer byte count must be a number above 0 at 'SDB-LEN'"
 DECL-DIAG:HAS? TTRUE
+
+\ A derived eq or hash reads whole cells, past the count in a buffer's last
+\ cell, and init needs a fixed-cell record: each is refused with a buffer.
+DECL-DIAG:PROSE
+s" STRUCTURE sdbeq DERIVE eq FIELD a n BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 7119 T=
+s" habu: bad structure declaration 'sdbeq': derive eq cannot compare a buffer at 'b'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbhash DERIVE hash BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 7119 T=
+s" habu: bad structure declaration 'sdbhash': derive hash cannot hash a buffer at 'b'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbinit DERIVE init BUFFER b 13 ;STRUCTURE" TEST-EVAL:RC 7119 T=
+s" habu: bad structure declaration 'sdbinit': derive init requires a canonical fixed-cell record at 'sdbinit'"
+DECL-DIAG:HAS? TTRUE
+
+\ `buffer` is a clause keyword, so it names no family and no field.
+DECL-DIAG:PROSE
+s" STRUCTURE buffer FIELD a n ;STRUCTURE" TEST-EVAL:RC 7110 T=
+s" habu: bad structure declaration 'buffer': reserved name at 'buffer'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbfld FIELD buffer n ;STRUCTURE" TEST-EVAL:RC 7125 T=
+s" habu: bad structure declaration 'sdbfld': reserved field name at 'buffer'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ MAKE takes one item per FIELD and one per buffer cell, and its effect holds
+\ EFFECT-DEPTH-MAX (4096) at most: the clause that passes it is refused E-CAP.
+package SDBIG
+$10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
+create SRC CAP allot
+TYPED-VARIABLE SRC-U len
+: S+ ( ptr u8 n -- ) SRC CAP SRC-U BUF-APPEND ;
+: S+C ( n -- ) SRC CAP SRC-U BUF-APPEND-C ;
+: S+LETTER ( n -- ) 26 mod 97 + S+C ;
+\ Field I is `fXYZ`, I in base 26 as three letters.
+: S+FIELD ( n -- )
+   {: i:n :}
+   s"  FIELD f" S+
+   i 676 / S+LETTER  i 26 / S+LETTER  i S+LETTER
+   s"  n" S+ ;
+public
+: FIELDS ( ptr u8 n n -- )
+   {: na:ptr nu:n k:n :}
+   SRC-U BUF-RESET  s" STRUCTURE " S+  na nu S+
+   k 0 ?do i S+FIELD loop ;
+: SRC+ ( ptr u8 n -- ) S+ ;
+: SRC$ ( -- ptr u8 n ) SRC SRC-U @ LEN>N ;
+;package
+
+\ 4095 fields and one cell of bytes are exactly 4096 items.
+s" sdbfull" 4095 SDBIG:FIELDS  s"  BUFFER b 8 ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdbover FIELD a n BUFFER b 32761 ;STRUCTURE" TEST-EVAL:RC 7118 T=
+s" habu: bad structure declaration 'sdbover': record takes more than 4096 items to make at '32761'"
+DECL-DIAG:HAS? TTRUE
+\ A count whose cells would not fit a cell is refused before any is counted.
+DECL-DIAG:PROSE
+s" STRUCTURE sdbhuge BUFFER b $7FFFFFFFFFFFFFF0 ;STRUCTURE" TEST-EVAL:RC 7118 T=
+s" habu: bad structure declaration 'sdbhuge': record takes more than 4096 items to make at '$7FFFFFFFFFFFFFF0'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" sdbmany" 4097 SDBIG:FIELDS  s"  ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 7118 T=
+s" habu: bad structure declaration 'sdbmany': record takes more than 4096 items to make at 'fgbo'"
+DECL-DIAG:HAS? TTRUE
+\ A generated word whose effect is too deep to record has no signature text:
+\ its refusal quotes none. SDGDEEP:MAKE takes 4095 `n` fields and one
+\ `option<n>`, 4097 cells, one past EFFECT-DEPTH-MAX.
+DECL-DIAG:PROSE
+s" sdgdeep" 4095 SDBIG:FIELDS  s"  FIELD qopt option<n> ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 7156 T=
+s" habu: in SDGDEEP:MAKE: bad stored signature: effect too deep to record (depth 4097, at most 4096)"
+DECL-DIAG:HAS? TTRUE
+s" ''" DECL-DIAG:HAS? TFALSE
 DECL-DIAG:OFF
 
 \ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
