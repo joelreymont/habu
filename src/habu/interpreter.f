@@ -1484,6 +1484,19 @@ public
    REJECTION:HELP
    s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` with `;` before the source ends" REJECTION:EMIT-STR ;
+
+\ The checker reads a `(` as a signature and a `\` as a comment wherever either
+\ stands, so the source token t tu names nothing when definer kw ku takes it as
+\ a name.
+: NOT-A-NAME ( ptr u8 n ptr u8 n -- ) {: kw:ptr ku:n t:ptr tu:n :}
+   t tu s" (" FOLDED= if
+      kw ku t tu s" a signature, not a name" REJECTION:MISSING-NAME
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   t tu s" \" FOLDED= if
+      kw ku t tu s" a comment, not a name" REJECTION:MISSING-NAME
+      CHECKER-REJECT-RC REJECTION:STOP
+   then ;
 private
 
 \ The rejection marks the opener's token in the source, the name a colon
@@ -1549,20 +1562,13 @@ private
       PKG-RC-DICT-FULL REJECTION:STOP
    then ;
 
-\ The definition's checker reads a `(` after definer kw ku as the signature, so
-\ that token names nothing.
-: SIG-NOT-NAME ( ptr u8 n -- ) {: kw:ptr ku:n :}
-   s" (" TOKEN-IS? 0= if exit then
-   kw ku TOKEN$ s" a signature, not a name" REJECTION:MISSING-NAME
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
-   trusted if s" trusted:" OPERAND exit then
+   trusted if s" trusted:" OPERAND  s" trusted:" TOKEN$ NOT-A-NAME exit then
    TOKEN$ {: kw:ptr ku:n :}
    TOKEN 0= if kw ku CHECKER-REJECT-RC NAME-MISSING then
-   kw ku SIG-NOT-NAME ;
+   kw ku TOKEN$ NOT-A-NAME ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
@@ -2420,9 +2426,9 @@ variable LIT-AT
 
 \ No record slot left is refused after the name, naming it. CP at the code
 \ ceiling is refused first, naming the keyword, as `:`'s does.
-: DEF-ADDR-ROW ( bool -- ) {: cell?:bool :}
+: DEF-ADDR-ROW ( ptr u8 n bool -- ) {: kw:ptr ku:n cell?:bool :}
    DEF-CODE-ROOM
-   s" create" OPERAND
+   kw ku OPERAND  kw ku TOKEN$ NOT-A-NAME
    DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
 
@@ -2431,10 +2437,10 @@ variable LIT-AT
 \ interpreting `create` only; `-- ptr a` is published at both, or the word
 \ made is E-UNDEFINED where it is next read.
 : DEF-CREATE-ROW ( -- )
-   false DEF-ADDR-ROW
+   s" create" false DEF-ADDR-ROW
    DEF-ADDR-PUBLISH ;
 
-: DEF-ADDR ( bool -- )
+: DEF-ADDR ( ptr u8 n bool -- )
    DEF-ADDR-ROW
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
@@ -2444,7 +2450,7 @@ variable LIT-AT
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
-   s" constant" OPERAND
+   s" constant" OPERAND  s" constant" TOKEN$ NOT-A-NAME
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
@@ -2496,7 +2502,8 @@ variable DEF-VALUE
 
 : DEF-CAST-ROW ( -- )
    DEF-ROOM
-   DEF-CAST-NAME
+   TOKEN$ {: kw:ptr ku:n :}
+   DEF-CAST-NAME  kw ku TOKEN$ NOT-A-NAME
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
    0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
@@ -2607,7 +2614,7 @@ variable DEF-VALUE
 \ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
    DEF-ROOM
-   s" linear:" OPERAND
+   s" linear:" OPERAND  s" linear:" TOKEN$ NOT-A-NAME
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
@@ -2717,7 +2724,8 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 : DEF-DEFER ( -- )
    DEFER-UNSET-XT {: unset:n :}
    DEF-ROOM
-   DEFER-NAME
+   TOKEN$ {: kw:ptr ku:n :}
+   DEFER-NAME  kw ku TOKEN$ NOT-A-NAME
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
@@ -2733,8 +2741,8 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
-   s" create" TOKEN-IS? if false DEF-ADDR true exit then
-   s" variable" TOKEN-IS? if true DEF-ADDR 1 cells allot true exit then
+   s" create" TOKEN-IS? if s" create" false DEF-ADDR true exit then
+   s" variable" TOKEN-IS? if s" variable" true DEF-ADDR 1 cells allot true exit then
    s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
    s" defer" TOKEN-IS? if DEF-DEFER true exit then
    s" cast:" TOKEN-IS? if DEF-CAST-ROW true exit then
