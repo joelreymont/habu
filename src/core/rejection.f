@@ -736,6 +736,17 @@ public
    s" `, or the word already named `" EMIT-STR
    stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
 
+\ The name a u would change a sealed package: the record stands at the source
+\ token t tu, which is not a u when the name is generated. It is written
+\ through its help, and the caller stops it.
+: SEALED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+   s" E-SEALED-PACKAGE" OPEN
+   96 EMIT1  a u EMIT-STR  96 EMIT1  s"  would change a sealed package" EMIT-STR
+   t tu AT  s" sealed" EMIT-STR
+   HELP
+   s" put this in a package of your own: a sealed package takes no new words"
+   EMIT-STR ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.
