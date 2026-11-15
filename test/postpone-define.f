@@ -148,13 +148,17 @@ s" DUP-C" POSTPONE-DEFINER:MAKE-DUP
 DUPS-C 162 T=
 
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
-NOT-EFFECT 76 T=
+REJECTION:CAPTURE
+NOT-EFFECT 70 T=
+REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 
 \ 23 type parameters fit an effect, a 24th is E-NOT-EFFECT.
 : WIDE ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    [: a u k POSTPONE-DEFINER:MAKE-WIDE ;] catch ;
 s" WIDE-23" 23 WIDE 0 T=
-s" WIDE-24" 24 WIDE 76 T=
+REJECTION:CAPTURE
+s" WIDE-24" 24 WIDE 70 T=
+REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 
 \ A spelling that names no family is E-UNKNOWN-SIGNATURE-TYPE.
 : NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:FAMILY drop ;] catch ;
@@ -177,7 +181,9 @@ s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
 
 : RV-REFUSED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
-RV-REFUSED 76 T=
+REJECTION:CAPTURE
+RV-REFUSED 70 T=
+REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" : AFTER-RV ( -- n ) 8 ;" evaluate-closed
 AFTER-RV 8 T=
 

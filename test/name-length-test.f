@@ -336,7 +336,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ ---- a name no record is keyed by --------------------------------------------
 \ A name with a second inner ':' has a length a name has and keys no record:
-\ the engine defines no such word (rc 75), and CHECKER-RECORD-SYM answers
+\ the engine defines no such word, and CHECKER-RECORD-SYM answers
 \ symbol 0 for one. No row may carry symbol 0: a defer row keyed 0 is the
 \ defer store's terminator and hides every row after it. A trust row refuses
 \ the name as naming no word, and echoes it; every other word that records a
@@ -398,7 +398,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ No token is -1 or the maximum cell long, so `package` meets only a long part
 \ name, whose path is past its row: refused, naming it.
 : TEST-PART ( -- )
-   LONG-LEN s" long" s" PART$ evaluate" 75 s" error[E-PKG-CONTEXT]: `"
+   LONG-LEN s" long" s" PART$ evaluate" 70 s" error[E-PKG-CONTEXT]: `"
       LONG-LEN TAIL REJECTS-AT ;
 
 \ ---- a long name -------------------------------------------------------------

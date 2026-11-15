@@ -448,8 +448,6 @@ package CN-CHILD
 public
 $400 constant CAP
 10000 constant CHILD-MS
-70 constant UNDEF-RC
-$4A constant NO-NAME-RC
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
@@ -475,38 +473,36 @@ REJECTION:BUFFER-OFF
 \ an empty interpret stack is refused by name instead of reading the cell below
 \ the base. The cast's publish tail pokes the bits; this case is the one that
 \ notices that step missing (measured).
-s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
+s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-UNDERFLOW]" s" `>CNMROLE`" CN-CHILD:SAYS
 
 \ The trailing `;` of the retired spelling ends no definition.
-s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
+s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-NO-DEFINITION]" s" `;`" CN-CHILD:SAYS
 \ A reader keyword that needs a name and reaches the end of its stream fails
 \ closed, and says which keyword and where.
-s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" cast:" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `cast:`" CN-CHILD:SAYS
 
 \ Required reader operands fail before stale token bytes can be consumed.
 \ These are child checks because the reader exits after its diagnostic.
-s" create"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" create"   CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `create`" CN-CHILD:SAYS
-s" trusted:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" trusted:" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `trusted:`" CN-CHILD:SAYS
-s" variable" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-\ `variable` shares the CREATE emitter, so its stable diagnostic names the
-\ implementation keyword that owns the common name reader.
-s" error[E-MISSING-NAME]" s" `create`" CN-CHILD:SAYS
-s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" variable" CN-CHILD:RUN CHECKER-REJECT-RC T=
+s" error[E-MISSING-NAME]" s" `variable`" CN-CHILD:SAYS
+s" constant" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `constant`" CN-CHILD:SAYS
-s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" char"     CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `char`" CN-CHILD:SAYS
 \ The interpreter reads a whole definition before it binds the body's tokens,
 \ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
-s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" : x [char]" CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-VS-UNTERMINATED-DEFINITION]" s" `x`" CN-CHILD:SAYS
-s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" '"        CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-MISSING-NAME]" s" `'`" CN-CHILD:SAYS
-s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+s" : x [']"   CN-CHILD:RUN CHECKER-REJECT-RC T=
 s" error[E-VS-UNTERMINATED-DEFINITION]" s" `x`" CN-CHILD:SAYS
 package CN
 
