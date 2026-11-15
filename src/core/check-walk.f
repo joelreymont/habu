@@ -929,7 +929,7 @@ variable TAGGED-FAM
 
 \ The cast gate: true when the output mints a pointer or quotation, else a
 \ representation cast.
-: CAST-CERTIFY ( -- bool )
+: CAST-WALKS ( -- bool )
    SGIN @ CAST-ROW-TERM dup CAST-TERM? swap OPAQUE-XT? or 0= IF
       s" the input is not one machine cell a cast may retype" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
@@ -990,6 +990,11 @@ variable TAGGED-FAM
       THEN
    THEN
    mint ;
+
+\ CAST-WALKS with its trail undone: the member rows its walks build raise the
+\ signature's variable kinds, and a caller binds the row as declared.
+: CAST-CERTIFY ( -- bool )
+   TRAIL-N @ {: mark:n :}  CAST-WALKS  mark TRAIL-UNWIND ;
 
 : CAST-SCOPED? ( -- bool )
    SGIN @ SCOPED-TYPE? SGOUT @ SCOPED-TYPE? or

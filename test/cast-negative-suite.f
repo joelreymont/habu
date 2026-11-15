@@ -248,6 +248,8 @@ s" cast: CNN15 ( [ cnshade -- ] -- ptr [ n -- ] )" CN-RUN:DECL 0 T=
 s" cast: CNN16 ( n -- cnph<[ [ cnshade -- ] -- ]> )" CN-RUN:DECL 0 T=
 \ A layout argument hands out no quotation, and its consumed rows introduce nothing.
 s" cast: CNN17 ( [ cnshade -- ] -- cnph<[ extent-a -- ]> )" CN-RUN:DECL 0 T=
+\ A caller binds a stored variable to a two-cell type: the walks leave its kind.
+s" cast: CNK1 ( n -- ptr cnqb<t> ) : CNK1-USE ( ptr cnqb<CAST-NEG:wide> -- ) drop ; : CNK1-GO ( -- ) 0 CNK1 CNK1-USE ;" CN-RUN:DECL 0 T=
 ;package
 package CN-EZ
 s" cast: CNN1 ( n -- CN-EN:cnshade )"    CN-RUN:DECL E-CAST-CLASS T=
