@@ -216,11 +216,11 @@ private
 
 
 \ The working directory must fit PATH-CAP as every root does; every path below
-\ a longer one is longer still, so the engine refuses it by name rather than
-\ resolve without it. realpath does not say why it fails, so the refusal names
+\ a longer one is longer still, so the engine rejects it by name rather than
+\ resolve without it. realpath does not say why it fails, so the rejection names
 \ what a removed, unsearchable or long directory all are not. macOS's realpath
-\ refuses a result of 1023 bytes or more, and glibc answers a longer path whole,
-\ which the canon answer refuses with E-PATH-RANGE.
+\ rejects a result of 1023 bytes or more, and glibc answers a longer path whole,
+\ which the canon answer rejects with E-PATH-RANGE.
 : CWD-DIE ( -- )
    s" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes"
    INCLUDE-IO-RC die ;
@@ -664,6 +664,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ PATH-CAP; len is -1 when only its realpath is longer.
 : ROOT-LONG ( ptr u8 n n -- ) {: w:ptr wu:n len:n :}
    w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+   REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -750,23 +751,60 @@ using SOURCE-ROOT
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
 
-: INCLUDE-LONG-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-PATH-RANGE" REJECTION:OPEN
-   s" the path is " REJECTION:EMIT-STR  u REJECTION:EMIT-U
-   s"  bytes long, more than the " REJECTION:EMIT-STR
-   INCLUDE-PATH-CAP REJECTION:EMIT-U
-   s"  a path may have" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
+\ Loader word w got the path a u, which no file name holds: kind E-PATH-RANGE
+\ with len 0 when the path is empty, -1 when only the path it resolves to is
+\ longer than the cap, else its length; kind E-PATH-NUL when it holds a NUL
+\ byte. The record stands at a u where a source holds it, else at w where one
+\ holds that, else at the token the engine read last.
+: LOADER-PATH-STOP ( ptr u8 n ptr u8 n n n -- )
+   {: w:ptr wu:n a:ptr u:n kind:n len:n :}
+   kind E-PATH-NUL = if
+      s" E-PATH-NUL" REJECTION:OPEN
+      96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+      s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
+   else
+      w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+   then
+   a REJECTION:PLACES? if
+      a u
+   else
+      w REJECTION:PLACES? if
+         w wu
+      else
+         SRCLOC:TOKEN$
+      then
+   then
+   REJECTION:AT
    REJECTION:HELP
-   s" shorten the path, or load the file from a directory " REJECTION:EMIT-STR
-   s" nearer to it" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   kind E-PATH-NUL = if
+      s" remove the NUL byte from the path" REJECTION:EMIT-STR
+   else
+      s" pass a path of 1 to " REJECTION:EMIT-STR
+      INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   then
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
-: INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
-   dup 0 <= if
+\ Whether a loader can take the path a u before it resolves it, writing
+\ nothing: 0 0 when it can, else the kind and len LOADER-PATH-STOP takes, for
+\ an empty path or one holding a NUL byte. A string loader takes a path written
+\ past the cap that resolves within it, so length is the resolver's to judge.
+: LOADER-PATH-FAULT ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   u 0 <= if E-PATH-RANGE 0 exit then
+   0 begin dup u < while
+      dup a + c@ 0= if drop E-PATH-NUL 0 exit then
+      1 +
+   repeat
+   drop 0 0 ;
+
+\ The path a u parsed for loader word w, which reads at most the cap: a missing
+\ one is rejected at the word, and one past the cap or holding a NUL at itself.
+: INCLUDE-CHECK-PATH ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
+   u 0 <= if
       SRCLOC:TOKEN$ INCLUDE-NO-PATH  CHECKER-REJECT-RC REJECTION:STOP
    then
-   dup INCLUDE-PATH-CAP > if 2dup INCLUDE-LONG-PATH then ;
+   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u LOADER-PATH-STOP then
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then ;
 
 package REQUIRE-REG
 private
@@ -1423,7 +1461,7 @@ public
 
 : INCLUDE-PATH0 ( ptr u8 n -- ptr u8 )
    {: a:ptr u:n :}
-   a u INCLUDE-CHECK-PATH 2drop
+   s" INCLUDE-PATH0" a u INCLUDE-CHECK-PATH
    a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
    u INCLUDE-PATH-U !
    INCLUDE-PATH ;
@@ -2095,14 +2133,18 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    [: CALL-UNIT ;] source-file-run
    align ;
 
+\ The engine's last token is put back as the load found it: the file's run
+\ leaves it in the frame POP releases.
 : LOAD-CURRENT ( -- )
    data-base SECTION-CELL + @ {: sec:n :}
+   LOADER-TOKEN-SPAN {: toka:n toku:n :}
    PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
    sec data-base SECTION-CELL + !
    rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
    INCLUDE-CLOSE
    POP
+   toka data-base TKA-CELL + !  toku data-base TKL-CELL + !
    rc 0= 0= if rc throw then
    INCLUDE-EVALERR? if s" include: a load returned with its evaluation failed" 76 die then ;
 
@@ -2237,18 +2279,36 @@ public
 
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
-: LOADER-RESOLVE ( ptr u8 n -- ptr u8 n bool )
+: LOADER-FIND ( ptr u8 n -- ptr u8 n bool )
    DISCOVERY? if RESOLVE exit then
    LOAD-RESOLVE ;
 
-: included ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u LOADER-RESOLVE drop {: path:ptr pathu:n :}
+\ The path a u that loader word w takes, found by q. A path no loader takes, or
+\ one q's resolver throws on as too long or holding a NUL, is rejected with
+\ the loader's record: this is where every loader and the verifier resolve.
+: LOADER-RESOLVE ( ptr u8 n ptr u8 n [ ptr u8 n -- ptr u8 n bool ] -- ptr u8 n bool )
+   {: w:ptr wu:n a:ptr u:n q :}
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then
+   a u INCLUDE-FALSE [: drop q execute ;] catch {: rc:n :}
+   rc E-PATH-RANGE = if w wu a u E-PATH-RANGE -1 LOADER-PATH-STOP then
+   rc E-PATH-NUL = if w wu a u E-PATH-NUL 0 LOADER-PATH-STOP then
+   rc 0= if exit then
+   rc throw ;
+
+\ `included` of a u for loader word w, the word the program called.
+: INCLUDED-AS ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
+   w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a REJECTION:PLACES? if a u else NULL-PTR 0 then
-   s" included" path pathu LOAD-RESULT {: committed:bool rc:n :}
+   w wu path pathu LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
+
+: included ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" included" a u INCLUDED-AS ;
 
 create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 ' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
@@ -2270,10 +2330,15 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
       rc throw
    then ;
 
+\ `required` of a u for loader word w, the word the program called.
+: REQUIRED-AS ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
+   INCLUDE-FALSE SCRIPT-NAMED-PEND!
+   w wu a u  w wu a u [: LOADER-FIND ;] LOADER-RESOLVE  REQUIRE-BODY ;
+
 : required ( ptr u8 n -- )
    {: a:ptr u:n :}
-   INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   s" required" a u  a u LOADER-RESOLVE  REQUIRE-BODY ;
+   s" required" a u REQUIRED-AS ;
 
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
@@ -2282,28 +2347,33 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 : script-required ( ptr u8 n -- )
    {: a:ptr u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
-   s" script-required" a u  a u ENTRY-RESOLVE  REQUIRE-BODY ;
+   s" script-required" a u
+   s" script-required" a u [: ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
 
 : provided ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u RESOLVE {: path:ptr pathu:n known:bool :}
+   s" provided" a u [: RESOLVE ;] LOADER-RESOLVE {: path:ptr pathu:n known:bool :}
    s" provided" path pathu SOURCE-ROOT:BUILD-REFUSE
    a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
    path pathu REQUIRE-STORE 2drop ;
 
 : include ( -- )
-   parse-name INCLUDE-CHECK-PATH included ;
+   parse-name {: a:ptr u:n :}
+   s" include" a u INCLUDE-CHECK-PATH
+   s" include" a u INCLUDED-AS ;
 immediate
 
 create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
 ' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
 
 : require ( -- )
-   parse-name INCLUDE-CHECK-PATH required ;
+   parse-name {: a:ptr u:n :}
+   s" require" a u INCLUDE-CHECK-PATH
+   s" require" a u REQUIRED-AS ;
 immediate
 
 create SOURCE-ORIGINAL-REQUIRE-ENTRY 0 ,
