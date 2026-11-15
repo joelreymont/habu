@@ -749,9 +749,15 @@ using SOURCE-ROOT
       s" E-PATH-NUL" REJECTION:OPEN
       96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
       s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
+      s" holds a NUL byte"
    else
       w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
-   then
+      len 0= if
+         s" empty path"
+      else
+         len 0 < if s" too long once resolved" else s" too long" then
+      then
+   then {: l:ptr lu:n :}
    a REJECTION:PLACES? if
       a u
    else
@@ -762,6 +768,7 @@ using SOURCE-ROOT
       then
    then
    REJECTION:AT
+   l lu REJECTION:EMIT-STR
    REJECTION:HELP
    kind E-PATH-NUL = if
       s" remove the NUL byte from the path" REJECTION:EMIT-STR
@@ -2335,15 +2342,14 @@ public
    LOAD-RESOLVE ;
 
 \ The path a u that loader word w takes, found by q. A path no loader takes, or
-\ one q's resolver throws on as too long or holding a NUL, is rejected with
-\ the loader's record: this is where every loader and the verifier resolve.
+\ one q's resolver throws on as too long, is rejected with the loader's record:
+\ this is where every loader and the verifier resolve.
 : LOADER-RESOLVE ( ptr u8 n ptr u8 n [ ptr u8 n -- ptr u8 n bool ] -- ptr u8 n bool )
    {: w:ptr wu:n a:ptr u:n q :}
    a u LOADER-PATH-FAULT {: kind:n len:n :}
    kind 0 <> if w wu a u kind len LOADER-PATH-STOP then
    a u INCLUDE-FALSE [: drop q execute ;] catch {: rc:n :}
    rc E-PATH-RANGE = if w wu a u E-PATH-RANGE -1 LOADER-PATH-STOP then
-   rc E-PATH-NUL = if w wu a u E-PATH-NUL 0 LOADER-PATH-STOP then
    rc 0= if exit then
    rc throw ;
 
