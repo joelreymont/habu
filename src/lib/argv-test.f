@@ -49,7 +49,6 @@ variable TEST-FAIL
    s" --json" MOCK+
    s" --label" MOCK+
    s" NAME" MOCK+
-   s" --strict-boundary" MOCK+
    s" -o" MOCK+
    s" OUT" MOCK+
    s" file.f" MOCK+ ;
@@ -59,7 +58,6 @@ variable TEST-FAIL
    s" usage" USAGE!
    PARSE
    JSON? ASSERT
-   STRICT-BOUNDARY? ASSERT
    LABEL? ASSERT
    OUT? ASSERT
    POS# 1 ASSERT=
@@ -183,7 +181,6 @@ variable TEST-FAIL
 
 : ASSERT-PRIOR-PARSE ( -- )
    JSON? ASSERT
-   STRICT-BOUNDARY? ASSERT
    POS# 1 ASSERT=
    0 POS$ s" file.f" ASSERT$
    LABEL? ASSERT OUT? ASSERT

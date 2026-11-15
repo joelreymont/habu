@@ -32,7 +32,6 @@ variable ARGV-SCAN-NPOS
 DYNAMIC-BUFFER ARGV-POS span
 
 TYPED-VARIABLE ARGV-JSON bool
-TYPED-VARIABLE ARGV-STRICT-BOUNDARY bool
 
 TYPED-VARIABLE ARGV-LABEL configured-value
 TYPED-VARIABLE ARGV-OUT configured-value
@@ -113,7 +112,6 @@ public
    0 ARGV-I !
    0 ARGV-NPOS !
    ARGV-FALSE ARGV-JSON !
-   ARGV-FALSE ARGV-STRICT-BOUNDARY !
    NULL$ >SPAN construct configured-value defaulted ARGV-LABEL !
    NULL$ >SPAN construct configured-value defaulted ARGV-OUT ! ;
 
@@ -187,8 +185,6 @@ public
 
 : JSON? ( -- bool )  ARGV-JSON @ ;
 
-: STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ ;
-
 private
 
 : ARGV-TAKE-NEXT ( span -- span ) {: arg:span :}
@@ -203,9 +199,6 @@ private
    arg SPAN$ s" --label" ARGV-BYTES= if
       arg ARGV-TAKE-NEXT
       dry if drop else construct configured-value explicit ARGV-LABEL ! then exit
-   then
-   arg SPAN$ s" --strict-boundary" ARGV-BYTES= if
-      dry 0= if ARGV-TRUE ARGV-STRICT-BOUNDARY ! then exit
    then
    arg SPAN$ s" -o" ARGV-BYTES= if
       arg ARGV-TAKE-NEXT
