@@ -564,10 +564,10 @@ public
 
 private
 
+\ ?TARGET, at the head of this file, admits only macOS and the Linux kernel.
 : ERRNO-SYMBOL$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" __errno_location" exit then
    HB-TARGET-MACOS? if s" __error" exit then
-   E-FFI-LIBRARY throw ;
+   s" __errno_location" ;
 
 public
 
@@ -1472,6 +1472,24 @@ private
    s" name it with `VERSIONED-LIBRARY`, which spells it for each target" SAY
    FFI-STOP ;
 
+\ A path stands where `LIBRARY` read it. One the source does not hold, which a
+\ caller passed, stands at the token being run, and its bytes are not read.
+: CHECK-PATH ( ptr u8 n -- ) {: path:ptr u:n :}
+   u 0 <= if
+      s" E-FFI-SYNTAX" s" `LIBRARY` names no library"
+      SRCLOC:TOKEN$ s" expected a library path after this" FFI-REJECT
+      s" write the library's path after `LIBRARY`, or name it with `VERSIONED-LIBRARY`" SAY
+      FFI-STOP
+   then
+   u LIBRARY-PATH-CAP >= if
+      s" E-FFI-SYNTAX" s" the library path is longer than a declaration keeps"
+      path u SRCLOC:TOKEN$ KEPT s" too long" FFI-PLACE
+      LIBRARY-PATH-CAP 1 - s" bytes" LIMIT-HELP
+      s" name the library by a shorter path, or by its soname with `VERSIONED-LIBRARY`" SAY
+      FFI-STOP
+   then
+   path u CHECK-SPELLING ;
+
 
 \ The cells holding a larger record's copy address, which the call moves to
 \ the copy in its native frame: bit reg for x0-x7, bit 8+cell for a stack
@@ -1676,8 +1694,7 @@ public
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
-   u 0 <= u LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
-   path u [: CHECK-SPELLING ;] KEEP-REST
+   path u [: CHECK-PATH ;] KEEP-REST
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
