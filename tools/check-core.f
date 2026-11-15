@@ -540,29 +540,10 @@ private
    recu 0<> if rec recu CHK-ERR-LN then
    refusal if CHK-E-CHECK CHK-THROW then ;
 
-\ A closure the walk cannot follow fails the check as a rejection. Under
-\ --json-errors it is the walk's packet (CHK-FAULT$), placed at the loader word
-\ naming a file that cannot be read; otherwise, or for a walk that ended at its
-\ own top, it is prose.
-: CHK-EXPAND-JSON ( n -- )
-   CHK-FAULT$ {: a:ptr u:n :}
-   u 0= if exit then
-   a u CHK-ERR-LN
-   CHK-E-CHECK CHK-THROW ;
-
-\ A file the file system refused to read (CHK-READ-RC), by its canonical path:
-\ the one the walk was reading, or --verify-only's named file.
-: CHK-READ-FAIL ( ptr u8 n -- )
-   s" check.f: cannot read " CHK-EXPLAIN
-   CHK-E-IOERR CHK-FAIL ;
-
+\ A closure the walk cannot follow, a form discovery rejected, fails the check
+\ as a rejection whose record discovery wrote.
 : CHK-EXPAND-REPORT ( n -- )
-   {: rc:n :}
-   rc 0= if exit then
-   rc CHK-DISC-RC? if CHK-E-CHECK CHK-THROW then
-   CHK-JSON @ if rc CHK-EXPAND-JSON then
-   rc CHK-E-IOERR = if CHK-DISC-ID @ CHK-DEP$ CHK-READ-FAIL then
-   rc throw ;
+   0<> if CHK-E-CHECK CHK-THROW then ;
 
 : CHK-ENTRY-ID ( ptr u8 n -- n )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
@@ -1219,12 +1200,13 @@ private
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
 
-\ The named file is read as the closure walk reads a file of the closure: one
-\ the file system refuses to read fails the check as it fails the walk.
+\ The named file is read as the closure walk reads its top: one the file system
+\ refuses to read is the loader's rejection at its canonical path.
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
-   [: CHK-VERIFY-READ ;] CHK-READ-RC 0<> if a u CANONICAL drop CHK-READ-FAIL then
+   [: CHK-VERIFY-READ ;] CHK-READ-REFUSED {: e:n refused:bool :}
+   refused if a u CANONICAL drop e CHK-UNREADABLE-NAMED then
    a u ;
 
 \ stdin's path need not exist.
