@@ -11291,10 +11291,17 @@ public
    s" write a type in scope or a one-letter type variable in place of " REJECTION:EMIT-STR
    t tu CODE-SPAN ;
 
-\ The offset of the first `forall` in a u, or u when it holds none.
+\ Whether a type token starts after byte c: a blank, `<`, `,`, `[` or `^`.
+: TOKEN-LEAD? ( n -- bool ) {: c:n :}
+   c 32 <=  c 60 = or  c 44 = or  c 91 = or  c 94 = or ;
+\ The offset of the first `forall<` that starts a token of a u, or u when it
+\ holds none; one inside a longer name, as in `forallish<`, is not a binder.
 : FORALL-AT ( ^u8 n -- n ) {: a:^ u:n :}
-   0 BEGIN dup 6 + u <= WHILE
-      a over + 6 s" forall" CORE-STR= IF EXIT THEN
+   0 BEGIN dup 7 + u <= WHILE
+      a over + 7 s" forall<" CORE-STR= IF
+         dup 0= IF EXIT THEN
+         a over + 1 - c@ TOKEN-LEAD? IF EXIT THEN
+      THEN
       1 +
    REPEAT drop u ;
 

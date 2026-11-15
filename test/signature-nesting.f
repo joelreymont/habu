@@ -439,6 +439,19 @@ public
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
    S\" = evaluated: : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;\n                                        ^^^^^^^^^^^^^^\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:^[--]`\n" SAID
+   s" a name that begins with forall holds no binder: the scheme inside it is placed and cut" T-LABEL
+   SRC-RESET  s" NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;" S+
+   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
+   S\" ^ a local holds one type\n" SAID
+   S\" = evaluated: NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;\n                                                                      ^^^^^^^^^^^^^^\n" SAID
+   S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:forallish<[--]>`\n" SAID
+   s" a declared signature's binder after a name that begins with forall is placed at the binder" T-LABEL
+   SRC-RESET  s" NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )" S+
+   s" error[E-BAD-SIGNATURE]: the declared signature of `SN-SB` binds a callback scope" REFUSES
+   S\" ^ binder in a declared signature\n" SAID
+   S\" = evaluated: NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )\n                                                                 ^^^^^^^\n" SAID
+   S\" = signature: forallish<n> forall<p,[--]> --\n" SAID
+   S\" = help: drop the binder from the signature of `SN-SB`: only a checked `:` definition binds a callback scope\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
