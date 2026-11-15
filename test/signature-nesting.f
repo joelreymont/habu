@@ -223,7 +223,7 @@ public
    s" effect too deep to record (depth 4097, at most 4096)" REFUSES
    s" a local's type nested past the depth limit refuses by it" T-LABEL
    2049 LOCAL-QUOTATIONS
-   s" error[E-BAD-SIGNATURE]: effect too deep to record (depth 4097, at most 4096) at `" REFUSES
+   S\" error[E-BAD-SIGNATURE]: effect too deep to record (depth 4097, at most 4096) at `[` in the annotation of local `x`\n" REFUSES
    s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
    s" SN-IFS-33" 33 NESTED-IFS
    s" error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at most 32)" REFUSES
@@ -404,20 +404,30 @@ public
    SRC-RESET  s" : SN-NU ( n -- ) {: p:option<ptr> :} ;" S+
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
    S\" ^ unknown type\n" SAID
-   S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n" SAID
-   S\"  ^^^\n" SAID
-   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
+   \ A caret line's blanks count the gutter of this file's three-digit line numbers.
+   S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n                                              ^^^\n" SAID
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:option<^u8>`\n" SAID
+   s" a `ptr` after a local's `^` is helped by the annotation with `^u8` in its place" T-LABEL
+   SRC-RESET  s" : SN-NP ( n -- ) {: p:^ptr :} ;" S+
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^^u8`\n" SAID
    s" a local's annotation of the wrong arity names its family, then its local, and places the family" T-LABEL
    SRC-RESET  s" : SN-AR ( n -- ) {: p:option<n,n> :} ;" S+
    s" error[E-WRONG-ARITY]: type family `option` in the annotation of local `p` takes 1 type argument, not 2" REFUSES
    S\" ^ wrong number of type arguments\n" SAID
-   S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n" SAID
-   S\"  ^^^^^^\n" SAID
+   S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n                                       ^^^^^^\n" SAID
    S\" = help: give `option` 1 type argument\n" SAID
    s" a local's annotation that ends early names its local and asks for one whole type" T-LABEL
    SRC-RESET  s" : SN-EN ( n -- ) {: p:option< :} ;" S+
    s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REFUSES
    S\" = help: write one whole type after `p:`, as in `p:n`\n" SAID
+   s" an empty local's annotation ends before it is complete" T-LABEL
+   SRC-RESET  s" : SN-EM ( n -- ) {: p: :} ;" S+
+   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REFUSES
+   S\" = help: write one whole type after `p:`, as in `p:n`\n" SAID
+   s" a token a local's annotation cannot hold is named as unexpected there" T-LABEL
+   SRC-RESET  s" : SN-DD ( n -- ) {: p:option<--> :} ;" S+
+   S\" error[E-BAD-SIGNATURE]: unexpected `--` in the annotation of local `p`\n" REFUSES
    s" a type scheme in a local's annotation is rejected as polymorphic: a local holds one type" T-LABEL
    SRC-RESET  s" : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;" S+
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES

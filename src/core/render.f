@@ -1518,7 +1518,7 @@ CHECKER-REG:}SCRATCH
    LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
    s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
-\ Names the local l lu whose annotation the verdict rejects, none where lu is 0.
+\ Names the local l lu whose annotation the verdict rejects.
 : LOCAL-PHRASE ( ^u8 n -- ) {: l:^ lu:n :}
    lu 0= IF EXIT THEN
    s"  in the annotation of local " EMIT-STR  l lu CODE-SPAN ;
@@ -1567,7 +1567,8 @@ CHECKER-REG:}SCRATCH
    THEN
    SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  t tu l lu SUBJECT-SPAN EXIT THEN
    tu 0= IF l lu SIG-END-MESSAGE EXIT THEN
-   s" bad signature at " EMIT-STR  t tu l lu SUBJECT-SPAN ;
+   lu 0= IF s" bad signature at " ELSE s" unexpected " THEN EMIT-STR
+   t tu l lu SUBJECT-SPAN ;
 
 : NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}

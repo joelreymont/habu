@@ -7776,9 +7776,10 @@ SIG-BINDER-BODY-INSTALL
 : LOCAL-TYPE ( ^u8 n -- n )
    {: a:^ u:n :}
    a u s" ^" CORE-STR= IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
+   u 0= IF a 0 SGBAD-SYNTAX! LOC-ANN-FAILS EXIT THEN
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
                               \ that already failed keeps its own diagnostic
-   u 0 = IF 0 RES-FALSE ELSE a u TYPE-SPAN-READ THEN
+   a u TYPE-SPAN-READ
    0= IF drop a u BAD-LOC-ANN THEN
    SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN ;
 
@@ -11270,12 +11271,16 @@ public
    SGBAD-AR-DECL @ REJECTION:EMIT-U
    SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
    REJECTION:EMIT-STR ;
-\ The example a `ptr` gets is the local's annotation when l lu names a local.
+\ A `ptr` gets the example `^u8`. In the annotation of the local l lu it gets
+\ `l:^u8` where it opens the annotation, else the annotation with `^u8` in
+\ place of `ptr`: l starts the local's token `l:type`, the pin FAILTK FAILTU.
 : SGBAD-UNKNOWN-FIX ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
    t tu s" ptr" CORE-STR= IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `" REJECTION:EMIT-STR
-      lu 0 > IF l lu REJECTION:EMIT-STR  58 REJECTION:EMIT1 THEN
-      s" ^u8`" REJECTION:EMIT-STR EXIT
+      lu 0= IF s" ^u8`" REJECTION:EMIT-STR EXIT THEN
+      SGBAD-LOCAL @ 1 = IF l lu REJECTION:EMIT-STR  s" :^u8`" REJECTION:EMIT-STR EXIT THEN
+      l  t l -  REJECTION:EMIT-STR  s" ^u8" REJECTION:EMIT-STR
+      t tu +  FAILTK FAILTU @ +  over -  REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
    THEN
    s" write a type in scope or a one-letter type variable in place of " REJECTION:EMIT-STR
    t tu CODE-SPAN ;
@@ -11292,8 +11297,9 @@ public
    THEN
    SGBAD-ARITY? IF t tu SGBAD-ARITY-FIX EXIT THEN
    SGBAD-BINDERS? IF
-      s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
-      REJECTION:EMIT-STR EXIT
+      s" name an inner callback's effect in a word of its own, so this " REJECTION:EMIT-STR
+      lu 0= IF s" signature" ELSE s" annotation" THEN REJECTION:EMIT-STR
+      s"  nests fewer binders" REJECTION:EMIT-STR EXIT
    THEN
    SGBAD-DEPTH? IF DEPTH-SUGGEST$ REJECTION:EMIT-STR EXIT THEN
    SGBAD-UNSUPPLIED? IF
