@@ -1,10 +1,10 @@
-\ sumtype.f: package TYPE-DECL, the NEWTYPE, SUMTYPE and PRODUCT declaration
+\ sumtype.f: package TYPE-DECL, the NEWTYPE and SUMTYPE declaration
 \ grammar (ENUM is enum-decl.f; the user grammar is docs/forth.md "Structures
 \ And Enums"). Loaded unchecked in the checker prefix.
 \ Every failure is transactional: the registry marks restore, TDECL-DIAG
 \ (render.f) reports, and the declaration counts as a multi-error reject or
 \ throws its code. NEWTYPE and the replay entries are at the foot of the file;
-\ SUMTYPE and PRODUCT load after the declaration runner, in sumtype-front.f.
+\ SUMTYPE loads after the declaration runner, in sumtype-front.f.
 
 using SCHEMA-REG
 using TFAM
@@ -233,12 +233,7 @@ public
 
 variable TDECL-FAM-REG   \ family id the LAST successful NEWTYPE or DEFTYPE registered (-1 = none)
 
-\ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
-\ one declaration transaction, whose event participant owns the field frame
-\ through PREPARE, COMMIT, RELEASE or ROLLBACK. The checker-scope frame
-\ independently owns the enclosing family/schema/layout marks. Thus either
-\ participant can reject and the transaction restores the complete declaration;
-\ SUMTYPE/ENUM/NEWTYPE never mutate PF directly.
+\ PF-N and PF-COMMIT-N are not marked: SUMTYPE and NEWTYPE make no field row.
 
 private
 
@@ -380,7 +375,7 @@ private
 \ spellings derived from it (type-family.f TF-CTOR-BUF).
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing name"
-      s" write a name after `NEWTYPE`, `SUMTYPE`, `PRODUCT` or `VARIANT`, as in `SUMTYPE shape`"
+      s" write a name after `NEWTYPE`, `SUMTYPE` or `VARIANT`, as in `SUMTYPE shape`"
       E-TDECL-SYNTAX TDECL-THROW THEN
    u TF-NAME-MAX > IF a u TF-NAME-LONG$
       TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
@@ -455,7 +450,6 @@ private
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
 \ letter params within arity, n/f/r and concrete CT cell types, and `ptr T`.
 \ Comments are not supported inside a declaration block; stray tokens reject.
-variable TDECL-FAM-ARITY
 
 : TDECL-HEADER! ( -- n )
    TDN-U @ 0= IF TDN-A @ 0 TDECL-REQUIRE-NAME THEN
@@ -474,7 +468,6 @@ variable TDECL-FAM-ARITY
    THEN
    TDN-U ! TDN-A !
    TDS-U @ 0 > IF TDN-U @ TDS-U ! THEN
-   ar TDECL-FAM-ARITY !
    ar ;
 
 : TDECL-LETTER ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -526,10 +519,6 @@ variable TDECL-FAM-ARITY
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE nip SR-FOUND = IF RES-FALSE EXIT THEN
    a u TFAM-MAY-ARRIVE? ;
 : TDECL-NO-END-THROW ( ptr u8 n -- ) {: a:ptr u:n :}
-   TDK-A @ TDK-U @ s" product" CORE-STR= IF
-      a u s" missing ;PRODUCT"
-         s" write a type after each `FIELD` name and each `ptr`, and end the declaration with `;PRODUCT`"
-         E-TDECL-SYNTAX TDECL-THROW THEN
    a u s" missing ;VARIANT"
       s" close each `VARIANT` with `;VARIANT`, and write a type after each `ptr`"
       E-TDECL-SYNTAX TDECL-THROW ;
@@ -561,9 +550,7 @@ variable TDECL-FAM-ARITY
 \ family id and argument roots; construct, MATCH and layout resolve each
 \ argument against the declaring family's parameters (type-family.f TFC-*). A
 \ quotation is one xt cell whose SCH-QUOT schema records all four rows, empty
-\ sides included. The quotation parser is shared with STRUCTURE fields;
-\ applications are variant-only, and PRODUCT fields keep the scalar grammar
-\ (TDECL-PAY-ELEM).
+\ sides included. The quotation parser is shared with STRUCTURE fields.
 
 \ Reentrant scratch for ONE nesting level's argument nodes. Each TDECL-VPAY-ARGS
 \ invocation saves a base, pushes its fully-parsed argument node ids above it,
@@ -915,8 +902,8 @@ variable TDV-PAY-N
 \ Every SCH-PARAM in a landed variant's payload subtree (plain element,
 \ application argument, quotation side) must lie within the declaring family's
 \ arity (TFAM-SCH-ARITY); an out-of-arity parameter rejects inside TDECL-RUN's
-\ transaction. This is the authoritative check, beside PRODUCT's PF-SCHEMA-OK?;
-\ the TDECL-LETTER parse gate is not. The letter renders through the shared
+\ transaction. This is the authoritative check; the TDECL-LETTER parse gate
+\ is not. The letter renders through the shared
 \ declaration alphabet.
 create TDV-BADLETTER 1 allot
 : TDECL-VPAY-ARITY ( n n n -- ) {: fam:n base:n count:n :}
@@ -1117,11 +1104,9 @@ private
    a u s" hash" CORE-STR=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
    a u s" init" CORE-STR=CI IF
-      fam TFAM-PRODUCT? 0= IF
-         a u s" derive init requires a product"
-            s" drop `init` from `DERIVE`: only a `PRODUCT` or a `STRUCTURE` derives it"
-            E-TDECL-DERIVE TDECL-THROW THEN
-      fam TFAM-DERIVE-INIT! EXIT THEN
+      a u s" derive init requires a STRUCTURE"
+         s" drop `init` from `DERIVE`: only a `STRUCTURE` derives it"
+         E-TDECL-DERIVE TDECL-THROW THEN
    a u s" tag" CORE-STR=CI IF
       a u s" derive tag requires an enum"
          s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
@@ -1183,127 +1168,8 @@ private
    fam ;
 
 
-\ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-PLAN). Field tails are
-\ their own namespace, one-letter names legal; linear instantiations are refused at the sig and bind layers.
-
-private
-
-variable TDP-N   \ product field count (schema roots)
-variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
-variable TDP-EVT
-
-\ TYPE-DECL's parts install the transaction runner and the event steps at load.
+\ TYPE-DECL's parts install the transaction runner at load.
 defer TDECL-TXN-XT ( [ -- ] -- )
-defer TDECL-EVENT-CURRENT-XT ( -- n )
-defer TDECL-EVENT-DECL-XT ( n n -- n )
-defer TDECL-EVENT-ARITY-XT ( n n n -- n )
-defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
-
-: TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF a u s" missing field name"
-      s" write a name and a type after `FIELD`, as in `FIELD x n`"
-      E-TDECL-SYNTAX TDECL-THROW THEN
-   u TF-NAME-MAX > IF a u TF-NAME-LONG$
-      TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
-   a u DELIM? IF a u s" bad field name"
-      s" write a lowercase name after `FIELD`, as in `FIELD x n`"
-      E-TDECL-SYNTAX TDECL-THROW THEN
-   a u TF-CANON? 0= IF
-      a u s" field name must be a lowercase tail"
-         s" write the field name as a lowercase tail with no package qualifier, as in `FIELD x n`"
-         E-TFAM-CASE TDECL-THROW
-   THEN
-   a u TDECL-TOK!
-   s" reserved field name"
-      s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
-      E-PF-NAME TDECL-ARM
-   a u PF-NAME-REQUIRE ;
-
-\ A PRODUCT field may be typed as an arity-0 sum or enum family of registry
-\ width 1 (arity 0: no argument can be linear). Its schema is an SCH-APP holding
-\ the resolved family id, so MAKE consumes it as its family, UNMAKE reproduces
-\ it, and a swapped same-width enum field is a checker reject. Resolution is
-\ signature scope (TFAM-SIG-RESOLVE, in TFAM-RESOLVE's order; an ambiguity is
-\ rejected). Anything else falls through to the payload grammar, which admits
-\ concrete non-linear layout/cell families (self-references reject recursive)
-\ and rejects parametric, linear and unknown types (E-TDECL-PAYLOAD).
-: TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-FOUND <> IF sr a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
-   id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
-   id TFAM-WIDTH@ 1 <> IF 0 RES-FALSE EXIT THEN
-   id RES-TRUE ;
-
-: TDECL-FIELD-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u TDECL-FIELD-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
-   a u TDECL-PAY-ELEM ;
-
-\ The `field` keyword is already consumed. PRODUCT fields use the canonical CELL
-\ payload ABI of stack-cell-tag and packed-tag; other policies stay refused in PF.
-: TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
-   TDECL-NEXT {: fna:ptr fnu:n :}
-   fna fnu TDECL-REQUIRE-FIELD-NAME
-   SCHEMA-ROOT-N@ {: ss:n :}
-   TDECL-NEXT {: ta:ptr tu:n :}
-   ta tu TDECL-FIELD-ELEM {: node:n :}
-   SIG-UNRES @ IF
-      fna fnu TDECL-SEEN? IF
-         fna fnu s" duplicate field"
-            TDECL-FIELD-FIX$ E-TFAM-DUP TDECL-THROW THEN
-   THEN
-   fna fnu TDECL-SEEN+
-   SIG-UNRES @ IF EXIT THEN
-   ta tu fam node TDECL-REQUIRE-DERIVABLE
-   node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
-   fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
-   fna fnu TDECL-TOK!
-   s" duplicate field" TDECL-FIELD-FIX$ E-TFAM-DUP TDECL-ARM
-   TDP-EVT @ fam fna fnu ss
-   TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE
-   TDECL-EVENT-FIELD-XT TDP-EVT !
-   fw TDP-W @ + TDP-W !
-   TDP-N @ 1 + TDP-N ! ;
-
-: TDECL-PRODUCT-FIELDS ( n -- ) {: fam:n :}
-   BEGIN
-      TDECL-NEXT
-      dup 0= IF 2drop EXIT THEN
-      2dup s" field" CORE-STR=CI 0= IF
-         s" unexpected token in product declaration"
-            s" start each clause with `FIELD`, `POLICY` or `DERIVE`, and end with `;PRODUCT`"
-            E-TDECL-SYNTAX TDECL-THROW
-      THEN
-      2drop fam TDECL-PRODUCT-FIELD
-   AGAIN ;
-
-: TDECL-PRODUCT-RECORD ( n -- ) {: fam:n :}
-   TDECL-EVENT-CURRENT-XT TDP-EVT !
-   TDP-EVT @ fam TDECL-EVENT-DECL-XT TDP-EVT !
-   TDP-EVT @ fam TDECL-FAM-ARITY @ TDECL-EVENT-ARITY-XT TDP-EVT !
-   PF-N @ {: fstart:n :}
-   0 TDP-N !   0 TDP-W !
-   fam TDECL-PRODUCT-FIELDS
-   SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
-   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product"
-      s" declare at least one field, as in `FIELD x n`"
-      E-TDECL-SYNTAX TDECL-THROW THEN
-   fam fstart TDP-N @ TFAM-FLD-RANGE!
-   fam TDP-W @ TFAM-SLOTS!
-   fam TDECL-LAYOUT-DESC ;
-
-: CHECKER-DEFPRODUCT-BODY ( -- n )
-   TDECL-HEADER! {: ar:n :}
-   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
-   TDB-A @ TDB-U @ TDECL-CURSOR!
-   ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
-   fam TDECL-CUR-FAM !                    \ field self-references reject by id
-   fam TDECL-POLICY
-   fam TFAM-NICHE? IF TDECL-NICHE-THROW THEN
-   fam TDECL-DERIVE
-   fam TDECL-PRODUCT-RECORD
-   TDN-A @ TDN-U @ TDECL-TOK!  s" " s" " 0 TDECL-ARM
-   fam ;
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDECL-HEADER! {: ar:n :}
@@ -2195,11 +2061,6 @@ private
    TDECL-U @ 0 > IF 32 TDECL-C, THEN
    a TDECL-U @ TDECL-ROW+
    a u TDECL-APP ;
-
-: TDECL-PRODUCT-NOEND-BODY ( -- )
-   TDN-A @ TDN-U @ s" missing ;PRODUCT"
-      s" end the declaration with `;PRODUCT` after its last field"
-      E-TDECL-SYNTAX TDECL-THROW ;
 
 ;package
 

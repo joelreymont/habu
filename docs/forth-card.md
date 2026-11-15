@@ -132,7 +132,7 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   one cell: a record is `E-MISMATCH` at the call.
 - A type var named only on the stack, whose body only moves it (stack words
   but `?dup`, locals, calls of words that only move theirs), also takes a
-  one-cell enum, sum or product; passing it to a primitive, a `defer` or
+  one-cell enum, sum or structure; passing it to a primitive, a `defer` or
   `RECURSE` makes it one plain cell, and a wider or possibly linear value is
   rejected at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
@@ -225,7 +225,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
 | `: K ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) ;`: a fresh name the body supplies holds an input's region, or one region under two such names (forth.md **Rigid host-allocation identity domains**) | `E-RIGID-REGION-MISMATCH` |
 | `[: RG-ONE ;] dup execute swap execute SAME-ID`, or `[: RG-ONE ;] RUN` with `RUN ( [ -- x ] -- x )`: a fresh region a quotation's inputs do not carry is minted by each execution of the outermost quotation holding it at the top of its outputs or in a callback input's rows, and shared by the quotations that execution returns or hands on, at a direct call, a tick and an inferred effect alike; no callee or callback whose effect types one, generic or fresh, takes it | `E-RIGID-REGION-MISMATCH` |
-| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-CAP-TRUSTED`; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f` |
 | a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-COMP-STATE`, catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
@@ -680,7 +679,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`STRUCTURE`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
 | Stack comments | the token list, real types |

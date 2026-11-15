@@ -7,7 +7,7 @@ require src/lib/test/subject.f
 package C2-INIT-SCHEMA
 
 public
-PRODUCT pair FIELD left n FIELD right n ;PRODUCT
+STRUCTURE pair FIELD left n FIELD right n ;STRUCTURE
 private
 
 : KEEP ( init<p,pair> -- init<p,pair> ) ;

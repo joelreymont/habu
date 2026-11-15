@@ -50,10 +50,10 @@ SUMTYPE bx
 \ `opt2<pt>` occupies three cells where its declaration reserves two, so only
 \ the checker knows its width. A value built with pads added at the site is
 \ stored whole and read back whole.
-PRODUCT pt
+STRUCTURE pt
   FIELD x n
   FIELD y n
-;PRODUCT
+;STRUCTURE
 
 ENUM opt2<a>
    VARIANT n2 ;VARIANT

@@ -7,7 +7,7 @@ package STACK-LIFECYCLE-TEST
 
 : PAIR-TYPE-SOURCE ( -- )
    SB-RESET
-   s" package SW public PRODUCT pair FIELD a n FIELD b n ;PRODUCT " SB-APPEND ;
+   s" package SW public STRUCTURE pair FIELD a n FIELD b n ;STRUCTURE " SB-APPEND ;
 
 : PAIR-RC ( ptr u8 n -- n )
    PAIR-TYPE-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ CHILD-RC ;
@@ -71,7 +71,7 @@ package STACK-LIFECYCLE-TEST
 \ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )
    SB-RESET
-   s" PRODUCT sw-double<a> FIELD a a FIELD b a ;PRODUCT PRODUCT sw-plus<a> FIELD a a FIELD b n ;PRODUCT " SB-APPEND
+   s" STRUCTURE sw-double<a> FIELD a a FIELD b a ;STRUCTURE STRUCTURE sw-plus<a> FIELD a a FIELD b n ;STRUCTURE " SB-APPEND
    s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND ;
 
 : LARGE-RC ( ptr u8 n -- n )

@@ -600,7 +600,7 @@ variable RC
 \ rows and keeps their width fact, so it stores both cells.
 : TEST-T0-RAW-STORE ( -- )
    s" T0 compiles a refused TRUSTED: store at its field width" T-LABEL
-   BODY$ s" PRODUCT lrd-pt FIELD x n FIELD y n ;PRODUCT TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
+   BODY$ s" STRUCTURE lrd-pt FIELD x n FIELD y n ;STRUCTURE TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
    BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
@@ -717,7 +717,7 @@ variable RC
    s" error[E-T0-CONTROL]: a control structure is still open at `;`" s" :5:1"
       BODY-REJECT-AT
    s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;PRODUCT\" [: TYPE-DECL:TDECL-PRODUCT ;] DECL-REPLAY:RP-RUN ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" TYPE-DECL:REPLAY-STRUCTURE drop 2drop ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
    BODY$ s" :4:3" ASSERT-AT
@@ -748,13 +748,13 @@ variable RC
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `LRD-BS` cannot be recorded"
       s" :2:8" BODY-REJECT-AT ;
 
-\ A name only the checker holds, a PRODUCT replay with no word behind it, is
+\ A name only the checker holds, a STRUCTURE replay with no word behind it, is
 \ rejected by check-hook.f DEFINITION through src/core/check-walk.f
 \ REJECT-DUPLICATE, placed at the `evaluate` that ran the string, with the
 \ string in an evaluated note.
 : TEST-REPLAY-DUP-PLACE ( -- )
    s" an evaluated checker-only duplicate is placed at its evaluate" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;PRODUCT\" [: TYPE-DECL:TDECL-PRODUCT ;] DECL-REPLAY:RP-RUN ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" TYPE-DECL:REPLAY-STRUCTURE drop 2drop ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
    BODY$ s" :3:36" ASSERT-AT

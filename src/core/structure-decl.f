@@ -52,15 +52,15 @@ SD-RESET
    TYPE-NAME:FAMILY-RESERVED? ;
 
 : REQUIRE-NAME ( ptr u8 n -- )
-   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ SD-LONG-FIX$ E-CAP DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ SD-LONG-FIX$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the name as a lowercase tail with no package qualifier, as in `point`"
-      E-CASE DECL-REJECT:REJECT throw THEN
+      E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name"
       s" pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family"
-      E-NAME DECL-REJECT:REJECT throw THEN ;
+      TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
 : NAME-GATE ( ptr u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
@@ -78,22 +78,22 @@ SD-RESET
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 NO EXIT THEN
-   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
+   id UNSTORED-REASON IF TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       s" name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ptr u8 n n -- n )
    {: want:n :}
    drop c@
-   dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
-   dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
-   dup ASCII-R = IF drop CON-R SCHEMA-CON EXIT THEN
+   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
+   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
+   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown field type" SD-PARAM-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      drop s" unknown field type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    dup {: idx:n :}
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
@@ -104,7 +104,7 @@ SD-RESET
    SD-ARG-N @ SD-ARG-CAP >= IF
       s" field type application is too deep"
       s" nest fewer than 256 type arguments in one field type"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SD-ARG-N @ cells SD-ARGS + !
    SD-ARG-N @ 1 + SD-ARG-N ! ;
 
@@ -123,7 +123,7 @@ SD-RESET
    REPEAT {: j:n :}
    j start = IF
       s" malformed field type application"
-      SD-APP-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a start + j start - j ;
 
 \ The blanks an argument may start with, and the blanks after its `ptr`.
@@ -144,7 +144,7 @@ SD-RESET
 : SD-PTR-START ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
    j u < IF a j + c@ SD-BLANK? ELSE NO THEN 0= IF
       s" malformed field type application"
-      SD-APP-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    j 1 + ;
 
 defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
@@ -153,17 +153,17 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
    k fam TFAM-ARITY@ >= IF
       s" field type has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF
       s" unclosed field type application"
-      SD-OPEN-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
    c 44 = IF a u fam k 1 + j 1 + RECURSE EXIT THEN
    c 62 = IF k 1 + j 1 + EXIT THEN
-   s" malformed field type application" SD-APP-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" malformed field type application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-APP ( ptr u8 n n n -- n n ) {: a:ptr u:n fam:n i:n :}
    SD-ARG-N @ {: base:n :}
@@ -171,7 +171,7 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
    k fam TFAM-ARITY@ <> IF
       s" field type has wrong arity"
       s" give the family as many type arguments as its header declares"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
    SCHEMA-ROOT-N@ {: start:n :}
    base BEGIN dup SD-ARG-N @ < WHILE
@@ -186,18 +186,18 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
       s" unclosed field type application"
-      SD-OPEN-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
    c 62 = IF j 1 + EXIT THEN
    c 44 <> IF
       s" malformed field type application"
-      SD-APP-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u j 1 + RECURSE ;
 
 : SD-LOOSE-APP ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
    i u >= IF
       s" unclosed field type application"
-      SD-OPEN-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a i + c@ 62 = IF i 1 + EXIT THEN
    a u i SD-LOOSE-ARGS ;
 
@@ -209,18 +209,18 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
          drop a c@ TYPE-DECL:DECL-PARAM IF drop EXIT THEN
          drop
          s" type parameter is outside the declared arity"
-         SD-PARAM-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw
+         SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
       ELSE drop THEN
    THEN
    a u CON-OF dup 0 <> IF drop EXIT THEN drop
    a u FIELD-FAM? IF
       dup TFAM-ARITY@ 0 <> IF
          s" field type is parametric and needs type arguments"
-         SD-ARGS-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw
+         SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
       THEN drop EXIT
    THEN drop
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
-   s" unknown field type" SD-TYPE-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 \ The pointee of an argument's `ptr`, with POINTEE set as RESOLVE-TYPE sets it.
 : SD-LOOSE-PTR ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
@@ -241,7 +241,7 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
          a u fam j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
-         s" unknown field type" SD-TYPE-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       SD-MISSING!
       a u j 1 + SD-LOOSE-APP EXIT
    THEN
@@ -270,7 +270,7 @@ SD-LOOSE-INSTALL
       na nu FIELD-FAM? 0= IF
          drop
          na nu TYPE-MAY-ARRIVE-XT 0= IF
-            s" unknown field type" SD-TYPE-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+            s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
          SD-MISSING!
          0 a u j 1 + SD-LOOSE-APP EXIT
       THEN
@@ -282,11 +282,11 @@ SD-LOOSE-INSTALL
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
          s" field type is parametric and needs type arguments"
-         SD-ARGS-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       fam 0 0 SCHEMA-APP j EXIT
    THEN drop
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
-   s" unknown field type" SD-TYPE-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
@@ -306,7 +306,7 @@ SD-PARSER-INSTALL
       NEXT dup 0= IF YES ELSE 2dup s" ;structure" CORE-STR=CI THEN IF
          UNGET  drop a swap DECL-REJECT:TOKEN!
          s" unclosed field type application"
-         SD-OPEN-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       2swap nip  >r 2dup r> -rot SD-DEPTH  -rot
       swap NULL-PTR - a NULL-PTR - - +  swap
    REPEAT
@@ -330,7 +330,7 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing field type"
       s" write a type after the field name, as in `FIELD x n`"
-      E-SYNTAX DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    SD-SPAN
    2dup TYPE!
    2dup s" [" CORE-STR= IF
@@ -347,7 +347,7 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
    2dup 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
    j over <> IF
       2drop s" malformed field type application"
-      SD-APP-FIX$ E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    2drop node ;
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
@@ -358,7 +358,7 @@ SD-QUOT-INSTALL
    SEEN-FIELD @ IF
       s" header clause after the first field"
       s" move the `POLICY`, `DERIVE` and `OPAQUE` clauses before the first `FIELD`"
-      E-SYNTAX DECL-REJECT:REJECT throw THEN ;
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
@@ -366,7 +366,7 @@ SD-QUOT-INSTALL
    code TL-NICHE = IF
       TYPE-DECL:TDECL-NICHE-MESSAGE$
       s" drop `POLICY niche-null`: only an `ENUM` with an empty variant, then one `ptr` field, can use it"
-      E-POLICY DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
@@ -391,7 +391,7 @@ SD-QUOT-INSTALL
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family"
       s" drop `eq` and `hash` from `DERIVE`, or declare the structure with no type parameters"
-      E-DERIVE DECL-REJECT:REJECT throw THEN ;
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 \ `addr` has no arity condition: an accessor projects the field schema at the
@@ -405,20 +405,20 @@ SD-QUOT-INSTALL
    2dup s" tag" CORE-STR=CI IF
       2drop s" derive tag requires an enum"
       s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
-      E-DERIVE DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
       s" drop `order` from `DERIVE` and write the comparison as a word over the fields"
-      E-DERIVE DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature"
    s" name `eq`, `hash`, `addr` or `init` after `DERIVE`"
-   E-DERIVE DECL-REJECT:REJECT throw ;
+   TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup 0= IF
       2drop s" missing derive feature"
       s" name a feature after `DERIVE`: `eq`, `hash`, `addr` or `init`"
-      E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
@@ -428,7 +428,7 @@ SD-QUOT-INSTALL
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
-   s" give each field of this declaration its own name" E-DUP DECL-REJECT:EXPECT
+   s" give each field of this declaration its own name" E-TFAM-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
@@ -447,14 +447,14 @@ SD-QUOT-INSTALL
    MEMBER-CLASH? IF
       s" field name is a generated member name"
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"
-      E-NAME DECL-REJECT:REJECT throw THEN ;
+      TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 : FIELD-CLAUSE ( -- )
    NEXT dup 0= IF
       2drop s" missing field name"
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
-      E-SYNTAX DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:ptr nu:n :}
-   na nu NAME-LONG? IF TF-NAME-LONG$ SD-LONG-FIX$ E-CAP DECL-REJECT:REJECT throw THEN
+   na nu NAME-LONG? IF TF-NAME-LONG$ SD-LONG-FIX$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
@@ -471,7 +471,7 @@ SD-QUOT-INSTALL
    na nu DECL-REJECT:TOKEN!
    s" duplicate family"
    s" rename the structure: this package already declares a family with this name"
-   E-DUP DECL-REJECT:EXPECT
+   E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
@@ -490,11 +490,11 @@ SD-QUOT-INSTALL
    SD-MAKEABLE? 0= IF
       s" derived fields require a family with fields"
       s" add a `FIELD` to the structure, or drop `addr` and `init` from `DERIVE`"
-      E-DERIVE DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-DERIVE-INIT? IF
       s" derive init requires a canonical fixed-cell record"
       s" drop `init` from `DERIVE`, or give every field a fixed cell width"
-      E-DERIVE DECL-REJECT:EXPECT THEN
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
 : SD-CLOSE ( -- )
    DECL-REJECT:AT-FAMILY
@@ -502,7 +502,7 @@ SD-QUOT-INSTALL
       TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
          s" field type parameter has incompatible kinds"
          s" use each type parameter in one kind of place: a value type, a scope or a region"
-         E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    loop
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
@@ -515,7 +515,7 @@ SD-QUOT-INSTALL
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields"
       s" add a `FIELD` to the structure, or drop `OPAQUE`"
-      E-SYNTAX DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
    \ one-cell family, as a bare NEWTYPE declares.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
@@ -526,7 +526,7 @@ SD-QUOT-INSTALL
       DECL-REJECT:AT-FAMILY
       s" missing ;STRUCTURE"
       s" end the declaration with `;STRUCTURE` after its last field"
-      E-SYNTAX DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
@@ -534,16 +534,16 @@ SD-QUOT-INSTALL
    2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
    2drop s" unexpected token in structure declaration"
    s" start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`"
-   E-SYNTAX DECL-REJECT:REJECT throw ;
+   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
 : DRIVE ( -- )
    NEXT 2dup DECL-REJECT:FAMILY!
-   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ E-SYNTAX DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    TYPE-DECL:DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header"
       s" name each type parameter once in the header, as in `STRUCTURE box<a>` or `STRUCTURE pair<a,b>`"
-      E-ARITY DECL-REJECT:REJECT throw
+      TYPE-DECL:E-TDECL-ARITY DECL-REJECT:REJECT throw
    THEN
    {: ar:n :}
    2dup NAME-GATE
@@ -572,8 +572,8 @@ EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
 
 ;package
 
-\ STRUCTURE is a documented global (package-first exception, like the SUMTYPE and
-\ PRODUCT openers); it parses its body to ;STRUCTURE at interpret time, so its
+\ STRUCTURE is a documented global (package-first exception, like the SUMTYPE
+\ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
 

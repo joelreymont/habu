@@ -15,6 +15,10 @@
 \ MCP:ANSWER on a request worker into a BUF holding old text: a tools/call
 \ written as HANDLE sends it, a notification leaving it empty, a message that is
 \ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
+\ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker
+\ the body gave back, answers the client in each era as the same tool answering
+\ at once; HOLD answers false under ANSWER; a body that throws after HOLD leaves
+\ the client a closed connection and no answer.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -568,7 +572,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
    S\" ,\"annotations\":{\"readOnlyHint\":true}}," W+ WIDGET W+ s" ," W+ PICK-ITEM
-   s" ," W+ FRAMED W+ s" ," W+ PICTURED W+ ;
+   s" ," W+ FRAMED W+ s" ," W+ PICTURED W+
+   S\" ,{\"name\":\"wait\",\"description\":\"Answer once woken.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   s" {}" OUTPUT s" true}}" W+ ;
 
 \ Every tool the open phase registers, as tools/list answers them, before the
 \ array's end.
@@ -1591,6 +1598,89 @@ BUF:HDR-BYTES BUFFER: REPLIES
    ANSWER-CALL ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
 
 
+\ The wait tool's held calls, by their rows.
+MCP:MAX-HELD TYPED-BUFFER HELD-CALLS MCP:held
+variable WOKEN                      \ the held calls a submitted call has finished
+variable HOLD-FALSE                 \ set when the wait tool's HOLD answered false
+
+: WAIT-RESULT ( -- ) S\" {\"done\":true}" S\" {\"m\":1}" MCP:RESULT-META ;
+
+\ A call SUBMIT runs on a request worker, as a host's job would wake it.
+: WAKE ( n -- )
+   1 WOKEN atomic-add drop
+   HELD-CALLS @ [: WAIT-RESULT ;] MCP:FINISH ;
+
+: HELD-WAIT ( MCP:held bool -- )
+   0= if drop 1 HOLD-FALSE atomic! WAIT-RESULT exit then
+   {: h :}
+   h MCP:HELD-SLOT {: idx:n :}
+   h idx HELD-CALLS !
+   idx [: WAKE ;] HTTP:SUBMIT ;
+
+\ "now" answers at once, "fail" throws after HOLD, anything else HOLDs.
+: WAIT-BODY ( ptr u8 n -- )
+   {: args:ptr au:n :}
+   args au s" now" CONTAINS? if WAIT-RESULT exit then
+   args au s" fail" CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
+   MCP:HOLD HELD-WAIT ;
+
+: ADD-WAIT ( -- )
+   S\" {\"name\":\"wait\",\"description\":\"Answer once woken.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
+   [: WAIT-BODY ;] MCP:ADD-TOOL ;
+
+: WAIT-LEGACY ( ptr u8 n -- ptr u8 n )
+   {: args:ptr au:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND S\" }}" SB-APPEND SB$ ;
+
+: WAIT-MODERN ( ptr u8 n -- ptr u8 n )
+   {: args:ptr au:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND
+   s" ," SB-APPEND META S\" }}" SB-APPEND SB$ ;
+
+: MODERN-WAIT ( -- CURL:handle )
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: wait" ADD ;
+
+\ The at-once answer in W, a success.
+: KEPT-NOW ( n -- )
+   {: status:n :}
+   status 200 T=
+   BODY BODY-U @ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STARTS-WITH? TTRUE
+   W-RESET BODY BODY-U @ W+ ;
+
+\ The held call's answer is W, given by one FINISH.
+: KEPT-LATER ( n -- )
+   200 W$ ANSWERED
+   WOKEN atomic@ 1 T=
+   0 WOKEN atomic! ;
+
+: HELD-LEGACY ( -- )
+   s" a legacy call HELD and FINISHed answers as the tool at once" T-LABEL
+   LEGACY S\" {\"now\":1}" WAIT-LEGACY POST KEPT-NOW
+   LEGACY S\" {\"later\":1}" WAIT-LEGACY POST KEPT-LATER ;
+
+: HELD-MODERN ( -- )
+   s" a modern call HELD and FINISHed answers as the tool at once" T-LABEL
+   MODERN-WAIT S\" {\"now\":1}" WAIT-MODERN POST KEPT-NOW
+   MODERN-WAIT S\" {\"later\":1}" WAIT-MODERN POST KEPT-LATER ;
+
+\ After HELD-MODERN, whose at-once answer W holds.
+: HELD-ANSWER ( -- )
+   s" HOLD under ANSWER answers false and the body answers at once" T-LABEL
+   0 HOLD-FALSE atomic!
+   ANSWER-OPEN S\" {\"later\":1}" WAIT-LEGACY POST
+   200 W$ ANSWERED
+   HOLD-FALSE atomic@ 1 T=
+   WOKEN atomic@ 0 T= ;
+
+: HELD-FAULT ( -- )
+   s" a body that throws after HOLD closes the connection unanswered" T-LABEL
+   LEGACY S\" {\"fail\":1}" WAIT-LEGACY POST -2 T= ;
+
+: HELD-CASES ( -- ) HELD-LEGACY HELD-MODERN HELD-ANSWER HELD-FAULT ;
+
+
 : SERVE-CASES ( -- )
    AIO:START
    HTTP:ROUTES-RESET
@@ -1608,7 +1698,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
    ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
-   ADD-FRAMED ADD-PICTURED
+   ADD-FRAMED ADD-PICTURED ADD-WAIT
    s" ADD-TOOL refuses a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
@@ -1652,6 +1742,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
    UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
    ANSWER-CASES
+   HELD-CASES
    CLIENT-CASES
    PROTECTED-CASES
    HTTP:STOP

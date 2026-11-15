@@ -75,10 +75,6 @@ s" OPAQUE requires a family declared in a package"
 s" declare the `OPAQUE` structure inside a `package`, or drop `OPAQUE`"
 E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
-\ E-DEV-ARITY reads sumtype.f's malformed-arity code at top level: a post-hook
-\ checked body cannot name that pre-hook constant on a from-source build.
-TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the shared malformed-arity code
-
 \ Event scratch: interleaved integer cells, so a grow is a plain cell copy. OWNER
 \ is the first event id of the frame that emitted the row, so finalized nested
 \ declarations stay distinguishable from their still-open parent.
@@ -345,7 +341,7 @@ variable DEV-TX-SERIAL
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
-   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
+   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF TYPE-DECL:E-TDECL-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 
@@ -548,12 +544,12 @@ public
 : PAYLOAD-SCHEMA@ ( n n n n -- n ) DEV-PAYLOAD-SCHEMA@ ;
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
-\ its family copy and drop a linear value: E-PAYLOAD with the caller's text.
+\ its family copy and drop a linear value.
 : REQUIRE-POINTEE ( n ptr u8 n -- n )
    {: node:n why:ptr whyu:n :}
    node TFCL-NODE? IF
       why whyu s" hold the linear value in the field itself, never beneath `ptr`"
-      DECL-FRONT:E-PAYLOAD DECL-REJECT:REJECT throw
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
    THEN
    node ;
 
@@ -575,20 +571,6 @@ public
          THEN
       loop
    THEN ;
-
-private
-
-\ The front ends reach this module only through these hooks, which go through the
-\ public words (CURRENT carries the frame and open-state guards the private reader
-\ lacks). Installed after the public section: a quotation binds its target at
-\ compile time.
-: DEV-EVENT-HOOKS-INSTALL ( -- )
-   [: CURRENT ;] is TDECL-EVENT-CURRENT-XT
-   [: DECL ;] is TDECL-EVENT-DECL-XT
-   [: ARITY ;] is TDECL-EVENT-ARITY-XT
-   [: FIELD ;] is TDECL-EVENT-FIELD-XT ;
-
-DEV-EVENT-HOOKS-INSTALL
 
 ;package
 ;package

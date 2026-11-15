@@ -1732,15 +1732,6 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ The declared-visibility token a family declaration carries, public and with a
-\ declared effect. The constant is not that name: it is created before
-\ src/core/check-hook.f installs the check hook, and a created word publishes
-\ its effect only once that hook exists (habu2.f LASTC-TRUST:FIND-ACTIVE), so an
-\ engine booting its prefix from source would refuse a checked reference
-\ E-UNDEFINED. This word carries an axiom (the PRIM: block) and means the same
-\ in every engine class.
-: CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
-
 \ The using depth the replayed source may close down to, as the engine's
 \ evaluate frame keeps it for a buffer:
 \ the verifier window seeds it with the depth the source starts at, and the
@@ -13819,7 +13810,7 @@ package CHECKER-REG
       s" give " REJECTION:EMIT-STR  na nu STGR-CODE
       s"  a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty"
       REJECTION:EMIT-STR
-      s"  ENUM, SUMTYPE, PRODUCT or STRUCTURE holding no view, region or linear value"
+      s"  ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value"
       REJECTION:EMIT-STR EXIT
    THEN
    s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
@@ -17234,7 +17225,6 @@ CHECKER-REG:}SCRATCH
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -17278,7 +17268,6 @@ CHECKER-REG:}SCRATCH
    \ an alias to resolve to.
    sym s" sumtype" UNSAFE-NAME? or
    sym s" enum" UNSAFE-NAME? or
-   sym s" product" UNSAFE-NAME? or
    sym s" newtype" UNSAFE-NAME? or
    sym s" layout-buffer" UNSAFE-NAME? or
    sym s" defer-layout-buffer" UNSAFE-NAME? or

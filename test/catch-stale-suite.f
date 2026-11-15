@@ -353,10 +353,10 @@ variable CS-CHILD-ERR-U
 \ wrapper, so an `option<cspt>` window comes back as one `stale<option<cspt>>`
 \ that one `drop` removes and one `nip` moves; every typed use (word input,
 \ typed local, MATCH) is E-STALE-READ.
-PRODUCT cspt
+STRUCTURE cspt
    FIELD x n
    FIELD y n
-;PRODUCT
+;STRUCTURE
 
 : CS-PT ( -- cspt ) 17 25 CATCH--STALE--TEST-CSPT:MAKE ;
 : CS-SOME ( -- option<cspt> ) CS-PT OPTION:SOME ;

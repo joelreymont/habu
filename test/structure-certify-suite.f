@@ -23,9 +23,8 @@ T-RESET
 : SCG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 \ Each section pairs a positive that certifies with a negative that rejects.
-\ A STRUCTURE is a single-shape PRODUCT, so its FAMILY:MAKE/UNMAKE type through
-\ the shared ctor machinery (test/type-ctor-suite.f, src/core/sumtype.f
-\ TDECL-PROD-WORDS).
+\ A STRUCTURE is a single-shape product family, so its FAMILY:MAKE/UNMAKE type
+\ through the shared ctor machinery (test/type-ctor-suite.f).
 \ 1. MAKE/UNMAKE are exact inverses across field kinds the decl suite lacks; a
 \ flattened or role-wrong call rejects.
 s" STRUCTURE scinr FIELD a n FIELD b n ;STRUCTURE" evaluate-closed           \ width-2 product leaf

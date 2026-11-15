@@ -21,7 +21,7 @@ SUMTYPE lqmix<a,b>
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
 : LQID ( lq2<ltok,n> -- lq2<ltok,n> ) ;
-PRODUCT lqp<a,b> FIELD w a ;PRODUCT
+STRUCTURE lqp<a,b> FIELD w a ;STRUCTURE
 : LQPID ( lqp<ltok,ltok> -- lqp<ltok,ltok> ) ;
 \ a trusted forge of any type, and a checked word whose body hides one behind
 \ LQ2:ERR's effect: R14/R15 below keep both refused.

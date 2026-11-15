@@ -631,12 +631,12 @@ variable RC
    s" ;package" SB-APPEND LF+
    s" sum-generated.f" FIXTURE! ;
 
-\ A top-level PRODUCT defines CKDPROD:MAKE.
+\ A top-level STRUCTURE defines CKDPROD:MAKE.
 : CKDPROD-FIXTURE ( ptr u8 n -- )
    {: tail:ptr tailu:n :}
    SB-RESET
    s" : CKDPROD:MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
-   s" PRODUCT ckdprod FIELD x n ;PRODUCT" SB-APPEND LF+
+   s" STRUCTURE ckdprod FIELD x n ;STRUCTURE" SB-APPEND LF+
    tailu 0 > IF tail tailu SB-APPEND LF+ THEN
    s" prod-generated.f" FIXTURE! ;
 
@@ -659,15 +659,15 @@ variable RC
    GJA-LINE# @ 2 T=  s" HUE-RED" GENERATED-AT  0 s" hue" 3 9 44 47 AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
    1 s" hue" 4 13 112 115 AT
-   s" a product's generated name already defined" T-LABEL
+   s" a structure's generated name already defined" T-LABEL
    s" " CKDPROD-FIXTURE
    s" " CHECK
-   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 9 40 47 AT
+   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 11 42 49 AT
    s" : CKDPROD-USE ( ckdprod -- ) drop ;" CKDPROD-FIXTURE
    s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 9 40 47 AT
+   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 11 42 49 AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
-   1 s" ckdprod" 3 17 83 90 AT ;
+   1 s" ckdprod" 3 17 87 94 AT ;
 
 \ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
@@ -837,11 +837,7 @@ variable RC
    s" E-BAD-DECLARATION" s" missing ;ENUM" s" color" 1 6 5 10 PREPASS-REJECTED
    s" an unclosed STRUCTURE under --verify-only" T-LABEL
    s" STRUCTURE rec FIELD id n" s" struct-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" missing ;STRUCTURE" s" rec" 1 11 10 13 PREPASS-REJECTED
-   s" an unclosed PRODUCT" T-LABEL
-   s" PRODUCT pt FIELD x n" s" prod-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" pt" 1 9 8 10 REFUSED-MODES
-   0 s" label" s" missing ;PRODUCT" FIELD= ;
+   s" E-BAD-DECLARATION" s" missing ;STRUCTURE" s" rec" 1 11 10 13 PREPASS-REJECTED ;
 
 \ After GEN's call may have made types, the check leaves the missing widget to
 \ the run; packet 0 is the deferral at that call.
@@ -881,14 +877,10 @@ variable RC
    s" SUMTYPE shape VARIANT dot ;VARIANT \ ;SUMTYPE" s" sum-comment-end.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-MODES
    0 s" label" s" unexpected token in sum declaration" FIELD=
-   s" a comment in a closed PRODUCT" T-LABEL
-   s" PRODUCT pt FIELD x n \ note" s" ;PRODUCT" s" prod-comment.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-MODES
-   0 s" label" s" unexpected token in product declaration" FIELD=
-   s" a comment holding a PRODUCT's terminator" T-LABEL
-   s" PRODUCT pt FIELD x n \ ;PRODUCT" s" FIELD y n" s" prod-comment-end.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-MODES
-   0 s" label" s" unexpected token in product declaration" FIELD=
+   s" a comment in a closed STRUCTURE" T-LABEL
+   s" STRUCTURE pt FIELD x n \ note" s" ;STRUCTURE" s" prod-comment.f" TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 24 23 24 REFUSED-MODES
+   0 s" label" s" unexpected token in structure declaration" FIELD=
    s" a comment in a closed VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
@@ -905,9 +897,6 @@ variable RC
    s" SUMTYPE shape \ note" s\" VARIANT dot ;VARIANT\n;SUMTYPE" s" sum-name-comment.f"
       TWO-LINE-FIXTURE
    s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-MODES
-   s" a comment after a PRODUCT's name" T-LABEL
-   s" PRODUCT pt \ note" s\" FIELD x n\n;PRODUCT" s" prod-name-comment.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 12 11 12 REFUSED-MODES
    s" a comment after an ENUM's name" T-LABEL
    s" ENUM colr \ note" s" red green ;ENUM" s" enum-name-comment.f" TWO-LINE-FIXTURE
    s" E-BAD-DECLARATION" s" \" 1 11 10 11 REFUSED-MODES
@@ -1171,19 +1160,19 @@ variable RC
    s" E-MISMATCH" s" c@" 1 19 18 20 REFUSED-AT
    s" a >r whose cell does not fit, as dup over that cell" T-LABEL
    SB-RESET
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT" SB-APPEND LF+
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE" SB-APPEND LF+
    s" : X ( rvbox<a> -- ) >r r> drop ;" SB-APPEND LF+
    s" rvbox-tor.f" FIXTURE!
-   s" E-MISMATCH" s" >r" 2 21 56 58 REFUSED-AT
+   s" E-MISMATCH" s" >r" 2 21 60 62 REFUSED-AT
    0 s" expected" s" a" NOTE=
    0 s" found" s" rvbox<b>" NOTE=
    0 s" family" s" rvbox" NOTE=
    s" a 2>r whose pair does not fit, as 2dup over that pair" T-LABEL
    SB-RESET
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT" SB-APPEND LF+
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE" SB-APPEND LF+
    s" : X ( n rvbox<a> -- ) 2>r 2r> 2drop ;" SB-APPEND LF+
    s" rvbox-2tor.f" FIXTURE!
-   s" E-MISMATCH" s" 2>r" 2 23 58 61 REFUSED-AT
+   s" E-MISMATCH" s" 2>r" 2 23 62 65 REFUSED-AT
    0 s" expected" s" a b" NOTE=
    0 s" found" s" n rvbox<c>" NOTE=
    0 s" family" s" rvbox" NOTE=
@@ -1223,36 +1212,36 @@ variable RC
    s" E-RETURN-STACK" s" r>" 1 20 19 21 REFUSED-AT  false READS-BELOW
    s" a 2r> that moves a record whole, one cell short" T-LABEL
    SB-RESET
-   s" PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT" SB-APPEND LF+
+   s" STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE" SB-APPEND LF+
    s" : X ( pr2 -- ) >r 2r> drop drop ;" SB-APPEND LF+
    s" rwide.f" FIXTURE!
-   s" E-RETURN-STACK" s" 2r>" 2 19 59 62 REFUSED-AT  false READS-BELOW ;
+   s" E-RETURN-STACK" s" 2r>" 2 19 63 66 REFUSED-AT  false READS-BELOW ;
 
 \ A stack word over an open layout is refused by the step path's mismatch,
 \ whatever else is among its operands: a proof or an expanded layout beside it
 \ does not send it to the transport path, which has no reason to give.
 : TEST-OPEN-LAYOUT-XPORT ( -- )
    s" an open layout under swap" T-LABEL
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT : X ( rvbox<a> n -- n rvbox<a> ) swap ;"
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE : X ( rvbox<a> n -- n rvbox<a> ) swap ;"
       s" open-layout.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 70 69 73 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 74 73 77 REFUSED-AT
    s" an open layout beside a proof under swap" T-LABEL
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT : X ( rvbox<a> -- n rvbox<a> ) [: ;] catch swap ;"
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE : X ( rvbox<a> -- n rvbox<a> ) [: ;] catch swap ;"
       s" open-layout-proof.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 80 79 83 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 84 83 87 REFUSED-AT
    s" an open layout beside an expanded layout under swap" T-LABEL
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : X ( rvbox<a> pr2 -- pr2 rvbox<a> ) swap ;"
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : X ( rvbox<a> pr2 -- pr2 rvbox<a> ) swap ;"
       s" open-layout-pr2.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 115 114 118 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 123 122 126 REFUSED-AT
    s" a stale open layout under drop, a non-linear family first" T-LABEL
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop drop ;"
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop drop ;"
       s" open-layout-stale-pr2.f" LINE-FIXTURE
-   s" E-STALE-READ" s" drop" 1 229 228 232 REFUSED-AT
+   s" E-STALE-READ" s" drop" 1 237 236 240 REFUSED-AT
    0 s" family" s" rvbox" NOTE=
    s" a stale open layout in a locals capture" T-LABEL
-   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop {: x :} ;"
+   s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop {: x :} ;"
       s" open-layout-stale-local.f" LINE-FIXTURE
-   s" E-STALE-READ" s" :}" 1 234 233 235 REFUSED-AT ;
+   s" E-STALE-READ" s" :}" 1 242 241 243 REFUSED-AT ;
 
 
 : LIT-FIXTURE ( ptr u8 n -- )
@@ -1856,12 +1845,12 @@ variable RC
    s" derive-enum-field.f" FIXTURE!
    s" E-BAD-DECLARATION" s" ptr" 1 44 43 46 RUN-REFUSED-AT ;
 
-: TEST-DERIVE-PRODUCT-FIELD ( -- )
-   s" a product field DERIVE eq cannot compare" T-LABEL
+: TEST-DERIVE-BYTES-FIELD ( -- )
+   s" a structure byte-pointer field DERIVE eq cannot compare" T-LABEL
    SB-RESET
-   s" PRODUCT dppr DERIVE eq FIELD b ptr u8 ;PRODUCT" SB-APPEND LF+
+   s" STRUCTURE dppr DERIVE eq FIELD b ptr u8 ;STRUCTURE" SB-APPEND LF+
    s" derive-product-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ptr" 1 32 31 34 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ptr" 1 34 33 36 RUN-REFUSED-AT ;
 
 : GEN-LINES ( -- )
    SB-RESET
@@ -2486,7 +2475,7 @@ variable RC
    TEST-DERIVE-PAYLOAD
    TEST-DERIVE-FIELD
    TEST-DERIVE-ENUM-FIELD
-   TEST-DERIVE-PRODUCT-FIELD
+   TEST-DERIVE-BYTES-FIELD
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

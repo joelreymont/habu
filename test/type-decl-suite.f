@@ -28,14 +28,6 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
    CHECK-QUIET-CANDIDATE! want T=
    WF-N@ ;
 
-package TDT-EVENT
-public
-variable BASE
-\ The field transaction depth brackets a negative to catch a leaked field frame.
-variable PFD
-: SAVE ( -- ) TFAM:PF-TX-DEPTH @ PFD ! ;
-: SAME ( -- ) TFAM:PF-TX-DEPTH @ PFD @ T= ;
-;package
 \ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
@@ -120,10 +112,10 @@ SUMTYPE tdwide<a,b,c,d,e,g,h,i>
 s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ The arity-six failure boundary exercises the first spelling after reserved f.
-PRODUCT tdga06<a,b,c,d,e,g>
+STRUCTURE tdga06<a,b,c,d,e,g>
   FIELD p00 a FIELD p01 b FIELD p02 c
   FIELD p03 d FIELD p04 e FIELD p05 g
-;PRODUCT
+;STRUCTURE
 
 \ The six-parameter MEM-shaped reproducer uses a,b,c,d,e,g.  Its last field is
 \ schema parameter index 5, every generated input remains polymorphic, and both
@@ -134,14 +126,14 @@ s" TDGA06-BAD-UNMAKE ( tdga06<n,bool,char,u8,i64,r> -- bool n char u8 i64 r ) TD
 
 \ The maximum declaration arity keeps 23 independent schema positions.  Its
 \ generated MAKE/UNMAKE pair also executes as a physical round trip.
-PRODUCT tdga23<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>
+STRUCTURE tdga23<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>
   FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e
   FIELD p05 g FIELD p06 h FIELD p07 i FIELD p08 j FIELD p09 k
   FIELD p10 l FIELD p11 m FIELD p12 o FIELD p13 p FIELD p14 q
   FIELD p15 s FIELD p16 t FIELD p17 u FIELD p18 v FIELD p19 w
   FIELD p20 x FIELD p21 y FIELD p22 z
   FIELD flag f FIELD integer n FIELD real r
-;PRODUCT
+;STRUCTURE
 : TDGA23-RT ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- n n n n n n n n n n n n n n n n n n n n n n n bool n r )
    TDGA23:MAKE TDGA23:UNMAKE ;
 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 false 24 25.0 TDGA23-RT
@@ -179,13 +171,11 @@ s" TDE-BAD ( -- tdcolor ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 \ a payload-free ctor rejects a spurious input just like the arity-0 sum ctors.
 s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ PRODUCT: `PRODUCT name[<params>] FIELD f t .. ;PRODUCT`
-\ registers a TK-PRODUCT family — a single-shape record with named PF-* field
-\ rows and NO tag. It resolves in signatures and transports as a whole bundle.
-PRODUCT tdpair<a,b>
+\ STRUCTURE: `STRUCTURE name[<params>] FIELD f t .. ;STRUCTURE`
+STRUCTURE tdpair<a,b>
   FIELD fst a
   FIELD snd b
-;PRODUCT
+;STRUCTURE
 \ a concrete-arg product expands to hidden fields in a signature and transports
 \ as ONE whole bundle (dup/drop are width-aware); identity flows.
 s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -197,14 +187,14 @@ s" TDP-SPLIT ( tdpair<n,n> -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDP-HID ( @tdpair.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ concrete-field product (arity 0, all fields concrete n): width = field count.
-PRODUCT tdpoint
+STRUCTURE tdpoint
   FIELD x n
   FIELD y n
-;PRODUCT
+;STRUCTURE
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ DERIVE init needs no package: a top-level record's init accessors check.
-PRODUCT tdtop DERIVE init FIELD x n ;PRODUCT
+STRUCTURE tdtop DERIVE init FIELD x n ;STRUCTURE
 s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" CHECK-QUIET-CANDIDATE! -1 T=
 
@@ -328,10 +318,10 @@ DEFLINEAR tdown
 SUMTYPE tdlin<a>
   VARIANT hold a ;VARIANT
 ;SUMTYPE
-PRODUCT tdlinp
+STRUCTURE tdlinp
   FIELD owned tdown
   FIELD value n
-;PRODUCT
+;STRUCTURE
 SUMTYPE tdlins
   VARIANT owned tdown ;VARIANT
 ;SUMTYPE
@@ -375,9 +365,9 @@ s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 \ moves it) takes tdlight or tdcolor at the call; one the body hands to a
 \ defer, a two-cell value and a one-cell value holding a linear field, which a
 \ `dup` body would copy, are rejected, the last even by an identity body.
-PRODUCT tdmvlin
+STRUCTURE tdmvlin
   FIELD owned tdown
-;PRODUCT
+;STRUCTURE
 : TDMV-SW ( a b -- b a ) swap ;
 : TDMV-ID ( a -- a ) ;
 : TDMV-DUP ( a -- a a ) dup ;
@@ -502,17 +492,16 @@ TDS2-MIX-SMALL!
 TDS2-MIX-SUM 41 T=
 
 \ --- closed layout-family payloads -------------------------------------------
-\ A closed, non-linear, arity-0 layout family may type a PRODUCT field or SUM
+\ A closed, non-linear, arity-0 layout family may type a STRUCTURE field or SUM
 \ payload: its SCH-APP schema carries the resolved family id, physical slot
 \ widths recurse through the referenced family, PF.SLOT is the cumulative cell
 \ offset, and MAKE/UNMAKE render the field as its family, so a swapped
-\ enum-field argument order is a checker reject. Parametric and linear families
-\ reject.
-PRODUCT tdprec
+\ enum-field argument order is a checker reject.
+STRUCTURE tdprec
   FIELD col tdcolor
   FIELD lum tdlight
   FIELD cnt n
-;PRODUCT
+;STRUCTURE
 \ generated MAKE/UNMAKE consume/produce the fields as their families.
 s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDP2 ( tdprec -- tdcolor tdlight n ) TDPREC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -530,7 +519,7 @@ s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1
      blue OF 2 ENDOF
    ;MATCH ;
 TDP-CODE 2 T=
-\ Wide PRODUCT memory transports its full W=3 bundle. A different family or
+\ Wide STRUCTURE memory transports its full W=3 bundle. A different family or
 \ scalar result cannot cross the boundary even when the physical representation
 \ is cell-based.
 s" TDP-MEM-S ( tdprec ptr tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
@@ -561,24 +550,14 @@ TDP-MEM-COL 2 T=  TDP-MEM-LIGHT 0 T=  TDP-MEM-N@ 7 T=
 SUMTYPE tdpw
   VARIANT one n ;VARIANT
 ;SUMTYPE
-s" PRODUCT tdpbad1 FIELD r tdres ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpbad1`\n"
-s" tdres" s" unknown payload type" TDT-AT
-s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter or a family; only a `SUMTYPE` variant may apply a family to arguments, as in `box<n>`\n" TDT-HAS
-s" PRODUCT tdpwide FIELD w tdpw ;PRODUCT" TDT-EVAL-CATCH 0 T=
+s" STRUCTURE tdpwide FIELD w tdpw ;STRUCTURE" TDT-EVAL-CATCH 0 T=
 s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-\ a SELF-referential field is recursive and rejects with the recursive-sum
-\ reason, not the unknown-payload one.
-s" PRODUCT tdpbad3 FIELD s tdpbad3 ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpbad3`\n"
-s" tdpbad3" s" invalid layout policy for recursive sum" TDT-AT
-s\"   = help: drop the payload that names the family being declared, or declare it as a `STRUCTURE` or an `ENUM`, which may name it beneath `ptr`\n" TDT-HAS
 s" SUMTYPE tdpnest VARIANT value tdpw ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
 s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ A closed wide PRODUCT is one logical value backed by one hidden parameter per
+\ A closed wide STRUCTURE is one logical value backed by one hidden parameter per
 \ physical cell.
-PRODUCT tdw12
+STRUCTURE tdw12
   FIELD f0 n
   FIELD f1 n
   FIELD f2 n
@@ -591,9 +570,9 @@ PRODUCT tdw12
   FIELD f9 n
   FIELD f10 n
   FIELD f11 n
-;PRODUCT
+;STRUCTURE
 s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" CHECK-QUIET-CANDIDATE! -1 T=
-PRODUCT tdw34
+STRUCTURE tdw34
   FIELD f0 n
   FIELD f1 n
   FIELD f2 n
@@ -628,7 +607,7 @@ PRODUCT tdw34
   FIELD f31 n
   FIELD f32 n
   FIELD f33 n
-;PRODUCT
+;STRUCTURE
 s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -644,14 +623,14 @@ REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" CONTAI
 REJECTION:BUFFER$ s\"  --> <input>:1:30\n" CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 \ A product containing W34 is one W34 wide, not W34^2.
-PRODUCT tdw34nest
+STRUCTURE tdw34nest
   FIELD inner tdw34
-;PRODUCT
+;STRUCTURE
 s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ A PRODUCT of 256 one-cell fields: MAKE takes 256 cells and UNMAKE leaves the
+\ A STRUCTURE of 256 one-cell fields: MAKE takes 256 cells and UNMAKE leaves the
 \ last field on top.
-PRODUCT tdw256
+STRUCTURE tdw256
   FIELD f0 n
   FIELD f1 n
   FIELD f2 n
@@ -908,7 +887,7 @@ PRODUCT tdw256
   FIELD f253 n
   FIELD f254 n
   FIELD f255 n
-;PRODUCT
+;STRUCTURE
 : TDW256-MK ( -- tdw256 )
    0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
@@ -1109,7 +1088,7 @@ s" TPC-FACTS-OWN-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TDP
 
 \ These load only if their facts text reads back: 24 sibling binders, 250 levels.
 : TFX-BINDERS ( forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> -- ) drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;
-PRODUCT tfx-nest<a> FIELD a a FIELD b n ;PRODUCT
+STRUCTURE tfx-nest<a> FIELD a a FIELD b n ;STRUCTURE
 : TFX-DEEP ( tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> -- ) drop ;
 
 \ The record's `found` note, in prose and JSON, keeps the package qualifier and
@@ -1246,14 +1225,6 @@ s\" error[E-BAD-DECLARATION]: bad newtype declaration `tvfuture`\n"
 s" tvfuture" s" collides with a sum variant" TDT-AT
 ;package
 \ A generated word that collides is placed at the family that generated it.
-package tdgclash
-private
-create TDGCLASH-UNMAKE
-s" PRODUCT tdgclash FIELD a n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdgclash`\n"
-s" tdgclash" s" generated declaration already defined" TDT-AT
-s\" = word: TDGCLASH-UNMAKE\n" TDT-HAS
-;package
 package tdgaddr
 private
 create TDGADDR-AT
@@ -1323,9 +1294,6 @@ s" tdarres<n>" s" invalid type parameter header" TDT-AT
 s" NEWTYPE tdarlong<item>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarlong<item>`\n"
 s" tdarlong<item>" s" invalid type parameter header" TDT-AT
-s" PRODUCT tdarprod<a,a> FIELD v z ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdarprod<a,a>`\n"
-s" tdarprod<a,a>" s" invalid type parameter header" TDT-AT
 s" SUMTYPE tdarv<> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdarv<>`\n"
 s" tdarv<>" s" invalid type parameter header" TDT-AT
@@ -1521,139 +1489,61 @@ s" ENUM tdres red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdres`\n"
 s" tdres" s" duplicate family" TDT-AT
 
-\ malformed product declarations: each is rejected with its reason.
-\ empty / unterminated bodies.
-TDT-EVENT:SAVE
-s" PRODUCT tdpempty ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpempty`\n"
-s" tdpempty" s" empty product" TDT-AT
-s\"   = help: declare at least one field, as in `FIELD x n`\n" TDT-HAS
-TDT-EVENT:SAME
-s" PRODUCT tdpnoterm<a,b> FIELD fst a FIELD snd b"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpnoterm<a,b>`\n"
-s" tdpnoterm<a,b>" s" missing ;PRODUCT" TDT-AT
-s\"   = help: end the declaration with `;PRODUCT` after its last field\n" TDT-HAS
-\ duplicate field within one product (`TYPE-FIELD-OWNER:ADD` rejects it).
-TDT-EVENT:SAVE
-s" PRODUCT tdpdup<a> FIELD x a FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpdup`\n"
-s" x" s" duplicate field" TDT-AT
-s\"   = help: give each field of this declaration its own name\n" TDT-HAS
-TDT-EVENT:SAME
-\ unknown / out-of-arity field types, and a dangling ptr.
-s" PRODUCT tdpbad<a> FIELD x q ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpbad`\n"
-s" q" s" unknown payload type" TDT-AT
-s" PRODUCT tdpoor FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpoor`\n"
-s" a" s" unknown payload type" TDT-AT
-s" PRODUCT tdpptr<a> FIELD x ptr ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpptr`\n"
-s\" ^ missing ;PRODUCT\n" TDT-REJ
-s\"   = help: write a type after each `FIELD` name and each `ptr`, and end the declaration with `;PRODUCT`\n" TDT-HAS
-\ bad field names: uppercase, grammar keyword, control word. The control-word arm
-\ comes from TYPE-NAME:CONTROL?, the one list the family-name gate
-\ (TYPE-NAME:FAMILY-RESERVED?) and the field gate both consult; the STRUCTURE
-\ and ENUM front ends reach the same answer through it
-\ (test/structure-decl-suite.f, test/enum-decl-suite.f § 24). A name that
-\ merely contains a control word registers.
-s" PRODUCT tdpfc<a> FIELD X a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfc`\n"
-s" X" s" field name must be a lowercase tail" TDT-AT
-s\"   = help: write the field name as a lowercase tail with no package qualifier, as in `FIELD x n`\n" TDT-HAS
-s" PRODUCT tdpfmake FIELD make n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfmake`\n"
-s" make" s" reserved field name" TDT-AT
-s\"   = help: rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken\n" TDT-HAS
-s" PRODUCT tdpfif FIELD if n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfif`\n"
-s" if" s" reserved field name" TDT-AT
-s" PRODUCT tdpfloop FIELD x n FIELD loop n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfloop`\n"
-s" loop" s" reserved field name" TDT-AT
-s" PRODUCT tdpfmatch FIELD match n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfmatch`\n"
-s" match" s" reserved field name" TDT-AT
+\ malformed STRUCTURE declarations: each is rejected with its reason.
+\ a dangling ptr.
+s" STRUCTURE tdpptr<a> FIELD x ptr ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpptr`\n"
+s" ;STRUCTURE" s" unknown field type" TDT-AT
+s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
+\ a bad field name: uppercase.
+s" STRUCTURE tdpfc<a> FIELD X a ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpfc`\n"
+s" X" s" name must be a lowercase tail" TDT-AT
+s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" TDT-HAS
 \ control words are rejected in the family and variant positions too, on this
 \ legacy path, with the reason the unified front ends give.
-s" PRODUCT if FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `if`\n"
-s" if" s" reserved name" TDT-AT
 s" SUMTYPE do VARIANT one ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `do`\n"
 s" do" s" reserved name" TDT-AT
 s" SUMTYPE tdscw VARIANT loop ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdscw`\n"
 s" loop" s" reserved name" TDT-AT
-\ whole-token match: these names contain control words and still register.
-s" PRODUCT iffy FIELD looping n FIELD thence n ;PRODUCT" TDT-EVAL-CATCH 0 T=
-\ a stray token where FIELD is expected.
-s" PRODUCT tdpstray<a> stray FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpstray`\n"
-s" stray" s" unexpected token in product declaration" TDT-AT
-s\"   = help: start each clause with `FIELD`, `POLICY` or `DERIVE`, and end with `;PRODUCT`\n" TDT-HAS
 \ an empty parameter list.
-s" PRODUCT tdpna<> FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpna<>`\n"
+s" STRUCTURE tdpna<> FIELD x a ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpna<>`\n"
 s" tdpna<>" s" invalid type parameter header" TDT-AT
-\ bad family names: uppercase, reserved single-letter, grammar keyword, and the
-\ product/field grammar tokens themselves (reserved case-folded).
-s" PRODUCT Bad<a> FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `Bad`\n"
-s" Bad" s" name must be a lowercase family tail" TDT-AT
-s" PRODUCT a FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `a`\n"
-s" a" s" reserved name" TDT-AT
-s" PRODUCT sumtype FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `sumtype`\n"
+\ a bad family name: another declaration's grammar keyword.
+s" STRUCTURE sumtype FIELD x n ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sumtype`\n"
 s" sumtype" s" reserved name" TDT-AT
-s" PRODUCT product FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `product`\n"
-s" product" s" reserved name" TDT-AT
-s" PRODUCT field FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `field`\n"
-s" field" s" reserved name" TDT-AT
-\ redeclaring an existing family tail (product over product, product over sum).
-s" PRODUCT tdpair<a,b> FIELD a a FIELD b b ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpair`\n"
-s" tdpair" s" duplicate family" TDT-AT
-s" PRODUCT tdres<a> FIELD x a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdres`\n"
-s" tdres" s" duplicate family" TDT-AT
-\ product / field are reserved as variant names too (case-folded dictionary).
-s" SUMTYPE tdpv<a> VARIANT product a ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpv`\n"
-s" product" s" reserved name" TDT-AT
+\ field is reserved as a variant name too (case-folded dictionary).
 s" SUMTYPE tdpv2<a> VARIANT field a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpv2`\n"
 s" field" s" reserved name" TDT-AT
-s" NEWTYPE product<a>"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `product`\n"
-s" product" s" reserved name" TDT-AT
 
 \ `POLICY <name>` header clause (docs/design.md "Families and layout policies").
 
-\ explicit stack-cell-tag accepts on sum, enum and product headers.
+\ explicit stack-cell-tag accepts on sum, enum and structure headers.
 package tpol
 SUMTYPE tdpol<a> POLICY stack-cell-tag
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
 ;SUMTYPE
 ENUM tdpolen POLICY stack-cell-tag red green blue ;ENUM
-PRODUCT tdpolpr POLICY stack-cell-tag FIELD x n FIELD y n ;PRODUCT
+STRUCTURE tdpolpr POLICY stack-cell-tag FIELD x n FIELD y n ;STRUCTURE
 \ packed-tag accepts on every header.
 SUMTYPE tdpolpk<a> POLICY packed-tag
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
 ;SUMTYPE
 ENUM tdpolpke POLICY packed-tag red green ;ENUM
-PRODUCT tdpolpkr POLICY packed-tag FIELD x n ;PRODUCT
+STRUCTURE tdpolpkr POLICY packed-tag FIELD x n ;STRUCTURE
 ;package
 \ Re-arm the diagnostic capture: it only silences stderr, so each section
 \ starts an empty one.
 REJECTION:CAPTURE
 \ boxed rejects on every header until it is lowered; niche-null rejects every
-\ shape but its one, a product included.
+\ shape but its one, a structure included.
 s" SUMTYPE tdpolns2<a> POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolns2`\n"
 s" tdpolns2" s" niche-null needs an empty variant, then one ptr field" TDT-AT
@@ -1665,9 +1555,9 @@ s\"   = help: replace `boxed` with `stack-cell-tag`, `packed-tag` or `niche-null
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdpolns4`\n"
 s" boxed" s" unknown layout policy" TDT-AT
-s" PRODUCT tdpolns5 POLICY niche-null FIELD x n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpolns5`\n"
-s" tdpolns5" s" niche-null needs an empty variant, then one ptr field" TDT-AT
+s" STRUCTURE tdpolns5 POLICY niche-null FIELD x n ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpolns5`\n"
+s" niche-null" s" niche-null needs an empty variant, then one ptr field" TDT-AT
 \ niche-null accepts its one shape, an empty variant then one `ptr` field; an
 \ ENUM of two empty variants is rejected.
 s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
@@ -1699,7 +1589,7 @@ s\" error[E-BAD-DECLARATION]: bad newtype declaration `policy`\n"
 s" policy" s" reserved name" TDT-AT
 
 \ A self-family payload makes the family recursive and rejects with
-\ the recursive reason, not an unknown payload, in ptr, inline, bare and field forms.
+\ the recursive reason, not an unknown payload, in ptr, inline and bare forms.
 s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec1`\n"
 s" tdrec1" s" invalid layout policy for recursive sum" TDT-AT
@@ -1709,13 +1599,11 @@ s" tdrec2" s" invalid layout policy for recursive sum" TDT-AT
 s" SUMTYPE tdrec3 VARIANT self tdrec3 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec3`\n"
 s" tdrec3" s" invalid layout policy for recursive sum" TDT-AT
-s" PRODUCT tdrec4 FIELD child tdrec4 ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdrec4`\n"
-s" tdrec4" s" invalid layout policy for recursive sum" TDT-AT
 \ the recursive reject is INDEPENDENT of the stated policy: a direct self-ref
 \ rejects the same under an explicit stack-cell-tag AND under packed-tag (packed
 \ keeps the cell width, so the width cycle is just as unrepresentable), on sum
-\ variants and product fields alike. boxed is the only policy that COULD lay out
+\ variants only: a STRUCTURE field naming its own family is a field type that
+\ cannot recursively name its owner. boxed is the only policy that COULD lay out
 \ recursion, and it is still reject-until-supported, so a recursive boxed sum
 \ rejects earlier — at the POLICY clause, before the self-ref.
 s" SUMTYPE tdrecpk1 POLICY packed-tag VARIANT self tdrecpk1 ;VARIANT ;SUMTYPE"
@@ -1724,9 +1612,6 @@ s" tdrecpk1" s" invalid layout policy for recursive sum" TDT-AT
 s" SUMTYPE tdrecpk2<a> POLICY packed-tag VARIANT node ptr tdrecpk2<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecpk2`\n"
 s" tdrecpk2" s" invalid layout policy for recursive sum" TDT-AT
-s" PRODUCT tdrecpk3 POLICY packed-tag FIELD child tdrecpk3 ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdrecpk3`\n"
-s" tdrecpk3" s" invalid layout policy for recursive sum" TDT-AT
 s" SUMTYPE tdrecsc1 POLICY stack-cell-tag VARIANT self tdrecsc1 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecsc1`\n"
 s" tdrecsc1" s" invalid layout policy for recursive sum" TDT-AT
@@ -1794,15 +1679,15 @@ SUMTYPE tdqv
   VARIANT qwrap TDQP:qsum ;VARIANT
 ;SUMTYPE
 \ in-package: a package's OWN private cell family is a payload by bare tail,
-\ and a product FIELD takes the qualified public cell family.
+\ and a STRUCTURE FIELD takes the qualified public cell family.
 package tdqc
 NEWTYPE cslot
 SUMTYPE cwrap
   VARIANT cv cslot ;VARIANT
 ;SUMTYPE
-PRODUCT cprod
+STRUCTURE cprod
   FIELD child tdqp:qslot
-;PRODUCT
+;STRUCTURE
 ;package
 \ negatives: each record names its reason.
 \ a bogus qualifier never resolves.
@@ -1824,7 +1709,7 @@ s" SUMTYPE tdqb5 VARIANT bv tdqp:QSLOT ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb5`\n"
 s" tdqp:QSLOT" s" unknown payload type" TDT-AT
 \ a QUALIFIED self-reference is the same recursion as the bare spelling:
-\ private, public, ptr-wrapped, and product-field forms all reject recursive.
+\ private, public, ptr-wrapped and STRUCTURE field forms all reject it.
 package tdqs
 s" SUMTYPE qself VARIANT wv tdqs:qself ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qself`\n"
@@ -1832,9 +1717,9 @@ s" tdqs:qself" s" invalid layout policy for recursive sum" TDT-AT
 s" SUMTYPE qselfr VARIANT wv ptr tdqs:qselfr ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfr`\n"
 s" tdqs:qselfr" s" invalid layout policy for recursive sum" TDT-AT
-s" PRODUCT qsprod FIELD child tdqs:qsprod ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `qsprod`\n"
-s" tdqs:qsprod" s" invalid layout policy for recursive sum" TDT-AT
+s" STRUCTURE qsprod FIELD child tdqs:qsprod ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `qsprod`\n"
+s" tdqs:qsprod" s" field type cannot recursively name its owner" TDT-AT
 public
 s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfp`\n"
@@ -1864,18 +1749,10 @@ s" ok" s" duplicate variant" TDT-AT
 s" ENUM tdcol2 DERIVE eq red tag blue ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdcol2`\n"
 s" tag" s" variant name collides with a derived word" TDT-AT
-s" PRODUCT tdini<a> DERIVE init FIELD value a ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdini`\n"
-s" tdini" s" derive init requires a canonical fixed-cell record" TDT-AT
 \ the enum kind token flows into the same declaration-shaped prose record.
 s" ENUM tdediag red red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdediag`\n"
 s" red" s" duplicate variant" TDT-AT
-\ PRODUCT delegates reserved field names to the PF registry truth while the
-\ declaration layer owns the exact token/reason record.
-s" PRODUCT tdpfdiag FIELD make n ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdpfdiag`\n"
-s" make" s" reserved field name" TDT-AT
 \ A policy rejection flows into the same declaration-shaped prose record.
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpoldg`\n"
@@ -2078,10 +1955,10 @@ TDSV-TAG-P 2 T=
 s" TDSV-RAW ( tdsv tdsv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ product field-wise eq; the col field compares through TDRV:EQ.
-PRODUCT tdpv DERIVE eq
+STRUCTURE tdpv DERIVE eq
   FIELD col tdrv
   FIELD amt n
-;PRODUCT
+;STRUCTURE
 : TDPV-EQ ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 7 TDPV:MAKE TDPV:EQ ;
 : TDPV-NEQ-C ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:GREEN 7 TDPV:MAKE TDPV:EQ ;
 : TDPV-NEQ-N ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 8 TDPV:MAKE TDPV:EQ ;
@@ -2108,8 +1985,8 @@ s" SUMTYPE tdsb3 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb3`\n"
 s" tdown" s" payload type has no derived equality" TDT-AT
 s\"   = help: give the payload an integer type, or drop `eq` and `hash` from `DERIVE`\n" TDT-HAS
-s" PRODUCT tdsb4 DERIVE eq FIELD cc tdrw ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdsb4`\n"
+s" STRUCTURE tdsb4 DERIVE eq FIELD cc tdrw ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdsb4`\n"
 s" tdrw" s" field family must also derive eq" TDT-AT
 s\"   = help: add `DERIVE eq` to the field's family, or drop `eq` from this `DERIVE`\n" TDT-HAS
 \ an OPAQUE family's derived words are private to its package.
@@ -2117,8 +1994,8 @@ package tdsbo
 public
 STRUCTURE inner OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
 ;package
-s" PRODUCT tdsb7 DERIVE eq FIELD w tdsbo:inner ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdsb7`\n"
+s" STRUCTURE tdsb7 DERIVE eq FIELD w tdsbo:inner ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdsb7`\n"
 s" tdsbo:inner" s" field family's derived words are private to its package" TDT-AT
 s\"   = help: declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`\n" TDT-HAS
 s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE"
@@ -2168,10 +2045,10 @@ TDHS-D3 TFALSE
 
 \ product hash: order-free `DERIVE hash eq`; the col field folds TDHE:HASH.
 ENUM tdhe DERIVE eq hash red green ;ENUM
-PRODUCT tdhp DERIVE hash eq
+STRUCTURE tdhp DERIVE hash eq
   FIELD col tdhe
   FIELD amt n
-;PRODUCT
+;STRUCTURE
 : TDHP-C ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHE:RED 7 TDHP:MAKE TDHP:EQ ;
 : TDHP-H ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHP:HASH TDHE:RED 7 TDHP:MAKE TDHP:HASH = ;
 : TDHP-D1 ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHP:HASH TDHE:GREEN 7 TDHP:MAKE TDHP:HASH = ;
@@ -2181,7 +2058,7 @@ TDHP-H TTRUE
 TDHP-D1 TFALSE
 TDHP-D2 TFALSE
 
-\ A PRODUCT of 256 one-cell fields derives eq and hash; its EQ binds a local
+\ A STRUCTURE of 256 one-cell fields derives eq and hash; its EQ binds a local
 \ per field of each value.
 package WIDE-DERIVE-TEST
 
@@ -2197,9 +2074,9 @@ variable BUF-N
 : NUM+ ( n -- ) {: v:n :}   \ three decimal digits
    v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
 : DECL$ ( -- ptr u8 n )
-   0 BUF-N !  s" PRODUCT tdeq256 DERIVE eq hash" APPEND
+   0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq hash" APPEND
    256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
-   s"  ;PRODUCT" APPEND  BUF BUF-N @ ;
+   s"  ;STRUCTURE" APPEND  BUF BUF-N @ ;
 : VALUE+ ( n -- ) {: odd:n :}   \ field i holds i, field odd holds 999
    256 0 ?do
       i odd = IF 999 ELSE i THEN NUM+  32 C+
@@ -2253,10 +2130,10 @@ SUMTYPE tdbs DERIVE eq hash
   VARIANT bnil ;VARIANT
   VARIANT bpair n n ;VARIANT
 ;SUMTYPE
-PRODUCT tdbp DERIVE eq hash
+STRUCTURE tdbp DERIVE eq hash
   FIELD col tdbe
   FIELD amt n
-;PRODUCT
+;STRUCTURE
 ;package
 package tdbc
 public
@@ -2265,10 +2142,10 @@ SUMTYPE tdbs DERIVE eq hash
   VARIANT bnil ;VARIANT
   VARIANT bpair n n ;VARIANT
 ;SUMTYPE
-PRODUCT tdbp DERIVE eq hash
+STRUCTURE tdbp DERIVE eq hash
   FIELD col tdbe
   FIELD amt n
-;PRODUCT
+;STRUCTURE
 ;package
 : TDBW-E1 ( -- bool ) TDBW-TDBE:RED TDBW-TDBE:RED TDBW-TDBE:EQ ;
 : TDBW-E2 ( -- bool ) TDBW-TDBE:RED TDBW-TDBE:GREEN TDBW-TDBE:EQ ;
@@ -2321,10 +2198,10 @@ public
 : HASH ( tdbx:tdxe -- n ) drop 7 ;
 ;package
 public
-PRODUCT tdyp DERIVE eq hash
+STRUCTURE tdyp DERIVE eq hash
   FIELD col tdbx:tdxe
   FIELD amt n
-;PRODUCT
+;STRUCTURE
 SUMTYPE tdys DERIVE eq hash
   VARIANT ywrap tdbx:tdxe ;VARIANT
 ;SUMTYPE
@@ -2357,8 +2234,8 @@ s" hash" s" variant name collides with a derived word" TDT-AT
 s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhb3`\n"
 s" ptr" s" pointer payloads have no derived equality" TDT-AT
-s" PRODUCT tdhb4 DERIVE hash FIELD cc tdrw ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdhb4`\n"
+s" STRUCTURE tdhb4 DERIVE hash FIELD cc tdrw ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdhb4`\n"
 s" tdrw" s" field family must also derive hash" TDT-AT
 s\"   = help: add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`\n" TDT-HAS
 
@@ -2368,7 +2245,7 @@ SUMTYPE tdfs DERIVE eq hash
   VARIANT fnil ;VARIANT
   VARIANT fpair n n ;VARIANT
 ;SUMTYPE
-PRODUCT tdfp DERIVE eq hash FIELD s tdfs ;PRODUCT
+STRUCTURE tdfp DERIVE eq hash FIELD s tdfs ;STRUCTURE
 : TDFP-12 ( -- tdfp ) 1 2 TDFS:FPAIR TDFP:MAKE ;
 : TDFP-EQ ( -- bool ) TDFP-12 TDFP-12 TDFP:EQ ;
 : TDFP-NEQ ( -- bool ) TDFP-12 1 3 TDFS:FPAIR TDFP:MAKE TDFP:EQ ;
@@ -2383,16 +2260,16 @@ SUMTYPE tdfw DERIVE eq VARIANT fhold tdfe ;VARIANT VARIANT fnone ;VARIANT ;SUMTY
 : TDFW-NEQ ( -- bool ) TDFE:RED TDFW:FHOLD TDFE:GREEN TDFW:FHOLD TDFW:EQ ;
 TDFW-EQ TTRUE
 TDFW-NEQ TFALSE
-PRODUCT tdfi DERIVE eq FIELD u n ;PRODUCT
-PRODUCT tdfo DERIVE eq FIELD w tdfi ;PRODUCT
+STRUCTURE tdfi DERIVE eq FIELD u n ;STRUCTURE
+STRUCTURE tdfo DERIVE eq FIELD w tdfi ;STRUCTURE
 : TDFO-EQ ( -- bool ) 4 TDFI:MAKE TDFO:MAKE 4 TDFI:MAKE TDFO:MAKE TDFO:EQ ;
 : TDFO-NEQ ( -- bool ) 4 TDFI:MAKE TDFO:MAKE 5 TDFI:MAKE TDFO:MAKE TDFO:EQ ;
 TDFO-EQ TTRUE
 TDFO-NEQ TFALSE
 \ the field's family derives what the outer does, or the declaration is refused.
 REJECTION:CAPTURE
-s" PRODUCT tdfb DERIVE hash FIELD c tdrv ;PRODUCT"
-s\" error[E-BAD-DECLARATION]: bad product declaration `tdfb`\n"
+s" STRUCTURE tdfb DERIVE hash FIELD c tdrv ;STRUCTURE"
+s\" error[E-BAD-DECLARATION]: bad structure declaration `tdfb`\n"
 s" tdrv" s" field family must also derive hash" TDT-AT
 REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 
@@ -2455,7 +2332,7 @@ TDLV-EQ2 TTRUE
 TDLV-BRT 1 T=
 TDLV-BRF 11 T=
 \ single-field product (W=1 layout tier) rides the same path.
-PRODUCT tdlp FIELD amt n ;PRODUCT
+STRUCTURE tdlp FIELD amt n ;STRUCTURE
 : TDLP-ID ( tdlp -- tdlp ) {: x:tdlp :} x ;
 : TDLP-RT ( -- n ) 7 TDLP:MAKE TDLP-ID TDLP:UNMAKE ;
 TDLP-RT 7 T=
@@ -2610,7 +2487,7 @@ s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 \ option<tdpbw2>'s tag sits at slot 2 (declared family width would put it at
 \ slot 1). TDPA1-3 reject: wrong-width payload two ways, cross-family bundle.
 \ The raw multi-token runs (TDPB1-3) stay rejected.
-PRODUCT tdpbw2 FIELD x n FIELD y n ;PRODUCT
+STRUCTURE tdpbw2 FIELD x n FIELD y n ;STRUCTURE
 s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN2 ( tdpbres<tdpbw2,n> -- tdpbres<tdpbw2,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN3 ( tdpbres<tdpbw2,tdpbw2> -- tdpbres<tdpbw2,tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -2640,7 +2517,7 @@ s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUI
 
 \ A named multi-cell family instance as another's payload: every width site
 \ recurses through the arguments (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH).
-PRODUCT tdnw2 FIELD x n FIELD y n ;PRODUCT
+STRUCTURE tdnw2 FIELD x n FIELD y n ;STRUCTURE
 SUMTYPE tdnopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 SUMTYPE tdnres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE! -1 T=

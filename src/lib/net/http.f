@@ -4,18 +4,20 @@
 \ request id). A kept-alive connection waits for its next request parked with
 \ the listener, not a worker, so no kept-alive connection delays a queued job;
 \ a newly accepted one waits for its first request on a worker, up to IDLE-MS.
-\ A handler runs once the head is read; the body is read when the handler asks for it (BODY$), and one
-\ it leaves unread closes the connection after the answer. Requires
-\ http-arena.f, http-request.f, http-response.f, http-router.f and
-\ http-static.f.
+\ A handler runs once the head is read; the body is read when the handler asks
+\ for it (BODY$), and one it leaves unread closes the connection after the
+\ answer. Requires http-arena.f, http-request.f, http-response.f, http-router.f
+\ and http-static.f.
 \ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
 \ before START, and per-request state is each worker's slot row (http-arena.f).
-\ TASK-LOCAL: per-task slots.
+\ TASK-LOCAL: REPLY's connection and drain room, per-task slots.
 require src/lib/net/http-static.f
 require src/lib/task.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
 require src/lib/aio.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/log.f
 
 package HTTP
@@ -28,6 +30,7 @@ $40 constant JOB-SLOTS            \ connections queued before the listener waits
 $40 constant PARK-SLOTS           \ kept-alive connections parked at once
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
+$100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener waits before reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
@@ -137,6 +140,11 @@ variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
 variable ACCEPTED-COUNT           \ connections the listener has taken since START
+
+\ REPLY's drain room: its task has no worker slot, whose input buffer a worker
+\ drains into. REPLYING is the connection REPLY's close takes on every way out.
+TASK:+USER REPLYING n
+LINGER-CAP TASK:+USERS LINGER-SCRATCH u8
 
 \ No task is live while this file loads, so the locks are made ready here;
 \ they are never destroyed.
@@ -1180,6 +1188,43 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    loop ;
 
 
+: LINGER-ROOM ( -- SPAN:span<u8> )
+   0 LINGER-SCRATCH LINGER-CAP SPAN:MAKE ;
+
+
+: REPLY-HEAD ( n ptr u8 n n -- ) {: status:n type:ptr type-n:n body-n:n :}
+   SB-RESET
+   s" HTTP/1.1 " SB-APPEND
+   status FMT:SB-U
+   SP SB-APPEND-C
+   status REASON$ SB-APPEND
+   s\" \r\nContent-Type: " SB-APPEND
+   type type-n SB-APPEND
+   s\" \r\n" SB-APPEND
+   status BODYLESS? 0= if
+      s" Content-Length: " SB-APPEND
+      body-n FMT:SB-U
+      s\" \r\n" SB-APPEND
+   then
+   s\" Connection: close\r\n\r\n" SB-APPEND ;
+
+
+: CLOSE-REPLYING ( -- )
+   REPLYING @ TCP4:>CONNECTION CLOSE-CONNECTION ;
+
+
+: SEND-REPLY ( n ptr u8 n ptr u8 n -- bool )
+   {: status:n type:ptr type-n:n body:ptr body-n:n :}
+   status type type-n body-n REPLY-HEAD
+   REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
+   conn SB$ WRITE-SPAN 0= if false exit then
+   status BODYLESS? 0= if
+      conn body body-n WRITE-SPAN 0= if false exit then
+   then
+   conn LINGER-ROOM LINGER
+   true ;
+
+
 public
 
 \ Configure the incoming body bound before START. Zero accepts only empty
@@ -1271,7 +1316,8 @@ public
 
 
 \ The connection and the peer's bytes past what the worker read (valid until the
-\ handler ends), now the taker's to close; E-STATE outside a handler or a second time.
+\ handler ends); the taker closes it, or REPLY does. E-STATE outside a handler
+\ or a second time.
 : TAKE-OVER ( request -- TCP4:connection ptr u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
@@ -1280,6 +1326,19 @@ public
    0 idx SERVING-LIVE !
    idx SERVING @
    idx idx IN-AT@ idx AVAIL SPAN$ ;
+
+
+\ One whole answer on a connection a handler took, from any task: the status,
+\ the content type and the body, with Connection: close; a BODYLESS? status
+\ sends no length and no body. Then the lingering close an answered worker
+\ connection gets. True when the OS took every byte, false when a write failed
+\ (the peer has reset the connection). The head is built in the calling task's
+\ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
+\ closes the connection on every way out, a throw or a TASK:HALT included.
+: REPLY ( TCP4:connection n ptr u8 n ptr u8 n -- bool )
+   {: conn:TCP4:connection status:n type:ptr type-n:n body:ptr body-n:n :}
+   conn TCP4:CONNECTION>N REPLYING !
+   status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
 
 
 \ The address and port to listen on, how many request workers to run, and how

@@ -165,14 +165,14 @@ here LB-DP 0 ptr-field !
 LBTK-DUP-RC CHECKER-REJECT-RC T=
 here LB-DP 0 ptr-field @ = TTRUE
 
-\ PRODUCT positive: MAKE, typed store, fetch and UNMAKE round-trip through
-\ memory; the product cases above only reject.
+\ STRUCTURE positive: MAKE, typed store, fetch and UNMAKE round-trip through
+\ memory.
 ENUM lbhue red green blue ;ENUM
 
-PRODUCT lbrec
+STRUCTURE lbrec
   FIELD hue lbhue
   FIELD cnt n
-;PRODUCT
+;STRUCTURE
 
 3 LAYOUT-BUFFER LBP-BUF lbrec
 

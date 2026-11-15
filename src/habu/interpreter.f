@@ -2867,7 +2867,6 @@ private
    s" newtype" TOKEN-IS? if true exit then
    s" deftype" TOKEN-IS? if true exit then
    s" deflinear" TOKEN-IS? if true exit then
-   s" product" TOKEN-IS? if true exit then
    s" arena" TOKEN-IS? if true exit then
    s" heap" TOKEN-IS? ;
 

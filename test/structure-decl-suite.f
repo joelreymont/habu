@@ -312,8 +312,7 @@ s" STRUCTURE sdgfn FIELD make n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgfn`\n" DECL-DIAG:HAS? TTRUE
 s" make" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
 
-\ a terminator that never arrives anchors on the family, exactly as the legacy
-\ unterminated-declaration packet does (sumtype.f TDECL-PRODUCT-NOEND-BODY).
+\ a terminator that never arrives anchors on the family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnoend FIELD a n" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnoend`\n" DECL-DIAG:HAS? TTRUE

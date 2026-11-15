@@ -267,10 +267,10 @@ s" CONSTRUCT-OWN" type cr
 
 \ Product generated words: a PUBLIC product publishes empty-bodied PKG:MAKE and
 \ PKG:UNMAKE, since its value is its field cells in slot order (no tag).
-PRODUCT zpt
+STRUCTURE zpt
   FIELD x n
   FIELD y n
-;PRODUCT
+;STRUCTURE
 : ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
 : ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
 : ZPT-RT ( -- n n ) 3 4 ZPT:MAKE ZPT:UNMAKE ;
@@ -291,17 +291,17 @@ s" PB4 ( zpt -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 \ construct is kind-gated to sum/enum: no token form for products.
 s" PB6 ( n n -- zpt ) construct zpt make" CHECK-QUIET-CANDIDATE! 0 T=
-PRODUCT zbuf
+STRUCTURE zbuf
   FIELD cap n
   FIELD raw ptr u8
-;PRODUCT
+;STRUCTURE
 : ZBUF-MK ( n ptr u8 -- zbuf ) ZBUF:MAKE ;
 : ZBUF-UN ( zbuf -- n ptr u8 ) ZBUF:UNMAKE ;
 s" GEN-PRODUCT-PTR" type cr
-PRODUCT zpr<a,b>
+STRUCTURE zpr<a,b>
   FIELD fst a
   FIELD snd b
-;PRODUCT
+;STRUCTURE
 : ZPR-MK ( n n -- zpr<n,n> ) ZPR:MAKE ;
 : ZPR-UN ( zpr<n,n> -- n n ) ZPR:UNMAKE ;
 : ZPR-G ( a b -- zpr<a,b> ) ZPR:MAKE ;
@@ -319,9 +319,9 @@ s" PL3 ( zpr<own,n> -- own n ) ZPR:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 \ package state survives generation.
 package zppk
 public
-PRODUCT prow
+STRUCTURE prow
   FIELD v n
-;PRODUCT
+;STRUCTURE
 ;package
 : ZPPK-MK ( n -- zppk:prow ) ZPPK-PROW:MAKE ;
 : ZPPK-UN ( zppk:prow -- n ) ZPPK-PROW:UNMAKE ;
@@ -330,9 +330,9 @@ s" GEN-PRODUCT-PKG" type cr
 \ private PHID-MAKE and PHID-UNMAKE.
 package zpsec
 private
-PRODUCT phid
+STRUCTURE phid
   FIELD v n
-;PRODUCT
+;STRUCTURE
 ;package
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
 s" package zpt" TCE-PROTECTED
@@ -343,7 +343,7 @@ s" undefine zpt:unmake" TCE-PROTECTED
 s" PRODUCT-PROTECTED" type cr
 
 \ The adversarials' compile-hook stderr is expected.
-PRODUCT clw2 FIELD x n FIELD y n ;PRODUCT
+STRUCTURE clw2 FIELD x n FIELD y n ;STRUCTURE
 SUMTYPE clopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 0 T=
 s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 0 T=
@@ -362,7 +362,7 @@ CLFC-RT-NONEG 999 T=
 CLFC-RT-NONER 999 T=
 \ named payload products: result<clw2,n> (W=2 ok payload + cell err) and
 \ option<clfs3> (W=3 payload).
-PRODUCT clfs3 FIELD a n FIELD b n FIELD c n ;PRODUCT
+STRUCTURE clfs3 FIELD a n FIELD b n FIELD c n ;STRUCTURE
 SUMTYPE clfres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 : CLFC-ROK ( n n -- clfres<clw2,n> ) CLW2:MAKE CLFRES:OK ;
 : CLFC-RERR ( n -- clfres<clw2,n> ) CLFRES:ERR ;
@@ -436,7 +436,7 @@ s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 \ so the construct reject isolates to the negative extra.
 package XPAD-ASYM
 public
-PRODUCT clx2 FIELD x n FIELD y n ;PRODUCT
+STRUCTURE clx2 FIELD x n FIELD y n ;STRUCTURE
 SUMTYPE clxg<a>
   VARIANT wtwo a a ;VARIANT
   VARIANT wthree n n n ;VARIANT
@@ -507,7 +507,7 @@ XPGW-LIVE
 ;package
 \ A concrete instantiation that certifies proves the word resolves, so the wide
 \ rc 70 is a negative-extra reject, not an undefined word.
-s" PRODUCT xw2 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
+s" STRUCTURE xw2 FIELD x n FIELD y n ;STRUCTURE" TCE-CATCH 0 T=
 \ xst<xw2>: stable(n n n, declared 3) is sole argmax both ways; grow(a, declared 1) instantiates
 \ to 2 -> extra(grow) = (3-2) - (3-1) = -1 (a non-widest variant that grows).
 s" SUMTYPE xst<a> VARIANT stable n n n ;VARIANT VARIANT grow a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
@@ -639,10 +639,10 @@ public
 
 ENUM rfbtag red blue ;ENUM
 ENUM rfberr bad worse ;ENUM
-PRODUCT rfbprod FIELD value n ;PRODUCT
+STRUCTURE rfbprod FIELD value n ;STRUCTURE
 NEWTYPE rfbcell<a>
 NEWTYPE rfbpair<a,b>
-PRODUCT rfbwone<a> FIELD value a ;PRODUCT
+STRUCTURE rfbwone<a> FIELD value a ;STRUCTURE
 
 \ Each constructor arm grounds its own parameter. The conditional forces the
 \ independently checked arms through one joined result, then MATCH proves the

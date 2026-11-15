@@ -1554,9 +1554,10 @@ public
 \ range empty. The accessors below are the one seam for both. A sum/enum family
 \ with a nonzero declared field count uses TYPE-FIELD for every variant; bad
 \ bounds, ownership or a missing named index are invariant failures, never a
-\ fallback into positional storage. PRODUCT keeps positional schemas for its
-\ make/unmake variants. An all-empty family has no payload either way. Only a
-\ bounded, committed, variant-owned field slice is a valid named representation.
+\ fallback into positional storage. A product family keeps positional schemas
+\ for its make/unmake variants. An all-empty family has no payload either way.
+\ Only a bounded, committed, variant-owned field slice is a valid named
+\ representation.
 
 private
 
@@ -2180,8 +2181,6 @@ public
    a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" derive" CORE-STR=CI ;
@@ -2279,7 +2278,7 @@ public
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
-\ The family-name gate every family definer asks: SUMTYPE, PRODUCT and NEWTYPE
+\ The family-name gate every family definer asks: SUMTYPE and NEWTYPE
 \ (sumtype.f) and the STRUCTURE and ENUM front ends. A family tail must be one an
 \ effect reads as that family. The effect parser reads a value record name
 \ (checker.f PSTACK) and a bare `ptr` (SIG-PTR-TOK?) ahead of any family, and an
@@ -2307,9 +2306,8 @@ seal-package
 package TFAM
 
 \ A field tail may not spell a grammar keyword, a control word (TYPE-NAME:CONTROL?)
-\ or a generated-operation name, on every path that registers a field row:
-\ PRODUCT through TDECL-REQUIRE-FIELD-NAME and the STRUCTURE / ENUM front ends
-\ through TYPE-FIELD-OWNER:ADD.
+\ or a generated-operation name, on every path that registers a field row: the
+\ STRUCTURE and ENUM front ends, through TYPE-FIELD-OWNER:ADD.
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
@@ -3297,7 +3295,7 @@ LOAN-FIELD-FAM @ 0 PK-REGION TFAM-PK!
 LOAN-FIELD-FAM @ 1 PK-TYPE TFAM-PK!
 
 \ C2's shared and exclusive views have the same address-and-bound stack layout.
-\ They are family records rather than PRODUCT declarations: no constructor,
+\ They are family records rather than STRUCTURE declarations: no constructor,
 \ destructor, or address accessor is published. The fields describe their ABI
 \ for width-aware transport and image replay; checked code cannot project them.
 private
@@ -4153,9 +4151,10 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
-\ The initialized-record surface is a bounded view of committed PRODUCT
-\ fields. The physical record is canonical cell storage, and each substituted
-\ field must still occupy the cells and byte range its committed id describes.
+\ The initialized-record surface is a bounded view of a product family's
+\ committed fields. The physical record is canonical cell storage, and each
+\ substituted field must still occupy the cells and byte range its committed id
+\ describes.
 \ Comparing only the total width would accept two fields whose changed widths
 \ cancel while the second field's committed offset is now wrong.
 : INIT-NO-RECORD ( -- n n n bool ) 0 0 0 RES-FALSE ;
@@ -4651,9 +4650,10 @@ private
 
 \ Extra pads = instantiated pads - declared pads; instantiated pads =
 \ instantiated payload slots - instantiated payload cells. Only a SUM or ENUM
-\ has a tag cell; a PRODUCT's whole width is payload (scg<scinr>, a parametric
-\ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
-\ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
+\ has a tag cell; a product family's whole width is payload (scg<scinr>, a
+\ parametric STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a
+\ tag would report extra -1), so TFC-TAG-CELLS keys the subtraction off the
+\ family kind.
 \ A negative extra on a construct (the widest declared variant is not the
 \ widest instantiated one, or a non-widest variant grows more) is a
 \ contradiction: its lowering pushes the declared pads and can only add cells,
@@ -4662,7 +4662,7 @@ private
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    MD-CONSTRUCT-WIDE MDIAG!  0 OK ! -1 FAILSET ! ;
 
-: TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless PRODUCT/STRUCTURE
+: TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless product family
    dup TFAM-SUM? IF drop 1 EXIT THEN
    TFAM-ENUM? IF 1 ELSE 0 THEN ;
 
