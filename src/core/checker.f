@@ -6841,12 +6841,11 @@ variable VRC-RVN
    REPEAT ;
 
 \ The names one effect text gives its type variables and binders: 23 letters,
-\ then the ordinals 23 to 255. A letter's NMAP slot is its code minus 97, an
-\ ordinal's the ordinal plus 3.
-256 constant TYPE-VAR-MAX
+\ then the ordinals from 23. A letter's NMAP slot is its code minus 97, an
+\ ordinal's the ordinal plus 3; a slot holds its name's variable, else UNBOUND.
 32 constant BINDER-DEPTH-MAX   \ binders nested in one signature
-create NMAP TYPE-VAR-MAX 3 + cells allot
 CHECKER-REG:SCRATCH{
+PTR-VARIABLE NMAP-P   variable NMAP-CAP   \ the slots and their count
 variable BIND-DEPTH
 create BIND-DOMAINS BINDER-DEPTH-MAX cells allot
 variable SIG-LEVEL         \ the level TERM-DEPTH gives the type SIG-TYPE reads,
@@ -6855,7 +6854,16 @@ CHECKER-REG:}SCRATCH
 
 
 : NMAP-RESET ( -- )
-   0 BEGIN dup TYPE-VAR-MAX 3 + < WHILE dup cells NMAP + UNBOUND swap ! 1 + REPEAT drop ;
+   NMAP-P @ 0 NMAP-CAP @ ARENA-CELLS-UNBOUND ;
+
+\ Slot N's cell, the table doubled to hold it when N is past its end.
+: NMAP-SLOT ( n -- ptr n ) {: n:n :}
+   NMAP-CAP @ {: oc:n :}
+   n oc >= IF
+      NMAP-P NMAP-CAP n 1 + 1 ARENA-ROWS-ENSURE
+      NMAP-P @ oc NMAP-CAP @ ARENA-CELLS-UNBOUND
+   THEN
+   NMAP-P @ n cells + ;
 
 
 \ A signature's fresh names, by index: each spelling's address and length.
@@ -7157,8 +7165,13 @@ PTR-VARIABLE SIG-CREATES-A   variable SIG-CREATES-U
 \ none; parsed the same way.
 PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
 
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
+CHECKER-REG:}SCRATCH
+
 \ The NMAP slot a type-variable token names, -1 for none: a lowercase letter
-\ other than f, n and r, or, in facts text only, an ordinal 23 to TYPE-VAR-MAX - 1.
+\ other than f, n and r, or, in facts text only, an ordinal from 23. Ordinals
+\ run densely from 23, so one at or past the text's length plus 23 names none.
 : SIG-VAR-SLOT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    u 1 = IF
@@ -7167,19 +7180,19 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
    THEN
    SIG-FACTS-MODE @ 0= u 0 = or IF -1 EXIT THEN
    a c@ 48 = IF -1 EXIT THEN
-   \ The value stops growing at TYPE-VAR-MAX, so no digit run overflows.
-   0 0 BEGIN over TYPE-VAR-MAX < over u < and WHILE
+   \ The value stops growing at SL plus 23, so no digit run overflows.
+   0 0 BEGIN over SL @ 23 + < over u < and WHILE
       a over + c@ dup DIGIT? 0= IF drop 2drop -1 EXIT THEN
       48 - rot 10 * + swap 1 +
    REPEAT drop
-   dup 23 < over TYPE-VAR-MAX >= or IF drop -1 EXIT THEN
+   dup 23 < over SL @ 23 + >= or IF drop -1 EXIT THEN
    3 + ;
 
 \ One locals group only: a second `{: i :}` group mis-reads the slot in the
 \ standalone, collapsing every var to one.
 : SLOT>VAR ( n -- n )
    {: slot:n :}
-   slot cells NMAP +
+   slot NMAP-SLOT
    dup @ UNBOUND = IF FRESH over ! THEN
    @ dup UNBOUND < IF
       BIND-DEPTH @ + 1 + dup BIND-DEPTH @ swap - 1- cells BIND-DOMAINS + @
@@ -7363,7 +7376,6 @@ variable SIGSCOPE-U
 \ grammar.
 
 CHECKER-REG:SCRATCH{
-PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 PTR-VARIABLE PKA  variable PKU                        \ one-token push-back
 CHECKER-REG:}SCRATCH
 variable PKHAVE
@@ -7585,9 +7597,8 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
       domain BIND-SCOPE <> IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN
       2drop bound SIG-INSIDE-ROOTS
    ELSE PK! 0 0 THEN {: parent:n second:n :}
-   bound cells NMAP + {: slot:ptr :}
-   slot @ {: saved:n :}
-   BIND-DEPTH @ negate 2 - slot !
+   bound NMAP-SLOT @ {: saved:n :}
+   BIND-DEPTH @ negate 2 - bound NMAP-SLOT !
    domain BIND-DEPTH @ cells BIND-DOMAINS + !
    BIND-DEPTH @ 1 + BIND-DEPTH !
    s" ," EXPECT-SIG
@@ -7595,7 +7606,8 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
    body TAG T-QUOT <> body TAG T-FORALL <> and IF name width SGBAD-SYNTAX! THEN
    s" >" EXPECT-SIG
    BIND-DEPTH @ 1 - BIND-DEPTH !
-   saved slot !
+   \ The body may have grown NMAP, so the slot is looked up again.
+   saved bound NMAP-SLOT !
    parent 0= IF 0 0 domain body MK-FORALL-IN ELSE
       parent second BIND-CHILD body MK-FORALL-IN THEN ;
 : SIG-FORALL ( -- n ) BIND-SCOPE SIG-FORALL-DOMAIN ;
@@ -8030,7 +8042,7 @@ CHECKER-REG:}SCRATCH
 : TAG-VAR ( ptr u8 n bool bool -- n )
    {: a:ptr u:n vars:bool rows:bool :}
    vars IF
-      a u SIG-VAR-SLOT dup 0 >= IF cells NMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
+      a u SIG-VAR-SLOT dup 0 >= IF NMAP-SLOT @ dup 0 < IF drop -1 THEN EXIT THEN
       drop
    THEN
    u 1 <> IF -1 EXIT THEN
@@ -11757,7 +11769,7 @@ CHECKER-REG:}SCRATCH
 : RECUR-MAP-KEEP ( -- )
    0 RECUR-MAP-N !
    26 0 ?do
-      i cells NMAP + @ dup 0 >= IF
+      i NMAP-SLOT @ dup 0 >= IF
          dup RECUR-LOCAL dup 0 >= IF RECUR-MAP+ ELSE 2drop THEN
       ELSE drop THEN
    loop ;
@@ -22192,7 +22204,7 @@ variable NP-SEEN-N
 : NP-LETTER ( n -- n )   \ generic effect source letter, else '?'; not a declaration position
    {: id:n :}
    0 BEGIN dup 26 < WHILE
-      dup cells NMAP + @ id = IF 97 + EXIT THEN
+      dup NMAP-SLOT @ id = IF 97 + EXIT THEN
       1 +
    REPEAT drop 63 ;
 

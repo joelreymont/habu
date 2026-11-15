@@ -2374,10 +2374,10 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+
    6 16 6 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ LSPT-WIDE's inferred effect has more than TYPE-VAR-MAX type variables: the
-\ check verifies it and warns at its name that the effect is not recorded.
+\ LSPT-WIDE's inferred effect nests 33 binders, more than an effect text holds:
+\ the check verifies it and warns at its name that the effect is not recorded.
 : WIDENS ( -- ptr u8 n )
-   s\" defer LSPT-V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )\n: LSPT-WIDE LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 ;\n" ;
+   s\" defer LSPT-MK ( -- a )\n: LSPT-UN ( forall<p,[ a -- ]> -- a ) drop LSPT-MK ;\n: LSPT-WIDE LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN ;\n" ;
 
 : NOT-RECORDED-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2386,7 +2386,7 @@ USE-MAX 1 + constant OVER-USINGS
    SESSION-CAPABILITIES
    WIDENS A-PATH CHECKS
    A-PATH s" verified" COMPLETED
-   A-PATH 1 EXPECT 1 2 1 11 2 s" W-EFFECT-NOT-RECORDED" DIAG+ PUBLISHES ;
+   A-PATH 1 EXPECT 2 2 2 11 2 s" W-EFFECT-NOT-RECORDED" DIAG+ PUBLISHES ;
 
 : TWO-USED ( -- ptr u8 n )
    s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;

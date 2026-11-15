@@ -464,19 +464,22 @@ variable RC
    1 s" message" s" cannot find word `undefined-word`" FIELD=
    1 s" undefined-word" 2 14 27 41 AT ;
 
-\ WIDE's inferred effect has more than TYPE-VAR-MAX type variables: the checker
-\ certifies it and warns, at its name, that the effect is not recorded.
+\ WIDE's inferred effect nests 33 binders, more than an effect text holds: the
+\ checker certifies it and warns, at its name, that the effect is not recorded.
 : NOT-RECORDED-TEXT ( -- )
    SB-RESET
-   s" defer V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )" SB-APPEND LF+ LF+
+   s" defer V-MK ( -- a )" SB-APPEND LF+
+   s" : V-UN ( forall<p,[ a -- ]> -- a ) drop V-MK ;" SB-APPEND LF+
    s" :   WIDE" SB-APPEND LF+
-   s"    V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 ;" SB-APPEND LF+ ;
+   s"    V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN" SB-APPEND LF+
+   s"    V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN" SB-APPEND LF+
+   s"    V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN ;" SB-APPEND LF+ ;
 
 : NOT-RECORDED ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
    0 s" message" s" `WIDE`" FIELD-HAS
-   0 s" WIDE" 3 5 68 72 path pathu FX$ AT-IN
+   0 s" WIDE" 3 5 71 75 path pathu FX$ AT-IN
    1 begin dup GJA-LINE# @ < while
       dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
       1 +

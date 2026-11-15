@@ -2,7 +2,7 @@
 \ rejection's diagnostic. REC-SIG records a certified
 \ sig-less word's inferred effect under its name, so its callers certify;
 \ rendering only decides whether that effect is declarable
-\ (RQM, NLET). Compiles after checker.f and before any src/lib/ file: no emit or
+\ (RQM). Compiles after checker.f and before any src/lib/ file: no emit or
 \ +!; bytes go out through REJECTION.
 using TFAM
 using REJECTION
@@ -143,10 +143,9 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 
 
 \ Name index idx: a..z without f, n and r, which the parser reads as types,
-\ then the ordinal (checker.f SIG-VAR-SLOT reads both back).
+\ then the ordinal; the signature parser reads both back.
 : VAR-NAME ( n -- )
    {: idx:n :}
-   idx 0 < idx TYPE-VAR-MAX >= or IF 1 RQM !  63 EMIT1 EXIT THEN
    idx 22 > IF idx RNUM EXIT THEN
    idx 97 +
    dup 102 >= IF 1+ THEN
@@ -414,8 +413,8 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
         ELSE EMIT-UNSAID THEN
       endof
       T-FORALL of
-        NLET @ TYPE-VAR-MAX >=  RBIND-N @ BINDER-DEPTH-MAX >=  or IF
-           RBIND-N @ BINDER-DEPTH-MAX >= IF 1 RBIND-FULL ! THEN
+        RBIND-N @ BINDER-DEPTH-MAX >= IF
+           1 RBIND-FULL !
            NLET @ 1 + NLET ! EMIT-UNSAID
         ELSE d QDEPTH-CAP < IF
            NLET @ {: idx:n :}
@@ -1981,10 +1980,6 @@ PTR-VARIABLE HOLDER-FIRST
 \ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
 \ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.
 : REC-REFUSE-WHY ( -- )
-   NLET @ TYPE-VAR-MAX > IF
-      s" more than " EMIT-STR  TYPE-VAR-MAX EMIT-U
-      s"  type variables or binders in inferred effect" EMIT-STR EXIT
-   THEN
    RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" EMIT-STR EXIT THEN
    RROW-UNSAID @ IF
       s" quotation return-stack clause or more than " EMIT-STR  RROW-CAP EMIT-U
@@ -1994,11 +1989,6 @@ PTR-VARIABLE HOLDER-FIRST
 
 \ The fix for REC-REFUSE-WHY's reason, for the word na nu.
 : REC-REJECT-HELP ( ptr u8 n -- ) {: na:ptr nu:n :}
-   NLET @ TYPE-VAR-MAX > IF
-      s" split `" EMIT-STR  na nu EMIT-STR
-      s" ` so each word's effect names at most " EMIT-STR  TYPE-VAR-MAX EMIT-U
-      s"  type variables" EMIT-STR EXIT
-   THEN
    RBIND-FULL @ IF
       s" name an inner callback's effect in a word of its own, so at most "
       EMIT-STR  BINDER-DEPTH-MAX EMIT-U  s"  binders nest" EMIT-STR EXIT
@@ -2031,11 +2021,11 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    REJECTION:KEEP ;
 
 \ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless
-\ its text sets RQM or has more than TYPE-VAR-MAX names.
+\ its text sets RQM.
 : REC-SIG ( ptr u8 n -- )
    {: na:ptr nu:n :}
    REND-SIG 2drop
-   RQM @ 0 =  NLET @ TYPE-VAR-MAX 1 + <  and IF
+   RQM @ 0 = IF
       na nu CHECKER-USIG-CERT-CURRENT
       EXIT
    THEN

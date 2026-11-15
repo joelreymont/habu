@@ -520,7 +520,8 @@ DECL-DIAG:PROSE
 s" BI-LONG-NO" LONG-N 1 - LONG-CALL$ TEST-EVAL:RC 70 T=
 LONG-HEAD$ DECL-DIAG:HAS? TTRUE
 s" ^^^^^^^^^^^^ takes [ n n " DECL-DIAG:HAS? TTRUE
-s" = help: give `BI-LONG` [ n n " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+s" = help: give `BI-LONG` [ n n " DECL-DIAG:HAS? TTRUE
+s"  297 298 -- ]" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
 : SUB2-OPEN ( ptr u8 n -- )

@@ -562,7 +562,7 @@ s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-CANDIDATE! -1 T=
 s" quot nested past the diagnostic budget records" T-LABEL
 REJECTION:BUFFER$ s" effect not recorded" CONTAINS? TFALSE
 \ Past its 23 letters an effect's text names a type variable or binder by its
-\ ordinal, so a word with up to TYPE-VAR-MAX names records; past that it does not.
+\ ordinal, so a word with any number of names records.
 defer T-V14 ( -- a b c d e g h i j k l m o p )
 \ A caller of an unrecorded word is E-UNDEFINED, so RSV28C and RSB24C certify
 \ only when RSV28 and RSB24 recorded.
@@ -578,12 +578,11 @@ s" a caller of RSB24 calls the recorded word" T-LABEL
 s" RSB24C RSB24" CHECK-QUIET-CANDIDATE! -1 T=
 defer T-Q23 ( -- [ a b c d e g h i j k l m o p q s t u v w x y z -- ] )
 REJECTION:CAPTURE
-s" 276 type variables certify" T-LABEL
-s" RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23" CHECK-CANDIDATE! -1 T=
-s" 276 type variables: the warning names the word" T-LABEL
-REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `RSQ276`" CONTAINS? TTRUE
-s" 276 type variables: the warning names the reason" T-LABEL
-REJECTION:BUFFER$ s" = reason: more than 256 type variables or binders" CONTAINS? TTRUE
+: RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 ;
+s" a caller of RSQ276 calls the recorded word" T-LABEL
+s" RSQ276C RSQ276" CHECK-QUIET-CANDIDATE! -1 T=
+s" 276 type variables: no warning" T-LABEL
+REJECTION:BUFFER$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
 defer T-MK ( -- a )
 : T-UN ( forall<p,[ a -- ]> -- a ) drop T-MK ;
@@ -2250,7 +2249,7 @@ s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2252:39" ES-RES-REFUSE:HAS
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2251:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL

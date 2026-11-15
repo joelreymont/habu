@@ -4346,7 +4346,7 @@ private
       node SCHEMA-C@ 0 ?do
          node SCHEMA-B@ i + SCHEMA-ROOT@
          dup SCHEMA-PARAM? IF
-            dup SCHEMA-A@ TFAM-DECL-PARAM>CHAR drop 97 - cells NMAP + @
+            dup SCHEMA-A@ TFAM-DECL-PARAM>CHAR drop 97 - NMAP-SLOT @
             node SCHEMA-A@ i TFAM-PK@
             dup PK-SCOPE = IF over TVK-SCOPE! THEN
             PK-REGION = IF TVK-REGION! ELSE drop THEN
@@ -4425,7 +4425,7 @@ TFAM-MEMBERS-INSTALL
 \ Letters the type variable ID in NMAP as a signature spells parameter INDEX.
 : FRESH-LETTER ( n n -- ) {: id:n index:n :}
    index TFAM-DECL-PARAM>CHAR 0= IF drop EXIT THEN
-   97 - cells NMAP + id swap ! ;
+   97 - NMAP-SLOT id swap ! ;
 
 \ A fresh variable for parameter INDEX of FAM, kinded as a signature kinds the
 \ parameter it spells there and lettered as signature parameter LETTER.

@@ -2047,7 +2047,7 @@ package CHECKER-IDENTITY
 \ cast through it hands out neither: TV! checks every binding.
 : STORED-RAISE ( -- )
    0 BEGIN dup 26 < WHILE
-      dup cells NMAP + @
+      dup NMAP-SLOT @
       dup 0 >= IF
          dup TVK@ TVK-STORED = IF dup NSCOPE-RAISE dup NLINEAR-RAISE THEN
       THEN drop
@@ -3383,9 +3383,9 @@ CHECKER-REG:}SCRATCH
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
-\ GUEST-POOLS saves 16 cells, GUEST-PARSER 41 and its three tables,
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 41 and its two tables,
 \ GUEST-LATCHES 9; GUEST-POINTERS saves 10 pointers.
-16 41 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+16 41 + 9 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP
 10 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
@@ -3393,6 +3393,7 @@ GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
 variable GUEST-OPEN
 PTR-U8-TABLE-VARIABLE GUEST-FAM-A-P
 PTR-VARIABLE GUEST-FAM-U-P   variable GUEST-FAM-CAP
+PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 CHECKER-REG:}SCRATCH
 
 : GUEST-CELLS ( n ptr n n bool -- n )
@@ -3429,7 +3430,7 @@ CHECKER-REG:}SCRATCH
    RR-SHARED save GUEST-CELL  SL save GUEST-CELL  SI save GUEST-CELL  PKU save GUEST-CELL
    PKHAVE save GUEST-CELL  BIND-DEPTH save GUEST-CELL
    BIND-DOMAINS BINDER-DEPTH-MAX save GUEST-CELLS
-   NMAP TYPE-VAR-MAX 3 + save GUEST-CELLS  ROWMAP 26 save GUEST-CELLS
+   ROWMAP 26 save GUEST-CELLS
    FAM-N save GUEST-CELL  FAM-I save GUEST-CELL  FAM-K save GUEST-CELL
    NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
    SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
@@ -3463,9 +3464,14 @@ CHECKER-REG:}SCRATCH
    FAM-U-P @  GUEST-FAM-U-P @ FAM-U-P !  GUEST-FAM-U-P !
    FAM-CAP @  GUEST-FAM-CAP @ FAM-CAP !  GUEST-FAM-CAP ! ;
 
+\ The same for its type-variable names.
+: GUEST-NMAP ( -- )
+   NMAP-P @  GUEST-NMAP-P @ NMAP-P !  GUEST-NMAP-P !
+   NMAP-CAP @  GUEST-NMAP-CAP @ NMAP-CAP !  GUEST-NMAP-CAP ! ;
+
 : GUEST-KEEP ( bool -- ) {: save:bool :}
    0 save GUEST-POOLS save GUEST-PARSER save GUEST-LATCHES drop
-   save GUEST-POINTERS  GUEST-FAMS ;
+   save GUEST-POINTERS  GUEST-FAMS  GUEST-NMAP ;
 
 : READ-ENTER ( -- )
    GUEST-OPEN @ IF s" checker: a facts read inside another" 76 die THEN
