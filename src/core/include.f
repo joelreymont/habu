@@ -203,14 +203,19 @@ private
 
 
 \ The working directory must fit PATH-CAP as every root does; every path below
-\ a longer one is longer still, so the engine rejects it by name rather than
-\ resolve without it. realpath does not say why it fails, so the rejection names
-\ what a removed, unsearchable or long directory all are not. macOS's realpath
-\ rejects a result of 1023 bytes or more, and glibc answers a longer path whole,
-\ which the canon answer rejects with E-PATH-RANGE.
+\ a longer one is longer still, so the engine rejects it rather than resolve
+\ without it. realpath does not say why it fails, so the record names what a
+\ removed, unsearchable or long directory all are not. macOS's realpath rejects
+\ a result of 1023 bytes or more, and glibc answers a longer path whole, which
+\ the canon answer rejects with E-PATH-RANGE.
 : CWD-DIE ( -- )
-   s" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes"
-   INCLUDE-IO-RC die ;
+   s" E-SOURCE-ROOT" REJECTION:OPEN
+   s" the working directory does not resolve to a searchable directory" REJECTION:EMIT-STR
+   PATH-CAP s" bytes" REJECTION:LIMIT
+   REJECTION:HELP
+   s" run hb from a directory that exists, that you may search, and whose path fits the limit"
+   REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 
 : CWD-READ ( -- )

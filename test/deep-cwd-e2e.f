@@ -1,6 +1,6 @@
 \ An engine started from a long working directory within PATH-CAP loads its
 \ entry, and one started from a working directory that does not resolve, here
-\ one removed before the engine starts, refuses it by name on one line. It does
+\ one removed before the engine starts, rejects it with one record. It does
 \ not show a working directory past PATH-CAP or FS:REMOVE-TREE over such paths:
 \ no test makes a path past PATH-CAP (test/AGENTS.md). The children's logs are
 \ kept in the tree, which the process removes at exit.
@@ -95,6 +95,22 @@ create TAIL TAIL-BYTES allot
    RC @ 0 T=
    OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
 
+\ The record of a working directory that does not resolve, PATH-CAP its limit.
+create WANT IO-CAP allot variable WANT-U
+
+: WANT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a WANT WANT-U @ + u BYTE-COPY  u WANT-U +! ;
+
+: DIGITS+ ( n -- ) {: v:n :}
+   v 10 >= if v 10 / recurse then
+   v 10 mod [char] 0 + WANT WANT-U @ + c!  1 WANT-U +! ;
+
+: GONE-WANT! ( -- )
+   0 WANT-U !
+   s" error[E-SOURCE-ROOT]: the working directory does not resolve to a searchable directory" WANT+
+   S\" \n  = limit: " WANT+  PATH-CAP DIGITS+
+   S\"  bytes\n  = help: run hb from a directory that exists, that you may search, and whose path fits the limit\n\n" WANT+ ;
+
 : REMOVED ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" -c" >LEN PROC-ARGV+
@@ -106,8 +122,8 @@ create TAIL TAIL-BYTES allot
    RC @ 74 T=
    s" and prints nothing on stdout" T-LABEL
    OUT-U @ 0 T=
-   s" and names itself on one line" T-LABEL
-   ERR ERR-U @ S\" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes\n" T$= ;
+   s" and writes its record" T-LABEL
+   GONE-WANT!  ERR ERR-U @ WANT WANT-U @ T$= ;
 
 public
 

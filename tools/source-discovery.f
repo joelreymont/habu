@@ -1443,19 +1443,27 @@ $FF constant SD-NAMES                    \ loaders and family openers
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
+\ What the read of a closure member failed at, from its code rc.
+: READ-WHY ( n -- ) {: rc:n :}
+   rc E-FS-STAT = if s" it is missing or not a regular file" REJECTION:EMIT-STR exit then
+   rc E-FS-OPEN = if s" it will not open" REJECTION:EMIT-STR exit then
+   rc E-FS-IO = if s" a read of it failed" REJECTION:EMIT-STR exit then
+   s" its read threw code " REJECTION:EMIT-STR  rc REJECTION:EMIT-N ;
+
 public
 
-\ A zero code is no refusal; any other names the file on fd 2 and is rethrown
-\ unchanged, because the code alone (E-FS-STAT or E-FS-OPEN for a missing file)
-\ does not say which closure member it was. RUN-IN's reader refuses through it,
-\ so the line names no tool. The write result is dropped because the next step
-\ raises the refusal itself.
+\ A zero code is no rejection; any other rejects the closure member pa pu,
+\ which the code alone does not name. A harvest, which drops a read's code
+\ (HARVEST), gets the code bare: the final walk reads the member again.
 : READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}
    rc 0= if exit then
-   2 s" cannot read " write drop
-   2 pa pu write drop
-   2 S\" \n" write drop
-   rc throw ;
+   rc SD-HARVEST-THROW
+   s" E-UNREADABLE-SOURCE" REJECTION:OPEN
+   s" cannot read `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" `: " REJECTION:EMIT-STR  rc READ-WHY
+   REJECTION:HELP
+   s" check that the file exists, is a regular file and is readable" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 private
 
