@@ -77,6 +77,8 @@ $7FF8000000000000 constant NAN-MADE
 0 constant TABLE0                    \ call_indirect's table, the module's one
 4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
 2 constant L-CODE                    \ throw's code
+\ The thread's throw count, THROWS-CELL of the DATA region.
+WPROF:DATA-BASE THROWS-CELL + constant THROWS-AT
 
 \ ---- catch and finally
 2 constant L-STATUS                  \ the first callee's status
@@ -84,6 +86,7 @@ $7FF8000000000000 constant NAN-MADE
 4 constant L-LDEPTH
 5 constant L-CLEANUP                 \ finally's cleanup xt
 6 constant L-BODY-CODE               \ finally's body's throw code
+7 constant L-COUNT                   \ the throw count when that code landed
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
@@ -511,12 +514,18 @@ variable SITES-N
    0 ROOM WLEB:U32-PAD! BUF-U +! ;
 
 
+\ Adds 1 to the throw count, at each routine that begins a throw.
+: COUNT-THROW, ( -- )
+   0 I32,  0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  1 I64,  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 THROWS-AT MEM, ;
+
 \ throw ( n -- ) pops its code into ctx.throw-code and answers status 1.
 : THROW-BODY ( -- )
    2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-CODE SET,
    SP!,
+   COUNT-THROW,
    L-CTX GET,  L-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    1 I32,  OP-END B, ;
 
@@ -601,8 +610,10 @@ variable SITES-N
 
 \ finally ( body cleanup -- ): the body's throw code is stored again whether or
 \ not the cleanup throws; the cleanup's code stands only when the body returned.
+\ A count moved since the body's code landed means the cleanup threw, so the
+\ body's code goes on as a new throw.
 : FINALLY-BODY ( -- )
-   2 U32,  2 U32,  I32 B,  4 U32,  I64 B,
+   2 U32,  2 U32,  I32 B,  5 U32,  I64 B,
    L-CTX GET,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
    OP-LOCAL-TEE B,  L-SP U32,
@@ -612,6 +623,7 @@ variable SITES-N
    DEPTHS-SAVE,
    DISPATCH,  L-STATUS SET,
    L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-BODY-CODE SET,
+   0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  L-COUNT SET,
    L-STATUS GET,  IF,  SP!,  DEPTHS-RESTORE,  OP-END B,
    WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
    CELL-BYTES STACK-ROOM,
@@ -620,6 +632,8 @@ variable SITES-N
    DISPATCH,
    L-STATUS GET,  IF,
       L-CTX GET,  L-BODY-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+      0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  L-COUNT GET,  OP-I64-NE B,
+      IF,  COUNT-THROW,  OP-END B,
    OP-END B,
    L-STATUS GET,  OP-I32-OR B,
    OP-END B, ;
