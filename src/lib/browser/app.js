@@ -136,7 +136,7 @@ function code(r, id, title) {
   if (typeof r._meta?.page !== "string")
     throw new Error(`${CODE_TOOL}: the result's _meta lacks page`);
   if (r._meta.page !== id)
-    throw new OlderPage(`This view's page is older than ${title}'s server: refresh the ${title} app, then open this view again.`);
+    throw new OlderPage(`This view's page is older than ${title}'s server: ${title}'s app must be refreshed where it was installed; then open this view again.`);
   const { files } = r._meta;
   const coded = files?.["view.js"];
   if (typeof coded !== "string") throw new Error(`${CODE_TOOL}: the result's _meta lacks view.js`);

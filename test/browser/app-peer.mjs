@@ -31,7 +31,7 @@ const PARAMS = { structuredContent: { name: "Zürich ✓" } };
 const STRANGER = { structuredContent: { name: "stranger" } };
 const LATER = { structuredContent: { name: "after the stranger" } };
 const TOOL_RESULT = { content: [{ type: "text", text: "project" }] };
-const OLDER = `This view's page is older than ${title}'s server: refresh the ${title} app, then open this view again.`;
+const OLDER = `This view's page is older than ${title}'s server: ${title}'s app must be refreshed where it was installed; then open this view again.`;
 const OLDER_CONTEXT = { content: [{ type: "text", text: `${title}'s view could not start: ${OLDER}`,
   annotations: { audience: ["assistant"] } }] };
 

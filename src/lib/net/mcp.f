@@ -11,7 +11,9 @@
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
 \ written between its quotes as sent, never the arguments. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
-\ and read. A tool body gets the arguments' object, borrowed for the call, and gives its
+\ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
+\ as UNKNOWN-TOOL states.
+\ A tool body gets the arguments' object, borrowed for the call, and gives its
 \ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
 \ to add content blocks, such as an image or an embedded resource, after the result's
 \ text, or RESULT-ERROR for a tool error, refused arguments included; bodies may run at
@@ -103,6 +105,7 @@ private
 6 constant RESOURCES-REPLY
 7 constant READ-REPLY
 8 constant TEMPLATES-REPLY
+9 constant STALE-REPLY       \ an error whose TEXT is the unknown tool's name
 
 -32002 constant RESOURCE-MISSING
 -32020 constant HEADER-MISMATCH
@@ -222,7 +225,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : NO-METHOD ( -- ) 404 -32601 s" Method not found" BAD ;
 : BAD-INPUT ( -- ) 400 -32602 s" Invalid MCP request" BAD ;
 : BAD-ENVELOPE ( -- ) 400 -32600 s" Invalid MCP request" BAD ;
-: UNKNOWN-TOOL ( -- ) 400 -32602 s" Unknown tool" BAD ;
 : UNKNOWN-RESOURCE ( -- ) 404 RESOURCE-MISSING s" Resource not found" BAD ;
 
 : SERVER-INFO ( ptr JSON:writer -- ptr JSON:writer )
@@ -455,13 +457,26 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON:WRITE-COMMA s" id" id iu JSON:WRITE-FIELD-RAW ;
 
 
+\ An error's message; a STALE-REPLY's names the tool and the server.
+: MESSAGE ( ptr JSON:writer -- ptr JSON:writer )
+   s" message" JSON:WRITE-KEY
+   SLOT REPLY @ STALE-REPLY <> if TEXT$ JSON:WRITE-STRING exit then
+   JSON:WRITE-STRING-START
+   s" Unknown tool: " JSON:WRITE-STRING-PART
+   TEXT$ JSON:WRITE-STRING-PART
+   s" ; if the client's list of " JSON:WRITE-STRING-PART
+   SERVER-NAME @ SPAN:$ JSON:WRITE-STRING-PART
+   s" 's tools names it, that list is out of date"
+   JSON:WRITE-STRING-PART JSON:WRITE-STRING-END ;
+
+
 \ An error reply. Both eras' schemas make its id optional and never null, so
 \ an unknown id is left out; JSON-RPC:ERROR's null id is JSON-RPC's own rule.
 : ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-OBJECT-START s" jsonrpc" s" 2.0" JSON:WRITE-FIELD-S ID-FIELD
    JSON:WRITE-COMMA s" error" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
    s" code" SLOT CODE @ JSON:WRITE-FIELD-INT
-   JSON:WRITE-COMMA s" message" TEXT$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA MESSAGE
    SLOT CODE @ UNSUPPORTED-VERSION = if
       JSON:WRITE-COMMA s" data" JSON:WRITE-KEY VERSION-DATA
    then
@@ -472,7 +487,9 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 : RESPONSE-BODY ( ptr JSON:writer -- ptr JSON:writer )
-   SLOT REPLY @ ERROR-REPLY = if ERROR-BODY else RESULT-BODY then ;
+   SLOT REPLY @ {: kind:n :}
+   kind ERROR-REPLY = kind STALE-REPLY = or
+   if ERROR-BODY else RESULT-BODY then ;
 
 
 : SEND ( -- )
@@ -689,10 +706,34 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    2dup OBJECT? 0= if E-INPUT throw then ;
 
 
+\ A JSON string's text between its quotes, as sent, its escapes kept.
+: UNQUOTED$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a 1+ u 2 - ;
+
+
+128 constant NAME-MAX    \ MCP's longest tool name, in bytes
+
+\ params.name, a string, between its quotes as sent, cut to NAME-MAX bytes at
+\ a character's start.
+: NAMED$ ( -- ptr u8 n )
+   PARAMS$ s" name" FIELD? drop UNQUOTED$
+   2dup NAME-MAX UTF8:FIT nip ;
+
+
+\ -32602 for a tool the caller cannot call, unknown or hidden: `Unknown tool:
+\ <name>; if the client's list of <title>'s tools names it, that list is out of
+\ date`, <title> serverInfo's name. TEXT borrows the name from the request,
+\ and MESSAGE writes the message from it as the reply is written.
+: UNKNOWN-TOOL ( -- )
+   400 -32602 NAMED$ BAD  STALE-REPLY SLOT REPLY ! ;
+
+
 \ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or
 \ RESULT-ERROR, before it returns.
 : RUN-TOOL ( -- )
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
+   2dup KIND JSON:T-STR <> if E-INPUT throw then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
    idx SHOWN? 0= if UNKNOWN-TOOL SEND exit then
@@ -732,12 +773,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : NOTIFIED ( -- )
    LEGACY? if SLOT TO @ 202 HTTP:STATUS! exit then
    400 -32600 s" Request id required" BAD SEND ;
-
-
-\ A JSON string's text between its quotes, as sent, its escapes kept.
-: UNQUOTED$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   a 1+ u 2 - ;
 
 
 \ The params member that names what the method acts on; empty for none.

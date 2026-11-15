@@ -1,6 +1,7 @@
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
-\ Mcp-Name checks, the transport check, unknown methods and tools, a body's
+\ Mcp-Name checks, the transport check, unknown methods and tools, an unknown tool's
+\ name cut at 128 bytes, a body's
 \ result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
 \ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
@@ -261,14 +262,30 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: UNKNOWN-REPLY ( -- ptr u8 n )
-   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}" ;
+\ Reply 6 to a call of an unknown tool, for the name it names, in WANT.
+: UNKNOWN-REPLY ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nu:n :}
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602," W+
+   S\" \"message\":\"Unknown tool: " W+ name nu W+
+   S\" ; if the client's list of test-server's tools names it," W+
+   S\"  that list is out of date\"}}" W+ W$ ;
 
 : UNKNOWN-TOOL ( -- )
-   s" an unregistered tool is 400 -32602 Unknown tool" T-LABEL
+   s" an unregistered tool is 400 -32602 naming it and the server" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" none" UNKNOWN-REPLY ANSWERED ;
+
+: A-RUN ( -- ) 127 0 ?do s" a" SB-APPEND loop ;
+
+\ 127 bytes, then a two-byte character over MCP's 128-byte cap.
+: LONG-UNKNOWN ( -- )
+   s" an unknown tool's name past 128 bytes is cut before the character crossing it" T-LABEL
+   LEGACY
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"" SB-APPEND
+   A-RUN S\" é\"}}" SB-APPEND SB$ POST
+   SB-RESET A-RUN
+   400 SB$ UNKNOWN-REPLY ANSWERED ;
 
 
 : TOOL-ERROR ( -- )
@@ -1410,7 +1427,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" tools/call of a hidden tool answers as an unknown one" T-LABEL
    ZEN LEGACY BEARING
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
-   400 UNKNOWN-REPLY ANSWERED ;
+   400 s" secret" UNKNOWN-REPLY ANSWERED ;
 
 : OWNER-LIST ( -- )
    s" tools/list shows the tool to the caller the hook admits" T-LABEL
@@ -1560,7 +1577,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
-   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
+   METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL LONG-UNKNOWN TOOL-ERROR
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
    BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING
