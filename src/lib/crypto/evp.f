@@ -133,18 +133,12 @@ FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTIO
 FUNCTION: ERROR-CLEAR ERR_clear_error ( -- ) ;FUNCTION
 FUNCTION: ERROR-GET ERR_get_error ( -- n ) ;FUNCTION
 FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+\ C writes the signature over input 1, at most the length the cell at input 2
+\ holds, and stores the length it wrote in that cell.
+FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
-\ The length returned by the size query is the exact writable extent of the
-\ second EVP_DigestSign call. FUNCTION: cannot relate an out-cell to that span.
-: RS-LIBRARY ( -- n )
-   HB-TARGET-MACOS? if s" libcrypto.3.dylib" else s" libcrypto.so.3" then
-   FFI:LIBRARY-PATH ;
-RS-LIBRARY constant RS-LIB
-s" EVP_DigestSign" RS-LIB 5 FFI:DECLARE constant SIGN-ROW
-
-
-\ Foreign out-parameter storage, per task like FFI's own argument staging: two
-\ tasks may be sealing at once and each needs its own live context.
+\ Foreign out-parameter storage, per task: two tasks may be sealing at once and
+\ each needs its own live context.
 $00 constant CTX-OFF
 $08 constant OUTL-OFF
 $10 constant FINAL-OFF
@@ -665,16 +659,6 @@ CAST: RS>BYTES ( n -- ptr u8 )
       dup 0= if drop false exit then
    again ;
 
-: RS-SIGN-WRITE ( ptr u8 n ptr u8 n -- n )
-   {: out k:n msg mu:n :}
-   RS-MD@ 0 FFI:VALUE!
-   out 1 FFI:POINTER!
-   RS-SIG-LEN RS-BUF 2 FFI:POINTER!
-   msg 3 FFI:POINTER!
-   mu 4 FFI:VALUE!
-   SIGN-ROW FFI:CALL $FFFFFFFF and
-   dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
-
 : RS-VERIFY-RUN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu exponent eu RS-PUBLIC-IMPORT {: k:n :}
@@ -704,7 +688,8 @@ CAST: RS>BYTES ( n -- ptr u8 )
    RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
    cap k < if E-OPERAND throw then
    k RS-SIG-LEN RS-BUF LE:U64!
-   out k msg mu RS-SIGN-WRITE OSSL-OK <> if E-SIGN throw then
+   RS-MD@ out RS-SIG-LEN RS-BUF msg mu DIGEST-SIGN
+   OSSL-OK <> if E-SIGN throw then
    RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
    k ;
 
