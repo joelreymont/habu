@@ -3415,9 +3415,8 @@ variable FILE-USE
    0 0= 0= ;
 
 public
-\ Writes the record of the primitive-axiom row opened at line l, column c, that
-\ the token t tu breaks, or with tu 0 that the source ends inside, through its
-\ help and leaves it open: the caller ends it.
+\ Writes, open after its help, the record of the row opened at line l, column c
+\ that the token t tu breaks or, with tu 0, that the source ends inside.
 : ROW-REJECT ( ^u8 n n n -- ) {: t:^ tu:n l:n c:n :}
    s" E-MALFORMED-REGISTRY-ROW" REJECTION:OPEN
    tu 0= IF s" found the end of the source" REJECTION:EMIT-STR
@@ -3443,7 +3442,6 @@ private
    t tu l c ROW-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : ROW-ENDED ( -- )
-   SOURCE-U @ TOKEN-BYTE !
    SOURCE@ SOURCE-U @ + 0 ROW-MALFORMED ;
 
 \ The row's next raw token; none left makes the row malformed at the

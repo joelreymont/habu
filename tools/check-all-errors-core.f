@@ -143,9 +143,8 @@ variable CA-COMPOSE-LABEL-U
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    CA-SRC-A@ CA-SRC-U @ 1 1 0 REJECTION:SOURCE! ;
 
-\ A string defect sits at its opener and a row defect at the token the row rule
-\ rejects, so the record's token is that word read out of the source, at its own
-\ width; at the source's end it is empty.
+\ The token a lexer defect sits at, read out of the source at its own width: a
+\ string's opener, the token a row's rule rejects, or empty at the source's end.
 : CA-LEX-TOKEN$ ( -- ^u8 n )
    LINT-LEX:ERROR-BYTE@ {: at:n :}
    CA-SRC-A@ at +  at CA-WORD-END at - ;
@@ -153,9 +152,8 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
-\ A string defect gets the load's record. A malformed primitive-axiom row stops
-\ the scan like an open string but gets its own code and help: a caller told to
-\ close a string literal would look for a quote that is not there.
+\ A string defect gets the load's record, a malformed row its own code and help:
+\ a caller told to close a string would look for a quote that is not there.
 : CA-LEX-RECORD ( -- )
    CA-ARM
    CA-LEX-ROW? IF

@@ -1554,13 +1554,13 @@ variable RC
    s" --verify-only" m mu l lu h hu ROW-RECORD
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ The load knows no `EPRIM:`, so it rejects the fixture's first line at it.
-: ROW-LOADED ( -- )
+\ The load knows no `EPRIM:`, so it rejects the fixture at it: p pu is the
+\ record's place after the path, through its marked source line.
+: ROW-LOADED ( ^u8 n -- ) {: p:^ pu:n :}
    s" error[E-UNDEFINED]" REJECT-RC LOADED
    SB-RESET
    S\" error[E-UNDEFINED]: cannot find word `EPRIM:`\n --> " SB-APPEND
-   FX-PATH$ SB-APPEND
-   S\" :1:1\n  |\n1 | EPRIM: FOO PE-N\n  | ^^^^^^ not found\n" SB-APPEND
+   FX-PATH$ SB-APPEND  p pu SB-APPEND
    S\"   = help: define `EPRIM:` before this point, or check its spelling\n\n"
    SB-APPEND
    ERR$ SB$ T$= ;
@@ -1570,14 +1570,15 @@ variable RC
 : TEST-PRIM-ROW ( -- )
    s" a token that breaks a primitive row" T-LABEL
    SB-RESET
-   s" EPRIM: FOO PE-N" SB-APPEND LF+
+   s" \ a row" SB-APPEND LF+
+   s"   EPRIM: FOO PE-N" SB-APPEND LF+
    s"    postpone EPRIM;" SB-APPEND LF+
    s" bad-row.f" FIXTURE!
-   s" postpone" 2 4 19 27
-   s" found `postpone` in the primitive-axiom row opened at 1:1"
+   s" postpone" 3 4 29 37
+   s" found `postpone` in the primitive-axiom row opened at 2:3"
    s" breaks the row"  s" close the row before this token or replace it"
    ROW-MODES
-   ROW-LOADED
+   S\" :2:3\n  |\n2 |   EPRIM: FOO PE-N\n  |   ^^^^^^ not found\n" ROW-LOADED
    s" a primitive row the source ends inside" T-LABEL
    SB-RESET
    s" EPRIM: FOO PE-N" SB-APPEND LF+
@@ -1586,7 +1587,7 @@ variable RC
    s" found the end of the source in the primitive-axiom row opened at 1:1"
    s" the source ends before the row closes"  s" close the row"
    ROW-MODES
-   ROW-LOADED ;
+   S\" :1:1\n  |\n1 | EPRIM: FOO PE-N\n  | ^^^^^^ not found\n" ROW-LOADED ;
 
 \ The loader rejects a VALUE-RECORD field where the source wrote it.
 : TEST-VALUE-RECORD-LOAD ( -- )
