@@ -1,7 +1,7 @@
-\ studio-test.f - STUDIO:KEY-VOLUME for three scenes stated here, each number
+\ studio-test.f - STUDIO:KEY-VOLUME for four scenes stated here, each number
 \ within 1e-9 of the larger of its own size and 1; the expected numbers come
-\ from viewport.js's own viewer, studio, keyAxes and keyVolume, run in
-\ binary64 on the scene's f32 numbers. A matrix whose fourth row is not
+\ from viewport.js's own viewer, studio, keyAxes, keyVolume and SHADOW_SIDE,
+\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not
 \ 0 0 0 1, and a singular one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
@@ -106,6 +106,26 @@ private
    800 600 VOLUME {: count:n px:r :}
    count 0 T=  px 0.0 NEAR ;
 
+\ Looking down at x, y in -20..20 on the box -0.5 -10 0 to 0.5 10 3, narrow
+\ in x and long in y; 5120 x 2880. It holds the shadow map's side capped at
+\ SHADOW-SIDE, 4104, and the pixel taken from M's key y side, 13.07 against
+\ its key x side's 10.79.
+: TALL ( -- )
+   s" tall" T-LABEL
+   0.05 0.0 0.0 0.0 0 ROW!  0.0 0.05 0.0 0.0 1 ROW!
+   0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!
+   0.0 0.0 1.0 0.0 PLANE!
+   -0.5 -10.0 0.0 0.5 10.0 3.0 BOX!
+   5120 2880 VOLUME {: count:n px:r :}
+   count 5 T=  px 0.003184719908575508 NEAR
+   0.0 0.0 1.0 0.0 0 PLANE=
+   0.8682431421244592 -0.4961389383568339 0.0 5.395510954630569 1 PLANE=
+   -0.8682431421244592 0.4961389383568339 0.0 5.395510954630569 2 PLANE=
+   0.29620601710581057 0.5183605299351683 0.8022246296615702
+   5.331708307904588 3 PLANE=
+   -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
+   7.738382196889298 4 PLANE= ;
+
 : KEPT ( -- ) 800 600 VOLUME {: count:n px:r :} ;
 
 \ TOP's matrix with a fourth row 0 0.25 0 1, then with rows 0 and 1
@@ -125,6 +145,7 @@ public
    TOP
    OBLIQUE
    OUTSIDE
+   TALL
    REJECTED
    T-REPORT ;
 
