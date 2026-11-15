@@ -136,8 +136,9 @@ VN-VMAX-SRC!
 : DT-VERIFY-MAX ( -- ) VN-VMAX-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
 ' DT-VERIFY-MAX catch 0 T=
 
-\ 7. a multi-error load records a base the wrap rejects and declares no
-\    converters for it; an earlier DEFTYPE's converter still verifies.
+\ 7. a multi-error load records a parametric base, its help the NEWTYPE that
+\    declares it, and declares no converters for it; an earlier DEFTYPE's
+\    converter still verifies.
 CODEGEN:BUFFER DT-MULTI-SRC
 : DT-LINE ( ^u8 n -- )
    DT-MULTI-SRC CODEGEN:APPEND-STRING
@@ -154,6 +155,7 @@ DT-MULTI-SRC!
 REJECTION:CAPTURE
 MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
 2 T=  0 T=
+REJECTION:BUFFER$ s" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE

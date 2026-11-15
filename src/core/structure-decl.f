@@ -675,19 +675,65 @@ private
 : NAME-STOP? ( n -- bool ) {: c:n :}
    c 58 =  c 60 = or  c 94 = or  c 91 = or ;
 
-public
+\ ARGS-HELP$'s text, mapped on first use and grown to fit: it names the case.
+$100 constant HELP-FIRST                \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE HELP-P   NULL-PTR HELP-P !
+variable HELP-CAP   0 HELP-CAP !        \ bytes mapped at HELP-P, 0 for none
+variable HELP-U
 
-\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, rejects NAME.
-: SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
-   NO bu 0 ?do ba i + c@ NAME-STOP? or loop
-   0= IF YES EXIT THEN
+: HELP-ROOM ( n -- ) {: u:n :}
+   HELP-CAP @ 0= IF
+      HELP-FIRST ARENA-ALLOC-BYTES HELP-P !  HELP-FIRST HELP-CAP !
+   THEN
+   HELP-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
+   nc HELP-CAP @ > IF
+      HELP-P @ HELP-CAP @ nc ARENA-BYTES-GROW HELP-P !  nc HELP-CAP !
+   THEN ;
+: HELP-C+ ( n -- ) {: c:n :}
+   HELP-U @ 1 + HELP-ROOM
+   c HELP-P @ HELP-U @ + c!
+   HELP-U @ 1 + HELP-U ! ;
+: HELP+ ( ^u8 n -- ) {: a:^ u:n :}
+   u 0 ?do a i + c@ HELP-C+ loop ;
+
+\ The edit the loader accepts for `DEFTYPE NAME BASE` over a family of arity ar:
+\ the NEWTYPE of BASE with `n` for each argument, NAME folded to its tail.
+: ARGS-HELP$ ( ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ar:n :}
+   0 HELP-U !
+   s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
+   nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
+   s"  " HELP+  ba bu HELP+  s" <n" HELP+
+   ar 1 ?do s" ,n" HELP+ loop
+   s" >` instead" HELP+
+   HELP-P @ HELP-U @ ;
+
+\ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
+: ONE-NAME-REJECT ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
+   {: na:^ nu:n ba:^ bu:n wa:^ wu:n fa:^ fu:n code:n :}
    s" deftype" DECL-REJECT:OPEN
    na nu DECL-REJECT:FAMILY!
    ba bu DECL-REJECT:TOKEN!
-   s" a deftype base is one name"
-   s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
-   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT
-   DECL-REJECT:GUARD-CODE
+   wa wu fa fu code DECL-REJECT:REJECT
+   DECL-REJECT:GUARD-CODE ;
+
+public
+
+\ Whether BASE is one name of a type whole without type arguments, as a DEFTYPE
+\ converter's name needs; if not, rejects NAME.
+: SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
+   NO bu 0 ?do ba i + c@ NAME-STOP? or loop IF
+      na nu ba bu s" a deftype base is one name"
+      s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
+      TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
+      NO EXIT
+   THEN
+   TFAM-ACTIVE-PKG$ ba bu TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-FOUND <> IF YES EXIT THEN
+   id TFAM-ARITY@ {: ar:n :}
+   ar 0= IF YES EXIT THEN
+   na nu ba bu s" the base is a family that takes type arguments"
+   na nu ba bu ar ARGS-HELP$
+   TYPE-DECL:E-TDECL-PAYLOAD ONE-NAME-REJECT
    NO ;
 
 \ Registers NAME's family over BASE: one field base, no word made; KIND is the
