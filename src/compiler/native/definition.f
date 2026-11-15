@@ -255,7 +255,7 @@ public
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
-\ The arity is asked with the source spelling KEEP-TAPE-NAME kept: bare for an
+\ The arity is asked with the definition's source spelling, NAME$: bare for an
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling.
 \
