@@ -19,6 +19,8 @@ Application-specific policy and model workflows stay out of the language core.
 - The root checkout stays on `master`: its working copy is one change on
   `master`'s tip. Commit here only what lands on `master` at once, and run
   `jj new master` here whenever `master` moves.
+- Rebase every open line of work onto `master` periodically, and before it
+  merges, so it never drifts far from `master`.
 - `spec/` holds TLA+ specs of Habu's state machines;
   [spec/README.md](spec/README.md) says how to check them.
 
