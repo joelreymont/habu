@@ -112,17 +112,25 @@ public
    t tu w wu CORE-STR=CI
    wi 0 > if t ti + tu ti - w wi + wu wi - CORE-STR=CI or then ;
 
-\ Places the record of word w, given the path a u, and opens its label, true;
-\ the caller writes the rest, which reads after the path or after "that". The
-\ place is the source a u stands for, else the token the engine read last
-\ where it spells w, which it does only when source calls w directly: called
-\ from a definition at run time, that token is another word. Else the record
-\ has no place and no label, false.
-: LOADER-PATH-AT ( ^u8 n ^u8 n -- bool ) {: w:^ wu:n a:^ u:n :}
+\ The place of a record of loader word w, given the path a u: the source a u
+\ stands for, else the token the engine read last where it spells w, which it
+\ does only when source calls w directly: called from a definition at run
+\ time, that token is another word. Else no place, NULL-PTR 0.
+: LOADER-PLACE$ ( ^u8 n ^u8 n -- ^u8 n ) {: w:^ wu:n a:^ u:n :}
    a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
-   t NULL-PTR <> if t tu REJECTION:AT 0 0= exit then
-   w wu TOKEN-SPELLS? 0= if 0 0= 0= exit then
-   SRCLOC:TOKEN$ REJECTION:AT  s" passes a path that " REJECTION:EMIT-STR  0 0= ;
+   t NULL-PTR <> if t tu exit then
+   w wu TOKEN-SPELLS? if SRCLOC:TOKEN$ exit then
+   NULL-PTR 0 ;
+
+\ Places the record of word w, given the path a u, and opens its label, true;
+\ the caller writes the rest, which reads after the path or after "that". With
+\ no place the record has no label, false.
+: LOADER-PATH-AT ( ^u8 n ^u8 n -- bool ) {: w:^ wu:n a:^ u:n :}
+   w wu a u LOADER-PLACE$ {: t:^ tu:n :}
+   t NULL-PTR = if 0 0= 0= exit then
+   t tu REJECTION:AT
+   a u SRCLOC:ORIGIN$ drop NULL-PTR = if s" passes a path that " REJECTION:EMIT-STR then
+   0 0= ;
 
 \ Writes the record of word w, given the path a u, which no file name holds,
 \ through its help: kind E-PATH-RANGE with len 0 when the path is empty, -1
@@ -177,14 +185,16 @@ public
    repeat
    drop 0 0 ;
 
-\ The path a u that loader w takes, found by q; one it cannot take stops with
-\ w's record. An empty w is a command-line entry, whose record has no place.
-: LOADER-RESOLVE ( ^u8 n ^u8 n [ ^u8 n -- ^u8 n bool ] -- ^u8 n bool )
+\ The path a u that loader w takes, found by q, which is given a u and the
+\ place of w's record; one it cannot take stops with that record. An empty w
+\ is a command-line entry, whose record has no place.
+: LOADER-RESOLVE ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ^u8 n bool ] -- ^u8 n bool )
    {: w:^ wu:n a:^ u:n q :}
    wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
+   wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
    a u LOADER-PATH-FAULT {: kind:n len:n :}
    kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then
-   a u INCLUDE-FALSE [: drop q execute ;] catch {: rc:n :}
+   a u INCLUDE-FALSE [: drop t tu q execute ;] catch {: rc:n :}
    rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE -1 LOADER-PATH-STOP then
    rc 0= if exit then
    rc throw ;
@@ -647,7 +657,7 @@ private
    s" E-POLICY" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
    s" ` lies outside the source root" REJECTION:EMIT-STR
-   p pu REJECTION:AT  s" outside the root" REJECTION:EMIT-STR
+   pu 0 <> if p pu REJECTION:AT  s" outside the root" REJECTION:EMIT-STR then
    s" root" REJECTION:NOTE
    POLICY-ROOT-BUF POLICY-ROOT-U @ REJECTION:EMIT-STR
    REJECTION:HELP
@@ -656,7 +666,7 @@ private
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ CONFINE of a path a program asked for as req, which a rejection names and
-\ places at p.
+\ places at p, or nowhere when pu is 0.
 : CONFINE-AS ( ^u8 n ^u8 n ^u8 n -- ^u8 n )
    {: a:^ u:n req:^ requ:n p:^ pu:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
@@ -676,7 +686,7 @@ public
    CANON-BUF n INCLUDE-TRUE ;
 
 : CONFINE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u a u a u CONFINE-AS ;
+   a u a u NULL-PTR 0 CONFINE-AS ;
 
 private
 
@@ -1550,22 +1560,22 @@ private
 
 public
 
-\ Rejects request a u, which no root holds, at p but for an entry; as unreadable
-\ where a denied lookup hides it. Public for check.f's and the verifier's walks.
+\ Rejects request a u, which no root holds, at p, unplaced when pu is 0; as
+\ unreadable where a denied lookup hides it. An entry is searched for and
+\ helped as a command-line path. Public for check.f's and the verifier's walks.
 : MISSING-SOURCE ( ^u8 n ^u8 n bool -- )
    {: a:^ u:n p:^ pu:n entry:bool :}
-   entry if NULL-PTR 0 else p pu then {: t:^ tu:n :}
    entry  a c@ 47 =  or if
-      t tu CWD$ a u JOIN UNSEARCHABLE-SOURCE
+      p pu CWD$ a u JOIN UNSEARCHABLE-SOURCE
    else
-      t tu CURRENT$ a u JOIN UNSEARCHABLE-SOURCE
-      ENGINE-SEARCHED? if t tu ENGINE$ a u JOIN UNSEARCHABLE-SOURCE then
-      CWD-SEARCHED? if t tu CWD$ a u JOIN UNSEARCHABLE-SOURCE then
+      p pu CURRENT$ a u JOIN UNSEARCHABLE-SOURCE
+      ENGINE-SEARCHED? if p pu ENGINE$ a u JOIN UNSEARCHABLE-SOURCE then
+      CWD-SEARCHED? if p pu CWD$ a u JOIN UNSEARCHABLE-SOURCE then
    then
    s" E-MISSING-SOURCE" REJECTION:OPEN
    s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1
-   entry 0= if p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR then
+   pu 0 <> if p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR then
    s" searched" REJECTION:NOTE
    entry  a c@ 47 =  or if
       CWD$ a u JOIN CANONICAL drop REJECTION:EMIT-STR
@@ -1591,20 +1601,23 @@ public
    then
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ SELECT and CANONICAL may reuse the buffer a u lies in, so a rejection names
+\ RESOLVE of a u whose rejection stands at t tu, unplaced when tu is 0. SELECT
+\ and CANONICAL may reuse the buffer a u lies in, so a rejection names
 \ REQUEST$, the request's copy.
-: RESOLVE ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+: RESOLVE-AT ( ^u8 n ^u8 n -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT drop
-   a u SRCLOC:ORIGIN$ over NULL-PTR = if 2drop REQUEST$ then {: p:^ pu:n :}
-   >r REQUEST$ p pu CONFINE-AS r> ;
+   >r REQUEST$ t tu CONFINE-AS r> ;
+
+\ A rejection stands at the source a u stands for, else nowhere.
+: RESOLVE ( ^u8 n -- ^u8 n bool )
+   2dup SRCLOC:ORIGIN$ RESOLVE-AT ;
 
 \ Public so `required` and `included`, which this file defines outside
-\ SOURCE-ROOT, reject a missing request where it is resolved.
-: LOAD-RESOLVE ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+\ SOURCE-ROOT, reject a missing request a u at t tu where it is resolved.
+: LOAD-RESOLVE ( ^u8 n ^u8 n -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT {: found:bool :}
-   a u SRCLOC:ORIGIN$ over NULL-PTR = if 2drop REQUEST$ then {: p:^ pu:n :}
-   found 0= if REQUEST$ p pu INCLUDE-FALSE MISSING-SOURCE then
-   >r REQUEST$ p pu CONFINE-AS r> ;
+   found 0= if REQUEST$ t tu INCLUDE-FALSE MISSING-SOURCE then
+   >r REQUEST$ t tu CONFINE-AS r> ;
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
@@ -1612,7 +1625,7 @@ public
    a u REQUEST!
    CWD$ REQUIRE-BASE @ CANDIDATE
    {: path:^ pathu:n known:bool found:bool :}
-   found 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
+   found 0= if a u NULL-PTR 0 INCLUDE-TRUE MISSING-SOURCE then
    path pathu DIRNAME OWNER!
    path pathu CONFINE known ;
 
@@ -2495,9 +2508,9 @@ public
 \ root is CURRENT$, at the top level the program's directory.
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
-   NULL-PTR 0 a u [: CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
+   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
-   exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
+   exists 0= if a u NULL-PTR 0 INCLUDE-TRUE MISSING-SOURCE then
    PUSH
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    [: LOAD-UNIT ;] catch {: rc:n :}
@@ -2576,8 +2589,8 @@ public
 
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
-: LOADER-FIND ( ^u8 n -- ^u8 n bool )
-   DISCOVERY? if RESOLVE exit then
+: LOADER-FIND ( ^u8 n ^u8 n -- ^u8 n bool )
+   DISCOVERY? if RESOLVE-AT exit then
    LOAD-RESOLVE ;
 
 \ `included` of a u for loader word w, the word the program called.
@@ -2631,14 +2644,14 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
    {: a:^ u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
    s" script-required" a u
-   NULL-PTR 0 a u [: ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
+   NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
 
 : provided ( ^u8 n -- )
    {: a:^ u:n :}
-   s" provided" a u [: RESOLVE ;] LOADER-RESOLVE {: path:^ pathu:n known:bool :}
+   s" provided" a u [: RESOLVE-AT ;] LOADER-RESOLVE {: path:^ pathu:n known:bool :}
    s" provided" path pathu SOURCE-ROOT:BUILD-REFUSE
    a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then

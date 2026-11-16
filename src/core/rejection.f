@@ -809,9 +809,9 @@ public
 \ Opens a warning with its code, which KEEP does not count; the message follows.
 : WARN ( ^u8 n -- ) {: code:^ cu:n :}
    -1 WARNING !  s" warning" code cu BEGIN-RECORD ;
-\ Places the token t tu; its label follows. A token no source holds has no
-\ place, so the record writes none and drops the label. In prose an evaluated
-\ token's call is labelled as such, and the label follows the evaluated place.
+\ Places the token t tu as PLACE does; its label follows. With no place the
+\ record writes none and drops the label. In prose an evaluated token's call is
+\ labelled as such, and the label follows the evaluated place.
 : AT ( ^u8 n -- ) {: t:^ tu:n :}
    END-TEXT
    t tu PLACE

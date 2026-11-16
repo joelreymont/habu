@@ -95,8 +95,8 @@ using PTY-HARNESS
 
 \ A line whose throw computes 0 still fails: it answers `?`, and a definition
 \ on the next line works. The REPL reads every line into one buffer, so
-\ `included` on the line after a path literal is not placed at that literal: a
-\ word note names the path.
+\ `included` on the line after a path literal is placed at itself, not at that
+\ literal.
 : ZERO-THROW-CASE ( -- )
    OPEN dup TTRUE if
       s" 5 5 - throw" STEP TFALSE
@@ -108,7 +108,7 @@ using PTY-HARNESS
       BUF-CLEAR s" included   " SEND-LINE
       s" E-MISSING-SOURCE" WAIT-FOR TTRUE
       s" E-MISSING-SOURCE" s" habu> " WAIT-AFTER TTRUE
-      s" = word: nofile.f" IN-BUF? TTRUE
+      s" --> <input>:1:1" IN-BUF? TTRUE
       4 SEND-BYTE
    then
    0 EXIT= ;

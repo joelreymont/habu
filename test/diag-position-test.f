@@ -1963,7 +1963,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-PATH-RANGE" 5 13 LITERAL-PLACED ;
 
 \ A literal's record lasts only the next token of its own text: a path a loader
-\ is given later, in bytes its copy matches, is not placed at the literal.
+\ is given later, in bytes its copy matches, is not placed at the literal but
+\ at the loader where source read it last, else nowhere, and names no word.
 : TEST-LITERAL-SPENT ( -- )
    s" a literal's copy rewritten and passed later" T-LABEL
    SB-RESET  s" : Z ( ^u8 -- ) 8 0 ?do 122 over i + c! loop drop ;" SB-APPEND LF+
@@ -1979,7 +1980,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" Q" SB-APPEND LF+  s" included" SB-APPEND LF+
    s" spent-evaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 6 1 RAN-AT
-   ERR$ s" = word: nofile.f" CONTAINS? TTRUE
+   ERR$ s" = word:" CONTAINS? TFALSE
    s" a buffer evaluated again at its address, its literal's copy held" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
@@ -1988,7 +1989,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" S2 PUT evaluate" SB-APPEND LF+
    s" spent-reevaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 5 8 RAN-AT
-   ERR$ s" = word: nofile.f" CONTAINS? TTRUE
+   ERR$ s" = word:" CONTAINS? TFALSE
    s" a buffer evaluated closed twice in one word, its literal's copy passed later" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" PTR-VARIABLE H0" SB-APPEND LF+
@@ -2000,8 +2001,16 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s\"    s\" LOADX       \" PUT evaluate-closed ;" SB-APPEND LF+
    s" TWICE" SB-APPEND LF+
    s" spent-closed-twice.f" FIXTURE!
-   s" E-MISSING-SOURCE" 9 1 RAN-AT
-   ERR$ s" = word: nofile.f" CONTAINS? TTRUE ;
+   s" error[E-MISSING-SOURCE]" REJECT-RC RAN
+   ERR$ s"  --> " CONTAINS? TFALSE
+   ERR$ s" = word:" CONTAINS? TFALSE
+   s" a literal a definition passes to `included` at run time" T-LABEL
+   SB-RESET  s\" : GO ( -- ) s\" nofile.f\" included ;" SB-APPEND LF+
+   s" GO" SB-APPEND LF+
+   s" spent-run-time.f" FIXTURE!
+   s" error[E-MISSING-SOURCE]" REJECT-RC RAN
+   ERR$ s"  --> " CONTAINS? TFALSE
+   ERR$ s" = word:" CONTAINS? TFALSE ;
 
 \ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.

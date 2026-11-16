@@ -3370,23 +3370,23 @@ variable LOAD-END
 \ the resolver's answer comes through the loader's, which writes its records.
 : COMPOSE-INCLUDED ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
+   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE {: path:^ pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ^u8 n -- )
    {: a:^ u:n :}
-   NULL-PTR 0 a u [: SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE {: path:^ pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ^u8 n ^u8 n -- )
-   [: SOURCE-ROOT:RESOLVE ;] LOADER-RESOLVE IF 2drop EXIT THEN
+   [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF 2drop EXIT THEN
    REQUIRE-STORE 2drop ;
 
 \ The literal before a string loader, an empty one among them: none is a

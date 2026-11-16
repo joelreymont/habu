@@ -693,8 +693,8 @@ private
 \ load's record, which names it as written.
 : CHK-RESOLVE-POS ( n -- ) {: idx:n :}
    idx CHK-POS$ {: a:^ u:n :}
-   NULL-PTR 0 a u [: CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
-   exists 0= if a u a u true SOURCE-ROOT:MISSING-SOURCE then
+   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
+   exists 0= if a u NULL-PTR 0 true SOURCE-ROOT:MISSING-SOURCE then
    path pathu idx CHK-POS-SET ;
 
 \ An existing input that is no file gets the load's record: a directory's
@@ -1163,7 +1163,7 @@ private
       CHK-REJECT-ARG
    then
    CHK-READ-STDIN CHK-SRC-U !
-   NULL-PTR 0 CHK-STDIN-PATH$ [: CANONICAL ;] LOADER-RESOLVE drop 2drop
+   NULL-PTR 0 CHK-STDIN-PATH$ [: 2drop CANONICAL ;] LOADER-RESOLVE drop 2drop
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.
