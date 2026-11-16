@@ -70,13 +70,16 @@ variable HELP-U
    HELP-U @ 1 + HELP-U ! ;
 : HELP+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ HELP-C+ loop ;
+\ The name at a u as its declaration folds it.
+: HELP-FOLD+ ( ^u8 n -- ) {: a:^ u:n :}
+   u 0 ?do a i + c@ CORE-FOLD-C HELP-C+ loop ;
 
 \ The NEWTYPE a DEFTYPE NAME over BASE becomes, NAME folded to its tail, its
 \ closing "` instead" left to the caller.
 : NEWTYPE-HELP ( ^u8 n ^u8 n -- ) {: na:^ nu:n ba:^ bu:n :}
    0 HELP-U !
    s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
-   nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
+   na nu HELP-FOLD+
    s"  " HELP+  ba bu HELP+ ;
 \ The edit the loader accepts for `DEFTYPE NAME BASE` whose NAME and BASE the
 \ wrap accepted: the NEWTYPE over BASE as written.
@@ -126,7 +129,7 @@ variable HELP-U
       DECL-REJECT:FAMILY$ {: na:^ nu:n :}
       na nu s" ^T" NEWTYPE-HELP
       s" ` instead, `^` joined to the type it points at, as in `NEWTYPE " HELP+
-      nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
+      na nu HELP-FOLD+
       s"  ^u8`" HELP+  HELP-P @ HELP-U @ EXIT THEN
    WRAP? IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`" EXIT THEN
@@ -252,7 +255,8 @@ variable HELP-U
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
 \ The argument spelled at aa au fills slot k of fam; a type parameter argument is
-\ SD-SEAL's to judge, since a later field may still set its kind.
+\ SD-SEAL's to judge, since a later field may still set its kind. A wrap reaches no
+\ region slot: each follows two scope slots, the first of which rejects it.
 : SD-ARG-KIND ( ^u8 n n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
    FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
@@ -262,11 +266,7 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    aa au DECL-REJECT:TOKEN!
    want PK-REGION = IF
       s" type argument must be a region parameter"
-      WRAP? IF
-         s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
-      ELSE
-         s" pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
-      THEN
+      s" pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
    ELSE
       s" type argument must be a scope parameter"
       WRAP? IF
