@@ -1360,13 +1360,17 @@ variable REQUEST-AT-U
 : REQUEST-AT! ( ^u8 n -- ) REQUEST-AT-U ! REQUEST-AT-A ! ;
 : REQUEST-AT$ ( -- ^u8 n ) REQUEST-AT-A @ REQUEST-AT-U @ ;
 
-: OPEN-ERRNO$ ( n -- ^u8 n ) {: e:n :}
-   e 2 = if s" no such file" exit then
-   e 13 = if s" permission denied" exit then
-   e 20 = if s" a directory in the path is a file" exit then
-   e 21 = if s" is a directory" exit then
-   e 5 = if s" input/output error" exit then
-   s" cannot open" ;
+\ The label of errno e, and the os error its record names: e where the label
+\ does not name e, else 0.
+: OPEN-ERRNO$ ( n -- ^u8 n n ) {: e:n :}
+   e 2 = if s" no such file" 0 exit then
+   e 13 = if s" permission denied" 0 exit then
+   e 20 = if s" a directory in the path is a file" 0 exit then
+   e 21 = if s" is a directory" 0 exit then
+   e 5 = if s" input/output error" 0 exit then
+   e 23 = e 24 = or if s" too many open files" 0 exit then
+   e 12 = if s" out of memory" 0 exit then
+   s" cannot open" e ;
 
 \ Writes a u as one single-quoted shell word: each `'` in it closes the quote,
 \ is written escaped and reopens it, so no path byte acts in a shell.
@@ -1391,25 +1395,35 @@ variable REQUEST-AT-U
       REJECTION:EMIT-STR exit
    then
    e 21 = if s" name a source file, not a directory" REJECTION:EMIT-STR exit then
+   e 23 = e 24 = or if
+      s" raise the open-file limit with `ulimit -n`, " REJECTION:EMIT-STR
+      s" or close files this process holds open" REJECTION:EMIT-STR exit
+   then
+   e 12 = if s" free memory, then load it again" REJECTION:EMIT-STR exit then
    s" check that the file exists and is readable" REJECTION:EMIT-STR ;
 
-\ The one record of a found file path the system will not read to its end,
-\ which why labels. Placed at the request t tu, with path in a note.
-\ An empty t tu is no source's token: the record has no place, and its message
-\ names path and ends with why.
-\ It is written through the start of its help: the caller writes the help.
-: UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- )
-   {: t:^ tu:n path:^ pathu:n why:^ whyu:n :}
+\ Writes why, then os error e unless e is 0, as Rust names an OS error.
+: UNREAD-WHY ( ^u8 n n -- ) {: why:^ whyu:n e:n :}
+   why whyu REJECTION:EMIT-STR
+   e 0= if exit then
+   s"  (os error " REJECTION:EMIT-STR  e REJECTION:EMIT-N  41 REJECTION:EMIT1 ;
+
+\ The record of a found path not read to its end, labelled why and os error e;
+\ placed at t tu with path in a note, else unplaced; written through its help.
+: UNREAD-OS-RECORD ( ^u8 n ^u8 n ^u8 n n -- )
+   {: t:^ tu:n path:^ pathu:n why:^ whyu:n e:n :}
    s" E-UNREADABLE-SOURCE" REJECTION:OPEN
    s" cannot read `" REJECTION:EMIT-STR
    tu 0= if
       path pathu REJECTION:EMIT-STR  s" `: " REJECTION:EMIT-STR
-      why whyu REJECTION:EMIT-STR  REJECTION:HELP exit
+      why whyu e UNREAD-WHY  REJECTION:HELP exit
    then
    t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   t tu REJECTION:AT  why whyu REJECTION:EMIT-STR
+   t tu REJECTION:AT  why whyu e UNREAD-WHY
    s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
    REJECTION:HELP ;
+
+: UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- ) 0 UNREAD-OS-RECORD ;
 
 \ EISDIR for a path that names a directory, else e: an open of a directory
 \ without read permission fails EACCES, but a stat of it succeeds.
@@ -1421,13 +1435,12 @@ variable REQUEST-AT-U
 
 public
 
-\ The file path was found but its open or a read of it failed with errno e.
-\ Placed at the request t tu; unplaced when t tu is empty. Public so the walks
-\ that read a found file reject it with the loader's record.
+\ Rejects path, found but failing its open or a read with errno e, at t tu, else
+\ unplaced. Public so a walk that reads a found file rejects it with its record.
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
    path pathu e SOURCE-ERRNO {: why:n :}
-   t tu path pathu why OPEN-ERRNO$ UNREAD-RECORD
+   t tu path pathu why OPEN-ERRNO$ UNREAD-OS-RECORD
    path pathu why OPEN-HELP
    INCLUDE-IO-RC REJECTION:STOP ;
 
