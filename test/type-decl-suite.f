@@ -1777,7 +1777,7 @@ s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfr`\n"
 s" tdqs:qselfr" s" invalid layout policy for recursive sum" TDT-AT
 s" STRUCTURE qsprod FIELD child tdqs:qsprod ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `qsprod`\n"
-s" tdqs:qsprod" s" field type cannot recursively name its owner" TDT-AT
+s" tdqs:qsprod" s" type cannot recursively name its owner" TDT-AT
 public
 s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfp`\n"
@@ -2606,11 +2606,11 @@ s" TDWR-NOT ( str -- tdwrap )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A comment on the name's line is no base: the family stays one cell.
 NEWTYPE tdnote   \ a comment
 s" cast: TDN-CELL ( n -- tdnote )" 0 TDT-NEG
-\ A base never declared is rejected as an unknown field type is.
+\ A base never declared is rejected as an unknown type is.
 s" NEWTYPE tdbad tdmissing-type"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdbad`\n"
-s" tdmissing-type" s" unknown field type" TDT-AT
-s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
+s" tdmissing-type" s" unknown type" TDT-AT
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
 \ The verifier replays a base on the name's line as the load registers it.
 : TDWR-VERIFY ( -- )
    s\" NEWTYPE tdvwrap str\n: TDWR-VUSE ( tdvwrap -- tdvwrap ) ;" VERIFY:SOURCE-BUF ;

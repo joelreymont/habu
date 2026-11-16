@@ -18,11 +18,11 @@ package QUOT-ROLLBACK-TEST
    T-RESET
    64 0 ?do
       s" STRUCTURE qfail FIELD handler [ n n n n nope -- ] ;STRUCTURE"
-         s" unknown field type" REJECTS
+         s" unknown type" REJECTS
    loop
    s" STRUCTURE qgood FIELD handler [ n -- n ] ;STRUCTURE" TEST-EVAL:RC 0 T=
    s" STRUCTURE qnest FIELD handler [ [ n -- n ] nope -- ] ;STRUCTURE"
-      s" unknown field type" REJECTS
+      s" unknown type" REJECTS
    s" STRUCTURE qnest FIELD handler [ [ n -- n ] -- ] ;STRUCTURE"
       TEST-EVAL:RC 0 T=
    s" SUMTYPE qbad VARIANT call [ n nope -- n ] ;VARIANT ;SUMTYPE"

@@ -112,7 +112,7 @@ s" option<n>" s" a deftype base is one name"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtbad option<n>` instead\n" DT-REC
 s" DEFTYPE DTBAD2 pkg:thing"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtbad2`\n"
-s" pkg:thing" s" unknown field type"
+s" pkg:thing" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 s" DEFTYPE dtp ^u8"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtp`\n"
@@ -120,7 +120,7 @@ s" ^u8" s" a deftype base is one name"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtp ^u8` instead\n" DT-REC
 s" DEFTYPE dx ^nosuch"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
-s" nosuch" s" unknown field type"
+s" nosuch" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 \ A record of the name stands at the name as written, not at the base.
 s" DEFTYPE ptr ^u8"
@@ -135,11 +135,11 @@ DEFTYPE DTDUP str
 s" DEFTYPE DTDUP str"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtdup`\n"
 s" DTDUP" s" duplicate family"
-S\" = help: rename the structure: this package already declares a family with this name\n" DT-REC
+S\" = help: rename the family: this package already declares a family with this name\n" DT-REC
 \ inside a longer base the help keeps the base whole: no `NEWTYPE dx option<n>`.
 s" DEFTYPE dx ^option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
-s" option" s" field type is parametric and needs type arguments"
+s" option" s" type is parametric and needs type arguments"
 S\" = help: give the family its type arguments, as in `box<n>`\n" DT-REC
 package DTQP
 public
@@ -149,12 +149,21 @@ s" DEFTYPE dx DTQP:dtqt"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" DTQP:dtqt" s" a deftype base is one name"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx DTQP:dtqt` instead\n" DT-REC
+\ a NEWTYPE has no header and no clause, and its helps offer neither.
+REJECTION:CAPTURE
+: DT-NT-PARAM ( -- ) s" NEWTYPE dtqqq a" VERIFY:SOURCE-BUF ;
+' DT-NT-PARAM catch CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtqqq`\n --> <input>:1:15\n  |\n1 | NEWTYPE dtqqq a\n  |               ^ unknown type\n  = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n\n" CONTAINS? TTRUE
+REJECTION:CAPTURE
+: DT-NT-OPEN ( -- ) s" NEWTYPE dtqqq option<n" VERIFY:SOURCE-BUF ;
+' DT-NT-OPEN catch CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtqqq`\n --> <input>:1:15\n  |\n1 | NEWTYPE dtqqq option<n\n  |               ^^^^^^^^ unclosed type application\n  = help: close each `<` of the type with `>`\n\n" CONTAINS? TTRUE
 \ a base no type declares: the record names DEFTYPE and its help offers one
 \ bare name, never a pointer.
 REJECTION:CAPTURE
 s" DEFTYPE path frob" TEST-EVAL:RC CHECKER-REJECT-RC T=
 REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad deftype declaration `path`" CONTAINS? TTRUE
-s" frob" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" frob" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 REJECTION:BUFFER$ s" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" `^u8`" CONTAINS? TFALSE
 \ a comment on the name's line is no base: the type stays one cell over n.
@@ -195,30 +204,30 @@ DT-MULTI-SRC!
 REJECTION:CAPTURE
 MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
 2 T=  0 T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ field type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
 \ The same record when the load runs DEFTYPE.
 s" DEFTYPE DTWRAP option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n"
-s" option" s" field type is parametric and needs type arguments"
+s" option" s" type is parametric and needs type arguments"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n" DT-REC
 \ read-view's parameters are scopes and a type, which `n` does not fill.
 s" DEFTYPE dtv read-view"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtv`\n"
-s" read-view" s" field type is parametric and needs type arguments"
+s" read-view" s" type is parametric and needs type arguments"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 \ `ptr` names no type without `<`, and no `ptr<` is offered.
 s" DEFTYPE dtk ptr"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtk`\n"
-s" ptr" s" unknown field type"
+s" ptr" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 REJECTION:BUFFER$ s" ptr<" CONTAINS? TFALSE
 \ a base resolves as a field type does, case and all: `Option` names no family.
 s" DEFTYPE rev3 Option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `rev3`\n"
-s" Option" s" unknown field type"
+s" Option" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 
 T-REPORT

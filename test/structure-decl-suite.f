@@ -66,17 +66,17 @@ s\"   = help: name each type parameter once in the header, as in `STRUCTURE box<
 DECL-DIAG:PROSE
 s" STRUCTURE foo FIELD a nope ;STRUCTURE" TEST-EVAL:RC 70 T=  \ unresolved field type
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
-s" nope" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" nope" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE foo FIELD a Q ;STRUCTURE" TEST-EVAL:RC 70 T=    \ upper-case single-letter type
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
-s" Q" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" Q" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE foo FIELD a a ;STRUCTURE" TEST-EVAL:RC 70 T=    \ parameter outside declared arity
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
-s" a" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" a" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it\n" DECL-DIAG:HAS? TTRUE
 NEWTYPE qreq
 NEWTYPE qres
@@ -130,7 +130,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE twice FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `twice`\n" DECL-DIAG:HAS? TTRUE
 s" twice" s" duplicate family" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the structure: this package already declares a family with this name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: this package already declares a family with this name\n" DECL-DIAG:HAS? TTRUE
 
 \ 10. A public STRUCTURE with fields generates a sealed MAKE/UNMAKE ctor package;
 \     MAKE then UNMAKE round-trips the fields bit-identically in declaration order.
@@ -282,14 +282,14 @@ s\"   = help: name each type parameter once in the header, as in `STRUCTURE box<
 DECL-DIAG:PROSE
 s" STRUCTURE sdgbad FIELD a nosuchtype ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgbad`\n" DECL-DIAG:HAS? TTRUE
-s" nosuchtype" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" nosuchtype" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
-\ A pointer field is spelled ^T: `ptr` is an unknown field type.
+\ A pointer field is spelled ^T: `ptr` is an unknown type.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgptr FIELD a ptr u8 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgptr`\n" DECL-DIAG:HAS? TTRUE
-s" ptr" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" ptr" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
@@ -331,7 +331,7 @@ s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL
 DECL-DIAG:PROSE
 s" STRUCTURE sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgself`\n" DECL-DIAG:HAS? TTRUE
-s" sdgself" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" sdgself" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ no family leaks from one declaration into the next: a declaration that fails
@@ -434,7 +434,7 @@ SDSTARQ:SDSTAR-THIRD 300 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdsvspan`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<sdsvspan>" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" SPAN:span<sdsvspan>" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ A family argument may be a pointer to the declared family; a span of pointers stored in
@@ -458,14 +458,14 @@ SDP-KEPT 2 cells T= 7 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdpopen FIELD kept SPAN:span<^ ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpopen`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<^" s" unclosed field type application" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: close each `<` of the field type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
+s" SPAN:span<^" s" unclosed type application" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: close each `<` of the type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
 s\" STRUCTURE sdpline FIELD kept SPAN:span<\n   ^sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdpspaced FIELD kept SPAN:span< ^sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdpbare FIELD kept SPAN:span<^> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpbare`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<^>" s" malformed field type application" DECL-DIAG:CAUSE? TTRUE
+s" SPAN:span<^>" s" malformed type application" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write a type application as `family<type,type>`, as in" DECL-DIAG:HAS? TTRUE
 
 \ A pointer to its own family is a pointer to a linear value when the family
@@ -477,11 +477,11 @@ DEFLINEAR SDSELF:tok
 DECL-DIAG:PROSE
 s" STRUCTURE sdslnode FIELD next ^sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode`\n" DECL-DIAG:HAS? TTRUE
-s" sdslnode" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdslnode" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdslnode2 FIELD t SDSELF:tok FIELD next ^sdslnode2 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode2`\n" DECL-DIAG:HAS? TTRUE
-s" sdslnode2" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdslnode2" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ hostile declarations: a field spelled like a fragment of the message is
 \ reported as the token it is, and exactly one rejection is emitted.
@@ -524,7 +524,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgtwice FIELD b n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtwice`\n" DECL-DIAG:HAS? TTRUE
 s" sdgtwice" s" duplicate family" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the structure: this package already declares a family with this name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: this package already declares a family with this name\n" DECL-DIAG:HAS? TTRUE
 
 \ SD-CLOSE arms no reason of its own: the generator's rejects are raised past the
 \ last token this front end holds, so they are answered from the packet's code
@@ -533,7 +533,7 @@ s\"   = help: rename the structure: this package already declares a family with 
 DECL-DIAG:PROSE
 s" STRUCTURE sdgvrsv FIELD z sdgvrsv ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgvrsv`\n" DECL-DIAG:HAS? TTRUE
-s" sdgvrsv" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" sdgvrsv" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
@@ -583,7 +583,7 @@ s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
 DECL-DIAG:PROSE
 s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ unknown field type\n" DECL-DIAG:HAS? TTRUE
+s\" ^ unknown type\n" DECL-DIAG:HAS? TTRUE
 s\" = word: nope\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
@@ -709,7 +709,7 @@ s" STRUCTURE sdlrole FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlfwd FIELD m sdllater ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlfwd`\n" DECL-DIAG:HAS? TTRUE
-s" sdllater" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" sdllater" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
@@ -719,7 +719,7 @@ s" STRUCTURE sdlgen<a> FIELD a a ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlgenuse FIELD m sdlgen ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlgenuse`\n" DECL-DIAG:HAS? TTRUE
-s" sdlgen" s" field type is parametric and needs type arguments" DECL-DIAG:CAUSE? TTRUE
+s" sdlgen" s" type is parametric and needs type arguments" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give the family its type arguments, as in `box<n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
@@ -738,56 +738,56 @@ s" STRUCTURE sdlowns FIELD m sdlbox ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr FIELD p ^sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr`\n" DECL-DIAG:HAS? TTRUE
-s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrcon FIELD p ^SDLIN:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrcon`\n" DECL-DIAG:HAS? TTRUE
-s" SDLIN:tok" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" SDLIN:tok" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr2 FIELD p ^^sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr2`\n" DECL-DIAG:HAS? TTRUE
-s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrdeep FIELD p ^sdldeep ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrdeep`\n" DECL-DIAG:HAS? TTRUE
-s" sdldeep" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdldeep" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrsum FIELD p ^sdlsum ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrsum`\n" DECL-DIAG:HAS? TTRUE
-s" sdlsum" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdlsum" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ a field anywhere in the body is checked, not just the first one, and the token
 \ names the offending field's type rather than the declaration's first field.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrlate FIELD a n FIELD p ^sdlbox FIELD c n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrlate`\n" DECL-DIAG:HAS? TTRUE
-s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ `^` lets a field name its own family only inside the pointee: by value after
 \ it, or in the declaration after a refused pointee, the name is rejected.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlpquot FIELD q [ ^sdlpquot sdlpquot -- ] ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpquot`\n" DECL-DIAG:HAS? TTRUE
-s" sdlpquot" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" sdlpquot" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlpleak FIELD next ^Q ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpleak`\n" DECL-DIAG:HAS? TTRUE
-s" Q" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s" Q" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlpafter FIELD me sdlpafter ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpafter`\n" DECL-DIAG:HAS? TTRUE
-s" sdlpafter" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" sdlpafter" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ the controls. A pointer to a family that owns nothing declares, so the rejects
@@ -819,7 +819,7 @@ s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, an
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrtail FIELD p ^sdlbox ( note ) ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrtail`\n" DECL-DIAG:HAS? TTRUE
-s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
 \ 15. DERIVE addr: one accessor per field plus AT / BYTES / CELLS, in the

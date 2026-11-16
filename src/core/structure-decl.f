@@ -38,12 +38,17 @@ SD-RESET
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
+\ A NEWTYPE or DEFTYPE: one base on one line, with no header and no clause.
+: WRAP? ( -- bool ) DECL-REJECT:KIND$ s" structure" CORE-STR= 0= ;
 \ A DEFTYPE base is one name (WRAP-DRIVE), so its help offers no `^` or header.
 : SD-TYPE-FIX$ ( -- ^u8 n )
    DEFTYPE? IF
       s" name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" EXIT THEN
+   WRAP? IF
+      s" name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`" EXIT THEN
    s" name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`" ;
 : SD-PARAM-FIX$ ( -- ^u8 n )
+   WRAP? IF SD-TYPE-FIX$ EXIT THEN
    s" list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it" ;
 \ NEWTYPE-HELP's text, mapped on first use and grown to fit: it names the case.
 $100 constant HELP-FIRST                \ bytes of the first mapping
@@ -104,8 +109,12 @@ variable HELP-U
 \ The help for a malformed pointer token at a.
 : SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
    WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
+   WRAP? IF
+      s" spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`" EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;
-: SD-OPEN-FIX$ ( -- ^u8 n ) s" close each `<` of the field type with `>` before the next clause" ;
+: SD-OPEN-FIX$ ( -- ^u8 n )
+   WRAP? IF s" close each `<` of the type with `>`" EXIT THEN
+   s" close each `<` of the type with `>` before the next clause" ;
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
 \ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
@@ -134,7 +143,7 @@ variable HELP-U
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
 \ field naming a DEFLINEAR con already relies on.
-\ The kind test falls through to "unknown field type" because the one kind it
+\ The kind test falls through to "unknown type" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
 \ The declared family may be named only beneath a `^` (`^node`, `SPAN:span<^node>`);
 \ by value, as in `option<node>`, it is 7109.
@@ -145,8 +154,12 @@ variable HELP-U
    id UNSTORED-REASON IF TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
-      s" field type cannot recursively name its owner"
-      s" name the structure being declared only beneath `^`, as in `FIELD next ^node`"
+      s" type cannot recursively name its owner"
+      DEFTYPE? IF SD-TYPE-FIX$ ELSE WRAP? IF
+         s" name the type being declared only beneath `^`, as in `NEWTYPE link ^link`"
+      ELSE
+         s" name the structure being declared only beneath `^`, as in `FIELD next ^node`"
+      THEN THEN
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
@@ -157,7 +170,7 @@ variable HELP-U
    dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
    dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown field type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      drop s" unknown type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    dup {: idx:n :}
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
@@ -166,8 +179,8 @@ variable HELP-U
 
 : SD-ARG+ ( n -- )
    SD-ARG-N @ SD-ARG-CAP >= IF
-      s" field type application is too deep"
-      s" nest fewer than 256 type arguments in one field type"
+      s" type application is too deep"
+      s" nest fewer than 256 type arguments in one type"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    SD-ARG-N @ cells SD-ARGS + !
    SD-ARG-N @ 1 + SD-ARG-N ! ;
@@ -186,7 +199,7 @@ variable HELP-U
       1 +
    REPEAT {: j:n :}
    j start = IF
-      s" malformed field type application"
+      s" malformed type application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a start + j start - j ;
 
@@ -201,41 +214,41 @@ variable HELP-U
 \ Whether the atom ending at j opens a pointer argument, and the index its
 \ pointee is read from: an atom `^T` at the byte after `^`. A `^` with nothing
 \ joined to it, as in `span<^ n>` or `span<^>`, is malformed; an atom `ptr` not
-\ followed by `<` names no type and is refused as an unknown field type.
+\ followed by `<` names no type and is rejected as an unknown type.
 : SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = IF
-         s" malformed field type application"
+         s" malformed type application"
          SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       j nu - 1 + YES EXIT
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
-   s" unknown field type" na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown type" na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
 : SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
-      s" field type has too many arguments"
+      s" type has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF
-      s" unclosed field type application"
+      s" unclosed type application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
    c 44 = IF a u fam k 1 + j 1 + RECURSE EXIT THEN
    c 62 = IF k 1 + j 1 + EXIT THEN
-   s" malformed field type application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" malformed type application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-APP ( ^u8 n n n -- n n ) {: a:^ u:n fam:n i:n :}
    SD-ARG-N @ {: base:n :}
    a u fam 0 i SD-APP-ARGS {: k:n j:n :}
    k fam TFAM-ARITY@ <> IF
-      s" field type has wrong arity"
+      s" type has wrong arity"
       s" give the family as many type arguments as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
@@ -251,18 +264,18 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-ARGS ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
-      s" unclosed field type application"
+      s" unclosed type application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
    c 62 = IF j 1 + EXIT THEN
    c 44 <> IF
-      s" malformed field type application"
+      s" malformed type application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u j 1 + RECURSE ;
 
 : SD-LOOSE-APP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    i u >= IF
-      s" unclosed field type application"
+      s" unclosed type application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a i + c@ 62 = IF i 1 + EXIT THEN
    a u i SD-LOOSE-ARGS ;
@@ -281,12 +294,12 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a u CON-OF dup 0 <> IF drop EXIT THEN drop
    a u FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
-         s" field type is parametric and needs type arguments"
+         s" type is parametric and needs type arguments"
          fam a u SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
       THEN EXIT
    THEN drop
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
-   s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
 \ set as RESOLVE-TYPE sets it.
@@ -307,7 +320,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
          a u fam j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
-         s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       SD-MISSING!
       a u j 1 + SD-LOOSE-APP EXIT
    THEN
@@ -324,7 +337,7 @@ SD-LOOSE-INSTALL
    a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
    FIELD-MISS @ IF 0 e EXIT THEN
-   node s" field type is a pointer to a linear value and cannot own it"
+   node s" type is a pointer to a linear value and cannot own it"
    DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
 
 \ The node at i of a field type's text: a type parameter, a con, a family
@@ -336,7 +349,7 @@ SD-LOOSE-INSTALL
       na nu FIELD-FAM? 0= IF
          drop
          na nu TYPE-MAY-ARRIVE-XT 0= IF
-            s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+            s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
          SD-MISSING!
          0 a u j 1 + SD-LOOSE-APP EXIT
       THEN
@@ -347,12 +360,12 @@ SD-LOOSE-INSTALL
    na nu CON-OF dup 0 <> IF SCHEMA-CON j EXIT THEN drop
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
-         s" field type is parametric and needs type arguments"
+         s" type is parametric and needs type arguments"
          fam na nu SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       fam 0 0 SCHEMA-APP j EXIT
    THEN drop
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
-   s" unknown field type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
@@ -371,7 +384,7 @@ SD-PARSER-INSTALL
    BEGIN dup 0 > WHILE
       NEXT dup 0= IF YES ELSE 2dup s" ;structure" CORE-STR=CI THEN IF
          UNGET  drop a swap DECL-REJECT:TOKEN!
-         s" unclosed field type application"
+         s" unclosed type application"
          SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       2swap nip  >r 2dup r> -rot SD-DEPTH  -rot
       swap NULL-PTR - a NULL-PTR - - +  swap
@@ -402,7 +415,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
 \ tokens after it, a leading `^` the rest of its span. The text resolved is the
 \ reject token, so a refused pointee names itself, not the `^T` span that holds it.
 : RESOLVE-TYPE ( ^u8 n -- n )
-   dup 0= IF 2drop s" missing field type"
+   dup 0= IF 2drop s" missing type"
       s" write a type after the field name, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
@@ -419,12 +432,12 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
       RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
-      s" field type is a pointer to a linear value and cannot own it"
+      s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    0 SD-ARG-N !
    2dup 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
    j over <> IF
-      2drop s" malformed field type application"
+      2drop s" malformed type application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    2drop node ;
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
@@ -604,7 +617,7 @@ SD-QUOT-INSTALL
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
    s" duplicate family"
-   s" rename the structure: this package already declares a family with this name"
+   s" rename the family: this package already declares a family with this name"
    E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
@@ -639,7 +652,7 @@ SD-QUOT-INSTALL
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
       FLDBASE @ i + PF-PENDING-SCH@ SCHEMA-ROOT@
-      s" field type is a pointer to a linear value and cannot own it"
+      s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop
    FAM @ SD-CELLS @ TFAM-SLOTS! ;
