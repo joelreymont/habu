@@ -2739,13 +2739,13 @@ HB-TARGET-LINUX? 0= [if]
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-type.f" FIXTURE!
    REJECT-RC 1 s" widget" s" declare `widget` with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" DEFER-SUGGESTS
-   s" a top-level name only rendered text may define (its cause is habu-a-top-level-63e728e9's)" T-LABEL
+   s" a top-level name only rendered text may define" T-LABEL
    GEN-LINES
    s" MADE" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
    s" defer-top-rendered.f" FIXTURE!
    0 1 s" MADE" s" rewrite the code from `MADE` on with words whose effects the check knows" DEFER-SUGGESTS
-   s" a body deferred to the run (its cause is the next commit's)" T-LABEL
+   s" a body deferred to the run" T-LABEL
    GEN-LINES
    s" : X ( -- ) MADE ;" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
