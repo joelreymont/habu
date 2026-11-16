@@ -286,8 +286,6 @@ variable TDECL-U
 : TDECL-FIELD-FIX$ ( -- ^u8 n ) s" give each field of this declaration its own name" ;
 : TDECL-GEN-FIX$ ( -- ^u8 n )
    s" rename the family or variant so no word it generates repeats a word already defined here" ;
-: TDECL-DEFECT-FIX$ ( -- ^u8 n )
-   s" report this declaration as a Habu defect: no declaration text should reach this state" ;
 
 \ TDECL-THROW's own copy of its word, mapped on first use and grown to fit: the
 \ rollback a throw in a transaction participant runs first scrubs the stores
@@ -1093,11 +1091,7 @@ create TDV-BADLETTER 1 allot
    0 BEGIN dup count < WHILE
       base over + SCHEMA-ROOT@ fam swap TFAM-SCH-ARITY
       dup 0 >= IF
-         TFAM-DECL-PARAM>CHAR 0= IF
-            drop TDN-A @ TDN-U @ s" payload parameter has no declaration spelling"
-            TDECL-DEFECT-FIX$ E-TDECL-PAYLOAD TDECL-THROW
-         THEN
-         TDV-BADLETTER c!
+         TFAM-DECL-PARAM>CHAR drop TDV-BADLETTER c!
          TDV-BADLETTER 1 s" payload parameter out of family arity"
          TDECL-PARAM-FIX$ E-TDECL-PAYLOAD TDECL-THROW
       THEN

@@ -2409,7 +2409,7 @@ PF-QUOT-ROW-INSTALL
 \ formed, not which parameter index is out of arity. This walk descends
 \ SCH-APP arguments, the SCH-PTR pointee and SCH-QUOT rows, and answers the
 \ first out-of-arity index, or -1 when the subtree is in range (indices are
-\ 0..25).
+\ 0..22).
 defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward ref for the SCH-QUOT recursion
 
 public
