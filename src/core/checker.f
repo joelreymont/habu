@@ -13130,16 +13130,37 @@ variable SNAP-N
    ndict@ DICT-CAP < IF EXIT THEN
    a u a u REJECTION:DICTIONARY-FULL ;
 
+76 constant CODE-FULL-RC
+
+\ A name past DNAME-INL bytes is copied below the code ceiling, $4000 under the
+\ region's end, in whole code slots (16 bytes on x86-64, else 4).
+: CODE-ROOM ( ^u8 n -- ) {: a:^ u:n :}
+   u DNAME-INL > 0= IF EXIT THEN
+   HB-TARGET-LINUX-X86-64? IF 16 ELSE 4 THEN {: slot:n :}
+   u slot 1 - + slot negate and {: span:n :}
+   dbase@ REGION + $4000 - {: ceil:n :}
+   ceil cp@ >  IF ceil cp@ - span > IF EXIT THEN THEN
+   s" E-CODE-SPACE-FULL" REJECTION:OPEN
+   s" code space has no room for the name `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" no code room" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" shorten the name, or define fewer words in this load" REJECTION:EMIT-STR
+   CODE-FULL-RC REJECTION:STOP ;
+
+public
 \ A colon at an edge or a second colon is rejected, as namespace-record
-\ rejects them; a new row takes both wids.
-: NS-ENSURE ( ^u8 n -- ^n ) {: a:^ u:n :}
+\ rejects them; a new row takes a private wid as well when OWN is true.
+: NS-ENSURE ( ^u8 n bool -- ^n ) {: a:^ u:n own:bool :}
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF a u PACKAGE-COLON-REJECT THEN
    a u NS-ROW {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
    a u ROOM
-   a u RES-TRUE namespace-record drop
+   a u CODE-ROOM
+   a u own namespace-record drop
    a u NS-ROW ;
+private
 
 : SNAP-SAVE ( ^u8 -- ) {: p:^ :}
    PKG-REC-CELL SCOPE-IX p S-REC ROW!
@@ -13255,7 +13276,7 @@ variable SNAP-N
    sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
    sym SYM-PKG$ {: pa:^ pu:n :}
    pu 0= IF BOOT:GLOBAL-WL EXIT THEN
-   pa pu NS-ENSURE {: rec:^ :}
+   pa pu RES-TRUE NS-ENSURE {: rec:^ :}
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    rec CELL + @ {: pri:n :}
    pri 0= IF sym pa pu NO-PRIVATE-REJECT THEN
@@ -13477,7 +13498,7 @@ ROW-CELLS cells constant SCOPE-BYTES
    part  PKG-PUB-CELL DATA@ 0 <>  xor  ENCLOSING:REC DATA@ 0 <>  or IF
       a u PATH-SCOPE-REJECT
    THEN
-   a u NS-ENSURE {: rec:^ :}
+   a u RES-TRUE NS-ENSURE {: rec:^ :}
    rec CELL + @ 0= IF rec GRANT THEN
    USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
    rec REC>IX get-current package-scope!
@@ -13506,7 +13527,7 @@ ROW-CELLS cells constant SCOPE-BYTES
       a u REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
    THEN
    a u CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a u NS-ENSURE ELSE row THEN {: rec:^ :}
+   row NULL-PTR = IF a u RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
    USE-DEPTH-CELL DATA@ {: d:n :}
    d CHECKER-USE:SOURCE-FLOOR @ < IF d CHECKER-USE:SOURCE-FLOOR ! THEN
    rec @ d cells USE-WIDS-OFF + DATA!

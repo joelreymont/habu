@@ -1074,9 +1074,10 @@ private
 \ SV.CTOR-PKG, keyed by family id so same-tail families in different packages
 \ get disjoint namespaces. A private or OPAQUE family's slot stays empty: its
 \ generated words are spelled with TF-CTOR-PRIV$ into the declaring package's
-\ private wordlist. The name is interned after the escaped
-\ spelling is built, so the transient package/tail pointers are consumed before
-\ any pool grow.
+\ private wordlist. A part's family makes its constructor package, a part of
+\ the same package with a public wordlist alone. The name is interned after the
+\ escaped spelling is built, so the transient package/tail pointers are consumed
+\ before any pool grow.
 
 public
 
@@ -1084,6 +1085,7 @@ public
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDN-A @ TDN-U @ TDECL-TOK!
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:^ cu:n :}
+   ca cu CHECKER-COLON-SCAN drop 0 <> IF ca cu RES-FALSE CHECKER-OVERLAY:NS-ENSURE drop THEN
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 
@@ -1628,16 +1630,18 @@ private
 \    drop and answer false); products UNMAKE both values, bind fields top-down
 \    and compare field-wise. A family-typed slot binds as its family and
 \    compares through that family's EQ.
-\ A derived word is "PKG-FAMILY:TAIL" for a public family and "FAMILY-TAIL" for a
-\ private or OPAQUE one, as a constructor is spelled. Neither stamps a
-\ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
-\ name nothing. A private or OPAQUE family's words bind in the declaring package,
-\ so only a declaration in that package derives through them
-\ (TDECL-DERIVE-WHY).
+\ A derived word is spelled as a constructor: "PKG-FAMILY:TAIL" for a public
+\ family, "B-FAMILY:TAIL" for one in part A:B, "FAMILY-TAIL" for a private or
+\ OPAQUE one, which stamps no constructor package (TDECL-CTOR-PUBLISH exits
+\ early), so SUMV-CTOR-PKG$ would name nothing. A private or OPAQUE family's
+\ words bind in the declaring package, so only a declaration in that package
+\ derives through them (TDECL-DERIVE-WHY).
 : TDGEN-DRV-REF ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}
    fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ {: ca:^ cu:n :}
+   ca cu CHECKER-COLON-SCAN nip 1 + {: skip:n :}
+   ca skip + cu skip - TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
 : TDGEN-DRV-NAME ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}   \ the name alone
@@ -1657,11 +1661,13 @@ private
 : TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}
    s" match" TDGEN-KW
    fam TFAM-NAME$  fam TDGEN-SELF-NODE  ITEM-ABI:TYPE TDGEN-ITEM ;
-\ A public family's derived TAIL by its exact name, which no part named as its
-\ constructor package captures; a private or OPAQUE one's where it binds.
+\ A top-level public family's derived TAIL by its exact name, which no part
+\ named as its constructor package captures; a part's or a private or OPAQUE
+\ family's where it binds, the part's `B-F` to the part of A.
 : TDGEN-DRV-CALL ( n ^u8 n -- ) {: fam:n ta:^ tu:n :}
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF
-   fam TFAM-GEN-PUBLIC? IF ITEM-ABI:CALL-EXACT ELSE ITEM-ABI:CALL THEN {: op:n :}
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ CHECKER-COLON-SCAN drop 0= {: top:bool :}
+   fam TFAM-GEN-PUBLIC? top and IF ITEM-ABI:CALL-EXACT ELSE ITEM-ABI:CALL THEN {: op:n :}
    TDGEN-BUF TDGEN-U @ 0 op TDGEN-ITEM ;
 : TDGEN-DROPS ( n -- ) {: k:n :}          \ drop x k
    k 0 ?do postpone drop loop ;

@@ -230,6 +230,60 @@ s" undefine VEIL-MAKE" TEST-EVAL:RC 0 T=
 public
 ;package
 
+\ A public family in part A:B has its constructor package in the part A:B-F of
+\ A: its words are B-F:TAIL inside A and its parts, and nothing outside A
+\ reaches them, A:B-F:TAIL included.
+package SDPARTFAM
+package BB
+public
+STRUCTURE inner FIELD x n ;STRUCTURE
+private
+;package
+: AGO ( n -- n ) BB-INNER:MAKE BB-INNER:UNMAKE ;
+package CC
+public
+: CGO ( n -- n ) BB-INNER:MAKE BB-INNER:UNMAKE ;
+private
+;package
+public
+: GO ( n -- n ) AGO ;
+: PART-GO ( n -- n ) CC:CGO ;
+;package
+4 SDPARTFAM:GO 4 T=
+4 SDPARTFAM:PART-GO 4 T=
+s" 4 BB-INNER:MAKE" TEST-EVAL:RC 70 T=
+s" 4 SDPARTFAM:BB-INNER:MAKE" TEST-EVAL:RC 70 T=
+
+\ A public family whose field has the part's type derives eq through the part's
+\ family's EQ.
+package SDPARTEQ
+package BB
+public
+STRUCTURE inner DERIVE eq FIELD x n ;STRUCTURE
+private
+;package
+public
+STRUCTURE outer DERIVE eq FIELD i BB:inner ;STRUCTURE
+: SAME? ( n n -- bool )
+   swap BB-INNER:MAKE SDPARTEQ-OUTER:MAKE
+   swap BB-INNER:MAKE SDPARTEQ-OUTER:MAKE  SDPARTEQ-OUTER:EQ ;
+;package
+4 4 SDPARTEQ:SAME? TTRUE
+4 5 SDPARTEQ:SAME? TFALSE
+
+\ A part's constructor package is judged by the part's row, not by a sealed
+\ top-level package of the same name: BODY-ITEMS is an engine package.
+package SDPARTSEAL
+package BODY
+public
+STRUCTURE items FIELD x n ;STRUCTURE
+private
+;package
+public
+: GO ( n -- n ) BODY-ITEMS:MAKE BODY-ITEMS:UNMAKE ;
+;package
+6 SDPARTSEAL:GO 6 T=
+
 \ 14. A rejected PRIVATE declaration rolls back its field rows and its words: the
 \     same name declares again in the package.
 package SDPRIVROLL

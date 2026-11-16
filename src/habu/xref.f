@@ -369,11 +369,15 @@ names: XREF-FIND-INDEX
 : XREF-FIND-CURRENT-INDEX ( ^u8 n -- n )
    get-current XREF-FIND-WL-INDEX ;
 
-: XREF-FIND-TARGET-INDEX ( ^u8 n -- n )
-   XREF-QUAL-INDEX
-   dup -2 = if drop -1 exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ XREF-FIND-CURRENT-INDEX ;
+\ A qualified head resolves as the checker's does, a part of the open package
+\ first, so `undefine` finds the word the checker's guard then judges.
+: XREF-FIND-TARGET-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = if -1 exit then
+   q 0 < if a u XREF-FIND-CURRENT-INDEX exit then
+   a q CHECKER-RESOLVE:HEAD-ROW {: ns:^ :}
+   ns XREF-FOUND? 0= if -1 exit then
+   a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
 
 : XREF-REQUIRE-INDEX ( n -- n )
    dup 0 >= if exit then
@@ -521,7 +525,7 @@ private
 \ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
 : NAMESPACE-EXISTS? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
-   XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+   a split CHECKER-RESOLVE:HEAD-ROW XREF-FOUND? ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
@@ -537,12 +541,13 @@ private
 \ package the verified source sealed) is the declaration's error, whether or
 \ not the package holds it. A bare name lands in the declaring package's
 \ private wordlist, and a sealed package cannot be opened, so no bare name
-\ reaches one.
+\ reaches one. A head resolves as the definition's does: a part is asked by its
+\ path.
 : CHECK ( ^u8 n -- ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF EXIT THEN
-   a q XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:^ :}
+   a q CHECKER-RESOLVE:HEAD-ROW {: ns:^ :}
+   ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
    ns XREF-FOUND? 0= IF EXIT THEN
    ns XREF:SEALED? 0= IF EXIT THEN
    a u SEALED-STOP ;
