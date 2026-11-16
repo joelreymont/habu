@@ -85,7 +85,6 @@ require src/core/rejection.f
 -2900 constant E-DIAG-FIRST
 -2999 constant E-DIAG-LAST
 -2900 constant E-DIAG-SCHEMA
--2901 constant E-DIAG-CAPACITY \ a report outgrows the buffer its caller gave
 
 \ Tables: -3000..-3099
 -3000 constant E-TBL-FIRST

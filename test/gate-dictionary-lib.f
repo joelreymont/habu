@@ -515,7 +515,6 @@ variable LABEL-U
 : CHECK-BUF-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
-   FD:STDERR CHECK-ALL-ERRORS:STREAM!
    false REJECTION:JSON !
    [: CHECK-BUF-ACT ;] GE-CAPTURE-ACTION ;
 

@@ -503,11 +503,6 @@ private
    u CHK-SRC-U !
    a CHK-SRC-A CHK-PTR-U8! ;
 
-\ The --all-errors core writes its records to standard error in the run's mode.
-: CHK-ALL-STREAM ( -- )
-   FD:STDERR CHECK-ALL-ERRORS:STREAM!
-   CHK-JSON @ REJECTION:JSON ! ;
-
 6 constant CHK-KEPT-ROW                \ cells per kept stop
 
 \ The captured record of the walk's stop with status RC, kept with the place it
@@ -970,10 +965,8 @@ private
 \ loader's next statement is in scope there, and a rejected definition's
 \ declared signature stands for it, as at a whole-file check. The composition
 \ reads each file a loader loads, so it meets each lexer defect where it lies.
-\ The report goes to standard error as the core makes it: every record of every
-\ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
-   CHK-ALL-STREAM
+   CHK-JSON @ REJECTION:JSON !
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
 \ Whether the composition never read the place of kept stop n.

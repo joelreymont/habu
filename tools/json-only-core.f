@@ -1,7 +1,6 @@
 \ json-only-core.f - JSON diagnostic line filter core.
 
 require src/lib/error.f
-require src/lib/memory.f
 require src/lib/jsonl.f
 require src/lib/string.f
 require src/lib/fd.f
@@ -14,13 +13,6 @@ TYPED-VARIABLE JSON-ONLY-READER JSON:cursor
 
 variable JSON-ONLY-JSON-FD
 variable JSON-ONLY-PROSE-FD
-variable JSON-ONLY-JSON-A
-variable JSON-ONLY-JSON-CAP
-variable JSON-ONLY-JSON-U
-variable JSON-ONLY-PROSE-A
-variable JSON-ONLY-PROSE-CAP
-variable JSON-ONLY-PROSE-U
-variable JSON-ONLY-BUF-ON
 TYPED-VARIABLE JSON-ONLY-SOURCE ^u8
 variable JSON-ONLY-SOURCE-U
 variable JSON-ONLY-POS
@@ -28,77 +20,12 @@ TYPED-VARIABLE JSON-ONLY-LINE ^u8
 variable JSON-ONLY-LINE-U
 variable JSON-ONLY-ROW-OBJECT
 
-: JSON-ONLY-BUF-PTR-FIELD ( ^a -- ^^u8 )
-   0 ptr-field ;
-
-: JSON-ONLY-BUF-PTR@ ( ^a -- ^u8 )
-   JSON-ONLY-BUF-PTR-FIELD @ ;
-
-: JSON-ONLY-BUF-PTR! ( ^u8 ^a -- )
-   JSON-ONLY-BUF-PTR-FIELD ! ;
-
-: JSON-ONLY-JSON-A@ ( -- ^u8 )
-   JSON-ONLY-JSON-A JSON-ONLY-BUF-PTR@ ;
-
-: JSON-ONLY-PROSE-A@ ( -- ^u8 )
-   JSON-ONLY-PROSE-A JSON-ONLY-BUF-PTR@ ;
-
-: JSON-ONLY-JSON-A! ( ^u8 -- )
-   JSON-ONLY-JSON-A JSON-ONLY-BUF-PTR! ;
-
-: JSON-ONLY-PROSE-A! ( ^u8 -- )
-   JSON-ONLY-PROSE-A JSON-ONLY-BUF-PTR! ;
-
 : JSON-ONLY-FDS! ( fd fd -- ) {: jsonfd prosefd :}
    jsonfd JSON-ONLY-JSON-FD !
    prosefd JSON-ONLY-PROSE-FD ! ;
 
 : JSON-ONLY-DEFAULT-FDS ( -- )
    FD:STDOUT FD:STDERR JSON-ONLY-FDS! ;
-
-: JSON-ONLY-BUFFERS! ( ^u8 n ^u8 n -- ) {: json:^ jsonu:n prose:^ proseu:n :}
-   json JSON-ONLY-JSON-A!
-   jsonu JSON-ONLY-JSON-CAP !
-   0 JSON-ONLY-JSON-U !
-   prose JSON-ONLY-PROSE-A!
-   proseu JSON-ONLY-PROSE-CAP !
-   0 JSON-ONLY-PROSE-U !
-   0 0= JSON-ONLY-BUF-ON ! ;
-
-: JSON-ONLY-BUFFERS-OFF ( -- )
-   0 0= 0= JSON-ONLY-BUF-ON ! ;
-
-: JSON-ONLY-JSON$ ( -- ^u8 n )
-   JSON-ONLY-JSON-A@ JSON-ONLY-JSON-U @ ;
-
-: JSON-ONLY-PROSE$ ( -- ^u8 n )
-   JSON-ONLY-PROSE-A@ JSON-ONLY-PROSE-U @ ;
-
-: JSON-ONLY-BUF-COPY ( ^u8 ^u8 n -- )
-   {: a:^ dst:^ u:n :}
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
-
-\ The two buffers are the caller's and cannot grow, so text that does not fit
-\ is refused whole by E-DIAG-CAPACITY, as the all-errors core refuses its
-\ report buffer, and the buffer keeps everything before it.
-: JSON-ONLY-BUF-ROOM ( n n ^n -- )
-   {: need:n cap:n lenp:^ :}
-   lenp @ need + cap > IF E-DIAG-CAPACITY throw THEN ;
-
-: JSON-ONLY-APPEND ( ^u8 n ^u8 n ^n -- )
-   {: a:^ u:n dst:^ cap:n lenp:^ :}
-   u cap lenp JSON-ONLY-BUF-ROOM
-   a dst lenp @ + u JSON-ONLY-BUF-COPY
-   lenp @ u + lenp ! ;
-
-: JSON-ONLY-JSON-APPEND ( ^u8 n -- )
-   JSON-ONLY-JSON-A@ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-APPEND ;
-
-: JSON-ONLY-PROSE-APPEND ( ^u8 n -- )
-   JSON-ONLY-PROSE-A@ JSON-ONLY-PROSE-CAP @ JSON-ONLY-PROSE-U JSON-ONLY-APPEND ;
 
 : JSON-ONLY-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    u 0= IF exit THEN
@@ -110,16 +37,9 @@ variable JSON-ONLY-ROW-OBJECT
 
 : JSON-ONLY-PROSE ( ^u8 n -- )
    {: a:^ u :}
-   JSON-ONLY-BUF-ON @ IF a u JSON-ONLY-PROSE-APPEND exit THEN
    JSON-ONLY-PROSE-FD @ a u JSON-ONLY-WRITE ;
 
 : JSON-ONLY-JSON-LINE ( -- )
-   JSON-ONLY-BUF-ON @ IF
-      JSON-ONLY-LINE-U @ 1+ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-BUF-ROOM
-      JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON-ONLY-JSON-APPEND
-      JSON-ONLY-LF$ JSON-ONLY-JSON-APPEND
-      exit
-   THEN
    JSON-ONLY-JSON-FD @ JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON-ONLY-WRITE
    JSON-ONLY-JSON-FD @ JSON-ONLY-LF$ JSON-ONLY-WRITE ;
 

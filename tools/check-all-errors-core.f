@@ -1,10 +1,9 @@
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every rejected definition and lexer defect, one record each through package
-\ REJECTION, in the mode REJECTION:JSON holds. The report buffer is the
-\ caller's and never grows (BUFFERS!); a streamed report has no bound
-\ (STREAM!). A run's records are captured by REJECTION, which grows its capture
-\ to hold them, and handed to the report when the run ends.
+\ REJECTION, in the mode REJECTION:JSON holds, to standard error. A run's
+\ records are captured by REJECTION, which grows its capture to hold them, and
+\ handed to the report when the run ends.
 \
 \ A definition of a name its scope already held is rejected at the name, and
 \ the scan goes on past it as past any rejected definition.
@@ -38,11 +37,6 @@ package CHECK-ALL-ERRORS
 
 private
 
-variable CA-OUT-LEN
-TYPED-VARIABLE CA-OUT-A ^u8
-variable CA-OUT-CAP
-variable CA-OUT-FD                      \ where the report goes, or -1 for the buffer
--1 CA-OUT-FD !
 TYPED-VARIABLE CA-SRC-A ^u8
 variable CA-SRC-U
 variable CA-SRC-CAP
@@ -66,28 +60,9 @@ variable CA-COMPOSE-LABEL-U
 : CA-FILE-A! ( ^u8 -- )
    CA-FILE-A ! ;
 
-: CA-OUT-A@ ( -- ^u8 )
-   CA-OUT-A @ ;
-
-: CA-OUT-A! ( ^u8 -- )
-   CA-OUT-A ! ;
-
-\ The report buffer is the caller's and cannot grow, so a run's records that do
-\ not fit are rejected whole by a throw, after every run's before them. A
-\ streamed report has no buffer to outgrow.
-: CA-OUT-ROOM ( n -- )
-   CA-OUT-FD @ 0 >= IF drop exit THEN
-   CA-OUT-LEN @ + CA-OUT-CAP @ > IF E-DIAG-CAPACITY throw THEN ;
-
 : CA-ERR ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF exit THEN
-   CA-OUT-FD @ 0 >= IF
-      CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN
-      exit
-   THEN
-   u CA-OUT-ROOM
-   a CA-OUT-A@ CA-OUT-LEN @ + u BYTE-COPY
-   CA-OUT-LEN @ u + CA-OUT-LEN ! ;
+   FD:STDERR FD>N a u write u <> IF E-FS-IO throw THEN ;
 
 \ Runs the action with the records it writes captured, then hands them to the
 \ report; the capture ends on the throwing path too.
@@ -223,25 +198,6 @@ variable CA-RC                          \ how the last run's check ended
    rc 0 <> IF rc throw THEN ;
 
 public
-
-\ The caller's report buffer, which this core appends to and OUT$ hands back.
-\ Also clears the recorded report length.
-: BUFFERS! ( ^u8 n -- ) {: outa:^ outcap:n :}
-   outcap CA-OUT-CAP !
-   outa CA-OUT-A!
-   0 CA-OUT-LEN !
-   -1 CA-OUT-FD ! ;
-
-\ The report the last run accumulated in the caller's first buffer.
-: OUT$ ( -- ^u8 n )
-   CA-OUT-A@ CA-OUT-LEN @ ;
-
-\ BUFFERS! for a report written to the given file descriptor as it is made, so
-\ it holds as many records, each as long, as the checked sources make. OUT$ is
-\ then empty.
-: STREAM! ( fd -- ) {: fd:fd :}
-   s" " BUFFERS!
-   fd FD>N CA-OUT-FD ! ;
 
 \ Check what the given word checks in one checker scope and one multi-error
 \ session, as a load runs it: a definition sees the clean definitions before
