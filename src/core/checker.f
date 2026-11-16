@@ -2843,7 +2843,6 @@ public
 ;package
 package CHECK
 
-global
 \ A dictionary record's cell at a slot. No record is NULL-PTR, whose cells
 \ would be read from the page at address 0, so reading one is rejected; a
 \ caller that may hold no record tests for it first.
@@ -2858,7 +2857,6 @@ global
       CHECKER-REJECT-RC REJECTION:STOP
    THEN
    cells + @ ;
-private
 
 : CK-REC-WID ( ^n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
 
@@ -2875,6 +2873,7 @@ private
 \ slots before it.
 ;package
 package CHECKER-RESOLVE
+EXPORT CHECK:DICT-CELL@
 CAST: N>REC ( n -- ^n )
 \ A DNAME-EXT record's name cell holds the byte address of its name.
 CAST: REC-CELLS ( ^n -- ^^u8 )
@@ -14795,15 +14794,6 @@ package CHECK
    THEN
    off1 1 - USIGS-RESTORE-END ;
 
-\ A post-seal call would forget an engine word's signature so it could be
-\ redefined.
-
-: CHECKER-USIGS-TRUNCATE-FROM ( ^u8 n -- )
-   seal-captured? IF
-      2drop s" seal: cannot truncate sealed checker signatures" 76 die
-   THEN
-   CHECKER-USIGS-TRUNCATE-FROM-RAW ;
-
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 
 \ Cuts the store back to MARK. A cut that takes the record the live window names
@@ -15467,7 +15457,7 @@ private
 \ Rejects the record name a u, placed at the token at atu: a name given as a
 \ string, as `define-word`'s, is not the token the load stands on.
 package CHECKER-RESOLVE
-public
+private
 : REJECT-QUALIFIED ( ^u8 n ^u8 n -- ) {: a:^ u:n at:^ atu:n :}
    s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
    s" the record name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -15483,13 +15473,14 @@ public
    CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 package CHECK
+EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 
 \ No row may carry 0: a defer row keyed 0 is DFERS' terminator and hides every
 \ later row, and an effect row keyed 0 is anonymous.
 : CHECKER-RECORD-NAME-AT ( ^u8 n ^u8 n -- ^u8 n )
    {: a:^ u:n at:^ atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
-   sym 0= IF a u at atu CHECKER-RESOLVE:REJECT-QUALIFIED THEN
+   sym 0= IF a u at atu REJECT-QUALIFIED THEN
    sym CHECKER-REC-SYM !
    a u ;
 
@@ -21546,6 +21537,7 @@ variable PIMM-STREAM
 
 ;package
 package CHECKER-PREFLIGHT
+EXPORT CHECK:DICT-CELL@
 
 : BODY-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u FORCED? IF RES-TRUE EXIT THEN

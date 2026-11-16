@@ -41,12 +41,13 @@ WL:RETIRED constant XREF-RETIRED-WL
 : XREF-REC-ADDR ( n -- n )
    DREC * dbase@ + ;
 
-\ Every reader in this file reads a record's cells through this word, and so
-\ through src/core/checker.f DICT-CELL@, which rejects XREF-NULL.
-: XREF-CELL@ ( ^n n -- n )
-   DICT-CELL@ ;
-
 package XREF
+private
+EXPORT CHECK:DICT-CELL@
+global
+\ Every reader in this file reads a record's cells through this word, which
+\ rejects XREF-NULL.
+: XREF-CELL@ ( ^n n -- n ) DICT-CELL@ ;
 private
 \ A dictionary record's address and a record cell's name address are integers.
 CAST: N>REC ( n -- ^n )

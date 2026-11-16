@@ -2761,6 +2761,7 @@ public
    a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-WORD? EXIT THEN
    a u TFAM-INIT-PRIV-WORD? ;
 
+private
 : TFAM-ADDR-WORD-INSTALL ( -- )
    [: 2dup TFAM-ADDR-WORD? IF 2drop RES-TRUE EXIT THEN
       TFAM-INIT-WORD? ;] is TFAM-ADDR-WORD-XT ;
@@ -4022,11 +4023,10 @@ variable TFSR-ID   variable TFSR-FLAG
    ELSE a u TF-CANON? THEN
    IF a u CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
 
+private
 : TFAM-MAY-ARRIVE-INSTALL ( -- )
    [: TFAM-MAY-ARRIVE? ;] is TYPE-MAY-ARRIVE-XT ;
 TFAM-MAY-ARRIVE-INSTALL
-
-private
 
 \ The row's package is the qualifier, or a part `A:<qualifier>`.
 : TFAM-QUAL-PKG? ( ^u8 n n -- bool ) {: qa:^ qu:n id:n :}
@@ -4267,10 +4267,12 @@ public
 : TFAM-INST-LIN ( n -- n ) RES-FALSE TFAM-INST-LIN-N ;
 : TFAM-INST-MAY ( n -- bool ) RES-TRUE TFAM-INST-LIN-N 0= 0= ;
 
+private
 : TFAM-INST-LIN-INSTALL ( -- )
    [: TFAM-INST-LIN ;] is TFAM-LIN-N-XT
    [: TFAM-INST-MAY ;] is TFAM-MAY-LIN-XT ;
 TFAM-INST-LIN-INSTALL
+public
 
 \ Instantiate one field schema against its owning family value. The lowering
 \ certificate can run while construct still uses TFC-VARS and TFC-I, so keep

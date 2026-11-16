@@ -58,6 +58,7 @@ EXPORT CHECK:AMENDED
 EXPORT CHECK:PRIMITIVE-FACTS
 EXPORT CHECK:OWNED-FACTS
 EXPORT CHECK:WORDLIST-PACKAGE
+EXPORT INTERPRETER:PUBLISH-ALIAS
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -4676,7 +4677,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    GOOD? 0= if E-COMP-STATE throw then
    file sum count ID-REC {: src:n :}
    ndict@ {: want:n :}
-   a u src wid INTERPRETER:ALIAS-RECORD
+   a u src wid PUBLISH-ALIAS
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}  src REC-EDGE+  want start REC-EDGES!
    \ An exported definer's alias of its does> clause carries no checker facts
@@ -4697,7 +4698,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    GOOD? 0= if E-COMP-STATE throw then
    ndict@ {: want:n :}
    TYPE-SOURCE {: src:n :}
-   a u src wid INTERPRETER:ALIAS-RECORD
+   a u src wid PUBLISH-ALIAS
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}
    src 0 >= if src REC-EDGE+ then  want start REC-EDGES!
@@ -5293,7 +5294,7 @@ EXPORT CHECK:LINEAR-TEXT$
    TFAM:TFAM-N@ FILE-TFAM @ ?do
       i TFAM:ENTRY? 0= if
          ndict@ {: ix:n :}
-         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
+         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
          i TFAM:ENTRY-TEXT$ ix FACTS!
          i ix TFAM:ENTRY!
       then
@@ -5302,7 +5303,7 @@ EXPORT CHECK:LINEAR-TEXT$
       i LINEAR? if
          i TYPE-NAME$ LINEAR-ENTRY 0 < if
             ndict@ {: ix:n :}
-            i TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
+            i TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
             i LINEAR-TEXT$ ix FACTS!
          then
       then

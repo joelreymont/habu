@@ -1227,10 +1227,9 @@ EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
    k XREF-REC XREF-NAME$ {: a:^ u:n :}
    a u k get-current alias-record ;
 
-public
 \ A file object's link publishes name a u, which must lie in the caller's
 \ buffer, for record src in wordlist wid.
-: ALIAS-RECORD ( ^u8 n n n -- )
+: PUBLISH-ALIAS ( ^u8 n n n -- )
    {: a:^ u:n src:n wid:n :}
    u 1 <  wid 0 <  or if E-COMP-STATE throw then
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if E-COMP-STATE throw then
@@ -1245,7 +1244,6 @@ public
       a u PKG-DUPLICATE
    then
    a u src wid alias-record ;
-private
 
 \ It names the `EXPORT` token, before its operand is read.
 : EXPORT-NO-PACKAGE ( -- )
@@ -1380,6 +1378,7 @@ EXPORT CHECK:CHILD
 EXPORT CHECK:STORAGE-LINE
 EXPORT CHECK:CELL-LINE
 EXPORT CHECK:EFFECT-RULES?
+EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
@@ -1566,7 +1565,7 @@ private
 : DEF-QUALIFY-NAME ( ^u8 n -- ^u8 n n ) {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
-   a u q 1+ COLON-AT 0 >= if a u TOKEN$ CHECKER-RESOLVE:REJECT-QUALIFIED then
+   a u q 1+ COLON-AT 0 >= if a u TOKEN$ REJECT-QUALIFIED then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u TOKEN$ SEALED-FAIL then ;
 
 : DEF-QUALIFY ( -- ^u8 n n )
