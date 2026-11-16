@@ -1268,11 +1268,11 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
    PKG-PUB-CELL CELL@ 0= if EXPORT-NO-PACKAGE then
    PKG-NAME
    OVERLAY-GUARD
-   PKG-EXPORT-SOURCE {: src:^ :}
    TOKEN$ {: operand:^ operand-u:n :}
    get-current XREF:SEALED-TARGET? if
       operand operand-u 2dup SEALED-FAIL
    then
+   PKG-EXPORT-SOURCE {: src:^ :}
    PKG-TAIL {: ta:^ tu:n :}
    ta tu operand operand-u PKG-DICT-ROOM
    ta tu get-current WL-PROBE XREF-FOUND? if

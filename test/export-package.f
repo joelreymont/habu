@@ -654,6 +654,10 @@ create XPK-EMPTY 1 allot
    XPK-SEALED-EXPORT$
    s" error[E-SEALED-PACKAGE]: `XSA:HID` is private to `XSA`, which is sealed"
    s" |        ^^^^^^^ private to a sealed package" XPK-SEALED
+   s" a sealed package's EXPORT is judged at its seal before its source" T-LABEL
+   s" " s" EXPORT NOPE:X" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `NOPE:X` would change a sealed package"
+   s" |        ^^^^^^ sealed" XPK-SEALED
    s" a sealed package's part takes no global definition" T-LABEL
    s" : LATE ( -- n ) HID ;" XPK-SEALED-PART$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
    s" a sealed package's part takes no global EXPORT" T-LABEL
