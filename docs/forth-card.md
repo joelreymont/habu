@@ -221,7 +221,7 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
-| `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;`, `0 throw`, `7 0 HALVE` for `: HALVE ( n n -- n ) / ;` or `0 FAIL` for `: FAIL ( n -- ) throw ;`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, a literal 0 thrown, or a literal 0 at an input a word with a signature divides by or throws with only stack words, locals, integer and string literals and calls before it; a computed 0 is not rejected | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` or the call |
+| `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;`, `0 throw`, `7 0 HALVE` for `: HALVE ( n n -- n ) / ;` or `0 FAIL` for `: FAIL ( n -- ) throw ;`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, a literal 0 thrown, or a literal 0 at an input a word with a signature divides by or throws with only stack words, locals, integer and string literals and calls before it; a computed 0 passes the checker, and a load's or `evaluate`'s text that throws one is rejected when it runs | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` or the call |
 | outside its package, at top level or in a body, a call of a primitive whose one row is its package's private one: `0 0 0 xref-retarget` | `E-UNDEFINED`, as a call to an unknown word is; the word never runs; `'` of it at top level is admitted |
 | outside its package, in a body, a call of a private primitive that also keeps a global trusted-only row: `0 0 reloc-maps-clear` | `E-CAP-TRUSTED` |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
@@ -575,7 +575,8 @@ holds an address**.
 - A literal `0 throw` is rejected (`E-THROW-ZERO`): 0 means no error; so is a
   literal 0 at an input a word with a signature throws with only stack words,
   locals, integer and string literals and calls before it. A computed 0
-  unwinds unchecked, a caller bug: its `catch` answers 0.
+  still unwinds and a `catch` around it answers 0, but a load or `evaluate`
+  whose text throws it is rejected (`E-THROW-ZERO`) and throws 70.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
   (110) on the faulting thread, after the line `E-MEMORY-FAULT habu: memory
   fault at <address> pc <pc>` on fd 2: `catch` answers 110, a task ends with

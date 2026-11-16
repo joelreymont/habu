@@ -2418,8 +2418,9 @@ sections above.
 - **A literal `0 throw` is rejected (`E-THROW-ZERO`), and so is a literal 0 at
   a call of a word with a declared signature that throws that input, with only
   the tokens that carry a divisor (Integer arithmetic) before the `throw`, as
-  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
-  caller bug: its `catch` answers 0.**
+  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 still unwinds and a
+  `catch` around it answers 0, but a load or `evaluate` whose text throws it is
+  rejected (`E-THROW-ZERO`) and throws 70.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or

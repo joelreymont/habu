@@ -56,6 +56,7 @@ create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
 create TARGET-P PATH-CAP allot
 create TARGET-JSON-P PATH-CAP allot
+create ZERO-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -80,6 +81,7 @@ variable RCATCH-U
 variable CF-U
 variable TARGET-U
 variable TARGET-JSON-U
+variable ZERO-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -154,6 +156,9 @@ variable RC
 : TARGET-JSON$ ( -- ^u8 n )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
+: ZERO$ ( -- ^u8 n )
+   ZERO-P ZERO-U @ ;
+
 : FRAG-FIXTURE! ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: pre:^ preu:n frag:^ fragu:n post:^ postu:n path:^ pathu:n :}
    SB-RESET
@@ -195,7 +200,8 @@ variable RC
    s" residue-nest.f" RNEST-P RNEST-U PATH!
    s" residue-caught.f" RCATCH-P RCATCH-U PATH!
    s" target.f" TARGET-P TARGET-U PATH!
-   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH! ;
+   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH!
+   s" zero-throw.f" ZERO-P ZERO-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -207,6 +213,12 @@ variable RC
    BPF$ s" TYPED-VARIABLE LRD-Q ^u8 : LRD-QBASE ( -- ^u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    TARGET$ s" false ?TARGET" FS:WRITE-ALL
    TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
+   SB-RESET
+   S\" : F ( n -- ) throw ;\nvariable V\n" SB-APPEND
+   S\" : G ( -- ) s\" 1 drop\" evaluate-closed  V @ F ;\n" SB-APPEND
+   S\" : H ( -- n ) [: s\" G\" evaluate-closed ;] catch ;\nH . cr\n" SB-APPEND
+   S\" s\" before\" type cr\nV @ F\ns\" after\" type cr\n" SB-APPEND
+   ZERO$ SB$ FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -796,6 +808,28 @@ variable RC
    SB-APPEND
    ASSERT-TARGET ;
 
+: TEST-ZERO-THROW ( -- )
+   s" a load whose text throws a computed 0 is rejected" T-LABEL
+   ZERO$ RUN
+   SB-RESET
+   s" error[E-THROW-ZERO]: zero throw code: a computed 0 was thrown, " SB-APPEND
+   S\" and 0 is the code that means no error\n" SB-APPEND
+   S\"  --> <input>:1:1\n  |\n1 | G\n" SB-APPEND
+   S\"   | ^ this threw 0\n" SB-APPEND
+   s"   = help: Throw a nonzero code: 0 means no error, and a catch that " SB-APPEND
+   S\" answers 0 cannot tell the unwind from a normal return.\n\n" SB-APPEND
+   s" error[E-THROW-ZERO]: zero throw code: a computed 0 was thrown, " SB-APPEND
+   S\" and 0 is the code that means no error\n" SB-APPEND
+   s"  --> " SB-APPEND  ZERO$ SB-APPEND  S\" :7:5\n  |\n" SB-APPEND
+   S\" 7 | V @ F\n" SB-APPEND
+   S\"   |     ^ this threw 0\n" SB-APPEND
+   s"   = help: Throw a nonzero code: 0 means no error, and a catch that " SB-APPEND
+   S\" answers 0 cannot tell the unwind from a normal return.\n\n" SB-APPEND
+   ERR$ SB$ T$=
+   OUT$ S\" 70\n\nbefore\n" T$=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T= ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -906,6 +940,7 @@ variable RC
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-TARGET
+   TEST-ZERO-THROW
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER

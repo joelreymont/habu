@@ -1257,6 +1257,8 @@ public
 require src/lib/string.f
 require src/lib/source-syntax.f
 require src/core/checker.f
+require src/core/rejection.f
+require src/core/render.f
 require src/core/check-hook.f
 require src/core/does-clause.f
 require src/compiler/fixed-body.f
@@ -2920,6 +2922,21 @@ variable REPL-OK
    code 0<> if NULL$ code die then ;
 
 
+: ZERO-RECORD ( ^u8 n -- ) {: t:^ tu:n :}
+   MD-THROW-ZERO MD-CODE$ REJECTION:OPEN
+   s" zero throw code: a computed 0 was thrown, and 0 is the code that means no error"
+   REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" this threw 0" REJECTION:EMIT-STR
+   REJECTION:HELP  MD-THROW-ZERO MD-SUGGEST$ REJECTION:EMIT-STR
+   REJECTION:KEEP ;
+
+: ZERO-REJECT ( ^u8 n ^u8 n -- ) {: a:^ end:n t:^ tu:n :}
+   SRCLOC:INB-CELL ADDR@ {: inb:^ :}
+   INE-CELL ADDR@ {: ine:^ :}
+   a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
+   [: t tu ZERO-RECORD ;]
+   [: inb SRCLOC:INB-CELL ADDR!  ine INE-CELL ADDR! ;] finally ;
+
 public
 
 \ Each line calls REPL-READ anew: genio may replace its reader. A definition
@@ -2937,6 +2954,7 @@ public
 \ The input base stays the buffer's first byte, so a refusal's line counts
 \ from the start of the whole source.
 : EVAL-FRAMED-RANGE ( ^u8 n n n -- ) {: a:^ u:n first:n end:n :}
+   TOKEN$ {: ta:^ tu:n :}
    depth FRAME-OPEN {: f:^ :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:^ :}
@@ -2948,6 +2966,7 @@ public
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
+   TOKEN$ {: last:^ lastu:n :}
    f code FRAME-EXIT {: out:n :}
    out case
       FRAME-DONE of f FRAME-LEAVE endof
@@ -2966,8 +2985,11 @@ public
       entry PEND-CELL CELL!
    then
    outer USE-FLOOR !  found REC !
-   f FRAME-FREE
-   out FRAME-DONE <> if code throw then ;
+   ta TKA-CELL ADDR!  tu TKL-CELL CELL!  f FRAME-FREE
+   out FRAME-DONE = if exit then
+   \ A thrown 0 reads as a normal return to every catch above: reject it.
+   code 0= if a end last lastu ZERO-REJECT RC-REJECT throw then
+   code throw ;
 
 : EVAL-FRAMED ( ^u8 n -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
