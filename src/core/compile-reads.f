@@ -7,7 +7,8 @@
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
 \ TEXT-READ a text the compile evaluates and no bytes, FILE-READ a path and the
 \ three cells of its file's STAMP, FILE-LREAD a path and the three cells of its
-\ LSTAMP.
+\ LSTAMP. A recording is indexed by a hash of each read, so a repeated read is
+\ found without a scan.
 package COMPILE-READS
 public
 
@@ -21,14 +22,18 @@ public
 private
 
 $1000 constant ROOM-MIN                    \ a first mapping's bytes
+$200 constant SLOTS-MIN                    \ a first index's slots; a power of 2
 
-\ The process's record, by SRCLOC:READS-CELL (hb's in a build): its state,
-\ mapping, capacity and bytes used. Only main writes it; other threads MISS.
+\ The process's record, by SRCLOC:READS-CELL (hb's in a build): a recording
+\ and its index. Only main writes it; other threads MISS.
 0 constant REC-STATE
 CELL constant REC-MAP
 2 cells constant REC-CAP
 3 cells constant REC-USED
-4 cells constant REC-BYTES
+4 cells constant REC-IDX
+5 cells constant REC-SLOTS
+6 cells constant REC-FILLED
+7 cells constant REC-BYTES
 0 constant ST-OFF
 1 constant ST-RECORDING
 2 constant ST-MISSED
@@ -41,17 +46,26 @@ CAST: REC-CELLS ( ^u8 -- ^^u8 )
 : MAP ( -- ^^u8 ) REC REC-CELLS REC-MAP CELL / ptr-field ;
 : CAP ( -- ^n ) REC REC-CAP + CELL-VIEW ;
 : USED ( -- ^n ) REC REC-USED + CELL-VIEW ;
+: IDX ( -- ^^u8 ) REC REC-CELLS REC-IDX CELL / ptr-field ;
+: SLOTS ( -- ^n ) REC REC-SLOTS + CELL-VIEW ;
+: FILLED ( -- ^n ) REC REC-FILLED + CELL-VIEW ;
 
-: SAVED ( -- n ^u8 n n ) STATUS @ MAP @ CAP @ USED @ ;
-: RESTORE ( n ^u8 n n -- ) USED ! CAP ! MAP ! STATUS ! ;
+: SAVED ( -- n ^u8 n n ^u8 n n )
+   STATUS @ MAP @ CAP @ USED @ IDX @ SLOTS @ FILLED @ ;
+
+: RESTORE ( n ^u8 n n ^u8 n n -- )
+   FILLED ! SLOTS ! IDX ! USED ! CAP ! MAP ! STATUS ! ;
 
 : UNMAP ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
    a u munmap 0 < if s" compile reads: cannot release a recording" INCLUDE-IO-RC die then ;
 
+: EMPTY ( -- )
+   NULL-PTR MAP !  0 CAP !  0 USED !
+   NULL-PTR IDX !  0 SLOTS !  0 FILLED ! ;
+
 : RELEASE ( -- )
-   MAP @ CAP @ UNMAP
-   NULL-PTR MAP !  0 CAP !  0 USED ! ;
+   MAP @ CAP @ UNMAP  IDX @ SLOTS @ cells UNMAP  EMPTY ;
 
 : PAD ( n -- n ) CELL 1- + CELL / CELL * ;
 : AT ( n -- ^u8 ) MAP @ + ;
@@ -81,17 +95,64 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    then
    0 0= 0= ;
 
-: SEEN? ( n ^u8 n ^u8 n -- bool )
+: FNV+ ( n n -- n ) xor HIDX-FNV-PRIME * ;
+
+: FNV$+ ( n ^u8 n -- n )
+   {: a:^ u:n :}
+   u 0 ?do a i + c@ FNV+ loop ;
+
+: HASH ( n ^u8 n ^u8 n -- n )
    {: kind:n a:^ u:n b:^ v:n :}
-   0 begin dup USED @ < while
-      dup kind a u b v SAME? if drop 0 0= exit then
-      dup SPAN +
-   repeat drop 0 0= 0= ;
+   HIDX-FNV-BASIS kind FNV+  a u FNV$+  b v FNV$+ ;
+
+: HASH-AT ( n -- n )
+   {: off:n :}
+   off CELL + CELL@ {: u:n :}
+   off CELL@  off 3 cells + AT u
+   off 3 cells + u + AT  off 2 cells + CELL@ HASH ;
+
+\ Slot i of the index holds a read's offset plus 1, or 0 when empty.
+: SLOT ( n -- ^n ) cells IDX @ + CELL-VIEW ;
+: HOME ( n -- n ) SLOTS @ 1- and ;
+: NEXT ( n -- n ) 1+ HOME ;
+
+: VACANT ( n -- n )
+   HOME begin dup SLOT @ 0= 0= while NEXT repeat ;
+
+: STOP? ( n n ^u8 n ^u8 n -- bool )
+   {: i:n kind:n a:^ u:n b:^ v:n :}
+   i SLOT @ {: s:n :}
+   s 0= if 0 0= exit then
+   s 1- kind a u b v SAME? ;
+
+\ The slot holding this read, else the empty slot it would take.
+: PROBE ( n ^u8 n ^u8 n -- n )
+   {: kind:n a:^ u:n b:^ v:n :}
+   kind a u b v HASH HOME
+   begin dup kind a u b v STOP? 0= while NEXT repeat ;
+
+: INSERT ( n -- )
+   {: off:n :}
+   off 1+  off HASH-AT VACANT SLOT ! ;
+
+: FRESH ( n ^u8 n -- ^u8 )
+   {: bytes:n m:^ mu:n :}
+   bytes map-anon 0= 0= if drop m mu INCLUDE-IO-RC die then ;
+
+\ APPEND grows the index before a read would fill over half its slots, so
+\ VACANT and PROBE always reach an empty slot.
+: GROW ( -- )
+   SLOTS @ 2 * SLOTS-MIN max {: want:n :}
+   want cells s" compile reads: cannot map an index" FRESH
+   {: fresh:^ :}
+   IDX @ SLOTS @ cells UNMAP
+   fresh IDX !  want SLOTS !
+   0 begin dup USED @ < while dup INSERT dup SPAN + repeat drop ;
 
 : ROOM ( n -- ) {: need:n :}
    need CAP @ <= if exit then
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
-   cap map-anon 0= 0= if drop s" compile reads: cannot map a recording" INCLUDE-IO-RC die then
+   cap s" compile reads: cannot map a recording" FRESH
    {: fresh:^ :}
    MAP @ fresh USED @ BYTE-COPY
    MAP @ CAP @ UNMAP
@@ -127,7 +188,9 @@ private
    STATUS @ ST-OFF = if exit then
    u 0 < if w wu u NEGATIVE then
    v 0 < if w wu v NEGATIVE then
-   kind a u b v SEEN? if exit then
+   FILLED @ 1+ 2 * SLOTS @ > if GROW then
+   kind a u b v PROBE {: place:n :}
+   place SLOT @ 0= 0= if exit then
    USED @ {: off:n :}
    u v + PAD 3 cells + {: size:n :}
    off size + ROOM
@@ -137,15 +200,22 @@ private
    a off 3 cells + AT u BYTE-COPY
    b off 3 cells + u + AT v BYTE-COPY
    size 3 cells - u v + ?do 0 off 3 cells + i + AT c! loop
-   off size + USED ! ;
+   off size + USED !
+   off 1+ place SLOT !  FILLED @ 1+ FILLED ! ;
 
 \ Runs q with the record swapped for a fresh one in state st.
+\ The saved record stays in locals: a file q loads counts the stack's cells as
+\ its own residue (E-EVAL-RESIDUE).
 : SCOPE ( n [ -- ] -- )
    {: st:n q :}
-   SAVED {: old-st:n old-map:^ old-cap:n old-used:n :}
-   st STATUS !  NULL-PTR MAP !  0 CAP !  0 USED !
+   SAVED
+   {: old-st:n old-map:^ old-cap:n old-used:n
+      old-idx:^ old-slots:n old-filled:n :}
+   st STATUS !  EMPTY
    q catch {: rc:n :}
-   RELEASE old-st old-map old-cap old-used RESTORE
+   RELEASE
+   old-st old-map old-cap old-used
+   old-idx old-slots old-filled RESTORE
    rc 0= 0= if rc throw then ;
 
 public

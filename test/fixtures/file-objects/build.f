@@ -979,8 +979,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 : FULL-B$ ( ^u8 n -- ^u8 n ) s" b.f" SECOND-BUF FILE-IN ;
 
 \ The directory's a.f, which creates words until the number of records the text spells is free, counted from DICT-CAP,
-\ which a.f cannot spell, as a literal. Each text a compile evaluates is recorded after a scan of those before it
-\ (COMPILE-READS:APPEND), so a text creates a thousand words.
+\ which a.f cannot spell, as a literal.
 : FULL-A! ( ^u8 n ^u8 n -- )
    {: d:^ du:n free:^ freeu:n :}
    d du FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
