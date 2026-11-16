@@ -1,9 +1,12 @@
 \ An engine started from a long working directory within PATH-CAP loads its
-\ entry, and one started from a working directory that does not resolve, here
-\ one removed before the engine starts, rejects it with one record. It does
-\ not show a working directory past PATH-CAP or FS:REMOVE-TREE over such paths:
-\ no test makes a path past PATH-CAP (test/AGENTS.md). The children's logs are
-\ kept in the tree, which the process removes at exit.
+\ entry, and from that directory and a short one an entry written as a `./`
+\ chain past 8 KB that resolves within PATH-CAP, through `hb P`, `--load`, an
+\ include, a require and tools/check.f; one started from a working directory
+\ that does not resolve, here one removed before the engine starts, rejects it
+\ with one record. It does not show a working directory past PATH-CAP or
+\ FS:REMOVE-TREE over such paths: no test makes a path past PATH-CAP
+\ (test/AGENTS.md). The children's logs are kept in the tree, which the process
+\ removes at exit.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -37,6 +40,40 @@ variable RC
 : MID$ ( -- ^u8 n ) MID MID-U @ ;
 : GONE$ ( -- ^u8 n ) GONE GONE-U @ ;
 
+: CHILD$ ( -- ^u8 n )
+   S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" ;
+
+\ CHAIN is 4200 `./` segments before entry.f: 8407 bytes written, the entry's
+\ own path once resolved. inc.f includes it and req.f requires it.
+4200 constant DOTS
+DOTS 2 * 7 + constant CHAIN-BYTES
+create CHAIN CHAIN-BYTES allot
+create SRC CHAIN-BYTES 16 + allot variable SRC-U
+create CHECKER PATH-CAP allot variable CHECKER-U
+
+: CHAIN$ ( -- ^u8 n ) CHAIN CHAIN-BYTES ;
+
+: CHAIN! ( -- )
+   DOTS 0 ?do
+      [char] . CHAIN i 2 * + c!  [char] / CHAIN i 2 * 1 + + c!
+   loop
+   s" entry.f" {: a:^ u:n :}  a CHAIN DOTS 2 * + u BYTE-COPY
+   SOURCE-ROOT:CWD$ s" tools/check.f" CHECKER FS:JOIN-PATH CHECKER-U ! ;
+
+: SRC+ ( ^u8 n -- ) {: a:^ u:n :}
+   a SRC SRC-U @ + u BYTE-COPY  u SRC-U +! ;
+
+\ Writes the file name in dir, a word w and the chain its one line.
+: LOADER! ( ^u8 n ^u8 n ^u8 n -- )
+   {: dir:^ diru:n name:^ nameu:n w:^ wu:n :}
+   0 SRC-U !  w wu SRC+  s"  " SRC+  CHAIN$ SRC+  S\" \n" SRC+
+   dir diru name nameu PATH FS:JOIN-PATH {: pathu:n :}
+   PATH pathu SRC SRC-U @ FS:WRITE-ALL ;
+
+: LOADERS! ( ^u8 n -- ) {: dir:^ diru:n :}
+   dir diru s" inc.f" s" include" LOADER!
+   dir diru s" req.f" s" require" LOADER! ;
+
 \ TAIL is three 200-byte segments, and MID is ROOT$/deep/TAIL.
 200 constant SEG-BYTES
 SEG-BYTES 1 + 3 * 1 - constant TAIL-BYTES
@@ -56,13 +93,15 @@ create TAIL TAIL-BYTES allot
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE {: e:^ eu:n :}
    e ENGINE eu BYTE-COPY eu ENGINE-U !
    ROOT$ s" entry.f" ENTRY FS:JOIN-PATH ENTRY-U !
-   ENTRY$ S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" FS:WRITE-ALL
+   ENTRY$ CHILD$ FS:WRITE-ALL
    ROOT$ s" gone" GONE FS:JOIN-PATH GONE-U !
    GONE$ FS:MAKE-DIR
    TAIL!
    ROOT$ s" deep" PATH FS:JOIN-PATH {: pathu:n :}
    PATH pathu TAIL$ MID FS:JOIN-PATH MID-U !
-   MID$ FS:MAKE-DIRS ;
+   MID$ FS:MAKE-DIRS
+   MID$ s" entry.f" PATH FS:JOIN-PATH PATH swap CHILD$ FS:WRITE-ALL
+   CHAIN!  ROOT$ LOADERS!  MID$ LOADERS! ;
 
 : SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
@@ -94,6 +133,33 @@ create TAIL TAIL-BYTES allot
    s" the entry loads from a long directory within PATH-CAP" T-LABEL
    RC @ 0 T=
    OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
+
+\ Each child is its own engine: each reader resolves the chain at its start.
+: ARGV ( -- ) PROC-CWD:ARGV-ENV-CWD-RESET  ENGINE$ >LEN PROC-ARGV+ ;
+: LOAD-ARGV ( ^u8 n -- ) ARGV  s" --load" >LEN PROC-ARGV+  >LEN PROC-ARGV+ ;
+
+: RAN ( ^u8 n ^u8 n -- ) {: cwd:^ cwdu:n what:^ whatu:n :}
+   s" /usr/bin/env" cwd cwdu RUN-CHILD
+   RC @ 0<> if cwd cwdu type cr OUT OUT-U @ type ERR ERR-U @ type then
+   what whatu T-LABEL  RC @ 0 T= ;
+
+: SAID ( -- )
+   s" and runs it" T-LABEL
+   OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
+
+: CHAINED ( ^u8 n -- ) {: cwd:^ cwdu:n :}
+   ARGV  CHAIN$ >LEN PROC-ARGV+
+   cwd cwdu s" `hb P` takes an entry written past 8 KB" RAN SAID
+   CHAIN$ LOAD-ARGV
+   cwd cwdu s" `hb --load P` takes it" RAN SAID
+   s" inc.f" LOAD-ARGV
+   cwd cwdu s" an include of it loads it" RAN SAID
+   s" req.f" LOAD-ARGV
+   cwd cwdu s" a require of it loads it" RAN SAID
+   CHECKER CHECKER-U @ LOAD-ARGV  s" --" >LEN PROC-ARGV+  CHAIN$ >LEN PROC-ARGV+
+   cwd cwdu s" tools/check.f checks it" RAN ;
+
+: CHAINS ( -- ) ROOT$ CHAINED  MID$ CHAINED ;
 
 \ The record of a working directory that does not resolve, PATH-CAP its limit.
 create WANT IO-CAP allot variable WANT-U
@@ -128,7 +194,7 @@ create WANT IO-CAP allot variable WANT-U
 public
 
 : RUN ( -- )
-   T-RESET SETUP FITS REMOVED T-REPORT ;
+   T-RESET SETUP FITS CHAINS REMOVED T-REPORT ;
 
 ;package
 

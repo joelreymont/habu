@@ -94,6 +94,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    u FX-U !
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
+\ The u bytes at a end the fixture text, built in place for a fixture longer
+\ than the string builder holds.
+: FX+ ( ^u8 n -- ) {: a:^ u:n :}
+   FX-U @ u + CAP > IF E-STR-CAPACITY throw THEN
+   a FX FX-U @ + u BYTE-COPY
+   FX-U @ u + FX-U ! ;
+
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
 : CANON$ ( ^u8 n -- ^u8 n )
@@ -1784,6 +1791,25 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" named-up/lnk/../gone.f" NAMED!
    s" named-up/other/gone.f" CANON-NAMED NAMED-MISSING ;
 
+\ `..` after a dangling link cancels nothing, though `named-dangle/x.f` exists.
+: TEST-NAMED-DANGLING-UP ( -- )
+   s" a missing named input whose `..` follows a dangling link" T-LABEL
+   s" named-dangle" NAMED!  FX-PATH$ FS:MAKE-DIR
+   SB-RESET  s" 1 drop" SB-APPEND LF+
+   s" named-dangle/x.f" FIXTURE!
+   s" named-dangle/dg" NAMED!  s" nowhere/sub" FX-PATH$ FS:MAKE-SYMLINK
+   s" named-dangle/dg/../x.f" NAMED!
+   s" named-dangle/dg/../x.f" CANON-NAMED NAMED-MISSING ;
+
+\ A trailing `/` after a file searches the file's `.`, never the file itself.
+: TEST-NAMED-FILE-DOT ( -- )
+   s" a missing named input whose trailing `/` follows a file" T-LABEL
+   s" named-file" NAMED!  FX-PATH$ FS:MAKE-DIR
+   SB-RESET  s" 1 drop" SB-APPEND LF+
+   s" named-file/x.f" FIXTURE!
+   s" named-file/x.f/" NAMED!
+   s" named-file/x.f/." CANON-NAMED NAMED-MISSING ;
+
 \ hb runs the fixture path as a program, exiting WANT with TEXT in its stderr.
 : RAN ( ^u8 n n -- )
    PROC-ARGV-RESET  FX-PATH$ >LEN PROC-ARGV+  LAUNCHED ;
@@ -2163,6 +2189,10 @@ HB-TARGET-LINUX? 0= [if]
    s" ` is" SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
+\ Appends the searched note of a request for x.f under UNSEARCHABLE$.
+: UNSEARCHABLE-NOTE ( -- )
+   BASE$ SB-APPEND  s" /unsearchable/x.f" SB-APPEND ;
+
 \ The check's and the load's record of the request under UNSEARCHABLE$: an
 \ unreadable file's, placed at the request, its help naming the directory.
 : UNSEARCHABLE-REJECTED ( -- )
@@ -2174,12 +2204,29 @@ HB-TARGET-LINUX? 0= [if]
    0 s" message" s" cannot read `unsearchable/x.f`" FIELD=
    0 s" unsearchable/x.f" 1 9 8 24 AT
    0 s" label" s" permission denied" FIELD=
-   SB-RESET  BASE$ SB-APPEND  s" /unsearchable/x.f" SB-APPEND
-   0 s" searched" SB$ NOTE=
+   SB-RESET  UNSEARCHABLE-NOTE  0 s" searched" SB$ NOTE=
    SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `unsearchable/x.f`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
    SB$ INCLUDE-IO-RC LOADED
    UNSEARCHABLE-LOADED ;
+
+\ A request of 4096 bytes or more, `./` repeated before `lnk/x.f`, gets the help
+\ and searched note of the request `lnk/x.f`, from the check and the load.
+: LONG-REJECTED ( -- )
+   s" require-long.f" NAMED!
+   0 FX-U !  s" require " FX+
+   4096 2 / 0 ?do s" ./" FX+ loop
+   S\" lnk/x.f\n" FX+  FX-PATH$ FX$ FS:WRITE-ALL
+   UNSEARCHABLE-HELP
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" help" SB$ FIELD=
+   SB-RESET  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND
+   0 s" searched" SB$ NOTE=
+   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   UNSEARCHABLE-LOADED
+   SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND  LF+
+   ERR$ SB$ CONTAINS? TTRUE ;
 
 \ A request through `lnk`, a link into UNSEARCHABLE$, names UNSEARCHABLE$,
 \ not the searchable directory holding the link.
@@ -2195,11 +2242,16 @@ HB-TARGET-LINUX? 0= [if]
    UNSEARCHABLE-LOADED ;
 
 \ `..` after `alnk`, a link with an absolute target, leaves through it into
-\ UNSEARCHABLE$, which the load names.
+\ UNSEARCHABLE$, which the load names; the searched note keeps that `..`.
 : PARENT-LINK-REJECTED ( -- )
    s" require alnk/../x.f" s" require-lnk-up.f" LINE-FIXTURE
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   SB-RESET  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND
+   0 s" searched" SB$ NOTE=
    s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
-   UNSEARCHABLE-LOADED ;
+   UNSEARCHABLE-LOADED
+   SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND  LF+
+   ERR$ SB$ CONTAINS? TTRUE ;
 
 \ A required file a directory without search permission hides is unreadable, not
 \ missing; its mode goes back to $1ED so the tree can be deleted.
@@ -2216,7 +2268,8 @@ HB-TARGET-LINUX? 0= [if]
    DIR-P au FX-PATH$ FS:MAKE-SYMLINK
    s" require unsearchable/x.f" s" require-unsearchable.f" LINE-FIXTURE
    UNSEARCHABLE$ 0 FS:CHMOD-MODE
-   [: UNSEARCHABLE-REJECTED LINKED-REJECTED PARENT-LINK-REJECTED ;]
+   [: UNSEARCHABLE-REJECTED LONG-REJECTED LINKED-REJECTED
+      PARENT-LINK-REJECTED ;]
    [: UNSEARCHABLE$ $1ED FS:CHMOD-MODE ;] finally ;
 
 \ The load rejects a malformed qualified name at its `:`, as the check does.
@@ -2380,13 +2433,6 @@ HB-TARGET-LINUX? 0= [if]
    S\"   |                       ^^^^ not a valid type\n" SB-APPEND
    S\"   = help: write a declared type after the field's name, as `y n`\n\n" SB-APPEND
    ERR$ SB$ T$= ;
-
-\ The u bytes at a end the fixture text, built in place for a fixture longer
-\ than the string builder holds.
-: FX+ ( ^u8 n -- ) {: a:^ u:n :}
-   FX-U @ u + CAP > IF E-STR-CAPACITY throw THEN
-   a FX FX-U @ + u BYTE-COPY
-   FX-U @ u + FX-U ! ;
 
 \ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
 \ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
@@ -3438,6 +3484,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-REQUIRED-UNSEARCHABLE
    TEST-NAMED-MISSING
    TEST-NAMED-LINK-UP
+   TEST-NAMED-DANGLING-UP
+   TEST-NAMED-FILE-DOT
    TEST-NAMED-TOO-LONG
    TEST-STDIN-PATH-TOO-LONG
    TEST-CALLBACK-DUPLICATE

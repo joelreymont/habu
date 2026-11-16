@@ -85,5 +85,7 @@
 \ the first mapping. A grow moves the bytes, so an address into them goes stale.
 : ARENA-ROOM ( ^^a ^n n n -- ) {: pv:^ capv:^ first:n need:n :}
    capv @ 0= IF first ARENA-ALLOC pv !  first capv ! THEN
-   capv @ BEGIN dup need < WHILE 2 * REPEAT {: nc:n :}
+   capv @ BEGIN dup need < WHILE
+      dup -1 1 rshift 2 / > IF drop need ELSE 2 * THEN
+   REPEAT {: nc:n :}
    nc capv @ > IF pv @ capv @ nc ARENA-BYTES-GROW pv !  nc capv ! THEN ;

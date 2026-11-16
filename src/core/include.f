@@ -205,21 +205,38 @@ package SOURCE-ROOT
 private
 
 INCLUDE-PATH-CAP 1+ constant PATH-BYTES
-PATH-BYTES 2 * constant WORK-BYTES
 create CWD-BUF PATH-BYTES allot
 create CANON-BUF PATH-BYTES allot
-create NORMAL-BUF WORK-BYTES allot
 create CANDIDATE-BUF PATH-BYTES allot
-create JOIN-BUF WORK-BYTES allot
-create WORK-BUF WORK-BYTES allot
-create ZBUF WORK-BYTES allot
-create DENIED-PATH WORK-BYTES allot
 create OWNER-BUF PATH-BYTES allot
 create OWNER-SAVE PATH-BYTES allot
 create POLICY-ROOT-BUF PATH-BYTES allot
 variable POLICY-ROOT-U
 create POLICY-LF 10 c,
-create REQUEST-BUF WORK-BYTES allot
+\ A path as written has no length limit, so these buffers are mappings each FIT
+\ grows before a write; no address into one is kept across its FIT.
+PTR-VARIABLE NORMAL-P   SCRATCH-VARIABLE NORMAL-CAP
+PTR-VARIABLE JOIN-P     SCRATCH-VARIABLE JOIN-CAP
+PTR-VARIABLE WORK-P     SCRATCH-VARIABLE WORK-CAP
+PTR-VARIABLE Z-P        SCRATCH-VARIABLE Z-CAP
+PTR-VARIABLE DENIED-P   SCRATCH-VARIABLE DENIED-CAP
+PTR-VARIABLE REQUEST-P  SCRATCH-VARIABLE REQUEST-CAP
+: NORMAL-BUF ( -- ^u8 ) NORMAL-P @ ;
+: JOIN-BUF ( -- ^u8 ) JOIN-P @ ;
+: WORK-BUF ( -- ^u8 ) WORK-P @ ;
+: ZBUF ( -- ^u8 ) Z-P @ ;
+: DENIED-PATH ( -- ^u8 ) DENIED-P @ ;
+: REQUEST-BUF ( -- ^u8 ) REQUEST-P @ ;
+: PATH-FIT ( ^^a ^n n -- ) PATH-BYTES swap ARENA-ROOM ;
+: NORMAL-FIT ( n -- ) NORMAL-P NORMAL-CAP rot PATH-FIT ;
+: JOIN-FIT ( n -- ) JOIN-P JOIN-CAP rot PATH-FIT ;
+: WORK-FIT ( n -- ) WORK-P WORK-CAP rot PATH-FIT ;
+: Z-FIT ( n -- ) Z-P Z-CAP rot PATH-FIT ;
+: DENIED-FIT ( n -- ) DENIED-P DENIED-CAP rot PATH-FIT ;
+: REQUEST-FIT ( n -- ) REQUEST-P REQUEST-CAP rot PATH-FIT ;
+\ The u-byte path a as a C path in ZBUF.
+: ZPATH-OF ( ^u8 n -- ^u8 ) {: a:^ u:n :}
+   u 1+ Z-FIT  a u ZBUF u 1+ PATHZ  ZBUF ;
 variable REQUEST-U
 variable CWD-U
 variable CANON-U
@@ -277,21 +294,17 @@ variable SLOT-N
 
 : CHECK ( ^u8 n -- )
    {: a:^ u:n :}
-   u 0 <= if a u E-PATH-RANGE 0 WORK-BYTES 1- PATH-PASS then
-   u WORK-BYTES >= if a u E-PATH-RANGE u WORK-BYTES 1- PATH-PASS then ;
+   u 0 <= if a u E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then ;
 
 
-\ realpath of a path into CANON-BUF: its length, or below 0 when the path does
-\ not resolve. Every result fits: glibc's realpath fails on one longer than
-\ PATH-CAP and macOS's on one of 1023 bytes or more. CHECK bounds the scan for
-\ a NUL byte.
+\ realpath of a path of any written length into CANON-BUF: its length, below 0
+\ if it does not resolve; realpath fails on a result CANON-BUF cannot hold.
 : CANON-N ( ^u8 n -- n )
    {: a:^ u:n :}
    a u CHECK
    a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if a u kind len WORK-BYTES 1- PATH-PASS then
-   a u ZBUF WORK-BYTES PATHZ
-   ZBUF CANON-BUF PATH-BYTES realpath ;
+   kind 0 <> if a u kind len INCLUDE-PATH-CAP PATH-PASS then
+   a u ZPATH-OF CANON-BUF PATH-BYTES realpath ;
 
 public
 
@@ -399,15 +412,12 @@ variable PROGRAM-U
 
 CWD-BUF PATH-BYTES SCRATCH-BYTES        CWD-U scratch-cell-mark
 CANON-BUF PATH-BYTES SCRATCH-BYTES      CANON-U scratch-cell-mark
-NORMAL-BUF WORK-BYTES SCRATCH-BYTES     NORMAL-U scratch-cell-mark
+NORMAL-U scratch-cell-mark
 CANDIDATE-BUF PATH-BYTES SCRATCH-BYTES  CANDIDATE-U scratch-cell-mark
-JOIN-BUF WORK-BYTES SCRATCH-BYTES       JOIN-U scratch-cell-mark
-WORK-BUF WORK-BYTES SCRATCH-BYTES
-ZBUF WORK-BYTES SCRATCH-BYTES
-DENIED-PATH WORK-BYTES SCRATCH-BYTES
+JOIN-U scratch-cell-mark
 OWNER-BUF PATH-BYTES SCRATCH-BYTES      OWNER-U scratch-cell-mark
 OWNER-SAVE PATH-BYTES SCRATCH-BYTES
-REQUEST-BUF WORK-BYTES SCRATCH-BYTES    REQUEST-U scratch-cell-mark
+REQUEST-U scratch-cell-mark
 ENGINE-BUF PATH-BYTES SCRATCH-BYTES     ENGINE-U scratch-cell-mark
 ENGINE-READ scratch-cell-mark
 PROGRAM-BUF PATH-BYTES SCRATCH-BYTES    PROGRAM-U scratch-cell-mark
@@ -422,25 +432,25 @@ public
 
 private
 
-\ Both callers bound u with CHECK. The root length is the caller's, so it is
-\ compared with the room the name and its separator leave: in a sum, a length
-\ near the maximum cell wraps back into range.
+\ The root length is the caller's: one below 0, or whose sum with u wraps, is
+\ rejected. Built in WORK-BUF, so a root or name in JOIN-BUF is read first.
 : JOIN! ( ^u8 n ^u8 n -- ) {: root:^ rootu:n a:^ u:n :}
-   rootu 0 < if root 0 E-PATH-RANGE 0 WORK-BYTES 2 - PATH-PASS then
-   rootu WORK-BYTES 1- u - >= if
-      root rootu E-PATH-RANGE rootu 1+ u + WORK-BYTES 2 - PATH-PASS
-   then
+   rootu 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
+   rootu u + 1+ {: n:n :}
+   n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
+   n WORK-FIT
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
    a WORK-BUF rootu 1+ + u BYTE-COPY
-   rootu u + 1+ JOIN-U !
-   WORK-BUF JOIN-BUF JOIN-U @ BYTE-COPY ;
+   n JOIN-FIT
+   n JOIN-U !
+   WORK-BUF JOIN-BUF n BYTE-COPY ;
 
 
 : ABSOLUTE! ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECK
    a c@ 47 = if
-      a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
+      u JOIN-FIT  a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
    then
    CWD$ a u JOIN! ;
 
@@ -448,7 +458,20 @@ private
 \ p pu is the path being normalized.
 : NORMAL-ROOM ( ^u8 n n n -- )
    {: p:^ pu:n n:n limit:n :}
-   NORMAL-U @ n + limit > if p pu E-PATH-RANGE -1 limit PATH-PASS then ;
+   NORMAL-U @ n + limit > if p pu E-PATH-RANGE -1 limit PATH-PASS then
+   NORMAL-U @ n + NORMAL-FIT ;
+
+
+: NORMAL-PUT ( ^u8 n ^u8 n n -- )
+   {: p:^ pu:n a:^ u:n limit:n :}
+   NORMAL-U @ 1 > if
+      p pu 1 limit NORMAL-ROOM
+      47 NORMAL-BUF NORMAL-U @ + c!
+      1 NORMAL-U +!
+   then
+   p pu u limit NORMAL-ROOM
+   a NORMAL-BUF NORMAL-U @ + u BYTE-COPY
+   u NORMAL-U +! ;
 
 
 : NORMAL-SEG ( ^u8 n ^u8 n n -- )
@@ -458,14 +481,7 @@ private
    a u s" .." CORE-STR= if
       NORMAL-BUF NORMAL-U @ PARENT-U NORMAL-U ! exit
    then
-   NORMAL-U @ 1 > if
-      p pu 1 limit NORMAL-ROOM
-      47 NORMAL-BUF NORMAL-U @ + c!
-      1 NORMAL-U +!
-   then
-   p pu u limit NORMAL-ROOM
-   a NORMAL-BUF NORMAL-U @ + u BYTE-COPY
-   u NORMAL-U +! ;
+   p pu a u limit NORMAL-PUT ;
 
 
 : SEG-END ( ^u8 n n -- n ) {: a:^ u:n start:n :}
@@ -478,7 +494,7 @@ private
 
 : NORMALIZE-LIMIT ( ^u8 n n -- )
    {: a:^ u:n limit:n :}
-   47 NORMAL-BUF c! 1 NORMAL-U !
+   1 NORMAL-FIT  47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
       dup a u rot SEG-END {: start:n end:n :}
       a u  a start +  end start -  limit NORMAL-SEG
@@ -528,15 +544,52 @@ public
 
 private
 
-\ The length of the longest of a u and its parents the canon resolves, its real
-\ path in CANON-BUF; 0 when not even `/` does.
+\ Whether the bytes a s..e are an empty or `.` segment.
+: DOT-SEG? ( ^u8 n n -- bool ) {: a:^ s:n e:n :}
+   e s = if INCLUDE-TRUE exit then
+   e s - 1 =  a s + c@ 46 =  and ;
+
+\ The end of the run of empty and `.` segments of a u after end e; e if none.
+: DOT-RUN-END ( ^u8 n n -- n ) {: a:^ u:n e:n :}
+   e begin dup u < while
+      dup a u rot 1+ SEG-END {: d:n f:n :}
+      a d 1+ f DOT-SEG? 0= if d exit then
+      f
+   repeat ;
+
+\ The real path in CANON-BUF, `/` and the segment p u, in WORK-BUF: its length.
+: SEG-PATH ( ^u8 n -- n ) {: p:^ u:n :}
+   CANON-U @ {: r:n :}
+   r u + 1+ WORK-FIT
+   CANON-BUF WORK-BUF r BYTE-COPY
+   CANON-BUF r + 1- c@ 47 = if r else 47 WORK-BUF r + c!  r 1+ then {: h:n :}
+   p WORK-BUF h + u BYTE-COPY
+   h u + ;
+
+\ The end of the segment of a u after end e, or of the run of empty and `.` ones
+\ there, if the canon resolves it under CANON-BUF's real path; else e.
+: CANON-STEP ( ^u8 n n -- n ) {: a:^ u:n e:n :}
+   a u e DOT-RUN-END {: d:n :}
+   CANON-U @ {: r:n :}
+   d e > if
+      d  s" ."
+   else
+      a u e 1+ SEG-END  a e 1+ +  over e - 1-
+   then {: g:n seg:^ segu:n :}
+   seg segu SEG-PATH {: tu:n :}
+   WORK-BUF tu TRY-CANON if g exit then
+   WORK-BUF CANON-BUF r BYTE-COPY  r CANON-U !  e ;
+
+\ The length of the longest prefix of the absolute a u, cut at a segment end,
+\ the canon resolves segment by segment, its real path in CANON-BUF; 0 if none.
 : CANON-PREFIX ( ^u8 n -- n )
    {: a:^ u:n :}
-   u begin
-      a over TRY-CANON if exit then
-      dup 1 <= if drop 0 exit then
-      a swap PARENT-U
-   again ;
+   a 1 TRY-CANON 0= if 0 exit then
+   0 begin dup u < while
+      dup a u rot CANON-STEP
+      2dup = if drop 1 max exit then
+      nip
+   repeat ;
 
 \ The file system root always resolves through realpath; only a supplied canon
 \ (SOURCE-INPUT:USE) can answer that no directory above a path does.
@@ -553,22 +606,32 @@ private
 : MISSING-NORMALIZE ( -- )
    EXISTING-PARENT {: cut:n :}
    CANON-U @ JOIN-U @ cut - + {: total:n :}
-   total WORK-BYTES >= if
-      JOIN-BUF JOIN-U @ E-PATH-RANGE -1 WORK-BYTES 1- PATH-PASS
-   then
+   total WORK-FIT
    CANON-BUF WORK-BUF CANON-U @ BYTE-COPY
    JOIN-BUF cut + WORK-BUF CANON-U @ + JOIN-U @ cut - BYTE-COPY
-   WORK-BUF total NORMALIZE ;
+   WORK-BUF CANON-U @ NORMALIZE
+   NORMAL-U @ {: base:n :}
+   \ The unresolved rest drops only empty and `.` segments: each `..` there
+   \ follows a segment no lookup resolved, or a file, so it climbs from nothing.
+   CANON-U @ begin dup total < while
+      dup WORK-BUF total rot SEG-END {: start:n end:n :}
+      WORK-BUF start end DOT-SEG? 0= if
+         WORK-BUF total  WORK-BUF start +  end start -  INCLUDE-PATH-CAP NORMAL-PUT
+      then
+      end 1+
+   repeat drop
+   \ A rest of only empty and `.` segments follows a file the lookup cannot
+   \ enter: one `.` stays, so the answer is never that file's own path.
+   NORMAL-U @ base = if WORK-BUF total s" ." INCLUDE-PATH-CAP NORMAL-PUT then ;
 
 public
 
-\ The pathname is canonical even for a missing leaf: resolve its existing
-\ prefix physically, then normalize only the absent suffix for provided facts.
-\ The flag says whether the complete pathname existed. Result storage lasts
-\ until the next CANONICAL call.
+\ The canonical path and whether it exists, until the next CANONICAL call; a
+\ missing path's resolves only its longest existing prefix.
 : CANONICAL ( ^u8 n -- ^u8 n bool )
    ABSOLUTE!
    JOIN-BUF JOIN-U @ TRY-CANON if
+      CANON-U @ NORMAL-FIT
       CANON-BUF NORMAL-BUF CANON-U @ BYTE-COPY
       CANON-U @ NORMAL-U !
       NORMAL-BUF NORMAL-U @ INCLUDE-TRUE exit
@@ -623,11 +686,11 @@ private
 \ wait.
 : ENGINE-DIR? ( n -- bool )
    {: n:n :}
+   n 2 + WORK-FIT
    CANON-BUF WORK-BUF n BYTE-COPY
    47 WORK-BUF n + c!
    46 WORK-BUF n 1+ + c!
-   WORK-BUF n 2 + ZBUF WORK-BYTES PATHZ
-   ZBUF 0 access 0= ;
+   WORK-BUF n 2 + ZPATH-OF 0 access 0= ;
 
 \ A root's lookup: the canonical length in CANON-BUF of the spelling, -1 when it
 \ does not resolve, -3 when ENGINE-DIR? rejects it.
@@ -677,10 +740,10 @@ private
 public
 
 \ ROOT-N's lookup, `.` being the working directory: the canonical directory and
-\ true; false too for an empty or too long spelling. Lasts until the next canon.
+\ true; false too for an empty spelling. Lasts until the next canon.
 : ROOT? ( ^u8 n -- ^u8 n bool )
    {: a:^ u:n :}
-   u 1 <  u WORK-BYTES >=  or if CANON-BUF 0 INCLUDE-FALSE exit then
+   u 1 < if CANON-BUF 0 INCLUDE-FALSE exit then
    a u ROOT-N {: n:n :}
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
@@ -1231,8 +1294,7 @@ private
    CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
 
 : TREE? ( ^u8 n -- bool )
-   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF WORK-BYTES PATHZ
-   ZBUF 0 access 0= ;
+   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZPATH-OF 0 access 0= ;
 
 \ The root's length in CANON-BUF, 0 for the working directory.
 : ENGINE-FIND-FOR ( ^u8 n -- n )
@@ -1278,7 +1340,7 @@ private
 
 : REQUEST! ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECK
-   a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
+   u REQUEST-FIT  a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
 
 : REQUEST$ ( -- ^u8 n ) REQUEST-BUF REQUEST-U @ ;
 
@@ -1293,10 +1355,11 @@ private
 
 : CANDIDATE$ ( -- ^u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
 
-\ A request spelled under a root, normalized but not resolved, in NORMAL-BUF.
-\ The root's spelling may be longer than its canonical symlink target.
+\ A request spelled under a root, normalized but not resolved, in NORMAL-BUF: no
+\ longer than the join and a leading `/`, which may outrun PATH-CAP.
 : UNDER ( ^u8 n ^u8 n -- ^u8 n )
-   JOIN WORK-BYTES 1- NORMALIZE-LIMIT
+   JOIN {: a:^ u:n :}
+   a u u 1+ NORMALIZE-LIMIT
    NORMAL-BUF NORMAL-U @ ;
 
 \ Whether a selected candidate is the engine root's own copy of a frozen row,
@@ -1465,8 +1528,7 @@ private
 \ without read permission fails EACCES, but a stat of it succeeds.
 : SOURCE-ERRNO ( ^u8 n n -- n )
    {: path:^ pathu:n e:n :}
-   path pathu ZBUF WORK-BYTES PATHZ
-   ZBUF COMPILE-READS:STAMP drop nip 32 rshift
+   path pathu ZPATH-OF COMPILE-READS:STAMP drop nip 32 rshift
    FS-ABI:S-IFDIR = if 21 exit then e ;
 
 public
@@ -1506,20 +1568,27 @@ private
       1+
    repeat ;
 
-\ The w-byte DENIED-PATH with the link after its k-byte resolved prefix replaced
-\ by its target: the length, 0 when there is no link or the result cannot fit.
+\ The w-byte DENIED-PATH with the link after its k-byte prefix, real path in
+\ CANON-BUF, followed: the length, 0 for no link or a target past PATH-CAP.
 : LINK-NEXT ( n n -- n )
    {: w:n k:n :}
    w k SLASHES-END {: c:n :}
    c w >= if 0 exit then
    DENIED-PATH w c SEG-END {: e:n :}
-   DENIED-PATH e ZBUF WORK-BYTES PATHZ
-   ZBUF WORK-BUF WORK-BYTES readlink {: t:n :}
-   t 1 <  t WORK-BYTES >=  or if 0 exit then
-   WORK-BUF c@ 47 = if 0 else c then {: head:n :}
+   CANON-U @ {: r:n :}
+   DENIED-PATH c + e c - SEG-PATH {: lu:n :}
+   WORK-BUF lu ZPATH-OF  PATH-BYTES WORK-FIT
+   WORK-BUF PATH-BYTES readlink {: t:n :}
+   t 1 <  t PATH-BYTES >=  or if 0 exit then
+   WORK-BUF c@ 47 = if 0 else lu e c - - then {: head:n :}
    head t + w e - + {: total:n :}
-   total WORK-BYTES >= if 0 exit then
+   t w e - + WORK-FIT
    DENIED-PATH e + WORK-BUF t + w e - BYTE-COPY
+   total DENIED-FIT
+   head 0 > if
+      CANON-BUF DENIED-PATH r BYTE-COPY
+      head r > if 47 DENIED-PATH r + c! then
+   then
    WORK-BUF DENIED-PATH head + total head - BYTE-COPY  total ;
 
 \ The walk of the w-byte DENIED-PATH after links links: the longest prefix the
@@ -1529,7 +1598,7 @@ private
    k 0= if DENIED-PATH 0 exit then
    CANON-U @ {: r:n :}
    r ENGINE-DIR? 0= INCLUDE-ERRNO 13 = and if
-      CANON-BUF DENIED-PATH r BYTE-COPY  DENIED-PATH r exit
+      r DENIED-FIT  CANON-BUF DENIED-PATH r BYTE-COPY  DENIED-PATH r exit
    then
    links 40 >= if DENIED-PATH 0 exit then
    w k LINK-NEXT {: next:n :}
@@ -1539,18 +1608,15 @@ private
 \ The real directory whose search denied a lookup of path, symlinks followed;
 \ 0 when no lookup is denied or the walk cannot reach that directory.
 : SEARCH-DENIED ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u ZBUF WORK-BYTES PATHZ
-   ZBUF 0 access 0< INCLUDE-ERRNO 13 = and
-   0= if DENIED-PATH 0 exit then
-   a DENIED-PATH u BYTE-COPY
+   u DENIED-FIT  a DENIED-PATH u BYTE-COPY
    u 0 DENIED-FROM ;
 
-\ Rejects path, the joined spelling a search looked up, at t tu, else unplaced,
-\ when a lookup on it is denied; its help names the directory that denied it.
+\ Rejects the joined path a denied lookup searched, at t tu, else unplaced, by
+\ its CANONICAL name; the help names dir, in DENIED-PATH, that CANONICAL spares.
 : UNSEARCHABLE-SOURCE ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
    path pathu SEARCH-DENIED {: dir:^ diru:n :}
    diru 0= if exit then
-   t tu path pathu 13 ERRNO-WHY$ s" searched" UNREAD-OS-RECORD
+   t tu path pathu CANONICAL drop 13 ERRNO-WHY$ s" searched" UNREAD-OS-RECORD
    s" if the directory `" REJECTION:EMIT-STR  dir diru REJECTION:EMIT-STR
    s" ` is yours, make it searchable with `chmod u+x " REJECTION:EMIT-STR
    dir diru SH-QUOTED

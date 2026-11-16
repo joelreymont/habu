@@ -312,10 +312,9 @@ create CHUNK LARGE-CHUNK allot
    A$ [: s" large/outer.f" included ;] WITH
    LOADED @ 122 T= RESTORED ;
 
-\ JOIN takes its root length from the caller and measures it against the room
-\ left, so a length near the maximum cell cannot wrap the sum under the
-\ capacity; a negative one is refused.
-PATH-CAP 1+ 2 * constant JOIN-WORK          \ include.f WORK-BYTES
+\ JOIN joins a root longer than PATH-CAP whole, and rejects a root length below 0
+\ or one whose sum with the name's length wraps.
+PATH-CAP 1+ 2 * constant JOIN-WORK
 -1 1 rshift constant MAX-CELL
 create JOIN-SRC JOIN-WORK allot
 
@@ -324,10 +323,9 @@ create JOIN-SRC JOIN-WORK allot
 : JOIN-ROOM ( -- )
    JOIN-WORK 0 ?do 97 JOIN-SRC i + c! loop
    47 JOIN-SRC c!
-   s" a root that fills the join buffer exactly" T-LABEL
+   s" a root twice PATH-CAP long joins whole" T-LABEL
    JOIN-WORK 3 - JOIN-ROOT$ s" x" JOIN nip JOIN-WORK 1- T=
-   s" a root one past the join buffer, -1 and the maximum cell are refused" T-LABEL
-   [: JOIN-WORK 2 - JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
+   s" a root length of -1 or the maximum cell is rejected" T-LABEL
    [: -1 JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
    [: MAX-CELL JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ ;
 

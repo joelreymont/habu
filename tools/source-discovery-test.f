@@ -429,10 +429,8 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 : SDT-DOT16$ ( -- ^u8 n )
    s" ././././././././" ;
 
-\ SDT-FIT bytes pass PATH-CAP only once joined to a root, SDT-BIG as written;
-\ SDT-OVER bytes of `./` and an 18-byte name are too long for the resolver.
+\ SDT-FIT bytes pass PATH-CAP only once joined to a root, SDT-BIG as written.
 PATH-CAP 16 / 1+ 16 * constant SDT-BIG
-PATH-CAP 1+ 2 * 16 - constant SDT-OVER
 PATH-CAP 16 / 16 * constant SDT-FIT
 
 \ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
@@ -461,8 +459,6 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" big-bad.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
    SDT-RANGE-STOP
    s" big-resolved.f" S\" s\" " SDT-FIT SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
-   SDT-RANGE-STOP
-   s" big-over.f" S\" s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required\n" SDT-WRITE-BIG
    SDT-RANGE-STOP ;
 
 \ In a body the same loads are calls the word makes when it runs, which load
@@ -472,9 +468,6 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T=
    s" big-body-resolved.f" S\" : L ( -- ) s\" " SDT-FIT SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
-   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T=
-   s" big-body-over.f" S\" : L ( -- ) s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T= ;
 

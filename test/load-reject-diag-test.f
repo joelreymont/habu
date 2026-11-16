@@ -1265,12 +1265,10 @@ undefine include
    EXITED @ TTRUE
    RC @ UNCAUGHT-RC T= ;
 
-\ The record on stderr helps with a path of 1 to most bytes, the longest the
-\ failing test admits: SOURCE-ROOT's work room holds two paths of PATH-CAP
-\ bytes, each with its NUL.
-: HELP-MOST ( n -- ) {: most:n :}
+\ The record on stderr helps with a path of 1 to INCLUDE-PATH-CAP bytes.
+: HELP-MOST ( -- )
    SB-RESET  s" = help: pass a path of 1 to " SB-APPEND
-   most FMT:SB-INT  S\"  bytes\n" SB-APPEND
+   INCLUDE-PATH-CAP FMT:SB-INT  S\"  bytes\n" SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
 4220 constant LONG-QS
@@ -1293,12 +1291,12 @@ variable LONG-U
    SB-RESET
    s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
    S\" s\" \" SOURCE-ROOT:CANON-OS drop 2drop" PATH-PASS-NOWHERE
-   PATH-CAP 2 * 1+ HELP-MOST
+   HELP-MOST
    s" JOIN's uncaught throw on a negative root length prints its record" T-LABEL
    SB-RESET
    s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
    S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" PATH-PASS-NOWHERE
-   PATH-CAP 2 * HELP-MOST
+   HELP-MOST
    s" CANONICAL's uncaught throw on a long path prints its record" T-LABEL
    SB-RESET
    s" error[E-PATH-RANGE]: a path resolves to more than the " SB-APPEND
