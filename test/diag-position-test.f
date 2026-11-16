@@ -493,6 +493,18 @@ variable RC
    1 s" code" s" E-LOADER-FORM" FIELD=
    1 s" required" 3 14 60 68 AT ;
 
+\ Without --all-errors the walk's rejection is placed in the checked file too.
+: TEST-DYN-PLACE ( -- )
+   s" a dynamic required, checked alone" T-LABEL
+   SB-RESET
+   S\" : RT-P ( -- ^u8 n ) s\" absent.f\" ;" SB-APPEND LF+
+   s" RT-P required" SB-APPEND LF+
+   s" dyn-place.f" FIXTURE!
+   s" " CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-LOADER-FORM" FIELD=
+   0 s" required" 2 6 40 48 AT ;
+
 \ WIDE's inferred effect nests 33 binders, more than an effect text holds: the
 \ checker certifies it and warns, at its name, that the effect is not recorded.
 : NOT-RECORDED-TEXT ( -- )
@@ -2777,6 +2789,7 @@ variable RC
    TEST-SHADOWED-ARITY
    TEST-ALL-LINTS
    TEST-ALL-ORDER
+   TEST-DYN-PLACE
    TEST-ALL-UNREADABLE
    TEST-NAMED-MISSING
    TEST-NAMED-DIR
