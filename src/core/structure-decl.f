@@ -30,8 +30,16 @@ $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
+\ The first pointee naming the declared family while it takes no scope or
+\ region, as written; a later scope or region parameter is rejected there.
+PTR-VARIABLE SELF-A   variable SELF-U
+
+public
+: SELF-PTR-RESET ( -- ) 0 SELF-U ! ;
+private
+
 : SD-RESET ( -- )
-   0 SEEN-FIELD ! ;
+   0 SEEN-FIELD !  SELF-PTR-RESET ;
 SD-RESET
 : SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
@@ -241,6 +249,25 @@ variable HELP-U
    THEN
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
+\ A pointer at the declared family cannot move the view into it by value.
+: PTR-FIX$ ( bool -- ^u8 n ) {: self:bool :}
+   self ENUM? and IF
+      s" keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`" EXIT THEN
+   self IF
+      s" keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`" EXIT THEN
+   ENUM? IF
+      s" hold the view in the field itself, as in `ENUM box<p,q>` with `FIELD x read-view<p,q,n>`" EXIT THEN
+   s" hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`" ;
+\ Rejects a pointer at the family named at a u, which takes a scope or region;
+\ self is whether that family is the declared one.
+: PTR-VIEW-REJECT ( ^u8 n bool -- ) {: a:^ u:n self:bool :}
+   a u DECL-REJECT:TOKEN!
+   0 SD-MSG-U !
+   s" a pointer cannot point at `" SD-MSG+  a u SD-MSG+
+   s" `, which takes a scope or region" SD-MSG+
+   SD-MSG-P @ SD-MSG-U @  self PTR-FIX$
+   TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+
 : LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
    a c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
@@ -250,6 +277,8 @@ variable HELP-U
       drop a u DECL-REJECT:TOKEN!
       s" unknown" s" " SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    {: idx:n :}
+   want PK-SCOPE = want PK-REGION = or SELF-U @ 0 <> and IF
+      SELF-A @ SELF-U @ YES PTR-VIEW-REJECT THEN
    idx want TYPE-DECL:DECL-PARAM-USE IF a u want PARAM-KIND-REJECT THEN
    2drop drop
    want PK-SCOPE = want PK-REGION = or
@@ -447,9 +476,20 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
+\ Judges the family the pointee at k names before its arguments, which a scope
+\ or region slot would reject first; the parse rejects a name that is no family.
+: SD-PTR-FAM ( ^u8 n n -- ) {: a:^ u:n k:n :}
+   a u k SD-ATOM drop {: na:^ nu:n :}
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE SR-FOUND <> IF drop EXIT THEN
+   {: fam:n :}
+   fam FAM @ = {: self:bool :}
+   fam TFAM-NONVALUE-PARAM? IF na nu self PTR-VIEW-REJECT THEN
+   self SELF-U @ 0= and IF na SELF-A !  nu SELF-U ! THEN ;
+
 \ Every declared pointer is built here. Only a rejected pointee becomes the
 \ token: an accepted one leaves the type's token for a later rejection that sets none.
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
+   a u k SD-PTR-FAM
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k TYPE-DECL:ANY-VALUE SD-PARSE-NODE {: node:n e:n :}

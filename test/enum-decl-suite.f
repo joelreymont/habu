@@ -1246,6 +1246,10 @@ s\"   = help: give each kind its own header parameter, as in `ENUM box<a,p,q>` w
 DECL-DIAG:PROSE
 s" ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `ednode`\n" DECL-DIAG:HAS? TTRUE
+s" ednode" s" a pointer cannot point at `ednode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
+s\"   = evaluated: ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM\n                                                         ^^^^^^" DECL-DIAG:HAS? TTRUE
+s\"   = help: keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \     An application is as wide as its arguments make it: option<edapw> takes

@@ -26,7 +26,7 @@ variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
 
 : ED-RESET ( -- )
-   0 SEEN-VARIANT ! ;
+   0 SEEN-VARIANT !  STRUCTURE-DECL:SELF-PTR-RESET ;
 ED-RESET
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer

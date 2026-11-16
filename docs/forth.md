@@ -1940,6 +1940,7 @@ closes. Independently owned scalar or document results may escape.
 | Export a view as its owner combinator's result | Refused, through nested fields, generic wrappers and quotation payloads; handing a control handle back for cleanup is not export. |
 | Store into a typed scoped record | Allowed only if the value cannot outlive the borrowed owner; the record keeps the field's dependency. |
 | Store into globals, task slots or raw cells | Refused for a scoped value. |
+| Point at a family with a scope or region parameter | Rejected at the pointee's family name; hold the view in the field itself. |
 | Install into defer/XT state, enqueue or spawn a task | Refused if it carries a scoped dependency out of its lexical scope. |
 | Close a scoped owner explicitly | Refused; only leaving its combinator ends the scope, after dependent values and loans end. |
 | End an exclusive loan or initialized reader scope | Ends its child loans, consumes its authority and invalidates its fields; an enclosing source owner stays open. |
