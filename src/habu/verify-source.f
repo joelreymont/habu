@@ -1867,22 +1867,10 @@ defer ON-DEFINITION ( ^u8 n ^u8 n n ^u8 n n n n n -- )
 \ SUBJECT? telling the subject's own; the path the declaration's file was
 \ resolved to when the composition visited it; and where the token that
 \ declared it starts and ends there, all at the base TOKEN-BYTE@ counts from;
-\ the selected symbol
-\ and declaration visit. The path is borrowed: a word installed here consumes
-\ it before it returns. A use bound to a word with no declaration location has
-\ an empty path, zero target bytes and visit -1.
+\ the selected symbol and declaration visit. The path is borrowed: a word
+\ installed here consumes it before it returns. A use bound to a word with no
+\ declaration location has an empty path, zero target bytes and visit -1.
 defer ON-USE ( n n ^u8 n n n n n -- )
-
-\ A use the checker bound, in the file FILE$ names, as its scan reads it: where
-\ the use starts and ends there, at the base TOKEN-BYTE@ counts from, and the
-\ selected symbol (SYM-IDENTITY; SYM-SOURCE for the word it is through
-\ re-exports). Reported for the subject and for every file a load reads, each
-\ time it is read, whether or not the declaration has a location: a word the
-\ image holds, including a primitive without a record, is reported like any
-\ other. A use in a colon body is reported when the body's check publishes
-\ it, at the definition's end. A source the capture swept has an empty
-\ identity, which is no word.
-defer ON-BINDING ( n n n -- )
 
 \ A top-level loader of the subject whose load reached a file, once the file
 \ was selected: where its operand starts and ends in the subject, at the base
@@ -1973,13 +1961,6 @@ SUPPLIED-INIT
 
 USE-INIT
 
-: BINDING-NONE ( n n n -- )  2drop drop ;
-
-: BINDING-INIT ( -- )
-   ['] BINDING-NONE is ON-BINDING ;
-
-BINDING-INIT
-
 : LOADER-NONE ( n n ^u8 n n -- )
    2drop 2drop drop ;
 
@@ -2027,7 +2008,6 @@ ENGINE-TARGET-INIT
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s e COLON-NAME-USE? IF EXIT THEN
-   s e sym ON-BINDING
    v -2 <= IF
       -2 v - PRIM-TARGET drop {: path:^ pathu:n at:n end:n :}
       s e
