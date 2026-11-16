@@ -1206,7 +1206,6 @@ private
 
 : CHK-SIGNAL-ANSWER ( n -- ) {: sig:n :}
    s" child kill" [: PROCESS:KILL-CAPTURE ;] catch CHK-SAY-THROW
-   s" cleanup" [: CHK-TEMP-CLEAN ;] catch CHK-SAY-THROW
    s" check: signal" sig SIGNAL:DIE-OF ;
 
 : CHK-SIGNAL-CHECK ( -- )

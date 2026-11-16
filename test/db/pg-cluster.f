@@ -343,7 +343,6 @@ false STOPPED !
    SERVER @ NO-PID <> if SERVER @ >PID SIGQUIT PROCESS:KILL-RAW drop then
    s" case engine kill" [: CASE-KILL ;] catch SAY-THROW
    s" postgres stop" [: QUIT-MS STOP ;] catch SAY-THROW
-   s" cleanup" [: FS:CLEANUP-RUN ;] catch SAY-THROW
    s" pg-cluster: signal" sig SIGNAL:DIE-OF ;
 
 : SIGNAL-CHECK ( -- )

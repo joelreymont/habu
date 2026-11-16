@@ -14,6 +14,7 @@ s" src/lib/task.f" required                   \ TASK:+USER carries the staging s
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
 require src/habu/layout.f                 \ package SIGNAL-ABI publishes the two cells
 require src/lib/fork-child.f                 \ CHILD-RESET, registered below
+require src/lib/at-exit.f                    \ AT-EXIT:RUN-NOW, which DIE-OF runs
 
 package SIGNAL
 public
@@ -406,8 +407,9 @@ public
 \ started and made outlives it: a spawned child leads a process group of its
 \ own (src/lib/process.f) and runs on under init, and nothing removes the
 \ scratch. Such a program calls CATCH-STOPS before it starts either, asks TAKE
-\ wherever it waits, and answers a signal by ending what it started and
-\ removing what it made, then DIE-OF. The gate root (test/gate-pool.f), the pg
+\ wherever it waits, and answers a signal by ending what it started, then
+\ DIE-OF, which runs the exit actions and so removes the paths registered for
+\ removal (src/lib/fs-mutate.f). The gate root (test/gate-pool.f), the pg
 \ cluster (test/db/pg-cluster.f) and check.f (tools/check-core.f) answer so.
 \
 \ CATCH-STOPS leaves a signal the process was started with ignored as it is
@@ -427,15 +429,13 @@ public
    SIGINT CATCH-STOP
    SIGHUP CATCH-STOP ;
 
-\ The end of an answer: the process dies OF the signal, under the default
-\ action again, so its caller reads the status an uncaught one would have left.
-\ The stub stays installed until here, so a second signal during the answer is
-\ written to the pipe and read by nobody. The die ends a process whose signal
-\ another thread took, with the status a shell gives that death; it is not
-\ reached when this one took it.
+\ The end of an answer: the exit actions run while the stub still absorbs a
+\ second signal, then the process dies OF the signal, as an uncaught one ends it.
 : DIE-OF ( ^u8 n n -- ) {: msg:^ msgu:n sig:n :}
+   AT-EXIT:RUN-NOW
    RELEASE
    getpid >PID sig PROCESS:KILL-RAW drop
+   \ Reached only when another thread took the signal: a shell's status for it.
    msg msgu 128 sig + die ;
 
 ;package

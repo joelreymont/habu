@@ -1,7 +1,7 @@
 \ signal-test.f - package SIGNAL against real deliveries. This process raises
 \ only SIGUSR1 and SIGUSR2: SIGTERM and SIGINT would end the run on any path
 \ that reaches them before their disposition is installed. SIGSTOP and SIGCONT
-\ go to a child.
+\ go to a child, and a forked child raises SIGTERM at itself.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -16,6 +16,9 @@ require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/aio.f
 require src/lib/signal.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/at-exit.f
 require src/habu/layout.f
 
 package SIGNAL-TEST
@@ -102,6 +105,11 @@ variable STOP-PID                  \ the stop case's child until reaped, else 0
 variable STOP-R                    \ its stdin's read end until closed, else -1
 variable STOP-W                    \ that pipe's write end until closed, else -1
 variable STOP-STATUS               \ the status waitpid wrote for the stop wait
+
+create DIE-ROOT PATH-CAP allot     \ the stopped child's scratch, removed at exit
+variable DIE-ROOT-U
+create DIE-PATH PATH-CAP allot     \ the path the stopped child is judged by
+variable DIE-PATH-U
 
 TASK:MIN-STACK TASK:TASK SIG-RAISER
 TASK:MIN-STACK TASK:TASK RACER-A
@@ -608,6 +616,50 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" a forked child keeps an ignore and drops the stub of a catch" T-LABEL
    s" FORKED-RAISES" s" " s" " done SIGNAL:SIGUSR2 T-ENDING-SIGNALED= ;
 
+\ A file under the scratch root, made by this process, so the child only
+\ registers it.
+: DIE-FILE ( ^u8 n ^u8 -- n )
+   {: name:^ nameu dst:^ :}
+   DIE-ROOT DIE-ROOT-U @ name nameu dst FS:JOIN-PATH {: u :}
+   dst u s" made" FS:ATOMIC-WRITE-FILE
+   u ;
+
+\ Raises SIGTERM at itself and answers it as a program that caught stops does.
+: STOP-SELF ( -- )
+   SIGNAL:SIGTERM RAISE
+   SIGNAL:TAKE MATCH SIGNAL:signal-result
+      signal OF s" signal-test: stopped" rot SIGNAL:DIE-OF ENDOF
+      timeout OF s" signal-test: no SIGTERM taken" 3 die ENDOF
+   ;MATCH ;
+
+\ The throwing action runs before the registry's, which was added first.
+: DIE-CHILD ( -- )
+   SIGNAL:INIT
+   SIGNAL:SIGTERM SIGNAL:CATCH
+   DIE-PATH DIE-PATH-U @ FS:CLEANUP+
+   [: E-FS-IO throw ;] AT-EXIT:ADD
+   STOP-SELF ;
+
+: DIE-WAIT ( [ -- ] -- PROCESS:ending )
+   {: q :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if q PROC-FORK:CHILD-MAIN then
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING ;
+
+: DIE-OF-CASE ( -- )
+   s" signal-test" FS:MKTEMP-DIR {: root:^ rootu :}
+   root DIE-ROOT rootu BYTE-COPY  rootu DIE-ROOT-U !
+   DIE-ROOT DIE-ROOT-U @ FS:CLEANUP-TREE+
+
+   s" stopped" DIE-PATH DIE-FILE DIE-PATH-U !
+   [: DIE-CHILD ;] DIE-WAIT {: done :}
+
+   s" a child whose exit action throws still dies of the SIGTERM it caught" T-LABEL
+   s" DIE-CHILD" s" " s" " done SIGNAL:SIGTERM T-ENDING-SIGNALED=
+
+   s" ... once its exit actions removed the path it registered" T-LABEL
+   DIE-PATH DIE-PATH-U @ FS:EXISTS? 0= TTRUE ;
+
 public
 
 \ The loop is started after the last definition and stopped at the end; every
@@ -636,6 +688,7 @@ public
    BROKEN-CASE
    IGNORE-CASE
    FORK-CASE
+   DIE-OF-CASE
    AIO:STOP
    T-REPORT ;
 

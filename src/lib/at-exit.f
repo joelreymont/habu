@@ -84,10 +84,10 @@ VECTOR-INIT
 
 public
 
-\ Adds an action the process runs once when any thread exits, after every
-\ action added later; an action already added is not added again. An action
-\ must not wait on another thread: one that exits while the actions run blocks
-\ until the process ends.
+\ Adds an action the process runs once when any thread exits or RUN-NOW runs,
+\ after every action added later; an action already added is not added again.
+\ An action must not wait on another thread: one that exits while an exit runs
+\ the actions blocks until the process ends.
 : ADD ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally
    ARM ;
@@ -95,5 +95,26 @@ public
 \ The lock alone: APPEND publishes its count after the slot, and TAKE counts
 \ down before it reads.
 : CHILD-RESET ( -- ) UNLOCK ;
+
+private
+
+: REPORT ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   s" hb: uncaught throw code " ERROR-TEXT:TYPE
+   code 0< if s" -" ERROR-TEXT:TYPE then
+   code ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
+   S\" \n" ERROR-TEXT:TYPE ;
+
+public
+
+\ As RUN, for a process about to end some other way: a throw is reported on fd 2
+\ and the rest still run; a thread that exits meanwhile ends the process itself.
+: RUN-NOW ( -- )
+   begin TAKE while
+      ARM
+      catch REPORT
+   repeat
+   drop ;
 
 ;package
