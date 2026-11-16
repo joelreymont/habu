@@ -188,7 +188,9 @@ defer GROUP-SQL ( ^plan n n bool -- n )
 
 : BIND-SQL ( ^plan n n -- n )
    {: plan binding:n input:n :} plan TREE {: state :}
-   plan CTE {: relation:n :}
+   \ Later bindings read r.v; inlining can duplicate every prior EXISTS.
+   plan CTE-START {: relation:n :}
+   plan s" AS MATERIALIZED(" SQL+
    plan input relation INHERIT-BOUNDS
    plan s" SELECT r.u,r.v||" SQL+
    plan PLAN-CONTEXT @ 0<> if

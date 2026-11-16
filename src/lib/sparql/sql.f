@@ -98,13 +98,16 @@ defer PATH-TRIPLE ( ^plan n n -- n )
    {: plan :}
    plan plan PLAN-CONTEXT @ CONTEXT-NAME+ plan s" .v" SQL+ ;
 
-: CTE ( ^plan -- n )
+: CTE-START ( ^plan -- n )
    {: plan :}
    1 plan PLAN-SERIAL +!
    0 plan PLAN-BOUND @ VEC:PUSH !
    plan s" ," SQL+
-   plan plan PLAN-SERIAL @ SQL-NAME plan s" AS(" SQL+
+   plan plan PLAN-SERIAL @ SQL-NAME
    plan PLAN-SERIAL @ ;
+
+: CTE ( ^plan -- n )
+   {: plan :} plan CTE-START plan s" AS(" SQL+ ;
 
 : CTE-END ( ^plan -- ) s" )" SQL+ ;
 
