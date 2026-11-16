@@ -187,8 +187,26 @@ $1A4 constant MODE-FILE
    SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
    s" :1:9" SB-APPEND SB$ ERR-HAS
    s" ^^^^^^^^ permission denied" ERR-HAS
-   SB-RESET s" = help: make the file readable: `chmod u+r " SB-APPEND
-   s" cases/locked.f" AT SB-APPEND s" `" SB-APPEND SB$ ERR-HAS ;
+   SB-RESET s" = help: if the file is yours, make it readable with `chmod u+r '" SB-APPEND
+   s" cases/locked.f" AT SB-APPEND
+   s" '`; else ask its owner to let you read it" SB-APPEND SB$ ERR-HAS ;
+
+\ A load of an unreadable file whose name holds a blank and a `'`: the help's
+\ chmod quotes the path as one shell word.
+: LOAD-UNREADABLE-QUOTED ( -- )
+   s" an unreadable file's chmod help quotes its path as one shell word" T-LABEL
+   s" cases/sp ace'q.f" AT s" 1 drop" FS:WRITE-ALL
+   s" cases/sp ace'q.f" AT NO-ACCESS FS:CHMOD-MODE
+   0 PROG-U !
+   S\" s\q " PROG+ s" cases/sp ace'q.f" AT PROG+ S\" \q included" PLINE
+   [: s" load-unreadable-quoted" LOAD-CASE ;]
+   [: s" cases/sp ace'q.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
+   INCLUDE-IO-RC EXITS
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" error[E-UNREADABLE-SOURCE]" ERR-HAS
+   SB-RESET s" = help: if the file is yours, make it readable with `chmod u+r '" SB-APPEND
+   s" cases/sp ace" AT SB-APPEND  S\" '\\''q.f'`; else ask its owner to let you read it"
+   SB-APPEND SB$ ERR-HAS ;
 
 \ A string loader given an empty path: one record, at the loader word, as the
 \ literal's bytes lie in no source the run holds.
@@ -209,7 +227,7 @@ public
 : RUN ( -- )
    T-RESET SETUP
    WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD REQUIRE-UNREADABLE
-   REQUIRED-EMPTY
+   LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY
    T-REPORT ;
 
 ;package

@@ -1368,13 +1368,23 @@ variable REQUEST-AT-U
    e 5 = if s" input/output error" exit then
    s" cannot open" ;
 
-\ The help for the file path whose open or read failed with errno e, by the
-\ reason OPEN-ERRNO$ gives it.
+\ Writes a u as one single-quoted shell word: each `'` in it closes the quote,
+\ is written escaped and reopens it, so no path byte acts in a shell.
+: SH-QUOTED ( ^u8 n -- ) {: a:^ u:n :}
+   39 REJECTION:EMIT1
+   u 0 ?do
+      a i + c@ dup 39 = if drop s" '\''" REJECTION:EMIT-STR else REJECTION:EMIT1 then
+   loop
+   39 REJECTION:EMIT1 ;
+
+\ The help for path, whose open or read failed with errno e. EACCES's names no
+\ owner: Habu looks none up, and the reader knows whose file it is.
 : OPEN-HELP ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
    e 2 = if s" create the file or correct the path" REJECTION:EMIT-STR exit then
    e 13 = if
-      s" make the file readable: `chmod u+r " REJECTION:EMIT-STR
-      path pathu REJECTION:EMIT-STR  96 REJECTION:EMIT1 exit
+      s" if the file is yours, make it readable with `chmod u+r " REJECTION:EMIT-STR
+      path pathu SH-QUOTED
+      s" `; else ask its owner to let you read it" REJECTION:EMIT-STR exit
    then
    e 20 = if
       s" correct the path, so that each name in it before the last is a directory"
