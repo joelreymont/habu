@@ -54,7 +54,7 @@ $FF constant PRIMARY-MASK          \ an extended code's low byte is its primary
 5 constant NULL-TYPE               \ SQLITE_NULL, a column's fundamental type
 1 constant READONLY                \ SQLITE_OPEN_* flags
 2 constant READWRITE
-4 constant CREATE
+4 constant OPEN-CREATE
 $01000000 constant NOFOLLOW
 -1 constant TRANSIENT              \ SQLITE_TRANSIENT: SQLite copies the bytes
 $7FFFFFFF constant INT-MAX
@@ -257,7 +257,7 @@ public
 \ ---- connections ---------------------------------------------------------
 
 : OPEN ( ^u8 n -- connection )
-   READWRITE CREATE or NOFOLLOW or OPEN-WITH ;
+   READWRITE OPEN-CREATE or NOFOLLOW or OPEN-WITH ;
 
 : OPEN-READ ( ^u8 n -- connection )
    READONLY NOFOLLOW or OPEN-WITH ;

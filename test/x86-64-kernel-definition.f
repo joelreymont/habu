@@ -424,7 +424,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a definition opened with no compiler
 \   (-def-close-tier-armed).
-\ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
+\ - 84, ENGINE-ERROR:SEAL-WORDLIST, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
 \   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
 \ Each call but for its refusal is one the row admits.

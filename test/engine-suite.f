@@ -43,7 +43,7 @@ public
 
 s" legacy engine error globals absent" T-LABEL
 s" E-SEAL-VIOLATION" 0 search-wl 0 T=
-s" E-SEAL-PACKAGE" 0 search-wl 0 T=
+s" E-SEAL-WORDLIST" 0 search-wl 0 T=
 s" E-BAD-TAG" 0 search-wl 0 T=
 s" E-CODE-CERT" 0 search-wl 0 T=
 s" private engine helpers absent from the public wordlist" T-LABEL
@@ -475,18 +475,6 @@ s\" CBAD-ESC-LETTER ( -- ^u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ^u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX-SHORT ( -- ^u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
 s\" CBAD-ESC-UNTERMINATED ( -- ^u8 n ) s\\\" no end" T-CHECK-REJECTS
-\ A body's `char` or `'` calls the word of that spelling, and the `;` after it
-\ ends the definition.
-package ES-CHAR-N
-: char ( n -- n ) 1+ ;
-: ' ( n -- n ) 1+ ;
-: ES-CHAR-CALL ( n -- n ) 2 * char ;
-: ES-TICK-CALL ( n -- n ) ' ;
-s" a body char calls the word of that spelling" T-LABEL
-5 ES-CHAR-CALL 11 T=
-s" a body tick calls the word of that spelling" T-LABEL
-5 ES-TICK-CALL 6 T=
-;package
 \ A pointer's pointee element type is invariant: the u8->cell/u32 integer
 \ widening that applies to top-level scalar cells must NOT apply inside a ptr.
 s" COK-PTR-ADD ( ^a n -- ^a ) +" T-CHECK-PASSES

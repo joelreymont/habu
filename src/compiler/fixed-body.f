@@ -14,5 +14,5 @@ require src/lib/prelude.f
 
 package COMP
 public
-ENUM body DERIVE eq compiled value address defer cast offset index routine getter setter bytes ;ENUM
+ENUM body DERIVE eq compiled value address deferred cast offset index routine getter setter bytes ;ENUM
 ;package

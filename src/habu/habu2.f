@@ -1030,8 +1030,8 @@ variable LREPLAYTRAP
    done B,
    s" E-SEAL-VIOLATION habu: alias-record with a marker wid, a definition pending, a source that is no live definition or is internal, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
-   s" E-SEAL-PACKAGE habu: alias-record into a wordlist protected by the seal"
-   prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
+   s" E-SEAL-WORDLIST habu: alias-record into a wordlist protected by the seal"
+   prot ENGINE-ERROR:SEAL-WORDLIST REFUSE-AT
    done LBL, ;
 
 \ package-scope! ( n n -- )
@@ -1285,8 +1285,8 @@ variable LREPLAYTRAP
    done B,
    s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
-   s" E-SEAL-PACKAGE habu: def-open into a wordlist protected by the seal"
-   prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
+   s" E-SEAL-WORDLIST habu: def-open into a wordlist protected by the seal"
+   prot ENGINE-ERROR:SEAL-WORDLIST REFUSE-AT
    done LBL, ;
 
 \ body-capture ( ^u8 n -- ): LBCS is the capture `:` appends through; it grows

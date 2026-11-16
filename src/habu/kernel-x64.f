@@ -3571,7 +3571,7 @@ private
 \ prot-wid-add ( n -- ): protect the wid, once. The two engine-reserved wids
 \ are protected already, as habu1.f LPROTWIDQ pins them, and a set bit is
 \ left alone; a wid at or above PROT-WID-MAX has no bit, so it writes `hb:
-\ protected-WID id above the bound` and exits SEAL-PACKAGE rather than write
+\ protected-WID id above the bound` and exits SEAL-WORDLIST rather than write
 \ past the band. The set bit is published by a plain store, which x86-64 total
 \ store order releases as habu1.f's STLR does.
 : PROT-WID-ADD-BODY ( -- )
@@ -3580,7 +3580,7 @@ private
    RDI OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
    RDI OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
    RDI PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
-   S\" hb: protected-WID id above the bound\n" ENGINE-ERROR:SEAL-PACKAGE STDERR-EXIT,
+   S\" hb: protected-WID id above the bound\n" ENGINE-ERROR:SEAL-WORDLIST STDERR-EXIT,
    bounded X64CODE:LBL,
    PROT-BITS,
    RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
@@ -4320,7 +4320,7 @@ public
 \ in each twin's check order. Every refusal of a row with a body comes before
 \ the first store and writes nothing on fd 2: a live task exits TASK-LIVE-RC in
 \ the four dictionary rows and the replay rows, a protected wid after
-\ the seal ENGINE-ERROR:SEAL-PACKAGE, and every other refusal
+\ the seal ENGINE-ERROR:SEAL-WORDLIST, and every other refusal
 \ ENGINE-ERROR:SEAL-VIOLATION. The exception is an open overlay in def-open,
 \ namespace-private and alias-record: OVERLAY-GUARD, writes the die line and
 \ dies ENGINE-ERROR:OVERLAY-OPEN. Past the checks one helper exit can still end
@@ -4546,7 +4546,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    PUBLISH-RECORD,
    FRAME-CLOSE,
    done JMP,
-   prot X64CODE:LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
+   prot X64CODE:LBL,  ENGINE-ERROR:SEAL-WORDLIST EXIT-GROUP,
    done X64CODE:LBL, ;
 
 \ package-scope! ( n n -- ): habu2.f DEFWRITE:PACKAGE-SCOPE's twin;
@@ -4640,7 +4640,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    WINDOW-CLOSE,
    FRAME-CLOSE,
    done JMP,
-   prot X64CODE:LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
+   prot X64CODE:LBL,  ENGINE-ERROR:SEAL-WORDLIST EXIT-GROUP,
    done X64CODE:LBL, ;
 
 \ The twin of habu2.f DEFWRITE:SAVED,. Clobbers rax.

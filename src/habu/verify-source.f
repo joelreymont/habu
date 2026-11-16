@@ -2207,9 +2207,20 @@ ENGINE-TARGET-INIT
    u 0= IF TOKEN-BYTE @ TOKEN-FROM ELSE SOURCE@ TOKEN-BYTE @ + u THEN
    2dup DUPLICATE-AT! ;
 
-\ A name that lands in a sealed package stops first.
+\ Whether a u, written from byte AT, is a keyword or number name, a qualified
+\ one judged by its tail as the load judges it; the record ends as a duplicate's.
+: NAME-REJECT? ( ^u8 n n -- bool )
+   {: a:^ u:n at:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q 0 < IF a u ELSE a q + 1+  u q - 1- THEN
+   SOURCE@ at + u INTERPRETER:DEF-NAME-REJECT? 0= IF false EXIT THEN
+   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN
+   true ;
+
+\ A keyword or number name stops first, then one that lands in a sealed package.
 : REJECT-DUPLICATE ( ^u8 n n -- bool )
    {: a:^ u:n at:n :}
+   a u at NAME-REJECT? IF true EXIT THEN
    a u at u SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
@@ -2439,6 +2450,7 @@ variable TRUSTED-DOES
    s" linear:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
+   name nameu at NAME-REJECT? IF name nameu SIGNATURE-AT 2drop EXIT THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR

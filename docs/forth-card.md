@@ -89,7 +89,7 @@ public
   cells (`E-SHADOWED-ARITY`). A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
   is checked and called as itself even when it spells an engine word: the
-  checker's rules for `@`, `!`, `create` and the like belong to the engine's
+  checker's rules for `@`, `!` and the like belong to the engine's
   own word, which a redefinition is not.
 - A call binds a word the engine holds. A name only the checker knows, a row
   recorded or scanned without a definition, is `E-UNDEFINED` in a body, except
@@ -97,7 +97,7 @@ public
   earlier in it. A definition (`:`, `create`, …), a new `package` or a
   `wordlist` made while a checker replay is open throws `E-OVERLAY-OPEN` where
   it is made, and so does an `undefine` run there, before it retires anything.
-- Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
+- Keywords (`I`, `DO`, `IF`, `package`, `create`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
   `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
   `HB-TARGET-WASM?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,

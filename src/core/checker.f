@@ -13255,6 +13255,11 @@ variable SEALS-N
    REPEAT
    2drop -1 ;
 : TOP-KEYWORD? ( ^u8 n -- bool ) TOP-KEYWORD-ID 0 >= ;
+\ The top-level parsers, whose body forms are `[char]` and `[']`.
+: TOP-PARSER? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u s" char" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" '" CORE-STR=CI IF RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 \ The keywords a body's compiler reads before it looks a word up: a word named
 \ by one could never be called from a body.
@@ -13269,6 +13274,17 @@ variable SEALS-N
       e 1 +
    REPEAT
    drop RES-FALSE ;
+
+\ A spelling no definition may take. `host` and `target` may name a word,
+\ which their top-level use then rejects (E-SECTION-WORD).
+: NAME-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u BODY-KEYWORD? IF RES-TRUE EXIT THEN
+   a u s" host" CORE-STR=CI IF RES-FALSE EXIT THEN
+   a u s" target" CORE-STR=CI IF RES-FALSE EXIT THEN
+   a u TOP-KEYWORD? IF RES-TRUE EXIT THEN
+   a u s" ;" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" :}" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u TOP-PARSER? ;
 
 \ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
 \ its package is sealed, EXPORT takes a private word, as a reopening could.
@@ -21179,6 +21195,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    -1 ;
 
 EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
+EXPORT CHECKER-RESOLVE:NAME-KEYWORD?
 
 : CF-STEP ( n -- ) {: code:n :}
    K-CONTROL code 0 EVENT!

@@ -113,53 +113,39 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 
-: COMPILE-KEYWORD-SOURCE$ ( ^u8 n -- ^u8 n ) {: tok:^ toku:n :}
+: KEYWORD-SOURCE$ ( ^u8 n -- ^u8 n ) {: tok:^ toku:n :}
    SB-RESET
    s" package KW-NAME private : " SB-APPEND
    tok toku SB-APPEND
    S\"  ( -- ) ; s\" AFTER\" type ;package" SB-APPEND
    SB$ ;
 
-: COMPILE-KEYWORD-REJECT ( ^u8 n -- ) {: tok:^ toku:n :}
-   tok toku COMPILE-KEYWORD-SOURCE$ {: src:^ srcu:n :}
-   s" compile keyword definition rejects at its name" T-LABEL
+: KEYWORD-REJECT ( ^u8 n -- ) {: tok:^ toku:n :}
+   tok toku KEYWORD-SOURCE$ {: src:^ srcu:n :}
+   s" keyword definition rejects at its name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=
-   s" compile keyword definition names the constraint" T-LABEL
+   s" keyword definition names the constraint" T-LABEL
    SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok toku SB-APPEND
-   s" ` is a compile keyword" SB-APPEND
+   s" ` is a keyword" SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE
-   s" compile keyword definition stops before later source" T-LABEL
+   s" keyword definition stops before later source" T-LABEL
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
-: COMPILE-KEYWORD-DEFINITION ( -- )
-   \ The complete control and loop rows consumed before dictionary lookup: a
-   \ same-name definition (EXIT, RECURSE, UNLOOP, {:) could compile rc 0 and run
-   \ the syntax instead of the definition.
-   s" if" COMPILE-KEYWORD-REJECT       s" then" COMPILE-KEYWORD-REJECT
-   s" else" COMPILE-KEYWORD-REJECT     s" begin" COMPILE-KEYWORD-REJECT
-   s" until" COMPILE-KEYWORD-REJECT    s" again" COMPILE-KEYWORD-REJECT
-   s" while" COMPILE-KEYWORD-REJECT    s" repeat" COMPILE-KEYWORD-REJECT
-   s" case" COMPILE-KEYWORD-REJECT     s" of" COMPILE-KEYWORD-REJECT
-   s" endof" COMPILE-KEYWORD-REJECT    s" endcase" COMPILE-KEYWORD-REJECT
-   s" construct" COMPILE-KEYWORD-REJECT s" match" COMPILE-KEYWORD-REJECT
-   s" ;match" COMPILE-KEYWORD-REJECT
-   s" do" COMPILE-KEYWORD-REJECT       s" loop" COMPILE-KEYWORD-REJECT
-   s" i" COMPILE-KEYWORD-REJECT        s" >r" COMPILE-KEYWORD-REJECT
-   s" r>" COMPILE-KEYWORD-REJECT       s" r@" COMPILE-KEYWORD-REJECT
-   s" exit" COMPILE-KEYWORD-REJECT     s" recurse" COMPILE-KEYWORD-REJECT
-   s" ?do" COMPILE-KEYWORD-REJECT      s" +loop" COMPILE-KEYWORD-REJECT
-   s" j" COMPILE-KEYWORD-REJECT        s" leave" COMPILE-KEYWORD-REJECT
-   s" unloop" COMPILE-KEYWORD-REJECT   s" {:" COMPILE-KEYWORD-REJECT
-   s" postpone" COMPILE-KEYWORD-REJECT
+: KEYWORD-DEFINITION ( -- )
+   \ One keyword of each kind a definer rejects: a body's, the top level's,
+   \ the body's and locals list's ends, and a top-level parser.
+   s" if" KEYWORD-REJECT         s" global" KEYWORD-REJECT
+   s" ;" KEYWORD-REJECT          s" :}" KEYWORD-REJECT
+   s" char" KEYWORD-REJECT
    \ CASE is the minimal wrong-token reproducer: the diagnostic must include the
    \ guilty spelling itself, not a later body token where syntax finally trips.
-   s" compile keyword definition names CASE" T-LABEL
+   s" keyword definition names CASE" T-LABEL
    HB$ S\" package KW-UPPER private : CASE ( -- ) ; s\" AFTER\" type ;package"
       RUN-SOURCE 70 T=
-   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a compile keyword" CONTAINS? TTRUE
-   s" qualified compile keyword definition rejects at its tail" T-LABEL
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
+   s" qualified keyword definition rejects at its tail" T-LABEL
    HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE 70 T=
-   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a compile keyword" CONTAINS? TTRUE
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
    \ FOLD is a normal, non-immediate dictionary word, not engine syntax. Its
    \ same-name private definition must remain callable through ordinary lookup.
    s" ordinary FOLD definition remains callable" T-LABEL
@@ -199,7 +185,7 @@ public
    EXACT-EXITS
    MISSING-DEFINITION-NAME
    COMMENT-NAME
-   COMPILE-KEYWORD-DEFINITION
+   KEYWORD-DEFINITION
    POST-SEAL-BRIDGE
    T-REPORT
    s" engine-error-package: ok" type cr ;

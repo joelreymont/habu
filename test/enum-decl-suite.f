@@ -230,6 +230,10 @@ s" ENUM reject-compact if ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" if" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
+s" ENUM ekwv red public ;ENUM" 70 REJECT-CODE
+s\" error[E-BAD-DECLARATION]: bad enum declaration `ekwv`\n" DECL-DIAG:HAS? TTRUE
+s" public" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
 s" ENUM reject-compact alpha variant ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" variant" s" block keyword in a compact enum" DECL-DIAG:CAUSE? TTRUE

@@ -816,6 +816,35 @@ variable RC
       s" :1:17" BODY-REJECT-AT
    ERR$ s" outside any definition" CONTAINS? TTRUE ;
 
+\ A top-level parser in a checked body is named as a keyword, with its bracket
+\ form as the help.
+: TEST-KEYWORD-CHAR ( -- )
+   s" a checked body using char names it a top-level keyword" T-LABEL
+   BODY$ s" : LRD-KCH ( -- n ) char ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNDEFINED]: `char` is a top-level keyword, not a word"
+      s" :1:20" BODY-REJECT-AT
+   ERR$ s" help: write `[char]` in a body" CONTAINS? TTRUE ;
+
+: TEST-KEYWORD-TICK ( -- )
+   s" a checked body using ' names it a top-level keyword" T-LABEL
+   BODY$ s" : LRD-KT ( -- n ) ' ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNDEFINED]: `'` is a top-level keyword, not a word"
+      s" :1:19" BODY-REJECT-AT
+   ERR$ s" help: write `[']` in a body" CONTAINS? TTRUE ;
+
+\ A `:}` with no `{:` open is told it closes no locals list.
+: TEST-LOCALS-END ( -- )
+   s" a checked body's stray :} closes no locals list" T-LABEL
+   BODY$ s" : LRD-LE ( -- ) :} ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNDEFINED]: `:}` closes no locals list"
+      s" :1:17" BODY-REJECT-AT
+   ERR$ s" ^^ no `{:` open" CONTAINS? TTRUE
+   ERR$ s" help: a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
+      CONTAINS? TTRUE ;
+
 : ASSERT-CONSTANT-KEYWORD ( ^u8 n -- ) {: at:^ atu:n :}
    s" error[E-UNDEFINED]: `constant` is a top-level keyword, not a word"
       at atu BODY-REJECT-AT
@@ -1052,6 +1081,18 @@ variable RC
    BODY$ CHECK-RUN
    s" if" s" if {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
 
+: TEST-TOP-LOCALS-END ( -- )
+   s" a top-level :} is told it closes no locals list" T-LABEL
+   BODY$ S\" :}\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   s" error[E-UNDEFINED]: `:}` closes no locals list" SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND
+   S\" :1:1\n  |\n1 | :}\n  | ^^ no `{:` open\n" SB-APPEND
+   S\"   = help: delete it: a locals list is written only inside a definition\n\n"
+      SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 \ Under --all-errors the scan goes on past the keyword, but not into its operand.
 : TEST-BODY-OPERAND ( -- )
    s" tools/check.f --all-errors reads past a top-level [char]'s operand" T-LABEL
@@ -1282,6 +1323,9 @@ variable LONG-U
    TEST-CAST
    TEST-UNSAFE
    TEST-KEYWORD
+   TEST-KEYWORD-CHAR
+   TEST-KEYWORD-TICK
+   TEST-LOCALS-END
    TEST-KEYWORD-CONSTANT
    TEST-SEALED-PACKAGE
    TEST-SEALED-DEFINE
@@ -1298,6 +1342,7 @@ variable LONG-U
    TEST-RECURSE-HELP
    TEST-UNDEF-HOLDER
    TEST-BODY-ONLY
+   TEST-TOP-LOCALS-END
    TEST-BODY-OPERAND
    TEST-DEFERRED
    TEST-SHADOW

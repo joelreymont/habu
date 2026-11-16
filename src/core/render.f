@@ -1476,6 +1476,7 @@ variable MDV-I   variable MDV-F
 
 EXPORT CHECKER-RESOLVE:TOP-KEYWORD-ID
 EXPORT CHECKER-RESOLVE:TOP-KEYWORD?
+EXPORT CHECKER-RESOLVE:TOP-PARSER?
 s" package" TOP-KEYWORD-ID constant KW-PACKAGE
 s" public" TOP-KEYWORD-ID constant KW-PUBLIC
 s" private" TOP-KEYWORD-ID constant KW-PRIVATE
@@ -1501,6 +1502,12 @@ s" immediate" TOP-KEYWORD-ID constant KW-IMMEDIATE
 
 : STATE-SWITCH? ( ^u8 n -- bool ) {: t:^ tu:n :}
    t tu s" [" CORE-STR=CI  t tu s" ]" CORE-STR=CI or ;
+
+: LOCALS-END? ( ^u8 n -- bool ) s" :}" CORE-STR= ;
+
+: LOCALS-END-HELP ( -- )
+   s" a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
+   EMIT-STR ;
 
 : TRIM-SPACE ( -- )
    TEXT-LEN @ 0= IF EXIT THEN
@@ -1671,7 +1678,10 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    TOK-SPAN  a u EMIT-STR ;
 
 : UNDEF-MESSAGE ( -- )
-   PIN-TOK$ TOP-KEYWORD? IF s"  is a top-level keyword, not a word" TOK-MESSAGE EXIT THEN
+   PIN-TOK$ LOCALS-END? IF s"  closes no locals list" TOK-MESSAGE EXIT THEN
+   PIN-TOK$ TOP-KEYWORD?  PIN-TOK$ TOP-PARSER?  or IF
+      s"  is a top-level keyword, not a word" TOK-MESSAGE EXIT
+   THEN
    PIN-TOK$ STATE-SWITCH? IF
       s"  switches the compiler's state, which a checked body cannot do" TOK-MESSAGE EXIT
    THEN
@@ -1718,7 +1728,8 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" here" EMIT-STR ;
 
 : UNDEF-LABEL ( -- )
-   PIN-TOK$ TOP-KEYWORD? IF s" keyword, not a word" EMIT-STR EXIT THEN
+   PIN-TOK$ LOCALS-END? IF s" no `{:` open" EMIT-STR EXIT THEN
+   PIN-TOK$ TOP-KEYWORD?  PIN-TOK$ TOP-PARSER?  or IF s" keyword, not a word" EMIT-STR EXIT THEN
    PIN-TOK$ STATE-SWITCH? IF s" state switch" EMIT-STR EXIT THEN
    s" not found" EMIT-STR ;
 
@@ -1895,6 +1906,14 @@ PTR-VARIABLE HOLDER-FIRST
 : UNDEFINED-RECORD ( ^u8 n ^u8 n -- )
    {: t:^ tu:n d:^ du:n :}
    s" E-UNDEFINED" REJECTION:OPEN
+   t tu LOCALS-END? IF
+      t tu CODE-SPAN  s"  closes no locals list" EMIT-STR
+      t tu REJECTION:AT  s" no `{:` open" EMIT-STR
+      REJECTION:HELP
+      du 0= IF
+         s" delete it: a locals list is written only inside a definition" EMIT-STR
+      ELSE LOCALS-END-HELP THEN EXIT
+   THEN
    s" cannot find word `" EMIT-STR  t tu EMIT-STR  96 EMIT1
    t tu REJECTION:AT  s" not found" EMIT-STR
    REJECTION:HELP  t tu d du UNDEF-HELP ;
@@ -1999,6 +2018,10 @@ PTR-VARIABLE HOLDER-FIRST
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
    k RF-UNDEF = IF
+      PIN-TOK$ LOCALS-END? IF LOCALS-END-HELP EXIT THEN
+      PIN-TOK$ TOP-PARSER? IF
+         s" write `[" EMIT-STR  PIN-TOK$ EMIT-STR  s" ]` in a body" EMIT-STR EXIT
+      THEN
       PIN-TOK$ TOP-KEYWORD? IF
          s" write " EMIT-STR  PIN-TOK$ CODE-SPAN  s"  at top level, outside any definition"
          EMIT-STR EXIT

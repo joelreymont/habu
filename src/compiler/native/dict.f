@@ -190,7 +190,7 @@ public
       compiled OF E-NDICT-KIND throw ENDOF
       value OF ENDOF
       address OF ENDOF
-      defer OF E-NDICT-KIND throw ENDOF
+      deferred OF E-NDICT-KIND throw ENDOF
       cast OF E-NDICT-KIND throw ENDOF
       offset OF E-NDICT-KIND throw ENDOF
       index OF E-NDICT-KIND throw ENDOF

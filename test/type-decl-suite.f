@@ -1186,6 +1186,10 @@ s\"   = help: pick another name: a built-in type such as `n` or a keyword such a
 s" SUMTYPE n VARIANT x ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `n`\n"
 s" n" s" reserved name" TDT-AT
+s" SUMTYPE tdkwv VARIANT export ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdkwv`\n"
+s" export" s" reserved name" TDT-AT
+s\"   = help: pick another name: a variant defines a word, and a keyword such as `export` cannot name one\n" TDT-HAS
 s" NEWTYPE field<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `field`\n"
 s" field" s" reserved name" TDT-AT

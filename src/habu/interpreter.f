@@ -243,6 +243,7 @@ package INTERPRETER
 private
 
 EXPORT CHECK:BODY-KEYWORD?
+EXPORT CHECK:NAME-KEYWORD?
 EXPORT CHECK:BODY-ONLY-RECORD
 EXPORT CHECK:CHECKER-USING$
 EXPORT CHECK:CHECKER-USING-N
@@ -1539,20 +1540,8 @@ private
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ DEF-QUALIFY-NAME ;
 
-\ A design may define none of the engine's dispatch-row names. The admitted
-\ syntax rows other than S\" keep the ordinary reserved-name error; every other
-\ row is outside the vocabulary before dictionary duplicate checks run.
-: DEF-DESIGN-KEYWORDS ( -- ^u8 n )
-   S\" if else then {: :} s\q [package] package public private ;package using ;using" ;
-
-\ The interpret dispatch rows, plus kernel: and ;match. Ordinary words such as
-\ require and include may be published by a package even though a definition
-\ cannot take their names at this checked head boundary.
-: DEF-INTERPRET-KEYWORDS ( -- ^u8 n )
-   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package split-str char ' ;match" ;
-
 : DEF-NAME-ONLY-KEYWORDS ( -- ^u8 n )
-   s" : 2constant to require include sumtype variant ;variant ;sumtype" ;
+   s" 2constant to require include sumtype variant ;variant ;sumtype" ;
 
 : DEF-OP-KEYWORDS ( -- ^u8 n )
    s" + - * / mod and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
@@ -1572,12 +1561,7 @@ private
    repeat
    drop false ;
 
-: DEF-DESIGN-KEYWORD? ( ^u8 n -- bool )
-   DEF-DESIGN-KEYWORDS DEF-IN-TABLE? ;
-
 : DEF-ROW-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u BODY-KEYWORD? if true exit then
-   a u DEF-INTERPRET-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
 
@@ -1593,7 +1577,7 @@ public
       i XREF-REC {: rec:^ :}
       rec XREF-WORDLIST wid = if
          rec XREF-NAME$ {: a:^ u:n :}
-         a u DEF-DESIGN-KEYWORD? a u DEF-ROW-KEYWORD? or if
+         a u NAME-KEYWORD? a u DEF-ROW-KEYWORD? or if
             a u true unloop exit
          then
       then
@@ -1607,11 +1591,10 @@ private
 : DEF-KEYWORD-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-RESERVED-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is a compile keyword and cannot name a definition" REJECTION:EMIT-STR
+   s" ` is a keyword and cannot name a definition" REJECTION:EMIT-STR
    t tu REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" give the definition a name that is not a compile keyword" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   s" give the definition a name that is not a keyword" REJECTION:EMIT-STR ;
 
 : DEF-NUMBER-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
@@ -1619,18 +1602,25 @@ private
    s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
    t tu REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" give the definition a name that does not read as a number" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   s" give the definition a name that does not read as a number" REJECTION:EMIT-STR ;
 
-: DEF-WALL ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   POLICY-NDICT-CELL CELL@ 0<> if
-      a u DEF-DESIGN-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
-      a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
-   else
-      a u BODY-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
-   then
+public
+\ Writes the record of a definition name a u, placed at t tu, that is a
+\ keyword or reads as a number, and answers whether it did; the caller ends it.
+: DEF-NAME-REJECT? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n t:^ tu:n :}
+   a u NAME-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE true exit then
    a u NUMBER {: v:n flt:bool num:bool range:bool :}
-   num range or if a u t tu DEF-NUMBER-REFUSE then ;
+   num range or if a u t tu DEF-NUMBER-REFUSE true exit then
+   false ;
+private
+
+\ No definition takes a keyword's name; a sealed design also keeps every
+\ other dispatch-row name out, before the dictionary's duplicate checks.
+: DEF-WALL ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+   a u t tu DEF-NAME-REJECT? if CHECKER-REJECT-RC REJECTION:STOP then
+   POLICY-NDICT-CELL CELL@ 0<> if
+      a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
+   then ;
 
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
@@ -2733,7 +2723,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    a u TOKEN$ wid 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
-   cell 0 COMP-BODY:DEFER DEF-FIXED
+   cell 0 COMP-BODY:DEFERRED DEF-FIXED
    DEF-CLOSE ;
 
 EXPORT CHECK:TOP-KEYWORD-ID

@@ -43,7 +43,7 @@ private
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `MK`\n --> <input>:5:24\n  |\n5 | : MK ( n -- ) create , does> ( -- n ) @ ;\n  |                        ^^^^^ no record left\n  = help: define fewer words in this load\n\n"
    s" a does> clause with no record left" EXPECT ;
 
-: PACKAGE ( -- )
+: FULL-PACKAGE ( -- )
    S\" 0 LEAVE-FREE\npackage FOO\n"
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `FOO`\n --> <input>:5:9\n  |\n5 | package FOO\n  |         ^^^ no record left\n  = help: define fewer words in this load\n\n"
    s" a package in a full dictionary" EXPECT ;
@@ -71,7 +71,7 @@ private
 
 DEFINITION
 DOES-CLAUSE
-PACKAGE
+FULL-PACKAGE
 NAMESPACE
 EXPORTED
 STRUCTURE-DECL

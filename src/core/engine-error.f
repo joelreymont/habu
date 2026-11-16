@@ -4,7 +4,7 @@ package ENGINE-ERROR
 public
 82 constant DISPATCH-UNSET
 83 constant SEAL-VIOLATION
-84 constant SEAL-PACKAGE
+84 constant SEAL-WORDLIST
 85 constant BAD-TAG
 88 constant CODE-CERT
 \ 96, 98 and 99 belong to SNAP-RELOC relocation failures (layout.f).

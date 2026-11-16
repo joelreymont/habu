@@ -17,6 +17,7 @@ EXPORT CHECK:TDECL-DIAG
 EXPORT CHECK:STGR-REASON$
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
+EXPORT CHECK:NAME-KEYWORD?
 
 \ --- named reject codes (7101, 7102 and 7106 live in type-family.f).
 
@@ -562,11 +563,13 @@ private
 : TDECL-COLLIDE-THROW ( ^u8 n -- )
    TDECL-COLLIDE-WHY E-TDECL-NAME TDECL-THROW ;
 
-\ A VARIANT name lives in no scope of its own: any collision with a family
-\ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
-\ in every scope.
+\ A variant name lives in no scope of its own, so a family the declaring scope
+\ resolves takes it in every scope.
 : TDECL-REQUIRE-VARIANT-NAME ( ^u8 n -- ) {: a:^ u:n :}
    a u TDECL-REQUIRE-NAME
+   a u NAME-KEYWORD? IF a u s" reserved name"
+      s" pick another name: a variant defines a word, and a keyword such as `export` cannot name one"
+      E-TDECL-NAME TDECL-THROW THEN
    a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family"
       s" rename the variant: a type family in this scope already has this name"

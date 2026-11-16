@@ -216,22 +216,15 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" do" s" error[E-POLICY]: `do` is not in the vocabulary this source may use" s" test/policy/do.f:1:" TIER0-REFUSES
    s" stray-close" s" error[E-POLICY]: `:}` is not in the vocabulary this source may use" s" test/policy/stray-close.f:1:" TIER0-REFUSES ;
 
-\ No keyword row: at tier 0 the row would answer a global name before any
-\ lookup. A row outside the design span is refused as a token; a row inside it
-\ is the reserved name, the same refusal unsealed. The pass-2 rows count too:
-\ tier 0 lowers a body holding a wide value again, and they answer its tokens
-\ first. So do `:}` (in the span), `kernel:` and `;match`, compared only inside
-\ their construct.
+\ At tier 0 a keyword row would answer a global name before any lookup, and a
+\ pass-2 row a token of a body holding a wide value, which tier 0 lowers again.
 : NAMES ( -- )
-   s" kwname" s" error[E-POLICY]: `begin` is not in the vocabulary this source may use" s" test/policy/kwname.f:2:" TIER0-REFUSES
+   TIER0 s" kwname" 70 s" error[E-RESERVED-DEFINITION]: `begin` is a keyword and cannot name a definition" s" test/policy/kwname.f:2:" s" " SAYS
    s" own-keyword" s" error[E-POLICY]: `dup` is not in the vocabulary this source may use" s" test/policy/own-keyword.f:4:" TIER0-REFUSES
    s" defname-p2" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/defname-p2.f:2:" TIER0-REFUSES
    s" own-p2-keyword" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/own-p2-keyword.f:5:" TIER0-REFUSES
-   s" defname-interpret" s" error[E-POLICY]: `create` is not in the vocabulary this source may use" s" test/policy/defname-interpret.f:2:" TIER0-REFUSES
-   TIER0 s" defname-span" 70 s" error[E-RESERVED-DEFINITION]: `package` is a compile keyword and cannot name a definition" s" test/policy/defname-span.f:2:" s" " SAYS
-   TIER0 s" defname-endloc" 70 s" error[E-RESERVED-DEFINITION]: `:}` is a compile keyword and cannot name a definition" s" test/policy/defname-endloc.f:4:" s" " SAYS
-   s" defname-kernel" s" error[E-POLICY]: `kernel:` is not in the vocabulary this source may use" s" test/policy/defname-kernel.f:4:" TIER0-REFUSES
-   s" defname-semimatch" s" error[E-POLICY]: `;match` is not in the vocabulary this source may use" s" test/policy/defname-semimatch.f:4:" TIER0-REFUSES ;
+   TIER0 s" defname-interpret" 70 s" error[E-RESERVED-DEFINITION]: `create` is a keyword and cannot name a definition" s" test/policy/defname-interpret.f:2:" s" " SAYS
+   TIER0 s" defname-endloc" 70 s" error[E-RESERVED-DEFINITION]: `:}` is a keyword and cannot name a definition" s" test/policy/defname-endloc.f:4:" s" " SAYS ;
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!
@@ -242,14 +235,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" error[E-POLICY]: no package" s" = package: NOPE" s" " STOPS
    s" allow-keyword-package" HARNESS!
    KEYWORD$ S\" = package: PKW\n  = keyword: DUP\n" s" " STOPS
-   s" allow-design-keyword-package" HARNESS!
-   KEYWORD$ S\" = package: PSYNTAX\n  = keyword: package\n" s" " STOPS
    s" allow-ordinary-keyword-package" HARNESS!
    s" ordinary-keyword" 0 s" " S\" 42\n" RUNS
    s" allow-p2-package" HARNESS!
    KEYWORD$ S\" = package: PTUCK\n  = keyword: TUCK\n" s" " STOPS
-   s" allow-seal-keyword-package" HARNESS!
-   KEYWORD$ S\" = package: PSEAL\n  = keyword: seal-package\n" s" " STOPS
    s" allow-task-package" HARNESS!
    KEYWORD$ S\" = package: PTKW\n  = keyword: DUP\n" S\" admitted\n0\n" STOPS
    s" allow-catch" HARNESS!

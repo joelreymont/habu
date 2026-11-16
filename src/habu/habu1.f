@@ -4493,7 +4493,7 @@ package ENGINE-EMIT
    13 done CBNZ,
    15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
       16 CALLER-LR,           \ BPROTWIDADD, the one caller, holds the frame
-      s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX:" ENGINE-ERROR:SEAL-PACKAGE 9
+      s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX:" ENGINE-ERROR:SEAL-WORDLIST 9
       DIE-LINE-VALUE,
    ok LBL,
    DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
