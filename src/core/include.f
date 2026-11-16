@@ -202,6 +202,7 @@ create CANDIDATE-BUF PATH-BYTES allot
 create JOIN-BUF WORK-BYTES allot
 create WORK-BUF WORK-BYTES allot
 create ZBUF WORK-BYTES allot
+create DENIED-PATH WORK-BYTES allot
 create OWNER-BUF PATH-BYTES allot
 create OWNER-SAVE PATH-BYTES allot
 create POLICY-ROOT-BUF PATH-BYTES allot
@@ -392,6 +393,7 @@ CANDIDATE-BUF PATH-BYTES SCRATCH-BYTES  CANDIDATE-U scratch-cell-mark
 JOIN-BUF WORK-BYTES SCRATCH-BYTES       JOIN-U scratch-cell-mark
 WORK-BUF WORK-BYTES SCRATCH-BYTES
 ZBUF WORK-BYTES SCRATCH-BYTES
+DENIED-PATH WORK-BYTES SCRATCH-BYTES
 OWNER-BUF PATH-BYTES SCRATCH-BYTES      OWNER-U scratch-cell-mark
 OWNER-SAVE PATH-BYTES SCRATCH-BYTES
 REQUEST-BUF WORK-BYTES SCRATCH-BYTES    REQUEST-U scratch-cell-mark
@@ -515,19 +517,26 @@ public
 
 private
 
+\ The length of the longest of a u and its parents the canon resolves, its real
+\ path in CANON-BUF; 0 when not even `/` does.
+: CANON-PREFIX ( ^u8 n -- n )
+   {: a:^ u:n :}
+   u begin
+      a over TRY-CANON if exit then
+      dup 1 <= if drop 0 exit then
+      a swap PARENT-U
+   again ;
+
 \ The file system root always resolves through realpath; only a supplied canon
 \ (SOURCE-INPUT:USE) can answer that no directory above a path does.
 : EXISTING-PARENT ( -- n )
-   JOIN-U @ begin
-      JOIN-BUF swap PARENT-U
-      dup JOIN-BUF swap TRY-CANON if exit then
-      dup 1 <= if
-         s" SOURCE-INPUT:CANON" JOIN-BUF JOIN-U @ JOIN-BUF JOIN-U @
-         s" has no directory above it that the supplied canon resolves"
-         s" have the canon given to `SOURCE-INPUT:USE` or `SOURCE-INPUT:WITH` answer true for `/`"
-         PATH-DIE
-      then
-   again ;
+   JOIN-BUF  JOIN-BUF JOIN-U @ PARENT-U  CANON-PREFIX
+   dup 0= if
+      s" SOURCE-INPUT:CANON" JOIN-BUF JOIN-U @ JOIN-BUF JOIN-U @
+      s" has no directory above it that the supplied canon resolves"
+      s" have the canon given to `SOURCE-INPUT:USE` or `SOURCE-INPUT:WITH` answer true for `/`"
+      PATH-DIE
+   then ;
 
 
 : MISSING-NORMALIZE ( -- )
@@ -1317,6 +1326,10 @@ private
    else known then
    dup exists or ;
 
+: ENGINE-SEARCHED? ( -- bool ) ENGINE$ CURRENT$ CORE-STR= 0= ;
+: CWD-SEARCHED? ( -- bool )
+   CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= ;
+
 \ A relative request's roots in order, each once: its owner, the engine root,
 \ then the working directory. The first root whose candidate stops the search
 \ answers, found; when none does, the owner's answer, not found, names the
@@ -1327,10 +1340,10 @@ private
 : SEARCH-ROOTS ( n -- ^u8 n bool bool )
    {: first:n :}
    CURRENT$ first CANDIDATE dup if exit then 2drop 2drop
-   ENGINE$ CURRENT$ CORE-STR= 0= if
+   ENGINE-SEARCHED? if
       ENGINE$ first CANDIDATE dup if exit then 2drop 2drop
    then
-   CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= if
+   CWD-SEARCHED? if
       CWD$ first CANDIDATE dup if exit then 2drop 2drop
    then
    CURRENT$ first CANDIDATE ;
@@ -1417,10 +1430,10 @@ variable REQUEST-AT-U
    e 0= if exit then
    s"  (os error " REJECTION:EMIT-STR  e REJECTION:EMIT-N  41 REJECTION:EMIT1 ;
 
-\ The record of a found path not read to its end, labelled why and os error e;
-\ placed at t tu with path in a note, else unplaced; written through its help.
-: UNREAD-OS-RECORD ( ^u8 n ^u8 n ^u8 n n -- )
-   {: t:^ tu:n path:^ pathu:n why:^ whyu:n e:n :}
+\ The record of path, not read to its end, labelled why and os error e; at t tu
+\ with path in a note labelled note, else unplaced; written through its help.
+: UNREAD-OS-RECORD ( ^u8 n ^u8 n ^u8 n n ^u8 n -- )
+   {: t:^ tu:n path:^ pathu:n why:^ whyu:n e:n note:^ noteu:n :}
    s" E-UNREADABLE-SOURCE" REJECTION:OPEN
    s" cannot read `" REJECTION:EMIT-STR
    tu 0= if
@@ -1429,10 +1442,10 @@ variable REQUEST-AT-U
    then
    t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
    t tu REJECTION:AT  why whyu e UNREAD-WHY
-   s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
+   note noteu REJECTION:NOTE  path pathu REJECTION:EMIT-STR
    REJECTION:HELP ;
 
-: UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- ) 0 UNREAD-OS-RECORD ;
+: UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- ) 0 s" resolved" UNREAD-OS-RECORD ;
 
 \ EISDIR for a path that names a directory, else e: an open of a directory
 \ without read permission fails EACCES, but a stat of it succeeds.
@@ -1449,7 +1462,7 @@ public
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
    path pathu e SOURCE-ERRNO {: why:n :}
-   t tu path pathu why OPEN-ERRNO$ UNREAD-OS-RECORD
+   t tu path pathu why OPEN-ERRNO$ s" resolved" UNREAD-OS-RECORD
    path pathu why OPEN-HELP
    INCLUDE-IO-RC REJECTION:STOP ;
 
@@ -1467,12 +1480,83 @@ public
    s" is not a regular file" UNREAD-RECORD
    s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR ;
 
-\ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
-\ an entry's and an absolute request's is one. Placed at p, but for an entry:
-\ the command line named it, which no source holds. Public so the verifier's
-\ composition rejects a missing source with the loader's record.
+private
+
+: INCLUDE-ERRNO ( -- n )   data-base FS-ABI:ERRNO-OFF + @ ;
+
+: RESOLVED-U ( n -- n ) DENIED-PATH swap CANON-PREFIX ;
+
+: SLASHES-END ( n n -- n ) {: w:n i:n :}
+   i begin dup w < while
+      dup DENIED-PATH + c@ 47 = 0= if exit then
+      1+
+   repeat ;
+
+\ The w-byte DENIED-PATH with the link after its k-byte resolved prefix replaced
+\ by its target: the length, 0 when there is no link or the result cannot fit.
+: LINK-NEXT ( n n -- n )
+   {: w:n k:n :}
+   w k SLASHES-END {: c:n :}
+   c w >= if 0 exit then
+   DENIED-PATH w c SEG-END {: e:n :}
+   DENIED-PATH e ZBUF WORK-BYTES PATHZ
+   ZBUF WORK-BUF WORK-BYTES readlink {: t:n :}
+   t 1 <  t WORK-BYTES >=  or if 0 exit then
+   WORK-BUF c@ 47 = if 0 else c then {: head:n :}
+   head t + w e - + {: total:n :}
+   total WORK-BYTES >= if 0 exit then
+   DENIED-PATH e + WORK-BUF t + w e - BYTE-COPY
+   WORK-BUF DENIED-PATH head + total head - BYTE-COPY  total ;
+
+\ The walk of the w-byte DENIED-PATH after links links: the longest prefix the
+\ canon resolves either denies search or is followed by the link to replace.
+: DENIED-FROM ( n n -- ^u8 n ) {: w:n links:n :}
+   w RESOLVED-U {: k:n :}
+   k 0= if DENIED-PATH 0 exit then
+   CANON-U @ {: r:n :}
+   r ENGINE-DIR? 0= INCLUDE-ERRNO 13 = and if
+      CANON-BUF DENIED-PATH r BYTE-COPY  DENIED-PATH r exit
+   then
+   links 40 >= if DENIED-PATH 0 exit then
+   w k LINK-NEXT {: next:n :}
+   next 0= if DENIED-PATH 0 exit then
+   next links 1+ RECURSE ;
+
+\ The real directory whose search denied a lookup of path, symlinks followed;
+\ 0 when no lookup is denied or the walk cannot reach that directory.
+: SEARCH-DENIED ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u ZBUF WORK-BYTES PATHZ
+   ZBUF 0 access 0< INCLUDE-ERRNO 13 = and
+   0= if DENIED-PATH 0 exit then
+   a DENIED-PATH u BYTE-COPY
+   u 0 DENIED-FROM ;
+
+\ Rejects path, the joined spelling a search looked up, at t tu, else unplaced,
+\ when a lookup on it is denied; its help names the directory that denied it.
+: UNSEARCHABLE-SOURCE ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
+   path pathu SEARCH-DENIED {: dir:^ diru:n :}
+   diru 0= if exit then
+   t tu path pathu 13 OPEN-ERRNO$ s" searched" UNREAD-OS-RECORD
+   s" if the directory `" REJECTION:EMIT-STR  dir diru REJECTION:EMIT-STR
+   s" ` is yours, make it searchable with `chmod u+x " REJECTION:EMIT-STR
+   dir diru SH-QUOTED
+   s" `; else ask its owner to let you search it" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
+
+public
+
+\ Rejects request a u, which no root holds, at p but for an entry; as unreadable
+\ where a denied lookup hides it. Public for check.f's and the verifier's walks.
 : MISSING-SOURCE ( ^u8 n ^u8 n bool -- )
    {: a:^ u:n p:^ pu:n entry:bool :}
+   entry if NULL-PTR 0 else p pu then {: t:^ tu:n :}
+   entry  a c@ 47 =  or if
+      t tu CWD$ a u JOIN UNSEARCHABLE-SOURCE
+   else
+      t tu CURRENT$ a u JOIN UNSEARCHABLE-SOURCE
+      ENGINE-SEARCHED? if t tu ENGINE$ a u JOIN UNSEARCHABLE-SOURCE then
+      CWD-SEARCHED? if t tu CWD$ a u JOIN UNSEARCHABLE-SOURCE then
+   then
    s" E-MISSING-SOURCE" REJECTION:OPEN
    s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1
@@ -1482,10 +1566,10 @@ public
       CWD$ a u UNDER REJECTION:EMIT-STR
    else
       CURRENT$ a u UNDER REJECTION:EMIT-STR
-      ENGINE$ CURRENT$ CORE-STR= 0= if
+      ENGINE-SEARCHED? if
          s" , " REJECTION:EMIT-STR  ENGINE$ a u UNDER REJECTION:EMIT-STR
       then
-      CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= if
+      CWD-SEARCHED? if
          s" , " REJECTION:EMIT-STR  CWD$ a u UNDER REJECTION:EMIT-STR
       then
    then
@@ -2007,8 +2091,6 @@ variable LAST-LOAD-EVAL-OK
 : INCLUDE-UNSTAMPED ( ^u8 n -- ) {: a:^ u:n :}
    ASKED-AT$ a u UNSTAMPED-SOURCE
    INCLUDE-IO-RC REJECTION:STOP ;
-
-: INCLUDE-ERRNO ( -- n )   data-base FS-ABI:ERRNO-OFF + @ ;
 
 : INCLUDE-OPEN ( ^u8 n -- ) {: a:^ u:n :}
    a u INCLUDE-PATH0 open-rd INCLUDE-FD !

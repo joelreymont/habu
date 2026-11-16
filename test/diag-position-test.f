@@ -33,6 +33,7 @@ create BASE PATH-CAP allot
 create FX-P CAP allot
 create DEP CAP allot
 create DEP-P PATH-CAP allot
+create DIR-P PATH-CAP allot
 create CANON FS:PATHZ-CAP allot
 4200 constant LONG-NAME-BYTES
 create LONG-NAME LONG-NAME-BYTES allot
@@ -1828,6 +1829,79 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
    SB$ INCLUDE-IO-RC LOADED ;
 
+\ The fixture directory TEST-REQUIRED-UNSEARCHABLE makes unsearchable.
+: UNSEARCHABLE$ ( -- ^u8 n )
+   BASE$ s" unsearchable" DIR-P FS:JOIN-PATH {: u:n :}
+   DIR-P u ;
+
+\ The help of a record whose lookup UNSEARCHABLE$ denied.
+: UNSEARCHABLE-HELP ( -- )
+   SB-RESET  s" if the directory `" SB-APPEND  UNSEARCHABLE$ SB-APPEND
+   s" ` is yours, make it searchable with `chmod u+x '" SB-APPEND
+   UNSEARCHABLE$ SB-APPEND  s" '`; else ask its owner to let you search it" SB-APPEND ;
+
+\ The load's help names UNSEARCHABLE$, not a directory below it.
+: UNSEARCHABLE-LOADED ( -- )
+   SB-RESET  s" = help: if the directory `" SB-APPEND  UNSEARCHABLE$ SB-APPEND
+   s" ` is" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE ;
+
+\ The check's and the load's record of the request under UNSEARCHABLE$: an
+\ unreadable file's, placed at the request, its help naming the directory.
+: UNSEARCHABLE-REJECTED ( -- )
+   UNSEARCHABLE-HELP
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   0 s" help" SB$ FIELD=
+   0 s" message" s" cannot read `unsearchable/x.f`" FIELD=
+   0 s" unsearchable/x.f" 1 9 8 24 AT
+   0 s" label" s" permission denied" FIELD=
+   SB-RESET  BASE$ SB-APPEND  s" /unsearchable/x.f" SB-APPEND
+   0 s" searched" SB$ NOTE=
+   SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `unsearchable/x.f`\n --> " SB-APPEND
+   FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
+   SB$ INCLUDE-IO-RC LOADED
+   UNSEARCHABLE-LOADED ;
+
+\ A request through `lnk`, a link into UNSEARCHABLE$, names UNSEARCHABLE$,
+\ not the searchable directory holding the link.
+: LINKED-REJECTED ( -- )
+   s" require lnk/x.f" s" require-lnk.f" LINE-FIXTURE
+   UNSEARCHABLE-HELP
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" help" SB$ FIELD=
+   SB-RESET  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND
+   0 s" searched" SB$ NOTE=
+   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   UNSEARCHABLE-LOADED ;
+
+\ `..` after `alnk`, a link with an absolute target, leaves through it into
+\ UNSEARCHABLE$, which the load names.
+: PARENT-LINK-REJECTED ( -- )
+   s" require alnk/../x.f" s" require-lnk-up.f" LINE-FIXTURE
+   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   UNSEARCHABLE-LOADED ;
+
+\ A required file a directory without search permission hides is unreadable, not
+\ missing; its mode goes back to $1ED so the tree can be deleted.
+: TEST-REQUIRED-UNSEARCHABLE ( -- )
+   s" a required file under a directory that cannot be searched" T-LABEL
+   UNSEARCHABLE$ FS:MAKE-DIR
+   s" unsearchable/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   SB-RESET  s" 1 drop" SB-APPEND LF+
+   s" unsearchable/x.f" FIXTURE!
+   s" unsearchable/sub/x.f" FIXTURE!
+   s" lnk" NAMED!  s" unsearchable/sub" FX-PATH$ FS:MAKE-SYMLINK
+   s" alnk" NAMED!
+   BASE$ s" unsearchable/sub" DIR-P FS:JOIN-PATH {: au:n :}
+   DIR-P au FX-PATH$ FS:MAKE-SYMLINK
+   s" require unsearchable/x.f" s" require-unsearchable.f" LINE-FIXTURE
+   UNSEARCHABLE$ 0 FS:CHMOD-MODE
+   [: UNSEARCHABLE-REJECTED LINKED-REJECTED PARENT-LINK-REJECTED ;]
+   [: UNSEARCHABLE$ $1ED FS:CHMOD-MODE ;] finally ;
+
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )
    s" a malformed colon definition the load rejects at its `:`" T-LABEL
@@ -2985,6 +3059,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    TEST-ALL-ORDER
    TEST-DYN-PLACE
    TEST-ALL-UNREADABLE
+   TEST-REQUIRED-UNSEARCHABLE
    TEST-NAMED-MISSING
    TEST-NAMED-TOO-LONG
    TEST-STDIN-PATH-TOO-LONG
