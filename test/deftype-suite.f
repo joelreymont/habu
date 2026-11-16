@@ -105,11 +105,11 @@ s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
 \ NEWTYPE would accept, the base a pointer, an application or qualified, get
 \ that NEWTYPE; any other keeps the record that rejects the name or the base.
 s" DEFTYPE DTBAD option<n>"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtbad`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD`\n"
 s" option<n>" s" a deftype base is one name"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtbad option<n>` instead\n" DT-REC
 s" DEFTYPE DTBAD2 pkg:thing"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtbad2`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD2`\n"
 s" pkg:thing" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 s" DEFTYPE dtp ^u8"
@@ -131,7 +131,7 @@ s" ptr" s" reserved name"
 S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
 DEFTYPE DTDUP str
 s" DEFTYPE DTDUP str"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtdup`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTDUP`\n"
 s" DTDUP" s" duplicate family"
 S\" = help: rename the family: this package already declares a family with this name\n" DT-REC
 \ inside a longer base the help keeps the base whole: no `NEWTYPE dx option<n>`.
@@ -247,13 +247,13 @@ DT-MULTI-SRC!
 REJECTION:CAPTURE
 CHECK:MULTI-ERR-BEGIN ' DT-MULTI catch CHECK:MULTI-ERR-END
 2 T=  0 T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTWRAP`\n --> <input>:2:16\n  |\n2 | DEFTYPE DTWRAP option\n  |                ^^^^^^ type is parametric and needs type arguments\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
 \ The same record when the load runs DEFTYPE.
 s" DEFTYPE DTWRAP option"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTWRAP`\n"
 s" option" s" type is parametric and needs type arguments"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtwrap option<n>` instead\n" DT-REC
 \ read-view's parameters are scopes and a type, which `n` does not fill.

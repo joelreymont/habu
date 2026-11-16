@@ -343,6 +343,7 @@ ED-RESET
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup DECL-REJECT:SEAL-FAMILY
    DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header"
       s" list distinct parameter letters in angle brackets, as in `box<a>` or `result<a,b>`"

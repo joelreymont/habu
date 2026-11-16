@@ -30,6 +30,7 @@ public
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
 7118 constant E-TDECL-CAP       \ a record past MAKE's items
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
+7120 constant E-TDECL-SEALED    \ a family or generated name that would change a sealed package
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
 \ Enum tags: -9880..-9889, thrown by the words DERIVE tag generates.
@@ -196,12 +197,15 @@ public
       want idx USE-SLOT !  idx PARAM-FIELD! THEN
    idx USE-SLOT @ idx PARAM-FIELD RES-FALSE ;
 
+\ A header's family name: its bytes before the first `<`.
+: DECL-FAMILY-NAME ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a  0 BEGIN dup u < IF a over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1+ REPEAT ;
+
 : DECL-HEADER ( ^u8 n -- ^u8 n n bool )
    {: a:^ u:n :}
    DECL-PARAM-CLEAR
    a u BYTE-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
-   0 BEGIN dup u < IF a over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1+ REPEAT
-   {: tail:n :}
+   a u DECL-FAMILY-NAME nip {: tail:n :}
    tail u = IF a u 0 RES-TRUE EXIT THEN
    u tail - 2 - {: chars:n :}
    chars 1 < chars 1 and 0= or IF a u 0 RES-FALSE EXIT THEN
@@ -313,6 +317,10 @@ public
    TDECL-CODE @ code <>  TDA-U @ 0= or IF s" " EXIT THEN
    TDA-A @ TDA-U @ pa pu CORE-STR=CI IF s" " EXIT THEN
    TDA-A @ TDA-U @ ;
+\ The word a sealed record names: the generated word that would change the
+\ sealed package, else the token a u.
+: TDECL-SEALED-WORD ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u E-TDECL-SEALED TDECL-WORD-NOTE dup 0= IF 2drop a u THEN ;
 
 : TDECL-THROW ( ^u8 n ^u8 n ^u8 n n -- )
    {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n :}
@@ -439,6 +447,9 @@ variable TDECL-TOK-N
 : TDECL-REPORT ( -- )
    TDECL-ARMED E-USING-AMBIGUOUS = IF
       TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  TDECL-AMBIG-DIAG EXIT
+   THEN
+   TDECL-ARMED E-TDECL-SEALED = IF
+      TDECL-REPORT-TOK {: ta:^ tu:n :} ta tu TDECL-SEALED-WORD ta tu REJECTION:SEALED EXIT
    THEN
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-ARMED TDECL-WORD-NOTE
    {: pa:^ pu:n na:^ nu:n :}
@@ -588,12 +599,22 @@ private
    PKRESET ;
 : TDECL-NEXT ( -- ^u8 n ) NEXT-SIG-TOK ;
 
+defer TDECL-NAME-PREFLIGHT-XT ( ^u8 n -- )
+
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
 \ letter params within arity, n/f/r and concrete CT cell types, and `^T`.
 \ Comments are not supported inside a declaration block; stray tokens reject.
 
 : TDECL-HEADER! ( ^u8 n -- n ) {: fa:^ fu:n :}   \ fix for a missing name
    TDN-U @ 0= IF TDN-A @ 0 s" missing name" fa fu E-TDECL-SYNTAX TDECL-THROW THEN
+   \ The seal is judged before the parameters, at the family name alone.
+   TDN-U @ TDS-U @ {: whole:n span:n :}
+   TDN-A @ whole DECL-FAMILY-NAME nip {: cut:n :}
+   cut 0 > IF
+      cut TDN-U !  span 0 > IF cut TDS-U ! THEN
+      TDN-A @ cut TDECL-NAME-PREFLIGHT-XT
+      whole TDN-U !  span TDS-U !
+   THEN
    TDN-A @ TDN-U @ DECL-HEADER 0= IF
       drop 2drop
       TDN-A @ TDN-U @ s" invalid type parameter header"
@@ -1386,7 +1407,6 @@ public
 
 private
 
-defer TDECL-NAME-PREFLIGHT-XT ( ^u8 n -- )
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ^u8 n n -- )
 
 CAST: AS-STORAGE-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )

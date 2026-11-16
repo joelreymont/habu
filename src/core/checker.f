@@ -13974,6 +13974,7 @@ global
 3 constant STG-UNSTORABLE-TYPE  \ the type parses, and this definer cannot store it
 private
 4 constant STG-MALFORMED-NAME   \ the name has more than one inner ':'
+19 constant STG-COLON-END       \ the name ends in ':'
 global
 6 constant STG-BAD-COUNT        \ the literal count is outside the definer's extent
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
@@ -13991,7 +13992,7 @@ private
 18 constant STG-LAYOUT-TYPE     \ the type parses but a layout buffer cannot hold it: no nominal scalar, and no layout family whose members it lays out
 
 \ The message names the declared word: the definer for STG-NO-NAME, the name
-\ itself for STG-MALFORMED-NAME.
+\ itself for STG-MALFORMED-NAME and STG-COLON-END.
 : STGR-MESSAGE ( ^u8 n n -- ) {: na:^ nu:n why:n :}
    why STG-NO-NAME = IF
       na nu CODE-SPAN  s"  has no name on its line" REJECTION:EMIT-STR EXIT
@@ -14005,6 +14006,10 @@ private
    why STG-MALFORMED-NAME = IF
       s" the name " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  has more than one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COLON-END = IF
+      s" the name " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s"  ends in `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
       s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
@@ -14048,11 +14053,20 @@ private
    why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
    why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2drop EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   why STG-COLON-END = IF s" name ends in ':'" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    why STG-NO-TYPE = IF s" no type follows this name on its line" EXIT THEN
    why STG-NO-NAME = IF s" no name follows this definer on its line" EXIT THEN
    s" no count precedes this declaration" ;
+
+\ Whether a u, a name less its final `:`, is nonempty and has the colons
+\ CHECKER-LBUF-NAME-OK? takes; its other rules still judge the name.
+: STG-DROPPED-OK? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   a u + 1 - c@ 58 = IF RES-FALSE EXIT THEN
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   ci 0=  cn 2 <  or ;
 
 : STGR-HELP ( ^u8 n ^u8 n n -- ) {: na:^ nu:n ta:^ tu:n why:n :}
    why STG-NO-NAME = IF
@@ -14071,6 +14085,19 @@ private
    why STG-MALFORMED-NAME = IF
       s" rename " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  with at most one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COLON-END = IF
+      nu 1 = IF s" write a name in place of `:`" REJECTION:EMIT-STR EXIT THEN
+      na nu CHECKER-COLON-SCAN drop 1 > IF
+         na nu 1 - STG-DROPPED-OK? IF
+            s" drop the final `:`" REJECTION:EMIT-STR EXIT
+         THEN
+         s" rename " REJECTION:EMIT-STR  na nu CODE-SPAN
+         s"  with at most one inner `:` and none at its end"
+         REJECTION:EMIT-STR EXIT
+      THEN
+      s" write the word after " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" , as in `pkg:name`, or drop the `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
       s" replace " REJECTION:EMIT-STR  ta tu CODE-SPAN
@@ -14158,10 +14185,14 @@ private
 : CHECKER-STORAGE-NAME-REFUSE ( ^u8 n -- ) {: da:^ du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
-\ A published storage name has at most one inner ':'. A length that describes
-\ no memory is refused before the refusal that would echo it.
+\ A published storage name has at most one inner ':' and does not end in one.
+\ A length that describes no memory is refused before the refusal that would
+\ echo it.
 : CHECKER-LBUF-NAME-OK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   u 0 > IF a u + 1 - c@ 58 = IF
+      a u a u STG-COLON-END CHECKER-STORAGE-REJECT RES-FALSE EXIT
+   THEN THEN
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
       a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REJECT RES-FALSE EXIT

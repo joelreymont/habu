@@ -454,7 +454,7 @@ public
    OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
    R-NONE RES-KIND ! 0 FB-SET !
    0 READS !
-   TOK@ NAME!
+   TOK@ 2dup NAME! LBUF:SEAL-NAME
    TOK@ {: a:^ u:n :}
    a u s" (" STR= 0= if
       s" expected '(' after the callback name, found " a u

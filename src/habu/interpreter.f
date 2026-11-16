@@ -1077,20 +1077,6 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
-: PKG-OPEN-SEALED? ( -- bool )
-   PKG-PUB-CELL CELL@ 0= if false exit then
-   PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEALED? ;
-
-: PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
-   wid FIRST-DYNAMIC-WID < if false exit then
-   wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if false exit then
-   PKG-PUB-CELL CELL@ 0<> if
-      wid PKG-PUB-CELL CELL@ =  wid PKG-PRI-CELL CELL@ =  or if
-         PKG-OPEN-SEALED? exit
-      then
-   then
-   wid XREF:WID-SEALED? ;
-
 \ What the engine's evaluate frame keeps of the package scope beside the using
 \ depth, which a throw puts back.
 : PKG-STATE ( -- n n n n n n )
@@ -1279,7 +1265,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:^ :}
    TOKEN$ {: operand:^ operand-u:n :}
-   get-current PKG-WID-SEALED?  PKG-OPEN-SEALED?  or if
+   get-current XREF:SEALED-TARGET? if
       operand operand-u 2dup SEALED-FAIL
    then
    PKG-TAIL {: ta:^ tu:n :}
@@ -1529,20 +1515,29 @@ private
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
-: DEF-NAMESPACE ( ^u8 n -- n bool ) {: a:^ q:n :}
+: DEF-NAMESPACE ( ^u8 n -- n ) {: a:^ q:n :}
    a q HEAD-ROW {: row:^ :}
-   row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
+   row XREF-FOUND? if row XREF-PKG-PUBLIC exit then
    a q TOKEN$ PKG-DICT-ROOM
    a q a q PKG-CODE-ROOM
-   a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
+   a q false namespace-record XREF-REC XREF-PKG-PUBLIC ;
 
-\ A wordlist of a sealed package, or any wordlist while the open package is
-\ sealed, rejects the name token: a global body would bind the sealed privates.
-\ Checked as source names a definition, not in DEF-RECORD, which a file
+\ Checked where source names a definition, not in DEF-RECORD, which a file
 \ object's link replays.
 : DEF-SEAL-GUARD ( n ^u8 n -- n ) {: wid:n a:^ u:n :}
-   wid PKG-WID-SEALED?  PKG-OPEN-SEALED?  or if a u TOKEN$ SEALED-FAIL then
+   wid XREF:SEALED-TARGET? if a u a u SEALED-FAIL then
    wid ;
+
+\ A storage definer's written name is rejected at itself where
+\ DEF-QUALIFY-NAME would reject the words it names; no namespace row is made.
+\ A second colon is left to DEF-QUALIFY-NAME.
+: DEF-SEAL-NAME ( ^u8 n -- ) {: a:^ u:n :}
+   a u 0 COLON-AT {: q:n :}
+   q 1 <  q 1+ u >=  or if get-current a u DEF-SEAL-GUARD drop exit then
+   a u q 1+ COLON-AT 0 >= if exit then
+   a q HEAD-ROW {: row:^ :}
+   row XREF-FOUND? if row XREF-PKG-PUBLIC else 0 then
+   XREF:SEALED-TARGET? if a u a u SEALED-FAIL then ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which a `does>` clause's rejections name. A bare name
@@ -1552,7 +1547,8 @@ private
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if a u TOKEN$ REJECT-QUALIFIED then
-   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u TOKEN$ SEALED-FAIL then ;
+   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE
+   dup XREF:SEALED-TARGET? if a u a u SEALED-FAIL then ;
 
 : DEF-QUALIFY ( -- ^u8 n n )
    OVERLAY-GUARD
@@ -3400,6 +3396,7 @@ public
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
+   ['] DEF-SEAL-NAME data-base PROVIDED-XT:SEAL-CELL + xt!
    ['] STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!

@@ -280,6 +280,7 @@ EXPORT CHECK:STG-NO-NAME
    then
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if exit then
+   na nu LBUF:SEAL-NAME
    na nu s" -NEW" LBUF:LBUF-SUFFIX-OK? 0= if exit then
    na nu s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if

@@ -183,13 +183,22 @@ public
 
 private
 
+\ A sealed record's word note is read before AT-FAMILY, whose TOKEN! disarms it.
 : RENDER ( n -- ) {: code:n :}
    TOKEN-SPAN@ {: ta:^ tu:n :}
    code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
+   code E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
    KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 EXPORT CHECK:MULTI-ERR?
+EXPORT TYPE-DECL:TDECL-NAME-PREFLIGHT-XT
 public
+
+\ The seal of the declaration whose header is a u, judged at its
+\ family name alone, before the header's parameters are parsed.
+: SEAL-FAMILY ( ^u8 n -- ) {: a:^ u:n :}
+   a u TYPE-DECL:DECL-FAMILY-NAME {: ca:^ cu:n :}
+   cu 0 > IF ca cu FAMILY!  ca cu TDECL-NAME-PREFLIGHT-XT  a u FAMILY! THEN ;
 
 \ End one declaration. Every exit forgets the borrowed spans: one left behind is
 \ read stale or baked into an image with its build-time address, so engine

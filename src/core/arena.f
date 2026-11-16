@@ -91,6 +91,7 @@ EXPORT CHECK:STG-NO-NAME
    then
    LBUF:STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
+   name nameu LBUF:SEAL-NAME
    name nameu FREE? 0= if exit then
    name nameu OTHERS-FREE
    type typeu CHECKER-ARENA-INFO 0= if

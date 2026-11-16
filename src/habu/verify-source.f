@@ -1044,22 +1044,47 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    a u  SOURCE@ at + tu  REJECTION:SEALED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+: OPEN-SEALED? ( -- bool )
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF false EXIT THEN
+   CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEALED? ;
+
+\ Whether a part is open and the source sealed the package it is a part of.
+: OWNER-SEALED? ( -- bool )
+   data-base ENCLOSING:REC + @ {: owner:n :}
+   owner 0= IF false EXIT THEN
+   owner XREF-ADDR>REC XREF-NAME$ XREF:SOURCE-SEALED? ;
+
 : SEALED-OPEN ( ^u8 n n n -- ) {: a:^ u:n at:n tu:n :}
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   CHECKER-AUTH-PACKAGE$ XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN ;
+   OPEN-SEALED? IF a u at tu SEAL-STOP THEN
+   OWNER-SEALED?  CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-GLOBAL =  and IF
+      a u at tu SEAL-STOP
+   THEN ;
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
-\ A head resolves as the definition's does: a part is asked by its path.
+\ A head resolves as the definition's does: a part is asked by its path. A
+\ qualified name goes where its qualifier says, whatever the section: while a
+\ part's owner is sealed, only the open part's own head takes it.
 : SEALED-NAME ( ^u8 n n n -- ) {: a:^ u:n at:n tu:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF a u at tu SEALED-OPEN EXIT THEN
    a q HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN XREF:SOURCE-SEALED? IF a u at tu SEAL-STOP THEN
    row NULL-PTR <> IF row XREF:SEALED? IF a u at tu SEAL-STOP THEN THEN
+   OPEN-SEALED? IF a u at tu SEAL-STOP THEN
+   row NULL-PTR = IF false ELSE row XREF-PKG-PUBLIC data-base PKG-PUB-CELL + @ = THEN
+   0=  OWNER-SEALED?  and IF a u at tu SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
    row NULL-PTR = IF EXIT THEN
    row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF a u at tu SEAL-STOP THEN ;
+
+\ The family name a declaration writes at byte AT: its token up to the
+\ first `<`, rejected as SEALED-NAME rejects a name. An empty one is left to
+\ the declaration's missing-name rejection.
+: SEALED-FAMILY ( ^u8 n n -- ) {: a:^ u:n at:n :}
+   a u TYPE-DECL:DECL-FAMILY-NAME nip {: cut:n :}
+   cut 0= IF EXIT THEN
+   a cut at cut SEALED-NAME ;
 
 \ The text of a literal from the rest STRING-REST read after its opener, a
 \ string opener: past the one delimiting space, short of the closing quote, as
@@ -2591,8 +2616,9 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 
 : RECORD-SUMTYPE ( -- )
    0 NEWEST-SYM !
-   NAME-TOKEN {: name:^ nameu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu at SEALED-FAMILY
    name nameu [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
 : ENUM-END? ( ^u8 n -- bool )
@@ -2602,8 +2628,9 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
    0 NEWEST-SYM !
-   DECL-TOKEN {: name:^ nameu:n :}
+   DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
+   name nameu at SEALED-FAMILY
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -2621,7 +2648,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    0 NEWEST-SYM !
    DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu at nameu SEALED-NAME
+   name nameu at SEALED-FAMILY
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -2633,22 +2660,18 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 : MUTUAL-END? ( ^u8 n -- bool )
    s" ;MUTUAL" STR=CI ;
 
-\ Whether the token a u is a name in a MUTUAL's list: the front end's list
-\ ends at the input's end, a member's STRUCTURE or ;MUTUAL.
+\ Whether a MUTUAL's first token names a family to seal: a member's STRUCTURE,
+\ ;MUTUAL and a nameless header do not. The replay judges every later entry.
 : MUTUAL-LISTED? ( ^u8 n -- bool ) {: a:^ u:n :}
-   u 0<>  a u s" STRUCTURE" STR=CI 0= and  a u MUTUAL-END? 0= and ;
+   a u TYPE-DECL:DECL-FAMILY-NAME nip 0<>
+   a u s" STRUCTURE" STR=CI 0= and  a u MUTUAL-END? 0= and ;
 
-\ Appends the next MUTUAL body token; while listing, a listed name is sealed as
-\ RECORD-STRUCTURE-DECL seals its name. Answers whether the body ended and
-\ whether the list goes on.
-: MUTUAL-TOKEN ( bool -- bool bool ) {: listing:bool :}
-   DECL-TOKEN TOKEN-BYTE @ {: a:^ u:n at:n :}
-   u 0= IF true false EXIT THEN
+\ Appends the next MUTUAL body token; answers whether the body ended.
+: MUTUAL-TOKEN ( -- bool )
+   DECL-TOKEN {: a:^ u:n :}
+   u 0= IF true EXIT THEN
    a u BODY-APPEND
-   a u MUTUAL-END? IF true false EXIT THEN
-   listing a u MUTUAL-LISTED? and {: named:bool :}
-   named IF a u at u SEALED-NAME THEN
-   false named ;
+   a u MUTUAL-END? ;
 
 \ The replay registers every member's MAKE/UNMAKE and accessors, so
 \ `NODE:MAKE` resolves later in this source. The first list token is the
@@ -2657,10 +2680,10 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 : RECORD-MUTUAL ( -- )
    DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu MUTUAL-LISTED? IF name nameu at nameu SEALED-NAME THEN
+   name nameu MUTUAL-LISTED? IF name nameu at SEALED-FAMILY THEN
    BODY-RESET
    name nameu MUTUAL-END? 0= IF
-      name nameu MUTUAL-LISTED? BEGIN MUTUAL-TOKEN swap UNTIL drop
+      BEGIN MUTUAL-TOKEN UNTIL
    THEN
    name nameu BODY$ TYPE-DECL:REPLAY-MUTUAL
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
@@ -2703,6 +2726,7 @@ variable STG-TYPE-U
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ s" newtype" CHECKER-DEFFAMILY EXIT THEN
+   name nameu at SEALED-FAMILY
    0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
    IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
    SCAN-I @ {: mark:n :}
@@ -2710,7 +2734,6 @@ variable STG-TYPE-U
    mark SCAN-I !
    tu 0= IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
    tu 1 = IF ta c@ 92 = IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN THEN
-   name nameu at nameu SEALED-NAME
    name nameu 2dup SCAN-STORAGE-TYPE s" newtype" TYPE-DECL:SD-WRAP-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
@@ -2735,8 +2758,8 @@ variable STG-TYPE-U
    DEFTYPE-BASE {: ba:^ bu:n based:bool :}
    based IF name nameu ba bu TYPE-DECL:SD-ONE-NAME 0= IF EXIT THEN THEN
    REJECTION:TALLY @ {: refused:n :}
+   based IF name nameu at nameu SEALED-NAME ELSE name nameu at SEALED-FAMILY THEN
    based IF
-      name nameu at nameu SEALED-NAME
       tail tailu name nameu ba bu s" deftype" TYPE-DECL:SD-WRAP-OUTCOME
       IF DW-TYPE DEFER-AT EXIT THEN 2drop
    ELSE
@@ -2774,6 +2797,16 @@ variable STG-TYPE-U
    {: a:^ u:n :}
    u 0<>  a TOP-REFUSED @ =  and ;
 
+\ Whether NAME+SFX, a word the definer derives from NAME, read from byte AT,
+\ is free: a taken one is the duplicate, rejected at NAME.
+: DERIVED-FREE? ( ^u8 n ^u8 n n -- bool )
+   {: name:^ nameu:n sfx:^ sfxu:n at:n :}
+   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+   SB$ {: gen:^ genu:n :}
+   gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
+   gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
+   gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
+
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
@@ -2793,6 +2826,8 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
+   name nameu s" -BIND" at DERIVED-FREE? 0= IF EXIT THEN
+   name nameu s" -GROW" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
@@ -2859,16 +2894,6 @@ variable STG-TYPE-U
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
-\ NAME, read from byte AT, names no word itself, so a taken derived word is the
-\ duplicate, rejected at NAME.
-: ARENA-WORD-FREE? ( ^u8 n ^u8 n n -- bool )
-   {: name:^ nameu:n sfx:^ sfxu:n at:n :}
-   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   SB$ {: gen:^ genu:n :}
-   gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
-   gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
-   gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
-
 \ DYNAMIC-BUFFER publishes THREE words from one line - the accessor,
 \ NAME-RESERVE and NAME-RELEASE. Certification never runs the definer, and
 \ without this row a later definition in the same source calling one of the
@@ -2878,8 +2903,8 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
-   name nameu s" -RESERVE" at ARENA-WORD-FREE? 0= IF EXIT THEN
-   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu s" -RESERVE" at DERIVED-FREE? 0= IF EXIT THEN
+   name nameu s" -RELEASE" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
@@ -2889,8 +2914,8 @@ variable STG-TYPE-U
 \ current section.
 : ARENA-WORDS-FREE? ( ^u8 n n -- bool )
    {: name:^ nameu:n at:n :}
-   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? ;
+   name nameu s" -NEW" at DERIVED-FREE? 0= IF false EXIT THEN
+   name nameu s" -NEW-DISPOSE" at DERIVED-FREE? ;
 
 \ Whether Q's private section, which the qualified NAME Q:TAIL never writes,
 \ holds no TAIL+SFX; NAME is read from byte AT.
@@ -2913,6 +2938,7 @@ variable STG-TYPE-U
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   name nameu at nameu SEALED-NAME
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
    name nameu CHECKER-QUALIFIED? IF
@@ -2945,8 +2971,9 @@ variable STG-TYPE-U
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
-   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu at nameu SEALED-NAME
+   name nameu s" -NEW" at DERIVED-FREE? 0= IF EXIT THEN
+   name nameu s" -RELEASE" at DERIVED-FREE? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN drop

@@ -517,6 +517,10 @@ $38A0 constant TYPE-OP-CELL
 \ A definer declares a variable of a type node through the running engine's
 \ word this cell holds.
 $38C8 constant VARIABLE-CELL
+\ A storage definer passes its written name to the running engine's word
+\ this cell holds, which rejects it where the definer's words could not be
+\ defined.
+$38D0 constant SEAL-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect

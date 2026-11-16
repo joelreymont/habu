@@ -247,6 +247,231 @@ create XPK-EMPTY 1 allot
    s" LATE . cr" XPK-LINE
    SB$ ;
 
+\ A STRUCTURE in a sealed package's global section.
+: XPK-SEALED-STRUCTURE$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" STRUCTURE pcell FIELD v n ;STRUCTURE" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" global" XPK-LINE
+   s" STRUCTURE gbox FIELD c pcell ;STRUCTURE" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A DEFTYPE over a base in a sealed package's private section.
+: XPK-SEALED-DEFTYPE$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" DEFTYPE GDT n" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A DEFTYPE without a base in a sealed package's private section.
+: XPK-SEALED-DEFTYPE-BARE$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" DEFTYPE GDU" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A STRUCTURE whose header does not parse, in a sealed package's global section.
+: XPK-SEALED-PARAM$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" global" XPK-LINE
+   s" STRUCTURE gbx<a FIELD v n ;STRUCTURE" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A qualified name defined in a sealed package's private section.
+: XPK-SEALED-QUALIFIED$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" : Q:LATE ( -- n ) HID ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" Q:LATE . cr" XPK-LINE
+   SB$ ;
+
+\ A sealed package's part B, then the line a u in B's global section.
+: XPK-SEALED-PART$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   SB-RESET
+   s" package U" XPK-LINE
+   s" public" XPK-LINE
+   s" : UW ( -- n ) 3 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" global" XPK-LINE
+   a u XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A STRUCTURE in package Z, whose constructor package Z-PK is sealed.
+: XPK-SEALED-CTOR$ ( -- ^u8 n )
+   SB-RESET
+   s" package Z-PK" XPK-LINE
+   s" public" XPK-LINE
+   s" : PW ( -- n ) 1 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package Z" XPK-LINE
+   s" public" XPK-LINE
+   s" STRUCTURE pk FIELD v n ;STRUCTURE" XPK-LINE
+   s" ;package" XPK-LINE
+   s" 1 . cr" XPK-LINE
+   SB$ ;
+
+\ A qualified STRUCTURE B:s in part B of a sealed package.
+: XPK-SEALED-PART-STRUCT$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" STRUCTURE B:s FIELD v n ;STRUCTURE" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A MUTUAL in a sealed package.
+: XPK-SEALED-MUTUAL$ ( -- ^u8 n )
+   SB-RESET
+   s" package MU" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" MUTUAL ma mb" XPK-LINE
+   s" STRUCTURE ma FIELD v n ;STRUCTURE" XPK-LINE
+   s" STRUCTURE mb FIELD w n ;STRUCTURE" XPK-LINE
+   s" ;MUTUAL" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A SUMTYPE in package Z, whose constructor package Z-PK is sealed.
+: XPK-SEALED-SUM-CTOR$ ( -- ^u8 n )
+   SB-RESET
+   s" package Z-PK" XPK-LINE
+   s" public" XPK-LINE
+   s" : PW ( -- n ) 1 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package Z" XPK-LINE
+   s" public" XPK-LINE
+   s" SUMTYPE pk VARIANT pa ;VARIANT ;SUMTYPE" XPK-LINE
+   s" ;package" XPK-LINE
+   s" 1 . cr" XPK-LINE
+   SB$ ;
+
+\ A MUTUAL in a sealed package whose first member has a header.
+: XPK-SEALED-MUTUAL-PARAM$ ( -- ^u8 n )
+   SB-RESET
+   s" package MU" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" MUTUAL pa<a> pb" XPK-LINE
+   s" STRUCTURE pa<a> FIELD v a ;STRUCTURE" XPK-LINE
+   s" STRUCTURE pb FIELD w n ;STRUCTURE" XPK-LINE
+   s" ;MUTUAL" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A MUTUAL whose rejected first entry comes before a sealed package's name.
+: XPK-SEALED-MUTUAL-ORDER$ ( -- ^u8 n )
+   SB-RESET
+   s" package MS" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" ;package" XPK-LINE
+   s" MUTUAL Pa MS:pb" XPK-LINE
+   s" STRUCTURE Pa FIELD v n ;STRUCTURE" XPK-LINE
+   s" ;MUTUAL" XPK-LINE
+   SB$ ;
+
+\ A CALLBACK: in a sealed package.
+: XPK-SEALED-CALLBACK$ ( -- ^u8 n )
+   SB-RESET
+   s" require src/lib/ffi-callback.f" XPK-LINE
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" CALLBACK: CB ( -- ) ;CALLBACK" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A sealed package P, then the section word s su, if any, and the line a u.
+: XPK-SEALED-LINE$ ( ^u8 n ^u8 n -- ^u8 n ) {: s:^ su:n a:^ u:n :}
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   su 0 > IF s su XPK-LINE THEN
+   a u XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A sealed package's part B defines in its private and public sections.
+: XPK-PART-SECTIONS$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" : PV ( -- n ) HID ;" XPK-LINE
+   s" public" XPK-LINE
+   s" : PB ( -- n ) PV 1+ ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ As XPK-PART-SECTIONS$, with part B using another package.
+: XPK-PART-USING$ ( -- ^u8 n )
+   SB-RESET
+   s" package U" XPK-LINE
+   s" public" XPK-LINE
+   s" : UW ( -- n ) 3 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" using U" XPK-LINE
+   s" : PV ( -- n ) UW HID + ;" XPK-LINE
+   s" public" XPK-LINE
+   s" : PB ( -- n ) PV ;" XPK-LINE
+   s" ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ A sealed package's part B defines B:PV from its global section.
+: XPK-PART-QUALIFIED$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" global" XPK-LINE
+   s" : B:PV ( -- n ) HID ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 \ Types declared in XG's global section name its private xgcell; the OPAQUE
 \ xgbox's generated words go to XG's private section, and the section after
 \ it is global again.
@@ -386,6 +611,19 @@ create XPK-EMPTY 1 allot
    a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
    s" E-UNDEFINED" XPK-ERR? ;
 
+\ Both --load and tools/check.f reject the source a u with the record e eu
+\ and, unless it is empty, the caret line c cu.
+: XPK-SEALED ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
+   a u XPK-RUN-LOAD
+   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-RUN-CHECK
+   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  XPK-REJECT-RC XPK-ASSERT-RC ;
+
+\ Both --load and tools/check.f accept the source a u.
+: XPK-ACCEPT-BOTH ( ^u8 n -- )
+   XPK-RUN-LOAD 0 XPK-ASSERT-RC
+   XPK-RUN-CHECK 0 XPK-ASSERT-RC ;
+
 : XPK-GLOBAL ( -- )
    s" a global section's word is bare and calls the package's private word" T-LABEL
    XPK-GLOBAL-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT?
@@ -407,7 +645,119 @@ create XPK-EMPTY 1 allot
    s" E-SEALED-PACKAGE" XPK-ERR?
    s" tools/check.f rejects a sealed package's global definition" T-LABEL
    XPK-RUN-CHECK XPK-REJECT-RC XPK-ASSERT-RC
-   s" E-SEALED-PACKAGE" XPK-ERR? ;
+   s" E-SEALED-PACKAGE" XPK-ERR?
+   s" a sealed package takes no qualified definition" T-LABEL
+   XPK-SEALED-QUALIFIED$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
+   s" a sealed package's part takes no global definition" T-LABEL
+   s" : LATE ( -- n ) HID ;" XPK-SEALED-PART$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
+   s" a sealed package's part takes no global EXPORT" T-LABEL
+   s" EXPORT U:UW" XPK-SEALED-PART$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
+   s" a sealed package's global section takes no STRUCTURE" T-LABEL
+   XPK-SEALED-STRUCTURE$
+   s" error[E-SEALED-PACKAGE]: `gbox` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no DEFTYPE" T-LABEL
+   XPK-SEALED-DEFTYPE$
+   s" error[E-SEALED-PACKAGE]: `GDT` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no DEFTYPE without a base" T-LABEL
+   XPK-SEALED-DEFTYPE-BARE$
+   s" error[E-SEALED-PACKAGE]: `GDU` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no STRUCTURE whose header does not parse, named as written" T-LABEL
+   XPK-SEALED-PARAM$
+   s" error[E-SEALED-PACKAGE]: `gbx` would change a sealed package"
+   s" |           ^^^ sealed" XPK-SEALED
+   s" a sealed package takes no ENUM" T-LABEL
+   s" global" s" ENUM ge ge-a ge-b ;ENUM" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `ge` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no SUMTYPE" T-LABEL
+   s" " s" SUMTYPE gsum VARIANT ga ;VARIANT VARIANT gb ;VARIANT ;SUMTYPE" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `gsum` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no parametric NEWTYPE" T-LABEL
+   s" " s" NEWTYPE gp<a> a" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `gp` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no qualified STRUCTURE" T-LABEL
+   s" " s" STRUCTURE q:s FIELD v n ;STRUCTURE" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `q:s` would change a sealed package" s" " XPK-SEALED
+   s" a sealed package takes no DYNAMIC-BUFFER, named at its name" T-LABEL
+   s" " s" DYNAMIC-BUFFER DBX u8" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `DBX` would change a sealed package"
+   s" |                ^^^ sealed" XPK-SEALED
+   s" a sealed package takes no HEAP, named as written" T-LABEL
+   s" " s" HEAP HX n" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `HX` would change a sealed package"
+   s" |      ^^ sealed" XPK-SEALED
+   s" a sealed package takes no ARENA, named as written" T-LABEL
+   s" " s" ARENA AX n" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `AX` would change a sealed package"
+   s" |       ^^ sealed" XPK-SEALED
+   s" a sealed package takes no HEAP, rejected before its type" T-LABEL
+   s" " s" HEAP HX nosuch" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `HX` would change a sealed package"
+   s" |      ^^ sealed" XPK-SEALED
+   s" a sealed package takes no TYPED-VARIABLE, rejected before its type" T-LABEL
+   s" " s" TYPED-VARIABLE TV nosuch" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `TV` would change a sealed package"
+   s" |                ^^ sealed" XPK-SEALED
+   s" a storage name that ends in `:` rejects under both loaders" T-LABEL
+   SB-RESET s" HEAP P: n" XPK-LINE SB$
+   s" error[E-BAD-STORAGE]: the name `P:` ends in `:`" s" " XPK-SEALED
+   s" a name whose final `:` dropped still ends in one gets a rename" T-LABEL
+   SB-RESET s" TYPED-VARIABLE a:: n" XPK-LINE SB$
+   s" error[E-BAD-STORAGE]: the name `a::` ends in `:`"
+   s" rename `a::` with at most one inner `:` and none at its end" XPK-SEALED
+   s" a sealed package takes no CWORK-VARIABLE, rejected before its type" T-LABEL
+   s" " s" 0 CWORK-VARIABLE CV nosuch" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `CV` would change a sealed package"
+   s" |                  ^^ sealed" XPK-SEALED
+   s" a DEFER-LAYOUT-BUFFER's taken NAME-BIND rejects before its type" T-LABEL
+   SB-RESET s" : DL-BIND ( -- n ) 1 ;" XPK-LINE
+   s" DEFER-LAYOUT-BUFFER DL nosuch" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `DL-BIND` is already defined in this wordlist"
+   s" |                     ^^ already defined" XPK-SEALED
+   s" a sealed package takes no DEFTYPE over a base, named in full" T-LABEL
+   s" " s" DEFTYPE GD<a> n" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `GD<a>` would change a sealed package"
+   s" |         ^^^^^ sealed" XPK-SEALED
+   s" a sealed package takes no parametric DEFTYPE header, named at the family" T-LABEL
+   s" " s" DEFTYPE GD<a>" XPK-SEALED-LINE$
+   s" error[E-SEALED-PACKAGE]: `GD` would change a sealed package"
+   s" |         ^^ sealed" XPK-SEALED
+   s" a sealed package takes no ARENA, rejected before its taken words" T-LABEL
+   SB-RESET s" package P" XPK-LINE  s" private" XPK-LINE
+   s" : AX-NEW ( -- n ) 1 ;" XPK-LINE  s" seal-package" XPK-LINE
+   s" ARENA AX n" XPK-LINE  s" ;package" XPK-LINE SB$
+   s" error[E-SEALED-PACKAGE]: `AX` would change a sealed package"
+   s" |       ^^ sealed" XPK-SEALED
+   s" a sealed constructor package takes no STRUCTURE's MAKE, named at the family" T-LABEL
+   XPK-SEALED-CTOR$
+   s" error[E-SEALED-PACKAGE]: `Z-PK:MAKE` would change a sealed package"
+   s" |           ^^ sealed" XPK-SEALED
+   s" a sealed package's part rejects a qualified STRUCTURE as an unsealed one does" T-LABEL
+   XPK-SEALED-PART-STRUCT$ s" bad structure declaration `B:s`" s" " XPK-SEALED
+   s" a sealed package takes no MUTUAL" T-LABEL
+   XPK-SEALED-MUTUAL$
+   s" error[E-SEALED-PACKAGE]: `ma` would change a sealed package" s" " XPK-SEALED
+   s" a sealed constructor package takes no SUMTYPE's variant, named at the family" T-LABEL
+   XPK-SEALED-SUM-CTOR$
+   s" error[E-SEALED-PACKAGE]: `Z-PK:PA` would change a sealed package"
+   s" |         ^^ sealed" XPK-SEALED
+   s" a sealed package takes no MUTUAL member with a header, named at its family" T-LABEL
+   XPK-SEALED-MUTUAL-PARAM$
+   s" error[E-SEALED-PACKAGE]: `pa` would change a sealed package"
+   s" |        ^^ sealed" XPK-SEALED
+   s" a MUTUAL's entries are judged in order, a bad name before a sealed one" T-LABEL
+   XPK-SEALED-MUTUAL-ORDER$
+   s" error[E-BAD-DECLARATION]: bad mutual declaration `Pa`"
+   s" |        ^^ name must be a lowercase family tail" XPK-SEALED
+   s" a sealed package takes no CALLBACK:, named at its name" T-LABEL
+   XPK-SEALED-CALLBACK$
+   s" error[E-SEALED-PACKAGE]: `CB` would change a sealed package"
+   s" |           ^^ sealed" XPK-SEALED
+   s" a sealed package's part defines in its private and public sections" T-LABEL
+   XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
+   s" a sealed package's part defines under a using" T-LABEL
+   XPK-PART-USING$ XPK-ACCEPT-BOTH
+   s" a sealed package's part defines B:X into itself" T-LABEL
+   XPK-PART-QUALIFIED$ XPK-ACCEPT-BOTH ;
 
 \ The declaration words are their packages' global words over private
 \ implementations: a checked body reaches no implementation, and may not call

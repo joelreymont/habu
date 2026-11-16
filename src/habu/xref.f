@@ -477,6 +477,32 @@ public
    NS-ROW if SEALED? else drop XREF-FALSE then ;
 
 private
+: PKG-OPEN-SEALED? ( -- bool )
+   data-base PKG-PUB-CELL + @ 0= if XREF-FALSE exit then
+   data-base PKG-REC-CELL + @ XREF-ADDR>REC SEALED? ;
+
+: PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
+   wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then
+   wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if XREF-FALSE exit then
+   data-base PKG-PUB-CELL + @ 0= 0= if
+      wid data-base PKG-PUB-CELL + @ =  wid data-base PKG-PRI-CELL + @ =  or if
+         PKG-OPEN-SEALED? exit
+      then
+   then
+   wid WID-SEALED? ;
+
+public
+\ Whether a definition into wordlist wid is refused: wid is a sealed package's,
+\ the open package is sealed, or an open part's owner is sealed and wid is not
+\ the part's.
+: SEALED-TARGET? ( n -- bool ) {: wid:n :}
+   wid PKG-WID-SEALED?  PKG-OPEN-SEALED?  or if XREF-TRUE exit then
+   data-base ENCLOSING:REC + @ {: owner:n :}
+   owner 0= if XREF-FALSE exit then
+   owner XREF-ADDR>REC SEALED? 0= if XREF-FALSE exit then
+   wid data-base PKG-PUB-CELL + @ <>  wid data-base PKG-PRI-CELL + @ <>  and ;
+
+private
 \ The packages the verified source sealed: the verifier does not run
 \ seal-package, so their rows are not SEALED?.
 DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
@@ -545,24 +571,17 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    XREF-QUAL-INDEX 0 >= ;
 
 : SEALED-STOP ( ^u8 n -- )
-   s" would change a sealed package"
-      s" declare it in a package of your own: a sealed package takes no new words"
-      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW-AT ;
+   s" " s" " TYPE-DECL:E-TDECL-SEALED TYPE-DECL:TDECL-THROW-AT ;
 
-\ A generated name in a sealed package's namespace (its row SEALED?, or a
-\ package the verified source sealed) is the declaration's error, whether or
-\ not the package holds it. A bare name lands in the declaring package's
-\ private wordlist, and a sealed package cannot be opened, so no bare name
-\ reaches one. A head resolves as the definition's does: a part is asked by its
-\ path.
+\ A family or generated name is the declaration's error where SEALED-TARGET?
+\ refuses it, or in a package the verified source sealed. A head resolves as the
+\ definition's does: a part is asked by its path.
 : CHECK ( ^u8 n -- ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF EXIT THEN
+   q 0 < IF get-current XREF:SEALED-TARGET? IF a u SEALED-STOP THEN EXIT THEN
    a q HEAD-ROW {: ns:^ :}
    ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
-   ns XREF-FOUND? 0= IF EXIT THEN
-   ns XREF:SEALED? 0= IF EXIT THEN
-   a u SEALED-STOP ;
+   ns XREF-FOUND? IF ns XREF-PKG-PUBLIC ELSE 0 THEN XREF:SEALED-TARGET? IF a u SEALED-STOP THEN ;
 
 public
 

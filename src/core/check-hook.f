@@ -262,14 +262,14 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    ta tu CHECKER-STORAGE-INFO {: w:n ok:bool :}
    w CELL * ok ;
 
-\ A storage declaration's name, stored type and that type's bytes. A missing
-\ name or a refused type is reported, naming the definer, and answers 0 bytes.
+\ A storage declaration's name, stored type and that type's bytes; 0 bytes
+\ when it keeps a rejection of a missing name, a name it cannot take or the type.
 : DECL-LINE ( ^u8 n bool -- ^u8 n ^u8 n n )
    {: da:^ du:n whole:bool :}
    LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
-   na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
+   na nu na nu LBUF:LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
    ta tu whole TYPE-BYTES 0= if
       drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT na nu ta tu 0 exit
    then {: bytes:n :}

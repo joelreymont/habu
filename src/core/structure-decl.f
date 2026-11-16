@@ -136,6 +136,7 @@ PTR-VARIABLE NOUN-A   variable NOUN-U
    pa pu sa su SD-TEXT fa fu code DECL-REJECT:REJECT ;
 
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
+: LIST-NAME-FIX$ ( -- ^u8 n ) s" list the families after `MUTUAL`, as in `MUTUAL node link`" ;
 : SD-FIELD-FIX$ ( -- ^u8 n ) s" give each field of the structure its own name" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
 : ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
@@ -253,7 +254,7 @@ variable HELP-U
       s" pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-: NAME-GATE ( ^u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
+: NAME-GATE ( ^u8 n -- )
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
 
 : SD-KIND$ ( -- ^u8 n ) s" structure" ;
@@ -1024,6 +1025,7 @@ private
 
 \ The name and arity of the header token a u, the header's parameters bound.
 : HEADER ( ^u8 n -- ^u8 n n )
+   2dup DECL-REJECT:SEAL-FAMILY
    TYPE-DECL:DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header"
       s" name each type parameter once in the header, as in `STRUCTURE box<a>` or `STRUCTURE pair<a,b>`"
@@ -1049,6 +1051,10 @@ private
 \ A header in the MUTUAL list: the member is listed, its family row added.
 : LIST-ENTRY ( ^u8 n -- )
    2dup DECL-REJECT:FAMILY!
+   2dup TYPE-DECL:DECL-FAMILY-NAME nip 0= IF
+      2drop s" missing name"
+      s" write the family name before its parameters, as in `box<a>`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    HEADER {: na:^ nu:n ar:n :}
    na nu NAME-GATE
    na nu na nu ar SD-DECL {: fam:n :}
@@ -1058,7 +1064,7 @@ private
    u 0=  a u s" structure" CORE-STR=CI or  a u s" ;mutual" CORE-STR=CI or ;
 : LIST ( -- )
    NEXT 2dup LIST-END? IF
-      2drop s" missing name" s" list the families after `MUTUAL`, as in `MUTUAL node link`"
+      2drop s" missing name" LIST-NAME-FIX$
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    BEGIN LIST-ENTRY NEXT 2dup LIST-END? UNTIL
    UNGET ;
@@ -1140,12 +1146,12 @@ private
 : WRAP-DRIVE ( -- )
    DECL-PARAM-CLEAR
    NEXT {: na:^ nu:n :}
-   na nu DECL-REJECT:FAMILY!
+   NAME-A @ NAME-U @ DECL-REJECT:FAMILY!
    nu 0= IF s" missing name"
       s" write the family name after `NEWTYPE`, as in `NEWTYPE path str`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    NAME-A @ NAME-U @ DECL-REJECT:TOKEN!
-   na nu NAME-GATE
+   na nu 2dup TDECL-NAME-PREFLIGHT-XT REQUIRE-NAME
    na nu NAME-A @ NAME-U @ 0 SD-REGISTER
    0 FIELD-MISS !
    NEXT 2dup BASE-U ! BASE-A !
