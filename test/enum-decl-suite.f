@@ -1123,6 +1123,11 @@ s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ^edlmodel
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrlate`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
+DECL-DIAG:PROSE
+s" ENUM edlptrapp VARIANT hold FIELD p option<^edlmodel> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrapp`\n" DECL-DIAG:HAS? TTRUE
+s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+
 \ A pointer to a family that owns nothing declares, so the
 \ rejects above answer the POINTEE's linearity and not the word `^`.
 s" ENUM edlptrok VARIANT hold FIELD p ^edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=

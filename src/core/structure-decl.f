@@ -426,15 +426,15 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ An argument `^T` is a pointer to T, its pointee read from k
-\ (SD-POINTEE-AT) and built as RESOLVE-TYPE's pointer arm builds one; while T is
-\ read the declared family may be named (FIELD-FAM?).
+\ Only a rejected pointee becomes the token: an accepted one leaves the type's
+\ token for a later rejection that sets none.
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
    FIELD-MISS @ IF 0 e EXIT THEN
+   node TFCL-NODE? IF a k + e k - DECL-REJECT:TOKEN! THEN
    node s" " s" is a pointer to a linear value and cannot own it" SD-TEXT
    DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
 
