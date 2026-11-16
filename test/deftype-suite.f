@@ -140,7 +140,7 @@ S\" = help: rename the family: this package already declares a family with this 
 s" DEFTYPE dx ^option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" option" s" type is parametric and needs type arguments"
-S\" = help: give the family its type arguments, as in `box<n>`\n" DT-REC
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^option<n>` instead\n" DT-REC
 package DTQP
 public
 NEWTYPE dtqt

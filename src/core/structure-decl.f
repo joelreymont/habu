@@ -82,28 +82,30 @@ variable HELP-U
 \ wrap accepted: the NEWTYPE over BASE as written.
 : BASE-HELP$ ( ^u8 n ^u8 n -- ^u8 n )
    NEWTYPE-HELP  s" ` instead" HELP+  HELP-P @ HELP-U @ ;
-\ The edit the loader accepts for `DEFTYPE NAME BASE` over a family of arity ar
-\ whose every parameter takes `n`: the NEWTYPE of BASE with `n` for each argument.
-: ARGS-HELP$ ( ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ar:n :}
-   na nu ba bu NEWTYPE-HELP  s" <n" HELP+
+\ The edit the loader accepts for `DEFTYPE NAME BASE` whose token TOK names bare a
+\ family of arity ar taking `n` throughout: the NEWTYPE of BASE, `<n,...>` after TOK.
+: ARGS-HELP$ ( ^u8 n ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ta:^ tu:n ar:n :}
+   ta NULL-PTR - tu + ba NULL-PTR - - {: hu:n :}
+   na nu ba hu NEWTYPE-HELP  s" <n" HELP+
    ar 1 ?do s" ,n" HELP+ loop
-   s" >` instead" HELP+
+   s" >" HELP+  ba hu + bu hu - HELP+
+   s" ` instead" HELP+
    HELP-P @ HELP-U @ ;
 
 \ A family whose parameters are all cells: `n` fills each (`option<n>` loads,
 \ `width<n>` and `init<n,n>` do not).
 : CELL-PARAMS? ( n -- bool ) {: fam:n :}
    YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
-\ Whether the token at a is a DEFTYPE's whole base, whose help may replace it:
-\ inside a longer base (`^option`) a help naming the token drops the rest.
+\ Whether the token at a is a DEFTYPE's whole base, which a one-type help may
+\ replace; a pointer inside a longer base (`^^`) gets the pointer help.
 : WHOLE-BASE? ( ^u8 n -- bool ) {: a:^ u:n :}
    DEFTYPE? a BASE-A @ = and u BASE-U @ = and ;
 \ The help for family fam named bare at a: a DEFTYPE gets the NEWTYPE that
 \ loads, or another base when no `n` arguments fit.
 : SD-ARGS-FIX$ ( n ^u8 n -- ^u8 n ) {: fam:n a:^ u:n :}
-   a u WHOLE-BASE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
+   DEFTYPE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
    fam CELL-PARAMS? 0= IF SD-TYPE-FIX$ EXIT THEN
-   DECL-REJECT:FAMILY$ a u fam TFAM-ARITY@ ARGS-HELP$ ;
+   DECL-REJECT:FAMILY$ BASE-A @ BASE-U @ a u fam TFAM-ARITY@ ARGS-HELP$ ;
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
 \ The help for a malformed pointer token at a.
