@@ -707,9 +707,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
    S\" : B ( -- ) SDT-R:W require sd-body.f SDT-R:;W ;\n"
-   s" sd-body.f" SDT-ONE-EVENT
-   S\" [: SDT-R:W require sd-quote.f SDT-R:;W ;] drop\n"
-   s" sd-quote.f" SDT-ONE-EVENT ;
+   s" sd-body.f" SDT-ONE-EVENT ;
 
 \ A prior partial scan may mistake raw operands for declarations. Replacing
 \ that file's evidence on retry removes those false declarations, while a

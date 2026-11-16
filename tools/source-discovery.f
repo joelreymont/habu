@@ -139,6 +139,8 @@ variable SD-LOCALS
 variable SD-LOCAL-BASE
 variable SD-SCOPES
 
+: SD-BODY? ( -- bool ) SD-DEF @ 0<> ;
+
 : SD-BUF ( -- ^u8 )
    SD-A @ ;
 
@@ -708,7 +710,7 @@ variable SD-X-N
    until ;
 
 : SD-R-USE? ( n n -- bool ) {: off:n len:n :}
-   SD-DEF @ 0<> SD-SCOPES @ 0<> or if false exit then
+   SD-BODY? if false exit then
    off len SD-R-FIND {: row:n :}
    row 0 < if false exit then
    row SD-R-CONSUME
@@ -771,6 +773,14 @@ variable SD-TERM-END
 
 : SD-SKIP-LINE ( -- )   SD-LF SD-SKIP-TO ;
 : SD-SKIP-PAREN ( -- )  SD-RPAREN SD-SKIP-TO ;
+
+\ The load rejects a top-level `{:` itself, closed or not.
+: SD-SKIP-GROUP ( -- )
+   begin
+      SD-RAW {: off:n len:n :}
+      len 0= if exit then
+      off len SD-TOK$ s" :}" STR=
+   until ;
 
 : SD-STR-LEAD ( n -- n )
    dup $73 = over $53 = or if drop SD-PEND-PATH exit then
@@ -1056,7 +1066,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 \ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
 : SD-PARSER? ( n n -- bool ) {: off:n len:n :}
-   SD-DEF @ 0<> SD-SCOPES @ 0<> or if
+   SD-BODY? if
       off len SD-TOK$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? exit
    then
    off len SD-TOK$ PARSING-KEYWORD? ;
@@ -1103,12 +1113,15 @@ $FF constant SD-NAMES                    \ loaders and family openers
       off len SD-TOK$ s" export" STR=CI if noff nu SD-R-DECL-NAME then
       exit
    then
-   SD-DEF @ 0= SD-SCOPES @ 0= and if
+   SD-BODY? 0= if
       off len SD-FAMILY-KIND dup 0<> if
          off len SD-CHECK-FAMILY SD-FAMILY-BODY exit
       then drop
    then
-   off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
+   off len SD-TOK$ s" {:" STR= if
+      SD-BODY? 0= if SD-SKIP-GROUP exit then
+      off SD-OPENER ! SD-LOCAL-GROUP exit
+   then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if off SD-OPENER ! opener SD-PEND ! len 3 = SD-SCAN-STRING exit then
    off len SD-LOADER-KIND {: lkind:n :}
@@ -1131,10 +1144,10 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-DEF @ 0= off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI and if
       off pend SD-R-RETIRE-STACK pend SD-RETIRE-NAMED exit
    then
-   SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses:" STR=CI and if
+   SD-BODY? 0= off len SD-TOK$ s" parses:" STR=CI and if
       SD-R-PARSES SD-R-ROW exit
    then
-   SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses-through:" STR=CI and if
+   SD-BODY? 0= off len SD-TOK$ s" parses-through:" STR=CI and if
       SD-R-THROUGH SD-R-ROW exit
    then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then

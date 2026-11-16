@@ -975,21 +975,46 @@ variable RC
    S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
-: BODY-ONLY-EXPECT ( -- )
+\ The keyword has two characters and starts line 1, which holds LINE.
+: BODY-ONLY-EXPECT ( ^u8 n ^u8 n -- ) {: word:^ wordu:n line:^ lineu:n :}
    SB-RESET
-   s" error[E-UNDEFINED]: `if` works only inside a definition" SB-APPEND
+   s" error[E-UNDEFINED]: `" SB-APPEND  word wordu SB-APPEND
+   s" ` works only inside a definition" SB-APPEND
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND
-   S\" :1:1\n  |\n1 | if\n  | ^^ outside a definition\n" SB-APPEND
-   S\"   = help: move `if` into a `:` … `;` body\n\n" SB-APPEND ;
+   S\" :1:1\n  |\n1 | " SB-APPEND  line lineu SB-APPEND
+   S\" \n  | ^^ outside a definition\n" SB-APPEND
+   s"   = help: move `" SB-APPEND  word wordu SB-APPEND
+   S\" ` into a `:` … `;` body\n\n" SB-APPEND ;
 
 : TEST-BODY-ONLY ( -- )
    s" a top-level if is told to move into a definition" T-LABEL
    BODY$ S\" if\n" FS:WRITE-ALL
    BODY$ RUN
-   BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" if" s" if" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
    s" tools/check.f tells a top-level if to move into a definition" T-LABEL
    BODY$ CHECK-RUN
-   BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
+   s" if" s" if" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" an unclosed top-level {: is told to move into a definition" T-LABEL
+   BODY$ S\" {: a\n" FS:WRITE-ALL
+   BODY$ RUN
+   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f tells an unclosed top-level {: to move into a definition"
+   T-LABEL
+   BODY$ CHECK-RUN
+   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" a top-level {: require :} is told to move into a definition" T-LABEL
+   BODY$ S\" {: require :}\n" FS:WRITE-ALL
+   BODY$ RUN
+   s" {:" s" {: require :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f tells a top-level {: require :} to move into a definition"
+   T-LABEL
+   BODY$ CHECK-RUN
+   s" {:" s" {: require :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f tells an if before an unclosed {: to move into a definition"
+   T-LABEL
+   BODY$ S\" if {: a\n" FS:WRITE-ALL
+   BODY$ CHECK-RUN
+   s" if" s" if {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
 
 \ Under a rendering statement's mark CHECK leaves an undefined name to the run
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
