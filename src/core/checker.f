@@ -11349,6 +11349,12 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    row NULL-PTR = IF a u EXIT THEN
    row CK-REC-NAME$ ;
 
+\ A part is reached only inside its parent, by its tail: the text after its
+\ row's last `:`.
+: USED-NAME$ ( ^u8 n -- ^u8 n ) PACKAGE-NAME$ {: a:^ u:n :}
+   0  u 0 ?DO  a i + c@ $3A = IF drop i 1 + THEN  LOOP {: k:n :}
+   a k +  u k - ;
+
 : EMIT-QUALIFIED ( ^u8 n ^u8 n -- ) {: p:^ pu:n w:^ wu:n :}
    p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
 
@@ -11362,7 +11368,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    LOOP ;
 : UPKG-N ( n -- n ) {: mask:n :}
    0  CHECKER-USING-N 0 ?DO i mask UPKG-FIRST? IF 1 + THEN LOOP ;
-: UPKG-NAME$ ( n -- ^u8 n ) CHECKER-USING$ PACKAGE-NAME$ ;
+: UPKG-NAME$ ( n -- ^u8 n ) CHECKER-USING$ USED-NAME$ ;
 
 : UPKG-NOTE ( n -- ) {: mask:n :}
    s" packages" REJECTION:NOTE
@@ -14714,7 +14720,7 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
 \ caller ends it.
 : USING-SHADOW-REJECT ( ^u8 n ^u8 n -- )
    {: s:^ su:n p:^ pu:n :}
-   p pu PACKAGE-NAME$ {: pa:^ pn:n :}
+   p pu USED-NAME$ {: pa:^ pn:n :}
    s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
    96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
    s" ` is both a global word and a public of used package `"
@@ -17841,7 +17847,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
 \ The operand a u binds the public SYM of a package it uses.
 : EXPORT-USED ( ^u8 n n -- ) {: a:^ u:n sym:n :}
-   sym SYM-PKG$ PACKAGE-NAME$ {: pa:^ pn:n :}
+   sym SYM-PKG$ USED-NAME$ {: pa:^ pn:n :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` is a public of used package `" REJECTION:EMIT-STR  pa pn REJECTION:EMIT-STR

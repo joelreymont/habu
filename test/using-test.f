@@ -85,6 +85,11 @@ S\" = evaluated: using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using\n" UCE-S
 S\"  ^^ ambiguous here\n" UCE-SAID
 S\" = packages: UA, UC\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
+\ a word public in two used parts
+REJECTION:CAPTURE
+s" package UPT private package UPU public : AW ( -- n ) 1 ; ;package package UPV public : AW ( -- n ) 2 ; ;package using UPU using UPV : UT-PAMB ( -- n ) AW ; ;using ;using ;package" UCE-CATCH E-REJECT T=
+S\" = packages: UPU, UPV\n" UCE-SAID
+S\" = help: write the package's name before the word, as `UPU:AW` or `UPV:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
@@ -201,6 +206,12 @@ S\" = evaluated: using USG : USG-R1 ( -- n ) GW ; ;using\n" UCE-SAID
 S\"  ^^ ambiguous here\n" UCE-SAID
 S\" = global: GW\n" UCE-SAID  S\" = package: USG:GW\n" UCE-SAID
 S\" = help: write `USG:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
+\ a used part's public that is also a global word
+REJECTION:CAPTURE
+s" package UPG private package UPGW public : GW ( -- n ) 1 ; ;package using UPGW : UPG-R1 ( -- n ) GW ; ;using ;package" UCE-CATCH E-REJECT T=
+S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `UPGW`\n" UCE-SAID
+S\" = package: UPGW:GW\n" UCE-SAID
+S\" = help: write `UPGW:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ order-swapped: using first, global defined later in the same scope, then bareword
 REJECTION:CAPTURE
 s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-REJECT T=

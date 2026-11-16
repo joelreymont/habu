@@ -160,6 +160,19 @@ create XPK-EMPTY 1 allot
    s" ;using" XPK-LINE
    SB$ ;
 
+\ The part U's public XW, exported bare from its parent XPA under `using U`.
+: XPK-PART-FORGE$ ( -- ^u8 n )
+   SB-RESET
+   s" package XPA" XPK-LINE
+   s" private package U" XPK-LINE
+   s" public : XW ( -- n ) 7 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" public EXPORT XW" XPK-LINE
+   s" ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 : XPK-CREATE-FORGE$ ( -- ^u8 n )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
@@ -675,6 +688,9 @@ create XPK-EMPTY 1 allot
    s" is a public of used package `U`" XPK-REJECT-ALL
    s" a used package's public HOST rejects bare (E-EXPORT-UNDEFINED)" T-LABEL
    s" HOST" XPK-USED-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" a used part's public rejects bare, named by its tail" T-LABEL
+   XPK-PART-FORGE$ s" error[E-EXPORT-UNDEFINED]"
    s" is a public of used package `U`" XPK-REJECT-ALL
    s" a primitive spelled as a keyword rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
