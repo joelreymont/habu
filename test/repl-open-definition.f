@@ -64,6 +64,17 @@ using PTY-HARNESS
    70 EXIT=
    s" error[E-VS-UNTERMINATED-DEFINITION]" s" `EOF-Y`" AFTER? TTRUE ;
 
+\ ^D with a declaration still open names it and exits 70.
+: DECL-EOF-CASE ( -- )
+   OPEN dup TTRUE if
+      s" BEGIN-STRUCTURE EOF-REC" STEP dup TTRUE if
+         4 SEND-BYTE
+      then
+   then
+   70 EXIT=
+   s" error[E-UNCLOSED]" s" `BEGIN-STRUCTURE`" AFTER? TTRUE
+   s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
+
 \ A failed definition must unwind through the line savepoint, then accept a
 \ new definition.
 : REJECT-CASE ( -- )
@@ -154,6 +165,7 @@ public
    T-RESET
    SPAN-CASE
    EOF-CASE
+   DECL-EOF-CASE
    REJECT-CASE
    ZERO-THROW-CASE
    USING-CASE
