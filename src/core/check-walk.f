@@ -455,20 +455,24 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    rec NULL-PTR = IF TKF TKFU @ BODY-TOK? EXIT THEN
    rec POSTPONE-IMM? ;
 
+\ A body's parsing immediate, declaration row IX, runs while the body compiles:
+\ none of its steps are the body's.
+: PIMM-STEP ( n -- ) {: ix:n :}
+   0 CURSYM !
+   PIMM-STREAM @ 0 = IF ix PIMM-CNT@ PIMM-SKIP THEN ;
+
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
 : CALL-STEP ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    rec CALL-IMM? IF REJECT-IMMEDIATE THEN
+   TOK-SYM @ PIMM-IX dup 0 < 0= IF PIMM-STEP EXIT THEN drop
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
-   LITERAL-PAYLOAD-STEP
-   PIMM-STREAM @ 0 = IF
-      CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
-   THEN ;
+   LITERAL-PAYLOAD-STEP ;
 
 \ The step a dead token, a locals group's token or a field loan's name takes
 \ before any other; true when it took one. A is its unfolded spelling.

@@ -17173,8 +17173,10 @@ private
    off NORET-CELL NORET.CREATES @ 0 off NORET-CELL NORET.NONZERO @ NORET-APPEND ;
 
 \ --- declared parsing immediates.
-\ A parsing immediate consumes a fixed number of source tokens at compile time
-\ and contributes no runtime step. A wrong count skips live code or eats real
+\ A parsing immediate consumes a fixed number of source tokens and runs while
+\ the body around it compiles, as a top-level call would there; what it
+\ compiles into that body is checked by the load, which reads the body after
+\ it ran. A wrong count skips live code or eats real
 \ tokens, so `parse-imm` carries a declaration id: top-level declarations only.
 \ A rollback lowers SYM-N and hands the retired ids out again, so a checker
 \ frame saves PIMM-N and its restore drops the rows made since: no row outlives

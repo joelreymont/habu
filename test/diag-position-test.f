@@ -601,6 +601,20 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" undefined-immediate.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT ;
 
+\ A definition holding a parsing immediate takes none of its facts, so
+\ --verify-only certifies a top-level call of it.
+: TEST-PARSE-IMM-NO-STEP ( -- )
+   s" a parsing immediate that only parses" T-LABEL
+   SB-RESET
+   s" : HIT ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : PI ( -- ) HIT ; immediate" SB-APPEND LF+
+   s\" s\" PI\" 1 parse-imm" SB-APPEND LF+
+   s" : USE ( -- n ) PI zz 73 ;" SB-APPEND LF+
+   s" USE . cr" SB-APPEND LF+
+   s" pimm-parses.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T= ;
+
 \ --verify-only rejects an `undefine` of a word the package scope does not
 \ define, as the load does.
 : TEST-UNDEFINE-ABSENT ( -- )
@@ -3508,6 +3522,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-SOURCE-IMMEDIATE
+   TEST-PARSE-IMM-NO-STEP
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
    TEST-PROGRAM-TARGET-WORD
