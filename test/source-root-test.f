@@ -7,12 +7,9 @@ require src/lib/fmt.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require tools/source-discovery.f
-require tools/event-closure-lib.f
 require test/pcap-result.f
 
 using SOURCE-ROOT
-using DISCOVER
-using EC
 package SOURCE-ROOT-TEST
 
 PATH-CAP 1+ constant CAP
@@ -129,23 +126,20 @@ private
    RESTORED ;
 
 : DISCOVERY ( -- )
-   s" main.f" A-PATH DISCOVER:RUN
+   s" main.f" A-PATH ENTRY-RESOLVE drop RESOLVED-ROOT$
+   DISCOVER:READ-IN DISCOVER:RUN-READ
    EVENT-COUNT 3 T=
    0 EVENT-PATH@ s" src/nested/dep.f" A-PATH T$=
    0 SOURCE-EVENT:ROOT@ A$ T$=
    2 EVENT-PATH@ s" shared.f" FALLBACK-PATH CANONICAL TTRUE T$=
    2 SOURCE-EVENT:ROOT@ CWD$ T$=
-   s" src/nested/dep.f" A-PATH A$ RUN-IN
+   2 EVENT-PATH@ 2 SOURCE-EVENT:ROOT@ DISCOVER:READ-IN DISCOVER:RUN-READ
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" leaf.f" FALLBACK-PATH CANONICAL TTRUE T$=
+   s" src/nested/dep.f" A-PATH A$ DISCOVER:READ-IN DISCOVER:RUN-READ
    EVENT-COUNT 1 T=
    0 EVENT-PATH@ s" src/leaf.f" A-PATH T$=
    0 SOURCE-EVENT:ROOT@ A$ T$=
-   RESTORED ;
-
-: CLOSURE ( -- )
-   s" main.f" A-PATH BUILD
-   EC:COUNT 5 T=
-   0 PATH$ s" main.f" A-PATH T$=
-   4 PATH$ s" leaf.f" FALLBACK-PATH CANONICAL TTRUE T$=
    RESTORED ;
 
 : INVOCATION$ ( -- ^u8 n ) ROOT$ s" invoke" JOIN ;
@@ -347,12 +341,10 @@ create JOIN-SRC JOIN-WORK allot
 
 : RUN ( -- )
    T-RESET PREP
-   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED DISCOVERY CLOSURE DEEP-LOADS LARGE-LOADS DEEP-EVALS
+   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED DISCOVERY DEEP-LOADS LARGE-LOADS DEEP-EVALS
    ENGINE-ALIASES JOIN-ROOM DIRNAMES
    FS:CLEANUP-RUN T-REPORT ;
 
 RUN
 ;package
-;using
-;using
 ;using

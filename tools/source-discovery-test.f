@@ -53,7 +53,9 @@ variable SDT-SRC-U
 : SDT-PATH ( ^u8 n -- ^u8 n )
    SDT-ROOT$ 2swap JOIN CANONICAL drop ;
 
-: SDT-DISCOVER ( -- )  SDT-ENTRY$ DISCOVER:RUN ;
+: SDT-READ ( -- )  SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN ;
+
+: SDT-DISCOVER ( -- )  SDT-READ DISCOVER:RUN-READ ;
 
 : SDT-WANT+ ( ^u8 n -- )  SDT-WANT SDT-WANT-CAP SDT-WANT-U BUF-APPEND ;
 
@@ -153,7 +155,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ The entry walked with its bytes armed as the rejection source, as the checker
 \ arms the file it walks: a record is placed in them.
 : SDT-ARMED-RUN ( -- )
-   SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN
+   SDT-READ
    DISCOVER:BYTES$ 1 1 0 REJECTION:SOURCE!
    DISCOVER:RUN-READ ;
 
@@ -518,7 +520,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ --- a tree file: the loader's own definitions ---------------------------------
 
 : SDT-TEST-LOADER-SITE ( -- )
-   s" src/core/include.f" DISCOVER:RUN
+   s" src/core/include.f" ENTRY-RESOLVE drop RESOLVED-ROOT$
+   DISCOVER:READ-IN DISCOVER:RUN-READ
    EVENT-COUNT 0 T= ;
 
 : SDT-RUN-EMIT-SMALL ( -- )
