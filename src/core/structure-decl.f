@@ -106,8 +106,8 @@ variable HELP-U
 \ `width<n>` and `init<n,n>` do not).
 : CELL-PARAMS? ( n -- bool ) {: fam:n :}
    YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
-\ Whether the token at a is a DEFTYPE's whole base, which a one-type help may
-\ replace; a pointer inside a longer base (`^^`) gets the pointer help.
+\ Whether the token at a is a DEFTYPE's whole base, which a help naming one
+\ type may replace.
 : WHOLE-BASE? ( ^u8 n -- bool ) {: a:^ u:n :}
    DEFTYPE? a BASE-A @ = and u BASE-U @ = and ;
 \ The help for family fam named bare at a: a DEFTYPE gets the NEWTYPE that
@@ -118,9 +118,16 @@ variable HELP-U
    DECL-REJECT:FAMILY$ BASE-A @ BASE-U @ a u fam TFAM-ARITY@ ARGS-HELP$ ;
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
-\ The help for a malformed pointer token at a.
+\ The help for a malformed pointer token at a: a DEFTYPE's whole base gets the
+\ base help, a longer base the NEWTYPE over `^T`, a wrap or field the spelling.
 : SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
    WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
+   DEFTYPE? IF
+      DECL-REJECT:FAMILY$ {: na:^ nu:n :}
+      na nu s" ^T" NEWTYPE-HELP
+      s" ` instead, `^` joined to the type it points at, as in `NEWTYPE " HELP+
+      nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
+      s"  ^u8`" HELP+  HELP-P @ HELP-U @ EXIT THEN
    WRAP? IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`" EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;

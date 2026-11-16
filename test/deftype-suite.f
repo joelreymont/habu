@@ -141,6 +141,16 @@ s" DEFTYPE dx ^option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" option" s" type is parametric and needs type arguments"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^option<n>` instead\n" DT-REC
+\ a malformed pointer inside a longer base gets the NEWTYPE over `^T`; a
+\ NEWTYPE's gets the pointer's spelling.
+REJECTION:CAPTURE
+: DT-PTR-PTR ( -- ) s" DEFTYPE dx ^^" VERIFY:SOURCE-BUF ;
+' DT-PTR-PTR catch CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n --> <input>:1:13\n  |\n1 | DEFTYPE dx ^^\n  |             ^ pointer without a pointee\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^T` instead, `^` joined to the type it points at, as in `NEWTYPE dx ^u8`\n\n" CONTAINS? TTRUE
+REJECTION:CAPTURE
+: DT-NT-PTR ( -- ) s" NEWTYPE nx ^" VERIFY:SOURCE-BUF ;
+' DT-NT-PTR catch CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n --> <input>:1:12\n  |\n1 | NEWTYPE nx ^\n  |            ^ pointer without a pointee\n  = help: spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`\n\n" CONTAINS? TTRUE
 \ a width inside a longer base gets the NEWTYPE that loads, `n` for the width.
 s" DEFTYPE dx ^width"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
