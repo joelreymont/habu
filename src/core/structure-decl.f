@@ -24,6 +24,7 @@ variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable POINTEE    \ resolving the pointee of `^`: the declared family may be named
 PTR-VARIABLE BASE-A   variable BASE-U   \ a wrap's base token
+PTR-VARIABLE NAME-A   variable NAME-U   \ a wrap's name as written
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
@@ -598,9 +599,10 @@ SD-QUOT-INSTALL
    na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
-: SD-REGISTER ( ^u8 n n -- )
-   {: na:^ nu:n ar:n :}
-   na nu DECL-REJECT:TOKEN!
+\ Registers the family na nu names, its duplicate placed at the token ta tu.
+: SD-REGISTER ( ^u8 n ^u8 n n -- )
+   {: na:^ nu:n ta:^ tu:n ar:n :}
+   ta tu DECL-REJECT:TOKEN!
    s" duplicate family"
    s" rename the structure: this package already declares a family with this name"
    E-TFAM-DUP DECL-REJECT:EXPECT
@@ -679,7 +681,7 @@ SD-QUOT-INSTALL
    THEN
    {: ar:n :}
    2dup NAME-GATE
-   ar
+   2dup ar
    SD-REGISTER
    CLAUSES ;
 
@@ -700,15 +702,18 @@ SD-QUOT-INSTALL
 
 \ A newtype over a base: its name, then the base's tokens, which stand for one
 \ field `base`; a token past the base is rejected. DEFTYPE reaches neither
-\ rejection: its name is never empty and its base is one token.
+\ rejection: its name is never empty and its base is one token. A record of
+\ the name stands at the name as written: a DEFTYPE's name reaches the stream
+\ folded, in a buffer no source holds.
 : WRAP-DRIVE ( -- )
    NEXT {: na:^ nu:n :}
    na nu DECL-REJECT:FAMILY!
    nu 0= IF s" missing name"
       s" write the family name after `NEWTYPE`, as in `NEWTYPE path str`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   NAME-A @ NAME-U @ DECL-REJECT:TOKEN!
    na nu NAME-GATE
-   na nu 0 SD-REGISTER
+   na nu NAME-A @ NAME-U @ 0 SD-REGISTER
    0 FIELD-MISS !  0 POINTEE !
    NEXT 2dup BASE-U ! BASE-A !
    RESOLVE-TYPE {: node:n :}
@@ -721,9 +726,11 @@ SD-QUOT-INSTALL
    SD-SEAL
    na nu BASE-A @ BASE-U @ ONE-NAME-GATE ;
 
-\ The kind is the declaration's keyword, "newtype" or "deftype". The stream has
-\ no closer, so a rejected one resynchronizes to its end.
-: WRAP-FRONT ( ^u8 n -- ^u8 n ^u8 n [ -- ] )
+\ Takes the name as written and the kind, the declaration's keyword, "newtype"
+\ or "deftype". The stream has no closer, so a rejected one resynchronizes to
+\ its end.
+: WRAP-FRONT ( ^u8 n ^u8 n -- ^u8 n ^u8 n [ -- ] )
+   2swap NAME-U ! NAME-A !
    s" " [: SD-RESET WRAP-DRIVE ;] ;
 
 public
@@ -763,17 +770,19 @@ public
    TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
    NO ;
 
-\ Registers NAME's family over BASE: one field base, no word made; KIND is the
+\ Registers the family HEADER names over BASE: one field base, no word made;
+\ each record of the name stands at TOKEN, the name as written. KIND is the
 \ declaration's keyword, "newtype" or "deftype", which its records name.
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
-: SD-WRAP-OUTCOME ( ^u8 n ^u8 n ^u8 n -- ^u8 n bool )
+: SD-WRAP-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n -- ^u8 n bool )
+   {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
-   WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
+   ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;
 \ The same, raising E-UNRESOLVED instead of answering, and answering the
 \ family, or -1 when a multi-error load rejected it.
-: SD-WRAP ( ^u8 n ^u8 n ^u8 n -- n )
+: SD-WRAP ( ^u8 n ^u8 n ^u8 n ^u8 n -- n )
    SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
    TYPE-DECL:TDECL-FAM-REG @ ;
 
@@ -808,7 +817,7 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    tu 0= IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
+   na nu 2dup STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
 
 ;using
 ;using

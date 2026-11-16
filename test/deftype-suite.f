@@ -93,14 +93,15 @@ DEFTYPE REV str
 s" abc" >str >REV REV>STR str> nip 3 T=
 \ a rev is not a str: 70, the checker's rejection ("expected: str", "found: rev").
 s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
-\ The record of a rejected DEFTYPE base: its title, the label at the base and
-\ the help, each a whole line.
+\ The record of a rejected DEFTYPE: its title, the label at its token, no
+\ `word` note and the help, each a whole line.
 : DT-REC ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: sa:^ su:n ta:^ tu:n ba:^ bu:n la:^ lu:n ha:^ hu:n :}
    REJECTION:CAPTURE
    sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
    REJECTION:BUFFER$ ta tu CONTAINS? TTRUE
    ba bu la lu DECL-DIAG:CAUSE? TTRUE
+   REJECTION:BUFFER$ s" = word:" CONTAINS? TFALSE
    REJECTION:BUFFER$ ha hu CONTAINS? TTRUE ;
 \ the base is one name, since NAME>BASE is made from it. A name and a base the
 \ NEWTYPE would accept, the base a pointer, an application or qualified, get
@@ -121,10 +122,20 @@ s" DEFTYPE dx ^nosuch"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" nosuch" s" unknown field type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
+\ A record of the name stands at the name as written, not at the base.
 s" DEFTYPE ptr ^u8"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`\n"
-s" ^u8" s" reserved name"
+s" ptr" s" reserved name"
 S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
+s" DEFTYPE ptr str"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`\n"
+s" ptr" s" reserved name"
+S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
+DEFTYPE DTDUP str
+s" DEFTYPE DTDUP str"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtdup`\n"
+s" DTDUP" s" duplicate family"
+S\" = help: rename the structure: this package already declares a family with this name\n" DT-REC
 \ inside a longer base the help keeps the base whole: no `NEWTYPE dx option<n>`.
 s" DEFTYPE dx ^option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
