@@ -1054,9 +1054,10 @@ NO-FILE$ FILE-COPY
 public
 : FILE! ( ^u8 n -- )
    FILE-COPY  -1 NAMED ! ;
-\ Places in the bytes of the file being read name this file.
+\ Places in the bytes of the file being read name this file; the files it
+\ loads are the program's, not the tool's own.
 : LABEL! ( ^u8 n -- )
-   FILE!
+   FILE-COPY
    PATH$ LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
 

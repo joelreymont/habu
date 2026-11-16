@@ -1801,6 +1801,19 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-PATH-RANGE" REJECT-RC LAUNCHED  ERR$ GJA-SPLIT-LINES
    [: TOO-LONG-MSG ;] RANGE-FIELDS ;
 
+\ CALLBACK builds the duplicate's name in its own buffer, so the check places
+\ the record at the `;CALLBACK` that ran it, as the load does.
+: TEST-CALLBACK-DUPLICATE ( -- )
+   s" a duplicate a definer builds is placed at the token that ran it" T-LABEL
+   SB-RESET
+   s" require src/lib/ffi-callback.f" SB-APPEND LF+
+   s" CALLBACK: CB ( -- )" SB-APPEND LF+
+   s" : CB-BODY ( -- n ) 1 ;" SB-APPEND LF+
+   s" ;CALLBACK" SB-APPEND LF+
+   s" callback-duplicate.f" FIXTURE!
+   s" E-DUPLICATE-DEFINITION" REJECT-RC CHECKED
+   0 s" ;CALLBACK" 4 1 74 83 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ The fixture's path spelled BASE/./.../NAME, past the cap.
 : DOTTED! ( ^u8 n -- ) {: name:^ nameu:n :}
    BASE$ {: b:^ bu:n :}
@@ -3276,6 +3289,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-NAMED-LINK-UP
    TEST-NAMED-TOO-LONG
    TEST-STDIN-PATH-TOO-LONG
+   TEST-CALLBACK-DUPLICATE
    TEST-NAMED-DOTTED
    TEST-SCRIPT-REQUIRED-EMPTY
    TEST-NAMED-DIR
