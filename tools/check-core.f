@@ -663,9 +663,7 @@ private
 : CHK-NO-INPUT ( ^u8 n -- ) {: a:^ u:n :}
    a u CANONICAL {: path:^ pathu:n exists:bool :}
    exists 0= if a u a u true SOURCE-ROOT:MISSING-SOURCE then
-   a u FS:DIR? if path pathu FS:EISDIR CHK-UNREADABLE-NAMED then
-   NULL-PTR 0 path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
+   NULL-PTR 0 path pathu CHK-IRREGULAR ;
 
 : CHK-ENGINE-PROVIDED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-ENGINE-PROVIDED" CHK-INPUT-OPEN

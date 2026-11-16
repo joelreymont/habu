@@ -224,6 +224,14 @@ variable CHK-EXPAND-TOP
 : CHK-UNREADABLE-NAMED ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
    NULL-PTR 0 path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
 
+\ PATH, found for the request T, is no regular file: the loader's rejection.
+: CHK-IRREGULAR ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
+   path pathu FS:DIR? if
+      t tu path pathu FS:EISDIR SOURCE-ROOT:UNREADABLE-SOURCE
+   then
+   t tu path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
+
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
    ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID ix CHK-DIR-PUSH ;
 
@@ -306,11 +314,13 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    refused if e CHK-UNREADABLE then
    CHK-RUN-READ ;
 
-\ The top's caller found it; a followed edge may name a file that is not there.
+\ The top's caller found it; a followed edge may name a file that is not there,
+\ or a path that is there but no regular file.
 : CHK-PRESENT ( n -- ) {: id:n :}
    CHK-EDGE @ 0 < if exit then
    id CHK-DEP$ FS:FILE? if exit then
-   CHK-EDGE @ CHK-MISSING ;
+   id CHK-DEP$ FS:EXISTS? 0= if CHK-EDGE @ CHK-MISSING exit then
+   CHK-EDGE @ CHK-EDGE-ARM id CHK-DEP$ CHK-IRREGULAR ;
 
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK

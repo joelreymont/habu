@@ -1608,6 +1608,26 @@ variable RC
    FX-PATH$ 0 FS:CHMOD-MODE
    [: DIR-REJECTED ;] [: FX-PATH$ $1ED FS:CHMOD-MODE ;] finally ;
 
+\ A required directory gets the load's record of a read that fails with EISDIR,
+\ placed at the request, from the load and the check alike.
+: TEST-REQUIRED-DIR ( -- )
+   s" a required path that is a directory" T-LABEL
+   s" required-dir.f" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" require required-dir.f" s" require-dir.f" LINE-FIXTURE
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   0 s" message" s" cannot read `required-dir.f`" FIELD=
+   0 s" required-dir.f" 1 9 8 22 AT
+   0 s" source_line" s" require required-dir.f" FIELD=
+   0 s" label" s" is a directory" FIELD=
+   SB-RESET  BASE$ SB-APPEND  s" /required-dir.f" SB-APPEND
+   0 s" resolved" SB$ NOTE=
+   0 s" help" s" name a source file, not a directory" FIELD=
+   SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `required-dir.f`\n --> " SB-APPEND
+   FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
+   SB$ INCLUDE-IO-RC LOADED ;
+
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )
    s" a malformed colon definition the load rejects at its `:`" T-LABEL
@@ -2746,6 +2766,7 @@ variable RC
    TEST-ALL-UNREADABLE
    TEST-NAMED-MISSING
    TEST-NAMED-DIR
+   TEST-REQUIRED-DIR
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-GENERATES
