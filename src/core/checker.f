@@ -13202,6 +13202,40 @@ variable SEALS-N
    wid 0= IF NULL-PTR EXIT THEN
    CHECKER-QTAIL$ wid WL-PROBE ;
 
+\ The interpreter runs these top-level keywords before it looks the token up,
+\ so at top level none is a word. An id is its spelling's place in the list.
+: TOP-KEYWORDS ( -- ^u8 n )
+   s" package public private global ;package host target seal-package using ;using export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
+
+\ The end of the spelling that starts at s in list k ku.
+: KEYWORD-END ( ^u8 n n -- n ) {: k:^ ku:n s:n :}
+   s BEGIN dup ku < WHILE  k over + c@ 32 = IF EXIT THEN  1 + REPEAT ;
+\ The id of top-level keyword t tu, folding case, or -1.
+: TOP-KEYWORD-ID ( ^u8 n -- n ) {: t:^ tu:n :}
+   TOP-KEYWORDS {: k:^ ku:n :}
+   0 0 BEGIN over ku < WHILE
+      {: s:n id:n :}
+      k ku s KEYWORD-END {: e:n :}
+      t tu  k s +  e s -  CORE-STR=CI IF id EXIT THEN
+      e 1 +  id 1 +
+   REPEAT
+   2drop -1 ;
+: TOP-KEYWORD? ( ^u8 n -- bool ) TOP-KEYWORD-ID 0 >= ;
+
+\ The keywords a body's compiler reads before it looks a word up: a word named
+\ by one could never be called from a body.
+: BODY-KEYWORD? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
+   {: t:^ tu:n :}
+   0 BEGIN dup tu < WHILE
+      {: s:n :}
+      t tu s KEYWORD-END {: e:n :}
+      a u  t s +  e s -  CORE-STR=CI IF RES-TRUE EXIT THEN
+      e 1 +
+   REPEAT
+   drop RES-FALSE ;
+
 \ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
 \ its package is sealed, EXPORT takes a private word, as a reopening could.
 : EXPORT-PRIVATE ( ^u8 n -- ^n )
@@ -13231,6 +13265,23 @@ variable SEALS-N
    pa pu REJECTION:EMIT-STR
    s" ` instead: no other package may export a sealed package's private word"
    REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ A keyword that names no word is read before any lookup, so no export can
+\ name it.
+: EXPORT-KEYWORD ( ^u8 n -- ) {: a:^ u:n :}
+   a u TOP-KEYWORD? IF  s" a top-level keyword"  s" at top level"
+   ELSE  a u BODY-KEYWORD? 0= IF EXIT THEN
+      s" a keyword of a definition's body"  s" inside a definition"
+   THEN {: k:^ ku:n w:^ wu:n :}
+   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is " REJECTION:EMIT-STR  k ku REJECTION:EMIT-STR
+   s" , not a word, so no package can export it" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" keyword, not a word" REJECTION:EMIT-STR
+   REJECTION:HELP  s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" : a keyword needs no export" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 package CHECK
@@ -17732,6 +17783,16 @@ private
    s" ` directly: a primitive is visible in every package" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+: EXPORT-JUDGED ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-EXPORT-PRIM" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is built into the checker, which judges each use by what it does,"
+   REJECTION:EMIT-STR  s"  so it has no effect to export" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" built in" REJECTION:EMIT-STR
+   REJECTION:HELP  s" drop the export: `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" ` is visible in every package" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : EXPORT-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
    s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -17755,6 +17816,7 @@ private
 EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED
+EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
@@ -17763,7 +17825,9 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
+   a u EXPORT-KEYWORD
    sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
+   sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF a u EXPORT-JUDGED THEN
    a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
    a u EXPORT-UNDEFINED ;
 
@@ -21037,19 +21101,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" recurse" CORE-STR= IF 24 EXIT THEN
    -1 ;
 
-\ The keywords a body's compiler reads before it looks a word up: a word named
-\ by one could never be called from a body.
-: BODY-KEYWORD? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
-   {: t:^ tu:n :}
-   0 BEGIN dup tu < WHILE
-      {: s:n :}
-      t tu s PROW-INK {: e:n :}
-      a u  t s +  e s -  CORE-STR=CI IF RES-TRUE EXIT THEN
-      e 1 +
-   REPEAT
-   drop RES-FALSE ;
+EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
 
 : CF-STEP ( n -- ) {: code:n :}
    K-CONTROL code 0 EVENT!

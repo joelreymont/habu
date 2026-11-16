@@ -353,17 +353,18 @@ public
   cost. `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
   `EXPORT PKG:NAME` also takes a private `NAME` of a package that is not
-  sealed; an engine package imports a private checker word into its own
-  private section this way. Rejected: an undefined source
-  (`E-EXPORT-UNDEFINED`), a private word of a sealed package
-  (`E-SEALED-PACKAGE`), a primitive (`E-EXPORT-PRIM`),
-  an internal engine word (`E-EXPORT-UNSAFE`), a declaration hb runs under
-  its own name such as `ENUM` (`E-EXPORT-UNSAFE`) and a duplicate tail in the
-  target section (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK`
-  brings its clause along as `MK;does`. A top-level-only definer such as
-  `TASK:+USER` exports as itself and stays top level only. Re-exporting a generated constructor
-  under a second name is allowed; adding tails INTO a generated constructor
-  package is not. `EXPORT` outside a package is rejected
+  sealed; an engine package imports a private checker word into its own private
+  section this way. Rejected: an undefined source (`E-EXPORT-UNDEFINED`), a
+  keyword (`E-EXPORT-UNDEFINED`), a private word of a sealed package
+  (`E-SEALED-PACKAGE`), a primitive (`E-EXPORT-PRIM`), a word the checker
+  judges at each use such as `execute` (`E-EXPORT-PRIM`), an internal engine
+  word (`E-EXPORT-UNSAFE`), a declaration hb runs under its own name such as
+  `ENUM` (`E-EXPORT-UNSAFE`) and a duplicate tail in the target section
+  (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK` brings its
+  clause along as `MK;does`. A top-level-only definer such as `TASK:+USER`
+  exports as itself and stays top level only. Re-exporting a generated
+  constructor under a second name is allowed; adding tails INTO a generated
+  constructor package is not. `EXPORT` outside a package is rejected
   (`E-EXPORT-NO-PACKAGE`).
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the refusals.

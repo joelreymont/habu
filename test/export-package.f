@@ -129,6 +129,22 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+: XPK-JUDGED-FORGE$ ( -- ^u8 n )           \ a word the checker judges (E-EXPORT-PRIM)
+   SB-RESET
+   s" package XB" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT execute" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+: XPK-KEYWORD-FORGE$ ( -- ^u8 n )          \ a top-level keyword (E-EXPORT-UNDEFINED)
+   SB-RESET
+   s" package XB" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT variable" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 : XPK-UNSAFE-FORGE$ ( -- ^u8 n )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
    SB-RESET
    s" package TICK-ALIAS" XPK-LINE
@@ -592,6 +608,13 @@ create XPK-EMPTY 1 allot
 
 \ --- cases ---------------------------------------------------------------------
 
+\ The source a u is rejected with record e and text c by stdin, by --load and
+\ by the verifier alone.
+: XPK-REJECT-ALL ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
+   a u XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
+   a u XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
+   XPK-RUN-VERIFY XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
+
 : XPK-POSITIVES ( -- )
    s" dual-name execution + checked callers" T-LABEL
    XPK-OK-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 14" XPK-OUT? s" 10" XPK-OUT?
@@ -618,6 +641,12 @@ create XPK-EMPTY 1 allot
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-PRIM]" XPK-ERR?  s" `dup`" XPK-ERR?
+   s" a word the checker judges rejects (E-EXPORT-PRIM)" T-LABEL
+   XPK-JUDGED-FORGE$ s" error[E-EXPORT-PRIM]" s" is built into the checker"
+   XPK-REJECT-ALL
+   s" a top-level keyword rejects (E-EXPORT-UNDEFINED)" T-LABEL
+   XPK-KEYWORD-FORGE$ s" error[E-EXPORT-UNDEFINED]" s" is a top-level keyword"
+   XPK-REJECT-ALL
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
@@ -829,7 +858,12 @@ create XPK-EMPTY 1 allot
    s" a sealed package's part defines under a using" T-LABEL
    XPK-PART-USING$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines B:X into itself" T-LABEL
-   XPK-PART-QUALIFIED$ XPK-ACCEPT-BOTH ;
+   XPK-PART-QUALIFIED$ XPK-ACCEPT-BOTH
+   s" a word spelled as a top-level keyword exports" T-LABEL
+   SB-RESET
+   s" package XP" XPK-LINE  s" : HOST ( -- n ) 7 ;" XPK-LINE
+   s" public" XPK-LINE  s" EXPORT HOST" XPK-LINE  s" ;package" XPK-LINE
+   s" XP:HOST . cr" XPK-LINE  SB$ XPK-ACCEPT-BOTH ;
 
 \ The declaration words are their packages' global words over private
 \ implementations: a checked body reaches no implementation, and may not call

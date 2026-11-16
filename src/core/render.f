@@ -1474,25 +1474,8 @@ variable MDV-I   variable MDV-F
 : CLOSER-PINNED? ( -- bool )
    PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
 
-\ The interpreter runs these top-level keywords before it looks the token up,
-\ so at top level none is a word. An id is its spelling's place in the list.
-: TOP-KEYWORDS ( -- ^u8 n )
-   s" package public private global ;package host target seal-package using ;using export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
-
-\ The end of the spelling that starts at s in list k ku.
-: KEYWORD-END ( ^u8 n n -- n ) {: k:^ ku:n s:n :}
-   s BEGIN dup ku < WHILE  k over + c@ 32 = IF EXIT THEN  1 + REPEAT ;
-\ The id of top-level keyword t tu, folding case, or -1.
-: TOP-KEYWORD-ID ( ^u8 n -- n ) {: t:^ tu:n :}
-   TOP-KEYWORDS {: k:^ ku:n :}
-   0 0 BEGIN over ku < WHILE
-      {: s:n id:n :}
-      k ku s KEYWORD-END {: e:n :}
-      t tu  k s +  e s -  CORE-STR=CI IF id EXIT THEN
-      e 1 +  id 1 +
-   REPEAT
-   2drop -1 ;
-: TOP-KEYWORD? ( ^u8 n -- bool ) TOP-KEYWORD-ID 0 >= ;
+EXPORT CHECKER-RESOLVE:TOP-KEYWORD-ID
+EXPORT CHECKER-RESOLVE:TOP-KEYWORD?
 s" package" TOP-KEYWORD-ID constant KW-PACKAGE
 s" public" TOP-KEYWORD-ID constant KW-PUBLIC
 s" private" TOP-KEYWORD-ID constant KW-PRIVATE
