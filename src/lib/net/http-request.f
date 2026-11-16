@@ -4,8 +4,17 @@
 \ The head is read before the handler runs; the body only when the handler
 \ first asks for it (BODY$). Limits are answered, not thrown: a head past
 \ HEAD-CAP is 431, a body past the route or server cap is 413, a transfer coding
-\ other than chunked is 501, and anything the grammar refuses is 400. Deadlines
-\ and the late budget: FILL.
+\ other than chunked is 501, and anything the grammar refuses is 400.
+\ DEADLINES. HTTP's START deadline bounds each head; a configured body timeout
+\ starts at the handler's first BODY$ or BODY-READER, otherwise that same
+\ deadline also bounds the body. Before its deadline a fill reads what the
+\ socket holds, serving a pending TASK:HALT, and parks the task on the AIO loop
+\ only when it holds nothing. Past it WAIT-READABLE asks once without waiting,
+\ and the first fill to find it passed takes the bytes then queued as the late
+\ budget against that deadline: every later fill reads at most what is left of
+\ it, however late it comes. The request is late once nothing is readable, the
+\ budget is spent or a stop is raised, so a stop ends late work at the next
+\ fill, past the parse of at most one window (IN-CAP).
 require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -14,6 +23,7 @@ require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/byte-buffer.f
+require src/lib/task.f
 
 package HTTP
 
@@ -176,11 +186,17 @@ private
    base left + idx IN-U! ;
 
 
-: READ-INTO ( TCP4:connection n -- fill-outcome ) {: conn:TCP4:connection idx:n :}
+\ The free tail of the slot's input buffer, at most what is left of a late
+\ budget once one is taken.
+: READ-SPAN ( n -- ^u8 NUM:byte-len ) {: idx:n :}
    IN-CAP idx IN-U@ - {: room:n :}
    idx LATE-LEFT@ {: left:n :}
    left UNTAKEN = if room else room left min then {: want:n :}
-   conn idx IN-BUF idx IN-U@ want SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
+   idx IN-BUF idx IN-U@ want SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES ;
+
+
+: READ-INTO ( TCP4:connection n -- fill-outcome ) {: conn:TCP4:connection idx:n :}
+   conn idx READ-SPAN TCP4:READ
    MATCH TCP4:read-result
       data OF BLEN>N idx TOOK construct fill-outcome filled ENDOF
       closed OF drop construct fill-outcome ended ENDOF
@@ -199,18 +215,7 @@ private
       failed OF drop false ENDOF
    ;MATCH ;
 
-\ One transfer into the slot's window; the caller proves there is room for it.
-\ HTTP's START deadline bounds each head; a configured body timeout starts at
-\ the handler's first BODY$ or BODY-READER, otherwise that same deadline also
-\ bounds the body.
-\ Past a deadline WAIT-READABLE asks once without waiting, and the first fill to
-\ find it passed takes the bytes then queued as the late budget against that
-\ deadline: every later fill reads at most what is left of it, however late it
-\ comes. The request is late once nothing is readable, the budget is spent or a
-\ stop is raised, so a stop ends late work at the next fill, past the parse of
-\ at most one window (IN-CAP).
-: FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
-   idx IN-U@ IN-CAP >= if E-CAPACITY throw then
+: WAIT-FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
    conn deadline WAIT-READABLE 0= if construct fill-outcome late exit then
    mono-ns deadline >= if
       STOPPING? if construct fill-outcome late exit then
@@ -218,6 +223,23 @@ private
       idx LATE-LEFT@ 0= if construct fill-outcome late exit then
    then
    conn idx READ-INTO ;
+
+
+\ One transfer into the slot's window; the caller proves there is room for it.
+\ Its deadlines and late budget: the file's header.
+: FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
+   idx IN-U@ IN-CAP >= if E-CAPACITY throw then
+   mono-ns deadline >= if conn idx deadline WAIT-FILL exit then
+   conn idx READ-SPAN TCP4:TRY-READ
+   MATCH TCP4:try-read-result
+      data OF
+         BLEN>N idx TOOK TASK:HALT-DUE? if TASK:PAUSE then
+         construct fill-outcome filled
+      ENDOF
+      closed OF drop construct fill-outcome ended ENDOF
+      empty OF conn idx deadline WAIT-FILL ENDOF
+      failed OF drop construct fill-outcome broken ENDOF
+   ;MATCH ;
 
 
 : AVAIL ( n -- n ) {: idx:n :}
