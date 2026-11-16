@@ -13044,6 +13044,52 @@ public
    o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
 ;package
 
+\ ---- the code ceiling ----------------------------------------------------------
+package CODE-SPACE
+
+\ The code ceiling's distance below the end of the region.
+$4000 constant RESERVE
+
+\ A long name copied to CP takes one whole target code slot.
+: SLOT ( -- n )
+   HB-TARGET-LINUX-X86-64? IF 16 ELSE 4 THEN ;
+
+public
+\ The status for a long name past the code ceiling.
+76 constant FULL-RC
+
+: CEILING ( -- n ) dbase@ REGION + RESERVE - ;
+
+: SPAN ( n -- n )
+   dup DNAME-INL <= IF drop 0 EXIT THEN
+   SLOT {: slot:n :}
+   slot 1 - + slot negate and ;
+
+private
+
+\ Signed comparisons, as the engine's head makes them: `U>` loads after this file.
+: FITS-AFTER? ( n n -- bool ) {: u:n used:n :}
+   u DNAME-INL > 0= IF RES-TRUE EXIT THEN
+   CEILING {: ceil:n :}
+   ceil cp@ > 0= IF RES-FALSE EXIT THEN
+   ceil cp@ - {: room:n :}
+   room used > 0= IF RES-FALSE EXIT THEN
+   room used - {: left:n :}
+   left u SPAN > ;
+
+public
+
+: ROOM ( ^u8 n ^u8 n n -- ) {: a:^ u:n t:^ tu:n used:n :}
+   u used FITS-AFTER? IF EXIT THEN
+   s" E-CODE-SPACE-FULL" REJECTION:OPEN
+   s" code space has no room for the name `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" no code room" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" shorten the name, or define fewer words in this load" REJECTION:EMIT-STR
+   FULL-RC REJECTION:STOP ;
+;package
+
 \ ---- the checker overlay ------------------------------------------------------
 package CHECKER-OVERLAY
 
@@ -13130,24 +13176,6 @@ variable SNAP-N
    ndict@ DICT-CAP < IF EXIT THEN
    a u a u REJECTION:DICTIONARY-FULL ;
 
-76 constant CODE-FULL-RC
-
-\ A name past DNAME-INL bytes is copied below the code ceiling, $4000 under the
-\ region's end, in whole code slots (16 bytes on x86-64, else 4).
-: CODE-ROOM ( ^u8 n -- ) {: a:^ u:n :}
-   u DNAME-INL > 0= IF EXIT THEN
-   HB-TARGET-LINUX-X86-64? IF 16 ELSE 4 THEN {: slot:n :}
-   u slot 1 - + slot negate and {: span:n :}
-   dbase@ REGION + $4000 - {: ceil:n :}
-   ceil cp@ >  IF ceil cp@ - span > IF EXIT THEN THEN
-   s" E-CODE-SPACE-FULL" REJECTION:OPEN
-   s" code space has no room for the name `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" no code room" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" shorten the name, or define fewer words in this load" REJECTION:EMIT-STR
-   CODE-FULL-RC REJECTION:STOP ;
-
 public
 \ A colon at an edge or a second colon is rejected, as namespace-record
 \ rejects them; a new row takes a private wid as well when OWN is true.
@@ -13157,7 +13185,7 @@ public
    a u NS-ROW {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
    a u ROOM
-   a u CODE-ROOM
+   a u a u 0 CODE-SPACE:ROOM
    a u own namespace-record drop
    a u NS-ROW ;
 private

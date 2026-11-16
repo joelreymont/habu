@@ -833,12 +833,6 @@ package INTERPRETER
 
 private
 
-\ The status for a long name past the code ceiling.
-76 constant PKG-RC-CODE-FULL
-
-\ The code ceiling's distance below the end of the region.
-$4000 constant PKG-CODE-RESERVE
-
 : PKG-INDEX ( ^n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 public
@@ -878,35 +872,7 @@ private
    ndict@ DICT-CAP < if exit then
    a u t tu REJECTION:DICTIONARY-FULL ;
 
-\ A long name copied to CP takes one whole target code slot. Both names an
-\ export writes must fit before its checker declaration becomes pending.
-: PKG-CODE-SLOT ( -- n )
-   HB-TARGET-LINUX-X86-64? if 16 else 4 then ;
-
-: PKG-CODE-SPAN ( n -- n )
-   dup DNAME-INL <= if drop 0 exit then
-   PKG-CODE-SLOT {: slot:n :}
-   slot 1- + slot negate and ;
-
-: PKG-FITS-AFTER? ( n n -- bool ) {: u:n used:n :}
-   u DNAME-INL U> 0= if true exit then
-   dbase@ REGION + PKG-CODE-RESERVE - {: ceil:n :}
-   ceil cp@ U> 0= if false exit then
-   ceil cp@ - {: room:n :}
-   room used U> 0= if false exit then
-   room used - {: left:n :}
-   left u PKG-CODE-SPAN U> ;
-
-: PKG-CODE-ROOM-AFTER ( ^u8 n ^u8 n n -- ) {: a:^ u:n t:^ tu:n used:n :}
-   u used PKG-FITS-AFTER? if exit then
-   s" E-CODE-SPACE-FULL" REJECTION:OPEN
-   s" code space has no room for the name " SAY  a u TICKS
-   t tu REJECTION:AT  s" no code room" SAY
-   REJECTION:HELP
-   s" shorten the name, or define fewer words in this load" SAY
-   PKG-RC-CODE-FULL REJECTION:STOP ;
-
-: PKG-CODE-ROOM ( ^u8 n ^u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
+: PKG-CODE-ROOM ( ^u8 n ^u8 n -- ) 0 CODE-SPACE:ROOM ;
 
 \ The operation at off in the owner record a dispatch cell names, 0 when there
 \ is no record or the field is empty: the call is then skipped, not refused.
@@ -1278,9 +1244,10 @@ private
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then
+   \ Both names an export writes must fit before its checker declaration becomes pending.
    ta tu ta tu PKG-CODE-ROOM
    clause 0 >= if
-      clause XREF-REC XREF-NAME$ 2dup tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER
+      clause XREF-REC XREF-NAME$ 2dup tu CODE-SPACE:SPAN CODE-SPACE:ROOM
    then
    PKG-CHECK-EXPORT
    ta tu src PKG-INDEX get-current alias-record
@@ -1516,16 +1483,16 @@ private
    off i BODY-ITEMS:OFF ITEM!  u i BODY-ITEMS:LEN ITEM!
    i 1 + BODY-ITEMS:COUNT-CELL CELL! ;
 
-\ Both comparisons are signed, as the engine's head makes them.
+\ The comparison is signed, as the engine's head makes it.
 : DEF-CODE-ROOM ( -- )
-   cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
+   cp@ CODE-SPACE:CEILING >= if
       s" E-CODE-SPACE-FULL" REJECTION:OPEN
       s" the code space is full at `" REJECTION:EMIT-STR
       TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
       TOKEN$ REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
       REJECTION:HELP
       s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
-      PKG-RC-CODE-FULL REJECTION:STOP
+      CODE-SPACE:FULL-RC REJECTION:STOP
    then ;
 
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader

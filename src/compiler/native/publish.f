@@ -25,8 +25,6 @@ private
 
 EXPORT CHECK:DOES-PUBLISHED
 
-$4000 constant CODE-RESERVE
-
 \ Inside NPUB the publication primitives bind this package's private rows
 \ (src/habu/prims.f), so their callers here are checked. Anywhere else a
 \ checked caller is refused by name: code-publish, xref-retarget and
@@ -53,12 +51,9 @@ $4000 constant CODE-RESERVE
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
-: CODE-CEILING ( -- n )
-   dbase@ REGION + CODE-RESERVE - ;
-
 : ROOM-CK ( n -- n ) {: size:n :}
    cp@ {: fn:n :}
-   fn size + CODE-CEILING > if E-NPUB-ROOM throw then
+   fn size + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
    fn ;
 
 : PLACE-CK ( n -- ) {: fn:n :}
@@ -189,7 +184,7 @@ create TRAILER TRAILER-BYTES allot
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx DOES-NAME-PAD {: pad:n :}
-   fn size + pad + CODE-CEILING > if E-NPUB-ROOM throw then
+   fn size + pad + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
    fun NEMIT:FUNCTION-OFFSET@ {: off:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
@@ -215,7 +210,7 @@ public
 
 : PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
+   fn size + TRAILER-BYTES + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
    fn NSHADOW:SOURCE-FUNS
    idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH
