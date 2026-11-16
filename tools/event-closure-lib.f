@@ -415,9 +415,8 @@ public
 \ A source owner reads every loading event from its own byte table. Discovery
 \ fails closed (a top-level dynamic path, an unsupported opener, a loader or
 \ family opener made ambiguous before use) and this file propagates it. A
-\ loading event whose path is not a file joins the list, and the read refuses
-\ it (DISCOVER:RUN-IN names it on fd 2 and rethrows E-FS-STAT): a closure that
-\ left it out would key fewer files than the build reads.
+\ loading event whose path is not a file joins the list, and the read rejects
+\ it: a closure that left it out would key fewer files than the build reads.
 : BUILD-WITH ( ^u8 n [ ^u8 n ^u8 n -- ^u8 n ] -- )
    {: a:^ u:n reader :}
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-STABLE-IN

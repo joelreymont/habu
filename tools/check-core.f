@@ -82,10 +82,8 @@ TYPED-VARIABLE CHK-MAP-BUF-A ^u8
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
-\ The walks' stops under --all-errors, end to end in CHK-KEPT, each the path of
-\ the file it stands in followed by its record; per stop in CHK-KEPT-ROWS the
-\ path's start and length, the byte it stands at, the record's start and length
-\ and the status it stopped with.
+\ Per --all-errors walk stop, CHK-KEPT holds its place's path then its record;
+\ its CHK-KEPT-ROW cells: path at, length, byte, record at, length, status.
 DYNAMIC-BUFFER CHK-KEPT u8
 DYNAMIC-BUFFER CHK-KEPT-ROWS n
 create CHK-JSON-BUF BUF:HDR-BYTES allot
@@ -996,10 +994,8 @@ private
    a 0<>  b 0<>  or if CHECKER-REJECT-RC exit then
    0 ;
 
-\ Writes, after the composition's records, the kept record of each stop whose
-\ place the composition never read: an arm this target skips, a file only such
-\ an arm loads, or text after the composition stopped. Answers the status the
-\ written stops end the run with, 0 when it wrote none.
+\ Writes each kept stop whose place the composition never read: a skipped arm,
+\ a file only one loads, text past its stop. Answers their joined status, or 0.
 : CHK-SEND-UNREAD ( -- n )
    0
    CHK-KEPT-N @ 0 ?do

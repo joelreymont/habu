@@ -785,11 +785,8 @@ variable RC
    DEP-PATH$ 0 FS:CHMOD-MODE
    q [: DEP-PATH$ $1A4 FS:CHMOD-MODE ;] finally ;
 
-\ No composition reads an arm the running target skips, so the walk's record of
-\ a fault only that arm holds, at the place plain check gives it, comes after
-\ the composition's, and an unreadable file's status outranks a rejection's. A
-\ skipped arm in a required file leaves the requiring file's own bytes counted
-\ as read, so a stop there prints once. No suite host is Wasm.
+\ No suite host is Wasm, so these arms are skipped: --all-errors writes each
+\ stop once, where plain check places it, and 74 outranks 70.
 : TEST-ALL-DEAD-ARM ( -- )
    s" a missing file only a skipped arm requires, under --all-errors" T-LABEL
    SB-RESET
@@ -1588,7 +1585,7 @@ variable RC
    0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
    UNPLACED ;
 
-\ A named directory gets the load's record of an open that fails with EISDIR,
+\ A named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
 : TEST-NAMED-DIR ( -- )
    s" a named input that is a directory" T-LABEL
