@@ -1,7 +1,7 @@
 \ main.f - the engine's command line in Habu.
 \ `--load` and stdin build one source stream, interpreted once, open, through
 \ SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file the
-\ loader reads and runs open (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
+\ loader reads and runs (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
 \ process's argv and stdin; RUN takes a vector, so a test can hand it one.
 
 require src/lib/string.f
@@ -165,10 +165,8 @@ CAST: APP-ACTION ( n -- [ -- ] )
 
 public
 
-\ Load what argv names, in order. argv[0] is the program and is not read; a
-\ vector with nothing after it has no file to load (the assembly sends that
-\ one to the REPL before it reaches its file list). The program file of the
-\ plain route runs as a loaded file, its stack kept, as the stream's is.
+\ argv[0] is the program; a vector with nothing after it has no file to load
+\ (the assembly sends that one to the REPL before it reaches its file list).
 : RUN ( ^^u8 n -- ) {: argv:^ argc:n :}
    argc 2 < if NO-FILES then
    argv 1 ARG ROUTE {: r:route :}

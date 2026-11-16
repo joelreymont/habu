@@ -2480,12 +2480,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 public
 
-\ The program file `hb prog.f` runs, as argv names it, is a loaded file without
-\ a registry row: a frame holds its canonical path, root and bytes, `#!` made a
-\ comment, so ACTIVE-SOURCE reads it and a refusal names it. It runs open: the
-\ stack it leaves is kept, with no unit and no residue check. No WITH scope
-\ opens, so CD stays legal in its text and the frame's root is CURRENT$, at the
-\ top level the program's directory.
+\ No WITH scope opens, so CD stays legal in the program's text and the frame's
+\ root is CURRENT$, at the top level the program's directory.
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
    NULL-PTR 0 a u [: CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
@@ -2493,8 +2489,7 @@ public
    exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
    PUSH
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
-   [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
-   catch {: rc:n :}
+   [: LOAD-UNIT ;] catch {: rc:n :}
    ra ru REQUEST-AT!
    INCLUDE-CLOSE
    POP

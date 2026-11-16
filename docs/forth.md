@@ -252,15 +252,15 @@ public
   dependencies. Never include a file so two files share private helpers;
   reopening the package does that.
 - A loaded file is a closed program: `include`, `require` and `--load`
-  evaluate it with `evaluate-closed`. Its top level starts at `depth` 0, a
+  run it on a data stack of its own. Its top level starts at `depth` 0, a
   token reaching its includer's cells throws 70, and a file that ends with
   cells on the stack is refused `E-EVAL-RESIDUE`, so a value crosses a load
   only as a word the file defines. A file that ends inside a definition it
   opened is refused at its end, as every source is (**Rules learned by
   refusal**), `E-VS-UNTERMINATED-DEFINITION`, so no definition spans a load. The
-  program file of `hb prog.f` is a loaded file, so a refusal in it names
-  `prog.f:<line>`, but it keeps its top-level stack; a program on stdin is no
-  file and keeps its stack too.
+  program file of `hb prog.f` is a loaded file too, so a rejection in it
+  names `prog.f:<line>` and a cell it leaves is rejected `E-EVAL-RESIDUE`; a
+  program on stdin is no file and keeps its stack.
 - **Source roots.** Relative dependencies search the root of the file that
   requires them, then the engine's source root, then the invocation working
   directory, each root once. A named `--load` entry's root is its directory; a

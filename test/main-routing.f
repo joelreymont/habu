@@ -53,7 +53,9 @@ create PATH-BUF PATH-CAP allot
 
 : STACK-SCOPE ( -- )
    s" " [: STACK-ARG ;] RUN
-   s" " s" root file keeps the user stack" PASS
+   70 s" root file closes the user stack" GE-EXPECT-RC
+   s" error[E-EVAL-RESIDUE]" s" root file closes the user stack" GE-EXPECT-ERR-HAS
+   s" stack.f:1:1" s" root file closes the user stack" GE-EXPECT-ERR-HAS
    s" " [: s" --load" GE-ARG+ STACK-ARG ;] RUN
    70 s" required file closes the user stack" GE-EXPECT-RC
    s" error[E-EVAL-RESIDUE]" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
