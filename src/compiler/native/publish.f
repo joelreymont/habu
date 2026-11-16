@@ -128,11 +128,14 @@ create TRAILER TRAILER-BYTES allot
 \ A defer body's record ends at its trailer, which names the dispatch cell the
 \ body jumps through (layout.f DEFER-MAGIC), so the span is the slot and not the
 \ emission's return-trimmed length.
-: COMMIT-DEFER ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
-   fn size PLACE
+: DEFER-TRAILER ( n n n -- ) {: idx:n fn:n cell:n :}
    cp@ {: slot:n :}
    fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
    cell slot TRAILER-PLACE ;
+
+: COMMIT-DEFER ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
+   fn size PLACE
+   idx fn cell DEFER-TRAILER ;
 
 : COMMIT-HELD ( -- )
    HELD-DEFER @ 0<> if
@@ -237,6 +240,18 @@ public
 
 private
 
+: HOST-X64? ( -- bool )
+   NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@
+   CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ;
+
+: IMPORT-ALIGNED? ( n -- bool )
+   HOST-X64? if drop true else 3 and 0= then ;
+
+: IMPORT-SITE-CK ( n n n -- )
+   {: site:n size:n width:n :}
+   site 0 < site IMPORT-ALIGNED? 0= or
+   site size width - > or if E-NPUB-RELOC throw then ;
+
 \ Place a prepared body after the pending row's checks; `pad` is room the
 \ caller writes past the body.
 : IMPORT-CODE ( ^u8 n n ^n n ^n n n -- n n )
@@ -244,19 +259,18 @@ private
       addrs:^ addrn:n pad:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
-   size 0 <= size 3 and 0<> or if E-NPUB-RELOC throw then
+   size 0 <= size IMPORT-ALIGNED? 0= or if E-NPUB-RELOC throw then
    recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
    recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
    calln 0 < addrn 0 < or if E-NPUB-RELOC throw then
+   \ x86 sites span the opcode and its rel32 or movabs operand.
+   HOST-X64? if 5 10 else 4 4 then
+   {: callbytes:n addrbytes:n :}
    calln 0 ?do
-      calls i cells + @ {: site:n :}
-      site 0 < site 3 and 0<> or
-      site size 4 - > or if E-NPUB-RELOC throw then
+      calls i cells + @ size callbytes IMPORT-SITE-CK
    loop
    addrn 0 ?do
-      addrs i cells + @ {: site:n :}
-      site 0 < site 3 and 0<> or
-      site size 4 - > or if E-NPUB-RELOC throw then
+      addrs i cells + @ size addrbytes IMPORT-SITE-CK
    loop
    size pad + ROOM-CK {: fn:n :}
    code fn size CODE-WINDOW
@@ -288,7 +302,8 @@ public
 : IMPORT-PENDING-DOES ( ^u8 n n ^n n ^n n bool n -- n )
    {: code:^ size:n recorded:n calls:^ calln:n
       addrs:^ addrn:n wide:bool off:n :}
-   off 0 <= off size >= or off 3 and 0<> or if E-NPUB-RELOC throw then
+   off 0 <= off size >= or off IMPORT-ALIGNED? 0= or
+   if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
    code size recorded calls calln addrs addrn idx DOES-NAME-PAD IMPORT-CODE
       {: at:n fn:n :}
@@ -298,14 +313,13 @@ public
    at 1+ APPEND-PENDING
    at ;
 
-\ A prepared defer body: its record spans the whole body; the trailer naming `cell` follows at
-\ fn + size, the code pointer where COMMIT-DEFER lays it: an arm64 code slot is one instruction word.
+\ The trailer follows the host's aligned code slot, as for a fresh defer.
 : IMPORT-PENDING-DEFER ( ^u8 n ^n n ^n n bool n -- n )
    {: code:^ size:n calls:^ calln:n
       addrs:^ addrn:n wide:bool cell:n :}
    code size  size CODE-SPAN:EXACT  calls calln addrs addrn TRAILER-BYTES IMPORT-CODE
       {: idx:n fn:n :}
-   cell fn size + TRAILER-PLACE
+   idx fn cell DEFER-TRAILER
    idx APPEND-PENDING
    wide IMPORT-MARKS
    idx ;

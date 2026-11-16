@@ -1,6 +1,6 @@
-\ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
+\ hb-build-core.f - builds this tree's native hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb and writes
-\ it with its map beside it. A native build first compiles the tree's arm64
+\ it with its map beside it. A native build first compiles the target's
 \ kernel writer and writes the kernel object the build then links
 \ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
 \ hb's own order (STARTUP); hb then loads the runtime's files, --repl the
@@ -195,6 +195,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : REPL-TERM$ ( -- ^u8 n )
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? if s" src/os/macos/repl-term.f" exit then
+   RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? if s" src/os/linux-x86-64/repl-term.f" exit then
    s" src/os/linux/repl-term.f" ;
 
 
@@ -204,9 +205,11 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    REPL-TERM$ REQUIRE-FILE
    s" src/habu/repl.f" REQUIRE-FILE
    s" src/habu/code-bytes.f" REQUIRE-FILE
-   s" src/habu/debug-watch.f" REQUIRE-FILE
-   s" src/habu/stepper.f" REQUIRE-FILE
-   s" src/habu/debug.f" REQUIRE-FILE
+   RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? 0= if
+      s" src/habu/debug-watch.f" REQUIRE-FILE
+      s" src/habu/stepper.f" REQUIRE-FILE
+      s" src/habu/debug.f" REQUIRE-FILE
+   then
    s" src/lib/c2-memory.f" REQUIRE-FILE
    s" src/habu/link-data.f" REQUIRE-FILE
    s" src/habu/verify-source.f" REQUIRE-FILE
@@ -477,7 +480,9 @@ SUM-U 32 + constant HEAD-U
 : KERNEL-BODY ( -- )
    BETWEEN
    STARTUP
-   s" src/arch/arm64/kernel-object.f" REQUIRE-FILE
+   TARGET @ RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if
+      s" src/arch/x86-64/kernel-object.f"
+   else s" src/arch/arm64/kernel-object.f" then REQUIRE-FILE
    KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
 
 \ LINKER:WITH's build of the mode, which is idle once it returns.

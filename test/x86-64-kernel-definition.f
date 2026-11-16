@@ -113,7 +113,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 : PROTECT, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" X64HARNESS:CALL-ROW, ;
 : AFTER-SEAL, ( -- ) 1 SEAL-NDICT-CELL X64HARNESS:CELL!, ;
-: LIVE, ( -- ) 1 TASKS-LIVE-CELL X64HARNESS:CELL!, ;
+\ Writer refusals belong to a task/callback DATA, not to main with live tasks.
+: LIVE, ( -- ) 1 TASK-TCB-CELL X64HARNESS:CELL!, ;
 
 \ Move CP n bytes into the region.
 : CP-AT, ( n -- ) {: off:n :}
@@ -381,14 +382,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    HELLO$ nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    1 CLOSED, ;
 
-\ A failed definition closes its code window and compile state while leaving
+\ A failed definition clears its compile state while leaving
 \ the enclosing catch's handler, return depth and loop depth intact.
 : DEF-ABORT-CASE, ( -- )
    TIER-0-OPEN,
    14 LOCN-CELL X64HARNESS:CELL!,
    15 BODYLEN-CELL X64HARNESS:CELL!,
-   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   X64KERNEL:WINDOW-OPEN,
    s" def-abort" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED,
@@ -411,7 +410,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ ---- the refusals -------------------------------------------------------------
 \ The armed images exit a refusal before any store, with nothing on fd 2:
-\ - 79, a task live, one image for each row that guards:
+\ - 79, a task/callback DATA, one image for each row that guards:
 \   -namespace-record-live-armed, -namespace-private-live-armed,
 \   -alias-record-live-armed, -def-open-live-armed.
 \ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only

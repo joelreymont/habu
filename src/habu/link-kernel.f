@@ -1,4 +1,4 @@
-\ link-kernel.f - the arm64 kernel a build's link adopts from the kernel object
+\ link-kernel.f - the native kernel a build's link adopts from the kernel object
 \ a kernel build writes, the map from the running hb's kernel primitive entries
 \ to the object's, and the cut that keeps only the kernel code a program
 \ reaches. The two kernels bake different inputs, so the map goes
@@ -12,6 +12,7 @@ require src/core/sha256.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
+require src/habu/link-code.f
 require src/habu/layout.f
 require src/habu/code-bytes.f
 
@@ -33,7 +34,7 @@ EXPORT CHECK:PRIM-ATOM
 EXPORT CHECK:PRIM-CLOSE
 EXPORT CHECK:PRIMS-END
 
-package ARM64
+package NATIVE
 
 \ The host-entry table, ascending by host entry: HOSTS[i] is where a running
 \ hb's kernel primitive enters, ROWS[i] the product kernel row of that primitive.
@@ -135,7 +136,7 @@ variable PATH-U
    40 AT !
    NEXT {: codeu:n :}
    AT @ CODE-AT !  codeu CODE-U !  codeu SKIP
-   codeu 3 and 0<> if BAD then
+   X64? 0= codeu 3 and 0<> and if BAD then
    1 TABLE LABELS-N ! LABELS-AT !
    3 TABLE REFS-N ! REFS-AT !
    2 TABLE SPANS-N ! SPANS-AT !
@@ -156,7 +157,8 @@ variable PATH-U
 
 : CHECK ( -- )
    KOBJ-U @ 40 < if BAD then
-   0 KOBJ 8 s" HBKERNEL" STR= 0= if BAD then
+   0 KOBJ 8 s" HBKERNX6" STR= X64!
+   X64? 0= if 0 KOBJ 8 s" HBKERNEL" STR= 0= if BAD then then
    SHA-CTX  0 KOBJ 40 +  KOBJ-U @ 40 -  SUM SHA256-IN
    SUM 32  0 KOBJ 8 + 32  STR= 0= if
       SAY-OBJECT
@@ -221,7 +223,10 @@ public
    s" link: the kernel object has no symbol " SAY a u SAY SAY-CR
    s" link: the kernel object lacks a symbol the link reads" 74 die ;
 
-: SYM-LABEL ( ^u8 n -- label ) SYM >LABEL ;
+: LABEL-REF ( n -- label )
+   X64? if X64CODE:LABEL-REF else >LABEL then ;
+
+: SYM-LABEL ( ^u8 n -- label ) SYM LABEL-REF ;
 
 \ The address the target links its code at, from the kernel object.
 : TEXT-VA ( -- n ) KTEXT-VA @ ;
@@ -231,8 +236,8 @@ public
 
 \ The object's primitive rows, as the tree's writer registered them.
 : ROW-N ( -- n ) PRIMS-N @ ;
-: ROW-FIRST ( n -- label ) PRIM-AT @ KOBJ@ >LABEL ;
-: ROW-LAST ( n -- label ) PRIM-AT @ 8 + KOBJ@ >LABEL ;
+: ROW-FIRST ( n -- label ) PRIM-AT @ KOBJ@ LABEL-REF ;
+: ROW-LAST ( n -- label ) PRIM-AT @ 8 + KOBJ@ LABEL-REF ;
 : ROW-WID ( n -- n ) PRIM-AT @ 16 + KOBJ@ ;
 
 : ROW-NAME$ ( n -- ^u8 n )
@@ -249,7 +254,7 @@ public
 : SCOPE-SITE ( n -- label )
    2 - {: j:n :}
    j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" 74 die then
-   j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
+   j 8 * SCOPES-AT @ + KOBJ@ LABEL-REF ;
 
 \ The Mach-O and the ELF import sections' bytes.
 : MACHO-IMPORTS$ ( -- ^u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
@@ -576,6 +581,7 @@ public
 \ A bound label's byte offset in the code buffer.
 : OFFSET ( label -- n )
    {: l:label :}
+   X64? if l X64CODE:LABEL-AT exit then
    l A64ICODE:LBL-BOUND? 0= if
       s" link: a label the link reads is unbound" 74 die
    then
@@ -590,7 +596,7 @@ public
 \ The object READ read as the code buffer's start: the start-up, then the
 \ kernel, with their labels, references, data spans and pending fixups as the
 \ writer left them; the product's own code follows. No C2 entry is bound.
-: ADOPT ( -- )
+: ARM-ADOPT ( -- )
    READ? 0= if s" link: no kernel object was read for this link" 74 die then
    A64ICODE:ASM-INIT
    CODE-U @ 4 / {: words:n :}
@@ -614,8 +620,30 @@ public
    HOST-ENTRIES ;
 
 
+private
+
+: X64-ADOPT ( -- )
+   X64CODE:OPEN
+   0 KOBJ CODE-AT @ + CODE-U @ X64CODE:BYTES,
+   LABELS-N @ 0 ?do
+      X64CODE:LBL drop i LABEL-AT i X64CODE:LABEL-POS!
+   loop
+   REFS-N @ 0 ?do
+      i 24 * REFS-AT @ + {: at:n :}
+      at KOBJ@ at 8 + KOBJ@ at 16 + KOBJ@ X64CODE:REF+
+   loop
+   s" K0" SYM K0 ! 0 N-ROOTS !
+   HOST-ENTRIES ;
+
+public
+
+: ADOPT ( -- )
+   READ? 0= if s" link: no kernel object was read" 74 die then
+   X64? if X64-ADOPT else ARM-ADOPT then ;
+
+
 \ The kernel's first byte, where the start-up ends; CUT keeps the start-up whole.
-: KERNEL-AT ( -- n ) K0 @ 4 * ;
+: KERNEL-AT ( -- n ) K0 @ X64? if exit then 4 * ;
 
 
 \ The product kernel row of the primitive that enters the running hb at the
@@ -646,6 +674,7 @@ public
 
 \ Removes the kernel nodes WALK does not reach and moves the rest down.
 : CUT ( -- )
+   X64? if exit then
    WALK
    0 N-KEPT !  2 KEPT-RESERVE
    N-NODES @ 0 ?do i REACHED @ 0<> if i KEEP-NODE then loop

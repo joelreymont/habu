@@ -12,7 +12,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
-require src/arch/arm64/link-kernel.f
+require src/habu/link-kernel.f
 require src/arch/wasm/link-kernel.f
 require src/arch/wasm/link-site.f
 
@@ -233,14 +233,14 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
-\ A build for a machine the linker has no part for, such as an x86-64 target.
+\ A build for a machine the linker has no part for, other than arm64, x86-64 or Wasm.
 \ The linker holds no source place, so the record is unplaced.
 : NO-PART ( -- )
    s" E-LINK-MACHINE" REJECTION:OPEN
-   s" the build's code is for a machine the linker cannot place: it places arm64 and Wasm code"
+   s" the build's code is for a machine the linker cannot place: it places arm64, x86-64 and Wasm code"
    REJECTION:EMIT-STR
    REJECTION:HELP
-   s" build for macos-aarch64, linux-aarch64 or wasm" REJECTION:EMIT-STR
+   s" build for macos-aarch64, linux-aarch64, linux-x86-64 or wasm" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 
@@ -249,6 +249,7 @@ variable UNSAFE-COUNT
 : ADDRESS@ ( CTARGET:arch ^u8 n n n -- n bool )
    {: a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:ADDRESS@ exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
    NO-PART ;
 
@@ -258,6 +259,7 @@ variable UNSAFE-COUNT
 : ADDRESS! ( n CTARGET:arch ^u8 n n n -- bool )
    {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if v b s site kind X64:ADDRESS! exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
    NO-PART ;
 
@@ -360,7 +362,7 @@ variable UNSAFE-COUNT
 \ primitive's entry. A Wasm module has no hb kernel and keeps none.
 : KEEP-KERNEL ( n -- bool )
    WASM? if drop false exit then
-   ARM64:ROOT-ENTRY ;
+   NATIVE:ROOT-ENTRY ;
 
 
 \ A target with no record and no UNSAFE-NAME? word is a kernel primitive or a
@@ -454,13 +456,12 @@ variable UNSAFE-COUNT
    repeat
    drop 0 ;
 
-\ Each placed emission from A64ICODE:ASM-LEN on, in emission order, a defer's
-\ with room for its trailer when the output keeps a dictionary. An arm64
-\ emission is whole instruction words, so every offset stays word-aligned.
+\ Each placed emission from NATIVE:SIZE on, in emission order, a defer's
+\ with room for its trailer when the output keeps a dictionary.
 : LAYOUT ( bool -- )
    {: dict:bool :}
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
-   A64ICODE:ASM-LEN  dup BAND-AT !
+   NATIVE:SIZE  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
       0 i TRAILERS !
       i PLACED @ 0= if
@@ -484,16 +485,16 @@ variable UNSAFE-COUNT
    r 0 >= if
       r NSHADOW:EMISSION@ {: e:n :}
       e PLACED @ 0= if -1 exit then
-      ARM64:TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
+      NATIVE:TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
    then
-   a ARM64:KERNEL-ENTRY {: off:n :}
-   off 0 >= if ARM64:TEXT-VA off + exit then
+   a NATIVE:KERNEL-ENTRY {: off:n :}
+   off 0 >= if NATIVE:TEXT-VA off + exit then
    \ Only a value no record or kernel entry matched scans every emission's
    \ functions: (quotation xt cells) x (functions), here and in QUOTE-ROOT.
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0< if -1 exit then
    qe PLACED @ 0= if -1 exit then
-   ARM64:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
+   NATIVE:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
 
 
 \ A placed routine names code the target holds no copy of. Unplaced, as
@@ -522,17 +523,15 @@ variable UNSAFE-COUNT
 \ through data.
 : PLACE-ONE ( n [ n -- n ] -- )
    {: e:n data :}
-   e NSHADOW:SIZE 4 / {: words:n :}
-   words A64ICODE:ASM-CP?
+   e NSHADOW:SIZE NATIVE:SPACE {: dst:^ :}
    e PLACING !
-   e  A64ICODE:CODE e OFFSET@ +  ARM64:TEXT-VA e OFFSET@ +  data  ['] TARGET-ADDRESS
-   ARM64:PLACE
-   words A64ICODE:ASM-CP +!
+   e dst NATIVE:TEXT-VA e OFFSET@ + data ['] TARGET-ADDRESS
+   NATIVE:PLACE
    e TRAILERS @ {: cell:n :}
-   cell 0<> if DEFER-MAGIC A64ICODE:DCQ,  cell data execute A64ICODE:DCQ, then ;
+   cell 0<> if DEFER-MAGIC NATIVE:U64,  cell data execute NATIVE:U64, then ;
 
 
-\ Each placed emission, after the kernel ARM64:ADOPT laid, its data addresses
+\ Each placed emission, after the kernel NATIVE:ADOPT laid, its data addresses
 \ through data; dict as LAYOUT takes it.
 : PLACE-ROUTINES ( bool [ n -- n ] -- )
    {: dict:bool data :}

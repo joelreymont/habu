@@ -1,7 +1,7 @@
 \ ffi-struct-fixture.f - the C library the struct-by-value FFI cases call.
 \ test/ffi-struct-result.f and test/ffi-struct-arg.f select it, and the first
 \ SELECT builds it with the system compiler: no system library takes integer
-\ records of every AAPCS64 argument class by value, and glibc returns no
+\ records of every supported ABI class by value, and glibc returns no
 \ 24-byte record. The layouts are asserted at compile time, and every checksum
 \ weighs each member by its position (MIX), so a member read from the wrong
 \ offset, register or stack slot changes the answer.
@@ -53,10 +53,7 @@ variable LIB-U                    \ 0 until BUILD makes the library
    s" i64 hb_sum128(s128 s) {" L+
    s"    u64 h = 1; for (int i = 0; i < 16; i++) h = MIX(h, s.v[i]); return (i64)h; }" L+ ;
 
-\ Seven longs leave x7 alone for a 16-byte record, which then goes wholly to
-\ the stack with the long after it; eight longs push a large record's
-\ pointer onto the stack; a float past d7 and an integer past x7 go there
-\ beside a record.
+\ Scalars exhaust each ABI's register banks beside records of both sizes.
 : PLACEMENTS ( -- )
    s" u64 hb_fold8(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, u64 k) {" L+
    s"    return MIX(MIX(MIX(MIX(MIX(MIX(MIX(MIX(1, a), b), c), d), e), f), g), k); }" L+
@@ -105,6 +102,10 @@ variable LIB-U                    \ 0 until BUILD makes the library
    s"    s32 r = { s.a + k, s.b + k, s.c + k, s.d + k }; return r; }" L+
    s" s32 hb_ret9(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, i64 k, i64 i) {" L+
    s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+
+   \ The hidden result and four scalars leave only r9 on SysV: the record
+   \ spills whole, and the following scalar still uses r9.
+   s" s32 hb_rettail16(i64 a, i64 b, i64 c, i64 d, s16 s, i64 t) {" L+
+   s"    s32 r = { (i64)MIX(MIX(MIX(MIX(1, a), b), c), d), hb_sum16(s), t, -99 }; return r; }" L+
    TIMES ;
 
 : LIB-NAME$ ( -- ^u8 n )

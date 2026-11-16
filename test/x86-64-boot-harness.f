@@ -130,11 +130,12 @@ public
 \ cells name them: the flags or'd with the name's length, the name inline when
 \ it fits DNAME-INL bytes else a pointer with DNAME-EXT set, and the wid. The
 \ code cell holds the ordinal (index plus one), so a found record's code is
-\ never 0, the answer for an absent name. The booted region is read-write.
+\ never 0, the answer for an absent name. Stores use the booted RW alias.
 \ Clobbers rax and rcx.
 : RECORD, ( ^u8 n n n -- ) {: a:^ u:n wid:n flags:n :}
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR
+   RAX X64KERNEL:WRITE-ALIAS,
    RCX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    RCX RAX X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
    u DNAME-INL > if
@@ -225,7 +226,9 @@ public
 
 : REGION!, ( n n -- ) {: v:n off:n :}
    RAX v IMM
-   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+   RCX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : TEXT!, ( ^u8 n n -- ) {: a:^ u:n off:n :}
    u 0 ?do  a u i NAME-CELL off i + CELL!,  CELL +loop ;
@@ -234,10 +237,13 @@ public
    RAX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
 
-\ Set record n's pages to the protection prot, as the kernel's own flips do.
+\ Force the selected record's pages to the protection the fixture requests.
 : PROT-RECORD, ( n n -- ) {: ix:n prot:n :}
-   R8 DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
-   R8 prot X64KERNEL:PROT-REC, ;
+   RDI DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
+   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI STACK-ABI:PAGE-BYTES 2 * IMM
+   RDX prot IMM
+   NR-MPROTECT SYS, ;
 
 ;using
 ;using
@@ -305,6 +311,7 @@ public
    a u 0 0 RECORD,
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR                     \ one record past it
+   RAX X64KERNEL:WRITE-ALIAS,
    RCX first MOVABS,
    RCX RAX X64KERNEL:REC-CODE DREC - MEM-OFF ASM-SINK ENC-MOV-MR
    RDX last MOVABS,
@@ -318,9 +325,8 @@ public
 ;using
 ;package
 
-\ The window cases' words. At rest the code region is read-execute throughout,
-\ as the ARM64 boot leaves it, so a row that writes it outside its window faults
-\ into the crash handler's dump and dies of that signal.
+\ The alias cases' words. RX addresses stay read-execute throughout; only
+\ the separate alias accepts writes.
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -338,8 +344,7 @@ public
 
 EXPORT NAME-CELL
 
-\ The region at rest: read-execute with every band closed. The boot maps it
-\ read-write and opens no band.
+\ Explicitly protect seeded RX records for the existing writer fixtures.
 : REST, ( -- )
    RDI DBASE-REG ASM-SINK ENC-MOV-RR
    RSI REGION >IMM32 ASM-SINK ENC-MOV-RI32
@@ -354,9 +359,18 @@ EXPORT NAME-CELL
    NR-CLOCK-GETTIME SYS,
    0 G-PUSH ;
 
+: PROBE-ALIAS, ( n -- ) {: off:n :}
+   RDI CLOCK-MONOTONIC >IMM32 ASM-SINK ENC-MOV-RI32
+   RSI DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RSI X64KERNEL:WRITE-ALIAS,
+   NR-CLOCK-GETTIME SYS,
+   0 G-PUSH ;
+
 : POKE, ( n -- ) {: off:n :}
    RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+   RCX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : PUSH-REGION-CELL, ( n -- ) {: off:n :}
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-RM
