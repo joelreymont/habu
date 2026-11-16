@@ -290,9 +290,9 @@ variable HELP-U
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
-\ The argument spelled at aa au fills slot k of fam; a type parameter argument is
-\ SD-SEAL's to judge, since a later field may still set its kind. A wrap reaches no
-\ region slot: each follows two scope slots, the first of which rejects it.
+\ The argument spelled at aa au fills slot k of fam; a type parameter argument
+\ is judged when the declaration closes. A wrap reaches no region slot: each
+\ follows two scope slots, the first of which rejects it.
 : SD-ARG-KIND ( ^u8 n n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
    FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
@@ -766,12 +766,7 @@ SD-QUOT-INSTALL
    FAM @ STRUCTURE-MAKE:ARM ;
 : SD-SEAL ( -- )
    DECL-REJECT:AT-FAMILY
-   NFLD @ 0 ?do
-      FLDBASE @ i + PF-PENDING-SCH@ FAM @ swap PF-SCHEMA-OK? 0= IF
-         s" type parameter has incompatible kinds"
-         s" use each type parameter in one kind of place: a value type, a scope or a region"
-         TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   loop
+   FAM @ FLDBASE @ NFLD @ DECL-EVENT:REQUIRE-KINDS
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do

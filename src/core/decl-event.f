@@ -207,6 +207,17 @@ public
       loop
    THEN ;
 
+\ A later field may still set a parameter's kind, so a declaration's close
+\ checks every field again.
+: REQUIRE-KINDS ( n n n -- )
+   {: fam:n base:n count:n :}
+   count 0 ?do
+      fam  base i + PF-PENDING-SCH@  PF-SCHEMA-OK? 0= IF
+         s" type parameter has incompatible kinds"
+         s" use each type parameter in one kind of place: a value type, a scope or a region"
+         TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+   loop ;
+
 ;package
 ;package
 

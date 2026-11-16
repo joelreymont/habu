@@ -335,6 +335,7 @@ ED-RESET
       s" empty enum"
       s" declare at least one variant before `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   FAM @ FLDBASE @ NFLD @ DECL-EVENT:REQUIRE-KINDS
    MISSING? IF E-UNRESOLVED throw THEN
    NICHE-REQUIRE
    TAG-REQUIRE

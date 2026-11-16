@@ -1237,6 +1237,12 @@ s" ENUM edapregion<p,q> VARIANT hold FIELD x mut-view<p,q,n,u8> ;VARIANT ;ENUM" 
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edapregion`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" type argument must be a region parameter" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: pass a parameter the header lists, as in `ENUM box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edkind<a,q> VARIANT vone FIELD x a ;VARIANT VARIANT wtwo FIELD y read-view<a,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edkind`\n" DECL-DIAG:HAS? TTRUE
+s" edkind" s" type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \     An application is as wide as its arguments make it: option<edapw> takes
