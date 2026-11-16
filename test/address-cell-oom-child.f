@@ -1,6 +1,6 @@
-\ Pause after growth to the inline boundary, then deny every further mapping
-\ (Linux only; the parent row skips elsewhere). The allocation that then fails
-\ is the engine's.
+\ Fill the inline table, then deny every further mapping (Linux only; the
+\ parent test skips elsewhere). The mark that must grow the table throws
+\ E-XTCELL-GROW: caught, the table still takes marks; uncaught, it ends the child.
 require src/lib/ffi-abi.f
 require src/habu/address-cells.f
 package ADDRESS-CELL-OOM-CHILD
@@ -31,6 +31,11 @@ create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
    LIVE-SPAN nip BOOT-CAP <> if
       s" address-cell-oom: duplicate changed count" 76 die then
    s" address-cell-oom: duplicate-ok" type cr
+   [: SLOTS remaining cells + ptr-cell-mark ;] catch
+   s" address-cell-oom: caught " type .
+   \ A duplicate takes the table's lock: a lock the throw left held hangs here.
+   SLOTS ptr-cell-mark
+   s" address-cell-oom: after-catch-ok" type cr
    SLOTS remaining cells + ptr-cell-mark
    s" address-cell-oom: unexpected allocation success" 76 die ;
 RUN

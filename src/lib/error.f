@@ -12,6 +12,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f
 require src/core/rollback-cells.f
+require src/core/engine-error.f
 require src/lib/prelude.f
 
 \ Arrays: -2000..-2099
@@ -99,14 +100,7 @@ require src/lib/prelude.f
 -3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
 -3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, null with a positive length, or inside a growable output past its written bytes
 
-\ OS-backed memory: -3200..-3299
--3200 constant E-MEM-FIRST
--3299 constant E-MEM-LAST
--3200 constant E-MEM-SIZE
--3201 constant E-MEM-MAP
--3202 constant E-MEM-TOTALITY
--3203 constant E-MEM-UNMAP
--3204 constant E-ALLOC-STATE           \ an allocator filled twice
+\ OS-backed memory: -3200..-3299, minted in src/core/engine-error.f.
 
 \ Vectors: -3300..-3399
 -3300 constant E-VEC-FIRST
@@ -874,6 +868,7 @@ seal-package
 -9852 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
 -9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
 -9854 s" a computed 0 was thrown and unwound the text, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
+-9855 s" the system refused memory to grow the table of address cells: make fewer address cells, or raise the process's address-space limit" ERROR:CODE E-XTCELL-GROW
 -2100 s" a path is empty, too long or of a form the call rejects" ERROR:CODE E-FS-PATH
 -2101 s" a path's status could not be read or it names no regular file" ERROR:CODE E-FS-STAT
 -2102 s" a file, directory or pipe could not be opened" ERROR:CODE E-FS-OPEN

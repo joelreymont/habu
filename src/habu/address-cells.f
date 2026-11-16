@@ -57,8 +57,7 @@ public
    slots slots 1- and 0 <> if REFUSE then
    slots cells INDEX-HEADER + {: bytes:n :}
    bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
-   address N>ROWS bytes munmap 0 <> if
-      s" address-cells: cannot release index" 96 die then
+   address N>ROWS bytes munmap 0 <> if E-MEM-UNMAP throw then
    0 held ! ;
 private
 

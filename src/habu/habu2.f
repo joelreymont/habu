@@ -1756,8 +1756,8 @@ ardone LBL,
    6 SP 184 STR,
    host LBL,
    MARK-HEADER
-   \ A cell outside DATA and the open image, or a table that cannot grow, stops
-   \ the process: a dropped row would leave a stale address in a saved image.
+   \ A cell outside DATA and the open image stops the process: a dropped row
+   \ would leave a stale address in a saved image.
    12 9 16 SUB,
    6 SNAP-RELOC:XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
    MARK-LOCK
@@ -1842,7 +1842,10 @@ ardone LBL,
       11 1 MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD STR,
       MARK-COMMIT-INDEX ret B,
    full LBL,
-      s" E-XTCELL habu: address-cell storage allocation failed" SNAP-RELOC:XTCELL-RC DIE-LINE,
+      \ Every branch here leaves the header, rows and index whole, so the throw is
+      \ safe to catch.
+      MARK-HEADER MARK-UNLOCK
+      9 -9855 LIT64,  LFAULTREC LABEL@ B,
    shape LBL,
       s" E-XTCELL habu: invalid address-cell storage header" SNAP-RELOC:XTCELL-RC DIE-LINE,
    band LBL,
