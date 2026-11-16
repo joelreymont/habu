@@ -342,6 +342,10 @@ visibility, arity and count errors still refuse. Defining a provider, taking its
 tick or reading an uncalled body does not create this uncertainty; ordinary
 loading keeps its existing rules.
 
+An immediate in a checked body is `E-UNMODELED-IMMEDIATE` unless a top-level
+`s" V" N parse-imm` declares that V reads N source tokens and leaves the stack
+as it found it.
+
 After a resident immediate in a body or a top-level loader, later ordering is
 uncertain: `--verify-only` reports a trusted-only tick as `W-CHECK-DEFERRED`
 and leaves dependent source to the run. A `require`/`include` can reach

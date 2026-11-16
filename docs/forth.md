@@ -2394,6 +2394,14 @@ runtime or analysis layer.
 These edge cases name the refusal at the boundary. The general rules are in the
 sections above.
 
+- **An immediate in a checked body is declared a parsing immediate.** It runs
+  at compile time, so its effect is no step of the body: `: V ( -- )
+  parse-name 2drop ; immediate` then `: F ( -- ) V x ;` is
+  `E-UNMODELED-IMMEDIATE` at `V`. A top-level `s" V" 1 parse-imm` declares
+  that V reads one source token and leaves the stack as it found it; the
+  checker then takes F's body as if `V x` were not there, and F certifies.
+  The newest declaration for a name wins.
+
 - **A ticked engine primitive is an opaque xt.** A primitive's effect is its
   `EPRIM:` row at a call; no row rides its xt, so `['] dup execute` and
   `['] NULL-PTR execute` are `E-EXEC-OPAQUE-XT`, and `['] NULL-PTR is W`
