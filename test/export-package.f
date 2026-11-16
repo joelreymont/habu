@@ -289,6 +289,23 @@ create XPK-EMPTY 1 allot
    s" : P-GLOBAL ( -- n ) 1 ;" XPK-LINE
    SB$ ;
 
+: XPK-END-PACKAGE-OUTSIDE$ ( -- ^u8 n )
+   SB-RESET  s" ;package" XPK-LINE  SB$ ;
+
+: XPK-EVAL-OPEN$ ( -- ^u8 n )
+   SB-RESET
+   S\" s\" package XQ\" evaluate : XD ( -- n ) 1 ; ;package 1 . cr" XPK-LINE
+   SB$ ;
+
+: XPK-EVAL-PUBLIC$ ( -- ^u8 n )
+   SB-RESET
+   S\" s\" package XQ\" evaluate" XPK-LINE
+   s" public" XPK-LINE
+   s" : XD ( -- n ) 1 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" XQ:XD . cr" XPK-LINE
+   SB$ ;
+
 \ A global section after seal-package: its body would bind the sealed private.
 : XPK-GLOBAL-SEALED$ ( -- ^u8 n )
    SB-RESET
@@ -757,6 +774,15 @@ create XPK-EMPTY 1 allot
    s" global outside a package is rejected" T-LABEL
    XPK-GLOBAL-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
    s" E-PKG-CONTEXT" XPK-ERR?
+   s" `;package` outside a package is rejected by every reader" T-LABEL
+   XPK-END-PACKAGE-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   s" E-PKG-CONTEXT" XPK-ERR?
+   XPK-RUN-CHECK XPK-REJECT-RC XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
+   XPK-RUN-VERIFY XPK-REJECT-RC XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
+   s" `;package` of a package rendered text opened is accepted" T-LABEL
+   XPK-EVAL-OPEN$ XPK-ACCEPT-BOTH
+   s" `public` in a package rendered text opened is accepted" T-LABEL
+   XPK-EVAL-PUBLIC$ XPK-ACCEPT-BOTH
    s" a sealed package's global section takes no definition" T-LABEL
    XPK-GLOBAL-SEALED$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
    s" E-SEALED-PACKAGE" XPK-ERR?
