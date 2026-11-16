@@ -4,6 +4,5 @@
 package PFOREIGN
 public
 : LEAK ( -- n ) 99 ;
-: STEP ( -- n ) 2 ;
 : emit ( n -- ) drop ;
 ;package

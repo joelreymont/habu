@@ -20,12 +20,11 @@ public
    s" : X-C2-COPY ( mut-view<b,l,a,u8> read-view<p,q,u8> -- mut-view<b,l,a,u8> ) [: dup ;] XML-C2:WITH-READER ;" 70 SUBJECT:EXITED? TTRUE
    s" a raw storage cell cannot hold a cursor" T-LABEL
    s" variable X-C2-SLOT : X-C2-STOW ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- ) X-C2-SLOT ! ;" 70 SUBJECT:EXITED? TTRUE
-   s" the parser header constructor cannot be called after the module seals it" T-LABEL
-   s" : X-C2-FORGE ( -- ) XML--C2-READER--STATE:MAKE ;" 70 SUBJECT:EXITED? TTRUE
-   s" a reopened package cannot export the raw cursor receiver" T-LABEL
-   s" package XML-C2 public EXPORT CURSOR-UNPACK ;package" 70 SUBJECT:EXITED? TTRUE
-   s" another package cannot export the parser header constructor" T-LABEL
-   s" package X-C2-ALIAS public EXPORT XML--C2-READER--STATE:MAKE ;package" 70 SUBJECT:EXITED? TTRUE
+   s" another package cannot reach the parser header constructor" T-LABEL
+   s" ' XML--C2-READER--STATE:MAKE drop" 70 SUBJECT:EXITED? TTRUE
+   s" a sealed package cannot be reopened" T-LABEL
+   s" package XML-C2 public EXPORT CURSOR-UNPACK ;package"
+      70 s" error[E-SEALED-PACKAGE]: `XML-C2` would change a sealed package" SUBJECT:REFUSED? TTRUE
    s" a borrowed slice compiles through this load path" T-LABEL
    s" : X-C2-SLICE-VALID ( read-view<p,q,u8> -- read-view<p,q,u8> ) 0 1 C2-BYTES:SLICE ;" 0 SUBJECT:EXITED? TTRUE
    s" read slices keep their source region and loan" T-LABEL
@@ -39,8 +38,6 @@ public
    s" the private read pack cannot be called or ticked" T-LABEL
    s" : X-C2-PACK ( ^u8 n -- read-view<p,q,u8> ) C2-MEM:READ-PACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ' C2-MEM:READ-PACK drop" 70 SUBJECT:EXITED? TTRUE
-   s" a reopened package cannot export the source slice" T-LABEL
-   s" package XML-C2 public EXPORT SOURCE-SLICE ;package" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-xml-consumer-refusals: ok" type cr ;
 ;package

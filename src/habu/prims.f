@@ -558,9 +558,6 @@ EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ Record writers: trusted-only rows, which reject a checked caller.
-EPRIM: int-mark      PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 \ Setting DNAME-REP on one live CAST: record is the checker's.
 EPPRIM: CHECK rep-mark PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE

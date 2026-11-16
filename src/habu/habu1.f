@@ -3618,17 +3618,9 @@ package ENGINE-EMIT
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
    10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
-\ int-mark ( n -- ): set DNAME-INT on record n; interpret-mode execute and tick
-\ refuse it. Monotonic: no clear prim exists.
-: BINTMARK ( -- )
-   A G-POP
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
-   C 12 16 LDR,  C C DNAME-INT ORRI,  C 12 16 STR, ;
-
 \ rep-mark ( n -- ): set DNAME-REP on dictionary record n, the CAST: record the
-\ checker certified as a representation cast. The twin of BINTMARK: the same
-\ alias store, no index check, monotonic (no clear prim exists).
+\ checker certified as a representation cast. It checks no index and is
+\ monotonic: no clear prim exists.
 : BREPMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
@@ -4141,7 +4133,6 @@ package ENGINE-EMIT
    s" wide-mark" ['] BWIDEMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
-   s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM

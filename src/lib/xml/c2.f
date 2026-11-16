@@ -13,7 +13,7 @@ public
 \ An XML:cursor record (src/lib/xml/state.f), field for field, then the link to
 \ the record of the enclosing WITH-READER in this task. The cursor storage is
 \ XML:CURSOR-BYTES plus one cell.
-STRUCTURE reader-state<a,b>
+STRUCTURE reader-state<a,b> OPAQUE
    FIELD source read-view<a,b,u8>
    FIELD position n
    FIELD frame-cap n
@@ -68,76 +68,55 @@ LAYOUT-CHECK
 \ a throw, and the release always finds its own record at the head.
 TASK:+USER READER-HEAD ^u8
 
-\ The load-time marker is retired after it seals the representation leaves.
-TRUSTED: HIDE ( n -- ) int-mark ;
-ndict@ 1- constant HIDE-ID
-
 \ WITH-INIT copies a record that owns nothing into the cursor storage;
 \ OPEN-READER parses it there.
 : INIT-HEADER ( mut-view<b,l,a,u8> read-view<p,q,u8> -- mut-view<b,l,a,u8> reader-state<p,q> )
    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
    NULL-PTR 0 NULL-PTR 0 0 NULL-PTR NULL-PTR NULL-PTR
-   0 0 0 0 0 0 0 0 NULL-PTR XML--C2-READER--STATE:MAKE ;
-ndict@ 1- constant INIT-HEADER-ID
-
-\ The parser header constructor and destructor are not caller capabilities.
-s" XML--C2-READER--STATE:MAKE" XREF-FIND-INDEX HIDE
-s" XML--C2-READER--STATE:UNMAKE" XREF-FIND-INDEX HIDE
+   0 0 0 0 0 0 0 0 NULL-PTR READER-STATE-MAKE ;
 
 \ Each unpack changes one logical view into its two ABI cells. CURSOR-BASE
 \ and DEST-SPAN below are their only callers.
 TRUSTED: CURSOR-UNPACK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- ^u8 n ) ;
-ndict@ 1- constant CURSOR-ID
 
 TRUSTED: DEST-UNPACK ( mut-view<p,q,a,u8> -- ^u8 n ) ;
-ndict@ 1- constant DEST-ID
 
 \ The cursor view stays live beside its record address; an unpack consumes it.
 TRUSTED: CURSOR-BASE ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> ^u8 )
    CURSOR-UNPACK 2dup drop ;
-ndict@ 1- constant CURSOR-BASE-ID
 
 \ The destination view stays live beside its raw cells; an unpack consumes it.
 TRUSTED: DEST-SPAN ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ^u8 n )
    DEST-UNPACK 2dup ;
-ndict@ 1- constant DEST-SPAN-ID
 
 \ A slice of the source keeps its lifetime: an XML:INIT reader spans only its
 \ source (XML's SPAN$), proved by "a projected name lives after each cursor".
 TRUSTED: SOURCE-SLICE ( mut-view<b,i,a,init<i,reader-state<p,q>>> ^u8 n -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> ) ;
-ndict@ 1- constant SOURCE-SLICE-ID
 
 CAST: >ADDR-CELL ( ^u8 -- ^^u8 )
-ndict@ 1- constant ADDR-CELL-ID
 CAST: >LEN-CELL ( ^u8 -- ^n )
-ndict@ 1- constant LEN-CELL-ID
 
 \ A live reader's token is its record's address. Each accessor re-enters the
 \ reader from the cursor storage and parks it there again; only WITH-READER's
 \ release ends it.
 TRUSTED: REENTER ( ^u8 -- XML:reader ) ;
-ndict@ 1- constant REENTER-ID
 
 TRUSTED: PARK ( XML:reader -- ) drop ;
-ndict@ 1- constant PARK-ID
 
 : OPEN-READER ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
    CURSOR-BASE {: record:^ :}
    record >ADDR-CELL @ record cell+ >LEN-CELL @ {: source size:n :}
    record XML:CURSOR-BYTES XML:EMPTY-CURSOR source size XML:INIT PARK ;
-ndict@ 1- constant OPEN-ID
 
 : LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
    CURSOR-BASE {: record:^ :}
    READER-HEAD @ record LINK-OFF + >ADDR-CELL !
    record READER-HEAD ! ;
-ndict@ 1- constant LINK-ID
 
 : RELEASE ( -- )
    READER-HEAD @ {: record:^ :}
    record LINK-OFF + >ADDR-CELL @ READER-HEAD !
    record REENTER XML:CLOSE ;
-ndict@ 1- constant RELEASE-ID
 
 \ GUARD links the record before the guarded body parses it, so a failed INIT,
 \ a throw from the callback and a normal return all release its tables, with
@@ -153,11 +132,6 @@ public
 
 : WITH-READER ( R mut-view<b,l,a,u8> read-view<p,q,u8> forall<i inside [l,reader-state<p,q>], [ R mut-view<b,i,a,init<i,reader-state<p,q>>> -- S mut-view<b,i,a,init<i,reader-state<p,q>>> | U -- U ]> | U -- S mut-view<b,l,a,u8> | U )
    {: source cb :} cb swap source INIT-HEADER [: GUARD ;] C2-MEM:WITH-INIT ;
-
-INIT-HEADER-ID HIDE
-OPEN-ID HIDE
-LINK-ID HIDE
-RELEASE-ID HIDE
 
 : NEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> XML:kind )
    CURSOR-BASE REENTER XML:NEXT swap PARK ;
@@ -235,18 +209,5 @@ RELEASE-ID HIDE
    CURSOR-BASE REENTER destination cap XML:ATTR-URI swap PARK {: count:n :}
    swap count ;
 
-\ The representation leaves, field casts and reader crossings are retired only
-\ after every accessor above is compiled; past here they have no public or
-\ interpret path.
-CURSOR-ID HIDE
-DEST-ID HIDE
-CURSOR-BASE-ID HIDE
-DEST-SPAN-ID HIDE
-SOURCE-SLICE-ID HIDE
-ADDR-CELL-ID HIDE
-LEN-CELL-ID HIDE
-REENTER-ID HIDE
-PARK-ID HIDE
-HIDE-ID HIDE
-
+seal-package
 ;package

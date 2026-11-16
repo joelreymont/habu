@@ -26,10 +26,6 @@ package NDB-IMMEDIATE
 using NDICT
 public
 
-: CHECKED-SCOPE ( -- ) s" int-mark" CALL-TARGET 0 T= ;
-immediate
-s" NDB-IMMEDIATE:CHECKED-SCOPE" 0 parse-imm
-
 : RETIRE-BINDING ( -- )
    s" NDB-MUTABLE" SPELL-START 0<> TTRUE
    s" NDB-MUTABLE" XREF:UNDEFINE-NAME
@@ -96,8 +92,7 @@ variable ROLL-OCC
 
 
 : IMMEDIATES ( -- )
-   s" NDB-IMMEDIATE:CHECKED-SCOPE" CALL-TARGET 0 T=
-   s" : NDB-CHECKED ( -- ) NDB-IMMEDIATE:CHECKED-SCOPE ;" EV
+   s" NDB-IMMEDIATE:RETIRE-BINDING" CALL-TARGET 0 T=
    s" : NDB-MUTATION ( -- ) NDB-IMMEDIATE:RETIRE-BINDING ;" EV
    s" NDB-MUTABLE" SPELL-START 0 T=
    s" 2 constant NDB-MUTABLE : NDB-MUTATED ( -- n ) NDB-MUTABLE ; NDB-MUTATED 2 T=" EV ;
@@ -190,7 +185,7 @@ private
    s" package visibility and scope precedence" T-LABEL OPEN-SCOPE T-NEXT
    s" using identity and ambiguity" T-LABEL USED-SCOPE T-NEXT
    s" folded hash collisions retain exact identity" T-LABEL COLLISIONS T-NEXT
-   s" immediate compilation re-reads binding and trusted authority" T-LABEL IMMEDIATES T-NEXT
+   s" immediate compilation re-reads binding" T-LABEL IMMEDIATES T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
    s" the retired wordlist returns the latest matching record" T-LABEL RETIRED-LATEST T-NEXT
    s" hide and forget invalidate recyclable slots" T-LABEL HIDE-REUSE FORGET-REUSE T-NEXT
