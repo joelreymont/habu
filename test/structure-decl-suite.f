@@ -28,7 +28,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE dupf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `dupf`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
 
 \ 7. Grammar / name / arity / type / policy / derive / terminator rejects, each
@@ -159,7 +159,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE badf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=  \ duplicate field rejects
 s\" error[E-BAD-DECLARATION]: bad structure declaration `badf`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/forth.md "Structures And Enums")
 s" SDOPQMK ( -- opaque ) OPAQUE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -388,7 +388,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE roll FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `roll`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
 STRUCTURE roll FIELD z n ;STRUCTURE                 \ the name is free again
 : RRT ( n -- n ) ROLL-MAKE ROLL-UNMAKE ;
@@ -432,7 +432,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgdup FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgdup`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdgar<q,q> ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -605,6 +605,16 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgfwd`\n" DECL-DIAG:HA
 s\"  --> <input>:2:40\n" DECL-DIAG:HAS? TTRUE
 s\" ^ a pointer cannot reach `read-view`, which takes a scope or region\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+\ A pointer reaches no user family with a scope parameter either: rejected at
+\ its name.
+DECL-DIAG:PROSE
+s" STRUCTURE sdgscoped<p> FIELD v read-view<p,p,u8> ;STRUCTURE" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdgtoscoped<p> FIELD q ^sdgscoped<p> ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtoscoped`\n" DECL-DIAG:HAS? TTRUE
+s" sdgscoped" s" a pointer cannot reach `sdgscoped`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 \ A concrete type where a scope or region parameter goes rejects at that
 \ argument, helped by its slot.
 REJECTION:CAPTURE
@@ -747,7 +757,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgforge FIELD duplicate n FIELD duplicate n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgforge`\n" DECL-DIAG:HAS? TTRUE
 s" duplicate" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 DECL-DIAG:TEXT$ REJECTION:PATH$ CONTAINS? TTRUE   \ the record names the loading file
 
@@ -759,7 +769,7 @@ s" STRUCTURE token FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" \"message\":\"bad structure declaration `token`\"" DECL-DIAG:HAS? TTRUE
 s\" \"token\":\"z\"" DECL-DIAG:HAS? TTRUE
 s\" \"label\":\"duplicate field name\"" DECL-DIAG:HAS? TTRUE
-s\" \"help\":\"give each field of this declaration its own name\"" DECL-DIAG:HAS? TTRUE
+s\" \"help\":\"give each field of the structure its own name\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:JSON
 s\" STRUCTURE sdgquote FIELD aq\"b n ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -1289,7 +1299,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdaroll DERIVE addr FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdaroll`\n" DECL-DIAG:HAS? TTRUE
 s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ^sdaroll -- ^n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1622,6 +1632,19 @@ SDBIG:SRC$ TEST-EVAL:RC 70 T=
 s\" error[E-BAD-STORED-SIGNATURE]: the signature of `SDGDEEP:MAKE` cannot be recorded\n" DECL-DIAG:HAS? TTRUE
 s\"   = reason: effect too deep to record (depth 4097, at most 4096)\n" DECL-DIAG:HAS? TTRUE
 s" = signature:" DECL-DIAG:HAS? TFALSE
+DECL-DIAG:OFF
+\ A pointee's label holds its whole name, even one of TFAM:TF-NAME-MAX bytes
+\ (sdgtoscoped has a short one): sdgwideq… is sdgwide and q to the cap.
+: SDGW-Q ( -- ) TFAM:TF-NAME-MAX 7 - 0 ?do s" q" SDBIG:SRC+ loop ;
+s" sdgwide" 0 SDBIG:FIELDS  SDGW-Q  s" <p> FIELD v read-view<p,p,u8> ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" sdgwideto<p> FIELD q ^sdgwide" 0 SDBIG:FIELDS  SDGW-Q  s" <p> ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 70 T=
+s" a pointer cannot reach `sdgwideqqqq" DECL-DIAG:HAS? TTRUE
+s" qqqq`, which takes a scope or region" DECL-DIAG:HAS? TTRUE
+7109 DECL-REJECT:REASON$ nip
+s" a pointer cannot reach `" nip TFAM:TF-NAME-MAX +  s" `, which takes a scope or region" nip + T=
 DECL-DIAG:OFF
 
 \ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.

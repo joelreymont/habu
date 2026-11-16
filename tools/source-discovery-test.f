@@ -367,10 +367,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ Family declarations parse their bodies as data, including member names that
-\ spell loaders. Only the require after the declaration is a dependency.
+\ spell loaders: a MUTUAL's list names and member headers too. Only the require
+\ after the declarations is a dependency.
 : SDT-TEST-FAMILY-BODIES ( -- )
    s" family-bodies.f"
-   S\" STRUCTURE box FIELD include n FIELD required n ;STRUCTURE\nENUM choice VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\ninclude sd-a.f\nrequire sd-raw.f\n"
+   S\" STRUCTURE box FIELD include n FIELD required n ;STRUCTURE\nENUM choice VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\nMUTUAL include required STRUCTURE include FIELD require ^required ;STRUCTURE STRUCTURE required FIELD provided ^include ;STRUCTURE ;MUTUAL\ninclude sd-a.f\nrequire sd-raw.f\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 2 T=
@@ -406,7 +407,11 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
-   [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS ;
+   [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS
+   s" mutual-shadow.f"
+   S\" package DEMO : mutual ( -- ) ; mutual require dep.f ;package\n"
+   SDT-WRITE-ENTRY
+   E-DISC-SHADOW 31 6 SDT-STOPS-AT ;
 
 : SDT-TEST-FAMILY-RETIRE ( -- )
    s" family-retire.f"

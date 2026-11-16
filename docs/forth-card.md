@@ -388,6 +388,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ^fam )` |
 | `STRUCTURE p … BUFFER b N … ;STRUCTURE` | N bytes inline in a record, N a number literal above 0, from the next cell; the record stays whole cells; `MAKE` takes ceil(N / CELL) `n` for it; a record of more than 4096 items is rejected (`error[E-BAD-DECLARATION]`), and one with a `BUFFER` rejects `DERIVE eq`, `hash` and `init` | under `DERIVE addr`, `P:B ( ^p -- SPAN:span<u8> )`, N bytes |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`), in part `A:B` it is `B-P:MAKE`, reached inside A only; `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
+| `MUTUAL a b … ;MUTUAL` | structures that point at each other: one `STRUCTURE … ;STRUCTURE` per listed family, in any order, as one declaration; a member before its `;STRUCTURE` is named only beneath `^`; no comments inside; no `ENUM` or `SUMTYPE` member | each member's `STRUCTURE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 16 +` past

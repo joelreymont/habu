@@ -1,10 +1,12 @@
-\ structure-decl.f: the STRUCTURE front end (package STRUCTURE-DECL), grammar loop
-\ and reject dispatch only. DECL-FRONT (generated-declaration.f) owns the token
-\ source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
+\ structure-decl.f: the STRUCTURE and MUTUAL front end (package STRUCTURE-DECL),
+\ grammar loop and reject dispatch only. DECL-FRONT (generated-declaration.f) owns
+\ the token source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
 \   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)*
 \      (FIELD name type | BUFFER name bytes)* ;STRUCTURE
+\   MUTUAL type-name[<params>]+ (STRUCTURE ... ;STRUCTURE)* ;MUTUAL
 \ A reject rolls the whole declaration back to a byte-identical registry. Loads
-\ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls.
+\ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls,
+\ or ;MUTUAL for each of its members.
 
 using SCHEMA-REG
 using TFAM
@@ -16,9 +18,10 @@ using DECL-FRONT
 
 \ Transient parse state, not declaration state: STRUCTURE is top-level
 \ interpret-only, so one declaration runs at a time.
-variable FAM        \ family id being declared
-variable FLDBASE    \ committed field high-water at open (field range start)
-variable NFLD       \ field count in this declaration
+variable FAM        \ family id of the open member
+variable FLDBASE    \ the open member's first field row (field range start)
+variable NFLD       \ field count of the open member
+variable SD-FLDS    \ field rows the declaration's closed members added
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
@@ -26,12 +29,80 @@ variable POINTEE    \ resolving the pointee of `^`: the declared family may be n
 PTR-VARIABLE BASE-A   variable BASE-U   \ a wrap's base token
 PTR-VARIABLE NAME-A   variable NAME-U   \ a wrap's name as written
 
+\ The members of the open declaration, one row each: a MUTUAL lists several, a
+\ plain STRUCTURE is one member and no list. A member is listed, open or closed:
+\   listed: its family row added, no fields; a row whose flag is set. It is named
+\     only beneath `^` (FIELD-FAM?), a STRUCTURE for it opens it (MEMBER) and
+\     ;MUTUAL rejects it (UNDECLARED).
+\   open: the family FAM holds, its STRUCTURE body being read; named only beneath
+\     `^` as its owner (FIELD-FAM?).
+\   closed: neither; its ;STRUCTURE set its field range and width in its family
+\     row, it is any family, and a second STRUCTURE for it is a duplicate (MEMBER).
+\ The close judges and generates every member in the order their `;STRUCTURE`
+\ was read: at ;MUTUAL, or at a plain STRUCTURE's ;STRUCTURE. A member may hold
+\ another by value only once that one is closed, so close order generates a held
+\ member before its holder. A row holds the name as listed (its span in
+\ MEM-NAMES), the family, the listed flag, the first pointee naming it while
+\ listed (its span in MEM-PTEES, M.PTEE-U 0 for none: SD-REACH) and its close
+\ rank (M.CLOSE: the members closed before it, 0 until its ;STRUCTURE); arity
+\ and field range are the family row's.
+0 constant M.NAME-U
+1 constant M.FAM
+2 constant M.LISTED
+3 constant M.PTEE-U
+4 constant M.CLOSE
+5 constant MEM-REC
+PTR-U8-TABLE-VARIABLE MEM-NAMES
+SCRATCH-VARIABLE MEM-NAMES-CAP
+PTR-U8-TABLE-VARIABLE MEM-PTEES
+SCRATCH-VARIABLE MEM-PTEES-CAP
+PTR-VARIABLE MEM-P
+SCRATCH-VARIABLE MEM-CAP              \ in rows
+variable MEM-N                        \ members of the open declaration
+0 MEM-N !
+variable MEM-CLOSED                   \ its members closed so far: the next rank
+0 MEM-CLOSED !
+
+: MEM-CLEAR ( -- ) 0 MEM-N !  0 MEM-CLOSED ! ;
+: MEM-NAME ( n -- ^^u8 ) MEM-NAMES @ swap ptr-field ;
+: MEM-PTEE ( n -- ^^u8 ) MEM-PTEES @ swap ptr-field ;
+: MEM-CELL ( n n -- ^n ) {: i:n k:n :} i MEM-REC * k + cells MEM-P @ + ;
+: MEM-NAME$ ( n -- ^u8 n ) {: i:n :} i MEM-NAME @  i M.NAME-U MEM-CELL @ ;
+: MEM-LISTED@ ( n -- bool ) M.LISTED MEM-CELL @ 0 <> ;
+\ Adds a member named na nu of family fam, listed or open.
+: MEM-ADD ( ^u8 n n bool -- ) {: na:^ nu:n fam:n listed:bool :}
+   MEM-N @ {: i:n :}
+   MEM-NAMES MEM-NAMES-CAP i 1 + 1 ARENA-ROWS-ENSURE
+   MEM-PTEES MEM-PTEES-CAP i 1 + 1 ARENA-ROWS-ENSURE
+   MEM-P MEM-CAP i 1 + MEM-REC ARENA-ROWS-ENSURE
+   na i MEM-NAME !
+   nu i M.NAME-U MEM-CELL !   fam i M.FAM MEM-CELL !   0 i M.PTEE-U MEM-CELL !
+   0 i M.CLOSE MEM-CELL !
+   listed IF -1 ELSE 0 THEN i M.LISTED MEM-CELL !
+   i 1 + MEM-N ! ;
+\ The member named na nu, -1 for none.
+: MEM-FIND ( ^u8 n -- n ) {: na:^ nu:n :}
+   MEM-N @ 0 ?do
+      i MEM-NAME$ na nu CORE-STR= IF i unloop EXIT THEN
+   loop -1 ;
+\ The member whose family is id, -1 for none.
+: MEM-OF ( n -- n ) {: id:n :}
+   MEM-N @ 0 ?do
+      i M.FAM MEM-CELL @ id = IF i unloop EXIT THEN
+   loop -1 ;
+\ Whether family id is a listed member, whose ;STRUCTURE has not been read.
+: MEM-LISTED? ( n -- bool )
+   MEM-OF {: i:n :}  i 0 < IF NO EXIT THEN  i MEM-LISTED@ ;
+
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
-\ The first pointee naming the declared family while it takes no scope or
-\ region, as written; a later scope or region parameter is rejected there.
+\ The first pointee naming the open member while it takes no scope or region,
+\ as written; a later scope or region parameter is rejected there. Each member
+\ has its own: one named while the member is listed waits in its row (SD-REACH)
+\ and MEM-BEGIN loads it here; one named while its family is open, in any
+\ declaration, is set here as it is read.
 PTR-VARIABLE SELF-A   variable SELF-U
 
 public
@@ -39,7 +110,7 @@ public
 private
 
 : SD-RESET ( -- )
-   0 SEEN-FIELD !  SELF-PTR-RESET ;
+   0 SEEN-FIELD !  0 SD-FLDS !  SELF-PTR-RESET ;
 SD-RESET
 : SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
@@ -48,27 +119,17 @@ SD-RESET
 PTR-VARIABLE NOUN-A   variable NOUN-U
 : NOUN@ ( -- ^u8 n ) NOUN-A @ NOUN-U @ ;
 
-\ A rejection's label is composed here, grown to fit, and read when the record
-\ prints, so the next rejection may reuse the buffer.
-$80 constant SD-MSG-FIRST               \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE SD-MSG-P   NULL-PTR SD-MSG-P !
-variable SD-MSG-CAP   0 SD-MSG-CAP !    \ bytes mapped at SD-MSG-P, 0 for none
-variable SD-MSG-U
-: SD-MSG+ ( ^u8 n -- ) {: a:^ u:n :}
-   SD-MSG-P SD-MSG-CAP SD-MSG-FIRST SD-MSG-U @ u + ARENA-ROOM
-   a SD-MSG-P @ SD-MSG-U @ + u ARENA-COPY
-   SD-MSG-U @ u + SD-MSG-U ! ;
 : SD-WORD+ ( ^u8 n -- ) {: a:^ u:n :}   \ a blank, then the word
    u 0= IF EXIT THEN
-   s"  " SD-MSG+  a u SD-MSG+ ;
+   s"  " DECL-REJECT:LABEL+  a u DECL-REJECT:LABEL+ ;
 
 \ The text before the noun, the noun, the text after it, blank-separated.
 : SD-NOUN-TEXT ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n na:^ nu:n sa:^ su:n :}
-   0 SD-MSG-U !
-   pa pu SD-MSG+
-   pu 0= IF na nu SD-MSG+ ELSE na nu SD-WORD+ THEN
+   DECL-REJECT:LABEL-START
+   pa pu DECL-REJECT:LABEL+
+   pu 0= IF na nu DECL-REJECT:LABEL+ ELSE na nu SD-WORD+ THEN
    sa su SD-WORD+
-   SD-MSG-P @ SD-MSG-U @ ;
+   DECL-REJECT:LABEL$ ;
 : SD-TEXT ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
    pa pu NOUN@ sa su SD-NOUN-TEXT ;
 : SD-REJECT ( ^u8 n ^u8 n ^u8 n n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
@@ -76,6 +137,7 @@ variable SD-MSG-U
 
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
+: SD-FIELD-FIX$ ( -- ^u8 n ) s" give each field of the structure its own name" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
 : ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
 \ A NEWTYPE or DEFTYPE: one base on one line, with no header and no clause.
@@ -204,7 +266,8 @@ variable HELP-U
 \ The kind test falls through to "unknown <noun>" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
 \ The declared family may be named only beneath a `^` (`^node`, `SPAN:span<^node>`);
-\ by value, as in `option<node>`, it is 7109.
+\ by value, as in `option<node>`, it is 7109. So may a listed MUTUAL member,
+\ whose ;STRUCTURE has not been read; a closed member is any family.
 : FIELD-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
@@ -225,6 +288,11 @@ variable HELP-U
          s" name the structure being declared only beneath `^`, as in `FIELD next ^node`"
       THEN THEN THEN
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
+   id MEM-LISTED? POINTEE @ 0= and IF
+      a u DECL-REJECT:TOKEN!
+      s" " s" names a MUTUAL member before its `;STRUCTURE`"
+      s" name it only beneath `^` until its `;STRUCTURE`, as in `FIELD first ^link`"
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    id YES ;
 
 : USE-KIND$ ( n -- ^u8 n )
@@ -236,11 +304,16 @@ variable HELP-U
 \ Rejects the parameter at a u used as want, which field fa fu used as kind.
 : PARAM-KIND-REJECT ( n ^u8 n ^u8 n n -- ) {: kind:n fa:^ fu:n a:^ u:n want:n :}
    a u DECL-REJECT:TOKEN!
-   0 SD-MSG-U !
-   s" `" SD-MSG+  a u SD-MSG+  s" ` is " SD-MSG+  want USE-KIND$ SD-MSG+
-   s"  here, but field `" SD-MSG+  fa fu SD-MSG+  s" ` uses it as " SD-MSG+
-   kind USE-KIND$ SD-MSG+
-   SD-MSG-P @ SD-MSG-U @
+   DECL-REJECT:LABEL-START
+   s" `" DECL-REJECT:LABEL+
+   a u DECL-REJECT:LABEL+
+   s" ` is " DECL-REJECT:LABEL+
+   want USE-KIND$ DECL-REJECT:LABEL+
+   s"  here, but field `" DECL-REJECT:LABEL+
+   fa fu DECL-REJECT:LABEL+
+   s" ` uses it as " DECL-REJECT:LABEL+
+   kind USE-KIND$ DECL-REJECT:LABEL+
+   DECL-REJECT:LABEL$
    ENUM? IF
       s" give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`"
    ELSE
@@ -263,10 +336,11 @@ variable HELP-U
 \ self is whether that family is the declared one.
 : PTR-VIEW-REJECT ( ^u8 n bool -- ) {: a:^ u:n self:bool :}
    a u DECL-REJECT:TOKEN!
-   0 SD-MSG-U !
-   s" a pointer cannot reach `" SD-MSG+  a u SD-MSG+
-   s" `, which takes a scope or region" SD-MSG+
-   SD-MSG-P @ SD-MSG-U @  self PTR-VIEW-FIX$
+   DECL-REJECT:LABEL-START
+   s" a pointer cannot reach `" DECL-REJECT:LABEL+
+   a u DECL-REJECT:LABEL+
+   s" `, which takes a scope or region" DECL-REJECT:LABEL+
+   DECL-REJECT:LABEL$  self PTR-VIEW-FIX$
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
@@ -455,12 +529,18 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    outer POINTEE ! ;
 
 \ Beneath a `^`, judges the family fam named at a u before its arguments, which
-\ a scope or region slot would reject first.
+\ a scope or region slot would reject first. A pointee naming a member that
+\ takes no scope or region is that member's first pointee when it has none: the
+\ open member's in SELF-A, a listed member's in its row.
 : SD-REACH ( ^u8 n n -- ) {: a:^ u:n fam:n :}
    POINTEE @ 0= IF EXIT THEN
    fam FAM @ = {: self:bool :}
    fam TFAM-NONVALUE-PARAM? IF a u self PTR-VIEW-REJECT THEN
-   self SELF-U @ 0= and IF a SELF-A !  u SELF-U ! THEN ;
+   self IF SELF-U @ 0= IF a SELF-A !  u SELF-U ! THEN EXIT THEN
+   fam MEM-OF {: i:n :}
+   i 0 < IF EXIT THEN
+   i MEM-LISTED@ 0= IF EXIT THEN
+   i M.PTEE-U MEM-CELL @ 0= IF a i MEM-PTEE !  u i M.PTEE-U MEM-CELL ! THEN ;
 
 \ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
@@ -537,11 +617,13 @@ SD-PARSER-INSTALL
    depth u 0 ?do a i + c@ SD-NEST loop ;
 
 \ One declaration's tokens stand in order in one buffer (parse-name never refills, a replay
-\ reads one body); its end or the closer goes back and the type is unclosed.
+\ reads one body); its end, the closer or the declaration's terminator (a MUTUAL
+\ member's `;MUTUAL`) goes back and the type is unclosed.
 : SD-SPAN-REST ( ^u8 n n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n depth:n ca:^ cu:n na:^ nu:n :}
    u depth
    BEGIN dup 0 > WHILE
-      NEXT dup 0= IF YES ELSE 2dup ca cu CORE-STR=CI THEN IF
+      NEXT dup 0= IF YES ELSE
+         2dup ca cu CORE-STR=CI IF YES ELSE 2dup TERMINATOR? THEN THEN IF
          UNGET  drop a swap DECL-REJECT:TOKEN!
          s" unclosed" na nu s" application" SD-NOUN-TEXT
          SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -677,7 +759,7 @@ SD-QUOT-INSTALL
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
-   s" give each field of this declaration its own name" E-TFAM-DUP DECL-REJECT:EXPECT
+   SD-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ -rot sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD
@@ -706,7 +788,7 @@ SD-QUOT-INSTALL
    na nu NAME-LONG? IF TF-NAME-LONG$ SD-LONG-FIX$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
-      na nu NAME-CHECK THEN
+      na nu SD-FIELD-FIX$ NAME-CHECK THEN
    na nu ;
 \ Each item is at least one level of MAKE's effect, so no record of more items
 \ than EFFECT-DEPTH-MAX can be made; USIG-DEPTH-FITS? measures nested types.
@@ -747,7 +829,7 @@ SD-QUOT-INSTALL
    CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
    na nu DECL-REJECT:TOKEN!
    s" duplicate field name"
-   s" give each field of this declaration its own name" E-TFAM-DUP DECL-REJECT:EXPECT
+   SD-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ na nu sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  bytes  CELL  PF-FLAG-BUFFER
    DECL-EVENT:FIELD
@@ -773,20 +855,25 @@ SD-QUOT-INSTALL
    na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
-\ Registers the family na nu names, its duplicate placed at the token ta tu.
-: SD-REGISTER ( ^u8 n ^u8 n n -- )
+: SD-DUP-FIX$ ( -- ^u8 n ) s" rename the family: this package already declares a family with this name" ;
+\ Registers the family na nu names, its duplicate placed at the token ta tu,
+\ and answers its id.
+: SD-DECL ( ^u8 n ^u8 n n -- n )
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
-   s" duplicate family"
-   s" rename the family: this package already declares a family with this name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
-   ar TK-PRODUCT TFAM-DECL FAM !
-   TYPE-FIELD:COUNT FLDBASE !
+   ar TK-PRODUCT TFAM-DECL ;
+\ Opens family fam's fields: they follow the committed rows and the rows of the
+\ members closed before it.
+: SD-OPEN ( n -- )
+   FAM !
+   TYPE-FIELD:COUNT SD-FLDS @ + FLDBASE !
    0 NFLD !   0 SD-CELLS !   0 SD-ITEMS ! ;
+: SD-REGISTER ( ^u8 n ^u8 n n -- ) SD-DECL SD-OPEN ;
 
 : SD-MAKEABLE? ( -- bool )
-   NFLD @ 0 > ;
+   FAM @ TFAM-FLD-COUNT@ 0 > ;
 \ Accessors are generated at commit because each is armed with a committed field
 \ id (structure-make.f). A fieldless structure has nothing to address and no
 \ MAKE / UNMAKE pair, whose constructor package the public accessor spelling uses.
@@ -801,16 +888,23 @@ SD-QUOT-INSTALL
       s" drop `init` from `DERIVE`, or give every field a fixed cell width"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
-: SD-SEAL ( -- )
-   DECL-REJECT:AT-FAMILY
-   MISSING? IF E-UNRESOLVED throw THEN
+\ The open family's field range and width, set at its end so a later member
+\ may hold it by value.
+: SD-SHAPE ( -- )
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
-   NFLD @ 0 ?do
-      FLDBASE @ i + PF-PENDING-SCH@ SCHEMA-ROOT@
+   FAM @ SD-CELLS @ TFAM-SLOTS! ;
+\ Judges the family's fields, its range set (SD-SHAPE), again once every member
+\ has its fields: a pointee was read while it had none. The fault is placed
+\ first: by CLOSE-ALL (through SD-CLOSE) at the member and the token its caller
+\ gives, a plain STRUCTURE's name or `;MUTUAL`; by WRAP-DRIVE at the family.
+: SD-SEAL ( -- )
+   FAM @ TFAM-FLD-START@ {: base:n :}  FAM @ TFAM-FLD-COUNT@ {: count:n :}
+   MISSING? IF E-UNRESOLVED throw THEN
+   count 0 ?do
+      base i + PF-PENDING-SCH@ SCHEMA-ROOT@
       s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
-   loop
-   FAM @ SD-CELLS @ TFAM-SLOTS! ;
+   loop ;
 : SD-CLOSE ( -- )
    SD-SEAL
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
@@ -822,13 +916,47 @@ SD-QUOT-INSTALL
    SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE THEN
    SD-ADDR-ARM ;
 
+\ Opens member i: its fields follow, its header clauses and a replay's field
+\ names repeat only within it, and SELF-A holds the first pointee its row
+\ recorded while it was listed, none if it has none.
+: MEM-BEGIN ( n -- ) {: i:n :}
+   i M.FAM MEM-CELL @ SD-OPEN
+   0 SEEN-FIELD !
+   SEEN-CLEAR
+   i M.PTEE-U MEM-CELL @ {: pu:n :}
+   pu 0 <> IF i MEM-PTEE @ SELF-A ! THEN
+   pu SELF-U !
+   0 i M.LISTED MEM-CELL !
+   DECL-EVENT:MEMBER ;
+\ ;STRUCTURE: the open member is closed, its field range and width set, its
+\ row given the next close rank.
+: MEM-END ( -- )
+   SD-SHAPE
+   SD-FLDS @ NFLD @ + SD-FLDS !
+   MEM-CLOSED @ FAM @ MEM-OF M.CLOSE MEM-CELL !
+   MEM-CLOSED @ 1 + MEM-CLOSED ! ;
+\ The member of close rank r, -1 for none.
+: MEM-RANKED ( n -- n ) {: r:n :}
+   MEM-N @ 0 ?do
+      i M.CLOSE MEM-CELL @ r = IF i unloop EXIT THEN
+   loop -1 ;
+\ The close: every member, in the order its `;STRUCTURE` was read, judged
+\ again, then generated; each fault names its member and stands at the token
+\ ta tu.
+: CLOSE-ALL ( ^u8 n -- ) {: ta:^ tu:n :}
+   MEM-N @ 0 ?do
+      i MEM-RANKED dup MEM-NAME$ DECL-REJECT:FAMILY!
+      ta tu DECL-REJECT:TOKEN!
+      M.FAM MEM-CELL @ FAM !  SD-CLOSE
+   loop ;
+
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
    NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
       s" missing ;STRUCTURE"
       s" end the declaration with `;STRUCTURE` after its last field"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
+   2dup s" ;structure" CORE-STR=CI IF 2drop MEM-END YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2dup s" buffer" CORE-STR=CI IF 2drop BUFFER-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
@@ -839,22 +967,103 @@ SD-QUOT-INSTALL
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
-: DRIVE ( -- )
-   NEXT 2dup DECL-REJECT:FAMILY!
-   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+\ The name and arity of the header token a u, the header's parameters bound.
+: HEADER ( ^u8 n -- ^u8 n n )
    TYPE-DECL:DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header"
       s" name each type parameter once in the header, as in `STRUCTURE box<a>` or `STRUCTURE pair<a,b>`"
       TYPE-DECL:E-TDECL-ARITY DECL-REJECT:REJECT throw
-   THEN
-   {: ar:n :}
-   2dup NAME-GATE
-   2dup ar
-   SD-REGISTER
+   THEN ;
+\ The header token a u after `STRUCTURE`, recorded as the family.
+: STRUCTURE-HEADER ( ^u8 n -- ^u8 n n )
+   2dup DECL-REJECT:FAMILY!
+   dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   HEADER ;
+
+\ A plain STRUCTURE: one member, registered and opened at once, closed at its
+\ ;STRUCTURE. Its name never counts as the terminator.
+: DRIVE ( -- )
+   NAME-TOKEN STRUCTURE-HEADER {: na:^ nu:n ar:n :}
+   na nu NAME-GATE
+   na nu na nu ar SD-DECL {: fam:n :}
+   na nu fam NO MEM-ADD
+   0 MEM-BEGIN
+   CLAUSES
+   na nu CLOSE-ALL ;
+
+\ A header in the MUTUAL list: the member is listed, its family row added.
+: LIST-ENTRY ( ^u8 n -- )
+   2dup DECL-REJECT:FAMILY!
+   HEADER {: na:^ nu:n ar:n :}
+   na nu NAME-GATE
+   na nu na nu ar SD-DECL {: fam:n :}
+   na nu fam YES MEM-ADD ;
+\ The token after the list: end of input, a member or the terminator.
+: LIST-END? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0=  a u s" structure" CORE-STR=CI or  a u s" ;mutual" CORE-STR=CI or ;
+: LIST ( -- )
+   NEXT 2dup LIST-END? IF
+      2drop s" missing name" s" list the families after `MUTUAL`, as in `MUTUAL node link`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   BEGIN LIST-ENTRY NEXT 2dup LIST-END? UNTIL
+   UNGET ;
+
+\ `STRUCTURE h` in a MUTUAL: h names a listed member with its listed arity,
+\ which opens; its body is a plain STRUCTURE's. The name is judged as a plain
+\ STRUCTURE's before it is looked up. A name `;MUTUAL` counts as the terminator,
+\ as the verifier's scan ends the declaration there: once the member is
+\ rejected, the load resumes after it.
+: MEMBER ( -- )
+   NEXT STRUCTURE-HEADER {: na:^ nu:n ar:n :}
+   na nu NAME-GATE
+   na nu MEM-FIND {: i:n :}
+   i 0 < IF
+      s" structure is not a member of this MUTUAL"
+      s" list it after `MUTUAL`, or declare it outside"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   i MEM-LISTED@ 0= IF
+      na nu DECL-REJECT:TOKEN!
+      s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:REJECT throw THEN
+   i M.FAM MEM-CELL @ TFAM-ARITY@ ar <> IF
+      s" header differs from its MUTUAL entry"
+      s" give the header the type parameters its `MUTUAL` entry lists"
+      TYPE-DECL:E-TDECL-ARITY DECL-REJECT:REJECT throw THEN
+   i MEM-BEGIN
    CLAUSES ;
 
+\ ;MUTUAL: a member still listed is rejected at its list entry.
+: UNDECLARED ( -- )
+   MEM-N @ 0 ?do
+      i MEM-LISTED@ IF
+         i MEM-NAME$ 2dup DECL-REJECT:FAMILY! DECL-REJECT:TOKEN!
+         s" member has no STRUCTURE"
+         s" declare `STRUCTURE name … ;STRUCTURE` before `;MUTUAL`, or drop the name from the list"
+         TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   loop ;
+
+: MUTUAL-STEP ( -- bool )               \ read + dispatch one member; YES = ;MUTUAL
+   NEXT dup 0= IF 2drop
+      DECL-REJECT:AT-FAMILY
+      s" missing ;MUTUAL"
+      s" end the declaration with `;MUTUAL` after its last `;STRUCTURE`"
+      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup s" structure" CORE-STR=CI IF 2drop MEMBER NO EXIT THEN
+   2dup s" ;mutual" CORE-STR=CI IF
+      UNDECLARED  CLOSE-ALL YES EXIT THEN
+   2drop s" unexpected token in mutual declaration"
+   s" write each member as `STRUCTURE name … ;STRUCTURE` and end with `;MUTUAL`, with no comments"
+   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
+
+: MUTUAL-DRIVE ( -- ) LIST BEGIN MUTUAL-STEP UNTIL ;
+
+\ The member table is cleared on both exits: a later declaration's family may
+\ reuse a rejected member's id.
 : SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
-   SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
+   SD-KIND$ s" ;structure"
+   [: SD-RESET [: DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
+: MUTUAL-FRONT ( -- ^u8 n ^u8 n [ -- ] )
+   s" mutual" s" ;mutual"
+   [: SD-RESET [: MUTUAL-DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
 
 \ A byte no one name holds: a package qualifier, an application or a pointer.
 : NAME-STOP? ( n -- bool ) {: c:n :}
@@ -891,8 +1100,7 @@ SD-QUOT-INSTALL
       s" a newtype takes one base type"
       s" give one base type after the name, as in `NEWTYPE path str`, and end the line there"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   -1 SEEN-END !
-   SD-SEAL
+   DECL-REJECT:AT-FAMILY SD-SHAPE SD-SEAL
    na nu BASE-A @ BASE-U @ ONE-NAME-GATE ;
 
 \ Takes the name as written and the kind, the declaration's keyword, "newtype"
@@ -906,10 +1114,20 @@ public
 
 : DECLARE-STRUCTURE ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
+\ Declares the structures a MUTUAL lists, which may point at each other.
+: DECLARE-MUTUAL ( -- ) MUTUAL-FRONT DECL-FRONT:RUN ;
+
 \ Registers a STRUCTURE from a body a tool lexed, by DECLARE-STRUCTURE's grammar,
 \ defining no word; a body without ;STRUCTURE is rejected "missing ;STRUCTURE".
 : REPLAY-STRUCTURE ( ^u8 n ^u8 n -- ^u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
+
+\ Registers a MUTUAL from a body a tool lexed, by DECLARE-MUTUAL's grammar,
+\ defining no word: first list token, then the rest of the body, which holds
+\ the other list tokens, the members and ;MUTUAL. A body without ;MUTUAL is
+\ rejected "missing ;MUTUAL". Answers as REPLAY-STRUCTURE.
+: REPLAY-MUTUAL ( ^u8 n ^u8 n -- ^u8 n bool )
+   MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 
 private
 
@@ -960,7 +1178,9 @@ public
 public
 
 EXPORT STRUCTURE-DECL:DECLARE-STRUCTURE
+EXPORT STRUCTURE-DECL:DECLARE-MUTUAL
 EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
+EXPORT STRUCTURE-DECL:REPLAY-MUTUAL
 EXPORT STRUCTURE-DECL:SD-ONE-NAME
 EXPORT STRUCTURE-DECL:SD-WRAP-OUTCOME
 EXPORT STRUCTURE-DECL:SD-WRAP
@@ -971,6 +1191,13 @@ EXPORT STRUCTURE-DECL:SD-WRAP
 \ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
+
+\ MUTUAL is a documented global, as STRUCTURE is: it lists the families of a
+\ cycle of structures, then holds one STRUCTURE ... ;STRUCTURE per listed
+\ family, in any order, to ;MUTUAL, as one declaration. A member whose
+\ ;STRUCTURE has not been read is named only beneath `^`. It parses its body at
+\ interpret time, so its checked effect is ( -- ).
+: MUTUAL ( -- ) TYPE-DECL:DECLARE-MUTUAL ;
 
 \ NEWTYPE is a documented global. A base is the type on the name's line; a \
 \ there, or a parametrised name, leaves the one-cell family. A missing name is

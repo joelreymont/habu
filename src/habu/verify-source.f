@@ -2547,6 +2547,41 @@ variable SUM-VAR-NEXT
    name nameu BODY$ TYPE-DECL:REPLAY-STRUCTURE
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
+: MUTUAL-END? ( ^u8 n -- bool )
+   s" ;MUTUAL" STR=CI ;
+
+\ Whether the token a u is a name in a MUTUAL's list: the front end's list
+\ ends at the input's end, a member's STRUCTURE or ;MUTUAL.
+: MUTUAL-LISTED? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0<>  a u s" STRUCTURE" STR=CI 0= and  a u MUTUAL-END? 0= and ;
+
+\ Appends the next MUTUAL body token; while listing, a listed name is sealed as
+\ RECORD-STRUCTURE-DECL seals its name. Answers whether the body ended and
+\ whether the list goes on.
+: MUTUAL-TOKEN ( bool -- bool bool ) {: listing:bool :}
+   DECL-TOKEN TOKEN-BYTE @ {: a:^ u:n at:n :}
+   u 0= IF true false EXIT THEN
+   a u BODY-APPEND
+   a u MUTUAL-END? IF true false EXIT THEN
+   listing a u MUTUAL-LISTED? and {: named:bool :}
+   named IF a u at u SEALED-NAME THEN
+   false named ;
+
+\ The replay registers every member's MAKE/UNMAKE and accessors, so
+\ `NODE:MAKE` resolves later in this source. The first list token is the
+\ replay's head; an unclosed body replays as RECORD-STRUCTURE-DECL's does:
+\ "missing ;MUTUAL".
+: RECORD-MUTUAL ( -- )
+   DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
+   nameu 0= IF NAME-STOP THEN
+   name nameu MUTUAL-LISTED? IF name nameu at nameu SEALED-NAME THEN
+   BODY-RESET
+   name nameu MUTUAL-END? 0= IF
+      name nameu MUTUAL-LISTED? BEGIN MUTUAL-TOKEN swap UNTIL drop
+   THEN
+   name nameu BODY$ TYPE-DECL:REPLAY-MUTUAL
+   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+
 : LEGACY-TYPE-OUTCOME ( n -- ) {: rc:n :}
    rc 0= IF EXIT THEN
    rc TYPE-DECL:E-TDECL-UNRESOLVED <> IF rc throw THEN
@@ -3696,6 +3731,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
       [: RECORD-VALUE-RECORD ;] catch VALUE-RECORD-OUTCOME 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" structure" STR=CI IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
+   a u s" mutual" STR=CI IF RECORD-MUTUAL 0 0= EXIT THEN
    a u s" newtype" STR=CI IF RECORD-NEWTYPE 0 0= EXIT THEN
    a u s" sumtype" STR=CI IF
       [: RECORD-SUMTYPE ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN

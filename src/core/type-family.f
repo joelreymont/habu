@@ -2361,6 +2361,41 @@ TFAM-SCH-ROW-ARITY-INSTALL
 : PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
    node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
 
+\ A field that is no buffer is as many cells as its schema is wide.
+: PF-WIDTH-REQUIRE ( n n n -- ) {: fam:n sch:n cellsn:n :}
+   fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
+      s" pf: a field's cells is not its schema's width" 76 die THEN ;
+
+\ --- entry reads (TFAM-FIND, below). A family read from its type entry is
+\ first its head (ER-HEAD: declared, with its layout policy and slots), then,
+\ after every family its entry names, its body (ER-BODY: variants, fields,
+\ layout rows); TFAM-FIND decides both by where it is, so a family holds no
+\ read state. MUTUAL members name each other, so a member's body can be read
+\ while a member it holds by value has only its head and no fields, which
+\ would measure 0 cells wide. The read as a whole is one machine, ER-STATE:
+\   ER-IDLE  no entry is being read; PF-ADD checks a field's width as it adds it.
+\   ER-OPEN  an entry is being read, from field row ER-MARK on; PF-ADD defers
+\            each field's width check.
+\ IDLE -> OPEN  the outermost TFAM-FIND starts reading an entry: ER-MARK := PF-N.
+\ OPEN -> OPEN  a read inside it, which adds rows past ER-MARK.
+\ OPEN -> IDLE  the outermost read returns, every body read; it then checks the
+\               rows from ER-MARK on (PF-WIDTHS-REQUIRE): by-value containment
+\               is acyclic, so every width they read is now whole.
+\ OPEN -> IDLE  a throw leaves the outermost read, which rethrows it.
+0 constant ER-IDLE
+1 constant ER-OPEN
+variable ER-STATE   ER-IDLE ER-STATE !
+variable ER-MARK    0 ER-MARK !
+
+\ The width check ER-OPEN deferred, for every field row from mark on.
+: PF-WIDTHS-REQUIRE ( n -- ) {: mark:n :}
+   PF-N @ mark ?do
+      i PF-ROW {: r:^ :}
+      r PF.FLAGS @ PF-FLAG-BUFFER <> IF
+         r PF.FAM @ r PF.SCH @ r PF.CELLS @ PF-WIDTH-REQUIRE
+      THEN
+   loop ;
+
 public
 
 : PF-OVERLAP? ( n n n n n n -- bool )
@@ -2389,8 +2424,7 @@ public
    flags PF-FLAG-BUFFER = IF
       sch SCHEMA-ROOT@ PF-U8? 0= IF s" pf: a buffer's schema is not u8" 76 die THEN
    ELSE
-      fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
-         s" pf: a field's cells is not its schema's width" 76 die THEN
+      ER-STATE @ ER-IDLE = IF fam sch cellsn PF-WIDTH-REQUIRE THEN
    THEN
    fam TFAM-LAYOUT-POLICY@ {: policy:n :}
    policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
@@ -3621,21 +3655,24 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
    ER-U @ 0 <> IF ER-BAD THEN ;
 
-public
-
-\ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry; the
-\ rows read are written out again and must equal the entry's text.
-: TFAM-FIND ( ^u8 n ^u8 n -- n bool )
+\ The record of family `pkg:tail`'s type entry while one is still to be read,
+\ else NULL-PTR.
+: ER-PROBE ( ^u8 n ^u8 n -- ^n )
    {: pa:^ pu:n na:^ nu:n :}
-   pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
-   ENTRIES-PENDING @ 0= IF 0 RES-FALSE EXIT THEN
+   ENTRIES-PENDING @ 0= IF NULL-PTR EXIT THEN
    BOOT:TYPES-WL {: wid:n :}
-   wid 0= IF 0 RES-FALSE EXIT THEN
+   wid 0= IF NULL-PTR EXIT THEN
    pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
-   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   rec NULL-PTR = IF NULL-PTR EXIT THEN
    \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
-   ix CHECK:FACTS@ CHECK:LINEAR-TEXT? IF 0 RES-FALSE EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ CHECK:LINEAR-TEXT? IF NULL-PTR EXIT THEN
+   rec ;
+
+\ Reads record rec's type entry into the registry: its head, then each family it
+\ names that the registry lacks, then its body (ER-STATE). The rows read are
+\ written out again and must equal the entry's text.
+: ER-READ ( ^n -- n ) {: rec:^ :}
+   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:^ su:n sn:^ snu:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: ra:^ ru:n :}
    ra ER-NAME !  ru ER-NAME-U !
@@ -3644,11 +3681,31 @@ public
    ix ER-HEAD {: id:n :}
    ER-NUM 0 ?do
       ER-TOKEN SPLIT-NAME 0= IF ER-BAD THEN
-      recurse 0= IF ER-BAD THEN drop
+      {: qa:^ qu:n ta:^ tu:n :}
+      qa qu ta tu TFAM-FIND-IN nip 0= IF
+         qa qu ta tu ER-PROBE {: dep:^ :}
+         dep NULL-PTR = IF ER-BAD THEN
+         dep recurse drop
+      THEN
    loop
    id ER-BODY
    id ENTRY-TEXT$ ix CHECK:FACTS@ CORE-STR= 0= IF ER-BAD THEN
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
+   id ;
+
+public
+
+\ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
+\ (ER-READ), the outermost read moving ER-STATE.
+: TFAM-FIND ( ^u8 n ^u8 n -- n bool )
+   {: pa:^ pu:n na:^ nu:n :}
+   pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
+   pa pu na nu ER-PROBE {: rec:^ :}
+   rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   ER-STATE @ ER-OPEN = IF rec ER-READ RES-TRUE EXIT THEN
+   PF-N @ ER-MARK !  ER-OPEN ER-STATE !
+   [: rec ER-READ ;] [: ER-IDLE ER-STATE ! ;] finally {: id:n :}
+   ER-MARK @ PF-WIDTHS-REQUIRE
    id RES-TRUE ;
 
 \ The family a spelling names exactly, with no scope or fallback: a bare tail is

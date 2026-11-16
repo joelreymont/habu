@@ -17279,6 +17279,7 @@ CHECKER-REG:}SCRATCH
    a u s" cwork-span" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cwork-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" mutual" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN

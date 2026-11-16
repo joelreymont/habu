@@ -1,9 +1,9 @@
 \ structure-make.f: a product family's sealed MAKE / UNMAKE (package
 \ STRUCTURE-MAKE), built by sumtype.f's constructor machinery, and its `DERIVE
 \ addr` accessor surface. Loads just before structure-decl.f; ;STRUCTURE for a
-\ family with fields calls GENERATE. A product bundle is its field cells in slot
-\ order, so MAKE and UNMAKE are casts the checker certifies, with no TRUST,
-\ TRUSTED: or set-check.
+\ family with fields calls GENERATE, or ;MUTUAL for each member with fields. A
+\ product bundle is its field cells in slot order, so MAKE and UNMAKE are casts
+\ the checker certifies, with no TRUST, TRUSTED: or set-check.
 
 using SCHEMA-REG
 using TFAM
@@ -62,23 +62,17 @@ private
 \ is a committed field id, so this work runs in the reversible commit, after
 \ DECL-EVENT's commit and inside the dictionary owner's savepoint: a reject
 \ truncates every accessor.
-\ One armed family in one cell: declarations never nest.
--1 constant SM-NO-FAMILY
-variable SM-ARMED   SM-NO-FAMILY SM-ARMED !
+\ The armed families in arm order: a MUTUAL arms each of its members.
+PTR-VARIABLE SM-ARMED-P
+SCRATCH-VARIABLE SM-ARMED-CAP
+variable SM-ARMED-N   0 SM-ARMED-N !
 
-: SM-ARMED-FAM ( -- n ) SM-ARMED @ ;
-: SM-DISARM ( -- ) SM-NO-FAMILY SM-ARMED ! ;
-
-public
-
-: PART-SNAPSHOT ( -- ) SM-DISARM ;
-
+: SM-ARMED ( n -- ^n ) cells SM-ARMED-P @ + ;
+: SM-DISARM ( -- ) 0 SM-ARMED-N ! ;
 
 \ Replay registers the accessors' checked effects and emits no code, so a tool
 \ that pre-scans a source sees the record's accessors.
-: PART-COMMIT ( -- )
-   SM-ARMED-FAM {: fam:n :}
-   fam SM-NO-FAMILY = IF EXIT THEN
+: SM-COMMIT ( n -- ) {: fam:n :}
    DECL-REPLAY:RP-ACTIVE? IF
       fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-REPLAY THEN
       fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN
@@ -87,13 +81,23 @@ public
    fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-WORDS THEN
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-WORDS THEN ;
 
+public
+
+: PART-SNAPSHOT ( -- ) SM-DISARM ;
+
+: PART-COMMIT ( -- )
+   SM-ARMED-N @ 0 ?do i SM-ARMED @ SM-COMMIT loop ;
+
 : PART-ROLLBACK ( -- ) SM-DISARM ;
 
 : PART-RELEASE ( -- ) SM-DISARM ;
 
 \ The structure declaration arms only a family with fields that derives addr or
-\ init, and rejects any other first.
-: ARM ( n -- ) SM-ARMED ! ;
+\ init, and rejects any other first; PART-COMMIT serves them in arm order.
+: ARM ( n -- ) {: fam:n :}
+   SM-ARMED-P SM-ARMED-CAP SM-ARMED-N @ 1 + 1 ARENA-ROWS-ENSURE
+   fam SM-ARMED-N @ SM-ARMED !
+   SM-ARMED-N @ 1 + SM-ARMED-N ! ;
 
 ;package
 ;package

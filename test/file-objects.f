@@ -51,7 +51,9 @@ package FILE-OBJECTS-TEST
 35 constant PFIELD-PF                    \ the +FIELD sequence's pf.f's
 36 constant PFIELD-MAIN                  \ and pf-main.f's
 37 constant SPELLED-BLOB                 \ the spelled sequence's blob.f's
-38 constant TAILS                        \ TAIL$'s tails
+38 constant MUTUAL-TYPES                 \ the MUTUAL sequence's mt.f's
+39 constant MUTUAL-MAIN                  \ and mt-main.f's
+40 constant TAILS                        \ TAIL$'s tails
 68 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -237,6 +239,8 @@ variable CLASS-N                        \ the class CLASS+ read
    i PT-USE = if s" /test/fixtures/file-objects/pt-use.f.hfo" exit then
    i PFIELD-PF = if s" /pfield/pf.f.hfo" exit then
    i PFIELD-MAIN = if s" /pfield/pf-main.f.hfo" exit then
+   i MUTUAL-TYPES = if s" /mutual/mt.f.hfo" exit then
+   i MUTUAL-MAIN = if s" /mutual/mt-main.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
@@ -1684,6 +1688,51 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build compiles pf-main.f" PFIELD-MAIN COMPILED
    s\" 5\n6\n" s" the program prints both new fields" PRINTS-RUN ;
 
+\ The MUTUAL sequence: mt.f's package declares mtnode and mtlink, which point at
+\ each other, mtlink holding the closed mtnode by value; mt-main.f's mtuser holds
+\ an mtlink by value, its MAIN prints 7, and the text given follows.
+: WRITE-MT-MAIN ( ^u8 n -- ) {: c:^ cu:n :}
+   s" mt.f" REQUIRE+  s\" using FILE-OBJECTS-MUTUAL\n" SRC+
+   s\" STRUCTURE mtuser DERIVE addr\n   FIELD l mtlink\n;STRUCTURE\n" SRC+
+   s\" : MAIN ( -- ) 7 . ;\n" SRC+  c cu SRC+  s" mt-main.f" NEST-WRITE ;
+
+: WRITE-MUTUAL ( -- )
+   L$ s" mutual" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package FILE-OBJECTS-MUTUAL\npublic\nMUTUAL mtnode mtlink\n" SRC+
+   s\" STRUCTURE mtnode DERIVE addr\n   FIELD id n\n   FIELD first ^mtlink\n;STRUCTURE\n" SRC+
+   s\" STRUCTURE mtlink DERIVE addr\n   FIELD owner ^mtnode\n   FIELD head mtnode\n" SRC+
+   s\"    FIELD next ^mtlink\n;STRUCTURE\n;MUTUAL\n;package\n" SRC+  s" mt.f" NEST-WRITE
+   s" " WRITE-MT-MAIN ;
+
+\ MT3: tools/hb-build.f's build of mt-main.f to L's prog-mt, in a fresh hb whose out root,
+\ mutual/out, is empty: the boundary under test is a build that reads no object.
+: MUTUAL-COLD ( CMD:command -- CMD:command bool )
+   s" out" NEST-PATH$ FS:MAKE-DIR
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
+   s" --" CMD:ARG+  s" mt-main.f" NEST-PATH$ CMD:ARG+
+   s" -o" CMD:ARG+  L$ s" prog-mt" IN$ CMD:ARG+
+   s" HABU_OUT" s" out" NEST-PATH$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N BUILT? ;
+
+\ Guards a warm build's read of type entries that name each other (type-family.f
+\ ER-STATE): MT2 links mt.f, whose mtlink entry holds mtnode by value, compiles
+\ mt-main.f after a comment is added, and writes the program and map that MT3, a
+\ cold build of the same files, writes.
+: MUTUAL-CASE ( CMD:command -- CMD:command )
+   WRITE-MUTUAL
+   s" MT" WHICH!  s" mt-main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s\" 7\n" s" the program prints 7" PRINTS-RUN
+   MUTUAL-TYPES KEEP  MUTUAL-MAIN KEEP
+   s\" \\ edited\n" WRITE-MT-MAIN
+   s" MT2" WHICH!  s" mt-main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build links mt.f" MUTUAL-TYPES LINKED
+   s" the build compiles mt-main.f" MUTUAL-MAIN COMPILED
+   s" MT3" WHICH!  MUTUAL-COLD 0= if exit then
+   s" the program has MT3's bytes" LABEL  L$ s" prog" L$ s" prog-mt" SAME-FILE? TTRUE
+   s" the map has MT3's bytes" LABEL  L$ s" prog.map" L$ s" prog-mt.map" SAME-FILE? TTRUE ;
+
 \ The divisor sequence's dz-callee.f: package FILE-OBJECTS-DIVISOR's public
 \ HALVE, which divides by its top input when the flag is true, else drops it.
 : WRITE-HALVE ( bool -- )
@@ -2068,6 +2117,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
+      MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE
       BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;

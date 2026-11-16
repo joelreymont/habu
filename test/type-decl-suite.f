@@ -1877,6 +1877,19 @@ TWX-MULTI-ERR-BEGIN
 s" ENUM tdmea ;ENUM NEWTYPE tdmeacont<a>" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" TDMEACONT-OK ( tdmeacont<n> -- tdmeacont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ Nor must one raised at the terminator itself, read where a field's type
+\ stands: both definitions after it are rejected too.
+TWX-MULTI-ERR-BEGIN
+s" STRUCTURE tdmez FIELD x ;STRUCTURE : TDMEZW ( -- n ) ; : TDMEZW2 ( -- n ) ;" evaluate
+TWX-MULTI-ERR-END 3 T=
+\ A declaration whose name is its own terminator is rejected at the name: the
+\ load skips to the terminator that ends it and rejects both definitions after.
+TWX-MULTI-ERR-BEGIN
+s" STRUCTURE ;STRUCTURE FIELD x n ;STRUCTURE : TDMETW ( -- n ) ; : TDMETW2 ( -- n ) ;" evaluate
+TWX-MULTI-ERR-END 3 T=
+TWX-MULTI-ERR-BEGIN
+s" ENUM ;ENUM red ;ENUM : TDMETE ( -- n ) ; : TDMETE2 ( -- n ) ;" evaluate
+TWX-MULTI-ERR-END 3 T=
 \ A unified declaration whose input simply ends: nothing to skip, still counted.
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmenoe red green" evaluate

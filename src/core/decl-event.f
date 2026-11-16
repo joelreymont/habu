@@ -66,6 +66,7 @@ PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
 : DEV-BASE ( -- ^n ) DEV-A-P @ ;
 
 variable DEV-N        \ events logged by the open declaration
+variable DEV-FROM     \ the open member's first event: a MUTUAL holds several
 variable DEV-BASE-FLD \ field-record count when the declaration opened
 variable DEV-FLD-ORD  \ fields logged by the open declaration
 variable DEV-VAR-ORD  \ variants logged by the open declaration
@@ -90,13 +91,13 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
 : DEV-PROV-FLD@ ( n -- n ) DEV-ROW DEV.FLD @ ;
 : DEV-CUR-HAS-KIND? ( n -- bool ) {: k:n :}
    0
-   DEV-N @ 0 ?do
+   DEV-N @ DEV-FROM @ ?do
       i DEV-PROV-KIND@ k = IF 1 + THEN
    loop
    0 <> ;
 : DEV-CUR-HAS-KIND-VAR? ( n n -- bool ) {: k:n v:n :}
    0
-   DEV-N @ 0 ?do
+   DEV-N @ DEV-FROM @ ?do
       i DEV-PROV-KIND@ k =
       i DEV-PROV-VAR@ v = and IF 1 + THEN
    loop
@@ -122,7 +123,7 @@ public
 \ The family, variant, field, schema and layout cursors and the name pool roll
 \ back with the checker frame's participant, not here.
 : PART-SNAPSHOT ( -- )
-   0 DEV-N !
+   0 DEV-N !  0 DEV-FROM !
    TYPE-FIELD:COUNT DEV-BASE-FLD !
    0 DEV-FLD-ORD !   0 DEV-VAR-ORD !
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
@@ -138,6 +139,10 @@ public
 : PAYLOAD-SCHEMA@ ( n n -- n ) {: vid:n index:n :}
    vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
    fld PF-PENDING-SCH@ ;
+
+\ Starts the next member of a MUTUAL: a header clause repeats only within one
+\ member.
+: MEMBER ( -- ) DEV-N @ DEV-FROM ! ;
 
 : POLICY ( n -- ) {: policy:n :}
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN

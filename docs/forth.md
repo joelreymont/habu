@@ -610,7 +610,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   "niche-null needs an empty variant, then one pointer field"). A `SUMTYPE`
   payload naming the family being declared (inline, through `^` or
   bare) is `E-TDECL-RECURSIVE` under every accepted policy, and a payload naming a family not yet declared is
-  `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
+  `E-TDECL-PAYLOAD`, which also keeps a `SUMTYPE` out of mutual recursion.
 - A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
   `^` pointee, as a linked record does:
   `STRUCTURE node FIELD id n FIELD next ^node ;STRUCTURE`.
@@ -618,6 +618,23 @@ multi-cell type rationale is `docs/design.md` "Types".
   `FIELD s SPAN:span<node>` though a span only points at its element), it is
   `E-TDECL-PAYLOAD` (7109), and so is a pointer to its own family when that
   family holds a linear value, as any pointer to a linear value is.
+- `MUTUAL a b … ;MUTUAL` declares structures that point at each other: it
+  lists the families, each `name` or `name<params>`, then holds one ordinary
+  `STRUCTURE … ;STRUCTURE` per listed family, in any order, as one
+  declaration, so every family and generated word appears at `;MUTUAL` or
+  none does:
+  `MUTUAL node link STRUCTURE node FIELD id n FIELD first ^link ;STRUCTURE STRUCTURE link FIELD owner ^node FIELD next ^link ;STRUCTURE ;MUTUAL`.
+  A member whose `;STRUCTURE` has not been read is named only beneath `^`; by
+  value it is `E-TDECL-PAYLOAD` (7109). A closed member is an ordinary family.
+  A pointer to a member that holds a linear value is rejected at its field
+  when that member is closed and at `;MUTUAL` otherwise. A fault found as
+  `;MUTUAL` makes a member's words, such as a generated word already defined
+  or a constructor package name a part already bears, also stands at
+  `;MUTUAL` and names the member. A pointer to a member with a scope or region
+  parameter is rejected at the pointee's name: in the pointer's own field
+  when that member already takes one, else in the member's field that first
+  uses a parameter as a scope or region. Comments stay out of it, as out of
+  any declaration body: write them above `MUTUAL`. An `ENUM` or `SUMTYPE` is not a member.
 - **`construct family variant` builds a variant inside the owning package.**
   Its two operands are read before locals and dictionary lookup, so they never
   resolve as either, and fold case like other body tokens. The family must
@@ -692,7 +709,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   makes through `BB-INNER:MAKE` inside AA. A part bearing the name of the
   constructor package of its own package's public family (`package QZ-PT`
   inside QZ, which declares `pt`) is rejected whichever comes second: the
-  family at its name, or `package` at its name with `E-CTOR-PROTECTED`.
+  family at its name (a `MUTUAL` member at `;MUTUAL`), or `package` at its
+  name with `E-CTOR-PROTECTED`.
   A private family's are `FAMILY-tail` in its package's
   private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
   section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.

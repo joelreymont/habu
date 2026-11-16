@@ -124,6 +124,13 @@ NEWEST ROLLBACK-CELLS:MARK
 \ The status a stopped declaration ends the load with.
 CHECKER-REJECT-RC constant STOP-RC
 
+\ A rejection's label is composed here, grown to fit, and read when the record
+\ prints, so the next rejection may reuse the buffer.
+$80 constant LABEL-FIRST                \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE LABEL-P   NULL-PTR LABEL-P !
+variable LABEL-CAP   0 LABEL-CAP !      \ bytes mapped at LABEL-P, 0 for none
+variable LABEL-U
+
 public
 
 \ OPEN ( kind -- ): every field is cleared, so nothing from the previous
@@ -158,6 +165,14 @@ public
 : REJECT ( ^u8 n ^u8 n n -- n ) {: wa:^ wu:n fa:^ fu:n code:n :}
    wa wu fa fu code EXPECT
    code ;
+
+\ A label: LABEL-START empties it, LABEL+ appends text, LABEL$ is the text.
+: LABEL-START ( -- ) 0 LABEL-U ! ;
+: LABEL+ ( ^u8 n -- ) {: a:^ u:n :}
+   LABEL-P LABEL-CAP LABEL-FIRST LABEL-U @ u + ARENA-ROOM
+   a LABEL-P @ LABEL-U @ + u ARENA-COPY
+   LABEL-U @ u + LABEL-U ! ;
+: LABEL$ ( -- ^u8 n ) LABEL-P @ LABEL-U @ ;
 
 \ Reflection for the suites: what the record would report right now.
 : KIND$ ( -- ^u8 n ) S-KIND SLOT@ ;
@@ -450,7 +465,12 @@ seal-package
 \ A swallowed reject (multi-error load) leaves the tokens up to the terminator
 \ ahead of the interpreter, which would run them: `ENUM m7bad red red blue ;ENUM
 \ NEWTYPE m7cont<a>` would die `E-UNDEFINED` at `blue`. DRIVE skips to the terminator,
-\ except after SEEN-END (that would eat the next declaration) or at end of input.
+\ except once NEXT has handed it out, in whatever role a front end read it
+\ (SEEN-END: that skip would eat the next declaration), or at end of input.
+\ NAME-TOKEN reads a STRUCTURE's or an ENUM's own name and never counts it
+\ as the terminator: the verifier's scan reads that place as the name. A
+\ MUTUAL member's name counts, since the scan ends a MUTUAL at its first
+\ `;MUTUAL`.
 \ The skip reads through RAW, not NEXT, so the record keeps naming the token.
 \ A replay claims the stream before the record opens: a failed claim belongs to
 \ the caller, keeps the live declaration's record and stream, and propagates with
@@ -483,7 +503,6 @@ public
 : NO ( -- bool ) 0 0= 0= ;
 
 variable FIELD-MISS          \ the field under resolution named a type that may still arrive
-variable SEEN-END            \ this declaration's terminator has been consumed
 variable OUTCOME-NAMES       \ a replay wants the field-name window checked (REPLAY-OUTCOME)
 
 private
@@ -492,6 +511,16 @@ private
 \ engine buffers the input source), so the pushback holds the raw span in a
 \ declared pointer cell.
 variable PEND-U   PTR-VARIABLE PEND-A
+\ The terminator DRIVE runs to. NEXT handing it out sets SEEN-END and UNGET
+\ taking it back clears it, whichever front end read it, so the
+\ resynchronization a reject asks for knows whether it was consumed.
+PTR-VARIABLE TERM-A   variable TERM-U
+variable SEEN-END            \ this declaration's terminator has been consumed
+public
+\ TERMINATOR? ( token -- bool ) : the token is the running declaration's
+\ terminator; a span a front end reads ahead stops there (SD-SPAN-REST).
+: TERMINATOR? ( ^u8 n -- bool ) TERM-A @ TERM-U @ CORE-STR=CI ;
+private
 : PEND! ( ^u8 n -- ) PEND-U ! PEND-A ! ;
 : PEND@ ( -- ^u8 n ) PEND-A @ PEND-U @ ;
 PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, re-read token by token before the source
@@ -499,7 +528,9 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
-PTR-VARIABLE SEEN-P                       \ a replay's field names, each count-prefixed
+\ A replay's field names, each count-prefixed: one structure member's, or one
+\ variant's, since a front end's SEEN-CLEAR.
+PTR-VARIABLE SEEN-P
 SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
 : SEEN ( -- ^u8 ) SEEN-P @ ;
 variable SEEN-U
@@ -557,8 +588,11 @@ private
 public
 
 : NEXT ( -- ^u8 n )                 \ next body token, recorded for diagnostics
+   RAW 2dup TERMINATOR? IF -1 SEEN-END ! THEN
+   2dup DECL-REJECT:TOKEN! ;
+: UNGET ( ^u8 n -- ) 2dup TERMINATOR? IF 0 SEEN-END ! THEN PEND! ;
+: NAME-TOKEN ( -- ^u8 n )           \ a name, recorded, never the terminator
    RAW 2dup DECL-REJECT:TOKEN! ;
-: UNGET ( ^u8 n -- ) PEND! ;
 
 : NAME-LONG? ( ^u8 n -- bool ) nip TF-NAME-MAX > ;
 
@@ -591,13 +625,13 @@ private
 
 public
 
-\ NAME-CHECK ( name -- ) : a replay's field-name gate. The name is validated,
-\ rejected as a duplicate of one recorded since SEEN-CLEAR, and recorded.
-: NAME-CHECK ( ^u8 n -- )
-   {: a:^ u:n :}
+\ NAME-CHECK ( name fix -- ) : a replay's field-name gate. The name is
+\ validated, rejected as a duplicate of one recorded since SEEN-CLEAR with the
+\ caller's help text, the one its loader gives, and recorded.
+: NAME-CHECK ( ^u8 n ^u8 n -- )
+   {: a:^ u:n f:^ fu:n :}
    a u DECL-REJECT:TOKEN!
-   s" duplicate field name" s" give each field of this declaration its own name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   s" duplicate field name" f fu E-TFAM-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-TFAM-DUP throw THEN
    SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
@@ -614,7 +648,7 @@ private
 
 : RESET ( -- )                          \ base state, on both exits of DRIVE and at load
    NULL-PTR 0 PEND!  HEAD-CLEAR  NULL-PTR 0 TYPE!
-   0 SEEN-END !  0 FIELD-MISS !  SEEN-CLEAR ;
+   NULL-PTR TERM-A !  0 TERM-U !  0 SEEN-END !  0 FIELD-MISS !  SEEN-CLEAR ;
 
 : SKIP-BODY ( ^u8 n -- )             \ to the terminator, or end of input
    {: ta:^ tu:n :}
@@ -635,6 +669,7 @@ private
 : DRIVE ( ^u8 n [ -- ] -- n )
    {: ta:^ tu:n body :}
    MISS-CLEAR RESET
+   ta TERM-A !  tu TERM-U !
    body [: dup TDECL-TXN-XT ;] catch {: rc:n :} drop
    rc 0= IF RESET 0 EXIT THEN
    QUOT-ROLLBACK

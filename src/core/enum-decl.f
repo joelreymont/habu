@@ -140,6 +140,8 @@ ED-RESET
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
+: ED-FIELD-FIX$ ( -- ^u8 n ) s" give each field of the variant its own name" ;
+
 \ Full mode: DECL-EVENT:VARIANT registers the SUMV row and pins the current-variant
 \ selector the FIELD events carry; END-VARIANT clears it. Each variant's payload
 \ restarts at slot 0 (VCELLS); the family width is the widest variant (MAXSLOTS).
@@ -148,8 +150,7 @@ ED-RESET
    sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
-   s" give each field of the variant its own name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   ED-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ -rot sch
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD
@@ -166,7 +167,7 @@ ED-RESET
       s" shorten the field name to 255 bytes or fewer"
       E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
-      na nu NAME-CHECK THEN
+      na nu ED-FIELD-FIX$ NAME-CHECK THEN
    na nu DECL-FIELD!
    0 FIELD-MISS !
    NEXT {: ta:^ tu:n :}
@@ -236,7 +237,7 @@ ED-RESET
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ^u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
-   2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
+   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup COMPACT-KW? IF
       2drop s" block keyword in a compact enum"
       s" write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block"
@@ -332,7 +333,7 @@ ED-RESET
       s" missing ;ENUM"
       s" end the declaration with `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
+   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
@@ -353,7 +354,7 @@ ED-RESET
    AGAIN ;
 
 : DRIVE ( -- )
-   NEXT 2dup DECL-REJECT:FAMILY!
+   NAME-TOKEN 2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"

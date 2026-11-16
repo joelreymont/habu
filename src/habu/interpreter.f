@@ -2821,6 +2821,7 @@ private
    s" defer-layout-buffer" TOKEN-IS? if true exit then
    s" dynamic-buffer" TOKEN-IS? if true exit then
    s" structure" TOKEN-IS? if true exit then
+   s" mutual" TOKEN-IS? if true exit then
    s" enum" TOKEN-IS? if true exit then
    s" sumtype" TOKEN-IS? if true exit then
    s" newtype" TOKEN-IS? if true exit then

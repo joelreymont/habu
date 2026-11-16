@@ -229,8 +229,9 @@ public
    ta tu TDA-KEEP
    code throw ;
 
-\ Places the record at the declaration's name and names the generated word NA
-\ NU, which has no source token, as its `word` note.
+\ Places a SUMTYPE's record at its name (TDN); a STRUCTURE's or ENUM's stands
+\ at its front end's recorded token, a MUTUAL member's close at `;MUTUAL`. NA
+\ NU, which has no source token, is its `word` note.
 : TDECL-THROW-AT ( ^u8 n ^u8 n ^u8 n n -- )   \ name, reason, fix, code
    {: na:^ nu:n wa:^ wu:n fa:^ fu:n code:n :}
    wa wu fa fu code TDECL-ARM
