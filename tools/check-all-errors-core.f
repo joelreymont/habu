@@ -1,9 +1,9 @@
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every rejected definition and lexer defect, one record each through package
-\ REJECTION, in the mode REJECTION:JSON holds, to standard error. A run's
-\ records are captured by REJECTION, which grows its capture to hold them, and
-\ handed to the report when the run ends.
+\ REJECTION, in the mode REJECTION:JSON holds, to standard error or the file
+\ STREAM! names. A run's records are captured by REJECTION, which grows its
+\ capture to hold them, and handed to the report when the run ends.
 \
 \ A definition of a name its scope already held is rejected at the name, and
 \ the scan goes on past it as past any rejected definition.
@@ -36,6 +36,8 @@ package CHECK-ALL-ERRORS
 
 private
 
+variable CA-OUT-FD                      \ where the report goes
+FD:STDERR FD>N CA-OUT-FD !
 TYPED-VARIABLE CA-SRC-A ^u8
 variable CA-SRC-U
 variable CA-SRC-CAP
@@ -62,7 +64,7 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 : CA-ERR ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF exit THEN
-   FD:STDERR FD>N a u write u <> IF E-FS-IO throw THEN ;
+   CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN ;
 
 \ Runs the action with the records it writes captured, then hands them to the
 \ report; the capture ends on the throwing path too.
@@ -191,14 +193,10 @@ variable CA-RC                          \ how the last run's check ended
    CA-RC @  REJECTION:TALLY @ before -  CA-STATUS {: status:n :}
    status 0 <> IF status throw THEN ;
 
-: CA-WARNED ( [ -- ] -- ) {: q :}
-   CHECK:WARN-DIAGS @ {: warn:n :}
-   -1 CHECK:WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
-   q catch {: rc:n :}
-   warn CHECK:WARN-DIAGS !
-   rc 0 <> IF rc throw THEN ;
-
 public
+
+\ The report goes to file FD from here on.
+: STREAM! ( fd -- ) FD>N CA-OUT-FD ! ;
 
 \ Check what the given word checks in one checker scope and one multi-error
 \ session, as a load runs it: a definition sees the clean definitions before
@@ -208,7 +206,7 @@ public
 \ the caller's package on the clean and the throwing path alike.
 : SESSION ( [ -- ] -- ) {: q :}
    CHECK:MULTI-ERR-BEGIN
-   [: [: q CA-WARNED ;] CHECK:SCOPED ;] catch {: rc:n :}
+   [: q CHECK:SCOPED ;] catch {: rc:n :}
    CHECK:MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 

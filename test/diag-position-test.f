@@ -535,8 +535,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       1 +
    repeat drop ;
 
-\ The check before the run writes the warning; the run, which loads what that
-\ check checked, does not repeat it, nor does a run that then fails.
+\ Check writes the warning once, placed in its file: the run on a pass, the
+\ check before it when no run follows, as under --verify-only.
 : TEST-NOT-RECORDED ( -- )
    s" an inferred effect not recorded" T-LABEL
    NOT-RECORDED-TEXT

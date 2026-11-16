@@ -57,6 +57,7 @@ create CHK-ROOT-BUF PATH-CAP allot
 create CHK-SRC-PATH-BUF PATH-CAP allot
 create CHK-RUN-PATH-BUF PATH-CAP allot
 create CHK-SUBJECT-PATH-BUF PATH-CAP allot
+create CHK-REPORT-PATH-BUF PATH-CAP allot
 create CHK-SUBJ-BUF PATH-CAP allot
 create CHK-SEL-LABEL-BUF PATH-CAP allot
 create CHK-ONE 1 allot
@@ -74,6 +75,7 @@ TYPED-VARIABLE CHK-ERR-BUF-A ^u8
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
+DYNAMIC-BUFFER CHK-REPORT-MEM u8
 \ Each positional path whole: CHK-POS-MEM holds its bytes, CHK-POS-ROWS its
 \ offset then length. CHK-POS-SET may move a span an earlier CHK-POS$ answered.
 DYNAMIC-BUFFER CHK-POS-MEM u8
@@ -112,6 +114,7 @@ variable CHK-SRC-A
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
 variable CHK-SUBJECT-PATH-U
+variable CHK-REPORT-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-EXP-OUT-U
@@ -437,6 +440,9 @@ private
 : CHK-SUBJECT-PATH ( -- ^u8 n )
    CHK-SUBJECT-PATH-BUF CHK-SUBJECT-PATH-U @ ;
 
+: CHK-REPORT-PATH ( -- ^u8 n )
+   CHK-REPORT-PATH-BUF CHK-REPORT-PATH-U @ ;
+
 : CHK-SUBJ$ ( -- ^u8 n )
    CHK-SUBJ-BUF CHK-SUBJ-U @ ;
 
@@ -452,7 +458,8 @@ private
    0 CHK-ROOT-U !
    0 CHK-SRC-PATH-U !
    0 CHK-RUN-PATH-U !
-   0 CHK-SUBJECT-PATH-U ! ;
+   0 CHK-SUBJECT-PATH-U !
+   0 CHK-REPORT-PATH-U ! ;
 
 : CHK-SESSION-CLEAR ( -- )
    CHK-RESET-CFG ;
@@ -489,6 +496,14 @@ private
 
 : CHK-ENTRY$ ( ^u8 n -- ^u8 n )
    ENTRY-RESOLVE drop ;
+
+\ The --all-errors core writes its records into a new report file, in the run's
+\ mode; the caller closes the descriptor answered and gives the core stderr back.
+: CHK-ALL-STREAM ( -- fd )
+   CHK-REPORT-PATH FS:MODE-0644 FS:CREATE-NEW {: file:fd :}
+   file CHECK-ALL-ERRORS:STREAM!
+   CHK-JSON @ REJECTION:JSON !
+   file ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
@@ -701,6 +716,7 @@ private
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF FS:JOIN-PATH CHK-SRC-PATH-U !
    CHK-ROOT s" run.f" CHK-RUN-PATH-BUF FS:JOIN-PATH CHK-RUN-PATH-U !
    CHK-ROOT s" subject.f" CHK-SUBJECT-PATH-BUF FS:JOIN-PATH CHK-SUBJECT-PATH-U !
+   CHK-ROOT s" report" CHK-REPORT-PATH-BUF FS:JOIN-PATH CHK-REPORT-PATH-U !
    CHK-SUBJECT-PATH s" path"
    s" set TMPDIR to a directory whose path holds none of them" CHK-QPATH-JUDGE ;
 
@@ -744,11 +760,7 @@ private
 : CHK-SEL-BYTES? ( -- bool )
    CHK-SEL-MODE @ dup CHK-SEL-NONE = swap CHK-SEL-SOURCE = or ;
 
-\ The run file's prefix names the subject for the checker's diagnostics and
-\ turns its warnings off. The check before the run wrote the warnings, each in
-\ its own file and placed: the run loads what that check checked, so its
-\ warnings would repeat them, naming the subject for every file and placing
-\ none.
+\ The run file's prefix names the subject for the checker's diagnostics.
 : CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    CHK-SEL-BYTES? if
@@ -757,8 +769,7 @@ private
    else
       s"  REJECTION:LABEL!" CHK-RUN-SP
    then
-   CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
-   s" 0 CHECK:WARN-DIAGS !" CHK-RUN-SP ;
+   CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then ;
 
 : CHK-RUN-SOURCE+ ( ^u8 n -- )
    CHK-SRC-READ {: len:n :}
@@ -879,11 +890,17 @@ private
 \ declared signature stands for it, as at a whole-file check. The composition
 \ reads each file a loader loads, so it meets each lexer defect where it lies.
 : CHK-RUN-ALL ( -- )
-   CHK-JSON @ REJECTION:JSON !
    CHK-ENTRY-TEXT? if
       CHK-SOURCE-BYTES CHK-SRC-PATH CHECK-ALL-ERRORS:COMPOSE-ENTRY exit
    then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
+
+: CHK-REPORT-ROOM ( n -- ^u8 n )
+   1 max dup CHK-REPORT-MEM-RESERVE 0 CHK-REPORT-MEM swap ;
+
+: CHK-REPORT-SEND ( -- )
+   CHK-REPORT-PATH [: CHK-REPORT-ROOM drop ;] READ-WHOLE-FILE {: len:n :}
+   1 CHK-REPORT-ROOM drop len CHK-ERR ;
 
 \ A verifier child that exited or died of a signal before it answered.
 : CHK-VERIFIER-ENDED ( ^u8 n n -- ) {: a:^ u:n v:n :}
@@ -915,23 +932,27 @@ private
    CHK-RERUN
    REJECTION:KEEP ;
 
-\ The verifier child's records on stderr, then its stderr as prose, its last
-\ line ended so a record after it starts a line of its own.
-: CHK-VERIFIER-RELAY ( -- )
-   VERIFY-OUT$ CHK-ERR
+\ The verifier child's stderr as prose, its last line ended so a record after
+\ it starts a line of its own.
+: CHK-VERIFIER-LOG ( -- )
    VERIFY-LOG$ {: a:^ u:n :}
    u 0= if exit then
    a u CHK-EXPLAIN
    a u + 1- c@ CHK-LF <> if NULL$ CHK-EXPLAIN-LN then ;
 
-\ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
-\ run's words; its records and the child's stderr come first, then a stop fails
-\ the check with the status the child answered.
+\ The verifier child's records on stderr, then its stderr.
+: CHK-VERIFIER-RELAY ( -- )
+   VERIFY-OUT$ CHK-ERR
+   CHK-VERIFIER-LOG ;
+
+\ The verifier child's stderr comes first, and its records with it when it stops
+\ the check: a pass's records are warnings, which the run writes.
 : CHK-PREVERIFY-REPORT ( result<n,PROCESS:ending> -- )
-   CHK-VERIFIER-RELAY
    MATCH result
-      ok OF {: rc:n :} rc 0<> if rc CHK-THROW then ENDOF
-      err OF CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      ok OF {: rc:n :}
+         rc 0= if CHK-VERIFIER-LOG else CHK-VERIFIER-RELAY rc CHK-THROW then
+      ENDOF
+      err OF CHK-VERIFIER-RELAY CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
@@ -977,9 +998,18 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
+\ A composition that stops the check writes its report; a passing one's report
+\ holds only warnings, which the run writes.
+: CHK-RUN-ALL-ERRORS ( -- )
+   CHK-ALL-STREAM {: file:fd :}
+   [: CHK-RUN-ALL ;] catch {: rc:n :}
+   file FD>N FS:CLOSE-FD drop
+   FD:STDERR CHECK-ALL-ERRORS:STREAM!
+   rc 0<> if CHK-REPORT-SEND rc throw then ;
+
 : CHK-RUN-CURRENT ( -- )
    CHK-JSON @ REJECTION:JSON !
-   CHK-ALL @ if CHK-RUN-ALL else CHK-RUN-PREVERIFY then
+   CHK-ALL @ if CHK-RUN-ALL-ERRORS else CHK-RUN-PREVERIFY then
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;

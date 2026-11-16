@@ -2162,17 +2162,10 @@ PTR-VARIABLE HOLDER-FIRST
    s" declare the stack effect after the name, as `: " EMIT-STR  na nu EMIT-STR
    s"  ( inputs -- outputs )`, so a call is checked against it" EMIT-STR ;
 
-\ Check's run turns this off, as the check before it wrote the placed warnings;
-\ a session the run's program starts turns it on (CHECK-ALL-ERRORS:SESSION).
-public
-variable WARN-DIAGS   -1 WARN-DIAGS !
-private
-
 \ W-EFFECT-NOT-RECORDED warns that the word certified and loaded, but a later
 \ call rejects it as undefined; the run's status stands. It names the word as
 \ its source token is spelled.
 : REC-REFUSE-DIAG ( -- )
-   WARN-DIAGS @ 0= IF EXIT THEN
    NM-SPAN {: na:^ nu:n :}
    s" W-EFFECT-NOT-RECORDED" REJECTION:WARN
    s" the effect of `" EMIT-STR  na nu EMIT-STR
