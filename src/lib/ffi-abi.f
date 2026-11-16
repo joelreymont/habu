@@ -140,7 +140,6 @@ CAST: CELL>PTR ( n -- ^u8 )
 \ ---- declared foreign functions -------------------------------------------
 
 PATH-CAP 1 + constant LIB-PATH-CAP
-9999 constant LIB-VERSION-MAX
 
 0 cells constant FN-ADDR-OFF
 1 cells constant FN-LIB-OFF
@@ -1006,10 +1005,6 @@ private
    a 0 SYM-BUF u BYTE-COPY
    u SYM-U ! ;
 
-\ The bytes LIBRARY-NAME$ adds to a base at the longest version it renders.
-: AFFIX-BYTES ( -- n )
-   s" x" LIB-VERSION-MAX LIB-NAME LIBRARY-NAME$ nip 1 - ;
-
 \ The base's length before a target's suffix in it: `.dylib` or `.so` at its
 \ end, else `.so.` within it; its whole length when it holds none.
 : SUFFIX-CUT ( ^u8 n -- n ) {: a:^ u:n :}
@@ -1021,17 +1016,9 @@ private
    ;MATCH ;
 
 \ The base the source spells t tu is copied out of the token buffer because
-\ reading the version token overwrites it. The base is checked before that
-\ token is read, so its name must fit a path at any version.
+\ reading the version token overwrites it.
 : BASE! ( ^u8 n -- ) {: t:^ tu:n :}
    TOK$ {: a:^ u:n :}
-   u AFFIX-BYTES + LIB-PATH-CAP 1 - > if
-      s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
-      SRCLOC:TOKEN$ s" too long" REJECTION:OPEN-AT
-      LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
-      s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit"
-      HELP-END
-   then
    a u SUFFIX-CUT {: cut:n :}
    cut u < if
       s" E-FFI-LIBRARY" REJECTION:OPEN
@@ -1045,15 +1032,6 @@ private
    a 0 BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
-: VERSION-WRITTEN ( n -- )
-   {: version:n :}
-   version LIB-VERSION-MAX > if
-      SYNTAX-OPEN  s" a library version is at most " REJECTION:EMIT-STR
-      LIB-VERSION-MAX REJECTION:EMIT-U
-      s" write the library's major version: 1 for libz.so.1"
-      HELP-STOP
-   then ;
-
 : >VERSION ( ^u8 n -- n )
    STR-PARSE-POS MATCH option
       none OF
@@ -1061,21 +1039,39 @@ private
          s" write versions as numbers split by commas: VERSIONED-LIBRARY z 1,2"
          SYNTAX-REJECT
       ENDOF
-      some OF dup VERSION-WRITTEN ENDOF
+      some OF ENDOF
    ;MATCH ;
 
-\ A version list's rows, made from the last version to the first, each next
-\ naming the version written after it; the answer is the first version's row.
-\ Every piece is parsed on the way in, so a rejected list adds no row.
-: VERSION-ROWS ( ^u8 n -- n )
-   {: list:^ u:n :}
+\ The name the base and version make, held in LIB-NAME until the next is made.
+: VERSION-NAME$ ( n -- ^u8 n ) {: version:n :}
+   0 BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ ;
+
+\ Rejects the version's name, at the base the source spells t tu, when a
+\ library path's field cannot hold it.
+: CHECK-NAME ( ^u8 n n -- ) {: t:^ tu:n version:n :}
+   version VERSION-NAME$ {: name:^ nu:n :}
+   nu LIB-PATH-CAP 1 - > if
+      s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
+      t tu SRCLOC:TOKEN$ REJECTION:KEPT s" too long" REJECTION:OPEN-AT
+      LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
+      s" found" REJECTION:NOTE  nu REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" name" REJECTION:NOTE  name nu REJECTION:EMIT-STR
+      s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit"
+      HELP-END
+   then ;
+
+\ The list's rows, made from the last version to the first; the answer is the
+\ first version's row. Every name is checked before a row is added.
+: VERSION-ROWS ( ^u8 n ^u8 n -- n )
+   {: t:^ tu:n list:^ u:n :}
    list u [char] , INDEX-OF MATCH option
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: cut:n :}
    list cut >VERSION {: version:n :}
-   cut u = if 0 else list cut + 1+ u cut - 1- RECURSE then {: next:n :}
-   0 BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ next LIBRARY-PATH-OR ;
+   t tu version CHECK-NAME
+   cut u = if 0 else t tu list cut + 1+ u cut - 1- RECURSE then {: next:n :}
+   version VERSION-NAME$ next LIBRARY-PATH-OR ;
 
 \ ---- the declared effect ---------------------------------------------------
 
@@ -1497,6 +1493,7 @@ private
       SYNTAX-OPEN  s" the library path is longer than a path can be" REJECTION:EMIT-STR
       path u SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" too long" REJECTION:EMIT-STR
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
+      s" found" REJECTION:NOTE  u REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
       s" name the library by its file name, which the loader searches for"
       HELP-END
    then
@@ -1811,7 +1808,7 @@ public
 
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: parse-name ;] {: src :}
-   [: src s" no base follows" LIB-OPERAND BASE!
+   [: src s" no base follows" LIB-OPERAND 2dup BASE!
       src s" no version list follows" LIB-OPERAND 2drop TOK$ VERSION-ROWS CUR-LIB !
       RECORD-SCOPE ;]
    KEEP-REST ;

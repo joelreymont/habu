@@ -500,9 +500,9 @@ PROCESS-SYMBOLS
 : FFI-T-VERSIONED-CALL ( -- )
    0 s" a" FFI-T-VERSIONED-CRC $E8B7BE43 T= ;
 
-\ A version list: no libz 9999 exists on either target, so the first call is
+\ A version list: no libz 10000 exists on either target, so the first call is
 \ served by the second version written.
-VERSIONED-LIBRARY z 9999,1
+VERSIONED-LIBRARY z 10000,1
 FUNCTION: FFI-T-LISTED-CRC crc32 ( n ^u8 n -- n ) ;FUNCTION
 PROCESS-SYMBOLS
 
@@ -694,23 +694,51 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s\"    ZZ-NO-VERSION drop ;\nZZ-CALL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
-: FFI-T-HUGE-BASE-SRC$ ( -- ^u8 n )
+: FFI-T-HUGE-BASE-SRC$ ( n -- ^u8 n ) {: u:n :}
    FFI-T-LONG-PATH!
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY " FFI-T-SRC+
-   FFI-T-LONG-PATH PATH-CAP FFI-T-SRC+
+   FFI-T-LONG-PATH u FFI-T-SRC+
    s\"  1\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
+\ The longest base whose name at version 1 fits a path.
+: FFI-T-BASE-MAX ( -- n )
+   PATH-CAP  HB-TARGET-MACOS? if s" lib.1.dylib" else s" lib.so.1" then nip - ;
+
 : FFI-T-HUGE-BASE ( -- )
+   s" a base whose library name fills a path loads" T-LABEL
+   FFI-T-BASE-MAX FFI-T-HUGE-BASE-SRC$ 0 FFI-T-RUN-EXITS
+   {: fitu:len fiterr:len :}
+   fitu LEN>N 0 T=
+   fiterr LEN>N 0 T=
    s" a base whose library name passes the path cap is rejected at the base" T-LABEL
-   FFI-T-HUGE-BASE-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-BASE-MAX 1+ FFI-T-HUGE-BASE-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
    SB-RESET s" = limit: " SB-APPEND PATH-CAP FMT:SB-INT s"  bytes" SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   SB-RESET s" = found: " SB-APPEND PATH-CAP 1+ FMT:SB-INT s"  bytes" SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    erru FFI-T-ERR$ s" error[" COUNT-SUB 1 T= ;
+
+\ LIBRARY's path one byte past the path cap: its record names the length found.
+: FFI-T-HUGE-PATH-SRC$ ( -- ^u8 n )
+   FFI-T-LONG-PATH!
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\nLIBRARY " FFI-T-SRC+
+   FFI-T-LONG-PATH PATH-CAP FFI-T-SRC+  s\" a\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-HUGE-PATH ( -- )
+   s" a library path past the path cap is rejected with its length" T-LABEL
+   FFI-T-HUGE-PATH-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library path is longer than a path can be" CONTAINS? TTRUE
+   SB-RESET s" = found: " SB-APPEND PATH-CAP 1+ FMT:SB-INT s"  bytes" SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T= ;
 
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL
@@ -903,6 +931,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-LIB
    FFI-T-NO-VERSION
    FFI-T-HUGE-BASE
+   FFI-T-HUGE-PATH
    FFI-T-GLOBAL ;
 
 FFI-RUN
