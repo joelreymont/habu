@@ -60,12 +60,6 @@ create PATH-BUF PATH-CAP allot
    70 s" required file closes the user stack" GE-EXPECT-RC
    s" error[E-EVAL-RESIDUE]" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
 
-: UNKNOWN ( -- )
-   S\" s\" PIPE\" type cr\n" [: s" --unknown" GE-ARG+ FILE-ARG ;] RUN
-   64 s" unknown flag before stdin" GE-EXPECT-RC
-   s" " s" unknown flag before stdin" GE-EXPECT-OUT
-   s" hb: unknown flag: --unknown" s" unknown flag before stdin" GE-EXPECT-ERR-HAS ;
-
 public
 
 : MAIN ( -- )
@@ -74,7 +68,7 @@ public
    FILE$ S\" s\" FILE\" type cr\n" FS:WRITE-ALL
    READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 type cr\n" FS:WRITE-ALL
    STACK$ S\" 7\n" FS:WRITE-ALL
-   PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE UNKNOWN
+   PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE
    GT-CLEANUP
    T-REPORT ;
 

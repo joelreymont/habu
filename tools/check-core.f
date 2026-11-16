@@ -218,9 +218,33 @@ variable CHK-KEPT-N
 : CHK-EXPLAIN-LN ( ^u8 n -- )
    CHK-PROSE-OUT? if CHK-OUT-LN else CHK-ERR-LN then ;
 
+\ A rejected command line is one record with no place: no source holds an
+\ argument. CHK-USAGE-OPEN opens it and CHK-USAGE ends it, after any notes.
+: CHK-USAGE-OPEN ( -- )
+   CHK-JSON @ 0<> REJECTION:JSON !
+   s" E-CHECK-USAGE" REJECTION:OPEN ;
+
+: CHK-USAGE-ARG ( ^u8 n -- )
+   96 REJECTION:EMIT1  REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+
+\ Opens the record with the message pre, the argument a u, then post.
+: CHK-USAGE-SAY ( ^u8 n ^u8 n ^u8 n -- ) {: pre:^ preu:n a:^ u:n post:^ postu:n :}
+   CHK-USAGE-OPEN
+   pre preu REJECTION:EMIT-STR  a u CHK-USAGE-ARG  post postu REJECTION:EMIT-STR ;
+
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
-   CHK-E-USAGE throw ;
+   REJECTION:HELP
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" REJECTION:EMIT-STR
+   CHK-E-USAGE REJECTION:STOP ;
+
+: CHK-REJECT-ARG ( ^u8 n ^u8 n ^u8 n -- )
+   CHK-USAGE-SAY CHK-USAGE ;
+
+: CHK-TWICE ( ^u8 n -- )
+   NULL$ 2swap s"  is given twice" CHK-REJECT-ARG ;
+
+: CHK-NO-VALUE ( ^u8 n -- )
+   NULL$ 2swap s"  takes a value, and none follows it" CHK-REJECT-ARG ;
 
 : CHK-THROW ( n -- )
    throw ;
@@ -257,9 +281,8 @@ variable CHK-KEPT-N
 : CHK-DASH? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
+\ Positional path idx; every caller passes an idx from 0 below CHK-POS-N.
 : CHK-POS$ ( n -- ^u8 n ) {: idx:n :}
-   idx 0 < if CHK-USAGE then
-   idx CHK-POS-N @ >= if CHK-USAGE then
    idx 2 * CHK-POS-ROWS @ CHK-POS-MEM
    idx 2 * 1+ CHK-POS-ROWS @ ;
 
@@ -276,13 +299,24 @@ variable CHK-KEPT-N
    CHK-POS-N @ CHK-POS-SET
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
+\ The program a u comes after the one selected before it.
+: CHK-SECOND ( ^u8 n -- )
+   s" a second program " 2swap s" ; check.f checks one, or the files a `--source-list` names"
+   CHK-USAGE-SAY
+   CHK-SEL-MODE @ CHK-SEL-FILE = if s" first" REJECTION:NOTE  0 CHK-POS$ REJECTION:EMIT-STR then
+   CHK-SEL-MODE @ CHK-SEL-SOURCE = if
+      s" first" REJECTION:NOTE  CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ REJECTION:EMIT-STR
+   then
+   CHK-USAGE ;
+
 : CHK-LIST-OPT ( -- )
    CHK-SEL-MODE @
    case
       CHK-SEL-NONE of CHK-SEL-LIST CHK-SEL-MODE ! endof
       CHK-SEL-FILE of CHK-SEL-LIST CHK-SEL-MODE ! endof
       CHK-SEL-LIST of endof
-      CHK-USAGE
+      s" `--source-list` after the source text " CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ NULL$
+      CHK-REJECT-ARG
    endcase ;
 
 : CHK-OPT ( ^u8 n -- ) {: a:^ u:n :}
@@ -290,7 +324,7 @@ variable CHK-KEPT-N
    a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
    a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
    a u s" verify-only" LINT-STR= if LINT-TRUE CHK-VERIFY ! exit then
-   CHK-USAGE ;
+   s" unknown option " a u NULL$ CHK-REJECT-ARG ;
 
 public
 
@@ -305,7 +339,7 @@ public
          CHK-SEL-FILE CHK-SEL-MODE !
       endof
       CHK-SEL-LIST of path pathu CHK-ADD-POS endof
-      CHK-USAGE
+      path pathu CHK-SECOND
    endcase ;
 
 private
@@ -315,7 +349,7 @@ private
    a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
    a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
    a u s" --verify-only" LINT-STR= if s" verify-only" OPT exit then
-   a u CHK-DASH? if CHK-USAGE then
+   a u CHK-DASH? if s" unknown flag " a u NULL$ CHK-REJECT-ARG then
    a u FILE ;
 
 : CHK-COLLECT-REST ( -- )
@@ -330,26 +364,33 @@ private
 \ The path stdin's text stands for under --verify-only, given once.
 : CHK-PARSE-STDIN-PATH ( -- )
    CHK-ARG-I @ 1+ CHK-ARG-I !
-   CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
-   CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
+   CHK-ARG-I @ SCRIPT-ARGC >= if s" --stdin-path" CHK-NO-VALUE then
+   CHK-STDIN-PATH-U @ 0<> if s" --stdin-path" CHK-TWICE then
    CHK-ARG-I @ CHK-ARG$ {: a:^ u:n :}
-   u 0= if CHK-USAGE then
+   u 0= if NULL$ s" --stdin-path" s"  names an empty path" CHK-REJECT-ARG then
    a CHK-STDIN-PATH-A CHK-PTR-U8!
    u CHK-STDIN-PATH-U ! ;
 
-: CHK-DEADLINE-SET ( n -- ) {: ms:n :}
-   ms 1 < ms CHK-DEADLINE-MAX > or if CHK-USAGE then
+: CHK-BAD-DEADLINE ( ^u8 n -- ) {: a:^ u:n :}
+   CHK-USAGE-OPEN
+   s" `--deadline-ms` takes a whole number of milliseconds from 1 to " REJECTION:EMIT-STR
+   CHK-DEADLINE-MAX REJECTION:EMIT-U  s" , not " REJECTION:EMIT-STR  a u CHK-USAGE-ARG
+   CHK-USAGE ;
+
+: CHK-DEADLINE-SET ( ^u8 n n -- ) {: a:^ u:n ms:n :}
+   ms 1 < ms CHK-DEADLINE-MAX > or if a u CHK-BAD-DEADLINE then
    ms CHK-DEADLINE ! ;
 
 \ The child's deadline in milliseconds, given once: a whole number from 1 to
 \ CHK-DEADLINE-MAX.
 : CHK-PARSE-DEADLINE ( -- )
    CHK-ARG-I @ 1+ CHK-ARG-I !
-   CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
-   CHK-DEADLINE @ 0<> if CHK-USAGE then
-   CHK-ARG-I @ CHK-ARG$ STR>NUMBER? MATCH option
-      none OF CHK-USAGE ENDOF
-      some OF CHK-DEADLINE-SET ENDOF
+   CHK-ARG-I @ SCRIPT-ARGC >= if s" --deadline-ms" CHK-NO-VALUE then
+   CHK-DEADLINE @ 0<> if s" --deadline-ms" CHK-TWICE then
+   CHK-ARG-I @ CHK-ARG$ {: a:^ u:n :}
+   a u STR>NUMBER? MATCH option
+      none OF a u CHK-BAD-DEADLINE ENDOF
+      some OF {: ms:n :} a u ms CHK-DEADLINE-SET ENDOF
    ;MATCH ;
 
 : CHK-PARSE-AT ( -- )
@@ -705,7 +746,7 @@ private
 \ Each listed path is quoted into its loader line before discovery reads any
 \ file.
 : CHK-MATERIALIZE-LIST ( -- )
-   CHK-POS-N @ 0= if CHK-USAGE then
+   CHK-POS-N @ 0= if NULL$ s" --source-list" s"  names no file" CHK-REJECT-ARG then
    CHK-CHECK-INPUTS
    s" <source-list>" CHK-LABEL!
    CHK-EXPAND-RESET
@@ -724,7 +765,7 @@ public
 
 : SOURCE ( ^u8 n ^u8 n -- )
    {: src:^ srcu:n label:^ labelu:n :}
-   CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
+   CHK-SEL-MODE @ CHK-SEL-NONE <> if label labelu CHK-SECOND then
    labelu PATH-CAP > if E-FS-CAPACITY throw then
    srcu CHK-SEL-SRC-ROOM drop
    {: dst:^ :}
@@ -1111,7 +1152,10 @@ private
 
 \ stdin's path need not exist.
 : CHK-VERIFY-STDIN ( -- ^u8 n )
-   CHK-STDIN-PATH-U @ 0= if CHK-USAGE then
+   CHK-STDIN-PATH-U @ 0= if
+      NULL$ s" --verify-only" s"  names no program, and no `--stdin-path` for one on stdin"
+      CHK-REJECT-ARG
+   then
    CHK-READ-STDIN CHK-SRC-U !
    NULL-PTR 0 CHK-STDIN-PATH$ [: CANONICAL ;] LOADER-RESOLVE drop 2drop
    CHK-STDIN-PATH$ ;
@@ -1119,10 +1163,21 @@ private
 \ Read the bytes into the source buffer: the path they stand for.
 : CHK-VERIFY-SELECT ( -- ^u8 n )
    CHK-SEL-MODE @ CHK-SEL-FILE = if
-      CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
+      CHK-STDIN-PATH-U @ 0<> if
+         s" both the program " 0 CHK-POS$ s"  and `--stdin-path`; `--verify-only` checks one"
+         CHK-REJECT-ARG
+      then
       CHK-VERIFY-FILE exit
    then
-   CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
+   CHK-SEL-MODE @ CHK-SEL-LIST = if
+      NULL$ s" --verify-only" s"  checks one program, not the files a `--source-list` names"
+      CHK-REJECT-ARG
+   then
+   CHK-SEL-MODE @ CHK-SEL-SOURCE = if
+      NULL$ s" --verify-only" s"  checks a file or stdin, not the source text " CHK-USAGE-SAY
+      CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-USAGE-ARG
+      CHK-USAGE
+   then
    CHK-VERIFY-STDIN ;
 
 \ The verifier's records on stderr, its prose on stdout.
@@ -1167,7 +1222,7 @@ private
 : CHK-RUN-INNER ( -- )
    CHK-JSON @ 0<> REJECTION:JSON !
    CHK-VERIFY @ if CHK-RUN-VERIFY exit then
-   CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
+   CHK-STDIN-PATH-U @ 0<> if NULL$ s" --stdin-path" s"  is given without `--verify-only`" CHK-REJECT-ARG then
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
 

@@ -5,9 +5,11 @@
 \ process's argv and stdin; RUN takes a vector, so a test can hand it one.
 
 require src/lib/string.f
+require src/lib/fs.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/core/include.f
+require src/core/rejection.f
 require src/os/env-base.f
 require src/habu/interpreter.f
 require src/habu/repl.f
@@ -16,7 +18,7 @@ package COMMAND-LINE
 
 private
 
-64 constant RC-USAGE             \ an unknown flag (USAGE)
+64 constant RC-USAGE             \ an unknown flag or no file (USAGE, NO-FILES)
 74 constant RC-SOURCE            \ the source cannot be had
 $2D constant DASH
 $23 constant HASH
@@ -35,30 +37,55 @@ ENUM route load plain ;ENUM
 : ARG ( ^^u8 n -- ^u8 n )
    ptr-field @ dup ZLEN ;
 
-\ The unknown argument, then the usage line, which lists the
-\ flags the route test below knows.
-: USAGE ( ^u8 n -- )
-   s" hb: unknown flag: " ERROR-TEXT:TYPE  ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   s" usage: bin/hb " ERROR-TEXT:TYPE  LOAD$ ERROR-TEXT:TYPE
-   s"  " ERROR-TEXT:TYPE  SEP$ ERROR-TEXT:TYPE
-   s"  [file.f]  (source on stdin)" RC-USAGE die ;
+\ The open record has no place: no source holds an argument or stdin.
+: REJECT ( n -- ) {: rc:n :}
+   REJECTION:KEEP  NULL$ rc die ;
+
+\ The usage help lists the routes ROUTE knows.
+: USAGE-HELP ( -- )
+   REJECTION:HELP
+   s" usage: hb file.f [args ...], hb --load file.f ... [-- args ...], or hb with the program on stdin"
+   REJECTION:EMIT-STR ;
+
+\ The unknown flag a u.
+: USAGE ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-HB-USAGE" REJECTION:OPEN
+   s" unknown flag `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   USAGE-HELP  RC-USAGE REJECT ;
 
 \ No file to load: `--load` with nothing before the end or a `--`.
 : NO-FILES ( -- )
-   s" hb: no source files" RC-SOURCE die ;
+   s" E-HB-USAGE" REJECTION:OPEN
+   s" no source file to load" REJECTION:EMIT-STR
+   USAGE-HELP  RC-USAGE REJECT ;
 
-: CANNOT-READ ( -- )
-   s" hb: cannot read source" RC-SOURCE die ;
+\ A read of the program on stdin failed with errno e, 0 for none.
+: CANNOT-READ ( n -- ) {: e:n :}
+   s" E-UNREADABLE-SOURCE" REJECTION:OPEN
+   s" cannot read the program on stdin" REJECTION:EMIT-STR
+   e 0<> if
+      s" : " REJECTION:EMIT-STR  e SOURCE-ROOT:ERRNO-WHY$ SOURCE-ROOT:UNREAD-WHY
+   then
+   REJECTION:HELP
+   s" give hb a readable program on stdin, or name a file: `hb file.f`" REJECTION:EMIT-STR
+   RC-SOURCE REJECT ;
 
 : FULL ( -- )
    s" hb: source prefix buffer full" RC-SOURCE die ;
 
+\ The source arena of SOURCE-ARENA-CAP bytes would not map.
 : CANNOT-MAP ( -- )
-   s" hb: cannot map the source arena" RC-SOURCE die ;
+   s" E-SOURCE-MAP" REJECTION:OPEN
+   s" cannot map the source arena" REJECTION:EMIT-STR
+   s" size" REJECTION:NOTE  SOURCE-ARENA-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" free memory or raise the process's address-space limit (`ulimit -v`), then run hb again"
+   REJECTION:EMIT-STR
+   RC-SOURCE REJECT ;
 
 \ argv[1] picks it. `--load` takes the files after it up to the first `--`;
 \ what follows is the program's arguments (src/os/script-argv.f).
-\ Any other argument starting with `-` is refused with the usage line, exit 64.
+\ Any other argument starting with `-` is an unknown flag (USAGE).
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
 : ROUTE ( ^u8 n -- route ) {: a:^ u:n :}
@@ -112,7 +139,7 @@ variable USED
 : STEP ( n -- bool ) {: fd:n :}
    ROOM 0 = if FULL then
    fd CURSOR ROOM read {: got:n :}
-   got 0 < if CANNOT-READ then
+   got 0 < if FS:ERRNO CANNOT-READ then
    USED @ got + USED !
    got 0 = ;
 

@@ -1382,9 +1382,11 @@ variable REQUEST-AT-U
 : REQUEST-AT! ( ^u8 n -- ) REQUEST-AT-U ! REQUEST-AT-A ! ;
 : REQUEST-AT$ ( -- ^u8 n ) REQUEST-AT-A @ REQUEST-AT-U @ ;
 
+public
+
 \ The label of errno e, and the os error its record names: e where the label
 \ does not name e, else 0.
-: OPEN-ERRNO$ ( n -- ^u8 n n ) {: e:n :}
+: ERRNO-WHY$ ( n -- ^u8 n n ) {: e:n :}
    e 2 = if s" no such file" 0 exit then
    e 13 = if s" permission denied" 0 exit then
    e 20 = if s" a directory in the path is a file" 0 exit then
@@ -1392,7 +1394,15 @@ variable REQUEST-AT-U
    e 5 = if s" input/output error" 0 exit then
    e 23 = e 24 = or if s" too many open files" 0 exit then
    e 12 = if s" out of memory" 0 exit then
-   s" cannot open" e ;
+   s" the system call failed" e ;
+
+\ Writes why, then os error e unless e is 0, as Rust names an OS error.
+: UNREAD-WHY ( ^u8 n n -- ) {: why:^ whyu:n e:n :}
+   why whyu REJECTION:EMIT-STR
+   e 0= if exit then
+   s"  (os error " REJECTION:EMIT-STR  e REJECTION:EMIT-N  41 REJECTION:EMIT1 ;
+
+private
 
 \ Writes a u as one single-quoted shell word: each `'` in it closes the quote,
 \ is written escaped and reopens it, so no path byte acts in a shell.
@@ -1423,12 +1433,6 @@ variable REQUEST-AT-U
    then
    e 12 = if s" free memory, then load it again" REJECTION:EMIT-STR exit then
    s" check that the file exists and is readable" REJECTION:EMIT-STR ;
-
-\ Writes why, then os error e unless e is 0, as Rust names an OS error.
-: UNREAD-WHY ( ^u8 n n -- ) {: why:^ whyu:n e:n :}
-   why whyu REJECTION:EMIT-STR
-   e 0= if exit then
-   s"  (os error " REJECTION:EMIT-STR  e REJECTION:EMIT-N  41 REJECTION:EMIT1 ;
 
 \ The record of path, not read to its end, labelled why and os error e; at t tu
 \ with path in a note labelled note, else unplaced; written through its help.
@@ -1462,7 +1466,7 @@ public
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
    path pathu e SOURCE-ERRNO {: why:n :}
-   t tu path pathu why OPEN-ERRNO$ s" resolved" UNREAD-OS-RECORD
+   t tu path pathu why ERRNO-WHY$ s" resolved" UNREAD-OS-RECORD
    path pathu why OPEN-HELP
    INCLUDE-IO-RC REJECTION:STOP ;
 
@@ -1536,7 +1540,7 @@ private
 : UNSEARCHABLE-SOURCE ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
    path pathu SEARCH-DENIED {: dir:^ diru:n :}
    diru 0= if exit then
-   t tu path pathu 13 OPEN-ERRNO$ s" searched" UNREAD-OS-RECORD
+   t tu path pathu 13 ERRNO-WHY$ s" searched" UNREAD-OS-RECORD
    s" if the directory `" REJECTION:EMIT-STR  dir diru REJECTION:EMIT-STR
    s" ` is yours, make it searchable with `chmod u+x " REJECTION:EMIT-STR
    dir diru SH-QUOTED

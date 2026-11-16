@@ -1,4 +1,4 @@
-\ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts.
+\ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts and tools/check.f's usage record.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
 
 require src/lib/error.f
@@ -131,7 +131,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
 
-\ printf '' | hb --loadx  ->  rc 64, stderr echoes the flag and lists --load.
+\ printf '' | hb --loadx  ->  rc 64, a record that names the flag, with a help
+\ that lists --load.
 : HCT-EXPECT-UNKNOWN-FLAG ( -- )
    PROC-ARGV-RESET
    s" --loadx"  >LEN PROC-ARGV+
@@ -140,10 +141,10 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" bin/hb --loadx" HCT-STORE!
    s" unknown flag exits 64" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
-   s" stderr echoes the offending flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" --loadx" CONTAINS? TTRUE
-   s" usage names the known --load flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" --load" CONTAINS? TTRUE ;
+   s" the record names the offending flag" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" error[E-HB-USAGE]: unknown flag `--loadx`" CONTAINS? TTRUE
+   s" its help names the known --load flag" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" = help: usage: hb file.f [args ...], hb --load" CONTAINS? TTRUE ;
 
 \ printf '1 2 + . cr' | hb --nonsense  ->  rc 64: the flag is rejected before the
 \ piped program can run.
@@ -157,6 +158,37 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" the piped stdin program did not run" T-LABEL
    HCT-OUT-U @ 0 T= ;
+
+\ printf '' | hb --load tools/check.f -- [--json-errors] --deadline-ms x  ->  rc 64.
+: HCT-CHECK-BAD-DEADLINE ( bool -- ) {: json:bool :}
+   PROC-ARGV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   json if s" --json-errors"  >LEN PROC-ARGV+ then
+   s" --deadline-ms"  >LEN PROC-ARGV+
+   s" x"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   json if s" bin/hb --load tools/check.f -- --json-errors --deadline-ms x"
+   else s" bin/hb --load tools/check.f -- --deadline-ms x" then HCT-STORE!
+   s" a bad --deadline-ms exits 64" T-LABEL
+   HCT-EXITED @ TTRUE  HCT-RC @ 64 T= ;
+
+: HCT-EXPECT-CHECK-USAGE ( -- )
+   false HCT-CHECK-BAD-DEADLINE
+   s" a bad --deadline-ms is one E-CHECK-USAGE record" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" error[E-CHECK-USAGE]: " STARTS-WITH? TTRUE
+   HCT-ERR HCT-ERR-U @ s" error[" COUNT-SUB 1 T=
+   s" the record names the bad value" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" not `x`" CONTAINS? TTRUE
+   s" its help is the usage line" T-LABEL
+   HCT-ERR HCT-ERR-U @ s"   = help: usage: tools/check.f [" CONTAINS? TTRUE
+   true HCT-CHECK-BAD-DEADLINE
+   s" with --json-errors the record is one JSON line on stderr" T-LABEL
+   HCT-ERR HCT-ERR-U @ S\" {\"severity\":\"error\",\"code\":\"E-CHECK-USAGE\"," STARTS-WITH? TTRUE
+   HCT-ERR HCT-ERR-U @ 10 COUNT-CHAR 1 T=
+   HCT-ERR HCT-ERR-U @ S\" }\n" ENDS-WITH? TTRUE ;
 
 \ printf '' | hb --load FILE, FILE empty  ->  rc 0: a known flag with an empty
 \ file loads.
@@ -211,6 +243,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXPECT-LOAD-STDIN
    HCT-EXPECT-UNKNOWN-FLAG
    HCT-EXPECT-FLAG-BEFORE-STDIN
+   HCT-EXPECT-CHECK-USAGE
    HCT-EXPECT-LOAD-EMPTY-FILE
    HCT-EXPECT-ARGV-NONE
    HCT-EXPECT-ARGV-VALUES
