@@ -141,6 +141,11 @@ s" DEFTYPE dx ^option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" option" s" type is parametric and needs type arguments"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^option<n>` instead\n" DT-REC
+\ a width inside a longer base gets the NEWTYPE that loads, `n` for the width.
+s" DEFTYPE dx ^width"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" width" s" a width is not stored: keep its bytes (width>n)"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^n` instead\n" DT-REC
 package DTQP
 public
 NEWTYPE dtqt

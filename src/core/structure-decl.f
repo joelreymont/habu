@@ -82,15 +82,25 @@ variable HELP-U
 \ wrap accepted: the NEWTYPE over BASE as written.
 : BASE-HELP$ ( ^u8 n ^u8 n -- ^u8 n )
    NEWTYPE-HELP  s" ` instead" HELP+  HELP-P @ HELP-U @ ;
+\ NEWTYPE-HELP over BASE up to its token at ta, which the caller then rewrites.
+: HELP-HEAD ( ^u8 n ^u8 ^u8 -- ) {: na:^ nu:n ba:^ ta:^ :}
+   na nu ba  ta NULL-PTR - ba NULL-PTR - -  NEWTYPE-HELP ;
+\ BASE after its token ta tu, then the help's close.
+: HELP-TAIL$ ( ^u8 n ^u8 n -- ^u8 n ) {: ba:^ bu:n ta:^ tu:n :}
+   ta NULL-PTR - tu + ba NULL-PTR - - {: hu:n :}
+   ba hu + bu hu - HELP+  s" ` instead" HELP+
+   HELP-P @ HELP-U @ ;
 \ The edit the loader accepts for `DEFTYPE NAME BASE` whose token TOK names bare a
 \ family of arity ar taking `n` throughout: the NEWTYPE of BASE, `<n,...>` after TOK.
 : ARGS-HELP$ ( ^u8 n ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ta:^ tu:n ar:n :}
-   ta NULL-PTR - tu + ba NULL-PTR - - {: hu:n :}
-   na nu ba hu NEWTYPE-HELP  s" <n" HELP+
+   na nu ba ta HELP-HEAD  ta tu HELP+  s" <n" HELP+
    ar 1 ?do s" ,n" HELP+ loop
-   s" >" HELP+  ba hu + bu hu - HELP+
-   s" ` instead" HELP+
-   HELP-P @ HELP-U @ ;
+   s" >" HELP+  ba bu ta tu HELP-TAIL$ ;
+\ The edit the loader accepts for a DEFTYPE whose base names `width` at ta inside
+\ a longer base: the NEWTYPE of that base, `n` for the width.
+: WIDTH-HELP$ ( ^u8 n -- ^u8 n ) {: ta:^ tu:n :}
+   DECL-REJECT:FAMILY$ BASE-A @ ta HELP-HEAD  s" n" HELP+
+   BASE-A @ BASE-U @ ta tu HELP-TAIL$ ;
 
 \ A family whose parameters are all cells: `n` fills each (`option<n>` loads,
 \ `width<n>` and `init<n,n>` do not).
@@ -153,7 +163,9 @@ variable HELP-U
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 NO EXIT THEN
-   id UNSTORED-REASON IF TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
+   id UNSTORED-REASON IF
+      id WIDTH-FAM @ = DEFTYPE? and a u WHOLE-BASE? 0= and IF 2drop a u WIDTH-HELP$ THEN
+      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
       s" type cannot recursively name its owner"
