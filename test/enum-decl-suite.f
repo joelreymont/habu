@@ -1241,8 +1241,11 @@ DECL-DIAG:PROSE
 s" ENUM edkind<a,q> VARIANT vone FIELD x a ;VARIANT VARIANT wtwo FIELD y read-view<a,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edkind`\n" DECL-DIAG:HAS? TTRUE
-s" edkind" s" type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
+s" a" s" `a` is a scope here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 DECL-DIAG:OFF
 
 \     An application is as wide as its arguments make it: option<edapw> takes

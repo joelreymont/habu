@@ -35,9 +35,23 @@ private
 
 create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
 variable DECL-PARAM-N
+\ A header parameter's state: PARAM-UNUSED, ANY-VALUE while only pointees and
+\ quotation elements use it, else the kind a use fixed; and the field setting it.
+-2 constant PARAM-UNUSED
+create PARAM-USES TFAM-DECL-PARAM-COUNT cells allot
+create PARAM-FIELDS TFAM-DECL-PARAM-COUNT TF-NAME-MAX * allot
+create PARAM-FIELD-US TFAM-DECL-PARAM-COUNT cells allot
+create OPEN-FIELD TF-NAME-MAX allot
+variable OPEN-FIELD-U
+: USE-SLOT ( n -- ^n ) cells PARAM-USES + ;
+: FIELD-U-SLOT ( n -- ^n ) cells PARAM-FIELD-US + ;
 : DECL-PARAM-CLEAR ( -- )
-   0 DECL-PARAM-N !
-   TFAM-DECL-PARAM-COUNT 0 ?DO 0 DECL-PARAM-NAMES i + c! LOOP ;
+   0 DECL-PARAM-N !  0 OPEN-FIELD-U !
+   TFAM-DECL-PARAM-COUNT 0 ?DO
+      0 DECL-PARAM-NAMES i + c!
+      PARAM-UNUSED i USE-SLOT !
+      0 i FIELD-U-SLOT !
+   LOOP ;
 DECL-PARAM-CLEAR
 
 public
@@ -50,6 +64,42 @@ public
       DECL-PARAM-NAMES over + c@ char = IF RES-TRUE EXIT THEN
       1+
    REPEAT drop 0 RES-FALSE ;
+
+\ A use any value kind fits: a pointee or a quotation element.
+-1 constant ANY-VALUE
+
+\ The open field's name, at most TF-NAME-MAX bytes.
+: DECL-FIELD! ( ^u8 n -- ) {: a:^ u:n :}
+   u 0 ?DO a i + c@ OPEN-FIELD i + c! LOOP u OPEN-FIELD-U ! ;
+
+private
+
+: PARAM-FIELD ( n -- ^u8 n ) {: idx:n :}
+   PARAM-FIELDS idx TF-NAME-MAX * +  idx FIELD-U-SLOT @ ;
+: PARAM-FIELD! ( n -- ) {: idx:n :}
+   PARAM-FIELDS idx TF-NAME-MAX * + {: dst:^u8 :}
+   OPEN-FIELD-U @ 0 ?DO OPEN-FIELD i + c@ dst i + c! LOOP
+   OPEN-FIELD-U @ idx FIELD-U-SLOT ! ;
+: NONVALUE? ( n -- bool ) dup PK-SCOPE = swap PK-REGION = or ;
+\ A pointee or quotation element fits a value kind; a scope or region fits
+\ only itself.
+: USE-CONFLICT? ( n n -- bool ) {: was:n want:n :}
+   was PARAM-UNUSED = IF RES-FALSE EXIT THEN
+   was ANY-VALUE = IF want NONVALUE? EXIT THEN
+   want was = IF RES-FALSE EXIT THEN
+   want ANY-VALUE = IF was NONVALUE? EXIT THEN
+   RES-TRUE ;
+
+public
+
+\ Records header parameter idx used as want; answers its state and the field
+\ that set it: before this use and true on a conflict, else after it and false.
+: DECL-PARAM-USE ( n n -- n ^u8 n bool ) {: idx:n want:n :}
+   idx USE-SLOT @ {: was:n :}
+   was want USE-CONFLICT? IF was idx PARAM-FIELD RES-TRUE EXIT THEN
+   was PARAM-UNUSED = was ANY-VALUE = or want was <> and IF
+      want idx USE-SLOT !  idx PARAM-FIELD! THEN
+   idx USE-SLOT @ idx PARAM-FIELD RES-FALSE ;
 
 : DECL-HEADER ( ^u8 n -- ^u8 n n bool )
    {: a:^ u:n :}

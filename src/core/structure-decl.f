@@ -224,6 +224,27 @@ variable HELP-U
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    id YES ;
 
+: USE-KIND$ ( n -- ^u8 n )
+   dup PK-CELL = IF drop s" a value type" EXIT THEN
+   dup PK-TYPE = IF drop s" an element type" EXIT THEN
+   dup PK-SCOPE = IF drop s" a scope" EXIT THEN
+   PK-REGION = IF s" a region" EXIT THEN
+   s" a pointee or quotation element" ;
+\ Rejects the parameter at a u used as want, which field fa fu used as kind.
+: PARAM-KIND-REJECT ( n ^u8 n ^u8 n n -- ) {: kind:n fa:^ fu:n a:^ u:n want:n :}
+   a u DECL-REJECT:TOKEN!
+   0 SD-MSG-U !
+   s" `" SD-MSG+  a u SD-MSG+  s" ` is " SD-MSG+  want USE-KIND$ SD-MSG+
+   s"  here, but field `" SD-MSG+  fa fu SD-MSG+  s" ` uses it as " SD-MSG+
+   kind USE-KIND$ SD-MSG+
+   SD-MSG SD-MSG-U @
+   ENUM? IF
+      s" give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`"
+   ELSE
+      s" give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`"
+   THEN
+   TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+
 : LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
    a c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
@@ -232,11 +253,13 @@ variable HELP-U
    TYPE-DECL:DECL-PARAM 0= IF
       drop a u DECL-REJECT:TOKEN!
       s" unknown" s" " SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
-   dup {: idx:n :}
+   {: idx:n :}
+   idx want TYPE-DECL:DECL-PARAM-USE IF a u want PARAM-KIND-REJECT THEN
+   2drop drop
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
       FAM @ idx want TFAM-PK! THEN
-   SCHEMA-PARAM ;
+   idx SCHEMA-PARAM ;
 
 : SD-ARG+ ( n -- )
    SD-ARG-N @ SD-ARG-CAP >= IF
@@ -290,9 +313,9 @@ variable HELP-U
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
-\ The argument spelled at aa au fills slot k of fam; a type parameter argument
-\ is judged when the declaration closes. A wrap reaches no region slot: each
-\ follows two scope slots, the first of which rejects it.
+\ The argument spelled at aa au fills slot k of fam; LETTER-TYPE judges a
+\ parameter argument. A wrap reaches no region slot: each follows two scope
+\ slots, the first of which rejects it.
 : SD-ARG-KIND ( ^u8 n n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
    FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
@@ -431,7 +454,7 @@ SD-LOOSE-INSTALL
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
-   a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
+   a u k TYPE-DECL:ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
    FIELD-MISS @ IF 0 e EXIT THEN
    node TFCL-NODE? IF a k + e k - DECL-REJECT:TOKEN! THEN
@@ -504,25 +527,23 @@ public
 private
 
 \ The node of a whole type text; bytes after the node are malformed.
-: SD-WHOLE-NODE ( ^u8 n -- n ) {: a:^ u:n :}
-   a u 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
+: SD-WHOLE-NODE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
+   a u 0 want SD-PARSE-NODE {: node:n j:n :}
    j u <> IF
       s" malformed" s" application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    node ;
 
-\ SD-TYPE-NODE ( text fam pointee noun -- node ): the node of a type text a
-\ declaration of fam holds, pointee -1 beneath a `^`, its rejections naming the
-\ type by noun. It sets FAM, POINTEE, SD-ARG-N, TYPE@ and the noun and gives
-\ the caller's back on every exit, a throw included; FIELD-MISS stays the caller's.
+\ SD-TYPE-NODE ( text fam pointee want noun -- node ): pointee is -1 beneath a
+\ `^`, want the use of a parameter that is the whole type; FIELD-MISS stays set.
 public
-: SD-TYPE-NODE ( ^u8 n n n ^u8 n -- n )
-   {: a:^ u:n fam:n ptee:n na:^ nu:n :}
+: SD-TYPE-NODE ( ^u8 n n n n ^u8 n -- n )
+   {: a:^ u:n fam:n ptee:n want:n na:^ nu:n :}
    FAM @ POINTEE @ SD-ARG-N @ {: ofam:n optee:n oargs:n :}
    TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
    fam FAM !  ptee POINTEE !  0 SD-ARG-N !
    a u TYPE!  na NOUN-A !  nu NOUN-U !
-   [: a u SD-WHOLE-NODE ;]
+   [: a u want SD-WHOLE-NODE ;]
    [: ofam FAM !  optee POINTEE !  oargs SD-ARG-N !
       ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
 private
@@ -543,7 +564,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
 \ A field type's text, from its first token (SD-SPAN); a quotation `[` reads the
 \ tokens after it, a leading `^` the rest of its span. The text resolved is the
 \ reject token, so a refused pointee names itself, not the `^T` span that holds it.
-: RESOLVE-TYPE ( ^u8 n -- n )
+: RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
    dup 0= IF 2drop s" missing type"
       s" write a type after the field name, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -558,13 +579,13 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
          sa su SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       POINTEE @ {: outer:n :}
       -1 POINTEE !
-      RECURSE
+      TYPE-DECL:ANY-VALUE RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   FAM @ POINTEE @ s" type" SD-TYPE-NODE ;
-: SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
+   FAM @ POINTEE @ want s" type" SD-TYPE-NODE ;
+: SD-QUOT-INSTALL ( -- ) [: TYPE-DECL:ANY-VALUE RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
 
 \ Clause drivers emit through DECL-EVENT, which owns duplicate, ordinal and
@@ -681,9 +702,10 @@ SD-QUOT-INSTALL
 : ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: na:^ nu:n :}
+   na nu TYPE-DECL:DECL-FIELD!
    0 FIELD-MISS !  0 POINTEE !
    NEXT {: ta:^ tu:n :}
-   ta tu RESOLVE-TYPE {: node:n :}
+   ta tu PK-CELL RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
       ITEM-ROOM 1 < IF na nu DECL-REJECT:TOKEN! ITEMS-FULL THEN
@@ -848,7 +870,7 @@ SD-QUOT-INSTALL
    na nu NAME-A @ NAME-U @ 0 SD-REGISTER
    0 FIELD-MISS !  0 POINTEE !
    NEXT 2dup BASE-U ! BASE-A !
-   RESOLVE-TYPE {: node:n :}
+   PK-CELL RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
    NEXT nip 0 <> IF
       s" a newtype takes one base type"

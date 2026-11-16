@@ -207,8 +207,8 @@ public
       loop
    THEN ;
 
-\ A later field may still set a parameter's kind, so a declaration's close
-\ checks every field again.
+\ A later field may give the declared family a scope or region parameter, so a
+\ pointer to the family in an earlier field is judged again at close.
 : REQUIRE-KINDS ( n n n -- )
    {: fam:n base:n count:n :}
    count 0 ?do

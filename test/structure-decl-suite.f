@@ -350,20 +350,40 @@ s" " s" missing name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write the family name after `STRUCTURE`, as in `STRUCTURE point`\n" DECL-DIAG:HAS? TTRUE
 s" sdgself" DECL-DIAG:HAS? TFALSE
 
-\ A type parameter used in two kinds of place rejects with one text in
-\ either field order: at the second field when it is added, at the family at close.
+\ A type parameter used in two kinds is rejected at its later use.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgkind<a,q> FIELD v read-view<a,q,n> FIELD x a ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
-s" x" s" type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
+s" a" s" `a` is a value type here, but field `v` uses it as a scope" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
-s" sdgkind" s" type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
+s" a" s" `a` is a scope here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
+s\"   = evaluated: STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE\n                                                                    ^" DECL-DIAG:HAS? TTRUE
+s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdgtype<a,q> FIELD x a FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtype`\n" DECL-DIAG:HAS? TTRUE
+s" a" s" `a` is an element type here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdgheld<a,q> FIELD p ^a FIELD w read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgheld`\n" DECL-DIAG:HAS? TTRUE
+s" a" s" `a` is a scope here, but field `p` uses it as a pointee or quotation element" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+s" STRUCTURE sdgok<a,q> FIELD p ^a FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdgptee<a,q> FIELD w read-view<a,q,n> FIELD p ^a ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s" a" s" `a` is a pointee or quotation element here, but field `w` uses it as a scope" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 \ A concrete type where a scope or region parameter goes rejects at that
 \ argument, helped by its slot.
 REJECTION:CAPTURE

@@ -67,7 +67,7 @@ ED-RESET
 
 \ The text resolved is the reject token, so a rejected pointee names itself, not
 \ the `^T` token that holds it.
-: RESOLVE-TYPE ( ^u8 n -- n )
+: RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
    dup 0= IF 2drop
       s" missing payload type"
       s" write a type after the field name, as in `FIELD x n`"
@@ -77,12 +77,12 @@ ED-RESET
    EN-PTR-TEXT? IF
       POINTEE @ {: outer:n :}
       -1 POINTEE !
-      RECURSE
+      ANY-VALUE RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" payload type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   FAM @ POINTEE @ s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
+   FAM @ POINTEE @ want s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
 
 : SCH-WIDTH ( n -- n ) FAM @ swap TFAM-SCH-WIDTH ;
 
@@ -191,9 +191,10 @@ ED-RESET
       E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
+   na nu DECL-FIELD!
    0 FIELD-MISS !
    NEXT {: ta:^ tu:n :}
-   ta tu RESOLVE-TYPE {: node:n :}
+   ta tu PK-CELL RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
       na nu node EMIT-FIELD THEN ;
