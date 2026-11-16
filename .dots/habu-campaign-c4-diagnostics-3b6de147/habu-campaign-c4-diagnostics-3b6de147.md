@@ -30,4 +30,4 @@ Design (settled by the lead; Joel 2026-11-14 chose "Start lanes now" with this f
 
 Acceptance: under --load, tools/check.f (prose and --json-errors) and --all-errors, every rejection prints exactly one diagnostic in the form above with its place, source line and mark where a source holds it, and a specific help; none ends in a bare code, a duplicate or silence; the deleted machinery is gone; every child is closed.
 
-Children: habu-report-a-def-2b4ff9c9, habu-report-checker-record-15362e5c, habu-give-declaration-refusals-b0c396eb and habu-report-the-interpreter-10ba8b10; then habu-move-the-diagnostic-783e0965 and habu-one-view-of-54f8320e; habu-delete-the-already-f1d40715 last. B, C, D, E and F merge in one integration workspace and land together: B to E change the JSON keys F's tools read. Depends: none. Claim: agent=jerry.
+Children: habu-delete-the-already-f1d40715 last. B, C, D, E and F merge in one integration workspace and land together: B to E change the JSON keys F's tools read. Depends: none. Claim: agent=jerry.
