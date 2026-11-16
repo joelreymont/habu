@@ -865,18 +865,6 @@ public
 : CARRIED? ( -- bool )
    data-base STAMP-CELL + @  data-base THROWS-CELL + @  = ;
 
-\ The help of the name t tu nothing defines, called in the body of the
-\ definition d du, empty outside one: a body's own name is found only after
-\ its `;`. Names fold case.
-: UNDEFINED-HELP ( ^u8 n ^u8 n -- ) {: t:^ tu:n d:^ du:n :}
-   t tu d du CORE-STR=CI IF
-      96 EMIT1  t tu EMIT-STR
-      s" ` is the word this definition defines: call it from its own body with `recurse`"
-      EMIT-STR EXIT
-   THEN
-   s" define `" EMIT-STR  t tu EMIT-STR
-   s" ` before this point, or check its spelling" EMIT-STR ;
-
 \ The word kw ku has no operand after it, which what names with its article
 \ ("a name"): the record stands at t tu, which why labels. It is written
 \ through the start of its help: the caller writes the help and stops it.

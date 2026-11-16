@@ -323,10 +323,7 @@ create NL NEWLINE c,
 \ Placed at the name's own line when its bytes lie in the open file: a definer
 \ may call a name it read earlier.
 : UNDEFINED-NAME ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-UNDEFINED" REJECTION:OPEN
-   s" cannot find word " SAY  a u TICKS
-   a u REJECTION:AT  s" not found" SAY
-   REJECTION:HELP  a u OPEN-NAME REJECTION:UNDEFINED-HELP
+   a u OPEN-NAME UNDEFINED-RECORD
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : UNDERFLOW ( -- )

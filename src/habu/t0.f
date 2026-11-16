@@ -198,11 +198,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ A name bound to no record, even in an unchecked body, called in the body of
 \ d du, empty for a tick's operand.
 : NOT-FOUND ( ^u8 n ^u8 n -- ) {: a:^ u:n d:^ du:n :}
-   s" E-UNDEFINED" REJECTION:OPEN
-   s" cannot find word " SAY  a u TICKS
-   a u REJECTION:AT  s" not found" SAY
-   REJECTION:HELP  a u d du REJECTION:UNDEFINED-HELP
-   REJECT ;
+   a u d du UNDEFINED-RECORD REJECT ;
 
 \ Rejects a tick of an engine-internal record or a scope entry.
 : NO-TICK ( ^u8 n -- ) {: a:^ u:n :}

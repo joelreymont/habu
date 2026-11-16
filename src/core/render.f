@@ -1827,13 +1827,20 @@ PTR-VARIABLE HOLDER-FIRST
 : QUALIFIED ( ^u8 n -- ) {: t:^ tu:n :}
    96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
-\ Only a call in the definition's own body may become `recurse`: a top-level
-\ step is in no body, a tick of `recurse` gives no xt, and `recurse` in a
-\ quotation calls the quotation.
-: UNDEF-HELP ( ^u8 n -- ) {: t:^ tu:n :}
-   TOP-STEP @ 0=  PIN-BODY-CALL @ 0 <>  and IF NMA @ NMU @ ELSE NMA @ 0 THEN {: d:^ du:n :}
-   t tu d du CORE-STR=CI IF 0 HOLDER-N ! ELSE t tu RES-FALSE HOLDER-SCAN THEN
-   HOLDER-N @ 0= IF t tu d du REJECTION:UNDEFINED-HELP EXIT THEN
+\ The help for t tu, which nothing defines, used in the body of d du, empty
+\ outside one: a body's own name is found only after its `;`. Names fold case.
+: UNDEF-HELP ( ^u8 n ^u8 n -- )
+   {: t:^ tu:n d:^ du:n :}
+   t tu d du CORE-STR=CI IF
+      96 EMIT1  t tu EMIT-STR
+      s" ` is the word this definition defines: " EMIT-STR
+      s" call it from its own body with `recurse`" EMIT-STR EXIT
+   THEN
+   t tu RES-FALSE HOLDER-SCAN
+   HOLDER-N @ 0= IF
+      s" define `" EMIT-STR  t tu EMIT-STR
+      s" ` before this point, or check its spelling" EMIT-STR EXIT
+   THEN
    t tu CODE-SPAN  s"  is public in " EMIT-STR
    HOLDER-N @ 1 = IF
       HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  t tu QUALIFIED
@@ -1841,6 +1848,15 @@ PTR-VARIABLE HOLDER-FIRST
       HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
    THEN
    t tu RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  t tu QUALIFIED ;
+
+\ The record of t tu, which nothing defines, written through UNDEF-HELP for
+\ d du: the caller stops or keeps it.
+: UNDEFINED-RECORD ( ^u8 n ^u8 n -- )
+   {: t:^ tu:n d:^ du:n :}
+   s" E-UNDEFINED" REJECTION:OPEN
+   s" cannot find word `" EMIT-STR  t tu EMIT-STR  96 EMIT1
+   t tu REJECTION:AT  s" not found" EMIT-STR
+   REJECTION:HELP  t tu d du UNDEF-HELP ;
 
 : IMM-HELP ( -- )
    s" remove " EMIT-STR  TOK-SPAN
@@ -1932,7 +1948,14 @@ PTR-VARIABLE HOLDER-FIRST
 : DIAG-HELP ( -- )
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
-   k RF-UNDEF = IF PIN-TOK$ UNDEF-HELP EXIT THEN
+   k RF-UNDEF = IF
+      PIN-TOK$
+      \ Only a call in the open body may become `recurse`: not a top-level step,
+      \ a tick (no xt) or a call in a quotation (`recurse` calls the quotation).
+      TOP-STEP @ 0=  PIN-BODY-CALL @ 0 <>  and
+      IF NMA @ NMU @ ELSE NMA @ 0 THEN
+      UNDEF-HELP EXIT
+   THEN
    k RF-IMM = IF IMM-HELP EXIT THEN
    k RF-QUAL = IF QUAL-HELP EXIT THEN
    k RF-LOCAL = IF LOCAL-HELP EXIT THEN

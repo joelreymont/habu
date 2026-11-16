@@ -2355,10 +2355,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR
    ELSE
-      s" E-UNDEFINED-TOP-LEVEL" REJECTION:OPEN
-      s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-      a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
-      REJECTION:HELP  a u UNDEF-HELP
+      a u NULL-PTR 0 UNDEFINED-RECORD
    THEN
    TOP-END ;
 

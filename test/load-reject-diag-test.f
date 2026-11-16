@@ -949,6 +949,22 @@ variable RC
    S\"  or check its spelling\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+\ The top-level lrd-held on line 5, after LRD-HOLD's public lrd-held,
+\ is told LRD-HOLD's qualified form, not `recurse`: no body is open.
+: TEST-UNDEF-HOLDER ( -- )
+   s" a top-level word a package holds is told its qualified form" T-LABEL
+   BODY$ S\" package LRD-HOLD\npublic\n: lrd-held ( -- ) ;\n;package\nlrd-held\n"
+   FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   s" error[E-UNDEFINED]: cannot find word `lrd-held`" SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND
+   S\" :5:1\n  |\n5 | lrd-held\n  | ^^^^^^^^ not found\n" SB-APPEND
+   s"   = help: `lrd-held` is public in `LRD-HOLD`: " SB-APPEND
+   s" write `LRD-HOLD:lrd-held`, or call it inside " SB-APPEND
+   S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 \ Under a rendering statement's mark CHECK leaves an undefined name to the run
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
 : TEST-DEFERRED ( -- )
@@ -1162,6 +1178,7 @@ variable LONG-U
    TEST-TARGET
    TEST-DEF-ONCE
    TEST-RECURSE-HELP
+   TEST-UNDEF-HOLDER
    TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH

@@ -126,7 +126,7 @@
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
 \ - a top-level word no scope defines not published at it as
-\   E-UNDEFINED-TOP-LEVEL; the line after a word that parses its own input
+\   E-UNDEFINED; the line after a word that parses its own input
 \   refused, or not deferred to the run at that word ................. top-level
 \ - a stored signature that does not parse, of a TRUSTED: that replaces a
 \   colon definition `undefine` removed, not published as
@@ -2486,7 +2486,7 @@ USE-MAX 1 + constant OVER-USINGS
    SESSION-CAPABILITIES
    UNDEFINED-AT-TOP A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 0 2 0 12 1 s" E-UNDEFINED-TOP-LEVEL" DIAG+ PUBLISHES
+   A-PATH 1 EXPECT 0 2 0 12 1 s" E-UNDEFINED" DIAG+ PUBLISHES
    A-PATH DEFERRED-AT-TOP 2 CHANGES
    SAY
    DEFERRED-AT-TOP A-PATH CHECKS

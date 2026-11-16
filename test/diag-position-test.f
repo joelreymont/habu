@@ -2941,6 +2941,24 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    OUT$ s\" inferred c: option<n>\n" CONTAINS? TTRUE
    OUT$ s\" inferred c: n\n" CONTAINS? TTRUE ;
 
+\ The top-level dp-held, after DP-HOLD's public dp-held, is rejected in
+\ each check mode, and the last run names DP-HOLD in its help.
+: TEST-UNDEF-HOLDER ( -- )
+   s" a top-level word a package holds is told its qualified form" T-LABEL
+   SB-RESET
+   s" package DP-HOLD" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : dp-held ( -- ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" dp-held" SB-APPEND LF+
+   s" undef-holder.f" FIXTURE!
+   s" E-UNDEFINED" s" dp-held" 5 1 51 58 REFUSED-MODES
+   SB-RESET
+   s" `dp-held` is public in `DP-HOLD`: " SB-APPEND
+   s" write `DP-HOLD:dp-held`, or call it inside " SB-APPEND
+   s" `using DP-HOLD` … `;using`" SB-APPEND
+   0 s" help" SB$ FIELD= ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -2958,6 +2976,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    TEST-TOP-LINE
    TEST-TOP-DEP
    TEST-TOP-TRUSTED
+   TEST-UNDEF-HOLDER
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
