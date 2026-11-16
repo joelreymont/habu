@@ -70,7 +70,6 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 
 \ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7125 constant E-PF-NAME       \ reserved field tail
-7126 constant E-PF-SCHEMA     \ a field type parameter's kinds do not fit
 
 private
 
@@ -2254,8 +2253,6 @@ private
 : PF-QUOT-ROW-INSTALL ( -- ) [: PF-QUOT-ROW-OK-IMPL ;] is PF-QUOT-ROW-OK? ;
 PF-QUOT-ROW-INSTALL
 
-public
-
 : PF-SCHEMA-OK? ( n n -- bool ) {: owner:n sch:n :}
    sch 0 < sch SCH-ROOT-N @ >= or IF RES-FALSE EXIT THEN
    sch SCHEMA-ROOT@ {: node:n :}
@@ -2266,8 +2263,6 @@ public
          ELSE kind PK-CELL = THEN EXIT
       THEN kind PF-NONVALUE? 0= EXIT
    THEN drop RES-FALSE ;
-
-private
 
 \ --- declaration-time parameter-arity walk for SUM variant payloads. TFC-SCH-TERM
 \ (construct/MATCH) indexes its minted-var scratch by parameter index with no

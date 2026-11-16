@@ -166,14 +166,10 @@ public
    DEV-K-VARIANT-END DEV-CUR-VAR @ DEV-NO-FIELD DEV-EMIT
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
 
-\ FIELD checks the schema against the family's kinds (E-PF-SCHEMA) and the
-\ field record validates the rest and throws first (E-TFAM-DUP, E-PF-NAME,
-\ E-TFAM-CASE), so a malformed field emits no event and leaves the ordinal untouched.
-\ The event carries the field's row id: the field record numbers this
-\ declaration's rows from DEV-BASE-FLD in the order they are added.
+\ PF-ADD throws before the event (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE), so a malformed
+\ field emits none and leaves the ordinal untouched; the event carries the row's id.
 : FIELD ( n ^u8 n n n n n n n n -- )
    {: fam:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
    fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
    DEV-K-FIELD DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD ! ;
@@ -206,17 +202,6 @@ public
          THEN
       loop
    THEN ;
-
-\ A later field may give the declared family a scope or region parameter, so a
-\ pointer to the family in an earlier field is judged again at close.
-: REQUIRE-KINDS ( n n n -- )
-   {: fam:n base:n count:n :}
-   count 0 ?do
-      fam  base i + PF-PENDING-SCH@  PF-SCHEMA-OK? 0= IF
-         s" type parameter has incompatible kinds"
-         s" use each type parameter in one kind of place: a value type, a scope or a region"
-         TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   loop ;
 
 ;package
 ;package

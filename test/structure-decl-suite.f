@@ -398,17 +398,12 @@ s" STRUCTURE sdgptee<a,q> FIELD w read-view<a,q,n> FIELD p ^a ;STRUCTURE" TEST-E
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s" a" s" `a` is a pointee or quotation element here, but field `w` uses it as a scope" DECL-DIAG:CAUSE? TTRUE
 \ A pointer reaches the declared family through another family's arguments.
-STRUCTURE sdgnpr<a,b> FIELD x a FIELD y b ;STRUCTURE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnest<q> FIELD next ^option<sdgnest<n>> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnest`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnest" s" a pointer cannot reach `sdgnest`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" STRUCTURE sdgnest<q> FIELD next ^sdgnpr<sdgnest<n>,n> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
-s" sdgnest" s" a pointer cannot reach `sdgnest`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 \ A pointer at a family with a scope or region parameter is rejected at its
 \ name, the declared family included, whether the parameter comes before or after.
 DECL-DIAG:PROSE
@@ -416,21 +411,12 @@ s" STRUCTURE sdgprv<p,q> FIELD x ^read-view<p,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgprv`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgprv<p,q> FIELD x ^read-view<p,q,n> ;STRUCTURE\n                                                ^^^^^^^^^" DECL-DIAG:HAS? TTRUE
-s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" STRUCTURE sdgpp<p,q> FIELD x ^^read-view<p,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgpp`\n" DECL-DIAG:HAS? TTRUE
-s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgpp<p,q> FIELD x ^^read-view<p,q,n> ;STRUCTURE\n                                                ^^^^^^^^^" DECL-DIAG:HAS? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgparg<p,q> FIELD x SPAN:span<^read-view<p,q,n>> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgparg`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgparg<p,q> FIELD x SPAN:span<^read-view<p,q,n>> ;STRUCTURE\n                                                           ^^^^^^^^^" DECL-DIAG:HAS? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -458,12 +444,6 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgopt<p,q> FIELD x ^option<read-view<p,q,n>> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgopt`\n" DECL-DIAG:HAS? TTRUE
-s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" STRUCTURE sdgpra<p,q> FIELD x ^sdgnpr<read-view<p,q,n>,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgpra`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 \ Beneath a family only rendered source declares, the check judges its

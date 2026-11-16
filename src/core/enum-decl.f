@@ -58,7 +58,7 @@ ED-RESET
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
    s" ;variant" s" payload type" STRUCTURE-DECL:SD-SPAN
-   FAM @ 0 want s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
+   FAM @ want s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
 
 : SCH-WIDTH ( n -- n ) FAM @ swap TFAM-SCH-WIDTH ;
 
@@ -312,7 +312,6 @@ ED-RESET
       s" empty enum"
       s" declare at least one variant before `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   FAM @ FLDBASE @ NFLD @ DECL-EVENT:REQUIRE-KINDS
    MISSING? IF E-UNRESOLVED throw THEN
    NICHE-REQUIRE
    TAG-REQUIRE

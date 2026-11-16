@@ -173,6 +173,15 @@ s" NEWTYPE nx option<nx>"
 S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n"
 s" nx" s" type cannot recursively name its owner"
 S\" = help: name the type being declared only beneath `^`, as in `NEWTYPE link ^link`\n" DT-REC
+\ No wrap holds a view, beneath a pointer or not: the help declares a STRUCTURE.
+s" NEWTYPE nx ^read-view<n,n,n>"
+S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n"
+s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region"
+S\" = help: declare a STRUCTURE whose field holds the view, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DT-REC
+s" DEFTYPE dx ^read-view<n,n,n>"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region"
+S\" = help: declare a STRUCTURE whose field holds the view, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DT-REC
 package DTQP
 public
 NEWTYPE dtqt

@@ -155,9 +155,8 @@ variable HELP-U
    DECL-REJECT:FAMILY$ BASE-A @ BASE-U @ a u fam TFAM-ARITY@ ARGS-HELP$ ;
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
-\ The help for a malformed pointer token at a: a DEFTYPE's whole base gets the
-\ base help, a longer base the NEWTYPE over `^T`, a wrap, payload or field the
-\ spelling.
+\ The help for a malformed pointer token at a: a DEFTYPE's whole base gets the base
+\ help, a longer base the NEWTYPE over `^T`, a wrap, payload or field the spelling.
 : SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
    WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
    DEFTYPE? IF
@@ -249,12 +248,14 @@ variable HELP-U
    THEN
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
-\ A pointer at the declared family cannot move the view into it by value.
-: PTR-FIX$ ( bool -- ^u8 n ) {: self:bool :}
+\ The declared family cannot be held by value instead, so its help moves the view out.
+: PTR-VIEW-FIX$ ( bool -- ^u8 n ) {: self:bool :}
    self ENUM? and IF
       s" keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`" EXIT THEN
    self IF
       s" keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`" EXIT THEN
+   WRAP? IF
+      s" declare a STRUCTURE whose field holds the view, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`" EXIT THEN
    ENUM? IF
       s" hold the view in the field itself, as in `ENUM box<p,q>` with `FIELD x read-view<p,q,n>`" EXIT THEN
    s" hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`" ;
@@ -265,7 +266,7 @@ variable HELP-U
    0 SD-MSG-U !
    s" a pointer cannot reach `" SD-MSG+  a u SD-MSG+
    s" `, which takes a scope or region" SD-MSG+
-   SD-MSG-P @ SD-MSG-U @  self PTR-FIX$
+   SD-MSG-P @ SD-MSG-U @  self PTR-VIEW-FIX$
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
@@ -320,11 +321,8 @@ variable HELP-U
       1 +
    REPEAT ;
 
-\ Whether the atom ending at j opens a pointer argument, and the index its
-\ pointee is read from: an atom `^T` at the byte after `^`. A `^` with nothing
-\ joined to it, as in `^`, `span<^ n>` or `span<^>`, is a pointer without a
-\ pointee; an atom `ptr` not followed by `<` names no type and is rejected as an
-\ unknown type.
+\ Whether the atom ending at j opens a pointer, and the index its pointee is read
+\ from: the byte after `^`. An atom `ptr` not followed by `<` names no type.
 : SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = IF
@@ -485,8 +483,8 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ Every declared pointer is built here. Only a rejected pointee becomes the
-\ token: an accepted one leaves the type's token for a later rejection that sets none.
+\ Every declared pointer is built here. A rejection in its pointee that sets no token
+\ of its own is placed at the whole type, as one in a family's arguments is.
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
@@ -571,18 +569,17 @@ private
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    node ;
 
-\ SD-TYPE-NODE ( text fam pointee want noun -- node ): pointee is -1 beneath a
-\ `^`, want the use of a parameter that is the whole type; FIELD-MISS stays set.
+\ SD-TYPE-NODE ( text fam want noun -- node ): want is the use of a parameter that is
+\ the whole type; FIELD-MISS stays set.
 public
-: SD-TYPE-NODE ( ^u8 n n n n ^u8 n -- n )
-   {: a:^ u:n fam:n ptee:n want:n na:^ nu:n :}
-   FAM @ POINTEE @ SD-ARG-N @ {: ofam:n optee:n oargs:n :}
+: SD-TYPE-NODE ( ^u8 n n n ^u8 n -- n )
+   {: a:^ u:n fam:n want:n na:^ nu:n :}
+   FAM @ {: ofam:n :}
    TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
-   fam FAM !  ptee POINTEE !  0 SD-ARG-N !
+   fam FAM !  0 POINTEE !  0 SD-ARG-N !
    a u TYPE!  na NOUN-A !  nu NOUN-U !
    [: a u want SD-WHOLE-NODE ;]
-   [: ofam FAM !  optee POINTEE !  oargs SD-ARG-N !
-      ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
+   [: ofam FAM !  ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
 private
 
 defer SD-QUOT-ELEM ( ^u8 n -- n )
@@ -602,7 +599,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
    2dup TYPE!
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
-   FAM @ POINTEE @ want s" type" SD-TYPE-NODE ;
+   FAM @ want s" type" SD-TYPE-NODE ;
 : SD-QUOT-INSTALL ( -- ) [: TYPE-DECL:ANY-VALUE RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
 
@@ -721,7 +718,7 @@ SD-QUOT-INSTALL
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: na:^ nu:n :}
    na nu TYPE-DECL:DECL-FIELD!
-   0 FIELD-MISS !  0 POINTEE !
+   0 FIELD-MISS !
    NEXT {: ta:^ tu:n :}
    ta tu PK-CELL RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
@@ -806,7 +803,6 @@ SD-QUOT-INSTALL
    FAM @ STRUCTURE-MAKE:ARM ;
 : SD-SEAL ( -- )
    DECL-REJECT:AT-FAMILY
-   FAM @ FLDBASE @ NFLD @ DECL-EVENT:REQUIRE-KINDS
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
@@ -887,7 +883,7 @@ SD-QUOT-INSTALL
    NAME-A @ NAME-U @ DECL-REJECT:TOKEN!
    na nu NAME-GATE
    na nu NAME-A @ NAME-U @ 0 SD-REGISTER
-   0 FIELD-MISS !  0 POINTEE !
+   0 FIELD-MISS !
    NEXT 2dup BASE-U ! BASE-A !
    PK-CELL RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN

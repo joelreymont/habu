@@ -253,9 +253,6 @@ E-TFAM-DUP EXPLAIN
 s" reserved field name"
 s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
 E-PF-NAME EXPLAIN
-s" type parameter has incompatible kinds"
-s" use each type parameter in one kind of place: a value type, a scope or a region"
-E-PF-SCHEMA EXPLAIN
 
 ;package
 
