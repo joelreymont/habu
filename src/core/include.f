@@ -2436,27 +2436,46 @@ variable DECL-SERIAL
 : OPEN-SINCE? ( n -- bool )
    DECL-SERIAL @ <  CLOSER-U @ 0 <> and ;
 
+: TICKED ( ^u8 n -- )
+   96 REJECTION:EMIT1  REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+
+\ Opens the E-UNCLOSED record of the declaration t tu opened, through "is still
+\ open when ".
+: UNCLOSED-HEAD ( ^u8 n -- ) {: t:^ tu:n :}
+   s" E-UNCLOSED" REJECTION:OPEN
+   t tu TICKED  s"  is still open when " REJECTION:EMIT-STR ;
+
+\ Places the record at t tu and opens its help, through "close it with `c` ".
+: UNCLOSED-HELP ( ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n :}
+   t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close it with " REJECTION:EMIT-STR
+   c cu TICKED  32 REJECTION:EMIT1 ;
+
 public
 
 \ The record of the declaration t tu opened, which c cu closes, still open when
 \ the token o ou opens another or, with ou 0, when its source ends; not stopped.
 : UNCLOSED ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n o:^ ou:n :}
-   s" E-UNCLOSED" REJECTION:OPEN
-   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
-   s" ` is still open when " REJECTION:EMIT-STR
+   t tu UNCLOSED-HEAD
    ou 0= if
       s" the source ends" REJECTION:EMIT-STR
    else
-      96 REJECTION:EMIT1  o ou REJECTION:EMIT-STR  s" ` opens" REJECTION:EMIT-STR
+      o ou TICKED  s"  opens" REJECTION:EMIT-STR
    then
-   t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
-   REJECTION:HELP  s" close it with `" REJECTION:EMIT-STR
-   c cu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   t tu c cu UNCLOSED-HELP
    ou 0= if
       s" before the source ends" REJECTION:EMIT-STR
    else
-      s" before `" REJECTION:EMIT-STR  o ou REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      s" before " REJECTION:EMIT-STR  o ou TICKED
    then ;
+
+\ The record of the declaration t tu opened, which c cu closes, still open when
+\ the load word w wu loads a file; not stopped.
+: UNCLOSED-LOAD ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n w:^ wu:n :}
+   t tu UNCLOSED-HEAD
+   w wu TICKED  s"  loads a file" REJECTION:EMIT-STR
+   t tu c cu UNCLOSED-HELP
+   s" before " REJECTION:EMIT-STR  w wu TICKED ;
 
 : CLOSED ( -- )
    0 CLOSER-U ! ;
@@ -2480,6 +2499,15 @@ public
 : TEXT-END ( n -- )
    OPEN-SINCE? 0= if exit then
    OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ NULL-PTR 0 UNCLOSED
+   ABANDON-XT @ execute  CLOSED
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Load word w wu begins a load: a declaration still open is rejected at its
+\ opener, so none spans a load.
+: LOAD-BEGINS ( ^u8 n -- ) {: w:^ wu:n :}
+   CLOSER-U @ 0= if exit then
+   OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @  w wu SRCLOC:SPELLED drop
+   UNCLOSED-LOAD
    ABANDON-XT @ execute  CLOSED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -2720,6 +2748,7 @@ public
 
 : ENTRY-REQUIRED ( ^u8 n -- )
    {: a:^ u:n :}
+   s" script-required" LOAD-BEGINS
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
    s" script-required" a u
    NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
@@ -2728,6 +2757,7 @@ public
 
 : included ( ^u8 n -- )
    {: a:^ u:n :}
+   s" included" SOURCE-ROOT:LOAD-BEGINS
    s" included" a u INCLUDED-AS ;
 
 create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
@@ -2735,6 +2765,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 
 : required ( ^u8 n -- )
    {: a:^ u:n :}
+   s" required" SOURCE-ROOT:LOAD-BEGINS
    s" required" a u REQUIRED-AS ;
 
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
@@ -2759,6 +2790,7 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 package CHECK
 global
 : include ( -- )
+   s" include" SOURCE-ROOT:LOAD-BEGINS
    s" include" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
    u INCLUDE-CHECK-PATH
@@ -2770,6 +2802,7 @@ create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
 ' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
 
 : require ( -- )
+   s" require" SOURCE-ROOT:LOAD-BEGINS
    s" require" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
    u INCLUDE-CHECK-PATH

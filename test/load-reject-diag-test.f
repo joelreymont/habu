@@ -786,6 +786,15 @@ undefine include
    BODY$ S\" : LRD-MKO ( n -- ) create ,\ndoes> ( -- )\n@ 0= if\n;\n" FS:WRITE-ALL
    s" :4:1" ASSERT-CLOSE-LINE ;
 
+\ A load while a declaration is open is rejected at the declaration's opener.
+: TEST-LOAD-IN-DECLARATION ( -- )
+   s" an include inside an open FUNCTION: is rejected at the FUNCTION:" T-LABEL
+   BODY$ S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: LRD-FN no_symbol ( -- )\ninclude lrd-none.f\n;FUNCTION\n"
+   FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNCLOSED]: `FUNCTION:` is still open when `include` loads a file"
+   s" :3:1" BODY-REJECT-AT ;
+
 \ A stored signature the declaration refuses is placed on its refused token's
 \ line, not the name's.
 : TEST-BAD-SIGNATURE-LINE ( -- )
@@ -1435,6 +1444,7 @@ variable LONG-U
    TEST-EVALUATED-SLICE
    TEST-REPLAY-DUP-PLACE
    TEST-OPEN-AT-CLOSE
+   TEST-LOAD-IN-DECLARATION
    TEST-BAD-SIGNATURE-LINE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE

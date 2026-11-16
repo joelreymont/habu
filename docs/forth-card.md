@@ -642,10 +642,12 @@ forth.md: **Errors**, **Integer arithmetic**.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
-  definition it opened is refused there, as every source is. A value crosses a load
-  only as a word the file defines. `here` is cell-aligned when a loaded file
-  starts and when a `require` or `include` that ran a file returns: data never
-  spans a load.
+  definition it opened is refused there, as every source is. A load word
+  called while a declaration is open (`FUNCTION:`, `CALLBACK:`,
+  `BEGIN-STRUCTURE`) is `E-UNCLOSED` at the declaration's opener, so no
+  declaration spans a load either. A value crosses a load only as a word the
+  file defines. `here` is cell-aligned when a loaded file starts and when a
+  `require` or `include` that ran a file returns: data never spans a load.
 - The engine provides `src/lib/prelude.f`, `error.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f` and the
   `src/` files its boot prefix loads: their words resolve with no require and

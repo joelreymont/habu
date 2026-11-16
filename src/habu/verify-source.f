@@ -3487,12 +3487,30 @@ variable FILE-USE
    a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
+\ The source now scanned opened the FUNCTION: group still open. Nested files
+\ share FFI's open group, as they share the load's open declaration.
+: FFI-OPEN-HERE? ( -- bool )
+   FFI:OPENER$ {: t:^ tu:n :}
+   tu 0= IF false EXIT THEN
+   t SOURCE@ - {: at:n :}
+   at 0 < 0=  at SOURCE-U @ > 0= and ;
+
+\ The load words; `provided` loads nothing.
+: LOADS? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u LOADER-WORD?  a u s" provided" STR=CI 0= and ;
+
+\ The load word w wu is called while the declaration t tu opened, which c cu
+\ closes, is open: the load's record.
+: UNCLOSED-LOAD-STOP ( ^u8 n ^u8 n ^u8 n -- )
+   SOURCE-ROOT:UNCLOSED-LOAD  CHECKER-REJECT-RC REJECTION:STOP ;
+
 : COMPOSE-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
    a u LOADER-WORD? 0= IF 0 0= 0= EXIT THEN
    TICK-CONTEXT-UNKNOWN
    QUIET @ IF a u QUIET-USE THEN
    a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
+   a u LOADS? FFI-OPEN-HERE? and IF FFI:OPENER$ s" ;FUNCTION" a u UNCLOSED-LOAD-STOP THEN
    a u [: COMPOSE-LOAD ;] a u LOADER-AT ;
 
 public
@@ -3597,7 +3615,8 @@ private
    STRUCTURE-CELL-FIELD? ;
 
 \ The body executes its bound words though this scanner reads their tokens.
-\ `char` takes data and `'` names a word; both consume their next raw token.
+\ `char` takes data and `'` names a word; both consume their next raw token. A
+\ word that renders source is deferred at its token, as at top level.
 : STRUCTURE-USE ( ^u8 n -- )
    2dup TOP-PARSER? IF
       2dup CHAR-KEYWORD? IF 2drop OPERAND 2drop EXIT THEN
@@ -3606,16 +3625,9 @@ private
       false TOP-VERDICT drop EXIT
    THEN
    2dup TOP-BINDING drop drop 0= IF 2drop EXIT THEN
+   2dup CTL-RENDERS RENDERS-MARK? IF 2dup RENDER-GAP THEN
    2dup 2dup STRUCTURE-SYNTAX? 0= TOP-VERDICT 2 =
    IF TOP-PARSER ELSE 2drop THEN ;
-
-\ The source now scanned opened the FUNCTION: group still open. Nested files
-\ share FFI's open group, as they share the load's open declaration.
-: FFI-OPEN-HERE? ( -- bool )
-   FFI:OPENER$ {: t:^ tu:n :}
-   tu 0= IF false EXIT THEN
-   t SOURCE@ - {: at:n :}
-   at 0 < 0=  at SOURCE-U @ > 0= and ;
 
 \ The group open in this source is rejected when the token o ou opens another
 \ declaration or, with ou 0, when the source ends.
@@ -3629,6 +3641,11 @@ private
    o ou s" CALLBACK:" STR=CI or 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" o ou UNCLOSED-DECL-STOP ;
 
+\ A load word inside the structure rejects the structure.
+: STRUCTURE-LOADS ( ^u8 n -- ) {: w:^ wu:n :}
+   w wu LOADS? 0= IF EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" w wu UNCLOSED-LOAD-STOP ;
+
 : RECORD-STRUCTURE ( -- )
    TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
@@ -3639,6 +3656,7 @@ private
       NEXT-SCAN
       dup 0= IF TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" NULL-PTR 0 UNCLOSED-DECL-STOP THEN
       2dup STRUCTURE-OPENED
+      2dup STRUCTURE-LOADS
       2dup STRUCTURE-USE
       TICK-REMAINDER @ IF 2drop EXIT THEN
       2dup STRUCTURE-END? IF
@@ -4225,8 +4243,8 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with
    TOP-DUE
-   PEND-RELEASE
-   NULL-PTR 0 FFI-UNCLOSED ;
+   NULL-PTR 0 FFI-UNCLOSED
+   PEND-RELEASE ;
 
 : SOURCE-ARM ( -- )
    SOURCE@ SOURCE-U @ 1 1 0 REJECTION:SOURCE! ;

@@ -261,6 +261,27 @@ variable FFI-SV-SRC-U
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
    S\" \"help\":\"close it with `;FUNCTION` before `FUNCTION:`\"" FFI-SV-SAYS
+   \ A load inside a declaration is rejected at its opener, before the load
+   \ resolves its path.
+   S\" FUNCTION: FFI-SV no_symbol ( -- )\ninclude ffi-sv-none.f\n;FUNCTION"
+   2dup T-LABEL  FFI-SV-SOURCE
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"message\":\"`FUNCTION:` is still open when `include` loads a file\""
+   FFI-SV-SAYS
+   S\" \"column\":1," FFI-SV-SAYS
+   S\" \"help\":\"close it with `;FUNCTION` before `include`\"" FFI-SV-SAYS
+   S\" BEGIN-STRUCTURE FFI-SV-S\ninclude ffi-sv-none.f\nEND-STRUCTURE"
+   2dup T-LABEL  FFI-SV-SOURCE
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"message\":\"`BEGIN-STRUCTURE` is still open when `include` loads a file\""
+   FFI-SV-SAYS
+   S\" \"column\":1," FFI-SV-SAYS
+   S\" \"help\":\"close it with `END-STRUCTURE` before `include`\"" FFI-SV-SAYS
+   \ A renderer in a structure body is deferred at its token.
+   S\" BEGIN-STRUCTURE FFI-SV-S\ns\" include ffi-sv-none.f\" evaluate\nEND-STRUCTURE"
+   2dup T-LABEL  FFI-SV-SOURCE
+   dup 2 <> IF FFI-SV-SHOW THEN  2 T=
+   S\" W-CHECK-DEFERRED" FFI-SV-SAYS
    s" ;FUNCTION"
    S\" \"message\":\";FUNCTION with no declaration open\""
    S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED

@@ -33,21 +33,11 @@ PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRTOL strtol ( ^u8 ^u8 n -- n ) ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
-\ A declaration held open across a require: the file ends before ;FUNCTION.
-FUNCTION: FFI-T-REQ-STRTOL strtol ( ^u8 ^u8 n -- n )
-   require test/fixtures/ffi-abi-require.f
-;FUNCTION
-
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:^ :}
    0 FFI-T-OUT !
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
    FFI-T-OUT @ num FFI:>CELL 2 + T= ;
-
-: FFI-T-REQUIRED ( -- )
-   s" a declaration open across a require calls C" T-LABEL
-   0 FFI-T-OUT !
-   FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
 \ The table these declarations grow lies in the storage the rollback cuts.
 : FFI-T-CUT-TEXT$ ( -- ^u8 n )
@@ -132,7 +122,6 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ^u8 ^u8 n -- n )
 : FFI-ABI-RUN ( -- )
    T-RESET
    FFI-T-OUT-PARAM
-   FFI-T-REQUIRED
    FFI-T-ROLLBACK
    FFI-T-SHADOW
    FFI-T-NO-DASHES

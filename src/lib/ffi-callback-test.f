@@ -429,21 +429,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == a callback declared beside a part named FFI-CB" SAY
    [: PART$ evaluate-closed ;] catch 0= s" the declaration loads" FACT ;
 
-\ A file required between the effect and FALLBACK ends while the declaration
-\ is open.
-: REQUIRED$ ( -- ^u8 n )
-   S\" CALLBACK: CBT-REQUIRED ( ^u8 ^u8 -- i32 )\nrequire test/fixtures/ffi-callback-require.f\n0 FALLBACK ;CALLBACK\n' CBT-REQUIRED-ORDER CBT-REQUIRED-BODY !\n" ;
-
-: CASE-REQUIRED ( -- )
-   s" == a callback declared across a require" SAY
-   [: REQUIRED$ evaluate-closed ;] catch 0= {: loaded:bool :}
-   loaded s" the declaration loads" FACT
-   loaded if
-      s" CBT-REQUIRED TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
-   else false then
-      s" C sorts through it by the body stored" FACT
-   loaded if s" CBT-REQUIRED FFI-CB:UNBIND" evaluate-closed then ;
-
 \ A callback's record notes C's lr as `caller`, which varies with the build,
 \ and ends with help the case does not pin: the transcript keeps both keys and
 \ drops their values.
@@ -647,11 +632,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == a callback declared beside a part named FFI-CB" W
    s" ok   the declaration loads" W ;
 
-: WANT-REQUIRED ( -- )
-   s" == a callback declared across a require" W
-   s" ok   the declaration loads" W
-   s" ok   C sorts through it by the body stored" W ;
-
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -703,7 +683,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
    WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CAPTURE
-   WANT-QUALIFIED WANT-PART WANT-REQUIRED WANT-CHILDREN ;
+   WANT-QUALIFIED WANT-PART WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -731,7 +711,6 @@ public
    CASE-CAPTURE
    CASE-QUALIFIED
    CASE-PART
-   CASE-REQUIRED
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE

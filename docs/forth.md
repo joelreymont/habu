@@ -259,10 +259,13 @@ public
   cells on the stack is refused `E-EVAL-RESIDUE`, so a value crosses a load
   only as a word the file defines. A file that ends inside a definition it
   opened is refused at its end, as every source is (**Rules learned by
-  refusal**), `E-VS-UNTERMINATED-DEFINITION`, so no definition spans a load. The
-  program file of `hb prog.f` is a loaded file too, so a rejection in it
-  names `prog.f:<line>` and a cell it leaves is rejected `E-EVAL-RESIDUE`; a
-  program on stdin is no file and keeps its stack.
+  refusal**), `E-VS-UNTERMINATED-DEFINITION`, so no definition spans a load. A
+  load word called while a declaration is open (`FUNCTION:`, `CALLBACK:`,
+  `BEGIN-STRUCTURE`) is `E-UNCLOSED` at the declaration's opener, so no
+  declaration spans a load either. The program file of `hb prog.f` is a loaded
+  file too, so a rejection in it names `prog.f:<line>` and a cell it leaves is
+  rejected `E-EVAL-RESIDUE`; a program on stdin is no file and keeps its
+  stack.
 - **Source roots.** Relative dependencies search the root of the file that
   requires them, then the engine's source root, then the invocation working
   directory, each root once. A named `--load` entry's root is its directory; a
