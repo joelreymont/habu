@@ -390,9 +390,8 @@ variable PLACED
 PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
 variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
 PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
-\ The newest record's place, copied when AT places it: LAST-U bytes of its
-\ file's path, none for no place, and its first byte. A placed file's name,
-\ FILE$ or the file being loaded, fits in PATH-CAP bytes.
+\ The newest record's place as AT copies it: its file's path and first byte.
+\ FILE$ and a loading file's path fit PATH-CAP bytes.
 create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT
 \ A token in an evaluated text is placed at the token INVOKED-A INVOKED-U where
 \ the evaluation was run; the label is followed by the evaluated place, as rustc
@@ -771,7 +770,7 @@ private
 variable WARNING   0 WARNING !           \ the open record is a warning
 : BEGIN-RECORD ( ^u8 n ^u8 n -- ) {: sev:^ su:n code:^ cu:n :}
    1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !  0 WORD-U !
-   0 LAST-U !
+   0 LAST-U !  -1 LAST-AT !
    NO-PART PART !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
@@ -801,7 +800,7 @@ public
    EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE SHOWN-A @ SHOWN-U @ THEN {: p:^ pu:n :}
    JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
    PART ! ;
-\ The path and first byte of the newest record's place, an empty path when it
+\ The path and first byte of the newest record's place, the byte -1 when it
 \ had none. The path is borrowed until the next record is placed.
 : LAST-PLACE ( -- ^u8 n n )   LAST-BUF LAST-U @ LAST-AT @ ;
 \ Drops the `word` note AT added to its place.

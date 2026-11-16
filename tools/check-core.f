@@ -533,7 +533,7 @@ private
 : CHK-KEEP-STOP ( n -- ) {: rc:n :}
    REJECTION:BUFFER$ {: a:^ u:n :}
    REJECTION:LAST-PLACE {: p:^ pu:n at:n :}
-   u 0=  pu 0=  or if exit then
+   u 0=  at 0<  or if exit then
    p pu CHK-PLACE-PATH$ {: path:^ pathu:n :}
    CHK-KEPT-U @ {: off:n :}
    off pathu + {: rec:n :}
