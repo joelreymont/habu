@@ -102,20 +102,42 @@ s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
    REJECTION:BUFFER$ ta tu CONTAINS? TTRUE
    ba bu la lu DECL-DIAG:CAUSE? TTRUE
    REJECTION:BUFFER$ ha hu CONTAINS? TTRUE ;
-\ the base is one name, since NAME>BASE is made from it; the rejection names the
-\ type and marks the base. A pointer or an application is a NEWTYPE's base.
+\ the base is one name, since NAME>BASE is made from it. A name and a base the
+\ NEWTYPE would accept, the base a pointer, an application or qualified, get
+\ that NEWTYPE; any other keeps the record that rejects the name or the base.
 s" DEFTYPE DTBAD option<n>"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtbad`\n"
 s" option<n>" s" a deftype base is one name"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtbad option<n>` instead\n" DT-REC
 s" DEFTYPE DTBAD2 pkg:thing"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTBAD2`\n"
-s" pkg:thing" s" a deftype base is one name"
-S\" = help: write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it\n" DT-REC
-s" DEFTYPE rev ^u8"
-S\" error[E-BAD-DECLARATION]: bad deftype declaration `rev`\n"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtbad2`\n"
+s" pkg:thing" s" unknown field type"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
+s" DEFTYPE dtp ^u8"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtp`\n"
 s" ^u8" s" a deftype base is one name"
-S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE rev ^u8` instead\n" DT-REC
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dtp ^u8` instead\n" DT-REC
+s" DEFTYPE dx ^nosuch"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" nosuch" s" unknown field type"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
+s" DEFTYPE ptr ^u8"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`\n"
+s" ^u8" s" reserved name"
+S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
+\ inside a longer base the help keeps the base whole: no `NEWTYPE dx option<n>`.
+s" DEFTYPE dx ^option"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" option" s" field type is parametric and needs type arguments"
+S\" = help: give the family its type arguments, as in `box<n>`\n" DT-REC
+package DTQP
+public
+NEWTYPE dtqt
+;package
+s" DEFTYPE dx DTQP:dtqt"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" DTQP:dtqt" s" a deftype base is one name"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx DTQP:dtqt` instead\n" DT-REC
 \ a base no type declares: the record names DEFTYPE and its help offers one
 \ bare name, never a pointer.
 REJECTION:CAPTURE

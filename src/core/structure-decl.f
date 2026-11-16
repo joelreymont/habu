@@ -23,6 +23,7 @@ variable SD-CELLS      \ running field cell width (next field's slot / byte offs
 variable SD-ITEMS   \ MAKE's inputs so far: one per FIELD, one per buffer cell
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable POINTEE    \ resolving the pointee of `^`: the declared family may be named
+PTR-VARIABLE BASE-A   variable BASE-U   \ a wrap's base token
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
@@ -36,7 +37,7 @@ SD-RESET
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
-\ A DEFTYPE base is one name (SD-ONE-NAME), so its help offers no `^` or header.
+\ A DEFTYPE base is one name (WRAP-DRIVE), so its help offers no `^` or header.
 : SD-TYPE-FIX$ ( -- ^u8 n )
    DEFTYPE? IF
       s" name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" EXIT THEN
@@ -71,8 +72,8 @@ variable HELP-U
    s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
    nu 0 ?do na i + c@ CORE-FOLD-C HELP-C+ loop
    s"  " HELP+  ba bu HELP+ ;
-\ The edit the loader accepts for `DEFTYPE NAME BASE` over BASE as written, a
-\ pointer or an application.
+\ The edit the loader accepts for `DEFTYPE NAME BASE` whose NAME and BASE the
+\ wrap accepted: the NEWTYPE over BASE as written.
 : BASE-HELP$ ( ^u8 n ^u8 n -- ^u8 n )
    NEWTYPE-HELP  s" ` instead" HELP+  HELP-P @ HELP-U @ ;
 \ The edit the loader accepts for `DEFTYPE NAME BASE` over a family of arity ar
@@ -87,16 +88,21 @@ variable HELP-U
 \ `width<n>` and `init<n,n>` do not).
 : CELL-PARAMS? ( n -- bool ) {: fam:n :}
    YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
+\ Whether the token at a is a DEFTYPE's whole base, whose help may replace it:
+\ inside a longer base (`^option`) a help naming the token drops the rest.
+: WHOLE-BASE? ( ^u8 n -- bool ) {: a:^ u:n :}
+   DEFTYPE? a BASE-A @ = and u BASE-U @ = and ;
 \ The help for family fam named bare at a: a DEFTYPE gets the NEWTYPE that
 \ loads, or another base when no `n` arguments fit.
 : SD-ARGS-FIX$ ( n ^u8 n -- ^u8 n ) {: fam:n a:^ u:n :}
-   DEFTYPE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
+   a u WHOLE-BASE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
    fam CELL-PARAMS? 0= IF SD-TYPE-FIX$ EXIT THEN
    DECL-REJECT:FAMILY$ a u fam TFAM-ARITY@ ARGS-HELP$ ;
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
-: SD-PTR-FIX$ ( -- ^u8 n )
-   DEFTYPE? IF SD-TYPE-FIX$ EXIT THEN
+\ The help for a malformed pointer token at a.
+: SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
+   WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;
 : SD-OPEN-FIX$ ( -- ^u8 n ) s" close each `<` of the field type with `>` before the next clause" ;
 
@@ -204,7 +210,7 @@ variable HELP-U
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
-   s" unknown field type" SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown field type" na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
@@ -400,13 +406,13 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
    SD-SPAN
-   2dup TYPE!
+   2dup TYPE!  2dup {: sa:^ su:n :}
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
    SD-PTR-TEXT? IF
       dup 0= IF
          2drop s" pointer without a pointee"
-         SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         sa su SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       POINTEE @ {: outer:n :}
       -1 POINTEE !
       RECURSE
@@ -680,25 +686,40 @@ SD-QUOT-INSTALL
 : SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
+\ A byte no one name holds: a package qualifier, an application or a pointer.
+: NAME-STOP? ( n -- bool ) {: c:n :}
+   c 58 =  c 60 = or  c 94 = or ;
+\ Rejects a DEFTYPE base the wrap sealed that is not one name, since its
+\ converter NAME>BASE is named after it, offering the NEWTYPE that loads.
+: ONE-NAME-GATE ( ^u8 n ^u8 n -- ) {: na:^ nu:n ba:^ bu:n :}
+   DEFTYPE? 0= IF EXIT THEN
+   NO bu 0 ?do ba i + c@ NAME-STOP? or loop 0= IF EXIT THEN
+   ba bu DECL-REJECT:TOKEN!
+   s" a deftype base is one name"  na nu ba bu BASE-HELP$
+   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
+
 \ A newtype over a base: its name, then the base's tokens, which stand for one
 \ field `base`; a token past the base is rejected. DEFTYPE reaches neither
-\ rejection: its name is never empty and its base is one name (SD-ONE-NAME).
+\ rejection: its name is never empty and its base is one token.
 : WRAP-DRIVE ( -- )
-   NEXT 2dup DECL-REJECT:FAMILY!
-   dup 0= IF 2drop s" missing name"
+   NEXT {: na:^ nu:n :}
+   na nu DECL-REJECT:FAMILY!
+   nu 0= IF s" missing name"
       s" write the family name after `NEWTYPE`, as in `NEWTYPE path str`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-GATE
-   0 SD-REGISTER
+   na nu NAME-GATE
+   na nu 0 SD-REGISTER
    0 FIELD-MISS !  0 POINTEE !
-   NEXT RESOLVE-TYPE {: node:n :}
+   NEXT 2dup BASE-U ! BASE-A !
+   RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
    NEXT nip 0 <> IF
       s" a newtype takes one base type"
       s" give one base type after the name, as in `NEWTYPE path str`, and end the line there"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    -1 SEEN-END !
-   SD-SEAL ;
+   SD-SEAL
+   na nu BASE-A @ BASE-U @ ONE-NAME-GATE ;
 
 \ The kind is the declaration's keyword, "newtype" or "deftype". The stream has
 \ no closer, so a rejected one resynchronizes to its end.
@@ -722,12 +743,6 @@ private
    REJECTION:TALLY @ tally <> IF EXIT THEN
    FAM @ TYPE-DECL:TDECL-FAM-REG ! ;
 
-: NAME-STOP? ( n -- bool ) {: c:n :}
-   c 58 =  c 60 = or  c 94 = or  c 91 = or ;
-\ A `:` or `[` in a base, which no NEWTYPE edit spells as written.
-: QUAL-STOP? ( n -- bool ) {: c:n :}
-   c 58 =  c 91 = or ;
-
 \ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
 : ONE-NAME-REJECT ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
    {: na:^ nu:n ba:^ bu:n wa:^ wu:n fa:^ fu:n code:n :}
@@ -739,14 +754,12 @@ private
 
 public
 
-\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, rejects
-\ NAME. The wrap judges the type it names.
+\ Whether BASE holds no `[`: a quotation type spans tokens and a DEFTYPE base
+\ is one; if it does, rejects NAME. The wrap judges any other base.
 : SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
-   NO bu 0 ?do ba i + c@ NAME-STOP? or loop 0= IF YES EXIT THEN
+   NO bu 0 ?do ba i + c@ 91 = or loop 0= IF YES EXIT THEN
    na nu ba bu s" a deftype base is one name"
-   NO bu 0 ?do ba i + c@ QUAL-STOP? or loop IF
-      s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
-   ELSE na nu ba bu BASE-HELP$ THEN
+   s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
    TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
    NO ;
 
