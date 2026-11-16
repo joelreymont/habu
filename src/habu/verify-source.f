@@ -658,6 +658,7 @@ EXPORT CHECK:VREC-TOKEN
       SOURCE@ TOKEN-START @ + 3 INTERPRETER:LITERAL-REJECT
       CHECKER-REJECT-RC REJECTION:STOP
    THEN
+   2dup raw rawu SRCLOC:LITERAL!
    kind raw rawu STR-LAST! ;
 
 \ A body token is looked up among the live locals, byte for byte, after
@@ -3507,15 +3508,20 @@ variable FILE-USE
 : FILE-NEUTRAL? ( -- bool )
    FILE-PKG @ 0= FILE-USE @ 0= and ;
 
-: COMPOSE-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
-   COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
+\ Runs the loader call with its loader word a u as the token read last, as on
+\ the native path, until the call returns or throws.
+: LOADER-AT ( R [ R -- S ] ^u8 n -- S )
+   {: a:^ u:n :}
+   SRCLOC:TOKEN$ {: oa:^ ou:n :}
+   a u SRCLOC:TOKEN!
+   [: oa ou SRCLOC:TOKEN! ;] finally ;
+
+: LOADER-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" include" STR=CI  a u s" require" STR=CI or
    a u s" included" STR=CI or  a u s" required" STR=CI or
-   a u s" script-required" STR=CI or  a u s" provided" STR=CI or IF
-      TICK-CONTEXT-UNKNOWN
-      QUIET @ IF a u QUIET-USE THEN
-      a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
-   THEN
+   a u s" script-required" STR=CI or  a u s" provided" STR=CI or ;
+
+: COMPOSE-LOAD ( ^u8 n -- bool ) {: a:^ u:n :}
    QUIET @ IF a u QUIET-TOP? EXIT THEN
    a u s" include" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" require" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
@@ -3524,6 +3530,14 @@ variable FILE-USE
    a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
    a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
+
+: COMPOSE-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
+   COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
+   a u LOADER-WORD? 0= IF 0 0= 0= EXIT THEN
+   TICK-CONTEXT-UNKNOWN
+   QUIET @ IF a u QUIET-USE THEN
+   a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
+   a u [: COMPOSE-LOAD ;] a u LOADER-AT ;
 
 public
 \ Writes, open after its help, the record of the row opened at line l, column c
@@ -4229,6 +4243,7 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
    2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
+   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts the token after it
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
    FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded

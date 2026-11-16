@@ -150,6 +150,7 @@ create TAB
    PEND-CELL                          1 cells                 CLAIM PEND-CELL
    TKA-CELL                           1 cells                 CLAIM TKA-CELL
    TKL-CELL                           1 cells                 CLAIM TKL-CELL
+   TOKENS-CELL                        1 cells                 CLAIM TOKENS-CELL
    INP-CELL                           1 cells                 CLAIM INP-CELL
    INE-CELL                           1 cells                 CLAIM INE-CELL
    BPTRAMP-CELL                       1 cells                 CLAIM BPTRAMP-CELL

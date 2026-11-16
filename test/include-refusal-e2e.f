@@ -208,8 +208,8 @@ $1A4 constant MODE-FILE
    s" cases/sp ace" AT SB-APPEND  S\" '\\''q.f'`; else ask its owner to let you read it"
    SB-APPEND SB$ ERR-HAS ;
 
-\ A string loader given an empty path: one record, at the loader word, as the
-\ literal's bytes lie in no source the run holds.
+\ A string loader given an empty path: one record, at the loader word, as an
+\ empty path has no bytes to place.
 : REQUIRED-EMPTY ( -- )
    s" a required of an empty path is rejected at the request" T-LABEL
    0 PROG-U !

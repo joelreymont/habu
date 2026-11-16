@@ -325,6 +325,7 @@ create NL NEWLINE c,
    s t = if false exit then
    s TKA-CELL ADDR!
    t s - TKL-CELL CELL!
+   TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    true ;
 
 : SAY ( ^u8 n -- ) REJECTION:EMIT-STR ;
@@ -696,7 +697,10 @@ private
    d u ;
 
 : KEEP ( -- ^u8 n )
-   TEXT COPY-HERE ;
+   TEXT {: t:^ tu:n :}
+   t tu COPY-HERE {: d:^ u:n :}
+   d u t tu SRCLOC:LITERAL!
+   d u ;
 
 \ c": a count byte, then the text.
 : COUNTED ( -- ^u8 )
@@ -715,11 +719,17 @@ private
    ok 0= if BAD-LITERAL then
    s q u ;
 
-: ESC-KEEP ( -- ^u8 n )
+\ An escaped literal's copy, then its bytes between the quotes as written.
+: ESC-COPY ( -- ^u8 n ^u8 n )
    ESC-SCAN {: s:^ q:^ u:n :}
    q PAST
    u ROOM {: d:^ :}
    s q d ESCAPE:COPY
+   d u  s q s - ;
+
+: ESC-KEEP ( -- ^u8 n )
+   ESC-COPY {: d:^ u:n t:^ tu:n :}
+   d u t tu SRCLOC:LITERAL!
    d u ;
 
 : ESC-COUNTED ( -- ^u8 )
@@ -760,7 +770,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    [: ESC-COUNTED TOP-EV-CSTR 0 HOOK ;] CSTR-LITERAL RUN-LITERAL ;
 
 : TYPE-ESC-STR ( -- )
-   ESC-KEEP type ;
+   ESC-COPY 2drop type ;
 
 : OPEN-PKG-NAME ( -- ^u8 n )
    PKG-REC-CELL CELL@ {: rec:n :}
@@ -3248,6 +3258,7 @@ private
    USE-FLOOR @ {: prior:n :}
    REC @ {: found:^ :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
+   TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS true ENDED ! ;] catch LEFT ;]
    catch {: code:n :}
@@ -3344,6 +3355,7 @@ public
 
 : EVAL-FRAMED ( ^u8 n -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
+   TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    a u 0 u EVAL-FRAMED-RANGE ;
 
 private

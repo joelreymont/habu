@@ -645,7 +645,9 @@ private
    THEN
    INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
    0 0= 0= ;
-\ Whether PLACE-IN places the byte p points at.
+public
+\ Whether a record at the byte p underlines that byte in its source, never the
+\ token that built its run.
 : PLACES-IN? ( ^u8 -- bool ) {: p:^ :}
    p >SOURCE nip IF 0 0= EXIT THEN
    p BUILDER nip 0 > IF 0 0= 0= EXIT THEN
@@ -655,6 +657,7 @@ private
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p 1 inv IN-EVALUATED? nip ;
+private
 \ Whether a tool named a file while the file being read is not labelled: that
 \ file is then the tool's own.
 : TOOL-OWN? ( -- bool )

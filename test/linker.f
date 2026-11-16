@@ -72,8 +72,8 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
 : SCRATCH? ( n -- bool )
    {: off:n :}
    off BODYLEN-CELL = off DEF-TKA-CELL = or off DEF-TKL-CELL = or
-   off TKA-CELL = or off TKL-CELL = or off PENDTKA-CELL = or
-   off THROWS-CELL = or  off STAMP-CELL = or
+   off TKA-CELL = or off TKL-CELL = or off TOKENS-CELL = or
+   off PENDTKA-CELL = or off THROWS-CELL = or  off STAMP-CELL = or
    off TOKBODY-CELL TOKVSP-CELL CELL + IN? or
    off BODY-TEXT:BASE-CELL BODY-TEXT:BASE-CELL 4 cells + IN? or
    off FMT-ABI:START STRING-ABI:END IN? or ;

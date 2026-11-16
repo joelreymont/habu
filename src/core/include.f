@@ -114,12 +114,13 @@ public
 
 \ Places the record of word w, given the path a u, and opens its label, true;
 \ the caller writes the rest, which reads after the path or after "that". The
-\ place is a u where a source holds it, else the token the engine read last
+\ place is the source a u stands for, else the token the engine read last
 \ where it spells w, which it does only when source calls w directly: called
 \ from a definition at run time, that token is another word. Else the record
 \ has no place and no label, false.
 : LOADER-PATH-AT ( ^u8 n ^u8 n -- bool ) {: w:^ wu:n a:^ u:n :}
-   a REJECTION:PLACES? if a u REJECTION:AT 0 0= exit then
+   a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
+   t NULL-PTR <> if t tu REJECTION:AT 0 0= exit then
    w wu TOKEN-SPELLS? 0= if 0 0= 0= exit then
    SRCLOC:TOKEN$ REJECTION:AT  s" passes a path that " REJECTION:EMIT-STR  0 0= ;
 
@@ -1591,17 +1592,17 @@ public
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ SELECT and CANONICAL may reuse the buffer a u lies in, so a rejection names
-\ REQUEST$, the request's copy, and is placed at a u only where a u is source.
+\ REQUEST$, the request's copy.
 : RESOLVE ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT drop
-   a REJECTION:PLACES? if a u else REQUEST$ then {: p:^ pu:n :}
+   a u SRCLOC:ORIGIN$ over NULL-PTR = if 2drop REQUEST$ then {: p:^ pu:n :}
    >r REQUEST$ p pu CONFINE-AS r> ;
 
 \ Public so `required` and `included`, which this file defines outside
 \ SOURCE-ROOT, reject a missing request where it is resolved.
 : LOAD-RESOLVE ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT {: found:bool :}
-   a REJECTION:PLACES? if a u else REQUEST$ then {: p:^ pu:n :}
+   a u SRCLOC:ORIGIN$ over NULL-PTR = if 2drop REQUEST$ then {: p:^ pu:n :}
    found 0= if REQUEST$ p pu INCLUDE-FALSE MISSING-SOURCE then
    >r REQUEST$ p pu CONFINE-AS r> ;
 
@@ -2585,7 +2586,7 @@ public
    w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
-   a REJECTION:PLACES? if a u else NULL-PTR 0 then
+   a u SRCLOC:ORIGIN$
    w wu path pathu LOAD-RUN ;
 
 : included ( ^u8 n -- )
@@ -2605,7 +2606,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-STORE {: row-path:^ row-pathu:n :}
    DISCOVERY? if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   a REJECTION:PLACES? if a u else NULL-PTR 0 then {: t:^ tu:n :}
+   a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
    [: t tu w wu row-path row-pathu LOAD-RUN ;] catch {: rc:n :}
    rc 0 <> if
       COMMITTED? 0= if row REQUIRE-REG:REMOVE then

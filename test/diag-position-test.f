@@ -1917,6 +1917,92 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-PATH-RANGE" REJECT-RC CHECKED
    [: EMPTY-MSG ;] RANGE-FIELDS ;
 
+\ The run places the record for CODE at line L, column C of the fixture.
+: RAN-AT ( ^u8 n n n -- ) {: c:^ cu:n l:n col:n :}
+   SB-RESET  s" error[" SB-APPEND  c cu SB-APPEND
+   SB$ REJECT-RC RAN
+   SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :" SB-APPEND
+   l FMT:SB-U  s" :" SB-APPEND  col FMT:SB-U  LF+
+   ERR$ SB$ CONTAINS? TTRUE ;
+
+\ The run, the check and --verify-only place the record for CODE at the
+\ fixture's bytes BS to BE on line 1.
+: LITERAL-PLACED ( ^u8 n n n -- ) {: c:^ cu:n bs:n be:n :}
+   c cu 1 bs 1+ RAN-AT
+   c cu REJECT-RC CHECKED
+   c cu REJECTED-AS
+   0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ FX$ PLACED-IN
+   s" --verify-only" REJECT-RC CHECK-EXIT
+   c cu REJECTED-AS
+   0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ CANON$ FX$ PLACED-IN ;
+
+\ Fixture NAME's one line passes `included` an escaped literal, LONG-NAME-BYTES
+\ `x` then `\x41.f`, past the cap; written in FX, as the string builder holds
+\ less.
+: LONG-ESCAPED! ( ^u8 n -- ) {: name:^ nameu:n :}
+   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
+   s\" s\\\" " {: k:^ ku:n :}
+   k FX ku BYTE-COPY
+   LONG-NAME-BYTES 0 ?do 120 FX ku + i + c! loop
+   s\" \\x41.f\" included\n" {: t:^ tu:n :}
+   t FX ku + LONG-NAME-BYTES + tu BYTE-COPY
+   ku LONG-NAME-BYTES + tu + FX-U !
+   FX-PATH$ FX$ FS:WRITE-ALL ;
+
+\ A top-level literal's path the loader rejects is placed at the literal, an
+\ escaped one's copy included; an empty one, with no bytes, at the loader word.
+: TEST-LITERAL-PATH-PLACE ( -- )
+   s" an escaped top-level literal past the cap" T-LABEL
+   s" literal-long.f" LONG-ESCAPED!
+   s" E-PATH-RANGE" 4 LONG-NAME-BYTES 10 + LITERAL-PLACED
+   s" a top-level literal naming a missing file" T-LABEL
+   s\" s\" literal-absent.f\" INCLUDED" s" literal-missing.f" LINE-FIXTURE
+   s" E-MISSING-SOURCE" 3 19 LITERAL-PLACED
+   s" an empty top-level literal" T-LABEL
+   s\" s\" \" included" s" literal-empty.f" LINE-FIXTURE
+   s" E-PATH-RANGE" 5 13 LITERAL-PLACED ;
+
+\ A literal's record lasts only the next token of its own text: a path a loader
+\ is given later, in bytes its copy matches, is not placed at the literal.
+: TEST-LITERAL-SPENT ( -- )
+   s" a literal's copy rewritten and passed later" T-LABEL
+   SB-RESET  s" : Z ( ^u8 -- ) 8 0 ?do 122 over i + c! loop drop ;" SB-APPEND LF+
+   s\" s\" nofile.f\" 2drop -8 allot" SB-APPEND LF+
+   s" here 8 allot dup Z 8 included" SB-APPEND LF+
+   s" spent-rewritten.f" FIXTURE!
+   s" E-MISSING-SOURCE" 3 22 RAN-AT
+   s" a literal in an evaluated buffer rewritten before the load" T-LABEL
+   SB-RESET  s" create B 64 allot" SB-APPEND LF+
+   s" : Q ( -- ) 64 0 ?do 81 B i + c! loop ;" SB-APPEND LF+
+   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s\" s\\\" s\\\" nofile.f\\\"\" PUT evaluate" SB-APPEND LF+
+   s" Q" SB-APPEND LF+  s" included" SB-APPEND LF+
+   s" spent-evaluated.f" FIXTURE!
+   s" E-MISSING-SOURCE" 6 1 RAN-AT
+   ERR$ s" = word: nofile.f" CONTAINS? TTRUE
+   s" a buffer evaluated again at its address, its literal's copy held" T-LABEL
+   SB-RESET  s" create B 64 allot" SB-APPEND LF+
+   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s\" : S2 ( -- ^u8 n ) s\" 1 2 2drop    included\" ;" SB-APPEND LF+
+   s\" s\\\" s\\\" nofile.f\\\"\" PUT evaluate" SB-APPEND LF+
+   s" S2 PUT evaluate" SB-APPEND LF+
+   s" spent-reevaluated.f" FIXTURE!
+   s" E-MISSING-SOURCE" 5 8 RAN-AT
+   ERR$ s" = word: nofile.f" CONTAINS? TTRUE
+   s" a buffer evaluated closed twice in one word, its literal's copy passed later" T-LABEL
+   SB-RESET  s" create B 64 allot" SB-APPEND LF+
+   s" PTR-VARIABLE H0" SB-APPEND LF+
+   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s" : LOADX ( -- ) H0 @ 8 included ;" SB-APPEND LF+
+   s" : TWICE ( -- )" SB-APPEND LF+
+   s"    here H0 !" SB-APPEND LF+
+   s\"    [: s\\\" s\\\" nofile.f\\\"\" PUT evaluate-closed ;] catch drop" SB-APPEND LF+
+   s\"    s\" LOADX       \" PUT evaluate-closed ;" SB-APPEND LF+
+   s" TWICE" SB-APPEND LF+
+   s" spent-closed-twice.f" FIXTURE!
+   s" E-MISSING-SOURCE" 9 1 RAN-AT
+   ERR$ s" = word: nofile.f" CONTAINS? TTRUE ;
+
 \ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
 : DIR-REJECTED ( -- )
@@ -3348,6 +3434,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-CALLBACK-DUPLICATE
    TEST-NAMED-DOTTED
    TEST-SCRIPT-REQUIRED-EMPTY
+   TEST-LITERAL-PATH-PLACE
+   TEST-LITERAL-SPENT
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR
    TEST-NAMED-FIFO

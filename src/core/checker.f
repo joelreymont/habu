@@ -13354,6 +13354,12 @@ defer FIRST-RECORD-XT ( -- n )
 package SRCLOC
 private
 TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
+\ The last string literal copied out of its source: the copy, and the literal's
+\ bytes between its quotes as written. Only the main thread reads source.
+PTR-VARIABLE COPY-A   variable COPY-U
+PTR-VARIABLE TEXT-A   variable TEXT-U
+\ The engine's buffer and its count of tokens read as the literal was recorded.
+variable REC-INB   variable REC-TOKENS
 public
 
 \ The token the engine read last.
@@ -13361,6 +13367,39 @@ public
 
 \ Restates the token read last, so a record placed at it names another token.
 : TOKEN! ( ^u8 n -- ) data-base TKL-CELL + ! LAST-TOKEN ! ;
+
+\ Records the copy c cu of a string literal whose text in the source is t tu;
+\ NULL-PTR 0 for both drops the record.
+: LITERAL! ( ^u8 n ^u8 n -- ) {: c:^ cu:n t:^ tu:n :}
+   c COPY-A !  cu COPY-U !  t TEXT-A !  tu TEXT-U !
+   data-base INB-CELL + @ REC-INB !  data-base TOKENS-CELL + @ REC-TOKENS ! ;
+
+private
+\ A literal's record holds while the engine reads the text it was recorded in
+\ and has read at most one token since: the loader it is passed to.
+: HELD? ( -- bool )
+   data-base INB-CELL + @ REC-INB @ <> IF 0 0= 0= EXIT THEN
+   data-base TOKENS-CELL + @ REC-TOKENS @ - {: k:n :}
+   k 0 =  k 1 =  or ;
+
+\ The source text of the last string literal when a u is exactly its copy and
+\ its record holds, else NULL-PTR 0.
+: LITERAL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a COPY-A @ =  u COPY-U @ =  and IF
+      HELD? IF TEXT-A @ TEXT-U @ EXIT THEN
+   THEN
+   NULL-PTR 0 ;
+public
+
+\ The source bytes a nonempty a u stands for: itself where a source holds it,
+\ else the literal it copies where a source holds that; else NULL-PTR 0.
+: ORIGIN$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   u 0 <= IF NULL-PTR 0 EXIT THEN
+   a REJECTION:PLACES-IN? IF a u EXIT THEN
+   a u LITERAL$ {: t:^ tu:n :}
+   t NULL-PTR = IF NULL-PTR 0 EXIT THEN
+   t REJECTION:PLACES-IN? IF t tu EXIT THEN
+   NULL-PTR 0 ;
 
 private
 

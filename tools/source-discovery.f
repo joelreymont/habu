@@ -802,6 +802,12 @@ variable SD-TERM-END
    a 0 SD-PATH u BYTE-COPY
    u SD-PATH-U ! ;
 
+\ Fills the path from a u, the payload of the literal SD-PATH-AT and
+\ SD-PATH-SPAN place or its decode, and records a u, which the loader is given, as that literal's copy.
+: SD-LITERAL-FILL ( ^u8 n -- )
+   SD-PATH-FILL
+   SD-PATH-SRC @ SD-PATH-U @  SD-PATH-AT @ SD-BUF +  SD-PATH-SPAN @  SRCLOC:LITERAL! ;
+
 \ Room for an escaped literal's decode: as many bytes as its payload, since a
 \ decode is never longer than its spelling.
 DYNAMIC-BUFFER SD-DEC u8
@@ -819,7 +825,7 @@ DYNAMIC-BUFFER SD-DEC u8
    0 SD-DEC {: dst:^ :}
    a u dst ESCAPE:DECODE {: k:n ok:bool :}
    ok 0= if SD-REFUSED-LITERAL exit then
-   dst k SD-PATH-FILL ;
+   dst k SD-LITERAL-FILL ;
 
 \ The literal whose opener SD-I stands after: SD-I steps past its closing quote.
 : SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
@@ -831,7 +837,7 @@ DYNAMIC-BUFFER SD-DEC u8
          SD-I @ start - SD-PATH-SPAN !
          start SD-BUF +  SD-PATH-SPAN @
          SD-I @ 1+ SD-I !
-         escaped if SD-DECODE-PATH else SD-PATH-FILL then
+         escaped if SD-DECODE-PATH else SD-LITERAL-FILL then
          exit
       then
       SD-I @ SD-BYTE SD-BACKSLASH = escaped and if SD-I @ 1+ SD-I ! then
@@ -871,9 +877,8 @@ DYNAMIC-BUFFER SD-DEC u8
    bit SD-SHADOWED @ and 0<> if SD-SHADOW-STOP then
    bit SD-RETIRED @ and 0<> if SD-RETIRE-STOP then ;
 
-\ The loader is given the path as the source holds it, so a rejection of it is
-\ placed there; a decoded literal's bytes are in no source, so one of them is
-\ placed at the loader word at off len, which the record names as written.
+\ The loader is given the path as the source holds it or a decoded literal's
+\ bytes; the record names the loader word at off len as written.
 : SD-CALL-ACT ( n n n -- )
    {: off:n len:n kind:n :}
    off len SD-TOK$ {: w:^ wu:n :}
@@ -882,13 +887,16 @@ DYNAMIC-BUFFER SD-DEC u8
    kind SD-K-REQUIRED = if w wu a u REQUIRED-AS exit then
    a u provided ;
 
-\ The loader word at off len takes the path written at poff plen. A path the
-\ loader rejects is out with its record.
+\ The loader word at off len, read last as on the native path, takes the path
+\ written at poff plen. A path the loader rejects is out with its record.
 : SD-CALL-LOADER ( n n n n n -- )
    {: off:n len:n poff:n plen:n kind:n :}
    off len DISC-TOK!
    poff plen DISC-PATH!
-   off len kind SD-CALL-ACT ;
+   SRCLOC:TOKEN$ {: oa:^ ou:n :}
+   off len SD-TOK$ SRCLOC:TOKEN!
+   [: off len kind SD-CALL-ACT ;] [: oa ou SRCLOC:TOKEN! ;] finally
+   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL! ;   \ a literal's record lasts one loader call
 
 \ Whether the loader can take the path SD-PATH$ when a body calls it: false,
 \ with nothing written, for one that is empty, holds a NUL byte or resolves

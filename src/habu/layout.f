@@ -222,6 +222,9 @@ $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL
 $36A8 constant INE-CELL
+\ TOKENS-CELL: tokens the engine has read, a REPL line or evaluated text begun
+\ counting as one and a restated token not. Only differences are read.
+$36B0 constant TOKENS-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
 \ BPTRAMP-BYTES of BRK words, reserved in the code band.
 $36C0 constant BPTRAMP-CELL
