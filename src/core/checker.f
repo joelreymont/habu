@@ -23357,7 +23357,6 @@ variable CUR-OPEN   variable CUR-PSIG
    NZ-SEED
    RES-FALSE ;
 
-;package
 \ The `cast:` or `linear:` declaration being certified and the token its
 \ rejection names.
 package CAST-ERROR
@@ -23366,7 +23365,6 @@ PTR-VARIABLE KEY-A    variable KEY-U
 PTR-VARIABLE SIG-A    variable SIG-U
 PTR-VARIABLE TOK-A    variable TOK-U
 ;package
-package CHECK
 
 \ An effect REC-SIG did not record (W-EFFECT-NOT-RECORDED). CHECK clears it,
 \ not CHECK-RESET, which a does> clause also runs.

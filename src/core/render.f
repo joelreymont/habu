@@ -2119,10 +2119,8 @@ private
    BROW @ DCUR @ CHECK-UNRECORDED!
    REC-REFUSE-DIAG ;
 
-;package
 \ The text of a rejected `cast:` or `linear:` declaration.
 package CAST-ERROR
-EXPORT CHECK:SGBAD-LABEL$
 : CODE$ ( n -- ^u8 n ) {: code:n :}
    code E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
    code E-CAST-CLASS = IF s" E-CAST-CLASS" EXIT THEN
@@ -2163,7 +2161,6 @@ EXPORT CHECK:SGBAD-LABEL$
    TOK-U @ 0 >  d 0 >= and  d SIG-U @ < and IF TOK-A @ TOK-U @ EXIT THEN
    WORD$ ;
 ;package
-package CHECK
 
 global
 \ `+` and `cell+` refuse a layout pointee; bounds stay the caller's.

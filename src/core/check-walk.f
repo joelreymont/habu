@@ -986,18 +986,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
-;package
 package CAST-ERROR
-EXPORT CHECK:BYTE-SPAN?
-EXPORT CHECK:CAST-ROW-TERM
-EXPORT CHECK:CAST-ROW-WIDTH
-EXPORT CHECK:NLET
-EXPORT CHECK:RATOM-RESET
-EXPORT CHECK:REND-TYPE
-EXPORT CHECK:SEEN-RESET
-EXPORT CHECK:SGBAD-PIN
-EXPORT CHECK:SGBAD-REJECTION
-EXPORT CHECK:SIG-TRIM
 \ Zeros outside a declaration, so a saved image holds none of the build
 \ process's addresses.
 : CLEAR ( -- )
@@ -1055,11 +1044,7 @@ public
    sa su na nu SGBAD-REJECTION
    sa su na nu SGBAD-PIN
    CHECKER-REJECT-RC REJECTION:STOP ;
-: SKIP ( n -- ) {: rc:n :}
-   rc CHECKER-REJECT-RC = IF EXIT THEN
-   rc throw ;
 ;package
-package CHECK
 
 \ The family TAGGED-HIT? last found, or -1 for a type variable.
 variable TAGGED-FAM
@@ -1967,8 +1952,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 
-public
-
 \ Ask only whether the newly captured part binds. Open control, quotation and
 \ local scopes remain prefixes; the declared result and publication belong to
 \ the caller's eventual `;`. No immediate word runs during this read.
@@ -2094,10 +2077,9 @@ package CHECKER-PREFLIGHT
    NULL-PTR TARGET-A!  0 TARGET-U ! ;
 
 EXPORT CHECK:WRITE-WINDOW-CK
-public
 
-\ Keep this target-forcing entry distinct from the source checker CHECK! that
-\ RUN calls above. Its published name must not shadow that call on replay.
+\ Keep this target-forcing entry's name distinct from CHECK!, which RUN calls
+\ above: the name CHECK takes by EXPORT must not shadow that call on replay.
 : CHECK-TARGET! ( ^u8 n ^u8 n -- n )
    {: ba:^ bu:n ta:^ tu:n :}
    WRITE-WINDOW-CK
@@ -2137,42 +2119,7 @@ variable CD-DOUT-CELLS
 
 \ Certifies `cast:` and `linear:` for both front ends, the engine's reader
 \ keyword and verify-source's pre-pass.
-;package
 package CHECKER-IDENTITY
-EXPORT CHECK:RAW-SIG!
-EXPORT CHECK:CAST-ROW-1?
-EXPORT CHECK:CAST-ROW-UNDER
-EXPORT CHECK:CAST-ROW-WIDTH
-EXPORT CHECK:CAST-SCOPED?
-EXPORT CHECK:VIEW-CAST-CERTIFY
-EXPORT CHECK:CAST-CERTIFY
-EXPORT CHECK:LINEAR-CERTIFY
-EXPORT CHECK:BYTE-SPAN?
-EXPORT CHECK:CHECKER-QUALIFIED?
-EXPORT CHECK:CHECKER-REC-SYM
-EXPORT CHECK:CHECKER-USIG-CERT-ADD
-EXPORT CHECK:CHECKER-USIG-CERT-ROWS
-EXPORT CHECK:CK-CLOSE!
-EXPORT CHECK:CK-LIVE-PEND?
-EXPORT CHECK:NEW
-EXPORT CHECK:NLINEAR-RAISE
-EXPORT CHECK:NMAP-SLOT
-EXPORT CHECK:NSCOPE-RAISE
-EXPORT CHECK:PARSE-SIG-RAW
-EXPORT CHECK:SGBAD
-EXPORT CHECK:SGBAD-A
-EXPORT CHECK:SGBAD-ARITY?
-EXPORT CHECK:SGBAD-CLEAR
-EXPORT CHECK:SGBAD-FIX
-EXPORT CHECK:SGBAD-U
-EXPORT CHECK:SGBAD-UNKNOWN?
-EXPORT CHECK:SGBAD-UNSUPPLIED?
-EXPORT CHECK:SGHASR
-EXPORT CHECK:SGIN
-EXPORT CHECK:SGOUT
-EXPORT CHECK:SIG-UNRES
-EXPORT CHECK:STORED-DERIVE
-EXPORT CHECK:TVK@
 \ Rejects the type token the signature parse named under E-CAST-FAM: why wa wu
 \ says what is wrong.
 : FAM-RAISE ( ^u8 n -- ) {: wa:^ wu:n :}
@@ -2291,7 +2238,6 @@ public
    sa su na nu CHECKER-USIG-CERT-ADD
    CHECKER-REC-SYM @ CK-CLOSE! ;
 ;package
-package CHECK
 : CHECKER-DEFCAST ( ^u8 n ^u8 n -- )
    s" cast:" [: CHECKER-IDENTITY:CAST ;] CAST-ERROR:DECLARE ;
 : CHECKER-LINEAR ( ^u8 n ^u8 n -- )
@@ -2991,14 +2937,14 @@ NULL-PTR TOP-LEFT-A !  0 TOP-LEFT-U !
 ;package
 package CHECKER-REG                       \ REG-PTR-CELLS is CHECKER-REG's private cast
 EXPORT CHECK:TS-AT
-public
 : TS-PTR ( n n -- ^^u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
 ;package
 package CHECK
+EXPORT CHECKER-REG:TS-PTR
 
 : TOP-SEG-UNMAP ( n -- ) {: ix:n :}
-   ix TS.RP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
-   ix TS.WP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.WC TS-AT @ cells ARENA-UNMAP ;
+   ix TS.RP TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
+   ix TS.WP TS-PTR @ CELL-VIEW ix TS.WC TS-AT @ cells ARENA-UNMAP ;
 
 : TOP-LEFT-CLEAR ( -- )   NULL-PTR TOP-LEFT-A !  0 TOP-LEFT-U ! ;
 
@@ -3012,12 +2958,12 @@ package CHECK
    TOP-SEG-N @ {: ix:n :}
    TOP-BASE @ ix TS.BASE TS-AT !
    TOP-ENTRY @ ix TS.ENTRY TS-AT !  TOP-EVAL-LEVEL @ ix TS.LEVEL TS-AT !
-   TOP-READ-P @ BYTE-VIEW ix TS.RP CHECKER-REG:TS-PTR !   TOP-READ-CAP @ ix TS.RC TS-AT !
-   TOP-WRITE-P @ BYTE-VIEW ix TS.WP CHECKER-REG:TS-PTR !  TOP-WRITE-CAP @ ix TS.WC TS-AT !
+   TOP-READ-P @ BYTE-VIEW ix TS.RP TS-PTR !   TOP-READ-CAP @ ix TS.RC TS-AT !
+   TOP-WRITE-P @ BYTE-VIEW ix TS.WP TS-PTR !  TOP-WRITE-CAP @ ix TS.WC TS-AT !
    TOP-ROW-OFF @ ix TS.OFF TS-AT !  TOP-RROW-OFF @ ix TS.ROFF TS-AT !
    TOP-ROW-TV @ ix TS.TV TS-AT !  TOP-ROW-RV @ ix TS.RV TS-AT !
    TOP-READ-END @ ix TS.END TS-AT !  TOP-ROW-CELLS @ ix TS.CELLS TS-AT !
-   TOP-LEFT-A @ ix TS.LEFT-A CHECKER-REG:TS-PTR !  TOP-LEFT-U @ ix TS.LEFT-U TS-AT !
+   TOP-LEFT-A @ ix TS.LEFT-A TS-PTR !  TOP-LEFT-U @ ix TS.LEFT-U TS-AT !
    ix 1 + TOP-SEG-N !
    NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !
    NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP !  0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !
@@ -3028,12 +2974,12 @@ package CHECK
    TOP-SEG-N @ at 1 + ?DO i TOP-SEG-UNMAP LOOP
    at TS.BASE TS-AT @ TOP-BASE !
    at TS.ENTRY TS-AT @ TOP-ENTRY !  at TS.LEVEL TS-AT @ TOP-EVAL-LEVEL !
-   at TS.RP CHECKER-REG:TS-PTR @ TOP-READ-P !   at TS.RC TS-AT @ TOP-READ-CAP !
-   at TS.WP CHECKER-REG:TS-PTR @ TOP-WRITE-P !  at TS.WC TS-AT @ TOP-WRITE-CAP !
+   at TS.RP TS-PTR @ TOP-READ-P !   at TS.RC TS-AT @ TOP-READ-CAP !
+   at TS.WP TS-PTR @ TOP-WRITE-P !  at TS.WC TS-AT @ TOP-WRITE-CAP !
    at TS.OFF TS-AT @ TOP-ROW-OFF !  at TS.ROFF TS-AT @ TOP-RROW-OFF !
    at TS.TV TS-AT @ TOP-ROW-TV !  at TS.RV TS-AT @ TOP-ROW-RV !
    at TS.END TS-AT @ TOP-READ-END !  at TS.CELLS TS-AT @ TOP-ROW-CELLS !
-   at TS.LEFT-A CHECKER-REG:TS-PTR @ TOP-LEFT-A !  at TS.LEFT-U TS-AT @ TOP-LEFT-U !
+   at TS.LEFT-A TS-PTR @ TOP-LEFT-A !  at TS.LEFT-U TS-AT @ TOP-LEFT-U !
    at TOP-SEG-N ! ;
 
 : TOP-SEG-SPANS? ( n n n -- bool ) {: ix:n base:n lvl:n :}

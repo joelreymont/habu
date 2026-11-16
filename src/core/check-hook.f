@@ -9,6 +9,7 @@ package CHECK
 private
 
 EXPORT SRCLOC:FILE-BUFFER?
+EXPORT CHECKER-PREFLIGHT:CHECK-TARGET!
 
 \ ---- a duplicate only the checker sees ----------------------------------------
 \ A declaration replay publishes a checked effect but defines no word, so the
@@ -77,7 +78,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    drop
    {: ba:^ bu:n ta:^ tu:n :}
    ta tu NEUTRAL-PARSE-IMM? if exit then
-   ba bu ta tu [: CHECKER-PREFLIGHT:CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
+   ba bu ta tu [: CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
    finally 0 <> if
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then

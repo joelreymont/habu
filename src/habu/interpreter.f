@@ -1385,6 +1385,7 @@ EXPORT CHECK:STORAGE-LINE
 EXPORT CHECK:CELL-LINE
 EXPORT CHECK:EFFECT-RULES?
 EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
+EXPORT CHECKER-PREFIX:BIND?
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
@@ -2060,7 +2061,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    ENTRY-PEND @ 0= if exit then
    BODY-TEXT:BASE-CELL ADDR@
    BODYLEN-CELL CELL@ TOKBODY-CELL CELL@
-   CHECKER-PREFIX:BIND? {: rollback:n ok:bool :}
+   BIND? {: rollback:n ok:bool :}
    ok 0= if
       \ A parser operand can roll back its opener as well as the operand.
       \ The token mark must then restore the state before that opener.
