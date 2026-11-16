@@ -677,18 +677,7 @@ public
    XREF-SN@ XREF-SU @ XREF-REQUIRE-UNDEFINE XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
-
-: UNDEFINE-FOUND ( ^u8 n n -- )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
-   XREF-IDX @ XREF-RETIRE-INDEX ;
 ;package
-
-: UNDEFINE-IF-DEFINED ( ^u8 n -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF:UNDEFINE-FOUND else drop then ;
 
 \ The seal watermark of the dictionary being loaded: while a build writes an
 \ image, the image's, where a header store goes (habu2.f ROUTE-HEADER), 0 until

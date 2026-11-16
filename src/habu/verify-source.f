@@ -35,21 +35,20 @@
 \ goes to the slot, which the handler of the token NEXT-SCAN answers reads
 \ before the next NEXT-SCAN resets it: only TOP-PREV-STR may hold an older
 \ answer, and the parse-imm row reads it only when no literal came before its
-\ token, so no decode came between. Only the string loaders, a call of
-\ a word a names: row marks, a top-level `parse-imm` and a quiet composition's
-\ `UNDEFINE-IF-DEFINED` read the slot, and none of them reads a body. A body
-\ literal's answer is BODY-LIT, which the body's next token clears or consumes,
-\ and a body token is read with SKIP-STRINGS off, so no decode comes between.
+\ token, so no decode came between. Only the string loaders, a call of a word
+\ a names: row marks, and a top-level `parse-imm` read the slot, and none of
+\ them reads a body. A body literal's answer is BODY-LIT, which the body's next
+\ token clears or consumes, and a body token is read with SKIP-STRINGS off, so
+\ no decode comes between.
 \
 \ A quiet composition refuses the top-level loader forms discovery refuses,
 \ where it meets them, so that walk need not run first: a path that is no
 \ literal, a literal no loader takes, or a path the loader refuses - one
-\ holding a NUL byte, or one the resolver refuses. A
-\ declaration, `undefine` or `UNDEFINE-IF-DEFINED` of a loader word's name
-\ refuses nothing, as the walk refuses nothing for it, but a later loader form
-\ with that word the walk reads - `include` or `require`, or a word right after
-\ a path literal - at top level or in a body, on a straight line or not, is
-\ refused at the word as the walk refuses it.
+\ holding a NUL byte, or one the resolver refuses. A declaration or `undefine`
+\ of a loader word's name refuses nothing, as the walk refuses nothing for it,
+\ but a later loader form with that word the walk reads - `include` or
+\ `require`, or a word right after a path literal - at top level or in a body,
+\ on a straight line or not, is refused at the word as the walk refuses it.
 \
 \ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when
 \ the word runs, after the definition at the earliest. An `included` of a
@@ -928,8 +927,6 @@ private
    a u s" provided" STR=CI IF $10 EXIT THEN
    0 ;
 
-$1F constant LOADER-BITS
-
 \ The loader words the file being read has declared a word of, and those it has
 \ retired: past either, the walk, which holds no wordlists, cannot tell which
 \ word the spelling names.
@@ -947,15 +944,6 @@ variable NEWEST-SYM
 
 : NAME-RETIRED ( ^u8 n -- )
    LOADER-BIT RETIRED @ or RETIRED ! ;
-
-\ `UNDEFINE-IF-DEFINED` at top level retires the word the literal before it
-\ names, a literal of the given kind: a path literal's, and with none, a word
-\ the walk cannot read, any loader word among them. In a body it retires
-\ nothing until the word runs, which no check does.
-: TOP-RETIRED ( ^u8 n n ^u8 n -- ) {: a:^ u:n kind:n lit:^ litu:n :}
-   a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
-   kind LIT-PATH = IF lit litu NAME-RETIRED EXIT THEN
-   RETIRED @ LOADER-BITS or RETIRED ! ;
 
 \ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
 : QUIET-USE ( ^u8 n -- ) {: a:^ u:n :}
@@ -4203,7 +4191,6 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
 : SCAN-TOP ( ^u8 n -- )
    CSR-TOP
    2dup FILE-SCOPE-STEP
-   2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ TOP-RETIRED
    2dup KNOWN-IF? IF 2drop ELSE
    2dup TOP-PARSER? IF TOP-OPERAND ELSE
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE

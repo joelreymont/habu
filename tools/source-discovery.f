@@ -529,12 +529,10 @@ variable SD-X-N
       kind SD-R-DECL = if 1 else kind SD-R-RETIRE = if 2 else 0 then then
       {: w:n :}
       w 0<> i SD-R-ACTIVE @ 0<> and if
-         i SD-R-NAME-U @ 0= if
-            w + swap w + swap
-         else i SD-R-NAME$ SD-TAIL$ tail tailu STR=CI if
+         i SD-R-NAME$ SD-TAIL$ tail tailu STR=CI if
             row i SD-R-AFFECTS? if swap w + swap then
             row i SD-R-SHARES? if w + then
-         then then
+         then
       then
    loop
    {: qual:n bare:n :}
@@ -763,14 +761,6 @@ variable SD-TERM-END
    len 0= if exit then
    off off len SD-R-RETIRE SD-R-RECORD drop ;
 
-: SD-R-RETIRE-STACK ( n n -- ) {: off:n pend:n :}
-   pend SD-PEND-PATH <> if off off 0 SD-R-RETIRE SD-R-RECORD drop exit then
-   SD-PATH-AT @ dup 0 SD-R-RETIRE SD-R-RECORD {: r:n :}
-   r 0 < if exit then
-   SD-PATH$ SD-R-COPY r SD-R-NAME !
-   SD-PATH-U @ r SD-R-NAME-U !
-   SD-PATH-SPAN @ r SD-R-SPAN ! ;
-
 : SD-SKIP-TO ( n -- ) {: stop:n :}
    begin SD-I @ SD-AT? while
       SD-I @ SD-BYTE stop = if SD-I @ 1+ SD-I ! exit then
@@ -868,8 +858,6 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" mutual" STR=CI if $100 exit then
    0 ;
 
-$1FF constant SD-NAMES                   \ loaders and family openers
-
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
 : SD-SHADOW ( ^u8 n -- )
@@ -877,14 +865,6 @@ $1FF constant SD-NAMES                   \ loaders and family openers
 
 : SD-RETIRE ( ^u8 n -- )
    SD-TAIL$ SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
-
-\ UNDEFINE-IF-DEFINED at top level retires the word the path literal right
-\ before it names, and when no path literal does, a word the walk cannot read,
-\ any loader word among them. In a body it retires nothing until the word runs,
-\ which no check runs.
-: SD-RETIRE-NAMED ( n -- ) {: pend:n :}
-   pend SD-PEND-PATH = if SD-PATH$ SD-RETIRE exit then
-   SD-RETIRED @ SD-NAMES or SD-RETIRED ! ;
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
@@ -1171,9 +1151,6 @@ $1FF constant SD-NAMES                   \ loaders and family openers
    SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if
       SD-RAW {: noff:n nu:n :}
       noff nu SD-R-RETIRE-NAME noff nu SD-TOK$ SD-RETIRE exit
-   then
-   SD-DEF @ 0= off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI and if
-      off pend SD-R-RETIRE-STACK pend SD-RETIRE-NAMED exit
    then
    SD-BODY? 0= off len SD-TOK$ s" parses:" STR=CI and if
       SD-R-PARSES SD-R-ROW exit

@@ -302,20 +302,16 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a name is data, a loader word's too --------------------------------------
 
-\ Defining, undefining or retiring a loader word's name refuses nothing: `:`,
-\ `kernel:` and `TRUSTED:` take the name as data, as `undefine` does at top
-\ level, and UNDEFINE-IF-DEFINED is a call. A loader form with another word is
-\ the one event, as is one after a package, a using or an export of the name
-\ (they replace no word) and after UNDEFINE-IF-DEFINED or `undefine` in a body
-\ (they retire nothing until the word runs). Each source loads.
+\ A definition, export, package, using or `undefine` naming a loader word
+\ refuses nothing: each source loads, and the loader form after it is the one
+\ event.
 : SDT-TEST-LOADER-NAME ( -- )
    S\" package SDT-SH\n: include ( -- ) ;\nkernel: require ( -- ) ;\n;package\npackage SDT-SH2\nTRUSTED: include ( -- ) ;\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" undefine required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
-   S\" s\" required\" UNDEFINE-IF-DEFINED\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
    S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
-   S\" : R ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n: U ( ^u8 n -- ) undefine required ;\ns\" sd-raw.f\" required\n"
+   S\" : U ( ^u8 n -- ) undefine required ;\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
@@ -324,16 +320,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" replaced.f" a u SDT-WRITE-ENTRY
    code off len SDT-STOPS-AT ;
 
-\ After the file defines a loader word's name (E-DISC-SHADOW), or else retires
-\ it (E-DISC-RETIRE), the walk cannot tell which word the spelling names, so a
-\ later loader form with it that the walk reads is refused at the word: any at
-\ top level, `include` or `require` anywhere, and a string loader right after a
-\ path literal in a body. A retirement whose name no path literal gives may
-\ retire any loader word. Elsewhere in a body the spelling is a call the walk
-\ reads past, as a loader word there is: a package's variable REQUIRED read in
-\ its body refuses nothing. The first four and the dynamic retirement load;
-\ the retired two die at the use, E-UNDEFINED, and the immediate `include` in
-\ a body at its definition, E-UNMODELED-IMMEDIATE.
+\ After the file defines or retires a loader word's name, a later loader form
+\ the walk reads with it is refused at the word; a body's other uses are calls
+\ it reads past.
 : SDT-TEST-LOADER-USE ( -- )
    S\" undefine require\n: require ( -- ) parse-name required ;\nrequire sd-raw.f\n"
    E-DISC-SHADOW 56 7 SDT-REPLACED-AT
@@ -346,10 +335,6 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" sd-raw.f\" required\n"
    E-DISC-SHADOW 64 8 SDT-REPLACED-AT
    S\" undefine required\ns\" sd-raw.f\" required\n" E-DISC-RETIRE 31 8 SDT-REPLACED-AT
-   S\" s\" required\" UNDEFINE-IF-DEFINED\n: L ( -- ) s\" sd-raw.f\" required ;\n"
-   E-DISC-RETIRE 57 8 SDT-REPLACED-AT
-   S\" s\" CVT-NONE\" 2dup 2drop UNDEFINE-IF-DEFINED\nrequire sd-raw.f\n"
-   E-DISC-RETIRE 44 7 SDT-REPLACED-AT
    S\" package SDT-SH\nprivate\nvariable REQUIRED\n: L ( -- n ) REQUIRED @ ;\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
