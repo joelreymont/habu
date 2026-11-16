@@ -282,6 +282,7 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `value`, `to` | a `variable`: `5 V !`, `V @` |
 | `cmove` | `BYTE-COPY ( src dst n -- )`, `src/core/bytes.f` |
 | `bye` | none; a file ends at its last line, and `s" why" n die` exits with status n |
+| `set-current` | the section keywords: `public`, `private` or `global` inside `package … ;package` |
 
 A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
 under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,

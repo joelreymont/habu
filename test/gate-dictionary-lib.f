@@ -183,12 +183,8 @@ variable LABEL-U
    SB$ s" hb long dictionary names output" GE-EXPECT-OUT ;
 
 \ ---- wordlist isolation ------------------------------------------------------
-\ A definition's package context is the all-zero global tuple or a live
-\ namespace record whose two WIDs are the protected engine cells
-\ (src/habu/xref.f LIVE-PKG), with current one of them (src/core/checker.f
-\ CHECKER-RESOLVE:AUTHORITY); a bare user wordlist is neither, so isolation is
-\ tested through a package. The WID is read by `get-current` inside the package,
-\ so the second search asks the wordlist the definition was written to.
+\ A program defines outside the global wordlist only in a package's sections;
+\ the WID `get-current` reads there is the one the definition was written to.
 : WORDLIST-SOURCE ( -- )
    GE-SRC-RESET
    s" variable LONG-WL" GE-SRC-LINE
@@ -210,21 +206,6 @@ variable LABEL-U
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    SB$ s" hb long dictionary wordlist isolation output" GE-EXPECT-OUT ;
-
-\ ---- a bare wordlist is no definition context ---------------------------------
-\ CHECKER-PKG-CONTEXT-REJECT names the refusal on stderr and exits with the
-\ engine's compile-reject status, not an uncaught throw.
-: WORDLIST-BARE-SOURCE ( -- )
-   GE-SRC-RESET
-   s" wordlist constant BARE-WL" GE-SRC-LINE
-   s" BARE-WL set-current" GE-SRC-LINE
-   s" : BARE-WORDLIST-NAME ( -- i64 ) 8 ;" GE-SRC-LINE ;
-
-: WORDLIST-BARE ( -- )
-   GE-HB-RESET
-   WORDLIST-BARE-SOURCE
-   70 s" no authenticated package context"
-   s" hb bare wordlist definition refused" GE-EVAL-FORK-BAD ;
 
 : LONG-NAME-SOURCE ( -- )
    GE-SRC-RESET
@@ -1444,7 +1425,6 @@ public
    s" hb-gate-dictionary" GT-START
    LONG-DICTIONARY
    WORDLIST
-   WORDLIST-BARE
    LONG-NAME
    TRUSTED-DOES
    BAD-DOES

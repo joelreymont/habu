@@ -165,11 +165,6 @@ s" cast: CNL17 ( lqfbox -- n )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `ca
 package CAST-FOREIGN
 variable CN-WID
 get-current CN-WID !
-\ The same runner, with the declaration landing in the captured WID so the
-\ absence assertions below can see a package-private name.
-: CN-EVAL-CATCH ( ^u8 n -- n )
-   CN-WID @ set-current
-   CN-RUN:DECL ;
 : CN-ABSENT? ( ^u8 n -- bool )
    CN-WID @ search-wl 0= ;
 : CN-PRIVATE-PROBE ( -- ) ;
@@ -177,42 +172,42 @@ get-current CN-WID !
 \ The captured private WID sees the probe and must see no failed cast.
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
-s" CAST: CNP1 ( n -- CAST-NEG:lease )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP1`" CN-RUN:REJECTS
+s" CAST: CNP1 ( n -- CAST-NEG:lease )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP1`" CN-RUN:REJECTS
 s" CNP1" CN-ABSENT? TTRUE  s" CNP1" 0 search-wl 0= TTRUE
-s" CAST: CNP2 ( CAST-NEG:lease -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP2`" CN-RUN:REJECTS
+s" CAST: CNP2 ( CAST-NEG:lease -- n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP2`" CN-RUN:REJECTS
 s" CNP2" CN-ABSENT? TTRUE  s" CNP2" 0 search-wl 0= TTRUE
-s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP3`" CN-RUN:REJECTS
+s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP3`" CN-RUN:REJECTS
 s" CNP3" CN-ABSENT? TTRUE  s" CNP3" 0 search-wl 0= TTRUE
-s" CAST: CNP4 ( n -- CAST-NEG:nested )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP4`" CN-RUN:REJECTS
+s" CAST: CNP4 ( n -- CAST-NEG:nested )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP4`" CN-RUN:REJECTS
 s" CNP4" CN-ABSENT? TTRUE  s" CNP4" 0 search-wl 0= TTRUE
-s" CAST: CNP5 ( CAST-NEG:nested -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP5`" CN-RUN:REJECTS
+s" CAST: CNP5 ( CAST-NEG:nested -- n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP5`" CN-RUN:REJECTS
 s" CNP5" CN-ABSENT? TTRUE  s" CNP5" 0 search-wl 0= TTRUE
-s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP6`" CN-RUN:REJECTS
+s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP6`" CN-RUN:REJECTS
 s" CNP6" CN-ABSENT? TTRUE  s" CNP6" 0 search-wl 0= TTRUE
-s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP7`" CN-RUN:REJECTS
+s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP7`" CN-RUN:REJECTS
 s" CNP7" CN-ABSENT? TTRUE  s" CNP7" 0 search-wl 0= TTRUE
-s" CAST: CNP8 ( n -- a )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP8`" CN-RUN:REJECTS
+s" CAST: CNP8 ( n -- a )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP8`" CN-RUN:REJECTS
 s" CNP8" CN-ABSENT? TTRUE  s" CNP8" 0 search-wl 0= TTRUE
-s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP9`" CN-RUN:REJECTS
+s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP9`" CN-RUN:REJECTS
 s" CNP9" CN-ABSENT? TTRUE  s" CNP9" 0 search-wl 0= TTRUE
 \ A view's element is a cast term: the unpack hands out whatever t binds.
-s" CAST: CNP10 ( read-view<p,q,t> -- ^u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP10`" CN-RUN:REJECTS
+s" CAST: CNP10 ( read-view<p,q,t> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP10`" CN-RUN:REJECTS
 s" CNP10" CN-ABSENT? TTRUE  s" CNP10" 0 search-wl 0= TTRUE
-s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ^u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP11`" CN-RUN:REJECTS
+s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP11`" CN-RUN:REJECTS
 s" CNP11" CN-ABSENT? TTRUE  s" CNP11" 0 search-wl 0= TTRUE
-s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ^u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP12`" CN-RUN:REJECTS
+s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP12`" CN-RUN:REJECTS
 s" CNP12" CN-ABSENT? TTRUE  s" CNP12" 0 search-wl 0= TTRUE
 \ Where the output mints, an input's row variable keeps its place; an
 \ output's own is the linear rule's.
-s" CAST: CNP13 ( [ -- n ] -- [ -- S ] )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP13`" CN-RUN:REJECTS
+s" CAST: CNP13 ( [ -- n ] -- [ -- S ] )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNP13`" CN-RUN:REJECTS
 s" CNP13" CN-ABSENT? TTRUE
-s" CAST: CNP14 ( [ R -- S ] -- [ S -- R ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP14`" CN-RUN:REJECTS
+s" CAST: CNP14 ( [ R -- S ] -- [ S -- R ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNP14`" CN-RUN:REJECTS
 s" CNP14" CN-ABSENT? TTRUE
-s" CAST: CNP15 ( [ R -- S ] -- [ n -- ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP15`" CN-RUN:REJECTS
+s" CAST: CNP15 ( [ R -- S ] -- [ n -- ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNP15`" CN-RUN:REJECTS
 s" CNP15" CN-ABSENT? TTRUE
-s" CAST: CNP17 ( [ R -- R ] -- [ R n -- R ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP17`" CN-RUN:REJECTS
+s" CAST: CNP17 ( [ R -- R ] -- [ R n -- R ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNP17`" CN-RUN:REJECTS
 s" CNP17" CN-ABSENT? TTRUE
-s" CAST: CNP18 ( [ R n -- R ] -- [ R ^n -- R ] )" CN-EVAL-CATCH 0 T=
+s" CAST: CNP18 ( [ R n -- R ] -- [ R ^n -- R ] )" CN-RUN:DECL 0 T=
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package
@@ -353,33 +348,30 @@ s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
 package CN-VIEW
 variable CV-WID
 get-current CV-WID !
-: CV-DECL ( ^u8 n -- n )
-   CV-WID @ set-current
-   CN-RUN:DECL ;
 : CV-ABSENT? ( ^u8 n -- bool )
    CV-WID @ search-wl 0= ;
 : CV-PRIVATE-PROBE ( -- ) ;
 s" CV-PRIVATE-PROBE" CV-ABSENT? TFALSE
-s" cast: CNV1 ( ^u8 n -- read-view<p,q,u8> )"        CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV1`" CN-RUN:REJECTS
+s" cast: CNV1 ( ^u8 n -- read-view<p,q,u8> )"        CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV1`" CN-RUN:REJECTS
 s" CNV1" CV-ABSENT? TTRUE
-s" cast: CNV2 ( ^u8 n -- mut-view<p,q,a,u8> )"       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV2`" CN-RUN:REJECTS
+s" cast: CNV2 ( ^u8 n -- mut-view<p,q,a,u8> )"       CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV2`" CN-RUN:REJECTS
 s" CNV2" CV-ABSENT? TTRUE
-s" cast: CNV3 ( mut-view<p,l,a,u8> -- ^u8 n )"       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV3`" CN-RUN:REJECTS
+s" cast: CNV3 ( mut-view<p,l,a,u8> -- ^u8 n )"       CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV3`" CN-RUN:REJECTS
 s" CNV3" CV-ABSENT? TTRUE
-s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV4`" CN-RUN:REJECTS
+s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV4`" CN-RUN:REJECTS
 s" CNV4" CV-ABSENT? TTRUE
-s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV5`" CN-RUN:REJECTS
+s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV5`" CN-RUN:REJECTS
 s" CNV5" CV-ABSENT? TTRUE
-s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ^u8 n -- ] )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV6`" CN-RUN:REJECTS
+s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ^u8 n -- ] )" CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV6`" CN-RUN:REJECTS
 s" CNV6" CV-ABSENT? TTRUE
-s" cast: CNV10 ( [ read-view<p,q,u8> -- ] -- [ ^u8 n -- ] )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV10`" CN-RUN:REJECTS
+s" cast: CNV10 ( [ read-view<p,q,u8> -- ] -- [ ^u8 n -- ] )" CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV10`" CN-RUN:REJECTS
 s" CNV10" CV-ABSENT? TTRUE
-s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV7`" CN-RUN:REJECTS
+s" cast: CNV7 ( n -- init<i,n> )"                       CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV7`" CN-RUN:REJECTS
 s" CNV7" CV-ABSENT? TTRUE
 \ A qualified name selects that package's public wordlist, so the read-view
 \ unpack this section admits is refused under one, and once the package closes
 \ that wordlist holds no such name.
-s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ^u8 n )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CN-VIEW:CNV9`" CN-RUN:REJECTS
+s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CN-VIEW:CNV9`" CN-RUN:REJECTS
 public
 get-current constant CV-PUBLIC-WID
 s" cast: CNV8 ( read-view<p,q,u8> -- ^u8 n )"        CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV8`" CN-RUN:REJECTS

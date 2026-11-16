@@ -198,27 +198,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
    SLV-ERR$ prose proseu CONTAINS? TTRUE ;
 
-\ The two engine-reserved OWNER-API wordlists are permanently protected, so a
-\ checked program cannot forge a record into them with set-current. Without this,
-\ `2 set-current : X ;` would stamp X with OWNER-API-PRI-WID, the marker that
-\ seals a record as a system-private engine helper and hides it from raw word
-\ searches.
-: SLV-OWNER-PRI-FORGE$ ( -- ^u8 n )       \ publish into the private engine-API wordlist (helper marker)
-   SB-RESET
-   s" 2 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-OWNER-PUB-FORGE$ ( -- ^u8 n )       \ publish into the public engine-API wordlist
-   SB-RESET
-   s" 1 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-OWNER-FORGE ( -- )
-   s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 70" T-LABEL
-   SLV-OWNER-PRI-FORGE$ SLV-SUBJECT s" `OWNERFORGE` would change a sealed package" SLV-ASSERT-PROT-PUBLISH
-   s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 70" T-LABEL
-   SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" `OWNERFORGE` would change a sealed package" SLV-ASSERT-PROT-PUBLISH ;
-
 : SLV-LINE ( ^u8 n -- )
    SB-APPEND SLV-LF ;
 
@@ -310,7 +289,6 @@ public
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
    SLV-PWID-BOUND
-   SLV-OWNER-FORGE
    SLV-SEALED-DEFINE
    SLV-ENGINE-SEALED
    SLV-CLEANUP

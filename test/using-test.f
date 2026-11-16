@@ -186,19 +186,6 @@ s" using UA ;using" VS-CATCH 0 T=
 ;package
 s" AW drop" UCE-CATCH E-REJECT T=
 
-\ A package scope the engine cannot authenticate, because the current wordlist
-\ is neither of the package's own, names nothing to copy into the mirror: the
-\ mirror keeps UQV through the throw, and once current is back the replay
-\ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
-\ TEST-EVAL:RC. A buffer that only interprets (`1 drop`) runs in that scope.
-package UQV
-variable UQV-CUR  get-current UQV-CUR !
-0 set-current
-s" UQV-NO-SUCH-WORD" TEST-EVAL:RC E-REJECT T=
-UQV-CUR @ set-current
-s" 1 drop" VS-CATCH 0 T=
-;package
-
 \ === global-vs-used-public shadow ===
 \ A bare tail inside a using scope that resolves to a global and a used public
 \ of the same name is ambiguous and fails closed at the reference site. global

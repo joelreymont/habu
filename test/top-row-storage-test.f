@@ -364,17 +364,8 @@ variable ERR-U
    CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
 
-\ A child: `0 set-current` and `using` outlive the program that runs them. With
-\ no package context the row still types certified words and still refuses p3;
-\ the open package's own words, public and private, bind there as the engine
-\ finds them, so a typed use runs and a mistyped one is refused by its type;
-\ a used public retired by `undefine` resolves past it, to the global or the
-\ live public, as the engine does, and names no scope refusal.
-: NOCTX ( -- )   s" package TS-NOCTX 0 set-current 1 2 drop drop " SB-APPEND ;
-: PKW ( -- )   s" package TS-PKW public : TS-PKW-N ( -- n ) 5 ; 0 set-current " SB-APPEND ;
-: PKW-USE ( -- )   s" TS-PKW-N 1 + drop " SB-APPEND ;
-: PKW-MISUSE ( -- )   s" true REJECTION:JSON ! TS-PKW-N c@ drop " SB-APPEND ;
-: PKV ( -- )   s" package TS-PKV variable TS-PKV-C 0 set-current TS-PKV-C @ drop " SB-APPEND ;
+\ A child, whose `using` outlives its program: a used public retired by
+\ `undefine` resolves past it to the global or the live public, as the engine does.
 : SHADOW ( -- )
    s" package TS-SHADOW public : drop ( n -- ) . ; undefine drop ;package using TS-SHADOW 1 drop " SB-APPEND ;
 : AMBIG ( -- )
@@ -393,18 +384,6 @@ variable ERR-U
    code codeu ERR-LACKS? ;
 
 : CASE-SCOPES ( -- )
-   s" no package context: certified words run, rc 0" T-LABEL
-   SB-RESET NOCTX AFTER  s" no authenticated package context" RUNS-AFTER
-   s" no package context: p3 is refused by its own diagnostic" T-LABEL
-   SB-RESET NOCTX P3  s" no authenticated package context" REFUSES-P3
-   s" 0 set-current in a package: its public word types, rc 0" T-LABEL
-   SB-RESET PKW PKW-USE AFTER  s" stale cell" RUNS-AFTER
-   s" 0 set-current in a package: its private variable types, rc 0" T-LABEL
-   SB-RESET PKV AFTER  s" stale cell" RUNS-AFTER
-   s" 0 set-current in a package: a mistyped use of its word is refused by its type" T-LABEL
-   SB-RESET PKW PKW-MISUSE  SB$ CHECK-RC EXITS
-   S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS?
-   S\" \"found\":\"n\"" ERR-HAS?
    s" a retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
    SB-RESET SHADOW AFTER  s" E-USING-SHADOW-GLOBAL" RUNS-AFTER
    s" a retired used public shadowing a global: p3 is refused by its own diagnostic" T-LABEL

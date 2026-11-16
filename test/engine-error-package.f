@@ -60,40 +60,6 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    PACKAGE-SOURCE$ {: src:^ u:n :}
    HB$ src u RUN-SOURCE ;
 
-\ A definition inside a package into a wordlist that is none of its public,
-\ private and global ones has no package context: a fresh wordlist is none.
-: NO-CONTEXT-SOURCE$ ( -- ^u8 n )
-   s" package BRIDGE-GAP public wordlist set-current : W ( -- n ) 1 ; ;package" ;
-
-: NO-CONTEXT-RC ( -- n )
-   NO-CONTEXT-SOURCE$ {: src:^ u:n :}
-   HB$ src u RUN-SOURCE ;
-
-\ Inside a nested evaluate-closed: with TRY's catch the reject arrives as 70;
-\ without it the throw leaves the evaluate and the process exits 70. BARE
-\ restores the package's wordlist itself.
-: BARE-PREFIX ( ^u8 n -- ) {: pkg:^ pkgu:n :}
-   SB-RESET
-   s" package " SB-APPEND
-   pkg pkgu SB-APPEND
-   S\"  public variable CUR get-current CUR !\n" SB-APPEND
-   S\" : SRC ( -- ^u8 n ) s\q : W ( -- n ) 1 ;\q ;\n" SB-APPEND ;
-
-: CAUGHT-SOURCE$ ( -- ^u8 n )
-   s" BRIDGE-CATCH" BARE-PREFIX
-   S\" : TRY ( -- n ) [: SRC evaluate-closed ;] catch ;\n" SB-APPEND
-   S\" : BARE ( -- n ) wordlist set-current TRY CUR @ set-current ;\n" SB-APPEND
-   S\" s\q caught=\q type BARE .\n" SB-APPEND
-   S\" s\q AFTER\q type\n;package\n" SB-APPEND
-   SB$ ;
-
-: UNCAUGHT-SOURCE$ ( -- ^u8 n )
-   s" BRIDGE-RAW" BARE-PREFIX
-   S\" : BARE ( -- ) wordlist set-current SRC evaluate-closed CUR @ set-current ;\n" SB-APPEND
-   S\" BARE\n" SB-APPEND
-   S\" s\q AFTER\q type\n;package\n" SB-APPEND
-   SB$ ;
-
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
    HB$ s" :" RUN-SOURCE 70 T=
@@ -159,24 +125,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL
-   PACKAGE-RC 0 T=
-   s" a definition with no package authority fails closed" T-LABEL
-   NO-CONTEXT-RC 70 T=
-   \ 70 is also what an undefined word or a rejected body exits with, so fd 2
-   \ must name the state the checker refused on.
-   s" a definition with no package authority names the refused state" T-LABEL
-   ERR$ s" no authenticated package context" CONTAINS? TTRUE
-   CAUGHT-SOURCE$ {: csrc:^ csrcu:n :}
-   s" a nested no-context definition under catch is caught as 70" T-LABEL
-   HB$ csrc csrcu RUN-SOURCE 0 T=
-   ERR$ s" no authenticated package context" CONTAINS? TTRUE
-   s" the catch prints 70 and the source after it runs" T-LABEL
-   OUT$ S\" caught=70\nAFTER" T$=
-   UNCAUGHT-SOURCE$ {: usrc:^ usrcu:n :}
-   s" a nested no-context definition with no catch exits 70" T-LABEL
-   HB$ usrc usrcu RUN-SOURCE 70 T=
-   ERR$ s" no authenticated package context" CONTAINS? TTRUE
-   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
+   PACKAGE-RC 0 T= ;
 
 public
 
