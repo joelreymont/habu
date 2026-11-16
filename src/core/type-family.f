@@ -2142,6 +2142,9 @@ private
    fam TFAM-ARITY@ 0 ?do
       fam i TFAM-PK@ PF-NONVALUE? IF UNLOOP RES-TRUE EXIT THEN
    loop RES-FALSE ;
+
+public
+
 \ A cell parameter takes a layout-kind argument: the instantiated width is
 \ argument-aware (TFAM-INST-WIDTH@), so option<pair> is a valid field type as it
 \ is a valid variant payload or stack item.
@@ -2151,9 +2154,13 @@ private
    want PK-CELL = got PK-LAYOUT = and IF RES-TRUE EXIT THEN
    got want = ;
 
+private
+
 \ Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it before its body, which
 \ calls PF-NODE-KIND? back, is defined.
 defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
+
+public
 
 : PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
    node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
@@ -2219,6 +2226,8 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
       fam PF-APP-KIND RES-TRUE EXIT
    THEN
    0 RES-FALSE ;
+
+private
 
 \ Elements are built before their row (parser order), so each must sit below the
 \ row id: the acyclic guard PF-NODE-KIND? applies to APP/PTR children.

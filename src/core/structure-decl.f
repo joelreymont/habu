@@ -228,12 +228,31 @@ variable HELP-U
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
+\ A type parameter argument is SD-SEAL's to judge: a later field may still set
+\ its kind.
+: SD-ARG-KIND ( n n n -- ) {: fam:n k:n node:n :}
+   FIELD-MISS @ IF EXIT THEN
+   node SCHEMA-PARAM? IF EXIT THEN
+   FAM @ node PF-NODE-KIND? 0= IF drop EXIT THEN
+   fam k TFAM-PK@ {: want:n :}
+   want PF-KIND-OK? IF EXIT THEN
+   want PK-SCOPE = IF s" type argument must be a scope parameter" ELSE
+   want PK-REGION = IF s" type argument must be a region parameter" ELSE
+      s" type argument has the wrong kind" THEN THEN
+   WRAP? IF
+      s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+   ELSE
+      s" pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+   THEN
+   TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+
 : SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       s" type has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
+   fam k node SD-ARG-KIND
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF
@@ -644,7 +663,7 @@ SD-QUOT-INSTALL
    DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
       FLDBASE @ i + PF-PENDING-SCH@ FAM @ swap PF-SCHEMA-OK? 0= IF
-         s" field type parameter has incompatible kinds"
+         s" type parameter has incompatible kinds"
          s" use each type parameter in one kind of place: a value type, a scope or a region"
          TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    loop
