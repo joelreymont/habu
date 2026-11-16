@@ -24,7 +24,8 @@ private
 -9650 constant E-FIRST
 -9659 constant E-LAST
 public
--9650 constant E-IDENTITY  \ a macOS host without the signing identity of team TEAM$
+-9650 s" this macOS host holds no valid code-signing identity of the team: `security find-identity -v -p codesigning` lists the valid ones"
+   ERROR:FAULT E-IDENTITY
 
 private
 

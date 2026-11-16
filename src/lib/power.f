@@ -15,8 +15,8 @@ private
 -9640 constant E-FIRST
 -9649 constant E-LAST
 public
--9640 constant E-PLATFORM    \ no keep-awake backend on this target
--9641 constant E-ASSERTION   \ the OS refused to create or release the hold, a name that is not UTF-8 included
+-9640 s" no keep-awake backend on this target" ERROR:FAULT E-PLATFORM
+-9641 s" the OS refused to create or release the hold, or its name is not UTF-8" ERROR:CODE E-ASSERTION
 
 DEFLINEAR POWER:awake
 

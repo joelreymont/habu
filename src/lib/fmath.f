@@ -24,16 +24,11 @@ package FMATH
 
 public
 
-\ E-DOMAIN: an invalid root or logarithm input, an FPOW base that is not
-\ positive and finite (zero to the zero is outside it) or an exponent that is
-\ not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude
-\ 1647100 or more (TRIG-DOMAIN's MEDIUM-BITS), a negative absolute error given
-\ to a *-BOUND word, a zero FMOD divisor, and a nonfinite input to anything but
-\ FINITE? and the IEEE wrappers ADD..FMIN. E-OUTPUT: an overflowing power, a
-\ nonfinite intermediate exponent product or an out-of-range FROUND. Underflow
-\ may return zero.
--9020 constant E-DOMAIN
--9021 constant E-OUTPUT
+\ Underflow may return zero.
+-9020 s" an invalid root or logarithm input, an FPOW base that is not positive and finite, zero to the zero included, or an exponent that is not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude 1647100 or more, a negative absolute error given to a *-BOUND word, a zero FMOD divisor, or a nonfinite input to a word other than FINITE? and the IEEE wrappers ADD..FMIN"
+   ERROR:CODE E-DOMAIN
+-9021 s" an overflowing power, a nonfinite intermediate exponent product or an out-of-range FROUND"
+   ERROR:CODE E-OUTPUT
 
 \ Whether r is finite: a finite r times zero is zero, while an infinity or a
 \ NaN times zero is NaN, for which f0= is false.

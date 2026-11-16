@@ -18,9 +18,10 @@ public
 
 -9470 constant E-FIRST
 -9479 constant E-LAST
--9470 constant E-STATE       \ OPEN of an open cursor; NEXT or READER closed or without a line
--9471 constant E-SOURCE      \ negative length, null nonempty span or negative position
--9472 constant E-LIMIT       \ a physical line exceeds its inclusive byte limit
+-9470 s" OPEN of an open cursor, or NEXT or READER on a closed cursor or one without a line"
+   ERROR:FAULT E-STATE
+-9471 s" a negative length, a null nonempty span or a negative position" ERROR:CODE E-SOURCE
+-9472 s" a physical line exceeds its inclusive byte limit" ERROR:CODE E-LIMIT
 
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD buf-base ^u8

@@ -20,9 +20,11 @@ using FFI
 
 public
 
--9150 constant E-UTF8
--9153 constant E-CASEFOLD
--9154 constant E-CAPACITY
+-9150 s" a negative length or malformed UTF-8" ERROR:CODE E-UTF8
+-9153 s" libunistring failed to fold, lower or compare the text, or to allocate its result"
+   ERROR:FAULT E-CASEFOLD
+-9154 s" the destination is shorter than the mapped text: pass a larger destination"
+   ERROR:CODE E-CAPACITY
 
 EXPORT UNICODE-CLASS:WHITE-SPACE?
 EXPORT UNICODE-CLASS:ALPHABETIC?

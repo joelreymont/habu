@@ -15,10 +15,12 @@ public
 
 -9500 constant E-FIRST
 -9509 constant E-LAST
--9500 constant E-CONFIG       \ an identifier refused, or no store bound or able; a person must act
--9501 constant E-ACCESS
--9502 constant E-CAPACITY
--9503 constant E-UNAVAILABLE  \ a bound store did not answer and may answer later
+-9500 s" an identifier was refused, or no store is bound or able to do the operation: a person must fix it"
+   ERROR:CODE E-CONFIG
+-9501 s" the store failed or refused an access" ERROR:CODE E-ACCESS
+-9502 s" the item's value is larger than the destination: pass a destination that holds it"
+   ERROR:CODE E-CAPACITY
+-9503 s" a bound store did not answer: it may answer later" ERROR:FAULT E-UNAVAILABLE
 
 private
 

@@ -13,8 +13,8 @@ public
 
 -9550 constant E-FIRST
 -9559 constant E-LAST
--9550 constant E-ONLINE     \ sysconf reported no online processor, or failed
--9551 constant E-LOAD       \ getloadavg reported no sample, or failed
+-9550 s" sysconf reported no online processor, or failed" ERROR:FAULT E-ONLINE
+-9551 s" getloadavg reported no sample, or failed" ERROR:FAULT E-LOAD
 
 private
 

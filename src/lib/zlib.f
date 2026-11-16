@@ -15,11 +15,12 @@ public
 
 -9520 constant E-FIRST
 -9529 constant E-LAST
--9520 constant E-SIZE       \ invalid span, overlap, negative length, or a length or bound past 32 bits
--9521 constant E-CAPACITY   \ the destination cannot hold the result
--9522 constant E-DATA       \ invalid, truncated or trailing compressed data
--9523 constant E-MEMORY     \ libz reports Z_MEM_ERROR
--9524 constant E-ABI        \ a version, layout or state error, or an unexpected libz status
+-9520 s" an invalid span, an overlap, a negative length, or a length or bound past 32 bits"
+   ERROR:CODE E-SIZE
+-9521 s" the destination cannot hold the result: pass a larger destination" ERROR:CODE E-CAPACITY
+-9522 s" invalid, truncated or trailing compressed data" ERROR:CODE E-DATA
+-9523 s" libz reports Z_MEM_ERROR" ERROR:FAULT E-MEMORY
+-9524 s" a libz version, layout or state error, or an unexpected libz status" ERROR:FAULT E-ABI
 
 private
 

@@ -18,13 +18,10 @@ public
 
 -9490 constant E-SVG-PDF-FIRST
 -9499 constant E-SVG-PDF-LAST
-\ E-OPEN: malformed input or a nonpositive page count. E-SIZE: an unresolved,
-\ nonfinite, nonpositive or oversized dimension. E-RENDER: a librsvg or Cairo
-\ rendering failure. E-FINISH: page emission, finalization or output failure.
--9490 constant E-OPEN
--9491 constant E-SIZE
--9492 constant E-RENDER
--9493 constant E-FINISH
+-9490 s" malformed SVG input or a nonpositive page count" ERROR:CODE E-OPEN
+-9491 s" an unresolved, nonfinite, nonpositive or oversized dimension" ERROR:CODE E-SIZE
+-9492 s" librsvg or Cairo failed to render" ERROR:CODE E-RENDER
+-9493 s" page emission, finalization or output failed" ERROR:CODE E-FINISH
 
 private
 

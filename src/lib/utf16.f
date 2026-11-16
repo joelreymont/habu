@@ -15,8 +15,8 @@ public
 
 -9530 constant E-FIRST
 -9539 constant E-LAST
--9530 constant E-UTF16      \ UTF-16LE of odd byte length or with an unpaired surrogate
--9531 constant E-UTF8       \ UTF-8 that UTF8:NEXT reads as a raw byte
+-9530 s" UTF-16LE of odd byte length or with an unpaired surrogate" ERROR:CODE E-UTF16
+-9531 s" UTF-8 that UTF8:NEXT reads as a raw byte" ERROR:CODE E-UTF8
 
 private
 

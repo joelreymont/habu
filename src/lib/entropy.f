@@ -14,7 +14,7 @@ public
 \ Codes -9540..-9549, the block after UTF16's.
 -9540 constant E-FIRST
 -9549 constant E-LAST
--9540 constant E-FILL       \ getentropy refused to fill a chunk
+-9540 s" getentropy refused to fill a chunk" ERROR:FAULT E-FILL
 
 private
 

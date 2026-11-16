@@ -20,7 +20,8 @@ public
 
 -6920 constant E-CK-FIRST
 -6929 constant E-CK-LAST
--6920 constant E-CK-HANDLE   \ a WITH-FOLD body returned with its own fold unfinalized: it finalized another scope's or handed its own out
+-6920 s" a WITH-FOLD body returned with its own fold unfinalized: it finalized another scope's or handed its own out"
+   ERROR:CODE E-CK-HANDLE
 
 DEFLINEAR CONTENT-KEY:fold
 

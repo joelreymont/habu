@@ -31,7 +31,8 @@ private
 -9660 constant E-FIRST
 -9669 constant E-LAST
 public
--9660 constant E-SYNTAX
+-9660 s" a DEFINE table breaks its grammar: it ends early, a keyword, `\` or `(` stands where a token is needed, or the header or a row's inputs lack their parentheses"
+   ERROR:CODE E-SYNTAX
 
 private
 

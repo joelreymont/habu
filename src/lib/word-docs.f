@@ -20,7 +20,7 @@ public
 
 -9570 constant E-FIRST
 -9579 constant E-LAST
--9570 constant E-SOURCE     \ the lexer refused the text, or a definer has no name
+-9570 s" the lexer rejected the text, or a definer has no name" ERROR:CODE E-SOURCE
 
 private
 

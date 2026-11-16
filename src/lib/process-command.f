@@ -29,7 +29,7 @@ package CMD
 
 public
 
--9580 constant E-HANDLE   \ a WITH-COMMAND body handed back a token other than the one it was given
+-9580 s" a WITH-COMMAND body handed back a token other than the one it was given" ERROR:CODE E-HANDLE
 
 DEFLINEAR CMD:command
 
