@@ -2567,11 +2567,14 @@ EXPORT CHECK:REC-WIDE-PUBLISH
    shape CHILD-ANCHORED? if DNAME-ALLOC exit then
    0 ;
 
+\ Records are placed at the name when a source holds it, since the definer may
+\ have read a type after it; a name the definer built is placed at the token.
 : CHILD-RECORD ( ^u8 n n -- ) {: a:^ u:n shape:n :}
    a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
+   a REJECTION:PLACES? if a u else TOKEN$ then {: p:^ pu:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   ta tu TOKEN$ wid shape CHILD-KIND DEF-RECORD ;
+   ta tu p pu wid shape CHILD-KIND DEF-RECORD ;
 
 \ The anchor is taken after CHILD, whose facts may open an intern segment
 \ at here.

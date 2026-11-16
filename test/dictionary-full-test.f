@@ -1,12 +1,12 @@
-\ dictionary-full-test.f - a definition, a does> clause, a package, a qualified
-\ head's namespace, an EXPORT and a declaration that find no dictionary record
-\ left are rejected as E-DICTIONARY-FULL, placed at the name they make, a does>
-\ clause at its `does>`, a namespace at its qualified head, an EXPORT at its
-\ operand and a declaration where it ran out of room, and the load exits
-\ REJECTION:DICT-FULL-RC. A full dictionary stops the load, so each case is its
-\ own child hb. Each child fills the dictionary to a set number of free records
-\ counted from its own ndict@, so no case depends on how many records the engine
-\ uses at boot.
+\ dictionary-full-test.f - a definition, a storage declaration, a does> clause,
+\ a package, a qualified head's namespace, an EXPORT and a declaration that find
+\ no dictionary record left are rejected as E-DICTIONARY-FULL, placed at the
+\ name they make, a does> clause at its `does>`, a namespace at its qualified
+\ head, an EXPORT at its operand and a declaration where it ran out of room, and
+\ the load exits REJECTION:DICT-FULL-RC. A full dictionary stops the load, so
+\ each case is its own child hb. Each child fills the dictionary to a set number
+\ of free records counted from its own ndict@, so no case depends on how many
+\ records the engine uses at boot.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f
@@ -69,6 +69,11 @@ private
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `SHAPE:CIRCLE`\n --> <input>:5:67\n  |\n5 | SUMTYPE shape VARIANT circle n ;VARIANT VARIANT square n ;VARIANT ;SUMTYPE\n  |                                                                   ^^^^^^^^ no record left\n  = help: define fewer words in this load\n\n"
    s" a sumtype that does not fit" EXPECT ;
 
+: STORAGE-DECL ( -- )
+   S\" 0 LEAVE-FREE\nTYPED-VARIABLE FOO n\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `FOO`\n --> <input>:5:16\n  |\n5 | TYPED-VARIABLE FOO n\n  |                ^^^ no record left\n  = help: define fewer words in this load\n\n"
+   s" a storage declaration in a full dictionary" EXPECT ;
+
 DEFINITION
 DOES-CLAUSE
 FULL-PACKAGE
@@ -76,5 +81,6 @@ NAMESPACE
 EXPORTED
 STRUCTURE-DECL
 SUMTYPE-DECL
+STORAGE-DECL
 
 ;package
