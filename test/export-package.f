@@ -803,6 +803,10 @@ create XPK-EMPTY 1 allot
    s" : CB-BODY ( -- n ) 9 ;" XPK-LINE  s" CALLBACK: CB ( -- ) ;CALLBACK" XPK-LINE SB$
    s" error[E-DUPLICATE-DEFINITION]: `CB-BODY` is already defined in this wordlist"
    s" |           ^^ already defined" XPK-SEALED
+   s" an engine word nothing used yet takes no redefinition" T-LABEL
+   SB-RESET s" : DEFTYPE ( -- n ) 7 ;" XPK-LINE  s" DEFTYPE . cr" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `DEFTYPE` is already defined in this wordlist"
+   s" |   ^^^^^^^ already defined" XPK-SEALED
    s" a sealed package's part defines in its private and public sections" T-LABEL
    XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines under a using" T-LABEL

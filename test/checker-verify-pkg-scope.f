@@ -25,10 +25,6 @@ variable SRC-U
 
 public
 
-\ A duplicate definition's rc. The code lives in the package because a global
-\ `E-*` constant is src/lib/error.f's surface alone.
-78 constant E-DUPLICATE
-
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
 : REPLAY ( ^u8 n -- n ) {: a:^ u:n :}
@@ -139,7 +135,7 @@ CVPS:REPLAY-NEUTRAL 0 T=
 s" top level: a candidate binds a global" T-LABEL
 s" CVPS-R1 ( -- n ) E-STR-BOUNDS" CHECK-QUIET-CANDIDATE! -1 T=
 s" top level: redefining a global is a duplicate" T-LABEL
-s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC CVPS:E-DUPLICATE T=
+s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 
 package CVPS-SCOPE
 private
@@ -164,7 +160,7 @@ s" : CVPS-NO-SUCH-WORD ( -- n ) 3 ;" TEST-EVAL:RC 0 T=
 \ duplicate probes do not pass on an answer that is always no.
 : CVPS-OWN-TAIL ( -- n ) 9 ;
 s" in a package: redefining its own tail is a duplicate" T-LABEL
-s" : CVPS-OWN-TAIL ( -- n ) 2 ;" TEST-EVAL:RC CVPS:E-DUPLICATE T=
+s" : CVPS-OWN-TAIL ( -- n ) 2 ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 s" in a package: a candidate binds its own tail" T-LABEL
 s" CVPS-R4 ( -- n ) CVPS-OWN-TAIL" CHECK-QUIET-CANDIDATE! -1 T=
 

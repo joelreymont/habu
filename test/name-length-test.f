@@ -22,7 +22,6 @@ package NAME-LENGTH-TEST
 $400 constant OUT-CAP
 $10000 constant ERR-CAP            \ a record names a whole name up to three times
 -1 1 rshift constant MAX-CELL
-$4E constant DUPLICATE             \ E-DUPLICATE-DEFINITION's throw code
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
 \ writes the record. LONG-LEN is a name's length past the old 8000-byte cap.
@@ -274,7 +273,7 @@ variable LBL-U
    s" a word with a long name resolves" T-LABEL
    CALL-LONG$ CHECK-QUIET-CANDIDATE! -1 T=
    s" ... is defined in this scope" T-LABEL
-   LONG-LEN 113 DEF-SRC TEST-EVAL:RC DUPLICATE T=
+   LONG-LEN 113 DEF-SRC TEST-EVAL:RC CHECKER-REJECT-RC T=
    s" a value-record with a long name is declared" T-LABEL
    s" VALUE-RECORD " LONG-LEN 114 LETTERS JOIN s"  f n END-VALUE-RECORD" JOIN
    {: ra:^ ru:n :}

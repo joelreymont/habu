@@ -13561,11 +13561,14 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    CHECKER-QBAD-TOK @ 0 <> IF a u 0 RES-FALSE EXIT THEN
    a u get-current RES-TRUE ;
 
-: LANDS ( ^u8 n -- n )
+: LANDS-REC ( ^u8 n -- ^n )
    {: a:^ u:n :}
-   ON @ 0= IF -1 EXIT THEN
-   a u TARGET 0= IF 2drop drop -1 EXIT THEN
-   CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   ON @ 0= IF NULL-PTR EXIT THEN
+   a u TARGET 0= IF 2drop drop NULL-PTR EXIT THEN
+   CHECKER-RESOLVE:WL-PROBE ;
+
+: LANDS ( ^u8 n -- n )
+   LANDS-REC {: rec:^ :}
    rec NULL-PTR = IF -1 EXIT THEN
    rec REC>IX ;
 
@@ -15615,9 +15618,10 @@ package CHECK
    CHECKER-REC-U @ ;
 
 EXPORT CHECKER-OVERLAY:DUPLICATE?
+EXPORT CHECKER-OVERLAY:LANDS-REC
 
-\ The duplicate guard of a certifying record, asked without interning: a refused
-\ name leaves no symbol and a candidate probe records nothing.
+\ The duplicate guard of a certifying record. It interns nothing, and
+\ reads the facts NAME lands on first, so an unused engine word is found.
 : CHECKER-CERT-DUP? ( ^u8 n -- bool )
    {: a:^ u:n :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
@@ -15626,6 +15630,8 @@ EXPORT CHECKER-OVERLAY:DUPLICATE?
       PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
       a u OWN-RECORD PASS-FLOOR @ >= EXIT
    THEN
+   a u LANDS-REC {: rec:^ :}
+   rec NULL-PTR <> IF rec FACTS-READ-XT THEN
    a u CHECKER-RECORD-SYM? {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym FEP-OFF@ 1 - PE-ROW-EFF? 0= ;
