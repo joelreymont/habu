@@ -13743,13 +13743,13 @@ ROW-CELLS cells constant SCOPE-BYTES
    rec REC>IX CLAUSE-OF 0 >= ;
 
 \ The room an export NAME of a does> definer needs for its clause CNAME in the
-\ current wordlist, rejected at T, the export's name as written. A wordlist
-\ already holding NAME holds the export's twin.
-: EXPORT-ROOM ( ^u8 n ^u8 n ^u8 n -- )
-   {: a:^ u:n ca:^ cu:n t:^ tu:n :}
+\ current wordlist, rejected at NAME. A wordlist already holding NAME holds the
+\ export's twin.
+: EXPORT-ROOM ( ^u8 n ^u8 n -- ) {: a:^ u:n ca:^ cu:n :}
    a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
-   ca cu t tu REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
+   a u DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The package path a u does not fit the open scope.
 : PATH-SCOPE-REJECT ( ^u8 n -- ) {: a:^ u:n :}
@@ -17826,7 +17826,8 @@ EXPORT CHECKER-OVERLAY:EXPORT-ROOM
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ carries EXPORT-RECORD
    carries IF
-      a u EXPORT-TAIL$ 2dup CLAUSE-NAME a u EXPORT-ROOM
+      a u EXPORT-TAIL$ {: xa:^ xu:n :}
+      xa xu xa xu CLAUSE-NAME EXPORT-ROOM
    THEN
    src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    DL-NEW @ {: effect:n :}

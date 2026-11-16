@@ -1218,15 +1218,14 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
    then ;
 
 \ The clause takes the slot above the export's own, and its name must not be
-\ live in the current wordlist: a clash is rejected at the export's operand,
-\ still in TOKEN$, under the clause's name as the operand's tail spells it.
+\ live in the current wordlist: a clash is rejected at the operand's tail.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if
       PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DICTIONARY-FULL
    then
    k XREF-REC XREF-NAME$ get-current WL-PROBE XREF-FOUND? if
-      PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DUPLICATE
+      PKG-TAIL DOES-CLAUSE:SUFFIX$ PKG-TAIL REJECTION:CLAUSE-TAKEN
       CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
@@ -1276,7 +1275,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
    PKG-TAIL {: ta:^ tu:n :}
    ta tu operand operand-u PKG-DICT-ROOM
    ta tu get-current WL-PROBE XREF-FOUND? if
-      TOKEN$ PKG-DUPLICATE
+      ta tu PKG-DUPLICATE
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then

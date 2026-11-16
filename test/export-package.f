@@ -807,6 +807,23 @@ create XPK-EMPTY 1 allot
    SB-RESET s" : DEFTYPE ( -- n ) 7 ;" XPK-LINE  s" DEFTYPE . cr" XPK-LINE SB$
    s" error[E-DUPLICATE-DEFINITION]: `DEFTYPE` is already defined in this wordlist"
    s" |   ^^^^^^^ already defined" XPK-SEALED
+   s" an export whose tail the package already defines, named at its tail" T-LABEL
+   SB-RESET
+   s" package U" XPK-LINE  s" public" XPK-LINE  s" : XW ( -- n ) 7 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package Q" XPK-LINE  s" public" XPK-LINE  s" : XW ( -- n ) 1 ;" XPK-LINE
+   s" EXPORT U:XW" XPK-LINE  s" ;package" XPK-LINE  s" 1 . cr" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `XW` is already defined in this wordlist"
+   s" |          ^^ already defined" XPK-SEALED
+   s" an export whose clause the package already defines, named at its tail" T-LABEL
+   SB-RESET
+   s" package U" XPK-LINE  s" public" XPK-LINE
+   s" : MK ( n -- ) create , does> ( -- n ) @ ;" XPK-LINE  s" ;package" XPK-LINE
+   s" package Q" XPK-LINE  s" public" XPK-LINE  s" : MK;does ( -- n ) 1 ;" XPK-LINE
+   s" EXPORT U:MK" XPK-LINE  s" ;package" XPK-LINE  s" 1 . cr" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `MK;does` is already defined in this wordlist"
+   s" |          ^^ its clause's name is taken" XPK-SEALED
+   XPK-RUN-VERIFY  s" |          ^^ its clause's name is taken" XPK-ERR?  XPK-REJECT-RC XPK-ASSERT-RC
    s" a sealed package's part defines in its private and public sections" T-LABEL
    XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines under a using" T-LABEL
