@@ -471,19 +471,28 @@ private
 : PLACE-FILE! ( ^u8 n -- ) {: a:^ u:n :}
    a PLACE-FILE-A !  u PLACE-FILE-U ! ;
 : PLACE-FILE$ ( -- ^u8 n )   PLACE-FILE-A @ PLACE-FILE-U @ ;
-: OWNED$ ( -- ^u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
 PTR-VARIABLE ROOT-A  variable ROOT-U   0 ROOT-U !
 public
+\ The bytes the loader owns for the active file.
+: OWNED$ ( -- ^u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
 \ The root stream's text, set while the loader runs it; empty outside it.
 : ROOT-TEXT! ( ^u8 n -- ) {: a:^ u:n :}   a ROOT-A !  u ROOT-U ! ;
 : ROOT-TEXT$ ( -- ^u8 n )   ROOT-A @ ROOT-U @ ;
-private
+\ The buffer the engine reads.
 : INPUT$ ( -- ^u8 n )
    INPUT-START @ {: b:^ :}
    b  INPUT-END @ b - ;
+private
 : HOLDS? ( ^u8 n ^u8 n -- bool ) {: b:^ bu:n t:^ tu:n :}
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
+public
+\ Whether the engine reads file text: an `evaluate` of a slice of the open file
+\ does, of any other string does not.
+: FILE-BUFFER? ( -- bool )
+   OWNED$ {: o:^ ou:n :}
+   o NULL-PTR <>  o ou INPUT$ HOLDS?  and ;
+private
 \ Whether the armed source holds the n bytes at p: its map's text, outside a
 \ run it does not copy, else its own bytes.
 : ARMED? ( ^u8 n -- bool ) {: p:^ n:n :}

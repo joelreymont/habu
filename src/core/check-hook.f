@@ -8,7 +8,6 @@ package CHECK
 
 private
 
-EXPORT SRCLOC:FILE-BUFFER?
 EXPORT CHECKER-PREFLIGHT:CHECK-TARGET!
 
 \ ---- a duplicate only the checker sees ----------------------------------------
@@ -16,26 +15,22 @@ EXPORT CHECKER-PREFLIGHT:CHECK-TARGET!
 \ engine's duplicate wall passes a later definition; the hook rejects it first.
 
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
-SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
-INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
-\ Arms the checker's source map (REJECTION:SOURCE!, REJECTION:MAP!) for the
-\ check of text a u, from the rows the engine's capture records (layout.f
-\ BODY-SOURCE), and answers whether it did. It arms only for the pending
-\ definition's text from the body text's base, its name in the buffer being
-\ read, that buffer a file's (SRCLOC:FILE-BUFFER?), with no source armed. The
-\ source starts at the name, placed in the file by the checker.
+\ Arms the source map from the capture's rows when a u is the pending
+\ definition's text and its name lies in file text; answers whether it did.
 : ROWS-ARM ( ^u8 n -- bool )
    {: a:^ u:n :}
    REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
-   FILE-BUFFER? 0= if RES-FALSE exit then
+   REJECTION:FILE-BUFFER? 0= if RES-FALSE exit then
    data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:^ :}
    base NULL-PTR = if RES-FALSE exit then
    a base - 0 <> if RES-FALSE exit then
    data-base BODY-TEXT:ROWS-CELL + @ {: rows:n :}
    rows 0 <= if RES-FALSE exit then
-   SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:^ b:^ e:^ :}
+   SRC-NAME @ {: nm:^ :}
+   REJECTION:INPUT$ {: b:^ bu:n :}
+   b bu + {: e:^ :}
    nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
    nm  e nm -  nm FILE-POS  REJECTION:SOURCE!
    a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  REJECTION:MAP!

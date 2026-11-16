@@ -15,14 +15,8 @@ variable SLEN  variable SPOS  variable STEPPING
 : SINP-FIELD ( -- ^^u8 )
    data-base INP-CELL + 0 ptr-field ;
 
-: SINE-FIELD ( -- ^^u8 )
-   data-base INE-CELL + 0 ptr-field ;
-
 : SINP@ ( -- ^u8 )
    SINP-FIELD @ ;
-
-: SINE@ ( -- ^u8 )
-   SINE-FIELD @ ;
 
 : SINP! ( ^u8 -- )
    SINP-FIELD ! ;
@@ -102,11 +96,11 @@ public
 
 : STEP ( -- )
    SINP@ {: p :}
-   SINE@ p - SLEN !
+   REJECTION:INPUT$ + p - SLEN !
    SLEN @ SBUF-RESERVE
    SLEN @ 0 ?do p i + c@ i SBUF c! loop
    0 SPOS !  -1 STEPPING !
-   SINE@ SINP! ;
+   REJECTION:INPUT$ + SINP! ;
 
 : S-INSTALL ( -- )
    [: SRD-LINE ;] is REPL-READ ;

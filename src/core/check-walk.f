@@ -2628,7 +2628,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : GENR-SIG-READ ( ^u8 n -- ^u8 n )
    {: na:^ nu:n :}
    na nu + {: at:^ :}
-   data-base INE-CELL + @  at NULL-PTR - -
+   REJECTION:INPUT$ + at -
    {: left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
@@ -3129,7 +3129,7 @@ FILE-POS-CLEAR
 \ its last answer when t is at or past it, so a file costs one pass.
 : FILE-POS ( ^u8 -- n n n )
    {: t:^ :}
-   SRC-OWNED @ {: b:^ :}
+   REJECTION:OWNED$ drop {: b:^ :}
    t b - {: at:n :}
    at FPOS-OFF @ < IF FILE-POS-CLEAR THEN
    BEGIN FPOS-OFF @ at < WHILE
@@ -3156,7 +3156,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 \ cursor; any other name is a u as DEFINITION read it.
 : SOURCE-NAME$ ( ^u8 n -- ^u8 n )
    {: a:^ u:n :}
-   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:^ nm:^ p:^ :}
+   REJECTION:OWNED$ drop SRC-NAME @ SRC-CURSOR @ {: o:^ nm:^ p:^ :}
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm u else a u then ;
 

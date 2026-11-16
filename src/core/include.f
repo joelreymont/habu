@@ -773,13 +773,12 @@ private
    oc 2 * SLOT-CAP ! ;
 
 INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
-INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
 \ The tokenizer reads a newline as a blank and a piped stdin session is one
 \ buffer, so a bare CD would otherwise take the next line's first word as its
 \ directory.
 : LINE-BLANK? ( -- bool )
-   INPUT-AT @ INPUT-END @ {: e:^ :}
+   INPUT-AT @  REJECTION:INPUT$ + {: e:^ :}
    begin dup e < while
       dup c@ 10 = if drop INCLUDE-TRUE exit then
       dup c@ 32 > if drop INCLUDE-FALSE exit then

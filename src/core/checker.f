@@ -13403,17 +13403,6 @@ public
    t REJECTION:PLACES-IN? IF t tu EXIT THEN
    NULL-PTR 0 ;
 
-private
-
-\ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
-\ for the open file: an `evaluate` of a slice of the file reads file text, any
-\ other string does not. Only then does an error's place carry `:<line>`,
-\ counted from the first owned byte.
-: FILE-BUFFER? ( -- bool )
-   data-base OWNED-CELL + @ {: o:n :}
-   data-base INB-CELL + @ {: b:n :}
-   data-base INE-CELL + @ {: e:n :}
-   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
 ;package
 
 \ ---- the code ceiling ----------------------------------------------------------
@@ -21436,10 +21425,6 @@ EXPORT CHECKER-TAPE:K-UNREACHED
 
 : CAP-FAIL ( ^u8 n -- )
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
-\ The execution bytes the loader owns for the active file, which an inner
-\ `evaluate` never changes. SRC-OWNED is private to package CHECK so no program
-\ writes it.
-SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 private
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
