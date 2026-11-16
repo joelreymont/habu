@@ -1,9 +1,10 @@
 ---
 title: Delete the dead words and payload the audit found
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:25:10.800315+03:00"
+closed-at: "2026-11-16T12:08:20.964899+01:00"
 ---
 
 Remove demonstrated dead source and payload after build/test work. The old

@@ -1,9 +1,9 @@
 ---
-title: Make unreachable declaration codes engine defects
-status: open
+title: Delete the replay stream's re-entry guard
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-14T18:05:37.840707+01:00"
 ---
 
-Problem: src/core/generated-declaration.f DECL-REJECT explains codes no declaration text reaches (E-PF-ID, E-PF-TX, E-PF-OWNER, E-PF-LAYOUT, E-PF-FLAGS, DECLARATION-TRANSACTION:E-FRAME, E-REPLAY-BUSY, E-CTOR-ARM, and the decl-event.f E-DEV-TX, -STATE, -FIELD-SCOPE, -FAMILY-SCOPE, E-SM-FAM rows) with the help 'report this declaration as a Habu defect', where the C4 design makes an engine defect a 76 die with a sentence at its throw; and the S-REASON and S-FIX slots copy their text into SPAN-CAP (96) bytes and cut a longer one, though every reason and fix is text that outlives the declaration. Acceptance: each such throw dies 76 with a sentence and its EXPLAIN row is gone; reason and fix are kept as spans, uncapped. Depends: habu-give-declaration-refusals-b0c396eb. Claim: unassigned.
+Problem: src/core/generated-declaration.f RP-CLAIM refuses a second replay stream with E-REPLAY-BUSY, whose EXPLAIN row says 'report this declaration as a Habu defect'; no input reaches it (a replayed body is never evaluated), and test/enum-decl-suite.f 23h reaches it only by forging an open stream. Acceptance: the guard, its code, its EXPLAIN row and the forged case are gone. Depends: none. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-w219.

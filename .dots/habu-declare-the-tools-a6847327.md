@@ -14,6 +14,6 @@ Files: the tools files above.
 
 Verify: the lint, check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's refusal is on a candidate engine, the changed tools load under it.
 
-Depends: none (331a9731's refusal comes after this). The unused CHK-PTR-U8-SLOT family (tools/check-core.f:156-163) is deleted under habu-delete-the-dead-11e9a4f3, not here; the used non-indexed pointer-slot helpers stay.
+Depends: none (331a9731's refusal comes after this).
 
 Ownership: unassigned. Claim: unassigned.
