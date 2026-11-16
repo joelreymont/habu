@@ -1567,18 +1567,22 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" code" c cu FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ hb, run on the arguments added and an empty stdin, exits WANT with TEXT in
+\ hb, run on the arguments added and IN as its stdin, exits WANT with TEXT in
 \ its stderr, or with an empty stderr when TEXT is empty.
-: LAUNCHED ( ^u8 n n -- )
-   {: text:^ textu:n want:n :}
+: PIPED ( ^u8 n ^u8 n n -- )
+   {: in:^ inu:n text:^ textu:n want:n :}
    FX-PATH$
-   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  in inu >LEN  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
+
+: LAUNCHED ( ^u8 n n -- )
+   {: text:^ textu:n want:n :}
+   EMPTY 0 text textu want PIPED ;
 
 : LOADED ( ^u8 n n -- )
    PROC-ARGV-RESET
@@ -2093,6 +2097,15 @@ HB-TARGET-LINUX? 0= [if]
    s" the source ends before the row closes"  s" close the row"
    ROW-MODES
    S\" :1:1\n  |\n1 | EPRIM: FOO PE-N\n  | ^^^^^^ not found\n" ROW-LOADED ;
+
+\ A declaration piped to hb with no file argument is rejected at its token in
+\ `<input>`, as the file's bytes place it, naming no word.
+: TEST-STDIN-DECLARATION ( -- )
+   s" a declaration read from stdin, at its token in <input>" T-LABEL
+   PROC-ARGV-RESET
+   s" STRUCTURE a11x<q> FIELD next ^a11x<n> FIELD w read-view<q,q,n> ;STRUCTURE"
+   s" --> <input>:1:31" REJECT-RC PIPED
+   ERR$ s" = word:" CONTAINS? TFALSE ;
 
 \ The loader rejects a VALUE-RECORD field where the source wrote it.
 : TEST-VALUE-RECORD-LOAD ( -- )
@@ -3156,6 +3169,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
+   TEST-STDIN-DECLARATION
    TEST-VALUE-RECORD-LOAD
    TEST-VALUE-RECORD-NO-TYPE
    TEST-VALUE-RECORD-BAD-TYPE

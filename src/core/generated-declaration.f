@@ -16,11 +16,11 @@ using TYPE-DECL
 
 package DECL-REJECT
 
-\ The slots hold copies: a declaration body spans several input lines, the
-\ engine refills its input buffer per line from a stream, and the family name is
-\ read on the first line but rendered after a reject on a later one. Each slot
-\ also keeps the span it was copied from, which a located token renders instead
-\ (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
+\ The slots hold copies: the family name is read on a declaration's first
+\ line but rendered after a reject on a later one, and a REPL refills its
+\ input buffer per line. Each slot also keeps the span it was copied from,
+\ which a located token renders instead (TOKEN-SPAN@), until GUARD-CODE ends
+\ the declaration.
 3 constant SLOTS
 96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
@@ -71,11 +71,9 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : SLOT@ ( n -- ^u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
-\ The offending token: the span it was copied from when REJECTION holds that
-\ source for good (REJECTION:HELD?), so the rejection places it; else the copy.
-\ A span in an input buffer the engine refills is held by neither, so stale
-\ bytes are never read. SPAN-CAP bounds only the copy, so a placed token
-\ renders whole.
+\ The offending token: the span it was copied from while its source still
+\ holds it, so the rejection places it; else the copy. SPAN-CAP bounds only
+\ the copy, so a placed token renders whole.
 : TOKEN-SPAN@ ( -- ^u8 n )
    S-TOKEN SRC@  S-TOKEN SLOT@  REJECTION:KEPT ;
 

@@ -457,6 +457,12 @@ private
    a PLACE-FILE-A !  u PLACE-FILE-U ! ;
 : PLACE-FILE$ ( -- ^u8 n )   PLACE-FILE-A @ PLACE-FILE-U @ ;
 : OWNED$ ( -- ^u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
+PTR-VARIABLE ROOT-A  variable ROOT-U   0 ROOT-U !
+public
+\ The root stream's text, set while the loader runs it; empty outside it.
+: ROOT-TEXT! ( ^u8 n -- ) {: a:^ u:n :}   a ROOT-A !  u ROOT-U ! ;
+: ROOT-TEXT$ ( -- ^u8 n )   ROOT-A @ ROOT-U @ ;
+private
 : INPUT$ ( -- ^u8 n )
    INPUT-START @ {: b:^ :}
    b  INPUT-END @ b - ;
@@ -591,13 +597,14 @@ private
 public
 \ Whether one source a rejection places from holds the token p n whole while
 \ the rejection is written: the armed source, the given closer's bytes or the
-\ loader's owned bytes, which stay put for good, or an evaluated text being
-\ run, which stays put while it runs. A zero-length token is held at any
-\ offset from 0 to the buffer's length.
+\ loader's owned bytes, which stay put for good, or the root stream's text or
+\ an evaluated text being run, which stays put while it runs. A zero-length
+\ token is held at any offset from 0 to the buffer's length.
 : HELD? ( ^u8 n -- bool ) {: p:^ n:n :}
    p n ARMED? IF 0 0= EXIT THEN
    CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
    OWNED$ p n HOLDS? IF 0 0= EXIT THEN
+   ROOT-TEXT$ p n HOLDS? IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p n inv IN-EVALUATED? nip ;

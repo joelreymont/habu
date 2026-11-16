@@ -2240,8 +2240,11 @@ public
    PUBLISH-LOCATION ;
 
 : RUN-ROOT ( ^u8 n -- ) {: a:^ u:n :}
+   REJECTION:ROOT-TEXT$ {: sa:^ su:n :}
+   a u REJECTION:ROOT-TEXT!
    1 ROOT-RUNS+
-   a u 0 u [: INCLUDE-INTERPRET ;] [: -1 ROOT-RUNS+ ;] finally ;
+   a u 0 u [: INCLUDE-INTERPRET ;]
+   [: -1 ROOT-RUNS+  sa su REJECTION:ROOT-TEXT! ;] finally ;
 
 private
 
