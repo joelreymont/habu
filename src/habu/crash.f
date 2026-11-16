@@ -208,6 +208,9 @@ public
 \ the flag FAULT-OPEN, reads, picks. The record grows in a FAULT-FRAME on sp at
 \ x14, written to fd 2 when it fills and at the record's end. It uses no region
 \ and no VM stack, and writes x0..x2, x6..x17 and x30, no other register.
+\ REJECTION is Forth on a thread's VM stacks, and these sites run where none
+\ can: a signal handler (no Forth word is async-signal-safe), a stack past its
+\ bounds, a callback thread with no Habu frame, a stop that must not be caught.
 private
 256 constant FAULT-FRAME
 256 constant FAULT-TEXT-CAP
