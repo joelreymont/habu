@@ -13629,30 +13629,13 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
    0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE0 ! ;
 
-\ The private symbol sym's package pa pu has no private wordlist.
-: NO-PRIVATE-REJECT ( n ^u8 n -- ) {: sym:n pa:^ pu:n :}
-   sym SYM-NAME$ {: a:^ u:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
-   s" package `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
-   s" ` has no private wordlist for its private word `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   NULL-PTR 0 REJECTION:AT  s" published here" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" open `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
-   s" ` with `package` before its private words are defined: a qualified definition `: "
-   REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
-   s" :NAME` makes a package with a public wordlist only" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
    sym SYM-PKG$ {: pa:^ pu:n :}
    pu 0= IF BOOT:GLOBAL-WL EXIT THEN
    pa pu RES-TRUE NS-ENSURE {: rec:^ :}
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
-   rec CELL + @ {: pri:n :}
-   pri 0= IF sym pa pu NO-PRIVATE-REJECT THEN
-   pri ;
+   rec CELL + @ ;
 
 \ The name `undefine` or a definition acts on and its wordlist: a qualified
 \ name's tail in its package's public wordlist, else the name in the current
@@ -13858,23 +13841,9 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ The package path a u does not fit the open scope.
-: PATH-SCOPE-REJECT ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
-   s" the package path `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` does not fit the open scope" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" opened here" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" open a part's path `A:B` only inside package A, outside its parts, and a top-level package only outside every package"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ Inside an open package NAME is a part's path, rejected elsewhere or in a part.
+\ Opens the package at path a u in its private section; one a qualified
+\ definition made, with a public wordlist only, gets its private one here.
 : OPEN-PACKAGE ( ^u8 n -- ) {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
-   part  PKG-PUB-CELL DATA@ 0 <>  xor  ENCLOSING:REC DATA@ 0 <>  or IF
-      a u PATH-SCOPE-REJECT
-   THEN
    a u RES-TRUE NS-ENSURE {: rec:^ :}
    rec CELL + @ 0= IF rec GRANT THEN
    USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
