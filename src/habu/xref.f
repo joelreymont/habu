@@ -502,32 +502,6 @@ public
    owner XREF-ADDR>REC SEALED? 0= if XREF-FALSE exit then
    wid data-base PKG-PUB-CELL + @ <>  wid data-base PKG-PRI-CELL + @ <>  and ;
 
-private
-\ The packages the verified source sealed: the verifier does not run
-\ seal-package, so their rows are not SEALED?.
-DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
-DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
-DYNAMIC-BUFFER SEALS-U n
-variable SEALS-N
-
-public
-: SOURCE-SEALED? ( ^u8 n -- bool ) {: a:^ u:n :}
-   SEALS-N @ 0 ?do
-      i SEALS-AT @ SEALS i SEALS-U @ a u XREF-STR=CI IF 0 0= unloop EXIT THEN
-   loop
-   0 0= 0= ;
-
-: SOURCE-SEAL ( ^u8 n -- ) {: a:^ u:n :}
-   SEALS-N @ {: at:n :}
-   at 0= IF 0 ELSE at 1 - SEALS-AT @ at 1 - SEALS-U @ + THEN {: off:n :}
-   off u + 1 + SEALS-RESERVE
-   a off SEALS u BYTE-COPY
-   at 1 + SEALS-AT-RESERVE  at 1 + SEALS-U-RESERVE
-   off at SEALS-AT !  u at SEALS-U !
-   at 1 + SEALS-N ! ;
-
-: SOURCE-SEALS-CLEAR ( -- ) 0 SEALS-N ! ;
-
 ;package
 
 \ A rejection's name between backticks.
@@ -559,6 +533,7 @@ package GENERATED-DECL-NAME-PREFLIGHT
 
 private
 EXPORT CHECKER-RESOLVE:HEAD-ROW
+EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
 
 \ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
 : NAMESPACE-EXISTS? ( ^u8 n -- bool ) {: a:^ u:n :}
@@ -580,7 +555,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF get-current XREF:SEALED-TARGET? IF a u SEALED-STOP THEN EXIT THEN
    a q HEAD-ROW {: ns:^ :}
-   ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN XREF:SOURCE-SEALED? IF a u SEALED-STOP THEN
+   ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN SOURCE-SEALED? IF a u SEALED-STOP THEN
    ns XREF-FOUND? IF ns XREF-PKG-PUBLIC ELSE 0 THEN XREF:SEALED-TARGET? IF a u SEALED-STOP THEN ;
 
 public

@@ -533,17 +533,26 @@ create XPK-EMPTY 1 allot
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-IN$ XPK-STORE! ;
 
-\ tools/check.f over the child file a --load run wrote.
-: XPK-RUN-CHECK ( -- )
+\ A tools/check.f run's arguments, up to its `--`.
+: XPK-CHECK-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+ ;
+
+\ Adds the child file a --load run wrote to the arguments so far and runs them.
+: XPK-CHECK-CHILD ( -- )
    XPK-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-CHILD XPK-STORE! ;
+
+: XPK-RUN-CHECK ( -- )  XPK-CHECK-ARGV XPK-CHECK-CHILD ;
+
+\ The verifier alone, without the run stage that would print the load's record.
+: XPK-RUN-VERIFY ( -- )
+   XPK-CHECK-ARGV  s" --verify-only" >LEN PROC-ARGV+  XPK-CHECK-CHILD ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}
    XPK-EXITED @ TTRUE
@@ -654,6 +663,10 @@ create XPK-EMPTY 1 allot
    XPK-SEALED-EXPORT$
    s" error[E-SEALED-PACKAGE]: `XSA:HID` is private to `XSA`, which is sealed"
    s" |        ^^^^^^^ private to a sealed package" XPK-SEALED
+   s" the verifier alone rejects it" T-LABEL
+   XPK-RUN-VERIFY
+   s" error[E-SEALED-PACKAGE]: `XSA:HID` is private to `XSA`, which is sealed" XPK-ERR?
+   XPK-REJECT-RC XPK-ASSERT-RC
    s" a sealed package's EXPORT is judged at its seal before its source" T-LABEL
    s" " s" EXPORT NOPE:X" XPK-SEALED-LINE$
    s" error[E-SEALED-PACKAGE]: `NOPE:X` would change a sealed package"

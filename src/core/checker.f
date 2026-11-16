@@ -13144,6 +13144,47 @@ package CHECKER-RESOLVE
 EXPORT CHECK:CHECKER-QUALIFIED?
 EXPORT CHECK:CHECKER-COLON-SCAN
 EXPORT CHECK:CHECKER-QTAIL$
+EXPORT CHECK:ARENA-BYTES-ENSURE
+
+\ The packages the verified source sealed: the verifier does not run
+\ seal-package, so their rows carry no DNAME-SEALED flag.
+PTR-VARIABLE SEALS-P              \ the names, end to end
+SCRATCH-VARIABLE SEALS-CAP        \ SEALS-P's room, in bytes
+variable SEALS-U                  \ the bytes the names take
+PTR-VARIABLE SEAL-ROWS-P          \ per seal: its name's offset, length
+SCRATCH-VARIABLE SEAL-ROWS-CAP    \ SEAL-ROWS-P's room, in rows
+variable SEALS-N
+
+: SEALS ( -- ^u8 ) SEALS-P @ ;
+
+: SEAL-AT ( n -- ^n ) {: i:n :}
+   SEAL-ROWS-P @ i 2 * cells + ;
+
+: SEAL-NAME$ ( n -- ^u8 n ) {: i:n :}
+   SEALS i SEAL-AT @ +  i SEAL-AT CELL + @ ;
+
+: SOURCE-SEALED? ( ^u8 n -- bool ) {: a:^ u:n :}
+   SEALS-N @ 0 ?do
+      i SEAL-NAME$ a u CORE-STR=CI IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+: SOURCE-SEAL ( ^u8 n -- ) {: a:^ u:n :}
+   SEALS-U @ {: off:n :}  SEALS-N @ {: at:n :}
+   SEALS-P SEALS-CAP off u + ARENA-BYTES-ENSURE
+   SEAL-ROWS-P SEAL-ROWS-CAP at 1 + 2 ARENA-ROWS-ENSURE
+   a SEALS off + u ARENA-COPY
+   off at SEAL-AT !  u at SEAL-AT CELL + !
+   off u + SEALS-U !  at 1 + SEALS-N ! ;
+
+: SOURCE-SEALS-CLEAR ( -- ) 0 SEALS-N !  0 SEALS-U ! ;
+
+\ Sealed by its seal-package or by the source the verifier reads.
+: PACKAGE-SEALED? ( ^n -- bool ) {: row:^ :}
+   row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and
+   0 <> IF RES-TRUE EXIT THEN
+   row CK-REC-NAME$ SOURCE-SEALED? ;
+
 \ The package row a qualified EXPORT operand names, NULL-PTR for none.
 : EXPORT-OWNER ( ^u8 n -- ^n ) {: a:^ u:n :}
    a u CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
@@ -13161,9 +13202,7 @@ EXPORT CHECK:CHECKER-QTAIL$
 : EXPORT-PRIVATE ( ^u8 n -- ^n )
    EXPORT-OWNER {: row:^ :}
    row NULL-PTR = IF NULL-PTR EXIT THEN
-   row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and 0 <> IF
-      NULL-PTR EXIT
-   THEN
+   row PACKAGE-SEALED? IF NULL-PTR EXIT THEN
    row OWNER-PRIVATE ;
 
 \ Whether the operand names a private word of a sealed package, for which
@@ -13171,8 +13210,7 @@ EXPORT CHECK:CHECKER-QTAIL$
 : EXPORT-SEALED? ( ^u8 n -- bool )
    EXPORT-OWNER {: row:^ :}
    row NULL-PTR = IF RES-FALSE EXIT THEN
-   row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and
-   0= IF RES-FALSE EXIT THEN
+   row PACKAGE-SEALED? 0= IF RES-FALSE EXIT THEN
    row OWNER-PRIVATE NULL-PTR <> ;
 
 \ Rejects the operand a u, which EXPORT-SEALED? holds for, naming the package
