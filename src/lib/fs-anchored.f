@@ -1,11 +1,11 @@
 \ fs-anchored.f - descriptor-anchored lookup, and on Linux the opens, links,
 \ renames, removals, directories and stats of one name under a directory
-\ descriptor. A walk owns one mapping and two fds. Each component opens
-\ relative to the live parent with O_NOFOLLOW (directories also O_DIRECTORY),
-\ so a replaced symlink cannot redirect a lookup and an open directory stays
-\ the anchor across a rename. The walk does not prove the anchor is the
-\ intended root, nor guard a lookup against cross-root renames, hard links,
-\ mounts or content changes.
+\ descriptor, and the path an open descriptor names. A walk owns one mapping
+\ and two fds. Each component opens relative to the live parent with
+\ O_NOFOLLOW (directories also O_DIRECTORY), so a replaced symlink cannot
+\ redirect a lookup and an open directory stays the anchor across a rename.
+\ The walk does not prove the anchor is the intended root, nor guard a lookup
+\ against cross-root renames, hard links, mounts or content changes.
 \ STORAGE CLASS. CALLER-OWNED: every descriptor answered is the caller's.
 \ TASK-LOCAL: a name's NUL copy and TRY-STAT-AT's stat, in fs.f's band.
 require src/lib/fs.f
