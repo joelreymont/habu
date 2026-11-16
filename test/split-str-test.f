@@ -33,7 +33,7 @@ s" ab" SPO str> nip 2 T=
 \ split-str anywhere but a file's first line is rejected at its place.
 REJECTION:CAPTURE
 s" split-str" TEST-EVAL:RC 70 T=
-REJECTION:BUFFER$ s" error[E-PKG-CONTEXT]: `split-str` is not allowed in this context" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" split-str-test.f" 15 s\" s\" split-str\" TEST-EVAL:RC" T-PLACED
 REJECTION:BUFFER$ s\"   = evaluated: split-str\n" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: write `split-str` in lower case, alone on its file's first line, or delete it" CONTAINS? TTRUE
@@ -49,7 +49,7 @@ REJECTION:BUFFER$ s" = help: write `split-str` in lower case, alone on its file'
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 SPC-RUN
 E2E-TREE:RC@ 70 T=
-E2E-TREE:ERR$ s" error[E-PKG-CONTEXT]: `split-str` is not allowed in this context" CONTAINS? TTRUE
+E2E-TREE:ERR$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
 E2E-TREE:ERR$ s" split-str-late.f" 1 s" split-str" T-PLACED
 E2E-TREE:ERR$ s" ^^^^^^^^^ its file's first line is not `split-str` alone" CONTAINS? TTRUE
 E2E-TREE:ERR$ s" = help: write `split-str` in lower case, alone on its file's first line, or delete it" CONTAINS? TTRUE

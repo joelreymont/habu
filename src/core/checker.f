@@ -13591,7 +13591,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
 
 \ replay-open exits on a pending definition: reject it here first.
 : PENDING-REJECT ( -- )
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-VERIFY-WINDOW" REJECTION:OPEN
    s" the checker's replay opened while a definition is being compiled" REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" inside a definition" REJECTION:EMIT-STR
    REJECTION:HELP
@@ -14029,7 +14029,7 @@ EXPORT CHECKER-OVERLAY:OPEN-USING
 \ --- the package and using words ---------------------------------------------
 \ The verifier's own word w wu ran while its window is not open.
 : WINDOW-REJECT ( ^u8 n -- ) {: w:^ wu:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-VERIFY-WINDOW" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` ran outside the source verifier's window" REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" no window open" REJECTION:EMIT-STR
@@ -14118,7 +14118,7 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 \ --- the verifier window --------------------------------------------------
 \ A verification that starts inside another's window.
 : NESTED-REJECT ( -- )
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-VERIFY-WINDOW" REJECTION:OPEN
    s" a source verification started inside another one's window" REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" started here" REJECTION:EMIT-STR
    REJECTION:HELP
@@ -14388,7 +14388,7 @@ private
    {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF
-      s" E-PKG-CONTEXT" REJECTION:OPEN
+      s" E-VERIFY-WINDOW" REJECTION:OPEN
       s" the storage record for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` is made outside the engine's verifier window" REJECTION:EMIT-STR
       a u REJECTION:AT  s" recorded outside the verifier window" REJECTION:EMIT-STR

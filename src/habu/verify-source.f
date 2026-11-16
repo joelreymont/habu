@@ -4509,7 +4509,7 @@ private
 \ The record of entry word w called while a composition is open, at the
 \ statement the open one is in.
 : COMPOSE-NESTED ( ^u8 n -- ) {: w:^ wu:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-VERIFY-WINDOW" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` ran while a source composition is open" REJECTION:EMIT-STR
    s" the open composition is here" STATEMENT-AT
@@ -4603,7 +4603,7 @@ public
 \ which this scope's close takes back unless a neutral checker scope around it
 \ holds the overlay open, so a caller reading what the scan recorded by name
 \ reads it here. No second verifier scope opens inside this one
-\ (E-PKG-CONTEXT). A scan that throws runs no action.
+\ (E-VERIFY-WINDOW). A scan that throws runs no action.
 : SOURCE-BUF-THEN-IN-SCOPE ( ^u8 n [ -- ] -- )
    THEN-ACTION !
    SOURCE!

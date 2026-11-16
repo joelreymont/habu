@@ -870,15 +870,12 @@ public
    s" E-PKG-CONTEXT" REJECTION:OPEN
    t tu TICKS  s"  is not allowed in this context" SAY
    t tu REJECTION:AT  s" out of context" SAY
-   REJECTION:HELP  s" write " SAY  s" public" TICKS  s" , " SAY
-   s" private" TICKS  s" , " SAY  s" global" TICKS  s" , " SAY
-   s" seal-package" TICKS  s"  and " SAY
-   s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
-   s"  inside its enclosing package" SAY ;
+   REJECTION:HELP  s" write " SAY  t tu TICKS  s"  only after " SAY
+   s" package NAME" TICKS  s"  opens a package" SAY ;
 \ Writes the record of a split-str token t tu in a file whose first line is
 \ not split-str alone, through its help; the caller ends it.
 : SPLIT-STR-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
-   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" E-SPLIT-STR-LINE" REJECTION:OPEN
    t tu TICKS  s"  is not allowed in this context" SAY
    t tu REJECTION:AT  s" its file's first line is not " SAY  s" split-str" TICKS
    s"  alone" SAY
