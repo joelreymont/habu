@@ -254,16 +254,18 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 : QDEPTH-CAP ( -- n ) RNAMES @ 0 <> IF EFFECT-DEPTH-MAX ELSE QDEPTH-MAX THEN ;
 
 
+variable RLOST   \ how many bottom values of the row pushed last RBUF could not hold
 \ A push past RBUF's end sets RQM: an effect's text that cannot hold every value
 \ is rejected as unsayable, never cut.
 : RBUF+ ( n -- )
-   RBN @ EFFECT-DEPTH-MAX >= IF drop 1 RQM ! EXIT THEN
+   RBN @ EFFECT-DEPTH-MAX >= IF drop 1 RQM !  RLOST @ 1 + RLOST ! EXIT THEN
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
 
 
 \ Push all of row s's values on RBUF from RBN, its bottom value last.
 : RBUF-ROW ( n -- )
    {: s:n :}
+   0 RLOST !
    s
    BEGIN R-RES dup TAG S-PUSH = WHILE
      dup P>TYPE T-RES HIDDEN-PARAM? IF
@@ -276,6 +278,12 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
         dup P>TYPE RBUF+  P>REST
      THEN
    REPEAT drop ;
+
+\ A diagnostic's row RBUF cut prints "(N more) " first, where its bottom
+\ values go; call it before the values print: a quotation among them resets RLOST.
+: CUT-MARK ( -- )
+   RLOST @ 0=  RNAMES @ 0 <>  or IF EXIT THEN
+   40 EMIT1  RLOST @ RNUM  s"  more) " RSTR ;
 
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
@@ -383,7 +391,7 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
    {: x:n d:n mode:n :}
    mode 0 > IF
       RBN @ {: base:n :}
-      x RBUF-ROW
+      x RBUF-ROW  CUT-MARK
       RBN @ BEGIN dup base > WHILE 1 - dup cells RBUF + @ d 0 RECURSE 32 EMIT1 REPEAT drop
       base RBN !
       EXIT
@@ -477,9 +485,6 @@ variable RSHOW-DST
 
 : REND-COLLECT ( n -- )  0 RBN !  RBUF-ROW ;
 
-: RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
-   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
-
 : SHOW-LOCAL-TYPE ( ^u8 n n -- ) {: name:^ nameu:n t:n :}
    DEST @ RSHOW-DST !
    0 DEST !
@@ -493,7 +498,7 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-: DROW {: s :}  s REND-COLLECT
+: DROW {: s :}  s REND-COLLECT  CUT-MARK
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 

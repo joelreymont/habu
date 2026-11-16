@@ -212,6 +212,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    THROW-AFTER-EVAL
    QUIET-COUNT-ONCE
    MAP-REJECTS
+   s" test/program-diagnostic-long-row.f" 70 s" LONG-ROW-ARMED"
+      s" error[E-MISMATCH]: LONG-ROW ends with (904 more) n n" NEGATIVE
+   s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"
+      s" error[E-MISMATCH]: LONG-QUOT ends with [ -- (905 more) n n" NEGATIVE
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
