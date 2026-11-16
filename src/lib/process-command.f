@@ -490,9 +490,9 @@ private
 
 : OUTCOME-OF ( ^n -- PROCESS:ending ) {: h:^ :}
    h FAILED @ dup 0<> if throw then drop
-   h TIMED-OUT @ 0<> if PROCESS-ENDING:timeout exit then
-   h EXITED @ 0<> if h CODE @ PROCESS-ENDING:exited exit then
-   h CODE @ PROCESS-ENDING:signaled ;
+   h TIMED-OUT @ 0<> if PROCESS-ENDING:TIMEOUT exit then
+   h EXITED @ 0<> if h CODE @ PROCESS-ENDING:EXITED exit then
+   h CODE @ PROCESS-ENDING:SIGNALED ;
 
 \ A refused path, deadline or closed placed fd throws before CAPTURE-RESET
 \ forgets the last run, so a refused run keeps the previous outcome; from the
@@ -523,7 +523,7 @@ public
    CTX OUTCOME-OF ;
 
 \ Run the prepared command at path, feed it the stdin and capture both streams
-\ whole; a deadline-killed run answers PROCESS-ENDING:timeout. A spawn failure, a
+\ whole; a deadline-killed run answers PROCESS-ENDING:TIMEOUT. A spawn failure, a
 \ refused path, deadline or placed fd and cancellation throw their own codes; a
 \ path, deadline or closed placed fd refused before the run leaves the previous
 \ outcome in place.

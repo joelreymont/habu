@@ -234,12 +234,12 @@ FUNCTION: COPY-OUT memcpy ( ^u8 n n -- n ) ;FUNCTION
 
 
 : CODE>STATUS ( n -- status ) {: rc:n :}
-   rc CURLE-OK = if CURL-STATUS:ok exit then
-   rc >CODE CURL-STATUS:failed ;
+   rc CURLE-OK = if CURL-STATUS:OK exit then
+   rc >CODE CURL-STATUS:FAILED ;
 
 
 : OUT-OF-MEMORY ( -- status )
-   CURLE-OUT-OF-MEMORY >CODE CURL-STATUS:failed ;
+   CURLE-OUT-OF-MEMORY >CODE CURL-STATUS:FAILED ;
 
 
 CAST: >BYTES ( n -- ^u8 )
@@ -366,7 +366,7 @@ CAST: >BYTES ( n -- ^u8 )
       CODE>STATUS exit
    then drop
    list state S.LIST STATE-FIELD LE:U64!
-   CURL-STATUS:ok ;
+   CURL-STATUS:OK ;
 
 
 \ curl_slist_append duplicates the line into the node it adds.
@@ -473,13 +473,13 @@ CAST: >BYTES ( n -- ^u8 )
 
 : FETCH-RESULT ( n n bool -- fetch-result ) {: status:n u:n full:bool :}
    full if
-      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:truncated exit
+      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:TRUNCATED exit
    then
-   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:response ;
+   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:RESPONSE ;
 
 
 : FETCH-FAILED ( n -- fetch-result ) {: rc:n :}
-   rc >CODE CURL-FETCH--RESULT:failed ;
+   rc >CODE CURL-FETCH--RESULT:FAILED ;
 
 
 : FLAG>N ( bool -- n )
@@ -515,22 +515,22 @@ SCRATCH-VARIABLE GLOBAL-DONE
 public
 
 : INIT ( -- init-result )
-   GLOBAL-READY dup CURLE-OK <> if >CODE CURL-INIT--RESULT:failed exit then drop
+   GLOBAL-READY dup CURLE-OK <> if >CODE CURL-INIT--RESULT:FAILED exit then drop
    EASY-INIT dup 0= if
-      drop CURLE-FAILED-INIT >CODE CURL-INIT--RESULT:failed exit
+      drop CURLE-FAILED-INIT >CODE CURL-INIT--RESULT:FAILED exit
    then
    {: easy:n :}
    easy DEFAULTS dup CURLE-OK <> if
-      easy EASY-CLEANUP >CODE CURL-INIT--RESULT:failed exit
+      easy EASY-CLEANUP >CODE CURL-INIT--RESULT:FAILED exit
    then drop
    STATE-CELLS CELL-BYTES NEW-STATE dup 0= if
-      drop easy EASY-CLEANUP CURLE-OUT-OF-MEMORY >CODE CURL-INIT--RESULT:failed exit
+      drop easy EASY-CLEANUP CURLE-OUT-OF-MEMORY >CODE CURL-INIT--RESULT:FAILED exit
    then
    {: state:n :}
    easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
-      state RELEASE easy EASY-CLEANUP >CODE CURL-INIT--RESULT:failed exit
+      state RELEASE easy EASY-CLEANUP >CODE CURL-INIT--RESULT:FAILED exit
    then drop
-   easy >HANDLE CURL-INIT--RESULT:ready ;
+   easy >HANDLE CURL-INIT--RESULT:READY ;
 
 
 : URL! ( handle ^u8 n -- status ) {: subject:handle text u:n :}
@@ -1594,11 +1594,11 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 
 : RESULT-BUILD ( n n n n -- fetch-result ) {: kind:n status:n u:n rc:n :}
-   kind KIND-FAILED = if rc >CODE CURL-FETCH--RESULT:failed exit then
+   kind KIND-FAILED = if rc >CODE CURL-FETCH--RESULT:FAILED exit then
    kind KIND-TRUNCATED = if
-      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:truncated exit
+      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:TRUNCATED exit
    then
-   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:response ;
+   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:RESPONSE ;
 
 
 : RESULT-TAKE ( n -- fetch-result ) {: idx:n :}
@@ -1686,7 +1686,7 @@ public
    0 STOP-FLAG atomic!
    ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE
    1 LOOP-LIVE atomic!
-   CURL-STATUS:ok ;
+   CURL-STATUS:OK ;
 
 
 \ Ends the loop and gives the multi handle and the pipe back. Every transfer
@@ -1758,7 +1758,7 @@ private
    CURL-LOCK TASK:RELEASE
    live 0= if idx STREAM-DROP drop idx REC-RELEASE E-STATE throw then
    WAKER AIO:WAKE
-   CURL-STATUS:ok ;
+   CURL-STATUS:OK ;
 
 
 \ No halt may leave a half-initialized transfer behind. Once published, the
@@ -1769,11 +1769,11 @@ private
 
 
 : STREAM-RESULT-BUILD ( n n n n -- chunk-result ) {: kind:n status:n u:n rc:n :}
-   kind REQUEST-FAILED = if rc >CODE CURL-CHUNK--RESULT:failed exit then
+   kind REQUEST-FAILED = if rc >CODE CURL-CHUNK--RESULT:FAILED exit then
    kind REQUEST-RESPONSE = if
-      status >HTTP-STATUS CURL-CHUNK--RESULT:response exit
+      status >HTTP-STATUS CURL-CHUNK--RESULT:RESPONSE exit
    then
-   status >HTTP-STATUS u >LEN CURL-CHUNK--RESULT:chunk ;
+   status >HTTP-STATUS u >LEN CURL-CHUNK--RESULT:CHUNK ;
 
 
 : STREAM-RESULT-TAKE ( n -- chunk-result ) {: idx:n :}
@@ -1851,7 +1851,7 @@ public
    idx REC R.REQUEST atomic@ {: request:n :}
    request REQUEST-NONE = if E-STATE throw then
    begin
-      idx HALT-LEFT? if CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit then
+      idx HALT-LEFT? if CURLE-ABORTED >CODE CURL-CHUNK--RESULT:FAILED exit then
       idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
          idx STREAM-RESULT-TAKE exit
       then
@@ -1930,8 +1930,8 @@ private
       target state STATE-RESP@ >BYTES at + FFI:>CELL copied COPY-OUT drop
    then
    u >LEN
-   u capacity LEN>N > if CURL-HEADER--RESULT:truncated
-   else CURL-HEADER--RESULT:complete then ;
+   u capacity LEN>N > if CURL-HEADER--RESULT:TRUNCATED
+   else CURL-HEADER--RESULT:COMPLETE then ;
 
 
 \ A streamed transfer this task started and has not left.

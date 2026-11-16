@@ -916,11 +916,11 @@ INSTALL-HOST
 : OUTCOME-OF ( n -- outcome ) {: idx:n :}
    idx REC {: r:^ :}
    r REC.RES @ {: res:n :}
-   res 0 >= if res AIO-OUTCOME:ready exit then
-   r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:timed-out exit then
-   res ERR-TIME negate = if AIO-OUTCOME:timed-out exit then
-   res ERR-CANCELED negate = if AIO-OUTCOME:cancelled exit then
-   res negate AIO-OUTCOME:refused ;
+   res 0 >= if res AIO-OUTCOME:READY exit then
+   r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:TIMED-OUT exit then
+   res ERR-TIME negate = if AIO-OUTCOME:TIMED-OUT exit then
+   res ERR-CANCELED negate = if AIO-OUTCOME:CANCELLED exit then
+   res negate AIO-OUTCOME:REFUSED ;
 
 : TAKE ( n -- outcome ) {: idx:n :}
    AIO-LOCK TASK:GET

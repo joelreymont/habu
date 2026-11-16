@@ -231,9 +231,9 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
 : RECEIVED ( n NUM:byte-len -- receive-result ) {: actual:n capacity:NUM:byte-len :}
    actual 0 MAX-PAYLOAD WITHIN-RANGE
    actual capacity BLEN>N > if
-      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:truncated
+      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:TRUNCATED
    else
-      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:packet
+      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:PACKET
    then ;
 
 
@@ -290,17 +290,17 @@ public
 \ BIND returns an owned nonblocking socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
 : BIND ( address port -- open-result )
-   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR UDP4-OPEN--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR UDP4-OPEN--RESULT:FAILED exit then
    >SOCKET {: socket:socket :}
    socket BIND-RAW 0 < if
-      LAST-ERROR socket CLOSE-RAW drop UDP4-OPEN--RESULT:failed
-   else socket UDP4-OPEN--RESULT:opened then ;
+      LAST-ERROR socket CLOSE-RAW drop UDP4-OPEN--RESULT:FAILED
+   else socket UDP4-OPEN--RESULT:OPENED then ;
 
 
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
    socket CHECK-SOCKET ENDPOINT-OUTPUT
-   socket LOCAL-RAW 0 < if LAST-ERROR UDP4-ENDPOINT--RESULT:failed
-   else ENDPOINT@ UDP4-ENDPOINT--RESULT:endpoint then ;
+   socket LOCAL-RAW 0 < if LAST-ERROR UDP4-ENDPOINT--RESULT:FAILED
+   else ENDPOINT@ UDP4-ENDPOINT--RESULT:ENDPOINT then ;
 
 
 \ The input is borrowed for this call. Success means the OS accepted the whole
@@ -309,8 +309,8 @@ public
    {: socket:socket address:address port:port bytes size:NUM:byte-len :}
    socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
    address port ENDPOINT!
-   socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:failed exit then
-   size BLEN>N <> if E-RESULT throw then UDP4-STATUS:ok ;
+   socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:FAILED exit then
+   size BLEN>N <> if E-RESULT throw then UDP4-STATUS:OK ;
 
 
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
@@ -328,14 +328,14 @@ public
    begin
       ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW {: got:n error:errno :}
       got 0 >= if got capacity RECEIVED exit then
-      error dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
-      timeout deadline LEFT dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
+      error dup RETRY? 0= if UDP4-RECEIVE--RESULT:FAILED exit then drop
+      timeout deadline LEFT dup MS>N 0= if drop UDP4-RECEIVE--RESULT:TIMEOUT exit then
       socket swap WAIT-READABLE
       MATCH AIO:outcome
          ready OF drop ENDOF
-         timed-out OF UDP4-RECEIVE--RESULT:timeout exit ENDOF
+         timed-out OF UDP4-RECEIVE--RESULT:TIMEOUT exit ENDOF
          cancelled OF E-RESULT throw ENDOF
-         refused OF >ERRNO UDP4-RECEIVE--RESULT:failed exit ENDOF
+         refused OF >ERRNO UDP4-RECEIVE--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;
 
@@ -343,7 +343,7 @@ public
 \ The caller closes each socket once and never reuses it: on Linux, close
 \ consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
-   dup CHECK-SOCKET CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:failed else UDP4-STATUS:ok then ;
+   dup CHECK-SOCKET CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:FAILED else UDP4-STATUS:OK then ;
 
 
 ;package

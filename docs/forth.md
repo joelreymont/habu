@@ -108,8 +108,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 
 **Modules are packages**, wordlist namespaces at file/module scope: new
 library, tool, test-support and subsystem code lives in `package NAME` unless
-it is a documented core prelude file. Keywords are lowercase; package names and
-project words are uppercase. Helpers go before `public` or after `private`. The
+it is a documented core prelude file. Keywords are lowercase; package names,
+project words and generated words are uppercase. Helpers go before `public` or after `private`. The
 `public` section is the module boundary: the real interface as short domain
 words (`TASK:KILL`, `TASK:DONE?`, `PTX:BROADCAST`, `MAP:GET`), without the
 package name in the tail unless the domain spelling requires it. Never fake a
@@ -668,7 +668,7 @@ multi-cell type rationale is `docs/design.md` "Types".
      VARIANT err FIELD error b ;VARIANT
   ;ENUM
   : CHECK ( n -- result<n,n> )
-     dup 0< IF SHAPE-RESULT:err ELSE construct result ok THEN ;
+     dup 0< IF SHAPE-RESULT:ERR ELSE construct result ok THEN ;
   : >CODE ( result<n,n> -- n )
      MATCH result
         ok OF ENDOF
@@ -676,7 +676,7 @@ multi-cell type rationale is `docs/design.md` "Types".
      ;MATCH ;
   ;package
   : SHOW ( n -- ) SHAPE:CHECK SHAPE:>CODE . ;
-  : VIA ( -- SHAPE:result<n,n> ) 3 SHAPE-RESULT:ok ;
+  : VIA ( -- SHAPE:result<n,n> ) 3 SHAPE-RESULT:OK ;
   : T ( -- ) VIA SHAPE:>CODE . ;
   5 SHOW -4 SHOW T
   ```
@@ -700,21 +700,21 @@ multi-cell type rationale is `docs/design.md` "Types".
 - **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
   `nullable<u8>`: NULL is `none`.
 - **A public, non-`OPAQUE` package family's generated words are
-  `PKG-FAMILY:tail` with every hyphen in the package and family names
+  `PKG-FAMILY:TAIL` with every hyphen in the package and family names
   doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`
-  variant through `TCP4-READ--RESULT:data`; a `STRUCTURE captured` in
+  variant through `TCP4-READ--RESULT:DATA`; a `STRUCTURE captured` in
   `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A public family in
-  part `A:B` makes them in the part `A:B-FAMILY` of A, spelled `B-FAMILY:tail`
+  part `A:B` makes them in the part `A:B-FAMILY` of A, spelled `B-FAMILY:TAIL`
   and reached inside A only: `STRUCTURE inner` in `package AA package BB`
   makes through `BB-INNER:MAKE` inside AA. A part bearing the name of the
   constructor package of its own package's public family (`package QZ-PT`
   inside QZ, which declares `pt`) is rejected whichever comes second: the
   family at its name (a `MUTUAL` member at `;MUTUAL`), or `package` at its
   name with `E-CTOR-PROTECTED`.
-  A private family's are `FAMILY-tail` in its package's
+  A private family's are `FAMILY-TAIL` in its package's
   private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
   section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.
-  `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack
+  `SIGNAL-RESULT:SIGNAL` and `SIGNAL:SIGNAL` are both `E-UNDEFINED`. Stack
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
   family name in `MATCH`.
@@ -866,8 +866,10 @@ multi-cell type rationale is `docs/design.md` "Types".
   PKG:tok n ) ERASE dup @ swap MINT swap ;`, and its public words hand the
   token out and take it back; a caller holds it under the linear rules.
   `CAST:` still refuses a linear term, in the owner too (`E-CAST-LINEAR`).
-- Type, field and variant names are lowercase; generated and project words are
-  uppercase.
+- Type, field and variant names are lowercase where a declaration, a stack
+  effect, `construct` or a `MATCH` arm names them (`( -- TCP4:read-result )`,
+  `data OF`); generated and project words are uppercase, a variant's
+  constructor included (`TCP4-READ--RESULT:DATA`, `SHADE-DARK`).
 - **Raw storage holds neither an address nor an execution token**: a
   `variable`, `create` or `constant` cell refuses both (`E-RAW-CELL-PTR`); see
   **Raw storage never holds an address** and **An undeclared cell holds no

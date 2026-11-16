@@ -45,7 +45,7 @@ FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
    FFI:ERRNO >ERRNO ;
 
 : INVALID ( -- status )
-   EINVAL >ERRNO SYSTEMD-STATUS:failed ;
+   EINVAL >ERRNO SYSTEMD-STATUS:FAILED ;
 
 \ libsystemd's bounds: at least two bytes, and room for a NUL after them
 \ in sun_path.
@@ -67,22 +67,22 @@ FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
 : SEND ( n n -- status )
    {: fd:n size:n :}
    fd s" READY=1" MSG-NOSIGNAL SOCKADDR size SEND-CALL
-   0 < if LAST-ERROR SYSTEMD-STATUS:failed exit then
-   SYSTEMD-STATUS:ok ;
+   0 < if LAST-ERROR SYSTEMD-STATUS:FAILED exit then
+   SYSTEMD-STATUS:OK ;
 
 : NOTIFY ( n -- status )
    {: size:n :}
    AF-UNIX SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
-   fd 0 < if LAST-ERROR SYSTEMD-STATUS:failed exit then
+   fd 0 < if LAST-ERROR SYSTEMD-STATUS:FAILED exit then
    fd size SEND fd CLOSE-CALL drop ;
 
 public
 
 \ Once the service serves. Off Linux no service manager speaks this protocol.
 : NOTIFY-READY ( -- status )
-   HB-TARGET-LINUX-KERNEL? 0= if SYSTEMD-STATUS:ok exit then
+   HB-TARGET-LINUX-KERNEL? 0= if SYSTEMD-STATUS:OK exit then
    s" NOTIFY_SOCKET" GETENV {: name:^ size:n :}
-   size 0= if SYSTEMD-STATUS:ok exit then
+   size 0= if SYSTEMD-STATUS:OK exit then
    name size NAME? 0= if INVALID exit then
    name size ADDRESS! NOTIFY ;
 

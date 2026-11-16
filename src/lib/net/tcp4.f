@@ -378,23 +378,23 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : BIND-FAILED ( n -- bind-result ) {: fd:n :}
-   LAST-ERROR fd CLOSE-RAW drop TCP4-BIND--RESULT:failed ;
+   LAST-ERROR fd CLOSE-RAW drop TCP4-BIND--RESULT:FAILED ;
 
 
 : RC>STATUS ( n -- status )
-   0 < if LAST-ERROR TCP4-STATUS:failed else TCP4-STATUS:ok then ;
+   0 < if LAST-ERROR TCP4-STATUS:FAILED else TCP4-STATUS:OK then ;
 
 
 : QUEUED ( n -- queue-result )
-   0 < if LAST-ERROR TCP4-QUEUE--RESULT:failed exit then
-   OPTION LE:U32@ LENGTH TCP4-QUEUE--RESULT:queued ;
+   0 < if LAST-ERROR TCP4-QUEUE--RESULT:FAILED exit then
+   OPTION LE:U32@ LENGTH TCP4-QUEUE--RESULT:QUEUED ;
 
 
 \ POLLERR, POLLHUP and POLLNVAL all mean a read returns at once, with the end of
 \ stream or the error as its answer, so they are readiness and not a failure.
 : REVENTS>READY ( n -- ready-result )
-   POLL-DONE and 0 <> if TCP4-READY--RESULT:ready exit then
-   TCP4-READY--RESULT:idle ;
+   POLL-DONE and 0 <> if TCP4-READY--RESULT:READY exit then
+   TCP4-READY--RESULT:IDLE ;
 
 
 \ The deadline is the poll's own linked timeout, so a signal does not cut the
@@ -408,9 +408,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
-      timed-out OF TCP4-READY--RESULT:idle ENDOF
+      timed-out OF TCP4-READY--RESULT:IDLE ENDOF
       cancelled OF E-RESULT throw ENDOF
-      refused OF >ERRNO TCP4-READY--RESULT:failed ENDOF
+      refused OF >ERRNO TCP4-READY--RESULT:FAILED ENDOF
    ;MATCH ;
 
 
@@ -437,8 +437,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 : DATA-READY ( n -- status ) {: fd:n :}
    begin
       fd POLLIN NO-TIMEOUT POLL-FD {: rc:n :}
-      rc 0 >= if TCP4-STATUS:ok exit then
-      rc negate EINTR <> if rc negate >ERRNO TCP4-STATUS:failed exit then
+      rc 0 >= if TCP4-STATUS:OK exit then
+      rc negate EINTR <> if rc negate >ERRNO TCP4-STATUS:FAILED exit then
    again ;
 
 
@@ -446,10 +446,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ empty message.
 : TRY-CHUNK ( n ^u8 n -- try-read-result ) {: fd:n bytes size:n :}
    begin
-      fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:data exit then
-      0= if 0 LENGTH TCP4-TRY--READ--RESULT:closed exit then
-      LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:empty exit then
-      dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:failed exit then drop
+      fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:DATA exit then
+      0= if 0 LENGTH TCP4-TRY--READ--RESULT:CLOSED exit then
+      LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:EMPTY exit then
+      dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:FAILED exit then drop
    again ;
 
 
@@ -460,15 +460,15 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    begin
       fd bytes size TRY-CHUNK
       MATCH try-read-result
-         data OF TCP4-READ--RESULT:data exit ENDOF
-         closed OF TCP4-READ--RESULT:closed exit ENDOF
+         data OF TCP4-READ--RESULT:DATA exit ENDOF
+         closed OF TCP4-READ--RESULT:CLOSED exit ENDOF
          empty OF ENDOF
-         failed OF TCP4-READ--RESULT:failed exit ENDOF
+         failed OF TCP4-READ--RESULT:FAILED exit ENDOF
       ;MATCH
       fd DATA-READY
       MATCH status
          ok OF ENDOF
-         failed OF TCP4-READ--RESULT:failed exit ENDOF
+         failed OF TCP4-READ--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;
 
@@ -491,11 +491,11 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 : SEND-BY ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
       fd bytes size SEND-STEP
-      dup 0 > if LENGTH TCP4-SLICE--RESULT:moved exit then
+      dup 0 > if LENGTH TCP4-SLICE--RESULT:MOVED exit then
       0= if E-RESULT throw then
-      LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:empty exit then
-      dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:failed exit then drop
-      mono-ns deadline > if TCP4-SLICE--RESULT:empty exit then
+      LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:EMPTY exit then
+      dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:FAILED exit then drop
+      mono-ns deadline > if TCP4-SLICE--RESULT:EMPTY exit then
    again ;
 
 
@@ -519,9 +519,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 : ROOM-BY ( n n -- ready-result ) {: fd:n deadline:n :}
    begin
       fd POLLOUT deadline LEFT-MS POLL-FD {: rc:n :}
-      rc 0 > if TCP4-READY--RESULT:ready exit then
-      rc 0= if TCP4-READY--RESULT:idle exit then
-      rc negate EINTR <> if rc negate >ERRNO TCP4-READY--RESULT:failed exit then
+      rc 0 > if TCP4-READY--RESULT:READY exit then
+      rc 0= if TCP4-READY--RESULT:IDLE exit then
+      rc negate EINTR <> if rc negate >ERRNO TCP4-READY--RESULT:FAILED exit then
    again ;
 
 
@@ -529,17 +529,17 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    fd deadline ROOM-BY
    MATCH ready-result
       ready OF fd bytes size deadline SEND-BY ENDOF
-      idle OF TCP4-SLICE--RESULT:empty ENDOF
-      failed OF TCP4-SLICE--RESULT:failed ENDOF
+      idle OF TCP4-SLICE--RESULT:EMPTY ENDOF
+      failed OF TCP4-SLICE--RESULT:FAILED ENDOF
    ;MATCH ;
 
 
 : ACCEPT-LOOP ( n -- accept-result ) {: fd:n :}
    begin
       ENDPOINT-OUTPUT fd ACCEPT-RAW dup 0 >= if
-         >CONNECTION ENDPOINT@ TCP4-ACCEPT--RESULT:accepted exit
+         >CONNECTION ENDPOINT@ TCP4-ACCEPT--RESULT:ACCEPTED exit
       then drop
-      LAST-ERROR dup INTERRUPTED? 0= if TCP4-ACCEPT--RESULT:failed exit then drop
+      LAST-ERROR dup INTERRUPTED? 0= if TCP4-ACCEPT--RESULT:FAILED exit then drop
    again ;
 
 
@@ -600,11 +600,11 @@ public
 \ permits an immediate restart while the prior server peer remains in TIME_WAIT.
 \ A listener stays blocking.
 : BIND ( address port -- bind-result )
-   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:FAILED exit then
    {: fd:n :}
    fd REUSEADDR-RAW 0 < if fd BIND-FAILED exit then
    fd BIND-RAW 0 < if fd BIND-FAILED exit then
-   fd >LISTENER TCP4-BIND--RESULT:bound ;
+   fd >LISTENER TCP4-BIND--RESULT:BOUND ;
 
 
 : LISTEN ( listener n -- status ) {: lis:listener backlog:n :}
@@ -614,8 +614,8 @@ public
 
 : LOCAL ( listener -- endpoint-result )
    LISTENER-FD ENDPOINT-OUTPUT
-   LOCAL-RAW 0 < if LAST-ERROR TCP4-ENDPOINT--RESULT:failed
-   else ENDPOINT@ TCP4-ENDPOINT--RESULT:endpoint then ;
+   LOCAL-RAW 0 < if LAST-ERROR TCP4-ENDPOINT--RESULT:FAILED
+   else ENDPOINT@ TCP4-ENDPOINT--RESULT:ENDPOINT then ;
 
 
 \ Blocks until a connection arrives. The accepted connection is owned by the
@@ -637,10 +637,10 @@ public
 \ only once connected, so the connect itself still blocks and answers the
 \ refusal.
 : CONNECT ( address port -- connect-result )
-   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:FAILED exit then
    {: fd:n :}
-   fd CONNECT-RAW 0 < if LAST-ERROR fd CLOSE-RAW drop TCP4-CONNECT--RESULT:failed exit then
-   fd NONBLOCK >CONNECTION TCP4-CONNECT--RESULT:connected ;
+   fd CONNECT-RAW 0 < if LAST-ERROR fd CLOSE-RAW drop TCP4-CONNECT--RESULT:FAILED exit then
+   fd NONBLOCK >CONNECTION TCP4-CONNECT--RESULT:CONNECTED ;
 
 
 \ One partial read of 1..capacity bytes, waiting in poll(2) on the task's own
@@ -670,12 +670,12 @@ public
    want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    0
    begin
-      dup want BLEN>N < 0= if drop want TCP4-READ--RESULT:data exit then
+      dup want BLEN>N < 0= if drop want TCP4-READ--RESULT:DATA exit then
       dup conn bytes want EXACT-STEP
       MATCH read-result
          data OF BLEN>N + ENDOF
-         closed OF drop LENGTH TCP4-READ--RESULT:closed exit ENDOF
-         failed OF swap drop TCP4-READ--RESULT:failed exit ENDOF
+         closed OF drop LENGTH TCP4-READ--RESULT:CLOSED exit ENDOF
+         failed OF swap drop TCP4-READ--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;
 
@@ -698,9 +698,9 @@ public
    mono-ns SEND-SLICE-MS NS-PER-MS * + {: deadline:n :}
    fd bytes span deadline SEND-BY
    MATCH slice-result
-      moved OF TCP4-SLICE--RESULT:moved ENDOF
+      moved OF TCP4-SLICE--RESULT:MOVED ENDOF
       empty OF fd bytes span deadline AFTER-ROOM ENDOF
-      failed OF TCP4-SLICE--RESULT:failed ENDOF
+      failed OF TCP4-SLICE--RESULT:FAILED ENDOF
    ;MATCH ;
 
 
@@ -721,16 +721,16 @@ public
 : WRITE ( connection ^u8 NUM:byte-len -- status )
    {: conn:connection bytes size:NUM:byte-len :}
    size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE
-   size BLEN>N 0= if TCP4-STATUS:ok exit then
+   size BLEN>N 0= if TCP4-STATUS:OK exit then
    0
    begin {: sent:n :}
       conn bytes sent + size BLEN>N sent - LENGTH SEND-SLICE
       MATCH slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent ENDOF
-         failed OF TCP4-STATUS:failed exit ENDOF
+         failed OF TCP4-STATUS:FAILED exit ENDOF
       ;MATCH
-      dup size BLEN>N >= if drop TCP4-STATUS:ok exit then
+      dup size BLEN>N >= if drop TCP4-STATUS:OK exit then
       TASK:PAUSE
    again ;
 
@@ -815,7 +815,7 @@ public
 \ every connection this module makes. The caller owns it and closes it with
 \ CLOSE.
 : SOCKET ( -- socket-result )
-   SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-SOCKET--RESULT:failed exit then
-   NONBLOCK >CONNECTION TCP4-SOCKET--RESULT:opened ;
+   SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-SOCKET--RESULT:FAILED exit then
+   NONBLOCK >CONNECTION TCP4-SOCKET--RESULT:OPENED ;
 
 ;package

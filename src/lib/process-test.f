@@ -232,9 +232,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    ;MATCH ;
 
 : TEST-PROC-OUTCOME>RC ( -- )
-   7 PROCESS-ENDING:exited PROCESS:ENDING>RC RC>N 7 T=
-   PROCESS:SIGKILL PROCESS-ENDING:signaled PROCESS:ENDING>RC RC>N 137 T=      \ a deliberate kill
-   [: PROCESS-ENDING:timeout PROCESS:ENDING>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
+   7 PROCESS-ENDING:EXITED PROCESS:ENDING>RC RC>N 7 T=
+   PROCESS:SIGKILL PROCESS-ENDING:SIGNALED PROCESS:ENDING>RC RC>N 137 T=      \ a deliberate kill
+   [: PROCESS-ENDING:TIMEOUT PROCESS:ENDING>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
 
 \ Negative checked regressions: a status or ending is not a loose (kind code)
 \ pair, an ending does not compare with `=`, and no raw n or pair poses as one.

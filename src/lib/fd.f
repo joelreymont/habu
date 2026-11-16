@@ -237,10 +237,10 @@ public
    dst LEN {: want:n :}
    0 begin dup want < while
       dup f dst MORE
-      dup 0= if drop FD-FILL:eof exit then
+      dup 0= if drop FD-FILL:EOF exit then
       +
    repeat
-   drop FD-FILL:full ;
+   drop FD-FILL:FULL ;
 
 \ A blocking write answers short when a caught signal lands after some bytes
 \ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
@@ -253,10 +253,10 @@ public
    u 0 < if E-SPAN-LENGTH throw then
    0 begin dup u < while
       dup dup f src u SENT +
-      2dup = if drop 0= if FD-WROTE:none else FD-WROTE:part then exit then
-      dup u > if 2drop FD-WROTE:part exit then
+      2dup = if drop 0= if FD-WROTE:NONE else FD-WROTE:PART then exit then
+      dup u > if 2drop FD-WROTE:PART exit then
       nip
-   repeat drop FD-WROTE:all ;
+   repeat drop FD-WROTE:ALL ;
 
 
 \ TRY-WRITE-FULL, with E-FS-IO for anything short of `all`.

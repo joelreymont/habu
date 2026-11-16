@@ -2407,7 +2407,7 @@ variable LIT-AT
 
 \ The fixed body pushes the anchor, and ends in the slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
-   DEF-ANCHOR 0 COMP-BODY:address DEF-FIXED
+   DEF-ANCHOR 0 COMP-BODY:ADDRESS DEF-FIXED
    DEF-CLOSE ;
 
 \ No record slot left is refused after the name, naming it. CP at the code
@@ -2442,7 +2442,7 @@ variable DEF-VALUE
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
-   DEF-VALUE @ 0 COMP-BODY:value DEF-FIXED
+   DEF-VALUE @ 0 COMP-BODY:VALUE DEF-FIXED
    DEF-CLOSE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
@@ -2492,7 +2492,7 @@ variable DEF-VALUE
    DEF-CODE-ROOM
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
-   0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
+   0 0 COMP-BODY:CAST DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ ---- child words a declaration makes ------------------------------------------
@@ -2533,18 +2533,18 @@ variable DEF-VALUE
    shape CHILD-ABI:CELL-OFF =
    shape CHILD-ABI:PTR-OFF = or
    shape CHILD-ABI:BYTE-OFF = or
-   shape CHILD-ABI:FIELD = or if COMP-BODY:offset 0 exit then
-   shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
-   shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
-   shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
-   shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
-   shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
-   shape CHILD-ABI:SPAN = if COMP-BODY:bytes 0 exit then
+   shape CHILD-ABI:FIELD = or if COMP-BODY:OFFSET 0 exit then
+   shape CHILD-ABI:INDEX = if COMP-BODY:INDEX 0 exit then
+   shape CHILD-ABI:VALUE = if COMP-BODY:VALUE 0 exit then
+   shape CHILD-ABI:STORED = if COMP-BODY:ADDRESS 0 exit then
+   shape CHILD-ABI:INIT-GET = if COMP-BODY:GETTER 0 exit then
+   shape CHILD-ABI:INIT-SET = if COMP-BODY:SETTER 0 exit then
+   shape CHILD-ABI:SPAN = if COMP-BODY:BYTES 0 exit then
    shape CHILD-ABI:MAKE =
    shape CHILD-ABI:UNMAKE = or
    shape CHILD-ABI:NOMINAL-IN = or
-   shape CHILD-ABI:NOMINAL-OUT = or if COMP-BODY:cast 0 exit then
-   COMP-BODY:routine shape param ROUTINE ;
+   shape CHILD-ABI:NOMINAL-OUT = or if COMP-BODY:CAST 0 exit then
+   COMP-BODY:ROUTINE shape param ROUTINE ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
    shape CHILD-ABI:STORED >= shape CHILD-ABI:ARENA-DISPOSE <= and ;
@@ -2623,7 +2623,7 @@ variable DEF-VALUE
    s end DEF-SIG-INNER
    DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
    NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
-   0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
+   0 0 COMP-BODY:CAST DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ `defer NAME ( in -- out )` declares a word that calls the execution token in
@@ -2729,7 +2729,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    a u TOKEN$ wid 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
-   cell 0 COMP-BODY:defer DEF-FIXED
+   cell 0 COMP-BODY:DEFER DEF-FIXED
    DEF-CLOSE ;
 
 \ `immediate` marks the newest record, whatever it is, and checks nothing.

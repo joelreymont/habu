@@ -181,14 +181,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : RESULT ( ^a n -- transfer-result ) {: session:^ error:n :}
-   error 0= if session PROGRESS-FIELD @ BYTES SERIAL--XMODEM-TRANSFER--RESULT:completed exit then
+   error 0= if session PROGRESS-FIELD @ BYTES SERIAL--XMODEM-TRANSFER--RESULT:COMPLETED exit then
    error E-SXMODEM-CANCELLED <> if session CANCEL-PEER then
-   error E-SXMODEM-TIMEOUT = if SERIAL--XMODEM-TRANSFER--RESULT:timeout exit then
-   error E-SXMODEM-CLOSED = if SERIAL--XMODEM-TRANSFER--RESULT:closed exit then
-   error E-SXMODEM-IO = if session IO-ERROR-FIELD @ SERIAL:>ERRNO SERIAL--XMODEM-TRANSFER--RESULT:failed exit then
-   error E-SXMODEM-CANCELLED = if SERIAL--XMODEM-TRANSFER--RESULT:cancelled exit then
-   error E-SXMODEM-RETRIES = if SERIAL--XMODEM-TRANSFER--RESULT:retry-limit exit then
-   error E-SXMODEM-CAPACITY = if SERIAL--XMODEM-TRANSFER--RESULT:capacity exit then
+   error E-SXMODEM-TIMEOUT = if SERIAL--XMODEM-TRANSFER--RESULT:TIMEOUT exit then
+   error E-SXMODEM-CLOSED = if SERIAL--XMODEM-TRANSFER--RESULT:CLOSED exit then
+   error E-SXMODEM-IO = if session IO-ERROR-FIELD @ SERIAL:>ERRNO SERIAL--XMODEM-TRANSFER--RESULT:FAILED exit then
+   error E-SXMODEM-CANCELLED = if SERIAL--XMODEM-TRANSFER--RESULT:CANCELLED exit then
+   error E-SXMODEM-RETRIES = if SERIAL--XMODEM-TRANSFER--RESULT:RETRY-LIMIT exit then
+   error E-SXMODEM-CAPACITY = if SERIAL--XMODEM-TRANSFER--RESULT:CAPACITY exit then
    error throw ;
 
 

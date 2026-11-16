@@ -1895,9 +1895,9 @@ DYNAMIC-BUFFER COUNT-SLOT n
 \ relocates it.
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
-   kind DKIND:VAL = if to COMP-BODY:value NDICT:BOUND-VALUE PUSH-CONST exit then
+   kind DKIND:VAL = if to COMP-BODY:VALUE NDICT:BOUND-VALUE PUSH-CONST exit then
    kind DKIND:ADDR = if
-      to COMP-BODY:address NDICT:BOUND-VALUE  r PUSH-ADDR exit
+      to COMP-BODY:ADDRESS NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
    ORD @ 1- {: at:n :}
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
@@ -2043,7 +2043,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
 
 using NDEFINITION
 
-\ The unit's body kind: COMP-BODY:compiled for a colon definition, else the
+\ The unit's body kind: COMP-BODY:COMPILED for a colon definition, else the
 \ fixed body's kind.
 TYPED-VARIABLE BODY-KIND body
 variable FIXED-VAL                   \ the fixed body's value, dispatch cell or field id
@@ -2333,16 +2333,16 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 
 : FIXED-KIND? ( body -- bool )
    {: kind:body :}
-   kind COMP-BODY:value COMP-BODY:EQ
-   kind COMP-BODY:address COMP-BODY:EQ or
-   kind COMP-BODY:defer COMP-BODY:EQ or
-   kind COMP-BODY:cast COMP-BODY:EQ or
-   kind COMP-BODY:offset COMP-BODY:EQ or
-   kind COMP-BODY:index COMP-BODY:EQ or
-   kind COMP-BODY:routine COMP-BODY:EQ or
-   kind COMP-BODY:getter COMP-BODY:EQ or
-   kind COMP-BODY:setter COMP-BODY:EQ or
-   kind COMP-BODY:bytes COMP-BODY:EQ or ;
+   kind COMP-BODY:VALUE COMP-BODY:EQ
+   kind COMP-BODY:ADDRESS COMP-BODY:EQ or
+   kind COMP-BODY:DEFER COMP-BODY:EQ or
+   kind COMP-BODY:CAST COMP-BODY:EQ or
+   kind COMP-BODY:OFFSET COMP-BODY:EQ or
+   kind COMP-BODY:INDEX COMP-BODY:EQ or
+   kind COMP-BODY:ROUTINE COMP-BODY:EQ or
+   kind COMP-BODY:GETTER COMP-BODY:EQ or
+   kind COMP-BODY:SETTER COMP-BODY:EQ or
+   kind COMP-BODY:BYTES COMP-BODY:EQ or ;
 
 \ A getter's view is on top, its base under its bound: it pushes the field
 \ FID's cells, lowest first, from the base plus the field's offset.
@@ -2429,7 +2429,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 : COMPILE ( ^u8 n -- )
    IDLE-CK
    STAGE-UNIT
-   COMP-BODY:compiled BODY-KIND !
+   COMP-BODY:COMPILED BODY-KIND !
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}
    0 M-OPEN !

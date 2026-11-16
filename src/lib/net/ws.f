@@ -384,7 +384,7 @@ RUN-IDLE RUN !
 : HEADER-OUT ( n opcode n -- ) {: idx:n op u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx HEAD-CAP u + ROOM
-   true op u 0 WS-HEADER:MAKE WS-SENDER:server idx OUT @ idx OUT-U @ SPAN:SKIP ENCODE-HEADER
+   true op u 0 WS-HEADER:MAKE WS-SENDER:SERVER idx OUT @ idx OUT-U @ SPAN:SKIP ENCODE-HEADER
    idx OUT-U +! ;
 
 
@@ -396,7 +396,7 @@ RUN-IDLE RUN !
 : CLOSE-OUT ( n n -- ) {: idx:n code:n :}
    code STATUS-LOST = if exit then
    code STATUS-NONE = if 0 else CODE-BYTES then {: u:n :}
-   idx WS-OPCODE:close u HEADER-OUT
+   idx WS-OPCODE:CLOSE u HEADER-OUT
    u 0= if exit then
    code >CLOSE-CODE idx OUT @ idx OUT-U @ SPAN:SKIP CLOSE-CODE!
    u idx OUT-U +! ;
@@ -573,7 +573,7 @@ RUN-IDLE RUN !
    idx QUIET-DUE PASSED? 0= if exit then
    idx OVERFLOW? if exit then
    idx QUEUED {: before:n :}
-   idx WS-OPCODE:ping 0 HEADER-OUT
+   idx WS-OPCODE:PING 0 HEADER-OUT
    before 0 > if idx QUEUED else 0 then PING-AHEAD idx PINGED ! ;
 
 
@@ -771,7 +771,7 @@ RUN-IDLE RUN !
 : FINISH ( n -- ) {: idx:n :}
    idx DISARM
    idx LINK @ TCP4:CLOSE drop
-   idx idx STATUS @ WS-MESSAGE:closed HAND-OFF ;
+   idx idx STATUS @ WS-MESSAGE:CLOSED HAND-OFF ;
 
 
 \ A handing slot is finished once its call ends.
@@ -818,7 +818,7 @@ RUN-IDLE RUN !
 
 \ The codec throws what breaks the protocol, so this runs under a catch.
 : DECODE-HELD ( n -- n ) {: idx:n :}
-   idx HEAD-BUF SPAN:$ drop idx HEAD-U @ WS-SENDER:client MESSAGE-MAX DECODE-HEADER
+   idx HEAD-BUF SPAN:$ drop idx HEAD-U @ WS-SENDER:CLIENT MESSAGE-MAX DECODE-HEADER
    MATCH decoded
       need OF idx HEAD-WANT ! ENDOF
       frame OF idx KEEP-FRAME ENDOF
@@ -899,12 +899,12 @@ RUN-IDLE RUN !
 
 
 : TEXT? ( n -- bool )
-   WS-OPCODE:text OPCODE>WIRE = ;
+   WS-OPCODE:TEXT OPCODE>WIRE = ;
 
 
 : DELIVER ( n -- ) {: idx:n :}
    idx MESSAGE$ {: a u:n :}
-   idx MSG-WIRE @ TEXT? if a u WS-MESSAGE:text else a u WS-MESSAGE:binary then {: msg :}
+   idx MSG-WIRE @ TEXT? if a u WS-MESSAGE:TEXT else a u WS-MESSAGE:BINARY then {: msg :}
    0 idx MSG-U !
    0 idx MSG-WIRE !
    idx msg HAND-OFF ;
@@ -922,7 +922,7 @@ RUN-IDLE RUN !
 
 
 : PING-IN ( n -- ) {: idx:n :}
-   idx HANDLE WS-OPCODE:pong OPCODE>WIRE idx CONTROL-BUF idx F-LEN @ SPAN:TAKE SPAN:$
+   idx HANDLE WS-OPCODE:PONG OPCODE>WIRE idx CONTROL-BUF idx F-LEN @ SPAN:TAKE SPAN:$
    LOCK TASK:GET
    [: SHIP ;] [: UNLOCK ;] finally drop ;
 
@@ -1308,16 +1308,16 @@ ENUM course
 : REFUSE ( HTTP:response n -- accepted ) {: answer:HTTP:response status:n :}
    status 503 = if
       answer 503 s" websocket_unavailable" s" this server has no room for another WebSocket" HTTP:ERROR!
-      503 WS-ACCEPTED:refused exit
+      503 WS-ACCEPTED:REFUSED exit
    then
    status 426 = if
       answer s" Upgrade" s" websocket" HTTP:HEADER!
       answer s" Sec-WebSocket-Version" s" 13" HTTP:HEADER!
       answer 426 s" upgrade_required" s" this server speaks WebSocket version 13" HTTP:ERROR!
-      426 WS-ACCEPTED:refused exit
+      426 WS-ACCEPTED:REFUSED exit
    then
    answer 400 s" bad_handshake" s" the request is not a WebSocket opening handshake" HTTP:ERROR!
-   400 WS-ACCEPTED:refused ;
+   400 WS-ACCEPTED:REFUSED ;
 
 
 : GUID$ ( -- ^u8 n )
@@ -1418,7 +1418,7 @@ ENUM course
 : OPEN-CALL ( [ socket n message -- ] n n -- n ) {: q arg:n idx:n :}
    q idx HANDLER !
    arg idx HANDLER-ARG !
-   WS-MESSAGE:opened idx PENDING !
+   WS-MESSAGE:OPENED idx PENDING !
    DELIVERY-QUEUED idx DELIVERY !
    idx [: QUEUE-HAND ;] catch {: code:n :} drop
    code 0= if 0 exit then
@@ -1443,7 +1443,7 @@ ENUM course
    err 0 <> if idx GIVE-BACK err throw then
    gone if idx GIVE-BACK answer 503 REFUSE exit then
    POKE
-   h >SOCKET WS-ACCEPTED:open ;
+   h >SOCKET WS-ACCEPTED:OPEN ;
 
 
 : PIPE-OPEN ( -- )
@@ -1679,11 +1679,11 @@ public
 \ E-WS-TEXT before anything is queued (section 5.6).
 : SEND-TEXT ( socket ^u8 n -- ) {: sock a u:n :}
    a u UTF8:VALID? 0= if E-WS-TEXT throw then
-   sock SOCKET>N WS-OPCODE:text OPCODE>WIRE a u SEND ;
+   sock SOCKET>N WS-OPCODE:TEXT OPCODE>WIRE a u SEND ;
 
 
 : SEND-BINARY ( socket ^u8 n -- ) {: sock a u:n :}
-   sock SOCKET>N WS-OPCODE:binary OPCODE>WIRE a u SEND ;
+   sock SOCKET>N WS-OPCODE:BINARY OPCODE>WIRE a u SEND ;
 
 
 \ Starts the closing handshake under that status, from any task: the close

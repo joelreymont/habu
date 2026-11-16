@@ -1111,7 +1111,7 @@ variable OPEN-N
    s" timeout input" IN+
    s" timeout stdout" dup OUT-LEN ! OUT-SPAN SPAN:COPY
    s" timeout stderr" dup ERR-LEN ! ERR-SPAN SPAN:COPY
-   PROCESS-ENDING:timeout 0 EXITED ;
+   PROCESS-ENDING:TIMEOUT 0 EXITED ;
 
 : TEST-EXIT-TIMEOUT ( -- )
    s" LSP timeout reports the conversation and both streams" T-LABEL
@@ -1270,7 +1270,7 @@ variable OPEN-N
    code 0= if pid PROCESS:WAIT PROCESS:STATUS>ENDING exit then
    pid KILLED drop
    code E-PROC-TIMEOUT <> if code throw then
-   PROCESS-ENDING:timeout ;
+   PROCESS-ENDING:TIMEOUT ;
 
 : FIRST-BYTE ( fd fd n -- )
    {: in-w:fd out-r:fd deadline:n :}
@@ -3068,10 +3068,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    AIO-PATH TREE$ AIO-PATH CHECKS
    AIO-PATH s" verified" COMPLETED
    AIO-PATH 1 EXPECT PUBLISHES
-   s" 3" AIO-PATH s"    res 0 >= if res AIO-OUTCOME:ready" PATH-LINE 32 DEFINITION-ASK
-   s" 4" AIO-PATH s"    r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:timed-out" PATH-LINE 42 DEFINITION-ASK
-   s" 5" AIO-PATH s"    res ERR-CANCELED negate = if AIO-OUTCOME:cancelled" PATH-LINE 45 DEFINITION-ASK
-   s" 6" AIO-PATH s"    res negate AIO-OUTCOME:refused" PATH-LINE 27 DEFINITION-ASK
+   s" 3" AIO-PATH s"    res 0 >= if res AIO-OUTCOME:READY" PATH-LINE 32 DEFINITION-ASK
+   s" 4" AIO-PATH s"    r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:TIMED-OUT" PATH-LINE 42 DEFINITION-ASK
+   s" 5" AIO-PATH s"    res ERR-CANCELED negate = if AIO-OUTCOME:CANCELLED" PATH-LINE 45 DEFINITION-ASK
+   s" 6" AIO-PATH s"    res negate AIO-OUTCOME:REFUSED" PATH-LINE 27 DEFINITION-ASK
    s" 7" AIO-PATH s"    f FD>N events timeout MS>N HOST-POLL" PATH-LINE 5 DEFINITION-ASK
    s" 8" AIO-PATH s"    f FD>N events timeout MS>N HOST-POLL" PATH-LINE 25 DEFINITION-ASK
    s" 9" AIO-PATH s"    timeout MS>N HOST-TIMEOUT" PATH-LINE 11 DEFINITION-ASK
@@ -3112,7 +3112,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ declaration and call while leaving that arm spelling behind.
 : CHOICE-PATH ( -- ^u8 n )  s" sumtype-rename.f" FIXTURE ;
 : CHOICE-TEXT ( -- ^u8 n )
-   s\" SUMTYPE choice\n  VARIANT red ;VARIANT\n  VARIANT blue ;VARIANT\n;SUMTYPE\n: PICK ( -- choice ) CHOICE:red ;\n: PICK-CODE ( choice -- n ) MATCH choice red OF 1 ENDOF blue OF 2 ENDOF ;MATCH ;\n" ;
+   s\" SUMTYPE choice\n  VARIANT red ;VARIANT\n  VARIANT blue ;VARIANT\n;SUMTYPE\n: PICK ( -- choice ) CHOICE:RED ;\n: PICK-CODE ( choice -- n ) MATCH choice red OF 1 ENDOF blue OF 2 ENDOF ;MATCH ;\n" ;
 
 : VARIANT-DEF-PATH ( -- ^u8 n )  s" variant-definer-rename.f" FIXTURE ;
 : VARIANT-DEF-TEXT ( -- ^u8 n )

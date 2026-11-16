@@ -424,7 +424,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    DIAL -rot UPGRADE-OVER ;
 
 : FRAME$ ( bool WS:opcode ^u8 n -- ^u8 n ) {: fin:bool op a u:n :}
-   fin op u MASK-KEY WS-HEADER:MAKE WS-SENDER:client CLIENT-TX WS:ENCODE-HEADER {: size:n :}
+   fin op u MASK-KEY WS-HEADER:MAKE WS-SENDER:CLIENT CLIENT-TX WS:ENCODE-HEADER {: size:n :}
    a u CLIENT-TX size SPAN:SKIP SPAN:COPY
    MASK-KEY CLIENT-TX size u SPAN:SUB WS:MASK
    CLIENT-TX size u + SPAN:TAKE SPAN:$ ;
@@ -465,7 +465,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ True once the bytes held are a whole header; until then the count it needs.
 : HEADER? ( n -- n bool ) {: held:n :}
-   RX-HEAD SPAN:$ drop held WS-SENDER:server BUF-CAP WS:DECODE-HEADER
+   RX-HEAD SPAN:$ drop held WS-SENDER:SERVER BUF-CAP WS:DECODE-HEADER
    MATCH WS:decoded
       need OF false ENDOF
       frame OF KEEP-HEADER held swap ENDOF
@@ -509,7 +509,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    RX$ want wu T$= ;
 
 : GOT-CLOSE ( n -- ) {: code:n :}
-   WS-OPCODE:close code STATUS$ GOT ;
+   WS-OPCODE:CLOSE code STATUS$ GOT ;
 
 : GOT-END ( -- )
    RX-EOF @ 1 T= ;
@@ -524,7 +524,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn HEAR op a u GOT ;
 
 : FAREWELL ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   conn true WS-OPCODE:close 1000 STATUS$ SAY
+   conn true WS-OPCODE:CLOSE 1000 STATUS$ SAY
    conn HEAR 1000 GOT-CLOSE
    conn ENDS ;
 
@@ -882,16 +882,16 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    S\" \r\n" REQ+
    REQ-SEND OPENED drop {: conn:TCP4:connection :}
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
-   conn WS-OPCODE:text s" ok" EXCHANGE
+   conn WS-OPCODE:TEXT s" ok" EXCHANGE
    conn FAREWELL ;
 
 : ECHO-CASE ( -- )
    s" text and binary reach the handler" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn WS-OPCODE:text s" hello" EXCHANGE
-   conn WS-OPCODE:text s" hello" drop 0 EXCHANGE
-   conn WS-OPCODE:text s" 68c3a96c6c6f20e282ac" BYTES EXCHANGE
-   conn WS-OPCODE:binary 5 PATTERN$ EXCHANGE
+   conn WS-OPCODE:TEXT s" hello" EXCHANGE
+   conn WS-OPCODE:TEXT s" hello" drop 0 EXCHANGE
+   conn WS-OPCODE:TEXT s" 68c3a96c6c6f20e282ac" BYTES EXCHANGE
+   conn WS-OPCODE:BINARY 5 PATTERN$ EXCHANGE
    conn FAREWELL
    sock 1000 CLOSES-WITHIN ;
 
@@ -901,8 +901,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" text the server may not send" SECTION
    0 BAD-TEXT atomic!
    OPENS drop {: conn:TCP4:connection :}
-   conn true WS-OPCODE:text s" badtext" SAY
-   conn WS-OPCODE:text s" ok" EXCHANGE
+   conn true WS-OPCODE:TEXT s" badtext" SAY
+   conn WS-OPCODE:TEXT s" ok" EXCHANGE
    conn FAREWELL
    s" text that is not UTF-8 is refused" T-LABEL
    BAD-TEXT atomic@ E-WS-TEXT T= ;
@@ -912,11 +912,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : LENGTH-CASES ( -- )
    s" echo binary in each length form" SECTION
    OPENS drop {: conn:TCP4:connection :}
-   conn WS-OPCODE:binary 125 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 126 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 65535 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 65536 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary BIG PATTERN$ EXCHANGE
+   conn WS-OPCODE:BINARY 125 PATTERN$ EXCHANGE
+   conn WS-OPCODE:BINARY 126 PATTERN$ EXCHANGE
+   conn WS-OPCODE:BINARY 65535 PATTERN$ EXCHANGE
+   conn WS-OPCODE:BINARY 65536 PATTERN$ EXCHANGE
+   conn WS-OPCODE:BINARY BIG PATTERN$ EXCHANGE
    conn FAREWELL ;
 
 \ A message in fragments comes back as one frame: control frames pass between
@@ -924,21 +924,21 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : FRAGMENT-CASES ( -- )
    s" fragments" SECTION
    OPENS drop {: conn:TCP4:connection :}
-   conn false WS-OPCODE:text s" Hel" SAY
-   conn false WS-OPCODE:continuation s" lo," SAY
-   conn true WS-OPCODE:continuation s"  world" SAY
-   conn HEAR WS-OPCODE:text s" Hello, world" GOT
-   conn false WS-OPCODE:binary s" 0102" BYTES SAY
-   conn true WS-OPCODE:ping s" !" SAY
-   conn HEAR WS-OPCODE:pong s" !" GOT
-   conn true WS-OPCODE:continuation s" 0304" BYTES SAY
-   conn HEAR WS-OPCODE:binary s" 01020304" BYTES GOT
-   conn false WS-OPCODE:text s" c3" BYTES SAY
-   conn true WS-OPCODE:continuation s" a9" BYTES SAY
-   conn HEAR WS-OPCODE:text s" c3a9" BYTES GOT
-   conn false WS-OPCODE:text s" hi" SAY
-   conn true WS-OPCODE:continuation s" hi" drop 0 SAY
-   conn HEAR WS-OPCODE:text s" hi" GOT
+   conn false WS-OPCODE:TEXT s" Hel" SAY
+   conn false WS-OPCODE:CONTINUATION s" lo," SAY
+   conn true WS-OPCODE:CONTINUATION s"  world" SAY
+   conn HEAR WS-OPCODE:TEXT s" Hello, world" GOT
+   conn false WS-OPCODE:BINARY s" 0102" BYTES SAY
+   conn true WS-OPCODE:PING s" !" SAY
+   conn HEAR WS-OPCODE:PONG s" !" GOT
+   conn true WS-OPCODE:CONTINUATION s" 0304" BYTES SAY
+   conn HEAR WS-OPCODE:BINARY s" 01020304" BYTES GOT
+   conn false WS-OPCODE:TEXT s" c3" BYTES SAY
+   conn true WS-OPCODE:CONTINUATION s" a9" BYTES SAY
+   conn HEAR WS-OPCODE:TEXT s" c3a9" BYTES GOT
+   conn false WS-OPCODE:TEXT s" hi" SAY
+   conn true WS-OPCODE:CONTINUATION s" hi" drop 0 SAY
+   conn HEAR WS-OPCODE:TEXT s" hi" GOT
    conn FAREWELL ;
 
 \ A ping is answered with its own payload, to the 125 bytes a control frame may
@@ -946,14 +946,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : PING-CASES ( -- )
    s" ping and pong" SECTION
    OPENS drop {: conn:TCP4:connection :}
-   conn true WS-OPCODE:ping s" hb" SAY
-   conn HEAR WS-OPCODE:pong s" hb" GOT
-   conn true WS-OPCODE:ping s" hb" drop 0 SAY
-   conn HEAR WS-OPCODE:pong s" hb" drop 0 GOT
-   conn true WS-OPCODE:ping 125 PATTERN$ SAY
-   conn HEAR WS-OPCODE:pong 125 PATTERN$ GOT
-   conn true WS-OPCODE:pong s" x" SAY
-   conn WS-OPCODE:text s" ok" EXCHANGE
+   conn true WS-OPCODE:PING s" hb" SAY
+   conn HEAR WS-OPCODE:PONG s" hb" GOT
+   conn true WS-OPCODE:PING s" hb" drop 0 SAY
+   conn HEAR WS-OPCODE:PONG s" hb" drop 0 GOT
+   conn true WS-OPCODE:PING 125 PATTERN$ SAY
+   conn HEAR WS-OPCODE:PONG 125 PATTERN$ GOT
+   conn true WS-OPCODE:PONG s" x" SAY
+   conn WS-OPCODE:TEXT s" ok" EXCHANGE
    conn FAREWELL ;
 
 \ A client that does not wait for the 101: the first AT bytes of its frame ride
@@ -961,13 +961,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ writes the rest once the 101 is in.
 : EARLY ( ^u8 n n -- ) {: a u:n at:n :}
    s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
-   s" > " true WS-OPCODE:text a u LOG-FRAME
-   true WS-OPCODE:text a u FRAME$ {: f fu:n :}
+   s" > " true WS-OPCODE:TEXT a u LOG-FRAME
+   true WS-OPCODE:TEXT a u FRAME$ {: f fu:n :}
    f at REQ+
    REQ-SEND OPENED drop {: conn:TCP4:connection :}
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
    at fu < if conn f at + fu at - SEND-RAW then
-   conn HEAR WS-OPCODE:text a u GOT
+   conn HEAR WS-OPCODE:TEXT a u GOT
    conn FAREWELL ;
 
 6 constant SHORT-HEAD              \ a masked header under 126 payload bytes: 2 bytes and the mask key
@@ -998,10 +998,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" opened comes first, with the route's value" SECTION
    0 CALLS-N atomic!
    s" GET" s" /seven" REQ-START GOOD-LINES S\" \r\n" REQ+
-   s" > " true WS-OPCODE:text s" first" LOG-FRAME
-   true WS-OPCODE:text s" first" FRAME$ REQ+
+   s" > " true WS-OPCODE:TEXT s" first" LOG-FRAME
+   true WS-OPCODE:TEXT s" first" FRAME$ REQ+
    REQ-SEND OPENED {: conn:TCP4:connection sock:WS:socket :}
-   conn HEAR WS-OPCODE:text s" first" GOT
+   conn HEAR WS-OPCODE:TEXT s" first" GOT
    conn FAREWELL
    sock 1000 CLOSES-WITHIN
    LOG-CALLS ;
@@ -1027,21 +1027,21 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a continuation of nothing" s" 808037fa213d" 1002 BREAKS
    s" a new message inside another" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn false WS-OPCODE:text s" a" SAY
-   conn true WS-OPCODE:text s" b" SAY
+   conn false WS-OPCODE:TEXT s" a" SAY
+   conn true WS-OPCODE:TEXT s" b" SAY
    conn sock 1002 FAILED
    s" text that is not UTF-8" SECTION
    OPENS {: bad:TCP4:connection bad-sock:WS:socket :}
-   bad true WS-OPCODE:text s" c328" BYTES SAY
+   bad true WS-OPCODE:TEXT s" c328" BYTES SAY
    bad bad-sock 1007 FAILED
    s" fragments that are not UTF-8 together" SECTION
    OPENS {: split:TCP4:connection split-sock:WS:socket :}
-   split false WS-OPCODE:text s" c3" BYTES SAY
-   split true WS-OPCODE:continuation s" 28" BYTES SAY
+   split false WS-OPCODE:TEXT s" c3" BYTES SAY
+   split true WS-OPCODE:CONTINUATION s" 28" BYTES SAY
    split split-sock 1007 FAILED
    s" fragments one byte past the bound" SECTION
    OPENS {: long:TCP4:connection long-sock:WS:socket :}
-   long false WS-OPCODE:binary BIG PATTERN$ SAY
+   long false WS-OPCODE:BINARY BIG PATTERN$ SAY
    long s" 80ff00000000000eee9137fa213d" SAY-RAW
    long long-sock 1009 FAILED ;
 
@@ -1057,7 +1057,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    sock LOST CLOSES-WITHIN
    s" fragments of exactly the bound" SECTION
    OPENS {: long:TCP4:connection long-sock:WS:socket :}
-   long false WS-OPCODE:binary BIG PATTERN$ SAY
+   long false WS-OPCODE:BINARY BIG PATTERN$ SAY
    long s" 80ff00000000000eee9037fa213d" SAY-RAW
    long TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    long ENDS
@@ -1068,7 +1068,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ server closed under.
 : CLOSES-WITH ( n n -- ) {: code:n answer:n :}
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:close code STATUS$ SAY
+   conn true WS-OPCODE:CLOSE code STATUS$ SAY
    conn sock answer FAILED ;
 
 : CLOSE-STATUS-CASES ( -- )
@@ -1091,21 +1091,21 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : CLOSE-CASES ( -- )
    s" a close with no status" SECTION
    OPENS {: bare:TCP4:connection bare-sock:WS:socket :}
-   bare true WS-OPCODE:close s" x" drop 0 SAY
-   bare HEAR WS-OPCODE:close s" x" drop 0 GOT
+   bare true WS-OPCODE:CLOSE s" x" drop 0 SAY
+   bare HEAR WS-OPCODE:CLOSE s" x" drop 0 GOT
    bare ENDS
    bare-sock 1005 CLOSES-WITHIN
    s" a close with a reason" SECTION
    OPENS {: reason:TCP4:connection reason-sock:WS:socket :}
-   reason true WS-OPCODE:close s" 03e9627965" BYTES SAY
+   reason true WS-OPCODE:CLOSE s" 03e9627965" BYTES SAY
    reason reason-sock 1001 FAILED
    s" a close with half a status" SECTION
    OPENS {: half:TCP4:connection half-sock:WS:socket :}
-   half true WS-OPCODE:close s" 03" BYTES SAY
+   half true WS-OPCODE:CLOSE s" 03" BYTES SAY
    half half-sock 1002 FAILED
    s" a close whose reason is not UTF-8" SECTION
    OPENS {: garbled:TCP4:connection garbled-sock:WS:socket :}
-   garbled true WS-OPCODE:close s" 03e8c328" BYTES SAY
+   garbled true WS-OPCODE:CLOSE s" 03e8c328" BYTES SAY
    garbled garbled-sock 1007 FAILED ;
 
 \ The handler closes first: a ping the client sends before it answers the close
@@ -1114,11 +1114,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" the server closes first" SECTION
    0 BAD-CODE atomic! 0 LATE-SEND atomic!
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:text s" go" SAY
+   conn true WS-OPCODE:TEXT s" go" SAY
    conn HEAR 1000 GOT-CLOSE
-   conn true WS-OPCODE:ping s" x" SAY
-   conn HEAR WS-OPCODE:pong s" x" GOT
-   conn true WS-OPCODE:close 1000 STATUS$ SAY
+   conn true WS-OPCODE:PING s" x" SAY
+   conn HEAR WS-OPCODE:PONG s" x" GOT
+   conn true WS-OPCODE:CLOSE 1000 STATUS$ SAY
    conn ENDS
    s" the handler saw the client's close" T-LABEL
    sock 1000 CLOSES-WITHIN
@@ -1142,7 +1142,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" one request accepted twice" SECTION
    0 SECOND-ACCEPT !
    s" /twice" UPGRADE OPENED {: conn:TCP4:connection sock:WS:socket :}
-   conn WS-OPCODE:text s" still here" EXCHANGE
+   conn WS-OPCODE:TEXT s" still here" EXCHANGE
    SECOND-ACCEPT @ HTTP:E-STATE T=
    conn FAREWELL
    sock 1000 CLOSES-WITHIN
@@ -1203,7 +1203,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : THROWING ( -- )
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    sock FAULT-LINE
-   conn true WS-OPCODE:text s" throw" SAY
+   conn true WS-OPCODE:TEXT s" throw" SAY
    conn sock 1011 FAILED
    s" a `closed` handler that throws" T-LABEL
    OPENS {: gone:TCP4:connection gone-sock:WS:socket :}
@@ -1234,7 +1234,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    HTTP:MAX-WORKERS 1+ {: n:n :}
    n 0 ?do OPENS drop i CONNS ! loop
    PLAIN-ONCE PLAIN-ONCE
-   n 0 ?do i CONNS @ WS-OPCODE:text s" each" EXCHANGE loop
+   n 0 ?do i CONNS @ WS-OPCODE:TEXT s" each" EXCHANGE loop
    n 0 ?do i CONNS @ FAREWELL loop ;
 
 \ A handler that blocks holds its own socket alone: another socket is answered
@@ -1247,17 +1247,17 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 BLOCKING atomic!
    0 FIRST-DONE atomic!
    -1 NEXT-SAW atomic!
-   a true WS-OPCODE:text s" wait" SAY
+   a true WS-OPCODE:TEXT s" wait" SAY
    [: BLOCKING atomic@ ;] AWAITED drop
-   a true WS-OPCODE:text s" next" SAY
-   b WS-OPCODE:text s" hi" EXCHANGE
+   a true WS-OPCODE:TEXT s" next" SAY
+   b WS-OPCODE:TEXT s" hi" EXCHANGE
    s" and while the other socket's handler blocks" T-LABEL
    BLOCKING atomic@ 1 T=
    FIRST-DONE atomic@ 0 T=
    BLOCKING atomic@ 0 <> if s" < answered while the other handler blocks" LOG-LINE then
    RELEASED TASK:SIGNAL-SEM
-   a HEAR WS-OPCODE:text s" waited" GOT
-   a HEAR WS-OPCODE:text s" next" GOT
+   a HEAR WS-OPCODE:TEXT s" waited" GOT
+   a HEAR WS-OPCODE:TEXT s" next" GOT
    s" and the message behind it only once that call returned" T-LABEL
    NEXT-SAW atomic@ 1 T=
    NEXT-SAW atomic@ 1 = if s" < next handled after wait returned" LOG-LINE then
@@ -1268,7 +1268,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a push from another task" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    sock s" pushed" WS:SEND-TEXT
-   conn HEAR WS-OPCODE:text s" pushed" GOT
+   conn HEAR WS-OPCODE:TEXT s" pushed" GOT
    conn FAREWELL ;
 
 : PUSH-ONE ( ^u8 n -- ^u8 n ) {: a u:n :}
@@ -1303,7 +1303,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" two tasks sending at once" SECTION
    0 PUSHED-N ! 0 HANDLER-N ! 0 TORN !
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:text s" blast" SAY
+   conn true WS-OPCODE:TEXT s" blast" SAY
    BLAST-N 0 ?do sock PUSH-BUF SPAN:$ WS:SEND-BINARY loop
    BLAST-N 2 * 0 ?do conn NEXT-FRAME TALLY loop
    s" every frame of both tasks arrived whole" T-LABEL
@@ -1315,7 +1315,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL ;
 
 : VOLLEY-FILL ( -- )
-   true WS-OPCODE:ping PATTERN SPAN:$ drop 0 FRAME$ {: fa fu:n :}
+   true WS-OPCODE:PING PATTERN SPAN:$ drop 0 FRAME$ {: fa fu:n :}
    BURST-PINGS 0 ?do fa fu VOLLEY-BUF i fu * SPAN:SKIP SPAN:COPY loop ;
 
 : PONG-IN ( -- )
@@ -1344,13 +1344,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    held FAREWELL
    gone 1000 CLOSES-WITHIN
    OPENS drop {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" mine" EXCHANGE
+   conn WS-OPCODE:TEXT s" mine" EXCHANGE
    gone 0 PUSHED-TO !
    s" a send through it is refused" T-LABEL
    [: s" late" PUSH-ONE 2drop ;] E-WS-CLOSED TTHROWSQ
    s" and a close through it is nothing new" T-LABEL
    gone 1000 WS:CLOSE
-   conn WS-OPCODE:text s" only mine" EXCHANGE
+   conn WS-OPCODE:TEXT s" only mine" EXCHANGE
    conn FAREWELL ;
 
 : UNREAD-N ( TCP4:connection -- n )
@@ -1383,12 +1383,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    DIAL-SMALL OPENS-OVER {: still:TCP4:connection stuck:WS:socket :}
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    stuck STALL-PUSH PUSH-BYTES / PUSHES 0 T=
-   conn WS-OPCODE:text s" meanwhile" EXCHANGE
+   conn WS-OPCODE:TEXT s" meanwhile" EXCHANGE
    stuck 0 WATCH !
    WATCHED 0 T=
    still stuck STALL-CLOSES
    s" the other socket still talks and closes" T-LABEL
-   conn WS-OPCODE:text s" after" EXCHANGE
+   conn WS-OPCODE:TEXT s" after" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
 
@@ -1402,7 +1402,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    sock LOST CLOSES-WITHIN
    s" lost within its quiet bound" T-LABEL
    mono-ns began - WS-TEST:SILENT-MS GRACE-MS + NS-PER-MS * < TTRUE
-   conn HEAR WS-OPCODE:ping s" " GOT
+   conn HEAR WS-OPCODE:PING s" " GOT
    conn ENDS ;
 
 : OVERFLOW-CASE ( -- )
@@ -1411,7 +1411,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    stuck FLOOD-PUSH PUSH-BYTES / PUSHES E-WS-CLOSED T=
    stuck LOST CLOSES-WITHIN
-   conn WS-OPCODE:text s" unhindered" EXCHANGE
+   conn WS-OPCODE:TEXT s" unhindered" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
 
@@ -1427,7 +1427,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    REFUSED-WITH @ 503 T=
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U !
-   CROWD 1- CONNS @ WS-OPCODE:text s" last" EXCHANGE
+   CROWD 1- CONNS @ WS-OPCODE:TEXT s" last" EXCHANGE
    CLOSE-ALL ;
 
 \ WS:STOP sends 1001 to an open socket, tells its handler, and returns within
@@ -1492,11 +1492,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    CROWD WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    OPENS drop {: other:TCP4:connection :}
-   conn true WS-OPCODE:text s" bye" SAY
+   conn true WS-OPCODE:TEXT s" bye" SAY
    conn HEAR 4000 GOT-CLOSE
    [: WS:STOP 0 TASK:RETURN ;] STOP-TASK TASK:ACTIVATE
    other HEAR 1001 GOT-CLOSE
-   conn true WS-OPCODE:close 4000 STATUS$ SAY
+   conn true WS-OPCODE:CLOSE 4000 STATUS$ SAY
    conn ENDS
    other ENDS
    TASK-CODE 0 T=
@@ -1599,7 +1599,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    -1 HANDLER-STOP atomic!
    2 WS:START
    OPENS drop {: conn:TCP4:connection :}
-   conn true WS-OPCODE:text s" stop" SAY
+   conn true WS-OPCODE:TEXT s" stop" SAY
    conn HEAR 1001 GOT-CLOSE
    conn ENDS
    s" a handler's stop returns" T-LABEL
@@ -1616,7 +1616,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 HOLDING atomic!
    2 WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:text s" hold" SAY
+   conn true WS-OPCODE:TEXT s" hold" SAY
    [: HOLDING atomic@ ;] AWAITED drop
    mono-ns {: began:n :}
    WS:STOP
@@ -1651,7 +1651,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 PROBE-END atomic!
    2 WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   conn true WS-OPCODE:text s" brief" SAY
+   conn true WS-OPCODE:TEXT s" brief" SAY
    [: PROBING atomic@ ;] AWAITED drop
    mono-ns {: began:n :}
    [: WS:STOP 0 TASK:RETURN ;] STOP-TASK TASK:ACTIVATE

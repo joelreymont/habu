@@ -7,8 +7,10 @@ when this runs out.
 
 ## 1 Names and packages
 
-Our words UPPER-CASE, built-ins as-is (`dup`, `?do`). Hyphens, never
-underscores, in word *and* file names. Predicates end `?`, conversions are
+Our words UPPER-CASE, generated words too (`TCP4-READ--RESULT:DATA`), built-ins
+as-is (`dup`, `?do`). Lowercase is for keywords (`public`, `construct`) and for
+type, field and variant names (`( -- TCP4:read-result )`, `data OF`). Hyphens,
+never underscores, in word *and* file names. Predicates end `?`, conversions are
 `>X`, fetch/store `X@` / `X!`, scope pairs are `FOO … ;FOO`. `$hex` for
 machine-adjacent numbers. Every module is a package, named for its subject as
 it is commonly called or by a short form of its words (`NUMFMT`, OOXML's

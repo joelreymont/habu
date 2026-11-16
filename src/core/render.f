@@ -1001,7 +1001,7 @@ variable MDV-I   variable MDV-F
       MD-CON-VAR      of s" write a variant the family declares, spelled as its declaration spells it" endof
       MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, one a `using` imports, or `PKG:family`" endof
       MD-FAM-AMBIG    of s" qualify the family as `PKG:family` with the package you mean" endof
-      MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:variant`" endof
+      MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:VARIANT`" endof
       MD-FAM-KIND     of s" name a `SUMTYPE` or `ENUM` family after `MATCH`" endof
       MD-CON-KIND     of s" name a `SUMTYPE` or `ENUM` family after `construct`" endof
       MD-SCRUT        of s" push the family's value so it is on top of the stack at `MATCH`" endof

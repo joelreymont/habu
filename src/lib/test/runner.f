@@ -150,9 +150,9 @@ variable GT-TAIL-U
    ;MATCH ;
 
 : GT-OUTCOME@ ( -- PROCESS:ending )
-   GT-TIMED-OUT @ if PROCESS-ENDING:timeout exit then
-   GT-EXITED @ if GT-CODE @ PROCESS-ENDING:exited exit then
-   GT-CODE @ PROCESS-ENDING:signaled ;
+   GT-TIMED-OUT @ if PROCESS-ENDING:TIMEOUT exit then
+   GT-EXITED @ if GT-CODE @ PROCESS-ENDING:EXITED exit then
+   GT-CODE @ PROCESS-ENDING:SIGNALED ;
 
 : GT-STORE-RUN ( len len PROCESS:ending -- )
    GT-OUTCOME!

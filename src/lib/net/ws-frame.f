@@ -71,12 +71,12 @@ $FFFFFFFF constant KEY-MAX
 
 
 : WIRE>OPCODE ( n -- opcode ) {: w:n :}
-   w $0 = if WS-OPCODE:continuation exit then
-   w $1 = if WS-OPCODE:text exit then
-   w $2 = if WS-OPCODE:binary exit then
-   w $8 = if WS-OPCODE:close exit then
-   w $9 = if WS-OPCODE:ping exit then
-   w $A = if WS-OPCODE:pong exit then
+   w $0 = if WS-OPCODE:CONTINUATION exit then
+   w $1 = if WS-OPCODE:TEXT exit then
+   w $2 = if WS-OPCODE:BINARY exit then
+   w $8 = if WS-OPCODE:CLOSE exit then
+   w $9 = if WS-OPCODE:PING exit then
+   w $A = if WS-OPCODE:PONG exit then
    E-WS-OPCODE throw ;
 
 
@@ -174,19 +174,19 @@ public
 \ 5.2's MUST), and a payload past the bound E-WS-TOO-BIG.
 : DECODE-HEADER ( ^u8 n sender n -- decoded ) {: p held:n who max:n :}
    held 0 < if E-SPAN-LENGTH throw then
-   held 1 < if 2 WS-DECODED:need exit then
+   held 1 < if 2 WS-DECODED:NEED exit then
    p c@ FIRST-BYTE {: fin:bool op :}
-   held 2 < if 2 WS-DECODED:need exit then
+   held 2 < if 2 WS-DECODED:NEED exit then
    p 1+ c@ who op SECOND-BYTE {: masked:bool len7:n :}
    len7 EXT-OF {: ext:n :}
    2 ext + masked KEY-SIZE + {: size:n :}
-   held 2 ext + < if size WS-DECODED:need exit then
+   held 2 ext + < if size WS-DECODED:NEED exit then
    ext 0= if len7 else p 2 + ext BE@ then {: len:n :}
    len 0 < len EXT-BYTES ext <> or if E-WS-LENGTH throw then
    len max > if E-WS-TOO-BIG throw then
-   held size < if size WS-DECODED:need exit then
+   held size < if size WS-DECODED:NEED exit then
    fin op len p 2 + ext + masked KEY-SIZE BE@ WS-HEADER:MAKE
-   size WS-DECODED:frame ;
+   size WS-DECODED:FRAME ;
 
 
 \ XOR each payload byte in place with the key's byte at its offset mod 4, the

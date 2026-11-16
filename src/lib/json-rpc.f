@@ -83,7 +83,7 @@ STRUCTURE envelope
 : NO-ENVELOPE ( -- envelope )
    false NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER false ENVELOPE-MAKE ;
 
-: INVALID ( n ^u8 n id -- message )  JSON--RPC-MESSAGE:invalid ;
+: INVALID ( n ^u8 n id -- message )  JSON--RPC-MESSAGE:INVALID ;
 
 : NOT-JSON ( -- message )
    PARSE-ERROR s" a body that is not JSON" NULL-ID INVALID ;
@@ -166,8 +166,8 @@ STRUCTURE envelope
       INVALID-REQUEST s" params that are not an object or array" reply INVALID exit
    then
    pk CONTAINER? if p TEXT$ else s" " then {: pa:^ pu:n :}
-   i PRESENT? if reply m TEXT$ pa pu JSON--RPC-MESSAGE:request exit then
-   m TEXT$ pa pu JSON--RPC-MESSAGE:notification ;
+   i PRESENT? if reply m TEXT$ pa pu JSON--RPC-MESSAGE:REQUEST exit then
+   m TEXT$ pa pu JSON--RPC-MESSAGE:NOTIFICATION ;
 
 \ A message with no method: a result or an error answering its id.
 : ANSWER ( member member member bool -- message )
@@ -178,11 +178,11 @@ STRUCTURE envelope
    r PRESENT? x PRESENT? xor 0= if
       INVALID-REQUEST s" a response without exactly one of result and error" NULL-ID INVALID exit
    then
-   r PRESENT? if i >ID r TEXT$ JSON--RPC-MESSAGE:success exit then
+   r PRESENT? if i >ID r TEXT$ JSON--RPC-MESSAGE:SUCCESS exit then
    ok 0= if
       INVALID-REQUEST s" an error that is not an error object" NULL-ID INVALID exit
    then
-   i >ID x TEXT$ JSON--RPC-MESSAGE:failure ;
+   i >ID x TEXT$ JSON--RPC-MESSAGE:FAILURE ;
 
 : SORT ( envelope -- message )
    ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}

@@ -61,14 +61,14 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
 \ fgetxattr with no room answers the value's size instead of ERANGE.
 : GOT ( n n -- got )
    {: k:n cap:n :}
-   k cap > if XATTR-GOT:oversize exit then
-   k XATTR-GOT:value ;
+   k cap > if XATTR-GOT:OVERSIZE exit then
+   k XATTR-GOT:VALUE ;
 
 : GET-ERROR ( ^u8 n -- got )
    {: name:^ nu:n :}
    FFI:ERRNO {: e:n :}
-   e FS:ENODATA = if XATTR-GOT:absent exit then
-   e FS:ERANGE = if XATTR-GOT:oversize exit then
+   e FS:ENODATA = if XATTR-GOT:ABSENT exit then
+   e FS:ERANGE = if XATTR-GOT:OVERSIZE exit then
    e s" fgetxattr" name nu FAIL ;
 
 \ fsetxattr's answer: 0, or -1 with errno set.

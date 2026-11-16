@@ -186,19 +186,19 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
 : CONFIGURE ( handle baud -- open-result ) {: handle:handle baud:baud :}
-   handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:failed exit then
+   handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:FAILED exit then
    HB-TARGET-LINUX-KERNEL? if
-      SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:unsupported exit then
+      SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:UNSUPPORTED exit then
    then
    baud RAW!
    handle TERM SET-RAW 0 < if
-      LAST-ERROR handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:failed exit
+      LAST-ERROR handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:FAILED exit
    then
    handle TERM GET-RAW 0 < if
-      LAST-ERROR handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:failed exit
+      LAST-ERROR handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:FAILED exit
    then
-   baud RAW? if handle SERIAL-OPEN--RESULT:opened
-   else handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:unsupported then ;
+   baud RAW? if handle SERIAL-OPEN--RESULT:OPENED
+   else handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:UNSUPPORTED then ;
 
 
 \ No deadline is -1 ns, which no mono-ns reading is, and REMAINING answers -1 ms.
@@ -240,7 +240,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : TRANSFERRED ( n NUM:byte-len -- io-result ) {: actual:n capacity:NUM:byte-len :}
    actual 0 <= actual capacity BLEN>N > or if E-RESULT throw then
-   actual LENGTH SERIAL-IO--RESULT:transferred ;
+   actual LENGTH SERIAL-IO--RESULT:TRANSFERRED ;
 
 
 : CHECK-IO ( handle NUM:byte-len -- )
@@ -260,12 +260,12 @@ public
 \ closes. The caller uses CLOSE exactly once.
 : OPEN8N1 ( ^u8 n baud -- open-result ) {: path size:n baud:baud :}
    baud BAUD>N 1 $FFFFFFFF RANGE
-   path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:failed exit then
+   path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:FAILED exit then
    >HANDLE {: handle:handle :}
    handle baud CONFIGURE MATCH open-result
-      opened OF SERIAL-OPEN--RESULT:opened ENDOF
-      failed OF handle CLOSE-RAW drop SERIAL-OPEN--RESULT:failed ENDOF
-      unsupported OF handle CLOSE-RAW drop SERIAL-OPEN--RESULT:unsupported ENDOF
+      opened OF SERIAL-OPEN--RESULT:OPENED ENDOF
+      failed OF handle CLOSE-RAW drop SERIAL-OPEN--RESULT:FAILED ENDOF
+      unsupported OF handle CLOSE-RAW drop SERIAL-OPEN--RESULT:UNSUPPORTED ENDOF
    ;MATCH ;
 
 
@@ -278,13 +278,13 @@ public
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:READABLE deadline AWAIT {: events:n :}
-      events 0 < if events negate >ERRNO SERIAL-IO--RESULT:failed exit then
-      events 0= if SERIAL-IO--RESULT:timeout exit then
+      events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
+      events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
       handle bytes capacity READ-RAW dup 0 > if capacity TRANSFERRED exit then
-      0= if SERIAL-IO--RESULT:closed exit then
-      LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:failed exit then drop
-      events $18 and 0 <> if SERIAL-IO--RESULT:closed exit then
-      deadline REMAINING MS>N 0= if SERIAL-IO--RESULT:timeout exit then
+      0= if SERIAL-IO--RESULT:CLOSED exit then
+      LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
+      events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then
+      deadline REMAINING MS>N 0= if SERIAL-IO--RESULT:TIMEOUT exit then
    again ;
 
 
@@ -297,20 +297,20 @@ public
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:WRITABLE deadline AWAIT {: events:n :}
-      events 0 < if events negate >ERRNO SERIAL-IO--RESULT:failed exit then
-      events 0= if SERIAL-IO--RESULT:timeout exit then
+      events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
+      events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
       handle bytes size WRITE-RAW dup 0 > if size TRANSFERRED exit then
-      0= if SERIAL-IO--RESULT:closed exit then
-      LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:failed exit then drop
-      events $18 and 0 <> if SERIAL-IO--RESULT:closed exit then
-      deadline REMAINING MS>N 0= if SERIAL-IO--RESULT:timeout exit then
+      0= if SERIAL-IO--RESULT:CLOSED exit then
+      LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
+      events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then
+      deadline REMAINING MS>N 0= if SERIAL-IO--RESULT:TIMEOUT exit then
    again ;
 
 
 \ Consumes the handle even when it fails (Linux consumes the fd even on EINTR):
 \ never retry CLOSE or reuse the handle. The terminal's settings persist.
 : CLOSE ( handle -- status )
-   dup CHECK-HANDLE CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:failed else SERIAL-STATUS:ok then ;
+   dup CHECK-HANDLE CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:FAILED else SERIAL-STATUS:OK then ;
 
 
 ;package

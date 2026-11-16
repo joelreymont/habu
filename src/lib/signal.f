@@ -365,9 +365,9 @@ public
 : TAKE ( -- signal-result )
    NEED-READY
    SIGNO@ dup SIGNO-REFUSED = if
-      drop SIGNAL-SIGNAL--RESULT:timeout exit
+      drop SIGNAL-SIGNAL--RESULT:TIMEOUT exit
    then
-   SIGNAL-SIGNAL--RESULT:signal ;
+   SIGNAL-SIGNAL--RESULT:SIGNAL ;
 
 \ Readable now, without consuming: a zero-length window, which the kernel serves
 \ inline for a descriptor that is already ready. "Ready" is not "readable": a
@@ -384,8 +384,8 @@ public
    window PROCESS:DEADLINE-AT {: deadline :}
    begin
       window MS>N 0 < if window else deadline PROCESS:LEFT-MS then
-      READABLE-WITHIN? 0= if SIGNAL-SIGNAL--RESULT:timeout exit then
-      SIGNO@ dup SIGNO-REFUSED <> if SIGNAL-SIGNAL--RESULT:signal exit then
+      READABLE-WITHIN? 0= if SIGNAL-SIGNAL--RESULT:TIMEOUT exit then
+      SIGNO@ dup SIGNO-REFUSED <> if SIGNAL-SIGNAL--RESULT:SIGNAL exit then
       drop
    again ;
 

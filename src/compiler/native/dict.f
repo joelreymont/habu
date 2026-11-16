@@ -116,26 +116,26 @@ public
 \ ---- which definer made the record a spelling denotes -------------------------
 \ A `create`d or `variable` address moves with the DATA region on a snapshot, so
 \ it may not be compiled as an ordinary number. The stamp is the definer's own:
-\ COMP-BODY:value for `constant`, COMP-BODY:address for `create`/`variable`,
-\ and COMP-BODY:compiled when a mention of the name folds to nothing.
+\ COMP-BODY:VALUE for `constant`, COMP-BODY:ADDRESS for `create`/`variable`,
+\ and COMP-BODY:COMPILED when a mention of the name folds to nothing.
 private
 
 \ Which definer stamped a record, retired or not: `undefine` removes a name,
 \ while the record's storage and the code compiled against it stay.
 : STAMP-FIXED ( ^n -- COMP:body )
    {: rec:^ :}
-   rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
-   rec XREF-START 0= if COMP-BODY:compiled exit then
+   rec XREF-FOUND? 0= if COMP-BODY:COMPILED exit then
+   rec XREF-START 0= if COMP-BODY:COMPILED exit then
    rec XREF-FLAGS DKIND:MASK and {: kind:n :}
-   kind DKIND:VAL = if COMP-BODY:value exit then
-   kind DKIND:ADDR = if COMP-BODY:address exit then
-   COMP-BODY:compiled ;
+   kind DKIND:VAL = if COMP-BODY:VALUE exit then
+   kind DKIND:ADDR = if COMP-BODY:ADDRESS exit then
+   COMP-BODY:COMPILED ;
 
 \ A caller already holding the record asks here instead of SPELL-FIXED.
 : REC-FIXED ( ^n -- COMP:body )
    {: rec:^ :}
-   rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
-   rec XREF-RETIRED? if COMP-BODY:compiled exit then
+   rec XREF-FOUND? 0= if COMP-BODY:COMPILED exit then
+   rec XREF-RETIRED? if COMP-BODY:COMPILED exit then
    rec STAMP-FIXED ;
 
 public
@@ -154,7 +154,7 @@ private
    rec XREF-FOUND? 0= if E-NDICT-NAME throw then
    rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
-   rec REC-FIXED COMP-BODY:compiled COMP-BODY:EQ if E-NDICT-KIND throw then
+   rec REC-FIXED COMP-BODY:COMPILED COMP-BODY:EQ if E-NDICT-KIND throw then
    start ;
 
 : READ-FIXED ( n -- n )
@@ -179,7 +179,7 @@ public
 \ -1 means the fixed value is a scalar and has no DATA owner.
 : FIXED-OWNER ( ^u8 n -- n )
    SPELL-REC {: rec:^ :}
-   rec REC-FIXED COMP-BODY:address COMP-BODY:EQ 0= if -1 exit then
+   rec REC-FIXED COMP-BODY:ADDRESS COMP-BODY:EQ 0= if -1 exit then
    rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 \ Enter the exact fixed implementation the scan selected. The caller checked

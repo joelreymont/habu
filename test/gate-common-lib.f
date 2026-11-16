@@ -45,7 +45,7 @@ variable GE-EVAL-SRC-U
    GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
-   rc RC>N PROCESS-ENDING:exited GT-OUTCOME!
+   rc RC>N PROCESS-ENDING:EXITED GT-OUTCOME!
    erru LEN>N GT-ERR-U !
    outu LEN>N GT-OUT-U ! ;
 
@@ -371,7 +371,7 @@ variable GE-EVAL-SRC-U
    {: q :}
    q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
    GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
-   outu erru rc PROCESS-ENDING:exited GE-STORE-OUTCOME ;
+   outu erru rc PROCESS-ENDING:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-CAPTURE-SRC ( ^u8 n -- )
    GE-EVAL-SRC!

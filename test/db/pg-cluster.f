@@ -237,7 +237,7 @@ false STOPPED !
    else
       SERVER @ >PID PROC-TREE:KILL-TREE
       SERVER @ >PID PROCESS:WAIT drop
-      PROCESS-ENDING:timeout s" postgres stop" EXITED-0? STOPPED !
+      PROCESS-ENDING:TIMEOUT s" postgres stop" EXITED-0? STOPPED !
    then
    NO-PID SERVER !
    WATCH CLOSE-WATCH ;
@@ -304,7 +304,7 @@ false STOPPED !
    INITDB-PID @ >PID SIGNAL:SIGTERM PROCESS:KILL-RAW drop
    INITDB-WATCH @ QUIT-MS GONE-WITHIN? 0= if
       INITDB-PID @ >PID PROC-TREE:KILL-TREE
-      PROCESS-ENDING:timeout s" initdb stop" EXITED-0? drop
+      PROCESS-ENDING:TIMEOUT s" initdb stop" EXITED-0? drop
    then
    INITDB-PID @ >PID PROCESS:WAIT drop
    NO-PID INITDB-PID !

@@ -543,7 +543,7 @@ variable CANDIDATE-VERDICT
    LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
 
 : CHECK-BUF-STORE ( n -- ) {: rc:n :}
-   rc PROCESS-ENDING:exited GT-OUTCOME!
+   rc PROCESS-ENDING:EXITED GT-OUTCOME!
    0 GT-OUT-U !
    CHECK-ALL-ERRORS:OUT$ nip GT-ERR-U ! ;
 
@@ -571,7 +571,7 @@ variable CANDIDATE-VERDICT
 
 \ The candidate's captured rejections are its stderr, as a child's would be.
 : CANDIDATE-STORE ( n -- ) {: rc:n :}
-   rc CANDIDATE-RC PROCESS-ENDING:exited GT-OUTCOME!
+   rc CANDIDATE-RC PROCESS-ENDING:EXITED GT-OUTCOME!
    0 GT-OUT-U !
    REJECTION:BUFFER-OFF
    REJECTION:BUFFER$ {: a:^ u:n :}

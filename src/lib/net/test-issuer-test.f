@@ -453,10 +453,10 @@ OVERSIZE-FILL
    h FINISH ;
 
 : UP ( -- ^u8 n ) s" api://up/.default" ;
-: OWN-TOKEN ( -- ^u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
+: OWN-TOKEN ( -- ^u8 n n ) UP BEARER-GRANT:OWN GOT BEARER:TOKEN ;
 : ZEN ( -- ^u8 n ) s" api://zen/.default" ;
 : FAULT-TOKEN ( -- ^u8 n n )
-   ZEN s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
+   ZEN s" a.b-c_d~e" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN ;
 \ /token-fault answering as the mode makes TOKEN throw the code.
 : FAULT-THROWS ( n n -- )
    {: mode:n code:n :}
@@ -506,10 +506,10 @@ $A constant LF
    BODY$ s" app" T$=
    s" TOKEN for a person is admitted with the assertion's oid" T-LABEL
    s" app" LATER ASSERT
-   UP ASSERTION$ BEARER-GRANT:for-person GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
+   UP ASSERTION$ BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
    s" a 400 is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
-   [: UP s" a.b.c" BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP s" a.b.c" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
    s" it leaves no byte of the earlier answer past the BUF's length" T-LABEL
    GOT-ZEROED? TTRUE
@@ -546,7 +546,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Runs after BEARER-GRANTS in SERVE-CASES.
 : BEARER-BOUNDS ( -- )
    s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
    s" a refresh token inside the BUF is E-BUF-BOUNDS" T-LABEL
    [: UP GOT BUF:SPAN$ BUF:BLEN>N GOT BEARER:REFRESH drop 2drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
 [then]

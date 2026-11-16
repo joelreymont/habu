@@ -837,15 +837,15 @@ variable VFY-EXE-U
 
 : VFY-VERDICT ( PROCESS:ending -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
-      VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:verified exit then
-      VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:deferred exit then
-      VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:held exit then
+      VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:VERIFIED exit then
+      VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:REFUSED exit then
+      VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:REFUSED exit then
+      VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:REFUSED exit then
+      VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:REFUSED exit then
+      VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:DEFERRED exit then
+      VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:HELD exit then
    then
-   o LSP--CHECK-VERDICT:incomplete ;
+   o LSP--CHECK-VERDICT:INCOMPLETE ;
 
 
 : VFY-PREVERDICT ( PROCESS:ending -- result<n,PROCESS:ending> ) {: o :}
@@ -866,7 +866,7 @@ variable VFY-EXE-U
    {: src:^ srcu:n path:^ pathu:n open deadline :}
    path pathu VFY-PATH!
    VFY-INDEX? @ 0= if
-      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
+      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:ENGINE-PROVIDED exit then
    then
    src CHK-BYTES-A !
    srcu CHK-BYTES-U !
@@ -1070,7 +1070,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    k VFY-BATCH-SUBJECT
    false VFY-BATCH-COMPLETE !
    VFY-BATCH-BROKEN @ if
-      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
+      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:ENGINE-PROVIDED exit then
       VFY-BATCH-OUTCOME @ VFY-VERDICT exit
    then
    k VFY-BATCH-MARK {: end:n :}
@@ -1089,7 +1089,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
       k VFY-BATCH-N @ 1- = VFY-BATCH-POS @ VFY-BATCH-OUT-U @ <> and
       if true VFY-BATCH-BROKEN ! false VFY-BATCH-COMPLETE ! then
    else true VFY-BATCH-BROKEN ! then
-   VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
+   VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:ENGINE-PROVIDED exit then
    VFY-BATCH-BROKEN @ if VFY-NONE VFY-ANSWER ! then
    VFY-BATCH-OUTCOME @ VFY-VERDICT ;
 

@@ -213,16 +213,16 @@ private
 : >STATUS ( n -- status ) {: raw:n :}
    raw WAIT-TERM-MASK and {: term:n :}
    term 0= if
-      raw 8 rshift WAIT-EXIT-MASK and PROCESS-STATUS:exited
+      raw 8 rshift WAIT-EXIT-MASK and PROCESS-STATUS:EXITED
       exit
    then
-   term PROCESS-STATUS:signaled ;
+   term PROCESS-STATUS:SIGNALED ;
 
 public
 : STATUS>ENDING ( status -- ending )
    MATCH status
-     exited OF PROCESS-ENDING:exited ENDOF
-     signaled OF PROCESS-ENDING:signaled ENDOF
+     exited OF PROCESS-ENDING:EXITED ENDOF
+     signaled OF PROCESS-ENDING:SIGNALED ENDOF
    ;MATCH ;
 
 \ A timeout throws E-PROC-TIMEOUT rather than reading as an rc, so an assertion
@@ -391,7 +391,7 @@ public
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then
    timeout DEADLINE-AT {: deadline:n :}
    begin pid WAIT-PROBE 0= while
-      deadline LEFT-MS MS>N 0= if PROCESS-ENDING:timeout exit then
+      deadline LEFT-MS MS>N 0= if PROCESS-ENDING:TIMEOUT exit then
       1 >MS TASK:SLEEP
    repeat
    BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
@@ -1009,7 +1009,7 @@ public
 \ Derived from the raw wait status and the timed-out flag: no stored ending can
 \ drift from them.
 : CAPTURE-ENDING ( -- ending )
-   TIMED-OUT @ 0 <> if PROCESS-ENDING:timeout exit then
+   TIMED-OUT @ 0 <> if PROCESS-ENDING:TIMEOUT exit then
    STATUS @ >STATUS STATUS>ENDING ;
 
 : CAPTURE-ENDING@ ( -- len len ending )

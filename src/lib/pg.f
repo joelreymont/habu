@@ -1013,7 +1013,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   0 REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:refused ;
+   0 REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:REFUSED ;
 
 
 \ CONN-LOST's copy; one that throws leaves the record empty.
@@ -1037,7 +1037,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 : WAITING ( n n -- progress ) {: slot:n events:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
    socket 0 < if slot CONN-LOST then
-   socket >FD events PG-PROGRESS:waiting ;
+   socket >FD events PG-PROGRESS:WAITING ;
 
 
 : POLL-CONNECT ( n -- progress ) {: slot:n :}
@@ -1054,7 +1054,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    status PGRES-POLLING-WRITING = if slot AIO:WRITABLE WAITING exit then
    status PGRES-POLLING-OK = if
       0 slot CONNECTING!
-      slot CONN-HANDLE PG-PROGRESS:connected exit
+      slot CONN-HANDLE PG-PROGRESS:CONNECTED exit
    then
    slot CONNECT-REFUSED ;
 
@@ -1071,7 +1071,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    pg NULL-ADDR? if slot CONN-LOST then
    NULL-ARG slot DRAIN-LAST!
    0 slot PENDING!
-   pg slot res FILL-RES-SLOT N>RESULT PG-PROGRESS:completed ;
+   pg slot res FILL-RES-SLOT N>RESULT PG-PROGRESS:COMPLETED ;
 
 
 \ A COPY_OUT result stays the query's last unless an error result follows it,
@@ -1203,9 +1203,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
             deadline [: WAIT-EVENT ;] catch {: code:n :} 2drop drop   \ the waiting payload is stale after a caught throw and unused
             code 0<> if slot ABANDON-SLOT code throw then
          ENDOF
-         connected OF PG-PROGRESS:connected exit ENDOF
-         completed OF PG-PROGRESS:completed exit ENDOF
-         refused OF PG-PROGRESS:refused exit ENDOF
+         connected OF PG-PROGRESS:CONNECTED exit ENDOF
+         completed OF PG-PROGRESS:COMPLETED exit ENDOF
+         refused OF PG-PROGRESS:REFUSED exit ENDOF
       ;MATCH
    again ;
 
@@ -1479,9 +1479,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 : CLASSIFY ( n -- outcome ) {: res:n :}
    res RESULT-STATUS {: status:n :}
-   status PGRES-COMMAND-OK = if PG-OUTCOME:ok exit then
-   status PGRES-TUPLES-OK = if PG-OUTCOME:rows exit then
-   res RES-PG@ FAILED-SPANS PG-OUTCOME:failed ;
+   status PGRES-COMMAND-OK = if PG-OUTCOME:OK exit then
+   status PGRES-TUPLES-OK = if PG-OUTCOME:ROWS exit then
+   res RES-PG@ FAILED-SPANS PG-OUTCOME:FAILED ;
 
 
 : SCOPE-ENTER ( n -- n ) {: raw:n :}
@@ -1609,8 +1609,8 @@ public
 : CONNECT ( ^u8 n -- connect-result )
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
-      connected OF PG-CONNECT--RESULT:connected ENDOF
-      refused OF PG-CONNECT--RESULT:refused ENDOF
+      connected OF PG-CONNECT--RESULT:CONNECTED ENDOF
+      refused OF PG-CONNECT--RESULT:REFUSED ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF RESULT>N RESULT-SLOT CLEAR-SLOT E-CONNECT throw ENDOF
    ;MATCH ;

@@ -254,7 +254,7 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 \ read as the message are cleared before the failure is answered.
 : UNSEAL-REFUSED ( ^u8 n n -- unseal-result ) {: out pu:n failure:n :}
    out pu SPAN-ZERO
-   failure >CODE CRYPTO-UNSEAL--RESULT:failed ;
+   failure >CODE CRYPTO-UNSEAL--RESULT:FAILED ;
 
 
 : TEXT-DECRYPTED? ( ^u8 n ^u8 -- bool ) {: cipher pu:n out :}
@@ -280,7 +280,7 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
    aad au UNSEAL-AAD
    cipher pu out TEXT-DECRYPTED? 0= if out pu E-OPEN UNSEAL-REFUSED exit then
    cipher pu TAG-VERIFIED? 0= if out pu E-TAG UNSEAL-REFUSED exit then
-   pu >LEN CRYPTO-UNSEAL--RESULT:ok ;
+   pu >LEN CRYPTO-UNSEAL--RESULT:OK ;
 
 
 : KEY-NONCE ( n n -- ) {: ku:n nu:n :}
