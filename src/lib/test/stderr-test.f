@@ -1,7 +1,9 @@
-\ stderr-test.f - STDERR:CAPTURE holds one capture at a time.
+\ stderr-test.f - STDERR:CAPTURE holds one capture at a time, and
+\ STDERR:CAPTURING reads a capture whole past a throw.
 \ Run: bin/hb --load src/lib/test/stderr-test.f
 
 require src/lib/error.f
+require src/lib/arena.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fd.f
@@ -12,6 +14,7 @@ require src/lib/test/stderr.f
 package STDERR-TEST
 
 64 constant FILE-CAP
+77 constant E-THROWN                \ a code 0..255, which packages may share
 
 create PATH-BUF PATH-CAP allot      \ the capture file's path
 variable PATH-U
@@ -61,10 +64,36 @@ variable CODE-B
    [: REOPEN ;] catch 0 T= ;
 
 
+\ 40 bytes: two pass FILE-CAP.
+: LINE$ ( -- ^u8 n )
+   S\" a regression logs this line twice .....\n" ;
+
+
+: LOUD ( -- )  LINE$ ERR-OUT  LINE$ ERR-OUT  E-THROWN throw ;
+
+
+: HALVES ( ^u8 n -- )
+   {: text:^ u:n :}
+   LINE$ nip {: half:n :}
+   u half 2 * T=
+   text half LINE$ T$=
+   text half + half LINE$ T$= ;
+
+
+: WHOLE-CASE ( -- )
+   s" a capture is read whole past a throw" T-LABEL
+   ARENA:NEW {: a:^ :}
+   [: LOUD ;] PATH$ a STDERR:CAPTURING HALVES
+   E-THROWN T=
+   PATH$ FS:FILE? TFALSE
+   a ARENA:RELEASE ;
+
+
 : STDERR-RUN ( -- )
    T-RESET
    PATH-MAKE
    NESTED-CASE
+   WHOLE-CASE
    T-REPORT ;
 
 STDERR-RUN
