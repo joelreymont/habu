@@ -119,39 +119,30 @@ public
 : UDG-AT+ ( ^u8 n -- )
    UDG-AT PATH-CAP UDG-AT-U BUF-APPEND ;
 
-\ A record's caret run under a word of u bytes, a blank before it and the byte
-\ c after it.
-: UDG-CARETS$ ( n n -- ^u8 n ) {: u:n c:n :}
+\ The caret run under a word of u bytes, then its label l lu.
+: UDG-CARETS$ ( n ^u8 n -- ^u8 n ) {: u:n l:^ lu:n :}
    UDG-AT-U BUF-RESET
    s"  " UDG-AT+  u 0 ?do s" ^" UDG-AT+ loop
-   c UDG-AT PATH-CAP UDG-AT-U BUF-APPEND-C
+   s"  " UDG-AT+  l lu UDG-AT+
    UDG-AT UDG-AT-U @ LEN>N ;
 
-\ The rejection opens with h hu and carets stand under the word a u, ended by
-\ c: a blank before a direct run's label, a line feed in a subject run's
-\ `= evaluated:` note, whose primary place is the test's own line.
-: UDG-ASSERT-RUN ( ^u8 n ^u8 n n -- ) {: h:^ hu:n a:^ u:n c:n :}
+\ The rejection opens with h hu, and carets labelled l lu stand under the word
+\ a u; in a subject run they stand in its `= evaluated:` note, whose primary
+\ place is the test's own line.
+: UDG-ASSERT-AT ( ^u8 n ^u8 n ^u8 n -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
    UDG-EXITED @ TTRUE
    UDG-RC @ UDG-REJECT-RC T=
    UDG-ERR$ h hu CONTAINS? TTRUE
    UDG-ERR$ a u CONTAINS? TTRUE
-   UDG-ERR$ u c UDG-CARETS$ CONTAINS? TTRUE ;
-
-\ A subject run's rejection: it opens with h hu, at the word a u.
-: UDG-ASSERT-AT ( ^u8 n ^u8 n -- )
-   10 UDG-ASSERT-RUN ;
+   UDG-ERR$ u l lu UDG-CARETS$ CONTAINS? TTRUE ;
 
 : UDG-UNDERFLOW$ ( -- ^u8 n )
    s" error[E-INPUT-UNDERFLOW]: input underflow" ;
 
-\ The checker's rejection of the word a u in a subject run: an input underflow
-\ at it.
+\ The checker's rejection of the word a u, in a direct or subject run: an input
+\ underflow at it, below the stack or below the inputs.
 : UDG-ASSERT-UNDERDEPTH ( ^u8 n -- ) {: a:^ u:n :}
-   UDG-UNDERFLOW$ a u UDG-ASSERT-AT ;
-
-\ As UDG-ASSERT-UNDERDEPTH, for a direct --load or stdin run.
-: UDG-DIRECT-UNDERDEPTH ( ^u8 n -- ) {: a:^ u:n :}
-   UDG-UNDERFLOW$ a u 32 UDG-ASSERT-RUN ;
+   UDG-UNDERFLOW$ a u s" reaches below the" UDG-ASSERT-AT ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
@@ -286,7 +277,7 @@ public
    s" finally over no quotation in a body names its cleanup" T-LABEL
    s" : f ( -- ) 1 2 finally ;" UDG-BARE$ UDG-EXEC:SUBJECT
    s" error[E-FINALLY-CLEANUP]: the cleanup `finally` runs must take and leave nothing"
-   s" finally" UDG-ASSERT-AT ;
+   s" finally" s" cleanup not stack-neutral" UDG-ASSERT-AT ;
 
 \ --- positives: the public top-level surface is untouched -------------------
 
@@ -355,7 +346,7 @@ package UDG-PARITY
 
 : NEG-LOAD ( ^u8 n -- )
    2dup UDG-RUN-LOAD
-   s" FOO2" UDG-DIRECT-UNDERDEPTH
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH
@@ -363,7 +354,7 @@ package UDG-PARITY
 
 : NEG-STDIN ( ^u8 n -- )
    2dup UDG-RUN-STDIN
-   s" FOO2" UDG-DIRECT-UNDERDEPTH
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH

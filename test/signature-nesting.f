@@ -404,8 +404,8 @@ public
    s" an unknown type inside a local's annotation is named, placed and helped as in a signature" T-LABEL
    SRC-RESET  s" : SN-NU ( n -- ) {: p:option<ptr> :} ;" S+
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
-   S\" ^ unknown type\n" SAID
-   S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n                                          ^^^\n" SAID
+   S\" ^ evaluates the text below\n" SAID
+   S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n                                          ^^^ unknown type\n" SAID
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:option<^u8>`\n" SAID
    s" a `ptr` after a local's `^` is helped by the annotation with `^u8` in its place" T-LABEL
    SRC-RESET  s" : SN-NP ( n -- ) {: p:^ptr :} ;" S+
@@ -414,8 +414,8 @@ public
    s" a local's annotation of the wrong arity names its family, then its local, and places the family" T-LABEL
    SRC-RESET  s" : SN-AR ( n -- ) {: p:option<n,n> :} ;" S+
    s" error[E-WRONG-ARITY]: type family `option` in the annotation of local `p` takes 1 type argument, not 2" REFUSES
-   S\" ^ wrong number of type arguments\n" SAID
-   S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n                                   ^^^^^^\n" SAID
+   S\" ^ evaluates the text below\n" SAID
+   S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n                                   ^^^^^^ wrong number of type arguments\n" SAID
    S\" = help: give `option` 1 type argument\n" SAID
    s" a local's annotation that ends early names its local and asks for one whole type" T-LABEL
    SRC-RESET  s" : SN-EN ( n -- ) {: p:option< :} ;" S+
@@ -431,25 +431,25 @@ public
    s" a type scheme in a local's annotation is rejected as polymorphic: a local holds one type" T-LABEL
    SRC-RESET  s" : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;" S+
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
-   S\" ^ a local holds one type\n" SAID
-   S\" = evaluated: : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;\n                                   ^^^^^^^^^^^^^^\n" SAID
+   S\" ^ evaluates the text below\n" SAID
+   S\" = evaluated: : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;\n                                   ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:[--]`\n" SAID
    s" a nested type scheme in a local's annotation is placed and named by its binder, helped by the annotation without it" T-LABEL
    SRC-RESET  s" : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;" S+
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
-   S\" = evaluated: : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;\n                                    ^^^^^^^^^^^^^^\n" SAID
+   S\" = evaluated: : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;\n                                    ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:^[--]`\n" SAID
    s" a name that begins with forall holds no binder: the scheme inside it is placed and cut" T-LABEL
    SRC-RESET  s" NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;" S+
    s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
-   S\" ^ a local holds one type\n" SAID
-   S\" = evaluated: NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;\n                                                                  ^^^^^^^^^^^^^^\n" SAID
+   S\" ^ evaluates the text below\n" SAID
+   S\" = evaluated: NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;\n                                                                  ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:forallish<[--]>`\n" SAID
    s" a declared signature's binder after a name that begins with forall is placed at the binder" T-LABEL
    SRC-RESET  s" NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )" S+
    s" error[E-BAD-SIGNATURE]: the declared signature of `SN-SB` binds a callback scope" REFUSES
-   S\" ^ binder in a declared signature\n" SAID
-   S\" = evaluated: NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )\n                                                             ^^^^^^^\n" SAID
+   S\" ^ evaluates the text below\n" SAID
+   S\" = evaluated: NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )\n                                                             ^^^^^^^ binder in a declared signature\n" SAID
    S\" = signature: forallish<n> forall<p,[--]> --\n" SAID
    S\" = help: drop the binder from the signature of `SN-SB`: only a checked `:` definition binds a callback scope\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL

@@ -393,8 +393,8 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 \ The newest record's place as AT copies it: its file's path and first byte.
 \ FILE$ and a loading file's path fit PATH-CAP bytes.
 create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT   -1 LAST-AT !
-\ A token in an evaluated text is placed where the evaluation ran; its label is
-\ followed by the line EVALUATED-A EVALUATED-U, the token EVAL-LEAD-U bytes in.
+\ A token in an evaluated text is placed where the evaluation ran, followed by
+\ the line EVALUATED-A EVALUATED-U, the token EVAL-LEAD-U bytes in.
 variable EVALUATED   0 EVALUATED !
 PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
 PTR-VARIABLE EVAL-TOKEN-A  variable EVAL-TOKEN-U  variable EVAL-LEAD-U
@@ -744,17 +744,13 @@ private
    s" = evaluated: " {: k:^ ku:n :}
    EVALUATED-A @ EVALUATED-U @ EVAL-LEAD-U @ {: a:^ u:n lead:n :}
    MARGIN  k ku EMIT-STR  a u lead SHOW-LINE  10 EMIT1
-   MARGIN  ku BLANKS  a u lead EVAL-TOKEN-U @ SHOW-CARETS
-   10 EMIT1 ;
+   MARGIN  ku BLANKS  a u lead EVAL-TOKEN-U @ SHOW-CARETS ;
 \ Ends the open text; the label's end, or a dropped label's, writes the
-\ evaluated place, then the `word` note.
+\ evaluated place JSON still owes, then the `word` note.
 : CLOSE-PART ( -- )
    END-TEXT
    PART @ LABEL-PART = 0= IF EXIT THEN
-   EVALUATED @ IF
-      0 EVALUATED !
-      JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN
-   THEN
+   EVALUATED @ IF  0 EVALUATED !  EVALUATED-JSON  THEN
    WORD-U @ 0= IF EXIT THEN
    s" word" NOTE-KEY  WORD-A @ WORD-U @ EMIT-STR  0 WORD-U !  END-TEXT ;
 
@@ -791,7 +787,8 @@ public
 : WARN ( ^u8 n -- ) {: code:^ cu:n :}
    -1 WARNING !  s" warning" code cu BEGIN-RECORD ;
 \ Places the token t tu; its label follows. A token no source holds has no
-\ place, so the record writes none and drops the label.
+\ place, so the record writes none and drops the label. In prose an evaluated
+\ token's call is labelled as such, and the label follows the evaluated place.
 : AT ( ^u8 n -- ) {: t:^ tu:n :}
    END-TEXT
    t tu PLACE
@@ -802,8 +799,13 @@ public
    \ The placed bytes as the file holds them: a checked copy stands its tokens
    \ one blank apart, so a span across blanks is not the copy's length.
    LINE-A @ LEAD-U @ +  AT-END @ AT-BYTE @ - {: p:^ pu:n :}
-   JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
-   PART ! ;
+   JSON @ IF p pu PLACE-JSON  LABEL-PART PART !  EXIT THEN
+   p pu PLACE-PROSE
+   EVALUATED @ IF
+      0 EVALUATED !
+      s"  evaluates the text below" EMIT-STR  10 EMIT1  EVALUATED-PROSE
+   THEN
+   GAP-PART PART ! ;
 \ The path and first byte of the newest record's place, the byte -1 when it
 \ had none. The path is borrowed until the next record is placed.
 : LAST-PLACE ( -- ^u8 n n )   LAST-BUF LAST-U @ LAST-AT @ ;

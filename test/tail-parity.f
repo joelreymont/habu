@@ -34,27 +34,28 @@ variable SAVED-KEPT-U
    {: i:n :} a i + u i - ;
 
 \ A line, its gutter indent dropped, that tells where a record is: the place
-\ line, a source line, an `= evaluated:` note and the note's caret line.
+\ line, a source line or an `= evaluated:` note.
 : PLACE? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" -->" STARTS-WITH?
    a u s" = evaluated:" STARTS-WITH? or
-   a u s" ^" STARTS-WITH? or
    u 0 > if a c@ STR-DIGIT? else false then or ;
 
 : KEEP+ ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    a u dst CAP lenp BUF-APPEND
    10 dst CAP lenp BUF-APPEND-C ;
 
-\ A gutter line keeps only the label past its carets, whose run is the
-\ placed token's length.
+\ A gutter line, or the caret line of an `= evaluated:` note, keeps only the
+\ label past its carets; the carets, and an evaluating call's label
+\ `evaluates the text below`, only tell where the record is.
 : LINE+ ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    a u LTRIM {: t:^ tu:n :}
    t tu PLACE? if exit then
-   t tu s" |" STARTS-WITH? if
+   t tu s" |" STARTS-WITH?  t tu s" ^" STARTS-WITH? or if
       t tu 94 INDEX-OF MATCH option
         none OF ENDOF
         some OF IDX>N {: at:n :}
-           t at + tu at - PAST-CARETS dst lenp KEEP+ ENDOF
+           t at + tu at - PAST-CARETS {: l:^ lu:n :}
+           l lu s"  evaluates the text below" STR= 0= if l lu dst lenp KEEP+ then ENDOF
       ;MATCH exit
    then
    t tu dst lenp KEEP+ ;
