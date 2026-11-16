@@ -1219,6 +1219,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    pend 0= if cp@ else pend TASK-N>PTR @ then ;
 
 : ACTIVATE ( [ -- ] ^n -- ) {: xt tcb:^ :}
+   \ A task started while the checker's replay parks a definition may be live at
+   \ the replay's close, which keeps the replay's code inside that definition.
+   MAIN-BASE REPLAY-SCOPE:PEND + @ 0<> if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then

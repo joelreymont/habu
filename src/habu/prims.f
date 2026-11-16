@@ -730,9 +730,10 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
 \ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
 \
-\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
-\ and the using band in the engine's REPLAY-SCOPE band. It
-\ refuses an open overlay and a pending definition.
+\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells,
+\ the using band and a pending definition in the engine's REPLAY-SCOPE band;
+\ inside the overlay no definition pends. It refuses an open overlay and a
+\ pending definition while a task is live.
 \ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose
 \ entry traps, exit 76. It refuses no overlay, a negative wid and what the
 \ three record writers above refuse.
@@ -747,8 +748,9 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ a row with a private wid, false one whose private wid is 0 or older than the
 \ overlay.
 \ replay-close ( -- ): zero the records published since replay-open, put the
-\ saved state back and zero the band. It refuses no overlay, a pending
-\ definition, NDICT below the saved count or above the highest count
+\ saved state back, a saved pending definition included, and zero the band.
+\ It refuses no overlay, a definition pending, a parked definition while a
+\ task is live, NDICT below the saved count or above the highest count
 \ replay-record and namespace-record reached, and CP or WIDN below the saved.
 \ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
 \ overlay, once its rollback dropped what it made since. It refuses no overlay

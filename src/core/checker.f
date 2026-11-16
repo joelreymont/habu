@@ -412,17 +412,20 @@
 \ replayed text would have defined, kept through the replay writers only
 \ CHECKER-OVERLAY may call. replay-open saves NDICT, CP, WIDN, CURRENT, the
 \ package cells and the using band; on every exit, clean or thrown, the log is
-\ undone newest first and replay-close zeroes the overlay's records and restores
-\ them; while a task is live it retires those records instead and keeps NDICT
-\ and CP, restoring the rest. The outermost asking scope opens the overlay: the
-\ verifier window (tag -1) or a package-neutral rollback scope (its frame
-\ depth). A scope opened inside it saves the engine scope in a snapshot row and
-\ restores it on close, so names a scope publishes bind until the overlay
-\ closes. Between a logged record's restore and the drop of a replay record of
-\ the same name, one wordlist holds two live records of it: CLOSE ends that
-\ window with replay-close and ROLLBACK with ndict!, each before any lookup.
-\ Every writer refusal ends the process, so each refusal a replay can meet is
-\ checked in CHECKER-OVERLAY first and thrown by name.
+\ undone newest first and replay-close zeroes the overlay's records and
+\ restores them; while a task is live it retires those records instead and
+\ keeps NDICT and CP, restoring the rest. A definition pending at the open is
+\ parked across the replay; with a task live at the open such a replay is
+\ rejected first, as the engine refuses it, and no task starts while one is
+\ parked. The outermost asking scope opens the overlay: the verifier window
+\ (tag -1) or a package-neutral rollback scope (its frame depth). A scope
+\ opened inside it saves the engine scope in a snapshot row and restores it on
+\ close, so names a scope publishes bind until the overlay closes. Between a
+\ logged record's restore and the drop of a replay record of the same name, one
+\ wordlist holds two live records of it: CLOSE ends that window with
+\ replay-close and ROLLBACK with ndict!, each before any lookup. Every writer
+\ refusal ends the process, so each refusal a replay can meet is checked in
+\ CHECKER-OVERLAY first and thrown by name.
 \
 \ Replayed package scope: live compilation splits each package and using word
 \ between the engine and the checker. The engine's keyword moves its scope and
@@ -13698,17 +13701,18 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
       LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
    REPEAT ;
 
-\ replay-open exits on a pending definition: reject it here first.
+\ replay-open exits on a pending definition while a task is live: reject it
+\ here first.
 : PENDING-REJECT ( -- )
    s" E-VERIFY-WINDOW" REJECTION:OPEN
-   s" the checker's replay opened while a definition is being compiled" REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  s" inside a definition" REJECTION:EMIT-STR
+   s" the checker's replay ran inside a definition while a task is live" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" replays inside a definition" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" verify source at top level, after `;` ends the definition" REJECTION:EMIT-STR
+   s" verify source after `;` ends the definition, or while no task is live" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : OPEN ( n -- ) {: tag:n :}
-   PEND-CELL DATA@ 0 <> IF PENDING-REJECT THEN
+   PEND-CELL DATA@ 0 <>  TASKS-LIVE-CELL DATA@ 0 <>  and IF PENDING-REJECT THEN
    replay-open
    ndict@ MARK !
    FIRST-RECORD-XT PREFIX !

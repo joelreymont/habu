@@ -18,14 +18,19 @@
 \ The replay overlay: six rows typed only for package CHECKER-OVERLAY.
 \ replay-open saves the scope into the REPLAY-SCOPE band and replay-close puts
 \ it back, so no caller hands the engine a state to restore; the one mark a
-\ caller hands, replay-widn!'s, the band bounds below. While the latch is
-\ set, replay-record and namespace-record raise HW as they publish. The owner
-\ publishes through nothing else, nothing while a definition is pending, and
-\ lowers NDICT only by its own rollback, so [the saved NDICT, HW) is the
-\ overlay's and a record above HW is another writer's. Every other record or
-\ wid writer dies while the latch is set, so a definition pends in an open
-\ overlay only through a raw store to PEND-CELL, which reaches the
-\ pending-definition refusals, as a raw ndict! reaches the HW one.
+\ caller hands, replay-widn!'s, the band bounds below. A pending definition is
+\ part of the scope: replay-open moves its record out of slot NDICT, which the
+\ first replay record takes, and clears PEND-CELL; replay-close puts the record
+\ back in slot NDICT and PEND-CELL back. Both refuse such a definition while a
+\ task is live: a live task keeps the overlay's code, which would split the
+\ definition's body. While the latch is set, replay-record and namespace-record
+\ raise HW as they publish. The owner publishes through nothing else, nothing
+\ while a definition is pending, and lowers NDICT only by its own rollback, so
+\ [the saved NDICT, HW) is the overlay's and a record above HW is another
+\ writer's. Every other record or wid writer dies while the latch is set, so a
+\ definition pends in an open overlay only through a raw store to PEND-CELL,
+\ which reaches the pending-definition refusals, as a raw ndict! reaches the
+\ HW one.
 require src/lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -1085,18 +1090,24 @@ variable LREPLAYTRAP
 
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
-   LBL LBL {: bad done :}
+   LBL LBL LBL {: bad none done :}
    s" E-TASK-COMPILE" s" replay-open" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
-   bad NOT-PENDING,
+   9 DATA PEND-CELL LDR,  9 none CBZ,
+      14 DATA TASKS-LIVE-CELL LDR,  14 bad CBNZ,
+      10 NDICT REC-AT,
+      DREC 0 do  14 10 i LDR,  14 DATA REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
+      9 DATA REPLAY-SCOPE:PEND STR,
+      14 0 MOVZ,  14 DATA PEND-CELL STR,
+   none LBL,
    NDICT 8 REPLAY-SCOPE:NDICT BAND-OFF STR,
    CP 8 REPLAY-SCOPE:CP BAND-OFF STR,
    0 0= SCOPE,
    NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
    14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
    done B,
-   s" E-SEAL-VIOLATION habu: replay-open with an overlay open or a definition pending"
+   s" E-SEAL-VIOLATION habu: replay-open with an overlay open, or a definition pending while a task is live"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1193,15 +1204,12 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ replay-close ( -- ): every check comes before the first store. It refuses
-\ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
-\ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
-\ scope back and zeroes the band, the latch with it, and its enclosing copy.
-\ While a task is live it retires the records instead and keeps NDICT and CP.
-\ Engine writers only raise WIDN past the saved count, so the WIDN refusal meets
-\ a raw store to WIDN-CELL, which nothing else refuses.
+\ replay-close ( -- ): every check comes before the first store, and the parked
+\ definition goes back into slot NDICT last, after the overlay's records are
+\ zeroed. Engine writers only raise WIDN past the saved count, so the WIDN
+\ rejection meets a raw store to WIDN-CELL, which nothing else rejects.
 : REPLAY-CLOSE ( -- )
-   LBL LBL LBL {: bad kept done :}
+   LBL LBL LBL LBL {: bad kept unparked done :}
    s" E-TASK-COMPILE" s" replay-close" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1211,6 +1219,9 @@ variable LREPLAYTRAP
    6 8 REPLAY-SCOPE:CP BAND-OFF LDR,  CP 6 CMP,  C-CC bad BCOND,
    14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 DATA WIDN-CELL LDR,
    15 14 CMP,  C-CC bad BCOND,
+   14 DATA REPLAY-SCOPE:PEND LDR,  14 unparked CBZ,
+   14 DATA TASKS-LIVE-CELL LDR,  14 bad CBNZ,
+   unparked LBL,
    9 4 0 ADDI,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 kept CBNZ,
    EM-DEF-OCC:LCOUNT LABEL@ BL,  10 11 LASTC-TRIM,
    CP 6 0 ADDI,
@@ -1226,8 +1237,15 @@ variable LREPLAYTRAP
    10 8 REPLAY-SCOPE:ENCLOSING BAND-OFF ADDI,
    11 10 ENCLOSING:END ENCLOSING:PUB - ADDI,
    ZERO-SPAN,
+   14 DATA REPLAY-SCOPE:PEND LDR,  14 done CBZ,
+   9 NDICT REC-AT,
+   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   DREC 0 do  14 DATA REPLAY-SCOPE:PEND-REC i + LDR,  14 11 i STR,  CELL +loop
+   9 DATA PEND-CELL STR,
+   14 0 MOVZ,  14 DATA REPLAY-SCOPE:PEND STR,
+   DREC 0 do  14 DATA REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
    done B,
-   s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
+   s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, a parked definition while a task is live, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 

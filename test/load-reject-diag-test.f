@@ -819,6 +819,23 @@ undefine include
    EXITED @ TTRUE
    RC @ REJECT-RC T= ;
 
+: TEST-REPLAY-TASK ( -- )
+   s" a replay inside a definition while a task is live is rejected" T-LABEL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\nGO\n: LRD-OUTER ( -- ) RPL ;\n" FS:WRITE-ALL
+   BODY$ RUN
+   ERR$ s" error[E-VERIFY-WINDOW]: the checker's replay ran inside a definition while a task is live" COUNT-SUB 1 T=
+   BODY$ s" :11:20" ASSERT-AT
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   s" a task started inside a replay of a definition is rejected and the definition completes" T-LABEL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\n: EV ( -- ) [: s\" RPL\" evaluate-closed ;] catch . ; immediate\ns\" EV\" 0 parse-imm\n: OUTER ( -- n ) EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
+   BODY$ RUN
+   OUT$ s\" -3604\n81\n\n82\n\n" STR= TTRUE
+   ERR-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ 0 T= ;
+
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
    s" a cast of one cell into three names its arity" T-LABEL
@@ -1443,6 +1460,7 @@ variable LONG-U
    TEST-EVALUATED-PLACE
    TEST-EVALUATED-SLICE
    TEST-REPLAY-DUP-PLACE
+   TEST-REPLAY-TASK
    TEST-OPEN-AT-CLOSE
    TEST-LOAD-IN-DECLARATION
    TEST-BAD-SIGNATURE-LINE

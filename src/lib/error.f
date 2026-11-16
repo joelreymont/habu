@@ -684,7 +684,7 @@ generates: FAULT ( -- n )
 -3507 s" a callback frame accessor used outside a live callback, a descriptor no declaration made, or a dispatch whose body was never stored" ERROR:CODE E-FFI-CALLBACK-STATE
 -3600 s" a task's data stack is smaller than TASK:MIN-STACK" ERROR:CODE E-TASK-SIZE
 -3603 s" the host refused a thread, semaphore or sleep call" ERROR:FAULT E-TASK-THREAD
--3604 s" a task word called in a state that refuses it: a wake of a task that is not running, a second result, or the task table changed while tasks run" ERROR:CODE E-TASK-STATE
+-3604 s" a task word called in a state it rejects: a wake of a task that is not running, a second result, the task table changed while tasks run, or a task started while the checker's replay parks a definition" ERROR:CODE E-TASK-STATE
 -3605 s" a task user-area claim does not fit, is made while a task is live, or names no slot of the area" ERROR:CODE E-TASK-USER
 -3606 s" a semaphore initialized twice" ERROR:CODE E-TASK-SEM-STATE
 -3607 s" a semaphore count out of range" ERROR:CODE E-TASK-SEM-COUNT

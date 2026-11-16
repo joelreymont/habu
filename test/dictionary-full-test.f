@@ -1,12 +1,13 @@
 \ dictionary-full-test.f - a definition, a storage declaration, a does> clause,
-\ a package, a qualified head's namespace, an EXPORT and a declaration that find
-\ no dictionary record left are rejected as E-DICTIONARY-FULL, placed at the
-\ name they make, a does> clause at its `does>`, a namespace at its qualified
-\ head, an EXPORT at its operand and a declaration where it ran out of room, and
-\ the load exits REJECTION:DICT-FULL-RC. A full dictionary stops the load, so
-\ each case is its own child hb. Each child fills the dictionary to a set number
-\ of free records counted from its own ndict@, so no case depends on how many
-\ records the engine uses at boot.
+\ a package, a qualified head's namespace, an EXPORT, a declaration and a
+\ replayed definition that find no dictionary record left are rejected as
+\ E-DICTIONARY-FULL, placed at the name they make, a does> clause at its
+\ `does>`, a namespace at its qualified head, an EXPORT at its operand, a
+\ declaration where it ran out of room and a replayed definition at its `:`,
+\ and the load exits REJECTION:DICT-FULL-RC. A full dictionary stops the load,
+\ so each case is its own child hb. Each child fills the dictionary to a set
+\ number of free records counted from its own ndict@, so no case depends on how
+\ many records the engine uses at boot.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f
@@ -74,6 +75,13 @@ private
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `FOO`\n --> <input>:5:16\n  |\n5 | TYPED-VARIABLE FOO n\n  |                ^^^ no record left\n  = help: define fewer words in this load\n\n"
    s" a storage declaration in a full dictionary" EXPECT ;
 
+\ RPL replays RA and RB while OUTER is parked: RA takes OUTER's slot, the one
+\ free record, so RB finds none.
+: REPLAY-PARKED ( -- )
+   S\" require src/habu/verify-source.f\n: RPL ( -- ) [: s\" : RA ( -- ) ; : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\n1 LEAVE-FREE\n: OUTER ( -- ) RPL ;\n"
+   S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `rb`\n --> <input>:1:15\n  |\n1 | : RA ( -- ) ; : RB ( -- ) ;\n  |               ^ no record left\n  = word: rb\n  = help: define fewer words in this load\n\n"
+   s" a replay that takes a parked definition's record" EXPECT ;
+
 DEFINITION
 DOES-CLAUSE
 FULL-PACKAGE
@@ -82,5 +90,6 @@ EXPORTED
 STRUCTURE-DECL
 SUMTYPE-DECL
 STORAGE-DECL
+REPLAY-PARKED
 
 ;package

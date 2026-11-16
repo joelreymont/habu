@@ -1,5 +1,6 @@
 \ Indexed compiler lookup follows live scope and definition changes.
 require src/lib/test.f
+require src/habu/verify-source.f
 
 17 constant NDB-GLOBAL
 1 constant NDB-MUTABLE
@@ -32,6 +33,10 @@ public
    s" NDB-MUTABLE" SPELL-START 0 T= ;
 immediate
 s" NDB-IMMEDIATE:RETIRE-BINDING" 0 parse-imm
+
+: REPLAY ( -- ) [: s" : NDB-RA ( -- n ) 5 ;" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
+immediate
+s" NDB-IMMEDIATE:REPLAY" 0 parse-imm
 
 ;using
 ;package
@@ -96,6 +101,11 @@ variable ROLL-OCC
    s" : NDB-MUTATION ( -- ) NDB-IMMEDIATE:RETIRE-BINDING ;" EV
    s" NDB-MUTABLE" SPELL-START 0 T=
    s" 2 constant NDB-MUTABLE : NDB-MUTATED ( -- n ) NDB-MUTABLE ; NDB-MUTATED 2 T=" EV ;
+
+
+: REPLAY-PENDING ( -- )
+   s" : NDB-REPLAYED ( -- n ) NDB-IMMEDIATE:REPLAY 81 ; NDB-REPLAYED 81 T=" EV
+   s" : NDB-KEEPER ( n -- ) create , does> ( -- n ) NDB-IMMEDIATE:REPLAY @ ; 83 NDB-KEEPER NDB-KEPT NDB-KEPT 83 T=" EV ;
 
 
 : REDECLARATION ( -- )
@@ -186,6 +196,7 @@ private
    s" using identity and ambiguity" T-LABEL USED-SCOPE T-NEXT
    s" folded hash collisions retain exact identity" T-LABEL COLLISIONS T-NEXT
    s" immediate compilation re-reads binding" T-LABEL IMMEDIATES T-NEXT
+   s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
    s" the retired wordlist returns the latest matching record" T-LABEL RETIRED-LATEST T-NEXT
    s" hide and forget invalidate recyclable slots" T-LABEL HIDE-REUSE FORGET-REUSE T-NEXT

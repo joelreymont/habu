@@ -1278,6 +1278,10 @@ USE-WIDS USE-MAX cells + constant END
 \ order, saved and restored with the scope. It takes the cells after
 \ ENCLOSING, which replay-close zeroes too.
 $4310 constant ENCLOSING
+\ PEND: PEND-CELL as replay-open found it, 0 for none; PEND-REC: a copy of
+\ that record's DREC bytes, which end at APP-ENTRY:XT-CELL.
+$4368 constant PEND
+PEND CELL + constant PEND-REC
 ;package
 
 \ While a part is open, the package it is a part of: that package's public
