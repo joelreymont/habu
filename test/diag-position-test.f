@@ -1840,6 +1840,17 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-PATH-RANGE" REJECT-RC LAUNCHED  GT-ERR$ GJA-SPLIT-LINES
    [: TOO-LONG-MSG ;] RANGE-FIELDS ;
 
+\ A source read from stdin is placed in its own bytes, as the file holding them
+\ is, where an `evaluate` of them counts its places too.
+: TEST-STDIN-CAST ( -- )
+   s" a cast evaluated from stdin's bytes, at its place in <stdin>" T-LABEL
+   s" parse-name x drop 26 + 32 evaluate \ cast: LRD-WIDE ( n -- ptr u8 n )"
+   {: src:^ srcu:n :}
+   CHECK-ARGV
+   src srcu s" E-CAST-FAM" REJECT-RC PIPED  GT-ERR$ GJA-SPLIT-LINES
+   GJA-LINE# @ 1 T=
+   0 s" ptr" 1 60 59 62 s" <stdin>" src srcu PLACED-IN ;
+
 \ CALLBACK builds the duplicate's name in its own buffer, so the check places
 \ the record at the `;CALLBACK` that ran it, as the load does.
 : TEST-CALLBACK-DUPLICATE ( -- )
@@ -3473,6 +3484,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-NAMED-FILE-DOT
    TEST-NAMED-TOO-LONG
    TEST-STDIN-PATH-TOO-LONG
+   TEST-STDIN-CAST
    TEST-CALLBACK-DUPLICATE
    TEST-NAMED-DOTTED
    TEST-SCRIPT-REQUIRED-EMPTY

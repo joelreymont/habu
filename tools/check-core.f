@@ -66,7 +66,6 @@ create CHK-ONE 1 allot
 \ unknown type.
 TYPED-VARIABLE CHK-OUT-BUF-A ^u8
 TYPED-VARIABLE CHK-ERR-BUF-A ^u8
-TYPED-VARIABLE CHK-MAP-BUF-A ^u8
 
 \ A buffer that holds a source, or text built from one, grows to what it
 \ holds: the engine loads a source file of any size (src/core/include.f), so
@@ -106,7 +105,6 @@ variable CHK-SRC-U
 variable CHK-RUN-U
 variable CHK-OUT-U
 variable CHK-ERR-U
-variable CHK-MAP-U
 variable CHK-RC
 variable CHK-LABEL-A
 variable CHK-LABEL-U
@@ -157,10 +155,6 @@ variable CHK-EXP-OUT-U
 : CHK-ERR-BUF ( -- ^u8 )
    CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
    CHK-ERR-BUF-A @ ;
-
-: CHK-MAP-BUF ( -- ^u8 )
-   CHK-MAP-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-MAP-BUF-A ! then
-   CHK-MAP-BUF-A @ ;
 
 : CHK-SEL-SRC-ROOM ( n -- ^u8 n )
    1 max dup CHK-SEL-SRC-MEM-RESERVE 0 CHK-SEL-SRC-MEM swap ;
@@ -698,12 +692,8 @@ public
 
 private
 
-\ The root is spelled canonically: the engine names a file it loads by its
-\ canonical path, so the run file's name in the run's diagnostics is the one
-\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT). It is registered for removal at
-\ process exit as soon as it is held: a `die` below - a lint library's, the
-\ verifier's, the engine's - ends the process without unwinding to
-\ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
+\ The root is canonical, as the engine names a loaded file, and registered for
+\ removal at exit when held: a `die` below never unwinds to CHK-TEMP-CLEAN.
 : CHK-MAKE-TEMP ( -- )
    s" habu-check" FS:MKTEMP-DIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
@@ -751,31 +741,33 @@ private
    CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
    CHK-RUN-U SOURCE-APPEND-QPATH ;
 
+: CHK-SEL-BYTES? ( -- bool )
+   CHK-SEL-MODE @ dup CHK-SEL-NONE = swap CHK-SEL-SOURCE = or ;
+
 \ The run file's prefix names the subject for the checker's diagnostics and
 \ turns its warnings off. The check before the run wrote the warnings, each in
 \ its own file and placed: the run loads what that check checked, so its
 \ warnings would repeat them, naming the subject for every file and placing
-\ none. It shares the subject's first line when the subject follows it, so line
-\ N of the run file is line N of the subject: the engine counts the lines of the
-\ file it reads when it rejects a statement.
+\ none.
 : CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
-   s"  REJECTION:LABEL!" CHK-RUN-SP
+   CHK-SEL-BYTES? if
+      CHK-SP CHK-RUN-C  CHK-SRC-PATH CHK-RUN-QPATH+
+      s"  REJECTION:FILE-LABEL!" CHK-RUN-SP
+   else
+      s"  REJECTION:LABEL!" CHK-RUN-SP
+   then
    CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
    s" 0 CHECK:WARN-DIAGS !" CHK-RUN-SP ;
 
-\ The engine comments a leading `#!` line only at the start of a file it reads,
-\ so the source's own is commented here, with the engine's rewrite.
 : CHK-RUN-SOURCE+ ( ^u8 n -- )
    CHK-SRC-READ {: len:n :}
-   CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SRC-BUF len CHK-RUN+ ;
 
-\ The subject with its shebang commented, which the run reads for the subject's
-\ canonical path, so a rejection in the subject names its own line and column.
+\ A copy of the subject, which the run reads for the subject's canonical path,
+\ so a rejection in the subject names its own line and column.
 : CHK-WRITE-SUBJECT ( -- )
    CHK-SUBJ$ CHK-SRC-READ {: len:n :}
-   CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SUBJECT-PATH CHK-SRC-BUF len FS:WRITE-ALL ;
 
 : CHK-BUILD-READER ( -- )
@@ -791,6 +783,11 @@ private
    CHK-SUBJ-U @ 0 > if CHK-WRITE-SUBJECT then
    CHK-BUILD-PREFIX
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
+   CHK-SEL-BYTES? if
+      CHK-LF CHK-RUN-C
+      CHK-SRC-PATH CHK-RUN-QPATH+  s"  script-required" CHK-RUN-LN
+      exit
+   then
    CHK-SOURCE CHK-RUN-SOURCE+ ;
 
 : CHK-BUILD-RUN ( -- )
@@ -956,43 +953,11 @@ private
    CHK-VERIFIER-TRUNCATED
    CHK-E-UNAVAILABLE CHK-THROW ;
 
-: CHK-MAP+ ( ^u8 n -- )
-   >LEN CHK-MAP-BUF CHK-ERR-CAP >LEN CHK-MAP-U SOURCE-APPEND-BYTES ;
-
-\ Where the run file's name next starts in the given bytes, or -1.
-: CHK-RUN-NAMED-AT ( ^u8 n -- n )
-   CHK-RUN-PATH FIND-SUB MATCH option
-     some OF IDX>N ENDOF
-     none OF -1 ENDOF
-   ;MATCH ;
-
-\ The bytes before the run file's name at at, then the label in its place;
-\ the bytes after the name remain.
-: CHK-MAP-NAME ( ^u8 n n -- ^u8 n ) {: a:^ u:n at:n :}
-   a at CHK-MAP+
-   CHK-LABEL CHK-MAP+
-   at CHK-RUN-PATH-U @ + {: past:n :}
-   a past +  u past - ;
-
-\ An inlined subject is the run file line for line (CHK-BUILD-PREFIX), so where
-\ the run's diagnostics name the run file, as the engine's refusal of a
-\ statement does, they name the subject at that line.
-: CHK-ERR-NAME-SUBJECT ( -- )
-   0 CHK-MAP-U !
-   CHK-ERR-BUF CHK-ERR-U @
-   begin 2dup CHK-RUN-NAMED-AT dup 0 >= while
-      CHK-MAP-NAME
-   repeat drop
-   CHK-MAP+
-   CHK-MAP-BUF CHK-ERR-BUF CHK-MAP-U @ LEN>N BYTE-COPY
-   CHK-MAP-U @ LEN>N CHK-ERR-U ! ;
-
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ FS:WRITE-ALL
    CHK-LOAD-RESET
    CHK-RUN-PATH CHK-ARG+
-   CHK-RUN-CAPPED
-   CHK-ERR-NAME-SUBJECT ;
+   CHK-RUN-CAPPED ;
 
 \ The run's packets on stderr; its prose, when it wrote no packet, on stdout.
 : CHK-RUN-JSON-ONLY ( -- )

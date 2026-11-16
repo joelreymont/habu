@@ -1097,12 +1097,15 @@ NO-FILE$ FILE-COPY
 public
 : FILE! ( ^u8 n -- )
    FILE-COPY  -1 NAMED ! ;
+\ Places in the bytes of the file p pu name label a u; the files it loads are the program's.
+: FILE-LABEL! ( ^u8 n ^u8 n -- ) {: a:^ u:n p:^ pu:n :}
+   a u LABEL-NAME-BUF PATH-COPY LABEL-NAME-U !
+   p pu LABEL-BUF PATH-COPY LABEL-U !
+   -1 LABELED ! ;
 \ Places in the bytes of the file being read name this file; the files it
 \ loads are the program's, not the tool's own.
 : LABEL! ( ^u8 n -- )
-   LABEL-NAME-BUF PATH-COPY LABEL-NAME-U !
-   PATH$ LABEL-BUF PATH-COPY LABEL-U !
-   -1 LABELED ! ;
+   PATH$ FILE-LABEL! ;
 
 private
 \ The bytes of the labels PRESERVE-LABEL holds, innermost last: LABELS-U bytes

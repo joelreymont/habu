@@ -2257,9 +2257,10 @@ public
 : READ-OS ( ^u8 n ^u8 n -- ^u8 n )
    2drop s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
-\ A source whose first two bytes are `#!` names its interpreter on that line,
-\ and the engine reads the line as a comment: the two bytes become `\ `, so
-\ every line and column stays the file's own.
+private
+
+\ A leading `#!` line reads as a comment: its two bytes become `\ `, so every
+\ line and column stays the file's own.
 : SHEBANG-COMMENT ( ^u8 n -- ) {: a:^ u:n :}
    u 2 < if exit then
    a c@ $23 <> if exit then
@@ -2267,10 +2268,7 @@ public
    $5c a c!
    $20 a 1 + c! ;
 
-\ The loop a loaded file's bytes go through inside LOAD-UNIT's source-file-run: evaluate-range, or the loop
-\ test/interpreter-loop-on.f binds (USE-INTERPRETER); a file under the design seal skips it (INTERPRET-SAVED-RANGE).
-private
-
+\ The loop LOAD-UNIT runs a loaded file's bytes through; USE-INTERPRETER swaps it.
 defer INCLUDE-INTERPRET ( ^u8 n n n -- )
 
 \ The design seal is read where the engine's loop reads a token, and the loop
