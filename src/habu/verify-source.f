@@ -4197,8 +4197,15 @@ variable READ-META-VALID
       READ-U @ + READ-U !
    REPEAT drop ;
 
-\ A stream has no reusable stamp: it is read, but only a regular file takes the
-\ before/after stamp check.
+\ Rejects PATH, a stream no stamp names, with the loader's record, placed at the
+\ loader that loads it.
+: REFUSE-SOURCE-READ ( ^u8 n -- ) {: path:^ pathu:n :}
+   path pathu FAULT-TARGET!
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
+
+\ A stream (a FIFO, device or socket) is rejected before its open, which would
+\ block on a FIFO; a file that changes while it is read is rejected after it.
 : QUIET-READ ( ^u8 n ^u8 n -- ^u8 n )
    2drop {: path:^ pathu:n :}
    0 READ-META-VALID !
@@ -4206,35 +4213,26 @@ variable READ-META-VALID
    pathu READ-PATH-U !
    path pathu FS:TRY-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
+   READ-PATHZ COMPILE-READS:STAMP COMPILE-READS:STABLE? 0= IF path pathu REFUSE-SOURCE-READ THEN
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FS:ERRNO COMPOSE-UNREADABLE THEN
    fd READ-FD !
    [: READ-FILL ;] catch {: rc:n :}
    fd close
    rc 0<> IF rc throw THEN
-   valid IF
-      path pathu FS:TRY-FILE-META
-      {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
-      size after = msec amsec = and mns amns = and
-      csec acsec = and cns acns = and still and 0= IF path pathu COMPOSE-CHANGED THEN
-      size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
-      csec READ-CSEC ! cns READ-CNS !
-      true READ-META-VALID !
-   THEN
+   path pathu FS:TRY-FILE-META
+   {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
+   size after = msec amsec = and mns amns = and
+   csec acsec = and cns acns = and valid and still and 0= IF path pathu COMPOSE-CHANGED THEN
+   size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
+   csec READ-CSEC ! cns READ-CNS !
+   true READ-META-VALID !
    0 READ-BUF READ-U @ ;
 
 public
 
-\ An ON-FILE consumer that requires a regular-file stamp rejects PATH, a stream,
-\ with the loader's record of a source it cannot read, at the same loader.
-: REFUSE-SOURCE-READ ( ^u8 n -- ) {: path:^ pathu:n :}
-   path pathu FAULT-TARGET!
-   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
-
 \ The stamp of the disk bytes the quiet reader just handed to SOURCE-INPUT.
-\ ON-FILE runs before another acquisition can replace it. Readable streams
-\ have no regular-file stamp and return false.
+\ ON-FILE runs before another acquisition can replace it.
 : QUIET-READ-META ( ^u8 n -- n n n n n bool )
    {: path:^ pathu:n :}
    READ-META-VALID @ 0<> pathu READ-PATH-U @ = and

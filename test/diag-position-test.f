@@ -44,6 +44,9 @@ variable OUT-U
 variable ERR-U
 variable RC
 
+PROCESS-SYMBOLS
+FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
+
 : BASE$ ( -- ^u8 n )
    BASE BASE-U @ ;
 
@@ -1557,10 +1560,12 @@ variable RC
    1 s" code" c cu FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: LOADED ( ^u8 n n -- )
-   {: text:^ textu:n want:n :}
+\ hb runs the fixture's path after FLAG, none when empty, on an empty stdin: it
+\ exits WANT, its stderr holding TEXT, or nothing when TEXT is empty.
+: RAN ( ^u8 n ^u8 n n -- )
+   {: flag:^ flagu:n text:^ textu:n want:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
+   flagu 0 > IF flag flagu >LEN PROC-ARGV+ THEN
    FX-PATH$ >LEN PROC-ARGV+
    FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
@@ -1570,6 +1575,10 @@ variable RC
    RC @ want T=
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
+
+: LOADED ( ^u8 n n -- )
+   {: text:^ textu:n want:n :}
+   s" --load" text textu want RAN ;
 
 \ The load exits RC after its record for CODE, placed at AT after the fixture's
 \ path (`:line:column`, or nothing for a record with no place).
@@ -1650,6 +1659,51 @@ variable RC
    0 s" resolved" SB$ NOTE=
    0 s" help" s" name a source file, not a directory" FIELD=
    SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `required-dir.f`\n --> " SB-APPEND
+   FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
+   SB$ INCLUDE-IO-RC LOADED ;
+
+\ The fixture path names a FIFO, which a load's open would wait on.
+: FIFO! ( -- )
+   FX-PATH$ FS:>PATHZ $180 MKFIFO-CALL 0 T= ;
+
+\ A named FIFO gets the load's record of a source no stamp names, and its
+\ status, from hb, the load and the check alike, before any open waits on it.
+: TEST-NAMED-FIFO ( -- )
+   s" a named input that is a FIFO" T-LABEL
+   s" named-fifo" NAMED!  FIFO!
+   SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
+   S\" `: is not a regular file\n  = help: load a regular file, whose bytes a stamp" SB-APPEND
+   S\"  can name\n\n" SB-APPEND
+   s" " SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is not a regular file" SB-APPEND
+   0 s" message" SB$ FIELD=
+   0 s" help" s" load a regular file, whose bytes a stamp can name" FIELD=
+   UNPLACED ;
+
+\ The check's one record for the required FIFO, at the request.
+: REQUIRED-FIFO-AT ( -- )
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   0 s" message" s" cannot read `required-fifo.f`" FIELD=
+   0 s" required-fifo.f" 1 9 8 23 AT
+   0 s" source_line" s" require required-fifo.f" FIELD=
+   0 s" label" s" is not a regular file" FIELD=
+   SB-RESET  BASE$ SB-APPEND  s" /required-fifo.f" SB-APPEND
+   0 s" resolved" SB$ NOTE=
+   0 s" help" s" load a regular file, whose bytes a stamp can name" FIELD= ;
+
+\ A required FIFO gets that record placed at the request, from the load and the
+\ check alike; under --all-errors the check returns instead of waiting on it.
+: TEST-REQUIRED-FIFO ( -- )
+   s" a required path that is a FIFO" T-LABEL
+   s" required-fifo.f" NAMED!  FIFO!
+   s" require required-fifo.f" s" require-fifo.f" LINE-FIXTURE
+   s" " INCLUDE-IO-RC CHECK-EXIT  REQUIRED-FIFO-AT
+   s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  REQUIRED-FIFO-AT
+   SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `required-fifo.f`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
    SB$ INCLUDE-IO-RC LOADED ;
 
@@ -2794,6 +2848,8 @@ variable RC
    TEST-NAMED-MISSING
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR
+   TEST-NAMED-FIFO
+   TEST-REQUIRED-FIFO
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-GENERATES

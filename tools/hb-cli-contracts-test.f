@@ -174,14 +174,16 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" the piped stdin program did not run" T-LABEL
    HCT-OUT-U @ 0 T= ;
 
-\ printf '' | hb --load /dev/null  ->  rc 0: a known flag with an empty file loads.
+\ printf '' | hb --load FILE, FILE empty  ->  rc 0: a known flag with an empty
+\ file loads.
 : HCT-EXPECT-LOAD-EMPTY-FILE ( -- )
+   HCT-CHILD HCT-EMPTY 0 FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" /dev/null"  >LEN PROC-ARGV+
+   HCT-CHILD >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   s" bin/hb --load /dev/null" HCT-STORE!
+   HCT-CHILD HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
 

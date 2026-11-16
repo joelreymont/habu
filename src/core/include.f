@@ -1965,8 +1965,7 @@ variable LAST-LOAD-EVAL-OK
 
 \ The open frame's stamp, from a stat of the path taken before the file is
 \ opened, so a change during the read leaves a stamp no later load matches.
-: STAMP! ( ^u8 -- )
-   COMPILE-READS:STAMP {: sec:n ns:n size:n :}
+: STAMP! ( n n n -- ) {: sec:n ns:n size:n :}
    TOP@ {: frame:^ :}
    sec frame FR-CTIME-SEC + CELL-VIEW !
    ns frame FR-CTIME-NS + CELL-VIEW !
@@ -1982,14 +1981,23 @@ variable LAST-LOAD-EVAL-OK
    s" call it only from a reader installed with `SOURCE-INPUT:USE`, for the path the loader passes"
    PATH-DIE ;
 
+\ Where a rejection of the file being opened stands: at the request in the file
+\ that asked for it; an entry's has no place.
+: ASKED-AT$ ( -- ^u8 n )
+   TOP@ FRAME-PREV @ {: prev:^ :}
+   prev 0= if NULL-PTR 0 else prev PUBLISH-FRAME REQUEST-AT$ then ;
+
 \ The file a u the resolver found would not open or read, the system's last
-\ call failing with errno e: the record stands at the request in the file that
-\ asked for it; an entry's has no place.
+\ call failing with errno e.
 : INCLUDE-UNREADABLE ( ^u8 n n -- ) {: a:^ u:n e:n :}
    INCLUDE-CLOSE
-   TOP@ FRAME-PREV @ {: prev:^ :}
-   prev 0= if NULL-PTR 0 else prev PUBLISH-FRAME REQUEST-AT$ then
-   a u e UNREADABLE-SOURCE ;
+   ASKED-AT$ a u e UNREADABLE-SOURCE ;
+
+\ The file a u the resolver found is a stream (a FIFO, device or socket), whose
+\ open would block or whose bytes no stamp names.
+: INCLUDE-UNSTAMPED ( ^u8 n -- ) {: a:^ u:n :}
+   ASKED-AT$ a u UNSTAMPED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 : INCLUDE-ERRNO ( -- n )   data-base FS-ABI:ERRNO-OFF + @ ;
 
@@ -2006,7 +2014,9 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-FALSE ;
 
 : INCLUDE-READ-ALL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u INCLUDE-PATH0 STAMP!
+   a u INCLUDE-PATH0 COMPILE-READS:STAMP {: sec:n ns:n size:n :}
+   sec ns size STAMP!
+   sec ns size COMPILE-READS:STABLE? 0= if a u INCLUDE-UNSTAMPED then
    a u INCLUDE-OPEN
    0 INCLUDE-U !
    begin a u INCLUDE-READ-DONE? 0= while repeat

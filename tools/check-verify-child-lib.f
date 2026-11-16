@@ -336,10 +336,8 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    {: f:^ fu:n a:^ u:n :}
    f fu SUBJECT-PATH$ CORE-STR= {: subject:bool :}
    f fu OPEN-TEXT {: open:bool :} 2drop
-   f fu VERIFY:QUIET-READ-META
-   {: size:n msec:n mns:n csec:n cns:n valid:bool :}
-   \ Reject unstamped disk bytes before publishing any part of their record.
-   subject open or 0= valid 0= and if f fu VERIFY:REFUSE-SOURCE-READ then
+   f fu VERIFY:QUIET-READ-META drop
+   {: size:n msec:n mns:n csec:n cns:n :}
    OUT-FD s\" check-verify: file {\"file\":" WRITE
    f fu JSON-STR
    subject if
