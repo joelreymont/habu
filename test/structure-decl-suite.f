@@ -248,6 +248,18 @@ public
 ;package
 9 SDPRIVROLL:RGO 9 T=                                 \ the re-declaration generated working words
 
+\ A field in a part `A:B` names A's private family bare, as a word there calls
+\ A's private words.
+package SDPARENT
+private
+STRUCTURE sdinner FIELD x n ;STRUCTURE
+package SDPART
+s" STRUCTURE sdouter FIELD y sdinner ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" : SDPGET ( n -- n ) SDINNER-MAKE SDOUTER-MAKE SDOUTER-UNMAKE SDINNER-UNMAKE ; 5 SDPGET"
+TEST-EVAL:N 5 T=
+;package
+;package
+
 \ Reject diagnostics. STRUCTURE prints its rejection through package REJECTION;
 \ the assertions read the bytes captured through REJECTION:CAPTURE /
 \ REJECTION:BUFFER$. This proves the channel, not a check-tool run. Each

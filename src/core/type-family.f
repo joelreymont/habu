@@ -2129,9 +2129,12 @@ public
 
 private
 
+\ A private family is visible in its own package and in that package's parts.
 : PF-FAM-VISIBLE? ( n n -- bool ) {: owner:n fam:n :}
    fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
-   fam TFAM-PKG$ owner TFAM-PKG$ CORE-STR= ;
+   fam TFAM-PKG$ owner TFAM-PKG$ CORE-STR= IF RES-TRUE EXIT THEN
+   owner TFAM-PKG$ CHECKER-COLON-SCAN drop 0= IF RES-FALSE EXIT THEN
+   fam TFAM-PKG$ owner TFAM-PKG$ CHECKER-RESOLVE:TOP$ CORE-STR= ;
 : PF-APP-KIND ( n -- n ) {: fam:n :}
    fam TFAM-KIND@ TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
    fam TFAM-LAYOUT? IF PK-LAYOUT EXIT THEN
