@@ -1196,10 +1196,11 @@ public
 
 \ The family header and the source token that names it, the same bytes up to
 \ case: a DEFTYPE name folds to its header, a NEWTYPE name is its own token.
-\ With no name, the token is the keyword.
-: TDECL-DEFFAMILY ( ^u8 n ^u8 n -- )
-   {: na:^ nu:n ta:^ tu:n :}
-   s" newtype" na nu s" " TDECL-CTX!
+\ With no name, the token is the keyword. KIND is the declaration's keyword,
+\ "newtype" or "deftype", which its records name.
+: TDECL-DEFFAMILY ( ^u8 n ^u8 n ^u8 n -- )
+   {: na:^ nu:n ta:^ tu:n ka:^ ku:n :}
+   ka ku na nu s" " TDECL-CTX!
    ta tu TDECL-PLACE!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
@@ -1951,7 +1952,7 @@ public
 \ converters, >NAME then NAME>N.
 : TDECL-DEFTYPE ( ^u8 n ^u8 n -- )
    {: na:^ nu:n ta:^ tu:n :}
-   ta tu na nu TDECL-DEFFAMILY
+   ta tu na nu s" deftype" TDECL-DEFFAMILY
    na nu s" n" TDECL-FAM-REG @ TDECL-CONVERTERS ;
 
 \ Registers converter NA NU's effect, of SHAPE, over the last declared family.
@@ -2086,7 +2087,7 @@ using TYPE-DECL
 
 \ The preverify and all-errors replay paths (verify-source.f) reach
 \ CHECKER-DEFFAMILY and CHECKER-NOMINAL-REPLAY; DEFTYPE reaches CHECKER-DEFTYPE.
-: CHECKER-DEFFAMILY ( ^u8 n ^u8 n -- ) TDECL-DEFFAMILY ;
+: CHECKER-DEFFAMILY ( ^u8 n ^u8 n ^u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFTYPE ( ^u8 n ^u8 n -- ) TDECL-DEFTYPE ;
 NOMINAL-PROVIDER

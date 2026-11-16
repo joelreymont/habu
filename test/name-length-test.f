@@ -148,7 +148,7 @@ create BEFORE MARK-N cells allot
    h p hu BYTE-COPY
    a p hu + u BYTE-COPY
    p hu u + ;
-: FAMILY-IT ( -- ) BAD$ BAD$ CHECKER-DEFFAMILY ;
+: FAMILY-IT ( -- ) BAD$ BAD$ s" newtype" CHECKER-DEFFAMILY ;
 : SUM-IT ( -- )
    BAD$ s" VARIANT vacant ;VARIANT ;SUMTYPE"
    [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;

@@ -53,7 +53,7 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 : PTR-REJECTED ( -- )
    REJECTION:CAPTURE
    ['] MINT-PTR CHECKER-REJECT-RC TTHROWSQ
-   REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`" CONTAINS? TTRUE
    REJECTION:BUFFER$ s" ^ reserved name" CONTAINS? TTRUE
    REJECTION:BUFFER$ S\" = word: PTR\n" CONTAINS? TTRUE
    REJECTION:BUFFER$ s" = word: ptr" CONTAINS? TFALSE ;

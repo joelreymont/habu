@@ -2607,14 +2607,14 @@ variable STG-TYPE-U
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ CHECKER-DEFFAMILY EXIT THEN
+   nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ s" newtype" CHECKER-DEFFAMILY EXIT THEN
    0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
-   IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
+   IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
    SCAN-I @ {: mark:n :}
    SCAN-LINE-TOKEN {: ta:^ tu:n :}
    mark SCAN-I !
-   tu 0= IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN
-   tu 1 = IF ta c@ 92 = IF name nameu 2dup CHECKER-DEFFAMILY EXIT THEN THEN
+   tu 0= IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
+   tu 1 = IF ta c@ 92 = IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN THEN
    name nameu at nameu SEALED-NAME
    name nameu SCAN-STORAGE-TYPE s" newtype" TYPE-DECL:SD-WRAP-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
@@ -2644,7 +2644,7 @@ variable STG-TYPE-U
       tail tailu ba bu s" deftype" TYPE-DECL:SD-WRAP-OUTCOME
       IF DW-TYPE DEFER-AT EXIT THEN 2drop
    ELSE
-      tail tailu name nameu CHECKER-DEFFAMILY
+      tail tailu name nameu s" deftype" CHECKER-DEFFAMILY
    THEN
    REJECTION:TALLY @ refused <> IF EXIT THEN
    name nameu tail tailu ba bu DTC-BUILD-IN

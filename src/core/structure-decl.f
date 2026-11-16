@@ -801,13 +801,13 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
-   nu 0= IF na nu kw ku TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   nu 0= IF na nu kw ku s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    0 0= 0= nu 0 ?do na i + c@ 60 = or loop
-   IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    STORAGE-LINE-TOKEN {: ta:^ tu:n :}
-   tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   tu 0= IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta STORAGE-UNREAD
-   tu 1 = IF ta c@ 92 = IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
+   tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
    na nu STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
 
 ;using
