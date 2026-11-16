@@ -356,6 +356,15 @@ variable ERR-U
    S\" \"evaluated\":{\"source_line\":\"s\\\" /subject/label.f" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
 
+\ A child, as CASE-LABEL is. A candidate text is in no file, so its rejection
+\ is placed at <input>, never at the label.
+: CASE-LABEL-CANDIDATE ( -- )
+   s" a tool's file label stays off a candidate text's rejection" T-LABEL
+   S\" s\" /subject/label.f\" REJECTION:LABEL! true REJECTION:JSON ! s\" TS-LC ( -- ) TS-LC-UNDEFINED\" CHECK-CANDIDATE! drop"
+   0 EXITS
+   S\" \"file\":\"<input>\"" ERR-HAS?
+   S\" \"code\":\"E-UNDEFINED\"" ERR-HAS? ;
+
 \ A child: unchecked, `c@` reads through a cell TS-L3 left, which crashes the
 \ process. The literal pads TS-L3's cells as unknown (CHECKER-TOP-PUSH).
 : CASE-SHORT-ROW ( -- )
@@ -515,6 +524,7 @@ public
    CASE-SITE
    CASE-EVAL-SITE
    CASE-LABEL
+   CASE-LABEL-CANDIDATE
    CASE-EXECUTE-UNDERFLOW
    CASE-CATCH-NON-XT
    CASE-EXECUTE-OPAQUE-TICK

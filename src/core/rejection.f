@@ -232,15 +232,14 @@ create FILE-BUF PATH-CAP 1 + allot   variable FILE-U
 public
 : FILE$ ( -- ^u8 n ) FILE-BUF FILE-U @ ;
 private
-\ LABEL! labels one file, the one the load was reading when it ran; a label set
-\ with no file open names the steps that have no file. LABEL-BUF holds that
-\ file's path, empty for none; a top-level step in it names the label, and one
-\ in any other file names its own path.
-\ The boot's NO-FILE$ is no label.
+\ LABEL-BUF holds the path of the file LABEL! ran in, empty for none, and
+\ LABEL-NAME-BUF the label a top-level step in that file is placed at.
 variable LABELED
 \ Whether a tool named a file by FILE!.
 variable NAMED
 create LABEL-BUF PATH-CAP allot   variable LABEL-U
+create LABEL-NAME-BUF PATH-CAP allot   variable LABEL-NAME-U
+: LABEL-NAME$ ( -- ^u8 n ) LABEL-NAME-BUF LABEL-NAME-U @ ;
 : COPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@
@@ -381,7 +380,7 @@ private
 \ The file a top-level step names; empty when no file or label names it.
 : LOAD-FILE$ ( -- ^u8 n )
    PATH$ {: pa:^ pu:n :}
-   pa pu LABELS? IF FILE$ EXIT THEN
+   pa pu LABELS? IF LABEL-NAME$ EXIT THEN
    pa pu ;
 
 variable NOTES   0 NOTES !              \ the JSON notes object is open
@@ -398,7 +397,7 @@ PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
 variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
 PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 \ The newest record's place as AT copies it: its file's path and first byte.
-\ FILE$ and a loading file's path fit PATH-CAP bytes.
+\ FILE$, the label and a loading file's path fit PATH-CAP bytes.
 create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT   -1 LAST-AT !
 \ A token in an evaluated text is placed where the evaluation ran, followed by
 \ the line EVALUATED-A EVALUATED-U, the token EVAL-LEAD-U bytes in.
@@ -1101,7 +1100,7 @@ public
 \ Places in the bytes of the file being read name this file; the files it
 \ loads are the program's, not the tool's own.
 : LABEL! ( ^u8 n -- )
-   FILE-COPY
+   LABEL-NAME-BUF PATH-COPY LABEL-NAME-U !
    PATH$ LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
 
@@ -1121,15 +1120,17 @@ variable LABELS-U   0 LABELS-U !
 
 \ The label's bytes are saved; where they start, their lengths, LABELED and
 \ NAMED stay on the stack for LABEL-RESTORE.
-: LABEL-SAVE ( -- n n n n n )
+: LABEL-SAVE ( -- n n n n n n )
    LABELS-U @  FILE$ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
-   FILE-U @ LABEL-U @ LABELED @ NAMED @ ;
+   LABEL-NAME$ LABELS-PUSH
+   FILE-U @ LABEL-U @ LABEL-NAME-U @ LABELED @ NAMED @ ;
 
-: LABEL-RESTORE ( n n n n n -- )
-   {: at:n fu:n lu:n on:n nm:n :}
+: LABEL-RESTORE ( n n n n n n -- )
+   {: at:n fu:n lu:n nu:n on:n nm:n :}
    LABELS-P @ at + {: k:^ :}
    k FILE-BUF fu COPY  fu FILE-U !
    k fu + LABEL-BUF lu COPY  lu LABEL-U !
+   k fu + lu + LABEL-NAME-BUF nu COPY  nu LABEL-NAME-U !
    on LABELED !  nm NAMED !  at LABELS-U ! ;
 public
 
