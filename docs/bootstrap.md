@@ -92,8 +92,10 @@ primitive-spec atom`), a built-in type family the tree's source names
 (the running checker stops `unknown type`), a top-level `INTRINSIC` in a
 package whose copy in the running hb takes no `EXPORT CHECK:INTRINSIC` (a build
 runs hb's own word, which src/habu/interpreter.f HOST-WORD? looks up in hb's
-copy of the open package, and stops E-UNDEFINED), an existing atom code given a
-new meaning (the running
+copy of the open package, and stops E-UNDEFINED), a new intrinsic id the tree's
+source tags a word with (the running checker cannot write that word's facts
+text and stops `no facts text says the amended effect of`), an existing atom
+code given a new meaning (the running
 checker replays the rows with the old meaning and says nothing), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
 it, or a change to which files a build

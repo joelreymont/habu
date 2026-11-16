@@ -5700,6 +5700,8 @@ CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID constant INTRINSIC-TOP-ONLY
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
+19 constant INTRINSIC-INCLUDE                  \ include
+20 constant INTRINSIC-REQUIRE                  \ require
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 \ An alias's control word: no operator identity, which matches a spelling,
@@ -5748,6 +5750,8 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    id INTRINSIC-XT-STORE = IF s" xt-store" EXIT THEN
    id INTRINSIC-ATOMIC-STORE = IF s" atomic-store" EXIT THEN
    id INTRINSIC-ATOMIC-CAS = IF s" atomic-cas" EXIT THEN
+   id INTRINSIC-INCLUDE = IF s" include" EXIT THEN
+   id INTRINSIC-REQUIRE = IF s" require" EXIT THEN
    s" " ;
 
 
@@ -17369,11 +17373,11 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    a u CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
 
 \ `id INTRINSIC`, at top level right after the source definition of an engine
-\ word the walk types by what it does, tags it as that engine word, as
-\ `immediate` marks the latest word. A replay never runs this line; the
-\ definition's end keeps the identity its symbol carries. It has no PRIM row
-\ on purpose: the seal's internal-word pass leaves it callable by the engine's
-\ own source alone, so no program can claim its word is an engine word.
+\ word, tags it as that engine word, as `immediate` marks the latest word. A
+\ replay never runs this line; the definition's end keeps the identity its
+\ symbol carries. It has no PRIM row on purpose: the seal's internal-word pass
+\ leaves it callable by the engine's own source alone, so no program can claim
+\ its word is an engine word.
 \ The row declarers' ids also publish CTL-PARSES: each reads its row, but its
 \ trusted body calls the registrar the scan refuses, so no checked body records
 \ the flag its parse-name calls give.
