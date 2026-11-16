@@ -33,6 +33,7 @@ package COMP
 
 EXPORT CHECK:BODY-ARM
 EXPORT CHECK:DISARMER
+EXPORT CHECK:UNDEFINED-RECORD
 
 \ ---- the tape ----------------------------------------------------------------
 \ THE ORDINALS. The checker files what it proved about a token under that
