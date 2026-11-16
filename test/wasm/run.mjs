@@ -1,11 +1,11 @@
 // run.mjs - the wasm device check's runner (test/wasm/harness.f): instantiates
 // the module at the path argument with no imports, calls run and writes the OUT
 // region to stdout. Exits 0 or 1 by run's status, 1 with `throw <i64>` on
-// stderr; 2 on a trap; 3 on a compile or link error. On a trap, `fault <kind>
-// <addr>` from fault-kind and fault-addr, in decimal, is stderr's last line.
-// A module that links writes `memory <start> <end>` on stderr, its memory's
-// bytes before run and after it, after the throw line and before the fault
-// line.
+// stderr; 2 on a trap; 3 on a compile or link error. A module that links writes
+// `memory <start> <end>` on stderr, its memory's bytes before run and after it,
+// after the throw line; on a trap `fault <kind> <addr>` from fault-kind and
+// fault-addr, in decimal, is the line after it. The ERR region's bytes follow
+// these lines.
 import { readFileSync } from "node:fs";
 
 const bytes = readFileSync(process.argv[2]);
@@ -28,4 +28,5 @@ if (x) {
   if (process.exitCode === 1) console.error(`throw ${x["throw-code"]()}`);
   console.error(`memory ${start} ${x.memory.buffer.byteLength}`);
   if (process.exitCode === 2) console.error(`fault ${x["fault-kind"]()} ${x["fault-addr"]()}`);
+  process.stderr.write(new Uint8Array(x.memory.buffer, x["err-base"]() >>> 0, x["err-len"]() >>> 0));
 }

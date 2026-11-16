@@ -66,11 +66,11 @@ $7FF8000000000000 constant NAN-MADE
 11 constant L-PTR
 12 constant L-END
 
-\ ---- emit and die
-\ Past the allocator's locals: the i64 bytes OUT must take, then OUT's length
+\ ---- emit, write and die
+\ Past the allocator's locals: the i64 bytes a stream must take, then its length
 \ and its address before it grows, each an i32.
 13 constant L-NEED
-14 constant L-OUT-LEN
+14 constant L-LEN
 15 constant L-OLD
 
 \ ---- throw, die and execute
@@ -437,71 +437,106 @@ variable BUF-U
    ONE-RESULT,  DONE, ;
 
 
-\ ---- emit and die
-: OUT-LOCALS, ( -- )  3 U32,  8 U32,  I32 B,  5 U32,  I64 B,  2 U32,  I32 B, ;
+\ ---- emit, write and die
+: STREAM-LOCALS, ( -- )  3 U32,  8 U32,  I32 B,  5 U32,  I64 B,  2 U32,  I32 B, ;
 
-\ The i64 address past OUT's length plus L-NEED.
-: OUT-END, ( -- )
-   L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-OUT-LEN GET,  OP-I64-EXTEND-I32-U B,
+\ A stream, OUT or ERR: the ctx fields of its length, address and capacity, and
+\ the fixed run it starts in.
+: OUT-STREAM ( -- n n n n )
+   WPROF:CTX-OUT-LEN WPROF:CTX-OUT-BASE WPROF:CTX-OUT-CAP WPROF:OUT-BASE ;
+: ERR-STREAM ( -- n n n n )
+   WPROF:CTX-ERR-LEN WPROF:CTX-ERR-BASE WPROF:CTX-ERR-CAP WPROF:ERR-BASE ;
+
+\ The i64 address past the stream's length plus L-NEED.
+: STREAM-END, ( -- )
+   L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-LEN GET,  OP-I64-EXTEND-I32-U B,
    OP-I64-ADD B,  L-NEED GET,  OP-I64-ADD B, ;
 
-\ L-BYTES becomes the larger of twice OUT's capacity and its length plus
-\ L-NEED, or -1, which map-anon refuses, for an L-NEED past 2^32.
-: OUT-WANT, ( -- )
-   WPROF:CTX-OUT-CAP CTX@,  OP-I64-EXTEND-I32-U B,  1 I64,  OP-I64-SHL B,
+\ L-BYTES becomes the larger of twice the capacity in ctx field cap and the
+\ length plus L-NEED, or -1, which map-anon refuses, for an L-NEED past 2^32.
+: STREAM-WANT, ( n -- )
+   {: cap:n :}
+   cap CTX@,  OP-I64-EXTEND-I32-U B,  1 I64,  OP-I64-SHL B,
    L-END SET,
    -1 I64,
-   L-OUT-LEN GET,  OP-I64-EXTEND-I32-U B,  L-NEED GET,  OP-I64-ADD B,
+   L-LEN GET,  OP-I64-EXTEND-I32-U B,  L-NEED GET,  OP-I64-ADD B,
    L-NEED GET,  1 OFFSET-BITS lshift I64,  OP-I64-GT-U B,  OP-SELECT B,  L-BYTES SET,
    L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  OP-I64-GT-U B,  OP-SELECT B,
    L-BYTES SET, ;
 
-\ A refused growth records ENGINE-ERROR:OUT-GROW with OUT-END, and traps.
-: OUT-REFUSED, ( -- )
+\ A refused growth records ENGINE-ERROR:STREAM-GROW with STREAM-END, and traps.
+: STREAM-REFUSED, ( -- )
    L-IOR GET,  OP-I32-WRAP-I64 B,  IF,
-      L-CTX GET,  ENGINE-ERROR:OUT-GROW I32,
+      L-CTX GET,  ENGINE-ERROR:STREAM-GROW I32,
       OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
-      L-CTX GET,  OUT-END,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
+      L-CTX GET,  STREAM-END,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
       OP-UNREACHABLE B,
    OP-END B, ;
 
-\ OUT moves to a run of OUT-WANT,'s pages holding its bytes, which ctx's
-\ out-base and out-cap name; the old run is freed unless it is the fixed one.
-: OUT-GROW, ( -- )
-   WPROF:CTX-OUT-BASE CTX@,  L-OLD SET,
-   OUT-WANT,  MAP-RUN,  OUT-REFUSED,
-   L-PTR GET,  OP-I32-WRAP-I64 B,  L-OLD GET,  L-OUT-LEN GET,
+\ The stream moves to a run of STREAM-WANT,'s pages holding its bytes, which the
+\ ctx fields base and cap name; the old run is freed unless it is fixed.
+: STREAM-GROW, ( n n n -- )
+   {: base:n cap:n fixed:n :}
+   base CTX@,  L-OLD SET,
+   cap STREAM-WANT,  MAP-RUN,  STREAM-REFUSED,
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-OLD GET,  L-LEN GET,
    OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
-   WPROF:CTX-OUT-CAP CTX@,  OP-I64-EXTEND-I32-U B,  L-BYTES SET,
+   cap CTX@,  OP-I64-EXTEND-I32-U B,  L-BYTES SET,
    L-CTX GET,  L-PTR GET,  OP-I32-WRAP-I64 B,
-   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-BASE MEM,
+   OP-I32-STORE ALIGN-32 base MEM,
    L-CTX GET,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,
-   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-CAP MEM,
-   L-OLD GET,  WPROF:OUT-BASE I32,  OP-I32-NE B,  IF,
+   OP-I32-STORE ALIGN-32 cap MEM,
+   L-OLD GET,  fixed I32,  OP-I32-NE B,  IF,
       L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  UNMAP-RUN,
    OP-END B, ;
 
-\ L-OUT-LEN becomes ctx's out-len, and OUT grows when L-NEED more bytes pass
-\ its capacity.
-: OUT-ROOM, ( -- )
-   WPROF:CTX-OUT-LEN CTX@,  L-OUT-LEN SET,
+\ L-LEN becomes the stream's length, and the stream grows when L-NEED more bytes
+\ pass its capacity.
+: STREAM-ROOM, ( n n n n -- )
+   {: len:n base:n cap:n fixed:n :}
+   len CTX@,  L-LEN SET,
    L-NEED GET,
-   WPROF:CTX-OUT-CAP CTX@,  L-OUT-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
-   OP-I64-GT-U B,  IF,  OUT-GROW,  OP-END B, ;
+   cap CTX@,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   OP-I64-GT-U B,  IF,  base cap fixed STREAM-GROW,  OP-END B, ;
 
 \ emit ( c -- ) stores c's low byte at ctx.out-base plus ctx.out-len and counts
 \ it, a full OUT grown first.
 : EMIT-BODY ( -- )
-   OUT-LOCALS,
+   STREAM-LOCALS,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
-   1 I64,  L-NEED SET,  OUT-ROOM,
-   WPROF:CTX-OUT-BASE CTX@,  L-OUT-LEN GET,  OP-I32-ADD B,
+   1 I64,  L-NEED SET,  OUT-STREAM STREAM-ROOM,
+   WPROF:CTX-OUT-BASE CTX@,  L-LEN GET,  OP-I32-ADD B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    OP-I64-STORE8 ALIGN-8 0 MEM,
-   L-CTX GET,  L-OUT-LEN GET,  1 I32,  OP-I32-ADD B,
+   L-CTX GET,  L-LEN GET,  1 I32,  OP-I32-ADD B,
    OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
    SP!,
    0 I32,  OP-END B, ;
+
+\ Appends to the stream the L-NEED bytes at the address in the cell at SP plus
+\ off, grown first.
+: APPEND, ( n n n n n -- )
+   {: off:n len:n base:n cap:n fixed:n :}
+   len base cap fixed STREAM-ROOM,
+   base CTX@,  L-LEN GET,  OP-I32-ADD B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 off MEM,  OP-I32-WRAP-I64 B,
+   L-NEED GET,  OP-I32-WRAP-I64 B,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
+   L-CTX GET,  L-LEN GET,  L-NEED GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 len MEM, ;
+
+\ write ( fd a u -- u ) appends the u bytes at a to ERR for descriptor 2, else to
+\ OUT.
+: WRITE-BODY ( -- )
+   STREAM-LOCALS,  CELL-BYTES 3 * SP-AT,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,  L-NEED SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  2 I64,  OP-I64-EQ B,  IF,
+      CELL-BYTES ERR-STREAM APPEND,
+   OP-ELSE B,
+      CELL-BYTES OUT-STREAM APPEND,
+   OP-END B,
+   L-SP GET,  L-NEED GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,  DONE, ;
 
 
 \ ---- throw, die and execute
@@ -533,21 +568,15 @@ variable SITES-N
    1 I32,  OP-END B, ;
 
 
-\ die ( a u code -- ) appends its message to OUT, grown as emit's, leaves its
-\ code in ctx.throw-code and traps, which no catch consumes.
+\ die ( a u code -- ) appends its message to OUT, leaves its code in
+\ ctx.throw-code and traps, which no catch consumes.
 : DIE-BODY ( -- )
-   OUT-LOCALS,
+   STREAM-LOCALS,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
    L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
    OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-NEED SET,
-   OUT-ROOM,
-   WPROF:CTX-OUT-BASE CTX@,  L-OUT-LEN GET,  OP-I32-ADD B,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
-   L-NEED GET,  OP-I32-WRAP-I64 B,
-   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
-   L-CTX GET,  L-OUT-LEN GET,  L-NEED GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
-   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
+   0 OUT-STREAM APPEND,
    OP-UNREACHABLE B,  OP-END B, ;
 
 
@@ -673,6 +702,7 @@ public
    {: name:^ u:n :}
    0 BUF-U !  0 SITES-N !
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
+   name u s" write" STR=CI if WRITE-BODY BODY$ true exit then
    name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" c!" STR=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
    \ A module saves no image, so xt! is a plain store.

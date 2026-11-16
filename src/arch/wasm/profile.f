@@ -26,10 +26,14 @@ $10000 constant PAGES-MAX
 \ map-anon grows.
 $10000 constant CTX-BASE
 $11000 constant OUT-BASE                  \ where OUT starts
+$1D000 constant ERR-BASE                  \ where ERR starts
 $21000 constant STACK-BASE
 $10000 constant STACK-BYTES
 STACK-BASE STACK-BYTES + constant STACK-END
-STACK-BASE OUT-BASE - constant OUT-CAP        \ the bytes OUT starts with
+ERR-BASE OUT-BASE - constant OUT-CAP          \ the bytes OUT starts with
+\ The bytes ERR starts with: a record no longer than this, written to an empty
+\ ERR, takes no memory.
+STACK-BASE ERR-BASE - constant ERR-CAP
 
 \ The return stack and the DO frames follow the data stack, each its STACK-ABI
 \ size; a push checks its region's end, since Wasm memory has no guard page.
@@ -54,5 +58,8 @@ PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 56 constant CTX-ENV                       \ the record DISPATCH, leaves for a reading quotation's entry
 64 constant CTX-OUT-BASE                  \ the current OUT's address
 72 constant CTX-OUT-CAP                   \ the current OUT's bytes, 0 before the instance's first run
+80 constant CTX-ERR-LEN
+88 constant CTX-ERR-BASE                  \ the current ERR's address
+96 constant CTX-ERR-CAP                   \ the current ERR's bytes, 0 before the instance's first run
 
 ;package

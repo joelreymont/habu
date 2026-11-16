@@ -19,7 +19,7 @@ public
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 110 constant MEMORY-FAULT       \ a load or store by Habu code faulted (src/habu/crash.f)
-111 constant OUT-GROW           \ a Wasm run's output could not grow: the memory refused the pages
+111 constant STREAM-GROW        \ a Wasm run's OUT or ERR could not grow: the memory refused the pages
 ;package
 
 \ Dictionary occurrence failures belong to DEF-OCC.

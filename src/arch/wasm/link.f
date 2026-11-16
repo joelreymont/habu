@@ -10,14 +10,15 @@
 \ THE WRAPPERS. The exports are memory and the wrappers. run initializes the
 \ task DATA stack header and zeroes its return and loop depths, so a throw
 \ uncaught inside a loop leaves no depth for the next host turn; it stores
-\ WPROF's stack base in ctx's stack base and top and 0 in its out-len, on the
-\ instance's first run WPROF's OUT in ctx's out-base and out-cap, which a grown
-\ OUT keeps across runs, calls the entry with WPROF's ctx base and answers its
-\ status; throw-code answers ctx's throw code, out-base ctx's out-base, the
-\ current OUT's address, out-len ctx's out-len; fault-kind and fault-addr answer
-\ ctx's fault kind and address. reserve, (i64 bytes) -> (i64 address), calls
-\ map-anon and answers its address, 0 when refused: a host copies each delivery
-\ into pages the module reserved (src/lib/browser/turn.js).
+\ WPROF's stack base in ctx's stack base and top and 0 in its out-len and
+\ err-len, on the instance's first run WPROF's OUT and ERR in ctx's base and cap
+\ fields, which a grown stream keeps across runs, calls the entry with WPROF's
+\ ctx base and answers its status; throw-code answers ctx's throw code, out-base
+\ ctx's out-base, the current OUT's address, out-len ctx's out-len; fault-kind
+\ and fault-addr answer ctx's fault kind and address; err-base and err-len
+\ answer ERR's as out-base and out-len answer OUT's. reserve, (i64 bytes) ->
+\ (i64 address), calls map-anon and answers its address, 0 when refused: a host
+\ copies each delivery into pages the module reserved (src/lib/browser/turn.js).
 \
 \ THE SECTIONS. In the specification's order: type, function, table when a slot
 \ was added, memory, export, element from slot 1, code, and data, one active
@@ -86,8 +87,7 @@ DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 
 \ ---- the signatures an emission row states -------------------------------------
 1 constant FRAME-ALIGNED             \ the lanes are in the aligned frame
-\ run, throw-code, out-base, out-len, fault-kind and fault-addr
-6 constant WRAPPERS
+8 constant WRAPPERS                  \ the wrappers before reserve
 variable RESERVES                    \ 1 once RESERVE! named reserve's callee, else 0
 variable RES-FN                      \ that callee
 3 constant RANKS
@@ -198,7 +198,7 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 \ ---- index order ----------------------------------------------------------------
 \ Functions are numbered by origin (kernel, captured, adapter), each in the order
 \ added, then the wrappers: run, throw-code, out-base, out-len, fault-kind,
-\ fault-addr and, once RESERVE! named its callee, reserve.
+\ fault-addr, err-base, err-len and, once RESERVE! named its callee, reserve.
 : RANKED ( n [ n -- ] -- )
    {: r:n fn :}
    NF @ 0 ?do  i FN-RANK @ r = if  i fn execute  then  loop ;
@@ -227,7 +227,7 @@ variable TYPES-U
 variable NTYPES
 DYNAMIC-BUFFER TYPE-AT n
 DYNAMIC-BUFFER TYPE-LEN n
-variable WR-I32                      \ () -> (i32): run, out-base, out-len, fault-kind
+variable WR-I32                      \ () -> (i32): run, out-base, out-len, fault-kind, err-base, err-len
 variable WR-I64                      \ () -> (i64): throw-code, fault-addr
 variable WR-RES                      \ (i64) -> (i64): reserve
 variable WR-DYN                      \ (i32) -> (i32): an indirect call's
@@ -331,10 +331,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE WPROF:CTX-STACK-BASE CTX!
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!
+   0 WPROF:CTX-ERR-LEN CTX!
    OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-CAP CTX@  OP-I32-EQZ PUT-BYTE
    OP-IF PUT-BYTE  EMPTY-TYPE PUT-BYTE
       WPROF:OUT-BASE WPROF:CTX-OUT-BASE CTX!
       WPROF:OUT-CAP WPROF:CTX-OUT-CAP CTX!
+      WPROF:ERR-BASE WPROF:CTX-ERR-BASE CTX!
+      WPROF:ERR-CAP WPROF:CTX-ERR-CAP CTX!
    OP-END PUT-BYTE
    WPROF:CTX-BASE I32-CONST
    OP-CALL PUT-BYTE  ENTRY-IDX @ PUT-U32
@@ -363,6 +366,16 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 : FAULT-ADDR-BODY ( -- )
    0 PUT-U32
    OP-I64-LOAD ALIGN-64 WPROF:CTX-FAULT-ADDR CTX@
+   OP-END PUT-BYTE ;
+
+: ERR-BASE-BODY ( -- )
+   0 PUT-U32
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-ERR-BASE CTX@
+   OP-END PUT-BYTE ;
+
+: ERR-LEN-BODY ( -- )
+   0 PUT-U32
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-ERR-LEN CTX@
    OP-END PUT-BYTE ;
 
 \ Reserve's body. Its callee, in the aligned frame, takes the count at the data
@@ -395,7 +408,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NF @ WRAPPERS + RESERVES @ + PUT-U32
    [: FN-TYPE @ PUT-U32 ;] IN-ORDER
    WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32
-   WR-I32 @ PUT-U32  WR-I64 @ PUT-U32
+   WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32
    RESERVES @ 0<> if  WR-RES @ PUT-U32  then ;
 
 : TABLE-SEC ( -- )
@@ -421,6 +434,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    s" out-len" EXPORT-FUNC NF @ 3 + PUT-EXPORT
    s" fault-kind" EXPORT-FUNC NF @ 4 + PUT-EXPORT
    s" fault-addr" EXPORT-FUNC NF @ 5 + PUT-EXPORT
+   s" err-base" EXPORT-FUNC NF @ 6 + PUT-EXPORT
+   s" err-len" EXPORT-FUNC NF @ 7 + PUT-EXPORT
    RESERVES @ 0<> if  s" reserve" EXPORT-FUNC NF @ WRAPPERS + PUT-EXPORT  then ;
 
 : ELEMENT-SEC ( -- )
@@ -444,6 +459,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    [: OUT-LEN-BODY ;] SIZED
    [: FAULT-KIND-BODY ;] SIZED
    [: FAULT-ADDR-BODY ;] SIZED
+   [: ERR-BASE-BODY ;] SIZED
+   [: ERR-LEN-BODY ;] SIZED
    RESERVES @ 0<> if  [: RESERVE-BODY ;] SIZED  then ;
 
 : DATA-SEC ( -- )

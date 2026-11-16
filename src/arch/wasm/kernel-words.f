@@ -76,12 +76,6 @@ public
    {: a:^ u:n :}
    u 0 ?do  a i + c@ emit  loop ;
 
-\ The host has one output stream, which `type`, `emit` and `die` write to, so
-\ `write` drops the descriptor, writes the bytes there and answers their count.
-: WRITE-BYTES ( n ^u8 n -- n )
-   {: a:^ u:n :}
-   drop  a u TYPE-BYTES  u ;
-
 : U-DOT ( n -- )
    DIGITS NEWLINE ;
 

@@ -4,7 +4,7 @@
 // stores the value argument at the offset argument in that page, calls run,
 // writes the OUT region to stdout and the memory to the after path. Exits 0 or
 // 1 by run's status, with the throw code on stderr for 1, and 2 on a trap with
-// the trap on stderr, as run.mjs does.
+// the trap on stderr, as run.mjs does; the ERR region's bytes follow on stderr.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const [path, before, after, offset, value] = process.argv.slice(2);
@@ -20,4 +20,5 @@ try {
 }
 process.stdout.write(new Uint8Array(x.memory.buffer, x["out-base"]() >>> 0, x["out-len"]() >>> 0));
 if (process.exitCode === 1) console.error(`throw ${x["throw-code"]()}`);
+process.stderr.write(new Uint8Array(x.memory.buffer, x["err-base"]() >>> 0, x["err-len"]() >>> 0));
 writeFileSync(after, new Uint8Array(x.memory.buffer));

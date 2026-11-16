@@ -110,9 +110,9 @@ variable TEXT-U
    s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
    SB$ name nu SOURCE! ;
 
-\ Every byte OUT received is EMITS!'s x, 120.
-: ALL-X? ( -- bool )
-   WASM-HARNESS:OUT$ {: a:^ u:n :}
+\ Every byte of the span is EMITS!'s x, 120.
+: ALL-X? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
    true ;
 
@@ -124,13 +124,28 @@ variable TEXT-U
    s" full.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:OUT$ nip WPROF:OUT-CAP 2 * 1+ T=
-   ALL-X? TTRUE
+   WASM-HARNESS:OUT$ ALL-X? TTRUE
    S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
-   s" a die OUT cannot grow for traps and records OUT-GROW at OUT's end past it" T-LABEL
+   s" a die OUT cannot grow for traps and records STREAM-GROW at OUT's end past it" T-LABEL
    s" huge.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:OUT-GROW T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STREAM-GROW T=
    WASM-HARNESS:FAULT-ADDR WPROF:OUT-BASE 1 32 lshift + 1+ T= ;
+
+\ One write to descriptor 2 past ERR's first size: ERR grows and takes it whole.
+: ERR-CASE ( -- )
+   WPROF:ERR-CAP 1+ {: n:n :}
+   SB-RESET
+   n FMT:SB-U  s"  BUFFER: B : MAIN ( -- ) " SB-APPEND
+   n FMT:SB-U  s"  0 do 120 B i + c! loop  2 B " SB-APPEND
+   n FMT:SB-U  s"  write drop ;" SB-APPEND
+   SB$ s" err.f" SOURCE!
+   s" a write to descriptor 2 grows ERR, which receives every byte, and OUT none" T-LABEL
+   s" err.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:ERR$ nip n T=
+   WASM-HARNESS:ERR$ ALL-X? TTRUE
+   WASM-HARNESS:OUT$ nip 0 T= ;
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
@@ -813,6 +828,7 @@ public
    SETUP
    EMIT-CASE
    FULL-CASE
+   ERR-CASE
    PASS-CASE
    PROGRAM-CASES
    FLOAT-CASE

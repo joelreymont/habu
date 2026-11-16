@@ -6,10 +6,11 @@
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
-\ wrote and THROW-CODE its full throw code, 0 unless it exited 1; FAULT-KIND and
-\ FAULT-ADDR the kind and address of the fault that trapped, else 0;
-\ MEMORY-START and MEMORY-END the module's memory bytes before its run and after
-\ it, 0 for a module that did not link.
+\ wrote and ERR$ the ERR bytes, the stderr after run.mjs's own lines; THROW-CODE
+\ its full throw code, 0 unless it exited 1; FAULT-KIND and FAULT-ADDR the kind
+\ and address of the fault that trapped, else 0; MEMORY-START and MEMORY-END the
+\ module's memory bytes before its run and after it, 0 for a module that did not
+\ link.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -21,14 +22,15 @@ require src/arch/wasm/profile.f
 package WASM-HARNESS
 private
 
-4096 constant ERR-CAP
 WPROF:OUT-CAP 4 * constant OUT-BYTES      \ the most OUT bytes a run's capture keeps
+WPROF:ERR-CAP 4 * constant ERR-BYTES      \ the most stderr bytes a run's capture keeps
 
 PATH-CAP BUFFER: EXE
 OUT-BYTES BUFFER: OUT
-ERR-CAP BUFFER: ERR
+ERR-BYTES BUFFER: ERR
 variable OUT-U
 variable ERR-U
+variable TAIL                             \ where in ERR run.mjs's own lines end
 variable CODE
 variable KIND
 variable ADDR
@@ -40,7 +42,7 @@ variable MEM-END
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
 : RUN-AT ( ^u8 len -- n )
-   OUT OUT-BYTES >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
+   OUT OUT-BYTES >LEN  ERR ERR-BYTES >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -70,18 +72,11 @@ variable MEM-END
       none OF a u NO-THROW-LINE ENDOF
    ;MATCH ;
 
-\ run.mjs's last stderr line for status 2 is its fault line; bun's own failures
-\ may exit 2 as well, so any other text ends the check.
+\ run.mjs's stderr line after its memory line for status 2 is its fault line;
+\ bun's own failures may exit 2 as well, so any other text ends the check.
 : NO-FAULT-LINE ( ^u8 n -- )
    type cr
-   s" wasm harness: bun's stderr ends without a `fault <kind> <addr>` line" 1 die ;
-
-: LAST-LINE ( -- ^u8 n )
-   ERR ERR-U @ RTRIM {: a:^ u:n :}
-   u begin dup 0 > while
-      dup 1- a + c@ 10 = if  a over +  u rot -  exit  then
-      1-
-   repeat drop a u ;
+   s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line" 1 die ;
 
 : FAULT-FIELD ( ^u8 n ^u8 n -- n )
    {: line:^ lu:n a:^ u:n :}
@@ -91,14 +86,15 @@ variable MEM-END
    ;MATCH ;
 
 : FAULTED ( -- )
-   LAST-LINE {: a:^ u:n :}
-   a u s" fault " STARTS-WITH? 0= if  a u NO-FAULT-LINE  then
+   ERR ERR-U @ 10 TAIL @ SPLIT-NEXT drop {: a:^ u:n next:n :}
+   a u s" fault " STARTS-WITH? 0= if  ERR ERR-U @ NO-FAULT-LINE  then
    a 6 + u 6 - 32 INDEX-OF MATCH option
       some OF IDX>N ENDOF
       none OF a u NO-FAULT-LINE ENDOF
    ;MATCH {: k:n :}
    a u  a 6 + k FAULT-FIELD KIND !
-   a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR ! ;
+   a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR !
+   next ERR-U @ min TAIL ! ;
 
 \ run.mjs writes `memory <start> <end>` on a stderr line of its own; any other
 \ text after `memory ` ends the check.
@@ -113,20 +109,23 @@ variable MEM-END
       none OF line lu NO-MEMORY-LINE ENDOF
    ;MATCH ;
 
-: MEMORY? ( ^u8 n -- )
-   {: a:^ u:n :}
-   a u s" memory " STARTS-WITH? 0= if exit then
+\ True at run.mjs's memory line, whose next line starts at next: TAIL moves there.
+: MEMORY? ( ^u8 n n -- bool )
+   {: a:^ u:n next:n :}
+   a u s" memory " STARTS-WITH? 0= if false exit then
    a 7 + u 7 - 32 INDEX-OF MATCH option
       some OF IDX>N ENDOF
       none OF a u NO-MEMORY-LINE ENDOF
    ;MATCH {: k:n :}
    a u  a 7 + k MEMORY-FIELD MEM-START !
-   a u  a 8 + k +  u 8 - k -  MEMORY-FIELD MEM-END ! ;
+   a u  a 8 + k +  u 8 - k -  MEMORY-FIELD MEM-END !
+   next ERR-U @ min TAIL !  true ;
 
+\ The first memory line is run.mjs's: ERR bytes after it may hold another.
 : MEMORY ( -- )
-   0 MEM-START !  0 MEM-END !
+   0 MEM-START !  0 MEM-END !  ERR-U @ TAIL !
    0 begin  >r ERR ERR-U @ 10 r> SPLIT-NEXT  while
-      >r MEMORY? r>
+      dup >r MEMORY? if  r> drop exit  then  r>
    repeat drop drop drop ;
 
 : VALIDATE ( ^u8 n bool -- bool )
@@ -167,11 +166,12 @@ public
    s" bun" SPAWN {: rc:n :}
    0 CODE !  0 KIND !  0 ADDR !
    rc 1 = if  THROWN CODE !  then
-   rc 2 = if  FAULTED  then
    MEMORY
+   rc 2 = if  FAULTED  then
    rc ;
 
 : OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n )  ERR TAIL @ +  ERR-U @ TAIL @ - ;
 
 : THROW-CODE ( -- n )  CODE @ ;
 : FAULT-KIND ( -- n )  KIND @ ;
