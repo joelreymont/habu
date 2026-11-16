@@ -175,7 +175,8 @@ public
 : PAGE-ID$ ( -- ^u8 n )  ID ID-U ;
 
 \ A file's name, its bytes and the BUF a member of a CODE-TOOL$ result's
-\ files is appended to: "<name>":"<the bytes as base64>".
+\ files is appended to: "<name>":"<the bytes as base64>". The name is
+\ written as it is, so it must be printable ASCII with no " or \.
 : FILE+ ( ^u8 n ^u8 n ^a -- )
    {: name:^ nu:n a:^ u:n buf:^ :}
    s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
