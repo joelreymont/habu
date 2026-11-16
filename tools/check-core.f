@@ -148,9 +148,8 @@ variable CHK-KEPT-N
 : CHK-SRC-BUF ( -- ^u8 )
    1 CHK-SRC-ROOM drop ;
 
-\ Reads the file at a path into CHK-SRC whole, however it grows while it is
-\ read (src/lib/source.f READ-WHOLE-FILE). The buffer may move as it grows, so a
-\ caller takes CHK-SRC-BUF after the read.
+\ Reads the file at a path into CHK-SRC whole. The buffer may move as it grows,
+\ so a caller takes CHK-SRC-BUF after the read.
 : CHK-SRC-READ ( ^u8 n -- n )
    [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
 
@@ -503,7 +502,7 @@ private
 6 constant CHK-KEPT-ROW                \ cells per kept stop
 
 \ The captured record of the walk's stop with status RC, kept with the place it
-\ stands at. A stop in no source, a named file that will not open, has no place.
+\ stands at.
 : CHK-KEEP-STOP ( n -- ) {: rc:n :}
    REJECTION:BUFFER$ {: a:^ u:n :}
    REJECTION:LAST-PLACE {: p:^ pu:n at:n :}
@@ -521,16 +520,29 @@ private
    rec row 3 + CHK-KEPT-ROWS !  u row 4 + CHK-KEPT-ROWS !  rc row 5 + CHK-KEPT-ROWS !
    CHK-KEPT-N @ 1+ CHK-KEPT-N ! ;
 
-\ A closure the walk cannot follow, a form discovery rejected, fails the check
-\ as a rejection whose record discovery wrote. --all-errors reports every fault
-\ that check reports, each once: the walk's stop ends only the walk and its
-\ record is kept, written only when the composition never reads its place
-\ (CHK-SEND-UNREAD); where it does, the composition writes its own record.
+\ Whether the walk's stop with status RC is a named file that will not read,
+\ which stands in no source.
+: CHK-NAMED-IO? ( n -- bool ) {: rc:n :}
+   rc INCLUDE-IO-RC <> if false exit then
+   REJECTION:LAST-PLACE nip nip 0< ;
+
+\ Writes kept stop n's record and answers the status it stopped with.
+: CHK-KEPT-SEND ( n -- n )
+   CHK-KEPT-ROW * {: row:n :}
+   row 3 + CHK-KEPT-ROWS @ CHK-KEPT  row 4 + CHK-KEPT-ROWS @  CHK-ERR
+   row 5 + CHK-KEPT-ROWS @ ;
+
+\ --all-errors keeps a walk's stop for CHK-SEND-UNREAD and goes on, but a named
+\ file that will not read ends the run once every kept stop is written.
 : CHK-EXPAND-REPORT ( [ -- n ] -- ) {: q :}
    CHK-ALL @ 0= if q execute 0<> if CHK-E-CHECK CHK-THROW then exit then
    REJECTION:CAPTURE
    [: q execute 0<> if CHK-E-CHECK CHK-THROW then ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
+   rc CHK-NAMED-IO? if
+      CHK-KEPT-N @ 0 ?do i CHK-KEPT-SEND drop loop
+      REJECTION:BUFFER$ CHK-ERR  rc throw
+   then
    rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if rc CHK-KEEP-STOP exit then
    rc 0<> if rc throw then ;
 
@@ -582,10 +594,10 @@ private
 : CHK-APPEND-LISTED ( ^u8 n -- )
    SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
-\ Standard input holds a source of any size, read to its end into CHK-SRC
-\ (src/lib/source.f READ-WHOLE-FD), with no size to start from.
+\ Standard input holds a source of any size, read to its end into CHK-SRC with
+\ no size to start from.
 : CHK-READ-STDIN ( -- n )
-   0 0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
+   0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
 
 \ A source given as bytes, on stdin or through SOURCE, is the file CHK-SRC-PATH
 \ the run loads, so its requires resolve as they will there. Its closure is
@@ -648,8 +660,8 @@ private
 \ before a lint reads the file: no source holds the path, so the composition
 \ could only place it at its own loader line.
 : CHK-INPUT-OPENS ( ^u8 n -- ) {: a:^ u:n :}
-   [: a u 0 NULL-PTR 0 FS:READ-AT ;] CHK-READ-REJECTED {: e:n rejected:bool :}
-   rejected if a u e CHK-UNREADABLE-NAMED then ;
+   [: a u 0 NULL-PTR 0 FS:READ-AT ;] CHK-READ-REJECTED {: rc:n e:n :}
+   rc 0<> if a u rc e CHK-UNREADABLE-NAMED then ;
 
 : CHK-CHECK-INPUTS ( -- )
    CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS  loop
@@ -933,12 +945,6 @@ private
    row CHK-KEPT-ROWS @ CHK-KEPT  row 1+ CHK-KEPT-ROWS @  row 2 + CHK-KEPT-ROWS @
    VERIFY:READ-AT? 0= ;
 
-\ Writes kept stop n's record and answers the status it stopped with.
-: CHK-KEPT-SEND ( n -- n )
-   CHK-KEPT-ROW * {: row:n :}
-   row 3 + CHK-KEPT-ROWS @ CHK-KEPT  row 4 + CHK-KEPT-ROWS @  CHK-ERR
-   row 5 + CHK-KEPT-ROWS @ ;
-
 \ The status two outcomes end a run with together, each 0, CHECKER-REJECT-RC
 \ or INCLUDE-IO-RC: a file that will not read outranks a rejection.
 : CHK-RC-JOIN ( n n -- n ) {: a:n b:n :}
@@ -1099,8 +1105,8 @@ private
    0 CHK-RESOLVE-POS
    0 CHK-POS$ {: a:^ u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
-   [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: e:n rejected:bool :}
-   rejected if a u e CHK-UNREADABLE-NAMED then
+   [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: rc:n e:n :}
+   rc 0<> if a u rc e CHK-UNREADABLE-NAMED then
    a u ;
 
 \ stdin's path need not exist.

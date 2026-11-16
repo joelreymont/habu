@@ -114,9 +114,7 @@ variable CA-COMPOSE-LABEL-U
    CA-SRC-A@ ;
 
 \ Each read takes a region of its own, so the bytes an earlier read or the
-\ caller left (CA-SOURCE-BUF!) stay where they are. The file is read to its end
-\ however it grows while it is read: its size, whose rejection (E-FS-STAT) stays
-\ a missing or irregular file's, is only the first room.
+\ caller left (CA-SOURCE-BUF!) stay where they are.
 : CA-READ-SOURCE ( ^u8 n -- ) {: path:^ pu:n :}
    0 CA-SRC-CAP !
    path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;

@@ -4181,12 +4181,11 @@ variable READ-META-VALID
 \ PATH, resolved, changed while it was read.
 : COMPOSE-CHANGED ( ^u8 n -- ) {: path:^ pathu:n :}
    path pathu FAULT-TARGET!
-   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:CHANGED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:CHANGED-SOURCE ;
 
 \ Reads the open file READ-PATHZ names to its end; a read the system fails
-\ rejects the file with its errno.
-: READ-FILL ( -- )
+\ rejects the file with its errno. A read stops past SIZE, the stamp's size.
+: READ-FILL ( n -- ) {: size:n :}
    0 READ-U !
    BEGIN
       READ-U @ READ-STEP + READ-BUF-RESERVE
@@ -4195,17 +4194,17 @@ variable READ-META-VALID
       dup 0 >
    WHILE
       READ-U @ + READ-U !
+      READ-U @ size > IF READ-PATHZ READ-PATH-U @ COMPOSE-CHANGED THEN
    REPEAT drop ;
 
 \ Rejects PATH, a stream no stamp names, with the loader's record, placed at the
 \ loader that loads it.
 : REFUSE-SOURCE-READ ( ^u8 n -- ) {: path:^ pathu:n :}
    path pathu FAULT-TARGET!
-   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE ;
 
 \ A stream (a FIFO, device or socket) is rejected before its open, which would
-\ block on a FIFO; a file that changes while it is read is rejected after it.
+\ block on a FIFO; a changed file once it outgrows its size, else after the read.
 : QUIET-READ ( ^u8 n ^u8 n -- ^u8 n )
    2drop {: path:^ pathu:n :}
    0 READ-META-VALID !
@@ -4217,7 +4216,7 @@ variable READ-META-VALID
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FS:ERRNO COMPOSE-UNREADABLE THEN
    fd READ-FD !
-   [: READ-FILL ;] catch {: rc:n :}
+   [: size READ-FILL ;] catch {: rc:n :}
    fd close
    rc 0<> IF rc throw THEN
    path pathu FS:TRY-FILE-META

@@ -1,9 +1,9 @@
 \ whole-source-read-test.f - a whole-source read (src/lib/source.f
 \ READ-WHOLE-SAMPLED, which READ-WHOLE-FILE and every reader that takes a size
-\ itself call) reads the file to its end from any size sample: a short one, as
-\ when the file grew after its size was taken, and a long one, as when it
-\ shrank. The language server counts a file it cannot read as empty
-\ (test/whole-source-read-child.f, run in a fork child).
+\ itself call) rejects a file that yields more bytes than a short size sample,
+\ as when the file grew after its size was taken, and reads the file to its end
+\ short of a long one, as when it shrank. The language server counts a file it
+\ cannot read as empty (test/whole-source-read-child.f, run in a fork child).
 
 require src/lib/string.f
 require src/lib/test.f
@@ -18,8 +18,6 @@ package WHOLE-SOURCE-READ-TEST
 private
 
 $10000 constant IO-CAP
-\ Many first rooms (src/lib/source.f SOURCE-ROOM-MIN): read from a short
-\ sample, the room doubles five times.
 100000 constant TEXT-LEN
 
 create ROOT PATH-CAP allot      variable ROOT-U
@@ -60,6 +58,9 @@ DYNAMIC-BUFFER READ-BUF u8
    label labelu T-LABEL
    0 READ-BUF u TEXT TEXT-LEN STR= TTRUE ;
 
+: SHORT-READ ( -- )
+   SUBJECT$ 1 [: READ-ROOM ;] SOURCE:READ-WHOLE-SAMPLED drop ;
+
 
 \ The server publishes a packet about a file that does not exist, its first
 \ read of it: the file is named on standard error and its text counts as empty.
@@ -80,8 +81,9 @@ public
 : WHOLE-SOURCE-READ-TEST-MAIN ( -- )
    T-RESET
    SETUP
-   1 s" a whole-source read reads past a short size sample" SAMPLE-CASE
-   TEXT-LEN 2 * s" ... and to the file's end short of a long one" SAMPLE-CASE
+   s" a whole-source read rejects a file longer than a short size sample" T-LABEL
+   [: SHORT-READ ;] E-FS-CHANGED TTHROWSQ
+   TEXT-LEN 2 * s" ... and reads to the file's end short of a long one" SAMPLE-CASE
    LSP-MISSING-CASE
    READ-BUF-RELEASE
    FS:CLEANUP-RUN

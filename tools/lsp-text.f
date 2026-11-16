@@ -55,9 +55,7 @@ variable DISK-VALID
 : DISK-ROOM ( n -- ^u8 )
    DISK-RESERVE 0 DISK ;
 
-\ The file at this path read into DISK, its length in DISK-U, to its end
-\ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
-\ a missing file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
+\ The file at this path read into DISK, its length in DISK-U.
 : SLURP ( ^u8 n -- ^u8 n )
    {: f:^ fu:n :}
    f fu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}

@@ -1159,9 +1159,6 @@ $FF constant SD-NAMES                    \ loaders and family openers
       off len SD-STEP
    again ;
 
-\ The entry is read to its end however it grows while it is read: its size,
-\ whose refusal (E-FS-STAT) stays a missing or irregular entry's, is only the
-\ first room.
 : SD-READ-ENTRY ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu  pa pu FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
    SD-STORAGE @ SPAN:$ drop SD-A ! ;

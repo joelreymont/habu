@@ -1467,18 +1467,18 @@ public
    INCLUDE-IO-RC REJECTION:STOP ;
 
 \ The file path changed while it was read, so its bytes may be no single
-\ version of it. Placed as UNREADABLE-SOURCE places its record, written through
-\ its help: the caller stops it with INCLUDE-IO-RC.
+\ version of it. Placed as UNREADABLE-SOURCE places its record.
 : CHANGED-SOURCE ( ^u8 n ^u8 n -- )
    s" changed while it was read" UNREAD-RECORD
-   s" load it again once nothing is writing it" REJECTION:EMIT-STR ;
+   s" load it again once nothing is writing it" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 \ The file path is a stream, not a regular file, so a reader that stamps what
-\ it reads cannot stamp it. Placed as UNREADABLE-SOURCE places its record,
-\ written through its help: the caller stops it with INCLUDE-IO-RC.
+\ it reads cannot stamp it. Placed as UNREADABLE-SOURCE places its record.
 : UNSTAMPED-SOURCE ( ^u8 n ^u8 n -- )
    s" is not a regular file" UNREAD-RECORD
-   s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR ;
+   s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 private
 
@@ -2089,19 +2089,25 @@ variable LAST-LOAD-EVAL-OK
 \ The file a u the resolver found is a stream (a FIFO, device or socket), whose
 \ open would block or whose bytes no stamp names.
 : INCLUDE-UNSTAMPED ( ^u8 n -- ) {: a:^ u:n :}
-   ASKED-AT$ a u UNSTAMPED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
+   ASKED-AT$ a u UNSTAMPED-SOURCE ;
+
+\ The file a u the resolver found holds more bytes than its stamp's size.
+: INCLUDE-CHANGED ( ^u8 n -- ) {: a:^ u:n :}
+   INCLUDE-CLOSE
+   ASKED-AT$ a u CHANGED-SOURCE ;
 
 : INCLUDE-OPEN ( ^u8 n -- ) {: a:^ u:n :}
    a u INCLUDE-PATH0 open-rd INCLUDE-FD !
    INCLUDE-FD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then ;
 
-: INCLUDE-READ-DONE? ( ^u8 n -- bool ) {: a:^ u:n :}
+\ A read stops once it holds more than SIZE bytes, the stamp's size.
+: INCLUDE-READ-DONE? ( ^u8 n n -- bool ) {: a:^ u:n size:n :}
    INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
    INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
    INCLUDE-RD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then
    INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
+   INCLUDE-U @ size > if a u INCLUDE-CHANGED then
    INCLUDE-FALSE ;
 
 : INCLUDE-READ-ALL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
@@ -2110,7 +2116,7 @@ variable LAST-LOAD-EVAL-OK
    sec ns size COMPILE-READS:STABLE? 0= if a u INCLUDE-UNSTAMPED then
    a u INCLUDE-OPEN
    0 INCLUDE-U !
-   begin a u INCLUDE-READ-DONE? 0= while repeat
+   begin a u size INCLUDE-READ-DONE? 0= while repeat
    INCLUDE-CLOSE
    SOURCE INCLUDE-U @ ;
 

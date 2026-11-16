@@ -210,27 +210,34 @@ variable CHK-EXPAND-TOP
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;
 
-\ Whether Q, a read of a source, ended with the file system rejecting it (a
-\ code of its block, such as E-FS-OPEN for a file whose mode forbids it), with
-\ the rejection's errno, else 0. Any other failure of the read goes on.
-: CHK-READ-REJECTED ( [ -- ] -- n bool ) {: q :}
+\ The E-FS code that ended Q, a read of a source, and the errno, else 0 0; any
+\ other failure of the read goes on.
+: CHK-READ-REJECTED ( [ -- ] -- n n ) {: q :}
    q catch {: rc:n :}
-   rc CHK-FS-RC? if FS:ERRNO true exit then
+   rc CHK-FS-RC? if rc FS:ERRNO exit then
    rc 0<> if rc throw then
-   0 false ;
+   0 0 ;
 
-\ PATH, which the caller named, will not open or read, with errno E: the
-\ loader's rejection, which no source places.
-: CHK-UNREADABLE-NAMED ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
-   NULL-PTR 0 path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
+\ The loader's record of PATH, whose read ended with E-FS code RC and errno E,
+\ placed at T.
+: CHK-READ-RECORD ( ^u8 n ^u8 n n n -- )
+   {: t:^ tu:n path:^ pathu:n rc:n e:n :}
+   rc E-FS-CHANGED = if
+      t tu path pathu SOURCE-ROOT:CHANGED-SOURCE
+   then
+   t tu path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
+
+\ PATH, which the caller named, will not open or read: the loader's rejection
+\ of a read that ended with code RC and errno E, which no source places.
+: CHK-UNREADABLE-NAMED ( ^u8 n n n -- ) {: path:^ pathu:n rc:n e:n :}
+   NULL-PTR 0 path pathu rc e CHK-READ-RECORD ;
 
 \ PATH, found for the request T, is no regular file: the loader's rejection.
 : CHK-IRREGULAR ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
    path pathu FS:DIR? if
       t tu path pathu FS:EISDIR SOURCE-ROOT:UNREADABLE-SOURCE
    then
-   t tu path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
-   INCLUDE-IO-RC REJECTION:STOP ;
+   t tu path pathu SOURCE-ROOT:UNSTAMPED-SOURCE ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
    ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID ix CHK-DIR-PUSH ;
@@ -268,10 +275,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 : CHK-FILE-ROOM ( n -- ^u8 )
    CHK-FILE-SRC-RESERVE 0 CHK-FILE-SRC ;
 
-\ The bytes of the file at PATH, read to its end however it grows while it is
-\ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
-\ is only the first room, and the bytes are taken after the read, which may move
-\ the storage.
+\ The bytes of the file at PATH, taken after the read, which may move the storage.
 : CHK-FILE-READ ( ^u8 n -- ^u8 n )
    {: path:^ pathu:n :}
    path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
@@ -300,18 +304,17 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    [: edge CHK-DIR-REQ$ p pu false SOURCE-ROOT:MISSING-SOURCE ;]
    SOURCE-ROOT:WITH ;
 
-\ The file the walk reads will not open, with errno E: the loader's rejection,
-\ placed at the path in the file that names it; the top's, which its caller
-\ named, has no place.
-: CHK-UNREADABLE ( n -- ) {: e:n :}
+\ The loader's record of the file the walk reads, whose read ended with RC and
+\ errno E: at the path in the file naming it, unplaced for the top.
+: CHK-UNREADABLE ( n n -- ) {: rc:n e:n :}
    CHK-DISC-ID @ CHK-DEP$ {: path:^ pathu:n :}
-   CHK-EDGE @ 0 < if path pathu e CHK-UNREADABLE-NAMED then
-   CHK-EDGE @ CHK-EDGE-ARM path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
+   CHK-EDGE @ 0 < if path pathu rc e CHK-UNREADABLE-NAMED then
+   CHK-EDGE @ CHK-EDGE-ARM path pathu rc e CHK-READ-RECORD ;
 
 : CHK-DISCOVER-ACT ( -- )
    CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
-   [: CHK-READ-ACT ;] CHK-READ-REJECTED {: e:n refused:bool :}
-   refused if e CHK-UNREADABLE then
+   [: CHK-READ-ACT ;] CHK-READ-REJECTED {: rc:n e:n :}
+   rc 0<> if rc e CHK-UNREADABLE then
    CHK-RUN-READ ;
 
 \ The top's caller found it; a followed edge may name a file that is not there,

@@ -2,6 +2,11 @@
 \ buffers: appending past one throws E-FS-CAPACITY, and file or stdin failures
 \ throw named filesystem errors. READ-STDIN-ALL probes one byte past a full
 \ buffer, so overflow fails closed.
+\ A whole read fills storage that room gives and may move, so each read goes to
+\ room's latest answer. The first room is the size sample and one byte more, at
+\ least SOURCE-ROOM-MIN, so an unchanged file fills it short and the next read
+\ finds its end; a sampled read that fills it holds more than the sample, which
+\ is E-FS-CHANGED. A read with no sample doubles a full room.
 \ STORAGE CLASS. PROCESS-WIDE: the stdin probe byte and READ-STDIN-ALL's
 \ SOURCE-LEN/SOURCE-RD are module variables; single-task.
 
@@ -51,67 +56,71 @@ public
 
 private
 
-\ A WHOLE SOURCE IS READ TO ITS END, into storage that grows as it fills: room
-\ gives room for n bytes and answers where they start, and the storage may move
-\ when it grows, so each read goes to its latest answer. The first room is the
-\ caller's size sample and one byte more, at least SOURCE-ROOM-MIN, so a source
-\ that has not changed fills it short and the next read finds its end; a full
-\ room doubles. A sample only starts the read: bytes past it are read too.
+$7FFFFFFFFFFFFFFF constant SOURCE-NO-CAP    \ more than any read holds
 4096 constant SOURCE-ROOM-MIN
 
 \ Answers the bytes now held, the room for the next read (doubled once the held
-\ bytes fill it) and whether the read found the end.
-: SOURCE-READ-STEP ( n [ n -- ^u8 ] n n -- n n bool )
-   {: fd:n room held:n want:n :}
+\ bytes fill it) and whether the read found the end; past CAP it is E-FS-CHANGED.
+: SOURCE-READ-STEP ( n [ n -- ^u8 ] n n n -- n n bool )
+   {: fd:n room held:n want:n cap:n :}
    want room execute {: dst:^ :}
    fd dst held + want held - read {: got:n :}
    got 0 < if E-FS-IO throw then
    got want held - > if E-FS-IO throw then
    held got + {: now:n :}
+   now cap > if E-FS-CHANGED throw then
    now  now want = if want 2 * else want then  got 0= ;
+
+\ The descriptor to its end; FIRST is the size sample, or 0 for none.
+: SOURCE-READ-LOOP ( n n n [ n -- ^u8 ] -- n )
+   {: fd:n first:n cap:n room :}
+   0  first 1 + SOURCE-ROOM-MIN max
+   begin fd room 2swap cap SOURCE-READ-STEP until
+   drop ;
 
 public
 
-\ The descriptor to its end; the sample is 0 when there is none.
-: READ-WHOLE-FD ( n n [ n -- ^u8 ] -- n )
-   {: fd:n first:n room :}
-   0  first 1 + SOURCE-ROOM-MIN max
-   begin fd room 2swap SOURCE-READ-STEP until
-   drop ;
+\ The descriptor to its end.
+: READ-WHOLE-FD ( n [ n -- ^u8 ] -- n )
+   {: fd:n room :}
+   fd 0 SOURCE-NO-CAP room SOURCE-READ-LOOP ;
 
 private
 
-\ Stack-preserving under `catch`: the descriptor, sample and room ride through
-\ and the count comes back where a zero went in, so READ-WHOLE-FILE closes the
-\ descriptor on every way out.
-: SOURCE-READ-RUN ( n n [ n -- ^u8 ] n -- n n [ n -- ^u8 ] n )
-   drop
-   {: fd:n first:n room :}
-   fd first room  fd first room READ-WHOLE-FD ;
-
-public
-
-\ The file at a path, whole, from a size the caller sampled, which is only the
-\ first room. The open or a read refuses what cannot be read (E-FS-OPEN,
-\ E-FS-IO); a caller whose refusal of a missing file is the stat's samples with
-\ FS:FILE-SIZE.
-: READ-WHOLE-SAMPLED ( ^u8 n n [ n -- ^u8 ] -- n )
-   {: path:^ pathu:n first:n room :}
+\ The file at a path opened for a whole read, recorded as one the compile read.
+: SOURCE-OPEN ( ^u8 n -- n )
+   {: path:^ pathu:n :}
    path pathu FS:>PATHZ {: z:^ :}
    path pathu z COMPILE-READS:FILE+
    z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
-   fd first room 0 [: SOURCE-READ-RUN ;] catch
-   {: rc:n :}
-   fd close
-   rc 0= if nip nip nip else rc throw then ;
+   fd ;
 
-\ The file at a path, whole: its size is only the first room, and a path that
-\ names no regular file gives no sample.
+\ The file at a path, read as SOURCE-READ-LOOP reads; stack-preserving under
+\ `catch`, the count replacing the zero, so its descriptor is always closed.
+: SOURCE-READ-PATH ( ^u8 n n n [ n -- ^u8 ] -- n )
+   {: path:^ pathu:n first:n cap:n room :}
+   path pathu SOURCE-OPEN {: fd:n :}
+   0 [: drop fd first cap room SOURCE-READ-LOOP ;] catch {: rc:n :}
+   fd close
+   rc 0<> if rc throw then ;
+
+public
+
+\ The file at a path, whole, from a size the caller sampled (FS:FILE-SIZE makes a
+\ missing file E-FS-STAT); a file holding more bytes than the sample is E-FS-CHANGED.
+: READ-WHOLE-SAMPLED ( ^u8 n n [ n -- ^u8 ] -- n )
+   {: path:^ pathu:n first:n room :}
+   path pathu first first room SOURCE-READ-PATH ;
+
+\ The file at a path, whole: a regular file's size bounds the read, and a path
+\ that names no regular file gives no sample and is read to its end.
 : READ-WHOLE-FILE ( ^u8 n [ n -- ^u8 ] -- n )
    {: path:^ pathu:n room :}
-   path pathu FS:FILE? if path pathu FS:FILE-SIZE else 0 then {: first:n :}
-   path pathu first room READ-WHOLE-SAMPLED ;
+   path pathu FS:FILE? if
+      path pathu  path pathu FS:FILE-SIZE  room READ-WHOLE-SAMPLED exit
+   then
+   path pathu 0 SOURCE-NO-CAP room SOURCE-READ-PATH ;
 
 : SOURCE-APPEND-BYTES ( ^u8 len ^u8 len ^len -- )
    {: src:^ u dst:^ cap lenp:^ :}

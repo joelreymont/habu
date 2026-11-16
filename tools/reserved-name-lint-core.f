@@ -290,9 +290,7 @@ variable RNL-IN-DEF
    RNL-SRC-A@ ;
 
 \ Each read takes a region of its own, so the bytes an earlier read left stay
-\ where they are. The file is read to its end however it grows while it is
-\ read: its size, whose refusal (E-FS-STAT) stays a missing or irregular
-\ file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
+\ where they are.
 : RNL-LOAD-SOURCE ( ^u8 n -- ) {: path:^ pathu :}
    0 RNL-SRC-CAP !
    path pathu  path pathu FS:FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;

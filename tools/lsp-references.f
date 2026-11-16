@@ -967,7 +967,9 @@ private
 : FROM-DISK ( -- )
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
-      code VERIFY:E-SOURCE-READ = if CUR @ s" changed while read" SUBJECT-MISS+ exit then
+      code VERIFY:E-SOURCE-READ =  code E-FS-CHANGED =  or if
+         CUR @ s" changed while read" SUBJECT-MISS+ exit
+      then
       code LSP-TEXT:FS-RC? 0= if code throw then
       CUR @ s" cannot be read" SUBJECT-MISS+ exit
    then

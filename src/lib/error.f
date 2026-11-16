@@ -33,6 +33,7 @@ require src/lib/prelude.f
 -2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
 -2109 constant E-FS-SYNC        \ the target holds the new bytes; its directory sync failed
 -2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
+-2111 constant E-FS-CHANGED     \ a file read whole yielded more bytes than its size sampled before the read
 
 \ Strings: -2200..-2299
 -2200 constant E-STR-FIRST

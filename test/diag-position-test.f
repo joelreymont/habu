@@ -124,18 +124,22 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : CHECK-RUN ( -- )
    LSP-CHECK:RUN ;
 
-: CHECK-EXIT ( ^u8 n n -- )
-   {: flag:^ flagu:n want:n :}
-   LSP-CHECK:RESET
-   flagu 0 > IF flag 2 + flagu 2 - LSP-CHECK:OPT THEN
-   s" json-errors" LSP-CHECK:OPT
-   FX-PATH$ LSP-CHECK:FILE
+\ Runs the check LSP-CHECK holds and asserts its status is WANT.
+: CHECK-CAPTURE ( n -- ) {: want:n :}
    [: CHECK-RUN ;] BASE$ OUT CAP SPAN:MAKE ERR CAP SPAN:MAKE GT-CAPTURE-ACTION
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !
    erru LEN>N ERR-U !
    rc want T=
    ERR$ GJA-SPLIT-LINES ;
+
+: CHECK-EXIT ( ^u8 n n -- )
+   {: flag:^ flagu:n want:n :}
+   LSP-CHECK:RESET
+   flagu 0 > IF flag 2 + flagu 2 - LSP-CHECK:OPT THEN
+   s" json-errors" LSP-CHECK:OPT
+   FX-PATH$ LSP-CHECK:FILE
+   want CHECK-CAPTURE ;
 
 : CHECK ( ^u8 n -- )
    REJECT-RC CHECK-EXIT ;
@@ -1805,6 +1809,52 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" help" s" load a regular file, whose bytes a stamp can name" FIELD=
    UNPLACED ;
 
+\ procfs states /proc/version as a regular file of size 0 that yields bytes: hb,
+\ the load and the check alike reject it once it passes its size.
+HB-TARGET-LINUX? [if]
+: PROCFS-RECORD ( -- )
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   SB-RESET  s" cannot read `/proc/version`: changed while it was read" SB-APPEND
+   0 s" message" SB$ FIELD=
+   0 s" help" s" load it again once nothing is writing it" FIELD=
+   UNPLACED ;
+
+: TEST-NAMED-PROCFS ( -- )
+   s" a named input that outruns its size" T-LABEL
+   s" named-procfs" NAMED!  s" /proc/version" FX-PATH$ FS:MAKE-SYMLINK
+   SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `/proc/version`" SB-APPEND
+   S\" : changed while it was read\n  = help: load it again once nothing" SB-APPEND
+   S\"  is writing it\n\n" SB-APPEND
+   SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   s" " INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD
+   s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD ;
+
+\ Under --all-errors a listed file that will not read ends the check after the
+\ stops kept for the files listed before it.
+: TEST-LISTED-PROCFS ( -- )
+   s" a listed input that outruns its size after a stop, under --all-errors" T-LABEL
+   BASE$ s" listed-procfs" DEP-P PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO DEP-PU !
+   s" /proc/version" DEP-PATH$ FS:MAKE-SYMLINK
+   SB-RESET
+   s" require listed-absent.f" SB-APPEND LF+
+   s" : LP1 ( -- ) ;" SB-APPEND LF+
+   s" listed-first.f" FIXTURE!
+   LSP-CHECK:RESET
+   s" all-errors" LSP-CHECK:OPT  s" json-errors" LSP-CHECK:OPT  s" source-list" LSP-CHECK:OPT
+   FX-PATH$ LSP-CHECK:FILE  DEP-PATH$ LSP-CHECK:FILE
+   INCLUDE-IO-RC CHECK-CAPTURE
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-MISSING-SOURCE" FIELD=
+   0 s" listed-absent.f" 1 9 8 23 AT
+   1 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   1 s" message" s" cannot read `/proc/version`: changed while it was read" FIELD= ;
+[then]
+HB-TARGET-LINUX? 0= [if]
+: TEST-NAMED-PROCFS ( -- ) ;
+: TEST-LISTED-PROCFS ( -- ) ;
+[then]
+
 \ The check's one record for the required FIFO, at the request.
 : REQUIRED-FIFO-AT ( -- )
    GJA-LINE# @ 1 T=
@@ -3068,6 +3118,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR
    TEST-NAMED-FIFO
+   TEST-NAMED-PROCFS
+   TEST-LISTED-PROCFS
    TEST-REQUIRED-FIFO
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
