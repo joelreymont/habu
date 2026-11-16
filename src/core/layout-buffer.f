@@ -78,6 +78,8 @@ EXPORT CHECK:STORAGE-RESET
 EXPORT CHECK:T-RES
 EXPORT CHECK:T-WIDTH
 EXPORT CHECK:TAG
+EXPORT TYPE-DECL:TDECL-STORED-CHILD
+EXPORT TYPE-DECL:TDECL-NODE-CHILD
 : LBUF-VALIDATE ( n ^u8 n ^u8 n -- bool )
    {: count:n name:^ nameu:n type:^ typeu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= if
@@ -370,8 +372,6 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 : CHILD ( ^u8 n n n ^u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-public
-
 \ Makes the buffer child NAME over TYPE and answers its effect handle.
 : BUFFER-CHILD ( ^u8 n ^u8 n -- n )
    {: name:^ nameu:n type:^ typeu:n :}
@@ -384,8 +384,6 @@ public
    ['] BIND AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL
    name nameu s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
    ['] GROW AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL ;
-
-private
 
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
 \ Makes the buffer child NAME and lays its block: the header, bound to LBUF-N

@@ -4,6 +4,13 @@
 \ word reads no storage and names no base, so it means the same in every thread
 \ and in every package. BEGIN-STRUCTURE stays create/does> (see its note).
 
+package STRUCTURES
+EXPORT TYPE-DECL:TDECL-CELL-CHILD
+EXPORT TYPE-DECL:TDECL-PTR-CHILD
+EXPORT TYPE-DECL:TDECL-BYTE-CHILD
+
+global
+
 \ The dictionary count just past the open structure's record; 0 when none is open.
 variable STRUCT-OPEN
 
@@ -69,22 +76,24 @@ variable STRUCT-OPEN
 
 : +FIELD ( ^a n n -- ^a n )
    s" +FIELD" STRUCT-REQUIRE-OPEN
-   over STRUCT-NAME rot TYPE-DECL:TDECL-CELL-CHILD
+   over STRUCT-NAME rot TDECL-CELL-CHILD
    + ;
 
 : PTR-FIELD: ( ^a n -- ^a n )
    s" PTR-FIELD:" STRUCT-REQUIRE-OPEN
    dup STRUCT-NAME {: off:n fa:^ fu:n :}
    off CELL mod 0 <> if off fa fu STRUCT-UNALIGNED then
-   fa fu off TYPE-DECL:TDECL-PTR-CHILD
+   fa fu off TDECL-PTR-CHILD
    CELL + ;
 
 : CFIELD: ( ^a n -- ^a n )
    s" CFIELD:" STRUCT-REQUIRE-OPEN
-   dup STRUCT-NAME rot TYPE-DECL:TDECL-BYTE-CHILD
+   dup STRUCT-NAME rot TDECL-BYTE-CHILD
    1 + ;
 
 : END-STRUCTURE ( ^n n -- )
    s" END-STRUCTURE" STRUCT-REQUIRE-OPEN
    0 STRUCT-OPEN !  SOURCE-ROOT:CLOSED
    swap ! ;
+
+;package

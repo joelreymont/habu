@@ -1411,8 +1411,6 @@ CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
    {: na:^ nu:n shape:n param:n :}
    na nu shape param NULL-PTR 0 TDECL-CHILD-RUN drop ;
 
-public
-
 \ Makes the stored child NAME over TYPE, as TDECL-CHILD makes a child, and
 \ answers its effect handle.
 : TDECL-STORED-CHILD ( ^u8 n ^u8 n -- n )
@@ -1432,9 +1430,6 @@ public
 
 : TDECL-BYTE-CHILD ( ^u8 n n -- ) {: na:^ nu:n off:n :}
    na nu CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
-
-
-private
 
 : TDECL-NAME-PREFLIGHT-MISSING ( ^u8 n -- )
    2drop s" sumtype: generated name preflight not installed" 76 die ;
