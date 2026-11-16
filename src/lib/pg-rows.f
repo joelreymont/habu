@@ -24,9 +24,10 @@ package PG
 
 public
 
--9321 constant E-QUERY        \ the server refused a query, a statement answered no rows where rows were read, or rows where EXEC expects none
--9322 constant E-ROW          \ the query answered no row, or a column its reader cannot read
--9323 constant E-READERS      \ more tasks read rows or run queries than the declared readers
+-9321 s" the server refused a query, a statement answered no rows where rows were read, or rows where EXEC expects none"
+   ERROR:CODE E-QUERY
+-9322 s" the query answered no row, or a column its reader cannot read" ERROR:CODE E-ROW
+-9323 s" more tasks read rows or run queries than the declared readers" ERROR:CODE E-READERS
 
 private
 

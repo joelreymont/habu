@@ -61,17 +61,24 @@ package PG
 
 public
 
--9250 constant E-CONNECT      \ the server refused the conninfo, or libpq could not build a connection
--9251 constant E-EXEC         \ transport/readiness failure, no result, rejected transaction verb or failed cancel
--9252 constant E-COLUMN       \ a row or column index outside the result
--9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
--9254 constant E-CLEARED      \ a result used after CLEAR or its connection's close
--9255 constant E-TRANSACTION  \ a WITH-TRANSACTION, NOTIFIED? or NOTIFIED inside a transaction on the same connection
--9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
--9257 constant E-CAPACITY     \ more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use
--9259 constant E-STATEMENT    \ an empty statement or name
--9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
--9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? or NOTIFIED wait
+-9250 s" the server refused the conninfo, or libpq could not build a connection"
+   ERROR:CODE E-CONNECT
+-9251 s" transport/readiness failure, no result, rejected transaction verb or failed cancel"
+   ERROR:CODE E-EXEC
+-9252 s" a row or column index outside the result" ERROR:CODE E-COLUMN
+-9253 s" a column read as a type its bytes are not, including an integer read of NULL"
+   ERROR:CODE E-TYPE
+-9254 s" a result used after CLEAR or its connection's close" ERROR:CODE E-CLEARED
+-9255 s" a WITH-TRANSACTION, NOTIFIED? or NOTIFIED inside a transaction on the same connection"
+   ERROR:CODE E-TRANSACTION
+-9256 s" a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back"
+   ERROR:CODE E-HANDLE
+-9257 s" more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use"
+   ERROR:CODE E-CAPACITY
+-9259 s" an empty statement or name" ERROR:CODE E-STATEMENT
+-9560 s" a wait past the connection's DEADLINE! bound, which closed it" ERROR:CODE E-DEADLINE
+-9561 s" a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? or NOTIFIED wait"
+   ERROR:CODE E-BOUND
 
 NEWTYPE connection
 DEFLINEAR PG:result
