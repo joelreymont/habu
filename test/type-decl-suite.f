@@ -394,12 +394,6 @@ s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" CHECK-QUIET-CANDIDATE! 0 T=
 \ hidden fields.
 s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
-\ constant pops one physical cell: a checked-body pop of a multi-cell layout
-\ value rejects rather than store one of its cells.
-\ The top-level pop never sees a wide value (DNAME-WIDE dispatch gate) and
-\ records the one-cell `-- a` row for the rest.
-s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-CONST-N ( n -- ) constant" CHECK-QUIET-CANDIDATE! -1 T=
 \ catch/frame words: a layout value FLOWS through a stack-preserving quotation
 \ (whole-row absorption) but cannot bind a quotation's polymorphic operand.
 s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=

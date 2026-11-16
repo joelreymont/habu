@@ -816,6 +816,23 @@ variable RC
       s" :1:17" BODY-REJECT-AT
    ERR$ s" outside any definition" CONTAINS? TTRUE ;
 
+: ASSERT-CONSTANT-KEYWORD ( ^u8 n -- ) {: at:^ atu:n :}
+   s" error[E-UNDEFINED]: `constant` is a top-level keyword, not a word"
+      at atu BODY-REJECT-AT
+   ERR$ s" outside any definition" CONTAINS? TTRUE ;
+
+\ A checked body's `constant` is named a keyword under either loader, whatever
+\ inputs the body declares.
+: TEST-KEYWORD-CONSTANT ( -- )
+   s" a checked body using constant names it a top-level keyword" T-LABEL
+   BODY$ s" : LRD-KC ( -- ) constant ;" FS:WRITE-ALL
+   BODY$ RUN  s" :1:17" ASSERT-CONSTANT-KEYWORD
+   s" tools/check.f names a body's constant a top-level keyword" T-LABEL
+   BODY$ CHECK-RUN  s" :1:17" ASSERT-CONSTANT-KEYWORD
+   s" a body whose input feeds constant names it a top-level keyword" T-LABEL
+   BODY$ s" : LRD-KC ( n -- ) constant ;" FS:WRITE-ALL
+   BODY$ RUN  s" :1:19" ASSERT-CONSTANT-KEYWORD ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -1265,6 +1282,7 @@ variable LONG-U
    TEST-CAST
    TEST-UNSAFE
    TEST-KEYWORD
+   TEST-KEYWORD-CONSTANT
    TEST-SEALED-PACKAGE
    TEST-SEALED-DEFINE
    TEST-SEALED-DUPLICATE

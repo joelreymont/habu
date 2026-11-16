@@ -538,7 +538,7 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 \ Whether the text walked is the pending definition's body text.
 : PEND-TEXT? ( -- bool )
    data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ = ;
+   BODY-TEXT? ;
 
 \ The effect `define-word` gave the pending definition when the text walked is
 \ that definition's, else 0.

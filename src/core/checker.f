@@ -17892,8 +17892,20 @@ variable TSEEN  variable TSOK  variable TFA
    a u num-parse {: v:n flt:bool ok:bool :}
    v  flt 0= ok and ;
 
+\ Whether the walk reads the engine's body text, whole or a prefix of it.
+: BODY-TEXT? ( -- bool )
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ = ;
+
+\ Whether the walk is a definer's phrase, `NAME constant` or `NAME create`: the
+\ engine's body text once its record closed. A `:` body walks while pending.
+: DEF-PHRASE? ( -- bool )
+   data-base PEND-CELL + @ 0 <> IF RES-FALSE EXIT THEN
+   BODY-TEXT? ;
+
+\ `variable` and `constant` are top-level keywords, undefined in any walk but a
+\ definer's phrase, whose `constant` takes its row.
 : DEFINER-TOK ( n -- bool ) {: id:n :}
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF
+   DEF-PHRASE? 0= IF
       id INTRINSIC-VARIABLE =  id INTRINSIC-CONSTANT = or IF
          -1 UNDEFERR !  0 OK !  -1 FAILSET !  RES-TRUE EXIT
       THEN
@@ -18679,7 +18691,7 @@ BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
 : ITEM-FIRST ( n -- n ) {: off:n :}
    0 ITEM-COUNT [: BODY-ITEMS:OFF ITEM-CELL@ off < ;]
    KERNEL-SEARCH:PARTITION-POINT ;
-EXPORT CHECK:TBASE@
+EXPORT CHECK:BODY-TEXT?
 EXPORT CHECKER-RESOLVE:REC-AT
 
 \ The record of the CALL item spanning the u-byte token at offset off,
@@ -18687,7 +18699,7 @@ EXPORT CHECKER-RESOLVE:REC-AT
 \ body text.
 : POSTPONED-REC ( n n -- ^n ) {: off:n u:n :}
    ITEM-COUNT 0= IF NULL-PTR EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF NULL-PTR EXIT THEN
+   BODY-TEXT? 0= IF NULL-PTR EXIT THEN
    ITEM-COUNT off ITEM-FIRST ?DO
       i BODY-ITEMS:OFF ITEM-CELL@ off <> IF NULL-PTR UNLOOP EXIT THEN
       i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:CALL =
