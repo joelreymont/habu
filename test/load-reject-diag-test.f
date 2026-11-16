@@ -325,6 +325,13 @@ variable RC
    s" --" >LEN PROC-ARGV+  path pathu >LEN PROC-ARGV+
    path pathu LAUNCH ;
 
+: CHECK-ALL-RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+
+   path pathu LAUNCH ;
+
 : ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
 
@@ -975,14 +982,16 @@ variable RC
    S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
-\ The keyword has two characters and starts line 1, which holds LINE.
+\ The keyword starts line 1, which holds LINE.
 : BODY-ONLY-EXPECT ( ^u8 n ^u8 n -- ) {: word:^ wordu:n line:^ lineu:n :}
    SB-RESET
    s" error[E-UNDEFINED]: `" SB-APPEND  word wordu SB-APPEND
    s" ` works only inside a definition" SB-APPEND
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND
    S\" :1:1\n  |\n1 | " SB-APPEND  line lineu SB-APPEND
-   S\" \n  | ^^ outside a definition\n" SB-APPEND
+   S\" \n  | " SB-APPEND
+   wordu 0 ?do [char] ^ SB-APPEND-C loop
+   s"  outside a definition" SB-APPEND  10 SB-APPEND-C
    s"   = help: move `" SB-APPEND  word wordu SB-APPEND
    S\" ` into a `:` … `;` body\n\n" SB-APPEND ;
 
@@ -1015,6 +1024,35 @@ variable RC
    BODY$ S\" if {: a\n" FS:WRITE-ALL
    BODY$ CHECK-RUN
    s" if" s" if {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
+
+\ Under --all-errors the scan goes on past the keyword, but not into its operand.
+: TEST-BODY-OPERAND ( -- )
+   s" tools/check.f --all-errors reads past a top-level [char]'s operand" T-LABEL
+   BODY$ S\" [char] zzq\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   s" [char]" s" [char] zzq" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f --all-errors reads past a top-level {: group" T-LABEL
+   BODY$ S\" {: a b :}\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   s" {:" s" {: a b :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f --all-errors reads past a top-level {: to the source's end" T-LABEL
+   BODY$ S\" {: a\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f --all-errors reads a top-level [type]'s operand as a type" T-LABEL
+   BODY$ S\" [type] box< n >\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   s" [type]" s" [type] box< n >" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f --all-errors ends a top-level [type]'s operand before ;]" T-LABEL
+   BODY$ S\" [type] ;]\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   ERR$ s" error[E-UNDEFINED]" COUNT-SUB 2 T=
+   ERR$ s" `;]` works only inside a definition" CONTAINS? TTRUE
+   RC @ REJECT-RC T=
+   s" tools/check.f --all-errors reads a top-level is past a comment" T-LABEL
+   BODY$ S\" is ( c ) zzq\n" FS:WRITE-ALL
+   BODY$ CHECK-ALL-RUN
+   s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
 
 \ Under a rendering statement's mark CHECK leaves an undefined name to the run
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
@@ -1231,6 +1269,7 @@ variable LONG-U
    TEST-RECURSE-HELP
    TEST-UNDEF-HOLDER
    TEST-BODY-ONLY
+   TEST-BODY-OPERAND
    TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH

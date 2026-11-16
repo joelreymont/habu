@@ -405,6 +405,7 @@ variable FLAG-N
    prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
+\ The token at or after byte at, read without moving the scan; empty at the
 \ source's end.
 : TOKEN-FROM ( n -- ^u8 n ) {: at:n :}
    SOURCE@ {: s:^ :}
@@ -3840,6 +3841,22 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER-A @ TOP-DEFER-U @ 0 DEFER-AT
    0 TOP-DEFER-U ! ;
 
+\ Reads past the operand body keyword a u reads, as a body does; the keyword
+\ has its record, so the source ending inside the operand adds none.
+: SKIP-OPERAND ( ^u8 n -- ) {: a:^ u:n :}
+   a u s" {:" CORE-STR= IF
+      BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN s" :}" CORE-STR= UNTIL EXIT
+   THEN
+   a u s" [type]" STR=CI IF
+      0 BEGIN
+         SCAN-I @ TOKEN-FROM TYPE-SPAN-END? IF drop EXIT THEN
+         NEXT-RAW dup 0= IF 2drop drop EXIT THEN
+         CHECKER-TYPE-SPAN-STEP
+      UNTIL drop EXIT
+   THEN
+   a u s" is" STR=CI IF NEXT-BODY 2drop EXIT THEN
+   a u BODY-PARSER? IF NEXT-RAW 2drop THEN ;
+
 \ Every answer but a binding reports the token itself, so BOUND-CALL reports a
 \ gap only where no other report is, and a token has one packet at most.
 : TOP-RESOLVE ( ^u8 n bool bool -- )
@@ -3852,7 +3869,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    v 2 = IF a u TOP-PARSER EXIT THEN
    \ A stretch holds names rendered text may define; an undefined name defines
    \ nothing, so the names after it are still resolved and rejected one by one.
-   v 0= IF a TOP-REFUSED ! EXIT THEN
+   v 0= IF a TOP-REFUSED !  runs IF a u SKIP-OPERAND THEN  EXIT THEN
    -1 TOP-DEFER !
    a TOP-DEFER-A !  u TOP-DEFER-U ! ;
 
