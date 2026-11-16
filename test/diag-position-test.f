@@ -3028,13 +3028,15 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
    s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
 
-\ A throw nothing catches, outside the exit statuses 1..255, ends the load with
-\ one record at the word that threw it, in the file whose text ran that word.
+\ A throw nothing catches, of a code no table names and outside the exit
+\ statuses 1..255, ends the load with one E-THROW record at the word that threw
+\ it, in the file whose text ran that word. -100000 lies in error.f's range for
+\ programs' own codes, which Habu never names.
 \ A throw from an evaluated text is placed at the word that ran the text.
 : TEST-UNCAUGHT ( -- )
    s" a throw nothing catches" T-LABEL
    SB-RESET
-   s" : fail ( -- ) -4000 throw ;" SB-APPEND LF+
+   s" : fail ( -- ) -100000 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" uncaught.f" FIXTURE!
    s" E-THROW" s" :2:1" THROW-RC LOADED-AT

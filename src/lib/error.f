@@ -18,11 +18,9 @@ require src/core/engine-error.f
 require src/lib/prelude.f
 require src/core/rejection.f
 
-\ Arrays: -2000..-2099
+\ Arrays: -2000..-2099, declared at this file's end.
 -2000 constant E-A-FIRST
 -2099 constant E-A-LAST
--2000 constant E-A-EMPTY
--2001 constant E-A-BOUNDS
 
 \ Filesystem/files: -2100..-2199, declared at this file's end.
 -2100 constant E-FS-FIRST
@@ -31,289 +29,150 @@ require src/core/rejection.f
 \ True for a code of this block, declared or not.
 : FS-CODE? ( n -- bool )  dup E-FS-FIRST <= swap E-FS-LAST >= and ;
 
-\ Strings: -2200..-2299
+\ Strings: -2200..-2299, declared at this file's end.
 -2200 constant E-STR-FIRST
 -2299 constant E-STR-LAST
--2200 constant E-STR-BOUNDS
--2201 constant E-STR-CAPACITY
 
-\ Maps: -2400..-2499
+\ Maps: -2400..-2499, declared at this file's end.
 -2400 constant E-MAP-FIRST
 -2499 constant E-MAP-LAST
--2400 constant E-MAP-FULL
--2401 constant E-MAP-BAD-CAP
 
-\ Processes: -2500..-2599
+\ Processes: -2500..-2599, declared at this file's end.
 -2500 constant E-PROC-FIRST
 -2599 constant E-PROC-LAST
--2500 constant E-PROC-SPAWN
--2501 constant E-PROC-WAIT
--2502 constant E-PROC-TIMEOUT
--2503 constant E-PROC-OUTPUT
--2504 constant E-PROC-TRUNCATED
--2505 constant E-PROC-ENV
--2506 constant E-PROC-PATH
--2507 constant E-PROC-PTY-CAPACITY
--2508 constant E-PROC-PTY-HANDLE
--2510 constant E-PROC-CANCELLED   \ the caller's borrowed cancellation fd became ready
 
-\ Time/date: -2600..-2699
+\ Time/date: -2600..-2699, declared at this file's end.
 -2600 constant E-TIME-FIRST
 -2699 constant E-TIME-LAST
--2600 constant E-TIME-RANGE
--2601 constant E-TIME-CAPACITY
--2602 constant E-TIME-CLOCK
 
-\ Property tests: -2700..-2799
+\ Property tests: -2700..-2799, declared at this file's end.
 -2700 constant E-PROP-FIRST
 -2799 constant E-PROP-LAST
--2700 constant E-PROP-SEED
--2701 constant E-PROP-GENERATOR
--2703 constant E-PROP-CAPACITY
 
-\ Builds: -2800..-2899
+\ Builds: -2800..-2899, declared at this file's end.
 -2800 constant E-BUILD-FIRST
 -2899 constant E-BUILD-LAST
--2800 constant E-BUILD-SOURCE
--2801 constant E-BUILD-COMMAND
--2802 constant E-BUILD-STATUS
--2803 constant E-BUILD-PATH
--2804 constant E-BUILD-BOOT-DRIFT
--2805 constant E-BUILD-CERTIFY
--2806 constant E-BUILD-INSTALL
 
-\ Diagnostics: -2900..-2999
+\ Diagnostics: -2900..-2999.
 -2900 constant E-DIAG-FIRST
 -2999 constant E-DIAG-LAST
--2900 constant E-DIAG-SCHEMA
 
-\ Tables: -3000..-3099
+\ Tables: -3000..-3099, declared at this file's end.
 -3000 constant E-TBL-FIRST
 -3099 constant E-TBL-LAST
--3000 constant E-TBL-BOUNDS
--3001 constant E-TBL-FIELD
 
-\ JSON writer: -3100..-3199
+\ JSON writer: -3100..-3199, declared at this file's end.
 -3100 constant E-JSON-WRITE-FIRST
 -3199 constant E-JSON-WRITE-LAST
--3100 constant E-JSON-WRITE-CAPACITY   \ the value does not fit the caller's output buffer
--3101 constant E-JSON-WRITE-BYTE       \ a negative U or indent, or string, key or part text that is not UTF-8
--3102 constant E-JSON-WRITE-STATE      \ writer not open, or a call its layout refuses
--3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
--3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, null with a positive length, or inside a growable output past its written bytes
 
 \ OS-backed memory: -3200..-3299, minted in src/core/engine-error.f.
 
-\ Vectors: -3300..-3399
+\ Vectors: -3300..-3399, declared at this file's end.
 -3300 constant E-VEC-FIRST
 -3399 constant E-VEC-LAST
--3300 constant E-VEC-BOUNDS
--3301 constant E-VEC-CAPACITY
 
-\ PTX DSL: -3400..-3499
+\ PTX DSL: -3400..-3499, declared at this file's end.
 -3400 constant E-PTX-FIRST
 -3499 constant E-PTX-LAST
--3400 constant E-PTX-SYNTAX
--3401 constant E-PTX-BLOCK
--3402 constant E-PTX-NOIMPL   \ tile op typed but not lowered to PTX
--3403 constant E-PTX-NOVJP    \ forward word has no registered adjoint (VJP)
--3404 constant E-PTX-ADCAP    \ AD reverse-pass token capacity exceeded
--3405 constant E-PTX-AD-OVERFLOW
--3406 constant E-PTX-AD-UNDERFLOW
--3407 constant E-PTX-AD-UNKNOWN
--3408 constant E-PTX-AD-OUTPUT
--3409 constant E-PTX-IR-OVERFLOW
--3410 constant E-PTX-IR-UNKNOWN
--3411 constant E-PTX-AD-CONTROL
--3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
--3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
--3416 constant E-KABI-CAP          \ kernel-ABI record capacity (params/fields/name pool) exceeded
--3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
--3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
--3419 constant E-KABI-TOKEN        \ kernel-ABI empty or oversized name/extent token
--3420 constant E-KEXPORT-KERNEL    \ kernel-export: unknown kernel name / record-name mismatch
--3421 constant E-KEXPORT-OUTDIR    \ kernel-export: out-dir missing or not a directory
--3422 constant E-KEXPORT-EMPTY     \ kernel-export: producer emitted no PTX
--3423 constant E-PTXTC-ARCH        \ ASSEMBLE invoked before the assembler target was set
--3424 constant E-PTXTC-PTXAS       \ no ptxas executable found on any known path
--3425 constant E-PTXTC-PROBE       \ resolved ptxas --version probe failed (spawn/timeout/truncated capture)
--3426 constant E-PTXTC-VERSION     \ ptxas --version produced output but no parseable release line
--3427 constant E-PTXTC-DIGEST      \ resolved ptxas unreadable or its SHA-256 is not the pinned allowlisted identity
--3428 constant E-PTXTC-STALE       \ sm_121 target: resolved ptxas is older than the pinned 13.3 floor
 
-\ FFI: -3500..-3599
+\ FFI: -3500..-3599, declared at this file's end.
 -3500 constant E-FFI-FIRST
 -3599 constant E-FFI-LAST
--3500 constant E-FFI-ARITY
--3501 constant E-FFI-SYNTAX
--3502 constant E-FFI-DLSYM
-\ FUNCTION: with no library selected in the declaring scope: state LIBRARY or
-\ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
--3503 constant E-FFI-LIBRARY
--3504 constant E-FFI-NUL           \ a string with a 0 byte handed to C, which would end it early
--3505 constant E-FFI-DLOPEN        \ a library a FUNCTION: names could not be opened
-\ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
-\ a descriptor no declaration made, or a dispatch whose body was never stored.
--3507 constant E-FFI-CALLBACK-STATE
 
-\ Tasking/threads: -3600..-3699
+\ Tasking/threads: -3600..-3699, declared at this file's end.
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
--3600 constant E-TASK-SIZE
--3603 constant E-TASK-THREAD
--3604 constant E-TASK-STATE
--3605 constant E-TASK-USER
--3606 constant E-TASK-SEM-STATE     \ semaphore initialized twice
--3607 constant E-TASK-SEM-COUNT     \ semaphore count out of range
--3608 constant E-TASK-SEM-HOST      \ host has no usable unnamed semaphores
--3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
--3611 constant E-TASK-SEM-POOL      \ pooled semaphore: the handle is not a pooled record
--3612 constant E-TASK-NO-RESULT     \ the task ended without storing a result; carried by the err arm of a join
--3614 constant E-TASK-SLEEP-MS      \ TASK:SLEEP or TASK:WAIT-MS duration below zero or past the last deadline a cell holds
 
-\ Engine self-identity: -3800..-3899
+\ Engine self-identity: -3800..-3899; the codes with a text are declared at this
+\ file's end.
 -3800 constant E-ENGINE-FIRST
 -3899 constant E-ENGINE-LAST
--3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
--3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
 -3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 or past the OS timer's longest
 -3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (re-registered as the same (code, name) in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999, minted by src/lib/json/read.f, a file of package JSON (src/lib/json.f).
 
-\ Remote device harness (ssh zed): -4000..-4099
+\ Remote device harness (ssh zed): -4000..-4099, declared at this file's end.
 -4000 constant E-ZED-FIRST
 -4099 constant E-ZED-LAST
--4000 constant E-ZED-UNREACH     \ ssh could not reach the host (connect/auth)
--4001 constant E-ZED-RC          \ remote command exited nonzero
--4002 constant E-ZED-PUT         \ scp/rsync artifact transfer failed
--4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
--4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
--4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
 \ -4006 unassigned: a ZED run's expired deadline throws E-PROC-TIMEOUT.
-\ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
-\ raises it.
--4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
 \ Floating mathematics: -9020..-9029, minted by src/lib/fmath.f, which owns package
 \ FMATH.
 
-\ Source-composition discovery: -4100..-4199
+\ Source-composition discovery: -4100..-4199, declared at this file's end.
 -4100 constant E-DISC-FIRST
 -4199 constant E-DISC-LAST
--4100 constant E-DISC-SHADOW
--4101 constant E-DISC-DYNAMIC
--4102 constant E-DISC-OPENER
--4103 constant E-DISC-UNTERM
--4104 constant E-DISC-CAPACITY
--4105 constant E-DISC-RETIRE
 
-\ Test-suite DSL: -4200..-4299
+\ Test-suite DSL: -4200..-4299, declared at this file's end.
 -4200 constant E-SUITE-FIRST
 -4299 constant E-SUITE-LAST
--4200 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
--4201 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword
--4202 constant E-SUITE-ROW    \ row argument list ran into a row keyword or the end of input (no ;SUITE)
 
-\ Evaluation grader: -4300..-4399
+\ Evaluation grader: -4300..-4399, declared at this file's end.
 -4300 constant E-EVAL-FIRST
 -4399 constant E-EVAL-LAST
--4300 constant E-EVAL-EMIT    \ candidate emit infrastructure failed
--4301 constant E-EVAL-VOCAB   \ judge image lacks a task-required word
 
 \ Test infrastructure: -4400..-4499
 -4400 constant E-TEST-FIRST
 -4499 constant E-TEST-LAST
--4400 constant E-TEST-CAPACITY
 
-\ Owned growable byte buffer: -5700..-5799 (past the stdlib range -2000..-4999;
-\ -5000..-5699 are owned by research/maki modules that keep codes in their own files)
+\ Owned growable byte buffer: -5700..-5799, past the stdlib range -2000..-4999
+\ (-5000..-5699 are owned by research/maki modules that keep codes in their own
+\ files); the codes with a text are declared at this file's end.
 -5700 constant E-BUF-FIRST
 -5799 constant E-BUF-LAST
--5700 constant E-BUF-BOUNDS      \ byte offset / active length outside the buffer
--5701 constant E-BUF-CAPACITY    \ zero, negative, or cell-overflowing byte capacity
 -5702 constant E-BUF-STATE       \ a buffer in the wrong state for the operation
--5703 constant E-BUF-OVERLAP     \ source and destination byte ranges overlap
 
-\ Open-addressing integer-key hash probe: -5800..-5899
+\ Open-addressing integer-key hash probe: -5800..-5899, declared at this file's end.
 -5800 constant E-HM-FIRST
 -5899 constant E-HM-LAST
--5800 constant E-HM-CAP     \ probe capacity is not a nonzero power of two
--5801 constant E-HM-FULL    \ probe scanned every slot without an empty slot or the key
 
-\ Number formatting: -5900..-5999
+\ Number formatting: -5900..-5999, declared at this file's end.
 -5900 constant E-FMT-FIRST
 -5999 constant E-FMT-LAST
--5900 constant E-FMT-DOMAIN      \ unsigned formatter (SB-U/.U) given a negative value
--5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
--5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
-\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199.
+\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199, declared at
+\ this file's end.
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
--6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
--6101 constant E-SPAN-CAPACITY   \ a copy source longer than the destination span's reach
--6102 constant E-SPAN-LENGTH     \ a negative reach at the mint, or a negative source length
 
 \ JSON reader performance samples: -6300..-6399
 -6300 constant E-JRP-FIRST
 -6399 constant E-JRP-LAST
--6300 constant E-JRP-SAMPLE      \ sample stored out of workload order or past the declared total
--6301 constant E-JRP-RANGE       \ workload or sample index outside the sample table
 
-\ Engine arithmetic: -6400..-6499
+\ Engine arithmetic: -6400..-6499, declared at this file's end.
 -6400 constant E-ARITH-FIRST
 -6499 constant E-ARITH-LAST
--6400 constant E-DIV-ZERO       \ `/`, `mod` or `/mod` given a zero divisor
 
 \ Native test runner (package TEST): -6500..-6599
 -6500 constant E-TR-FIRST
 -6599 constant E-TR-LAST
--6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
 
 \ Shared compiler block: -6600..-6699; later compiler stages mint from
 \ -8000..-8999.
 -6600 constant E-IR-FIRST
 -6699 constant E-IR-LAST
-\ Compiler target contract (package CTARGET): -6610..-6619
--6610 constant E-CTGT-ABI         \ the ABI is not one the architecture can run
--6611 constant E-CTGT-ENDIAN      \ the byte order is not one the ABI is defined for
--6612 constant E-CTGT-PTR         \ the pointer width is not one the ABI is defined for
--6613 constant E-CTGT-FEATURE-BITS \ the raw feature mask holds a bit outside the vocabulary
--6614 constant E-CTGT-FEATURE     \ the feature set holds a feature the architecture has not
--6615 constant E-CTGT-BASE        \ the baseline instruction-set feature is absent
--6619 constant E-CTGT-ID          \ a backend id must be positive
+\ Compiler target contract (package CTARGET): -6610..-6619, declared at this
+\ file's end.
 
-\ Compiler numerical policy (package CNUM): -6620..-6629
--6620 constant E-CNUM-CONTRACT    \ contraction is allowed under a bit-exact rewrite licence
+\ Compiler numerical policy (package CNUM): -6620..-6629, declared at this
+\ file's end.
 
-\ Compiler target/policy binding (package CBIND): -6630..-6639
--6630 constant E-CBIND-CONTRACT   \ contraction is allowed but the target has no fused multiply-add
+\ Compiler target/policy binding (package CBIND): -6630..-6639, declared at
+\ this file's end.
 
 \ Frozen compiler identity schema: -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
--6700 constant E-CID-FAMILY   \ the live checker type-family registry does not match the frozen identity family manifest
--6701 constant E-CID-TOKEN    \ a canonical manifest token holds a byte outside the printable non-space alphabet
--6702 constant E-CID-ROW      \ a schema vector row index or table slot is outside its declared table
--6703 constant E-CID-LEX      \ the shared source lexer refused the identity source it was asked to read
--6704 constant E-CID-DEF      \ a named identity definition is missing, duplicated, or unterminated in that source
--6705 constant E-CID-CONST    \ a named identity constant is missing, duplicated, or not a literal in that source
--6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued
 
-\ Checker behavior and schema checks (package CHECKER-MODEL-PROOF): -6860..-6879.
+\ Checker behavior and schema checks (package CHECKER-MODEL-PROOF): -6860..-6879,
+\ declared at this file's end.
 -6860 constant E-CMP-FIRST
 -6879 constant E-CMP-LAST
--6860 constant E-CMP-ROW      \ a shared checker-model vector index or table slot is outside its declared table
--6861 constant E-CMP-VOCAB    \ the checker's concrete type vocabulary - a name, code, class, width, or sign row of CT-INIT - is not what the frozen table carries
--6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
--6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 
 \ Instruction encoding checks: -6900..-6919.
 -6900 constant E-CIE-FIRST
 -6919 constant E-CIE-LAST
--6900 constant E-CIE-ROW      \ a shared instruction vector index or table slot is outside its declared table
--6901 constant E-CIE-FORM     \ an instruction form code no row of the frozen vocabulary names
 
 \ Content-key folds: -6920..-6929, minted in src/lib/content-key.f, which owns
 \ package CONTENT-KEY.
@@ -321,10 +180,6 @@ require src/core/rejection.f
 \ Snapshot relocation checks: -6880..-6899.
 -6880 constant E-CRL-FIRST
 -6899 constant E-CRL-LAST
--6880 constant E-CRL-ROW      \ a shared relocation vector index or table slot is outside its declared table
--6881 constant E-CRL-STRUCT   \ a frozen relocation structure - a pinned band constant, a canonicalization body, or the shape of a vector row - is not what the shipped source carries
--6882 constant E-CRL-DECODE   \ the shipped relocation pass carries an instruction, operand, symbol, or label the machine that runs it was never taught
--6883 constant E-CRL-FAULT    \ the shipped relocation pass, run over a synthetic image, touched an address outside every declared segment or ran past its step budget
 
 \ Compiler growth region: -8000..-8999, the compiler's second block. Sub-blocks
 \ are 20 codes wide, each headed below by its range; a stage that outgrows its
@@ -332,200 +187,106 @@ require src/core/rejection.f
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
 
-\ ARM64 routine machine-effect contracts (package NEFF): -8200..-8219
+\ ARM64 routine machine-effect contracts (package NEFF): -8200..-8219, declared
+\ at this file's end.
 \ Minted for src/compiler/native-effect.f: what an emitted ARM64 routine does
 \ to the registers, flags, link register, stack pointer and control.
--8200 constant E-NEFF-GPR     \ a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file
--8201 constant E-NEFF-FPR     \ a floating-register set bit past the 32-register file
--8202 constant E-NEFF-ROLE    \ one register in two roles that exclude each other: a declared result that is also declared destroyed
--8203 constant E-NEFF-FRAME   \ a frame size that is negative, not a multiple of the stack alignment, or past the reach of the load and store offset field
--8204 constant E-NEFF-SP      \ a stack-pointer delta that rises above the caller's stack, is not a multiple of the stack alignment, is deeper than the declared frame, or is nonzero on a routine whose control returns
--8205 constant E-NEFF-LINK    \ a link-register effect that cannot hold: control returns or tail-calls while x30 is declared destroyed
--8206 constant E-NEFF-CONTROL \ results declared on a routine that never returns
--8207 constant E-NEFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
--8208 constant E-NEFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
--8209 constant E-NEFF-SEQ     \ an ordered register list no calling convention can have: more positions than one cell holds, a register no routine can hold state in, one register named at two positions, or bits set past the last position
--8210 constant E-NEFF-CONV    \ a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack
 
+\ The does> cut of a definition's source: -8400..-8409, declared at this file's end.
 
-\ The does> cut of a definition's source: -8400..-8409
--8407 constant E-NFEED-CUT      \ the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree
-
-\ Native ARM64 data-stack calling convention: -8480..-8499
+\ Native ARM64 data-stack calling convention: -8480..-8499, declared at this
+\ file's end.
 \
 \ A position of a calling convention is a PLACE: a register or a data-stack
 \ slot. Refusals another authority owns keep its name: a non-canonical place
 \ list is NEFF's E-NEFF-SEQ, a register no routine may hold state in E-NEFF-GPR,
 \ an operand outside its field the assembler's.
--8480 constant E-NEFF-KIND    \ a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register
 
-\ Native ARM64 control flow: -8500..-8519
--8506 constant E-A64EMIT-REACH  \ a branch distance that is not a whole instruction or does not fit the field its form encodes it in, or an adr or adrp distance its 21-bit field cannot hold
+\ Native ARM64 control flow: -8500..-8519, declared at this file's end.
 
-\ Native publication: -8560..-8579
--8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
--8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
--8564 constant E-NEMIT-STATE  \ a reader asked src/compiler/native/emission.f about rows no backend has sealed, or that its RETIRE row has cleared; rows opened over live ones or added to none; a placement asked of an unplaced emission
--8565 constant E-NEMIT-ROW    \ a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind
--8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
-
--8570 constant E-COMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles
--8572 constant E-COMP-VERDICT \ the engine's own check did not certify the pending definition
--8573 constant E-COMP-NAME    \ the pending record and the checker's tape name different definitions
--8574 constant E-COMP-OWNER   \ a declaration-owner record is invalid or lacks the field a reader calls
+\ Native publication: -8560..-8579; the codes with a text are declared at this
+\ file's end.
 -8575 constant E-COMP-BINDING \ no successful scan or resolved binding exists for a required call ordinal
--8576 constant E-COMP-RECOVERY \ the active checker counted a refusal or borrowed its recovery fact; abandon the unpublished definition and continue
--8579 constant E-COMP-ARITY   \ the checker holds no declared effect for the pending definition
 
-\ Asking the running dictionary about a spelling: -8600..-8609
--8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent
--8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer
--8602 constant E-NDICT-KIND     \ the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value
+\ Asking the running dictionary about a spelling: -8600..-8609, declared at this
+\ file's end.
 
-\ Native publication, continued: -8621..-8623
--8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
--8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
--8623 constant E-NPUB-TARGET  \ a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked
+\ Native publication, continued: -8621..-8623, declared at this file's end.
 
 \ Native emission and string storage: -8635..-8639
 -8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it: a build does not go on once DP moves back inside its space, so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
 
 \ The register-file description and the machine description over it:
-\ -8670..-8672
--8670 constant E-NREGFILE       \ a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two
--8671 constant E-NMACH          \ a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach
+\ -8670..-8672, declared at this file's end.
 
-\ The shadow target's routines: -8680..-8689
+\ The shadow target's routines: -8680..-8689, declared at this file's end.
 \
 \ Refusals of the shadow chain's stages and of publication keep their own
 \ names.
--8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, a count or a source function asked of none
--8681 constant E-NSHADOW-ROW    \ a patched record the shadow does not hold, a taken emission whose bytes or rows are not as stated, or a `does>` clause function the taken emission does not have or that starts where the definer enters
--8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
-\ Native x86-64 instruction emission: -8780..-8799.
--8790 constant E-X64EMIT-REACH  \ a branch, call or tail branch whose displacement is outside the signed thirty-two bits a rel32 field holds
+\ Native x86-64 instruction emission: -8780..-8799, declared at this file's end.
 
-\ Embedded instruction constructors (compiler growth region).
--8830 constant E-X64ASM-OPERAND
--8840 constant E-A32ASM-OPERAND
--8860 constant E-C6XASM-OPERAND
+\ Embedded instruction constructors (compiler growth region), declared at this
+\ file's end.
 
-\ C66x instruction facts for scheduling and packet checks: -8870..-8879.
--8870 constant E-C6XFACTS-DECODE   \ a word outside the constructed subset
+\ C66x instruction facts for scheduling and packet checks: -8870..-8879, declared
+\ at this file's end.
 
-\ C66x subset interpreter for host tests: -8880..-8889.
--8880 constant E-C6XSIM-DECODE     \ a word the interpreter does not model
--8881 constant E-C6XSIM-FAULT      \ memory access outside the modelled window
--8882 constant E-C6XSIM-LIMIT      \ the cycle budget ran out
--8883 constant E-C6XSIM-OPERAND    \ a register, address or program outside the model
--8884 constant E-C6XSIM-CONFLICT   \ an execute packet or write SPRUGH7 3.8 forbids
+\ C66x subset interpreter for host tests: -8880..-8889, declared at this file's end.
 
-\ C6000 EABI helper emission: -8890..-8899.
--8890 constant E-C6XEABI-OPERAND   \ no helper with that index, or a NOP or branch given to EMIT
--8891 constant E-C6XEABI-CAPACITY  \ the program or fixup table is full
+\ C6000 EABI helper emission: -8890..-8899, declared at this file's end.
 
-\ ELF32 bounded binary reader: -9000..-9019.
+\ ELF32 bounded binary reader: -9000..-9019, declared at this file's end.
 -9000 constant E-ELF32-FIRST
 -9019 constant E-ELF32-LAST
--9000 constant E-ELF32-FORMAT
--9001 constant E-ELF32-BOUNDS
--9002 constant E-ELF32-UNSUPPORTED
 
-\ IPv4 UDP host library: -9100..-9109.
+\ IPv4 UDP host library: -9100..-9109, declared at this file's end.
 -9100 constant E-UDP4-FIRST
 -9109 constant E-UDP4-LAST
--9100 constant E-UDP4-OPERAND
--9101 constant E-UDP4-PLATFORM
 \ -9102 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
--9103 constant E-UDP4-RESULT
 
-\ Raw serial host library: -9110..-9119.
+\ Raw serial host library: -9110..-9119, declared at this file's end.
 -9110 constant E-SERIAL-FIRST
 -9119 constant E-SERIAL-LAST
--9110 constant E-SERIAL-OPERAND
--9111 constant E-SERIAL-PLATFORM
 \ -9112 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
--9113 constant E-SERIAL-RESULT
 
-\ XMODEM packet codec and serial transfer: -9120..-9139.
+\ XMODEM packet codec and serial transfer: -9120..-9139, declared at this file's
+\ end.
 -9120 constant E-XMODEM-FIRST
 -9139 constant E-XMODEM-LAST
--9120 constant E-XMODEM-OPERAND
--9121 constant E-XMODEM-FRAME
--9122 constant E-SXMODEM-OPERAND
--9123 constant E-SXMODEM-TIMEOUT
--9124 constant E-SXMODEM-CLOSED
--9125 constant E-SXMODEM-IO
--9126 constant E-SXMODEM-CANCELLED
--9127 constant E-SXMODEM-RETRIES
--9128 constant E-SXMODEM-CAPACITY
 
 \ Pseudoterminal pairs for test peers: -9160..-9169 (-9140..-9159 belong to
-\ src/lib/byte-edit.f and src/lib/unicode.f).
+\ src/lib/byte-edit.f and src/lib/unicode.f), declared at this file's end.
 -9160 constant E-PTY-FIRST
 -9169 constant E-PTY-LAST
--9160 constant E-PTY-OPEN
--9161 constant E-PTY-IOCTL
--9162 constant E-PTY-IO
--9163 constant E-PTY-CAPACITY
 
-\ Directory listings: -9170..-9179.
+\ Directory listings: -9170..-9179, declared at this file's end.
 -9170 constant E-FS-LIST-FIRST
 -9179 constant E-FS-LIST-LAST
--9170 constant E-FS-LIST-OPEN
--9171 constant E-FS-LIST-READ
--9172 constant E-FS-LIST-ENTRY
--9173 constant E-FS-LIST-CAPACITY
--9174 constant E-FS-LIST-ACTIVE \ a context already owns an active listing
 
-\ IPv4 TCP host library: -9180..-9189.
+\ IPv4 TCP host library: -9180..-9189, declared at this file's end.
 -9180 constant E-TCP4-FIRST
 -9189 constant E-TCP4-LAST
--9180 constant E-TCP4-OPERAND
--9181 constant E-TCP4-PLATFORM
 \ -9182 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
--9183 constant E-TCP4-RESULT
 
-\ Bounded task queues: -9190..-9199.
+\ Bounded task queues: -9190..-9199, declared at this file's end.
 -9190 constant E-QUEUE-FIRST
 -9199 constant E-QUEUE-LAST
--9190 constant E-QUEUE-OPERAND
--9191 constant E-QUEUE-STATE
--9192 constant E-QUEUE-TABLE        \ more queue definitions than the package table holds
 
-\ Generic I/O devices: -9220..-9229.
+\ Generic I/O devices: -9220..-9229, declared at this file's end.
 -9220 constant E-GENIO-FIRST
 -9229 constant E-GENIO-LAST
--9220 constant E-GENIO-OPERAND
--9221 constant E-GENIO-STATE
--9222 constant E-GENIO-IO
--9223 constant E-GENIO-FULL       \ no device row free
 
-\ HTTPS client over libcurl: -9230..-9239.
+\ HTTPS client over libcurl: -9230..-9239, declared at this file's end.
 -9230 constant E-CURL-FIRST
 -9239 constant E-CURL-LAST
--9230 constant E-CURL-PLATFORM
 \ -9231 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
--9232 constant E-CURL-STATE
--9233 constant E-CURL-RESULT
--9234 constant E-CURL-OPERAND
 \ -9235 unassigned: src/lib/net/curl.f grows its transfer records.
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
-\ -9270..-9279.
+\ -9270..-9279, declared at this file's end.
 -9270 constant E-CRYPTO-FIRST
 -9279 constant E-CRYPTO-LAST
--9270 constant E-CRYPTO-OPERAND    \ a key, nonce, span length or output span the operation cannot accept
--9271 constant E-CRYPTO-SEAL       \ libcrypto refused a step of the encryption
--9272 constant E-CRYPTO-OPEN       \ libcrypto refused a step of the decryption
--9273 constant E-CRYPTO-TAG        \ the tag did not authenticate the ciphertext and its associated data
--9274 constant E-CRYPTO-RANDOM     \ the random generator reported failure
--9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
--9276 constant E-CRYPTO-PLATFORM   \ this module is qualified on Linux only, and refuses a foreign target before it binds
--9277 constant E-CRYPTO-KEY        \ RS256 key encoding, import or validation refusal
--9278 constant E-CRYPTO-VERIFY     \ RS256 verification setup or operation failure
--9279 constant E-CRYPTO-SIGN       \ RS256 signing setup or generation failure
 
 \ Datagram sockets of any address family: -9240..-9249, minted by
 \ src/lib/net/datagram.f, which owns package DATAGRAM.
@@ -534,97 +295,56 @@ require src/core/rejection.f
 \ PG. The block is full; PG's row readers are -9320..-9329 and its growth region
 \ -9560..-9569.
 
-\ Process signals on a self-pipe (package SIGNAL): -9280..-9289.
+\ Process signals on a self-pipe (package SIGNAL): -9280..-9289, declared at this
+\ file's end.
 -9280 constant E-SIGNAL-FIRST
 -9289 constant E-SIGNAL-LAST
--9280 constant E-SIGNAL-STATE     \ a word that needs the facility before INIT, or a second INIT without RELEASE
--9281 constant E-SIGNAL-ABI       \ the published stub cells read zero: no baked stub, or not the main task
--9282 constant E-SIGNAL-NUMBER    \ a signal number outside the range sigaction installs
--9283 constant E-SIGNAL-INSTALL   \ sigaction refused the install or the restore
--9284 constant E-SIGNAL-READ      \ the descriptor answered short of the four-byte number
--9285 constant E-SIGNAL-POLL      \ poll refused the read end with an errno
--9286 constant E-SIGNAL-CLOSE     \ closing an end of the self-pipe failed
 
-\ The io_uring readiness loop (package AIO): -9290..-9299.
+\ The io_uring readiness loop (package AIO): -9290..-9299, declared at this
+\ file's end.
 -9290 constant E-AIO-FIRST
 -9299 constant E-AIO-LAST
--9290 constant E-AIO-SETUP        \ io_uring_setup or one of the ring mappings was refused
--9291 constant E-AIO-ENTER        \ io_uring_enter was refused, or took fewer entries than offered
--9292 constant E-AIO-STATE        \ no loop running, or a second START
--9293 constant E-AIO-FULL         \ the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds
--9294 constant E-AIO-BUSY         \ STOP with an operation still in flight
--9295 constant E-AIO-GROUP        \ the group is empty, holds no such ticket, or names no defined group
--9296 constant E-AIO-BOUNDS       \ a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive
--9297 constant E-AIO-POLL-BOUND   \ Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed
 
 \ Package PG's row readers: -9320..-9329, minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
-\ -9330..-9339. The codes after E-WS-MASK are its reserve.
+\ -9330..-9339, declared at this file's end. The codes after E-WS-MASK are its
+\ reserve.
 -9330 constant E-WS-FIRST
 -9339 constant E-WS-LAST
--9330 constant E-WS-RSV           \ a reserved bit set in a frame's first byte
--9331 constant E-WS-OPCODE        \ a reserved opcode
--9332 constant E-WS-CONTROL       \ a control frame that is fragmented or carries more than 125 bytes
--9333 constant E-WS-LENGTH        \ a negative payload length, or an extended length with its high bit set or not in its shortest form
--9334 constant E-WS-TOO-BIG       \ a payload longer than the receiver's bound
--9335 constant E-WS-MASK          \ a mask bit the sender must not set or must set, or a key the sender cannot use
 
-\ The HTTP/1.1 server (package HTTP, src/lib/net/http.f): -9340..-9349.
+\ The HTTP/1.1 server (package HTTP, src/lib/net/http.f): -9340..-9349, declared
+\ at this file's end.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
--9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, a BODY$ or BODY-READER outside its running handler or after its TAKE-OVER, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN or BEARER:REFRESH before CLIENT!
--9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker
--9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
--9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
--9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
--9345 constant E-HTTP-STATIC      \ a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle
--9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
--9347 constant E-HTTP-BODY-READ   \ a handler's body read that did not complete; the server answers it with the read's refusal, never as a fault
 
-\ Base64 (package BASE64): -9350..-9359.
+\ Base64 (package BASE64): -9350..-9359, declared at this file's end.
 -9350 constant E-BASE64-FIRST
 -9359 constant E-BASE64-LAST
--9350 constant E-BASE64-CHAR      \ a byte outside the selected alphabet
--9351 constant E-BASE64-PAD       \ misplaced/forbidden '=', or nonzero unused bits
--9352 constant E-BASE64-LENGTH    \ padded length not divisible by four, or URL remainder one
 
-\ Private C2 owner-frame runtime.
--9360 constant E-C2-CAPACITY       \ this task has no owner frame left
--9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
+\ Private C2 owner-frame runtime, declared at this file's end.
 
-\ File URIs (package URI, src/lib/uri.f): -9370..-9379.
+\ File URIs (package URI, src/lib/uri.f): -9370..-9379, declared at this file's end.
 -9370 constant E-URI-FIRST
 -9379 constant E-URI-LAST
--9370 constant E-URI-SCHEME       \ a scheme other than `file`, compared without case, or none
--9371 constant E-URI-AUTHORITY    \ after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path
--9372 constant E-URI-ESCAPE       \ a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped
--9373 constant E-URI-RELATIVE     \ a path to encode that does not start with `/`, so no file URI names it
 
-\ Content-Length framing (package CONTENT-LENGTH, src/lib/content-length.f): -9380..-9389.
+\ Content-Length framing (package CONTENT-LENGTH, src/lib/content-length.f):
+\ -9380..-9389, declared at this file's end.
 -9380 constant E-CONTENT-LENGTH-FIRST
 -9389 constant E-CONTENT-LENGTH-LAST
--9380 constant E-CONTENT-LENGTH-MALFORMED  \ a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP
--9381 constant E-CONTENT-LENGTH-TRUNCATED  \ end of file inside a header block or a body
--9382 constant E-CONTENT-LENGTH-STATE      \ a reader used before BIND or after a refusal, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum
 
-\ JSON-RPC 2.0 envelope (package JSON-RPC, src/lib/json-rpc.f): -9390..-9399.
+\ JSON-RPC 2.0 envelope (package JSON-RPC, src/lib/json-rpc.f): -9390..-9399,
+\ declared at this file's end.
 -9390 constant E-JSON-RPC-FIRST
 -9399 constant E-JSON-RPC-LAST
--9390 constant E-JSON-RPC-ID             \ a response written with an empty id
 
 \ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
 \ LSP.
 
 \ WebSocket connections over the HTTP server (package WS, src/lib/net/ws.f):
-\ -9410..-9419.
+\ -9410..-9419, declared at this file's end.
 -9410 constant E-WS-CONN-FIRST
 -9419 constant E-WS-CONN-LAST
--9410 constant E-WS-CLOSED        \ a send on a socket that is closing, closed or gone, or one whose queue overflowed and lost it
--9411 constant E-WS-CODE          \ a close status no endpoint may send: outside 1000..4999, reserved or unassigned
--9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
--9415 constant E-WS-STATE         \ ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task
--9417 constant E-WS-LIMIT         \ a WS:START limit below 1 or past the handle's 32-bit slot field
 
 \ SSE owns -9450..-9459. DECIMAL owns -9460..-9469.
 \ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
@@ -683,11 +403,9 @@ require src/core/rejection.f
 \ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
 \ which owns package STUDIO.
 
-\ T0 (src/habu/t0.f): -9600..-9609.
+\ T0 (src/habu/t0.f): -9600..-9609, declared at this file's end.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
--9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move
 
 \ HEAD and each row's first cell are declared address cells holding the newest
 \ row and the row before, NULL-PTR for none, so the linker relocates them.
@@ -895,6 +613,274 @@ generates: FAULT ( -- n )
 -2109 s" the target holds the new bytes; its directory sync failed" ERROR:CODE E-FS-SYNC
 -2110 s" a descriptor transfer reached its deadline" ERROR:CODE E-FS-TIMEOUT
 -2111 s" a file read whole yielded more bytes than its size sampled before the read" ERROR:CODE E-FS-CHANGED
+-2000 s" an array word that needs an element was given an empty array" ERROR:CODE E-A-EMPTY
+-2001 s" an index or count is negative or outside the array or slot table it names" ERROR:CODE E-A-BOUNDS
+-2200 s" a string length, offset, index or byte value is negative or out of range" ERROR:CODE E-STR-BOUNDS
+-2201 s" a string does not fit the room its builder or buffer holds" ERROR:CODE E-STR-CAPACITY
+-2400 s" the map holds as many entries as its capacity: make it with a larger one" ERROR:CODE E-MAP-FULL
+-2401 s" a map capacity, count, index, length or slot field is out of range, or a handle does not match its capacity" ERROR:CODE E-MAP-BAD-CAP
+-2500 s" a child process could not be started" ERROR:CODE E-PROC-SPAWN
+-2501 s" waiting for a child process failed, or the pid is not one this process can wait for" ERROR:CODE E-PROC-WAIT
+-2502 s" a child process or a wait on it ran past its deadline" ERROR:CODE E-PROC-TIMEOUT
+-2503 s" a child's pipe, descriptor or poll could not be set up or read, or a pid or copied argument is out of range" ERROR:CODE E-PROC-OUTPUT
+-2504 s" a child's output outgrew the capture that holds it" ERROR:CODE E-PROC-TRUNCATED
+-2505 s" an environment name, entry or index is malformed: negative, empty, a name holding `=` or a 0 byte, an entry with no `=`, or too large to store" ERROR:CODE E-PROC-ENV
+-2506 s" a program or directory path is empty, too long, or names no executable" ERROR:CODE E-PROC-PATH
+-2507 s" every pseudoterminal child slot is in use" ERROR:CODE E-PROC-PTY-CAPACITY
+-2508 s" a pseudoterminal child handle is stale, another process's, or in the wrong state for the call" ERROR:CODE E-PROC-PTY-HANDLE
+-2510 s" the caller's borrowed cancellation fd became ready" ERROR:CODE E-PROC-CANCELLED
+-2600 s" a date's year is outside 0..9999, or a time is before the epoch" ERROR:CODE E-TIME-RANGE
+-2601 s" the buffer is shorter than the date or time text" ERROR:CODE E-TIME-CAPACITY
+-2602 s" the host refused to read the clock" ERROR:FAULT E-TIME-CLOCK
+-2700 s" a property test's seed or run count is out of range" ERROR:CODE E-PROP-SEED
+-2701 s" a property generator was given a bound below 1, or a byte or digit out of range" ERROR:CODE E-PROP-GENERATOR
+-2703 s" a generated value does not fit the property test's buffer" ERROR:CODE E-PROP-CAPACITY
+-2800 s" a build input's digest is malformed or does not match, or the target is not one the build knows" ERROR:CODE E-BUILD-SOURCE
+-2801 s" a tool the build runs is not installed where the build looks for it" ERROR:FAULT E-BUILD-COMMAND
+-2802 s" a build step exited nonzero, wrote to stderr, or left an incomplete or inconsistent report" ERROR:CODE E-BUILD-STATUS
+-2803 s" a build path is empty, too long, missing, or outside the tree it must lie under" ERROR:CODE E-BUILD-PATH
+-2806 s" replacing an installed file failed before its rename: the old file is kept" ERROR:CODE E-BUILD-INSTALL
+-3000 s" a table index or count is outside the table" ERROR:CODE E-TBL-BOUNDS
+-3001 s" a table field's value is negative, too long, or of a kind the table has no row for" ERROR:CODE E-TBL-FIELD
+-3100 s" the value does not fit the caller's output buffer" ERROR:CODE E-JSON-WRITE-CAPACITY
+-3101 s" a negative U or indent, or string, key or part text that is not UTF-8" ERROR:CODE E-JSON-WRITE-BYTE
+-3102 s" the writer is not open, or a call its layout refuses" ERROR:CODE E-JSON-WRITE-STATE
+-3103 s" the output buffer is null, or its capacity is negative" ERROR:CODE E-JSON-WRITE-OUTPUT
+-3104 s" an appended span is negative, null with a positive length, or inside a growable output past its written bytes" ERROR:CODE E-JSON-WRITE-SOURCE
+-3300 s" an index outside the vector's elements, or a vector not made" ERROR:CODE E-VEC-BOUNDS
+-3301 s" a vector count below 0 or past the most bytes a vector holds" ERROR:CODE E-VEC-CAPACITY
+-3400 s" a PTX declaration token that is missing, malformed, too long or already registered, a full VJP table, or an AD policy out of range" ERROR:CODE E-PTX-SYNTAX
+-3401 s" a block size that is not a multiple of 32 in 32..1024, a launch extent not positive or wider than its block, or a where clause naming another block" ERROR:CODE E-PTX-BLOCK
+-3402 s" a tile op that type-checks but is not lowered to PTX" ERROR:CODE E-PTX-NOIMPL
+-3403 s" a forward word with no registered adjoint (VJP)" ERROR:CODE E-PTX-NOVJP
+-3404 s" the AD reverse pass ran past its token capacity" ERROR:CODE E-PTX-ADCAP
+-3405 s" an AD node, value stack entry or lane past its capacity, or a lane count below 1" ERROR:CODE E-PTX-AD-OVERFLOW
+-3406 s" an AD body pops a value its stack does not hold" ERROR:CODE E-PTX-AD-UNDERFLOW
+-3407 s" an AD node id, op, length or token the graph or VJP table does not hold, or more ops than the AD IR holds" ERROR:CODE E-PTX-AD-UNKNOWN
+-3408 s" an AD body that does not end balanced with exactly one output stored" ERROR:CODE E-PTX-AD-OUTPUT
+-3409 s" a PTX IR with more nodes than it holds" ERROR:CODE E-PTX-IR-OVERFLOW
+-3410 s" a PTX IR node id that names no node, or a node of a kind the call does not take" ERROR:CODE E-PTX-IR-UNKNOWN
+-3411 s" an AD body with control flow (a branch, loop, exit or recursion): differentiate straight-line code" ERROR:CODE E-PTX-AD-CONTROL
+-3412 s" the spawned kernel-emit child exited nonzero: its stderr, surfaced above, says why" ERROR:CODE E-PTX-EMIT
+-3413 s" the in-process PTX capture buffer overflowed" ERROR:CODE E-PTX-CAP
+-3416 s" a kernel ABI record holds more params, fields or name bytes than its capacity" ERROR:CODE E-KABI-CAP
+-3417 s" a kernel ABI field with an unknown name or index, or with no .param offset" ERROR:CODE E-KABI-FIELD
+-3418 s" a kernel ABI field name declared twice, or an extent token with two conflicting sources" ERROR:CODE E-KABI-DUP
+-3419 s" a kernel ABI name or extent token that is empty or too long" ERROR:CODE E-KABI-TOKEN
+-3420 s" a kernel export names an unknown kernel, or its record names another" ERROR:CODE E-KEXPORT-KERNEL
+-3421 s" a kernel export's output directory is missing or not a directory" ERROR:CODE E-KEXPORT-OUTDIR
+-3422 s" a kernel export's producer emitted no PTX" ERROR:CODE E-KEXPORT-EMPTY
+-3423 s" ASSEMBLE ran before the assembler target was set: set the target first" ERROR:CODE E-PTXTC-ARCH
+-3424 s" no ptxas executable on any known path" ERROR:FAULT E-PTXTC-PTXAS
+-3425 s" the resolved ptxas's --version probe failed to spawn, timed out or was truncated" ERROR:FAULT E-PTXTC-PROBE
+-3426 s" ptxas --version printed no parseable release line" ERROR:FAULT E-PTXTC-VERSION
+-3427 s" the resolved ptxas is unreadable, or its SHA-256 is not the pinned allowlisted identity" ERROR:FAULT E-PTXTC-DIGEST
+-3428 s" for an sm_121 target, the resolved ptxas is older than the pinned 13.3 floor" ERROR:FAULT E-PTXTC-STALE
+-3500 s" a declaration's arguments need more cells than a C call passes, or a callback argument index is outside its registers" ERROR:CODE E-FFI-ARITY
+-3502 s" a C symbol a FUNCTION: names is not in its library" ERROR:FAULT E-FFI-DLSYM
+-3503 s" a FUNCTION: with no library selected in its declaring scope: state LIBRARY or PROCESS-SYMBOLS beside the declarations rather than inherit another file's" ERROR:CODE E-FFI-LIBRARY
+-3504 s" a string with a 0 byte handed to C, which would end it early" ERROR:CODE E-FFI-NUL
+-3505 s" a library a FUNCTION: names could not be opened" ERROR:FAULT E-FFI-DLOPEN
+-3507 s" a callback frame accessor used outside a live callback, a descriptor no declaration made, or a dispatch whose body was never stored" ERROR:CODE E-FFI-CALLBACK-STATE
+-3600 s" a task's data stack is smaller than TASK:MIN-STACK" ERROR:CODE E-TASK-SIZE
+-3603 s" the host refused a thread, semaphore or sleep call" ERROR:FAULT E-TASK-THREAD
+-3604 s" a task word called in a state that refuses it: a wake of a task that is not running, a second result, or the task table changed while tasks run" ERROR:CODE E-TASK-STATE
+-3605 s" a task user-area claim does not fit, is made while a task is live, or names no slot of the area" ERROR:CODE E-TASK-USER
+-3606 s" a semaphore initialized twice" ERROR:CODE E-TASK-SEM-STATE
+-3607 s" a semaphore count out of range" ERROR:CODE E-TASK-SEM-COUNT
+-3609 s" a join of a task never activated or already joined" ERROR:CODE E-TASK-JOIN
+-3611 s" a pooled semaphore handle that is not a pooled record" ERROR:CODE E-TASK-SEM-POOL
+-3612 s" the task ended without storing a result; carried by the err arm of a join" ERROR:CODE E-TASK-NO-RESULT
+-3614 s" a TASK:SLEEP or TASK:WAIT-MS duration below zero or past the last deadline a cell holds" ERROR:CODE E-TASK-SLEEP-MS
+-3800 s" the engine's own executable path cannot be resolved" ERROR:FAULT E-ENGINE-PATH
+-3801 s" the engine's own binary cannot be content-hashed" ERROR:FAULT E-ENGINE-KEY
+-4000 s" ssh could not reach the host (connect or auth)" ERROR:FAULT E-ZED-UNREACH
+-4001 s" a remote command exited nonzero" ERROR:CODE E-ZED-RC
+-4002 s" an scp or rsync artifact transfer failed" ERROR:CODE E-ZED-PUT
+-4003 s" a required remote tool is missing (ptxas, nvcc, ...)" ERROR:FAULT E-ZED-TOOLCHAIN
+-4004 s" a bad harness argument or buffer capacity" ERROR:CODE E-ZED-ARG
+-4005 s" a device is required but HABU_ZED is unset or 0" ERROR:CODE E-ZED-DISABLED
+-4007 s" a local artifact emit (a bin/hb spawn) failed" ERROR:CODE E-ZED-EMIT
+-4100 s" a loader word used after the file defined its name: load files before the definition that reuses it, or rename that definition" ERROR:CODE E-DISC-SHADOW
+-4101 s" a dynamic (non-literal) loader path: write the path as a literal" ERROR:CODE E-DISC-DYNAMIC
+-4102 s" an unsupported string opener before a loader word: write the path as an s-quote string before `required`" ERROR:CODE E-DISC-OPENER
+-4103 s" the source ends inside a string literal or a `{:` group" ERROR:CODE E-DISC-UNTERM
+-4104 s" a loader path is longer than discovery's path buffer: shorten it" ERROR:CODE E-DISC-CAPACITY
+-4105 s" a loader word used after the file retired it: load files before `undefine` retires it" ERROR:CODE E-DISC-RETIRE
+-4200 s" a GROUP mode token is missing or not SEQ or PARA" ERROR:CODE E-SUITE-MODE
+-4201 s" a GROUP name is missing or a reserved DSL keyword" ERROR:CODE E-SUITE-NAME
+-4202 s" a row's argument list ran into a row keyword or the end of input (no ;SUITE)" ERROR:CODE E-SUITE-ROW
+-4300 s" the candidate emit infrastructure failed" ERROR:FAULT E-EVAL-EMIT
+-4301 s" the judge image lacks a word the task requires" ERROR:FAULT E-EVAL-VOCAB
+-5700 s" a byte offset or active length outside the buffer" ERROR:CODE E-BUF-BOUNDS
+-5701 s" a zero, negative or cell-overflowing byte capacity" ERROR:CODE E-BUF-CAPACITY
+-5703 s" the source and destination byte ranges overlap" ERROR:CODE E-BUF-OVERLAP
+-5800 s" a probe capacity that is not a nonzero power of two" ERROR:CODE E-HM-CAP
+-5801 s" a probe scanned every slot without finding an empty slot or the key" ERROR:CODE E-HM-FULL
+-5900 s" an unsigned formatter (SB-U or .U) given a negative value" ERROR:CODE E-FMT-DOMAIN
+-5901 s" an SB-FIX scaled magnitude |x|*10^k does not fit an i64" ERROR:CODE E-FMT-OVERFLOW
+-5902 s" the layout's FMT-ABI band width disagrees with FMT-NUM-CAP" ERROR:FAULT E-FMT-BAND
+-6100 s" a narrowing or an index outside the span's byte reach" ERROR:CODE E-SPAN-RANGE
+-6101 s" a copy source longer than the destination span's reach" ERROR:CODE E-SPAN-CAPACITY
+-6102 s" a negative reach at the mint, or a negative source length" ERROR:CODE E-SPAN-LENGTH
+-6400 s" `/`, `mod` or `/mod` given a zero divisor" ERROR:CODE E-DIV-ZERO
+-6610 s" the ABI is not one the architecture can run" ERROR:CODE E-CTGT-ABI
+-6611 s" the byte order is not one the ABI is defined for" ERROR:CODE E-CTGT-ENDIAN
+-6612 s" the pointer width is not one the ABI is defined for" ERROR:CODE E-CTGT-PTR
+-6613 s" the raw feature mask holds a bit outside the vocabulary" ERROR:CODE E-CTGT-FEATURE-BITS
+-6614 s" the feature set holds a feature the architecture has not" ERROR:CODE E-CTGT-FEATURE
+-6615 s" the baseline instruction-set feature is absent" ERROR:CODE E-CTGT-BASE
+-6619 s" a backend id that is not positive" ERROR:CODE E-CTGT-ID
+-6620 s" contraction is allowed under a bit-exact rewrite licence" ERROR:CODE E-CNUM-CONTRACT
+-6630 s" contraction is allowed but the target has no fused multiply-add" ERROR:CODE E-CBIND-CONTRACT
+-6860 s" a shared checker-model vector index or table slot is outside its declared table" ERROR:FAULT E-CMP-ROW
+-6863 s" the frozen schema's own string pool or table is full" ERROR:FAULT E-CMP-POOL
+-8200 s" a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file" ERROR:CODE E-NEFF-GPR
+-8201 s" a floating-register set bit past the 32-register file" ERROR:CODE E-NEFF-FPR
+-8202 s" one register in two roles that exclude each other: a declared result that is also declared destroyed" ERROR:CODE E-NEFF-ROLE
+-8203 s" a frame size that is negative, not a multiple of the stack alignment, or past the reach of the load and store offset field" ERROR:CODE E-NEFF-FRAME
+-8204 s" a stack-pointer delta that rises above the caller's stack, is not a multiple of the stack alignment, is deeper than the declared frame, or is nonzero on a routine whose control returns" ERROR:CODE E-NEFF-SP
+-8205 s" a link-register effect that cannot hold: control returns or tail-calls while x30 is declared destroyed" ERROR:CODE E-NEFF-LINK
+-8206 s" results declared on a routine that never returns" ERROR:CODE E-NEFF-CONTROL
+-8207 s" a trait mask holding a bit outside the vocabulary of things a routine can do" ERROR:CODE E-NEFF-TRAIT
+-8208 s" a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field" ERROR:CODE E-NEFF-SLOT
+-8209 s" an ordered register list no calling convention can have: more positions than one cell holds, a register no routine can hold state in, one register named at two positions, or bits set past the last position" ERROR:CODE E-NEFF-SEQ
+-8210 s" a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack" ERROR:CODE E-NEFF-CONV
+-8407 s" the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree" ERROR:FAULT E-NFEED-CUT
+-8480 s" a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register" ERROR:CODE E-NEFF-KIND
+-8506 s" a branch distance that is not a whole instruction or does not fit the field its form encodes it in, or an adr or adrp distance its 21-bit field cannot hold" ERROR:CODE E-A64EMIT-REACH
+-8561 s" the emission does not fit in what is left of the code arena under the engine's own end reserve" ERROR:CODE E-NPUB-ROOM
+-8563 s" an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned" ERROR:FAULT E-NPUB-OFFSET
+-8564 s" a reader asked src/compiler/native/emission.f about rows no backend has sealed, or that its RETIRE row has cleared; rows opened over live ones or added to none; a placement asked of an unplaced emission" ERROR:FAULT E-NEMIT-STATE
+-8565 s" a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind" ERROR:FAULT E-NEMIT-ROW
+-8566 s" an emission whose branches were measured from an address that is not the code slot this seam is claiming for it" ERROR:FAULT E-NPUB-PLACE
+-8570 s" a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles" ERROR:CODE E-COMP-STATE
+-8572 s" the engine's own check did not certify the pending definition" ERROR:CODE E-COMP-VERDICT
+-8573 s" the pending record and the checker's tape name different definitions" ERROR:FAULT E-COMP-NAME
+-8574 s" a declaration-owner record is invalid or lacks the field a reader calls" ERROR:FAULT E-COMP-OWNER
+-8576 s" the active checker counted a rejection or borrowed its recovery fact; abandon the unpublished definition and continue" ERROR:CODE E-COMP-RECOVERY
+-8579 s" the checker holds no declared effect for the pending definition" ERROR:CODE E-COMP-ARITY
+-8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
+-8601 s" the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer" ERROR:CODE E-NDICT-VALUE
+-8602 s" the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value" ERROR:CODE E-NDICT-KIND
+-8621 s" an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement" ERROR:FAULT E-NPUB-RELOC
+-8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING
+-8623 s" a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked" ERROR:CODE E-NPUB-TARGET
+-8670 s" a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two" ERROR:CODE E-NREGFILE
+-8671 s" a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach" ERROR:CODE E-NMACH
+-8680 s" a shadow opened over an open one or natively with no address rewriter installed, or its binding, a count or a source function asked of none" ERROR:CODE E-NSHADOW-STATE
+-8681 s" a patched record the shadow does not hold, a taken emission whose bytes or rows are not as stated, or a `does>` clause function the taken emission does not have or that starts where the definer enters" ERROR:CODE E-NSHADOW-ROW
+-8682 s" an emission taken for another machine than the one the shadow's binding names" ERROR:CODE E-NSHADOW-TARGET
+-8790 s" a branch, call or tail branch whose displacement is outside the signed thirty-two bits a rel32 field holds" ERROR:CODE E-X64EMIT-REACH
+-8830 s" an operand the x86-64 encoder cannot encode: a value outside its field, a scale other than 1, 2, 4 or 8, or a register the form forbids" ERROR:CODE E-X64ASM-OPERAND
+-8840 s" an operand the Thumb encoder cannot encode: a value outside its field, a misaligned value, or a register the form forbids" ERROR:CODE E-A32ASM-OPERAND
+-8860 s" an operand the C6000 encoder cannot encode: a value outside or misaligned for its field, registers on two sides, an odd pair register, or a predicate the word cannot take" ERROR:CODE E-C6XASM-OPERAND
+-8870 s" a word outside the constructed subset" ERROR:CODE E-C6XFACTS-DECODE
+-8880 s" a word the interpreter does not model" ERROR:CODE E-C6XSIM-DECODE
+-8881 s" a memory access outside the modelled window, or a misaligned word, fetch or branch target" ERROR:CODE E-C6XSIM-FAULT
+-8882 s" the cycle budget or a table of pending writes ran out" ERROR:CODE E-C6XSIM-LIMIT
+-8883 s" a register, address or program outside the model" ERROR:CODE E-C6XSIM-OPERAND
+-8884 s" an execute packet or write SPRUGH7 3.8 forbids" ERROR:CODE E-C6XSIM-CONFLICT
+-8890 s" no helper with that index, or a NOP or branch given to EMIT" ERROR:CODE E-C6XEABI-OPERAND
+-8891 s" the program or fixup table is full" ERROR:CODE E-C6XEABI-CAPACITY
+-9000 s" the bytes are not a well-formed ELF32 file: a bad magic, header size, program-header table, or segment extent or alignment" ERROR:CODE E-ELF32-FORMAT
+-9001 s" an offset, size or index outside the file or its program-header table" ERROR:CODE E-ELF32-BOUNDS
+-9002 s" an ELF32 form the reader does not accept: not version 1 little-endian, or PN_XNUM program headers" ERROR:CODE E-ELF32-UNSUPPORTED
+-9100 s" a UDP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-UDP4-OPERAND
+-9101 s" UDP sockets run on Linux and Darwin only" ERROR:CODE E-UDP4-PLATFORM
+-9103 s" the OS answered a socket call with a result it cannot give: a wrong address length or family, a short send, a cancelled wait or a failed fcntl" ERROR:FAULT E-UDP4-RESULT
+-9110 s" a serial argument out of range: a length, baud, timeout or handle" ERROR:CODE E-SERIAL-OPERAND
+-9111 s" serial ports run on Linux and Darwin only" ERROR:CODE E-SERIAL-PLATFORM
+-9113 s" the OS answered a serial read or write with a count it cannot give, or a cancelled wait" ERROR:FAULT E-SERIAL-RESULT
+-9120 s" an XMODEM argument out of range: a sequence past 255, a block other than 128 or 1024 bytes, an unknown check kind, or a payload longer than its block" ERROR:CODE E-XMODEM-OPERAND
+-9121 s" a received XMODEM frame is malformed: a bad header byte, length, sequence complement or check value" ERROR:CODE E-XMODEM-FRAME
+-9122 s" an XMODEM transfer argument out of range: a wait outside 1..2147483647 ms, a negative length or a bad serial handle" ERROR:CODE E-SXMODEM-OPERAND
+-9123 s" the XMODEM transfer ran past its deadline" ERROR:CODE E-SXMODEM-TIMEOUT
+-9124 s" the serial port closed during the XMODEM transfer" ERROR:CODE E-SXMODEM-CLOSED
+-9125 s" a serial read or write failed during the XMODEM transfer" ERROR:CODE E-SXMODEM-IO
+-9126 s" the peer cancelled the XMODEM transfer" ERROR:CODE E-SXMODEM-CANCELLED
+-9127 s" the XMODEM transfer ran out of retries" ERROR:CODE E-SXMODEM-RETRIES
+-9128 s" the peer sent more bytes than the XMODEM transfer's maximum" ERROR:CODE E-SXMODEM-CAPACITY
+-9160 s" a pseudoterminal could not be opened" ERROR:FAULT E-PTY-OPEN
+-9161 s" an ioctl on a new pseudoterminal failed" ERROR:FAULT E-PTY-IOCTL
+-9162 s" a pseudoterminal write fell short, a child could not be spawned on it, or the pair is already open or has no child" ERROR:CODE E-PTY-IO
+-9163 s" a pseudoterminal read, write, path or watch does not fit its buffer or table, or names no watch" ERROR:CODE E-PTY-CAPACITY
+-9170 s" a directory could not be opened for listing" ERROR:CODE E-FS-LIST-OPEN
+-9171 s" reading a directory's entries failed" ERROR:CODE E-FS-LIST-READ
+-9172 s" a directory entry is malformed, or its name holds a newline" ERROR:CODE E-FS-LIST-ENTRY
+-9173 s" the listed names or the listing's storage do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
+-9174 s" a context already owns an active listing" ERROR:CODE E-FS-LIST-ACTIVE
+-9180 s" a TCP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-TCP4-OPERAND
+-9181 s" TCP sockets run on Linux and Darwin only" ERROR:CODE E-TCP4-PLATFORM
+-9183 s" the OS answered a socket call with a result it cannot give: a wrong address length or family, a count past the span, a cancelled wait or a failed fcntl" ERROR:FAULT E-TCP4-RESULT
+-9190 s" a queue index or capacity out of range" ERROR:CODE E-QUEUE-OPERAND
+-9191 s" a queue used before it is initialized, or initialized while live" ERROR:CODE E-QUEUE-STATE
+-9192 s" more queue definitions than the package table holds" ERROR:CODE E-QUEUE-TABLE
+-9220 s" a device index out of range, or a terminal line longer than the buffer" ERROR:CODE E-GENIO-OPERAND
+-9221 s" a device handle that is stale or closing, or a host with no FIONREAD" ERROR:CODE E-GENIO-STATE
+-9222 s" a device read or write failed, or the device faulted earlier" ERROR:CODE E-GENIO-IO
+-9223 s" no device row free" ERROR:CODE E-GENIO-FULL
+-9232 s" a curl handle that is empty, not live or another task's, or a transfer already in flight" ERROR:CODE E-CURL-STATE
+-9233 s" libcurl answered a call with a result it cannot give, or a capture that is not whole" ERROR:FAULT E-CURL-RESULT
+-9234 s" a curl argument out of range, a header holding CR or LF, or a record index outside the table" ERROR:CODE E-CURL-OPERAND
+-9270 s" a key, nonce, span length or output span the operation cannot accept" ERROR:CODE E-CRYPTO-OPERAND
+-9271 s" libcrypto refused a step of the encryption" ERROR:FAULT E-CRYPTO-SEAL
+-9272 s" libcrypto refused a step of the decryption" ERROR:FAULT E-CRYPTO-OPEN
+-9273 s" the tag did not authenticate the ciphertext and its associated data" ERROR:CODE E-CRYPTO-TAG
+-9274 s" the random generator reported failure" ERROR:FAULT E-CRYPTO-RANDOM
+-9275 s" libcrypto refused the keyed hash, or answered a digest of the wrong width" ERROR:FAULT E-CRYPTO-MAC
+-9277 s" an RS256 key whose encoding, import or validation was refused" ERROR:CODE E-CRYPTO-KEY
+-9278 s" RS256 verification setup or operation failed" ERROR:FAULT E-CRYPTO-VERIFY
+-9279 s" RS256 signing setup or generation failed" ERROR:FAULT E-CRYPTO-SIGN
+-9280 s" a word that needs the facility before INIT, or a second INIT without RELEASE" ERROR:CODE E-SIGNAL-STATE
+-9281 s" the published stub cells read zero: no baked stub, or not the main task" ERROR:FAULT E-SIGNAL-ABI
+-9282 s" a signal number outside the range sigaction installs" ERROR:CODE E-SIGNAL-NUMBER
+-9283 s" sigaction refused the install or the restore" ERROR:FAULT E-SIGNAL-INSTALL
+-9284 s" the self-pipe answered short of the four-byte signal number" ERROR:FAULT E-SIGNAL-READ
+-9285 s" poll refused the self-pipe's read end with an errno" ERROR:FAULT E-SIGNAL-POLL
+-9286 s" closing an end of the self-pipe failed" ERROR:FAULT E-SIGNAL-CLOSE
+-9290 s" io_uring_setup or one of the ring mappings was refused" ERROR:FAULT E-AIO-SETUP
+-9291 s" io_uring_enter was refused, or took fewer entries than offered" ERROR:FAULT E-AIO-ENTER
+-9292 s" no loop running, or a second START" ERROR:CODE E-AIO-STATE
+-9293 s" the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds" ERROR:CODE E-AIO-FULL
+-9294 s" STOP with an operation still in flight" ERROR:CODE E-AIO-BUSY
+-9295 s" the group is empty, holds no such ticket, or names no defined group" ERROR:CODE E-AIO-GROUP
+-9296 s" a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive" ERROR:CODE E-AIO-BOUNDS
+-9297 s" Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed" ERROR:CODE E-AIO-POLL-BOUND
+-9330 s" a reserved bit set in a frame's first byte" ERROR:CODE E-WS-RSV
+-9331 s" a reserved opcode" ERROR:CODE E-WS-OPCODE
+-9332 s" a control frame that is fragmented or carries more than 125 bytes" ERROR:CODE E-WS-CONTROL
+-9333 s" a negative payload length, or an extended length with its high bit set or not in its shortest form" ERROR:CODE E-WS-LENGTH
+-9334 s" a payload longer than the receiver's bound" ERROR:CODE E-WS-TOO-BIG
+-9335 s" a mask bit the sender must not set or must set, or a key the sender cannot use" ERROR:CODE E-WS-MASK
+-9340 s" START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, a BODY$ or BODY-READER outside its running handler or after its TAKE-OVER, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN or BEARER:REFRESH before CLIENT!" ERROR:CODE E-HTTP-STATE
+-9341 s" a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker" ERROR:CODE E-HTTP-HANDLE
+-9342 s" a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms" ERROR:CODE E-HTTP-WORKERS
+-9343 s" more hooks, headers or bound segments than a table holds, or a negative body length" ERROR:CODE E-HTTP-CAPACITY
+-9344 s" more routes than the table holds, or an empty method or a pattern not starting with /" ERROR:CODE E-HTTP-ROUTE
+-9345 s" a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle" ERROR:CODE E-HTTP-STATIC
+-9346 s" the listener could not be bound, put to listen or asked its own address" ERROR:CODE E-HTTP-SOCKET
+-9347 s" a handler's body read that did not complete; the server answers it with the read's rejection, never as a fault" ERROR:CODE E-HTTP-BODY-READ
+-9350 s" a byte outside the selected alphabet" ERROR:CODE E-BASE64-CHAR
+-9351 s" misplaced/forbidden '=', or nonzero unused bits" ERROR:CODE E-BASE64-PAD
+-9352 s" padded length not divisible by four, or URL remainder one" ERROR:CODE E-BASE64-LENGTH
+-9360 s" this task has no owner frame left" ERROR:CODE E-C2-CAPACITY
+-9361 s" a frame operation contradicts its transition state" ERROR:CODE E-C2-STATE
+-9370 s" a scheme other than `file`, compared without case, or none" ERROR:CODE E-URI-SCHEME
+-9371 s" after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path" ERROR:CODE E-URI-AUTHORITY
+-9372 s" a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped" ERROR:CODE E-URI-ESCAPE
+-9373 s" a path to encode that does not start with `/`, so no file URI names it" ERROR:CODE E-URI-RELATIVE
+-9380 s" a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP" ERROR:CODE E-CONTENT-LENGTH-MALFORMED
+-9381 s" end of file inside a header block or a body" ERROR:CODE E-CONTENT-LENGTH-TRUNCATED
+-9382 s" a reader used before BIND or after a rejection, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum" ERROR:CODE E-CONTENT-LENGTH-STATE
+-9390 s" a response written with an empty id" ERROR:CODE E-JSON-RPC-ID
+-9410 s" a send on a socket that is closing, closed or gone, or one whose queue overflowed and lost it" ERROR:CODE E-WS-CLOSED
+-9411 s" a close status no endpoint may send: outside 1000..4999, reserved or unassigned" ERROR:CODE E-WS-CODE
+-9414 s" SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)" ERROR:CODE E-WS-TEXT
+-9415 s" ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task" ERROR:CODE E-WS-STATE
+-9417 s" a WS:START limit below 1 or past the handle's 32-bit slot field" ERROR:CODE E-WS-LIMIT
+-9604 s" the body binds other than its scan's count of locals" ERROR:FAULT E-T0-BINDS
+-9608 s" an operation over a width it cannot move" ERROR:FAULT E-T0-BUNDLE
 
 \ HELP and CAUGHT name E-THROW-ZERO, which ERROR:CODE declares outside the
 \ package, and UNCAUGHT calls HELP.
