@@ -2384,7 +2384,7 @@ variable TRUSTED-DOES
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu CHECKER-RESOLVE:PART-PATH {: pa:^ pu:n :}
-   pa pu CHECKER-PACKAGE
+   pa pu name nameu CHECKER-PACKAGE
    pa pu name nameu at SEALED-PACKAGE ;
 
 : RECORD-PUBLIC ( -- )

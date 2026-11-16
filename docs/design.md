@@ -236,8 +236,9 @@ mint. A private view of storage leaves the tags it stores to its writer, as it
 leaves its pointers.
 
 **Visibility picks the spelling, not whether words are generated.** A public
-family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a
-private family publishes `FAMILY-MAKE` in its package's private wordlist. Most
+family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace, and
+one in part `A:B` publishes `B-FAMILY:MAKE` in the part `A:B-FAMILY` of A,
+which resolves as every part does; a private family publishes `FAMILY-MAKE` in its package's private wordlist. Most
 memory records are package-private, so a public-only generator would serve
 almost nothing. The private spelling has no colon because it cannot: a
 qualified definition name is routed to the named namespace's public wordlist,
@@ -246,7 +247,8 @@ and the checker records a colon name as a public symbol.
 **Generated words are protected by name.** A declaration protects no wordlist.
 The checker refuses with `E-CTOR-PROTECTED` an `undefine` of a generated word
 and, for a family's constructor namespace, reopening it or defining a new word
-into it. A bare variant name is not a generated member, so a package may
+into it. A part of the family's package that bears that namespace's name is
+rejected in either order, since inside the package it would shadow it. A bare variant name is not a generated member, so a package may
 still define a word that happens to share it.
 
 ## Type substrate

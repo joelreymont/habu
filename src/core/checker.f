@@ -12580,13 +12580,13 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
    {: a:^ u:n :}
    a u BYTE-SPAN? u PACKAGE-PATH:CAP >= and ;
 
-: PACKAGE-LONG-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+: PACKAGE-LONG-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    PACKAGE-PATH:CAP 1 - {: m:n :}
    s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
    s" the package name is " REJECTION:EMIT-STR  u REJECTION:EMIT-U
    s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
    s"  a package name may have" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" too long" REJECTION:EMIT-STR
    REJECTION:HELP
    s" shorten the package name to " REJECTION:EMIT-STR  m REJECTION:EMIT-U
    s"  bytes or fewer" REJECTION:EMIT-STR
@@ -12595,9 +12595,8 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 \ A package name must have a length that describes memory: a -1 length would
 \ copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ^u8 n -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= u PACKAGE-PATH:CAP >= or IF
-      s" checker: package name too long" 76 die
-   THEN
+   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
+   u PACKAGE-PATH:CAP >= IF s" checker: package name too long" 76 die THEN
    0 BEGIN dup u < WHILE
       a over CHECKER-PACKAGE-COPY-C
       1 +
@@ -12782,25 +12781,28 @@ create HEAD-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
 
 public
+\ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
+\ open or no such part is recorded.
+: PART-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
+   TOP-NAME$ {: ta:^ tu:n :}
+   tu 1 + u + {: ku:n :}
+   tu 0=  ku PACKAGE-PATH:CAP >=  or IF NULL-PTR EXIT THEN
+   ta HEAD-KEY tu ARENA-COPY
+   $3A HEAD-KEY tu + c!
+   a HEAD-KEY tu 1 + + u ARENA-COPY
+   HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE ;
+
 \ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
 \ or its part `A:<head>` first, then a top-level package.
 : HEAD-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
-   TOP-NAME$ {: ta:^ tu:n :}
-   tu 1 + u + {: ku:n :}
-   tu 0 <>  ku PACKAGE-PATH:CAP <  and IF
-      ta HEAD-KEY tu ARENA-COPY
-      $3A HEAD-KEY tu + c!
-      a HEAD-KEY tu 1 + + u ARENA-COPY
-      HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE
-      dup NULL-PTR <> IF EXIT THEN
-      drop
-   THEN
+   a u PART-ROW  dup NULL-PTR <> IF EXIT THEN
+   drop
    a u BOOT:NAMESPACE-WL WL-PROBE ;
 ;package
 
 : CHECKER-USING ( ^u8 n -- ) {: a:^ u:n :}
-   a u CHECKER-PACKAGE-LONG? IF a u PACKAGE-LONG-REJECT THEN
+   a u CHECKER-PACKAGE-LONG? IF a u a u PACKAGE-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
@@ -12867,15 +12869,15 @@ CTOR-PROT-DEFAULTS
    s" ` and define your own word under another name" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: CTOR-PKG-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+: CTOR-PKG-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-CTOR-PROTECTED" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
-   s" ` holds generated constructors, which no source may reopen"
+   s" ` is reserved for generated constructors, so no source may open it"
    REJECTION:EMIT-STR
-   a u REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
    REJECTION:HELP
    s" put your words in a package of another name, as `package " REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
+   t tu REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The name with each `:` spelled `-`: a bare name outside the package.
@@ -13701,11 +13703,13 @@ public
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF s" CHECKER-USING-POP" WINDOW-REJECT THEN
    CHECKER-OVERLAY:CLOSE-USING ;
 
-: CHECKER-PACKAGE ( ^u8 n -- )
-   2dup CHECKER-PACKAGE-LONG? IF 2dup PACKAGE-LONG-REJECT THEN
-   2dup CTOR-PKG?-XT IF 2dup CTOR-PKG-REJECT THEN
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 2dup CHECKER-OVERLAY:OPEN-PACKAGE THEN
-   CHECKER-PACKAGE-COPY
+\ The path a u, then the name as written t tu.
+: CHECKER-PACKAGE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+   a u CHECKER-PACKAGE-LONG? IF a u t tu PACKAGE-LONG-REJECT THEN
+   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
+   a u CTOR-PKG?-XT IF a u t tu CTOR-PKG-REJECT THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:OPEN-PACKAGE THEN
+   a u CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 package CHECKER-REG
 ' CHECKER-PACKAGE DECLARATIONS PACKAGE-OFF + xt!

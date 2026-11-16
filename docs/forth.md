@@ -686,7 +686,14 @@ multi-cell type rationale is `docs/design.md` "Types".
   `PKG-FAMILY:tail` with every hyphen in the package and family names
   doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`
   variant through `TCP4-READ--RESULT:data`; a `STRUCTURE captured` in
-  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A private family's are `FAMILY-tail` in its package's
+  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A public family in
+  part `A:B` makes them in the part `A:B-FAMILY` of A, spelled `B-FAMILY:tail`
+  and reached inside A only: `STRUCTURE inner` in `package AA package BB`
+  makes through `BB-INNER:MAKE` inside AA. A part bearing the name of the
+  constructor package of its own package's public family (`package QZ-PT`
+  inside QZ, which declares `pt`) is rejected whichever comes second: the
+  family at its name, or `package` at its name with `E-CTOR-PROTECTED`.
+  A private family's are `FAMILY-tail` in its package's
   private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
   section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.
   `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack

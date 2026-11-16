@@ -351,26 +351,24 @@ variable TDECL-TOK-N
    {: pa:^ pu:n na:^ nu:n :}
    pa pu  TDW-A @ TDW-U @  TDF-A @ TDF-U @  na nu  TDECL-DIAG ;
 
-\ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
-\ a status in 1..255 was printed where it arose, and a code no reason is armed
-\ with is no declaration's: all three are rethrown. Any other is rendered,
-\ then counts in a multi-error load or stops the load. The record
-\ is rendered before this rollback, but a throw inside a transaction
-\ participant has already rolled back, scrubbing the stores its token may
-\ point into: its word note reads TDECL-THROW's copy.
+\ TDN names only the running declaration: a STRUCTURE or ENUM after it reads none.
+: TDECL-NAME-END ( -- ) NULL-PTR TDN-A !  0 TDN-U ! ;
+\ Rethrows E-TDECL-UNRESOLVED, a status in 1..255 and a code no reason is armed
+\ with; any other is rendered before the rollback scrubs what its record reads.
 : TDECL-RUN ( [ -- ] -- )
    READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful declaration only
    catch {: rc:n :}
    TDECL-SEEN-CLEAR
-   rc 0= IF EXIT THEN
-   rc E-TDECL-UNRESOLVED = IF TDECL-RESTORE rc throw THEN
+   rc 0= IF TDECL-NAME-END EXIT THEN
+   rc E-TDECL-UNRESOLVED = IF TDECL-RESTORE TDECL-NAME-END rc throw THEN
    rc 1 >=  rc 255 <= and  TDECL-CODE @ rc <> or IF
-      TDECL-RESTORE  SIG-UNRES-CLEAR  rc throw THEN
+      TDECL-RESTORE  SIG-UNRES-CLEAR  TDECL-NAME-END rc throw THEN
    TDECL-REPORT
    TDECL-RESTORE
    SIG-UNRES-CLEAR
+   TDECL-NAME-END
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -1069,23 +1067,55 @@ private
       fam TDECL-VARIANT
    AGAIN ;
 
-\ Only a family with public generated words (TFAM-GEN-PUBLIC?) reserves a
-\ constructor package: it derives it once and records it in every variant's
-\ SV.CTOR-PKG, keyed by family id so same-tail families in different packages
-\ get disjoint namespaces. A private or OPAQUE family's slot stays empty: its
-\ generated words are spelled with TF-CTOR-PRIV$ into the declaring package's
-\ private wordlist. A part's family makes its constructor package, a part of
-\ the same package with a public wordlist alone. The name is interned after the
-\ escaped spelling is built, so the transient package/tail pointers are consumed
-\ before any pool grow.
+private
+
+0 constant TDECL-CTOR-FREE
+1 constant TDECL-BY-PART
+2 constant TDECL-BY-FAMILY
+3 constant TDECL-BY-PART-FAMILY
+
+\ What takes the name: a source's part, else for a top-level family a part's
+\ family and for a part's family a family of the enclosing package.
+: TDECL-CTOR-HOLDER ( ^u8 n n n -- n ) {: ca:^ cu:n cn:n ci:n :}
+   cn 0 = IF
+      ca cu CHECKER-RESOLVE:PART-ROW {: top:^ :}
+      top NULL-PTR = IF TDECL-CTOR-FREE EXIT THEN
+      top CELL + @ 0 = IF TDECL-BY-PART-FAMILY EXIT THEN
+      TDECL-BY-PART EXIT
+   THEN
+   ca ci 1 + +  cu ci 1 + -  CHECKER-RESOLVE:PART-ROW {: row:^ :}
+   row NULL-PTR = IF
+      ca cu TFAM-CTOR-PKG? IF TDECL-BY-FAMILY EXIT THEN
+      TDECL-CTOR-FREE EXIT
+   THEN
+   row CELL + @ 0 = IF TDECL-CTOR-FREE EXIT THEN
+   TDECL-BY-PART ;
 
 public
 
+\ A part's family makes its constructor package a part with no private wordlist.
+\ TF-INTERN may move the pool TFAM-PKG$ and TFAM-NAME$ read, so it runs last.
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDN-A @ TDN-U @ TDECL-TOK!
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:^ cu:n :}
-   ca cu CHECKER-COLON-SCAN drop 0 <> IF ca cu RES-FALSE CHECKER-OVERLAY:NS-ENSURE drop THEN
+   ca cu CHECKER-COLON-SCAN {: cn:n ci:n :}
+   ca cu cn ci TDECL-CTOR-HOLDER {: by:n :}
+   by TDECL-BY-PART = IF
+      fam TFAM-NAME$ s" a part of this package already bears its constructor package's name"
+         s" rename the family or that part" E-TDECL-NAME TDECL-THROW-AT
+   THEN
+   by TDECL-BY-FAMILY = IF
+      fam TFAM-NAME$
+         s" a family of the enclosing package already makes a constructor package of this name"
+         s" rename this family or the part" E-TDECL-NAME TDECL-THROW-AT
+   THEN
+   by TDECL-BY-PART-FAMILY = IF
+      fam TFAM-NAME$
+         s" a family of a part of this package already makes a constructor package of this name"
+         s" rename this family or that part's family" E-TDECL-NAME TDECL-THROW-AT
+   THEN
+   cn 0 <> IF ca cu RES-FALSE CHECKER-OVERLAY:NS-ENSURE drop THEN
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 

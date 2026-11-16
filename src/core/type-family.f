@@ -949,31 +949,52 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 public
 
-\ Generated-constructor protection: names match the recorded SV.CTOR-PKG
-\ spellings case-insensitively, so a folded alias cannot reopen a constructor
+\ Generated-constructor protection: a split name's head matches the recorded
+\ SV.CTOR-PKG spelling of the package it resolves to here, case-insensitively,
+\ so neither a folded alias nor a part's own name can reopen a constructor
 \ package, extend it with a new tail, or undefine a generated word. Installed
 \ into the checker's CTOR-*-XT friend cells at the end of this file.
 private
 
 variable TF-CW-COL          \ first-colon split position
+PTR-VARIABLE TF-CW-HEAD-A   variable TF-CW-HEAD-U   \ the split head, resolved
+: TF-CW-HEAD$ ( -- ^u8 n ) TF-CW-HEAD-A @ TF-CW-HEAD-U @ ;
 : SUMV-CTOR-PKG-MATCH? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}
    id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
    id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
-: TFAM-CTOR-PKG? ( ^u8 n -- bool ) {: a:^ u:n :}   \ a recorded ctor package name?
-   SUMV-N @ 0 ?do
-      a u i SUMV-CTOR-PKG-MATCH? IF RES-TRUE unloop EXIT THEN
-   loop RES-FALSE ;
 
 public
+
+\ A recorded ctor package, or a part `TOP:X` where X is one of a family of TOP.
+: TFAM-CTOR-PKG? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 =  ci 0 >  and {: part:bool :}
+   SUMV-N @ 0 ?do
+      a u i SUMV-CTOR-PKG-MATCH? IF RES-TRUE unloop EXIT THEN
+      part IF
+         a ci + 1 +  u ci - 1 -  i SUMV-CTOR-PKG-MATCH? IF
+            a ci  i SUMV-FAM@ TFAM-PKG$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
+         THEN
+      THEN
+   loop RES-FALSE ;
+
+\ The package a qualifier's head names here, as a word's qualifier does: the
+\ open package's part first, then a top-level package; a head no record holds
+\ stays as given.
+: TFQ-HEAD$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF a u EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ ;
 
 : TF-CW-SPLIT? ( ^u8 n -- bool ) {: a:^ u:n :}   \ first non-edge ':' -> TF-CW-COL
    -1 TF-CW-COL !
    u 0 ?do
       a i + c@ 58 = IF i TF-CW-COL ! leave THEN
    loop
-   TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and ;
+   TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and
+   dup IF a TF-CW-COL @ TFQ-HEAD$ TF-CW-HEAD-U ! TF-CW-HEAD-A ! THEN ;
 : TFAM-CTOR-WORD-AT? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}   \ split name = ctor id?
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ CORE-STR=CI ;
 
 private
@@ -1002,7 +1023,7 @@ public
 
 : TFAM-DERIVED-AT? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family derived word?
    id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 
 \ The QUALIFIED half of the generated-word scan. Its private half, and the two
@@ -1248,9 +1269,9 @@ package TFAM
 \ needed only for a name the generator does not own.
 : TFAM-CTOR-EXTEND? ( ^u8 n -- bool ) {: a:^ u:n :}   \ new tail in a ctor package?
    a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
-   TF-CW-COL @ {: col:n :}
+   TF-CW-HEAD$ {: ha:^ hu:n :}
    a u TFAM-CTOR-WORD? IF RES-FALSE EXIT THEN
-   a col TFAM-CTOR-PKG? ;
+   ha hu TFAM-CTOR-PKG? ;
 
 public
 
@@ -2470,7 +2491,7 @@ public
 private
 
 : TFAM-ADDR-AT? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family accessor?
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-ADDR-TAIL? ;
 
 \ The private spelling carries no colon, so the member is recovered by deriving
@@ -2552,7 +2573,7 @@ private
 : TFAM-INIT-QUAL-AT? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}
    id SUMV-FAM@ {: fam:n :}
    fam TFAM-GEN-PUBLIC? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ fam TFAM-INIT-TAIL? ;
 
 : TFAM-INIT-PRIV-AT? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}
@@ -3724,14 +3745,6 @@ variable TFQ-COLON
       i 1 +
    REPEAT drop
    u TFQ-U ! ;
-
-\ The package a qualifier's head names here, as a word's qualifier does
-\ (CHECKER-RESOLVE:HEAD-ROW): the open package's part first, then a top-level
-\ package; a head no record holds stays as given.
-: TFQ-HEAD$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a u EXIT THEN
-   row CHECKER-RESOLVE:CK-REC-NAME$ ;
 
 \ One non-edge ':' splits qualifier and tail (engine FIND parity) and folds the
 \ written qualifier into TFQ-BUF.

@@ -136,7 +136,7 @@ create BEFORE MARK-N cells allot
 : FIELDS-IT ( -- ) s" zzrec" BAD$ CHECKER-DEFRECORD ;
 : TRUNCATE-RAW-IT ( -- ) BAD$ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 : TRUNCATE-IT ( -- ) BAD$ CHECKER-USIGS-TRUNCATE-FROM ;
-: PACKAGE-IT ( -- ) BAD$ CHECKER-PACKAGE ;
+: PACKAGE-IT ( -- ) BAD$ BAD$ CHECKER-PACKAGE ;
 : USING-IT ( -- ) BAD$ CHECKER-USING ;
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
 \ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
@@ -310,7 +310,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" RECORD-IT" 76 S\" checker: a value record's name describes no memory\n" DIES
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 76 S\" seal: cannot truncate sealed checker signatures\n" DIES
-   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
+   s" PACKAGE-IT" 76 S\" checker: package name length describes no memory\n" DIES
    LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT

@@ -284,6 +284,101 @@ public
 ;package
 6 SDPARTSEAL:GO 6 T=
 
+\ A package's part may not bear the name of a constructor package of the
+\ package's own public family: whichever comes second is rejected, the family
+\ at its name or the part with E-CTOR-PROTECTED. A part opens only in the text
+\ that opens its package.
+package SDRESA
+package SDRESA-PT ;package
+public
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a part of this package already bears its constructor package's name" DECL-DIAG:CAUSE? TTRUE
+private
+;package
+package SDRESB
+public
+STRUCTURE pt FIELD x n ;STRUCTURE
+private
+;package
+DECL-DIAG:PROSE
+s" package SDRESB package SDRESB-PT ;package ;package" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `SDRESB:SDRESB-PT` is reserved" DECL-DIAG:HAS? TTRUE
+s" as `package SDRESB-PT-WORDS`" DECL-DIAG:HAS? TTRUE
+s" SDRESB-PT" s" constructor package" DECL-DIAG:CAUSE? TTRUE
+package SDRESC
+package BB-INNER ;package
+package BB
+public
+DECL-DIAG:PROSE
+s" STRUCTURE inner FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" inner" s" a part of this package already bears its constructor package's name" DECL-DIAG:CAUSE? TTRUE
+private
+;package
+;package
+\ A SUMTYPE before it leaves no name the STRUCTURE's rejection reads.
+package SDRESG
+package SDRESG-PT ;package
+public
+SUMTYPE stale VARIANT one n ;VARIANT ;SUMTYPE
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a part of this package already bears its constructor package's name" DECL-DIAG:CAUSE? TTRUE
+s" = word:" DECL-DIAG:HAS? TFALSE
+private
+;package
+\ A part named as its package: its family's constructor package `SDRESE:SDRESE-PT`
+\ and the package's own family's `SDRESE-PT` share a name, in either order.
+package SDRESE
+package SDRESE
+public
+STRUCTURE pt FIELD y n FIELD z n ;STRUCTURE
+private
+;package
+public
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a family of a part of this package already makes a constructor package of this name" DECL-DIAG:CAUSE? TTRUE
+private
+;package
+package SDRESF
+public
+STRUCTURE pt FIELD x n ;STRUCTURE
+private
+package SDRESF
+public
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD y n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a family of the enclosing package already makes a constructor package of this name" DECL-DIAG:CAUSE? TTRUE
+private
+;package
+;package
+\ A part family's constructor package is protected as a top-level one is.
+package SDRESD
+package BB
+public
+STRUCTURE inner FIELD x n ;STRUCTURE
+private
+;package
+DECL-DIAG:PROSE
+s" : BB-INNER:EXTRA ( -- ) ;" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `BB-INNER:EXTRA`" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" undefine BB-INNER:MAKE" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `BB-INNER:MAKE`" DECL-DIAG:HAS? TTRUE
+;package
+DECL-DIAG:PROSE
+s" package SDRESD package BB-INNER ;package ;package" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `SDRESD:BB-INNER`" DECL-DIAG:HAS? TTRUE
+s" BB-INNER" s" constructor package" DECL-DIAG:CAUSE? TTRUE
+
+\ Another package's own part of a constructor package's name is that part: its
+\ words are no constructor package's.
+package SDRESZ
+package SDRESB-PT ;package
+s" : SDRESB-PT:Q ( -- n ) 1 ;" TEST-EVAL:RC 0 T=
+;package
+
 \ 14. A rejected PRIVATE declaration rolls back its field rows and its words: the
 \     same name declares again in the package.
 package SDPRIVROLL

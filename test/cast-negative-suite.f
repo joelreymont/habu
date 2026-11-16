@@ -390,14 +390,14 @@ s" defer CNVD1 ( ^u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL s" error[E-BAD-
 s" defer CNVD2 ( read-view<p,q,u8> -- read-view<p,q,u8> )" CN-RUN:DECL 0 T=
 \ The scope is the engine's live one: a parser mirror claiming a package's
 \ private section while the engine compiles at top level still refuses.
-s" CN" CHECKER-PACKAGE
+s" CN" s" CN" CHECKER-PACKAGE
 s" cast: CNSP3 ( n -- ^u8 )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNSP3`" CN-RUN:REJECTS
 CHECKER-END-PACKAGE
 
 \ A forged parser package cannot own a declaration. The family, visibility and
 \ symbols all follow the live engine namespace.
 package CN-SPOOF-A
-s" CN-SPOOF-B" CHECKER-PACKAGE
+s" CN-SPOOF-B" s" CN-SPOOF-B" CHECKER-PACKAGE
 CHECKER-PUBLIC
 public
 NEWTYPE spoof
@@ -413,7 +413,7 @@ s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `
 package CN-VIS-PRI
 CHECKER-PUBLIC
 NEWTYPE hidden
-s" CN-VIS-FAKE" CHECKER-PACKAGE
+s" CN-VIS-FAKE" s" CN-VIS-FAKE" CHECKER-PACKAGE
 s" cast: CNVP0 ( n -- hidden )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
@@ -442,7 +442,7 @@ public
 ;package
 package CN-EXP-A
 public
-s" CN-EXP-B" CHECKER-PACKAGE
+s" CN-EXP-B" s" CN-EXP-B" CHECKER-PACKAGE
 EXPORT CN-EXP-SRC-PKG:CN-EXP-SRC
 CHECKER-END-PACKAGE
 ;package
@@ -483,7 +483,7 @@ REJECTION:CAPTURE ' CN-CAST-TEST:CN-VRF-FAIL catch
    s" error[E-BAD-DECLARATION]" s" `efam`" CN-RUN:REJECTS
 package CN-VRF-LIVE
 NEWTYPE live
-s" CN-VRF-POISON" CHECKER-PACKAGE
+s" CN-VRF-POISON" s" CN-VRF-POISON" CHECKER-PACKAGE
 s" cast: CNVR1 ( n -- CN-VRF-LIVE:live )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package

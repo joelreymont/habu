@@ -886,6 +886,7 @@ private
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ^u8 n -- ] )
+CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
@@ -897,10 +898,10 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ^u8 n -- ] )
    xt 0= if exit then
    xt PKG-AS-ACTION execute ;
 
-: PKG-NOTIFY-NAME ( n -- )
-   PKG-TARGET {: xt:n :}
+: PKG-NOTIFY-NAME ( ^u8 n n -- ) {: t:^ tu:n off:n :}
+   off PKG-TARGET {: xt:n :}
    xt 0= if exit then
-   TOKEN$ xt PKG-AS-NAME-ACTION execute ;
+   TOKEN$ t tu xt PKG-AS-PACKAGE-ACTION execute ;
 
 \ `using` notifies the active checker, then the target checker unless its
 \ operation is the same one. Each records the name at the using depth before it
@@ -1017,9 +1018,10 @@ private
 : PKG-PACKAGE ( -- )
    CHECKER-RESOLVE:PART-GUARD
    PKG-NAME
+   TOKEN$ {: t:^ tu:n :}
    PKG-PATH
    PKG-POLICY-GUARD
-   NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
+   t tu NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}
    USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL!
