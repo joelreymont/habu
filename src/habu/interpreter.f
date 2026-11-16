@@ -1180,6 +1180,8 @@ variable USE-FLOOR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
+EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
+EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 
 \ The source must not be internal: an alias would carry its body past the
 \ interpret gate without the DNAME-INT mark, so the gate's rejection is made
@@ -1189,7 +1191,10 @@ EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
    TOKEN$ FIND-SCOPE {: found:^ :}
    found XREF-FOUND? if found else TOKEN$ EXPORT-PRIVATE then
    {: src:^ :}
-   src XREF-FOUND? 0= if EXPORT-UNDEFINED then
+   src XREF-FOUND? 0= if
+      TOKEN$ EXPORT-SEALED? if TOKEN$ EXPORT-SEALED then
+      EXPORT-UNDEFINED
+   then
    src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!

@@ -158,14 +158,6 @@ create XPK-EMPTY 1 allot
    s" XB:TAKE . cr" XPK-LINE
    SB$ ;
 
-\ CHECK is an engine package, sealed before program source.
-: XPK-SEALED-FORGE$ ( -- ^u8 n )           \ a sealed package's private word
-   SB-RESET
-   s" package XB" XPK-LINE
-   s" EXPORT CHECK:PRIM-ENSURE" XPK-LINE
-   s" ;package" XPK-LINE
-   SB$ ;
-
 : XPK-DATA-FORGE$ ( -- ^u8 n )             \ a data record is never internal
    SB-RESET
    s" 42 constant K package P public export K ;package P:K ." XPK-LINE
@@ -422,6 +414,19 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ Package XSB exports a private word of the sealed package XSA.
+: XPK-SEALED-EXPORT$ ( -- ^u8 n )
+   SB-RESET
+   s" package XSA" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package XSB" XPK-LINE
+   s" EXPORT XSA:HID" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 \ A sealed package's part B defines in its private and public sections.
 : XPK-PART-SECTIONS$ ( -- ^u8 n )
    SB-RESET
@@ -595,9 +600,6 @@ create XPK-EMPTY 1 allot
    s" exporting a declaration names it (E-EXPORT-UNSAFE)" T-LABEL
    XPK-DECL-EXPORT-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `ENUM` is a declaration" XPK-ERR?
-   s" a sealed package's private word rejects (--load)" T-LABEL
-   XPK-SEALED-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
-   s" error[E-EXPORT-UNDEFINED]" XPK-ERR?  s" `CHECK:PRIM-ENSURE`" XPK-ERR?
    s" top-level EXPORT rejects (E-EXPORT-NO-PACKAGE)" T-LABEL
    XPK-TOP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR?
@@ -648,6 +650,10 @@ create XPK-EMPTY 1 allot
    s" E-SEALED-PACKAGE" XPK-ERR?
    s" a sealed package takes no qualified definition" T-LABEL
    XPK-SEALED-QUALIFIED$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
+   s" a sealed package's private word takes no EXPORT" T-LABEL
+   XPK-SEALED-EXPORT$
+   s" error[E-SEALED-PACKAGE]: `XSA:HID` is private to `XSA`, which is sealed"
+   s" |        ^^^^^^^ private to a sealed package" XPK-SEALED
    s" a sealed package's part takes no global definition" T-LABEL
    s" : LATE ( -- n ) HID ;" XPK-SEALED-PART$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
    s" a sealed package's part takes no global EXPORT" T-LABEL

@@ -13144,18 +13144,51 @@ package CHECKER-RESOLVE
 EXPORT CHECK:CHECKER-QUALIFIED?
 EXPORT CHECK:CHECKER-COLON-SCAN
 EXPORT CHECK:CHECKER-QTAIL$
+\ The package row a qualified EXPORT operand names, NULL-PTR for none.
+: EXPORT-OWNER ( ^u8 n -- ^n ) {: a:^ u:n :}
+   a u CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
+   a  a u CHECKER-COLON-SCAN nip HEAD-ROW ;
+
+\ Row ROW's private word that the tail of EXPORT-OWNER's last operand names,
+\ NULL-PTR for none: nothing may split another name between the two.
+: OWNER-PRIVATE ( ^n -- ^n ) {: row:^ :}
+   row CK-REC-PRIVATE-SLOT DICT-CELL@ {: wid:n :}
+   wid 0= IF NULL-PTR EXIT THEN
+   CHECKER-QTAIL$ wid WL-PROBE ;
+
 \ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
 \ its package is sealed, EXPORT takes a private word, as a reopening could.
-: EXPORT-PRIVATE ( ^u8 n -- ^n ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
-   a  a u CHECKER-COLON-SCAN nip HEAD-ROW {: row:^ :}
+: EXPORT-PRIVATE ( ^u8 n -- ^n )
+   EXPORT-OWNER {: row:^ :}
    row NULL-PTR = IF NULL-PTR EXIT THEN
    row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and 0 <> IF
       NULL-PTR EXIT
    THEN
-   row CK-REC-PRIVATE-SLOT DICT-CELL@ {: wid:n :}
-   wid 0= IF NULL-PTR EXIT THEN
-   CHECKER-QTAIL$ wid WL-PROBE ;
+   row OWNER-PRIVATE ;
+
+\ Whether the operand names a private word of a sealed package, for which
+\ EXPORT-PRIVATE answers NULL-PTR as for a word that does not exist.
+: EXPORT-SEALED? ( ^u8 n -- bool )
+   EXPORT-OWNER {: row:^ :}
+   row NULL-PTR = IF RES-FALSE EXIT THEN
+   row CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-SEALED and
+   0= IF RES-FALSE EXIT THEN
+   row OWNER-PRIVATE NULL-PTR <> ;
+
+\ Rejects the operand a u, which EXPORT-SEALED? holds for, naming the package
+\ as the operand writes it.
+: EXPORT-SEALED ( ^u8 n -- ) {: a:^ u:n :}
+   a  a u CHECKER-COLON-SCAN nip {: pa:^ pu:n :}
+   s" E-SEALED-PACKAGE" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is private to `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" `, which is sealed" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" private to a sealed package" REJECTION:EMIT-STR
+   REJECTION:HELP  s" call or export a public word of `" REJECTION:EMIT-STR
+   pa pu REJECTION:EMIT-STR
+   s" ` instead: no other package may export a sealed package's private word"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 package CHECK
 
@@ -17663,6 +17696,10 @@ private
    a u REJECTION:EMIT-STR  s" ` before exporting it" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
+EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
+EXPORT CHECKER-RESOLVE:EXPORT-SEALED
+
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
@@ -17671,9 +17708,8 @@ private
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
    sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
+   a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
    a u EXPORT-UNDEFINED ;
-
-EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
 \ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.

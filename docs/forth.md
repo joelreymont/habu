@@ -198,7 +198,7 @@ private
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
   into it is then rejected `E-SEALED-PACKAGE` at the name, rc 70, by the load
   and by `tools/check.f`. Sealing also keeps the package's private words from
-  another package's `EXPORT` (`E-EXPORT-UNDEFINED`). Outside a package it is
+  another package's `EXPORT` (`E-SEALED-PACKAGE`). Outside a package it is
   rejected (`E-PKG-CONTEXT`). Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. A build also seals every package its
   engine files made before it reads program source; an application package
@@ -354,8 +354,9 @@ public
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
   `EXPORT PKG:NAME` also takes a private `NAME` of a package that is not
   sealed; an engine package imports a private checker word into its own
-  private section this way. Rejected: an undefined source and a private word
-  of a sealed package (`E-EXPORT-UNDEFINED`), a primitive (`E-EXPORT-PRIM`),
+  private section this way. Rejected: an undefined source
+  (`E-EXPORT-UNDEFINED`), a private word of a sealed package
+  (`E-SEALED-PACKAGE`), a primitive (`E-EXPORT-PRIM`),
   an internal engine word (`E-EXPORT-UNSAFE`) and a duplicate tail in the
   target section (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK`
   brings its clause along as `MK;does`. Re-exporting a generated constructor
