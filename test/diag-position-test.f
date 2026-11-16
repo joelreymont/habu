@@ -471,17 +471,17 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 1 T=
    FX-PATH$ CANON$ SHADOWED-AT ;
 
-\ A lint's rejection under --all-errors does not stop the definitions' check.
-: TEST-ALL-LINTS ( -- )
+\ A definer's rejection under --all-errors does not stop the definitions' check.
+: TEST-ALL-RESERVED ( -- )
    s" a reserved definition name, then an undefined word, under --all-errors" T-LABEL
    SB-RESET
    s" : if ( -- ) ;" SB-APPEND LF+
    s" : foo ( -- ) undefined-word ;" SB-APPEND LF+
-   s" all-lints.f" FIXTURE!
+   s" all-reserved.f" FIXTURE!
    s" --all-errors" CHECK
    GJA-LINE# @ 2 T=
    0 s" code" s" E-RESERVED-DEFINITION" FIELD=
-   0 s" message" s" `if` is reserved by parser/control dispatch" FIELD=
+   0 s" message" s" `if` is a keyword and cannot name a definition" FIELD=
    0 s" if" 1 3 2 4 AT
    1 s" code" s" E-UNDEFINED" FIELD=
    1 s" message" s" cannot find word `undefined-word`" FIELD=
@@ -635,7 +635,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ A program's word of a target predicate's spelling is no engine answer to
 \ --verify-only: its `[if]` is left to the run, as any other flag is.
-\ check.f's reserved-name lint refuses these definitions before the verifier.
 : TEST-PROGRAM-TARGET-WORD ( -- )
    s" a package's word of a target predicate's spelling" T-LABEL
    SB-RESET
@@ -3337,7 +3336,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
-   TEST-ALL-LINTS
+   TEST-ALL-RESERVED
    TEST-ALL-ORDER
    TEST-DYN-PLACE
    TEST-ALL-UNREADABLE

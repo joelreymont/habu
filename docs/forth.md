@@ -71,18 +71,14 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   rejected (`E-DUPLICATE-DEFINITION`). A package's own word may spell a global
   or an engine word; a public one that does is refused at a bare call through
   `using` (`E-USING-SHADOW-GLOBAL`), so name it otherwise.
-- **A parser or control word cannot be a definition name** (by
-  `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
-  `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
-  `REPEAT`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
-  `PUBLIC`, `PRIVATE`, `UNDEFINE` and the other compiler-dispatch and lifecycle
-  tokens. The loaders `include`, `included`, `require`, `required` and
-  `provided` are reserved because `tools/check.f` reads their spelling
-  lexically, and so are the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?` and `HB-TARGET-WASM?`, whose
-  spelling it reads to skip the arms of an `if` the engine's target never
-  runs. Lexical locals such as `{: i:n :}` stay legal. `tools/check.f` reports `E-RESERVED-DEFINITION`
-  with file, line and token.
+- **A keyword cannot be a definition name.** Every definer (`:`,
+  `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`, …)
+  refuses a word a body's compiler reads before it looks a name up (`IF`,
+  `DO`, `I`, `LEAVE`, `;match`, `[']`, `{:`, …), a top-level keyword but
+  `host` and `target` (`package`, `public`, `using`, `create`, `variable`,
+  `immediate`, …), `;`, `:}` and the parsers `char` and `'`:
+  `E-RESERVED-DEFINITION`, rc 70, under `--load` and `tools/check.f` alike.
+  Lexical locals such as `{: i:n :}` stay legal.
 - **A number-shaped name is refused.** Every definer refuses a name the
   number reader claims, a number out of range included: `: 42` writes
   `E-NUMERIC-DEFINITION` (`number cannot be a definition name: 42`) and exits
@@ -1082,9 +1078,8 @@ named words, with one word that runs them in order.
   nested `[if]`s, those in comments and strings too:
   `HB-TARGET-MACOS? [if] require src/lib/secret/macos.f [then]`. There is no
   `[else]`; the other arm tests the negated flag. The source verifier follows a
-  `[if]` only right after a target predicate, or a predicate and `0=`, and
-  `[if]` and `[then]` are reserved names. A word a build runs never loads or
-  provides a file: hb's loader runs a top-level `require` or `provided`
+  `[if]` only right after a target predicate, or a predicate and `0=`. A word
+  a build runs never loads or provides a file: hb's loader runs a top-level `require` or `provided`
   (src/habu/interpreter.f LOADER?), but a word's load or provide calls the
   build's own copy of the loader, whose loads and rows the linker never sees,
   so that copy refuses it, naming the path: `include: a word loaded or

@@ -169,8 +169,6 @@ public
    s" SKIP (HABU_ZED unset/0): " type
    type cr ;
 
-\ `REQUIRE` would be the natural name but `require` is a reserved loader token
-\ (tools/reserved-name-lint.f), so the mandatory-device word follows NEED-TOOL.
 : NEED-DEVICE ( -- )   \ device mandatory: fail-closed instead of skippable
    AVAILABLE? 0= if E-ZED-DISABLED throw then ;
 

@@ -25,7 +25,6 @@ require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
-require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 \ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
 \ run stage, which --verify-only makes.
@@ -526,15 +525,6 @@ private
    u CHK-SRC-U !
    a CHK-SRC-A CHK-PTR-U8! ;
 
-: CHK-SINGLE-FILE? ( -- bool )
-   CHK-SEL-MODE @ CHK-SEL-FILE = ;
-
-\ The lints read a named file where it lies, and any other input from the copy
-\ CHK-MATERIALIZE wrote.
-: CHK-LINT-SOURCE ( -- ^u8 n )
-   CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
-   CHK-SOURCE ;
-
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
@@ -952,23 +942,6 @@ private
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
-\ A source list materializes as one `script-required` line per listed file, so
-\ a lint reads the listed files themselves, in list order, except a source the
-\ engine provides, which the run loads nothing from.
-: CHK-LINT-LISTED ( [ ^u8 n -- ] -- ) {: lint :}
-   CHK-POS-N @ 0 ?do
-      i CHK-POS$ ENGINE-PROVIDES? 0= if i CHK-POS$ lint execute then
-   loop ;
-
-: CHK-RUN-RESERVED-NAMES ( -- )
-   RESERVED-NAME-LINT:RESET
-   CHK-SEL-MODE @ CHK-SEL-LIST = if
-      [: RESERVED-NAME-LINT:FILE ;] CHK-LINT-LISTED
-   else
-      CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
-   then
-   RESERVED-NAME-LINT:FINISH ;
-
 \ Definition verification follows the loader composition in one checker scope
 \ and one multi-error session, so a definition a loaded file makes before its
 \ loader's next statement is in scope there, and a rejected definition's
@@ -1102,27 +1075,18 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
-: CHK-RUN-STATIC-LINTS ( -- )
-   \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
-   \ The lint writes its records in the run's mode.
-   CHK-JSON @ REJECTION:JSON !
-   CHK-ALL @ 0= if
-      CHK-RUN-RESERVED-NAMES
-      exit
-   then
-   [: CHK-RUN-RESERVED-NAMES ;] catch {: lints:n :}
-   lints 0<>  lints CHECKER-REJECT-RC <>  and if lints throw then
-   \ The kept stops are written however the composition ends, and any end but
-   \ a rejection's is the run's.
+\ The kept stops are written however the composition ends, and any end
+\ but a rejection's is the run's.
+: CHK-RUN-ALL-ERRORS ( -- )
    [: CHK-RUN-ALL ;] catch {: rc:n :}
    CHK-SEND-UNREAD {: sent:n :}
    rc 0<>  rc CHECKER-REJECT-RC <>  and if rc throw then
-   lints rc CHK-RC-JOIN sent CHK-RC-JOIN {: end:n :}
+   rc sent CHK-RC-JOIN {: end:n :}
    end 0<> if end throw then ;
 
 : CHK-RUN-CURRENT ( -- )
-   CHK-RUN-STATIC-LINTS
-   CHK-ALL @ 0= if CHK-RUN-PREVERIFY then
+   CHK-JSON @ REJECTION:JSON !
+   CHK-ALL @ if CHK-RUN-ALL-ERRORS else CHK-RUN-PREVERIFY then
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;

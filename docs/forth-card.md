@@ -97,13 +97,10 @@ public
   earlier in it. A definition (`:`, `create`, …), a new `package` or a
   `wordlist` made while a checker replay is open throws `E-OVERLAY-OPEN` where
   it is made, and so does an `undefine` run there, before it retires anything.
-- Keywords (`I`, `DO`, `IF`, `package`, `create`, …) cannot be definition names:
-  `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
-  `HB-TARGET-WASM?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
-  `create`, `variable`, `constant`, `defer` or `LAYOUT-BUFFER`: `tools/check.f`
-  refuses them, not `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
-  too) is refused by `--load`, by every definer: rc 70.
+- Keywords (`I`, `DO`, `IF`, `;match`, `package`, `create`, `char`, `'`,
+  `;`, `:}`, …) cannot be definition names: every definer refuses them,
+  `E-RESERVED-DEFINITION`, rc 70. A number-shaped name (`: 42`, an
+  overflowed `: 99999999999999999999` too) is refused by every definer: rc 70.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
 learned by refusal**.
@@ -633,7 +630,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   require src/lib/secret/macos.f [then]`, never from inside a word: a build
   refuses a load a word runs (`include: a word loaded or provided a file
   during a build`). The verifier follows a `[if]` only after a target predicate, or one
-  and `0=`; `[if]` and `[then]` are reserved. A file that builds for some
+  and `0=`. A file that builds for some
   targets only states them on its first code line, before its requires:
   `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET`. On another target
   the load stops there with an E-TARGET rejection naming the target (the

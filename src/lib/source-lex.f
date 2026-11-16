@@ -256,10 +256,8 @@ private
    POS @ 1+ POS !
    dup 10 = if LINE-N @ 1+ LINE-N ! 1 COL-N ! else COL-N @ 1+ COL-N ! then ;
 
-\ A scan guard tests the byte at POS only when there is one: `and` evaluates
-\ both operands, so `END? 0=` beside `CUR` reads the byte past the end, and a
-\ buffer sized to the source ends there (a source whose last token ended on a
-\ 64 KiB boundary faulted in the reserved-name lint).
+\ Tests the byte at POS only when there is one: `and` evaluates both operands,
+\ so `END? 0=` beside `CUR` would read past a buffer sized to the source.
 : CUR-NOT? ( n -- bool ) {: c:n :}
    END? if false exit then
    CUR c <> ;
