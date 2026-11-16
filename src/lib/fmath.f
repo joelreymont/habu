@@ -573,4 +573,66 @@ public
    cosine TRIG-BOUND input-error UP-ADD
    sine TRIG-BOUND input-error UP-ADD ;
 
+private
+
+\ The quarter q of a, 0 <= a < 360, that puts a - 90 q in [-45, 45]; a tie
+\ takes the lower quarter.
+: QUARTER ( r -- n ) {: a:r :}
+   a 315.0 f> if 4 exit then
+   a 225.0 f> if 3 exit then
+   a 135.0 f> if 2 exit then
+   a 45.0 f> if 1 exit then
+   0 ;
+
+\ -x, and +0.0 for either zero: 0 - x is exact.
+: MINUS ( r -- r ) {: x:r :} 0.0 x f- ;
+
+\ degrees mod 360 by FMOD, exact, then a = |r| and s = a - 90 q for a's
+\ QUARTER. For q > 0, a and 90 q lie within a factor of two of each other, so
+\ the subtraction is exact (Sterbenz): ( degrees -- s q ).
+: DEG-REDUCE ( r -- r n ) {: degrees:r :}
+   degrees 360.0 FMOD fabs {: a:r :}
+   a QUARTER {: q:n :}
+   a q 90 * s>f f- q ;
+
+\ cos s and sin s with SINCOS-BOUND's bounds, s in [-45, 45] degrees. At
+\ |s| = 45 the exact values are equal, and the sine takes the cosine's value
+\ and bound.
+: DEG-SINCOS ( r -- r r r r ) {: s:r :}
+   s fabs DEG>RAD SINCOS-BOUND {: c:r m:r ec:r em:r :}
+   s fabs 45.0 f= if c ec else m em then {: sn:r es:r :}
+   c  s f0< if sn MINUS else sn then
+   ec es ;
+
+\ cos and sin of 90 q + s from those of s: a quarter turn swaps the pair,
+\ bounds included, and negates one of them.
+: ROTATE ( r r r r n -- r r r r ) {: c:r s:r ec:r es:r q:n :}
+   q 3 and {: k:n :}
+   k 0 = if c s ec es exit then
+   k 1 = if s MINUS c es ec exit then
+   k 2 = if c MINUS s MINUS ec es exit then
+   s c MINUS es ec ;
+
+public
+
+\ SINCOS-BOUND for an angle stated in degrees, with an absolute input error
+\ in degrees: the cosine, the sine, and an outward bound on each one's error
+\ against the exact functions of the stated degrees. Nonfinite degrees, or a
+\ negative or nonfinite input error, is E-DOMAIN.
+\ Where DEG-REDUCE's s is 0 in radians, each value is exactly 1, 0 or -1,
+\ every zero +0.0, and each bound DEG>RAD's bound of |s| plus the input
+\ error in radians, which is the input error alone at s = 0. Otherwise each
+\ bound adds outward TRIG-BOUND of the value, DEG>RAD's bound of |s| and the
+\ input error in radians.
+\ Where 90 - x is exact, cos x and sin(90 - x) give the same bits; sin(-x) is
+\ -sin x, and the four quarters of one s give the same magnitudes.
+: SINCOS-DEG-BOUND ( r r -- r r r r ) {: degrees:r input-error:r :}
+   degrees FINITE? 0= if E-DOMAIN throw then
+   input-error FINITE? 0= input-error 0.0 f< or if E-DOMAIN throw then
+   input-error DEG>RAD UP-ADD {: slack:r :}
+   degrees DEG-REDUCE {: s:r q:n :}
+   s DEG-SINCOS q ROTATE {: c:r sn:r ec:r es:r :}
+   c  degrees f0< if sn MINUS else sn then
+   ec slack UP-ADD  es slack UP-ADD ;
+
 ;package

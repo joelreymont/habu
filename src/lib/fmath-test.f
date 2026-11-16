@@ -453,6 +453,103 @@ public
    [: BAD-SINCOS-INF-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
    [: BAD-SINCOS-RANGE ;] FMATH:E-DOMAIN TTHROWSQ ;
 
+\ A quarter turn stated in degrees has its exact cosine and sine, zeros +0.0,
+\ and a zero bound when the input error is zero.
+: DEG-AT ( r n n -- ) {: degrees:r want-cos:n want-sin:n :}
+   degrees 0.0 FMATH:SINCOS-DEG-BOUND {: c:r s:r ec:r es:r :}
+   c IEEE754:F64>BITS want-cos T=  s IEEE754:F64>BITS want-sin T=
+   ec IEEE754:F64>BITS 0 T=  es IEEE754:F64>BITS 0 T= ;
+
+: DEG-QUARTERS ( -- )
+   -360.0 $3FF0000000000000 $0000000000000000 DEG-AT
+   -270.0 $0000000000000000 $3FF0000000000000 DEG-AT
+   -180.0 $BFF0000000000000 $0000000000000000 DEG-AT
+   -90.0  $0000000000000000 $BFF0000000000000 DEG-AT
+   0.0    $3FF0000000000000 $0000000000000000 DEG-AT
+   90.0   $0000000000000000 $3FF0000000000000 DEG-AT
+   180.0  $BFF0000000000000 $0000000000000000 DEG-AT
+   270.0  $0000000000000000 $BFF0000000000000 DEG-AT
+   360.0  $3FF0000000000000 $0000000000000000 DEG-AT
+   720.0  $3FF0000000000000 $0000000000000000 DEG-AT ;
+
+: DEG-COS ( r -- n )
+   0.0 FMATH:SINCOS-DEG-BOUND {: c:r s:r ec:r es:r :}
+   c IEEE754:F64>BITS ;
+
+: DEG-SIN ( r -- n )
+   0.0 FMATH:SINCOS-DEG-BOUND {: c:r s:r ec:r es:r :}
+   s IEEE754:F64>BITS ;
+
+: DEG-ODD ( r -- ) {: x:r :}
+   x fnegate DEG-SIN  x DEG-SIN $8000000000000000 xor T= ;
+
+: DEG-SYMMETRY ( -- )
+   60.0 DEG-COS 30.0 DEG-SIN T=
+   45.0 DEG-COS 45.0 DEG-SIN T=
+   30.0 DEG-ODD 37.5 DEG-ODD 123.4 DEG-ODD 271.0 DEG-ODD ;
+
+\ The exact value lies within half a spacing of its correctly rounded want.
+: HALF-SPACING ( r -- r ) {: x:r :}
+   x fabs IEEE754:F64>BITS 1+ IEEE754:BITS>F64 x fabs f- 0.5 f* ;
+
+: ENCLOSES? ( r r n -- bool ) {: got:r bound:r want:n :}
+   want IEEE754:BITS>F64 {: w:r :}
+   got w f- fabs w HALF-SPACING f+ bound f<= ;
+
+\ The bound encloses the exact value and is no wider than SINCOS-BOUND's on
+\ the converted radians plus two spacings.
+: DEG-NEAR ( n n n -- ) {: x-bits:n want-cos:n want-sin:n :}
+   x-bits IEEE754:BITS>F64 {: x:r :}
+   x 0.0 FMATH:SINCOS-DEG-BOUND {: c:r s:r ec:r es:r :}
+   c ec want-cos ENCLOSES? TTRUE  s es want-sin ENCLOSES? TTRUE
+   x FMATH:DEG>RAD FMATH:SINCOS-BOUND {: rc:r rs:r rec:r res:r :}
+   ec  rec c HALF-SPACING 4.0 f* f+  f<= TTRUE
+   es  res s HALF-SPACING 4.0 f* f+  f<= TTRUE ;
+
+\ Wants are the correctly rounded cosine and sine of each binary64 degree
+\ value, from a 100-digit computation.
+: DEG-NEARS ( -- )
+   $3FF0000000000000 $3FEFFEC097F5AF8A $3F91DF0B2B89DD1E DEG-NEAR  \ 1
+   $4042C00000000000 $3FE963268B572492 $3FE37AF93F9513EA DEG-NEAR  \ 37.5
+   $40567FEF9DB22D0E $3EF24D15211596EF $3FEFFFFFFFEB111D DEG-NEAR  \ 89.999
+   $405ED9999999999A $BFE19D89C8F7C61A $3FEAB712DDBB4209 DEG-NEAR  \ 123.4
+   $4066600000000000 $BFEFFEC097F5AF8A $3F91DF0B2B89DD1E DEG-NEAR  \ 179
+   $C070F00000000000 $3F91DF0B2B89DD1E $3FEFFEC097F5AF8A DEG-NEAR ; \ -271
+
+\ The input error widens each bound by at least its radians: at 90 by no more
+\ than four half spacings beyond DEG>RAD of the error, and at 37.5 enough to
+\ enclose the exact cosine and sine of 37 and 38, wants from a 100-digit
+\ computation.
+: DEG-INPUT-ERROR ( -- )
+   90.0 0.5 FMATH:SINCOS-DEG-BOUND {: c:r s:r ec:r es:r :}
+   c IEEE754:F64>BITS 0 T=  s 1.0 f= TTRUE  ec es f= TTRUE
+   0.5 FMATH:DEG>RAD f+ {: slack:r :}
+   ec slack f>= TTRUE
+   ec  slack slack HALF-SPACING 4.0 f* f+  f<= TTRUE
+   37.5 0.0 FMATH:SINCOS-DEG-BOUND {: c0:r s0:r ec0:r es0:r :}
+   37.5 0.5 FMATH:SINCOS-DEG-BOUND {: c1:r s1:r ec1:r es1:r :}
+   0.5 FMATH:DEG>RAD drop {: half:r :}
+   ec1  ec0 half f+  f>= TTRUE  es1  es0 half f+  f>= TTRUE
+   c1 ec1 $3FE98E6C0EA27A14 ENCLOSES? TTRUE  \ cos 37
+   s1 es1 $3FE342119455BEB6 ENCLOSES? TTRUE  \ sin 37
+   c1 ec1 $3FE9376253F463D1 ENCLOSES? TTRUE  \ cos 38
+   s1 es1 $3FE3B37FB1BDC939 ENCLOSES? TTRUE ; \ sin 38
+
+: BAD-DEG-SINCOS-NAN ( -- ) NAN 0.0 FMATH:SINCOS-DEG-BOUND 2drop 2drop ;
+: BAD-DEG-SINCOS-INF ( -- ) NEG-INF 0.0 FMATH:SINCOS-DEG-BOUND 2drop 2drop ;
+: BAD-DEG-SINCOS-NEG-ERROR ( -- )
+   90.0 -0.0000000000000001 FMATH:SINCOS-DEG-BOUND 2drop 2drop ;
+: BAD-DEG-SINCOS-INF-ERROR ( -- ) 90.0 POS-INF FMATH:SINCOS-DEG-BOUND 2drop 2drop ;
+: BAD-DEG-SINCOS-NAN-ERROR ( -- ) 90.0 NAN FMATH:SINCOS-DEG-BOUND 2drop 2drop ;
+
+: SINCOS-DEG-BOUNDS ( -- )
+   DEG-QUARTERS DEG-SYMMETRY DEG-NEARS DEG-INPUT-ERROR
+   [: BAD-DEG-SINCOS-NAN ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-SINCOS-INF ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-SINCOS-NEG-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-SINCOS-INF-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-SINCOS-NAN-ERROR ;] FMATH:E-DOMAIN TTHROWSQ ;
+
 \ These cases use exact binary inputs and known real endpoints, so the checks
 \ detect an under-enclosed result without duplicating the bound formulas.
 : ARITHMETIC-BOUNDS ( -- )
@@ -558,7 +655,7 @@ public
    TRIG-VALUES
    TRIG-REFUSALS
    ACOS-VALUES ACOS-REFUSALS
-   DEGREE-BOUNDS SINCOS-BOUNDS BOUND-REFUSALS
+   DEGREE-BOUNDS SINCOS-BOUNDS SINCOS-DEG-BOUNDS BOUND-REFUSALS
    ARITHMETIC-BOUNDS ARITHMETIC-REFUSALS
    LDEXP-VALUES
    LDEXP-REFUSALS
