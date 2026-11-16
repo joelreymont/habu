@@ -1585,11 +1585,9 @@ variable RC
    0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
    UNPLACED ;
 
-\ A named directory gets the load's record of a read that fails with EISDIR,
+\ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
-: TEST-NAMED-DIR ( -- )
-   s" a named input that is a directory" T-LABEL
-   s" named-dir" NAMED!  FX-PATH$ FS:MAKE-DIR
+: DIR-REJECTED ( -- )
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is a directory\n  = help: name a source file, not a directory\n\n" SB-APPEND
    SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
@@ -1599,6 +1597,16 @@ variable RC
    0 s" message" SB$ FIELD=
    0 s" help" s" name a source file, not a directory" FIELD=
    UNPLACED ;
+
+\ A named directory, readable or not, gets that record.
+: TEST-NAMED-DIR ( -- )
+   s" a named input that is a directory" T-LABEL
+   s" named-dir" NAMED!  FX-PATH$ FS:MAKE-DIR
+   DIR-REJECTED
+   s" a named input that is a directory it cannot read" T-LABEL
+   s" named-locked-dir" NAMED!  FX-PATH$ FS:MAKE-DIR
+   FX-PATH$ 0 FS:CHMOD-MODE
+   [: DIR-REJECTED ;] [: FX-PATH$ $1ED FS:CHMOD-MODE ;] finally ;
 
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )

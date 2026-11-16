@@ -1411,6 +1411,14 @@ variable REQUEST-AT-U
    s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
    REJECTION:HELP ;
 
+\ EISDIR for a path that names a directory, else e: an open of a directory
+\ without read permission fails EACCES, but a stat of it succeeds.
+: SOURCE-ERRNO ( ^u8 n n -- n )
+   {: path:^ pathu:n e:n :}
+   path pathu ZBUF WORK-BYTES PATHZ
+   ZBUF COMPILE-READS:STAMP drop nip 32 rshift
+   FS-ABI:S-IFDIR = if 21 exit then e ;
+
 public
 
 \ The file path was found but its open or a read of it failed with errno e.
@@ -1418,8 +1426,9 @@ public
 \ that read a found file reject it with the loader's record.
 : UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
-   t tu path pathu e OPEN-ERRNO$ UNREAD-RECORD
-   path pathu e OPEN-HELP
+   path pathu e SOURCE-ERRNO {: why:n :}
+   t tu path pathu why OPEN-ERRNO$ UNREAD-RECORD
+   path pathu why OPEN-HELP
    INCLUDE-IO-RC REJECTION:STOP ;
 
 \ The file path changed while it was read, so its bytes may be no single

@@ -1483,17 +1483,14 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 public
 
-\ A code of the file system's block rejects the closure member pa pu with the
-\ loader's record of a file it cannot read, by the errno the read left; a stat
-\ that found no regular file leaves none. Any other code goes on: FS:ERRNO
-\ holds no reason for it. A harvest, which drops a read's code (HARVEST), gets
-\ the code bare: the final walk reads the member again.
+\ Throws a harvest's code or a non-FS one; else rejects member pa pu: unstamped
+\ if it exists as neither file nor directory, else unreadable.
 : READ-THROW ( ^u8 n n -- ) {: pa:^ pu:n rc:n :}
    rc 0= if exit then
    rc SD-HARVEST-THROW
    rc E-FS-FIRST <= rc E-FS-LAST >= and 0= if rc throw then
    FS:ERRNO {: e:n :}
-   rc E-FS-STAT = e 0= and if
+   rc E-FS-STAT = e 0= and pa pu FS:DIR? 0= and if
       NULL-PTR 0 pa pu UNSTAMPED-SOURCE  INCLUDE-IO-RC REJECTION:STOP
    then
    NULL-PTR 0 pa pu e UNREADABLE-SOURCE ;
