@@ -625,6 +625,11 @@ REJECTION:CAPTURE
 : SDG-MV ( -- ) s" STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 ' SDG-MV catch CHECKER-REJECT-RC T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgmv`\n --> <input>:1:43\n  |\n1 | STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE\n  |                                           ^ type argument must be a region parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n\n" CONTAINS? TTRUE
+\ A type spaced across one line is marked for its whole written span.
+: SDG-SPACED ( -- ) s" STRUCTURE sdgsp FIELD f option<n,    n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
+DECL-DIAG:PROSE
+' SDG-SPACED catch CHECKER-REJECT-RC T=
+s\"  ^^^^^^^^^^^^^^^ type has too many arguments\n" DECL-DIAG:HAS? TTRUE
 
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.
@@ -730,6 +735,10 @@ s" SPAN:span<^" s" unclosed type application" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: close each `<` of the type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
 s\" STRUCTURE sdpline FIELD kept SPAN:span<\n   ^sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdpspaced FIELD kept SPAN:span< ^sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
+\ A type that runs past its line is marked up to that line's end.
+DECL-DIAG:PROSE
+s\" STRUCTURE rqml FIELD f option<n,\n  n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" option<n," s" type has too many arguments" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdpbare FIELD kept SPAN:span<^> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpbare`\n" DECL-DIAG:HAS? TTRUE

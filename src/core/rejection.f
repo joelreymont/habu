@@ -393,14 +393,11 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 \ The newest record's place as AT copies it: its file's path and first byte.
 \ FILE$ and a loading file's path fit PATH-CAP bytes.
 create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT   -1 LAST-AT !
-\ A token in an evaluated text is placed at the token INVOKED-A INVOKED-U where
-\ the evaluation was run; the label is followed by the evaluated place, as rustc
-\ follows a macro's call with its expansion: the line EVALUATED-A EVALUATED-U of
-\ that text that holds the token EVAL-TOKEN-A EVAL-TOKEN-U, EVAL-LEAD-U bytes in.
+\ A token in an evaluated text is placed where the evaluation ran; its label is
+\ followed by the line EVALUATED-A EVALUATED-U, the token EVAL-LEAD-U bytes in.
 variable EVALUATED   0 EVALUATED !
 PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
 PTR-VARIABLE EVAL-TOKEN-A  variable EVAL-TOKEN-U  variable EVAL-LEAD-U
-PTR-VARIABLE INVOKED-A  variable INVOKED-U
 EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 \ A token no source holds is placed at the token READER-A READER-U the reader
 \ walking the subject is on, an empty one for none, else at RUNNING, the token
@@ -409,8 +406,6 @@ EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 PTR-VARIABLE READER-A  variable READER-U   0 READER-U !
 TKA-CELL RESERVED-PTR-U8-CELL RUNNING
 PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
-\ The token PLACE placed, t tu or the running token.
-PTR-VARIABLE SHOWN-A  variable SHOWN-U
 \ Bytes of a prose line or quoted text shown: rustc's width when its output is
 \ not a terminal. A longer one shows a window, `...` in place of each cut end.
 140 constant WIDTH
@@ -591,7 +586,7 @@ private
    inv SAVED$ {: b:^ bu:n :}
    b inv EVAL-INP FRAME@ TOKEN-BEFORE {: a:^ u:n :}
    u 0= IF EXIT THEN
-   -1 EVALUATED !  a INVOKED-A !  u INVOKED-U !
+   -1 EVALUATED !
    OWNED$ a u HOLDS? IF OWNED$ a u BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
    b bu a u BUFFER-PLACE NO-FILE$ PLACE-FILE! ;
 public
@@ -660,7 +655,7 @@ private
 \ While the file being read is the tool's own, that token places only in an
 \ armed source.
 : PLACE ( ^u8 n -- ) {: t:^ tu:n :}
-   0 PLACED !  0 EVALUATED !  0 WORD-U !  t SHOWN-A !  tu SHOWN-U !
+   0 PLACED !  0 EVALUATED !  0 WORD-U !
    t tu PLACE-IN IF EXIT THEN
    t WORD-A !  tu WORD-U !
    t BUILDER {: b:^ bu:n :}
@@ -669,9 +664,9 @@ private
    THEN
    {: r:^ ru:n :}
    TOOL-OWN? IF
-      r >SOURCE IF r ru SOURCE-PLACE  r SHOWN-A !  ru SHOWN-U !  EXIT THEN drop
+      r >SOURCE IF r ru SOURCE-PLACE ELSE drop THEN
    ELSE
-      r ru PLACE-IN IF r SHOWN-A !  ru SHOWN-U !  EXIT THEN
+      r ru PLACE-IN drop
    THEN ;
 
 : PLACE-JSON ( ^u8 n -- ) {: t:^ tu:n :}
@@ -720,7 +715,7 @@ private
    a u k WINDOW {: s:n e:n :}
    s 0 > IF 3 BLANKS THEN
    a s + k s - LEAD
-   a k +  u WIDTH > IF  tu e k - > IF e k - ELSE tu THEN  ELSE tu THEN CARETS ;
+   a k +  tu e k - > IF e k - ELSE tu THEN CARETS ;
 : PLACE-PROSE ( ^u8 n -- ) {: t:^ tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
@@ -804,7 +799,9 @@ public
    PLACE-FILE$ {: f:^ fu:n :}
    f LAST-BUF fu COPY  fu LAST-U !  AT-BYTE @ LAST-AT !
    AT-LINE @ DIGITS GUTTER !
-   EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE SHOWN-A @ SHOWN-U @ THEN {: p:^ pu:n :}
+   \ The placed bytes as the file holds them: a checked copy stands its tokens
+   \ one blank apart, so a span across blanks is not the copy's length.
+   LINE-A @ LEAD-U @ +  AT-END @ AT-BYTE @ - {: p:^ pu:n :}
    JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
    PART ! ;
 \ The path and first byte of the newest record's place, the byte -1 when it
