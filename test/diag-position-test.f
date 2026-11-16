@@ -30,10 +30,12 @@ create ERR CAP allot
 create FX CAP allot
 create EMPTY 1 allot
 create BASE PATH-CAP allot
-create FX-P PATH-CAP allot
+create FX-P CAP allot
 create DEP CAP allot
 create DEP-P PATH-CAP allot
 create CANON FS:PATHZ-CAP allot
+4200 constant LONG-NAME-BYTES
+create LONG-NAME LONG-NAME-BYTES allot
 
 variable BASE-U
 variable FX-U
@@ -1560,13 +1562,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" code" c cu FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ hb runs the fixture's path after FLAG, none when empty, on an empty stdin: it
-\ exits WANT, its stderr holding TEXT, or nothing when TEXT is empty.
-: RAN ( ^u8 n ^u8 n n -- )
-   {: flag:^ flagu:n text:^ textu:n want:n :}
-   PROC-ARGV-RESET
-   flagu 0 > IF flag flagu >LEN PROC-ARGV+ THEN
-   FX-PATH$ >LEN PROC-ARGV+
+\ hb, run on the arguments added and an empty stdin, exits WANT with TEXT in
+\ its stderr, or with an empty stderr when TEXT is empty.
+: LAUNCHED ( ^u8 n n -- )
+   {: text:^ textu:n want:n :}
    FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER
@@ -1577,8 +1576,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    ERR$ text textu CONTAINS? TTRUE ;
 
 : LOADED ( ^u8 n n -- )
-   {: text:^ textu:n want:n :}
-   s" --load" text textu want RAN ;
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   FX-PATH$ >LEN PROC-ARGV+
+   LAUNCHED ;
 
 \ The load exits RC after its record for CODE, placed at AT after the fixture's
 \ path (`:line:column`, or nothing for a record with no place).
@@ -1591,7 +1592,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The fixture path names NAME under the test's root, without making it.
 : NAMED! ( ^u8 n -- ) {: name:^ nameu:n :}
-   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU ! ;
+   BASE$ name nameu FX-P CAP SPAN:MAKE FS:JOIN-PATH-INTO FX-PU ! ;
 
 \ The check's only record stands in no source: it names no file and no word.
 : UNPLACED ( -- )
@@ -1618,6 +1619,126 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" searched" FX-PATH$ NOTE=
    0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
    UNPLACED ;
+
+\ hb runs the fixture path as a program, exiting WANT with TEXT in its stderr.
+: RAN ( ^u8 n n -- )
+   PROC-ARGV-RESET  FX-PATH$ >LEN PROC-ARGV+  LAUNCHED ;
+
+\ The arguments start tools/check.f with --json-errors.
+: CHECK-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --json-errors" >LEN PROC-ARGV+ ;
+
+\ tools/check.f checks the fixture path with --json-errors, exiting WANT with
+\ TEXT in its stderr, whose records are split for FIELD=.
+: CHECKED ( ^u8 n n -- )
+   CHECK-ARGV  FX-PATH$ >LEN PROC-ARGV+
+   LAUNCHED  ERR$ GJA-SPLIT-LINES ;
+
+\ The string builder holds the resolver's unplaced record of a command-line
+\ path, its message appended by MSG.
+: RANGE-RECORD ( [ -- ] -- ) {: msg :}
+   SB-RESET  s" error[E-PATH-RANGE]: " SB-APPEND  msg execute
+   S\" \n  = help: pass a path of 1 to " SB-APPEND
+   PATH-CAP FMT:SB-U  S\"  bytes\n\n" SB-APPEND ;
+
+\ The check's one record is that record, unplaced.
+: RANGE-FIELDS ( [ -- ] -- ) {: msg :}
+   0 s" code" s" E-PATH-RANGE" FIELD=
+   SB-RESET  msg execute  0 s" message" SB$ FIELD=
+   SB-RESET  s" pass a path of 1 to " SB-APPEND  PATH-CAP FMT:SB-U
+   s"  bytes" SB-APPEND
+   0 s" help" SB$ FIELD=
+   UNPLACED ;
+
+\ The fixture path gets that record and status 70 from the program run, the
+\ load and the check alike.
+: RANGE-REJECTED ( [ -- ] -- ) {: msg :}
+   msg RANGE-RECORD
+   SB$ REJECT-RC RAN  ERR$ SB$ T$=
+   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   s" E-PATH-RANGE" REJECT-RC CHECKED
+   msg RANGE-FIELDS ;
+
+: TOO-LONG-MSG ( -- )
+   s" a path resolves to more than the " SB-APPEND  PATH-CAP FMT:SB-U
+   s"  bytes a path may have" SB-APPEND ;
+
+: EMPTY-MSG ( -- )
+   s" a path is empty" SB-APPEND ;
+
+\ The fixture path names a file under the test's root, its name past the cap.
+: LONG-NAMED! ( -- )
+   LONG-NAME-BYTES 0 ?do 97 LONG-NAME i + c! loop
+   LONG-NAME LONG-NAME-BYTES NAMED! ;
+
+\ A named input whose path resolves past the cap, or is empty, is judged by the
+\ resolver alone.
+: TEST-NAMED-TOO-LONG ( -- )
+   s" a named input whose path is over the cap" T-LABEL
+   LONG-NAMED!
+   [: TOO-LONG-MSG ;] RANGE-REJECTED
+   s" a named input whose path is empty" T-LABEL
+   0 FX-PU !
+   [: EMPTY-MSG ;] RANGE-REJECTED ;
+
+\ stdin's path is judged by the resolver as a named input's is.
+: TEST-STDIN-PATH-TOO-LONG ( -- )
+   s" a --stdin-path over the cap" T-LABEL
+   LONG-NAMED!
+   CHECK-ARGV
+   s" --verify-only" >LEN PROC-ARGV+  s" --stdin-path" >LEN PROC-ARGV+
+   FX-PATH$ >LEN PROC-ARGV+
+   s" E-PATH-RANGE" REJECT-RC LAUNCHED  ERR$ GJA-SPLIT-LINES
+   [: TOO-LONG-MSG ;] RANGE-FIELDS ;
+
+\ The fixture's path spelled BASE/./.../NAME, past the cap.
+: DOTTED! ( ^u8 n -- ) {: name:^ nameu:n :}
+   BASE$ {: b:^ bu:n :}
+   b FX-P bu BYTE-COPY  47 FX-P bu + c!  bu 1+ FX-PU !
+   begin FX-PU @ nameu + PATH-CAP <= while
+      46 FX-P FX-PU @ + c!  47 FX-P FX-PU @ 1+ + c!
+      FX-PU @ 2 + FX-PU !
+   repeat
+   name FX-P FX-PU @ + nameu BYTE-COPY
+   FX-PU @ nameu + FX-PU ! ;
+
+\ Fixture NAME's one line includes the fixture path, which may be past the
+\ string builder's capacity.
+: INCLUDER! ( ^u8 n -- ) {: name:^ nameu:n :}
+   s" include " {: k:^ ku:n :}
+   k FX ku BYTE-COPY
+   FX-P FX ku + FX-PU @ BYTE-COPY
+   ku FX-PU @ + {: u:n :}
+   10 FX u + c!
+   u 1+ FX-U !
+   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
+   FX-PATH$ FX$ FS:WRITE-ALL ;
+
+\ A named input written past the cap that resolves within it runs, is loaded
+\ and is checked, and so is a file that includes it so written.
+: TEST-NAMED-DOTTED ( -- )
+   s" a named input written past the cap that resolves within it" T-LABEL
+   s\" s\" ran\" type cr" s" dotted.f" LINE-FIXTURE
+   s" dotted.f" DOTTED!
+   FX-PU @ PATH-CAP > TTRUE
+   s" " 0 RAN  OUT$ S\" ran\n" T$=
+   s" " 0 LOADED  OUT$ S\" ran\n" T$=
+   s" " 0 CHECKED
+   s" dotted-includer.f" INCLUDER!
+   s" " 0 LOADED  OUT$ S\" ran\n" T$=
+   s" " 0 CHECKED  OUT$ S\" ran\n" T$= ;
+
+\ A program's script-required of an empty path is the entry's record: unplaced,
+\ from the load and the check alike.
+: TEST-SCRIPT-REQUIRED-EMPTY ( -- )
+   s" script-required of an empty path" T-LABEL
+   s\" s\" \" script-required" s" script-empty.f" LINE-FIXTURE
+   [: EMPTY-MSG ;] RANGE-RECORD
+   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   s" E-PATH-RANGE" REJECT-RC CHECKED
+   [: EMPTY-MSG ;] RANGE-FIELDS ;
 
 \ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
@@ -1674,7 +1795,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is not a regular file\n  = help: load a regular file, whose bytes a stamp" SB-APPEND
    S\"  can name\n\n" SB-APPEND
-   s" " SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
    SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
    s" " INCLUDE-IO-RC CHECK-EXIT
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
@@ -2846,6 +2967,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    TEST-DYN-PLACE
    TEST-ALL-UNREADABLE
    TEST-NAMED-MISSING
+   TEST-NAMED-TOO-LONG
+   TEST-STDIN-PATH-TOO-LONG
+   TEST-NAMED-DOTTED
+   TEST-SCRIPT-REQUIRED-EMPTY
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR
    TEST-NAMED-FIFO

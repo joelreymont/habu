@@ -927,10 +927,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
    pend SD-PEND-PATH = 0= if SD-DYNAMIC-STOP then
    off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
 
-\ `include` and `require` take the next token as their path and reject one
-\ over PATH-CAP bytes before they resolve it; the resolver decides the rest. The
-\ walk reads either wherever it stands, rejected first when the file has
-\ replaced it.
+\ `include` and `require` take the next token as their path, which the resolver
+\ judges; a loader word the file has replaced is rejected first, wherever it stands.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}

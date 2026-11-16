@@ -38,7 +38,6 @@ using SOURCE-ROOT
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
-128 constant CHK-MAX-POS
 \ The run stage's child, and the verifier child of the pre-pass and of
 \ --verify-only, has CHK-DEADLINE-MS unless --deadline-ms gives another. A
 \ capture waits in poll(2), whose wait is an int of milliseconds, so no
@@ -62,9 +61,6 @@ create CHK-RUN-PATH-BUF PATH-CAP allot
 create CHK-SUBJECT-PATH-BUF PATH-CAP allot
 create CHK-SUBJ-BUF PATH-CAP allot
 create CHK-SEL-LABEL-BUF PATH-CAP allot
-create CHK-STDIN-PATH-BUF PATH-CAP allot
-create CHK-POS-BUF CHK-MAX-POS PATH-CAP * allot
-create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -85,6 +81,10 @@ DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
 \ its CHK-KEPT-ROW cells: path at, length, byte, record at, length, status.
 DYNAMIC-BUFFER CHK-KEPT u8
 DYNAMIC-BUFFER CHK-KEPT-ROWS n
+\ Each positional path whole: CHK-POS-MEM holds its bytes, CHK-POS-ROWS its
+\ offset then length. CHK-POS-SET may move a span an earlier CHK-POS$ answered.
+DYNAMIC-BUFFER CHK-POS-MEM u8
+DYNAMIC-BUFFER CHK-POS-ROWS n
 create CHK-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CHK-JSON-W JSON:writer
 variable CHK-JSON-READY
@@ -98,9 +98,11 @@ variable CHK-JSON-READY
 
 variable CHK-ARG-I
 variable CHK-POS-N
+variable CHK-POS-U
 variable CHK-JSON
 variable CHK-ALL
 variable CHK-VERIFY
+variable CHK-STDIN-PATH-A
 variable CHK-STDIN-PATH-U
 variable CHK-DEADLINE                    \ the --deadline-ms value, 0 when none was given
 variable CHK-SEL-MODE
@@ -228,9 +230,6 @@ variable CHK-KEPT-N
    msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
 
-: CHK-PATH-TOO-BIG ( -- )
-   s" check.f: source path exceeds capacity" CHK-E-USAGE CHK-FAIL ;
-
 : CHK-ARG$ ( n -- ^u8 n )
    SCRIPT-ARGV$ ;
 
@@ -259,23 +258,23 @@ variable CHK-KEPT-N
 : CHK-DASH? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
-: CHK-POS-SLOT ( n -- ^u8 )
-   PATH-CAP * CHK-POS-BUF + ;
-
-: CHK-POS-U-SLOT ( n -- ^n )
-   cells CHK-POS-U + ;
-
 : CHK-POS$ ( n -- ^u8 n ) {: idx:n :}
    idx 0 < if CHK-USAGE then
    idx CHK-POS-N @ >= if CHK-USAGE then
-   idx CHK-POS-SLOT
-   idx CHK-POS-U-SLOT @ ;
+   idx 2 * CHK-POS-ROWS @ CHK-POS-MEM
+   idx 2 * 1+ CHK-POS-ROWS @ ;
 
-: CHK-ADD-POS ( ^u8 n -- ) {: a:^ u:n :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
-   a CHK-POS-N @ CHK-POS-SLOT u BYTE-COPY
-   u CHK-POS-N @ CHK-POS-U-SLOT !
+: CHK-POS-SET ( ^u8 n n -- ) {: a:^ u:n idx:n :}
+   CHK-POS-U @ {: off:n :}
+   off u + 1+ CHK-POS-MEM-RESERVE
+   a off CHK-POS-MEM u BYTE-COPY
+   off u + CHK-POS-U !
+   idx 2 * {: row:n :}
+   row 2 + CHK-POS-ROWS-RESERVE
+   off row CHK-POS-ROWS !  u row 1+ CHK-POS-ROWS ! ;
+
+: CHK-ADD-POS ( ^u8 n -- )
+   CHK-POS-N @ CHK-POS-SET
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
 : CHK-LIST-OPT ( -- )
@@ -327,7 +326,7 @@ private
    repeat ;
 
 : CHK-STDIN-PATH$ ( -- ^u8 n )
-   CHK-STDIN-PATH-BUF CHK-STDIN-PATH-U @ ;
+   CHK-STDIN-PATH-A CHK-PTR-U8@ CHK-STDIN-PATH-U @ ;
 
 \ The path stdin's text stands for under --verify-only, given once.
 : CHK-PARSE-STDIN-PATH ( -- )
@@ -336,8 +335,7 @@ private
    CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
    CHK-ARG-I @ CHK-ARG$ {: a:^ u:n :}
    u 0= if CHK-USAGE then
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   a CHK-STDIN-PATH-BUF u BYTE-COPY
+   a CHK-STDIN-PATH-A CHK-PTR-U8!
    u CHK-STDIN-PATH-U ! ;
 
 : CHK-DEADLINE-SET ( n -- ) {: ms:n :}
@@ -372,25 +370,12 @@ private
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
-\ CLI arguments have two path slots; keep their library capacity throw for
-\ direct LSP-CHECK:FILE callers, and explain it only at this command-line boundary.
-: CHK-PARSE-CLI ( -- )
-   [: CHK-PARSE ;] catch {: rc:n :}
-   rc E-FS-CAPACITY = if CHK-PATH-TOO-BIG then
-   rc 0<> if rc throw then ;
-
-: CHK-POS-LENS-CLEAR ( -- )
-   0 begin dup CHK-MAX-POS < while
-      0 over CHK-POS-U-SLOT !
-      1+
-   repeat drop ;
-
 : CHK-SELECT-CLEAR ( -- )
    CHK-SEL-NONE CHK-SEL-MODE !
    0 CHK-SEL-SRC-U !
    0 CHK-SEL-LABEL-U !
    0 CHK-POS-N !
-   CHK-POS-LENS-CLEAR ;
+   0 CHK-POS-U ! ;
 
 : CHK-RUN-TEMP-CLEAR ( -- )
    0 CHK-SRC-U !
@@ -618,22 +603,12 @@ private
    CHK-MATERIALIZE-BYTES ;
 
 \ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
-\ quote, backslash, CR, LF or NUL. E-FFI-NUL: the file system refuses a NUL in
-\ a path.
+\ quote, backslash, CR, LF or NUL.
 : CHK-PATH-UNSAFE ( -- )
    s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
 
-\ Every input must be a file before the engine's resolver sees it. The
-\ engine's resolver refuses a path holding a NUL with E-PATH-NUL, which check.f
-\ does not map; FS:FILE? refuses it first with E-FFI-NUL, which CHK-MATERIALIZE
-\ reports as usage.
-\
-\ The engine carries its own sources, so a run loads nothing from one and checks
-\ nothing there; rebuilding the engine checks it. An input set that is all such
-\ sources - a single file is a set of one - is rejected at each input, as the
-\ input is given. Any other input is checked even when this process has loaded
-\ it: the pre-pass verifies it in the verifier child and the run loads it, each
-\ in an engine of its own.
+\ Whether q holds for every position. An input set that is all sources the
+\ engine provides is rejected at each input: a run loads nothing from one.
 : CHK-INPUTS-ALL? ( [ ^u8 n -- bool ] -- bool ) {: q :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ q execute 0= if unloop false exit then
@@ -647,12 +622,18 @@ private
    REJECTION:NO-FILE$ REJECTION:FILE!
    code codeu REJECTION:OPEN ;
 
-\ An input that is no file gets the load's record: a missing entry's, a
-\ directory's EISDIR, or for any other non-file the stamping reader's.
-: CHK-NO-INPUT ( ^u8 n -- ) {: a:^ u:n :}
-   a u CANONICAL {: path:^ pathu:n exists:bool :}
+\ Position idx becomes its canonical path, or a missing one stops with the
+\ load's record, which names it as written.
+: CHK-RESOLVE-POS ( n -- ) {: idx:n :}
+   idx CHK-POS$ {: a:^ u:n :}
+   NULL-PTR 0 a u [: CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
    exists 0= if a u a u true SOURCE-ROOT:MISSING-SOURCE then
-   NULL-PTR 0 path pathu CHK-IRREGULAR ;
+   path pathu idx CHK-POS-SET ;
+
+\ An existing input that is no file gets the load's record: a directory's
+\ EISDIR, or for any other non-file the stamping reader's.
+: CHK-NO-INPUT ( ^u8 n -- ) {: a:^ u:n :}
+   NULL-PTR 0 a u CHK-IRREGULAR ;
 
 : CHK-ENGINE-PROVIDED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-ENGINE-PROVIDED" CHK-INPUT-OPEN
@@ -668,9 +649,10 @@ private
 \ could only place it at its own loader line.
 : CHK-INPUT-OPENS ( ^u8 n -- ) {: a:^ u:n :}
    [: a u 0 NULL-PTR 0 FS:READ-AT ;] CHK-READ-REJECTED {: e:n rejected:bool :}
-   rejected if a u CANONICAL drop e CHK-UNREADABLE-NAMED then ;
+   rejected if a u e CHK-UNREADABLE-NAMED then ;
 
 : CHK-CHECK-INPUTS ( -- )
+   CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS  loop
    CHK-POS-N @ 0 ?do
       i CHK-POS$ 2dup FS:FILE? if 2drop else CHK-NO-INPUT then
       i CHK-POS$ CHK-INPUT-OPENS
@@ -685,14 +667,11 @@ private
 : CHK-CHECK-LABEL ( -- )
    CHK-LABEL SOURCE-QPATH-CHECK ;
 
-\ A JSON packet names the file by the canonical absolute path its closure entry
-\ holds, the spelling every dependency's packets carry, so one run names each
-\ file one way and a client can map it to a URI. Prose keeps the path as given.
 \ Both spellings the run quotes, the entry in the loader line and the label,
-\ are judged before discovery reads the file.
+\ are the canonical path, judged before discovery reads the file.
 : CHK-MATERIALIZE-FILE ( -- )
-   0 CHK-POS$ CHK-LABEL!
    CHK-CHECK-INPUTS
+   0 CHK-POS$ CHK-LABEL!
    CHK-EXPAND-RESET
    0 CHK-EXP-OUT-U !
    CHK-LABEL CHK-ENTRY-ID {: id:n :}
@@ -755,19 +734,13 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
-\ E-FS-PATH-UNSAFE is a path or label the run cannot quote (a named file's
-\ canonical spelling or a listed one as CHK-APPEND-LISTED spells it, in its
-\ loader line; the label, in the run stage's REJECTION:LABEL!); E-FFI-NUL is a
-\ path holding a NUL, which the file system refuses to look up. Both are usage
-\ errors. The materializers judge each
-\ spelling after the existence check, so a missing path is still NOINPUT, and
-\ before discovery or any later stage reads the source, so the answer does not
-\ depend on what it holds.
+\ A path or label the run cannot quote is a usage error, judged after each
+\ input is resolved and before any stage reads the source.
 : CHK-MATERIALIZE ( -- )
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-FS-PATH-UNSAFE = rc E-FFI-NUL = or if CHK-PATH-UNSAFE then
+   rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
    rc throw ;
 
 : CHK-U$ ( n -- ^u8 n ) {: u:n :}
@@ -1123,16 +1096,18 @@ private
 \ The named file is read as the closure walk reads its top: one the file system
 \ refuses to read is the loader's rejection at its canonical path.
 : CHK-VERIFY-FILE ( -- ^u8 n )
+   0 CHK-RESOLVE-POS
    0 CHK-POS$ {: a:^ u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
    [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: e:n rejected:bool :}
-   rejected if a u CANONICAL drop e CHK-UNREADABLE-NAMED then
+   rejected if a u e CHK-UNREADABLE-NAMED then
    a u ;
 
 \ stdin's path need not exist.
 : CHK-VERIFY-STDIN ( -- ^u8 n )
    CHK-STDIN-PATH-U @ 0= if CHK-USAGE then
    CHK-READ-STDIN CHK-SRC-U !
+   NULL-PTR 0 CHK-STDIN-PATH$ [: CANONICAL ;] LOADER-RESOLVE drop 2drop
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.
@@ -1243,7 +1218,7 @@ private
    RESET
    s" --verify-only" CHK-OPT? CHK-VERIFY !
    s" --json-errors" CHK-OPT? CHK-JSON !
-   CHK-PARSE-CLI
+   CHK-PARSE
    RUN ;
 
 \ A throw that is no exit status ends the check with the engine's record of an

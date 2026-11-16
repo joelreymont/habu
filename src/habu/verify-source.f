@@ -43,8 +43,8 @@
 \
 \ A quiet composition refuses the top-level loader forms discovery refuses,
 \ where it meets them, so that walk need not run first: a path that is no
-\ literal, a literal no loader takes, or a path the loader refuses - an
-\ `include` or `require` operand past PATH-CAP, or one the resolver refuses. A
+\ literal, a literal no loader takes, or a path the loader refuses - one
+\ holding a NUL byte, or one the resolver refuses. A
 \ declaration, `undefine` or `UNDEFINE-IF-DEFINED` of a loader word's name
 \ refuses nothing, as the walk refuses nothing for it, but a later loader form
 \ with that word the walk reads - `include` or `require`, or a word right after
@@ -3188,9 +3188,9 @@ variable LOAD-END
    REQUIRE-STORE {: path:^ pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
-: COMPOSE-SCRIPT-REQUIRED ( ^u8 n ^u8 n -- )
-   {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+: COMPOSE-SCRIPT-REQUIRED ( ^u8 n -- )
+   {: a:^ u:n :}
+   NULL-PTR 0 a u [: SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE {: path:^ pathu:n :}
    a u path pathu COMPOSE-OPEN ;
 
@@ -3256,7 +3256,7 @@ variable LOAD-U
    a u s" included" STR=CI IF u true FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
    a u s" required" STR=CI IF u false FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
    a u s" script-required" STR=CI IF
-      u [: 2dup LOAD$ COMPOSE-SCRIPT-REQUIRED ;] QUIET-STRING-LOAD true EXIT
+      u [: LOAD$ COMPOSE-SCRIPT-REQUIRED ;] QUIET-STRING-LOAD true EXIT
    THEN
    a u s" provided" STR=CI IF
       u [: 2dup LOAD$ COMPOSE-PROVIDED ;] QUIET-STRING-LOAD true EXIT
@@ -3331,7 +3331,7 @@ variable FILE-USE
    a u s" require" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
    a u s" included" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" required" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
-   a u s" script-required" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
+   a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
    a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 

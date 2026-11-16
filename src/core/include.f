@@ -166,10 +166,8 @@ public
 : LOADER-PATH-STOP ( ^u8 n ^u8 n n n -- )
    INCLUDE-PATH-CAP LOADER-PATH-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ Whether a loader or ROOT! can take the path a u before it resolves it, writing
-\ nothing: 0 0 when it can, else the kind and len LOADER-PATH-STOP takes, for
-\ an empty path or one holding a NUL byte. A string loader takes a path written
-\ past the cap that resolves within it, so length is the resolver's to judge.
+\ Whether a loader or ROOT! can take the path a u before resolving it: 0 0, else
+\ the kind and len LOADER-PATH-STOP takes. Length is the resolver's to judge.
 : LOADER-PATH-FAULT ( ^u8 n -- n n ) {: a:^ u:n :}
    u 0 <= if E-PATH-RANGE 0 exit then
    0 begin dup u < while
@@ -177,6 +175,18 @@ public
       1 +
    repeat
    drop 0 0 ;
+
+\ The path a u that loader w takes, found by q; one it cannot take stops with
+\ w's record. An empty w is a command-line entry, whose record has no place.
+: LOADER-RESOLVE ( ^u8 n ^u8 n [ ^u8 n -- ^u8 n bool ] -- ^u8 n bool )
+   {: w:^ wu:n a:^ u:n q :}
+   wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then
+   a u INCLUDE-FALSE [: drop q execute ;] catch {: rc:n :}
+   rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE -1 LOADER-PATH-STOP then
+   rc 0= if exit then
+   rc throw ;
 
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
@@ -856,13 +866,12 @@ using SOURCE-ROOT
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
 
-\ The path a u parsed for loader word w, which reads at most the cap: a missing
-\ one is rejected at the word, and one past the cap or holding a NUL at itself.
+\ The path a u parsed for loader word w: a missing one is rejected at the word,
+\ and one holding a NUL byte at itself.
 : INCLUDE-CHECK-PATH ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    u 0 <= if
       SRCLOC:TOKEN$ INCLUDE-NO-PATH  CHECKER-REJECT-RC REJECTION:STOP
    then
-   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u LOADER-PATH-STOP then
    a u LOADER-PATH-FAULT {: kind:n len:n :}
    kind 0 <> if w wu a u kind len LOADER-PATH-STOP then ;
 
@@ -2389,7 +2398,7 @@ public
 \ top level the program's directory.
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
-   a u CANONICAL {: path:^ pathu:n exists:bool :}
+   NULL-PTR 0 a u [: CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
    exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
    PUSH
@@ -2475,18 +2484,6 @@ public
    DISCOVERY? if RESOLVE exit then
    LOAD-RESOLVE ;
 
-\ The path a u that loader word w takes, found by q. A path no loader takes, or
-\ one q's resolver throws on as too long, is rejected with the loader's record:
-\ this is where every loader and the verifier resolve.
-: LOADER-RESOLVE ( ^u8 n ^u8 n [ ^u8 n -- ^u8 n bool ] -- ^u8 n bool )
-   {: w:^ wu:n a:^ u:n q :}
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then
-   a u INCLUDE-FALSE [: drop q execute ;] catch {: rc:n :}
-   rc E-PATH-RANGE = if w wu a u E-PATH-RANGE -1 LOADER-PATH-STOP then
-   rc 0= if exit then
-   rc throw ;
-
 \ `included` of a u for loader word w, the word the program called.
 : INCLUDED-AS ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
@@ -2538,7 +2535,7 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
    {: a:^ u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
    s" script-required" a u
-   s" script-required" a u [: ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
+   NULL-PTR 0 a u [: ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;

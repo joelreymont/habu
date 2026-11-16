@@ -328,11 +328,11 @@ PROCESS:NO-FD FEED-WR !
    TMP-ENTRIES 0 T= ;
 
 \ The one line check.f ends a run past its deadline with. It names the subject
-\ as given, or canonically under --json-errors, as each of its reports does.
-: LATE-LINE$ ( bool -- ^u8 n ) {: json:bool :}
+\ by its canonical path, as each of its reports does.
+: LATE-LINE$ ( -- ^u8 n )
    SB-RESET
    s" check.f: " SB-APPEND
-   json if SUBJECT$ SOURCE-ROOT:CANON-OS drop else SUBJECT$ then SB-APPEND
+   SUBJECT$ SOURCE-ROOT:CANON-OS drop SB-APPEND
    s" : the run passed its deadline of " SB-APPEND
    DEADLINE-MS FMT:SB-INT
    s\"  ms\n" SB-APPEND
@@ -355,7 +355,7 @@ PROCESS:NO-FD FEED-WR !
    s" deadline: check.f exits its refusal status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" deadline: one line names the subject and the deadline" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-LINE$ T$=
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL LATE-LINE$ T$=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL
    TMP-ENTRIES 0 T=
    CHECK-END
