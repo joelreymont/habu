@@ -21,6 +21,8 @@ create SAVED-ROOT CAP allot
 create SAVED-TOP CAP allot
 create TARGET CAP allot
 create LINK CAP allot
+create LONG-PATH CAP allot
+create LONG-ROOT CAP 2 * allot
 variable ROOT-U
 variable APP-A-U
 variable APP-B-U
@@ -122,6 +124,64 @@ private
    REJECTION:BUFFER$ s"  --> " CONTAINS? TFALSE
    REJECTION:BUFFER$
    S\" = help: remove the NUL byte from the path\n" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
+   RESTORED ;
+
+: LOAD-NUL ( -- )
+   s" a path holding a 0 byte is rejected by SOURCE-ROOT:LOAD" T-LABEL
+   REJECTION:CAPTURE
+   [: s\" a\zb.f" A-PATH SOURCE-ROOT:LOAD ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$
+   S\" error[E-PATH-NUL]: `SOURCE-ROOT:LOAD` got a path with a NUL byte" STARTS-WITH? TTRUE
+   REJECTION:BUFFER-OFF
+   RESTORED ;
+
+: READ-NUL ( -- )
+   s" a path holding a 0 byte is rejected by SOURCE-ROOT:READ-OS" T-LABEL
+   REJECTION:CAPTURE
+   [: [: SOURCE-ROOT:CANON-OS ;]
+      [: 2drop 2drop s\" a\zb.f" s" /" SOURCE-ROOT:READ-OS ;]
+      [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
+   CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$
+   S\" error[E-PATH-NUL]: `SOURCE-ROOT:READ-OS` got a path with a NUL byte" STARTS-WITH? TTRUE
+   REJECTION:BUFFER-OFF
+   RESTORED ;
+
+: READ-LONG ( -- )
+   s" a path longer than PATH-CAP is rejected by SOURCE-ROOT:READ-OS" T-LABEL
+   CAP 0 ?do 97 LONG-PATH i + c! loop
+   REJECTION:CAPTURE
+   [: [: SOURCE-ROOT:CANON-OS ;]
+      [: 2drop 2drop LONG-PATH CAP s" /" SOURCE-ROOT:READ-OS ;]
+      [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
+   CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:READ-OS` got a path " STARTS-WITH? TTRUE
+   REJECTION:BUFFER-OFF
+   RESTORED ;
+
+: WITH-EMPTY ( -- )
+   s" an empty path is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
+   REJECTION:CAPTURE
+   [: s" " [: ;] SOURCE-ROOT:WITH ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got an empty path" STARTS-WITH? TTRUE
+   REJECTION:BUFFER-OFF
+   RESTORED ;
+
+: WITH-LONG ( -- )
+   s" a root path of WORK-BYTES is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
+   CAP 2 * 0 ?do 97 LONG-ROOT i + c! loop
+   REJECTION:CAPTURE
+   [: LONG-ROOT CAP 2 * [: ;] SOURCE-ROOT:WITH ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got a path" STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -339,7 +399,8 @@ create JOIN-SRC JOIN-WORK allot
 
 : RUN ( -- )
    T-RESET PREP
-   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED DISCOVERY DEEP-LOADS LARGE-LOADS DEEP-EVALS
+   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED LOAD-NUL READ-NUL
+   READ-LONG WITH-EMPTY WITH-LONG DISCOVERY DEEP-LOADS LARGE-LOADS DEEP-EVALS
    ENGINE-ALIASES JOIN-ROOM DIRNAMES
    FS:CLEANUP-RUN T-REPORT ;
 

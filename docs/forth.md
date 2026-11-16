@@ -302,18 +302,13 @@ public
   return or throw; a root that does not resolve to a searchable directory, and
   an image save inside the scope, are refused by name.
 - A build's loader does every load, at a file's top level: a word that loads or
-  provides a file (`included`, `required`, `script-required`, `provided`,
-  `INCLUDE-LOAD`, `SOURCE-ROOT:LOAD`, `SOURCE-ROOT:WITH-BYTES`,
-  `SOURCE-ROOT:WITH-SUPPLIED`, `SOURCE-ROOT:RUN-PROGRAM`) is refused when it
-  runs during a build, `include: a word loaded or provided a file during a
-  build; do it at the file's top level: <path>`, so a file that scoped its
-  root by loading from a word sets it with `ROOT!` instead. The refusal is
-  `SOURCE-ROOT:BUILD-REFUSE ( ^u8 n -- )`, handed the resolved path: in a
-  build it ends the process with that text, outside one it returns.
+  provides a file is rejected when it runs during a build, so a file that
+  scoped its root by loading from a word sets it with `ROOT!` instead. The
+  rejection is `SOURCE-ROOT:BUILD-REFUSE`, handed the word and the path it got:
+  in a build it ends the process, outside one it returns.
   `SOURCE-ROOT:READ-OS` fills only the frame of a file a load is opening, as
   a reader installed with `SOURCE-INPUT:USE` calls it; any other call, in a
-  build or not, is refused with `include: READ-OS reads only the file a load
-  is opening; a word read: <path>`. `SOURCE-ROOT:RESOLVE`
+  build or not, is rejected. `SOURCE-ROOT:RESOLVE`
   resolves in a build as elsewhere, its known flag there answering for the
   built program's own registry. Fixtures resolve
   against `SOURCE-ROOT:CURRENT$ ( -- ^u8 n )`, never a script argument.

@@ -701,7 +701,6 @@ private
    s" E-ENGINE-PROVIDED" CHK-OPEN
    s" the engine provides `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" `, so a check loads nothing from it" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" provided by bin/hb" REJECTION:EMIT-STR
    REJECTION:HELP
    s" rebuild bin/hb to check a change to it" REJECTION:EMIT-STR
    REJECTION:KEEP ;

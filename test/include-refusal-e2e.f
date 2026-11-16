@@ -115,6 +115,49 @@ variable RC
    s" so does SOURCE-ROOT:WITH on a file" T-LABEL
    s" with-file" s" plain.f" WITH-AT ;
 
+\ A scope opened inside another scope's callback: its record names its own path
+\ and stands nowhere on the line of the outer call, which passed a good one.
+: WITH-NESTED ( -- )
+   s" SOURCE-ROOT:WITH inside a WITH callback names its own path" T-LABEL
+   0 PROG-U !
+   S\" : INNER ( -- ) s\q " PROG+ s" absent" AT PROG+
+   S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
+   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' INNER SOURCE-ROOT:WITH" PLINE
+   s" with-nested" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   s" `SOURCE-ROOT:WITH` got `" s" absent" SB-NAMES SB$ ERR-HAS
+   ERR$ s" with-nested.f:2:" CONTAINS? TFALSE ;
+
+\ A loader a scope's callback runs on bytes no source holds: its record stands
+\ at no call, the one that opened the scope included.
+: WITH-REQUIRED ( -- )
+   s" a require in a WITH callback places its record at no call" T-LABEL
+   0 PROG-U !
+   s" create B 1024 allot" PLINE
+   S\" : P ( -- ^u8 n ) s\q " PROG+ s" absent/x.f" AT PROG+
+   S\" \q {: a:^ u:n :} a B u BYTE-COPY B u ;" PLINE
+   s" : GO ( -- ) P required ;" PLINE
+   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' GO SOURCE-ROOT:WITH" PLINE
+   s" with-required" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   s" cannot open `" s" absent/x.f" SB-NAMES SB$ ERR-HAS
+   ERR$ s"  --> " CONTAINS? TFALSE ;
+
+\ A POLICY-WITH-ROOT opened inside another one's callback: its record names its
+\ own path and stands nowhere on the line of the outer call.
+: POLICY-NESTED ( -- )
+   s" POLICY-WITH-ROOT inside another one's callback names its own path" T-LABEL
+   0 PROG-U !
+   s" : NOP ( -- ) ;" PLINE
+   S\" : INNER ( -- ) s\q " PROG+ s" absent" AT PROG+
+   S\" \q ['] NOP ['] NOP SOURCE-ROOT:POLICY-WITH-ROOT ;" PLINE
+   S\" s\q " PROG+ s" cases" AT PROG+
+   S\" \q ' INNER ' NOP SOURCE-ROOT:POLICY-WITH-ROOT" PLINE
+   s" policy-nested" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   s" `SOURCE-ROOT:POLICY-WITH-ROOT` got `" s" absent" SB-NAMES SB$ ERR-HAS
+   ERR$ s" policy-nested.f:3:" CONTAINS? TFALSE ;
+
 \ A program whose one line requires the absolute path <root>/<rel>, and the
 \ loader's missing-source rejection naming that path.
 : REQUIRE-AT ( ^u8 n ^u8 n -- )
@@ -138,16 +181,16 @@ variable RC
    s" private" PLINE
    s" : NONE ( ^u8 n -- ^u8 n bool ) 0 0= 0= ;" PLINE
    s" public" PLINE
-   s" : RUN ( -- )" PLINE
+   s" : CANON ( -- )" PLINE
    s"    [: NONE ;] [: SOURCE-ROOT:READ-OS ;] SOURCE-INPUT:USE" PLINE
    S\"    s\q /absent/x\q SOURCE-ROOT:CANONICAL drop 2drop ;" PLINE
    s" ;package" PLINE
-   s" INCLUDE-REFUSAL-CANON:RUN" PLINE
+   s" INCLUDE-REFUSAL-CANON:CANON" PLINE
    s" canon-none" LOAD-CASE
    s" a path with no directory above it resolving is rejected by name" T-LABEL
    CHECKER-REJECT-RC EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
-   s" got `/absent/x`" ERR-HAS
+   s" `SOURCE-INPUT:CANON` got `/absent/x`" ERR-HAS
    s" has no directory above it" ERR-HAS ;
 
 \ A word that reads another file through the loader's reader while its own file
@@ -222,12 +265,37 @@ $1A4 constant MODE-FILE
    s" :1:6" SB-APPEND SB$ ERR-HAS
    s" = help: pass a path of 1 to " ERR-HAS ;
 
+4200 constant LONG-U
+
+\ LONG-U bytes of `x`, a path longer than PATH-CAP.
+: LONG+ ( -- )
+   LONG-U 0 ?do s" x" PROG+ loop ;
+
+\ A loader word called by another spelling than its definition's: its record
+\ names the word as the source wrote it.
+: SPELLED-LOADERS ( -- )
+   s" a too-long include names the word as written" T-LABEL
+   0 PROG-U !
+   s" INCLUDE " PROG+ LONG+ S\" \n" PROG+
+   s" include-long" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" error[E-PATH-RANGE]: `INCLUDE` got" ERR-HAS
+   s" an exported required names the export as written" T-LABEL
+   0 PROG-U !
+   s" package INCLUDE-REFUSAL-RVX public EXPORT required ;package" PLINE
+   S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REFUSAL-RVX:required" PLINE
+   s" required-export" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   ERR$ s" error[" COUNT-SUB 1 T=
+   s" error[E-PATH-RANGE]: `INCLUDE-REFUSAL-RVX:required` got" ERR-HAS ;
+
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD REQUIRE-UNREADABLE
-   LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY
+   WITH-REFUSED WITH-NESTED WITH-REQUIRED POLICY-NESTED REQUIRE-ABSENT CANON-NONE READ-OS-WORD
+   REQUIRE-UNREADABLE LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY SPELLED-LOADERS
    T-REPORT ;
 
 ;package

@@ -13355,6 +13355,7 @@ defer FIRST-RECORD-XT ( -- n )
 
 ;package
 package SRCLOC
+EXPORT CHECK:DICT-CELL@
 private
 TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 \ The last string literal copied out of its source: the copy, and the literal's
@@ -13404,6 +13405,17 @@ public
    t REJECTION:PLACES-IN? IF t tu EXIT THEN
    NULL-PTR 0 ;
 
+\ The token read last and true when it finds the same word as w; else w and false.
+\ A w of length 0 is spelled by no token.
+: SPELLED ( ^u8 n -- ^u8 n bool ) {: w:^ wu:n :}
+   wu 0= IF w wu 0 0= 0= EXIT THEN
+   TOKEN$ {: t:^ tu:n :}
+   tu 0= IF w wu 0 0= 0= EXIT THEN
+   w wu scope-find drop drop drop {: wrec:^ :}
+   t tu scope-find drop drop drop {: trec:^ :}
+   wrec NULL-PTR = trec NULL-PTR = or IF w wu 0 0= 0= EXIT THEN
+   trec 0 DICT-CELL@ wrec 0 DICT-CELL@ = IF t tu 0 0= EXIT THEN
+   w wu 0 0= 0= ;
 ;package
 
 \ ---- the code ceiling ----------------------------------------------------------

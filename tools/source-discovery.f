@@ -935,7 +935,6 @@ DYNAMIC-BUFFER SD-DEC u8
       E-DISC-DYNAMIC SD-HARVEST-THROW
       toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP
    then
-   toff tlen SD-TOK$ poff plen SD-TOK$ INCLUDE-CHECK-PATH
    poff plen SD-TOK$ SD-PATH-FILL
    toff tlen poff plen kind SD-CALL-LOADER ;
 

@@ -100,17 +100,8 @@ public
 
 ;package
 
-\ True when the token the engine read last spells w, folded, whole or, when w
-\ is qualified, by the parts after their last `:`. A w of length 0 is spelled
-\ by no token.
-: TOKEN-SPELLS? ( ^u8 n -- bool ) {: w:^ wu:n :}
-   wu 0= if 0 0= 0= exit then
-   SRCLOC:TOKEN$ {: t:^ tu:n :}
-   wu begin dup 0 > if dup 1 - w + c@ 58 <> else 0 0= 0= then while 1 - repeat
-   tu begin dup 0 > if dup 1 - t + c@ 58 <> else 0 0= 0= then while 1 - repeat
-   {: wi:n ti:n :}
-   t tu w wu CORE-STR=CI
-   wi 0 > if t ti + tu ti - w wi + wu wi - CORE-STR=CI or then ;
+: TOKEN-SPELLS? ( ^u8 n -- bool )
+   SRCLOC:SPELLED nip nip ;
 
 \ The place of a record of loader word w, given the path a u: the source a u
 \ stands for, else the token the engine read last where it spells w, which it
@@ -132,25 +123,22 @@ public
    a u SRCLOC:ORIGIN$ drop NULL-PTR = if s" passes a path that " REJECTION:EMIT-STR then
    0 0= ;
 
-\ Writes the record of word w, given the path a u, which no file name holds,
-\ through its help: kind E-PATH-RANGE with len 0 when the path is empty, -1
-\ when only the path it resolves to is longer than cap, else its length; kind
-\ E-PATH-NUL when it holds a NUL byte. cap is the longest length the failing
-\ test allows. A w of length 0 names no word: the message's subject is the
-\ path.
+\ Word w's record for the path a u, kind E-PATH-NUL or E-PATH-RANGE: len 0 when empty,
+\ -1 if too long once resolved, else the length over cap. Empty w names no word.
 : LOADER-PATH-RECORD ( ^u8 n ^u8 n n n n -- )
    {: w:^ wu:n a:^ u:n kind:n len:n cap:n :}
+   w wu SRCLOC:SPELLED drop {: name:^ nameu:n :}
    kind E-PATH-NUL = if
       s" E-PATH-NUL" REJECTION:OPEN
       wu 0= if
          s" a path holds a NUL byte" REJECTION:EMIT-STR
       else
-         96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+         96 REJECTION:EMIT1  name nameu REJECTION:EMIT-STR
          s" ` got a path with a NUL byte" REJECTION:EMIT-STR
       then
       s" , which no file name holds" REJECTION:EMIT-STR
    else
-      w wu len cap REJECTION:PATH-RANGE
+      name nameu len cap REJECTION:PATH-RANGE
    then
    w wu a u LOADER-PATH-AT if
       kind E-PATH-NUL = if
@@ -171,7 +159,7 @@ public
       cap REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    then ;
 
-\ Word w, a loader or ROOT!, got the path a u, which no file name holds.
+\ Stops with word w's record for the path a u it cannot take.
 : LOADER-PATH-STOP ( ^u8 n ^u8 n n n -- )
    INCLUDE-PATH-CAP LOADER-PATH-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -185,6 +173,11 @@ public
    repeat
    drop 0 0 ;
 
+\ Word w's path a u, placed at p pu: one no file name holds stops with w's record.
+: LOADER-PATH-CHECK ( ^u8 n ^u8 n ^u8 n -- ) {: w:^ wu:n p:^ pu:n a:^ u:n :}
+   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then ;
+
 \ The path a u that loader w takes, found by q, which is given a u and the
 \ place of w's record; one it cannot take stops with that record. An empty w
 \ is a command-line entry, whose record has no place.
@@ -192,8 +185,7 @@ public
    {: w:^ wu:n a:^ u:n q :}
    wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
    wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then
+   w wu p pu a u LOADER-PATH-CHECK
    a u INCLUDE-FALSE [: drop t tu q execute ;] catch {: rc:n :}
    rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE -1 LOADER-PATH-STOP then
    rc 0= if exit then
@@ -203,6 +195,12 @@ public
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
 private
+
+\ Word w's path a u, judged as spelled: one no file name holds, or one longer
+\ than PATH-CAP, stops with w's record.
+: GIVEN-CHECK ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+   w wu a u a u LOADER-PATH-CHECK
+   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u LOADER-PATH-STOP then ;
 
 INCLUDE-PATH-CAP 1+ constant PATH-BYTES
 create CWD-BUF PATH-BYTES allot
@@ -513,11 +511,11 @@ private
    path pathu REJECTION:EMIT-STR  s" `, which " REJECTION:EMIT-STR
    why whyu REJECTION:EMIT-STR ;
 
-\ Word w got the path a u, shown as p pu: why reads after "which" and "that".
-\ The record stands where LOADER-PATH-AT places a u; help says what to pass.
+\ Word w got the path a u, shown as p pu: why reads after "which" and "that";
+\ help says what to pass.
 : PATH-DIE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n p:^ pu:n why:^ whyu:n help:^ helpu:n :}
-   w wu p pu why whyu PATH-REJECT
+   w wu SRCLOC:SPELLED drop p pu why whyu PATH-REJECT
    w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -711,6 +709,7 @@ private
    PATH-DIE ;
 
 : ROOT-CANON ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+   w wu a u GIVEN-CHECK
    a u ABSOLUTE!
    JOIN-BUF JOIN-U @ ROOT-N {: n:n :}
    n 0 < if w wu ROOT-DIE then
@@ -780,13 +779,22 @@ private
       s" source root: cannot release a root mapping" INCLUDE-IO-RC die
    then ;
 
+\ Clears the token read last and answers it, so no record a scope's callback
+\ makes stands at the call that opened the scope.
+: TOKEN-CLEAR ( -- ^u8 n )
+   SRCLOC:TOKEN$ {: a:^ u:n :}
+   NULL-PTR 0 SRCLOC:TOKEN!
+   a u ;
+
 public
 
 \ The caller's root is back before the scope's is released, on a throw too.
 : WITH ( ^u8 n [ -- ] -- ) {: a:^ u:n q :}
    s" SOURCE-ROOT:WITH" a u ROOT-ENTER {: old:^ oldu:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
+   TOKEN-CLEAR {: t:^ tu:n :}
    q catch {: rc:n :}
+   t tu SRCLOC:TOKEN!
    old oldu ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
@@ -849,10 +857,10 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
    repeat
    drop INCLUDE-TRUE ;
 
-\ Word w got the path a u that, joined to the current root, is len bytes, more
-\ than PATH-CAP.
+\ Word w got the path a u that, alone or joined to the current root, is len bytes,
+\ more than PATH-CAP.
 : ROOT-LONG ( ^u8 n ^u8 n n -- ) {: w:^ wu:n a:^ u:n len:n :}
-   w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+   w wu SRCLOC:SPELLED drop len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
    w wu a u LOADER-PATH-AT if
       len u = if
          s" is too long"
@@ -867,8 +875,7 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
 
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then
+   w wu a u a u LOADER-PATH-CHECK
    u INCLUDE-PATH-CAP > if w wu a u u ROOT-LONG then
    CURRENT$ a u JOIN {: p:^ pu:n :}
    pu INCLUDE-PATH-CAP > if w wu a u pu ROOT-LONG then
@@ -894,13 +901,14 @@ public
    s" SOURCE-ROOT:ROOT!" a u ROOT-SET ;
 
 : CD ( -- )
-   s" SOURCE-ROOT:CD" TOP-ONLY
+   s" SOURCE-ROOT:CD" SRCLOC:SPELLED drop {: w:^ wu:n :}
+   w wu TOP-ONLY
    LINE-BLANK? if CURRENT$ type cr exit then
-   s" SOURCE-ROOT:CD" parse-name ROOT-SET ;
+   w wu parse-name ROOT-SET ;
 
 \ A null slot is the top-level root.
 : PUSHPATH ( -- )
-   s" SOURCE-ROOT:PUSHPATH" TOP-ONLY
+   s" SOURCE-ROOT:PUSHPATH" SRCLOC:SPELLED drop TOP-ONLY
    SLOT-N @ SLOT-CAP @ >= if SLOT-GROW then
    SLOT-N @ {: ix:n :}
    CURRENT-U @ {: u:n :}
@@ -909,10 +917,12 @@ public
    ix 1+ SLOT-N ! ;
 
 : POPPATH ( -- )
-   s" SOURCE-ROOT:POPPATH" TOP-ONLY
+   s" SOURCE-ROOT:POPPATH" SRCLOC:SPELLED drop {: w:^ wu:n :}
+   w wu TOP-ONLY
    SLOT-N @ 0= if
       s" E-SOURCE-ROOT" REJECTION:OPEN
-      s" `SOURCE-ROOT:POPPATH` runs with no directory saved" REJECTION:EMIT-STR
+      96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+      s" ` runs with no directory saved" REJECTION:EMIT-STR
       REJECTION:HELP
       s" save the current directory with `SOURCE-ROOT:PUSHPATH` first" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
@@ -948,14 +958,11 @@ using SOURCE-ROOT
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
 
-\ The path a u parsed for loader word w: a missing one is rejected at the word,
-\ and one holding a NUL byte at itself.
-: INCLUDE-CHECK-PATH ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+\ A loader word's parsed path of length u: a missing one is rejected at the word.
+: INCLUDE-CHECK-PATH ( n -- ) {: u:n :}
    u 0 <= if
       SRCLOC:TOKEN$ INCLUDE-NO-PATH  CHECKER-REJECT-RC REJECTION:STOP
-   then
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if w wu a u kind len LOADER-PATH-STOP then ;
+   then ;
 
 package REQUIRE-REG
 private
@@ -1752,7 +1759,6 @@ public
 
 : INCLUDE-PATH0 ( ^u8 n -- ^u8 )
    {: a:^ u:n :}
-   s" INCLUDE-PATH0" a u INCLUDE-CHECK-PATH
    a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
    u INCLUDE-PATH-U !
    INCLUDE-PATH ;
@@ -2148,9 +2154,8 @@ variable LAST-LOAD-EVAL-OK
    ns frame FR-CTIME-NS + CELL-VIEW !
    size frame FR-STAMP-SIZE + CELL-VIEW ! ;
 
-\ Rejects PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
-\ HOLD). A word's read finds its own file's frame held, or no frame; in a build,
-\ hb's held frame.
+\ Rejects PATH unless the top frame awaits its bytes, FR-SIZE -1 from PUSH to HOLD:
+\ a word's read finds its own file's frame held, or no frame; in a build, hb's.
 : READ-REFUSE ( ^u8 n -- ) {: path:^ pathu:n :}
    TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
    s" SOURCE-ROOT:READ-OS" path pathu path pathu
@@ -2235,7 +2240,7 @@ public
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
 : READ-OS ( ^u8 n ^u8 n -- ^u8 n )
-   2drop 2dup READ-REFUSE INCLUDE-READ-ALL ;
+   2drop s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
 \ A source whose first two bytes are `#!` names its interpreter on that line,
 \ and the engine reads the line as a comment: the two bytes become `\ `, so
@@ -2588,6 +2593,7 @@ public
 \ request token an open of a u that fails stands at, or empty.
 : LOAD-RUN ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n w:^ wu:n a:^ u:n :}
+   w wu a u GIVEN-CHECK
    w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    REQUEST-AT$ {: ra:^ ru:n :}  t tu REQUEST-AT!
@@ -2613,12 +2619,15 @@ public
 \ frame and makes its root current until the callback returns.
 : WITH-BYTES ( ^u8 n [ ^u8 n ^u8 n -- ] -- )
    {: path:^ pathu:n q :}
+   s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-BYTES" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
+   TOKEN-CLEAR {: t:^ tu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
+   t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
    old oldu ROOT-LEAVE
    rc 0= 0= if rc throw then ;
@@ -2627,12 +2636,15 @@ public
 \ reading a different disk copy.
 : WITH-SUPPLIED ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
    {: path:^ pathu:n src:^ srcu:n q :}
+   s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-SUPPLIED" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
+   TOKEN-CLEAR {: t:^ tu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
+   t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
    old oldu ROOT-LEAVE
    rc 0= 0= if rc throw then ;
@@ -2647,10 +2659,6 @@ public
    [: SOURCE-ROOT:READ-OS ;] READ-XT ! ;
 
 ;package
-
-: INCLUDE-LOAD ( ^u8 n -- bool n ) {: a:^ u:n :}
-   [: NULL-PTR 0 s" INCLUDE-LOAD" a u LOAD-RUN ;] catch {: rc:n :}
-   COMMITTED? rc ;
 
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
@@ -2727,9 +2735,10 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 package CHECK
 global
 : include ( -- )
+   s" include" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
-   s" include" a u INCLUDE-CHECK-PATH
-   s" include" a u INCLUDED-AS ;
+   u INCLUDE-CHECK-PATH
+   w wu a u INCLUDED-AS ;
 immediate
 INTRINSIC-INCLUDE INTRINSIC
 
@@ -2737,9 +2746,10 @@ create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
 ' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
 
 : require ( -- )
+   s" require" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
-   s" require" a u INCLUDE-CHECK-PATH
-   s" require" a u REQUIRED-AS ;
+   u INCLUDE-CHECK-PATH
+   w wu a u REQUIRED-AS ;
 immediate
 INTRINSIC-REQUIRE INTRINSIC
 
@@ -2808,7 +2818,9 @@ public
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:^ :}
    require-xt POLICY-ROOT-SET
+   TOKEN-CLEAR {: t:^ tu:n :}
    q catch {: rc:n :}
+   t tu SRCLOC:TOKEN!
    data-base POLICY-NDICT-CELL + @ 0 <> if
       prior prioru ROOT-LEAVE
       old old-u POLICY-ROOT-RELEASE POLICY-SEALED

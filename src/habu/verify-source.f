@@ -1279,15 +1279,12 @@ variable GROUP-AT
    BEGIN GROUP-NEXT GROUP-TOKEN UNTIL ;
 
 \ The path `include` or `require` takes, the word wu bytes long and standing at
-\ TOKEN-BYTE: none is rejected at the word, and one the word rejects before the
-\ resolver sees it with the loader's record.
+\ TOKEN-BYTE: none is rejected at the word.
 : LOADER-OPERAND ( n -- ^u8 n ) {: wu:n :}
-   SOURCE@ TOKEN-BYTE @ + {: w:^ :}
    NEXT-RAW {: p:^ pu:n :}
    pu 0= IF
       SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN
-   w wu p pu INCLUDE-CHECK-PATH
    p pu ;
 
 \ A declared parsing immediate's payload is read raw, across line ends, and

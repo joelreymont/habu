@@ -546,13 +546,13 @@ variable DEEP-U
    s" ` is a boot file outside the engine root" SB-APPEND SB$ SAYS ;
 
 : CD-PROG ( ^u8 n -- ) {: rel:^ relu:n :}
-   PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE ;
+   PROG-RESET s" source-root:cd" rel relu PATH-LINE ;
 
 \ CD's rejection naming <tmp>/<rel>, and why.
 : CD-WANT ( ^u8 n ^u8 n -- )
    {: rel:^ relu:n want:^ wantu:n :}
    s" error[E-SOURCE-ROOT]" REJECTED
-   SB-RESET s" `SOURCE-ROOT:CD` got `" SB-APPEND rel relu A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
+   SB-RESET s" `source-root:cd` got `" SB-APPEND rel relu A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
    want wantu SAYS ;
 
 : CD-REFUSED ( ^u8 n ^u8 n ^u8 n -- )
@@ -636,11 +636,11 @@ variable DEEP-U
    s" ;using" PLINE
    RUN-TREE
    SB-RESET s" cd/sub" A$ LINE s" cd" A$ LINE FOREIGN$ LINE SB$ 0 EXPECT
-   s" POPPATH on an empty stack is rejected by name" T-LABEL
-   PROG-RESET s" SOURCE-ROOT:POPPATH" PLINE
+   s" POPPATH on an empty stack is rejected, named as written" T-LABEL
+   PROG-RESET s" source-root:poppath" PLINE
    RUN-TREE
    s" error[E-SOURCE-ROOT]" REJECTED
-   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS ;
+   s" `source-root:poppath` runs with no directory saved" SAYS ;
 
 : PATH-WORDS ( -- )
    s" CD names the current path, which include searches first" T-LABEL
