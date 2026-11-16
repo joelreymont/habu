@@ -561,8 +561,9 @@ EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ Record writers: trusted-only rows, which reject a checked caller.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
-\ Setting DNAME-REP on one live CAST: record is CHECKER-IDENTITY's.
+\ Setting DNAME-REP on one live CAST: record is the checker's.
 EPPRIM: CHECKER-IDENTITY rep-mark PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECK rep-mark PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
