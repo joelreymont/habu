@@ -471,12 +471,12 @@ private
    code CODE-REPORT ;
 
 public
-\ Never throws. A spawned child leads a process group of its own, and so does
-\ each process it spawns, so no kill of its pid or group reaches them;
-\ src/lib/process-tree.f KILL-TREE freezes the tree before it lists it. A walk
-\ that throws has still killed every member it found, the child first, so the
-\ caller reaps the child all the same. The pid rides through the catch, so both
-\ arms leave the same depth.
+\ Never throws. A spawned child leads a process group of its own unless it is
+\ REAPED, and so does each process it spawns, so no kill of its pid or group
+\ reaches them; src/lib/process-tree.f KILL-TREE freezes the tree before it
+\ lists it. A walk that throws has still killed every member it found, the
+\ child first, so the caller reaps the child all the same. The pid rides
+\ through the catch, so both arms leave the same depth.
 : KILL-TREE ( pid -- )
    [: dup PROC-TREE:KILL-TREE ;] catch WALK-REPORT drop ;
 

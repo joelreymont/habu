@@ -404,13 +404,14 @@ public
 
 \ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
 \ program that runs children or makes scratch ends where it stands, and what it
-\ started and made outlives it: a spawned child leads a process group of its
-\ own (src/lib/process.f) and runs on under init, and nothing removes the
-\ scratch. Such a program calls CATCH-STOPS before it starts either, asks TAKE
-\ wherever it waits, and answers a signal by ending what it started, then
-\ DIE-OF, which runs the exit actions and so removes the paths registered for
-\ removal (src/lib/fs-mutate.f). The gate root (test/gate-pool.f), the pg
-\ cluster (test/db/pg-cluster.f) and check.f (tools/check-core.f) answer so.
+\ started and made outlives it: a spawned child that is not REAPED leads a
+\ process group of its own (src/lib/process.f) and runs on under init, and
+\ nothing removes the scratch. Such a program calls CATCH-STOPS before it
+\ starts either, asks TAKE wherever it waits, and answers a signal by ending
+\ what it started, then DIE-OF, which runs the exit actions and so removes the
+\ paths registered for removal (src/lib/fs-mutate.f). The gate root
+\ (test/gate-pool.f), the pg cluster (test/db/pg-cluster.f) and check.f
+\ (tools/check-core.f) answer so.
 \
 \ CATCH-STOPS leaves a signal the process was started with ignored as it is
 \ (IGNORED?).
