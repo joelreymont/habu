@@ -1474,16 +1474,48 @@ variable MDV-I   variable MDV-F
 : CLOSER-PINNED? ( -- bool )
    PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
 
-\ The interpreter's top-level keywords, which no wordlist holds.
-: TOP-KEYWORD? ( ^u8 n -- bool ) {: t:^ tu:n :}
-   t tu s" package" CORE-STR=CI  t tu s" public" CORE-STR=CI or
-   t tu s" private" CORE-STR=CI or  t tu s" global" CORE-STR=CI or
-   t tu s" ;package" CORE-STR=CI or  t tu s" host" CORE-STR=CI or
-   t tu s" target" CORE-STR=CI or  t tu s" seal-package" CORE-STR=CI or
-   t tu s" using" CORE-STR=CI or  t tu s" ;using" CORE-STR=CI or
-   t tu s" export" CORE-STR=CI or  t tu s" split-str" CORE-STR=CI or
-   t tu s" cast:" CORE-STR=CI or  t tu s" linear:" CORE-STR=CI or
-   t tu s" immediate" CORE-STR=CI or ;
+\ The interpreter runs these top-level keywords before it looks the token up,
+\ so at top level none is a word. An id is its spelling's place in the list.
+: TOP-KEYWORDS ( -- ^u8 n )
+   s" package public private global ;package host target seal-package using ;using export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
+
+\ The end of the spelling that starts at s in list k ku.
+: KEYWORD-END ( ^u8 n n -- n ) {: k:^ ku:n s:n :}
+   s BEGIN dup ku < WHILE  k over + c@ 32 = IF EXIT THEN  1 + REPEAT ;
+\ The id of top-level keyword t tu, folding case, or -1.
+: TOP-KEYWORD-ID ( ^u8 n -- n ) {: t:^ tu:n :}
+   TOP-KEYWORDS {: k:^ ku:n :}
+   0 0 BEGIN over ku < WHILE
+      {: s:n id:n :}
+      k ku s KEYWORD-END {: e:n :}
+      t tu  k s +  e s -  CORE-STR=CI IF id EXIT THEN
+      e 1 +  id 1 +
+   REPEAT
+   2drop -1 ;
+: TOP-KEYWORD? ( ^u8 n -- bool ) TOP-KEYWORD-ID 0 >= ;
+s" package" TOP-KEYWORD-ID constant KW-PACKAGE
+s" public" TOP-KEYWORD-ID constant KW-PUBLIC
+s" private" TOP-KEYWORD-ID constant KW-PRIVATE
+s" global" TOP-KEYWORD-ID constant KW-GLOBAL
+s" ;package" TOP-KEYWORD-ID constant KW-END-PACKAGE
+s" host" TOP-KEYWORD-ID constant KW-HOST
+s" target" TOP-KEYWORD-ID constant KW-TARGET
+s" seal-package" TOP-KEYWORD-ID constant KW-SEAL
+s" using" TOP-KEYWORD-ID constant KW-USING
+s" ;using" TOP-KEYWORD-ID constant KW-END-USING
+s" export" TOP-KEYWORD-ID constant KW-EXPORT
+s" split-str" TOP-KEYWORD-ID constant KW-SPLIT-STR
+s" :" TOP-KEYWORD-ID constant KW-COLON
+s" kernel:" TOP-KEYWORD-ID constant KW-KERNEL
+s" trusted:" TOP-KEYWORD-ID constant KW-TRUSTED
+s" create" TOP-KEYWORD-ID constant KW-CREATE
+s" variable" TOP-KEYWORD-ID constant KW-VARIABLE
+s" constant" TOP-KEYWORD-ID constant KW-CONSTANT
+s" defer" TOP-KEYWORD-ID constant KW-DEFER
+s" cast:" TOP-KEYWORD-ID constant KW-CAST
+s" linear:" TOP-KEYWORD-ID constant KW-LINEAR
+s" immediate" TOP-KEYWORD-ID constant KW-IMMEDIATE
+
 : STATE-SWITCH? ( ^u8 n -- bool ) {: t:^ tu:n :}
    t tu s" [" CORE-STR=CI  t tu s" ]" CORE-STR=CI or ;
 

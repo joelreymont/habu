@@ -1312,13 +1312,6 @@ public
    s" rename the word, or call it by its qualified name if it is public" SAY ;
 private
 
-: SECTION? ( -- bool )
-   s" host" TOKEN-IS?  s" target" TOKEN-IS? or 0= if false exit then
-   SEARCH
-   REC @ XREF-FOUND? if TOKEN$ SECTION-REJECT  CHECKER-REJECT-RC REJECTION:STOP then
-   s" target" TOKEN-IS? if 1 else 0 then SECTION-CELL CELL!
-   true ;
-
 EXPORT CHECK:CHECKER-SPLIT-STR
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
 EXPORT CHECK:NEUTRAL-PARSE-IMM?
@@ -1326,34 +1319,6 @@ EXPORT CHECK:TYPE-SPAN-END?
 EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
 EXPORT CHECKER-RESOLVE:PRIVATE-SECTION
 EXPORT CHECKER-RESOLVE:GLOBAL-SECTION
-: PACKAGE? ( -- bool )
-   s" package" TOKEN-IS? if PKG-PACKAGE true exit then
-   s" public" TOKEN-IS? if
-      PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      PUBLIC-SECTION true exit
-   then
-   s" private" TOKEN-IS? if
-      PKG-PRI-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      PRIVATE-SECTION true exit
-   then
-   s" global" TOKEN-IS? if
-      PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
-      GLOBAL-SECTION true exit
-   then
-   s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
-   SECTION? if true exit then
-   s" seal-package" TOKEN-IS? if PKG-SEAL true exit then
-   s" using" TOKEN-IS? if PKG-USING true exit then
-   s" ;using" TOKEN-IS? if PKG-END-USING true exit then
-   s" export" TOKEN-IS? if PKG-EXPORT true exit then
-   s" split-str" TOKEN-IS? if
-      CHECKER-SPLIT-STR @ 0= if
-         TOKEN$ SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
-      then
-      true exit
-   then
-   false ;
-
 : PKG-CLEAR ( -- )
    -1 0 package-scope!
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
@@ -2792,19 +2757,77 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    cell 0 COMP-BODY:DEFER DEF-FIXED
    DEF-CLOSE ;
 
-\ `immediate` marks the newest record, whatever it is, and checks nothing.
-: DEFINE? ( -- bool )
-   s" :" TOKEN-IS? if false DEF-HEAD true exit then
-   s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
-   s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
-   s" create" TOKEN-IS? if s" create" false DEF-ADDR true exit then
-   s" variable" TOKEN-IS? if s" variable" true DEF-ADDR 1 cells allot true exit then
-   s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
-   s" defer" TOKEN-IS? if DEF-DEFER true exit then
-   s" cast:" TOKEN-IS? if DEF-CAST-ROW true exit then
-   s" linear:" TOKEN-IS? if DEF-LINEAR true exit then
-   s" immediate" TOKEN-IS? if imm-mark true exit then
-   false ;
+EXPORT CHECK:TOP-KEYWORD-ID
+EXPORT CHECK:KW-PACKAGE
+EXPORT CHECK:KW-PUBLIC
+EXPORT CHECK:KW-PRIVATE
+EXPORT CHECK:KW-GLOBAL
+EXPORT CHECK:KW-END-PACKAGE
+EXPORT CHECK:KW-HOST
+EXPORT CHECK:KW-TARGET
+EXPORT CHECK:KW-SEAL
+EXPORT CHECK:KW-USING
+EXPORT CHECK:KW-END-USING
+EXPORT CHECK:KW-EXPORT
+EXPORT CHECK:KW-SPLIT-STR
+EXPORT CHECK:KW-COLON
+EXPORT CHECK:KW-KERNEL
+EXPORT CHECK:KW-TRUSTED
+EXPORT CHECK:KW-CREATE
+EXPORT CHECK:KW-VARIABLE
+EXPORT CHECK:KW-CONSTANT
+EXPORT CHECK:KW-DEFER
+EXPORT CHECK:KW-CAST
+EXPORT CHECK:KW-LINEAR
+EXPORT CHECK:KW-IMMEDIATE
+
+\ Runs the token's code if it is a top-level keyword. `immediate` marks the
+\ newest record, whatever it is, and checks nothing.
+: KEYWORD? ( -- bool )
+   TOKEN$ TOP-KEYWORD-ID {: id:n :}
+   id 0< if false exit then
+   id KW-HOST =  id KW-TARGET = or if
+      SEARCH
+      REC @ XREF-FOUND? if TOKEN$ SECTION-REJECT  CHECKER-REJECT-RC REJECTION:STOP then
+      id KW-TARGET = if 1 else 0 then SECTION-CELL CELL!
+      true exit
+   then
+   id case
+      KW-PACKAGE of PKG-PACKAGE endof
+      KW-PUBLIC of
+         PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+         PUBLIC-SECTION
+      endof
+      KW-PRIVATE of
+         PKG-PRI-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+         PRIVATE-SECTION
+      endof
+      KW-GLOBAL of
+         PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+         GLOBAL-SECTION
+      endof
+      KW-END-PACKAGE of PKG-END-PACKAGE endof
+      KW-SEAL of PKG-SEAL endof
+      KW-USING of PKG-USING endof
+      KW-END-USING of PKG-END-USING endof
+      KW-EXPORT of PKG-EXPORT endof
+      KW-SPLIT-STR of
+         CHECKER-SPLIT-STR @ 0= if
+            TOKEN$ SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+         then
+      endof
+      KW-COLON of false DEF-HEAD endof
+      KW-KERNEL of false DEF-HEAD endof
+      KW-TRUSTED of true DEF-HEAD endof
+      KW-CREATE of s" create" false DEF-ADDR endof
+      KW-VARIABLE of s" variable" true DEF-ADDR 1 cells allot endof
+      KW-CONSTANT of DEF-CONSTANT endof
+      KW-DEFER of DEF-DEFER endof
+      KW-CAST of DEF-CAST-ROW endof
+      KW-LINEAR of DEF-LINEAR endof
+      KW-IMMEDIATE of imm-mark endof
+   endcase
+   true ;
 
 public
 
@@ -2902,8 +2925,7 @@ private
    POLICY-PRE {: found:bool :}
    COMPILING? if exit then
    LITERAL? if exit then
-   PACKAGE? if exit then
-   DEFINE? if exit then
+   KEYWORD? if exit then
    HOST-WORD? if RUN-FOUND exit then
    found if RUN-FOUND exit then
    DISPATCH ;
