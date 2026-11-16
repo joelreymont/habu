@@ -3980,15 +3980,6 @@ public
    na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
    TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN SR-FOUND = ;
 
-\ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
-\ quotation that cannot read locals, so buffer the (pkg,name) args and the
-\ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
-PTR-VARIABLE TFSR-PA   variable TFSR-PU   PTR-VARIABLE TFSR-NA   variable TFSR-NU
-variable TFSR-ID   variable TFSR-FLAG
-: TFSR-RUN ( -- )
-   TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
-   TFSR-FLAG !  TFSR-ID ! ;
-
 \ The family token na nu names in package pa and how it resolved; an ambiguous
 \ public tail (E-TFAM-AMBIG) answers SR-AMBIG.
 : TFAM-SIG-RESOLVE ( ^u8 n ^u8 n -- n n )
@@ -3998,9 +3989,8 @@ variable TFSR-ID   variable TFSR-FLAG
    THEN
    na nu TF-HIDDEN? IF 0 SR-ABSENT EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
-   pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
-   [: TFSR-RUN ;] catch {: rc:n :}
-   rc 0= IF TFSR-ID @  TFSR-FLAG @ IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
+   0 RES-FALSE [: 2drop pa pu na nu TFAM-RESOLVE ;] catch {: id flag rc:n :}
+   rc 0= IF id flag IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
    rc E-TFAM-AMBIG = IF 0 SR-AMBIG EXIT THEN
    rc throw ;
 
