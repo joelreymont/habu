@@ -50,7 +50,6 @@ using PTY-HARNESS
    \ The first line fails inside a definition it opened, so the recovery
    \ starts with the code region writable.
    s" TRUSTED: SINK ( -- ) drop ; immediate" STEP
-   S\" s\" SINK\" 0 parse-imm" STEP
    BUF-CLEAR s" : DROPPED ( -- n n ) 1 2 ; : UNDER ( -- ) SINK ;" SEND-LINE
    s" error[E-UNDERFLOW]" s" `SINK`" WAIT-AFTER TTRUE
    s" `SINK`" PROMPT-AFTER

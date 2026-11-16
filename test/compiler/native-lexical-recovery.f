@@ -43,9 +43,11 @@ package NATIVE-LEXICAL-RECOVERY
 : RECOVERY-CASE ( -- )
    GE-HB-RESET  GE-SRC-RESET
    S\" TRUSTED: LEXBAD ( -- ) s\" ['] NEVER-BOUND\" evaluate ;" GE-SRC-LINE
-   s" TRUSTED: LEXTRY ( -- ) ['] LEXBAD catch . ; immediate" GE-SRC-LINE
-   S\" s\" LEXTRY\" 0 parse-imm" GE-SRC-LINE
-   S\" : LEXWORD ( -- n ) LEXTRY s\" ; text\" 2drop 7 ;" GE-SRC-LINE
+   S\" : LEXREST ( -- ^u8 n ) s\\\" s\\\" ; text\\\" 2drop 7\" ;" GE-SRC-LINE
+   s" : MAKE-LEXWORD ( -- )" GE-SRC-LINE
+   S\"    s\" LEXWORD\" EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word" GE-SRC-LINE
+   s"    ['] LEXBAD catch .  LEXREST evaluate-closed  postpone ; ;" GE-SRC-LINE
+   s" MAKE-LEXWORD" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    s" caught parser operand refusal" GE-EXPECT-OK
@@ -70,11 +72,8 @@ package NATIVE-LEXICAL-RECOVERY
 
 public
 
-\ Only x86-64's load loop rolls back a failed parser operand. On ARM64 the
-\ kernel reader joins the failed operand to LEXWORD's body, refused for
-\ NEVER-BOUND.
 : RUN ( -- )
-   HB-TARGET-LINUX-X86-64? if RECOVERY-CASE then
+   RECOVERY-CASE
    SCOPE-CASE
    T-REPORT ;
 

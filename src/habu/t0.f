@@ -34,6 +34,7 @@ package COMP
 EXPORT CHECK:BODY-ARM
 EXPORT CHECK:DISARMER
 EXPORT CHECK:IMM-HELP
+EXPORT CHECK:IMM-MESSAGE
 EXPORT CHECK:UNDEFINED-RECORD
 
 \ ---- the tape ----------------------------------------------------------------
@@ -264,7 +265,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
 
 : UNMODELED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-UNMODELED-IMMEDIATE" REJECTION:OPEN
-   s" the compiler has no model of immediate word " SAY  a u TICKS
+   a u IMM-MESSAGE
    a u REJECTION:AT  s" immediate, not modeled" SAY
    REJECTION:HELP a u IMM-HELP REJECT ;
 
@@ -1901,7 +1902,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
 
 EXPORT CHECK:LOCW-HW-N@
 EXPORT CHECK:LOCW-HW@
-EXPORT CHECK:NEUTRAL-PARSE-IMM?
+EXPORT CHECK:NAME-IMM-READS
 EXPORT CHECK:SCAN-INCOMPLETE
 EXPORT CHECK:WF-FACT@
 EXPORT CHECK:WF-N@
@@ -1916,9 +1917,9 @@ EXPORT CHECK:WF-N@
 \ reject it.
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
-\ T0 passes over a parse-neutral immediate and rejects any other.
+\ T0 passes over an immediate the body admits and rejects any other.
 : IMM-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
-   a u NEUTRAL-PARSE-IMM? if exit then
+   a u NAME-IMM-READS 0 >= if exit then
    a u UNMODELED ;
 
 \ A generic member call at token AT whose receiver's instance the checker knew

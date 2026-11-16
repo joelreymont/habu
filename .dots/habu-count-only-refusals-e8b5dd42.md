@@ -10,7 +10,7 @@ Problem: inside MULTI-ERR-BEGIN/MULTI-ERR-END, evaluating 'TRUSTED: PV2 ( a b --
 
 Acceptance case (C2c2 fold-4 review, 2026-11-07, the same on the baseline engine and both candidates, so it predates C2c2): a does> definer whose head the checker refuses outright is published, and its caller is withheld with no diagnostic. Probe: `MULTI-ERR-BEGIN` / `: DEFR ( n -- ) drop drop create 0 , does> ( -- n ) @ ;` / `: USER ( -- ) 3 DEFR ;` / `MULTI-ERR-END . cr`, then `search-wl` for DEFR and USER: the count is 1, DEFR is found, and USER is not found and not reported. Expected: DEFR is not published, and USER is reported (undefined DEFR) and counted, so the count is 2 and matches the diagnostics.
 
-Acceptance case 2026-11-10 (hunt of habu-all-errors-reports-09344102; not rerun by the lead): 'TRUSTED: X ( -- ) s" drop" evaluate ;' under a multi-error load adds 1 with no packet and X is published. Part B of that dot (the run reporting every refusal under --all-errors) fails its run on a nonzero count, so it depends on this dot.
+Acceptance case 2026-11-10 (a hunt; not rerun by the lead): 'TRUSTED: X ( -- ) s" drop" evaluate ;' under a multi-error load adds 1 with no packet and X is published. The multi-error check of habu-check-src-through-1198f4ed reports every rejection once only when this count is right.
 
 Hunt in work 2026-11-10 on master beca69b3: the dot's probe files under /tmp are gone; the three reproducers are rebuilt from this text. The suspected cause above is treated as a hypothesis.
 

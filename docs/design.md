@@ -343,9 +343,11 @@ an xt from untyped memory is refused at `execute`.
 
 **Immediates in checked bodies.** An immediate runs at compile time on the
 interpret stack, so applying its declared effect to the body would certify a
-step the body does not contain. Until compile-time expansion is modelled, a
-signature-carrying immediate in a checked body is refused; modelled parsing
-immediates such as `[char]` pass.
+step the body does not contain. An immediate in a checked body runs while the
+body compiles, reads the tokens its `parses:` row states and writes nothing:
+its effect is `( -- )`, and it defines no word and adds nothing to the
+definition, so the body the check sees is the body compiled. Any other is
+refused; modelled parsing immediates such as `[char]` pass.
 
 ## Ownership
 

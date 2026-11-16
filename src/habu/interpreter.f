@@ -1295,7 +1295,7 @@ private
 
 EXPORT CHECK:CHECKER-SPLIT-STR
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
-EXPORT CHECK:NEUTRAL-PARSE-IMM?
+EXPORT CHECK:NAME-IMM-READS
 EXPORT CHECK:TYPE-SPAN-END?
 EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
 EXPORT CHECKER-RESOLVE:PRIVATE-SECTION
@@ -1860,29 +1860,35 @@ TYPED-VARIABLE GROUP-OPEN ^u8
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    IMMEDIATE-CHECK ;
 
-\ NEUTRAL-PARSE-IMM? asks the live checker: the retained one lacks a build window's
-\ `parse-imm` rows.
-: DEF-IMMEDIATE ( -- ^n bool )
+\ The immediate the token names, the raw tokens it reads, and true when the
+\ checker admits it (NAME-IMM-READS); any other but `does>` meets the preflight.
+: DEF-IMMEDIATE ( -- ^n n bool )
    TOKEN$ FIND-SCOPE {: rec:^ :}
-   rec XREF-FOUND? 0= if NULL-PTR false exit then
-   rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
+   rec XREF-FOUND? 0= if NULL-PTR 0 false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR 0 false exit then
    TOKEN$ rec POLICY-CHECK-REC
-   rec TOKEN$ NEUTRAL-PARSE-IMM?
+   TOKEN$ NAME-IMM-READS {: cnt:n :}
+   rec cnt  cnt 0 >=
    dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
 \ The occurrence is selected before the preflight, so a preflight that retires
-\ it cannot substitute a reused dictionary slot.
-: DEF-RUN ( ^n -- )
+\ it cannot substitute a reused dictionary slot. With CNT above 0 the immediate
+\ runs with INE at the end of the CNT raw tokens after it, and INP resumes there.
+: DEF-RUN ( ^n n -- ) {: cnt:n :}
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    DEF-PREFLIGHT
    slot occurrence DEF-OCC:RESOLVE {: rec:^ :}
+   INE-CELL ADDR@ {: ine:^ :}
+   INP-CELL ADDR@  cnt 0 ?do ine BLANKS-END ine WORD-END loop {: end:^ :}
+   cnt 0 > if end INE-CELL ADDR! then
    rec XREF-NULL - XREF-ADDR>INDEX RUN+
    rec XREF-START
-   execute-floor FLOORED ;
+   execute-floor FLOORED
+   cnt 0 > if ine INE-CELL ADDR!  end INP-CELL ADDR! then ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then
-   drop false ;
+   drop drop false ;
 
 \ `does>` ends a defining word's own part: DOESB takes the capture's length
 \ with `does>` in it, where `;` splits the body, and the signature after it,

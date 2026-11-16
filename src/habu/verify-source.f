@@ -17,8 +17,7 @@
 \
 \ A skipped top-level string literal is kept in one slot so the string the
 \ scanner would otherwise discard reaches the row that replays it: a string
-\ loader's path, a name before a call of a word a names: row marks, and the
-\ name of a top-level `s" X" n parse-imm`, kept past the count's statement. The
+\ loader's path and a name before a call of a word a names: row marks. The
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
 \ token it holds the literal before it in the same statement, if any. The
@@ -33,11 +32,8 @@
 \ buffer the next decode writes, or that a reserve for it moves. No reader
 \ reads an older answer after the next decode. A top-level literal's answer
 \ goes to the slot, which the handler of the token NEXT-SCAN answers reads
-\ before the next NEXT-SCAN resets it: only TOP-PREV-STR may hold an older
-\ answer, and the parse-imm row reads it only when no literal came before its
-\ token, so no decode came between. Only the string loaders, a call of a word
-\ a names: row marks, and a top-level `parse-imm` read the slot; a body literal
-\ keeps only its kind.
+\ before the next NEXT-SCAN resets it. Only the string loaders and a call of a
+\ word a names: row marks read the slot; a body literal keeps only its kind.
 \
 \ A composition rejects the top-level loader forms discovery rejects, where it
 \ meets them, so that walk need not run first: a path that is no literal, a
@@ -214,9 +210,6 @@ variable STR-LAST-AT
 variable STR-LAST-END
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
-PTR-VARIABLE TOP-PREV-STR-A               \ the slot's last literal as TOP-PREV's
-variable TOP-PREV-STR-U                  \ statement ended, its kind 0 for none
-variable TOP-PREV-STR-KIND               \ (PARSE-IMM-ROW)
 PTR-VARIABLE TOP-REFUSED
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
@@ -564,7 +557,6 @@ EXPORT CHECK:CHECKER-LBUF-NAME-OK?
 EXPORT CHECK:CHECKER-LBUF-SUFFIXED$
 EXPORT CHECK:CHECKER-LINEAR-TAKEN
 EXPORT CHECK:CHECKER-PACKAGE
-EXPORT CHECK:CHECKER-PARSE-IMM
 EXPORT CHECK:CHECKER-PRIVATE
 EXPORT CHECK:CHECKER-PUBLIC
 EXPORT CHECK:CHECKER-QPKG$
@@ -582,11 +574,10 @@ EXPORT CHECK:CHECKER-UNDEFINE
 EXPORT CHECK:CLOSE-USING
 EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:DOES-UNMADE-OPEN
+EXPORT CHECK:IMM-READS
 EXPORT CHECK:MULTI-ERR?
 EXPORT CHECK:OPEN-USING
-EXPORT CHECK:PIMM-CNT@
-EXPORT CHECK:PIMM-IX
-EXPORT CHECK:PIMM-N
+EXPORT CHECK:PROW-ADD-TEXT
 EXPORT CHECK:PROW-FIND
 EXPORT CHECK:SIG-RAW-MODE
 EXPORT CHECK:SPLIT-STR-FILE?
@@ -1161,13 +1152,11 @@ variable GROUP-AT
    THEN
    p pu ;
 
-\ A declared parsing immediate's payload is read raw, across line ends, and
-\ never joins the body; a using rejection is left to the definition's check.
+\ The tokens an admitted immediate's `parses:` count names are read raw, across
+\ line ends, and never join the body; a using rejection is left to the definition's check.
 : SKIP-PAYLOAD ( ^u8 n -- ) {: a:^ u:n :}
-   PIMM-N @ 0= IF EXIT THEN
-   a u CHECKER-FIND-QUIET-SYM PIMM-IX {: ix:n :}
-   ix 0 < IF EXIT THEN
-   ix PIMM-CNT@ 0 ?DO NEXT-RAW 2drop LOOP ;
+   a u a u CHECKER-FIND-QUIET-SYM IMM-READS {: cnt:n :}
+   cnt 0 > IF cnt 0 ?DO NEXT-RAW 2drop LOOP THEN ;
 
 \ A local or a group skips BODY-TOKEN-SEEN, so it clears the literal before it:
 \ a token after it is no word right after a path literal.
@@ -2949,6 +2938,8 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
 \ Rendered text no row declares is source this scan never reads.
 : RENDER-GAP ( ^u8 n -- )
    {: a:^ u:n :}
+   \ `;` is reserved: it ends a definition its opener began, and its gap is the opener's.
+   a u s" ;" STR=CI IF EXIT THEN
    a u DECLARED-RENDER? IF EXIT THEN
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-DEFER and 0<>
    IF a u DW-DEFER DEFER-AT EXIT THEN
@@ -3049,7 +3040,8 @@ private
    PRS-TERMS-END row PRS-AT !
    PRS-OWNER-BASE row PRS-OWNER !  sym row PRS-SYM !  eff1 row PRS-EFF !
    count row PRS-COUNT !  len row PRS-LEN !
-   row 1 + VERIFY-PARSES-N ! ;
+   row 1 + VERIFY-PARSES-N !
+   sym count  row PRS-AT @ PRS-TERMS  len PROW-ADD-TEXT ;
 
 \ Read and checked as the engine word does.
 : NAMES-ROW ( ^u8 n -- )
@@ -3131,7 +3123,8 @@ private
    PRS-OWNER-BASE row PRS-OWNER !  sym row PRS-SYM !  eff1 row PRS-EFF !
    src PRS-COUNT @ row PRS-COUNT !
    src PRS-AT @ row PRS-AT !  src PRS-LEN @ row PRS-LEN !
-   row 1 + VERIFY-PARSES-N ! ;
+   row 1 + VERIFY-PARSES-N !
+   sym row PRS-ROW PROW-ADD-TEXT ;
 
 \ The export's record is the open section's, under the tail the checker
 \ recorded; its declaring token is the name as written, from byte at.
@@ -3665,22 +3658,6 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
-\ `parse-imm` is the engine's word only where the load binds the token to its
-\ code, read as the storage definers are (LIBRARY-DEFINER?).
-variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
-
-\ A top-level `s" X" n parse-imm` adds X's row as its load does, since nothing
-\ of the subject runs: n the previous token, X the last literal before it, A U
-\ the `parse-imm` token.
-: PARSE-IMM-ROW ( ^u8 n -- bool ) {: a:^ u:n :}
-   STR-LAST-KIND @ 0<> IF false EXIT THEN
-   TOP-PREV-STR-KIND @ LIT-PATH <> IF false EXIT THEN
-   TOP-PREV-U @ 0= IF false EXIT THEN
-   TOP-PREV-A @ TOP-PREV-U @ num-parse {: cnt:n flt:bool num:bool :}
-   num 0= flt or IF false EXIT THEN
-   TOP-PREV-STR-A @ TOP-PREV-STR-U @ cnt a u CHECKER-PARSE-IMM
-   true ;
-
 : RECORD-DEFINER? ( ^u8 n -- bool ) {: a:^ u:n :}
    \ A program's own word spelled like a declaration is not one.
    a u TOP-BINDING nip nip BINDING-ID {: id:n :}
@@ -3755,7 +3732,6 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" immediate" STR=CI IF
       TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
    THEN
-   a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF a u PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ A word that makes definitions when it runs (`;FUNCTION`) defines words this
    \ scan never reads: the checker marks the statement's wordlist and leaves a
@@ -4022,7 +3998,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    SCAN-RESET
    SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
-   NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
    TOP-CLOSE
    BEGIN
@@ -4031,8 +4006,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       2dup TOP-CUR-U ! TOP-CUR-A !
       [: TOP-CUR-A @ TOP-CUR-U @ SCAN-TOP ;] REJECTION:READING
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
-      STR-LAST-A @ TOP-PREV-STR-A !  STR-LAST-U @ TOP-PREV-STR-U !
-      STR-LAST-KIND @ TOP-PREV-STR-KIND !
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with

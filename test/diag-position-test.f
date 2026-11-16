@@ -555,20 +555,28 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
+\ The rejection's notes: an immediate in a body has the effect ( -- ), and
+\ this one's is ( n -- ).
+: IMM-EFFECT-NOTES ( -- )
+   0 s" expected" s" ( -- )" NOTE=
+   0 s" found" s" ( n -- )" NOTE= ;
+
 \ --verify-only runs no definition, yet reads a source word made immediate as
 \ the load does: a body that calls it is rejected at the call.
 : TEST-SOURCE-IMMEDIATE ( -- )
    s" a source word made immediate" T-LABEL
    SB-RESET
-   s" : W1 ( -- ) ; immediate" SB-APPEND LF+
+   s" : W1 ( n -- ) drop ; immediate" SB-APPEND LF+
    s" : USE ( -- n ) W1 73 ;" SB-APPEND LF+
    s" source-immediate.f" FIXTURE!
    s" " CHECK
    0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
-   0 s" W1" 2 16 39 41 AT
+   0 s" W1" 2 16 46 48 AT
+   IMM-EFFECT-NOTES
    s" --verify-only" CHECK
    0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
-   0 s" W1" 2 16 39 41 FX-PATH$ CANON$ FX$ AT-IN
+   0 s" W1" 2 16 46 48 FX-PATH$ CANON$ FX$ AT-IN
+   IMM-EFFECT-NOTES
    \ An `immediate` after a SUMTYPE marks nothing: W0 stays an ordinary call.
    s" an immediate after a SUMTYPE" T-LABEL
    SB-RESET
@@ -600,20 +608,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" USE ." SB-APPEND LF+
    s" undefined-immediate.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT ;
-
-\ A definition holding a parsing immediate takes none of its facts, so
-\ --verify-only certifies a top-level call of it.
-: TEST-PARSE-IMM-NO-STEP ( -- )
-   s" a parsing immediate that only parses" T-LABEL
-   SB-RESET
-   s" : HIT ( -- ) parse-name 2drop ;" SB-APPEND LF+
-   s" : PI ( -- ) HIT ; immediate" SB-APPEND LF+
-   s\" s\" PI\" 1 parse-imm" SB-APPEND LF+
-   s" : USE ( -- n ) PI zz 73 ;" SB-APPEND LF+
-   s" USE . cr" SB-APPEND LF+
-   s" pimm-parses.f" FIXTURE!
-   s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 0 T= ;
 
 \ --verify-only rejects an `undefine` of a word the package scope does not
 \ define, as the load does.
@@ -671,39 +665,30 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" W-CHECK-DEFERRED" FIELD=
    0 s" [if]" 3 21 85 89 FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ The fixture's one rejection, CODE at its `parse-imm` token, under the check
-\ and under --verify-only.
-: PIMM-REJECTED ( ^u8 n n n n n -- )
-   {: code:^ codeu:n line:n col:n bs:n be:n :}
+\ The fixture's one rejection, E-PARSES-ROW at TOK, under the check and under
+\ --verify-only.
+: ROW-REJECTED ( ^u8 n n n n n -- )
+   {: tok:^ toku:n line:n col:n bs:n be:n :}
    s" " CHECK
    GJA-LINE# @ 1 T=
-   0 s" code" code codeu FIELD=
-   0 s" parse-imm" line col bs be AT
+   0 s" code" s" E-PARSES-ROW" FIELD=
+   0 tok toku line col bs be AT
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
-   0 s" code" code codeu FIELD=
-   0 s" parse-imm" line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   0 s" code" s" E-PARSES-ROW" FIELD=
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A parse-imm row the load cannot honour is rejected at its `parse-imm`: the
-\ load compiles a payload a word not immediate never reads, which the check
-\ would skip.
-: TEST-PARSE-IMM-REJECT ( -- )
-   s" a parse-imm naming a word not immediate" T-LABEL
+: TEST-PARSES-REJECT ( -- )
+   s" a parses: row naming an undefined word" T-LABEL
    SB-RESET
-   s" : W ( -- ) ;" SB-APPEND LF+
-   s\" s\" W\" 1 parse-imm" SB-APPEND LF+
-   s" pimm-not-immediate.f" FIXTURE!
-   s" E-PARSE-IMM-NOT-IMMEDIATE" 2 9 21 30 PIMM-REJECTED
-   s" a parse-imm naming an undefined word" T-LABEL
+   s" parses: NOPE 1" SB-APPEND LF+
+   s" parses-undefined.f" FIXTURE!
+   s" NOPE" 1 9 8 12 ROW-REJECTED
+   s" a parses: row with a negative count" T-LABEL
    SB-RESET
-   s\" s\" NOPE\" 1 parse-imm" SB-APPEND LF+
-   s" pimm-undefined.f" FIXTURE!
-   s" E-UNDEFINED" 1 12 11 20 PIMM-REJECTED
-   s" a parse-imm with a negative count" T-LABEL
-   SB-RESET
-   s\" s\" W\" -1 parse-imm" SB-APPEND LF+
-   s" pimm-count.f" FIXTURE!
-   s" E-PARSE-IMM-COUNT" 1 10 9 18 PIMM-REJECTED ;
+   s" parses: W -1" SB-APPEND LF+
+   s" parses-count.f" FIXTURE!
+   s" W" 1 9 8 9 ROW-REJECTED ;
 
 \ A refused `generates:` row is the verifier's own packet.
 : TEST-GENERATES ( -- )
@@ -2630,11 +2615,11 @@ HB-TARGET-LINUX? 0= [if]
    0 21 MK-DEFERRED
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" REJECT-RC LOADED-AT ;
 
-\ The fixture's first line: RAW-IMM, an immediate the checker has no model for,
+\ The fixture's first line: RAW-IMM, an immediate whose effect is not ( -- ),
 \ so the load refuses each body that compiles it before it runs.
 : RAW-IMM-LINE ( -- )
    SB-RESET
-   s" TRUSTED: RAW-IMM ( -- ) ; immediate" SB-APPEND LF+ ;
+   s" : RAW-IMM ( n -- ) drop ; immediate" SB-APPEND LF+ ;
 
 \ A refusal in the run, before an immediate runs or at `;`, names its token's
 \ place in the file though comments, blank lines, tabs and runs of spaces
@@ -2647,11 +2632,13 @@ HB-TARGET-LINUX? 0= [if]
    s"    RAW-IMM ;" SB-APPEND LF+
    s" imm-comments.f" FIXTURE!
    s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 3 4 95 102 RUN-REFUSED-AT
+   IMM-EFFECT-NOTES
    s" an unmodeled immediate after a paren comment on its line" T-LABEL
    RAW-IMM-LINE
    s" : P ( -- ) 1 drop ( a note ) RAW-IMM ;" SB-APPEND LF+
    s" imm-paren.f" FIXTURE!
    s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 2 30 65 72 RUN-REFUSED-AT
+   IMM-EFFECT-NOTES
    s" an unmodeled immediate after blank lines and tabs" T-LABEL
    RAW-IMM-LINE
    s" : P ( -- )" SB-APPEND TAB+ s" 1" SB-APPEND TAB+ TAB+ s" drop" SB-APPEND LF+
@@ -2659,6 +2646,7 @@ HB-TARGET-LINUX? 0= [if]
    TAB+ s"   RAW-IMM ;" SB-APPEND LF+
    s" imm-blanks.f" FIXTURE!
    s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 5 4 60 67 RUN-REFUSED-AT
+   IMM-EFFECT-NOTES
    s" a call of MADE, whose address X does not declare, after comments" T-LABEL
    SB-RESET
    s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
@@ -2668,28 +2656,305 @@ HB-TARGET-LINUX? 0= [if]
    s" made-call-comments.f" FIXTURE!
    s" E-MISMATCH" s" MADE" 4 4 66 70 RUN-REFUSED-AT ;
 
-\ The fixture's first two lines: EV, an immediate the checker models as parsing
-\ nothing, which evaluates `drop` into the body it runs in.
-: EV-LINES ( -- )
-   SB-RESET
-   s\" TRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate" SB-APPEND LF+
-   s\" s\" EV\" 0 parse-imm" SB-APPEND LF+ ;
+\ The check with FLAG gives one record, the immediate `EV` at 2:38, which may
+\ write into the body it runs in.
+: EV-WRITES ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" EV" 2 38 86 88 AT
+   0 s" message"
+   s" `EV` runs while the definition compiles and may define words or add to a definition"
+   FIELD= ;
 
-\ A rejection at a token an immediate evaluated into the run, which no source
-\ holds, is placed at the `;` the reader is on; a token after it in the file
-\ keeps its true place.
-: TEST-RUN-UNSOURCED ( -- )
-   s" an underflow at a drop an immediate evaluated, after a comment" T-LABEL
-   EV-LINES
+\ An immediate that evaluates text into the body it runs in is rejected at the
+\ immediate.
+: TEST-IMM-COMPILES ( -- )
+   s" an immediate that evaluates into its body" T-LABEL
+   SB-RESET
+   s\" : EV ( -- ) s\" drop\" evaluate-closed ; immediate" SB-APPEND LF+
    s" : P ( -- ) ( a comment here ) 1 drop EV ;" SB-APPEND LF+
    s" ev-none.f" FIXTURE!
-   s" E-INPUT-UNDERFLOW" s" ;" 3 41 108 109 RUN-REFUSED-AT
+   s" " EV-WRITES
+   s" --verify-only" EV-WRITES
+   s" E-UNMODELED-IMMEDIATE" s" :2:38" REJECT-RC LOADED-AT
+   GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
+
+\ The fixture's first two lines: OPEN2 and OPEN3, definers that evaluate `drop`
+\ and `1 1` into the definition they open.
+: OPEN-LINES ( -- )
+   SB-RESET
+   s\" : OPEN2 ( ^u8 n -- ) EFFECT:EMPTY define-word s\" drop\" evaluate-closed ;" SB-APPEND LF+
+   s\" : OPEN3 ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word s\" 1 1\" evaluate-closed ;" SB-APPEND LF+ ;
+
+\ A rejection at a token a definer evaluates, which no source holds, is placed at the
+\ `;` the reader is on; a file token after it keeps its own place.
+: TEST-RUN-UNSOURCED ( -- )
+   s" an underflow at a drop a definer evaluates, after a comment" T-LABEL
+   OPEN-LINES
+   s\" s\" Q\" OPEN2 ( a comment ) ;" SB-APPEND LF+
+   s" open-none.f" FIXTURE!
+   s" E-INPUT-UNDERFLOW" s" ;" 3 27 191 192 RUN-REFUSED-AT
    s" a mismatch at a drop in the file after an evaluated one" T-LABEL
-   EV-LINES
-   s" : P ( -- n ) ( a comment here ) 1 1 EV" SB-APPEND LF+
-   s"   drop ;" SB-APPEND LF+
-   s" ev-after.f" FIXTURE!
-   s" E-MISMATCH" s" drop" 4 3 109 113 RUN-REFUSED-AT ;
+   OPEN-LINES
+   s\" s\" Q\" OPEN3 ( a comment here )" SB-APPEND LF+
+   s"   drop drop ;" SB-APPEND LF+
+   s" open-after.f" FIXTURE!
+   s" E-MISMATCH" s" drop" 4 8 203 207 RUN-REFUSED-AT ;
+
+\ The fixture's first three lines: V reads one token, and M postpones it.
+: PP-LINES ( -- )
+   SB-RESET
+   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" parses: V 1" SB-APPEND LF+
+   s" : M ( -- ) postpone V ; immediate" SB-APPEND LF+ ;
+
+\ The check with FLAG gives one record, the unread immediate `M` at 4:12.
+: PP-UNREAD ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" M" 4 12 97 98 AT
+   0 s" message"
+   s" `M` reads the source after it and no `parses:` row says how many tokens" FIELD= ;
+
+\ The check, --verify-only and the load agree: rc 0, and the load's stderr
+\ is empty.
+: THREE-ADMIT ( -- )
+   s" " 0 CHECK-EXIT  GJA-LINE# @ 0 T=
+   s" --verify-only" 0 CHECK-EXIT  GJA-LINE# @ 0 T=
+   s" " 0 LOADED ;
+
+\ A postponed immediate runs when the word runs, so the word that postpones
+\ it reads what it reads.
+: TEST-IMM-POSTPONED ( -- )
+   s" a postponed reading immediate with no parses: row" T-LABEL
+   PP-LINES
+   s" : P ( -- ) M x ;" SB-APPEND LF+
+   s" imm-pp-unread.f" FIXTURE!
+   s" " PP-UNREAD
+   s" --verify-only" PP-UNREAD
+   s" E-UNMODELED-IMMEDIATE" s" :4:12" REJECT-RC LOADED-AT
+   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
+   s" a postponed reading immediate with its parses: row" T-LABEL
+   PP-LINES
+   s" parses: M 1" SB-APPEND LF+
+   s" : P ( -- ) M x ;" SB-APPEND LF+
+   s" imm-pp-read.f" FIXTURE!
+   THREE-ADMIT ;
+
+\ The fixture's first two lines: V executes the xt of W, which reads one token.
+: TK-LINES ( -- )
+   SB-RESET
+   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : V ( -- ) ['] W execute ; immediate" SB-APPEND LF+ ;
+
+\ The check with FLAG gives one record, the unread immediate `V` at 3:14.
+: TK-UNREAD ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" V" 3 14 80 81 AT
+   0 s" message"
+   s" `V` reads the source after it and no `parses:` row says how many tokens" FIELD= ;
+
+\ The check with FLAG gives one record, the unread immediate `V` at 5:16.
+: TJ-UNREAD ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" V" 5 16 153 154 AT ;
+
+\ An xt chosen at a branch join keeps the facts of both branches' ticks.
+: TK-JOINED ( -- )
+   s" an immediate executing an xt one branch ticks from a reading word" T-LABEL
+   SB-RESET
+   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : NOP ( -- ) ;" SB-APPEND LF+
+   s" variable FLAG  -1 FLAG !" SB-APPEND LF+
+   s" : V ( -- ) FLAG @ 0= IF ['] NOP ELSE ['] W THEN execute ; immediate"
+   SB-APPEND LF+
+   s" : P ( -- n n ) V 7 5 ;" SB-APPEND LF+
+   s" P . ." SB-APPEND LF+
+   s" imm-tk-join.f" FIXTURE!
+   s" " TJ-UNREAD
+   s" --verify-only" TJ-UNREAD
+   s" E-UNMODELED-IMMEDIATE" s" :5:16" REJECT-RC LOADED-AT ;
+
+\ An immediate reads what the words it ticks and executes read.
+: TEST-IMM-TICKED ( -- )
+   s" an immediate executing a ticked reading word, with no parses: row" T-LABEL
+   TK-LINES
+   s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-tk-unread.f" FIXTURE!
+   s" " TK-UNREAD
+   s" --verify-only" TK-UNREAD
+   s" E-UNMODELED-IMMEDIATE" s" :3:14" REJECT-RC LOADED-AT
+   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
+   s" an immediate executing a ticked reading word, with its parses: row" T-LABEL
+   TK-LINES
+   s" parses: V 1" SB-APPEND LF+
+   s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-tk-read.f" FIXTURE!
+   THREE-ADMIT
+   GT-OUT$ s" 5" CONTAINS? TTRUE
+   TK-JOINED ;
+
+\ The check with FLAG gives one record, the immediate `V` at 3:16, which may
+\ write into the body it runs in.
+: ITEM-WRITES ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" V" 3 16 84 85 AT
+   0 s" message"
+   s" `V` runs while the definition compiles and may define words or add to a definition"
+   FIELD= ;
+
+\ An immediate that appends a definition's items through EFFECT writes into
+\ the body it runs in.
+: TEST-IMM-ITEM ( -- )
+   s" an immediate appending a call through EFFECT:CALL" T-LABEL
+   SB-RESET
+   s" : NEG ( n -- n ) negate ;" SB-APPEND LF+
+   s\" : V ( -- ) s\" NEG\" EFFECT:CALL ; immediate" SB-APPEND LF+
+   s" : P ( n -- n ) V ;" SB-APPEND LF+
+   s" 5 P ." SB-APPEND LF+
+   s" imm-item.f" FIXTURE!
+   s" " ITEM-WRITES
+   s" --verify-only" ITEM-WRITES
+   s" E-UNMODELED-IMMEDIATE" s" :3:16" REJECT-RC LOADED-AT
+   GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
+
+\ The fixture's first five lines: MK makes Q, which postpones V, so a reader
+\ that cannot run MK defers R's body at Q.
+: MK-Q-LINES ( -- )
+   SB-RESET
+   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" parses: V 1" SB-APPEND LF+
+   s" : MK ( ^u8 n -- ) EFFECT:EMPTY define-word ['] V compile, postpone ; ;" SB-APPEND LF+
+   s\" s\" Q\" MK" SB-APPEND LF+
+   s" : R ( -- ) Q ; immediate" SB-APPEND LF+ ;
+
+\ --verify-only gives status 0 and N records, the second R's body deferred at Q.
+: Q-DEFERRED ( n -- ) {: n:n :}
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ n T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" Q" 5 12 143 144 AT ;
+
+\ An immediate whose body the check deferred: with no row the readers that see the body reject it;
+\ its `parses:` row stands unjudged where it was deferred, and bounds the use.
+: TEST-IMM-DEFERRED-BODY ( -- )
+   s" an immediate whose body the check deferred, with no parses: row" T-LABEL
+   MK-Q-LINES
+   s" : P ( -- ) R x ;" SB-APPEND LF+
+   s" imm-dq-unread.f" FIXTURE!
+   s" " CHECK
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" R" 6 12 168 169 AT
+   0 s" message"
+   s" `R` reads the source after it and no `parses:` row says how many tokens" FIELD=
+   3 Q-DEFERRED
+   s" E-UNMODELED-IMMEDIATE" s" :6:12" REJECT-RC LOADED-AT
+   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
+   s" an immediate whose body the check deferred, with its parses: row" T-LABEL
+   MK-Q-LINES
+   s" parses: R 1" SB-APPEND LF+
+   s" : P ( -- ) R dup ;" SB-APPEND LF+
+   s" imm-dq-read.f" FIXTURE!
+   s" " 0 CHECK-EXIT  GJA-LINE# @ 0 T=
+   2 Q-DEFERRED
+   s" " 0 LOADED ;
+
+\ An immediate calling a word whose body the check deferred: the walk saw no fact of it, so every
+\ reader admits it.
+: TEST-IMM-CALLS-DEFERRED ( -- )
+   s" an immediate calling a word whose body the check deferred" T-LABEL
+   SB-RESET
+   s" : MK ( ^u8 n -- ) EFFECT:EMPTY define-word postpone ; ;" SB-APPEND LF+
+   s\" s\" Q\" MK" SB-APPEND LF+
+   s" : R ( -- ) Q ;" SB-APPEND LF+
+   s" : S ( -- ) R ; immediate" SB-APPEND LF+
+   s" : P ( -- ) S ;" SB-APPEND LF+
+   s" P" SB-APPEND LF+
+   s" imm-dq-call.f" FIXTURE!
+   s" " 0 CHECK-EXIT  GJA-LINE# @ 0 T=
+   s" --verify-only" 0 CHECK-EXIT  GJA-LINE# @ 2 T=
+   s" " 0 LOADED ;
+
+\ The check with FLAG gives one record, the immediate `V` at 2:14, which may
+\ move the source root.
+: ROOT-MOVES ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" V" 2 14 63 64 AT
+   0 s" message"
+   s" `V` runs while the definition compiles and may move the source root" FIELD=
+   0 s" help" s" move the root at top level, before the definition" FIELD= ;
+
+\ An immediate that may move the source root is rejected at the immediate.
+: TEST-IMM-ROOTS ( -- )
+   s" an immediate moving the source root" T-LABEL
+   SB-RESET
+   s\" : V ( -- ) s\" /tmp\" SOURCE-ROOT:ROOT! ; immediate" SB-APPEND LF+
+   s" : P ( -- n ) V 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-roots.f" FIXTURE!
+   s" " ROOT-MOVES
+   s" --verify-only" ROOT-MOVES
+   s" E-UNMODELED-IMMEDIATE" s" :2:14" REJECT-RC LOADED-AT
+   GT-ERR$ s" may move the source root" CONTAINS? TTRUE ;
+
+\ The fixture's first five lines: V calls the deferred D, set to W, which reads
+\ one token.
+: DC-LINES ( -- )
+   SB-RESET
+   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" defer D ( -- )" SB-APPEND LF+
+   s" : SET ( -- ) ['] W is D ;" SB-APPEND LF+
+   s" SET" SB-APPEND LF+
+   s" : V ( -- ) D ; immediate" SB-APPEND LF+ ;
+
+\ The check with FLAG gives one record, the immediate `V` at 6:14, which calls
+\ words the check cannot see.
+: DC-UNSEEN ( ^u8 n -- )
+   REJECT-RC CHECK-EXIT
+   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
+   0 s" V" 6 14 113 114 AT
+   0 s" message"
+   s" `V` runs while the definition compiles and calls words the check cannot see" FIELD= ;
+
+\ An immediate that calls a deferred word runs what is set in it, which the
+\ check cannot see: only a `parses:` row admits it.
+: TEST-IMM-DEFERRED-CALL ( -- )
+   s" an immediate calling a deferred word, with no parses: row" T-LABEL
+   DC-LINES
+   s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-dc-unseen.f" FIXTURE!
+   s" " DC-UNSEEN
+   s" --verify-only" DC-UNSEEN
+   s" E-UNMODELED-IMMEDIATE" s" :6:14" REJECT-RC LOADED-AT
+   GT-ERR$ s" calls words the check cannot see" CONTAINS? TTRUE
+   s" an immediate calling a deferred word, with its parses: row" T-LABEL
+   DC-LINES
+   s" parses: V 1" SB-APPEND LF+
+   s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-dc-read.f" FIXTURE!
+   THREE-ADMIT
+   GT-OUT$ s" 5" CONTAINS? TTRUE ;
+
+\ A parses: count reads the operand on the next line.
+: TEST-IMM-LINE-END ( -- )
+   s" a parses: count read across a line end" T-LABEL
+   SB-RESET
+   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" parses: V 1" SB-APPEND LF+
+   s" : P ( -- n ) V" SB-APPEND LF+
+   s"   a 5 ;" SB-APPEND LF+
+   s" P ." SB-APPEND LF+
+   s" imm-line-end.f" FIXTURE!
+   THREE-ADMIT
+   GT-OUT$ s" 5" CONTAINS? TTRUE ;
 
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
@@ -3444,82 +3709,64 @@ HB-TARGET-LINUX? 0= [if]
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP2:A" 10 8 134 139 AT ;
 
-\ The source scan records Q-ONE's parse-imm row inside a checker scope that
+\ The source scan records Q-ONE's parses: row inside a checker scope that
 \ rolls back; Q-TWO takes the symbol id it retired, and the restore dropped the
 \ row, so Q-TWO is rejected as never declared.
-: TEST-STALE-PARSE-IMM ( -- )
-   s" a parse-imm row made in a scope that rolls back" T-LABEL
+: TEST-STALE-PARSES ( -- )
+   s" a parses: row made in a scope that rolls back" T-LABEL
    SB-RESET
    s" : Q-SCAN ( -- )" SB-APPEND LF+
-   s\"    s\\\" : Q-ONE ( -- ) ; immediate s\\\" Q-ONE\\\" 0 parse-imm\""
+   s\"    s\\\" : Q-ONE ( -- ) parse-name 2drop ; immediate parses: Q-ONE 1\""
    SB-APPEND LF+
    s" [: ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;" SB-APPEND LF+
    s" ' Q-SCAN CHECK:SCOPED" SB-APPEND LF+
-   s" : Q-TWO ( -- ) ; immediate" SB-APPEND LF+
+   s" : Q-TWO ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
    s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
-   s" stale-parse-imm.f" FIXTURE!
+   s" stale-parses.f" FIXTURE!
    s" E-UNMODELED-IMMEDIATE" s" :6:20" REJECT-RC LOADED-AT ;
 
-\ PK's own word spelt `parse-imm` is the call the load makes, not the engine's
-\ word, so W1 stays undeclared and the check and the load both reject it in
-\ USE. Replayed as the engine's, it would declare W1 and the check would accept.
-: TEST-OWN-PARSE-IMM ( -- )
-   s" a package's own word spelt parse-imm" T-LABEL
-   SB-RESET
-   s" : W1 ( -- ) ; immediate" SB-APPEND LF+
-   s" package PK" SB-APPEND LF+
-   s" : parse-imm ( ^u8 n n -- ) drop drop drop ;" SB-APPEND LF+
-   s\" s\" W1\" 0 parse-imm" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s" : USE ( -- n ) W1 73 ;" SB-APPEND LF+
-   s" own-parse-imm.f" FIXTURE!
-   s" " CHECK
-   0 s" code" s" E-UNMODELED-IMMEDIATE" FIELD=
-   0 s" token" s" W1" FIELD=
-   s" error[E-UNMODELED-IMMEDIATE]: `W1` is a compile-time immediate"
-   REJECT-RC LOADED ;
-
-\ The parse-imm table grows: a check and a load accept 40 declared parsing
+\ The parses: table grows: a check and a load accept 40 declared parsing
 \ immediates, and the load runs each one at compile time.
-: PIMM-NAME+ ( n -- ) {: k:n :}
+: PI-NAME+ ( n -- ) {: k:n :}
    s" PI" SB-APPEND  k 10 / 48 + SB-APPEND-C  k 10 mod 48 + SB-APPEND-C ;
 
 \ Ends the line in the string builder and moves it onto the fixture text.
-: PIMM-LINE+ ( -- )
+: PI-LINE+ ( -- )
    LF+ SB$ FX+ SB-RESET ;
 
-: TEST-GROWN-PARSE-IMM ( -- )
+: TEST-GROWN-PARSES ( -- )
    s" forty parsing immediates" T-LABEL
-   BASE$ s" grown-parse-imm.f" FX-P FS:JOIN-PATH FX-PU !
+   BASE$ s" grown-parses.f" FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
    SB-RESET
-   s" variable HITS" SB-APPEND PIMM-LINE+
-   s" : HIT ( -- ) 1 HITS +! ;" SB-APPEND PIMM-LINE+
+   s" variable HITS" SB-APPEND PI-LINE+
+   s" : HIT ( -- ) parse-name 2drop 1 HITS +! ;" SB-APPEND PI-LINE+
    40 0 ?do
-      s" : " SB-APPEND  i PIMM-NAME+  s\"  ( -- ) HIT ; immediate s\" " SB-APPEND
-      i PIMM-NAME+  s\" \" 0 parse-imm" SB-APPEND PIMM-LINE+
+      s" : " SB-APPEND  i PI-NAME+  s"  ( -- ) HIT ; immediate parses: " SB-APPEND
+      i PI-NAME+  s"  1" SB-APPEND PI-LINE+
    loop
    s" : USE ( -- n )" SB-APPEND
-   40 0 ?do s"  " SB-APPEND  i PIMM-NAME+ loop
-   s"  73 ;" SB-APPEND PIMM-LINE+
-   s" HITS @ . USE . cr" SB-APPEND PIMM-LINE+
+   40 0 ?do s"  " SB-APPEND  i PI-NAME+  s"  x" SB-APPEND loop
+   s"  73 ;" SB-APPEND PI-LINE+
+   s" HITS @ . USE . cr" SB-APPEND PI-LINE+
    FX-PATH$ FX$ FS:WRITE-ALL
    CERTIFIED
    s" " 0 LOADED
    GT-OUT$ s\" 40\n73\n" CONTAINS? TTRUE ;
 
-\ A declared parsing immediate takes its payload as the load runs it, so the
-\ check leaves the payload out of the body, whatever it spells.
-: TEST-PARSE-IMM-PAYLOAD ( -- )
-   s" parse-imm payloads that spell a word, a number, ; and (" T-LABEL
+\ The load runs a declared parsing immediate on its payload, so the check leaves the payload out of
+\ the body, whatever it spells, and the body takes none of its facts: a top-level call is certified.
+: TEST-PARSES-PAYLOAD ( -- )
+   s" parses: payloads that spell a word, a number, ; and (" T-LABEL
    SB-RESET
    s" : HIT ( -- ) parse-name drop drop ;" SB-APPEND LF+
-   s\" : PI00 ( -- ) HIT ; immediate s\" PI00\" 1 parse-imm" SB-APPEND LF+
+   s" : PI00 ( -- ) HIT ; immediate parses: PI00 1" SB-APPEND LF+
    s" : USE1 ( -- n ) PI00 zz 73 ;" SB-APPEND LF+
    s" : USE2 ( -- ) PI00 73 ;" SB-APPEND LF+
    s" : USE3 ( -- n ) PI00 ; 73 ;" SB-APPEND LF+
    s" : USE4 ( -- n ) PI00 ( 73 ;" SB-APPEND LF+
-   s" parse-imm-payload.f" FIXTURE!
+   s" USE1 . cr" SB-APPEND LF+
+   s" parses-payload.f" FIXTURE!
    CERTIFIED
    s" " 0 LOADED ;
 
@@ -3604,11 +3851,10 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-SOURCE-IMMEDIATE
-   TEST-PARSE-IMM-NO-STEP
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
    TEST-PROGRAM-TARGET-WORD
-   TEST-PARSE-IMM-REJECT
+   TEST-PARSES-REJECT
    TEST-GENERATES
    TEST-GENERATES-READS-NONE
    TEST-GENERATES-SHADOW
@@ -3648,7 +3894,16 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TICK-TARGET
    TEST-MADE
    TEST-RUN-CAPTURED
+   TEST-IMM-COMPILES
    TEST-RUN-UNSOURCED
+   TEST-IMM-POSTPONED
+   TEST-IMM-TICKED
+   TEST-IMM-ITEM
+   TEST-IMM-DEFERRED-BODY
+   TEST-IMM-CALLS-DEFERRED
+   TEST-IMM-ROOTS
+   TEST-IMM-DEFERRED-CALL
+   TEST-IMM-LINE-END
    TEST-HEAD-CLOSER
    TEST-VARIANT-COLLIDE
    TEST-DERIVE-PAYLOAD
@@ -3677,10 +3932,9 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TOP-MISMATCH
    TEST-SEALED-DEFINE
    TEST-SEALED-DUPLICATE
-   TEST-STALE-PARSE-IMM
-   TEST-OWN-PARSE-IMM
-   TEST-GROWN-PARSE-IMM
-   TEST-PARSE-IMM-PAYLOAD
+   TEST-STALE-PARSES
+   TEST-GROWN-PARSES
+   TEST-PARSES-PAYLOAD
    TEST-SHOW-LAYOUT-LOCAL
    TEST-LITERAL-FIT
    FS:CLEANUP-RUN

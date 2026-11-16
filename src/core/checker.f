@@ -1378,7 +1378,7 @@ variable TCMP                            \ path-compression walk cursor
 SCRATCH{
 variable QEN
 PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXHA-P   PTR-VARIABLE QXNA-P
-PTR-VARIABLE QXBA-P
+PTR-VARIABLE QXBA-P   PTR-VARIABLE QXFA-P
 variable QE-CAP
 }SCRATCH
 : QEA ( -- ^n ) QEA-P @ ;
@@ -1387,6 +1387,9 @@ variable QE-CAP
 \ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
 \ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
 : QXBA ( -- ^n ) QXBA-P @ ;
+\ QXFA: the CTL-INHERITED facts running each quotation adds to its body's: 0 for a literal, which
+\ the walk read inline; the ticked word's for `['] W`; else CTL-UNSEEN. Two terms unified share their union.
+: QXFA ( -- ^n ) QXFA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
    need QE-CAP @ <= IF exit THEN
@@ -1397,6 +1400,7 @@ variable QE-CAP
    QXHA-P @ QE-CAP @ cells nc cells SR-GROW QXHA-P !
    QXNA-P @ QE-CAP @ cells nc cells SR-GROW QXNA-P !
    QXBA-P @ QE-CAP @ cells nc cells SR-GROW QXBA-P !
+   QXFA-P @ QE-CAP @ cells nc cells SR-GROW QXFA-P !
    nc QE-CAP ! ;
 
 variable FV   0 FV !   \ the next var id FRESH hands out
@@ -1405,6 +1409,11 @@ variable FV   0 FV !   \ the next var id FRESH hands out
 : FRESH ( -- n )
    FV @ 1 + TV-ENSURE
    FV @ dup 1 + FV ! ;
+
+\ CTL-OPAQUE: a call may run a body the check deferred, which the load reads.
+1 61 lshift constant CTL-OPAQUE
+\ CTL-UNSEEN: a call may run words no reader can see: a deferred word's, an xt the walk did not make.
+1 62 lshift constant CTL-UNSEEN
 
 \ A term and its block variable are made together: a trial's rollback restores
 \ FV and QEN together (TRIAL-REST).
@@ -1416,6 +1425,7 @@ variable FV   0 FV !   \ the next var id FRESH hands out
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
+   CTL-UNSEEN QEN @ cells QXFA + !
    FRESH MK-VAR QEN @ cells QXBA + !
    QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
 \ A scheme owns one quotation term. Bound scope variables use lexical depth,
@@ -1447,6 +1457,8 @@ $10000 constant BVAR-REGION-BIT
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
 : Q>BLOCK ( n -- n ) PAY cells QXBA + @ ;
 : Q-BLOCK! ( n n -- ) PAY cells QXBA + ! ;
+: Q>FACTS ( n -- n ) PAY cells QXFA + @ ;
+: Q-FACTS! ( n n -- ) PAY cells QXFA + ! ;
 : Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
@@ -3324,9 +3336,11 @@ EXPORT CHECK:PARAMHID
 EXPORT CHECK:PAY
 EXPORT CHECK:PTR>INNER
 EXPORT CHECK:Q-BLOCK!
+EXPORT CHECK:Q-FACTS!
 EXPORT CHECK:Q>BLOCK
 EXPORT CHECK:Q>DIN
 EXPORT CHECK:Q>DOUT
+EXPORT CHECK:Q>FACTS
 EXPORT CHECK:Q>RIN
 EXPORT CHECK:Q>ROUT
 EXPORT CHECK:Q>XDEAD
@@ -3541,6 +3555,7 @@ EXPORT CHECK:TWALK-SHALLOWER
    din dout rin rout MK-QUOT {: copy:n :}
    x Q>BLOCK copy Q-BLOCK!
    copy x Q>XHAS x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+   x Q>FACTS copy Q-FACTS!
    copy ;
 
 
@@ -4644,6 +4659,7 @@ EXPORT CHECKER-QUOT-FRESH:START
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    q Q>BLOCK fresh Q-BLOCK!
    fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   q Q>FACTS fresh Q-FACTS!
    fresh ;
 
 
@@ -4772,7 +4788,10 @@ defer U-DRAIN-XT ( n -- )
    g w BLOCK-PAIR
    base U-DRAIN-XT
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND THEN
+   \ The fact union is not trailed: a rolled-back trial can only add facts.
+   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
+      g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS!
+   THEN
    -1 HOLD-N +! ;
 
 
@@ -5044,8 +5063,8 @@ U-DRAIN-INSTALL
 \ of the body being checked. THSET says whether any edge was seen.
 SCRATCH{
 variable THDMASK  variable THRMASK  variable THSET
-\ INHSET: the CTL-INHERITED flags of the words the body called. Sticky per
-\ body: a call on any path is enough for the may-claim.
+\ INHSET: the CTL-INHERITED facts of what the body calls or runs, CTL-UNSEEN for what it
+\ cannot see. Sticky per body: a call on any path is enough for the may-claim.
 variable INHSET
 }SCRATCH
 variable XROW  variable XRROW
@@ -5655,8 +5674,8 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES and CTL-ROOTS
-$7FFFF 1 60 lshift or constant XFER-FLAG-MASK
+\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES, CTL-ROOTS, CTL-OPAQUE and CTL-UNSEEN
+$7FFFF 1 60 lshift or 1 61 lshift or 1 62 lshift or constant XFER-FLAG-MASK
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -5690,14 +5709,14 @@ CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 global
-\ CTL-RENDERS means a call may define words at run time that no source text
-\ spells, by define-word or by source handed to an evaluate word.
+\ CTL-RENDERS means a call may define words, or open, add to or close a
+\ definition, at run time that no source text spells.
 $80 constant CTL-RENDERS
 private
 
 \ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
 \ the defer bit, 19 the verifier query's refused-name mark, 20-39 and 40-59 the intact masks,
-\ 60 CTL-ROOTS.
+\ 60 CTL-ROOTS, 61 CTL-OPAQUE, 62 CTL-UNSEEN.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -5746,7 +5765,8 @@ private
 \ CTL-ROOTS means a call may move the source root, so which files later requires
 \ load cannot be known without running it.
 CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-INHERITED
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or
+   CTL-UNSEEN or constant CTL-INHERITED
 \ CTL-NAMES means the word looks its top string operand up, so a string literal
 \ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
@@ -5793,6 +5813,8 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CTL-NAMES = IF s" names" EXIT THEN
    f CTL-GENERATES = IF s" generates" EXIT THEN
    f CTL-ROOTS = IF s" roots" EXIT THEN
+   f CTL-OPAQUE = IF s" opaque" EXIT THEN
+   f CTL-UNSEEN = IF s" unseen" EXIT THEN
    s" " ;
 
 
@@ -6309,6 +6331,7 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
+     QTT @ Q>FACTS INHSET @ or INHSET !
      QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
@@ -6384,6 +6407,7 @@ variable QUOT-LOSS
      QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
+     QTT @ Q>FACTS INHSET @ or INHSET !
      QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
@@ -6445,6 +6469,7 @@ variable QUOT-LOSS
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   cleanup Q>FACTS INHSET @ or INHSET !
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -6473,6 +6498,7 @@ variable QUOT-LOSS
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   finish-term T-RES Q>FACTS cleanup Q>FACTS or INHSET @ or INHSET !
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -7332,7 +7358,6 @@ variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
 variable SIG-NONZERO   \ the NORET.NONZERO masks, NONZERO-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
-variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
 variable SIG-PARSES   -1 SIG-PARSES !   \ the parses count the last facts text's tags gave, -1 for none
 \ Its terminators inside the last facts text, blank-separated, 0 0 for none.
 PTR-VARIABLE SIG-PARSES-A   variable SIG-PARSES-U
@@ -8257,7 +8282,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
 
 : TAG>CTL-FLAG ( ^u8 n -- n )
    {: a:^ u:n :}
-   61 0 ?do
+   63 0 ?do
       i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
    loop
    0 ;
@@ -8325,16 +8350,6 @@ variable PD-ATOM0                        \ the first atom index this signature p
    0 ;
 
 
-: SIG-PIMM-TAG ( ^u8 n -- )
-   {: ta:^ tu:n :}
-   SIG-PIMM @ 0 < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
-   NEXT-SIG-TOK {: ca:^ cu:n :}
-   cu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
-   ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 0 <  or IF ca cu SGBAD-SYNTAX! EXIT THEN
-   v SIG-PIMM ! ;
-
-
 \ A token ended by blanks alone, as `parse-name` reads one: 0 at the end.
 : SIG-RAW-TOK ( -- ^u8 n )
    BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
@@ -8399,7 +8414,6 @@ variable PD-ATOM0                        \ the first atom index this signature p
    bit 0 <> IF
       SIG-PE @ bit and 0 <> IF ta tu SGBAD-SYNTAX! RES-TRUE EXIT THEN
       SIG-PE @ bit or SIG-PE !  RES-TRUE EXIT THEN
-   ta tu s" parse-imm" CORE-STR= IF ta tu SIG-PIMM-TAG RES-TRUE EXIT THEN
    RES-FALSE ;
 
 
@@ -8495,7 +8509,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
 
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
-   0 SIG-CTL !  0 SIG-NONZERO !  0 SIG-PE !  -1 SIG-PIMM !
+   0 SIG-CTL !  0 SIG-NONZERO !  0 SIG-PE !
    RES-FALSE SIG-TAGS-ONLY !
    -1 SIG-PARSES !  NULL-PTR SIG-PARSES-A !  0 SIG-PARSES-U !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
@@ -12300,13 +12314,14 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    p P>PROOF q P-PROOF!  p P>LOST q P-LOST!
    q ;
 
-\ A quotation over the split rows, keeping its throw windows and block part;
+\ A quotation over the split rows, keeping its throw windows, facts and block part;
 \ the quotation itself when no row changed.
 : SPLIT-QUOT ( n n n n n n -- n ) {: t0:n q:n din:n dout:n rin:n rout:n :}
    q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
    IF t0 EXIT THEN
    din dout rin rout MK-QUOT {: nq:n :}
    nq q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   q Q>FACTS nq Q-FACTS!
    q Q>BLOCK nq Q-BLOCK!
    nq ;
 
@@ -12771,7 +12786,7 @@ variable PE-SPEC-TOS
 PTABLE-START
 
 \ The prefix of a product's checker stores, baked into its DATA: the keywords'
-\ rows, which no engine record holds, and the symbols KEYWORD-AXIOMS marks.
+\ rows, which no engine record holds, and the symbols the axioms mark.
 : KEYWORD-ROWS ( -- )
    S\" s\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
    S\" c\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
@@ -12798,7 +12813,9 @@ PTABLE-START
    s" HB-TARGET-LINUX-X86-64?" PE-SYM-OF drop
    s" HB-TARGET-LINUX-KERNEL?" PE-SYM-OF drop
    s" HB-TARGET-WASM?" PE-SYM-OF drop
-   s" define-word" PE-SYM-OF drop ;
+   s" define-word" PE-SYM-OF drop
+   s" EFFECT" SYM-PRIVATE s" ITEM" SYM-INTERN drop
+   s" EFFECT" SYM-PUBLIC s" VARIABLE-OF" SYM-INTERN drop ;
 
 KEYWORD-ROWS
 
@@ -15517,6 +15534,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
    q Q>BLOCK copy Q-BLOCK!
    copy q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   q Q>FACTS copy Q-FACTS!
    copy ;
 
 : CALL-ROW-COPY ( n -- n )
@@ -17113,6 +17131,11 @@ package CHECK
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM
    s" parse-name" CTL-PARSES NORET-AXIOM
+   s" literal" CTL-RENDERS NORET-AXIOM
+   s" compile," CTL-RENDERS NORET-AXIOM
+   s" ;" CTL-RENDERS NORET-AXIOM
+   s" EFFECT" s" ITEM" CTL-RENDERS NORET-PRIVATE-AXIOM
+   s" EFFECT" SYM-PUBLIC s" VARIABLE-OF" SYM-INTERN  s" EFFECT:VARIABLE-OF" CTL-RENDERS 0 NORET-SYM-AXIOM
    s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
@@ -17163,58 +17186,14 @@ private
    sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
    off NORET-CELL NORET.CREATES @ 0 off NORET-CELL NORET.NONZERO @ NORET-APPEND ;
 
-\ --- declared parsing immediates.
-\ A parsing immediate consumes a fixed number of source tokens and runs while
-\ the body around it compiles, as a top-level call would there; what it
-\ compiles into that body is checked by the load, which reads the body after
-\ it ran. A wrong count skips live code or eats real
-\ tokens, so `parse-imm` carries a declaration id: top-level declarations only.
-\ A rollback lowers SYM-N and hands the retired ids out again, so a checker
-\ frame saves PIMM-N and its restore drops the rows made since: no row outlives
-\ the scope of the id it names. The newest row for a symbol wins; undefining
-\ the word appends one of count -1, which no word declares. The tables grow as
-\ rows are added.
-16 constant PIMM-CAP
-create PIMM-SYMS-BOOT PIMM-CAP cells allot
-create PIMM-NS-BOOT PIMM-CAP cells allot
-PERSISTED-PTR-VARIABLE PIMM-SYMS-P   PERSISTED-PTR-VARIABLE PIMM-NS-P
-variable PIMM-CAP-V   variable PIMM-N
-PIMM-SYMS-BOOT PIMM-SYMS-P !   PIMM-NS-BOOT PIMM-NS-P !   PIMM-CAP PIMM-CAP-V !
-0 PIMM-N !
-: PIMM-SYMS ( -- ^n ) PIMM-SYMS-P @ ;
-: PIMM-NS ( -- ^n ) PIMM-NS-P @ ;
-PIMM-SYMS-P PIMM-CAP-V CELL PIMM-N STORE+
-PIMM-NS-P PIMM-CAP-V CELL TABLE+
-
-: PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
-   cells PIMM-NS + @ ;
-
-: PIMM-IX ( n -- n ) {: sym:n :}   \ sym's newest row, -1 = undeclared
-   sym 0= IF -1 EXIT THEN
-   PIMM-N @ BEGIN dup 0 > WHILE
-      1 -
-      dup cells PIMM-SYMS + @ sym = IF
-         dup PIMM-CNT@ 0 < IF drop -1 THEN EXIT
-      THEN
-   REPEAT drop -1 ;
-
-: PIMM-REWIND ( n -- )
-   {: n:n :}
-   n 0 < n PIMM-N @ > or IF
-      s" checker: parse-imm table rewind outside the table" 76 die
-   THEN
-   PIMM-SYMS n PIMM-N @ ARENA-CELLS-ZERO
-   PIMM-NS n PIMM-N @ ARENA-CELLS-ZERO
-   n PIMM-N ! ;
-
 \ --- kept `parses:` rows.
-\ The `parses:` and `parses-through:` rows the load accepts, by the symbol of
-\ the word each names; the newest row for a symbol wins. The word's facts text
-\ says its row (render.f REND-PARSES) and a read of the text keeps it again, as
-\ for a parse-imm count, so a check that never reads the file stating a row
+\ The `parses:` and `parses-through:` rows the load and the source pre-verifier
+\ accept, by the symbol of the word each names; the newest row for a symbol
+\ wins. The word's facts text says its row (render.f REND-PARSES) and a read of
+\ the text keeps it again, so a check that never reads the file stating a row
 \ still finds it. A row is three cells, the symbol, the count and the
 \ terminators' byte count, then those bytes, each terminator followed by a
-\ blank, padded to a cell. A frame rewinds the end as it rewinds PIMM-N.
+\ blank, padded to a cell. A frame rewinds the end.
 $100 constant PROW-INIT
 $0 constant PROW.SYM
 $8 constant PROW.COUNT
@@ -17305,33 +17284,19 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    at PROW.COUNT PROW@  PROW at + PROW-HEAD +  at PROW.LEN PROW@
    RES-TRUE ;
 
-: PIMM-ENSURE ( n -- ) {: need:n :}
-   need PIMM-CAP-V @ <= IF EXIT THEN
-   need PIMM-CAP-V @ 2 * max {: nc:n :}
-   PIMM-SYMS-P PIMM-CAP-V @ cells nc cells GROW
-   PIMM-NS-P PIMM-CAP-V @ cells nc cells GROW
-   nc PIMM-CAP-V ! ;
-
-: PIMM-ADD ( n n -- ) {: sym:n cnt:n :}
-   PIMM-N @ 1 + PIMM-ENSURE
-   sym PIMM-N @ cells PIMM-SYMS + !
-   cnt PIMM-N @ cells PIMM-NS + !
-   PIMM-N @ 1 + PIMM-N ! ;
-
 \ Undefining retires every fact the name carried, through NORET-APPEND: the
 \ carry-forward of NORET-ADD-SYM would keep a definer's created effect or an
 \ export's link alive under a retired name. It also retires every link naming
 \ the word: the name defined afresh takes the symbol, while an export of the
 \ old word still runs that word. The walk reads the entries present before it
 \ and appends past them; a rollback rewinds them. A row of count -1 retires
-\ the word's `parses:` row and parse-imm count.
+\ the word's `parses:` row.
 : UNDEFINE-SYM ( n -- )
    {: sym:n :}
    sym CHECKER-REC-SYM !
    E-ADD-DELETED
    sym RES-FALSE DFER-ADD-SYM
    sym -1 0 PROW-ADD
-   sym -1 PIMM-ADD
    sym 0 0 0 0 0 0 NORET-APPEND
    NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop ;
 
@@ -21000,6 +20965,7 @@ variable QTMP
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
+     0 QTMP @ Q-FACTS!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !
@@ -21773,52 +21739,34 @@ EXPORT CHECKER-OVERLAY:RETIRE
    a u tok-imm? 0 <> IF RES-TRUE EXIT THEN
    sym SOURCE-IMM? ;
 
-: PIMM-AT ( ^u8 n -- )
-   REJECTION:AT  s" declared here" REJECTION:EMIT-STR
-   REJECTION:HELP ;
+public
+-1 constant IMM-NONE
+-2 constant IMM-EFFECT
+-3 constant IMM-WRITES
+-4 constant IMM-UNREAD
+-5 constant IMM-UNSEEN
+-6 constant IMM-ROOTS
+private
 
-\ The sym a parse-imm row of CNT tokens names by A U, for the load and the
-\ verifier alike; a row the load cannot honour is rejected at its `parse-imm`
-\ token T TU.
-: PIMM-SYM ( ^u8 n n ^u8 n -- n ) {: a:^ u:n cnt:n t:^ tu:n :}
-   cnt 0 < IF
-      s" E-PARSE-IMM-COUNT" REJECTION:OPEN
-      s" parse-imm needs a token count of 0 or more" REJECTION:EMIT-STR
-      t tu PIMM-AT
-      s" give the number of source tokens the word reads" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF
-      s" E-UNDEFINED" REJECTION:OPEN
-      s" parse-imm names an undefined word '" REJECTION:EMIT-STR
-      a u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
-      t tu PIMM-AT
-      s" define " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s"  before declaring its payload" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   THEN
-   a u sym TOK-SYM-IMM? 0= IF
-      s" E-PARSE-IMM-NOT-IMMEDIATE" REJECTION:OPEN
-      s" parse-imm names '" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s" ', which is not immediate" REJECTION:EMIT-STR
-      t tu PIMM-AT
-      s" mark " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s"  `immediate` before its parse-imm, or drop the parse-imm: a word that is not immediate reads no payload"
-      REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   THEN
-   sym ;
+\ The tokens immediate A U (SYM) reads: its kept `parses:` count, else 0 when the walk saw no fact
+\ but CTL-OPAQUE; else why a body rejects it, a negative IMM- answer.
+: IMM-READS ( ^u8 n n -- n ) {: a:^ u:n sym:n :}
+   a u sym TOK-SYM-IMM? 0= IF IMM-NONE EXIT THEN
+   a u EFFECT-QUERY 0= IF IMM-EFFECT EXIT THEN
+   EFFECT-DIN-N 0 <>  EFFECT-DOUT-N 0 <>  or IF IMM-EFFECT EXIT THEN
+   sym CTL-FLAGS-SYM CTL-INHERITED and
+   sym DFER-FIND-SYM IF CTL-UNSEEN or THEN {: facts:n :}
+   facts CTL-PARSES CTL-OPAQUE or CTL-UNSEEN or CTL-ROOTS or invert and 0 <> IF IMM-WRITES EXIT THEN
+   facts CTL-ROOTS and 0 <> IF IMM-ROOTS EXIT THEN
+   facts 0= IF 0 EXIT THEN
+   sym PROW-FIND {: cnt:n t:^ tu:n kept:bool :}
+   kept  tu 0=  and IF cnt EXIT THEN
+   facts CTL-UNSEEN and 0 <> IF IMM-UNSEEN EXIT THEN
+   facts CTL-PARSES and 0 <> IF IMM-UNREAD EXIT THEN
+   0 ;
 
-: NEUTRAL-SYM-IMM? ( ^u8 n n -- bool ) {: a:^ u:n sym:n :}
-   a u sym TOK-SYM-IMM? 0= IF RES-FALSE EXIT THEN
-   sym PIMM-IX 0 < IF RES-FALSE EXIT THEN
-   a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
-   EFFECT-DIN-N 0=
-   EFFECT-DOUT-N 0= and ;
-
-: NEUTRAL-PARSE-IMM? ( ^u8 n -- bool )
-   2dup CHECKER-FIND-ACTIVE-SYM NEUTRAL-SYM-IMM? ;
+: NAME-IMM-READS ( ^u8 n -- n )
+   2dup CHECKER-FIND-ACTIVE-SYM IMM-READS ;
 
 ;package
 package CHECKER-PREFLIGHT
@@ -21846,7 +21794,7 @@ EXPORT CHECK:BIND-REC
 EXPORT CHECK:CHECKER-FIND-ACTIVE-SYM
 EXPORT CHECK:CHECKER-FIND-USIG-SYM
 EXPORT CHECK:CK-REC-WID
-EXPORT CHECK:NEUTRAL-SYM-IMM?
+EXPORT CHECK:IMM-READS
 EXPORT CHECK:TBLEN
 EXPORT CHECK:TBYTE@
 EXPORT CHECK:TI
@@ -21866,31 +21814,18 @@ EXPORT CHECK:TOK-SYM-IMM?
 ;package
 package CHECK
 
-global
-: PARSE-IMM ( ^u8 n n -- ) {: a:^ u:n cnt:n :}
-   a u cnt SRCLOC:TOKEN$ PIMM-SYM cnt PIMM-ADD ;
-INTRINSIC-DECLARATION INTRINSIC
-private
-
-\ PARSE-IMM's row, added by the verifier's replay in a verifier window only;
-\ T TU is the `parse-imm` token.
-: CHECKER-PARSE-IMM ( ^u8 n n ^u8 n -- )
-   {: a:^ u:n cnt:n t:^ tu:n :}
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF EXIT THEN
-   a u cnt t tu PIMM-SYM cnt PIMM-ADD ;
-
-: PIMM-SKIP ( n -- ) {: cnt:n :}
+: OPERANDS-SKIP ( n -- ) {: cnt:n :}
    0 BEGIN dup cnt < WHILE
       SKIP-PARSE-LIT-PAYLOAD
       1 +
    REPEAT drop ;
 
-\ PIMM-STREAM is -1 while checking an engine-reconstructed definition buffer:
+\ OPERANDS-SPENT is -1 while checking an engine-reconstructed definition buffer:
 \ the engine already executed each immediate, so its payload is absent and the
 \ scan must not skip. Only the CANDIDATE scans see raw source with the payload
 \ present, and they bracket the flag to 0.
-variable PIMM-STREAM
--1 PIMM-STREAM !
+variable OPERANDS-SPENT
+-1 OPERANDS-SPENT !
 
 ;package
 package CHECKER-PREFLIGHT
@@ -21904,7 +21839,7 @@ EXPORT CHECK:DICT-CELL@
       rec CK-REC-WID WL:PRIMITIVES <> IF RES-FALSE EXIT THEN
       rec CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-IMM and 0 <> EXIT
    THEN
-   a u sym NEUTRAL-SYM-IMM? IF RES-FALSE EXIT THEN
+   a u sym IMM-READS 0 >= IF RES-FALSE EXIT THEN
    a u sym TOK-SYM-IMM? ;
 
 ;package
@@ -22483,17 +22418,14 @@ EXPORT CHECKER-TAPE:K-IS
 : BTICK-PUSH ( n -- )
    DCUR @ MK-PUSH DCUR ! ;
 
-\ `['] W` pushes a term that takes the exceptional edge W's own definition
-\ proved, as the `[: W ;]` literal's term does. The masks need no
-\ recomposition: a mask bit counts from the top of W's declared input row,
-\ which is this term's own din.
-\ THE DEAD FLAG IS NOT TAKEN: the tick models W's declared fall-through as
-\ reachable. Taking the flag would certify `['] WDEAD catch` that `hb` cannot
-\ compile.
+\ `['] W` pushes a term with W's facts, CTL-UNSEEN too for a deferred W, and W's throw
+\ edge, not its dead flag: with it `['] WDEAD catch` would certify code `hb` cannot compile.
 : BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
    sym CTL-WORD-SYM {: ctl:n :}
+   ctl CTL-INHERITED and  sym DFER-FIND-SYM IF CTL-UNSEEN or THEN  q Q-FACTS!
    ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
    q RES-TRUE  RES-FALSE
+   \ a mask bit counts from the top of W's declared input row, the term's din
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
@@ -23742,9 +23674,9 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ A top-level word that reads the source after it (CTL-PARSES) takes tokens no
 \ scan knows without running it. `parses: W n` states that W reads n raw tokens,
 \ `parses-through: W n ( E1 E2 )` that it reads n and then every token through
-\ the first one equal to a listed terminator. Only the source pre-verifier keeps
-\ the shape; the engine words check a row and keep nothing. Both check here, so
-\ the pre-pass and the load accept the same rows.
+\ the first one equal to a listed terminator. The load keeps a row in PROW; the
+\ source pre-verifier keeps it there and in its own scoped rows. Both check here,
+\ so the pre-pass and the load accept the same rows.
 0 constant PARSES-UNDEFINED               \ the target names no word here
 1 constant PARSES-QUALIFIED               \ the target is a malformed qualified name
 2 constant PARSES-SHADOW                  \ a used public shadows the global it names

@@ -648,7 +648,7 @@ LOCSHOW-INSTALL
    ctl CTL-THROW and 0=  ctl XFER-DMASK ctl XFER-RMASK or 0 <>  and IF 1 RQM ! THEN
    ctl 0 CTL-FLAG-TAG
    ctl CTL-THROWS-TAG
-   61 2 ?do
+   63 2 ?do
       i CTL-INTRINSIC-SHIFT = IF ctl CTL-INTRINSIC-TAG THEN
       ctl i CTL-FLAG-TAG
    loop
@@ -666,15 +666,6 @@ LOCSHOW-INSTALL
    flags PE-ACTIVE and 0 <> IF s" primitive " EMIT-STR THEN
    flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " EMIT-STR THEN
    flags PE-TOP-ONLY and 0 <> IF s" top-only " EMIT-STR THEN
-   0 DEST !  TEXT TEXT-LEN @ ;
-
-
-\ A parsing immediate's payload count as a facts tag appended at TEXT-LEN,
-\ nothing for -1.
-: REND-PIMM ( n -- ^u8 n )
-   {: cnt:n :}
-   1 DEST !
-   cnt 0 >= IF s" parse-imm " EMIT-STR  cnt RNUM  32 EMIT1 THEN
    0 DEST !  TEXT TEXT-LEN @ ;
 
 
@@ -1725,13 +1716,36 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" name a word defined with `:` … `;` that uses " EMIT-STR
    t tu CODE-SPAN ;
 
+\ Why a body does not admit immediate t tu: IMM-READS of its binding.
+: IMM-WHY ( ^u8 n -- n ) {: t:^ tu:n :}
+   t tu  t tu CHECKER-FIND-ACTIVE-SYM IMM-READS ;
+
+: IMM-MESSAGE ( ^u8 n -- ) {: t:^ tu:n :}
+   t tu CODE-SPAN
+   t tu IMM-WHY {: why:n :}
+   why IMM-EFFECT = IF
+      s"  runs while the definition compiles, so its effect must be `( -- )`" EMIT-STR EXIT
+   THEN
+   why IMM-WRITES = IF
+      s"  runs while the definition compiles and may define words or add to a definition"
+      EMIT-STR EXIT
+   THEN
+   why IMM-ROOTS = IF
+      s"  runs while the definition compiles and may move the source root" EMIT-STR EXIT
+   THEN
+   why IMM-UNSEEN = IF
+      s"  runs while the definition compiles and calls words the check cannot see"
+      EMIT-STR EXIT
+   THEN
+   s"  reads the source after it and no `parses:` row says how many tokens" EMIT-STR ;
+
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
       RF-UNDEF of UNDEF-MESSAGE endof
       RF-KEYWORD of PIN-TOK$ KEYWORD-MESSAGE endof
       RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
-      RF-IMM of s"  is a compile-time immediate that is not a stack-neutral parsing immediate" TOK-MESSAGE endof
+      RF-IMM of PIN-TOK$ IMM-MESSAGE endof
       RF-CAP of s"  is a trust-boundary primitive" TOK-MESSAGE endof
       RF-UNSAFE of s"  reads source or changes the compiler's or checker's state, which no stack effect describes" TOK-MESSAGE endof
       RF-LINLOCAL of s" a linear value cannot be bound to a local" EMIT-STR endof
@@ -1861,8 +1875,22 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    RSR-EXP @ 0= IF RS-ROWS PAIR-NOTES EXIT THEN
    AT-PIN RS-ROWS PAIR-NOTES ;AT-PIN ;
 
+\ The effect an immediate in a body must have, and immediate t tu's own, written
+\ in place into the record.
+: IMM-NOTES ( ^u8 n -- ) {: t:^ tu:n :}
+   t tu IMM-WHY IMM-EFFECT <> IF EXIT THEN
+   s" expected" REJECTION:NOTE  s" ( -- )" EMIT-STR
+   t tu CHECKER-FIND-ACTIVE-SYM USIG-NEWEST-VISIBLE {: rec1:n :}
+   rec1 0= IF EXIT THEN
+   s" found" REJECTION:NOTE  s" ( " EMIT-STR
+   RQM @ REJECTION:DEST @ {: qm:n dst:n :}
+   rec1 1 - REND-RECORD-EFFECT 2drop
+   qm RQM !  dst REJECTION:DEST !
+   s"  )" EMIT-STR ;
+
 : DIAG-NOTES ( -- )
    DKIND {: k:n :}
+   k RF-IMM = IF PIN-TOK$ IMM-NOTES THEN
    k ROWS-REFUSAL? IF ROWS-NOTES THEN
    k RF-RETURN = IF RS-NOTES THEN
    k RF-REASON =  MDIAG @ MD-NONEXH = and IF
@@ -1987,9 +2015,25 @@ PTR-VARIABLE HOLDER-FIRST
    t tu CHECKER-FIND-ACTIVE-SYM t tu TOK-IDENTITY CTL>INTRINSIC {: id:n :}
    id INTRINSIC-INCLUDE = IF t tu s" included" LOADER-HELP EXIT THEN
    id INTRINSIC-REQUIRE = IF t tu s" required" LOADER-HELP EXIT THEN
-   s" remove " EMIT-STR  t tu CODE-SPAN
-   s"  from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
-   EMIT-STR ;
+   t tu IMM-WHY {: why:n :}
+   why IMM-EFFECT = IF
+      s" give " EMIT-STR  t tu CODE-SPAN
+      s"  the effect `( -- )`, or drop `immediate`" EMIT-STR EXIT
+   THEN
+   why IMM-WRITES = IF
+      s" write those tokens in the definition, or build the word with `define-word`" EMIT-STR EXIT
+   THEN
+   why IMM-ROOTS = IF
+      s" move the root at top level, before the definition" EMIT-STR EXIT
+   THEN
+   why IMM-UNSEEN = IF
+      s" state what " EMIT-STR  t tu CODE-SPAN
+      s"  reads with `parses: " EMIT-STR  t tu EMIT-STR
+      s"  n` after " EMIT-STR  t tu CODE-SPAN
+      s" , or call the words it runs directly" EMIT-STR EXIT
+   THEN
+   s" state the count with `parses: " EMIT-STR  t tu EMIT-STR
+   s"  n` after " EMIT-STR  t tu CODE-SPAN ;
 
 : QUAL-HELP ( -- )
    s" write " EMIT-STR  TOK-SPAN

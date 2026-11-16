@@ -72,7 +72,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 : IMMEDIATE-CHECK ( ^u8 n ^u8 n bool -- )
    drop
    {: ba:^ bu:n ta:^ tu:n :}
-   ta tu NEUTRAL-PARSE-IMM? if exit then
+   ta tu NAME-IMM-READS 0 >= if exit then
    ba bu ta tu [: CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
    finally 0 <> if
       s" checker: preflight did not reject unmodeled immediate" 76 die
@@ -98,8 +98,6 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    sym NORET-NONZERO@ REND-NONZERO 2drop
    sym PRIM-FIRST-IDX {: prim:n :}
    prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
-   sym PIMM-IX {: ix:n :}
-   ix 0 < if -1 else ix PIMM-CNT@ then REND-PIMM 2drop
    kept if cnt else -1 then t tu REND-PARSES 2drop
    sym NORET-CREATES@ REND-CREATES 2drop ;
 

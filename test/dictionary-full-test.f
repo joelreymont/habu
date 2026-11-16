@@ -78,7 +78,7 @@ private
 \ RPL replays RA and RB while OUTER is parked: RA takes OUTER's slot, the one
 \ free record, so RB finds none.
 : REPLAY-PARKED ( -- )
-   S\" require src/habu/verify-source.f\n: RPL ( -- ) [: s\" : RA ( -- ) ; : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\n1 LEAVE-FREE\n: OUTER ( -- ) RPL ;\n"
+   S\" require src/habu/verify-source.f\n: RPL ( ^u8 n -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ; : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n1 LEAVE-FREE\ns\" OUTER\" RPL ;\n"
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `rb`\n --> <input>:1:15\n  |\n1 | : RA ( -- ) ; : RB ( -- ) ;\n  |               ^ no record left\n  = word: rb\n  = help: define fewer words in this load\n\n"
    s" a replay that takes a parked definition's record" EXPECT ;
 

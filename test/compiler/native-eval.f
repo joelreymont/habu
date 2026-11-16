@@ -217,33 +217,34 @@ private
    cp@ code - 0 T=
    [: s" NATIVE-EVAL-E" evaluate-closed ;] 70 TTHROWSQ ;
 
-\ An immediate that runs a text while the caller's definition is open: the
-\ text compiles into that definition and ends with it still open, which is
-\ not a definition the text opened, so it is not refused.
+\ A definer that runs a text while its definition is open: the text compiles
+\ into that definition and ends with it still open, which is not a definition
+\ the text opened, so it is not refused.
 : BUMP ( -- ) SEEN @ 1 + SEEN ! ;
-: CALL-BUMP ( -- ) s" BUMP" evaluate-closed ; immediate
-s" CALL-BUMP" 0 parse-imm
-: BUMPED ( -- ) CALL-BUMP ;
+: MAKE-BUMPED ( ^u8 n -- ) EFFECT:EMPTY define-word s" BUMP" evaluate-closed postpone ; ;
+s" BUMPED" MAKE-BUMPED
 
 : CALLER-OPEN ( -- )
    s" a text run inside the caller's open definition compiles into it" T-LABEL
    0 SEEN !  BUMPED  SEEN @ 1 T= ;
 
-\ The same immediate with a text whose token the compile refuses: the refusal,
-\ caught inside the immediate, leaves the caller's definition compiling, as it
+\ : NAME ( -- n ) 5 ; after a text whose token the compile refuses: the
+\ refusal, caught inside the definer, leaves its definition compiling, as it
 \ does for any buffer begun inside one (habu2.f EM-EVAL-THROW-RECOVER), and
 \ the refused text's stack still goes back to the pool: the next pair takes
 \ the same two stacks as the pair before it.
 variable CAUGHT
-: TRY-BAD ( -- ) [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch CAUGHT ! ; immediate
-s" TRY-BAD" 0 parse-imm
+: MAKE-REFUSED ( ^u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch CAUGHT !
+   s" 5" evaluate-closed postpone ; ;
 
 : CALLER-OPEN-REFUSED ( -- )
    s" a text refused inside the caller's open definition is caught there" T-LABEL
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
    0 CAUGHT !
-   s" package NATIVE-EVAL-TEST public : HOST ( -- n ) TRY-BAD 5 ; ;package" evaluate-closed
+   S\" package NATIVE-EVAL-TEST public s\" HOST\" MAKE-REFUSED ;package" evaluate-closed
    CAUGHT @ 70 T=
    s" and the caller's definition goes on compiling" T-LABEL
    s" NATIVE-EVAL-TEST:HOST 5 T=" evaluate-closed
@@ -252,14 +253,16 @@ s" TRY-BAD" 0 parse-imm
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
 \ `is` and its target are captured in two passes, so a refused target takes
-\ back `is` too: a caller left holding `is` refuses at its own `;`.
-: TRY-BAD-IS ( -- ) [: s" is NATIVE-EVAL-NO-DEFER" evaluate-closed ;] catch CAUGHT ! ; immediate
-s" TRY-BAD-IS" 0 parse-imm
+\ back `is` too: a definition left holding `is` refuses at its `;`.
+: MAKE-REFUSED-IS ( ^u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   [: s" is NATIVE-EVAL-NO-DEFER" evaluate-closed ;] catch CAUGHT !
+   s" 5" evaluate-closed postpone ; ;
 
 : CALLER-OPEN-IS-REFUSED ( -- )
    s" a refused `is` target is taken back with its `is`" T-LABEL
    0 CAUGHT !
-   s" package NATIVE-EVAL-TEST public : HOST-IS ( -- n ) TRY-BAD-IS 5 ; ;package" evaluate-closed
+   S\" package NATIVE-EVAL-TEST public s\" HOST-IS\" MAKE-REFUSED-IS ;package" evaluate-closed
    CAUGHT @ 70 T=
    s" NATIVE-EVAL-TEST:HOST-IS 5 T=" evaluate-closed ;
 

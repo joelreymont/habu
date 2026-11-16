@@ -2,8 +2,8 @@
 \ target's files are chosen:
 \ `HB-TARGET-MACOS? [if] require src/lib/power/macos.f [then]`. A false answer
 \ skips the tokens through the matching `[then]`, counting the `[if]`s nested
-\ there, those in comments and strings too. Immediate, as `require` is, so a
-\ body cannot hold either. Loads after
+\ there, those in comments and strings too. Immediate, as `require` is: a body
+\ rejects `[if]` for its effect, and a `[then]` there does nothing. Loads after
 \ src/core/rejection.f, whose record an unclosed `[if]` prints, and before
 \ src/core/checker.f, which loads before the source loader, so the checker can
 \ choose its own text.

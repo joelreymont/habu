@@ -225,10 +225,14 @@ package CHECK
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
    TOP-STEP @ 0= IF TOK-SYM @ DECLARATION-SYM? IF REJECT-UNSAFE EXIT THEN THEN
-   \ What the call may do at run time is its symbol's, read before an identity
-   \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
-   \ its axiom.
-   TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
+   \ Read before an identity arm takes the token (`create` keeps its axiom). Only
+   \ a call that runs when the word runs gives facts: an admitted immediate does not.
+   TSTART @ u POSTPONED-REC NULL-PTR <>
+   data-base BODY-ITEMS:EFFECT-CELL + @ 0 <>  and {: built:bool :}
+   a u TOK-SYM @ IMM-READS 0 <  POST-ON @ 0 <>  or  built or IF
+      TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
+      TOK-SYM @ DFER-FIND-SYM IF INHSET @ CTL-UNSEEN or INHSET ! THEN
+   THEN
    id DEFINER-TOK IF EXIT THEN
    id INTRINSIC-CELL-FETCH = IF CELL-FETCH-TOK EXIT THEN
    id INTRINSIC-CELL-STORE = IF RES-TRUE CELL-STORE-TOK EXIT THEN
@@ -450,24 +454,28 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
 
 EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 
-\ Whether the call is of an immediate: a CALL item's record REC says, and the
-\ spelling does for a text token, whose REC is NULL-PTR.
+\ Whether the call is of an immediate the body rejects, by REC, or by the spelling
+\ for a text token (REC NULL-PTR); never for an item of a `define-word` body.
 : CALL-IMM? ( ^n -- bool ) {: rec:^ :}
    rec NULL-PTR = IF TKF TKFU @ BODY-TOK? EXIT THEN
-   rec POSTPONE-IMM? ;
+   data-base BODY-ITEMS:EFFECT-CELL + @ 0 <> IF RES-FALSE EXIT THEN
+   rec POSTPONE-IMM? 0= IF RES-FALSE EXIT THEN
+   rec CK-REC-NAME$ rec REC-HOME-SYM IMM-READS 0 < ;
 
-\ A body's parsing immediate, declaration row IX, runs while the body compiles:
-\ none of its steps are the body's.
-: PIMM-STEP ( n -- ) {: ix:n :}
+\ An admitted immediate reading N operands runs while the body compiles, unless
+\ `define-word` opened the body: none of its steps are the body's.
+: IMM-STEP ( n -- ) {: n:n :}
    0 CURSYM !
-   PIMM-STREAM @ 0 = IF ix PIMM-CNT@ PIMM-SKIP THEN ;
+   OPERANDS-SPENT @ 0 =  n 0 >  and IF n OPERANDS-SKIP THEN ;
 
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
 : CALL-STEP ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    rec CALL-IMM? IF REJECT-IMMEDIATE THEN
-   TOK-SYM @ PIMM-IX dup 0 < 0= IF PIMM-STEP EXIT THEN drop
+   a u TOK-SYM @ IMM-READS  dup 0 < 0=  data-base BODY-ITEMS:EFFECT-CELL + @ 0=  and IF
+      IMM-STEP EXIT
+   THEN drop
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
@@ -1516,14 +1524,12 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       THEN
       sym CK-CLOSE!
    THEN
-   \ Deferred: the declaration is recorded with authority, so a later caller
-   \ still binds to it and a duplicate is still refused, but no control claim
-   \ is made for a body the run measures; only CTL-INHERITED, a may-claim the walk
-   \ saw directly.
+   \ Deferred: recorded so a caller binds and a duplicate is refused, with only
+   \ the may-claims the walk saw (INHSET) and CTL-OPAQUE for those it did not.
    dup 2 =  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
-      NMA @ NMU @ INHSET @ NORET-ADD
+      NMA @ NMU @ INHSET @ CTL-OPAQUE or NORET-ADD
       NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
@@ -1557,20 +1563,19 @@ $68 constant RBF.VSIG-OFF
 $70 constant RBF.PKGMODE-OFF
 $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
-$88 constant RBF.PIMMN-OFF                 \ the parse-imm table's row count
-$90 constant RBF.COORD-OFF
-$98 constant RBF.OVNDICT-OFF               \ the checker overlay's NDICT, log count,
-$A0 constant RBF.OVLOG-OFF                 \ CP and WIDN (CHECKER-OVERLAY:MARKS)
-$A8 constant RBF.OVCP-OFF
-$B0 constant RBF.OVWIDN-OFF
-$B8 constant RBF.FLOOR-OFF
-$C0 constant RBF.VDEFN-OFF
-$C8 constant RBF.VPRSN-OFF
-$D0 constant RBF.PROWE-OFF                 \ the kept parses rows' end
-$D8 constant RBF.NDICT-OFF                 \ the dictionary's record count
-$E0 constant RBF.SIMMN-OFF                 \ the source-immediate table's row count
-$E8 constant RBF.PKGA-OFF                  \ the open package's name offset
-$F0 constant RBF.USE-OFF                   \ the import rows (CK-USE-SAVE)
+$88 constant RBF.COORD-OFF
+$90 constant RBF.OVNDICT-OFF               \ the checker overlay's NDICT, log count,
+$98 constant RBF.OVLOG-OFF                 \ CP and WIDN (CHECKER-OVERLAY:MARKS)
+$A0 constant RBF.OVCP-OFF
+$A8 constant RBF.OVWIDN-OFF
+$B0 constant RBF.FLOOR-OFF
+$B8 constant RBF.VDEFN-OFF
+$C0 constant RBF.VPRSN-OFF
+$C8 constant RBF.PROWE-OFF                 \ the kept parses rows' end
+$D0 constant RBF.NDICT-OFF                 \ the dictionary's record count
+$D8 constant RBF.SIMMN-OFF                 \ the source-immediate table's row count
+$E0 constant RBF.PKGA-OFF                  \ the open package's name offset
+$E8 constant RBF.USE-OFF                   \ the import rows (CK-USE-SAVE)
 RBF.USE-OFF CK-USE-SNAP-BYTES + constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
@@ -1595,7 +1600,6 @@ RBF.USE-OFF CK-USE-SNAP-BYTES + constant RBF-REC
 : RBF.PKGA ( ^a -- ^a ) RBF.PKGA-OFF + ;
 : RBF.USE ( ^a -- ^a ) RBF.USE-OFF + ;
 : RBF.DFEREND ( ^a -- ^a ) RBF.DFEREND-OFF + ;
-: RBF.PIMMN ( ^a -- ^a ) RBF.PIMMN-OFF + ;
 : RBF.COORD ( ^a -- ^a ) RBF.COORD-OFF + ;
 : RBF.OVNDICT ( ^a -- ^a ) RBF.OVNDICT-OFF + ;
 : RBF.OVLOG ( ^a -- ^a ) RBF.OVLOG-OFF + ;
@@ -1658,7 +1662,6 @@ EXPORT CHECKER-OVERLAY:MARKS
    MARKS
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
-   PIMM-N @ r RBF.PIMMN !
    SIMM-N @ r RBF.SIMMN !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
@@ -1695,7 +1698,6 @@ EXPORT CHECKER-OVERLAY:ROLLBACK
    r RBF.VPRSN @ VERIFY-PARSES-N !
    r RBF.PROWE @ PROW-REWIND
    r RBF.DFEREND @ DFER-REWIND
-   r RBF.PIMMN @ PIMM-REWIND
    r RBF.SIMMN @ SIMM-REWIND ;
 
 : RBF-PUSH ( -- )
@@ -1870,10 +1872,10 @@ package CHECK
    RBF-PUSH
    -1 CHK-CAND !
    -1 VSIG !
-   0 PIMM-STREAM ! ;   \ candidate text is RAW source: parsing-immediate payloads present
+   0 OPERANDS-SPENT ! ;   \ candidate text is RAW source: parsing-immediate payloads present
 
 : CHECK-CANDIDATE-DONE ( n -- n )
-   -1 PIMM-STREAM !    \ back to the engine-stream default (hook loads)
+   -1 OPERANDS-SPENT !    \ back to the engine-stream default (hook loads)
    0 BIND-HORIZON !
    WRAP-CLEAR          \ a candidate body armed like any other; the next real record is not its heir
    RBF-POP ;
@@ -1940,7 +1942,7 @@ EXPORT CHECK:CHECKER-PREFIX-ROLLBACK
 EXPORT CHECK:CHK-PROBE
 EXPORT CHECK:CUR-DONE
 EXPORT CHECK:CUR-GAP
-EXPORT CHECK:PIMM-STREAM
+EXPORT CHECK:OPERANDS-SPENT
 EXPORT CHECK:PU-N
 EXPORT CHECK:WRITE-WINDOW-CK
 : SCAN ( ^u8 n -- bool )
@@ -1968,7 +1970,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    CHECK-CANDIDATE-START
    -1 CHK-PROBE !
    -1 CUR-DONE !                    \ a prefix's text is not the cursor's
-   -1 PIMM-STREAM !                 \ the engine's body capture has spent parser operands
+   -1 OPERANDS-SPENT !              \ the engine's body capture has spent parser operands
    -1 CHECKER-PREFIX-ACTIVE !
    RES-FALSE [: drop a u SCAN ;] catch {: answer rc:n :}
    0 CHECKER-PREFIX-ACTIVE !
@@ -2552,8 +2554,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    ROW-END ;
 
-\ `already` is what the caller knows of D beyond the checker. Answers D's symbol
-\ and the created word's record offset+1, 0 for a refused row.
+\ `already`: what the caller knows of D beyond the checker. D's symbol and the created
+\ record's offset+1, 0 for a refused row; an opaque or unseen D's row stands unjudged.
 : CHECKER-GENERATES ( ^u8 n ^u8 n bool -- n n )
    {: na:^ nu:n sa:^ su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
@@ -2562,7 +2564,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym na nu NAV-USE-NOW
    already sym NORET-CREATES@ 0 <> or IF na nu sa su GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
    sym TOP-CONTROL {: flags:n deferred:bool :}
-   flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
+   flags CTL-OPAQUE CTL-UNSEEN or and 0= IF
+      flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
+   THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
    rec 0= IF na nu sa su GENR-BADSIG GENERATES-REFUSE THEN
@@ -2765,24 +2769,21 @@ private
    a u ROW-UNBOUND {: kind:n :}
    kind 0 >= IF ka ku a u kind PARSES-REFUSE THEN ;
 
-\ A deferred word stays opaque, whatever word is set in it, and so does a word
-\ with no record (a primitive or an axiom), whose replacement no record tells
-\ apart. A cold selected dictionary record can likewise have control but no
-\ checker symbol to key a row: the row stands and bounds nothing until a checked
-\ use materializes that binding. The symbol, the visible record's offset + 1
-\ and the selected record; NULL-PTR where nothing keeps the row.
+\ A row on a deferred or unseen word stands unjudged: what the word runs is unseen. With no
+\ checker symbol to key it, a row that stands bounds nothing (NULL-PTR).
 : PARSES-TARGET ( ^u8 n ^u8 n -- n n ^n )
    {: ka:^ ku:n a:^ u:n :}
    a u TOP-BINDING-REC {: sym:n eff1:n ctl:n rec:^ :}
    sym 0= IF
       ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
+      ctl CTL-OPAQUE CTL-UNSEEN or and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl CTL-PARSES and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
       ka ku a u PARSES-UNBOUND 0 0 NULL-PTR EXIT
    THEN
    sym a u NAV-USE-NOW
-   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
-   ctl CTL-PARSES and 0= IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER CTL-OPAQUE or CTL-UNSEEN or and 0=
+   ctl CTL-PARSES and 0= and IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
    eff1 0= IF 0 0 NULL-PTR EXIT THEN
    sym eff1 rec ;
 
@@ -3725,7 +3726,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-NONZERO save GUEST-CELL  SIG-TAGS-ONLY save GUEST-CELL
-   SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
+   SIG-PE save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
    SIG-PARSES save GUEST-CELL  SIG-PARSES-U save GUEST-CELL
    SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
 
@@ -3831,7 +3832,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    {: a:^ u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:^ ru:n :}
-   ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or
+   ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or
    SIG-PARSES @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
       NULL-PTR 0 RES-FALSE EXIT
    THEN
@@ -3883,12 +3884,12 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    RES-TRUE SIG-FACTS!
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    ok 0= IF a u name nameu READ-REFUSE EXIT THEN
-   SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
-      {: ctl:n pimm:n pe:n ca:^ cu:n hasr:bool :}
+   SIG-CTL @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
+      {: ctl:n pe:n ca:^ cu:n hasr:bool :}
    SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:^ ou:n nz:n :}
    SIG-PARSES @  SIG-PARSES-A @  SIG-PARSES-U @ {: pn:n pa:^ pu:n :}
    SIG-TAGS-ONLY @ IF
-      pe 0 <>  pimm 0 >= or  pn 0 >= or  cu 0 <> or  ou 0 <> or
+      pe 0 <>  pn 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
@@ -3901,7 +3902,6 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made nz
    NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
-   pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
    pn 0 >= IF sym pn pa pu PROW-ADD-TEXT THEN
    ix sym mark READ-LINK ;
 

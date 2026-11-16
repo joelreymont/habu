@@ -282,8 +282,6 @@ public
 : LOCAL-NOW ( -- ) EFFECT:N EFFECT:LOCAL drop ; immediate
 : LOCAL-READ-NOW ( -- ) 0 EFFECT:LOCAL@ ; immediate
 private
-s" LOCAL-NOW" 0 parse-imm
-s" LOCAL-READ-NOW" 0 parse-imm
 : BAD-TEXT ( -- n )
    [: s" : BI-BAD-TEXT ( -- ) LOCAL-NOW ;" evaluate-closed ;] catch ;
 BAD-TEXT 70 T=

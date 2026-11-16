@@ -33,11 +33,17 @@ public
    s" NDB-MUTABLE" XREF:UNDEFINE-NAME
    s" NDB-MUTABLE" SPELL-START 0 T= ;
 immediate
-s" NDB-IMMEDIATE:RETIRE-BINDING" 0 parse-imm
+parses: RETIRE-BINDING 0
 
-: REPLAY ( -- ) [: s" : NDB-RA ( -- n ) 5 ;" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
-immediate
-s" NDB-IMMEDIATE:REPLAY" 0 parse-imm
+private
+: REPLAY-RA ( -- ) [: s" : NDB-RA ( -- n ) 5 ;" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
+public
+
+: REPLAY ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word REPLAY-RA ;
+
+: REPLAY-DOES ( ^u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:IN define-word
+   s" create , does> ( -- n )" evaluate-closed REPLAY-RA ;
 
 ;using
 ;package
@@ -105,8 +111,8 @@ variable ROLL-OCC
 
 
 : REPLAY-PENDING ( -- )
-   s" : NDB-REPLAYED ( -- n ) NDB-IMMEDIATE:REPLAY 81 ; NDB-REPLAYED 81 T=" EV
-   s" : NDB-KEEPER ( n -- ) create , does> ( -- n ) NDB-IMMEDIATE:REPLAY @ ; 83 NDB-KEEPER NDB-KEPT NDB-KEPT 83 T=" EV ;
+   S\" s\q NDB-REPLAYED\q NDB-IMMEDIATE:REPLAY 81 ; NDB-REPLAYED 81 T=" EV
+   S\" s\q NDB-KEEPER\q NDB-IMMEDIATE:REPLAY-DOES @ ; 83 NDB-KEEPER NDB-KEPT NDB-KEPT 83 T=" EV ;
 
 
 : REDECLARATION ( -- )

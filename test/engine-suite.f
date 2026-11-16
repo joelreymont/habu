@@ -1465,7 +1465,7 @@ TJSF TTRUE
 : TPN1 ( -- ) parse-name 5 T= c@ 97 T= ;
 TPN1 alpha
 : TPNI ( -- ) parse-name 4 T= c@ 98 T= ; immediate
-s" TPNI" 1 parse-imm
+parses: TPNI 1
 : TPN2 ( -- n ) TPNI beta 7 ;
 TPN2 7 T=
 

@@ -50,10 +50,6 @@ public
 : OUT ( type type -- type ) {: e:type t:type :}
    TYPE-OP-ABI:OUT e TYPE>N t TYPE>N OP ;
 
-\ Opens the definition the string names with effect E, in the running engine.
-: OPEN-WORD ( ^u8 n type -- ) {: e:type :}
-   e TYPE>N data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
-
 private
 
 \ The engine's cell holds the item runner as a raw execution token.
@@ -95,7 +91,10 @@ public
 : VARIABLE-OF ( ^u8 n type -- ) {: t:type :}
    t TYPE>N data-base PROVIDED-XT:VARIABLE-CELL + @ AS-VARIABLE execute ;
 
-;package
+global
+\ A definer's opener: the definition the string names, with effect E, in the
+\ running engine.
+: define-word ( ^u8 n type -- ) {: e:type :}
+   e TYPE>N data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
 
-\ A definer's opener: the definition the string names, with effect E.
-: define-word ( ^u8 n EFFECT:type -- ) EFFECT:OPEN-WORD ;
+;package

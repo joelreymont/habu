@@ -275,14 +275,14 @@ variable RC
    SIDE$ s"  . ;" INC$ FRAG-FIXTURE!
    s" -1 REJECTION:JSON ! : LRD-IMM-R ( -- ) 73 require "
    SIDE$ s"  . ;" REQ$ FRAG-FIXTURE!
-   CALLER$ S" TRUSTED: RAW-IMM ( -- ) ; immediate
+   CALLER$ S" : RAW-IMM ( -- ) parse-name 2drop ; immediate
 -1 REJECTION:JSON !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " FS:WRITE-ALL
    MISS$ s" : LRD-IMM-M ( -- ) include lrd-missing.f ;" FS:WRITE-ALL
    REBOUND$ S" -1 REJECTION:JSON !
 undefine include
-: include ( -- ) ; immediate
+: include ( -- ) parse-name 2drop ; immediate
 : LRD-IMM-X ( -- ) include ;
 " FS:WRITE-ALL ;
 
@@ -309,8 +309,8 @@ undefine include
    s" include " FRAG$ s" " TOP-INC$ FRAG-FIXTURE!
    s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
    RUNTIME-FIXTURE!
-   MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." FS:WRITE-ALL
-   TRUSTED$ S\" -1 REJECTION:JSON ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
+   MODELED$ S\" : PI ( -- ) ; immediate : PIM ( -- n ) PI 73 ; PIM ." FS:WRITE-ALL
+   TRUSTED$ S\" -1 REJECTION:JSON ! : LRD-TRUST-IMM ( -- ) parse-name 2drop ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
 
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
@@ -821,15 +821,15 @@ undefine include
 
 : TEST-REPLAY-TASK ( -- )
    s" a replay inside a definition while a task is live is rejected" T-LABEL
-   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\nGO\n: LRD-OUTER ( -- ) RPL ;\n" FS:WRITE-ALL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( ^u8 n -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\nGO\ns\" LRD-OUTER\" RPL ;\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-VERIFY-WINDOW]: the checker's replay ran inside a definition while a task is live" COUNT-SUB 1 T=
-   BODY$ s" :11:20" ASSERT-AT
+   BODY$ s" :10:15" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ REJECT-RC T=
    s" a task started inside a replay of a definition is rejected and the definition completes" T-LABEL
-   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ; immediate\ns\" RPL\" 0 parse-imm\n: EV ( -- ) [: s\" RPL\" evaluate-closed ;] catch . ; immediate\ns\" EV\" 0 parse-imm\n: OUTER ( -- n ) EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n: EV ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word [: RPL ;] catch . ;\ns\" OUTER\" EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
    BODY$ RUN
    OUT$ s\" -3604\n81\n\n82\n\n" STR= TTRUE
    ERR-U @ 0 T=
@@ -1383,41 +1383,40 @@ variable LONG-U
    CALLER$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    3 34 s" RAW-IMM"
-   s" remove `RAW-IMM` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   s" state the count with `parses: RAW-IMM n` after `RAW-IMM`"
    ASSERT-IMM-DIAG
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
-   root s" byte_start" 89 GJA-ASSERT-INT-FIELD
-   root s" byte_end" 96 GJA-ASSERT-INT-FIELD ;
+   root s" byte_start" 99 GJA-ASSERT-INT-FIELD
+   root s" byte_end" 106 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-REBOUND ( -- )
    s" an unmodeled immediate's help follows the word it binds, not its spelling" T-LABEL
    REBOUND$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    4 20 s" include"
-   s" remove `include` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   s" state the count with `parses: include n` after `include`"
    ASSERT-IMM-DIAG ;
 
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   1 89 s" LRD-TRUST-IMM"
-   s" remove `LRD-TRUST-IMM` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   1 106 s" LRD-TRUST-IMM"
+   s" state the count with `parses: LRD-TRUST-IMM n` after `LRD-TRUST-IMM`"
    ASSERT-IMM-DIAG ;
 
-\ A rejection at a token an immediate evaluated into the body, which no source
-\ holds, gets one record in the record form, placed at the definition's `;`,
-\ where the check runs, with the token in a `word` note.
+\ A rejection at a token a definer evaluated, which no source holds, is one record at
+\ the definition's `;`, where the check runs, with the token in a `word` note.
 : TEST-UNSOURCED-RECORD ( -- )
    s" a rejection at an evaluated token is placed where the check runs" T-LABEL
-   BODY$ S\" true REJECTION:JSON !\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
+   BODY$ S\" true REJECTION:JSON !\n: OPEN2 ( ^u8 n -- ) EFFECT:EMPTY define-word s\" drop\" evaluate-closed ;\ns\" Q\" OPEN2 ( a comment ) ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token" GJA-REQ s" ;" GJA-ASSERT-STR
-   root s" line" 4 GJA-ASSERT-INT-FIELD
-   root s" column" 41 GJA-ASSERT-INT-FIELD
+   root s" line" 3 GJA-ASSERT-INT-FIELD
+   root s" column" 27 GJA-ASSERT-INT-FIELD
    root s" notes" GJA-REQ s" word" GJA-REQ s" drop" GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 
@@ -1455,7 +1454,7 @@ variable LONG-U
    TOP-REQ$ RUN s" 74" ASSERT-OK-OUT
    s" runtime included required and provided remain live" T-LABEL
    RUNTIME$ RUN s" 74" ASSERT-OK-OUT
-   s" parse-imm modeled immediate remains live" T-LABEL
+   s" an immediate that reads and writes nothing remains live" T-LABEL
    MODELED$ RUN s" 73" ASSERT-OK-OUT ;
 
 \ A rollback with a task live retires the records it drops and keeps the

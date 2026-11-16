@@ -2397,13 +2397,16 @@ runtime or analysis layer.
 These edge cases name the refusal at the boundary. The general rules are in the
 sections above.
 
-- **An immediate in a checked body is declared a parsing immediate.** It runs
-  at compile time, so its effect is no step of the body: `: V ( -- )
-  parse-name 2drop ; immediate` then `: F ( -- ) V x ;` is
-  `E-UNMODELED-IMMEDIATE` at `V`. A top-level `s" V" 1 parse-imm` declares
-  that V reads one source token and leaves the stack as it found it; the
-  checker then takes F's body as if `V x` were not there, and F certifies.
-  The newest declaration for a name wins.
+- **An immediate in a checked body runs while the body compiles.** Its effect
+  is no step of the body, so it must be `( -- )`; it reads the tokens its
+  `parses:` row states and writes nothing. `: V ( -- ) parse-name 2drop ;
+  immediate` then `: F ( -- ) V x ;` is `E-UNMODELED-IMMEDIATE` at `V`; with
+  `parses: V 1` after V's definition the checker takes F's body as if `V x`
+  were not there, and F certifies. The newest row for a name wins. One whose
+  effect is not `( -- )`, or that defines words or changes the definition it
+  runs in, by text it evaluates there or an item it appends, is
+  `E-UNMODELED-IMMEDIATE` at V, since the check never sees what it writes;
+  so is one that may move the source root.
 
 - **A ticked engine primitive is an opaque xt.** A primitive's effect is its
   `EPRIM:` row at a call; no row rides its xt, so `['] dup execute` and
@@ -2452,9 +2455,8 @@ sections above.
   (`E-VS-UNTERMINATED-DEFINITION`) or an open comment
   (`E-UNTERMINATED-COMMENT`).
   The first includes its stack comment, locals and quotations; the definition
-  rolls back on a caught `evaluate`. An immediate word may evaluate text while a
-  definition is open, but a `;` from that text may not close the outer
-  definition (`E-VS-UNTERMINATED-DEFINITION`). Completed tokens in nested evaluations stay compiled in the
+  rolls back on a caught `evaluate`. Text evaluated while a definition is open
+  may not close it with `;` (`E-VS-UNTERMINATED-DEFINITION`). Completed tokens in nested evaluations stay compiled in the
   outer definition after a caught refusal. The open-definition diagnostic
   locates the name (or `def-open` caller), the open-comment diagnostic its `(`,
   and the foreign-close diagnostic its `;`; stdin has no line location.
