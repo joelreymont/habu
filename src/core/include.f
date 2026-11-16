@@ -1563,14 +1563,16 @@ public
    entry 0= if p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR then
    s" searched" REJECTION:NOTE
    entry  a c@ 47 =  or if
-      CWD$ a u UNDER REJECTION:EMIT-STR
+      CWD$ a u JOIN CANONICAL drop REJECTION:EMIT-STR
    else
-      CURRENT$ a u UNDER REJECTION:EMIT-STR
+      CURRENT$ a u JOIN CANONICAL drop REJECTION:EMIT-STR
       ENGINE-SEARCHED? if
-         s" , " REJECTION:EMIT-STR  ENGINE$ a u UNDER REJECTION:EMIT-STR
+         s" , " REJECTION:EMIT-STR
+         ENGINE$ a u JOIN CANONICAL drop REJECTION:EMIT-STR
       then
       CWD-SEARCHED? if
-         s" , " REJECTION:EMIT-STR  CWD$ a u UNDER REJECTION:EMIT-STR
+         s" , " REJECTION:EMIT-STR
+         CWD$ a u JOIN CANONICAL drop REJECTION:EMIT-STR
       then
    then
    REJECTION:HELP

@@ -1607,13 +1607,16 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    root s" file" FIELD-ABSENT
    root s" notes" GJA-FIELD? IF s" word" FIELD-ABSENT ELSE drop THEN ;
 
-\ A named input that does not exist gets the load's record and status, from the
-\ load and the check alike.
-: TEST-NAMED-MISSING ( -- )
-   s" a named input that does not exist" T-LABEL
-   s" named-missing.f" NAMED!
+\ NAME under the test's root, the root spelled with every link resolved.
+: CANON-NAMED ( ^u8 n -- ^u8 n ) {: name:^ nameu:n :}
+   BASE$ CANON$ name nameu DIR-P FS:JOIN-PATH {: u:n :}
+   DIR-P u ;
+
+\ The fixture path, a named input that does not exist, gets the load's record
+\ and status, searched at WANT, from the load and the check alike.
+: NAMED-MISSING ( ^u8 n -- ) {: want:^ wantu:n :}
    SB-RESET  s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND  FX-PATH$ SB-APPEND
-   S\" `\n  = searched: " SB-APPEND  FX-PATH$ SB-APPEND
+   S\" `\n  = searched: " SB-APPEND  want wantu SB-APPEND
    S\" \n  = help: a path given on the command line is looked up from the" SB-APPEND
    S\"  directory hb runs in\n\n" SB-APPEND
    SB$ REJECT-RC LOADED  ERR$ SB$ T$=
@@ -1621,9 +1624,25 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" E-MISSING-SOURCE" FIELD=
    SB-RESET  s" cannot open `" SB-APPEND  FX-PATH$ SB-APPEND  s" `" SB-APPEND
    0 s" message" SB$ FIELD=
-   0 s" searched" FX-PATH$ NOTE=
+   0 s" searched" want wantu NOTE=
    0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
    UNPLACED ;
+
+: TEST-NAMED-MISSING ( -- )
+   s" a named input that does not exist" T-LABEL
+   s" named-missing.f" NAMED!
+   s" named-missing.f" CANON-NAMED NAMED-MISSING ;
+
+\ The search resolves `..` after a link from the link's target, and the record
+\ names the path it looked up.
+: TEST-NAMED-LINK-UP ( -- )
+   s" a missing named input whose `..` follows a link" T-LABEL
+   s" named-up" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" named-up/other" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" named-up/other/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" named-up/lnk" NAMED!  s" other/sub" FX-PATH$ FS:MAKE-SYMLINK
+   s" named-up/lnk/../gone.f" NAMED!
+   s" named-up/other/gone.f" CANON-NAMED NAMED-MISSING ;
 
 \ hb runs the fixture path as a program, exiting WANT with TEXT in its stderr.
 : RAN ( ^u8 n n -- )
@@ -3111,6 +3130,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ALL-UNREADABLE
    TEST-REQUIRED-UNSEARCHABLE
    TEST-NAMED-MISSING
+   TEST-NAMED-LINK-UP
    TEST-NAMED-TOO-LONG
    TEST-STDIN-PATH-TOO-LONG
    TEST-NAMED-DOTTED
