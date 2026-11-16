@@ -392,7 +392,7 @@ variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
 PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 \ The newest record's place as AT copies it: its file's path and first byte.
 \ FILE$ and a loading file's path fit PATH-CAP bytes.
-create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT
+create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT   -1 LAST-AT !
 \ A token in an evaluated text is placed at the token INVOKED-A INVOKED-U where
 \ the evaluation was run; the label is followed by the evaluated place, as rustc
 \ follows a macro's call with its expansion: the line EVALUATED-A EVALUATED-U of
