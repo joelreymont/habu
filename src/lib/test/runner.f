@@ -1,13 +1,17 @@
 \ runner.f - checked process-fixture helpers for native test scripts: GT-START
-\ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child into
-\ bounded buffers (output past them throws E-PROC-TRUNCATED), GT-FAIL+ records
-\ a named failure and GT-REPORT exits GT-EX-FAIL. STORAGE CLASS. PROCESS-WIDE:
-\ the root, capture buffers, failure table and capture frames are static; the
-\ standard streams are the process's, so two tasks never capture at once.
+\ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child's whole
+\ output, GT-FAIL+ records a named failure and GT-REPORT exits GT-EX-FAIL.
+\ STORAGE CLASS. PROCESS-WIDE: the root, capture storage, failure table and
+\ capture frames are the process's; the standard streams are the process's, so
+\ two tasks never capture at once.
+\ GT-CAPTURE-ACTION sends an action's stdout and stderr to two files under the
+\ caller's directory, each unlinked once open for appending and for reading, and
+\ reads them back whole through the caller's sinks. Files, not pipes: nothing
+\ drains a pipe while the action runs. A nested capture takes the next frame, so
+\ each reads its own bytes and both streams come back on every exit path.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -20,19 +24,18 @@ require src/lib/fmt.f
 2 constant GT-EX-FAIL
 256 constant GT-FAIL-MAX
 128 constant GT-FAIL-NAME-CAP
-32768 constant GT-OUT-CAP
-32768 constant GT-ERR-CAP
 \ The longest name GT-PATH joins. GT-START keeps that much room below the root
 \ it makes, so whether a row's name joins never depends on how long TMPDIR is.
 64 constant GT-NAME-MAX
 
 create GT-ROOT-BUF PATH-CAP allot
-create GT-OUT-BUF GT-OUT-CAP allot
-create GT-ERR-BUF GT-ERR-CAP allot
 create GT-FAIL-NAMES GT-FAIL-MAX GT-FAIL-NAME-CAP * allot
 create GT-FAIL-US GT-FAIL-MAX cells allot
 
 variable GT-ROOT-U
+\ The last capture's stdout and stderr, and how many bytes of each it holds.
+DYNAMIC-BUFFER GT-OUT-BYTES u8
+DYNAMIC-BUFFER GT-ERR-BYTES u8
 variable GT-OUT-U
 variable GT-ERR-U
 variable GT-EXITED                       \ bool: completed by exit (vs signal) when not timed out
@@ -67,10 +70,18 @@ variable GT-PROGRESS-START-NS
    GT-ROOT-BUF GT-ROOT-U @ ;
 
 : GT-OUT$ ( -- ^u8 n )
-   GT-OUT-BUF GT-OUT-U @ ;
+   0 GT-OUT-BYTES GT-OUT-U @ ;
 
 : GT-ERR$ ( -- ^u8 n )
-   GT-ERR-BUF GT-ERR-U @ ;
+   0 GT-ERR-BYTES GT-ERR-U @ ;
+
+\ A growing capture's sinks: room for n bytes of stdout or stderr, the bytes
+\ captured so far kept.
+: GT-OUT-ROOM ( n -- ^u8 )
+   GT-OUT-BYTES-RESERVE 0 GT-OUT-BYTES ;
+
+: GT-ERR-ROOM ( n -- ^u8 )
+   GT-ERR-BYTES-RESERVE 0 GT-ERR-BYTES ;
 
 : GT-FAILURES ( -- n )
    GT-FAIL# @ ;
@@ -145,26 +156,17 @@ variable GT-PROGRESS-START-NS
 \ was given.
 : GT-RUN ( ^u8 n n -- ) {: path:^ pathu timeout :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   path pathu >LEN s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
+   RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    GT-STORE-RUN ;
 
-\ GT-CAPTURE-ACTION points an action's stdout and stderr at two files under the
-\ caller's directory and reads them back into the caller's spans; code is the
-\ action's throw code, 0 when it returned. Files, not pipes: nothing drains a pipe
-\ while the action runs, and the action may run captures of its own through the
-\ task's one-capture row (src/lib/process.f). Each file is unlinked once it is open
-\ twice (the appending stream, a reader from its start), so no exit path leaves it
-\ and a nested capture reuses the name. A nested capture takes the next frame, so
-\ each reads its own bytes and the outer one gets its streams back. Held
-\ descriptors sit at GT-FD-HOLD-MIN or above and close on exec. Output past a span
-\ throws E-PROC-TRUNCATED, even when a child the action left running wrote it
-\ after the action returned. Both streams come back on every exit path.
 10 constant GT-FD-HOLD-MIN               \ a held descriptor sits above the low ones
 2 constant GT-CAP-ROWS                   \ a frame's rows: stdout, then stderr
 \ Captures open at once: tests nest two, and one past the bound is refused
 \ with E-TBL-BOUNDS before it takes a frame.
 8 constant GT-CAP-NEST-MAX
+\ The bytes one read of a capture file asks for.
+4096 constant GT-CAP-CHUNK
 
 \ Per frame and row, the stream the row saved and the row's file reader, -1
 \ until the row holds one.
@@ -172,7 +174,6 @@ GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-SAVES n
 GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-READERS n
 variable GT-CAP-DEPTH                    \ frames in use
 create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
-1 BUFFER: GT-CAP-PROBE                   \ the byte a reader past a full span looks for
 
 \ fd's row in the innermost frame.
 : GT-CAP-ROW ( n -- n ) {: fd:n :}
@@ -229,26 +230,19 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    moved 0 < if E-PROC-OUTPUT throw then
    closed 0 < if E-PROC-OUTPUT throw then ;
 
-\ One read from fd into dst past its first got bytes; 0 at the file's end.
-: GT-CAP-READ-AT ( n n SPAN:span<u8> -- n )
-   {: got:n fd:n dst :}
-   fd dst got SPAN:SKIP SPAN:$ read {: rd:n :}
+\ One read from fd into sink's storage past its first got bytes; 0 at the
+\ file's end.
+: GT-CAP-READ-AT ( n n [ n -- ^u8 ] -- n )
+   {: got:n fd:n sink :}
+   got GT-CAP-CHUNK + sink execute {: at:^ :}
+   fd at got + GT-CAP-CHUNK read {: rd:n :}
    rd 0 < if E-FS-IO throw then
    rd ;
 
-\ The file behind the reader fd into dst, from its start. A byte past a full
-\ dst throws E-PROC-TRUNCATED, whenever it was written.
-: GT-CAP-READ ( n SPAN:span<u8> -- len )
-   {: fd:n dst :}
-   0 begin dup dst SPAN:LEN < while
-      dup fd dst GT-CAP-READ-AT
-      dup 0= if drop >LEN exit then
-      +
-   repeat
-   fd GT-CAP-PROBE 1 read
-   dup 0 < if E-FS-IO throw then
-   0 > if E-PROC-TRUNCATED throw then
-   >LEN ;
+\ The file behind the reader fd, from its start, into sink's storage.
+: GT-CAP-READ ( n [ n -- ^u8 ] -- len )
+   {: fd:n sink :}
+   0 begin dup fd sink GT-CAP-READ-AT dup 0<> while + repeat drop >LEN ;
 
 \ 0, or E-PROC-OUTPUT when fd, held unless it is -1, does not close.
 : GT-CAP-CLOSE ( n -- n )
@@ -287,7 +281,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 
 \ The files are read with the action's streams still on them; GT-CAP-LEAVE
 \ gives the streams back after the read, on its path and on every throw.
-: GT-CAP-RUN ( [ -- ] ^u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
+: GT-CAP-RUN ( [ -- ] ^u8 n [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
    {: q dir:^ diru:n out err :}
    dir diru s" capture-out.txt" FD:STDOUT FD>N GT-CAP-REDIRECT
    dir diru s" capture-err.txt" FD:STDERR FD>N GT-CAP-REDIRECT
@@ -296,9 +290,9 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    FD:STDERR FD>N GT-CAP-READER @ err GT-CAP-READ
    code ;
 
-\ Runs the quotation in this process, its stdout and stderr captured into the
-\ two spans; a child's capture is GT-RUN.
-: GT-CAPTURE-ACTION ( [ -- ] ^u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
+\ Runs the quotation in this process, its stdout and stderr captured through the
+\ two sinks; a child's capture is GT-RUN.
+: GT-CAPTURE-ACTION ( [ -- ] ^u8 n [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
    {: q dir:^ diru:n out err :}
    diru 0 <= if E-FS-PATH throw then
    GT-CAP-ENTER

@@ -512,17 +512,12 @@ variable LABEL-U
 : CHECK-BUF-ACT ( -- )
    LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
 
-: CHECK-BUF-STORE ( n -- ) {: rc:n :}
-   rc PROCESS-ENDING:EXITED GT-OUTCOME!
-   0 GT-OUT-U !
-   CHECK-ALL-ERRORS:OUT$ nip GT-ERR-U ! ;
-
 : CHECK-BUF-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
-   GT-ERR-BUF GT-ERR-CAP CHECK-ALL-ERRORS:BUFFERS!
+   FD:STDERR CHECK-ALL-ERRORS:STREAM!
    false REJECTION:JSON !
-   [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
+   [: CHECK-BUF-ACT ;] GE-CAPTURE-ACTION ;
 
 : CHECK-BUF-BAD ( n ^u8 n ^u8 n -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}

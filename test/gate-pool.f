@@ -62,8 +62,10 @@ $1000 constant GT-POOL-CHUNK-CAP
 \ Red rows: one per registered suite, so a complete run reports every red with
 \ its exit code and capture paths, and a row the table has no record of passed.
 TEST:ITEM-MAX constant GT-POOL-RED-MAX
-GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
-GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
+\ The bytes of each stream's tail a red row keeps.
+32768 constant GT-POOL-TAIL-CAP
+GT-POOL-MAX GT-POOL-TAIL-CAP * constant GT-POOL-OUT-BYTES
+GT-POOL-MAX GT-POOL-TAIL-CAP * constant GT-POOL-ERR-BYTES
 
 create GT-POOL-PIDS GT-POOL-MAX cells allot
 create GT-POOL-REAPER-PIDS GT-POOL-MAX cells allot
@@ -380,10 +382,10 @@ GT-POOL-ABORT-BARE!
    GT-POOL-DONE-PTR @ ;
 
 : GT-POOL-OUT-BUF ( idx -- ^u8 )
-   IDX>N GT-OUT-CAP * GT-POOL-OUT-BUFS + ;
+   IDX>N GT-POOL-TAIL-CAP * GT-POOL-OUT-BUFS + ;
 
 : GT-POOL-ERR-BUF ( idx -- ^u8 )
-   IDX>N GT-ERR-CAP * GT-POOL-ERR-BUFS + ;
+   IDX>N GT-POOL-TAIL-CAP * GT-POOL-ERR-BUFS + ;
 
 : GT-POOL-LABEL-BUF ( idx -- ^u8 )
    IDX>N GT-FAIL-NAME-CAP * GT-POOL-LABELS + ;
@@ -1277,10 +1279,6 @@ variable GT-POOL-CPU-NS
    stream 0= if idx GT-POOL-OUT-BUF exit then
    idx GT-POOL-ERR-BUF ;
 
-: GT-POOL-STREAM-CAP ( n -- n ) {: stream :}
-   stream 0= if GT-OUT-CAP exit then
-   GT-ERR-CAP ;
-
 : GT-POOL-FILE-WRITE ( fd ^u8 n -- ) {: fd:fd a:^ u:n :}
    0 GT-POOL-WR-OFF !
    begin GT-POOL-WR-OFF @ u < while
@@ -1293,7 +1291,7 @@ variable GT-POOL-CPU-NS
 : GT-POOL-TAIL+ ( idx n ^u8 n -- ) {: idx:idx stream:n a:^ u:n :}
    idx stream GT-POOL-STREAM-U-PTR {: up:^ :}
    idx stream GT-POOL-STREAM-BUF {: buf:^ :}
-   stream GT-POOL-STREAM-CAP {: cap:n :}
+   GT-POOL-TAIL-CAP {: cap:n :}
    u cap >= if
       a u cap - + buf cap BYTE-COPY
       cap up !

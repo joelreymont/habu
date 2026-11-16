@@ -2,7 +2,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -104,8 +103,8 @@ variable GE-EVAL-SRC-U
    PROC-ENV-PREPARE {: envp:^ :}
    timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   GT-OUT-BUF 0 >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ^u8 n ^u8 n n -- ) {: path:^ pathu:n in:^ inu:n timeout:n :}
@@ -113,8 +112,8 @@ variable GE-EVAL-SRC-U
    PROC-ENV-PREPARE {: envp:^ :}
    timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   in inu >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-OUTCOME. ( PROCESS:ending -- )
@@ -166,8 +165,8 @@ variable GE-EVAL-SRC-U
    s"  rc: " type GT-RC@ FMT:.INT s"  (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
-   s" stdout bytes: " type GT-OUT$ nip FMT:.INT s"  / " type GT-OUT-CAP FMT:.INT cr
-   s" stderr bytes: " type GT-ERR$ nip FMT:.INT s"  / " type GT-ERR-CAP FMT:.INT cr ;
+   s" stdout bytes: " type GT-OUT$ nip FMT:.INT cr
+   s" stderr bytes: " type GT-ERR$ nip FMT:.INT cr ;
 
 : GE-FAIL ( ^u8 n -- ) {: label:^ labelu:n :}
    s" FAIL: " type label labelu type cr
@@ -327,8 +326,7 @@ variable GE-EVAL-SRC-U
 \ as an exit whose code is the action's throw code.
 : GE-CAPTURE-ACTION ( [ -- ] -- )
    {: q :}
-   q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
-   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   q GT-ROOT [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
    outu erru rc PROCESS-ENDING:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-FORK-EXIT ( n -- )
@@ -352,8 +350,8 @@ variable GE-EVAL-SRC-U
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROCESS:RUN-CAPTURE-ENDING-LOOP
+   s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-EVAL-FORK-BAD ( n ^u8 n ^u8 n -- )

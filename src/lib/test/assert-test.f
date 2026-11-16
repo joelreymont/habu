@@ -137,8 +137,7 @@ variable TAT-SCRIPT-U
 
 : TAT-TEST-LABEL-SPAN ( -- )
    s" habu-assert-label" GT-START
-   [: TAT-LABEL-SUBJECT ;] GT-ROOT
-   GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
+   [: TAT-LABEL-SUBJECT ;] GT-ROOT [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
    1 TAT-EXPECT-FAILURES T-RESET
    outu LEN>N GT-OUT-U !

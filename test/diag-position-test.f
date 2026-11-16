@@ -15,6 +15,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require tools/gate-json-assert-core.f
 require tools/check-core.f
@@ -25,8 +26,6 @@ PATH-CAP 1+ 4 * constant CAP
 70 constant REJECT-RC
 67 constant THROW-RC
 
-create OUT CAP allot
-create ERR CAP allot
 create FX CAP allot
 create EMPTY 1 allot
 create BASE PATH-CAP allot
@@ -43,8 +42,6 @@ variable FX-U
 variable FX-PU
 variable DEP-U
 variable DEP-PU
-variable OUT-U
-variable ERR-U
 variable RC
 
 PROCESS-SYMBOLS
@@ -64,12 +61,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 : DEP-PATH$ ( -- ^u8 n )
    DEP-P DEP-PU @ ;
-
-: OUT$ ( -- ^u8 n )
-   OUT OUT-U @ ;
-
-: ERR$ ( -- ^u8 n )
-   ERR ERR-U @ ;
 
 : ROOT! ( -- )
    FS:CLEANUP-RESET
@@ -118,12 +109,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 : STORE! ( ^u8 n len len PROCESS:ending -- )
    {: src:^ srcu:n outu:len erru:len oc :}
-   outu LEN>N OUT-U !
-   erru LEN>N ERR-U !
+   outu LEN>N GT-OUT-U !
+   erru LEN>N GT-ERR-U !
    oc MATCH PROCESS:ending
      exited OF RC ! ENDOF
      signaled OF drop -1 RC ! ENDOF
-     timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF
+     timeout OF src srcu GT-OUT$ GT-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
 \ LSP-CHECK:RUN throws its nonzero code on, as for the CLI's exit status, with
@@ -133,12 +124,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ Runs the check LSP-CHECK holds and asserts its status is WANT.
 : CHECK-CAPTURE ( n -- ) {: want:n :}
-   [: CHECK-RUN ;] BASE$ OUT CAP SPAN:MAKE ERR CAP SPAN:MAKE GT-CAPTURE-ACTION
+   [: CHECK-RUN ;] BASE$ [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] GT-CAPTURE-ACTION
    {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U !
-   erru LEN>N ERR-U !
+   outu LEN>N GT-OUT-U !
+   erru LEN>N GT-ERR-U !
    rc want T=
-   ERR$ GJA-SPLIT-LINES ;
+   GT-ERR$ GJA-SPLIT-LINES ;
 
 : CHECK-EXIT ( ^u8 n n -- )
    {: flag:^ flagu:n want:n :}
@@ -1715,13 +1706,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : PIPED ( ^u8 n ^u8 n n -- )
    {: in:^ inu:n text:^ textu:n want:n :}
    FX-PATH$
-   ENGINE-CANDIDATE:PATH$ >LEN  in inu >LEN  OUT CAP >LEN
-   ERR CAP >LEN  PROCESS:WAIT-FOREVER
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN  in inu >LEN  [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
-   textu 0= IF ERR-U @ 0 T= EXIT THEN
-   ERR$ text textu CONTAINS? TTRUE ;
+   textu 0= IF GT-ERR-U @ 0 T= EXIT THEN
+   GT-ERR$ text textu CONTAINS? TTRUE ;
 
 : LAUNCHED ( ^u8 n n -- )
    {: text:^ textu:n want:n :}
@@ -1740,7 +1731,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET s" error[" SB-APPEND c cu SB-APPEND s" ]" SB-APPEND
    SB$ rc LOADED
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ The fixture path names NAME under the test's root, without making it.
 : NAMED! ( ^u8 n -- ) {: name:^ nameu:n :}
@@ -1766,7 +1757,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    S\" `\n  = searched: " SB-APPEND  want wantu SB-APPEND
    S\" \n  = help: a path given on the command line is looked up from the" SB-APPEND
    S\"  directory hb runs in\n\n" SB-APPEND
-   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
    s" " CHECK
    0 s" code" s" E-MISSING-SOURCE" FIELD=
    SB-RESET  s" cannot open `" SB-APPEND  FX-PATH$ SB-APPEND  s" `" SB-APPEND
@@ -1824,7 +1815,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ TEXT in its stderr, whose records are split for FIELD=.
 : CHECKED ( ^u8 n n -- )
    CHECK-ARGV  FX-PATH$ >LEN PROC-ARGV+
-   LAUNCHED  ERR$ GJA-SPLIT-LINES ;
+   LAUNCHED  GT-ERR$ GJA-SPLIT-LINES ;
 
 \ The string builder holds the resolver's unplaced record of a command-line
 \ path, its message appended by MSG.
@@ -1846,8 +1837,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ load and the check alike.
 : RANGE-REJECTED ( [ -- ] -- ) {: msg :}
    msg RANGE-RECORD
-   SB$ REJECT-RC RAN  ERR$ SB$ T$=
-   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   SB$ REJECT-RC RAN  GT-ERR$ SB$ T$=
+   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
    s" E-PATH-RANGE" REJECT-RC CHECKED
    msg RANGE-FIELDS ;
 
@@ -1880,7 +1871,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    CHECK-ARGV
    s" --verify-only" >LEN PROC-ARGV+  s" --stdin-path" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
-   s" E-PATH-RANGE" REJECT-RC LAUNCHED  ERR$ GJA-SPLIT-LINES
+   s" E-PATH-RANGE" REJECT-RC LAUNCHED  GT-ERR$ GJA-SPLIT-LINES
    [: TOO-LONG-MSG ;] RANGE-FIELDS ;
 
 \ CALLBACK builds the duplicate's name in its own buffer, so the check places
@@ -1926,12 +1917,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s\" s\" ran\" type cr" s" dotted.f" LINE-FIXTURE
    s" dotted.f" DOTTED!
    FX-PU @ PATH-CAP > TTRUE
-   s" " 0 RAN  OUT$ S\" ran\n" T$=
-   s" " 0 LOADED  OUT$ S\" ran\n" T$=
+   s" " 0 RAN  GT-OUT$ S\" ran\n" T$=
+   s" " 0 LOADED  GT-OUT$ S\" ran\n" T$=
    s" " 0 CHECKED
    s" dotted-includer.f" INCLUDER!
-   s" " 0 LOADED  OUT$ S\" ran\n" T$=
-   s" " 0 CHECKED  OUT$ S\" ran\n" T$= ;
+   s" " 0 LOADED  GT-OUT$ S\" ran\n" T$=
+   s" " 0 CHECKED  GT-OUT$ S\" ran\n" T$= ;
 
 \ A program's script-required of an empty path is the entry's record: unplaced,
 \ from the load and the check alike.
@@ -1939,7 +1930,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" script-required of an empty path" T-LABEL
    s\" s\" \" script-required" s" script-empty.f" LINE-FIXTURE
    [: EMPTY-MSG ;] RANGE-RECORD
-   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
    s" E-PATH-RANGE" REJECT-RC CHECKED
    [: EMPTY-MSG ;] RANGE-FIELDS ;
 
@@ -1949,7 +1940,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB$ REJECT-RC RAN
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :" SB-APPEND
    l FMT:SB-U  s" :" SB-APPEND  col FMT:SB-U  LF+
-   ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ The run, the check and --verify-only place the record for CODE at the
 \ fixture's bytes BS to BE on line 1.
@@ -2006,7 +1997,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" Q" SB-APPEND LF+  s" included" SB-APPEND LF+
    s" spent-evaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 6 1 RAN-AT
-   ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a buffer evaluated again at its address, its literal's copy held" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
@@ -2015,7 +2006,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" S2 PUT evaluate" SB-APPEND LF+
    s" spent-reevaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 5 8 RAN-AT
-   ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a buffer evaluated closed twice in one word, its literal's copy passed later" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" PTR-VARIABLE H0" SB-APPEND LF+
@@ -2028,22 +2019,22 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" TWICE" SB-APPEND LF+
    s" spent-closed-twice.f" FIXTURE!
    s" error[E-MISSING-SOURCE]" REJECT-RC RAN
-   ERR$ s"  --> " CONTAINS? TFALSE
-   ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s"  --> " CONTAINS? TFALSE
+   GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a literal a definition passes to `included` at run time" T-LABEL
    SB-RESET  s\" : GO ( -- ) s\" nofile.f\" included ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" spent-run-time.f" FIXTURE!
    s" error[E-MISSING-SOURCE]" REJECT-RC RAN
-   ERR$ s"  --> " CONTAINS? TFALSE
-   ERR$ s" = word:" CONTAINS? TFALSE ;
+   GT-ERR$ s"  --> " CONTAINS? TFALSE
+   GT-ERR$ s" = word:" CONTAINS? TFALSE ;
 
 \ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
 : DIR-REJECTED ( -- )
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is a directory\n  = help: name a source file, not a directory\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
    s" " INCLUDE-IO-RC CHECK-EXIT
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is a directory" SB-APPEND
@@ -2093,8 +2084,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is not a regular file\n  = help: load a regular file, whose bytes a stamp" SB-APPEND
    S\"  can name\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
-   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC RAN  GT-ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
    s" " INCLUDE-IO-RC CHECK-EXIT
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is not a regular file" SB-APPEND
@@ -2118,8 +2109,8 @@ HB-TARGET-LINUX? [if]
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `/proc/version`" SB-APPEND
    S\" : changed while it was read\n  = help: load it again once nothing" SB-APPEND
    S\"  is writing it\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC RAN  ERR$ SB$ T$=
-   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC RAN  GT-ERR$ SB$ T$=
+   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
    s" " INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD
    s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD ;
 
@@ -2187,7 +2178,7 @@ HB-TARGET-LINUX? 0= [if]
 : UNSEARCHABLE-LOADED ( -- )
    SB-RESET  s" = help: if the directory `" SB-APPEND  UNSEARCHABLE$ SB-APPEND
    s" ` is" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ Appends the searched note of a request for x.f under UNSEARCHABLE$.
 : UNSEARCHABLE-NOTE ( -- )
@@ -2226,7 +2217,7 @@ HB-TARGET-LINUX? 0= [if]
    s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND  LF+
-   ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ A request through `lnk`, a link into UNSEARCHABLE$, names UNSEARCHABLE$,
 \ not the searchable directory holding the link.
@@ -2251,7 +2242,7 @@ HB-TARGET-LINUX? 0= [if]
    s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND  LF+
-   ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
 
 \ A required file a directory without search permission hides is unreadable, not
 \ missing; its mode goes back to $1ED so the tree can be deleted.
@@ -2285,7 +2276,7 @@ HB-TARGET-LINUX? 0= [if]
    S\"  and a second `:` names no word\n" SB-APPEND
    s"   = help: write `P:Q:R` with one `:` between the package and the word," SB-APPEND
    S\"  as `PKG:WORD`\n\n" SB-APPEND
-   ERR$ SB$ T$= ;
+   GT-ERR$ SB$ T$= ;
 
 : VERIFY-REJECTED-AT ( n ^u8 n ^u8 n n n n n -- )
    {: k:n c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
@@ -2369,7 +2360,7 @@ HB-TARGET-LINUX? 0= [if]
    FX-PATH$ SB-APPEND  p pu SB-APPEND
    S\"   = help: define `EPRIM:` before this point, or check its spelling\n\n"
    SB-APPEND
-   ERR$ SB$ T$= ;
+   GT-ERR$ SB$ T$= ;
 
 \ Each check rejects a primitive-axiom row at the token that breaks it, or at
 \ the source's end inside it, and names the row's opener.
@@ -2402,7 +2393,7 @@ HB-TARGET-LINUX? 0= [if]
    PROC-ARGV-RESET
    s" STRUCTURE a11x<q> FIELD next ^a11x<n> FIELD w read-view<q,q,n> ;STRUCTURE"
    s" --> <input>:1:31" REJECT-RC PIPED
-   ERR$ s" = word:" CONTAINS? TFALSE ;
+   GT-ERR$ s" = word:" CONTAINS? TFALSE ;
 
 \ The loader rejects a VALUE-RECORD field where the source wrote it.
 : TEST-VALUE-RECORD-LOAD ( -- )
@@ -2420,7 +2411,7 @@ HB-TARGET-LINUX? 0= [if]
    S\" :1:21\n  |\n1 | VALUE-RECORD vr x n y END-VALUE-RECORD\n" SB-APPEND
    S\"   |                     ^ no type follows\n" SB-APPEND
    S\"   = help: write a declared type after the field's name, as `y n`\n\n" SB-APPEND
-   ERR$ SB$ T$= ;
+   GT-ERR$ SB$ T$= ;
 
 : TEST-VALUE-RECORD-BAD-TYPE ( -- )
    s" a VALUE-RECORD field with an unknown type under the loader, at the type" T-LABEL
@@ -2432,7 +2423,7 @@ HB-TARGET-LINUX? 0= [if]
    S\" :1:23\n  |\n1 | VALUE-RECORD vr x n y nope END-VALUE-RECORD\n" SB-APPEND
    S\"   |                       ^^^^ not a valid type\n" SB-APPEND
    S\"   = help: write a declared type after the field's name, as `y n`\n\n" SB-APPEND
-   ERR$ SB$ T$= ;
+   GT-ERR$ SB$ T$= ;
 
 \ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
 \ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
@@ -2684,7 +2675,7 @@ HB-TARGET-LINUX? 0= [if]
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
    s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" REJECT-RC LOADED
-   ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
+   GT-ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
 : TEST-VARIANT-COLLIDE ( -- )
    s" a variant spelled like a derived word" T-LABEL
@@ -3044,14 +3035,14 @@ HB-TARGET-LINUX? 0= [if]
    s" fail" SB-APPEND LF+
    s" uncaught.f" FIXTURE!
    s" E-THROW" s" :2:1" THROW-RC LOADED-AT
-   ERR$ s" error[" COUNT-SUB 1 T=
+   GT-ERR$ s" error[" COUNT-SUB 1 T=
    FX-P DEP-P FX-PU @ BYTE-COPY  FX-PU @ DEP-PU !
    s" a throw nothing catches in a required file" T-LABEL
    s" require uncaught.f" s" uncaught-outer.f" LINE-FIXTURE
    s" error[E-THROW]" THROW-RC LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE
-   ERR$ s" error[" COUNT-SUB 1 T=
+   GT-ERR$ SB$ CONTAINS? TTRUE
+   GT-ERR$ s" error[" COUNT-SUB 1 T=
    s" a throw nothing catches in an evaluated text" T-LABEL
    SB-RESET
    s" : EV ( -- ) s" SB-APPEND  34 SB-APPEND-C
@@ -3061,9 +3052,9 @@ HB-TARGET-LINUX? 0= [if]
    s" uncaught-eval.f" FIXTURE!
    s" error[" THROW-RC LOADED
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :2:1" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE
-   ERR$ s" = evaluated:" CONTAINS? TTRUE
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ SB$ CONTAINS? TTRUE
+   GT-ERR$ s" = evaluated:" CONTAINS? TTRUE
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A record its throw carried survives a finally whose cleanup throws and
 \ catches: the load prints that record, not E-THROW.
@@ -3078,7 +3069,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" finally-carried.f" FIXTURE!
    s" error[E-PROBE]: probe text" THROW-RC LOADED
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A caught code thrown on in the body that caught it keeps its record, after a
 \ cleanup that throws and catches, whether the stack or a local holds it.
@@ -3093,7 +3084,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-stack.f" FIXTURE!
    s" error[E-PROBE]: probe text" THROW-RC LOADED
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-LOCAL ( -- )
    s" a caught code thrown on from a local keeps its record" T-LABEL
@@ -3106,7 +3097,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-local.f" FIXTURE!
    s" error[E-PROBE]: probe text" THROW-RC LOADED
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A caught code joined with another value at an arm is a new throw.
 : TEST-RETHROW-JOINED ( -- )
@@ -3118,8 +3109,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-joined.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9998" THROW-RC LOADED
-   ERR$ s" E-PROBE" CONTAINS? TFALSE
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A record kept after the catch answered its code is not the caught throw's: the
 \ code thrown on is a new throw.
@@ -3134,8 +3125,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-kept-since.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
-   ERR$ s" E-PROBE" CONTAINS? TFALSE
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-RSTACK ( -- )
    s" a caught code thrown on through the return stack keeps its record" T-LABEL
@@ -3148,7 +3139,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-rstack.f" FIXTURE!
    s" error[E-PROBE]: probe text" THROW-RC LOADED
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ `ri throw` never runs, but it counts INNER's catch, so each catch keeps a slot
 \ of its own: a slot shared with BODY's would lose the record.
@@ -3163,7 +3154,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-two.f" FIXTURE!
    s" error[E-PROBE]: probe text" THROW-RC LOADED
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-QUOT ( -- )
    s" a caught local thrown from a quotation is a new throw" T-LABEL
@@ -3174,8 +3165,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-quot.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
-   ERR$ s" E-PROBE" CONTAINS? TFALSE
-   ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
+   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A nested require's throw the program caught prints nothing, even when the
 \ same code later goes uncaught.
@@ -3190,8 +3181,8 @@ HB-TARGET-LINUX? 0= [if]
    s" fail" SB-APPEND LF+
    s" caught-outer.f" FIXTURE!
    s" E-THROW" s" :3:1" THROW-RC LOADED-AT
-   ERR$ s" error[" COUNT-SUB 1 T=
-   ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
+   GT-ERR$ s" error[" COUNT-SUB 1 T=
+   GT-ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
 
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
@@ -3407,7 +3398,7 @@ HB-TARGET-LINUX? 0= [if]
    FX-PATH$ FX$ FS:WRITE-ALL
    CERTIFIED
    s" " 0 LOADED
-   OUT$ s\" 40\n73\n" CONTAINS? TTRUE ;
+   GT-OUT$ s\" 40\n73\n" CONTAINS? TTRUE ;
 
 \ A declared parsing immediate takes its payload as the load runs it, so the
 \ check leaves the payload out of the body, whatever it spells.
@@ -3434,8 +3425,8 @@ HB-TARGET-LINUX? 0= [if]
    s" : Q1 ( n -- ) {: c:? :} ;" SB-APPEND LF+
    s" show-layout-local.f" FIXTURE!
    s" " 0 LOADED
-   OUT$ s\" inferred c: option<n>\n" CONTAINS? TTRUE
-   OUT$ s\" inferred c: n\n" CONTAINS? TTRUE ;
+   GT-OUT$ s\" inferred c: option<n>\n" CONTAINS? TTRUE
+   GT-OUT$ s\" inferred c: n\n" CONTAINS? TTRUE ;
 
 \ The top-level dp-held, after DP-HOLD's public dp-held, is rejected in
 \ each check mode, and the last run names DP-HOLD in its help.
