@@ -11341,6 +11341,65 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
+;package
+package CHECKER-RESOLVE
+: TOP-NAME$ ( -- ^u8 n )
+   data-base ENCLOSING:REC + @ {: outer:n :}
+   outer 0 <> IF outer ELSE data-base PKG-REC-CELL + @ THEN {: top:n :}
+   top 0= IF NULL-PTR 0 EXIT THEN
+   top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
+
+EXPORT CHECKER-REG:SCRATCH{
+EXPORT CHECKER-REG:}SCRATCH
+
+\ The key `A:<head>`.
+SCRATCH{
+PTR-VARIABLE HEAD-KEY-P
+SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
+}SCRATCH
+: HEAD-KEY ( -- ^u8 ) HEAD-KEY-P @ ;
+
+EXPORT CHECK:BYTE-SPAN?
+\ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
+\ open or no such part is recorded.
+: PART-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
+   TOP-NAME$ {: ta:^ tu:n :}
+   tu 1 + u + {: ku:n :}
+   tu 0= IF NULL-PTR EXIT THEN
+   HEAD-KEY-P HEAD-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
+   ta HEAD-KEY tu ARENA-COPY
+   $3A HEAD-KEY tu + c!
+   a HEAD-KEY tu 1 + + u ARENA-COPY
+   HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE ;
+\ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
+\ or its part `A:<head>` first, then a top-level package.
+: HEAD-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
+   a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
+   a u PART-ROW  dup NULL-PTR <> IF EXIT THEN
+   drop
+   a u BOOT:NAMESPACE-WL WL-PROBE ;
+;package
+package CHECK
+
+EXPORT CHECKER-RESOLVE:HEAD-ROW
+EXPORT CHECKER-RESOLVE:PART-ROW
+
+\ How many colons the name holds, and the index of its first, -1 for none.
+: CHECKER-COLON-SCAN ( ^u8 n -- n n )
+   {: a:^ u:n :}
+   0 -1 0 BEGIN dup u < WHILE
+      a over + c@ $3A = IF
+         >r  dup 0 < IF drop r@ THEN  swap 1 + swap  r>
+      THEN
+      1 +
+   REPEAT drop ;
+
+\ A name's tail as written: past its one inner colon, if it has one.
+: ROW-TAIL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
+   a ci + 1 +  u ci - 1 - ;
+
 \ The using mirror and a sym hold a package's name folded; its row spells it
 \ as the program wrote it. A name no row holds is answered as given.
 : PACKAGE-NAME$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
@@ -11349,11 +11408,19 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    row NULL-PTR = IF a u EXIT THEN
    row CK-REC-NAME$ ;
 
-\ A part is reached only inside its parent, by its tail: the text after its
-\ row's last `:`.
-: USED-NAME$ ( ^u8 n -- ^u8 n ) PACKAGE-NAME$ {: a:^ u:n :}
-   0  u 0 ?DO  a i + c@ $3A = IF drop i 1 + THEN  LOOP {: k:n :}
-   a k +  u k - ;
+\ A used package's qualifier here, its row's tail, and whether that tail
+\ reaches it here rather than a part of the open package of that name.
+: USED-QUAL ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
+   a u PACKAGE-NAME$ ROW-TAIL$ {: ta:^ tu:n :}
+   ta tu  ta tu HEAD-ROW row = ;
+
+\ a u is the tail of a used package that a part of the open package hides.
+: EMIT-HIDER ( ^u8 n -- ) {: a:^ u:n :}
+   s" rename the part `" REJECTION:EMIT-STR
+   a u PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
+   s" `, which hides package `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` here" REJECTION:EMIT-STR ;
 
 : EMIT-QUALIFIED ( ^u8 n ^u8 n -- ) {: p:^ pu:n w:^ wu:n :}
    p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
@@ -11366,40 +11433,52 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
          i CHECKER-USING$ ix CHECKER-USING$ CORE-STR= IF drop RES-FALSE THEN
       THEN
    LOOP ;
+: UPKG-QUAL ( n -- ^u8 n bool ) CHECKER-USING$ USED-QUAL ;
+: UPKG-REACHED? ( n n -- bool ) {: ix:n mask:n :}
+   ix mask UPKG-FIRST? 0= IF RES-FALSE EXIT THEN
+   ix UPKG-QUAL nip nip ;
 : UPKG-N ( n -- n ) {: mask:n :}
-   0  CHECKER-USING-N 0 ?DO i mask UPKG-FIRST? IF 1 + THEN LOOP ;
-: UPKG-NAME$ ( n -- ^u8 n ) CHECKER-USING$ USED-NAME$ ;
+   0  CHECKER-USING-N 0 ?DO i mask UPKG-REACHED? IF 1 + THEN LOOP ;
 
 : UPKG-NOTE ( n -- ) {: mask:n :}
    s" packages" REJECTION:NOTE
    0  CHECKER-USING-N 0 ?DO
       i mask UPKG-FIRST? IF
          dup 0 <> IF s" , " REJECTION:EMIT-STR THEN
-         i UPKG-NAME$ REJECTION:EMIT-STR  1 +
+         i CHECKER-USING$ PACKAGE-NAME$ REJECTION:EMIT-STR  1 +
       THEN
    LOOP drop ;
 \ What precedes the k-th of n spellings: nothing, `, `, or ` or ` the last.
 : UPKG-SEP ( n n -- ) {: k:n n:n :}
    k 0= IF EXIT THEN
    k 1 + n = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR ;
-\ Each package's qualified spelling of a u.
+\ The qualified spelling of a u in each package its qualifier reaches here.
 : UPKG-SPELLINGS ( ^u8 n n -- ) {: a:^ u:n mask:n :}
    mask UPKG-N {: n:n :}
    0  CHECKER-USING-N 0 ?DO
-      i mask UPKG-FIRST? IF
+      i mask UPKG-REACHED? IF
          dup n UPKG-SEP
-         96 REJECTION:EMIT1  i UPKG-NAME$ a u EMIT-QUALIFIED
+         96 REJECTION:EMIT1  i UPKG-QUAL drop a u EMIT-QUALIFIED
          96 REJECTION:EMIT1  1 +
       THEN
    LOOP drop ;
-\ The packages note and the help of a u, a `what` public in each package
-\ whose using slot is set in mask.
+\ The packages note and the help of a u, a `what` public in each package of
+\ mask: the spellings that reach one here, then the part hiding each other.
 : UPKG-HELP ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n a:^ u:n mask:n :}
    mask UPKG-NOTE
    REJECTION:HELP
-   s" write the package's name before the " REJECTION:EMIT-STR
-   wa wu REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
-   a u mask UPKG-SPELLINGS ;
+   mask UPKG-N {: n:n :}
+   n 0 <> IF
+      s" write the package's name before the " REJECTION:EMIT-STR
+      wa wu REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
+      a u mask UPKG-SPELLINGS
+   THEN
+   n  CHECKER-USING-N 0 ?DO
+      i mask UPKG-FIRST?  i mask UPKG-REACHED? 0=  and IF
+         dup 0 <> IF s" , or " REJECTION:EMIT-STR THEN
+         i UPKG-QUAL drop EMIT-HIDER  1 +
+      THEN
+   LOOP drop ;
 \ The packages note and the help of the ambiguous family tail a u.
 : SGBAD-AMBIG-HELP ( ^u8 n -- ) {: a:^ u:n :}
    s" type family" a u SGBAD-USED @ UPKG-HELP ;
@@ -12893,47 +12972,6 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    HELD-N @ from ?do i PLACE-FACT loop
    from HELD-KEEP ;
 
-;package
-package CHECKER-RESOLVE
-: TOP-NAME$ ( -- ^u8 n )
-   data-base ENCLOSING:REC + @ {: outer:n :}
-   outer 0 <> IF outer ELSE data-base PKG-REC-CELL + @ THEN {: top:n :}
-   top 0= IF NULL-PTR 0 EXIT THEN
-   top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
-
-EXPORT CHECKER-REG:SCRATCH{
-EXPORT CHECKER-REG:}SCRATCH
-
-\ The key `A:<head>`.
-SCRATCH{
-PTR-VARIABLE HEAD-KEY-P
-SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
-}SCRATCH
-: HEAD-KEY ( -- ^u8 ) HEAD-KEY-P @ ;
-
-EXPORT CHECK:BYTE-SPAN?
-\ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
-\ open or no such part is recorded.
-: PART-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
-   TOP-NAME$ {: ta:^ tu:n :}
-   tu 1 + u + {: ku:n :}
-   tu 0= IF NULL-PTR EXIT THEN
-   HEAD-KEY-P HEAD-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
-   ta HEAD-KEY tu ARENA-COPY
-   $3A HEAD-KEY tu + c!
-   a HEAD-KEY tu 1 + + u ARENA-COPY
-   HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE ;
-\ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
-\ or its part `A:<head>` first, then a top-level package.
-: HEAD-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
-   a u PART-ROW  dup NULL-PTR <> IF EXIT THEN
-   drop
-   a u BOOT:NAMESPACE-WL WL-PROBE ;
-;package
-package CHECK
-
-EXPORT CHECKER-RESOLVE:HEAD-ROW
 EXPORT CHECKER-USE:NAME!
 
 : CHECKER-USING ( ^u8 n -- ) {: a:^ u:n :}
@@ -13090,17 +13128,6 @@ EXPORT CHECKER-RESOLVE:AUTHORITY
 ' SCOPE CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
 ;package
 package CHECK
-
-
-\ How many colons the name holds, and the index of its first, -1 for none.
-: CHECKER-COLON-SCAN ( ^u8 n -- n n )
-   {: a:^ u:n :}
-   0 -1 0 BEGIN dup u < WHILE
-      a over + c@ $3A = IF
-         >r  dup 0 < IF drop r@ THEN  swap 1 + swap  r>
-      THEN
-      1 +
-   REPEAT drop ;
 
 \ The package name a u has a colon it may not have.
 : PACKAGE-COLON-REJECT ( ^u8 n -- ) {: a:^ u:n :}
@@ -14714,13 +14741,12 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
    -1 WALK-REC !
    sym 0 ;
 
-\ The bare token s su names a global word and a public of the used package
-\ p pu; the global has no qualified form, so only the package's word can be
-\ written apart. Writes the record through its help and leaves it open: the
-\ caller ends it.
+\ s su is both a global word and a public of used package p pu. Writes the
+\ record through its help and leaves it open: the caller ends it.
 : USING-SHADOW-REJECT ( ^u8 n ^u8 n -- )
    {: s:^ su:n p:^ pu:n :}
-   p pu USED-NAME$ {: pa:^ pn:n :}
+   p pu PACKAGE-NAME$ {: pa:^ pn:n :}
+   p pu USED-QUAL {: qa:^ qn:n reach:bool :}
    s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
    96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
    s" ` is both a global word and a public of used package `"
@@ -14730,7 +14756,14 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
    s" global" REJECTION:NOTE  s su REJECTION:EMIT-STR
    s" package" REJECTION:NOTE  pa pn s su EMIT-QUALIFIED
    REJECTION:HELP
-   s" write `" REJECTION:EMIT-STR  pa pn s su EMIT-QUALIFIED
+   reach 0= IF
+      s" rename one of the two: the global word has no qualified form, "
+      REJECTION:EMIT-STR
+      s" and the part `" REJECTION:EMIT-STR  qa qn PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
+      s" ` hides package `" REJECTION:EMIT-STR  qa qn REJECTION:EMIT-STR
+      s" ` here" REJECTION:EMIT-STR  EXIT
+   THEN
+   s" write `" REJECTION:EMIT-STR  qa qn s su EMIT-QUALIFIED
    s" ` to call the package's word, or rename one of the two: "
    REJECTION:EMIT-STR
    s" the global word has no qualified form" REJECTION:EMIT-STR ;
@@ -15769,17 +15802,12 @@ private
    {: in:n out:n :}
    40 REJECTION:EMIT1  in REJECTION:EMIT-U  s"  -- " REJECTION:EMIT-STR
    out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
-\ A name's tail as written: past its one inner colon, if it has one.
-: SBA-TAIL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
-   a ci + 1 +  u ci - 1 - ;
 
 \ The public: the private twin's package, spelled by its row, and the
 \ definition's name as written. The twin's sym holds both folded.
 : SBA-PUBLIC ( n -- ) {: sym:n :}
    sym SYM-PKG$ PACKAGE-NAME$
-   NMOFF @ TADDR NMU @ SBA-TAIL$ EMIT-QUALIFIED ;
+   NMOFF @ TADDR NMU @ ROW-TAIL$ EMIT-QUALIFIED ;
 
 \ The word as its section names it: a global word bare, a public one qualified.
 : SBA-WORD ( n n -- ) {: sym:n vis:n :}
@@ -17847,14 +17875,18 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
 \ The operand a u binds the public SYM of a package it uses.
 : EXPORT-USED ( ^u8 n n -- ) {: a:^ u:n sym:n :}
-   sym SYM-PKG$ USED-NAME$ {: pa:^ pn:n :}
+   sym SYM-PKG$ PACKAGE-NAME$ {: pa:^ pn:n :}
+   sym SYM-PKG$ USED-QUAL {: qa:^ qn:n reach:bool :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` is a public of used package `" REJECTION:EMIT-STR  pa pn REJECTION:EMIT-STR
    s" `, and EXPORT does not search used packages" REJECTION:EMIT-STR
    a u REJECTION:AT  s" used, not in this package's scope" REJECTION:EMIT-STR
-   REJECTION:HELP  s" write `EXPORT " REJECTION:EMIT-STR  pa pn a u EMIT-QUALIFIED
-   s" `" REJECTION:EMIT-STR
+   REJECTION:HELP
+   reach IF
+      s" write `EXPORT " REJECTION:EMIT-STR  qa qn a u EMIT-QUALIFIED
+      s" `" REJECTION:EMIT-STR
+   ELSE qa qn EMIT-HIDER THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Rejects the operand a u, which names no word EXPORT may take. SYM is

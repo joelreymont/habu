@@ -88,8 +88,13 @@ S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" U
 \ a word public in two used parts
 REJECTION:CAPTURE
 s" package UPT private package UPU public : AW ( -- n ) 1 ; ;package package UPV public : AW ( -- n ) 2 ; ;package using UPU using UPV : UT-PAMB ( -- n ) AW ; ;using ;using ;package" UCE-CATCH E-REJECT T=
-S\" = packages: UPU, UPV\n" UCE-SAID
+S\" = packages: UPT:UPU, UPT:UPV\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UPU:AW` or `UPV:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
+\ a word public in a used top-level package and in the used part that hides it
+REJECTION:CAPTURE
+s" package UHB public : HW ( -- n ) 9 ; ;package using UHB package UHA private package UHB public : HW ( -- n ) 7 ; ;package using UHB : UHA-C ( -- n ) HW ; ;using ;package ;using" UCE-CATCH E-REJECT T=
+S\" = packages: UHB, UHA:UHB\n" UCE-SAID
+S\" = help: write the package's name before the word, as `UHB:HW`, or rename the part `UHA:UHB`, which hides package `UHB` here\n" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
@@ -209,9 +214,15 @@ S\" = help: write `USG:GW` to call the package's word, or rename one of the two:
 \ a used part's public that is also a global word
 REJECTION:CAPTURE
 s" package UPG private package UPGW public : GW ( -- n ) 1 ; ;package using UPGW : UPG-R1 ( -- n ) GW ; ;using ;package" UCE-CATCH E-REJECT T=
-S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `UPGW`\n" UCE-SAID
-S\" = package: UPGW:GW\n" UCE-SAID
+S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `UPG:UPGW`\n" UCE-SAID
+S\" = package: UPG:UPGW:GW\n" UCE-SAID
 S\" = help: write `UPGW:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
+\ a used top-level package's public that is also a global word, where a part hides the package
+REJECTION:CAPTURE
+s" : UHX ( -- n ) 1 ; package UHS public : UHX ( -- n ) 9 ; ;package using UHS package UHT private package UHS public : ZW ( -- n ) 7 ; ;package : UHT-C ( -- n ) UHX ; ;package ;using" UCE-CATCH E-REJECT T=
+S\" error[E-USING-SHADOW-GLOBAL]: `UHX` is both a global word and a public of used package `UHS`\n" UCE-SAID
+S\" = package: UHS:UHX\n" UCE-SAID
+S\" = help: rename one of the two: the global word has no qualified form, and the part `UHT:UHS` hides package `UHS` here\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ order-swapped: using first, global defined later in the same scope, then bareword
 REJECTION:CAPTURE
 s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-REJECT T=

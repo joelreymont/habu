@@ -173,6 +173,17 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ Top-level U's public XW, exported bare from XPH, whose part U hides U.
+: XPK-HIDDEN-FORGE$ ( -- ^u8 n )
+   SB-RESET
+   s" package U public : XW ( -- n ) 9 ; ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" package XPH private package U public : ZW ( -- n ) 7 ; ;package" XPK-LINE
+   s" using U public EXPORT XW ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;using" XPK-LINE
+   SB$ ;
+
 : XPK-CREATE-FORGE$ ( -- ^u8 n )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
@@ -691,7 +702,10 @@ create XPK-EMPTY 1 allot
    s" is a public of used package `U`" XPK-REJECT-ALL
    s" a used part's public rejects bare, named by its tail" T-LABEL
    XPK-PART-FORGE$ s" error[E-EXPORT-UNDEFINED]"
-   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" is a public of used package `XPA:U`" XPK-REJECT-ALL
+   s" a used package a part hides rejects bare, with the part to rename" T-LABEL
+   XPK-HIDDEN-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" = help: rename the part `XPH:U`, which hides package `U` here" XPK-REJECT-ALL
    s" a primitive spelled as a keyword rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
    XPK-REJECT-ALL
