@@ -854,8 +854,8 @@ public
 
 ;package
 
-\ Rows, scope and aliases go through their primitive writers and CUR through
-\ set-current. A writer refuses silently, so the words here refuse first where they can.
+\ Rows, scope and aliases go through their primitive writers. A writer refuses
+\ silently, so the words here refuse first where they can.
 
 package INTERPRETER
 
@@ -1059,13 +1059,13 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    PKG-ENSURE {: ix:n :}
    USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL!
    ix get-current package-scope!
-   PKG-PRI-CELL CELL@ set-current
+   PKG-PRI-CELL CELL@ CUR-CELL CELL!
    0 PKG-OUTSIDE-CELL CELL! ;
 
 : PKG-END-PACKAGE ( -- )
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
-   PKG-PARENT-CELL CELL@ set-current
+   PKG-PARENT-CELL CELL@ CUR-CELL CELL!
    ENCLOSING:REC CELL@ {: outer:n :}
    outer 0= if -1 0 else outer XREF-ADDR>INDEX ENCLOSING:PARENT CELL@ then
    package-scope!
@@ -1091,7 +1091,7 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    get-current cur <> or if
       outer-rec 0<> if outer-rec XREF-ADDR>INDEX outer-parent package-scope! then
       rec 0= if -1 0 package-scope! else rec XREF-ADDR>INDEX parent package-scope! then
-      cur set-current
+      cur CUR-CELL CELL!
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
@@ -1302,8 +1302,8 @@ public
    PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
    PKG-OUTSIDE-CELL CELL@ {: outside:n :}
    PKG-CLEAR
-   outer-rec 0<> if outer-parent set-current else
-      rec 0<> if parent set-current then
+   outer-rec 0<> if outer-parent CUR-CELL CELL! else
+      rec 0<> if parent CUR-CELL CELL! then
    then
    q catch {: rc:n :}
    outer-rec outer-parent rec parent cur floor PKG-RECOVER

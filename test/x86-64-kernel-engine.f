@@ -266,9 +266,9 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    s" wordlist" ROW  s" wordlist" ROW
    FIRST-WID 1+ X64HARNESS:EXPECT-POP,  FIRST-WID X64HARNESS:EXPECT-POP,
    FIRST-WID 2 + WIDN-CELL X64HARNESS:EXPECT-CELL,
-   OTHER-WID X64HARNESS:PUSH,  s" set-current" ROW
-   s" get-current" ROW  OTHER-WID X64HARNESS:EXPECT-POP,
+   OTHER-WID CUR-CELL X64HARNESS:CELL!,  s" get-current" ROW  OTHER-WID X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
+
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ Boot, call one row and close: for a row that ends the image itself.

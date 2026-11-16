@@ -1836,7 +1836,7 @@ CHECKER-PKG-LIVE-DEFAULT
    REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" no package context" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" define and verify at top level or in an open package's `public` or `private` section, not in a wordlist made current by `set-current`"
+   s" define and verify at top level or in a `public`, `private` or `global` section inside `package ... ;package`"
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -13551,7 +13551,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    outer 0 >= IF outer p S-ENCLOSING-PARENT ROW@ package-scope! THEN
    p S-REC ROW@ {: ix:n :}
    ix 0 < IF -1 0 ELSE ix p S-PARENT ROW@ THEN package-scope!
-   p S-CURRENT ROW@ set-current
+   p S-CURRENT ROW@ CUR-CELL DATA!
    p S-DEPTH ROW@ USE-DEPTH-CELL DATA!
    p S-FLOOR ROW@ USE-PKG-SAVE-CELL DATA!
    p S-SOURCE ROW@ SOURCE-FLOOR !
@@ -13572,7 +13572,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
 \ The scope a package-neutral replay starts in: top level, no imports.
 : CLEAR ( -- )
    -1 0 package-scope!
-   BOOT:GLOBAL-WL set-current
+   BOOT:GLOBAL-WL CUR-CELL DATA!
    0 USE-DEPTH-CELL DATA!
    0 USE-PKG-SAVE-CELL DATA! ;
 
@@ -13878,24 +13878,24 @@ ROW-CELLS cells constant SCOPE-BYTES
    rec CELL + @ 0= IF rec GRANT THEN
    USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
    rec REC>IX get-current package-scope!
-   rec CELL + @ set-current
+   rec CELL + @ CUR-CELL DATA!
    0 PKG-OUTSIDE-CELL DATA! ;
 
 \ `public` or `private`: OFF is the open package's cell for that wordlist.
 : SECTION ( n -- ) {: off:n :}
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
-   off DATA@ set-current ;
+   off DATA@ CUR-CELL DATA! ;
 
 \ `global`: the global wordlist while a package is open.
 : GLOBAL-SECTION ( -- )
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
-   BOOT:GLOBAL-WL set-current ;
+   BOOT:GLOBAL-WL CUR-CELL DATA! ;
 
 \ `;package`: the enclosing package open again after a part and none after any
 \ other.
 : CLOSE-PACKAGE ( -- )
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
-   PKG-PARENT-CELL DATA@ set-current
+   PKG-PARENT-CELL DATA@ CUR-CELL DATA!
    ENCLOSING:REC SCOPE-IX {: outer:n :}
    outer 0 < IF -1 0 ELSE outer ENCLOSING:PARENT DATA@ THEN package-scope!
    USE-PKG-SAVE-CELL DATA@ USE-DEPTH-CELL DATA! ;
@@ -13964,7 +13964,7 @@ CAST: AS-ACTION ( n -- [ -- ] )
    xt 0 <> IF xt AS-ACTION execute THEN ;
 
 : ENTER-SECTION ( n n -- ) {: cell:n off:n :}
-   off OWNER-RUN  data-base cell + @ set-current ;
+   off OWNER-RUN  data-base cell + @ data-base CUR-CELL + ! ;
 \ `package`, the token being read, opens a part where w wu says; the help
 \ h hu says what to do instead.
 : PART-REJECT ( ^u8 n ^u8 n -- ) {: w:^ wu:n h:^ hu:n :}
@@ -14019,7 +14019,7 @@ CAST: AS-ACTION ( n -- [ -- ] )
 
 \ The owner reads the section back from the current wordlist (AUTHORITY).
 : GLOBAL-SECTION ( -- )
-   BOOT:GLOBAL-WL set-current  NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF OWNER-RUN ;
+   BOOT:GLOBAL-WL data-base CUR-CELL + !  NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF OWNER-RUN ;
 ;package
 package CHECK
 

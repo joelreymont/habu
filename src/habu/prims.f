@@ -791,7 +791,6 @@ EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM; REACH dict
 EPRIM: get-current    PE-N PE-OUT EPRIM; REACH dict
-EPRIM: set-current    PE-N PE-IN EPRIM; REACH dict
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!

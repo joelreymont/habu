@@ -50,8 +50,8 @@ public
 \ the admitted words; with a root, `require` reads each file once. An admitted
 \ package must guarantee that every public word terminates (a throw counts), a
 \ parsing word reads boundedly many tokens, no word stores to an address its caller
-\ supplies, and no word widens what the design can name (set-current,
-\ prot-wid-add, evaluate or included on caller data).
+\ supplies, and no word widens what the design can name (prot-wid-add, evaluate
+\ or included on caller data).
 \ Rejections print an E-POLICY rejection record. A token outside the
 \ vocabulary (placed at the token), a package that predates the seal,
 \ SOURCE-ROOT! or WITH-SOURCE-ROOT once sealed, and a source outside the root

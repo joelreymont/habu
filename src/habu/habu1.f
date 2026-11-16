@@ -3468,9 +3468,6 @@ private
 : BGETCUR ( -- )
    9 DATA CUR-CELL LDR,  9 G-PUSH ;
 
-: BSETCUR ( -- )
-   A G-POP  A DATA CUR-CELL STR, ;
-
 \ set-check ( xt -- ): install the checker hook. 0 disables checking and parks
 \ an armed hook with its preflight in the SUSP-HOOK pair; arming the parked
 \ hook while the preflight cell is empty brings that preflight back, and every
@@ -4205,7 +4202,7 @@ package ENGINE-EMIT
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM
    s" c2-records-stow" ['] BC2-RECORDS-STOW FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
+   s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" check@" ['] BCHECKFETCH FPRIM-L

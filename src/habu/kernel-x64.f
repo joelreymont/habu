@@ -3565,9 +3565,6 @@ private
       RAX ASM-SINK ENC-NEG  RAX RAX ASM-SINK ENC-SBB-RR  RAX PUSH, ;] PRIM
    s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
 
-\ The twins of habu1.f BWORDLIST, BGETCUR, BSETCUR, BPROTWIDADD, BPROTWIDROOM
-\ and BWIDEMARK.
-
 \ prot-wid-add ( n -- ): protect the wid, once. The two engine-reserved wids
 \ are protected already, as habu1.f LPROTWIDQ pins them, and a set bit is
 \ left alone; a wid at or above PROT-WID-MAX has no bit, so it writes `hb:
@@ -3685,7 +3682,6 @@ private
       RAX WIDN-CELL CELL@,  RAX PUSH,
       RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!, ;] PRIM
    s" get-current" [: RAX CUR-CELL CELL@,  RAX PUSH, ;] PRIM
-   s" set-current" [: RAX POP,  RAX CUR-CELL CELL!, ;] PRIM
    s" prot-wid-add" [: PROT-WID-ADD-BODY ;] PRIM
    s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
    s" policy-admit" [: POLICY-ADMIT-BODY ;] PRIM

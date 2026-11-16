@@ -5137,7 +5137,7 @@ TYPED-VARIABLE EXITER [ -- ]
    global BOOT:GLOBAL-WL-CELL HOST!
    ns BOOT:NAMESPACE-WL-CELL HOST!
    types BOOT:TYPES-WL-CELL HOST!
-   global set-current
+   global CUR-CELL HOST!
    construct step moved PROGRESS ! ;
 
 EXPORT CHECK:STORES-OPEN
@@ -5729,7 +5729,7 @@ EXPORT CHECK:DROP-FACTS
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )
-   SAVED-CURRENT @ set-current
+   SAVED-CURRENT @ CUR-CELL HOST!
    SAVED-DP @ DP-CELL HOST!
    SAVED-FLOOR @ BOOT:DP-FLOOR-CELL HOST!
    SAVED-CEILING @ BOOT:DP-CEILING-CELL HOST!
