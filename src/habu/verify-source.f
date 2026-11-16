@@ -601,6 +601,7 @@ EXPORT CHECK:CHECKER-FIND-QUIET-SYM
 EXPORT CHECK:CHECKER-GLOBAL
 EXPORT CHECK:CHECKER-IMMEDIATE
 EXPORT CHECK:CHECKER-LBUF-NAME-OK?
+EXPORT CHECK:CHECKER-LBUF-SUFFIXED$
 EXPORT CHECK:CHECKER-LINEAR-TAKEN
 EXPORT CHECK:CHECKER-PACKAGE
 EXPORT CHECK:CHECKER-PARSE-IMM
@@ -2805,8 +2806,7 @@ variable STG-TYPE-U
 \ is free: a taken one is the duplicate, rejected at NAME.
 : DERIVED-FREE? ( ^u8 n ^u8 n n -- bool )
    {: name:^ nameu:n sfx:^ sfxu:n at:n :}
-   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   SB$ {: gen:^ genu:n :}
+   name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:^ genu:n :}
    gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
    gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
@@ -2928,10 +2928,10 @@ variable STG-TYPE-U
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= IF true EXIT THEN
-   SB-RESET  CHECKER-QTAIL$ SB-APPEND  sfx sfxu SB-APPEND
-   SB$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
-   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
-   SB$ SOURCE@ at + nameu DUPLICATE-AT!  false ;
+   CHECKER-QTAIL$ sfx sfxu CHECKER-LBUF-SUFFIXED$
+   wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
+   name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$
+   SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
