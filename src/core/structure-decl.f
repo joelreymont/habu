@@ -164,10 +164,12 @@ variable HELP-U
    sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 NO EXIT THEN
    id UNSTORED-REASON IF
+      a u DECL-REJECT:TOKEN!
       id WIDTH-FAM @ = DEFTYPE? and a u WHOLE-BASE? 0= and IF 2drop a u WIDTH-HELP$ THEN
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
+      a u DECL-REJECT:TOKEN!
       s" type cannot recursively name its owner"
       DEFTYPE? IF SD-TYPE-FIX$ ELSE WRAP? IF
          s" name the type being declared only beneath `^`, as in `NEWTYPE link ^link`"
@@ -327,6 +329,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a u CON-OF dup 0 <> IF drop EXIT THEN drop
    a u FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
+         a u DECL-REJECT:TOKEN!
          s" type is parametric and needs type arguments"
          fam a u SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
       THEN EXIT
@@ -393,6 +396,7 @@ SD-LOOSE-INSTALL
    na nu CON-OF dup 0 <> IF SCHEMA-CON j EXIT THEN drop
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
+         na nu DECL-REJECT:TOKEN!
          s" type is parametric and needs type arguments"
          fam na nu SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       fam 0 0 SCHEMA-APP j EXIT

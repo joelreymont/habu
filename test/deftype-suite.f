@@ -146,6 +146,19 @@ s" DEFTYPE dx ^width"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" width" s" a width is not stored: keep its bytes (width>n)"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^n` instead\n" DT-REC
+\ inside an application the record stands at the argument it judges.
+s" DEFTYPE dx option<option>"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" option" s" type is parametric and needs type arguments"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx option<option<n>>` instead\n" DT-REC
+s" DEFTYPE dx option<width>"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" width" s" a width is not stored: keep its bytes (width>n)"
+S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx option<n>` instead\n" DT-REC
+s" NEWTYPE nx option<nx>"
+S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n"
+s" nx" s" type cannot recursively name its owner"
+S\" = help: name the type being declared only beneath `^`, as in `NEWTYPE link ^link`\n" DT-REC
 package DTQP
 public
 NEWTYPE dtqt

@@ -435,12 +435,12 @@ public
 ;package
 SDSTARQ:SDSTAR-THIRD 300 T=
 
-\ Its own family as another family's argument is refused, a span's too, though a
-\ span's base only points at its element.
+\ Its own family as another family's argument is rejected, a span's too,
+\ though a span's base only points at its element.
 DECL-DIAG:PROSE
 s" STRUCTURE sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdsvspan`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<sdsvspan>" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+s" sdsvspan" s" type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ A family argument may be a pointer to the declared family; a span of pointers stored in
