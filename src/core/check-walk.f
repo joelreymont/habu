@@ -3909,7 +3909,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 \ EXPORT-META-COPY for symbols, which a link has where a compile has a spelling.
 : EXPORT-META-SYM ( n n -- ) {: sym:n src:n :}
    src DFER-FIND-SYM IF sym RES-TRUE DFER-ADD-SYM THEN
-   src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
+   src CTL-FLAGS-SYM ALIAS-CTL {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
    sym ctl dm rm creates src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;

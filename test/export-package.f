@@ -853,7 +853,14 @@ create XPK-EMPTY 1 allot
    SB-RESET  s" require src/lib/task.f" XPK-LINE
    s" : XPK-DECL-USER ( -- ) TASK:+USER ;" XPK-LINE
    SB$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
-   s" E-UNSAFE" XPK-ERR? ;
+   s" E-UNSAFE" XPK-ERR?
+   s" : XPK-DECL-RX ( -- ) XU:+USER ;" T-LABEL
+   SB-RESET  s" require src/lib/task.f" XPK-LINE
+   s" package XU public" XPK-LINE  s" export TASK:+USER" XPK-LINE
+   s" ;package" XPK-LINE  s" : XPK-DECL-RX ( -- ) XU:+USER ;" XPK-LINE
+   SB$
+   s" error[E-UNSAFE]: `XU:+USER` reads source or changes the compiler's or checker's state, which no stack effect describes"
+   s" |                      ^^^^^^^^ not allowed in a checked body" XPK-SEALED ;
 
 \ The source ctor and its alias must behave alike at top level: both run and
 \ leave their two-cell value, and a primitive over it (dup) is rejected alike

@@ -5701,6 +5701,11 @@ CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID constant INTRINSIC-TOP-ONLY
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
+\ An alias's control word: no operator identity, which matches a spelling,
+\ but a top-only mark, which belongs to the word under any name.
+: ALIAS-CTL ( n -- n ) {: n:n :}
+   n CTL>INTRINSIC INTRINSIC-TOP-ONLY = IF n CTL-CORE-OP invert and EXIT THEN
+   n CTL-IDENTITY invert and ;
 
 \ CTL-PARSES means a call may read the source after it, so which tokens it takes
 \ cannot be known without running it.
@@ -17653,6 +17658,13 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
    sym CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
    id INTRINSIC-PARSES >= id INTRINSIC-TOP-ONLY <= and ;
 
+\ Ids 11..14: a declaration a build runs as hb's own word, found by name, so
+\ no second name reaches it. A top-only word (id 15) runs as the program's.
+: HOST-DECLARATION-SYM? ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
+   sym CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
+   id INTRINSIC-PARSES >= id INTRINSIC-DECLARATION <= and ;
+
 : CLAUSE-NAME ( ^u8 n -- ^u8 n ) {: na:^ nu:n :}
    DOES-CLAUSE:SUFFIX$ {: sa:^ su:n :}
    nu su + TOKBUF-ENSURE
@@ -17704,7 +17716,7 @@ private
 : EXPORT-DECLARATION ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-UNSAFE" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is a declaration, which runs only at top level, so no package may export it"
+   s" ` is a declaration hb runs under its own name, so no package may export it"
    REJECTION:EMIT-STR
    a u REJECTION:AT  s" declaration" REJECTION:EMIT-STR
    REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -17747,7 +17759,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
-   sym DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
+   sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
@@ -17789,7 +17801,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 \ export too, so one hop from any export reaches the word.
 : EXPORT-META-COPY ( ^u8 n n -- ) {: a:^ u:n src:n :}
    src DFER-FIND-SYM IF a u EXPORT-TAIL$ DFER-ADD THEN
-   src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
+   src CTL-FLAGS-SYM ALIAS-CTL {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
    a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates

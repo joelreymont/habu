@@ -357,9 +357,11 @@ public
   private section this way. Rejected: an undefined source
   (`E-EXPORT-UNDEFINED`), a private word of a sealed package
   (`E-SEALED-PACKAGE`), a primitive (`E-EXPORT-PRIM`),
-  an internal engine word (`E-EXPORT-UNSAFE`) and a duplicate tail in the
+  an internal engine word (`E-EXPORT-UNSAFE`), a declaration hb runs under
+  its own name such as `ENUM` (`E-EXPORT-UNSAFE`) and a duplicate tail in the
   target section (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK`
-  brings its clause along as `MK;does`. Re-exporting a generated constructor
+  brings its clause along as `MK;does`. A top-level-only definer such as
+  `TASK:+USER` exports as itself and stays top level only. Re-exporting a generated constructor
   under a second name is allowed; adding tails INTO a generated constructor
   package is not. `EXPORT` outside a package is rejected
   (`E-EXPORT-NO-PACKAGE`).
