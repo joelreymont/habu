@@ -141,7 +141,30 @@ create XPK-EMPTY 1 allot
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
-   s" EXPORT variable" XPK-LINE
+   s" EXPORT public" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ U's public NAME, exported bare from a package under `using U`.
+: XPK-USED-FORGE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   SB-RESET
+   s" package U" XPK-LINE
+   s" public" XPK-LINE
+   s" : " SB-APPEND  a u SB-APPEND  s"  ( -- n ) 7 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" package XP" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT " SB-APPEND  a u XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;using" XPK-LINE
+   SB$ ;
+
+: XPK-CREATE-FORGE$ ( -- ^u8 n )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
+   SB-RESET
+   s" package XB" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT create" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -646,6 +669,15 @@ create XPK-EMPTY 1 allot
    XPK-REJECT-ALL
    s" a top-level keyword rejects (E-EXPORT-UNDEFINED)" T-LABEL
    XPK-KEYWORD-FORGE$ s" error[E-EXPORT-UNDEFINED]" s" is a top-level keyword"
+   XPK-REJECT-ALL
+   s" a used package's public rejects bare (E-EXPORT-UNDEFINED)" T-LABEL
+   s" XW" XPK-USED-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" a used package's public HOST rejects bare (E-EXPORT-UNDEFINED)" T-LABEL
+   s" HOST" XPK-USED-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" a primitive spelled as a keyword rejects (E-EXPORT-PRIM)" T-LABEL
+   XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
    XPK-REJECT-ALL
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC

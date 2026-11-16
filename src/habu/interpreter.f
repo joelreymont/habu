@@ -220,17 +220,14 @@ private
    loop
    -1 ;
 
+EXPORT CHECKER-RESOLVE:USED-ONLY?
+
 \ The scope's answer (open package, enclosing package, global, NAME:tail), never
-\ a used public's: a row the used publics bound is a miss, except in the open
-\ or the enclosing package's public wordlist, which the scope searched first.
+\ a used public's.
 : FIND-SCOPE ( ^u8 n -- ^n )
    scope-find drop drop {: rec:^ used:^ :}
-   rec used <> if rec exit then
-   rec XREF-FOUND? 0= if rec exit then
-   rec XREF-WORDLIST {: wl:n :}
-   wl NDICT:OPEN-PUB = if rec exit then
-   wl data-base ENCLOSING:PUB + @ = if rec exit then
-   XREF-NULL ;
+   rec used USED-ONLY? if XREF-NULL exit then
+   rec ;
 
 public
 
@@ -1163,26 +1160,10 @@ variable USE-FLOOR
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
-: EXPORT-UNDEFINED ( -- )
-   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" cannot find word " SAY  TOKEN$ TICKS  s"  to export" SAY
-   TOKEN$ REJECTION:AT  s" not found" SAY
-   REJECTION:HELP  s" define " SAY  TOKEN$ TICKS
-   s"  before exporting it, or check its spelling" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-: EXPORT-UNSAFE ( -- )
-   s" E-EXPORT-UNSAFE" REJECTION:OPEN
-   TOKEN$ TICKS
-   s"  is an internal engine word, which no package may export" SAY
-   TOKEN$ REJECTION:AT  s" internal to the engine" SAY
-   REJECTION:HELP  s" export a public word instead" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
-EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
-EXPORT CHECKER-RESOLVE:EXPORT-SEALED
-EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
+EXPORT CHECK:EXPORT-SYM
+EXPORT CHECK:EXPORT-MISS
+EXPORT CHECK:EXPORT-UNSAFE
 
 \ The source must not be internal: an alias would carry its body past the
 \ interpret gate without the DNAME-INT mark, so the gate's rejection is made
@@ -1192,12 +1173,8 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
    TOKEN$ FIND-SCOPE {: found:^ :}
    found XREF-FOUND? if found else TOKEN$ EXPORT-PRIVATE then
    {: src:^ :}
-   src XREF-FOUND? 0= if
-      TOKEN$ EXPORT-KEYWORD
-      TOKEN$ EXPORT-SEALED? if TOKEN$ EXPORT-SEALED then
-      EXPORT-UNDEFINED
-   then
-   src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
+   src XREF-FOUND? 0= if TOKEN$ TOKEN$ EXPORT-SYM drop EXPORT-MISS then
+   src XREF-FLAGS DNAME-INT and 0<> if TOKEN$ EXPORT-UNSAFE then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    src ;

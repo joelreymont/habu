@@ -66,7 +66,9 @@ public
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body. `EXPORT PKG:NAME` also takes a private
-  `NAME` of a package that is not sealed (`E-SEALED-PACKAGE` once sealed).
+  `NAME` of a package that is not sealed (`E-SEALED-PACKAGE` once sealed). A
+  bare `NAME` only a `using` brings in is `E-EXPORT-UNDEFINED`: write
+  `EXPORT U:NAME`.
 - The package keyword `seal-package` seals the open package: a later
   `package` of it, or a definition or `EXPORT` into it, is
   `E-SEALED-PACKAGE`, rc 70, and `tools/check.f` rejects the same. A sealed

@@ -12956,6 +12956,7 @@ global
 private
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
+variable WALK-USED       \ the record the walk bound is only a used public's (LIVE-BIND)
 SCRATCH{
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
 variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name, its SYM-STR offset (renders PKG:WORD)
@@ -14643,6 +14644,24 @@ defer FACTS-READ-XT ( ^n -- )
 : FACTS-READ-DEFAULT ( -- ) [: drop ;] is FACTS-READ-XT ;
 FACTS-READ-DEFAULT
 
+;package
+package CHECKER-RESOLVE
+EXPORT CHECK:CK-REC-WID
+\ Whether scope-find's record REC is only the used publics' record USED: the
+\ open and the enclosing package's public wordlists, searched first, do not
+\ hold it.
+: USED-ONLY? ( ^n ^n -- bool ) {: rec:^ used:^ :}
+   rec used <> IF RES-FALSE EXIT THEN
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec CK-REC-WID {: wl:n :}
+   wl data-base PKG-PUB-CELL + @ = IF RES-FALSE EXIT THEN
+   wl data-base ENCLOSING:PUB + @ = IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+;package
+package CHECK
+
+EXPORT CHECKER-RESOLVE:USED-ONLY?
+
 : LIVE-BIND ( ^u8 n -- n n ) {: a:^ u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -14668,6 +14687,7 @@ FACTS-READ-DEFAULT
       a u rec RECOVERY-BIND {: rsym:n :}
       rsym 0 <> IF rsym 0 EXIT THEN
    THEN
+   rec used USED-ONLY? IF -1 WALK-USED ! THEN
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
       two IF -1 USING-UNBOUND !  a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
@@ -14723,9 +14743,10 @@ FACTS-READ-DEFAULT
 package CHECKER-RESOLVE
 EXPORT CHECK:USING-UNBOUND
 EXPORT CHECK:WALK-REC
+EXPORT CHECK:WALK-USED
 EXPORT CHECK:LIVE-BIND
 : WALK ( ^u8 n -- n n )
-   0 USING-UNBOUND !  0 WALK-REC !
+   0 USING-UNBOUND !  0 WALK-REC !  0 WALK-USED !
    LIVE-BIND ;
 
 EXPORT CHECK:USING-HOLD
@@ -17818,18 +17839,36 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
+\ The operand a u binds the public SYM of a package it uses.
+: EXPORT-USED ( ^u8 n n -- ) {: a:^ u:n sym:n :}
+   sym SYM-PKG$ PACKAGE-NAME$ {: pa:^ pn:n :}
+   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is a public of used package `" REJECTION:EMIT-STR  pa pn REJECTION:EMIT-STR
+   s" `, and EXPORT does not search used packages" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" used, not in this package's scope" REJECTION:EMIT-STR
+   REJECTION:HELP  s" write `EXPORT " REJECTION:EMIT-STR  pa pn a u EMIT-QUALIFIED
+   s" `" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Rejects the operand a u, which names no word EXPORT may take. SYM is
+\ EXPORT-SYM's symbol; WALK-USED still describes the walk that bound it.
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
-\ and the first PES row legitimately lives at USIGS offset 0.
+\ and the first PES row lives at offset 0.
+: EXPORT-MISS ( ^u8 n n -- ) {: a:^ u:n sym:n :}
+   sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
+   sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF a u EXPORT-JUDGED THEN
+   sym 0= IF a u EXPORT-KEYWORD THEN
+   WALK-USED @ 0 <>  sym 0 <>  and IF a u sym EXPORT-USED THEN
+   a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
+   a u EXPORT-UNDEFINED ;
+
 : EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
    sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
-   FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
-   a u EXPORT-KEYWORD
-   sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
-   sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF a u EXPORT-JUDGED THEN
-   a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
-   a u EXPORT-UNDEFINED ;
+   FEP-HIT? WALK-USED @ 0= and IF sym a u NAV-USE-NOW EXIT THEN
+   a u sym EXPORT-MISS ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
 \ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.
@@ -21893,7 +21932,7 @@ defer VIS-VISIT ( ^u8 n n n n -- )
    USH-PKG-A @ USH-PKG-U @ {: s-ha:n s-hn:n :}
    CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:^ s-qu:n s-ta:^ s-tu:n :}
-   USING-UNBOUND @ WALK-REC @ {: s-ub:n s-wr:n :}
+   USING-UNBOUND @ WALK-REC @ WALK-USED @ {: s-ub:n s-wr:n s-wu:n :}
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
@@ -21915,7 +21954,7 @@ defer VIS-VISIT ( ^u8 n n n n -- )
    s-ha USH-PKG-A !  s-hn USH-PKG-U !
    s-qb CHECKER-QBAD-TOK !
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
-   s-ub USING-UNBOUND !  s-wr WALK-REC !
+   s-ub USING-UNBOUND !  s-wr WALK-REC !  s-wu WALK-USED !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
    s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
    refused IF
