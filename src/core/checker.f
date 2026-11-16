@@ -5683,7 +5683,6 @@ CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 1 constant INTRINSIC-CELL-FETCH                \ @
 2 constant INTRINSIC-CELL-STORE                \ !
-3 constant INTRINSIC-QDUP                      \ ?dup
 4 constant INTRINSIC-HIDE-ROW                  \ depth .s
 5 constant INTRINSIC-RAW-FIELD                 \ ptr-field
 global
@@ -5735,7 +5734,6 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    {: id:n :}
    id INTRINSIC-CELL-FETCH = IF s" cell-fetch" EXIT THEN
    id INTRINSIC-CELL-STORE = IF s" cell-store" EXIT THEN
-   id INTRINSIC-QDUP = IF s" qdup" EXIT THEN
    id INTRINSIC-HIDE-ROW = IF s" hide-row" EXIT THEN
    id INTRINSIC-RAW-FIELD = IF s" raw-field" EXIT THEN
    id INTRINSIC-RECORD-AT = IF s" record-at" EXIT THEN
@@ -17088,7 +17086,6 @@ package CHECK
    s" atomic-cas" INTRINSIC-ATOMIC-CAS INTRINSIC>CTL NORET-AXIOM
    s" xt!" INTRINSIC-XT-STORE INTRINSIC>CTL NORET-AXIOM
    s" ptr-cell!" INTRINSIC-CELL-STORE INTRINSIC>CTL NORET-AXIOM
-   s" ?dup" INTRINSIC-QDUP INTRINSIC>CTL NORET-AXIOM
    s" depth" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" .s" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM ;
@@ -22513,11 +22510,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 
 
 \ --- layout stack-op typing -------------------
-\ Whole-bundle transport tokens. ?dup is excluded: it branches on the top (tag)
-\ cell, width-breaking for a sum whose tag 0 is a valid variant. Transport mode
-\ keys on the folded token name and DO-TOK consults user sigs before prims, so
-\ a token is admitted only when its binding is the engine's own word of that
-\ spelling.
+\ The stack words that move a layout value as one unit, by folded spelling; a
+\ token is one only when it binds the engine's own word (TOK-CORE-OP?).
 : LAYOUT-XPORT-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
@@ -22537,12 +22531,6 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    a u s" 2>r"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r>"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r@"   CORE-STR= ;
-
-\ ?dup has no checked form whatever its operand (no row models a result whose
-\ cell count depends on a value), so every checked ?dup is rejected as an
-\ undefined word.
-: QDUP-STEP ( -- )
-   -1 UNDEFERR !  UNCK-RAISE ;
 
 \ --- construct form: `construct family variant` is a reserved checker token
 \ protocol, not a word lookup. DO-TOK1 captures both operands before locals,
@@ -22593,7 +22581,6 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 : SPELLED-STEP? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
-   id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over a wide or open-width value
    a u XPORT-STEP? IF RES-TRUE EXIT THEN

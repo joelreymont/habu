@@ -623,9 +623,8 @@ private
    RES-TRUE ;
 
 
-\ Sym's tags alone in REJECTION:TEXT, the facts text of a primitive the checker
-\ types by what it does (`execute`, `?dup`). False when it has none or a text
-\ cannot say them.
+\ Sym's tags alone in REJECTION:TEXT, the facts of a primitive typed by what it
+\ does (`execute`); false when it has none or a text cannot say them.
 : TAGS-TEXT? ( n -- bool )
    {: sym:n :}
    0 REJECTION:TEXT-LEN !  0 RQM !
