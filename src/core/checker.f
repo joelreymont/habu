@@ -7176,6 +7176,7 @@ global
 16 constant RF-USHADOW       \ a bare name a used public shadows a global for (E-USING-SHADOW-GLOBAL)
 17 constant RF-UAMBIG        \ a bare name two used publics export (E-USING-AMBIGUOUS)
 private
+18 constant RF-KEYWORD       \ a keyword named where a word is needed (a tick's or postpone's operand)
 SCRATCH{
 variable REFUSAL             \ the RF-* kind the diagnostic names; 0 = none chosen yet
 variable CREFUSE             \ the RF-* kind the load refuses this token for while compiling; 0 = none
@@ -19132,11 +19133,15 @@ variable CHECKER-PREFIX-ROLLBACK
    unseen IF UNSEEN-RAISE ELSE UNCK-RAISE THEN
    unseen ;
 
-\ A name the walk refused for a `using` is not undefined. Nor is one whose
-\ record the engine's lookup found, though no checker symbol or row types it,
-\ so neither caller asks this of it.
+EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
+
+\ A name the walk refused for a `using` is not undefined. No definition, now or
+\ later, makes a keyword a word.
 : REFUSE-UNDEFINED ( ^u8 n -- )
    CUSING @ 0 <> IF 2drop EXIT THEN
+   2dup BODY-KEYWORD? IF
+      2drop RF-KEYWORD CREFUSE!  0 OK !  -1 FAILSET !  EXIT
+   THEN
    CALL-UNDEFINED IF EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREFUSE! ;
 
@@ -21209,7 +21214,6 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" recurse" CORE-STR= IF 24 EXIT THEN
    -1 ;
 
-EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
 EXPORT CHECKER-RESOLVE:NAME-KEYWORD?
 
 : CF-STEP ( n -- ) {: code:n :}
@@ -22481,6 +22485,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    K-TICK  BIND-REC @ REC>INDEX  0 EVENT!
+   TKF TKFU @ BODY-KEYWORD? IF TKF TKFU @ REFUSE-UNDEFINED EXIT THEN
    sym TICK-REFUSED? IF EXIT THEN
    FEP-HIT? IF
       FEP @ ER.ACTIVE @ EFF-RECOVERY = IF

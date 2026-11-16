@@ -1397,6 +1397,7 @@ variable MDV-I   variable MDV-F
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
    k RF-UNDEF = IF s" E-UNDEFINED" EXIT THEN
+   k RF-KEYWORD = IF s" E-UNDEFINED" EXIT THEN
    k RF-QUAL = IF s" E-BAD-QUALIFIED" EXIT THEN
    k RF-LOCAL = IF LOCALBAD-CODE$ EXIT THEN
    k RF-SIG = IF SGBAD-CODE$ EXIT THEN
@@ -1687,10 +1688,22 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    THEN
    s" cannot find word " EMIT-STR  TOK-SPAN ;
 
+\ The message for keyword t tu named where a word is needed.
+: KEYWORD-MESSAGE ( ^u8 n -- )
+   {: t:^ tu:n :}
+   t tu CODE-SPAN  s"  is a keyword, not a word" EMIT-STR ;
+
+\ The help for keyword t tu named where a word is needed.
+: KEYWORD-HELP ( ^u8 n -- )
+   {: t:^ tu:n :}
+   s" name a word defined with `:` … `;` that uses " EMIT-STR
+   t tu CODE-SPAN ;
+
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
       RF-UNDEF of UNDEF-MESSAGE endof
+      RF-KEYWORD of PIN-TOK$ KEYWORD-MESSAGE endof
       RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
       RF-IMM of s"  is a compile-time immediate that is not a stack-neutral parsing immediate" TOK-MESSAGE endof
       RF-CAP of s"  is a trust-boundary primitive" TOK-MESSAGE endof
@@ -1737,6 +1750,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-LABEL ;AT-PIN endof
       RF-UNDEF of UNDEF-LABEL endof
+      RF-KEYWORD of s" not a word" EMIT-STR endof
       RF-QUAL of s" more than one `:`" EMIT-STR endof
       RF-IMM of s" unmodeled immediate" EMIT-STR endof
       RF-CAP of TOP-STEP @ IF s" not callable from checked code"
@@ -1934,6 +1948,14 @@ PTR-VARIABLE HOLDER-FIRST
    s"  and its path out of the definition to top level, or load the file when the word runs with `s" EMIT-STR
    34 EMIT1  s"  path" EMIT-STR  34 EMIT1  32 EMIT1  w wu EMIT-STR  96 EMIT1 ;
 
+\ Keyword t tu named where a word is wanted; the caller stops or keeps it.
+: KEYWORD-RECORD ( ^u8 n -- )
+   {: t:^ tu:n :}
+   s" E-UNDEFINED" REJECTION:OPEN
+   t tu KEYWORD-MESSAGE
+   t tu REJECTION:AT  s" not a word" EMIT-STR
+   REJECTION:HELP  t tu KEYWORD-HELP ;
+
 : IMM-HELP ( ^u8 n -- ) {: t:^ tu:n :}
    \ The token's binding is read afresh: the walk's last bound token may be another.
    t tu CHECKER-FIND-ACTIVE-SYM t tu TOK-IDENTITY CTL>INTRINSIC {: id:n :}
@@ -2048,6 +2070,7 @@ PTR-VARIABLE HOLDER-FIRST
       IF NMA @ NMU @ ELSE NMA @ 0 THEN
       UNDEF-HELP EXIT
    THEN
+   k RF-KEYWORD = IF PIN-TOK$ KEYWORD-HELP EXIT THEN
    k RF-IMM = IF PIN-TOK$ IMM-HELP EXIT THEN
    k RF-QUAL = IF QUAL-HELP EXIT THEN
    k RF-LOCAL = IF LOCAL-HELP EXIT THEN

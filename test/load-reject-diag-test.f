@@ -1169,6 +1169,38 @@ undefine include
    BODY$ CHECK-ALL-RUN
    s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
 
+\ The record of keyword KW named at column COL of the one line SRC.
+: KEYWORD-EXPECT ( ^u8 n ^u8 n n -- )
+   {: kw:^ kwu:n src:^ srcu:n col:n :}
+   SB-RESET
+   s" error[E-UNDEFINED]: `" SB-APPEND  kw kwu SB-APPEND
+   s" ` is a keyword, not a word" SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND  s" :1:" SB-APPEND  col FMT:SB-INT
+   S\" \n  |\n1 | " SB-APPEND  src srcu SB-APPEND  S\" \n  |" SB-APPEND
+   col 0 ?do 32 SB-APPEND-C loop
+   kwu 0 ?do 94 SB-APPEND-C loop
+   S\"  not a word\n" SB-APPEND
+   s"   = help: name a word defined with `:` … `;` that uses `" SB-APPEND
+   kw kwu SB-APPEND  S\" `\n\n" SB-APPEND ;
+
+\ The load and tools/check.f give SRC, which names keyword KW at column COL
+\ where a word is needed, KEYWORD-EXPECT's record.
+: KEYWORD-REJECT ( ^u8 n ^u8 n n -- )
+   {: kw:^ kwu:n src:^ srcu:n col:n :}
+   BODY$ src srcu FS:WRITE-ALL
+   BODY$ RUN
+   kw kwu src srcu col KEYWORD-EXPECT  REJECT-RC ASSERT-REJECTED
+   BODY$ CHECK-RUN
+   kw kwu src srcu col KEYWORD-EXPECT  REJECT-RC ASSERT-REJECTED ;
+
+: TEST-KEYWORD-OPERAND ( -- )
+   s" a top-level tick of if is told it is not a word" T-LABEL
+   s" if" s" ' if drop" 3 KEYWORD-REJECT
+   s" a postpone of if is told it is not a word" T-LABEL
+   s" if" s" : X ( -- ) postpone if ;" 21 KEYWORD-REJECT
+   s" a body tick of >r is told it is not a word" T-LABEL
+   s" >r" s" : X ( -- ) ['] >r drop ;" 16 KEYWORD-REJECT ;
+
 \ Under a rendering statement's mark CHECK leaves an undefined name to the run
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
 : TEST-DEFERRED ( -- )
@@ -1417,6 +1449,7 @@ variable LONG-U
    TEST-BODY-ONLY
    TEST-TOP-LOCALS-END
    TEST-BODY-OPERAND
+   TEST-KEYWORD-OPERAND
    TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH

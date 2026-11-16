@@ -263,6 +263,8 @@ package CHECK
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY EXIT THEN
+   \ The load compiles a word its lookup found, though no checker symbol or row
+   \ types it, so only the check fails the call.
    TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
    a u REFUSE-UNDEFINED ;
 
@@ -2421,7 +2423,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR
    ELSE
-      runs a u BODY-KEYWORD? and IF a u BODY-ONLY-RECORD
+      a u BODY-KEYWORD? IF
+         runs IF a u BODY-ONLY-RECORD ELSE a u KEYWORD-RECORD THEN
       ELSE a u NULL-PTR 0 UNDEFINED-RECORD THEN
    THEN
    TOP-END ;
