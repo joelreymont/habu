@@ -860,6 +860,7 @@ SD-QUOT-INSTALL
 \ the name stands at the name as written: a DEFTYPE's name reaches the stream
 \ folded, in a buffer no source holds.
 : WRAP-DRIVE ( -- )
+   DECL-PARAM-CLEAR
    NEXT {: na:^ nu:n :}
    na nu DECL-REJECT:FAMILY!
    nu 0= IF s" missing name"

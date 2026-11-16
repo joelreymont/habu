@@ -2615,6 +2615,12 @@ s" NEWTYPE tdbad tdmissing-type"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdbad`\n"
 s" tdmissing-type" s" unknown type" TDT-AT
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
+\ A base's letters are not the previous declaration's header parameters.
+s\" STRUCTURE tdwhead<a,q> FIELD x a ;STRUCTURE\nNEWTYPE tdwnohead read-view<q,q,a>"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdwnohead`\n"
+s" q" s" unknown type" TDT-AT
+REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
 \ The verifier replays a base on the name's line as the load registers it.
 : TDWR-VERIFY ( -- )
    s\" NEWTYPE tdvwrap str\n: TDWR-VUSE ( tdvwrap -- tdvwrap ) ;" VERIFY:SOURCE-BUF ;

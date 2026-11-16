@@ -45,6 +45,8 @@ create OPEN-FIELD TF-NAME-MAX allot
 variable OPEN-FIELD-U
 : USE-SLOT ( n -- ^n ) cells PARAM-USES + ;
 : FIELD-U-SLOT ( n -- ^n ) cells PARAM-FIELD-US + ;
+\ Forgets the header parameters: a declaration opens with none until its
+\ header lists them.
 : DECL-PARAM-CLEAR ( -- )
    0 DECL-PARAM-N !  0 OPEN-FIELD-U !
    TFAM-DECL-PARAM-COUNT 0 ?DO
