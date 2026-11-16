@@ -14,6 +14,7 @@ require src/core/compile-reads.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
+require src/lib/string.f
 
 package FS
 private
@@ -331,6 +332,23 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
    COMPILE-READS:MISS
    name u A-NAME? 0= if A-REFUSE OPTION:NONE exit then
    dir FD>N name u >PATHZ flags OPEN-AT-CALL A-OPENED ;
+
+: A-DIGIT-COUNT ( n -- n )
+   1 swap begin dup 9 > while 10 / swap 1+ swap repeat drop ;
+\ The decimal digits of n >= 0 at the address; answers their count.
+: A-DIGITS ( n ^u8 -- n ) {: v:n dst:^ :}
+   v A-DIGIT-COUNT {: du:n :}
+   v du begin dup 0 > while
+      1- over 10 mod STR-ZERO + over dst + c!  swap 10 / swap
+   repeat 2drop du ;
+\ /proc/self/fd/<fd>, NUL-terminated, in PATHZ-BUF. No FMT word renders the
+\ fd: FMT's number buffer may hold the caller's text.
+: A-FD-LINKZ ( fd -- ^u8 )
+   PATHZ-BUF SPAN:$ drop {: z:^ :}
+   s" /proc/self/fd/" {: prefix:^ pu:n :}
+   prefix z pu BYTE-COPY
+   FD>N z pu + A-DIGITS {: du:n :}
+   0 z pu du + + c!  z ;
 : A-UNLINK ( fd ^u8 n n -- bool ) {: dir:fd name:^ u:n flags:n :}
    name u A-NAME? 0= if A-REFUSE false exit then
    dir FD>N name u >PATHZ flags UNLINK-AT-CALL A-DONE ;
@@ -354,6 +372,15 @@ public
 \ O_PATH: any kind of entry, a symlink itself included, pinning its inode.
 : TRY-OPEN-ENTRY-AT ( fd ^u8 n -- option<fd> )
    A-ENTRY-FLAGS A-OPEN-NAME ;
+\ The text of /proc/self/fd/<fd>: the path, " (deleted)" after it once unlinked.
+\ readlink cuts silently, so a count that fills the buffer is E-FS-CAPACITY.
+: FD-PATH ( fd ^u8 n -- n ) {: file:fd buf:^ cap:n :}
+   COMPILE-READS:MISS
+   cap 1 < if CAUSE-CLEAR E-FS-CAPACITY throw then
+   file A-FD-LINKZ buf cap readlink {: got:n :}
+   got 0 < if E-FS-STAT throw then
+   got cap >= if CAUSE-CLEAR E-FS-CAPACITY throw then
+   CAUSE-CLEAR got ;
 \ An unnamed regular file of mode 0600 in the directory, which TRY-LINK-AT
 \ names. A failure is E-FS-OPEN with its errno in FS:ERRNO.
 : TEMP-AT ( fd -- fd ) {: dir:fd :}

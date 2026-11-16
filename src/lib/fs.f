@@ -116,6 +116,7 @@ $7FFFFFFF constant PREAD-MAX
 \ target's symbol is harmless: a row resolves its symbol at its first call.
 FUNCTION: STRERROR-CALL strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: GETEUID-CALL geteuid ( -- u32 ) ;FUNCTION
 
 : STRERROR ( n ^u8 n -- n )
    HB-TARGET-MACOS? if STRERROR-CALL exit then
@@ -144,6 +145,10 @@ public
 
 : CAUSE-CLEAR ( -- )
    0 data-base FS-ABI:ERRNO-OFF + ! ;
+
+\ The effective uid, the one the kernel's file permission checks use.
+: EUID ( -- n )
+   GETEUID-CALL ;
 
 private
 \ A region is a fresh zeroed mapping, so a new task's cells start at zero.

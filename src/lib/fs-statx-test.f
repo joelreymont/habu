@@ -1,4 +1,4 @@
-\ fs-statx-test.f - FS-STATX:BIRTH and FS-STATX:SUBVOLUME on a file made
+\ fs-statx-test.f - FS-STATX:BIRTH, SUBVOLUME and PERMISSIONS on files made
 \ under the test's temporary directory, and their refusal of a closed one.
 \ Run: bin/hb --load src/lib/fs-statx-test.f
 
@@ -22,17 +22,24 @@ $01021994 constant TMPFS-MAGIC
 $9123683E constant BTRFS-MAGIC
 \ struct statfs on 64-bit Linux: f_type is its first cell, 120 bytes in all.
 120 constant STATFS-BYTES
+416 constant MODE-0640
+\ FS_NODUMP_FL, which statx reports as STATX_ATTR_NODUMP, the same bit.
+$40 constant NODUMP
+$80086601 constant GETFLAGS                    \ FS_IOC_GETFLAGS
+$40086602 constant SETFLAGS                    \ FS_IOC_SETFLAGS
 
 PROCESS-SYMBOLS
 FUNCTION: CLOCK-CALL clock_gettime ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: FSTATFS-CALL fstatfs ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: FUTIMENS-CALL futimens ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: IOCTL-CALL ioctl ( n n ^u8 -- i32 ) ;FUNCTION
 
 create ROOT PATH-CAP allot
 create PATH-BUF PATH-CAP allot
 create SPEC 16 allot
 create TIMES 32 allot
 create STATFS-BUF STATFS-BYTES allot
+create FLAGS 8 allot
 variable ROOT-U
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
@@ -101,12 +108,42 @@ variable ROOT-U
    then
    s" subvolume not reported" file SAY ;
 
+\ A file this process made and set to 0640.
+: PERM-FILE ( -- fd )
+   s" perm" PATH s" abc" FS:WRITE-ALL
+   s" perm" PATH FS:>PATHZ MODE-0640 chmod 0 T=
+   s" perm" PATH FS:OPEN-SIZED {: file:fd size:n ok:bool :}
+   ok TTRUE  file ;
+
+: CHECK-PERMISSIONS ( fd -- )
+   FS-STATX:PERMISSIONS {: mode uid attrs :}
+   mode $FFF and MODE-0640 T=
+   mode FS:S-IFMT and FS:S-IFREG T=
+   uid FS:EUID T=
+   attrs FS-STATX:IMMUTABLE FS-STATX:APPEND or and 0 T= ;
+
+\ NODUMP set through ioctl shows in the attributes, pinning their offset; a
+\ filesystem that cannot set it is named and passes.
+: CHECK-NODUMP ( fd -- ) {: file:fd :}
+   file FD>N GETFLAGS FLAGS IOCTL-CALL 0<> if
+      s" flags not readable" file SAY exit
+   then
+   FLAGS LE:U32@ NODUMP or FLAGS LE:U32!
+   file FD>N SETFLAGS FLAGS IOCTL-CALL 0<> if
+      s" nodump not settable" file SAY exit
+   then
+   file FS-STATX:PERMISSIONS NODUMP and NODUMP T= 2drop
+   s" nodump reported" file SAY ;
+
 : CHECK-CLOSED ( fd -- ) {: file:fd :}
    file FD>N FS:CLOSE-FD 0 T=
    [: file FS-STATX:BIRTH drop 2drop ;] E-FS-STAT TTHROWSQ
    FS:ERRNO FS:EBADF T=
    FS:CAUSE-CLEAR
    [: file FS-STATX:SUBVOLUME drop drop ;] E-FS-STAT TTHROWSQ
+   FS:ERRNO FS:EBADF T=
+   FS:CAUSE-CLEAR
+   [: file FS-STATX:PERMISSIONS drop 2drop ;] E-FS-STAT TTHROWSQ
    FS:ERRNO FS:EBADF T= ;
 
 public
@@ -114,6 +151,9 @@ public
    SETUP
    CHECK-BIRTH {: file:fd :}
    file CHECK-SUBVOLUME
+   PERM-FILE {: perm:fd :}
+   perm CHECK-PERMISSIONS  perm CHECK-NODUMP
+   perm FD>N FS:CLOSE-FD 0 T=
    file CHECK-CLOSED
    ROOT$ FS:REMOVE-TREE
    T-REPORT s" fs-statx-test: ok" type cr ;

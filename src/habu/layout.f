@@ -1000,7 +1000,7 @@ package FMT-ABI
 public
 4 constant SCRATCH-CELLS
 86 constant SCI-LIMBS
-20 constant NUM-BUF-BYTES
+21 constant NUM-BUF-BYTES
 SCRATCH-CELLS SCI-LIMBS + cells NUM-BUF-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES
 MEM-ABI:END constant START

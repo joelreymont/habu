@@ -4,6 +4,7 @@ require src/lib/fs-mutate.f
 require src/lib/fs-anchored.f
 require src/lib/fs-list.f
 require src/lib/fd.f
+require src/lib/fmt.f
 
 package FS-ANCHORED-TEST
 
@@ -240,6 +241,7 @@ $1FF constant PERMS
 variable DIR
 variable TEMP
 variable PLAIN
+create LINK-BUF PATH-CAP allot
 
 : AT-DIR ( -- ^u8 n ) 16 s" root/at" PATH ;
 : AT-FILE ( -- ^u8 n ) 17 s" root/at/file" PATH ;
@@ -294,6 +296,20 @@ variable PLAIN
    D s" link" FS:TRY-OPEN-ENTRY-AT OPENED-SIZE 4 T=
    D s" missing" FS:TRY-OPEN-ENTRY-AT FS:ENOENT NONE-WITH
    [: FS:TRY-OPEN-ENTRY-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+\ FD-PATH names the directory the descriptor holds, leaves FMT's text
+\ intact, refuses a buffer the name would fill, and refuses a closed
+\ descriptor as E-FS-STAT with ENOENT.
+: FD-PATHS ( -- )
+   $1ED 4 FMT:OCT-WIDTH$ {: mode:^ mu:n :}
+   D LINK-BUF PATH-CAP FS:FD-PATH {: u:n :}
+   LINK-BUF u AT-DIR T$=
+   mode mu s" 0755" T$=
+   [: D LINK-BUF AT-DIR nip 1- FS:FD-PATH drop ;]
+   E-FS-CAPACITY TTHROWSQ
+   D s" sub" FS:TRY-OPEN-DIR-AT SOME {: f:fd :}
+   f FS:CLOSE-DIR
+   [: f LINK-BUF PATH-CAP FS:FD-PATH drop ;] E-FS-STAT TTHROWSQ
+   FS:ERRNO FS:ENOENT T= ;
 : DIRS ( -- )
    D s" sub" FS:TRY-OPEN-DIR-AT SOME FS:CLOSE-DIR
    s" a directory open of a symlink is ENOTDIR" T-LABEL
@@ -398,7 +414,8 @@ variable PLAIN
    root s" at" FS:TRY-OPEN-DIR-AT SOME FD>N DIR !
    root s" fifo" FS:TRY-OPEN-READ-AT SOME FS:CLOSE-DIR
    root FS:CLOSE-DIR
-   READS WRITES ENTRIES DIRS STATS MAKES RENAMES REMOVES TEMPS
+   FD-PATHS READS WRITES ENTRIES DIRS STATS MAKES RENAMES REMOVES
+   TEMPS
    MOVED-ANCHOR
    D FS:CLOSE-DIR ;
 [then]

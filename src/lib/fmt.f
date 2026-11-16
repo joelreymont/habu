@@ -30,11 +30,10 @@ package FMT
 : FMT-DV ( -- ^n )
    data-base FMT-ABI:DV-OFF + ;
 
-\ An i64 never renders wider than one sign byte plus the STR-I64-DIGITS digits
-\ of its magnitude, so the buffer is exact by construction and the renderer
-\ needs no capacity check.
-
-STR-I64-DIGITS 1+ constant FMT-NUM-CAP
+\ The widest text is a sign byte and STR-I64-DIGITS decimal digits, or the
+\ octal digits of the largest cell, so the renderers need no capacity check.
+21 constant OCT-CELL-DIGITS
+STR-I64-DIGITS 1+ OCT-CELL-DIGITS max constant FMT-NUM-CAP
 \ src/habu/layout.f is loaded before src/lib/string.f and cannot see
 \ STR-I64-DIGITS, so FMT-ABI:NUM-BUF-BYTES states the width there and this
 \ executes the agreement once at load. A narrower band would let the renderer
@@ -89,6 +88,17 @@ BAND-AGREE
    0 FMT-NUM-U !
    width begin dup 0 > while
       1- value over 4 * rshift 15 and HEX-C+
+   repeat drop ;
+
+\ Exactly `width` octal digits, most significant first. The bits above the
+\ digits must be zero, which also refuses every negative value.
+: OCT-WIDTH>NUM ( n n -- )
+   {: value:n width:n :}
+   width 1 < width OCT-CELL-DIGITS > or if E-FMT-DOMAIN throw then
+   value width 3 * rshift 0<> if E-FMT-DOMAIN throw then
+   0 FMT-NUM-U !
+   width begin dup 0 > while
+      1- value over 3 * rshift 7 and FMT-ZERO + NUM-C+
    repeat drop ;
 
 : INT>NUM ( n -- )                         \ signed (STR-MIN-I64 has no positive magnitude)
@@ -311,6 +321,8 @@ public
 : .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched
 : .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
 : INT$ ( n -- ^u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
+\ Value then width; SB untouched, valid until FMT's next render.
+: OCT-WIDTH$ ( n n -- ^u8 n )   OCT-WIDTH>NUM NUM$ ;
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

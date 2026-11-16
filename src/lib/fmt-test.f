@@ -40,6 +40,8 @@ using FMT
    {: a:^ u:n :}
    SB-RESET s" sb-sentinel" SB-APPEND
    INT$ a u T$=  SB$ s" sb-sentinel" T$= ;
+: T-OCT ( n n ^u8 n -- ) {: a:^ u:n :}       \ ( value width expect )
+   OCT-WIDTH$ a u T$= ;
 \ F.N has no bounded width and does build in the shared builder, so its text is
 \ still readable through SB$ after the call.
 : T-PFN ( r n ^u8 n -- ) {: a:^ u:n :}      \ ( value places expect )
@@ -127,6 +129,10 @@ using FMT
    -123                 T-PINT
    STR-MIN-I64          T-PINT             \ the table-emitted magnitude prints too
    -7 s" -7" T-INT$
+   $1ED 4 s" 0755" T-OCT
+   $3FF 4 s" 1777" T-OCT
+   0 4 s" 0000" T-OCT
+   STR-MAX-I64 21 s" 777777777777777777777" T-OCT
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ
@@ -141,6 +147,10 @@ using FMT
    SB$ s" carry" T$=
    [: 0 17 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
+   [: $1000 4 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ   \ 10000 octal
+   [: -1 21 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 0 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 22 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
    [: SCI-LOW-CASE ;] E-FMT-DOMAIN TTHROWSQ
