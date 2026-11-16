@@ -407,8 +407,13 @@ variable ANSWERED
    a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+\ Ends the open record and the process with status rc; a capture's records go
+\ out first, since die-closed runs no exit action.
+: KEEP-DIE ( n -- ) {: rc:n :}
+   REJECTION:KEEP  REJECTION:RELEASE  s" " rc die-closed ;
+
 : SEALED-FAIL ( ^u8 n ^u8 n -- )
-   REJECTION:SEALED  REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
+   REJECTION:SEALED  CHECKER-REJECT-RC KEEP-DIE ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -951,8 +956,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
       TOKEN$ TICKS  s"  has no checker to declare its export to" SAY
       TOKEN$ REJECTION:AT  s" checker-export dispatch unset" SAY
       REJECTION:HELP  s" load the checker before any export" SAY
-      REJECTION:KEEP
-      s" " CHECKER-REJECT-RC die-closed
+      CHECKER-REJECT-RC KEEP-DIE
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
@@ -1700,7 +1704,7 @@ private
    REJECTION:HELP
    s" load the native compiler, as the boot prefix does, before any definition"
    REJECTION:EMIT-STR
-   REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
+   CHECKER-REJECT-RC KEEP-DIE ;
 
 public
 \ The name a u passes the wall, room, duplicate, code room and
@@ -2353,7 +2357,7 @@ variable LIT-AT
       REJECTION:HELP
       s" load the checker, which sets the trust-raw dispatch, before this definer"
       REJECTION:EMIT-STR
-      REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed
+      CHECKER-REJECT-RC KEEP-DIE
    then
    target ;
 
@@ -2672,7 +2676,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    REJECTION:HELP
    s" declare this defer after the checker's trust declarations, or shorten its name and signature"
    REJECTION:EMIT-STR
-   REJECTION:KEEP  s" " DEF-RC-PD-FULL die-closed ;
+   DEF-RC-PD-FULL KEEP-DIE ;
 
 : PD-PUT ( ^u8 n n n n -- ) {: a:^ u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
@@ -2916,7 +2920,7 @@ private
    REJECTION:HELP
    s" run `evaluate`, `include` and `require` on the main thread only"
    REJECTION:EMIT-STR
-   REJECTION:KEEP  s" " RC-TASK-THREAD die-closed ;
+   RC-TASK-THREAD KEEP-DIE ;
 
 : RUN-TOKENS ( -- )
    TASK-GUARD  begin TOKEN-MARK TOKEN while STEP repeat ;

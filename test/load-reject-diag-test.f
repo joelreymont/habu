@@ -58,6 +58,7 @@ create TARGET-JSON-P PATH-CAP allot
 create TARGET-DEF-P PATH-CAP allot
 create ONCE-P PATH-CAP allot
 create ONCE-UNDEF-P PATH-CAP allot
+create CAPTURE-P PATH-CAP allot
 create ONCE-JSON-P PATH-CAP allot
 create SHADOW-P PATH-CAP allot
 
@@ -87,6 +88,7 @@ variable TARGET-JSON-U
 variable TARGET-DEF-U
 variable ONCE-U
 variable ONCE-UNDEF-U
+variable CAPTURE-U
 variable ONCE-JSON-U
 variable SHADOW-U
 variable OUT-U
@@ -172,6 +174,9 @@ variable RC
 : ONCE-UNDEF$ ( -- ^u8 n )
    ONCE-UNDEF-P ONCE-UNDEF-U @ ;
 
+: CAPTURE$ ( -- ^u8 n )
+   CAPTURE-P CAPTURE-U @ ;
+
 : ONCE-JSON$ ( -- ^u8 n )
    ONCE-JSON-P ONCE-JSON-U @ ;
 
@@ -223,6 +228,7 @@ variable RC
    s" target-def.f" TARGET-DEF-P TARGET-DEF-U PATH!
    s" once.f" ONCE-P ONCE-U PATH!
    s" once-undef.f" ONCE-UNDEF-P ONCE-UNDEF-U PATH!
+   s" capture.f" CAPTURE-P CAPTURE-U PATH!
    s" once-json.f" ONCE-JSON-P ONCE-JSON-U PATH!
    s" shadow.f" SHADOW-P SHADOW-U PATH! ;
 
@@ -239,6 +245,7 @@ variable RC
    TARGET-DEF$ S\" : LRD-T ( -- ) false ?TARGET ;\nLRD-T" FS:WRITE-ALL
    ONCE$ s" : F ( n -- n ) drop ;" FS:WRITE-ALL
    ONCE-UNDEF$ s" : H ( -- ) FOO ;" FS:WRITE-ALL
+   CAPTURE$ S\" REJECTION:CAPTURE\nCP-NOPE" FS:WRITE-ALL
    ONCE-JSON$ S\" -1 REJECTION:JSON !\n: F ( n -- n ) drop ;" FS:WRITE-ALL
    SHADOW$ S\" : LRD-SHADOW ( -- ) ;\npackage LRD-SH\npublic\n: LRD-SHADOW ( -- ) ;\n;package\nusing LRD-SH\nLRD-SHADOW\n"
    FS:WRITE-ALL
@@ -984,6 +991,30 @@ variable RC
    S\" ,\"help\":\"leave n after `drop`, or declare ( n -- )\"}\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+: TEST-CAPTURE-RELEASE ( -- )
+   s" a rejection under a capture that ends the run is printed" T-LABEL
+   CAPTURE$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `CP-NOPE`\n --> " SB-APPEND
+   CAPTURE$ SB-APPEND
+   S\" :2:1\n  |\n2 | CP-NOPE\n  | ^^^^^^^ not found\n" SB-APPEND
+   s"   = help: define `CP-NOPE` before this point," SB-APPEND
+   S\"  or check its spelling\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
+: TEST-CAPTURE-SEALED ( -- )
+   s" a sealed package's rejection under a capture is printed" T-LABEL
+   BODY$ S\" package LRD-SEALED\nseal-package\n;package\nREJECTION:CAPTURE\npackage LRD-SEALED\n1 . cr\n"
+   FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-SEALED-PACKAGE]: `LRD-SEALED` would change a sealed package\n --> " SB-APPEND
+   BODY$ SB-APPEND
+   S\" :5:9\n  |\n5 | package LRD-SEALED\n  |         ^^^^^^^^^^ sealed\n" SB-APPEND
+   s"   = help: put this in a package of your own:" SB-APPEND
+   S\"  a sealed package takes no new words\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 \ An undefined name that is the definition's own gets the `recurse` help only
 \ as a call in its body: a tick of `recurse` gives no xt, and `recurse` in a
 \ quotation calls the quotation.
@@ -1339,6 +1370,8 @@ variable LONG-U
    TEST-RESIDUE
    TEST-TARGET
    TEST-DEF-ONCE
+   TEST-CAPTURE-RELEASE
+   TEST-CAPTURE-SEALED
    TEST-RECURSE-HELP
    TEST-UNDEF-HOLDER
    TEST-BODY-ONLY

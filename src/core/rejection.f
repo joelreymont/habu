@@ -157,6 +157,14 @@ public
 : BUFFER-OFF ( -- )
    0 BUF-ON ! ;
 
+\ Ends the capture and sends what it holds: a run that a throw or a fatal
+\ rejection ends sends every record it made.
+: RELEASE ( -- )
+   BUF-ON @ 0= IF EXIT THEN
+   0 BUF-ON !
+   BUF-FD @ HELD-P @ HELD-U @ write drop
+   0 HELD-U ! ;
+
 : FD! ( n -- )
    BUF-FD ! ;
 

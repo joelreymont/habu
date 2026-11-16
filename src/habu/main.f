@@ -186,6 +186,7 @@ CAST: APP-ACTION ( n -- [ -- ] )
    {: q :}
    q catch {: rc:n :}
    rc 0= if exit then
+   REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then
    rc INTERPRETER:UNCAUGHT
    NULL$ UNCAUGHT-RC die ;

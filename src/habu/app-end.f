@@ -11,6 +11,7 @@ private
 : ENTRY ( -- )
    ['] MAIN catch {: rc:n :}
    rc 0= if exit then
+   REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then
    REJECTION:CARRIED? 0= if rc throw then
    REJECTION:SEND-SAVED
