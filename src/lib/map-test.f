@@ -1,4 +1,5 @@
-\ map-test.f - map operations, ownership, capacity and corrupt-state refusals.
+\ map-test.f - map operations, removal, ownership, capacity and corrupt-state
+\ refusals.
 \ Run: bin/hb --load src/lib/map-test.f
 
 require src/lib/error.f
@@ -6,6 +7,7 @@ require src/lib/string.f
 require src/lib/map.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 require src/lib/siphash.f
+require src/lib/property.f              \ PROP - the seeded mix of SET and REMOVE
 
 \ White-box test: reopen the module's package so the fixtures reach its private
 \ layout, probe and locate words by their bare package-local names.
@@ -15,6 +17,9 @@ package MAP
 8 constant MT-CAP
 3 constant MT-FULL-CAP
 32 constant MT-SPREAD-CAP                \ 26 letters with room to spread
+13 constant MT-MIX-CAP                   \ half the 26 letters: the mix runs full
+26 constant MT-MIX-KEYS
+10000 constant MT-MIX-OPS
 
 variable MT-CASE
 variable MT-FAIL
@@ -28,6 +33,8 @@ create MT-MAP MT-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-FULL-MAP MT-FULL-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-SPREAD-A MT-SPREAD-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-SPREAD-B MT-SPREAD-CAP >COUNT CELL-COUNT COUNT>N cells allot
+create MT-MIX-MAP MT-MIX-CAP >COUNT CELL-COUNT COUNT>N cells allot
+create MT-MIX-LIST MT-MIX-KEYS cells allot  \ each letter's value, -1 when absent
 create MT-COLS 3 cells allot            \ letter indices sharing one home slot
 create MT-LETTERS 26 allot              \ the single-byte keys a..z
 create MT-ORDER 52 allot                \ the letters EACH visits: map A, then map B
@@ -135,6 +142,9 @@ create MT-KEY-Z 122 c,
 
 : MT-MAP-EACH ( ^n n [ ^u8 len n -- ] -- ) {: m:^ cap q :}
    m cap >COUNT q EACH ;
+
+: MT-MAP-REMOVE ( ^n n ^u8 n -- bool ) {: m:^ cap key:^ len :}
+   m cap >COUNT key len >LEN REMOVE ;
 
 : MT-FILL-STORAGE ( -- )
    MT-CAP MT-MAP-CELLS 0 ?do
@@ -417,6 +427,71 @@ create MT-KEY-Z 122 c,
    26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ = and loop
    MT-ASSERT ;
 
+: MT-LIST@ ( n -- n )
+   cells MT-MIX-LIST + @ ;
+
+: MT-LIST! ( n n -- )
+   cells MT-MIX-LIST + ! ;
+
+: MT-LIST-COUNT ( -- n )
+   0 MT-MIX-KEYS 0 ?do i MT-LIST@ 0 >= if 1 + then loop ;
+
+: MT-LIST-MASK ( -- n )
+   0 MT-MIX-KEYS 0 ?do i MT-LIST@ 0 >= if 1 i lshift or then loop ;
+
+: MT-MIX-CHECK-KEY ( n -- ) {: k :}
+   k MT-LIST@ {: want :}
+   want 0 < if MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-ASSERT-MISS exit then
+   MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 want MT-ASSERT-HIT ;
+
+\ A SET of a new key into a full map throws and leaves the list as it was.
+: MT-MIX-SET ( n n -- ) {: v k :}
+   k MT-LIST@ 0 <  MT-LIST-COUNT MT-MIX-CAP =  and if
+      [: v MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-SET ;] catch
+      E-MAP-FULL MT= exit
+   then
+   v MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-SET
+   v k MT-LIST! ;
+
+: MT-MIX-REMOVE ( n -- ) {: k :}
+   MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-REMOVE bool>n
+   k MT-LIST@ 0 >= bool>n MT=
+   -1 k MT-LIST! ;
+
+: MT-MIX-OP ( -- )
+   MT-MIX-KEYS PROP:RND% {: k :}
+   3 PROP:RND% case
+      0 of 1000000 PROP:RND% k MT-MIX-SET endof
+      1 of k MT-MIX-REMOVE endof
+      k MT-MIX-CHECK-KEY
+   endcase ;
+
+\ Counts EACH's visits and ORs their letters' bits: with the count equal to the
+\ list's, the mask equal to the list's means each entry was visited once.
+: MT-MIX-RECORD ( ^u8 len n -- ) {: key:^ len value :}
+   len LEN>N 1 MT=
+   key c@ 97 - {: k :}
+   k MT-LIST@ value MT=
+   MT-EACH-SUM @ 1 k lshift or MT-EACH-SUM !
+   MT-EACH-COUNT @ 1 + MT-EACH-COUNT ! ;
+
+: MT-MIX-SWEEP ( -- )
+   MT-MIX-KEYS 0 ?do i MT-MIX-CHECK-KEY loop
+   MT-EACH-RESET
+   MT-MIX-MAP MT-MIX-CAP [: MT-MIX-RECORD ;] MT-MAP-EACH
+   MT-EACH-COUNT @ MT-LIST-COUNT MT=
+   MT-EACH-SUM @ MT-LIST-MASK MT=
+   MT-MIX-MAP MT-MAP-COUNT@ MT-LIST-COUNT MT= ;
+
+\ A seeded mix of SET, REMOVE and GET over 26 keys in 13 slots, checked after
+\ every step against a plain list of the entries present.
+: MT-TEST-MAP-MIX ( -- )
+   MT-FILL-LETTERS
+   MT-MIX-MAP MT-MIX-CAP >COUNT $5EED $C0DE INIT-KEYED
+   MT-MIX-KEYS 0 ?do -1 i MT-LIST! loop
+   $3A7 MT-MIX-OPS PROP:RUN-RESET
+   PROP:COUNT@ 0 ?do MT-MIX-OP MT-MIX-SWEEP loop ;
+
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
    s" map-test: " type MT-FAIL @ FMT:.INT s"  failure(s)" type cr
@@ -434,6 +509,7 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-EACH-COLLISIONS
    MT-TEST-MAP-KEYED
    MT-TEST-INIT-KEYED
+   MT-TEST-MAP-MIX
    MT-REPORT ;
 
 MT-MAIN

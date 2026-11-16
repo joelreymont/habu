@@ -3,6 +3,14 @@
 \ later bodies). Layout, hash, probe and locate are private; src/lib/map-test.f
 \ reopens the package. Every call takes the capacity INIT or INIT-KEYED was
 \ given; a bad capacity, malformed storage or a full table throws E-MAP-*.
+\ Probing is linear from a key's home slot (its hash mod the capacity), and no
+\ empty slot lies between an entry's home and its slot, so LOCATE stops at the
+\ first empty one.
+\ REMOVE keeps that by backward-shift deletion, with no tombstones: each entry
+\ after the hole, up to the next empty slot, moves back into the hole when the
+\ hole lies on its path from home, and leaves a new hole. A full table has no
+\ empty slot, so REMOVE's walk ends after capacity-1 slots; that suffices
+\ because the slot SET filled last lies on no other entry's path.
 \ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.
 
 require src/lib/error.f
@@ -166,8 +174,8 @@ public
       m i >IDX SLOT-CLEAR
    loop ;
 
-\ Maps of one capacity and key given the same SETs in the same order store them
-\ alike; a map whose keys come from outside the program takes INIT's secret key.
+\ Maps of one capacity and key given the same SETs and REMOVEs in one order
+\ store them alike; a map of keys from outside takes INIT's secret key.
 : INIT-KEYED ( ^a count n n -- )
    {: m:^ cap k0 k1 :}
    k0 m HASH-K0-OFF HEADER-FIELD !
@@ -237,6 +245,39 @@ private
    value m ix SLOT-VALUE!
    MAP-SLOT--STATE:OCCUPIED m ix SLOT-STATE! ;
 
+\ Forward probe steps from slot a to slot b.
+: GAP ( idx idx count -- n ) {: a b cap :}
+   b IDX>N a IDX>N - cap COUNT>N + cap COUNT>N mod ;
+
+: SLOT-MOVE ( ^a idx idx -- ) {: m:^ from to :}
+   m from SLOT-HASH@ m to SLOT-HASH!
+   m from SLOT-KEY-A@ m to SLOT-KEY-A!
+   m from SLOT-KEY-U@ m to SLOT-KEY-U!
+   m from SLOT-VALUE@ m to SLOT-VALUE!
+   MAP-SLOT--STATE:OCCUPIED m to SLOT-STATE! ;
+
+\ Moves the entry in slot ix into the hole when the hole is on its probe path;
+\ answers the hole left.
+: SHIFT-BACK ( idx ^a count idx -- idx ) {: hole m:^ cap ix :}
+   m ix SLOT-HASH@ cap INDEX {: home :}
+   home ix cap GAP  hole ix cap GAP  < if hole exit then
+   m ix hole SLOT-MOVE ix ;
+
+\ Slot `step` past the removed slot ix: false at an empty slot, which ends the
+\ chain that could probe through the hole.
+: SHIFT-STEP ( idx ^a count idx n -- idx bool ) {: hole m:^ cap ix step :}
+   ix IDX>N step >COUNT cap PROBE {: at :}
+   m at SLOT-STATE@ OCCUPIED? 0= if hole false exit then
+   hole m cap at SHIFT-BACK true ;
+
+: SLOT-REMOVE ( ^a count idx -- ) {: m:^ cap ix :}
+   m COUNT@ COUNT>N 1 - >COUNT m COUNT!
+   ix
+   cap COUNT>N 1 ?do
+      m cap ix i SHIFT-STEP 0= if leave then
+   loop
+   m swap SLOT-CLEAR ;
+
 public
 
 : GET ( ^n count ^u8 len -- option<n> ) {: m:^ cap:count key:^ len:len :}
@@ -262,7 +303,16 @@ public
      found OF value m rot SLOT-VALUE! ENDOF
    ;MATCH ;
 
-\ Visits in storage order, which follows the map's hash key.
+\ Removes the key's entry; true when there was one.
+: REMOVE ( ^n count ^u8 len -- bool ) {: m:^ cap:count key:^ len:len :}
+   m cap key len LOCATE drop MATCH loc
+     full OF false ENDOF
+     free OF drop false ENDOF
+     found OF m cap rot SLOT-REMOVE true ENDOF
+   ;MATCH ;
+
+\ Visits in storage order, which follows the map's hash key. q must not REMOVE
+\ from this map: a shift back can make EACH skip an entry or visit one twice.
 : EACH ( ^n count [ ^u8 len n -- ] -- ) {: m:^ cap q :}
    m cap CHECK-HANDLE
    cap COUNT>N 0 ?do
