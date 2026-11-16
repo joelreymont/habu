@@ -137,6 +137,14 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+: XPK-DECL-EXPORT-FORGE$ ( -- ^u8 n )      \ a declaration rejects (E-EXPORT-UNSAFE)
+   SB-RESET
+   s" package XD" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT ENUM" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 : XPK-PRIV-FORGE$ ( -- ^u8 n )             \ an unsealed package's private word
    SB-RESET
    s" package XA" XPK-LINE
@@ -346,6 +354,9 @@ create XPK-EMPTY 1 allot
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
    XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
+   s" exporting a declaration names it (E-EXPORT-UNSAFE)" T-LABEL
+   XPK-DECL-EXPORT-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `ENUM` is a declaration" XPK-ERR?
    s" a sealed package's private word rejects (--load)" T-LABEL
    XPK-SEALED-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
    s" error[E-EXPORT-UNDEFINED]" XPK-ERR?  s" `CHECK:PRIM-ENSURE`" XPK-ERR?

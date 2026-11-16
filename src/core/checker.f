@@ -17602,6 +17602,16 @@ private
    REJECTION:HELP  s" export a public word instead" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+: EXPORT-DECLARATION ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-EXPORT-UNSAFE" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is a declaration, which runs only at top level, so no package may export it"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" declaration" REJECTION:EMIT-STR
+   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` at top level instead of exporting it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : EXPORT-PRIM ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-PRIM" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -17634,7 +17644,8 @@ private
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
-   sym DECLARATION-SYM? sym PRIM-TRUSTED-SYM? or IF a u EXPORT-UNSAFE THEN
+   sym DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
+   sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
    sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
