@@ -42,8 +42,8 @@ create ERR CAP allot
    exited ERR erru LEN>N fields fieldsu CONTAINS? and
    ERR erru LEN>N help helpu CONTAINS? and ;
 
-\ An unclosed spelling ends with its line, and the next line is the next
-\ statement's: the refusal is caught so the definition after it runs.
+\ An unclosed spelling ends with its line: it is rejected though the next line
+\ would close it.
 : STORED ( -- )
    s" an ordinary quotation may be stored in a typed global" T-LABEL
    s" TYPED-VARIABLE C2-QUOTE-SLOT [ n -- n ]" 0 SUBJECT:EXITED? TTRUE
@@ -54,11 +54,11 @@ create ERR CAP allot
    s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ^forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
    70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOTS` holds a scheme" s" " REPORTED? TTRUE
    s" a stored type ends at the end of its line" T-LABEL
-   s\" NEWTYPE c2-line-pair<a,b>\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-SLOT` does not parse" s" 4242" REPORTED? TTRUE
+   s\" NEWTYPE c2-line-pair<a,b>\nTYPED-VARIABLE C2-LINE-SLOT c2-line-pair<n,\nn>"
+   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-SLOT` does not parse" s" " REPORTED? TTRUE
    s" a stored quotation ends at the end of its line" T-LABEL
-   s\" ' TYPED-VARIABLE catch C2-LINE-XT [ n -- n\n: C2-LINE-XT-NEXT ( -- n ) 4343 ;\nC2-LINE-XT-NEXT . throw"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-XT` does not parse" s" 4343" REPORTED? TTRUE ;
+   s\" TYPED-VARIABLE C2-LINE-XT [ n -- n\n]"
+   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-XT` does not parse" s" " REPORTED? TTRUE ;
 
 : LAYOUT-STORED ( -- )
    s" a scheme cannot fill a layout buffer" T-LABEL
@@ -67,9 +67,6 @@ create ERR CAP allot
    s" a scheme cannot fill a deferred layout column" T-LABEL
    s" DEFER-LAYOUT-BUFFER C2-SCOPE-COLUMN forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
    70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-COLUMN` holds a scheme" s" " REPORTED? TTRUE
-   s" a refused layout type leaves the rest of its line to the next statement" T-LABEL
-   s" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-REST-ROWS forall<p,[ n -- n ]> nip nip 4444 . throw"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-REST-ROWS` holds a scheme" s" 4444" REPORTED? TTRUE
    s" layout storage holds a family closed over a quotation" T-LABEL
    s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
    0 s" " s" 42" REPORTED? TTRUE
@@ -102,43 +99,33 @@ create ERR CAP allot
 
 \ Every storage definer reads its name on its own line and the first token of
 \ its type on the name's. A name or type on the next line is missing there,
-\ refused by name at the definer or the name, and that line is the next
-\ statement's: the refusal is caught so the statement runs.
+\ rejected by name at the definer or the name, though the next line would
+\ complete it.
 : LINE-STORED ( -- )
    s" a stored type on the next line is no type" T-LABEL
    s\" TYPED-VARIABLE C2-NL-N\nn"
    70 s" error[E-BAD-STORAGE]: `C2-NL-N` has no type on its line" s" " REPORTED? TTRUE
-   s\" ' TYPED-VARIABLE catch C2-NL-SLOT\n4501 . throw"
-   70 s" error[E-BAD-STORAGE]: `C2-NL-SLOT` has no type on its line" s" 4501" REPORTED? TTRUE
-   s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-SLOTS\nnip nip 4502 . throw"
-   70 s" error[E-BAD-STORAGE]: `C2-NL-SLOTS` has no type on its line" s" 4502" REPORTED? TTRUE
-   s\" ' DYNAMIC-BUFFER catch C2-NL-DYN\n4503 . throw"
-   70 s" error[E-BAD-STORAGE]: `C2-NL-DYN` has no type on its line" s" 4503" REPORTED? TTRUE
-   s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-ROWS\nnip nip 4504 . throw"
-   70 s" error[E-BAD-STORAGE]: `C2-NL-ROWS` has no type on its line" s" 4504" REPORTED? TTRUE
-   s\" ' DEFER-LAYOUT-BUFFER catch C2-NL-COLUMN\n4505 . throw"
-   70 s" error[E-BAD-STORAGE]: `C2-NL-COLUMN` has no type on its line" s" 4505" REPORTED? TTRUE
+   s\" 4 TYPED-BUFFER C2-NL-SLOTS\nn"
+   70 s" error[E-BAD-STORAGE]: `C2-NL-SLOTS` has no type on its line" s" " REPORTED? TTRUE
+   s\" DYNAMIC-BUFFER C2-NL-DYN\nn"
+   70 s" error[E-BAD-STORAGE]: `C2-NL-DYN` has no type on its line" s" " REPORTED? TTRUE
+   s\" STRUCTURE c2row FIELD v n ;STRUCTURE\n4 LAYOUT-BUFFER C2-NL-ROWS\nc2row"
+   70 s" error[E-BAD-STORAGE]: `C2-NL-ROWS` has no type on its line" s" " REPORTED? TTRUE
+   s\" STRUCTURE c2row FIELD v n ;STRUCTURE\nDEFER-LAYOUT-BUFFER C2-NL-COLUMN\nc2row"
+   70 s" error[E-BAD-STORAGE]: `C2-NL-COLUMN` has no type on its line" s" " REPORTED? TTRUE
    s" a storage name on the next line is no name" T-LABEL
    s\" TYPED-VARIABLE\nC2-NL-NAMED n"
    70 s" error[E-BAD-STORAGE]: `TYPED-VARIABLE` has no name on its line" s" " REPORTED? TTRUE
-   s\" ' TYPED-VARIABLE catch\n4511 . throw"
-   70 s" error[E-BAD-STORAGE]: `TYPED-VARIABLE` has no name on its line" s" 4511" REPORTED? TTRUE
-   s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4512 . throw"
-   70 s" error[E-BAD-STORAGE]: `TYPED-BUFFER` has no name on its line" s" 4512" REPORTED? TTRUE
-   s\" ' DYNAMIC-BUFFER catch\n4513 . throw"
-   70 s" error[E-BAD-STORAGE]: `DYNAMIC-BUFFER` has no name on its line" s" 4513" REPORTED? TTRUE
-   s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4514 . throw"
-   70 s" error[E-BAD-STORAGE]: `LAYOUT-BUFFER` has no name on its line" s" 4514" REPORTED? TTRUE
-   s\" ' DEFER-LAYOUT-BUFFER catch\n4515 . throw"
-   70 s" error[E-BAD-STORAGE]: `DEFER-LAYOUT-BUFFER` has no name on its line" s" 4515" REPORTED? TTRUE ;
+   s\" 4 TYPED-BUFFER\nC2-NL-SLOTS n"
+   70 s" error[E-BAD-STORAGE]: `TYPED-BUFFER` has no name on its line" s" " REPORTED? TTRUE
+   s\" DYNAMIC-BUFFER\nC2-NL-DYN n"
+   70 s" error[E-BAD-STORAGE]: `DYNAMIC-BUFFER` has no name on its line" s" " REPORTED? TTRUE
+   s\" STRUCTURE c2row FIELD v n ;STRUCTURE\n4 LAYOUT-BUFFER\nC2-NL-ROWS c2row"
+   70 s" error[E-BAD-STORAGE]: `LAYOUT-BUFFER` has no name on its line" s" " REPORTED? TTRUE
+   s\" STRUCTURE c2row FIELD v n ;STRUCTURE\nDEFER-LAYOUT-BUFFER\nC2-NL-COLUMN c2row"
+   70 s" error[E-BAD-STORAGE]: `DEFER-LAYOUT-BUFFER` has no name on its line" s" " REPORTED? TTRUE ;
 
 public
-
-\ Buffer definers consume a count. Return both operands on success so catch
-\ has the same row on either path while the definer still parses the source.
-: KEEP-COUNT ( n [ n -- ] -- n [ n -- ] )
-   {: count:n definer :}
-   count definer execute count definer ;
 
 : RUN ( -- )
    T-RESET

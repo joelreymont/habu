@@ -1013,8 +1013,8 @@ variable MDV-I   variable MDV-F
       MD-DEPTH        of s" move the inner `MATCH` into a named word and call that word here" endof
       MD-MISSING-OF   of s" write `OF` after the variant, as `variant OF ... ENDOF`" endof
       MD-DIVBAR       of s" call the block collective where no control structure or quotation is open, so every thread of the block reaches it" endof
-      MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
-      MD-CATCH-OPAQUE of s" `catch` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
+      MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell; call a declaration by name at top level" endof
+      MD-CATCH-OPAQUE of s" `catch` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell; call a declaration by name at top level" endof
       MD-RAW-PTR      of s" declare the cell that holds the address with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ^t` or `TYPED-BUFFER NAME ^t`" endof
       MD-NULL-PTR     of s" read the value from the cell that holds it, not through `NULL-PTR`" endof
       MD-DBASE-PTR    of s" reach the cell through an accessor that names its pointee, as `( -- ^n )`, or take a pointer it holds with `ptr-field`" endof
@@ -1113,8 +1113,8 @@ variable MDV-I   variable MDV-F
       MD-CON-VAR      of s" bad construct: unknown variant" endof
       MD-CON-TRUNC    of s" bad construct: missing family or variant token" endof
       MD-DIVBAR       of s" divergent barrier: block collective requires block-uniform control" endof
-      MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive or a word with no stack effect)" endof
-      MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive or a word with no stack effect)" endof
+      MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive, a declaration or a word with no stack effect)" endof
+      MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive, a declaration or a word with no stack effect)" endof
       MD-RAW-PTR      of s" raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell" endof
       MD-NULL-PTR     of s" null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one" endof
       MD-DBASE-PTR    of s" base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer" endof
@@ -1474,8 +1474,7 @@ variable MDV-I   variable MDV-F
 : CLOSER-PINNED? ( -- bool )
    PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
 
-\ The interpreter's top-level keywords (src/habu/interpreter.f PACKAGE?,
-\ DEFINE?), which no wordlist holds.
+\ The interpreter's top-level keywords, which no wordlist holds.
 : TOP-KEYWORD? ( ^u8 n -- bool ) {: t:^ tu:n :}
    t tu s" package" CORE-STR=CI  t tu s" public" CORE-STR=CI or
    t tu s" private" CORE-STR=CI or  t tu s" global" CORE-STR=CI or
