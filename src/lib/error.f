@@ -865,7 +865,7 @@ seal-package
 
 -9850 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
 -9851 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
--9852 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
+-9852 s" a definition ran while a checker replay is open: define after the `CHECK:SCOPED` quotation returns" ERROR:CODE E-OVERLAY-OPEN
 -9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
 -9854 s" a computed 0 was thrown and unwound the text, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
 -9855 s" the system refused memory to grow the table of address cells: make fewer address cells, or raise the process's address-space limit" ERROR:CODE E-XTCELL-GROW

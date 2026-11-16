@@ -171,10 +171,8 @@ variable LBL-U
    s" MATCH-FAM" FAM-DIES-AT-MAX
    s" CON-FAM" FAM-DIES-AT-MAX ;
 
-\ A definition's source text, which CHECK!, CHECK-CANDIDATE! and
-\ CHECK:DEFINITION judge, is no name either: only -1 and the maximum cell
-\ describe none of it. Each ends with the token buffer's refusal, which the
-\ maximum cell already met.
+\ A definition's source text is no name either: only -1 and the maximum cell
+\ describe none of it, and each dies at the token buffer's limit.
 : TOO-LARGE$ ( -- ^u8 n ) S\" checker: token buffer too large\n" ;
 : TEST-TEXTS ( -- )
    s" CHECK!-IT" 76 TOO-LARGE$ DIES
@@ -221,11 +219,8 @@ variable LBL-U
    b p au + bu BYTE-COPY
    p au bu + ;
 
-\ A package named by LONG-LEN bytes of Q, with a part named by LONG-LEN bytes
-\ of R, a word in each, and a SUMTYPE whose derived constructor package is
-\ longer still: the part's word runs inside the package, the package's word
-\ runs qualified and then bare under `using`, and the constructor runs. It
-\ prints PWWS.
+\ A LONG-LEN package and part, a word in each and a SUMTYPE whose constructor
+\ package is longer still: each runs, qualified and under `using`; prints PWWS.
 : PKG-SRC$ ( -- ^u8 n )
    LONG-LEN 81 LETTERS {: l:^ lu:n :}
    LONG-LEN 82 LETTERS {: r:^ ru:n :}

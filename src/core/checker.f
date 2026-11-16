@@ -21342,12 +21342,8 @@ variable IMMERR
 }SCRATCH
 
 \ --- source words made immediate.
-\ The verifier runs no definition, so an `immediate` after a source definition
-\ sets no dictionary flag: the verifier appends an entry for the definition's
-\ symbol here, and a body check reads it beside the flag. An `undefine` of an
-\ immediate word appends one that ends it; the newest entry for a symbol
-\ decides. A frame rewinds it as it rewinds the parse-imm table, for the same
-\ reason.
+\ The verifier runs no definition, so `immediate` after one appends its symbol
+\ here and `undefine` an end; a symbol's newest entry decides; frames rewind it.
 16 constant SIMM-CAP-INIT
 create SIMM-SYMS-BOOT SIMM-CAP-INIT cells allot
 create SIMM-ONS-BOOT SIMM-CAP-INIT cells allot

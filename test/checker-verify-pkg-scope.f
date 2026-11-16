@@ -129,10 +129,9 @@ s" package CVPS-HOST package CVPS-PART : CVPS-X2 ( -- n ) CVPS-PW ; ;package ;pa
 CVPS:REPLAY-NEUTRAL 0 T=
 
 \ ---- the two scope questions a name query can ask --------------------------
-\ A name resolves where a candidate calling it is accepted; it is defined here
-\ where a new definition of it is a duplicate. A global resolves inside a
-\ package as outside, and is a duplicate only at top level: a package may
-\ shadow it.
+\ A name resolves where a candidate calling it is accepted, and is defined
+\ where a new one is a duplicate: a global only at top level, which a package
+\ may shadow.
 
 \ The sentinel is an existing global (src/lib/error.f's codes), so the test
 \ adds no unpackaged global.

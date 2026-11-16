@@ -2010,10 +2010,8 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 
 EXPORT CHECKER-RESOLVE:PRIVATE-SECTION
 
-\ A live declaration's switch runs the `private` / `public` / `global`
-\ keyword's operation. A replay defines no word, and its pre-pass
-\ (verify-source.f) opens the package in the checker alone: the engine has no
-\ package open there. A replay switches the checker's mode only.
+\ A live declaration's switch runs the section keyword; a replay, whose
+\ pre-pass opens the package in the checker alone, switches the checker only.
 : TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
    replay IF CHECKER-PRIVATE EXIT THEN
    PRIVATE-SECTION ;

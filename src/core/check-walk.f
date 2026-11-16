@@ -1828,9 +1828,8 @@ private
 EXPORT CHECKER-OVERLAY:OPEN?
 
 \ --- the verifier window --------------------------------------------------
-\ A window that opens the checker overlay itself owns a rollback frame, so its
-\ done takes back the rows the scanned source recorded; a window opened inside
-\ a caller's scope (the overlay already open) leaves them to that scope.
+\ A window that opens the checker overlay takes back at its done the rows its
+\ source recorded; one opened while the overlay is open leaves them to it.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF NESTED-REJECT THEN
    AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop

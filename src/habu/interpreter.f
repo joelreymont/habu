@@ -21,6 +21,17 @@
 \ A float's exact value, the integer plus the fraction's remainder, is
 \ normalized to 53 retained bits and rounded once to nearest, ties to even; the
 \ sign applies even to zero.
+\
+\ Inside a build a declaration in the target's text runs hb's word of that
+\ spelling (HOST-WORD?): the target's copy records into a checker that checks
+\ nothing. A declaration is known by its binding's id, from parses: through the
+\ declaration's own; a top-only word acts on the program's state, so the
+\ target's copy runs. `intrinsic`, `nominal-provider` and `undefine` act on the
+\ checker that checks the build, so hb's run by their spelling, as do the file
+\ loaders (LOADER?). hb's global wordlist is 0, as every linked program's; a
+\ declaration private to a package is in its private wordlist, whose row is in
+\ hb's own namespace (WL:NAMESPACE): a build points BOOT:NAMESPACE-WL at the
+\ target's.
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -2853,8 +2864,9 @@ private
    SEARCH
    true ;
 
-\ A file loader found in product text is the product's, which would record the
-\ file in its own registry, outside the build; hb's runs it through the build.
+\ A file loader found in the target's text is the target's, which would record
+\ the file in its own registry, outside the build; hb's runs it through the
+\ build.
 : LOADER? ( -- bool )
    s" include" TOKEN-IS? if true exit then
    s" require" TOKEN-IS? if true exit then
@@ -2862,15 +2874,7 @@ private
    s" required" TOKEN-IS? if true exit then
    s" provided" TOKEN-IS? ;
 
-\ Inside a build a declaration in product text runs hb's word of that spelling:
-\ the product's copy records into a checker that checks nothing. A declaration
-\ is known by its binding's id, 11..14 (parses:, parses-through:, names:,
-\ BINDING-DECLARATION-ID); a top-only word (15) acts on the program's state, so
-\ the product's copy runs. `intrinsic`, `nominal-provider` and `undefine` act
-\ on the checker that checks the build, so hb's run by their spelling. hb's
-\ global wordlist is 0, as every linked program's; a declaration private to a
-\ package is in its private wordlist, whose row is in hb's own namespace
-\ (WL:NAMESPACE): a build points BOOT:NAMESPACE-WL at the product's.
+\ Whether a build runs hb's own word for the token rather than the target's.
 : HOST-WORD? ( -- bool )
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
    s" nominal-provider" TOKEN-IS? {: provider:bool :}

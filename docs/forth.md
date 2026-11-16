@@ -184,8 +184,8 @@ private
   bodies still call the package's private words. It is how a package
   publishes a bare global word, such as a declaration word a program runs at
   top level: after `global`, `: P-GO ( -- n ) HELP ;` in package P is called
-  `P-GO` and `P:P-GO` is `E-UNDEFINED`. Outside a package it is refused:
-  `E-PKG-CONTEXT habu: <loc>: global`, rc 75.
+  `P-GO` and `P:P-GO` is `E-UNDEFINED`. Outside a package it is rejected
+  `E-PKG-CONTEXT`, rc 70.
 - The checker mirrors package scope: certified `private` definitions are visible
   only to later checked code in the same open package, `public` ones as
   `NAME:WORD`; duplicate certified definitions in one active wordlist are

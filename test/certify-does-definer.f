@@ -481,10 +481,8 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    s" a definer named like an hb word from outside its package runs" T-LABEL
    CDD-QF + 14 T= ;
 
-\ Each scan runs with its probes in one neutral scope, which opens no package:
-\ a source that names this package's private fixtures opens the package
-\ itself, defines in its public section and is probed qualified. A probe of a
-\ private word the engine made runs before the scope (sections 7 and 10).
+\ Each scan runs with its probes in one scope that opens no package: a source
+\ naming this file's private fixtures opens the package and is probed qualified.
 T-RESET
 ' CDD-SECTION-DEFINER CHECK:SCOPED
 CDD-SECTION-WRAPPER

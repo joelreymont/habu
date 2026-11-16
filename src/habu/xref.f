@@ -656,7 +656,7 @@ DOES-COMPANION-INSTALL
    s"  while a checker replay is open" REJECTION:EMIT-STR
    a u REJECTION:AT  s" replay still open" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" end the checker scope with CHECKER-SCOPE-DONE before `undefine`"
+   s" run `undefine` after the `CHECK:SCOPED` quotation returns"
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 

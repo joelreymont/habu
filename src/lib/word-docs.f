@@ -288,16 +288,8 @@ variable IN-GLOBAL                            \ the open section is `global`
 
 public
 
-\ Appends one record per definition in source order: `: NAME`, and `EXPORT NAME`
-\ inside an open package (the engine rejects EXPORT outside one). Other
-\ definers make no record. `package P` opens P, reopened or not, in its private
-\ section; `package B` inside P opens its part P:B; `public` and `private` switch
-\ sections; `;package` closes the part or P, a part's returning to P's private
-\ section. A record made in a `global` section is a top-level one. A text the
-\ lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or EXPORT it ends before
-\ naming, throws E-SOURCE; the records read before it stay until RESET.
-\ Returned or thrown, it leaves no cell holding an address of the text, and the
-\ lexer released (LINT-LEX:RELEASE).
+\ Appends a record per `: NAME`, and per `EXPORT NAME` in a package, in source
+\ order; a lexer rejection or an unnamed definer throws E-SOURCE, records kept.
 : FILE ( ^u8 n -- ) {: a:^ u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !

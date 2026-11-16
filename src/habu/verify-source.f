@@ -1258,11 +1258,8 @@ variable GROUP-AT
    p SOURCE@ - k PEND-OP-AT !
    p pu ;
 
-\ A declared parsing immediate runs as the load captures it, and its parse-name
-\ takes the payload raw from the input, across line ends, `\` and `(` as tokens:
-\ the payload never joins the body. Nothing of the subject runs, so its row, not
-\ the live dictionary, says the word is one; the quiet resolver leaves a using
-\ refusal to the definition's own check (FIND-SYM).
+\ A declared parsing immediate's payload is read raw, across line ends, and
+\ never joins the body; a using rejection is left to the definition's check.
 : SKIP-PAYLOAD ( ^u8 n -- ) {: a:^ u:n :}
    PIMM-N @ 0= IF EXIT THEN
    a u CHECKER-FIND-QUIET-SYM PIMM-IX {: ix:n :}
