@@ -234,6 +234,19 @@ create XPK-EMPTY 1 allot
    s" : P-GLOBAL ( -- n ) 1 ;" XPK-LINE
    SB$ ;
 
+\ A global section after seal-package: its body would bind the sealed private.
+: XPK-GLOBAL-SEALED$ ( -- ^u8 n )
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" global" XPK-LINE
+   s" : LATE ( -- n ) HID ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" LATE . cr" XPK-LINE
+   SB$ ;
+
 \ Types declared in XG's global section name its private xgcell; the OPAQUE
 \ xgbox's generated words go to XG's private section, and the section after
 \ it is global again.
@@ -388,7 +401,13 @@ create XPK-EMPTY 1 allot
    XPK-RUN-CHECK 0 XPK-ASSERT-RC
    s" global outside a package is rejected" T-LABEL
    XPK-GLOBAL-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
-   s" E-PKG-CONTEXT" XPK-ERR? ;
+   s" E-PKG-CONTEXT" XPK-ERR?
+   s" a sealed package's global section takes no definition" T-LABEL
+   XPK-GLOBAL-SEALED$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   s" E-SEALED-PACKAGE" XPK-ERR?
+   s" tools/check.f rejects a sealed package's global definition" T-LABEL
+   XPK-RUN-CHECK XPK-REJECT-RC XPK-ASSERT-RC
+   s" E-SEALED-PACKAGE" XPK-ERR? ;
 
 \ The declaration words are their packages' global words over private
 \ implementations: a checked body reaches no implementation, and may not call

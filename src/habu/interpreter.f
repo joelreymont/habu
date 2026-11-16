@@ -1065,12 +1065,16 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
+: PKG-OPEN-SEALED? ( -- bool )
+   PKG-PUB-CELL CELL@ 0= if false exit then
+   PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEALED? ;
+
 : PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
    wid FIRST-DYNAMIC-WID < if false exit then
    wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if false exit then
    PKG-PUB-CELL CELL@ 0<> if
       wid PKG-PUB-CELL CELL@ =  wid PKG-PRI-CELL CELL@ =  or if
-         PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEALED? exit
+         PKG-OPEN-SEALED? exit
       then
    then
    wid XREF:WID-SEALED? ;
@@ -1263,7 +1267,9 @@ EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:^ :}
    TOKEN$ {: operand:^ operand-u:n :}
-   get-current PKG-WID-SEALED? if operand operand-u 2dup SEALED-FAIL then
+   get-current PKG-WID-SEALED?  PKG-OPEN-SEALED?  or if
+      operand operand-u 2dup SEALED-FAIL
+   then
    PKG-TAIL {: ta:^ tu:n :}
    ta tu operand operand-u PKG-DICT-ROOM
    ta tu get-current WL-PROBE XREF-FOUND? if
@@ -1552,10 +1558,12 @@ private
    a q a q PKG-CODE-ROOM
    a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
 
-\ A wordlist of a sealed package rejects the name token. Checked as source names
-\ a definition, not in DEF-RECORD, which a file object's link replays.
+\ A wordlist of a sealed package, or any wordlist while the open package is
+\ sealed, rejects the name token: a global body would bind the sealed privates.
+\ Checked as source names a definition, not in DEF-RECORD, which a file
+\ object's link replays.
 : DEF-SEAL-GUARD ( n ^u8 n -- n ) {: wid:n a:^ u:n :}
-   wid PKG-WID-SEALED? if a u TOKEN$ SEALED-FAIL then
+   wid PKG-WID-SEALED?  PKG-OPEN-SEALED?  or if a u TOKEN$ SEALED-FAIL then
    wid ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
