@@ -104,3 +104,5 @@ Acceptance cases (2026-11-12, from habu-a-foreign-pkg-a9c9e60d's probes): a fore
 Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census): SEAL-CAPTURE (src/habu/habu1.f BSEALCAP :3603) exits 73 writing 'hb: undrained pre-trust defer: <name>' per entry, off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>`. Pre-trust defers belong to TRUSTED:; accepted when they go with it.
 
 Acceptance case (C4 parse hunt): a TRUSTED: body publishes no uses under CHECKER-WITH-USES (src/compiler/native/definition.f:130 has no BODY-ARM); once the definer is gone every body publishes its uses.
+
+Acceptance case: the loaders disagree on a TRUSTED: body using `constant` or `variable`. `TRUSTED: MKC ( n -- ) constant ;  5 MKC FOO  FOO .` gives "cannot find word `constant`" at 1:23 under `--load`; tools/check.f passes the definition and fails at 2:7, "cannot find word `FOO`". `TRUSTED: MKV ( -- ) variable ;` does the same. Once the definer is gone the body exists only under `:`, where both loaders name `constant` and `variable` top-level keywords at the token.

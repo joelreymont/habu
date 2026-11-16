@@ -79,4 +79,6 @@ Acceptance case 2026-11-10 (bob; merged from habu-teach-the-pre-9fed4d44 "Teach 
 
 Census 2026-11-04: a disagreement between two implementations of one thing; it is closed by its parent removing the second implementation, not by patching that copy.
 
-Acceptance case: --verify-only keeps no model of the top-level stack and checks no top-level statement: `1 c@ drop` exits 0; `constant x constant x` is rejected as a duplicate at the second x; `variable v constant y`, `1 constant a constant b`, `create c ,` and `HB-TARGET-MACOS? ?TARGET` on Linux exit 0. Acceptance: each gives the run's record in the three readers, rc 70.
+Acceptance case: --verify-only keeps no model of the top-level stack and checks no top-level statement: `1 c@ drop` and `1 2 type` (/tmp/carl-vc/p/c4.f) exit 0; `constant x constant x` is rejected as a duplicate at the second x; `variable v constant y`, `1 constant a constant b`, `create c ,` and `HB-TARGET-MACOS? ?TARGET` on Linux exit 0. Acceptance: each gives the run's record in the three readers, rc 70.
+
+Acceptance case: `package PEN`, `: ENUM ( -- n ) 7 ;`, `ENUM . cr`, `;package` loads (prints 7, rc 0), while tools/check.f exits 70 E-LOADER-FORM at the use: tools/source-discovery.f SD-SHADOW and SD-CHECK-USE refuse every later use of a loader or family spelling (include, included, require, required, provided, structure, enum, sumtype, mutual) the file defined, whatever the use resolves to. The same walk outranks the run's E-DUPLICATE-DEFINITION for a global redefinition of these names. Both loaders agree on such a file.

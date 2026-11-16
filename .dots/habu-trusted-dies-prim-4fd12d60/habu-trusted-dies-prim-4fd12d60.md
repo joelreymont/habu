@@ -21,10 +21,6 @@ checked form (E-CAST-LINEAR, E-LINEAR-OWNER, E-CAST-SCOPE, exclusive copy,
 E-CAP-TRUSTED): a checked form needs a public word that would let any package
 forge an XML reader or alias an exclusive view.
 
-verify-source.f's wrappers at 1786-1810 and check-hook.f's token cells at
-160-164 exist only to dodge UNSAFE-TOK?'s registrar names: they become plain
-calls once habu-bar-a-declaration-1ae5a61c takes those names off the list.
-
 Acceptance: each remaining body is checked code, or a primitive owned by its
 package where the operation is genuinely unmodelled; `rg -n '^\s*TRUSTED:'
 src tools test` finds nothing; 42b30edd's acceptance holds.
