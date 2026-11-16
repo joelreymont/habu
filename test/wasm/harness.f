@@ -7,7 +7,9 @@
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
 \ wrote and THROW-CODE its full throw code, 0 unless it exited 1; FAULT-KIND and
-\ FAULT-ADDR the kind and address of the fault that trapped, else 0.
+\ FAULT-ADDR the kind and address of the fault that trapped, else 0;
+\ MEMORY-START and MEMORY-END the module's memory bytes before its run and after
+\ it, 0 for a module that did not link.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -30,6 +32,8 @@ variable ERR-U
 variable CODE
 variable KIND
 variable ADDR
+variable MEM-START
+variable MEM-END
 
 : ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
@@ -96,6 +100,35 @@ variable ADDR
    a u  a 6 + k FAULT-FIELD KIND !
    a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR ! ;
 
+\ run.mjs writes `memory <start> <end>` on a stderr line of its own; any other
+\ text after `memory ` ends the check.
+: NO-MEMORY-LINE ( ^u8 n -- )
+   type cr
+   s" wasm harness: run.mjs wrote a `memory` line without two numbers" 1 die ;
+
+: MEMORY-FIELD ( ^u8 n ^u8 n -- n )
+   {: line:^ lu:n a:^ u:n :}
+   a u STR>NUMBER? MATCH option
+      some OF ENDOF
+      none OF line lu NO-MEMORY-LINE ENDOF
+   ;MATCH ;
+
+: MEMORY? ( ^u8 n -- )
+   {: a:^ u:n :}
+   a u s" memory " STARTS-WITH? 0= if exit then
+   a 7 + u 7 - 32 INDEX-OF MATCH option
+      some OF IDX>N ENDOF
+      none OF a u NO-MEMORY-LINE ENDOF
+   ;MATCH {: k:n :}
+   a u  a 7 + k MEMORY-FIELD MEM-START !
+   a u  a 8 + k +  u 8 - k -  MEMORY-FIELD MEM-END ! ;
+
+: MEMORY ( -- )
+   0 MEM-START !  0 MEM-END !
+   0 begin  >r ERR ERR-U @ 10 r> SPLIT-NEXT  while
+      >r MEMORY? r>
+   repeat drop drop drop ;
+
 : VALIDATE ( ^u8 n bool -- bool )
    {: path:^ u:n no-sat:bool :}
    PROC-ARGV-RESET
@@ -135,6 +168,7 @@ public
    0 CODE !  0 KIND !  0 ADDR !
    rc 1 = if  THROWN CODE !  then
    rc 2 = if  FAULTED  then
+   MEMORY
    rc ;
 
 : OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
@@ -142,5 +176,7 @@ public
 : THROW-CODE ( -- n )  CODE @ ;
 : FAULT-KIND ( -- n )  KIND @ ;
 : FAULT-ADDR ( -- n )  ADDR @ ;
+: MEMORY-START ( -- n )  MEM-START @ ;
+: MEMORY-END ( -- n )  MEM-END @ ;
 
 ;package

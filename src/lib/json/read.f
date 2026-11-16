@@ -15,22 +15,33 @@ require src/lib/utf16.f
 \ The E-JSON-READ-* codes stay global names, as callers spell them.
 -3900 constant E-JSON-READ-FIRST
 -3999 constant E-JSON-READ-LAST
--3900 constant E-JSON-READ-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
--3901 constant E-JSON-READ-STRING      \ unterminated string or unescaped control byte in a string
--3902 constant E-JSON-READ-ESCAPE      \ invalid backslash or \uXXXX escape sequence
--3903 constant E-JSON-READ-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
--3905 constant E-JSON-READ-TRAILING    \ non-whitespace after the top-level value
--3906 constant E-JSON-READ-NUMBER      \ malformed number token or integer overflow
--3907 constant E-JSON-READ-EOF         \ input ended while a value/container/key was expected
--3908 constant E-JSON-READ-COLON       \ missing ':' after an object key
--3909 constant E-JSON-READ-COMMA       \ expected ',' or the matching container close
--3910 constant E-JSON-READ-STATE       \ accessor called on the wrong token kind or dst buffer too small
+-3900 s" a bare word, a bad byte or a trailing comma for a value"
+ERROR:CODE E-JSON-READ-MALFORMED
+-3901 s" an unterminated string or a raw control byte in a string"
+ERROR:CODE E-JSON-READ-STRING
+-3902 s" an invalid backslash or \uXXXX escape sequence"
+ERROR:CODE E-JSON-READ-ESCAPE
+-3903 s" a lone or mismatched UTF-16 surrogate in a \u escape"
+ERROR:CODE E-JSON-READ-SURROGATE
+-3905 s" a byte other than white space after the top-level value"
+ERROR:CODE E-JSON-READ-TRAILING
+-3906 s" a malformed number token or an integer overflow"
+ERROR:CODE E-JSON-READ-NUMBER
+-3907 s" the input ended where a value, container or key belongs"
+ERROR:CODE E-JSON-READ-EOF
+-3908 s" no ':' after an object key"
+ERROR:CODE E-JSON-READ-COLON
+-3909 s" no ',' or matching container close where one belongs"
+ERROR:CODE E-JSON-READ-COMMA
+-3910 s" an accessor on the wrong token kind, or a dst too small"
+ERROR:CODE E-JSON-READ-STATE
 
 package JSON
 
 public
 
--3914 constant E-READ-SOURCE      \ source length is negative or a positive length has a null source
+-3914 s" a negative length, or a null source of positive length"
+ERROR:CODE E-READ-SOURCE
 -3915 s" the text is no object holding the member exactly once"
 ERROR:CODE E-MEMBER
 

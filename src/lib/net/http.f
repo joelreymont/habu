@@ -733,6 +733,12 @@ variable EXIT-HOOK-N
 : ACCEPTED ( TCP4:connection TCP4:address TCP4:port -- )
    {: conn:TCP4:connection peer:TCP4:address peer-port:TCP4:port :}
    1 ACCEPTED-COUNT atomic-add drop
+   \ With Nagle on, a reply's small later write waits for the peer's delayed ACK.
+   conn true TCP4:NODELAY!
+   MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop conn CLOSE-CONNECTION exit ENDOF
+   ;MATCH
    conn ENQUEUE ;
 
 

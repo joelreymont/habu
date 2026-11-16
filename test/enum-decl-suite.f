@@ -6,6 +6,7 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f
 require src/lib/test.f
+require src/lib/adt/option.f
 
 DECL-DIAG:PROSE
 
@@ -104,7 +105,7 @@ DECL-DIAG:PROSE
 s" ENUM ebs VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ unresolved field type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ebs`\n" DECL-DIAG:HAS? TTRUE
 s" nope" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case single-letter type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `euc`\n" DECL-DIAG:HAS? TTRUE
@@ -495,7 +496,7 @@ DECL-DIAG:PROSE
 s" ENUM dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgpay`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" DECL-DIAG:HAS? TTRUE
 
 \ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
 DECL-DIAG:PROSE
@@ -571,7 +572,7 @@ DECL-DIAG:PROSE
 s" ENUM dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgnest`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" DECL-DIAG:HAS? TTRUE
 s" declaration `nestvar`" DECL-DIAG:HAS? TFALSE
 s" declaration `nestfld`" DECL-DIAG:HAS? TFALSE
 
@@ -1077,7 +1078,7 @@ DECL-DIAG:PROSE
 s" ENUM edlfwd VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlfwd`\n" DECL-DIAG:HAS? TTRUE
 s" edllater" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -1085,7 +1086,7 @@ DECL-DIAG:PROSE
 s" ENUM edlgenuse VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlgenuse`\n" DECL-DIAG:HAS? TTRUE
 s" edlgen" s" payload type is parametric and needs type arguments" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: an `ENUM` payload takes no type arguments: name a `STRUCTURE` whose field applies this family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: give the family its type arguments, as in `box<n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ A variant payload may not name a pointer to a linear value: a pointer is a
@@ -1163,6 +1164,111 @@ DECL-DIAG:PROSE
 s" ENUM edslin VARIANT hold FIELD next ^edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edslin`\n" DECL-DIAG:HAS? TTRUE
 s" edslin" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:OFF
+
+\ 26. A payload may be a family application, read by STRUCTURE's node parser,
+\     and is as wide as STRUCTURE counts it.
+s" package edapp-pkg public STRUCTURE edapps FIELD v option<n> ;STRUCTURE  ENUM edappe VARIANT yy FIELD v option<n> ;VARIANT ;ENUM ;package"
+   TEST-EVAL:RC 0 T=
+
+ENUM edapcol red green ;ENUM
+ENUM edapopt
+   VARIANT num FIELD v option<n> ;VARIANT
+   VARIANT col FIELD c option<edapcol> ;VARIANT
+   VARIANT bare ;VARIANT
+;ENUM
+: EDAP-COL ( option<edapcol> -- n )
+   MATCH option
+      some of MATCH edapcol red of 1 endof green of 2 endof ;MATCH endof
+      none of -1 endof
+   ;MATCH ;
+: EDAP-READ ( edapopt -- n )
+   MATCH edapopt
+      num of MATCH option some of endof none of -1 endof ;MATCH endof
+      col of EDAP-COL endof
+      bare of -2 endof
+   ;MATCH ;
+: EDAP-NUM ( n -- n ) OPTION:SOME EDAPOPT:NUM EDAP-READ ;
+: EDAP-NUM-NONE ( -- n ) OPTION:NONE EDAPOPT:NUM EDAP-READ ;
+: EDAP-GREEN ( -- n ) EDAPCOL:GREEN OPTION:SOME EDAPOPT:COL EDAP-READ ;
+: EDAP-COL-NONE ( -- n ) OPTION:NONE EDAPOPT:COL EDAP-READ ;
+: EDAP-BARE ( -- n ) EDAPOPT:BARE EDAP-READ ;
+7 EDAP-NUM 7 T=
+EDAP-NUM-NONE -1 T=
+EDAP-GREEN 2 T=
+EDAP-COL-NONE -1 T=
+EDAP-BARE -2 T=
+
+ENUM edapgen<a>
+   VARIANT held FIELD v option<a> ;VARIANT
+   VARIANT bare ;VARIANT
+;ENUM
+: EDAPGEN-READ ( edapgen<n> -- n )
+   MATCH edapgen
+      held of MATCH option some of endof none of -1 endof ;MATCH endof
+      bare of -2 endof
+   ;MATCH ;
+: EDAPGEN-SOME ( n -- n ) OPTION:SOME EDAPGEN:HELD EDAPGEN-READ ;
+: EDAPGEN-NONE ( -- n ) OPTION:NONE EDAPGEN:HELD EDAPGEN-READ ;
+9 EDAPGEN-SOME 9 T=
+EDAPGEN-NONE -1 T=
+
+\     ENUM's rejections hold inside an application, in its own words.
+DECL-DIAG:PROSE
+s" ENUM edapunk VARIANT hold FIELD v nosuch<n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edapunk`\n" DECL-DIAG:HAS? TTRUE
+s" nosuch" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edapself VARIANT hold FIELD v option<edapself> ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edapself`\n" DECL-DIAG:HAS? TTRUE
+s" edapself" s" payload type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edapscope VARIANT hold FIELD x read-view<n,n,n> ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edapscope`\n" DECL-DIAG:HAS? TTRUE
+s" n" s" type argument must be a scope parameter" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: pass a parameter the header lists, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edapregion<p,q> VARIANT hold FIELD x mut-view<p,q,n,u8> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edapregion`\n" DECL-DIAG:HAS? TTRUE
+s" n" s" type argument must be a region parameter" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: pass a parameter the header lists, as in `ENUM box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\     An application is as wide as its arguments make it: option<edapw> takes
+\     three cells, so big's payload takes four.
+STRUCTURE edapw FIELD a n FIELD b n ;STRUCTURE
+ENUM edapwide
+   VARIANT big FIELD v option<edapw> FIELD t n ;VARIANT
+   VARIANT small FIELD x n ;VARIANT
+;ENUM
+: EDAPW-SUM ( option<edapw> -- n )
+   MATCH option some of EDAPW:UNMAKE + endof none of -1 endof ;MATCH ;
+: EDAPWIDE-BIG ( option<edapw> n -- n ) {: t:n :} EDAPW-SUM t 1000 * + ;
+: EDAPWIDE-READ ( edapwide -- n )
+   MATCH edapwide
+      big of EDAPWIDE-BIG endof
+      small of 100 + endof
+   ;MATCH ;
+: EDAPWIDE-SOME ( n n n -- n ) {: a:n b:n t:n :}
+   a b EDAPW:MAKE OPTION:SOME t EDAPWIDE:BIG EDAPWIDE-READ ;
+: EDAPW-NONE ( -- option<edapw> ) OPTION:NONE ;
+: EDAPWIDE-NONE ( n -- n ) {: t:n :} EDAPW-NONE t EDAPWIDE:BIG EDAPWIDE-READ ;
+: EDAPWIDE-SMALL ( n -- n ) EDAPWIDE:SMALL EDAPWIDE-READ ;
+3 4 7 EDAPWIDE-SOME 7007 T=
+9 EDAPWIDE-NONE 8999 T=
+5 EDAPWIDE-SMALL 105 T=
+TFAM:TFAM-ACTIVE-PKG$ s" edapwide" TFAM:TFAM-SIG-RESOLVE TFAM:SR-FOUND T= TFAM:TFAM-SLOTS@ 4 T=
+
+\     A payload type's tokens may hold blanks and stand on two lines, as a field
+\     type's do; one left open at `;VARIANT` is unclosed.
+STRUCTURE edappair<a,b> FIELD x a FIELD y b ;STRUCTURE
+s" ENUM edapspaced VARIANT vq FIELD v edappair<n, n> ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s\" ENUM edapline VARIANT vq FIELD v edappair<n,\n   n> ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" ENUM edapopen VARIANT vq FIELD v edappair<n, ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edapopen`\n" DECL-DIAG:HAS? TTRUE
+s" edappair<n," s" unclosed payload type application" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: close each `<` of the type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 T-REPORT

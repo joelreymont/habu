@@ -35,11 +35,12 @@ variable MARK-U
    if s" yes" else s" no" then ;
 
 \ `.` ends the line; a report line carries several fields, so print digits
-\ inline. fcntl answers -1 on a closed fd, so the signed wrapper is not optional.
+\ inline.
 : U-TYPE ( n -- ) {: n:n :}
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
 
+\ fcntl answers -errno for a closed fd's flags, so they print signed.
 : N-TYPE ( n -- ) {: n:n :}
    n 0 < if [char] - emit 0 n - U-TYPE exit then
    n U-TYPE ;

@@ -1,13 +1,15 @@
 \ app-test.f - MCP-APP:PAGE+ into a BUF holding a prefix, with a title holding
 \ <&"', and MCP-APP:CODE+ of a small module. The prefix is kept; the page after
 \ it is valid UTF-8, holds the escaped title, the page id and app.js's base64,
-\ and no marker. CODE+ names the same page id and carries view.html, view.js,
-\ turn.js, viewport.js, page.js and the module as base64 that decodes to their
-\ bytes, the files read here from src/lib/browser at the tree's root. A title
-\ that is not XML text is refused and the BUF kept; the cases of a module held
-\ in the BUF and of a negative module length need the build's --checks option
-\ and are off. test/browser/app-test.f's --chrome check
-\ runs a composed page and its code in Chrome.
+\ and no marker; MCP-APP:PAGE-ID$ is the page's id. CODE+ names the same page
+\ id and carries view.html, view.js, turn.js, viewport.js, page.js and the
+\ module as base64 that decodes to their bytes, the files read here from
+\ src/lib/browser at the tree's root. MCP-APP:FILE+ of a.js with the bytes hi
+\ appends "a.js":"aGk=" after a prefix. A title that is not XML text is
+\ refused and the BUF kept; the cases of a
+\ module held in the BUF and of a negative module length need the build's
+\ --checks option and are off. test/browser/app-test.f's --chrome check runs a
+\ composed page and its code in Chrome.
 \ Run: bin/hb --load src/lib/browser/app-test.f
 
 require src/lib/test.f
@@ -28,6 +30,7 @@ CAP SPAN-BUFFER: DECODED
 CAP BUFFER: WANT
 BUF:HDR-BYTES BUFFER: PAGE
 BUF:HDR-BYTES BUFFER: CODE
+BUF:HDR-BYTES BUFFER: FILE
 
 : PREFIX$ ( -- ^u8 n )  s" HTTP/1.1 200 OK prefix|" ;
 : MODULE$ ( -- ^u8 n )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
@@ -36,9 +39,17 @@ BUF:HDR-BYTES BUFFER: CODE
 
 : PAGE$ ( -- ^u8 n )  PAGE BUF:SPAN$ BUF:BLEN>N ;
 : CODE$ ( -- ^u8 n )  CODE BUF:SPAN$ BUF:BLEN>N ;
+: FILE$ ( -- ^u8 n )  FILE BUF:SPAN$ BUF:BLEN>N ;
 
 : AFTER$ ( -- ^u8 n )
    PAGE$ {: a:^ u:n :}
+   PREFIX$ nip {: pu:n :}
+   a pu + u pu - ;
+
+
+\ FILE+'s member, after the prefix.
+: MEMBER-AFTER$ ( -- ^u8 n )
+   FILE$ {: a:^ u:n :}
    PREFIX$ nip {: pu:n :}
    a pu + u pu - ;
 
@@ -98,6 +109,8 @@ BUF:HDR-BYTES BUFFER: CODE
    AFTER$ ESCAPED$ COUNT-SUB 1 T=
    s" the page id is 64 hex digits" T-LABEL
    s" page-id" SCRIPT$ nip 64 T=
+   s" PAGE-ID$ is the page's id" T-LABEL
+   s" page-id" SCRIPT$ MCP-APP:PAGE-ID$ T$=
    s" app.js's base64 decodes to src/lib/browser/app.js" T-LABEL
    s" app.js" SCRIPT$ s" src/lib/browser/app.js" CARRIES
    s" no marker is left in the page" T-LABEL
@@ -121,6 +134,15 @@ BUF:HDR-BYTES BUFFER: CODE
    s" module" MEMBER$ MODULE$ DECODES ;
 
 
+: FILE-CASES ( -- )
+   FILE CAP BUF:N>BLEN BUF:INIT
+   PREFIX$ BUF:N>BLEN FILE BUF:APPEND-SPAN
+   s" a.js" s" hi" FILE MCP-APP:FILE+
+   s" FILE+ appends the name and the bytes as base64" T-LABEL
+   MEMBER-AFTER$ s\" \"a.js\":\"aGk=\"" T$=
+   FILE BUF:DISPOSE ;
+
+
 : COMPOSE-CASES ( -- )
    PAGE CAP BUF:N>BLEN BUF:INIT
    PREFIX$ BUF:N>BLEN PAGE BUF:APPEND-SPAN
@@ -139,6 +161,7 @@ BUF:HDR-BYTES BUFFER: CODE
 
 T-RESET
 COMPOSE-CASES
+FILE-CASES
 T-REPORT
 
 false [if] \ off until dot habu-add-the-checks-a49d054d

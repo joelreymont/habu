@@ -172,6 +172,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    label labelu GE-EXPECT-ERR-HAS ;
 
+\ An evaluate that returns gives the place back to the outer text: a later throw
+\ in the same word is placed at the outer token, not in the evaluated string.
+: THROW-AFTER-EVAL ( -- )
+   s" throw-after-eval" {: label:^ labelu:n :}
+   GE-HB-RESET  GE-SRC-RESET
+   s" : Z ( n -- ) throw ;" GE-SRC-LINE
+   S\" : G ( -- ) s\" 1 drop\" evaluate-closed  s\" \" nip Z ;" GE-SRC-LINE
+   s" G" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   67 label labelu GE-EXPECT-RC
+   s" " label labelu GE-EXPECT-OUT
+   GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
+   STARTS-WITH? 0= if label labelu GE-FAIL then
+   S\" \n --> <input>:3:1\n" label labelu GE-EXPECT-ERR-HAS ;
+
 \ A refused storage mapping stops the load with one E-MAP record, which has no
 \ place, as no run-time record has one.
 : MAP-REJECT-CASE ( ^u8 n ^u8 n -- )
@@ -194,6 +209,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    THROW-ZERO-STOPS
+   THROW-AFTER-EVAL
    QUIET-COUNT-ONCE
    MAP-REJECTS
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC

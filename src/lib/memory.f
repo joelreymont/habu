@@ -185,11 +185,11 @@ STRUCTURE chunk DERIVE addr
    FIELD cur ^u8
 ;STRUCTURE
 
-\ The largest pooled slot, a 1024-byte body's: SPAN:FILL zeroes a slot byte by
-\ byte, so on Linux arm64 a 2048-byte body costs as much pooled as mapped. A
+\ The largest pooled slot, a 5888-byte body's: SPAN:FILL zeroes a slot a cell at
+\ a time, so on Linux arm64 a 11776-byte body costs as much pooled as mapped. A
 \ multiple of 16, so WB-LEAVE's test matches WB-ENTER's, and below MEM-64K + 16,
 \ the extent of a MEM-64K body memory-test.f maps.
-1040 constant POOL-MAX
+5904 constant POOL-MAX
 \ The first chunk's extent: the fewest whole pages holding its header and a POOL-MAX slot.
 POOL-MAX CHUNK-BYTES + STACK-ABI:PAGE-BYTES 1 - +
    STACK-ABI:PAGE-BYTES negate and constant FIRST-EXTENT

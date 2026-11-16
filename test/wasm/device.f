@@ -17,6 +17,7 @@ require test/wasm/calls-test.f
 require test/wasm/hb-build.f
 require test/wasm/data-test.f
 require test/wasm/storage-test.f
+require test/wasm/heap-test.f
 require test/wasm/differential.f
 require test/browser/echo-test.f
 require test/browser/storage-test.f

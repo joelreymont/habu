@@ -52,37 +52,6 @@ ED-RESET
       s" rename the family: keywords, control words, single letters, `ptr` and value records are reserved"
       E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ Payload types: n/f/r and con names, letter params within arity, ^T, and
-\ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
-\ owner included; an ambiguous family is rejected, and anything else,
-\ TK-EVIDENCE among them, is unresolved.
-: FIELD-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
-   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TDECL-AMBIG throw THEN
-   sr SR-FOUND <> IF 0 NO EXIT THEN
-   id UNSTORED-REASON IF E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
-   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `^`
-      s" payload type cannot recursively name its owner"
-      s" name the enum being declared only beneath `^`, as in `FIELD next ^list`"
-      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id TFAM-ARITY@ 0 <> IF
-      s" payload type is parametric and needs type arguments"
-      s" an `ENUM` payload takes no type arguments: name a `STRUCTURE` whose field applies this family"
-      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id YES ;
-
-: LETTER-TYPE ( ^u8 n -- n )
-   drop c@
-   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
-   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
-   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
-   TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown payload type"
-      s" use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`"
-      E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   SCHEMA-PARAM ;
-
 : EN-PTR-FIX$ ( -- ^u8 n )
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" ;
 \ The pointee text of a payload type that opens a pointer: the rest of a `^T`
@@ -104,6 +73,7 @@ ED-RESET
       s" write a type after the field name, as in `FIELD x n`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
+   s" ;variant" s" payload type" STRUCTURE-DECL:SD-SPAN
    EN-PTR-TEXT? IF
       POINTEE @ {: outer:n :}
       -1 POINTEE !
@@ -112,16 +82,9 @@ ED-RESET
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" payload type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
-   2dup TYPE-MAY-ARRIVE-XT IF MISSING! 0 EXIT THEN
-   2drop s" unknown payload type"
-   s" declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`"
-   E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   FAM @ POINTEE @ s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
 
-: SCH-WIDTH ( n -- n )
-   dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
+: SCH-WIDTH ( n -- n ) FAM @ swap TFAM-SCH-WIDTH ;
 
 \ Header clauses emit through DECL-EVENT, which owns duplicate and ordinal state;
 \ each mutates only the fresh family record.

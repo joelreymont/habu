@@ -35,11 +35,42 @@ variable SD-ARG-N
 SD-RESET
 : SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
+\ The node parser's rejections name the type as its caller does ("type",
+\ "payload type"); SD-TYPE-NODE sets the noun for one parse.
+PTR-VARIABLE NOUN-A   variable NOUN-U
+: NOUN@ ( -- ^u8 n ) NOUN-A @ NOUN-U @ ;
+
+\ A rejection's label is composed here and read when the record prints, so the
+\ next rejection may reuse the buffer.
+$80 constant SD-MSG-CAP
+create SD-MSG SD-MSG-CAP allot
+variable SD-MSG-U
+: SD-MSG+ ( ^u8 n -- ) {: a:^ u:n :}
+   SD-MSG-CAP SD-MSG-U @ - u min {: k:n :}
+   k 0 ?do a i + c@  SD-MSG SD-MSG-U @ + i + c! loop
+   SD-MSG-U @ k + SD-MSG-U ! ;
+: SD-WORD+ ( ^u8 n -- ) {: a:^ u:n :}   \ a blank, then the word
+   u 0= IF EXIT THEN
+   s"  " SD-MSG+  a u SD-MSG+ ;
+
+\ The text before the noun, the noun, the text after it, blank-separated.
+: SD-NOUN-TEXT ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n na:^ nu:n sa:^ su:n :}
+   0 SD-MSG-U !
+   pa pu SD-MSG+
+   pu 0= IF na nu SD-MSG+ ELSE na nu SD-WORD+ THEN
+   sa su SD-WORD+
+   SD-MSG SD-MSG-U @ ;
+: SD-TEXT ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
+   pa pu NOUN@ sa su SD-NOUN-TEXT ;
+: SD-REJECT ( ^u8 n ^u8 n ^u8 n n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
+   pa pu sa su SD-TEXT fa fu code DECL-REJECT:REJECT ;
+
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
+: ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
 \ A NEWTYPE or DEFTYPE: one base on one line, with no header and no clause.
-: WRAP? ( -- bool ) DECL-REJECT:KIND$ s" structure" CORE-STR= 0= ;
+: WRAP? ( -- bool ) DEFTYPE? DECL-REJECT:KIND$ s" newtype" CORE-STR= or ;
 \ A DEFTYPE base is one name (WRAP-DRIVE), so its help offers no `^` or header.
 : SD-TYPE-FIX$ ( -- ^u8 n )
    DEFTYPE? IF
@@ -49,6 +80,8 @@ SD-RESET
    s" name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`" ;
 : SD-PARAM-FIX$ ( -- ^u8 n )
    WRAP? IF SD-TYPE-FIX$ EXIT THEN
+   ENUM? IF
+      s" use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`" EXIT THEN
    s" list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it" ;
 \ NEWTYPE-HELP's text, mapped on first use and grown to fit: it names the case.
 $100 constant HELP-FIRST                \ bytes of the first mapping
@@ -165,7 +198,7 @@ variable HELP-U
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
 \ field naming a DEFLINEAR con already relies on.
-\ The kind test falls through to "unknown type" because the one kind it
+\ The kind test falls through to "unknown <noun>" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
 \ The declared family may be named only beneath a `^` (`^node`, `SPAN:span<^node>`);
 \ by value, as in `option<node>`, it is 7109.
@@ -180,13 +213,15 @@ variable HELP-U
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
       a u DECL-REJECT:TOKEN!
-      s" type cannot recursively name its owner"
+      s" " s" cannot recursively name its owner"
       DEFTYPE? IF SD-TYPE-FIX$ ELSE WRAP? IF
          s" name the type being declared only beneath `^`, as in `NEWTYPE link ^link`"
+      ELSE ENUM? IF
+         s" name the enum being declared only beneath `^`, as in `FIELD next ^list`"
       ELSE
          s" name the structure being declared only beneath `^`, as in `FIELD next ^node`"
-      THEN THEN
-      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      THEN THEN THEN
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
@@ -196,7 +231,7 @@ variable HELP-U
    dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TYPE-DECL:DECL-PARAM 0= IF
       drop a u DECL-REJECT:TOKEN!
-      s" unknown type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" unknown" s" " SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    dup {: idx:n :}
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
@@ -205,9 +240,9 @@ variable HELP-U
 
 : SD-ARG+ ( n -- )
    SD-ARG-N @ SD-ARG-CAP >= IF
-      s" type application is too deep"
+      s" " s" application is too deep"
       s" nest fewer than 256 type arguments in one type"
-      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    SD-ARG-N @ cells SD-ARGS + !
    SD-ARG-N @ 1 + SD-ARG-N ! ;
 
@@ -225,8 +260,8 @@ variable HELP-U
       1 +
    REPEAT {: j:n :}
    j start = IF
-      s" malformed type application"
-      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" malformed" s" application"
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a start + j start - j ;
 
 \ The blanks an argument may start with.
@@ -244,14 +279,14 @@ variable HELP-U
 : SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = IF
-         s" malformed type application"
-         SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         s" malformed" s" application"
+         SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
       j nu - 1 + YES EXIT
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
    na nu DECL-REJECT:TOKEN!
-   s" unknown type" na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown" s" " na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
@@ -267,14 +302,20 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    aa au DECL-REJECT:TOKEN!
    want PK-REGION = IF
       s" type argument must be a region parameter"
-      s" pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
+      ENUM? IF
+         s" pass a parameter the header lists, as in `ENUM box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
+      ELSE
+         s" pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
+      THEN
    ELSE
       s" type argument must be a scope parameter"
       WRAP? IF
          s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+      ELSE ENUM? IF
+         s" pass a parameter the header lists, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`"
       ELSE
          s" pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
-      THEN
+      THEN THEN
    THEN
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
@@ -282,29 +323,29 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 \ its slot, then the count of arguments and the index after the closing `>`.
 : SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
-      s" type has too many arguments"
+      s" " s" has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
-      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
    a u i SD-SKIP {: s:n :}
    a s +  e s -  fam k node SD-ARG-KIND
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF
-      s" unclosed type application"
-      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" unclosed" s" application"
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a j + c@ {: c:n :}
    c 44 = IF a u fam k 1 + j 1 + RECURSE EXIT THEN
    c 62 = IF k 1 + j 1 + EXIT THEN
-   s" malformed type application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" malformed" s" application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
 : SD-APP ( ^u8 n n n -- n n ) {: a:^ u:n fam:n i:n :}
    SD-ARG-N @ {: base:n :}
    a u fam 0 i SD-APP-ARGS {: k:n j:n :}
    k fam TFAM-ARITY@ <> IF
-      s" type has wrong arity"
+      s" " s" has wrong arity"
       s" give the family as many type arguments as its header declares"
-      TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
    SCHEMA-ROOT-N@ {: start:n :}
    base BEGIN dup SD-ARG-N @ < WHILE
@@ -318,19 +359,19 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-ARGS ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
-      s" unclosed type application"
-      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" unclosed" s" application"
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a j + c@ {: c:n :}
    c 62 = IF j 1 + EXIT THEN
    c 44 <> IF
-      s" malformed type application"
-      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" malformed" s" application"
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a u j 1 + RECURSE ;
 
 : SD-LOOSE-APP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    i u >= IF
-      s" unclosed type application"
-      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      s" unclosed" s" application"
+      SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a i + c@ 62 = IF i 1 + EXIT THEN
    a u i SD-LOOSE-ARGS ;
 
@@ -349,13 +390,13 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a u FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
          a u DECL-REJECT:TOKEN!
-         s" type is parametric and needs type arguments"
-         fam a u SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
+         s" " s" is parametric and needs type arguments"
+         fam a u SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw
       THEN EXIT
    THEN drop
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
    a u DECL-REJECT:TOKEN!
-   s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
 \ set as RESOLVE-TYPE sets it.
@@ -377,7 +418,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
          na nu DECL-REJECT:TOKEN!
-         s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
       SD-MISSING!
       a u j 1 + SD-LOOSE-APP EXIT
    THEN
@@ -394,7 +435,7 @@ SD-LOOSE-INSTALL
    a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
    FIELD-MISS @ IF 0 e EXIT THEN
-   node s" type is a pointer to a linear value and cannot own it"
+   node s" " s" is a pointer to a linear value and cannot own it" SD-TEXT
    DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
 
 \ The node at i of a field type's text: a type parameter, a con, a family
@@ -407,7 +448,7 @@ SD-LOOSE-INSTALL
          drop
          na nu TYPE-MAY-ARRIVE-XT 0= IF
             na nu DECL-REJECT:TOKEN!
-            s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+            s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
          SD-MISSING!
          0 a u j 1 + SD-LOOSE-APP EXIT
       THEN
@@ -419,13 +460,13 @@ SD-LOOSE-INSTALL
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
          na nu DECL-REJECT:TOKEN!
-         s" type is parametric and needs type arguments"
-         fam na nu SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+         s" " s" is parametric and needs type arguments"
+         fam na nu SD-ARGS-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
       fam 0 0 SCHEMA-APP j EXIT
    THEN drop
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
    na nu DECL-REJECT:TOKEN!
-   s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
+   s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
@@ -438,25 +479,53 @@ SD-PARSER-INSTALL
    depth u 0 ?do a i + c@ SD-NEST loop ;
 
 \ One declaration's tokens stand in order in one buffer (parse-name never refills, a replay
-\ reads one body); its end or `;STRUCTURE` goes back and the type is unclosed.
-: SD-SPAN-REST ( ^u8 n n -- ^u8 n ) {: a:^ u:n depth:n :}
+\ reads one body); its end or the closer goes back and the type is unclosed.
+: SD-SPAN-REST ( ^u8 n n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n depth:n ca:^ cu:n na:^ nu:n :}
    u depth
    BEGIN dup 0 > WHILE
-      NEXT dup 0= IF YES ELSE 2dup s" ;structure" CORE-STR=CI THEN IF
+      NEXT dup 0= IF YES ELSE 2dup ca cu CORE-STR=CI THEN IF
          UNGET  drop a swap DECL-REJECT:TOKEN!
-         s" unclosed type application"
+         s" unclosed" na nu s" application" SD-NOUN-TEXT
          SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       2swap nip  >r 2dup r> -rot SD-DEPTH  -rot
       swap NULL-PTR - a NULL-PTR - - +  swap
    REPEAT
    drop a swap ;
 
-\ A type whose first token leaves a `<` open runs to the token closing it, as one span of the
-\ source or replay body, which outlives the TYPE@ span SD-MISSING! keeps.
-: SD-SPAN ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+\ SD-SPAN ( first closer noun -- text ): a type whose first token leaves a `<`
+\ open runs to the token closing it, as one span of the source or replay body,
+\ which outlives the TYPE@ span SD-MISSING! keeps. The closer token reached
+\ first leaves it unclosed, rejected naming the type by noun.
+public
+: SD-SPAN ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n ca:^ cu:n na:^ nu:n :}
    0 a u SD-DEPTH {: depth:n :}
    depth 1 < IF a u EXIT THEN
-   a u depth SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
+   a u depth ca cu na nu SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
+private
+
+\ The node of a whole type text; bytes after the node are malformed.
+: SD-WHOLE-NODE ( ^u8 n -- n ) {: a:^ u:n :}
+   a u 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
+   j u <> IF
+      s" malformed" s" application"
+      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
+   node ;
+
+\ SD-TYPE-NODE ( text fam pointee noun -- node ): the node of a type text a
+\ declaration of fam holds, pointee -1 beneath a `^`, its rejections naming the
+\ type by noun. It sets FAM, POINTEE, SD-ARG-N, TYPE@ and the noun and gives
+\ the caller's back on every exit, a throw included; FIELD-MISS stays the caller's.
+public
+: SD-TYPE-NODE ( ^u8 n n n ^u8 n -- n )
+   {: a:^ u:n fam:n ptee:n na:^ nu:n :}
+   FAM @ POINTEE @ SD-ARG-N @ {: ofam:n optee:n oargs:n :}
+   TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
+   fam FAM !  ptee POINTEE !  0 SD-ARG-N !
+   a u TYPE!  na NOUN-A !  nu NOUN-U !
+   [: a u SD-WHOLE-NODE ;]
+   [: ofam FAM !  optee POINTEE !  oargs SD-ARG-N !
+      ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
+private
 
 defer SD-QUOT-ELEM ( ^u8 n -- n )
 : SD-QUOT-FAIL ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
@@ -479,7 +548,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
       s" write a type after the field name, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
-   SD-SPAN
+   s" ;structure" s" type" SD-SPAN
    2dup TYPE!  2dup {: sa:^ su:n :}
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
@@ -494,12 +563,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
       FIELD-MISS @ IF drop 0 EXIT THEN
       s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   0 SD-ARG-N !
-   2dup 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
-   j over <> IF
-      2drop s" malformed type application"
-      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   2drop node ;
+   FAM @ POINTEE @ s" type" SD-TYPE-NODE ;
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
 

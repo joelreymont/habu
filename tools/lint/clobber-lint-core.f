@@ -7,9 +7,9 @@
 \ its placement, so pass 2 walks a definition until no label's state grows,
 \ then once more; only that last walk reports.
 \
-\ The run also fails when a mask row names no routine pass 1 opened, or
-\ when the openings and calls it met differ in number from those a plain
-\ scan of the same files finds.
+\ The run also fails when a mask row or a call names no routine pass 1
+\ opened, or when the openings and calls it met differ in number from those
+\ a plain scan of the same files finds.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -174,6 +174,11 @@ variable RX  variable RACC
    s" ENGINE-EMIT:Lheadrow"
       0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD
       30 CL-ADD row execute
+   \ LEXITHOOK spills x0 and x30 around the hook it calls.
+   s" ENGINE-EMIT:Lexithook" 0 0 CL-ADD 30 CL-ADD row execute
+   \ Trim and reclaim save x0..x17 and x30 on entry and restore them at their one return.
+   s" PROF-ABI:Lproftrim" $3FFFF 30 CL-ADD row execute
+   s" PROF-ABI:Lprofreclaim" $3FFFF 30 CL-ADD row execute
    s" ENGINE-EMIT:Lprotwidq" 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD
       row execute
    s" ENGINE-EMIT:Lhidxadd"
@@ -534,6 +539,10 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 
 : FLOW-TOP  ( -- n )  1 FLOW-NEED  FLOW# @ 1- ;
 : FLOW-POP  ( -- n )  FLOW-TOP  dup FLOW# ! ;
+: FLOW-LIVE?  ( -- bool )
+   FLOW# @ begin dup 0 > while
+      1-  dup FL-PATH FL @ LIVE = if drop LINT-TRUE exit then
+   repeat drop LINT-FALSE ;
 
 
 \ The innermost do entry.
@@ -555,9 +564,10 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 \ control flow moves the path. Back edges are not modeled: a loop body is walked once.
 : FLOW-STEP  ( n -- )
    TOK {: a:^ u:n :}
-   a u s" if" LINT-STR=CI  a u s" of" LINT-STR=CI or  a u s" begin" LINT-STR=CI or if
+   a u s" if" LINT-STR=CI  a u s" of" LINT-STR=CI or if
       LINT-FALSE FLOW-PUSH drop exit
    then
+   a u s" begin" LINT-STR=CI if LINT-FALSE FLOW-PUSH DEAD>ENTRY exit then
    a u s" else" LINT-STR=CI if FLOW-TOP FLOW-SWAP exit then
    a u s" then" LINT-STR=CI  a u s" endcase" LINT-STR=CI or
    a u s" loop" LINT-STR=CI or  a u s" +loop" LINT-STR=CI or if
@@ -650,22 +660,69 @@ variable CX  variable EX
 PTR-VARIABLE PKG-A
 variable PKG-U
 
-\ The unused tail of the name pool is scratch until C-ADD commits a name.
-: C-QUALIFIED$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   PKG-U @ 0= a u s" :" CONTAINS? or if a u exit then
-   PKG-U @ u + 1+ {: size:n :}
+\ The usings in force, innermost last: each one's package name and whether
+\ the open package opened it, so that its `;package` closes it.
+16 constant USING-MAX
+USING-MAX TYPED-BUFFER USING-A ^u8
+create USING-U USING-MAX cells allot
+create USING-IN USING-MAX cells allot
+variable USING#
+
+: USING+ ( ^u8 n -- ) {: a:^ u:n :}
+   USING# @ USING-MAX >= if s" clobber-lint: too many usings" 1 die then
+   a USING# @ USING-A !  u USING-U USING# @ cells + !
+   PKG-U @ 0<> bool>n USING-IN USING# @ cells + !
+   USING# @ 1+ USING# ! ;
+
+: USING-DROP ( -- )
+   USING# @ 0= if s" clobber-lint: ;using with no using open" 1 die then
+   USING# @ 1- USING# ! ;
+
+: USINGS-CLOSE ( -- )
+   begin USING# @ 0 > if USING# @ 1- cells USING-IN + @ 0<> else LINT-FALSE then while
+      USING# @ 1- USING# !
+   repeat ;
+
+\ A file starts outside any package and using.
+: SCOPE-START ( -- )  0 PKG-U !  0 USING# ! ;
+
+\ `PKG:name` folded in the unused tail of the name pool, scratch until C-ADD
+\ commits a name.
+: C-JOIN$ ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n a:^ u:n :}
+   pu u + 1+ {: size:n :}
    size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
    CNBUF CEND @ + {: dst:^ :}
-   PKG-A @ dst PKG-U @ LINT-BMOVE
-   58 dst PKG-U @ + c!
-   a dst PKG-U @ 1+ + u LINT-BMOVE
+   pa pu dst FOLD-TO
+   58 dst pu + c!
+   a u dst pu 1+ + FOLD-TO
    dst size ;
 
-\ Bare labels prefer declarations in their current package, then globals.
-\ Explicitly qualified labels already name their owner.
+: C-QUALIFIED$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   PKG-U @ 0= a u s" :" CONTAINS? or if a u exit then
+   PKG-A @ PKG-U @ a u C-JOIN$ ;
+
+\ The folded copy of a name in the label pool's unused tail.
+: KEY$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
+   a u CNBUF CEND @ + FOLD-TO
+   CNBUF CEND @ + u ;
+
+\ Usings before globals binds as Habu does: it refuses a tail both reach. The
+\ quotation reads each candidate, folded in the pool's unused tail.
+: SCOPE-FIND ( ^u8 n [ ^u8 n -- n ] -- n ) {: a:^ u:n find :}
+   a u s" :" CONTAINS? if a u KEY$ find execute exit then
+   PKG-U @ 0<> if
+      PKG-A @ PKG-U @ a u C-JOIN$ find execute dup 0 >= if exit then drop
+   then
+   USING# @ begin dup 0 > while
+      1- dup USING-A @  over cells USING-U + @  a u C-JOIN$ find execute
+      dup 0 >= if nip exit then drop
+   repeat drop
+   a u KEY$ find execute ;
+
 : C-LABEL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u C-QUALIFIED$ C-FIND {: idx:n :}
-   idx 0 >= if idx C-NAME else a u then ;
+   a u [: C-FIND ;] SCOPE-FIND dup 0 >= if C-NAME exit then drop
+   a u ;
 : EDGE?  ( n n -- bool ) {: from to :}
    0 EX !
    begin EX @ EN# @ < while
@@ -734,12 +791,6 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
       some OF ENDOF
    ;MATCH ;
 
-\ The folded copy of a name in the label pool's unused tail.
-: KEY$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
-   a u CNBUF CEND @ + FOLD-TO
-   CNBUF CEND @ + u ;
-
 : VISIBLE  ( n -- n )
    begin dup BOUND# @ >= while PREV HOST@ repeat ;
 
@@ -750,11 +801,9 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    a u PSEUDO? if LINT-TRUE exit then
    a u CLOBBER-WRAP:WRAP? ;
 
-\ A call names the word in its package first, then a global one: its row,
-\ or -1.
-: HOST-LOOKUP  ( n -- n ) {: k:n :}
-   k TOK C-QUALIFIED$ KEY$ MAP-ROW VISIBLE {: row:n :}
-   row 0 < if k TOK KEY$ MAP-ROW VISIBLE else row then ;
+\ The row a call binds, or -1.
+: HOST-LOOKUP  ( n -- n )
+   TOK [: MAP-ROW VISIBLE ;] SCOPE-FIND ;
 
 \ A call is unknown when it emits code the lint does not model: an emitting
 \ row or an instruction word with no row, unless HAND-MODEL? covers it.
@@ -981,16 +1030,37 @@ variable HIDDEN
    repeat  DI @ ;
 
 : SCOPE-STEP ( n -- n ) {: k:n :}
-   k TOK s" ;package" LINT-STR=CI if 0 PKG-U ! k exit then
+   k TOK s" ;package" LINT-STR=CI if 0 PKG-U !  USINGS-CLOSE k exit then
+   k TOK s" ;using" LINT-STR=CI if USING-DROP k exit then
+   k TOK s" using" LINT-STR=CI if
+      k 1+ TN# @ >= if s" clobber-lint: missing using name" 1 die then
+      k 1+ TOK USING+  k 1+ exit
+   then
    k TOK s" package" LINT-STR=CI 0= if k exit then
    k 1+ TN# @ >= if s" clobber-lint: missing package name" 1 die then
    k 1+ TOK PKG-U ! PKG-A ! k 1+ ;
+
+\ def takes a definition's `:` token and its end, in the package and usings
+\ in force there.
+variable WI  variable WE
+: EACH-DEF ( [ n n -- ] -- ) {: def :}
+   SCOPE-START 0 WI !
+   begin WI @ TN# @ 1- < while
+      WI @ TOK s" :" LINT-STR= if
+         WI @ DEF-END WE !
+         WI @ WE @ def execute
+         WE @ WI !
+      else
+         WI @ SCOPE-STEP WI !
+      then
+      WI @ 1+ WI !
+   repeat ;
 
 \ Declarations precede body analysis, including labels owned by another file.
 \ Colon bodies are skipped so emitter operands cannot declare a label; DEF#
 \ counts them and NAME-CAP their qualified names' bytes.
 : DECL-FILE ( ^u8 n -- )
-   LINT-SOURCE:LOAD LINT-SOURCE:TEXT TOKENIZE 0 PKG-U !
+   LINT-SOURCE:LOAD LINT-SOURCE:TEXT TOKENIZE SCOPE-START
    0 begin dup TN# @ < while
       {: k:n :}
       k TOK s" :" LINT-STR= if
@@ -1041,8 +1111,10 @@ variable HIDDEN
    RNEXT @ ON# @ >= if LINT-FALSE exit then
    DI @ RNEXT @ OPEN@ = ;
 
+\ The walk ends at an opening only when no state lives: a path parked in a
+\ flow entry, as by a host `else`, rejoins after the opening.
 : ROUTINE-ADVANCE-OPEN ( -- )
-   PATH @ LIVE <> if
+   PATH @ LIVE <>  FLOW-LIVE? 0= and if
       -1 RDONE !
    else
       RNEXT @ 1+ RNEXT !
@@ -1119,23 +1191,15 @@ variable HIDDEN
       1+
    repeat  drop LINT-FALSE ;
 
-variable WI  variable WE
+: PASS1-AT  ( n n -- ) {: k:n hi:n :}
+   k 2 + hi DEF-LOCALS
+   k 1+  k 2 + hi EMITS?  HOST-NEW
+   k 2 + hi PASS1-DEF
+   HOST-BIND ;
+
 : PASS1-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE  FILE-START
-   0 PKG-U ! 0 WI !
-   begin WI @ TN# @ 1- < while
-      WI @ TOK s" :" LINT-STR= if
-         WI @ DEF-END WE !
-         WI @ 2 + WE @ DEF-LOCALS
-         WI @ 1+  WI @ 2 + WE @ EMITS?  HOST-NEW
-         WI @ 2 + WE @ PASS1-DEF
-         HOST-BIND
-         WE @ WI !
-      else
-         WI @ SCOPE-STEP WI !
-      then
-      WI @ 1+ WI !
-   repeat ;
+   [: PASS1-AT ;] EACH-DEF ;
 
 variable CHANGED  variable EFF
 : CLOSE-CLOBBERS  ( -- )
@@ -1280,10 +1344,10 @@ variable LBL#  variable LX  variable GROWN
 : LS  ( n n -- ^n ) {: lbl:n field:n :}
    lbl LS-STRIDE * field + LSTATE ;
 
-\ A label's key is its index in the label table; -1 marks a name only its
-\ definition holds, as a `LBL {: name :}` local, matched by text as C-LABEL$ does.
+\ A label's key is its index in the label table; -1 marks a name no entry
+\ holds, as a `LBL {: name :}` local, matched by text.
 : LABEL-KEY  ( n -- n )
-   TOK C-QUALIFIED$ C-FIND ;
+   TOK [: C-FIND ;] SCOPE-FIND ;
 
 : LABEL-MATCH?  ( n n n -- bool ) {: key:n name:n lbl:n :}
    lbl LS-KEY LS @ key <> if LINT-FALSE exit then
@@ -1381,27 +1445,21 @@ variable LBL#  variable LX  variable GROWN
 \ the calls see its row.
 : HOST-PASSED  ( -- )  BOUND# @ 1+ BOUND# ! ;
 
+: PASS2-AT  ( n n ^u8 n -- ) {: k:n hi:n fa:^ fu:n :}
+   k 1+ WORD-NAME!
+   k 2 + hi DEF-LOCALS
+   fa fu  k 2 + hi PASS2-DEF
+   HOST-PASSED ;
+
 : PASS2-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE  FILE-START
-   0 PKG-U ! 0 WI !
-   begin WI @ TN# @ 1- < while
-      WI @ TOK s" :" LINT-STR= if
-         WI @ DEF-END WE !
-         WI @ 1+ WORD-NAME!
-         WI @ 2 + WE @ DEF-LOCALS
-         pa pu  WI @ 2 + WE @ PASS2-DEF
-         HOST-PASSED
-         WE @ WI !
-      else
-         WI @ SCOPE-STEP WI !
-      then
-      WI @ 1+ WI !
-   repeat  LSTATE-RELEASE ;
+   [: pa pu PASS2-AT ;] EACH-DEF  LSTATE-RELEASE ;
 
-\ The engine's files in load order: a call binds an earlier definition, so
-\ every host row precedes its callers.
+\ The engine's files in load order, each after the files it requires: a call
+\ binds an earlier definition, so every host row precedes its callers.
 : EACH-FILE ( [ ^u8 n -- ] -- ) {: visit :}
-   s" src/habu/rt.f" visit execute  s" src/habu/crash.f" visit execute
+   s" src/habu/crash.f" visit execute  s" src/habu/rt.f" visit execute
+   s" src/habu/prof-abi.f" visit execute
    s" src/habu/habu1.f" visit execute
    s" src/habu/prof.f" visit execute
    s" src/habu/habu2.f" visit execute ;
@@ -1440,6 +1498,31 @@ variable STALE
    [: drop ROW-DECLARED ;] PRESERVE-ROWS
    STALE @ 0 > if s" clobber-lint: stale mask rows" 1 die then ;
 
+\ A `LABEL@ BL,` call at token k, in the definition ending at hi, whose callee
+\ pass 1 never opened is reported and counted in UNBOUND.
+variable UNBOUND
+: CALL-OPENED  ( ^u8 n n n -- ) {: fa:^ fu:n k:n hi:n :}
+   k hi BL-CALL-SITE? 0= if exit then
+   k TOK [: C-FIND ;] SCOPE-FIND {: c:n :}
+   c 0 >= if c C-OPENED? if exit then then
+   s" clobber-lint: call names no opened routine: " type fa fu type s"  " type
+   WNAME WLEN @ type s"  calls " type
+   c 0 >= if c C-NAME else k TOK then type NL
+   UNBOUND @ 1+ UNBOUND ! ;
+
+: CALLS-AT  ( n n ^u8 n -- ) {: k:n hi:n fa:^ fu:n :}
+   k 1+ WORD-NAME!
+   hi k 2 + ?do fa fu i hi CALL-OPENED loop ;
+
+: CALLS-FILE  ( ^u8 n -- ) {: pa:^ pu:n :}
+   pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
+   [: pa pu CALLS-AT ;] EACH-DEF ;
+
+: PROVE-CALLS  ( [ [ ^u8 n -- ] -- ] -- ) {: files :}
+   0 UNBOUND !
+   [: CALLS-FILE ;] files execute
+   UNBOUND @ 0 > if s" clobber-lint: unbound calls" 1 die then ;
+
 : PASS2-START  ( -- )
    SEED# @ BOUND# !  0 BAD ! ;
 
@@ -1451,6 +1534,7 @@ variable STALE
    HOSTS-OPEN
    [: PASS1-FILE ;] files execute
    PROVE-ROWS
+   files PROVE-CALLS
    [: SCAN-FILE ;] files execute
    CLOSE-CLOBBERS
    PASS2-START

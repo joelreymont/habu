@@ -870,8 +870,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   and by `tools/check.f`. Put comments above the opener, including comments
   explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
-  (letter param, concrete cell type, `^T`, closed arity-0 family, or a
-  quotation `[ in -- out ]`). A quotation field is one execution-token cell;
+  (letter param, concrete cell type, `^T`, closed arity-0 family, applied
+  family such as `option<n>`, or, in a `STRUCTURE` only, a quotation
+  `[ in -- out ]`). A quotation field is one execution-token cell;
   `MAKE`/`UNMAKE`, whole-record storage and a `DERIVE addr` accessor preserve
   its exact effect, so `FIELD handler [ request response -- ]` yields
   `^[ request response -- ]` and `@ execute` checks the call. A whole record

@@ -1,9 +1,9 @@
 \ Every flat src/lib/<name>.f module bare-loads (`bin/hb --load` in a fresh
 \ child, empty stdin, exit 0): it requires its own dependency closure. A missing
 \ require is masked by the gate's resident load order and surfaces only here.
-\ The list is walked from src/lib each run with no exclusion table; nested
-\ src/lib/<sub>/ and *-test.f files are out of scope, covered by their own
-\ suites.
+\ Each module loads as the walk of src/lib finds it, with no list or exclusion
+\ table; nested src/lib/<sub>/ and *-test.f files are out of scope, covered by
+\ their own suites.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -18,19 +18,14 @@ require src/lib/engine-candidate.f
 package STDLIB-STANDALONE-LOAD
 
 2048 constant CAP
-$4000 constant PATHS-CAP
-128 constant PATHS-MAX
 40 constant MODULE-FLOOR                     \ min flat modules; guards a broken walk
 47 constant SLASH
 
 create OUT CAP allot
 create ERR CAP allot
 create EMPTY 1 allot
-create PATHS-BUF PATHS-CAP allot
-create PATH-OFF PATHS-MAX cells allot
-create PATH-LEN PATHS-MAX cells allot
-variable PATHS-N
-variable PATHS-USED
+variable MODULES-N
+TYPED-VARIABLE JSON-SEEN bool
 
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
@@ -52,25 +47,6 @@ variable PATHS-USED
    a u s" -test.f" SUFFIX? if FALSE exit then
    a u SLASHES 2 = ;
 
-: PATH$ ( n -- ^u8 n ) {: k:n :}
-   PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
-
-: COLLECT ( ^u8 n -- ) {: a:^ u:n :}     \ FS:WALK-FILES callback
-   a u FLAT-MODULE? 0= if exit then
-   PATHS-N @ PATHS-MAX >= if E-TBL-BOUNDS throw then
-   PATHS-USED @ u + PATHS-CAP > if E-TBL-BOUNDS throw then
-   a  PATHS-BUF PATHS-USED @ +  u BYTE-COPY
-   PATHS-USED @ PATH-OFF PATHS-N @ cells + !
-   u PATH-LEN PATHS-N @ cells + !
-   PATHS-USED @ u + PATHS-USED !
-   PATHS-N @ 1+ PATHS-N ! ;
-
-: COLLECTED? ( ^u8 n -- bool ) {: qa:^ qu:n :}
-   0 begin dup PATHS-N @ < while
-      dup PATH$ qa qu STR= if drop TRUE exit then
-      1+
-   repeat drop FALSE ;
-
 : LOADS ( ^u8 n -- )
    {: p:^ u:n :}
    PROC-ARGV-RESET
@@ -82,21 +58,20 @@ variable PATHS-USED
    p u T-LABEL
    p u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 
-: LOAD-ALL ( -- )
-   0 begin dup PATHS-N @ < while
-      dup PATH$ LOADS
-      1+
-   repeat drop ;
+: COLLECT ( ^u8 n -- ) {: a:^ u:n :}     \ FS:WALK-FILES callback
+   a u FLAT-MODULE? 0= if exit then
+   MODULES-N @ 1+ MODULES-N !
+   a u s" src/lib/json.f" STR= if TRUE JSON-SEEN ! then
+   a u LOADS ;
 
 public
 
 : RUN ( -- )
    T-RESET
-   0 PATHS-N !  0 PATHS-USED !
+   0 MODULES-N !  FALSE JSON-SEEN !
    s" src/lib" [: COLLECT ;] FS:WALK-FILES
-   s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE
-   s" src/lib/json.f discovered" T-LABEL   s" src/lib/json.f" COLLECTED? TTRUE
-   LOAD-ALL
+   s" flat lib modules discovered" T-LABEL  MODULES-N @ MODULE-FLOOR >= TTRUE
+   s" src/lib/json.f discovered" T-LABEL   JSON-SEEN @ TTRUE
    T-REPORT
    s" stdlib-standalone-load-test: ok" type cr ;
 
