@@ -270,10 +270,6 @@ E-PF-SCHEMA EXPLAIN
 \ The stream is HEAD (the family name the callers lexed first) and BODY (the
 \ space-separated rest). A zero-length HEAD reaches the front end's "missing
 \ name" gate instead of promoting the first body token.
-\ Every tail carries an `RP-` stem: test/engine-error-package.f corrupts the
-\ baked `checker-package` name, package scope goes, and every package-local tail
-\ becomes a bare global; an `OPEN` here collided with DECL-REJECT's and the
-\ patched engine exited 78 instead of the pinned 70.
 package DECL-REPLAY
 
 \ Re-entry is refused with a code the transaction can roll back; production
