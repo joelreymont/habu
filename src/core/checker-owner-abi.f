@@ -119,6 +119,10 @@ $1F00 constant BINDING-ID-MASK
 11 constant BINDING-PARSES-ID
 12 constant BINDING-THROUGH-ID
 13 constant BINDING-NAMES-ID
+\ A declaration whose state is the checker's: top level only, a build runs hb's word.
+14 constant BINDING-DECLARATION-ID
+\ A word on the program's state that runs only at top level: a build runs the target's.
+15 constant BINDING-TOP-ONLY-ID
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED

@@ -82,6 +82,8 @@ NEWTYPE sem
 : PTHREAD-ENTRY ( -- n ) task-entry ;
 
 private
+EXPORT CHECK:INTRINSIC
+EXPORT CHECK:INTRINSIC-TOP-ONLY
 
 \ Both converters stay private: no caller mints a handle over its own memory or
 \ projects one back to an address.
@@ -1614,11 +1616,13 @@ public
 : +USER ( -- )
    1 CHILD-ABI:SLOT ['] SLOT AS-SLOT-ENTRY
    s" TASK:+USER" USER-ROW ;
+INTRINSIC-TOP-ONLY INTRINSIC
 
 \ Accessor ( n -- ^t ): element n of the calling thread's copy.
 : +USERS ( n -- )
    CHILD-ABI:SLOTS ['] SLOT-AT AS-SLOTS-ENTRY
    s" TASK:+USERS" USER-ROW ;
+INTRINSIC-TOP-ONLY INTRINSIC
 
 private
 

@@ -1250,6 +1250,7 @@ global
 \ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
 : STRUCTURE ( -- ) DECLARE-STRUCTURE ;
+INTRINSIC-DECLARATION INTRINSIC
 
 \ MUTUAL is a documented global, as STRUCTURE is: it lists the families of a
 \ cycle of structures, then holds one STRUCTURE ... ;STRUCTURE per listed
@@ -1257,6 +1258,7 @@ global
 \ ;STRUCTURE has not been read is named only beneath `^`. It parses its body at
 \ interpret time, so its checked effect is ( -- ).
 : MUTUAL ( -- ) DECLARE-MUTUAL ;
+INTRINSIC-DECLARATION INTRINSIC
 
 \ NEWTYPE is a documented global. A base is the type on the name's line; a \
 \ there, or a parametrised name, leaves the one-cell family. A missing name is
@@ -1273,6 +1275,7 @@ global
    ta LBUF:STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
    na nu 2dup LBUF:STORAGE-PARSE-TYPE s" newtype" SD-WRAP drop ;
+INTRINSIC-DECLARATION INTRINSIC
 
 ;package
 

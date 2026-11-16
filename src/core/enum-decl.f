@@ -389,6 +389,7 @@ global
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
 : ENUM ( -- ) DECLARE-ENUM ;
+INTRINSIC-DECLARATION INTRINSIC
 ;package
 
 ;using

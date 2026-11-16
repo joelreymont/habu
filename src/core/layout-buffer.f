@@ -67,6 +67,8 @@ EXPORT CHECK:CHECKER-STORAGE-TERM
 EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
 EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
+EXPORT CHECK:INTRINSIC
+EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:LBI-BAD
 EXPORT CHECK:LBI-CELLS
 EXPORT CHECK:LBI-T
@@ -410,6 +412,7 @@ global
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
+INTRINSIC-DECLARATION INTRINSIC
 
 : DEFER-LAYOUT-BUFFER ( -- )
    SRCLOC:TOKEN$ {: run:^ runu:n :}
@@ -430,6 +433,7 @@ global
    0 ,  0 ,  0 ,  LBUF-W @ ,
    handle v CHECKER-STORAGE-DEFER
    name nameu v COMPANIONS ;
+INTRINSIC-DECLARATION INTRINSIC
 
 private
 
@@ -474,6 +478,7 @@ global
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
+INTRINSIC-DECLARATION INTRINSIC
 
 \ A missing name is rejected at the token that ran the definer, which the
 \ message names.
@@ -491,6 +496,7 @@ global
    here {: v:^ :}
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
+INTRINSIC-DECLARATION INTRINSIC
 
 public
 

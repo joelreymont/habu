@@ -13,6 +13,8 @@ package VNOM
 private
 EXPORT TYPE-DECL:SD-WRAP
 EXPORT TYPE-DECL:CHECKER-DEFTYPE
+EXPORT CHECK:INTRINSIC
+EXPORT CHECK:INTRINSIC-DECLARATION
 
 DYNAMIC-BUFFER TAIL u8
 
@@ -43,7 +45,7 @@ public
    ta tu sa su ba bu s" deftype" SD-WRAP {: fam:n :}
    sa su ba bu fam TYPE-DECL:TDECL-CONVERTERS ;
 
-;package
+global
 
 \ The one global word, a declarer beside ENUM, SUMTYPE and NEWTYPE, so it reads
 \ bare from any package while the family lands in that package. Top-level
@@ -62,3 +64,5 @@ public
    bu 0= IF na nu VNOM:MINT EXIT THEN
    bu 1 = IF ba c@ 92 = IF ba LBUF:STORAGE-UNREAD  na nu VNOM:MINT EXIT THEN THEN
    na nu ba bu VNOM:MINT-OVER ;
+INTRINSIC-DECLARATION INTRINSIC
+;package

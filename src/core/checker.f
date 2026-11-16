@@ -5695,6 +5695,8 @@ private
 CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses:
 CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through:
 CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names:
+CHECKER-OWNER-ABI:BINDING-DECLARATION-ID constant INTRINSIC-DECLARATION
+CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID constant INTRINSIC-TOP-ONLY
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
@@ -5736,6 +5738,8 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    id INTRINSIC-PARSES = IF s" parses" EXIT THEN
    id INTRINSIC-PARSES-THROUGH = IF s" parses-through" EXIT THEN
    id INTRINSIC-NAMES = IF s" names" EXIT THEN
+   id INTRINSIC-DECLARATION = IF s" declaration" EXIT THEN
+   id INTRINSIC-TOP-ONLY = IF s" top-only" EXIT THEN
    id INTRINSIC-XT-STORE = IF s" xt-store" EXIT THEN
    id INTRINSIC-ATOMIC-STORE = IF s" atomic-store" EXIT THEN
    id INTRINSIC-ATOMIC-CAS = IF s" atomic-cas" EXIT THEN
@@ -16800,7 +16804,7 @@ package CHECK
    s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or 0 1 NORET-NONZERO-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
    s" INTERPRETER" s" die-closed" CTL-DEAD NORET-PRIVATE-AXIOM
-   s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
+   s" evaluate" CTL-RENDERS CTL-CORE-OP or INTRINSIC-TOP-ONLY INTRINSIC>CTL or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM
    s" parse-name" CTL-PARSES NORET-AXIOM
@@ -21550,6 +21554,7 @@ package CHECK
 global
 : PARSE-IMM ( ^u8 n n -- ) {: a:^ u:n cnt:n :}
    a u cnt SRCLOC:TOKEN$ PIMM-SYM cnt PIMM-ADD ;
+INTRINSIC-DECLARATION INTRINSIC
 private
 
 \ PARSE-IMM's row, added by the verifier's replay in a verifier window only;

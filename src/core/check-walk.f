@@ -2722,6 +2722,7 @@ TRUSTED: generates: ( -- )
    sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec
    sym NORET-NONZERO@ NORET-ADD-CREATES
    selected sym RECORD-CONTROL-AT! ;
+INTRINSIC-DECLARATION INTRINSIC
 private
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 

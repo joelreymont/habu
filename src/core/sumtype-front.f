@@ -35,5 +35,6 @@ global
 \ A documented global: it parses its body to its closer at interpret time, so
 \ its checked effect is ( -- ).
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
+INTRINSIC-DECLARATION INTRINSIC
 
 ;package
