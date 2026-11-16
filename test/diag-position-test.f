@@ -633,6 +633,32 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" message" s" rendered source may change what it does" FIELD-HAS
    1 s" W" 2 10 39 40 FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ A program's word of a target predicate's spelling is no engine answer to
+\ --verify-only: its `[if]` is left to the run, as any other flag is.
+\ check.f's reserved-name lint refuses these definitions before the verifier.
+: TEST-PROGRAM-TARGET-WORD ( -- )
+   s" a package's word of a target predicate's spelling" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" : HB-TARGET-LINUX? ( -- bool ) false ;" SB-APPEND LF+
+   s" HB-TARGET-LINUX? [if] require target-absent.f [then]" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" package-target.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" [if]" 3 18 66 70 FX-PATH$ CANON$ FX$ AT-IN
+   s" a target predicate undefined and redefined" T-LABEL
+   SB-RESET
+   s" undefine HB-TARGET-LINUX?" SB-APPEND LF+
+   s" : HB-TARGET-LINUX? ( -- bool ) false ;" SB-APPEND LF+
+   s" HB-TARGET-LINUX? 0= [if] require target-absent.f [then]" SB-APPEND LF+
+   s" redefined-target.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" [if]" 3 21 85 89 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ The fixture's one rejection, CODE at its `parse-imm` token, under the check
 \ and under --verify-only.
 : PIMM-REJECTED ( ^u8 n n n n n -- )
@@ -3334,6 +3360,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SOURCE-IMMEDIATE
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
+   TEST-PROGRAM-TARGET-WORD
    TEST-PARSE-IMM-REJECT
    TEST-GENERATES
    TEST-GENERATES-READS-NONE

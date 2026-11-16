@@ -1473,12 +1473,13 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       \ never about what its name binds: the lookup cannot see a definition the
       \ engine has not published, and answers the word it shadows.
       NMA @ NMU @ CHECKER-RECORD-SYM {: sym:n :}
-      \ The identity the symbol already carries (INTRINSIC) stays: a replay
-      \ of the engine's own source re-records the word and never runs the
-      \ line that tagged it, while `undefine` zeroed it, so a redefinition
-      \ carries none. CTL-RENDERS stays for the same reason: the evaluate
-      \ boundary's is an axiom, and no body derives it.
-      sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK CTL-RENDERS or CTL-NOMINAL or and CTLNEW !
+      \ The identity the symbol already carries (CTL-IDENTITY: the intrinsic
+      \ tag and the engine's-own-word mark) stays: a replay of the engine's
+      \ own source re-records the word and never runs the line that tagged
+      \ it, while `undefine` zeroed it, so a redefinition carries none.
+      \ CTL-RENDERS stays for the same reason: the evaluate boundary's is an
+      \ axiom, and no body derives it.
+      sym CTL-FLAGS-SYM CTL-IDENTITY CTL-RENDERS or CTL-NOMINAL or and CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
       CTLNEW @ INHSET @ or CTLNEW !

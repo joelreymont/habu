@@ -12730,8 +12730,8 @@ variable PE-SPEC-TOS
 
 PTABLE-START
 
-\ The engine holds no record for the keywords, so no facts text can carry these
-\ facts: they are the prefix of a product's checker stores, baked into its DATA.
+\ The prefix of a product's checker stores, baked into its DATA: the keywords'
+\ rows, which no engine record holds, and the symbols KEYWORD-AXIOMS marks.
 : KEYWORD-ROWS ( -- )
    S\" s\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
    S\" c\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
@@ -12753,6 +12753,11 @@ PTABLE-START
    s" included" PE-SYM-OF drop
    s" required" PE-SYM-OF drop
    s" script-required" PE-SYM-OF drop
+   s" HB-TARGET-LINUX?" PE-SYM-OF drop
+   s" HB-TARGET-MACOS?" PE-SYM-OF drop
+   s" HB-TARGET-LINUX-X86-64?" PE-SYM-OF drop
+   s" HB-TARGET-LINUX-KERNEL?" PE-SYM-OF drop
+   s" HB-TARGET-WASM?" PE-SYM-OF drop
    s" define-word" PE-SYM-OF drop ;
 
 KEYWORD-ROWS
@@ -16983,7 +16988,7 @@ package CHECK
 : NORET-PRIVATE-AXIOM {: pkg:^ pkgu:n a:^ u:n flag:n :}
    pkg pkgu SYM-PRIVATE a u SYM-INTERN  a u flag 0 NORET-SYM-AXIOM ;
 
-\ The axioms of the grammar KEYWORD-ROWS interns, a product's whole prefix.
+\ The axioms of the symbols KEYWORD-ROWS interns, a product's whole prefix.
 : KEYWORD-AXIOMS ( -- )
    s" >r" CTL-CORE-OP NORET-AXIOM
    s" r>" CTL-CORE-OP NORET-AXIOM
@@ -16993,7 +16998,12 @@ package CHECK
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
    s" script-required" CTL-RENDERS NORET-AXIOM
-   s" define-word" CTL-RENDERS NORET-AXIOM ;
+   s" define-word" CTL-RENDERS NORET-AXIOM
+   s" HB-TARGET-LINUX?" CTL-CORE-OP NORET-AXIOM
+   s" HB-TARGET-MACOS?" CTL-CORE-OP NORET-AXIOM
+   s" HB-TARGET-LINUX-X86-64?" CTL-CORE-OP NORET-AXIOM
+   s" HB-TARGET-LINUX-KERNEL?" CTL-CORE-OP NORET-AXIOM
+   s" HB-TARGET-WASM?" CTL-CORE-OP NORET-AXIOM ;
 
 \ A symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )

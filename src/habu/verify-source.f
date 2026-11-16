@@ -68,20 +68,21 @@
 \ inside the quotation bends only the quotation's line, and `;]` ends every
 \ bend made inside it. A `;]` with no quotation open is a bracket like any
 \ other. A loader under a condition may not run, so its file is the run's to
-\ load. A target predicate right before an `if` is no such condition: the
-\ engine answers each predicate one way, so the arm its answer runs stays on
-\ the straight line, the other arm is read only for its end and never runs,
-\ and an `else` or `then` no target `if` opened ends the line. A top-level
-\ `[if]` whose flag those answers settle reads only the text that flag
-\ chooses. The path is the literal right before the loader word, the bytes the
-\ engine's literal makes of it. Only a path literal makes a waiting load, as in
-\ the walk: a `c"` or `."` one gives the loader no path, so the walk records no
-\ file and the composition reads none. The path waits however long it is: the
-\ resolver alone refuses one, when its turn comes, and the composition loads
-\ nothing for it. An entry keeps a copy of its path: a decoded one lives only
-\ until the next decode, and the release comes after later bodies, top-level
-\ statements and nested files have decoded theirs. A file's entries sit above
-\ its loader's, and their paths go with them.
+\ load. The engine's target predicate right before an `if` is no such
+\ condition: the engine answers each predicate one way, so the arm its answer
+\ runs stays on the straight line, the other arm is read only for its end and
+\ never runs, and an `else` or `then` no target `if` opened ends the line. A
+\ top-level `[if]` whose flag those answers settle reads only the text that
+\ flag chooses. A program's word of a predicate's spelling is read as any
+\ other condition. The path is the literal right before the loader word, the
+\ bytes the engine's literal makes of it. Only a path literal makes a waiting
+\ load, as in the walk: a `c"` or `."` one gives the loader no path, so the
+\ walk records no file and the composition reads none. The path waits however
+\ long it is: the resolver alone refuses one, when its turn comes, and the
+\ composition loads nothing for it. An entry keeps a copy of its path: a
+\ decoded one lives only until the next decode, and the release comes after
+\ later bodies, top-level statements and nested files have decoded theirs. A
+\ file's entries sit above its loader's, and their paths go with them.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
 \ check, so the ordinary effect checker judges its runtime loader calls. What
@@ -1099,18 +1100,52 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 : >GUARD ( bool -- n )
    IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
 
-\ What a target predicate answers: the arm an `if` right after it runs in a
-\ body (ARM-TOKEN?), and the flag it pushes at top level (FLAG-LIT).
+\ The record of a declaration-owner record with no operation for a step the
+\ scan takes, at the statement it is in when a source the record knows holds
+\ it. The scan knows the field's offset only, so no operation is named.
+: OWNER-STOP ( -- )
+   TOP-CUR-A @ {: p:^ :}
+   p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:^ :}
+   NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
+
+\ Replay-only checker queries use the live declaration owner.
+: OWNER-XT ( n -- n ) {: off:n :}
+   NCOMP-DISPATCH:DECL-A @
+   off CELL + CHECKER-OWNER-GUARD:VALIDATE
+   off + CELL-VIEW @ dup 0= IF OWNER-STOP THEN ;
+
+CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
+: TOP-BINDING ( ^u8 n -- n n n )
+   CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
+
+: CORE-OP? ( ^u8 n -- bool )
+   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
+
+\ The answer F of the engine's predicate the token a u spells, when the
+\ token binds that word; GUARD-NONE when it binds a program's word.
+: ENGINE-GUARD ( ^u8 n bool -- n ) {: a:^ u:n f:bool :}
+   a u CORE-OP? 0= IF GUARD-NONE EXIT THEN
+   f >GUARD ;
+
+\ What the engine's target predicate the token a u binds answers: the arm an
+\ `if` right after it runs in a body (ARM-TOKEN?), and the flag it pushes at
+\ top level (FLAG-LIT).
 : TARGET-GUARD ( ^u8 n -- n ) {: a:^ u:n :}
-   a u s" HB-TARGET-LINUX?" STR=CI IF HB-TARGET-LINUX? >GUARD EXIT THEN
-   a u s" HB-TARGET-MACOS?" STR=CI IF HB-TARGET-MACOS? >GUARD EXIT THEN
+   a u s" HB-TARGET-LINUX?" STR=CI IF
+      a u HB-TARGET-LINUX? ENGINE-GUARD EXIT
+   THEN
+   a u s" HB-TARGET-MACOS?" STR=CI IF
+      a u HB-TARGET-MACOS? ENGINE-GUARD EXIT
+   THEN
    a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
-      HB-TARGET-LINUX-X86-64? >GUARD EXIT
+      a u HB-TARGET-LINUX-X86-64? ENGINE-GUARD EXIT
    THEN
    a u s" HB-TARGET-LINUX-KERNEL?" STR=CI IF
-      HB-TARGET-LINUX-KERNEL? >GUARD EXIT
+      a u HB-TARGET-LINUX-KERNEL? ENGINE-GUARD EXIT
    THEN
-   a u s" HB-TARGET-WASM?" STR=CI IF HB-TARGET-WASM? >GUARD EXIT THEN
+   a u s" HB-TARGET-WASM?" STR=CI IF
+      a u HB-TARGET-WASM? ENGINE-GUARD EXIT
+   THEN
    GUARD-NONE ;
 
 \ `if`, `else` and `then` on the straight line, true when the token is one. The
@@ -1340,20 +1375,6 @@ variable GROUP-AT
    THEN
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
-
-\ The record of a declaration-owner record with no operation for a step the
-\ scan takes, at the statement it is in when a source the record knows holds
-\ it. The scan knows the field's offset only, so no operation is named.
-: OWNER-STOP ( -- )
-   TOP-CUR-A @ {: p:^ :}
-   p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:^ :}
-   NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
-
-\ Replay-only checker queries use the live declaration owner.
-: OWNER-XT ( n -- n ) {: off:n :}
-   NCOMP-DISPATCH:DECL-A @
-   off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF OWNER-STOP THEN ;
 
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.
@@ -3059,10 +3080,6 @@ DYNAMIC-BUFFER PRS-TERMS u8
 : PRS-OWNER-BASE ( -- n )
    NCOMP-DISPATCH:DECL-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
-CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
-: TOP-BINDING ( ^u8 n -- n n n )
-   CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
-
 CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
 : TOP-VERDICT ( ^u8 n bool -- n )
    NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
@@ -4138,9 +4155,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u TARGET-GUARD {: g:n :}
    g GUARD-NONE = IF false false EXIT THEN
    g GUARD-LIVE = true ;
-
-: CORE-OP? ( ^u8 n -- bool )
-   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
 
 : FLAG-STEP ( ^u8 n -- ) {: a:^ u:n :}
    TOP-DEFER @ 0<> IF 0 FLAG-N ! EXIT THEN
