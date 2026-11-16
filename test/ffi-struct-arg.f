@@ -1,12 +1,9 @@
 \ ffi-struct-arg.f - C structs passed by value through FUNCTION:.
-\ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
-\ FFI-TEST, after test/ffi-struct-result.f, whose canaried destination it
-\ reuses. Its callees are the run's fixture library (test/ffi-struct-fixture.f).
+\ Loaded by src/lib/ffi-test.f inside package FFI-TEST, after
+\ test/ffi-struct-result.f, whose canaried destination and fixture it reuses.
 \
-\ AAPCS64 passes a record of up to 16 bytes in consecutive integer registers, or
-\ wholly on the stack once they run short, and a larger one as the address of a
-\ copy the caller owns. Every checksum weighs each member by position, so a
-\ member read from the wrong offset, register or stack slot fails its case.
+\ Every checksum weighs each member by position, so a member read from the
+\ wrong offset, register or stack slot fails its case on either ABI.
 
 STRUCT-FIXTURE:SELECT
 
@@ -15,7 +12,7 @@ FUNCTION: FFI-T-SUM12 hb_sum12 ( ^u8 -- i32 ) 0 12 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM16 hb_sum16 ( ^u8 -- n ) 0 16 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM24 hb_sum24 ( ^u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM32 hb_sum32 ( ^u8 -- n ) 0 32 STRUCT-ARG ;FUNCTION
-\ The whole 16-cell staging buffer: the copy alone fills it.
+\ The record alone fills the 16-cell staging buffer.
 FUNCTION: FFI-T-SUM128 hb_sum128 ( ^u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SPILL16 hb_spill16 ( n n n n n n n ^u8 n -- n )
    7 16 STRUCT-ARG
@@ -45,6 +42,9 @@ FUNCTION: FFI-T-ECHO32 hb_echo32 ( n ^u8 ^u8 -- )
    1 32 STRUCT-ARG 32 STRUCT-RESULT
 ;FUNCTION
 FUNCTION: FFI-T-RET9 hb_ret9 ( n n n n n n n n n ^u8 -- ) 32 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-RETTAIL16 hb_rettail16 ( n n n n ^u8 n ^u8 -- )
+   4 16 STRUCT-ARG 32 STRUCT-RESULT
+;FUNCTION
 
 create FFI-T-S8 8 allot
 create FFI-T-S16 16 allot
@@ -107,17 +107,17 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    3 4 FFI-T-S16 FFI-T-S16!
    2.5 FFI-T-S16 1.25 FFI-T-FMIX 3 4 FFI-T-H2 10 FFI-T-MIX 5 FFI-T-MIX T=
 
-   s" a 16-byte struct one register short spills whole with the next long" T-LABEL
+   s" a 16-byte struct after seven scalars spills whole" T-LABEL
    11 -12 FFI-T-S16 FFI-T-S16!
    1 2 3 4 5 6 7 FFI-T-S16 13 FFI-T-SPILL16
    7 FFI-T-FOLD 0 FFI-T-MIX 11 -12 FFI-T-H2 FFI-T-MIX 13 FFI-T-MIX T=
 
-   s" floats past d7 go on the stack beside a record in two registers" T-LABEL
+   s" floats past eight registers go on the stack beside a record" T-LABEL
    5 6 FFI-T-S16 FFI-T-S16!
    0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 2.5 FFI-T-S16 FFI-T-FSTACK
    9 FFI-T-FOLD 10 FFI-T-MIX 5 6 FFI-T-H2 FFI-T-MIX T=
 
-   s" narrow integers and a record past x7 go on the stack" T-LABEL
+   s" narrow integers and a record past eight longs go on the stack" T-LABEL
    -3 FFI-T-S8 LE:U32!  9 FFI-T-S8 4 + LE:U32!
    1 2 3 4 5 6 7 8 $9A $8123 $80000005 FFI-T-S8 FFI-T-NSTACK
    8 FFI-T-FOLD $9A FFI-T-MIX $8123 FFI-T-MIX $80000005 FFI-T-MIX
@@ -137,7 +137,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    1 5 FFI-T-MIX 7 -5 $FFFFFFF0 -9 FFI-T-H4 FFI-T-MIX 6 FFI-T-MIX
    1 -2 3 -4 FFI-T-H4 FFI-T-MIX 7 FFI-T-MIX T=
 
-   s" a copy's address on the stack after eight longs" T-LABEL
+   s" a large struct after eight longs keeps the following scalar" T-LABEL
    1 2 3 4 5 6 7 8 FFI-T-S32 9 FFI-T-BIGSTACK
    8 FFI-T-FOLD 1 -2 3 -4 FFI-T-H4 FFI-T-MIX 9 FFI-T-MIX T=
 
@@ -165,17 +165,24 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    FFI-T-SR-DST LE:U64@ 32 T=  FFI-T-SR-DST 8 + LE:U64@ 31 T=
    16 FFI-T-SR-CANARIES
 
-   s" a copied struct argument beside an x8 result" T-LABEL
+   s" a copied struct argument beside a hidden result" T-LABEL
    FFI-T-SR-RESET
    1 -2 3 -4 FFI-T-S32 FFI-T-S32!
    100 FFI-T-S32 FFI-T-SR-DST FFI-T-ECHO32
    101 98 103 96 FFI-T-SR-DST FFI-T-S32=
    32 FFI-T-SR-CANARIES
 
-   s" nine C arguments beside the destination spill the ninth" T-LABEL
+   s" nine C arguments beside the destination preserve every spill" T-LABEL
    FFI-T-SR-RESET
    1 2 3 4 5 6 7 8 9 FFI-T-SR-DST FFI-T-RET9
    8 FFI-T-FOLD 9 1 8 FFI-T-SR-DST FFI-T-S32=
+   32 FFI-T-SR-CANARIES
+
+   s" a whole-record spill leaves the remaining SysV register for the scalar" T-LABEL
+   FFI-T-SR-RESET
+   11 -12 FFI-T-S16 FFI-T-S16!
+   1 2 3 4 FFI-T-S16 13 FFI-T-SR-DST FFI-T-RETTAIL16
+   4 FFI-T-FOLD 11 -12 FFI-T-H2 13 -99 FFI-T-SR-DST FFI-T-S32=
    32 FFI-T-SR-CANARIES ;
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
@@ -255,6 +262,13 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ^u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
       evaluate-closed ;] FFI-T-SA-STAGING
    [: FFI-T-SA-WRAP$ evaluate-closed ;] FFI-T-SA-STAGING
+   HB-TARGET-LINUX-X86-64? if
+      s" a SysV hidden result consumes one integer register" T-LABEL
+      s" FUNCTION: FFI-T-SA-HIDDEN hb_none ( n n n n n ^u8 ^u8 -- ) 5 128 STRUCT-ARG 32 STRUCT-RESULT ;FUNCTION"
+      evaluate-closed
+      [: s" FUNCTION: FFI-T-SA-HIDDEN2 hb_none ( n n n n n n ^u8 ^u8 -- ) 6 128 STRUCT-ARG 32 STRUCT-RESULT ;FUNCTION"
+         evaluate-closed ;] FFI-T-SA-STAGING
+   then
    s" sixteen inputs are the limit, a struct destination included" T-LABEL
    s" FUNCTION: FFI-T-SA-CAP4 hb_none ( n n n n n n n n n n n n n n n ^u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    evaluate-closed

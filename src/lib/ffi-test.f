@@ -124,7 +124,7 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 : FFI-T-BAD-IN-TYPE ( -- )
    s" FUNCTION: FFI-T-XI getpid ( fd -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-PTR-IN ( -- )
-   s" FUNCTION: FFI-T-XP getpid ( ptr u8 -- n ) ;FUNCTION" evaluate-closed ;
+   s" FUNCTION: FFI-T-XP getpid ( ^u8 -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-OUT-TYPE ( -- )
    s" FUNCTION: FFI-T-XO getpid ( -- bool ) ;FUNCTION" evaluate-closed ;
 
@@ -936,9 +936,8 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 FFI-RUN
 
-\ Only the AAPCS64 targets pass structs by value.
 : FFI-T-STRUCT-LOAD ( -- )
-   HB-TARGET-MACOS? HB-TARGET-LINUX? or if
+   HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or if
       s" test/ffi-struct-result.f" required
       s" test/ffi-struct-arg.f" required
       s" test/ffi-struct-verify.f" required
