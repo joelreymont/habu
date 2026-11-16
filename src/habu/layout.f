@@ -278,10 +278,9 @@ $98 constant SECTION
 
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
 \ no include frame open: the root source stream's own text (stdin, tty or
-\ piped, or the `--load` and `--build` streams) and the boot prefix. The
-\ program file of a plain `hb <file>` has a frame of its own. The address is
-\ the frame's, not INCLUDE-PATH's, because a nested include overwrites that
-\ buffer.
+\ piped, or the `--load` stream) and the boot prefix. The program file of a
+\ plain `hb <file>` has a frame of its own. The address is the frame's, not
+\ INCLUDE-PATH's, because a nested include overwrites that buffer.
 \ INB-CELL: the start of the buffer INP walks. It is not beside INP/INE: $36C8
 \ is INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a

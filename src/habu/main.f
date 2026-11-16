@@ -1,7 +1,7 @@
 \ main.f - the engine's command line in Habu.
-\ `--load`, `--build` and stdin build one source stream, interpreted once, open,
-\ through SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file
-\ the loader reads and runs open (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
+\ `--load` and stdin build one source stream, interpreted once, open, through
+\ SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file the
+\ loader reads and runs open (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
 \ process's argv and stdin; RUN takes a vector, so a test can hand it one.
 
 require src/lib/string.f
@@ -26,10 +26,9 @@ $20 constant BLANK
 
 create NL $0A c,
 
-ENUM route load build plain ;ENUM
+ENUM route load plain ;ENUM
 
 : LOAD$ ( -- ^u8 n ) s" --load" ;
-: BUILD$ ( -- ^u8 n ) s" --build" ;
 : SEP$ ( -- ^u8 n ) s" --" ;
 
 \ Argument idx of an argv vector, a NUL-terminated string.
@@ -41,17 +40,12 @@ ENUM route load build plain ;ENUM
 : USAGE ( ^u8 n -- )
    s" hb: unknown flag: " ERROR-TEXT:TYPE  ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    s" usage: bin/hb " ERROR-TEXT:TYPE  LOAD$ ERROR-TEXT:TYPE
-   s"  " ERROR-TEXT:TYPE  BUILD$ ERROR-TEXT:TYPE
    s"  " ERROR-TEXT:TYPE  SEP$ ERROR-TEXT:TYPE
    s"  [file.f]  (source on stdin)" RC-USAGE die ;
 
-\ No file to load: `--load` or `--build` with nothing before the end or a
-\ `--`.
+\ No file to load: `--load` with nothing before the end or a `--`.
 : NO-FILES ( -- )
    s" hb: no source files" RC-SOURCE die ;
-
-: CANNOT-OPEN ( ^u8 n -- )
-   s" hb: cannot open " ERROR-TEXT:TYPE  RC-SOURCE die ;
 
 : CANNOT-READ ( -- )
    s" hb: cannot read source" RC-SOURCE die ;
@@ -62,14 +56,13 @@ ENUM route load build plain ;ENUM
 : CANNOT-MAP ( -- )
    s" hb: cannot map the source arena" RC-SOURCE die ;
 
-\ argv[1] picks it. `--load` and `--build` take the files after it up to the
-\ first `--`; what follows is the program's arguments (src/os/script-argv.f).
+\ argv[1] picks it. `--load` takes the files after it up to the first `--`;
+\ what follows is the program's arguments (src/os/script-argv.f).
 \ Any other argument starting with `-` is refused with the usage line, exit 64.
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
 : ROUTE ( ^u8 n -- route ) {: a:^ u:n :}
    a u LOAD$ STR= if construct route load exit then
-   a u BUILD$ STR= if construct route build exit then
    a u SEP$ STR= if construct route plain exit then
    u 0 > if a c@ DASH = if a u USAGE then then
    construct route plain ;
@@ -86,14 +79,10 @@ ENUM route load build plain ;ENUM
    r MATCH route
       plain OF 1 2 ENDOF
       load OF 2 argv argc LIST-END ENDOF
-      build OF 2 argv argc LIST-END ENDOF
    ;MATCH ;
 
 \ `--load` writes a `s" <path>" script-required` row per file, so the registry
-\ loads each in its own include frame and skips one the engine holds. The first
-\ file of `--build` is read raw after a `s" <path>" provided` row, `#!` made a
-\ comment; later `--build` files get `script-required` rows (`--build a.f
-\ missing.f` prints a.f's output, then include's "cannot open").
+\ loads each in its own include frame and skips one the engine holds.
 \ One row per file, a newline between files, all in one arena before any runs.
 \ The bytes stay mapped for the
 \ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
@@ -135,16 +124,6 @@ variable USED
    BACKSLASH a c!
    BLANK a 1 + c! ;
 
-\ The whole file at the cursor. The path is NUL-terminated, as
-\ every argv string is.
-: FILE ( ^u8 n -- ) {: path:^ u:n :}
-   path open-rd {: fd:n :}
-   fd 0 < if path u CANNOT-OPEN then
-   USED @ {: from:n :}
-   begin fd STEP until
-   fd close
-   SOURCE-ARENA @ from + USED @ from - SHEBANG ;
-
 : START-STREAM ( -- )
    SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then SOURCE-ARENA !
    0 USED ! ;
@@ -155,19 +134,12 @@ variable USED
 : PROGRAM-ARG ( -- ^^u8 )
    data-base PROGRAM-FILE-CELL + 0 ptr-field ;
 
-\ The stream for files [first, end); raw says whether the first, a `--build`
-\ payload, is read raw after its `provided` row.
-: STREAM ( ^^u8 n n bool -- ^u8 n ) {: argv:^ first:n end:n raw:bool :}
+\ The stream for files [first, end).
+: STREAM ( ^^u8 n n -- ^u8 n ) {: argv:^ first:n end:n :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
-      argv i ARG
-      i first = raw and if
-         2dup s" provided" ROW
-         FILE
-      else
-         s" script-required" ROW
-      then
+      argv i ARG s" script-required" ROW
    loop
    SOURCE-ARENA @ USED @ ;
 
@@ -203,8 +175,7 @@ public
    argv argc r FILES {: first:n end:n :}
    first end >= if NO-FILES then
    r MATCH route
-      load OF argv first end false STREAM RUN-TEXT ENDOF
-      build OF argv first end true STREAM RUN-TEXT ENDOF
+      load OF argv first end STREAM RUN-TEXT ENDOF
       plain OF
          argv first ARG over PROGRAM-ARG ! SOURCE-ROOT:RUN-PROGRAM
       ENDOF

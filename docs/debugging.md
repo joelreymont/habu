@@ -16,9 +16,9 @@ counts newlines from the start of the file.
 
 A rejection with no include frame open names no place, because there is no
 file to name: the root source stream's own text (src/habu/main.f `ROUTED`:
-stdin when `hb` has no argument, tty or piped, or the `--load` and `--build`
-streams themselves) and the engine's own boot prefix. The program file of a
-plain `hb <file>` is an open file and is named. A string `evaluate`d *inside* a
+stdin when `hb` has no argument, tty or piped, or the `--load` stream itself)
+and the engine's own boot prefix. The program file of a plain `hb <file>` is
+an open file and is named. A string `evaluate`d *inside* a
 file is placed at its own token while it is a slice of the file's own bytes
 (`parse-name X evaluate`); any other evaluated string's rejection is placed at
 the word in the file that ran it, with a note quoting the evaluated line and

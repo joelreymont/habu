@@ -2226,11 +2226,11 @@ public
 
 : USE-INTERPRETER ( [ ^u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
 
-\ The process's root stream (stdin, or the `--load` or `--build` stream) runs
-\ open, as the engine's own loop runs it: it may leave cells on the stack and
-\ the process still exits 0. The stream's text is no file's, so a refusal in it
-\ names none: run while a file is open, it counts itself on that file's frame,
-\ which then publishes no location until the stream returns or throws.
+\ The process's root stream (stdin, or the `--load` stream) runs open, as the
+\ engine's own loop runs it: it may leave cells on the stack and the process
+\ still exits 0. The stream's text is no file's, so a refusal in it names none:
+\ run while a file is open, it counts itself on that file's frame, which then
+\ publishes no location until the stream returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
    TOP@ 0= if exit then
    TOP@ {: frame:^ :}

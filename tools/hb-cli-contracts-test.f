@@ -58,20 +58,6 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" DATA" SB-APPEND HCT-LF
    SB$ ;
 
-: HCT-BUILD$ ( -- ^u8 n )
-   SB-RESET
-   s" SCRIPT-ARGC ." SB-APPEND HCT-LF
-   s" 0 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
-   s" 1 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
-   SB$ ;
-
-: HCT-BUILD-WANT$ ( -- ^u8 n )
-   SB-RESET
-   s" 2" SB-APPEND HCT-LF
-   s" alpha" SB-APPEND HCT-LF
-   s" beta" SB-APPEND HCT-LF
-   SB$ ;
-
 
 : HCT-ARGV$ ( -- ^u8 n )
    SB-RESET
@@ -157,9 +143,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" stderr echoes the offending flag" T-LABEL
    HCT-ERR HCT-ERR-U @ s" --loadx" CONTAINS? TTRUE
    s" usage names the known --load flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" --load" CONTAINS? TTRUE
-   s" usage names the internal --build flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" --build" CONTAINS? TTRUE ;
+   HCT-ERR HCT-ERR-U @ s" --load" CONTAINS? TTRUE ;
 
 \ printf '1 2 + . cr' | hb --nonsense  ->  rc 64: the flag is rejected before the
 \ piped program can run.
@@ -186,22 +170,6 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-CHILD HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
-
-: HCT-EXPECT-BUILD-ARGV ( -- )
-   HCT-CHILD HCT-BUILD$ FS:WRITE-ALL
-   PROC-ARGV-RESET
-   s" --build" >LEN PROC-ARGV+
-   HCT-CHILD >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" alpha" >LEN PROC-ARGV+
-   s" beta" >LEN PROC-ARGV+
-   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   HCT-CHILD HCT-STORE!
-   s" build source exits after explicit seal" T-LABEL
-   HCT-EXITED @ TTRUE HCT-RC @ 0 T=
-   HCT-ERR-U @ 0 T=
-   HCT-OUT HCT-OUT-U @ HCT-BUILD-WANT$ T$= ;
 
 
 : HCT-ARGV-LOAD ( -- )
@@ -244,7 +212,6 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXPECT-UNKNOWN-FLAG
    HCT-EXPECT-FLAG-BEFORE-STDIN
    HCT-EXPECT-LOAD-EMPTY-FILE
-   HCT-EXPECT-BUILD-ARGV
    HCT-EXPECT-ARGV-NONE
    HCT-EXPECT-ARGV-VALUES
    FS:CLEANUP-RUN

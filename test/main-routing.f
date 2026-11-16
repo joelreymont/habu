@@ -45,9 +45,7 @@ create PATH-BUF PATH-CAP allot
 
 : LOAD-ROUTE ( -- )
    s" Q" [: s" --load" GE-ARG+ READ$ GE-ARG+ ;] RUN
-   S\" Q\n" s" load leaves stdin alone" PASS
-   s" Q" [: s" --build" GE-ARG+ READ$ GE-ARG+ ;] RUN
-   S\" Q\n" s" build leaves stdin alone" PASS ;
+   S\" Q\n" s" load leaves stdin alone" PASS ;
 
 : NO-ARGS ( -- )
    S\" s\" PIPE\" type cr\n" [: ;] RUN
