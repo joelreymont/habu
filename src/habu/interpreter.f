@@ -3104,7 +3104,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 1 constant FRAME-LINKED
 2 constant FRAME-UNWOUND
 
-\ Success is the frame still on top with code 0: a 0 throw unwinds yet answers 0.
+\ Success is the frame still on top with code 0, which the catch answers only
+\ after LEFT saw the text end.
 : FRAME-EXIT ( ^u8 n -- n ) {: f:^ code:n :}
    f NULL-PTR - EVAL-TOP-CELL CELL@ <> if FRAME-UNWOUND exit then
    code 0= if FRAME-DONE else FRAME-LINKED then ;
@@ -3296,7 +3297,7 @@ public
       a u REPL-LINE REPL-OK !
    again ;
 
-\ The input base stays the buffer's first byte, so a refusal's line counts
+\ The input base stays the buffer's first byte, so a rejection's line counts
 \ from the start of the whole source.
 : EVAL-FRAMED-RANGE ( ^u8 n n n -- ) {: a:^ u:n first:n end:n :}
    depth FRAME-OPEN {: f:^ :}

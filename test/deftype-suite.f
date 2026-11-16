@@ -166,7 +166,7 @@ REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`
 REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTWRAP`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = help: define `>DTWRAP` before this point, or check its spelling" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
-\ the load's path, through DEFTYPE.
+\ The same record when the load runs DEFTYPE.
 s" DEFTYPE DTWRAP option"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dtwrap`\n"
 s" option" s" field type is parametric and needs type arguments"
