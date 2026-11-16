@@ -42,8 +42,11 @@
 \ and draws 0 rows through a skewed matrix. Each then sends the text volume,
 \ STUDIO:KEY-VOLUME's count and, as binary64 bits in hex, its 20 plane
 \ numbers and its pixel. Typed "ground-box" sends a casters' box whose
-\ lowest z lies above its highest. A resize, which clears the canvas, draws the
-\ last draw again, unless an SVG has been shown since.
+\ lowest z lies above its highest. Typed "warn" writes warned to descriptor 2;
+\ "warn-throw" writes it and throws 93; "die" writes warned and dies with an
+\ empty message; "die-255" writes byte 255 to descriptor 2 and dies with boom.
+\ A resize, which clears the canvas, draws the last draw again, unless an SVG
+\ has been shown since.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -80,6 +83,7 @@ CAST: BYTES>N ( ^u8 -- n )
 40 BUFFER: VOLUME-GROUND
 20 TYPED-BUFFER VOLUME-PLANES r
 variable IMAGE-U
+1 BUFFER: MALFORMED
 1024 constant ECHO-CAP
 ECHO-CAP BUFFER: ECHO-BUF
 variable ECHO-U
@@ -480,6 +484,13 @@ TYPED-VARIABLE SHOWN held
    u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
    true ;
 
+: WARNED ( -- )
+   2 s" warned" write drop ;
+
+: DIE-255 ( -- )
+   255 MALFORMED c!  2 MALFORMED 1 write drop
+   s" boom" 1 die ;
+
 : COMMAND ( -- )
    s" red" IS? if RED exit then
    s" blue" IS? if BLUE exit then
@@ -501,6 +512,10 @@ TYPED-VARIABLE SHOWN held
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
    s" text" IS? if s" still here" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD exit then
+   s" warn" IS? if WARNED exit then
+   s" warn-throw" IS? if WARNED 93 throw then
+   s" die" IS? if WARNED s" " 1 die then
+   s" die-255" IS? if DIE-255 then
    s" tree" IS? if s" []" {: a:^ u:n :} 5 a BYTES>N u 0 RECORD exit then
    s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
    s" fetch" IS? if s" slow" {: a:^ u:n :} 1 a BYTES>N u 0 RECORD exit then

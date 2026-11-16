@@ -71,12 +71,36 @@ for (const n of [0n, -1n, 2n ** 32n, 2n ** 32n + 1n]) assert.equal(module.x.rese
 assert.equal(memory(), before, "a refused reserve must not grow memory");
 await module.load(Uint8Array.of(0, 255, 16));
 assert.deepEqual(records.at(-1), ["text", "load 00ff10"], "a later delivery after a refused one");
-// A run that throws still frees its delivery: echoing 32 identities passes
-// ECHO's buffer, so each of these turns throws -1.
+// Echoing 32 identities passes ECHO's buffer, so each of these turns throws -1
+// and rejects with that throw's record above throw 67, the module's code for
+// an uncaught throw; the run still frees its delivery.
+const thrown = "error[E-THROW]: nothing caught a throw of code -1\n  = code: -1\n" +
+  "  = help: catch the code where the program can go on, or remove its cause\n\n";
 await module.focus(new Uint8Array(16));
 before = memory();
-for (let i = 0; i < 5; i++) await assert.rejects(module.focus(new Uint8Array(512)), /^Error: throw -1$/, "an echo past its buffer");
+for (let i = 0; i < 5; i++)
+  await assert.rejects(module.focus(new Uint8Array(512)),
+    (e) => e.constructor === Error && e.message === `${thrown}throw 67`, "an echo past its buffer");
 assert.equal(memory(), before, "turns that throw must free their deliveries");
+const logged = [];
+const consoleError = console.error;
+console.error = (...args) => logged.push(args);
+try {
+  await module.typed("warn");
+} finally {
+  console.error = consoleError;
+}
+assert.deepEqual(logged, [["warned"]], "a run that returns sends its error text to console.error");
+await assert.rejects(module.typed("warn-throw"),
+  (e) => e.constructor === Error && e.message === "warned\nthrow 93", "error text above a throw's code");
+for (const [command, text] of [["die", "warned"], ["die-255", "\uFFFDboom"]]) {
+  module = await Module.load(bytes, host);
+  await module.start();
+  await assert.rejects(module.typed(command), (e) => e.cause instanceof WebAssembly.RuntimeError &&
+    e.message === `${text}\n${e.cause.message}`, command);
+  assert.match(module.ended, /^the module trapped and has ended: Error: /, command);
+  assert.throws(() => module.run(), (e) => e.message === module.ended, `${command}: a run after the trap`);
+}
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
@@ -100,7 +124,7 @@ assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(origi
   "ground 0 0 1 0 -0.5 -0.5 0 0.5 0.5 1\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery, " +
-  "mesh origins and CLI passed");
+  "error text, mesh origins and CLI passed");
 
 if (chrome) await browser();
 

@@ -3,12 +3,13 @@
 // no DOM, GPU, network or file system.
 //
 // The module (src/arch/wasm/link.f) imports nothing and exports memory, run,
-// throw-code, out-base, out-len, fault-kind, fault-addr and reserve. The module
-// owns every byte of its memory, which may grow to memory32's 65536 pages. For
-// each delivery the host calls reserve(length), which answers the address of
-// fresh pages, at least one, or 0 when it refuses; the host copies the bytes
-// there and runs the event that names them. The module frees them (src/lib/browser/event.f) once it no
-// longer needs them. An empty delivery reserves nothing and is named 0, 0.
+// throw-code, out-base, out-len, fault-kind, fault-addr, err-base, err-len and
+// reserve. The module owns every byte of its memory, which may grow to
+// memory32's 65536 pages. For each delivery the host calls reserve(length),
+// which answers the address of fresh pages, at least one, or 0 when it refuses;
+// the host copies the bytes there and runs the event that names them. The
+// module frees them (src/lib/browser/event.f) once it no longer needs them. An
+// empty delivery reserves nothing and is named 0, 0.
 //
 // PROTOCOL is this protocol's revision: any change to the module's exports,
 // events or records, a kind added or removed included, raises it by one.
@@ -185,7 +186,8 @@
 // run while a request waits. A run that
 // traps ends the instance, as end() does: nothing runs, and memory does not
 // grow, after it. A trap the module recorded a fault kind for names the kind
-// and fault-addr.
+// and fault-addr. A run's error text comes first in a trap's or a throw's
+// Error, above the fault or throw <code>, and otherwise goes to console.error.
 //
 // Every field is an i64, little-endian, and a BigInt here. Growth detaches the
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
@@ -227,7 +229,7 @@ const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
-const PROTOCOL = 2n;
+const PROTOCOL = 3n;
 
 // Records.
 const HELLO = 0n;
@@ -257,6 +259,13 @@ const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
 const requestUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const encoder = new TextEncoder();
+// Error text decodes a malformed byte as U+FFFD: a diagnostic never fails on
+// its own content.
+const lenient = new TextDecoder();
+
+function joinLines(a, b) {
+  return a.endsWith("\n") ? a + b : `${a}\n${b}`;
+}
 
 // An rpc response's JSON text as its status, 1 for a result and 2 for an
 // error, and that member's value; any other text throws.
@@ -499,11 +508,14 @@ export class Module {
     try {
       status = this.x.run();
     } catch (e) {
-      const error = this.fault(e);
+      const fault = this.fault(e);
+      this.ended = `the module trapped and has ended: ${fault}`;
+      const text = this.stderr();
+      const error = text ? new Error(joinLines(text, fault.message), { cause: e }) : fault;
       this.ended = `the module trapped and has ended: ${error}`;
       throw error;
     }
-    const thrown = status !== 0 ? new Error(`throw ${this.x["throw-code"]()}`) : null;
+    const thrown = status !== 0 ? `throw ${this.x["throw-code"]()}` : null;
     const requests = [];
     try {
       for (const [kind, a, b, c] of this.records()) {
@@ -523,7 +535,12 @@ export class Module {
         started?.catch((error) => this.host.error(error));
       throw e;
     }
-    return [requests, thrown];
+    const text = this.stderr();
+    if (!thrown) {
+      if (text) console.error(text);
+      return [requests, null];
+    }
+    return [requests, new Error(text ? joinLines(text, thrown) : thrown)];
   }
 
   // The error a trap e ends the run with: e, or one naming the fault kind and
@@ -633,6 +650,16 @@ export class Module {
     const s = this.span(this.event, EVENT_BYTES);
     const v = new DataView(s.buffer, s.byteOffset, s.byteLength);
     event.forEach((f, i) => v.setBigInt64(8 * i, BigInt(f), true));
+  }
+
+  // The run's error text, [err-base, err-base + err-len), empty when it has none.
+  // A module of another revision may lack err-len: a first run is read before
+  // its hello's revision is checked.
+  stderr() {
+    if (!this.x["err-len"]) return "";
+    const len = BigInt(this.x["err-len"]() >>> 0);
+    if (len === 0n) return "";
+    return lenient.decode(this.span(BigInt(this.x["err-base"]() >>> 0), len));
   }
 
   // The run's records, each read whole before any is handled.
