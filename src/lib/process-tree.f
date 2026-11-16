@@ -26,7 +26,8 @@
 \ ends a stopped process without running it again.
 \ A STOPPED PROCESS STILL FINISHES THE SYSTEM CALL IT WAS IN, and a spawn is
 \ one. So a member is settled only when it is stopped and no thread of it runs
-\ in the kernel, and the walk ends on QUIET-PASSES such passes in a row.
+\ in the kernel, and the walk ends on QUIET-PASSES such passes in a row. A
+\ member found running is stopped again, on every host.
 \
 \ CPU-NS adds up the CPU time, user and system, that a process and every live
 \ process descended from it have run, each with the time of the children it
@@ -362,16 +363,18 @@ variable CUR
 : THREADS-LIST ( -- )
    TASK-DIR TASK-DIR-U BUF-LEN@ [: THREAD-VISIT ;] FS-LIST:EACH ;
 
-\ A member that ended since it joined has no task directory left to list.
+\ A member with a thread awake is stopped again: a SIGCONT can resume it after
+\ it joined. One that ended since it joined has no task directory left to list.
 : MEMBER-SETTLE-LINUX ( n -- ) {: pid:n :}
+   AWAKE @ {: before:n :}
    TASK-DIR-U BUF-RESET
    s" /proc/" TASK-DIR+
    pid DIGITS+
    s" /task" TASK-DIR+
    [: THREADS-LIST ;] catch {: code:n :}
-   code 0= if exit then
    code FS-LIST:E-OPEN = if exit then
-   code throw ;
+   code 0<> if code throw then
+   AWAKE @ before > if pid SIGSTOP kill drop then ;
 
 : SCAN-LINUX ( -- )
    s" /proc" [: VISIT-LINUX ;] FS-LIST:EACH

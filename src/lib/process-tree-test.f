@@ -240,6 +240,91 @@ PROCESS:NO-FD CROWD-WR !
 : CROWD ( -- )
    [: CROWD-BODY ;] [: CROWD-END ;] finally ;
 
+\ RESUME: a pinger outside the tree sends a member SIGCONT without pause from
+\ before the walk to half a second on: the walk finds it resumed after it joins.
+1000 constant RESUME-LIMIT-MS        \ half the window a member left running uses up
+1000000 constant NS-PER-MS
+
+create PING-BYTE 1 allot
+variable RESUMED                     \ the tree, one /bin/sleep, until reaped
+variable PINGER
+variable PING-RD
+variable PING-WR
+PROCESS:NO-PID RESUMED !
+PROCESS:NO-PID PINGER !
+PROCESS:NO-FD PING-RD !
+PROCESS:NO-FD PING-WR !
+
+\ The pinger writes its line after its first SIGCONT lands and stops when its
+\ own half-second sleep ends; it leads its own group, as any spawned child does.
+: PINGER-SCRIPT$ ( -- ^u8 n )
+   SB-RESET
+   s" sleep 0.5 >/dev/null & t=$!; kill -CONT " SB-APPEND
+   RESUMED @ FMT:SB-INT
+   s"  || exit 1; echo; while kill -0 $t 2>/dev/null; do kill -CONT " SB-APPEND
+   RESUMED @ FMT:SB-INT
+   s"  2>/dev/null; done" SB-APPEND
+   SB$ ;
+
+: RESUME-START ( -- )
+   PROC-ARGV-RESET
+   s" 30" >LEN PROC-ARGV+
+   s" /bin/sleep" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N RESUMED !
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD:FD-CLOEXEC!
+   w FD:FD-CLOEXEC!
+   r FD>N PING-RD !
+   w FD>N PING-WR !
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   PINGER-SCRIPT$ >LEN PROC-ARGV+
+   s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N PINGER !
+   PING-WR PROCESS:CLOSE-CELL ;
+
+\ TRUE once the pinger's line arrives; end of file is a pinger that could not
+\ signal the member.
+: PINGING? ( -- bool )
+   PING-RD @ PING-BYTE 1 read {: got:n :}
+   PING-RD PROCESS:CLOSE-CELL
+   got 1 = ;
+
+: RESUMED-KILL ( -- )
+   RESUMED @ >PID PROC-TREE:KILL-TREE ;
+
+: RESUME-BODY ( -- )
+   RESUME-START
+   s" resume: the pinger resumes the member before the walk starts" T-LABEL
+   PINGING? TTRUE
+   mono-ns {: start:n :}
+   s" resume: KILL-TREE ends a tree a SIGCONT keeps resuming" T-LABEL
+   [: RESUMED-KILL ;] 0 TTHROWSQ
+   s" resume: the walk stops the resumed member again and settles" T-LABEL
+   mono-ns start - NS-PER-MS / RESUME-LIMIT-MS < TTRUE
+   PINGER @ >PID PROCESS:WAIT drop
+   PROCESS:NO-PID PINGER !
+   s" resume: the member died of SIGKILL" T-LABEL
+   RESUMED @ >PID PROCESS:WAIT PROCESS:SIGKILL KILLED-BY? TTRUE
+   PROCESS:NO-PID RESUMED ! ;
+
+\ The pinger, which signals the member's pid, is reaped before the member is,
+\ so that pid is not handed on while it runs.
+: RESUME-END ( -- )
+   PING-WR PROCESS:CLOSE-CELL
+   PING-RD PROCESS:CLOSE-CELL
+   PINGER @ PROCESS:NO-PID <> if
+      PINGER @ negate PROCESS:SIGKILL kill drop
+      PINGER @ >PID PROCESS:WAIT drop
+      PROCESS:NO-PID PINGER !
+   then
+   RESUMED @ PROCESS:NO-PID <> if
+      RESUMED @ PROCESS:SIGKILL kill drop
+      RESUMED @ >PID PROCESS:WAIT drop
+      PROCESS:NO-PID RESUMED !
+   then ;
+
+: RESUME ( -- )
+   [: RESUME-BODY ;] [: RESUME-END ;] finally ;
+
 create RUNS-DIR PATH-CAP allot
 variable RUNS-DIR-U
 create IDLE-COPY PATH-CAP allot
@@ -334,6 +419,7 @@ variable IDLE-COPY-U
 : CASES ( -- )
    T-RESET
    CROWD
+   RESUME
    RUNS
    HB-TARGET-MACOS? 0= if
       s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr
