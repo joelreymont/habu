@@ -116,36 +116,37 @@ variable TEXT-U
    u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
    true ;
 
-\ Past twice OUT's first size: two growths, the second freeing a mapped run. A
-\ die of more than 2^32 bytes asks for more OUT than memory32 holds.
+\ Past twice OUT's first size: two growths, the second freeing a mapped run.
 : FULL-CASE ( -- )
    WPROF:OUT-CAP 2 * 1+ s" full.f" EMITS!
    s" emit grows OUT and the harness receives every byte" T-LABEL
    s" full.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:OUT$ nip WPROF:OUT-CAP 2 * 1+ T=
-   WASM-HARNESS:OUT$ ALL-X? TTRUE
-   S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
-   s" a die OUT cannot grow for traps and records STREAM-GROW at OUT's end past it" T-LABEL
-   s" huge.wasm" BUILD 0 T=
-   RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STREAM-GROW T=
-   WASM-HARNESS:FAULT-ADDR WPROF:OUT-BASE 1 32 lshift + 1+ T= ;
+   WASM-HARNESS:OUT$ ALL-X? TTRUE ;
 
-\ One write to descriptor 2 past ERR's first size: ERR grows and takes it whole.
+\ One write to descriptor 2 past ERR's first size: ERR grows and takes it whole;
+\ one to descriptor 1 goes to OUT.
+\ A die of more than 2^32 bytes asks for more ERR than memory32 holds.
 : ERR-CASE ( -- )
    WPROF:ERR-CAP 1+ {: n:n :}
    SB-RESET
    n FMT:SB-U  s"  BUFFER: B : MAIN ( -- ) " SB-APPEND
    n FMT:SB-U  s"  0 do 120 B i + c! loop  2 B " SB-APPEND
-   n FMT:SB-U  s"  write drop ;" SB-APPEND
+   n FMT:SB-U  s"  write drop  1 B 1 write drop ;" SB-APPEND
    SB$ s" err.f" SOURCE!
-   s" a write to descriptor 2 grows ERR, which receives every byte, and OUT none" T-LABEL
+   s" a write to descriptor 2 grows ERR, which receives every byte, and one to 1 goes to OUT" T-LABEL
    s" err.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:ERR$ nip n T=
    WASM-HARNESS:ERR$ ALL-X? TTRUE
-   WASM-HARNESS:OUT$ nip 0 T= ;
+   WASM-HARNESS:OUT$ s" x" T$=
+   S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
+   s" a die ERR cannot grow for traps and records STREAM-GROW at ERR's end past it" T-LABEL
+   s" huge.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STREAM-GROW T=
+   WASM-HARNESS:FAULT-ADDR WPROF:ERR-BASE 1 32 lshift + 1+ T= ;
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
@@ -575,14 +576,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND ;
 [then]
 
-\ run.mjs shows OUT after a trap but not the throw code, which it prints only
+\ run.mjs shows ERR after a trap but not the throw code, which it prints only
 \ for status 1.
 : DIE-CASE ( -- )
    S\" : MAIN ( -- ) s\" boom\" 3 die ;" s" die.f" SOURCE!
-   s" die writes its message to OUT and traps" T-LABEL
+   s" die writes its message to ERR and traps" T-LABEL
    s" die.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ s" boom" T$= ;
+   WASM-HARNESS:OUT$ nip 0 T=
+   WASM-HARNESS:ERR$ S\" boom\n" T$= ;
 
 
 \ Package C in catch.f: catch, finally and the depths a caught throw restores,
@@ -695,7 +697,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" die prints its message and traps through catch, with no continuation" T-LABEL
    s" fatal.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ s" fatal" T$= ;
+   WASM-HARNESS:ERR$ S\" fatal\n" T$= ;
 
 \ ACTION-XT gives execute's own xt, which has no stored effect, as this
 \ fixture's type; its table slot is execute's kernel routine.
@@ -756,7 +758,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" an ENUM fetched through a pointer passes its tag check, then a stored 7 fails it" T-LABEL
    s" fetch.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ S\" 2\nE-BAD-TAG habu: layout tag 7 outside 0..2" T$= ;
+   WASM-HARNESS:OUT$ S\" 2\n" T$=
+   WASM-HARNESS:ERR$ S\" E-BAD-TAG habu: layout tag 7 outside 0..2\n" T$= ;
 [then]
 
 
@@ -865,7 +868,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
    s" negative.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
+   WASM-HARNESS:OUT$ nip 0 T=
+   WASM-HARNESS:ERR$ S\" byte: negative length\n" T$= ;
 
 T-RESET SETUP NEGATIVE-BYTE-CASE T-REPORT
 [then]

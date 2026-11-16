@@ -499,17 +499,27 @@ variable BUF-U
    cap CTX@,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
    OP-I64-GT-U B,  IF,  base cap fixed STREAM-GROW,  OP-END B, ;
 
-\ emit ( c -- ) stores c's low byte at ctx.out-base plus ctx.out-len and counts
-\ it, a full OUT grown first.
+\ Pushes the i32 address of the stream's next byte, a full stream grown first.
+: BYTE-ROOM, ( n n n n -- )
+   {: len:n base:n cap:n fixed:n :}
+   1 I64,  L-NEED SET,  len base cap fixed STREAM-ROOM,
+   base CTX@,  L-LEN GET,  OP-I32-ADD B, ;
+
+\ Stores the i64 on top's low byte at the address below it and counts it in ctx
+\ field len.
+: BYTE-STORE, ( n -- )
+   {: len:n :}
+   OP-I64-STORE8 ALIGN-8 0 MEM,
+   L-CTX GET,  L-LEN GET,  1 I32,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 len MEM, ;
+
+\ emit ( c -- ) appends c's low byte to OUT.
 : EMIT-BODY ( -- )
    STREAM-LOCALS,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
-   1 I64,  L-NEED SET,  OUT-STREAM STREAM-ROOM,
-   WPROF:CTX-OUT-BASE CTX@,  L-LEN GET,  OP-I32-ADD B,
+   OUT-STREAM BYTE-ROOM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
-   OP-I64-STORE8 ALIGN-8 0 MEM,
-   L-CTX GET,  L-LEN GET,  1 I32,  OP-I32-ADD B,
-   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
+   WPROF:CTX-OUT-LEN BYTE-STORE,
    SP!,
    0 I32,  OP-END B, ;
 
@@ -568,15 +578,19 @@ variable SITES-N
    1 I32,  OP-END B, ;
 
 
-\ die ( a u code -- ) appends its message to OUT, leaves its code in
-\ ctx.throw-code and traps, which no catch consumes.
+\ die ( a u code -- ) appends its message and a line feed to ERR, nothing for
+\ an empty message, leaves its code in ctx.throw-code and traps, which no catch
+\ consumes.
 : DIE-BODY ( -- )
    STREAM-LOCALS,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
    L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
    OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-NEED SET,
-   0 OUT-STREAM APPEND,
+   L-NEED GET,  0 I64,  OP-I64-NE B,  IF,
+      0 ERR-STREAM APPEND,
+      ERR-STREAM BYTE-ROOM,  10 I64,  WPROF:CTX-ERR-LEN BYTE-STORE,
+   OP-END B,
    OP-UNREACHABLE B,  OP-END B, ;
 
 
