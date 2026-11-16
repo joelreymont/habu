@@ -20,20 +20,12 @@ require src/lib/prelude.f
 -2000 constant E-A-EMPTY
 -2001 constant E-A-BOUNDS
 
-\ Filesystem/files: -2100..-2199
+\ Filesystem/files: -2100..-2199, declared at this file's end.
 -2100 constant E-FS-FIRST
 -2199 constant E-FS-LAST
--2100 constant E-FS-PATH
--2101 constant E-FS-STAT
--2102 constant E-FS-OPEN
--2103 constant E-FS-DIR
--2105 constant E-FS-IO
--2106 constant E-FS-CAPACITY
--2107 constant E-FS-PATH-UNSAFE
--2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
--2109 constant E-FS-SYNC        \ the target holds the new bytes; its directory sync failed
--2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
--2111 constant E-FS-CHANGED     \ a file read whole yielded more bytes than its size sampled before the read
+
+\ True for a code of this block, declared or not.
+: FS-CODE? ( n -- bool )  dup E-FS-FIRST <= swap E-FS-LAST >= and ;
 
 \ Strings: -2200..-2299
 -2200 constant E-STR-FIRST
@@ -882,3 +874,14 @@ seal-package
 -9852 s" a definition ran while a checker replay is open: end the checker scope with CHECKER-SCOPE-DONE before defining" ERROR:CODE E-OVERLAY-OPEN
 -9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
 -9854 s" a computed 0 was thrown and unwound the text, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
+-2100 s" a path is empty, too long or of a form the call rejects" ERROR:CODE E-FS-PATH
+-2101 s" a path's status could not be read or it names no regular file" ERROR:CODE E-FS-STAT
+-2102 s" a file, directory or pipe could not be opened" ERROR:CODE E-FS-OPEN
+-2103 s" a directory could not be read or is not one" ERROR:CODE E-FS-DIR
+-2105 s" a read, write or other operation on an open file failed or fell short" ERROR:CODE E-FS-IO
+-2106 s" a path or a file's bytes do not fit the room given for them" ERROR:CODE E-FS-CAPACITY
+-2107 s" a path holds a byte its quoted spelling cannot carry" ERROR:CODE E-FS-PATH-UNSAFE
+-2108 s" the layout's FS-ABI band widths disagree with the file-system caps" ERROR:CODE E-FS-BAND
+-2109 s" the target holds the new bytes; its directory sync failed" ERROR:CODE E-FS-SYNC
+-2110 s" a descriptor transfer reached its deadline" ERROR:CODE E-FS-TIMEOUT
+-2111 s" a file read whole yielded more bytes than its size sampled before the read" ERROR:CODE E-FS-CHANGED
