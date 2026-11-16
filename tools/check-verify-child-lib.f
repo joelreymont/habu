@@ -526,25 +526,28 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    s" verified" RESULT ;
 
 
-: PREVERIFY-CUR-ACT ( -- )
+: PREVERIFY-LABELED ( -- )
    SUBJECT$ 0 SCRIPT-ARGV$ 2 SCRIPT-ARGV$
-   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+   VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
-: PREVERIFY-CUR ( -- )
-   0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME
-   [: PREVERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
+: PREVERIFY-ENTRY ( -- )
+   SUBJECT$ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-ENTRY-IN-SCOPE ;
+
+: PREVERIFY-CUR ( [ -- ] -- ) {: q :}
+   0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME q SOURCE-ROOT:WITH ;
 
 
 \ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
-: PREVERIFY ( -- )
-   [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
+\ Q composes the subject.
+: PREVERIFY ( [ -- ] -- ) {: q :}
+   [: q PREVERIFY-CUR ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-RESULT exit then
    s" verified" RESULT ;
 
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --entry [--prose] | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -606,6 +609,7 @@ public
    then
    SCRIPT-ARGC 2 = if
       1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
+      1 SCRIPT-ARGV$ s" --entry" CORE-STR= if READ-STDIN ['] PREVERIFY-ENTRY PREVERIFY exit then
       1 SCRIPT-ARGV$ s" --prose" CORE-STR= if
          false JSON? !
          READ-STDIN
@@ -614,12 +618,16 @@ public
       then
    then
    SCRIPT-ARGC 3 = if
-      1 SCRIPT-ARGV$ s" --label" CORE-STR= if READ-STDIN PREVERIFY exit then
+      1 SCRIPT-ARGV$ s" --label" CORE-STR= if READ-STDIN ['] PREVERIFY-LABELED PREVERIFY exit then
+      1 SCRIPT-ARGV$ s" --entry" CORE-STR=
+      2 SCRIPT-ARGV$ s" --prose" CORE-STR= and if
+         false JSON? !  READ-STDIN ['] PREVERIFY-ENTRY PREVERIFY exit
+      then
    then
    SCRIPT-ARGC 4 = if
       1 SCRIPT-ARGV$ s" --label" CORE-STR=
       3 SCRIPT-ARGV$ s" --prose" CORE-STR= and if
-         false JSON? !  READ-STDIN PREVERIFY exit
+         false JSON? !  READ-STDIN ['] PREVERIFY-LABELED PREVERIFY exit
       then
    then
    CURSOR-ARG {: at:n :}

@@ -5,7 +5,7 @@
 \ directory.
 
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--prose] < STDIN
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --label LABEL [--prose] < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT (--label LABEL | --entry) [--prose] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
@@ -28,10 +28,9 @@
 
 \ The verifier follows top-level loader acts in one neutral checker scope, with
 \ each file's path and positions while it is open. `require` skips held paths;
-\ `include` verifies every occurrence. The first, third and fourth forms compose
-\ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
-\ runs before them: the composition reads each file a loader loads and rejects
-\ the loader forms tools/source-discovery.f rejects where it meets them.
+\ `include` verifies every occurrence. The first four forms compose:
+\ the composition reads each file a loader loads and rejects a bad loader form
+\ where it meets it.
 \ `--index` scans only the supplied subject bytes, including for an
 \ engine-provided path. It emits surviving declarations after a completed
 \ scan, while their checker scopes are still open. A top-level dictionary call
@@ -120,7 +119,7 @@
 \ The fourth form is the first that writes as well a use line for each use
 \ the checker binds to a located declaration in a file a load reads, each time
 \ it is read, when the declaration's canonical tail T is TAIL, byte for byte:
-\ every use outside the subject (VERIFY:SUBJECT?) of a word whose tail is TAIL.
+\ every use outside the subject of a word whose tail is TAIL.
 \ The other forms write the subject's uses alone.
 \ The batch-ref form is for primitive references: it writes uses of TAIL in
 \ the subject and loaded files, including unlocated bindings, and omits
@@ -138,7 +137,7 @@
 \ The second form is check.f's pre-pass. The first definition the checker
 \ rejects stops the composition, as it stops the load, and a record that names
 \ the subject names it LABEL. SUBJECT is check.f's own copy of the text, which
-\ nothing holds. It answers
+\ nothing holds. With `--entry` BYTES are entry text. It answers
 \
 \    check-verify: verified | refused | full | missing TARGET | unread TARGET
 \

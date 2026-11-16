@@ -501,7 +501,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" code" s" E-LOADER-FORM" FIELD=
    1 s" required" 3 14 60 68 AT ;
 
-\ Without --all-errors the walk's rejection is placed in the checked file too.
+\ Without --all-errors the pre-pass composition writes this record, which the
+\ load does not give.
 : TEST-DYN-PLACE ( -- )
    s" a dynamic required, checked alone" T-LABEL
    SB-RESET
@@ -954,8 +955,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    DEP-PATH$ 0 FS:CHMOD-MODE
    q [: DEP-PATH$ $1A4 FS:CHMOD-MODE ;] finally ;
 
-\ No suite host is Wasm, so these arms are skipped: --all-errors writes each
-\ stop once, where plain check places it, and 74 outranks 70.
+\ No suite host is Wasm, so these arms are skipped and a check meets nothing in
+\ them, as the load does.
 : TEST-ALL-DEAD-ARM ( -- )
    s" a missing file only a skipped arm requires, under --all-errors" T-LABEL
    SB-RESET
@@ -964,33 +965,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : DA-TWO ( -- ) nosuchtwo ;" SB-APPEND LF+
    s" all-dead-arm.f" FIXTURE!
    s" --all-errors" CHECK
-   GJA-LINE# @ 3 T=
+   GJA-LINE# @ 2 T=
    0 s" code" s" E-UNDEFINED" FIELD=
    0 s" nosuchone" 1 17 16 25 AT
    1 s" code" s" E-UNDEFINED" FIELD=
    1 s" nosuchtwo" 3 17 97 106 AT
-   2 s" code" s" E-MISSING-SOURCE" FIELD=
-   2 s" deadarm-absent.f" 2 30 57 73 AT
-   s" a skipped arm's missing file alone, under --all-errors" T-LABEL
-   SB-RESET
-   s" HB-TARGET-WASM? [if] require dead-only-absent.f [then]" SB-APPEND LF+
-   s" dead-only.f" FIXTURE!
-   s" --all-errors" CHECK
-   s" E-MISSING-SOURCE" REJECTED-AS
-   0 s" dead-only-absent.f" 1 30 29 47 AT
    SB-RESET  s" 1 drop" SB-APPEND LF+
    s" dead-locked.f" FIXTURE!
    DEP!
-   s" a skipped arm's unreadable file alone, under --all-errors" T-LABEL
-   SB-RESET
-   s" HB-TARGET-WASM? [if] require dead-locked.f [then]" SB-APPEND LF+
-   s" dead-locked-arm.f" FIXTURE!
-   [: s" " INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
-   s" E-UNREADABLE-SOURCE" REJECTED-AS
-   0 s" dead-locked.f" 1 30 29 42 AT
-   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
-   s" E-UNREADABLE-SOURCE" REJECTED-AS
-   0 s" dead-locked.f" 1 30 29 42 AT
    s" a skipped arm's missing file before an unreadable one, under --all-errors" T-LABEL
    SB-RESET
    s" : R1 ( -- ) nosuchone ;" SB-APPEND LF+
@@ -999,16 +981,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : R2 ( -- ) nosuchtwo ;" SB-APPEND LF+
    s" dead-io.f" FIXTURE!
    [: s" " CHECK ;] LOCKED
-   s" E-MISSING-SOURCE" REJECTED-AS
-   0 s" dead-io-absent.f" 2 30 53 69 AT
+   s" E-UNDEFINED" REJECTED-AS
+   0 s" nosuchone" 1 13 12 21 AT
    [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
-   GJA-LINE# @ 3 T=
+   GJA-LINE# @ 2 T=
    0 s" code" s" E-UNDEFINED" FIELD=
    0 s" nosuchone" 1 13 12 21 AT
    1 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    1 s" dead-locked.f" 3 9 85 98 AT
-   2 s" code" s" E-MISSING-SOURCE" FIELD=
-   2 s" dead-io-absent.f" 2 30 53 69 AT
    s" an unclosed locals group in a skipped arm, under --all-errors" T-LABEL
    SB-RESET
    s" : G1 ( -- ) nosuchone ;" SB-APPEND LF+
@@ -1016,28 +996,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : G2 ( -- ) nosuchtwo ;" SB-APPEND LF+
    s" dead-locals.f" FIXTURE!
    s" " CHECK
-   s" E-UNCLOSED-LOCALS" REJECTED-AS
-   0 s" {:" 2 34 57 59 AT
+   s" E-UNDEFINED" REJECTED-AS
+   0 s" nosuchone" 1 13 12 21 AT
    s" --all-errors" CHECK
-   GJA-LINE# @ 3 T=
+   GJA-LINE# @ 2 T=
    0 s" code" s" E-UNDEFINED" FIELD=
    0 s" nosuchone" 1 13 12 21 AT
    1 s" code" s" E-UNDEFINED" FIELD=
-   1 s" nosuchtwo" 3 13 83 92 AT
-   2 s" code" s" E-UNCLOSED-LOCALS" FIELD=
-   2 s" {:" 2 34 57 59 AT
-   s" a live stop after a required file's skipped arm, under --all-errors" T-LABEL
-   SB-RESET
-   s" \ This comment runs the skipped arm past every byte of the file requiring this one." SB-APPEND LF+
-   s" HB-TARGET-WASM? [if] : DN1 ( -- ) ; [then]" SB-APPEND LF+
-   s" dead-nested.f" FIXTURE!
-   SB-RESET
-   s" require dead-nested.f" SB-APPEND LF+
-   s" : DN ( -- ) {: a:n" SB-APPEND LF+
-   s" dead-nested-live.f" FIXTURE!
-   s" --all-errors" CHECK
-   s" E-UNCLOSED-LOCALS" REJECTED-AS
-   0 s" {:" 2 13 34 36 AT ;
+   1 s" nosuchtwo" 3 13 83 92 AT ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
@@ -2114,10 +2080,10 @@ HB-TARGET-LINUX? [if]
    s" " INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD
    s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD ;
 
-\ Under --all-errors a listed file that will not read ends the check after the
-\ stops kept for the files listed before it.
+\ A stop ends the check, --all-errors included, before a later listed file is
+\ read, as it ends the load.
 : TEST-LISTED-PROCFS ( -- )
-   s" a listed input that outruns its size after a stop, under --all-errors" T-LABEL
+   s" a stop before a listed input that outruns its size, under --all-errors" T-LABEL
    BASE$ s" listed-procfs" DEP-P PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO DEP-PU !
    s" /proc/version" DEP-PATH$ FS:MAKE-SYMLINK
    SB-RESET
@@ -2127,12 +2093,9 @@ HB-TARGET-LINUX? [if]
    LSP-CHECK:RESET
    s" all-errors" LSP-CHECK:OPT  s" json-errors" LSP-CHECK:OPT  s" source-list" LSP-CHECK:OPT
    FX-PATH$ LSP-CHECK:FILE  DEP-PATH$ LSP-CHECK:FILE
-   INCLUDE-IO-RC CHECK-CAPTURE
-   GJA-LINE# @ 2 T=
-   0 s" code" s" E-MISSING-SOURCE" FIELD=
-   0 s" listed-absent.f" 1 9 8 23 AT
-   1 s" code" s" E-UNREADABLE-SOURCE" FIELD=
-   1 s" message" s" cannot read `/proc/version`: changed while it was read" FIELD= ;
+   REJECT-RC CHECK-CAPTURE
+   s" E-MISSING-SOURCE" REJECTED-AS
+   0 s" listed-absent.f" 1 9 8 23 AT ;
 [then]
 HB-TARGET-LINUX? 0= [if]
 : TEST-NAMED-PROCFS ( -- ) ;
@@ -2263,6 +2226,35 @@ HB-TARGET-LINUX? 0= [if]
       PARENT-LINK-REJECTED ;]
    [: UNSEARCHABLE$ $1ED FS:CHMOD-MODE ;] finally ;
 
+\ The load meets the undefined word before the require, and so does the check.
+: TEST-UNDEFINED-MISSING ( -- )
+   s" an undefined word before a require of a missing file" T-LABEL
+   SB-RESET
+   s" nosuchword require undefined-missing-absent.f" SB-APPEND LF+
+   s" undefined-missing.f" FIXTURE!
+   s" " CHECK
+   s" E-UNDEFINED" REJECTED-AS
+   0 s" nosuchword" 1 1 0 10 AT
+   s" E-UNDEFINED" s" :1:1" REJECT-RC LOADED-AT ;
+
+\ A listed file that does not exist is met in its place, so the undefined word
+\ in the file listed before it comes first, in the check as in the load.
+: TEST-UNDEFINED-LISTED-MISSING ( -- )
+   s" an undefined word in a file listed before a missing one" T-LABEL
+   s" nosuchword" s" undefined-listed.f" LINE-FIXTURE
+   BASE$ s" undefined-listed-absent.f" DEP-P PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO DEP-PU !
+   LSP-CHECK:RESET
+   s" json-errors" LSP-CHECK:OPT  s" source-list" LSP-CHECK:OPT
+   FX-PATH$ LSP-CHECK:FILE  DEP-PATH$ LSP-CHECK:FILE
+   REJECT-RC CHECK-CAPTURE
+   s" E-UNDEFINED" REJECTED-AS
+   0 s" nosuchword" 1 1 0 10 AT
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  FX-PATH$ >LEN PROC-ARGV+  DEP-PATH$ >LEN PROC-ARGV+
+   s" error[E-UNDEFINED]" REJECT-RC LAUNCHED
+   SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND s" :1:1" SB-APPEND
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
+
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )
    s" a malformed colon definition the load rejects at its `:`" T-LABEL
@@ -2284,8 +2276,8 @@ HB-TARGET-LINUX? 0= [if]
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A bad escape is rejected at the literal's opener, by each check as by the
-\ load, before an unclosed string after it. The lexer's defect comes before an
-\ earlier definition that does not check; --verify-only composes the file as it
+\ load, before an unclosed string after it. An earlier definition's E-UNDEFINED
+\ comes first, as the load gives it; --verify-only composes the file as it
 \ reads it and keeps that definition's rejection before the string's.
 : TEST-BAD-ESCAPE ( -- )
    s" a bad escape" T-LABEL
@@ -2312,8 +2304,8 @@ HB-TARGET-LINUX? 0= [if]
    s\" s\" abc" SB-APPEND LF+
    s" undefined-unterminated.f" FIXTURE!
    s" " CHECK
-   s" E-UNTERMINATED-STRING" REJECTED-AS
-   0 S\" s\"" 2 1 21 23 AT
+   s" E-UNDEFINED" REJECTED-AS
+   0 s" NO-SUCH" 1 12 11 18 AT
    s" --all-errors" CHECK
    GJA-LINE# @ 2 T=
    0 s" code" s" E-UNDEFINED" FIELD=
@@ -3473,6 +3465,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-DYN-PLACE
    TEST-ALL-UNREADABLE
    TEST-REQUIRED-UNSEARCHABLE
+   TEST-UNDEFINED-MISSING
+   TEST-UNDEFINED-LISTED-MISSING
    TEST-NAMED-MISSING
    TEST-NAMED-LINK-UP
    TEST-NAMED-DANGLING-UP

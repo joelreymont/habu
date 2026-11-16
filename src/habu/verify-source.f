@@ -22,10 +22,10 @@
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
 \ token it holds the literal before it in the same statement, if any. The
-\ literal's kind is kept too, 0 when there is none: a quiet composition refuses
-\ a string loader by it. So is where its text between the quotes starts and
-\ ends in the file, as written, escapes and all, the end 0 when there is none:
-\ the span a string loader's load reports, and the text a names: call compares.
+\ literal's kind is kept too, 0 when there is none: a composition rejects a
+\ string loader by it. So is where its text between the quotes starts and ends
+\ in the file, as written, escapes and all, the end 0 when there is none: the
+\ span a string loader's load reports, and the text a names: call compares.
 \
 \ An escaped literal's decoded bytes are not in the source, so they live in one
 \ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
@@ -36,56 +36,20 @@
 \ before the next NEXT-SCAN resets it: only TOP-PREV-STR may hold an older
 \ answer, and the parse-imm row reads it only when no literal came before its
 \ token, so no decode came between. Only the string loaders, a call of a word
-\ a names: row marks, and a top-level `parse-imm` read the slot, and none of
-\ them reads a body. A body literal's answer is BODY-LIT, which the body's next
-\ token clears or consumes, and a body token is read with SKIP-STRINGS off, so
-\ no decode comes between.
+\ a names: row marks, and a top-level `parse-imm` read the slot; a body literal
+\ keeps only its kind.
 \
-\ A quiet composition refuses the top-level loader forms discovery refuses,
-\ where it meets them, so that walk need not run first: a path that is no
-\ literal, a literal no loader takes, or a path the loader refuses - one
-\ holding a NUL byte, or one the resolver refuses. A declaration or `undefine`
-\ of a loader word's name refuses nothing, as the walk refuses nothing for it,
-\ but a later loader form with that word the walk reads - `include` or
-\ `require`, or a word right after a path literal - at top level or in a body,
-\ on a straight line or not, is refused at the word as the walk refuses it.
+\ A composition rejects the top-level loader forms discovery rejects, where it
+\ meets them, so that walk need not run first: a path that is no literal, a
+\ literal no loader takes, or a path the loader rejects - one holding a NUL
+\ byte, or one the resolver rejects. A declaration or `undefine` of a loader
+\ word's name rejects nothing, as the walk rejects nothing for it, but a later
+\ loader form with that word the walk reads - `include` or `require`, or a word
+\ right after a path literal - at top level or in a body, is rejected at the
+\ word as the walk rejects it.
 \
-\ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when
-\ the word runs, after the definition at the earliest. An `included` of a
-\ source already provided by the engine waits for execution: a build may rewind
-\ the dictionary before replaying that source, and replaying it here would
-\ define the engine's prefix twice. A loader the body reaches on a straight
-\ line, with no control word or bracket before it, loads whenever the word
-\ runs, so the composition loads its file at the first top-level statement
-\ boundary after the definition where the file being read has closed every
-\ package and file-level `using` it opened, in the order of the loaders, and at
-\ the end of that file at the latest. A quotation `[: ... ;]` is a straight
-\ line of its own, nested in the line that holds it: a loader on it is the
-\ composition's to load exactly as one on a definition's straight line is,
-\ whether or not the quotation is ever run, since the composition already
-\ loads for a definition that is never called. The quotation's line starts
-\ bent when the enclosing line is bent at its `[:`; a control word or bracket
-\ inside the quotation bends only the quotation's line, and `;]` ends every
-\ bend made inside it. A `;]` with no quotation open is a bracket like any
-\ other. A loader under a condition may not run, so its file is the run's to
-\ load. The engine's target predicate right before an `if` is no such
-\ condition: the engine answers each predicate one way, so the arm its answer
-\ runs stays on the straight line, the other arm is read only for its end and
-\ never runs, and an `else` or `then` no target `if` opened ends the line. A
-\ top-level `[if]` whose flag those answers settle reads only the text that
-\ flag chooses. A program's word of a predicate's spelling is read as any
-\ other condition. The path is the literal right before the loader word, the
-\ bytes the engine's literal makes of it. Only a path literal makes a waiting
-\ load, as in the walk: a `c"` or `."` one gives the loader no path, so the
-\ walk records no file and the composition reads none. The path waits however
-\ long it is: the resolver alone refuses one, when its turn comes, and the
-\ composition loads nothing for it. An entry keeps a copy of its path: a
-\ decoded one lives only until the next decode, and the release comes after
-\ later bodies, top-level statements and nested files have decoded theirs. A
-\ file's entries sit above its loader's, and their paths go with them.
-\
-\ A quiet composition loads none of these: a word's run is no part of the
-\ check, so the ordinary effect checker judges its runtime loader calls.
+\ A composition loads no file a definition names: a word's run is no part of
+\ the check, so the ordinary effect checker judges its runtime loader calls.
 \
 \ Definer rows: a `create … does>` definition is a definer, and every word it
 \ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
@@ -136,11 +100,10 @@
 \ symbol alone: a redefinition, an `undefine` or another owner selects a
 \ binding no row names. A later row for a binding wins.
 \
-\ A quiet top-level loader's load in the subject's first visit arms its
-\ operand span right before it runs; the load takes the span before it
-\ descends, and RUN-LOADER clears it however the load ends, so no other load
-\ reports it: not a file the load reads, the load after it, or a pending body
-\ load, which therefore reports nothing.
+\ A top-level loader's load in the subject's first visit arms its operand span
+\ right before it runs; the load takes the span before it descends, and
+\ RUN-LOADER clears it however the load ends, so no other load reports it: not
+\ a file the load reads, nor the load after it.
 \
 \ A primitive row is read as its opener reads it: the name, and a package row's
 \ package before it, are read raw, so either may be spelled as a definer or
@@ -213,12 +176,12 @@ EXPORT TYPE-DECL:CHECKER-NOMINAL-REPLAY
 public
 
 \ The code a tool's own failed source read throws. The verifier throws none: a
-\ file a quiet composition loads that the system does not read to its end is
+\ file a composition loads that the system does not read to its end is
 \ recorded where the read fails, which then stops with INCLUDE-IO-RC.
 7201 constant E-SOURCE-READ
 
 \ The E-DISC kind of the discovery rejection that stopped the last walk or
-\ quiet composition, 0 for none.
+\ composition, 0 for none.
 variable DISCOVERY-STOPPED
 
 \ A loader form discovery rejects, its record written: the stop, with KIND.
@@ -285,9 +248,7 @@ PTR-VARIABLE COMPOSE-PEND-PATH-A
 variable COMPOSE-PEND-PATH-U
 variable COMPOSE-REQ0
 
-\ A quiet composition and the file its load fault could not read, empty for
-\ none.
-TYPED-VARIABLE QUIET bool
+\ The file the composition's load fault could not read, empty for none.
 create FAULT-TARGET PATH-CAP allot
 variable FAULT-U
 
@@ -295,10 +256,12 @@ variable FAULT-U
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
-\ Where the path the quiet composition's load loads is written in the file
+\ Where the path the composition's load loads is written in the file
 \ being scanned, as the program wrote it.
 PTR-VARIABLE LOAD-PLACE-A
 variable LOAD-PLACE-U
+\ The subject is entry text.
+TYPED-VARIABLE ENTRY-TEXT bool
 
 0 constant CSR-WAIT                      \ not reached yet
 1 constant CSR-SPACE                     \ in the blanks before the token at CSR-TOK
@@ -538,10 +501,10 @@ variable FLAG-N
    drop c@ dup $73 = swap $53 = or IF LIT-PATH EXIT THEN
    LIT-OTHER ;
 
-\ A literal the source ends inside stops a quiet composition or index at its
+\ A literal the source ends inside stops a composition or index at its
 \ opener, as discovery's lexer stops there.
 : QUIET-UNTERM ( -- )
-   FOUND @ 0= QUIET @ INDEX-ON @ or and IF
+   FOUND @ 0= COMPOSE-ON @ INDEX-ON @ or 0<> and IF
       TOKEN-START @ TOKEN-FROM INTERPRETER:LITERAL-REJECT
       E-DISC-UNTERM DISCOVERY-STOP
    THEN ;
@@ -646,7 +609,7 @@ EXPORT CHECK:VREC-TOKEN
 
 \ A bad escape is rejected at the opener with the engine's record of a bad
 \ string literal. An unterminated literal is left to the lexer, as a plain one
-\ is, except in a quiet composition.
+\ is, except in a composition or index.
 : RECORD-ESCAPED-STRING ( n -- )
    {: kind:n :}
    QUIET-UNTERM
@@ -835,10 +798,9 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ The tokens a straight line has none of. The checker's own classifier cannot
 \ be reused for the question: it pushes a frame for every token it recognises,
 \ so asking it would move the checker's state. These are its token list, plus
-\ the compile-time brackets a definer call or a loader must not hide behind;
-\ the loader reads `[:` and `;]` as a nested line before the bracket list
-\ applies. Each matches case-folded, as the engine's keywords ignore case, so
-\ `EXIT` ends the line as `exit` does.
+\ the compile-time brackets a definer call must not hide behind. Each matches
+\ case-folded, as the engine's keywords ignore case, so `EXIT` ends the line as
+\ `exit` does.
 : WRAP-COND-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI
    a u s" else" STR=CI or
@@ -889,9 +851,8 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    s" `" REJECTION:EMIT-STR  REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR ;
 
 public
-\ Discovery (tools/source-discovery.f) and a quiet composition write the record
-\ of a loader form they reject, at its token t tu, with these, and stop it
-\ with DISCOVERY-STOP.
+\ Discovery and a composition write the record of a loader form they reject,
+\ at its token t tu, with these, and stop it with DISCOVERY-STOP.
 : SHADOW-REJECT ( ^u8 n -- )
    s" loader word used after the file defined its name"
    [: s" load files before the definition that reuses " REJECTION:EMIT-STR  TICKED
@@ -966,61 +927,11 @@ variable NEWEST-SYM
    THEN
    kind LIT-PATH = ;
 
-DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
-DYNAMIC-BUFFER PEND-AT n                      \ a waiting load's path's offset
-DYNAMIC-BUFFER PEND-U n
-DYNAMIC-BUFFER PEND-INC n                     \ 1 to include its file, 0 to require it
-DYNAMIC-BUFFER PEND-WORD-AT n                 \ where its loader word starts
-DYNAMIC-BUFFER PEND-WORD-U n
-variable PEND-N
-variable PEND-BASE                            \ the first entry of the file being read
-PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
-variable BODY-LIT-KIND                        \ its kind (LIT-KIND), 0 for none
-variable BODY-BENT                            \ 0 on a straight line, else 1 + BODY-QUOT at the bend
-variable BODY-QUOT                            \ the `[:`s open at the body token
-0 constant GUARD-NONE                         \ the body token before is no target predicate
-1 constant GUARD-LIVE                         \ it is one the engine answers true
-2 constant GUARD-DEAD                         \ it is one the engine answers false
-variable BODY-GUARD
-variable BODY-ARMS                            \ the target `if`s whose running arm the line is in
-variable BODY-DEAD                            \ in an arm that never runs: 1 + the `if`s open in it
+\ The kind (LIT-KIND) of the literal the body token before closed, 0 for none.
+variable BODY-LIT-KIND
 
 : BODY-PREV-CLEAR ( -- )
-   0 BODY-LIT-U !  0 BODY-LIT-KIND !  GUARD-NONE BODY-GUARD ! ;
-
-: BODY-LOAD-RESET ( -- )
-   0 BODY-BENT !  0 BODY-QUOT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
-
-\ The line the body token is on bends there, with every line nested in it. A
-\ bend already made holds: it is on that line or one holding it.
-: BODY-BEND ( -- )
-   BODY-BENT @ 0= IF BODY-QUOT @ 1 + BODY-BENT ! THEN ;
-
-: QUOT-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u s" [:" STR=CI IF BODY-QUOT @ 1 + BODY-QUOT ! 0 0= EXIT THEN
-   a u s" ;]" STR=CI 0= IF 0 0= 0= EXIT THEN
-   BODY-QUOT @ 0= IF BODY-BEND 0 0= EXIT THEN
-   BODY-QUOT @ 1 - BODY-QUOT !
-   BODY-BENT @ BODY-QUOT @ 1 + > IF 0 BODY-BENT ! THEN
-   0 0= ;
-
-: PEND-END ( -- n )
-   PEND-N @ 0= IF 0 EXIT THEN
-   PEND-N @ 1 - {: last:n :}
-   last PEND-AT @ last PEND-U @ + ;
-
-\ A load waiting for the path at a, u bytes, to include (inc 1) or require,
-\ its loader word wu bytes from byte w.
-: PEND-PUSH ( ^u8 n n n n -- ) {: a:^ u:n inc:n w:n wu:n :}
-   PEND-N @ PEND-END
-   {: at:n off:n :}
-   off u + 1 + PEND-PATH-RESERVE
-   a off PEND-PATH u BYTE-COPY
-   at 1 + PEND-AT-RESERVE  at 1 + PEND-U-RESERVE  at 1 + PEND-INC-RESERVE
-   at 1 + PEND-WORD-AT-RESERVE  at 1 + PEND-WORD-U-RESERVE
-   off at PEND-AT !  u at PEND-U !  inc at PEND-INC !
-   w at PEND-WORD-AT !  wu at PEND-WORD-U !
-   at 1 + PEND-N ! ;
+   0 BODY-LIT-KIND ! ;
 
 \ Whether the scan models the load of a sealed engine: this one, composing. A stage source
 \ certified without composing keeps its packages open until its capture seals them.
@@ -1079,10 +990,9 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    cut 0= IF EXIT THEN
    a cut at cut SEALED-NAME ;
 
-\ The text of a literal from the rest STRING-REST read after its opener, a
-\ string opener: past the one delimiting space, short of the closing quote, as
-\ the engine's literal makes it, decoded when the opener is an escaped one
-\ (ESC-BYTES), and its kind. A bad escape is rejected at the opener.
+\ The kind of a literal from the rest STRING-REST read after its string opener.
+\ An escaped one's payload is decoded (ESC-BYTES) only to reject a bad escape
+\ at the opener.
 : BODY-LIT! ( ^u8 n ^u8 n -- ) {: o:^ ou:n s:^ su:n :}
    BODY-PREV-CLEAR
    su 2 < IF EXIT THEN
@@ -1092,11 +1002,8 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
          o ou INTERPRETER:LITERAL-REJECT  CHECKER-REJECT-RC REJECTION:STOP
       THEN
    THEN
-   BODY-LIT-U !  BODY-LIT-A !
+   2drop
    o ou LIT-KIND BODY-LIT-KIND ! ;
-
-: >GUARD ( bool -- n )
-   IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
 
 \ The record of a declaration-owner record with no operation for a step the
 \ scan takes, at the statement it is in when a source the record knows holds
@@ -1119,16 +1026,15 @@ CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
 : CORE-OP? ( ^u8 n -- bool )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
 
-\ The answer F of the engine's predicate the token a u spells, when the
-\ token binds that word; GUARD-NONE when it binds a program's word.
-: ENGINE-GUARD ( ^u8 n bool -- n ) {: a:^ u:n f:bool :}
-   a u CORE-OP? 0= IF GUARD-NONE EXIT THEN
-   f >GUARD ;
+\ The answer F of the engine's predicate the token a u spells, and whether
+\ the token binds that word rather than a program's.
+: ENGINE-GUARD ( ^u8 n bool -- bool bool ) {: a:^ u:n f:bool :}
+   a u CORE-OP? 0= IF false false EXIT THEN
+   f true ;
 
-\ What the engine's target predicate the token a u binds answers: the arm an
-\ `if` right after it runs in a body (ARM-TOKEN?), and the flag it pushes at
-\ top level (FLAG-LIT).
-: TARGET-GUARD ( ^u8 n -- n ) {: a:^ u:n :}
+\ The flag the engine's target predicate the token a u binds pushes, and
+\ whether the token binds one.
+: TARGET-GUARD ( ^u8 n -- bool bool ) {: a:^ u:n :}
    a u s" HB-TARGET-LINUX?" STR=CI IF
       a u HB-TARGET-LINUX? ENGINE-GUARD EXIT
    THEN
@@ -1144,49 +1050,15 @@ CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
    a u s" HB-TARGET-WASM?" STR=CI IF
       a u HB-TARGET-WASM? ENGINE-GUARD EXIT
    THEN
-   GUARD-NONE ;
-
-\ `if`, `else` and `then` on the straight line, true when the token is one. The
-\ three match case-folded, as the engine's keywords do.
-: ARM-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u s" if" STR=CI IF
-      BODY-GUARD @ GUARD-NONE = IF BODY-BEND 0 0= EXIT THEN
-      BODY-ARMS @ 1 + BODY-ARMS !
-      BODY-GUARD @ GUARD-DEAD = IF 1 BODY-DEAD ! THEN
-      0 0= EXIT
-   THEN
-   a u s" else" STR=CI a u s" then" STR=CI or 0= IF 0 0= 0= EXIT THEN
-   BODY-ARMS @ 0= IF BODY-BEND 0 0= EXIT THEN
-   a u s" else" STR=CI IF 1 BODY-DEAD ! 0 0= EXIT THEN
-   BODY-ARMS @ 1 - BODY-ARMS !
-   0 0= ;
-
-\ A token in an arm that never runs, read only for the arm's end: the `else`
-\ of its own target `if` starts the arm that runs, and its `then` closes it.
-: DEAD-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
-   a u s" if" STR=CI IF BODY-DEAD @ 1 + BODY-DEAD ! EXIT THEN
-   a u s" else" STR=CI BODY-DEAD @ 1 = and IF 0 BODY-DEAD ! EXIT THEN
-   a u s" then" STR=CI 0= IF EXIT THEN
-   BODY-DEAD @ 1 - BODY-DEAD !
-   BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
+   false false ;
 
 : BODY-USE ( ^u8 n -- ) {: a:^ u:n :}
-   QUIET @ 0= IF EXIT THEN
+   COMPOSE-ON @ 0= IF EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or
    BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
 
-: BODY-TOKEN-SEEN ( ^u8 n -- ) {: a:^ u:n :}
-   a u BODY-USE
-   BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
-   BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
-   a u QUOT-TOKEN? 0= IF a u WRAP-CTL-TOK? IF BODY-BEND THEN THEN
-   COMPOSE-ON @ 0<> QUIET @ 0= and BODY-BENT @ 0= and BODY-LIT-KIND @ LIT-PATH = and
-   BODY-LIT-U @ 0 > and IF
-      a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 TOKEN-BYTE @ u PEND-PUSH THEN
-      a u s" included" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 1 TOKEN-BYTE @ u PEND-PUSH THEN
-   THEN
-   BODY-PREV-CLEAR
-   a u TARGET-GUARD BODY-GUARD ! ;
+: BODY-TOKEN-SEEN ( ^u8 n -- )
+   BODY-USE BODY-PREV-CLEAR ;
 
 \ The rest starts with the opener's one delimiter, which the blank BODY-APPEND
 \ writes after the opener stands for, so it joins past that delimiter: the
@@ -1265,12 +1137,12 @@ CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
 variable GROUP-AT
 
 \ The next token of a group. The source ending inside one is rejected at the
-\ group's `{:`; a quiet composition stops as discovery's lexer stops there
+\ group's `{:`; a composition or index stops as discovery's lexer stops there
 \ (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ^u8 n )
    NEXT-RAW dup 0= IF
       GROUP-AT @ TOKEN-FROM INTERPRETER:GROUP-REJECT
-      QUIET @ INDEX-ON @ or IF E-DISC-UNTERM DISCOVERY-STOP THEN
+      COMPOSE-ON @ INDEX-ON @ or 0<> IF E-DISC-UNTERM DISCOVERY-STOP THEN
       CHECKER-REJECT-RC REJECTION:STOP
    THEN ;
 
@@ -1297,8 +1169,8 @@ variable GROUP-AT
    ix 0 < IF EXIT THEN
    ix PIMM-CNT@ 0 ?DO NEXT-RAW 2drop LOOP ;
 
-\ A local or a group skips BODY-TOKEN-SEEN, so it clears what the token before
-\ told an `if`: a local spelled as a target predicate opens no target `if`.
+\ A local or a group skips BODY-TOKEN-SEEN, so it clears the literal before it:
+\ a token after it is no word right after a path literal.
 : APPEND-BODY-TOKEN ( -- )
    LOCAL-TOKEN? IF
       BODY-PREV-CLEAR
@@ -1494,8 +1366,8 @@ CAST: VISIBLE-ACTION ( n -- [ ^u8 n n [ ^u8 n n n n -- ] -- ] )
 \ publics - the same chain a body token resolves through.
 : RECORD-SYM? ( ^u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
-\ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
-\ classifying, and the two refusals the authoritative resolver owns (a used
+\ FIND-SYM reports nothing: this scan asks it of tokens it is only
+\ classifying, and the two rejections the authoritative resolver owns (a used
 \ public shadowing a global, a tail two used packages both export) belong to the
 \ definition's own check, which resolves the same token straight after.
 : FIND-SYM ( ^u8 n -- n )
@@ -2067,6 +1939,14 @@ defer SUPPLIED ( ^u8 n -- ^u8 n bool )
 
 private
 
+\ A load's place is where the file being scanned writes its path; one entry
+\ text makes has none, as the load's command-line text's has none.
+: LOAD-PLACE! ( ^u8 n -- ) {: a:^ u:n :}
+   ENTRY-TEXT @ SUBJECT? and IF
+      NULL-PTR LOAD-PLACE-A !  0 LOAD-PLACE-U ! EXIT
+   THEN
+   a LOAD-PLACE-A !  u LOAD-PLACE-U ! ;
+
 \ These declaration arms are dispatched before dictionary lookup. Their scanner
 \ counterparts do no arbitrary execution.
 \ A word-backed loader or library definer has no such structural guarantee:
@@ -2369,7 +2249,7 @@ variable TRUSTED-DOES
 \ running the word may do is still what its calls may do, and the tokens before
 \ its `does>` run when it does.
 : SCAN-TRUSTED-BODY ( ^u8 n bool -- ) {: na:^ nu:n kept:bool :}
-   BODY-LOAD-RESET
+   BODY-PREV-CLEAR
    LOCALS-RESET
    0 TRUSTED-DOES !
    BEGIN
@@ -3321,9 +3201,9 @@ variable LOAD-END
    [: COMPOSE-PENDING ;]
    CHECKER-OWNER-ABI:VERIFY-FILE-OFF OWNER-XT FILE-ACTION execute ;
 
-\ A quiet composition rejects a load of a file no root holds as the loader
-\ does: its record names the request a u and stands at LOAD-PLACE, and
-\ FAULT-TARGET$ names the file the read would have opened. No read runs.
+\ A composition rejects a load of a file no root holds as the loader does: its
+\ record names the request a u and stands at LOAD-PLACE, and FAULT-TARGET$
+\ names the file the read would have opened. No read runs.
 : COMPOSE-MISSING ( ^u8 n ^u8 n -- )
    {: a:^ u:n path:^ pathu:n :}
    path pathu FAULT-TARGET!
@@ -3336,9 +3216,7 @@ variable LOAD-END
       path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
-   QUIET @ IF
-      path pathu FS:EXISTS? 0= IF a u path pathu COMPOSE-MISSING THEN
-   THEN
+   path pathu FS:EXISTS? 0= IF a u path pathu COMPOSE-MISSING THEN
    path pathu SUPPLIED {: t:^ tu:n open:bool :}
    open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
    path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
@@ -3366,20 +3244,7 @@ variable LOAD-END
    [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF 2drop EXIT THEN
    REQUIRE-STORE 2drop ;
 
-\ The literal before a string loader, an empty one among them: none is a
-\ dynamic path.
-: COMPOSE-STRING-PATH ( -- ^u8 n )
-   STR-LAST-KIND @ 0= IF
-      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP
-   THEN
-   STR-LAST-A @ STR-LAST-U @ ;
-
-: COMPOSE-RAW-PATH ( -- ^u8 n )
-   NEXT-RAW dup 0= IF
-      TOKEN-BYTE @ TOKEN-FROM DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP
-   THEN ;
-
-PTR-VARIABLE LOAD-A                           \ the path a quiet or body load loads
+PTR-VARIABLE LOAD-A                           \ the path a top-level load loads
 variable LOAD-U
 
 : LOAD$ ( -- ^u8 n )
@@ -3403,7 +3268,7 @@ variable LOAD-U
    u LOADER-OPERAND {: p:^ pu:n :}
    TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
-   p LOAD-PLACE-A !  pu LOAD-PLACE-U !
+   p pu LOAD-PLACE!
    inc FILE-LOAD at u RUN-LOADER ;
 
 \ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
@@ -3414,8 +3279,7 @@ variable LOAD-U
    STR-LAST-KIND @ u LITERAL-LOAD? 0= IF EXIT THEN
    STR-LAST-AT @ STR-LAST-END @ ARM-LOAD
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
-   SOURCE@ STR-LAST-AT @ + LOAD-PLACE-A !
-   STR-LAST-END @ STR-LAST-AT @ - LOAD-PLACE-U !
+   SOURCE@ STR-LAST-AT @ +  STR-LAST-END @ STR-LAST-AT @ -  LOAD-PLACE!
    q TOKEN-BYTE @ u RUN-LOADER ;
 
 : QUIET-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
@@ -3431,53 +3295,6 @@ variable LOAD-U
    THEN
    false ;
 
-\ Whether a string loader's body load of LOAD$ loads its file: an `included`
-\ source the engine provides waits until the body runs. False too, with nothing
-\ written, for a path that is empty, holds a NUL byte or resolves past the cap,
-\ which the engine's loader rejects when the word runs, so discovery reads past
-\ it. The catch covers only the provided check and this resolution; the load
-\ resolves the path again and reads the file outside it, keeping that file's
-\ own rejections.
-: BODY-LOAD-RESOLVE? ( bool -- bool )
-   IF LOAD$ ENGINE-PROVIDES? IF false EXIT THEN THEN
-   LOAD$ SOURCE-ROOT:RESOLVE drop 2drop true ;
-
-: BODY-LOAD? ( bool -- bool )
-   LOAD$ LOADER-PATH-FAULT drop 0<> IF drop false EXIT THEN
-   [: BODY-LOAD-RESOLVE? ;] catch {: rc:n :}
-   rc 0= IF EXIT THEN
-   drop
-   rc E-PATH-RANGE <> IF rc throw THEN
-   false ;
-
-\ Entries a loaded file queues sit above its own and may move PEND-PATH, so an
-\ entry's path is fetched at its turn; the resolver copies it before the read.
-: PEND-RELEASE ( -- )
-   PEND-N @ PEND-BASE @ ?do
-      TICK-REMAINDER @ IF leave THEN
-      i PEND-AT @ PEND-PATH i PEND-U @  LOAD-U !  LOAD-A !
-      i PEND-INC @ 0<> FILE-LOAD
-      i PEND-INC @ 0<> BODY-LOAD? IF
-         SOURCE@ i PEND-WORD-AT @ +  i PEND-WORD-U @  rot execute 2drop
-      ELSE drop THEN
-   loop
-   PEND-BASE @ PEND-N ! ;
-
-\ The scope the file being read opened itself: how many packages and parts it
-\ holds open, each counted once, and the `using`s it opened outside them.
-variable FILE-PKG
-variable FILE-USE
-
-: FILE-SCOPE-STEP ( ^u8 n -- ) {: a:^ u:n :}
-   a u s" package" STR=CI IF FILE-PKG @ 1 + FILE-PKG ! EXIT THEN
-   a u s" ;package" STR=CI IF FILE-PKG @ 1 - 0 max FILE-PKG ! EXIT THEN
-   FILE-PKG @ 0<> IF EXIT THEN
-   a u s" using" STR=CI IF FILE-USE @ 1 + FILE-USE ! EXIT THEN
-   a u s" ;using" STR=CI FILE-USE @ 0 > and IF FILE-USE @ 1 - FILE-USE ! THEN ;
-
-: FILE-NEUTRAL? ( -- bool )
-   FILE-PKG @ 0= FILE-USE @ 0= and ;
-
 \ Runs the loader call with its loader word a u as the token read last, as on
 \ the native path, until the call returns or throws.
 : LOADER-AT ( R [ R -- S ] ^u8 n -- S )
@@ -3490,16 +3307,6 @@ variable FILE-USE
    a u s" include" STR=CI  a u s" require" STR=CI or
    a u s" included" STR=CI or  a u s" required" STR=CI or
    a u s" script-required" STR=CI or  a u s" provided" STR=CI or ;
-
-: COMPOSE-LOAD ( ^u8 n -- bool ) {: a:^ u:n :}
-   QUIET @ IF a u QUIET-TOP? EXIT THEN
-   a u s" include" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
-   a u s" require" STR=CI IF a u COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
-   a u s" included" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
-   a u s" required" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
-   a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
-   a u s" provided" STR=CI IF a u COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
-   0 0= 0= ;
 
 \ The source now scanned opened the FUNCTION: group still open. Nested files
 \ share FFI's open group, as they share the load's open declaration.
@@ -3522,10 +3329,10 @@ variable FILE-USE
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
    a u LOADER-WORD? 0= IF 0 0= 0= EXIT THEN
    TICK-CONTEXT-UNKNOWN
-   QUIET @ IF a u QUIET-USE THEN
+   a u QUIET-USE
    a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
    a u LOADS? FFI-OPEN-HERE? and IF FFI:OPENER$ s" ;FUNCTION" a u UNCLOSED-LOAD-STOP THEN
-   a u [: COMPOSE-LOAD ;] a u LOADER-AT ;
+   a u [: QUIET-TOP? ;] a u LOADER-AT ;
 
 public
 \ Writes, open after its help, the record of the row opened at line l, column c
@@ -3574,10 +3381,9 @@ private
    a u SOURCE-SYNTAX:ROW-OPENER? IF a u ROW-MALFORMED THEN
    a u SOURCE-SYNTAX:ROW-CLOSER? IF a u ROW-MALFORMED THEN ;
 
-\ A row starts clear of the last body's literal and line, as every body reader
-\ does: that literal may lie in decoded bytes a decode has since moved.
+\ A row starts clear of the last body's literal, as every body reader does.
 : RECORD-PRIM-ROW ( -- )
-   BODY-LOAD-RESET
+   BODY-PREV-CLEAR
    ROW-HEADER
    BEGIN
       ROW-TOKEN!
@@ -3981,7 +3787,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
 
 : SKIP-DEFINITION ( -- )
    SCAN-SIG drop 2drop
-   BODY-LOAD-RESET
+   BODY-PREV-CLEAR
    LOCALS-RESET
    BEGIN
       BODY!
@@ -4000,7 +3806,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REJECT-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    WRAP-RESET
-   BODY-LOAD-RESET
+   BODY-PREV-CLEAR
    LOCALS-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
    MAYBE-SIGNATURE DEF-SIG-U !  DEF-SIG-A !
@@ -4153,64 +3959,26 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    FLAG-N @ FLAG-CAP = IF drop 0 FLAG-N ! EXIT THEN
    FLAG-N @ FLAGS !  FLAG-N @ 1 + FLAG-N ! ;
 
-: FLAG-LIT ( ^u8 n -- bool bool ) {: a:^ u:n :}
-   a u TARGET-GUARD {: g:n :}
-   g GUARD-NONE = IF false false EXIT THEN
-   g GUARD-LIVE = true ;
-
 : FLAG-STEP ( ^u8 n -- ) {: a:^ u:n :}
    TOP-DEFER @ 0<> IF 0 FLAG-N ! EXIT THEN
-   a u FLAG-LIT IF FLAG-PUSH EXIT THEN drop
+   a u TARGET-GUARD IF FLAG-PUSH EXIT THEN drop
    a u s" 0=" STR=CI IF a u CORE-OP? ELSE false THEN IF
       FLAG-N @ 0= IF EXIT THEN
       FLAG-TOP @ 0= FLAG-TOP ! EXIT
    THEN
    0 FLAG-N ! ;
 
-\ The stretches of bytes the last composition read, one row apiece: the file's
-\ path as an offset and length in SPAN-PATHS, the stretch's first byte and the
-\ byte past its last. A stretch ends before an arm SKIP-ARM passes over and where
-\ the file's scan stops; the next starts after the arm.
-DYNAMIC-BUFFER SPAN-PATHS u8
-variable SPAN-PATHS-U
-DYNAMIC-BUFFER SPAN-ROWS n
-variable SPAN-N
-variable SPAN-FROM                      \ where the file being scanned's open span starts
-
-: SPANS-DROP ( -- )
-   SPAN-PATHS-RELEASE  SPAN-ROWS-RELEASE
-   0 SPAN-PATHS-U !  0 SPAN-N ! ;
-
-\ Ends the open span of the file being composed at byte n.
-: SPAN-END ( n -- ) {: end:n :}
-   COMPOSE-ON @ 0=  end SPAN-FROM @ <=  or IF EXIT THEN
-   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ {: path:^ pathu:n :}
-   SPAN-PATHS-U @ {: off:n :}
-   off pathu + 1 + SPAN-PATHS-RESERVE
-   path off SPAN-PATHS pathu BYTE-COPY
-   off pathu + SPAN-PATHS-U !
-   SPAN-N @ 1 + 4 * SPAN-ROWS-RESERVE
-   SPAN-N @ 4 * {: row:n :}
-   off row SPAN-ROWS !  pathu row 1 + SPAN-ROWS !
-   SPAN-FROM @ row 2 + SPAN-ROWS !  end row 3 + SPAN-ROWS !
-   SPAN-N @ 1 + SPAN-N ! ;
-
-\ Whether span s holds byte n of the file at path a u.
-: SPAN-HOLDS? ( ^u8 n n n -- bool ) {: a:^ u:n at:n s:n :}
-   s 4 * {: row:n :}
-   at row 2 + SPAN-ROWS @ <  at row 3 + SPAN-ROWS @ >= or IF false EXIT THEN
-   row SPAN-ROWS @ SPAN-PATHS  row 1 + SPAN-ROWS @  a u CORE-STR= ;
-
 : SKIP-ARM ( -- bool )
-   SCAN-I @ SPAN-END
    1 BEGIN dup 0 > WHILE
-      NEXT-RAW dup 0= IF 2drop drop  SCAN-I @ SPAN-FROM !  false EXIT THEN
+      NEXT-RAW dup 0= IF 2drop drop  false EXIT THEN
       2dup s" [if]" STR=CI IF 2drop 1 + ELSE
          s" [then]" STR=CI IF 1 - THEN
       THEN
    REPEAT drop
-   SCAN-I @ SPAN-FROM !  true ;
+   true ;
 
+\ A top-level `[if]` whose flag a target predicate settles, under any `0=`s,
+\ reads only the text that flag chooses.
 : KNOWN-IF? ( ^u8 n -- bool ) {: a:^ u:n :}
    STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
    a u s" [if]" STR=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
@@ -4220,12 +3988,9 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
 
 \ A parsing keyword and its operand are one value on the interpret stack, and
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
-\ hands the count reader `char`, which names the count's word. A load a
-\ definition makes waits for the first statement after which the file has
-\ closed every scope it opened, and for the file's end at the latest.
+\ hands the count reader `char`, which names the count's word.
 : SCAN-TOP ( ^u8 n -- )
    CSR-TOP
-   2dup FILE-SCOPE-STEP
    2dup KNOWN-IF? IF 2drop ELSE
    2dup TOP-PARSER? IF TOP-OPERAND ELSE
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
@@ -4233,7 +3998,6 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
    NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts the token after it
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
-   FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
 
 \ A record no source places is placed at the top-level token.
@@ -4242,7 +4006,6 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
-   0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
    TOP-CLOSE
    BEGIN
@@ -4257,8 +4020,7 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with
    TOP-DUE
-   NULL-PTR 0 FFI-UNCLOSED
-   PEND-RELEASE ;
+   NULL-PTR 0 FFI-UNCLOSED ;
 
 : SOURCE-ARM ( -- )
    SOURCE@ SOURCE-U @ 1 1 0 REJECTION:SOURCE! ;
@@ -4277,14 +4039,14 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
-   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @ SPAN-FROM @
+   VISIT-CUR @ CSR-SUBJ @
+   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @
    {: olda:^ oldu:n oldi:n
       oldprev:^ oldprevu:n oldcur:^ oldcuru:n
       olddefer:n olddefa:^ olddefu:n oldrefused:^
       oldpath:^ oldpathu:n
-      oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
-      oldshadowed:n oldretired:n oldsplit:n oldfrom:n :}
+      oldvisit:n oldsubj:n
+      oldshadowed:n oldretired:n oldsplit:n :}
    src srcu SOURCE!
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    path pathu VISIT-OPEN
@@ -4294,9 +4056,7 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
    dup 0= IF
       drop  SOURCE-ARM  diag diagu REJECTION:FILE!
-      0 SPAN-FROM !
       [: VERIFY-SOURCE ;] catch
-      SCAN-I @ SPAN-END
    THEN
    {: rc:n :}
    DISARM
@@ -4308,9 +4068,7 @@ variable SPAN-FROM                      \ where the file being scanned's open sp
    olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
    olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
-   oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldshadowed SHADOWED !  oldretired RETIRED !  oldsplit CHECKER-SPLIT-STR !
-   oldfrom SPAN-FROM !
    oldpathu 0 > IF
       oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
@@ -4372,12 +4130,11 @@ TYPED-VARIABLE THEN-ACTION [ -- ]
    VERIFY-ARMED
    THEN-ACTION @ execute ;
 
-\ A quiet composition reads each file a loader loads itself, once
-\ COMPOSE-MISSING has rejected a missing one: a file the system does not open is
-\ the loader's rejection at LOAD-PLACE, as is one it does not read to its end,
-\ FAULT-TARGET$ naming the file as resolved either way. Any other refusal,
-\ memory's among them, stays itself. The
-\ loader refuses a resolved path past PATH-CAP before reading, so the path fits
+\ A composition reads each file a loader loads itself, once COMPOSE-MISSING has
+\ rejected a missing one: a file the system does not open, or does not read to
+\ its end, is the loader's rejection at LOAD-PLACE, FAULT-TARGET$ naming the
+\ file as resolved. Any other rejection, memory's among them, stays itself. The
+\ loader rejects a resolved path past PATH-CAP before reading, so the path fits
 \ both buffers.
 create READ-PATHZ PATH-CAP 1+ allot
 DYNAMIC-BUFFER READ-BUF u8                    \ the file's bytes, READ-U of them
@@ -4523,11 +4280,16 @@ public
 
 private
 
-\ The record of entry word w called while a composition is open, at the
-\ statement the open one is in.
-: COMPOSE-NESTED ( ^u8 n -- ) {: w:^ wu:n :}
+\ The public word a caller composes through: the entry one for entry text.
+: COMPOSE-WORD$ ( bool -- ^u8 n )
+   IF s" VERIFY:SOURCE-COMPOSE-ENTRY-IN-SCOPE" EXIT THEN
+   s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" ;
+
+\ The record of a composition called while another is open, at the statement
+\ the open one is in; entry says which public word was called.
+: COMPOSE-NESTED ( bool -- ) {: entry:bool :}
    s" E-VERIFY-WINDOW" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  entry COMPOSE-WORD$ REJECTION:EMIT-STR
    s" ` ran while a source composition is open" REJECTION:EMIT-STR
    s" the open composition is here" STATEMENT-AT
    REJECTION:HELP
@@ -4538,7 +4300,7 @@ private
 \ The record of a path or label a u, which a composition cannot hold. It
 \ stands at a u where a source holds it, else at the token the engine read last.
 : COMPOSE-PATH-STOP ( ^u8 n -- ) {: a:^ u:n :}
-   s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" u PATH-CAP REJECTION:PATH-RANGE
+   ENTRY-TEXT @ COMPOSE-WORD$ u PATH-CAP REJECTION:PATH-RANGE
    a REJECTION:PLACES? IF a u ELSE SRCLOC:TOKEN$ THEN REJECTION:AT
    u 0= IF s" empty path" ELSE s" too long" THEN REJECTION:EMIT-STR
    REJECTION:HELP
@@ -4546,15 +4308,10 @@ private
    s"  bytes" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-public
-
-\ Verify one supplied source through loader composition at each top-level
-\ loader token under the caller's active SOURCE-ROOT owner. The registry suffix
-\ and the caller's checker scope survive success and throw; the supplied bytes
-\ remain authoritative for this path.
+\ The registry suffix and the caller's checker scope survive the composition's
+\ success and throw.
 : SOURCE-COMPOSE-LABELED-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
-   COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE" COMPOSE-NESTED THEN
    pathu 0= pathu PATH-CAP > or IF path pathu COMPOSE-PATH-STOP THEN
    labelu PATH-CAP > IF label labelu COMPOSE-PATH-STOP THEN
    path COMPOSE-SUBJ-PATH pathu BYTE-COPY
@@ -4564,12 +4321,10 @@ public
    src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 PRIM-OPEN-READY !
-   0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
       COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
    THEN
-   SPANS-DROP
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP
@@ -4578,38 +4333,35 @@ public
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
    rc 0<> IF rc throw THEN ;
 
-: SOURCE-COMPOSE-IN-SCOPE ( ^u8 n ^u8 n -- )
-   2dup SOURCE-COMPOSE-LABELED-IN-SCOPE ;
-
-\ SOURCE-COMPOSE-LABELED-IN-SCOPE, quiet: the composition itself rejects the
-\ loader forms discovery rejects, where it meets them and after the packets it
-\ made before, and reads each file a loader loads, so no walk need run first.
-\ FAULT-TARGET$ names a file it could not read.
-: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
-   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
-   COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
+: COMPOSE-QUIET ( ^u8 n ^u8 n ^u8 n bool -- )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n entry:bool :}
+   COMPOSE-ON @ 0<> IF entry COMPOSE-NESTED THEN
    0 FAULT-U !  0 DISCOVERY-STOPPED !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
-   true QUIET !
+   entry ENTRY-TEXT !
    [: src srcu path pathu label labelu SOURCE-COMPOSE-LABELED-IN-SCOPE ;]
    catch {: rc:n :}
-   false QUIET !
+   false ENTRY-TEXT !
    SOURCE-INPUT:RESET
    rc THROW-RESULT ;
+public
 
-\ The file the last quiet composition could not read, as it was resolved, or
-\ empty. The string is borrowed until the next quiet composition.
+\ Verify src srcu, the bytes supplied for path, composing each file a loader
+\ loads under the caller's SOURCE-ROOT owner; its records name label, and a
+\ bad loader form is rejected after the packets made before it.
+: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
+   false COMPOSE-QUIET ;
+
+\ SOURCE-COMPOSE-QUIET-IN-SCOPE of entry text, the bytes the load's command
+\ line makes of its files: no file holds them, so their records name
+\ REJECTION:NO-FILE$ and a load they make stands nowhere.
+: SOURCE-COMPOSE-ENTRY-IN-SCOPE ( ^u8 n ^u8 n -- )
+   REJECTION:NO-FILE$ true COMPOSE-QUIET ;
+
+\ The file the last composition could not read, as it was resolved, or empty.
+\ The string is borrowed until the next composition.
 : FAULT-TARGET$ ( -- ^u8 n )
    FAULT-TARGET FAULT-U @ ;
-
-\ Whether the last composition read byte n of the file at path a u, as it
-\ resolved the path: false in an arm a false target flag skips, in a file the
-\ composition never loaded, and past where the scan of the file stopped.
-: READ-AT? ( ^u8 n n -- bool ) {: a:^ u:n at:n :}
-   SPAN-N @ 0 ?do
-      a u at i SPAN-HOLDS? if true unloop exit then
-   loop
-   false ;
 
 : SOURCE-BUF-IN-SCOPE ( ^u8 n -- )
    SOURCE!

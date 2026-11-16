@@ -685,7 +685,7 @@ variable DOES-USES
 : VISITED$ ( -- ^u8 n )
    s\" DEFTYPE CmpCol\npackage CMPEA public : CMPEXA ( -- n ) 15 ; ;package\npackage CMPEB public EXPORT CMPEA:CMPEXA ;package\n" ;
 
-: COMPOSED ( -- ) VISITED$ s" cmp-visited.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
+: COMPOSED ( -- ) VISITED$ s" cmp-visited.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 \ The composition is the run's first visit, 1; each name sits at its token's
 \ bytes in VISITED$.
@@ -712,7 +712,7 @@ variable DOES-USES
    s\" require test/checker-completion-dep.f\n: CMPDU ( -- n ) CmpDep ;\n" ;
 
 : DEP-COMPOSED ( -- )
-   DEP-SUBJECT$ s" test/cmp-dep-subject.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
+   DEP-SUBJECT$ s" test/cmp-dep-subject.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 \ The run's second composition: the subject is visit 2, the file it requires 3.
 : CASE-DEPENDENCY ( -- )

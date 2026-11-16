@@ -2639,11 +2639,8 @@ sections above.
   retaining it. A declared call is still `W-CHECK-DEFERRED`; scanning resumes
   after its raw operands. EOF inside those operands leaves the call deferred.
   A `defer` and a primitive remain undeclared. A resident or cached
-  dependency needs a row read by this check; discovery uses a row by spelling
-  only when its dependency closure has one declaration and no retirement. A
-  bare name counts declarations across all packages; a qualified name counts
-  only its package. Otherwise discovery reads operands as source. A checked
-  use must materialize a cold captured binding before a row can bound it.
+  dependency needs a row read by this check. A checked use must materialize a
+  cold captured binding before a row can bound it.
   Calls through xts and defers remain opaque; a plain `create` wrapper without
   `does>` has no created-word effect in checked bodies; the `does>` clause's
   own parsing behavior gives its products no parser facts.

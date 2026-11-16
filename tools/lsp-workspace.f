@@ -202,7 +202,7 @@ variable CUR-ROOT                        \ and the root being walked
 \ ---- the subjects ---------------------------------------------------------------
 
 \ The subject at this canonical path, rooted at its directory as the checker
-\ roots a document it checks (tools/check-verify-core.f CHK-EXPAND-BYTES).
+\ roots a document it checks.
 : SUBJECT ( ^u8 n -- n )
    {: a:^ u:n :}
    a u a u SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}

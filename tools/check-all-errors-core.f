@@ -28,8 +28,7 @@ require src/lib/source-lex.f
 
 \ VERIFY opens its own package, which a file required inside a package cannot,
 \ so verify-source.f is required here at top level; every checker scope below
-\ replays source through VERIFY. It is not in the engine's baked prefix: the
-\ require registry's dedupe of co-loaded sites is the only one this line has.
+\ replays source through VERIFY.
 \ A replayed `constant` gets VERIFY's `-- a` effect.
 require src/habu/verify-source.f
 
@@ -47,6 +46,7 @@ TYPED-VARIABLE CA-COMPOSE-PATH-A ^u8
 variable CA-COMPOSE-PATH-U
 TYPED-VARIABLE CA-COMPOSE-LABEL-A ^u8
 variable CA-COMPOSE-LABEL-U
+TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 : CA-SRC-A@ ( -- ^u8 )
    CA-SRC-A @ ;
@@ -162,6 +162,7 @@ variable CA-COMPOSING                   \ the run is a composition
 
 : CA-CHECK-COMPOSE-VERIFY ( -- )
    CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
+   CA-COMPOSE-ENTRY @ if VERIFY:SOURCE-COMPOSE-ENTRY-IN-SCOPE exit then
    CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
    VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
@@ -217,7 +218,8 @@ private
    compose CA-COMPOSING !
    [: report CA-RUN-BODY ;] SESSION ;
 
-: CA-COMPOSE-AT ( ^u8 n -- ) {: path:^ pathu:n :}
+: CA-COMPOSE-AT ( ^u8 n bool -- ) {: path:^ pathu:n entry:bool :}
+   entry CA-COMPOSE-ENTRY !
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
    CA-FILE-A@ CA-COMPOSE-LABEL-A !  CA-FILE-U @ CA-COMPOSE-LABEL-U ! ;
 
@@ -229,7 +231,7 @@ public
 : FILE ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n patha:^ pathu:n :}
    [: labela labelu CA-START
       patha pathu CA-READ-SOURCE
-      patha pathu CA-COMPOSE-AT
+      patha pathu false CA-COMPOSE-AT
       true true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Check the given source bytes as the file at the given path, reporting them
@@ -241,7 +243,15 @@ public
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    [: label labelu CA-START
       src srcu CA-SOURCE-BUF!
-      path pathu CA-COMPOSE-AT
+      path pathu false CA-COMPOSE-AT
+      true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
+
+\ COMPOSE-BUF of entry text, whose records name REJECTION:NO-FILE$.
+: COMPOSE-ENTRY ( ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n :}
+   [: REJECTION:NO-FILE$ CA-START
+      src srcu CA-SOURCE-BUF!
+      path pathu true CA-COMPOSE-AT
       true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Check the given source bytes under the given label as one unit: a loader

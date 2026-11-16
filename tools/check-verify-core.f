@@ -5,22 +5,6 @@
 \ open document other than PATH meets its text, the first of two for one path holding. A child
 \ (VFY-EXE) runs the check; LSP-CHECK:PREVERIFY-BYTES is check.f's pre-pass on the same child.
 \
-\ The closure walk is check.f's walk before its pre-pass, kept here so a caller
-\ of VERIFY-BYTES loads none of check.f's lints; VERIFY-BYTES walks none, its
-\ child's composition refusing the same forms. Discovery's closure is a
-\ superset of the runtime load set. A top-level dynamic loader form, or a
-\ loader form whose word the file defined or retired, is refused; a string loader in a body
-\ is otherwise a call no check makes. The walk first harvests: it
-\ grows the dependency set without ordered edges, and repeats until no file or
-\ source occurrence is added, since a later dependency's row can let an earlier
-\ file read past a parsing call. It then follows direct dependencies depth
-\ first from the top, recording each file after its dependencies. It ends at
-\ the first file it cannot follow: discovery rejects it, stopping with
-\ CHECKER-REJECT-RC, or it does not exist or the file system will not read it, the loader's
-\ rejection placed at its path in the file that names it. CHK-DISC-ID names
-\ it. The file CHK-BYTES-ID names is read from the caller's bytes, never from
-\ disk.
-\
 \ A batch wave assembles one immutable input snapshot per lane on the calling
 \ task before it starts; capture tasks touch only their lane's output buffers
 \ and command context. The ordinary batch parser is restored and run on the
@@ -41,7 +25,6 @@ require src/lib/task.f
 require src/lib/engine-candidate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
-require tools/source-discovery.f
 require src/habu/verify-source.f
 
 package LSP-CHECK
@@ -52,158 +35,13 @@ using SOURCE-ROOT
 69 constant CHK-E-UNAVAILABLE
 70 constant CHK-E-CHECK
 
-\ The closure's files: each one's path and the root that resolved it, PATH-CAP
-\ bytes apiece, their lengths and its walk state (0 not walked, 1 walking, 2
-\ walked); the direct dependencies found and not yet followed, each with the
-\ file whose loader word names it, where the path that word takes starts there
-\ and its length, and the request as the program wrote it, the
-\ requests end to end in CHK-DIR-REQS; and the files walked, dependencies first.
-\ Growth moves a buffer, so a path is read through its id, never kept.
-DYNAMIC-BUFFER CHK-DEP-PATHS u8
-DYNAMIC-BUFFER CHK-DEP-US n
-DYNAMIC-BUFFER CHK-DEP-ROOTS u8
-DYNAMIC-BUFFER CHK-DEP-ROOT-US n
-DYNAMIC-BUFFER CHK-DEP-STATES n
-DYNAMIC-BUFFER CHK-DIR-IDS n
-DYNAMIC-BUFFER CHK-DIR-FROM n
-DYNAMIC-BUFFER CHK-DIR-PATH-AT n
-DYNAMIC-BUFFER CHK-DIR-PATH-LEN n
-DYNAMIC-BUFFER CHK-DIR-REQ-END n
-DYNAMIC-BUFFER CHK-DIR-REQS u8
-
-variable CHK-DEP-N
-variable CHK-DIR-N
-variable CHK-DISC-ID
-variable CHK-EDGE                       \ the dependency followed last, -1 for none
-variable CHK-BYTES-ID
 TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U
-TYPED-VARIABLE CHK-BYTES-LABEL-A ^u8
-variable CHK-BYTES-LABEL-U
-variable CHK-EXPAND-TOP
 
 
 : CHK-ARG+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
-
-: CHK-DEP-CHECK ( n -- )
-   {: id:n :}
-   id 0 < id CHK-DEP-N @ >= or if E-TBL-BOUNDS throw then ;
-
-: CHK-DEP-PATH ( n -- ^u8 )
-   {: id:n :}
-   id CHK-DEP-CHECK
-   id PATH-CAP * CHK-DEP-PATHS ;
-
-: CHK-DEP-U ( n -- ^n )
-   {: id:n :}
-   id CHK-DEP-CHECK
-   id CHK-DEP-US ;
-
-: CHK-DEP-STATE ( n -- ^n )
-   {: id:n :}
-   id CHK-DEP-CHECK
-   id CHK-DEP-STATES ;
-
-: CHK-DEP$ ( n -- ^u8 n ) {: id:n :}
-   id CHK-DEP-PATH
-   id CHK-DEP-U @ ;
-
-: CHK-DEP-ROOT$ ( n -- ^u8 n )
-   {: id:n :}
-   id CHK-DEP-CHECK
-   id PATH-CAP * CHK-DEP-ROOTS
-   id CHK-DEP-ROOT-US @ ;
-
-: CHK-DEP-MATCH? ( ^u8 n n -- bool ) {: a:^ u:n id:n :}
-   a u id CHK-DEP$ STR= ;
-
-: CHK-DEP-FIND ( ^u8 n -- n ) {: a:^ u:n :}
-   0 begin dup CHK-DEP-N @ < while
-      dup a u rot CHK-DEP-MATCH? if exit then
-      1+
-   repeat drop -1 ;
-
-: CHK-DEP-NEW ( ^u8 n ^u8 n -- n )
-   {: a:^ u:n root:^ rootu:n :}
-   u PATH-CAP > rootu PATH-CAP > or if E-FS-CAPACITY throw then
-   CHK-DEP-N @ {: id:n :}
-   id 1+ PATH-CAP * dup CHK-DEP-PATHS-RESERVE CHK-DEP-ROOTS-RESERVE
-   id 1+ dup CHK-DEP-US-RESERVE dup CHK-DEP-ROOT-US-RESERVE CHK-DEP-STATES-RESERVE
-   id 1+ CHK-DEP-N !
-   a id CHK-DEP-PATH u BYTE-COPY
-   u id CHK-DEP-U !
-   root id PATH-CAP * CHK-DEP-ROOTS rootu BYTE-COPY
-   rootu id CHK-DEP-ROOT-US !
-   0 id CHK-DEP-STATE !
-   id ;
-
-: CHK-DEP-ID ( ^u8 n ^u8 n -- n ) {: a:^ u:n root:^ rootu:n :}
-   a u CHK-DEP-FIND dup 0 >= if exit then
-   drop a u root rootu CHK-DEP-NEW ;
-
-: CHK-DIR-REQ-START ( n -- n ) {: ix:n :}
-   ix 0= if 0 exit then
-   ix 1- CHK-DIR-REQ-END @ ;
-
-: CHK-DIR-REQ$ ( n -- ^u8 n ) {: ix:n :}
-   ix CHK-DIR-REQ-START {: at:n :}
-   at CHK-DIR-REQS  ix CHK-DIR-REQ-END @ at - ;
-
-: CHK-DIR-REQ! ( ^u8 n n -- ) {: a:^ u:n ix:n :}
-   ix CHK-DIR-REQ-START {: at:n :}
-   at u + 1+ CHK-DIR-REQS-RESERVE
-   a at CHK-DIR-REQS u BYTE-COPY
-   at u + ix CHK-DIR-REQ-END ! ;
-
-: CHK-DIR-RESERVE ( n -- )
-   dup CHK-DIR-IDS-RESERVE dup CHK-DIR-FROM-RESERVE
-   dup CHK-DIR-PATH-AT-RESERVE dup CHK-DIR-PATH-LEN-RESERVE
-   CHK-DIR-REQ-END-RESERVE ;
-
-\ A direct dependency ID of the file the walk is in, CHK-DISC-ID, requested by
-\ event EV: the span of the path its loader word takes there.
-: CHK-DIR-PUSH ( n n -- )
-   {: id:n ev:n :}
-   CHK-DIR-N @ {: ix:n :}
-   ix 1+ CHK-DIR-RESERVE
-   id ix CHK-DIR-IDS !
-   CHK-DISC-ID @ ix CHK-DIR-FROM !
-   ev EVENT-PATH-TOK@ ix CHK-DIR-PATH-LEN ! ix CHK-DIR-PATH-AT !
-   ev EVENT-SPELLED@ ix CHK-DIR-REQ!
-   ix 1+ CHK-DIR-N ! ;
-
-: CHK-READ-ACT ( -- )
-   CHK-DISC-ID @ {: id:n :}
-   id CHK-DEP$ id CHK-DEP-ROOT$ DISCOVER:READ-IN ;
-
-: CHK-FILE-NAME$ ( n -- ^u8 n )
-   {: id:n :}
-   id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
-   id CHK-DEP$ ;
-
-\ The path of the walk's file a record names a u: the bytes' own file is named
-\ by its label.
-: CHK-PLACE-PATH$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   CHK-BYTES-ID @ 0< if a u exit then
-   a u CHK-BYTES-ID @ CHK-FILE-NAME$ STR= 0= if a u exit then
-   CHK-BYTES-ID @ CHK-DEP$ ;
-
-\ The file the walk reads is the rejection source, so a loader that rejects a
-\ path places its record at the path in that file.
-: CHK-ARM ( ^u8 n -- ) {: a:^ u:n :}
-   CHK-DISC-ID @ CHK-FILE-NAME$ REJECTION:FILE!
-   a u 1 1 0 REJECTION:SOURCE! ;
-
-: CHK-RUN-BYTES ( -- )
-   CHK-DISC-ID @ {: id:n :}
-   CHK-BYTES-A @ CHK-BYTES-U @ CHK-ARM
-   id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES ;
-
-: CHK-RUN-READ ( -- )
-   DISCOVER:BYTES$ CHK-ARM
-   DISCOVER:RUN-READ ;
 
 : CHK-FS-RC? ( n -- bool )
    {: rc:n :}
@@ -237,150 +75,6 @@ variable CHK-EXPAND-TOP
       t tu path pathu FS:EISDIR SOURCE-ROOT:UNREADABLE-SOURCE
    then
    t tu path pathu SOURCE-ROOT:UNSTAMPED-SOURCE ;
-
-: CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID ix CHK-DIR-PUSH ;
-
-: CHK-EVENTS>DEPS ( -- )
-   0 begin dup EVENT-COUNT < while
-      dup CHK-EVENT-DEP+
-      1+
-   repeat drop ;
-
-: CHK-HARVEST-ACT ( -- )
-   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
-   CHK-READ-ACT
-   CHK-RUN-READ ;
-
-: CHK-HARVEST-ID ( n -- ) {: id:n :}
-   id CHK-DISC-ID !
-   [: CHK-HARVEST-ACT ;] DISCOVER:HARVEST
-   EVENT-COUNT 0 ?do
-      i EVENT-PATH@ i SOURCE-EVENT:ROOT@ CHK-DEP-ID drop
-   loop ;
-
-: CHK-HARVEST ( -- )
-   begin
-      CHK-DEP-N @ DISCOVER:ROWS-VERSION
-      DISCOVER:ROWS-PASS-BEGIN
-      0 begin dup CHK-DEP-N @ < while dup CHK-HARVEST-ID 1+ repeat drop
-      DISCOVER:ROWS-PASS-END
-      DISCOVER:ROWS-VERSION = swap CHK-DEP-N @ = and
-      DISCOVER:ROWS-PASS-STABLE? and
-   until ;
-
-DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a record
-
-: CHK-FILE-ROOM ( n -- ^u8 )
-   CHK-FILE-SRC-RESERVE 0 CHK-FILE-SRC ;
-
-\ The bytes of the file at PATH, taken after the read, which may move the storage.
-: CHK-FILE-READ ( ^u8 n -- ^u8 n )
-   {: path:^ pathu:n :}
-   path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
-   {: u:n :}
-   0 CHK-FILE-SRC u ;
-
-: CHK-FILE-BYTES ( n -- ^u8 n )
-   {: id:n :}
-   id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
-   id CHK-DEP$ CHK-FILE-READ ;
-
-\ The file that names edge EDGE armed as the rejection source, and the span of
-\ the edge's path in it.
-: CHK-EDGE-ARM ( n -- ^u8 n ) {: edge:n :}
-   edge CHK-DIR-FROM @ {: from:n :}
-   from CHK-FILE-NAME$ REJECTION:FILE!
-   from CHK-FILE-BYTES {: src:^ srcu:n :}
-   src srcu 1 1 0 REJECTION:SOURCE!
-   src edge CHK-DIR-PATH-AT @ +  edge CHK-DIR-PATH-LEN @ ;
-
-\ Edge EDGE names a file that is not there: the loader's rejection, placed at
-\ the path in the file that names it and searched from that file's root.
-: CHK-MISSING ( n -- ) {: edge:n :}
-   edge CHK-EDGE-ARM {: p:^ pu:n :}
-   edge CHK-DIR-FROM @ CHK-DEP-ROOT$
-   [: edge CHK-DIR-REQ$ p pu false SOURCE-ROOT:MISSING-SOURCE ;]
-   SOURCE-ROOT:WITH ;
-
-\ The loader's record of the file the walk reads, whose read ended with RC and
-\ errno E: at the path in the file naming it, unplaced for the top.
-: CHK-UNREADABLE ( n n -- ) {: rc:n e:n :}
-   CHK-DISC-ID @ CHK-DEP$ {: path:^ pathu:n :}
-   CHK-EDGE @ 0 < if path pathu rc e CHK-UNREADABLE-NAMED then
-   CHK-EDGE @ CHK-EDGE-ARM path pathu rc e CHK-READ-RECORD ;
-
-: CHK-DISCOVER-ACT ( -- )
-   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
-   [: CHK-READ-ACT ;] CHK-READ-REJECTED {: rc:n e:n :}
-   rc 0<> if rc e CHK-UNREADABLE then
-   CHK-RUN-READ ;
-
-\ The top's caller found it; a followed edge may name a file that is not there,
-\ or a path that is there but no regular file.
-: CHK-PRESENT ( n -- ) {: id:n :}
-   CHK-EDGE @ 0 < if exit then
-   id CHK-DEP$ FS:FILE? if exit then
-   id CHK-DEP$ FS:EXISTS? 0= if CHK-EDGE @ CHK-MISSING exit then
-   CHK-EDGE @ CHK-EDGE-ARM id CHK-DEP$ CHK-IRREGULAR ;
-
-: CHK-EXPAND-ID ( n -- ) {: id:n :}
-   id CHK-DEP-CHECK
-   id CHK-DEP-STATE @ 2 = if exit then
-   id CHK-DEP-STATE @ 1 = if exit then
-   1 id CHK-DEP-STATE !
-   id CHK-DISC-ID !
-   CHK-DIR-N @
-   id CHK-PRESENT
-   CHK-DISCOVER-ACT
-   CHK-EVENTS>DEPS
-   dup CHK-DIR-N @
-   begin 2dup < while
-      over CHK-EDGE !
-      over CHK-DIR-IDS @ RECURSE
-      swap 1+ swap
-   repeat
-   2drop CHK-DIR-N !
-   2 id CHK-DEP-STATE ! ;
-
-: CHK-EXPAND-RESET ( -- )
-   DISCOVER:ROWS-RESET
-   0 CHK-DEP-N !
-   0 CHK-DIR-N !
-   -1 CHK-BYTES-ID ! ;
-
-: CHK-EXPAND-TOP-ACT ( -- )
-   CHK-HARVEST
-   CHK-EXPAND-TOP @ CHK-EXPAND-ID ;
-
-\ Walk the closure below ID into the dependency order: 0, or CHECKER-REJECT-RC
-\ when a rejection ended the walk. Any other throw goes on. The walk starts with no
-\ dependency followed, whatever an earlier walk of the run followed, so a
-\ fault in ID itself has no loader word.
-: CHK-EXPAND ( n -- n )
-   CHK-EXPAND-TOP !
-   -1 CHK-EDGE !
-   [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
-   REJECTION:SOURCE-OFF
-   rc CHECKER-REJECT-RC = rc 0= or 0= if rc throw then
-   rc ;
-
-\ Walk the closure over SRC, bytes that stand for the file at PATH with its
-\ directory the root, as CHK-EXPAND walks a named file's: 0, or the code of the
-\ file that ended the walk. A packet names the bytes' own file LABEL, the name
-\ the caller's other reports give it. Discovery takes PATH as loading
-\ meanwhile, so a require of an absent PATH meets the bytes too.
-: CHK-EXPAND-BYTES ( ^u8 n ^u8 n ^u8 n -- n )
-   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
-   CHK-EXPAND-RESET
-   path pathu path pathu DIRNAME CHK-DEP-ID {: id:n :}
-   src CHK-BYTES-A !
-   srcu CHK-BYTES-U !
-   label CHK-BYTES-LABEL-A !
-   labelu CHK-BYTES-LABEL-U !
-   id CHK-BYTES-ID !
-   path pathu DISCOVER:LOADING!
-   id [: CHK-EXPAND ;] [: NULL$ DISCOVER:LOADING! ;] finally ;
 
 public
 
@@ -448,6 +142,7 @@ TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
 TYPED-VARIABLE VFY-JSON bool            \ the child writes packets, false for prose records
 TYPED-VARIABLE VFY-LABEL-A ^u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
+TYPED-VARIABLE VFY-ENTRY bool           \ ... or on entry text, which no label names
 TYPED-VARIABLE VFY-OF-A ^u8          \ the tail whose uses the child writes in every file,
 variable VFY-OF-U                       \ 0 for none
 create VFY-TARGET PATH-CAP allot        \ a missing or unread answer's file, empty for none
@@ -473,6 +168,7 @@ variable VFY-TARGET-U
    VFY-NONE VFY-ANSWER !
    0 VFY-TARGET-U !
    false VFY-PREPASS !
+   false VFY-ENTRY !
    false VFY-INDEX? !
    true VFY-JSON ! ;
 
@@ -558,7 +254,8 @@ variable VFY-EXE-U
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if
+   VFY-PREPASS @ VFY-ENTRY @ and if s" --entry" CHK-ARG+ then
+   VFY-PREPASS @ VFY-ENTRY @ 0= and if
       s" --label" CHK-ARG+  VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+
    then
    VFY-JSON @ 0= if s" --prose" CHK-ARG+ then
@@ -1387,22 +1084,37 @@ public
    VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? ;
 : VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
+private
+
+: VFY-PREPASS-RUN ( ^u8 n ^u8 n ms bool -- result<n,PROCESS:ending> )
+   {: src:^ srcu:n path:^ pathu:n deadline json:bool :}
+   json VFY-JSON !
+   path pathu VFY-PATH!
+   true VFY-PREPASS !
+   src CHK-BYTES-A !
+   srcu CHK-BYTES-U !
+   [: drop ;] VFY-IN!
+   deadline VFY-DEADLINE !
+   VFY-RUN VFY-PREVERDICT ;
+
+public
+
 \ check.f's pre-pass in the verifier child, which resolves words as the run does,
 \ its rejections packets when JSON is true and prose records when false: ok 0,
 \ ok the code it stopped with, or err how a child with no answer ended.
 : PREVERIFY-BYTES ( ^u8 n ^u8 n ^u8 n ms bool -- result<n,PROCESS:ending> )
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n deadline json:bool :}
    VFY-RESET
-   json VFY-JSON !
-   path pathu VFY-PATH!
-   true VFY-PREPASS !
    label VFY-LABEL-A !
    labelu VFY-LABEL-U !
-   src CHK-BYTES-A !
-   srcu CHK-BYTES-U !
-   [: drop ;] VFY-IN!
-   deadline VFY-DEADLINE !
-   VFY-RUN VFY-PREVERDICT ;
+   src srcu path pathu deadline json VFY-PREPASS-RUN ;
+
+\ PREVERIFY-BYTES of entry text, which no label names.
+: PREVERIFY-ENTRY ( ^u8 n ^u8 n ms bool -- result<n,PROCESS:ending> )
+   {: src:^ srcu:n path:^ pathu:n deadline json:bool :}
+   VFY-RESET
+   true VFY-ENTRY !
+   src srcu path pathu deadline json VFY-PREPASS-RUN ;
 
 \ The status the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 for a
 \ rejection, a missing source among them, 74 for a source found but not

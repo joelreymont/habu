@@ -1,6 +1,7 @@
-\ check-core.f - the checked engine core behind tools/check.f: the closure walk and pre-pass
-\ (tools/check-verify-core.f), the lints, and the run stage in a child on the engine
-\ src/lib/engine-candidate.f names, its output captured and replayed under the subject's name. --verify-only stops before the run stage.
+\ check-core.f - the checked engine core behind tools/check.f: the pre-pass
+\ (tools/check-verify-core.f) and the run stage in a child on the engine
+\ src/lib/engine-candidate.f names, its output captured and replayed under the
+\ subject's name. --verify-only stops before the run stage.
 
 require src/lib/date.f
 require src/lib/error.f
@@ -74,10 +75,6 @@ TYPED-VARIABLE CHK-MAP-BUF-A ^u8
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
-\ Per --all-errors walk stop, CHK-KEPT holds its place's path then its record;
-\ its CHK-KEPT-ROW cells: path at, length, byte, record at, length, status.
-DYNAMIC-BUFFER CHK-KEPT u8
-DYNAMIC-BUFFER CHK-KEPT-ROWS n
 \ Each positional path whole: CHK-POS-MEM holds its bytes, CHK-POS-ROWS its
 \ offset then length. CHK-POS-SET may move a span an earlier CHK-POS$ answered.
 DYNAMIC-BUFFER CHK-POS-MEM u8
@@ -120,8 +117,6 @@ variable CHK-SUBJECT-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-EXP-OUT-U
-variable CHK-KEPT-U
-variable CHK-KEPT-N
 
 : CHK-PTR-U8-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
@@ -419,12 +414,7 @@ private
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
    0 CHK-EXP-OUT-U !
-   0 CHK-KEPT-U !
-   0 CHK-KEPT-N !
-   0 CHK-SUBJ-U !
-   0 CHK-DEP-N !
-   0 CHK-DIR-N !
-   0 CHK-DISC-ID ! ;
+   0 CHK-SUBJ-U ! ;
 
 : CHK-RESET-CFG ( -- )
    0 CHK-ARG-I !
@@ -503,59 +493,8 @@ private
    u CHK-SRC-U !
    a CHK-SRC-A CHK-PTR-U8! ;
 
-6 constant CHK-KEPT-ROW                \ cells per kept stop
-
-\ The captured record of the walk's stop with status RC, kept with the place it
-\ stands at.
-: CHK-KEEP-STOP ( n -- ) {: rc:n :}
-   REJECTION:BUFFER$ {: a:^ u:n :}
-   REJECTION:LAST-PLACE {: p:^ pu:n at:n :}
-   u 0=  at 0<  or if exit then
-   p pu CHK-PLACE-PATH$ {: path:^ pathu:n :}
-   CHK-KEPT-U @ {: off:n :}
-   off pathu + {: rec:n :}
-   rec u + 1+ CHK-KEPT-RESERVE
-   path off CHK-KEPT pathu BYTE-COPY
-   a rec CHK-KEPT u BYTE-COPY
-   rec u + CHK-KEPT-U !
-   CHK-KEPT-N @ 1+ CHK-KEPT-ROW * CHK-KEPT-ROWS-RESERVE
-   CHK-KEPT-N @ CHK-KEPT-ROW * {: row:n :}
-   off row CHK-KEPT-ROWS !  pathu row 1+ CHK-KEPT-ROWS !  at row 2 + CHK-KEPT-ROWS !
-   rec row 3 + CHK-KEPT-ROWS !  u row 4 + CHK-KEPT-ROWS !  rc row 5 + CHK-KEPT-ROWS !
-   CHK-KEPT-N @ 1+ CHK-KEPT-N ! ;
-
-\ Whether the walk's stop with status RC is a named file that will not read,
-\ which stands in no source.
-: CHK-NAMED-IO? ( n -- bool ) {: rc:n :}
-   rc INCLUDE-IO-RC <> if false exit then
-   REJECTION:LAST-PLACE nip nip 0< ;
-
-\ Writes kept stop n's record and answers the status it stopped with.
-: CHK-KEPT-SEND ( n -- n )
-   CHK-KEPT-ROW * {: row:n :}
-   row 3 + CHK-KEPT-ROWS @ CHK-KEPT  row 4 + CHK-KEPT-ROWS @  CHK-ERR
-   row 5 + CHK-KEPT-ROWS @ ;
-
-\ --all-errors keeps a walk's stop for CHK-SEND-UNREAD and goes on, but a named
-\ file that will not read ends the run once every kept stop is written.
-: CHK-EXPAND-REPORT ( [ -- n ] -- ) {: q :}
-   CHK-ALL @ 0= if q execute 0<> if CHK-E-CHECK CHK-THROW then exit then
-   REJECTION:CAPTURE
-   [: q execute 0<> if CHK-E-CHECK CHK-THROW then ;] catch {: rc:n :}
-   REJECTION:BUFFER-OFF
-   rc CHK-NAMED-IO? if
-      CHK-KEPT-N @ 0 ?do i CHK-KEPT-SEND drop loop
-      REJECTION:BUFFER$ CHK-ERR  rc throw
-   then
-   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if rc CHK-KEEP-STOP exit then
-   rc 0<> if rc throw then ;
-
-: CHK-ENTRY-ID ( ^u8 n -- n )
-   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
-
-: CHK-EXPAND-PATH ( ^u8 n -- )
-   CHK-ENTRY-ID {: id:n :}
-   [: id CHK-EXPAND ;] CHK-EXPAND-REPORT ;
+: CHK-ENTRY$ ( ^u8 n -- ^u8 n )
+   ENTRY-RESOLVE drop ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
@@ -645,14 +584,13 @@ private
    CHK-LF CHK-EXP-C ;
 
 \ A source list loads its files as `bin/hb --load` loads the files it names:
-\ each is an entry, so a listed file's own relative requires resolve against its
-\ directory, as discovery walks it (CHK-ENTRY-ID). A `required` would make the
-\ working directory the root of a file below it (src/core/include.f
-\ SEARCH-ROOTS), and resolve them there. Boot-owned dependencies are recorded
-\ portably relative to the current tree. Materializing their canonical absolute
-\ spelling makes the child miss its boot row and reload a family such as
-\ option; paths outside the tree remain absolute and retain their distinct
-\ application identity.
+\ each is an entry, so a listed file's own relative requires resolve against
+\ its directory. A `required` would make the working directory the root of a
+\ file below it (src/core/include.f SEARCH-ROOTS), and resolve them there.
+\ Boot-owned dependencies are recorded portably relative to the current tree.
+\ Materializing their canonical absolute spelling makes the child miss its boot
+\ row and reload a family such as option; paths outside the tree remain
+\ absolute and retain their distinct application identity.
 : CHK-APPEND-LISTED ( ^u8 n -- )
    SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
@@ -662,13 +600,9 @@ private
    0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
 
 \ A source given as bytes, on stdin or through SOURCE, is the file CHK-SRC-PATH
-\ the run loads, so its requires resolve as they will there. Its closure is
-\ walked as a named file's is, and the passes after the walk visit the order it
-\ leaves as they visit a named file's, that file under its label.
+\ the run loads, so its requires resolve as they will there.
 : CHK-MATERIALIZE-BYTES ( -- )
-   CHK-SRC-BUF CHK-SRC-U @ {: a:^ u:n :}
-   CHK-SRC-PATH a u FS:WRITE-ALL
-   [: a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES ;] CHK-EXPAND-REPORT
+   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ FS:WRITE-ALL
    CHK-SRC-PATH CHK-SOURCE! ;
 
 : CHK-MATERIALIZE-STDIN ( -- )
@@ -684,13 +618,13 @@ private
    loop
    true ;
 
-\ Position idx becomes its canonical path, or a missing one stops with the
-\ load's record, which names it as written.
-: CHK-RESOLVE-POS ( n -- ) {: idx:n :}
+\ Position idx becomes its canonical path when it exists. A missing one stays
+\ as written, so the composition meets it in its place, as the load does.
+: CHK-RESOLVE-POS ( n -- bool ) {: idx:n :}
    idx CHK-POS$ {: a:^ u:n :}
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
-   exists 0= if a u NULL-PTR 0 true SOURCE-ROOT:MISSING-SOURCE then
-   path pathu idx CHK-POS-SET ;
+   exists if path pathu idx CHK-POS-SET then
+   exists ;
 
 \ An existing input that is no file gets the load's record: a directory's
 \ EISDIR, or for any other non-file the stamping reader's.
@@ -705,19 +639,8 @@ private
    s" rebuild bin/hb to check a change to it" REJECTION:EMIT-STR
    REJECTION:KEEP ;
 
-\ An input the file system will not open is rejected as the loader rejects it,
-\ before a lint reads the file: no source holds the path, so the composition
-\ could only place it at its own loader line.
-: CHK-INPUT-OPENS ( ^u8 n -- ) {: a:^ u:n :}
-   [: a u 0 NULL-PTR 0 FS:READ-AT ;] CHK-READ-REJECTED {: rc:n e:n :}
-   rc 0<> if a u rc e CHK-UNREADABLE-NAMED then ;
-
 : CHK-CHECK-INPUTS ( -- )
-   CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS  loop
-   CHK-POS-N @ 0 ?do
-      i CHK-POS$ 2dup FS:FILE? if 2drop else CHK-NO-INPUT then
-      i CHK-POS$ CHK-INPUT-OPENS
-   loop
+   CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS drop  loop
    [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop
    CHECKER-REJECT-RC CHK-THROW ;
@@ -729,17 +652,14 @@ private
    CHK-LABEL s" label" s" pass a label that holds none of them" CHK-QPATH-JUDGE ;
 
 \ Both spellings the run quotes, the entry in the loader line and the label,
-\ are the canonical path, judged before discovery reads the file.
+\ are the canonical path.
 : CHK-MATERIALIZE-FILE ( -- )
    CHK-CHECK-INPUTS
    0 CHK-POS$ CHK-LABEL!
-   CHK-EXPAND-RESET
    0 CHK-EXP-OUT-U !
-   CHK-LABEL CHK-ENTRY-ID {: id:n :}
-   id CHK-DEP$ CHK-APPEND-ENTRY
-   id CHK-DEP$ CHK-SUBJ!
+   CHK-LABEL CHK-ENTRY$ CHK-SUBJ!
+   CHK-SUBJ$ CHK-APPEND-ENTRY
    CHK-JSON @ if CHK-SUBJ$ CHK-LABEL! else CHK-CHECK-LABEL then
-   [: id CHK-EXPAND ;] CHK-EXPAND-REPORT
    CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE-SOURCE ( -- )
@@ -751,20 +671,13 @@ private
    CHK-CHECK-LABEL
    CHK-MATERIALIZE-BYTES ;
 
-\ Each listed path is quoted into its loader line before discovery reads any
-\ file.
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if NULL$ s" --source-list" s"  names no file" CHK-REJECT-ARG then
    CHK-CHECK-INPUTS
    s" <source-list>" CHK-LABEL!
-   CHK-EXPAND-RESET
    0 CHK-EXP-OUT-U !
    0 begin dup CHK-POS-N @ < while
       dup CHK-POS$ CHK-APPEND-LISTED
-      1+
-   repeat drop
-   0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-EXPAND-PATH
       1+
    repeat drop
    CHK-WRITE-EXPANDED-SOURCE ;
@@ -959,6 +872,10 @@ private
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
+\ Whether the run text is entry text, a named file's or a source list's.
+: CHK-ENTRY-TEXT? ( -- bool )
+   CHK-SEL-MODE @ CHK-SEL-FILE =  CHK-SEL-MODE @ CHK-SEL-LIST =  or ;
+
 \ Definition verification follows the loader composition in one checker scope
 \ and one multi-error session, so a definition a loaded file makes before its
 \ loader's next statement is in scope there, and a rejected definition's
@@ -966,28 +883,10 @@ private
 \ reads each file a loader loads, so it meets each lexer defect where it lies.
 : CHK-RUN-ALL ( -- )
    CHK-JSON @ REJECTION:JSON !
+   CHK-ENTRY-TEXT? if
+      CHK-SOURCE-BYTES CHK-SRC-PATH CHECK-ALL-ERRORS:COMPOSE-ENTRY exit
+   then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
-
-\ Whether the composition never read the place of kept stop n.
-: CHK-KEPT-UNREAD? ( n -- bool )
-   CHK-KEPT-ROW * {: row:n :}
-   row CHK-KEPT-ROWS @ CHK-KEPT  row 1+ CHK-KEPT-ROWS @  row 2 + CHK-KEPT-ROWS @
-   VERIFY:READ-AT? 0= ;
-
-\ The status two outcomes end a run with together, each 0, CHECKER-REJECT-RC
-\ or INCLUDE-IO-RC: a file that will not read outranks a rejection.
-: CHK-RC-JOIN ( n n -- n ) {: a:n b:n :}
-   a INCLUDE-IO-RC =  b INCLUDE-IO-RC =  or if INCLUDE-IO-RC exit then
-   a 0<>  b 0<>  or if CHECKER-REJECT-RC exit then
-   0 ;
-
-\ Writes each kept stop whose place the composition never read: a skipped arm,
-\ a file only one loads, text past its stop. Answers their joined status, or 0.
-: CHK-SEND-UNREAD ( -- n )
-   0
-   CHK-KEPT-N @ 0 ?do
-      i CHK-KEPT-UNREAD? if i CHK-KEPT-SEND CHK-RC-JOIN then
-   loop ;
 
 \ A verifier child that exited or died of a signal before it answered.
 : CHK-VERIFIER-ENDED ( ^u8 n n -- ) {: a:^ u:n v:n :}
@@ -1039,6 +938,10 @@ private
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
+   CHK-ENTRY-TEXT? if
+      CHK-SOURCE-BYTES CHK-SRC-PATH CHK-DEADLINE@ CHK-JSON @ 0<> PREVERIFY-ENTRY
+      CHK-PREVERIFY-REPORT exit
+   then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@
    CHK-JSON @ 0<> PREVERIFY-BYTES
    CHK-PREVERIFY-REPORT ;
@@ -1109,18 +1012,9 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
-\ The kept stops are written however the composition ends, and any end
-\ but a rejection's is the run's.
-: CHK-RUN-ALL-ERRORS ( -- )
-   [: CHK-RUN-ALL ;] catch {: rc:n :}
-   CHK-SEND-UNREAD {: sent:n :}
-   rc 0<>  rc CHECKER-REJECT-RC <>  and if rc throw then
-   rc sent CHK-RC-JOIN {: end:n :}
-   end 0<> if end throw then ;
-
 : CHK-RUN-CURRENT ( -- )
    CHK-JSON @ REJECTION:JSON !
-   CHK-ALL @ if CHK-RUN-ALL-ERRORS else CHK-RUN-PREVERIFY then
+   CHK-ALL @ if CHK-RUN-ALL else CHK-RUN-PREVERIFY then
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;
@@ -1138,10 +1032,10 @@ private
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
 
-\ The named file is read as the closure walk reads its top: one the file system
-\ refuses to read is the loader's rejection at its canonical path.
+\ A named file the file system refuses to read is the loader's rejection at its
+\ canonical path; a missing one is the load's, named as written.
 : CHK-VERIFY-FILE ( -- ^u8 n )
-   0 CHK-RESOLVE-POS
+   0 CHK-RESOLVE-POS 0= if 0 CHK-POS$ NULL-PTR 0 true SOURCE-ROOT:MISSING-SOURCE then
    0 CHK-POS$ {: a:^ u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
    [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: rc:n e:n :}

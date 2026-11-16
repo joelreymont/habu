@@ -910,8 +910,8 @@ DYNAMIC-BUFFER SD-DEC u8
    rc E-PATH-RANGE <> if rc throw then
    false ;
 
-\ A string loader in a body loads when its word runs, which no check runs: only a
-\ path literal it can take is recorded, the superset an ordinary composition loads.
+\ A string loader in a body loads when its word runs, which no check runs: only
+\ a path literal it can take is recorded.
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
    SD-DEF @ 0<> if
       pend SD-PEND-PATH = 0= if exit then

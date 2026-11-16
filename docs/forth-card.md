@@ -302,10 +302,6 @@ engine keeps its own words' rows, so a check knows how many tokens they read;
 any other word whose row the check did not read in the source it checks, a
 precompiled one among them, is undeclared;
 `EXPORT` carries a row, a word that calls the declared one does not.
-The separate dependency discovery walk harvests rows before it follows loads.
-It skips a parsing word's operands only when the harvested files have one
-declaration of that word and no retirement; otherwise it reads the operands
-as source.
 
 A word that looks its string operand up as a name states it after its
 definition, and a string literal right before a call of it is then a use of

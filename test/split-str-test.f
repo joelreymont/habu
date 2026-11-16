@@ -66,12 +66,11 @@ E2E-TREE:ERR$ s" = help: write `split-str` in lower case, alone on its file's fi
    s\" split-str\n: SPW2 ( str -- n ) nip ;" VERIFY:SOURCE-BUF ;
 ' SPW2-RUN catch 0 T=
 
-\ A file the verifier scans ends its marker with it:
-\ VERIFY:SOURCE-COMPOSE-IN-SCOPE scans the subject and the file it includes,
-\ each through COMPOSE-FILE-SCAN.
+\ A file the verifier scans ends its marker with it: a composition scans the
+\ subject and the file it includes.
 : SPZ-RUN ( -- )
    s\" include test/split-str-nested.f\n: SPZ ( ^u8 n -- n ) SPL ;\n"
-   s" test/spz-subject.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
+   s" test/spz-subject.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 ' SPZ-RUN catch 70 T=
 
 T-REPORT
