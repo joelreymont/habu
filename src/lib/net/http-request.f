@@ -890,6 +890,32 @@ E-HTTP-BODY-READ constant E-BODY-READ
    idx REQUEST-DEADLINE @ ;
 
 
+\ RFC 9110 10.1.1: answer 100-continue in HTTP/1.1, ignore it in HTTP/1.0.
+: EXPECTS-CONTINUE? ( n -- bool ) {: idx:n :}
+   idx SLOT-VERSION$ s" HTTP/1.1" STR= 0= if false exit then
+   idx s" expect" HEADER$ {: va:^ vu:n found:bool :}
+   found 0= if false exit then
+   va vu s" 100-continue" STR=CI ;
+
+
+: WRITE-SPAN ( TCP4:connection ^u8 n -- bool )
+   {: conn:TCP4:connection bytes:^ len:n :}
+   len 0= if true exit then
+   conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
+   MATCH TCP4:status
+      ok OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+
+\ A refused 100 ends the body read as a broken connection ends it.
+: ANSWER-EXPECT ( n -- ) {: idx:n :}
+   idx EXPECTS-CONTINUE? 0= if exit then
+   idx SERVING @ s\" HTTP/1.1 100 Continue\r\n\r\n" WRITE-SPAN if exit then
+   construct fill-outcome broken OUTCOME>RESULT idx READ-RESULT !
+   E-BODY-READ throw ;
+
+
 \ Reads the body on the first ask, from the request's own worker inside its
 \ handler; a later ask finds it whole or throws again.
 : BODY-READY ( n -- ) {: idx:n :}
@@ -899,6 +925,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
    state WHOLE = if exit then
    state READING = if E-BODY-READ throw then
    READING idx BODY-STATE !
+   idx ANSWER-EXPECT
    idx SERVING @ idx idx BODY-DEADLINE idx BODY-BOUND @ READ-BODY
    {: result:parse-result :}
    result idx READ-RESULT !

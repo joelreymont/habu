@@ -1658,6 +1658,43 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" Connection: keep-alive" HAS? TTRUE ;
 
 
+\ An HTTP/1.1 peer that expects 100-continue holds its body until the
+\ handler's read sends the 100.
+: CONTINUE-CASE ( -- )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nExpect: 100-Continue\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" RAW-SEND
+   conn S\" \r\n\r\n" RAW-COLLECT TTRUE
+   RES$ s\" HTTP/1.1 100 Continue\r\n\r\n" T$=
+   conn s" ok" RAW-SEND
+   conn S\" {\qbytes\q:2}" RAW-COLLECT TTRUE
+   s" HTTP/1.1 200" BEGINS? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+\ An HTTP/1.0 request's expectation is ignored.
+: CONTINUE-HTTP10-CASE ( -- )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/echo HTTP/1.0\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\nok" RAW-SEND
+   conn S\" {\qbytes\q:2}" RAW-COLLECT TTRUE
+   s" HTTP/1.1 100" BEGINS? TFALSE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+\ A handler that answers without the body sends its final status, no 100.
+: CONTINUE-UNREAD-CASE ( -- )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/admit HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n" RAW-SEND
+   conn S\" \r\n\r\n" RAW-COLLECT TTRUE
+   s" HTTP/1.1 401" BEGINS? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: CONTINUE-CASES ( -- )
+   CONTINUE-CASE
+   CONTINUE-HTTP10-CASE
+   CONTINUE-UNREAD-CASE ;
+
+
 \ A handler that catches its body read's throw still answers that read's
 \ refusal, not the 200 it set after the catch.
 : SWALLOW-CASE ( -- )
@@ -3013,6 +3050,7 @@ $32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
    CODING-CASE
    CHUNKED-CASE
    UNREAD-BODY-CASE
+   CONTINUE-CASES
    SWALLOW-CASE
    BODY-PROBE-CASE
    KEEP-ALIVE-CASE

@@ -184,16 +184,6 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    idx CRLF+ ;
 
 
-: WRITE-SPAN ( TCP4:connection ^u8 n -- bool )
-   {: conn:TCP4:connection bytes:^ len:n :}
-   len 0= if true exit then
-   conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
-   MATCH TCP4:status
-      ok OF true ENDOF
-      failed OF drop false ENDOF
-   ;MATCH ;
-
-
 \ The transfer owns the allocation between READ and AWAIT-XFER. If a worker
 \ ends there, AIO's task cleanup cancels the operation and releases its bytes
 \ at completion; CLOSE-FILE must only free bytes the worker owns again.
