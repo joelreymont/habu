@@ -42,6 +42,8 @@ s" src/lib/memory.f" required
 package FFI
 
 EXPORT CHECK:DEFINER-PLACE
+EXPORT CHECK:INTRINSIC
+EXPORT CHECK:INTRINSIC-TOP-ONLY
 
 FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
 \ AAPCS64's integer argument registers, and both ABIs' float slots.
@@ -1819,12 +1821,7 @@ public
    PROCESS CUR-LIB !
    RECORD-SCOPE ;
 
-\ Both wordlists are protected here, after FFI's last definition: an engine
-\ that loads this file after its seal rejects any definition into a protected
-\ wordlist and exits 84.
-seal-package
-
-;package
+global
 
 \ The declaration keywords are global: a package word ending in a colon cannot
 \ be reached through a qualifier, and a declarer reads bare from any package
@@ -1843,6 +1840,7 @@ parses: VERSIONED-LIBRARY 2
 
 : FUNCTION: ( -- )
    FFI:OPEN-FUNCTION ;
+INTRINSIC-TOP-ONLY INTRINSIC
 
 : VARIADIC ( n -- ) FFI:SET-VARIADIC ;
 
@@ -1852,3 +1850,11 @@ parses: VERSIONED-LIBRARY 2
 
 : ;FUNCTION ( -- )
    FFI:CLOSE-FUNCTION ;
+INTRINSIC-TOP-ONLY INTRINSIC
+
+\ Both wordlists are protected here, after FFI's last definition: an engine
+\ that loads this file after its seal rejects any definition into a protected
+\ wordlist and exits 84.
+seal-package
+
+;package
