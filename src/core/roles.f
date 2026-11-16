@@ -95,10 +95,8 @@ EXPORT CHECK:SR-GROW
 
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only: executing one parses
 \ the live input and mutates the type registry, which their ( -- ) rows do not
-\ express. UNSAFE-TOK? rejects the bare tokens in checked bodies before the usig
-\ is consulted (DO-TOK1 order), and a global section's word has no qualified
-\ spelling, so the usig adds no checked capability; it keeps the definers
-\ checker-known, so top level may run them.
+\ express. Their declaration id bars them from checked bodies, qualified or
+\ not; the usig keeps the definers checker-known, so top level may run them.
 
 global
 CAST: >IDX ( n -- idx )

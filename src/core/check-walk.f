@@ -224,6 +224,7 @@ package CHECK
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
+   TOP-STEP @ 0= IF TOK-SYM @ DECLARATION-SYM? IF REJECT-UNSAFE EXIT THEN THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
    \ its axiom.
@@ -437,7 +438,7 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
    POSTPONE-TARGET {: rec:^ sym:n :}
    rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
    rec POSTPONE-IMM?  sym SOURCE-IMM? or IF rec POSTPONE-IMM EXIT THEN
-   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
+   sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    sym TICK-REFUSED? IF EXIT THEN
    K-TICK POST-KIND !
    rec REC>INDEX POST-A0 !
@@ -479,7 +480,7 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 
 : DO-TOK1 {: a u :}
    a u DO-TOK-HEAD
-   {: unj unsafe ok-in unck-in pin-in :}
+   {: unj ok-in unck-in pin-in :}
    TOK0 @ IF NAME-TOK ELSE
    a MODE-TOK? IF ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
@@ -494,9 +495,6 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
-   TKF TKFU @ UNSAFE-TOK? IF
-      BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
-      REJECT-UNSAFE ELSE
    a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
@@ -507,8 +505,8 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    OK @ IF cf 12 = IF a u DEAD-OWNER! THEN THEN   \ again
    cf 0 >= IF cf CF-STEP THEN
    cf 0 < IF a u NULL-PTR CALL-STEP THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u unj ok-in unck-in pin-in DO-TOK-TAIL ;
 
 \ The rows ( din dout rin rout ) of a schema effect, unchecked.
 : EFFECT-ROWS ( n -- n n n n ) {: node:n :}
@@ -699,10 +697,6 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
 : ITEM-CALL ( ^u8 n n -- ) {: a:^ u:n ix:n :}
    ix REC-AT {: rec:^ :}
    rec TKF TKFU @ BIND-RECORD
-   TKF TKFU @ UNSAFE-TOK? IF
-      BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
-      REJECT-UNSAFE EXIT
-   THEN
    a u rec CALL-STEP ;
 
 : ITEM-INT ( n -- ) {: v:n :}
@@ -792,7 +786,7 @@ EXPORT CHECKER-ITEMS:ITEM-COUNT
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:^ u:n :}
    a u DO-TOK-HEAD
-   {: unj unsafe ok-in unck-in pin-in :}
+   {: unj ok-in unck-in pin-in :}
    i BODY-ITEMS:KIND ITEM-CELL@ {: kind:n :}
    i BODY-ITEMS:A ITEM-CELL@ {: v:n :}
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
@@ -807,7 +801,7 @@ EXPORT CHECKER-ITEMS:ITEM-COUNT
    kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
       s" checker: an item of no kind the walk knows" 76 die
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL
+   a u unj ok-in unck-in pin-in DO-TOK-TAIL
    kind BODY-ITEM-KIND:LOCAL =  kind BODY-ITEM-KIND:LOCAL-REF = or
    FAILIX @  TOKIX @ 1 - =  and
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
@@ -2704,9 +2698,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 global
 \ generates: D ( effect ) at top level, after D's definition: a declared
-\ boundary, not a checked body. UNSAFE-TOK? bars `generates:` from checked
-\ bodies. The keyword is the last token the engine read when the word starts
-\ (TKA-CELL).
+\ boundary, not a checked body: its declaration id bars it from checked bodies.
+\ The keyword is the last token the engine read when the word starts (TKA-CELL).
 TRUSTED: generates: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
    {: ka:^ ku:n :}
@@ -3170,10 +3163,12 @@ package CHECK
    THEN ;
 
 \ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
-\ does in a body. W is the word the load's own find selects.
+\ does in a body. W is the word the load's own find selects. A declaration's
+\ tick is opaque, so no cell can carry it into a body.
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
+   hit IF sym DECLARATION-SYM? IF OPAQUE-XT TOP-PUSH EXIT THEN THEN
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN

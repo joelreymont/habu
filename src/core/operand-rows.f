@@ -7,8 +7,8 @@ global
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them, checked
 \ by the checker and kept in it by W's symbol and in W's facts text, for the
 \ source pre-verifier, which never reads an engine-provided file. The keyword is the
-\ last token the engine read when the word starts (TKA-CELL). UNSAFE-TOK? bars
-\ both from checked bodies. They load after the hook so this checker records them
+\ last token the engine read when the word starts (TKA-CELL). Their intrinsic id
+\ bars both from checked bodies. They load after the hook so this checker records them
 \ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
 \ recorded by the build's checker, which may know no such word.
 TRUSTED: parses: ( -- )

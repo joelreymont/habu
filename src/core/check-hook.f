@@ -186,8 +186,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    RQM @ 0 <> if 2drop exit then
    LAY-FACTS ;
 
-\ The checker's registrars the fields held: a checked body cannot name them
-\ (UNSAFE-TOK?), so each entry calls its token.
+\ The checker's registrars the fields held; each entry calls its token.
 variable RAW-REG
 variable DECL-REG
 variable DEFCAST-REG

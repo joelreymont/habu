@@ -396,7 +396,12 @@ create XPK-EMPTY 1 allot
    s" : XPK-DECL-SUM ( -- ) TYPE-DECL:TDECL-SUMTYPE ;" s" E-UNDEFINED" XPK-DECL-REJECT
    s" : XPK-DECL-NT ( -- ) STRUCTURE-DECL:SD-WRAP ;" s" E-UNDEFINED" XPK-DECL-REJECT
    s" : XPK-DECL-ENUM ( -- ) ENUM ;" s" E-UNSAFE" XPK-DECL-REJECT
-   s" : XPK-DECL-SUMT ( -- ) SUMTYPE ;" s" E-UNSAFE" XPK-DECL-REJECT ;
+   s" : XPK-DECL-SUMT ( -- ) SUMTYPE ;" s" E-UNSAFE" XPK-DECL-REJECT
+   s" : XPK-DECL-USER ( -- ) TASK:+USER ;" T-LABEL
+   SB-RESET  s" require src/lib/task.f" XPK-LINE
+   s" : XPK-DECL-USER ( -- ) TASK:+USER ;" XPK-LINE
+   SB$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   s" E-UNSAFE" XPK-ERR? ;
 
 \ The source ctor and its alias must behave alike at top level: both run and
 \ leave their two-cell value, and a primitive over it (dup) is rejected alike

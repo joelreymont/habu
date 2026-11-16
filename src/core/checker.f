@@ -16862,7 +16862,7 @@ private
 \ --- declared parsing immediates.
 \ A parsing immediate consumes a fixed number of source tokens at compile time
 \ and contributes no runtime step. A wrong count skips live code or eats real
-\ tokens, so `parse-imm` is UNSAFE-TOK?-listed: top-level declarations only.
+\ tokens, so `parse-imm` carries a declaration id: top-level declarations only.
 \ A rollback lowers SYM-N and hands the retired ids out again, so a checker
 \ frame saves PIMM-N and its restore drops the rows made since: no row outlives
 \ the scope of the id it names. The newest row for a symbol wins; undefining
@@ -17534,34 +17534,6 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
 : BARRIER-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-BARRIER and 0 <> ;
 
-\ Tokens whose execution from a checked body is unsound whatever their row says.
-: UNSAFE-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" dynamic-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" cwork-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" cwork-span" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" cwork-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" mutual" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" linear:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" generates:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" parses:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" parses-through:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" names:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ]" CORE-STR=CI ;
-
 \ --- retired-token set --------------------------------------------------------
 \ An undefined token only makes CHECK return 1, and later source could define a
 \ global of the same spelling, so a bare global use rejects with verdict 0.
@@ -17576,26 +17548,11 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
 
 \ --- unsafe definers ----------------------------------------------------------
 \ Unsafety is a property of the word, not its spelling.
-: UNSAFE-NAME? ( n ^u8 n -- bool ) {: sym:n a:^ u:n :}
-   a u CHECKER-GLOBAL-SYM? sym = ;
-
-: UNSAFE-SYM? ( n -- bool ) {: sym:n :}
+\ Ids 11..15 mark a declaration: a word that runs only at top level.
+: DECLARATION-SYM? ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
-   sym s" deflinear" UNSAFE-NAME?
-   sym s" value-record" UNSAFE-NAME? or
-   \ `cast:` is an engine reader keyword, not a word, so there is no symbol for
-   \ an alias to resolve to.
-   sym s" sumtype" UNSAFE-NAME? or
-   sym s" enum" UNSAFE-NAME? or
-   sym s" newtype" UNSAFE-NAME? or
-   sym s" layout-buffer" UNSAFE-NAME? or
-   sym s" defer-layout-buffer" UNSAFE-NAME? or
-   sym s" typed-buffer" UNSAFE-NAME? or
-   sym s" dynamic-buffer" UNSAFE-NAME? or
-   sym s" typed-variable" UNSAFE-NAME? or
-   sym s" cwork-buffer" UNSAFE-NAME? or
-   sym s" cwork-span" UNSAFE-NAME? or
-   sym s" cwork-variable" UNSAFE-NAME? or ;
+   sym CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
+   id INTRINSIC-PARSES >= id INTRINSIC-TOP-ONLY <= and ;
 
 : CLAUSE-NAME ( ^u8 n -- ^u8 n ) {: na:^ nu:n :}
    DOES-CLAUSE:SUFFIX$ {: sa:^ su:n :}
@@ -17677,8 +17634,7 @@ private
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ^u8 n n -- ) {: a:^ u:n sym:n :}
-   a u EXPORT-TAIL$ UNSAFE-TOK? IF a u EXPORT-UNSAFE THEN
-   sym UNSAFE-SYM? sym PRIM-TRUSTED-SYM? or IF a u EXPORT-UNSAFE THEN
+   sym DECLARATION-SYM? sym PRIM-TRUSTED-SYM? or IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
    sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
@@ -22230,8 +22186,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 : BTICK-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ the load's tick refuses its target while compiling
-   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
+   sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    K-TICK  BIND-REC @ REC>INDEX  0 EVENT!
    sym TICK-REFUSED? IF EXIT THEN
    FEP-HIT? IF
@@ -22559,9 +22515,9 @@ variable POST-A0
    TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
    a u LOC-REF? ;
 
-\ Answers whether the token is unjudged and unsafe, and the OK, UNCK and
-\ FAILSET it came in with, for DO-TOK-TAIL.
-: DO-TOK-HEAD ( ^u8 n -- bool bool n n n )
+\ Answers whether the token is unjudged, and the OK, UNCK and FAILSET it came
+\ in with, for DO-TOK-TAIL.
+: DO-TOK-HEAD ( ^u8 n -- bool n n n )
    {: a:^ u:n :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
@@ -22569,7 +22525,6 @@ variable POST-A0
    0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
    BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
-   unj IF TKF TKFU @ UNSAFE-TOK? ELSE RES-FALSE THEN {: unsafe:bool :}
    OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
    FAILSET @ {: pin-in:n :}
    unj IF
@@ -22583,10 +22538,10 @@ variable POST-A0
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT !
    NZ-OTHER NZ-IN !
-   unj unsafe ok-in unck-in pin-in ;
+   unj ok-in unck-in pin-in ;
 
-: DO-TOK-TAIL ( ^u8 n bool bool n n n -- )
-   {: a:^ u:n unj:bool unsafe:bool ok-in:n unck-in:n pin-in:n :}
+: DO-TOK-TAIL ( ^u8 n bool n n n -- )
+   {: a:^ u:n unj:bool ok-in:n unck-in:n pin-in:n :}
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -22596,7 +22551,10 @@ variable POST-A0
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
-      OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
+      \ A token that never bound leaves the last token's TOK-SYM.
+      OK @ 0=  UNCK @ 0 <>  or IF
+         TOK-DONE @ 0 <>  TOK-SYM @ DECLARATION-SYM?  and UNJ-SETTLE
+      THEN
       OK @ ok-in and OK !
       pin-in 0= IF UNCK @ unck-in or ELSE unck-in THEN UNCK !   \ a mark past the pin only settles
       0 UNJ-TOK !
