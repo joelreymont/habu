@@ -17261,15 +17261,10 @@ CHECKER-REG:}SCRATCH
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" linear:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-defcast" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" generates:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-generates" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parses:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parses-through:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-parses-row" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" names:" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-names-row" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-named-use" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
