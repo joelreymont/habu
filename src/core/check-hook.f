@@ -289,7 +289,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
       na nu ta tu shape
       shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
    else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
-   na nu din dout CHECKER-CHILD-ROWS {: h:n :}
+   na nu din dout RES-FALSE CHECKER-CHILD-ROWS {: h:n :}
    na nu PENDING-FACTS
    val h ;
 
@@ -553,7 +553,7 @@ public
 \ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
 \ buffer past its recorded text, where the next rendering replaces it.
 : EFFECT-TEXT ( n -- ^u8 n ) {: node:n :}
-   node EFFECT-SIG 2drop {: din:n dout:n :}
+   node EFFECT-ROWS 2drop {: din:n dout:n :}
    REJECTION:TEXT-LEN @ {: at:n :}
    din dout 0 0 RES-FALSE REND-FACTS {: buf:^ len:n :}
    at REJECTION:TEXT-LEN !

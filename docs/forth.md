@@ -1965,13 +1965,18 @@ authenticated scope operation (`XML-C2:WITH-READER`'s effect shows one). The
 operation checks the callback with a fresh rigid scope atom and closes it at
 return or unwind; the rows around the binder cannot acquire the atom, through
 stored fields, quotation payloads or the return stack. Ordinary helpers
-quantify over scopes their inputs supply and cannot return one no input or
-live binder supplies. No ordinary declaration, `fresh-region-*` included, mints
-scope authority: an annotation alone is not authentication, and a higher-order
-wrapper must keep the scope operation and its whole callback contract. A word
-with no declared effect whose inferred effect would carry such a binder outside
-a callback input, as a word that returns `[: WITH-SCOPE ;]` does, is refused
-(`E-BINDER-PLACE`).
+quantify over scopes their inputs supply and cannot return one no input or live
+binder supplies. A generated variant constructor's effect may name a header
+scope or region parameter its payload does not:
+`MAYBE:VACANT ( -- maybe<a,q> )`, the variant with no payload of a
+`maybe<a,q>` whose other variant holds a `read-view<a,q,u8>`, holds nothing, so
+it claims no borrow under `a` or `q`, as `OPTION:NONE` claims no `a`; a word
+that states the same effect is still rejected. No ordinary declaration,
+`fresh-region-*` included, mints scope authority: an annotation alone is not
+authentication, and a higher-order wrapper must keep the scope operation and
+its whole callback contract. A word with no declared effect whose inferred
+effect would carry such a binder outside a callback input, as a word that
+returns `[: WITH-SCOPE ;]` does, is refused (`E-BINDER-PLACE`).
 
 ## Integer arithmetic
 

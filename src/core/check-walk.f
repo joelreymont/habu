@@ -494,9 +494,11 @@
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
-\ The rows ( din dout rin rout ) of a schema effect, checked by the rules a
-\ written signature's rows pass; a refusal sets SGBAD.
-: EFFECT-SIG ( n -- n n n n ) {: node:n :}
+package CHECK
+public
+
+\ The rows ( din dout rin rout ) of a schema effect, unchecked.
+: EFFECT-ROWS ( n -- n n n n ) {: node:n :}
    SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !
    0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
@@ -504,16 +506,27 @@
    ATOMN @ PD-ATOM0 !
    node dr TFAM:EFFECT-ROWS
    PD-OUT !  PD-IN !  0 PR-IN !  0 PR-OUT !
-   SGBAD-CLEAR
-   NULL-PTR 0 PD-IN @ PD-OUT @ 0 0 RES-FALSE SIG-ROWS-CHECK
    PD-IN @ PD-OUT @ 0 0 ;
+;package
+
+\ EFFECT-ROWS checked by a written signature's rules, or a generated
+\ constructor's when CTOR; a rejection sets SGBAD.
+: EFFECT-SIG ( n bool -- n n n n ) {: node:n ctor:bool :}
+   node CHECK:EFFECT-ROWS 2drop 2drop
+   SGBAD-CLEAR
+   NULL-PTR 0 PD-IN @ PD-OUT @ 0 0 RES-FALSE ctor SIG-ROWS-CHECK
+   PD-IN @ PD-OUT @ 0 0 ;
+
+\ Whether A U names a generated variant constructor.
+: CTOR-NAME? ( ^u8 n -- bool )
+   CHECKER-RECORD-SYM? TFAM:SUMV-FROM-CTOR-SYM nip ;
 
 package CHECK
 public
 
-\ Whether effect node NODE's rows pass a written signature's rules.
-: EFFECT-RULES? ( n -- bool ) {: node:n :}
-   node EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
+\ Whether NODE's rows pass the rules word A U's signature must pass.
+: EFFECT-RULES? ( ^u8 n n -- bool ) {: a:^ u:n node:n :}
+   node a u CTOR-NAME? EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
 ;package
 
 \ Whether the text walked is the pending definition's body text.
@@ -531,7 +544,7 @@ public
 \ `define-word` built it, else from the signature text at SGA.
 : PENDING-SIG ( -- n n n n )
    BUILT-EFFECT {: eff:n :}
-   eff 0 <> IF eff EFFECT-SIG EXIT THEN
+   eff 0 <> IF eff NMA @ NMU @ CTOR-NAME? EFFECT-SIG EXIT THEN
    SGA @ SGU @ PARSE-SIG-RAW ;
 
 \ Records the pending definition's declared effect under name NA, AT the name

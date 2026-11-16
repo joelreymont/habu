@@ -5,6 +5,7 @@ STRUCTURE c2vouter<a,b> FIELD item c2vinner<a,b> ;STRUCTURE
 STRUCTURE c2vpair FIELD x n FIELD y n ;STRUCTURE
 STRUCTURE c2vtypedinner<a,b,c> FIELD source read-view<a,b,c> ;STRUCTURE
 STRUCTURE c2vtypedouter<a,b> FIELD source c2vtypedinner<a,b,c2vpair> ;STRUCTURE
+ENUM c2vmaybe<a,b> VARIANT held FIELD source read-view<a,b,u8> ;VARIANT VARIANT vacant ;VARIANT ;ENUM
 
 package C2-VIEW-RECORD-GENERICS
 public

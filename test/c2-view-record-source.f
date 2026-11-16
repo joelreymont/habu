@@ -35,8 +35,19 @@ private
       some OF C2VINNER:UNMAKE 19 T= ENDOF
    ;MATCH ;
 
+\ The view input supplies the scopes the result names, as a word's effect must.
+: VACANT ( read-view<p,q,u8> -- c2vmaybe<p,q> read-view<p,q,u8> )
+   C2VMAYBE:VACANT swap ;
+
+: VACANT-ROUND ( read-view<p,q,u8> -- read-view<p,q,u8> )
+   VACANT swap
+   MATCH c2vmaybe
+      held OF drop 1 throw ENDOF
+      vacant OF ENDOF
+   ;MATCH ;
+
 : FIRST ( read-view<p,l,u8> -- n read-view<p,l,u8> )
-   ROUND SUM-ROUND 0 C2-MEM:BYTE@ ;
+   ROUND SUM-ROUND VACANT-ROUND 0 C2-MEM:BYTE@ ;
 
 : BORROW ( mut-view<p,p,a,u8> -- n mut-view<p,p,a,u8> )
    0 65 C2-MEM:MUT-BYTE!

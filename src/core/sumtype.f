@@ -1537,7 +1537,7 @@ private
 : TDPLAN-PROD-REG ( n -- ) {: row:n :}
    row TDPLAN-KIND@ TDPLAN-SHAPE  row TDPLAN-FAM@
    TFAM-CHILD-ROWS {: din:n dout:n val:n :}
-   row TDPLAN-NAME$ din dout CHECKER-CHILD-ROWS drop ;
+   row TDPLAN-NAME$ din dout RES-FALSE CHECKER-CHILD-ROWS drop ;
 
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;
@@ -1589,8 +1589,8 @@ private
       i TDPLAN-KIND@ TDPLAN-PROD? IF
          i TDPLAN-PROD-REG
       ELSE
-         i TDPLAN-NAME$  i TDECL-DRV-EFFECT EFFECT-SIG 2drop
-         CHECKER-CHILD-ROWS drop
+         i TDPLAN-NAME$  i TDECL-DRV-EFFECT CHECK:EFFECT-ROWS 2drop
+         i TDPLAN-SYM@ SUMV-FROM-CTOR-SYM nip  CHECKER-CHILD-ROWS drop
       THEN
    loop ;
 
@@ -1965,7 +1965,7 @@ private
 \ Replay makes no word: it registers each child's effect, as CHILD-RUN would.
 : TDECL-ADDR-REG ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    shape param TFAM-CHILD-ROWS {: din:n dout:n val:n :}
-   na nu din dout CHECKER-CHILD-ROWS drop ;
+   na nu din dout RES-FALSE CHECKER-CHILD-ROWS drop ;
 
 : TDECL-ADDR-ROOM ( n -- ) {: fam:n :}
    fam s" at" TDECL-ADDR-NAME  fam TFAM-FLD-COUNT@ 3 +

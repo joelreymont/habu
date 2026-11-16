@@ -2140,7 +2140,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    eff CHECK:EFFECT-DENSE 0= if a u DEF-WIDE then
    {: dense:n :}
-   dense CHECK:EFFECT-RULES? 0= if
+   a u dense CHECK:EFFECT-RULES? 0= if
       [: s" is not one a written signature could state" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
       REJECTION:HELP

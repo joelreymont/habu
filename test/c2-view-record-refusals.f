@@ -31,6 +31,9 @@ public
    s" STRUCTURE c2vaddr<a,b> DERIVE addr FIELD source read-view<a,b,u8> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" raw pointer field access cannot expose a nested record's view" T-LABEL
    s" STRUCTURE c2vi<a,b> FIELD source read-view<a,b,u8> ;STRUCTURE STRUCTURE c2vo<a,b> DERIVE addr FIELD inner c2vi<a,b> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
+   s" a word cannot state a payloadless variant's unsupplied scopes" T-LABEL
+   s" -1 REJECTION:JSON ! : C2V-NONE ( -- c2vmaybe<p,q> ) C2VMAYBE:VACANT ;"
+   70 S\" \"code\":\"E-BAD-SIGNATURE\"" SUBJECT:REFUSED? TTRUE
    C2-VIEW-RECORD-USE-REFUSALS:CASES
    T-REPORT
    s" c2-view-record-refusals: ok" type cr ;

@@ -8036,8 +8036,8 @@ CHECKER-REG:}SCRATCH
 \ The rules a signature's rows pass, parsed or built; a refusal sets SGBAD at
 \ the token A U. HASR says the rows carry a return clause, whose check names
 \ the parse's text. SCOPE-SUPPLIED? reads the inputs from PD-IN and PR-IN.
-: SIG-ROWS-CHECK ( ^u8 n n n n n bool -- )
-   {: a:^ u:n din:n dout:n rin:n rout:n hasr:bool :}
+: SIG-ROWS-CHECK ( ^u8 n n n n n bool bool -- )
+   {: a:^ u:n din:n dout:n rin:n rout:n hasr:bool ctor:bool :}
    din PD-IN !  rin PR-IN !
    SGBAD @ IF EXIT THEN
    \ The supplied check runs last and SGBAD-SET is first-wins, so its own kind
@@ -8048,9 +8048,9 @@ CHECKER-REG:}SCRATCH
    din RES-TRUE FORALL-PLACE? dout RES-FALSE FORALL-PLACE? and
    rin RES-FALSE FORALL-PLACE? rout RES-FALSE FORALL-PLACE? and and 0= IF
       a u SGBAD-SYNTAX! THEN
-   \ Facts text skips this rule: a cast's certified view pack has outputs
-   \ that no input supplies.
-   SIG-FACTS-MODE @ 0= IF
+   \ Skipped for facts text, whose cast view pack has outputs no input
+   \ supplies, and a generated constructor, whose value holds only its payload.
+   SIG-FACTS-MODE @ 0= ctor 0= and IF
       dout SCOPE-SUPPLIED? rout SCOPE-SUPPLIED? and 0= IF a u SGBAD-UNSUPPLIED! THEN
    THEN ;
 
@@ -8062,7 +8062,8 @@ CHECKER-REG:}SCRATCH
    s" --" EXPECT-SIG
    dr PSIDE  PR-OUT ! PD-OUT !
    NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN
-   SB@ SL @ PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ SIG-ROWS-CHECK
+   SB@ SL @ PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ RES-FALSE
+   SIG-ROWS-CHECK
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
 : TAG-VAR ( ^u8 n bool bool -- n )
@@ -22245,15 +22246,13 @@ variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
 : BODY-KINDS-DERIVE ( -- )
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE STORED-DERIVE-ROWS ;
 
-\ A child word's effect, rows a declaration built, for the pending record named
-\ NA NU: it has no signature text and no return clause. It passes the rules
-\ and gets the kinds a parsed signature does, and rows a rule refuses are a bad
-\ stored signature naming NA. Answers the effect's handle, its offset+1.
-: CHECKER-CHILD-ROWS ( ^u8 n n n -- n )
-   {: na:^ nu:n din:n dout:n :}
+\ Child NA NU's built rows, kinded and checked as a parsed signature's (CTOR: a
+\ generated constructor's); a rejection records a bad one. Answers offset+1.
+: CHECKER-CHILD-ROWS ( ^u8 n n n bool -- n )
+   {: na:^ nu:n din:n dout:n ctor:bool :}
    din dout 0 0 RES-FALSE RES-FALSE STORED-DERIVE-ROWS
    SGBAD-CLEAR
-   NULL-PTR 0 din dout 0 0 RES-FALSE SIG-ROWS-CHECK
+   NULL-PTR 0 din dout 0 0 RES-FALSE ctor SIG-ROWS-CHECK
    SGBAD @ IF
       na nu na nu USIG-CERT-ADMIT
       NULL-PTR 0 na nu USIG-ADD-BAD DL-TAKE
