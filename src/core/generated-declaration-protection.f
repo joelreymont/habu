@@ -4,10 +4,6 @@ package TYPE-DECL
 private
 package DECLARATION-TRANSACTION
 
-s" a declaration is already open"
-s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
-E-ACTIVE DECL-REJECT:EXPLAIN
-
 : PLAN-PREFLIGHT ( ^u8 n n -- ) {: a:^ u:n words:n :}
    a u  a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
@@ -54,26 +50,22 @@ INSTALL
    {: rc:n :}
    [: ROLLBACKS ;] catch {: cleanup:n :}
    cleanup 0 <> IF s" declaration rollback failed" 76 die THEN
-   CLOSE
    rc throw ;
 
 public
 
 \ A failure before the commits finish rolls every participant back in reverse
-\ order and rethrows its own code; a declaration opened inside another is E-ACTIVE.
-\ Type entries are read before it opens.
+\ order and rethrows its own code. Type entries are read first.
 : RUN ( [ -- ] -- )
    {: body :}
    TFAM:READ-PENDING
-   OPEN
    [: SAVEPOINTS ;] catch {: save-rc:n :}
-   save-rc 0 <> IF CLOSE save-rc throw THEN
+   save-rc 0 <> IF save-rc throw THEN
    body catch {: body-rc:n :}
    body-rc 0 <> IF body-rc FAIL THEN
    [: PREPARES COMMITS ;] catch {: publish-rc:n :}
    publish-rc 0 <> IF publish-rc FAIL THEN
-   RELEASES
-   CLOSE ;
+   RELEASES ;
 
 private
 
