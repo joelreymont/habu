@@ -104,7 +104,6 @@ variable RNL-IN-DEF
    a u s" create" LINT-STR=CI if LINT-TRUE exit then
    a u s" variable" LINT-STR=CI if LINT-TRUE exit then
    a u s" constant" LINT-STR=CI if LINT-TRUE exit then
-   a u s" layout-buffer" LINT-STR=CI if LINT-TRUE exit then
    a u s" package" LINT-STR=CI if LINT-TRUE exit then
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
@@ -112,12 +111,9 @@ variable RNL-IN-DEF
    a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" seal-package" LINT-STR=CI if LINT-TRUE exit then
    a u s" export" LINT-STR=CI if LINT-TRUE exit then    \ EXPORT re-exports a word from a package
-   a u s" newtype" LINT-STR=CI if LINT-TRUE exit then
-   a u s" sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" variant" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;variant" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;sumtype" LINT-STR=CI if LINT-TRUE exit then
-   a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ enum block definer
    a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ enum block close (;FOO)
    a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ structure field keyword
    a u s" undefine" LINT-STR=CI ;

@@ -249,6 +249,7 @@ EXPORT CHECK:TOP-TAKE
 EXPORT CHECK:TOP-DROP
 EXPORT CHECK:USING-AMBIGUOUS-REJECT
 EXPORT CHECK:USING-SHADOW-REJECT
+EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
 EXPORT CHECKER-TAPE:COUNTED-MAX
 
 79 constant RC-TASK-THREAD       \ source read on a task's thread
@@ -2844,35 +2845,6 @@ private
    SEARCH
    true ;
 
-\ Inside a build a declaration word found in product text is the product's
-\ copy, which records into a checker that checks nothing, so hb's word of that
-\ spelling runs instead. hb's global wordlist is 0, as every linked program's;
-\ a declaration private to a package is hb's word in that package's private
-\ wordlist, whose row is in hb's own namespace (WL:NAMESPACE): a build points
-\ BOOT:NAMESPACE-WL at the product's.
-: DECLARATION? ( -- bool )
-   s" intrinsic" TOKEN-IS? if true exit then
-   s" nominal-provider" TOKEN-IS? if true exit then
-   s" parse-imm" TOKEN-IS? if true exit then
-   s" names:" TOKEN-IS? if true exit then
-   s" parses:" TOKEN-IS? if true exit then
-   s" parses-through:" TOKEN-IS? if true exit then
-   s" generates:" TOKEN-IS? if true exit then
-   s" typed-variable" TOKEN-IS? if true exit then
-   s" typed-buffer" TOKEN-IS? if true exit then
-   s" layout-buffer" TOKEN-IS? if true exit then
-   s" defer-layout-buffer" TOKEN-IS? if true exit then
-   s" dynamic-buffer" TOKEN-IS? if true exit then
-   s" structure" TOKEN-IS? if true exit then
-   s" mutual" TOKEN-IS? if true exit then
-   s" enum" TOKEN-IS? if true exit then
-   s" sumtype" TOKEN-IS? if true exit then
-   s" newtype" TOKEN-IS? if true exit then
-   s" deftype" TOKEN-IS? if true exit then
-   s" deflinear" TOKEN-IS? if true exit then
-   s" arena" TOKEN-IS? if true exit then
-   s" heap" TOKEN-IS? ;
-
 \ A file loader found in product text is the product's, which would record the
 \ file in its own registry, outside the build; hb's runs it through the build.
 : LOADER? ( -- bool )
@@ -2882,17 +2854,32 @@ private
    s" required" TOKEN-IS? if true exit then
    s" provided" TOKEN-IS? ;
 
-\ The product's `undefine` would retire the name from the product's checker,
-\ which checks nothing; hb's retires it from the checker that checks the build.
+\ Inside a build a declaration in product text runs hb's word of that spelling:
+\ the product's copy records into a checker that checks nothing. A declaration
+\ is known by its binding's id, 11..14 (parses:, parses-through:, names:,
+\ BINDING-DECLARATION-ID); a top-only word (15) acts on the program's state, so
+\ the product's copy runs. `intrinsic`, `nominal-provider` and `undefine` act
+\ on the checker that checks the build, so hb's run by their spelling. hb's
+\ global wordlist is 0, as every linked program's; a declaration private to a
+\ package is in its private wordlist, whose row is in hb's own namespace
+\ (WL:NAMESPACE): a build points BOOT:NAMESPACE-WL at the product's.
 : HOST-WORD? ( -- bool )
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
-   DECLARATION? LOADER? or  s" undefine" TOKEN-IS? or  0= if false exit then
+   s" nominal-provider" TOKEN-IS? {: provider:bool :}
+   provider  s" intrinsic" TOKEN-IS? or  LOADER? or  s" undefine" TOKEN-IS? or
+   0= if
+      TOKEN$ CHECKER-VERIFY-TOP-BINDING nip nip
+      CHECKER-OWNER-ABI:BINDING-ID-MASK and
+      CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift {: id:n :}
+      id CHECKER-OWNER-ABI:BINDING-PARSES-ID < if false exit then
+      id CHECKER-OWNER-ABI:BINDING-DECLARATION-ID > if false exit then
+   then
    TOKEN$ 0 XREF-FIND-WL REC !
    REC @ XREF-FOUND? 0= if
       OPEN-PKG-NAME WL:NAMESPACE WL-PROBE {: pkg:^ :}
       pkg NULL-PTR <> if TOKEN$ pkg XREF-PKG-PRIVATE XREF-FIND-WL REC ! then
    then
-   REC @ XREF-FOUND? 0= if UNDEFINED then
+   REC @ XREF-FOUND? 0= if provider if false exit then UNDEFINED then
    true ;
 
 : STEP ( -- )

@@ -3808,6 +3808,10 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    true ;
 
 : RECORD-DEFINER? ( ^u8 n -- bool ) {: a:^ u:n :}
+   \ A program's own word spelled like a declaration is not one.
+   a u TOP-BINDING nip nip BINDING-ID {: id:n :}
+   id CHECKER-OWNER-ABI:BINDING-DECLARATION-ID =
+   id CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID = or {: decl:bool :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
@@ -3824,17 +3828,17 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
       THEN
       0 0= EXIT
    THEN
-   a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
-   a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
-   a u s" value-record" STR=CI IF
+   a u s" deftype" STR=CI decl and IF RECORD-DEFTYPE 0 0= EXIT THEN
+   a u s" deflinear" STR=CI decl and IF RECORD-DEFLINEAR 0 0= EXIT THEN
+   a u s" value-record" STR=CI decl and IF
       [: RECORD-VALUE-RECORD ;] catch VALUE-RECORD-OUTCOME 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
-   a u s" structure" STR=CI IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
-   a u s" mutual" STR=CI IF RECORD-MUTUAL 0 0= EXIT THEN
-   a u s" newtype" STR=CI IF RECORD-NEWTYPE 0 0= EXIT THEN
-   a u s" sumtype" STR=CI IF
+   a u s" structure" STR=CI decl and IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
+   a u s" mutual" STR=CI decl and IF RECORD-MUTUAL 0 0= EXIT THEN
+   a u s" newtype" STR=CI decl and IF RECORD-NEWTYPE 0 0= EXIT THEN
+   a u s" sumtype" STR=CI decl and IF
       [: RECORD-SUMTYPE ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
-   a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
+   a u s" enum" STR=CI decl and IF RECORD-ENUM 0 0= EXIT THEN
    a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER? IF
@@ -3871,8 +3875,8 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" linear:" STR=CI IF
       [: LINEAR-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
    a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
-   a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
-   a u s" FUNCTION:" STR=CI IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
+   a u s" generates:" STR=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
+   a u s" FUNCTION:" STR=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR=CI IF
       TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
@@ -3891,6 +3895,9 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    renders a u FFI-CLOSER? and IF
       [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
    THEN
+   \ A declaration no arm above reads and that renders no source (`evaluate`
+   \ renders, as `;FUNCTION` does) leaves the rest of its statement to the run.
+   decl renders 0= and IF a u DW-PARSER TOP-OPAQUE 0 0= EXIT THEN
    \ A definer learned from a `does>` definition or a `generates:` row earlier
    \ in the closure. The created word is the next token, as for `constant` (the
    \ definer's own arguments precede it); the effect is the clause's or the
