@@ -1174,11 +1174,6 @@ variable TAGGED-FAM
    THEN
    mint ;
 
-\ CAST-WALKS with its trail undone: the member rows its walks build raise the
-\ signature's variable kinds, and a caller binds the row as declared.
-: CAST-CERTIFY ( -- bool )
-   TRAIL-N @ {: mark:n :}  CAST-WALKS  mark TRAIL-UNWIND ;
-
 : CAST-SCOPED? ( -- bool )
    SGIN @ SCOPED-TYPE? SGOUT @ SCOPED-TYPE? or
    SGHASR @ IF SGRIN @ SCOPED-TYPE? or SGROUT @ SCOPED-TYPE? or THEN ;
@@ -2213,7 +2208,7 @@ public
    ELSE
       na nu sa su ROWS
       STORED-DERIVE STORED-RAISE
-      CAST-CERTIFY {: mint:bool :}
+      CAST-WALKS {: mint:bool :}
       mint na nu CHECKER-QUALIFIED? and IF
          s" a qualified name publishes past the private section"
          s" write the cast's name with no `PKG:` qualifier"

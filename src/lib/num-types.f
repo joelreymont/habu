@@ -53,8 +53,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL-N              \ largest nonnegative machine
 MAX-CELL-N 1 cells / constant MAX-ALLOC-CELLS      \ a count above this overflows MAX-CELL-N bytes
 
 \ The checker cannot infer that a predicate-checked n has become the family, so
-\ the crossing is declared. CAST-CERTIFY refuses one that changes cell count,
-\ crosses the pointer/quotation class, widens or carries linear ownership.
+\ the crossing is declared.
 CAST: MINT-BYTE-LEN ( n -- byte-len )
 CAST: MINT-ITEM-COUNT ( n -- item-count )
 CAST: MINT-CELL-COUNT ( n -- cell-count )

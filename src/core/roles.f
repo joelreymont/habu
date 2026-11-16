@@ -88,10 +88,9 @@ EXPORT CHECK:SR-GROW
    sa su DTC+ s" >" DTC+ ba bu DTC-UPPER+ DTC-NAME-END
    ta tu DTC+ s"  -- " DTC+ ba bu DTC+ DTC-SIG-END ;
 
-\ The role conversions are casts, not trusted declarations: checker.f
-\ CAST-CERTIFY refuses a bad cast at its declaration, while
-\ `TRUSTED: L ( n -- ^u8 ) ;` records any shape and fails only at a caller
-\ (`8 L c@` compiled and crashed).
+\ The role conversions are casts, not trusted declarations: a bad cast is
+\ rejected at its declaration, while `TRUSTED: L ( n -- ^u8 ) ;` records any
+\ shape and fails only at a caller.
 
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only: executing one parses
 \ the live input and mutates the type registry, which their ( -- ) rows do not

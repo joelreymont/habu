@@ -255,6 +255,7 @@ EXPORT CHECK:PTX-CPREADY-FAM
 EXPORT CHECK:PTX-TILE-FAM
 EXPORT CHECK:PTX-UNIFORM-FAM
 EXPORT CHECK:PUSH-LOGICAL
+EXPORT CHECK:PUSH-TERM
 EXPORT CHECK:Q>BLOCK
 EXPORT CHECK:R-RES
 EXPORT CHECK:RECORDED-STEP
@@ -4096,22 +4097,28 @@ private
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
+\ TFC-SCH-TERM's mode: a term for a value in use, for a value a constructor
+\ stores, or for a question about an instance, whose term is thrown away.
+0 constant TFC-USE
+1 constant TFC-STORE
+2 constant TFC-ASK
+
 \ Folds one quotation side (a SCH-ROW node) onto a base row, element 0 deepest,
 \ matching the checker's PSTACK/SIG-PARSE-QUOT fold. Deferred: the SCH-QUOT case
 \ of TFC-SCH-TERM calls it before its impl is defined.
-defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
+defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
 
 
-: TFC-SCH-TERM ( n bool -- n )    \ payload schema node -> checker type term
-   {: node:n stored:bool :}
+: TFC-SCH-TERM ( n n -- n )    \ payload schema node -> checker type term
+   {: node:n mode:n :}
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
-   node SCHEMA-PTR?   IF node SCHEMA-A@ stored RECURSE MK-PTR EXIT THEN
+   node SCHEMA-PTR?   IF node SCHEMA-A@ mode RECURSE MK-PTR EXIT THEN
    node SCHEMA-XT?    IF OPAQUE-XT EXIT THEN
    node SCHEMA-APP? IF
       PARAM-SCR-N @ {: base:n :}
       0 BEGIN dup node SCHEMA-C@ < WHILE
-         node SCHEMA-B@ over + SCHEMA-ROOT@ stored RECURSE PARAM-SCR+
+         node SCHEMA-B@ over + SCHEMA-ROOT@ mode RECURSE PARAM-SCR+
          1 +
       REPEAT drop
       node SCHEMA-A@ {: fam:n :}
@@ -4120,27 +4127,29 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
    node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
       FRESH MK-QROW {: dbase:n :}             \ data base, rin/rout a return base: the
       FRESH MK-QROW {: rbase:n :}             \ implicit tails a signature's callable has
-      node SCHEMA-QUOT-DIN@  dbase stored TFC-QUOT-ROW {: din:n :}
-      node SCHEMA-QUOT-DOUT@ dbase stored TFC-QUOT-ROW {: dout:n :}
+      node SCHEMA-QUOT-DIN@  dbase mode TFC-QUOT-ROW {: din:n :}
+      node SCHEMA-QUOT-DOUT@ dbase mode TFC-QUOT-ROW {: dout:n :}
       node SCHEMA-QUOT-HASR@ 0= 0= IF
-         node SCHEMA-QUOT-RIN@  rbase stored TFC-QUOT-ROW {: rin:n :}
-         node SCHEMA-QUOT-ROUT@ rbase stored TFC-QUOT-ROW {: rout:n :}
+         node SCHEMA-QUOT-RIN@  rbase mode TFC-QUOT-ROW {: rin:n :}
+         node SCHEMA-QUOT-ROUT@ rbase mode TFC-QUOT-ROW {: rout:n :}
          din dout rin rout MK-QUOT
       ELSE
          din dout rbase rbase MK-QUOT         \ no return clause: neutral rin = rout
       THEN
       \ A schema's quotation in a constructor's input is stored, so it reads no local.
-      stored IF dup Q>BLOCK PAY NSCOPE-RAISE THEN EXIT
+      mode TFC-STORE = IF dup Q>BLOCK PAY NSCOPE-RAISE THEN EXIT
    THEN
    s" tfam: unsupported construct payload schema" 76 die ;
 
 
-: TFC-QUOT-ROW-IMPL ( n n bool -- n ) {: rownode:n base:n stored:bool :}
+: TFC-QUOT-ROW-IMPL ( n n n -- n ) {: rownode:n base:n mode:n :}
    base 0
    BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE
-      dup rownode swap SCHEMA-ROW-ELEM@ stored TFC-SCH-TERM
+      dup rownode swap SCHEMA-ROW-ELEM@ mode TFC-SCH-TERM
       swap >r
-      swap PUSH-LOGICAL
+      \ A question's term is thrown away, so its row leaves the instance's
+      \ arguments their kinds.
+      swap mode TFC-ASK = IF PUSH-TERM ELSE PUSH-LOGICAL THEN
       r> 1 +
    REPEAT drop ;
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
@@ -4162,7 +4171,7 @@ TFC-QUOT-ROW-INSTALL
    fid PF-SLOT@ used <> IF 0 RES-FALSE EXIT THEN
    fid PF-BYTE-OFF@ used CELL * <> IF 0 RES-FALSE EXIT THEN
    fid PF-ALIGN@ CELL <> IF 0 RES-FALSE EXIT THEN
-   fid PF-SCH@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM T-RES {: field:n :}
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-ASK TFC-SCH-TERM T-RES {: field:n :}
    field ISVAR IF 0 RES-FALSE EXIT THEN
    field TAG T-PARAM = IF
       field LAYOUT-WIDTH-OPEN? IF 0 RES-FALSE EXIT THEN
@@ -4211,7 +4220,7 @@ public
    fam TFAM-FLD-START@ {: base:n :}
    fid base < fid base fam TFAM-FLD-COUNT@ + >= or IF INIT-NO-FIELD EXIT THEN
    record TFC-ARGS!
-   fid PF-SCH@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
    fid PF-BYTE-OFF@ fid PF-CELLS@ fid PF-BYTES@ RES-TRUE ;
 
 : INIT-FIELD-NAME? ( n ^u8 n -- n n n bool )
@@ -4234,7 +4243,7 @@ public
 \ charging a phantom view element or counting a repeated owning parameter once.
 : TFAM-SCH-LIN-N ( n n bool -- n ) {: root:n term:n maybe:bool :}
    term TFC-ARGS!
-   root SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM maybe OWN-TYPE-N ;
+   root SCHEMA-ROOT@ TFC-ASK TFC-SCH-TERM maybe OWN-TYPE-N ;
 
 : PRODUCT-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
    term PARAM>FAM {: fam:n :}
@@ -4284,7 +4293,7 @@ public
 \ Instantiate one field schema against its owning family value. The lowering
 \ certificate can run while construct still uses TFC-VARS and TFC-I, so keep
 \ its substitution local to this call.
-: SCHEMA-TERM-FOR ( n n -- n ) {: owner:n node:n :}
+: SCHEMA-TERM-FOR ( n n n -- n ) {: owner:n node:n mode:n :}
    TFC-I @ {: old-i:n :}
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup TFC-VAR-CAP < WHILE
@@ -4292,7 +4301,7 @@ public
       1 +
    REPEAT drop
    owner T-RES TFC-ARGS!
-   node RES-FALSE TFC-SCH-TERM {: term:n :}
+   node mode TFC-SCH-TERM {: term:n :}
    0 BEGIN dup TFC-VAR-CAP < WHILE
       dup base + cells PARAM-SCR + @
       over cells TFC-VARS + !
@@ -4364,7 +4373,7 @@ private
 : EFFECT-SIDE ( n n n -- n ) {: owner:n side:n base:n :}
    base
    side SCHEMA-ROW-COUNT@ 0 ?do
-      owner side i SCHEMA-ROW-ELEM@ SCHEMA-TERM-FOR swap PUSH-LOGICAL
+      owner side i SCHEMA-ROW-ELEM@ TFC-USE SCHEMA-TERM-FOR swap PUSH-LOGICAL
    loop ;
 
 public
@@ -4381,7 +4390,7 @@ public
 : EFFECT-TYPE ( n -- n ) {: node:n :}
    node PARAM-SPAN EFFECT-OWNER {: owner:n :}
    node EFFECT-KINDS
-   owner node SCHEMA-TERM-FOR ;
+   owner node TFC-USE SCHEMA-TERM-FOR ;
 
 private
 
@@ -4392,7 +4401,7 @@ private
 \ family's argument count: the cast gate rejects any other count before its
 \ walks.
 : MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
-   term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;
+   term root SCHEMA-ROOT@ TFC-ASK SCHEMA-TERM-FOR row MK-PUSH ;
 : FIELD-MEMBERS ( n n n -- n ) {: term:n fam:n row:n :}
    row
    fam TFAM-FLD-COUNT@ 0 ?do term fam TFAM-FLD-START@ i + PF-SCH@ rot MEMBER+ loop ;
@@ -4467,7 +4476,7 @@ private
 \ same arguments.
 : TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
    fid PF-FLAGS-NONE FIELD-IN drop {: din:n base:n :}
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    din  ft MK-PTR base MK-PUSH  fid TYPE-FIELD:BYTE-OFF@ ;
 
 \ A BUFFER field's accessor's rows and field id, from the committed field id
@@ -4511,7 +4520,7 @@ private
    fid TYPE-FIELD:FAMILY@ {: fam:n :}
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    term fam TFAM-ARITY@ INIT-RECEIVER {: view:n :}
    view FRESH MK-ROW PUSH-LOGICAL {: bare:n :}
    ft bare PUSH-LOGICAL {: full:n :}
@@ -4585,7 +4594,8 @@ private
    row0 TFC-ROW !
    0 TFC-J !
    BEGIN TFC-J @ vid SUMV-PAY-N < WHILE
-      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ stored TFC-SCH-TERM
+      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@
+      stored IF TFC-STORE ELSE TFC-USE THEN TFC-SCH-TERM
       TFC-ROW @ TFC-PUSH-PAY TFC-ROW !
       TFC-J @ 1 + TFC-J !
    REPEAT
@@ -4619,7 +4629,7 @@ private
 : NOMINAL-ROWS ( n n -- n n n ) {: shape:n fam:n :}
    FRESH MK-ROW {: base:n :}
    fam TFAM-FLD-COUNT@ 1 = IF
-      fam TFAM-FLD-START@ PF-SCH@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+      fam TFAM-FLD-START@ PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
       base TFC-PUSH-PAY
    ELSE CC-N MK-CON base MK-PUSH THEN {: val:n :}
    fam TFAM-FRESH-TERM base PUSH-LOGICAL {: nom:n :}
@@ -4661,7 +4671,7 @@ private
    0
    0 TFC-J !
    BEGIN TFC-J @ vid SUMV-PAY-N < WHILE
-      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM T-WIDTH +
+      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-ASK TFC-SCH-TERM T-WIDTH +
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
@@ -4945,7 +4955,7 @@ public
    IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
 : TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
    term TFC-ARGS!
-   field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+   field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
    field TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF field TYPE-FIELD:CELLS@ EXIT THEN   \ a buffer: its cells
    dup T-WIDTH ;
 : TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
@@ -4956,7 +4966,7 @@ public
    0 RES-FALSE ;
 : TFAM-STORAGE-PAY ( n n n -- n n ) {: term:n vid:n index:n :}
    term TFC-ARGS!
-   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
    dup T-WIDTH ;
 
 \ Whether any cell of the type holds an address: a quotation (code) or a pointer

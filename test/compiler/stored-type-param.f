@@ -35,6 +35,8 @@ STRUCTURE run<a> DERIVE addr FIELD count n FIELD step n ;STRUCTURE
 \ A width argument: `item` holds an `a` by value.
 STRUCTURE box<a> DERIVE addr FIELD item a FIELD rest n ;STRUCTURE
 STRUCTURE lrec DERIVE addr FIELD hold stored-type-lin ;STRUCTURE
+\ A quotation argument: qb's width is the quotation's one cell.
+STRUCTURE qb<a> FIELD f [ -- a ] ;STRUCTURE
 
 : SAME ( ^t -- ^t ) ;
 : READ ( ^t -- t ) @ ;
@@ -48,6 +50,15 @@ defer P ( ^a -- ^a )
 : LOCAL-READ ( ^t -- ^t )
    {: p:^ :}
    p @ drop p ;
+: Q-DROP ( qb<t> -- n ) drop 1 ;
+: Q-ID ( qb<t> -- qb<t> ) ;
+: Q-NIP ( qb<t> qb<t> -- qb<t> ) nip ;
+: Q-DUP ( qb<t> -- qb<t> qb<t> ) dup ;
+: Q-LOCAL ( qb<t> -- qb<t> )
+   {: q:qb<t> :}
+   q ;
+: Q-ROW ( [ -- t ] -- [ -- t ] ) ;
+defer Q-DEFER ( qb<t> -- n )
 TYPED-VARIABLE TA turn
 
 private
@@ -242,6 +253,32 @@ private
    S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
    DISARM ;
 
+: CASE-QUOT-FIELD ( -- )
+   s" a quotation field's argument takes a record" T-LABEL
+   [: s" : STORED-QF1 ( STORED:qb<STORED:turn> -- n ) STORED:Q-DROP ;" evaluate-closed ;]
+      0 TTHROWSQ
+   [: s" : STORED-QF2 ( STORED:qb<STORED:turn> -- STORED:qb<STORED:turn> ) STORED:Q-ID ;" evaluate-closed ;]
+      0 TTHROWSQ
+   [: s" : STORED-QF3 ( STORED:qb<STORED:turn> STORED:qb<STORED:turn> -- STORED:qb<STORED:turn> ) STORED:Q-NIP ;" evaluate-closed ;]
+      0 TTHROWSQ
+   [: s" : STORED-QF4 ( STORED:qb<STORED:turn> -- STORED:qb<STORED:turn> STORED:qb<STORED:turn> ) STORED:Q-DUP ;" evaluate-closed ;]
+      0 TTHROWSQ
+   [: s" : STORED-QF5 ( STORED:qb<STORED:turn> -- STORED:qb<STORED:turn> ) STORED:Q-LOCAL ;" evaluate-closed ;]
+      0 TTHROWSQ ;
+
+: CASE-QUOT-ROW ( -- )
+   s" a quotation's own row takes no record, nor does a defer's field" T-LABEL
+   ARM
+   [: s" : STORED-R19 ( [ -- STORED:turn ] -- [ -- STORED:turn ] ) STORED:Q-ROW ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:Q-ROW\"" MISMATCH-AT
+   DISARM
+   ARM
+   [: s" : STORED-R20 ( STORED:qb<STORED:turn> -- n ) STORED:Q-DEFER ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:Q-DEFER\"" MISMATCH-AT
+   DISARM ;
+
 : CASE-ELEM ( -- )
    s" a cast's stored variable takes n, r, u8, ^u8 and a record" T-LABEL
    ELEM-N TTRUE  ELEM-R TTRUE  ELEM-U8 TTRUE  ELEM-PTR TTRUE  ELEM-TURN TTRUE ;
@@ -371,6 +408,8 @@ public
    CASE-WIDTH-SLOT
    CASE-LINEAR
    CASE-OPEN
+   CASE-QUOT-FIELD
+   CASE-QUOT-ROW
    CASE-ELEM
    CASE-ELEM-LINEAR
    CASE-ELEM-CLASS
