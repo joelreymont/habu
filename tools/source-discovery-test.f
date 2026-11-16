@@ -675,6 +675,16 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" missing-path.f" s" require" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
+\ The walk ends at a top-level root move: lib.f, only under the moved root, is
+\ neither an event nor a rejection.
+: SDT-TEST-ROOT-MOVE ( -- )
+   SDT-ROOT$ s" sub" SDT-ENTRY FS:JOIN-PATH {: subu:n :}
+   SDT-ENTRY subu FS:MAKE-DIR
+   s" sub/lib.f" s" : SDT-LIB ( -- ) ;" SDT-WRITE-ENTRY
+   s" root-move.f" S\" s\" sub\" SOURCE-ROOT:ROOT!\nrequire lib.f\n" SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 0 T= ;
+
 : SDT-HARVEST-MISSING ( -- )
    s" never-existing.f" SDT-PATH SDT-ROOT$ DISCOVER:READ-IN
    DISCOVER:RUN-READ ;
@@ -876,6 +886,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    SDT-TEST-ROW-KEYS
    SDT-TEST-ROW-CONFLICT
    SDT-TEST-MISSING-PATH
+   SDT-TEST-ROOT-MOVE
    SDT-TEST-HARVEST-FAULT
    SDT-TEST-ROW-BODY
    SDT-TEST-ROW-ORDER

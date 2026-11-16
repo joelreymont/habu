@@ -3,7 +3,7 @@
 \ src/lib/fs.f src/lib/source.f tools/source-discovery.f
 \ A walk replays every literal loader form the engine accepts, a colon body's
 \ string loaders included, in the core loader's record-only mode: the closure is
-\ a superset of the runtime one.
+\ a superset of the runtime one until a call moves the source root.
 \ Recorded loader-token spans are entry-file offsets.
 \
 \ A harvest collects all declarations and retirements the walk understands, even
@@ -1073,6 +1073,13 @@ DYNAMIC-BUFFER SD-DEC u8
    again ;
 
 
+\ A top-level call that may move the source root ends the file's walk. Only a
+\ qualified spelling is looked up: a bare one's binding here is not the file's.
+: SD-ROOT-MOVE? ( n n -- bool ) {: off:n len:n :}
+   SD-BODY? if false exit then
+   off len SD-TOK$ SD-QCOLON 0 < if false exit then
+   off len SD-TOK$ VERIFY:ROOT-MOVE? ;
+
 \ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
 : SD-PARSER? ( n n -- bool ) {: off:n len:n :}
    SD-BODY? if
@@ -1161,6 +1168,7 @@ DYNAMIC-BUFFER SD-DEC u8
    then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
    off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
+   off len SD-ROOT-MOVE? if SD-U @ SD-I ! exit then
    off len SD-R-USE? if exit then
    off len SD-SCOPE-STEP ;
 

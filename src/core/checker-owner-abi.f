@@ -103,14 +103,15 @@ $1C8 constant VERIFY-EACH-VISIBLE-OFF
 $1D0 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
 \ it, it is deferred, its string operand names a word (a `names:` row), a
-\ `generates:` row states the words it creates, its record's facts text says
-\ `core-op`, and the field holding the id of an engine word, with the ids of
-\ `parses:` and `parses-through:`, the declarers of what such a word reads,
-\ and of `names:`.
+\ `generates:` row states the words it creates, it may move the source root, its
+\ record's facts text says `core-op`, and the field holding the id of an engine
+\ word, with the ids of `parses:` and `parses-through:`, the declarers of what
+\ such a word reads, and of `names:`.
 $2000 constant BINDING-PARSES
 $10000 constant BINDING-DEFER
 $20000 constant BINDING-NAMES
 $40000 constant BINDING-GENERATES
+1 60 lshift constant BINDING-ROOTS
 \ The top-level walk refused the name, as it does an ambiguous or shadowed one.
 $80000 constant BINDING-REFUSED
 $10 constant BINDING-CORE-OP

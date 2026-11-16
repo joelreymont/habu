@@ -296,10 +296,10 @@ $2D68 constant OWNED-CELL
 $2D70 constant OWNEDLEN-CELL
 \ CURSOR: the byte address the scanner reads next.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR
-\ SOURCE-CELL: the address of the process's loader record, its top frame,
-\ current root and scope count. include.f stores it with `ptr-cell!` as it
-\ loads, so a cross-build's copy of include.f routes the store to the image it
-\ writes while its code reads the running hb's record.
+\ SOURCE-CELL: the address of the process's loader record, its top frame and
+\ current root. include.f stores it with `ptr-cell!` as it loads, so a
+\ cross-build's copy of include.f routes the store to the image it writes while
+\ its code reads the running hb's record.
 $2C48 constant SOURCE-CELL
 \ READS-CELL: the process's compile-reads record (src/core/compile-reads.f), as
 \ SOURCE-CELL holds its own: a cross-build's copy of that file uses hb's record.

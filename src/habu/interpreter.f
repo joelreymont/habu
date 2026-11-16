@@ -26,12 +26,12 @@
 \ spelling (HOST-WORD?): the target's copy records into a checker that checks
 \ nothing. A declaration is known by its binding's id, from parses: through the
 \ declaration's own; a top-only word acts on the program's state, so the
-\ target's copy runs. `intrinsic`, `nominal-provider` and `undefine` act on the
-\ checker that checks the build, so hb's run by their spelling, as do the file
-\ loaders (LOADER?). hb's global wordlist is 0, as every linked program's; a
-\ declaration private to a package is in its private wordlist, whose row is in
-\ hb's own namespace (WL:NAMESPACE): a build points BOOT:NAMESPACE-WL at the
-\ target's.
+\ target's copy runs. `intrinsic`, `nominal-provider`, `root-mover` and
+\ `undefine` act on the checker that checks the build, so hb's run by their
+\ spelling, as do the file loaders (LOADER?). hb's global wordlist is 0, as
+\ every linked program's; a declaration private to a package is in its private
+\ wordlist, whose row is in hb's own namespace (WL:NAMESPACE): a build points
+\ BOOT:NAMESPACE-WL at the target's.
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -2858,8 +2858,8 @@ private
 \ Whether a build runs hb's own word for the token rather than the target's.
 : HOST-WORD? ( -- bool )
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
-   s" nominal-provider" TOKEN-IS? {: provider:bool :}
-   provider  s" intrinsic" TOKEN-IS? or  LOADER? or  s" undefine" TOKEN-IS? or
+   s" nominal-provider" TOKEN-IS?  s" root-mover" TOKEN-IS? or {: annot:bool :}
+   annot  s" intrinsic" TOKEN-IS? or  LOADER? or  s" undefine" TOKEN-IS? or
    0= if
       TOKEN$ CHECKER-VERIFY-TOP-BINDING nip nip
       CHECKER-OWNER-ABI:BINDING-ID-MASK and
@@ -2872,7 +2872,7 @@ private
       OPEN-PKG-NAME WL:NAMESPACE WL-PROBE {: pkg:^ :}
       pkg NULL-PTR <> if TOKEN$ pkg XREF-PKG-PRIVATE XREF-FIND-WL REC ! then
    then
-   REC @ XREF-FOUND? 0= if provider if false exit then UNDEFINED then
+   REC @ XREF-FOUND? 0= if annot if false exit then UNDEFINED then
    true ;
 
 : STEP ( -- )

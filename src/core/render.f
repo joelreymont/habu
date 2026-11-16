@@ -648,7 +648,7 @@ LOCSHOW-INSTALL
    ctl CTL-THROW and 0=  ctl XFER-DMASK ctl XFER-RMASK or 0 <>  and IF 1 RQM ! THEN
    ctl 0 CTL-FLAG-TAG
    ctl CTL-THROWS-TAG
-   19 2 ?do
+   61 2 ?do
       i CTL-INTRINSIC-SHIFT = IF ctl CTL-INTRINSIC-TAG THEN
       ctl i CTL-FLAG-TAG
    loop

@@ -2811,7 +2811,89 @@ HB-TARGET-LINUX? 0= [if]
    s" : X ( -- ) MADE ;" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
    s" defer-body.f" FIXTURE!
-   0 1 s" MADE" s" rewrite the code from `MADE` on with words whose effects the check knows" DEFER-SUGGESTS ;
+   0 1 s" MADE" s" rewrite the code from `MADE` on with words whose effects the check knows" DEFER-SUGGESTS
+   s" a top-level call that moves the source root before a require under it" T-LABEL
+   s" defer-roots" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s\" s\" sub\" SOURCE-ROOT:ROOT!" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots/top.f" FIXTURE!
+   0 0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" " 0 CHECK-EXIT
+   s" a top-level parsing word that moves the source root before a require under it" T-LABEL
+   s" defer-roots-parser" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots-parser/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-parser/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s" : GO ( -- ) parse-name SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
+   s" parses: GO 1" SB-APPEND LF+
+   s" GO sub" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots-parser/top.f" FIXTURE!
+   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" " 0 CHECK-EXIT
+   s" a root move inside an open stretch before a require under it" T-LABEL
+   s" defer-roots-stretch" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots-stretch/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-stretch/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s\" s\" : RX ( -- ) ;\" evaluate" SB-APPEND LF+
+   s" RX" SB-APPEND LF+
+   s\" s\" sub\" SOURCE-ROOT:ROOT!" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots-stretch/top.f" FIXTURE!
+   0 2 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" " 0 CHECK-EXIT
+   s" a call of a word that moves the source root before a require under it" T-LABEL
+   s" defer-roots-caller" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots-caller/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-caller/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s\" : GO ( -- ) s\" sub\" SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
+   s" GO" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots-caller/top.f" FIXTURE!
+   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" a top-level tick of a word that moves the source root before a require under it" T-LABEL
+   s" defer-roots-tick" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots-tick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-tick/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s\" s\" sub\" ' SOURCE-ROOT:ROOT! execute" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots-tick/top.f" FIXTURE!
+   0 0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" a call of a word that ticks a word that moves the source root before a require under it" T-LABEL
+   s" defer-roots-btick" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-roots-btick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-btick/sub/lib.f" LINE-FIXTURE
+   SB-RESET
+   s\" : GO ( -- ) s\" sub\" ['] SOURCE-ROOT:ROOT! execute ;" SB-APPEND LF+
+   s" GO" SB-APPEND LF+
+   s" require lib.f" SB-APPEND LF+
+   s" LIB-ONE drop" SB-APPEND LF+
+   s" defer-roots-btick/top.f" FIXTURE!
+   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" a top-level move of the engine root before a require under it" T-LABEL
+   s" defer-engine" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-engine/src" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" defer-engine/src/lib" NAMED!  FX-PATH$ FS:MAKE-DIR
+   s" : ZZ-ONE ( -- n ) 1 ;" s" defer-engine/src/lib/zz-only.f" LINE-FIXTURE
+   s" defer-engine" NAMED!
+   SB-RESET
+   s\" s\" " SB-APPEND  FX-PATH$ SB-APPEND  s\" \" SOURCE-ROOT:ENGINE!" SB-APPEND LF+
+   s" require src/lib/zz-only.f" SB-APPEND LF+
+   s" ZZ-ONE drop" SB-APPEND LF+
+   s" defer-engine.f" FIXTURE!
+   0 0 s" SOURCE-ROOT:ENGINE!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   s" " 0 CHECK-EXIT ;
 
 \ A control-flow word with no structure open, or another structure's, is one
 \ the load cannot compile: it refuses the definition at that word.

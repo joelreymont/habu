@@ -2970,8 +2970,17 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    a u why DEFER-AT
    true TICK-REMAINDER ! ;
 
+public
+
+\ Whether a call of the word a u names may move the source root.
+: ROOT-MOVE? ( ^u8 n -- bool )
+   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-ROOTS and 0<> ;
+
+private
+
 : BOUND-CALL ( ^u8 n bool -- )
    {: a:^ u:n renders:bool :}
+   a u ROOT-MOVE? IF a u DW-ROOTS TOP-OPAQUE EXIT THEN
    renders IF a u RENDER-GAP THEN
    a u TOP-NAMED
    \ Literal openers only push the scanned string. Other calls may alter bindings.
@@ -3875,7 +3884,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       runs IF a u renders BOUND-CALL THEN
       EXIT
    THEN
-   v 2 = IF a u TOP-PARSER EXIT THEN
+   v 2 = IF
+      a u ROOT-MOVE? IF a u DW-ROOTS TOP-OPAQUE ELSE a u TOP-PARSER THEN
+      EXIT
+   THEN
    \ A stretch holds names rendered text may define; an undefined name defines
    \ nothing, so the names after it are still resolved and rejected one by one.
    v 0= IF a TOP-REFUSED !  runs IF a u SKIP-OPERAND THEN  EXIT THEN
@@ -3899,7 +3911,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    OPERAND {: o:^ ou:n :}
    a u CHAR-KEYWORD? IF EXIT THEN
    CSR-TOP
-   COMPOSE-ON @ INDEX-ON @ or 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
+   COMPOSE-ON @ INDEX-ON @ or 0= IF EXIT THEN
+   \ A mover's token may be executed, so the tick ends the walk as a call would.
+   o ou ROOT-MOVE? IF o ou DW-ROOTS TOP-OPAQUE EXIT THEN
+   TOP-DEFER @ 0<> IF EXIT THEN
    o ou false false TOP-RESOLVE ;
 
 \ A word that may define words this scan never reads (it renders source, as
@@ -3919,6 +3934,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    \ Index safety still needs every call after a rejected declaration: an open
    \ diagnostic stretch must not hide a call that can change earlier bindings.
    COMPOSE-ON @ 0= TOP-DEFER @ 0<> or INDEX-ON @ 0= and IF
+      \ A composition inside an open stretch still follows the requires after it.
+      COMPOSE-ON @ IF a u ROOT-MOVE? IF a u DW-ROOTS TOP-OPAQUE EXIT THEN THEN
       renders IF a u RENDER-GAP THEN
       EXIT
    THEN

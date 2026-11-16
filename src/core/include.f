@@ -194,6 +194,7 @@ public
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
+EXPORT CHECK:ROOT-MOVER
 private
 
 \ Word w's path a u, judged as spelled: one no file name holds, or one longer
@@ -247,8 +248,7 @@ variable OWNER-U
 0 constant REC-TOP
 CELL constant REC-ROOT
 2 cells constant REC-ROOTLEN
-3 cells constant REC-SCOPES
-4 cells constant REC-BYTES
+3 cells constant REC-BYTES
 create LOADER-REC REC-BYTES SCRATCH-ALLOT
 SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER-CELL
 LOADER-REC LOADER-CELL ptr-cell!            \ a build's store goes to its image
@@ -257,18 +257,18 @@ CAST: REC-CELLS ( ^u8 -- ^^u8 )
 : TOP ( -- ^^u8 ) LOADER REC-CELLS REC-TOP CELL / ptr-field ;
 : CURRENT-A ( -- ^^u8 ) LOADER REC-CELLS REC-ROOT CELL / ptr-field ;
 : CURRENT-U ( -- ^n ) LOADER REC-ROOTLEN + CELL-VIEW ;
-: SCOPES ( -- ^n ) LOADER REC-SCOPES + CELL-VIEW ;
 create ENGINE-BUF PATH-BYTES allot
 variable ENGINE-U
 variable ENGINE-READ
-\ The stack PUSHPATH fills: a mapped copy of each saved current path and its
-\ length, 0 for the top-level root, in two columns of SLOT-CAP cells that
-\ double together when full.
+\ The stack PUSHPATH fills: each saved path's mapped copy and length, 0 for the
+\ top-level root, in two columns of SLOT-CAP cells that double together when full.
 8 constant SLOT-FIRST
 PTR-U8-TABLE-VARIABLE SLOT-A
 PTR-VARIABLE SLOT-U
 variable SLOT-CAP
 variable SLOT-N
+\ SLOT-N when the open scope began, 0 at the top level.
+variable SLOT-BASE
 
 : CURRENT-PTR ( -- ^u8 ) CURRENT-A @ ;
 
@@ -772,25 +772,47 @@ private
    a fresh u 1+ BYTE-COPY
    fresh ;
 
-: ROOT-ENTER ( ^u8 n ^u8 n -- ^u8 n )
+: SLOT-FIELD ( n -- ^^u8 )
+   SLOT-A @ swap ptr-field ;
+
+: SLOT-LENS ( -- ^n ) SLOT-U @ ;
+
+: SLOT-U! ( n n -- )
+   cells SLOT-LENS + ! ;
+
+: SLOT-U@ ( n -- n )
+   cells SLOT-LENS + @ ;
+
+: SLOT-RELEASE ( n -- ) {: ix:n :}
+   ix SLOT-U@ {: u:n :}
+   u 0 > if
+      ix SLOT-FIELD @ u 1+ munmap 0 < if
+         s" source root: cannot release a saved path" INCLUDE-IO-RC die
+      then
+   then
+   NULL$ drop ix SLOT-FIELD !
+   0 ix SLOT-U! ;
+
+: ROOT-ENTER ( ^u8 n ^u8 n -- ^u8 n n )
    ROOT-CANON
    CANON-U @ {: u:n :}
    CANON-BUF u MAP-COPY {: fresh:^ :}
    CURRENT@
-   fresh u CURRENT!
-   1 SCOPES +! ;
+   SLOT-BASE @  SLOT-N @ SLOT-BASE !
+   fresh u CURRENT! ;
 
-\ The root current at a scope's exit is the scope's own mapping, or the one a
-\ ROOT! in the scope replaced it with; either is released once the caller's
-\ root is back.
-: ROOT-LEAVE ( ^u8 n -- )
-   {: old:^ oldu:n :}
-   -1 SCOPES +!
+\ The scope's current path at exit (its own, or one ROOT!, CD or POPPATH set) and
+\ each path PUSHPATH saved in the scope are released once the caller's root is back.
+: ROOT-LEAVE ( ^u8 n n -- )
+   {: old:^ oldu:n base:n :}
    CURRENT@ {: cur:^ curu:n :}
    old oldu CURRENT!
    cur curu 1+ munmap 0 < if
       s" source root: cannot release a root mapping" INCLUDE-IO-RC die
-   then ;
+   then
+   SLOT-N @ SLOT-BASE @ ?do i SLOT-RELEASE loop
+   SLOT-BASE @ SLOT-N !
+   base SLOT-BASE ! ;
 
 \ Clears the token read last and answers it, so no record a scope's callback
 \ makes stands at the call that opened the scope.
@@ -803,27 +825,15 @@ public
 
 \ The caller's root is back before the scope's is released, on a throw too.
 : WITH ( ^u8 n [ -- ] -- ) {: a:^ u:n q :}
-   s" SOURCE-ROOT:WITH" a u ROOT-ENTER {: old:^ oldu:n :}
+   s" SOURCE-ROOT:WITH" a u ROOT-ENTER {: old:^ oldu:n base:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
    TOKEN-CLEAR {: t:^ tu:n :}
    q catch {: rc:n :}
    t tu SRCLOC:TOKEN!
-   old oldu ROOT-LEAVE
+   old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
 private
-
-\ CD, PUSHPATH and POPPATH act on the top level only: each open scope, a load's
-\ among them, holds the current path it replaced and restores it on exit.
-: TOP-ONLY ( ^u8 n -- ) {: w:^ wu:n :}
-   SCOPES @ 0= if exit then
-   s" E-SOURCE-ROOT" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-   s" ` runs inside a load or a root scope" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" call it at the top level, or pass the directory and a quotation to " REJECTION:EMIT-STR
-   s" `SOURCE-ROOT:WITH`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A current path is ROOT!'s mapping or POPPATH's, inside a scope also the scope's.
 : RELEASE-CURRENT ( -- )
@@ -833,17 +843,6 @@ private
       then
    then
    NULL$ CURRENT! ;
-
-: SLOT-FIELD ( n -- ^^u8 )
-   SLOT-A @ swap ptr-field ;
-
-: SLOT-LENS ( -- ^n ) SLOT-U @ ;
-
-: SLOT-U! ( n n -- )
-   cells SLOT-LENS + ! ;
-
-: SLOT-U@ ( n -- n )
-   cells SLOT-LENS + @ ;
 
 : SLOT-GROW ( -- )
    SLOT-CAP @ {: oc:n :}
@@ -912,16 +911,16 @@ public
 \ the load or WITH body it runs in ends. hb's directory and engine root stay.
 : ROOT! ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:ROOT!" a u ROOT-SET ;
+ROOT-MOVER
 
 : CD ( -- )
    s" SOURCE-ROOT:CD" SRCLOC:SPELLED drop {: w:^ wu:n :}
-   w wu TOP-ONLY
    LINE-BLANK? if CURRENT$ type cr exit then
    w wu parse-name ROOT-SET ;
+ROOT-MOVER
 
 \ A null slot is the top-level root.
 : PUSHPATH ( -- )
-   s" SOURCE-ROOT:PUSHPATH" SRCLOC:SPELLED drop TOP-ONLY
    SLOT-N @ SLOT-CAP @ >= if SLOT-GROW then
    SLOT-N @ {: ix:n :}
    CURRENT-U @ {: u:n :}
@@ -931,13 +930,13 @@ public
 
 : POPPATH ( -- )
    s" SOURCE-ROOT:POPPATH" SRCLOC:SPELLED drop {: w:^ wu:n :}
-   w wu TOP-ONLY
-   SLOT-N @ 0= if
+   SLOT-N @ SLOT-BASE @ = if
       s" E-SOURCE-ROOT" REJECTION:OPEN
       96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
       s" ` runs with no directory saved" REJECTION:EMIT-STR
       REJECTION:HELP
-      s" save the current directory with `SOURCE-ROOT:PUSHPATH` first" REJECTION:EMIT-STR
+      s" save the current directory with `SOURCE-ROOT:PUSHPATH` first; " REJECTION:EMIT-STR
+      s" a load or `SOURCE-ROOT:WITH` body pops only what it saved" REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
    SLOT-N @ 1- {: ix:n :}
@@ -947,6 +946,7 @@ public
    NULL$ drop ix SLOT-FIELD !
    0 ix SLOT-U!
    ix SLOT-N ! ;
+ROOT-MOVER
 
 ;package
 
@@ -1355,6 +1355,7 @@ public
    CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
    CANON-U @ ENGINE-U !
    1 ENGINE-READ ! ;
+ROOT-MOVER
 
 private
 
@@ -2608,15 +2609,15 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 : LOAD-RAW ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    a u CONFINE
    INCLUDE-PATH0 drop
-   w wu RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
+   w wu RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
    [: LOAD-CURRENT ;] catch {: rc:n :}
-   old oldu ROOT-LEAVE
+   old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
 public
 
-\ No WITH scope opens, so CD stays legal in the program's text and the frame's
-\ root is CURRENT$, at the top level the program's directory.
+\ No WITH scope opens, so the frame's root is CURRENT$, at the top level the
+\ program's directory.
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
@@ -2663,14 +2664,14 @@ public
    s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   s" SOURCE-ROOT:WITH-BYTES" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
+   s" SOURCE-ROOT:WITH-BYTES" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
    t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
-   old oldu ROOT-LEAVE
+   old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
@@ -2680,14 +2681,14 @@ public
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   s" SOURCE-ROOT:WITH-SUPPLIED" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n :}
+   s" SOURCE-ROOT:WITH-SUPPLIED" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
    t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
-   old oldu ROOT-LEAVE
+   old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
 ;package
@@ -2868,7 +2869,7 @@ public
 : POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- ] -- )
    {: path:^ u:n q require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
-   s" SOURCE-ROOT:POLICY-WITH-ROOT" path u ROOT-ENTER {: prior:^ prioru:n :}
+   s" SOURCE-ROOT:POLICY-WITH-ROOT" path u ROOT-ENTER {: prior:^ prioru:n prior-base:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:^ :}
@@ -2877,7 +2878,7 @@ public
    q catch {: rc:n :}
    t tu SRCLOC:TOKEN!
    data-base POLICY-NDICT-CELL + @ 0 <> if
-      prior prioru ROOT-LEAVE
+      prior prioru prior-base ROOT-LEAVE
       old old-u POLICY-ROOT-RELEASE POLICY-SEALED
    then
    had if
@@ -2888,7 +2889,7 @@ public
       0 data-base POLICY-REQUIRE-CELL + xt!
    then
    old old-u POLICY-ROOT-RELEASE
-   prior prioru ROOT-LEAVE
+   prior prioru prior-base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
 ;package

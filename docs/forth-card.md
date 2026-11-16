@@ -284,7 +284,10 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
 under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,
 and the check discovers nothing after it: no definition, package, load or use
-in the rest of the file or of the file that loads it. State what such a word
+in the rest of the file or of the file that loads it. A top-level call or tick
+of a word that may move the source root (`SOURCE-ROOT:ROOT!`,
+`SOURCE-ROOT:CD`, `SOURCE-ROOT:POPPATH`, `SOURCE-ROOT:ENGINE!`, or a word that
+calls or ticks one) ends the check the same way. State what such a word
 reads, after its definition, and the check goes on after its operands:
 
 ```forth

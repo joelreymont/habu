@@ -249,7 +249,7 @@ variable DEEP-U
    s" src/lib" s" wd/src/lib" GATE-LINK
    s" cd/sub" A$ FS:MAKE-DIRS
    CD-FILE s" cd/x.f" SB$ TEXT
-   SB-RESET s" SOURCE-ROOT:CD " SB-APPEND TOP$ LINE s" cd-load.f" SB$ TEXT
+   s" cd-load.f" S\" SOURCE-ROOT:CD cd\nrequire x.f\nSOURCE-ROOT:CD\n" TEXT
    s" first.f" S\" \\ A file loaded before CD.\n" TEXT
    s" push-load.f" S\" SOURCE-ROOT:PUSHPATH\n" TEXT
    s" pop-load.f" S\" SOURCE-ROOT:POPPATH\n" TEXT
@@ -591,32 +591,45 @@ variable DEEP-U
    s" `SOURCE-ROOT:CD` got a path" SAYS
    s" bytes a path may have" SAYS ;
 
-\ A path word in <tmp>/<file>, the --load entry.
-: IN-LOAD ( ^u8 n ^u8 n -- )
-   {: file:^ fileu:n want:^ wantu:n :}
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   file fileu A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
-   s" error[E-SOURCE-ROOT]" REJECTED
-   want wantu SAYS ;
-
-\ A load holds the path it replaced, so none of the words may move it.
+\ A load's CD moves the root for the rest of that file, as a relative require
+\ there shows; the load's end restores the root it began with.
 : PATH-IN-LOAD ( -- )
-   s" the path words are refused inside a loaded file" T-LABEL
-   s" cd-load.f" s" `SOURCE-ROOT:CD` runs inside a load or a root scope" IN-LOAD
-   s" push-load.f" s" `SOURCE-ROOT:PUSHPATH` runs inside a load or a root scope" IN-LOAD
-   s" pop-load.f" s" `SOURCE-ROOT:POPPATH` runs inside a load or a root scope" IN-LOAD ;
-
-\ A root scope holds the path it replaced too, with no file loaded.
-: PATH-IN-ROOT ( -- )
-   s" the path words are refused inside a top-level root scope" T-LABEL
+   s" CD in a loaded file lasts to the end of that file" T-LABEL
    PROG-RESET
-   S\" : G ( -- ) s\q /tmp\q [: SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH ;" PLINE
-   s" G" PLINE
+   s" include" s" cd-load.f" PATH-LINE
+   s" SOURCE-ROOT:CD" PLINE
+   RUN-TREE
+   SB-RESET s" from cd" LINE s" cd" A$ LINE FOREIGN$ LINE SB$ 0 EXPECT ;
+
+\ The first CD parses `cd` from the line that calls G; the second prints the
+\ scope's path and the third, after the scope, the caller's.
+: PATH-IN-ROOT ( -- )
+   s" CD in a root scope lasts to the end of the scope" T-LABEL
+   PROG-RESET
+   SB-RESET S\" : G ( -- ) s\q " SB-APPEND TOP$ SB-APPEND
+   S\" \q [: SOURCE-ROOT:CD SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH SOURCE-ROOT:CD ;" SB-APPEND
+   SB$ PLINE
+   s" G cd" PLINE
+   RUN-TREE
+   SB-RESET s" cd" A$ LINE FOREIGN$ LINE SB$ 0 EXPECT ;
+
+\ A path saved in a scope is dropped at its end, and a scope restores no path
+\ saved outside it.
+: PATH-SAVED-IN-SCOPE ( -- )
+   s" a load's PUSHPATH leaves nothing for a later POPPATH" T-LABEL
+   PROG-RESET
+   s" include" s" push-load.f" PATH-LINE
+   s" SOURCE-ROOT:POPPATH" PLINE
    RUN-TREE
    s" error[E-SOURCE-ROOT]" REJECTED
-   s" `SOURCE-ROOT:CD` runs inside a load or a root scope" SAYS ;
+   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS
+   s" a load's POPPATH restores no path saved before the load" T-LABEL
+   PROG-RESET
+   s" SOURCE-ROOT:PUSHPATH" PLINE
+   s" include" s" pop-load.f" PATH-LINE
+   RUN-TREE
+   s" error[E-SOURCE-ROOT]" REJECTED
+   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS ;
 
 \ A null slot is the working directory, which the last POPPATH restores. The
 \ round trip spells the words bare under `using SOURCE-ROOT`.
@@ -658,7 +671,8 @@ variable DEEP-U
    CD-LOCKED
    s" CD to a file is rejected by name" s" cd/x.f"
    s" is not a directory this process can search" CD-REFUSED
-   CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;
+   CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-SAVED-IN-SCOPE
+   PATH-STACK ;
 
 : MAIN ( -- )
    T-RESET

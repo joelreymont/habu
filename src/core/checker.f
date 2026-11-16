@@ -5332,6 +5332,7 @@ global
 4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
 6 constant DW-TYPE           \ a type that may arrive with rendered text
 7 constant DW-RENDERED       \ a word whose meaning rendered source may change
+8 constant DW-ROOTS          \ a top-level call that may move the source root
 private
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
@@ -5638,7 +5639,8 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-$7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAMES and CTL-GENERATES
+\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES and CTL-ROOTS
+$7FFFF 1 60 lshift or constant XFER-FLAG-MASK
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -5678,7 +5680,8 @@ $80 constant CTL-RENDERS
 private
 
 \ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
-\ the defer bit, 19 the verifier query's refused-name mark, 20-39 and 40-59 the intact masks.
+\ the defer bit, 19 the verifier query's refused-name mark, 20-39 and 40-59 the intact masks,
+\ 60 CTL-ROOTS.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -5724,7 +5727,10 @@ $8000 constant CTL-NOMINAL
 \ states. It describes that cell, not what a call may do.
 CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
 private
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
+\ CTL-ROOTS means a call may move the source root, so which files later requires
+\ load cannot be known without running it.
+CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-INHERITED
 \ CTL-NAMES means the word looks its top string operand up, so a string literal
 \ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
@@ -5770,6 +5776,7 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CHECKER-OWNER-ABI:BINDING-DEFER = IF s" defer" EXIT THEN
    f CTL-NAMES = IF s" names" EXIT THEN
    f CTL-GENERATES = IF s" generates" EXIT THEN
+   f CTL-ROOTS = IF s" roots" EXIT THEN
    s" " ;
 
 
@@ -8234,7 +8241,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
 
 : TAG>CTL-FLAG ( ^u8 n -- n )
    {: a:^ u:n :}
-   19 0 ?do
+   61 0 ?do
       i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
    loop
    0 ;
@@ -17433,9 +17440,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ `id INTRINSIC`, at top level right after the source definition of an engine
 \ word, tags it as that engine word, as `immediate` marks the latest word. A
 \ replay never runs this line; the definition's end keeps the identity its
-\ symbol carries. It has no PRIM row on purpose: the seal's internal-word pass
-\ leaves it callable by the engine's own source alone, so no program can claim
-\ its word is an engine word.
+\ symbol carries.
 \ The row declarers' ids also publish CTL-PARSES: each reads its row, but its
 \ trusted body calls the registrar the scan refuses, so no checked body records
 \ the flag its parse-name calls give.
@@ -17584,6 +17589,11 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" the check leaves " REJECTION:EMIT-STR  t tu DW-CODE
       s"  to the run because rendered source may change what it does" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-ROOTS = IF
+      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  may move the source root" REJECTION:EMIT-STR EXIT
+   THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
 : DW-LABEL ( n -- ) {: why:n :}
@@ -17593,9 +17603,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-RENDERER = IF s" renders undeclared source" REJECTION:EMIT-STR EXIT THEN
    why DW-TYPE = IF s" type not declared in the source" REJECTION:EMIT-STR EXIT THEN
    why DW-RENDERED = IF s" may depend on rendered source" REJECTION:EMIT-STR EXIT THEN
+   why DW-ROOTS = IF s" may move the source root" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
-\ What lifts the deferral; a `parses:` row's or rendered
-\ source's has nothing to write, so no help.
+\ What lifts the deferral, or what the run does where nothing can; a `parses:`
+\ row's or rendered source's has nothing to write, so no help.
 : DW-HELP ( ^u8 n n -- ) {: t:^ tu:n why:n :}
    why DW-PARSES =  why DW-RENDERED =  or IF EXIT THEN
    REJECTION:HELP
@@ -17618,6 +17629,9 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-TYPE = IF
       s" declare " REJECTION:EMIT-STR  t tu DW-CODE
       s"  with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-ROOTS = IF
+      s" the run loads the files later requires name from the root it sets" REJECTION:EMIT-STR EXIT
    THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
@@ -22545,6 +22559,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    K-TICK  BIND-REC @ REC>INDEX  0 EVENT!
    TKF TKFU @ BODY-KEYWORD? IF TKF TKFU @ REFUSE-UNDEFINED EXIT THEN
    sym TICK-REFUSED? IF EXIT THEN
+   \ A mover's token may be executed, so the body may move the root as a call does.
+   sym CTL-FLAGS-SYM CTL-ROOTS and INHSET @ or INHSET !
    FEP-HIT? IF
       FEP @ ER.ACTIVE @ EFF-RECOVERY = IF
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
@@ -23750,10 +23766,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ it, and a caller passing its own operand on declares its own row.
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ^u8 n
 
-: NOMINAL-REC-SYM ( ^n -- n ) {: rec:^ :}
+: ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
-   nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
+   nameu 0= wid -2 = or IF s" checker: an annotated word has no live record" 76 die THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i REC-AT {: ns:^ :}
@@ -23768,21 +23784,25 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
          THEN
       THEN
    LOOP
-   s" checker: nominal provider wordlist has no package" 76 die ;
+   s" checker: an annotated word's wordlist has no package" 76 die ;
 
-: NOMINAL-ADD-REC ( ^n -- ) {: rec:^ :}
-   rec NULL-PTR = IF s" checker: nominal provider not found" 76 die THEN
-   rec NOMINAL-REC-SYM {: sym:n :}
-   sym sym CTL-FLAGS-SYM CTL-NOMINAL or
+: CTL-ADD-REC ( ^n n -- ) {: rec:^ flag:n :}
+   rec NULL-PTR = IF s" checker: an annotated word was not found" 76 die THEN
+   rec ANNOT-REC-SYM {: sym:n :}
+   sym sym CTL-FLAGS-SYM flag or
       sym CTL-MASKS-SYM NORET-ADD-SYM
    rec sym RECORD-CONTROL-AT! ;
+: NOMINAL-ADD-REC ( ^n -- ) CTL-NOMINAL CTL-ADD-REC ;
 \ Engine-build annotation, run immediately after a real registrar definition.
 \ The dictionary's last record and its defining wordlist identify the binding;
-\ neither the source spelling nor an active-package guess does. It has no PRIM
-\ row and the prefix's internal-word gate keeps it from ordinary source.
+\ neither the source spelling nor an active-package guess does.
 : NOMINAL-PROVIDER ( -- )
    ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
    ndict@ 1- REC-AT NOMINAL-ADD-REC ;
+\ The same annotation after a word that may move the source root (CTL-ROOTS).
+: ROOT-MOVER ( -- )
+   ndict@ 0= IF s" checker: root mover has no dictionary record" 76 die THEN
+   ndict@ 1- REC-AT CTL-ROOTS CTL-ADD-REC ;
 \ The registrars above are found by name: a record's index holds only in the
 \ process that made it, and a built hb numbers its records anew.
 s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC

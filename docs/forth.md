@@ -287,20 +287,21 @@ public
   directory never changes. So `/work/app/main.f` can require `src/model.f`,
   and that file `src/math.f`. Nested loads, file sizes and the loads a file
   makes have no fixed limit.
-- At the top level of a stdin session or of a program file run as
-  `bin/hb file.f`, SwiftForth's path words, public in package `SOURCE-ROOT`
+- SwiftForth's path words, public in package `SOURCE-ROOT`
   (`SOURCE-ROOT:CD`, or `CD` under `using SOURCE-ROOT`), move the current
   path, the first root a relative path searches: `CD <dir>` sets it, relative
   to the current path when relative, and a bare `CD` prints it; `PUSHPATH`
   saves it and `POPPATH` restores it. Inside a load (`--load` or `require`)
-  or a `SOURCE-ROOT:WITH` body they are refused by name. They never change the
-  engine root or the process working directory, and an image cannot be saved
-  with a path pushed. A file sets its root with
+  or a `SOURCE-ROOT:WITH` body they act as `ROOT!` does: the scope's end
+  restores the path and drops the paths saved in it, and `POPPATH` restores
+  only a path saved in the same scope. They never change the engine root or
+  the process working directory, and an image cannot be saved with a path
+  pushed. A file sets its root with
   `SOURCE-ROOT:ROOT! ( ^u8 n -- )`, legal at the top level, inside a load
   and inside a `WITH` body: the directory, relative to the current root when
   relative, becomes the current root, and the end of the load or `WITH` scope
   it runs in restores the root that was current when that load or scope began
-  (`CD <dir>` is `ROOT!` at the top level). A file scopes a root with
+  (`CD <dir>` is `ROOT!`). A file scopes a root with
   `SOURCE-ROOT:WITH ( ^u8 n [ -- ] -- )`, which restores the caller's on
   return or throw; a root that does not resolve to a searchable directory, and
   an image save inside the scope, are refused by name.
