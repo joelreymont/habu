@@ -99,15 +99,18 @@ public
 : SEAL-NAME ( ^u8 n -- )
    data-base PROVIDED-XT:SEAL-CELL + @ AS-SEAL-NAME execute ;
 
-\ A name the checker rejects answers false, and the definer defines nothing:
-\ the checker has reported it. A name a sealed package would take is rejected
-\ before a taken one, which is rejected at t tu, the declared name the source
-\ holds.
-: LBUF-NAME-OK? ( ^u8 n ^u8 n -- bool ) {: name:^ nameu:n t:^ tu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
+\ A name a sealed package would take is rejected before a taken one, which is
+\ rejected at t tu, the name as the source holds it.
+: CLAIM-NAME ( ^u8 n ^u8 n -- ) {: name:^ nameu:n t:^ tu:n :}
    name nameu SEAL-NAME
    name nameu CHECKER-DEFINED-HERE? if name nameu t tu REJECT-DUPLICATE then
-   name nameu get-current search-wl 0 <> if name nameu t tu REJECT-DUPLICATE then
+   name nameu get-current search-wl 0 <> if name nameu t tu REJECT-DUPLICATE then ;
+
+\ A name the checker rejects answers false, and the definer defines nothing:
+\ the checker has reported it.
+: LBUF-NAME-OK? ( ^u8 n ^u8 n -- bool ) {: name:^ nameu:n t:^ tu:n :}
+   name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
+   name nameu t tu CLAIM-NAME
    LBUF-TRUE ;
 
 private

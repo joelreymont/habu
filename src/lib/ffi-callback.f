@@ -454,7 +454,16 @@ public
    OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
    R-NONE RES-KIND ! 0 FB-SET !
    0 READS !
-   TOK@ 2dup NAME! LBUF:SEAL-NAME
+   \ A name may sit on a later line, so only '(' says it is missing.
+   TOK@ 2dup s" (" STR= if
+      s" expected a callback name, found " s" ("
+      s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
+   then
+   2dup NAME! {: na:^ nu:n :}
+   na nu na nu LBUF:CLAIM-NAME
+   s" -BODY" NAME+ na nu LBUF:CLAIM-NAME
+   s" -DISPATCH" NAME+ na nu LBUF:CLAIM-NAME
+   s" -ENTRY" NAME+ na nu LBUF:CLAIM-NAME
    TOK@ {: a:^ u:n :}
    a u s" (" STR= 0= if
       s" expected '(' after the callback name, found " a u
@@ -505,6 +514,7 @@ public
 \   NAME           ( -- FFI-CB:callback )  the descriptor;
 \   NAME-BODY      a TYPED-VARIABLE holding the checked body, typed from the
 \                  declaration (i32/u32 read as n, ^u8 as ^u8);
+\   NAME-ENTRY     ( -- n ) the address of the C entry, the one C calls;
 \   NAME-DISPATCH  ( -- ) reads the arguments from the marshal frame, runs the
 \                  body under catch and leaves the result for C, or the declared
 \                  fallback after a throw; a body never stored throws

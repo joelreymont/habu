@@ -402,6 +402,21 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ A CALLBACK: whose name is taken.
+: XPK-TAKEN-CALLBACK$ ( -- ^u8 n )
+   SB-RESET
+   s" require src/lib/ffi-callback.f" XPK-LINE
+   s" : CB ( -- n ) 9 ;" XPK-LINE
+   s" CALLBACK: CB ( -- ) ;CALLBACK" XPK-LINE
+   SB$ ;
+
+\ A CALLBACK: with no name.
+: XPK-NAMELESS-CALLBACK$ ( -- ^u8 n )
+   SB-RESET
+   s" require src/lib/ffi-callback.f" XPK-LINE
+   s" CALLBACK: ( -- ) ;CALLBACK" XPK-LINE
+   SB$ ;
+
 \ A sealed package P, then the section word s su, if any, and the line a u.
 : XPK-SEALED-LINE$ ( ^u8 n ^u8 n -- ^u8 n ) {: s:^ su:n a:^ u:n :}
    SB-RESET
@@ -775,6 +790,19 @@ create XPK-EMPTY 1 allot
    XPK-SEALED-CALLBACK$
    s" error[E-SEALED-PACKAGE]: `CB` would change a sealed package"
    s" |           ^^ sealed" XPK-SEALED
+   s" a CALLBACK: whose name is taken, named at its name" T-LABEL
+   XPK-TAKEN-CALLBACK$
+   s" error[E-DUPLICATE-DEFINITION]: `CB` is already defined in this wordlist"
+   s" |           ^^ already defined" XPK-SEALED
+   s" a CALLBACK: with no name, named at its '('" T-LABEL
+   XPK-NAMELESS-CALLBACK$
+   s" error[E-FFI-SYNTAX]: expected a callback name, found '('"
+   s" |           ^ the definer was reading here" XPK-SEALED
+   s" a CALLBACK: whose derived word is taken, named at its name" T-LABEL
+   SB-RESET s" require src/lib/ffi-callback.f" XPK-LINE
+   s" : CB-BODY ( -- n ) 9 ;" XPK-LINE  s" CALLBACK: CB ( -- ) ;CALLBACK" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `CB-BODY` is already defined in this wordlist"
+   s" |           ^^ already defined" XPK-SEALED
    s" a sealed package's part defines in its private and public sections" T-LABEL
    XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines under a using" T-LABEL
