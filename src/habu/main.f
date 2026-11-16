@@ -185,7 +185,7 @@ CAST: APP-ACTION ( n -- [ -- ] )
 \ other ends the process with the record of the throw nothing caught.
 : RUN-SOURCE ( [ -- ] -- )
    {: q :}
-   q catch {: rc:n :}
+   q ERROR:CAUGHT {: rc:n :}
    rc 0= if exit then
    REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then

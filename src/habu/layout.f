@@ -785,6 +785,9 @@ SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 \ region. A kernel catch throwing a code it took on (habu1.f BRETHROW) keeps it;
 \ finally's throw on counts a new one.
 $27F8 constant THROWS-CELL
+\ ENDED-CELL: true only between the end of the xt ERROR:CAUGHT runs and
+\ CAUGHT's read of it, zero in a fresh region.
+$27F0 constant ENDED-CELL
 \ STAMP-CELL: the number of the throw that carries the kept record, 0 for none.
 $2848 constant STAMP-CELL
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine

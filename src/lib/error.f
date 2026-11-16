@@ -6,7 +6,8 @@
 \ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE and ERROR:FAULT lay in data
 \ space and the persisted head cell that holds the newest one's address. A row
-\ holds its own fault flag: only this package reads a row's layout.
+\ holds its own fault flag: only this package reads a row's layout. TASK-LOCAL:
+\ the ENDED-CELL of the thread's region that CAUGHT sets and reads.
 
 \ ERROR-TEXT is src/core/util.f's, which every prefix loads first.
 require src/habu/layout.f
@@ -872,29 +873,13 @@ generates: FAULT ( -- n )
    s" nothing caught a throw of code " REJECTION:EMIT-STR
    c REJECTION:EMIT-N ;
 
-\ The code and the help of an OPEN record of code c.
-: HELP ( n -- )
-   {: c:n :}
-   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
-   REJECTION:HELP
-   s" catch the code where the program can go on, or remove its cause"
-   REJECTION:EMIT-STR ;
-
-\ Sends the record of a throw of code c that nothing caught: the one its throw
-\ carried, else one with no place.
-: UNCAUGHT ( n -- )
-   {: c:n :}
-   REJECTION:CARRIED? 0= if c OPEN  c HELP  REJECTION:SAVE then
-   REJECTION:SEND-SAVED ;
-
-seal-package
 ;package
 
 -9850 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
 -9851 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
 -9852 s" a definition ran while a checker replay is open: define after the `CHECK:SCOPED` quotation returns" ERROR:CODE E-OVERLAY-OPEN
 -9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
--9854 s" a computed 0 was thrown and unwound the text, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
+-9854 s" a computed 0 was thrown, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
 -9855 s" the system refused memory to grow the table of address cells: make fewer address cells, or raise the process's address-space limit" ERROR:CODE E-XTCELL-GROW
 -2100 s" a path is empty, too long or of a form the call rejects" ERROR:CODE E-FS-PATH
 -2101 s" a path's status could not be read or it names no regular file" ERROR:CODE E-FS-STAT
@@ -907,3 +892,42 @@ seal-package
 -2109 s" the target holds the new bytes; its directory sync failed" ERROR:CODE E-FS-SYNC
 -2110 s" a descriptor transfer reached its deadline" ERROR:CODE E-FS-TIMEOUT
 -2111 s" a file read whole yielded more bytes than its size sampled before the read" ERROR:CODE E-FS-CHANGED
+
+\ HELP and CAUGHT name E-THROW-ZERO, which ERROR:CODE declares outside the
+\ package, and UNCAUGHT calls HELP.
+package ERROR
+
+public
+
+\ The code note and the help of an OPEN record of code c; E-THROW-ZERO's has
+\ no code note.
+: HELP ( n -- )
+   {: c:n :}
+   c E-THROW-ZERO = if
+      REJECTION:HELP
+      s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
+      REJECTION:EMIT-STR exit
+   then
+   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
+   REJECTION:HELP
+   s" catch the code where the program can go on, or remove its cause"
+   REJECTION:EMIT-STR ;
+
+\ Sends the record of a throw of code c that nothing caught: the one its throw
+\ carried, else one with no place.
+: UNCAUGHT ( n -- )
+   {: c:n :}
+   REJECTION:CARRIED? 0= if c OPEN  c HELP  REJECTION:SAVE then
+   REJECTION:SEND-SAVED ;
+
+\ Answers what catch of q answers, but E-THROW-ZERO where a computed 0 unwound q.
+: CAUGHT ( [ -- ] -- n )
+   {: q :}
+   [: q execute  true data-base ENDED-CELL + ! ;] catch {: c:n :}
+   data-base ENDED-CELL + @ 0<> {: ended:bool :}
+   false data-base ENDED-CELL + !
+   c 0<>  ended  or if c exit then
+   E-THROW-ZERO ;
+
+seal-package
+;package

@@ -879,6 +879,25 @@ variable CLASS-N                        \ the class CLASS+ read
    s" R" WHICH!  s" test/fixtures/file-objects/record-main.f" FIXTURE-BUILD 0= if exit then
    RECORD-RUN ;
 
+\ L's program, run in its own process: a computed 0 thrown out of MAIN prints
+\ E-THROW-ZERO's record and exits 67.
+: ZERO-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s" error[E-THROW-ZERO]" STARTS-WITH? {: opened:bool :}
+   CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" CONTAINS?
+   opened and {: said:bool :}
+   said  rc UNCAUGHT-RC =  and 0= if rc SHOW then
+   s" the program prints E-THROW-ZERO's record" LABEL  said TTRUE
+   s" the program exits 67" LABEL  rc UNCAUGHT-RC T= ;
+
+\ Z is a stripped program; ZR, built with --repl, is hb running MAIN before its REPL.
+: ZERO-CASE ( CMD:command -- CMD:command )
+   s" Z" WHICH!  s" test/fixtures/file-objects/zero-main.f" FIXTURE-BUILD 0= if exit then
+   ZERO-RUN
+   s" ZR" WHICH!  s" test/fixtures/file-objects/zero-main.f" REPL-BUILD 0= if exit then
+   ZERO-RUN ;
+
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path.
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
@@ -2111,7 +2130,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE PATH-CASE STALE-CASE HIDDEN-CASE
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE

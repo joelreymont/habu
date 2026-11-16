@@ -122,6 +122,7 @@ create TAB
    COMPILE-PREFLIGHT-CELL             1 cells                 CLAIM COMPILE-PREFLIGHT-CELL
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    THROWS-CELL                        1 cells                 CLAIM THROWS-CELL
+   ENDED-CELL                         1 cells                 CLAIM ENDED-CELL
    STAMP-CELL                         1 cells                 CLAIM STAMP-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
    EXIT-OWNER-CELL                    1 cells                 CLAIM EXIT-OWNER-CELL

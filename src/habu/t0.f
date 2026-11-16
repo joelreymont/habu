@@ -1731,9 +1731,10 @@ variable STORE-REC                   \ !'s
 \ checker files on a `throw` row the catch whose code it throws.
 \ Each catch of a unit that a `throw` of the same unit names keeps, in a frame
 \ slot of its own, the count after it returns: the number of the throw that
-\ landed. That `throw` first moves the stamp to the throw it begins when the
-\ stamp still names the one that landed, so a cleanup that catches throws of
-\ its own between does not lose the record, and a rejection kept since does.
+\ landed, or -1, which no stamp holds, when it answered 0. That `throw` first
+\ moves the stamp to the throw it begins when the stamp still names the one
+\ that landed, so a cleanup that catches throws of its own between does not
+\ lose the record, and a rejection kept since does.
 \ A `throw` in a quotation of a code its parent caught is a plain throw. Both
 \ cells are read through `data-base`, the running task's region.
 
@@ -1775,9 +1776,12 @@ DYNAMIC-BUFFER COUNT-SLOT n
    SPILL-ALL  BASE-REC @ XREF-REC REC-START loc EMIT-CALL
    THROWS-CELL PUSH-CONST [: + ;] OP-ADD true ALU2 ;
 
-\ After the call at offset loc of a counted catch: its count into slot s.
+\ After the call at offset loc of a counted catch: count or (code = 0) into
+\ slot s. CMP0 would hand the flag to an `if` after `catch`.
 : KEEP-COUNT ( n n -- ) {: s:n loc:n :}
    loc THROWS-AT  CELL-W FETCH
+   OVER1  TOP MAT 0 EMIT-CMP-LIT  TOP REMOVE  CC-EQ PUSH-FLAG
+   [: or ;] OP-OR true ALU2
    TOP MAT s EMIT-SLOT-STORE  TOP REMOVE ;
 
 \ Before the `throw` at offset loc of the code of the catch whose count slot s

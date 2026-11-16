@@ -172,6 +172,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    label labelu GE-EXPECT-ERR-HAS ;
 
+\ A catch that answered 0 lands no throw, so its code thrown again stops the text
+\ with E-THROW-ZERO's record at the call, not one an earlier caught throw kept,
+\ and hb exits 67.
+: CAUGHT-ZERO-STOPS ( -- )
+   s" caught-zero" {: label:^ labelu:n :}
+   GE-HB-RESET  GE-SRC-RESET
+   S\" : K ( -- ) s\" E-KEPT\" REJECTION:OPEN  REJECTION:SAVE  1000 REJECTION:PASS ;" GE-SRC-LINE
+   s" : ON ( -- ) [: K ;] catch drop  [: ;] catch {: rc:n :} rc throw ;" GE-SRC-LINE
+   s" ON" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   67 label labelu GE-EXPECT-RC
+   GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
+   STARTS-WITH? 0= if label labelu GE-FAIL then
+   S\" \n --> <input>:3:1\n" label labelu GE-EXPECT-ERR-HAS ;
+
 \ An evaluate that returns gives the place back to the outer text: a later throw
 \ in the same word is placed at the outer token, not in the evaluated string.
 : THROW-AFTER-EVAL ( -- )
@@ -241,6 +256,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    THROW-ZERO-STOPS
+   CAUGHT-ZERO-STOPS
    THROW-AFTER-EVAL
    GENERATED-DUPLICATE
    PUBLIC-DUPLICATE

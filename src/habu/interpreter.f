@@ -3126,7 +3126,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 2 constant FRAME-UNWOUND
 
 \ Success is the frame still on top with code 0, which the catch answers only
-\ after LEFT saw the text end.
+\ when the text ran to its end.
 : FRAME-EXIT ( ^u8 n -- n ) {: f:^ code:n :}
    f NULL-PTR - EVAL-TOP-CELL CELL@ <> if FRAME-UNWOUND exit then
    code 0= if FRAME-DONE else FRAME-LINKED then ;
@@ -3191,32 +3191,10 @@ variable OPENER-U
    SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
    c ERROR:HELP ;
 
-\ The record, at the running token, of a computed 0 that unwound the text.
-: ZERO-AT ( -- )
-   E-THROW-ZERO ERROR:OPEN
-   SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
-   REJECTION:EMIT-STR ;
-
-\ True only between the running text's normal end and its LEFT, so LEFT tells
-\ a body that returned from one a computed 0 unwound.
-variable ENDED
-
-\ Ends the running text's inner catch with code c, by c and ENDED:
-\   0, ended      returns
-\   0, not ended  passes E-THROW-ZERO with a record kept at the running token
-\   1..255        goes on as thrown
-\   any other     passes c with the record its throw carried, else one kept at
-\                 the running token
+\ Ends the running text's inner catch with the code c ERROR:CAUGHT answered.
 : LEFT ( n -- )
    {: c:n :}
-   ENDED @ 0<> {: ended:bool :}
-   false ENDED !
-   c 0= if
-      ended if exit then
-      ZERO-AT REJECTION:SAVE  E-THROW-ZERO REJECTION:PASS
-   then
+   c 0= if exit then
    c 1 255 BETWEEN? if c throw then
    REJECTION:CARRIED? 0= if c THROWN-AT REJECTION:SAVE then
    c REJECTION:PASS ;
@@ -3233,7 +3211,7 @@ variable ENDED
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS true ENDED ! ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] ERROR:CAUGHT LEFT ;]
    catch {: code:n :}
    f code FRAME-EXIT {: out:n :}
    out case
@@ -3302,7 +3280,7 @@ public
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN true ENDED ! ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN ;] ERROR:CAUGHT LEFT ;]
    catch {: code:n :}
    f code FRAME-EXIT {: out:n :}
    out case
