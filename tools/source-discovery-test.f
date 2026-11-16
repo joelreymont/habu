@@ -149,6 +149,34 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    q CHECKER-REJECT-RC TTHROWSQ
    VERIFY:DISCOVERY-STOPPED @ kind T= ;
 
+\ The entry walked with its bytes armed as the rejection source, as the checker
+\ arms the file it walks: a record is placed in them.
+: SDT-ARMED-RUN ( -- )
+   SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN
+   DISCOVER:BYTES$ 1 1 0 REJECTION:SOURCE!
+   DISCOVER:RUN-READ ;
+
+\ The number after KEY in the record captured, else -1.
+: SDT-FIELD ( ^u8 n -- n ) {: k:^ ku:n :}
+   REJECTION:BUFFER$ {: r:^ ru:n :}
+   r ru k ku 0 T-FROM {: at:n :}
+   at 0< if -1 exit then
+   at ku + {: s:n :}
+   s r +  r ru s T-DIGITS-END s -  STR-PARSE-POS MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
+\ The entry is rejected as KIND, its record placed at the LEN bytes from byte OFF.
+: SDT-STOPS-AT ( n n n -- ) {: kind:n off:n len:n :}
+   REJECTION:JSON @ {: json:n :}
+   REJECTION:CAPTURE  true REJECTION:JSON !
+   [: SDT-ARMED-RUN ;] kind SDT-STOPS
+   json REJECTION:JSON !  REJECTION:SOURCE-OFF
+   S\" \"byte_start\":" SDT-FIELD off T=
+   S\" \"byte_end\":" SDT-FIELD off len + T=
+   REJECTION:BUFFER-OFF ;
+
 : SDT-TEST-DYNAMIC ( -- )
    s" dyn.f" S\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
@@ -272,10 +300,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" : L ( ^u8 n -- ) included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
    S\" : L ( ^u8 n -- ) included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
    s" body-dyn-top.f" S\" : L ( ^u8 n -- ) included ;\nrequired\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   DISCOVER:LAST-TOKEN {: off:n len:n :}
-   off 28 T=
-   len 8 T= ;
+   E-DISC-DYNAMIC 28 8 SDT-STOPS-AT ;
 
 : SDT-TEST-BODY-OPENER ( -- )
    s" body-opener.f" S\" : L ( -- ) C\\\" sd-i.f\" required ;\n" SDT-WRITE-ENTRY
@@ -304,10 +329,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ long.
 : SDT-REPLACED-AT ( ^u8 n n n n -- ) {: a:^ u:n code:n off:n len:n :}
    s" replaced.f" a u SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] code SDT-STOPS
-   DISCOVER:LAST-TOKEN {: at:n atu:n :}
-   at off T=
-   atu len T= ;
+   code off len SDT-STOPS-AT ;
 
 \ After the file defines a loader word's name (E-DISC-SHADOW), or else retires
 \ it (E-DISC-RETIRE), the walk cannot tell which word the spelling names, so a
@@ -381,10 +403,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
-   [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS
-   DISCOVER:LAST-TOKEN {: off:n len:n :}
-   off 34 T=
-   len 9 T=
+   E-DISC-SHADOW 34 9 SDT-STOPS-AT
    s" family-qualified-shadow.f"
    S\" package DEMO : DEMO:structure ( -- ) ; structure require dep.f ;package\n"
    SDT-WRITE-ENTRY
@@ -410,20 +429,14 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 \ not.
 : SDT-TEST-STORAGE-DEFINER ( -- )
    s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   DISCOVER:LAST-TOKEN {: off:n len:n :}
-   off 31 T=
-   len 8 T= ;
+   E-DISC-DYNAMIC 31 8 SDT-STOPS-AT ;
 
 \ The definers are interpret keywords: in a body one is a call that takes its
 \ name when the word runs. The `;` after `create` ends MK, so the top-level
 \ loader after it, which takes no literal, is refused at itself.
 : SDT-TEST-DEFINER-IN-BODY ( -- )
    s" definer-body.f" S\" : MK ( -- ) create ;\nrequired\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   DISCOVER:LAST-TOKEN {: off:n len:n :}
-   off 21 T=
-   len 8 T= ;
+   E-DISC-DYNAMIC 21 8 SDT-STOPS-AT ;
 
 \ --- oversized string literals: data tolerated, loader path rejected ---------
 

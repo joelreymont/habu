@@ -187,10 +187,8 @@ variable SD-SCOPES
 : SD-PATH$ ( -- ^u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ^u8 n ) {: off:n len:n :}  off SD-BUF + len ;
 
-\ A rejection's record stands at the token the walk read last (LAST-TOKEN), and
-\ the walk stops with the form's kind (STOPPED). A harvest, which drops the
-\ stop (HARVEST), throws the kind bare: the expansion after it meets the form
-\ again and writes the record.
+\ A stop's record stands at the token read last if the caller armed BYTES$. A
+\ harvest throws the kind bare: the expansion after it meets the form again.
 : SD-LAST$ ( -- ^u8 n )  SD-TOK-OFF @ SD-TOK-LEN @ SD-TOK$ ;
 : SD-HARVEST-THROW ( n -- ) {: code:n :}
    SD-HARVESTING @ if code throw then ;
@@ -1627,14 +1625,9 @@ public
 : RUN ( ^u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ RUN-IN ;
 
-\ The bytes the last run read, and where the token it read last starts in them
-\ and its length. A run that refused a loader form read that form last: a
-\ loader word with no literal path, or one whose spelling the file replaced.
+\ The bytes the last run read.
 : BYTES$ ( -- ^u8 n )
    SD-BUF SD-U @ ;
-
-: LAST-TOKEN ( -- n n )
-   SD-TOK-OFF @ SD-TOK-LEN @ ;
 
 : EMIT ( ^u8 n -- n ) {: dst:^ cap:n :}
    0 >LEN SD-EMIT-LEN !
