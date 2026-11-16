@@ -1354,16 +1354,6 @@ ENUM course
    LOCK TASK:RELEASE ;
 
 
-\ Nagle's algorithm off, so a frame leaves at once instead of waiting for the
-\ peer to acknowledge the one before it.
-: NAGLE-OFF? ( TCP4:connection -- bool )
-   true TCP4:NODELAY!
-   MATCH TCP4:status
-      ok OF true ENDOF
-      failed OF drop false ENDOF
-   ;MATCH ;
-
-
 \ A mapping that fails throws with the ones before it in the slot, for
 \ RETIRE to give back.
 : FILL ( n -- ) {: idx:n :}
@@ -1385,16 +1375,14 @@ ENUM course
 
 
 \ Under LOCK: the request's connection taken into the slot and the socket
-\ published to the task, open with the 101 queued, or closed from birth under
-\ 1006 when its connection refuses TCP_NODELAY (NAGLE-OFF?). An input mapping
-\ that fails closes the connection before the throw goes on, so nothing holds
-\ it.
+\ published to the task, open with the 101 queued. An input mapping that fails
+\ closes the connection before the throw goes on, so nothing holds it.
 : TAKE ( HTTP:request n -- HTTP:request n ) {: asked:HTTP:request idx:n :}
    asked HTTP:TAKE-OVER {: conn:TCP4:connection early eu:n :}
    idx early eu [: FILL-INPUT ;] catch {: code:n :} 2drop drop
    code 0 <> if conn TCP4:CLOSE drop code throw then
    conn idx LINK !
-   conn NAGLE-OFF? if PHASE-OPEN else STATUS-LOST idx STATUS ! 0 idx OUT-U ! PHASE-CLOSED then idx PHASE !
+   PHASE-OPEN idx PHASE !
    asked idx ;
 
 
@@ -1662,11 +1650,10 @@ public
 \ socket, n and `opened`, then every message and, once, `closed`, short of a
 \ STOP that passes its bound (STOP), each call with n, so whatever the handler
 \ does for `opened`, such as recording the socket under n, precedes every
-\ message. A socket whose connection refuses TCP_NODELAY is closed from birth
-\ under 1006, and still told `opened`, then `closed`. A peer gone without a
-\ close is found by ping: an open socket from which no byte has arrived for
-\ 30 s, counted while no handler call runs, is pinged, and is lost under 1006
-\ when 10 s more pass with none after the ping has left (PING-MS). A handshake that does not pass is answered
+\ message. A peer gone without a close is found by ping: an open socket from
+\ which no byte has arrived for 30 s, counted while no handler call runs, is
+\ pinged, and is lost under 1006 when 10 s more pass with none after the ping
+\ has left (PING-MS). A handshake that does not pass is answered
 \ 400, or 426 naming version 13, and one past START's limit, or while WS is
 \ stopping, 503, through the response once the route handler returns, and
 \ `refused` carries that status: no socket exists for it, and n is not kept.
