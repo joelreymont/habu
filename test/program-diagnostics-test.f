@@ -93,13 +93,13 @@ package PROGRAM-DIAGNOSTICS
       s" E-XTCELL habu: invalid address-cell storage header" NEGATIVE-LINE
    s" test/xt-cell-band-bad.f" 98 s" XT-CELL-BAND-ARMED"
       s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
-   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:21:1" DIAGNOSTIC
+   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:17:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" ^ generated declaration already defined" s" test/enum-ctor-collide-bad.f"
       GE-EXPECT-ERR-HAS
    s" = evaluated: ENUM ecol green red ;ENUM"
       s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
-   s" = word: ECOL:RED" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
+   s" = word: ECOL-RED" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/bootstrap-created-effect-src.f"

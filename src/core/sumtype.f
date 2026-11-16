@@ -1184,19 +1184,26 @@ private
 
 private
 EXPORT CHECK:CHECKER-COLON-SCAN
+EXPORT CHECKER-RESOLVE:HEAD-ROW
 EXPORT CHECKER-RESOLVE:PART-ROW
 
 0 constant TDECL-CTOR-FREE
 1 constant TDECL-BY-PART
 2 constant TDECL-BY-FAMILY
 3 constant TDECL-BY-PART-FAMILY
+4 constant TDECL-BY-PACKAGE
 
-\ What takes the name: a source's part, else for a top-level family a part's
-\ family and for a part's family a family of the enclosing package.
+\ What takes the name: a source's part, else a part's family or a package no
+\ family made (top-level family) or a family of the enclosing package (part's).
 : TDECL-CTOR-HOLDER ( ^u8 n n n -- n ) {: ca:^ cu:n cn:n ci:n :}
    cn 0 = IF
       ca cu PART-ROW {: top:^ :}
-      top NULL-PTR = IF TDECL-CTOR-FREE EXIT THEN
+      top NULL-PTR = IF
+         ca cu HEAD-ROW {: pkg:^ :}
+         pkg NULL-PTR = IF TDECL-CTOR-FREE EXIT THEN
+         ca cu TFAM-CTOR-PKG? IF TDECL-CTOR-FREE EXIT THEN
+         TDECL-BY-PACKAGE EXIT
+      THEN
       top CELL + @ 0 = IF TDECL-BY-PART-FAMILY EXIT THEN
       TDECL-BY-PART EXIT
    THEN
@@ -1231,6 +1238,10 @@ public
       fam TFAM-NAME$
          s" a family of a part of this package already makes a constructor package of this name"
          s" rename this family or that part's family" E-TDECL-NAME TDECL-THROW-AT
+   THEN
+   by TDECL-BY-PACKAGE = IF
+      ca cu s" a package already bears its constructor package's name"
+         s" rename this family or that package" E-TDECL-NAME TDECL-THROW-AT
    THEN
    cn 0 <> IF ca cu RES-FALSE CHECKER-OVERLAY:NS-ENSURE drop THEN
    ca cu TF-INTERN {: coff:n :}

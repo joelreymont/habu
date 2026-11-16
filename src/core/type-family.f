@@ -205,7 +205,7 @@ EXPORT CHECK:CT-LINEAR?
 EXPORT CHECK:CT-LIVE?
 EXPORT CHECK:CT-NAME$
 EXPORT CHECK:CTOR-EXTEND?-XT
-EXPORT CHECK:CTOR-PKG?-XT
+EXPORT CHECK:CTOR-OWNER-XT
 EXPORT CHECK:CTOR-ROW?-XT
 EXPORT CHECK:CTOR-WORD?-XT
 EXPORT CHECK:CW-MEMBER-OFFSET
@@ -1094,20 +1094,29 @@ PTR-VARIABLE TF-CW-HEAD-A   variable TF-CW-HEAD-U   \ the split head, resolved
    id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
    id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
 
-public
+: TFAM-OWNER ( n -- ^u8 n ^u8 n bool ) {: fam:n :}
+   fam TFAM-PKG$ fam TFAM-NAME$ RES-TRUE ;
 
-\ A recorded ctor package, or a part `TOP:X` where X is one of a family of TOP.
-: TFAM-CTOR-PKG? ( ^u8 n -- bool ) {: a:^ u:n :}
+\ The package and name of the family whose constructor package a u is: a
+\ recorded ctor package, or a part `TOP:X` where X is one of a family of TOP.
+: TFAM-CTOR-OWNER ( ^u8 n -- ^u8 n ^u8 n bool ) {: a:^ u:n :}
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 1 =  ci 0 >  and {: part:bool :}
    SUMV-N @ 0 ?do
-      a u i SUMV-CTOR-PKG-MATCH? IF RES-TRUE unloop EXIT THEN
+      a u i SUMV-CTOR-PKG-MATCH? IF i SUMV-FAM@ TFAM-OWNER unloop EXIT THEN
       part IF
          a ci + 1 +  u ci - 1 -  i SUMV-CTOR-PKG-MATCH? IF
-            a ci  i SUMV-FAM@ TFAM-PKG$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
+            a ci  i SUMV-FAM@ TFAM-PKG$ CORE-STR=CI IF
+               i SUMV-FAM@ TFAM-OWNER unloop EXIT
+            THEN
          THEN
       THEN
-   loop RES-FALSE ;
+   loop a 0 a 0 RES-FALSE ;
+
+public
+
+: TFAM-CTOR-PKG? ( ^u8 n -- bool )
+   TFAM-CTOR-OWNER {: pa:^ pu:n na:^ nu:n owned:bool :} owned ;
 
 private
 EXPORT CHECKER-RESOLVE:CK-REC-NAME$
@@ -5253,7 +5262,7 @@ private
    [: TFAM-PARSE-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    \ The constructor checks answer from the rows read: a linked family is read first.
-   [: READ-PENDING TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ package reopen
+   [: READ-PENDING TFAM-CTOR-OWNER ;]   is CTOR-OWNER-XT    \ package reopen
    [: READ-PENDING TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine
    [: READ-PENDING TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra tail
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT

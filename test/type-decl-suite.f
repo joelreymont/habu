@@ -1919,7 +1919,8 @@ s" undefine TDRV:EQ"
 s" undefine TDRV:TAG"
    s" error[E-CTOR-PROTECTED]: `TDRV:TAG`" s" generated constructor" TDT-REJ
 s" package tdrv"
-   s" error[E-CTOR-PROTECTED]: `tdrv`" s" constructor package" TDT-REJ
+   s" error[E-CTOR-PROTECTED]: `tdrv` bears the name of the constructor package of the family `tdrv`,"
+   s" constructor package" TDT-REJ
 
 \ grammar negatives: deferred/unknown features, kind gates, name collision,
 \ missing feature token (DERIVE eats exactly one feature token).

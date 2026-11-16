@@ -13083,18 +13083,17 @@ variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the usin
    a u wid search-wl 0 <> ;
 
 global
-\ --- generated-constructor protection. The predicates install into these
-\ cells; empty cells fail open only in engines with no TFAM registry (stage
-\ builders, which see no user declarations).
+\ --- generated-constructor protection. CTOR-PROT-DEFAULTS answers no to every
+\ check; only a stage builder, with no TFAM registry and no user declarations, keeps it.
 7111 constant E-CTOR-PROTECTED
 7202 constant E-CHECKER-STORAGE-UNRESOLVED
 7205 constant E-CHECKER-IDENTITY-UNRESOLVED
 private
-defer CTOR-PKG?-XT ( ^u8 n -- bool )
+defer CTOR-OWNER-XT ( ^u8 n -- ^u8 n ^u8 n bool )   \ the family a ctor package is of
 defer CTOR-WORD?-XT ( ^u8 n -- bool )
 defer CTOR-EXTEND?-XT ( ^u8 n -- bool )    \ new tail in a closed ctor package?
 : CTOR-PROT-DEFAULTS ( -- )
-   [: 2drop RES-FALSE ;] is CTOR-PKG?-XT
+   [: drop 0 over 0 RES-FALSE ;] is CTOR-OWNER-XT
    [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
    [: 2drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
 CTOR-PROT-DEFAULTS
@@ -13110,11 +13109,17 @@ CTOR-PROT-DEFAULTS
    s" ` and define your own word under another name" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: CTOR-PKG-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+\ Package a u, written t tu, bears the name of the constructor package of
+\ family na nu of package pa pu, empty for a top-level family.
+: CTOR-PKG-REJECT ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ u:n t:^ tu:n pa:^ pu:n na:^ nu:n :}
    s" E-CTOR-PROTECTED" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
-   s" ` is reserved for generated constructors, so no source may open it"
+   s" ` bears the name of the constructor package of the family `"
    REJECTION:EMIT-STR
+   pu 0 <> IF pa pu REJECTION:EMIT-STR  58 REJECTION:EMIT1 THEN
+   na nu REJECTION:EMIT-STR
+   s" `, so no source may open it" REJECTION:EMIT-STR
    t tu REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
    REJECTION:HELP
    s" put your words in a package of another name, as `package " REJECTION:EMIT-STR
@@ -14149,7 +14154,8 @@ EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 \ The path a u, then the name as written t tu.
 : CHECKER-PACKAGE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
-   a u CTOR-PKG?-XT IF a u t tu CTOR-PKG-REJECT THEN
+   a u CTOR-OWNER-XT {: pa:^ pu:n na:^ nu:n owned:bool :}
+   owned IF a u t tu pa pu na nu CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u OPEN-PACKAGE THEN
    a u CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;

@@ -396,17 +396,18 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-\ A STRUCTURE in package Z, whose constructor package Z-PK is sealed.
+\ A public STRUCTURE in part B of sealed package Z: its constructor package is
+\ the part B-SX of Z.
 : XPK-SEALED-CTOR$ ( -- ^u8 n )
    SB-RESET
-   s" package Z-PK" XPK-LINE
-   s" public" XPK-LINE
-   s" : PW ( -- n ) 1 ;" XPK-LINE
-   s" seal-package" XPK-LINE
-   s" ;package" XPK-LINE
    s" package Z" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
    s" public" XPK-LINE
-   s" STRUCTURE pk FIELD v n ;STRUCTURE" XPK-LINE
+   s" STRUCTURE sx FIELD v n ;STRUCTURE" XPK-LINE
+   s" ;package" XPK-LINE
    s" ;package" XPK-LINE
    s" 1 . cr" XPK-LINE
    SB$ ;
@@ -436,17 +437,18 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-\ A SUMTYPE in package Z, whose constructor package Z-PK is sealed.
+\ A public SUMTYPE in part B of sealed package Z: its constructor package is
+\ the part B-SX of Z.
 : XPK-SEALED-SUM-CTOR$ ( -- ^u8 n )
    SB-RESET
-   s" package Z-PK" XPK-LINE
-   s" public" XPK-LINE
-   s" : PW ( -- n ) 1 ;" XPK-LINE
-   s" seal-package" XPK-LINE
-   s" ;package" XPK-LINE
    s" package Z" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
    s" public" XPK-LINE
-   s" SUMTYPE pk VARIANT pa ;VARIANT ;SUMTYPE" XPK-LINE
+   s" SUMTYPE sx VARIANT pa ;VARIANT ;SUMTYPE" XPK-LINE
+   s" ;package" XPK-LINE
    s" ;package" XPK-LINE
    s" 1 . cr" XPK-LINE
    SB$ ;
@@ -888,7 +890,7 @@ create XPK-EMPTY 1 allot
    s" |       ^^ sealed" XPK-SEALED
    s" a sealed constructor package takes no STRUCTURE's MAKE, named at the family" T-LABEL
    XPK-SEALED-CTOR$
-   s" error[E-SEALED-PACKAGE]: `Z-PK:MAKE` would change a sealed package"
+   s" error[E-SEALED-PACKAGE]: `B-SX:MAKE` would change a sealed package"
    s" |           ^^ sealed" XPK-SEALED
    s" a sealed package's part rejects a qualified STRUCTURE as an unsealed one does" T-LABEL
    XPK-SEALED-PART-STRUCT$ s" bad structure declaration `B:s`" s" " XPK-SEALED
@@ -897,7 +899,7 @@ create XPK-EMPTY 1 allot
    s" error[E-SEALED-PACKAGE]: `ma` would change a sealed package" s" " XPK-SEALED
    s" a sealed constructor package takes no SUMTYPE's variant, named at the family" T-LABEL
    XPK-SEALED-SUM-CTOR$
-   s" error[E-SEALED-PACKAGE]: `Z-PK:PA` would change a sealed package"
+   s" error[E-SEALED-PACKAGE]: `B-SX:PA` would change a sealed package"
    s" |         ^^ sealed" XPK-SEALED
    s" a sealed package takes no MUTUAL member with a header, named at its family" T-LABEL
    XPK-SEALED-MUTUAL-PARAM$

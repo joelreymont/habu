@@ -430,32 +430,36 @@ s" STRUCTURE prodctor FIELD a n FIELD b n ;STRUCTURE" evaluate-closed
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A later constructor collides after the first has entered the generation plan.
-: ROLLCOLL:TAKEN ( -- n ) 37 ;
+package ENUM-ROLLCOLL
+: ROLLCOLL-TAKEN ( -- n ) 37 ;
 DECL-DIAG:PROSE
 s" ENUM rollcoll fresh taken ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollcoll`\n" DECL-DIAG:HAS? TTRUE
 s" rollcoll" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
-ROLLCOLL:TAKEN 37 T=
-\ Rollback also removes protection of the generated package and leaves the
-\ namespace available for a corrected declaration using the same family name.
-undefine ROLLCOLL:TAKEN
+s" RC-FRESH ( -- n ) ROLLCOLL-FRESH" CHECK-QUIET-CANDIDATE! 0 T=
+ROLLCOLL-TAKEN 37 T=
+\ The rollback leaves no generated word, so the declaration is accepted once
+\ the word it collided with is gone.
+undefine ROLLCOLL-TAKEN
 s" ENUM rollcoll fresh taken ;ENUM" evaluate-closed
-s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
+s" RC-VALID ( -- rollcoll ) ROLLCOLL-FRESH" CHECK-QUIET-CANDIDATE! -1 T=
+;package
 
 \ A STRUCTURE collision on UNMAKE also rolls back the MAKE planned before it.
-: ROLLP:UNMAKE ( -- n ) 41 ;
+package ENUM-ROLLP
+: ROLLP-UNMAKE ( -- n ) 41 ;
 DECL-DIAG:PROSE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rollp`\n" DECL-DIAG:HAS? TTRUE
 s" rollp" s" generated declaration already defined" DECL-DIAG:CAUSE? TTRUE
-s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-ROLLP:UNMAKE 41 T=
-undefine ROLLP:UNMAKE
+s" RP-MAKE ( n -- n ) ROLLP-MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+ROLLP-UNMAKE 41 T=
+undefine ROLLP-UNMAKE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
-s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" RP-VALID ( n -- rollp ) ROLLP-MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+;package
 
 \ 21. POLICY packed-tag with DERIVE eq declares.
 s" ENUM lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=

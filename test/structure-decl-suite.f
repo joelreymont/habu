@@ -329,10 +329,8 @@ public
 ;package
 6 SDPARTSEAL:GO 6 T=
 
-\ A package's part may not bear the name of a constructor package of the
-\ package's own public family: whichever comes second is rejected, the family
-\ at its name or the part with E-CTOR-PROTECTED. A part opens only in the text
-\ that opens its package.
+\ Neither a top-level package nor a part of a public family's top package may
+\ bear the family's constructor package name; whichever comes second is rejected.
 package SDRESA
 package SDRESA-PT ;package
 public
@@ -346,9 +344,10 @@ public
 STRUCTURE pt FIELD x n ;STRUCTURE
 private
 ;package
+\ A part opens only in the text that opens its package.
 DECL-DIAG:PROSE
 s" package SDRESB package SDRESB-PT ;package ;package" TEST-EVAL:RC 70 T=
-s" error[E-CTOR-PROTECTED]: `SDRESB:SDRESB-PT` is reserved" DECL-DIAG:HAS? TTRUE
+s" error[E-CTOR-PROTECTED]: `SDRESB:SDRESB-PT` bears the name of the constructor package of the family `SDRESB:pt`" DECL-DIAG:HAS? TTRUE
 s" as `package SDRESB-PT-WORDS`" DECL-DIAG:HAS? TTRUE
 s" SDRESB-PT" s" constructor package" DECL-DIAG:CAUSE? TTRUE
 package SDRESC
@@ -361,6 +360,33 @@ s" inner" s" a part of this package already bears its constructor package's name
 private
 ;package
 ;package
+package SDRESH-PT ;package
+package SDRESH
+public
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a package already bears its constructor package's name" DECL-DIAG:CAUSE? TTRUE
+s" = word: SDRESH-PT" DECL-DIAG:HAS? TTRUE
+s" = help: rename this family or that package" DECL-DIAG:HAS? TTRUE
+private
+;package
+: SDRESJ-PT:HELLO ( -- n ) 1 ;
+package SDRESJ
+public
+DECL-DIAG:PROSE
+s" STRUCTURE pt FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" pt" s" a package already bears its constructor package's name" DECL-DIAG:CAUSE? TTRUE
+private
+;package
+package SDRESI
+public
+STRUCTURE pt FIELD x n ;STRUCTURE
+private
+;package
+DECL-DIAG:PROSE
+s" package SDRESI-PT ;package" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `SDRESI-PT` bears the name of the constructor package of the family `SDRESI:pt`" DECL-DIAG:HAS? TTRUE
+s" SDRESI-PT" s" constructor package" DECL-DIAG:CAUSE? TTRUE
 \ A SUMTYPE before it leaves no name the STRUCTURE's rejection reads.
 package SDRESG
 package SDRESG-PT ;package

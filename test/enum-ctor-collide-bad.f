@@ -4,18 +4,16 @@ require src/lib/test.f
 
 package ENUM-CTOR-COLLIDE-BAD
 
-: ECOL:RED ( -- n ) 37 ;
+: ECOL-RED ( -- n ) 37 ;
 : DECLARE ( -- ) s" ENUM ecol green red ;ENUM" evaluate-closed ;
 
-public
-
-\ Run outside the package so the declaration publishes public constructors.
 : MAIN ( -- )
    T-RESET
    [: DECLARE ;] CHECKER-REJECT-RC TTHROWSQ
-   ECOL:RED 37 T=
+   ECOL-RED 37 T=
    T-REPORT ;
 
-;package
+\ Run in the private section, where the ENUM's variant red is the word ECOL-RED.
+MAIN
 
-ENUM-CTOR-COLLIDE-BAD:MAIN
+;package

@@ -828,13 +828,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" ;package" SB-APPEND LF+
    s" sum-generated.f" FIXTURE! ;
 
-\ A top-level STRUCTURE defines CKDPROD:MAKE.
+\ A STRUCTURE in a private section defines CKDPROD-MAKE.
 : CKDPROD-FIXTURE ( ^u8 n -- )
    {: tail:^ tailu:n :}
    SB-RESET
-   s" : CKDPROD:MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
+   s" package CKDPRODS" SB-APPEND LF+
+   s" : CKDPROD-MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
    s" STRUCTURE ckdprod FIELD x n ;STRUCTURE" SB-APPEND LF+
    tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   s" ;package" SB-APPEND LF+
    s" prod-generated.f" FIXTURE! ;
 
 \ The generated name lies in no source text: the record is placed at the
@@ -859,12 +861,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a structure's generated name already defined" T-LABEL
    s" " CKDPROD-FIXTURE
    s" " CHECK
-   GJA-LINE# @ 1 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 11 42 49 AT
+   GJA-LINE# @ 1 T=  s" CKDPROD-MAKE" GENERATED-AT  0 s" ckdprod" 3 11 59 66 AT
    s" : CKDPROD-USE ( ckdprod -- ) drop ;" CKDPROD-FIXTURE
    s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=  s" CKDPROD:MAKE" GENERATED-AT  0 s" ckdprod" 2 11 42 49 AT
+   GJA-LINE# @ 2 T=  s" CKDPROD-MAKE" GENERATED-AT  0 s" ckdprod" 3 11 59 66 AT
    1 s" code" s" E-UNKNOWN-SIGNATURE-TYPE" FIELD=
-   1 s" ckdprod" 3 17 87 94 AT ;
+   1 s" ckdprod" 4 17 104 111 AT ;
 
 \ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
