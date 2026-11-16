@@ -148,7 +148,8 @@ variable HELP-U
 : SD-APP-FIX$ ( -- ^u8 n )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
 \ The help for a malformed pointer token at a: a DEFTYPE's whole base gets the
-\ base help, a longer base the NEWTYPE over `^T`, a wrap or field the spelling.
+\ base help, a longer base the NEWTYPE over `^T`, a wrap, payload or field the
+\ spelling.
 : SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
    WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
    DEFTYPE? IF
@@ -159,6 +160,8 @@ variable HELP-U
       s"  ^u8`" HELP+  HELP-P @ HELP-U @ EXIT THEN
    WRAP? IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`" EXIT THEN
+   ENUM? IF
+      s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;
 : SD-OPEN-FIX$ ( -- ^u8 n )
    WRAP? IF s" close each `<` of the type with `>`" EXIT THEN
@@ -290,13 +293,15 @@ variable HELP-U
 
 \ Whether the atom ending at j opens a pointer argument, and the index its
 \ pointee is read from: an atom `^T` at the byte after `^`. A `^` with nothing
-\ joined to it, as in `span<^ n>` or `span<^>`, is malformed; an atom `ptr` not
-\ followed by `<` names no type and is rejected as an unknown type.
+\ joined to it, as in `^`, `span<^ n>` or `span<^>`, is a pointer without a
+\ pointee; an atom `ptr` not followed by `<` names no type and is rejected as an
+\ unknown type.
 : SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = IF
-         s" malformed" s" application"
-         SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
+         na nu DECL-REJECT:TOKEN!
+         s" pointer without a pointee"
+         na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       j nu - 1 + YES EXIT
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
@@ -415,7 +420,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
-\ set as RESOLVE-TYPE sets it.
+\ set as SD-PTR-NODE sets it.
 : SD-LOOSE-PTR ( ^u8 n n -- n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
@@ -442,8 +447,8 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ Only a rejected pointee becomes the token: an accepted one leaves the type's
-\ token for a later rejection that sets none.
+\ Every declared pointer is built here. Only a rejected pointee becomes the
+\ token: an accepted one leaves the type's token for a later rejection that sets none.
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
@@ -547,36 +552,17 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
    s" write the quotation type as `[ in -- out ]`, with at most 256 types on each side"
    code DECL-REJECT:REJECT throw ;
 
-\ The pointee text of a field type that opens a pointer: the rest of a `^T`
-\ span, empty for a bare `^`. A leading `ptr` reaches SD-POINTEE-AT, which
-\ refuses it.
-: SD-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
-   u 0 > IF a c@ 94 = IF a 1 + u 1 - YES EXIT THEN THEN
-   a u NO ;
-
 \ A field type's text, from its first token (SD-SPAN); a quotation `[` reads the
-\ tokens after it, a leading `^` the rest of its span. The text resolved is the
-\ reject token, so a refused pointee names itself, not the `^T` span that holds it.
+\ tokens after it.
 : RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
    dup 0= IF 2drop s" missing type"
       s" write a type after the field name, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
    s" ;structure" s" type" SD-SPAN
-   2dup TYPE!  2dup {: sa:^ su:n :}
+   2dup TYPE!
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
-   SD-PTR-TEXT? IF
-      dup 0= IF
-         2drop s" pointer without a pointee"
-         sa su SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-      POINTEE @ {: outer:n :}
-      -1 POINTEE !
-      TYPE-DECL:ANY-VALUE RECURSE
-      outer POINTEE !
-      FIELD-MISS @ IF drop 0 EXIT THEN
-      s" type is a pointer to a linear value and cannot own it"
-      DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    FAM @ POINTEE @ want s" type" SD-TYPE-NODE ;
 : SD-QUOT-INSTALL ( -- ) [: TYPE-DECL:ANY-VALUE RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL

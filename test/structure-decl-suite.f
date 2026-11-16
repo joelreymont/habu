@@ -494,8 +494,8 @@ STRUCTURE sdpnode DERIVE addr
    b 1 cells + @ SDPNODE:KIND @ l ;
 SDP-KEPT 2 cells T= 7 T=
 
-\ A type left open at `;STRUCTURE` is unclosed and `^` with no pointee malformed; a type's
-\ tokens may stand on two lines and hold blanks, as a declaration's do.
+\ A type left open at `;STRUCTURE` is unclosed and `^` with no pointee a pointer without
+\ one; a type's tokens may stand on two lines and hold blanks, as a declaration's do.
 DECL-DIAG:PROSE
 s" STRUCTURE sdpopen FIELD kept SPAN:span<^ ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpopen`\n" DECL-DIAG:HAS? TTRUE
@@ -506,8 +506,8 @@ s" STRUCTURE sdpspaced FIELD kept SPAN:span< ^sdpspaced > ;STRUCTURE" TEST-EVAL:
 DECL-DIAG:PROSE
 s" STRUCTURE sdpbare FIELD kept SPAN:span<^> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpbare`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<^>" s" malformed type application" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write a type application as `family<type,type>`, as in" DECL-DIAG:HAS? TTRUE
+s" ^" s" pointer without a pointee" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ A pointer to its own family is a pointer to a linear value when the family
 \ holds one, in either field order: judged once the fields are committed.

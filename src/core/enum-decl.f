@@ -24,10 +24,9 @@ variable NFLD       \ total field count across all variants
 variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
-variable POINTEE    \ resolving the pointee of `^`: the declared family may be named
 
 : ED-RESET ( -- )
-   0 SEEN-VARIANT !   0 POINTEE ! ;
+   0 SEEN-VARIANT ! ;
 ED-RESET
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
@@ -52,21 +51,6 @@ ED-RESET
       s" rename the family: keywords, control words, single letters, `ptr` and value records are reserved"
       E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-: EN-PTR-FIX$ ( -- ^u8 n )
-   s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" ;
-\ The pointee text of a payload type that opens a pointer: the rest of a `^T`
-\ token.
-: EN-PTR-TEXT? ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
-   a u s" ptr" CORE-STR=CI IF
-      s" unknown payload type" EN-PTR-FIX$ E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-   u 0 > IF a c@ 94 = IF
-      u 1 = IF s" pointer without a pointee" EN-PTR-FIX$
-         E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-      a 1 + u 1 - YES EXIT THEN THEN
-   a u NO ;
-
-\ The text resolved is the reject token, so a rejected pointee names itself, not
-\ the `^T` token that holds it.
 : RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
    dup 0= IF 2drop
       s" missing payload type"
@@ -74,15 +58,7 @@ ED-RESET
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DECL-REJECT:TOKEN!
    s" ;variant" s" payload type" STRUCTURE-DECL:SD-SPAN
-   EN-PTR-TEXT? IF
-      POINTEE @ {: outer:n :}
-      -1 POINTEE !
-      ANY-VALUE RECURSE
-      outer POINTEE !
-      FIELD-MISS @ IF drop 0 EXIT THEN
-      s" payload type is a pointer to a linear value and cannot own it"
-      DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   FAM @ POINTEE @ want s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
+   FAM @ 0 want s" payload type" STRUCTURE-DECL:SD-TYPE-NODE ;
 
 : SCH-WIDTH ( n -- n ) FAM @ swap TFAM-SCH-WIDTH ;
 
