@@ -775,11 +775,6 @@ public
 : RP-TRY ( ^u8 n ^u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
-\ Force the replay stream open so the re-entry guard can be reached at all; the
-\ production callers never nest.
-: RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
-: RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
-
 \ A replayed ENUM's family serves candidates in the scope it was replayed in.
 : RP-COMPACT ( -- )
    s" rpcompact" s" red green blue ;ENUM" RP-TRY 0 T=
@@ -846,13 +841,6 @@ s\" ^ missing variant name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 s" ENUM rpafterbad VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-
-\ 23h. Re-entry is refused with its own named code rather than retargeting a
-\      stream that is already installed.
-enum-replay-test:RP-FORCE-OPEN
-s" rpbusy" s" red ;ENUM" enum-replay-test:RP-TRY 7177 T=
-enum-replay-test:RP-FORCE-CLOSE
-s" ENUM rpafterbusy VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 package rp-copy-test
 public

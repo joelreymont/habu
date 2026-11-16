@@ -293,13 +293,6 @@ E-PF-NAME EXPLAIN
 \ name" gate instead of promoting the first body token.
 package DECL-REPLAY
 
-\ Re-entry is refused with a code the transaction can roll back; production
-\ callers never nest, since a replayed body is never evaluated.
-7177 constant E-REPLAY-BUSY   \ a replayed declaration is already open
-s" a replayed declaration is already open"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-REPLAY-BUSY DECL-REJECT:EXPLAIN
-
 32 constant RP-SPACE
 9 constant RP-TAB
 10 constant RP-LF
@@ -351,7 +344,6 @@ public
 \ keyword reads `\` or `(` as an ordinary token and refuses it, so replay must
 \ too.
 : RP-CLAIM ( ^u8 n ^u8 n -- )
-   RP-ACTIVE? IF 2drop 2drop E-REPLAY-BUSY throw THEN
    RP-BODY!  RP-HEAD!
    0 RP-SCAN-I !
    -1 RP-HEAD? !
@@ -372,7 +364,6 @@ public
    RP-HEAD? @ IF 0 RP-HEAD? ! RP-HEAD@ EXIT THEN
    RP-BODY-NEXT ;
 
-\ Runs the quotation on this stream; a failed claim leaves another's stream.
 : RP-RUN ( ^u8 n ^u8 n [ -- ] -- )
    {: na:^ nu:n ba:^ bu:n body :}
    na nu ba bu RP-CLAIM
@@ -468,11 +459,10 @@ seal-package
 \ grammar: reject codes, the token source with one-token pushback and a
 \ lookahead span, per-declaration parse cells, a replay's field-name window, the
 \ guarded run with resynchronization, and the replay entries; SUMTYPE reads
-\ only the token source. One set of cells serves every
-\ declaration: declarations never nest (the runner rejects a second with
-\ E-ACTIVE, DECL-REPLAY a second stream with E-REPLAY-BUSY). Every borrowed span
-\ is forgotten as the declaration ends (RESET and MISS-CLEAR in DRIVE,
-\ REPLAY-END for an E-UNRESOLVED replay's span).
+\ only the token source. One set of cells serves every declaration: a front end
+\ reads its body as tokens and runs none, so declarations never nest. Every
+\ borrowed span is forgotten as the declaration ends (RESET and MISS-CLEAR in
+\ DRIVE, REPLAY-END for an E-UNRESOLVED replay's span).
 \ A swallowed reject (multi-error load) leaves the tokens up to the terminator
 \ ahead of the interpreter, which would run them: `ENUM m7bad red red blue ;ENUM
 \ NEWTYPE m7cont<a>` would die `E-UNDEFINED` at `blue`. DRIVE skips to the terminator,
@@ -483,10 +473,6 @@ seal-package
 \ MUTUAL member's name counts, since the scan ends a MUTUAL at its first
 \ `;MUTUAL`.
 \ The skip reads through RAW, not NEXT, so the record keeps naming the token.
-\ A replay claims the stream before the record opens: a failed claim belongs to
-\ the caller, keeps the live declaration's record and stream, and propagates with
-\ no record. Only a successful claim reaches REPLAY-END, which releases the
-\ stream on both exits.
 \ QUOT-ROLLBACK after a reject is unconditional: it zeroes sumtype.f TDV-QUOT-N
 \ and TDV-QUOT-MISS, which only a quotation field dirties.
 package TYPE-DECL
