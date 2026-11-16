@@ -1309,31 +1309,19 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 
 private
-128 constant GUARD-MSG-CAP
-create GUARD-MSG GUARD-MSG-CAP allot
-TYPED-VARIABLE GUARD-MSG-U len
-: GUARD-MSG+ ( ^u8 n -- )
-   GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
-\ "`<name>` <rest>", held in GUARD-MSG until the next call.
-: GUARD-MSG$ ( ^u8 n ^u8 n -- ^u8 n )
-   {: p:^ pu:n r:^ ru:n :}
-   GUARD-MSG-U BUF-RESET
-   s" `" GUARD-MSG+  p pu GUARD-MSG+  s" ` " GUARD-MSG+
-   r ru GUARD-MSG+
-   GUARD-MSG GUARD-MSG-U BUF-LEN@ ;
 \ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
 : GUARD-RECORD, ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: c:^ cu:n p:^ pu:n r:^ ru:n h:^ hu:n :}
    3 30 0 ADDI,
-   c cu  p pu r ru GUARD-MSG$  FAULT-OPEN,
+   c cu  p pu r ru FAULT-RECORD:GUARD-MSG$  FAULT-OPEN,
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
    h hu EXIT-STATUS:TASK-COMPILE FAULT-STOP, ;
 
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
 \ region, TASK-TCB-CELL 0, defines, allots, evaluates or changes package scope.
-\ A task and a callback thread hold a TCB there, and B-TASK-GUARD exits $4F
-\ on one. B-LOWER-GUARD exits $4F while any task is live, for the sinks that
+\ A task and a callback thread hold a TCB there, and B-TASK-GUARD exits on
+\ one. B-LOWER-GUARD exits while any task is live, for the sinks that
 \ lower CP or NDICT: lowering frees code a task may be running and records it
 \ may reference. Each takes the code and the primitive's name and prints a
 \ record naming the primitive, its note `in` the word whose code holds the
@@ -1342,9 +1330,7 @@ public
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
-      c cu p pu
-      s" ran on a task's thread, and only the main thread defines and allots"
-      s" define and allot on the main thread before the task starts"
+      c cu p pu  FAULT-RECORD:TASK-GUARD$  FAULT-RECORD:TASK-GUARD-HELP$
       GUARD-RECORD,
    ok LBL, ;
 
@@ -1353,8 +1339,7 @@ private
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      c cu p pu  s" ran while a task is live"
-      s" wait for every task to end before forgetting definitions"
+      c cu p pu  FAULT-RECORD:LOWER-GUARD$  FAULT-RECORD:LOWER-GUARD-HELP$
       GUARD-RECORD,
    ok LBL, ;
 ;package
@@ -1996,11 +1981,9 @@ private
    go B,
    busy LBL,
    3 SP 0 LDR,                             \ the lr, saved by the primitive's frame
-   s" E-CALLBACK" s" a foreign call ran in a context another thread is running in"
-      FAULT-OPEN,
+   s" E-CALLBACK" FAULT-RECORD:CB-CONTEXT-BUSY$ FAULT-OPEN,
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
-   s" call C from one thread at a time in a context, and bind callbacks other threads call to `TASK:CALLER-CONTEXT`"
-      EXIT-STATUS:CALLBACK FAULT-STOP,
+   FAULT-RECORD:CB-CONTEXT-BUSY-HELP$ EXIT-STATUS:CALLBACK FAULT-STOP,
    go LBL, ;
 
 \ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
@@ -2322,24 +2305,15 @@ $58 constant CBT-LR                     \ C's x30
       16 14 CMP,  C-NE caller-leave BCOND,
       row-kept B,
    row-wait LBL,  YIELD,  row-read B,
-   s" C called a callback before any callback was bound"
-      s" bind it with `FFI-CB:ENTRY` before C can call it" no-table CBT-DIE,
-   s" C called the callback on a second thread while another thread runs it"
-      s" bind it to `TASK:CALLER-CONTEXT` for calls from many threads at once"
-      row-busy CBT-DIE,
-   s" C called a callback whose slot is not bound"
-      s" keep the callback bound until the C library drops the pointer"
-      unbound CBT-DIE,
-   s" C called a callback bound to the caller's context on a thread with no region of its own"
-      s" call it only on a thread a Habu task runs" no-region CBT-DIE,
-   s" C called the callback on one thread while another thread runs in its context"
-      s" call it only on the thread whose context it is bound to" owner-busy CBT-DIE,
-   s" C called the callback outside the foreign call that passed it"
-      s" call it only while that foreign call runs" no-frame CBT-DIE,
-   s" C called a callback slot that no `CALLBACK:` declared"
-      s" pass C only the pointer `FFI-CB:ENTRY` answers" no-xt CBT-DIE,
-   s" the callback's body defined a word"
-      s" define words on the main thread, outside callbacks" defined CBT-DIE, ;
+   FAULT-RECORD:CB-NO-TABLE$ FAULT-RECORD:CB-NO-TABLE-HELP$ no-table CBT-DIE,
+   FAULT-RECORD:CB-ROW-BUSY$ FAULT-RECORD:CB-ROW-BUSY-HELP$ row-busy CBT-DIE,
+   FAULT-RECORD:CB-UNBOUND$ FAULT-RECORD:CB-UNBOUND-HELP$ unbound CBT-DIE,
+   FAULT-RECORD:CB-NO-REGION$ FAULT-RECORD:CB-NO-REGION-HELP$ no-region CBT-DIE,
+   FAULT-RECORD:CB-OWNER-BUSY$ FAULT-RECORD:CB-OWNER-BUSY-HELP$
+      owner-busy CBT-DIE,
+   FAULT-RECORD:CB-NO-FRAME$ FAULT-RECORD:CB-NO-FRAME-HELP$ no-frame CBT-DIE,
+   FAULT-RECORD:CB-NO-XT$ FAULT-RECORD:CB-NO-XT-HELP$ no-xt CBT-DIE,
+   FAULT-RECORD:CB-DEFINED$ FAULT-RECORD:CB-DEFINED-HELP$ defined CBT-DIE, ;
 
 \ Answers the shared C thunk every compiler-owned callback stub branches to.
 \ This primitive ends before the separately owned thunk begins.

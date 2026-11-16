@@ -94,9 +94,9 @@ TYPED-VARIABLE CUR-ARCH CTARGET:arch
 \ NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or ADDR-QUOT-KIND; a data address's origin
 \ comes with it through EMIT-ADDR-DATA, and a code or quotation address's is
 \ -1. at is the instruction's first byte from the emission's byte 0. A
-\ quotation's target is its unit number; on x86-64 its instruction holds the
-\ unit's offset, which EMIT-QUOT-OPEN writes. An emitter whose quotation address
-\ is relative to its own site (arm64's `adr`) files no row for it.
+\ quotation's target is its unit number. An emitter whose quotation address
+\ is relative to its own site (arm64's `adr`, x86-64's RIP-relative `lea`)
+\ files no row for it.
 variable N-UNITS
 DYNAMIC-BUFFER UNIT-AT n
 variable N-CALLS

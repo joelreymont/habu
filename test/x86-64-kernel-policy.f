@@ -1,12 +1,17 @@
 \ x86-64-kernel-policy.f - policy-admit and policy-seal in a booted x86 ELF.
-\ The peer runs these images and checks their exact status and first stderr line:
+\ The peer runs these images and checks their exact status and the
+\ `error[E-POLICY]` record or die line each writes to stderr:
 \
 \ hb-x64-kernel-policy-admit       0   PDEP's bit and the NDICT watermark hold
-\ hb-x64-kernel-policy-sealed    107   a second admission is refused
-\ hb-x64-kernel-policy-reseal    107   a second seal is refused
-\ hb-x64-kernel-policy-missing   107   an absent package is named
-\ hb-x64-kernel-policy-bound     107   a package wid without a bit is refused
-\ hb-x64-kernel-policy-keyword   107   a public dispatch keyword is named
+\ hb-x64-kernel-policy-sealed    107   record "the vocabulary is sealed"
+\ hb-x64-kernel-policy-reseal    107   record "the vocabulary is sealed"
+\ hb-x64-kernel-policy-missing   107   record "no package has the name the
+\                                       program admits", package NOPE
+\ hb-x64-kernel-policy-bound     107   die line "E-POLICY habu: policy: package
+\                                       wid above the bound"
+\ hb-x64-kernel-policy-keyword   107   record "a package publishes a word
+\                                       spelled like a keyword", package PKW,
+\                                       keyword DUP
 \
 \ These cases distinguish a missing namespace, a bad wordlist bound, a missed
 \ keyword callback, early bit publication, an ineffective seal and an unbalanced
@@ -53,8 +58,7 @@ using X64RT
 : READY, ( ^u8 n n -- ) {: name:^ size:n wid:n :}
    name size wid PACKAGE,
    s" SAFE" wid 0 X64HARNESS:RECORD,
-   X64KERNEL:HIDX-BUILD,
-   X64HARNESS:REST, ;
+   X64KERNEL:HIDX-BUILD, ;
 
 : ADMITTED, ( -- )
    NO-KEYWORD INSTALL
@@ -80,7 +84,6 @@ using X64RT
    s" policy-seal" ROW, ;
 
 : MISSING, ( -- )
-   X64HARNESS:REST,
    s" NOPE" ADMIT, ;
 
 : BOUND, ( -- )
@@ -92,7 +95,6 @@ using X64RT
    s" PKW" PUB-WID PACKAGE,
    s" DUP" PUB-WID 0 X64HARNESS:RECORD,
    X64KERNEL:HIDX-BUILD,
-   X64HARNESS:REST,
    s" PKW" ADMIT, ;
 
 : IMAGE ( [ -- ] ^u8 n -- ) {: path:^ size:n :}

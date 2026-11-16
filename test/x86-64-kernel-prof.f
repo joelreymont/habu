@@ -76,8 +76,9 @@ $40 constant GOT                        \ and what it read
 \ twice with C's and once with 0, and pc 1, which no record owns, once; A's
 \ inclusive count 9 with no exclusive one, 4 in the per-record array and 5 in
 \ its index entry; ARN-HI at C's start, as if C were compiled after prof-on;
-\ PROF-OTHER, PROF-FOREIGN, ARN-SPILL, ARN-FRAMES and ARN-DROP nonzero; and
-\ PROF-TOT their sum with the deferred samples. A report's sync folds A's
+\ PROF-OTHER, PROF-FOREIGN, ARN-SPILL, ARN-FRAMES and ARN-DROP nonzero;
+\ PROF-TOT their sum with the deferred samples; and ARN-FCALLED six, as if
+\ each of B's samples were in a foreign callee of B. A report's sync folds A's
 \ entry into the array and replays the deferred samples: B takes six
 \ exclusive and inclusive samples, the edges (B, A), (B, C) and (B, none)
 \ count 3, 2 and 1, C, which only the rebuild reaches, takes two inclusive
@@ -94,6 +95,7 @@ PC1-AT 1+ constant DEFERRED
 3 constant S-SPILL
 11 constant S-FRAMES
 2 constant S-DROP
+6 constant S-FCALLED
 4 constant S-A-ARRAY                    \ A's inclusive samples in the per-record array
 5 constant S-A-ENTRY                    \ and in its index entry, which the sync folds
 DEFERRED S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
@@ -439,6 +441,7 @@ variable ENTRY-AT
    S-TOT PROF-TOT HOST-BAND!  S-OTHER PROF-OTHER HOST-BAND!
    S-FOREIGN PROF-FOREIGN HOST-BAND!
    S-SPILL ARN-SPILL ARENA!  S-FRAMES ARN-FRAMES ARENA!  S-DROP ARN-DROP ARENA!
+   S-FCALLED ARN-FCALLED ARENA!
    S-A-ARRAY  ARN-INCL A-IX CELL * +  ARENA!
    S-A-ENTRY  A-IX HOST-ENTRY ENT-INCL +  ARENA!
    C-START ARN-HI ARENA!
@@ -484,15 +487,8 @@ variable ENTRY-AT
    IMAGE-INDEXED [char] 0 +  k TEXT drop at + c!
    at 1+ past k CLOSE-GAP ;
 
-\ Cut the key and its digits out of capture k: a header field arm64 prints
-\ and x86-64 does not.
-: CUT-FIELD ( ^u8 n n -- ) {: key:^ keyu:n k:n :}
-   key keyu k KEY-END {: at:n :}
-   at keyu -  at k DIGITS-END  k CLOSE-GAP ;
-
-\ The six captures, the image's indexed count in the two S reports and
-\ without arm64's foreign charged to callers field. The JSON rows follow the
-\ index's start order, which the image's spans keep.
+\ The six captures, the image's indexed count in the two S reports. The JSON
+\ rows follow the index's start order, which the image's spans keep.
 : HOST-CAPTURES ( -- )
    A-START B-START >=  B-START C-START >=  or if
       s" x86-64-kernel-prof: prof-a, prof-b and C do not start in that order" 1 die
@@ -506,9 +502,7 @@ variable ENTRY-AT
    [: B-IX prof-row ;] 4 CAPTURE
    [: prof-json ;] 5 CAPTURE
    s"  indexed " 3 REINDEX
-   s\" \"indexed\":" 5 REINDEX
-   s"  foreign charged to callers " 3 CUT-FIELD
-   s\" ,\"foreign charged to callers\":" 5 CUT-FIELD ;
+   s\" \"indexed\":" 5 REINDEX ;
 
 \ ---- the report and limit cases --------------------------------------------------
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
@@ -520,7 +514,10 @@ variable ENTRY-AT
 : RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT LOAD,  0 G-PUSH ;
 
 : RECORD-CELL!, ( n n n -- ) {: v:n ix:n off:n :}
-   RAX v IMM,  RAX DBASE-REG ix DREC * off + MEM-OFF STORE, ;
+   RAX v IMM,
+   RCX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT STORE, ;
 
 \ A, B and C behind a jump, each span its first label to its second, in the
 \ host's start order: A and C each a `call B` alone, whose return address is
@@ -560,6 +557,7 @@ variable ENTRY-AT
    S-TOT PROF-TOT R8-N!,  S-OTHER PROF-OTHER R8-N!,  S-FOREIGN PROF-FOREIGN R8-N!,
    R8 ARENA,
    S-SPILL ARN-SPILL R8-N!,  S-FRAMES ARN-FRAMES R8-N!,  S-DROP ARN-DROP R8-N!,
+   S-FCALLED ARN-FCALLED R8-N!,
    S-A-ARRAY  ARN-INCL A-IX CELL * +  R8-N!,
    S-A-ENTRY  ARN-IDX ENT-INCL +  R8-N!,
    c ARN-HI R8-LABEL!,
@@ -736,9 +734,8 @@ variable ENTRY-AT
 \ state, captured at load (HOST-CAPTURES): once with no arena, and once for
 \ state S over records the image seeds at the host's own record indices, so the
 \ edge table keys the same pairs into the same slots. The `indexed` count is
-\ each engine's live one, and arm64's header has a foreign charged to callers
-\ field x86-64's lacks. Then a foreign sample at PROF-LIM 1 must return, and a
-\ report while armed arms ITIMER_REAL again at the default rate.
+\ each engine's live one. Then a foreign sample at PROF-LIM 1 must return, and
+\ a report while armed arms ITIMER_REAL again at the default rate.
 : REPORT-CASE ( -- )
    SPANS, {: a:label a-end:label b:label b-end:label c:label c-end:label :}
    a a-end b b-end c c-end HOST-RECORDS,
@@ -791,7 +788,7 @@ variable ENTRY-AT
    s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  LIMIT-CHILD,
    WFD RECALL,  s" close" ROW
-   s" wait-status" ROW  PROF-LIMIT-RC 8 lshift WANT
+   s" wait-status" ROW  99 8 lshift WANT
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
    s" profiler samples 3 words " STARTS,
    RFD RECALL,  s" close" ROW ;
@@ -860,7 +857,7 @@ variable ENTRY-AT
       C-NE turn JCC,
    SKEWED RECALL,  0 WANT ;
 
-\ prof-rate -1 with no handler: the throw exits UNCAUGHT-RC.
+\ prof-rate -1 with no handler: the throw exits EXIT-STATUS:UNCAUGHT.
 : RATE-REFUSED-CASE ( -- )
    -1 N,  s" prof-rate" ROW ;
 
@@ -874,7 +871,7 @@ variable ENTRY-AT
    ARMED-CHECK, ;
 
 \ -1 in ARN-USEC, which only a write past prof-rate can leave: prof-on's arm
-\ is refused, named on fd 2, exit PROF-MAP-RC.
+\ is refused, named on fd 2, exit EXIT-STATUS:SYSTEM.
 : ARM-REFUSED-CASE ( -- )
    RATE N,  s" prof-rate" ROW
    R8 ARENA,  RAX -1 IMM,  RAX R8 ARN-USEC MEM-OFF STORE,

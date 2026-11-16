@@ -90,7 +90,7 @@ DATA-START $100 + constant TCB-OFF
 : BUILD ( n ^u8 n -- ) {: pushes:n path:^ pathu:n :}
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
-   floor code-end X64BOOT:START,
+   floor code-end false X64BOOT:START,
    pushes -2 = if
       RAX ENGINE-GPR:X64-RBASE REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
       RAX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-SUB-RI32

@@ -32,9 +32,6 @@ public
 
 : SCRATCH-OFF ( -- n ) BOOT-SCRATCH-OFF ;
 
-\ test/x86-64-peer-harness.f OPEN, cannot run a kernel body: its rbp is a 1 KiB
-\ window of the machine stack, CASE1, resets r12 to rbp and CLOSE, pins r13-r15,
-\ where a body reads DATA through rbp and moves those registers.
 \ Checks exit FIRST-CASE upward in staging order, as the peer harness numbers
 \ its checks; a negative image (BOOT-OPEN, given true) expects a wrong answer
 \ from its first check.
@@ -45,11 +42,11 @@ public
    X64CODE:LBL EXIT-CELL !  X64CODE:LBL ENTRY-CELL !  X64CODE:LBL BOOT-END-CELL !
    FIRST-CASE CASE-NEXT !
    negative if FIRST-CASE else 0 then WRONG-AT !
-   X64KERNEL:FLOORREC-NEW BOOT-END-LBL X64BOOT:START,
+   X64KERNEL:FLOORREC-NEW BOOT-END-LBL true X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
    X64KERNEL:KERNEL,
-   0 0 0 0 0 0 0 X64KERNEL:SCOPE-KIND-HELPER,
+   X64KERNEL:SCOPE-OBJECT,
    ENTRY-LBL X64CODE:LBL, ;
 
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
@@ -130,11 +127,12 @@ public
 \ cells name them: the flags or'd with the name's length, the name inline when
 \ it fits DNAME-INL bytes else a pointer with DNAME-EXT set, and the wid. The
 \ code cell holds the ordinal (index plus one), so a found record's code is
-\ never 0, the answer for an absent name. The booted region is read-write.
+\ never 0, the answer for an absent name. Stores use the booted RW alias.
 \ Clobbers rax and rcx.
 : RECORD, ( ^u8 n n n -- ) {: a:^ u:n wid:n flags:n :}
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR
+   RAX X64KERNEL:WRITE-ALIAS,
    RCX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    RCX RAX X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
    u DNAME-INL > if
@@ -225,7 +223,9 @@ public
 
 : REGION!, ( n n -- ) {: v:n off:n :}
    RAX v IMM
-   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+   RCX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : TEXT!, ( ^u8 n n -- ) {: a:^ u:n off:n :}
    u 0 ?do  a u i NAME-CELL off i + CELL!,  CELL +loop ;
@@ -234,10 +234,13 @@ public
    RAX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
 
-\ Set record n's pages to the protection prot, as the kernel's own flips do.
+\ Force the selected record's pages to the protection the fixture requests.
 : PROT-RECORD, ( n n -- ) {: ix:n prot:n :}
-   R8 DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
-   R8 prot X64KERNEL:PROT-REC, ;
+   RDI DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
+   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI STACK-ABI:PAGE-BYTES 2 * IMM
+   RDX prot IMM
+   NR-MPROTECT SYS, ;
 
 ;using
 ;using
@@ -305,6 +308,7 @@ public
    a u 0 0 RECORD,
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR                     \ one record past it
+   RAX X64KERNEL:WRITE-ALIAS,
    RCX first MOVABS,
    RCX RAX X64KERNEL:REC-CODE DREC - MEM-OFF ASM-SINK ENC-MOV-MR
    RDX last MOVABS,
@@ -318,9 +322,8 @@ public
 ;using
 ;package
 
-\ The window cases' words. At rest the code region is read-execute throughout,
-\ as the ARM64 boot leaves it, so a row that writes it outside its window faults
-\ into the crash handler's dump and dies of that signal.
+\ The alias cases' words. RX addresses stay read-execute throughout; only
+\ the separate alias accepts writes.
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -328,7 +331,6 @@ using X64RT
 
 private
 
-5 constant PROT-RX                     \ PROT_READ|PROT_EXEC
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
 public
@@ -338,14 +340,6 @@ public
 
 EXPORT NAME-CELL
 
-\ The region at rest: read-execute with every band closed. The boot maps it
-\ read-write and opens no band.
-: REST, ( -- )
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR
-   RSI REGION >IMM32 ASM-SINK ENC-MOV-RI32
-   RDX PROT-RX >IMM32 ASM-SINK ENC-MOV-RI32
-   NR-MPROTECT SYS, ;
-
 \ Push clock_gettime's answer for a timespec n bytes into the region: 0 when
 \ the kernel can write the page, FAULTED when it cannot.
 : PROBE, ( n -- ) {: off:n :}
@@ -354,9 +348,18 @@ EXPORT NAME-CELL
    NR-CLOCK-GETTIME SYS,
    0 G-PUSH ;
 
+: PROBE-ALIAS, ( n -- ) {: off:n :}
+   RDI CLOCK-MONOTONIC >IMM32 ASM-SINK ENC-MOV-RI32
+   RSI DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RSI X64KERNEL:WRITE-ALIAS,
+   NR-CLOCK-GETTIME SYS,
+   0 G-PUSH ;
+
 : POKE, ( n -- ) {: off:n :}
    RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+   RCX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : PUSH-REGION-CELL, ( n -- ) {: off:n :}
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-RM
@@ -364,15 +367,6 @@ EXPORT NAME-CELL
 
 : PUSH-DATA-CELL, ( n -- ) {: off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM
-   0 G-PUSH ;
-
-\ Push the five band cells or'd together: 0 when every band is closed.
-: PUSH-BANDS, ( -- )
-   RAX DATA-REG PROT:WINDOW MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX DATA-REG PROT:WLO MEM-OFF ASM-SINK ENC-OR-RM
-   RAX DATA-REG PROT:RLO MEM-OFF ASM-SINK ENC-OR-RM
-   RAX DATA-REG PROT:RHI MEM-OFF ASM-SINK ENC-OR-RM
-   RAX DATA-REG PROT:CF MEM-OFF ASM-SINK ENC-OR-RM
    0 G-PUSH ;
 
 : PUSH-CP, ( -- ) RAX CP-REG ASM-SINK ENC-MOV-RR  0 G-PUSH ;

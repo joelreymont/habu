@@ -1,6 +1,5 @@
-\ elf.f - the ELF writer for Linux arm64: a dynamic executable of the program
-\ in icode's CODE (BUILD-IMAGE), whose GOT ld.so binds to the libc names
-\ BUILD-IMAGE is given.
+\ elf.f - the ELF writer for Linux arm64 and x86-64. The kernel object
+\ supplies the libc names its GOT binds.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \
@@ -31,6 +30,7 @@ $7F constant ELF-MAG0
 1 constant EV-CURRENT
 2 constant ET-EXEC
 $B7 constant EM-AARCH64
+62 constant EM-X86-64
 1 constant PT-LOAD
 2 constant PT-DYNAMIC
 3 constant PT-INTERP
@@ -46,11 +46,15 @@ $B7 constant EM-AARCH64
 variable VMBASE
 $B0 constant ELF-DYNAMIC-SZ
 $120 constant ELF-INTERP-OFF
-27 constant ELF-INTERP-SZ
+TYPED-VARIABLE X64 bool
+: INTERPRETER$ ( -- ^u8 n )
+   X64 @ if s" /lib64/ld-linux-x86-64.so.2" else s" /lib/ld-linux-aarch64.so.1" then ;
+: ELF-INTERP-SZ ( -- n ) INTERPRETER$ nip 1+ ;
 $140 constant ELF-HASH-OFF
 24 constant ELF-SYM-SZ
 24 constant ELF-RELA-ENT-SZ
 $401 constant ELF-R-AARCH64-GLOB-DAT
+6 constant ELF-R-X86-64-GLOB-DAT
 4 constant DT-HASH
 5 constant DT-STRTAB
 6 constant DT-SYMTAB
@@ -109,12 +113,13 @@ public
 variable CODELEN
 private
 variable ELF-TEXT-SIZE
+PTR-VARIABLE TEXT
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
 
 : ASM-CODELEN! ( -- )
-   ASM-LEN CODELEN ! ;
+   ASM-LEN CODELEN ! CODE TEXT ! ;
 
 public
 : ASM-CODE ( -- asm )
@@ -143,7 +148,9 @@ private
 
 : ELF-HDR, ( -- )
    ELF-IDENT
-   ET-EXEC IMG-M16  EM-AARCH64 IMG-M16  EV-CURRENT IMG-M32
+   ET-EXEC IMG-M16
+   X64 @ if EM-X86-64 else EM-AARCH64 then IMG-M16
+   EV-CURRENT IMG-M32
    VMBASE @ CODE-OFF + IMG-M64
    ELF-HDR-SZ IMG-M64
    0 IMG-M64
@@ -182,7 +189,7 @@ private
 
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF
-   s" /lib/ld-linux-aarch64.so.1" M-BYTES
+   INTERPRETER$ M-BYTES
    0 IMG-M8 ;
 
 : NEXT-SYM ( n -- n ) 1 + dup IMPORT-NAMES:COUNT > if drop 0 then ;
@@ -214,7 +221,7 @@ private
    LIBC$ M-BYTES 0 IMG-M8 ;
 
 : ELF-R-INFO ( n -- n )
-   32 lshift ELF-R-AARCH64-GLOB-DAT or ;
+   32 lshift X64 @ if ELF-R-X86-64-GLOB-DAT else ELF-R-AARCH64-GLOB-DAT then or ;
 
 : ELF-RELA, ( -- )
    ELF-RELA-OFF M-OFF M-PAD-OFF
@@ -256,7 +263,12 @@ private
    ELF-GOT, ;
 
 : BUILD-ELF ( -- )
-   ASM-CODELEN!  ELF-MSIZE!  M-RESET
+   ELF-MSIZE! M-RESET
+   X64 @ if
+      TEXTSZ ELF-RW-SZ + REGION-OFF > if
+         s" elf: x86 text overlaps the runtime code region" EXIT-STATUS:IMAGE die
+      then
+   then
    ELF-TABLES-END CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
       s"  imports outgrow the header page's " SB-APPEND  CODE-OFF FMT:SB-U
@@ -266,7 +278,7 @@ private
    ELF-HDR,
    ELF-PHDRS,
    ELF-RX-META,
-   CODE CODELEN @ M-LEN M-BYTES-LEN
+   TEXT @ CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    ELF-TEXT-SIZE @ ELF-RW-AT,
    M-HERE MLEN! ;
@@ -276,10 +288,17 @@ public
 \ the import names given.
 : BUILD-IMAGE ( asm n ^u8 n -- img )
    IMPORT-NAMES:SPAN!
+   false X64 ! ASM-CODELEN!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-ELF
    IMG-PHASE ;
+
+\ The same ELF layout, with the x86-64 loader and relocation number.
+: BUILD-X64 ( ^u8 n n ^u8 n -- img )
+   IMPORT-NAMES:SPAN!
+   CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
+   BUILD-ELF IMG-PHASE ;
 
 private
 
@@ -348,8 +367,10 @@ private
 
 : CHECK-HEADER ( -- )
    4 U8@ ELFCLASS64 = 5 U8@ ELFDATA2LSB = and 6 U8@ EV-CURRENT = and
-   16 U16@ ET-EXEC = and 18 U16@ EM-AARCH64 = and 20 U32@ EV-CURRENT = and
-   s" elf: not a 64-bit little-endian arm64 executable" CHECK
+   16 U16@ ET-EXEC = and
+   18 U16@ dup EM-AARCH64 = swap EM-X86-64 = or and
+   20 U32@ EV-CURRENT = and
+   s" elf: not a supported 64-bit little-endian executable" CHECK
    32 U64@ 52 U16@ = 52 U16@ ELF-HDR-SZ = and 54 U16@ ELF-PHDR-SZ = and
    56 U16@ ELF-PHDR-N = and
    s" elf: not four program headers after the header" CHECK

@@ -20,6 +20,7 @@
 \ is the guard that refuses a bare one and closes before this file ends. The
 \ require below opens a top-level package, and a `package` inside an open one
 \ opens a part of it, so this file loads at top level.
+require src/core/exit-status.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/target-layout.f
 require src/os/image-bytes.f
@@ -105,7 +106,7 @@ MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE!
 : ELF-FIXED-CHECK ( -- )
    MPAGE ELF-PAGE-UP ELF-RW-SZ + REGION-OFF >
    ELF-CARRIER-VA ELF-PAGE-UP ELF-CARRIER-VA <> or
-   IF s" elf: fixed segments overlap or misalign" 73 die THEN ;
+   IF s" elf: fixed segments overlap or misalign" EXIT-STATUS:IMAGE die THEN ;
 ELF-FIXED-CHECK
 
 : ASM-CODELEN! ( -- )
@@ -294,7 +295,9 @@ $C0 constant SNAP-EXTRA-SIZE
 
 : ELF-BUILD-SPAN ( ^u8 n -- ) {: text:^ bytes:n :}
    bytes CODELEN !  M-RESET
-   CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
+   CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF
+      s" elf: code exceeds text window" EXIT-STATUS:IMAGE die
+   THEN
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
@@ -328,7 +331,6 @@ $C0 constant SNAP-EXTRA-SIZE
 \ has to attribute so the emitted size map reconciles to the exact file length. Mirrors the Mach-O IMG-TAIL surface in
 \ src/os/macos/sign2.f; a Linux image has no code signature, so its whole tail is
 \ the read-write segment (DYNAMIC + GOT) BUILD-ELF appends after the text pad.
-73 constant ELF-TAIL-RC
 1 constant ELF-TAIL-N
 
 : IMG-TAIL-N ( -- n )
@@ -336,11 +338,11 @@ $C0 constant SNAP-EXTRA-SIZE
 
 : IMG-TAIL-NAME ( n -- ^u8 n ) {: i:n :}
    i 0 = if s" container/rw-segment" exit then
-   s" elf: size tail index out of range" ELF-TAIL-RC die ;
+   s" elf: size tail index out of range" EXIT-STATUS:IMAGE die ;
 
 : IMG-TAIL-BYTES ( n -- n ) {: i:n :}
    i 0 = if ELF-RW-SZ exit then
-   s" elf: size tail index out of range" ELF-TAIL-RC die ;
+   s" elf: size tail index out of range" EXIT-STATUS:IMAGE die ;
 
 ;using   \ X64LAYOUT
 ;using

@@ -1,11 +1,10 @@
-\ link.f - an arm64 shadow emission copied to its link-time address: calls
-\ become bl/b and code addresses adrp+add relative to where the code runs, data
-\ address chains take the value a data resolver gives. Words visible only
+\ link.f - an arm64 shadow emission patched in place for its link-time address:
+\ calls become bl/b and code addresses adrp+add relative to where the code runs,
+\ data address chains take the value a data resolver gives. Words visible only
 \ inside LINKER.
 
 require src/core/exit-status.f
 require src/lib/le.f
-require src/core/bytes.f
 require src/arch/arm64/asm.f
 require src/habu/address-carrier.f
 require src/compiler/native/emission.f
@@ -72,13 +71,6 @@ public
          resolve execute  at s +  p CODE-ADDRESS!
       then
    loop ;
-
-
-\ Emission e copied to dst, whose first byte runs at link-time address at, and patched there.
-: PLACE ( n ^u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:^ at:n data resolve :}
-   e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
-   e dst at data resolve PATCH ;
 
 
 private

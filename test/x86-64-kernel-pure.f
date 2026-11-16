@@ -121,6 +121,7 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
    SUBJ$ s" cell-view" STR= if
       v N, 0 AT, s" cell-view" CALL s" !" CALL
       0 AT, s" cell-view" CALL s" @" CALL  exit then
+   SUBJ$ s" PTR>N" STR= if v AT, s" PTR>N" CALL 0 AT, s" -" CALL exit then
    s" x64k-pure: no memory scenario for " type SUBJ$ type cr
    s" x64k-pure: unwired memory row" SETUP-RC die ;
 
@@ -198,20 +199,12 @@ private
 \ ---- the images --------------------------------------------------------------
 \ Each image is one case, with the status its peer must see:
 \    hb-x64-kernel-pure                 0  every case set of test/prim-cases.f
-\                                          and test/prim-float-cases.f, and
-\                                          ?dup
+\                                          and test/prim-float-cases.f
 \    hb-x64-kernel-pure-negative       21  the same, its first check expecting
 \                                          a wrong answer: `x64k-pure: dup
 \                                          overload 0 case 1` on fd 2
 \    hb-x64-kernel-pure-fdot            0  f. of eleven doubles, read back
 \                                          through a pipe on fd 1
-\ ?dup has no case set: checked Habu cannot name it, so prim-cases.f cannot
-\ hold one. Zero stays alone; anything else is doubled.
-: QDUP-CASES ( -- )
-   s" ?dup" SUBJ!  0 OVERLOAD !  0 CASE-N !
-   CASE+  0 N,  ROW  0 WANT  SETTLED
-   CASE+  5 N,  ROW  5 WANT  5 WANT  SETTLED ;
-
 : OPEN-IMAGE ( bool -- ) X64HARNESS:BOOT-OPEN, ;
 
 \ The host checks each image's ELF header; the peer runs each and must see its
@@ -288,7 +281,6 @@ s" test/prim-cases.f" included
 true FLOATS !
 s" test/prim-float-cases.f" included
 false FLOATS !
-QDUP-CASES
 s" hb-x64-kernel-pure" TMP-PATH CLOSE-IMAGE
 
 true OPEN-IMAGE
@@ -296,7 +288,6 @@ s" test/prim-cases.f" included
 true FLOATS !
 s" test/prim-float-cases.f" included
 false FLOATS !
-QDUP-CASES
 s" hb-x64-kernel-pure-negative" TMP-PATH CLOSE-IMAGE
 
 false OPEN-IMAGE

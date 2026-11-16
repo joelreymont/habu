@@ -1,7 +1,7 @@
 \ linux-engine-build.f - `hb-build --target linux-aarch64` of the engine and of
 \ a program with a callback, spawned from the tree's root because hb-build.f
 \ reads its argv. Neither file it writes is run. A program whose top level binds
-\ its callback is refused: binding runs TASK's MAIN-BASE, a target word.
+\ its callback is rejected: binding runs TASK's MAIN-BASE, a target word.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -95,13 +95,13 @@ PATH-CAP BUFFER: PROG     variable PROG-U
 : BIND-CASE ( CMD:command -- CMD:command )
    SRC$ BIND-SOURCE$ FS:WRITE-ALL
    SRC$ PROG$ BUILD {: rc:n :}
-   CMD:ERR$ s" E-TARGET-WORD habu: " CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" callback.f:3: 'MAIN-BASE' is a target word" CONTAINS?
-      {: placed:bool :}
+   CMD:ERR$ s" error[E-TARGET-WORD]: a build cannot run target word `MAIN-BASE`"
+      CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" callback.f:3:23" CONTAINS? {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the binding program's cross-build fails" T-LABEL  rc 0<> TTRUE
-   s" the refusal is E-TARGET-WORD" T-LABEL  classed TTRUE
-   s" the refusal names MAIN-BASE on the binding's line" T-LABEL  placed TTRUE ;
+   s" the rejection is E-TARGET-WORD" T-LABEL  classed TTRUE
+   s" the rejection names MAIN-BASE on the binding's line" T-LABEL  placed TTRUE ;
 
 : CHECKS ( -- ) [: ENGINE-CASE PROGRAM-CASE BIND-CASE ;] CMD:WITH-COMMAND ;
 

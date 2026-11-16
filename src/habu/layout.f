@@ -220,9 +220,11 @@ $36A8 constant INE-CELL
 \ counting as one and a restated token not. Only differences are read.
 $36B0 constant TOKENS-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
-\ BPTRAMP-BYTES of BRK words, reserved in the code band.
+\ BPTRAMP-BYTES of trap instructions, reserved in the code band: eight slots,
+\ each an instruction and a branch back, 8 bytes on arm64 and on x86-64 up to
+\ 15 bytes of instruction and a 5-byte jmp rel32.
 $36C0 constant BPTRAMP-CELL
-64 constant BPTRAMP-BYTES
+: BPTRAMP-BYTES ( -- n ) HB-TARGET-LINUX-X86-64? if 160 exit then 64 ;
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
@@ -314,15 +316,6 @@ $3C98 constant HIDXP-CELL
 package HIDX
 public
 $27C8 constant CLAIMS
-;package
-\ PROT: the x86-64 kernel's write-window cells.
-package PROT
-public
-$27D0 constant WINDOW
-$27D8 constant WLO
-$27E0 constant RLO
-$47C0 constant RHI
-$47C8 constant CF
 ;package
 
 \ REGION-ALIAS:DELTA-CELL: the region's RW alias minus its RX base (DBASE). The
@@ -1250,12 +1243,6 @@ PUB CELL + constant PRI
 PRI CELL + constant PARENT
 PARENT CELL + constant REC
 REC CELL + constant END
-;package
-
-\ The x86-64 kernel's head-row frame size.
-package PACKAGE-PATH
-public
-$100 constant CAP
 ;package
 
 \ Nonzero while the open package was opened outside the buffer being read, so no

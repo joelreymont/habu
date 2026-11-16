@@ -1,5 +1,6 @@
 \ Read the exact x86-64 engine-text sites retained by X64CODE:TEXT-SITES,.
 \ CODE-END-CELL points at their count header; fixed text VAs survive snapshots.
+require src/core/exit-status.f
 require src/lib/le.f
 require src/habu/layout.f
 require src/os/linux-x86-64/target-layout.f
@@ -8,7 +9,6 @@ package X64TEXT
 
 private
 
-74 constant SITE-RC
 5 constant ROW-BYTES
 16 constant FOOTER-BYTES
 $3145544953343658 constant MAGIC
@@ -16,7 +16,7 @@ variable PREV
 
 CAST: RAW-PTR ( n -- ^u8 )
 
-: BAD ( -- ) s" x64text: malformed engine text sites" SITE-RC die ;
+: BAD ( -- ) s" x64text: malformed engine text sites" EXIT-STATUS:SITE die ;
 : BASE-N ( -- n ) data-base RBASE-CELL + @ ;
 : CODE-END-N ( -- n ) data-base CODE-END-CELL + @ ;
 : RX-END-N ( -- n )

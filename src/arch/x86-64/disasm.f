@@ -1,5 +1,6 @@
 \ disasm.f - bounded decoder for the Intel instructions Habu emits.
-\ DIS1 receives the remaining bytes of one recorded code span and its live PC.
+\ DIS1 receives the remaining bytes of one recorded code span and its live PC
+\ and prints the instruction; SPAN decodes the same way and prints nothing.
 
 require src/lib/fmt.f
 
@@ -17,19 +18,19 @@ TYPED-VARIABLE DA ^u8
 variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
-variable DSCALE  variable DDISP  variable DRIP
+variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
 
 : OUT ( ^u8 n -- ) {: a:^ u:n :}
-   a u type ;
+   DQUIET @ if exit then  a u type ;
 
 : CHAR-OUT ( n -- ) {: c:n :}
-   c emit ;
+   DQUIET @ if exit then  c emit ;
 
 : GAP ( -- )
-   space ;
+   s"  " OUT ;
 
 : INT-OUT ( n -- ) {: n:n :}
-   n FMT:.INT ;
+   DQUIET @ if exit then  n FMT:.INT ;
 
 : HEX-DIGIT ( n -- )
    dup 10 < if [char] 0 + else 10 - [char] a + then CHAR-OUT ;
@@ -45,8 +46,11 @@ variable DSCALE  variable DDISP  variable DRIP
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
 : REFUSE ( n ^u8 n -- ) {: code:n msg:^ u:n :}
-   s" x64dis: " OUT msg u OUT s"  at " OUT
-   DPC @ DI @ + HEX. cr code throw ;
+   DQUIET @ 0= if
+      s" x64dis: " OUT msg u OUT s"  at " OUT
+      DPC @ DI @ + HEX. cr
+   then
+   code throw ;
 
 : TRUNC ( -- ) E-TRUNCATED s" truncated instruction" REFUSE ;
 : UNKNOWN ( -- ) E-UNKNOWN s" unknown instruction" REFUSE ;
@@ -465,6 +469,7 @@ variable DSCALE  variable DDISP  variable DRIP
 : TWO-CONTROL ( -- bool )
    DOP @ $105 = if PLAIN-PREFIX s" syscall" OUT true exit then
    DOP @ $10B = if PLAIN-PREFIX s" ud2" OUT true exit then
+   DOP @ $1A2 = if PLAIN-PREFIX s" cpuid" OUT true exit then
    DOP @ $1AE = if
       PLAIN-PREFIX MODRM DREG @ 6 <> DRM @ 0 <> or DMOD @ 3 <> or if UNKNOWN then
       s" mfence" OUT true exit then
@@ -506,7 +511,7 @@ variable DSCALE  variable DDISP  variable DRIP
 private
 
 : DECODE ( ^u8 n n -- ) {: a:^ u:n pc:n :}
-   a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK !
+   a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP !
    u 0 <= if TRUNC then
    PREFIXES OPCODE
    DECODE-ONE if exit then
@@ -515,10 +520,27 @@ private
    DECODE-TWO if exit then
    UNKNOWN ;
 
+\ Whether the decoded instruction's behaviour depends on its own address: a
+\ rip-relative operand, a relative call, jmp, jcc, loop or jrcxz, or call r/m,
+\ whose pushed return address names where it ran.
+: AT-PC? ( -- bool )
+   DRIP @ 0<> if true exit then
+   DOP @ {: op:n :}
+   op $E8 = op $E9 = or op $EB = or if true exit then
+   op $70 >= op $7F <= and if true exit then
+   op $E0 >= op $E3 <= and if true exit then
+   op $180 >= op $18F <= and if true exit then
+   op $FF = DREG @ 2 = and ;
+
 public
 
 \ Returns the consumed byte count (1..15).
 : DIS1 ( ^u8 n n -- n )
-   DECODE DI @ ;
+   false DQUIET !  DECODE DI @ ;
+
+\ The instruction's byte count (1..15) and whether its behaviour depends on its
+\ own address. It throws as DIS1 does.
+: SPAN ( ^u8 n -- n bool )
+   true DQUIET !  0 DECODE  DI @ AT-PC? ;
 
 ;package

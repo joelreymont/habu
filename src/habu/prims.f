@@ -1,7 +1,7 @@
 \ prims.f - the engine primitive specification, one machine-independent table.
 \ Each row names one primitive and states its checker effect once: a build
 \ states the table, as the kernel object carries it, onto checker.f's `PE-*`
-\ constructors (src/arch/arm64/link-kernel.f STATE-PRIMS), each backend
+\ constructors (src/habu/link-kernel.f STATE-PRIMS), each backend
 \ registers a body under the row's name (src/habu/primitive-registry.f
 \ SPEC-CHECK refuses a body with no row, COMPLETE a row with no body), and a
 \ REF names its checked reference. Loads ahead of src/core/checker.f, over

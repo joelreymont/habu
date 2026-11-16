@@ -67,7 +67,7 @@ variable LPROFRECLAIM
 88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
 96 constant ARN-IDS         \ profile identities issued this session, at most DICT-CAP
 104 constant ARN-CHUNKS      \ linked chunks holding copied names
-\ Both are 0 when ARN-OWNER is not the main thread: no SP lies in [0, 0).
+\ aarch64 leaves both 0 when ARN-OWNER is not the main thread: no SP lies in [0, 0).
 112 constant ARN-STACK-TOP   \ the main stack's top, as boot recorded it
 120 constant ARN-STACK-LOW   \ the top less the stack limit
 \ A standard signal does not queue: the ticks that expire while the process is
@@ -79,8 +79,8 @@ variable LPROFRECLAIM
 \ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
 \ which is the serial only while every sample adds exactly one to PROF-TOT.
 144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
-\ aarch64 charges a sample inside C to the Habu word that called it when x30 or
-\ the bounded scan names one, so that weight is in the word's counter and not in
+\ A sample inside C is charged to the Habu word that called it when the bounded
+\ caller search names one, so that weight is in the word's counter and not in
 \ PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
 160 constant ARN-CARRY       \ the timer clock's ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS

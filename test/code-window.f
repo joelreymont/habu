@@ -31,22 +31,12 @@ create ERR CAP allot
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
-\ arm64 throws the memory fault, uncaught: exit 110 after its record.
-HB-TARGET-LINUX-X86-64? 0= [if]
+\ The memory fault is thrown, uncaught: exit 110 after its record.
 : TRAPS ( ^u8 n -- ) {: src:^ u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc 110
    T-ENDING-EXITED=
    ERR erru LEN>N FAULT-RECORD$ STARTS-WITH? TTRUE ;
-[then]
-\ x86-64 has no memory-fault throw: the crash handler dumps the registers and
-\ the process dies by the SIGSEGV.
-HB-TARGET-LINUX-X86-64? [if]
-11 constant SIGSEGV
-: TRAPS ( ^u8 n -- ) {: src:^ u:n :}
-   src u CAPTURE {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc SIGSEGV T-ENDING-SIGNALED= ;
-[then]
 
 : ACCEPTS ( ^u8 n -- )  0 EXPECT ;
 
@@ -63,11 +53,22 @@ HB-TARGET-LINUX-X86-64? [if]
    s" nor is the control-flow stack" T-LABEL
    s" TRUSTED: CW-CFSTK ( -- ) 0 dbase@ CFSTK-OFF + ! ; CW-CFSTK" TRAPS ;
 
+\ undefine writes a dictionary record through the RW alias: a child sharing
+\ either mapping would hide CW-KEEP from the parent's next token.
+: TEST-FORK-REGION ( -- )
+   s" a forked child's dictionary writes leave the parent unchanged" T-LABEL
+   S\" : CW-KEEP ( -- n ) 17 ;\n: CW-CHILD ( -- ) s\" undefine CW-KEEP\" evaluate-closed ;\n: CW-FORK ( -- ) PROC-FORK:CHECKED dup PID>N 0= if drop ['] CW-CHILD PROC-FORK:CHILD-MAIN then PID>N wait-status 0<> if 75 throw then ;\nCW-FORK CW-KEEP .\n"
+   2dup CAPTURE {: outu:len erru:len oc :}
+   OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N S\" 17\n" T$=
+   erru LEN>N 0 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    TEST-RX-VIEW
+   TEST-FORK-REGION
    T-REPORT
    s" code-window: ok" type cr ;
 

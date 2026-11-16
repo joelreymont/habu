@@ -315,7 +315,6 @@ $401000 constant LINK-VA
 \ ---- the code layer's refusals ------------------------------------------------
 \ A refusal dies before a byte is patched; a child runs each fixture so the
 \ suite survives it. A rel32 site out of reach needs a 2 GB stream: not built.
-72 constant REFUSE-RC                   \ X64CODE's refusal exit, as src/arch/arm64/icode.f's
 $1000 constant CAPTURE-CAP
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
@@ -345,7 +344,7 @@ create ERR CAPTURE-CAP allot
    {: source:^ sourceu:n want:^ wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-ENDING-EXITED=
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc 72 T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;
 

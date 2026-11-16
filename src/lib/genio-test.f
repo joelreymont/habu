@@ -224,8 +224,7 @@ public
    T-PARTS
    0 CH-A s" the end of input is a zero-length line" T-LINE
    CLOSE-ALL
-   \ The x86-64 engine has no memory-fault throw: the fault kills the test.
-   HB-TARGET-LINUX-X86-64? 0= if T-FAULTING-WRITE then
+   T-FAULTING-WRITE
    T-REPORT ;
 
 ;package

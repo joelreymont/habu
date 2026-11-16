@@ -357,16 +357,12 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    1 N, s" close" ROW  2 N, s" close" ROW
    s" /nonexistent" PATH, -1 N, -1 N, 0 N, s" spawn-io" ROW  -1 WANT ;
 
-\ spawn-argv-env-cwd-io's sh prints its working directory to its stdout, and
-\ run-rc answers an exit status, or -1 for a missing file.
-: RUN-CASE ( -- )
+\ The child prints the working directory passed to spawn-argv-env-cwd-io.
+: SPAWN-CWD-CASE ( -- )
    PIPE,
    s" pwd" SH-ARGV,  NO-ENV,
    s" /bin/sh" PATH, ARGV AT, ENVP AT, s" /" PATH, -1 N, KEPT2 RECALL, -1 N,
-   s" spawn-argv-env-cwd-io" ROW  $0A2F CHILD-WROTE,
-   s" /bin/true" PATH, s" run-rc" ROW  0 WANT
-   s" /bin/false" PATH, s" run-rc" ROW  1 WANT
-   s" /nonexistent" PATH, s" run-rc" ROW  -1 WANT ;
+   s" spawn-argv-env-cwd-io" ROW  $0A2F CHILD-WROTE, ;
 
 \ spawn-fds with a crossing map: the pipes' write ends sit on 7 and 8, and the
 \ child's 7 is the parent's 8 and its 8 the parent's 7, so the first pipe reads
@@ -460,7 +456,7 @@ public
    [: FCNTL-CASE ;] s" hb-x64-kernel-sys-fcntl" TMP-PATH ROWS
    [: SPAWN-CASE ;] s" hb-x64-kernel-sys-spawn" TMP-PATH ROWS
    [: SPAWN-LIVE-CASE ;] s" hb-x64-kernel-sys-spawn-live" TMP-PATH ROWS
-   [: RUN-CASE ;] s" hb-x64-kernel-sys-run" TMP-PATH ROWS
+   [: SPAWN-CWD-CASE ;] s" hb-x64-kernel-sys-run" TMP-PATH ROWS
    [: SPAWN-FDS-CASE ;] s" hb-x64-kernel-sys-spawn-fds" TMP-PATH ROWS
    [: SPAWN-FDS-FAIL-CASE ;] s" hb-x64-kernel-sys-spawn-fds-fail" TMP-PATH ROWS
    [: SPAWN-FDS-EBADF-CASE ;] s" hb-x64-kernel-sys-spawn-fds-ebadf" TMP-PATH ROWS

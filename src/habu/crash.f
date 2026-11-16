@@ -24,6 +24,7 @@
 require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
+require src/habu/fault-record.f
 using SYSCALL
 package CRASH
 public
@@ -37,6 +38,7 @@ variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS  variable CR-RERAISE
 ;package
 using A64ASM
 using A64ICODE
+using FAULT-RECORD
 
 package CRASH
 : CRH-BYTE+ ( ^u8 n -- ^u8 ) + ;
@@ -202,57 +204,13 @@ public
    a u status 1 DIE-LINE-SITE, ;
 
 \ ---- fault records ----
-\ A fault record is the bytes package REJECTION writes for an unplaced
-\ rejection of the same parts, in prose or, when the main DATA's
-\ REJECTION-JSON-CELL is set, as one JSON object. A site emits FAULT-OPEN,,
-\ any notes, then FAULT-STOP, or FAULT-KEEP,. Each part's static text is laid
-\ twice after a branch past it, prose and JSON, and the run writes the one x17,
-\ the flag FAULT-OPEN, reads, picks. The record grows in a FAULT-FRAME on sp at
-\ x14, written to fd 2 when it fills and at the record's end. It uses no region
-\ and no VM stack, and writes x0..x2, x6..x17 and x30, no other register.
-\ REJECTION is Forth on a thread's VM stacks, and these sites run where none
-\ can: a signal handler (no Forth word is async-signal-safe), a stack past its
-\ bounds, a callback thread with no Habu frame, a stop that must not be caught.
+\ A site emits FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each
+\ part's text (package FAULT-RECORD) is laid after a branch past it, and the
+\ run writes the one x17, the flag FAULT-OPEN, reads, picks. The record grows in
+\ a FAULT-FRAME on sp at x14, written to fd 2 when it fills and at the record's
+\ end. It uses no region and no VM stack, and writes x0..x2, x6..x17 and x30,
+\ no other register.
 private
-256 constant FAULT-FRAME
-256 constant FAULT-TEXT-CAP
-create FAULT-PROSE FAULT-TEXT-CAP allot  variable FAULT-PROSE-U
-create FAULT-JSON FAULT-TEXT-CAP allot  variable FAULT-JSON-U
-\ The part the record being emitted has open: none, its message, or a note.
-0 constant FAULT-SHUT
-1 constant FAULT-MESSAGE
-2 constant FAULT-NOTE
-variable FAULT-PART  FAULT-SHUT FAULT-PART !
-
-: TEXT+ ( ^u8 n ^u8 ^n -- )
-   {: a:^ u:n buf:^ len:^ :}
-   len @ u + FAULT-TEXT-CAP > IF
-      s" crash: a fault record's text is longer than FAULT-TEXT-CAP" EXIT-STATUS:INTERNAL die
-   THEN
-   u 0 ?do  a i + c@  buf len @ + i + c!  loop
-   len @ u + len ! ;
-: PROSE+ ( ^u8 n -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
-: JSON+ ( ^u8 n -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
-: BOTH+ ( ^u8 n -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
-
-\ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.
-: PLAIN? ( n -- bool ) {: c:n :}
-   c 32 >=  c 34 <> and  c 92 <> and ;
-: CHECK-TEXT ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ PLAIN? 0= IF
-         s" crash: a fault record's text holds a byte JSON escapes" EXIT-STATUS:INTERNAL die
-      THEN
-   loop ;
-
-: PART? ( n -- ) {: want:n :}
-   FAULT-PART @ want <> IF
-      s" crash: a fault record's parts are out of REJECTION's order" EXIT-STATUS:INTERNAL die
-   THEN ;
-: NOTE-PART? ( -- )
-   FAULT-PART @ FAULT-SHUT = IF
-      s" crash: a fault note outside a record" EXIT-STATUS:INTERNAL die
-   THEN ;
 
 \ [x14] = the register's low byte, x14 one past it.
 : PUT-BYTE, ( n -- ) {: r:n :}
@@ -284,15 +242,6 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
    10 json ADR,  11 FAULT-JSON-U @ MOVZ,
    put LBL,  9 0 MOVZ,  LFAULT-PUT LABEL@ BL,
    0 FAULT-PROSE-U !  0 FAULT-JSON-U ! ;
-
-\ A note's key, after the text before it.
-: NOTE+ ( ^u8 n -- ) {: k:^ ku:n :}
-   NOTE-PART?  k ku CHECK-TEXT
-   S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
-   S\" \"," JSON+
-   FAULT-PART @ FAULT-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
-   S\" \"" JSON+  k ku JSON+  S\" \":\"" JSON+
-   FAULT-NOTE FAULT-PART ! ;
 
 \ The register's 16 hex digits at the cursor; a FLUSH-BELOW, keeps it, so it
 \ is none of x0..x2, x8, x12, x13 and x16.
@@ -379,30 +328,24 @@ public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
 : FAULT-OPEN, ( ^u8 n ^u8 n -- )
-   {: code:^ cu:n msg:^ mu:n :}
-   FAULT-SHUT PART?  code cu CHECK-TEXT  msg mu CHECK-TEXT
+   FAULT-OPEN
    SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
    17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
-   s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
-   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu JSON+
-   S\" \",\"message\":\"" JSON+  msg mu JSON+
-   PIECE,
-   FAULT-MESSAGE FAULT-PART ! ;
+   PIECE, ;
 
 \ Note `in`: the word whose code holds the address in x3, read from the x6
 \ records at x4; x4 = 0 when the site cannot trust the dictionary. With no
 \ such word, note `at` and the address.
 : FAULT-IN, ( -- )
    LBL LBL {: at:label done:label :}
-   NOTE-PART?  FAULT-PART @ {: was:n :}
+   FAULT-IN {: was:n :}
    LFAULT-OWNER LABEL@ BL,
    7 at CBZ,
-   s" in" NOTE+  PIECE,
+   PIECE,
    10 7 0 ADDI,  11 6 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL,
    done B,
    at LBL,
-   was FAULT-PART !
-   s" at" NOTE+  s" 0x" BOTH+  PIECE,  3 HEX,
+   was FAULT-AT  PIECE,  3 HEX,
    done LBL, ;
 
 \ A note with the register's value in decimal; the register is copied first.
@@ -425,30 +368,20 @@ public
 \ register is copied first.
 : FAULT-ADDRESS, ( ^u8 n n -- ) {: k:^ ku:n r:n :}
    7 r 0 ADDI,
-   k ku NOTE+  s" 0x" BOTH+  PIECE,  7 HEX, ;
+   k ku FAULT-ADDRESS  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
 : FAULT-STOP, ( ^u8 n n -- ) {: h:^ hu:n status:n :}
-   NOTE-PART?  h hu CHECK-TEXT
-   S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
-   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
-   S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"}\n" JSON+
+   h hu FAULT-STOP
    PIECE,  FLUSH,
-   0 status MOVZ,  NR-EXIT-GROUP SYS,
-   FAULT-SHUT FAULT-PART ! ;
+   0 status MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, sp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( ^u8 n -- ) {: h:^ hu:n :}
-   NOTE-PART?  h hu CHECK-TEXT
-   hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
-   S\" \n\n" PROSE+
-   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
-   hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"" JSON+ THEN
-   S\" }\n" JSON+
+: FAULT-KEEP, ( ^u8 n -- )
+   FAULT-KEEP
    PIECE,  FLUSH,
-   SP SP FAULT-FRAME ADDI,
-   FAULT-SHUT FAULT-PART ! ;
+   SP SP FAULT-FRAME ADDI, ;
 
 \ The fault records' routines, beside LDIE-LINE.
 : EMIT-FAULT-RECORD ( -- )
@@ -567,14 +500,6 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
 variable CRS-MACHINE-H
 variable CRS-THROW
-
-\ The four stack-bounds messages and their help.
-: CRS-DATA$ ( -- ^u8 n ) s" the data stack ran past its bounds" ;
-: CRS-RET$ ( -- ^u8 n ) s" the return stack ran past its bounds" ;
-: CRS-LOOP$ ( -- ^u8 n ) s" the loop stack ran past its bounds" ;
-: CRS-MACHINE$ ( -- ^u8 n ) s" the machine stack ran past its bounds" ;
-: CRS-HELP$ ( -- ^u8 n )
-   s" give a recursion an exit, or keep fewer values on the stack" ;
 
 11 constant CRASH-SIGSEGV
 : CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
@@ -939,6 +864,7 @@ public
    SP SP $10 ADDI,  RET, ;
 ;package
 
+;using
 ;using
 ;using
 ;using

@@ -32,6 +32,8 @@ using X64CODE
 
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
+$01 constant MAP-SHARED
+$11 constant MAP-SHARED-FIXED
 
 \ MAP-DATA-RESERVE maps the DATA window: MAP_PRIVATE $02 | MAP_ANONYMOUS $20 |
 \ MAP_NORESERVE $4000 | MAP_FIXED_NOREPLACE $100000. MAP_NORESERVE is Linux's
@@ -53,12 +55,13 @@ $104022 constant MAP-DATA-RESERVE
 15  constant NR-SIGRETURN         \ rt_sigreturn
 257 constant NR-OPEN              \ openat(dirfd, path, flags, mode)
 3   constant NR-CLOSE
+77  constant NR-FTRUNCATE
+319 constant NR-MEMFD-CREATE
 62  constant NR-KILL
 109 constant NR-SETPGID
 39  constant NR-GETPID
 186 constant NR-GETTID
 234 constant NR-TGKILL
-310 constant NR-PROCESS-VM-READV
 434 constant NR-PIDFD-OPEN
 436 constant NR-CLOSE-RANGE
 293 constant NR-PIPE              \ pipe2(fds, flags)
@@ -69,6 +72,7 @@ $104022 constant MAP-DATA-RESERVE
 292 constant NR-DUP2              \ dup3(old, new, flags)
 72  constant NR-FCNTL
 38  constant NR-SETITIMER
+97  constant NR-GETRLIMIT
 131 constant NR-SIGALTSTACK
 96  constant NR-GETTIMEOFDAY
 228 constant NR-CLOCK-GETTIME
@@ -93,6 +97,12 @@ $104022 constant MAP-DATA-RESERVE
 $100 constant AT-SYMLINK-NOFOLLOW
 $200 constant AT-REMOVEDIR
 1 constant CLOCK-MONOTONIC
+3 constant RLIMIT-STACK
+-1 constant RLIM-INFINITY
+
+\ The longest interval in us setitimer arms as given: a tv_sec of 9223372036
+\ or more saturates.
+9223372035999999 constant OS-TIMER-MAX-USEC
 
 \ ---- the trap ----------------------------------------------------------------
 \ THE CARRY POLARITY IS CHOSEN, NOT TRANSLITERATED. Linux returns -errno in the

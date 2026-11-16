@@ -178,7 +178,7 @@ is not covered: ARM64 answers the signalling one quieted, SSE the left one.
 
 The x86-64 backend shares the target-free compiler with ARM64 and forks
 nothing else by accident. Linux x86-64 is the target; the ARM64 engine
-cross-builds it. x86-64 builds are off until x86-64 moves onto the linker.
+cross-builds it through T0 and the shared linker (`--target linux-x86-64`).
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
@@ -255,8 +255,7 @@ Cross-build first, self-host second.
 4. **The cross-built engine self-hosts** on an x86-64 host, two
    generations building the same image.
 5. **Recovery.** A trusted native hb of the same OS and machine rebuilds the
-   engine ([bootstrap.md](bootstrap.md#recovery)); while x86-64 builds are off,
-   no route recovers an x86-64 engine.
+   engine ([bootstrap.md](bootstrap.md#recovery)).
 
 ### Gates and acceptance
 

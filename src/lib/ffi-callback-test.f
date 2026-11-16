@@ -143,7 +143,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    0 CALLER-INSIDE !  0 CALLER-MET !  0 CALLER-MISSES !
    3 0 ?do 0 CALLER-ENTERED i cells + ! loop ;
 
-\ The x86-64 thunk has no caller row.
 : CASE-CALLER ( -- )
    s" == one slot on the caller's context, two tasks inside at once" SAY
    CMP-CALLER TASK:CALLER-CONTEXT ENTRY CMP-CALLER-FN !
@@ -475,7 +474,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" unbound" CHILD-CASE
    s" worker-stale" CHILD-CASE
    s" body-defines" CHILD-CASE
-   HB-TARGET-LINUX-X86-64? 0= if s" caller-thread" CHILD-CASE then
+   s" caller-thread" CHILD-CASE
    s" released" CHILD-CASE
    s" grown-bind" CHILD-CASE ;
 
@@ -565,19 +564,17 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == a worker on its own context, ending bound" W
    WANT-SORTS
    s" ok   its rows went with it: the same slots bind to the main context" W
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" == one slot on the caller's context, two tasks inside at once" W
-      s" ok   both tasks' rows came back sorted through the one pointer" W
-      s" ok   both tasks were inside its comparator at once" W
-      s" ok   each comparison ran on the region of the task whose row it sorted" W
-      s" ok   UNBIND inside its comparator is E-TASK-STATE and qsort completes" W
-      s" ok   UNBIND with no thread inside frees it: the slot binds to the main context" W
-      s" == a caller bind that meets a row a mover holds" W
-      s" ok   CMP-CALLER's idle row is held BUSY" W
-      s" ok   the binding task waits there" W
-      s" ok   handed back, the row binds and the task does not throw" W
-      s" ok   and the row is a caller row" W
-   then ;
+   s" == one slot on the caller's context, two tasks inside at once" W
+   s" ok   both tasks' rows came back sorted through the one pointer" W
+   s" ok   both tasks were inside its comparator at once" W
+   s" ok   each comparison ran on the region of the task whose row it sorted" W
+   s" ok   UNBIND inside its comparator is E-TASK-STATE and qsort completes" W
+   s" ok   UNBIND with no thread inside frees it: the slot binds to the main context" W
+   s" == a caller bind that meets a row a mover holds" W
+   s" ok   CMP-CALLER's idle row is held BUSY" W
+   s" ok   the binding task waits there" W
+   s" ok   handed back, the row binds and the task does not throw" W
+   s" ok   and the row is a caller row" W ;
 
 : WANT-ACCESSOR ( -- )
    s" == a frame accessor" W
@@ -657,13 +654,11 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" --" W
    s" error[E-CALLBACK]: the callback's body defined a word" W
    s"   = slot: 11" W  WANT-RECORD-END
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" == child caller-thread: exit 106" W
-      s" caller-thread: the slot is bound to the caller's context" W
-      s" --" W
-      s" error[E-CALLBACK]: C called a callback bound to the caller's context on a thread with no region of its own" W
-      s"   = slot: 5" W  WANT-RECORD-END
-   then
+   s" == child caller-thread: exit 106" W
+   s" caller-thread: the slot is bound to the caller's context" W
+   s" --" W
+   s" error[E-CALLBACK]: C called a callback bound to the caller's context on a thread with no region of its own" W
+   s"   = slot: 5" W  WANT-RECORD-END
    s" == child released: exit 0" W
    s" halted: the worker is parked inside its comparator" W
    s" halted: the comparator returned, qsort completed and KILL joined the worker" W
@@ -704,7 +699,8 @@ public
    CASE-UNSET
    CASE-OWNER
    CASE-WORKERS
-   HB-TARGET-LINUX-X86-64? 0= if CASE-CALLER CASE-CALLER-HELD then
+   CASE-CALLER
+   CASE-CALLER-HELD
    CASE-ACCESSOR
    CASE-DECLARATIONS
    CASE-ROLLBACK

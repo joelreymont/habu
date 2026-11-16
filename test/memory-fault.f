@@ -130,18 +130,11 @@ private
    s" error[E-MEMORY-FAULT]" s" a fault in the trap handler" GE-EXPECT-ERR-LACKS
    s" PASS: a fault in the trap handler dies by the signal" type cr ;
 
-\ The x86-64 engine has no memory-fault throw and no fetch rule, and its crash
-\ handler takes a fault in foreign code for a data stack guard (exit 102).
-HB-TARGET-LINUX-X86-64? 0= [if]
 UNCAUGHT
 CAUGHT
 GUARD-JUMP
 FOREIGN
-[then]
 WILD-JUMP
-\ debug.f's breakpoints are arm64's.
-HB-TARGET-LINUX-X86-64? 0= [if]
 TRAP-FAULT
-[then]
 
 ;package

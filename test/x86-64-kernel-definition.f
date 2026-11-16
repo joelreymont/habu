@@ -26,7 +26,7 @@ using X64RT
 X64KERNEL:REC-CODE CELL + constant REC-AUX
 
 \ The flag bits an alias copies, and a source's flags with DKIND:VAL too.
-DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or constant COPIED
+DNAME-IMM DNAME-WIDE or constant COPIED
 COPIED DKIND:VAL or constant SOURCE-FLAGS
 
 \ A 17-byte name, longer than DNAME-INL, stored at CP: it fills past the first
@@ -113,7 +113,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 : PROTECT, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" X64HARNESS:CALL-ROW, ;
 : AFTER-SEAL, ( -- ) 1 SEAL-NDICT-CELL X64HARNESS:CELL!, ;
-: LIVE, ( -- ) 1 TASKS-LIVE-CELL X64HARNESS:CELL!, ;
+\ The writers reject on a task's or callback's DATA, not on main with tasks live.
+: LIVE, ( -- ) 1 TASK-TCB-CELL X64HARNESS:CELL!, ;
 
 \ Move CP n bytes into the region.
 : CP-AT, ( n -- ) {: off:n :}
@@ -143,24 +144,16 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ set.
 : TIER-0-OPEN, ( -- )
    1 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
-   X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
    7 CLAUSE-CELL X64HARNESS:CELL!, ;
 
-\ One check that a row closed its window: every band cell clear and record
-\ k's page read-execute, so a probe of it faults. The band cells or'd with the
-\ probe's answer less FAULTED are 0 when both hold.
+\ One check that a row left record k unwritable: its page stays read-execute,
+\ so a probe of its flags faults.
 : CLOSED, ( n -- ) {: k:n :}
-   X64HARNESS:PUSH-BANDS,
-   k DREC * X64KERNEL:REC-FLAGS + X64HARNESS:PROBE,
-   0 G-POP  1 G-POP
-   RAX X64HARNESS:FAULTED negate >IMM8 ASM-SINK ENC-ADD-RI8
-   RAX RCX ASM-SINK ENC-OR-RR
-   0 G-PUSH
-   0 X64HARNESS:EXPECT-POP, ;
+   k DREC * X64KERNEL:REC-FLAGS + X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP, ;
 
 \ ---- the rows that exit 0 -----------------------------------------------------
 \ Each of these exits 0:
@@ -209,7 +202,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" core" 0 0 X64HARNESS:RECORD,                    \ record 0
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
    X64KERNEL:HIDX-BUILD,
-   X64HARNESS:REST,
    s" Pkg" BOTH-WIDS NAMESPACE,
    1 X64HARNESS:EXPECT-POP,
    FIRST-WID 2 + WIDN-CELL X64HARNESS:EXPECT-CELL,
@@ -221,7 +213,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 : NAMESPACE-PRIVATE-CASE, ( -- )
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
-   X64HARNESS:REST,
    s" ns" ONE-WID NAMESPACE,
    0 X64HARNESS:EXPECT-POP,
    FIRST-WID 0 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
@@ -236,7 +227,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    REC-AUX X64HARNESS:POKE,                           \ its length cell -1
    AFTER-SEAL,
    GUARDED-WID PROTECT,
-   X64HARNESS:REST,
    s" Al" 0 ALIAS-WID ALIAS,
    1 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    -1 1 REC-AUX X64HARNESS:EXPECT-RECORD,
@@ -247,7 +237,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 : PACKAGE-SCOPE-CASE, ( -- )
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
-   X64HARNESS:REST,
    s" pk" BOTH-WIDS NAMESPACE,                        \ its index, 0, stays for the row
    LIVE,                                              \ the row stores with a task live
    PARENT-WID X64HARNESS:PUSH,  s" package-scope!" X64HARNESS:CALL-ROW,
@@ -262,7 +251,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : DEF-OPEN-CASE, ( -- )
    HELLO$ OTHER-WID 0 X64HARNESS:RECORD,              \ record 0: the name in another wid
    AFTER-SEAL,
-   X64HARNESS:REST,
    HELLO$ WID DKIND:VAL DEF-OPEN,
    PEND-CELL X64HARNESS:PUSH-DATA-CELL,  DREC X64HARNESS:EXPECT-POP-REGION,
    DREC X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
@@ -279,7 +267,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
    7 CLAUSE-CELL X64HARNESS:CELL!,
    1 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
-   X64HARNESS:REST,
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
@@ -289,7 +276,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    0 CLOSED, ;
 
 : DEF-OPEN-LONG-CASE, ( -- )
-   X64HARNESS:REST,
    LONG$ 0 0 DEF-OPEN,
    X64HARNESS:PUSH-CP,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    X64KERNEL:REC-CODE X64HARNESS:PUSH-REGION-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
@@ -302,7 +288,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ checks one stage: an image has FIRST-CASE through CASE-END - 1 for its
 \ statuses (test/x86-64-peer-harness.f STATUS), eight past IMAGE's two.
 : MAPPED, ( -- )
-   X64HARNESS:REST,
    HELLO$ APPEND, ;
 : FILLED, ( -- )
    MAPPED,
@@ -347,7 +332,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ LONG$ is a capture longer than SIG-LEN.
 : TRUST-SIG-CASE, ( -- )
-   X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    LONG$ APPEND,
    s" trust-sig!" SIG,
@@ -356,7 +340,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    0 CLOSED, ;
 
 : CREATED-SIG-CASE, ( -- )
-   X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    LONG$ APPEND,
    s" created-sig!" SIG,
@@ -375,20 +358,17 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : IMM-MARK-CASE, ( -- )
    HELLO$ WID 0 X64HARNESS:RECORD,                    \ record 0
    s" w" WID DKIND:CAST X64HARNESS:RECORD,           \ record 1
-   X64HARNESS:REST,
    s" imm-mark" X64HARNESS:CALL-ROW,
    s" w" nip DKIND:CAST or DNAME-IMM or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    HELLO$ nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    1 CLOSED, ;
 
-\ A failed definition closes its code window and compile state while leaving
+\ A failed definition clears its compile state while leaving
 \ the enclosing catch's handler, return depth and loop depth intact.
 : DEF-ABORT-CASE, ( -- )
    TIER-0-OPEN,
    14 LOCN-CELL X64HARNESS:CELL!,
    15 BODYLEN-CELL X64HARNESS:CELL!,
-   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   X64KERNEL:WINDOW-OPEN,
    s" def-abort" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED,
@@ -410,11 +390,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    13 LOOPSP-CELL X64HARNESS:EXPECT-CELL, ;
 
 \ ---- the refusals -------------------------------------------------------------
-\ The armed images exit a refusal before any store, with nothing on fd 2:
-\ - 79, a task live, one image for each row that guards:
+\ The armed images exit a rejection before any store, with nothing on fd 2
+\ except the 79 images' E-TASK-COMPILE record:
+\ - 79, a row called on a task's or callback's DATA, one image for each row that guards:
 \   -namespace-record-live-armed, -namespace-private-live-armed,
 \   -alias-record-live-armed, -def-open-live-armed.
-\ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only
+\ - 83, EXIT-STATUS:SEAL-VIOLATION: def-open of a live name that differs only
 \   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
 \   (-alias-record-int-armed), package-scope! `-1 5`
@@ -424,48 +405,43 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a definition opened with no compiler
 \   (-def-close-tier-armed).
-\ - 84, ENGINE-ERROR:SEAL-WORDLIST, after the seal: alias-record into a wid
+\ - 84, EXIT-STATUS:SEAL-WORDLIST, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
 \   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
 \ Each call but for its refusal is one the row admits.
-: NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
+: NAMESPACE-LIVE, ( -- ) LIVE,  s" ns" BOTH-WIDS NAMESPACE, ;
 
 : PRIVATE-LIVE, ( -- )
    s" ns" WL:NAMESPACE 0 X64HARNESS:RECORD,      \ a namespace row, [8] 0
-   LIVE,  X64HARNESS:REST,
+   LIVE,
    0 X64HARNESS:PUSH,  s" namespace-private" X64HARNESS:CALL-ROW, ;
 
 : ALIAS-LIVE, ( -- )
    SOURCE$ 0 0 X64HARNESS:RECORD,
-   LIVE,  X64HARNESS:REST,
+   LIVE,
    s" al" 0 WID ALIAS, ;
 
-: DEF-OPEN-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" w" 0 0 DEF-OPEN, ;
+: DEF-OPEN-LIVE, ( -- ) LIVE,  s" w" 0 0 DEF-OPEN, ;
 
 : CASE-PAIR, ( -- )
    HELLO$ WID 0 X64HARNESS:RECORD,
-   X64HARNESS:REST,
    s" HELLO" WID 0 DEF-OPEN, ;
 
 : PRIVATE-SET, ( -- )
-   X64HARNESS:REST,
    s" ns" BOTH-WIDS NAMESPACE,                        \ its index stays for the row
    s" namespace-private" X64HARNESS:CALL-ROW, ;
 
 : ALIAS-INT, ( -- )
    SOURCE$ 0 DNAME-INT X64HARNESS:RECORD,
-   X64HARNESS:REST,
    s" al" 0 WID ALIAS, ;
 
 \ The long name's two slots end exactly at the ceiling.
 : CEILING, ( -- )
    X64KERNEL:CODE-CEILING PAST-LONG DICT-SIZE - - CP-AT,
-   X64HARNESS:REST,
    LONG$ 0 0 DEF-OPEN, ;
 
 \ BODYLEN past the capacity, which no growth answers.
 : FULL, ( -- )
-   X64HARNESS:REST,
    HELLO$ APPEND,                                     \ maps FIRST-CAP
    FIRST-CAP 1+ BODYLEN-CELL X64HARNESS:CELL!,
    HELLO$ APPEND, ;
@@ -473,19 +449,16 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : ALIAS-PROT, ( -- )
    SOURCE$ 0 0 X64HARNESS:RECORD,
    AFTER-SEAL,  ALIAS-WID PROTECT,
-   X64HARNESS:REST,
    s" al" 0 ALIAS-WID ALIAS, ;
 
 \ A pending definition def-open opened with no compiler.
 : NO-COMP-CLOSE, ( -- )
    0 NCOMP-DISPATCH:COMP-CELL X64HARNESS:CELL!,
-   X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
    s" def-close" X64HARNESS:CALL-ROW, ;
 
 : DEF-OPEN-PROT, ( -- )
    AFTER-SEAL,
-   X64HARNESS:REST,
    s" w" OWNER-API-PUB-WID 0 DEF-OPEN, ;
 
 \ One image: the boot, the case the quotation emits, the depth and balance
@@ -525,14 +498,14 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    [: CASE-PAIR, ;] false s" hb-x64-kernel-def-open-case-armed" TMP-PATH IMAGE
    [: PRIVATE-SET, ;] false s" hb-x64-kernel-namespace-private-set-armed" TMP-PATH IMAGE
    [: ALIAS-INT, ;] false s" hb-x64-kernel-alias-record-int-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  -1 5 SCOPE, ;] false
+   [: -1 5 SCOPE, ;] false
    s" hb-x64-kernel-package-scope-clear-armed" TMP-PATH IMAGE
    [: CEILING, ;] false s" hb-x64-kernel-def-open-ceiling-armed" TMP-PATH IMAGE
    [: FULL, ;] false s" hb-x64-kernel-body-append-full-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  s" trust-sig!" SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  s" created-sig!" SIG, ;] false
+   [: s" trust-sig!" SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
+   [: s" created-sig!" SIG, ;] false
    s" hb-x64-kernel-created-sig-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  s" def-close" X64HARNESS:CALL-ROW, ;] false
+   [: s" def-close" X64HARNESS:CALL-ROW, ;] false
    s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
    [: NO-COMP-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE

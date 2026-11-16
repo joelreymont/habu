@@ -104,7 +104,7 @@ variable STATUS
 \ Tier-0 2>r/2r> use the guarded VM return mapping (src/habu/stack-abi.f). A raw
 \ RSP store inside the compiled word sets each row's slots: the interpreter
 \ parks its own cells on the return stack between top-level words.
-: PRIMITIVE-RETURN-ARM ( -- )
+: PRIMITIVE-RETURN ( -- )
    s" last two return-stack slots" T-LABEL
    s" variable OLD-RSP : EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
    CHILD-RC 0 T=
@@ -117,7 +117,7 @@ variable STATUS
    s" : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
 
 : PRIMITIVE-BOUNDARIES ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
+   PRIMITIVE-RETURN
    s" empty data-stack adjustment" T-LABEL
    s" drop" s" error[E-INPUT-UNDERFLOW]: input underflow: the statement takes more cells than the stack holds (needs 1, has 0)" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
@@ -125,10 +125,6 @@ variable STATUS
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-   \ x86-64's guard handler writes an `hb:` line with no code and no lr.
-   HB-TARGET-LINUX-X86-64? if
-      CHILD-RC 102 T=
-      ERR ERRLEN @ S\" hb: stack bounds exceeded (loop)\n" T$=
-   else REFUSED-LOOP then ;
+   REFUSED-LOOP ;
 
 ;package

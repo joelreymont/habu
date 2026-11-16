@@ -2,9 +2,9 @@
 \ (src/arch/x86-64/asm.f) appends every instruction to, and the labels a stream
 \ branches to; the counterpart of src/arch/arm64/icode.f. The seam
 \ (src/os/linux-x86-64/sys.f, proc-watch.f) and the image writer (elf.f) bind to
-\ it with `using X64CODE`. Refusals end the build with REFUSE-RC, the code
-\ src/arch/arm64/icode.f uses; test/x86-64-emit.f runs each one.
+\ it with `using X64CODE`.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/core/roles.f
@@ -16,17 +16,12 @@ package X64CODE
 using X64ASM
 public
 
-\ The text window holds the hand-written kernel alone (`_start`, the helpers,
-\ every row) past the header page; elf.f MPAGE refuses a longer stream and
-\ src/os/image-bytes.f sizes the image buffer from it. The boot maps the
-\ captured engine's code region at VMBASE plus REGION-OFF (src/habu/boot-x64.f),
-\ so the window and its read-write tail end below that. rel32 reaches the whole
-\ image, so the bound is ARM64's engine code allowance (arm64/asm.f ADR-HI).
-$100000 constant CODE-CAP-BYTES
+\ The linked text and ELF's writable tail end below the runtime code region.
+\ Reserve one protection page for the tail and its alignment.
+REGION-OFF PROT-PAGE-MAX - X64LAYOUT:CODE-OFF - constant CODE-CAP-BYTES
 
 private
 
-72 constant REFUSE-RC
 -1 constant UNBOUND
 
 \ JMP, JCC, CALL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (abs64) emit a zero
@@ -58,7 +53,7 @@ public
 
 private
 
-: REFUSE ( ^u8 n -- ) REFUSE-RC die ;
+: REFUSE ( ^u8 n -- ) EXIT-STATUS:ENCODE die ;
 
 : SITE-WIDTH ( n -- n ) {: kind:n :}
    kind SITE-REL8 = if 1 exit then
@@ -220,18 +215,44 @@ $3145544953343658 constant TEXT-SITE-MAGIC
    code-end U32,  count U32,  TEXT-SITE-MAGIC U64,
    code-end ;
 
-\ base is the address byte 0 of the stream loads at. Every site is checked before
-\ any byte is patched; then the stream's labels and sites are forgotten.
-: ASM-LINK ( n -- ) {: base:n :}
+\ The linker keeps labels through map writing. Other callers finish the stream
+\ with ASM-LINK, which also releases its labels and sites.
+: FIXUPS! ( n -- ) {: base:n :}
    NSITE @ 0 ?do base i SITE-CHECK loop
-   NSITE @ 0 ?do base i SITE-PATCH loop
-   FORGET ;
+   NSITE @ 0 ?do base i SITE-PATCH loop ;
+
+: ASM-LINK ( n -- ) FIXUPS! FORGET ;
 
 \ Empties the sink and forgets this stream's labels and sites, so nothing of one
 \ stream is patched into the next.
 : ASM-RESET ( -- )
    SINK BUF:CLEAR
    FORGET ;
+
+\ Kernel objects retain labels and relocation sites until final placement.
+: LABEL-COUNT ( -- n ) NLBL @ LBL-BASE @ - ;
+: LABEL-POS ( n -- n ) LBL-AT @ ;
+: LABEL-INDEX ( label -- n ) ?KNOWN ;
+: LABEL-REF ( n -- label ) LBL-BASE @ + >LABEL ;
+: LABEL-BOUND? ( label -- bool ) ?KNOWN LBL-AT @ UNBOUND <> ;
+: LABEL-POS! ( n n -- ) LBL-AT ! ;
+: SITES ( -- n ) NSITE @ ;
+: REF-SITE ( n -- n ) SITE-AT @ ;
+: REF-LABEL ( n -- n ) SITE-LBL @ ;
+: REF-KIND ( n -- n ) SITE-KIND @ ;
+: REF+ ( n n n -- ) SITE+ ;
+
+: SINK-OPEN ( -- )
+   SINK BUF:LIVE? if ASM-RESET else
+      SINK 4096 BUF:N>BLEN BUF:INIT
+   then ;
+
+: SINK-CLOSE ( -- ) FORGET SINK BUF:DISPOSE ;
+
+: BYTES, ( ^u8 n -- ) BUF:N>BLEN SINK BUF:APPEND-SPAN ;
+
+: SPACE ( n -- ^u8 )
+   BUF:N>BLEN SINK swap BUF:GROW SPAN:$ drop ;
 
 ;using
 ;package

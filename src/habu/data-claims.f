@@ -117,9 +117,6 @@ create TAB
    TASK-CHAIN-CELL                    1 cells                 CLAIM TASK-CHAIN-CELL
    PKGRESYNC-CELL                     1 cells                 CLAIM PKGRESYNC-CELL
    HIDX:CLAIMS                        1 cells                 CLAIM HIDX-CLAIMS
-   PROT:WINDOW                        1 cells                 CLAIM PROT-WINDOW
-   PROT:WLO                           1 cells                 CLAIM PROT-WLO
-   PROT:RLO                           1 cells                 CLAIM PROT-RLO
    COMPILE-PREFLIGHT-CELL             1 cells                 CLAIM COMPILE-PREFLIGHT-CELL
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    THROWS-CELL                        1 cells                 CLAIM THROWS-CELL
@@ -194,9 +191,7 @@ create TAB
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
    REGION-ALIAS:DELTA-CELL            1 cells                 CLAIM REGION-ALIAS-DELTA
-   EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
-   PROT:RHI                           1 cells                 CLAIM PROT-RHI
-   PROT:CF                            1 cells                 CLAIM PROT-CF
+   EVAL-TOP-CELL                      1 cells                 CLAIM EVAL-TOP-CELL
    BOOT:HEAP-START-CELL               1 cells                 CLAIM BOOT-HEAP-START
    BOOT:DP-FLOOR-CELL                 1 cells                 CLAIM BOOT-DP-FLOOR
    BOOT:DP-CEILING-CELL               1 cells                 CLAIM BOOT-DP-CEILING

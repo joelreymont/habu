@@ -4,6 +4,7 @@
 \ differs is the frame: x86-64 has no link register, so the walk starts at the interrupted rsp,
 \ whose first cell is a leaf's return address, and searches each code cell one byte back, inside
 \ the call that pushed it.
+require src/core/exit-status.f
 require src/lib/byte-buffer.f
 require src/lib/string.f
 require src/habu/layout.f
@@ -27,6 +28,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 \ The band, absolute: the x86-64 boot maps DATA fixed at DATA-VA.
 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND-VA
 BAND-VA PROF-STATE-BYTES + constant CNT-VA      \ one counter per record
+X64LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
 1000 constant DEFAULT-USEC                      \ the interval prof-on arms when prof-rate set none
 1 constant STDOUT
 2 constant STDERR
@@ -78,6 +80,7 @@ variable SESSION-CELL
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
 : LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
 : STORE, ( r64 mem -- ) ASM-SINK ENC-MOV-MR ;
@@ -172,11 +175,10 @@ variable SESSION-CELL
    RAX CODE-SPAN:INSN-BYTES ADDI,
    RBX RBX CODE-SPAN:INSN-BYTES SCALE,  RAX RBX ASM-SINK ENC-SUB-RR ;
 
-\ Write a named profiler refusal on fd 2 and exit PROF-MAP-RC.
 : REFUSED, ( ^u8 n -- ) {: a:^ u:n :}
    LBL {: msg:label :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
-   RDI PROF-MAP-RC IMM32,  NR-EXIT-GROUP SYS,
+   RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
    msg LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
 \ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
@@ -590,6 +592,7 @@ variable SESSION-CELL
 : SAMPLE-REG ( -- r64 ) R12 ;           \ the sampled record, -1 when the index names none
 : SEEN-REG ( -- r64 ) R13 ;             \ the record the walk named last
 : EDGED-REG ( -- r64 ) R14 ;            \ nonzero once the immediate caller's edge is in
+: SCAN-REG ( -- r64 ) R10 ;             \ a foreign sample's caller search, from the interrupted rsp up
 
 \ Add one to the band's cell at n. It clobbers rax and rcx.
 : BAND-BUMP, ( n -- ) {: off:n :}  RAX BAND-VA IMM,  RAX off BUMP, ;
@@ -612,6 +615,15 @@ variable SESSION-CELL
    RAX ENT-INCL BUMP,
    seen LBL, ;
 
+\ rax = an index entry: the sample is that word's own, exclusive and
+\ inclusive, the twin of prof.f C-PROF-CHARGE; SAMPLE-REG = its record for the
+\ walk. Clobbers rcx rdx r8.
+: CHARGE, ( -- )
+   SAMPLE-REG RAX ENT-IDX MEM-OFF LOAD,
+   R8 CNT-VA IMM,
+   RCX R8 SAMPLE-REG CELL 0 MEM-IDX LOAD,  RCX INC,  RCX R8 SAMPLE-REG CELL 0 MEM-IDX STORE,
+   RDX SAMPLE-REG COPY,  INCL-ONCE, ;                             \ a word is inside itself
+
 \ rdi = the pc: keep a sample whose code the index cannot name yet, the twin
 \ of prof.f C-PROF-DEFER. It keeps the pc and the cell at the interrupted rsp,
 \ where a leaf's call left its return address and aarch64 keeps x30, at a
@@ -629,23 +641,30 @@ variable SESSION-CELL
    full LBL,  RSI ARN-SPILL BUMP,
    done LBL, ;
 
+\ END-REG = where a scan up from rsp in CUR-REG stops: ARN-WALK cells above it
+\ or the end of its 4 KiB block, whichever is lower, the twin of prof.f
+\ C-PROF-BLOCK-END. Every byte of the block is mapped because rsp is, and the
+\ next block may be a guard page. Habu code moves rsp by whole cells, and the
+\ System V ABI keeps a C callee's rsp a multiple of 8, so no cell a scan reads
+\ straddles the block's end. Clobbers rax.
+: BLOCK-END, ( -- )
+   END-REG RSI ARN-WALK MEM-OFF LOAD,  END-REG END-REG CELL SCALE,
+   END-REG CUR-REG ASM-SINK ENC-ADD-RR                           \ rsp + ARN-WALK cells
+   RAX CUR-REG COPY,  RAX PROF-PAGE-MASK >IMM32 ASM-SINK ENC-OR-RI32  RAX INC,
+   END-REG RAX CMP-REG,  C-A END-REG RAX ASM-SINK ENC-CMOVCC ;    \ or the block's end, if nearer
+
 \ The conservative machine-stack walk, the twin of prof.f C-PROF-WALK, whose
 \ comment gives the technique, without its x30 step: the interrupted rsp's
 \ first cell is a leaf's return address, so the scan meets the immediate caller
 \ first. A cell is searched one byte back, inside the call that pushed it, so a
 \ call that ends its record's span still names that record; a cell whose byte
-\ before lies outside [ARN-LO, ARN-HI) is no code. The scan never leaves rsp's
-\ 4 KiB block: every byte of it is mapped because rsp is, and the next block
-\ may be a guard page. Habu code moves rsp by whole cells, so no cell the scan
-\ reads straddles the block's end.
+\ before lies outside [ARN-LO, ARN-HI) is no code. The scan stays in rsp's
+\ block.
 : WALK, ( -- )
    LBL LBL LBL {: scan:label done:label out:label :}
    SEEN-REG SAMPLE-REG COPY,                                     \ dedup seed: the sampled word
    EDGED-REG ZERO-REG,
-   END-REG RSI ARN-WALK MEM-OFF LOAD,  END-REG END-REG CELL SCALE,
-   END-REG CUR-REG ASM-SINK ENC-ADD-RR                           \ rsp + ARN-WALK cells
-   RAX CUR-REG COPY,  RAX PROF-PAGE-MASK >IMM32 ASM-SINK ENC-OR-RI32  RAX INC,
-   END-REG RAX CMP-REG,  C-A END-REG RAX ASM-SINK ENC-CMOVCC      \ or the block's end, if nearer
+   BLOCK-END,
    scan LBL,
       CUR-REG END-REG CMP-REG,  C-AE done JCC,
       RDI CUR-REG MEM-AT LOAD,  CUR-REG CELL ADDI,
@@ -668,9 +687,33 @@ variable SESSION-CELL
    RDI SAMPLE-REG COPY,  RDX PROF-CALLER-NONE IMM32,  EDGE-LBL CALL,
    out LBL, ;
 
+\ rsi = arena, CUR-REG = a foreign sample's interrupted rsp: rax = the index
+\ entry of the Habu word nearest it, the first a scan up from rsp names, or 0
+\ when none does; the twin of prof.f C-PROF-FCALLER. An rsp in [ARN-STACK-LOW,
+\ ARN-STACK-TOP) scans up to that top, any other stays in its block
+\ (BLOCK-END,). Each cell is tested as WALK, tests it. Clobbers rcx rdx r8 r9
+\ and the flags.
+: FCALLER, ( -- )
+   LBL LBL LBL {: block:label scan:label done:label :}
+   SCAN-REG CUR-REG COPY,
+   CUR-REG RSI ARN-STACK-LOW MEM-OFF CMP-MEM,  C-B block JCC,
+   END-REG RSI ARN-STACK-TOP MEM-OFF LOAD,
+   CUR-REG END-REG CMP-REG,  C-B scan JCC,
+   block LBL,  BLOCK-END,                                        \ not the main stack
+   scan LBL,
+      RAX ZERO-REG,
+      SCAN-REG END-REG CMP-REG,  C-AE done JCC,
+      RDI SCAN-REG MEM-AT LOAD,  SCAN-REG CELL ADDI,
+      RDI DEC,                                                   \ inside the call, not past it
+      RDI RSI ARN-LO MEM-OFF CMP-MEM,  C-B scan JCC,
+      RDI RSI ARN-HI MEM-OFF CMP-MEM,  C-AE scan JCC,
+      FIND-LBL CALL,
+      RAX TEST,  C-E scan JCC,
+   done LBL, ;
+
 \ The limit test, the sample counted: the twin of prof.f EMIT-PROF's. A Habu
 \ sample that brings PROF-TOT to a nonzero PROF-LIM, compared signed, prints
-\ the text report and exits PROF-LIMIT-RC. The dump does not sync, so its
+\ the text report and exits EXIT-STATUS:PROF-LIMIT. The dump does not sync, so its
 \ deferred samples stay in the header's "defer".
 : LIMIT, ( -- )
    LBL {: below:label :}
@@ -678,14 +721,16 @@ variable SESSION-CELL
    RCX RAX PROF-LIM MEM-OFF LOAD,  RCX TEST,  C-E below JCC,     \ limit 0: sample until prof-off
    RCX RAX PROF-TOT MEM-OFF CMP-MEM,  C-G below JCC,            \ TOT below LIM
    DUMP-LBL CALL,
-   RDI PROF-LIMIT-RC IMM32,  NR-EXIT-GROUP SYS,
+   RDI EXIT-STATUS:PROF-LIMIT IMM32,  NR-EXIT-GROUP SYS,
    below LBL, ;
 
 \ The handler: the twin of prof.f EMIT-PROF. The kernel enters it on the
 \ alternate stack with rdx = the ucontext. A context whose rbp is DATA and
-\ whose r13 is the DBASE prof-on recorded is a Habu sample; any other, a
-\ foreign callee's, counts in PROF-FOREIGN and is not searched. With no arena
-\ a Habu sample counts in PROF-OTHER. Otherwise the pc goes to the index: an
+\ whose r13 is the DBASE prof-on recorded is a Habu sample; any other is a
+\ foreign callee's, which goes to the Habu word FCALLER, names: ARN-FCALLED
+\ counts it, that word's counter and inclusive count take it, and it walks.
+\ With no such word or no arena it counts in PROF-FOREIGN. With no arena a
+\ Habu sample counts in PROF-OTHER. Otherwise the pc goes to the index: an
 \ indexed pc bumps its record's counter and inclusive count; one at or above
 \ ARN-HI, compiled after prof-on, is deferred; any other, engine code or a
 \ gap, counts in PROF-OTHER; and each walks. PROF-TOT counts the sample last,
@@ -700,6 +745,7 @@ variable SESSION-CELL
    HANDLER-LBL LBL,
    LBL LBL LBL {: unnamed:label other:label walk:label :}
    LBL LBL LBL {: noarena:label foreign:label total:label :}
+   LBL LBL {: lost:label ftotal:label :}
    RAX RDX DATA-SLOT MEM-OFF LOAD,
    RCX X64LAYOUT:DATA-VA VA>N IMM,  RAX RCX CMP-REG,  C-NE foreign JCC,   \ rbp must be DATA
    RAX RDX DBASE-SLOT MEM-OFF LOAD,
@@ -710,10 +756,7 @@ variable SESSION-CELL
    RDI RDX X64BOOT:UC-RIP MEM-OFF LOAD,
    FIND-LBL CALL,
    RAX TEST,  C-E unnamed JCC,
-   SAMPLE-REG RAX ENT-IDX MEM-OFF LOAD,                          \ the record owning the pc
-   R8 CNT-VA IMM,
-   RCX R8 SAMPLE-REG CELL 0 MEM-IDX LOAD,  RCX INC,  RCX R8 SAMPLE-REG CELL 0 MEM-IDX STORE,
-   RDX SAMPLE-REG COPY,  INCL-ONCE,                              \ a word is inside itself
+   CHARGE,
    walk JMP,
    unnamed LBL,
    SAMPLE-REG ALL-ONES,                                          \ no record of its own: callers only
@@ -722,7 +765,15 @@ variable SESSION-CELL
    walk JMP,
    other LBL,  PROF-OTHER BAND-BUMP,
    walk LBL,  WALK,  total JMP,
-   foreign LBL,  PROF-FOREIGN BAND-BUMP,  PROF-TOT BAND-BUMP,    \ no search, and no report from here
+   foreign LBL,                                                  \ no report from here
+   RCX BAND-VA IMM,  RSI RCX PROF-ARENA MEM-OFF LOAD,  RSI TEST,  C-E lost JCC,
+   CUR-REG RDX RSP-SLOT MEM-OFF LOAD,
+   FCALLER,
+   RAX TEST,  C-E lost JCC,
+   RSI ARN-FCALLED BUMP,
+   CHARGE,  WALK,  ftotal JMP,
+   lost LBL,  PROF-FOREIGN BAND-BUMP,
+   ftotal LBL,  PROF-TOT BAND-BUMP,
    RET,
    noarena LBL,  PROF-OTHER BAND-BUMP,
    total LBL,  PROF-TOT BAND-BUMP,
@@ -806,18 +857,8 @@ variable SESSION-CELL
 \ rdi = an owned profile row: its qualified name.
 : NAMED, ( -- )  NAME-LBL CALL, ;
 
-\ The twins of prof.f LPROFDUMP, LPROFJSON and LPROFROW, whose comments give
-\ the design: rows chosen by repeated maximum, so the counters stay exactly as
-\ they were; JSON carrying every attributed word and every caller edge.
-\
-\ REGISTERS. What lives across a printed column is in rbx and r12-r15, which
-\ a report saves, or in its frame: r15 the arena, rbx the row's entry, r12 the
-\ row rank, r13 and r14 the (count, entry) threshold the next row must fall
-\ under. The JSON walks take rbx for their cursor, r12 for the comma and r13
-\ for the end or the slots left. A report never touches rbp, so the limit's dump from the handler
-\ still has DATA there; it reads the dictionary base from PROF-DBASE and the record count from
-\ ARN-NDICT, never from r13 and r14, which the handler's walk has reused by then. The printers
-\ clobber every scratch register.
+\ Reports keep RBX as a stable profile ID and R15 as the arena; printed
+\ columns may clobber scratch registers. Retired IDs retain names and counts.
 0 constant AT-SAMPLES                   \ PROF-TOT, read once
 8 constant AT-EXCL                      \ the row's exclusive count
 16 constant AT-DENOM                    \ what its caller shares are of
@@ -826,7 +867,7 @@ variable SESSION-CELL
 40 constant AT-REC                      \ the caller line's record, 0 for none
 48 constant AT-N                        \ the caller line's count
 56 constant AT-WORDS                    \ samples attributed to a word
-64 constant AT-ATTR                     \ index entries either count reached
+64 constant AT-ATTR                     \ profile IDs either count reached
 72 constant FRAME-BYTES
 
 : SLOT@, ( r64 n -- ) {: r:r64 off:n :}  r RSP off MEM-OFF LOAD, ;
@@ -849,51 +890,28 @@ variable SESSION-CELL
    RCX RAX PROF-TOT MEM-OFF LOAD,  RCX AT-SAMPLES SLOT!,
    R15 RAX PROF-ARENA MEM-OFF LOAD, ;
 
-\ The register = the address one past the index's last entry, from its first.
-: INDEX-END, ( r64 r64 -- ) {: end:r64 first:r64 :}
-   end R15 ARN-COUNT MEM-OFF LOAD,  end end PROF-ENT SCALE,  end first ASM-SINK ENC-ADD-RR ;
-
-\ rax = the row's exclusive count, its record's counter.
 : ROW-EXCL, ( -- )
-   RAX RBX ENT-IDX MEM-OFF LOAD,
-   RCX CNT-VA IMM,  RAX RCX RAX CELL 0 MEM-IDX LOAD, ;
+   RCX CNT-VA IMM,  RAX RCX RBX CELL 0 MEM-IDX LOAD, ;
 
-\ rax = the row's inclusive count: the per-record array plus what its entry
-\ took since the last fold. An auto-report at the limit never folds, so the
-\ second half is the only half it has.
 : ROW-INCL, ( -- )
-   RAX RBX ENT-IDX MEM-OFF LOAD,
-   RAX R15 RAX CELL ARN-INCL MEM-IDX LOAD,
-   RAX RBX ENT-INCL MEM-OFF ASM-SINK ENC-ADD-RM ;
+   RAX R15 RBX CELL ARN-INCL MEM-IDX LOAD, ;
 
-\ rdi = the record behind the row.
 : ROW-REC, ( -- )
-   RDI RBX ENT-IDX MEM-OFF LOAD,  RDI RDI PROF-ID-ENT SCALE,
-   RAX R15 ARN-RECS MEM-OFF LEA,  RDI RAX ASM-SINK ENC-ADD-RR ;
+   RDI RBX PROF-ID-ENT SCALE,
+   RDI R15 RDI 1 ARN-RECS MEM-IDX LEA, ;
 
-\ The header's two sums: the samples attributed to a word, over every
-\ record's counter up to ARN-NDICT, whose reason prof.f
-\ C-PROF-REP-WORDSUM gives, and how many index entries either count reached,
-\ which is how many rows the reports can name.
+\ Count every stable ID, including samples retained after its code retires.
 : WORDSUM, ( -- )
-   LBL LBL LBL LBL LBL {: sum:label summed:label turn:label next:label done:label :}
-   RAX ZERO-REG,  RCX CNT-VA IMM,  RDX R15 ARN-IDS MEM-OFF LOAD,
-   sum LBL,
-      RDX TEST,  C-E summed JCC,
-      RAX RCX MEM-AT ASM-SINK ENC-ADD-RM
-      RCX CELL ADDI,  RDX DEC,  sum JMP,
-   summed LBL,  RAX AT-WORDS SLOT!,
-   R8 ZERO-REG,  R11 CNT-VA IMM,
-   RCX R15 ARN-IDX MEM-OFF LEA,  RDX RCX INDEX-END,
+   LBL LBL LBL {: turn:label next:label done:label :}
+   RCX ZERO-REG,  RDX R15 ARN-IDS MEM-OFF LOAD,
+   R8 ZERO-REG,  R9 ZERO-REG,  R11 CNT-VA IMM,
    turn LBL,
       RCX RDX CMP-REG,  C-AE done JCC,
-      R9 RCX ENT-IDX MEM-OFF LOAD,
-      RAX R11 R9 CELL 0 MEM-IDX LOAD,
-      RAX RCX ENT-INCL MEM-OFF ASM-SINK ENC-OR-RM
-      RAX R15 R9 CELL ARN-INCL MEM-IDX ASM-SINK ENC-OR-RM
-      C-E next JCC,  R8 INC,                                     \ a word either count reached
-   next LBL,  RCX PROF-ENT ADDI,  turn JMP,
-   done LBL,  R8 AT-ATTR SLOT!, ;
+      RAX R11 RCX CELL 0 MEM-IDX LOAD,  R8 RAX ASM-SINK ENC-ADD-RR
+      RAX R15 RCX CELL ARN-INCL MEM-IDX ASM-SINK ENC-OR-RM
+      C-E next JCC,  R9 INC,
+   next LBL,  RCX INC,  turn JMP,
+   done LBL,  R8 AT-WORDS SLOT!,  R9 AT-ATTR SLOT!, ;
 
 \ A header field: the text, then the value in one column, from the frame, the
 \ band or the arena.
@@ -905,8 +923,9 @@ variable SESSION-CELL
    a u SAY,  RAX R15 off MEM-OFF LOAD,  1 NUM, ;
 
 \ The header: words + other + new + defer + spill + foreign == samples is the
-\ identity it states. After a sync, defer is 0 and new holds the deferred
-\ samples whose pc belongs to no live record; the limit's dump does not sync.
+\ identity it states; foreign charged to callers is a share of words. After a
+\ sync, defer is 0 and new holds the deferred samples whose pc belongs to no
+\ live record; the limit's dump does not sync.
 : HEAD, ( bool -- ) {: json:bool :}
    json if s\" {\"samples\":" else s" profiler samples " then AT-SAMPLES FRAME-FIELD,
    json if s\" ,\"words\":" else s"  words " then AT-WORDS FRAME-FIELD,
@@ -915,6 +934,8 @@ variable SESSION-CELL
    json if s\" ,\"defer\":" else s"  defer " then ARN-DEFER ARENA-FIELD,
    json if s\" ,\"spill\":" else s"  spill " then ARN-SPILL ARENA-FIELD,
    json if s\" ,\"foreign\":" else s"  foreign " then PROF-FOREIGN BAND-FIELD,
+   json if s\" ,\"foreign charged to callers\":" else s"  foreign charged to callers " then
+   ARN-FCALLED ARENA-FIELD,
    json if s\" ,\"frames\":" else s"  frames " then ARN-FRAMES ARENA-FIELD,
    json if s\" ,\"dropped\":" else s"  dropped " then ARN-DROP ARENA-FIELD,
    json if s\" ,\"indexed\":" else s"  indexed " then ARN-COUNT ARENA-FIELD,
@@ -975,12 +996,12 @@ variable SESSION-CELL
       RAX AT-RANK SLOT@,  RAX PROF-CALLERS >IMM8 ASM-SINK ENC-CMP-RI8  C-AE done JCC,
       R8 ZERO-REG,  R9 ZERO-REG,                                 \ the best count, its caller
       RCX R15 ARN-CALL MEM-OFF LEA,  RDX PROF-CALL-SLOTS IMM32,
-      R10 RBX ENT-IDX MEM-OFF LOAD,  R11 AT-CAP SLOT@,
+      R11 AT-CAP SLOT@,
       scan LBL,
          RDX TEST,  C-E scanned JCC,
          RAX RCX MEM-AT LOAD,  RAX TEST,  C-E next JCC,
          RAX DEC,  RSI RAX COPY,  RSI PROF-REC-BITS >IMM8 ASM-SINK ENC-SHR-RI8
-         RSI R10 CMP-REG,  C-NE next JCC,                        \ another word's edge
+         RSI RBX CMP-REG,  C-NE next JCC,                        \ another word's edge
          RAX PROF-REC-MASK >IMM32 ASM-SINK ENC-AND-RI32
          RDI RCX CELL MEM-OFF LOAD,
          RDI R11 CMP-REG,  C-AE next JCC,                        \ at or above the cap: printed
@@ -995,28 +1016,22 @@ variable SESSION-CELL
       rank JMP,
    done LBL, ;
 
-\ rcx = an index entry: r9 = what it is ranked on, its exclusive count or the
-\ inclusive one a phase word is only ever visible by. Clobbers r10 r11.
+\ RCX is a stable profile ID; R9 receives its ranking count. Clobbers R11.
 : RANK, ( bool -- ) {: incl:bool :}
-   R10 RCX ENT-IDX MEM-OFF LOAD,
    incl if
-      R9 R15 R10 CELL ARN-INCL MEM-IDX LOAD,
-      R9 RCX ENT-INCL MEM-OFF ASM-SINK ENC-ADD-RM
+      R9 R15 RCX CELL ARN-INCL MEM-IDX LOAD,
       exit
    then
-   R11 CNT-VA IMM,  R9 R11 R10 CELL 0 MEM-IDX LOAD, ;
+   R11 CNT-VA IMM,  R9 R11 RCX CELL 0 MEM-IDX LOAD, ;
 
-\ One text section: at most PROF-ROWS rows ranked on one of the two counts,
-\ each with its callers, the twin of prof.f C-PROF-REP-SECTION: a row takes
-\ the greatest count under the threshold, the first entry on a tie, and prints
-\ its exclusive count whichever it was ranked on.
+\ Select descending counts without changing them; the lower ID wins ties.
 : SECTION, ( bool -- ) {: incl:bool :}
    LBL LBL LBL LBL {: row:label sel:label tie:label skip:label :}
    LBL LBL LBL {: take:label chosen:label done:label :}
    R13 ALL-ONES,  R14 ALL-ONES,  R12 ZERO-REG,
    row LBL,
       R8 ZERO-REG,  RBX ALL-ONES,
-      RCX R15 ARN-IDX MEM-OFF LEA,  RDX RCX INDEX-END,
+      RCX ZERO-REG,  RDX R15 ARN-IDS MEM-OFF LOAD,
       sel LBL,
          RCX RDX CMP-REG,  C-AE chosen JCC,
          incl RANK,
@@ -1030,7 +1045,7 @@ variable SESSION-CELL
          RCX RBX CMP-REG,  C-AE skip JCC,                        \ the same count later: keep the first
          take LBL,
          R8 R9 COPY,  RBX RCX COPY,
-      skip LBL,  RCX PROF-ENT ADDI,  sel JMP,
+      skip LBL,  RCX INC,  sel JMP,
       chosen LBL,
       R8 TEST,  C-E done JCC,                                    \ no counted row left
       R13 R8 COPY,  R14 RBX COPY,
@@ -1042,12 +1057,12 @@ variable SESSION-CELL
       R12 PROF-ROWS >IMM8 ASM-SINK ENC-CMP-RI8  C-B row JCC,
    done LBL, ;
 
-\ Every index entry either count reached, as one object each, in index order.
+\ Include every ID either count reached, even after its code retires.
 : JSON-ROWS, ( -- )
    LBL LBL LBL LBL {: turn:label first:label next:label done:label :}
    s\" ,\"rows\":[" SAY,
    R12 ZERO-REG,
-   RBX R15 ARN-IDX MEM-OFF LEA,  R13 RBX INDEX-END,
+   RBX ZERO-REG,  R13 R15 ARN-IDS MEM-OFF LOAD,
    turn LBL,
       RBX R13 CMP-REG,  C-AE done JCC,
       ROW-EXCL,  RAX AT-EXCL SLOT!,
@@ -1062,7 +1077,7 @@ variable SESSION-CELL
       s\" ,\"incl\":" SAY,
       ROW-INCL,  1 NUM,
       s" }" SAY,
-   next LBL,  RBX PROF-ENT ADDI,  turn JMP,
+   next LBL,  RBX INC,  turn JMP,
    done LBL,
    s" ]" SAY, ;
 
@@ -1105,6 +1120,7 @@ variable SESSION-CELL
    json if s\" {\"samples\":0,\"armed\":false}\n" else s\" profiler not armed\n" then SAY,
    CLOSE,
    armed LBL,
+   RSI R15 COPY,  FOLD,
    WORDSUM,
    json HEAD,
    json if
@@ -1116,21 +1132,18 @@ variable SESSION-CELL
    then
    CLOSE, ;
 
-\ ROW ( rdi = a record index ): the text row for that record whatever its
-\ rank, with its callers, or a line saying the index has none: the twin of
-\ prof.f LPROFROW. Its caller shares are of the row's inclusive count.
+\ RDI is a stable profile ID; an explicit row requires a retained code span.
 : ROW-HELPER, ( -- )
    ROW-LBL LBL,
-   LBL LBL LBL {: turn:label found:label none:label :}
+   LBL {: none:label :}
    OPEN,
    SAMPLES,
    R15 TEST,  C-E none JCC,
-   RBX R15 ARN-IDX MEM-OFF LEA,  R13 RBX INDEX-END,
-   turn LBL,
-      RBX R13 CMP-REG,  C-AE none JCC,
-      RDI RBX ENT-IDX MEM-OFF CMP-MEM,  C-E found JCC,
-      RBX PROF-ENT ADDI,  turn JMP,
-   found LBL,
+   RDI TEST,  C-S none JCC,
+   RDI R15 ARN-IDS MEM-OFF CMP-MEM,  C-AE none JCC,
+   RBX RDI COPY,
+   ROW-REC,  RAX RDI RID-START MEM-OFF LOAD,  RAX TEST,  C-E none JCC,
+   RSI R15 COPY,  FOLD,
    ROW-EXCL,  RAX AT-EXCL SLOT!,
    ROW-INCL,  RAX AT-DENOM SLOT!,
    REP-ROW,
@@ -1150,7 +1163,7 @@ public
 private
 
 \ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
-\ and exits PROF-MAP-RC: a profiler that ran without its arena would report
+\ and exits EXIT-STATUS:SYSTEM: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
 : MAP, ( n ^u8 n -- ) {: len:n a:^ u:n :}
    LBL {: ok:label :}
@@ -1223,7 +1236,7 @@ private
    RAX ZERO-REG,
    RAX RSI ARN-NEW MEM-OFF STORE,  RAX RSI ARN-DROP MEM-OFF STORE,
    RAX RSI ARN-FRAMES MEM-OFF STORE,  RAX RSI ARN-SPILL MEM-OFF STORE,
-   RAX RSI ARN-DEFER MEM-OFF STORE,
+   RAX RSI ARN-DEFER MEM-OFF STORE,  RAX RSI ARN-FCALLED MEM-OFF STORE,
    RCX PROF-WALK-CELLS IMM32,  RCX RSI ARN-WALK MEM-OFF STORE,
    RCX RSI ARN-CALL MEM-OFF LEA,  RDX RSI ARN-DEF MEM-OFF LEA,    \ the edges, the inclusive array
    ZERO-SPAN,                                                    \ and the stamps lie back to back
@@ -1249,7 +1262,74 @@ private
    ARENA>RSI,  TIMER-START,
    stopped LBL, ;
 
+\ Retirement runs inside engine helpers whose scratch registers still belong
+\ to their callers. Saved RAX and RDI are at stack offsets 64 and 32.
+: RETIRE-OPEN, ( label -- ) {: absent:label :}
+   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   RSI ASM-SINK ENC-PUSH  RDI ASM-SINK ENC-PUSH
+   R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
+   R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
+   ARENA>RSI,  RSI TEST,  C-E absent JCC,
+   RCX RSI ARN-IDS MEM-OFF LOAD,  RCX TEST,  C-E absent JCC, ;
+
+: RETIRE-CLOSE, ( -- )
+   R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
+   R9 ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
+   RDI ASM-SINK ENC-POP  RSI ASM-SINK ENC-POP
+   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP ;
+
 public
+
+\ RAX is the lowered dictionary count. Resolve deferred PCs before their
+\ rows disappear, then exclude their spans while retaining names and counts.
+: TRIM, ( -- )
+   LBL LBL LBL LBL LBL LBL {: absent:label scan:label sync:label turn:label next:label done:label :}
+   absent RETIRE-OPEN,
+   RCX RSI ARN-DEFER MEM-OFF LOAD,  RCX TEST,  C-NE sync JCC,
+   RCX RAX COPY,
+   scan LBL,
+      RCX NDICT-REG CMP-REG,  C-AE absent JCC,
+      RDX RSI RCX CELL ARN-LIVE MEM-IDX LOAD,  RDX TEST,  C-NS sync JCC,
+      RCX INC,  scan JMP,
+   sync LBL,
+   QUIET,
+   RCX RSP 64 MEM-OFF LOAD,
+   R8 ALL-ONES,  R9 ZERO-REG,
+   turn LBL,
+      RCX NDICT-REG CMP-REG,  C-AE done JCC,
+      RAX RSI RCX CELL ARN-LIVE MEM-IDX LOAD,  RAX TEST,  C-S next JCC,
+      R8 RSI RCX CELL ARN-LIVE MEM-IDX STORE,
+      RAX RAX PROF-ID-ENT SCALE,  RAX RSI RAX 1 ARN-RECS MEM-IDX LEA,
+      R8 RAX RID-OWNER MEM-OFF STORE,
+      R9 RAX RID-START MEM-OFF STORE,  R9 RAX RID-END MEM-OFF STORE,
+   next LBL,  RCX INC,  turn JMP,
+   done LBL,
+   INDEX-LBL CALL,
+   RESUME,
+   absent LBL,  RETIRE-CLOSE, ;
+
+\ RDI is the lowered CP. No indexed span may overlap bytes about to be reused.
+: RECLAIM, ( -- )
+   LBL LBL LBL LBL {: absent:label turn:label next:label done:label :}
+   absent RETIRE-OPEN,
+   RDI CP-REG CMP-REG,  C-AE absent JCC,
+   QUIET,
+   R8 RSP 32 MEM-OFF LOAD,
+   RCX ZERO-REG,  RDX RSI ARN-IDS MEM-OFF LOAD,
+   turn LBL,
+      RCX RDX CMP-REG,  C-AE done JCC,
+      R9 RCX PROF-ID-ENT SCALE,  R9 RSI R9 1 ARN-RECS MEM-IDX LEA,
+      R10 R9 RID-START MEM-OFF LOAD,  R10 TEST,  C-E next JCC,
+      R10 CP-REG CMP-REG,  C-AE next JCC,
+      R10 R9 RID-END MEM-OFF LOAD,  R10 R8 CMP-REG,  C-BE next JCC,
+      \ Keep the ordinal's ID so a snapshot cannot recreate its reclaimed span.
+      R10 ALL-ONES,  R10 R9 RID-OWNER MEM-OFF STORE,
+      R10 ZERO-REG,  R10 R9 RID-START MEM-OFF STORE,  R10 R9 RID-END MEM-OFF STORE,
+   next LBL,  RCX INC,  turn JMP,
+   done LBL,
+   INDEX-LBL CALL,
+   RESUME,
+   absent LBL,  RETIRE-CLOSE, ;
 
 \ Make labels before any primitive section references them, then emit each
 \ helper once. kernel-x64.f calls this from its initial helpers section.
@@ -1266,16 +1346,41 @@ public
    NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
    false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 
+private
+
+\ The main stack's bounds into the arena, the twin of prof.f C-PROF-OWNER's:
+\ the top boot stored, less the soft RLIMIT_STACK, or less PROF-STACK-BYTES
+\ when getrlimit fails, answers no limit or one above the top. Every thread
+\ samples on x86-64, so they are recorded whichever thread runs prof-on; Linux
+\ maps no other stack within the limit below the top. Clobbers rax rcx rdx rsi
+\ rdi r11.
+: STACK-BOUNDS, ( -- )
+   LBL LBL {: dflt:label have:label :}
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8                             \ struct rlimit: soft, then hard
+   RDI RLIMIT-STACK IMM32,  RSI RSP COPY,  NR-GETRLIMIT SYS,
+   RDX RSP MEM-AT LOAD,  RSP RSP 16 MEM-OFF LEA,                 \ the soft limit, CF kept
+   C-B dflt JCC,
+   RDX RLIM-INFINITY >IMM32 ASM-SINK ENC-CMP-RI32  C-E dflt JCC,
+   RAX TOP-VA IMM,  RDX RAX MEM-AT CMP-MEM,  C-BE have JCC,
+   dflt LBL,  RDX PROF-STACK-BYTES IMM32,
+   have LBL,
+   ARENA>RSI,
+   RAX TOP-VA IMM,  RAX RAX MEM-AT LOAD,  RAX RSI ARN-STACK-TOP MEM-OFF STORE,
+   RAX RDX ASM-SINK ENC-SUB-RR  RAX RSI ARN-STACK-LOW MEM-OFF STORE, ;
+
+public
+
 \ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code, where
 \ r13 and r14 are live: it stores the limit, records the DBASE the handler
-\ trusts, clears the band's counts, maps the arena and builds the index, clears
-\ the phase's counts and edges, installs the handler for SIGALRM and arms the
-\ clock.
+\ trusts, clears the band's counts, maps the arena, records the main stack's
+\ bounds and builds the index, clears the phase's counts and edges, installs
+\ the handler for SIGALRM and arms the clock.
 : ON-BODY ( -- )
    RAX R64>N G-POP  RCX BAND-VA IMM,  RAX RCX PROF-LIM MEM-OFF STORE,
    DBASE-REG RCX PROF-DBASE MEM-OFF STORE,
    BAND-CLEAR,
    ARENA-MAP,
+   STACK-BOUNDS,
    ARENA>RSI,  SESSION-LBL CALL,
    ARENA>RSI,  SNAP-LBL CALL,
    ARENA>RSI,  INDEX,
@@ -1308,7 +1413,8 @@ public
 \ a re-arm: a rate written while no handler is installed would hand the
 \ process a SIGALRM it has no handler for. Any interval above 0 arms and 0
 \ asks for the default. kernel-x64.f's prof-rate row throws E-PROF-RATE for
-\ one below 0 before this body runs, since the throw is that package's.
+\ one below 0 or above OS-TIMER-MAX-USEC before this body runs, since the throw
+\ is that package's.
 : RATE-BODY ( -- )
    ARENA-MAP,
    ARENA>RSI,  RAX R64>N G-POP  RAX RSI ARN-USEC MEM-OFF STORE, ;

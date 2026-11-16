@@ -1,5 +1,6 @@
 \ Persist a fixed-address x86-64 snapshot using SNAP's canonical copies and
 \ publication lifecycle. Loaded only on the x86-64 target after snap-lib.f.
+require src/core/exit-status.f
 require src/habu/image-x64.f
 
 package SNAP
@@ -32,7 +33,7 @@ package SNAP
    STAGE
    SXT-PTR SNL @ SNC-PTR SCL @ SND-PTR DATA-START SFD @ X64IMAGE:WRITE-FD
    SFD @ BEFORE-CLOSE
-   SFD @ close-rc 0 <> if s" snap: output close failed" 74 die then ;
+   SFD @ close-rc 0 <> if s" snap: output close failed" EXIT-STATUS:SYSTEM die then ;
 
 : INSTALL-X64 ( -- ) [: WRITE-X64 ;] is WRITE-TARGET ;
 INSTALL-X64

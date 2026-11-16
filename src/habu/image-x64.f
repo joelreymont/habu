@@ -1,6 +1,7 @@
 \ A fixed-segment x86-64 ELF writer. The caller owns the descriptor and the
 \ three initialized spans; this file owns the ELF header, dynamic tail and
 \ zero padding between the segments.
+require src/core/exit-status.f
 require src/os/linux-x86-64/elf.f
 require src/habu/fdio.f
 
@@ -8,7 +9,6 @@ package X64IMAGE
 
 private
 
-74 constant IMAGE-RC
 4096 constant ZERO-BYTES
 create ZEROS ZERO-BYTES allot
 
@@ -20,7 +20,7 @@ create ZEROS ZERO-BYTES allot
    fd ZEROS count ZERO-BYTES mod FDIO:WALL ;
 
 : PAD-TO ( n n n -- ) {: fd:n from:n to:n :}
-   from to > if s" x64image: segment spans overlap" IMAGE-RC die then
+   from to > if s" x64image: segment spans overlap" EXIT-STATUS:IMAGE die then
    fd to from - PAD ;
 
 public
@@ -35,13 +35,13 @@ public
    data-len X64LAYOUT:DATA-SIZE > or
    data-len ELF-CARRIER-CAP > or
    data-len 0 < or if
-      s" x64image: initialized span exceeds segment" IMAGE-RC die
+      s" x64image: initialized span exceeds segment" EXIT-STATUS:IMAGE die
    then
    region-len ELF-REGION-BYTES !
    data-len ELF-DATA-BYTES !
    text-len ELF-HEADER-FOR
    ELF-REGION-AT REGION-OFF > if
-      s" x64image: text overlaps fixed region" IMAGE-RC die
+      s" x64image: text overlaps fixed region" EXIT-STATUS:IMAGE die
    then
    CLEAR-ZEROS
    fd MBUF MLEN@ FDIO:WALL

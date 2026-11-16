@@ -146,10 +146,10 @@ $1122334455667788 constant CELL-VALUE
    -1 ALLOT,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ `,` with a task live exits 79.
+\ `,` on a task's thread exits 79.
 : BUILD-HEAP-ARMED ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   1 TASKS-LIVE-CELL X64HARNESS:CELL!,
+   1 TASK-TCB-CELL X64HARNESS:CELL!,
    1 X64HARNESS:PUSH,  s" ," ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -201,7 +201,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : CHECK-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-check" ROW ;
-: TOP-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-top-check" ROW ;
 : PREFLIGHT! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-preflight" ROW ;
 
 \ The code window is [DBASE, CP), and the boot's CP is DICT-SIZE past DBASE.
@@ -214,14 +213,10 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    false X64HARNESS:BOOT-OPEN,
    0 CHECK-HOOK!
    s" check@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
-   DICT-SIZE 1- TOP-HOOK!
-   s" top-check@" ROW  DICT-SIZE 1- X64HARNESS:EXPECT-POP-REGION,
    64 PREFLIGHT!  64 PREFLIGHT!
    0 X64HARNESS:PUSH,  s" set-check" ROW
    s" check@" ROW  0 X64HARNESS:EXPECT-POP,
    128 PREFLIGHT!
-   0 X64HARNESS:PUSH,  s" set-top-check" ROW
-   s" top-check@" ROW  0 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:PUSH,  s" set-check" ROW
    0 CHECK-HOOK!
    COMPILE-PREFLIGHT-CELL X64HARNESS:PUSH-DATA-CELL,  64 X64HARNESS:EXPECT-POP-REGION,
@@ -235,11 +230,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 : BUILD-HOOKS-CHECK ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    DICT-SIZE CHECK-HOOK!
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-HOOKS-TOP ( ^u8 n -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   -1 TOP-HOOK!
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-HOOKS-REPLACED ( ^u8 n -- ) {: path:^ pathu:n :}
@@ -317,7 +307,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ DICT-CAP is a count ndict! admits; one more exits 74 with the ARM64 text.
+\ DICT-CAP is a count ndict! admits; one more exits 70 with the ARM64 text.
 : BUILD-NDICT-CAP ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    DICT-CAP NDICT!,  DICT-CAP NDICT?,
@@ -407,8 +397,8 @@ REGION SLOT-BYTES - constant TOP-SLOT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ A pending table the drain or the seal row meets without a checker to take it:
-\ SEAL-CAPTURE names the two pending defers on fd 2 and exits 73;
-\ DRAIN-PRETRUST writes `trust-decl` on fd 2 and exits 70.
+\ SEAL-CAPTURE names the two pending defers on fd 2 and exits 76;
+\ DRAIN-PRETRUST writes `trust-decl` on fd 2 and exits 76.
 : BUILD-PENDING ( ^u8 n ^u8 n -- ) {: row:^ rowu:n path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,
@@ -444,7 +434,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
 \ before it alone. The record's pages start read and execute only, as a
-\ published record's are, so the row writes only through its own flip.
+\ published record's are, so the row writes only through its alias.
 : BUILD-WIDE-MARK ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEED,  4 5 X64HARNESS:PROT-RECORD,  s" wide-mark" ROW
@@ -510,6 +500,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ An xt! over a cell ptr-cell-mark marked exits 96 with E-XTKIND on fd 2.
 : BUILD-ADDR-KIND ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
@@ -517,12 +508,15 @@ REGION SLOT-BYTES - constant TOP-SLOT
    CELL-VALUE X64HARNESS:PUSH, 0 X64HARNESS:PUSH-SCRATCH, s" xt!" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ A ptr-cell-mark whose cell runs past the data band exits 96 with E-XTBAND
+\ on fd 2.
 : BUILD-ADDR-BAND ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    X64LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ A ptr-cell-mark with no address-cell header exits 96 with E-XTCELL on fd 2.
 : BUILD-ADDR-HEADER ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
@@ -614,7 +608,6 @@ public
    s" hb-x64-kernel-genio" TMP-PATH BUILD-GENIO
    s" hb-x64-kernel-hooks" TMP-PATH BUILD-HOOKS
    s" hb-x64-kernel-hooks-check" TMP-PATH BUILD-HOOKS-CHECK
-   s" hb-x64-kernel-hooks-top" TMP-PATH BUILD-HOOKS-TOP
    s" hb-x64-kernel-hooks-replaced" TMP-PATH BUILD-HOOKS-REPLACED
    s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
    s" hb-x64-kernel-state" TMP-PATH BUILD-STATE

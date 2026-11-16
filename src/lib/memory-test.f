@@ -84,27 +84,7 @@ variable MEMT-HERE
    MEMT-SPANS 1 - MEMT-LIVE-SPAN-FRAME
    here data-base - MEMT-HERE @ T= ;
 
-\ An x86-64 child that touches released memory dies of the SIGSEGV; it must not
-\ wait for the host's core helper, and Linux skips a piped helper only when the
-\ core limit is exactly 1 byte.
-HB-TARGET-LINUX-X86-64? [if]
-require src/lib/ffi-abi.f
 
-4 constant MEMT-RLIMIT-CORE
-create MEMT-CORE-LIMIT 16 allot
-
-PROCESS-SYMBOLS
-FUNCTION: MEMT-SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
-
-: MEMT-NO-CORE ( -- )
-   1 MEMT-CORE-LIMIT !
-   1 MEMT-CORE-LIMIT cell+ !
-   MEMT-RLIMIT-CORE MEMT-CORE-LIMIT MEMT-SET-LIMIT 0 <> if
-      s" memory-test: cannot set the core limit" EXIT-STATUS:SYSTEM die
-   then ;
-
-MEMT-NO-CORE
-[then]
 T-RESET
 MEM-64K $10000 T=
 MEM-MAP-SHARED 1 T=
@@ -229,26 +209,11 @@ create RBT-ERR RBT-CAP allot
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
-\ On arm64 a child that touches released memory exits 110 after the fault's
-\ line on fd 2.
-HB-TARGET-LINUX-X86-64? 0= [if]
+\ A child that touches released memory exits 110 after the fault's line on fd 2.
 : RBT-EXPECT-FAULT ( ^u8 n -- )
    110 RBT-EXITS
    0 > TTRUE
    0 T= ;
-[then]
-\ x86-64 has no memory-fault throw: the child prints the crash handler's report
-\ and dies of the SIGSEGV itself.
-HB-TARGET-LINUX-X86-64? [if]
-11 constant MEMT-FAULT-SIG
-: RBT-EXPECT-FAULT ( ^u8 n -- ) {: src:^ srcu:n :}
-   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
-   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc
-   MEMT-FAULT-SIG T-ENDING-SIGNALED=
-   erru LEN>N 0 > TTRUE
-   outu LEN>N 0 T= ;
-[then]
 
 : RBT-EXACT-SPANS ( -- )
    T-RESET
@@ -332,24 +297,13 @@ variable WBT-PEER-IN
    WBT-SAVED @ c@ drop
    MEMT-EXIT0 ;
 
-\ arm64 exits 110, the memory fault.
-HB-TARGET-LINUX-X86-64? 0= [if]
+\ The child exits 110, the memory fault.
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
    MATCH PROCESS:status
       exited OF 110 <> if E-PRIMARY throw then ENDOF
       signaled OF drop E-PRIMARY throw ENDOF
    ;MATCH ;
-[then]
-\ x86-64 has no memory-fault throw: the child dies of the SIGSEGV.
-HB-TARGET-LINUX-X86-64? [if]
-: WBT-RELEASED ( -- )
-   [: WBT-PROBE-RELEASED ;] MEMT-FORK
-   MATCH PROCESS:status
-      exited OF drop E-PRIMARY throw ENDOF
-      signaled OF MEMT-FAULT-SIG <> if E-PRIMARY throw then ENDOF
-   ;MATCH ;
-[then]
 
 : WBT-RESULT-BODY ( ^u8 NUM:alloc-byte-len -- n )
    drop {: buf:^ :}

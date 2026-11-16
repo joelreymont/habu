@@ -21,8 +21,9 @@ under the out root (src/lib/build-out.f), in a directory
 named by the building hb's change time and size, so two hb never share an
 object.
 
-No route builds hb without an hb. x86-64 builds are off until x86-64 moves onto
-the linker.
+No route builds hb without an hb. T0 builds Linux x86-64 with
+`--target linux-x86-64`; an ARM host can emit the initial executable, which is
+then qualified on x86-64.
 
 ## Recovery
 
@@ -42,6 +43,10 @@ candidate, not a qualified target: run the
 [qualify](#refresh-binhb) the converged hb before installing it.
 
 A trusted hb too old to build the tree needs a [staged host](#staged-hosts).
+
+An ARM host run by QEMU uses `-cpu neoverse-n1`: its 64-byte cache lines match
+Habu's cache-maintenance stride. QEMU's default `max` CPU advertises 32-byte
+lines, leaving alternate instruction-cache lines unflushed.
 
 ## Requirements
 
@@ -120,14 +125,14 @@ adapter, for the callers; the second moves the callers and drops the old cell.
 Each builds with the engine of the commit before it.
 
 The link refuses a kernel object the running hb cannot read
-(src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
+(src/habu/link-kernel.f READ). A change to the object's format needs a
 stage that changes the reader before the tree changes the writer. READ also
 refuses an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
 A build types the primitives by the tree's kernel object, not by the running
-hb's rows (src/arch/arm64/link-kernel.f STATE-PRIMS), so an engine carries the
+hb's rows (src/habu/link-kernel.f STATE-PRIMS), so an engine carries the
 facts of a primitive its tree adds after one build. A primitive with a package
 row is the exception: the link takes its record from the running hb's kernel
 (src/habu/linker.f OWNED+), so hb must hold the primitive before the tree gives

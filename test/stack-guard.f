@@ -31,12 +31,7 @@ create LIT-SRC LIT-SRC-CAP allot
 \ Unbounded recursion goes through RECURSE inside BEGIN...AGAIN: a word is not
 \ in the dictionary inside its own definition, and a bare tail call (`1 recurse
 \ ;`) is refused at 'recurse' for its residual. The legacy compiler keeps return
-\ and DO frames in the guarded VM stacks. On Intel, Y's live >r value fills the
-\ guarded user return stack; native DO frames live in HIR, so Z exhausts the
-\ machine call stack and reports on its alternate signal stack.
-: MACHINE-OVERFLOW ( ^u8 n -- )
-   CHILD-RC 128 11 + T=                          \ the dump, then death by SIGSEGV
-   ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
+\ and DO frames in the guarded VM stacks.
 
 : OVERFLOW-NAMES ( -- )
    s" unbounded data-stack recursion overflows (data)" T-LABEL
@@ -46,7 +41,7 @@ create LIT-SRC LIT-SRC-CAP allot
    REFUSED-RETURN
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
-   HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
+   REFUSED-LOOP ;
 
 \ src/lib/task.f PREPARE gives each task guarded stacks (TASK-STACK-BYTES rounds
 \ up to whole guard pages). A task's overflow faults like the main thread's and

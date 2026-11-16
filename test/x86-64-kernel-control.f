@@ -2,6 +2,7 @@
 \ (src/habu/kernel-x64.f CONTROL,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image is one case; the host checks its ELF header, and the
 \ peer that runs it must see the status the images section lists.
+require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 
 package X64K-CONTROL
@@ -9,8 +10,6 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ The status a routine exits with when it is handed the wrong code.
-99 constant WRONG-RC
 \ The code the uncaught throws carry, and the reporter's shift of it.
 42 constant THROWN-CODE
 8 constant REPORT-SHIFT
@@ -121,8 +120,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : THROW-WINDOW ( -- label )
    ROUTINE
-   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   X64KERNEL:WINDOW-OPEN,
    31 PUSH,  s" throw" ROW,
    ;ROUTINE ;
 
@@ -141,12 +138,12 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    DSTACK-REG RCX ASM-SINK ENC-MOV-RR
    ;ROUTINE ;
 
-\ ( n -- ): exit WRONG-RC unless handed THROWN-CODE, then return clobbered.
+\ ( n -- ): exit EXIT-STATUS:FAILURE unless handed THROWN-CODE, then return clobbered.
 : REPORTS-BACK ( -- label )
    LBL {: fine:label :}
    ROUTINE
    0 G-POP  RAX THROWN-CODE >IMM8 ASM-SINK ENC-CMP-RI8  C-E fine JCC,
-   RDI WRONG-RC IMM,  NR-EXIT-GROUP SYS,
+   RDI EXIT-STATUS:FAILURE IMM,  NR-EXIT-GROUP SYS,
    fine LBL,
    CLOBBER,
    ;ROUTINE ;
@@ -230,7 +227,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RCX ASM-SINK ENC-CMP-RR
    LBL {: reused:label :}  C-E reused JCC,
-   RDI WRONG-RC IMM,  NR-EXIT-GROUP SYS,
+   RDI EXIT-STATUS:FAILURE IMM,  NR-EXIT-GROUP SYS,
    reused LBL,
    EVAL-RESIDUE PROVIDED-XT:EVALUATE-CELL XT!,
    CLOSED-TEXT PUSH-XT,  s" catch" ROW,
@@ -247,7 +244,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RCX ASM-SINK ENC-CMP-RR
    LBL {: reused-again:label :}  C-E reused-again JCC,
-   RDI WRONG-RC IMM,  NR-EXIT-GROUP SYS,
+   RDI EXIT-STATUS:FAILURE IMM,  NR-EXIT-GROUP SYS,
    reused-again LBL,
    0 X64HARNESS:EXPECT-DEPTH,
    0 HND-CELL EXPECT-CELL,
@@ -257,10 +254,8 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : BUILD-THROW-CLOSE ( ^u8 n -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   X64HARNESS:REST,
    5 PUSH,  THROW-WINDOW PUSH-XT,  s" catch" ROW,
    31 EXPECT-POP,  5 EXPECT-POP,
-   X64HARNESS:PUSH-BANDS,  0 EXPECT-POP,
    DICT-SIZE X64HARNESS:PROBE,  X64HARNESS:FAULTED EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,

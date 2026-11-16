@@ -5,7 +5,6 @@
 \ when each held. Without the handler every image exits 21. The host checks each
 \ image's ELF header; running them is the peer's.
 require src/lib/string.f
-require src/core/engine-error.f
 require src/habu/stack-abi.f
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
@@ -26,7 +25,7 @@ $40 constant GOT
 $400 constant GOT-CAP
 
 $80 constant WCOREFLAG                          \ wait4's core bit: the peer's RLIMIT_CORE
-ENGINE-ERROR:STACK-BOUNDS 8 lshift constant NAMED
+102 8 lshift constant NAMED
 11 constant SIGSEGV
 4 constant SIGILL
 $1000 constant UNMAPPED                         \ below vm.mmap_min_addr

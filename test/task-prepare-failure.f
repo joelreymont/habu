@@ -1,6 +1,7 @@
 \ A failed later stack allocation leaves no earlier task mappings behind.
-\ Linux's virtual-memory limit permits three guarded 64K stacks but refuses
-\ the next reserve.
+\ PREPARE maps three guarded stacks, then a region; an address-space limit
+\ LIMIT-PAGES above the warm process admits two stacks and refuses the third's
+\ reserve, whatever the region's size.
 require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/task.f
@@ -11,7 +12,7 @@ require src/habu/task-abi.f
 package TASK-PREP-FAIL-TEST
 
 9 constant RLIMIT-AS
-11 constant LIMIT-PAGES
+9 constant LIMIT-PAGES
 128 constant STATM-CAP
 
 create STATM STATM-CAP allot
@@ -50,7 +51,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    WORKER TASK:KILL ;
 
 : RUN ( -- )
-   HB-TARGET-LINUX-X86-64? if
+   HB-TARGET-LINUX? if
       T-RESET
       WARM
       VM-BYTES START-VM !

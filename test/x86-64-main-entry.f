@@ -1,7 +1,8 @@
 \ A real x86-64 boot with both captured entry cells must enter Habu MAIN.
 \ MAIN invokes the saved application and then reads one byte of stdin; entering
 \ APP directly prints only its first line. Both emitted ELFs remain in TMPDIR
-\ as hb-x64-main-entry and hb-x64-app-entry for direct replay.
+\ as hb-x64-main-entry and hb-x64-app-entry for direct replay. The image has no
+\ kernel, so a bare return stands in for the exit actions ENTRY, calls.
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require test/x86-64-peer-harness.f
@@ -19,7 +20,7 @@ using X64RT
    X64HARNESS:INIT
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
-   floor code-end X64BOOT:START,
+   floor code-end false X64BOOT:START,
    LBL LBL LBL {: app:label main:label msg:label :}
    RAX app MOVABS,
    RAX RB APP-ENTRY:XT-CELL MEM-OFF ASM-SINK ENC-MOV-MR
@@ -27,6 +28,7 @@ using X64RT
       RAX main MOVABS,
       RAX RB ENGINE-MAIN:XT-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    then
+   LBL X64BOOT:LEXITHOOK !
    X64BOOT:ENTRY,
    app LBL,
    RDI 1 IMM,  RSI msg MOVABS,  RDX 4 IMM,  NR-WRITE SYS,
@@ -39,6 +41,7 @@ using X64RT
    RDI 1 IMM,  RSI RSP ASM-SINK ENC-MOV-RR  RDX 1 IMM,  NR-WRITE SYS,
    RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
    ASM-SINK ENC-RET
+   X64BOOT:LEXITHOOK @ >LABEL LBL,  ASM-SINK ENC-RET
    msg LBL,  S\" APP\n" BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
    floor LBL,  RDI 70 IMM,  NR-EXIT-GROUP SYS,
    code-end LBL,

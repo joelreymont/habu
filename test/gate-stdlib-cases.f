@@ -110,6 +110,12 @@ SUITE linker
    test/linker.f
 ;SUITE
 
+HB-TARGET-LINUX-X86-64? [if]
+SUITE x86-64-link-run
+   test/compiler/x86-64-link-run.f
+;SUITE
+[then]
+
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. A row of its own is reachable by
 \ name in the registry, not only inside a fork list.
@@ -687,22 +693,6 @@ SUITE x86-64-emit
    test/x86-64-emit.f
 ;SUITE
 
-\ Off: x86-64.
-false [if]
-\ Build executable peer fixtures through the real pass chain and ELF writer.
-\ Execution on the x86-64 peer is a separate device check.
-SUITE x86-64-peer-image
-   test/x86-64-peer-image.f
-;SUITE
-
-\ Every HIR fixture the x86-64 rows emit, one image each, the signal image that
-\ raises a real signal through src/habu/boot-x64.f's handler install, the one
-\ diff-negative image that proves the harness and the manifest of statuses the
-\ peer must see.
-SUITE x86-64-peer-routines
-   test/x86-64-peer-routines.f
-;SUITE
-
 \ The x86-64 boot skeleton, src/habu/boot-x64.f, and its guard-page twin, for the
 \ peer to run: `hb-x64-skel a b` exits 3 and hb-x64-skel-negative exits 102.
 SUITE x86-64-skel-image
@@ -786,7 +776,6 @@ SUITE x86-64-kernel-crash
 SUITE x86-64-kernel-definition
    test/x86-64-kernel-definition.f
 ;SUITE
-[then]
 
 SUITE xml-byte-edits
    src/lib/xml-test.f

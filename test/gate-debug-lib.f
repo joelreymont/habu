@@ -119,12 +119,11 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" ;package" GE-SRC-LINE ;
 
 \ --- the SIGALRM handler reads nothing from the interrupted context's live
-\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27. On
-\ arm64 a tick inside it is charged to the Habu word that called it and counted
-\ in the header's foreign charged to callers field; the x86-64 twin charges
-\ none, so there it counts in the foreign field. The profiler's total
-\ and limit do not share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after
-\ prof-on cannot turn the next tick into an early report and exit 99.
+\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27. A tick
+\ inside it is charged to the Habu word that called it and counted in the
+\ header's foreign charged to callers field. The profiler's total and limit do
+\ not share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after prof-on cannot
+\ turn the next tick into an early report and exit 99.
 \ GDB-SYM-FOR calls dlsym for n ms of the monotonic clock, not a call count, so
 \ the sample total follows the timer rather than the host's call speed. On spark
 \ (ARM64 Linux, glibc, the default 1000 us rate) 100,000 calls took 8 or 9
@@ -141,14 +140,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
    s" dlsym loop done" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
-   HB-TARGET-LINUX-X86-64? if
-      GT-OUT$ s" foreign" GDB-FIELD 0 <= if
-         s" profiler foreign bucket counted nothing" GE-FAIL
-      then
-   else
-      GT-OUT$ s" foreign charged to callers" GDB-FIELD 0 <= if
-         s" profiler charged no dlsym tick to its caller" GE-FAIL
-      then
+   GT-OUT$ s" foreign charged to callers" GDB-FIELD 0 <= if
+      s" profiler charged no dlsym tick to its caller" GE-FAIL
    then
    GT-OUT$ -1 GDB-ACCOUNT
    s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
@@ -214,7 +207,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ has to rebuild and replay to name them. BUSY calls LEAF and then loops, so once
 \ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
 \ which leaves a deferred sample with no caller. Intel's machine return stack
-\ instead identifies OUTER as BUSY's caller for this same execution.
+\ instead names OUTER as BUSY's caller: OUTER pushes 0 after BUSY, so the call
+\ is no tail jmp and BUSY's return address on that stack lies inside OUTER.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
    s" 0 prof-on" GE-SRC-LINE
@@ -222,9 +216,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" public" GE-SRC-LINE
    s" : LEAF ( n -- n ) 1+ ;" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- LEAF 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : OUTER ( -- ) BUSY ;" GE-SRC-LINE
+   s" : OUTER ( -- n ) BUSY 0 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   s" GDBLATE:OUTER prof-off prof-report" GE-SRC-LINE ;
+   s" GDBLATE:OUTER drop prof-off prof-report" GE-SRC-LINE ;
 
 : GDB-PROFILER-DEFER ( -- )
    GE-HB-RESET

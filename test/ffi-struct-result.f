@@ -1,6 +1,5 @@
 \ ffi-struct-result.f - C structs returned by value through FUNCTION:.
-\ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
-\ FFI-TEST.
+\ Loaded by src/lib/ffi-test.f inside package FFI-TEST.
 \
 \ System functions return integer records in each AAPCS64 convention:
 \ inet_makeaddr's 4-byte struct in_addr and div's 8-byte div_t in x0, and
@@ -12,6 +11,8 @@
 \ every 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared
 \ at 12 bytes is the same call and shows the second register stored at its
 \ exact width.
+\ SysV returns the same widths in rax and rdx and the larger record through
+\ rdi.
 
 : FFI-T-SR-LIBC ( -- )
    HB-TARGET-MACOS? if
@@ -88,7 +89,7 @@ create FFI-T-SR-BUF 64 allot
    evaluate-closed ;
 
 : FFI-T-STRUCT-RESULTS ( -- )
-   s" a 4-byte struct result takes exactly four bytes of x0" T-LABEL
+   s" a 4-byte struct result takes exactly four register bytes" T-LABEL
    FFI-T-SR-RESET
    10 $010203 FFI-T-SR-DST FFI-T-MAKEADDR
    FFI-T-SR-DST c@ 10 T=
@@ -97,28 +98,28 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-DST 3 + c@ 3 T=
    4 FFI-T-SR-CANARIES
 
-   s" an 8-byte struct result arrives whole from x0" T-LABEL
+   s" an 8-byte struct result arrives whole from one register" T-LABEL
    FFI-T-SR-RESET
    -7 2 FFI-T-SR-DST FFI-T-DIV
    FFI-T-SR-DST LE:S32@ -3 T=
    FFI-T-SR-DST 4 + LE:S32@ -1 T=
    8 FFI-T-SR-CANARIES
 
-   s" a 12-byte struct result takes x0 and exactly four bytes of x1" T-LABEL
+   s" a 12-byte struct result takes exactly four bytes of its second register" T-LABEL
    FFI-T-SR-RESET
    -7000000000000 3 FFI-T-SR-DST FFI-T-LLDIV12
    FFI-T-SR-DST LE:U64@ -2333333333333 T=
    FFI-T-SR-DST 8 + LE:U32@ $FFFFFFFF T=
    12 FFI-T-SR-CANARIES
 
-   s" a 16-byte struct result arrives from x0 then x1" T-LABEL
+   s" a 16-byte struct result arrives from two registers" T-LABEL
    FFI-T-SR-RESET
    -7000000000000 3 FFI-T-SR-DST FFI-T-LLDIV
    FFI-T-SR-DST LE:U64@ -2333333333333 T=
    FFI-T-SR-DST 8 + LE:U64@ -1 T=
    16 FFI-T-SR-CANARIES
 
-   s" a 24-byte struct result is written through x8" T-LABEL
+   s" a 24-byte struct result is written through the hidden pointer" T-LABEL
    FFI-T-SR-RESET
    1001 30000 FFI-T-SR-DST FFI-T-TIME24
    1001 30000 1 0 FFI-T-SR-TIME24
@@ -126,7 +127,7 @@ create FFI-T-SR-BUF 64 allot
    -5 600 7 FFI-T-SR-DST FFI-T-TIME24-EPOCH
    -5 600 1 7 FFI-T-SR-TIME24
 
-   s" a double argument rides d0 beside an x8 struct result" T-LABEL
+   s" a double argument beside a hidden struct result" T-LABEL
    FFI-T-SR-RESET
    2.5 600 FFI-T-SR-DST FFI-T-TIME24-SECONDS
    1500 600 1 0 FFI-T-SR-TIME24

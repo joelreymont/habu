@@ -1,6 +1,6 @@
-\ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
+\ hb-build-core.f - builds this tree's native hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb and writes
-\ it with its map beside it. A native build first compiles the tree's arm64
+\ it with its map beside it. A native build first compiles the target's
 \ kernel writer and writes the kernel object the build then links
 \ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
 \ hb's own order (STARTUP); hb then loads the runtime's files, --repl the
@@ -195,6 +195,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : REPL-TERM$ ( -- ^u8 n )
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? if s" src/os/macos/repl-term.f" exit then
+   RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? if s" src/os/linux-x86-64/repl-term.f" exit then
    s" src/os/linux/repl-term.f" ;
 
 
@@ -484,7 +485,9 @@ SUM-U 32 + constant HEAD-U
 : KERNEL-BODY ( -- )
    BETWEEN
    STARTUP
-   s" src/arch/arm64/kernel-object.f" REQUIRE-FILE
+   TARGET @ RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if
+      s" src/arch/x86-64/kernel-object.f"
+   else s" src/arch/arm64/kernel-object.f" then REQUIRE-FILE
    KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
 
 \ LINKER:WITH's build of the mode, which is idle once it returns.
@@ -501,7 +504,7 @@ SUM-U 32 + constant HEAD-U
       s" E-BUILD-USAGE" REJECTION:OPEN
       s" a Wasm target builds a program, not an engine or a REPL" REJECTION:EMIT-STR
       REJECTION:HELP
-      s" build the engine or REPL for macos-aarch64 or linux-aarch64, or drop `--engine` / `--repl` to build a Wasm program"
+      s" build the engine or REPL for macos-aarch64, linux-aarch64 or linux-x86-64, or drop `--engine` / `--repl` to build a Wasm program"
       REJECTION:EMIT-STR
       EXIT-STATUS:USAGE REJECTION:STOP
    then ;
@@ -550,7 +553,6 @@ public
 \ answers when the build writes.
 : ENGINE ( [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: out target:RTARGET:resolved-target :}
-   target LINKER:REJECT-UNPLACEABLE
    target REFUSE-WASM
    out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
@@ -560,7 +562,6 @@ public
 \ and write it to the path the quotation answers when the build writes.
 : REPL ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
-   target LINKER:REJECT-UNPLACEABLE
    target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
@@ -570,7 +571,6 @@ public
 \ the path the quotation answers when the build writes.
 : APP ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
-   target LINKER:REJECT-UNPLACEABLE
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
