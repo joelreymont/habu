@@ -7,6 +7,6 @@ using VOCABULARY
    RESTRICT
    SB-RESET SOURCE-ROOT:ENGINE$ SB-APPEND
    s" /test/policy/confined/link.f" SB-APPEND
-   SB$ SOURCE-ROOT:LOAD ;
+   SB$ SOURCE-ROOT:RUN-PROGRAM ;
 RUN
 ;using

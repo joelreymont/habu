@@ -1684,12 +1684,14 @@ public
 : RESOLVE ( ^u8 n -- ^u8 n bool )
    2dup SRCLOC:ORIGIN$ RESOLVE-AT ;
 
-\ Public so `required` and `included`, which this file defines outside
-\ SOURCE-ROOT, reject a missing request a u at t tu where it is resolved.
+private
+
 : LOAD-RESOLVE ( ^u8 n ^u8 n -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT {: found:bool :}
    found 0= if REQUEST$ t tu INCLUDE-FALSE MISSING-SOURCE then
    >r REQUEST$ t tu CONFINE-AS r> ;
+
+public
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
@@ -2579,7 +2581,7 @@ public
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
-   path pathu INCLUDE-PATH0 drop
+   path pathu a u NULL-PTR 0 CONFINE-AS INCLUDE-PATH0 drop
    exists 0= if a u NULL-PTR 0 INCLUDE-TRUE MISSING-SOURCE then
    PUSH
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
@@ -2589,11 +2591,12 @@ public
    POP
    rc 0= 0= if rc throw then ;
 
+private
+
 \ Loads a u for loader word w, the word the program called; t tu is the
 \ request token an open of a u that fails stands at, or empty.
 : LOAD-RUN ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n w:^ wu:n a:^ u:n :}
-   w wu a u GIVEN-CHECK
    w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    REQUEST-AT$ {: ra:^ ru:n :}  t tu REQUEST-AT!
@@ -2601,6 +2604,8 @@ public
    ra ru REQUEST-AT!
    rc 0 <> if rc throw then
    0 LAST-LOAD-EVAL-OK ! ;
+
+public
 
 \ Whether the load LOAD-RUN last threw out of had completed its source range,
 \ which leaves its definitions live; false after one that returned. A require
@@ -2611,9 +2616,6 @@ public
 : NAMED? ( -- bool )
    TOP@ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
-
-: LOAD ( ^u8 n -- ) {: a:^ u:n :}
-   NULL-PTR 0 s" SOURCE-ROOT:LOAD" a u LOAD-RUN ;
 
 \ PATH has already been resolved by the loader's resolver. This opens a source
 \ frame and makes its root current until the callback returns.
@@ -2660,27 +2662,14 @@ public
 
 ;package
 
+package SOURCE-ROOT
+private
+
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
 : LOADER-FIND ( ^u8 n ^u8 n -- ^u8 n bool )
    DISCOVERY? if RESOLVE-AT exit then
    LOAD-RESOLVE ;
-
-\ `included` of a u for loader word w, the word the program called.
-: INCLUDED-AS ( ^u8 n ^u8 n -- )
-   {: w:^ wu:n a:^ u:n :}
-   w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
-   a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
-   DISCOVERY? if exit then
-   a u SRCLOC:ORIGIN$
-   w wu path pathu LOAD-RUN ;
-
-: included ( ^u8 n -- )
-   {: a:^ u:n :}
-   s" included" a u INCLUDED-AS ;
-
-create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
-' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
 
 \ A path the registry already holds is skipped, so the pending flag has to be
 \ cleared on every exit or it would leak into the next unrelated load. w is the
@@ -2699,11 +2688,37 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
       rc throw
    then ;
 
+public
+
+\ `included` of a u for loader word w, the word the program called.
+: INCLUDED-AS ( ^u8 n ^u8 n -- )
+   {: w:^ wu:n a:^ u:n :}
+   w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
+   a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
+   DISCOVERY? if exit then
+   a u SRCLOC:ORIGIN$
+   w wu path pathu LOAD-RUN ;
+
 \ `required` of a u for loader word w, the word the program called.
 : REQUIRED-AS ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    w wu a u  w wu a u [: LOADER-FIND ;] LOADER-RESOLVE  REQUIRE-BODY ;
+
+: ENTRY-REQUIRED ( ^u8 n -- )
+   {: a:^ u:n :}
+   INCLUDE-TRUE SCRIPT-NAMED-PEND!
+   s" script-required" a u
+   NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
+
+;package
+
+: included ( ^u8 n -- )
+   {: a:^ u:n :}
+   s" included" a u INCLUDED-AS ;
+
+create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
+' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
 
 : required ( ^u8 n -- )
    {: a:^ u:n :}
@@ -2713,11 +2728,7 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
 
 \ The `--load` argv row.
-: script-required ( ^u8 n -- )
-   {: a:^ u:n :}
-   INCLUDE-TRUE SCRIPT-NAMED-PEND!
-   s" script-required" a u
-   NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
+: script-required ( ^u8 n -- ) ENTRY-REQUIRED ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
