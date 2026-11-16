@@ -165,6 +165,10 @@ s" DEFTYPE dx option<width>"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
 s" width" s" a width is not stored: keep its bytes (width>n)"
 S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx option<n>` instead\n" DT-REC
+s" DEFTYPE dx option<nosuch>"
+S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n"
+s" nosuch" s" unknown type"
+S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 s" NEWTYPE nx option<nx>"
 S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n"
 s" nx" s" type cannot recursively name its owner"

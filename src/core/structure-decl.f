@@ -189,14 +189,14 @@ variable HELP-U
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ^u8 n n -- n )
-   {: want:n :}
-   drop c@
+: LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
+   a c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
    dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TYPE-DECL:DECL-PARAM 0= IF
-      drop s" unknown type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
+      drop a u DECL-REJECT:TOKEN!
+      s" unknown type" SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    dup {: idx:n :}
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
@@ -250,6 +250,7 @@ variable HELP-U
    THEN
    na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
+   na nu DECL-REJECT:TOKEN!
    s" unknown type" na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
@@ -339,7 +340,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
       IF drop EXIT THEN
       TFAM-DECL-CHAR>PARAM IF
          drop a c@ TYPE-DECL:DECL-PARAM IF drop EXIT THEN
-         drop
+         drop a u DECL-REJECT:TOKEN!
          s" type parameter is outside the declared arity"
          SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
       ELSE drop THEN
@@ -353,6 +354,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
       THEN EXIT
    THEN drop
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
+   a u DECL-REJECT:TOKEN!
    s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
@@ -374,6 +376,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
          a u fam j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
+         na nu DECL-REJECT:TOKEN!
          s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       SD-MISSING!
       a u j 1 + SD-LOOSE-APP EXIT
@@ -403,6 +406,7 @@ SD-LOOSE-INSTALL
       na nu FIELD-FAM? 0= IF
          drop
          na nu TYPE-MAY-ARRIVE-XT 0= IF
+            na nu DECL-REJECT:TOKEN!
             s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
          SD-MISSING!
          0 a u j 1 + SD-LOOSE-APP EXIT
@@ -420,6 +424,7 @@ SD-LOOSE-INSTALL
       fam 0 0 SCHEMA-APP j EXIT
    THEN drop
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
+   na nu DECL-REJECT:TOKEN!
    s" unknown type" SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;

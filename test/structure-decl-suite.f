@@ -285,6 +285,13 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgbad`\n" DECL-DIAG:HA
 s" nosuchtype" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
+\ inside an application the record stands at the argument it judges.
+DECL-DIAG:PROSE
+s" STRUCTURE sdgu<a> FIELD x option<b> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgu`\n" DECL-DIAG:HAS? TTRUE
+s" b" s" unknown type" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it\n" DECL-DIAG:HAS? TTRUE
+
 \ A pointer field is spelled ^T: `ptr` is an unknown type.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgptr FIELD a ptr u8 ;STRUCTURE" TEST-EVAL:RC 70 T=
