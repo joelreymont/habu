@@ -8,6 +8,7 @@ require src/habu/verify-source.f
 require src/lib/string.f
 require src/lib/test/subject.f
 require src/lib/test.f
+require src/lib/test/rejection-text.f
 
 T-RESET
 
@@ -55,11 +56,11 @@ REJECTION:BUFFER$ s" ^^^^ input not one term" CONTAINS? TTRUE
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA2`" CN-RUN:REJECTS
 REJECTION:BUFFER$ s" error[E-CAST-ARITY]: in `cast: CNA2`, the output is not one term over the stack below" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" cast-negative-suite.f" 49 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )" T-PLACED
-REJECTION:BUFFER$ s\" ^^^^^^^^^^^ output not one term\n   = evaluated: cast: CNA2 ( n -- CN:cnfam CN:cnfam )\n                      ^^^^\n   = signature: n -- CN:cnfam CN:cnfam\n   = help: give exactly one term as the output, as `( n -- u8 )`, with one declaration per term\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" ^^^^^^^^^^^ output not one term\n= evaluated: cast: CNA2 ( n -- CN:cnfam CN:cnfam )\n                   ^^^^\n= signature: n -- CN:cnfam CN:cnfam\n= help: give exactly one term as the output, as `( n -- u8 )`, with one declaration per term\n" REJECTION-TEXT:HAS? TTRUE
 s" cast: CNA3 ( n | U -- n | U )"               CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA3`" CN-RUN:REJECTS
 REJECTION:BUFFER$ s" error[E-CAST-ARITY]: in `cast: CNA3`, the signature declares a return-stack effect" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" cast-negative-suite.f" 49 s" cast: CNA3 ( n | U -- n | U )" T-PLACED
-REJECTION:BUFFER$ s\" ^^^^^^^^^^^ a return-stack effect\n   = evaluated: cast: CNA3 ( n | U -- n | U )\n                      ^^^^\n   = signature: n | U -- n | U\n   = help: write the signature with no `|` clause\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" ^^^^^^^^^^^ a return-stack effect\n= evaluated: cast: CNA3 ( n | U -- n | U )\n                   ^^^^\n= signature: n | U -- n | U\n= help: write the signature with no `|` clause\n" REJECTION-TEXT:HAS? TTRUE
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
 \ storage. A layout value wider than a cell is one term; a cast between values
 \ of different widths is refused as arity before its class is asked.

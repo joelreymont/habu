@@ -7,6 +7,7 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/lib/test.f
+require src/lib/test/rejection-text.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/string.f
@@ -561,7 +562,7 @@ s" STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EV
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is a scope here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE\n                                                                    ^" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE\n                                                                ^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgtype<a,q> FIELD x a FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -610,21 +611,21 @@ s" STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTU
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnode`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnode" s" a pointer cannot reach `sdgnode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE\n                                                  ^^^^^^^" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE\n                                              ^^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnodeq<a,q> FIELD next ^sdgnodeq<a,q> FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnodeq`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnodeq" s" a pointer cannot reach `sdgnodeq`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgnodeq<a,q> FIELD next ^sdgnodeq<a,q> FIELD w read-view<q,q,a> ;STRUCTURE\n                                                     ^^^^^^^^" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgnodeq<a,q> FIELD next ^sdgnodeq<a,q> FIELD w read-view<q,q,a> ;STRUCTURE\n                                                 ^^^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgafter<q> FIELD w read-view<q,q,n> FIELD next ^sdgafter<q> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgafter`\n" DECL-DIAG:HAS? TTRUE
 s" sdgafter" s" a pointer cannot reach `sdgafter`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: STRUCTURE sdgafter<q> FIELD w read-view<q,q,n> FIELD next ^sdgafter<q> ;STRUCTURE\n                                                                            ^^^^^^^^" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgafter<q> FIELD w read-view<q,q,n> FIELD next ^sdgafter<q> ;STRUCTURE\n                                                                        ^^^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 \ Beneath a pointer a family's arguments are judged as the pointee itself.
 DECL-DIAG:PROSE

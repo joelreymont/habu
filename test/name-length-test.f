@@ -12,6 +12,7 @@ require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/test/rejection-text.f
 require src/lib/process.f
 require src/habu/layout.f
 
@@ -216,16 +217,16 @@ variable LBL-U
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
 
-\ The child ends with one rejection record: `rc`, a record that starts with
-\ `head`, holds `note` and is followed by no other.
+\ The child ends with one rejection record: `rc`, a record that, its gutter
+\ dropped, starts with `head`, holds `note` and is followed by no other.
 : REJECTS-AT ( n ^u8 n ^u8 n n ^u8 n ^u8 n -- )
    {: u:n at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
-   RELABEL ERR erru LEN>N head headu STARTS-WITH? TTRUE
-   RELABEL ERR erru LEN>N note noteu CONTAINS? TTRUE
+   RELABEL ERR erru LEN>N REJECTION-TEXT:FLAT head headu STARTS-WITH? TTRUE
+   RELABEL ERR erru LEN>N note noteu REJECTION-TEXT:HAS? TTRUE
    RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
 
 \ -1 and the maximum cell, for a name or a text with no bound of its own.
@@ -280,7 +281,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" error[E-PACKAGE-NAME-CAP]: the package name is " SB-APPEND
    LONG-LEN FMT:SB-INT  s"  bytes long, more than the " SB-APPEND
    PACKAGE-PATH:CAP 1 - FMT:SB-INT
-   S\"  a package name may have\n   --> " SB-APPEND
+   S\"  a package name may have\n--> " SB-APPEND
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
    s" :" SB-APPEND
    SB$ {: h:^ hu:n :}
@@ -289,7 +290,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    p hu ;
 : CAP-NOTE$ ( -- ^u8 n )
    SB-RESET
-   S\" \n    = help: shorten the package name to " SB-APPEND
+   S\" \n= help: shorten the package name to " SB-APPEND
    PACKAGE-PATH:CAP 1 - FMT:SB-INT
    S\"  bytes or fewer\n" SB-APPEND
    SB$ {: t:^ tu:n :}

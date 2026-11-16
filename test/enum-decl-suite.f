@@ -6,6 +6,7 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f
 require src/lib/test.f
+require src/lib/test/rejection-text.f
 require src/lib/adt/option.f
 
 DECL-DIAG:PROSE
@@ -1248,7 +1249,7 @@ s" ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VA
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ednode`\n" DECL-DIAG:HAS? TTRUE
 s" ednode" s" a pointer cannot reach `ednode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
-s\"   = evaluated: ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM\n                                                         ^^^^^^" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:TEXT$ s\" = evaluated: ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM\n                                                    ^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM edopt<p,q> VARIANT one FIELD x ^option<read-view<p,q,n>> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
