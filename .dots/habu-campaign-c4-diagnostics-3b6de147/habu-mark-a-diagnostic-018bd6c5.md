@@ -1,9 +1,10 @@
 ---
 title: "Mark a diagnostic's cut of a long row"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-15T10:18:23.848210+01:00"
+closed-at: "2026-11-16T17:13:30.908762+01:00"
 blocks:
   - habu-grow-the-test-39a36e17
 ---
