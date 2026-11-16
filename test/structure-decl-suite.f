@@ -357,12 +357,16 @@ DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" sdgkind" s" type parameter has incompatible kinds" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: use each type parameter in one kind of place: a value type, a scope or a region\n" DECL-DIAG:HAS? TTRUE
-\ A concrete type where a scope parameter goes rejects at the type, in a
-\ structure that has no parameter to misuse.
+\ A concrete type where a scope or region parameter goes rejects at that
+\ argument, helped by its slot.
 REJECTION:CAPTURE
 : SDG-RV ( -- ) s" STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 ' SDG-RV catch CHECKER-REJECT-RC T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgrv`\n --> <input>:1:25\n  |\n1 | STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE\n  |                         ^^^^^^^^^^^^^^^^ type argument must be a scope parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgrv`\n --> <input>:1:35\n  |\n1 | STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE\n  |                                   ^ type argument must be a scope parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
+REJECTION:CAPTURE
+: SDG-MV ( -- ) s" STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
+' SDG-MV catch CHECKER-REJECT-RC T=
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgmv`\n --> <input>:1:43\n  |\n1 | STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE\n  |                                           ^ type argument must be a region parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n\n" CONTAINS? TTRUE
 
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.

@@ -251,31 +251,42 @@ variable HELP-U
 
 defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
-\ A type parameter argument is SD-SEAL's to judge: a later field may still set
-\ its kind.
-: SD-ARG-KIND ( n n n -- ) {: fam:n k:n node:n :}
+\ The argument spelled at aa au fills slot k of fam; a type parameter argument is
+\ SD-SEAL's to judge, since a later field may still set its kind.
+: SD-ARG-KIND ( ^u8 n n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
    FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
    FAM @ node PF-NODE-KIND? 0= IF drop EXIT THEN
    fam k TFAM-PK@ {: want:n :}
    want PF-KIND-OK? IF EXIT THEN
-   want PK-SCOPE = IF s" type argument must be a scope parameter" ELSE
-   want PK-REGION = IF s" type argument must be a region parameter" ELSE
-      s" type argument has the wrong kind" THEN THEN
-   WRAP? IF
-      s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+   aa au DECL-REJECT:TOKEN!
+   want PK-REGION = IF
+      s" type argument must be a region parameter"
+      WRAP? IF
+         s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
+      ELSE
+         s" pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`"
+      THEN
    ELSE
-      s" pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+      s" type argument must be a scope parameter"
+      WRAP? IF
+         s" declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+      ELSE
+         s" pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`"
+      THEN
    THEN
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
+\ Argument k onward of fam's application, the first at i: each is judged against
+\ its slot, then the count of arguments and the index after the closing `>`.
 : SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       s" type has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
-   fam k node SD-ARG-KIND
+   a u i SD-SKIP {: s:n :}
+   a s +  e s -  fam k node SD-ARG-KIND
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF

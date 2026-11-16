@@ -189,7 +189,7 @@ REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtqqq`\
 REJECTION:CAPTURE
 : DT-NT-RV ( -- ) s" NEWTYPE dtrv read-view<n,n,n>" VERIFY:SOURCE-BUF ;
 ' DT-NT-RV catch CHECKER-REJECT-RC T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtrv`\n --> <input>:1:14\n  |\n1 | NEWTYPE dtrv read-view<n,n,n>\n  |              ^^^^^^^^^^^^^^^^ type argument must be a scope parameter\n  = help: declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtrv`\n --> <input>:1:24\n  |\n1 | NEWTYPE dtrv read-view<n,n,n>\n  |                        ^ type argument must be a scope parameter\n  = help: declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
 \ a base no type declares: the record names DEFTYPE and its help offers one
 \ bare name, never a pointer.
 REJECTION:CAPTURE
