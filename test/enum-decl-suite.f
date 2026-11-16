@@ -1247,8 +1247,22 @@ DECL-DIAG:PROSE
 s" ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ednode`\n" DECL-DIAG:HAS? TTRUE
-s" ednode" s" a pointer cannot point at `ednode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
+s" ednode" s" a pointer cannot reach `ednode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = evaluated: ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM\n                                                         ^^^^^^" DECL-DIAG:HAS? TTRUE
+s\"   = help: keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" ENUM edopt<p,q> VARIANT one FIELD x ^option<read-view<p,q,n>> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `edopt`\n" DECL-DIAG:HAS? TTRUE
+s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: hold the view in the field itself, as in `ENUM box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+\ A pointer reaches the declared enum through another family's arguments.
+STRUCTURE edkpair<a,b> FIELD x a FIELD y b ;STRUCTURE
+DECL-DIAG:PROSE
+s" ENUM ednest<q> VARIANT one FIELD next ^edkpair<ednest<n>,n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `ednest`\n" DECL-DIAG:HAS? TTRUE
+s" ednest" s" a pointer cannot reach `ednest`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 

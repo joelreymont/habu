@@ -258,12 +258,12 @@ variable HELP-U
    ENUM? IF
       s" hold the view in the field itself, as in `ENUM box<p,q>` with `FIELD x read-view<p,q,n>`" EXIT THEN
    s" hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`" ;
-\ Rejects a pointer at the family named at a u, which takes a scope or region;
+\ Rejects a pointer reaching the family named at a u, which takes a scope or region;
 \ self is whether that family is the declared one.
 : PTR-VIEW-REJECT ( ^u8 n bool -- ) {: a:^ u:n self:bool :}
    a u DECL-REJECT:TOKEN!
    0 SD-MSG-U !
-   s" a pointer cannot point at `" SD-MSG+  a u SD-MSG+
+   s" a pointer cannot reach `" SD-MSG+  a u SD-MSG+
    s" `, which takes a scope or region" SD-MSG+
    SD-MSG-P @ SD-MSG-U @  self PTR-FIX$
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
@@ -456,6 +456,14 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a u k SD-LOOSE-NODE
    outer POINTEE ! ;
 
+\ Beneath a `^`, judges the family fam named at a u before its arguments, which
+\ a scope or region slot would reject first.
+: SD-REACH ( ^u8 n n -- ) {: a:^ u:n fam:n :}
+   POINTEE @ 0= IF EXIT THEN
+   fam FAM @ = {: self:bool :}
+   fam TFAM-NONVALUE-PARAM? IF a u self PTR-VIEW-REJECT THEN
+   self SELF-U @ 0= and IF a SELF-A !  u SELF-U ! THEN ;
+
 \ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
 : SD-LOOSE-NODE-IMPL ( ^u8 n n -- n ) {: a:^ u:n i:n :}
@@ -464,6 +472,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
+         na nu fam SD-REACH
          a u fam j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
@@ -476,20 +485,9 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-\ Judges the family the pointee at k names before its arguments, which a scope
-\ or region slot would reject first; the parse rejects a name that is no family.
-: SD-PTR-FAM ( ^u8 n n -- ) {: a:^ u:n k:n :}
-   a u k SD-ATOM drop {: na:^ nu:n :}
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE SR-FOUND <> IF drop EXIT THEN
-   {: fam:n :}
-   fam FAM @ = {: self:bool :}
-   fam TFAM-NONVALUE-PARAM? IF na nu self PTR-VIEW-REJECT THEN
-   self SELF-U @ 0= and IF na SELF-A !  nu SELF-U ! THEN ;
-
 \ Every declared pointer is built here. Only a rejected pointee becomes the
 \ token: an accepted one leaves the type's token for a later rejection that sets none.
 : SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
-   a u k SD-PTR-FAM
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k TYPE-DECL:ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
@@ -514,6 +512,7 @@ SD-LOOSE-INSTALL
          0 a u j 1 + SD-LOOSE-APP EXIT
       THEN
       {: fam:n :}
+      na nu fam SD-REACH
       a u fam j 1 + SD-APP EXIT
    THEN
    nu 1 = IF na nu want LETTER-TYPE j EXIT THEN
