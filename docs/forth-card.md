@@ -138,8 +138,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   takes `^turn`. Fetching, storing or stepping through it, or passing it to
   a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
   one cell: a record is `E-MISMATCH` at the call.
-- A type var named only on the stack, whose body only moves it (stack words
-  but `?dup`, locals, calls of words that only move theirs), also takes a
+- A type var named only on the stack, whose body only moves it (stack words,
+  locals, calls of words that only move theirs), also takes a
   one-cell enum, sum or structure; passing it to a primitive, a `defer` or
   `RECURSE` makes it one plain cell, and a wider or possibly linear value is
   rejected at the call.
@@ -263,7 +263,7 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | absent | instead |
 |---|---|
 | `pick`, `roll` | a `{: … :}` group, or factor a helper |
-| `?dup` | `if … else … then` on an explicit test |
+| `?dup` | `dup 0<> if … else drop then` |
 | `within` | `{: v lo hi :} v lo >= v hi < and` |
 | `move` | `BYTE-COPY`, `src/core/bytes.f` |
 | `fill`, `erase` | none; write it: `u 0 ?do 0 a i + c! loop` |

@@ -29,8 +29,6 @@ undefine !
 : ! ( n n -- n ) + ;
 undefine c!
 : c! ( u8 ^u8 -- ) 2drop ;
-undefine ?dup
-: ?dup ( n -- n n ) dup ;
 undefine record-at
 : record-at ( ^ubrec n -- n ) 2drop 42 ;
 
@@ -52,7 +50,6 @@ s" UB-OLD-DUP ( -- n n ) 5 dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" a redefined engine word is checked by its own effect, not the engine rule" T-LABEL
 s" UB-FETCH ( -- n n ) 5 @" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-STORE ( -- n ) 2 3 !" CHECK-QUIET-CANDIDATE! -1 T=
-s" UB-QDUP ( -- n n ) 5 ?dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-REC ( ^ubrec -- n ) 0 record-at" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-REC-STEP ( ^ubrec -- ^ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -72,7 +69,6 @@ s" UB-REC-STEP ( ^ubrec -- ^ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
 : UB-FETCH ( -- n n ) 5 @ ;
 : UB-STORE ( -- n ) 2 3 ! ;
 : UB-BYTE-STORE ( -- u8 ) $22 UB-BYTE c! UB-BYTE c@ ;
-: UB-QDUP ( -- n n ) 5 ?dup ;
 : UB-REC ( ^ubrec -- n ) 0 record-at ;
 
 : RUN ( -- )
@@ -93,7 +89,6 @@ s" UB-REC-STEP ( ^ubrec -- ^ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
    UB-FETCH 5 T= 5 T=
    UB-STORE 5 T=
    UB-BYTE-STORE $11 T=
-   UB-QDUP 5 T= 5 T=
    0 UB-RECS UB-REC 42 T= ;
 
 RUN

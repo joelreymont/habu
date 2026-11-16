@@ -321,10 +321,9 @@ variable LABEL-U
    s" RBAD1 ( i64 i64 -- ) 2>r" GE-SRC-CHECK-LINE
    s" RBAD2 ( -- i64 i64 ) 2r>" GE-SRC-CHECK-LINE
    s" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" GE-SRC-CHECK-LINE
-   s" QD ( i64 -- i64 i64 ) ?dup" GE-SRC-CHECK-LINE
-   s" hb return-stack/?dup primitive verdicts" GE-EVAL-RUN-STDIN
-   SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE
-   SB$ s" hb return-stack/?dup primitive verdicts output" GE-EXPECT-OUT ;
+   s" hb return-stack primitive verdicts" GE-EVAL-RUN-STDIN
+   SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE
+   SB$ s" hb return-stack primitive verdicts output" GE-EXPECT-OUT ;
 
 : COMBINATOR-CHECKS ( -- )
    GE-HB-RESET

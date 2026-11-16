@@ -1687,11 +1687,6 @@ private
 : B2OVER ( -- )
    EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: BQDUP ( -- )
-   LBL PRIM-DONE !
-   14 XDS 8 SUBI,  A 14 0 LDR,
-   A PRIM-DONE LABEL@ CBZ,  A G-PUSH  PRIM-DONE LABEL@ LBL, ;
-
 : BFETCH ( -- )
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
@@ -4072,7 +4067,7 @@ package ENGINE-EMIT
    s" nip"  ['] BNIP  FPRIM-L   s" over" ['] BOVER FPRIM-L   s" tuck" ['] BTUCK FPRIM-L
    s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
-   s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L
+   s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L
    s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L ;
 
 : EMIT-MEMORY-PRIMS ( -- )

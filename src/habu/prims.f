@@ -890,7 +890,6 @@ EPPRIM: INTERPRETER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 ELAB: execute REACH run
 ELAB: catch REACH run
 ELAB: evaluate
-ELAB: ?dup REACH stack
 ELAB: 2>r REACH stack
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack

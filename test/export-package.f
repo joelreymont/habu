@@ -89,12 +89,6 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-QDUP-FORGE$ ( -- ^u8 n )             \ top-level ?dup over an enum value
-   SB-RESET
-   s" SUMTYPE xpklight VARIANT red ;VARIANT VARIANT green ;VARIANT ;SUMTYPE" XPK-LINE
-   s" XPKLIGHT:RED ?dup" XPK-LINE
-   SB$ ;
-
 : XPK-NONAME-FORGE$ ( -- ^u8 n )           \ EXPORT with no name rejects
    SB-RESET
    s" package XB" XPK-LINE
@@ -734,10 +728,7 @@ create XPK-EMPTY 1 allot
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `ENUM` is a declaration" XPK-ERR?
    s" top-level EXPORT rejects (E-EXPORT-NO-PACKAGE)" T-LABEL
    XPK-TOP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
-   s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR?
-   s" top-level ?dup over an enum value is undefined" T-LABEL
-   XPK-QDUP-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
-   s" error[E-UNDEFINED]: cannot find word `?dup`" XPK-ERR? ;
+   s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR? ;
 
 \ A name a global section's package does not publish is E-UNDEFINED.
 : XPK-GLOBAL-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}

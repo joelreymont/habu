@@ -192,12 +192,8 @@ STRUCTURE tdtop DERIVE init FIELD x n ;STRUCTURE
 s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ Layout-aware generic stack ops. A logical
-\ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
-\ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
-\ closed: ?dup (branches on the tag cell), control predicates, higher-order
-\ apply, arithmetic/compare/store, and hidden '@' field names in a public
-\ signature. See docs/design.md "Families and layout policies".
+\ A sum, enum or product value moves as one unit through the stack words,
+\ >r/r>/r@/2>r/2r>/2r@ and a local capture; any other touch is rejected.
 
 \ a layout value flows through untouched (identity is fine).
 s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -289,17 +285,6 @@ public
 LOCAL-BIND-CAP-TEST:RUN
 
 \ --- negatives: non-transport touches still fail closed --------
-\ ?dup has no checked form: over a layout value it is rejected as an undefined
-\ word, as over a scalar.
-REJECTION:CAPTURE
-s" TD12-QDUP ( tdres<n,n> -- ) ?dup drop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `?dup`\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"  --> <input>:1:29\n" CONTAINS? TTRUE
-REJECTION:CAPTURE
-s" TD12-QDUP-ENUM ( tdlight -- ) ?dup drop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `?dup`\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"  --> <input>:1:31\n" CONTAINS? TTRUE
-REJECTION:CAPTURE
 \ control predicates read the top cell: a layout value is not a flag.
 s" TD12-IF ( tdres<n,n> -- ) if then" CHECK-QUIET-CANDIDATE! 0 T=
 \ arithmetic/compare/unary inspect the cell: reject a layout value.

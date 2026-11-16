@@ -257,10 +257,6 @@ public
    SRC-RESET  s" SN-PRIVPRIM ( -- ) 0 0 0 xref-retarget" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"xref-retarget\""
    S\" \"message\":\"cannot find word `xref-retarget`\"" VERDICT-REFUSED PACKET-HAS
-   s" a scalar ?dup is refused as an undefined word and writes a rejected packet" T-LABEL
-   SRC-RESET  s" SN-QDUP ( n -- ) ?dup drop" S+
-   S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"?dup\""
-   S\" \"message\":\"cannot find word `?dup`\"" VERDICT-REFUSED PACKET-HAS
    s" a call's wrong input over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-CF ( n bool -- ) drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-CALLB ( n -- ) 1 2 SN-CF drop" S+

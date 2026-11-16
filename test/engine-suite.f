@@ -112,10 +112,6 @@ CAST: FLAG-CELL ( bool -- n )
 3 7 max 7 T=
 1 2 3 4 2swap 2 T= 1 T= 4 T= 3 T=
 1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
-\ ?dup is refused E-UNDEFINED in checked code, so only a TRUSTED: body reaches
-\ the engine's ?dup.
-TRUSTED: ES-QDUP ( -- n n ) 0 ?dup 5 ?dup + ;
-ES-QDUP 10 T= 0 T=
 depth 0 T=
 1 2 depth 2 T= 2 T= 1 T=
 : TDEPTH ( i64 i64 -- i64 i64 i64 ) depth ;

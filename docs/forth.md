@@ -1191,8 +1191,8 @@ FOLD   ( R ^a n b [ R b a -- R b ] -- R b )
 The arithmetic and comparison axioms are declared over `n`, so a diagnostic
 prints `n`. `>R`/`R>` have no row: the checker models the return-stack transfer
 inside one definition. `WITHIN`, `?DUP`, `PICK`, `ROLL` and `EFFECT-OF` are not
-defined (`E-UNDEFINED`). Write the shuffle with `DUP`/`OVER`/`SWAP`/`ROT` or locals, and branch
-on an explicit comparison instead of `?DUP`.
+defined (`E-UNDEFINED`). Write the shuffle with `DUP`/`OVER`/`SWAP`/`ROT` or locals, and write
+`dup 0<> if … else drop then` instead of `?DUP`.
 
 ### The return-stack clause
 
@@ -1276,7 +1276,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   primitive such as `=`, a `defer`, the word's own `RECURSE`), makes it one
   cell again, and a record is refused at the call (`E-MISMATCH`). A var a
   checked `:` definition's effect names only on the stack, and whose body only
-  moves it (stack words but `?dup`, locals, calls of words that only move
+  moves it (stack words, locals, calls of words that only move
   theirs), takes a one-cell enum, sum or structure too; handing it to any other
   word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
   cell, and a value wider than one cell or one that may be linear is rejected
