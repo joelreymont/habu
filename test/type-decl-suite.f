@@ -1407,6 +1407,10 @@ s" SUMTYPE tdpayptr VARIANT ok ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpayptr`\n"
 s" ptr" s" unknown payload type" TDT-AT
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" TDT-HAS
+s" SUMTYPE tdpayview<a,b> VARIANT ok mut-view<a,a,b,n> ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpayview`\n"
+s" mut-view" s" takes a scope or region, which a `SUMTYPE` payload cannot hold" TDT-AT
+s\"   = help: hold it in a field of an `ENUM` whose header lists its scope and region parameters, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`\n" TDT-HAS
 \ quotation effect sides carry full rows: an empty input side, a multi-type
 \ input side, an empty output side, and a multi-type input with a ptr element
 \ all declare and resolve.

@@ -83,8 +83,6 @@ public
       70 s" error[E-CAST-SCOPE]: in `cast: C2-ERASE`, a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
-   s" direct borrowed schemas wait for scoped storage" T-LABEL
-   s" SUMTYPE c2-schema<a,b> VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 70 SUBJECT:EXITED? TTRUE
    s" legacy value records cannot declare a scoped field" T-LABEL
    s" VALUE-RECORD c2-vrec value read-view<p,q,u8> END-VALUE-RECORD" 70 SUBJECT:EXITED? TTRUE
    s" legacy value records cannot hide a scoped field in a sum" T-LABEL

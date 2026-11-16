@@ -573,13 +573,15 @@ variable TDV-ARG-N
 
 defer TDV-ELEM-XT ( ^u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
 
-\ resolve a payload token as a layout/cell family in signature scope (the head of
-\ a parametric application). Mirrors TDECL-PAY-FAM?'s kind gate but keeps arity
-\ open -- the arity match happens in TDV-ARGS-BUILD once the args are counted.
+\ The layout or cell family a payload token names, arity left to TDV-ARGS-BUILD.
+\ One with a scope or region parameter is rejected: a SUMTYPE header lists none.
 : TDECL-VPAY-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-FOUND <> IF sr a u TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
-   id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
+   id TFAM-NONVALUE-PARAM? IF
+      a u s" takes a scope or region, which a `SUMTYPE` payload cannot hold"
+      s" hold it in a field of an `ENUM` whose header lists its scope and region parameters, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`"
+      E-TDECL-PAYLOAD TDECL-THROW THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 

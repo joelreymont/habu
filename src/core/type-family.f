@@ -2138,12 +2138,14 @@ private
    PK-CELL ;
 : PF-NONVALUE? ( n -- bool )
    dup PK-SCOPE = swap PK-REGION = or ;
-: PF-FAM-NONVALUE? ( n -- bool ) {: fam:n :}
+
+public
+
+\ A family with a scope or region parameter.
+: TFAM-NONVALUE-PARAM? ( n -- bool ) {: fam:n :}
    fam TFAM-ARITY@ 0 ?do
       fam i TFAM-PK@ PF-NONVALUE? IF UNLOOP RES-TRUE EXIT THEN
    loop RES-FALSE ;
-
-public
 
 \ A cell parameter takes a layout-kind argument: the instantiated width is
 \ argument-aware (TFAM-INST-WIDTH@), so option<pair> is a valid field type as it
@@ -2181,7 +2183,7 @@ public
       owner child RECURSE 0= IF drop 0 RES-FALSE EXIT THEN
       PF-NONVALUE? IF 0 RES-FALSE EXIT THEN
       child SCHEMA-APP? IF
-         child SCHEMA-A@ PF-FAM-NONVALUE? IF 0 RES-FALSE EXIT THEN
+         child SCHEMA-A@ TFAM-NONVALUE-PARAM? IF 0 RES-FALSE EXIT THEN
       THEN
       PK-CELL RES-TRUE EXIT
    THEN
