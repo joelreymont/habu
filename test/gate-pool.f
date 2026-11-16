@@ -47,6 +47,7 @@ require src/lib/signal.f
 require src/lib/test/runner.f
 require src/lib/test/suite.f
 
+5000 constant GT-HEARTBEAT-MS
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT

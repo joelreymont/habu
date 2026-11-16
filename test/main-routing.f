@@ -22,9 +22,6 @@ create PATH-BUF PATH-CAP allot
 : STACK$ ( -- ^u8 n )
    s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: LONG$ ( -- ^u8 n )
-   s" long.f" PATH-BUF GT-PATH PATH-BUF swap ;
-
 \ A stdin program of several MiB, which the stream grows many times to hold.
 $480000 constant LONG-SIZE
 DYNAMIC-BUFFER PADDED u8
@@ -69,20 +66,19 @@ DYNAMIC-BUFFER PADDED u8
    s" error[E-EVAL-RESIDUE]" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
 
 \ `s" A" type`, newlines, then `s" B" type cr`, LONG-SIZE bytes in all.
-: LONG-FILE ( -- )
+: LONG-TEXT ( -- )
    LONG-SIZE PADDED-RESERVE
    LONG-SIZE 0 do $0A i PADDED c! loop
    S\" s\" A\" type" {: head:^ headu:n :}
    S\" s\" B\" type cr" {: tail:^ tailu:n :}
    head 0 PADDED headu BYTE-COPY
-   tail LONG-SIZE tailu - 1 - PADDED tailu BYTE-COPY
-   LONG$ 0 PADDED LONG-SIZE FS:WRITE-ALL
-   PADDED-RELEASE ;
+   tail LONG-SIZE tailu - 1 - PADDED tailu BYTE-COPY ;
 
 : LONG-STDIN ( -- )
-   LONG-FILE
+   LONG-TEXT
    GE-HB-RESET
-   GE-HB$ LONG$ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN-FILE
+   GE-HB$ 0 PADDED LONG-SIZE PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   PADDED-RELEASE
    S\" AB\n" s" a stdin program past the stream's first sizes" GE-EXPECT-OUT
    s" " s" a stdin program past the stream's first sizes" GE-EXPECT-ERR
    s" a stdin program past the stream's first sizes" GE-EXPECT-OK ;

@@ -22,8 +22,6 @@ require src/lib/fmt.f
 128 constant GT-FAIL-NAME-CAP
 32768 constant GT-OUT-CAP
 32768 constant GT-ERR-CAP
-5000 constant GT-HEARTBEAT-MS
-10 constant GT-LF
 \ The longest name GT-PATH joins. GT-START keeps that much room below the root
 \ it makes, so whether a row's name joins never depends on how long TMPDIR is.
 64 constant GT-NAME-MAX
@@ -42,10 +40,6 @@ variable GT-TIMED-OUT                    \ bool: capture deadline hit
 variable GT-CODE                         \ exit code or signal number; 0 for timeout
 variable GT-FAIL#
 variable GT-PROGRESS-START-NS
-variable GT-PROGRESS-LAST-NS
-variable GT-LINE-END
-variable GT-FLUSH-U
-variable GT-TAIL-U
 
 : GT-FAIL-SLOT ( n -- ^u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -117,27 +111,14 @@ variable GT-TAIL-U
 : GT-CHECK ( bool ^u8 n -- ) {: ok name:^ nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
-\ A comparison keeps both sides: reducing them to a bool first leaves the
-\ reader with a label and no evidence. Detail lines follow the TFAIL record in
-\ the shape src/lib/test/assert.f prints for T= and T$=, under this layer's name:
-\ one line per numeric comparison, so FMT:.INT and not `.`, whose text ends in
-\ a newline of its own.
+\ A failure prints both sides, the evidence a bool would lose, on one line
+\ after the TFAIL record: FMT:.INT, since `.` ends its text with a newline.
 : GT-CHECK-N ( n n ^u8 n -- ) {: got:n want:n name:^ nameu:n :}
    got want <> if
       name nameu GT-FAIL+
       s" runner: expected " type want FMT:.INT
       s"  got " type got FMT:.INT
       cr
-   then ;
-
-: GT-CHECK$ ( ^u8 n ^u8 n ^u8 n -- )
-   {: got:^ gotu:n want:^ wantu:n name:^ nameu:n :}
-   got gotu want wantu STR= 0= if
-      name nameu GT-FAIL+
-      s" runner: expected string:" type cr
-      want wantu type cr
-      s" got string:" type cr
-      got gotu type cr
    then ;
 
 \ Decompose an ending into the runner's exited/timed-out/code cells (all one
@@ -159,9 +140,6 @@ variable GT-TAIL-U
    LEN>N GT-ERR-U !
    LEN>N GT-OUT-U ! ;
 
-: GT-CAPTURE-STORE ( -- )
-   PROCESS:CAPTURE-ENDING@ GT-STORE-RUN ;
-
 \ A test's child: path with the argv the caller staged. The child inherits this
 \ process's environment, so the scratch it makes lies under the TMPDIR this run
 \ was given.
@@ -170,9 +148,6 @@ variable GT-TAIL-U
    path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME
    GT-STORE-RUN ;
-
-: GT-CAPTURE-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROCESS:DRAIN-READY ;
 
 \ GT-CAPTURE-ACTION points an action's stdout and stderr at two files under the
 \ caller's directory and reads them back into the caller's spans; code is the
@@ -329,55 +304,9 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    GT-CAP-ENTER
    q dir diru out err [: GT-CAP-RUN ;] [: GT-CAP-LEAVE ;] finally ;
 
-: GT-LINE-FLUSH-U ( ^u8 n -- n ) {: a:^ u :}
-   u 0 < if E-STR-BOUNDS throw then
-   0 GT-LINE-END !
-   0 begin dup u < while
-      dup a + c@ GT-LF = if dup 1+ GT-LINE-END ! then
-      1+
-   repeat drop
-   GT-LINE-END @ ;
-
-: GT-WRITE-FD ( n ^u8 n -- ) {: fd a:^ u :}
-   u 0 < if E-STR-BOUNDS throw then
-   u 0= if exit then
-   fd a u write u <> if E-FS-IO throw then ;
-
-\ A caller that forwards child output calls this while polling and
-\ GT-FLUSH-REMAINDER-FD at exit: a heartbeat never splits a child line, and a
-\ final unterminated fragment prints before PASS/FAIL.
-: GT-FLUSH-LINES-FD ( n ^u8 ^n -- ) {: fd buf:^ lenp:^ :}
-   lenp @ 0 < if E-STR-BOUNDS throw then
-   buf lenp @ GT-LINE-FLUSH-U GT-FLUSH-U !
-   GT-FLUSH-U @ 0 <= if exit then
-   fd buf GT-FLUSH-U @ GT-WRITE-FD
-   lenp @ GT-FLUSH-U @ - GT-TAIL-U !
-   GT-TAIL-U @ 0 > if
-      buf GT-FLUSH-U @ + buf GT-TAIL-U @ BYTE-COPY
-   then
-   GT-TAIL-U @ lenp ! ;
-
-: GT-FLUSH-REMAINDER-FD ( n ^u8 ^n -- ) {: fd buf:^ lenp:^ :}
-   lenp @ GT-TAIL-U !
-   GT-TAIL-U @ 0 < if E-STR-BOUNDS throw then
-   GT-TAIL-U @ 0= if exit then
-   fd buf GT-TAIL-U @ GT-WRITE-FD
-   0 lenp ! ;
-
-: GT-CAPTURE-FLUSH-LINES ( -- )
-   1 GT-OUT-BUF PROCESS:OUT-LEN GT-FLUSH-LINES-FD
-   2 GT-ERR-BUF PROCESS:ERR-LEN GT-FLUSH-LINES-FD ;
-
-: GT-CAPTURE-FLUSH-FINAL ( -- )
-   1 GT-OUT-BUF PROCESS:OUT-LEN GT-FLUSH-REMAINDER-FD
-   2 GT-ERR-BUF PROCESS:ERR-LEN GT-FLUSH-REMAINDER-FD ;
-
-\ Call before a long subcheck and GT-PROGRESS-PASS after it; a long poll caps its
-\ timeout at GT-PROGRESS-SLICE-MS and calls GT-PROGRESS-WAIT when quiet, so a
-\ silent child still yields heartbeat lines.
+\ Call before a long subcheck and GT-PROGRESS-PASS after it.
 : GT-PROGRESS-RUN ( ^u8 n -- ) {: label:^ labelu :}
    mono-ns GT-PROGRESS-START-NS !
-   GT-PROGRESS-START-NS @ GT-PROGRESS-LAST-NS !
    s" RUN: " type label labelu type cr ;
 
 : GT-PROGRESS-ELAPSED-MS ( -- n )
@@ -387,101 +316,6 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    n 0 < if E-TBL-FIELD throw then
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
-
-: GT-PROGRESS-DUE? ( -- bool )
-   mono-ns GT-PROGRESS-LAST-NS @ - PROCESS:NS-PER-MS / GT-HEARTBEAT-MS >= ;
-
-: GT-PROGRESS-WAIT ( ^u8 n -- ) {: label:^ labelu :}
-   GT-PROGRESS-DUE? if
-      mono-ns GT-PROGRESS-LAST-NS !
-      s" WAIT: " type label labelu type
-      s"  (" type GT-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
-   then ;
-
-\ The heartbeat cadence, cut short only by a capture deadline that comes first.
-: GT-PROGRESS-SLICE-MS ( -- ms )
-   PROCESS:REMAINING-MS MS>N {: left:n :}
-   left 0 < left GT-HEARTBEAT-MS > or if GT-HEARTBEAT-MS >MS exit then
-   left >MS ;
-
-: GT-PROGRESS-CAPTURE-TIMEOUT? ( ^u8 n -- bool ) {: label:^ labelu :}
-   PROCESS:REMAINING-MS MS>N 0= if
-      PROCESS:REAP-CAPTURE-TIMEOUT
-      0 0=
-      exit
-   then
-   label labelu GT-PROGRESS-WAIT
-   0 0= 0= ;
-
-: GT-PROGRESS-CAPTURE-READY ( ^u8 n -- ) {: label:^ labelu :}
-   GT-CAPTURE-DRAIN
-   label labelu GT-PROGRESS-WAIT ;
-
-: GT-PROGRESS-CAPTURE-READY-FLUSH ( ^u8 n -- ) {: label:^ labelu :}
-   GT-CAPTURE-DRAIN
-   GT-CAPTURE-FLUSH-LINES
-   label labelu GT-PROGRESS-WAIT ;
-
-: GT-PROGRESS-CAPTURE-STEP? ( ^u8 n -- bool ) {: label:^ labelu :}
-   GT-PROGRESS-SLICE-MS PROCESS:POLL-CAPTURE-ENDING dup COUNT>N 0= if
-      drop
-      label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
-      exit
-   then
-   drop
-   label labelu GT-PROGRESS-CAPTURE-READY
-   0 0= 0= ;
-
-: GT-PROGRESS-CAPTURE-STEP-FLUSH? ( ^u8 n -- bool ) {: label:^ labelu :}
-   GT-PROGRESS-SLICE-MS PROCESS:POLL-CAPTURE-ENDING dup COUNT>N 0= if
-      drop
-      label labelu GT-PROGRESS-CAPTURE-TIMEOUT? dup if
-         GT-CAPTURE-FLUSH-FINAL
-      then
-      exit
-   then
-   drop
-   label labelu GT-PROGRESS-CAPTURE-READY-FLUSH
-   0 0= 0= ;
-
-: GT-PROGRESS-STDIN-READY ( ^u8 len ^u8 n -- ) {: in:^ inu label:^ labelu :}
-   in inu PROCESS:DRIVE-STDIN
-   GT-CAPTURE-DRAIN
-   label labelu GT-PROGRESS-WAIT ;
-
-: GT-PROGRESS-STDIN-STEP? ( ^u8 len ^u8 n -- bool )
-   {: in:^ inu label:^ labelu :}
-   GT-PROGRESS-SLICE-MS PROCESS:POLL-IO-ENDING dup COUNT>N 0= if
-      drop
-      label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
-      exit
-   then
-   drop
-   in inu label labelu GT-PROGRESS-STDIN-READY
-   0 0= 0= ;
-
-: GT-PROGRESS-CAPTURE ( ^u8 n -- ) {: label:^ labelu :}
-   begin PROCESS:CAPTURE-DONE? 0= while
-      label labelu GT-PROGRESS-CAPTURE-STEP? if GT-CAPTURE-STORE exit then
-   repeat
-   PROCESS:REAP-CAPTURE
-   GT-CAPTURE-STORE ;
-
-: GT-PROGRESS-CAPTURE-FLUSH ( ^u8 n -- ) {: label:^ labelu :}
-   begin PROCESS:CAPTURE-DONE? 0= while
-      label labelu GT-PROGRESS-CAPTURE-STEP-FLUSH? if GT-CAPTURE-STORE exit then
-   repeat
-   PROCESS:REAP-CAPTURE
-   GT-CAPTURE-FLUSH-FINAL
-   GT-CAPTURE-STORE ;
-
-: GT-PROGRESS-STDIN-CAPTURE ( ^u8 len ^u8 n -- ) {: in:^ inu label:^ labelu :}
-   inu LEN>N 0 <= if PROCESS:IN-W PROCESS:CLOSE-CELL then
-   begin PROCESS:STDIN-CAPTURE-DONE? 0= while
-      in inu label labelu GT-PROGRESS-STDIN-STEP? if GT-CAPTURE-STORE exit then
-   repeat
-   PROCESS:REAP-CAPTURE
-   GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-PASS ( ^u8 n -- ) {: label:^ labelu :}
    s" PASS: " type label labelu type
@@ -495,23 +329,8 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-RC= ( n ^u8 n -- ) {: want name:^ nameu :}
    GT-RC@ want name nameu GT-CHECK-N ;
 
-: GT-RC-NONZERO ( ^u8 n -- ) {: name:^ nameu :}
-   GT-RC@ 0 <> name nameu GT-CHECK ;
-
-: GT-TIMEOUT ( ^u8 n -- ) {: name:^ nameu :}
-   GT-TIMED-OUT @ name nameu GT-CHECK ;
-
-: GT-STDOUT= ( ^u8 n ^u8 n -- ) {: want:^ wantu name:^ nameu :}
-   GT-OUT$ want wantu name nameu GT-CHECK$ ;
-
-: GT-STDERR= ( ^u8 n ^u8 n -- ) {: want:^ wantu name:^ nameu :}
-   GT-ERR$ want wantu name nameu GT-CHECK$ ;
-
 : GT-STDOUT-HAS ( ^u8 n ^u8 n -- ) {: needle:^ needleu name:^ nameu :}
    GT-OUT$ needle needleu CONTAINS? name nameu GT-CHECK ;
-
-: GT-STDERR-HAS ( ^u8 n ^u8 n -- ) {: needle:^ needleu name:^ nameu :}
-   GT-ERR$ needle needleu CONTAINS? name nameu GT-CHECK ;
 
 : GT-REPORT-OVERFLOW ( -- )
    GT-FAIL# @ GT-FAIL-MAX > if

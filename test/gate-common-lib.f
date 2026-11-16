@@ -27,7 +27,6 @@ create GE-ARGV-BUF GE-SRC-CAP allot
 
 variable GE-SRC-U
 variable GE-RD
-variable GE-INFD
 variable GE-ARGV-U
 TYPED-VARIABLE GE-EVAL-SRC-A ^u8
 variable GE-EVAL-SRC-U
@@ -39,11 +38,6 @@ variable GE-EVAL-SRC-U
 
 : GE-EVAL-SRC$ ( -- ^u8 n )
    GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ ;
-
-: GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
-   rc RC>N PROCESS-ENDING:EXITED GT-OUTCOME!
-   erru LEN>N GT-ERR-U !
-   outu LEN>N GT-OUT-U ! ;
 
 : GE-STORE-OUTCOME ( len len PROCESS:ending -- )
    GT-STORE-RUN ;
@@ -121,24 +115,6 @@ variable GE-EVAL-SRC-U
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
-   PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
-
-: GE-SPAWN-FILE-CAPTURE ( ^u8 ^^u8 ^^u8 -- )
-   GE-INFD @ >FD GE-LAUNCH-RC
-   GE-INFD @ close
-   GE-LAUNCHED
-   PROCESS:OUT-W PROCESS:CLOSE-CELL
-   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
-
-: GE-RUN-STDIN-FILE ( ^u8 n ^u8 n n -- ) {: path:^ pathu:n inpath:^ inpathu:n timeout:n :}
-   inpath inpathu FS:>PATHZ open-rd GE-INFD !
-   GE-INFD @ 0 < if E-FS-OPEN throw then
-   GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROCESS:CAPTURE-CHECK-CAPS
-   path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
-   PROC-ENV-PREPARE {: envp:^ :}
-   timeout >MS PROCESS:CAPTURE-BEGIN
-   pathz argv envp GE-SPAWN-FILE-CAPTURE
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-OUTCOME. ( PROCESS:ending -- )
