@@ -161,7 +161,7 @@ private
 : TOKEN+ ( ^syntax n n -- )
    {: state kind:n start:n :}
    state SYNTAX-TOKENS @ VEC:PUSH {: token :}
-   kind token TOKEN-KIND ! start token TOKEN-OFFSET !
+   kind token TOKEN-KIND !
    state SYNTAX-SOURCE @ start + token TOKEN-TEXT !
    state SYNTAX-POSITION @ start - token TOKEN-SIZE ! ;
 

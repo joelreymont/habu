@@ -27,7 +27,7 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
       state expression EXISTS-CALL? if found exit then
    then
    kind N-CALL = kind N-BINARY = or kind N-UNARY = or
-   kind N-LIST = or kind N-ALIAS = or if
+   kind N-ALIAS = or if
       state state expression NODE-A@ found COLLECT-AGGREGATES
       kind N-CALL <> kind N-UNARY <> and if
          state state expression NODE-B@ rot COLLECT-AGGREGATES
@@ -262,8 +262,8 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
    plan s" )subquery" SQL+ plan CTE-END relation ;
 
 : INSTALL-SQL-QUERY ( -- )
-   [: QUERY-COLLECT-AGGREGATES ;] is COLLECT-AGGREGATES
-   [: SUBQUERY-SQL ;] is SQL-QUERY ;
+   ['] QUERY-COLLECT-AGGREGATES is COLLECT-AGGREGATES
+   ['] SUBQUERY-SQL is SQL-QUERY ;
 
 INSTALL-SQL-QUERY
 

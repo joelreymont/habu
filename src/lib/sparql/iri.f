@@ -194,8 +194,6 @@ STRUCTURE path-work DERIVE addr
    state ref IRI-PATH @ ref IRI-PATH-SIZE @ REMOVE-DOTS
    ref IRI-PATH-SIZE ! ref IRI-PATH ! ;
 
-: PART+ ( ^syntax ^u8 n ^u8 n -- ^u8 n ) JOIN$ ;
-
 : IRI-JOIN ( ^syntax ^iri -- ^u8 n )
    {: state parts :}
    state parts IRI-SCHEME @ parts IRI-SCHEME-SIZE @

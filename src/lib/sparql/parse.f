@@ -7,8 +7,6 @@ require src/lib/sparql/validate.f
 package SPARQL
 private
 
-: ADD-LIST ( ^syntax n n -- n ) CONS ;
-
 : PROJECTION ( ^syntax n -- )
    {: state query:n :}
    state s" DISTINCT" ACCEPT$ if
@@ -255,7 +253,7 @@ private
    0 swap PARSE-UNTIL ;
 
 : INSTALL-PARSER ( -- )
-   [: SELECT-SUBQUERY ;] is SUBQUERY ;
+   ['] SELECT-SUBQUERY is SUBQUERY ;
 
 INSTALL-PARSER
 

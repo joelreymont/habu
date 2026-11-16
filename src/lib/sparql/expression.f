@@ -231,7 +231,7 @@ defer GROUP-PATTERN ( ^syntax -- n )
    state N-ALIAS value name BINARY-NODE ;
 
 : INSTALL-EXPRESSION ( -- )
-   [: READ-EXPRESSION ;] is EXPRESSION ;
+   ['] READ-EXPRESSION is EXPRESSION ;
 
 INSTALL-EXPRESSION
 

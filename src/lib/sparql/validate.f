@@ -91,7 +91,7 @@ defer CHECK-GROUPED ( ^syntax n n -- )
       then
    then
    kind N-CALL = kind N-UNARY = or kind N-BINARY = or
-   kind N-LIST = or kind N-ALIAS = or if
+   kind N-ALIAS = or if
       state state expression NODE-A@ aggregates EXPRESSION-CHECK
       kind N-CALL <> kind N-UNARY <> and if
          state state expression NODE-B@ aggregates EXPRESSION-CHECK
@@ -182,7 +182,7 @@ defer CHECK-GROUPED ( ^syntax n n -- )
       state expression AGGREGATE? if true exit then
    then
    kind N-CALL = kind N-UNARY = or kind N-BINARY = or
-   kind N-LIST = or kind N-ALIAS = or if
+   kind N-ALIAS = or if
       state state expression NODE-A@ CONTAINS-AGGREGATE?
          if true exit then
       kind N-CALL <> kind N-UNARY <> and if
@@ -239,7 +239,7 @@ defer CHECK-GROUPED ( ^syntax n n -- )
       state expression EXISTS-CALL? if exit then
    then
    kind N-CALL = kind N-UNARY = or kind N-BINARY = or
-   kind N-LIST = or kind N-ALIAS = or if
+   kind N-ALIAS = or if
       state state expression NODE-A@ grouped CHECK-GROUPED
       kind N-CALL <> kind N-UNARY <> and kind N-ALIAS <> and if
          state state expression NODE-B@ grouped CHECK-GROUPED
@@ -327,11 +327,11 @@ defer CHECK-GROUPED ( ^syntax n n -- )
    projected ;
 
 : INSTALL-VALIDATION ( -- )
-   [: CHECK-EXPRESSION ;] is EXPRESSION-CHECK
-   [: PATTERN-SCOPE ;] is SCOPE
-   [: CONTAINS-AGGREGATE ;] is CONTAINS-AGGREGATE?
-   [: GROUPED-CHECK ;] is CHECK-GROUPED
-   [: CHECK-QUERY ;] is QUERY-SCOPE ;
+   ['] CHECK-EXPRESSION is EXPRESSION-CHECK
+   ['] PATTERN-SCOPE is SCOPE
+   ['] CONTAINS-AGGREGATE is CONTAINS-AGGREGATE?
+   ['] GROUPED-CHECK is CHECK-GROUPED
+   ['] CHECK-QUERY is QUERY-SCOPE ;
 
 INSTALL-VALIDATION
 

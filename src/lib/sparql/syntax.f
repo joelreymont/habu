@@ -73,7 +73,6 @@ STRUCTURE token DERIVE addr
    FIELD kind n
    FIELD text ^u8
    FIELD size n
-   FIELD offset n
 ;STRUCTURE
 
 public

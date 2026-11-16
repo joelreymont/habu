@@ -178,8 +178,8 @@ private
    plan CTE-END relation ;
 
 : INSTALL-SQL-PATH ( -- )
-   [: PATH-SQL ;] is SQL-PATH
-   [: PATH-TRIPLE-SQL ;] is PATH-TRIPLE ;
+   ['] PATH-SQL is SQL-PATH
+   ['] PATH-TRIPLE-SQL is PATH-TRIPLE ;
 
 INSTALL-SQL-PATH
 

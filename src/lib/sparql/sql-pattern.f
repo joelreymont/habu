@@ -401,8 +401,8 @@ defer GROUP-SQL ( ^plan n n bool -- n )
    plan pattern input PATTERN-SQL-BODY plan TREE UNNEST ;
 
 : INSTALL-SQL-PATTERN ( -- )
-   [: READ-GROUP-SQL ;] is GROUP-SQL
-   [: PATTERN-SQL ;] is SQL-PATTERN ;
+   ['] READ-GROUP-SQL is GROUP-SQL
+   ['] PATTERN-SQL is SQL-PATTERN ;
 
 INSTALL-SQL-PATTERN
 
