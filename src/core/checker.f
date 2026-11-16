@@ -1812,9 +1812,8 @@ public
    s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
 ;package
 
-\ A top-level step (CHECKER-TOP-WORD and its kin) is on: the interpret row applies
-\ the type and storage rules a body does, but none a body's own authority
-\ decides.
+\ On while a top-level step runs: it applies a body's type, storage and
+\ trusted-only rules, takes top-only rows, binds names outside a package context.
 variable TOP-STEP
 
 variable WALK-ITEMS   \ the items of the text walked, 0 when it has none
@@ -17536,7 +17535,7 @@ CHECKER-REG:}SCRATCH
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
       PE-I @ PE-TAKES? IF
          PE-I @ PE-SYM@ sym = IF
-            PE-I @ PE-TRUSTED-ONLY? TOP-STEP @ 0= and IF   \ reached only from a CHECKED body -> reject fail-closed
+            PE-I @ PE-TRUSTED-ONLY? IF   \ checked code, a body or a top-level step -> reject fail-closed
                -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
             TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
             -1 TSEEN !
@@ -18492,7 +18491,7 @@ public
 3 constant CALL-PRIMS
 
 : CALL-AUTHORITY ( n -- n ) {: sym:n :}
-   sym PRIM-TRUSTED-SYM? IF TOP-STEP @ IF CALL-PRIMS ELSE CALL-REFUSED THEN EXIT THEN
+   sym PRIM-TRUSTED-SYM? IF CALL-REFUSED EXIT THEN
    FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
    CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN

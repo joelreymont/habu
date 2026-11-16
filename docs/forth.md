@@ -21,9 +21,10 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - An `EPPRIM:` row belongs to its package: only that package's checked bodies
   call the primitive. Outside it, a call of a primitive whose one row is the
   private one (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level,
-  and a top-level `'` of it yields the xt; a body's call of one that also keeps
-  a global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
-  `[']` of it is admitted and refused exactly where that call is.
+  and a top-level `'` of it yields the xt; a call of one that also keeps a
+  global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`, in a body
+  and at top level. A checked `[']` of it is admitted and refused exactly where
+  that call is.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ^u8 n -- )`: the text runs on a guarded data stack of

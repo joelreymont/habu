@@ -247,8 +247,8 @@ public
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- primitive negatives: the checker measures a primitive by its row ------
-\ A bare primitive on a shallow stack takes the same rejection, a row with no
-\ input atoms (2>r) included.
+\ A bare primitive checked code may call takes the same rejection on a shallow
+\ stack, a row with no input atoms (2>r) included.
 
 : UDG-BARE$ ( ^u8 n -- ^u8 n )     \ program = the bare token on one line
    SB-RESET
@@ -262,20 +262,13 @@ public
 : UDG-NEG-PRIMS ( -- )
    s" bare catch fails closed (was SIGSEGV)" T-LABEL
    s" catch" UDG-PRIM-ROW
-   s" bare ffi-call fails closed (was SIGSEGV)" T-LABEL
-   s" ffi-call" UDG-PRIM-ROW
-   s" bare patch32 fails closed (was SIGSEGV)" T-LABEL
-   s" patch32" UDG-PRIM-ROW
    s" bare evaluate fails closed pre-execution" T-LABEL
    s" evaluate" UDG-PRIM-ROW
    s" evaluate on one cell fails closed pre-execution" T-LABEL
    SB-RESET s" 1 evaluate" UDG-LINE SB$ UDG-EXEC:SUBJECT
    s" evaluate" UDG-ASSERT-UNDERDEPTH
    s" bare 2>r fails closed (was a guard-page read, rc 102)" T-LABEL
-   s" 2>r" UDG-PRIM-ROW
-   s" partial-depth ffi-call fails closed" T-LABEL
-   SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-EXEC:SUBJECT
-   s" ffi-call" UDG-ASSERT-UNDERDEPTH ;
+   s" 2>r" UDG-PRIM-ROW ;
 
 \ --- body negatives: a primitive's input is measured as any word's ----------
 

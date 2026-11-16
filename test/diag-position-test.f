@@ -376,6 +376,19 @@ variable RC
    s" " CHECK
    s" E-MISMATCH" s" +" 1 8 7 8 FX-PATH$ FX$ TOP-AT ;
 
+: TEST-TOP-TRUSTED ( -- )
+   s" a top-level call of a trusted-only primitive is rejected" T-LABEL
+   SB-RESET
+   s" 0 execute-floor drop" SB-APPEND LF+
+   s" top-trusted.f" FIXTURE!
+   s" " CHECK
+   s" E-CAP-TRUSTED" s" execute-floor" 1 3 2 15
+   FX-PATH$ FX$ TOP-AT
+   0 s" label" s" not callable from checked code" FIELD=
+   0 s" help"
+   s" call a checked word that wraps `execute-floor` in place of calling it here"
+   FIELD= ;
+
 : SHADOW-FIXTURE ( ^u8 n ^u8 n -- )
    {: decl:^ declu:n body:^ bodyu:n :}
    SB-RESET
@@ -2757,6 +2770,7 @@ variable RC
    TEST-LATER
    TEST-TOP-LINE
    TEST-TOP-DEP
+   TEST-TOP-TRUSTED
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW

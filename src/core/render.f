@@ -1687,7 +1687,8 @@ CHECKER-REG:}SCRATCH
       RF-UNDEF of s" not found" EMIT-STR endof
       RF-QUAL of s" more than one `:`" EMIT-STR endof
       RF-IMM of s" unmodeled immediate" EMIT-STR endof
-      RF-CAP of s" not callable from a checked body" EMIT-STR endof
+      RF-CAP of TOP-STEP @ IF s" not callable from checked code"
+         ELSE s" not callable from a checked body" THEN EMIT-STR endof
       RF-UNSAFE of s" not allowed in a checked body" EMIT-STR endof
       RF-LINLOCAL of s" bound here" EMIT-STR endof
       RF-LOCAL of LOCAL-LABEL endof
@@ -1891,7 +1892,8 @@ PTR-VARIABLE HOLDER-FIRST
 
 : CAP-HELP ( -- )
    s" call a checked word that wraps " EMIT-STR  TOK-SPAN
-   s"  in place of calling it from this body" EMIT-STR ;
+   TOP-STEP @ IF s"  in place of calling it here"
+   ELSE s"  in place of calling it from this body" THEN EMIT-STR ;
 
 : UNSAFE-HELP ( -- )
    PIN-TOK$ s" evaluate" CORE-STR=CI IF
