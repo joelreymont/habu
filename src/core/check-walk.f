@@ -3249,9 +3249,21 @@ CHECKER-REG:}SCRATCH
    s"  ) ... ;`, in place of the constant" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+\ `constant`, spelled a u, would take the cell it names w v from an empty stack.
+: TOP-EMPTY-TAKE-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
+   s" E-INPUT-UNDERFLOW" REJECTION:OPEN
+   s" `constant` takes the value `" REJECTION:EMIT-STR  w v REJECTION:EMIT-STR
+   s" ` names, and the stack is empty" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" takes one cell" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" push the value before `constant`, as `0 constant " REJECTION:EMIT-STR
+   w v REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ A keyword takes the top cell with no word event, so the row is not saved:
 \ the next event fits it to the live depth.
 : TOP-TAKE-STEP ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
+   DCUR @ ROW-CELLS 0= IF a u w v TOP-EMPTY-TAKE-REJECT THEN
    DCUR @ 1 TOP-WIDE-IN-K? 0= IF EXIT THEN
    a u w v TOP-CONSTANT-REJECT ;
 
