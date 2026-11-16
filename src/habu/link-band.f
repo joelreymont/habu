@@ -233,12 +233,18 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
-\ A build for a machine the linker has no part for, such as an x86-64 target.
-\ The linker holds no source place, so the record is unplaced.
-: NO-PART ( -- )
+\ The machines a part of the linker places, which NO-PART's text names.
+: PLACES? ( CTARGET:arch -- bool ) {: a:CTARGET:arch :}
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ  a CTARGET-ARCH:WASM CTARGET-ARCH:EQ  or ;
+
+
+\ A build for the target t tu names, whose machine the linker has no part for, such
+\ as an x86-64 target. The linker holds no source place, so the record is unplaced.
+: NO-PART ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-LINK-MACHINE" REJECTION:OPEN
    s" the build's code is for a machine the linker cannot place: it places arm64 and Wasm code"
    REJECTION:EMIT-STR
+   s" found" REJECTION:NOTE  t tu REJECTION:EMIT-STR
    REJECTION:HELP
    s" build for macos-aarch64, linux-aarch64 or wasm" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -248,18 +254,22 @@ variable UNSAFE-COUNT
 \ kind, and whether they hold one there, read by a's part of LINKER.
 : ADDRESS@ ( CTARGET:arch ^u8 n n n -- n bool )
    {: a:CTARGET:arch b:^ s:n site:n kind:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
-   NO-PART ;
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if
+      b s site kind ARM64:ADDRESS@
+   else
+      b s site kind WASM:ADDRESS@
+   then ;
 
 
 \ v written as ADDRESS@ reads it, by a's part of LINKER; false, with nothing written,
 \ where ADDRESS@ answers false.
 : ADDRESS! ( n CTARGET:arch ^u8 n n n -- bool )
    {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
-   NO-PART ;
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if
+      v b s site kind ARM64:ADDRESS!
+   else
+      v b s site kind WASM:ADDRESS!
+   then ;
 
 
 \ Emission e's address site k's value and whether it holds one, read as the emission's

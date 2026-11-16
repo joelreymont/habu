@@ -176,7 +176,6 @@ variable HBB-ELAPSED-NS
    HBB-RESET-OPTIONS
    0 HBB-I !
    HBB-PARSE-OPTIONS
-   HBB-ENGINE @ 0<> HBB-REPL @ 0<> or if HBB-TARGET @ HB-BUILD-CORE:REFUSE-WASM then
    HBB-ENGINE @ if
       HBB-REPL @ 0<> HBB-JSON @ 0<> or if HBB-USAGE then
       SCRIPT-ARGC HBB-I @ - 2 <> if HBB-USAGE then

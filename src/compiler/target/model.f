@@ -81,6 +81,18 @@ ENUM core-result
    VARIANT unsupported ;VARIANT
 ;ENUM
 
+\ A target's platform name, one per target; empty for a profile with none.
+: PLATFORM-NAME ( profile-id -- ^u8 n )
+   MATCH profile-id
+      aarch64-apple-darwin OF s" macos-aarch64" ENDOF
+      aarch64-unknown-linux-gnu OF s" linux-aarch64" ENDOF
+      x86-64-unknown-linux-gnu OF s" linux-x86-64" ENDOF
+      wasm32-unknown-unknown OF s" wasm" ENDOF
+      aarch64-pc-windows-msvc OF s" " ENDOF
+      x86-64-pc-windows-msvc OF s" " ENDOF
+      wasm64-unknown-unknown OF s" " ENDOF
+   ;MATCH ;
+
 private
 
 : PROFILE-ARCH ( profile-id -- CTARGET:arch )
@@ -186,18 +198,6 @@ private
    RTARGET-PROFILE--ID:X86-64-PC-WINDOWS-MSVC q execute
    RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN q execute
    RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN q execute ;
-
-\ A target's platform name, one per target; empty for a profile with none.
-: PLATFORM-NAME ( profile-id -- ^u8 n )
-   MATCH profile-id
-      aarch64-apple-darwin OF s" macos-aarch64" ENDOF
-      aarch64-unknown-linux-gnu OF s" linux-aarch64" ENDOF
-      x86-64-unknown-linux-gnu OF s" linux-x86-64" ENDOF
-      wasm32-unknown-unknown OF s" wasm" ENDOF
-      aarch64-pc-windows-msvc OF s" " ENDOF
-      x86-64-pc-windows-msvc OF s" " ENDOF
-      wasm64-unknown-unknown OF s" " ENDOF
-   ;MATCH ;
 
 \ The profile found and true; else p and true when NAMES spells p as the name.
 : FIND-STEP ( profile-id bool profile-id ^u8 n [ profile-id -- ^u8 n ] -- profile-id bool )

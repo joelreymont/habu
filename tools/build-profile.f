@@ -99,6 +99,9 @@ public
    JSON-REPORT
    s" build-profile: reports in " type TEXT$ type s"  and " type JSON$ type cr
    rc 0<> if
+      \ A throw in 1..255 is an exit status, passed on as hb passes it: a rejection's,
+      \ its record out, or one the program's own top-level code threw.
+      rc 1 >= rc 255 <= and if s" " rc die then
       s" build-profile: the build threw " type rc . s" at " type HB-BUILD-CORE:WHERE$ type cr
       s" " 1 die
    then ;

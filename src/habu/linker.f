@@ -5784,6 +5784,10 @@ TYPED-VARIABLE EXITER [ -- ]
 
 public
 
+\ Callable outside a build, so a command line rejects a target before it makes anything.
+: REJECT-UNPLACEABLE ( RTARGET:resolved-target -- ) {: t:RTARGET:resolved-target :}
+   t RTARGET:ARCH@ PLACES? 0= if t RTARGET:PROFILE@ RTARGET:PLATFORM-NAME NO-PART then ;
+
 \ Run the body in a build's space with no package of hb's open, close on every
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
 \ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the

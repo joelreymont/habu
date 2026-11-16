@@ -15,6 +15,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/fs-list.f
 require src/lib/test.f
 require src/core/engine-error.f
 require src/arch/wasm/profile.f
@@ -406,6 +408,71 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : NO-MODULE ( -- )  MOD MOD-U @ FS:EXISTS? TFALSE ;
 
+PATH-CAP BUFFER: OUT-ROOT
+variable OUT-ROOT-U
+variable ENTRIES
+
+\ The command line started, with HABU_OUT naming OUT-ROOT, the name in DIR;
+\ answers its exit status.
+: RUN-X86 ( ^u8 n -- n )
+   {: name:^ nu:n :}
+   DIR DIR-U @ name nu OUT-ROOT FS:JOIN-PATH OUT-ROOT-U !
+   PROC-ENV-RESET
+   s" HABU_OUT" >LEN  OUT-ROOT OUT-ROOT-U @ >LEN  PROC-ENV-SET
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
+   erru LEN>N ERR-U !
+   rc ;
+
+: X86+ ( -- )  s" --target" ARG+  s" linux-x86-64" ARG+ ;
+
+\ The entries under OUT-ROOT, 0 when it is missing.
+: OUT-ENTRIES ( -- n )
+   0 ENTRIES !
+   OUT-ROOT OUT-ROOT-U @ FS:EXISTS? if
+      OUT-ROOT OUT-ROOT-U @ [: 2drop 1 ENTRIES +! ;] FS-LIST:EACH
+   then
+   ENTRIES @ ;
+
+\ The line feeds in ERR.
+: ERR-LINES ( -- n )
+   0  ERR-U @ 0 ?do ERR i + c@ 10 = if 1+ then loop ;
+
+: NOTHING-MADE ( -- )  OUT-ENTRIES 0 T=  NO-MODULE ;
+
+: X86-APP-CASE ( -- )
+   s" a linux-x86-64 build is rejected with 70, one JSON record naming the target, nothing made" T-LABEL
+   s" x86" START  s" --json-errors" ARG+  X86+  SRC+  MOD+
+   s" x86-out" RUN-X86 70 T=
+   ERR-LINES 1 T=
+   S\" {\"severity\":\"error\",\"code\":\"E-LINK-MACHINE\"" ERR-HAS
+   S\" \"found\":\"linux-x86-64\"" ERR-HAS
+   NOTHING-MADE ;
+
+: X86-ENGINE-CASE ( -- )
+   s" a linux-x86-64 engine build is rejected naming the target, with 70, nothing made" T-LABEL
+   s" x86-engine" START  s" --engine" ARG+  X86+  MOD+
+   s" engine-out" RUN-X86
+   s" = found: linux-x86-64" ERR-HAS
+   70 T=
+   NOTHING-MADE ;
+
+: X86-REPL-CASE ( -- )
+   s" a linux-x86-64 REPL build is rejected by one JSON record naming the target, with 70, nothing made" T-LABEL
+   s" x86-repl" START  s" --repl" ARG+  s" --json-errors" ARG+
+   X86+  SRC+  MOD+  s" repl-out" RUN-X86
+   ERR-LINES 1 T=
+   S\" \"found\":\"linux-x86-64\"" ERR-HAS
+   70 T=
+   NOTHING-MADE ;
+
+\ Each entry rejects the target itself: the linker's placing words have no
+\ arm for it.
+: UNPLACEABLE-CASE ( -- )
+   s" : MAIN ( -- ) ;" s" x86.f" SOURCE!
+   X86-APP-CASE  X86-ENGINE-CASE  X86-REPL-CASE ;
+
 : REFUSAL-CASES ( -- )
    s" : MAIN ( -- ) here drop align ;" s" kernel.f" SOURCE!
    s" kernel words with no routine are each rejected by name with 70 and no module" T-LABEL
@@ -449,13 +516,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    NO-MODULE
    s" an engine build for Wasm is refused with 64 and no module" T-LABEL
    s" engine.wasm" BUILD-ENGINE 64 T=
-   s" hb-build: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
+   s" error[E-BUILD-USAGE]: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
+   s" help: build the engine or REPL for macos-aarch64 or linux-aarch64" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) ;" s" repl.f" SOURCE!
    s" a REPL build for Wasm is refused with 64 and no module" T-LABEL
    s" repl.wasm" BUILD-REPL 64 T=
-   s" hb-build: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
-   NO-MODULE ;
+   s" error[E-BUILD-USAGE]: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
+   s" help: build the engine or REPL for macos-aarch64 or linux-aarch64" ERR-HAS
+   NO-MODULE
+   UNPLACEABLE-CASE ;
 
 
 \ Package X in execute.f: execute of a named word's xt, of a quotation and of a

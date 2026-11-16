@@ -487,14 +487,19 @@ SUM-U 32 + constant HEAD-U
    mode modeu target body LINKER:WITH
    construct stage idle STAGE! ;
 
-public
-
-\ hb and a REPL program run where hb runs, so only a program builds for Wasm: a
-\ command line calls this before it makes anything.
+\ hb and a REPL program run where hb runs, so only a program builds for Wasm:
+\ ENGINE and REPL call this before they make anything.
 : REFUSE-WASM ( RTARGET:resolved-target -- )
    TARGET-WASM? if
-      s" hb-build: a Wasm target builds a program, not an engine or a REPL" USAGE-RC die
+      s" E-BUILD-USAGE" REJECTION:OPEN
+      s" a Wasm target builds a program, not an engine or a REPL" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" build the engine or REPL for macos-aarch64 or linux-aarch64, or drop `--engine` / `--repl` to build a Wasm program"
+      REJECTION:EMIT-STR
+      USAGE-RC REJECTION:STOP
    then ;
+
+public
 
 \ Writes this tree's kernel object, an engine's or a stripped program's, in
 \ hb's object directory, the tree's writer laying its bytes and this tool
@@ -538,6 +543,7 @@ public
 \ answers when the build writes.
 : ENGINE ( [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: out target:RTARGET:resolved-target :}
+   target LINKER:REJECT-UNPLACEABLE
    target REFUSE-WASM
    out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
@@ -547,6 +553,7 @@ public
 \ and write it to the path the quotation answers when the build writes.
 : REPL ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
+   target LINKER:REJECT-UNPLACEABLE
    target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
@@ -556,6 +563,7 @@ public
 \ the path the quotation answers when the build writes.
 : APP ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
+   target LINKER:REJECT-UNPLACEABLE
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
