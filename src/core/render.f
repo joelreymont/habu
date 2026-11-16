@@ -1858,6 +1858,15 @@ PTR-VARIABLE HOLDER-FIRST
    t tu REJECTION:AT  s" not found" EMIT-STR
    REJECTION:HELP  t tu d du UNDEF-HELP ;
 
+\ Body keyword t tu run outside a definition; the caller stops or keeps it.
+: BODY-ONLY-RECORD ( ^u8 n -- )
+   {: t:^ tu:n :}
+   s" E-UNDEFINED" REJECTION:OPEN
+   t tu CODE-SPAN  s"  works only inside a definition" EMIT-STR
+   t tu REJECTION:AT  s" outside a definition" EMIT-STR
+   REJECTION:HELP  s" move " EMIT-STR  t tu CODE-SPAN
+   s"  into a `:` … `;` body" EMIT-STR ;
+
 : IMM-HELP ( -- )
    s" remove " EMIT-STR  TOK-SPAN
    s"  from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"

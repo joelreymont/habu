@@ -592,7 +592,15 @@ TYPED-VARIABLE RUNS-ON bool
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
-   LOOKUP RUN-FOUND ;
+   SEARCH
+   REC @ XREF-FOUND? 0= if
+      TOKEN$ BODY-KEYWORD? if
+         TOKEN$ BODY-ONLY-RECORD  CHECKER-REJECT-RC REJECTION:STOP
+      else
+         UNDEFINED
+      then
+   then
+   RUN-FOUND ;
 
 \ A keyword is matched before the token is read as a number or a word, and it
 \ reads the input after it itself. Each keyword table is a word that runs the
@@ -1559,11 +1567,6 @@ private
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ DEF-QUALIFY-NAME ;
 
-\ The keywords a body's compiler reads before it looks a word up: a word named
-\ by one could never be called from a body.
-: DEF-KEYWORDS ( -- ^u8 n )
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone" ;
-
 \ A design may define none of the engine's dispatch-row names. The admitted
 \ syntax rows other than S\" keep the ordinary reserved-name error; every other
 \ row is outside the vocabulary before dictionary duplicate checks run.
@@ -1597,14 +1600,11 @@ private
    repeat
    drop false ;
 
-: DEF-KEYWORD? ( ^u8 n -- bool )
-   DEF-KEYWORDS DEF-IN-TABLE? ;
-
 : DEF-DESIGN-KEYWORD? ( ^u8 n -- bool )
    DEF-DESIGN-KEYWORDS DEF-IN-TABLE? ;
 
 : DEF-ROW-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u DEF-KEYWORD? if true exit then
+   a u BODY-KEYWORD? if true exit then
    a u DEF-INTERPRET-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
@@ -1655,7 +1655,7 @@ private
       a u DEF-DESIGN-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
       a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
    else
-      a u DEF-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
+      a u BODY-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
    then
    a u NUMBER {: v:n flt:bool num:bool range:bool :}
    num range or if a u t tu DEF-NUMBER-REFUSE then ;

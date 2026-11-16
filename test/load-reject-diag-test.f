@@ -307,13 +307,23 @@ variable RC
      timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
+\ Runs the engine under test on the arguments built for PATH.
+: LAUNCH ( ^u8 n -- ) {: path:^ pathu:n :}
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   path pathu STORE! ;
+
 : RUN ( ^u8 n -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   path pathu STORE! ;
+   path pathu LAUNCH ;
+
+: CHECK-RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  path pathu >LEN PROC-ARGV+
+   path pathu LAUNCH ;
 
 : ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
@@ -965,6 +975,22 @@ variable RC
    S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+: BODY-ONLY-EXPECT ( -- )
+   SB-RESET
+   s" error[E-UNDEFINED]: `if` works only inside a definition" SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND
+   S\" :1:1\n  |\n1 | if\n  | ^^ outside a definition\n" SB-APPEND
+   S\"   = help: move `if` into a `:` … `;` body\n\n" SB-APPEND ;
+
+: TEST-BODY-ONLY ( -- )
+   s" a top-level if is told to move into a definition" T-LABEL
+   BODY$ S\" if\n" FS:WRITE-ALL
+   BODY$ RUN
+   BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" tools/check.f tells a top-level if to move into a definition" T-LABEL
+   BODY$ CHECK-RUN
+   BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
+
 \ Under a rendering statement's mark CHECK leaves an undefined name to the run
 \ (VERDICT-DEFERRED), which the engine never compiles: the definition rejects it.
 : TEST-DEFERRED ( -- )
@@ -1179,6 +1205,7 @@ variable LONG-U
    TEST-DEF-ONCE
    TEST-RECURSE-HELP
    TEST-UNDEF-HOLDER
+   TEST-BODY-ONLY
    TEST-DEFERRED
    TEST-SHADOW
    TEST-EMPTY-PATH

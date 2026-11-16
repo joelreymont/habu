@@ -20597,6 +20597,20 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" recurse" CORE-STR= IF 24 EXIT THEN
    -1 ;
 
+\ The keywords a body's compiler reads before it looks a word up: a word named
+\ by one could never be called from a body.
+: BODY-KEYWORD? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
+   {: t:^ tu:n :}
+   0 BEGIN dup tu < WHILE
+      {: s:n :}
+      t tu s PROW-INK {: e:n :}
+      a u  t s +  e s -  CORE-STR=CI IF RES-TRUE EXIT THEN
+      e 1 +
+   REPEAT
+   drop RES-FALSE ;
+
 : CF-STEP ( n -- ) {: code:n :}
    CHECKER-TAPE:K-CONTROL code 0 EVENT!
    code case

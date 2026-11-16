@@ -2342,10 +2342,10 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ A top-level token no scope defines, or one with a malformed qualifier when
-\ bad is set.
-: TOP-REJECT ( ^u8 n bool -- n )
-   {: a:^ u:n bad:bool :}
+\ A top-level token no scope defines, run when runs is set, else ticked; or one
+\ with a malformed qualifier when bad is set.
+: TOP-REJECT ( ^u8 n bool bool -- n )
+   {: a:^ u:n runs:bool bad:bool :}
    bad IF
       s" E-BAD-QUALIFIED-TOP-LEVEL" REJECTION:OPEN
       s" the qualified name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -2355,7 +2355,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
       s" ` with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR
    ELSE
-      a u NULL-PTR 0 UNDEFINED-RECORD
+      runs a u BODY-KEYWORD? and IF a u BODY-ONLY-RECORD
+      ELSE a u NULL-PTR 0 UNDEFINED-RECORD THEN
    THEN
    TOP-END ;
 
@@ -2379,7 +2380,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
-   a u  CHECKER-QBAD-TOK @ 0 <>  TOP-REJECT ;
+   a u runs  CHECKER-QBAD-TOK @ 0 <>  TOP-REJECT ;
 
 : CHECKER-VERIFY-TOP ( ^u8 n bool -- n )
    {: a:^ u:n runs:bool :}

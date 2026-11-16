@@ -2330,7 +2330,7 @@ runtime or analysis layer.
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
   Both ticks resolve the name as a bare word does (the open scope, the globals,
-  then the used publics), and a miss is `E-UNDEFINED` (`undefined word 'NAME'`), catchable under
+  then the used publics), and a miss is `E-UNDEFINED`, catchable under
   `evaluate`. A tick is no presence probe: require the file that defines the
   word first.
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
@@ -2573,9 +2573,10 @@ sections above.
   token outside a known declaration is resolved as the loader would resolve
   it. Numbers use the engine's parser; `-3`, `$FF` and `1.5` are literals,
   an over-bound decimal is `E-LITERAL-RANGE`, and `1.`, `$GG`, other missing
-  names and the compile-only words `if`, `does>`, `[char]`, `[']`, `[:`, `is`
-  and `.(` are `E-UNDEFINED` at their tokens before they run; `;` with no
-  definition open is `E-NO-DEFINITION`. A malformed qualified name is
+  names and the compile-only words `if`, `does>`, `[char]`, `[']`, `[:` and
+  `is` are `E-UNDEFINED` at their tokens before they run, and a compile-only
+  word's record says to move it into a definition; `;` with no definition
+  open is `E-NO-DEFINITION`. A malformed qualified name is
   `E-BAD-QUALIFIED-TOP-LEVEL`; ambiguous and global-shadowing `using` names
   get their body diagnostics. Top-level `PKG:tail` while PKG is open may find
   global `tail` if its public section lacks one; the selected word's own
