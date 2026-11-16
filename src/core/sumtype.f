@@ -199,16 +199,8 @@ $1000 constant TDA-FIRST                 \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE TDA-P   NULL-PTR TDA-P !
 variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
 
-: TDA-ROOM ( n -- ) {: u:n :}
-   TDA-CAP @ 0= IF
-      TDA-FIRST ARENA-ALLOC-BYTES TDA-P !  TDA-FIRST TDA-CAP !
-   THEN
-   TDA-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
-   nc TDA-CAP @ > IF
-      TDA-P @ TDA-CAP @ nc ARENA-BYTES-GROW TDA-P !  nc TDA-CAP !
-   THEN ;
 : TDA-KEEP ( ^u8 n -- ) {: a:^ u:n :}
-   u TDA-ROOM
+   TDA-P TDA-CAP TDA-FIRST u ARENA-ROOM
    a TDA-P @ u ARENA-COPY
    TDA-P @ TDA-A !  u TDA-U ! ;
 

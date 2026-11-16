@@ -40,15 +40,16 @@ SD-RESET
 PTR-VARIABLE NOUN-A   variable NOUN-U
 : NOUN@ ( -- ^u8 n ) NOUN-A @ NOUN-U @ ;
 
-\ A rejection's label is composed here and read when the record prints, so the
-\ next rejection may reuse the buffer.
-$80 constant SD-MSG-CAP
-create SD-MSG SD-MSG-CAP allot
+\ A rejection's label is composed here, grown to fit, and read when the record
+\ prints, so the next rejection may reuse the buffer.
+$80 constant SD-MSG-FIRST               \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE SD-MSG-P   NULL-PTR SD-MSG-P !
+variable SD-MSG-CAP   0 SD-MSG-CAP !    \ bytes mapped at SD-MSG-P, 0 for none
 variable SD-MSG-U
 : SD-MSG+ ( ^u8 n -- ) {: a:^ u:n :}
-   SD-MSG-CAP SD-MSG-U @ - u min {: k:n :}
-   k 0 ?do a i + c@  SD-MSG SD-MSG-U @ + i + c! loop
-   SD-MSG-U @ k + SD-MSG-U ! ;
+   SD-MSG-P SD-MSG-CAP SD-MSG-FIRST SD-MSG-U @ u + ARENA-ROOM
+   a SD-MSG-P @ SD-MSG-U @ + u ARENA-COPY
+   SD-MSG-U @ u + SD-MSG-U ! ;
 : SD-WORD+ ( ^u8 n -- ) {: a:^ u:n :}   \ a blank, then the word
    u 0= IF EXIT THEN
    s"  " SD-MSG+  a u SD-MSG+ ;
@@ -59,7 +60,7 @@ variable SD-MSG-U
    pa pu SD-MSG+
    pu 0= IF na nu SD-MSG+ ELSE na nu SD-WORD+ THEN
    sa su SD-WORD+
-   SD-MSG SD-MSG-U @ ;
+   SD-MSG-P @ SD-MSG-U @ ;
 : SD-TEXT ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
    pa pu NOUN@ sa su SD-NOUN-TEXT ;
 : SD-REJECT ( ^u8 n ^u8 n ^u8 n n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
@@ -89,16 +90,8 @@ PERSISTED-PTR-VARIABLE HELP-P   NULL-PTR HELP-P !
 variable HELP-CAP   0 HELP-CAP !        \ bytes mapped at HELP-P, 0 for none
 variable HELP-U
 
-: HELP-ROOM ( n -- ) {: u:n :}
-   HELP-CAP @ 0= IF
-      HELP-FIRST ARENA-ALLOC-BYTES HELP-P !  HELP-FIRST HELP-CAP !
-   THEN
-   HELP-CAP @ BEGIN dup u < WHILE 2 * REPEAT {: nc:n :}
-   nc HELP-CAP @ > IF
-      HELP-P @ HELP-CAP @ nc ARENA-BYTES-GROW HELP-P !  nc HELP-CAP !
-   THEN ;
 : HELP-C+ ( n -- ) {: c:n :}
-   HELP-U @ 1 + HELP-ROOM
+   HELP-P HELP-CAP HELP-FIRST HELP-U @ 1 + ARENA-ROOM
    c HELP-P @ HELP-U @ + c!
    HELP-U @ 1 + HELP-U ! ;
 : HELP+ ( ^u8 n -- ) {: a:^ u:n :}
@@ -237,7 +230,7 @@ variable HELP-U
    s" `" SD-MSG+  a u SD-MSG+  s" ` is " SD-MSG+  want USE-KIND$ SD-MSG+
    s"  here, but field `" SD-MSG+  fa fu SD-MSG+  s" ` uses it as " SD-MSG+
    kind USE-KIND$ SD-MSG+
-   SD-MSG SD-MSG-U @
+   SD-MSG-P @ SD-MSG-U @
    ENUM? IF
       s" give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`"
    ELSE

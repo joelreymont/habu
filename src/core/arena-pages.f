@@ -80,3 +80,10 @@
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
    base oldbytes ARENA-ABANDON
    nb ;
+
+\ Fits need bytes in the mapping pv holds; capv holds its byte count, 0 before
+\ the first mapping. A grow moves the bytes, so an address into them goes stale.
+: ARENA-ROOM ( ^^a ^n n n -- ) {: pv:^ capv:^ first:n need:n :}
+   capv @ 0= IF first ARENA-ALLOC pv !  first capv ! THEN
+   capv @ BEGIN dup need < WHILE 2 * REPEAT {: nc:n :}
+   nc capv @ > IF pv @ capv @ nc ARENA-BYTES-GROW pv !  nc capv ! THEN ;

@@ -370,6 +370,10 @@ DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtype`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is an element type here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
+\ The label carries a 255-byte field name, the longest a name may be, whole.
+DECL-DIAG:PROSE
+s" STRUCTURE sdglong<a,q> FIELD fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" a" s" `a` is a scope here, but field `fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgheld<a,q> FIELD p ^a FIELD w read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
 DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
