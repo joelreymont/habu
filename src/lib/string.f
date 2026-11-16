@@ -241,6 +241,11 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    dup STR-DIGIT? if drop STR-TRUE exit then
    ASCII-LOWER dup STR-LOWER-A < swap STR-LOWER-F > or 0= ;
 
+: STR-ALNUM? ( n -- bool )   \ 0-9, A-Z or a-z
+   dup STR-DIGIT? if drop STR-TRUE exit then
+   ASCII-LOWER dup STR-BEFORE-LOWER-A >
+   swap STR-AFTER-LOWER-Z < and ;
+
 : STR-HEX-DIGIT-VALUE ( n -- n )   \ the value of a byte STR-HEX-DIGIT? accepts
    dup STR-DIGIT? if STR-DIGIT-VALUE exit then
    ASCII-LOWER STR-LOWER-A - STR-BASE + ;
