@@ -678,6 +678,8 @@ require src/lib/prelude.f
 \ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
 \ which owns package STUDIO.
 
+\ SPARQL Query: -10000..-10099, minted in src/lib/sparql/ (package SPARQL).
+
 \ T0 (src/habu/t0.f): -9600..-9609.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST

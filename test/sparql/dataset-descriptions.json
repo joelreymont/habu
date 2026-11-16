@@ -1,0 +1,2268 @@
+{
+  "source": "Recorded dataset selections from the same pinned Spargebra parser in the previous native run; these describe input graphs only, never expected query answers.",
+  "library_sha256": "2aa528cac54bab5cda3bd5cd263330efb0b1298aa1052116a475af80a3eb203f",
+  "suite_revision": "7b5afb91857a9c282c03d2e45d3f76485797c901",
+  "tests": {
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-nested-1": {
+      "query_sha256": "cce0c30254895c8892f1c1590992b1131f14af1948382a00832a3ea42a73bedc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-nested-2": {
+      "query_sha256": "dda52183e2791bf6914dd0eb7bf297ff1b1690cb055dd40581c6da7859ed93de",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-place-1": {
+      "query_sha256": "f40c9e3d4094d452eac47807a72bd5e8e6edf9c59db8c74dce6fb2e8af9e17bd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-place-2": {
+      "query_sha256": "200ea430d4ed1de62f766edd29935f20e05c6fbe744aa376e7ba6df59199106e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-place-3": {
+      "query_sha256": "6494fbf3dde7167b9682be17fb71a629d78a870b2cfd55b38dfde072da007217",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#filter-scope-1": {
+      "query_sha256": "8683ae62a23ee0e615eac7328c44fbe5c1e1e2105e6db483cb9a7b5129fab5d0",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#join-combo-1": {
+      "query_sha256": "4932a04fe02a0d7bd60cab7e3a504bed4a9a25cf6296e17c9e3d22af2dc7fc5d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#join-combo-2": {
+      "query_sha256": "c0c9eaaf374f35ed41be57b35940acabd9d6520a6b9ef45c8fa6af21efd263cd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#join-scope-1": {
+      "query_sha256": "201e9bcd3877dd70e9e14ee17461c3b4585570430d510f6f70539394471b399d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#nested-opt-1": {
+      "query_sha256": "fbf37a6ead0e957083d9445f7485fafbea27b1ef6720fe42269219fdcf6a0ec9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#nested-opt-2": {
+      "query_sha256": "e5ec06b6189984baf7cb6cc9fa9816d57c1f9dff1bce95d88ba5fa5ef5dd60e2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#opt-filter-1": {
+      "query_sha256": "62dce8232b224003ac8f975ef8bd771f22f624af872236b6076f80e2ff131647",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#opt-filter-2": {
+      "query_sha256": "d2888fdd86535dcc937332426767bda049e9d65803f7fec9540fc3a3ede9ab26",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/algebra/manifest#opt-filter-3": {
+      "query_sha256": "2a1a5f8066bc0e9ab8a3a79dbe8629187be00afccd9b70c96809765eecd44a3e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/ask/manifest#ask-1": {
+      "query_sha256": "1545edf4f3018102bdeab65c55a557c992e09ec3f735078c0308de7fc8287f7e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/ask/manifest#ask-4": {
+      "query_sha256": "e6339cf1fbfae45e764e2dd4071c11a04da8e074507804b5bca333948122c715",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/ask/manifest#ask-7": {
+      "query_sha256": "97b649a41b261c1ea513dc8eda37c28f262509fd79d95f278b10545d81c5a0dc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/ask/manifest#ask-8": {
+      "query_sha256": "7e8802062f099b77518d9882069ccdb8cc9f6d3db547544dc0b8f2dac7184722",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-1": {
+      "query_sha256": "147609d52ff965c3fcf59d871b4fb6d6a883c1a35df1fb5661f073536872c7ca",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-2": {
+      "query_sha256": "c6cf66557da4bc42de27bfedbb806248b1fbaae6727013fb4c5c42c9a9529d79",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-3": {
+      "query_sha256": "e3e83e808e8411f8329208c654197897593232e9201ad9052a48a80af0f07886",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-4": {
+      "query_sha256": "c22c384c0a47eb9045ca027cd099b0f0ce03208fdf9fd463de603116f208b601",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-5": {
+      "query_sha256": "884cae61da51f9a67cdeab6cbaa05bac2842d18e50d56c48e0dd7817b8763a39",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#base-prefix-6": {
+      "query_sha256": "a2df6865513db5b980f4e7b50c5cf447781ae7eb1477e8ef92e085f494cc863c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#bgp-no-match": {
+      "query_sha256": "36ba1a5eb117cedb9984c133c693b5849c5afbe997af967019d428006411fa5e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#list-1": {
+      "query_sha256": "aa25b0e4aef0acc475e22d6fba6ba71af9c13caa31e40675d4445e6c8d2b1b95",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#list-2": {
+      "query_sha256": "57efce285c86453b22062981cb828d27be2bf6a7142c2a4d44cd7238030137a8",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#list-3": {
+      "query_sha256": "23e1b681bc94ca9f5daeb2718e7f08ce60bc927137d807b5d0c9e6a60655c672",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#list-4": {
+      "query_sha256": "1cd9580f02983e78224c99a5d86e3e3e450a745cb4be5d5d794bbe8f97592946",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#prefix-name-1": {
+      "query_sha256": "1f703c140339b8050b6cf26c71597cdcc90885b608aaea2f2be7429af58ee169",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#quotes-1": {
+      "query_sha256": "7fb3c8bfed951ed8bc4231226b2f3605c0dd81fec07cfd93fdba17e0f1bba309",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#quotes-2": {
+      "query_sha256": "56e34f3b0585beead9cfa18171707043e498928ada2d2901dff7cfdf6ec5a5bd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#quotes-3": {
+      "query_sha256": "0be260566dff3aad2c8811c2489e207bdbb9f418d6acb5699c4bcdcd75fe49b9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#quotes-4": {
+      "query_sha256": "0c875a1d464deafe803f8a6942a79d6a1b3b39248cea6577eeb6ff7180a5092a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#spoo-1": {
+      "query_sha256": "cdbafb3af77bec4c27017b7f6d5da9030d5fd93867d2e4d0a1de862bf74bf676",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-1": {
+      "query_sha256": "1863df14e0b88de064a08131a78188d60af7c88f23d88c27ffec6e502d225aa2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-2": {
+      "query_sha256": "269d3110540a1bed0cd80c537ee217373163bec93cc27318bee490a31fe24d93",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-3": {
+      "query_sha256": "e84e412313f93e7cd40e05b46143a55df3f358a95fef3eac9192b91fe2e82b5c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-4": {
+      "query_sha256": "fb71fcf3d6affc79437097042ab8f84b80bbeca891a7bba0be01ed20b93cc83c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-5": {
+      "query_sha256": "33c44d03c16f9eda9069165587b767a418859e5eca6a96886e1a4a9a5b11e8bc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-6": {
+      "query_sha256": "8b78c9820efc27a5046df6afc21e001c30a4d0b6cf3e7e210de0f7fc4b3aac7f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-7": {
+      "query_sha256": "86ccf9474f908275a2554a218f3b72aaee77e73b4b6a4061d330996491c20e2a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-8": {
+      "query_sha256": "1396e80934975c86bba833a8fcdb3ea419f8d6ded1d93b182f34904aabc7ac26",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#term-9": {
+      "query_sha256": "4394849b4cb690365c2db2d9d97076b4016ab6b063d0267b7be6183220690d51",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#var-1": {
+      "query_sha256": "1370585ae0af22279160d67133a67dbf8ab7fb1f881d6aa4db58697ce1c11eec",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/basic/manifest#var-2": {
+      "query_sha256": "44552c8761fbe1b7f93277df57ae51211b47b277d800e9ebab3b3497affc81d9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/bnode-coreference/manifest#dawg-bnode-coref-001": {
+      "query_sha256": "b17d4d3dace4ee32ca0da16f11e077d5ef8a53b28c64e1c25e56567cf52f1acb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-1": {
+      "query_sha256": "2d56da8393f083654efe5dc961e9a26117eeefc0dad48aaddd57e491c328c578",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-2": {
+      "query_sha256": "5d4dba816309c796ea59ef7c1aadb3c4446c4df87208d70bf2b2d5b73cf317bc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-3": {
+      "query_sha256": "b56df2c354be21dc76dfb182508370e5d813ecfcf57dbe954526feb4d7785e78",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-4": {
+      "query_sha256": "4d93c6581834a402ebddeac885dc2dbe72ba1106b30d494a83db8e05f3b8e953",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-5": {
+      "query_sha256": "56a10202bd2fc175d9e7e2c1611c7a6cfc079c6ffe577c11f61aa911d4770c18",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-bev-6": {
+      "query_sha256": "8346f896aed4aab7264533e0f6b256a9c69e4d96180353ce88c4c485cd5373d2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/boolean-effective-value/manifest#dawg-boolean-literal": {
+      "query_sha256": "cb7edcc59530c84d9a6877f7714c1c95c38a9314f7e45381c1b8918961d1dfef",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/bound/manifest#dawg-bound-query-001": {
+      "query_sha256": "3ab309a80e1bf69d9dc4d1b0ab23bfa4bdcaa9d4d6e68ef8c677454be1b4a05b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-bool": {
+      "query_sha256": "3563729e853f0d6f748a8780ab92b5c3433d89c67eff0a4810116581e3e6ea8c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-dT": {
+      "query_sha256": "bf71f9d72a7e14339ec17ab550b8fd71302865bf375271b68defac63ef58e662",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-dbl": {
+      "query_sha256": "16822368ce8211e9f071aeec500fd11811ac546d1f3e9aa0138fa7ac0d62b464",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-dec": {
+      "query_sha256": "b03003028ac1d5f98ec3b1c71dee9f25ddddd4c67ae188ee0b7e48205e9ec8bb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-flt": {
+      "query_sha256": "8c892c8f766348d60f896b19c864ec003cb1947d0f65fc456dee6dbf95eeeea3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-int": {
+      "query_sha256": "b3086192cb389cbc8b3b6d45b2cbffca66ff324ae88ca3ab2f57055129a1ef3f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/cast/manifest#cast-str": {
+      "query_sha256": "b977d2fbef8cb86c6d7f502d5e87542318f38c72a8ec2f50688b4532def3987e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/construct/manifest#construct-1": {
+      "query_sha256": "1e695904ba566c9c1f10fba002680950e24a4e083c3519a052148170be45c1cd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/construct/manifest#construct-2": {
+      "query_sha256": "dbbf3da91731c0b0598ef0fe67581f56278e48e1ee58442644c757bff549dc8d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/construct/manifest#construct-3": {
+      "query_sha256": "f2ff4fadac4f5e05a98c7c2133d8cdebcda26cf5cdc883ca092adb940d87f729",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/construct/manifest#construct-4": {
+      "query_sha256": "bd4608472a307aba25a11927678a380dec5e9f472fb063402cf45539c301a78a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/construct/manifest#construct-5": {
+      "query_sha256": "496dfb65c459dea28fc7230d9e063a47da6df07f61ffb33fc0a24fb9cdab4a6e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-01": {
+      "query_sha256": "426b4583aa94d166effc5bffbf559f4fce3c3a9fc7656a754bd9995ec4a67ee5",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": []
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-02": {
+      "query_sha256": "928b5eecbf4e170c36249363af2ac261da93534dc84c1ca6cca1ec36e788380f",
+      "dataset": {
+        "default": [],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-03": {
+      "query_sha256": "1bd573b458a199fe699e0a2fb4ab5e4da2c272051330cb53365c70b930b6818c",
+      "dataset": {
+        "default": [],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-04": {
+      "query_sha256": "e523c8c9921e7352c3ea713144e5859909c75f15f3eca6f6a2834400aa98ee5a",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": []
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-05": {
+      "query_sha256": "9aa905bc91e26d0f4c76acc63e5c948c046fdc6a02df51e297cdf4448112bbe4",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g2.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-06": {
+      "query_sha256": "286cbff37101c9fa21640279a282b305fe320bbea656df9d9e878799eafbe936",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g2.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-07": {
+      "query_sha256": "00a42b35a465c4d0557dfe616e2e4874f70c4f9c9679587388b2ffdc222e9c30",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g2.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-08": {
+      "query_sha256": "c7065c60430dae12db651fed23aae015a84df928436c1d1a1c5365f16ebc0e88",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g2.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-09b": {
+      "query_sha256": "e9fc584a73772a7ab2147bcfb4d8a3e753105b9904a0574d45ce605296fe7559",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g3-dup.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g3.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-10b": {
+      "query_sha256": "eb06c28158cc4427844a269a048befbf99f71c8ccbc75acabe23c4e3f9e234a6",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g3-dup.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g3.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-11": {
+      "query_sha256": "dee88be2e4e918be4a82c9ccdf8f63de7f882955a337bad5949fcfad686e11e2",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl",
+          "fixture:sparql/sparql10/dataset/data-g2.ttl",
+          "fixture:sparql/sparql10/dataset/data-g3.ttl",
+          "fixture:sparql/sparql10/dataset/data-g4.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/dataset/manifest#dawg-dataset-12b": {
+      "query_sha256": "19ed9e2e974940ecdd8a81c7e08c8089d663cb98c4bde5dda4ed83d1e2462b31",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql10/dataset/data-g1-dup.ttl",
+          "fixture:sparql/sparql10/dataset/data-g2-dup.ttl",
+          "fixture:sparql/sparql10/dataset/data-g3-dup.ttl",
+          "fixture:sparql/sparql10/dataset/data-g4-dup.ttl"
+        ],
+        "named": [
+          "fixture:sparql/sparql10/dataset/data-g1.ttl",
+          "fixture:sparql/sparql10/dataset/data-g2.ttl",
+          "fixture:sparql/sparql10/dataset/data-g3.ttl",
+          "fixture:sparql/sparql10/dataset/data-g4.ttl"
+        ]
+      }
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-1": {
+      "query_sha256": "8dc3acd587035702a89f4414825b59e43a4e19c2511a12d962ec3520c493e037",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-2": {
+      "query_sha256": "8dc3acd587035702a89f4414825b59e43a4e19c2511a12d962ec3520c493e037",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-3": {
+      "query_sha256": "8dc3acd587035702a89f4414825b59e43a4e19c2511a12d962ec3520c493e037",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-4": {
+      "query_sha256": "b8c3d537b79945b40a4c1cb7178cd869c44b2f1641926cc157ff2128d1b6cadd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-9": {
+      "query_sha256": "8dc3acd587035702a89f4414825b59e43a4e19c2511a12d962ec3520c493e037",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#distinct-star-1": {
+      "query_sha256": "0884e425de615784a5307ab19ec8c2745859f9c0476ba117520783846a8ca78c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#no-distinct-1": {
+      "query_sha256": "38a284b5b95a92685728497b1beaf068bf5e6087bb9876508930afe982358487",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#no-distinct-2": {
+      "query_sha256": "38a284b5b95a92685728497b1beaf068bf5e6087bb9876508930afe982358487",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#no-distinct-3": {
+      "query_sha256": "38a284b5b95a92685728497b1beaf068bf5e6087bb9876508930afe982358487",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#no-distinct-4": {
+      "query_sha256": "ebe74cd505ba667d835148ccaacf9eaaedf842507e51a40914f4826c60340164",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/distinct/manifest#no-distinct-9": {
+      "query_sha256": "38a284b5b95a92685728497b1beaf068bf5e6087bb9876508930afe982358487",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#case-insensitive-booleans": {
+      "query_sha256": "6e7f7a5adc0aa88cf1dccd6b49feae7663c35efc3bd27d79833a766fbfddfbb2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-datatype-1": {
+      "query_sha256": "488927113e6d8f4469b9fe9208f469773796fd174b16c05dac8d7b0277f5f295",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-datatype-2": {
+      "query_sha256": "b70531c1bff6188d2a52a408120ee0e60ffa1b522c7887b4389a9f3a190f8e82",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-datatype-3": {
+      "query_sha256": "bc69c229ed520451cdc400845387670400f9e55fa501ba76b922781c45906d43",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-isBlank-1": {
+      "query_sha256": "8a7faa6e8a7aaa80804f1c70dd4064fed0b2b24e5c95630f863800820fe0c62e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-isIRI-1": {
+      "query_sha256": "49a7d194e5be2231b14399f3540bb1d94a020fc1938f649ca5d00973cc898dff",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-isLiteral-1": {
+      "query_sha256": "b0d7423f11412e992f4a28525bef3ec49877f58229f525dc89270c08ed41f83b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-isURI-1": {
+      "query_sha256": "26a7ac59d70770d34062763f0b21e22509d40fabeacf54e1bc9831205c981adb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-lang-1": {
+      "query_sha256": "36e731da4d0ee53bdb4b53e3021ef5b695d4b6a479ddc4b105c0cdab8d1509b5",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-lang-2": {
+      "query_sha256": "29132a35feb486b64d0a78514c09c4e6737a4ac32fab6f90b892cfcfe6fc5617",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-lang-3": {
+      "query_sha256": "2e5ac720029532893a028cc2109290709cd22051fbb203a2ea93543292b7d415",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-langMatches-1": {
+      "query_sha256": "8c9a32703e670df0b616b2a3d0ebf812ab672421acd86e85f22799c64276e559",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-langMatches-2": {
+      "query_sha256": "64f99e29e03735029f9e0cb51d1a780770de758c8f6b32a6b24d2cf14b86a0ee",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-langMatches-3": {
+      "query_sha256": "627fcc1967cfe443752e720798e692c779bf35aeb4e62896643fd934571ae384",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-langMatches-4": {
+      "query_sha256": "1d558889dfce078d4e9aeb6c133e9e8ea703b1b5bb52939656469cc816e419a7",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-langMatches-basic": {
+      "query_sha256": "2ef9f178a736bec0e2f112c468ff4aa8958abe0b72b326acca47e57df49fcdf9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-str-1": {
+      "query_sha256": "b54b398b9e5d18d97007dba617984a8d947827d6c2baae51ea848d5a62f5ffbf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-str-2": {
+      "query_sha256": "5e0c1096e1c455b1417eb9eb798bf16006c5ef74e9ba0efde740443ba3feed8d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-str-3": {
+      "query_sha256": "c3c563adb9c3fee6aca78275ce3fa369040018f1717e30a83d851f442d6a4efc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#dawg-str-4": {
+      "query_sha256": "cb27c2c1e5201926042d0facc81ebd0969fd306e7d6dee87ceb897041cd5412c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#lang-case-insensitive-eq": {
+      "query_sha256": "ba0ebd89f04b293480ea9ea0376652ec014d6d4b577d03844ff978f37984c6ef",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#lang-case-insensitive-ne": {
+      "query_sha256": "fe4ea5bc8f81af892428ede5ddd8177e1c6d468d61477eac7494c7e9b53ac479",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#sameTerm-eq": {
+      "query_sha256": "302fbc0a6a5c21fd5d3fd435959a804b120f526244c619af84a89a847a849bc4",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#sameTerm-not-eq": {
+      "query_sha256": "6b370b757ab9b24d82be7aaaa13bbe27fa1472439f0560f92844d7b944cbc938",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-builtin/manifest#sameTerm-simple": {
+      "query_sha256": "01f1a0fa02d7d8053589d80dba8fb91b006a96ed6f42c2d84e8e958f4b4295c0",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-1": {
+      "query_sha256": "752eb9483f74e56bf440a5c16a4b541099beb919b19ab197b672347548e442b2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-2": {
+      "query_sha256": "423aeeda04d41b06f03e082d7166ace395c64f1c129dffdf40c609b56dbacbdb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-2-1": {
+      "query_sha256": "ac20854d4dd9170c2272a773c4807a7cf1ecccf640c4a20fe7f25772e8c65538",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-2-2": {
+      "query_sha256": "ac20854d4dd9170c2272a773c4807a7cf1ecccf640c4a20fe7f25772e8c65538",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-3": {
+      "query_sha256": "16dd733a859d5fbf56542340610a1385c585c87f59bacb1238627fd14a6cad59",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-4": {
+      "query_sha256": "399dd372898894300a283f933c746d0e9cff890b144a016d0dd3bd63e2c26350",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-5": {
+      "query_sha256": "c0d85358e4db63e6227fcab2e208b318efa76160fa99ae5d433df92176e4365f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-bool": {
+      "query_sha256": "1ad2aabb80e8b2ce58e783374796fe73b31cb7229fb2c63d531f451dcc7a0c5b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-dateTime": {
+      "query_sha256": "1ad2aabb80e8b2ce58e783374796fe73b31cb7229fb2c63d531f451dcc7a0c5b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-float": {
+      "query_sha256": "1ad2aabb80e8b2ce58e783374796fe73b31cb7229fb2c63d531f451dcc7a0c5b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-graph-1": {
+      "query_sha256": "6353d42cd9ed0d703e7ec9799e02b2c052acc3794366999207ae34a4d62835b9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-graph-2": {
+      "query_sha256": "8abfe76dd50266cf5a516de1dd38afce4a452cd021ad5dc11e1ef18d824dbf3f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-graph-3": {
+      "query_sha256": "9cfdf55e464cde914a2351059f90dea55cb56f1bbaab8a6433154a1e1bc9846a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-graph-4": {
+      "query_sha256": "85c39d1c549a98640a07708b48daeb29b7d1f9325907cae94291f8f98db7c088",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-equals/manifest#eq-graph-5": {
+      "query_sha256": "c0d85358e4db63e6227fcab2e208b318efa76160fa99ae5d433df92176e4365f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#add-literals": {
+      "query_sha256": "73bd1a6dccf2eb1b00e78f02810464ef999119524abb62dee9ade8ad256321f9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#add-numbers-cast": {
+      "query_sha256": "622f62dcc6ef4d218647aef1b633d313d682e276c7599ee804dddc38b64f0b75",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#dateTime-ge-2": {
+      "query_sha256": "0fcc22755e35708bb60b71d35714af6a623b220e0936a647205f468419bd8fc4",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#dateTime-gt-2": {
+      "query_sha256": "789f4338ec8f8c7fe60a92c2180a3c175239a0b1275c197a6d75a174035f3290",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#dateTime-le-2": {
+      "query_sha256": "83016d48d00520463d93419717105723cd6618d099092da8cd0c8ba6b032850b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#dateTime-lt-2": {
+      "query_sha256": "8b7315a277da21aabc2639aecd783160aa1dd8f426acb9058731f3787bdbb7d3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#divide-numbers-cast": {
+      "query_sha256": "a0f5a0dffcb895ab7a1c4090bd9671bc4388738a7255cea4494b9e7f455cb3b0",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#ge-1": {
+      "query_sha256": "0f832935d0711cdc61d4b8b388d2973259dcbdb890a0ba771900c239ef72fb88",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#le-1": {
+      "query_sha256": "804fbdff41de7017f0a1cd799050db228844b6cdbdbbab41aae6bdbce47dd49b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#minus-1": {
+      "query_sha256": "cdf459b919c7ad5f6ab5ef7839002e820ddf351f10fd6a31a99d5600b69b925c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#mul-1": {
+      "query_sha256": "0e36b8981e1a8c1584bd3c531da93447958e0449e5ad05fd1ab203c9bd224a3c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#multiply-numbers-cast": {
+      "query_sha256": "cfb72af93caf9f3b015860b51c0d8a5a458d1fa09ab4999ee601c654b50411e9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#plus-1": {
+      "query_sha256": "12bca6615d9f5b4561276a0993f7e50d99905694cc17ff0039e1f490f21f508c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#subtract-numbers-cast": {
+      "query_sha256": "06eacdb01e5f755159fa86a886e75bc99df11d9f1ab0be2570c9f509d532bf7a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#unminus-1": {
+      "query_sha256": "9eeee87c2f06a8fc92f9d9731c77cafe5464cc1fcfbc6537141d64522ccca01f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#unminus-2": {
+      "query_sha256": "775c939c91fd3caa6621bce2698ff0a3bd15d32c618b14f99fc2e2435f16944d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#unplus-1": {
+      "query_sha256": "b810c08d345a5602fbefd2fef376228aef32aa14a0f4446934bda78c1917ef12",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/expr-ops/manifest#unplus-2": {
+      "query_sha256": "22cb4a4151827f0a363a79ef3bfc60f99ac8ddb7806b5f459b88360b38f1f302",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-01": {
+      "query_sha256": "af2d29269b54197fdb03e88ac6d66300dd9493db03b59bb44dac6abfc1786dbf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-02": {
+      "query_sha256": "af2d29269b54197fdb03e88ac6d66300dd9493db03b59bb44dac6abfc1786dbf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-03": {
+      "query_sha256": "a3a48c4fb7657b90212d4fd00e7bf280c219f41514747631182b0a0ed6d97d82",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-04": {
+      "query_sha256": "a3a48c4fb7657b90212d4fd00e7bf280c219f41514747631182b0a0ed6d97d82",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-05": {
+      "query_sha256": "af2d29269b54197fdb03e88ac6d66300dd9493db03b59bb44dac6abfc1786dbf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-06": {
+      "query_sha256": "a3a48c4fb7657b90212d4fd00e7bf280c219f41514747631182b0a0ed6d97d82",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-07": {
+      "query_sha256": "7e3fec51b85a02a7bdf69f1961e93b5388170d83e212c0ad9f615d5896fa58af",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-08": {
+      "query_sha256": "04638cd02d72d46a2c2cae50f7457e73b7d6055ac1bc2b0cda1588397f91dd91",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-09": {
+      "query_sha256": "04638cd02d72d46a2c2cae50f7457e73b7d6055ac1bc2b0cda1588397f91dd91",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-10b": {
+      "query_sha256": "04638cd02d72d46a2c2cae50f7457e73b7d6055ac1bc2b0cda1588397f91dd91",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#dawg-graph-11": {
+      "query_sha256": "7e3fec51b85a02a7bdf69f1961e93b5388170d83e212c0ad9f615d5896fa58af",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-empty": {
+      "query_sha256": "e56de5066df773081eca6ffb238f5f12c14b19d0c712e93bd1cfd8859a3a7d07",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-exist": {
+      "query_sha256": "22f2ed147002b533567f961a4ddfac53ae4ae5440b03eb413c6054987d67a5d2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-nested-1": {
+      "query_sha256": "3d5c6e63220f1932cc11e0514266eb73d6acbe6afe8fb2c55dee431c1e7551a1",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-nested-2": {
+      "query_sha256": "480f68005f96e84117eae3be0a5767c4346971adee0ad6eb8aca9784cf553601",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-nested-3": {
+      "query_sha256": "d15cb5abed99090555f7e47a56d560db66169650c10ad2e04087180f9b32d935",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-nested-4": {
+      "query_sha256": "7e7ed17187dcd0ce1483bfd6cde40f893d283fb2c056a61062aa136911d66140",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-not-exist": {
+      "query_sha256": "d1c6b02a62e6e5c2e6812f6e7f741f18649c72ec7bc4126a8c0231245e3148fd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-optional": {
+      "query_sha256": "930eff3512fbc7d35feb168c3c33bd5e7d00579d44f16d86c71dd63e6279ae06",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-variable-join": {
+      "query_sha256": "fb5964c8411455107986938ee11010af7ed8c2a79bc9672cd4ad70ffae8295cc",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/graph/manifest#graph-variable-scope": {
+      "query_sha256": "4c129d1014c61a69a83aa54f9732c6cbdc2744a80d7efa95b760d19a154e44f5",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/i18n/manifest#kanji-1": {
+      "query_sha256": "cac1de35b4960143c9fab23df6eba600f0a4a188cb6b4d44c65d030640b02e56",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/i18n/manifest#kanji-2": {
+      "query_sha256": "23afc4be5a76aa365ccfa4703cd742247636b9ef4d620c37b764b6ef5cda3933",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/i18n/manifest#normalization-1": {
+      "query_sha256": "806981fe78e0e07c2dd0dd80845f9d3e8749094f0b0c6f11ab8dd3c58f9e664d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/i18n/manifest#normalization-2": {
+      "query_sha256": "2b3f68d8a2e6dc568818d0d8c561614c34e07df53ee4c3faf2184b54e2cc3259",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/i18n/manifest#normalization-3": {
+      "query_sha256": "eb45ffc8e1589543d958475d8ec073acd5d924f74036b65dbdc250805b067f3e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#date-4": {
+      "query_sha256": "7a633890598fec1905ae444ea0d9e936d8c86a26feb015c6eda731f1edaf0455",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-cmp-01": {
+      "query_sha256": "2fe1b8e3f379e17d596066acc3acc7c50c2f066f470369a8df0a3160cb961411",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-cmp-02": {
+      "query_sha256": "9eed7b6aabe37f40f16193ea02540438c81eb5603b7da959c40b1cd8633cf631",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-01": {
+      "query_sha256": "14fcc02fb80036444c9e6d49cc5649142654a64a0bdccab897f025ffa251afd5",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-02": {
+      "query_sha256": "b42af29bc22552bd980cc5227f27f58eb62e4789b806754a8831f693adf739f8",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-03": {
+      "query_sha256": "09401656a77091718eb4d79c44ccecb1d917edcdd3e17810a5724e332d8da6ba",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-04": {
+      "query_sha256": "6410a36c05084a35a104b66e71c5dff612d91327aeedb95b1528e725217a19ac",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-05": {
+      "query_sha256": "c8ac1be11002e63c8b8911fa35d8d475c945fbd68e27d7cf2a7603431941d5ab",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-06": {
+      "query_sha256": "ea0bf8c621c6d25a341bc55d48bf3585d0792c4b87bf5e22bbadbaa0b9c0fed9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-07": {
+      "query_sha256": "314e29deeea48bd1ff4ef272ebbc380716130d92a5ce0864e62a480525fc940c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-08": {
+      "query_sha256": "276befb5b8c8d1e4c595dce69b9d64ba2c5873ffed0dccb97cf7a967dc33a13c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-09": {
+      "query_sha256": "3b0f746759400fb2198853d408c6634af859fbd6ac9bc6487016ec1c3776b6e3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-10": {
+      "query_sha256": "94525473a58b00f03946f7785c78baa83d809f9cb61189858f455108f30a48a1",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-11": {
+      "query_sha256": "d7013056006a14daae1e5ecaaa212cec37964f4063d6157f8e1b19e16972037b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/open-world/manifest#open-eq-12": {
+      "query_sha256": "8c47ca37541b38e11bb6822258c75fb7c1d6bc0a346f000dc590aead125f9658",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional-filter/manifest#dawg-optional-filter-001": {
+      "query_sha256": "d9aa37d567120df1d370d77eff37e77ede3ea496471d8a47f639bade642f8d96",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional-filter/manifest#dawg-optional-filter-002": {
+      "query_sha256": "972261ec40ccfed6b763c1896f14068f48c759d5e853a92b3c234f326e0088e2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional-filter/manifest#dawg-optional-filter-003": {
+      "query_sha256": "49f60753010704d2ae1aa41bbd5f713c07ad798f35f97dfe0237e023c3eeda28",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional-filter/manifest#dawg-optional-filter-004": {
+      "query_sha256": "2e20f2ad448e111d6b8da6f88cf4d722e3b6ff643de56f720db2582005b8462e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional-filter/manifest#dawg-optional-filter-005-not-simplified": {
+      "query_sha256": "7d72f2aeaf469a4336f27b79f6527280e55e45977edb47717c151ea4ed12a3b9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-001": {
+      "query_sha256": "883b309d59e8ef5c354a652818527235ec939c09aa66fd17f27b12cb96d5244d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-002": {
+      "query_sha256": "3c1501e590b3e9831f57329dfc1d366045c3720731b7cf21774c02d6a73e90a2",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-complex-1": {
+      "query_sha256": "ad76292bfb47e04ebd4772fdfc2e923a9f1ab96e1f5374f752b510bf8b59b887",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-complex-2": {
+      "query_sha256": "63812a1ae83e1fb1acc3bc71120370a57978d7e831647df9a0669766ea7729e3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-complex-3": {
+      "query_sha256": "12aea5f8b7d74667b4302d86b93b241b7a7bef890a3674b9a925fb84f78f6688",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-optional-complex-4": {
+      "query_sha256": "aab6e5e4b97b3940ac8d3c179f0f7bdec0414fbdf3138a360380b4c84fb58de9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/optional/manifest#dawg-union-001": {
+      "query_sha256": "560d3bc3e1b9d45e9c1d9a9459bc44cfca812973caa38667a91cdb9c27aa5872",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/reduced/manifest#reduced-1": {
+      "query_sha256": "de90c52a7dba16adeb185f52a836a27941b9e2b7404b0bc0b4f9e6ea24a228da",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/reduced/manifest#reduced-2": {
+      "query_sha256": "a8fa412122faaee0bcdaa2e9aaf299aa3a25ffcb129fbf078dc9a61f8d549f5d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#dawg-regex-001": {
+      "query_sha256": "10b6f2214756681b82aa85fa2e615d17b0c7a13c0656adffaf3607212f1639f4",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#dawg-regex-002": {
+      "query_sha256": "0840791144aecdcf82400f09fd122419778c535cdbfb14dd5eb7e9271dd8e592",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#dawg-regex-003": {
+      "query_sha256": "cd4b860d405eadcb1d611070a865b4399028f991ad69c8f33495533f13dfc945",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#dawg-regex-004": {
+      "query_sha256": "05e67468b85924d405fc9f71bfc783d91f497e6912e828d968faa5a885ac4631",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-case-insensitive": {
+      "query_sha256": "bc3823084c4f44020ff981ee981e9e7c80d6431f00c206e0e4b2825cb0973dbd",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-char-class-expression": {
+      "query_sha256": "5f700e3ec3f93029c68c96811d499cd216000ded5fd09dacef5a7c5d5a0eadba",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-dot": {
+      "query_sha256": "991d614d8b97681efffbf28b49c9ff3e8546c96c54bfbdd499395e20e0d43fa7",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-dot-all": {
+      "query_sha256": "1118c5af048816bf38e43545931f63f7d845c23330203322fbee0c38e3e3ae3b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-ignore-whitespaces": {
+      "query_sha256": "a6cfa6903806fe6300f6197e92c656983a1a40b0251edc22a7c20990010aa7b5",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-ignore-whitespaces-class-expression": {
+      "query_sha256": "3d3d059d3098c103469ef6be4601a396ab6f9c4e0c31840170b592940eabb196",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-negative-char-class-expression": {
+      "query_sha256": "aaaf98436b0198d7b77bb5c8deb6aba7c5c510c0e9b2bea96a91cf74f9efe329",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-no-metacharacters": {
+      "query_sha256": "578c2c013f7ed8b7a56626e55b101e487395a82d86caf028dd37c7e199235e8e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-no-metacharacters-case-insensitive": {
+      "query_sha256": "2560fd171602ef4540dbcb328fc2c90d3ece5ce08ea7c3c84eb43502637543cf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-counted-exact": {
+      "query_sha256": "73ce856502f2991f61e2269f1d472f6d169d3f9c6bf9d30225c9c941b7a73b52",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-counted-lower-bound": {
+      "query_sha256": "25896e1f22006e86d09fa9d5b604857c3f8aad02a6baaa8956fc9b6f788ae167",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-counted-lower-upper-bounds": {
+      "query_sha256": "735867b5c316f813d0b44994da5457d6f9c2f2d6f252445c0bdd697cf545e44f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-one-or-more": {
+      "query_sha256": "47ec6602577e373baf1dd9e81ecd950f0676d615a372af67e684df5b1c3f8dbb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-optional": {
+      "query_sha256": "73b462557b00b5e77463fc35807a1e326faac41cb06d33b4d9fc2ff50b28e57e",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-quantifier-zero-or-more": {
+      "query_sha256": "2e3b1169b6213677cf70189daf90ce04c94669b244b9b14faa0af0cb327b9848",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-start-end": {
+      "query_sha256": "4b68ccd7b6407a5caf06ea173e70af3906493abe39ed741261d2657f11675872",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/regex/manifest#regex-start-end-multiline": {
+      "query_sha256": "798d1413bf483567d20314ac3abbdcb1baab995eb4a2d0f773cc98785df95ca7",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#limit-1": {
+      "query_sha256": "e13d10a399478914bf6f330f07fcdccf6b7f3ce429f6c28c608dc98fed24aa65",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#limit-2": {
+      "query_sha256": "13b502a59996f2638616de402f82f416afe7c4575384855e15aa4db80c017560",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#limit-3": {
+      "query_sha256": "377eb69f7c006d3520dd9c4f2e4b4c7956824d93fa840c00c29ee1ed9673df44",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#limit-4": {
+      "query_sha256": "7f4cd38f2ae81710a7cc45f1d5c5f743b5b676a147b9b757810afdfc28f85ab8",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#offset-1": {
+      "query_sha256": "97486dd637668e2637a36041e5d6839b7a17e3ba32b72134d8920a28f2c3fb4c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#offset-2": {
+      "query_sha256": "c9f40042b26501c9be3cdec93b2cab5ef7384fc6f846df78b7a382d498450ca4",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#offset-3": {
+      "query_sha256": "37489b3f695577f493af4954e8c5c06817eceb4d2a5b71e4c6ea50d8816549d8",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#offset-4": {
+      "query_sha256": "530442b5f0887f229fc1da6a06b89f9f8839641202b6362fc5c3a921d7bef6ac",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#slice-1": {
+      "query_sha256": "b89e07f957183e5257a3e38041f0c3ae8f8699bb3c86be6744d16f7b36868d9b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#slice-2": {
+      "query_sha256": "98737843aac379eb5a18254a4d5b375bf6c2282146688853fc118416b87ec806",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#slice-3": {
+      "query_sha256": "80dc10b0aa2f87fe6a30d36dbc6463464fa3df15668e902075ac35dcca69e1e9",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#slice-4": {
+      "query_sha256": "a2461a76a1767a648ccddef506931d87ce1218adab8d6018d963864a14499556",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/solution-seq/manifest#slice-5": {
+      "query_sha256": "da48c0269ca65b7fed140d59f3f430f6b4d78118744d257d90ee653556ddc52c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-1": {
+      "query_sha256": "059d53c1822376d71698c0e0f53ff0b7f15be7fe7e0d820291c8cc8d31a66ea0",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-10": {
+      "query_sha256": "2758ad3933189f08811e44d5c9ad56ec28f82ae6c7985484cfcae5585a24e600",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-2": {
+      "query_sha256": "2758ad3933189f08811e44d5c9ad56ec28f82ae6c7985484cfcae5585a24e600",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-3": {
+      "query_sha256": "a82c140e5bfb6b175fb53cb206f171a0735d0d90fb90a672cb7ca212a366c91c",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-4": {
+      "query_sha256": "2dff2627f132b652b48f70fd093806aa425352f6d952d72dd8448af64c336c33",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-5": {
+      "query_sha256": "5dd60f51a59c82f954e9fec93600386b0af18f698bf760057c52df6509106f96",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-6": {
+      "query_sha256": "03fc224e354d78ef803d09accf7e9f3d377ab1a3d7e643e5bdbc009a2c1fcadb",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-7": {
+      "query_sha256": "2dff2627f132b652b48f70fd093806aa425352f6d952d72dd8448af64c336c33",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-8": {
+      "query_sha256": "2dff2627f132b652b48f70fd093806aa425352f6d952d72dd8448af64c336c33",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-9": {
+      "query_sha256": "059d53c1822376d71698c0e0f53ff0b7f15be7fe7e0d820291c8cc8d31a66ea0",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-builtin": {
+      "query_sha256": "ed2a4a0e19ab779424a7a2d805bcea1a2532da437e63e52f52e94ce4f8ba7adf",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-function": {
+      "query_sha256": "8ef16982b3cbf63dde14d934b7399c39fdbfe79c2dfa6df5d8ce43f1929aba12",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#dawg-sort-numbers": {
+      "query_sha256": "36feec9030b11a373c20740e792273f695eb05f5b580130caf9acf40b3afa9db",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/sort/manifest#sort-not-projected": {
+      "query_sha256": "93a7738cef041be6a6d02ccd4fbb968193bd2fff6c15066c8b9fb5ffa4416f27",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/triple-match/manifest#dawg-triple-pattern-001": {
+      "query_sha256": "642bc9b06eb75e0b07560b5dce2192a81253ad3bca35bbc45b1af7ea2ea39656",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/triple-match/manifest#dawg-triple-pattern-002": {
+      "query_sha256": "d3a4fb0ce52f354a531e4b812a03b8e3ac08511ee53342419e6160eeb6fa15c3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/triple-match/manifest#dawg-triple-pattern-003": {
+      "query_sha256": "54410420360dc32cbe3f7b2a6431223812861d22e6fafdaef02c9d8caf4248ef",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/triple-match/manifest#dawg-triple-pattern-004": {
+      "query_sha256": "f9bea168eeba822d6a01a712a4a56103bbd358faf3188738ee30d4871dd5801b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-01": {
+      "query_sha256": "a8d220d5db25bb3b7269e0df9d6f8c330a0e2676f0d4cfd71556cb6ba53b5be6",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-02": {
+      "query_sha256": "5104e11a94fd8c79fd97b3fcf2ab4ee94039633106a1f142cd97ee80d2952274",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-03": {
+      "query_sha256": "a2edf9c1be446104cf3bd42d24b462bbeb32828341610c2016b18e1cb26e6a0f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-04": {
+      "query_sha256": "5856d6d754fe5995c78262b44a2f286382f8dbe6e2cf00d06902a86b71b4f3d6",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-05": {
+      "query_sha256": "69fb10316344ffbde5f0969d6b0d32d667bffb2d2486baa5031f2090f12bca9b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-06": {
+      "query_sha256": "543b020c708df7d19474b7d064cd9bb03d8ed763c0e7c1d6118df5facb68a3ae",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-07": {
+      "query_sha256": "3c82089dd8037baed0f92ee3bfb9632a0aed65be0be8b70b57808929c7c27776",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-08": {
+      "query_sha256": "165882b8b9bb7ad09c1ce730bde5cdab0d5e1e38b8fccb50a3e970e07a95c955",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-09": {
+      "query_sha256": "dae2756eaa678d20bef292f920b6ceb87cbfefe07e729171f9311a077630c079",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-10": {
+      "query_sha256": "57c6a8955ef5457c0436b8db2d407a59ec2577d0d5fd19e98db2ed80f2c8740b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-11": {
+      "query_sha256": "342b964033a45bf44ea248bccbbfc18126caabaf64012b19c1c35ad833a8889d",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-12": {
+      "query_sha256": "75a484739364fdd7f7aac130ff5268b147dff24abf0bb2abe77c36a6a8409c73",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-13": {
+      "query_sha256": "706440883ab03f86182b4d7ef19c136d6ab0a29e17ca3ec890dbad0422736344",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-14": {
+      "query_sha256": "b1ab16207b869fc01658f763f5e9830e2881d4b1cde2cb6c9f6bd679c0ef90de",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-15": {
+      "query_sha256": "78f3817b3e760866f876c206f83edbe3a84a32c8421c09c6929fad61a9f71e1b",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-16": {
+      "query_sha256": "137802f76956323a0f89c88cf11cb7a2780013535f5b9f1a4539c74a325c5e50",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-17": {
+      "query_sha256": "8e6ccec2ed2f7ab1577f0942426bb1926c38e4f875e7adcff4a22c06f8b6cb51",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-18": {
+      "query_sha256": "cc5df33641d86316b43910a82df1a7863ce26375fa8250c381d27ca455cabd9a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-19": {
+      "query_sha256": "c8ad89b81aa80a2a623ae46098c8a5c4f8dc645e5d48d16adf8d152dda6a812f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-20": {
+      "query_sha256": "b960ab3bfbda1b867808fb7a9ec360a5955c054f87f8834362f460052cd7c8a3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-21": {
+      "query_sha256": "a09259dac998ae09dc66b22a9b67cc1c440a3e52ae26be2fb33ce4dc9778d8b7",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-22": {
+      "query_sha256": "70515f6b5824fa61273f32aeeb9712318be82eaeb9fafe54141356f9cff71cf3",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-23": {
+      "query_sha256": "02f361c4d00efbd2c77f2e202649f8e5777c79a324c8cb284d0882b326a86161",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-24": {
+      "query_sha256": "4cf6262699fafaa11d4411bddad47c465a5b0294195b13be63815cd11f67fa47",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-25": {
+      "query_sha256": "8f0f35b60ed8c93269590364c4f4dc2094a69aca31851a377ccc160e3c656bd4",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-26": {
+      "query_sha256": "8f0ef357abfffb52fdb456b7bdab353e846b5f0db857ee13ae2f81259df6aca1",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-27": {
+      "query_sha256": "604ac9cca713f1a5c0d33ea4d011572378cf8c1d1b8849011fcfa56d0048576f",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-28": {
+      "query_sha256": "51be577a3e15e3662f893082d5457ce05d24d7db4b8c86b2ae3f9502fc199de8",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-29": {
+      "query_sha256": "01efbbede86914cff75b6617a2073fc7ad8daa58f2b2a9009a956268437d6c5a",
+      "dataset": null
+    },
+    "http://www.w3.org/2001/sw/DataAccess/tests/data-r2/type-promotion/manifest#type-promotion-30": {
+      "query_sha256": "9a6c2eae0a753b64a21cbad1984eab3b26ec75138dc49c691cb8e593ac46d80a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-avg-01": {
+      "query_sha256": "e7d38fffe23d24fb3b2edb756e0b2821533a3aa1431ea1250b2185b3a5843df3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-avg-02": {
+      "query_sha256": "8ba7744e3b2dd5cf393d9f7ad67ebe1a9f9c6a77d08aaddfdd143ca8eb68d73b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-avg-03": {
+      "query_sha256": "111777586d21c87c0731378bd2db6394aac31a346016bebb74bd483a004da674",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-avg-distinct": {
+      "query_sha256": "0a5fe919005e2040e547b49035d0243051ceb259c8a3dcdc296bc1b3c90073be",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-count-distinct": {
+      "query_sha256": "7d03b072b1522d38d817c78f92e3e83a3ea14f6c88a4e82a38f1e487d84109a8",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-count-rows-distinct": {
+      "query_sha256": "a89f16a348e241a2ddd70b682a41659256be5cc4314cdbac30291a82eb5fbeab",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-empty-group-count-1": {
+      "query_sha256": "8f593f40274ab67542a83a4448b6bcb46dde59bc2a762e0e732551aaafc99435",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-empty-group-count-2": {
+      "query_sha256": "8ea4017a5b7ee8c2139715c28e42ad6caea2feda383b06b3a2e515abc9904fbe",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-empty-group-count-graph": {
+      "query_sha256": "e2d8b3f4f34e5ed440f7882be9f546de946b02dccd18df95ba20109a61445b37",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-empty-group-max-1": {
+      "query_sha256": "94b83ca4be31efe3dcb9ac2e71abe72b7a5b52fca2483161adb33ea3c3ed9dc3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-empty-group-max-2": {
+      "query_sha256": "2fb3cdc985f04c9431a53527e18af73b0ace02962bafdb09f789a1f417931b70",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-err-01": {
+      "query_sha256": "d0989b7ca9d67d019cc6b3ba39d563f03a64a863ccdf457e90a7befc1501a289",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-err-02": {
+      "query_sha256": "420574886a3bcee2caa7e4e1c8f5c546c0ff9ccab828e537e0cfebb3f06c7e2c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-group-builtin": {
+      "query_sha256": "93eb085d479b73e98cabf39f9aa1a83db25ca135c9fafcf38364fbf794bb3560",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-group-fn": {
+      "query_sha256": "1259f3aa24d519a3fc40d27374912fbd634bbfbeaf166b3d07e5637b666158ba",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-01": {
+      "query_sha256": "39f4a98a453d794101ffe9245e1164ccd124252a3dc27c43c78b1f32bc668b66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-02": {
+      "query_sha256": "a9a0eb317fdc92eccad15338fc8a002d0465f2585a2e4e5e38ae0edfbd7024d9",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-03": {
+      "query_sha256": "9e5f2fb060bc2800a5fc86f15c972fbc63757549a7d79923af3d3e694387fedf",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-04": {
+      "query_sha256": "481c4c774329ee995ac213778738e96327d656cdd3183dd768e576787b3bd46d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-05": {
+      "query_sha256": "a18af5e24499383acf581f6397c2eb9cfe832d7340b9aea80ca96c63a0102271",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-06": {
+      "query_sha256": "b2587ab1faa5aa2f3e8cc9b03ae1474551925971475a040b025a1c4f7281b179",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-groupconcat-distinct": {
+      "query_sha256": "3816c797a0867b2c1c3bda62a35d2a5a93b16c3e296316ead5b3fd7b62c2a164",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-max-01": {
+      "query_sha256": "4c2b1885233bf8294f815651e50b1893b3df062b6ccaf40769eb9210f57fdcf2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-max-02": {
+      "query_sha256": "7d9af9ecb42bf37e50752769566ce8540b0bfa2eac6a47866525a9ddb02f7c5a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-max-distinct": {
+      "query_sha256": "502384db750842b7673a421dc3cc94d4aa7814ac7f375d877608ecb1d6e01f66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-min-01": {
+      "query_sha256": "7089560c9d6bb9fc5516db364a95ac2e30b7b2343e06b06416f2d7c9bb6bb929",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-min-02": {
+      "query_sha256": "2d2dcc8c19c3814f6ec87adb6fe170679593fc3bcf7fcf8ae0fbfb5917d1f522",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-min-distinct": {
+      "query_sha256": "6402a1e77bd01be00330687b240c8d6515202d43f264e3f960a0dd709486fbdf",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-multiple-having": {
+      "query_sha256": "ff862be392f4c235cae801fc4867004d23bb6fefd1f31652cd00d0a42fc78ac8",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-sample-01": {
+      "query_sha256": "69d52305f465718b0eeaf9e66bfa4f538466beb48d758af4cea1c6715cfe582f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-sample-distinct": {
+      "query_sha256": "d37d6448818e6af624518be4a90caf41975dcc28ebb11689c40ac6548c54726b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-sum-01": {
+      "query_sha256": "da806a164e97a64bf84b8571059957c5aed41aed0b4328efe546b453f5efa113",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-sum-02": {
+      "query_sha256": "d44c39f2b1dd4032241e7dbec2244451ef95d610a95b9a0bebb641dfc5c56808",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg-sum-distinct": {
+      "query_sha256": "629dd2660e82d9e27b95f033f160027db3ab564858e6f53eb99dcdf56537a888",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg01": {
+      "query_sha256": "2f3fbfa6e1db2c0f57961f3cf20adb6ea26ebc8d458b1ffdfa998e6dd37c8431",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg02": {
+      "query_sha256": "0a28e3cb4a8d9cd7931329ab984326b675ce1041315f4856d6c109324d006f02",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg03": {
+      "query_sha256": "0a4df924ce159affe4304ed343eb38c6a558475bc4a007abc1a3623bf6810fe0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg04": {
+      "query_sha256": "5f71f61d271957f826ac87c0137478dd0312516730f7c28ffea5b57b95d74961",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg05": {
+      "query_sha256": "f942d71b5496870f4afbd0b5cccbc57ba9a0030431ac6409ddcde31e18d7fa66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg06": {
+      "query_sha256": "aaa982f793ec5d5674a1b6e4b87f5d595abf27088997ee96a5808f702d7e0d83",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg07": {
+      "query_sha256": "2cd2bea7f21537653bebe363c7041ec91fdcec6a6d665d20f3487380a4428687",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/aggregates/manifest#agg08b": {
+      "query_sha256": "d7cfd5aba65efbc31e29fa7dc5cc082b05a42de9c35a2ffb46d5f9c66bcf7cfb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind01": {
+      "query_sha256": "811a2757a6fdc25a4018223cdae59f509314a6d5486003de980f5036cbb2fd0a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind02": {
+      "query_sha256": "6e18714fc9d2731ef030ba82f5593a4d93a6362c06ee535af80410c09210dfcd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind03": {
+      "query_sha256": "964e171467099a67ba7c700b0f44a2bd0c7a69a930eb6c29b601c80615fa88b8",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind04": {
+      "query_sha256": "8686fdbf98262fcb2c15bfe56696e2c3e9ae852659ea94107f307a6f99b734f9",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind05": {
+      "query_sha256": "9276e53690d2ae501c80f92ff04a71be18021afd3e02798f9be202bcd3e01955",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind06": {
+      "query_sha256": "c3b629122ef0e97558153ef5648687903760fb7e57fc88404e76fd3f89cbabca",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind07": {
+      "query_sha256": "d3bc11354ba885453e4336ad191e51c6cd3c54b0d0bdd27c55cf86e0202bdc68",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind08": {
+      "query_sha256": "588c98e49304dda041ff2fd5d82af309129ec2f02f9d11a0ed021f1cbe835336",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind10": {
+      "query_sha256": "339393653baadb21095291e6d467569b9bd3e38b795b64a468ae483eede23014",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bind/manifest#bind11": {
+      "query_sha256": "e1b244e72c37aa6901478baef1925a782513c1a8cc58677db480c712a6f358c1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#graph": {
+      "query_sha256": "75101681daad72c0a7bfd0268708b653ebe2269fcc6dc231d0b72f2cccd62a66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#graph-from-named-1": {
+      "query_sha256": "dcf8ab28653d5975e529d78129bc73309d110e0b5bb7cacd007e659cb6c0cead",
+      "dataset": {
+        "default": [],
+        "named": [
+          "http://example.org/g1"
+        ]
+      }
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#graph-from-named-2": {
+      "query_sha256": "ede5c135f308c156fd0e0bdf0c97d4fee73c093461f4f306561c307307c72aa7",
+      "dataset": {
+        "default": [],
+        "named": [
+          "http://example.org/g1"
+        ]
+      }
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#graph-from-named-3": {
+      "query_sha256": "f4519a054d5ae30d683ce585dbc241642766f00779f853f7c008172712e82a57",
+      "dataset": {
+        "default": [],
+        "named": [
+          "http://example.org/g1"
+        ]
+      }
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#graph-no-var": {
+      "query_sha256": "daf104bf42729d9e449efbe42b1cef37402acbf6467b6f33139820513caa8f12",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#inline1": {
+      "query_sha256": "4aff20faf5b1f1293bc5e70bd891ee9814be27915b4c32239cfc02f61fbb8d2b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#inline2": {
+      "query_sha256": "0b4efcadff8d0070d8777a1f98ad0a443b06840481fe44c08b5ba06c40f46be5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-ask": {
+      "query_sha256": "f64ccee8835d59dc64ab2d5d2269ab991f29d0b97103d8fb19ab6352e7a8ddb1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-construct": {
+      "query_sha256": "724081c96219a15ea368b195a3918a0a8185e6087db40ddc82f5792c61860bfa",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-construct-group-by": {
+      "query_sha256": "3a12420aa9b3941b6caad1d10e96bd115d96dd281a9133aab996a5a970a97dd9",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-construct-limit": {
+      "query_sha256": "da78017db8e9f63bf2778f5a606ed1696929e9d112845cfb1618d44ab4672a63",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-distinct": {
+      "query_sha256": "c8d97667dd4ed99fa6cc62f7b2bb6c4619824aa124f6172b97d70309e54b8a86",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-group-by-join": {
+      "query_sha256": "8334902e86fb71e896b461299ec316532e6e793e3850a50de33ac2063a6a0626",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-group-by-projection": {
+      "query_sha256": "3f7646fc64614cc20068958a3c224afad9ef92ae7c5052a52446c6b1da26b348",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-group-by-select-expression": {
+      "query_sha256": "39716dc6e98db8bd1c6134b506259c92760f735f2f3681845d42c5801a4c3d48",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-group-order-by": {
+      "query_sha256": "c27b96f57ab40b8ad4c44a80db08ca34f5079c197bf8c55cde4ea0eda9f51658",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-no-vars-no-rows": {
+      "query_sha256": "535fed29d87cb087f8fb5b355044a997f62e2cdc09c9acc7ec0b721e45486647",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-no-vars-two-rows": {
+      "query_sha256": "8ebdefd63b1f6396733e165aed00c8a7f19821a4d5700801152defc40e3a48af",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-offset-limit": {
+      "query_sha256": "60972e4349849e08f658f6eecee078131d551c98aacb6500c6e2d5e15b5c8ef5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-order-by": {
+      "query_sha256": "430c5ff9eed3acf405a41d0e7f5ebf8c8d9b49320c00a1a0ba09f8476896daf1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-select-star": {
+      "query_sha256": "ee83828331d15695c754650bdd63f36332b39227d96d35dc9675094103d4f6fc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values-subquery-offset-limit": {
+      "query_sha256": "6b002e47f984db2c916bf5ae9a899496e933fe92c9c69ecf25e8f4af7f0f8bce",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values1": {
+      "query_sha256": "37afb651d880d77c7e1d3675c262743e794b5e397b59c164b6f062e0bdc6066c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values2": {
+      "query_sha256": "6d27cfe8d7f403cfa250b93cfd35aa49a3e6fd69ec959108c98747363739ea72",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values3": {
+      "query_sha256": "bd37829791e28a4b989d7f72e53ca43bab98263e98c0558d7bddd840059db425",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values4": {
+      "query_sha256": "6fa97bed72defa4283f85a3c783fcca97c8c140cce0f6bd1d85916e5f7f3a56a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values5": {
+      "query_sha256": "6022d6e740f6d2801409b5ba0b270476d5931bd3335f7064e89bf1a8e96fed13",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values6": {
+      "query_sha256": "6f16b68f5a5f092ca09857c70abf51f6ec4fe325d017e1785cdc3d9463271ffb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values7": {
+      "query_sha256": "bb88059a90e80ab367dd5d8c14c92023ed63bf8f4396e82949af1e444bdd6fe0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/bindings/manifest#values8": {
+      "query_sha256": "07511dcf328252eb89d7c5f3ea61201090405465692c5be1391ebd8279fa1825",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-bool": {
+      "query_sha256": "57cf7f807489d67713a2e6417e0df8ae3a755e4113c7899ae924674362498ce9",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-decimal": {
+      "query_sha256": "ae98ff1a14fdae02eb983a9fb0b940e8e8d9d10ad25750fa73062609fe3d68f7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-double": {
+      "query_sha256": "a22790e97134a342d892548c51576e7ac7b6a64cef92cda73b49888e7d28333b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-float": {
+      "query_sha256": "45df72bb413ba47761f647c854f236106048c6a34d9f4fa1aab1f1042c2d1dd3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-int": {
+      "query_sha256": "119f81d67c1be3109597f5a217be8f247189732aadf072147e619e7226cd37b1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/cast/manifest#cast-string": {
+      "query_sha256": "9dc739f6171d7545430a7f9b76b8454e5bb6bbb3651955ffa605da9075cff1fa",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/construct/manifest#constructlist": {
+      "query_sha256": "c0f9f4c22c569bb3687f1f187f9d4074d08ab0d807141d5aed5a2f5ee068b374",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/construct/manifest#constructwhere01": {
+      "query_sha256": "821ffefe2aee82c9fe22f8c0bc265d385e4066d9b159d1626ebb10474ceb1250",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/construct/manifest#constructwhere02": {
+      "query_sha256": "07c1ebf8025868a14dc4ff35a44738bbe9ebefb6da2c1bb79306ac1d37a369b7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/construct/manifest#constructwhere03": {
+      "query_sha256": "6b34e0296a47c733951215dfd083dbaad0d98e91e4b5f8eb26a2f3fe1ab5fabb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/construct/manifest#constructwhere04": {
+      "query_sha256": "ffa3b7fd15fc3c68d53b51e6c730fab78c5ec8b9ce762741d4a37ed94c19b5c2",
+      "dataset": {
+        "default": [
+          "fixture:sparql/sparql11/construct/data.ttl"
+        ],
+        "named": []
+      }
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/csv-tsv-res/manifest#tsv01": {
+      "query_sha256": "01bd7cb4a2b93fda4e658db10e63169720114e4c173965656f0e19896017c88c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/csv-tsv-res/manifest#tsv02": {
+      "query_sha256": "79ac5a29e433544b581ae17237fbc7b1b5680ee61d72491e85c12e1e12684a84",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/csv-tsv-res/manifest#tsv03": {
+      "query_sha256": "01bd7cb4a2b93fda4e658db10e63169720114e4c173965656f0e19896017c88c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists-graph-variable": {
+      "query_sha256": "ec5d4e8ae3507144cd3780cf3f824187cbca5315316898e9e7b672a687b19b73",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists01": {
+      "query_sha256": "fc3d2d04facbc20bf7da4aabdb51cf3d94162031f8ec139282e8c68beecdac66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists02": {
+      "query_sha256": "8b679dc82d2c89fd88a28635d96921caeb0c19d94ebd446f8ccec389b8031e2a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists03": {
+      "query_sha256": "300d2c6d85aedb91c39ae8d0293b83623114207f522c903bfced21ec72e4fc55",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists04": {
+      "query_sha256": "5bb8247e69b29495166e1ac1453bf78d3c58d1e6c57c548153c38c10605060db",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/exists/manifest#exists05": {
+      "query_sha256": "7d58be098a8ac48e7a3b01c92a3ae74e5bc2667ea5bb244daf61742475b2b9ee",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#abs01": {
+      "query_sha256": "8e5015727ab8d2d125c20a46602951b764f7cfe0e3393350f118ee81af2362dd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#bnode01": {
+      "query_sha256": "eb3c2615890adfcbece7f63c45572283ef7f47804e524ccb0ac1268c7fe73159",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#bnode02": {
+      "query_sha256": "af22bc3c0428472ac760088e89f5223c23ea7c4a247d2d655a63274e0f92425f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#ceil01": {
+      "query_sha256": "361b9f908f7c79a3c9012834b7320e86be52af7b972b9a0d40784cc6739ba2fd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#coalesce-empty": {
+      "query_sha256": "166b214f23471903841491df90c74c07953759d5dbb0dcb40a194be7b80f285c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#coalesce01": {
+      "query_sha256": "32a5dc94153ff3663b42eea3835f837ba4a6a6d238cbd180a9934294941cec4d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#concat-empty": {
+      "query_sha256": "409ec17e524032d19ea2a72a5b7306666181de7133bb196f0378632b3a20d9c9",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#concat-single": {
+      "query_sha256": "39e39aa647884d2283204d722dfd132ca943fd23a264f159df962898049c1bd6",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#concat01": {
+      "query_sha256": "0a7efaea0ae96f9174f632078668c44568d0561a21b8ec61f551593764f79d66",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#concat02": {
+      "query_sha256": "ec9cef2e4cfba6c92f472fa35b304102e5190c315b1e121064be0d59f7cc910d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#contains01": {
+      "query_sha256": "8dda58d1204a2ee12e23d793fbb31352d4ad2346de75d086d56bf2cbd87321e0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#day": {
+      "query_sha256": "e1c943cb8ace10527fb367f6cbbc6d093425cb265a8b716da28ce79041604233",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#encode01": {
+      "query_sha256": "aef5694ee6754c568d7f436e49d6d169be1a0025b5f3b4be4f6fec1ec2e6c3ec",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#encode01-non-bmp": {
+      "query_sha256": "aef5694ee6754c568d7f436e49d6d169be1a0025b5f3b4be4f6fec1ec2e6c3ec",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#ends01": {
+      "query_sha256": "ae5aecddbb90ffeac1d10d9395dbce1b8da84bc5eac541a61f7dea8d8f8a232b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#floor01": {
+      "query_sha256": "f1024deb361edd84ffaadabd1a5af939c01b5a76e39d355576cbc8dd3b640c72",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#hours": {
+      "query_sha256": "cee671fdf0139a0ee9a9a82a1a5946bbe4d74923175fc4daf980dca0e4d8843d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#if01": {
+      "query_sha256": "968ac854939a9350d90711ab63b42181dd1b63db8d5d7c7aca09f1b5c95091aa",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#if02": {
+      "query_sha256": "d0b7bab62df3e7505168dbd5a430e7d293b7c8e3e09f31a045d988e47ad1abc1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#in01": {
+      "query_sha256": "72ac80d57f9c9d5df6350c112ac77f6707fa37c73f739ca7ed9305a860debead",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#in02": {
+      "query_sha256": "764842af7fb0ba79b0bc7192ee54b1e5a103e7c5a7a8298db1189e88fa81c1da",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#iri01": {
+      "query_sha256": "799fa84ed572e3aba7c40ba3ccc82354cd591ca2ca9f7363b9552f4b5d2d9e48",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#iri02": {
+      "query_sha256": "bf43cb790491a9c56cadde7f9cb7bb6ae990787ad3330eae9037cf115e4f6d8e",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#isnumeric01": {
+      "query_sha256": "0e30e68386de1217873c007246e9f6250b2b3f9afa4b565a7d1f30b30d4c6278",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#lcase01": {
+      "query_sha256": "ca90cff3bf0a2cc931c3043ed0f93f9fd9ec4ae368d82b6560259ac3f33cce8c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#lcase01-non-bmp": {
+      "query_sha256": "ca90cff3bf0a2cc931c3043ed0f93f9fd9ec4ae368d82b6560259ac3f33cce8c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#length01": {
+      "query_sha256": "4c6ed5e243aa9c1c162f47ca76d740bea259de282312523d2adb804edf93c559",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#length01-non-bmp": {
+      "query_sha256": "4c6ed5e243aa9c1c162f47ca76d740bea259de282312523d2adb804edf93c559",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#md5-01": {
+      "query_sha256": "d9c7e466ff3e30a20f220a55a73816e2425c91b993c0c45f1dcb828e4c807024",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#md5-02": {
+      "query_sha256": "a52150e5b1285ea0ac3ce16e500c5999872e3d794ca255c565ebdc102b392a70",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#minutes": {
+      "query_sha256": "70f102278db695edbd3f4be0fb5baf0b750cd9e5e636d596a23435678655c060",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#month": {
+      "query_sha256": "444b496eacba79a46f66ac3df32ab8e4deee3eaec7b64ca2007bc903c5fe8899",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#notin01": {
+      "query_sha256": "6f121ab564f10c84db03dd0ff92106264219d8a3e153418d4103b7ff05207370",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#notin02": {
+      "query_sha256": "9917e71c2e23cff0e32651574f3bb97fffedfa32efd5cf8a535ad9759b577f82",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#now01": {
+      "query_sha256": "0422e8bbb99e8ae17ecc04247d915750b8641303008b3bf36555e9d1ad72357c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#plus-1-corrected": {
+      "query_sha256": "6dd0cb3658a0d4920bfe91e61daf89d8c22f6d5ff8d811b4f43b1015949a5d92",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#plus-2-corrected": {
+      "query_sha256": "a443656321fecbf9a5aa1c0f552289f753ebd604c5cf8c478cff2be854bf7501",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#rand01": {
+      "query_sha256": "be75630ef92f00fd35819781b763809a7c8821dac72674129ba4a152835bd7eb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#replace-case-insensitive": {
+      "query_sha256": "75f11f9f1d1ebb8507658216e362fa5111ec5cd633c27161bc19fa7a14b8abbd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#replace01": {
+      "query_sha256": "36757d37fae9b4926e8469d07f2591bed0fa5ce1cc7d1e8e41fb89ceb25989eb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#replace02": {
+      "query_sha256": "5b24a8dc7bc2b954b9be4c3a8453737bd5c25029423f4c1526845aaa1799a91d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#replace03": {
+      "query_sha256": "f1778bea15a6fa1af4526457863df2c7a9f7b9bcf54e253fb9f3fd7ca729b05e",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#round01": {
+      "query_sha256": "49ab4266b325eb073b8cebfddbb3b2cdcb4502791c825e83733b3315329c0c87",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#seconds": {
+      "query_sha256": "4f7439eafa0d465fd3e9ee3f016ea9d49e385e7fded21262f2981241568ef858",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha1-01": {
+      "query_sha256": "49f70bac0d4242efd129815c5f26f696ed4f717d8a6c6cf7738e0873d29f9161",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha1-02": {
+      "query_sha256": "fbfedcc8b16247bd04fccef30ad2c6f65101f7fc320341e7531dd0b0acc947d5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha256-01": {
+      "query_sha256": "9528c3917880e7bf891929994175406d2bb6d1b4ac3809278b610c097cdfc3b7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha256-02": {
+      "query_sha256": "a051876f3fa78f96cab89ba42a324049f6c8e31acc768c749a5ccaff402e3cad",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha384-01": {
+      "query_sha256": "e53f30e6bdccfb1bd344a8b98b674046c6dc018171980622f9602208f5095a4a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha384-02": {
+      "query_sha256": "a7d54b034b644856ec626e96384af1df9c962705f9ab1a9bf7fb16ac78805d32",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha512-01": {
+      "query_sha256": "8b64ae488cf875a52ba322c2a9c6fd317c0c29abdb8b992c99a5e31189f0334e",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#sha512-02": {
+      "query_sha256": "b6755528412bf886857bf8b411ade3923cd216aa494328e28ae8c76a4d165e13",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#starts01": {
+      "query_sha256": "08d9db696ae08e36d04fe0cb93fb314cfcfcfb08605fc9fa3ccaa1dedb620e2c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strafter01a": {
+      "query_sha256": "62913ef6e9f62b64f0d91baec47c0889d059bac86550f425a181ae492fda58ff",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strafter02": {
+      "query_sha256": "3d88bcf4a113c6b50b6868804ff73ff3293e2c1a2254ec4d447be45a12c573ea",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strbefore01a": {
+      "query_sha256": "a8fa327d83efbd2347dc25876d09e4a2c22ed226d44a84ea2b9d33d485de70a5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strbefore02": {
+      "query_sha256": "ebac11313813ba6d379c4cc00879e6e85b8a24a590802e63d01f0a7f51841c71",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strdt01": {
+      "query_sha256": "1a23063d3f4b577034d8068ce88ec8e56a6398264d01610703b3be380da55caa",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strdt02": {
+      "query_sha256": "ad056f4fd070fa6bbca3383a02d23f0c2f7a0c7d3458102fc1d10e84daffe8bc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strdt03-rdf11": {
+      "query_sha256": "9dcb15b9a0b35fb68c06c6124cc706eb764a739200da52ca59e217ea86ba1d1e",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strlang01": {
+      "query_sha256": "eb72aebba313eda85135e254ab2ee2b7f7e10cf23d835b34a9d45811263320f5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strlang02": {
+      "query_sha256": "1fb26a5ddaa51e757c5ddad17de77032929d4b1446dfa7467cd3a9d22f514916",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strlang03-rdf11": {
+      "query_sha256": "c61ef85701095de4dc5978972aee1b5c7ef14342398dd35c4b76c04d11533d7a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#strlang04": {
+      "query_sha256": "de7cd7df8528c13626b1e9db728c1e8609145f1a073bfb5a2e6af3e09871eac3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#struuid01": {
+      "query_sha256": "93839dae911cd528a996be24e99ed26c4ced5e30d7ff9c2d70a731a075de81b4",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#substring01": {
+      "query_sha256": "850b479c1055e27eb48d89e4d08c286f7a1fdd95d424cd9eebeba995eb798b3f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#substring01-non-bmp": {
+      "query_sha256": "850b479c1055e27eb48d89e4d08c286f7a1fdd95d424cd9eebeba995eb798b3f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#substring02": {
+      "query_sha256": "6aa22833e3d0d850f2f08e183e00d0297d629ebfe525c45b707e9abb4b0abf23",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#substring02-non-bmp": {
+      "query_sha256": "6aa22833e3d0d850f2f08e183e00d0297d629ebfe525c45b707e9abb4b0abf23",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#timezone": {
+      "query_sha256": "7f54669a3b13d13b88c94e0ae1c6e202d64b3ec1083f5dbdb4a5a10a770c99f7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#tz": {
+      "query_sha256": "117623b57d060368870db44036b46066430fefb1475d231cdb6c8bb39842af07",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#ucase01": {
+      "query_sha256": "4fc2479a6057c11130b367e84b0c9b91e1e1ace6722cea484d91192b6cb17cdc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#ucase01-non-bmp": {
+      "query_sha256": "4fc2479a6057c11130b367e84b0c9b91e1e1ace6722cea484d91192b6cb17cdc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#uuid01": {
+      "query_sha256": "d5a178845de32ac69b70d3b1f22622ac870a298b85c4a928b6f633475a9a3bdc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#uuid02": {
+      "query_sha256": "4b7236acac6d39adb48f05961e50edd1a83bf9a41392a8d93a0a9b2410cac85f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/functions/manifest#year": {
+      "query_sha256": "8c0982d1b30a5b5b7cb6edf15723de281a4b07c8b3bb488159633841a3367016",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/grouping/manifest#group01": {
+      "query_sha256": "6349945e079657a67a2a36b64d95c1fb6a97d65058a242b4aeab81e792c62c8f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/grouping/manifest#group03": {
+      "query_sha256": "90f36dd073dedecf16fb8313a0092e9a0d7e62e5017efdb32bf21abdac60b727",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/grouping/manifest#group04": {
+      "query_sha256": "8961b78d6fcfc88348295b61c53182b06deb8baac5f168e232ecfce9b1862be5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/grouping/manifest#group05": {
+      "query_sha256": "25f3665ddc33531f7886ca7e888786388cf2f226b77a1b837f648fb82b5c1e33",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/json-res/manifest#jsonres01": {
+      "query_sha256": "01bd7cb4a2b93fda4e658db10e63169720114e4c173965656f0e19896017c88c",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/json-res/manifest#jsonres02": {
+      "query_sha256": "79ac5a29e433544b581ae17237fbc7b1b5680ee61d72491e85c12e1e12684a84",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/json-res/manifest#jsonres03": {
+      "query_sha256": "d8fc48ac2f3f3b13665bf89898c2d42464a8ba3018e6106298ec8005389a381d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/json-res/manifest#jsonres04": {
+      "query_sha256": "61d1d13c37a83193f785b457dc454554dbd987b4bb984616d94135959a32c0e7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#exists-01": {
+      "query_sha256": "6a5b704c9fac492e13eb53c8cc89b25afa5da21f4c2a33ca2eb0eac2c4bcfd27",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#exists-02": {
+      "query_sha256": "32fb16d17f6cc31b32261a4775685be278491d92e59362d19451024704fb8d7b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#full-minuend": {
+      "query_sha256": "c080f03dc91bffd0a13c343820ab9aec23cb5979b0375fec9f794ddfb86868f0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#graph-minus": {
+      "query_sha256": "fccedf7dea505ddbb3ece7fbc3784a3c216cd0353d39c36380de6b36982e2b30",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#partial-minuend": {
+      "query_sha256": "e4feea8aa2d369aa34e1e831418e363b9b9d49033b049f08ccf78ffb8400f7dc",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#set-equals-1": {
+      "query_sha256": "8eb674c1425a7b1f96fffaff4dc95460d6985b5c968e5bc6e7f251aa129e2ccb",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#subset-01": {
+      "query_sha256": "b5a58acb356e9a70a51bbd9133caeb002931dc738f9cefb93afe31e74fc3e385",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#subset-02": {
+      "query_sha256": "1dad923f5cda8cde23d58c488b8ee6417b0754d7618882a47cd321998e5cbc67",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#subset-03": {
+      "query_sha256": "154139764849dd85ae1f584a4abf3bc4816d3cf483c727eba7759920e7927f42",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#subset-by-exclusion-minus-1": {
+      "query_sha256": "36e66f0c6f1404187c431aa45aa121e20141b99f3fac280cbd0b271e25b4a158",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#subset-by-exclusion-nex-1": {
+      "query_sha256": "0fdfdd03effe0fe8e5e29276ca36442c36edf52ea2e6bf5d3600fc189b6d0b74",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation/manifest#temporal-proximity-by-exclusion-nex-1": {
+      "query_sha256": "4f7be22015ef74366774467d147dfb968358d66dbe6bbc9303bb89e1b10e6662",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp01": {
+      "query_sha256": "c95fb16a69376556b90bc2c0f3a75bd8caf821ef253c21bc05af7da725a5b5f6",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp02": {
+      "query_sha256": "58978a0364abb615783534d6cc9c0830c5cf497d8ef43c97218624c761074a35",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp03": {
+      "query_sha256": "ffe24877b92ac52a3d0cf1973f41dde267a7e835fb638a64c0e4c5c438cfebb7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp04": {
+      "query_sha256": "035af6d95e5e02f562284c3506b38097872d162e48e4907c2303bb299f521926",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp05": {
+      "query_sha256": "4207bb57b13a93fe8df1d469a71bf96e2ca476a7af6815685f15b423ee05f8d8",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp06": {
+      "query_sha256": "3f27a550af305715b8e0fe274a4b97083f502cc29d754bdddf29cd6674355a83",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/project-expression/manifest#projexp07": {
+      "query_sha256": "d80dd1add7f13ddd8da7adb7fbf2ca783ca38e6b804bf27a2f37ba8e4cc9545f",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#nps_a": {
+      "query_sha256": "6776065da3af932c84c37cf971d0a6ebac95c54e31714d738ef36d38041b6d40",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#nps_a_inverse": {
+      "query_sha256": "f0be8ca425e895146d0fcd01ae201c7050a4d8ceac6f7bdd9a1ee0c8968b6334",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#nps_direct_and_inverse": {
+      "query_sha256": "0766bfc3f35472550621f7c06e46fd96c272b86fb403dc2ebd9fe79dc726b75d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#nps_inverse": {
+      "query_sha256": "97d86ce8db2d27188156fe2f05cf4ccfac7c6bee11389b99103dd2330f4179d0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp01": {
+      "query_sha256": "c68c6da349bc5ccad3756a36c507331bd37f67c62a2751b6ce90b6e0d9d28470",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp02": {
+      "query_sha256": "cb2e4dad00d65f979b91f745b17d53cf4dc6a5a03d34bfae939bc946454ffebd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp03": {
+      "query_sha256": "05eb588d20786710310e79adb315a29c14c7970ae0380afc8e71a2142f66c4ca",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp06": {
+      "query_sha256": "61f6f1ecbdfc2ccef26ce00aae64fcf51583f91ece3271e26111b3bd45dcfbdd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp07": {
+      "query_sha256": "61f6f1ecbdfc2ccef26ce00aae64fcf51583f91ece3271e26111b3bd45dcfbdd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp08": {
+      "query_sha256": "a736647d456df95ecdbb0229e2235c7686e4156ec79ef0c085f1820245518de7",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp09": {
+      "query_sha256": "d5b81fbed1650f8ce6e47e0089cdb51271bd2f9c57c3ff476f658649af9f835b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp10": {
+      "query_sha256": "321a02c4b8b98e5e2bb6f26593936cfe597926e671d099e7244a392b95a769e1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp11": {
+      "query_sha256": "1280f8feca7a87e2c3e45a6672196c8004b3abe918767c8e4844a20d3e30d209",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp12": {
+      "query_sha256": "01a8c3645a6df4d97cc5909be007367e6b87aa2eb8713d3d25b2536355a7ea41",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp14": {
+      "query_sha256": "154b3b3f03b9873ae04a1b2330f2aacef5ed1d06396c222d50b63b919e299dd3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp16": {
+      "query_sha256": "154b3b3f03b9873ae04a1b2330f2aacef5ed1d06396c222d50b63b919e299dd3",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp21": {
+      "query_sha256": "91fd9c93762c4a640b5b1d2058c3b45699325199d579ef1e71d7a32b7b02ead2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp23": {
+      "query_sha256": "91fd9c93762c4a640b5b1d2058c3b45699325199d579ef1e71d7a32b7b02ead2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp25": {
+      "query_sha256": "91fd9c93762c4a640b5b1d2058c3b45699325199d579ef1e71d7a32b7b02ead2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp28a": {
+      "query_sha256": "8126fff5fb58c80858b8ea472440e8c3bf7133f651d12cd97f2ce1fa72d2f186",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp30": {
+      "query_sha256": "e00b7455f2c29a2f81e248185686d5c60592725e904da22a869d7e4277fec420",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp31": {
+      "query_sha256": "b4980f6e694333d181d23af65a80a1133f48f0f7c0caf8e7b4825b9ce73fa927",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp32": {
+      "query_sha256": "924aed5a5d61469b489256d126ea3a906af7e57e399dd4349b33a09b1e1466e2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp33": {
+      "query_sha256": "c11b122c3daebcccbe5ffd1f592c87c98cc0ce2fbcf160ffaffdf89cd9c46daa",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp34": {
+      "query_sha256": "7e2dc53df55779d954f97501cbbb96fade5fa1c323b33cee78c5d2acff1142dd",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp35": {
+      "query_sha256": "9acb82cdbc0797150f00f497ebdaad29d405f0b2875e3d21d4e8d43d66646d52",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp36": {
+      "query_sha256": "a57106225cd1dcc472e6a657a14a544c01f789074aa84dae5af247d25757663a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#pp37": {
+      "query_sha256": "e1ee509916e759145f275dd01ace154e54762dc2624a699bf2136564574d47c1",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#values_and_path": {
+      "query_sha256": "c56be399714e12630f480212a767ae4f137b6658e7387bf1a3d452367bed94ac",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#zero_or_more_set_end": {
+      "query_sha256": "5f1123621f2437e3741a243d43dc730f16fe3fd9a1d1ee9e49a08a150cc71465",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#zero_or_more_set_start": {
+      "query_sha256": "806d8b8f1c2a871ea504d3eeda76ea023c812c677198f2b374b3c43c9b5cc3b0",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#zero_or_one_set_end": {
+      "query_sha256": "60cd03dd5e67ccecbe2451f82b36625b23aeb987fb5a1517c5f5052a12582cb5",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/property-path/manifest#zero_or_one_set_start": {
+      "query_sha256": "cd8299c259bb33c6c7dab3ad40c2bf87d39976ae1400f063863fc6eb6aff1122",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery01": {
+      "query_sha256": "7f904b5eabbe74c233a24fb17ae79bb0ca5d558123b02fe3fa41d0b256ab8b40",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery02": {
+      "query_sha256": "906eafb174f112c587c3e08d840fe907874eb68b15c456d50d1e1a5b2eb1b608",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery03": {
+      "query_sha256": "59a2091f5a951331db791a08cc02e25dfef6d06e05d203e1f6a916dd6e6b182a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery04": {
+      "query_sha256": "054f711ec15f7b3cd2bc71728dd9fd80b114a92d2dfa59c72f30692704c871ef",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery05": {
+      "query_sha256": "dc2b667d9d79fec1a8cdede0a1d728f6018779aa3306baa5cdd64dfebe54650d",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery06": {
+      "query_sha256": "278d63b7851ab8a9cec993aa2b8dfa5cd8e319e7cbc07127df15680c45554277",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery07": {
+      "query_sha256": "01632f4bc6ae0699ff08378fbba15fb7fc98b934c8ad3a69cae0bcabee112400",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery08": {
+      "query_sha256": "0623cf32b434c55d7fba88ad8c32469a87839cad20e5b68e503a7b3fc0b7cc8e",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery09": {
+      "query_sha256": "47b2006173eb09a28b1b61dcdc1c8b136bdb1a98e90b86b081f7fb6deda3d828",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery10": {
+      "query_sha256": "0f4e6621fe21192ac0203c712cc15ccfda1987aefc3e3db37ea9b98d707f7eef",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery11": {
+      "query_sha256": "13f4ff51d3e6fcfca4dd44d5bfcecd357291c260d55c032ff00417baab840ef2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery12": {
+      "query_sha256": "b38a4aeaeef0edf24234fe410b7db2737735f8963cbe4beac59065c29d9ede9b",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery13": {
+      "query_sha256": "7f5ef497808a57edd92690be4d09450dcc9a3663a9eccf4d22074716fa104a76",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery14": {
+      "query_sha256": "014df1f89ad3d4672d43137e61d3a6f964d7e19d23a47fd025da61140bb67ed2",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery15": {
+      "query_sha256": "fd081ffad561a1a454b2143915f74a06bab37f4453284bde045807f52864ee8a",
+      "dataset": null
+    },
+    "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/subquery/manifest#subquery16": {
+      "query_sha256": "3769eccac83cbf8de4a8ed7a31b3a28196e361f1609253d24aec5bc7868c1694",
+      "dataset": null
+    }
+  }
+}
