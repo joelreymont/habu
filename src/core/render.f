@@ -1474,6 +1474,20 @@ variable MDV-I   variable MDV-F
 : CLOSER-PINNED? ( -- bool )
    PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
 
+\ The interpreter's top-level keywords (src/habu/interpreter.f PACKAGE?,
+\ DEFINE?), which no wordlist holds.
+: TOP-KEYWORD? ( ^u8 n -- bool ) {: t:^ tu:n :}
+   t tu s" package" CORE-STR=CI  t tu s" public" CORE-STR=CI or
+   t tu s" private" CORE-STR=CI or  t tu s" global" CORE-STR=CI or
+   t tu s" ;package" CORE-STR=CI or  t tu s" host" CORE-STR=CI or
+   t tu s" target" CORE-STR=CI or  t tu s" seal-package" CORE-STR=CI or
+   t tu s" using" CORE-STR=CI or  t tu s" ;using" CORE-STR=CI or
+   t tu s" export" CORE-STR=CI or  t tu s" split-str" CORE-STR=CI or
+   t tu s" cast:" CORE-STR=CI or  t tu s" linear:" CORE-STR=CI or
+   t tu s" immediate" CORE-STR=CI or ;
+: STATE-SWITCH? ( ^u8 n -- bool ) {: t:^ tu:n :}
+   t tu s" [" CORE-STR=CI  t tu s" ]" CORE-STR=CI or ;
+
 : TRIM-SPACE ( -- )
    TEXT-LEN @ 0= IF EXIT THEN
    TEXT TEXT-LEN @ 1 - + c@ 32 = IF TEXT-LEN @ 1 - TEXT-LEN ! THEN ;
@@ -1642,10 +1656,17 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 : TOK-MESSAGE ( ^u8 n -- ) {: a:^ u:n :}
    TOK-SPAN  a u EMIT-STR ;
 
+: UNDEF-MESSAGE ( -- )
+   PIN-TOK$ TOP-KEYWORD? IF s"  is a top-level keyword, not a word" TOK-MESSAGE EXIT THEN
+   PIN-TOK$ STATE-SWITCH? IF
+      s"  switches the compiler's state, which a checked body cannot do" TOK-MESSAGE EXIT
+   THEN
+   s" cannot find word " EMIT-STR  TOK-SPAN ;
+
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
-      RF-UNDEF of s" cannot find word " EMIT-STR  TOK-SPAN endof
+      RF-UNDEF of UNDEF-MESSAGE endof
       RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
       RF-IMM of s"  is a compile-time immediate that is not a stack-neutral parsing immediate" TOK-MESSAGE endof
       RF-CAP of s"  is a trust-boundary primitive" TOK-MESSAGE endof
@@ -1682,10 +1703,15 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    SGBAD-RETURN? IF s" return-stack effect" EMIT-STR EXIT THEN
    s" here" EMIT-STR ;
 
+: UNDEF-LABEL ( -- )
+   PIN-TOK$ TOP-KEYWORD? IF s" keyword, not a word" EMIT-STR EXIT THEN
+   PIN-TOK$ STATE-SWITCH? IF s" state switch" EMIT-STR EXIT THEN
+   s" not found" EMIT-STR ;
+
 : DIAG-LABEL ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-LABEL ;AT-PIN endof
-      RF-UNDEF of s" not found" EMIT-STR endof
+      RF-UNDEF of UNDEF-LABEL endof
       RF-QUAL of s" more than one `:`" EMIT-STR endof
       RF-IMM of s" unmodeled immediate" EMIT-STR endof
       RF-CAP of TOP-STEP @ IF s" not callable from checked code"
@@ -1959,6 +1985,14 @@ PTR-VARIABLE HOLDER-FIRST
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
    k RF-UNDEF = IF
+      PIN-TOK$ TOP-KEYWORD? IF
+         s" write " EMIT-STR  PIN-TOK$ CODE-SPAN  s"  at top level, outside any definition"
+         EMIT-STR EXIT
+      THEN
+      PIN-TOK$ STATE-SWITCH? IF
+         s" compute the value at top level before the definition and name it with `constant`"
+         EMIT-STR EXIT
+      THEN
       PIN-TOK$
       \ Only a call in the open body may become `recurse`: not a top-level step,
       \ a tick (no xt) or a call in a quotation (`recurse` calls the quotation).

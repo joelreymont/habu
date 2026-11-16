@@ -806,6 +806,16 @@ variable RC
       s" :1:23" BODY-REJECT-AT
    ERR$ s" `evaluate-closed`" CONTAINS? TTRUE ;
 
+\ A top-level keyword in a checked body is named as a keyword, with writing it
+\ at top level as the help.
+: TEST-KEYWORD ( -- )
+   s" a checked body using public names it a top-level keyword" T-LABEL
+   BODY$ s" : LRD-KW ( -- ) public ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNDEFINED]: `public` is a top-level keyword, not a word"
+      s" :1:17" BODY-REJECT-AT
+   ERR$ s" outside any definition" CONTAINS? TTRUE ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -1254,6 +1264,7 @@ variable LONG-U
    TEST-MISSING-SIGNATURE
    TEST-CAST
    TEST-UNSAFE
+   TEST-KEYWORD
    TEST-SEALED-PACKAGE
    TEST-SEALED-DEFINE
    TEST-SEALED-DUPLICATE
