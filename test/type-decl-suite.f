@@ -1160,21 +1160,22 @@ s" NEWTYPE -tdx 1"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `-tdx`\n"
 s" -tdx" s" name must be a lowercase family tail" TDT-AT
 \ injection-shaped text is not a canonical name token.
-s\" NEWTYPE s\" 1"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `s\"`\n"
-s\" s\"" s" name must be a lowercase family tail" TDT-AT
+s\" NEWTYPE td\" 1"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration `td\"`\n"
+s\" td\"" s" name must be a lowercase family tail" TDT-AT
 \ reserved signature/type tokens as family names.
 s" NEWTYPE a"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `a`\n"
 s" a" s" reserved name" TDT-AT
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family or variant\n" TDT-HAS
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family or variant\n" TDT-HAS
 s" SUMTYPE n VARIANT x ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `n`\n"
 s" n" s" reserved name" TDT-AT
+\ A variant defines a word, so a keyword cannot name one.
 s" SUMTYPE tdkwv VARIANT export ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdkwv`\n"
-s" export" s" reserved name" TDT-AT
-s\"   = help: pick another name: a variant defines a word, and a keyword such as `export` cannot name one\n" TDT-HAS
+s\" error[E-RESERVED-DEFINITION]: `export` is a keyword and cannot name a definition\n"
+s" export" s" reserved keyword" TDT-AT
+s\"   = help: give the definition a name that is not a keyword\n" TDT-HAS
 s" NEWTYPE field<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `field`\n"
 s" field" s" reserved name" TDT-AT
@@ -1189,23 +1190,16 @@ s" fresh-mask-x" s" reserved name" TDT-AT
 s" NEWTYPE ptr"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`\n"
 s" ptr" s" reserved name" TDT-AT
-\ Reserved token protocol: construct/match/;match may not name a
-\ family or a variant (;match already fails the canonical-tail gate).
-s" NEWTYPE construct<a>"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `construct`\n"
-s" construct" s" reserved name" TDT-AT
-s" SUMTYPE match VARIANT x n ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `match`\n"
-s" match" s" reserved name" TDT-AT
+\ Nor can a keyword of the match protocol.
 s" SUMTYPE tdcn<a> VARIANT construct a ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdcn`\n"
-s" construct" s" reserved name" TDT-AT
+s\" error[E-RESERVED-DEFINITION]: `construct` is a keyword and cannot name a definition\n"
+s" construct" s" reserved keyword" TDT-AT
 s" SUMTYPE tdcn2<a> VARIANT match a ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdcn2`\n"
-s" match" s" reserved name" TDT-AT
+s\" error[E-RESERVED-DEFINITION]: `match` is a keyword and cannot name a definition\n"
+s" match" s" reserved keyword" TDT-AT
 s" SUMTYPE tdcn3<a> VARIANT ;match a ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdcn3`\n"
-s" ;match" s" name must be a lowercase family tail" TDT-AT
+s\" error[E-RESERVED-DEFINITION]: `;match` is a keyword and cannot name a definition\n"
+s" ;match" s" reserved keyword" TDT-AT
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate family, not a reserved-name shadow; both classes reject)...
@@ -1275,13 +1269,7 @@ NEWTYPE tvlocal
 SUMTYPE tdvok<a>
   VARIANT fine a ;VARIANT
 ;SUMTYPE
-\ control words and grammar keywords are not names.
-s" NEWTYPE if<a>"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `if`\n"
-s" if" s" reserved name" TDT-AT
-s" NEWTYPE repeat<a>"
-s\" error[E-BAD-DECLARATION]: bad newtype declaration `repeat`\n"
-s" repeat" s" reserved name" TDT-AT
+\ a declaration's grammar word is not a family name.
 s" SUMTYPE variant<a> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `variant`\n"
 s" variant" s" reserved name" TDT-AT
@@ -1545,13 +1533,10 @@ s" STRUCTURE tdpfc<a> FIELD X a ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpfc`\n"
 s" X" s" name must be a lowercase tail" TDT-AT
 s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" TDT-HAS
-\ a control word is a reserved name in the family and variant positions too.
-s" SUMTYPE do VARIANT one ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `do`\n"
-s" do" s" reserved name" TDT-AT
+\ a control word cannot name a variant.
 s" SUMTYPE tdscw VARIANT loop ;VARIANT ;SUMTYPE"
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdscw`\n"
-s" loop" s" reserved name" TDT-AT
+s\" error[E-RESERVED-DEFINITION]: `loop` is a keyword and cannot name a definition\n"
+s" loop" s" reserved keyword" TDT-AT
 \ an empty parameter list.
 s" STRUCTURE tdpna<> FIELD x a ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpna<>`\n"

@@ -67,6 +67,9 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail
+\ E-TDECL-DEF-NAME: a family, variant or public accessor field name that is
+\ a keyword or reads as a number.
+7123 constant E-TDECL-DEF-NAME
 
 \ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7125 constant E-PF-NAME       \ reserved field tail
@@ -2116,36 +2119,6 @@ package TYPE-NAME
 
 public
 
-\ CONTROL? is the one place the control-word list is written. Every declaration
-\ name gate asks it: this package's RESERVED? (variant names), FAMILY-RESERVED?
-\ for every family definer, and PF-RESERVED? (field names). A name that spells a
-\ control word would compile into a body as that control word, so no
-\ declaration position may take one.
-: CONTROL? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" then" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" else" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" begin" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" until" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" again" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" while" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" repeat" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" case" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" of" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" endof" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" endcase" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" do" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ?do" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" loop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" +loop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" leave" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" unloop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" exit" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" recurse" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" construct" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;match" CORE-STR=CI ;
-
 \ The text after the last colon of a name, or the whole name when there is
 \ none: a package path's last segment.
 : LAST-SEGMENT$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
@@ -2162,7 +2135,7 @@ EXPORT CHECK:CON-OF
 EXPORT CHECK:CT-NAME$
 EXPORT CHECK:CTN
 EXPORT CHECK:FRESH-ATOM-TOK?
-EXPORT CHECK:NAME-KEYWORD?
+EXPORT CHECK:DEF-NAME-BAD?
 EXPORT CHECK:SIG-PTR-TOK?
 EXPORT CHECK:VREC-FIND
 EXPORT CHECK:VREC-N
@@ -2175,7 +2148,6 @@ EXPORT CHECK:XT-TOK?
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u XT-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u CONTROL? IF RES-TRUE EXIT THEN
    a u TF-GRAMMAR-KEYWORD? ;
 
 \ Name `na nu` spells `<qa>:<ta>`, its qualifier folded as a signature folds it
@@ -2231,9 +2203,9 @@ public
 \ A variant defines a word in its family's package, so no keyword may name it.
 : VARIANT-REQUIRE ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF E-TDECL-SYNTAX throw THEN
+   a u DEF-NAME-BAD? IF E-TDECL-DEF-NAME throw THEN
    a u TF-REQUIRE-CANON
    a u RESERVED? IF E-TDECL-NAME throw THEN
-   a u NAME-KEYWORD? IF E-TDECL-NAME throw THEN
    a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
 
 seal-package
@@ -2242,12 +2214,11 @@ seal-package
 
 package TFAM
 
-\ A field tail may not spell a grammar keyword, a control word (TYPE-NAME:CONTROL?)
-\ or a generated-operation name, on every path that registers a field row: the
+\ A field tail may not spell a declaration word (TF-GRAMMAR-KEYWORD?) or a
+\ generated-operation name, on every path that registers a field row: the
 \ STRUCTURE and ENUM front ends, through PF-ADD.
 : PF-RESERVED? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
-   a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
    a u s" make" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" unmake" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI IF RES-TRUE EXIT THEN

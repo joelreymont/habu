@@ -76,7 +76,7 @@ DECL-DIAG:PROSE
 s" ENUM enum red ;ENUM" TEST-EVAL:RC 70 T=                 \ reserved opener keyword as a name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `enum`\n" DECL-DIAG:HAS? TTRUE
 s" enum" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM Bad red ;ENUM" TEST-EVAL:RC 70 T=                  \ upper-case family name (case)
 s\" error[E-BAD-DECLARATION]: bad enum declaration `Bad`\n" DECL-DIAG:HAS? TTRUE
@@ -86,14 +86,14 @@ DECL-DIAG:PROSE
 s" ENUM n red ;ENUM" TEST-EVAL:RC 70 T=                    \ single-letter family name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 \ An effect reads the token `ptr` ahead of any family, never as this one, so the
 \ tail is reserved ahead of the global `ptr` family's duplicate check (7102).
 DECL-DIAG:PROSE
 s" ENUM ptr red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM erf VARIANT alpha FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ reserved field name
 s\" error[E-BAD-DECLARATION]: bad enum declaration `erf`\n" DECL-DIAG:HAS? TTRUE
@@ -226,13 +226,9 @@ s" ENUM reject-compact q ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
 s" q" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM reject-compact if ;ENUM" 70 REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
-DECL-DIAG:PROSE
 s" ENUM ekwv red public ;ENUM" 70 REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `ekwv`\n" DECL-DIAG:HAS? TTRUE
-s" public" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
+s\" error[E-RESERVED-DEFINITION]: `public` is a keyword and cannot name a definition\n" DECL-DIAG:HAS? TTRUE
+s" public" s" reserved keyword" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" ENUM reject-compact alpha variant ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-compact`\n" DECL-DIAG:HAS? TTRUE
@@ -274,8 +270,8 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HA
 s" q" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" ENUM reject-full VARIANT if ;VARIANT ;ENUM" 70 REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
+s\" error[E-RESERVED-DEFINITION]: `if` is a keyword and cannot name a definition\n" DECL-DIAG:HAS? TTRUE
+s" if" s" reserved keyword" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" ENUM reject-full VARIANT variant ;VARIANT ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `reject-full`\n" DECL-DIAG:HAS? TTRUE
@@ -314,7 +310,7 @@ DECL-DIAG:PROSE
 s" ENUM ptr ready ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 
 ;package
 
@@ -483,7 +479,7 @@ DECL-DIAG:PROSE
 s" ENUM n red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the family: single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dgdup red red ;ENUM" TEST-EVAL:RC 70 T=
@@ -848,165 +844,20 @@ s" shape" s" POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;V
 enum-replay-test:RP-TRY 0 T=
 ;package
 
-\ 24. Control words are reserved in every declaration name position: a family,
-\     variant or field named `if` would compile as the control word wherever
-\     generated code names it.
+\ 24. A keyword cannot name a variant: the variant defines a word.
 package enum-control-test
 public
 
-\ 24a. Every word on the shared list, in the family-name position. Three of them
-\      (`?do`, `+loop`, `;match`) never reach the reserved-name gate: their
-\      leading byte is not a lowercase letter, so the canonical-tail gate refuses
-\      them first with 7101.
-DECL-DIAG:PROSE
-s" ENUM if red ;ENUM"        70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `if`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM then red ;ENUM"      70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `then`\n" DECL-DIAG:HAS? TTRUE
-s" then" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM else red ;ENUM"      70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `else`\n" DECL-DIAG:HAS? TTRUE
-s" else" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM begin red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `begin`\n" DECL-DIAG:HAS? TTRUE
-s" begin" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM until red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `until`\n" DECL-DIAG:HAS? TTRUE
-s" until" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM again red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `again`\n" DECL-DIAG:HAS? TTRUE
-s" again" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM while red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `while`\n" DECL-DIAG:HAS? TTRUE
-s" while" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM repeat red ;ENUM"    70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `repeat`\n" DECL-DIAG:HAS? TTRUE
-s" repeat" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM case red ;ENUM"      70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `case`\n" DECL-DIAG:HAS? TTRUE
-s" case" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM of red ;ENUM"        70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `of`\n" DECL-DIAG:HAS? TTRUE
-s" of" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM endof red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `endof`\n" DECL-DIAG:HAS? TTRUE
-s" endof" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM endcase red ;ENUM"   70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `endcase`\n" DECL-DIAG:HAS? TTRUE
-s" endcase" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM do red ;ENUM"        70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `do`\n" DECL-DIAG:HAS? TTRUE
-s" do" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM loop red ;ENUM"      70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `loop`\n" DECL-DIAG:HAS? TTRUE
-s" loop" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM leave red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `leave`\n" DECL-DIAG:HAS? TTRUE
-s" leave" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM unloop red ;ENUM"    70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `unloop`\n" DECL-DIAG:HAS? TTRUE
-s" unloop" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM exit red ;ENUM"      70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `exit`\n" DECL-DIAG:HAS? TTRUE
-s" exit" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM recurse red ;ENUM"   70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `recurse`\n" DECL-DIAG:HAS? TTRUE
-s" recurse" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM construct red ;ENUM" 70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `construct`\n" DECL-DIAG:HAS? TTRUE
-s" construct" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM match red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `match`\n" DECL-DIAG:HAS? TTRUE
-s" match" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM ?do red ;ENUM"       70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `?do`\n" DECL-DIAG:HAS? TTRUE
-s" ?do" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM +loop red ;ENUM"     70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `+loop`\n" DECL-DIAG:HAS? TTRUE
-s" +loop" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM ;match red ;ENUM"    70 enum-name-test:REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `;match`\n" DECL-DIAG:HAS? TTRUE
-s" ;match" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the family name as a lowercase tail with no package qualifier, as in `color`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-
-DECL-DIAG:PROSE
-s" ENUM if red green ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `if`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-
-DECL-DIAG:PROSE
-s" ENUM if red green ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `if`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-
 DECL-DIAG:PROSE
 s" ENUM cwvc do loop ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `cwvc`\n" DECL-DIAG:HAS? TTRUE
-s" do" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
+s\" error[E-RESERVED-DEFINITION]: `do` is a keyword and cannot name a definition\n" DECL-DIAG:HAS? TTRUE
+s" do" s" reserved keyword" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
 s" ENUM cwvf VARIANT loop ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `cwvf`\n" DECL-DIAG:HAS? TTRUE
-s" loop" s" name is reserved or already taken" DECL-DIAG:CAUSE? TTRUE
-DECL-DIAG:OFF
-
-\ 24d. Field-name position: the field row's gate answers 7125, the
-\      code and wording a reserved generated-operation name such as `make` gets.
-DECL-DIAG:PROSE
-s" ENUM cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `cwfld`\n" DECL-DIAG:HAS? TTRUE
-s" then" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
+s\" error[E-RESERVED-DEFINITION]: `loop` is a keyword and cannot name a definition\n" DECL-DIAG:HAS? TTRUE
+s" loop" s" reserved keyword" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
 s" ENUM iffy dolly matcher constructor elsewhere ;ENUM" evaluate-closed

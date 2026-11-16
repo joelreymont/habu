@@ -16,6 +16,7 @@ using TYPE-DECL
 
 package DECL-REJECT
 EXPORT CHECK:TDECL-DIAG
+EXPORT CHECK:DEF-NAME-REJECT?
 
 \ The slots hold copies: the family name is read on a declaration's first
 \ line but rendered after a reject on a later one, and a REPL refills its
@@ -23,7 +24,7 @@ EXPORT CHECK:TDECL-DIAG
 \ which a located token renders instead (TOKEN-SPAN@), until GUARD-CODE ends
 \ the declaration.
 3 constant SLOTS
-96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
+96 constant SPAN-CAP        \ bytes a slot keeps; a longer span is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
 
@@ -50,14 +51,17 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    loop ;
 : CAPPED ( n -- n ) SPAN-CAP min ;
 
+: COPY-BYTES ( ^u8 n ^u8 -- ) {: a:^ u:n d:^ :}
+   0 BEGIN dup u < WHILE
+      dup a + c@  over d + c!
+      1 +
+   REPEAT drop ;
+
 \ Copies a span's first CAPPED bytes to d; a capped copy's last MARK-LEN bytes
 \ become "...", so it never presents a prefix as the whole name.
 : CAP-COPY ( ^u8 n ^u8 -- ) {: a:^ u:n d:^ :}
    u CAPPED {: len:n :}
-   0 BEGIN dup len < WHILE
-      dup a + c@  over d + c!
-      1 +
-   REPEAT drop
+   a len d COPY-BYTES
    u SPAN-CAP > IF
       len MARK-LEN - BEGIN dup len < WHILE
          MARK-BYTE over d + c!
@@ -79,7 +83,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    S-TOKEN SRC@  S-TOKEN SLOT@  REJECTION:KEPT ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:
-\ the previous row, the code, the reason's and the fix's capped lengths, then
+\ the previous row, the code, the reason's and the fix's lengths, then
 \ the reason padded to a cell, then the fix. Each
 \ owner explains its codes reading its own constants, so a renumbered code
 \ keeps its text: owners loaded before this file are explained at the end of
@@ -184,10 +188,12 @@ public
 private
 
 \ A sealed record's word note is read before AT-FAMILY, whose TOKEN! disarms it.
+\ A variant or field name is read only after the family name passed the name rule.
 : RENDER ( n -- ) {: code:n :}
    TOKEN-SPAN@ {: ta:^ tu:n :}
    code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
    code E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
+   code E-TDECL-DEF-NAME = IF FAMILY$ ta tu DEF-NAME-REJECT? 0= IF ta tu ta tu DEF-NAME-REJECT? drop THEN EXIT THEN
    KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 EXPORT CHECK:MULTI-ERR?
@@ -222,18 +228,16 @@ public
 \ space it hands out, padding included.
 : EXPLAIN ( ^u8 n ^u8 n n -- ) {: a:^ u:n fa:^ fu:n code:n :}
    code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
-   u CAPPED {: len:n :}
-   fu CAPPED {: flen:n :}
    datum here CELL-VIEW {: row:^ :}
    here ptr-cell-mark 0 ,
    NEWEST @ row 0 ptr-field !
-   code ,  len ,  flen ,
+   code ,  u ,  fu ,
    here BYTE-VIEW {: d:^ :}
-   len PADDED allot
-   a u d CAP-COPY
+   u PADDED allot
+   a u d COPY-BYTES
    here BYTE-VIEW {: fd:^ :}
-   flen PADDED allot
-   fa fu fd CAP-COPY
+   fu PADDED allot
+   fa fu fd COPY-BYTES
    row NEWEST ! ;
 
 private
@@ -275,8 +279,11 @@ s" duplicate name in this package"
 s" give each family, variant and field a name no other declaration in this package uses"
 E-TFAM-DUP EXPLAIN
 s" reserved field name"
-s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
+s" rename the field: a declaration word such as `field` or a generated word such as `make`, `tag` or `eq` is taken"
 E-PF-NAME EXPLAIN
+s" name is a keyword or reads as a number"
+s" rename it: a keyword or a number names no definition"
+E-TDECL-DEF-NAME EXPLAIN
 
 ;package
 

@@ -124,11 +124,11 @@ S\" = help: name as the base one type declared before this declaration: `n`, `st
 s" DEFTYPE ptr ^u8"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`\n"
 s" ptr" s" reserved name"
-S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
+S\" = help: pick another name: a built-in type such as `n` cannot name a family\n" DT-REC
 s" DEFTYPE ptr str"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`\n"
 s" ptr" s" reserved name"
-S\" = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DT-REC
+S\" = help: pick another name: a built-in type such as `n` cannot name a family\n" DT-REC
 DEFTYPE DTDUP str
 s" DEFTYPE DTDUP str"
 S\" error[E-BAD-DECLARATION]: bad deftype declaration `DTDUP`\n"

@@ -97,12 +97,39 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" keyword definition stops before later source" T-LABEL
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
+: DEFINER-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n msg:^ msgu:n at:^ atu:n :}
+   s" a definer's own keyword or number name rejects at the name" T-LABEL
+   HB$ src srcu RUN-SOURCE 70 T=
+   ERR$ msg msgu CONTAINS? TTRUE
+   ERR$ at atu CONTAINS? TTRUE
+   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
+
 : KEYWORD-DEFINITION ( -- )
    \ One keyword of each kind a definer rejects: a body's, the top level's,
    \ the body's and locals list's ends, and a top-level parser.
    s" if" KEYWORD-REJECT         s" global" KEYWORD-REJECT
    s" ;" KEYWORD-REJECT          s" :}" KEYWORD-REJECT
    s" char" KEYWORD-REJECT
+   \ Definers that make a type or a storage word judge their own name.
+   S\" ARENA if n\ns\" AFTER\" type" s" error[E-RESERVED-DEFINITION]: `if`"
+      s" <input>:1:7" DEFINER-REJECT
+   S\" DEFLINEAR if\ns\" AFTER\" type" s" error[E-RESERVED-DEFINITION]: `if`"
+      s" <input>:1:11" DEFINER-REJECT
+   S\" VALUE-RECORD if END-VALUE-RECORD\ns\" AFTER\" type"
+      s" error[E-RESERVED-DEFINITION]: `if`" s" <input>:1:14" DEFINER-REJECT
+   S\" HEAP 42 n\ns\" AFTER\" type" s" error[E-NUMERIC-DEFINITION]: `42`"
+      s" <input>:1:6" DEFINER-REJECT
+   S\" NEWTYPE if n\ns\" AFTER\" type" s" error[E-RESERVED-DEFINITION]: `if`"
+      s" <input>:1:9" DEFINER-REJECT
+   S\" SUMTYPE if VARIANT none ;VARIANT ;SUMTYPE\ns\" AFTER\" type"
+      s" error[E-RESERVED-DEFINITION]: `if`" s" <input>:1:9" DEFINER-REJECT
+   S\" ENUM if a ;ENUM\ns\" AFTER\" type" s" error[E-RESERVED-DEFINITION]: `if`"
+      s" <input>:1:6" DEFINER-REJECT
+   S\" STRUCTURE if ;STRUCTURE\ns\" AFTER\" type"
+      s" error[E-RESERVED-DEFINITION]: `if`" s" <input>:1:11" DEFINER-REJECT
+   S\" NEWTYPE 42 n\ns\" AFTER\" type" s" error[E-NUMERIC-DEFINITION]: `42`"
+      s" <input>:1:9" DEFINER-REJECT
    \ CASE is the minimal wrong-token reproducer: the diagnostic must include the
    \ guilty spelling itself, not a later body token where syntax finally trips.
    s" keyword definition names CASE" T-LABEL

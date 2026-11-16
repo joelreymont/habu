@@ -38,17 +38,17 @@ DECL-DIAG:PROSE
 s" STRUCTURE field ;STRUCTURE" TEST-EVAL:RC 70 T=            \ reserved keyword name
 s\" error[E-BAD-DECLARATION]: bad structure declaration `field`\n" DECL-DIAG:HAS? TTRUE
 s" field" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE n ;STRUCTURE" TEST-EVAL:RC 70 T=                \ single-letter type name
 s\" error[E-BAD-DECLARATION]: bad structure declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE ptr FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=    \ the pointer constructor's tail
 s\" error[E-BAD-DECLARATION]: bad structure declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE Bad ;STRUCTURE" TEST-EVAL:RC 70 T=              \ upper-case name (case)
 s\" error[E-BAD-DECLARATION]: bad structure declaration `Bad`\n" DECL-DIAG:HAS? TTRUE
@@ -160,7 +160,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE ptr FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
 s" ptr" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 ;package
 
 \ 8. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
@@ -211,6 +211,7 @@ s" SDOPQLD ( ^opaque -- opaque ) @" CHECK-QUIET-CANDIDATE! -1 T=   \ its one cel
 \     checker records a single-colon name as the package's public symbol.
 package SDPRIVTEST
 private
+STRUCTURE sdpkw DERIVE addr FIELD export n FIELD i n ;STRUCTURE   \ private accessors SDPKW-EXPORT, SDPKW-I
 STRUCTURE hidden FIELD x n FIELD y n ;STRUCTURE
 : HRT ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE ;      \ callable from the owning package
 : HAFTER ( -- n ) 7 ;                                 \ the package still defines privately
@@ -466,7 +467,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdgdup FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -938,63 +939,16 @@ s\"   = help: write a name and a type after `FIELD`, as in `FIELD x n`\n" DECL-D
 DECL-DIAG:OFF
 s" STRUCTURE rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
-\ Control words are reserved in both name positions: a family or field named
-\ `if` would compile as the control word wherever generated code names it. The
-\ list lives once in TYPE-NAME:CONTROL? (src/core/type-family.f), read through
-\ TYPE-NAME:FAMILY-RESERVED? and by field rows through PF-RESERVED?. The family
-\ position is a reserved name, the field position a reserved field name; `?do`,
-\ `+loop` and `;match` do not start with a lowercase letter, so the tail gate
-\ rejects them first.
+\ A field may spell a keyword and a family name may contain one, but a public
+\ family's field under DERIVE addr names its accessor and takes the definer rule.
 DECL-DIAG:PROSE
-s" STRUCTURE if FIELD x n ;STRUCTURE"      TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `if`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" STRUCTURE do FIELD x n ;STRUCTURE"      TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `do`\n" DECL-DIAG:HAS? TTRUE
-s" do" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" STRUCTURE match FIELD x n ;STRUCTURE"   TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `match`\n" DECL-DIAG:HAS? TTRUE
-s" match" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" STRUCTURE endcase FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `endcase`\n" DECL-DIAG:HAS? TTRUE
-s" endcase" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" STRUCTURE ?do FIELD x n ;STRUCTURE"     TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `?do`\n" DECL-DIAG:HAS? TTRUE
-s" ?do" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" STRUCTURE ;match FIELD x n ;STRUCTURE"  TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `;match`\n" DECL-DIAG:HAS? TTRUE
-s" ;match" s" name must be a lowercase family tail" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" DECL-DIAG:HAS? TTRUE
-
-DECL-DIAG:PROSE
-s" STRUCTURE sdcwf FIELD if n ;STRUCTURE" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdcwf`\n" DECL-DIAG:HAS? TTRUE
-s" if" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
-DECL-DIAG:PROSE
-s" STRUCTURE sdcwf2 FIELD x n FIELD loop n ;STRUCTURE" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdcwf2`\n" DECL-DIAG:HAS? TTRUE
-s" loop" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
-
-\ The match is on the WHOLE token: a name that merely contains a control word is
-\ an ordinary name and still declares, in both positions.
-DECL-DIAG:PROSE
-s" STRUCTURE iffy FIELD looping n FIELD thence n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE iffy FIELD if n FIELD variable n FIELD i n ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:SILENT? TTRUE
+DECL-DIAG:OFF
+DECL-DIAG:PROSE
+s" STRUCTURE sdkwa DERIVE addr FIELD x n FIELD if n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-RESERVED-DEFINITION]: `if` is a keyword and cannot name a definition\n" DECL-DIAG:HAS? TTRUE
+s" if" s" reserved keyword" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
 
 \ A field may name a linear family at any depth, and the structure then owns it
@@ -1627,12 +1581,12 @@ DECL-DIAG:PROSE
 s" STRUCTURE buffer FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `buffer`\n" DECL-DIAG:HAS? TTRUE
 s" buffer" s" reserved name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: pick another name: a built-in type such as `n` cannot name a family\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdbfld FIELD buffer n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbfld`\n" DECL-DIAG:HAS? TTRUE
 s" buffer" s" reserved field name" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: rename the field: a declaration word such as `field` or a generated word such as `make`, `tag` or `eq` is taken\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ MAKE takes one item per FIELD and one per buffer cell, and its effect holds

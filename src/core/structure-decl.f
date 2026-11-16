@@ -246,12 +246,13 @@ variable HELP-U
 
 : REQUIRE-NAME ( ^u8 n -- )
    dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the name as a lowercase tail with no package qualifier, as in `point`"
       E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name"
-      s" pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family"
+      s" pick another name: a built-in type such as `n` cannot name a family"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
 : NAME-GATE ( ^u8 n -- )
@@ -830,8 +831,11 @@ private
    2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup TFAM-ADDR-FIXED-TAIL? IF 2drop YES EXIT THEN
    TFAM-DERIVED-TAIL? ;
-: REQUIRE-FIELD-NAME ( ^u8 n -- )    \ consumes the copy; throws on a member clash
+\ A public family's accessor is a word named by the field itself (`POINT:X`),
+\ so its field name takes the definer name rule; a private family's is `POINT-X`.
+: REQUIRE-FIELD-NAME ( ^u8 n -- )    \ consumes the copy; throws on a member clash or a keyword accessor
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
+   FAM @ TFAM-GEN-PUBLIC? IF 2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name"
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"

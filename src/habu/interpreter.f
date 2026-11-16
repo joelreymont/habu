@@ -244,6 +244,7 @@ private
 
 EXPORT CHECK:BODY-KEYWORD?
 EXPORT CHECK:NAME-KEYWORD?
+EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:BODY-ONLY-RECORD
 EXPORT CHECK:CHECKER-USING$
 EXPORT CHECK:CHECKER-USING-N
@@ -1602,32 +1603,6 @@ public
 
 : INSTALL-POLICY ( -- )
    ['] POLICY-KEYWORD data-base POLICY-ABI:KEYWORD-CELL + xt! ;
-private
-
-: DEF-KEYWORD-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   s" E-RESERVED-DEFINITION" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is a keyword and cannot name a definition" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" give the definition a name that is not a keyword" REJECTION:EMIT-STR ;
-
-: DEF-NUMBER-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   s" E-NUMERIC-DEFINITION" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" give the definition a name that does not read as a number" REJECTION:EMIT-STR ;
-
-public
-\ Writes the record of a definition name a u, placed at t tu, that is a
-\ keyword or reads as a number, and answers whether it did; the caller ends it.
-: DEF-NAME-REJECT? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n t:^ tu:n :}
-   a u NAME-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE true exit then
-   a u NUMBER {: v:n flt:bool num:bool range:bool :}
-   num range or if a u t tu DEF-NUMBER-REFUSE true exit then
-   false ;
 private
 
 \ No definition takes a keyword's name; a sealed design also keeps every

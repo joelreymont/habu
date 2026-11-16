@@ -38,13 +38,14 @@ ED-RESET
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the family name as a lowercase tail with no package qualifier, as in `color`"
       E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF
       s" reserved name"
-      s" rename the family: keywords, control words, single letters, `ptr` and value records are reserved"
+      s" rename the family: single letters, `ptr` and value records are reserved"
       E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
 : RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}

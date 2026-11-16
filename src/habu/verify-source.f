@@ -581,6 +581,7 @@ EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
 EXPORT CHECK:CHECKER-UNDEFINE
 EXPORT CHECK:CHECKER-USING-POP
 EXPORT CHECK:CHECKER-USING-PUSH
+EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:DOES-UNMADE-OPEN
 EXPORT CHECK:MULTI-ERR?
 EXPORT CHECK:PIMM-CNT@
@@ -2074,13 +2075,11 @@ ENGINE-TARGET-INIT
    u 0= IF TOKEN-BYTE @ TOKEN-FROM ELSE SOURCE@ TOKEN-BYTE @ + u THEN
    2dup DUPLICATE-AT! ;
 
-\ Whether a u, written from byte AT, is a keyword or number name, a qualified
-\ one judged by its tail as the load judges it; the record ends as a duplicate's.
+\ Whether a u, written from byte AT, is a keyword or number name; the record
+\ ends as a duplicate's.
 : NAME-REJECT? ( ^u8 n n -- bool )
    {: a:^ u:n at:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF a u ELSE a q + 1+  u q - 1- THEN
-   SOURCE@ at + u INTERPRETER:DEF-NAME-REJECT? 0= IF false EXIT THEN
+   a u SOURCE@ at + u DEF-NAME-REJECT? 0= IF false EXIT THEN
    MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN
    true ;
 
@@ -2425,6 +2424,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu name nameu DEF-NAME-REJECT? IF DECLARATION-END EXIT THEN
    name nameu TYPE-RESERVED? IF
       name nameu CHECKER-LINEAR-TAKEN  DECLARATION-END EXIT
    THEN
@@ -2890,6 +2890,7 @@ variable STG-TYPE-U
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu name nameu DEF-NAME-REJECT? IF DECLARATION-END EXIT THEN
    DECL-TOKEN  over {: f:^ :}
    BEGIN
       dup 0= IF

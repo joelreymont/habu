@@ -17,9 +17,10 @@ EXPORT CHECK:TDECL-DIAG
 EXPORT CHECK:STGR-REASON$
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
-EXPORT CHECK:NAME-KEYWORD?
+EXPORT CHECK:DEF-NAME-BAD?
+EXPORT CHECK:DEF-NAME-REJECT?
 
-\ --- named reject codes (7101, 7102 and 7106 live in type-family.f).
+\ --- named reject codes (7101, 7102, 7106 and 7123 live in type-family.f).
 
 public
 
@@ -450,6 +451,7 @@ variable TDECL-TOK-N
    TDECL-ARMED E-TDECL-SEALED = IF
       TDECL-REPORT-TOK {: ta:^ tu:n :} ta tu TDECL-SEALED-WORD ta tu REJECTION:SEALED EXIT
    THEN
+   TDECL-ARMED E-TDECL-DEF-NAME = IF TDA-A @ TDA-U @ TDECL-REPORT-TOK DEF-NAME-REJECT? drop EXIT THEN
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-ARMED TDECL-WORD-NOTE
    {: pa:^ pu:n na:^ nu:n :}
    pa pu  TDW-A @ TDW-U @  TDF-A @ TDF-U @  na nu  TDECL-DIAG ;
@@ -526,13 +528,14 @@ private
 
 \ A missing name is rejected before, at the keyword that wants it.
 : TDECL-REQUIRE-NAME ( ^u8 n -- ) {: a:^ u:n :}
+   a u DEF-NAME-BAD? IF a u s" " s" " E-TDECL-DEF-NAME TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail"
          s" write the name as a lowercase tail with no package qualifier, as in `point`"
          E-TFAM-CASE TDECL-THROW
    THEN
    a u TYPE-NAME:FAMILY-RESERVED? IF a u s" reserved name"
-      s" pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family or variant"
+      s" pick another name: a built-in type such as `n` cannot name a family or variant"
       E-TDECL-NAME TDECL-THROW THEN ;
 
 \ A FAMILY name must remain valid grammar and must not collide with an in-scope
@@ -565,9 +568,6 @@ private
 \ resolves takes it in every scope.
 : TDECL-REQUIRE-VARIANT-NAME ( ^u8 n -- ) {: a:^ u:n :}
    a u TDECL-REQUIRE-NAME
-   a u NAME-KEYWORD? IF a u s" reserved name"
-      s" pick another name: a variant defines a word, and a keyword such as `export` cannot name one"
-      E-TDECL-NAME TDECL-THROW THEN
    a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family"
       s" rename the variant: a type family in this scope already has this name"

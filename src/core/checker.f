@@ -7274,6 +7274,23 @@ variable CUSING              \ the using refusal the walk raised at this token; 
        1 + REPEAT drop THEN
    NRES @ ;
 
+\ Float literal shape -?d*.d+, the engine's; num-parse admits, so overflowed
+\ decimals stay claimed.
+: FLODIG-CHAR ( n bool u8 -- n bool )
+   {: dots:n valid:bool c:u8 :}
+   c 46 = IF dots 1 + valid dots 0= and EXIT THEN
+   dots valid c 47 > c 58 < and and ;
+
+: FLODIG? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   u 2 < IF RES-FALSE EXIT THEN
+   0 RES-TRUE a c@ 45 = IF 1 ELSE 0 THEN
+   BEGIN dup u < WHILE
+      dup >r a swap + c@ FLODIG-CHAR r> 1 +
+   REPEAT drop
+   swap 1 = and
+   a u 1 - + c@ 46 = IF drop RES-FALSE THEN ;
+
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 4 constant PE-FIXED-ABI
@@ -13193,6 +13210,8 @@ EXPORT CHECK:CHECKER-QUALIFIED?
 EXPORT CHECK:CHECKER-COLON-SCAN
 EXPORT CHECK:CHECKER-QTAIL$
 EXPORT CHECK:ARENA-BYTES-ENSURE
+EXPORT CHECK:ALLDIG?
+EXPORT CHECK:FLODIG?
 
 \ The packages the verified source sealed: the verifier does not run
 \ seal-package, so their rows carry no DNAME-SEALED flag.
@@ -13295,6 +13314,46 @@ variable SEALS-N
    a u s" :}" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u TOP-PARSER? ;
 
+: DEF-KEYWORD-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+   s" E-RESERVED-DEFINITION" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is a keyword and cannot name a definition" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the definition a name that is not a keyword" REJECTION:EMIT-STR ;
+
+: DEF-NUMBER-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+   s" E-NUMERIC-DEFINITION" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the definition a name that does not read as a number" REJECTION:EMIT-STR ;
+
+: NAME-NUMERIC? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u ALLDIG? 0 <>  a u FLODIG? or ;
+
+\ A name's tail past its one inner colon; a name with none, an edge one or
+\ more than one stays whole, so `:}` and `foo:` are judged as written.
+: NAME-TAIL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
+   a ci + 1 +  u ci - 1 - ;
+
+public
+\ Writes the record of a keyword or number name a u (a qualified one's tail),
+\ placed at t tu, and answers whether it did; the caller ends it.
+: DEF-NAME-REJECT? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n t:^ tu:n :}
+   a u NAME-TAIL$ {: na:^ nu:n :}
+   na nu NAME-KEYWORD? if na nu t tu DEF-KEYWORD-REFUSE RES-TRUE exit then
+   na nu NAME-NUMERIC? if na nu t tu DEF-NUMBER-REFUSE RES-TRUE exit then
+   RES-FALSE ;
+\ Whether DEF-NAME-REJECT? would reject a u, for a gate that writes no record.
+: DEF-NAME-BAD? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u NAME-TAIL$ {: na:^ nu:n :}
+   na nu NAME-KEYWORD?  na nu NAME-NUMERIC?  or ;
+private
+
 \ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
 \ its package is sealed, EXPORT takes a private word, as a reopening could.
 : EXPORT-PRIVATE ( ^u8 n -- ^n )
@@ -13344,6 +13403,8 @@ variable SEALS-N
    CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 package CHECK
+EXPORT CHECKER-RESOLVE:DEF-NAME-REJECT?
+EXPORT CHECKER-RESOLVE:DEF-NAME-BAD?
 
 \ Whether record N+1 is record N's does> clause: the engine's own test.
 defer DOES-COMPANION?-XT ( n -- bool )
@@ -14383,11 +14444,11 @@ private
 : CHECKER-STORAGE-NAME-REFUSE ( ^u8 n -- ) {: da:^ du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
-\ A published storage name has at most one inner ':' and does not end in one.
-\ A length that describes no memory is refused before the refusal that would
-\ echo it.
+\ A published storage name has at most one inner ':' and does not end in one;
+\ a length that describes no memory is refused before any byte is read.
 : CHECKER-LBUF-NAME-OK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u a u DEF-NAME-REJECT? IF STGR-END RES-FALSE EXIT THEN
    u 0 > IF a u + 1 - c@ 58 = IF
       a u a u STG-COLON-END CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN THEN
@@ -18146,23 +18207,6 @@ variable TSEEN  variable TSOK  variable TFA
       PE-I @ 1 + PE-I !
    repeat
    TSOK @ 0 <> ;
-\ Float literal shape -?d*.d+, the engine's; num-parse admits, so overflowed
-\ decimals stay claimed.
-: FLODIG-CHAR ( n bool u8 -- n bool )
-   {: dots:n valid:bool c:u8 :}
-   c 46 = IF dots 1 + valid dots 0= and EXIT THEN
-   dots valid c 47 > c 58 < and and ;
-
-: FLODIG? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   u 2 < IF RES-FALSE EXIT THEN
-   0 RES-TRUE a c@ 45 = IF 1 ELSE 0 THEN
-   BEGIN dup u < WHILE
-      dup >r a swap + c@ FLODIG-CHAR r> 1 +
-   REPEAT drop
-   swap 1 = and
-   a u 1 - + c@ 46 = IF drop RES-FALSE THEN ;
-
 \ A literal's value as the engine parses it (a real's bits).
 : FLOAT-LITERAL-ADMITTED? ( ^u8 n -- n bool )
    {: a:^ u:n :}

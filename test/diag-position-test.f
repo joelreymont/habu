@@ -1052,6 +1052,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a reserved DEFLINEAR name under --verify-only" T-LABEL
    s" DEFLINEAR n" s" deflinear-reserved.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" already a type or reserved" s" n" 1 11 10 11 PREPASS-REJECTED
+   s" a keyword DEFLINEAR name under --verify-only" T-LABEL
+   s" DEFLINEAR if" s" deflinear-keyword.f" LINE-FIXTURE
+   s" E-RESERVED-DEFINITION" s" reserved keyword" s" if" 1 11 10 12 PREPASS-REJECTED
+   GJA-LINE# @ 1 T=
+   s" VALUE-RECORD if x n END-VALUE-RECORD" s" vrec-keyword.f" LINE-FIXTURE
+   s" E-RESERVED-DEFINITION" s" reserved keyword" s" if" 1 14 13 15 PREPASS-REJECTED
+   GJA-LINE# @ 1 T=
    s" a reserved DEFTYPE name under --verify-only, at the name it folds" T-LABEL
    s" DEFTYPE N" s" deftype-reserved.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" reserved name" s" N" 1 9 8 9 PREPASS-REJECTED
