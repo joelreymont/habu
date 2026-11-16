@@ -5,7 +5,7 @@
 \ request over 4 GiB and its highest live bytes, and end with status 0. Wasm
 \ memory never shrinks, so its size at exit caps the heap's mapped bytes at
 \ every step: it must stay within its size before the run plus 1.25 times the
-\ highest live bytes and three regions. test/wasm/device.f runs it. The source
+\ highest live bytes and one region. test/wasm/device.f runs it. The source
 \ and the module stay in the printed directory.
 
 require src/lib/string.f
@@ -18,7 +18,7 @@ require test/wasm/harness.f
 package WASM-HEAP-TEST
 private
 
-$800000 constant REGION             \ HEAP's private REGION-BYTES, 8 MiB
+$100000 constant REGION            \ HEAP's private REGION-BYTES, 1 MiB
 
 PATH-CAP BUFFER: DIR
 variable DIR-U
@@ -56,10 +56,10 @@ variable SRC-U
    ;MATCH ;
 
 
-\ (memory grown - three regions) / highest live, in thousandths.
+\ (memory grown - one region) / highest live, in thousandths.
 : RATIO ( n -- n )
    {: high:n :}
-   WASM-HARNESS:MEMORY-END WASM-HARNESS:MEMORY-START -  REGION 3 * -
+   WASM-HARNESS:MEMORY-END WASM-HARNESS:MEMORY-START -  REGION -
    1000 *  high 1 max / ;
 
 
@@ -68,18 +68,18 @@ variable SRC-U
    SB-RESET  s" wasm heap: memory " SB-APPEND
    WASM-HARNESS:MEMORY-START FMT:SB-INT  s"  to " SB-APPEND
    WASM-HARNESS:MEMORY-END FMT:SB-INT  s"  bytes, highest live " SB-APPEND
-   high FMT:SB-INT  s"  bytes, (grown - 3 regions) / highest live " SB-APPEND
+   high FMT:SB-INT  s"  bytes, (grown - 1 region) / highest live " SB-APPEND
    high RATIO 3 FMT:SB-SCALED  SB$ type cr ;
 
 
-\ Three regions: a view-like churn's excess over 1.25 x live measured 18-22 MB,
-\ 2-3 regions, at every budget from 48 to 192 MiB, not growing with it.
+\ One region, the step the heap grows by: this churn's excess over 1.25 x live
+\ measured -0.68 MB, -0.65 regions.
 : BOUNDED ( n -- )
    {: high:n :}
-   s" memory at exit is within its size before plus 1.25 x highest live plus three regions" T-LABEL
+   s" memory at exit is within its size before plus 1.25 x highest live plus one region" T-LABEL
    high 0 > TTRUE
    WASM-HARNESS:MEMORY-END
-   WASM-HARNESS:MEMORY-START  high 5 * 4 /  +  REGION 3 * +  <= TTRUE ;
+   WASM-HARNESS:MEMORY-START  high 5 * 4 /  +  REGION +  <= TTRUE ;
 
 public
 

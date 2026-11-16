@@ -38,9 +38,9 @@ CAST: BLOCK> ( ^block -- ^u8 )
 16 constant GRAIN                   \ payload alignment and size step
 1 constant FREE-BIT
 HEAD GRAIN + constant MIN-BLOCK     \ the least block a split leaves
-\ 8 MiB: several 1 MiB blocks share one;
-\ test/wasm/heap-test.f's REGION copies it
-$800000 constant REGION-BYTES
+\ 1 MiB: test/wasm/heap-test.f's churn grew Wasm memory least with it,
+\ 99.6 MB against 107.0 MB at 64 KiB and 109.1 MB at 8 MiB; its REGION copies it
+$100000 constant REGION-BYTES
 $100000000 constant MOST            \ a larger request is refused: Wasm memory32
 
 4 constant SL-BITS                  \ 16 classes per power of two
