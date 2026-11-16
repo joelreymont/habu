@@ -1,8 +1,9 @@
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f
 \ src/lib/fs.f src/lib/source.f tools/source-discovery.f
-\ A walk replays every literal loader form, colon bodies included, in the core
-\ loader's record-only mode: the closure is a superset of the runtime one.
+\ A walk replays every literal loader form the engine accepts, a colon body's
+\ string loaders included, in the core loader's record-only mode: the closure is
+\ a superset of the runtime one.
 \ Recorded loader-token spans are entry-file offsets.
 \
 \ A harvest collects all declarations and retirements the walk understands, even
@@ -909,16 +910,8 @@ DYNAMIC-BUFFER SD-DEC u8
    rc E-PATH-RANGE <> if rc throw then
    false ;
 
-\ A loader word in a body is a call the word makes when it runs, which no check
-\ runs: right after a path literal the loader takes it is recorded, the
-\ superset an ordinary composition loads. After anything else, or after a path
-\ no file name holds (SD-BODY-PATH?), which the call loads nothing from, it is
-\ nothing to follow or reject.
-\ At top level the load runs while the file loads, so a path the walk cannot
-\ follow is refused: a dynamic one (E-DISC-DYNAMIC) and a C\" or .\" literal
-\ (E-DISC-OPENER). A form the walk reads, any at top level and one right after
-\ a path literal in a body, is refused first when the file has replaced its
-\ loader word.
+\ A string loader in a body loads when its word runs, which no check runs: only a
+\ path literal it can take is recorded, the superset an ordinary composition loads.
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
    SD-DEF @ 0<> if
       pend SD-PEND-PATH = 0= if exit then
@@ -932,11 +925,12 @@ DYNAMIC-BUFFER SD-DEC u8
    pend SD-PEND-PATH = 0= if SD-DYNAMIC-STOP then
    off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
 
-\ `include` and `require` take the next token as their path, which the resolver
-\ judges; a loader word the file has replaced is rejected first, wherever it stands.
+\ In a body the engine rejects `include` and `require` (E-UNMODELED-IMMEDIATE)
+\ and loads nothing, so the walk reads their path past.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}
+   SD-BODY? if exit then
    plen 0= if
       E-DISC-DYNAMIC SD-HARVEST-THROW
       toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP

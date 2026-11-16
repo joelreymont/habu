@@ -7,11 +7,10 @@
 \
 \ The closure walk is check.f's walk before its pre-pass, kept here so a caller
 \ of VERIFY-BYTES loads none of check.f's lints; VERIFY-BYTES walks none, its
-\ child's composition refusing the same forms. Discovery records one event per
-\ literal loader form in every token of a file, colon bodies included, so the
-\ closure is a superset of the runtime load set. A top-level dynamic loader
-\ form, or a loader form whose word the file defined or retired, is refused; one
-\ in a body is otherwise a call no check makes. The walk first harvests: it
+\ child's composition refusing the same forms. Discovery's closure is a
+\ superset of the runtime load set. A top-level dynamic loader form, or a
+\ loader form whose word the file defined or retired, is refused; a string loader in a body
+\ is otherwise a call no check makes. The walk first harvests: it
 \ grows the dependency set without ordered edges, and repeats until no file or
 \ source occurrence is added, since a later dependency's row can let an earlier
 \ file read past a parsing call. It then follows direct dependencies depth

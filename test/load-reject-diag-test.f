@@ -41,6 +41,8 @@ create SIDE-P PATH-CAP allot
 create INC-P PATH-CAP allot
 create REQ-P PATH-CAP allot
 create CALLER-P PATH-CAP allot
+create MISS-P PATH-CAP allot
+create REBOUND-P PATH-CAP allot
 create TOP-INC-P PATH-CAP allot
 create TOP-REQ-P PATH-CAP allot
 create RUNTIME-P PATH-CAP allot
@@ -71,6 +73,8 @@ variable SIDE-U
 variable INC-U
 variable REQ-U
 variable CALLER-U
+variable MISS-U
+variable REBOUND-U
 variable TOP-INC-U
 variable TOP-REQ-U
 variable RUNTIME-U
@@ -122,6 +126,12 @@ variable RC
 
 : CALLER$ ( -- ^u8 n )
    CALLER-P CALLER-U @ ;
+
+: MISS$ ( -- ^u8 n )
+   MISS-P MISS-U @ ;
+
+: REBOUND$ ( -- ^u8 n )
+   REBOUND-P REBOUND-U @ ;
 
 : TOP-INC$ ( -- ^u8 n )
    TOP-INC-P TOP-INC-U @ ;
@@ -211,6 +221,8 @@ variable RC
    s" imm-include.f" INC-P INC-U PATH!
    s" imm-require.f" REQ-P REQ-U PATH!
    s" imm-caller.f" CALLER-P CALLER-U PATH!
+   s" imm-missing.f" MISS-P MISS-U PATH!
+   s" imm-rebound.f" REBOUND-P REBOUND-U PATH!
    s" top-include.f" TOP-INC-P TOP-INC-U PATH!
    s" top-require.f" TOP-REQ-P TOP-REQ-U PATH!
    s" runtime.f" RUNTIME-P RUNTIME-U PATH!
@@ -266,6 +278,12 @@ variable RC
    CALLER$ S" TRUSTED: RAW-IMM ( -- ) ; immediate
 -1 REJECTION:JSON !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
+" FS:WRITE-ALL
+   MISS$ s" : LRD-IMM-M ( -- ) include lrd-missing.f ;" FS:WRITE-ALL
+   REBOUND$ S" -1 REJECTION:JSON !
+undefine include
+: include ( -- ) ; immediate
+: LRD-IMM-X ( -- ) include ;
 " FS:WRITE-ALL ;
 
 \ One definition per append: SB holds one path and its text, not three.
@@ -375,16 +393,14 @@ variable RC
    head headu ASSERT-NAMED
    BODY$ place placeu ASSERT-AT ;
 
-\ The immediate's record names TOKEN at LINE and COLUMN, and its help models it
-\ with `parse-imm`, in the record form.
-: ASSERT-IMM-DIAG ( n n ^u8 n -- )
-   {: line:n col:n token:^ tokenu:n :}
+: ASSERT-IMM-DIAG ( n n ^u8 n ^u8 n -- )
+   {: line:n col:n token:^ tokenu:n help:^ helpu:n :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
    root s" line" line GJA-ASSERT-INT-FIELD
    root s" column" col GJA-ASSERT-INT-FIELD
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
-   ERR$ s" declare it with `parse-imm`" CONTAINS? TTRUE
+   root s" help" GJA-REQ help helpu GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 
 : TEST-STORE-SIGNALED ( -- )
@@ -1261,31 +1277,55 @@ variable LONG-U
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   1 43 s" include" ASSERT-IMM-DIAG
+   1 43 s" include"
+   S\" move `include` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" included`"
+   ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
 : TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
    REQ$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   1 43 s" require" ASSERT-IMM-DIAG
+   1 43 s" require"
+   S\" move `require` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" required`"
+   ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
+
+: TEST-IMM-CHECK ( -- )
+   s" check.f loads nothing for a body's include" T-LABEL
+   MISS$ CHECK-RUN
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   ERR$ s" E-UNMODELED-IMMEDIATE" COUNT-SUB 1 T=
+   ERR$ s" E-MISSING-SOURCE" CONTAINS? TFALSE ;
 
 : TEST-IMM-CALLER ( -- )
    s" an unmodeled immediate gets one canonical preflight diagnostic" T-LABEL
    CALLER$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   3 34 s" RAW-IMM" ASSERT-IMM-DIAG
+   3 34 s" RAW-IMM"
+   s" remove `RAW-IMM` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   ASSERT-IMM-DIAG
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
    root s" byte_start" 89 GJA-ASSERT-INT-FIELD
    root s" byte_end" 96 GJA-ASSERT-INT-FIELD ;
 
+: TEST-IMM-REBOUND ( -- )
+   s" an unmodeled immediate's help follows the word it binds, not its spelling" T-LABEL
+   REBOUND$ RUN
+   s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
+   4 20 s" include"
+   s" remove `include` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   ASSERT-IMM-DIAG ;
+
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   1 89 s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
+   1 89 s" LRD-TRUST-IMM"
+   s" remove `LRD-TRUST-IMM` from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   ASSERT-IMM-DIAG ;
 
 \ A rejection at a token an immediate evaluated into the body, which no source
 \ holds, gets one record in the record form, placed at the definition's `;`,
@@ -1383,7 +1423,9 @@ variable LONG-U
    TEST-PATH-PASS
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
+   TEST-IMM-CHECK
    TEST-IMM-CALLER
+   TEST-IMM-REBOUND
    TEST-IMM-TRUSTED
    TEST-UNSOURCED-RECORD
    TEST-BIG-LITERAL

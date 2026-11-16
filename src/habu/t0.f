@@ -33,6 +33,7 @@ package COMP
 
 EXPORT CHECK:BODY-ARM
 EXPORT CHECK:DISARMER
+EXPORT CHECK:IMM-HELP
 EXPORT CHECK:UNDEFINED-RECORD
 
 \ ---- the tape ----------------------------------------------------------------
@@ -265,9 +266,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    s" E-UNMODELED-IMMEDIATE" REJECTION:OPEN
    s" the compiler has no model of immediate word " SAY  a u TICKS
    a u REJECTION:AT  s" immediate, not modeled" SAY
-   REJECTION:HELP  s" declare " SAY  a u TICKS
-   s"  stack-neutral with `parse-imm`, or remove it from the body" SAY
-   REJECT ;
+   REJECTION:HELP a u IMM-HELP REJECT ;
 
 \ ---- the control stack -------------------------------------------------------
 \ THE CONTROL STACK holds each open structure's kind with the locals' frame

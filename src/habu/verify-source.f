@@ -85,11 +85,7 @@
 \ file's entries sit above its loader's, and their paths go with them.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
-\ check, so the ordinary effect checker judges its runtime loader calls. What
-\ it loads from a body is the file an `include` or `require` names there. The
-\ engine refuses either in a body and loads nothing, but the file each names
-\ waits as a string loader's does in an ordinary composition, a superset of
-\ what the engine loads, and a fault loading it stands at that loader word.
+\ check, so the ordinary effect checker judges its runtime loader calls.
 \
 \ Definer rows: a `create … does>` definition is a definer, and every word it
 \ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
@@ -974,7 +970,6 @@ DYNAMIC-BUFFER PEND-U n
 DYNAMIC-BUFFER PEND-INC n                     \ 1 to include its file, 0 to require it
 DYNAMIC-BUFFER PEND-WORD-AT n                 \ where its loader word starts
 DYNAMIC-BUFFER PEND-WORD-U n
-DYNAMIC-BUFFER PEND-OP-AT n                   \ where IMM-OPERAND's path is written
 variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
@@ -1295,24 +1290,6 @@ variable GROUP-AT
    w wu p pu INCLUDE-CHECK-PATH
    p pu ;
 
-\ `include` or `require` in a body, an immediate word the engine refuses there
-\ (E-UNMODELED-IMMEDIATE), loading nothing: a quiet composition still loads
-\ its file, as discovery records it, a superset of what the engine loads.
-: BODY-LOADER-IMM? ( ^u8 n -- bool ) {: a:^ u:n :}
-   QUIET @ 0= IF false EXIT THEN
-   a u s" include" STR=CI  a u s" require" STR=CI or ;
-
-\ The path the body's immediate loader word, the current token, takes: the
-\ file waits for the statement's end.
-: IMM-OPERAND ( -- ^u8 n )
-   TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ {: w:^ wu:n at:n :}
-   wu LOADER-OPERAND {: p:^ pu:n :}
-   p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
-   PEND-N @ 1 - {: k:n :}
-   k 1 + PEND-OP-AT-RESERVE
-   p SOURCE@ - k PEND-OP-AT !
-   p pu ;
-
 \ A declared parsing immediate's payload is read raw, across line ends, and
 \ never joins the body; a using rejection is left to the definition's check.
 : SKIP-PAYLOAD ( ^u8 n -- ) {: a:^ u:n :}
@@ -1322,9 +1299,7 @@ variable GROUP-AT
    ix PIMM-CNT@ 0 ?DO NEXT-RAW 2drop LOOP ;
 
 \ A local or a group skips BODY-TOKEN-SEEN, so it clears what the token before
-\ it told an `if`: a local, even one spelled as a target predicate, opens no
-\ target `if`. An immediate loader's path joins the body as its token, which
-\ the engine's loader takes.
+\ told an `if`: a local spelled as a target predicate opens no target `if`.
 : APPEND-BODY-TOKEN ( -- )
    LOCAL-TOKEN? IF
       BODY-PREV-CLEAR
@@ -1345,12 +1320,6 @@ variable GROUP-AT
       OPERAND BODY-APPEND
       exit
    THEN
-   TOKEN-A @ TOKEN-U @ BODY-LOADER-IMM? IF
-      TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
-      TOKEN-A @ TOKEN-U @ BODY-APPEND
-      IMM-OPERAND BODY-APPEND
-      EXIT
-   THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF
       TOKEN-A @ TOKEN-U @ APPEND-STRING
    ELSE
@@ -1361,9 +1330,6 @@ variable GROUP-AT
 
 : SKIP-BODY-TOKEN ( -- )
    TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop BODY-PREV-CLEAR exit THEN
-   TOKEN-A @ TOKEN-U @ BODY-LOADER-IMM? IF
-      TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN  IMM-OPERAND 2drop EXIT
-   THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
    TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
    TOKEN-A @ TOKEN-U @ SKIP-PAYLOAD ;
@@ -3473,23 +3439,16 @@ variable LOAD-U
    rc E-PATH-RANGE <> IF rc throw THEN
    false ;
 
-\ The loads waiting in this file, in loader order. A file one of them loads
-\ keeps its own entries above them, ending with it. Those entries may grow and
-\ move PEND-PATH, so an entry's path is fetched at its turn; the resolver copies
-\ it before the file is read.
+\ Entries a loaded file queues sit above its own and may move PEND-PATH, so an
+\ entry's path is fetched at its turn; the resolver copies it before the read.
 : PEND-RELEASE ( -- )
    PEND-N @ PEND-BASE @ ?do
       TICK-REMAINDER @ IF leave THEN
       i PEND-AT @ PEND-PATH i PEND-U @  LOAD-U !  LOAD-A !
       i PEND-INC @ 0<> FILE-LOAD
-      QUIET @ IF
-         SOURCE@ i PEND-OP-AT @ + LOAD-PLACE-A !  i PEND-U @ LOAD-PLACE-U !
-         i PEND-WORD-AT @  i PEND-WORD-U @  RUN-LOADER
-      ELSE
-         i PEND-INC @ 0<> BODY-LOAD? IF
-            SOURCE@ i PEND-WORD-AT @ +  i PEND-WORD-U @  rot execute 2drop
-         ELSE drop THEN
-      THEN
+      i PEND-INC @ 0<> BODY-LOAD? IF
+         SOURCE@ i PEND-WORD-AT @ +  i PEND-WORD-U @  rot execute 2drop
+      ELSE drop THEN
    loop
    PEND-BASE @ PEND-N ! ;
 

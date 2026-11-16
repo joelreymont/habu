@@ -2657,11 +2657,16 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
    known if exit then
    path pathu REQUIRE-STORE 2drop ;
 
+\ Defined in CHECK's global section, as operand-rows.f defines `parses:`, so
+\ INTRINSIC and the loader ids, which are CHECK's, tag them.
+package CHECK
+global
 : include ( -- )
    parse-name {: a:^ u:n :}
    s" include" a u INCLUDE-CHECK-PATH
    s" include" a u INCLUDED-AS ;
 immediate
+INTRINSIC-INCLUDE INTRINSIC
 
 create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
 ' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
@@ -2671,9 +2676,11 @@ create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
    s" require" a u INCLUDE-CHECK-PATH
    s" require" a u REQUIRED-AS ;
 immediate
+INTRINSIC-REQUIRE INTRINSIC
 
 create SOURCE-ORIGINAL-REQUIRE-ENTRY 0 ,
 ' require SOURCE-ORIGINAL-REQUIRE-ENTRY xt!
+;package
 
 package SOURCE-UNIT
 public

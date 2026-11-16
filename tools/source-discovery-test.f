@@ -698,12 +698,12 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    EVENT-COUNT 0 T=
    [: [: SDT-HARVEST-OTHER ;] DISCOVER:HARVEST ;] E-TBL-BOUNDS TTHROWSQ ;
 
-\ A compiled parsing call does not consume the definition's source text.
-\ Its following immediate require is still a load the walk must find.
+\ A compiled parsing call does not consume the definition's source text, and a
+\ body's `require` loads nothing: the string load after them is the one event.
 : SDT-TEST-ROW-BODY ( -- )
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
-   S\" : B ( -- ) SDT-R:W require sd-body.f SDT-R:;W ;\n"
+   S\" : B ( -- ) SDT-R:W require sd-none.f s\" sd-body.f\" required SDT-R:;W ;\n"
    s" sd-body.f" SDT-ONE-EVENT ;
 
 \ A prior partial scan may mistake raw operands for declarations. Replacing

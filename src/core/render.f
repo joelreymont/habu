@@ -1927,8 +1927,19 @@ PTR-VARIABLE HOLDER-FIRST
    REJECTION:HELP  s" move " EMIT-STR  t tu CODE-SPAN
    s"  into a `:` … `;` body" EMIT-STR ;
 
-: IMM-HELP ( -- )
-   s" remove " EMIT-STR  TOK-SPAN
+\ `include` and `require` take their path as the definition compiles, which
+\ the engine rejects; their string form w wu takes it when the word runs.
+: LOADER-HELP ( ^u8 n ^u8 n -- ) {: t:^ tu:n w:^ wu:n :}
+   s" move " EMIT-STR  t tu CODE-SPAN
+   s"  and its path out of the definition to top level, or load the file when the word runs with `s" EMIT-STR
+   34 EMIT1  s"  path" EMIT-STR  34 EMIT1  32 EMIT1  w wu EMIT-STR  96 EMIT1 ;
+
+: IMM-HELP ( ^u8 n -- ) {: t:^ tu:n :}
+   \ The token's binding is read afresh: the walk's last bound token may be another.
+   t tu CHECKER-FIND-ACTIVE-SYM t tu TOK-IDENTITY CTL>INTRINSIC {: id:n :}
+   id INTRINSIC-INCLUDE = IF t tu s" included" LOADER-HELP EXIT THEN
+   id INTRINSIC-REQUIRE = IF t tu s" required" LOADER-HELP EXIT THEN
+   s" remove " EMIT-STR  t tu CODE-SPAN
    s"  from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
    EMIT-STR ;
 
@@ -2037,7 +2048,7 @@ PTR-VARIABLE HOLDER-FIRST
       IF NMA @ NMU @ ELSE NMA @ 0 THEN
       UNDEF-HELP EXIT
    THEN
-   k RF-IMM = IF IMM-HELP EXIT THEN
+   k RF-IMM = IF PIN-TOK$ IMM-HELP EXIT THEN
    k RF-QUAL = IF QUAL-HELP EXIT THEN
    k RF-LOCAL = IF LOCAL-HELP EXIT THEN
    k RF-SIG = IF SIG-HELP EXIT THEN
