@@ -6,7 +6,7 @@ require src/lib/source-lex.f
 $10000 constant TMAX            \ largest linted source + headroom
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
--4821 constant E-LINT-TOKEN-SOURCE
+-4821 s" the source lexer rejected the linted source" ERROR:CODE E-LINT-TOKEN-SOURCE
 
 \ Each token's start is an address into the linted source.
 TMAX TYPED-BUFFER TOFF ^u8

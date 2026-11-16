@@ -11,8 +11,9 @@ require src/lib/argv.f
 require src/lib/time-cpu.f
 require src/lib/fd.f
 
--7701 constant E-FLOOR-EXCEEDED
--7702 constant E-FLOOR-CAPACITY
+-7701 s" the mean tier-0 compile time of a trivial definition is above the floor given"
+   ERROR:FAULT E-FLOOR-EXCEEDED
+-7702 s" a measured set's source or prefix does not fit its buffer" ERROR:FAULT E-FLOOR-CAPACITY
 
 package COMPILE-FLOOR
 private

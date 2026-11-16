@@ -22,10 +22,11 @@ public
 \ ---- source-defect codes ----------------------------------------------------
 \ A lexer defect hides every later claim in its source, so the scan refuses
 \ rather than certify a partial ledger. -4808..-4810 sit in the lint-tool block
-\ that starts at E-SHADOW-UNTERM (-4800).
--4808 constant E-QUOTE   \ a string literal has no closing quote or holds a bad escape
--4809 constant E-ROW     \ a malformed primitive-axiom row
--4810 constant E-LEX     \ a lexer diagnostic or token kind this lint was never taught
+\ that starts at -4800.
+-4808 s" a string literal has no closing quote or holds a bad escape" ERROR:CODE E-QUOTE
+-4809 s" a primitive-axiom row is malformed" ERROR:CODE E-ROW
+-4810 s" the lexer answered a diagnostic or token kind this lint was never taught: teach it the kind"
+   ERROR:FAULT E-LEX
 
 private
 

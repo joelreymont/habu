@@ -15,10 +15,10 @@ public
 \ mints in its own files under src/arch/wasm/; -9804 is reserved.
 -9800 constant E-WLEB-FIRST
 -9804 constant E-WLEB-LAST
--9800 constant E-OVERLONG    \ an LEB still marked for more at its type's last byte
--9801 constant E-TRUNCATED   \ the bytes end inside an LEB
--9802 constant E-RANGE       \ a value outside its type, to write or read
--9803 constant E-UNPADDED    \ a field that is not a padded LEB of its width
+-9800 s" an LEB is still marked for more at its type's last byte" ERROR:CODE E-OVERLONG
+-9801 s" the bytes end inside an LEB" ERROR:CODE E-TRUNCATED
+-9802 s" a value to write or read is outside its LEB type" ERROR:CODE E-RANGE
+-9803 s" a field is not a padded LEB of its width" ERROR:CODE E-UNPADDED
 
 private
 

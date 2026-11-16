@@ -16,13 +16,12 @@ package COMP
 
 -9590 constant E-FIRST
 -9599 constant E-LAST
--9590 constant E-T0-TARGET   \ EMIT-SELECT of an architecture with no emitter
-\ E-T0-UNIT: EMIT-QUOT-OPEN of a unit other than the next, EMIT-REC-CELLS or EMIT-ENV-OPEN
-\ after the unit's first instruction, EMIT-ENV-LOAD in a unit EMIT-ENV-OPEN did not open.
--9591 constant E-T0-UNIT
--9592 constant E-T0-UNFILLED \ an operation the selected emitter does not provide
--9593 constant E-T0-SLOT     \ code after the does> patch slot
--9594 constant E-T0-OPERAND  \ a vreg, operation, shift or condition outside its type
+-9590 s" the architecture EMIT-SELECT was given has no emitter" ERROR:CODE E-T0-TARGET
+-9591 s" EMIT-QUOT-OPEN opened a unit other than the next, EMIT-REC-CELLS or EMIT-ENV-OPEN ran after the unit's first instruction, or EMIT-ENV-LOAD ran in a unit EMIT-ENV-OPEN did not open"
+   ERROR:CODE E-T0-UNIT
+-9592 s" the selected emitter does not provide the operation" ERROR:FAULT E-T0-UNFILLED
+-9593 s" code was emitted after the does> patch slot" ERROR:CODE E-T0-SLOT
+-9594 s" a vreg, operation, shift or condition is outside its type" ERROR:CODE E-T0-OPERAND
 
 DEFTYPE VREG
 DEFTYPE ALU

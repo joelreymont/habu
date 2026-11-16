@@ -72,8 +72,10 @@ public
 
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
--9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, prepareRename, rename, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
+-9400 s" a notification's params lack a member the server reads, or hold one of another kind"
+   ERROR:CODE E-LSP-PARAMS
+-9401 s" a request or notification names a document that is not open: send didOpen for it first"
+   ERROR:CODE E-LSP-NOT-OPEN
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled

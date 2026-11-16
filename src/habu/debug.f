@@ -22,7 +22,8 @@ BPTRAMP-BYTES TRAMP-BYTES / constant MAXBP
 \ Debugger-owned refusal range, outside the library and build-tool ranges.
 -9300 constant E-BP-FIRST
 -9309 constant E-BP-LAST
--9300 constant E-BP-TARGET
+-9300 s" a breakpoint address is not an aligned instruction of the live compiled code, or a persistent breakpoint has no trampoline"
+   ERROR:CODE E-BP-TARGET
 
 private
 

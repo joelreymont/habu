@@ -37,13 +37,15 @@ require src/arch/wasm/profile.f
 require src/arch/wasm/code.f
 require src/compiler/native/emission.f
 
-\ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9830 constant E-WLINK-FIRST
 -9834 constant E-WLINK-LAST
--9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
--9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's DATA base, passes memory32's 65536 pages
--9832 constant E-WLINK-ARITY       \ an entry that takes or answers a lane, or a reserve callee outside the aligned frame
--9833 constant E-WLINK-KIND        \ an address kind outside NONE, DATA and CODE
+-9830 s" an entry, site, cell or slot names no function, image byte or table slot of the link"
+   ERROR:CODE E-WLINK-UNRESOLVED
+-9831 s" the data image's end, from WPROF's DATA base, passes memory32's 65536 pages"
+   ERROR:CODE E-WLINK-MEMORY
+-9832 s" an entry takes or answers a lane, or a reserve callee is outside the aligned frame"
+   ERROR:CODE E-WLINK-ARITY
+-9833 s" an address kind is outside NONE, DATA and CODE" ERROR:CODE E-WLINK-KIND
 
 package WLINK
 public

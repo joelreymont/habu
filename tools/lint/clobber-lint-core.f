@@ -65,9 +65,9 @@ package CLOBBER
 
 : NL  ( -- )  10 emit ;
 
-\ Fail closed when a wrapped emitter call has no modeled contract or its
-\ register operands cannot be resolved. This claims no reserved error range.
--4801 constant E-CLOBBER-WRAP-UNRESOLVED
+\ This claims no reserved error range.
+-4801 s" a wrapped emitter call has no modeled contract or its register operands cannot be resolved"
+   ERROR:CODE E-CLOBBER-WRAP-UNRESOLVED
 
 variable WMSK  variable RMSK
 variable RX  variable RACC

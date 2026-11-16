@@ -11,8 +11,9 @@ package UNICODE-CLASS-VERIFY
 
 private
 
--7806 constant E-MISMATCH
--7807 constant E-CANONICAL
+-7806 s" the Unicode source data is malformed or disagrees with the class table" ERROR:FAULT E-MISMATCH
+-7807 s" a class table range is reversed, outside the scalars, crosses the surrogates or does not follow the range before it"
+   ERROR:FAULT E-CANONICAL
 
 $10FFFF constant SCALAR-MAX
 $110000 constant SCALAR-COUNT

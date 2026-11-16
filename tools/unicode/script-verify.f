@@ -15,7 +15,8 @@ package UNICODE-SCRIPT-VERIFY
 
 private
 
--7808 constant E-SCRIPT-MISMATCH
+-7808 s" the Unicode Script source data is malformed or disagrees with the Script table"
+   ERROR:FAULT E-SCRIPT-MISMATCH
 
 $10FFFF constant SCALAR-MAX
 $110000 constant SCALAR-COUNT
