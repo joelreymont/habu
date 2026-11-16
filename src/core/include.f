@@ -1693,9 +1693,7 @@ TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ]
 
 public
 
-variable GEN
-: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
-   1 GEN +! LOAD-XT @ execute ;
+: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- ) LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
 \ its own beneath it; the quotation throws for a refused file.
 : USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
