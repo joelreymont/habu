@@ -178,6 +178,16 @@ create XPK-EMPTY 1 allot
    s" ;using" XPK-LINE
    SB$ ;
 
+\ An export whose source does not resolve, after a private STRUCTURE.
+: XPK-STRUCT-FORGE$ ( -- ^u8 n )
+   SB-RESET
+   s" package QX public : OTHER ( -- ) ; ;package" XPK-LINE
+   s" package QC private" XPK-LINE
+   s" STRUCTURE box FIELD x n ;STRUCTURE" XPK-LINE
+   s" EXPORT QX:BOX-MAKE" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 : XPK-CREATE-FORGE$ ( -- ^u8 n )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
@@ -717,6 +727,9 @@ create XPK-EMPTY 1 allot
    s" a used package a part hides rejects bare, with the part to rename" T-LABEL
    XPK-HIDDEN-FORGE$ s" error[E-EXPORT-UNDEFINED]"
    s" = help: rename the part `XPH:U`, which hides package `U` here" XPK-REJECT-ALL
+   s" an undefined source after a private STRUCTURE rejects" T-LABEL
+   XPK-STRUCT-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" cannot find word `QX:BOX-MAKE` to export" XPK-REJECT-ALL
    s" a primitive spelled as a keyword rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
    XPK-REJECT-ALL

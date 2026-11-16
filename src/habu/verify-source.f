@@ -189,6 +189,7 @@ require src/lib/ffi-abi.f
 
 package VERIFY
 EXPORT CHECK:CHECKER-SIG-SPAN
+EXPORT CHECK:DUPLICATE-RECORD
 EXPORT CHECK:VERIFY-DEFINER-N
 EXPORT CHECK:CHECKER-DEFCAST
 EXPORT CHECK:CHECKER-GENERATES
@@ -592,7 +593,8 @@ EXPORT CHECK:CHECKER-DEFTYPED-BUFFER
 EXPORT CHECK:CHECKER-DEFTYPED-VARIABLE
 EXPORT CHECK:CHECKER-DYNAMIC-INFO
 EXPORT CHECK:CHECKER-END-PACKAGE
-EXPORT CHECK:CHECKER-EXPORT
+EXPORT CHECK:CHECKER-EXPORT-ROW
+EXPORT CHECK:CHECKER-EXPORT-SOURCE
 EXPORT CHECK:CHECKER-FIND-QUIET-SYM
 EXPORT CHECK:CHECKER-GLOBAL
 EXPORT CHECK:CHECKER-IMMEDIATE
@@ -2182,7 +2184,7 @@ ENGINE-TARGET-INIT
 \ MULTI-ERR? it is kept and the scan skips the definition and goes on;
 \ otherwise it stops the scan as the duplicate stops the load.
 : DUPLICATE-AT! ( ^u8 n ^u8 n -- )
-   REJECTION:DUPLICATE
+   DUPLICATE-RECORD
    MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
 
 \ The record of a duplicate whose name, u bytes long, starts at TOKEN-BYTE in
@@ -3253,9 +3255,22 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
    VISIT-CUR @ ON-DEFINITION ;
 
-\ The checker rejects a duplicate tail only once the name resolves, as --load
-\ does, and writes its record itself: the catch only disarms before a stop
-\ passes on.
+\ Whether the export's tail, from the u bytes written at byte at, is already
+\ defined here; its record stands at the tail.
+: EXPORT-DUPLICATE? ( n n -- bool ) {: u:n at:n :}
+   SOURCE@ at + {: a:^ :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ ELSE a u THEN {: ta:^ tu:n :}
+   ta tu CHECKER-CERT-DUP? 0= IF false EXIT THEN
+   ta tu ta tu DUPLICATE-AT!  true ;
+
+\ Whether the export a u, written from byte at, is recorded: its source
+\ resolves before its tail is judged a duplicate, as the load judges them.
+: EXPORT-CHECKED? ( ^u8 n n -- bool ) {: a:^ u:n at:n :}
+   a u CHECKER-EXPORT-SOURCE {: src:n priv:^ :}
+   u at EXPORT-DUPLICATE? IF false EXIT THEN
+   a u src priv RES-FALSE CHECKER-EXPORT-ROW  true ;
+
+\ The catch only disarms before a stop passes on.
 : RECORD-EXPORT ( -- )
    0 NEWEST-SYM !
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
@@ -3263,12 +3278,11 @@ CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name nameu at nameu SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
-   name DEF-NAME-A !  nameu DEF-NAME-U !
    name nameu at nameu ARM-UNSEALED   \ the checker spells the record by the tail it keeps
-   [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
+   false [: drop name nameu at EXPORT-CHECKED? ;] catch {: rc:n :}
    DISARM
-   {: rc:n :}
    rc 0<> IF rc throw THEN
+   0= IF EXIT THEN
    name nameu at EXPORT-DEFINED
    from name nameu EXPORT-PARSES ;
 

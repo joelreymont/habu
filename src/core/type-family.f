@@ -187,6 +187,7 @@ EXPORT CHECK:C2-RECORDS-FAM
 EXPORT CHECK:C2-STOW-FAM
 EXPORT CHECK:CHECKER-AUTH-PACKAGE$
 EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
+EXPORT CHECK:CHECKER-AUTH-PACKAGE-MODE@
 EXPORT CHECK:CHECKER-COLON-SCAN
 EXPORT CHECK:CHECKER-PKG-SYM
 EXPORT CHECK:CHECKER-SYM-IDENTITY
@@ -1160,19 +1161,19 @@ public
 \ A constructor word's tail is its variant's tail, so only the rows in that
 \ tail's VNX bucket can be one. A derived word is recognized from its family,
 \ not a row, so only the derived tails still walk the store.
-: TF-CTOR-QUAL-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}   \ PKG:VARIANT / derived word?
+: TF-CTOR-QUAL-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}   \ family, found
    a u TF-CW-TAIL$ {: ta:^ tu:n :}
    VNX-ENSURE
    ta tu VNX-HASH VNX-BKT @ VNX-CUR !
    BEGIN VNX-CUR @ 0 <> WHILE
       VNX-CUR @ 1 - {: id:n :}
-      a u id TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
+      a u id TFAM-CTOR-WORD-AT? IF id SUMV-FAM@ RES-TRUE EXIT THEN
       id VNX-LINK @ VNX-CUR !
    REPEAT
-   ta tu TFAM-DERIVED-TAIL? 0= IF RES-FALSE EXIT THEN
+   ta tu TFAM-DERIVED-TAIL? 0= IF 0 RES-FALSE EXIT THEN
    SUMV-N @ 0 ?do
-      a u i TFAM-DERIVED-AT? IF RES-TRUE unloop EXIT THEN
-   loop RES-FALSE ;
+      a u i TFAM-DERIVED-AT? IF i SUMV-FAM@ RES-TRUE unloop EXIT THEN
+   loop 0 RES-FALSE ;
 
 ;package
 
@@ -1317,11 +1318,8 @@ private
    a pu pa pu CORE-STR=CI 0= IF RES-FALSE EXIT THEN
    a pu +  u pu -  fam TFAM-DERIVED-KIND-TAIL? ;
 
-\ A private (or OPAQUE) family's generated word is recognized only while its
-\ declaring package is open, the only scope it resolves in; outside it the name
-\ belongs to whoever spells it. A family with public generated words
-\ (TFAM-GEN-PUBLIC?) wears the qualified spelling instead. Members are the
-\ rows' words, the derived tails, and the addr accessors (TFAM-ADDR-WORD-XT).
+\ A private or OPAQUE family's generated words resolve only while its package
+\ is open; outside it the name belongs to whoever spells it.
 : TF-CTOR-PRIV-FAM? ( ^u8 n n -- bool ) {: a:^ u:n fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
@@ -1332,30 +1330,43 @@ private
 
 public
 
-: TF-CTOR-PRIV-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: TF-CTOR-PRIV-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}   \ family, found
    TFAM-N @ 0 ?do
-      a u i TF-CTOR-PRIV-FAM? IF RES-TRUE unloop EXIT THEN
-   loop RES-FALSE ;
+      a u i TF-CTOR-PRIV-FAM? IF i RES-TRUE unloop EXIT THEN
+   loop 0 RES-FALSE ;
 
 private
 
-\ `DERIVE addr` accessors are recognized from the field registry, declared
-\ further down, so the predicate is a friend xt bound at its definition.
-defer TFAM-ADDR-WORD-XT ( ^u8 n -- bool )
+\ `DERIVE addr` and `init` members are recognized from the field registry,
+\ declared further down, so the scan is an xt bound there.
+defer TFAM-ADDR-FIND-XT ( ^u8 n -- n bool )
+
+\ A length that describes no memory (BYTE-SPAN?) spells no generated word, and
+\ is answered before a scan reads the bytes.
+: TF-GEN-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
+   a u BYTE-SPAN? 0= IF 0 RES-FALSE EXIT THEN
+   a u TF-CW-SPLIT? IF
+      a u TF-CTOR-QUAL-FIND IF RES-TRUE EXIT THEN
+   ELSE
+      a u TF-CTOR-PRIV-FIND IF RES-TRUE EXIT THEN
+   THEN
+   drop  a u TFAM-ADDR-FIND-XT ;
 
 global
-\ A generated word wears either the qualified public spelling or the bare private
-\ one, and the colon decides which scan answers for it. A length that describes
-\ no memory (BYTE-SPAN?) spells no generated word; CHECKER-UNDEFINE asks this
-\ first.
-: TFAM-CTOR-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}   \ exact generated word?
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-SPLIT? IF
-      a u TF-CTOR-QUAL-WORD? IF RES-TRUE EXIT THEN
-   ELSE
-      a u TF-CTOR-PRIV-WORD? IF RES-TRUE EXIT THEN
+: TFAM-CTOR-WORD? ( ^u8 n -- bool )   \ exact generated word?
+   TF-GEN-FIND nip ;
+
+\ The type whose generated word a definition of a u here would repeat, and true;
+\ a bare spelling repeats one only in the package's private section.
+: TFAM-GENERATOR ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+   a u TF-GEN-FIND {: fam:n hit:bool :}
+   hit 0= IF s" " RES-FALSE EXIT THEN
+   a u TF-CW-SPLIT? 0= IF
+      CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
+         s" " RES-FALSE EXIT
+      THEN
    THEN
-   a u TFAM-ADDR-WORD-XT ;
+   fam TFAM-NAME$ RES-TRUE ;
 ;package
 
 package TFAM
@@ -2670,25 +2681,25 @@ private
 
 \ Both spellings, over the variant rows every addr family owns (a STRUCTURE with
 \ fields always has its make/unmake pair; visiting a family twice is free).
-: TFAM-ADDR-QUAL-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: TFAM-ADDR-QUAL-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-ADDR-AT? IF RES-TRUE EXIT THEN
+      a u j TFAM-ADDR-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop 0 RES-FALSE ;
 
-: TFAM-ADDR-PRIV-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: TFAM-ADDR-PRIV-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-ADDR-PRIV-AT? IF RES-TRUE EXIT THEN
+      a u j TFAM-ADDR-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop 0 RES-FALSE ;
 
 public
 
-: TFAM-ADDR-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}   \ exact generated accessor?
-   a u TF-CW-SPLIT? IF a u TFAM-ADDR-QUAL-WORD? EXIT THEN
-   a u TFAM-ADDR-PRIV-WORD? ;
+: TFAM-ADDR-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}   \ accessor family
+   a u TF-CW-SPLIT? IF a u TFAM-ADDR-QUAL-FIND EXIT THEN
+   a u TFAM-ADDR-PRIV-FIND ;
 
 private
 
@@ -2745,31 +2756,31 @@ private
       THEN
    loop RES-FALSE ;
 
-: TFAM-INIT-QUAL-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: TFAM-INIT-QUAL-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-INIT-QUAL-AT? IF RES-TRUE EXIT THEN
+      a u j TFAM-INIT-QUAL-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop 0 RES-FALSE ;
 
-: TFAM-INIT-PRIV-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: TFAM-INIT-PRIV-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-INIT-PRIV-AT? IF RES-TRUE EXIT THEN
+      a u j TFAM-INIT-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop 0 RES-FALSE ;
 
 public
 
-: TFAM-INIT-WORD? ( ^u8 n -- bool ) {: a:^ u:n :}
-   a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-WORD? EXIT THEN
-   a u TFAM-INIT-PRIV-WORD? ;
+: TFAM-INIT-FIND ( ^u8 n -- n bool ) {: a:^ u:n :}
+   a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-FIND EXIT THEN
+   a u TFAM-INIT-PRIV-FIND ;
 
 private
-: TFAM-ADDR-WORD-INSTALL ( -- )
-   [: 2dup TFAM-ADDR-WORD? IF 2drop RES-TRUE EXIT THEN
-      TFAM-INIT-WORD? ;] is TFAM-ADDR-WORD-XT ;
-TFAM-ADDR-WORD-INSTALL
+: TFAM-ADDR-FIND-INSTALL ( -- )
+   [: 2dup TFAM-ADDR-FIND IF nip nip RES-TRUE EXIT THEN
+      drop TFAM-INIT-FIND ;] is TFAM-ADDR-FIND-XT ;
+TFAM-ADDR-FIND-INSTALL
 
 ;package
 

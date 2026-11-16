@@ -18009,11 +18009,15 @@ EXPORT CHECKER-OVERLAY:CARRIES?
 
 EXPORT CHECKER-OVERLAY:EXPORT-ROOM
 
-: CHECKER-EXPORT-ROW ( ^u8 n bool -- ) {: a:^ u:n publish:bool :}
-   \ The source symbol is read once, before the export's record is published:
-   \ inside a replay the operand's spelling can bind the published tail after.
+\ The source symbol is read once, before the export's record is published:
+\ inside a replay the operand's spelling can bind the published tail after.
+: CHECKER-EXPORT-SOURCE ( ^u8 n -- n ^n ) {: a:^ u:n :}
    a u EXPORT-SYM {: src:n priv:^ :}
    a u src EXPORT-RESOLVE
+   src priv ;
+
+: CHECKER-EXPORT-ROW ( ^u8 n n ^n bool -- )
+   {: a:^ u:n src:n priv:^ publish:bool :}
    a u priv EXPORT-CARRIES? {: carries:bool :}
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
@@ -18037,8 +18041,8 @@ EXPORT CHECKER-OVERLAY:EXPORT-ROOM
       CHECKER-REC-SYM @ effect RECORD-PEND!
    THEN ;
 
-: CHECKER-EXPORT ( ^u8 n -- ) RES-FALSE CHECKER-EXPORT-ROW ;
-: CHECKER-EXPORT-DECL ( ^u8 n -- ) RES-TRUE CHECKER-EXPORT-ROW ;
+: CHECKER-EXPORT-DECL ( ^u8 n -- ) {: a:^ u:n :}
+   a u  a u CHECKER-EXPORT-SOURCE  RES-TRUE CHECKER-EXPORT-ROW ;
 ;package
 package CHECKER-REG
 EXPORT CHECK:CHECKER-EXPORT-DECL

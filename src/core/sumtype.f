@@ -285,7 +285,7 @@ variable TDECL-U
 : TDECL-VARIANT-FIX$ ( -- ^u8 n ) s" give each variant of this declaration its own name" ;
 : TDECL-FIELD-FIX$ ( -- ^u8 n ) s" give each field of this declaration its own name" ;
 : TDECL-GEN-FIX$ ( -- ^u8 n )
-   s" rename the family or variant so no word it generates repeats a word already defined here" ;
+   s" rename the type so no word it generates repeats a word already defined here" ;
 
 \ TDECL-THROW's own copy of its word, mapped on first use and grown to fit: the
 \ rollback a throw in a transaction participant runs first scrubs the stores

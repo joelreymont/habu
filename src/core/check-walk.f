@@ -3163,10 +3163,16 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm u else a u then ;
 
-: REJECT-DUPLICATE ( ^u8 n ^u8 n -- )
+\ The record of a duplicate a u placed at t tu, written through its help; the
+\ caller stops or keeps it.
+: DUPLICATE-RECORD ( ^u8 n ^u8 n -- )
    {: a:^ u:n t:^ tu:n :}
-   a u t tu REJECTION:DUPLICATE
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   a u TFAM-GENERATOR {: f:^ fu:n gen:bool :}
+   gen IF  a u t tu f fu REJECTION:DUPLICATE-GENERATED  EXIT  THEN
+   a u t tu REJECTION:DUPLICATE ;
+
+: REJECT-DUPLICATE ( ^u8 n ^u8 n -- )
+   DUPLICATE-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
 \ does one deferred to the run; a refused or uncheckable one renders the
