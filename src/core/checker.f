@@ -5330,6 +5330,7 @@ global
 3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
 4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
 6 constant DW-TYPE           \ a type that may arrive with rendered text
+7 constant DW-RENDERED       \ a word whose meaning rendered source may change
 private
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
@@ -17499,6 +17500,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" the check leaves type " REJECTION:EMIT-STR  t tu DW-CODE
       s"  to the run because only rendered source may declare it" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-RENDERED = IF
+      s" the check leaves " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because rendered source may change what it does" REJECTION:EMIT-STR EXIT
+   THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
 : DW-LABEL ( n -- ) {: why:n :}
@@ -17507,10 +17512,12 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-PARSES = IF s" reads its operands at run time" REJECTION:EMIT-STR EXIT THEN
    why DW-RENDERER = IF s" renders undeclared source" REJECTION:EMIT-STR EXIT THEN
    why DW-TYPE = IF s" type not declared in the source" REJECTION:EMIT-STR EXIT THEN
+   why DW-RENDERED = IF s" may depend on rendered source" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
-\ What lifts the deferral; a `parses:` row's has nothing to write, so no help.
+\ What lifts the deferral; a `parses:` row's or rendered
+\ source's has nothing to write, so no help.
 : DW-HELP ( ^u8 n n -- ) {: t:^ tu:n why:n :}
-   why DW-PARSES = IF EXIT THEN
+   why DW-PARSES =  why DW-RENDERED =  or IF EXIT THEN
    REJECTION:HELP
    why DW-PARSER = IF
       s" write `parses: " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR

@@ -328,13 +328,13 @@ variable XREF-QI
    -1 XREF-QI !
    0 begin dup XREF-SU @ < while
       XREF-SN@ over ZBYTE@ $3A = if
+         dup 0= if drop -1 exit then
          XREF-QI @ 0 >= if drop -2 exit then
          dup XREF-QI !
       then
       1+
    repeat drop
    XREF-QI @ dup 0 < if exit then
-   dup 0= if drop -1 exit then
    dup XREF-SU @ 1- = if drop -1 exit then ;
 
 : XREF-FIND-QUALIFIED ( ^u8 n n -- ^n )
@@ -613,6 +613,7 @@ seal-package
 package XREF
 private
 EXPORT CHECK:CHECKER-UNDEFINE
+EXPORT CHECK:REJECT-QUALIFIED
 EXPORT CHECK:CHECKER-USIGS-TRUNCATE-FROM-RAW
 EXPORT CHECK:DOES-COMPANION?-XT
 \ The checker overlay asks this same test of a live definer a replayed
@@ -670,11 +671,20 @@ DOES-COMPANION-INSTALL
 
 package XREF
 public
+\ The index `undefine` would retire for a u, negative for none; a
+\ malformed name is rejected.
+: UNDEFINE-FIND ( ^u8 n -- n ) {: a:^ u:n :}
+   a u XREF-QUAL-INDEX -2 = if a u a u REJECT-QUALIFIED then
+   a u XREF-FIND-TARGET-INDEX ;
+
+\ The index `undefine` retires for a u, rejecting one this scope does not define.
+: UNDEFINE-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
+   a u UNDEFINE-FIND  a u XREF-REQUIRE-UNDEFINE ;
+
 : UNDEFINE-NAME ( ^u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
-   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX
-   XREF-SN@ XREF-SU @ XREF-REQUIRE-UNDEFINE XREF-IDX !
+   XREF-SN@ XREF-SU @ UNDEFINE-INDEX XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 ;package

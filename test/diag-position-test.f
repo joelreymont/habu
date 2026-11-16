@@ -602,6 +602,37 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" undefined-immediate.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT ;
 
+\ --verify-only rejects an `undefine` of a word the package scope does not
+\ define, as the load does.
+: TEST-UNDEFINE-ABSENT ( -- )
+   s" an undefine of a word outside the package scope" T-LABEL
+   SB-RESET
+   s" : W ( -- n ) 1 ;" SB-APPEND LF+
+   s" package P" SB-APPEND LF+
+   s" undefine W" SB-APPEND LF+
+   s" : G ( -- n ) W ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" undefine-absent.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" message" s" is not defined here, so `undefine` cannot retire it" FIELD-HAS
+   0 s" W" 3 10 36 37 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ --verify-only leaves an `undefine` of a word rendered text defined to the
+\ run, which retires it.
+: TEST-UNDEFINE-RENDERED ( -- )
+   s" an undefine of a word an evaluate defined" T-LABEL
+   SB-RESET
+   s\" s\" : W ( -- n ) 1 ;\" evaluate" SB-APPEND LF+
+   s" undefine W" SB-APPEND LF+
+   s" undefine-rendered.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   GJA-LINE# @ 2 T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" message" s" rendered source may change what it does" FIELD-HAS
+   1 s" W" 2 10 39 40 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ The fixture's one rejection, CODE at its `parse-imm` token, under the check
 \ and under --verify-only.
 : PIMM-REJECTED ( ^u8 n n n n n -- )
@@ -3301,6 +3332,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-SOURCE-IMMEDIATE
+   TEST-UNDEFINE-ABSENT
+   TEST-UNDEFINE-RENDERED
    TEST-PARSE-IMM-REJECT
    TEST-GENERATES
    TEST-GENERATES-READS-NONE

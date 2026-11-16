@@ -630,6 +630,7 @@ EXPORT CHECK:SIG-RAW-MODE
 EXPORT CHECK:SPLIT-STR-FILE?
 EXPORT CHECK:TYPE-RESERVED?
 EXPORT CHECK:TYPE-SPAN-END?
+EXPORT CHECK:UNSEEN-COVERS?
 EXPORT CHECK:USIG-NEWEST
 EXPORT CHECK:VREC-TOKEN
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
@@ -2464,9 +2465,15 @@ variable TRUSTED-DOES
    MULTI-ERR? IF rc CHECKER-REJECT-RC <> IF rc throw THEN EXIT THEN
    rc throw ;
 
+\ A name only rendered text may define is left to the run
+\ to retire.
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   name nameu XREF:UNDEFINE-FIND 0< IF
+      name nameu UNSEEN-COVERS? IF  name nameu DW-RENDERED DEFER-AT  EXIT  THEN
+      name nameu XREF:UNDEFINE-INDEX drop
+   THEN
    name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? {: sym:n :}
