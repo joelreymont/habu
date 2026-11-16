@@ -97,17 +97,21 @@ variable TREE-U
    TREE$ >LEN PROC-ARGV+
    RUN-ARGS ;
 
-\ hb-build with the script as its source and the case's path as its -o.
-: RUN-BUILD ( -- n n n )
+\ hb-build with the flag, if any, the script as its source and the case's path
+\ as its -o.
+: RUN-BUILD-AS ( ^u8 n -- n n n ) {: flag:^ flagu :}
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
+   flagu 0<> if flag flagu >LEN PROC-ARGV+ then
    SCRIPT$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    TREE$ >LEN PROC-ARGV+
    RUN-ARGS ;
+
+: RUN-BUILD ( -- n n n ) NULL$ RUN-BUILD-AS ;
 
 \ The program RUN-BUILD wrote, with no arguments.
 : RUN-TARGET ( -- n n n )
@@ -458,14 +462,30 @@ variable RUN-FILE-U
    pu s" build-time exit action ran" OUT-HAS? TFALSE
    RUN-FILE$ FS:EXISTS? TFALSE ;
 
-\ A built program ends an uncaught throw as hb ends one: FS:MKTEMP-DIR rejects
-\ a TMPDIR that names no directory with a throw carrying the E-FS-DIR record,
-\ which the program prints once, with no kernel line, and exits 67.
-: CASE-BUILT-RECORD ( -- )
-   s" built-record.f" s" built-record-out" CASE-PATHS
+\ A MAIN that throws the record its TMPDIR gives, else its own code's.
+: RECORD-TEXT ( -- )
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
-   S\" : MAIN ( -- ) s\q built\q FS:MKTEMP-DIR 2drop ;\n" TEXT+
+   S\" -100001 s\q the program's own failure\q ERROR:CODE E-BUILT-CASE\n" TEXT+
+   S\" : MAIN ( -- ) s\q built\q FS:MKTEMP-DIR 2drop E-BUILT-CASE throw ;\n" TEXT+ ;
+
+\ The built program under a TMPDIR that is a directory ends with the record of
+\ E-BUILT-CASE, once, and status 67.
+: EXPECT-CASE-RECORD ( -- )
+   PROC-ARGV-ENV-RESET
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
+   TREE$ RUN-PATH {: qu:n qe:n qrc:n :}
+   qu qe qrc 67 EXPECT-RC
+   0 TEXT-U !
+   S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
+   ERR qe TEXT$ COUNT-SUB 1 T=
+   qe s" uncaught throw" ERR-HAS? TFALSE ;
+
+\ A built program ends an uncaught throw with one record and status 67, no
+\ kernel line: the record its throw carried, else its code's declaration.
+: CASE-BUILT-RECORD ( -- )
+   s" built-record.f" s" built-record-out" CASE-PATHS
+   RECORD-TEXT
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a built program prints the record its uncaught throw carries" T-LABEL
    outu erru rc 0 EXPECT-RC
@@ -480,7 +500,20 @@ variable RUN-FILE-U
    RUN-FILE$ TEXT+
    S\" \n  = help: point TMPDIR at an existing directory, or unset it to use /tmp\n" TEXT+
    ERR pe TEXT$ COUNT-SUB 1 T=
-   pe s" uncaught throw" ERR-HAS? TFALSE ;
+   pe s" uncaught throw" ERR-HAS? TFALSE
+   s" a built program prints the record of a code its throw carries none for" T-LABEL
+   EXPECT-CASE-RECORD ;
+
+\ A second build: a --repl program runs MAIN from hb's own command line, not from
+\ the entry a plain build gives it.
+: CASE-REPL-RECORD ( -- )
+   s" repl-record.f" s" repl-record-out" CASE-PATHS
+   RECORD-TEXT
+   s" --repl" RUN-BUILD-AS {: outu:n erru:n rc:n :}
+   s" a --repl program prints the record of its MAIN's uncaught throw" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   EXPECT-CASE-RECORD ;
 
 \ hb-build dies after a failed build has unmapped its source's own AT-EXIT; it
 \ starts a build because only a build closes the source's space before the exit.
@@ -559,6 +592,7 @@ variable RUN-FILE-U
    CASE-BUILD-TASK
    CASE-BUILT
    CASE-BUILT-RECORD
+   CASE-REPL-RECORD
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS
    CASE-BUILD-CHUNK ;

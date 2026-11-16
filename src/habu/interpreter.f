@@ -3178,37 +3178,17 @@ variable OPENER-U
    c OPENER-A !  u OPENER-U !
    c off + PENDTKA-CELL ADDR! ;
 
-: THROWN-OPEN ( n -- )
-   {: c:n :}
-   c ERROR:NAME$ {: a:^ u:n :}
-   u 0= if s" E-THROW" REJECTION:OPEN exit then
-   a u REJECTION:OPEN ;
-
-: THROWN-TEXT ( n -- )
-   {: c:n :}
-   c ERROR:TEXT$ {: a:^ u:n :}
-   u 0 > if a u REJECTION:EMIT-STR exit then
-   s" nothing caught a throw of code " REJECTION:EMIT-STR
-   c REJECTION:EMIT-N ;
-
-: THROWN-HELP ( n -- )
-   {: c:n :}
-   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
-   REJECTION:HELP
-   s" catch the code where the program can go on, or remove its cause"
-   REJECTION:EMIT-STR ;
-
 \ The record, at the running token, of a throw of code c that its text did not
 \ catch.
 : THROWN-AT ( n -- )
    {: c:n :}
-   c THROWN-OPEN  c THROWN-TEXT
+   c ERROR:OPEN
    SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
-   c THROWN-HELP ;
+   c ERROR:HELP ;
 
 \ The record, at the running token, of a computed 0 that unwound the text.
 : ZERO-AT ( -- )
-   E-THROW-ZERO THROWN-OPEN  E-THROW-ZERO THROWN-TEXT
+   E-THROW-ZERO ERROR:OPEN
    SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
    REJECTION:HELP
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
@@ -3235,18 +3215,6 @@ variable ENDED
    c 1 255 BETWEEN? if c throw then
    REJECTION:CARRIED? 0= if c THROWN-AT REJECTION:SAVE then
    c REJECTION:PASS ;
-
-public
-\ Sends the record of code c, which nothing caught: the one its throw carried,
-\ else one with no place.
-: UNCAUGHT ( n -- )
-   {: c:n :}
-   REJECTION:CARRIED? 0= if
-      c THROWN-OPEN  c THROWN-TEXT  c THROWN-HELP
-      REJECTION:SAVE
-   then
-   REJECTION:SEND-SAVED ;
-private
 
 : REPL-LINE ( ^u8 n -- bool ) {: a:^ u:n :}
    PEND-CELL CELL@ {: open:n :}
@@ -3281,7 +3249,7 @@ private
    endcase
    f FRAME-FREE
    out FRAME-DONE <> if
-      code 1 255 BETWEEN? 0= if code UNCAUGHT then
+      code 1 255 BETWEEN? 0= if code ERROR:UNCAUGHT then
       mark SOURCE-ROOT:TEXT-UNWOUND
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop

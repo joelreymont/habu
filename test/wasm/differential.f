@@ -47,6 +47,8 @@ CAP BUFFER: WANT
 variable WANT-U
 CAP BUFFER: PROG                       \ the program being written
 variable PROG-U
+CAP BUFFER: THROWN                     \ the record THROW-ROW expects in ERR
+variable THROWN-U
 
 : ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
@@ -60,6 +62,7 @@ variable PROG-U
 : CALLS+ ( ^u8 n -- )  CALLS CALLS-U TEXT+ ;
 : WANT+ ( ^u8 n -- )  WANT WANT-U TEXT+ ;
 : PROG+ ( ^u8 n -- )  PROG PROG-U TEXT+ ;
+: THROWN+ ( ^u8 n -- )  THROWN THROWN-U TEXT+ ;
 
 : NAME$ ( -- ^u8 n )  NAME-A @ NAME-U @ ;
 
@@ -124,7 +127,7 @@ variable PROG-U
    rc UNCAUGHT-RC = if  LABEL  ERR e code THROWN-LINE$ STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
-\ throw's code whole.
+\ throw's code whole; a run that returns writes nothing to ERR.
 : WASM ( ^u8 n n n -- )
    {: want:^ wu:n status:n code:n :}
    SRC SRC-U @ MODULE MODULE-U @ WASM-HARNESS:BUILD {: r:n :}
@@ -134,6 +137,7 @@ variable PROG-U
    LABEL  MODULE MODULE-U @ WASM-HARNESS:RUN status T=
    WASM-HARNESS:OUT$ s" -wasm.txt" KEEP
    LABEL  WASM-HARNESS:OUT$ want wu T$=
+   status 0= if  LABEL  WASM-HARNESS:ERR$ s" " T$=  then
    status 1 = if  LABEL  WASM-HARNESS:THROW-CODE code T=  then ;
 
 \ ---- W03's program ---------------------------------------------------------------
@@ -215,13 +219,18 @@ public
    WANT WANT-U @ 0 0 WASM
    LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
 
-\ THROW-ROW's program throws a code uncaught: natively the engine's record of
-\ the uncaught throw names it, and the run answers status 1 with the code whole.
+\ THROW-ROW's program throws a code uncaught: natively the engine's record names
+\ it; the module writes the record, with no place, to ERR and throws UNCAUGHT-RC.
 : THROW-ROW ( ^u8 n ^u8 n ^u8 n n -- )
    {: name:^ nu:n src:^ su:n want:^ wu:n code:n :}
    name nu src su name nu FILES
    want wu UNCAUGHT-RC code NATIVE
-   want wu 1 code WASM ;
+   0 THROWN-U !
+   code THROWN-LINE$ THROWN+
+   s"   = code: " THROWN+  SB-RESET code FMT:SB-INT SB$ THROWN+
+   S\" \n  = help: catch the code where the program can go on, or remove its cause\n\n" THROWN+
+   want wu 1 UNCAUGHT-RC WASM
+   LABEL  WASM-HARNESS:ERR$ THROWN THROWN-U @ T$= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
@@ -271,7 +280,7 @@ s" W06"
 s" : W06-FOLD16 ( n n n n n n n n n n n n n n n n -- n ) 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + ; : W06-FOLD17 ( n n n n n n n n n n n n n n n n n -- n ) W06-FOLD16 2 * + ; : W06-COUNT16 ( n -- n n n n n n n n n n n n n n n n ) dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ ; : W06-COUNT17 ( n -- n n n n n n n n n n n n n n n n n ) W06-COUNT16 dup 1+ ; : W06 ( -- ) 1 W06-COUNT16 W06-FOLD16 . 1 W06-COUNT17 W06-FOLD17 . 1 ['] W06-COUNT16 execute ['] W06-FOLD16 execute . 1 ['] W06-COUNT17 execute ['] W06-FOLD17 execute . depth . ;"
 s\" 983041\n2097153\n983041\n2097153\n0\n" ROW
 
-\ ---- W07 a full-width throw is a status, a memory fault is a throw --------------
+\ ---- W07 an uncaught throw prints its record, a memory fault is a throw ----------
 \ MIN-N + 1, which a double rounds, caught and printed, then thrown uncaught.
 s" W07-THROW"
 s" : W07-THROW ( -- ) [: $8000000000000001 throw ;] catch . $8000000000000001 throw ;"

@@ -4,6 +4,7 @@
 \ loader reads and runs (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
 \ process's argv and stdin.
 
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/core/bytes.f
@@ -188,14 +189,14 @@ CAST: APP-ACTION ( n -- [ -- ] )
    rc 0= if exit then
    REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then
-   rc INTERPRETER:UNCAUGHT
+   rc ERROR:UNCAUGHT
    NULL$ UNCAUGHT-RC die ;
 
 \ An application's MAIN takes the arguments, then stdin is the source. Off
 \ one, an argument names what runs and stdin is its data; else stdin is source.
 : ROUTED ( -- )
    APP? if
-      APP-RUN
+      [: APP-RUN ;] RUN-SOURCE
       TTY? if INTERPRETER:REPL else [: STDIN RUN-TEXT ;] RUN-SOURCE then
       exit
    then

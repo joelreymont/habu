@@ -1,7 +1,8 @@
-\ error.f - canonical stdlib throw codes. -999999..-100000 is reserved for
-\ external applications and libraries (docs/forth.md, Errors). A file owns the
-\ whole block between its FIRST and LAST, minted or not (tools/error-code-lint.f);
-\ a subsystem that outgrows its block takes a second region, never renumbers.
+\ error.f - canonical stdlib throw codes, and the rejection record of a throw of
+\ one. -999999..-100000 is reserved for external applications and libraries
+\ (docs/forth.md, Errors). A file owns the whole block between its FIRST and
+\ LAST, minted or not (tools/error-code-lint.f); a subsystem that outgrows its
+\ block takes a second region, never renumbers.
 \ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE and ERROR:FAULT lay in data
 \ space and the persisted head cell that holds the newest one's address. A row
@@ -14,6 +15,7 @@ require src/core/bytes.f
 require src/core/rollback-cells.f
 require src/core/engine-error.f
 require src/lib/prelude.f
+require src/core/rejection.f
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST
@@ -859,6 +861,32 @@ generates: FAULT ( -- n )
 : TEXT$ ( n -- ^u8 n )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-TEXT$ ;
+
+\ Opens the rejection record of a throw of code c: its declaration's name and
+\ text, or E-THROW and the code when it has none.
+: OPEN ( n -- )
+   {: c:n :}
+   c NAME$ {: a:^ u:n :}
+   u 0= if s" E-THROW" else a u then REJECTION:OPEN
+   c TEXT$ {: t:^ tu:n :}
+   tu 0 > if t tu REJECTION:EMIT-STR exit then
+   s" nothing caught a throw of code " REJECTION:EMIT-STR
+   c REJECTION:EMIT-N ;
+
+\ The code and the help of an OPEN record of code c.
+: HELP ( n -- )
+   {: c:n :}
+   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
+   REJECTION:HELP
+   s" catch the code where the program can go on, or remove its cause"
+   REJECTION:EMIT-STR ;
+
+\ Sends the record of a throw of code c that nothing caught: the one its throw
+\ carried, else one with no place.
+: UNCAUGHT ( n -- )
+   {: c:n :}
+   REJECTION:CARRIED? 0= if c OPEN  c HELP  REJECTION:SAVE then
+   REJECTION:SEND-SAVED ;
 
 seal-package
 ;package

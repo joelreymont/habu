@@ -456,10 +456,11 @@ variable G-OUT-U
 variable G-IMAGE-U
 : G-OUT$ ( -- ^u8 n ) G-OUT G-OUT-U @ ;
 : G-IMAGE$ ( -- ^u8 n ) G-IMAGE G-IMAGE-U @ ;
-\ bytes: room for either program
-$20000 constant PROGRAM-CAP
-PROGRAM-CAP BUFFER: PROGRAM-A
-PROGRAM-CAP BUFFER: PROGRAM-B
+\ The bytes of the file at the path, in storage its size makes.
+: PROGRAM-BYTES ( ^u8 n -- ^u8 n ) {: p:^ pu:n :}
+   p pu FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
+   p pu b bu FS:READ-ALL {: got:n :}
+   b got ;
 
 \ lib.f as the text, built into the out root and run.
 : GAP-BUILD ( ^u8 n ^u8 n ^u8 n -- ) {: lib:^ libu:n out:^ outu:n image:^ imageu:n :}
@@ -479,9 +480,7 @@ PROGRAM-CAP BUFFER: PROGRAM-B
    C-MAIN$ GAP-MAIN$ FS:WRITE-ALL
    GAP-LIB$ C-OUT$ C-IMAGE$ GAP-BUILD
    GAP-LEAN$ G-OUT$ G-IMAGE$ GAP-BUILD
-   C-IMAGE$ PROGRAM-A PROGRAM-CAP FS:READ-ALL {: a:n :}
-   G-IMAGE$ PROGRAM-B PROGRAM-CAP FS:READ-ALL {: b:n :}
-   PROGRAM-A a PROGRAM-B b STR= 0= if
+   C-IMAGE$ PROGRAM-BYTES G-IMAGE$ PROGRAM-BYTES STR= 0= if
       s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
    then ;
 

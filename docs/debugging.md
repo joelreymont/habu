@@ -43,13 +43,11 @@ that catches the code and throws it again moves the record to its own throw,
 unless the code carried its record and the program throws it on in the body
 that caught it (docs/forth.md "A caught code thrown in its own body throws
 on").
-An arm64 stripped (AOT) application prints `hb: uncaught throw code N` and
-exits 67; an x86-64 one does not yet run the hook or print the line. Under
+A stripped application prints the same record with no place and exits 67. Under
 `--load` an uncaught throw of a computed 0 (a literal `0 throw` is rejected,
 `E-THROW-ZERO`) stops its text with `E-THROW-ZERO`, placed at the word that
 threw it, and
-exits 67; a stripped application prints `hb: uncaught throw code 0` and exits
-67. A rejection prints its record and exits 70. A one-byte diagnostic and a
+exits 67. A rejection prints its record and exits 70. A one-byte diagnostic and a
 clean exit means a raw engine capacity path, not a throw.
 
 ## `.s` and `.` — stack inspection
