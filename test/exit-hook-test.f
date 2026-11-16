@@ -110,7 +110,7 @@ variable TREE-U
    RUN-ARGS ;
 
 \ The program RUN-BUILD wrote, with no arguments.
-: RUN-PRODUCT ( -- n n n )
+: RUN-TARGET ( -- n n n )
    PROC-ARGV-ENV-RESET
    TREE$ RUN-PATH ;
 
@@ -207,41 +207,50 @@ variable TREE-U
    erru s" neg" ERR-HAS? TTRUE
    outu 0 T= ;
 
+\ Action k counts itself into RAN; action 1, added first, runs last and prints
+\ the count.
 : ACTION-DEF ( n -- ) {: k:n :}
-   s" : A" TEXT+ k FMT:INT$ TEXT+ S\"  ( -- ) ;\n" TEXT+ ;
+   s" : A" TEXT+ k FMT:INT$ TEXT+
+   k 1 = if S\"  ( -- ) RAN @ . cr ;\n" TEXT+ exit then
+   S\"  ( -- ) 1 RAN +! ;\n" TEXT+ ;
 
 : ACTION-ADD ( n -- ) {: k:n :}
    s" ' A" TEXT+ k FMT:INT$ TEXT+ S\"  AT-EXIT:ADD\n" TEXT+ ;
 
-\ The action table holds 64: a 65th distinct action is refused with
-\ E-LAYOUT-BOUNDS instead of written past the table.
-: CASE-ACTIONS-FULL ( -- )
-   s" actions-full.f" s" actions-full-tree" CASE-PATHS
-   S\" require src/lib/at-exit.f\n" TEXT+
-   65 1 ?do i ACTION-DEF i ACTION-ADD loop
-   65 ACTION-DEF
-   S\" : CHILD-MAIN ( -- ) [: ['] A65 AT-EXIT:ADD ;] catch\n" TEXT+
-   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
-   S\" CHILD-MAIN\n" TEXT+
+\ A program's 70 distinct exit actions all run at its exit.
+: CASE-ACTIONS-MANY ( -- )
+   s" actions-many.f" s" actions-many-tree" CASE-PATHS
+   S\" require src/lib/at-exit.f\nvariable RAN\n" TEXT+
+   71 1 ?do i ACTION-DEF i ACTION-ADD loop
    RUN-CHILD {: outu:n erru:n rc:n :}
-   s" a 65th exit action is refused" T-LABEL
-   outu erru rc 9 EXPECT-RC
-   erru s" full" ERR-HAS? TTRUE ;
+   s" a program's 70 exit actions all run" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   outu s" 69" OUT-HAS? TTRUE ;
 
-\ The reset table holds 16: a registration past it is refused with
-\ E-LAYOUT-BOUNDS instead of written past the table.
-: CASE-RESETS-FULL ( -- )
-   s" resets-full.f" s" resets-full-tree" CASE-PATHS
-   S\" require src/lib/fork-child.f\n: CHILD-RESET ( -- ) ;\n" TEXT+
-   S\" : CHILD-TRY ( -- n ) [: ['] CHILD-RESET FORK-CHILD:REGISTER ;] catch ;\n" TEXT+
-   S\" : CHILD-FILL ( -- n ) 17 0 ?do CHILD-TRY dup 0<> if unloop exit then drop loop 0 ;\n" TEXT+
-   S\" : CHILD-MAIN ( -- ) CHILD-FILL\n" TEXT+
-   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
-   S\" CHILD-MAIN\n" TEXT+
-   RUN-CHILD {: outu:n erru:n rc:n :}
-   s" a 17th fork-child reset is refused" T-LABEL
-   outu erru rc 9 EXPECT-RC
-   erru s" full" ERR-HAS? TTRUE ;
+\ Reset k counts itself into RAN in the forked child, which exits with the
+\ count.
+: RESET-DEF ( n -- ) {: k:n :}
+   s" : R" TEXT+ k FMT:INT$ TEXT+ S\"  ( -- ) 1 RAN +! ;  ' R" TEXT+
+   k FMT:INT$ TEXT+ S\"  FORK-CHILD:REGISTER\n" TEXT+ ;
+
+\ A build is the boundary under test: the fork resets a source's top level
+\ registers are rows in its data, which the built program's forked child runs.
+: CASE-RESETS-MANY ( -- )
+   s" resets-many.f" s" resets-many-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/process.f\nrequire src/lib/process-fork.f\nvariable RAN\n" TEXT+
+   21 1 ?do i RESET-DEF loop
+   S\" : MAIN ( -- ) PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
+   S\"    pid PID>N 0= if s\q \q RAN @ die then\n" TEXT+
+   S\"    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N s\q reaped \q type . cr ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build carries its source's 20 fork resets into the target" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   RUN-TARGET {: poutu:n perru:n prc:n :}
+   s" a child the target forks runs each carried reset" T-LABEL
+   poutu s" reaped 20" OUT-HAS? TTRUE
+   poutu perru prc 0 EXPECT-RC ;
 
 \ FS:REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
 \ filler - the image writer's on a failed open or write - takes the sibling
@@ -442,7 +451,7 @@ variable RUN-FILE-U
    outu s" build-time exit action ran" OUT-HAS? TTRUE
    0 TEXT-U !  TREE$ TEXT+  s" .built" TEXT+
    TEXT$ FS:EXISTS? TFALSE
-   RUN-PRODUCT {: pu:n pe:n prc:n :}
+   RUN-TARGET {: pu:n pe:n prc:n :}
    pu pe prc 0 EXPECT-RC
    pu s" main done" OUT-HAS? TTRUE
    pu s" run-time exit action ran" OUT-HAS? TTRUE
@@ -497,7 +506,7 @@ variable RUN-FILE-U
 
 \ A build is the boundary under test: cleanups a source's top level registers
 \ on a defined task hold rows in the table (src/lib/task.f TASK-EXIT-QT), which
-\ the product carries; it prints 21, each cleanup run once, newest first.
+\ the target carries; it prints 21, each cleanup run once, newest first.
 : CASE-BUILD-CLEANUPS ( -- )
    s" cleanups.f" s" cleanups-out" CASE-PATHS
    CLEANUPS-TEXT
@@ -505,16 +514,16 @@ variable RUN-FILE-U
    S\" : MAIN ( -- ) [: 0 TASK:RETURN ;] CHILD-TASK TASK:ACTIVATE CHILD-TASK TASK:JOIN\n" TEXT+
    S\"    MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH CHILD-MARK @ . ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a build carries its task's cleanups into the product" T-LABEL
+   s" a build carries its task's cleanups into the target" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
-   RUN-PRODUCT {: poutu:n perru:n prc:n :}
-   s" the product's task runs each carried cleanup once, newest first" T-LABEL
+   RUN-TARGET {: poutu:n perru:n prc:n :}
+   s" the target's task runs each carried cleanup once, newest first" T-LABEL
    OUT poutu S\" 21\n" T$=
    poutu perru prc 0 EXPECT-RC ;
 
 \ The 128 TASK:NEW tasks push the cleanups' rows past the table into a mapped
-\ chunk, which no product can carry: the linker refuses the source by the
+\ chunk, which no target can carry: the linker refuses the source by the
 \ address cell EXIT-CHUNKS (src/lib/task.f) and the build fails 74.
 : CASE-BUILD-CHUNK ( -- )
    s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
@@ -538,8 +547,8 @@ variable RUN-FILE-U
    CASE-REPORT
    CASE-CHAIN
    CASE-HOOK-THROW
-   CASE-ACTIONS-FULL
-   CASE-RESETS-FULL
+   CASE-ACTIONS-MANY
+   CASE-RESETS-MANY
    CASE-STAGED
    CASE-TASK-ADD
    CASE-TASK-DIE

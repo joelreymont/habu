@@ -6,46 +6,41 @@
 \ async-signal-safe calls that never throw, block or take a lock. It resets only
 \ state a task may be stopped half way through: a lock whose holder leaves its
 \ table whole at every instruction, a setup the child can start over.
-\ STORAGE CLASS. PROCESS-WIDE: one registry, appended under an atomic lock.
+\ STORAGE CLASS. PROCESS-WIDE: one list of rows, each in the data of the file
+\ that registered it, so a built program keeps its build's resets.
 
-require src/lib/error.f
+require src/core/rollback-cells.f
 
 package FORK-CHILD
 private
 
-16 constant CAP
-CAP TYPED-BUFFER HOOKS [ -- ]
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
-variable N
-variable MUTEX
+PERSISTED-PTR-VARIABLE HEAD
+HEAD ROLLBACK-CELLS:MARK
 
-: LOCK ( -- )
-   begin 0 1 MUTEX atomic-cas 0= until ;
+\ A row is the next row's address, null for none, then the reset.
+CAST: >RESET ( ^n -- ^[ -- ] )
 
-: UNLOCK ( -- ) 0 MUTEX atomic! ;
-
-\ The slot is stored before the count that admits it, and the count with a
-\ store-release, so a fork in the middle of a registration leaves the child the
-\ whole hook or none of it.
-: APPEND ( [ -- ] -- )
-   N @ CAP = if E-LAYOUT-BOUNDS throw then
-   N @ HOOKS !
-   N @ 1+ N atomic! ;
+: ROW-LINK ( ^n -- ^^n ) 0 ptr-field ;
+: ROW-NEXT ( ^n -- ^n ) ROW-LINK @ ;
+: ROW-RESET ( ^n -- ^[ -- ] ) cell+ >RESET ;
 
 public
 
-\ Registers a reset, once, as the module that registers it loads; a full table
-\ refuses E-LAYOUT-BOUNDS.
-: REGISTER ( [ -- ] -- )
-   LOCK [: APPEND ;] [: UNLOCK ;] finally ;
+\ Registers a reset, from the top level of the file that owns it; the head is
+\ published with a store-release, so a child forked mid-way runs the reset or not.
+: REGISTER ( [ -- ] -- ) {: q :}
+   datum here CELL-VIEW {: row:^ :}
+   here ptr-cell-mark 0 ,
+   0 ,
+   q row ROW-RESET xt!
+   HEAD @ row ROW-LINK !
+   row HEAD atomic! ;
 
-\ Runs every registered reset, oldest first, in a process just forked. Its one
-\ caller is PROC-FORK:RAW's child arm: anywhere else it would free locks live
-\ tasks hold. The registry's own lock goes first, since a registration another
-\ task was in is part of what the fork copied.
+\ Runs every registered reset; outside a just-forked child it would free locks
+\ live tasks hold.
 : RESET ( -- )
-   UNLOCK
-   N @ 0 ?do i HOOKS @ execute loop ;
+   HEAD @ begin dup NULL-PTR <> while  dup ROW-RESET @ execute  ROW-NEXT  repeat drop ;
 
 ;package

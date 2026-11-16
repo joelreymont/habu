@@ -6,22 +6,36 @@
 \ exits it runs the actions not yet taken, even when it forked while another
 \ thread ran them. A build's space loads a second copy, whose RUN goes to the
 \ space's own vector cell, which only the linker calls.
-\ STORAGE CLASS. PROCESS-WIDE action table.
+\ STORAGE CLASS. PROCESS-WIDE: one list of action rows.
 
 require src/lib/prelude.f
-require src/lib/error.f
+require src/lib/arena.f
 
 package AT-EXIT
 private
 
-\ ACTIONS holds N actions, oldest first; a 65th refuses E-LAYOUT-BOUNDS. A built
-\ program starts with none: N is a scratch cell, written as 0 in the target.
-64 constant CAP
-CAP TYPED-BUFFER ACTIONS [ -- ]
+\ An action's row: the address of the row added before it, 0 for none, and
+\ the action.
+STRUCTURE row DERIVE addr
+   FIELD older n
+   FIELD run [ -- ]
+;STRUCTURE
+ARENA ROWS row
+
+CAST: >ROW ( n -- ^row )
+CAST: ROW>N ( ^row -- n )
+CAST: >ARENA ( n -- ^ARENA:arena )
+CAST: ARENA>N ( ^ARENA:arena -- n )
+
+\ The rows' arena, 0 until an ADD makes one, never released: its growth only
+\ maps, so nothing under the lock can die, and no row moves under a TAKE.
+variable POOL   POOL scratch-cell-mark
 
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
-variable N   N scratch-cell-mark
+\ NEWEST is the newest row not yet taken, 0 for none. Both are scratch numbers,
+\ so a built program starts with no actions: a typed address cell is never scratch.
+variable NEWEST   NEWEST scratch-cell-mark
 variable MUTEX
 
 : LOCK ( -- )
@@ -37,13 +51,14 @@ CAST: XT>N ( [ -- ] -- n )
 : VECTOR ( -- ^[ -- ] )
    BOOT:EXIT-VECTOR NULL-PTR - >VECTOR ;
 
-\ The newest action, taken off the table, or false when none is left.
+\ The newest action, taken off the list, or false when none is left.
 : TAKE ( -- [ -- ] bool )
    LOCK
-   N @ 1- {: last:n :}
-   last 0< if UNLOCK [: ;] false exit then
-   last N !
-   last ACTIONS @
+   NEWEST @ {: at:n :}
+   at 0= if UNLOCK [: ;] false exit then
+   at >ROW {: r:^ :}
+   r ROW-OLDER @ NEWEST !
+   r ROW-RUN @
    UNLOCK true ;
 
 \ RUNNER holds RUN, which the vector calls: a typed cell, so the native
@@ -71,16 +86,18 @@ RUNNER-INIT
    RUNNER @ VECTOR xt! ;
 VECTOR-INIT
 
-\ The slot is stored before the count that admits it, and the count with a
-\ store-release, so a fork in the middle of an ADD leaves the child the whole
-\ action or none of it.
+\ The row is written before NEWEST admits it with a store-release, so a child
+\ forked mid-ADD has the whole action or none of it.
 : APPEND ( [ -- ] -- ) {: q :}
-   N @ 0 ?do
-      i ACTIONS @ XT>N q XT>N = if unloop exit then
-   loop
-   N @ CAP = if E-LAYOUT-BOUNDS throw then
-   q N @ ACTIONS !
-   N @ 1+ N atomic! ;
+   NEWEST @ begin dup 0<> while
+      >ROW dup ROW-RUN @ XT>N q XT>N = if drop exit then
+      ROW-OLDER @
+   repeat drop
+   POOL @ 0= if ARENA:NEW ARENA>N POOL ! then
+   POOL @ >ARENA ROWS-NEW {: r:^ :}
+   q r ROW-RUN !
+   NEWEST @ r ROW-OLDER !
+   r ROW>N NEWEST atomic! ;
 
 public
 
@@ -92,9 +109,9 @@ public
    LOCK [: APPEND ;] [: UNLOCK ;] finally
    ARM ;
 
-\ The lock alone: APPEND publishes its count after the slot, and TAKE counts
-\ down before it reads.
-: CHILD-RESET ( -- ) UNLOCK ;
+\ The lock, and POOL: a child forked mid-allocation has the arena half changed,
+\ so its next ADD makes its own.
+: CHILD-RESET ( -- ) 0 POOL ! UNLOCK ;
 
 private
 
