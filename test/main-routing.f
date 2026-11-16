@@ -5,6 +5,7 @@ require src/lib/test.f
 require src/lib/string.f
 require test/gate-common.f
 require src/lib/process.f
+require src/core/bytes.f
 
 package MAIN-ROUTING-TEST
 
@@ -20,6 +21,13 @@ create PATH-BUF PATH-CAP allot
 
 : STACK$ ( -- ^u8 n )
    s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
+
+: LONG$ ( -- ^u8 n )
+   s" long.f" PATH-BUF GT-PATH PATH-BUF swap ;
+
+\ A stdin program of several MiB, which the stream grows many times to hold.
+$480000 constant LONG-SIZE
+DYNAMIC-BUFFER PADDED u8
 
 : RUN ( ^u8 n [ -- ] -- ) {: input:^ u:n args :}
    GE-HB-RESET
@@ -60,6 +68,25 @@ create PATH-BUF PATH-CAP allot
    70 s" required file closes the user stack" GE-EXPECT-RC
    s" error[E-EVAL-RESIDUE]" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
 
+\ `s" A" type`, newlines, then `s" B" type cr`, LONG-SIZE bytes in all.
+: LONG-FILE ( -- )
+   LONG-SIZE PADDED-RESERVE
+   LONG-SIZE 0 do $0A i PADDED c! loop
+   S\" s\" A\" type" {: head:^ headu:n :}
+   S\" s\" B\" type cr" {: tail:^ tailu:n :}
+   head 0 PADDED headu BYTE-COPY
+   tail LONG-SIZE tailu - 1 - PADDED tailu BYTE-COPY
+   LONG$ 0 PADDED LONG-SIZE FS:WRITE-ALL
+   PADDED-RELEASE ;
+
+: LONG-STDIN ( -- )
+   LONG-FILE
+   GE-HB-RESET
+   GE-HB$ LONG$ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN-FILE
+   S\" AB\n" s" a stdin program past the stream's first sizes" GE-EXPECT-OUT
+   s" " s" a stdin program past the stream's first sizes" GE-EXPECT-ERR
+   s" a stdin program past the stream's first sizes" GE-EXPECT-OK ;
+
 public
 
 : MAIN ( -- )
@@ -68,7 +95,7 @@ public
    FILE$ S\" s\" FILE\" type cr\n" FS:WRITE-ALL
    READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 type cr\n" FS:WRITE-ALL
    STACK$ S\" 7\n" FS:WRITE-ALL
-   PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE
+   PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE LONG-STDIN
    GT-CLEANUP
    T-REPORT ;
 

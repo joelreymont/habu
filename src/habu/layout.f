@@ -169,9 +169,6 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX
 80 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
-\ The cold prefix, argv files and stdin share this allowance, less an EOF probe;
-\ overflow exits 74 `hb: source prefix buffer full`.
-$400000 constant SOURCE-ARENA-CAP
 20 constant DATA
 
 0 constant DP-CELL
@@ -313,14 +310,8 @@ $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
 $3C88 constant TASK-TCB-CELL
-\ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
-\ else 0, which a fresh task region and every non-task region hold. Only that
-\ task's own thread writes it: HALT-UNWIND, which PAUSE calls, sets it before it
-\ throws, and the catch family reads it on its throw-resume path. An inner
-\ catch rethrows at once and never pushes; the task's root catch, whose frame's
-\ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
-\ while their cleanup runs and set it again to continue the unwind. $3870
-\ follows ENGINE-MAIN:ARENA-CELL ($3868), below $7FF8 for a `DATA <off> LDR`.
+\ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it;
+\ only that task's thread writes it. $3870 is below $7FF8 for `DATA <off> LDR`.
 $3870 constant HALT-UNWIND-CELL
 $3C90 constant TASKS-LIVE-CELL
 $3C98 constant HIDXP-CELL
@@ -492,9 +483,6 @@ $37F8 constant SNAP-CELL
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
-\ The x86-64 Habu loop's source arena: a mapping this process made, which every
-\ boot reads zero until MAIN maps its stream.
-$3868 constant ARENA-CELL
 ;package
 
 \ PROVIDED-XT: cells holding the running engine's words that primitives and

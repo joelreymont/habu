@@ -178,7 +178,6 @@ create TAB
    PROVIDED-XT:TYPE-OP-CELL           1 cells                 CLAIM PROVIDED-XT-TYPE-OP-CELL
    PROVIDED-XT:VARIABLE-CELL          1 cells                 CLAIM PROVIDED-XT-VARIABLE-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
-   ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
    FFI-ABI:START                      FFI-ABI:BYTES           CLAIM FFI-ABI
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL

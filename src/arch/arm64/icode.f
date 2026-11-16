@@ -18,7 +18,7 @@ public
 \ ASM-RELEASE; nothing walks the span, so the window costs reserved address
 \ space only. A B/BL across the window must fit REL26-HI words (128 MiB).
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-ADR-HI SOURCE-ARENA-CAP + AOT-SECTION-CAP + constant CODE-CAP-BYTES
+ADR-HI AOT-SECTION-CAP + constant CODE-CAP-BYTES
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS
 \ The fixup tables FXS, FXN and FXK hold $2000 rows each: the native recovery
 \ build's identity shadow branches pass 4096 labels, and their pending fixups

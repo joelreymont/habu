@@ -2,7 +2,7 @@
 \ `--load` and stdin build one source stream, interpreted once, open, through
 \ SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file the
 \ loader reads and runs (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
-\ process's argv and stdin; RUN takes a vector, so a test can hand it one.
+\ process's argv and stdin.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -70,19 +70,6 @@ ENUM route load plain ;ENUM
    s" give hb a readable program on stdin, or name a file: `hb file.f`" REJECTION:EMIT-STR
    RC-SOURCE REJECT ;
 
-: FULL ( -- )
-   s" hb: source prefix buffer full" RC-SOURCE die ;
-
-\ The source arena of SOURCE-ARENA-CAP bytes would not map.
-: CANNOT-MAP ( -- )
-   s" E-SOURCE-MAP" REJECTION:OPEN
-   s" cannot map the source arena" REJECTION:EMIT-STR
-   s" size" REJECTION:NOTE  SOURCE-ARENA-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" free memory or raise the process's address-space limit (`ulimit -v`), then run hb again"
-   REJECTION:EMIT-STR
-   RC-SOURCE REJECT ;
-
 \ argv[1] picks it. `--load` takes the files after it up to the first `--`;
 \ what follows is the program's arguments (src/os/script-argv.f).
 \ Any other argument starting with `-` is an unknown flag (USAGE).
@@ -108,37 +95,28 @@ ENUM route load plain ;ENUM
       load OF 2 argv argc LIST-END ENDOF
    ;MATCH ;
 
-\ `--load` writes a `s" <path>" script-required` row per file, so the registry
-\ loads each in its own include frame and skips one the engine holds.
-\ One row per file, a newline between files, all in one arena before any runs.
-\ The bytes stay mapped for the
-\ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
-\ snapshot writer zeroes.
-: SOURCE-ARENA ( -- ^^u8 )
-   data-base ENGINE-MAIN:ARENA-CELL + 0 ptr-field ;
-
+\ The root source stream, USED bytes of it. It grows only before it runs, so
+\ the address STREAM and STDIN answer holds for the rest of the process.
+DYNAMIC-BUFFER TEXT u8
 variable USED
 
-: ROOM ( -- n )
-   SOURCE-ARENA-CAP USED @ - ;
-
-: CURSOR ( -- ^u8 )
-   SOURCE-ARENA @ USED @ + ;
+\ Bytes one read asks for: a Linux pipe's default capacity.
+$10000 constant READ-SIZE
 
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
-   u ROOM > if FULL then
-   a CURSOR u BYTE-COPY
+   USED @ u + TEXT-RESERVE
+   a USED @ TEXT u BYTE-COPY
    USED @ u + USED ! ;
 
-\ One row: `s" <path>" <word>`.
+\ One `s" <path>" <word>` row. Through script-required the registry loads
+\ each file in its own include frame and skips one the engine holds.
 : ROW ( ^u8 n ^u8 n -- ) {: path:^ u:n word:^ w:n :}
    S\" s\" " APPEND  path u APPEND  S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
 
-\ One read at the cursor; whether the file has ended. A full arena refuses
-\ before the read that would have found the end.
+\ One read past USED; whether the file has ended.
 : STEP ( n -- bool ) {: fd:n :}
-   ROOM 0 = if FULL then
-   fd CURSOR ROOM read {: got:n :}
+   USED @ READ-SIZE + TEXT-RESERVE
+   fd USED @ TEXT READ-SIZE read {: got:n :}
    got 0 < if FS:ERRNO CANNOT-READ then
    USED @ got + USED !
    got 0 = ;
@@ -151,9 +129,7 @@ variable USED
    BACKSLASH a c!
    BLANK a 1 + c! ;
 
-: START-STREAM ( -- )
-   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then SOURCE-ARENA !
-   0 USED ! ;
+: START-STREAM ( -- ) 0 USED ! ;
 
 \ The program file's argv string, 0 off the plain route: PROGRAM-FILE-CELL
 \ (src/habu/layout.f), from which src/core/include.f derives the program's
@@ -161,20 +137,20 @@ variable USED
 : PROGRAM-ARG ( -- ^^u8 )
    data-base PROGRAM-FILE-CELL + 0 ptr-field ;
 
-\ The stream for files [first, end).
+\ The stream for files [first, end): one row per file, a newline between.
 : STREAM ( ^^u8 n n -- ^u8 n ) {: argv:^ first:n end:n :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
       argv i ARG s" script-required" ROW
    loop
-   SOURCE-ARENA @ USED @ ;
+   0 TEXT USED @ ;
 
 : STDIN ( -- ^u8 n )
    START-STREAM
    begin 0 STEP until
-   SOURCE-ARENA @ USED @ SHEBANG
-   SOURCE-ARENA @ USED @ ;
+   0 TEXT USED @ SHEBANG
+   0 TEXT USED @ ;
 
 \ The root stream runs open, as the engine's loop runs it: a stream that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
@@ -190,8 +166,6 @@ CAST: APP-ACTION ( n -- [ -- ] )
 : APP? ( -- bool )
    data-base APP-ENTRY:XT-CELL + @ 0<> ;
 
-public
-
 \ argv[0] is the program; a vector with nothing after it has no file to load
 \ (the assembly sends that one to the REPL before it reaches its file list).
 : RUN ( ^^u8 n -- ) {: argv:^ argc:n :}
@@ -205,8 +179,6 @@ public
          argv first ARG over PROGRAM-ARG ! SOURCE-ROOT:RUN-PROGRAM
       ENDOF
    ;MATCH ;
-
-private
 
 \ Runs a source. A code from 1 to 255 is an exit status the program chose; any
 \ other ends the process with the record of the throw nothing caught.
