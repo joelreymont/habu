@@ -142,6 +142,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" case" COMPILE-KEYWORD-REJECT     s" of" COMPILE-KEYWORD-REJECT
    s" endof" COMPILE-KEYWORD-REJECT    s" endcase" COMPILE-KEYWORD-REJECT
    s" construct" COMPILE-KEYWORD-REJECT s" match" COMPILE-KEYWORD-REJECT
+   s" ;match" COMPILE-KEYWORD-REJECT
    s" do" COMPILE-KEYWORD-REJECT       s" loop" COMPILE-KEYWORD-REJECT
    s" i" COMPILE-KEYWORD-REJECT        s" >r" COMPILE-KEYWORD-REJECT
    s" r>" COMPILE-KEYWORD-REJECT       s" r@" COMPILE-KEYWORD-REJECT

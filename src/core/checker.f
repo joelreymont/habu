@@ -13226,7 +13226,7 @@ variable SEALS-N
 \ by one could never be called from a body.
 : BODY-KEYWORD? ( ^u8 n -- bool )
    {: a:^ u:n :}
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
+   S\" if then else begin until again while repeat case of endof endcase construct match ;match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
    {: t:^ tu:n :}
    0 BEGIN dup tu < WHILE
       {: s:n :}
