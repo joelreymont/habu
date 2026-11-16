@@ -6,18 +6,23 @@ require src/lib/string.f
 package XML
 public
 \ XML scalar/parser errors: -9201..-9208 and -9212..-9217.
--9201 constant E-CAPACITY
--9202 constant E-RANGE
--9203 constant E-MALFORMED
--9204 constant E-TRUNCATED
--9205 constant E-UTF8
--9206 constant E-SCALAR
--9207 constant E-ENTITY
--9208 constant E-NAMESPACE
--9212 constant E-STATE
--9213 constant E-DTD
--9214 constant E-ENCODING
--9215 constant E-ALIAS
+-9201 s" a caller's span is too short for what it must hold, or an output would pass the largest size"
+   ERROR:CODE E-CAPACITY
+-9202 s" a length, start or count is negative, past its input, or names bytes at a null address"
+   ERROR:CODE E-RANGE
+-9203 s" the document is not well-formed XML" ERROR:CODE E-MALFORMED
+-9204 s" the input ended inside a construct or with an element still open" ERROR:CODE E-TRUNCATED
+-9205 s" the input holds a byte sequence that is not valid UTF-8" ERROR:CODE E-UTF8
+-9206 s" the input holds a character XML 1.0 does not allow" ERROR:CODE E-SCALAR
+-9207 s" a character or entity reference is malformed, out of range or names no predefined entity"
+   ERROR:CODE E-ENTITY
+-9208 s" a name breaks XML namespaces: a malformed qualified name, an undeclared prefix, a reserved prefix or uri bound wrongly, a prefix bound to the empty uri, or two attributes with one expanded name"
+   ERROR:CODE E-NAMESPACE
+-9212 s" an XML reader word ran out of turn: on a failed reader, with no current name, start tag or open element"
+   ERROR:FAULT E-STATE
+-9213 s" the document holds a DOCTYPE, which the reader does not read" ERROR:CODE E-DTD
+-9214 s" the document's encoding or XML declaration is not one the reader takes" ERROR:CODE E-ENCODING
+-9215 s" an output span overlaps the input or the reader's storage" ERROR:CODE E-ALIAS
 
 private
 $7FFFFFFFFFFFFFFF constant MAX-SIZE

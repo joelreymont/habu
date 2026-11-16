@@ -44,11 +44,12 @@ require src/lib/uri.f
 package BEARER
 public
 
--9630 constant E-TRANSFER           \ no answer from the token endpoint
--9631 constant E-REFUSED            \ the issuer refused with a 4xx a retry will not change
--9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
--9633 constant E-UNAVAILABLE        \ the token endpoint answered a status a retry may change
--9634 constant E-RESPONSE           \ a reply TOKEN or REFRESH cannot use
+-9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
+-9631 s" the issuer refused with a 4xx a retry will not change" ERROR:CODE E-REFUSED
+-9632 s" a METADATA! text holds a byte its quoted challenge value cannot carry, or a scope is not space-separated scope tokens"
+   ERROR:CODE E-OPERAND
+-9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
+-9634 s" the token endpoint answered a reply TOKEN or REFRESH cannot use" ERROR:CODE E-RESPONSE
 private
 -9630 constant E-FIRST
 -9639 constant E-LAST

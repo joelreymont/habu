@@ -76,23 +76,17 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
-\ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP
-\ serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker,
-\ a body that does not give its result exactly once, HOLD outside a body before its
-\ result, FINISH of a call not held, or a client word given a closed client.
--9481 constant E-STATE
-\ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
--9482 constant E-DUPLICATE
--9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
-\ A reply whose status is not 2xx and is neither E-DENIED's nor E-UNAVAILABLE's, one
-\ that is not a JSON-RPC success for the request, or a result without its method's shape.
--9484 constant E-RESPONSE
-\ A descriptor, outputSchema or meta not one JSON object or repeating a top-level key; a required
-\ member absent or mistyped; meta naming serverInfo; a non-UTF-8 page; a result ADD-TOOL
-\ refuses; content blocks RESULT-CONTENT refuses.
--9485 constant E-SCHEMA
--9486 constant E-DENIED      \ the server refused a client's call with 401 or 403
--9487 constant E-UNAVAILABLE \ the server answered a status CURL:UNAVAILABLE? accepts
+-9481 s" an MCP word ran out of turn: SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker, a body that does not give its result exactly once, HOLD outside a body before its result, FINISH of a call not held, or a client word given a closed client"
+   ERROR:FAULT E-STATE
+-9482 s" ADD-TOOL was given a registered name or ADD-RESOURCE a registered uri, compared decoded"
+   ERROR:CODE E-DUPLICATE
+-9483 s" a client's request could not be sent or its reply received" ERROR:CODE E-TRANSFER
+-9484 s" the server's reply has a status other than 2xx that is neither E-DENIED's nor E-UNAVAILABLE's, is not a JSON-RPC success for the request, or holds a result without its method's shape"
+   ERROR:CODE E-RESPONSE
+-9485 s" a descriptor, outputSchema or meta is not one JSON object or repeats a top-level key, a required member is absent or mistyped, meta names serverInfo, a page is not UTF-8, ADD-TOOL refuses a result or RESULT-CONTENT refuses content blocks"
+   ERROR:CODE E-SCHEMA
+-9486 s" the server refused a client's call with 401 or 403" ERROR:CODE E-DENIED
+-9487 s" the server answered a status CURL:UNAVAILABLE? accepts" ERROR:CODE E-UNAVAILABLE
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
 NEWTYPE client
@@ -104,7 +98,7 @@ NEWTYPE client
 NEWTYPE held
 private
 
--9480 constant E-INPUT       \ params or arguments that are not objects: -32602
+-9480 s" a request's params or arguments are not objects (JSON-RPC -32602)" ERROR:CODE E-INPUT
 
 0 constant MODERN            \ 2026-07-28
 1 constant LEGACY            \ 2025-11-25

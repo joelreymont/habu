@@ -107,42 +107,29 @@ ENUM input-state none building broken finished ;ENUM
 \ What a call's reply answers: nothing set yet, its schema or its tools.
 ENUM reply-form none schema tools ;ENUM
 public
-\ From CHAT, COUNT-INPUT, COMPACT and EMBED, a provider's 404 to the request
-\ (an unknown model) is also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS
-\ keeps the status.
--9700 constant E-CONFIG
--9701 constant E-KEY
-\ From CHAT, COUNT-INPUT, COMPACT and EMBED: the provider refused the request
-\ for its size; INPUT+ also refuses an input past INPUT-MAX with it. An invalid
-\ setter or builder argument is E-CONFIG.
--9702 constant E-CAPACITY
-\ The transfer failed, stalled, or its stream ended before the response did;
-\ the provider may still finish and bill the response.
--9703 constant E-TRANSPORT
-\ A status other than 200, or a failed response's error code, that no code
-\ above, E-UNAVAILABLE or E-TIER names.
--9704 constant E-HTTP
-\ The provider's response, or a journal record replayed for it, is malformed
-\ or inconsistent.
--9705 constant E-RESPONSE
-\ The chat response's answer message carries a refusal.
--9706 constant E-REFUSED
-\ The response ended incomplete: INCOMPLETE-REASON$ names why.
--9707 constant E-INCOMPLETE
-\ CANCEL ended the call, REQUEST-STOP came before or during it, or a halt cut
-\ its recorder or journal put.
--9709 constant E-CANCELLED
-\ Out of turn: a busy or unopened call, a part or item outside building, SERVE
-\ or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result.
--9710 constant E-STATE
-\ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
-\ response's error code rate_limit_exceeded, server_error or
-\ server_is_overloaded.
--9711 constant E-UNAVAILABLE
-\ The provider cannot serve the request at the service tier it names for now:
-\ a failed response's error code flex_unavailable. Nothing was generated.
-\ TIER-RESEND! sends such a call again.
--9712 constant E-TIER
+\ HTTP-STATUS keeps the status of a 404, 401 or 403.
+-9700 s" a setter, builder or key spec was given an invalid argument, or the provider answered 404 for an unknown model"
+   ERROR:CODE E-CONFIG
+-9701 s" the provider refused the key with 401 or 403, or the key item is missing, empty or not printable"
+   ERROR:CODE E-KEY
+-9702 s" the provider refused the request for its size, or INPUT+ was given an input past INPUT-MAX"
+   ERROR:CODE E-CAPACITY
+-9703 s" the transfer failed, stalled, or its stream ended before the response did, and the provider may still finish and bill the response"
+   ERROR:CODE E-TRANSPORT
+-9704 s" the provider answered a status other than 200, or a failed response's error code, that no other MODEL code names"
+   ERROR:CODE E-HTTP
+-9705 s" the provider's response, or a journal record replayed for it, is malformed or inconsistent"
+   ERROR:CODE E-RESPONSE
+-9706 s" the chat response's answer message carries a refusal" ERROR:CODE E-REFUSED
+-9707 s" the response ended incomplete: INCOMPLETE-REASON$ names why" ERROR:CODE E-INCOMPLETE
+-9709 s" CANCEL ended the call, REQUEST-STOP came before or during it, or a halt cut its recorder or journal put"
+   ERROR:CODE E-CANCELLED
+-9710 s" a MODEL word ran out of turn: a busy or unopened call, a part or item outside building, SERVE or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result"
+   ERROR:FAULT E-STATE
+-9711 s" the provider is unavailable for now, with status 408, 429 or 5xx or a failed response's error code rate_limit_exceeded, server_error or server_is_overloaded: send the call again later"
+   ERROR:CODE E-UNAVAILABLE
+-9712 s" the provider cannot serve the request at the service tier it names for now (error code flex_unavailable) and generated nothing: TIER-RESEND! sends such a call again"
+   ERROR:CODE E-TIER
 \ OpenAI's limits: https://platform.openai.com/docs/api-reference/embeddings
 \ MODEL counts no embed input's tokens; INPUT-MAX bounds an Ollama call too.
 \ The most inputs one EMBED call takes.

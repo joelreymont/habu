@@ -14,10 +14,11 @@ public
 
 -9450 constant E-FIRST
 -9459 constant E-LAST
--9450 constant E-STATE
--9451 constant E-STORAGE
--9452 constant E-SOURCE
--9453 constant E-UTF8
+-9450 s" a decoder was used out of turn: FEED or FINISH of one not live, CLOSE of one not open, or OPEN of storage still open"
+   ERROR:FAULT E-STATE
+-9451 s" OPEN was given no storage or fewer than STORAGE-BYTES bytes" ERROR:CODE E-STORAGE
+-9452 s" FEED was given a negative length, or bytes at a null address" ERROR:CODE E-SOURCE
+-9453 s" an event's type or data is not valid UTF-8" ERROR:CODE E-UTF8
 
 NEWTYPE decoder
 

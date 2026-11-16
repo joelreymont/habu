@@ -11,8 +11,8 @@ public
 DEFLINEAR XML:source
 STRUCTURE source-owner OPAQUE FIELD state ^n ;STRUCTURE
 ENUM encoding utf8 utf16-le utf16-be us-ascii ;ENUM
--9216 constant E-UTF16
--9217 constant E-BOUNDARY
+-9216 s" UTF-16 input has an odd length or a lone or cut-off surrogate" ERROR:CODE E-UTF16
+-9217 s" a lexical offset falls inside a UTF-8 sequence" ERROR:CODE E-BOUNDARY
 
 private
 CAST: ENCODING>N ( encoding -- n )
