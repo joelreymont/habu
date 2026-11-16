@@ -40,6 +40,7 @@ $149 constant NR-PTHREAD-SIGMASK  \ __pthread_sigmask(how, set, oset) — BSD sy
 27   constant MACH-TASK-SELF        \ task_self_trap, Mach trap -28
 17   constant MACH-PORT-DEALLOCATE  \ _kernelrpc_mach_port_deallocate_trap, -18
 public
+NR-PTHREAD-SIGMASK constant NR-RT-SIGPROCMASK  \ the calling thread's mask, as Linux's
 $16A constant NR-KQUEUE
 $171 constant NR-KEVENT64
 $FFFB constant EVFILT-PROC-U16     \ EVFILT_PROC as an unsigned 16-bit filter (-5)

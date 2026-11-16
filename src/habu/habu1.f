@@ -20,6 +20,23 @@
 \ dependency that orders the fence after the xt's load; the comparison is
 \ unsigned. A direct BL needs no fence: its target was published before the
 \ caller was compiled.
+\
+\ spawn-fds's Linux child blocks BLOCKED's signals, then setpgid(0, PGROUP)
+\ puts it in the request's group. Every descriptor is then marked close-on-exec,
+\ so a -1 slot and every fd at or above NFDS close at exec. Each source is then
+\ lifted to a fresh fd at or above the floor in the cell past the request,
+\ kept in a scratch array, before any slot is placed, so a source that is
+\ another slot's target (map [0 2 1]) survives until it is read, and no lifted
+\ copy takes the number of a later source the parent has closed; dup3 with no
+\ flags places each one and clears its mark.
+\
+\ On macOS, spawn-fds's POSIX_SPAWN_CLOEXEC_DEFAULT closes every fd no record
+\ targets: a -1 slot and every fd at or above NFDS. Each source is first
+\ duplicated to T+i, T above NFDS and every source, so a source that is another
+\ slot's target (map [0 2 1]) survives until it is read; then T+i goes to i and
+\ is closed. POSIX_SPAWN_SETPGROUP puts the child in the request's PGROUP, and
+\ a BLOCKED set takes POSIX_SPAWN_SETSIGMASK with this thread's mask and that
+\ set.
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/data-claims.f
@@ -190,12 +207,14 @@ package ENGINE-EMIT
 : BU. ( -- )
    A G-POP  G-PRINTU9 ;
 
-56 constant LINUX-SPAWN-PIPE-R-OFF
-60 constant LINUX-SPAWN-PIPE-W-OFF
-64 constant LINUX-SPAWN-ERR-OFF
-72 constant LINUX-SPAWN-PID-OFF
-80 constant LINUX-SPAWN-STATUS-OFF
-96 constant LINUX-SPAWN-FRAME
+\ LINUX-SPAWN's seven arguments or spawn-fds's request and its lift floor at
+\ SPAWN-ABI:BYTES, then the error pipe's u32 fds, errno, pid and wait status.
+SPAWN-ABI:BYTES 8 + constant LINUX-SPAWN-PIPE-R-OFF
+LINUX-SPAWN-PIPE-R-OFF 4 + constant LINUX-SPAWN-PIPE-W-OFF
+LINUX-SPAWN-PIPE-R-OFF 8 + constant LINUX-SPAWN-ERR-OFF
+LINUX-SPAWN-ERR-OFF 8 + constant LINUX-SPAWN-PID-OFF
+LINUX-SPAWN-PID-OFF 8 + constant LINUX-SPAWN-STATUS-OFF
+LINUX-SPAWN-STATUS-OFF 8 + 15 + -16 and constant LINUX-SPAWN-FRAME
 3 constant LINUX-SPAWN-MIN-ERRFD
 1024 constant LINUX-F-LINUX-SPECIFIC-BASE
 6 constant LINUX-F-DUPFD-CLOEXEC-OFF
@@ -497,23 +516,20 @@ variable NUM-LINT
    SP SP LINUX-SPAWN-FRAME ADDI,
    9 G-PUSH ;
 
-\ spawn-fds on Linux. The frame is LINUX-SPAWN's: the request's cells copied
-\ to SPAWN-ABI's offsets, the lift floor in the cell at SPAWN-ABI:BYTES, then
-\ the error pipe, the child's errno (four bytes), the pid and the wait status.
+\ spawn-fds on Linux, over LINUX-SPAWN's frame, the request's cells copied to
+\ SPAWN-ABI's offsets.
 4 constant LINUX-CLOSE-RANGE-CLOEXEC
 3 constant SPAWN-PROT-RW                \ PROT_READ | PROT_WRITE
 22 constant SPAWN-EINVAL
 4 constant SPAWN-EINTR
 4 constant SPAWN-ERRNO-BYTES
+0 constant LINUX-SIG-BLOCK
+public
+8 constant LINUX-SIGSET-SIZE
+private
 
-\ The child, frame at SP. Every descriptor is marked close-on-exec first, so a
-\ -1 slot and every fd at or above NFDS close at exec. Each source is then
-\ lifted to a fresh fd at or above the floor in the cell past the request,
-\ kept in a scratch array, before any slot is placed, so a source that is
-\ another slot's target (map [0 2 1]) survives until it is read, and no lifted
-\ copy takes the number of a later source the parent has closed; dup3 with no
-\ flags places each one and clears its mark. A failing step writes its errno to
-\ the pipe and exits 127.
+\ The child, frame at SP, through the header's steps. A failing step writes its
+\ errno to the pipe and exits 127.
 : LINUX-SPAWN-FDS-CHILD ( -- )
    LBL {: fail:label :}
    LBL {: nocwd:label :}
@@ -523,8 +539,13 @@ variable NUM-LINT
    LBL {: place:label :}
    LBL {: skip:label :}
    LBL {: placed:label :}
+   LBL {: unmasked:label :}
    LINUX-SPAWN-CLOSE-R
-   0 0 MOVZ,  1 0 MOVZ,  NR-SETPGID SYS,  C-CS fail BCOND,
+   0 SP SPAWN-ABI:BLOCKED LDR,  0 unmasked CBZ,
+      0 LINUX-SIG-BLOCK MOVZ,  1 SP SPAWN-ABI:BLOCKED ADDI,  2 0 MOVZ,
+      3 LINUX-SIGSET-SIZE MOVZ,  NR-RT-SIGPROCMASK SYS,  C-CS fail BCOND,
+   unmasked LBL,
+   0 0 MOVZ,  1 SP SPAWN-ABI:PGROUP LDR,  NR-SETPGID SYS,  C-CS fail BCOND,
    0 SP SPAWN-ABI:CWD LDR,  0 nocwd CBZ,
       NR-CHDIR SYS,  C-CS fail BCOND,
    nocwd LBL,
@@ -684,10 +705,7 @@ variable NUM-LINT
 
 13 constant LINUX-SIGPIPE
 1 constant LINUX-SIG-IGN
-public
-8 constant LINUX-SIGSET-SIZE
 
-private
 \ x0 is rt_sigaction's answer: 0, or -errno.
 : LINUX-IGNORE-SIGPIPE ( -- )
    SP SP 64 SUBI,
@@ -813,12 +831,16 @@ private
 176 constant SPAWN-ATTR-OFF
 184 constant SPAWN-ATTR-SIZE
 0 constant SPAWN-ATTR-FLAGS-OFF
+8 constant SPAWN-ATTR-SIGMASK-OFF          \ psa_sigmask, a u32 sigset_t
+12 constant SPAWN-ATTR-PGROUP-OFF          \ psa_pgroup, a pid_t
 56 constant SPAWN-ATTR-RESERVED-OFF
 68 constant SPAWN-ATTR-PRIORITY-OFF
 72 constant SPAWN-ATTR-MEMLIMIT-ACTIVE-OFF
 76 constant SPAWN-ATTR-MEMLIMIT-INACTIVE-OFF
 112 constant SPAWN-ATTR-SUBCPU-OFF
 2 constant POSIX-SPAWN-SETPGROUP
+8 constant POSIX-SPAWN-SETSIGMASK
+1 constant DARWIN-SIG-BLOCK
 368 constant SPAWN-ACTIONS-OFF
 0 constant SPAWN-FA-CAP-OFF
 4 constant SPAWN-FA-COUNT-OFF
@@ -1156,11 +1178,8 @@ SPAWN-ACTIONS-OFF 32 + constant SPAWN-FDS-FRAME
 $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 63 constant SPAWN-ENAMETOOLONG
 
-\ The request's address is in x8; x9 becomes the child's pid or -errno.
-\ POSIX_SPAWN_CLOEXEC_DEFAULT closes every fd no record targets: a -1 slot and
-\ every fd at or above NFDS. Each source is first duplicated to T+i, T above
-\ NFDS and every source, so a source that is another slot's target (map
-\ [0 2 1]) survives until it is read; then T+i goes to i and is closed.
+\ spawn-fds on macOS, through the header's steps. The request's address is in
+\ x8; x9 becomes the child's pid or -errno.
 : DARWIN-SPAWN-FDS ( -- )
    LBL {: mapped:label :}
    LBL {: nocwd:label :}
@@ -1177,6 +1196,8 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
    LBL {: spawned:label :}
    LBL {: unmap:label :}
    LBL {: leave:label :}
+   LBL {: masked:label :}
+   LBL {: unmasked:label :}
    SP SP SPAWN-FDS-FRAME SUBI,
    8 SP SPAWN-FDS-REQ-OFF STR,
    6 8 SPAWN-ABI:NFDS LDR,
@@ -1236,6 +1257,24 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
    SPAWN-DARWIN-FILL-ADESC
    14 POSIX-SPAWN-SETPGROUP POSIX-SPAWN-CLOEXEC-DEFAULT or MOVZ,
    14 SP SPAWN-ATTR-OFF SPAWN-ATTR-FLAGS-OFF + STRW,
+   14 8 SPAWN-ABI:PGROUP LDR,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-PGROUP-OFF + STRW,
+   14 8 SPAWN-ABI:BLOCKED LDR,  14 unmasked CBZ,
+      0 DARWIN-SIG-BLOCK MOVZ,  1 0 MOVZ,
+      2 SP SPAWN-ATTR-OFF SPAWN-ATTR-SIGMASK-OFF + ADDI,
+      NR-RT-SIGPROCMASK SYS,
+      C-CC masked BCOND,
+         9 31 0 SUB,  unmap B,
+      masked LBL,
+      8 SP SPAWN-FDS-REQ-OFF LDR,
+      14 8 SPAWN-ABI:BLOCKED LDR,
+      15 SP SPAWN-ATTR-OFF SPAWN-ATTR-SIGMASK-OFF + LDRW,
+      15 15 14 ORR,
+      15 SP SPAWN-ATTR-OFF SPAWN-ATTR-SIGMASK-OFF + STRW,
+      14 SP SPAWN-ATTR-OFF SPAWN-ATTR-FLAGS-OFF + LDRW,
+      15 POSIX-SPAWN-SETSIGMASK MOVZ,  14 14 15 ORR,
+      14 SP SPAWN-ATTR-OFF SPAWN-ATTR-FLAGS-OFF + STRW,
+   unmasked LBL,
    0 SP SPAWN-PID-OFF ADDI,  1 8 SPAWN-ABI:PATH LDR,  2 SP SPAWN-ADESC-OFF ADDI,
    3 8 SPAWN-ABI:ARGV LDR,  4 8 SPAWN-ABI:ENVP LDR,
    NR-SPAWN SYS,

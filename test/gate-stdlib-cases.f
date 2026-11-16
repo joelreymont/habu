@@ -1163,6 +1163,11 @@ SUITE spawn
    src/lib/spawn-test.f
 ;SUITE
 
+\ A reaper kills what its pool spawned REAPED when the pool dies or stops it.
+SUITE process-reaper
+   src/lib/process-reaper-test.f
+;SUITE
+
 \ A tree walk the kernel refuses throws rather than reading the refusal as
 \ nobody there, and one at a capture's early end leaves the capture its own
 \ answer and names the walk's code.

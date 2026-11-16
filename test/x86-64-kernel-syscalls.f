@@ -374,7 +374,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 \ leaves the parent's 8 past its end, so both its writes fail and sh exits 9.
 \ The failures take their own image, since each PIPE, is a check too: a missing
 \ file answers -ENOENT and a negative map length -EINVAL.
-$380 constant REQ                       \ src/habu/spawn-abi.f's six cells
+$380 constant REQ                       \ src/habu/spawn-abi.f's eight cells
 $3C0 constant FDS                       \ nine cells
 $410 constant PID2
 22 constant EINVAL
@@ -387,7 +387,8 @@ $410 constant PID2
    a u SH-ARGV,  NO-ENV,
    s" /bin/sh" PATH, SPAWN-ABI:PATH REQ-CELL,  ARGV AT, SPAWN-ABI:ARGV REQ-CELL,
    ENVP AT, SPAWN-ABI:ENVP REQ-CELL,  0 N, SPAWN-ABI:CWD REQ-CELL,
-   FDS AT, SPAWN-ABI:FDS REQ-CELL,  nfds N, SPAWN-ABI:NFDS REQ-CELL, ;
+   FDS AT, SPAWN-ABI:FDS REQ-CELL,  nfds N, SPAWN-ABI:NFDS REQ-CELL,
+   0 N, SPAWN-ABI:PGROUP REQ-CELL,  0 N, SPAWN-ABI:BLOCKED REQ-CELL, ;
 
 : SPAWN-FDS-CASE ( -- )
    PIPE,  KEPT2 RECALL, 7 N, s" dup2" ROW  DROP,  KEPT2 RECALL, s" close" ROW

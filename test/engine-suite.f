@@ -1277,6 +1277,8 @@ variable ES-FA  variable ES-FB
    ES-SFARGV ES-ADDR SPAWN-ABI:ARGV ES-REQ!
    ES-SFENV ES-ADDR SPAWN-ABI:ENVP ES-REQ!
    0 SPAWN-ABI:CWD ES-REQ!
+   0 SPAWN-ABI:PGROUP ES-REQ!
+   0 SPAWN-ABI:BLOCKED ES-REQ!
    ES-SFMAP ES-ADDR SPAWN-ABI:FDS ES-REQ! ;
 : ES-SFMAP! ( n n -- ) cells ES-SFMAP + ! ;       \ ( parent-fd slot -- )
 : ES-SFUNMAP ( n -- ) {: n:n :}                    \ slots 0 .. n-1 closed

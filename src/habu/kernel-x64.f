@@ -4,6 +4,12 @@
 \ The text window (X64CODE:CODE-CAP-BYTES) holds this kernel alone: _start
 \ (boot-x64.f START,), the helpers and every row. The captured engine is the code
 \ region, at the image base plus REGION-OFF. Tests: test/x86-64-kernel-*.f.
+\
+\ spawn-fds's child blocks BLOCKED's signals, then setpgid(0, PGROUP) puts it in
+\ the request's group. Every descriptor is marked close-on-exec, each source is
+\ lifted to a fresh fd at or above the floor in the cell past the request, in a
+\ mapped scratch array, before any slot is placed, and dup3 with no flags
+\ places each one.
 
 \ The x86-64 seam (src/os/linux-x86-64/sys.f) and its process emitters
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
@@ -895,10 +901,8 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS
 
-\ The spawn frame on the machine stack. The first seven cells are LINUX-SPAWN's
-\ arguments; -1 in the directory or a descriptor cell means none. pipe2 writes
-\ two u32 descriptors, and the child's failure byte, the pid and wait4's u32
-\ status follow. The default argv (the path, then 0) and envp (0) sit last.
+\ The spawn frame on the machine stack: SPAWN,'s seven arguments, -1 in the
+\ directory or a descriptor cell for none, or spawn-fds's request.
 0 constant SPN-PATH
 8 constant SPN-ARGV
 16 constant SPN-ENV
@@ -906,14 +910,14 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 32 constant SPN-IN
 40 constant SPN-OUT
 48 constant SPN-ERR
-56 constant SPN-PIPE-R
-60 constant SPN-PIPE-W
-64 constant SPN-BYTE
-72 constant SPN-PID
-80 constant SPN-STATUS
-88 constant SPN-ARGV0
-104 constant SPN-ENVP0
-112 constant SPN-FRAME
+SPAWN-ABI:BYTES CELL + constant SPN-PIPE-R  \ past spawn-fds's lift floor cell
+SPN-PIPE-R 4 + constant SPN-PIPE-W          \ pipe2's two u32 descriptors
+SPN-PIPE-R CELL + constant SPN-BYTE         \ the child's failure byte
+SPN-BYTE CELL + constant SPN-PID
+SPN-PID CELL + constant SPN-STATUS          \ wait4's u32 status
+SPN-STATUS CELL + constant SPN-ARGV0        \ the default argv: the path, then 0
+SPN-ARGV0 2 CELL * + constant SPN-ENVP0     \ the default envp: 0
+SPN-ENVP0 CELL + constant SPN-FRAME
 
 : FRAME@, ( r64 n -- ) RP ASM-SINK ENC-MOV-RM ;
 : FRAME!, ( r64 n -- ) RP ASM-SINK ENC-MOV-MR ;
@@ -1029,10 +1033,8 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
    RAX MINUS-1,
    done X64CODE:LBL, ;
 
-\ spawn-fds over the same frame: its first six cells are the request copied to
-\ SPAWN-ABI's offsets, the cell at SPAWN-ABI:BYTES holds the lift floor,
-\ SPN-BYTE's cell holds the child's four-byte errno, and SPN-ARGV0 the address
-\ of the child's mapped array of lifted descriptors.
+\ spawn-fds over the same frame: SPN-BYTE's cell holds the child's errno (four
+\ bytes), SPN-ARGV0 the address of its mapped array of lifted descriptors.
 4 constant CLOSE-RANGE-CLOEXEC
 4 constant SPAWN-EINTR
 22 constant SPAWN-EINVAL
@@ -1041,16 +1043,18 @@ SPN-ARGV0 constant SPN-LIFTED
 
 : NFDS@, ( r64 -- ) SPAWN-ABI:NFDS FRAME@, ;
 
-\ The twin of habu1.f LINUX-SPAWN-FDS-CHILD: every descriptor is marked
-\ close-on-exec, each source is lifted to a fresh fd at or above the floor in
-\ the cell past the request, in a mapped scratch array, before any slot is
-\ placed, and dup3 with no flags places each one. A failing step writes its
+\ spawn-fds's child, through the header's steps. A failing step writes its
 \ errno to the pipe and exits SPAWN-FAIL-RC.
 : SPAWN-FDS-CHILD, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: fail:label nocwd:label lift:label keep:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lifted:label place:label skip:label placed:label :}
+   X64CODE:LBL {: unmasked:label :}
    SPN-PIPE-R CLOSE-SLOT,
-   RDI ZERO-REG,  RSI ZERO-REG,  NR-SETPGID SYS,  C-B fail JCC,
+   RAX SPAWN-ABI:BLOCKED FRAME@,  RAX RAX ASM-SINK ENC-TEST-RR  C-E unmasked JCC,
+   RDI ZERO-REG,  RSI SPAWN-ABI:BLOCKED FRAME-AT,  RDX ZERO-REG,
+   R10 SIGSET-BYTES IMM32,  NR-RT-SIGPROCMASK SYS,  C-B fail JCC,
+   unmasked X64CODE:LBL,
+   RDI ZERO-REG,  RSI SPAWN-ABI:PGROUP FRAME@,  NR-SETPGID SYS,  C-B fail JCC,
    RDI SPAWN-ABI:CWD FRAME@,  RDI RDI ASM-SINK ENC-TEST-RR  C-E nocwd JCC,
    NR-CHDIR SYS,  C-B fail JCC,
    nocwd X64CODE:LBL,
@@ -1143,8 +1147,8 @@ SPN-ARGV0 constant SPN-LIFTED
    RAX R8 ASM-SINK ENC-MOV-RR
    done X64CODE:LBL, ;
 
-: SPAWN-OPEN, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
-: SPAWN-CLOSE, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-ADD-RI8  RAX PUSH, ;
+: SPAWN-OPEN, ( -- ) RSP SPN-FRAME >IMM32 ASM-SINK ENC-SUB-RI32 ;
+: SPAWN-CLOSE, ( -- ) RSP SPN-FRAME >IMM32 ASM-SINK ENC-ADD-RI32  RAX PUSH, ;
 : POP-SLOT, ( n -- ) {: off:n :}  RAX POP,  RAX off FRAME!, ;
 : NONE-SLOT, ( n -- ) {: off:n :}  RAX MINUS-1,  RAX off FRAME!, ;
 : STDIO-SLOTS, ( -- ) SPN-ERR POP-SLOT,  SPN-OUT POP-SLOT,  SPN-IN POP-SLOT, ;
@@ -1193,7 +1197,7 @@ SPN-ARGV0 constant SPN-LIFTED
       RCX RAX i MEM-OFF ASM-SINK ENC-MOV-RM  RCX i FRAME!,
    CELL +loop
    SPAWN-FDS,
-   RSP SPN-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
+   RSP SPN-FRAME >IMM32 ASM-SINK ENC-ADD-RI32
    done X64CODE:LBL,
    RAX PUSH, ;
 

@@ -45,8 +45,8 @@ STRUCTURE vectors DERIVE addr
 
 CAST: >VECTORS ( ^n -- ^vectors )
 
-\ The SPAWN-ABI cells spawn-fds reads come first: PATH and
-\ CWD written as given, the rest just before the spawn.
+\ The SPAWN-ABI cells spawn-fds reads come first: PATH, CWD, PGROUP
+\ and BLOCKED written as given, the rest just before the spawn.
 SPAWN-ABI:BYTES 1 cells / constant ABI-CELLS
 \ The owned string chunks.
 ABI-CELLS constant CHUNKS-AT
@@ -63,6 +63,8 @@ HERM-AT 1+ constant RECORD-CELLS
 : CWD-CELL ( ^n -- ^^u8 ) SPAWN-ABI:CWD 1 cells / ptr-field ;
 : FDS-CELL ( ^n -- ^^a ) SPAWN-ABI:FDS 1 cells / ptr-field ;
 : NFDS-CELL ( ^n -- ^n ) SPAWN-ABI:NFDS + ;
+: PGROUP-CELL ( ^n -- ^n ) SPAWN-ABI:PGROUP + ;
+: BLOCKED-CELL ( ^n -- ^n ) SPAWN-ABI:BLOCKED + ;
 : CHUNKS ( ^n -- ^n ) CHUNKS-AT cells + ;
 : ARGS ( ^n -- ^^VEC:vector<^u8> )
    ARGS-AT cells + >VECTORS VECTORS-ARGS ;
@@ -187,6 +189,13 @@ HERM-AT 1+ constant RECORD-CELLS
    fd FD>N 0 < if E-PROC-OUTPUT throw then
    fd FD>N h MAP-LEN < if -1 h fd FD>N MAP! then
    h fd ;
+
+
+: SET-GROUP ( ^n pid -- ^n pid )
+   {: h:^ pid:pid :}
+   pid PID>N 1 <= if E-PROC-OUTPUT throw then
+   pid PID>N h PGROUP-CELL !
+   h pid ;
 
 
 : OPEN? ( n -- bool ) F-GETFD 0 fcntl 0 >= ;

@@ -63,6 +63,7 @@ $104022 constant MAP-DATA-RESERVE
 436 constant NR-CLOSE-RANGE
 293 constant NR-PIPE              \ pipe2(fds, flags)
 13  constant NR-SIGACTION         \ rt_sigaction
+14  constant NR-RT-SIGPROCMASK
 10  constant NR-MPROTECT
 11  constant NR-MUNMAP
 292 constant NR-DUP2              \ dup3(old, new, flags)

@@ -13,6 +13,8 @@
 \ reaper joins its row's group and is the pool's to end. Out of reach: a
 \ process whose parent is outside the tree and whose group names no member,
 \ such as a daemon that called setsid.
+\ A PEER WALK (KILL-PEERS) has no named pid: every process in the caller's
+\ group but the caller's children is a member, and the tree grows from them.
 \ FREEZE, THEN LIST. A process killed while its children run leaves them to
 \ init, where no link names them again, and a process listed while it runs may
 \ spawn one more the moment after, so a process is stopped before its children
@@ -60,6 +62,7 @@ DYNAMIC-BUFFER MEMBERS n
 variable MEMBER-N
 variable SELF
 variable ROOT
+variable GROUP                      \ a peer walk's group, 0 in a tree walk
 variable ADDED
 variable AWAKE
 variable WALKING                    \ 1 while a walk, a CATCHES?, a CPU-NS or a RUNS? holds the storage above and below
@@ -122,6 +125,7 @@ variable WALKING                    \ 1 while a walk, a CATCHES?, a CPU-NS or a 
 13 constant SHORT-FLAVOR
 64 constant SHORT-BYTES
 4 constant SHORT-PPID
+8 constant SHORT-PGID
 12 constant SHORT-STATUS
 4 constant SSTOP
 4 constant TASK-FLAVOR
@@ -216,6 +220,7 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 \ The table grows under the loop, so a member found in this pass has its own
 \ children asked for in the same pass.
 : SCAN-MACOS ( -- )
+   GROUP @ 0 > if LIST-GROUP GROUP @ LISTED then
    0 begin dup MEMBER-N @ < while
       dup MEMBER MEMBER-SETTLE
       LIST-CHILDREN over MEMBER LISTED
@@ -315,7 +320,9 @@ variable CUR
    pid MEMBER? if exit then
    pid SELF @ = if exit then
    ppid SELF @ = if exit then
-   ppid MEMBER? pgid MEMBER? or if pid MEMBER+ then ;
+   ppid MEMBER? pgid MEMBER? or
+   GROUP @ 0 > pgid GROUP @ = and or
+   if pid MEMBER+ then ;
 
 : PROCESS-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
    name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
@@ -388,14 +395,17 @@ variable CUR
       mono-ns deadline >= if drop exit then
    repeat drop ;
 
-\ The named pid first, so a walk whose first join threw still kills it; then
-\ every member. The answer is not read: a member that ended since it joined has
-\ nothing left to kill.
+\ The answer is not read: a member that ended since it joined has nothing left
+\ to kill.
 : END-MEMBERS ( -- )
-   ROOT @ SIGKILL kill drop
    MEMBER-N @ 0 ?do
       i MEMBER SIGKILL kill drop
    loop ;
+
+\ The named pid first, so a walk whose first join threw still kills it.
+: END-TREE ( -- )
+   ROOT @ SIGKILL kill drop
+   END-MEMBERS ;
 
 \ A task that finds WALKING held sleeps a millisecond a turn rather than spin
 \ through a walk of up to SETTLE-MS.
@@ -413,13 +423,33 @@ variable CUR
 
 : WALK-MEMBERS ( n -- ) {: pid:n :}
    0 MEMBER-N !
+   0 GROUP !
    pid ROOT !
-   pid [: MEMBER+ SETTLE ;] [: END-MEMBERS ;] finally ;
+   pid [: MEMBER+ SETTLE ;] [: END-TREE ;] finally ;
 
 : WALK ( pid -- ) {: pid:pid :}
    getpid SELF !
    pid PID>N SELF @ = if E-PROC-OUTPUT throw then
    pid PID>N [: WALK-MEMBERS ;] [: STORAGE-RELEASE ;] finally ;
+
+\ The caller's process group: macOS reads its record, Linux /proc/self/stat.
+: OWN-GROUP ( -- n )
+   HB-TARGET-MACOS? if
+      getpid SHORT? 0= if E-PROC-OUTPUT throw then
+      SHORT SHORT-PGID + LE:U32@ exit
+   then
+   s" self" STAT-PATHZ LOAD-STAT? 0= if E-PROC-OUTPUT throw then
+   TAKE-STATE drop
+   TAKE-INT drop TAKE-INT ;
+
+: WALK-PEERS ( -- )
+   getpid SELF !
+   0 MEMBER-N !
+   OWN-GROUP GROUP !
+   [: SETTLE ;] [: END-MEMBERS ;] finally ;
+
+: PEERS ( -- )
+   [: WALK-PEERS ;] [: STORAGE-RELEASE ;] finally ;
 
 \ Each host keeps the caught set as one bit per signal, bit n-1 for signal n.
 \
@@ -687,6 +717,12 @@ public
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
    pid [: WALK ;] [: WALK-RELEASE ;] finally ;
+
+\ SIGKILL every process in the caller's group but the caller and its children,
+\ each with its tree. The caller is never stopped; a group of one is no error.
+: KILL-PEERS ( -- )
+   WALK-GET
+   [: PEERS ;] [: WALK-RELEASE ;] finally ;
 
 \ TRUE when pid runs a handler for signal sig; FALSE when the default action
 \ or SIG_IGN takes it, or when nobody has pid.

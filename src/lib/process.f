@@ -4,6 +4,18 @@
 \ STOP vector is a process-wide policy. Spawn requests
 \ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
 \ process-env.f and process-cwd.f add spawn shapes.
+\
+\ SPAWN. A spawned child joins its request's process group before it execs, by
+\ default one of its own: macOS spawns with POSIX_SPAWN_SETPGROUP; on Linux the
+\ child calls setpgid(0, group) and the parent answers a pid only once a
+\ close-on-exec pipe reports the exec or its failure. A parent-side setpgid
+\ would race; the gate pool's reaper relies on this. The child's fds 0, 1 and 2
+\ are the fds a RAW word names; a negative one inherits the parent's fd of that
+\ number while it is open, close-on-exec or not, and the child gets no other
+\ descriptor. A forked child (src/lib/process-fork.f) copies every descriptor
+\ and keeps across exec those not marked close-on-exec: mark parent-only pipe
+\ and pty ends close-on-exec, or that child holds a writer and the parent never
+\ sees EOF. src/lib/fd-lock.f orders the mark against forks.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds DEADLINE-AT
@@ -133,17 +145,6 @@ public
 \ request, so the child's environment is only the rows it is given; a RAW word
 \ answers the pid, or the negated errno of a refused spawn. process-argv.f,
 \ process-env.f and process-cwd.f add the bodies for their shapes.
-\ SPAWN. A spawned child leads a process group of its own before it execs: macOS
-\ spawns with POSIX_SPAWN_SETPGROUP; on Linux the child calls setpgid(0,0) and the
-\ parent answers a pid only once a close-on-exec pipe reports the exec or its
-\ failure. A parent-side setpgid would race; the gate pool's reaper relies on
-\ this. The child's fds 0, 1 and 2 are the fds a RAW word names; a negative one
-\ inherits the parent's fd of that number while it is open, close-on-exec or
-\ not, and the child gets no other descriptor. A forked child
-\ (src/lib/process-fork.f) copies every descriptor and keeps across exec those
-\ not marked close-on-exec: mark parent-only pipe and pty ends close-on-exec, or
-\ that child holds a writer and the parent never sees EOF. src/lib/fd-lock.f
-\ orders the mark against forks.
 package PROC-RAW
 private
 
@@ -1064,3 +1065,5 @@ private
    out outcap err errcap RUN-CAPTURE-ENDING-LOOP
    CAPTURE-FINISH-ENDING ;
 ;package
+
+s" src/lib/process-reaper.f" required        \ PROCESS:REAPER-START, a pool's reaper, over WAIT
