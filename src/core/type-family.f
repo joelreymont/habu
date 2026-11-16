@@ -458,6 +458,8 @@ public
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
+\ A STRUCTURE learns its kind at its close: one with no field is a cell family.
+: TFAM-KIND! ( n n -- ) swap TF-REC@ TF.KIND !  TFM-EPOCH+ ;
 \ An empty range (count 0) is stored as start 0 count 0, never at the
 \ store's high-water: it names no row, so its start is the same whatever
 \ an earlier file left in the store.

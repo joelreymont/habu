@@ -201,6 +201,7 @@ s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
 s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/forth.md "Structures And Enums")
 s" SDOPQMK ( -- opaque ) OPAQUE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOPQLD ( ^opaque -- opaque ) @" CHECK-QUIET-CANDIDATE! -1 T=   \ its one cell loads
 
 \ 13. A PRIVATE structure with fields generates FAMILY-MAKE/FAMILY-UNMAKE
 \     (src/core/type-family.f TF-CTOR-PRIV$) into the declaring package's

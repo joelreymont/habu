@@ -965,7 +965,7 @@ private
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
    \ one-cell family, as a bare NEWTYPE declares.
-   SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE THEN
+   SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE ELSE FAM @ TK-CELL TFAM-KIND! THEN
    SD-ADDR-ARM ;
 
 \ Opens member i: its fields follow, its header clauses and a replay's field
