@@ -13,6 +13,7 @@ require src/lib/source.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require tools/source-discovery.f
+require tools/gate-json-assert-core.f
 
 package SD-TEST
 using SOURCE-ROOT
@@ -156,25 +157,15 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    DISCOVER:BYTES$ 1 1 0 REJECTION:SOURCE!
    DISCOVER:RUN-READ ;
 
-\ The number after KEY in the record captured, else -1.
-: SDT-FIELD ( ^u8 n -- n ) {: k:^ ku:n :}
-   REJECTION:BUFFER$ {: r:^ ru:n :}
-   r ru k ku 0 T-FROM {: at:n :}
-   at 0< if -1 exit then
-   at ku + {: s:n :}
-   s r +  r ru s T-DIGITS-END s -  STR-PARSE-POS MATCH option
-     none OF -1 ENDOF
-     some OF ENDOF
-   ;MATCH ;
-
 \ The entry is rejected as KIND, its record placed at the LEN bytes from byte OFF.
 : SDT-STOPS-AT ( n n n -- ) {: kind:n off:n len:n :}
    REJECTION:JSON @ {: json:n :}
    REJECTION:CAPTURE  true REJECTION:JSON !
    [: SDT-ARMED-RUN ;] kind SDT-STOPS
    json REJECTION:JSON !  REJECTION:SOURCE-OFF
-   S\" \"byte_start\":" SDT-FIELD off T=
-   S\" \"byte_end\":" SDT-FIELD off len + T=
+   REJECTION:BUFFER$ GJA-PARSE {: root:SPAN:span<u8> :}
+   root s" byte_start" off GJA-ASSERT-INT-FIELD
+   root s" byte_end" off len + GJA-ASSERT-INT-FIELD
    REJECTION:BUFFER-OFF ;
 
 : SDT-TEST-DYNAMIC ( -- )
