@@ -1,7 +1,14 @@
 \ engine-private-test.f - a program cannot name the engine's private words.
-\ Each case evaluates one source string, so the record captured is that string's.
+\ Each case's source is rejected with the same error line by `--load`'s
+\ evaluate-closed and by tools/check.f over that source written to a file.
 
 require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/ending.f
+require src/lib/engine-candidate.f
 
 package ENGINE-PRIVATE
 private
@@ -11,13 +18,41 @@ T-RESET
 TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 : TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
 
+2048 constant TCE-CAP
+create TCE-PATH PATH-CAP allot   variable TCE-PATH-U
+create TCE-OUT TCE-CAP allot
+create TCE-ERR TCE-CAP allot
+create TCE-NONE 1 allot
+
+: TCE-FILE ( -- ^u8 n )  TCE-PATH TCE-PATH-U @ ;
+
+FS:CLEANUP-RESET
+s" habu-engine-private" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
+s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
+
+\ One tools/check.f process per case: it stops at a file's first rejection.
+: TCE-CHECK ( ^u8 n ^u8 n -- ) {: src:^ srcu:n wa:^ wu:n :}
+   TCE-FILE src srcu FS:WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  TCE-FILE >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN  TCE-NONE 0 >LEN  TCE-OUT TCE-CAP >LEN
+   TCE-ERR TCE-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   TCE-ERR erru LEN>N wa wu CONTAINS? TTRUE
+   src srcu TCE-OUT outu LEN>N TCE-ERR erru LEN>N oc CHECKER-REJECT-RC
+   T-ENDING-EXITED= ;
+
 public
 
 \ TCE-REJECTS asserts the string stops with the checker's status after a record
-\ that holds the text given.
-: TCE-REJECTS ( ^u8 n ^u8 n -- ) {: wa:^ wu:n :}
-   TCE-U ! TCE-A !  REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
-   CHECKER-REJECT-RC T=  REJECTION:BUFFER$ wa wu CONTAINS? TTRUE ;
+\ that starts with the text given, under evaluate-closed, and holds it under
+\ tools/check.f. The record quotes the calling line, which holds the text.
+: TCE-REJECTS ( ^u8 n ^u8 n -- ) {: src:^ srcu:n wa:^ wu:n :}
+   src TCE-A !  srcu TCE-U !
+   REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
+   CHECKER-REJECT-RC T=  REJECTION:BUFFER$ wa wu STARTS-WITH? TTRUE
+   src srcu wa wu TCE-CHECK ;
 
 ;package
 
@@ -59,9 +94,9 @@ s" : MYPRE ( ^u8 n -- ) 2drop ; : SETIT ( -- ) ['] MYPRE is TYPE-DECL:TDECL-NAME
 s\" : FOOB ( -- n ) 1 ;  s\q FOOB\q CHECK:PRIM-OPEN 8 CHECK:PRIM-ATOM 2 CHECK:PRIM-ATOM s\q \q true false CHECK:PRIM-CLOSE  : T2 ( -- n ) FOOB ;"
    s" error[E-UNDEFINED]: cannot find word `CHECK:PRIM-OPEN`" ENGINE-PRIVATE:TCE-REJECTS
 
-\ A program opens a primitive row and ends the primitive rows.
-s\" s\q T:R\q CHECK:PRIM-OPEN s\q \q false false CHECK:PRIM-CLOSE : P6 ( -- ) ; CHECK:PRIMS-END"
-   s" error[E-UNDEFINED]: cannot find word `CHECK:PRIM-OPEN`" ENGINE-PRIVATE:TCE-REJECTS
+\ A program ends the primitive rows.
+s" CHECK:PRIMS-END"
+   s" error[E-UNDEFINED]: cannot find word `CHECK:PRIMS-END`" ENGINE-PRIVATE:TCE-REJECTS
 
 \ A program trusts its own word to an effect it does not have.
 s\" : FOOB ( -- n ) 1 ; s\q FOOB\q s\q -- n n\q TRUST : T ( -- n ) FOOB + ;"
@@ -71,4 +106,12 @@ s\" : FOOB ( -- n ) 1 ; s\q FOOB\q s\q -- n n\q TRUST : T ( -- n ) FOOB + ;"
 s" ' CHECKER-RESOLVE:EACH-VISIBLE drop"
    s" error[E-UNDEFINED]: cannot find word `CHECKER-RESOLVE:EACH-VISIBLE`" ENGINE-PRIVATE:TCE-REJECTS
 
+\ The child makers are private: a child a program makes with one faults at
+\ run time.
+s\" s\q FOO\q s\q ^u8\q TYPE-DECL:TDECL-STORED-CHILD drop"
+   s" error[E-UNDEFINED]: cannot find word `TYPE-DECL:TDECL-STORED-CHILD`" ENGINE-PRIVATE:TCE-REJECTS
+s\" s\q FOO\q s\q n\q LBUF:BUFFER-CHILD drop"
+   s" error[E-UNDEFINED]: cannot find word `LBUF:BUFFER-CHILD`" ENGINE-PRIVATE:TCE-REJECTS
+
+FS:CLEANUP-RUN
 T-REPORT
