@@ -122,8 +122,7 @@ public
 private
 
 
-: HEX-DIGIT ( n -- ) {: d:n :}
-   d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
+: HEX-CHAR ( n -- n ) {: d:n :} d 10 < IF d 48 + ELSE d 55 + THEN ;
 
 \ Escapes per RFC 8259 section 7: \n \r \t \" \\ by letter, every other control
 \ byte as \u00XX in uppercase hex.
@@ -136,7 +135,7 @@ private
       92 of 92 EMIT-RAW c EMIT-RAW endof
       c 32 < IF
          92 EMIT-RAW 117 EMIT-RAW 48 EMIT-RAW 48 EMIT-RAW
-         c 4 rshift HEX-DIGIT  c 15 and HEX-DIGIT
+         c 4 rshift HEX-CHAR EMIT-RAW  c 15 and HEX-CHAR EMIT-RAW
       ELSE c EMIT-RAW THEN
    endcase ;
 
@@ -433,6 +432,15 @@ PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
       dup a + c@ c = IF EXIT THEN
       1 +
    REPEAT ;
+: ESC-BYTE ( n -- ) {: c:n :}
+   c 92 = IF 92 EMIT1 92 EMIT1 EXIT THEN
+   c 10 = IF 92 EMIT1 110 EMIT1 EXIT THEN
+   c 13 = IF 92 EMIT1 114 EMIT1 EXIT THEN
+   c 9 = IF 92 EMIT1 116 EMIT1 EXIT THEN
+   c 32 <  c 127 =  or IF
+      92 EMIT1 120 EMIT1  c 4 rshift HEX-CHAR EMIT1  c 15 and HEX-CHAR EMIT1 EXIT
+   THEN
+   c EMIT1 ;
 public
 \ Emits the program text a u a note quotes. In prose it shows one line of at
 \ most WIDTH bytes: past its first line or its first WIDTH - 3 bytes, the rest
@@ -443,6 +451,10 @@ public
    f u =  u WIDTH <= and IF a u EMIT-STR EXIT THEN
    a  a f WIDTH 3 - min CHAR-START  EMIT-STR
    s" ..." EMIT-STR ;
+\ Text a record quotes from outside the source, such as a path, shows on one line.
+: EMIT-ESC ( ^u8 n -- ) {: a:^ u:n :}
+   JSON @ IF a u EMIT-STR EXIT THEN
+   0 BEGIN dup u < WHILE dup a + c@ ESC-BYTE 1 + REPEAT drop ;
 private
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN

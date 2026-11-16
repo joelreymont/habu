@@ -1,5 +1,6 @@
 \ check-signal-test.f - a stopped check.f, and a check run past its deadline,
-\ leave no process and no scratch behind.
+\ leave no process and no scratch behind; a verifier that writes past its
+\ capture, and a path the run cannot quote, each end check.f with one record.
 \ Runs tools/check.f on test/check-signal-subject.f as a child with a private
 \ TMPDIR; check.f's run stage runs the subject in a child of its own, which
 \ starts a sleeper and reports. Each case signals check.f once the report is in,
@@ -29,11 +30,16 @@ package CHECK-SIGNAL-TEST
 512 constant FEED-CHUNK              \ PIPE_BUF on macOS: a write poll admitted cannot block
 $20000 constant PAD-BYTES            \ twice the 64 KiB a pipe holds on either host
 $8000 constant LOG-CAP
+$40000 constant VERIFY-ERR-CAP       \ the bytes of stderr check.f's verifier capture holds
 
 create REPORT REPORT-BYTES allot
 create LOG-TEXT LOG-CAP allot
 create TMP PATH-CAP allot
 create LOG PATH-CAP allot
+create OUT PATH-CAP allot
+create STANDIN PATH-CAP allot
+create QUOTED PATH-CAP allot
+create BAD-TMP PATH-CAP allot
 create FIFO PATH-CAP allot
 create FEED FEED-CHUNK allot         \ newlines: blank lines to check.f
 
@@ -45,6 +51,10 @@ variable CHECK-WATCH
 variable FEED-WR                     \ the write end of check.f's stdin
 variable TMP-U
 variable LOG-U
+variable OUT-U
+variable STANDIN-U
+variable QUOTED-U
+variable BAD-TMP-U
 variable ENTRY-N
 
 TYPED-VARIABLE CHECK-LIVE bool       \ started and not yet reaped
@@ -59,6 +69,10 @@ PROCESS:NO-FD FEED-WR !
 
 : TMP$ ( -- ^u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ^u8 n )    LOG LOG-U @ ;
+: OUT$ ( -- ^u8 n )    OUT OUT-U @ ;
+: STANDIN$ ( -- ^u8 n )   STANDIN STANDIN-U @ ;
+: QUOTED$ ( -- ^u8 n )   QUOTED QUOTED-U @ ;
+: BAD-TMP$ ( -- ^u8 n )   BAD-TMP BAD-TMP-U @ ;
 : FIFO$ ( -- ^u8 n )   FIFO FIFO-U @ ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
@@ -72,10 +86,14 @@ PROCESS:NO-FD FEED-WR !
    SIGNAL:RELEASE ;
 
 \ TMP, under this test's runner root, is the TMPDIR check.f is handed, so what
-\ check.f leaves is whatever TMP holds; its output sits beside it.
+\ check.f leaves is whatever TMP holds; its stderr and stdout sit beside it.
 : PATHS! ( -- )
    GT-ROOT s" tmp" TMP FS:JOIN-PATH TMP-U !
    GT-ROOT s" check.log" LOG FS:JOIN-PATH LOG-U !
+   GT-ROOT s" check.out" OUT FS:JOIN-PATH OUT-U !
+   GT-ROOT s" standin" STANDIN FS:JOIN-PATH STANDIN-U !
+   GT-ROOT s\" q\nx.f" QUOTED FS:JOIN-PATH QUOTED-U !
+   GT-ROOT s\" t\"d" BAD-TMP FS:JOIN-PATH BAD-TMP-U !
    TMP$ FS:MAKE-DIRS ;
 
 : ENTRY+ ( ^u8 n -- )
@@ -145,8 +163,8 @@ PROCESS:NO-FD FEED-WR !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: OPEN-LOG ( -- n )
-   LOG$ FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
+: OPEN-LOG ( ^u8 n -- n )
+   FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -155,19 +173,23 @@ PROCESS:NO-FD FEED-WR !
    s" --load" >LEN PROC-ARGV+
    s" tools/check.f" >LEN PROC-ARGV+ ;
 
-\ check.f, with the case's arguments and environment added and in as its stdin.
-\ The watch is opened while check.f is alive: macOS cannot register a process
-\ that has already exited.
-: CHECK-SPAWN ( n -- ) {: in:n :}
-   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
+\ check.f with stdin in, stderr into LOG and stdout into OUT. The watch opens
+\ while check.f is alive: macOS cannot register a process that has exited.
+: CHECK-SPAWN-TMP ( ^u8 n n -- ) {: tmp:^ tmpu:n in:n :}
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   OPEN-LOG {: log:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
+   LOG$ OPEN-LOG {: log:n :}
+   OUT$ OPEN-LOG {: out:n :}
+   ENGINE-CANDIDATE:PATH$ >LEN in >FD out >FD log >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N CHECK-PID !
    true CHECK-LIVE !
    in close
    log close
+   out close
    CHECK-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then CHECK-WATCH ! ;
+
+: CHECK-SPAWN ( n -- ) {: in:n :}
+   TMP$ in CHECK-SPAWN-TMP ;
 
 : SUBJECT$ ( -- ^u8 n )
    s" test/check-signal-subject.f" ;
@@ -327,21 +349,34 @@ PROCESS:NO-FD FEED-WR !
    s" stdin: the scratch is gone when check.f has ended" T-LABEL
    TMP-ENTRIES 0 T= ;
 
-\ The one line check.f ends a run past its deadline with. It names the subject
-\ by its canonical path, as each of its reports does.
-: LATE-LINE$ ( -- ^u8 n )
+\ The record check.f ends a run past its deadline with, in --json-errors mode or
+\ its default. It names the subject by its canonical path, as each of its
+\ reports does.
+: LATE-RECORD$ ( bool -- ^u8 n ) {: json:bool :}
    SB-RESET
-   s" check.f: " SB-APPEND
+   json if
+      s\" {\"severity\":\"error\",\"code\":\"E-PROC-TIMEOUT\",\"message\":\"" SB-APPEND
+   else
+      s" error[E-PROC-TIMEOUT]: " SB-APPEND
+   then
    SUBJECT$ SOURCE-ROOT:CANON-OS drop SB-APPEND
-   s" : the run passed its deadline of " SB-APPEND
-   DEADLINE-MS FMT:SB-INT
-   s\"  ms\n" SB-APPEND
+   s" : the run passed its deadline" SB-APPEND
+   json if
+      s\" \",\"notes\":{\"deadline\":\"" SB-APPEND
+      DEADLINE-MS FMT:SB-INT
+      s\"  ms\"},\"help\":\"check it with a longer `--deadline-ms`, up to 2147483647\"}\n" SB-APPEND
+   else
+      s\" \n  = deadline: " SB-APPEND
+      DEADLINE-MS FMT:SB-INT
+      s\"  ms\n  = help: check it with a longer `--deadline-ms`, up to 2147483647\n\n" SB-APPEND
+   then
    SB$ ;
 
 \ The capture that waits on check.f's child kills it at the deadline and throws
 \ E-PROC-TIMEOUT. Uncaught, that is exit 67 and a bare code, and its kill ends
 \ the child alone, leaving the sleeper under init. check.f must exit 70, its
-\ refusal, with one line naming the subject and the deadline, and leak nothing:
+\ refusal, with one record on stderr naming the subject and the deadline and
+\ nothing on stdout, and leak nothing:
 \ in its default mode with the run's output open and in --json-errors with it
 \ closed, so the deadline passes in each wait. check.f counts the deadline from
 \ the run's start, before the report, so after the report it ends inside the
@@ -354,13 +389,102 @@ PROCESS:NO-FD FEED-WR !
    DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN
    s" deadline: check.f exits its refusal status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
-   s" deadline: one line names the subject and the deadline" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL LATE-LINE$ T$=
+   s" deadline: one record on stderr names the subject and the deadline" T-LABEL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-RECORD$ T$=
+   s" deadline: stdout holds no record" T-LABEL
+   OUT$ FS:FILE-SIZE 0 T=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL
    TMP-ENTRIES 0 T=
    CHECK-END
    s" deadline: no process under check.f is left" T-LABEL
    GONE? TTRUE ;
+
+\ A stand-in engine that, given the verifier child's file, writes more stderr
+\ than the verifier's capture holds, with no newline, then runs as hb.
+: STANDIN-WRITE ( -- )
+   SB-RESET
+   s\" #!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *check-verify-child.f) head -c 300000 /dev/zero | tr '\\0' x >&2;; esac; done\nexec '" SB-APPEND
+   ENGINE-CANDIDATE:PATH$ SB-APPEND
+   s\" ' \"$@\"\n" SB-APPEND
+   STANDIN$ SB$ FS:WRITE-ALL
+   STANDIN$ FS:CHMOD-X ;
+
+: TRUNCATED-RECORD$ ( -- ^u8 n )
+   SUBJECT$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   SB-RESET
+   s" error[E-PROC-TRUNCATED]: " SB-APPEND  p pu SB-APPEND
+   s\" : the verifier wrote past its capture of standard error\n  = stderr: at most " SB-APPEND
+   VERIFY-ERR-CAP FMT:SB-INT
+   s\"  bytes\n  = help: an engine defect wrote it, its stderr is shown above; run the program with `bin/hb " SB-APPEND
+   p pu SB-APPEND
+   s\" `\n\n" SB-APPEND
+   SB$ ;
+
+\ The pre-pass's verifier child writes past its capture: check.f relays the
+\ stderr it captured, ends its line, and closes with one record, exit 69.
+: TRUNCATED-BODY ( -- )
+   STANDIN-WRITE
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   SUBJECT$ >LEN PROC-ARGV+
+   s" HABU_UNDER_TEST" >LEN STANDIN$ >LEN PROC-ENV+
+   OPEN-NULL CHECK-SPAWN
+   CHECK-ENDED
+   s" truncated: check.f exits unavailable" T-LABEL
+   CHECK-REAP PROCESS:STATUS>RC RC>N 69 T=
+   TRUNCATED-RECORD$ {: r:^ ru:n :}
+   LOG$ FS:FILE-SIZE {: size:n :}
+   s" truncated: stderr is the captured stderr, a newline and one record" T-LABEL
+   size  VERIFY-ERR-CAP 1+ ru +  T=
+   s" truncated: the record ends stderr" T-LABEL
+   LOG$ size ru - LOG-TEXT ru FS:READ-AT
+   LOG-TEXT ru r ru T$=
+   s" truncated: the record starts its own line" T-LABEL
+   LOG$ size ru - 1- LOG-TEXT 1 FS:READ-AT
+   LOG-TEXT c@ 10 T= ;
+
+: QUOTED-RECORD$ ( -- ^u8 n )
+   QUOTED$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   SB-RESET
+   s" error[E-FS-PATH-UNSAFE]: the path `" SB-APPEND  p pu 4 - SB-APPEND  s" \nx.f" SB-APPEND
+   s\" ` holds a double quote, backslash, CR, LF or NUL, so the run cannot quote it\n  = found: a LF at byte " SB-APPEND
+   pu 4 - FMT:SB-INT
+   s\" \n  = help: rename or move the file so its path holds none of them\n\n" SB-APPEND
+   SB$ ;
+
+\ A source whose path holds a LF, which the run's loader line would quote: its
+\ record shows the path on one line, the LF escaped.
+: QUOTED-BODY ( -- )
+   QUOTED$ s\" : X ( -- ) ;\n" FS:WRITE-ALL
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   QUOTED$ >LEN PROC-ARGV+
+   OPEN-NULL CHECK-SPAWN
+   CHECK-ENDED
+   s" quoted: check.f exits its usage status" T-LABEL
+   CHECK-REAP PROCESS:STATUS>RC RC>N 64 T=
+   s" quoted: one record shows the path on one line and names the byte" T-LABEL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL QUOTED-RECORD$ T$= ;
+
+\ check.f's temporary directory is under a TMPDIR whose path holds a double
+\ quote, which the run cannot quote.
+: BAD-TMP-BODY ( -- )
+   BAD-TMP$ FS:MAKE-DIRS
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   SUBJECT$ >LEN PROC-ARGV+
+   BAD-TMP$ OPEN-NULL CHECK-SPAWN-TMP
+   CHECK-ENDED
+   s" tmpdir: check.f exits its usage status" T-LABEL
+   CHECK-REAP PROCESS:STATUS>RC RC>N 64 T=
+   s" tmpdir: the record names the double quote and TMPDIR" T-LABEL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL
+   BAD-TMP$ SOURCE-ROOT:CANON-OS drop nip {: pu:n :}
+   SB-RESET
+   s\" \n  = found: a double quote at byte " SB-APPEND
+   pu 2 - FMT:SB-INT
+   s\" \n  = help: set TMPDIR to a directory whose path holds none of them\n\n" SB-APPEND
+   SB$ ENDS-WITH? TTRUE ;
 
 : LEFT-ENDED ( -- )
    FIFO-DONE @ 0= if
@@ -412,6 +536,12 @@ public
    false false LATE-CASE
    s" check-signal: a run past its deadline, --json-errors, the child's output closed" type cr
    true true LATE-CASE
+   s" check-signal: a verifier that writes past its capture" type cr
+   [: TRUNCATED-BODY ;] [: CASE-END ;] finally
+   s" check-signal: a source path holding a LF" type cr
+   [: QUOTED-BODY ;] [: CASE-END ;] finally
+   s" check-signal: a TMPDIR holding a double quote" type cr
+   [: BAD-TMP-BODY ;] [: CASE-END ;] finally
    GT-CLEANUP ;
 
 ;package

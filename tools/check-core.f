@@ -36,7 +36,6 @@ using SOURCE-ROOT
 
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
-32 constant CHK-NUM-CAP
 \ The run stage's child, and the verifier child of the pre-pass and of
 \ --verify-only, has CHK-DEADLINE-MS unless --deadline-ms gives another. A
 \ capture waits in poll(2), whose wait is an int of milliseconds, so no
@@ -53,7 +52,6 @@ $7FFFFFFF constant CHK-DEADLINE-MAX
 32 constant CHK-SP
 45 constant CHK-DASH
 
-create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF PATH-CAP allot
 create CHK-SRC-PATH-BUF PATH-CAP allot
 create CHK-RUN-PATH-BUF PATH-CAP allot
@@ -113,7 +111,6 @@ variable CHK-OUT-U
 variable CHK-ERR-U
 variable CHK-MAP-U
 variable CHK-RC
-variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
 variable CHK-SRC-A
@@ -247,10 +244,6 @@ variable CHK-KEPT-N
 
 : CHK-THROW ( n -- )
    throw ;
-
-: CHK-FAIL ( ^u8 n n -- ) {: msg:^ u:n code:n :}
-   msg u CHK-EXPLAIN-LN
-   code CHK-THROW ;
 
 : CHK-ARG$ ( n -- ^u8 n )
    SCRIPT-ARGV$ ;
@@ -422,7 +415,6 @@ private
    0 CHK-OUT-U !
    0 CHK-ERR-U !
    0 CHK-RC !
-   0 CHK-NUM-I !
    0 CHK-LABEL-U !
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
@@ -489,20 +481,6 @@ public
    rc 0<> if rc throw then ;
 
 private
-
-\ The root is spelled canonically: the engine names a file it loads by its
-\ canonical path, so the run file's name in the run's diagnostics is the one
-\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT). It is registered for removal at
-\ process exit as soon as it is held: a `die` below - a lint library's, the
-\ verifier's, the engine's - ends the process without unwinding to
-\ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
-: CHK-MAKE-TEMP ( -- )
-   s" habu-check" FS:MKTEMP-DIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
-   CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
-   CHK-ROOT FS:CLEANUP-TREE+
-   CHK-ROOT s" source.f" CHK-SRC-PATH-BUF FS:JOIN-PATH CHK-SRC-PATH-U !
-   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF FS:JOIN-PATH CHK-RUN-PATH-U !
-   CHK-ROOT s" subject.f" CHK-SUBJECT-PATH-BUF FS:JOIN-PATH CHK-SUBJECT-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
@@ -595,7 +573,65 @@ private
 : CHK-EXP-C ( n -- )
    CHK-EXP-OUT-U @ LEN>N 1+ CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
 
+\ A record of check.f's own stands in no source: it names the file NO-FILE$, as the loader
+\ names a missing entry, and is in the run's mode.
+: CHK-OPEN ( ^u8 n -- ) {: code:^ codeu:n :}
+   CHK-JSON @ REJECTION:JSON !
+   REJECTION:NO-FILE$ REJECTION:FILE!
+   code codeu REJECTION:OPEN ;
+
+\ Input given as bytes, on stdin or through SOURCE, has no file to name.
+: CHK-RERUN ( -- )
+   CHK-SEL-MODE @
+   case
+      CHK-SEL-FILE of
+         s" run the program with `bin/hb " REJECTION:EMIT-STR  CHK-LABEL REJECTION:EMIT-STR
+         s" `" REJECTION:EMIT-STR
+      endof
+      CHK-SEL-LIST of s" run each listed file alone with `bin/hb FILE`" REJECTION:EMIT-STR endof
+      s" pipe the program to `bin/hb`" REJECTION:EMIT-STR
+   endcase ;
+
+: CHK-UNSAFE-BYTE? ( ^u8 -- bool ) {: p:^ :}
+   [: p 1 SOURCE-QPATH-CHECK ;] catch {: rc:n :}
+   rc E-FS-PATH-UNSAFE = if true exit then
+   rc 0<> if rc throw then
+   false ;
+
+\ The offset of the first byte of a u SOURCE-QPATH-CHECK rejects, else u.
+: CHK-UNSAFE-AT ( ^u8 n -- n ) {: a:^ u:n :}
+   u 0 ?do  a i + CHK-UNSAFE-BYTE? if i unloop exit then  loop
+   u ;
+
+: CHK-BYTE-NAME ( n -- ) {: c:n :}
+   c 34 = if s" a double quote" REJECTION:EMIT-STR exit then
+   c 92 = if s" a backslash" REJECTION:EMIT-STR exit then
+   c 10 = if s" a LF" REJECTION:EMIT-STR exit then
+   c 13 = if s" a CR" REJECTION:EMIT-STR exit then
+   c 0= if s" a NUL" REJECTION:EMIT-STR exit then
+   s" the byte " REJECTION:EMIT-STR  c REJECTION:EMIT-U ;
+
+\ w wu is what was judged, a path or a label; h hu says how to change it.
+: CHK-PATH-UNSAFE ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
+   a u CHK-UNSAFE-AT {: at:n :}
+   s" E-FS-PATH-UNSAFE" CHK-OPEN
+   s" the " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-ESC
+   s" ` holds a double quote, backslash, CR, LF or NUL, so the run cannot quote it" REJECTION:EMIT-STR
+   s" found" REJECTION:NOTE
+   a at + c@ CHK-BYTE-NAME  s"  at byte " REJECTION:EMIT-STR  at REJECTION:EMIT-U
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECTION:KEEP
+   CHK-E-USAGE CHK-THROW ;
+
+: CHK-QPATH-JUDGE ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
+   [: a u SOURCE-QPATH-CHECK ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-PATH-UNSAFE = if a u w wu h hu CHK-PATH-UNSAFE then
+   rc throw ;
+
 : CHK-EXP-QPATH ( ^u8 n -- ) {: a:^ u:n :}
+   a u s" path" s" rename or move the file so its path holds none of them" CHK-QPATH-JUDGE
    a u >LEN
    CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
@@ -645,11 +681,6 @@ private
    CHK-READ-STDIN CHK-SRC-U !
    CHK-MATERIALIZE-BYTES ;
 
-\ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
-\ quote, backslash, CR, LF or NUL.
-: CHK-PATH-UNSAFE ( -- )
-   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
-
 \ Whether q holds for every position. An input set that is all sources the
 \ engine provides is rejected at each input: a run loads nothing from one.
 : CHK-INPUTS-ALL? ( [ ^u8 n -- bool ] -- bool ) {: q :}
@@ -657,13 +688,6 @@ private
       i CHK-POS$ q execute 0= if unloop false exit then
    loop
    true ;
-
-\ check.f's own command line holds no source, so its records name the input
-\ file by NO-FILE$, as the loader names a missing entry, in the run's mode.
-: CHK-INPUT-OPEN ( ^u8 n -- ) {: code:^ codeu:n :}
-   CHK-JSON @ REJECTION:JSON !
-   REJECTION:NO-FILE$ REJECTION:FILE!
-   code codeu REJECTION:OPEN ;
 
 \ Position idx becomes its canonical path, or a missing one stops with the
 \ load's record, which names it as written.
@@ -679,7 +703,7 @@ private
    NULL-PTR 0 a u CHK-IRREGULAR ;
 
 : CHK-ENGINE-PROVIDED ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-ENGINE-PROVIDED" CHK-INPUT-OPEN
+   s" E-ENGINE-PROVIDED" CHK-OPEN
    s" the engine provides `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" `, so a check loads nothing from it" REJECTION:EMIT-STR
    a u REJECTION:AT  s" provided by bin/hb" REJECTION:EMIT-STR
@@ -708,7 +732,7 @@ private
 \ that read the source, so a label the materializer takes from its caller is
 \ judged as soon as it is set. stdin and a source list carry fixed labels.
 : CHK-CHECK-LABEL ( -- )
-   CHK-LABEL SOURCE-QPATH-CHECK ;
+   CHK-LABEL s" label" s" pass a label that holds none of them" CHK-QPATH-JUDGE ;
 
 \ Both spellings the run quotes, the entry in the loader line and the label,
 \ are the canonical path, judged before discovery reads the file.
@@ -767,7 +791,24 @@ public
 
 private
 
-: CHK-MATERIALIZE-DISPATCH ( -- )
+\ The root is spelled canonically: the engine names a file it loads by its
+\ canonical path, so the run file's name in the run's diagnostics is the one
+\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT). It is registered for removal at
+\ process exit as soon as it is held: a `die` below - a lint library's, the
+\ verifier's, the engine's - ends the process without unwinding to
+\ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
+: CHK-MAKE-TEMP ( -- )
+   s" habu-check" FS:MKTEMP-DIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
+   CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
+   CHK-ROOT FS:CLEANUP-TREE+
+   CHK-ROOT s" source.f" CHK-SRC-PATH-BUF FS:JOIN-PATH CHK-SRC-PATH-U !
+   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF FS:JOIN-PATH CHK-RUN-PATH-U !
+   CHK-ROOT s" subject.f" CHK-SUBJECT-PATH-BUF FS:JOIN-PATH CHK-SUBJECT-PATH-U !
+   CHK-SUBJECT-PATH s" path"
+   s" set TMPDIR to a directory whose path holds none of them" CHK-QPATH-JUDGE ;
+
+: CHK-MATERIALIZE ( -- )
+   CHK-MAKE-TEMP
    CHK-SEL-MODE @
    case
       CHK-SEL-NONE of CHK-MATERIALIZE-STDIN endof
@@ -776,31 +817,6 @@ private
       CHK-SEL-LIST of CHK-MATERIALIZE-LIST endof
       E-TBL-BOUNDS throw
    endcase ;
-
-\ A path or label the run cannot quote is a usage error, judged after each
-\ input is resolved and before any stage reads the source.
-: CHK-MATERIALIZE ( -- )
-   CHK-MAKE-TEMP
-   [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
-   rc 0= if exit then
-   rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
-   rc throw ;
-
-: CHK-U$ ( n -- ^u8 n ) {: u:n :}
-   CHK-NUM-CAP CHK-NUM-I !
-   u 0= if
-      CHK-NUM-I @ 1- CHK-NUM-I !
-      48 CHK-NUM-BUF CHK-NUM-I @ + c!
-      CHK-NUM-BUF CHK-NUM-I @ + 1
-      exit
-   then
-   u begin dup 0 > while
-      dup 10 mod 48 +
-      CHK-NUM-I @ 1- CHK-NUM-I !
-      CHK-NUM-BUF CHK-NUM-I @ + c!
-      10 /
-   repeat drop
-   CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
 
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
@@ -903,33 +919,40 @@ private
              outu LEN>N CHK-OUT-U ! ENDOF
    ;MATCH ;
 
+: CHK-SUBJECT ( ^u8 n -- ) {: a:^ u:n :}
+   CHK-LABEL REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR ;
+
 \ The run's output is captured to be replayed, CHK-OUT-CAP bytes of standard
 \ output and CHK-ERR-CAP of standard error. A run that writes past either is
 \ killed by the capture, which throws E-PROC-TRUNCATED without naming the
-\ stream, so the refusal names the subject and both bounds.
+\ stream, so the record names both bounds.
 : CHK-RUN-TOO-BIG ( -- )
-   SB-RESET
-   s" check.f: " SB-APPEND
-   CHK-LABEL SB-APPEND
-   s" : the run wrote past its capture of " SB-APPEND
-   CHK-OUT-CAP FMT:SB-INT
-   s"  bytes of standard output or " SB-APPEND
-   CHK-ERR-CAP FMT:SB-INT
-   s"  of standard error" SB-APPEND
-   SB$ CHK-E-CHECK CHK-FAIL ;
+   s" E-PROC-TRUNCATED" CHK-OPEN
+   s" the run wrote past its capture" CHK-SUBJECT
+   s" stdout" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
+   CHK-OUT-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   s" stderr" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
+   CHK-ERR-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   REJECTION:HELP
+   CHK-RERUN  s"  to see its whole output, or make it write less" REJECTION:EMIT-STR
+   REJECTION:KEEP
+   CHK-E-CHECK CHK-THROW ;
 
-\ A run still going at its deadline is ended by the capture with every process
-\ it started (src/lib/process.f PROCESS:KILL-CAPTURE), and refused: what it wrote is
-\ not replayed, and one line names the subject and the deadline. A subject that
-\ needs longer is checked with a longer --deadline-ms.
+\ A child still going at its deadline: what a u names, the run or the verifier.
+: CHK-LATE ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-PROC-TIMEOUT" CHK-OPEN
+   a u CHK-SUBJECT  s"  passed its deadline" REJECTION:EMIT-STR
+   s" deadline" REJECTION:NOTE
+   CHK-DEADLINE@ MS>N REJECTION:EMIT-U  s"  ms" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" check it with a longer `--deadline-ms`, up to " REJECTION:EMIT-STR
+   CHK-DEADLINE-MAX REJECTION:EMIT-U
+   REJECTION:KEEP ;
+
+\ What a run still going at its deadline wrote is not replayed.
 : CHK-RUN-LATE ( -- )
-   SB-RESET
-   s" check.f: " SB-APPEND
-   CHK-LABEL SB-APPEND
-   s" : the run passed its deadline of " SB-APPEND
-   CHK-DEADLINE@ MS>N FMT:SB-INT
-   s"  ms" SB-APPEND
-   SB$ CHK-E-CHECK CHK-FAIL ;
+   s" the run" CHK-LATE
+   CHK-E-CHECK CHK-THROW ;
 
 : CHK-RUN-CAPPED ( -- )
    [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
@@ -974,34 +997,53 @@ private
       i CHK-KEPT-UNREAD? if i CHK-KEPT-SEND CHK-RC-JOIN then
    loop ;
 
-\ How a verifier child that gave no answer ended, as the closing line of its
-\ report, where CHK-EXPLAIN-LN puts prose.
-: CHK-STATUS-LN ( PROCESS:ending -- )
-   SB-RESET
-   s" check.f: the verifier did not complete: " SB-APPEND
+\ A verifier child that exited or died of a signal before it answered.
+: CHK-VERIFIER-ENDED ( ^u8 n n -- ) {: a:^ u:n v:n :}
+   s" E-VERIFIER-ENDED" CHK-OPEN
+   s" the verifier ended with " CHK-SUBJECT  a u REJECTION:EMIT-STR  v REJECTION:EMIT-U
+   s"  before it answered" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" an engine defect stopped the verifier; " REJECTION:EMIT-STR
+   CHK-RERUN  s"  to see where" REJECTION:EMIT-STR
+   REJECTION:KEEP ;
+
+\ How a verifier child that gave no answer ended, closing its report.
+: CHK-VERIFIER-STATUS ( PROCESS:ending -- )
    MATCH PROCESS:ending
-      exited OF s" exit " SB-APPEND CHK-U$ SB-APPEND ENDOF
-      signaled OF s" signal " SB-APPEND CHK-U$ SB-APPEND ENDOF
-      timeout OF s" deadline of " SB-APPEND CHK-DEADLINE@ MS>N CHK-U$ SB-APPEND s"  ms passed" SB-APPEND ENDOF
-   ;MATCH
-   SB$ CHK-EXPLAIN-LN ;
+      exited OF {: v:n :} s" exit " v CHK-VERIFIER-ENDED ENDOF
+      signaled OF {: v:n :} s" signal " v CHK-VERIFIER-ENDED ENDOF
+      timeout OF s" the verifier" CHK-LATE ENDOF
+   ;MATCH ;
 
-: CHK-TRUNCATED-LN ( -- )
-   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-EXPLAIN-LN ;
+\ check.f's verifier child runs alone, never in a batch, so its stderr cap is
+\ VFY-ERR-CAP.
+: CHK-VERIFIER-TRUNCATED ( -- )
+   s" E-PROC-TRUNCATED" CHK-OPEN
+   s" the verifier wrote past its capture of standard error" CHK-SUBJECT
+   s" stderr" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
+   VFY-ERR-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" an engine defect wrote it, its stderr is shown above; " REJECTION:EMIT-STR
+   CHK-RERUN
+   REJECTION:KEEP ;
 
-\ The pre-pass's records on stderr, then its child's stderr.
-: CHK-PREVERIFY-RELAY ( -- )
+\ The verifier child's records on stderr, then its stderr as prose, its last
+\ line ended so a record after it starts a line of its own.
+: CHK-VERIFIER-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
-   VERIFY-LOG$ CHK-EXPLAIN ;
+   VERIFY-LOG$ {: a:^ u:n :}
+   u 0= if exit then
+   a u CHK-EXPLAIN
+   a u + 1- c@ CHK-LF <> if NULL$ CHK-EXPLAIN-LN then ;
 
 \ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
 \ run's words; its records and the child's stderr come first, then a stop fails
 \ the check with the status the child answered.
 : CHK-PREVERIFY-REPORT ( result<n,PROCESS:ending> -- )
-   CHK-PREVERIFY-RELAY
+   CHK-VERIFIER-RELAY
    MATCH result
       ok OF {: rc:n :} rc 0<> if rc CHK-THROW then ENDOF
-      err OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      err OF CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
@@ -1010,13 +1052,13 @@ private
    CHK-PREVERIFY-REPORT ;
 
 \ More output than the child's capture holds leaves no answer: the records and
-\ stderr received before it, and a closing line.
+\ stderr received before it, and a closing record.
 : CHK-RUN-PREVERIFY ( -- )
    [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-PROC-TRUNCATED <> if rc throw then
-   CHK-PREVERIFY-RELAY
-   CHK-TRUNCATED-LN
+   CHK-VERIFIER-RELAY
+   CHK-VERIFIER-TRUNCATED
    CHK-E-UNAVAILABLE CHK-THROW ;
 
 : CHK-MAP+ ( ^u8 n -- )
@@ -1098,8 +1140,8 @@ private
    [: CHK-RUN-CURRENT ;] CHECK:SCOPED ;
 
 \ --verify-only is VERIFY-BYTES over a file's or stdin's bytes, nothing more:
-\ stderr gets records in the run's mode; stdout gets prose and, with no
-\ verdict, a closing line.
+\ stderr gets records in the run's mode, a closing one when no verdict came;
+\ stdout gets prose.
 
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
@@ -1144,13 +1186,8 @@ private
    then
    CHK-VERIFY-STDIN ;
 
-\ The verifier's records on stderr, its prose on stdout.
-: CHK-VERIFY-RELAY ( -- )
-   VERIFY-OUT$ CHK-ERR
-   VERIFY-LOG$ CHK-OUT ;
-
 : CHK-VERIFY-REPORT ( verdict ^u8 n -- ) {: path:^ pathu:n :}
-   CHK-VERIFY-RELAY
+   CHK-VERIFIER-RELAY
    MATCH verdict
       verified OF ENDOF
       refused OF VERIFY-STATUS CHK-THROW ENDOF
@@ -1158,28 +1195,34 @@ private
          path pathu CHK-ENGINE-PROVIDED  CHECKER-REJECT-RC CHK-THROW
       ENDOF
       held OF
-         s" check.f: the verifier's own image holds the source; it cannot be verified there" CHK-OUT-LN
+         s" E-VERIFIER-HOLDS" CHK-OPEN
+         s" the verifier's own image holds the source, so it cannot verify it" CHK-SUBJECT
+         REJECTION:HELP
+         CHK-RERUN
+         REJECTION:KEEP
          CHK-E-UNAVAILABLE CHK-THROW
       ENDOF
-      incomplete OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      incomplete OF CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
       deferred OF
          s" check.f: a stretch or definition deferred to the run is not verified" CHK-OUT-LN
       ENDOF
    ;MATCH ;
 
+\ The path verified is the label check.f's own records name.
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:^ pathu:n :}
+   path pathu CHK-LABEL!
    CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ CHK-JSON @ 0<> VERIFY-BYTES
    path pathu CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets
-\ received before it, the prose and a closing line.
+\ received before it, the prose and a closing record.
 : CHK-RUN-VERIFY ( -- )
    [: CHK-VERIFY-ACT ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-PROC-TRUNCATED <> if rc throw then
-   CHK-VERIFY-RELAY
-   CHK-TRUNCATED-LN
+   CHK-VERIFIER-RELAY
+   CHK-VERIFIER-TRUNCATED
    CHK-E-UNAVAILABLE CHK-THROW ;
 
 \ A record this process writes is in the run's mode.
