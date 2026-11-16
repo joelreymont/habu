@@ -3745,12 +3745,25 @@ create ER-MSG ER-MSG-CAP allot
    id ix ENTRY!
    arity 0 ?do id i ER-NUM TFAM-PK! loop
    id ER-NUM TFAM-LAYOUT!
-   id ER-NUM TFAM-SLOTS!
+   ER-NUM drop                    \ slots: ER-BODY takes them from the rows
    id ER-NUM TFAM-TAGW!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
    id ;
 
+
+\ The slots family id's committed rows give: a product's field cells, a sum's
+\ or an enum's widest variant payload; any other kind keeps its own.
+: ROW-SLOTS ( n -- n ) {: id:n :}
+   id TFAM-PRODUCT? IF
+      0  id TFAM-FLD-START@ dup id TFAM-FLD-COUNT@ + swap ?do i PF-CELLS@ + loop
+      EXIT
+   THEN
+   id TFAM-SUM? id TFAM-ENUM? or IF
+      0  id TFAM-VAR-START@ dup id TFAM-VAR-COUNT@ + swap ?do i SUMV-PAYCELLS@ max loop
+      EXIT
+   THEN
+   id TFAM-SLOTS@ ;
 
 \ Variants, fields and layout, after the families they name.
 : ER-BODY ( n -- ) {: id:n :}
@@ -3765,6 +3778,7 @@ create ER-MSG ER-MSG-CAP allot
       PF-COMMIT
       id base nf TFAM-FLD-RANGE!
    THEN
+   id id ROW-SLOTS TFAM-SLOTS!
    ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
    ER-U @ 0 <> IF ER-BAD THEN ;
 
