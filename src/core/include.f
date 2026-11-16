@@ -314,10 +314,41 @@ public
 
 private
 
+\ Opens word w's record of the path it got: w is a word the program called or
+\ SOURCE-INPUT:CANON, for the canon it supplied; why follows "which".
+: PATH-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+   {: w:^ wu:n path:^ pathu:n why:^ whyu:n :}
+   s" E-SOURCE-ROOT" REJECTION:OPEN
+   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` got `" REJECTION:EMIT-STR
+   path pathu REJECTION:EMIT-STR  s" `, which " REJECTION:EMIT-STR
+   why whyu REJECTION:EMIT-STR ;
+
+\ Word w got the path a u, shown as p pu: why reads after "which" and "that";
+\ help says what the program should pass, or its canon answer.
+: PATH-DIE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: w:^ wu:n a:^ u:n p:^ pu:n why:^ whyu:n help:^ helpu:n :}
+   w wu SRCLOC:SPELLED drop p pu why whyu PATH-REJECT
+   w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
+   REJECTION:HELP  help helpu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : TRY-CANON ( ^u8 n -- bool )
    {: p:^ pu:n :}
    p pu SOURCE-INPUT:CANON {: a:^ u:n found:bool :}
    u PATH-BYTES >= if p pu E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
+   found if
+      a u LOADER-PATH-FAULT drop {: kind:n :}
+      kind 0 <> if INCLUDE-TRUE else a c@ [char] / <> then if
+         s" SOURCE-INPUT:CANON" p pu p pu
+         kind E-PATH-NUL = if
+            s" it answered with a path holding a NUL byte"
+         else
+            s" it answered with a path that does not begin with `/`"
+         then
+         s" have the canon given to `SOURCE-INPUT:USE` or `SOURCE-INPUT:WITH` answer an absolute path a file name can hold"
+         PATH-DIE
+      then
+   then
    a CANON-BUF <> if a CANON-BUF u BYTE-COPY then
    u CANON-U !
    found ;
@@ -501,24 +532,6 @@ private
 
 
 : NORMALIZE ( ^u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
-
-\ Opens the record of word w, which a program called, given a path it cannot
-\ use: why follows "which".
-: PATH-REJECT ( ^u8 n ^u8 n ^u8 n -- )
-   {: w:^ wu:n path:^ pathu:n why:^ whyu:n :}
-   s" E-SOURCE-ROOT" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` got `" REJECTION:EMIT-STR
-   path pathu REJECTION:EMIT-STR  s" `, which " REJECTION:EMIT-STR
-   why whyu REJECTION:EMIT-STR ;
-
-\ Word w got the path a u, shown as p pu: why reads after "which" and "that";
-\ help says what to pass.
-: PATH-DIE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
-   {: w:^ wu:n a:^ u:n p:^ pu:n why:^ whyu:n help:^ helpu:n :}
-   w wu SRCLOC:SPELLED drop p pu why whyu PATH-REJECT
-   w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
-   REJECTION:HELP  help helpu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A build compiles a second copy of this file into the program it builds, and
 \ there LOADER answers hb's record: the copy's loading words would run its own
