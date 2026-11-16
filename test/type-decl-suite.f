@@ -1418,6 +1418,16 @@ SUMTYPE tdpq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqm VARIANT run [ n ^u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+\ A malformed quotation is rejected at the token it stopped at, or at its `[`
+\ when its variant ends first.
+s" SUMTYPE tdpqx VARIANT run [ n n ] ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqx`\n"
+s" ]" s" the quotation type needs `--` here" TDT-AT
+s\"   = help: write the quotation type as `[ in -- out ]`\n" TDT-HAS
+s" SUMTYPE tdpqy VARIANT run [ n -- n ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqy`\n"
+s" [" s" the quotation type is not closed" TDT-AT
+s\"   = help: close the quotation type with `]`\n" TDT-HAS
 
 \ A quotation side of 300 elements declares, and the constructor takes a
 \ quotation of 300 cells, not of 299; a variant of 300 payload elements declares.

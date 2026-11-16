@@ -370,12 +370,12 @@ variable HELP-U
    SD-ARG-N @ 1 + SD-ARG-N ! ;
 
 : SD-BLANK? ( n -- bool ) 33 < ;
-: SD-DELIM? ( n -- bool )
-   dup 60 = over 44 = or over 62 = or swap SD-BLANK? or ;
+: SD-DELIM? ( n -- bool ) dup SD-BLANK? swap SIG-DELIM-CHAR? or ;
 
 \ Each parser word takes the index it starts at and answers the index after what it
-\ consumed; a type spelled over tokens (SD-SPAN) holds blanks.
+\ consumed; a type's text holds blanks, and a `[` may touch the type after it.
 : SD-ATOM ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+   start u < IF a start + c@ 91 = IF a start + 1 start 1 + EXIT THEN THEN
    start
    BEGIN
       dup u < IF a over + c@ SD-DELIM? 0= ELSE NO THEN
@@ -383,6 +383,7 @@ variable HELP-U
       1 +
    REPEAT {: j:n :}
    j start = IF
+      a start +  start u < IF 1 ELSE 0 THEN  DECL-REJECT:TOKEN!
       s" malformed" s" application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a start + j start - j ;
@@ -399,6 +400,7 @@ variable HELP-U
 \ from: the byte after `^`. An atom `ptr` not followed by `<` names no type.
 : SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
+      nu 1 = j u < IF a j + c@ 91 = ELSE NO THEN and IF j YES EXIT THEN
       nu 1 = IF
          na nu DECL-REJECT:TOKEN!
          s" pointer without a pointee"
@@ -441,10 +443,23 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    THEN
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
+\ The index after the byte that brings the application whose head is at h back
+\ to depth 0: its closing `>`, or a `]` where its brackets do not pair; else u.
+: SD-APP-END ( ^u8 n n -- n ) {: a:^ u:n h:n :}
+   0 h BEGIN dup u < WHILE
+      2dup a swap + c@ SIG-NEST
+      rot 1 = over 0= and IF drop 1 + EXIT THEN
+      swap 1 +
+   REPEAT nip ;
+
+: SD-APP-MARK ( ^u8 n n -- ) {: a:^ u:n h:n :}
+   a h +  a u h SD-APP-END h -  DECL-REJECT:TOKEN! ;
+
 \ Argument k onward of fam's application, the first at i: each is judged against
 \ its slot, then the count of arguments and the index after the closing `>`.
-: SD-APP-ARGS ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n k:n i:n :}
+: SD-APP-ARGS ( ^u8 n n n n n -- n n ) {: a:^ u:n fam:n h:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
+      a u h SD-APP-MARK
       s" " s" has too many arguments"
       s" drop the extra type arguments: give the family as many as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
@@ -454,17 +469,20 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    node SD-ARG+
    a u e SD-SKIP {: j:n :}
    j u >= IF
+      a u h SD-APP-MARK
       s" unclosed" s" application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a j + c@ {: c:n :}
-   c 44 = IF a u fam k 1 + j 1 + RECURSE EXIT THEN
+   c 44 = IF a u fam h k 1 + j 1 + RECURSE EXIT THEN
    c 62 = IF k 1 + j 1 + EXIT THEN
+   a u h SD-APP-MARK
    s" malformed" s" application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
-: SD-APP ( ^u8 n n n -- n n ) {: a:^ u:n fam:n i:n :}
+: SD-APP ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n h:n i:n :}
    SD-ARG-N @ {: base:n :}
-   a u fam 0 i SD-APP-ARGS {: k:n j:n :}
+   a u fam h 0 i SD-APP-ARGS {: k:n j:n :}
    k fam TFAM-ARITY@ <> IF
+      a u h SD-APP-MARK
       s" " s" has wrong arity"
       s" give the family as many type arguments as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
@@ -478,24 +496,27 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
 defer SD-LOOSE-NODE ( ^u8 n n -- n )
 
-: SD-LOOSE-ARGS ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: SD-LOOSE-ARGS ( ^u8 n n n -- n ) {: a:^ u:n h:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
+      a u h SD-APP-MARK
       s" unclosed" s" application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a j + c@ {: c:n :}
    c 62 = IF j 1 + EXIT THEN
    c 44 <> IF
+      a u h SD-APP-MARK
       s" malformed" s" application"
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
-   a u j 1 + RECURSE ;
+   a u h j 1 + RECURSE ;
 
-: SD-LOOSE-APP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: SD-LOOSE-APP ( ^u8 n n n -- n ) {: a:^ u:n h:n i:n :}
    i u >= IF
+      a u h SD-APP-MARK
       s" unclosed" s" application"
       SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a i + c@ 62 = IF i 1 + EXIT THEN
-   a u i SD-LOOSE-ARGS ;
+   a u h i SD-LOOSE-ARGS ;
 
 : SD-LOOSE-ATOM ( ^u8 n -- ) {: a:^ u:n :}
    u 1 = IF
@@ -528,6 +549,44 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a u k SD-LOOSE-NODE
    outer POINTEE ! ;
 
+\ PARSE-QUOT reads a quotation type over the tokens from SD-QUOT-AT, the index
+\ after the last token or element read.
+variable SD-QUOT-AT
+: SD-QUOT-NEXT ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u SD-QUOT-AT @ SD-SKIP {: s:n :}
+   s u < IF a s + c@ SIG-DELIM-CHAR? ELSE NO THEN IF s 1 + ELSE
+      s BEGIN
+         dup u < IF a over + c@ SD-DELIM? 0= ELSE NO THEN
+      WHILE 1 + REPEAT
+   THEN {: e:n :}
+   e SD-QUOT-AT !
+   a s +  e s - ;
+\ The `<` and `[` depth after the bytes a u, from depth.
+: SD-DEPTH ( n ^u8 n -- n ) {: depth:n a:^ u:n :}
+   depth u 0 ?do a i + c@ SIG-NEST loop ;
+\ An element is read from its token on, so an application in it may span
+\ blanks; an outer `^` does not reach it: the declared family needs its own.
+: SD-QUOT-ELEM ( ^u8 n ^u8 n -- n ) {: ta:^ tu:n a:^ u:n :}
+   ta NULL-PTR - a NULL-PTR - - {: i:n :}
+   POINTEE @ {: outer:n :}
+   0 POINTEE !
+   a u i TYPE-DECL:ANY-VALUE SD-PARSE-NODE
+   SD-QUOT-AT !
+   outer POINTEE ! ;
+\ A malformed quotation is rejected at the token it stopped at, or at its `[`
+\ when the text ends first.
+: SD-QUOT-FAIL ( ^u8 n ^u8 n ^u8 n n ^u8 -- )
+   {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n qa:^ :}
+   tu 0= IF qa 1 ELSE ta tu THEN DECL-REJECT:TOKEN!
+   wa wu fa fu code DECL-REJECT:REJECT throw ;
+\ The quotation whose `[` is at k, and the index after its `]`.
+: SD-QUOT-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
+   k 1 + SD-QUOT-AT !
+   [: a u SD-QUOT-NEXT ;]
+   [: a u SD-QUOT-ELEM ;]
+   [: a k + SD-QUOT-FAIL ;]
+   TYPE-DECL:PARSE-QUOT SD-QUOT-AT @ ;
+
 \ Beneath a `^`, judges the family fam named at a u before its arguments, which
 \ a scope or region slot would reject first. A pointee naming a member that
 \ takes no scope or region is that member's first pointee when it has none: the
@@ -547,17 +606,18 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 : SD-LOOSE-NODE-IMPL ( ^u8 n n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
+   na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE nip EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
          na nu fam SD-REACH
-         a u fam j 1 + SD-APP nip EXIT
+         a u fam  na NULL-PTR - a NULL-PTR - -  j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
          na nu DECL-REJECT:TOKEN!
          s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
       SD-MISSING!
-      a u j 1 + SD-LOOSE-APP EXIT
+      a u  na NULL-PTR - a NULL-PTR - -  j 1 + SD-LOOSE-APP EXIT
    THEN
    na nu SD-LOOSE-ATOM j ;
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
@@ -576,10 +636,11 @@ SD-LOOSE-INSTALL
    DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
 
 \ The node at i of a field type's text: a type parameter, a con, a family
-\ application or a pointer argument, with the index after it.
+\ application, a pointer argument or a quotation, with the index after it.
 : SD-PARSE-NODE-IMPL ( ^u8 n n n -- n n ) {: a:^ u:n i:n want:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
+   na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
          drop
@@ -587,11 +648,11 @@ SD-LOOSE-INSTALL
             na nu DECL-REJECT:TOKEN!
             s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
          SD-MISSING!
-         0 a u j 1 + SD-LOOSE-APP EXIT
+         0 a u  na NULL-PTR - a NULL-PTR - -  j 1 + SD-LOOSE-APP EXIT
       THEN
       {: fam:n :}
       na nu fam SD-REACH
-      a u fam j 1 + SD-APP EXIT
+      a u fam  na NULL-PTR - a NULL-PTR - -  j 1 + SD-APP EXIT
    THEN
    nu 1 = IF na nu want LETTER-TYPE j EXIT THEN
    na nu CON-OF dup 0 <> IF SCHEMA-CON j EXIT THEN drop
@@ -609,22 +670,23 @@ SD-LOOSE-INSTALL
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
 
-: SD-NEST ( n n -- n ) {: depth:n c:n :}   \ `<` depth after one byte
-   c 60 = IF depth 1 + EXIT THEN
-   c 62 = IF depth 1 - EXIT THEN
+: SD-SQUARE ( n n -- n ) {: depth:n c:n :}   \ `[` depth after one byte
+   c 91 = IF depth 1 + EXIT THEN
+   c 93 = IF depth 1 - EXIT THEN
    depth ;
-: SD-DEPTH ( n ^u8 n -- n ) {: depth:n a:^ u:n :}
-   depth u 0 ?do a i + c@ SD-NEST loop ;
+: SD-QUOT-OPEN? ( ^u8 n -- bool ) {: a:^ u:n :}
+   0 u 0 ?do a i + c@ SD-SQUARE loop 0 > ;
 
-\ One declaration's tokens stand in order in one buffer (parse-name never refills, a replay
-\ reads one body); its end, the closer or the declaration's terminator (a MUTUAL
-\ member's `;MUTUAL`) goes back and the type is unclosed.
+\ A declaration's tokens share one buffer: parse-name never refills, a replay
+\ reads one body. A type with a `[` open is left to PARSE-QUOT to reject.
 : SD-SPAN-REST ( ^u8 n n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n depth:n ca:^ cu:n na:^ nu:n :}
    u depth
    BEGIN dup 0 > WHILE
       NEXT dup 0= IF YES ELSE
          2dup ca cu CORE-STR=CI IF YES ELSE 2dup TERMINATOR? THEN THEN IF
-         UNGET  drop a swap DECL-REJECT:TOKEN!
+         UNGET  drop a swap
+         2dup SD-QUOT-OPEN? IF EXIT THEN
+         DECL-REJECT:TOKEN!
          s" unclosed" na nu s" application" SD-NOUN-TEXT
          SD-OPEN-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       2swap nip  >r 2dup r> -rot SD-DEPTH  -rot
@@ -632,10 +694,8 @@ SD-PARSER-INSTALL
    REPEAT
    drop a swap ;
 
-\ SD-SPAN ( first closer noun -- text ): a type whose first token leaves a `<`
-\ open runs to the token closing it, as one span of the source or replay body,
-\ which outlives the TYPE@ span SD-MISSING! keeps. The closer token reached
-\ first leaves it unclosed, rejected naming the type by noun.
+\ The type to the token closing each `<` and `[` it opens, a span of the source
+\ or replay body that SD-MISSING! may keep; SD-SPAN-REST ends it early.
 public
 : SD-SPAN ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n ca:^ cu:n na:^ nu:n :}
    0 a u SD-DEPTH {: depth:n :}
@@ -643,12 +703,15 @@ public
    a u depth ca cu na nu SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
 private
 
-\ The node of a whole type text; bytes after the node are malformed.
+\ The node of a whole type text.
 : SD-WHOLE-NODE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
    a u 0 want SD-PARSE-NODE {: node:n j:n :}
    j u <> IF
-      s" malformed" s" application"
-      SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
+      a j +  u j -  {: ba:^ bu:n :}
+      ba bu DECL-REJECT:TOKEN!
+      s" unexpected bytes after a whole" s" "
+      s" remove the bytes after the type, or separate them from it with a blank"
+      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    node ;
 
 \ SD-TYPE-NODE ( text fam want noun -- node ): want is the use of a parameter that is
@@ -664,14 +727,7 @@ public
    [: ofam FAM !  ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
 private
 
-defer SD-QUOT-ELEM ( ^u8 n -- n )
-: SD-QUOT-FAIL ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
-   wa wu
-   s" write the quotation type as `[ in -- out ]`, with at most 256 types on each side"
-   code DECL-REJECT:REJECT throw ;
-
-\ A field type's text, from its first token (SD-SPAN); a quotation `[` reads the
-\ tokens after it.
+\ A field type's text, from its first token (SD-SPAN).
 : RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
    dup 0= IF 2drop s" missing type"
       s" write a type after the field name, as in `FIELD x n`"
@@ -679,11 +735,7 @@ defer SD-QUOT-ELEM ( ^u8 n -- n )
    2dup DECL-REJECT:TOKEN!
    s" ;structure" s" type" SD-SPAN
    2dup TYPE!
-   2dup s" [" CORE-STR= IF
-      2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
    FAM @ want s" type" SD-TYPE-NODE ;
-: SD-QUOT-INSTALL ( -- ) [: TYPE-DECL:ANY-VALUE RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
-SD-QUOT-INSTALL
 
 \ Clause drivers emit through DECL-EVENT, which owns duplicate, ordinal and
 \ selector state; each mutates only the fresh family record.

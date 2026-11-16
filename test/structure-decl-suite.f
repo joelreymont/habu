@@ -83,10 +83,48 @@ NEWTYPE qres
 DECL-DIAG:PROSE
 s" STRUCTURE qrollback FIELD handler [ qreq qres ] ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `qrollback`\n" DECL-DIAG:HAS? TTRUE
-s" ]" s" malformed quotation payload" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write the quotation type as `[ in -- out ]`, with at most 256 types on each side\n" DECL-DIAG:HAS? TTRUE
+s" ]" s" the quotation type needs `--` here" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: write the quotation type as `[ in -- out ]`\n" DECL-DIAG:HAS? TTRUE
 s" STRUCTURE qrollback FIELD handler [ qreq qres -- ] ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" QROLLBACK-RT ( [ qreq qres -- ] -- qrollback ) QROLLBACK:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+\ A field, payload or base may point at a quotation; the code a field's
+\ pointer reaches runs, and an unclosed quotation is rejected at its `[`.
+STRUCTURE sdqptr DERIVE addr FIELD run ^[ n -- n ] ;STRUCTURE
+TYPED-VARIABLE SDQ-CODE [ n -- n ]
+1 TYPED-BUFFER SDQ-REC sdqptr
+: SDQ-RUN ( n -- n )
+   [: 3 * ;] SDQ-CODE !
+   SDQ-CODE 0 SDQ-REC SDQPTR:RUN !
+   0 SDQ-REC SDQPTR:RUN @ @ execute ;
+5 SDQ-RUN 15 T=
+s" ENUM sdqenum VARIANT one FIELD run ^[ n -- n ] ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" NEWTYPE sdqbase ^[ n -- n ]" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdqopen FIELD run ^[ n -- n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" [" s" the quotation type is not closed" DECL-DIAG:CAUSE? TTRUE
+\ A quotation's tokens are a signature's: `[` and `]` need no blank beside
+\ them, and a rejection stands at the element or application it rejects.
+s" STRUCTURE sdqcaret FIELD run ^[n -- n] ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" SDQCARET-RT ( ^[ n -- n ] -- sdqcaret ) SDQCARET:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" STRUCTURE sdqclose FIELD run [ n -- n] ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" SDQCLOSE-RT ( [ n -- n ] -- sdqclose ) SDQCLOSE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" STRUCTURE sdqopt FIELD run option<[ n -- n]> ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" SDQOPT-RT ( option<[ n -- n ]> -- sdqopt ) SDQOPT:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+DECL-DIAG:PROSE
+s" STRUCTURE rqc FIELD f [ n option<n,n> -- n ] ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" option<n,n>" s" type has too many arguments" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE rqm FIELD f [ n , n -- ] ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" ," s" malformed type application" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE rqx FIELD f option<n>x ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" x" s" unexpected bytes after a whole type" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s\" STRUCTURE rvk2\n  FIELD f option<n>[ n --\n    n ]\n;STRUCTURE" TEST-EVAL:RC 70 T=
+s" [ n --" s" unexpected bytes after a whole type" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE rqe FIELD f option<[ n -- n ],n> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" option<[ n -- n ],n>" s" type has too many arguments" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE foo VARIANT q ;VARIANT ;STRUCTURE" TEST-EVAL:RC 70 T=  \ mixed legacy token
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE

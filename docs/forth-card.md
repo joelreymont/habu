@@ -165,8 +165,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts. The token `[ in -- out ]` works as
-  a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
-  `STRUCTURE FIELD` value. A derived field accessor returns `^[ in -- out ]`.
+  a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, a `STRUCTURE`
+  or `ENUM` `FIELD` value and a `NEWTYPE` base. A derived field accessor returns `^[ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
   quotation may read the locals of the word it is written in while that word
   runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive

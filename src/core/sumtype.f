@@ -703,17 +703,23 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    REPEAT
    {: sep:^ sepu:n :}
    base TDV-QUOT-BUILD-ROW sep sepu ;
-: TDV-QUOT-EXPECT ( ^u8 n ^u8 n [ ^u8 n n -- ] -- )
+: TDV-QUOT-EXPECT ( ^u8 n ^u8 n [ ^u8 n ^u8 n ^u8 n n -- ] -- )
    {: a:^ u:n ea:^ eu:n fail :}
    a u ea eu CORE-STR= IF EXIT THEN
-   s" malformed quotation payload" E-TDECL-SYNTAX fail execute ;
+   u 0= IF a u s" the quotation type is not closed"
+      s" close the quotation type with `]`"
+      E-TDECL-SYNTAX fail execute EXIT THEN
+   a u
+   ea eu s" --" CORE-STR= IF s" the quotation type needs `--` here"
+   ELSE s" the quotation type needs `]` here" THEN
+   s" write the quotation type as `[ in -- out ]`"
+   E-TDECL-SYNTAX fail execute ;
 
 public
 
-\ The quotation grammar is shared by variant payloads and STRUCTURE fields.
-\ The caller supplies its token stream, element resolver and declaration error
-\ reporter; the resulting schema and ordered effect rows are identical.
-: PARSE-QUOT ( [ -- ^u8 n ] [ ^u8 n -- n ] [ ^u8 n n -- ] -- n )
+\ Shared by variant payloads and STRUCTURE fields, each supplying its token
+\ stream, element resolver and rejecter, which is given the token it stopped at.
+: PARSE-QUOT ( [ -- ^u8 n ] [ ^u8 n -- n ] [ ^u8 n ^u8 n ^u8 n n -- ] -- n )
    {: next elem fail :}
    TDV-QUOT-MISS @ {: outer:n :}
    0 TDV-QUOT-MISS !
@@ -733,12 +739,13 @@ public
 
 private
 
-: TDECL-QUOT-FAIL ( ^u8 n n -- ) {: a:^ u:n code:n :}
-   TDN-A @ TDN-U @ a u
-      s" write the quotation type as `[ in -- out ]`"
-      code TDECL-THROW ;
-: TDECL-VPAY-QUOT ( -- n )
-   [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT
+: TDECL-QUOT-FAIL ( ^u8 n ^u8 n ^u8 n n ^u8 n -- )
+   {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n qa:^ qu:n :}
+   tu 0= IF qa qu ELSE ta tu THEN wa wu fa fu code TDECL-THROW ;
+\ A quotation never reads past its variant: `;VARIANT` ends it as the text's end would.
+: TDECL-VPAY-QUOT ( ^u8 n -- n ) {: qa:^ qu:n :}
+   [: TDECL-NEXT 2dup s" ;variant" CORE-STR=CI IF drop 0 THEN ;]
+   [: TDV-ELEM-XT ;] [: qa qu TDECL-QUOT-FAIL ;] PARSE-QUOT
    SIG-UNRES @ IF drop 0 THEN ;
 
 \ An application of a family no payload holds is rejected over its whole text,
@@ -775,7 +782,7 @@ private
    AGAIN ;
 
 : TDECL-VPAY-ELEM ( ^u8 n -- n ) {: a:^ u:n :}
-   a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
+   a u s" [" CORE-STR= IF a u TDECL-VPAY-QUOT EXIT THEN
    a u s" ptr" CORE-STR= IF a u s" unknown payload type"
       TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF

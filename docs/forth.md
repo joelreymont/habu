@@ -899,12 +899,12 @@ multi-cell type rationale is `docs/design.md` "Types".
   explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
   (letter param, concrete cell type, `^T`, closed arity-0 family, applied
-  family such as `option<n>`, or, in a `STRUCTURE` only, a quotation
-  `[ in -- out ]`). A quotation field is one execution-token cell;
-  `MAKE`/`UNMAKE`, whole-record storage and a `DERIVE addr` accessor preserve
-  its exact effect, so `FIELD handler [ request response -- ]` yields
-  `^[ request response -- ]` and `@ execute` checks the call. A whole record
-  stored in a `TYPED-VARIABLE` keeps its quotation callable after image restore.
+  family such as `option<n>`, or a quotation `[ in -- out ]`). A quotation
+  field is one execution-token cell; `MAKE`/`UNMAKE`, whole-record storage
+  and a `DERIVE addr` accessor preserve its exact effect, so
+  `FIELD handler [ request response -- ]` yields `^[ request response -- ]`
+  and `@ execute` checks the call. A whole record stored in a
+  `TYPED-VARIABLE` keeps its quotation callable after image restore.
 - SwiftForth-style relocatable list words (`@REL`, `!REL`, `,REL`, `>LINK`,
   `<LINK`, `CALLS`) are outside the checked surface. Use structures for node
   layout, arrays and maps for collections, `case/of/endof/endcase` for dispatch
