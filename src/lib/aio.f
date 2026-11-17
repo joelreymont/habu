@@ -735,12 +735,27 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    RO-TAIL P-CQ@ CQ-TAIL-OFF !
    CQO-CQES P-CQ@ CQ-CQES-OFF ! ;
 
+\ Releases the first `mapped` regions and the ring's fd after logging, since
+\ munmap and close overwrite the errno the refused mmap left.
+: MAP-REFUSED ( ^u8 n n -- ) {: label:^ labelu:n mapped:n :}
+   label labelu DIAG-ERRNO
+   mapped 1 > if CQ-BASE @ CQ-LEN @ munmap drop then
+   mapped 0 > if SQ-BASE @ SQ-LEN @ munmap drop then
+   RING-FD @ close-rc drop
+   0 RING-FD ! ;
+
 : RING-MAPS ( -- )
-   SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if drop E-AIO-SETUP throw then
+   SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if
+      drop s" aio: mmap of the submission ring errno " 0 MAP-REFUSED
+      E-AIO-SETUP throw then
    AIO-MAPPED>PTR SQ-BASE !
-   CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if drop E-AIO-SETUP throw then
+   CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if
+      drop s" aio: mmap of the completion ring errno " 1 MAP-REFUSED
+      E-AIO-SETUP throw then
    AIO-MAPPED>PTR CQ-BASE !
-   SQES-LEN @ OFF-SQES RING-MAP dup 0 < if drop E-AIO-SETUP throw then
+   SQES-LEN @ OFF-SQES RING-MAP dup 0 < if
+      drop s" aio: mmap of the submission entries errno " 2 MAP-REFUSED
+      E-AIO-SETUP throw then
    AIO-MAPPED>PTR SQE-BASE ! ;
 
 : RING-SETUP ( -- )
