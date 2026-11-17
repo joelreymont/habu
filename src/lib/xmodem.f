@@ -30,6 +30,8 @@ private
 using BUF
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : CHECK-SEQUENCE ( n -- )
@@ -89,9 +91,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    sequence output APPEND-BYTE sequence $FF xor output APPEND-BYTE ;
 
 
-: PAYLOAD+ ( ^u8 n n ^a -- ) {: data size:n block:n output:^ :}
-   data size LENGTH output APPEND-SPAN
-   block size - 0 ?do $1A output APPEND-BYTE loop ;
+: PAYLOAD+ ( ^u8 NUM:byte-len n ^a -- ) {: data size:NUM:byte-len block:n output:^ :}
+   data size output APPEND-SPAN
+   block size BLEN>N - 0 ?do $1A output APPEND-BYTE loop ;
 
 
 : TRAILER+ ( n n ^a -- ) {: block:n kind:n output:^ :}
@@ -124,7 +126,7 @@ public
 
 : PACKET-BYTES ( payload-size check-kind -- NUM:byte-len )
    CHECK-KIND>N swap PAYLOAD-SIZE>N {: kind:n block:n :}
-   kind CHECK-KIND block CHECK-BLOCK block 4 + kind + LENGTH ;
+   kind CHECK-KIND block CHECK-BLOCK block 4 + kind + N>BLEN ;
 
 
 \ Output is an initialized BUF. The borrowed payload must not alias it.
@@ -134,7 +136,7 @@ public
    size BLEN>N sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
    output block kind PACKET-BYTES RESERVE output CLEAR
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
-   data size BLEN>N block PAYLOAD-SIZE>N output PAYLOAD+
+   data size block PAYLOAD-SIZE>N output PAYLOAD+
    block PAYLOAD-SIZE>N kind CHECK-KIND>N output TRAILER+ ;
 
 
@@ -143,6 +145,6 @@ public
 : DECODE ( ^u8 NUM:byte-len check-kind -- ^u8 NUM:byte-len sequence )
    {: data size:NUM:byte-len kind:check-kind :}
    data size BLEN>N kind CHECK-KIND>N CHECK-DECODE {: block:n :}
-   data 3 + block LENGTH data 1 + c@ >SEQUENCE ;
+   data 3 + block N>BLEN data 1 + c@ >SEQUENCE ;
 
 ;package

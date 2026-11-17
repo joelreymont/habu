@@ -50,6 +50,8 @@ private
 4 constant EINTR
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 \ RTLD_DEFAULT borrows process symbols: the executable already needs libc, so
 \ no library reference is retained.
@@ -117,18 +119,6 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 [then]
 
 
-: LENGTH ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF
-      negative OF E-RESULT throw ENDOF
-      zero OF E-RESULT throw ENDOF
-      overflow OF E-RESULT throw ENDOF
-      underflow OF E-RESULT throw ENDOF
-      bad-alignment OF E-RESULT throw ENDOF
-      misaligned OF E-RESULT throw ENDOF
-   ;MATCH ;
-
-
 : RETRY? ( errno -- bool )
    ERRNO>N dup EINTR = swap EAGAIN = or ;
 
@@ -149,9 +139,9 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : RECEIVED ( n NUM:byte-len -- receive-result ) {: got:n capacity:NUM:byte-len :}
    got capacity BLEN>N > if
-      got LENGTH DATAGRAM-RECEIVE--RESULT:TRUNCATED
+      got N>BLEN DATAGRAM-RECEIVE--RESULT:TRUNCATED
    else
-      got LENGTH DATAGRAM-RECEIVE--RESULT:PACKET
+      got N>BLEN DATAGRAM-RECEIVE--RESULT:PACKET
    then ;
 
 

@@ -62,16 +62,8 @@ $14 TASK:+USERS IO-STORAGE u8
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-: LENGTH ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF
-      negative OF E-OPERAND throw ENDOF
-      zero OF E-OPERAND throw ENDOF
-      overflow OF E-OPERAND throw ENDOF
-      underflow OF E-OPERAND throw ENDOF
-      bad-alignment OF E-OPERAND throw ENDOF
-      misaligned OF E-OPERAND throw ENDOF
-   ;MATCH ;
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : BE16! ( n ^u8 -- ) {: value:n target :}
@@ -197,7 +189,7 @@ public
 
 
 : PAYLOAD-BYTES ( n -- NUM:byte-len )
-   dup 0 MAX-PAYLOAD WITHIN-RANGE LENGTH ;
+   dup 0 MAX-PAYLOAD WITHIN-RANGE N>BLEN ;
 
 
 \ BIND returns an owned socket; the caller closes it exactly once.

@@ -49,6 +49,8 @@ $34 constant HEADER-BYTES
 $20 constant PROGRAM-BYTES
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 : AS-BLEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN MATCH NUM:numeric-result
@@ -123,8 +125,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    row LE32@ 1 = if row CHECK-LOAD-EXTENT row CHECK-LOAD-ALIGNMENT then ;
 
 : SEGMENT-SPAN ( ^u8 ^u8 -- ^u8 NUM:byte-len ) {: data row :}
-   row LE32@ 0= row $10 + LE32@ 0= or if data 0 AS-BLEN exit then
-   data row $04 + LE32@ + row $10 + LE32@ AS-BLEN ;
+   row LE32@ 0= row $10 + LE32@ 0= or if data 0 N>BLEN exit then
+   data row $04 + LE32@ + row $10 + LE32@ N>BLEN ;
 
 : MAKE-HEADER ( ^u8 -- header ) {: data :}
    data $10 + LE16@ >FILE-KIND data $12 + LE16@ >MACHINE-ID
@@ -135,7 +137,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : MAKE-SEGMENT ( ^u8 ^u8 -- segment ) {: data row :}
    data row SEGMENT-SPAN row LE32@ >SEGMENT-KIND
    row $08 + LE32@ >ADDRESS row $0C + LE32@ >ADDRESS
-   row $14 + LE32@ AS-BLEN row $18 + LE32@ row $1C + LE32@
+   row $14 + LE32@ N>BLEN row $18 + LE32@ row $1C + LE32@
    ELF32-SEGMENT:MAKE ;
 
 public

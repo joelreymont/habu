@@ -58,22 +58,12 @@ $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 : SAVED ( -- ^u8 ) 72 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
-
-
-: LENGTH ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF
-      negative OF E-OPERAND throw ENDOF
-      zero OF E-OPERAND throw ENDOF
-      overflow OF E-OPERAND throw ENDOF
-      underflow OF E-OPERAND throw ENDOF
-      bad-alignment OF E-OPERAND throw ENDOF
-      misaligned OF E-OPERAND throw ENDOF
-   ;MATCH ;
 
 
 : LE32! ( n ^u8 -- ) {: value:n target :}
@@ -220,13 +210,13 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
 : TRANSFERRED ( n -- io-result )
-   LENGTH SERIAL-IO--RESULT:TRANSFERRED ;
+   N>BLEN SERIAL-IO--RESULT:TRANSFERRED ;
 
 
 public
 
 : BAUD ( n -- baud ) dup 1 $FFFFFFFF RANGE >BAUD ;
-: BYTES ( n -- NUM:byte-len ) dup 1 $7FFFF000 RANGE LENGTH ;
+: BYTES ( n -- NUM:byte-len ) dup 1 $7FFFF000 RANGE N>BLEN ;
 
 
 \ Opens a caller-owned nonblocking, close-on-exec, O_NOCTTY raw 8N1 stream, no

@@ -162,6 +162,8 @@ $20 TASK:+USERS IO-STORAGE u8
 : POLLFD ( -- ^u8 ) $18 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+\ Each caller has shown the cell nonnegative.
+CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
@@ -341,7 +343,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : QUEUED ( n -- queue-result )
    0 < if LAST-ERROR TCP4-QUEUE--RESULT:FAILED exit then
-   OPTION LE:U32@ LENGTH TCP4-QUEUE--RESULT:QUEUED ;
+   OPTION LE:U32@ N>BLEN TCP4-QUEUE--RESULT:QUEUED ;
 
 
 \ POLLERR, POLLHUP and POLLNVAL all mean a read returns at once, with the end of
@@ -392,8 +394,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ empty message.
 : TRY-CHUNK ( n ^u8 n -- try-read-result ) {: fd:n bytes size:n :}
    begin
-      fd bytes size RECEIVE-RAW dup 0 > if LENGTH TCP4-TRY--READ--RESULT:DATA exit then
-      0= if 0 LENGTH TCP4-TRY--READ--RESULT:CLOSED exit then
+      fd bytes size RECEIVE-RAW dup 0 > if N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
+      0= if 0 N>BLEN TCP4-TRY--READ--RESULT:CLOSED exit then
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:FAILED exit then drop
    again ;
@@ -431,7 +433,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 : SEND-BY ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
       fd bytes size SEND-RAW
-      dup 0 > if LENGTH TCP4-SLICE--RESULT:MOVED exit then
+      dup 0 > if N>BLEN TCP4-SLICE--RESULT:MOVED exit then
       0= if E-RESULT throw then
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:FAILED exit then drop
@@ -614,7 +616,7 @@ public
       dup conn bytes want EXACT-STEP
       MATCH read-result
          data OF BLEN>N + ENDOF
-         closed OF drop LENGTH TCP4-READ--RESULT:CLOSED exit ENDOF
+         closed OF drop N>BLEN TCP4-READ--RESULT:CLOSED exit ENDOF
          failed OF swap drop TCP4-READ--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;
@@ -664,7 +666,7 @@ public
    size BLEN>N 0= if TCP4-STATUS:OK exit then
    0
    begin {: sent:n :}
-      conn bytes sent + size BLEN>N sent - LENGTH SEND-SLICE
+      conn bytes sent + size BLEN>N sent - N>BLEN SEND-SLICE
       MATCH slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent ENDOF
