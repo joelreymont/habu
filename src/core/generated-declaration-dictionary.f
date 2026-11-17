@@ -11,20 +11,6 @@ variable NDICT-MARK
 variable CP-MARK
 PTR-VARIABLE DP-MARK
 
-\ A literal segment opened inside the transaction outlives its rollback: DP stops
-\ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL). The release high-water
-\ rises to the DP this lowers from, so `allot` zeroes the reused space it hands
-\ out again (src/habu/layout.f DPHW-CELL), and the `,` run ends
-\ (src/habu/layout.f COMMA-RUN-CELL).
-: DICTIONARY-DP! ( ^a -- )
-   {: mark:^ :}
-   data-base NULL-PTR - {: base:n :}
-   mark NULL-PTR -  data-base DATA-FLOOR-CELL + @ base +  max {: cut:n :}
-   data-base DP-CELL + @ base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
-   0 data-base COMMA-RUN-CELL + !
-   cut INTERN:KEEP-BELOW
-   cut data-base DP-CELL + ! ;
-
 public
 
 : SNAPSHOT ( -- )
@@ -36,7 +22,11 @@ public
    NDICT-MARK @ retire-from IF EXIT THEN
    NDICT-MARK @ ndict!
    CP-MARK @ CODE-RECLAIM:TRUNCATE
-   DP-MARK @ DICTIONARY-DP! ;
+   \ A literal segment opened inside the transaction outlives its rollback: DP
+   \ stops at the DATA floor.
+   data-base NULL-PTR - {: base:n :}
+   DP-MARK @ NULL-PTR -  data-base DATA-FLOOR-CELL + @ base +  max
+   DATA-SPACE:REWIND ;
 
 \ Rejects a declaration whose first word is a u when its n records do not fit,
 \ placed at the token read last, where the declaration ran out of room.

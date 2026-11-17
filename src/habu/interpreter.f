@@ -3046,15 +3046,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
    f FR-CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
-   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
-   f FRAME-CUT {: cut:n :}
-   cut base - ADDRESS-CELLS:KEEP-BELOW
-   cut INTERN:KEEP-BELOW
-   \ Raise the release high-water to the DP this lowers from, so `allot`
-   \ zeroes the reused space it hands out again.
-   DP-CELL CELL@ base - DPHW-CELL CELL@ max DPHW-CELL CELL!
-   0 COMMA-RUN-CELL CELL!
-   cut DP-CELL CELL! ;
+   f FRAME-CUT DATA-SPACE:REWIND ;
 
 
 : FRAME-ROLLBACK-TOKEN ( -- )
@@ -3311,8 +3303,9 @@ public
 
 ;package
 
-\ Only INTERPRETER saves and puts back the marked cells: once it binds
-\ these, they are retired.
+\ Only INTERPRETER saves and puts back the marked cells, and it binds
+\ DATA-SPACE:REWIND last: once it binds these, they are retired.
 undefine ROLLBACK-CELLS:BYTES
 undefine ROLLBACK-CELLS:SAVE
 undefine ROLLBACK-CELLS:RESTORE
+undefine DATA-SPACE:REWIND
