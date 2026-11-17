@@ -41,7 +41,7 @@ END-STRUCTURE
 \ These fields live in the record's REC.HOST; one past it is this file's defect.
 : MAC-FITS ( -- )
    MAC-REC-BYTES HOST-BYTES > if
-      s" aio: Darwin record fields past REC.HOST" E-AIO-STATE die
+      s" aio: Darwin record fields past REC.HOST" 70 die
    then ;
 MAC-FITS
 
@@ -77,7 +77,6 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MR ( n -- ^n ) REC REC.HOST ;
 
 : MAC-PFD ( n -- ^u8 ) {: slot:n :}
-   slot 0 < slot OPEN-MAX >= or if s" aio: poll entry" E-AIO-STATE die then
    MAC-POLLS @ slot MAC-POLL-BYTES * + ;
 
 : MAC-POLLS-LEN ( -- NUM:alloc-byte-len )
@@ -87,7 +86,6 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    MAC-POLLS @ MAC-POLLS-LEN MEM:RELEASE-BYTES ;
 
 : FD-ROW ( n -- ^n ) {: fd:n :}
-   fd 0 < fd FD-CAP @ >= or if s" aio: descriptor row" E-AIO-STATE die then
    FD-ROWS @ fd FD-ROW-BYTES * + AIO-N>PTR ;
 
 : FD-REF@ ( n -- n ) {: fd:n :}
@@ -154,7 +152,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       MAC-READ-FD @ MAC-DRAIN 64 MAC-READ MAC-RESULT
       dup MAC-AGAIN negate = if drop exit then
       dup ERR-INTR negate <> if
-         0 <= if s" aio: wake pipe closed" E-AIO-STATE die then
+         0 <= if s" aio: wake pipe read failed" 74 die then
       else drop then
    again ;
 
@@ -185,7 +183,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    row MR.OWNS-FLAGS @ 0= if exit then
    0 row MR.OWNS-FLAGS !
    row MR.FD @ 4 row MR.OLD-FLAGS @ MAC-FCNTL 0 < if
-      s" aio: descriptor flags could not be restored" E-AIO-STATE die
+      s" aio: descriptor flags could not be restored" 74 die
    then ;
 
 : MAC-FINISH ( n n -- ) {: idx:n result:n :}

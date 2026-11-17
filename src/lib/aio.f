@@ -167,8 +167,6 @@ create KIND-OPS
    OP-READ ,
 
 : KIND>OP ( n -- n ) {: kind:n :}
-   kind KIND-POLL < kind KIND-READ > or
-      if s" aio: operation kind" E-AIO-STATE die then
    KIND-OPS kind cells + @ ;
 
 11 cells constant HOST-BYTES
@@ -314,49 +312,42 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 \ A CQE's res is signed: a negative res is the negated errno.
 
 \ ---- the module's one address crossing ---------------------------------------
-\ It is three calls, one right after each mmap, and every later access passes
-\ MAP-AT's bound, the length io_uring_params reported.
+\ It is three calls, one right after each mmap. Every later access is at an
+\ offset io_uring_params reported or a slot under a ring's mask, inside the
+\ length the mapping was given.
 CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
-\ Out of bounds is this module's own defect, not a condition a caller can
-\ provoke or recover from, so it ends the process with a name rather than
-\ throwing into somebody's catch.
-: MAP-AT ( ^u8 n n n -- ^u8 ) {: base len:n off:n width:n :}
-   off 0 < width 0 <= or if s" aio: mapping operand" E-AIO-STATE die then
-   off len width - > if s" aio: mapping bounds" E-AIO-STATE die then
-   base off + ;
+: SQ-AT ( n -- ^u8 ) {: off:n :}
+   SQ-BASE @ off + ;
 
-: SQ-AT ( n n -- ^u8 ) {: off:n width:n :}
-   SQ-BASE @ SQ-LEN @ off width MAP-AT ;
-
-: CQ-AT ( n n -- ^u8 ) {: off:n width:n :}
-   CQ-BASE @ CQ-LEN @ off width MAP-AT ;
+: CQ-AT ( n -- ^u8 ) {: off:n :}
+   CQ-BASE @ off + ;
 
 : SQE-AT ( n -- ^u8 ) {: slot:n :}
-   SQE-BASE @ SQES-LEN @ slot SQE-BYTES * SQE-BYTES MAP-AT ;
+   SQE-BASE @ slot SQE-BYTES * + ;
 
 : SQ-TAIL@ ( -- n )
-   SQ-TAIL-OFF @ 4 SQ-AT LE:U32@ ;
+   SQ-TAIL-OFF @ SQ-AT LE:U32@ ;
 
 : SQ-TAIL! ( n -- )
-   SQ-TAIL-OFF @ 4 SQ-AT LE:U32! ;
+   SQ-TAIL-OFF @ SQ-AT LE:U32! ;
 
 : SQ-HEAD@ ( -- n )
-   SQ-HEAD-OFF @ 4 SQ-AT LE:U32@ ;
+   SQ-HEAD-OFF @ SQ-AT LE:U32@ ;
 
 : CQ-HEAD@ ( -- n )
-   CQ-HEAD-OFF @ 4 CQ-AT LE:U32@ ;
+   CQ-HEAD-OFF @ CQ-AT LE:U32@ ;
 
 : CQ-HEAD! ( n -- )
-   CQ-HEAD-OFF @ 4 CQ-AT LE:U32! ;
+   CQ-HEAD-OFF @ CQ-AT LE:U32! ;
 
 \ The fence after the read is what makes the entries below it visible to this
 \ thread.
 : CQ-TAIL-ACQUIRE ( -- n )
-   CQ-TAIL-OFF @ 4 CQ-AT LE:U32@ fence ;
+   CQ-TAIL-OFF @ CQ-AT LE:U32@ fence ;
 
 : CQE-AT ( n -- ^u8 ) {: head:n :}
-   CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQE-BYTES CQ-AT ;
+   CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
 : CHUNK-FIRST ( -- n )
@@ -379,7 +370,6 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    CHUNK-NEXT dup 0= if s" aio: record index" E-AIO-STATE die then ;
 
 : REC ( n -- ^n ) {: idx:n :}
-   idx 0 < if s" aio: record index" E-AIO-STATE die then
    CHUNK-FIRST idx RECS-FIRST
    begin 2dup >= while
       swap over - swap 2 *
@@ -564,7 +554,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ fence between them is what makes the kernel see a whole entry when it sees the
 \ new tail.
 : SQ-PUBLISH ( n -- ) {: slot:n :}
-   slot SQ-ARRAY-OFF @ slot 4 * + 4 SQ-AT LE:U32!
+   slot SQ-ARRAY-OFF @ slot 4 * + SQ-AT LE:U32!
    fence
    SQ-TAIL@ 1 + $FFFFFFFF and SQ-TAIL! ;
 
@@ -663,14 +653,13 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    peer SETTLE ;
 
 \ user_data is NOP-ID, the stop's wake, or a record's index; a cancel's carries
-\ CANCEL-BIT and only settles. A free record here is this module's own defect.
+\ CANCEL-BIT and only settles.
 : COMPLETE ( ^u8 -- ) {: cqe :}
    cqe LE:U64@ {: id:n :}
    cqe CQE-RES + LE:S32@ {: res:n :}
    cqe CQE-FLAGS + LE:U32@ {: fl:n :}
    id NOP-ID = if exit then
    id CANCEL-BIT invert and {: idx:n :}
-   idx REC-STATE@ STATE-FREE = if s" aio: completion of a free record" E-AIO-STATE die then
    idx id <> if idx SETTLE exit then
    id REC REC.KIND @ KIND-LINK = if id res COMPLETE-LINK exit then
    res id REC REC.RES !
@@ -722,8 +711,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ The masks live in the rings themselves, so they are read once the mappings
 \ exist.
 : RING-OFFSETS ( -- )
-   RO-MASK P-SQ@ 4 SQ-AT LE:U32@ SQ-MASK !
-   RO-MASK P-CQ@ 4 CQ-AT LE:U32@ CQ-MASK ! ;
+   RO-MASK P-SQ@ SQ-AT LE:U32@ SQ-MASK !
+   RO-MASK P-CQ@ CQ-AT LE:U32@ CQ-MASK ! ;
 
 : RING-LENGTHS ( -- )
    P-SQ-N SQ-ENTRIES-N !
