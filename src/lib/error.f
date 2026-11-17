@@ -72,10 +72,6 @@ require src/os/env-base.f
 -3300 constant E-VEC-FIRST
 -3399 constant E-VEC-LAST
 
-\ PTX DSL: -3400..-3499, declared at this file's end.
--3400 constant E-PTX-FIRST
--3499 constant E-PTX-LAST
-
 \ FFI: -3500..-3599, declared at this file's end.
 -3500 constant E-FFI-FIRST
 -3599 constant E-FFI-LAST
@@ -105,10 +101,6 @@ require src/os/env-base.f
 \ Test-suite DSL: -4200..-4299, declared at this file's end.
 -4200 constant E-SUITE-FIRST
 -4299 constant E-SUITE-LAST
-
-\ Evaluation grader: -4300..-4399, declared at this file's end.
--4300 constant E-EVAL-FIRST
--4399 constant E-EVAL-LAST
 
 \ Test infrastructure: -4400..-4499
 -4400 constant E-TEST-FIRST
@@ -657,33 +649,6 @@ generates: FAULT ( -- n )
 -3104 s" an appended span is negative, null with a positive length, or inside a growable output past its written bytes" ERROR:CODE E-JSON-WRITE-SOURCE
 -3300 s" an index outside the vector's elements, or a vector not made" ERROR:CODE E-VEC-BOUNDS
 -3301 s" a vector count below 0 or past the most bytes a vector holds" ERROR:CODE E-VEC-CAPACITY
--3400 s" a PTX declaration token that is missing, malformed, too long or already registered, a full VJP table, or an AD policy out of range" ERROR:CODE E-PTX-SYNTAX
--3401 s" a block size that is not a multiple of 32 in 32..1024, a launch extent not positive or wider than its block, or a where clause naming another block" ERROR:CODE E-PTX-BLOCK
--3402 s" a tile op that type-checks but is not lowered to PTX" ERROR:CODE E-PTX-NOIMPL
--3403 s" a forward word with no registered adjoint (VJP)" ERROR:CODE E-PTX-NOVJP
--3404 s" the AD reverse pass ran past its token capacity" ERROR:CODE E-PTX-ADCAP
--3405 s" an AD node, value stack entry or lane past its capacity, or a lane count below 1" ERROR:CODE E-PTX-AD-OVERFLOW
--3406 s" an AD body pops a value its stack does not hold" ERROR:CODE E-PTX-AD-UNDERFLOW
--3407 s" an AD node id, op, length or token the graph or VJP table does not hold, or more ops than the AD IR holds" ERROR:CODE E-PTX-AD-UNKNOWN
--3408 s" an AD body that does not end balanced with exactly one output stored" ERROR:CODE E-PTX-AD-OUTPUT
--3409 s" a PTX IR with more nodes than it holds" ERROR:CODE E-PTX-IR-OVERFLOW
--3410 s" a PTX IR node id that names no node, or a node of a kind the call does not take" ERROR:CODE E-PTX-IR-UNKNOWN
--3411 s" an AD body with control flow (a branch, loop, exit or recursion): differentiate straight-line code" ERROR:CODE E-PTX-AD-CONTROL
--3412 s" the spawned kernel-emit child exited nonzero: its stderr, surfaced above, says why" ERROR:CODE E-PTX-EMIT
--3413 s" the in-process PTX capture buffer overflowed" ERROR:CODE E-PTX-CAP
--3416 s" a kernel ABI record holds more params, fields or name bytes than its capacity" ERROR:CODE E-KABI-CAP
--3417 s" a kernel ABI field with an unknown name or index, or with no .param offset" ERROR:CODE E-KABI-FIELD
--3418 s" a kernel ABI field name declared twice, or an extent token with two conflicting sources" ERROR:CODE E-KABI-DUP
--3419 s" a kernel ABI name or extent token that is empty or too long" ERROR:CODE E-KABI-TOKEN
--3420 s" a kernel export names an unknown kernel, or its record names another" ERROR:CODE E-KEXPORT-KERNEL
--3421 s" a kernel export's output directory is missing or not a directory" ERROR:CODE E-KEXPORT-OUTDIR
--3422 s" a kernel export's producer emitted no PTX" ERROR:CODE E-KEXPORT-EMPTY
--3423 s" ASSEMBLE ran before the assembler target was set: set the target first" ERROR:CODE E-PTXTC-ARCH
--3424 s" no ptxas executable on any known path" ERROR:FAULT E-PTXTC-PTXAS
--3425 s" the resolved ptxas's --version probe failed to spawn, timed out or was truncated" ERROR:FAULT E-PTXTC-PROBE
--3426 s" ptxas --version printed no parseable release line" ERROR:FAULT E-PTXTC-VERSION
--3427 s" the resolved ptxas is unreadable, or its SHA-256 is not the pinned allowlisted identity" ERROR:FAULT E-PTXTC-DIGEST
--3428 s" for an sm_121 target, the resolved ptxas is older than the pinned 13.3 floor" ERROR:FAULT E-PTXTC-STALE
 -3500 s" a declaration's arguments need more cells than a C call passes, or a callback argument index is outside its registers" ERROR:CODE E-FFI-ARITY
 -3502 s" a C symbol a FUNCTION: names is not in its library" ERROR:FAULT E-FFI-DLSYM
 -3503 s" a FUNCTION: with no library selected in its declaring scope: state LIBRARY or PROCESS-SYMBOLS beside the declarations rather than inherit another file's" ERROR:CODE E-FFI-LIBRARY
@@ -710,7 +675,6 @@ generates: FAULT ( -- n )
 -4003 s" a required remote tool is missing (ptxas, nvcc, ...)" ERROR:FAULT E-ZED-TOOLCHAIN
 -4004 s" a bad harness argument or buffer capacity" ERROR:CODE E-ZED-ARG
 -4005 s" a device is required but HABU_ZED is unset or 0" ERROR:CODE E-ZED-DISABLED
--4007 s" a local artifact emit (a bin/hb spawn) failed" ERROR:CODE E-ZED-EMIT
 -4100 s" a loader word used after the file defined its name: load files before the definition that reuses it, or rename that definition" ERROR:CODE E-DISC-SHADOW
 -4101 s" a dynamic (non-literal) loader path: write the path as a literal" ERROR:CODE E-DISC-DYNAMIC
 -4102 s" an unsupported string opener before a loader word: write the path as an s-quote string before `required`" ERROR:CODE E-DISC-OPENER
@@ -720,12 +684,9 @@ generates: FAULT ( -- n )
 -4200 s" a GROUP mode token is missing or not SEQ or PARA" ERROR:CODE E-SUITE-MODE
 -4201 s" a GROUP name is missing or a reserved DSL keyword" ERROR:CODE E-SUITE-NAME
 -4202 s" a row's argument list ran into a row keyword or the end of input (no ;SUITE)" ERROR:CODE E-SUITE-ROW
--4300 s" the candidate emit infrastructure failed" ERROR:FAULT E-EVAL-EMIT
--4301 s" the judge image lacks a word the task requires" ERROR:FAULT E-EVAL-VOCAB
 -5700 s" a byte offset or active length outside the buffer" ERROR:CODE E-BUF-BOUNDS
 -5701 s" a zero, negative or cell-overflowing byte capacity" ERROR:CODE E-BUF-CAPACITY
 -5702 s" a buffer in the wrong state for the operation: used after it was disposed, or initialized while it is live" ERROR:CODE E-BUF-STATE
--5703 s" the source and destination byte ranges overlap" ERROR:CODE E-BUF-OVERLAP
 -5800 s" a probe capacity that is not a nonzero power of two" ERROR:CODE E-HM-CAP
 -5801 s" a probe scanned every slot without finding an empty slot or the key" ERROR:CODE E-HM-FULL
 -5900 s" an unsigned formatter (SB-U or .U) given a negative value" ERROR:CODE E-FMT-DOMAIN
