@@ -27,9 +27,10 @@
 \ `xt` is rejected with the storage definers' reason. A build of a
 \ program whose source stores a definer's type is rejected with the record its
 \ load prints. A rejected built local whose type text outgrows the checker's
-\ first token buffers is named by that whole text. A program that requires the
-\ XML reader builds cold and warm to the same image and reads an element's
-\ name, and one whose definition ticks a C2-MEM scoped entry is rejected.
+\ first token buffers is named by that whole text. A program that requires
+\ src/lib/c2-memory.f builds cold and warm to the same image and copies a byte
+\ into owned bytes, and one whose definition ticks a C2-MEM scoped entry is
+\ rejected.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -667,17 +668,17 @@ PROG-CAP BUFFER: PROG-2
    CMD:ERR$ s" HELD" CONTAINS? TTRUE
    rc 70 T= ;
 
-: XML ( CMD:command -- CMD:command )
-   s" test/fixtures/build-items/xml-reader.f" s" xml" s" xml-cold" BUILD 0 SHOW {: cold:n :}
+: C2-BYTES ( CMD:command -- CMD:command )
+   s" test/fixtures/build-items/c2-bytes.f" s" c2-bytes" s" c2-bytes-cold" BUILD 0 SHOW {: cold:n :}
    cold 0 T=  cold 0<> if exit then
-   s" test/fixtures/build-items/xml-reader.f" s" xml" s" xml-warm" BUILD 0 SHOW {: warm:n :}
+   s" test/fixtures/build-items/c2-bytes.f" s" c2-bytes" s" c2-bytes-warm" BUILD 0 SHOW {: warm:n :}
    warm 0 T=  warm 0<> if exit then
-   s" xml-cold" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
-   s" xml-warm" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
+   s" c2-bytes-cold" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
+   s" c2-bytes-warm" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
    PROG-1 u1 PROG-2 u2 CODESIGN:SAME-IMAGE? TTRUE
-   CMD:RESET  s" xml-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   CMD:RESET  s" c2-bytes-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
-   CMD:OUT$ S\" bitem-xml-reader: a\n" STR= TTRUE
+   CMD:OUT$ S\" bitem-c2-bytes: a\n" STR= TTRUE
    rc 0 T= ;
 
 \ The build's own C2-MEM entries are scoped entries too.
@@ -689,7 +690,7 @@ PROG-CAP BUFFER: PROG-2
    CMD:ERR$ s" scoped-tick.f:7:" CONTAINS? TTRUE
    rc 70 T= ;
 
-: CHECKS ( -- ) [: STORED XML TICK ;] CMD:WITH-COMMAND ;
+: CHECKS ( -- ) [: STORED C2-BYTES TICK ;] CMD:WITH-COMMAND ;
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
 
 public

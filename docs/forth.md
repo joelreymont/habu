@@ -1968,11 +1968,7 @@ public
   unique view and completes the foreign release before reporting an error. The
   owner runs it once at close; a failed allocation runs none.
 - `C2-BYTES` gives bounded copy, slice and length operations on live byte
-  views. `XML-C2:WITH-READER` (`src/lib/xml/c2.f`) takes a shared source view
-  and unique cursor storage of `XML:CURSOR-BYTES` plus one cell; the tables the
-  reader grows are released when its callback returns or throws, inner readers
-  first. `XML-C2:NAME$` keeps the source lifetime after the cursor callback
-  ends.
+  views.
 - At most 32 owner or initialization frames are live in one task: the 33rd
   open throws `E-C2-CAPACITY` before acquisition, and capacity returns
   as frames close. This is a runtime boundary; escape is refused by the
@@ -2018,10 +2014,10 @@ identities and declared separate fields supply that evidence; unknown overlap
 rejects. Scope, region, extent and generation are distinct domains.
 
 The callback binder `forall<…>` appears only in the callback input of an
-authenticated scope operation (`XML-C2:WITH-READER`'s effect shows one). The
-operation checks the callback with a fresh rigid scope atom and closes it at
-return or unwind; the rows around the binder cannot acquire the atom, through
-stored fields, quotation payloads or the return stack. Ordinary helpers
+authenticated scope operation (`C2-MEM:WITH-INIT`'s callback may declare
+one). The operation checks the callback with a fresh rigid scope atom and
+closes it at return or unwind; the rows around the binder cannot acquire the
+atom, through stored fields, quotation payloads or the return stack. Ordinary helpers
 quantify over scopes their inputs supply and cannot return one no input or live
 binder supplies. A generated variant constructor's effect may name a header
 scope or region parameter its payload does not:

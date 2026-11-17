@@ -58,7 +58,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
 ;STRUCTURE
 
 \ The record's size in bytes, for a caller that allocates it as bytes and makes
-\ it a record with EMPTY-CURSOR (src/lib/xml/c2.f).
+\ it a record with EMPTY-CURSOR.
 EXPORT CURSOR-BYTES
 
 private

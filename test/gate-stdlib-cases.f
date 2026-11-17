@@ -848,9 +848,8 @@ SUITE c2-view-record-source
    test/c2-view-record-refusals.f
 ;SUITE
 
-SUITE c2-xml-source
-   test/c2-xml-consumer-program.f
-   test/c2-xml-consumer-refusals.f
+SUITE c2-bytes-rejections
+   test/c2-bytes-rejections.f
 ;SUITE
 
 SUITE c2-read-effects
