@@ -1428,6 +1428,12 @@ private
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+\ While a task is live, retires the records from n up and answers true: the
+\ caller keeps CP, NDICT and DP. Else answers false and the caller lowers.
+: BRETIREFROM ( -- )                                \ ( n -- bool )
+   9 G-POP  EM-DEF-OCC:LRETIRE LABEL@ BL,
+   14 0 CMPI,  9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
+
 \ Append the completed native pending record at the caller's expected index.
 \ NPUB proves the emission and record shape; this sink owns the live count and
 \ index and checks pending ownership before changing either. DOES> publishes
@@ -4125,6 +4131,7 @@ package ENGINE-EMIT
    s" NULL-PTR" ['] BNULLPTR FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
+   s" retire-from" ['] BRETIREFROM FPRIM
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
@@ -4764,8 +4771,8 @@ private
       s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
       78 3 DIE-LINE-VALUE, ;
 
-\ A rollback's lower-or-retire step (evaluate's and the REPL's recovery,
-\ replay-close), x9 = the NDICT to lower to. With no task live it answers
+\ A rollback's lower-or-retire step (evaluate's recovery, replay-close,
+\ retire-from), x9 = the NDICT to lower to. With no task live it answers
 \ x14 = 0 and the caller lowers; the count cannot rise from 0 under it, since
 \ only main or a live task activates one. Else a task may still use the code
 \ and records above, so it stamps each record in [x9, NDICT) with WL:RETIRED, a

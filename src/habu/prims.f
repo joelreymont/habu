@@ -599,6 +599,7 @@ EPPRIM: CHECK set-preflight PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
+EPRIM: retire-from    PE-N PE-IN PE-F PE-OUT EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
