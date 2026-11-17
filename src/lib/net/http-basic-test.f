@@ -1,6 +1,6 @@
-\ http-basic-test.f - HTTP:BASIC-CREDENTIALS: RFC 7617's example, every place
-\ the `:` can fall in a base64 group, the user and capacity rejections, and no
-\ copy of the password left in the span.
+\ http-basic-test.f - HTTP:BASIC-CREDENTIALS: RFC 7617's example, a UTF-8
+\ password, every place the `:` can fall in a base64 group, the user, password
+\ and capacity rejections, and no copy of the password left in the span.
 \ Run: bin/hb --load src/lib/net/http-basic-test.f
 
 require src/lib/string.f
@@ -30,6 +30,11 @@ $A5 constant BASIC-CANARY
    {: k:n :}
    s" RFC 7617's Aladdin example" T-LABEL
    k OUT$ s" Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==" T$= ;
+
+: UTF8-PASSWORD ( -- )
+   s" a" s\" \xC3\xA9" BASIC-OUT HTTP:BASIC-CREDENTIALS {: k:n :}
+   s" a UTF-8 password is no control character" T-LABEL
+   k OUT$ s" Basic YTrDqQ==" T$= ;
 
 : WANT$ ( ^u8 n ^u8 n -- ^u8 n ) {: user:^ u:n pass:^ p:n :}
    user u BASIC-JOINED SPAN:COPY
@@ -61,6 +66,22 @@ $A5 constant BASIC-CANARY
    [: s" a:b" s" c" BASIC-OUT HTTP:BASIC-CREDENTIALS drop ;]
       HTTP:E-BASIC-USER TTHROWSQ
    0 CANARY-FROM? TTRUE
+   s" a user-id holding a tab" T-LABEL
+   [: s\" a\tb" s" c" BASIC-OUT HTTP:BASIC-CREDENTIALS drop ;]
+      HTTP:E-BASIC-USER TTHROWSQ
+   0 CANARY-FROM? TTRUE
+   s" a password ending in a line feed" T-LABEL
+   [: s" a" s\" pw\n" BASIC-OUT HTTP:BASIC-CREDENTIALS drop ;]
+      HTTP:E-BASIC-PASSWORD TTHROWSQ
+   0 CANARY-FROM? TTRUE
+   s" a password holding $1F" T-LABEL
+   [: s" a" s\" p\x1Fw" BASIC-OUT HTTP:BASIC-CREDENTIALS drop ;]
+      HTTP:E-BASIC-PASSWORD TTHROWSQ
+   0 CANARY-FROM? TTRUE
+   s" a password holding $7F" T-LABEL
+   [: s" a" s\" p\x7Fw" BASIC-OUT HTTP:BASIC-CREDENTIALS drop ;]
+      HTTP:E-BASIC-PASSWORD TTHROWSQ
+   0 CANARY-FROM? TTRUE
    s" a span one byte short" T-LABEL
    [: s" Aladdin" s" open sesame" BASIC-OUT 33 SPAN:TAKE
       HTTP:BASIC-CREDENTIALS drop ;] E-SPAN-CAPACITY TTHROWSQ
@@ -70,7 +91,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   EXAMPLE GROUPS REJECTIONS ;
+   EXAMPLE UTF8-PASSWORD GROUPS REJECTIONS ;
 
 ;package
 

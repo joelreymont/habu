@@ -18,8 +18,15 @@ $3A constant USER-END            \ ':' ends the user-id
 
 : BASIC-PREFIX$ ( -- ^u8 n ) s" Basic " ;
 
+: CONTROL? ( n -- bool ) dup $20 < swap $7F = or ;   \ RFC 5234 CTL.
+
 : USER-CHECKED ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ USER-END = if E-HTTP-BASIC-USER throw then loop ;
+   u 0 ?do
+      a i + c@ dup USER-END = swap CONTROL? or if E-HTTP-BASIC-USER throw then
+   loop ;
+
+: PASS-CHECKED ( ^u8 n -- ) {: a:^ p:n :}
+   p 0 ?do a i + c@ CONTROL? if E-HTTP-BASIC-PASSWORD throw then loop ;
 
 \ The input is compared with what the span holds past the prefix, three bytes
 \ to four of reach, so no length is scaled up and none wraps.
@@ -32,15 +39,18 @@ $3A constant USER-END            \ ':' ends the user-id
 public
 
 E-HTTP-BASIC-USER constant E-BASIC-USER
+E-HTTP-BASIC-PASSWORD constant E-BASIC-PASSWORD
 
 \ Writes `Basic ` and the RFC 4648 standard base64, padded, of user `:`
 \ password; answers the length written. A negative length is E-SPAN-LENGTH, a
-\ user holding `:` E-BASIC-USER, a span shorter than
+\ user holding `:` or a control character E-BASIC-USER, a password holding a
+\ control character E-BASIC-PASSWORD, a span shorter than
 \ 6 + 4 * ceil((u + 1 + p) / 3) E-SPAN-CAPACITY.
 : BASIC-CREDENTIALS ( ^u8 n ^u8 n SPAN:span<u8> -- n )
    {: user:^ u:n pass:^ p:n s :}
    u 0 < p 0 < or if E-SPAN-LENGTH throw then
    user u USER-CHECKED
+   pass p PASS-CHECKED
    u p s ROOM-CHECKED
    BASIC-PREFIX$ s SPAN:COPY
    s BASIC-PREFIX$ nip SPAN:SKIP {: head :}

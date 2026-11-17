@@ -870,7 +870,8 @@ generates: FAULT ( -- n )
 -9345 s" a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle" ERROR:CODE E-HTTP-STATIC
 -9346 s" the listener could not be bound, put to listen or asked its own address" ERROR:CODE E-HTTP-SOCKET
 -9347 s" a handler's body read that did not complete; the server answers it with the read's rejection, never as a fault" ERROR:CODE E-HTTP-BODY-READ
--9348 s" a Basic user-id holding `:`, which RFC 7617 forbids: the server splits user-id and password at the first `:` and would read another user; use a user-id without `:`" ERROR:CODE E-HTTP-BASIC-USER
+-9348 s" a Basic user-id holding a control character (a byte below $20, or $7F), which RFC 7617 forbids, or a `:`, at which the server splits user-id from password and so would read another user; use a user-id with neither" ERROR:CODE E-HTTP-BASIC-USER
+-9349 s" a Basic password holding a control character (a byte below $20, or $7F), which RFC 7617 forbids: use a password with none, and drop any line end left by reading it" ERROR:CODE E-HTTP-BASIC-PASSWORD
 -9350 s" a byte outside the selected alphabet" ERROR:CODE E-BASE64-CHAR
 -9351 s" misplaced/forbidden '=', or nonzero unused bits" ERROR:CODE E-BASE64-PAD
 -9352 s" padded length not divisible by four, or URL remainder one" ERROR:CODE E-BASE64-LENGTH
