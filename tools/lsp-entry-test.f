@@ -45,7 +45,7 @@ create BODY 4096 allot
    s" tools" PROJECT-PATH FS:MAKE-DIRS
    s" src/core" PROJECT-PATH FS:MAKE-DIRS
    s" src/habu" PROJECT-PATH FS:MAKE-DIRS
-   s" src/core/util.f" PROJECT-PATH s" " FS:WRITE-ALL
+   s" src/core/exit-status.f" PROJECT-PATH s" " FS:WRITE-ALL
    s" tools/lsp-core.f" POISON
    s" tools/check-verify-child-lib.f" POISON
    s" src/habu/verify-source.f" POISON

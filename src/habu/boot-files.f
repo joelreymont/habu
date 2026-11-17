@@ -42,6 +42,7 @@ private
 \ top-level s" allots its copy at here, so inside ROWS each path would land
 \ ahead of its own record.
 : FILL ( -- )
+   CHECKER COMMON s" src/core/exit-status.f" ROW
    CHECKER COMMON s" src/core/util.f" ROW
    CHECKER COMMON s" src/core/cell.f" ROW
    CHECKER COMMON s" src/core/pointer-storage.f" ROW

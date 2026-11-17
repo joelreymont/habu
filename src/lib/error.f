@@ -9,7 +9,7 @@
 \ holds its own fault flag: only this package reads a row's layout. TASK-LOCAL:
 \ the ENDED-CELL of the thread's region that CAUGHT sets and reads.
 
-\ ERROR-TEXT is src/core/util.f's, which every prefix loads first.
+\ ERROR-TEXT comes from a boot file, which every prefix loads.
 require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f

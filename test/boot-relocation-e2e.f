@@ -1,6 +1,6 @@
 \ A copied engine and its source tree recognize baked modules when the
 \ invocation directory is the copied tree's parent: the copy holds the first
-\ boot file, src/core/util.f, so it is the engine's root (src/core/include.f
+\ boot file, src/core/exit-status.f, so it is the engine's root (src/core/include.f
 \ SOURCE-ROOT:ENGINE$). On macOS the child reruns in a sandbox denying
 \ process-info-pidinfo: the tree is still found and PROCESS:OWN-PATH throws
 \ E-ENGINE-PATH.
@@ -68,7 +68,7 @@ variable RC
    ENGINE$ FS:CHMOD-X
    s" src/lib/error.f" COPY-SOURCE
    s" src/lib/c2-memory.f" COPY-SOURCE
-   s" src/core/util.f" COPY-SOURCE
+   s" src/core/exit-status.f" COPY-SOURCE
    WRITE-ENTRY ;
 
 : SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}
