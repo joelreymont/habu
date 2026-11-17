@@ -4499,8 +4499,9 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 \ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
-\ the end in x11 instead, for code that stands above CP. Clobbers x9 (rounded
-\ down to its line), x10, x11.
+\ the end in x11 instead, for code that stands above CP. Clobbers x10..x13.
+\ macOS steps by 64 bytes: XNU leaves SCTLR_EL1.UCT clear, so a user-mode
+\ CTR_EL0 read traps.
 \ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper: the fork
 \ primitive's Linux child branches to it directly.
 : EMIT-FLUSH ( -- )
@@ -4513,13 +4514,20 @@ package ENGINE-EMIT
    LBL FL-DD !
    LBL FL-IL !
    LBL FL-ID !
-   9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
-   10 9 0 ADDI,                                             \ line, or the 64-byte
-                                                            \ stride skips the last one
-   FL-DL LABEL@ LBL,  10 11 CMP,  C-GE FL-DD LABEL@ BCOND,  10 DCCVAU,  10 10 64 ADDI,  FL-DL LABEL@ B,
+   HB-TARGET-MACOS? IF  13 64 MOVZ,
+   ELSE
+      $D53B002D EMITW                                       \ mrs x13, CTR_EL0
+      12 13 15 ANDI,
+      13 13 16 LSRI,  13 13 15 ANDI,  10 4 MOVZ,  13 10 13 LSLV,   \ x13 = 4 << DminLine
+   THEN
+   10 31 13 SUB,  10 9 10 AND,        \ x9 down to its line, or the last line is skipped
+   FL-DL LABEL@ LBL,  10 11 CMP,  C-GE FL-DD LABEL@ BCOND,  10 DCCVAU,  10 10 13 ADD,  FL-DL LABEL@ B,
    FL-DD LABEL@ LBL,  DSB-ISH,
-   10 9 0 ADDI,
-   FL-IL LABEL@ LBL,  10 11 CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
+   HB-TARGET-MACOS? 0= IF
+      10 4 MOVZ,  13 10 12 LSLV,                                   \ x13 = 4 << IminLine
+   THEN
+   10 31 13 SUB,  10 9 10 AND,
+   FL-IL LABEL@ LBL,  10 11 CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 13 ADD,  FL-IL LABEL@ B,
    FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET,
    end LBL, ;
 
