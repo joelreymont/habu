@@ -5,6 +5,7 @@ require src/lib/string-roles.f               \ package STR: the typed string sur
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/adt/option.f                      \ option<n> finders
+require src/core/exit-status.f
 
 \ ---- whole-file read -------------------------------------------------------
 create READ-PROBE 1 allot
@@ -295,9 +296,8 @@ public
 ;package
 : HAS-EXT? ( ^u8 n ^u8 n -- bool )  LINT-SUFFIX? ;
 \ ---- throw-code name registry for CLI failure attribution ------------------
-\ Lint modules register their named throw codes at load (intern/token caps) so
-\ LINT-MAIN (tools/lint/lib.f) can name an uncaught code in its attribution
-\ line regardless of which modules a CLI loads.
+\ The table names the codes LINT-MAIN (tools/lint/lib.f) can name in its
+\ attribution line: the intern and token tables' EXIT-STATUS:FULL.
 8 constant LINT-CODE-MAX
 32 constant LINT-CODE-NAME-CAP
 create LINT-CODE-VALS LINT-CODE-MAX cells allot
@@ -319,6 +319,8 @@ variable LINT-CODE#
    a LINT-CODE-NAME-BUF LINT-CODE# @ LINT-CODE-NAME-CAP * + u LINT-BMOVE
    u LINT-CODE-NAME-US LINT-CODE# @ cells + !
    LINT-CODE# @ 1+ LINT-CODE# ! ;
+
+s" EXIT-STATUS:FULL" EXIT-STATUS:FULL LINT-CODE-NAME+
 
 : LINT-CODE-FIND ( n -- n ) {: code:n :}   \ registry index or -1
    0 begin dup LINT-CODE# @ < while

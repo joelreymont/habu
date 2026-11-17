@@ -25,12 +25,9 @@ require src/lib/fs-list.f
 require src/lib/fs-identity.f
 require src/lib/process-tree.f
 require src/core/include.f
+require src/core/exit-status.f
 
 package INSTALL
-
-66 constant NOINPUT-RC
-78 constant CONFIG-RC
-74 constant IOERR-RC
 
 create LIB PATH-CAP allot           variable LIB-U
 create LIB-TREES PATH-CAP allot     variable LIB-TREES-U
@@ -70,7 +67,7 @@ create MSG 64 allot
 
 : PATHS! ( -- )
    s" HOME" GETENV {: h:^ hu:n :}
-   hu 0= if s" install: HOME is not set" CONFIG-RC die then
+   hu 0= if s" install: HOME is not set" EXIT-STATUS:SYSTEM die then
    h hu s" .local/lib" LIB FS:JOIN-PATH LIB-U !
    LIB$ s" habu-trees" LIB-TREES FS:JOIN-PATH LIB-TREES-U !
    LIB$ s" habu" LINK FS:JOIN-PATH LINK-U !
@@ -81,7 +78,7 @@ create MSG 64 allot
    s" install: the working directory has no " {: p:^ pu:n :}
    p MSG pu BYTE-COPY
    a MSG pu + u BYTE-COPY
-   MSG pu u + NOINPUT-RC die ;
+   MSG pu u + EXIT-STATUS:NOINPUT die ;
 
 : PLAIN-DIR? ( ^u8 n -- bool )
    2dup FS:SYMLINK? if 2drop false exit then
@@ -105,7 +102,7 @@ create MSG 64 allot
    s" test" NEED-DIR
    LINK$ FS:TRY-LSTAT if LINK$ FS:SYMLINK? 0= if
       s" install: ~/.local/lib/habu is not a link; make ~/.local/lib/habu-trees, move habu to habu-trees/tree-0 and link habu to habu-trees/tree-0"
-      CONFIG-RC die
+      EXIT-STATUS:SYSTEM die
    then then ;
 
 
@@ -157,7 +154,7 @@ create MSG 64 allot
    rc 0= if exit then
    rc E-FS-SYNC <> if rc throw then
    s" install: installed into " type TREE$ type cr
-   s" install: its link's directory not synced" IOERR-RC die ;
+   s" install: its link's directory not synced" EXIT-STATUS:IOERR die ;
 
 
 : MAIN ( -- )

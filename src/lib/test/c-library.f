@@ -8,6 +8,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/assert.f
+require src/core/exit-status.f
 
 package C-LIBRARY
 
@@ -25,7 +26,7 @@ private
    {: src:^ srcu :}
    SB-RESET s" c-library: cc failed on " SB-APPEND
    src srcu SB-APPEND
-   SB$ T-EX-FAIL die ;
+   SB$ EXIT-STATUS:FAILURE die ;
 
 : RUN ( -- result<n,n> )
    PROC-ENV-INHERIT-MISSING

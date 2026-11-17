@@ -12,6 +12,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/spawn.f
+require src/core/exit-status.f
 
 package SPAWN-TEST
 private
@@ -63,7 +64,7 @@ variable SCRIPT-LEN
    at SCRIPT-LEN @ < 0= if exit then
    fd FMT:INT$ {: d:^ du :}
    SCRIPT-LEN @ 1- du + {: len :}
-   len SCRIPT-CAP > if s" spawn-test: script too long" T-EX-FAIL die then
+   len SCRIPT-CAP > if s" spawn-test: script too long" EXIT-STATUS:FAILURE die then
    SCRIPT-LEN @ begin 1- dup at > while
       dup SCRIPT-BYTES + c@ over du + 1- SCRIPT-BYTES + c!
    repeat drop

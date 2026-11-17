@@ -68,11 +68,9 @@ private
 CAST: ALLOC-BYTES>N ( NUM:alloc-byte-len -- n )
 CAST: ALLOC-CELLS>N ( NUM:alloc-cell-count -- n )
 
-$47 constant UNMAP-EXIT
-
 : RELEASE-RANGE ( ^a n -- )
    munmap 0 < if
-      s" memory: unmap failed" UNMAP-EXIT die
+      s" memory: unmap failed" EXIT-STATUS:SYSTEM die
    then ;
 
 public

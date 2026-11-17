@@ -7,6 +7,7 @@
 require src/lib/time-cpu.f
 require src/lib/array.f
 require tools/lint/text.f
+require src/core/exit-status.f
 
 package CODE-BENCH
 private
@@ -20,9 +21,6 @@ $100000 constant TEXT-CAP           \ destination for the byte-moving benchmarks
 $0A constant LF
 $20 constant SP
 48 constant ZERO-C
-64 constant USAGE-RC                \ sysexits EX_USAGE
-74 constant IO-RC                   \ sysexits EX_IOERR
-70 constant WRONG-RC                \ sysexits EX_SOFTWARE
 64 constant MSG-CAP
 
 \ Repeat counts, one per benchmark, chosen so a run lands in tens of
@@ -95,7 +93,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    row FOLD-ROW = if s" fold" exit then
    row MOVE-ROW = if s" move" exit then
    row LINES-ROW = if s" lines" exit then
-   s" code-bench: no such benchmark row" WRONG-RC die ;
+   s" code-bench: no such benchmark row" EXIT-STATUS:FAILURE die ;
 
 \ ---- the source under the text benchmarks -----------------------------------
 
@@ -118,7 +116,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 : LOAD-SOURCE ( ^u8 n -- )
    LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT nip {: got :}
-   got 0= if s" code-bench: source file is empty" IO-RC die then
+   got 0= if s" code-bench: source file is empty" EXIT-STATUS:IOERR die then
    got TEXT-CAP > if TEXT-CAP else got then TEXT-N !
    LINE-LIMIT ;
 
@@ -248,7 +246,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    s" code-bench: " MSG+
    row ROW-NAME$ MSG+
    s"  computed a different result in a later round" MSG+
-   MSG MSG-N BUF-LEN@ WRONG-RC die ;
+   MSG MSG-N BUF-LEN@ EXIT-STATUS:FAILURE die ;
 
 \ One `xt` per benchmark would need a quotation the checker can call from a
 \ loop; naming the bodies and timing each in its own word costs one line each
@@ -296,7 +294,7 @@ public
 
 : MAIN ( -- )
    script-argc 1 < if
-      s" usage: bin/hb --load tools/code-bench.f -- <source-file>" USAGE-RC die
+      s" usage: bin/hb --load tools/code-bench.f -- <source-file>" EXIT-STATUS:USAGE die
    then
    0 script-argv$ LOAD-SOURCE
    PICK-NEEDLE

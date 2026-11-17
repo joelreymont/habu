@@ -4,6 +4,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/argv.f
+require src/core/exit-status.f
 require src/lib/fmt.f
 
 \ White-box test: reopen the module's package so the fixtures call the public
@@ -110,43 +111,43 @@ variable TEST-FAIL
 : TEST-UNKNOWN ( -- )
    QUIET-MOCK
    s" --wat" MOCK+
-   PARSE-RC E-USAGE ASSERT-RC ;
+   PARSE-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : TEST-MISSING-LABEL ( -- )
    QUIET-MOCK
    s" --label" MOCK+
-   PARSE-RC E-USAGE ASSERT-RC ;
+   PARSE-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : TEST-MISSING-OUT ( -- )
    QUIET-MOCK
    s" -o" MOCK+
-   PARSE-RC E-USAGE ASSERT-RC ;
+   PARSE-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : TEST-POS-LOW ( -- )
    QUIET-MOCK
-   ONE-POS-RC E-USAGE ASSERT-RC ;
+   ONE-POS-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : TEST-POS-HIGH ( -- )
    QUIET-MOCK
    s" a.f" MOCK+
    s" b.f" MOCK+
-   ONE-POS-RC E-USAGE ASSERT-RC ;
+   ONE-POS-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : TEST-REQUIRE-LABEL ( -- )
    QUIET-MOCK
    s" file.f" MOCK+
-   NEED-LABEL-RC E-USAGE ASSERT-RC ;
+   NEED-LABEL-RC EXIT-STATUS:USAGE ASSERT-RC ;
 
 : EXPECT-TOKEN-BOUNDS ( -- )
    -1 QUIET!
-   [: -1 TOK$ 2drop ;] catch E-USAGE ASSERT=
-   [: COUNT TOK$ 2drop ;] catch E-USAGE ASSERT=
+   [: -1 TOK$ 2drop ;] catch EXIT-STATUS:USAGE ASSERT=
+   [: COUNT TOK$ 2drop ;] catch EXIT-STATUS:USAGE ASSERT=
    0 QUIET! ;
 
 : TEST-TOKEN-BOUNDS ( -- )
    QUIET-MOCK PARSE
    POS# 0 ASSERT=
-   [: 0 POS$ 2drop ;] catch E-USAGE ASSERT=
+   [: 0 POS$ 2drop ;] catch EXIT-STATUS:USAGE ASSERT=
    EXPECT-TOKEN-BOUNDS
    s" one" MOCK+
    0 TOK$ s" one" ASSERT$
@@ -193,12 +194,12 @@ variable TEST-FAIL
    s" changed.f" MOCK+
    s" --label" MOCK+ s" changed" MOCK+
    s" --unknown" MOCK+
-   PARSE-RC E-USAGE ASSERT=
+   PARSE-RC EXIT-STATUS:USAGE ASSERT=
    ASSERT-PRIOR-PARSE
    QUIET-MOCK
    s" changed.f" MOCK+
    s" -o" MOCK+
-   PARSE-RC E-USAGE ASSERT=
+   PARSE-RC EXIT-STATUS:USAGE ASSERT=
    ASSERT-PRIOR-PARSE
    0 QUIET! ;
 
@@ -220,8 +221,8 @@ variable TEST-FAIL
    POS# MANY-ARGS ASSERT=
    0 POS$ s" first" ASSERT$
    MANY-ARGS 1- POS$ s" last" ASSERT$
-   [: -1 POS$ 2drop ;] catch E-USAGE ASSERT=
-   [: MANY-ARGS POS$ 2drop ;] catch E-USAGE ASSERT=
+   [: -1 POS$ 2drop ;] catch EXIT-STATUS:USAGE ASSERT=
+   [: MANY-ARGS POS$ 2drop ;] catch EXIT-STATUS:USAGE ASSERT=
    QUIET-MOCK
    s" --json" MOCK+ s" --" MOCK+
    MANY-ARGS 0 do s" -rest" MOCK+ loop
@@ -232,7 +233,7 @@ variable TEST-FAIL
    EXPECT-TOKEN-BOUNDS
    QUIET-MOCK
    s" kept" MOCK+
-   [: s" bad" drop -1 MOCK+ ;] catch E-INTERNAL ASSERT=
+   [: s" bad" drop -1 MOCK+ ;] catch EXIT-STATUS:INTERNAL ASSERT=
    COUNT 1 ASSERT=
    0 TOK$ s" kept" ASSERT$
    POS# MANY-ARGS ASSERT=
@@ -262,11 +263,11 @@ create MSG-TEXT MSG-LEN allot
    MSG-LEN 0 do 117 MSG-TEXT i + c! loop
    MSG-TEXT MSG-LEN USAGE!
    -1 QUIET!
-   [: s" x" FAIL ;] catch E-USAGE ASSERT-RC
+   [: s" x" FAIL ;] catch EXIT-STATUS:USAGE ASSERT-RC
    -1 QUIET!
-   [: MSG-TEXT MSG-LEN FAIL ;] catch E-USAGE ASSERT-RC
+   [: MSG-TEXT MSG-LEN FAIL ;] catch EXIT-STATUS:USAGE ASSERT-RC
    -1 QUIET!
-   [: MSG-TEXT -1 FAIL ;] catch E-INTERNAL ASSERT-RC
+   [: MSG-TEXT -1 FAIL ;] catch EXIT-STATUS:INTERNAL ASSERT-RC
    s" usage" USAGE! ;
 
 : TEST-MOCKS ( -- )

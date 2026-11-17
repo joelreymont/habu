@@ -9,13 +9,10 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/compiler/target/model.f
 require tools/hb-build-core.f
+require src/core/exit-status.f
 
 package BUILD-PROFILE
 private
-
-64 constant USAGE-RC                   \ sysexits EX_USAGE
-66 constant NOINPUT-RC                 \ sysexits EX_NOINPUT
-74 constant IOERR-RC                   \ sysexits EX_IOERR
 
 20 constant REPORT-FD-MIN              \ keep the saved stdout clear of the build's own descriptors
 0 constant F-DUPFD                     \ fcntl: duplicate to the lowest descriptor at or above the argument
@@ -37,7 +34,7 @@ variable REPORT-FD
 
 : USAGE ( -- )
    s" usage: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>"
-   USAGE-RC die ;
+   EXIT-STATUS:USAGE die ;
 
 : SOURCE$ ( -- ^u8 n )   FIRST SCRIPT-ARGV$ ;
 : OUT$    ( -- ^u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
@@ -59,7 +56,7 @@ variable REPORT-FD
    1 SCRIPT-ARGV$ {: a:^ u:n :}
    a u RTARGET:PLATFORM? 0= if
       2 s" build-profile: unknown target " write drop
-      a u USAGE-RC die
+      a u EXIT-STATUS:USAGE die
    then
    a u RTARGET:RESOLVE ;
 
@@ -68,10 +65,10 @@ variable REPORT-FD
 \ length of one report is therefore the whole of "write it to a file".
 : REDIRECT ( ^u8 n -- ) {: pa:^ pu:n :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
-   SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" IOERR-RC die then
+   SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" EXIT-STATUS:IOERR die then
    pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !
-   REPORT-FD @ 0 < if s" build-profile: cannot open a report file" IOERR-RC die then
-   REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" IOERR-RC die then ;
+   REPORT-FD @ 0 < if s" build-profile: cannot open a report file" EXIT-STATUS:IOERR die then
+   REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" EXIT-STATUS:IOERR die then ;
 
 : RESTORE ( -- )
    SAVED-OUT @ 1 dup2 drop
@@ -91,7 +88,7 @@ variable REPORT-FD
 public
 : MAIN ( -- )
    ARGS-OK? 0= if USAGE then
-   SOURCE-OK? 0= if s" build-profile: no such source" NOINPUT-RC die then
+   SOURCE-OK? 0= if s" build-profile: no such source" EXIT-STATUS:NOINPUT die then
    TICK-US prof-rate  0 prof-on
    ['] BUILD catch {: rc:n :}
    prof-off

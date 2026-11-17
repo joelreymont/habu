@@ -27,13 +27,10 @@ require src/lib/engine-candidate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/habu/verify-source.f
+require src/core/exit-status.f
 
 package LSP-CHECK
 using SOURCE-ROOT
-
-\ check.f's exit statuses.
-64 constant CHK-E-USAGE
-69 constant CHK-E-UNAVAILABLE
 
 TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U

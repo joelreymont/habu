@@ -19,13 +19,13 @@ require src/lib/process-argv.f
 require src/lib/process-env.f           \ RESOLVE-EXECUTABLE finds mkfifo and cat
 require src/lib/fd.f                    \ FD:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
 require src/lib/ffi-abi.f
+require src/core/exit-status.f
 
 PROCESS-SYMBOLS
 FUNCTION: ACCESS-CALL access ( ^u8 n -- i32 ) ;FUNCTION
 
 $4000 constant FS-TEST-S-IFDIR             \ S_IFDIR on both targets
 2 constant FS-TEST-ENOENT                   \ ENOENT on both targets
-1 constant FS-TEST-EX-FAIL
 $78 constant FS-TEST-FILL-C
 3 constant FS-TEST-WRITE-LEN
 4 constant FS-TEST-EXACT-CAP
@@ -744,7 +744,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 : FS-TEST-REPORT ( -- )
    FS-TEST-FAIL @ 0 = if s" fs-test: ok" type cr exit then
    s" fs-test: " type FS-TEST-FAIL @ FMT:.INT s"  failure(s)" type cr
-   s" fs-test: failures" FS-TEST-EX-FAIL die ;
+   s" fs-test: failures" EXIT-STATUS:FAILURE die ;
 
 : FS-TEST-CLEANUP ( -- )
    FS-TEST-WA FS:REMOVE-TREE

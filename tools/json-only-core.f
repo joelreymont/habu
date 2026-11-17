@@ -4,9 +4,9 @@ require src/lib/error.f
 require src/lib/jsonl.f
 require src/lib/string.f
 require src/lib/fd.f
+require src/core/exit-status.f
 
 10 constant JSON-ONLY-LF-C
-74 constant JSON-ONLY-E-IO
 
 create JSON-ONLY-LF 1 allot
 TYPED-VARIABLE JSON-ONLY-READER JSON:cursor
@@ -29,7 +29,7 @@ variable JSON-ONLY-ROW-OBJECT
 
 : JSON-ONLY-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
    u 0= IF exit THEN
-   fd a u write u <> IF s" json-only: write failed" JSON-ONLY-E-IO die THEN ;
+   fd a u write u <> IF s" json-only: write failed" EXIT-STATUS:IOERR die THEN ;
 
 : JSON-ONLY-LF$ ( -- ^u8 n )
    JSON-ONLY-LF-C JSON-ONLY-LF c!

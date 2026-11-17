@@ -18,6 +18,7 @@
 \ sees EOF. src/lib/fd-lock.f orders the mark against forks.
 
 require src/lib/engine-id.f
+require src/core/exit-status.f
 s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC
@@ -242,27 +243,23 @@ public
    STATUS>ENDING ENDING>RC ;
 
 \ A throw code does not cross a process boundary: `die` and the uncaught-throw
-\ exit turn every negative code into EXIT-STATUS:UNCAUGHT (67). A tool whose
-\ work can end on a deadline exits TIMEOUT-RC for E-PROC-TIMEOUT, and the
+\ exit turn every negative code into EXIT-STATUS:UNCAUGHT. A tool whose work
+\ can end on a deadline exits EXIT-STATUS:TIMEOUT for E-PROC-TIMEOUT, and the
 \ process that runs it throws E-PROC-TIMEOUT again on that status, so the
-\ verdict reaches the top of a chain of tools. 124 is coreutils `timeout`'s
-\ status; no exit-status constant, `die` literal or positive throw code in src/
-\ or tools/ is 124, and a signal death reads as 128 + signal.
-124 constant TIMEOUT-RC
-
+\ verdict reaches the top of a chain of tools.
 : EXIT-RC ( n n -- n ) {: code:n fail:n :}
    code 0= if 0 exit then
-   code E-PROC-TIMEOUT = if TIMEOUT-RC exit then
+   code E-PROC-TIMEOUT = if EXIT-STATUS:TIMEOUT exit then
    fail ;
 
-\ ENDING>RC with a timeout read as TIMEOUT-RC instead of thrown: a
+\ ENDING>RC with a timeout read as EXIT-STATUS:TIMEOUT instead of thrown: a
 \ caller that throws E-PROC-TIMEOUT again on that rc reports this deadline and
 \ one that expired inside the child alike.
 : ENDING>DEADLINE-RC ( ending -- rc )
    MATCH ending
      exited OF >RC ENDOF
      signaled OF 128 + >RC ENDOF
-     timeout OF TIMEOUT-RC >RC ENDOF
+     timeout OF EXIT-STATUS:TIMEOUT >RC ENDOF
    ;MATCH ;
 
 \ Waits for the child to end, with no deadline; a failed wait throws

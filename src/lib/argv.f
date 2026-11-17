@@ -1,18 +1,13 @@
 \ argv.f - checked argv parser for `bin/hb script.f args...` scripts (ARGV).
 \ PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` ending
 \ `bin/hb --load a.f -- args` (file-source mode leaves non-tty stdin to the
-\ tool), or the MOCK+ set until USE-SCRIPT. A refusal throws E-USAGE (64, the
-\ exit code when uncaught).
+\ tool), or the MOCK+ set until USE-SCRIPT. A rejection throws EXIT-STATUS:USAGE,
+\ the exit status when uncaught.
 \ STORAGE CLASS. PROCESS-WIDE: static parser state; one task parses at a time.
 
+require src/core/exit-status.f
+
 package ARGV
-
-public
-
-64 constant E-USAGE
-76 constant E-INTERNAL
-
-private
 
 $2D constant ARGV-CHAR-DASH
 
@@ -44,7 +39,7 @@ variable ARGV-QUIET
 : ARGV-TRUE ( -- bool )  0 0= ;
 
 : >SPAN ( ^u8 n -- span )
-   dup 0 < if E-INTERNAL throw then
+   dup 0 < if EXIT-STATUS:INTERNAL throw then
    >LEN SPAN-MAKE ;
 
 : SPAN$ ( span -- ^u8 n )
@@ -85,12 +80,12 @@ private
    S\" \nusage: " ARGV-ERR
    ARGV-USAGE @ SPAN$ ARGV-ERR
    S\" \n" ARGV-ERR
-   E-USAGE throw ;
+   EXIT-STATUS:USAGE throw ;
 
 public
 
 : FAIL ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 < if E-INTERNAL throw then
+   u 0 < if EXIT-STATUS:INTERNAL throw then
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
 

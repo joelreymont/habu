@@ -14,6 +14,7 @@ require src/lib/test.f
 require src/arch/wasm/profile.f
 require src/habu/stack-abi.f
 require test/wasm/harness.f
+require src/core/exit-status.f
 
 package WASM-DATA-TEST
 private
@@ -98,7 +99,7 @@ DYNAMIC-BUFFER AFTER u8
 
 : NO-BASE ( ^u8 n -- )
    type cr
-   s" wasm data test: OUT's last line is not the dynamic buffer's address" T-EX-FAIL die ;
+   s" wasm data test: OUT's last line is not the dynamic buffer's address" EXIT-STATUS:FAILURE die ;
 
 \ data-region.f prints the dynamic buffer's address last.
 : DYN-BASE ( -- n )

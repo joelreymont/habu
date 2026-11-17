@@ -28,6 +28,7 @@ require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
+require src/core/exit-status.f
 \ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
 \ run stage, which --verify-only makes.
 require tools/check-verify-core.f
@@ -224,7 +225,7 @@ variable CHK-EXP-OUT-U
 : CHK-USAGE ( -- )
    REJECTION:HELP
    s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" REJECTION:EMIT-STR
-   CHK-E-USAGE REJECTION:STOP ;
+   EXIT-STATUS:USAGE REJECTION:STOP ;
 
 : CHK-REJECT-ARG ( ^u8 n ^u8 n ^u8 n -- )
    CHK-USAGE-SAY CHK-USAGE ;
@@ -566,7 +567,7 @@ private
    a at + c@ CHK-BYTE-NAME  s"  at byte " REJECTION:EMIT-STR  at REJECTION:EMIT-U
    REJECTION:HELP  h hu REJECTION:EMIT-STR
    REJECTION:KEEP
-   CHK-E-USAGE CHK-THROW ;
+   EXIT-STATUS:USAGE CHK-THROW ;
 
 : CHK-QPATH-JUDGE ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
    [: a u SOURCE-QPATH-CHECK ;] catch {: rc:n :}
@@ -953,7 +954,7 @@ private
       ok OF {: rc:n :}
          rc 0= if CHK-VERIFIER-LOG else CHK-VERIFIER-RELAY rc CHK-THROW then
       ENDOF
-      err OF CHK-VERIFIER-RELAY CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      err OF CHK-VERIFIER-RELAY CHK-VERIFIER-STATUS EXIT-STATUS:UNAVAILABLE CHK-THROW ENDOF
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
@@ -973,7 +974,7 @@ private
    rc E-PROC-TRUNCATED <> if rc throw then
    CHK-VERIFIER-RELAY
    CHK-VERIFIER-TRUNCATED
-   CHK-E-UNAVAILABLE CHK-THROW ;
+   EXIT-STATUS:UNAVAILABLE CHK-THROW ;
 
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ FS:WRITE-ALL
@@ -1082,9 +1083,9 @@ private
          REJECTION:HELP
          CHK-RERUN
          REJECTION:KEEP
-         CHK-E-UNAVAILABLE CHK-THROW
+         EXIT-STATUS:UNAVAILABLE CHK-THROW
       ENDOF
-      incomplete OF CHK-VERIFIER-STATUS CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      incomplete OF CHK-VERIFIER-STATUS EXIT-STATUS:UNAVAILABLE CHK-THROW ENDOF
       deferred OF
          s" check.f: a stretch or definition deferred to the run is not verified" CHK-OUT-LN
       ENDOF
@@ -1105,7 +1106,7 @@ private
    rc E-PROC-TRUNCATED <> if rc throw then
    CHK-VERIFIER-RELAY
    CHK-VERIFIER-TRUNCATED
-   CHK-E-UNAVAILABLE CHK-THROW ;
+   EXIT-STATUS:UNAVAILABLE CHK-THROW ;
 
 \ A record this process writes is in the run's mode.
 : CHK-RUN-INNER ( -- )

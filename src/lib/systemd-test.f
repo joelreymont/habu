@@ -14,6 +14,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/string-roles.f
 require src/lib/net/udp.f
+require src/core/exit-status.f
 
 package SYSTEMD-TEST
 private
@@ -60,7 +61,7 @@ variable ABSTRACT-FD
    UDP:BIND MATCH UDP:open-result
       opened OF UDP:SOCKET>N ENDOF
       failed OF
-         drop s" systemd-test: bind failed" T-EX-FAIL die
+         drop s" systemd-test: bind failed" EXIT-STATUS:FAILURE die
       ENDOF
    ;MATCH ;
 

@@ -6,14 +6,9 @@ require src/lib/memory.f
 require src/lib/heap.f
 require src/lib/vector.f
 require tools/lint/text.f
+require src/core/exit-status.f
 
 package LINT-INTERN
-public
-
-76 constant E-LINT-INTERN-CAP
-s" E-LINT-INTERN-CAP" E-LINT-INTERN-CAP LINT-CODE-NAME+
-
-private
 
 \ The set has no entry ceiling: ids live in growable vectors and their bytes in
 \ chunks allocated on demand, so a repository-scale input is bounded by memory
@@ -78,8 +73,8 @@ public
 
 : INTERN$ ( n -- ^u8 n ) {: id :}
    INTERN-INIT-ONCE
-   id 0 < IF E-LINT-INTERN-CAP throw THEN
-   id INTERN# >= IF E-LINT-INTERN-CAP throw THEN
+   id 0 < IF EXIT-STATUS:FULL throw THEN
+   id INTERN# >= IF EXIT-STATUS:FULL throw THEN
    INTERN-ADDR-V @ id VEC:AT @
    INTERN-LEN-V @ id VEC:AT @ ;
 
@@ -126,7 +121,7 @@ private
    k INTERN-CHUNK-USED@ u + k INTERN-CHUNK-USED! ;
 
 : INTERN-ALLOC-SPAN ( n -- ^u8 ) {: u :}
-   u 0 < IF E-LINT-INTERN-CAP throw THEN
+   u 0 < IF EXIT-STATUS:FULL throw THEN
    u INTERN-ENSURE-CHUNK
    u INTERN-CHUNK-I @ INTERN-ALLOC-IN-CHUNK ;
 

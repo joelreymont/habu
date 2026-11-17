@@ -33,6 +33,7 @@ require src/habu/boot-files.f
 require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
+require src/core/exit-status.f
 
 package HB-BUILD-CORE
 private
@@ -137,7 +138,6 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : WASM? ( -- bool ) TARGET @ TARGET-WASM? ;
 
-64 constant USAGE-RC                    \ sysexits EX_USAGE
 
 : LOAD? ( n -- bool )
    case
@@ -500,7 +500,7 @@ SUM-U 32 + constant HEAD-U
       REJECTION:HELP
       s" build the engine or REPL for macos-aarch64 or linux-aarch64, or drop `--engine` / `--repl` to build a Wasm program"
       REJECTION:EMIT-STR
-      USAGE-RC REJECTION:STOP
+      EXIT-STATUS:USAGE REJECTION:STOP
    then ;
 
 public

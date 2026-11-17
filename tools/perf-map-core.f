@@ -7,11 +7,11 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/habu/boot-cells.f
+require src/core/exit-status.f
 
 package PERF-MAP
 private
 
-74 constant E-IO                 \ EX_IOERR: the exit status when stdin cannot be read
 $10000 constant IN-CAP           \ one read chunk
 4096 constant LINE-CAP
 $4000 constant OUT-CAP           \ one rewritten line: LINE-CAP bytes plus a name and an offset
@@ -161,7 +161,7 @@ private
 \ ---- streaming stdin ----------------------------------------------------------
 : REFILL ( -- bool )
    0 IN-BUF IN-CAP read {: got:n :}
-   got 0 < if s" perf-map: cannot read stdin" E-IO die then
+   got 0 < if s" perf-map: cannot read stdin" EXIT-STATUS:IOERR die then
    got IN-U !  0 IN-I !
    got 0 > ;
 

@@ -9,6 +9,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/codesign.f
 require src/core/sha256.f
+require src/core/exit-status.f
 
 64 constant SEED-SHA256-HEX-U
 10000 constant SEED-SMOKE-TIMEOUT-MS
@@ -18,8 +19,6 @@ require src/core/sha256.f
 4096 constant SEED-SMOKE-ERR-CAP
 32768 constant SEED-BUILD-OUT-CAP
 32768 constant SEED-BUILD-ERR-CAP
-64 constant SEED-USAGE-RC
-66 constant SEED-NOINPUT-RC
 47 constant SEED-SLASH
 12 constant SEED-SMOKE-IN-U
 
@@ -189,10 +188,10 @@ variable SEED-LAST
    dst dstu SEED-RUN-BUILD ;
 
 : SEED-USAGE ( -- )
-   s" usage: hb --load tools/seed-main.f -- /path/to/hb-seed" SEED-USAGE-RC die ;
+   s" usage: hb --load tools/seed-main.f -- /path/to/hb-seed" EXIT-STATUS:USAGE die ;
 
 : SEED-MAIN ( -- )
    SCRIPT-ARGC 1 <> if SEED-USAGE then
-   0 SCRIPT-ARGV$ 2dup FS:FILE? 0= if s" seed: not a file" SEED-NOINPUT-RC die then
+   0 SCRIPT-ARGV$ 2dup FS:FILE? 0= if s" seed: not a file" EXIT-STATUS:NOINPUT die then
    s" bin/hb" SEED-INSTALL-SMOKE-BUILD
    s" seed OK: trusted seed rebuilt current bin/hb" type cr ;

@@ -12,14 +12,9 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/codesign.f
+require src/core/exit-status.f
 
 package CHAIN-RUN
-
-public
-
-\ The chain's failure status: a non-fixpoint, and every throw the CLI entry
-\ (tools/chain-run-build.f) catches other than an expired deadline.
-74 constant FAIL-RC
 
 private
 
@@ -90,6 +85,6 @@ public
    1 ARG 2 ARG SAME-FILES? if 2 REPORT exit then
    2 ARG 3 ARG 4 ARG BUILD
    2 ARG 3 ARG SAME-FILES? if 3 REPORT exit then
-   s" chain-run: generation 3 is not the same image as generation 2" FAIL-RC die ;
+   s" chain-run: generation 3 is not the same image as generation 2" EXIT-STATUS:FAILURE die ;
 
 ;package

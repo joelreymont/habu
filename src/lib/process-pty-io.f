@@ -15,6 +15,7 @@ require src/lib/pty.f
 require src/lib/aio.f
 require src/lib/task.f
 require src/lib/prelude.f
+require src/core/exit-status.f
 
 package PROCESS-PTY
 
@@ -22,7 +23,6 @@ package PROCESS-PTY
 3 constant ESRCH#                  \ "no such process" (POSIX, identical Linux/macOS)
 1 constant EPERM#                  \ "operation not permitted" (process exists, denied)
 PATH-CAP 1 + constant IO-PATH-CAP  \ a supervised executable path of PATH-CAP bytes and its NUL
-$7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces the image
 10 constant IO-LF
 
 \ Load-time scratch shared by the parent build path and by each forked child (a
@@ -110,7 +110,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ that number, where wiring 0-2 would overwrite it.
 : IO-LIFT ( fd -- fd ) {: f:fd :}
    f FD>N FD:F-DUPFD-CLOEXEC 3 fcntl {: n:n :}
-   n 0 < if s" " IO-EXEC-FAIL die then
+   n 0 < if s" " EXIT-STATUS:EXEC die then
    n >FD ;
 
 \ Input on 0, output and diagnostics on 1 and 2. Every source is a lifted
@@ -125,17 +125,17 @@ variable IO-GO-R                                 \ child-side release gate
 \ every other descriptor but the gate's read end, then blocks on the gate. It
 \ holds no write end of the gate, so a supervisor that closes or loses its end
 \ without LAUNCH gives it end of file and it exits without exec. That exit and
-\ a failed execve both exit with IO-EXEC-FAIL; the watch sees the exit.
+\ a failed execve both exit with EXIT-STATUS:EXEC; the watch sees the exit.
 : IO-TARGET-CHILD ( -- )
    IO-GO-R @ >FD IO-LIFT {: go:fd :}
    IO-SIN-R @ >FD IO-LIFT {: in:fd :}
    IO-TTY @ if in else IO-SOUT-W @ >FD IO-LIFT then {: out:fd :}
    in out IO-WIRE
    go IO-CLOSE-HIGH
-   go FD>N IO-GOBYTE 1 read 1 <> if s" " IO-EXEC-FAIL die then
+   go FD>N IO-GOBYTE 1 read 1 <> if s" " EXIT-STATUS:EXEC die then
    go FD>N close
    IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE 0 IO-ENVP execve drop
-   s" " IO-EXEC-FAIL die ;
+   s" " EXIT-STATUS:EXEC die ;
 
 : IO-RESET-STX ( -- )
    -1 IO-T-PID !

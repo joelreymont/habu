@@ -12,6 +12,7 @@ require src/lib/memory.f
 require src/lib/string.f
 require src/lib/span.f
 require src/core/compile-reads.f
+require src/core/exit-status.f
 
 package JSONL
 public
@@ -41,10 +42,6 @@ private
 8192 constant BLOCK-BYTES
 256 constant FIRST-CAP
 10 constant LF
-\ A failed close kills the process ("jsonl: close failed", exit 71): macOS and
-\ Linux release the descriptor before close reports, so a retry could close a
-\ reused one.
-$47 constant CLOSE-EXIT      \ close releases the descriptor even when it fails
 
 \ BUF's public header is the first three cells of cursor. Its API accepts a
 \ pointer to that header, so project the record base at this one boundary.
@@ -62,7 +59,9 @@ public
    {: cur:^ :}
    cur CURSOR-LIVE @ 0= if exit then
    false cur CURSOR-LIVE !
-   cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" CLOSE-EXIT die then
+   \ A failed close ends the process: macOS and Linux release the descriptor
+   \ before close reports, so a retry could close a reused one.
+   cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" EXIT-STATUS:SYSTEM die then
    cur BUF-HDR BUF:DISPOSE
    cur CURSOR-READER JSON:READ-DISPOSE
    cur CURSOR-STORAGE @ 0= if exit then       \ OPEN's allocation threw first

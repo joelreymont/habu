@@ -25,10 +25,9 @@ require src/lib/fs.f
 require tools/image-names.f
 require src/os/macos/macho.f
 require src/os/linux/elf.f
+require src/core/exit-status.f
 
 package IMAGE-SIZE
-
-74 constant RC
 
 DYNAMIC-BUFFER IMG n
 variable ILEN
@@ -45,11 +44,11 @@ variable OTHER-SIZE
 : READ-IMAGE ( ^u8 n -- )
    {: path:^ pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
-   size CELL < if s" image-size: image too small" RC die then
+   size CELL < if s" image-size: image too small" EXIT-STATUS:IOERR die then
    size CELL 1- + CELL / IMG-RESERVE
    size ILEN !
    path pathu IMG@ size FS:READ-ALL size <> if
-      s" image-size: short read" RC die
+      s" image-size: short read" EXIT-STATUS:IOERR die
    then ;
 
 : ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
@@ -61,7 +60,7 @@ variable OTHER-SIZE
    s" image-size: not a Habu program" ;
 
 : REFUSE ( -- )
-   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ RC die then ;
+   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ EXIT-STATUS:IOERR die then ;
 
 : OPEN ( -- )
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
@@ -69,11 +68,11 @@ variable OTHER-SIZE
 
 : MAP-CHECK ( ^u8 n -- )
    IMAGE-NAMES:MAP$ 0= if
-      2drop s" image-size: the program path is too long for its map path" RC die
+      2drop s" image-size: the program path is too long for its map path" EXIT-STATUS:IOERR die
    then {: map:^ mapu:n :}
    map mapu FS:FILE? if exit then
    2 s" image-size: no map " write drop
-   map mapu RC die ;
+   map mapu EXIT-STATUS:IOERR die ;
 
 \ The bytes the map's rows tile from the code's first byte.
 : MAP-BYTES ( -- n )
@@ -92,7 +91,7 @@ variable OTHER-SIZE
    end ELF:TEXT-OFF >= end ELF:TEXT-LIMIT <= and
    ELF:TEXT-LIMIT end - ELF:TEXT-ALIGN < and
    end ELF:TEXT-LIMIT ZEROS? and 0= if
-      s" image-size: the map's rows do not end at the code's last page" RC die
+      s" image-size: the map's rows do not end at the code's last page" EXIT-STATUS:IOERR die
    then end ;
 
 : TEXT-OFF ( -- n )
@@ -125,10 +124,10 @@ variable OTHER-SIZE
 : DATA-RUN ( n n -- n n )
    {: at:n end:n :}
    at 16 + end > if
-      s" image-size: a DATA run's header passes its end" RC die then
+      s" image-size: a DATA run's header passes its end" EXIT-STATUS:IOERR die then
    at 8 + IMG-U64@ {: len:n :}
    len 1 < len end at - 16 - 8 / > or if
-      s" image-size: a DATA run passes its end" RC die then
+      s" image-size: a DATA run passes its end" EXIT-STATUS:IOERR die then
    at 16 + len 8 * +
    0 len 0 ?do at 16 + i 8 * + IMG-U64@ 0= if 8 + then loop ;
 
@@ -136,19 +135,19 @@ variable OTHER-SIZE
 : DATA-ZEROS ( n n -- n )
    {: at:n end:n :}
    end TEXT-END > if
-      s" image-size: the DATA image passes the code" RC die then
+      s" image-size: the DATA image passes the code" EXIT-STATUS:IOERR die then
    0 at begin dup end < while end DATA-RUN rot + swap repeat drop ;
 
 : DATA-REGION ( -- n n )
    s" data" IMAGE-NAMES:REGION {: start:n len:n :}
    start 0 < len 0 <= or if
-      s" image-size: the map frames no DATA image" RC die then
+      s" image-size: the map frames no DATA image" EXIT-STATUS:IOERR die then
    start len ;
 
 : CODE-CLASS ( -- )
    IMAGE-NAMES:CODE-END {: end:n :}
    end IMAGE-NAMES:CODE-ATTR 0= if
-      s" image-size: the map's code rows do not tile the code" RC die then
+      s" image-size: the map's code rows do not tile the code" EXIT-STATUS:IOERR die then
    end CODE-SIZE ! ;
 
 : NAME-CLASS ( -- )
@@ -171,7 +170,7 @@ variable OTHER-SIZE
 : SUMS ( -- )
    CODE-SIZE @ NAME-SIZE @ + WRITTEN-SIZE @ + ZERO-SIZE @ +
    PAD-SIZE @ + OTHER-SIZE @ + ILEN @ <> if
-      s" image-size: classes do not sum to the file length" RC die then ;
+      s" image-size: classes do not sum to the file length" EXIT-STATUS:IOERR die then ;
 
 : TAB ( -- ) 9 emit ;
 

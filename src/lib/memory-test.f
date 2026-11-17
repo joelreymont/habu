@@ -4,6 +4,7 @@ require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/memory.f
+require src/core/exit-status.f
 require src/lib/test/ending.f
 require src/lib/process.f
 require src/lib/process-fork.f
@@ -327,7 +328,6 @@ execute
 package MEM-FATAL-TEST
 
 $100 constant CAP
-$47 constant FATAL-RC
 
 create CAP-OUT CAP allot
 create CAP-ERR CAP allot
@@ -335,7 +335,7 @@ create CAP-ERR CAP allot
 : EXPECT-FATAL ( ^u8 n -- ) {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc EXIT-STATUS:SYSTEM T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 

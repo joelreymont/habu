@@ -3,6 +3,7 @@
 
 require src/lib/memory.f
 require src/lib/argv.f
+require src/core/exit-status.f
 require tools/json-only-core.f
 require src/lib/fs.f
 
@@ -41,12 +42,12 @@ variable JSON-ONLY-IN-A
 : JSON-ONLY-READ-FILE ( ^u8 n -- ^u8 n )
    {: a:^ u :}
    a u FS:>PATHZ 0 0 open JSON-ONLY-FD !
-   JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" JSON-ONLY-E-IO die THEN
+   JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" EXIT-STATUS:IOERR die THEN
    0 JSON-ONLY-LEN !
    begin
       JSON-ONLY-LEN @ JSON-ONLY-IN-CAP >= IF
          JSON-ONLY-FD @ close
-         s" json-only: input too large" JSON-ONLY-E-IO die
+         s" json-only: input too large" EXIT-STATUS:IOERR die
       THEN
       JSON-ONLY-READ-CHUNK
       JSON-ONLY-RD @ 0 >
@@ -55,7 +56,7 @@ variable JSON-ONLY-IN-A
    repeat
    JSON-ONLY-RD @ 0 < IF
       JSON-ONLY-FD @ close
-      s" json-only: read failed" JSON-ONLY-E-IO die
+      s" json-only: read failed" EXIT-STATUS:IOERR die
    THEN
    JSON-ONLY-FD @ close
    JSON-ONLY-IN JSON-ONLY-LEN @ ;
@@ -63,7 +64,7 @@ variable JSON-ONLY-IN-A
 : JSON-ONLY-USAGE ( -- )
    2 s" usage: tools/json-only.f stderr-file" JSON-ONLY-WRITE
    2 JSON-ONLY-LF$ JSON-ONLY-WRITE
-   ARGV:E-USAGE throw ;
+   EXIT-STATUS:USAGE throw ;
 
 : JSON-ONLY-INPUT$ ( -- ^u8 n )
    ARGV:COUNT 1 <> IF JSON-ONLY-USAGE THEN

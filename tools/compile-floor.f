@@ -10,6 +10,7 @@ require src/lib/float.f
 require src/lib/argv.f
 require src/lib/time-cpu.f
 require src/lib/fd.f
+require src/core/exit-status.f
 
 -7701 s" the mean tier-0 compile time of a trivial definition is above the floor given"
    ERROR:FAULT E-FLOOR-EXCEEDED
@@ -24,7 +25,6 @@ $2000 constant SRC-CAP             \ source bytes for one set
 1000 constant NS-PER-US
 1000 constant US-PER-MS
 $0A constant LF
-74 constant IO-RC                  \ sysexits EX_IOERR, as tools/lint/text.f uses it
 
 create SRC SRC-CAP allot
 create SRC-OFF SET-N cells allot
@@ -45,7 +45,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : EMIT-ERR ( ^u8 n -- ) {: msg:^ mu :}
    FD:STDERR FD>N msg mu write mu <> if
-      s" compile-floor: stderr write failed" IO-RC die
+      s" compile-floor: stderr write failed" EXIT-STATUS:IOERR die
    then ;
 
 : REFUSE ( ^u8 n n -- ) {: msg:^ mu thrown :}

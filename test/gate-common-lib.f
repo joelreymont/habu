@@ -13,6 +13,7 @@ require src/lib/test/runner.f
 require src/lib/fd.f
 require src/lib/fmt.f
 require src/lib/engine-candidate.f
+require src/core/exit-status.f
 
 $40000 constant GE-SRC-CAP
 \ Generous deadlock deadline for one engine-gate child.
@@ -182,9 +183,9 @@ variable GE-EVAL-SRC-U
    GT-ERR$ type
    \ A child whose deadline expired failed no check of its own: rethrow the
    \ deadline instead of failing this check. That is this capture's deadline, or
-   \ one inside the child, which then exits PROCESS:TIMEOUT-RC (src/lib/process.f).
+   \ one inside the child, which then exits EXIT-STATUS:TIMEOUT.
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
-   GT-RC@ PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   GT-RC@ EXIT-STATUS:TIMEOUT = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
 
 \ The entry's exit status for an rc check. A timed-out entry has none, and

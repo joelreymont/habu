@@ -1,6 +1,7 @@
 \ runner.f - checked process-fixture helpers for native test scripts: GT-START
 \ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child's whole
-\ output, GT-FAIL+ records a named failure and GT-REPORT exits GT-EX-FAIL.
+\ output, GT-FAIL+ records a named failure and GT-REPORT exits
+\ EXIT-STATUS:FAILURE.
 \ STORAGE CLASS. PROCESS-WIDE: the root, capture storage, failure table and
 \ capture frames are the process's; the standard streams are the process's, so
 \ two tasks never capture at once.
@@ -20,8 +21,8 @@ require src/lib/process-env.f
 require src/lib/fd.f
 require src/lib/test/record.f
 require src/lib/fmt.f
+require src/core/exit-status.f
 
-2 constant GT-EX-FAIL
 256 constant GT-FAIL-MAX
 128 constant GT-FAIL-NAME-CAP
 \ The longest name GT-PATH joins. GT-START keeps that much room below the root
@@ -350,7 +351,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    then
    s" test-runner: " type GT-FAIL# @ FMT:.INT s"  failure(s)" type cr
    GT-REPORT-FAILS
-   s" test-runner: failures" GT-EX-FAIL die ;
+   s" test-runner: failures" EXIT-STATUS:FAILURE die ;
 
 \ The longest TMPDIR GT-START takes for a root prefix of n bytes: the root
 \ FS:MKTEMP-DIR makes under it, a slash and a GT-NAME-MAX name fit PATH-CAP.

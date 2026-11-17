@@ -42,7 +42,7 @@ variable LINT-MAIN-NI
    10 LINT-MAIN-LFB c!
    LINT-MAIN-LFB 1 LINT-MAIN-OUT ;
 
-: LINT-THREW-NAME. ( n -- )   \ append " (E-LINT-...)" when the code is known
+: LINT-THREW-NAME. ( n -- )   \ append " (NAME)" when the code is registered
    LINT-CODE-FIND dup 0 < IF drop exit THEN
    s"  (" LINT-MAIN-OUT
    LINT-CODE-NAME$ LINT-MAIN-OUT

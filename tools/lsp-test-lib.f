@@ -736,6 +736,7 @@ require tools/lsp-defs.f
 require tools/lsp-highlight.f
 require tools/lsp-workspace.f
 require tools/lsp-core.f
+require src/core/exit-status.f
 
 package LSP-TEST
 using BUF
@@ -3025,7 +3026,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
       if i TREE-TEXT size i - t tu STARTS-WITH? if i unloop exit then then
    loop
    SB-RESET s" lsp-test: no line starts with " SB-APPEND t tu SB-APPEND
-   SB$ T-EX-FAIL die ;
+   SB$ EXIT-STATUS:FAILURE die ;
 
 \ PATH and the line, counted from 0 as LSP positions are, of the first line of
 \ the file there that starts with TEXT.

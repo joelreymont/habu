@@ -10,6 +10,7 @@ require src/lib/task.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-reaper.f
+require src/core/exit-status.f
 
 package PROCESS-REAPER-TEST
 private
@@ -82,7 +83,7 @@ variable ACC
 : ENDED-RC ( pid -- n )
    {: pid:pid :}
    pid GONE-MS >MS PROCESS:WAIT-BOUNDED PROCESS:ENDING>DEADLINE-RC RC>N {: rc :}
-   rc PROCESS:TIMEOUT-RC = if
+   rc EXIT-STATUS:TIMEOUT = if
       pid PROCESS:SIGKILL PROCESS:KILL-RAW drop
       pid RC drop
    then

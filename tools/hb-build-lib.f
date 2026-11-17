@@ -20,12 +20,10 @@ require tools/hb-build-core.f
 require tools/hb-build-report.f
 require tools/image-size-lib.f
 require tools/image-names.f
+require src/core/exit-status.f
 
 package HB-BUILD-CLI
 
-64 constant HBB-USAGE-RC
-66 constant HBB-NOINPUT-RC
-74 constant HBB-BUILD-RC
 34 constant HBB-DQ
 10 constant HBB-LF
 
@@ -58,7 +56,7 @@ variable HBB-ELAPSED-NS
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out" EXIT-STATUS:USAGE die ;
 
 : HBB-COPY-PATH! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ up:^ :}
    u PATH-CAP > if E-BUILD-PATH throw then
@@ -75,7 +73,7 @@ variable HBB-ELAPSED-NS
 \ one by name, before it builds anything.
 : HBB-SRC-ARG! ( ^u8 n -- )
    {: a:^ u:n :}
-   u PATH-CAP > if s" hb-build: source path too long" HBB-USAGE-RC die then
+   u PATH-CAP > if s" hb-build: source path too long" EXIT-STATUS:USAGE die then
    a u HBB-SRC! ;
 
 \ -o is replaced by renaming over it a sibling made in its directory
@@ -86,14 +84,14 @@ variable HBB-ELAPSED-NS
 \ with no directory part goes in the working directory.
 : HBB-OUT-ARG! ( ^u8 n -- )
    {: a:^ u:n :}
-   u PATH-CAP > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   u PATH-CAP > if s" hb-build: output path too long" EXIT-STATUS:USAGE die then
    a u FS:BASENAME nip {: nameu:n :}
-   nameu 0= if s" hb-build: output path has no file name" HBB-USAGE-RC die then
+   nameu 0= if s" hb-build: output path has no file name" EXIT-STATUS:USAGE die then
    u nameu - {: diru:n :}
    diru 0 > if
-      a diru FS:DIR? 0= if s" hb-build: no such output directory" HBB-USAGE-RC die then
+      a diru FS:DIR? 0= if s" hb-build: no such output directory" EXIT-STATUS:USAGE die then
    then
-   a u FS:DIR? if s" hb-build: output path is a directory" HBB-USAGE-RC die then
+   a u FS:DIR? if s" hb-build: output path is a directory" EXIT-STATUS:USAGE die then
    a u HBB-OUT! ;
 
 : HBB-SRC$ ( -- ^u8 n )
@@ -117,7 +115,7 @@ variable HBB-ELAPSED-NS
 
 : HBB-WERR ( ^u8 n -- ) {: a:^ u :}
    u 0= if exit then
-   2 a u write u <> if s" hb-build: stderr write failed" HBB-BUILD-RC die then ;
+   2 a u write u <> if s" hb-build: stderr write failed" EXIT-STATUS:IOERR die then ;
 
 : HBB-WERR-LF ( -- )
    HBB-LF-BUF 1 HBB-WERR ;
@@ -151,7 +149,7 @@ variable HBB-ELAPSED-NS
    HBB-I @ HBB-ARG$ {: a:^ u:n :}
    a u RTARGET:PLATFORM? 0= if
       s" hb-build: unknown target " HBB-WERR  a u HBB-WERR  HBB-WERR-LF
-      HBB-USAGE-RC HBB-EXIT
+      EXIT-STATUS:USAGE HBB-EXIT
    then
    a u RTARGET:RESOLVE HBB-TARGET !
    HBB-INC-I ;
@@ -187,8 +185,8 @@ variable HBB-ELAPSED-NS
    HBB-I @ HBB-ARG$ HBB-SRC-ARG!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
    HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
-   HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
-   HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
+   HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" EXIT-STATUS:NOINPUT die then
+   HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" EXIT-STATUS:USAGE die then ;
 
 : HBB-GOT-NAME$ ( -- ^u8 n )
    HBB-ENGINE @ if s" hb-engine-got" exit then
@@ -393,7 +391,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       HBB-WERR-LF
    then
    HBB-CLEANUP
-   HBB-BUILD-RC HBB-EXIT ;
+   EXIT-STATUS:IOERR HBB-EXIT ;
 
 \ Exit action in a build: names where, keeps -o as it was (not --json-errors).
 : HBB-EXITED ( -- )
@@ -403,7 +401,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       s"  ended the process during the build" HBB-WERR
       HBB-WERR-LF
    then
-   HBB-BUILD-RC HBB-EXIT ;
+   EXIT-STATUS:IOERR HBB-EXIT ;
 
 : HBB-BUILD-REST ( -- )
    ['] HBB-LINK catch {: rc:n :}
@@ -417,7 +415,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    rc E-BUILD-PATH = if
       HBB-CLEANUP
       HBB-PATH-ERROR
-      HBB-BUILD-RC HBB-EXIT
+      EXIT-STATUS:IOERR HBB-EXIT
    then
    rc throw ;
 
@@ -425,15 +423,15 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    rc 0= if exit then
    rc E-BUILD-INSTALL = if
       HBB-CLEANUP
-      s" hb-build: cannot replace output" HBB-BUILD-RC die
+      s" hb-build: cannot replace output" EXIT-STATUS:IOERR die
    then
    rc E-FS-SYNC = if
       HBB-CLEANUP
-      s" hb-build: output replaced, its directory not synced" HBB-BUILD-RC die
+      s" hb-build: output replaced, its directory not synced" EXIT-STATUS:IOERR die
    then
    rc CODESIGN:E-IDENTITY = if
       HBB-CLEANUP
-      s" hb-build: cannot sign output" HBB-BUILD-RC die
+      s" hb-build: cannot sign output" EXIT-STATUS:IOERR die
    then
    rc throw ;
 

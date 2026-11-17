@@ -9,6 +9,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test/runner.f
 require src/lib/task.f
+require src/core/exit-status.f
 
 TASK:MIN-STACK TASK:TASK TAT-COUNT-A
 TASK:MIN-STACK TASK:TASK TAT-COUNT-B
@@ -40,9 +41,9 @@ variable TAT-COUNT-READY
    TAT-COUNT-A TAT-COUNT-JOIN
    TAT-COUNT-B TAT-COUNT-JOIN
    T-FAILURES TAT-COUNT-EACH 2 * <> if
-      s" assert-test: concurrent failure count" T-EX-FAIL die then
+      s" assert-test: concurrent failure count" EXIT-STATUS:FAILURE die then
    T-CASES TAT-COUNT-EACH 2 * <> if
-      s" assert-test: concurrent case count" T-EX-FAIL die then
+      s" assert-test: concurrent case count" EXIT-STATUS:FAILURE die then
    T-RESET ;
 
 : TT-THROW-5 ( -- )
@@ -101,7 +102,7 @@ variable TAT-SCRIPT-U
 \ Deliberate failures are reset between cases. Check their count before a
 \ later assertion could turn a missing failure into the expected count.
 : TAT-EXPECT-FAILURES ( n -- )
-   T-FAILURES <> if s" assert-test: unexpected failure count" T-EX-FAIL die then ;
+   T-FAILURES <> if s" assert-test: unexpected failure count" EXIT-STATUS:FAILURE die then ;
 
 \ A failing numeric assert renders through FMT's private buffer, so a case that
 \ is part-way through the shared builder keeps what it built. Seeding SB with
@@ -123,7 +124,7 @@ variable TAT-SCRIPT-U
    s" habu-assert-line" s" fail.f" TAT-PREPARE
    TAT-SCRIPT$ TAT-FAIL-SRC$ FS:WRITE-ALL
    TAT-RUN
-   T-EX-FAIL s" assert-line rc" GT-RC=
+   EXIT-STATUS:FAILURE s" assert-line rc" GT-RC=
    s" assert: expected 3 got 9" s" assert-line one line" GT-STDOUT-HAS
    GT-CLEANUP
    GT-FAILURES 0 T= ;

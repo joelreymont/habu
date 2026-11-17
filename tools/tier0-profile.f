@@ -5,13 +5,14 @@
 \ Run: bin/hb --load tools/tier0-profile.f -- corpus <usec> <file.f>...
 \      bin/hb --load tools/tier0-profile.f -- trivial <usec> <count>
 
+require src/core/exit-status.f                \ engine-provided: loads nothing
+
 \ Nothing loads before the corpus: src/lib/fmt.f is a corpus entry, and loading
 \ it first would hide every word its compile reaches. The decimal writer below
 \ is the price.
 package TIER0-PROF
 private
 
-64 constant USAGE-RC                \ sysexits EX_USAGE
 32 constant DIG-CAP
 $200 constant SRC-CAP
 48 constant ZERO-C
@@ -54,7 +55,7 @@ variable SRC-N
 \ ---- the trivial-definition source, built before the clock starts -----------
 
 : SRC-C+ ( n -- ) {: c :}
-   SRC-N @ SRC-CAP >= if s" tier0-profile: source overflow" USAGE-RC die then
+   SRC-N @ SRC-CAP >= if s" tier0-profile: source overflow" EXIT-STATUS:USAGE die then
    c SRC SRC-N @ + c!
    SRC-N @ 1 + SRC-N ! ;
 
@@ -91,7 +92,7 @@ variable SRC-N
 
 : USAGE ( -- )
    s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
-   USAGE-RC die ;
+   EXIT-STATUS:USAGE die ;
 
 : ARG>N ( ^u8 n -- n ) {: a:^ u :}
    u 0= if USAGE then

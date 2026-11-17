@@ -13,6 +13,7 @@ require src/lib/byte-buffer.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/test/subject.f
+require src/core/exit-status.f
 
 package JSON-TEST
 private
@@ -1397,7 +1398,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    c [char] M = if E-JSON-READ-MALFORMED exit then
    c [char] X = if E-JSON-READ-ESCAPE exit then
    c [char] U = if E-JSON-READ-SURROGATE exit then
-   s" json-read-test: unknown refusal letter" T-EX-FAIL die ;
+   s" json-read-test: unknown refusal letter" EXIT-STATUS:FAILURE die ;
 
 \ Every prefix of a document, lengths 0 through u, against one refusal letter
 \ per length.

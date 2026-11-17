@@ -8,12 +8,12 @@ require src/lib/map.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 require src/lib/siphash.f
 require src/lib/property.f              \ PROP - the seeded mix of SET and REMOVE
+require src/core/exit-status.f
 
 \ White-box test: reopen the module's package so the fixtures reach its private
 \ layout, probe and locate words by their bare package-local names.
 package MAP
 
-1 constant MT-EX-FAIL
 8 constant MT-CAP
 3 constant MT-FULL-CAP
 32 constant MT-SPREAD-CAP                \ 26 letters with room to spread
@@ -495,7 +495,7 @@ create MT-KEY-Z 122 c,
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
    s" map-test: " type MT-FAIL @ FMT:.INT s"  failure(s)" type cr
-   s" map-test: failures" MT-EX-FAIL die ;
+   s" map-test: failures" EXIT-STATUS:FAILURE die ;
 
 : MT-MAIN ( -- )
    MT-TEST-CHECKS

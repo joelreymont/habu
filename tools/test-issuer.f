@@ -10,6 +10,7 @@ require src/lib/aio.f
 require src/lib/net/http.f
 require src/lib/net/test-issuer.f
 require src/os/script-argv.f
+require src/core/exit-status.f
 
 package TEST-ISSUER-TOOL
 private
@@ -17,13 +18,12 @@ private
 $7F000001 constant LOOPBACK
 2 constant TWO-WORKERS
 500 constant IDLE-MS
-64 constant USAGE-RC
 $100 constant SINK-CAP
 
 SINK-CAP BUFFER: SINK
 
 : USAGE ( -- )
-   s" usage: hb --load tools/test-issuer.f -- [--client <id> <secret>]..." USAGE-RC die ;
+   s" usage: hb --load tools/test-issuer.f -- [--client <id> <secret>]..." EXIT-STATUS:USAGE die ;
 
 : CLIENTS ( -- )
    SCRIPT-ARGC {: argc:n :}

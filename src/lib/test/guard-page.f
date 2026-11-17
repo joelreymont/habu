@@ -6,7 +6,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: one task uses the guarded page at a time.
 
 require src/lib/memory.f
-require src/lib/test/assert.f                 \ T-EX-FAIL
+require src/core/exit-status.f
 
 package GUARD-PAGE
 private
@@ -28,7 +28,7 @@ public
 \ 0 to PAGE-BYTES of them; more would write into the guard below it.
 : TAIL ( n n -- ^u8 ) {: u:n c:n :}
    u 0 < u STACK-ABI:PAGE-BYTES > or if
-      s" guard-page: a tail is 0 to PAGE-BYTES bytes" T-EX-FAIL die
+      s" guard-page: a tail is 0 to PAGE-BYTES bytes" EXIT-STATUS:FAILURE die
    then
    PAGE STACK-ABI:PAGE-BYTES u - + {: a:^ :}
    u 0 ?do c a i + c! loop

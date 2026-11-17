@@ -6,15 +6,14 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require tools/code-owner.f
+require src/core/exit-status.f
 
 package CODE-OWNER-CLI
-
-74 constant RC
 
 : ?ARGS ( -- )
    SCRIPT-ARGC 0 > if exit then
    s" usage: --load tools/code-owner-main.f -- <region offset>"
-   RC die ;
+   EXIT-STATUS:USAGE die ;
 
 : HEX-BODY ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
@@ -31,13 +30,13 @@ variable ACC
    0 ACC !
    u 0 ?do
       a i + c@ DIGIT {: d:n :}
-      d 0 < if s" code-owner: offset is not a number" RC die then
+      d 0 < if s" code-owner: offset is not a number" EXIT-STATUS:USAGE die then
       ACC @ 16 * d + ACC !
    loop
    ACC @ ;
 
 \ `$1a2b` or plain decimal, the two spellings a debugger prints.
-: BAD ( -- ) s" code-owner: offset is not a number" RC die ;
+: BAD ( -- ) s" code-owner: offset is not a number" EXIT-STATUS:USAGE die ;
 
 : OFFSET ( ^u8 n -- n )
    HEX-BODY if HEX>N exit then

@@ -2,16 +2,15 @@
 \ one case and never throws on a mismatch: it prints `F<case>`, the label, a TFAIL
 \ record (src/lib/test/record.f) and an `assert:` line, and the run continues; a
 \ string mismatch prints both strings whole. T-REPORT prints `test: ok` or exits
-\ T-EX-FAIL. T-LABEL (at most T-LABEL-CAP bytes, else T-EX-FAIL) names every
-\ assertion until the next T-LABEL, T-LABEL-CLEAR or T-RESET.
+\ EXIT-STATUS:FAILURE. T-LABEL (at most T-LABEL-CAP bytes, else that exit)
+\ names every assertion until the next T-LABEL, T-LABEL-CLEAR or T-RESET.
 \ STORAGE CLASS. PROCESS-WIDE: static counters, label and report; see below.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test/record.f
 require src/lib/fmt.f                          \ FMT:.INT - one-line number text, shared builder untouched
-
-1 constant T-EX-FAIL
+require src/core/exit-status.f
 
 variable T-CASE#
 variable T-FAIL#
@@ -44,7 +43,7 @@ variable T-LABEL-U
    T-LABEL-BUF T-LABEL-U @ ;
 
 : T-LABEL ( ^u8 n -- ) {: a:^ u:n :}
-   u T-LABEL-CAP > if s" test: label too long" T-EX-FAIL die then
+   u T-LABEL-CAP > if s" test: label too long" EXIT-STATUS:FAILURE die then
    0 begin dup u < while
       dup a + c@  over T-LABEL-BUF + c!
       1+
@@ -194,7 +193,7 @@ variable T-LABEL-U
 : T-REPORT ( -- )
    T-FAIL# @ 0= if s" test: ok" type cr exit then
    s" test: " type T-FAIL# @ FMT:.INT s"  failure(s)" type cr
-   s" test: failures" T-EX-FAIL die ;
+   s" test: failures" EXIT-STATUS:FAILURE die ;
 
 \ A deadline is no verdict on the code under test (src/lib/test/ending.f): a
 \ check that wants another code lets E-PROC-TIMEOUT go uncaught and counts

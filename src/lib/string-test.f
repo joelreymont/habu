@@ -6,9 +6,9 @@ require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/test/guard-page.f
 require src/lib/fmt.f
+require src/core/exit-status.f
 
 64 constant STR-TEST-BUF-LEN
-1 constant STR-TEST-EX-FAIL
 44 constant STR-TEST-COMMA
 45 constant STR-TEST-DASH
 65 constant STR-TEST-A-CHAR
@@ -690,6 +690,6 @@ STR-TEST-TYPED-BUF-BAD-C
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then
    s" string-test: " type STR-TEST-FAIL @ FMT:.INT s"  failure(s)" type cr
-   s" string-test: failures" STR-TEST-EX-FAIL die ;
+   s" string-test: failures" EXIT-STATUS:FAILURE die ;
 
 STR-TEST-REPORT

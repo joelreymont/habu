@@ -2,10 +2,9 @@
 require tools/lint/text.f
 require src/lib/source.f
 require src/lib/source-lex.f
+require src/core/exit-status.f
 
 $10000 constant TMAX            \ largest linted source + headroom
-77 constant E-LINT-TOKEN-CAP
-s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 -4821 s" the source lexer rejected the linted source" ERROR:CODE E-LINT-TOKEN-SOURCE
 
 \ Each token's start is an address into the linted source.
@@ -34,7 +33,7 @@ variable PARENS?
    PARENS? @ T-FLAG ;
 
 : TOKEN-ENSURE ( -- )   \ labeled capacity exit: a bare rc 77 is unattributable
-   TN# @ TMAX >= if s" lint: token table full (TMAX); grow tools/lint/token.f" E-LINT-TOKEN-CAP die then ;
+   TN# @ TMAX >= if s" lint: token table full (TMAX); grow tools/lint/token.f" EXIT-STATUS:FULL die then ;
 
 : TOKEN+ ( ^u8 n -- ) {: a:^ u :}
    TOKEN-ENSURE
