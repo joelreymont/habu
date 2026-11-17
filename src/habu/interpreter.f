@@ -257,7 +257,7 @@ EXPORT CHECK:EFFECT-DENSE
 EXPORT CHECK:EFFECT-TEXT
 EXPORT CHECK:TOP-LEVEL
 EXPORT CHECK:TOP-TAKE
-EXPORT CHECK:TOP-DROP
+EXPORT CHECK:TOP-MOVE
 EXPORT CHECK:USING-AMBIGUOUS-REJECT
 EXPORT CHECK:USING-SHADOW-REJECT
 EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
@@ -465,8 +465,8 @@ variable ANSWERED
 : FLOORED ( bool -- )
    if UNDERFLOW then ;
 
-\ TOP-LEVEL judges each number after its push and each word but the engine
-\ `drop` before it runs; a check that leaves the stack below its base is refused.
+\ TOP-LEVEL judges each number after its push and each word MOVE-WORD? does not
+\ name before it runs; a check that leaves the stack below its base is rejected.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
@@ -604,24 +604,71 @@ TYPED-VARIABLE RUNS-ON bool
    RUNS-N @ 1 + RUNS-N ! ;
 
 
-\ The engine's `drop` in any case: a user's global `drop` takes the hook.
-: DROP-WORD? ( -- bool )
-   REC @ XREF-START ['] drop COMP:XT>N = ;
+\ A literal a program keeps is program code: the quotation that pushes it runs
+\ under the floor as a word does. The cells it leaves are the program's, so
+\ these views state its effect only to project it to the number execute-floor
+\ takes.
+CAST: STR-LITERAL ( [ -- ^u8 n ] -- n )
+CAST: CSTR-LITERAL ( [ -- ^u8 ] -- n )
+CAST: CELL-LITERAL ( [ -- n ] -- n )
+\ A cell taken from the program.
+CAST: CELL-TAKE ( [ n -- ] -- n )
+
+: RUN-LITERAL ( n -- )
+   execute-floor FLOORED ;
+
+\ The engine's `drop`, `@` or `!` in any case: a user's global word of that
+\ name takes the hook.
+: MOVE-WORD? ( n -- bool ) {: xt:n :}
+   xt ['] drop COMP:XT>N =  xt ['] @ COMP:XT>N = or  xt ['] ! COMP:XT>N = or ;
 
 \ Counts a run of the found word.
 : RUN-COUNTED ( -- )
    REC @ XREF-NULL - XREF-ADDR>INDEX RUN+ ;
 
-\ The xt is read before the hooks run. The engine `drop` runs once
-\ per cell of its item, so a multi-cell value leaves whole, as in a body; any
-\ other word runs once outside a loop, so it has every loop frame.
+\ The address of the next cell `@` or `!` moves: a quotation reads no local.
+variable MOVE-AT
+
+: PUSH-MOVE-AT ( -- )
+   [: MOVE-AT @ ;] CELL-LITERAL RUN-LITERAL ;
+
+\ The engine `@` over a value of w cells fetches cell i from the address plus
+\ i cells, cell 0 deepest, as a body's fetch leaves them.
+: FETCH-CELLS ( n -- ) {: w:n :}
+   [: MOVE-AT ! ;] CELL-TAKE RUN-LITERAL
+   w 0 ?do
+      PUSH-MOVE-AT  ['] @ COMP:XT>N execute-floor FLOORED
+      1 cells MOVE-AT +!
+   loop ;
+
+\ The engine `!` over a value of w cells stores cell i at the address plus i
+\ cells, where a body's store puts it, taking the top cell first.
+: STORE-CELLS ( n -- ) {: w:n :}
+   [: MOVE-AT ! ;] CELL-TAKE RUN-LITERAL
+   w 1 - cells MOVE-AT +!
+   w 0 ?do
+      PUSH-MOVE-AT  ['] ! COMP:XT>N execute-floor FLOORED
+      -1 cells MOVE-AT +!
+   loop ;
+
+\ The checker answers the width of the value the word moves; `drop` runs once
+\ per cell.
+: RUN-MOVE ( n -- ) {: xt:n :}
+   TOP-MOVE {: w:n :}
+   RUN-COUNTED
+   w 1 > if
+      xt ['] @ COMP:XT>N = if w FETCH-CELLS exit then
+      xt ['] ! COMP:XT>N = if w STORE-CELLS exit then
+   then
+   w 0 ?do xt execute-floor FLOORED loop ;
+
+\ The xt is read before the hooks run. The engine `drop`, `@` and `!` move a
+\ multi-cell value whole, as in a body; any other word runs once outside a
+\ loop, so it has every loop frame.
 : RUN-FOUND ( -- )
    GATE
    REC @ XREF-START {: xt:n :}
-   DROP-WORD? if
-      TOP-DROP RUN-COUNTED
-      0 ?do xt execute-floor FLOORED loop exit
-   then
+   xt MOVE-WORD? if xt RUN-MOVE exit then
    TOP-EV-WORD HOOK RUN-COUNTED
    xt execute-floor FLOORED ;
 
@@ -740,19 +787,6 @@ private
    u d c!
    s q d 1 + ESCAPE:COPY
    d ;
-
-\ A literal a program keeps is program code: the quotation that pushes it runs
-\ under the floor as a word does. The cells it leaves are the program's, so
-\ these views state its effect only to project it to the number execute-floor
-\ takes.
-CAST: STR-LITERAL ( [ -- ^u8 n ] -- n )
-CAST: CSTR-LITERAL ( [ -- ^u8 ] -- n )
-CAST: CELL-LITERAL ( [ -- n ] -- n )
-\ A cell a definer takes from the program.
-CAST: CELL-TAKE ( [ n -- ] -- n )
-
-: RUN-LITERAL ( n -- )
-   execute-floor FLOORED ;
 
 : PUSH-STR ( -- )
    [: KEEP TOP-EV-STR HOOK ;] STR-LITERAL RUN-LITERAL ;

@@ -25,6 +25,9 @@ TYPED-VARIABLE TS-HK [ -- ]
 : TS-F2 ( n -- n n ) dup ;
 : TS-RR ( r -- ) drop ;
 : TS-NN ( n -- ) drop ;
+TYPED-VARIABLE TS-SV str
+: TS-SV-LEN ( -- n ) TS-SV @ str> nip ;
+: TS-SV-SET ( -- ) s" xyz" >str TS-SV ! ;
 
 package TS-NT
 public
@@ -478,6 +481,18 @@ variable ERR-U
    [: s" 11 22 2>r 2r> - TS-V !" evaluate-closed ;] 0 TTHROWSQ
    TS-V @ -11 T= ;
 
+\ A `str` is one value of two cells: a top-level `!` stores both and `@` fetches
+\ both, where a body's fetch and store find them.
+: CASE-WIDE-STORAGE ( -- )
+   s" a str stored at top level leaves no cell and is a body's whole value" T-LABEL
+   CLEAR
+   [: S\" s\" abcde\" >str TS-SV !" evaluate-closed ;] 0 TTHROWSQ
+   TS-SV-LEN 5 T=
+   s" a str a body stored is fetched whole at top level" T-LABEL
+   TS-SV-SET
+   [: s" TS-SV @ str> nip TS-V !  TS-SV @ str> drop c@ TS-BC c!" evaluate-closed ;] 0 TTHROWSQ
+   TS-V @ 3 T=  TS-BC c@ 120 T= ;
+
 : CASE-ACROSS-COLON ( -- )
    s" a pointer kept across a : definition is stored typed" T-LABEL
    CLEAR
@@ -579,6 +594,7 @@ public
    CASE-NESTED-EVAL
    CASE-TICKED
    CASE-RETURN-ROW
+   CASE-WIDE-STORAGE
    CASE-ACROSS-COLON
    CASE-ACROSS-REQUIRE
    CASE-SIBLINGS

@@ -3065,7 +3065,7 @@ EXPORT CHECKER-REG:TS-PTR
    REPEAT 2drop RES-FALSE ;
 
 \ The items atop the row the guard judges: a transport's; 0 for `drop`, which
-\ CHECKER-TOP-DROP judges, and for any other word.
+\ CHECKER-TOP-MOVE judges, and for any other word.
 : TOP-XPORT-K ( -- n )
    TKF TKFU @ {: a:^ u:n :}
    a u s" drop" CORE-STR= IF 0 EXIT THEN
@@ -3353,7 +3353,7 @@ variable TG-GEN    variable TG-TERM-NAME
    [: a u w v TOP-TAKE-STEP ;] live TOP-STEP-LOAD
    TOP-RELEASE ;
 
-variable TOP-DROP-N
+variable TOP-MOVE-N
 
 : TOP-OPEN-TOP? ( -- bool )
    DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
@@ -3390,21 +3390,35 @@ variable TOP-DROP-N
    ty REND-CELL-ARGS  s"  )`" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
+\ The program's spelling of the step's token is a u, in any case.
+: TOP-SPELLED? ( ^u8 n -- bool )
+   TOK-SPELL-A @ TOK-SPELL-U @ CORE-STR=CI ;
+
+\ The cells of the value the engine `drop`, `@` or `!` moves, from the row's
+\ cells before and after its step: `@` leaves the value for its address, `!`
+\ takes the value and its address, `drop` takes the value.
+: TOP-MOVED ( n n -- n ) {: pre:n post:n :}
+   s" @" TOP-SPELLED? IF post pre - 1 + EXIT THEN
+   s" !" TOP-SPELLED? IF pre post - 1 - EXIT THEN
+   pre post - ;
+
 \ An item of open width has no cell count to drop, so it is rejected at
-\ `drop`; otherwise a body's step judges it. A rejection is placed at the
-\ source token the engine read last, the `drop` as the program spells it.
-: TOP-DROP-STEP ( -- )
-   TOP-OPEN-TOP? IF TOK-SPELL-A @ TOK-SPELL-U @ TOP-OPEN-DROP-REJECT THEN
+\ `drop`; otherwise a body's step judges the word. A rejection is placed at the
+\ source token the engine read last, the word as the program spells it.
+: TOP-MOVE-STEP ( -- )
+   s" drop" TOP-SPELLED? TOP-OPEN-TOP? and IF
+      TOK-SPELL-A @ TOK-SPELL-U @ TOP-OPEN-DROP-REJECT
+   THEN
    DCUR @ ROW-CELLS {: pre:n :}
    TOP-WORD-STEP
-   pre DCUR @ ROW-CELLS - TOP-DROP-N ! ;
+   pre DCUR @ ROW-CELLS TOP-MOVED TOP-MOVE-N ! ;
 
-: CHECKER-TOP-DROP ( n -- n )
+: CHECKER-TOP-MOVE ( n -- n )
    {: live:n :}
    SRCLOC:TOKEN$ TOK-SPELL-U !  TOK-SPELL-A !
-   ['] TOP-DROP-STEP live TOP-STEP-LOAD
+   ['] TOP-MOVE-STEP live TOP-STEP-LOAD
    CHECKER-TOP-SAVE
-   TOP-DROP-N @ ;
+   TOP-MOVE-N @ ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
 \ A literal's cells have constant types, so over a saved row that fits the live
