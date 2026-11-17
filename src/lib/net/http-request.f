@@ -938,11 +938,15 @@ E-HTTP-BODY-READ constant E-BODY-READ
    E-BODY-READ throw ;
 
 
+: HOLDING ( n -- ) {: idx:n :}
+   idx SELF-SLOT <> if E-HANDLE throw then
+   idx HOLDER @ OFFERED <> if E-STATE throw then ;
+
+
 \ Reads the body on the first ask, from the request's own worker inside its
 \ handler; a later ask finds it whole or throws again.
 : BODY-READY ( n -- ) {: idx:n :}
-   idx SELF-SLOT <> if E-HANDLE throw then
-   idx HOLDER @ OFFERED <> if E-STATE throw then
+   idx HOLDING
    idx BODY-STATE @ {: state:n :}
    state WHOLE = if exit then
    state READING = if E-BODY-READ throw then
@@ -1028,6 +1032,12 @@ public
    subject SLOT-OF-REQUEST {: idx:n :}
    idx BODY-READY
    idx READER idx SLOT-BODY$ JSON:READ-INIT ;
+
+
+: CLIENT-GONE? ( request -- bool )
+   SLOT-OF-REQUEST {: idx:n :}
+   idx HOLDING
+   idx SERVING @ TCP4:HUNG-UP? ;
 
 
 ;package

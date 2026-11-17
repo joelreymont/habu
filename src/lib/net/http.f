@@ -1346,8 +1346,7 @@ public
 \ or a second time.
 : TAKE-OVER ( request -- TCP4:connection ^u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
-   idx SELF-SLOT <> if E-HANDLE throw then
-   idx HOLDER @ OFFERED <> if E-STATE throw then
+   idx HOLDING
    TAKEN idx HOLDER !
    0 idx SERVING-LIVE !
    idx SERVING @

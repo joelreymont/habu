@@ -821,7 +821,7 @@ generates: FAULT ( -- n )
 -9173 s" the listed names or the listing's storage do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
 -9174 s" a context already owns an active listing" ERROR:CODE E-FS-LIST-ACTIVE
 -9180 s" a TCP argument out of range: a length, port, timeout, address or backlog" ERROR:CODE E-TCP4-OPERAND
--9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait or a failed fcntl" ERROR:FAULT E-TCP4-RESULT
+-9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait, a failed fcntl or a refused poll" ERROR:FAULT E-TCP4-RESULT
 -9190 s" a queue index or capacity out of range" ERROR:CODE E-QUEUE-OPERAND
 -9191 s" a queue used before it is initialized, or initialized while live" ERROR:CODE E-QUEUE-STATE
 -9192 s" more queue definitions than the package table holds" ERROR:CODE E-QUEUE-TABLE

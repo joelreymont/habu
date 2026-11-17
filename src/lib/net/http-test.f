@@ -2975,6 +2975,85 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    LATER-TASK TASK:KILL ;
 
 
+1 constant SAW-GONE               \ the client's close was seen
+2 constant SAW-THERE              \ the bound passed with the client still there
+5 constant WATCH-STEP-MS
+100 constant THERE-MS             \ through which the client stays
+variable WATCH-MS                 \ each watch's bound; 0 watches with none
+variable FIRST-SEEN
+variable WATCH-SEEN
+variable WATCH-ENTERED
+variable BODY-SENT
+
+: WATCH ( HTTP:request -- n ) {: asked:HTTP:request :}
+   mono-ns WATCH-MS @ NS-PER-MS * + {: deadline:n :}
+   begin
+      asked HTTP:CLIENT-GONE? if SAW-GONE exit then
+      WATCH-MS @ 0<> mono-ns deadline >= and if SAW-THERE exit then
+      WATCH-STEP-MS >MS TASK:SLEEP
+   again ;
+
+
+\ A bounded handler watches once before the client sends its body; the last
+\ watch runs while that body waits unread, and the echo then reads it.
+: WATCH-CLIENT ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   1 WATCH-ENTERED !
+   WATCH-MS @ 0<> if asked WATCH FIRST-SEEN ! then
+   [: BODY-SENT @ 0<> ;] TEST-WAIT:POLL
+   asked WATCH WATCH-SEEN !
+   asked answer ECHO ;
+
+
+: WATCH-ROUTE ( -- )
+   s" POST" s" /api/watch" [: WATCH-CLIENT ;] HTTP:ROUTE ;
+
+
+: WATCH-RESET ( n -- )
+   WATCH-MS !
+   0 FIRST-SEEN !
+   0 WATCH-SEEN !
+   0 WATCH-ENTERED !
+   0 BODY-SENT ! ;
+
+
+: WATCH-AWAIT ( -- )
+   [: WATCH-SEEN @ 0<> ;] TEST-WAIT:POLL ;
+
+
+: CLIENT-CLOSED-CASE ( -- )
+   s" CLIENT-GONE? sees a client that closed behind unread bytes" T-LABEL
+   0 WATCH-RESET
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/watch HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n" RAW-SEND
+   [: WATCH-ENTERED @ 0<> ;] TEST-WAIT:POLL
+   conn s" ok" RAW-SEND
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   1 BODY-SENT !
+   WATCH-AWAIT
+   WATCH-SEEN @ SAW-GONE T= ;
+
+
+: CLIENT-THERE-CASE ( -- )
+   s" CLIENT-GONE? keeps a connected client and its bytes" T-LABEL
+   THERE-MS WATCH-RESET
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/watch HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" RAW-SEND
+   [: FIRST-SEEN @ 0<> ;] TEST-WAIT:POLL
+   conn s" ok" RAW-SEND
+   1 BODY-SENT !
+   WATCH-AWAIT
+   FIRST-SEEN @ SAW-THERE T=
+   WATCH-SEEN @ SAW-THERE T=
+   conn S\" {\qbytes\q:2}" RAW-COLLECT TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: CLIENT-GONE-CASES ( -- )
+   CLIENT-CLOSED-CASE
+   CLIENT-THERE-CASE ;
+
+
 variable CALL-ARG                 \ what the submitted call was given
 variable CALL-CODE                \ what WORKER-SLOT threw there
 variable CALL-SLOT                \ and the slot it gave
@@ -3100,6 +3179,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    MAKE-STATIC
    INSTALL-ROUTES
    LATER-ROUTE
+   WATCH-ROUTE
    INSTALL-HOOKS
    0 SCRIPT-U !
    ROOT$ HTTP:STATIC-ROOT
@@ -3138,6 +3218,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    HOOK-LIVE-CASES
    SERVING-CASE
    TAKE-OVER-CASES
+   CLIENT-GONE-CASES
    SUBMIT-CASE
    PARAM-CASES
    HTTP:STOP

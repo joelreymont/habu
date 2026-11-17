@@ -123,6 +123,10 @@ $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepte
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
 $01 constant POLLIN                \ a receive will not block, on both.
 $04 constant POLLOUT               \ a send will not block, on both.
+\ Linux raises POLLHUP on a peer's FIN only once this end has shut too, and
+\ POLLRDHUP only when asked for; macOS raises POLLHUP only through POLLIN's read filter.
+: HANG-EVENTS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2001 else $01 then ;   \ POLLIN, with POLLRDHUP on Linux.
+: HANG-BITS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2038 else $38 then ;   \ POLLERR|POLLHUP|POLLNVAL, with POLLRDHUP on Linux.
 -1 constant NO-TIMEOUT             \ poll(2) waits until ready; Darwin takes no other negative one.
 $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 1000000 constant NS-PER-MS
@@ -698,6 +702,18 @@ public
 \ stream and a failed connection, whose answers the following READ reports.
 : READABLE? ( connection -- ready-result )
    CONNECTION>N 0 >MS WAIT-READY ;
+
+
+\ True once the peer has closed its side of the connection or the connection
+\ has failed, whatever it left unread. One poll that never waits; it takes no byte.
+: HUNG-UP? ( connection -- bool )
+   CONNECTION>N {: fd:n :}
+   begin
+      fd HANG-EVENTS 0 POLL-FD {: rc:n :}
+      rc 0 > if POLLFD 6 + LE:U16@ HANG-BITS and 0<> exit then
+      rc 0= if false exit then
+      rc negate EINTR <> if E-RESULT throw then
+   again ;
 
 
 \ Parks the task on the AIO loop until the stream would answer a READ or the
