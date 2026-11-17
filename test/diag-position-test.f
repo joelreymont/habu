@@ -1182,7 +1182,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a comment after a STRUCTURE's name" T-LABEL
    s" STRUCTURE spt \ note" s" FIELD x n ;STRUCTURE" s" struct-name-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-MODES ;
+   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-MODES
+   s" a comment as a typed variable's name" T-LABEL
+   s" TYPED-VARIABLE \ n" s" tvar-name-comment.f" LINE-FIXTURE
+   s" E-MISSING-NAME" s" \" 1 16 15 16 REFUSED-MODES
+   0 s" label" s" a comment, not a name" FIELD= ;
 
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a

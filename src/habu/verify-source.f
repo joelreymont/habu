@@ -2668,13 +2668,14 @@ variable STG-TYPE-U
    DISARM
    at nameu CAST-DEFINED ;
 
-\ A refused name, malformed or a duplicate, is empty and still owns its type
+\ A name refused as malformed or a duplicate is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot
 \ be interpreted as a new statement.
 : SCAN-STORAGE-NAME ( -- ^u8 n )
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ 2over REJECTION:NOT-A-NAME
    2dup NAME-DECLARED
    2dup CHECKER-LBUF-NAME-OK? IF
       2dup TOKEN-BYTE @ REJECT-DUPLICATE 0= IF EXIT THEN
@@ -2831,6 +2832,7 @@ variable STG-TYPE-U
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
@@ -2864,6 +2866,7 @@ variable STG-TYPE-U
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN

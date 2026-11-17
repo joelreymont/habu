@@ -250,6 +250,7 @@ EXPORT CHECK:STG-NO-NAME
    nu 0= if
       s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu na nu REJECTION:NOT-A-NAME
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu na nu LBUF:LBUF-NAME-OK? 0= if exit then
    na nu s" -RESERVE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
@@ -278,6 +279,7 @@ EXPORT CHECK:STG-NO-NAME
    nu 0= if
       s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu na nu REJECTION:NOT-A-NAME
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if exit then
    na nu LBUF:SEAL-NAME

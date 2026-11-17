@@ -437,6 +437,7 @@ global
    nameu 0= if
       s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu name nameu REJECTION:NOT-A-NAME
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
@@ -451,6 +452,7 @@ INTRINSIC-DECLARATION INTRINSIC
    nameu 0= if
       s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu name nameu REJECTION:NOT-A-NAME
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
@@ -505,6 +507,7 @@ global
    nameu 0= if
       s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu name nameu REJECTION:NOT-A-NAME
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
@@ -524,6 +527,7 @@ INTRINSIC-DECLARATION INTRINSIC
    nameu 0= if
       s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu name nameu REJECTION:NOT-A-NAME
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then

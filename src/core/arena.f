@@ -89,6 +89,7 @@ EXPORT CHECK:STG-NO-NAME
    nameu 0= if
       s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
+   run runu name nameu REJECTION:NOT-A-NAME
    LBUF:STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
    name nameu LBUF:SEAL-NAME

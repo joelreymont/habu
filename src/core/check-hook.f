@@ -259,6 +259,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    {: da:^ du:n whole:bool :}
    LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
+   da du na nu REJECTION:NOT-A-NAME
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu na nu LBUF:LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
    ta tu whole TYPE-BYTES 0= if
