@@ -4,6 +4,7 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/json.f
+require src/core/exit-status.f
 
 $8000 constant GJA-IN-CAP
 $100 constant GJA-LINE-MAX
@@ -30,7 +31,7 @@ variable GJA-LX
    GJA-LINE-A ! ;
 
 : GJA-FAIL ( ^u8 n -- )
-   1 die ;
+   EXIT-STATUS:FAILURE die ;
 
 : GJA-LINE! ( ^u8 n n -- )
    {: a:^ u k :}

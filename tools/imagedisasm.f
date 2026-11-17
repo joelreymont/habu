@@ -5,6 +5,7 @@ require src/lib/string.f
 require src/lib/adt/option.f
 require src/arch/arm64/disasm.f
 require src/lib/fs.f
+require src/core/exit-status.f
 
 package IMAGE-DISASM
 private
@@ -28,20 +29,20 @@ variable IMGD-LOWER
    IMGD-IMG ! ;
 
 : IMGD-USAGE ( -- )
-   s" usage: imagedisasm image offset count" 64 die ;
+   s" usage: imagedisasm image offset count" EXIT-STATUS:USAGE die ;
 
 : IMGD-RANGE-FAIL ( -- )
-   s" imagedisasm: range outside image" 74 die ;
+   s" imagedisasm: range outside image" EXIT-STATUS:USAGE die ;
 
 \ mmap answers the mapping's address as an integer; a failed map dies first.
 CAST: MAP>BYTES ( n -- ^u8 )
 : IMGD-MMAP-PTR ( n -- ^u8 )
-   dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN MAP>BYTES ;
+   dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" EXIT-STATUS:SYSTEM die THEN MAP>BYTES ;
 
 : IMGD-READ ( ^u8 n -- )
-   FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" 74 die THEN
+   FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" EXIT-STATUS:IOERR die THEN
    IMGD-LEN !  FD>N IMGD-FD !
-   IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" 74 die THEN
+   IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" EXIT-STATUS:FAILURE die THEN
    0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap IMGD-MMAP-PTR IMGD-IMG!
    IMGD-FD @ close ;
 

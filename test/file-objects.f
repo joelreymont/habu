@@ -1115,15 +1115,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : SPAWN-REPL-CASE ( CMD:command -- CMD:command )
    s" SR" WHICH!  s" test/fixtures/file-objects/spawn-main.f" REPL-BUILD drop ;
 
-\ rollback.f's build, which catches a refused definition at its top level: it exits 74
+\ rollback.f's build, which catches a refused definition at its top level: it exits 70
 \ and the linker says the file gave back data space.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
    s" test/fixtures/file-objects/rollback.f" FAILING-BUILD {: rc:n :}
    CMD:ERR$ s" test/fixtures/file-objects/rollback.f: it gave back data space"
    CONTAINS? {: said:bool :}
-   rc 74 =  said and 0= if rc SHOW then
-   s" the build exits 74" LABEL  rc 74 T=
+   rc 70 =  said and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc 70 T=
    s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with

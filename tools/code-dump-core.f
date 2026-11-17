@@ -3,6 +3,7 @@
 require src/habu/boot-cells.f
 require src/habu/code-bytes.f
 require src/lib/fmt.f
+require src/core/exit-status.f
 
 HB-TARGET-LINUX-X86-64? [if] require tools/code-dump-x64.f [then]
 HB-TARGET-LINUX-X86-64? 0= [if] require tools/code-dump-arm.f [then]
@@ -24,12 +25,12 @@ private
          rec XREF-CODE-BYTES 0 > if rec unloop exit then
       then
    loop
-   s" code-dump: no live record begins at this xt" 74 die ;
+   s" code-dump: no live record begins at this xt" EXIT-STATUS:NOINPUT die ;
 
 : STEP ( ^u8 n n -- n ) {: a:^ u:n pc:n :}
    pc FMT:.INT s" : " type
    a u pc DUMP-DECODE:STEP {: bytes:n :}
-   bytes 0 <= bytes u > or if s" code-dump: decoder escaped recorded span" 74 die then
+   bytes 0 <= bytes u > or if s" code-dump: decoder escaped recorded span" EXIT-STATUS:INTERNAL die then
    cr bytes ;
 
 : WALK ( n ^u8 n -- ) {: xt:n a:^ u:n :}
@@ -40,7 +41,7 @@ private
    repeat drop ;
 
 : USAGE ( -- )
-   s" usage: bin/hb --load tools/code-dump.f -- '<program>' WORD" 64 die ;
+   s" usage: bin/hb --load tools/code-dump.f -- '<program>' WORD" EXIT-STATUS:USAGE die ;
 
 public
 
@@ -51,7 +52,7 @@ public
 
 : FIND-XT ( ^u8 n -- n )
    get-current XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop s" code-dump: target word not found" 74 die then
+   dup XREF-FOUND? 0= if drop s" code-dump: target word not found" EXIT-STATUS:NOINPUT die then
    XREF-START ;
 
 \ Evaluates caller source through the real compiler before lookup. The program

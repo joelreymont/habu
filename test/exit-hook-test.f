@@ -371,7 +371,7 @@ variable STAGED-FILES
    outu s" action: done" OUT-HAS? TTRUE ;
 
 \ hb-build loads its source in its own process, so a source whose top level
-\ ends the process ends hb-build inside the build: the build fails 74 naming
+\ ends the process ends hb-build inside the build: the build fails 70 naming
 \ the source, and -o keeps its bytes.
 : CASE-BUILD ( -- )
    s" build.f" s" build-out" CASE-PATHS
@@ -380,7 +380,7 @@ variable STAGED-FILES
    TREE$ s" previous" FS:WRITE-ALL
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a build whose source exits fails and keeps -o" T-LABEL
-   outu erru rc 74 EXPECT-RC
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" ended the process during the build" ERR-HAS? TTRUE
    TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
@@ -398,14 +398,14 @@ variable STAGED-FILES
    S\" ARM\ns\q x\q 3 die\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a build's exit action runs before hb-build's when its source exits" T-LABEL
-   outu erru rc 74 EXPECT-RC
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" ended the process during the build" ERR-HAS? TTRUE
    outu s" bye" OUT-HAS? TTRUE
    erru s" older hb-build: " ERR-HAS? TTRUE ;
 
 \ The source's task dies during the build: its exit runs hb's vector, so the
-\ source's action runs and hb-build fails 74 with its line.
+\ source's action runs and hb-build fails 70 with its line.
 : CASE-BUILD-TASK ( -- )
    s" build-task.f" s" build-task-out" CASE-PATHS
    0 TEXT-U !
@@ -415,8 +415,8 @@ variable STAGED-FILES
    S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;\n" TEXT+
    S\" GO\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a build whose task dies fails 74 after the source's action" T-LABEL
-   outu erru rc 74 EXPECT-RC
+   s" a build whose task dies fails 70 after the source's action" T-LABEL
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" ended the process during the build" ERR-HAS? TTRUE
    outu s" bye" OUT-HAS? TTRUE ;
@@ -557,7 +557,7 @@ variable RUN-FILE-U
 
 \ The 128 TASK:NEW tasks push the cleanups' rows past the table into a mapped
 \ chunk, which no target can carry: the linker refuses the source by the
-\ address cell EXIT-CHUNKS (src/lib/task.f) and the build fails 74.
+\ address cell EXIT-CHUNKS (src/lib/task.f) and the build fails 70.
 : CASE-BUILD-CHUNK ( -- )
    s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
    CLEANUPS-TEXT
@@ -567,7 +567,7 @@ variable RUN-FILE-U
    S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a source that leaves a cleanup chunk mapped is refused" T-LABEL
-   outu erru rc 74 EXPECT-RC
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" in EXIT-CHUNKS +0 holds" ERR-HAS? TTRUE
    erru s" which an object cannot name" ERR-HAS? TTRUE ;

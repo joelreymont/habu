@@ -59,7 +59,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 : WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    u 0= if exit then
-   fd a u write u <> if s" check-verify: write failed" 74 die then ;
+   fd a u write u <> if s" check-verify: write failed" EXIT-STATUS:IOERR die then ;
 
 
 : NEWLINE ( n -- ) {: fd:n :}
@@ -86,7 +86,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    begin
       IN-U @ CHUNK + IN-RESERVE
       0 IN-U @ IN CHUNK read RD !
-      RD @ 0 < if s" check-verify: cannot read the open documents and the subject" 74 die then
+      RD @ 0 < if s" check-verify: cannot read the open documents and the subject" EXIT-STATUS:IOERR die then
       RD @ 0 >
    while
       IN-U @ RD @ + IN-U !
@@ -94,7 +94,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 
 : TABLE-FAULT ( -- )
-   s" check-verify: malformed open documents" 74 die ;
+   s" check-verify: malformed open documents" EXIT-STATUS:INTERNAL die ;
 
 
 \ The count in IN from POS up to the byte C, POS moved past C. READ-IN keeps
@@ -246,7 +246,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    vis SYM-GLOBAL = if s" global" exit then
    vis SYM-PRIVATE = if s" private" exit then
    vis SYM-PUBLIC = if s" public" exit then
-   s" check-verify: unknown visibility" 74 die ;
+   s" check-verify: unknown visibility" EXIT-STATUS:INTERNAL die ;
 
 
 : CLASS$ ( n -- ^u8 n )
@@ -256,7 +256,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    class VERIFY:DEF-STORAGE = if s" storage" exit then
    class VERIFY:DEF-EXPORT = if s" export" exit then
    class VERIFY:DEF-CONSTRUCTOR = if s" constructor" exit then
-   s" check-verify: unknown definition class" 74 die ;
+   s" check-verify: unknown definition class" EXIT-STATUS:INTERNAL die ;
 
 
 \ A definition the first form retained, as its definition line: the name as
@@ -410,7 +410,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    {: outcome:n :}
    outcome VERIFY:LOAD-READ = if s" read" exit then
    outcome VERIFY:LOAD-HELD = if s" held" exit then
-   s" check-verify: unknown load outcome" 74 die ;
+   s" check-verify: unknown load outcome" EXIT-STATUS:INTERNAL die ;
 
 
 \ A top-level loader of the first form's subject whose load reached a file, as
@@ -549,7 +549,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --entry [--prose] | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --entry [--prose] | --at N | --of TAIL | --index]" EXIT-STATUS:USAGE die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )

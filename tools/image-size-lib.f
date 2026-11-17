@@ -44,7 +44,7 @@ variable OTHER-SIZE
 : READ-IMAGE ( ^u8 n -- )
    {: path:^ pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
-   size CELL < if s" image-size: image too small" EXIT-STATUS:IOERR die then
+   size CELL < if s" image-size: image too small" EXIT-STATUS:FAILURE die then
    size CELL 1- + CELL / IMG-RESERVE
    size ILEN !
    path pathu IMG@ size FS:READ-ALL size <> if
@@ -60,7 +60,7 @@ variable OTHER-SIZE
    s" image-size: not a Habu program" ;
 
 : REFUSE ( -- )
-   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ EXIT-STATUS:IOERR die then ;
+   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ EXIT-STATUS:FAILURE die then ;
 
 : OPEN ( -- )
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
@@ -91,7 +91,7 @@ variable OTHER-SIZE
    end ELF:TEXT-OFF >= end ELF:TEXT-LIMIT <= and
    ELF:TEXT-LIMIT end - ELF:TEXT-ALIGN < and
    end ELF:TEXT-LIMIT ZEROS? and 0= if
-      s" image-size: the map's rows do not end at the code's last page" EXIT-STATUS:IOERR die
+      s" image-size: the map's rows do not end at the code's last page" EXIT-STATUS:FAILURE die
    then end ;
 
 : TEXT-OFF ( -- n )
@@ -124,10 +124,10 @@ variable OTHER-SIZE
 : DATA-RUN ( n n -- n n )
    {: at:n end:n :}
    at 16 + end > if
-      s" image-size: a DATA run's header passes its end" EXIT-STATUS:IOERR die then
+      s" image-size: a DATA run's header passes its end" EXIT-STATUS:FAILURE die then
    at 8 + IMG-U64@ {: len:n :}
    len 1 < len end at - 16 - 8 / > or if
-      s" image-size: a DATA run passes its end" EXIT-STATUS:IOERR die then
+      s" image-size: a DATA run passes its end" EXIT-STATUS:FAILURE die then
    at 16 + len 8 * +
    0 len 0 ?do at 16 + i 8 * + IMG-U64@ 0= if 8 + then loop ;
 
@@ -135,19 +135,19 @@ variable OTHER-SIZE
 : DATA-ZEROS ( n n -- n )
    {: at:n end:n :}
    end TEXT-END > if
-      s" image-size: the DATA image passes the code" EXIT-STATUS:IOERR die then
+      s" image-size: the DATA image passes the code" EXIT-STATUS:FAILURE die then
    0 at begin dup end < while end DATA-RUN rot + swap repeat drop ;
 
 : DATA-REGION ( -- n n )
    s" data" IMAGE-NAMES:REGION {: start:n len:n :}
    start 0 < len 0 <= or if
-      s" image-size: the map frames no DATA image" EXIT-STATUS:IOERR die then
+      s" image-size: the map frames no DATA image" EXIT-STATUS:FAILURE die then
    start len ;
 
 : CODE-CLASS ( -- )
    IMAGE-NAMES:CODE-END {: end:n :}
    end IMAGE-NAMES:CODE-ATTR 0= if
-      s" image-size: the map's code rows do not tile the code" EXIT-STATUS:IOERR die then
+      s" image-size: the map's code rows do not tile the code" EXIT-STATUS:FAILURE die then
    end CODE-SIZE ! ;
 
 : NAME-CLASS ( -- )
@@ -170,7 +170,7 @@ variable OTHER-SIZE
 : SUMS ( -- )
    CODE-SIZE @ NAME-SIZE @ + WRITTEN-SIZE @ + ZERO-SIZE @ +
    PAD-SIZE @ + OTHER-SIZE @ + ILEN @ <> if
-      s" image-size: classes do not sum to the file length" EXIT-STATUS:IOERR die then ;
+      s" image-size: classes do not sum to the file length" EXIT-STATUS:FAILURE die then ;
 
 : TAB ( -- ) 9 emit ;
 
@@ -227,7 +227,7 @@ public
 
 : RUN ( -- )
    SCRIPT-ARGC 1 <> if
-      s" usage: <engine> --load tools/engine-size.f -- <program>" 64 die
+      s" usage: <engine> --load tools/engine-size.f -- <program>" EXIT-STATUS:USAGE die
    then
    0 SCRIPT-ARGV$ MEASURE
    REPORT ;

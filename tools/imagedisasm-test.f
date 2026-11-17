@@ -161,7 +161,7 @@ variable IMDT-FORMS-U
    IMDT-OUT outu s\" cmp 9 12288\n" CONTAINS? TTRUE ;
 
 : IMDT-TEST-RANGE ( -- )
-   IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 IMDT-EXPECT-EXIT {: outu erru :}
+   IMDT-RET$ s" 4" s" 1" IMDT-RUN 64 IMDT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
 

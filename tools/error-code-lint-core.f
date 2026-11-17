@@ -14,6 +14,7 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require src/lib/source-lex.f
+require src/core/exit-status.f
 
 package ERROR-CODE-LINT
 using LINT-INTERN
@@ -170,12 +171,12 @@ variable JX
 \ A (code, name) pair registered in two files (a re-export shim, a boot file loaded
 \ before src/lib/) is one identity, admitted even inside another file's range.
 : CLAIM+ ( n intern-id file-id -- ) {: code:n name:intern-id file:file-id :}
-   CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
+   CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" EXIT-STATUS:FULL die then
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !
    CLAIM# @ 1+ CLAIM# ! ;
 
 : PATH! ( ^u8 n -- ) {: a:^ u:n :}
-   u PATH-CAP > if s" error-code-lint: path too long" 1 die then
+   u PATH-CAP > if s" error-code-lint: path too long" EXIT-STATUS:FULL die then
    a PATH u LINT-BMOVE  u PATH-U ! ;
 
 : PATH$ ( -- ^u8 n )  PATH PATH-U @ ;
@@ -251,7 +252,7 @@ variable JX
          k RES-STATE@ code first WITH-BOUND k RES-ROWS RESERVATION-STATE !
       ENDOF
       none OF
-         RES# @ MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
+         RES# @ MAX-RES >= if s" error-code-lint: reservation table full" EXIT-STATUS:FULL die then
          construct reservation-state none code first WITH-BOUND {: state:reservation-state :}
          stem file state RESERVATION-MAKE RES# @ RES-ROWS !
          RES# @ 1+ RES# !
@@ -501,6 +502,6 @@ public
 
 : STRICT ( -- )
    LEDGER
-   BAD @ 0 > if 1 throw then ;
+   BAD @ 0 > if EXIT-STATUS:FAILURE throw then ;
 
 ;package

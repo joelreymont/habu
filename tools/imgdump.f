@@ -9,6 +9,7 @@ require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
 require src/habu/code-span.f
 require src/os/macos/macho.f
+require src/core/exit-status.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -18,7 +19,7 @@ require src/os/macos/macho.f
       HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
          s" src/os/linux/layout.f" included exit then
       HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
-      s" imgdump: unknown target" 74 die
+      s" imgdump: unknown target" EXIT-STATUS:INTERNAL die
    then ;
 
 IMG-LOAD-TARGET-LAYOUT
@@ -80,10 +81,10 @@ create A-LEN DICT-CAP cells allot
 \ mmap answers the mapping's address as an integer; a failed map dies first.
 CAST: MAP>BYTES ( n -- ^u8 )
 : IMG-MMAP-PTR ( n -- ^u8 )
-   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN MAP>BYTES ;
+   dup 0 < IF IFD @ close s" imgdump: mmap failed" EXIT-STATUS:SYSTEM die THEN MAP>BYTES ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name" 64 die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name" EXIT-STATUS:USAGE die ;
 
 : IMG-PATH$ ( -- ^u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -91,9 +92,9 @@ CAST: MAP>BYTES ( n -- ^u8 )
    0 SCRIPT-ARGV$ ;
 
 : READ-IMG-PATH ( ^u8 n -- )
-   FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" 74 die THEN
+   FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" EXIT-STATUS:IOERR die THEN
    ISZ !  FD>N IFD !
-   ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" 74 die THEN
+   ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" EXIT-STATUS:FAILURE die THEN
    0 ISZ @ 1 2 IFD @ 0 mmap
    IMG-MMAP-PTR IB!
    IFD @ close
@@ -259,7 +260,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    off ;
 : E-NAME ( n -- ^u8 n )
    {: o:n :}
-   o E-NAME-OFF dup 0 < if s" imgdump: name out of range" 74 die then
+   o E-NAME-OFF dup 0 < if s" imgdump: name out of range" EXIT-STATUS:FAILURE die then
    IB@ +  o E-L ;
 \ The name length floor is 0: a name length is a record field, not a
 \ plausibility test.
@@ -300,11 +301,11 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 : FIND-X64-DICT ( -- )
    X64-REG-PHDR {: p:n :}
-   p 0 < if s" imgdump: no x86 dictionary LOAD" 74 die then
+   p 0 < if s" imgdump: no x86 dictionary LOAD" EXIT-STATUS:FAILURE die then
    p 16 + I@ ELF-VA>OFF {: off:n :}
-   off 0 < if s" imgdump: no file-backed x86 dictionary" 74 die then
+   off 0 < if s" imgdump: no file-backed x86 dictionary" EXIT-STATUS:FAILURE die then
    off off p 32 + I@ DICT-SIZE min + RUN#-TO {: count:n :}
-   count 0= if s" imgdump: no dict found" 74 die then
+   count 0= if s" imgdump: no dict found" EXIT-STATUS:FAILURE die then
    off BESTO !  count BESTN ! ;
 
 : FIND-DICT ( -- )
@@ -317,7 +318,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
       then
       4 +
    repeat drop
-   BESTN @ 0= if s" imgdump: no dict found" 74 die then ;
+   BESTN @ 0= if s" imgdump: no dict found" EXIT-STATUS:FAILURE die then ;
 
 \ ---- dump ----
 : .ENT {: o :}
@@ -333,7 +334,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : DUMP-DICT
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" 74 die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
       dup .ENT  DREC +
    repeat drop ;
 
@@ -345,11 +346,11 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    PCV !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" 74 die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
       dup PC-HIT? if .ENT exit then
       DREC +
    repeat drop
-   s" imgdump: pc not found" 74 die ;
+   s" imgdump: pc not found" EXIT-STATUS:NOINPUT die ;
 
 \ ---- xt base ----
 \ A primitive-table xt field is relative to the text base, which in an ET_EXEC
@@ -370,7 +371,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" 74 die
+      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" EXIT-STATUS:FAILURE die
    then
    X64-IMAGE @ if 0 exit then                  \ x86 records hold absolute xts
    ELF-ENTRY-OFF I@ ;
@@ -437,7 +438,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    PARSE-DEC ;
 
 : CAPTURE-A-ENTRY {: o idx :} ( n n -- )
-   idx DICT-CAP >= if s" imgdump: too many dict entries" 74 die then
+   idx DICT-CAP >= if s" imgdump: too many dict entries" EXIT-STATUS:FULL die then
    o E-NAME idx A-NAME-U! idx A-NAME-P!
    o E-S idx A-START!
    o E-CODE-BYTES idx A-LEN! ;
@@ -446,7 +447,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    0 A-N !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" 74 die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
       dup A-N @ CAPTURE-A-ENTRY
       A-N @ 1 + A-N !
       DREC +
@@ -502,7 +503,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    0 CMP-IDX !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" 74 die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
       dup CMP-IDX @ CMP-ENTRY
       CMP-IDX @ 1 + CMP-IDX !
       DREC +
@@ -522,7 +523,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
       s" word size/name differences (name len):" type cr
       CMP-BAD-IDX @ A-N @ < if 60 EMITC 32 EMITC CMP-BAD-IDX @ PRINT-A-NL then
       CMP-BAD-P @ 0= 0= if 62 EMITC 32 EMITC PRINT-BAD-NL then
-      s" imgdump: dictionaries differ" 1 die
+      s" imgdump: dictionaries differ" EXIT-STATUS:FAILURE die
    then
    CMP-OFF-DIFF @ if
       s" word sizes identical; offsets shifted (first entry):" type cr
@@ -550,13 +551,13 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if drop s" imgdump: corrupt dict entry" 74 die then
+      dup ENT? 0= if drop s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
       dup E-NAME 2 SCRIPT-ARGV$ CORE-STR=CI if
          dup E-NAME type s"  wid " type E-WID . cr exit
       then
       DREC +
    repeat drop
-   s" imgdump: word not found" 74 die ;
+   s" imgdump: word not found" EXIT-STATUS:NOINPUT die ;
 
 : MAIN ( -- )
    SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then

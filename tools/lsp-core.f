@@ -59,6 +59,7 @@ require tools/lsp-links.f
 require tools/lsp-workspace.f
 require tools/lsp-references.f
 require tools/lsp-rename.f
+require src/core/exit-status.f
 
 package LSP
 using SPAN
@@ -135,7 +136,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ The exit code, for exit and the end of input alike: 0 once the client has
 \ asked for shutdown, else 1; the end of input before shutdown also says so on
 \ stderr. Any other throw, a framing fault or a closed stdout among them, stops
-\ the server with one stderr line naming it and exit code 1.
+\ the server with one stderr line naming it and EXIT-STATUS:UNCAUGHT.
 : EXIT-CODE ( -- n )
    STATE@ MATCH state
       starting OF 1 ENDOF
@@ -1003,7 +1004,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : ENDED ( -- )
    TURNS
    EXIT-CODE {: rc:n :}
-   rc 0= if s" " 0 die then
+   rc 0= if s" " EXIT-STATUS:SUCCESS die then
    s" lsp: input ended before exit" rc die ;
 
 : DUE ( -- option<n> )
@@ -1057,7 +1058,7 @@ public
 : MAIN ( -- )
    [: SERVE ;] catch {: code:n :}
    SB-RESET s" lsp: stopped by throw " SB-APPEND code FMT:SB-INT
-   SB$ 1 die ;
+   SB$ EXIT-STATUS:UNCAUGHT die ;
 
 ;using
 ;using

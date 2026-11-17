@@ -9,7 +9,7 @@
 \ [BASE, OPEN-DP); unit BUILT-EXTS-N + 1 the data no piece holds, the build
 \ body's. A piece's extents tile its data but for the cell LAY sets apart
 \ before its first laid text: no unit holds it, and a build whose cell holds an
-\ address there is refused: LINKER:E-ADDRESS, rc 74. The header is live but for
+\ address there is refused: LINKER:E-ADDRESS, rc 70. The header is live but for
 \ its string bodies, and a header address cell is read once no piece stored it
 \ or a reached one did: a piece is reached once one of its extents or records
 \ is live, and an address a piece stored there is that piece's, as its object

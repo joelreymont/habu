@@ -58,7 +58,7 @@
 \   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
-\ - a closed stdout ending the server by SIGPIPE instead of exit 1 and the
+\ - a closed stdout ending the server by SIGPIPE instead of exit 67 and the
 \   throw that stopped it .................................... stdout-closed
 \
 \ Diagnostics, each checked against the test's own LSP-CHECK:VERIFY-BYTES of the
@@ -1340,7 +1340,7 @@ variable OPEN-N
    err-r [: HEAR-ERR ;] catch {: code:n :}
    drop
    err-r FD>N close
-   code pid SETTLED 1 EXITED
+   code pid SETTLED 67 EXITED
    ENDS ;
 
 \ ---- conversations ------------------------------------------------------------
@@ -1441,7 +1441,7 @@ variable OPEN-N
 
 : FAULTED ( n -- )
    STOPPED
-   1 CONVERSE
+   67 CONVERSE
    ENDS ;
 
 : LONG-LINE ( -- )
@@ -1466,7 +1466,7 @@ variable OPEN-N
    INITIALIZE
    s\" Content-Length: abc\r\n\r\n" IN+
    E-CONTENT-LENGTH-MALFORMED STOPPED
-   1 CONVERSE
+   67 CONVERSE
    CAPABILITIES
    ENDS ;
 
@@ -1823,11 +1823,11 @@ variable PUB-COUNT
 \ Holds the conversation of this name, whose turns end its input before exit
 \ and say what the server must write to stderr then; AFTER checks the frames
 \ the server wrote once its input ended, among those read to its stdout's end
-\ (HEAR). It must exit 1, nothing past them.
-: TALK-CUT ( ^u8 n [ -- ] [ -- ] -- )
-   {: a:^ u:n turns after :}
+\ (HEAR). It must exit RC, nothing past them.
+: TALK-CUT ( ^u8 n [ -- ] [ -- ] n -- )
+   {: a:^ u:n turns after rc:n :}
    a u CONVERSATION
-   turns [: UNFINISHED ;] 1 HELD-BY 0= if exit then
+   turns [: UNFINISHED ;] rc HELD-BY 0= if exit then
    after execute
    ENDS ;
 
@@ -7119,8 +7119,8 @@ public
    s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
    s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
    s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
-   s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
-   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT ;
+   s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] 1 TALK-CUT
+   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] 67 TALK-CUT ;
 
 : DEFAULT-CASES ( -- )
    s" unknown-method" [: UNKNOWN-METHOD-TURNS ;] TALK

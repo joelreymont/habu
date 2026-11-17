@@ -6,6 +6,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fmt.f
 require src/habu/code-span.f
+require src/core/exit-status.f
 
 package IMAGE-NAMES
 
@@ -66,7 +67,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 : ROW-BYTES ( ^u8 n -- n )
    ROW-LEN dup 0 < if
-      s" image-names: a row's length is not a length" 74 die then ;
+      s" image-names: a row's length is not a length" EXIT-STATUS:FAILURE die then ;
 
 : KIND? ( ^u8 n ^u8 n -- bool )
    {: row:^ rowu:n kind:^ kindu:n :}
@@ -122,7 +123,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : UNKNOWN-KIND ( ^u8 n -- )
    {: kind:^ kindu:n :}
    SB-RESET s" image-names: a map row of unknown kind " SB-APPEND
-   kind kindu 64 min SB-APPEND SB$ 74 die ;
+   kind kindu 64 min SB-APPEND SB$ EXIT-STATUS:FAILURE die ;
 
 public
 
@@ -150,7 +151,7 @@ public
    map mapu FS:FILE-SIZE {: size:n :}
    size CELL + CELL / TEXT-RESERVE
    map mapu 0 TEXT BYTE-VIEW size FS:READ-ALL size <> if
-      s" image-names: short read" 74 die then
+      s" image-names: short read" EXIT-STATUS:IOERR die then
    size USED ! 0 POS !
    LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then
    LINE$ {: header:^ headeru:n :}
@@ -221,7 +222,7 @@ public
       begin POS @ USED @ < while
          LINE$ {: row:^ rowu:n :}
          row rowu kind kindu KIND? if
-            if s" image-names: two rows of one region" 74 die then
+            if s" image-names: two rows of one region" EXIT-STATUS:FAILURE die then
             2drop row rowu COL-START @ NUM-COL row rowu ROW-BYTES true
          then
       repeat

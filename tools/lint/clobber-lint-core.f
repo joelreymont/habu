@@ -18,6 +18,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/fmt.f
 require src/lib/map.f
+require src/core/exit-status.f
 
 package CLOBBER-CENSUS
 
@@ -53,7 +54,7 @@ public
    s" clobber-lint: scanned routines=" type SCAN-ROUTINE-N @ .
    s" clobber-lint: calls=" type CALL-N @ .
    s" clobber-lint: scanned calls=" type SCAN-CALL-N @ .
-   s" clobber-lint: the analysis missed a LABEL@ site" 1 die ;
+   s" clobber-lint: the analysis missed a LABEL@ site" EXIT-STATUS:INTERNAL die ;
 
 : REPORT ( -- )
    s" clobber-lint: routines=" type ROUTINE-N @ .
@@ -369,7 +370,7 @@ DYNAMIC-BUFFER ROLES u8
 : LOCAL-AT?  ( n -- bool )  ROLE@ dup IN-GROUP = swap LOCAL-USE = or ;
 
 : RR-CHECK-ROOM ( -- )
-   RR# @ RRMAX >= if s" clobber-lint: too many regs in instruction" 1 die then ;
+   RR# @ RRMAX >= if s" clobber-lint: too many regs in instruction" EXIT-STATUS:FULL die then ;
 : RR+  ( n -- )
    RR-CHECK-ROOM
    RRS RR# @ cells + !  RR# @ 1+ RR# ! ;
@@ -647,8 +648,8 @@ variable CX  variable EX
       CX @ 1+ CX !
    repeat  -1 ;
 : C-ADD  {: a u :}  ( -- idx )
-   CN# @ CMAX >= if s" clobber-lint: too many labels" 1 die then
-   CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" 1 die then
+   CN# @ CMAX >= if s" clobber-lint: too many labels" EXIT-STATUS:FULL die then
+   CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
    a u CNBUF CEND @ + FOLD-TO
    CNBUF CEND @ +  CN# @ CNOFF !  u CNLEN CN# @ cells + !
    0 CWS CN# @ cells + !  0 COPENED CN# @ cells + !
@@ -669,13 +670,13 @@ create USING-IN USING-MAX cells allot
 variable USING#
 
 : USING+ ( ^u8 n -- ) {: a:^ u:n :}
-   USING# @ USING-MAX >= if s" clobber-lint: too many usings" 1 die then
+   USING# @ USING-MAX >= if s" clobber-lint: too many usings" EXIT-STATUS:FULL die then
    a USING# @ USING-A !  u USING-U USING# @ cells + !
    PKG-U @ 0<> bool>n USING-IN USING# @ cells + !
    USING# @ 1+ USING# ! ;
 
 : USING-DROP ( -- )
-   USING# @ 0= if s" clobber-lint: ;using with no using open" 1 die then
+   USING# @ 0= if s" clobber-lint: ;using with no using open" EXIT-STATUS:FAILURE die then
    USING# @ 1- USING# ! ;
 
 : USINGS-CLOSE ( -- )
@@ -690,7 +691,7 @@ variable USING#
 \ commits a name.
 : C-JOIN$ ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n a:^ u:n :}
    pu u + 1+ {: size:n :}
-   size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
+   size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
    CNBUF CEND @ + {: dst:^ :}
    pa pu dst FOLD-TO
    58 dst pu + c!
@@ -703,7 +704,7 @@ variable USING#
 
 \ The folded copy of a name in the label pool's unused tail.
 : KEY$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
+   u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
    a u CNBUF CEND @ + FOLD-TO
    CNBUF CEND @ + u ;
 
@@ -731,7 +732,7 @@ variable USING#
    repeat  LINT-FALSE ;
 : EDGE+  {: from to :}  ( -- )
    from to EDGE? if exit then
-   EN# @ EMAX >= if s" clobber-lint: too many BL edges" 1 die then
+   EN# @ EMAX >= if s" clobber-lint: too many BL edges" EXIT-STATUS:FULL die then
    from EFROM EN# @ cells + !  to ETO EN# @ cells + !
    EN# @ 1+ EN# ! ;
 
@@ -980,7 +981,7 @@ variable HIDDEN
 
 \ The folded copy of a row's name in HOST-NAMES, kept while the map holds it.
 : HOST-NAME$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   NAME-END @ u + NAME-CAP @ > if s" clobber-lint: host name store full" 1 die then
+   NAME-END @ u + NAME-CAP @ > if s" clobber-lint: host name store full" EXIT-STATUS:FULL die then
    a u NAME-END @ HOST-NAMES FOLD-TO
    NAME-END @ HOST-NAMES u
    NAME-END @ u + NAME-END ! ;
@@ -1033,11 +1034,11 @@ variable HIDDEN
    k TOK s" ;package" LINT-STR=CI if 0 PKG-U !  USINGS-CLOSE k exit then
    k TOK s" ;using" LINT-STR=CI if USING-DROP k exit then
    k TOK s" using" LINT-STR=CI if
-      k 1+ TN# @ >= if s" clobber-lint: missing using name" 1 die then
+      k 1+ TN# @ >= if s" clobber-lint: missing using name" EXIT-STATUS:FAILURE die then
       k 1+ TOK USING+  k 1+ exit
    then
    k TOK s" package" LINT-STR=CI 0= if k exit then
-   k 1+ TN# @ >= if s" clobber-lint: missing package name" 1 die then
+   k 1+ TN# @ >= if s" clobber-lint: missing package name" EXIT-STATUS:FAILURE die then
    k 1+ TOK PKG-U ! PKG-A ! k 1+ ;
 
 \ def takes a definition's `:` token and its end, in the package and usings
@@ -1076,7 +1077,7 @@ variable WI  variable WE
    repeat drop ;
 : OPEN@  ( n -- n )  OPENINGS swap cells + @ ;
 : OPEN+  ( n -- )
-   ON# @ OMAX >= if s" clobber-lint: too many labels in definition" 1 die then
+   ON# @ OMAX >= if s" clobber-lint: too many labels in definition" EXIT-STATUS:FULL die then
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
 \ The kind of the instruction at token k+2 when tokens k and k+1 name a label
 \ through LABEL@, else MN-NONE.
@@ -1496,7 +1497,7 @@ variable STALE
    0 STALE !
    [: drop ROW-DECLARED ;] RETURNS-ROWS
    [: drop ROW-DECLARED ;] PRESERVE-ROWS
-   STALE @ 0 > if s" clobber-lint: stale mask rows" 1 die then ;
+   STALE @ 0 > if s" clobber-lint: stale mask rows" EXIT-STATUS:FAILURE die then ;
 
 \ A `LABEL@ BL,` call at token k, in the definition ending at hi, whose callee
 \ pass 1 never opened is reported and counted in UNBOUND.
@@ -1521,7 +1522,7 @@ variable UNBOUND
 : PROVE-CALLS  ( [ [ ^u8 n -- ] -- ] -- ) {: files :}
    0 UNBOUND !
    [: CALLS-FILE ;] files execute
-   UNBOUND @ 0 > if s" clobber-lint: unbound calls" 1 die then ;
+   UNBOUND @ 0 > if s" clobber-lint: unbound calls" EXIT-STATUS:FAILURE die then ;
 
 : PASS2-START  ( -- )
    SEED# @ BOUND# !  0 BAD ! ;
@@ -1546,7 +1547,7 @@ variable UNBOUND
    CLOBBER-CENSUS:PROVE  CLOBBER-CENSUS:REPORT
    BAD @ 0 > if
       s" clobber-lint: " type BAD @ FMT:.INT s"  finding(s)" type NL
-      s" clobber-lint: findings" 1 die
+      s" clobber-lint: findings" EXIT-STATUS:FAILURE die
    else
       s" clobber-lint: clean" type NL
    then ;

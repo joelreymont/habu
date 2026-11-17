@@ -44,7 +44,7 @@ variable LINT-OUT-ON
 
 : LINT-FD-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    u 0= IF exit THEN
-   fd a u write u <> IF s" lint: write failed" 74 die THEN ;
+   fd a u write u <> IF s" lint: write failed" EXIT-STATUS:IOERR die THEN ;
 
 : LINT-OUT-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
    LINT-OUT-ON @ IF
@@ -55,24 +55,24 @@ variable LINT-OUT-ON
 
 \ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
 \ hides which source outgrew which lint buffer.
-: LINT-READ-DIE ( ^u8 n ^u8 n -- )
-   {: msg:^ msgu:n path:^ pathu:n :}
+: LINT-READ-DIE ( ^u8 n ^u8 n n -- )
+   {: msg:^ msgu:n path:^ pathu:n rc:n :}
    2 msg msgu LINT-FD-WRITE
-   path pathu 1 die ;
+   path pathu rc die ;
 
 \ open takes a NUL-terminated path, so FS:>PATHZ copies the Habu path first.
 : READ-FILE ( ^u8 n ^u8 n -- ^u8 n )
    {: a:^ u buf:^ cap :}
    a u FS:>PATHZ 0 0 open  RFD !
-   RFD @ 0 < IF s" lint: cannot open file: " a u LINT-READ-DIE THEN
+   RFD @ 0 < IF s" lint: cannot open file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
    0 RLEN !
    begin  RFD @  buf RLEN @ +  cap RLEN @ -  read  dup RGOT !  0 >
    while  RLEN @ RGOT @ + RLEN !  repeat
-   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u LINT-READ-DIE THEN
+   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
    RLEN @ cap = IF
       RFD @ READ-PROBE 1 read RGOT !
-      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u LINT-READ-DIE THEN
-      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " a u LINT-READ-DIE THEN
+      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
+      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " a u EXIT-STATUS:FULL LINT-READ-DIE THEN
    THEN
    RFD @ close
    buf RLEN @ ;
@@ -254,7 +254,7 @@ public
 variable SN#
 : SPLIT-CLEAR  ( -- )  0 SN# ! ;
 : SPLIT+ ( ^u8 n -- ) {: a:^ u:n :}
-   SN# @ SMAX >= IF s" lint: split result overflow" 1 die THEN
+   SN# @ SMAX >= IF s" lint: split result overflow" EXIT-STATUS:FULL die THEN
    a SN# @ SOFF !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
 : S@ ( n -- ^u8 n )  dup SOFF @  swap cells SLEN + @ ;
 
@@ -313,8 +313,8 @@ variable LINT-CODE#
    cells LINT-CODE-VALS + @ ;
 
 : LINT-CODE-NAME+ ( ^u8 n n -- ) {: a:^ u:n code:n :}
-   LINT-CODE# @ LINT-CODE-MAX >= IF s" lint: code-name table full" 1 die THEN
-   u LINT-CODE-NAME-CAP > IF s" lint: code name too long" 1 die THEN
+   LINT-CODE# @ LINT-CODE-MAX >= IF s" lint: code-name table full" EXIT-STATUS:INTERNAL die THEN
+   u LINT-CODE-NAME-CAP > IF s" lint: code name too long" EXIT-STATUS:INTERNAL die THEN
    code LINT-CODE-VALS LINT-CODE# @ cells + !
    a LINT-CODE-NAME-BUF LINT-CODE# @ LINT-CODE-NAME-CAP * + u LINT-BMOVE
    u LINT-CODE-NAME-US LINT-CODE# @ cells + !

@@ -391,7 +391,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       HBB-WERR-LF
    then
    HBB-CLEANUP
-   EXIT-STATUS:IOERR HBB-EXIT ;
+   EXIT-STATUS:REJECTED HBB-EXIT ;
 
 \ Exit action in a build: names where, keeps -o as it was (not --json-errors).
 : HBB-EXITED ( -- )
@@ -401,7 +401,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       s"  ended the process during the build" HBB-WERR
       HBB-WERR-LF
    then
-   EXIT-STATUS:IOERR HBB-EXIT ;
+   EXIT-STATUS:REJECTED HBB-EXIT ;
 
 : HBB-BUILD-REST ( -- )
    ['] HBB-LINK catch {: rc:n :}
@@ -431,7 +431,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then
    rc CODESIGN:E-IDENTITY = if
       HBB-CLEANUP
-      s" hb-build: cannot sign output" EXIT-STATUS:IOERR die
+      s" hb-build: cannot sign output" EXIT-STATUS:UNAVAILABLE die
    then
    rc throw ;
 

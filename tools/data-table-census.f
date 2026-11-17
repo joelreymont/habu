@@ -16,6 +16,7 @@ require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/address-carrier.f
 require src/habu/cell-grid.f
+require src/core/exit-status.f
 
 package DATA-CENSUS
 
@@ -45,10 +46,10 @@ $FFFFFFFF constant IDX-MASK
 : REC-OFF ( ^n -- n ) {: rec:^ :}
    rec XREF-START-SLOT XREF-PTR@ {: p:^ :}
    p p rec XREF-CODE-BYTES + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-   size 0= if s" data-table-census: malformed DKIND:ADDR body" 74 die then
+   size 0= if s" data-table-census: malformed DKIND:ADDR body" EXIT-STATUS:INTERNAL die then
    p size ADDRESS-CARRIER:CHAIN-VALUE DATA-VA VA>N - {: off:n :}
    off 0 < off DATA-SIZE >= or if
-      s" data-table-census: DKIND:ADDR body decodes outside DATA" 74 die then
+      s" data-table-census: DKIND:ADDR body decodes outside DATA" EXIT-STATUS:INTERNAL die then
    off ;
 
 : OWNER? ( ^n -- bool ) {: rec:^ :}

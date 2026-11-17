@@ -352,9 +352,9 @@ CAST: >WRITER ( n -- [ bool [ ^u8 n -- ] -- ] )
 
 : WRITER ( -- [ bool [ ^u8 n -- ] -- ] )
    s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
-   pkg XREF-FOUND? 0= if s" hb-build: the tree has no package KERNEL-OBJECT" 1 die then
+   pkg XREF-FOUND? 0= if s" hb-build: the tree has no package KERNEL-OBJECT" EXIT-STATUS:INTERNAL die then
    s" WRITE" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec XREF-FOUND? 0= if s" hb-build: KERNEL-OBJECT has no public WRITE" 1 die then
+   rec XREF-FOUND? 0= if s" hb-build: KERNEL-OBJECT has no public WRITE" EXIT-STATUS:INTERNAL die then
    rec XREF-START >WRITER ;
 
 \ An inputs file is the object's checksum (its bytes 8-40), the object's stamp
@@ -411,7 +411,7 @@ SUM-U 32 + constant HEAD-U
 \ changed in place since. Nothing older is deleted.
 : KERNEL-WRITE ( ^u8 n -- )
    {: a:^ u:n :}
-   u 40 < if s" hb-build: the kernel object is too short" 1 die then
+   u 40 < if s" hb-build: the kernel object is too short" EXIT-STATUS:INTERNAL die then
    KERNEL-DIR KERNEL-DIR-U @ FS:MAKE-DIRS
    a 8 + OBJECT-PATH!
    KERNEL-PATH KERNEL-U @ a u FS:ATOMIC-WRITE-FILE

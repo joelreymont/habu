@@ -26,7 +26,7 @@ DYNAMIC-BUFFER FILES u8
 
 : NEED-ARGS ( -- )
    SCRIPT-ARGC 5 <> if
-      s" chain-run: host gen1 gen2 gen3 TMPDIR required" 64 die
+      s" chain-run: host gen1 gen2 gen3 TMPDIR required" EXIT-STATUS:USAGE die
    then ;
 
 \ A build that failed; its stderr names the file it was loading. A build past

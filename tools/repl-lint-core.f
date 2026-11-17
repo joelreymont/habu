@@ -8,6 +8,7 @@ require src/lib/fd.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require src/core/exit-status.f
 
 using LINT-INTERN
 
@@ -102,7 +103,7 @@ variable REPL-ROOT-U
 
 : ADD-REPL-PATH  ( ^u8 n -- ) {: a:^ u:n :}
    a u INTERN-FIND dup 0 >= if drop exit then drop
-   REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" 1 die then
+   REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" EXIT-STATUS:FULL die then
    a u INTERN  REPL-PATH# @ PATH-ID!
    REPL-PATH# @ 1+ REPL-PATH# ! ;
 
@@ -239,7 +240,7 @@ variable REPL-ROOT-U
    REPL-BAD @ ;
 
 : REPL-LINT  ( -- )
-   REPL-LINT-CHECK 0 > if s" " 1 die then ;
+   REPL-LINT-CHECK 0 > if s" " EXIT-STATUS:FAILURE die then ;
 
 FD:STDOUT REPL-OUT-FD!
 
