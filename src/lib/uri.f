@@ -142,12 +142,17 @@ public
    fu u 0 ?do a i + c@ out rot ENCODE-BYTE loop drop
    len ;
 
+\ The number of bytes FORM-ENCODE writes for the bytes.
+: FORM-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
+   0 u 0 ?do a i + c@ FORM-WIDTH + loop ;
+
 \ Writes the bytes as application/x-www-form-urlencoded: ASCII letters, digits
 \ and `*-._` as they are, a space as `+`, every other byte as upper-case `%XX`.
 : FORM-ENCODE ( ^u8 n SPAN:span<u8> -- n )
    {: a:^ u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
-   0 u 0 ?do a i + c@ FORM-WIDTH + loop {: len:n :}
+   a u FORM-LEN {: len:n :}
    s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    0 u 0 ?do a i + c@ out rot FORM-BYTE loop drop
    len ;

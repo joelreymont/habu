@@ -39,6 +39,7 @@ require src/lib/adt/option.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
+require src/lib/uri.f
 
 package BEARER
 public
@@ -611,29 +612,13 @@ ENUM grant
 
 private
 
-\ RFC 3986's unreserved bytes, which a form value carries as they are.
-: UNRESERVED? ( n -- bool )
-   {: c:n :}
-   c [char] A >= c [char] Z <= and
-   c [char] a >= c [char] z <= and or
-   c [char] 0 >= c [char] 9 <= and or
-   c [char] - = or c [char] . = or c [char] _ = or c [char] ~ = or ;
-
-: HEX-DIGIT ( n -- n ) dup 10 < if [char] 0 + else 10 - [char] A + then ;
-
-: ENCODED+ ( n ^n -- )
-   {: c:n buf:^ :}
-   c UNRESERVED? if c buf BUF:APPEND-BYTE exit then
-   [char] % buf BUF:APPEND-BYTE
-   c 4 rshift HEX-DIGIT buf BUF:APPEND-BYTE
-   c 15 and HEX-DIGIT buf BUF:APPEND-BYTE ;
-
 : PAIR+ ( ^u8 n ^u8 n ^n -- )
    {: k:^ ku:n v:^ vu:n buf:^ :}
    buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
    k ku BUF:N>BLEN buf BUF:APPEND-SPAN
    [char] = buf BUF:APPEND-BYTE
-   vu 0 ?do v i + c@ buf ENCODED+ loop ;
+   v vu URI:FORM-LEN {: n:n :}
+   v vu buf n BUF:N>BLEN BUF:GROW URI:FORM-ENCODE drop ;
 
 : CREDENTIALS+ ( ^n -- )
    {: buf:^ :}

@@ -558,7 +558,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    FAULT-TOKEN 60 T= s" fault/token" T$=
    FORM-RESET
    s" grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
-   s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d~e" FORM+
+   s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d%7Ee" FORM+
    s" &scope=api%3A%2F%2Fzen%2F.default&requested_token_use=on_behalf_of" FORM+
    POSTED POSTED-U @ FORM$ T$=
    s" a 503 is E-UNAVAILABLE" T-LABEL
