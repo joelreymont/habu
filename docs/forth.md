@@ -2040,9 +2040,7 @@ answers alike.
   input, and any other token before the division (a control word, a quotation,
   a fetch or store, a return-stack word, `[char]`, `[']`) takes every input; a
   taken input admits any value. At run time nothing tests the divisor (arm64
-  `sdiv` answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's
-  divisor that cannot be zero says so in its type: `NUM:positive-divisor`
-  (`src/lib/num-types.f`), which NUM's `DIV-` and `REM-` words take.
+  `sdiv` answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap).
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
   so it wraps like `+`, `-`, `*`.

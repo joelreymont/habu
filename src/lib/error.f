@@ -922,7 +922,6 @@ private
 -7234 s" the dictionary ran out of occurrence numbers to issue" true MINTED DEF-OCC:E-EXHAUSTED
 -3200 s" a memory request's size is zero, negative or past the largest an allocator takes: ask for a size from 1 to that largest" false MINTED E-MEM-SIZE
 -3201 s" the system refused to map the memory asked for: ask for less, or free memory first" true MINTED E-MEM-MAP
--3202 s" a memory size check failed, though its constant arguments rule that out" true MINTED E-MEM-TOTALITY
 -3203 s" the system refused to unmap memory Habu mapped" true MINTED E-MEM-UNMAP
 -3204 s" an allocator record was filled a second time: call `ALLOC:INIT` once, on a zeroed record" true MINTED E-ALLOC-STATE
 7101 s" a type, variant or field name is not a lowercase tail: write it in lower case with no package qualifier, as in `point`" false MINTED TFAM:E-TFAM-CASE

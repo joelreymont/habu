@@ -57,45 +57,11 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 : MEM-ALLOC-64K ( -- ^u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
 
-\ Package MEM states the raw MEM-ALLOC-* sizing as checked words over NUM roles:
-\ the scalar words answer numeric-result<a> (zero is a valid answer), and the
-\ allocation sinks take only alloc-* roles, so a role swap never reaches mmap.
+\ Package MEM's allocation sinks take only alloc-* roles, so a role swap never
+\ reaches mmap.
 
 package MEM
 private
-
-\ The OK-* extractors take compile-time-valid role constants: their refusal
-\ arms are unreachable and throw E-MEM-TOTALITY, as NUM's E-NUM-TOTALITY.
-: OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
-      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
-      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
-      misaligned OF E-MEM-TOTALITY throw ENDOF
-   ;MATCH ;
-: OK-ALIGNMENT ( NUM:numeric-result<NUM:alignment> -- NUM:alignment )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
-      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
-      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
-      misaligned OF E-MEM-TOTALITY throw ENDOF
-   ;MATCH ;
-: OK-ALLOC-BYTE-LEN ( NUM:numeric-result<NUM:alloc-byte-len> -- NUM:alloc-byte-len )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
-      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
-      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
-      misaligned OF E-MEM-TOTALITY throw ENDOF
-   ;MATCH ;
-
-\ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
-\ AS-ALLOC-BYTE-LEN all succeed; the extractors' failure arms are unreachable.
-: 64K-LEN ( -- NUM:byte-len )
-   MEM-64K NUM:BYTE-LEN OK-BYTE-LEN ;
-: 64K-ALIGN ( -- NUM:alignment )
-   MEM-64K NUM:ALIGNMENT OK-ALIGNMENT ;
-: 64K-ALLOC-LEN ( -- NUM:alloc-byte-len )
-   64K-LEN NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
 \ Private allocation-role erasure for mmap, cells and munmap; no raw value
 \ escapes.
@@ -114,14 +80,6 @@ public
 
 : CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
    NUM:CELLS>BYTES ;
-: 64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> )
-   64K-LEN swap NUM:SCALE-BYTES ;
-: 64K-SPAN-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> )
-   64K-ALIGN NUM:ALIGN-UP-BYTES ;
-: 64K-COUNT-FOR ( NUM:byte-len -- NUM:numeric-result<NUM:item-count> )
-   \ 64K is a positive extent, so DIV-BYTES-CEIL's zero-size-unit arm is
-   \ unreachable; a zero need is 0 buffers.
-   64K-LEN NUM:DIV-BYTES-CEIL ;
 
 : ALLOC-BYTES ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len )
    dup ALLOC-BYTES>N MEM-ALLOC-PTR
@@ -131,8 +89,6 @@ public
 \ Takes the count ALLOC-CELLS took.
 : RELEASE-CELLS ( ^a NUM:alloc-cell-count -- )
    ALLOC-CELLS>N cells RELEASE-RANGE ;
-: ALLOC-64K ( -- ^u8 NUM:alloc-byte-len )
-   64K-ALLOC-LEN ALLOC-BYTES ;
 
 \ Takes the exact extent ALLOC-BYTES gave.
 : RELEASE-BYTES ( ^u8 NUM:alloc-byte-len -- )

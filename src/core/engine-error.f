@@ -35,6 +35,5 @@ public
 -3299 constant E-MEM-LAST
 -3200 constant E-MEM-SIZE
 -3201 constant E-MEM-MAP
--3202 constant E-MEM-TOTALITY
 -3203 constant E-MEM-UNMAP
 -3204 constant E-ALLOC-STATE           \ an allocator filled twice

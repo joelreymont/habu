@@ -10,10 +10,7 @@ require src/lib/num-arithmetic.f
 \ A string byte length is a NUM:byte-len, a scan offset a NUM:byte-off, a
 \ character count a NUM:item-count and a found position a NUM:index in an
 \ option<NUM:index>; swapping roles or passing a raw `n` is a checker reject.
-\ Behavior is byte-identical to the raw words, which STR wraps as black boxes.
-\ Only SPLIT-NEXT adds a check: its largest boundary is one past the string end,
-\ so the advance is proven before the scan and an overflow is E-STR-BOUNDS, not
-\ a silent wrap.
+\ Each word answers what the raw word it wraps answers, or throws E-STR-BOUNDS.
 
 package STR
 private
@@ -33,9 +30,8 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 : RAW-BUF-APPEND ( ^u8 n ^u8 n ^len -- )      BUF-APPEND ;
 : RAW-BUF-APPEND-C ( n ^u8 n ^len -- )           BUF-APPEND-C ;
 
-\ A cell that fails a role predicate is E-STR-BOUNDS. The reachable arm is the
-\ negative for LENGTH, OFFSET and COUNT and the SPLIT-NEXT advance overflow; the
-\ rest are unreachable over cells the scan proves nonnegative.
+\ A failed role predicate throws E-STR-BOUNDS. Only the negative arm is reached:
+\ by LENGTH, OFFSET and COUNT, and by SPLIT-NEXT's next when length + 1 wraps.
 : OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
    MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
@@ -76,12 +72,6 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
       some OF IDX>N N>INDEX OPTION:SOME ENDOF
    ;MATCH ;
 
-: ONE-BYTE-LEN ( -- NUM:byte-len )   1 NUM:BYTE-LEN OK-BYTE-LEN ;
-: SPLIT-SENTINEL-OK ( NUM:byte-len -- )
-   \ the raw scan's largest reported boundary is (length + 1); prove that offset
-   \ advance is representable (overflow -> E-STR-BOUNDS) before scanning.
-   BYTE-LEN>N N>BYTE-OFF  ONE-BYTE-LEN  NUM:ADVANCE-BYTE-OFF  OK-BYTE-OFF drop ;
-
 public
 
 \ Validators: a negative n throws E-STR-BOUNDS.
@@ -108,7 +98,6 @@ STRUCTURE split
 
 : SPLIT-NEXT ( ^u8 NUM:byte-len n NUM:byte-off -- option<str:split> )
    {: a:^ u:NUM:byte-len sep:n start:NUM:byte-off :}
-   u SPLIT-SENTINEL-OK
    a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
    {: rn:n more?:bool :}                                \ sub-ptr sub-rawlen remain on the stack
    more? if

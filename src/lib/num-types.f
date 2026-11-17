@@ -27,7 +27,6 @@ NEWTYPE index                 \ nonnegative ordinal, not yet bounded
 NEWTYPE byte-off              \ nonnegative byte offset
 NEWTYPE cell-off              \ nonnegative cell offset
 NEWTYPE alignment             \ positive power-of-two alignment
-NEWTYPE positive-divisor      \ positive divisor for unit-preserving extent arithmetic
 NEWTYPE alloc-byte-len        \ positive byte extent accepted by an allocator
 NEWTYPE alloc-cell-count      \ positive cell count accepted by a cell allocator
 
@@ -61,7 +60,6 @@ CAST: MINT-INDEX ( n -- index )
 CAST: MINT-BYTE-OFF ( n -- byte-off )
 CAST: MINT-CELL-OFF ( n -- cell-off )
 CAST: MINT-ALIGNMENT ( n -- alignment )
-CAST: MINT-POSITIVE-DIVISOR ( n -- positive-divisor )
 CAST: MINT-ALLOC-BYTE-LEN ( n -- alloc-byte-len )
 CAST: MINT-ALLOC-CELL-COUNT ( n -- alloc-cell-count )
 
@@ -97,10 +95,6 @@ public
 
 : ALIGNMENT ( n -- numeric-result<alignment> ) {: v:n :}
    v 0 >  v v 1- and 0=  and if v MINT-ALIGNMENT NR-OK else NR-BADALIGN then ;
-: POSITIVE-DIVISOR ( n -- numeric-result<positive-divisor> )
-   dup 0 < if drop NR-NEG exit then
-   dup 0= if drop NR-ZERO exit then
-   MINT-POSITIVE-DIVISOR NR-OK ;
 
 \ An allocation caller narrows a zero-admitting role here, which answers `zero`:
 \ no allocator accepts a zero-admitting role. AS-ALLOC-CELL-COUNT answers

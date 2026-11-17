@@ -169,13 +169,6 @@ T-REPORT
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
-: MEMT-IC-CODE ( NUM:numeric-result<NUM:item-count> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
 : MEMT-AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
@@ -193,21 +186,6 @@ T-REPORT
 
 : MEMT-CELLS>BYTES# ( n -- n ) NUM:CELL-COUNT
    MATCH NUM:numeric-result ok OF MEM:CELLS>BYTES MEMT-BL-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
-: MEMT-64K-BYTES# ( n -- n ) NUM:ITEM-COUNT
-   MATCH NUM:numeric-result ok OF MEM:64K-BYTES MEMT-BL-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
-: MEMT-64K-COUNT-FOR# ( n -- n ) NUM:BYTE-LEN
-   MATCH NUM:numeric-result ok OF MEM:64K-COUNT-FOR MEMT-IC-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
-: MEMT-64K-SPAN# ( n -- n ) NUM:BYTE-LEN
-   MATCH NUM:numeric-result ok OF MEM:64K-SPAN-BYTES MEMT-BL-CODE ENDOF
       negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
       overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
@@ -233,32 +211,13 @@ T-REPORT
 : MEMT-TYPED-BYTES ( -- )
    MEM-64K MEM:BYTES-ALLOC-LEN [: MEMT-TYPED-BYTES-BODY ;] MEM:WITH-BYTES ;
 : MEMT-TYPED-64K ( -- )
-   MEM:ALLOC-64K drop {: a:^ :}
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:^ :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
 : MEMT-TYPED-CELLS ( -- )
    4 MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: a:^ :}
    111 a !  222 a 1 cells + !
    a @ 111 T=  a 1 cells + @ 222 T= ;
-
-\ MEM:64K-COUNT-FOR composes NUM:DIV-BYTES-CEIL and reads no raw cell. At MAX-N
-\ it answers the true ceil, MEM-MAX-64K-BUFFERS+1.
-CAST: MEMT-IC>RAW ( NUM:item-count -- n )
-
-: MEMT-64K-COUNT ( n -- n ) NUM:BYTE-LEN
-   MATCH NUM:numeric-result ok OF MEM:64K-COUNT-FOR
-      MATCH NUM:numeric-result ok OF MEMT-IC>RAW ENDOF
-         negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF
-         overflow OF E-MEM-SIZE throw ENDOF underflow OF E-MEM-SIZE throw ENDOF
-         bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
-      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
-
-: MEMT-COUNT-PARITY ( -- )
-   1 MEMT-64K-COUNT 1 T=
-   MEM-64K MEMT-64K-COUNT 1 T=
-   MEM-64K 1 + MEMT-64K-COUNT 2 T=
-   MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
 using MEM
 package MEMT
@@ -439,11 +398,7 @@ HB-TARGET-LINUX-X86-64? [if]
 
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
-   MEMT-COUNT-PARITY
    0 MEMT-CELLS>BYTES# 0 T=      1 MEMT-CELLS>BYTES# 0 T=
-   0 MEMT-64K-BYTES# 0 T=        3 MEMT-64K-BYTES# 0 T=
-   0 MEMT-64K-COUNT-FOR# 0 T=    1 MEMT-64K-COUNT-FOR# 0 T=   MEM-64K 1 + MEMT-64K-COUNT-FOR# 0 T=
-   0 MEMT-64K-SPAN# 0 T=         MEM-64K 1 + MEMT-64K-SPAN# 0 T=
    0 MEMT-BYTES-ALLOC# E-NUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-NUM-NEGATIVE T=
    0 MEMT-CELLS-ALLOC# E-NUM-ZERO T=      -1 MEMT-CELLS-ALLOC# E-NUM-NEGATIVE T=
    1 MEMT-BYTES-ALLOC# 0 T=                  1 MEMT-CELLS-ALLOC# 0 T=
@@ -492,13 +447,13 @@ create CAP-ERR CAP allot
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
 : RELEASE-SRC ( -- ^u8 n )
-   s" package MFR : RUN ( -- ) MEM:ALLOC-64K swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
+   s" package MFR : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
 
 : UNMAP-SRC ( -- ^u8 n )
-   s" package MFU : RUN ( -- ) MEM:ALLOC-64K drop 1 + MEM-64K STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
+   s" package MFU : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop 1 + MEM-64K STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
 
 : ZERO-SRC ( -- ^u8 n )
-   s" package MFZ : RUN ( -- ) MEM:ALLOC-64K drop 0 STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
+   s" package MFZ : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop 0 STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
 
 public
 
@@ -1003,17 +958,9 @@ GUARDED-SIZE
    T-RESET
    s" G-CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-64K-COUNT-FOR ( NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) MEM:64K-COUNT-FOR"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-64K-SPAN ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-SPAN-BYTES"
-      CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC-CELLS ( NUM:alloc-cell-count -- ^a ) MEM:ALLOC-CELLS"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-ALLOC-64K ( -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-64K"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len ) MEM:BYTES-ALLOC-LEN"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -1026,8 +973,6 @@ GUARDED-SIZE
    s" B-BYTE-ROLE-CELLS ( NUM:alloc-byte-len -- ^a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RAW-CELLS>BYTES ( n -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-BYTE-ROLE-64K-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ RELEASE-BYTES admits only the ^u8 + alloc-byte-len ALLOC-BYTES mints, so no
    \ forged address or unvalidated size reaches munmap.

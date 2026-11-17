@@ -6,12 +6,9 @@
 \ num-types.f's public validator, which owns the audited MINT-*.
 
 require src/lib/num-types.f
-require src/lib/error.f
 
 package NUM
 private
-
--5406 s" a total operation's validator saw a result other than ok" ERROR:FAULT E-NUM-TOTALITY
 
 \ No require src/lib/memory.f: MEM:ALLOC-* consumes NUM alloc roles, so it would
 \ be a cycle. CELL-BYTES-N mirrors its MEM-CELL-BYTES.
@@ -24,7 +21,6 @@ CAST: INDEX>N ( index -- n )
 CAST: BYTE-OFF>N ( byte-off -- n )
 CAST: CELL-OFF>N ( cell-off -- n )
 CAST: ALIGNMENT>N ( alignment -- n )
-CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 
 \ Failure arms: overflow past the machine max, underflow below zero, misaligned
 \ (a byte extent or offset not a whole cell count), zero (a zero-length unit
@@ -53,32 +49,6 @@ CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
    v delta +  v MAX-CELL-N delta - >  ;
 : CEIL-QUOT ( n n -- n )                \ ceil(v / u) for u>0, v>=0 (0 when v=0)
    {: v:n u:n :} v 0= if 0 exit then v 1- u / 1+ ;
-
-\ The total ops' non-ok arms are unreachable.
-: OK-BYTE-LEN ( numeric-result<byte-len> -- byte-len )
-   MATCH numeric-result
-      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
-      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
-      underflow OF E-NUM-TOTALITY throw ENDOF
-      bad-alignment OF E-NUM-TOTALITY throw ENDOF
-      misaligned OF E-NUM-TOTALITY throw ENDOF
-   ;MATCH ;
-: OK-ITEM-COUNT ( numeric-result<item-count> -- item-count )
-   MATCH numeric-result
-      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
-      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
-      underflow OF E-NUM-TOTALITY throw ENDOF
-      bad-alignment OF E-NUM-TOTALITY throw ENDOF
-      misaligned OF E-NUM-TOTALITY throw ENDOF
-   ;MATCH ;
-: OK-CELL-COUNT ( numeric-result<cell-count> -- cell-count )
-   MATCH numeric-result
-      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
-      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
-      underflow OF E-NUM-TOTALITY throw ENDOF
-      bad-alignment OF E-NUM-TOTALITY throw ENDOF
-      misaligned OF E-NUM-TOTALITY throw ENDOF
-   ;MATCH ;
 
 public
 
@@ -184,31 +154,8 @@ public
    s CELL-COUNT>N c ITEM-COUNT>N {: x:n y:n :}
    x y PROD-OVF? if A-OVER else x y * CELL-COUNT then ;
 
-\ DIV and REM take a positive-divisor, so a zero divisor is statically
-\ impossible and they answer their role with no error arm.
-: DIV-BYTES ( byte-len positive-divisor -- byte-len )
-   {: a:byte-len d:positive-divisor :}
-   a BYTE-LEN>N d POSITIVE-DIVISOR>N / BYTE-LEN OK-BYTE-LEN ;
-: REM-BYTES ( byte-len positive-divisor -- byte-len )
-   {: a:byte-len d:positive-divisor :}
-   a BYTE-LEN>N d POSITIVE-DIVISOR>N mod BYTE-LEN OK-BYTE-LEN ;
-: DIV-ITEMS ( item-count positive-divisor -- item-count )
-   {: a:item-count d:positive-divisor :}
-   a ITEM-COUNT>N d POSITIVE-DIVISOR>N / ITEM-COUNT OK-ITEM-COUNT ;
-: REM-ITEMS ( item-count positive-divisor -- item-count )
-   {: a:item-count d:positive-divisor :}
-   a ITEM-COUNT>N d POSITIVE-DIVISOR>N mod ITEM-COUNT OK-ITEM-COUNT ;
-: DIV-CELLS ( cell-count positive-divisor -- cell-count )
-   {: a:cell-count d:positive-divisor :}
-   a CELL-COUNT>N d POSITIVE-DIVISOR>N / CELL-COUNT OK-CELL-COUNT ;
-: REM-CELLS ( cell-count positive-divisor -- cell-count )
-   {: a:cell-count d:positive-divisor :}
-   a CELL-COUNT>N d POSITIVE-DIVISOR>N mod CELL-COUNT OK-CELL-COUNT ;
-
-\ Units of size S in extent E: bytes / bytes is a dimensionless item-count.
-\ byte-len admits zero, so a zero-size unit answers the `zero` value, never a
-\ throw; the quotient is at most E, so it never overflows. DIV-BYTES keeps the
-\ byte unit and forbids a zero divisor statically.
+\ Units of size S in extent E: bytes / bytes is a dimensionless item-count; the
+\ quotient is at most E, so it never overflows.
 : DIV-BYTES-CEIL ( byte-len byte-len -- numeric-result<item-count> )
    {: e:byte-len s:byte-len :}
    e BYTE-LEN>N s BYTE-LEN>N {: x:n u:n :}

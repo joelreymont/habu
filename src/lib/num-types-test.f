@@ -64,13 +64,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
-: PD-CODE ( NUM:numeric-result<NUM:positive-divisor> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
 : AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
@@ -140,12 +133,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    3 NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T=
    T-MAX-N NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T= ;
 
-: RT-DIVISOR ( -- )                          \ positive only; zero rejected; negative rejected
-   1 NUM:POSITIVE-DIVISOR PD-CODE 0 T=
-   T-MAX-N NUM:POSITIVE-DIVISOR PD-CODE 0 T=
-   0 NUM:POSITIVE-DIVISOR PD-CODE E-NUM-ZERO T=
-   -1 NUM:POSITIVE-DIVISOR PD-CODE E-NUM-NEGATIVE T= ;
-
 : RT-ALLOC ( -- )                            \ allocation sinks reject zero (and overflow)
    1 ALLOC-BYTES# 0 T=
    T-MAX-N ALLOC-BYTES# 0 T=
@@ -161,7 +148,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    T-RESET
    RT-ORDINARY
    RT-ALIGNMENT
-   RT-DIVISOR
    RT-ALLOC
    T-REPORT ;
 RT

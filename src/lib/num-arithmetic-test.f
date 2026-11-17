@@ -94,9 +94,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
 : OKAL ( n -- NUM:alignment ) NUM:ALIGNMENT MATCH NUM:numeric-result
    ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
    underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKPD ( n -- NUM:positive-divisor ) NUM:POSITIVE-DIVISOR MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
 
 : RT-ADD ( -- )
    0 OKBL 0 OKBL NUM:ADD-BYTES BL-CODE 0 T=
@@ -170,29 +167,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-N OKCC 1 OKIC NUM:SCALE-CELLS CC-CODE T-MAX-N T=
    T-MAX-N OKCC 2 OKIC NUM:SCALE-CELLS CC-CODE E-NUM-OVERFLOW T= ;
 
-: RT-DIV ( -- )
-   0 OKBL 5 OKPD NUM:DIV-BYTES T-BL>RAW 0 T=
-   40 OKBL 1 OKPD NUM:DIV-BYTES T-BL>RAW 40 T=
-   40 OKBL 8 OKPD NUM:DIV-BYTES T-BL>RAW 5 T=
-   T-MAX-N OKBL 1 OKPD NUM:DIV-BYTES T-BL>RAW T-MAX-N T=
-   0 OKIC 5 OKPD NUM:DIV-ITEMS T-IC>RAW 0 T=
-   40 OKIC 1 OKPD NUM:DIV-ITEMS T-IC>RAW 40 T=
-   40 OKIC 8 OKPD NUM:DIV-ITEMS T-IC>RAW 5 T=
-   0 OKCC 5 OKPD NUM:DIV-CELLS T-CC>RAW 0 T=
-   40 OKCC 1 OKPD NUM:DIV-CELLS T-CC>RAW 40 T=
-   40 OKCC 8 OKPD NUM:DIV-CELLS T-CC>RAW 5 T= ;
-
-: RT-REM ( -- )
-   0 OKBL 5 OKPD NUM:REM-BYTES T-BL>RAW 0 T=
-   40 OKBL 8 OKPD NUM:REM-BYTES T-BL>RAW 0 T=
-   43 OKBL 8 OKPD NUM:REM-BYTES T-BL>RAW 3 T=
-   0 OKIC 5 OKPD NUM:REM-ITEMS T-IC>RAW 0 T=
-   40 OKIC 8 OKPD NUM:REM-ITEMS T-IC>RAW 0 T=
-   43 OKIC 8 OKPD NUM:REM-ITEMS T-IC>RAW 3 T=
-   0 OKCC 5 OKPD NUM:REM-CELLS T-CC>RAW 0 T=
-   40 OKCC 8 OKPD NUM:REM-CELLS T-CC>RAW 0 T=
-   43 OKCC 8 OKPD NUM:REM-CELLS T-CC>RAW 3 T= ;
-
 : RT-DIV-EXTENT ( -- )
    0 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 0 T=
    40 OKBL 1 OKBL NUM:DIV-BYTES-CEIL IC-CODE 40 T=
@@ -256,7 +230,7 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
 : RT ( -- )
    T-RESET
    RT-ADD  RT-ADVANCE  RT-SUB  RT-RETREAT  RT-DISTANCE  RT-MUL
-   RT-DIV  RT-REM  RT-DIV-EXTENT  RT-WIDEN  RT-NARROW  RT-ALIGN  RT-PRED
+   RT-DIV-EXTENT  RT-WIDEN  RT-NARROW  RT-ALIGN  RT-PRED
    T-REPORT ;
 RT
 
@@ -264,8 +238,6 @@ RT
 : STAT ( -- )
    T-RESET
    s" GOOD-ADD ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-DIV-COUNT ( NUM:item-count NUM:positive-divisor -- NUM:item-count ) NUM:DIV-ITEMS"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-ADVANCE ( NUM:byte-off NUM:byte-len -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -275,8 +247,6 @@ RT
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-DIV-FLOOR ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-FLOOR"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" BAD-DIV-ROLE ( NUM:item-count NUM:alignment -- NUM:item-count ) NUM:DIV-ITEMS"
-      CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-MUL-ROLE ( NUM:item-count NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:MUL-ITEMS"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-INDEX-PLUS-INDEX ( NUM:index NUM:index -- NUM:numeric-result<NUM:index> ) NUM:ADVANCE-INDEX"

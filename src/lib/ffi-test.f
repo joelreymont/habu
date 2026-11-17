@@ -442,7 +442,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ^u8 n n -- i32 ) ;FUNCTION
 \ is copied into a fresh mapping and the page holding it made read-only for
 \ the call.
 : FFI-T-PRINTF-COUNTED ( -- n )
-   MEM:ALLOC-64K {: fmt:^ fmtu :}
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: fmt:^ fmtu :}
    s\" %ld %ld %ld%n\z" {: src:^ srcu:n :}
    src fmt srcu BYTE-COPY
    fmt srcu FFI-T-PROT-READ FFI-T-MPROTECT 0 T=
