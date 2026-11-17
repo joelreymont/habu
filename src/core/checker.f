@@ -429,9 +429,7 @@
 \ between the engine and the checker. The engine's keyword moves its scope and
 \ notifies the checker, which records the name. A replay reads source as text
 \ and compiles nothing, so inside the verifier window the checker overlay moves
-\ the engine's scope first. CHECKER-USING-PUSH and CHECKER-USING-POP serve the
-\ replay alone: outside the window they refuse rather than move a scope no
-\ compile is in.
+\ the engine's scope first.
 \
 \ Storage declaration rejections: a storage definer rejects a declaration whose
 \ type it cannot size, that has no name or one it cannot publish, or whose
@@ -14108,26 +14106,7 @@ package CHECK
 EXPORT CHECKER-OVERLAY:OPEN-USING
 
 \ --- the package and using words ---------------------------------------------
-\ The verifier's own word w wu ran while its window is not open.
-: WINDOW-REJECT ( ^u8 n -- ) {: w:^ wu:n :}
-   s" E-VERIFY-WINDOW" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-   s" ` ran outside the source verifier's window" REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  s" no window open" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" leave `" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   s" ` to the source verifier, which calls it while it replays source" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-: CHECKER-USING-PUSH ( ^u8 n -- )
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-USING-PUSH" WINDOW-REJECT THEN
-   OPEN-USING ;
-
 EXPORT CHECKER-OVERLAY:CLOSE-USING
-
-: CHECKER-USING-POP ( ^u8 n -- )
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-USING-POP" WINDOW-REJECT THEN
-   CLOSE-USING ;
 
 EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
@@ -14210,7 +14189,6 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF s" CHECKER-VERIFY-FILE" WINDOW-REJECT THEN
    SCOPE-BYTES map-anon 0= 0= IF
       s" checker: file scope allocation failed" 76 die
    THEN {: frame:^ :}
@@ -14463,25 +14441,11 @@ private
    RES-TRUE ;
 
 \ The storage registrars below record a definer's accessor for the source
-\ pre-pass. Outside the window nothing defines the name, so they refuse.
+\ pre-pass, their one caller, which runs them inside its window.
 
 : CHECKER-REPLAY-NAME-OK? ( ^u8 n -- bool )
    {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF
-      s" E-VERIFY-WINDOW" REJECTION:OPEN
-      s" the storage record for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s" ` is made outside the engine's verifier window" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" recorded outside the verifier window" REJECTION:EMIT-STR
-      s" reason" REJECTION:NOTE
-      s" a checker storage registrar records a definer's accessor only while the source pre-pass replays the definer that defines the word"
-      REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-      s" ` with its definer, `TYPED-VARIABLE`, `TYPED-BUFFER`, `LAYOUT-BUFFER` or `DYNAMIC-BUFFER`, instead of calling the registrar"
-      REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
-   THEN
    a u CHECKER-LBUF-NAME-OK? ;
 
 : CHECKER-GLOBAL-SYM ( ^u8 n -- n ) {: a u:n :}
