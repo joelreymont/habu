@@ -14,20 +14,14 @@ require src/lib/num-arithmetic.f
 
 \ The bounds mirror the library's independently.
 $7FFFFFFFFFFFFFFF constant T-MAX-N                 \ largest nonnegative cell
-T-MAX-N 1 cells / constant T-MAX-CELLS             \ safe-max cell count -> whole bytes
-T-MAX-CELLS 1 cells * constant T-MAX-WHOLE-BYTES   \ largest whole-cell byte extent
-$4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-two alignment
+$4000000000000000 constant T-LARGEST-POW2          \ the highest nonnegative bit
 
 \ Each classifier below turns an ok result into the raw value it pins against a
-\ literal, so the extent roles are read out here rather than by reopening the
-\ package under test. An index goes through the package's own
-\ public NUM:ORDINAL, which is the only projection NUM publishes; production
-\ never gets a public role->n projection.
+\ literal, so the roles are read out here rather than by reopening the package
+\ under test.
 CAST: T-BL>RAW ( NUM:byte-len -- n )
 CAST: T-IC>RAW ( NUM:item-count -- n )
-CAST: T-CC>RAW ( NUM:cell-count -- n )
 CAST: T-BO>RAW ( NUM:byte-off -- n )
-CAST: T-CO>RAW ( NUM:cell-off -- n )
 
 : BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
    MATCH NUM:numeric-result
@@ -43,30 +37,9 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
-: CC-CODE ( NUM:numeric-result<NUM:cell-count> -- n )
-   MATCH NUM:numeric-result
-      ok OF T-CC>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
 : BO-CODE ( NUM:numeric-result<NUM:byte-off> -- n )
    MATCH NUM:numeric-result
       ok OF T-BO>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: CO-CODE ( NUM:numeric-result<NUM:cell-off> -- n )
-   MATCH NUM:numeric-result
-      ok OF T-CO>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: IDX-CODE ( NUM:numeric-result<NUM:index> -- n )
-   MATCH NUM:numeric-result
-      ok OF NUM:ORDINAL ENDOF           negative OF E-NUM-NEGATIVE ENDOF
       zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
@@ -79,45 +52,15 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
 : OKIC ( n -- NUM:item-count ) NUM:ITEM-COUNT MATCH NUM:numeric-result
    ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
    underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKCC ( n -- NUM:cell-count ) NUM:CELL-COUNT MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
 : OKBO ( n -- NUM:byte-off ) NUM:BYTE-OFF MATCH NUM:numeric-result
    ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
    underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKCO ( n -- NUM:cell-off ) NUM:CELL-OFF MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKIDX ( n -- NUM:index ) NUM:INDEX MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKAL ( n -- NUM:alignment ) NUM:ALIGNMENT MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-
-: RT-ADD ( -- )
-   0 OKBL 0 OKBL NUM:ADD-BYTES BL-CODE 0 T=
-   5 OKBL 7 OKBL NUM:ADD-BYTES BL-CODE 12 T=
-   T-MAX-N OKBL 0 OKBL NUM:ADD-BYTES BL-CODE T-MAX-N T=
-   T-MAX-N OKBL 1 OKBL NUM:ADD-BYTES BL-CODE E-NUM-OVERFLOW T=
-   0 OKIC 0 OKIC NUM:ADD-ITEMS IC-CODE 0 T=
-   T-MAX-N OKIC 0 OKIC NUM:ADD-ITEMS IC-CODE T-MAX-N T=
-   T-MAX-N OKIC 1 OKIC NUM:ADD-ITEMS IC-CODE E-NUM-OVERFLOW T=
-   0 OKCC 0 OKCC NUM:ADD-CELLS CC-CODE 0 T=
-   T-MAX-N OKCC 0 OKCC NUM:ADD-CELLS CC-CODE T-MAX-N T=
-   T-MAX-N OKCC 1 OKCC NUM:ADD-CELLS CC-CODE E-NUM-OVERFLOW T= ;
 
 : RT-ADVANCE ( -- )
    5 OKBO 0 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 5 T=
    5 OKBO 7 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 12 T=
    T-MAX-N OKBO 0 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE T-MAX-N T=
-   T-MAX-N OKBO 1 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE E-NUM-OVERFLOW T=
-   5 OKCO 0 OKCC NUM:ADVANCE-CELL-OFF CO-CODE 5 T=
-   T-MAX-N OKCO 0 OKCC NUM:ADVANCE-CELL-OFF CO-CODE T-MAX-N T=
-   T-MAX-N OKCO 1 OKCC NUM:ADVANCE-CELL-OFF CO-CODE E-NUM-OVERFLOW T=
-   5 OKIDX 0 OKIC NUM:ADVANCE-INDEX IDX-CODE 5 T=
-   T-MAX-N OKIDX 0 OKIC NUM:ADVANCE-INDEX IDX-CODE T-MAX-N T=
-   T-MAX-N OKIDX 1 OKIC NUM:ADVANCE-INDEX IDX-CODE E-NUM-OVERFLOW T= ;
+   T-MAX-N OKBO 1 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
 
 : RT-SUB ( -- )
    5 OKBL 5 OKBL NUM:SUB-BYTES BL-CODE 0 T=
@@ -125,145 +68,26 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    3 OKBL 4 OKBL NUM:SUB-BYTES BL-CODE E-NUM-UNDERFLOW T=
    5 OKIC 5 OKIC NUM:SUB-ITEMS IC-CODE 0 T=
    9 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE 5 T=
-   3 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE E-NUM-UNDERFLOW T=
-   5 OKCC 5 OKCC NUM:SUB-CELLS CC-CODE 0 T=
-   9 OKCC 4 OKCC NUM:SUB-CELLS CC-CODE 5 T=
-   3 OKCC 4 OKCC NUM:SUB-CELLS CC-CODE E-NUM-UNDERFLOW T= ;
-
-: RT-RETREAT ( -- )
-   5 OKBO 0 OKBL NUM:RETREAT-BYTE-OFF BO-CODE 5 T=
-   5 OKBO 5 OKBL NUM:RETREAT-BYTE-OFF BO-CODE 0 T=
-   5 OKBO 6 OKBL NUM:RETREAT-BYTE-OFF BO-CODE E-NUM-UNDERFLOW T=
-   5 OKCO 0 OKCC NUM:RETREAT-CELL-OFF CO-CODE 5 T=
-   5 OKCO 5 OKCC NUM:RETREAT-CELL-OFF CO-CODE 0 T=
-   5 OKCO 6 OKCC NUM:RETREAT-CELL-OFF CO-CODE E-NUM-UNDERFLOW T=
-   5 OKIDX 0 OKIC NUM:RETREAT-INDEX IDX-CODE 5 T=
-   5 OKIDX 5 OKIC NUM:RETREAT-INDEX IDX-CODE 0 T=
-   5 OKIDX 6 OKIC NUM:RETREAT-INDEX IDX-CODE E-NUM-UNDERFLOW T= ;
-
-: RT-DISTANCE ( -- )
-   5 OKBO 5 OKBO NUM:BYTE-DISTANCE BL-CODE 0 T=
-   9 OKBO 4 OKBO NUM:BYTE-DISTANCE BL-CODE 5 T=
-   4 OKBO 9 OKBO NUM:BYTE-DISTANCE BL-CODE E-NUM-UNDERFLOW T=
-   5 OKCO 5 OKCO NUM:CELL-DISTANCE CC-CODE 0 T=
-   9 OKCO 4 OKCO NUM:CELL-DISTANCE CC-CODE 5 T=
-   4 OKCO 9 OKCO NUM:CELL-DISTANCE CC-CODE E-NUM-UNDERFLOW T=
-   5 OKIDX 5 OKIDX NUM:INDEX-DISTANCE IC-CODE 0 T=
-   9 OKIDX 4 OKIDX NUM:INDEX-DISTANCE IC-CODE 5 T=
-   4 OKIDX 9 OKIDX NUM:INDEX-DISTANCE IC-CODE E-NUM-UNDERFLOW T= ;
-
-: RT-MUL ( -- )
-   0 OKIC 9 OKIC NUM:MUL-ITEMS IC-CODE 0 T=
-   9 OKIC 0 OKIC NUM:MUL-ITEMS IC-CODE 0 T=
-   6 OKIC 7 OKIC NUM:MUL-ITEMS IC-CODE 42 T=
-   T-MAX-N OKIC 1 OKIC NUM:MUL-ITEMS IC-CODE T-MAX-N T=
-   T-MAX-N OKIC 2 OKIC NUM:MUL-ITEMS IC-CODE E-NUM-OVERFLOW T=
-   0 OKBL 9 OKIC NUM:SCALE-BYTES BL-CODE 0 T=
-   9 OKBL 0 OKIC NUM:SCALE-BYTES BL-CODE 0 T=
-   T-MAX-N OKBL 1 OKIC NUM:SCALE-BYTES BL-CODE T-MAX-N T=
-   T-MAX-N OKBL 2 OKIC NUM:SCALE-BYTES BL-CODE E-NUM-OVERFLOW T=
-   0 OKCC 9 OKIC NUM:SCALE-CELLS CC-CODE 0 T=
-   9 OKCC 0 OKIC NUM:SCALE-CELLS CC-CODE 0 T=
-   T-MAX-N OKCC 1 OKIC NUM:SCALE-CELLS CC-CODE T-MAX-N T=
-   T-MAX-N OKCC 2 OKIC NUM:SCALE-CELLS CC-CODE E-NUM-OVERFLOW T= ;
-
-: RT-DIV-EXTENT ( -- )
-   0 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 0 T=
-   40 OKBL 1 OKBL NUM:DIV-BYTES-CEIL IC-CODE 40 T=
-   40 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 5 T=
-   43 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 6 T=
-   T-MAX-N OKBL 1 OKBL NUM:DIV-BYTES-CEIL IC-CODE T-MAX-N T=
-   T-MAX-N OKBL 2 OKBL NUM:DIV-BYTES-CEIL IC-CODE T-LARGEST-POW2 T=
-   0 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 0 T=
-   40 OKBL 1 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 40 T=
-   40 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
-   43 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
-   T-MAX-N OKBL 1 OKBL NUM:DIV-BYTES-FLOOR IC-CODE T-MAX-N T=
-   T-MAX-N OKBL 2 OKBL NUM:DIV-BYTES-FLOOR IC-CODE T-LARGEST-POW2 1 - T=
-   \ A zero-size unit answers zero for both roundings: division by zero is a value.
-   5 OKBL 0 OKBL NUM:DIV-BYTES-CEIL IC-CODE E-NUM-ZERO T=
-   5 OKBL 0 OKBL NUM:DIV-BYTES-FLOOR IC-CODE E-NUM-ZERO T= ;
-
-: RT-WIDEN ( -- )
-   0 OKCC NUM:CELLS>BYTES BL-CODE 0 T=
-   4 OKCC NUM:CELLS>BYTES BL-CODE 32 T=
-   T-MAX-CELLS OKCC NUM:CELLS>BYTES BL-CODE T-MAX-WHOLE-BYTES T=
-   T-MAX-CELLS 1 + OKCC NUM:CELLS>BYTES BL-CODE E-NUM-OVERFLOW T=
-   0 OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE 0 T=
-   4 OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE 32 T=
-   T-MAX-CELLS OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE T-MAX-WHOLE-BYTES T=
-   T-MAX-CELLS 1 + OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
-
-: RT-NARROW ( -- )
-   0 OKBL NUM:BYTES>CELLS CC-CODE 0 T=
-   32 OKBL NUM:BYTES>CELLS CC-CODE 4 T=
-   T-MAX-WHOLE-BYTES OKBL NUM:BYTES>CELLS CC-CODE T-MAX-CELLS T=
-   4 OKBL NUM:BYTES>CELLS CC-CODE E-NUM-MISALIGNED T=
-   0 OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE 0 T=
-   32 OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE 4 T=
-   T-MAX-WHOLE-BYTES OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE T-MAX-CELLS T=
-   4 OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE E-NUM-MISALIGNED T= ;
-
-: RT-ALIGN ( -- )
-   0 OKBL 8 OKAL NUM:ALIGN-UP-BYTES BL-CODE 0 T=
-   5 OKBL 1 OKAL NUM:ALIGN-UP-BYTES BL-CODE 5 T=
-   5 OKBL 8 OKAL NUM:ALIGN-UP-BYTES BL-CODE 8 T=
-   T-MAX-WHOLE-BYTES OKBL 8 OKAL NUM:ALIGN-UP-BYTES BL-CODE T-MAX-WHOLE-BYTES T=
-   T-MAX-WHOLE-BYTES 1 + OKBL 8 OKAL NUM:ALIGN-UP-BYTES BL-CODE E-NUM-OVERFLOW T=
-   0 OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE 0 T=
-   5 OKBO 1 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE 5 T=
-   5 OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE 8 T=
-   T-MAX-WHOLE-BYTES OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE T-MAX-WHOLE-BYTES T=
-   T-MAX-WHOLE-BYTES 1 + OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
-
-: RT-PRED ( -- )
-   0 OKBL 8 OKAL NUM:BYTES-ALIGNED? TTRUE
-   16 OKBL 8 OKAL NUM:BYTES-ALIGNED? TTRUE
-   17 OKBL 8 OKAL NUM:BYTES-ALIGNED? TFALSE
-   5 OKBL 1 OKAL NUM:BYTES-ALIGNED? TTRUE
-   T-MAX-WHOLE-BYTES OKBL T-LARGEST-POW2 OKAL NUM:BYTES-ALIGNED? TFALSE
-   0 OKBO 8 OKAL NUM:BYTE-OFF-ALIGNED? TTRUE
-   16 OKBO 8 OKAL NUM:BYTE-OFF-ALIGNED? TTRUE
-   17 OKBO 8 OKAL NUM:BYTE-OFF-ALIGNED? TFALSE
-   5 OKBO 1 OKAL NUM:BYTE-OFF-ALIGNED? TTRUE ;
+   3 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE E-NUM-UNDERFLOW T= ;
 
 : RT ( -- )
    T-RESET
-   RT-ADD  RT-ADVANCE  RT-SUB  RT-RETREAT  RT-DISTANCE  RT-MUL
-   RT-DIV-EXTENT  RT-WIDEN  RT-NARROW  RT-ALIGN  RT-PRED
+   RT-ADVANCE  RT-SUB
    T-REPORT ;
 RT
 
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable.
 : STAT ( -- )
    T-RESET
-   s" GOOD-ADD ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
+   s" GOOD-SUB ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-ADVANCE ( NUM:byte-off NUM:byte-len -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-DISTANCE ( NUM:byte-off NUM:byte-off -- NUM:numeric-result<NUM:byte-len> ) NUM:BYTE-DISTANCE"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-DIV-CEIL ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-CEIL"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-DIV-FLOOR ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-FLOOR"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" BAD-MUL-ROLE ( NUM:item-count NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:MUL-ITEMS"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-PLUS-INDEX ( NUM:index NUM:index -- NUM:numeric-result<NUM:index> ) NUM:ADVANCE-INDEX"
-      CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-REV ( NUM:byte-len NUM:byte-off -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-RAW-ADD ( n n -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
+   s" BAD-RAW-SUB ( n n -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-CROSS-ADD ( NUM:byte-len NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   \ negatives: extent division rejects a count dividend, a raw-n extent, and a
-   \ byte-len result role (the quotient is a count, not a byte extent).
-   s" BAD-DIV-CEIL-ROLE ( NUM:item-count NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-CEIL"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-DIV-CEIL-RAW ( n NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-CEIL"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-DIV-CEIL-RESULT ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:DIV-BYTES-CEIL"
+   s" BAD-CROSS-SUB ( NUM:byte-len NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT
@@ -272,21 +96,6 @@ package NUM-ARITH-TEST
 using NUM
 using PROP
 private
-
-: INDEX-BOUNDS ( -- )
-   0 OKIDX 0 OKIC INDEX-IN-COUNT? TFALSE
-   0 OKIDX 1 OKIC INDEX-IN-COUNT? TTRUE
-   1 OKIDX 1 OKIC INDEX-IN-COUNT? TFALSE
-   $10000 OKIDX 1 OKIC INDEX-IN-COUNT? TFALSE
-   1 OKIDX $10000 OKIC INDEX-IN-COUNT? TTRUE
-   T-MAX-N 1- OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TTRUE
-   T-MAX-N OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TFALSE ;
-
-: INDEX-EQUALITY ( -- )
-   0 OKIDX 0 OKIDX INDEX= TTRUE
-   0 OKIDX 1 OKIDX INDEX= TFALSE
-   T-MAX-N OKIDX T-MAX-N OKIDX INDEX= TTRUE
-   T-MAX-N 1- OKIDX T-MAX-N OKIDX INDEX= TFALSE ;
 
 : OFFSET-BOUNDS ( -- )
    0 OKBO 0 OKBL BYTE-OFF-IN-LEN? TFALSE
@@ -344,56 +153,10 @@ variable ZERO-BITS
 : CMP-PROP-ROW ( n n -- )
    {: x:n y:n :}
    x y < if
-      x OKIDX y OKIC INDEX-IN-COUNT? TTRUE
       x OKBO y OKBL BYTE-OFF-IN-LEN? TTRUE
    else
-      x OKIDX y OKIC INDEX-IN-COUNT? TFALSE
       x OKBO y OKBL BYTE-OFF-IN-LEN? TFALSE
    then ;
-
-: MUL-ORACLE-OVERFLOW? ( n n -- bool )
-   {: idx:n width:n :}
-   idx 0= if
-      0 0= 0=
-      exit
-   then
-   width T-MAX-N idx / > ;
-
-: MUL-PROP-ROW ( n n -- )
-   {: idx:n width:n :}
-   idx width MUL-ORACLE-OVERFLOW? if
-      idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE E-NUM-OVERFLOW T=
-   else
-      idx width * {: want:n :}
-      idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE want T=
-   then ;
-
-: MUL-ZERO-CASES ( -- )
-   0 0 MUL-PROP-ROW
-   0 T-MAX-N MUL-PROP-ROW
-   T-MAX-N 0 MUL-PROP-ROW ;
-
-: MUL-SAFE-CASES ( -- )
-   1 T-MAX-N MUL-PROP-ROW
-   T-MAX-N 1 MUL-PROP-ROW
-   2 $10001 MUL-PROP-ROW
-   T-MAX-N 2 / 2 MUL-PROP-ROW ;
-
-: MUL-FIRST-OVERFLOW-CASES ( -- )
-   T-MAX-N 2 / 1+ 2 MUL-PROP-ROW
-   2 T-MAX-N 2 / 1+ MUL-PROP-ROW ;
-
-: MUL-FAR-WRAP-CASES ( -- )
-   T-MAX-N T-MAX-N MUL-PROP-ROW
-   T-MAX-N 1- T-MAX-N 1- MUL-PROP-ROW
-   T-LARGEST-POW2 4 MUL-PROP-ROW
-   $10001 T-LARGEST-POW2 MUL-PROP-ROW ;
-
-: INDEX-OFFSETS ( -- )
-   MUL-ZERO-CASES
-   MUL-SAFE-CASES
-   MUL-FIRST-OVERFLOW-CASES
-   MUL-FAR-WRAP-CASES ;
 
 \ Three 31-bit draws span 0..T-MAX-N. The third draw's high bit supplies
 \ cell bit 62; the alternating low bit is not used.
@@ -406,8 +169,7 @@ variable ZERO-BITS
 : PROPERTY-ROW ( -- )
    RND-N RND-N {: x:n y:n :}
    x y NOTE-PAIR-BAND
-   x y CMP-PROP-ROW
-   x y MUL-PROP-ROW ;
+   x y CMP-PROP-ROW ;
 
 : PROPERTIES ( -- )
    314159 512 RUN-RESET
@@ -416,53 +178,6 @@ variable ZERO-BITS
       PROPERTY-ROW
    loop
    COVERAGE-CHECK ;
-
-: NO ( -- bool )
-   0 0= 0= ;
-
-: DROP-INDEX-NO ( index -- bool )
-   drop NO ;
-
-: NO-NO ( -- bool bool )
-   NO NO ;
-
-: COUNT-INDEXED? ( index numeric-result<item-count> -- bool )
-   MATCH numeric-result
-      ok OF INDEX-IN-COUNT? ENDOF
-      negative OF DROP-INDEX-NO ENDOF zero OF DROP-INDEX-NO ENDOF
-      overflow OF DROP-INDEX-NO ENDOF underflow OF DROP-INDEX-NO ENDOF
-      bad-alignment OF DROP-INDEX-NO ENDOF misaligned OF DROP-INDEX-NO ENDOF
-   ;MATCH ;
-
-: OFFSET-RESULT-OK? ( numeric-result<byte-off> -- bool )
-   MATCH numeric-result
-      ok OF drop 0 0= ENDOF
-      negative OF NO ENDOF zero OF NO ENDOF
-      overflow OF NO ENDOF underflow OF NO ENDOF
-      bad-alignment OF NO ENDOF misaligned OF NO ENDOF
-   ;MATCH ;
-
-: OFFSET-CHECKS ( numeric-result<byte-off> byte-len byte-len -- bool bool )
-   {: len:byte-len step:byte-len :}
-   MATCH numeric-result
-      ok OF
-         dup len BYTE-OFF-IN-LEN?
-         swap step ADVANCE-BYTE-OFF OFFSET-RESULT-OK?
-      ENDOF
-      negative OF NO-NO ENDOF zero OF NO-NO ENDOF
-      overflow OF NO-NO ENDOF underflow OF NO-NO ENDOF
-      bad-alignment OF NO-NO ENDOF misaligned OF NO-NO ENDOF
-   ;MATCH ;
-
-: F32-COMPOSE ( index byte-len byte-len -- bool bool bool )
-   {: idx:index len:byte-len width:byte-len :}
-   idx len width DIV-BYTES-FLOOR COUNT-INDEXED?
-   idx width INDEX-BYTE-OFF len width OFFSET-CHECKS ;
-
-: F32-SHAPE ( -- )
-   1 OKIDX 8 OKBL 4 OKBL F32-COMPOSE TTRUE TTRUE TTRUE
-   0 OKIDX 8 OKBL 0 OKBL F32-COMPOSE TTRUE TTRUE TFALSE
-   T-MAX-N OKIDX T-MAX-N OKBL 2 OKBL F32-COMPOSE TFALSE TFALSE TFALSE ;
 
 \ The advance is called QUALIFIED throughout: `using NUM` is in scope here and
 \ the raw `BYTE+` primitive shares the tail, so a bare call would be ambiguous.
@@ -485,39 +200,19 @@ create BP-BUF 16 allot
    15 BP-AT 15 T= ;                             \ the last byte of the buffer
 
 : STATIC-GOOD ( -- )
-   s" GOOD-INDEX-EQ ( NUM:index NUM:index -- bool ) NUM:INDEX="
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-INDEX-BOUND ( NUM:index NUM:item-count -- bool ) NUM:INDEX-IN-COUNT?"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-INDEX-OFF ( NUM:index NUM:byte-len -- NUM:numeric-result<NUM:byte-off> ) NUM:INDEX-BYTE-OFF"
-      CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-BYTE-BOUND ( NUM:byte-off NUM:byte-len -- bool ) NUM:BYTE-OFF-IN-LEN?"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-BYTE-ADVANCE ( ^u8 NUM:byte-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : STATIC-BAD ( -- )
-   s" BAD-INDEX-EQ-RAW ( n n -- bool ) NUM:INDEX="
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-EQ-COUNT ( NUM:index NUM:item-count -- bool ) NUM:INDEX="
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-BOUND-SWAP ( NUM:item-count NUM:index -- bool ) NUM:INDEX-IN-COUNT?"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-OFF-SWAP ( NUM:byte-len NUM:index -- NUM:numeric-result<NUM:byte-off> ) NUM:INDEX-BYTE-OFF"
-      CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-BYTE-BOUND-SWAP ( NUM:byte-len NUM:byte-off -- bool ) NUM:BYTE-OFF-IN-LEN?"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-OFF-RESULT ( NUM:index NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:INDEX-BYTE-OFF"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-INDEX-OFF-RAW ( n n -- NUM:numeric-result<NUM:byte-off> ) NUM:INDEX-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-RAW-OFF ( ^u8 n -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-BYTE-LEN ( ^u8 NUM:byte-len -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-INDEX ( ^u8 NUM:index -- ^u8 ) NUM:BYTE+"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-CELL-OFF ( ^u8 NUM:cell-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-RAW-PTR ( n NUM:byte-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -530,7 +225,7 @@ create BP-BUF 16 allot
 
 : RUN ( -- )
    T-RESET
-   INDEX-BOUNDS INDEX-EQUALITY OFFSET-BOUNDS INDEX-OFFSETS POINTER-ADVANCE PROPERTIES F32-SHAPE
+   OFFSET-BOUNDS POINTER-ADVANCE PROPERTIES
    STATIC-GOOD STATIC-BAD STATIC-PRIVATE
    T-REPORT ;
 

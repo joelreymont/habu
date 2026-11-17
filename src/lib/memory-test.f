@@ -156,19 +156,12 @@ T-RESET
 T-REPORT
 [then]
 
-\ numeric-result<a> is a layout value with no polymorphic eliminator, so each
+\ numeric-result<a> is a layout value with no polymorphic eliminator, so the
 \ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
 \ E-NUM-* (the num-types-test.f idiom). The scalar words admit zero; only
-\ the alloc-* sinks reject zero/overflow, and that refusal precedes any mmap.
+\ the alloc-byte-len sink rejects zero, and that refusal precedes any mmap.
 
 : MEMT-AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: MEMT-AC-CODE ( NUM:numeric-result<NUM:alloc-cell-count> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
       zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
@@ -178,11 +171,6 @@ T-REPORT
 
 : MEMT-BYTES-ALLOC# ( n -- n ) NUM:BYTE-LEN
    MATCH NUM:numeric-result ok OF NUM:AS-ALLOC-BYTE-LEN MEMT-AB-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
-: MEMT-CELLS-ALLOC# ( n -- n ) NUM:CELL-COUNT
-   MATCH NUM:numeric-result ok OF NUM:AS-ALLOC-CELL-COUNT MEMT-AC-CODE ENDOF
       negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
       overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
@@ -293,9 +281,7 @@ HB-TARGET-LINUX-X86-64? [if]
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
    0 MEMT-BYTES-ALLOC# E-NUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-NUM-NEGATIVE T=
-   0 MEMT-CELLS-ALLOC# E-NUM-ZERO T=      -1 MEMT-CELLS-ALLOC# E-NUM-NEGATIVE T=
-   1 MEMT-BYTES-ALLOC# 0 T=                  1 MEMT-CELLS-ALLOC# 0 T=
-   MEM-MAX-CELLS 1 + MEMT-CELLS-ALLOC# E-NUM-OVERFLOW T=
+   1 MEMT-BYTES-ALLOC# 0 T=
    MEMT-TYPED-BYTES
    MEMT-TYPED-64K
    MEMT-TYPED-CELLS

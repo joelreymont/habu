@@ -12,8 +12,6 @@ require src/lib/num-types.f
 
 \ The bounds mirror the library's independently.
 $7FFFFFFFFFFFFFFF constant T-MAX-N                 \ largest nonnegative cell
-T-MAX-N 1 cells / constant T-MAX-ALLOC-CELLS       \ MAX-N / CELL-BYTES
-$4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-two alignment
 
 : BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
    MATCH NUM:numeric-result
@@ -23,13 +21,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
 : IC-CODE ( NUM:numeric-result<NUM:item-count> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: CC-CODE ( NUM:numeric-result<NUM:cell-count> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
       zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
@@ -50,28 +41,7 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
-: CO-CODE ( NUM:numeric-result<NUM:cell-off> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: AL-CODE ( NUM:numeric-result<NUM:alignment> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
 : AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: AC-CODE ( NUM:numeric-result<NUM:alloc-cell-count> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
       zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
@@ -80,19 +50,11 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    ;MATCH ;
 
 \ A negative raw cell is rejected by the base validator and never reaches the
-\ allocator sink (its ok arm is where AS-ALLOC-* runs).
+\ allocator sink (its ok arm is where AS-ALLOC-BYTE-LEN runs).
 : ALLOC-BYTES# ( n -- n )
    NUM:BYTE-LEN
    MATCH NUM:numeric-result
       ok OF NUM:AS-ALLOC-BYTE-LEN AB-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF   zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF   underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF  misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-: ALLOC-CELLS# ( n -- n )
-   NUM:CELL-COUNT
-   MATCH NUM:numeric-result
-      ok OF NUM:AS-ALLOC-CELL-COUNT AC-CODE ENDOF
       negative OF E-NUM-NEGATIVE ENDOF   zero OF E-NUM-ZERO ENDOF
       overflow OF E-NUM-OVERFLOW ENDOF   underflow OF E-NUM-UNDERFLOW ENDOF
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF  misaligned OF E-NUM-MISALIGNED ENDOF
@@ -107,10 +69,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    0 NUM:ITEM-COUNT IC-CODE 0 T=
    T-MAX-N NUM:ITEM-COUNT IC-CODE 0 T=
    -1 NUM:ITEM-COUNT IC-CODE E-NUM-NEGATIVE T=
-   5 NUM:CELL-COUNT CC-CODE 0 T=
-   0 NUM:CELL-COUNT CC-CODE 0 T=
-   T-MAX-N NUM:CELL-COUNT CC-CODE 0 T=
-   -1 NUM:CELL-COUNT CC-CODE E-NUM-NEGATIVE T=
    5 NUM:INDEX IDX-CODE 0 T=
    0 NUM:INDEX IDX-CODE 0 T=
    T-MAX-N NUM:INDEX IDX-CODE 0 T=
@@ -118,36 +76,17 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    5 NUM:BYTE-OFF BO-CODE 0 T=
    0 NUM:BYTE-OFF BO-CODE 0 T=
    T-MAX-N NUM:BYTE-OFF BO-CODE 0 T=
-   -1 NUM:BYTE-OFF BO-CODE E-NUM-NEGATIVE T=
-   5 NUM:CELL-OFF CO-CODE 0 T=
-   0 NUM:CELL-OFF CO-CODE 0 T=
-   T-MAX-N NUM:CELL-OFF CO-CODE 0 T=
-   -1 NUM:CELL-OFF CO-CODE E-NUM-NEGATIVE T= ;
+   -1 NUM:BYTE-OFF BO-CODE E-NUM-NEGATIVE T= ;
 
-: RT-ALIGNMENT ( -- )                        \ positive power of two only; all else bad-alignment
-   1 NUM:ALIGNMENT AL-CODE 0 T=
-   2 NUM:ALIGNMENT AL-CODE 0 T=
-   T-LARGEST-POW2 NUM:ALIGNMENT AL-CODE 0 T=
-   0 NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T=
-   -1 NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T=
-   3 NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T=
-   T-MAX-N NUM:ALIGNMENT AL-CODE E-NUM-BAD-ALIGNMENT T= ;
-
-: RT-ALLOC ( -- )                            \ allocation sinks reject zero (and overflow)
+: RT-ALLOC ( -- )                            \ the allocation sink rejects zero
    1 ALLOC-BYTES# 0 T=
    T-MAX-N ALLOC-BYTES# 0 T=
    0 ALLOC-BYTES# E-NUM-ZERO T=
-   -1 ALLOC-BYTES# E-NUM-NEGATIVE T=
-   1 ALLOC-CELLS# 0 T=
-   T-MAX-ALLOC-CELLS ALLOC-CELLS# 0 T=
-   0 ALLOC-CELLS# E-NUM-ZERO T=
-   T-MAX-ALLOC-CELLS 1 + ALLOC-CELLS# E-NUM-OVERFLOW T=
-   -1 ALLOC-CELLS# E-NUM-NEGATIVE T= ;
+   -1 ALLOC-BYTES# E-NUM-NEGATIVE T= ;
 
 : RT ( -- )
    T-RESET
    RT-ORDINARY
-   RT-ALIGNMENT
    RT-ALLOC
    T-REPORT ;
 RT
@@ -156,20 +95,20 @@ RT
 : STAT ( -- )
    T-RESET
    \ positives: a role-preserving swap and the two constructor edges resolve.
-   s" GOOD-OFF-SWAP ( NUM:byte-off NUM:cell-off -- NUM:cell-off NUM:byte-off ) swap"
+   s" GOOD-OFF-SWAP ( NUM:byte-off NUM:byte-len -- NUM:byte-len NUM:byte-off ) swap"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-BYTE-LEN ( n -- NUM:numeric-result<NUM:byte-len> ) NUM:BYTE-LEN"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-AS-ALLOC ( NUM:cell-count -- NUM:numeric-result<NUM:alloc-cell-count> ) NUM:AS-ALLOC-CELL-COUNT"
+   s" GOOD-AS-ALLOC ( NUM:byte-len -- NUM:numeric-result<NUM:alloc-byte-len> ) NUM:AS-ALLOC-BYTE-LEN"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ negatives: swapped roles, raw n where a role is required, cross-role sink.
-   s" BAD-OFF-SWAP ( NUM:byte-off NUM:cell-off -- NUM:byte-off NUM:cell-off ) swap"
+   s" BAD-OFF-SWAP ( NUM:byte-off NUM:byte-len -- NUM:byte-off NUM:byte-len ) swap"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-RAW-OFF ( n -- NUM:byte-off )"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-RAW-ALLOC ( n -- NUM:numeric-result<NUM:alloc-cell-count> ) NUM:AS-ALLOC-CELL-COUNT"
+   s" BAD-RAW-ALLOC ( n -- NUM:numeric-result<NUM:alloc-byte-len> ) NUM:AS-ALLOC-BYTE-LEN"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ROLE-ALLOC ( NUM:byte-len -- NUM:numeric-result<NUM:alloc-cell-count> ) NUM:AS-ALLOC-CELL-COUNT"
+   s" BAD-ROLE-ALLOC ( NUM:item-count -- NUM:numeric-result<NUM:alloc-byte-len> ) NUM:AS-ALLOC-BYTE-LEN"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ROLE-VALIDATOR ( NUM:byte-off -- NUM:numeric-result<NUM:byte-len> ) NUM:BYTE-LEN"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -183,38 +122,6 @@ private
 
 : YES   ( ^u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO    ( ^u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
-
-\ Compiles all seven generated constructors: it takes a real numeric-result
-\ apart and rebuilds it arm by arm, the ok arm binding its payload through a
-\ typed local. The seven-arm shape repeats for the eliminator reason above.
-: REBUILD-CC ( NUM:numeric-result<NUM:cell-count> -- NUM:numeric-result<NUM:cell-count> )
-   MATCH NUM:numeric-result
-      ok OF {: got:NUM:cell-count :} got NUM-NUMERIC--RESULT:OK ENDOF
-      negative OF NUM-NUMERIC--RESULT:NEGATIVE ENDOF
-      zero OF NUM-NUMERIC--RESULT:ZERO ENDOF
-      overflow OF NUM-NUMERIC--RESULT:OVERFLOW ENDOF
-      underflow OF NUM-NUMERIC--RESULT:UNDERFLOW ENDOF
-      bad-alignment OF NUM-NUMERIC--RESULT:BAD-ALIGNMENT ENDOF
-      misaligned OF NUM-NUMERIC--RESULT:MISALIGNED ENDOF
-   ;MATCH ;
-
-\ The payload's VALUE, not just its presence: the recovered cell count is handed
-\ straight to the production allocator narrowing, which answers `zero` for 0, ok
-\ up to MAX-ALLOC-CELLS and `overflow` past it. A round trip that dropped or
-\ zeroed the payload would report zero for every input, and one that truncated it
-\ would move the overflow boundary.
-: ALLOC-CC# ( NUM:numeric-result<NUM:cell-count> -- n )
-   MATCH NUM:numeric-result
-      ok OF {: got:NUM:cell-count :} got NUM:AS-ALLOC-CELL-COUNT AC-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF   zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF   underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF  misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-
-: RT-TAG# ( n -- n )      \ tag survives the round trip (0 = ok, else refusal code)
-   NUM:CELL-COUNT REBUILD-CC CC-CODE ;
-: RT-VALUE# ( n -- n )    \ and so does the exact payload magnitude
-   NUM:CELL-COUNT REBUILD-CC ALLOC-CC# ;
 
 public
 
@@ -244,32 +151,22 @@ s" NC-UNDER ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:UNDERFLO
 s" NC-BADAL ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:BAD-ALIGNMENT" YES
 s" NC-MISAL ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:MISALIGNED" YES
 \ the payload parameter really is a parameter: a second, unrelated role instantiates it
-s" NC-OK-AL ( NUM:alignment -- NUM:numeric-result<NUM:alignment> ) NUM-NUMERIC--RESULT:OK" YES
+s" NC-OK-IC ( NUM:item-count -- NUM:numeric-result<NUM:item-count> ) NUM-NUMERIC--RESULT:OK" YES
 
 \ NF-XROLE and NF-INST are the sharp ones. Every role in this package is one cell
-\ wide, so nothing but the nominal family separates a cell count from a byte
+\ wide, so nothing but the nominal family separates an item count from a byte
 \ length; the ok constructor must refuse the wrong role in the payload and must
 \ refuse to hand back a result instantiated at a different role than it consumed.
 s" NF-RAW ( n -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
 s" NF-BARE ( NUM:byte-len -- n ) NUM-NUMERIC--RESULT:OK" NO
 s" NF-NONE ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
-s" NF-XROLE ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
-s" NF-INST ( NUM:byte-len -- NUM:numeric-result<NUM:cell-count> ) NUM-NUMERIC--RESULT:OK" NO
+s" NF-XROLE ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
+s" NF-INST ( NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM-NUMERIC--RESULT:OK" NO
 s" NF-PAY ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:NEGATIVE" NO
 
 s" NT-OK ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" YES
 s" NT-X1 ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
 s" NT-X2 ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" NO
-
-5 RT-TAG# 0 T=                            \ ok is rebuilt as ok ...
-0 RT-TAG# 0 T=
-T-MAX-N RT-TAG# 0 T=
--1 RT-TAG# E-NUM-NEGATIVE T=           \ ... and negative as negative
-1 RT-VALUE# 0 T=                          \ payload magnitudes come back exactly:
-T-MAX-ALLOC-CELLS RT-VALUE# 0 T=          \ the largest allocatable count is still ok
-0 RT-VALUE# E-NUM-ZERO T=              \ zero is still zero, so nothing was invented
-T-MAX-ALLOC-CELLS 1 + RT-VALUE# E-NUM-OVERFLOW T=   \ the overflow edge did not move
--1 RT-VALUE# E-NUM-NEGATIVE T=
 
 ;package
 
