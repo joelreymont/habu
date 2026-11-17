@@ -17,6 +17,7 @@ require src/core/rollback-cells.f
 require src/core/engine-error.f
 require src/lib/prelude.f
 require src/core/rejection.f
+require src/os/env-base.f
 
 \ Arrays: -2000..-2099, declared at this file's end.
 -2000 constant E-A-FIRST
@@ -972,6 +973,17 @@ public
    false data-base ENDED-CELL + !
    c 0<>  ended  or if c exit then
    E-THROW-ZERO ;
+
+\ Runs q as a process root. A code from 1 to 255 is an exit status the program
+\ chose; any other ends the process with the record of the throw nothing caught.
+: TOP-LEVEL ( [ -- ] -- )
+   {: q :}
+   q CAUGHT {: rc:n :}
+   rc 0= if exit then
+   REJECTION:RELEASE
+   rc 0 >  rc 256 <  and if rc throw then
+   rc UNCAUGHT
+   NULL$ UNCAUGHT-RC die ;
 
 seal-package
 ;package

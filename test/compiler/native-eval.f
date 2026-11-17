@@ -306,7 +306,7 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 67 T=
    nip LEN>N {: erru:n :}
    s" and the uncaught throw is E-UNDERFLOW's -9851" T-LABEL
-   ERR erru s" hb: uncaught throw code -9851" CONTAINS? TTRUE
+   ERR erru E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" E-STACK-BOUNDS" CONTAINS? TFALSE ;
 

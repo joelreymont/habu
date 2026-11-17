@@ -9,6 +9,8 @@
 \ STORAGE CLASS. PROCESS-WIDE: one list of action rows.
 
 require src/lib/prelude.f
+require src/lib/error.f
+require src/core/rejection.f
 require src/lib/arena.f
 
 package AT-EXIT
@@ -69,12 +71,13 @@ TYPED-VARIABLE RUNNER [ -- ]
    VECTOR @ XT>N 0= if RUNNER @ VECTOR ! then ;
 
 \ The engine clears the vector before it calls RUN, and RUN arms it again
-\ before each action: an action that calls `die` or throws re-enters RUN, the
-\ actions left still run, and the process ends with that action's code.
+\ before each action, which runs as a process root: an action that calls `die`
+\ or throws re-enters RUN, the actions left still run, and the process ends
+\ with that action's code.
 : RUN ( -- )
    begin TAKE while
       ARM
-      execute
+      ERROR:TOP-LEVEL
    repeat
    drop ;
 
@@ -118,10 +121,8 @@ private
 : REPORT ( n -- )
    {: code:n :}
    code 0= if exit then
-   s" hb: uncaught throw code " ERROR-TEXT:TYPE
-   code 0< if s" -" ERROR-TEXT:TYPE then
-   code ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-   S\" \n" ERROR-TEXT:TYPE ;
+   REJECTION:RELEASE
+   code ERROR:UNCAUGHT ;
 
 public
 

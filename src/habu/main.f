@@ -193,28 +193,17 @@ CAST: APP-ACTION ( n -- [ -- ] )
       ENDOF
    ;MATCH ;
 
-\ Runs a source. A code from 1 to 255 is an exit status the program chose; any
-\ other ends the process with the record of the throw nothing caught.
-: RUN-SOURCE ( [ -- ] -- )
-   {: q :}
-   q ERROR:CAUGHT {: rc:n :}
-   rc 0= if exit then
-   REJECTION:RELEASE
-   rc 0 >  rc 256 <  and if rc throw then
-   rc ERROR:UNCAUGHT
-   NULL$ UNCAUGHT-RC die ;
-
 \ An application's MAIN takes the arguments, then stdin is the source. Off
 \ one, an argument names what runs and stdin is its data; else stdin is source.
 : ROUTED ( -- )
    APP? if
-      [: APP-RUN ;] RUN-SOURCE
-      TTY? if INTERPRETER:REPL else [: STDIN RUN-TEXT ;] RUN-SOURCE then
+      [: APP-RUN ;] ERROR:TOP-LEVEL
+      TTY? if INTERPRETER:REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then
       exit
    then
-   ARGC 1 > if [: ARGV-BASE ARGC RUN ;] RUN-SOURCE exit then
+   ARGC 1 > if [: ARGV-BASE ARGC RUN ;] ERROR:TOP-LEVEL exit then
    TTY? if INTERPRETER:REPL exit then
-   [: STDIN RUN-TEXT ;] RUN-SOURCE ;
+   [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL ;
 
 public
 

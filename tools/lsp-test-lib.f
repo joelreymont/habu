@@ -1124,7 +1124,7 @@ variable OPEN-N
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stderr" CONTAINS? TTRUE
-   ERR-SPAN SPAN:$ drop erru LEN>N s" uncaught throw code -2502" CONTAINS? TTRUE ;
+   ERR-SPAN SPAN:$ drop erru LEN>N E-PROC-TIMEOUT TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
 
 : TOOK ( n -- )
    {: ns:n :}
