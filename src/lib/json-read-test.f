@@ -225,9 +225,10 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-RBRACE SB-APPEND-C JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
    SB$ ;
 
-\ Deep documents outgrow SB, so they are built in their own buffer: two texts
-\ of 100000 levels around one digit fill it.
-400002 constant JRT-DEEP-CAP
+\ Deep documents outgrow SB, so they are built in their own buffer, sized for
+\ the copy case's text: JRT-COPY-DEPTH levels around one digit.
+1000000 constant JRT-COPY-DEPTH
+JRT-COPY-DEPTH 2 * 1+ constant JRT-DEEP-CAP
 create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 : JRT-FILL ( n n n -- ) {: at:n count:n byte:n :}
@@ -648,6 +649,18 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" COPY-VALUE lays a value out at the writer's indent" T-LABEL
    2 JRT-COPY s\" {\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}" T$=
    0 JRT-COPY JRT-COPY$ T$= ;
+
+\ A value nested deeper than the return stack holds frames copies whole.
+JRT-DEEP-CAP BUFFER: JRT-COPY-OUT
+JRT-DEEP-CAP BUFFER: JRT-COPY-DST
+
+: JRT-TEST-COPY-DEEP ( -- )
+   0 JRT-COPY-DEPTH JRT-DIGIT-1 JRT-DEEP-ONE$ {: src:^ len:n :}
+   src len JRT-OPEN-A JSON:READ-NEXT drop
+   JRT-WRITER JRT-COPY-OUT JRT-DEEP-CAP JSON:WRITE-OPEN
+   JRT-COPY-DST JRT-DEEP-CAP JSON:COPY-VALUE
+   JSON:WRITTEN$ src len T$=
+   JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-HIT ( -- )
    s" READ-FIND-KEY stops on the found key's value" T-LABEL
@@ -1522,6 +1535,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-END-SPAN
    JRT-TEST-ROUNDTRIP
    JRT-TEST-COPY-LAYOUT
+   JRT-TEST-COPY-DEEP
    JRT-TEST-FIND-HIT
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS
