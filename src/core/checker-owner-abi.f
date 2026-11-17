@@ -57,8 +57,7 @@ $190 constant WITH-TICK-ORDER-OFF
 \ it retained the row, so the verifier reports only the declarations whose
 \ rows were kept.
 $198 constant VERIFY-DECL-OFF
-\ src/lib/error.f names this code E-COMP-BINDING.
--8575 constant BINDING-RC
+-8575 constant E-COMP-BINDING
 0 constant BOUND-ORD
 1 constant BOUND-KIND
 2 constant BOUND-SYM

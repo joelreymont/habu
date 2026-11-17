@@ -15348,7 +15348,7 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 
 : REC-BINDING-ROW ( n -- ^u8 n ) {: ord:n :}
    ord 0< ord REC-IX @ >= or IF
-      CHECKER-OWNER-ABI:BINDING-RC throw THEN
+      CHECKER-OWNER-ABI:E-COMP-BINDING throw THEN
    0 BWIN-N @
    [: CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT @ ord < ;]
    KERNEL-SEARCH:PARTITION-POINT {: i:n :}
@@ -15360,7 +15360,7 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
    NULL-PTR 0 ;
 
 : REC-UNJUDGED-BINDING ( n -- ^u8 n )
-   UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:E-COMP-BINDING throw THEN
    REC-BINDING-ROW ;
 
 : REC-STEP ( -- )
@@ -15476,7 +15476,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    {: ord:n :}
    ord REC-UNJUDGED-BINDING {: row:^ size:n :}
    size 0= if -1 -1 -1 -1 exit then
-   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:E-COMP-BINDING throw then
    row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then

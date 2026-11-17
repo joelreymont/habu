@@ -16,11 +16,6 @@ package UNICODE-SCRIPT-TOOL
 
 private
 
-UNICODE-CLASS-TOOL:E-SYNTAX constant E-SYNTAX
-UNICODE-CLASS-TOOL:E-RANGE constant E-RANGE
-UNICODE-CLASS-TOOL:E-CAPACITY constant E-CAPACITY
-UNICODE-CLASS-TOOL:E-STATE constant E-STATE
-
 $10FFFF constant SCALAR-MAX
 $110000 constant SCALAR-COUNT
 256 constant NAME-CAPACITY
@@ -71,8 +66,8 @@ CODEGEN:BUFFER OUTPUT
    buf got ;
 
 : NAME+ ( ^u8 n -- ) {: a:^ u:n :}
-   u 0= if E-SYNTAX throw then
-   NAME-N @ NAME-CAPACITY >= if E-CAPACITY throw then
+   u 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
+   NAME-N @ NAME-CAPACITY >= if UNICODE-CLASS-TOOL:E-CAPACITY throw then
    a NAME-N @ NAME-A !
    u NAME-N @ NAME-U !
    NAME-N @ 1+ NAME-N ! ;
@@ -87,15 +82,15 @@ CODEGEN:BUFFER OUTPUT
    pa pu s" sc" STR= 0= if exit then
    line lineu next1 NEXT-FIELD {: ca:^ cu:n next2:n ok2:bool :}
    line lineu next2 NEXT-FIELD {: la:^ lu:n next3:n ok3:bool :}
-   ok1 ok2 and ok3 and 0= if E-SYNTAX throw then
-   cu 4 <> if E-SYNTAX throw then
+   ok1 ok2 and ok3 and 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
+   cu 4 <> if UNICODE-CLASS-TOOL:E-SYNTAX throw then
    next3 drop la lu NAME+ ;
 
 : SCAN-ALIASES ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
-      valid 0= if E-SYNTAX throw then
+      valid 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
       line lineu ALIAS-ROW
       next
    repeat drop ;
@@ -104,15 +99,15 @@ CODEGEN:BUFFER OUTPUT
    NAME-N @ 0 ?do
       a u i NAME-A @ i NAME-U @ STR= if i unloop exit then
    loop
-   E-SYNTAX throw ;
+   UNICODE-CLASS-TOOL:E-SYNTAX throw ;
 
 : MARK-SCALAR ( n n -- ) {: cp:n tag:n :}
    cp MARK {: at:^ :}
-   at @ 0<> if E-RANGE throw then
+   at @ 0<> if UNICODE-CLASS-TOOL:E-RANGE throw then
    tag 1+ at ! ;
 
 : SCRIPT-ROW ( n n ^u8 n -- ) {: lo:n hi:n a:^ u:n :}
-   lo 0 < hi lo < or hi SCALAR-MAX > or if E-RANGE throw then
+   lo 0 < hi lo < or hi SCALAR-MAX > or if UNICODE-CLASS-TOOL:E-RANGE throw then
    a u NAME-INDEX {: tag:n :}
    hi 1+ lo ?do i tag MARK-SCALAR loop ;
 
@@ -120,7 +115,7 @@ CODEGEN:BUFFER OUTPUT
    SCALAR-COUNT 0 ?do 0 i MARK ! loop ;
 
 : RANGE+ ( n n n -- ) {: lo:n hi:n tag:n :}
-   RANGE-N @ RANGE-CAPACITY >= if E-CAPACITY throw then
+   RANGE-N @ RANGE-CAPACITY >= if UNICODE-CLASS-TOOL:E-CAPACITY throw then
    lo RANGE-N @ RANGE-LO !
    hi RANGE-N @ RANGE-HI !
    tag RANGE-N @ RANGE-TAG !
@@ -225,7 +220,7 @@ public
    true READY ! ;
 
 : RENDER ( -- ^u8 n )
-   READY @ 0= if E-STATE throw then
+   READY @ 0= if UNICODE-CLASS-TOOL:E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE
    OUT-ENUM

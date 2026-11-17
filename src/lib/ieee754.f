@@ -5,6 +5,8 @@
 \ ROUND-SHIFT-EVEN answers its input for a zero shift and zero above 63; a
 \ negative significand or shift is E-ROUND-DOMAIN. STORAGE CLASS. CALLER-OWNED.
 
+require src/lib/error.f
+
 package IEEE754
 
 private
@@ -15,7 +17,7 @@ CAST: BITS>F64-RAW ( n -- r )
 
 public
 
--7661 constant E-ROUND-DOMAIN
+-7661 s" a negative significand or shift to round to nearest even" ERROR:CODE E-ROUND-DOMAIN
 
 : F64>BITS ( r -- n )
    F64>BITS-RAW ;

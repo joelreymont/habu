@@ -15,6 +15,7 @@ using ZIP
 using MEM
 
 $10000 constant RAW-CAP
+77 constant CALLER-CODE
 create RAW RAW-CAP allot
 create BASE PATH-CAP allot
 variable BASE-LEN
@@ -403,7 +404,7 @@ $10000 constant WIDE-COUNT
    len 0 ?do byte data i + c! loop ;
 
 : FAIL-FILL ( n SPAN:span<u8> -- )
-   2drop E-WRITE throw ;
+   2drop CALLER-CODE throw ;
 
 : TRY-FILL ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup 11 0 [: FAIL-FILL ;] ZIP:REPLACE-WITH ;
@@ -412,7 +413,7 @@ $10000 constant WIDE-COUNT
    INPUT$ ORIGINAL$ FS:WRITE-ALL
    INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
    archive 0 ENTRY {: member:ZIP:entry :}
-   archive member [: TRY-FILL ;] catch E-WRITE T= 2drop
+   archive member [: TRY-FILL ;] catch CALLER-CODE T= 2drop
    archive 0 s" stored value" MEMBER=
    archive member 31 65 [: FILL-BYTE ;] ZIP:REPLACE-WITH
    archive 2 ENTRY archive swap ZIP:READ nip 0 T=

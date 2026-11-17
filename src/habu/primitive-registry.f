@@ -15,9 +15,6 @@ package ENGINE-PRIMS
 
 6 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
-\ The generated storage accessors' index rejection: src/core/layout-buffer.f's
-\ code, which this file requires.
-E-LAYOUT-BOUNDS constant E-INDEX
 \ Both specification gates exit with the table's own refusal status.
 76 constant SPEC-RC
 DYNAMIC-BUFFER ROWS n
@@ -26,7 +23,7 @@ variable USED
 variable NAME-BYTES
 
 : ROW-FIELD ( n n -- ^n ) {: row:n field:n :}
-   row 0 < row USED @ >= or if E-INDEX throw then
+   row 0 < row USED @ >= or if E-LAYOUT-BOUNDS throw then
    row ROW-CELLS * field + ROWS ;
 
 : RESERVE ( n -- ) {: size:n :}

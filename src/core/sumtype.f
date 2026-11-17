@@ -20,8 +20,6 @@ EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:DEF-NAME-BAD?
 EXPORT CHECK:DEF-NAME-REJECT?
 
-\ --- named reject codes (7101, 7102, 7106 and 7123 live in type-family.f).
-
 public
 
 7107 constant E-TDECL-SYNTAX    \ malformed declaration (name/arity/terminator/token)
@@ -35,9 +33,6 @@ public
 7120 constant E-TDECL-SEALED    \ a family or generated name that would change a sealed package
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
-\ Enum tags: -9880..-9889, thrown by the words DERIVE tag generates.
--9880 constant E-ENUM-TAG-FIRST
--9889 constant E-ENUM-TAG-LAST
 -9880 constant E-ENUM-TAG        \ a number that is not one of an enum's tags (FAM:TAG>)
 
 private

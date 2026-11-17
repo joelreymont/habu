@@ -2,16 +2,18 @@
 
 require src/lib/prelude.f
 require src/lib/string.f
+require src/lib/error.f
 
 package UNICODE-CLASS-TOOL
 
 public
 
--7800 constant E-SYNTAX
--7801 constant E-RANGE
--7802 constant E-CAPACITY
--7803 constant E-STATE
--7805 constant E-DIGEST
+-7800 s" a pinned Unicode data file has a row this parser does not read" ERROR:FAULT E-SYNTAX
+-7801 s" a Unicode data range is reversed, outside the scalars, in the surrogates, out of order or overlapping another, or a table index is out of range"
+   ERROR:FAULT E-RANGE
+-7802 s" the pinned Unicode data has more ranges or names than a table holds" ERROR:FAULT E-CAPACITY
+-7803 s" a table was rendered before the pinned Unicode data was loaded" ERROR:FAULT E-STATE
+-7805 s" a Unicode data file cannot be read or its SHA-256 is not the pinned one: restore the pinned file" ERROR:FAULT E-DIGEST
 
 private
 

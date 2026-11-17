@@ -83,12 +83,9 @@ require src/core/rejection.f
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
 
-\ Engine self-identity: -3800..-3899; the codes with a text are declared at this
-\ file's end.
+\ Engine self-identity: -3800..-3899, declared at this file's end.
 -3800 constant E-ENGINE-FIRST
 -3899 constant E-ENGINE-LAST
--3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 or past the OS timer's longest
--3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (re-registered as the same (code, name) in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999, minted by src/lib/json/read.f, a file of package JSON (src/lib/json.f).
 
@@ -116,12 +113,10 @@ require src/core/rejection.f
 -4400 constant E-TEST-FIRST
 -4499 constant E-TEST-LAST
 
-\ Owned growable byte buffer: -5700..-5799, past the stdlib range -2000..-4999
-\ (-5000..-5699 are owned by research/maki modules that keep codes in their own
-\ files); the codes with a text are declared at this file's end.
+\ Owned growable byte buffer: -5700..-5799, declared at this file's end, past
+\ the stdlib's -2000..-4999 and research/maki's own -5000..-5699.
 -5700 constant E-BUF-FIRST
 -5799 constant E-BUF-LAST
--5702 constant E-BUF-STATE       \ a buffer in the wrong state for the operation
 
 \ Open-addressing integer-key hash probe: -5800..-5899, declared at this file's end.
 -5800 constant E-HM-FIRST
@@ -204,17 +199,14 @@ require src/core/rejection.f
 
 \ Native ARM64 control flow: -8500..-8519, declared at this file's end.
 
-\ Native publication: -8560..-8579; the codes with a text are declared at this
-\ file's end.
--8575 constant E-COMP-BINDING \ no successful scan or resolved binding exists for a required call ordinal
+\ Native publication: -8560..-8579, declared at this file's end.
 
 \ Asking the running dictionary about a spelling: -8600..-8609, declared at this
 \ file's end.
 
 \ Native publication, continued: -8621..-8623, declared at this file's end.
 
-\ Native emission and string storage: -8635..-8639
--8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it: a build does not go on once DP moves back inside its space, so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
+\ Native emission and string storage: -8635..-8639, declared at this file's end.
 
 \ The register-file description and the machine description over it:
 \ -8670..-8672, declared at this file's end.
@@ -458,8 +450,7 @@ create NL $0A c,
    ERROR-TEXT:DIGITS$ SAY ;
 
 
-: SAY-NAME ( ^u8 n -- ) {: name:^ nameu:n :}
-   PKG$ {: p:^ pu:n :}
+: SAY-NAME ( ^u8 n ^u8 n -- ) {: p:^ pu:n name:^ nameu:n :}
    pu 0<> if p pu SAY s" :" SAY then
    name nameu SAY ;
 
@@ -476,10 +467,9 @@ create NL $0A c,
    s" ERROR:CODE: " SAY ;
 
 
-: SAME-NAME? ( ^n ^u8 n -- bool )
-   {: at:^ name:^ nameu:n :}
+: SAME-NAME? ( ^n ^u8 n ^u8 n -- bool )
+   {: at:^ p:^ pu:n name:^ nameu:n :}
    at ROW-NAME$ {: r:^ ru:n :}
-   PKG$ {: p:^ pu:n :}
    pu 0= if r ru name nameu XREF-STR=CI exit then
    ru pu nameu + 1+ <> if false exit then
    r pu + c@ $3A <> if false exit then
@@ -490,8 +480,8 @@ create NL $0A c,
 \ Ends the process, exit 70 and one line on fd 2 that starts with the declaring
 \ word, for a missing name, a name past 255 bytes, an empty text, or a code
 \ outside 0..255 another name holds.
-: CHECK ( n ^u8 n n bool -- )
-   {: code:n name:^ nameu:n textu:n fault:bool :}
+: CHECK ( n ^u8 n ^u8 n n bool -- )
+   {: code:n p:^ pu:n name:^ nameu:n textu:n fault:bool :}
    nameu 0= if
       fault SAY-WORD s" no name after the code " SAY code SAY-INT REFUSE
    then
@@ -500,14 +490,14 @@ create NL $0A c,
       s"  is longer than 255 bytes" SAY REFUSE
    then
    textu 0= if
-      fault SAY-WORD name nameu SAY-NAME s"  has an empty text" SAY REFUSE
+      fault SAY-WORD p pu name nameu SAY-NAME s"  has an empty text" SAY REFUSE
    then
    code 0 < code 255 > or 0= if exit then
    code FIND {: at:^ :}
    at NULL-PTR = if exit then
-   at name nameu SAME-NAME? if exit then
+   at p pu name nameu SAME-NAME? if exit then
    fault SAY-WORD code SAY-INT s"  is " SAY at ROW-NAME$ SAY
-   s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
+   s" , declared again as " SAY p pu name nameu SAY-NAME REFUSE ;
 
 
 CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
@@ -530,10 +520,9 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
 \ A row is five cells, the previous row, the code, the qualified name's length,
 \ the text's length and the fault flag (-1 or 0), then the name and the text.
-: ROW, ( n ^u8 n ^u8 n bool -- )
-   {: code:n name:^ nameu:n text:^ textu:n fault:bool :}
+: ROW, ( n ^u8 n ^u8 n ^u8 n bool -- )
+   {: code:n p:^ pu:n name:^ nameu:n text:^ textu:n fault:bool :}
    datum
-   PKG$ {: p:^ pu:n :}
    here CELL-VIEW {: at:^ :}
    here ptr-cell-mark 0 ,
    HEAD @ at 0 ptr-field !
@@ -553,9 +542,25 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 : DECLARE ( n ^u8 n bool -- )
    {: code:n text:^ textu:n fault:bool :}
    parse-name {: name:^ nameu:n :}
-   code name nameu textu fault CHECK
+   PKG$ {: p:^ pu:n :}
+   code p pu name nameu textu fault CHECK
    code name nameu DEFINE
-   code name nameu text textu fault ROW, ;
+   code p pu name nameu text textu fault ROW, ;
+
+
+\ The text of a code a file below this one mints by `constant`, recorded under
+\ the name after it, PKG:TAIL split at its last colon; it defines no word.
+: MINTED ( n ^u8 n bool -- )
+   {: code:n text:^ textu:n fault:bool :}
+   parse-name {: name:^ nameu:n :}
+   nameu
+   begin dup 0 > if dup 1- name + c@ $3A <> else false then while 1- repeat
+   {: cut:n :}
+   cut 0 > if cut 1- else 0 then {: pu:n :}
+   name cut + nameu cut - {: tail:^ tailu:n :}
+   code name pu tail tailu textu fault CHECK
+   code name pu tail tailu text textu fault ROW, ;
+parses: MINTED 1
 
 public
 
@@ -696,6 +701,8 @@ generates: FAULT ( -- n )
 -3614 s" a TASK:SLEEP or TASK:WAIT-MS duration below zero or past the last deadline a cell holds" ERROR:CODE E-TASK-SLEEP-MS
 -3800 s" the engine's own executable path cannot be resolved" ERROR:FAULT E-ENGINE-PATH
 -3801 s" the engine's own binary cannot be content-hashed" ERROR:FAULT E-ENGINE-KEY
+-3803 s" an interval handed to prof-rate that is below 0 or past the longest the OS timer holds" ERROR:CODE E-PROF-RATE
+-3804 s" an evaluated text or a loaded file that left cells on the stack above its floor" ERROR:CODE E-EVAL-RESIDUE
 -4000 s" ssh could not reach the host (connect or auth)" ERROR:FAULT E-ZED-UNREACH
 -4001 s" a remote command exited nonzero" ERROR:CODE E-ZED-RC
 -4002 s" an scp or rsync artifact transfer failed" ERROR:CODE E-ZED-PUT
@@ -716,6 +723,7 @@ generates: FAULT ( -- n )
 -4301 s" the judge image lacks a word the task requires" ERROR:FAULT E-EVAL-VOCAB
 -5700 s" a byte offset or active length outside the buffer" ERROR:CODE E-BUF-BOUNDS
 -5701 s" a zero, negative or cell-overflowing byte capacity" ERROR:CODE E-BUF-CAPACITY
+-5702 s" a buffer in the wrong state for the operation: used after it was disposed, or initialized while it is live" ERROR:CODE E-BUF-STATE
 -5703 s" the source and destination byte ranges overlap" ERROR:CODE E-BUF-OVERLAP
 -5800 s" a probe capacity that is not a nonzero power of two" ERROR:CODE E-HM-CAP
 -5801 s" a probe scanned every slot without finding an empty slot or the key" ERROR:CODE E-HM-FULL
@@ -760,6 +768,7 @@ generates: FAULT ( -- n )
 -8572 s" the engine's own check did not certify the pending definition" ERROR:CODE E-COMP-VERDICT
 -8573 s" the pending record and the checker's tape name different definitions" ERROR:FAULT E-COMP-NAME
 -8574 s" a declaration-owner record is invalid or lacks the field a reader calls" ERROR:FAULT E-COMP-OWNER
+-8575 s" a required call ordinal with no successful scan or resolved binding behind it" ERROR:FAULT E-COMP-BINDING
 -8576 s" the active checker counted a rejection or borrowed its recovery fact; abandon the unpublished definition and continue" ERROR:CODE E-COMP-RECOVERY
 -8579 s" the checker holds no declared effect for the pending definition" ERROR:CODE E-COMP-ARITY
 -8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
@@ -768,6 +777,7 @@ generates: FAULT ( -- n )
 -8621 s" an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement" ERROR:FAULT E-NPUB-RELOC
 -8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING
 -8623 s" a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked" ERROR:CODE E-NPUB-TARGET
+-8638 s" a string interned in a build's data space after DP moved back inside it: intern every string before moving DP back, or end the build there" ERROR:CODE E-INTERN-REWIND
 -8670 s" a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two" ERROR:CODE E-NREGFILE
 -8671 s" a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach" ERROR:CODE E-NMACH
 -8680 s" a shadow opened over an open one or natively with no address rewriter installed, or its binding, a count or a source function asked of none" ERROR:CODE E-NSHADOW-STATE
@@ -883,6 +893,49 @@ generates: FAULT ( -- n )
 \ HELP and CAUGHT name E-THROW-ZERO, which ERROR:CODE declares outside the
 \ package, and UNCAUGHT calls HELP.
 package ERROR
+
+private
+
+7203 s" a value record's field names a type not yet declared: declare the type before the record" false MINTED E-CHECKER-RECORD-UNRESOLVED
+7144 s" a bare name is public in more than one package a `using` imports: call it qualified, as `PKG:NAME`" false MINTED E-USING-AMBIGUOUS
+7202 s" a storage definition names a type not yet declared: declare the type before the storage" false MINTED E-CHECKER-STORAGE-UNRESOLVED
+7205 s" a cast's signature names a type not yet declared: declare the type before the cast" false MINTED E-CHECKER-IDENTITY-UNRESOLVED
+7163 s" a second POLICY clause in one declaration: keep one `POLICY` clause in the declaration header" false MINTED TYPE-DECL:DECL-EVENT:E-DEV-DUP-POLICY
+7164 s" the same DERIVE feature twice in one declaration: name each `DERIVE` feature once" false MINTED TYPE-DECL:DECL-EVENT:E-DEV-DUP-DERIVE
+7206 s" a second OPAQUE clause in one declaration: keep one `OPAQUE` clause in the declaration header" false MINTED TYPE-DECL:DECL-EVENT:E-DEV-DUP-OPAQUE
+7207 s" OPAQUE requires a family declared in a package: declare the `OPAQUE` structure inside a `package`, or drop `OPAQUE`" false MINTED TYPE-DECL:DECL-EVENT:E-DEV-OPAQUE-PACKAGE
+7182 s" a declaration reject code was given its reason twice: call `DECL-REJECT:EXPLAIN` once for each code" true MINTED DECL-REJECT:E-REASON-DUP
+7192 s" a type declaration names a type not yet declared: declare that type before it" false MINTED TYPE-DECL:DECL-FRONT:E-UNRESOLVED
+7122 s" an index outside the entries a buffer holds: pass an index from 0 to one below its count" false MINTED E-LAYOUT-BOUNDS
+7134 s" a path is empty, of negative length, or longer than the bytes a path buffer holds: pass a nonempty path of at most `PATH-CAP` bytes" false MINTED E-PATH-RANGE
+7165 s" a path holds a 0 byte, which would end it early: remove the 0 byte from the path" false MINTED E-PATH-NUL
+7178 s" a code reclaim's floor is above the free code slot: pass a floor at or below `cp@`" false MINTED CODE-RECLAIM:E-FLOOR
+7179 s" a code reclaim's floor is at or below code a surviving definition still holds: retire the definitions above the floor first, or pass a higher floor" false MINTED CODE-RECLAIM:E-LIVE
+7180 s" a script argument index is negative or not below `SCRIPT-ARGC`: pass an index from 0 to one below `SCRIPT-ARGC`" false MINTED E-SCRIPT-ARGV-RANGE
+-7231 s" a slot and occurrence name no live definition, retired or reissued since they were selected: select the word again with `DEF-OCC:SELECT`" false MINTED DEF-OCC:E-STALE
+-7232 s" the address given to select names no published dictionary record: pass the record of a word the dictionary holds" false MINTED DEF-OCC:E-SELECT
+-7234 s" the dictionary ran out of occurrence numbers to issue" true MINTED DEF-OCC:E-EXHAUSTED
+-3200 s" a memory request's size is zero, negative or past the largest an allocator takes: ask for a size from 1 to that largest" false MINTED E-MEM-SIZE
+-3201 s" the system refused to map the memory asked for: ask for less, or free memory first" true MINTED E-MEM-MAP
+-3202 s" a memory size check failed, though its constant arguments rule that out" true MINTED E-MEM-TOTALITY
+-3203 s" the system refused to unmap memory Habu mapped" true MINTED E-MEM-UNMAP
+-3204 s" an allocator record was filled a second time: call `ALLOC:INIT` once, on a zeroed record" true MINTED E-ALLOC-STATE
+7101 s" a type, variant or field name is not a lowercase tail: write it in lower case with no package qualifier, as in `point`" false MINTED TFAM:E-TFAM-CASE
+7102 s" a family, variant or field name is declared twice where it must be unique: give each a name no other declaration in its package, family or variant uses" false MINTED TFAM:E-TFAM-DUP
+7106 s" a bare type name is public in more than one package a `using` imports: write it qualified, as `PKG:name`" false MINTED TFAM:E-TFAM-AMBIG
+7123 s" a family, variant or public field name is a keyword or reads as a number: rename it, since a keyword or a number names no definition" false MINTED TFAM:E-TDECL-DEF-NAME
+7125 s" a field name spells a declaration word or a generated word such as `make`, `tag` or `eq`: rename the field" false MINTED TFAM:E-PF-NAME
+7107 s" a malformed type declaration, missing its name, a clause token or its closing word: write the declaration word, its name, its clauses, then its closing word" false MINTED TYPE-DECL:E-TDECL-SYNTAX
+7108 s" a malformed type parameter header: name each type parameter once, as in `box<a>` or `result<a,b>`" false MINTED TYPE-DECL:E-TDECL-ARITY
+7109 s" a field or payload names an unknown type: give each a type declared before it, such as `n`, `^u8`, a `STRUCTURE` or an `ENUM`" false MINTED TYPE-DECL:E-TDECL-PAYLOAD
+7110 s" a family, variant or generated name is reserved or already taken: rename it so it is no reserved word and no word the declaration generates" false MINTED TYPE-DECL:E-TDECL-NAME
+7116 s" a layout policy that is missing, unknown or unsupported, or that the family's shape does not fit: name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`, or drop the clause" false MINTED TYPE-DECL:E-TDECL-POLICY
+7117 s" a sum's payload names the family being declared: drop that payload, since no family can hold itself" false MINTED TYPE-DECL:E-TDECL-RECURSIVE
+7118 s" a record takes more than 4096 items to make: split it, since MAKE takes one item per `FIELD` and one per buffer cell" false MINTED TYPE-DECL:E-TDECL-CAP
+7119 s" a `DERIVE` feature is unknown, or a payload type lacks it: derive a feature only when every payload type has it, or drop it from `DERIVE`" false MINTED TYPE-DECL:E-TDECL-DERIVE
+7120 s" a declaration would add a family or a generated word to a sealed package: declare the type in a package that is not sealed" false MINTED TYPE-DECL:E-TDECL-SEALED
+7204 s" a type declaration's payload names a type not yet declared: declare that type before it" false MINTED TYPE-DECL:E-TDECL-UNRESOLVED
+-9880 s" a number given to an enum's `TAG>` is none of its tags: pass a tag the enum declares" false MINTED TYPE-DECL:E-ENUM-TAG
 
 public
 

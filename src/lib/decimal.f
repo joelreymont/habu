@@ -7,12 +7,13 @@
 
 require src/lib/adt/option.f
 require src/lib/string.f
+require src/lib/error.f
 
 package DECIMAL
 public
 -9460 constant E-FIRST
 -9469 constant E-LAST
--9460 constant E-SOURCE      \ negative length or nonempty null span
+-9460 s" a negative length, or a null address with a nonzero length" ERROR:CODE E-SOURCE
 private
 
 48 constant ZERO

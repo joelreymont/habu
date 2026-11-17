@@ -6,11 +6,12 @@
 \ num-types.f's public validator, which owns the audited MINT-*.
 
 require src/lib/num-types.f
+require src/lib/error.f
 
 package NUM
 private
 
--5406 constant E-NUM-TOTALITY   \ a total op's validator saw a non-ok result
+-5406 s" a total operation's validator saw a result other than ok" ERROR:FAULT E-NUM-TOTALITY
 
 \ No require src/lib/memory.f: MEM:ALLOC-* consumes NUM alloc roles, so it would
 \ be a cycle. CELL-BYTES-N mirrors its MEM-CELL-BYTES.

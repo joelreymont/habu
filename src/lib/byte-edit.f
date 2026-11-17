@@ -6,14 +6,16 @@
 \ and EDIT:WRITE (also global tails). STORAGE CLASS. CALLER-OWNED: no module state.
 
 require src/lib/prelude.f
+require src/lib/error.f
 
 package EDIT
 public
 DEFLINEAR EDIT:editor
--9141 constant E-CAPACITY
--9142 constant E-RANGE
--9143 constant E-ORDER
--9144 constant E-ALIAS
+-9141 s" an edit count that is negative or too large, storage or a destination too short for the edits, or a result longer than a cell holds: size storage with EDIT:STORAGE-BYTES, the destination to the result"
+   ERROR:CODE E-CAPACITY
+-9142 s" a negative length, a null span with bytes, a span past the end of memory, or an edit outside the source" ERROR:CODE E-RANGE
+-9143 s" an edit starts before the previous one ends: give edits in source order, without overlap" ERROR:CODE E-ORDER
+-9144 s" storage, source, a replacement or the destination share bytes: give each its own memory" ERROR:CODE E-ALIAS
 
 private
 7 constant HEADER-CELLS
