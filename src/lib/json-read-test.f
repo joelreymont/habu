@@ -318,6 +318,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-INTS ( -- )
+   s" READ-INT reads integers up to the largest signed cell" T-LABEL
    s" 0" 0 JRT-SCALAR-INT
    s" -1" -1 JRT-SCALAR-INT
    s" 42" 42 JRT-SCALAR-INT
@@ -332,6 +333,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-U64 ( -- )
+   s" READ-U64 answers an integer's 64 bits up to 2^64-1" T-LABEL
    s" 0" 0 JRT-SCALAR-U64
    s" 9223372036854775807" STR-MAX-I64 JRT-SCALAR-U64
    s" 9223372036854775808" STR-MIN-I64 JRT-SCALAR-U64
@@ -341,33 +343,39 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-U64 drop JSON:READ-CLOSE ;
 
 : JRT-TEST-U64-REFUSALS ( -- )
+   s" READ-U64 rejects a negative, a value past 64 bits, a fraction and an exponent" T-LABEL
    [: s" -1" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 18446744073709551616" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 99999999999999999999" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 1.0" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 1e3" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
+   s" READ-U64 on a string throws E-JSON-READ-STATE" T-LABEL
    [: JRT-HI-SRC$ JRT-U64-OF ;] E-JSON-READ-STATE TTHROWSQ ;
 
 : JRT-TEST-FLOATS ( -- )
+   s" READ-FLOAT reads fractions and exponents" T-LABEL
    s" 3.14" 3.14 JRT-SCALAR-FLOAT
    s" 1e9" 1000000000.0 JRT-SCALAR-FLOAT
    s" -2.5E-3" -0.0025 JRT-SCALAR-FLOAT
    s" 0.5" 0.5 JRT-SCALAR-FLOAT ;
 
 : JRT-TEST-LITERALS ( -- )
+   s" true, false and null read as their own token kinds" T-LABEL
    s" true" JRT-OPEN-A JSON:READ-NEXT JSON:T-TRUE T= JSON:READ-NEXT JSON:T-END T= JSON:READ-CLOSE
    s" false" JRT-OPEN-A JSON:READ-NEXT JSON:T-FALSE T= JSON:READ-NEXT JSON:T-END T= JSON:READ-CLOSE
    s" null" JRT-OPEN-A JSON:READ-NEXT JSON:T-NULL T= JSON:READ-NEXT JSON:T-END T= JSON:READ-CLOSE ;
 
 : JRT-TEST-STRING ( -- )
+   s" READ-SPAN$ answers a string's raw bytes without its quotes, and READ-STR its value" T-LABEL
    JRT-HI-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
-   JSON:READ-SPAN$ s" hi" T$=                              \ raw span excludes quotes
+   JSON:READ-SPAN$ s" hi" T$=
    s" hi" JRT-STR=
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
 : JRT-TEST-ESCAPES ( -- )
+   s" READ-STR decodes every two-character escape" T-LABEL
    JRT-ESC-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
    JRT-ESC-WANT$ JRT-STR=
@@ -381,6 +389,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-APPEND-LEN ( -- n )  JRT-APPEND-BUF BUF:LEN@ BUF:BLEN>N ;
 
 : JRT-TEST-STR-APPEND ( -- )
+   s" READ-STR-APPEND appends a string's decoded bytes, and nothing for an empty string" T-LABEL
    64 JRT-APPEND-FRESH
    JRT-ESC-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
@@ -398,6 +407,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 \ A capacity of 4 holds "ab" but not the escaped string after it.
 : JRT-TEST-STR-APPEND-GROW ( -- )
+   s" READ-STR-APPEND grows a full buffer and keeps what it held" T-LABEL
    4 JRT-APPEND-FRESH
    s" ab" BUF:N>BLEN JRT-APPEND-BUF BUF:APPEND-SPAN
    JRT-ESC-SRC$ JRT-OPEN-A
@@ -411,6 +421,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-APPEND-BUF BUF:DISPOSE ;
 
 : JRT-TEST-STR-APPEND-KEY ( -- )
+   s" READ-STR-APPEND appends a key's decoded bytes" T-LABEL
    16 JRT-APPEND-FRESH
    s\" {\"k\\u0065y\":1}" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
@@ -426,6 +437,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT drop JRT-APPEND-BUF JSON:READ-STR-APPEND JSON:READ-CLOSE ;
 
 : JRT-TEST-STR-APPEND-MISUSE ( -- )
+   s" READ-STR-APPEND on a number throws E-JSON-READ-STATE and leaves the buffer as it was" T-LABEL
    16 JRT-APPEND-FRESH
    s" ab" BUF:N>BLEN JRT-APPEND-BUF BUF:APPEND-SPAN
    [: JRT-BAD-APPEND-KIND ;] E-JSON-READ-STATE TTHROWSQ
@@ -434,18 +446,21 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-APPEND-BUF BUF:DISPOSE ;
 
 : JRT-TEST-UESCAPE ( -- )
+   s" READ-STR decodes a \u escape" T-LABEL
    JRT-U-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
    JRT-U-WANT$ JRT-STR=
    JSON:READ-CLOSE ;
 
 : JRT-TEST-SURROGATE ( -- )
+   s" READ-STR decodes a surrogate pair to one four-byte UTF-8 character" T-LABEL
    JRT-SUR-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
    JRT-SUR-WANT$ JRT-STR=
    JSON:READ-CLOSE ;
 
 : JRT-TEST-UTF8 ( -- )
+   s" UTF-8 of two, three and four bytes reads back unchanged" T-LABEL
    JRT-UTF8-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
    JRT-UTF8-WANT$ JRT-STR=
@@ -453,12 +468,14 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-EMPTY ( -- )
+   s" an empty object and an empty array read as their start and end tokens" T-LABEL
    s" {}" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T= JSON:READ-NEXT JSON:T-OBJ-END T= JSON:READ-NEXT JSON:T-END T= JSON:READ-CLOSE
    s" []" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-ARR T= JSON:READ-NEXT JSON:T-ARR-END T= JSON:READ-NEXT JSON:T-END T= JSON:READ-CLOSE ;
 
 : JRT-TEST-NESTED ( -- )
+   s" READ-NEXT walks nested objects and arrays token by token" T-LABEL
    JRT-NESTED$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T= s" a" JRT-STR=
@@ -479,6 +496,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 \ Every token kind of one document, then a number outside the kinds, named
 \ for a diagnostic.
 : JRT-TEST-KIND-NAMES ( -- )
+   s" KIND$ names every token kind, and a number past them as no token kind" T-LABEL
    s\" {\"k\":[\"s\",1,0.5,true,false,null]}" JRT-OPEN-A
    JSON:READ-NEXT JSON:KIND$ s" an object" T$=
    JSON:READ-NEXT JSON:KIND$ s" a key" T$=
@@ -496,6 +514,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:T-END 1+ JSON:KIND$ s" no token kind" T$= ;
 
 : JRT-TEST-VALUE-SPAN ( -- )
+   s" READ-VALUE-SPAN$ answers a container's whole text and moves past it" T-LABEL
    JRT-VALUE-SPAN$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T= s" a" JRT-STR=
@@ -533,6 +552,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-ANY-SPAN$ drop drop JSON:READ-CLOSE ;
 
 : JRT-TEST-ANY-SPAN ( -- )
+   s" READ-ANY-SPAN$ answers the text of a value of every kind and moves past it" T-LABEL
    JRT-ANY-SPAN$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T= s" o" JRT-STR=
@@ -546,12 +566,14 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT drop JSON:READ-ANY-SPAN$ s" null" T$=
    JSON:READ-NEXT JSON:T-OBJ-END T=
    JSON:READ-CLOSE
+   s" READ-ANY-SPAN$ on a key or an object's end throws E-JSON-READ-STATE" T-LABEL
    [: JRT-BAD-ANY-KEY ;] E-JSON-READ-STATE TTHROWSQ
    JRT-A JSON:READ-DISPOSE
    [: JRT-BAD-ANY-END ;] E-JSON-READ-STATE TTHROWSQ
    JRT-A JSON:READ-DISPOSE ;
 
 : JRT-TEST-WS ( -- )
+   s" whitespace around and between tokens is skipped" T-LABEL
    JRT-WS$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T= s" a" JRT-STR=
@@ -566,6 +588,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT JSON:T-END T= ;
 
 : JRT-TEST-END-SPAN ( -- )
+   s" the end token's span is empty and sits at the source's end, also when read again" T-LABEL
    s" 1  " {: source:^ len:n :}
    source len JRT-OPEN-A
    JSON:READ-NEXT JSON:T-INT T=
@@ -595,6 +618,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:WRITTEN$ ;
 
 : JRT-TEST-ROUNDTRIP ( -- )
+   s" what the writer writes reads back field by field" T-LABEL
    JRT-RT-BUILD JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T= s" name" JRT-STR=
@@ -621,10 +645,12 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 \ COPY-VALUE lays the value out through the writer's tokens, as any writing.
 : JRT-TEST-COPY-LAYOUT ( -- )
+   s" COPY-VALUE lays a value out at the writer's indent" T-LABEL
    2 JRT-COPY s\" {\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}" T$=
    0 JRT-COPY JRT-COPY$ T$= ;
 
 : JRT-TEST-FIND-HIT ( -- )
+   s" READ-FIND-KEY stops on the found key's value" T-LABEL
    JRT-FIND$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    s" a" JSON:READ-FIND-KEY TTRUE
@@ -633,6 +659,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-SKIP ( -- )
+   s" READ-FIND-KEY finds a later key after READ-SKIP-VALUE skips an object" T-LABEL
    JRT-FIND$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    s" b" JSON:READ-FIND-KEY TTRUE
@@ -644,12 +671,14 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-MISS ( -- )
+   s" READ-FIND-KEY answers false for an absent key" T-LABEL
    JRT-FIND$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    s" zzz" JSON:READ-FIND-KEY TFALSE
    JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-NESTED-SAME-NAME ( -- )
+   s" READ-FIND-KEY ignores a key of that name in a nested object" T-LABEL
    JRT-FIND$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    s" x" JSON:READ-FIND-KEY TFALSE
@@ -664,11 +693,13 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-LENGTHS ( -- )
+   s" READ-FIND-KEY finds keys of 256, 257 and 768 bytes" T-LABEL
    256 JRT-TEST-FIND-LONG
    257 JRT-TEST-FIND-LONG
    JRT-LONG-KEY-CAP JRT-TEST-FIND-LONG ;
 
 : JRT-TEST-FIND-ESCAPED ( -- )
+   s" READ-FIND-KEY matches an escaped key by its decoded bytes" T-LABEL
    JRT-FIND-ESC-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JRT-FIND-ESC-WANT$ JSON:READ-FIND-KEY TTRUE
@@ -677,6 +708,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-ANCHOR ( -- )
+   s" READ-FIND-KEY searches the innermost open object and stops at its end" T-LABEL
    JRT-ANCHOR$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    s" nested" JSON:READ-FIND-KEY TTRUE
@@ -710,6 +742,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT drop JRT-ZERO-U8 1 JSON:READ-FIND-KEY drop JSON:READ-CLOSE ;
 
 : JRT-TEST-FIND-MISUSE ( -- )
+   s" READ-FIND-KEY on an array, a scalar, a key or an invalid key span throws E-JSON-READ-STATE" T-LABEL
    [: JRT-BAD-FIND-ARRAY ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-FIND-SCALAR ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-FIND-PHASE ;] E-JSON-READ-STATE TTHROWSQ
@@ -717,6 +750,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-FIND-KEY-PTR ;] E-JSON-READ-STATE TTHROWSQ ;
 
 : JRT-TEST-REPEATS ( -- )
+   s" READ-REPEATS? answers whether the top object repeats a key, escaped spellings included" T-LABEL
    s" {}" JSON:READ-REPEATS? TFALSE
    s\" {\"a\":1,\"b\":2}" JSON:READ-REPEATS? TFALSE
    s\" {\"a\":1,\"a\":2}" JSON:READ-REPEATS? TTRUE
@@ -724,6 +758,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"ab\":1,\"a\":2}" JSON:READ-REPEATS? TFALSE
    s\" {\"a\":{\"b\":1,\"b\":2}}" JSON:READ-REPEATS? TFALSE
    s\" {\"a\":{\"x\":[1,{\"a\":3}]},\"a\":2}" JSON:READ-REPEATS? TTRUE
+   s" READ-REPEATS? throws E-JSON-READ-STATE on an array and E-JSON-READ-EOF on a truncated object" T-LABEL
    [: s" [1]" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
    [: s\" {\"a\":1," JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
@@ -736,6 +771,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: t u s" a" JRT-MEMBER$ 2drop ;] JSON:E-MEMBER TTHROWSQ ;
 
 : JRT-TEST-MEMBER-FOUND ( -- )
+   s" READ-MEMBER$ answers the text of a top-level member's value" T-LABEL
    s\" {\"a\":1,\"b\":2}" s" a" JRT-MEMBER$ s" 1" T$=
    s\" {\"b\":[2],\"a\":{\"c\":3}}" s" a" JRT-MEMBER$
    s\" {\"c\":3}" T$=
@@ -745,16 +781,19 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"a\":1}" T$= ;
 
 : JRT-TEST-MEMBER-REFUSED ( -- )
+   s" READ-MEMBER$ throws JSON:E-MEMBER for a missing or repeated key and a text that is not an object" T-LABEL
    s\" {\"b\":1}" JRT-NO-MEMBER
    s\" {\"a\":1,\"b\":2,\"a\":1}" JRT-NO-MEMBER
    s\" [{\"a\":1}]" JRT-NO-MEMBER
    s\" \"a\"" JRT-NO-MEMBER
    s\" {\"b\":{\"a\":1}}" JRT-NO-MEMBER
+   s" READ-MEMBER$ throws E-JSON-READ-EOF on a truncated text" T-LABEL
    [: s\" {\"a\":1," s" a" JRT-MEMBER$ 2drop ;]
    E-JSON-READ-EOF TTHROWSQ ;
 
 \ A refused text leaves JRT-A for the next call.
 : JRT-TEST-MEMBER-REUSE ( -- )
+   s" READ-MEMBER$ reads again after a rejected text" T-LABEL
    s\" {\"a\":1,\"a\":2}" JRT-NO-MEMBER
    s\" {\"a\":2}" s" a" JRT-MEMBER$ s" 2" T$=
    s\" {\"a\":3}" s" a" JRT-MEMBER$ s" 3" T$= ;
@@ -765,6 +804,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    code ERROR:TEXT$ nip 0<> TTRUE ;
 
 : JRT-TEST-CODES ( -- )
+   s" each reader code answers its declared name and a text" T-LABEL
    E-JSON-READ-MALFORMED s" E-JSON-READ-MALFORMED" JRT-CODE
    E-JSON-READ-STRING s" E-JSON-READ-STRING" JRT-CODE
    E-JSON-READ-ESCAPE s" E-JSON-READ-ESCAPE" JRT-CODE
@@ -778,6 +818,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:E-READ-SOURCE s" JSON:E-READ-SOURCE" JRT-CODE ;
 
 : JRT-TEST-VALUE-EQ-SCALARS ( -- )
+   s" VALUE= compares scalars by value and strings by decoded bytes" T-LABEL
    s" 1" s" 1.0" JSON:VALUE= TTRUE
    s" 1" s" 1e0" JSON:VALUE= TTRUE
    s" -0" s" 0" JSON:VALUE= TTRUE
@@ -791,6 +832,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" true" s" false" JSON:VALUE= TFALSE ;
 
 : JRT-TEST-VALUE-EQ-ARRAYS ( -- )
+   s" VALUE= compares arrays element by element in order" T-LABEL
    s" []" s" [ ]" JSON:VALUE= TTRUE
    s" []" s" {}" JSON:VALUE= TFALSE
    s" [1,2]" s" [1.0, 2]" JSON:VALUE= TTRUE
@@ -799,6 +841,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" [1,2,3]" s" [1,2]" JSON:VALUE= TFALSE ;
 
 : JRT-TEST-VALUE-EQ-OBJECTS ( -- )
+   s" VALUE= compares objects as unordered members at every depth" T-LABEL
    s\" {\"a\":1,\"b\":[true,null]}" s\"  { \"b\" : [ true , null ] , \"a\" : 1 } "
    JSON:VALUE= TTRUE
    s" {}" s" { }" JSON:VALUE= TTRUE
@@ -824,6 +867,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 \ A repeated key answers false on either side, in identical texts and when its
 \ copies are spelled differently.
 : JRT-TEST-VALUE-EQ-REPEATS ( -- )
+   s" VALUE= answers false when either text repeats a key" T-LABEL
    s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"b\":1}" JSON:VALUE= TFALSE
    s\" {\"a\":1,\"b\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
    s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
@@ -834,6 +878,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 \ Both texts are read whole, so a malformed one throws its code whatever the
 \ comparison would answer.
 : JRT-TEST-VALUE-EQ-MALFORMED ( -- )
+   s" VALUE= throws a malformed text's code whatever the comparison would answer" T-LABEL
    [: s\" {\"a\":1," s" {}" JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ
    [: s" 1 2" s" 1" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ
    [: s" 1" s\" \"x\" x" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ
@@ -843,6 +888,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 \ Numbers compare by value on their lexemes, past STR>FLOAT's digit and exponent
 \ limits; an exponent past a signed cell, stated or scaled, throws.
 : JRT-TEST-VALUE-EQ-NUMBERS ( -- )
+   s" VALUE= compares numbers by value past STR>FLOAT's digit and exponent limits" T-LABEL
    s" 0.0017453292519943296" s" 1.7453292519943296e-3" JSON:VALUE= TTRUE
    s" 1e400" s" 10E399" JSON:VALUE= TTRUE
    s" 100" s" 1e2" JSON:VALUE= TTRUE
@@ -853,12 +899,14 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" 1" s" -1" JSON:VALUE= TFALSE
    s" 1e2" s" 1e3" JSON:VALUE= TFALSE
    s" 10" s" 1e0000000000000000000000001" JSON:VALUE= TTRUE
+   s" VALUE= throws E-JSON-READ-NUMBER on an exponent past a signed cell" T-LABEL
    [: s" 1e9223372036854775807" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 1e99999999999999999999" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ ;
 
 \ 100000 arrays deep, past what recursion on the return stack survives,
 \ compare equal to themselves and unequal with the innermost digit changed.
 : JRT-TEST-VALUE-EQ-DEEP ( -- )
+   s" VALUE= compares arrays 100000 deep" T-LABEL
    0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$ 2dup JSON:VALUE= TTRUE
    0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$
    200001 100000 JRT-DIGIT-2 JRT-DEEP-ONE$ JSON:VALUE= TFALSE ;
@@ -900,6 +948,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    same ;
 
 : JRT-TEST-STR-EQ ( -- )
+   s" READ-STR-EQ? compares a string's decoded bytes with a span" T-LABEL
    s\" \"\"" s" " JRT-EQ? TTRUE
    s\" \"\"" s" a" JRT-EQ? TFALSE
    s\" \"a\"" s" " JRT-EQ? TFALSE
@@ -917,6 +966,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 \ A key compares the same way, and a repeated comparison sees the same key.
 : JRT-TEST-STR-EQ-KEY ( -- )
+   s" READ-STR-EQ? compares a key, and a repeated comparison sees the same key" T-LABEL
    s\" {\"m\\u0065thod\":\"x\"}" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T=
@@ -942,11 +992,13 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT drop JRT-ZERO-U8 2 JSON:READ-STR-EQ? drop JSON:READ-CLOSE ;
 
 : JRT-TEST-STR-EQ-MISUSE ( -- )
+   s" READ-STR-EQ? on a number or with an invalid span throws E-JSON-READ-STATE" T-LABEL
    [: JRT-BAD-EQ-KIND ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-EQ-LEN ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-EQ-PTR ;] E-JSON-READ-STATE TTHROWSQ ;
 
 : JRT-TEST-INTERLEAVE ( -- )
+   s" two readers advance independently, interleaved" T-LABEL
    s" [1,3]" JRT-OPEN-A
    S\" {\qx\q:\qtwo\q}" JRT-OPEN-B
    JSON:READ-NEXT JSON:T-OBJ T=
@@ -978,6 +1030,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    ['] JRT-CATCH-BAD catch 0 T= ;
 
 : JRT-TEST-CATCH-ISOLATION ( -- )
+   s" a failure caught in one reader leaves another reading on" T-LABEL
    s" [7,8]" JRT-OPEN-A
    s" [1,]" JRT-OPEN-B
    JSON:READ-NEXT JSON:T-ARR T=
@@ -1268,6 +1321,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JRT-BUF 1 JSON:READ-STR drop JSON:READ-CLOSE ;
 
 : JRT-TEST-STR-EXACT ( -- )
+   s" READ-STR fills a destination exactly the string's size" T-LABEL
    JRT-HI-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
    JRT-BUF 2 JSON:READ-STR 2 T=
@@ -1275,27 +1329,36 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JSON:READ-CLOSE ;
 
 : JRT-TEST-NEGATIVE ( -- )
+   s" a value after the document throws E-JSON-READ-TRAILING" T-LABEL
    [: JRT-BAD-TRAILING ;] E-JSON-READ-TRAILING TTHROWSQ
+   s" an unterminated string or a raw control byte throws E-JSON-READ-STRING, a bad escape E-JSON-READ-ESCAPE" T-LABEL
    [: JRT-BAD-UNTERM ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-ESCAPE ;] E-JSON-READ-ESCAPE TTHROWSQ
    [: JRT-BAD-RUN-BS ;] E-JSON-READ-ESCAPE TTHROWSQ
    [: JRT-BAD-RUN-CTRL ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-HEX ;] E-JSON-READ-ESCAPE TTHROWSQ
+   s" a lone or unpaired surrogate escape throws E-JSON-READ-SURROGATE" T-LABEL
    [: JRT-BAD-SURROGATE ;] E-JSON-READ-SURROGATE TTHROWSQ
    [: JRT-BAD-LOW-SURROGATE ;] E-JSON-READ-SURROGATE TTHROWSQ
    [: JRT-BAD-SURROGATE-PAIR ;] E-JSON-READ-SURROGATE TTHROWSQ
+   s" malformed UTF-8 throws E-JSON-READ-STRING" T-LABEL
    [: JRT-BAD-UTF8-OVERLONG ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-UTF8-STRAY ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-UTF8-TRUNC ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-UTF8-SUR ;] E-JSON-READ-STRING TTHROWSQ
    [: JRT-BAD-UTF8-HIGH ;] E-JSON-READ-STRING TTHROWSQ
+   s" a bare word or a trailing comma throws E-JSON-READ-MALFORMED, a missing colon E-JSON-READ-COLON" T-LABEL
    [: JRT-BAD-BAREWORD ;] E-JSON-READ-MALFORMED TTHROWSQ
    [: JRT-BAD-TRAILING-COMMA ;] E-JSON-READ-MALFORMED TTHROWSQ
    [: JRT-BAD-COLON ;] E-JSON-READ-COLON TTHROWSQ
+   s" READ-INT past a signed cell throws E-JSON-READ-NUMBER" T-LABEL
    [: JRT-BAD-OVERFLOW ;] E-JSON-READ-NUMBER TTHROWSQ
+   s" READ-INT on a string throws E-JSON-READ-STATE" T-LABEL
    [: JRT-BAD-STATE ;] E-JSON-READ-STATE TTHROWSQ
+   s" READ-STR into a null or negative-length destination throws E-JSON-READ-STATE" T-LABEL
    [: JRT-BAD-STR-NULL ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-STR-NEGATIVE ;] E-JSON-READ-STATE TTHROWSQ
+   s" READ-STR into a destination shorter than the string throws E-SPAN-CAPACITY" T-LABEL
    [: JRT-BAD-STR-ZERO ;] E-SPAN-CAPACITY TTHROWSQ
    [: JRT-BAD-STR-SHORT ;] E-SPAN-CAPACITY TTHROWSQ ;
 
@@ -1323,6 +1386,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    ['] JRT-BAD-ADVANCE catch E-JSON-READ-NUMBER T= ;
 
 : JRT-TEST-AFTER-FAILURE ( -- )
+   s" a failed advance leaves the previous token whole" T-LABEL
    s\" [\"abcdef\",\"x\\q\"]" JRT-OPEN-A
    JSON:READ-NEXT drop JSON:READ-NEXT JSON:T-STR T=
    JRT-CATCH-ESCAPE
@@ -1357,11 +1421,13 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JSON:READ-FINISH ;
 
 : JRT-TEST-FINISH ( -- )
+   s" READ-FINISH closes a document from any depth" T-LABEL
    JRT-NESTED$ JRT-OPEN-A JSON:READ-FINISH
    JRT-NESTED$ JRT-FINISH-NESTED
    JRT-NESTED$ JRT-OPEN-A JSON:READ-NEXT JSON:T-OBJ T= JSON:READ-SKIP-VALUE JSON:READ-FINISH
    JRT-NESTED$ JRT-OPEN-A JSON:READ-NEXT JSON:T-OBJ T= JSON:READ-SKIP-VALUE
    JSON:READ-NEXT JSON:T-END T= JSON:READ-FINISH
+   s" READ-FINISH throws a truncated, trailing, malformed or failed document's code" T-LABEL
    [: JRT-NESTED$ 1- JRT-FINISH-NESTED ;] E-JSON-READ-EOF TTHROWSQ
    [: JRT-TRAILING-TEXT$ JRT-FINISH-AFTER-OPEN ;] E-JSON-READ-TRAILING TTHROWSQ
    [: JRT-OBJ-COMMA$ JRT-FINISH-AFTER-INT ;] E-JSON-READ-MALFORMED TTHROWSQ
@@ -1406,6 +1472,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    cu u 1+ min 0 ?do s i JRT-GUARDED-CODE c i + c@ JRT-REFUSAL T= loop ;
 
 : JRT-TEST-PREFIXES ( -- )
+   s" each prefix of a document throws the code its length calls for, never reading past its end" T-LABEL
    s\" {\"k\":\"v\",\"n\":[1,-2.5e+3,true,false,null],\"o\":{}}"
    s" EESSCESSEESSCEEEENENENNEEMMMEEMMMMEEMMMEEESSCEEE." JRT-PREFIXES
    s\" [\"a\\\"b\\\\c\\/d\\be\\ff\\ng\\rh\\ti\"]"
@@ -1418,6 +1485,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
 \ A number ends at the first byte no number holds; a lexeme its grammar stops
 \ short of is E-JSON-READ-NUMBER, never the next token's refusal.
 : JRT-TEST-LEXEMES ( -- )
+   s" a number ends at the first byte no number holds, and a lexeme cut short throws E-JSON-READ-NUMBER" T-LABEL
    s" 01" JRT-GUARDED-CODE E-JSON-READ-NUMBER T=
    s" -01" JRT-GUARDED-CODE E-JSON-READ-NUMBER T=
    s" [01]" JRT-GUARDED-CODE E-JSON-READ-NUMBER T=
