@@ -15,19 +15,18 @@
 \ transfer maps a close failure to 23, and then a reply cut inside its header
 \ block to 18.
 \
-\ Habu cannot hand libcurl a callback into checked code, and none is needed:
-\ libcurl's default write callback is fwrite. A whole body's CURLOPT_WRITEDATA
-\ is an fmemopen stream over the caller's span; the header capture and a
-\ streamed body are open_memstream streams, and memcpy moves their bytes into
-\ caller spans. For the same reason the loop task uses no
-\ CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It wakes a stream's owner
-\ for every chunk and end, and parks in package AIO and not in libcurl: after
-\ every curl_multi_perform it asks curl_multi_fdset which descriptors libcurl
-\ is waiting on and curl_multi_timeout how long it may wait, turns those into
-\ AIO tickets, and takes the first one that ends. A streamed record's memstream
-\ is rewound once all it holds is copied into spans NEXT-ARM armed, and its
-\ receive is paused while it holds uncopied bytes, so a fast server waits in
-\ the kernel's window and not in this process's memory.
+\ No callback into checked code is needed: libcurl's default write callback is
+\ fwrite. A whole body's CURLOPT_WRITEDATA is an fmemopen stream over the
+\ caller's span; the header capture and a streamed body are open_memstream
+\ streams, and memcpy moves their bytes into caller spans. For the same reason
+\ the loop task uses no CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It
+\ wakes a stream's owner for every chunk and end, and parks in package AIO and
+\ not in libcurl: after every curl_multi_perform it asks curl_multi_fdset which
+\ descriptors libcurl is waiting on and curl_multi_timeout how long it may
+\ wait, turns those into AIO tickets, and takes the first one that ends. A
+\ streamed record's memstream is rewound once all it holds is copied into spans
+\ NEXT-ARM armed, and its receive is paused while it holds uncopied bytes, so a
+\ fast server waits in the kernel's window and not in this process's memory.
 \
 \ One byte on the wake pipe says "a record changed": a START, a NEXT-ARM, a
 \ CANCEL, an abandoned record or the stop; the loop scans the table after each.
