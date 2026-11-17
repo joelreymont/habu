@@ -33,7 +33,9 @@ CAST: >ELEM ( ^u8 -- ^t )
 CAST: >VECTOR ( ^u8 -- ^vector<t> )
 CAST: VECTOR> ( ^vector<t> -- ^u8 )
 
-\ The most elements of n bytes that VEC-MAX-CELLS cells hold.
+\ The most elements of n bytes that VEC-MAX-CELLS cells hold. COUNT and the
+\ room passed CHECK-COUNT when they were set, so RESERVE and ENSURE skip its
+\ division for an n within them.
 : MOST ( n -- n ) VEC-MAX-CELLS CELL * swap 1 max / ;
 
 : CHECK-COUNT ( n n -- )
@@ -96,15 +98,16 @@ public
 \ ENSURE, RESIZE and PUSH neither allocate nor move the block.
 : RESERVE ( ^vector<t> n -- )
    {: v:^ k:n :}
+   k 0 >=  k v VECTOR-ROOM @ <=  and if exit then
    k v VECTOR-WIDTH @ CHECK-COUNT
-   k v VECTOR-ROOM @ > if v k GROW then ;
+   v k GROW ;
 
 \ n below 0 or past NEW's ceiling is E-VEC-CAPACITY; the block may move when n
 \ passes the room it holds.
 : ENSURE ( ^vector<t> n -- )
    {: v:^ k:n :}
+   k 0 >=  k v VECTOR-COUNT @ <=  and if exit then
    k v VECTOR-WIDTH @ CHECK-COUNT
-   k v VECTOR-COUNT @ <= if exit then
    k v VECTOR-ROOM @ > if v k GROW then
    k v VECTOR-COUNT ! ;
 
