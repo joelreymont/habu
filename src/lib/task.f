@@ -153,10 +153,10 @@ END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ^a ^b n -- ) {: field:^ origin:^ want:n :}
    field FFI:>CELL origin FFI:>CELL - want <> if
-      s" task: tcb field layout" E-TASK-STATE die then ;
+      s" task: tcb field layout" 70 die then ;
 
 : TASK-TCB-LAYOUT-CHECK ( -- )
-   TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" E-TASK-STATE die then
+   TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" 70 die then
    \ The offsets the immutable engine entry loads, and the two this package
    \ reads as numbers.
    here CELL-VIEW {: origin:^ :}

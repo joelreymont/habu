@@ -60,7 +60,7 @@ private
 39 constant READER-CELLS
 XML:CURSOR-BYTES constant LINK-OFF
 : LAYOUT-CHECK ( -- )
-   READER-CELLS 1- cells LINK-OFF <> if s" xml-c2: reader layout" XML:E-STATE die then ;
+   READER-CELLS 1- cells LINK-OFF <> if s" xml-c2: reader layout" 70 die then ;
 LAYOUT-CHECK
 
 \ The task's innermost live reader record, or null. A reader links its record

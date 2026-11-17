@@ -84,7 +84,7 @@ NO-PID KEY-PID !
       none OF
          s" secret-linux-test: required executable missing on PATH: " type
          name u type cr
-         s" " E-PROC-PATH die
+         s" " 69 die
       ENDOF
       some OF LEN>N ENDOF
    ;MATCH ;

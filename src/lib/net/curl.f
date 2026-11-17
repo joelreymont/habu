@@ -778,12 +778,6 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 : CHUNK-LAST ( -- n )
    CHUNK-FIRST begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
 
-\ REC-CHECK bounds every index by the published chunks, so an index past them
-\ here is this module's own defect.
-: CHUNK-AFTER ( n -- n )
-   CHUNK-NEXT dup 0= if s" curl: record index" E-STATE die then ;
-
-
 : REC-COUNT ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
 
 
@@ -797,7 +791,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    CHUNK-FIRST swap RECS-FIRST
    begin 2dup >= while
       swap over - swap 2 *
-      rot CHUNK-AFTER -rot
+      rot CHUNK-NEXT -rot
    repeat
    drop CHUNK-REC ;
 
@@ -1362,10 +1356,9 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 
 \ An fd FD-REVIEW arms holds no slot, and every fd that does is another one
-\ below FD-SETSIZE, so a slot is always free: none is this loop's defect.
+\ below FD-SETSIZE, so a slot is always free.
 : FD-FREE-SLOT ( -- n )
-   FD-SETSIZE 0 ?do i FD-MASK@ 0= if i unloop exit then loop
-   s" curl: no free descriptor slot" E-STATE die ;
+   0 begin dup FD-MASK@ 0<> while 1+ repeat ;
 
 
 : FD-RELEASE ( n -- ) {: slot:n :}

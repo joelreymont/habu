@@ -76,7 +76,7 @@ CAST: >STATE ( ^cursor -- ^n )
 32 constant HEADER-CELLS
 HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
 : LAYOUT-CHECK ( -- )
-   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" E-STATE die then ;
+   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" 70 die then ;
 LAYOUT-CHECK
 8 constant TABLE-START
 5 constant FRAME-CELLS

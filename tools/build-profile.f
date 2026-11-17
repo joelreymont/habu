@@ -13,9 +13,9 @@ require tools/hb-build-core.f
 package BUILD-PROFILE
 private
 
--7405 constant E-BUILD-PROFILE-IO      \ a report file this tool cannot write
 64 constant USAGE-RC                   \ sysexits EX_USAGE
 66 constant NOINPUT-RC                 \ sysexits EX_NOINPUT
+74 constant IOERR-RC                   \ sysexits EX_IOERR
 
 20 constant REPORT-FD-MIN              \ keep the saved stdout clear of the build's own descriptors
 0 constant F-DUPFD                     \ fcntl: duplicate to the lowest descriptor at or above the argument
@@ -68,10 +68,10 @@ variable REPORT-FD
 \ length of one report is therefore the whole of "write it to a file".
 : REDIRECT ( ^u8 n -- ) {: pa:^ pu:n :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
-   SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" E-BUILD-PROFILE-IO die then
+   SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" IOERR-RC die then
    pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !
-   REPORT-FD @ 0 < if s" build-profile: cannot open a report file" E-BUILD-PROFILE-IO die then
-   REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" E-BUILD-PROFILE-IO die then ;
+   REPORT-FD @ 0 < if s" build-profile: cannot open a report file" IOERR-RC die then
+   REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" IOERR-RC die then ;
 
 : RESTORE ( -- )
    SAVED-OUT @ 1 dup2 drop
