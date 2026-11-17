@@ -309,42 +309,74 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" shared byte-length conversions admit zero and the full nonnegative range" T-LABEL
    0 BUF:N>BLEN BUF:BLEN>N 0 T=
    MEM-MAX-N BUF:N>BLEN BUF:BLEN>N MEM-MAX-N T=
+   s" a byte appended past the capacity doubles it and keeps the bytes" T-LABEL
    BUFT-GROW
+   s" a span appended past the capacity grows it to fit" T-LABEL
    BUFT-APPEND-SPAN
+   s" the buffer's own content appends to itself across growth" T-LABEL
    BUFT-APPEND-SELF
+   s" part of the buffer's own content appends to itself" T-LABEL
    BUFT-APPEND-PART
+   s" a range past the length is rejected, and offsets saved before growth stay valid" T-LABEL
    BUFT-CONTENT
+   s" reserve sets the capacity exactly and never shrinks it" T-LABEL
    BUFT-RESERVE
+   s" reset empties the buffer and only ever raises its capacity" T-LABEL
    BUFT-RESET
+   s" resize sets the capacity exactly either way and keeps the bytes" T-LABEL
    BUFT-RESIZE
+   s" resize to zero capacity is refused" T-LABEL
    [: BUFT-BUF 0 BUF:N>BLEN BUF:RESIZE ;] E-BUF-CAPACITY TTHROWSQ
+   s" ensure past the capacity doubles it and keeps the bytes" T-LABEL
    BUFT-ENSURE
+   s" grow hands back the new tail, doubling the capacity when it must" T-LABEL
    BUFT-GROW-TAIL
+   s" replace swaps the whole content for a longer text" T-LABEL
    BUFT-REPLACE
+   s" clear empties the buffer and keeps its capacity and mapping" T-LABEL
    BUFT-CLEAR
+   s" wipe zeroes the whole capacity, and a disposed buffer wipes as empty" T-LABEL
    BUFT-WIPE
+   s" storing a length keeps the bytes under it, and the full capacity is allowed" T-LABEL
    BUFT-LEN-STORE
+   s" append-replaced substitutes each old piece and counts the substitutions" T-LABEL
    BUFT-APPEND-REPLACED
+   s" growth frees the old mapping" T-LABEL
    BUFT-GROW-RELEASES
+   s" dispose frees the mapping" T-LABEL
    BUFT-DISPOSE-RELEASES
+   s" a second dispose is harmless" T-LABEL
    BUFT-DISPOSE-DOUBLE
+   s" repeated init and dispose reuse one mapping" T-LABEL
    BUFT-DISPOSE-CYCLE-BOUNDED
-   [: BUFT-LIVE ;] catch 0 T=                         \ LIVE? never throws
+   s" LIVE? answers on a fresh, live and disposed header and never throws" T-LABEL
+   [: BUFT-LIVE ;] catch 0 T=
+   s" a failed growth leaves the buffer as it was" T-LABEL
    BUFT-GROW-FAIL-ATOMIC
+   s" init with zero capacity is refused" T-LABEL
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
+   s" an append whose length would wrap is refused" T-LABEL
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
+   s" a grow whose length would wrap is refused" T-LABEL
    [: BUFT-GROW-TAIL-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" A" T$=                          \ refused before the length moved
+   s" a refused grow leaves the length where it was" T-LABEL
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" A" T$=
    BUFT-REL-BUF BUF:DISPOSE
+   s" two megabytes appended in chunks keep their length and sampled bytes" T-LABEL
    BUFT-BIG-FILL
+   s" random bytes appended one at a time keep their order" T-LABEL
    BUFT-PROP
+   s" init and append-span accept a typed byte length" T-LABEL
    s" BOK-INIT ( ^a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
    s" BOK-SPAN ( ^u8 NUM:byte-len ^a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
+   s" init, append-span, reserve and ensure reject a raw cell for a byte length" T-LABEL
    s" BSWAP-RAW-CAP ( ^a n -- ) BUF:INIT" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-SPAN ( ^u8 n ^a -- ) BUF:APPEND-SPAN" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-RESERVE ( ^a n -- ) BUF:RESERVE" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-ENSURE ( ^a n -- ) BUF:ENSURE" BUFT-CHECK-REJECTS
+   s" storing a length accepts a typed byte length" T-LABEL
    s" BOK-LEN ( NUM:byte-len ^a -- ) BUF:LEN!" CHECK-QUIET-CANDIDATE! -1 T=
+   s" storing a length rejects a raw cell" T-LABEL
    s" BSWAP-RAW-LEN ( n ^a -- ) BUF:LEN!" BUFT-CHECK-REJECTS
    T-REPORT ;
 
