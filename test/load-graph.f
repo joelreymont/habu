@@ -9,6 +9,7 @@ require src/lib/test/suite.f
 require tools/lint/text.f
 require src/lib/source-lex.f
 require test/load-refs.f
+require src/habu/fnv.f
 
 package LOAD-GRAPH
 
@@ -52,16 +53,13 @@ variable PROBE
 : HASH-SLOT ( n -- ^n )
    cells HASH + ;
 
-: FNV ( ^u8 n -- n ) {: a:^ u:n :}
-   $CBF29CE484222325 u 0 ?do a i + c@ xor $100000001B3 * loop ;
-
 : SLOT-ID ( -- n )
    PROBE @ HASH-SLOT @ ;
 
 \ Probe from a canonical path's hash to the slot holding it, or to the empty
 \ slot it would take.
 : PROBE! ( ^u8 n -- ) {: a:^ u:n :}
-   a u FNV HASH-CAP 1- and PROBE !
+   FNV:BASIS a u FNV:BYTES HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
       SLOT-ID 1- FILE$ a u STR= if exit then
       PROBE @ 1+ HASH-CAP 1- and PROBE !

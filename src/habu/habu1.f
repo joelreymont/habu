@@ -46,6 +46,7 @@ require src/habu/code-span.f
 require src/habu/prof-abi.f
 require src/os/macos/macho.f
 require src/os/linux/elf.f
+require src/habu/fnv.f
 using A64ASM
 using A64ICODE
 using CRASH
@@ -3843,7 +3844,7 @@ package ENGINE-EMIT
 : C-HIDX-STEP, ( n n n -- ) {: hr:n c3:n c4:n :}
    c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
    hr hr c4 EOR,
-   c3 $100000001B3 LIT64,
+   c3 FNV:PRIME LIT64,
    hr hr c3 MUL, ;
 : C-HIDX-SPAN, ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
    LBL LBL {: hl:label hd:label :}
@@ -3856,13 +3857,13 @@ public
 \ Emit the hash of the name at reg nr (ptr), length lr, into hr; clobbers c3
 \ c4 (byte/fold scratch) and c7 (cursor).
 : C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
-   hr $CBF29CE484222325 LIT64,
+   hr FNV:BASIS LIT64,
    nr lr hr c3 c4 c7 C-HIDX-SPAN, ;
 \ C-HIDX-HASH of the name pr's first pl-1 bytes, `:`, then nr/lr; when pl is
 \ 0, of nr/lr alone.
 : C-HIDX-PAIR ( n n n n n n n n -- ) {: pr:n pl:n nr:n lr:n hr:n c3:n c4:n c7:n :}
    LBL LBL LBL {: hl:label hc:label hd:label :}
-   hr $CBF29CE484222325 LIT64,
+   hr FNV:BASIS LIT64,
    pl hd CBZ,
    c7 0 MOVZ,
    hl LBL,  c3 c7 1 ADDI,  c3 pl CMP,  C-GE hc BCOND,

@@ -644,26 +644,17 @@ variable TFX-HI      0 TFX-HI !
 private
 
 variable TFX-CAP     0 TFX-CAP !      \ the TF-CAP the buckets were sized for
-variable TFX-H                \ private hash accumulator
 variable TFX-I                \ private build/retire index
 variable TFX-CUR              \ private bucket-walk cursor
 
 : TFX-BKT ( n -- ^n ) {: slot:n :}
    slot cells TFX-BASE + ;
 
-: TFX-H+ ( n -- )
-   TFX-H @ xor HIDX-FNV-PRIME * TFX-H ! ;
-
 \ Hashes the exact bytes, because TFAM-NAME-MATCH? compares the exact bytes:
 \ registry tails are canonical lowercase, so a non-canonical token misses here
 \ for the same reason it misses the comparison.
 : TFX-HASH ( ^u8 n -- n ) {: na:^ nu:n :}
-   HIDX-FNV-BASIS TFX-H !
-   0 BEGIN dup nu < WHILE
-      dup na + c@ TFX-H+
-      1 +
-   REPEAT drop
-   TFX-H @ TFX-SLOTS 1 - and ;
+   FNV:BASIS na nu FNV:BYTES TFX-SLOTS 1 - and ;
 
 : TFX-ROW-BKT ( n -- ^n ) {: id:n :}
    id TFAM-NAME$ TFX-HASH TFX-BKT ;
@@ -1015,9 +1006,9 @@ variable VNX-CUR              \ private bucket-walk cursor
    id cells VNX-L-P @ + ;
 
 : VNX-HASH ( ^u8 n -- n ) {: a:^ u:n :}
-   HIDX-FNV-BASIS
+   FNV:BASIS
    0 BEGIN dup u < WHILE
-      dup a + c@ CORE-FOLD-C rot xor HIDX-FNV-PRIME * swap
+      dup a + c@ CORE-FOLD-C rot FNV:STEP swap
       1 +
    REPEAT drop
    VNX-SLOTS 1 - and ;
@@ -1540,7 +1531,7 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    id cells FVX-L-P @ + ;
 
 : FVX-HASH ( n n -- n ) {: fam:n var:n :}
-   HIDX-FNV-BASIS fam xor HIDX-FNV-PRIME *  var xor HIDX-FNV-PRIME *
+   FNV:BASIS fam FNV:STEP var FNV:STEP
    FVX-SLOTS 1 - and ;
 
 : PF-ROW-OWNER? ( n n ^n -- bool ) {: fam:n var:n r:^ :}

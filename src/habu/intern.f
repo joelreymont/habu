@@ -15,6 +15,7 @@ require src/lib/string.f
 require src/habu/layout.f
 require src/habu/data-floor.f
 require src/habu/intern-table.f
+require src/habu/fnv.f
 
 package INTERN
 private
@@ -93,7 +94,7 @@ variable PROBE
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
 \ into the sign still lands inside the table.
-: HASH ( ^u8 n -- n ) FNV SLOTS 1- and ;
+: HASH ( ^u8 n -- n ) {: a:^ u:n :} FNV:BASIS32 a u FNV:BYTES32 SLOTS 1- and ;
 
 : PROBE-NEXT ( -- )
    PROBE @ 1+ SLOTS 1- and PROBE ! ;

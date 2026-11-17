@@ -95,15 +95,9 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    then
    0 0= 0= ;
 
-: FNV+ ( n n -- n ) xor HIDX-FNV-PRIME * ;
-
-: FNV$+ ( n ^u8 n -- n )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ FNV+ loop ;
-
 : HASH ( n ^u8 n ^u8 n -- n )
    {: kind:n a:^ u:n b:^ v:n :}
-   HIDX-FNV-BASIS kind FNV+  a u FNV$+  b v FNV$+ ;
+   FNV:BASIS kind FNV:STEP  a u FNV:BYTES  b v FNV:BYTES ;
 
 : HASH-AT ( n -- n )
    {: off:n :}

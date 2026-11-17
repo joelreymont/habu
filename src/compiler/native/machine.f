@@ -8,6 +8,7 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/compiler/native/regfile.f
+require src/habu/fnv.f
 
 package NMACH
 public
@@ -310,9 +311,9 @@ public
 \ the contract digest it feeds is what carries cryptographic identity.
 : MARK ( NMACH:mach -- n )
    {: m:NMACH:mach :}
-   $811C9DC5
+   FNV:BASIS32
    ROW-N 0 ?do
-      m i F@ xor  $1000193 *
+      m i F@ FNV:STEP32
    loop ;
 
 seal-package

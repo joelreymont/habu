@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/sort.f
 require tools/source-discovery.f
 require tools/lsp-text.f
+require src/habu/fnv.f
 
 package LSP-WORKSPACE
 
@@ -45,9 +46,6 @@ private
 2 constant ROOT-CELLS
 
 1024 constant FIRST-SLOTS                \ the node index's first capacity, a power of two
-
-$CBF29CE484222325 constant FNV-BASIS     \ FNV-1a, 64 bits
-$100000001B3 constant FNV-PRIME
 
 DYNAMIC-BUFFER POOL u8                   \ the request's paths and open texts,
 variable POOL-U
@@ -134,12 +132,11 @@ variable CUR-ROOT                        \ and the root being walked
 
 : MIX ( n ^u8 n -- n )
    {: h:n a:^ u:n :}
-   h u 0 ?do a i + c@ xor FNV-PRIME * loop
-   u xor FNV-PRIME * ;
+   h a u FNV:BYTES u FNV:STEP ;
 
 : KEY ( ^u8 n ^u8 n -- n )
    {: a:^ u:n r:^ ru:n :}
-   FNV-BASIS a u MIX r ru MIX ;
+   FNV:BASIS a u MIX r ru MIX ;
 
 : SAME? ( n ^u8 n ^u8 n n -- bool )
    {: id:n a:^ u:n r:^ ru:n h:n :}

@@ -13,6 +13,7 @@ require src/lib/sort.f
 require src/lib/build-out.f
 require src/lib/fmt.f
 require src/habu/layout.f
+require src/habu/fnv.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/prims.f                \ PRIM-SPEC: the owned primitives' rows
@@ -781,9 +782,9 @@ PTR-VARIABLE OBJ-BASE
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
 : NAME-SUM ( ^u8 n -- n )
    {: a:^ u:n :}
-   $811C9DC5  u 0 ?do
+   FNV:BASIS32  u 0 ?do
       a i + c@ {: c:n :}
-      c 97 >=  c 122 <=  and if c 32 - else c then  xor  $1000193 *
+      c 97 >=  c 122 <=  and if c 32 - else c then FNV:STEP32
    loop
    dup 0= if 1 + then ;
 
@@ -2050,8 +2051,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 \ FNV-1a over the bytes, as NAME-SUM without its case fold; never 0.
 : BYTES-SUM ( ^u8 n -- n )
    {: a:^ u:n :}
-   $811C9DC5  u 0 ?do  a i + c@ xor  $1000193 *  loop
-   dup 0= if 1 + then ;
+   FNV:BASIS32 a u FNV:BYTES32 dup 0= if 1 + then ;
 
 \ The extent at the address onto EXTS, with no span, rows, length or time yet.
 : EXT+ ( n n n n -- )

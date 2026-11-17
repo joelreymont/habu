@@ -9,17 +9,6 @@ private
 \ is registered here.
 -8638 constant E-INTERN-REWIND
 
-variable HV
-
-\ FNV-1a; the top bit can run into the sign.
-: FNV ( ^u8 n -- n )
-   {: a:^ u:n :}
-   $811C9DC5 HV !
-   u 0 ?do
-      a i + c@ HV @ xor  $1000193 *  HV !
-   loop
-   HV @ ;
-
 \ ---- a table ------------------------------------------------------------------
 \ Four cells: the slots' address, the slot count, the filled count and the
 \ highest text's end; addresses are distances from NULL-PTR, 0 for none.
@@ -68,7 +57,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 : SLOT-FOR ( ^n ^u8 n -- n )
    {: t:^ a:^ u:n :}
    t SIZE-CELL @ 1- {: mask:n :}
-   a u FNV mask and
+   FNV:BASIS32 a u FNV:BYTES32 mask and
    begin dup t a u SLOT-ENDS? 0= while 1+ mask and repeat ;
 
 

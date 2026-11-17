@@ -9528,10 +9528,6 @@ private
 15 constant HT-NAME-BKT
 16 constant HT-NAME-NEXT
 17 constant HIDX-TABLES
-global
-$CBF29CE484222325 constant HIDX-FNV-BASIS
-$100000001B3 constant HIDX-FNV-PRIME
-private
 PTR-VARIABLE HIDX-MEM
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. Starts at 1
 \ so a never-built index recorded as 0 can never look current.
@@ -9580,7 +9576,7 @@ HIDX-MEM-CLEAR
    tbl SYM-CAP * slot + cells HIDX-MEM@ + ;
 
 : HIDX-H+ ( n -- )
-   SYM-FOLD-C HIDX-H @ xor HIDX-FNV-PRIME * HIDX-H ! ;
+   SYM-FOLD-C HIDX-H @ FNV:STEP HIDX-H ! ;
 
 : HIDX-H$ ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u < while
@@ -9589,7 +9585,7 @@ HIDX-MEM-CLEAR
    repeat drop ;
 
 : HIDX-HASH ( ^u8 n n ^u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
-   HIDX-FNV-BASIS HIDX-H !
+   FNV:BASIS HIDX-H !
    pkg pkgu HIDX-H$
    vis HIDX-H+
    name nameu HIDX-H$
@@ -9599,7 +9595,7 @@ HIDX-MEM-CLEAR
    HT-BKT HIDX-CELL ;
 
 : HIDX-STR-BKT ( ^u8 n n -- ^n ) {: a:^ u:n tbl:n :}
-   HIDX-FNV-BASIS HIDX-H ! a u HIDX-H$
+   FNV:BASIS HIDX-H ! a u HIDX-H$
    HIDX-H @ SYM-CAP 1 - and tbl HIDX-CELL ;
 
 : HIDX-PKG-BKT ( ^u8 n -- ^n )
@@ -10205,8 +10201,8 @@ UIX-RESET
 : E-KEY-STR ( n -- ^u8 n ) {: p:n :}
    USIGS p E-PTR EN.A @ +  p E-PTR EN.B @ ;
 
-: EH0 ( -- ) HIDX-FNV-BASIS UIX-H ! ;
-: EH+ ( n -- ) UIX-H @ xor HIDX-FNV-PRIME * UIX-H ! ;
+: EH0 ( -- ) FNV:BASIS UIX-H ! ;
+: EH+ ( n -- ) UIX-H @ FNV:STEP UIX-H ! ;
 
 : E-NODE-HASH ( n -- n ) {: p:n :}
    EH0
@@ -10219,10 +10215,7 @@ UIX-RESET
    REPEAT drop
    p E-KEY-STR? IF
       p E-KEY-STR {: a:^ u:n :}
-      0 BEGIN dup u < WHILE
-         dup a swap + c@ EH+
-         1 +
-      REPEAT drop
+      UIX-H @ a u FNV:BYTES UIX-H !
    THEN
    UIX-H @ ;
 
@@ -10635,9 +10628,9 @@ variable CHX-C
 CHX-RESET
 
 : E-CONTENT-HASH ( n -- n ) {: off:n :}
-   HIDX-FNV-BASIS
+   FNV:BASIS
    EFF-CONTENT-CELLS 0 ?do
-      off E-PTR i cells + CELL-VIEW @ xor HIDX-FNV-PRIME *
+      off E-PTR i cells + CELL-VIEW @ FNV:STEP
    loop ;
 
 : E-CONTENT-SAME? ( n n -- bool ) {: a:n b:n :}

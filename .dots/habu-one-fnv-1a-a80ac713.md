@@ -1,9 +1,9 @@
 ---
-title: One FNV-1a fold per width
+title: Name the FNV-1a pair in the x86-64 kernel
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-16T16:26:06.292148+01:00"
 ---
 
-Problem: the FNV-1a byte fold is written out in tools/lsp-workspace.f (MIX), src/core/compile-reads.f (FNV$+), src/habu/linker.f (NAME-SUM, BYTES-SUM) and src/habu/intern-table.f (FNV), and its constants are named three times (src/core/checker.f HIDX-FNV-BASIS and HIDX-FNV-PRIME, tools/lsp-workspace.f FNV-BASIS and FNV-PRIME, src/core/sumtype.f DRV-FNV-BASIS and DRV-FNV-PRIME) and spelled as literals in src/habu/habu1.f's emitted hash. Acceptance: each width's fold is one word and its constants one pair, which every site above calls or names; src/habu/kernel-x64.f's copy follows when x86-64 returns. Depends: none. Claim: unassigned.
+Problem: src/habu/kernel-x64.f (FNV-BASIS, FNV-PRIME, used by HASH,) still names its own FNV-1a constant pair, where every other site names src/habu/fnv.f's. Acceptance: kernel-x64.f names FNV:BASIS and FNV:PRIME, requires src/habu/fnv.f, and defines no pair of its own. Depends: the x86-64 step (no x86 build until then). Claim: unassigned.

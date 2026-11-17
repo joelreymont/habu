@@ -1917,10 +1917,8 @@ private
 \ scalar; products fold the fields. A family-typed slot folds its family's
 \ HASH, so equal values always hash equal. Hash values are an in-memory
 \ contract only: never persist them across engine versions.
-$cbf29ce484222325 constant DRV-FNV-BASIS   \ FNV-1a 64-bit offset basis
-$100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDGEN-HMIX ( -- )                       \ xor PRIME *
-   postpone xor  DRV-FNV-PRIME literal  postpone * ;
+   postpone xor  FNV:PRIME literal  postpone * ;
 : TDGEN-HASH-FOLD1 ( n n n n -- ) {: fam:n vid:n base:n i:n :}   \ slot i [FAM:HASH] mix
    fam vid base i TDGEN-SLOT@
    vid i SUMV-PAY-ROOT SCHEMA-ROOT@ {: node:n :}
@@ -1930,7 +1928,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    vid SUMV-PAY-N 0 ?do fam vid base i TDGEN-HASH-FOLD1 loop ;
 : TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
    vid TDGEN-BINDS {: base:n :}
-   DRV-FNV-BASIS literal
+   FNV:BASIS literal
    vid SUMV-TAG@ literal  TDGEN-HMIX
    fam vid base TDGEN-HASH-FOLDS ;
 : TDGEN-HASH-BODY ( n -- ) {: fam:n :}   \ sum/enum: MATCH ladder of per-arm folds
@@ -1944,7 +1942,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    s" ;match" TDGEN-KW ;
 : TDGEN-HASH-PROD ( n -- ) {: fam:n :}   \ product: UNMAKE, fold fields (no tag)
    fam TDGEN-UNBIND {: base:n :}
-   DRV-FNV-BASIS literal
+   FNV:BASIS literal
    fam fam TFAM-VAR-START@ base TDGEN-HASH-FOLDS ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    fam s" tag" TDGEN-DRV-NAME

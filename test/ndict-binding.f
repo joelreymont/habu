@@ -1,5 +1,6 @@
 \ Indexed compiler lookup follows live scope and definition changes.
 require src/lib/test.f
+require src/habu/fnv.f
 require src/habu/verify-source.f
 
 17 constant NDB-GLOBAL
@@ -82,8 +83,8 @@ variable ROLL-OCC
 
 : HASH-SLOT ( ^u8 n -- n )
    {: name:^ size:n :}
-   $CBF29CE484222325
-   size 0 ?do name i + c@ XREF-FOLD-C xor $100000001B3 * loop
+   FNV:BASIS
+   size 0 ?do name i + c@ XREF-FOLD-C FNV:STEP loop
    HIDX-SLOTS 1- and ;
 
 
