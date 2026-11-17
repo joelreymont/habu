@@ -30,6 +30,8 @@ require test/host-threads.f
 require src/lib/aio.f                       \ the loop the multiplexed transfers wait on
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
+require src/lib/arena.f
+require src/lib/test/stderr.f
 
 \ White-box: reopens CURL for the record count, a record's published length and
 \ the raw option setter; CURL-TEST: words land in CURL-TEST, the rest in CURL.
@@ -77,6 +79,8 @@ FUNCTION: ENV-DUP strdup ( n -- n ) ;FUNCTION
 FUNCTION: ENV-SET setenv ( ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: ENV-UNSET unsetenv ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: ENV-FREE free ( n -- ) ;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 
 $7F000001 constant LOOPBACK
 $80 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
@@ -128,6 +132,14 @@ create STREAM-GOT STREAM-U allot
 create STREAM-CHUNK STREAM-CAP allot
 create STREAM-CHUNK-TWO STREAM-CAP allot
 create RETRY-POLLS 16 allot             \ two pollfd rows: pooled socket and listener
+create CAPTURE-BUF PATH-CAP allot       \ the path the refused start's stderr goes to
+create LIMITS 16 allot                  \ struct rlimit: soft, then hard
+$40 constant SOFT-LIMIT                 \ the descriptor limit the starved start sets
+0 constant F-DUPFD                      \ the same number on Linux and macOS
+: RLIMIT-NOFILE ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
+SOFT-LIMIT TYPED-BUFFER FILLER n
+variable FILLED                         \ FILLER's descriptors still open
+variable SAVED-LIMIT                    \ the soft limit the run started with
 
 : TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -2980,7 +2992,7 @@ variable DEFER-RETURNED
    EARLY-MODE !
    START-STALL
    CLEANUP-STOPS
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    START-STALL
    ['] CLEANUP-WORK HALT-TASK TASK:ACTIVATE
    s" CLEANUP of a transfer another task started is refused" T-LABEL
@@ -3037,7 +3049,7 @@ variable DEFER-RETURNED
 
 
 : CASE-RESTART ( -- )
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN MULTI-FETCH
    subject CURL:CLEANUP
@@ -3061,9 +3073,9 @@ variable DEFER-RETURNED
    [: START-COLD ;] CURL:E-STATE TTHROWSQ
    [: START-COLD-STREAM ;] CURL:E-STATE TTHROWSQ
    COLD-HANDLE @ CURL:CLEANUP
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    s" a second LOOP-START is refused" T-LABEL
-   [: CURL:LOOP-START EXPECT-OK ;] CURL:E-STATE TTHROWSQ
+   [: CURL:LOOP-START ;] CURL:E-STATE TTHROWSQ
    PARITY-WHOLE
    CASE-RETRY-DEFAULT
    CASE-RETRY-FRESH
@@ -3088,23 +3100,23 @@ variable DEFER-RETURNED
    CASE-HALTED-SPAN
    CASE-CANCEL-STREAM-OTHER-TASK
    CASE-HALTED-STREAM
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    CASE-DEFERRED-STREAM-HALT
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    CASE-HALTED
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    CASE-HALTED-FETCH
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    CASE-HALTED-LATE
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    0 CASE-EARLY-EXIT
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    1 CASE-EARLY-EXIT
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    0 CASE-CLEANUP-OWNED
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    1 CASE-CLEANUP-OWNED
-   CURL:LOOP-START EXPECT-OK
+   CURL:LOOP-START
    CASE-HALTED-DONE
    CASE-RESTART ;
 
@@ -3116,7 +3128,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   105 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   106 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3132,6 +3144,83 @@ variable DEFER-RETURNED
    s" HTTPS to a public endpoint succeeds over the system CA bundle" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T= ;
+
+
+: LIMIT! ( n -- ) {: soft:n :}
+   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
+   soft LIMITS !
+   RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
+
+
+\ Duplicates stdin until the limit refuses one: true when it did.
+: FILL ( -- bool )
+   0 FILLED !
+   begin
+      FILLED @ SOFT-LIMIT < while
+      0 F-DUPFD 0 fcntl {: fd:n :}
+      fd 0 < if true exit then
+      fd FILLED @ FILLER !
+      1 FILLED +!
+   repeat
+   false ;
+
+
+: CLOSE-FILLERS ( -- )
+   begin FILLED @ 0 > while
+      -1 FILLED +!
+      FILLED @ FILLER @ close
+   repeat ;
+
+
+: STARVED-START ( -- )
+   SOFT-LIMIT LIMIT!
+   [: FILL TTRUE CURL:LOOP-START ;]
+   [: CLOSE-FILLERS SAVED-LIMIT @ LIMIT! ;] finally ;
+
+
+\ With the descriptor table full, LOOP-START cannot open its wake pipe; curl's
+\ global init ran in an earlier test, so the pipe is the first fd it needs.
+: TEST-PIPE-REFUSED ( -- )
+   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
+   LIMITS @ SAVED-LIMIT !
+   s" stderr.txt" CAPTURE-BUF UNDER-ROOT {: u:n :}
+   ARENA:NEW {: a:^ :}
+   AIO:START
+   s" a refused wake pipe is CURL:E-LOOP" T-LABEL
+   [: STARVED-START ;] CAPTURE-BUF u a STDERR:CAPTURING
+   {: text:^ tu:n :}
+   AIO:STOP
+   CURL:E-LOOP T=
+   s" CURL logs the refused pipe and the code it was refused with" T-LABEL
+   text tu s"  error curl: the host refused the wake pipe: " CONTAINS? TTRUE
+   text tu E-FS-IO ERROR:NAME$ CONTAINS? TTRUE
+   s" CURL logs the host's text for EMFILE" T-LABEL
+   text tu FS:EMFILE FS:ERRNO$ CONTAINS? TTRUE
+   a ARENA:RELEASE ;
+
+
+: LOOPS-FETCH ( CURL:handle -- ) {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP ;
+
+
+\ AIO is stopped here, so WITH-LOOPS starts both loops itself. E-OPERAND is a
+\ code neither loop throws.
+: TEST-WITH-LOOPS ( -- )
+   PATH-HELLO$ GET-READY [: LOOPS-FETCH ;] CURL:WITH-LOOPS
+   s" WITH-LOOPS carries a transfer to the server" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ HELLO$ T$=
+   s" WITH-LOOPS stops AIO's loop when the step returns" T-LABEL
+   AIO:RUNNING? TFALSE
+   s" a second WITH-LOOPS runs a step and passes its throw on" T-LABEL
+   [: [: CURL:E-OPERAND throw ;] CURL:WITH-LOOPS ;] CURL:E-OPERAND TTHROWSQ
+   s" both loops are stopped after the step threw" T-LABEL
+   AIO:RUNNING? TFALSE
+   [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
+   s" a LOOP-STOP that throws still stops AIO" T-LABEL
+   [: [: CURL:LOOP-STOP ;] CURL:WITH-LOOPS ;] CURL:E-STATE TTHROWSQ
+   AIO:RUNNING? TFALSE ;
 
 
 : OPT-IN ( -- )
@@ -3190,6 +3279,8 @@ public
    AIO:START
    TEST-MULTI
    AIO:STOP
+   TEST-PIPE-REFUSED
+   TEST-WITH-LOOPS
    OPT-IN
    TEARDOWN
    TEST-SERVER

@@ -784,6 +784,7 @@ generates: FAULT ( -- n )
 -9221 s" a device handle that is stale or closing, or a host with no FIONREAD" ERROR:CODE E-GENIO-STATE
 -9222 s" a device read or write failed, or the device faulted earlier" ERROR:CODE E-GENIO-IO
 -9223 s" no device row free" ERROR:CODE E-GENIO-FULL
+-9230 s" CURL's transfer loop did not start: curl_global_init or curl_multi_init failed, the host refused the wake pipe, or the loop's thread did not start" ERROR:FAULT E-CURL-LOOP
 -9232 s" a curl handle that is empty, not live or another task's, or a transfer already in flight" ERROR:CODE E-CURL-STATE
 -9233 s" libcurl answered a call with a result it cannot give, or a capture that is not whole" ERROR:FAULT E-CURL-RESULT
 -9234 s" a curl argument out of range, a header holding CR or LF, or a record index outside the table" ERROR:CODE E-CURL-OPERAND

@@ -95,16 +95,6 @@ public
 : ASSERT ( bool -- ) dup T-ASSERT 0= if T-REPORT then ;
 : FAIL ( -- ) false ASSERT ;
 
-private
-
-: CURL-READY ( CURL:status -- )
-   MATCH CURL:status
-      ok OF ENDOF
-      failed OF drop FAIL ENDOF
-   ;MATCH ;
-
-public
-
 \ Each store read throws the code until it is 0 again.
 : READ-FAULT! ( n -- ) READ-FAULT ! ;
 : KEY-SERVICE$ ( -- ^u8 n ) s" habu-test" ;
@@ -126,12 +116,6 @@ public
    SETTINGS-SERVICE$ s" model" m mu SECRET:WRITE
    SETTINGS-SERVICE$ s" base-url" b bu SECRET:WRITE
    SETTINGS-SERVICE$ s" api-key" KEY$ SECRET:WRITE ;
-
-
-: WITH-CURL ( [ -- ] -- )
-   {: body :}
-   AIO:START CURL:LOOP-START CURL-READY
-   body [: CURL:LOOP-STOP AIO:STOP ;] finally ;
 ;package
 
 
@@ -4616,7 +4600,7 @@ public
    T-RESET
    STORE-INSTALL
    LOG-INIT
-   [: CAPTURED ;] WITH-CURL
+   [: CAPTURED ;] CURL:WITH-LOOPS
    LOG$ KEY$ CONTAINS? 0= ASSERT
    LOG-B BUF:DISPOSE
    s" model-test: " type T-CASES FMT:.INT s"  checks" type cr

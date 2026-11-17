@@ -39,8 +39,10 @@ require src/lib/memory.f
 require src/lib/span.f
 require src/lib/num-types.f
 require src/lib/task.f
+require src/lib/fs.f
 require src/lib/fd.f
 require src/lib/aio.f
+require src/lib/log.f
 require src/lib/adt/result.f
 
 package CURL
@@ -99,6 +101,7 @@ SUMTYPE header-result
 
 E-CURL-OPERAND constant E-OPERAND
 E-CURL-STATE constant E-STATE
+E-CURL-LOOP constant E-LOOP
 E-CURL-RESULT constant E-RESULT
 
 $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
@@ -1655,29 +1658,61 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    st STATE-CLAIMED = st STATE-RUNNING = or 0= if exit then
    STATE-CANCEL idx REC-STATE! ;
 
+
+: LOOP-LINE ( ^u8 n -- )
+   LOG:ERROR s" curl" LOG:LINE LOG:TEXT+ ;
+
+
+: LOOP-FAILED ( -- )  LOG:;LINE E-LOOP throw ;
+
+
+: GLOBAL-FAILED ( n -- )
+   s" curl_global_init failed: " LOOP-LINE
+   >CODE ERROR$ LOG:TEXT+ LOOP-FAILED ;
+
+
+: PIPE-FAILED ( n n -- ) {: code:n e:n :}
+   s" the host refused the wake pipe: " LOOP-LINE
+   code LOG:CODE+ s" : " LOG:TEXT+ e FS:ERRNO$ LOG:TEXT+ LOOP-FAILED ;
+
+
+: THREAD-FAILED ( n -- )
+   s" the loop's thread did not start: " LOOP-LINE
+   LOG:CODE+ LOOP-FAILED ;
+
+
+\ Gives the multi handle and the wake pipe back, answering curl_multi_cleanup's
+\ code.
+: LOOP-RELEASE ( -- n )
+   MULTI-CELL atomic@ MULTI-CLEANUP
+   0 MULTI-CELL atomic!
+   WAKER AIO:WAKER-CLOSE ;
+
+
+: MULTI-FAILED ( -- )
+   s" curl_multi_init answered NULL" LOOP-LINE LOOP-FAILED ;
+
 public
 
-\ Creates the multi handle, the wake pipe and the one task that drives every
-\ multiplexed transfer. AIO's own loop must already be running - starting it is
-\ the program's job, and a LOOP-START without it answers AIO's refusal by name -
-\ and a second start is E-STATE. A host that refuses the wake pipe is answered
-\ the way libcurl answers exhaustion, with CURLE_OUT_OF_MEMORY.
-: LOOP-START ( -- status )
+\ Starts the task that drives every multiplexed transfer; AIO's loop must be
+\ running. A failed libcurl, wake pipe or thread setup is logged, then E-LOOP.
+: LOOP-START ( -- )
    LOOP-LIVE atomic@ 0 <> if E-STATE throw then
    0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
-   GLOBAL-READY dup CURLE-OK <> if CODE>STATUS exit then drop
+   GLOBAL-READY dup CURLE-OK <> if GLOBAL-FAILED then drop
    LOCK-READY @ 0= if CURL-LOCK TASK:FACILITY-INIT 1 LOCK-READY ! then
-   [: WAKER AIO:WAKER-OPEN ;] catch 0 <> if OUT-OF-MEMORY exit then
-   MULTI-INIT dup 0= if drop WAKER AIO:WAKER-CLOSE OUT-OF-MEMORY exit then
+   [: WAKER AIO:WAKER-OPEN ;] catch FS:ERRNO {: pcode:n e:n :}
+   pcode 0 <> if pcode e PIPE-FAILED then
+   MULTI-INIT dup 0= if drop WAKER AIO:WAKER-CLOSE MULTI-FAILED then
    MULTI-CELL atomic!
    TABLE-CLEAR
    FD-TABLE-CLEAR
    -1 TIMER-MS !
    0 LOOP-THROW !
    0 STOP-FLAG atomic!
-   ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE
-   1 LOOP-LIVE atomic!
-   CURL-STATUS:OK ;
+   [: ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE ;] catch {: tcode:n :}
+   tcode 0 <> if LOOP-RELEASE drop tcode THREAD-FAILED then
+   1 LOOP-LIVE atomic! ;
 
 
 \ Ends the loop and gives the multi handle and the pipe back. Every transfer
@@ -1695,12 +1730,23 @@ public
       ok OF drop ENDOF
       err OF LOOP-THROW ! ENDOF
    ;MATCH
-   MULTI-CELL atomic@ MULTI-CLEANUP {: mrc:n :}
-   0 MULTI-CELL atomic!
-   WAKER AIO:WAKER-CLOSE
+   LOOP-RELEASE {: mrc:n :}
    LOOP-THROW @ {: rc:n :}
    rc 0 <> if rc throw then
    mrc CURLM-OK <> if E-RESULT throw then ;
+
+
+private
+
+: LOOPS-RUN ( R [ R -- S ] -- S )
+   LOOP-START [: LOOP-STOP ;] finally ;
+
+public
+
+\ Runs the step under both loops, which must be stopped, and each started loop's
+\ stop on every path; a transfer left in flight is E-STATE, both left running.
+: WITH-LOOPS ( R [ R -- S ] -- S )
+   AIO:START [: LOOPS-RUN ;] [: AIO:STOP ;] finally ;
 
 
 private
