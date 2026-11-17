@@ -124,14 +124,14 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    {: state name:n name-size:n value:n value-size:n :}
    state state ATTR-COUNT + @ 1+ ATTRS-GROW
    state state ATTR-COUNT + @ ATTRIBUTE {: attr :}
-   name attr !
-   name-size attr CELL + !
-   value attr 2 cells + !
-   value-size attr 3 cells + !
-   name attr 4 cells + !
-   state POSITION + @ name - attr 5 cells + !
-   0 attr 6 cells + !
-   0 attr 7 cells + !
+   name attr ATTRIBUTE-NAME + !
+   name-size attr ATTRIBUTE-NAME-U + !
+   value attr ATTRIBUTE-VALUE + !
+   value-size attr ATTRIBUTE-VALUE-U + !
+   name attr ATTRIBUTE-RAW + !
+   state POSITION + @ name - attr ATTRIBUTE-RAW-U + !
+   0 attr ATTRIBUTE-URI + !
+   0 attr ATTRIBUTE-URI-U + !
    1 state ATTR-COUNT + +! ;
 
 : SCAN-ATTRIBUTE ( ^n -- )
@@ -145,11 +145,11 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 
 : ATTRIBUTE-NAME$ ( ^n ^n -- ^u8 n )
    {: state attr :}
-   state attr @ attr CELL + @ SPAN$ ;
+   state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ SPAN$ ;
 
 : ATTRIBUTE-VALUE$ ( ^n ^n -- ^u8 n )
    {: state attr :}
-   state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
+   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$ ;
 
 : PREFIX-SIZE ( ^u8 n -- n )
    {: source size:n :}
@@ -172,7 +172,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 : NS-PREFIX ( ^n ^n -- n n )
    {: state attr :}
    state attr s" xmlns" NAME-MATCH? if 0 0 exit then
-   attr @ 6 + attr CELL + @ 6 - ;
+   attr ATTRIBUTE-NAME + @ 6 + attr ATTRIBUTE-NAME-U + @ 6 - ;
 
 : RESERVED-URI? ( ^n ^n n -- bool )
    {: state attr uri:n :}
@@ -189,7 +189,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    else
       state attr XML-URI RESERVED-URI? if E-NAMESPACE throw then
    then
-   size 0 > attr 3 cells + @ 0= and if E-NAMESPACE throw then ;
+   size 0 > attr ATTRIBUTE-VALUE-U + @ 0= and if E-NAMESPACE throw then ;
 
 \ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
 \ compares, so URIs it calls equal hash equal however they are spelled.
@@ -221,17 +221,17 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 : PREFIX-HEAD ( ^n ^u8 n -- ^n )
    {: state prefix size:n :}
    state state prefix size BYTES-HASH state NS-CAP + @ BUCKET
-   NAMESPACE NS-HEAD + ;
+   NAMESPACE BINDING-HEAD + ;
 
 : BINDING-PREFIX$ ( ^n ^n -- ^u8 n )
    {: state binding :}
-   state binding @ binding CELL + @ SPAN$ ;
+   state binding BINDING-PREFIX + @ binding BINDING-PREFIX-U + @ SPAN$ ;
 
 : LINK-BINDING ( ^n n -- )
    {: state index:n :}
    state index NAMESPACE {: binding :}
    state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
-   head @ binding NS-LINK + !
+   head @ binding BINDING-LINK + !
    index head ! ;
 
 
@@ -253,10 +253,10 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state NS-COUNT + @ {: index:n :}
    state index NAMESPACE {: binding :}
    state state attr NS-PREFIX SCOPE-REF
-   binding CELL + ! binding !
-   state attr 2 cells + @ attr 3 cells + @ SCOPE-REF
-   binding 3 cells + ! binding 2 cells + !
-   state state attr ATTRIBUTE-VALUE$ URI-HASH binding NS-HASH + !
+   binding BINDING-PREFIX-U + ! binding BINDING-PREFIX + !
+   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SCOPE-REF
+   binding BINDING-URI-U + ! binding BINDING-URI + !
+   state state attr ATTRIBUTE-VALUE$ URI-HASH binding BINDING-HASH + !
    state index LINK-BINDING
    1 state NS-COUNT + +! ;
 
@@ -266,29 +266,29 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    begin state NS-COUNT + @ count > while
       -1 state NS-COUNT + +!
       state state NS-COUNT + @ NAMESPACE {: binding :}
-      binding NS-LINK + @
+      binding BINDING-LINK + @
       state state binding BINDING-PREFIX$ PREFIX-HEAD !
    repeat ;
 
 : CLEAR-ATTR-HEADS ( ^n -- )
    {: state :}
-   state ATTR-COUNT + @ 0 ?do -1 state i ATTRIBUTE ATTR-HEAD + ! loop ;
+   state ATTR-COUNT + @ 0 ?do -1 state i ATTRIBUTE ATTRIBUTE-HEAD + ! loop ;
 
 : ATTR-ENTER ( ^n n n [ ^n ^n ^n -- bool ] -- )
    {: state index:n hash:n same :}
    state index ATTRIBUTE {: attr :}
-   hash attr ATTR-HASH + !
-   state hash state ATTR-COUNT + @ BUCKET ATTRIBUTE ATTR-HEAD + {: head :}
+   hash attr ATTRIBUTE-HASH + !
+   state hash state ATTR-COUNT + @ BUCKET ATTRIBUTE ATTRIBUTE-HEAD + {: head :}
    head @
    begin dup 0 >= while
       state swap ATTRIBUTE {: other :}
-      other ATTR-HASH + @ hash = if
+      other ATTRIBUTE-HASH + @ hash = if
          state attr other same execute if E-NAMESPACE throw then
       then
-      other ATTR-LINK + @
+      other ATTRIBUTE-LINK + @
    repeat
    drop
-   head @ attr ATTR-LINK + !
+   head @ attr ATTRIBUTE-LINK + !
    index head ! ;
 
 : SAME-RAW-NAME? ( ^n ^n ^n -- bool )
@@ -311,7 +311,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    begin dup 0 >= while
       state over NAMESPACE {: binding :}
       prefix size state binding BINDING-PREFIX$ BYTES= if exit then
-      drop binding NS-LINK + @
+      drop binding BINDING-LINK + @
    repeat ;
 
 : PREFIX-BINDING ( ^n ^u8 n -- n n n bool )
@@ -323,7 +323,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state prefix size BINDING-INDEX {: index:n :}
    index 0 >= if
       state index NAMESPACE {: binding :}
-      binding 2 cells + @ binding 3 cells + @ binding NS-HASH + @ true exit
+      binding BINDING-URI + @ binding BINDING-URI-U + @ binding BINDING-HASH + @ true exit
    then
    0 0 state EMPTY-URI-HASH size 0= ;
 
@@ -348,16 +348,16 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state attr NS-ATTRIBUTE? if
       XMLNS-URI 0 state state XMLNS-URI 0 URI$ URI-HASH
    else
-      state attr @ attr CELL + @ true RESOLVE-NAME
+      state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ true RESOLVE-NAME
    then
    {: start:n size:n hash:n :}
-   start attr 6 cells + !
-   size attr 7 cells + !
+   start attr ATTRIBUTE-URI + !
+   size attr ATTRIBUTE-URI-U + !
    hash ;
 
 : ATTRIBUTE-URI$ ( ^n ^n -- ^u8 n )
    {: state attr :}
-   state attr 6 cells + @ attr 7 cells + @ URI$ ;
+   state attr ATTRIBUTE-URI + @ attr ATTRIBUTE-URI-U + @ URI$ ;
 
 : SAME-EXPANDED-NAME? ( ^n ^n ^n -- bool )
    {: state first second :}

@@ -62,14 +62,14 @@ private
    {: state :}
    state state OPEN-DEPTH + @ FRAME {: frame :}
    state state NAME-OFF + @ state NAME-LEN + @ SCOPE-REF
-   frame CELL + ! frame !
-   state NS-COUNT + @ frame 2 cells + ! ;
+   frame FRAME-NAME-U + ! frame FRAME-NAME + !
+   state NS-COUNT + @ frame FRAME-NS-COUNT + ! ;
 
 : PUSH-FRAME ( ^n -- )
    {: state :}
    state state OPEN-DEPTH + @ FRAME {: frame :}
-   state URI-OFF + @ frame 3 cells + !
-   state URI-LEN + @ frame 4 cells + !
+   state URI-OFF + @ frame FRAME-URI + !
+   state URI-LEN + @ frame FRAME-URI-U + !
    1 state OPEN-DEPTH + +! ;
 
 : READ-START ( ^n -- )
@@ -87,12 +87,12 @@ private
 : MATCH-END-NAME ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   state frame @ frame CELL + @ SPAN$
+   state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$
    state state NAME-OFF + @ state NAME-LEN + @ SPAN$ BYTES= 0= if
       E-MALFORMED throw
    then
-   frame 3 cells + @ state URI-OFF + !
-   frame 4 cells + @ state URI-LEN + ! ;
+   frame FRAME-URI + @ state URI-OFF + !
+   frame FRAME-URI-U + @ state URI-LEN + ! ;
 
 : READ-END ( ^n -- )
    {: state :}
@@ -108,18 +108,18 @@ private
 : POP-FRAME ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   state frame 2 cells + @ POP-BINDINGS
-   state frame @ SCOPE-CUT
+   state frame FRAME-NS-COUNT + @ POP-BINDINGS
+   state frame FRAME-NAME + @ SCOPE-CUT
    -1 state OPEN-DEPTH + +!
    0 state PENDING + ! ;
 
 : READ-EMPTY-END ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   frame @ state NAME-OFF + !
-   frame CELL + @ state NAME-LEN + !
-   frame 3 cells + @ state URI-OFF + !
-   frame 4 cells + @ state URI-LEN + !
+   frame FRAME-NAME + @ state NAME-OFF + !
+   frame FRAME-NAME-U + @ state NAME-LEN + !
+   frame FRAME-URI + @ state URI-OFF + !
+   frame FRAME-URI-U + @ state URI-LEN + !
    POP-NEXT state PENDING + !
    state XML-KIND:END EVENT-FINISH ;
 

@@ -64,19 +64,69 @@ EXPORT CURSOR-BYTES
 private
 CAST: >STATE ( ^cursor -- ^n )
 8 constant TABLE-START
-5 constant FRAME-CELLS
-\ An attribute is name, value and raw spans and URI, then its name hash, the
-\ older attribute in its bucket, and the head of the bucket its own index
-\ numbers. A binding is prefix and URI spans, then the URI hash, the older
-\ binding in its prefix bucket and that head. src/lib/xml/names.f fills them.
-11 constant ATTR-CELLS
-8 cells constant ATTR-HASH
-9 cells constant ATTR-LINK
-10 cells constant ATTR-HEAD
-7 constant NS-CELLS
-4 cells constant NS-HASH
-5 cells constant NS-LINK
-6 cells constant NS-HEAD
+
+BEGIN-STRUCTURE FRAME-BYTES
+   CELL +FIELD FRAME.NAME
+   CELL +FIELD FRAME.NAME-U
+   CELL +FIELD FRAME.NS-COUNT
+   CELL +FIELD FRAME.URI
+   CELL +FIELD FRAME.URI-U
+END-STRUCTURE
+
+\ An attribute's hash is its name's; link is the older attribute in its
+\ bucket, and head the head of the bucket its own index numbers.
+BEGIN-STRUCTURE ATTR-BYTES
+   CELL +FIELD ATTRIBUTE.NAME
+   CELL +FIELD ATTRIBUTE.NAME-U
+   CELL +FIELD ATTRIBUTE.VALUE
+   CELL +FIELD ATTRIBUTE.VALUE-U
+   CELL +FIELD ATTRIBUTE.RAW
+   CELL +FIELD ATTRIBUTE.RAW-U
+   CELL +FIELD ATTRIBUTE.URI
+   CELL +FIELD ATTRIBUTE.URI-U
+   CELL +FIELD ATTRIBUTE.HASH
+   CELL +FIELD ATTRIBUTE.LINK
+   CELL +FIELD ATTRIBUTE.HEAD
+END-STRUCTURE
+
+\ A binding's hash is its URI's; link is the older binding in its prefix
+\ bucket, and head the head of the bucket its own index numbers.
+BEGIN-STRUCTURE NS-BYTES
+   CELL +FIELD BINDING.PREFIX
+   CELL +FIELD BINDING.PREFIX-U
+   CELL +FIELD BINDING.URI
+   CELL +FIELD BINDING.URI-U
+   CELL +FIELD BINDING.HASH
+   CELL +FIELD BINDING.LINK
+   CELL +FIELD BINDING.HEAD
+END-STRUCTURE
+
+FRAME-BYTES CELL / constant FRAME-CELLS
+NULL-PTR FRAME.NAME NULL-PTR - constant FRAME-NAME
+NULL-PTR FRAME.NAME-U NULL-PTR - constant FRAME-NAME-U
+NULL-PTR FRAME.NS-COUNT NULL-PTR - constant FRAME-NS-COUNT
+NULL-PTR FRAME.URI NULL-PTR - constant FRAME-URI
+NULL-PTR FRAME.URI-U NULL-PTR - constant FRAME-URI-U
+ATTR-BYTES CELL / constant ATTR-CELLS
+NULL-PTR ATTRIBUTE.NAME NULL-PTR - constant ATTRIBUTE-NAME
+NULL-PTR ATTRIBUTE.NAME-U NULL-PTR - constant ATTRIBUTE-NAME-U
+NULL-PTR ATTRIBUTE.VALUE NULL-PTR - constant ATTRIBUTE-VALUE
+NULL-PTR ATTRIBUTE.VALUE-U NULL-PTR - constant ATTRIBUTE-VALUE-U
+NULL-PTR ATTRIBUTE.RAW NULL-PTR - constant ATTRIBUTE-RAW
+NULL-PTR ATTRIBUTE.RAW-U NULL-PTR - constant ATTRIBUTE-RAW-U
+NULL-PTR ATTRIBUTE.URI NULL-PTR - constant ATTRIBUTE-URI
+NULL-PTR ATTRIBUTE.URI-U NULL-PTR - constant ATTRIBUTE-URI-U
+NULL-PTR ATTRIBUTE.HASH NULL-PTR - constant ATTRIBUTE-HASH
+NULL-PTR ATTRIBUTE.LINK NULL-PTR - constant ATTRIBUTE-LINK
+NULL-PTR ATTRIBUTE.HEAD NULL-PTR - constant ATTRIBUTE-HEAD
+NS-BYTES CELL / constant NS-CELLS
+NULL-PTR BINDING.PREFIX NULL-PTR - constant BINDING-PREFIX
+NULL-PTR BINDING.PREFIX-U NULL-PTR - constant BINDING-PREFIX-U
+NULL-PTR BINDING.URI NULL-PTR - constant BINDING-URI
+NULL-PTR BINDING.URI-U NULL-PTR - constant BINDING-URI-U
+NULL-PTR BINDING.HASH NULL-PTR - constant BINDING-HASH
+NULL-PTR BINDING.LINK NULL-PTR - constant BINDING-LINK
+NULL-PTR BINDING.HEAD NULL-PTR - constant BINDING-HEAD
 NULL-PTR CURSOR-SOURCE NULL-PTR - CELL / constant SOURCE-IDX
 NULL-PTR CURSOR-SOURCE-LEN NULL-PTR - constant SOURCE-LEN
 NULL-PTR CURSOR-POSITION NULL-PTR - constant POSITION
@@ -244,7 +294,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 \ Empty every prefix bucket: src/lib/xml/names.f relinks the bindings.
 : NS-HEADS-CLEAR ( ^n -- )
    {: state :}
-   state NS-CAP + @ 0 ?do -1 state i NAMESPACE NS-HEAD + ! loop ;
+   state NS-CAP + @ 0 ?do -1 state i NAMESPACE BINDING-HEAD + ! loop ;
 
 : SOURCE$ ( ^n -- ^u8 n )
    {: state :}
@@ -776,35 +826,35 @@ private
 : ATTR-RAW-STATE ( ^n -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr 4 cells + @ ABS-OFF >OFF attr 5 cells + @ >LEN ;
+   state attr ATTRIBUTE-RAW + @ ABS-OFF >OFF attr ATTRIBUTE-RAW-U + @ >LEN ;
 
 : ATTR-NAME$-STATE ( ^n -- ^u8 n )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr @ attr CELL + @ SPAN$ ;
+   state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ SPAN$ ;
 
 : ATTR-VALUE$-STATE ( ^n -- ^u8 n )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
+   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$ ;
 
 : ATTR-VALUE-STATE ( ^n -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr 2 cells + @ ABS-OFF >OFF attr 3 cells + @ >LEN ;
+   state attr ATTRIBUTE-VALUE + @ ABS-OFF >OFF attr ATTRIBUTE-VALUE-U + @ >LEN ;
 
 : ATTR-URI-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state destination cap OUTPUT-CHECK
-   state attr 6 cells + @ attr 7 cells + @ URI$
+   state attr ATTRIBUTE-URI + @ attr ATTRIBUTE-URI-U + @ URI$
    destination cap URI-INTO ;
 
 : ATTR-TEXT-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state destination cap OUTPUT-CHECK
-   state attr 2 cells + @ attr 3 cells + @ SPAN$
+   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$
    DECODE-ATTR destination cap DECODE-INTO ;
 
 public
