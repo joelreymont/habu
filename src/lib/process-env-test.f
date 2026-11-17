@@ -375,6 +375,19 @@ DYNAMIC-BUFFER ERR u8
    s" /bin/sh" >LEN in inu out err timeout
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
+\ The deadline starts once both pipes hold bytes: a host may start sh late.
+: CAPTURE-WRITTEN ( ^u8 len [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
+   {: in:^ inu out err timeout :}
+   [: s" /bin/sh" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      PROCESS:WAIT-FOREVER PROCESS:STDIN-CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
+   PROCESS:OUT-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N 1 T=
+   PROCESS:ERR-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N 1 T=
+   timeout PROCESS:CAPTURE-DEADLINE!
+   in inu out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
+
 \ Failures to distinguish: either pipe truncated or mixed with the other,
 \ stdin stalled behind full output pipes, partial output lost on a deadline,
 \ and a throwing sink leaving its child or descriptors alive. The tee child
@@ -395,7 +408,7 @@ DYNAMIC-BUFFER ERR u8
 
 : TIMEOUT ( -- )
    s" printf before-out; printf before-err >&2; exec /bin/sleep 5" SHELL
-   s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] 300 >MS CAPTURE
+   s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] 300 >MS CAPTURE-WRITTEN
    T-ENDING-TIMEOUT LEN>N 10 T= LEN>N 10 T=
    0 OUT 10 s" before-out" T$=
    0 ERR 10 s" before-err" T$= ;
@@ -413,7 +426,7 @@ DYNAMIC-BUFFER ERR u8
    s" /usr/bin/yes before-out & exec /usr/bin/yes before-err >&2" SHELL
    s" " >LEN
    [: OUT-ROOM 10 >MS TASK:SLEEP ;]
-   [: ERR-ROOM 10 >MS TASK:SLEEP ;] 300 >MS CAPTURE
+   [: ERR-ROOM 10 >MS TASK:SLEEP ;] 300 >MS CAPTURE-WRITTEN
    {: outu:len erru:len oc :}
    oc T-ENDING-TIMEOUT
    outu LEN>N 10 > TTRUE erru LEN>N 10 > TTRUE
