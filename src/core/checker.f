@@ -262,12 +262,11 @@
 \ other than a `^` prefix that leaves no bracket open, counting the `<` `[`
 \ `>` `]` NEXT-SIG-TOK splits out, so a pointer chain, family application and
 \ spaced quotation or scheme reach SIG-TYPE whole; a stray closer ends it and
-\ SIG-TYPE refuses it. The declaration also ends with its line: the name
-\ stands on the definer's line and the type's first token on the name's. A
-\ line feed between tokens, as no next token does, leaves the token to the
-\ next statement: a missing name or type is refused by name
-\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REJECT) and SIG-TYPE
-\ refuses a span left open.
+\ SIG-TYPE refuses it. The name stands on the definer's line and the type's
+\ first token on the name's: a missing name or type is rejected by name
+\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REJECT). While a `<` or
+\ `[` is open the spelling reads on across lines; with none open it ends at
+\ its line, and SIG-TYPE rejects a span the source leaves open.
 \
 \ Callable contracts: a stored callable must implement every instantiation its
 \ declared quotation admits. QCON-BEGIN saves the contract's type and row

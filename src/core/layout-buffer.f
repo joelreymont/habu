@@ -235,9 +235,7 @@ private
 
 \ ---- the stored type --------------------------------------------------------
 \ Every definer reads its type here, so pointer chains, family applications and
-\ spaced quotations reach the checker whole. The name stands on the definer's
-\ line and the type's first token on the name's (STORAGE-LINE-TOKEN); a missing
-\ name is rejected at the definer's token, an empty type by the checker.
+\ spaced quotations reach the checker whole; it rejects one empty or unclosed.
 
 public
 
@@ -257,16 +255,16 @@ public
 
 private
 
-: STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
-   ended if LBUF-FALSE exit then
-   STORAGE-LINE-TOKEN {: a:^ u:n :}
-   u 0= if LBUF-FALSE exit then
-   a STGT-A !  u STGT-U !  LBUF-TRUE ;
+: STORAGE-MORE? ( n bool -- n bool ) {: depth:n ended:bool :}
+   ended if depth LBUF-FALSE exit then
+   depth 0 > if parse-name else STORAGE-LINE-TOKEN then {: a:^ u:n :}
+   u 0= if depth LBUF-FALSE exit then
+   a STGT-A !  u STGT-U !  depth LBUF-TRUE ;
 
 public
 
-\ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
-\ or with its line.
+\ The whole spelling from a first token on the name's line, ended where the
+\ checker ends one or, while no `<` or `[` is open, at the end of its line.
 : STORAGE-PARSE-TYPE ( -- ^u8 n )
    STORAGE-LINE-TOKEN STGT-U !  STGT-A !
    STGT-A @ STGT-START !

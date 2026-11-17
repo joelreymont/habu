@@ -42,8 +42,6 @@ create ERR CAP allot
    exited ERR erru LEN>N fields fieldsu CONTAINS? and
    ERR erru LEN>N help helpu CONTAINS? and ;
 
-\ An unclosed spelling ends with its line: it is rejected though the next line
-\ would close it.
 : STORED ( -- )
    s" an ordinary quotation may be stored in a typed global" T-LABEL
    s" TYPED-VARIABLE C2-QUOTE-SLOT [ n -- n ]" 0 SUBJECT:EXITED? TTRUE
@@ -52,13 +50,7 @@ create ERR CAP allot
    70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOT` holds a scheme" s" " REPORTED? TTRUE
    s" a scheme cannot be stored behind a pointer" T-LABEL
    s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ^forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOTS` holds a scheme" s" " REPORTED? TTRUE
-   s" a stored type ends at the end of its line" T-LABEL
-   s\" NEWTYPE c2-line-pair<a,b>\nTYPED-VARIABLE C2-LINE-SLOT c2-line-pair<n,\nn>"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-SLOT` does not parse" s" " REPORTED? TTRUE
-   s" a stored quotation ends at the end of its line" T-LABEL
-   s\" TYPED-VARIABLE C2-LINE-XT [ n -- n\n]"
-   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-XT` does not parse" s" " REPORTED? TTRUE ;
+   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOTS` holds a scheme" s" " REPORTED? TTRUE ;
 
 : LAYOUT-STORED ( -- )
    s" a scheme cannot fill a layout buffer" T-LABEL

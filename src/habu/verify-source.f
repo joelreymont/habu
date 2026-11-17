@@ -2577,12 +2577,12 @@ variable STG-TYPE-U
    SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF SOURCE@ 0 EXIT THEN
    NEXT-RAW ;
 
-: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
-   ended IF 0 0= 0= EXIT THEN
-   SCAN-LINE-TOKEN {: a:^ u:n :}
-   u 0= IF 0 0= 0= EXIT THEN
+: SCAN-STORAGE-MORE? ( n bool -- n bool ) {: depth:n ended:bool :}
+   ended IF depth 0 0= 0= EXIT THEN
+   depth 0 > IF NEXT-RAW ELSE SCAN-LINE-TOKEN THEN {: a:^ u:n :}
+   u 0= IF depth 0 0= 0= EXIT THEN
    a STG-A !  u STG-U !
-   0 0= ;
+   depth 0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ^u8 n )
    SCAN-LINE-TOKEN STG-U !  STG-A !

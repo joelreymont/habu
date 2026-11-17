@@ -555,6 +555,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
+\ --verify-only reads a stored type on across lines while a `<` or `[` is
+\ open, as the load does.
+: TEST-STORED-SPAN ( -- )
+   s" a stored type spelled across lines" T-LABEL
+   SB-RESET
+   s" NEWTYPE span-pair option<" SB-APPEND LF+
+   s"   n>" SB-APPEND LF+
+   s" TYPED-VARIABLE SPAN-SLOT [ n --" SB-APPEND LF+
+   s"   n ]" SB-APPEND LF+
+   s" stored-span.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT ;
+
 \ The rejection's notes: an immediate in a body has the effect ( -- ), and
 \ this one's is ( n -- ).
 : IMM-EFFECT-NOTES ( -- )
@@ -3850,6 +3862,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-REQUIRED-FIFO
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
+   TEST-STORED-SPAN
    TEST-SOURCE-IMMEDIATE
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED

@@ -101,6 +101,10 @@ TYPED-VARIABLE SDQ-CODE [ n -- n ]
 s" ENUM sdqenum VARIANT one FIELD run ^[ n -- n ] ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" NEWTYPE sdqbase ^[ n -- n ]" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
+s\" NEWTYPE sdqwrap option<n,\n  n>" TEST-EVAL:RC 70 T=
+s" option<n," s" type has too many arguments" DECL-DIAG:CAUSE? TTRUE
+s\" NEWTYPE sdqok option<\n  n>" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
 s" STRUCTURE sdqopen FIELD run ^[ n -- n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s" [" s" the quotation type is not closed" DECL-DIAG:CAUSE? TTRUE
 \ A quotation's tokens are a signature's: `[` and `]` need no blank beside
