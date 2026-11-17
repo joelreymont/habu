@@ -1,6 +1,7 @@
 \ signature-nesting.f - a signature nested past the parser's limits is rejected
 \ by name through the real load path: a 33rd nested binder, and pointees or
-\ quotations nested past EFFECT-DEPTH-MAX. A body nested past CF-FRAMES-MAX
+\ quotations nested past EFFECT-DEPTH-MAX. An effect with more than 64
+\ quotations checks. A body nested past CF-FRAMES-MAX
 \ control frames, a RECURSE with no declared effect and a RECURSE in a does>
 \ clause are uncheckable for a reason they name too, and each says so in its
 \ JSON packet with help of its own; the packet of a RECURSE with no declared
@@ -77,6 +78,18 @@ TYPED-VARIABLE SRC-U len
 : QUOTATIONS ( n -- )
    {: k:n :}
    DEFER-OPEN  s" [ " k S+N  s" -- ]" S+  s"  -- ]" k 1 - S+N  DEFER-CLOSE ;
+
+\ The input of a quotation nested k deep, each the input of the next.
+: QUOT-INPUT ( n -- )
+   {: k:n :}
+   s" [ " k S+N  s" n -- ]" S+  s"  -- ]" k 1 - S+N ;
+
+\ A word whose input quotation nests k deep, called by a word with that input.
+: QUOT-CALL ( n -- )
+   {: k:n :}
+   SRC-RESET
+   s" : SN-QK ( " S+  k QUOT-INPUT  s"  -- ) drop ; " S+
+   s" : SN-QGO ( " S+  k QUOT-INPUT  s"  -- ) SN-QK ;" S+ ;
 
 \ A colon definition whose signature opens k quotations it never closes.
 : DEF-QUOTATIONS ( n -- )
@@ -171,6 +184,13 @@ variable ERR-U
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
 
+\ The text in SRC-BUF, run as the subject, exits 0: a facts text that cannot
+\ say an effect ends the load with status 76.
+: LOADS ( -- )
+   SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   SRC$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
+
 \ The last REFUSES's stderr also holds this text, gutters dropped.
 : SAID ( ^u8 n -- )
    {: a:^ u:n :}
@@ -232,6 +252,8 @@ public
    s" 4500 nested quotations refuse by the depth limit" T-LABEL
    4500 QUOTATIONS
    s" effect too deep to record (depth 4097, at most 4096)" REFUSES
+   s" a word whose input quotation nests 65 deep checks" T-LABEL
+   65 QUOT-CALL  LOADS
    s" a definition's signature nested past the depth limit refuses by it" T-LABEL
    2049 DEF-QUOTATIONS
    s" effect too deep to record (depth 4097, at most 4096)" REFUSES

@@ -7969,11 +7969,15 @@ create ROWMAP 26 cells allot
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
 \ SQUOT holds each quotation a signature text gives, numbered from 1 as its `[`
-\ is read, for the facts tags that name it; a text with more keeps the first.
-64 constant SQUOT-CAP
-create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
-: SQUOT! ( n n -- ) {: t:n q:n :}  q SQUOT-CAP > IF EXIT THEN  t q 1 - cells SQUOT + ! ;
-: SQUOT@ ( n -- n ) 1 - cells SQUOT + @ ;
+\ is read, for the facts tags that name it.
+SCRATCH{
+PTR-VARIABLE SQUOT-P   variable SQUOT-CAP
+}SCRATCH
+variable SQUOT-N   0 SQUOT-N !
+: SQUOT! ( n n -- ) {: t:n q:n :}
+   SQUOT-P SQUOT-CAP q 1 ARENA-ROWS-ENSURE
+   t q 1 - cells SQUOT-P @ + ! ;
+: SQUOT@ ( n -- n ) 1 - cells SQUOT-P @ + @ ;
 
 : SG-ROWS-RESET ( -- )
    SG-ROWS 0 26 ARENA-CELLS-ZERO
@@ -8394,7 +8398,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
    NEXT-SIG-TOK {: ca:^ cu:n :}
    cu 0 = IF ta tu SGBAD-SYNTAX! 0 EXIT THEN
    ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 1 < or  v SQUOT-N @ SQUOT-CAP min > or IF ca cu SGBAD-SYNTAX! 0 EXIT THEN
+   ok 0=  flt or  v 1 < or  v SQUOT-N @ > or IF ca cu SGBAD-SYNTAX! 0 EXIT THEN
    v ;
 
 

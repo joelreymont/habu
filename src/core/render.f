@@ -331,13 +331,15 @@ variable RPOS-N   variable RVISIT
 
 \ RQUOT-BLOCK holds, per quotation RVISIT numbered (from 1, as its `[` is
 \ written), its resolved block part, for REND-FACTS's block and noblock tags.
-create RQUOT-BLOCK SQUOT-CAP cells allot
+SCRATCH{
+PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
+}SCRATCH
 
 : RQUOT+ ( n -- ) {: q:n :}
-   RVISIT @ SQUOT-CAP > IF 1 RQM ! EXIT THEN
-   q Q>BLOCK T-RES  RVISIT @ 1 - cells RQUOT-BLOCK + ! ;
+   RQUOT-BLOCK-P RQUOT-BLOCK-CAP RVISIT @ 1 ARENA-ROWS-ENSURE
+   q Q>BLOCK T-RES  RVISIT @ 1 - cells RQUOT-BLOCK-P @ + ! ;
 
-: RQUOT@ ( n -- n ) 1 - cells RQUOT-BLOCK + @ ;
+: RQUOT@ ( n -- n ) 1 - cells RQUOT-BLOCK-P @ + @ ;
 
 
 \ A row is named when its tail has no scope, its kind is not its unnamed form's
@@ -598,7 +600,7 @@ LOCSHOW-INSTALL
    0 BEGIN dup NLET @ < WHILE dup VAR-SCOPE-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-KIND-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-SCOPE-TAG 1 + REPEAT drop
-   RVISIT @ SQUOT-CAP min 1 + {: nq:n :}
+   RVISIT @ 1 + {: nq:n :}
    2 BEGIN dup nq < WHILE dup QUOT-BLOCK-TAG 1 + REPEAT drop
    1 BEGIN dup nq < WHILE dup QUOT-NOBLOCK-TAG 1 + REPEAT drop
    0 DEST !  TEXT TEXT-LEN @ ;
