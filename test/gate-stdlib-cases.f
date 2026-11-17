@@ -400,6 +400,10 @@ SUITE json-rpc
    src/lib/json-rpc-test.f
 ;SUITE
 
+SUITE regex
+   src/lib/regex-test.f
+;SUITE
+
 SUITE diff
    src/lib/diff-test.f
 ;SUITE

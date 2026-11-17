@@ -392,6 +392,8 @@ require src/os/env-base.f
 \ which owns package STUDIO.
 \ OData: -9930..-9939, minted in src/lib/odata/metadata.f, a file of package
 \ ODATA (src/lib/odata.f).
+\ Regular expressions: -9940..-9949, minted in src/lib/regex.f, which owns
+\ package REGEX.
 
 \ T0 (src/habu/t0.f): -9600..-9609, declared at this file's end.
 -9600 constant E-T0-FIRST
