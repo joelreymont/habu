@@ -2,17 +2,21 @@
 \ input each state senses, and the action and next state for each input, and
 \ builds checked words from it, so a missing input, an unknown next state or a
 \ state with neither row fails the load in the checker. A row may name its own
-\ inputs ENUM, the one its SENSE answers, in place of the header's.
+\ inputs ENUM, the one its SENSE answers, in place of the header's. LINES
+\ reads a table's text with DEFINE's grammar and hands back its lines.
 \ STORAGE CLASS. PROCESS-WIDE: the token, row and name buffers serve one
-\ DEFINE at a time, as only the main thread compiles; they are released before
-\ DEFINE returns or throws, so it keeps no state after.
+\ DEFINE or LINES at a time, so both must run on the main thread, the one that
+\ compiles; they are released before either returns or throws, so neither
+\ keeps state after.
 \
-\ DEFINE reads the whole table, failing on its grammar before it defines a
-\ word, then builds each word with define-word: engine words
-\ found here, keywords, the ENUMs as types and variants, and calls of the
-\ table's words and its own, which bind where DEFINE is called. It defines a
-\ word <NAME>/<state>/<input> for each line's ACTION and <NAME>/<state> for
-\ each FINAL row's, `drop` for `-`; an ACTION of `-` on a line defines no word.
+\ DEFINE takes the table's tokens with parse-name through `;DEFINE`, LINES
+\ from its text, and one grammar reads them. DEFINE reads the whole table,
+\ failing on its grammar before it defines a word, then builds each word with
+\ define-word: engine words found here, keywords, the ENUMs as types and
+\ variants, and calls of the table's words and its own, which bind where
+\ DEFINE is called. It defines a word <NAME>/<state>/<input> for each line's
+\ ACTION and <NAME>/<state> for each FINAL row's, `drop` for `-`; an ACTION of
+\ `-` on a line defines no word.
 \ Each IN row becomes a word <NAME>/<state> that runs SENSE on a `dup` of the
 \ context and matches its answer: a `>state` NEXT constructs the state, then
 \ the line word runs on the context under it; any other NEXT is a word that
@@ -65,13 +69,23 @@ variable ROWS
 DYNAMIC-BUFFER WORD-TEXT u8
 variable WORD-LEN
 
+\ The table's tokens through `;DEFINE`, and the next one to read.
+DYNAMIC-BUFFER RAW-A ^u8
+DYNAMIC-BUFFER RAW-U n
+variable RAWS
+variable RAW-I
+
+\ LINES's text and the next byte to read in it.
+PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
+
 : TOK+ ( ^u8 n -- ) {: a:^ u:n :}
    TOKS @ {: k:n :}
    k 1+ TOK-A-RESERVE  k 1+ TOK-U-RESERVE
    a k TOK-A !  u k TOK-U !
    k 1+ TOKS ! ;
 
-: TOK$ ( n -- ^u8 n ) {: k:n :} k TOK-A @ k TOK-U @ AT ;
+: TOK@ ( n -- ^u8 n ) {: k:n :} k TOK-A @ k TOK-U @ ;
+: TOK$ ( n -- ^u8 n ) TOK@ AT ;
 
 \ Opens a row at the next token.
 : ROW+ ( -- )
@@ -88,12 +102,47 @@ variable WORD-LEN
 : LINE-TOK ( n n -- n ) {: k:n i:n :} k 3 + i 3 * + ;
 
 : RELEASE ( -- )
+   RAW-A-RELEASE RAW-U-RELEASE 0 RAWS ! 0 RAW-I !
    TOK-A-RELEASE TOK-U-RELEASE 0 TOKS !
    ROW-AT-RELEASE ROW-LINES-RELEASE 0 ROWS !
    WORD-TEXT-RELEASE 0 WORD-LEN ! ;
 
+\ Keeps a token; false at the source's end, which an empty token marks, or
+\ after `;DEFINE`.
+: KEEP? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0= if false exit then
+   RAWS @ {: k:n :}
+   k 1+ RAW-A-RESERVE  k 1+ RAW-U-RESERVE
+   a k RAW-A !  u k RAW-U !
+   k 1+ RAWS !
+   a u s" ;DEFINE" STR= 0= ;
+
+: SOURCE-TOKENS ( -- ) begin parse-name KEEP? 0= until ;
+
+: TEXT-BLANK? ( -- bool )
+   TEXT-I @ TEXT-U @ < if TEXT-A @ TEXT-I @ + c@ 32 <= else false then ;
+
+: TEXT-BYTE? ( -- bool )
+   TEXT-I @ TEXT-U @ < if TEXT-A @ TEXT-I @ + c@ 32 > else false then ;
+
+\ The text's next token, as parse-name reads one: empty at its end.
+: TEXT-NAME ( -- ^u8 n )
+   begin TEXT-BLANK? while 1 TEXT-I +! repeat
+   TEXT-I @ {: from:n :}
+   begin TEXT-BYTE? while 1 TEXT-I +! repeat
+   TEXT-A @ from +  TEXT-I @ from - ;
+
+: TEXT-TOKENS ( ^u8 n -- )
+   TEXT-U !  TEXT-A !  0 TEXT-I !
+   begin TEXT-NAME KEEP? 0= until ;
+
+\ The next token, made the token read last; the table cut short before
+\ `;DEFINE` fails.
 : TOKEN ( -- ^u8 n )
-   parse-name dup 0= if 2drop E-SYNTAX throw then ;
+   RAW-I @ {: k:n :}
+   k RAWS @ < 0= if E-SYNTAX throw then
+   k 1+ RAW-I !
+   k RAW-A @ k RAW-U @ AT ;
 
 : KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" IN" STR=
@@ -275,7 +324,7 @@ variable WORD-LEN
 \ The words are built with their table tokens read last, then the `;DEFINE`
 \ READ-TABLE stopped at is read last again.
 : GENERATE ( -- )
-   READ-TABLE
+   SOURCE-TOKENS READ-TABLE
    SRCLOC:TOKEN$ {: a:^ u:n :}
    [: ROWS @ 0 ?do i ROW-ACTS loop
       ROWS @ 0 ?do i FINAL? 0= if i ROW-WORD then loop
@@ -288,6 +337,25 @@ public
 \ caller's open package and section.
 : DEFINE ( -- )
    [: GENERATE ;] [: RELEASE ;] finally ;
+
+private
+
+\ Runs Q on each line of row R: its state, input and NEXT.
+: ROW-RUN ( n [ ^u8 n ^u8 n ^u8 n -- ] -- ) {: r:n q :}
+   r ROW-AT @ {: k:n :}
+   r ROW-LINES @ 0 ?do
+      k TOK@  k i LINE-TOK TOK@  k i LINE-TOK 2 + TOK@  q execute
+   loop ;
+
+public
+
+\ Reads the table in the text through `;DEFINE` as DEFINE does, then runs Q on
+\ each line; its tokens point into the text, and Q reads no table itself.
+: LINES ( ^u8 n [ ^u8 n ^u8 n ^u8 n -- ] -- ) {: a:^ u:n q :}
+   SRCLOC:TOKEN$ {: s:^ su:n :}
+   [: [: a u TEXT-TOKENS READ-TABLE ;] [: s su SRCLOC:TOKEN! ;] finally
+      ROWS @ 0 ?do i q ROW-RUN loop ;]
+   [: RELEASE ;] finally ;
 
 ;package
 

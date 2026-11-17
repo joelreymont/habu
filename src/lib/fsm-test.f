@@ -399,7 +399,27 @@ variable SRC-LEN
    TEST-EVAL:RC FSM:E-SYNTAX T=
    s" package FSM-SYN-BARE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S IN busy S go - >idle halt - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-HEAD-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph ;DEFINE IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
    5 VALID 2 T= ;
+
+
+\ Each line LINES hands, as `state input next;`.
+: SEEN+ ( ^u8 n ^u8 n ^u8 n -- ) {: s:^ su:n i:^ iu:n x:^ xu:n :}
+   s su SRC+ s"  " SRC+ i iu SRC+ s"  " SRC+ x xu SRC+ s" ;" SRC+ ;
+
+: SEEN$ ( ^u8 n -- ^u8 n ) 0 SRC-LEN !  [: SEEN+ ;] FSM:LINES  SRC$ ;
+
+\ LINES hands each IN row's lines, NEXT as written, though no package holds S
+\ or PICK; a broken table throws E-SYNTAX and the next DEFINE still loads.
+: LINES-READ ( -- )
+   S\" M ( ^n ) ph sig\n   IN idle S go BUMP >busy\thalt - >idle\r\n   IN busy S ( stop ) stop - PICK\x1FFINAL done - ;DEFINE IN late S go - >idle"
+   SEEN$ s" idle go >busy;idle halt >idle;busy stop PICK;" T$=
+   [: s" M ( n ) ph sig IN idle S go - >busy" SEEN$ 2drop ;]
+   FSM:E-SYNTAX TTHROWSQ
+   [: s" M ( n ) ph sig IN idle S go - ;DEFINE" SEEN$ 2drop ;]
+   FSM:E-SYNTAX TTHROWSQ
+   15 VALID 2 T= ;
 
 
 \ A table word's undefined ACTION is placed at the ACTION's own line.
@@ -580,6 +600,7 @@ public
    ROWS
    STEPS
    SYNTAX
+   LINES-READ
    REJECTED
    PLACED-ACTION
    PLACED-EFFECT

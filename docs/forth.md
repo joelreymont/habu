@@ -982,7 +982,8 @@ an input, an unknown `>state`, a state with neither an `IN` nor a `FINAL` row,
 and a word with the wrong effect; for a row naming its own ENUM, that covers a
 row missing one of its inputs, a line for a tag outside it and a SENSE
 answering another ENUM. The table's own grammar is `FSM:E-SYNTAX`:
-the source ending before `;DEFINE`, a header not `( … )`, a line before the
+the source ending before `;DEFINE`, a header not `( … )` or cut short by
+`;DEFINE`, a line before the
 first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or `;DEFINE`, a row
 with no line, a `(` after SENSE not followed by one name and `)`, a token after
 a `FINAL` row's ACTION other than those three, a `\` anywhere in a row, and a
@@ -992,6 +993,13 @@ too); comments go above the table. `tools/check.f` skips the table
 (`parses-through: FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the
 generated words are left to the run, so their uses are `W-CHECK-DEFERRED` under
 `--verify-only`.
+
+`FSM:LINES ( ^u8 n [ ^u8 n ^u8 n ^u8 n -- ] -- )` reads a table's text, from
+its `<NAME>` through `;DEFINE`, with DEFINE's grammar and `FSM:E-SYNTAX`, then
+runs the quotation on each line's state, input and NEXT as written, in order.
+The strings point into the text, and the quotation reads no table itself. It
+defines no word and looks none up, so a test can hold a table to a copy of its
+lines kept elsewhere, such as a model's.
 
 GETAFIX reads a fixed-point number from a key line, keeping digits, the first
 point and a leading minus (`src/lib/fsm-test.f`):
