@@ -3,7 +3,6 @@
 \ window uses the fixed STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX instead.
 \ The FFI binding resolves at its first call in each process: a function
 \ address is scratch (src/lib/ffi-abi.f FN-LOOKUP).
-require src/lib/error.f
 require src/lib/ffi-abi.f
 
 package OS-MEMORY
@@ -12,12 +11,9 @@ private
 PROCESS-SYMBOLS
 FUNCTION: PAGE-SIZE-CALL getpagesize ( -- i32 ) ;FUNCTION
 
-: PAGE-SIZE-CHECK ( n -- n )
-   dup 0 <= if drop E-MEM-SIZE throw then ;
-
 public
 
 : PAGE-SIZE ( -- n )
-   PAGE-SIZE-CALL PAGE-SIZE-CHECK ;
+   PAGE-SIZE-CALL ;
 
 ;package
