@@ -99,10 +99,12 @@ private
    dup FINITE? 0= if E-OUTPUT throw then ;
 
 
+\ 2^63, the first binary64 above every cell.
+: ROUND-LIMIT ( -- r ) $43E0000000000000 IEEE754:BITS>F64 ;
+
 : ROUND-DOMAIN ( r -- ) {: value:r :}
    value FINITE? 0= if E-DOMAIN throw then
-   $4000000000000000 s>f 2.0 f* {: limit:r :}
-   value limit f>= value limit fnegate f< or if E-OUTPUT throw then ;
+   value ROUND-LIMIT f>= value ROUND-LIMIT fnegate f< or if E-OUTPUT throw then ;
 
 
 
@@ -284,16 +286,23 @@ public
 \ at most in the sign of zero.
 : FMAX ( r r -- r )
    {: a:r b:r :}
-   a a f= 0= if b b f= if b else a b f+ then exit then
-   b b f= 0= if a exit then
+   a b f> if a exit then
+   b a f> if b exit then
    a b f= if a IEEE754:F64>BITS 0< if b else a then exit then
-   a b f> if a else b then ;
+   a a f= if a exit then
+   b b f= if b exit then
+   a b f+ ;
 
-\ IEEE 754-2019 minimumNumber, which is exactly -FMAX(-a, -b): negation only
-\ flips the sign bit, so FMAX's NaN and signed-zero rules carry over mirrored.
+\ IEEE 754-2019 minimumNumber: the smaller of two numbers, with -0 below +0 in
+\ either order; NaN operands as in FMAX.
 : FMIN ( r r -- r )
    {: a:r b:r :}
-   a fnegate b fnegate FMAX fnegate ;
+   a b f< if a exit then
+   b a f< if b exit then
+   a b f= if a IEEE754:F64>BITS 0< if a else b then exit then
+   a a f= if a exit then
+   b b f= if b exit then
+   a b f+ ;
 
 \ Compare the fractional part before rounding; adding 0.5 first can round a
 \ binary64 value immediately below the halfway point up to the next integer.
