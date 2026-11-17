@@ -246,27 +246,24 @@ create LABEL-NAME-BUF PATH-CAP allot   variable LABEL-NAME-U
 : LABELS? ( ^u8 n -- bool ) {: a:^ u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
    a u LABEL-BUF LABEL-U @ CORE-STR= ;
-\ The file line, column and byte of the byte p points at in a buffer whose first
-\ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
-\ counts bytes, and only the buffer's first line starts at column bc.
-private
-variable POS-OFF  variable POS-LINE  variable POS-COLUMN  variable POS-I
+\ Line, column and byte of p in a buffer whose first byte is at line bl, column
+\ bc, byte bb; LF ends a line, a column counts bytes; tasks may call it.
 public
 : POSITION ( ^u8 ^u8 n n n -- n n n )
    {: base:^ p:^ bl:n bc:n bb:n :}
-   p base - POS-OFF !
-   1 POS-LINE !  1 POS-COLUMN !  0 POS-I !
-   BEGIN POS-I @ POS-OFF @ < WHILE
-      base POS-I @ + c@ 10 = IF
-         POS-LINE @ 1 + POS-LINE !  1 POS-COLUMN !
+   p base - {: off:n :}
+   1 1 0                                    \ line, column, index
+   BEGIN dup off < WHILE
+      base over + c@ 10 = IF
+         rot 1 + rot drop 1 rot
       ELSE
-         POS-COLUMN @ 1 + POS-COLUMN !
+         swap 1 + swap
       THEN
-      POS-I @ 1 + POS-I !
-   REPEAT
-   bl POS-LINE @ + 1 -
-   POS-LINE @ 1 = IF bc POS-COLUMN @ + 1 - ELSE POS-COLUMN @ THEN
-   bb POS-OFF @ + ;
+      1 +
+   REPEAT drop {: line:n column:n :}
+   bl line + 1 -
+   line 1 = IF bc column + 1 - ELSE column THEN
+   bb off + ;
 
 private
 PTR-VARIABLE SOURCE-A  variable SOURCE-U

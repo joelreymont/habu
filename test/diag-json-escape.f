@@ -79,8 +79,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    READER-STORAGE a u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ <> if
       JSON:READ-CLOSE s" packet stream has a non-object" FAIL
    then
-   JSON:READ-SKIP-VALUE JSON:READ-NEXT JSON:T-END <> if JSON:READ-CLOSE E-JSON-READ-TRAILING throw then
-   JSON:READ-CLOSE
+   JSON:READ-SKIP-VALUE JSON:READ-FINISH
    first if a u TOKEN-AND-SOURCE then ;
 
 \ Every row of the stream parses strictly; the first object is the packet.

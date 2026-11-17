@@ -1015,10 +1015,17 @@ variable OPEN-N
 
 \ ---- the stderr expected ------------------------------------------------------
 
-: IGNORED ( ^u8 n n -- )
+: IGNORED-HEAD ( ^u8 n n -- )
    {: m:^ mu:n code:n :}
    s\" lsp: ignored \"" WANT+ m mu WANT+ s\" \": throw " WANT+
-   code INT$ WANT+ s\" \n" WANT+ ;
+   code INT$ WANT+ ;
+
+: IGNORED ( ^u8 n n -- )  IGNORED-HEAD s\" \n" WANT+ ;
+
+\ The line of a throw that carried the reader's text W.
+: IGNORED-WHY ( ^u8 n n ^u8 n -- )
+   {: m:^ mu:n code:n w:^ wu:n :}
+   m mu code IGNORED-HEAD s" : " WANT+ w wu WANT+ s\" \n" WANT+ ;
 
 : STOPPED ( n -- )
    s" lsp: stopped by throw " WANT+ INT$ WANT+ s\" \n" WANT+ ;
@@ -1029,6 +1036,10 @@ variable OPEN-N
    {: m:^ mu:n p:^ pu:n code:n :}
    m mu p pu TELL
    m mu code IGNORED ;
+: UNAPPLIED-WHY ( ^u8 n ^u8 n n ^u8 n -- )
+   {: m:^ mu:n p:^ pu:n code:n w:^ wu:n :}
+   m mu p pu TELL
+   m mu code w wu IGNORED-WHY ;
 
 \ The line about the check of the document at PATH, these words after its URI,
 \ then the prose of the test's own check, ended by LF.
@@ -1911,7 +1922,9 @@ variable PUB-COUNT
    URI-A s" 1.5" s\" \"\"" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    URI-A LONG-ID s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ E-JSON-READ-NUMBER UNAPPLIED
+   s" textDocument/didOpen" PAR$ E-JSON-READ-NUMBER
+   s" 1:82: expected an integer from -9223372036854775808 to 9223372036854775807, found `123456789012345678901234567890`; write an integer in that range, or read it with READ-U64 or READ-FLOAT"
+   UNAPPLIED-WHY
    URI-A s" 1" s" null" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS

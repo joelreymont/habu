@@ -323,6 +323,9 @@ public
 : INT$ ( n -- ^u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
 \ Value then width; SB untouched, valid until FMT's next render.
 : OCT-WIDTH$ ( n n -- ^u8 n )   OCT-WIDTH>NUM NUM$ ;
+\ Value then width: exactly width upper-case digits; SB untouched, valid until
+\ FMT's next render.
+: HEX-WIDTH$ ( n n -- ^u8 n )   HEX-WIDTH>NUM NUM$ ;
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

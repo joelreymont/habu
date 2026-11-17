@@ -73,6 +73,7 @@ require src/habu/stack-abi.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/core/layout-buffer.f
+require src/lib/reason.f
 
 package TASK
 public
@@ -907,6 +908,7 @@ ROW-N ROLLBACK-CELLS:MARK
 : TASK-END ( -- )
    1 TASK-SELF TCB.STOP !
    TASK-RUN-EXIT
+   REASON:RELEASE
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 

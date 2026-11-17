@@ -145,6 +145,28 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    a fa +  b fb +  na SAME-DIGITS? ;
 
 
+\ A number whose exponents a cell cannot hold is rejected at its token.
+: EXP-REJECT ( ^cursor n -- )
+   {: state:^ code:n :}
+   code READER-CODE? if
+      state s" a number whose exponent a signed cell holds"
+      s" write the number with an exponent nearer zero" code REJECT-TOKEN
+   then
+   code throw ;
+
+\ DIGITS's three results replace the slots under the cursor, so the quotation
+\ under catch leaves the types it was given.
+: DIGITS-SLOT ( n n n ^cursor -- n n n ^cursor )
+   {: state:^ :}
+   drop drop drop  state RAW-SPAN$ DIGITS  state ;
+
+\ The cursor's number token as DIGITS reads it.
+: TOKEN-DIGITS ( ^cursor -- n n n )
+   {: state:^ :}
+   0 0 0 state [: DIGITS-SLOT ;] catch {: code:n :} drop
+   code 0<> if state code EXP-REJECT then ;
+
+
 \ ---- the walk --------------------------------------------------------------
 
 : SAME-KIND? ( n n -- bool )
@@ -486,7 +508,7 @@ CAST: >WALK ( ^n -- ^walk )
 : KEEP-NUMBER ( ^walk n -- )
    {: w:^ r:n :}
    w r ROW {: row:^ :}
-   w WALK-B RAW-SPAN$ DIGITS
+   w WALK-B TOKEN-DIGITS
    row ROW-COUNT !  row ROW-FIRST !  row ROW-EXP ! ;
 
 
@@ -534,7 +556,7 @@ CAST: >WALK ( ^n -- ^walk )
 \ a's number under record a as DIGITS reads it.
 : KEEP-A-NUMBER ( ^walk -- )
    {: w:^ :}
-   w WALK-A RAW-SPAN$ DIGITS
+   w WALK-A TOKEN-DIGITS
    w WALK-NUM-COUNT !  w WALK-NUM-FIRST !  w WALK-NUM-EXP ! ;
 
 \ a's next token, a number read once.

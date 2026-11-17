@@ -43,6 +43,7 @@ require src/lib/uri.f
 require src/lib/content-length.f
 require src/lib/json.f
 require src/lib/json-rpc.f
+require src/lib/reason.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f
@@ -364,8 +365,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu ;
 
 \ The throws that come of params the server cannot apply: a notification is
-\ left unapplied, the server saying why, and a request is answered -32602.
-\ Any other stops the server.
+\ left unapplied, the server's stderr line naming the method, the code and the
+\ reader's text when it has one, and a request is answered -32602. Any other
+\ stops the server.
 : IGNORABLE? ( n -- bool )
    {: code:n :}
    code E-LSP-PARAMS =  code E-LSP-NOT-OPEN = or  code E-JSON-READ-NUMBER = or
@@ -375,10 +377,13 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : GUARDED ( ^u8 n ^u8 n [ ^u8 n -- ^u8 n ] -- )
    {: m:^ mu:n p:^ pu:n q :}
    p pu q catch {: code:n :} 2drop
+   code REASON:TEXT$ {: why:^ wu:n :}
    code 0= if exit then
    code IGNORABLE? 0= if code throw then
    SB-RESET s" lsp: ignored " SB-APPEND m mu SB-APPEND
-   s" : throw " SB-APPEND code FMT:SB-INT 10 SB-APPEND-C
+   s" : throw " SB-APPEND code FMT:SB-INT
+   wu 0<> if s" : " SB-APPEND why wu SB-APPEND then
+   10 SB-APPEND-C
    FD:STDERR SB$ FD:WRITE-FULL ;
 
 : NAMED? ( ^u8 n ^u8 n -- bool )
@@ -558,9 +563,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : READ? ( JSON-RPC:id ^u8 n [ ^u8 n -- ^u8 n ] -- bool )
    {: i p:^ pu:n q :}
    p pu q catch {: code:n :} 2drop
+   code REASON:TEXT$ {: why:^ wu:n :}
    code 0= if true exit then
    code IGNORABLE? 0= if code throw then
-   i INVALID-PARAMS s" invalid params" REPLY-ERROR
+   wu 0= if s" invalid params" else why wu then {: msg:^ msgu:n :}
+   i INVALID-PARAMS msg msgu REPLY-ERROR
    false ;
 
 : QUERY! ( ^u8 n -- ^u8 n )

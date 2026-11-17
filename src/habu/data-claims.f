@@ -206,6 +206,7 @@ create TAB
    MEM-ABI:START                      MEM-ABI:BYTES           CLAIM MEM-ABI
    FS-MUT-ABI:START                   FS-MUT-ABI:BYTES        CLAIM FS-MUT-ABI
    FS-ABI:START                       FS-ABI:BYTES            CLAIM FS-ABI
+   REASON-ABI:START                   REASON-ABI:BYTES        CLAIM REASON-ABI
    FMT-ABI:START                      FMT-ABI:BYTES           CLAIM FMT-ABI
    STRING-ABI:START                   STRING-ABI:BYTES        CLAIM STRING-ABI
    PD-TABLE-OFF                       PD-TABLE-END PD-TABLE-OFF -  CLAIM PD-TABLE

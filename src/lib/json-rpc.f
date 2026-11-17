@@ -1,7 +1,16 @@
 \ json-rpc.f - the JSON-RPC 2.0 envelope: >MESSAGE sorts one body into a message
 \ and the writers build replies on a caller's JSON writer. Every part of a
 \ message is the body's own JSON text, borrowed: an id, a method or a string
-\ result keeps its quotes and escapes. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
+\ result keeps its quotes and escapes. An invalid message's why is program text,
+\ or for PARSE-ERROR the reader's REASON text, valid until the task's next
+\ REASON:THROW. INVALID-REQUEST is an array (a batch, not taken), a root that is
+\ not an object, `jsonrpc` other than "2.0", an id not a number, string or null,
+\ a method not a string, params not an object, array or null, and a message
+\ with no method unless it has an id and exactly one of result and error, an
+\ error being an object with an integer code and a string message. Member names
+\ compare decoded, the last repeat counts, other members are passed over. An
+\ invalid message carries its own id when that id is valid and it has a method,
+\ else the null id, so a reply never answers a response. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
 \ METHOD? parse in the caller's JSON:cursor record and the message borrows the
 \ caller's body; the module keeps no state.
 
@@ -10,6 +19,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/json.f
+require src/lib/reason.f
 
 package JSON-RPC
 using JSON
@@ -85,8 +95,9 @@ STRUCTURE envelope
 
 : INVALID ( n ^u8 n id -- message )  JSON--RPC-MESSAGE:INVALID ;
 
-: NOT-JSON ( -- message )
-   PARSE-ERROR s" a body that is not JSON" NULL-ID INVALID ;
+: NOT-JSON ( n -- message )
+   {: code:n :}
+   PARSE-ERROR code REASON:TEXT$ NULL-ID INVALID ;
 
 \ The JSON reader's codes for text that is not JSON, E-JSON-READ-MALFORMED through E-JSON-READ-COMMA, are
 \ PARSE-ERROR; any other code, such as JSON:E-READ-SOURCE or a failed growth of the
@@ -206,8 +217,7 @@ STRUCTURE envelope
    then
    e SORT ;
 
-\ Reads the body once; READ-NEXT answers its end or refuses it with E-JSON-READ-TRAILING.
-\ Text that is not JSON throws the JSON reader's code first.
+\ Reads the body once; text that is not JSON throws the JSON reader's code.
 : READ-BODY ( message ^JSON:cursor ^u8 n -- message ^JSON:cursor ^u8 n )
    {: prior st:^ body:^ len:n :}
    st body len READ-INIT
@@ -217,28 +227,19 @@ STRUCTURE envelope
    else
       READ-SKIP-VALUE NO-ENVELOPE
    then {: e :}
-   READ-NEXT drop
-   READ-CLOSE
+   READ-FINISH
    root e SORT-ROOT  st body len ;
 
 public
 
-\ Params absent or null are empty. A body that is not JSON (RFC 8259, as
-\ src/lib/json/read.f reads it) is PARSE-ERROR. INVALID-REQUEST is an array (a
-\ batch, not taken), a root that is not an object, `jsonrpc` other than "2.0", an
-\ id not a number, string or null, a method not a string, params not an object,
-\ array or null, and a message with no method unless it has an id and exactly one
-\ of result and error, an error being an object with an integer code and a string
-\ message. Member names compare decoded, the last repeat counts, other members are
-\ passed over. An invalid message carries its own id when that id is valid and it
-\ has a method, else the null id, so a reply never answers a response.
+\ Params absent or null are empty; a body that is not JSON is PARSE-ERROR.
 : >MESSAGE ( ^JSON:cursor ^u8 n -- message )
    {: st:^ body:^ len:n :}
-   NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
+   0 NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
    2drop drop {: m :}
    code 0= if m exit then
    code SYNTAX? 0= if code throw then
-   NOT-JSON ;
+   code NOT-JSON ;
 
 private
 

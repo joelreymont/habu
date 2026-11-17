@@ -1042,6 +1042,17 @@ $4000 constant S-IFDIR
 $A000 constant S-IFLNK
 ;package
 
+\ REASON-ABI is src/lib/reason.f's per-task code cell and BUF header, a band
+\ because reason.f builds for Wasm, where src/lib/task.f does not.
+package REASON-ABI
+public
+4 cells constant BYTES
+FS-ABI:END constant START
+START BYTES + constant END
+START constant CODE-OFF
+CODE-OFF 8 + constant TEXT-OFF
+;package
+
 \ FS-MUT-ABI, src/lib/fs-mutate.f's per-call path scratch, is the last band: the
 \ bands' cells precede the path slots, so each stays inside a scaled load's reach.
 package FS-MUT-ABI
@@ -1051,7 +1062,7 @@ PATH-CAP constant ATOMIC-BYTES
 PATH-CAP constant TMP-BYTES
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
-FS-ABI:END constant START
+REASON-ABI:END constant START
 START BYTES + constant END
 START constant PATHZ2-OFF
 PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF

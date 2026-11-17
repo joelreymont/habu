@@ -49,9 +49,12 @@ private
 \ Close a container: the depth one shallower, a comma due.
 : COPY-CLOSE ( ^writer n n -- n bool )
    {: w kind:n depth:n :}
-   depth 0= if E-JSON-READ-STATE throw then
    w kind T-OBJ-END = if WRITE-OBJECT-END else WRITE-ARRAY-END then
    drop depth 1 - true ;
+
+\ Rejects the reader's current token, which starts no value, with the fix.
+: COPY-REJECT ( JSON:reader ^u8 n -- JSON:reader ) {: fa:^ fu:n :}
+   READER>STATE s" a value" fa fu E-JSON-READ-STATE REJECT-TOKEN ;
 
 \ Write the reader's current token, of kind kind, and answer the new depth
 \ and whether a comma is due before the next token.
@@ -61,13 +64,23 @@ private
       w kind depth sep COPY-OPEN exit
    then
    kind T-OBJ-END = kind T-ARR-END = or if
+      depth 0= if
+         s" call COPY-VALUE at a value: it copies a value, not the close of its container"
+         COPY-REJECT
+      then
       w kind depth COPY-CLOSE exit
    then
    kind T-KEY = if
-      depth 0= if E-JSON-READ-STATE throw then
+      depth 0= if
+         s" read past the member name with READ-NEXT, so the reader is at its value"
+         COPY-REJECT
+      then
       w sep COPY-COMMA dst cap COPY-KEY drop depth false exit
    then
-   kind COPY-SCALAR? 0= if E-JSON-READ-STATE throw then
+   kind COPY-SCALAR? 0= if
+      s" call COPY-VALUE only at a value: there is no value left to copy"
+      COPY-REJECT
+   then
    w sep COPY-COMMA dst cap kind COPY-SCALAR drop depth true ;
 
 : COPY-ADVANCE ( JSON:reader n bool -- JSON:reader n n bool )

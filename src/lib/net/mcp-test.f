@@ -504,7 +504,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : BAD-JSON ( -- )
    s" a body that is not JSON is -32700 with no id" T-LABEL
    LEGACY S\" {\"jsonrpc\":" POST
-   400 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
+   400 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"1:12: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`\"}}"
    ANSWERED ;
 
 
@@ -1581,7 +1581,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    ANSWERED
    s" ANSWER of a message that is not JSON writes -32700" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":" POST
-   200 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
+   200 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"1:12: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`\"}}"
    ANSWERED ;
 
 : ANSWER-UNKNOWN ( -- )

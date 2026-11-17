@@ -9,6 +9,8 @@ require src/lib/memory.f
 require src/lib/test.f
 require src/lib/time-cpu.f
 require src/lib/json.f
+require src/lib/reason.f
+require src/lib/fmt.f
 require src/lib/byte-buffer.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
@@ -662,6 +664,35 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    JSON:WRITTEN$ src len T$=
    JSON:READ-CLOSE ;
 
+: JRT-COPY-AT ( JSON:reader -- )
+   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON:WRITE-OPEN
+   JRT-BUF JRT-CAP JSON:COPY-VALUE drop JSON:READ-CLOSE ;
+
+: JRT-SECOND ( ^u8 n -- JSON:reader )
+   JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-NEXT drop ;
+
+\ CODE's REASON text, then released, so a later case's plain throw of CODE
+\ cannot match it.
+: JRT-SAID ( n ^u8 n -- ) {: code:n wa:^ wu:n :}
+   code REASON:TEXT$ wa wu T$=
+   REASON:RELEASE ;
+
+\ COPY-VALUE rejects a token that starts no value at that token.
+: JRT-TEST-COPY-REJECT ( -- )
+   s" COPY-VALUE rejects a member name, an object's end and the end of the input" T-LABEL
+   [: s\" {\n \"a\":1}" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s\" 2:2: expected a value, found `\"a\"`; read past the member name with READ-NEXT, so the reader is at its value"
+   JRT-SAID
+   [: s" {}" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s" 1:2: expected a value, found `}`; call COPY-VALUE at a value: it copies a value, not the close of its container"
+   JRT-SAID
+   [: s\" 1\n" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s" 2:1: expected a value, found the end of the input; call COPY-VALUE only at a value: there is no value left to copy"
+   JRT-SAID ;
+
 : JRT-TEST-FIND-HIT ( -- )
    s" READ-FIND-KEY stops on the found key's value" T-LABEL
    JRT-FIND$ JRT-OPEN-A
@@ -913,8 +944,7 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    s" 1e2" s" 1e3" JSON:VALUE= TFALSE
    s" 10" s" 1e0000000000000000000000001" JSON:VALUE= TTRUE
    s" VALUE= throws E-JSON-READ-NUMBER on an exponent past a signed cell" T-LABEL
-   [: s" 1e9223372036854775807" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ
-   [: s" 1e99999999999999999999" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ ;
+   [: s" 1e9223372036854775807" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ ;
 
 \ 100000 arrays deep, past what recursion on the return stack survives,
 \ compare equal to themselves and unequal with the innermost digit changed.
@@ -1210,6 +1240,10 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    [: JRT-DEEP-40000 ;] JRT-RELEASES
    s" READ-FIND-KEY works 70 objects deep and READ-FINISH releases the stack" T-LABEL
    [: JRT-TEST-DEEP-FIND ;] JRT-RELEASES
+   \ A task's first rejection maps its REASON text and its scope chunk for
+   \ good, so one is taken before the probes.
+   [: s" x" JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-CLOSE ;]
+   E-JSON-READ-MALFORMED TTHROWSQ
    s" a failure 100 deep releases the stack" T-LABEL
    [: JRT-DEEP-MALFORMED-THROWS ;] JRT-RELEASES
    s" READ-DISPOSE releases what a caller's throw abandoned" T-LABEL
@@ -1518,6 +1552,292 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" [1e5e]" JRT-GUARDED-CODE E-JSON-READ-NUMBER T=
    s" [0x1]" JRT-GUARDED-CODE E-JSON-READ-COMMA T= ;
 
+\ A document's first failed advance: its code and its REASON text.
+: JRT-WHY ( ^u8 n n ^u8 n -- ) {: s:^ u:n code:n wa:^ wu:n :}
+   s u JRT-GUARDED-CODE code T=
+   code wa wu JRT-SAID ;
+
+: JRT-TEST-REASON-CODES ( -- )
+   s\" [1,\n ]" E-JSON-READ-MALFORMED
+   s" 2:2: expected a value, found `]`; write a value, or remove a trailing comma"
+   JRT-WHY
+   s\" [\n \"abc" E-JSON-READ-STRING
+   s\" 2:6: expected the closing `\"` of the string, found the end of the input; close the string with `\"`"
+   JRT-WHY
+   s\" [\n \"a\xC3(\"]" E-JSON-READ-STRING
+   s" 2:4: expected a UTF-8 character, found byte $C3; write the text in UTF-8"
+   JRT-WHY
+   s\" {\n \"a\":\"\\q\"}" E-JSON-READ-ESCAPE
+   s\" 2:8: expected an escape letter from `\"\\/bfnrt`, or `u` and four hex digits, found `q`; write a valid escape, or `\\\\` for a backslash itself"
+   JRT-WHY
+   s\" [\n \"\\uDC00x\"]" E-JSON-READ-SURROGATE
+   s" 2:3: expected a `\uD800`-`\uDBFF` escape and then a `\uDC00`-`\uDFFF` escape, found `\uDC00x`; write both halves of the surrogate pair, or the character itself in UTF-8"
+   JRT-WHY
+   s\" \"\\ud800\"" E-JSON-READ-SURROGATE
+   s\" 1:8: expected a `\\uD800`-`\\uDBFF` escape and then a `\\uDC00`-`\\uDFFF` escape, found `\"`; write both halves of the surrogate pair, or the character itself in UTF-8"
+   JRT-WHY
+   s\" [\"\\ud800\\u0041\"]" E-JSON-READ-SURROGATE
+   s" 1:9: expected a `\uD800`-`\uDBFF` escape and then a `\uDC00`-`\uDFFF` escape, found `\u0041`; write both halves of the surrogate pair, or the character itself in UTF-8"
+   JRT-WHY
+   s\" {\"a\":1}\n x" E-JSON-READ-TRAILING
+   s" 2:2: expected the end of the input after the top-level value, found `x`; remove the text after the value, or put all the values in one array"
+   JRT-WHY
+   s\" [\n 01]" E-JSON-READ-NUMBER
+   s" 2:2: expected a number, found `01`; write a JSON number such as `-12`, `0.5` or `2e-3`: digits after `-`, `.` and `e`, and no leading `0` before more digits"
+   JRT-WHY
+   s\" {\"a\":\n [1," E-JSON-READ-EOF
+   s" 2:5: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
+   JRT-WHY
+   s\" {\n \"a\" 1}" E-JSON-READ-COLON
+   s" 2:6: expected `:` after the member name, found `1`; write `:` between the name and its value"
+   JRT-WHY
+   s\" {\"a\":1\n \"b\":2}" E-JSON-READ-COMMA
+   s\" 2:2: expected `,` or the close of the open array or object, found `\"b\"`; write `,` between the values, or close the open array with `]` or object with `}`"
+   JRT-WHY
+   s\" {\"a\":1\n \"gr\xC3\xB6\xC3\x9Fe\":2}" E-JSON-READ-COMMA
+   s\" 2:2: expected `,` or the close of the open array or object, found `\"gr\xC3\xB6\xC3\x9Fe\"`; write `,` between the values, or close the open array with `]` or object with `}`"
+   JRT-WHY
+   s\" {\"a\":1\n \"\xC3\xA9aaaaaaaaaaaaaaaaaaaaaaaaaaaa\xC3\xA9\":2}" E-JSON-READ-COMMA
+   s\" 2:2: expected `,` or the close of the open array or object, found `\"\xC3\xA9aaaaaaaaaaaaaaaaaaaaaaaaaaaa...`; write `,` between the values, or close the open array with `]` or object with `}`"
+   JRT-WHY
+   s\" {\"a\":\n }" E-JSON-READ-MALFORMED
+   s" 2:2: expected a value, found `}`; write the member's value"
+   JRT-WHY
+   s\" \n ]" E-JSON-READ-MALFORMED
+   s" 2:2: expected a value, found `]`; write a JSON value"
+   JRT-WHY
+   s" {" E-JSON-READ-EOF
+   s" 1:2: expected a member name or `}`, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
+   JRT-WHY
+   s\" {\"a\":1,}" E-JSON-READ-MALFORMED
+   s" 1:8: expected a member name, found `}`; write the next member's name in double quotes, or remove a trailing comma"
+   JRT-WHY ;
+
+\ A literal and a bare word show their run of whole characters, a long run is
+\ cut on a character's first byte, a raw control byte shows as its value, and
+\ a column counts bytes, not characters.
+: JRT-TEST-REASON-FOUND ( -- )
+   s\" [\n tru]" E-JSON-READ-MALFORMED
+   s" 2:2: expected `true`, found `tru`; write the word in full and in lower case, or quote the text as a string"
+   JRT-WHY
+   s\" {\"a\":\n abc}" E-JSON-READ-MALFORMED
+   s" 2:2: expected a value, found `abc`; write a value: an object, an array, a string in double quotes, a number, `true`, `false` or `null`"
+   JRT-WHY
+   s\" [\n abcdefghijklmnopqrstuvwxyz0123456789]" E-JSON-READ-MALFORMED
+   s" 2:2: expected a value or `]`, found `abcdefghijklmnopqrstuvwxyz012345...`; write a value, or close the array with `]`"
+   JRT-WHY
+   s\" [caf\xC3\xA9]" E-JSON-READ-MALFORMED
+   s\" 1:2: expected a value or `]`, found `caf\xC3\xA9`; write a value, or close the array with `]`"
+   JRT-WHY
+   s\" [\xC3\xA9crit]" E-JSON-READ-MALFORMED
+   s\" 1:2: expected a value or `]`, found `\xC3\xA9crit`; write a value, or close the array with `]`"
+   JRT-WHY
+   s\" [abcdefghijklmnopqrstuvwxyz01234\xC3\xA9xyz]" E-JSON-READ-MALFORMED
+   s" 1:2: expected a value or `]`, found `abcdefghijklmnopqrstuvwxyz01234...`; write a value, or close the array with `]`"
+   JRT-WHY
+   s\" [\n \"a\tb\"]" E-JSON-READ-STRING
+   s" 2:4: expected a character or an escape, found byte $09; write the control byte as an escape such as `\t`, `\n` or `\u001F`"
+   JRT-WHY
+   s\" {\"\xC3\xA9\":1,\n \"\xC3\xBC\" 2}" E-JSON-READ-COLON
+   s" 2:7: expected `:` after the member name, found `2`; write `:` between the name and its value"
+   JRT-WHY ;
+
+: JRT-TRAILING-COMMA-WHY$ ( -- ^u8 n )
+   s" 1:4: expected a value, found `]`; write a value, or remove a trailing comma" ;
+
+: JRT-OTHER-REASON ( -- )
+   [: s" another reader's text" E-JSON-READ-MALFORMED REASON:THROW ;]
+   E-JSON-READ-MALFORMED TTHROWSQ ;
+
+\ A failed reader advanced again throws its own text, whatever text another
+\ throw of the same code left since.
+: JRT-TEST-REASON-AGAIN ( -- )
+   s" [1,]" JRT-OPEN-A
+   JSON:READ-NEXT drop JSON:READ-NEXT drop
+   JRT-CATCH-BAD
+   JRT-OTHER-REASON
+   JRT-CATCH-BAD
+   E-JSON-READ-MALFORMED JRT-TRAILING-COMMA-WHY$ JRT-SAID
+   JSON:READ-CLOSE ;
+
+: JRT-THIRD ( ^u8 n -- JSON:reader )
+   JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-NEXT drop JSON:READ-NEXT drop ;
+
+\ An accessor rejects the token it stands on, a column counting bytes.
+: JRT-TEST-REASON-ACCESSORS ( -- )
+   s" READ-U64 rejects a negative integer at its token" T-LABEL
+   [: s\" [\"\xC3\xA9\", -1]" JRT-THIRD JSON:READ-U64 drop JSON:READ-CLOSE ;]
+   E-JSON-READ-NUMBER TTHROWSQ
+   E-JSON-READ-NUMBER
+   s" 1:8: expected an integer from 0 to 18446744073709551615, found `-1`; write digits alone, with no sign, fraction or exponent, or read the number with READ-FLOAT"
+   JRT-SAID
+   s" READ-INT rejects a string at its opening quote" T-LABEL
+   [: s\" [1,\n \"x\"]" JRT-THIRD JSON:READ-INT drop JSON:READ-CLOSE ;]
+   E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s\" 2:2: expected an integer, found `\"x\"`; write that kind of value here, or read this token with the word for its kind"
+   JRT-SAID ;
+
+: JRT-MEMBER-SAYS ( ^u8 n ^u8 n -- ) {: t:^ u:n wa:^ wu:n :}
+   t u JRT-NO-MEMBER
+   JSON:E-MEMBER wa wu JRT-SAID ;
+
+: JRT-TEST-REASON-MEMBER ( -- )
+   s" READ-MEMBER$ rejects a text that is no object at its first token" T-LABEL
+   s\" [{\"a\":1}]"
+   s" 1:1: expected an object, found `[`; write the text as one JSON object holding the member"
+   JRT-MEMBER-SAYS
+   s" READ-MEMBER$ rejects a missing member at the object's close" T-LABEL
+   s\" {\"b\":1}"
+   s" 1:7: expected the member the key names, found `}`; add the member to the object"
+   JRT-MEMBER-SAYS
+   s" READ-MEMBER$ rejects a repeated member at its second value" T-LABEL
+   s\" {\"a\":1,\n \"a\":[2]}"
+   s" 2:6: expected the member once, found `[`; remove the repeated member, keeping one"
+   JRT-MEMBER-SAYS ;
+
+variable JRT-ORDER      \ the indices handlers saw in call order, a digit each, plus one
+variable JRT-COUNT
+
+: JRT-SAW ( n -- )
+   1+ JRT-ORDER @ 10 * + JRT-ORDER ! ;
+
+: JRT-FIRST ( ^u8 n -- JSON:reader )
+   JRT-OPEN-A JSON:READ-NEXT drop ;
+
+: JRT-TLS-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
+   idx JRT-SAW
+   idx 0 = if s" k" JSON:READ-STR-EQ? TTRUE exit then
+   JSON:READ-TOKEN JSON:T-TRUE T= ;
+
+: JRT-TOP-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
+   idx JRT-SAW
+   idx 0 = if s" a" JSON:READ-STR-EQ? TTRUE exit then
+   idx 1 = if JSON:READ-INT 8080 T= exit then
+   s" key on" [: JRT-TLS-H ;] JSON:READ-MEMBERS ;
+
+: JRT-TOP-NAMES$ ( -- ^u8 n ) s" host port tls" ;
+
+: JRT-SKIP-H ( JSON:reader n -- JSON:reader )
+   drop JSON:READ-SKIP-VALUE ;
+
+: JRT-PORT-H ( JSON:reader n -- JSON:reader )
+   1 = if
+      s" a port from 1 to 65535"
+      s" write the port as an integer from 1 to 65535"
+      JSON:READ-REJECT
+   then
+   JSON:READ-SKIP-VALUE ;
+
+\ READ-MEMBERS on the text, with the names and the handler, throws E-MEMBER
+\ with the text wa wu.
+: JRT-MEMBERS-SAY
+   ( ^u8 n ^u8 n [ JSON:reader n -- JSON:reader ] ^u8 n -- )
+   {: t:^ u:n na:^ nu:n h wa:^ wu:n :}
+   [: t u JRT-FIRST na nu h JSON:READ-MEMBERS JSON:READ-FINISH ;]
+   JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER wa wu JRT-SAID ;
+
+: JRT-TEST-MEMBERS-READ ( -- )
+   s" READ-MEMBERS reads each listed member once, in any order, and a nested object" T-LABEL
+   0 JRT-ORDER !
+   s\" {\"port\":8080,\"host\":\"a\",\"tls\":{\"on\":true,\"key\":\"k\"}}"
+   JRT-FIRST JRT-TOP-NAMES$ [: JRT-TOP-H ;] JSON:READ-MEMBERS
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   JRT-ORDER @ 21321 T= ;
+
+: JRT-TEST-MEMBERS-REJECTED ( -- )
+   s" READ-MEMBERS rejects a value that is no object at its first token" T-LABEL
+   s" [1]" s" host" [: JRT-SKIP-H ;]
+   s" 1:1: expected an object, found `[`; write an object here"
+   JRT-MEMBERS-SAY
+   s" READ-MEMBERS rejects an unknown key, listing the names" T-LABEL
+   s\" {\"host\":\"a\",\n \"colour\":1}" s" host user system" [: JRT-SKIP-H ;]
+   s\" 2:2: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
+   JRT-MEMBERS-SAY
+   s" READ-MEMBERS rejects a repeated key at its second key" T-LABEL
+   s\" {\"host\":\"a\",\"host\":\"b\"}" s" host" [: JRT-SKIP-H ;]
+   s\" 1:13: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
+   JRT-MEMBERS-SAY
+   s" READ-MEMBERS rejects a missing member at the object's close" T-LABEL
+   s\" {\"host\":\"a\"}" s" host user" [: JRT-SKIP-H ;]
+   s" 1:12: expected the member `user`, found `}`; add the member to the object"
+   JRT-MEMBERS-SAY ;
+
+: JRT-TEST-MEMBERS-HANDLER ( -- )
+   s" READ-REJECT rejects a member value at its token" T-LABEL
+   s\" {\"host\":\"a\",\n \"port\":70000}" s" host port" [: JRT-PORT-H ;]
+   s" 2:9: expected a port from 1 to 65535, found `70000`; write the port as an integer from 1 to 65535"
+   JRT-MEMBERS-SAY
+   s" a nested READ-MEMBERS rejects its own unknown key at its place" T-LABEL
+   s\" {\"host\":\"a\",\n \"tls\":{\"on\":true,\"pin\":1}}"
+   JRT-TOP-NAMES$ [: JRT-TOP-H ;]
+   s\" 2:19: expected one of `key`, `on`, found `\"pin\"`; rename the member to one of those, or remove it"
+   JRT-MEMBERS-SAY ;
+
+create JRT-NAMES 400 allot
+
+: JRT-NAME-PUT ( n ^u8 n -- n ) {: at:n a:^ u:n :}
+   a JRT-NAMES at + u BYTE-COPY at u + ;
+
+: JRT-HUNDRED-NAME ( n n -- n ) {: at:n idx:n :}
+   at idx 0<> if s"  " JRT-NAME-PUT then
+   s" m" JRT-NAME-PUT idx FMT:INT$ JRT-NAME-PUT ;
+
+\ m0 m1 ... m99
+: JRT-HUNDRED-NAMES$ ( -- ^u8 n )
+   0 100 0 ?do i JRT-HUNDRED-NAME loop JRT-NAMES swap ;
+
+: JRT-HUNDRED-MEMBER ( n -- ) {: idx:n :}
+   JRT-DQ SB-APPEND-C s" m" SB-APPEND idx FMT:INT$ SB-APPEND
+   JRT-DQ SB-APPEND-C JRT-COLON SB-APPEND-C idx FMT:INT$ SB-APPEND ;
+
+\ {"m99":99,...,"m0":0}
+: JRT-HUNDRED$ ( -- ^u8 n )
+   SB-RESET JRT-LBRACE SB-APPEND-C
+   100 0 ?do
+      i 0<> if JRT-COMMA SB-APPEND-C then
+      99 i - JRT-HUNDRED-MEMBER
+   loop
+   JRT-RBRACE SB-APPEND-C SB$ ;
+
+: JRT-HUNDRED-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
+   JSON:READ-INT idx T=
+   JRT-COUNT @ 1+ JRT-COUNT ! ;
+
+: JRT-TEST-MEMBERS-HUNDRED ( -- )
+   s" READ-MEMBERS reads every member of a list of 100 names" T-LABEL
+   0 JRT-COUNT !
+   JRT-HUNDRED$ JRT-FIRST
+   JRT-HUNDRED-NAMES$ [: JRT-HUNDRED-H ;] JSON:READ-MEMBERS
+   JSON:READ-FINISH
+   JRT-COUNT @ 100 T= ;
+
+: JRT-TEST-READ-MEMBERS ( -- )
+   JRT-TEST-MEMBERS-READ
+   JRT-TEST-MEMBERS-REJECTED
+   JRT-TEST-MEMBERS-HANDLER
+   JRT-TEST-MEMBERS-HUNDRED ;
+
+: JRT-TEST-REASON-WHOLE ( -- )
+   s" READ-REPEATS? rejects a text that is no object at its first token" T-LABEL
+   [: s\" \n \"a\"" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s\" 2:2: expected an object, found `\"a\"`; write the text as one JSON object"
+   JRT-SAID
+   s" VALUE= rejects an exponent no cell holds at its number" T-LABEL
+   [: s\" [1,\n 1e99999999999999999999]" s" [1,1]" JSON:VALUE= drop ;]
+   E-JSON-READ-NUMBER TTHROWSQ
+   E-JSON-READ-NUMBER
+   s" 2:2: expected a number whose exponent a signed cell holds, found `1e99999999999999999999`; write the number with an exponent nearer zero"
+   JRT-SAID
+   [: s" [1,1]" s\" [1,\n  1e99999999999999999999]" JSON:VALUE= drop ;]
+   E-JSON-READ-NUMBER TTHROWSQ
+   E-JSON-READ-NUMBER
+   s" 2:3: expected a number whose exponent a signed cell holds, found `1e99999999999999999999`; write the number with an exponent nearer zero"
+   JRT-SAID ;
+
 : JRT-CORE ( -- )
    JRT-TEST-INTS
    JRT-TEST-U64
@@ -1545,6 +1865,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-ROUNDTRIP
    JRT-TEST-COPY-LAYOUT
    JRT-TEST-COPY-DEEP
+   JRT-TEST-COPY-REJECT
    JRT-TEST-FIND-HIT
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS
@@ -1577,7 +1898,14 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-NEGATIVE
    JRT-TEST-FINISH
    JRT-TEST-PREFIXES
-   JRT-TEST-LEXEMES ;
+   JRT-TEST-LEXEMES
+   JRT-TEST-REASON-CODES
+   JRT-TEST-REASON-FOUND
+   JRT-TEST-REASON-AGAIN
+   JRT-TEST-REASON-ACCESSORS
+   JRT-TEST-REASON-MEMBER
+   JRT-TEST-READ-MEMBERS
+   JRT-TEST-REASON-WHOLE ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : JRT-BAD-APPEND-DEAD ( -- )

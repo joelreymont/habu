@@ -2092,12 +2092,8 @@ answers alike.
   that made it fail, `( ^u8 n n -- )`: the calling task keeps a copy of the
   span, replacing its earlier one, so the span may be scratch.
   `REASON:TEXT$ ( n -- ^u8 n )` answers that text when the task's last
-  `REASON:THROW` threw code n, else empty (`src/lib/reason.f`). A code is
-  thrown through `REASON:THROW` at every place or at none, and a catch reads
-  `REASON:TEXT$` before it runs anything else, so a text pairs only with its
-  own throw, unless a `finally` cleanup run while that throw unwinds throws the
-  same code through `REASON:THROW`; a code a task ends with (`TASK:JOIN`'s
-  err) carries no text.
+  `REASON:THROW` threw code n, else empty; `src/lib/reason.f` states the
+  contract a thrower and a catch keep.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.

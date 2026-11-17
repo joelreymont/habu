@@ -2,7 +2,12 @@
 \ between them and a comparison of two values.
 \ Reading is strict RFC 8259: no comments, trailing commas or single quotes.
 \ Structure, escapes and Unicode scalar encoding are validated as the cursor
-\ advances; values decode on demand.
+\ advances; values decode on demand. Every E-JSON-READ code and E-MEMBER is
+\ thrown through REASON:THROW with the text
+\ `L:C: expected <e>, found <f>; <fix>`, line and byte column counted from the
+\ source's start. READ-MEMBERS reads a closed object, each listed member once
+\ and no other, calling a handler with each member's index; READ-REJECT
+\ rejects the current token with E-MEMBER at its place.
 \ Writing goes through the nominal `^JSON:writer`, minted only by the typed
 \ storage definers; one never opened (the definer's zero image) or already
 \ closed refuses every operation with E-JSON-WRITE-STATE.
@@ -40,8 +45,8 @@
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the JSON:cursor record
 \ (zero-filled typed storage owns nothing, and READ-DISPOSE leaves it so) and the
 \ source span, and keeps both live and exclusive until READ-CLOSE or
-\ READ-FINISH: a promise the checker cannot prove. The caller owns the writer record, its output and COPY-VALUE's
-\ decode buffer. No module state.
+\ READ-FINISH: a promise the checker cannot prove. The caller owns the writer
+\ record, its output and COPY-VALUE's decode buffer. No module state.
 require src/lib/json/read.f
 require src/lib/json/write.f
 require src/lib/json/copy.f

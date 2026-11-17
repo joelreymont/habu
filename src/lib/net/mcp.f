@@ -627,7 +627,7 @@ CAST: HELD>N ( held -- n )
    {: code:n why:^ wu:n reply:JSON-RPC:id :}
    reply JSON-RPC:ID$ {: id:^ iu:n :}
    id iu MCP-ID? if id iu SPAN:MAKE SLOT ID ! then
-   code JSON-RPC:PARSE-ERROR = if 400 -32700 s" Invalid JSON" BAD false exit then
+   code JSON-RPC:PARSE-ERROR = if 400 -32700 why wu BAD false exit then
    BAD-ENVELOPE false ;
 
 

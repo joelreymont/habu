@@ -87,16 +87,23 @@ TYPED-VARIABLE W JSON:writer
    s\" {\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}}"
    s\" failure 10 {\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}" SORTS ;
 
+: PARSE-HEAD$ ( -- ^u8 n )  s" invalid -32700 null " ;
+
+\ The body sorts as PARSE-ERROR with the null id.
 : NOT-JSON ( ^u8 n -- )
-   s" invalid -32700 null a body that is not JSON" SORTS ;
+   SORTED SHOW$ {: s:^ su:n :}
+   PARSE-HEAD$ nip su min {: hu:n :}
+   s hu PARSE-HEAD$ T$= ;
 
 \ A string holding one byte that cannot start UTF-8.
 create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
-\ Nothing, an open object, a bare word, a value then more, a bad escape, a lone
-\ surrogate, a byte that is not UTF-8: PARSE-ERROR, id null.
+\ Text that is not JSON is PARSE-ERROR with id null; the first case also checks
+\ the reader's text as its why.
 : TEST-PARSE ( -- )
-   s" " NOT-JSON
+   s" "
+   s" invalid -32700 null 1:1: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
+   SORTS
    s" {" NOT-JSON
    s" nul" NOT-JSON
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"x\"} {}" NOT-JSON
