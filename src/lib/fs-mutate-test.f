@@ -1461,12 +1461,6 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    loop
    FMT-ROOT-PATH-BUF u level 2 * + ;
 
-\ A tree deeper than the walk's starting frames whose last directory is
-\ locked: the removal grows its frames on the way down, then unlinkat refuses
-\ the deepest level with EACCES while every level above it is open. A leaked
-\ descriptor would hold the lowest free number.
-40 constant FMT-DEEP-LEVELS
-
 : FMT-TEST-RMDIR-ERRNO ( -- )
    [: FMT-RMDIR-MISSING ;] catch FS:ERRNO {: code:n cause:n :}
    s" removing a missing directory is E-FS-IO with ENOENT" T-LABEL
@@ -1478,6 +1472,12 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    full E-FS-IO T=
    full-cause FS:ENOTEMPTY T=
    FMT-TREE FS:REMOVE-TREE ;
+
+\ A tree deeper than the walk's starting frames whose last directory is
+\ locked: the removal grows its frames on the way down, then unlinkat refuses
+\ the deepest level with EACCES while every level above it is open. A leaked
+\ descriptor would hold the lowest free number.
+40 constant FMT-DEEP-LEVELS
 
 : FMT-TEST-REMOVE-TREE-DEPTH-FDS ( -- )
    FMT-DEEP-LEVELS FMT-DEEP$ FS:MAKE-DIRS

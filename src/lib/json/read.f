@@ -282,7 +282,7 @@ $7F constant DEL
    dup LBRACE = over RBRACE = or over LBRACK = or over RBRACK = or
    over COLON = or swap COMMA = or ;
 
-\ An ASCII byte of a bare run: shown, and no space, structure or quote.
+\ An ASCII byte of a bare run.
 : BARE? ( n -- bool )
    dup SHOWN? over SP <> and over STRUCTURAL? 0= and swap DQ <> and ;
 
@@ -321,8 +321,6 @@ $7F constant DEL
    while nip repeat
    drop ;
 
-\ Whole within FOUND-CAP bytes, else cut at FOUND-CAP on a character's first
-\ byte.
 : FOUND-RUN ( ^cursor n -- n n ) {: state:^ off:n :}
    state state off FOUND-LIM off BARE-END off - {: len:n :}
    len FOUND-CAP <= if len FOUND-TOKEN exit then
@@ -689,7 +687,7 @@ create UNESC-MAP
    state CURSOR-POS @ {: at:n :}
    state ADVANCE
    state EOF? if E-JSON-READ-SURROGATE throw then
-   state PEEK CH-U <> if E-JSON-READ-SURROGATE throw then
+   state PEEK CH-U <> if at state CURSOR-POS ! E-JSON-READ-SURROGATE throw then
    state ADVANCE
    state SCAN-HEX4 {: lo:n :}
    lo SUR-LO < lo SUR-END >= or if at state CURSOR-POS ! E-JSON-READ-SURROGATE throw then ;

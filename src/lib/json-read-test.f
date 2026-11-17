@@ -1579,6 +1579,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s\" [\"\\ud800\\u0041\"]" E-JSON-READ-SURROGATE
    s" 1:9: expected a `\uD800`-`\uDBFF` escape and then a `\uDC00`-`\uDFFF` escape, found `\u0041`; write both halves of the surrogate pair, or the character itself in UTF-8"
    JRT-WHY
+   s\" [\"\\ud800\\n\"]" E-JSON-READ-SURROGATE
+   s" 1:9: expected a `\uD800`-`\uDBFF` escape and then a `\uDC00`-`\uDFFF` escape, found `\n`; write both halves of the surrogate pair, or the character itself in UTF-8"
+   JRT-WHY
    s\" {\"a\":1}\n x" E-JSON-READ-TRAILING
    s" 2:2: expected the end of the input after the top-level value, found `x`; remove the text after the value, or put all the values in one array"
    JRT-WHY
@@ -1613,9 +1616,8 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" 1:8: expected a member name, found `}`; write the next member's name in double quotes, or remove a trailing comma"
    JRT-WHY ;
 
-\ A literal and a bare word show their run of whole characters, a long run is
-\ cut on a character's first byte, a raw control byte shows as its value, and
-\ a column counts bytes, not characters.
+\ A bare run shows whole characters, a long one cut on a character's first
+\ byte; a raw control byte shows as its value; a column counts bytes.
 : JRT-TEST-REASON-FOUND ( -- )
    s\" [\n tru]" E-JSON-READ-MALFORMED
    s" 2:2: expected `true`, found `tru`; write the word in full and in lower case, or quote the text as a string"
