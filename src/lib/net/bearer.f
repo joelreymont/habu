@@ -803,14 +803,9 @@ private
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-: WIPE ( ^n -- )
-   {: buf:^ :}
-   0 buf BUF:SPAN SPAN:FILL
-   buf BUF:CLEAR ;
-
 \ What the BUF held is wiped, and it has room for a form within TOKEN-CAP: the
 \ secret and the earlier answer never sit in storage a grow releases.
-: EMPTIED ( ^n -- ) {: buf:^ :} buf WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
+: EMPTIED ( ^n -- ) {: buf:^ :} buf BUF:WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
 
 : FORM ( ^u8 n grant ^n -- )
    {: scope:^ su:n g buf:^ :}
@@ -857,7 +852,7 @@ private
 : REQUESTED? ( CURL:handle ^n -- bool )
    {: h:CURL:handle buf:^ :}
    h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY!
-   buf WIPE
+   buf BUF:WIPE
    SET? 0= if false exit then
    h ENDPOINT @ SPAN:$ CURL:URL! SET? 0= if false exit then
    h s" Content-Type: application/x-www-form-urlencoded" CURL:HEADER+ SET?
@@ -883,13 +878,13 @@ private
          status OPTION:SOME ENDOF
       truncated OF
          drop {: status:CURL:http-status :}
-         buf WIPE
+         buf BUF:WIPE
          OPEN-LINE
          s" token answer " LOG:TEXT+  status CURL:HTTP-STATUS>N LOG:INT+
          s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
          LOG:;LINE
          status STATUS-ERROR throw ENDOF
-      failed OF buf WIPE CURL-FAULT OPTION:NONE ENDOF
+      failed OF buf BUF:WIPE CURL-FAULT OPTION:NONE ENDOF
    ;MATCH ;
 
 : POST ( CURL:handle ^n -- option<CURL:http-status> )
@@ -906,9 +901,9 @@ private
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
          h buf OPTION:NONE [: POSTED ;] catch {: code:n :}
-         code 0<> if 2drop drop h CURL:CLEANUP buf WIPE code throw then
+         code 0<> if 2drop drop h CURL:CLEANUP buf BUF:WIPE code throw then
          nip nip h CURL:CLEANUP ENDOF
-      failed OF CURL-FAULT buf WIPE OPTION:NONE ENDOF
+      failed OF CURL-FAULT buf BUF:WIPE OPTION:NONE ENDOF
    ;MATCH ;
 
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's

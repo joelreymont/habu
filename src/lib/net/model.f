@@ -1914,18 +1914,12 @@ private
       failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
-: HEADER-WIPE ( ^call -- )
-   {: c :}
-   0 c KEY-LINE-BUF HELD SPAN:FILL ;
+: HEADER-WIPE ( ^call -- ) KEY-LINE-BUF BUF:WIPE ;
 
-\ Wipes the header after a step that ended with fault, which is thrown first.
-\ Only a header a failed resize left dead refuses the wipe, and it holds no
-\ storage, so its refusal never hides the step's fault.
 : WIPE-AFTER ( n ^call -- )
    {: fault:n c :}
-   c [: dup HEADER-WIPE ;] catch {: wiped:n :} drop
-   fault 0<> if fault throw then
-   wiped 0<> if wiped throw then ;
+   c HEADER-WIPE
+   fault 0<> if fault throw then ;
 
 : KEY-PREFIX$ ( -- ^u8 n ) s" Authorization: Bearer " ;
 
@@ -3914,8 +3908,7 @@ ENUM record-event kept faulted ;ENUM
    ;MATCH
    OPTION:NONE c MODEL-CALL:HANDLE !
    replayed 0= if
-      c [: dup HEADER-WIPE ;] catch {: wiped:n :} drop
-      wiped c KEEP-FAULT
+      c HEADER-WIPE
       c MODEL-CALL:KIND @ MATCH call-kind
          chat OF c [: CHAT-PARSE ;] CHECK-STEP ENDOF
          embed OF c [: EMBED-PARSE ;] CHECK-STEP ENDOF

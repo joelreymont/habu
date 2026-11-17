@@ -1408,14 +1408,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 : BUF+ ( ^u8 n ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
-\ Zeroes every byte the buffer maps, then empties it: a line written over a
-\ longer one leaves the longer one's tail past the active bytes.
-: WIPE ( ^n -- )
-   {: buf:^ :}
-   buf BUF:CLEAR
-   0 buf buf BUF:CAP@ BUF:GROW SPAN:FILL
-   buf BUF:CLEAR ;
-
 
 \ The first free row, else -1; under LOCK.
 : FREE-ROW ( -- n )
@@ -1967,8 +1959,8 @@ public
 : CLOSE ( client -- )
    LIVE {: idx:n :}
    idx RETIRE
-   idx TOKEN-BUF WIPE
-   idx REQUEST-BUF WIPE
+   idx TOKEN-BUF BUF:WIPE
+   idx REQUEST-BUF BUF:WIPE
    idx RELEASE ;
 
 
@@ -1979,7 +1971,7 @@ public
 : TOKEN! ( client ^u8 n -- )
    {: who:client token:^ tu:n :}
    who LIVE TOKEN-BUF {: buf:^ :}
-   buf WIPE
+   buf BUF:WIPE
    token tu buf BUF+ ;
 
 

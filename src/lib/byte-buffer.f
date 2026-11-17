@@ -170,6 +170,10 @@ public
    buf cap BLEN>N INIT-RAW ;
 : DISPOSE ( ^a -- )  DISPOSE-RAW ;
 : CLEAR ( ^a -- )  CLEAR-RAW ;
+\ Zeroes the bytes past the length too, for secrets a later grow or dispose would release unzeroed.
+: WIPE ( ^a -- ) {: buf:^ :}
+   0 buf BUF-SPAN SPAN:FILL
+   buf CLEAR-RAW ;
 
 : LEN@ ( ^a -- NUM:byte-len )  LEN-RAW@ N>BLEN ;
 : CAP@ ( ^a -- NUM:byte-len )  CAP-RAW@ N>BLEN ;

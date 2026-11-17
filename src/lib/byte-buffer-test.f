@@ -167,6 +167,23 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" new" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
 
+\ CLEAR leaves the longer text's tail past the length; WIPE zeroes it too.
+: BUFT-WIPE ( -- )
+   8 BUFT-FRESH
+   s" a longer secret" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:CLEAR
+   s" short" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUFT-TCAP {: cap:n :}
+   BUFT-BUF BUF:WIPE
+   BUFT-BUF BUFT-TLEN 0 T=
+   BUFT-BUF BUFT-TCAP cap T=
+   BUFT-BUF BUF:SPAN$ drop {: p:^ :}
+   cap 0 ?do p i + c@ 0 T= loop
+   BUFT-BUF BUF:DISPOSE
+   BUFT-BUF BUF:WIPE
+   BUFT-BUF BUFT-TLEN 0 T=
+   BUFT-BUF BUFT-TCAP 0 T= ;
+
 : BUFT-LEN-STORE ( -- )
    8 BUFT-FRESH
    s" data" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -305,6 +322,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-GROW-TAIL
    BUFT-REPLACE
    BUFT-CLEAR
+   BUFT-WIPE
    BUFT-LEN-STORE
    BUFT-APPEND-REPLACED
    BUFT-GROW-RELEASES
