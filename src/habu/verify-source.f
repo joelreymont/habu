@@ -3240,36 +3240,39 @@ variable LOAD-END
    path pathu FAULT-TARGET!
    a u LOAD-PLACE-A @ LOAD-PLACE-U @ false SOURCE-ROOT:MISSING-SOURCE ;
 
-\ Load PATH, the file the request a u resolved to.
-: COMPOSE-OPEN ( ^u8 n ^u8 n -- )
-   {: a:^ u:n path:^ pathu:n :}
+\ Load PATH, the file the request a u resolved to under ROOT.
+: COMPOSE-OPEN ( ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ u:n path:^ pathu:n root:^ rootu:n :}
    path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
-      path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+      root rootu path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
    path pathu FS:EXISTS? 0= IF a u path pathu COMPOSE-MISSING THEN
    path pathu SUPPLIED {: t:^ tu:n open:bool :}
-   open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
-   path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
+   open IF root rootu path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
+   root rootu path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
 \ The loads loader word w, the token the source wrote, makes of the path a u:
 \ the resolver's answer comes through the loader's, which writes its records.
 : COMPOSE-INCLUDED ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
-   a u path pathu COMPOSE-OPEN ;
+   SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
+   a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ^u8 n ^u8 n -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
    REQUIRE-STORE {: path:^ pathu:n :}
-   a u path pathu COMPOSE-OPEN ;
+   a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ^u8 n -- )
    {: a:^ u:n :}
    NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
    REQUIRE-STORE {: path:^ pathu:n :}
-   a u path pathu COMPOSE-OPEN ;
+   a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ^u8 n ^u8 n -- )
    [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF 2drop EXIT THEN
@@ -4213,8 +4216,8 @@ variable READ-META-VALID
 
 \ A stream (a FIFO, device or socket) is rejected before its open, which would
 \ block on a FIFO; a changed file once it outgrows its size, else after the read.
-: QUIET-READ ( ^u8 n ^u8 n -- ^u8 n )
-   2drop {: path:^ pathu:n :}
+: QUIET-READ ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    0 READ-META-VALID !
    path pathu READ-PATHZ PATH-CAP 1+ PATHZ
    pathu READ-PATH-U !

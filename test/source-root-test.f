@@ -131,7 +131,7 @@ private
    s" a path holding a 0 byte is rejected by SOURCE-ROOT:READ-OS" T-LABEL
    REJECTION:CAPTURE
    [: [: SOURCE-ROOT:CANON-OS ;]
-      [: 2drop 2drop s\" a\zb.f" s" /" SOURCE-ROOT:READ-OS ;]
+      [: 2drop s\" a\zb.f" SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
@@ -173,7 +173,7 @@ private
    CAP 0 ?do 97 LONG-PATH i + c! loop
    REJECTION:CAPTURE
    [: [: SOURCE-ROOT:CANON-OS ;]
-      [: 2drop 2drop LONG-PATH CAP s" /" SOURCE-ROOT:READ-OS ;]
+      [: 2drop LONG-PATH CAP SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
@@ -191,6 +191,16 @@ private
    s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got an empty path" STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
+
+: WITH-OPENS ( -- )
+   s" SOURCE-ROOT:WITH-BYTES and WITH-SUPPLIED open a file under the root their caller passes" T-LABEL
+   0 LOADED !
+   s" main.f" B-PATH RESOLVE drop 2drop
+   A$ s" src/leaf.f" A-PATH
+   [: 2drop s" 1 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;] WITH-BYTES
+   A$ s" src/leaf.f" A-PATH s" 2 SOURCE-ROOT-TEST:BUMP"
+   [: 2drop s" 2 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;] WITH-SUPPLIED
+   LOADED @ 2 T= RESTORED ;
 
 : WITH-LONG ( -- )
    s" a root path of WORK-BYTES is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
@@ -418,7 +428,7 @@ public
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED READ-NUL
-   CANON-NUL CANON-RELATIVE READ-LONG WITH-EMPTY WITH-LONG DISCOVERY DEEP-LOADS
+   CANON-NUL CANON-RELATIVE READ-LONG WITH-EMPTY WITH-OPENS WITH-LONG DISCOVERY DEEP-LOADS
    LARGE-LOADS DEEP-EVALS
    ENGINE-ALIASES JOIN-ROOM DIRNAMES
    FS:CLEANUP-RUN T-REPORT ;

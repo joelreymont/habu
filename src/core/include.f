@@ -76,19 +76,19 @@ package SOURCE-INPUT
 private
 
 TYPED-VARIABLE CANON-XT [ ^u8 n -- ^u8 n bool ]
-TYPED-VARIABLE READ-XT [ ^u8 n ^u8 n -- ^u8 n ]
+TYPED-VARIABLE READ-XT [ ^u8 n -- ^u8 n ]
 
 public
 
 : CANON ( ^u8 n -- ^u8 n bool ) CANON-XT @ execute ;
-: READ ( ^u8 n ^u8 n -- ^u8 n ) READ-XT @ execute ;
+: READ ( ^u8 n -- ^u8 n ) READ-XT @ execute ;
 
-: USE ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n ^u8 n -- ^u8 n ] -- )
+: USE ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n -- ^u8 n ] -- )
    {: canon read :}
    canon CANON-XT !
    read READ-XT ! ;
 
-: WITH ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n ^u8 n -- ^u8 n ] [ -- ] -- )
+: WITH ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n -- ^u8 n ] [ -- ] -- )
    {: canon read action :}
    CANON-XT @ READ-XT @ {: old-canon old-read :}
    canon read USE
@@ -2261,8 +2261,8 @@ public
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
-: READ-OS ( ^u8 n ^u8 n -- ^u8 n )
-   2drop s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
+: READ-OS ( ^u8 n -- ^u8 n )
+   s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
 private
 
@@ -2299,7 +2299,7 @@ defer INCLUDE-INTERPRET ( ^u8 n n n -- )
    SOURCE u ;
 
 : READ-SOURCE ( -- ^u8 n )
-   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$ SOURCE-INPUT:READ HOLD ;
+   INCLUDE-PATH INCLUDE-PATH-U @ SOURCE-INPUT:READ HOLD ;
 
 \ The original bytes remain in the frame while a shebang is rewritten in a
 \ private execution copy. Range positions continue to name the full source.
@@ -2645,14 +2645,14 @@ public
    TOP@ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
 
-\ PATH has already been resolved by the loader's resolver. This opens a source
-\ frame and makes its root current until the callback returns.
-: WITH-BYTES ( ^u8 n [ ^u8 n ^u8 n -- ] -- )
-   {: path:^ pathu:n q :}
+\ PATH has already been resolved by the loader's resolver, under ROOT. This
+\ opens a source frame and makes ROOT current until the callback returns.
+: WITH-BYTES ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+   {: root:^ rootu:n path:^ pathu:n q :}
    s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   s" SOURCE-ROOT:WITH-BYTES" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
+   s" SOURCE-ROOT:WITH-BYTES" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
@@ -2662,14 +2662,14 @@ public
    old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
-\ A caller that owns PATH's source bytes can open the same loader frame without
-\ reading a different disk copy.
-: WITH-SUPPLIED ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
-   {: path:^ pathu:n src:^ srcu:n q :}
+\ A caller that owns PATH's source bytes opens the same loader frame under ROOT,
+\ the root PATH resolved under, from those bytes rather than a disk copy.
+: WITH-SUPPLIED ( ^u8 n ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+   {: root:^ rootu:n path:^ pathu:n src:^ srcu:n q :}
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   s" SOURCE-ROOT:WITH-SUPPLIED" RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
+   s" SOURCE-ROOT:WITH-SUPPLIED" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}

@@ -5,7 +5,7 @@ package FILE-OBJECTS-WORD-READ
 public
 : READ-INC ( -- )
    s" test/fixtures/file-objects/word-load-inc.f" SOURCE-ROOT:RESOLVE drop
-   SOURCE-ROOT:RESOLVED-ROOT$ SOURCE-ROOT:READ-OS 2drop ;
+   SOURCE-ROOT:READ-OS 2drop ;
 ;package
 
 : MAIN ( -- ) ;

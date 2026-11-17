@@ -216,7 +216,7 @@ variable RC
    s" package INCLUDE-REFUSAL-READ" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ s" plain.f" AT PROG+
-   S\" \q SOURCE-ROOT:CURRENT$ SOURCE-ROOT:READ-OS 2drop ;" PLINE
+   S\" \q SOURCE-ROOT:READ-OS 2drop ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-READ:RUN" PLINE
    s" read-os-word" LOAD-CASE
