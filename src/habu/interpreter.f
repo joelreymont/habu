@@ -470,13 +470,12 @@ variable ANSWERED
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
-\ reads no local, and the class and flags wait in these cells.
+\ reads no local, and the class waits in this cell.
 variable EVENT-CLASS
-variable EVENT-FLAGS
 
-: HOOK ( n n -- )
-   EVENT-FLAGS ! EVENT-CLASS !
-   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ TOP-LEVEL ;]
+: HOOK ( n -- )
+   EVENT-CLASS !
+   [: TOKEN$ EVENT-CLASS @ TOP-LEVEL ;]
    HOOK-CALL execute-floor FLOORED ;
 
 variable VALUE
@@ -589,11 +588,6 @@ TYPED-VARIABLE REC ^n
    XT-GATE
    SCOPE-ENTRY-GUARD ;
 
-\ The flag word as the hook reads it: bit 0 found, bit 1 immediate.
-: WORD-FLAGS ( -- n )
-   REC @ XREF-FLAGS {: f:n :}
-   1 f DNAME-IMM and 0<> if 2 or then ;
-
 \ The dictionary record index of each word run since RECORD-RUNS, in order.
 DYNAMIC-BUFFER RUNS n
 variable RUNS-N
@@ -618,17 +612,17 @@ TYPED-VARIABLE RUNS-ON bool
 : RUN-COUNTED ( -- )
    REC @ XREF-NULL - XREF-ADDR>INDEX RUN+ ;
 
-\ The flags and xt are read before the hooks run. The engine `drop` runs once
+\ The xt is read before the hooks run. The engine `drop` runs once
 \ per cell of its item, so a multi-cell value leaves whole, as in a body; any
 \ other word runs once outside a loop, so it has every loop frame.
 : RUN-FOUND ( -- )
    GATE
-   WORD-FLAGS REC @ XREF-START {: flags:n xt:n :}
+   REC @ XREF-START {: xt:n :}
    DROP-WORD? if
       TOP-DROP RUN-COUNTED
       0 ?do xt execute-floor FLOORED loop exit
    then
-   TOP-EV-WORD flags HOOK RUN-COUNTED
+   TOP-EV-WORD HOOK RUN-COUNTED
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
@@ -761,19 +755,19 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    execute-floor FLOORED ;
 
 : PUSH-STR ( -- )
-   [: KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
+   [: KEEP TOP-EV-STR HOOK ;] STR-LITERAL RUN-LITERAL ;
 
 : PUSH-CSTR ( -- )
-   [: COUNTED TOP-EV-CSTR 0 HOOK ;] CSTR-LITERAL RUN-LITERAL ;
+   [: COUNTED TOP-EV-CSTR HOOK ;] CSTR-LITERAL RUN-LITERAL ;
 
 : TYPE-STR ( -- )
    TEXT type ;
 
 : PUSH-ESC-STR ( -- )
-   [: ESC-KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
+   [: ESC-KEEP TOP-EV-STR HOOK ;] STR-LITERAL RUN-LITERAL ;
 
 : PUSH-ESC-CSTR ( -- )
-   [: ESC-COUNTED TOP-EV-CSTR 0 HOOK ;] CSTR-LITERAL RUN-LITERAL ;
+   [: ESC-COUNTED TOP-EV-CSTR HOOK ;] CSTR-LITERAL RUN-LITERAL ;
 
 : TYPE-ESC-STR ( -- )
    ESC-COPY 2drop type ;
@@ -787,7 +781,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    d u ;
 
 : PUSH-PKG ( -- )
-   [: OPEN-PKG-NAME TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
+   [: OPEN-PKG-NAME TOP-EV-STR HOOK ;] STR-LITERAL RUN-LITERAL ;
 
 \ No definition is open at top level, so no body text captures the operand.
 : FIRST-BYTE ( -- n )
@@ -796,7 +790,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 
 \ The hook sees the operand as the token.
 : PUSH-CHAR ( -- )
-   [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
+   [: FIRST-BYTE TOP-EV-CHAR HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ The active checker owner supplies the trusted-only query, not a source name.
 : TICK-QUERY-READY? ( -- bool )
@@ -840,9 +834,9 @@ CAST: TICK-ACTION ( n -- [ ^u8 n -- bool ] )
    idx RUN+
    xt ;
 
-\ The hook sees the operand as the token and the record's flags.
+\ The hook sees the operand as the token.
 : PUSH-XT ( -- )
-   [: TICKED TICK-OBSERVE TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
+   [: TICKED TICK-OBSERVE TOP-EV-TICK HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 : LITERAL? ( -- bool )
    S\" s\q" TOKEN-IS? if PUSH-STR true exit then
@@ -2813,7 +2807,7 @@ private
 \ on the stack is the program's, so this row, and every row here that
 \ runs program code, states none of it.
 : PUSH-NUM ( -- )
-   [: VALUE @ TOP-EV-NUM 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
+   [: VALUE @ TOP-EV-NUM HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 : DISPATCH ( -- )
    NUMERAL? if PUSH-NUM exit then
