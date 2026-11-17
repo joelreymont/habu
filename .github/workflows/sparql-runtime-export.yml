@@ -1,37 +1,27 @@
 name: Export SPARQL verification inputs
-
 on:
   push:
     branches: [sparql-runtime-export-20261117]
     paths: [.github/workflows/sparql-runtime-export.yml]
-
 permissions:
   contents: read
-
 jobs:
   export:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Fetch current sources without changing remote branches
+      - name: Fetch current Habu sources
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p export/repositories export/packages
-          for repo in habu zen tender; do
-            default=master
-            if [ "$repo" = tender ]; then default=main; fi
-            path="$PWD/export/repositories/$repo"
-            git init -q "$path"
-            git -C "$path" remote add origin "https://github.com/joelreymont/$repo.git"
-            git -C "$path" fetch --no-tags --depth=1 origin "$default"
-            git -C "$path" checkout -q -b "$default" FETCH_HEAD
-            git -C "$path" fetch --no-tags --depth=4 origin sparql:refs/heads/sparql
-            if [ "$repo" = habu ]; then
-              git -C "$path" fetch --no-tags --depth=4 origin x86:refs/heads/x86
-            fi
-            git -C "$path" show-ref --heads
-          done
+          path="$PWD/export/repositories/habu"
+          git init -q "$path"
+          git -C "$path" remote add origin https://github.com/joelreymont/habu.git
+          git -C "$path" fetch --no-tags --depth=1 origin master
+          git -C "$path" checkout -q -b master FETCH_HEAD
+          git -C "$path" fetch --no-tags --depth=4 origin sparql:refs/heads/sparql x86:refs/heads/x86
+          git -C "$path" show-ref --heads
           tar -czf export/sources.tar.gz -C export repositories
           sha256sum export/sources.tar.gz
       - uses: actions/upload-artifact@v4
