@@ -10,19 +10,19 @@
 \ CHECK-CANDIDATE!'s answer; a failure pinned before a name a rendering
 \ statement may define keeps its packet and answer, and that name alone defers
 \ its definition. An undefined word is rejected in packet and answer. A mismatch
-\ over cells below prints its expected row over them too, so it is a type fault
-\ and a surplus a depth fault; one over an open input (a quotation's or an
-\ unsigned definition's) prints its found row over the cells it would take, so
-\ it is a type fault too, while one over a row the signature declares is a
-\ missing value. The tokens after a rejection check in CPU time linear in their
-\ count. A rejection ends the load, so each rejected text runs in a child; the
-\ deepest are stored rows (`defer`). A packet is read in this process. An effect
-\ split by line breaks and tabs loads, and an unknown type ending a line is
-\ rejected by name. A family nested past the unify worklist's first capacity
-\ checks. A pointer is spelled ^T: `ptr` in a signature, a stored signature or
-\ a local's annotation is an unknown type, and a `^` a blank parts from its
-\ element type is a bare `^`. A local's annotation verdict names and places the
-\ token it rejects.
+\ over values below prints the word's inputs and the cells that fill them, so it
+\ is a type fault and a surplus a depth fault; one over an open input (a
+\ quotation's or an unsigned definition's) prints its found row over the cells
+\ it would take, so it is a type fault too, while one over a row the signature
+\ declares is a missing value. The tokens after a rejection check in CPU time
+\ linear in their count. A rejection ends the load, so each rejected text runs
+\ in a child; the deepest are stored rows (`defer`). A packet is read in this
+\ process. An effect split by line breaks and tabs loads, and an unknown type
+\ ending a line is rejected by name. A family nested past the unify worklist's
+\ first capacity checks. A pointer is spelled ^T: `ptr` in a signature, a stored
+\ signature or a local's annotation is an unknown type, and a `^` a blank parts
+\ from its element type is a bare `^`. A local's annotation verdict names and
+\ places the token it rejects.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -279,11 +279,11 @@ public
    VERDICT-UNCHECKABLE PACKET-HAS
    s" a wrong condition at the 33rd nested IF reports the mismatch" T-LABEL
    33 NESTED-BADCOND
-   s" error[E-MISMATCH]: `IF` takes bool bool; the stack holds bool n" REFUSES
+   s" error[E-MISMATCH]: `IF` takes bool; the stack holds n" REFUSES
    s" a wrong condition at the 33rd nested IF writes a rejected packet" T-LABEL
    SRC-RESET 33 BADCOND-TEXT
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool bool\",\"found\":\"bool n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
    s" an undefined word is refused and writes a rejected packet" T-LABEL
    SRC-RESET  s" SN-UNDEF ( -- ) SN-NO-SUCH-WORD" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"SN-NO-SUCH-WORD\""
@@ -296,19 +296,19 @@ public
    SRC-RESET  s" : SN-CF ( n bool -- ) drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-CALLB ( n -- ) 1 2 SN-CF drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n n bool\",\"found\":\"n n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
    s" a RECURSE's wrong input over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" SN-RC1 ( n bool -- ) IF dup 1 RECURSE THEN drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"RECURSE\""
-   S\" \"expected\":\"n n bool\",\"found\":\"n n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
    s" a quotation's wrong condition over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" SN-Q1 ( -- ) [: 0 0= 1 IF THEN drop ;] drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool bool\",\"found\":\"bool n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
    s" a does> clause's wrong condition over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-DO1 ( n -- ) create , does> ( -- ) drop 0 0= 1 IF THEN drop ;" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool bool\",\"found\":\"bool n\"" CLAUSE-PACKET-HAS
+   S\" \"expected\":\"bool\",\"found\":\"n\"" CLAUSE-PACKET-HAS
    s" a loop body that leaves one more cell over 70 cells is a surplus" T-LABEL
    BIGLOOP-TEXT
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"LOOP\""
@@ -323,12 +323,12 @@ public
    SRC-RESET  s" : SN-LHT ( snz<a,b> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-LH1 ( n -- ) 1 2 SN-SNZ 3 SN-LHT drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-LHT\""
-   S\" \"expected\":\"n snz<a,b> bool\",\"found\":\"n snz<n,n> n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<a,b> bool\",\"found\":\"snz<n,n> n\"" VERDICT-REFUSED PACKET-HAS
    s" a group input over a generic bundle is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-LHN ( snz<n,n> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-LH2 ( n snz<a,b> -- ) 3 SN-LHN drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-LHN\""
-   S\" \"expected\":\"n snz<n,n> bool\",\"found\":\"n snz<a,b> n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<n,n> bool\",\"found\":\"snz<a,b> n\"" VERDICT-REFUSED PACKET-HAS
    s" a scalar input over a generic bundle is a type fault" T-LABEL
    SRC-RESET  s" SN-GL0 ( snz<a,b> -- ) 1+ drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"1+\""
@@ -337,7 +337,7 @@ public
    SRC-RESET  s" : SN-TGL ( snz<a,b> -- ) SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-GM2 ( n -- ) 7 8 9 SN-TGL drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-TGL\""
-   S\" \"expected\":\"n n n snz<a,b>\",\"found\":\"n n n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<a,b>\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
    s" an if arm that turns a cell into a group is a depth fault counted in cells" T-LABEL
    SRC-RESET  s" SN-IFZ ( n bool -- n ) IF dup SN-SNZ THEN" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"THEN\""

@@ -5487,15 +5487,26 @@ variable SG-ROWS-PUBLISH
       COVER-STEP 0= IF RES-FALSE EXIT THEN
    REPEAT RES-TRUE ;
 
-\ Copies of exp's own pushes, in order, over below.
-: COVER-COPY ( n n -- n )
-   {: exp:n below:n :}
-   exp R-RES 0 P-COPY {: head:n :}
-   head  exp R-RES P>REST
-   BEGIN R-RES dup TAG S-PUSH = WHILE      \ ( last e )
+\ Copies of src's pushes above row stop, in order, over below.
+: COVER-COPY ( n n n -- n )
+   {: src:n stop:n below:n :}
+   stop R-RES {: end:n :}
+   src R-RES 0 P-COPY {: head:n :}
+   head  src R-RES P>REST
+   BEGIN R-RES dup dup TAG S-PUSH =  swap end <>  and WHILE      \ ( last e )
       dup 0 P-COPY  rot  over swap P-REST!  swap P>REST
    REPEAT drop
    below swap P-REST!  head ;
+
+\ The row below act's top values that hold c cells or more, a group whole, one
+\ value at least; where act's values end when they hold fewer.
+: COVER-STOP ( n n -- n )
+   {: act:n c:n :}
+   act ROW-CELLS c - {: floor:n :}
+   act BEGIN
+      dup VALUE-REST 0= IF drop EXIT THEN
+      nip dup ROW-CELLS floor > 0=
+   UNTIL ;
 
 
 \ Row s ends in a tail the check could still extend, as a quotation's input or
@@ -5510,18 +5521,20 @@ variable SG-ROWS-PUBLISH
    loop RES-TRUE ;
 
 
-\ The pair as the bindings U-DRAIN stops before would leave it, binding nothing:
-\ exp's values over act's below, or an open act's over exp's rest.
+\ The pair a mismatch shows, binding nothing: exp and act's top values that fill
+\ its cells, or an open act's values over exp's rest.
 : ROWS-COVER ( n n -- n n )
    {: exp:n act:n :}
    exp ROW-TAIL {: tail:n :}
    tail ISROW 0=  tail act ROW-TAIL =  or IF exp act EXIT THEN
    exp R-RES TAG S-PUSH <> IF exp act EXIT THEN
-   exp act COVER-WALK {: er:n ar:n ok:bool :}
+   exp act COVER-WALK  swap drop {: er:n ok:bool :}
    ok 0= IF exp act EXIT THEN
-   er R-RES TAG S-PUSH <> IF exp ar COVER-COPY  act EXIT THEN
+   er R-RES TAG S-PUSH <> IF
+      exp  act  act exp ROW-CELLS COVER-STOP  tail COVER-COPY  EXIT
+   THEN
    act R-RES TAG S-PUSH <>  act TAIL-OPEN? 0=  or IF exp act EXIT THEN
-   act er COVER-COPY  exp swap ;
+   exp  act act ROW-TAIL er COVER-COPY ;
 
 
 \ Every site that judges a row pins the expected/actual pair, then the reason,

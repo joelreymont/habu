@@ -873,17 +873,15 @@ TAIL-CAPTURE-INSTALL
 \ declaration-order tags index the family's contiguous SUMV rows.
 variable MDV-I   variable MDV-F
 
-\ A row pair's repair by depth, counted in the unit its rows were judged in:
-\ ROW-VALUES for a mismatch, as ROWS-COVER pairs; ROW-CELLS for a depth reason.
-: ROWS-DEPTHS ( [ n -- n ] -- )
-   {: measure :}
+\ A row pair's repair by depth, counted in cells.
+: ROWS-DEPTHS ( -- )
    AT-PIN
-   DEXP @ measure execute DSUGE !
-   DACT @ measure execute DSUGA !
+   DEXP @ ROW-CELLS DSUGE !
+   DACT @ ROW-CELLS DSUGA !
    ;AT-PIN ;
 
 
-: ROWS-SUGGEST$ ( [ n -- n ] -- ^u8 n )
+: ROWS-SUGGEST$ ( -- ^u8 n )
    ROWS-DEPTHS
    DSUGA @ DSUGE @ > IF s" drop the extra value, or remove the word that pushes it" EXIT THEN
    DSUGA @ DSUGE @ < IF s" push the missing value before it is taken, or stop taking it" EXIT THEN
@@ -1062,9 +1060,9 @@ variable MDV-I   variable MDV-F
       MD-LINEAR-MEMORY of s" keep the value on the stack and pass it on instead of `@` or `!` through a pointer" endof
       MD-MEMORY-ARG   of s" give the family arguments that hold no linear value and no `mut-view`, as `n`, or keep the value on the stack" endof
       MD-MEMORY-EMPTY of s" keep the zero-width value on the stack instead of `@` or `!` through a pointer" endof
-      MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
-      MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
-      MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
+      MD-LOOP-DEPTH   of ROWS-SUGGEST$ endof
+      MD-IF-DEPTH     of ROWS-SUGGEST$ endof
+      MD-ARMS-DEPTH   of ROWS-SUGGEST$ endof
       MD-LOCAL-ESCAPE of s" run the quotation within the block of the locals it reads, or have it take their values from the stack" endof
       MD-BINDER-PLACE of s" call the scope operation directly in the word that gives it its callback" endof
       MD-DEPTH-WIDE   of s" take the wide value apart first, with `MATCH` on concrete arguments or `UNMAKE`, or count the values another way" endof
@@ -1915,9 +1913,12 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR
    RQM @ RORDINAL @ or 0 <> IF at TEXT-LEN ! THEN
    qm RQM @ or RQM ! ;
+\ The stack misses values only where the found row holds fewer values and fewer
+\ cells than expected: a narrower value is a wrong one, a wider one fills cells.
 : TAKES-HELP ( -- )
-   ['] ROW-VALUES ROWS-DEPTHS
-   DSUGA @ DSUGE @ < IF
+   ROWS-DEPTHS
+   AT-PIN  DACT @ ROW-VALUES  DEXP @ ROW-VALUES  <  ;AT-PIN
+   DSUGA @ DSUGE @ <  and IF
       s" put what " EMIT-STR  TOK-SPAN
       s"  takes on the stack before it, or declare it as an input" EMIT-STR EXIT
    THEN

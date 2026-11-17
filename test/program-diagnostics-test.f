@@ -316,6 +316,16 @@ variable BIG-U
    SB$ label labelu GE-EXPECT-ERR-HAS
    EXIT-STATUS:SYSTEM label labelu GE-EXPECT-RC ;
 
+: COVER-ROWS ( -- )
+   s" test/program-diagnostic-cover.f" {: path:^ pathu:n :}
+   path pathu s" program-diagnostic-cover.f:5:40" DIAGNOSTIC
+   S\" error[E-MISMATCH]: `!` takes str ^str; the stack holds ^u8 n ^str\n" path pathu GE-EXPECT-ERR-HAS
+   S\" = expected: str ^str\n  = found: ^u8 n ^str\n" path pathu GE-EXPECT-ERR-HAS
+   S\" error[E-MISMATCH]: `PDC-LEN` takes str; the stack holds ^u8 n\n" path pathu GE-EXPECT-ERR-HAS
+   S\" = expected: str\n  = found: ^u8 n\n" path pathu GE-EXPECT-ERR-HAS
+   s" = help: give `PDC-LEN` str: convert or replace the value before it" path pathu GE-EXPECT-ERR-HAS
+   s" = help: give `PDC-TWO` n n: convert or replace the value before it" path pathu GE-EXPECT-ERR-HAS ;
+
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    THROW-ZERO-STOPS
@@ -345,7 +355,8 @@ variable BIG-U
    s" 1 | XPU3 ( -- n ) XPD:XP-INC" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-lower.f" s" <input>:1:36" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS
-   s" 1 | LC-NAMED-BAD ( ^lcnamed -- color ) @" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS ;
+   s" 1 | LC-NAMED-BAD ( ^lcnamed -- color ) @" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS
+   COVER-ROWS ;
 
 public
 
