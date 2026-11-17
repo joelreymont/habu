@@ -9,7 +9,10 @@
 \
 \ VALUE= compares text a with text b in two passes: an index pass reads b once
 \ into rows; the walk then reads a once against them, and reads again only each
-\ string of b it compares.
+\ string of b it compares. Each number is read once, by the pass that meets it,
+\ into what NUMBER= compares. The scratch is one block from MEM:WITH-BYTES,
+\ sized from the texts' lengths; b's rows, and the member list and frames laid
+\ past them, move to a mapping only when they outgrow the block's tail.
 
 require src/lib/memory.f
 require src/lib/sort.f
@@ -38,35 +41,22 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    dup STR-DIGIT? swap ZERO <> and ;
 
 
-\ The first offset below end whose byte answers true to test, or end.
-: SCAN-TO ( ^u8 n [ n -- bool ] -- n )
-   {: p:^ end:n test :}
-   0 begin dup end < if dup p + c@ test execute 0= else false then
-   while 1+ repeat ;
+\ One mantissa byte at offset i onto the offsets of the first and the last
+\ significant digit and of the point so far, -1 for none yet.
+: MANTISSA-BYTE ( n n n ^u8 n -- n n n n )
+   {: f:n l:n dot:n p:^ i:n :}
+   p i + c@ {: c:n :}
+   c DOT = if f l i  i 1+ exit then
+   c SIGNIFICANT? 0= if f l dot  i 1+ exit then
+   f 0< if i else f then  i dot  i 1+ ;
 
-\ Offset of the exponent marker, or the length without one.
-: MANTISSA-END ( ^u8 n -- n )
-   [: EXP-MARK? ;] SCAN-TO ;
-
-\ Offset of the first significant digit, or the mantissa's end for a zero.
-: FIRST-SIG ( ^u8 n -- n )
+\ The offsets of the first and the last significant digit and of the point,
+\ each -1 without one, then the mantissa's end: the exponent marker or u.
+: MANTISSA ( ^u8 n -- n n n n )
    {: p:^ u:n :}
-   p  p u MANTISSA-END  [: SIGNIFICANT? ;] SCAN-TO ;
-
-\ Offset of the decimal point, or the mantissa's end without one.
-: POINT-AT ( ^u8 n -- n )
-   {: p:^ u:n :}
-   p  p u MANTISSA-END  [: DOT = ;] SCAN-TO ;
-
-: ZERO-NUMBER? ( ^u8 n -- bool )
-   {: p:^ u:n :}
-   p u FIRST-SIG  p u MANTISSA-END = ;
-
-\ Offset of the last significant digit of a nonzero lexeme.
-: LAST-SIG ( ^u8 n -- n )
-   {: p:^ u:n :}
-   p u MANTISSA-END 1-
-   begin dup p + c@ SIGNIFICANT? 0= while 1- repeat ;
+   -1 -1 -1 0
+   begin dup u < if dup p + c@ EXP-MARK? 0= else false then
+   while p swap MANTISSA-BYTE repeat ;
 
 
 \ Digit d onto m, the negated exponent so far: one past LEAST-N is
@@ -78,11 +68,11 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    m 10 * d - ;
 
 
-\ The exponent the lexeme states, 0 without one; one a signed cell cannot hold
-\ is E-JSON-READ-NUMBER.
-: STATED-EXP ( ^u8 n -- n )
-   {: p:^ u:n :}
-   p u MANTISSA-END 1+ {: at:n :}
+\ The exponent the lexeme states after its mantissa's end m, 0 without one;
+\ one a signed cell cannot hold is E-JSON-READ-NUMBER.
+: STATED-EXP ( ^u8 n n -- n )
+   {: p:^ u:n m:n :}
+   m 1+ {: at:n :}
    at u > if 0 exit then
    p at + c@ {: sign:n :}
    sign PLUS =  sign MINUS =  or if at 1+ else at then {: from:n :}
@@ -99,23 +89,28 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    x e + ;
 
 
-\ The point exponent x of a nonzero lexeme, 0 for a zero, either after
-\ STATED-EXP. With the first significant digit at offset f and the point at
-\ offset dot, the digits read as 0.d1..dn * 10^(dot - f) when f is before the
-\ point and as 0.d1..dn * 10^(dot - f + 1) after it; the stated exponent adds.
-: POINT-EXP ( ^u8 n -- n )
-   {: p:^ u:n :}
-   p u STATED-EXP {: e:n :}
-   p u ZERO-NUMBER? if 0 exit then
-   p u POINT-AT  p u FIRST-SIG {: dot:n f:n :}
+\ x for the first significant digit at offset f, the point at offset dot (the
+\ mantissa's end without one) and the stated exponent e.
+: POINT-EXP ( n n n -- n )
+   {: dot:n f:n e:n :}
    dot f -  f dot > if 1+ then  e EXP+ ;
 
-
-\ How many significant digits a nonzero lexeme has, the point not counted.
-: DIGIT-COUNT ( ^u8 n -- n )
-   {: p:^ u:n :}
-   p u FIRST-SIG  p u LAST-SIG  p u POINT-AT {: f:n l:n dot:n :}
+\ How many significant digits lie from offset f through offset l, the point
+\ at offset dot not counted.
+: DIGIT-COUNT ( n n n -- n )
+   {: f:n l:n dot:n :}
    l f - 1+  f dot <  dot l <  and if 1- then ;
+
+\ A lexeme's x, first significant digit's offset and digit count, 0 0 0 for a
+\ zero, from one scan; any exponent past a cell is E-JSON-READ-NUMBER.
+: DIGITS ( ^u8 n -- n n n )
+   {: p:^ u:n :}
+   p u MANTISSA {: f:n l:n dot:n m:n :}
+   p u m STATED-EXP {: e:n :}
+   f 0< if 0 0 0 exit then
+   dot 0< if m else dot then {: at:n :}
+   at f e POINT-EXP  f  f l at DIGIT-COUNT ;
+
 
 \ The offset of the digit after the one at offset i, below the last.
 : NEXT-DIGIT ( ^u8 n -- n )
@@ -123,13 +118,11 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    i 1+ dup p + c@ DOT = if 1+ then ;
 
 
-\ Whether two nonzero lexemes have the same significant digits, byte for byte.
-: SAME-DIGITS? ( ^u8 n ^u8 n -- bool )
-   {: a:^ u:n b:^ v:n :}
-   a u DIGIT-COUNT {: count:n :}
-   b v DIGIT-COUNT count <> if false exit then
-   a u FIRST-SIG  b v FIRST-SIG
-   count 0 ?do
+\ Whether count significant digits from a and from b are the same, byte for
+\ byte, each side stepping over its point.
+: SAME-DIGITS? ( ^u8 ^u8 n -- bool )
+   {: a:^ b:^ count:n :}
+   0 0  count 0 ?do
       over a + c@  over b + c@  <> if 2drop false unloop exit then
       i count 1- < if swap a swap NEXT-DIGIT swap b swap NEXT-DIGIT then
    loop
@@ -140,16 +133,16 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    c@ MINUS = ;
 
 
-\ An exponent past a signed cell in either throws, as POINT-EXP does.
-: NUMBER= ( ^u8 n ^u8 n -- bool )
-   {: a:^ u:n b:^ v:n :}
-   a u POINT-EXP  b v POINT-EXP {: xa:n xb:n :}
-   a u ZERO-NUMBER?  b v ZERO-NUMBER? {: za:bool zb:bool :}
+\ Whether two lexemes have one value, each given by its bytes and what DIGITS
+\ answers for it.
+: NUMBER= ( ^u8 n n n ^u8 n n n -- bool )
+   {: a:^ xa:n fa:n na:n b:^ xb:n fb:n nb:n :}
+   na 0=  nb 0= {: za:bool zb:bool :}
    za zb and if true exit then
    za zb or if false exit then
    a NEGATIVE?  b NEGATIVE?  xor if false exit then
-   xa xb <> if false exit then
-   a u b v SAME-DIGITS? ;
+   xa xb <>  na nb <>  or if false exit then
+   a fa +  b fb +  na SAME-DIGITS? ;
 
 
 \ ---- the walk --------------------------------------------------------------
@@ -159,8 +152,10 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    ka kb =  ka NUMERIC? kb NUMERIC? and  or ;
 
 
-\ One value of b: start..start+len its bytes, a string's quotes included; count a container's
-\ children; next the first row past its own; parent -1 at the top; first its first member's place.
+\ One value of b: start..start+len its bytes, quotes included; next the first
+\ row past its own; parent -1 at the top. count and first: a container's
+\ children and an object's first member's place, or a number's digit count and
+\ first significant digit's offset, with exp its point exponent (DIGITS).
 STRUCTURE row DERIVE addr
    FIELD kind n
    FIELD start n
@@ -171,6 +166,7 @@ STRUCTURE row DERIVE addr
    FIELD key-at n
    FIELD key-len n
    FIELD first n
+   FIELD exp n
    FIELD matched bool
 ;STRUCTURE
 
@@ -184,8 +180,11 @@ STRUCTURE frame DERIVE addr
    FIELD count n
 ;STRUCTURE
 
-\ VALUE='s scratch, one mapping laid out by WALK-INIT. A fresh mapping reads 0:
-\ every count starts at 0, the member list is empty and no record owns a stack.
+\ VALUE='s scratch over a WITH-BYTES block, which reads 0: every count starts
+\ at 0 and no record owns a stack. At rows, tail-len bytes (a mapping when
+\ mapped): b's rows, then the member list, spare and frames. level and peak:
+\ b's containers open as the index pass reads, now and at most; num-exp,
+\ num-first and num-count: a's number under record a, as a row holds b's.
 STRUCTURE walk DERIVE addr
    FIELD a cursor
    FIELD b cursor
@@ -193,8 +192,12 @@ STRUCTURE walk DERIVE addr
    FIELD frames ^u8
    FIELD depth n
    FIELD rows ^u8
+   FIELD tail-len n
+   FIELD mapped bool
    FIELD used n
    FIELD open n
+   FIELD level n
+   FIELD peak n
    FIELD members ^u8
    FIELD spare ^u8
    FIELD member-n n
@@ -206,6 +209,9 @@ STRUCTURE walk DERIVE addr
    FIELD due n
    FIELD buf ^u8
    FIELD cap n
+   FIELD num-exp n
+   FIELD num-first n
+   FIELD num-count n
 ;STRUCTURE
 
 CAST: >ROW ( ^n -- ^row )
@@ -233,47 +239,36 @@ CAST: >WALK ( ^n -- ^walk )
    w  w WALK-DEPTH @ 1-  FRAME ;
 
 
-\ ---- the scratch's size -----------------------------------------------------
+\ ---- the scratch ------------------------------------------------------------
 
-\ Counts byte c into text's opening brackets, commas and colons so far.
-: TALLY ( n n n n -- n n n )
-   {: opens:n commas:n colons:n c:n :}
-   c LBRACE =  c LBRACK =  or if opens 1+ commas colons exit then
-   c COMMA = if opens commas 1+ colons exit then
-   opens commas  colons  c COLON = if 1+ then ;
+\ The tail's first length for b's v bytes. n values take at least 2n-1 bytes,
+\ and each row adds at most two member-list cells and one frame, so
+\ TAIL-BOUND bytes hold any b of v bytes with no move. TAIL-0 is the smaller
+\ of that bound and the larger of TAIL-FLOOR bytes and v/10+1 rows: a b whose
+\ bound fits the floor never moves; a longer one moves to a mapping only when
+\ it needs more than v/10+1 rows' bytes.
+2048 constant TAIL-FLOOR
 
-\ A byte inside a string counts too, so each count only bounds what it counts.
-: PUNCTUATION ( ^u8 n -- n n n )
-   {: p:^ u:n :}
-   0 0 0  u 0 ?do p i + c@ TALLY loop ;
+: TAIL-BOUND ( n -- n )
+   1+ 2 /  ROW-BYTES 2 cells + FRAME-BYTES +  * ;
 
+: TAIL-0 ( n -- n )
+   {: v:n :}
+   v TAIL-BOUND  v 10 / 1+ ROW-BYTES *  TAIL-FLOOR max  min ;
 
-\ Frames, rows and member cells: each frame is a container open in both texts; each value of b
-\ but the top and a container's first follows a comma; a member a colon, a cell in each list.
-: WALK-COUNTS ( ^u8 n ^u8 n -- n n n )
-   {: a:^ u:n b:^ v:n :}
-   a u PUNCTUATION 2drop  b v PUNCTUATION {: ka:n kb:n commas:n colons:n :}
-   ka kb min  commas kb + 1+  colons 2 * ;
+\ The block for a's u bytes and b's v: the walk, the tail, v key bytes, then u
+\ bytes for a's strings.
+: WALK-LEN ( n n -- n )
+   {: u:n v:n :}
+   WALK-BYTES  v TAIL-0 +  v +  u + ;
 
-: WALK-LEN ( n n n n n -- n )
-   {: k:n r:n s:n u:n v:n :}
-   WALK-BYTES  k FRAME-BYTES * +  r ROW-BYTES * +  s cells +  u +  v + ;
-
-
-\ Lays the walk over scratch: k frames, r rows, s member cells (the list, then the
-\ spare), v key bytes, then u bytes for a's strings.
-: WALK-INIT ( SPAN:span<u8> n n n n n -- ^walk )
-   {: scratch k:n r:n s:n u:n v:n :}
-   scratch SPAN:$ drop {: base:^ :}
+: WALK-INIT ( ^u8 n n -- ^walk )
+   {: base:^ u:n v:n :}
    base CELL-VIEW >WALK {: w:^ :}
-   base WALK-BYTES + {: frames:^ :}
-   frames k FRAME-BYTES * + {: rows:^ :}
-   rows r ROW-BYTES * + {: list:^ :}
-   list s cells + {: keys:^ :}
-   frames w WALK-FRAMES !
+   base WALK-BYTES + {: rows:^ :}
+   rows v TAIL-0 + {: keys:^ :}
    rows w WALK-ROWS !
-   list w WALK-MEMBERS !
-   list s 2 / cells + w WALK-SPARE !
+   v TAIL-0 w WALK-TAIL-LEN !
    keys w WALK-KEYS !
    v w WALK-KEY-CAP !
    keys v + w WALK-BUF !
@@ -282,13 +277,56 @@ CAST: >WALK ( ^n -- ^walk )
    w ;
 
 
-: WALK-FREE ( SPAN:span<u8> -- )
-   {: scratch :}
-   scratch SPAN:$ drop CELL-VIEW >WALK {: w:^ :}
+: FREE-TAIL ( ^walk -- )
+   {: w:^ :}
+   w WALK-MAPPED @ 0= if exit then
+   w WALK-ROWS @  w WALK-TAIL-LEN @  SPAN:MAKE MEM:FREE-SPAN ;
+
+\ Moves the rows to a mapping of len bytes and frees the mapping they leave,
+\ if any.
+: MOVE-TAIL ( ^walk n -- )
+   {: w:^ len:n :}
+   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
+   w WALK-ROWS @  w WALK-USED @ ROW-BYTES *  fresh SPAN:COPY
+   w FREE-TAIL
+   fresh SPAN:$  w WALK-TAIL-LEN !  w WALK-ROWS !
+   true w WALK-MAPPED ! ;
+
+\ Room for one more row: the rows move to a tail twice as long when they fill
+\ theirs.
+: ROW-ROOM ( ^walk -- )
+   {: w:^ :}
+   w WALK-USED @ 1+ ROW-BYTES *  w WALK-TAIL-LEN @ > if
+      w  w WALK-TAIL-LEN @ 2 *  MOVE-TAIL
+   then ;
+
+\ The rows, the member list and its spare, and a frame for each level of b's
+\ deepest container: a frame is a container open in both texts.
+: TAIL-NEED ( ^walk -- n )
+   {: w:^ :}
+   w WALK-USED @ ROW-BYTES *
+   w WALK-MEMBER-N @ 2 * cells +
+   w WALK-PEAK @ FRAME-BYTES * + ;
+
+\ Lays the member list, its spare and the frames past the rows, moving the
+\ tail to a mapping of the length they need when they pass its end.
+: LAY-TAIL ( ^walk -- )
+   {: w:^ :}
+   w TAIL-NEED {: need:n :}
+   need w WALK-TAIL-LEN @ > if w need MOVE-TAIL then
+   w WALK-ROWS @  w WALK-USED @ ROW-BYTES * + {: list:^ :}
+   list w WALK-MEMBERS !
+   list w WALK-MEMBER-N @ cells + {: spare:^ :}
+   spare w WALK-SPARE !
+   spare w WALK-MEMBER-N @ cells + w WALK-FRAMES ! ;
+
+
+: WALK-FREE ( ^walk -- )
+   {: w:^ :}
    w WALK-A MORE-RELEASE
    w WALK-B MORE-RELEASE
    w WALK-S MORE-RELEASE
-   scratch MEM:FREE-SPAN ;
+   w FREE-TAIL ;
 
 
 \ ---- b's members -------------------------------------------------------------
@@ -393,17 +431,12 @@ CAST: >WALK ( ^n -- ^walk )
    at len + w WALK-KEY-USED ! ;
 
 
-: ADD-MEMBER ( ^walk n -- )
-   {: w:^ r:n :}
-   w WALK-MEMBER-N @ {: at:n :}
-   r  w WALK-MEMBERS @ at LIST-CELL !
-   at 1+ w WALK-MEMBER-N ! ;
-
-
 \ Appends a row for the value of kind under record b, a member's when the
-\ innermost open row is an object's, and answers its index.
+\ innermost open row is an object's, and answers its index; the rows first
+\ make room for it.
 : ADD-ROW ( ^walk n -- n )
    {: w:^ kind:n :}
+   w ROW-ROOM
    w WALK-B {: c:^ :}
    w WALK-USED @ {: r:n :}
    w WALK-OPEN @ {: obj:n :}
@@ -425,7 +458,7 @@ CAST: >WALK ( ^n -- ^walk )
    p ROW-KIND @ T-OBJ = if
       w WALK-KEY-AT @ row ROW-KEY-AT !
       w WALK-KEY-LEN @ row ROW-KEY-LEN !
-      w r ADD-MEMBER
+      1 w WALK-MEMBER-N +!
    then
    r ;
 
@@ -437,20 +470,37 @@ CAST: >WALK ( ^n -- ^walk )
    w  w WALK-OPEN @  ROW {: row:^ :}
    w WALK-B CURSOR-POS @  row ROW-START @ -  row ROW-LEN !
    w WALK-USED @ row ROW-NEXT !
-   row ROW-PARENT @ w WALK-OPEN ! ;
+   row ROW-PARENT @ w WALK-OPEN !
+   -1 w WALK-LEVEL +! ;
+
+
+\ Row r, a container's, is b's innermost open one.
+: OPEN-ROW ( ^walk n -- )
+   {: w:^ r:n :}
+   r w WALK-OPEN !
+   1 w WALK-LEVEL +!
+   w WALK-LEVEL @  w WALK-PEAK @  max  w WALK-PEAK ! ;
+
+
+\ Row r's number as DIGITS reads it.
+: KEEP-NUMBER ( ^walk n -- )
+   {: w:^ r:n :}
+   w r ROW {: row:^ :}
+   w WALK-B RAW-SPAN$ DIGITS
+   row ROW-COUNT !  row ROW-FIRST !  row ROW-EXP ! ;
 
 
 : INDEX-TOKEN ( ^walk n -- )
    {: w:^ kind:n :}
    kind T-KEY = if w KEEP-KEY exit then
    kind CLOSER? if w CLOSE-ROW exit then
-   kind NUMERIC? if w WALK-B RAW-SPAN$ POINT-EXP drop then
    w kind ADD-ROW {: r:n :}
-   kind OPENER? if r w WALK-OPEN ! then ;
+   kind NUMERIC? if w r KEEP-NUMBER then
+   kind OPENER? if w r OPEN-ROW then ;
 
 
-\ Reads b whole with record b, each number's exponents checked as NUMBER=
-\ reads them, into one row per value.
+\ Reads b whole with record b into one row per value, each number read once;
+\ a key or a closer adds no row and makes no room.
 : INDEX ( ^walk ^u8 n -- )
    {: w:^ b:^ v:n :}
    w WALK-B {: c:^ :}
@@ -459,13 +509,39 @@ CAST: >WALK ( ^n -- ^walk )
    drop ;
 
 
+\ Whether row r is a member: its parent is an object's row.
+: MEMBER? ( ^walk n -- bool )
+   {: w:^ r:n :}
+   w r ROW ROW-PARENT @ {: p:n :}
+   p 0< if false exit then
+   w p ROW ROW-KIND @ T-OBJ = ;
+
+\ Puts row r at place at of the member list when it is a member; answers the
+\ next place.
+: LIST-ROW ( n ^walk n -- n )
+   {: at:n w:^ r:n :}
+   w r MEMBER? 0= if at exit then
+   r  w WALK-MEMBERS @ at LIST-CELL !  at 1+ ;
+
+\ The member list, in b's order.
+: LIST-MEMBERS ( ^walk -- )
+   {: w:^ :}
+   0  w WALK-USED @ 0 ?do w i LIST-ROW loop drop ;
+
+
 \ ---- a against b's rows ------------------------------------------------------
 
-\ a's next token, a number's exponents checked as NUMBER= reads them.
+\ a's number under record a as DIGITS reads it.
+: KEEP-A-NUMBER ( ^walk -- )
+   {: w:^ :}
+   w WALK-A RAW-SPAN$ DIGITS
+   w WALK-NUM-COUNT !  w WALK-NUM-FIRST !  w WALK-NUM-EXP ! ;
+
+\ a's next token, a number read once.
 : A-NEXT ( ^walk -- n )
    {: w:^ :}
    w WALK-A NEXT-INNER
-   dup NUMERIC? if w WALK-A RAW-SPAN$ POINT-EXP drop then ;
+   dup NUMERIC? if w KEEP-A-NUMBER then ;
 
 
 : OPEN-FRAME ( ^walk n n -- n )
@@ -483,13 +559,21 @@ CAST: >WALK ( ^n -- ^walk )
    w WALK-DEPTH @ 1- w WALK-DEPTH ! ;
 
 
+\ Whether a's number equals row r's, whose bytes start at raw.
+: SAME-NUMBER? ( ^walk ^u8 ^row -- bool )
+   {: w:^ raw:^ r:^ :}
+   w WALK-A RAW-SPAN$ drop
+   w WALK-NUM-EXP @  w WALK-NUM-FIRST @  w WALK-NUM-COUNT @
+   raw  r ROW-EXP @  r ROW-FIRST @  r ROW-COUNT @  NUMBER= ;
+
+
 \ Whether a's scalar equals row r of one kind with it: a string decodes into
 \ buf and streams against r's bytes under record s.
 : SCALAR= ( ^walk ^row -- bool )
    {: w:^ r:^ :}
    w WALK-A {: ca:^ :}
    w WALK-B CURSOR-SRC @ r ROW-START @ +  r ROW-LEN @ {: raw:^ len:n :}
-   ca CURSOR-KIND @ NUMERIC? if ca RAW-SPAN$ raw len NUMBER= exit then
+   ca CURSOR-KIND @ NUMERIC? if w raw r SAME-NUMBER? exit then
    ca CURSOR-KIND @ T-STR <> if true exit then
    ca w WALK-BUF @ w WALK-CAP @ STR-INNER {: n:n :}
    w WALK-S raw len INIT-STATE
@@ -569,6 +653,8 @@ CAST: >WALK ( ^n -- ^walk )
    {: w:^ a:^ u:n b:^ v:n :}
    drop
    w b v INDEX
+   w LAY-TAIL
+   w LIST-MEMBERS
    w SORT-MEMBERS
    w WALK-A a u INIT-STATE
    w VALUE-EQ?
@@ -576,16 +662,22 @@ CAST: >WALK ( ^n -- ^walk )
    w a u b v ;
 
 
-: EQUAL-RUN ( ^u8 n ^u8 n -- bool )
-   {: a:^ u:n b:^ v:n :}
-   a u b v WALK-COUNTS {: k:n r:n s:n :}
-   k r s u v WALK-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   scratch k r s u v WALK-INIT {: w:^ :}
+\ VALUE= over the block at base; a throw leaves no reader stack or tail
+\ mapping behind.
+: EQUAL-IN ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- bool )
+   drop {: a:^ u:n b:^ v:n base:^ :}
+   base u v WALK-INIT {: w:^ :}
    false w a u b v [: EQUAL-SLOT ;] catch
    {: same spare pa ua pb ub code:n :}
-   scratch WALK-FREE
+   w WALK-FREE
    code 0= if same exit then
    code throw ;
+
+
+: EQUAL-RUN ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
+   a u b v  u v WALK-LEN MEM:BYTES-ALLOC-LEN
+   [: EQUAL-IN ;] MEM:WITH-BYTES ;
 
 public
 

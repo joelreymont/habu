@@ -1065,8 +1065,9 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
 \ A reader's first stack mapping is 4096 bytes, and READ-REPEATS? holds two
 \ mappings at once of at most that size here: its scratch and its record's
 \ stack. Two probes freed and mapped again land at the same addresses only when
-\ nothing took the holes, so a body that leaves a mapping owned moves a probe
-\ elsewhere.
+\ nothing took the holes, so a body that leaves such a mapping owned moves a
+\ probe elsewhere; a larger mapping, such as the rows VALUE= moves to one, can
+\ land past both holes, and the check does not see it.
 \ This relies on the kernel's first-fit reuse of a freed mapping, as
 \ src/lib/byte-buffer-test.f BUFT-DISPOSE-RELEASES does.
 4096 constant JRT-MORE-BYTES
@@ -1193,6 +1194,13 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    70 JRT-NEST-OBJ$ 2dup JSON:VALUE= TTRUE
    [: 70 JRT-NEST-OBJ$ 1-  70 JRT-NEST-OBJ$ JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
+\ This VALUE='s scratch fits a pooled MEM:WITH-BYTES slot, and the pool keeps
+\ a chunk it maps for later scopes, which is no leak. One call before the
+\ release check maps any chunk the slot needs, so the probes test the
+\ records' stacks, not the pool.
+: JRT-WARM-VALUE-EQ ( -- )
+   70 JRT-NEST-OBJ$ 2dup JSON:VALUE= drop ;
+
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
    [: JRT-DEEP-EDGES ;] JRT-RELEASES
@@ -1213,6 +1221,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" READ-REPEATS? past 64 levels releases both stacks, a throw included" T-LABEL
    [: JRT-DEEP-REPEATS ;] JRT-RELEASES
    s" VALUE= past 64 levels releases every record's stack, a throw included" T-LABEL
+   JRT-WARM-VALUE-EQ
    [: JRT-DEEP-VALUE-EQ ;] JRT-RELEASES ;
 
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
