@@ -634,7 +634,6 @@ public
    9 0 MOVZ,
    before LBL,
    9 SP 24 STR,
-   9 SP 24 LDR,  11 SP 40 LDR,
    10 11 0 ADDI,  EM-DEF-OCC:LBEFORE LABEL@ BL,
    10 SP 8 LDR,  9 SP 24 LDR,
    9 declared CBZ,

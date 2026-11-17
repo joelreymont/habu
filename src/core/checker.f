@@ -9933,7 +9933,6 @@ $40 constant EFF-REC
 
 0 constant STORAGE-NONE
 1 constant STORAGE-ACCESSOR
-2 constant STORAGE-GRID
 3 constant STORAGE-DEFER
 
 : ER.NEXT ( ^u8 -- ^n ) ER-NEXT-OFF + CELL-VIEW ;
@@ -16204,17 +16203,6 @@ EXPORT CHECKER-LBUF:COUNT-OK?
    STORAGE-DEFERRED rec ER.STORAGE-N !
    STORAGE-DEFER rec ER.STORAGE-KIND ! ;
 
-\ Its one caller (CHECKER-GRID-ATTACH) hands a record it just built and a run
-\ CHECKER-BODY-CLOSE ended above a cell-aligned body start and at or below
-\ `here`: at least one whole cell inside DATA.
-: CHECKER-STORAGE-GRID ( n ^a n -- )
-   {: handle:n base:^ count:n :}
-   base DATA-OFF {: off:n :}
-   handle 1- E-PTR {: rec:^ :}
-   off rec ER.STORAGE-OFF !
-   count rec ER.STORAGE-N !
-   STORAGE-GRID rec ER.STORAGE-KIND ! ;
-
 \ The definer publishes three checked words from one line. Certification never
 \ runs the definer, so all three are registered here, or a later call in the
 \ same source is E-UNDEFINED. Publishing a generated word holds its name and
@@ -16534,13 +16522,12 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ A facts read that links no effect (CHECK READ-LINK) keeps where its rows
 \ start, plus one, in READ: a rewind below it takes the read's rows, so it
 \ clears the row and the next bind reads the text again.
-5 constant RLINK-CELLS
+4 constant RLINK-CELLS
 RLINK-CELLS cells constant RECORD-LINK-ROW
 0 constant RLINK.OCC
 1 constant RLINK.EFFECT
 2 constant RLINK.CONTROL
-3 constant RLINK.GRID
-4 constant RLINK.READ
+3 constant RLINK.READ
 PERSISTED-PTR-VARIABLE RECORD-LINK-P
 NULL-PTR RECORD-LINK-P !
 variable RECORD-LINK-CAP   0 RECORD-LINK-CAP !
@@ -16579,8 +16566,7 @@ private
    ord RECORD-LINK-CELL 0 RLINK-CELLS ARENA-CELLS-ZERO ;
 
 : RECORD-LINK-BOUND-ROW ( ^n -- ) {: row:^ :}
-   row RLINK.EFFECT cells + @ row RLINK.GRID cells + @ max
-      row RLINK.READ cells + @ max
+   row RLINK.EFFECT cells + @ row RLINK.READ cells + @ max
       RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI !
    row RLINK.CONTROL cells + @
       RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI ! ;
@@ -16611,7 +16597,7 @@ private
    ord RECORD-LINK-CELL {: row:^ :}
    row RLINK.OCC cells + @ 0= IF
       RES-FALSE EXIT THEN
-   row RLINK.EFFECT cells + @ 0= row RLINK.GRID cells + @ 0= and IF
+   row RLINK.EFFECT cells + @ 0= IF
       RES-FALSE EXIT THEN
    ord row RLINK.OCC cells + @ RECORD-LINK-MATCH? ;
 
@@ -16632,7 +16618,6 @@ private
    occurrence row RLINK.OCC cells + !
    effect row RLINK.EFFECT cells + !
    control row RLINK.CONTROL cells + !
-   0 row RLINK.GRID cells + !
    0 row RLINK.READ cells + !
    row RECORD-LINK-BOUND-ROW ;
 
@@ -16657,15 +16642,11 @@ private
    RECORD-LINK-CAP @ 0 ?do
       i RECORD-LINK-CELL {: row:^ :}
       row RLINK.READ cells + @ end > IF i RECORD-LINK-CLEAR THEN
-      row RLINK.GRID cells + @ end > IF
-         0 row RLINK.GRID cells + !
-      THEN
       row RLINK.EFFECT cells + @ end > IF
          0 row RLINK.EFFECT cells + !
          0 row RLINK.CONTROL cells + !
       THEN
       row RLINK.EFFECT cells + @ 0=
-      row RLINK.GRID cells + @ 0= and
       row RLINK.READ cells + @ 0= and IF
          row RLINK.OCC cells + @ 0 <> IF i RECORD-LINK-CLEAR THEN
       ELSE row RECORD-LINK-BOUND-ROW THEN
@@ -16682,52 +16663,6 @@ private
       row RLINK.CONTROL cells + @
          RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
    loop ;
-
-: RECORD-GRID-REC ( n -- ^u8 ) {: grid:n :}
-   grid 0 <= grid UEND @ > or IF
-      s" checker: invalid grid link" 76 die THEN
-   grid 1- E-PTR {: rec:^ :}
-   rec ER.ACTIVE @ EFF-ACTIVE <>
-   rec ER.SYM @ 0 <> or
-   rec ER.STORAGE-KIND @ STORAGE-GRID <> or IF
-      s" checker: invalid grid row" 76 die THEN
-   rec ;
-
-\ A grid's anonymous effect record must stop owning DATA before the extent is
-\ reused. A rewound effect row is already gone, so it is never dereferenced.
-: RECORD-GRID-DISCARD ( ^n -- ) {: row:^ :}
-   row RLINK.GRID cells + @ {: grid:n :}
-   grid 0 <> IF
-      grid UEND @ <= IF
-         grid RECORD-GRID-REC {: rec:^ :}
-         0 rec ER.STORAGE-OFF !
-         0 rec ER.STORAGE-N !
-         STORAGE-NONE rec ER.STORAGE-KIND !
-      THEN
-      0 row RLINK.GRID cells + !
-   THEN
-   row RLINK.EFFECT cells + @ 0= IF
-      row 0 RLINK-CELLS ARENA-CELLS-ZERO
-   THEN ;
-
-\ def-occ-select returns ORD's own slot and a nonzero occurrence or throws. A row
-\ under the current occurrence holds no grid: a link write clears it, and a body
-\ close attaches only where none is held.
-: RECORD-LINK-GRID-ATTACH ( n n -- ) {: ord:n grid:n :}
-   grid RECORD-GRID-REC drop
-   ord RECORD-LINK-OCC nip {: occurrence:n :}
-   ord RECORD-LINK-ROOM
-   ord RECORD-LINK-CELL {: row:^ :}
-   row RLINK.OCC cells + @ 0 <>
-   row RLINK.OCC cells + @ occurrence <> and IF
-      \ DOES> carries this exact grid across the occurrence reissue. A
-      \ different grid belongs to an abandoned link and loses its extent.
-      row RLINK.GRID cells + @ grid <> IF row RECORD-GRID-DISCARD THEN
-      ord RECORD-LINK-CLEAR
-   THEN
-   occurrence row RLINK.OCC cells + !
-   grid row RLINK.GRID cells + !
-   grid RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI ! ;
 
 \ The record a created word carries, built from the effect its definer states.
 \ 0 when the effect does not parse or no record can hold it, with SGBAD saying
@@ -16763,91 +16698,14 @@ private
    was CHECKER-REC-SYM !
    off 1 + ;
 
-\ Binds the anonymous storage grid [base, base + count cells) to ORD's current
-\ dictionary occurrence: a closed `,` run.
-: CHECKER-GRID-ATTACH ( n ^a n -- )
-   {: ord:n base:^ count:n :}
-   \ The text is fixed and parses.
-   s" -- ^a" CREATED-RECORD-BUILD {: grid:n :}
-   grid base count CHECKER-STORAGE-GRID
-   ord grid RECORD-LINK-GRID-ATTACH ;
-
-\ The latest created record whose body a `,` run may declare: its ordinal (-1
-\ for none), its RECORD-LINK occurrence and its body start as a DATA offset.
-variable BODY-PEND-ORD    -1 BODY-PEND-ORD !
-variable BODY-PEND-OCC    0 BODY-PEND-OCC !
-variable BODY-PEND-BASE   0 BODY-PEND-BASE !
-\ A build pends its own created bodies; hb's pending body waits out the build.
-BODY-PEND-ORD -1 CELL-ROW+
-BODY-PEND-OCC 0 CELL-ROW+
-BODY-PEND-BASE 0 CELL-ROW+
-private
-
-\ An engine `,` run cell holds an address; this is its DATA offset.
-: COMMA-CELL-OFF ( n -- n )
-   {: cell:n :}
-   data-base cell + CELL-VIEW @ data-base NULL-PTR - - ;
-
-: CHECKER-BODY-ALLOC? ( n -- bool )
-   {: ord:n :}
-   ord REC-AT CK-REC-FLAGS-SLOT cells + @
-   CREATED-BODY-ABI:DNAME-ALLOC and 0 <> ;
-
-\ The pending created body's `,` cells, up to the first other allocation, become its storage
-\ grid; a record that left the dictionary or a run broken by a DP lowering attaches nothing.
-: CHECKER-BODY-CLOSE ( -- )
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF EXIT THEN
-   BODY-PEND-ORD @ BODY-PEND-OCC @ BODY-PEND-BASE @
-   {: ord:n occ:n base:n :}
-   -1 BODY-PEND-ORD !  0 BODY-PEND-OCC !  0 BODY-PEND-BASE !
-   ord 0 < ord ndict@ >= or IF EXIT THEN
-   ord occ RECORD-LINK-MATCH? 0= IF EXIT THEN
-   ord REC-AT CK-REC-WID WL:RETIRED = IF EXIT THEN
-   ord CHECKER-BODY-ALLOC? 0= IF EXIT THEN
-   ord RECORD-LINK-CAP @ < IF
-      ord RECORD-LINK-CELL RLINK.GRID cells + @ 0 <> IF EXIT THEN
-   THEN
-   CREATED-BODY-ABI:COMMA-RUN-CELL COMMA-CELL-OFF base <> IF EXIT THEN
-   CREATED-BODY-ABI:COMMA-END-CELL COMMA-CELL-OFF {: end:n :}
-   end base <= IF EXIT THEN
-   end here BYTE-VIEW data-base BYTE-VIEW - > IF EXIT THEN
-   ord data-base base + CELL-VIEW end base - CELL / CHECKER-GRID-ATTACH ;
-
-\ The occurrence an earlier publish linked the record under, 0 for none. An append
-\ clears the record's link, so only its `does>`, which reissues the occurrence,
-\ finds one that differs from the current.
-: CREATED-MET-OCC ( ^n -- n ) {: rec:^ :}
-   rec NULL-PTR = IF 0 EXIT THEN
-   rec REC>INDEX {: ord:n :}
-   ord 0 < ord ndict@ >= or ord RECORD-LINK-CAP @ >= or IF 0 EXIT THEN
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
-   slot ord <> IF 0 EXIT THEN
-   ord RECORD-LINK-CELL RLINK.OCC cells + @ {: was:n :}
-   was occurrence = IF 0 EXIT THEN
-   was ;
-
-\ A create pends its body at its anchor. Its `does>` leaves the body pending,
-\ under the reissued occurrence when still its own.
 : RECORD-LINK-CREATED ( n n ^n -- )
    {: effect:n control:n rec:^ :}
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or IF EXIT THEN
-   rec CREATED-MET-OCC {: met:n :}
-   met 0= IF CHECKER-BODY-CLOSE THEN
    rec NULL-PTR = IF EXIT THEN
    rec REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF EXIT THEN
    ord RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> occurrence 0= or IF EXIT THEN
-   met 0= IF
-      ord CHECKER-BODY-ALLOC? IF
-         ord BODY-PEND-ORD !  occurrence BODY-PEND-OCC !
-         CREATED-BODY-ABI:COMMA-BASE-CELL COMMA-CELL-OFF BODY-PEND-BASE !
-      THEN
-   ELSE
-      BODY-PEND-ORD @ ord = BODY-PEND-OCC @ met = and IF
-         occurrence BODY-PEND-OCC !
-      THEN
-   THEN
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
    ord effect control occurrence RECORD-LINK-WRITE ;
 
@@ -16857,56 +16715,10 @@ private
    [: RECORD-LINK-CREATED ;] is RECORD-CREATED-XT ;
 RECORD-LINK-HOOKS
 
-;package
-package CHECKER-REG
-EXPORT CHECK:CHECKER-BODY-CLOSE
-;package
-package CHECK
-
-: RECORD-GRID-REVOKE ( n -- ) {: cut:n :}
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CELL {: row:^ :}
-      row RLINK.GRID cells + @ {: grid:n :}
-      grid 0 <> IF
-         i RECORD-LINK-CURRENT? 0= IF
-            row RECORD-GRID-DISCARD
-            i RECORD-LINK-CLEAR
-         ELSE
-            grid RECORD-GRID-REC {: rec:^ :}
-            rec ER.STORAGE-OFF @ rec ER.STORAGE-N @ cells + cut > IF
-               row RECORD-GRID-DISCARD
-            THEN
-         THEN
-      THEN
-   loop ;
-
-\ A data-base offset; record grids and texts above it go.
+\ A data-base offset; texts above it go.
 : DP-CUT ( n -- )
    {: cut:n :}
-   cut RECORD-GRID-REVOKE
    cut data-base NULL-PTR - + INTERN:KEEP-BELOW ;
-
-\ Called on a record being retired, before its wordlist is stamped retired.
-: RECORD-GRID-RETIRE ( ^n -- ) {: owner:^ :}
-   owner REC>INDEX {: ord:n :}
-   ord 0 < ord ndict@ >= or IF EXIT THEN
-   ord REC-AT owner <> IF EXIT THEN
-   ord RECORD-LINK-CURRENT? 0= IF EXIT THEN
-   ord RECORD-LINK-CELL RECORD-GRID-DISCARD ;
-
-: RECORD-GRID-BEFORE ( ^n -- n ) {: owner:^ :}
-   owner REC>INDEX {: ord:n :}
-   ord 0 < ord ndict@ >= or IF 0 EXIT THEN
-   ord REC-AT owner <> IF 0 EXIT THEN
-   ord RECORD-LINK-CURRENT? 0= IF 0 EXIT THEN
-   ord RECORD-LINK-CELL RLINK.GRID cells + @ ;
-
-\ GRID is the nonzero grid RECORD-GRID-BEFORE read for OWNER at its own ordinal;
-\ the engine calls this only for one.
-: RECORD-GRID-AFTER ( ^n n -- ) {: owner:^ grid:n :}
-   owner REC>INDEX {: ord:n :}
-   ord ndict@ >= IF s" checker: does> publication cut its created record" 76 die THEN
-   ord grid RECORD-LINK-GRID-ATTACH ;
 
 \ The registrar records the next ordinal while the engine still holds its
 \ dictionary word unpublished. Publication joins that ordinal with the exact
@@ -16919,9 +16731,6 @@ package CHECK
 : RECORD-PUBLISHED-LOCAL ( n -- ) {: ord:n :}
    ord 0 < ord ndict@ >= or IF EXIT THEN
    \ A newly published row retires any prior fact for this reused ordinal.
-   ord RECORD-LINK-CAP @ < IF
-      ord RECORD-LINK-CELL RECORD-GRID-DISCARD
-   THEN
    ord RECORD-LINK-CLEAR
    ord RECORD-PEND-IX @ = IF
       ord RECORD-PEND-EFF@ RECORD-PEND-SYM @ NORET-NEWEST RECORD-LINK-SET
