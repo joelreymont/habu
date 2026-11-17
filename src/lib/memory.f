@@ -67,7 +67,6 @@ private
 \ escapes.
 CAST: ALLOC-BYTES>N ( NUM:alloc-byte-len -- n )
 CAST: ALLOC-CELLS>N ( NUM:alloc-cell-count -- n )
-CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 
@@ -77,9 +76,6 @@ $47 constant UNMAP-EXIT
    then ;
 
 public
-
-: CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
-   NUM:CELLS>BYTES ;
 
 : ALLOC-BYTES ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len )
    dup ALLOC-BYTES>N MEM-ALLOC-PTR
@@ -93,9 +89,6 @@ public
 \ Takes the exact extent ALLOC-BYTES gave.
 : RELEASE-BYTES ( ^u8 NUM:alloc-byte-len -- )
    ALLOC-BYTES>N RELEASE-RANGE ;
-
-: UNMAP ( ^u8 NUM:byte-len -- )
-   BYTE-LEN>N RELEASE-RANGE ;
 
 \ Callers name a raw size as the positive alloc role before the allocation
 \ sink.

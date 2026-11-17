@@ -1,8 +1,6 @@
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
 require src/lib/error.f
-require src/lib/string.f
-require src/lib/string-roles.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/test/ending.f
@@ -162,13 +160,6 @@ T-REPORT
 \ E-NUM-* (the num-types-test.f idiom). The scalar words admit zero; only
 \ the alloc-* sinks reject zero/overflow, and that refusal precedes any mmap.
 
-: MEMT-BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
 : MEMT-AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
@@ -183,12 +174,6 @@ T-REPORT
       underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
-
-: MEMT-CELLS>BYTES# ( n -- n ) NUM:CELL-COUNT
-   MATCH NUM:numeric-result ok OF MEM:CELLS>BYTES MEMT-BL-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
 
 : MEMT-BYTES-ALLOC# ( n -- n ) NUM:BYTE-LEN
    MATCH NUM:numeric-result ok OF NUM:AS-ALLOC-BYTE-LEN MEMT-AB-CODE ENDOF
@@ -229,16 +214,6 @@ $1000 constant RBT-CAP
 create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
-\ The suite narrows a raw length to a byte length itself.
-: RBT-LEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
-      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
-      misaligned OF E-MEM-SIZE throw ENDOF
-   ;MATCH ;
-
 : MEMT-EXIT0 ( -- )
    s" " 0 die ;
 
@@ -270,82 +245,11 @@ create RBT-ERR RBT-CAP allot
 : RBT-RELEASE-LAST ( -- )
    RBT-RELEASED-BASE MEM-64K 2 * 1 - + c@ drop ;
 
-: RBT-RELEASE-OUTERS ( ^u8 -- ) {: base:^ :}
-   base MEM-64K RBT-LEN UNMAP
-   base MEM-64K 3 * + MEM-64K RBT-LEN UNMAP ;
-
-: RBT-ONE-CLEANUP ( ^u8 -- ) {: base:^ :}
-   base MEM-64K RBT-LEN UNMAP
-   base MEM-64K 2 * + MEM-64K RBT-LEN UNMAP ;
-
-: RBT-ONE-MAP ( -- ^u8 )
-   MEM-64K 3 * BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: base:^ :}
-   MEMT-MARK-A base MEM-64K 1 - + c!
-   MEMT-MARK-Z base MEM-64K 2 * + c!
-   base MEM-64K + MEM-64K RBT-LEN UNMAP
-   base ;
-
-: RBT-ONE-GUARDS ( -- )
-   RBT-ONE-MAP {: base:^ :}
-   base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
-   base MEM-64K 2 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
-   base RBT-ONE-CLEANUP ;
-
-: RBT-ONE-FAULT ( -- )
-   RBT-ONE-MAP MEM-64K + c@ drop ;
-
-: RBT-UNMAP-MID ( -- ^u8 )
-   MEM-64K 4 * BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: base:^ :}
-   MEMT-MARK-A base MEM-64K 1 - + c!
-   MEMT-MARK-Z base MEM-64K 3 * + c!
-   base MEM-64K + MEM-64K 2 * RBT-LEN UNMAP
-   base ;
-
-: RBT-UNMAP-LEFT ( -- )
-   RBT-UNMAP-MID {: base:^ :}
-   base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
-   base RBT-RELEASE-OUTERS ;
-
-: RBT-UNMAP-RIGHT ( -- )
-   RBT-UNMAP-MID {: base:^ :}
-   base MEM-64K 3 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
-   base RBT-RELEASE-OUTERS ;
-
-: RBT-UNMAPPED-BASE ( -- ^u8 )
-   RBT-UNMAP-MID
-   dup RBT-RELEASE-OUTERS ;
-
-: RBT-UNMAP-FIRST ( -- )
-   RBT-UNMAPPED-BASE MEM-64K + c@ drop ;
-
-: RBT-UNMAP-LAST ( -- )
-   RBT-UNMAPPED-BASE MEM-64K 3 * 1 - + c@ drop ;
-
 : RBT-RELEASE-FIRST-SRC ( -- ^u8 n )
    s" package MEMT RBT-RELEASE-FIRST ;package" ;
 
 : RBT-RELEASE-LAST-SRC ( -- ^u8 n )
    s" package MEMT RBT-RELEASE-LAST ;package" ;
-
-: RBT-UNMAP-FIRST-SRC ( -- ^u8 n )
-   s" package MEMT RBT-UNMAP-FIRST ;package" ;
-
-: RBT-UNMAP-LAST-SRC ( -- ^u8 n )
-   s" package MEMT RBT-UNMAP-LAST ;package" ;
-
-: RBT-UNMAP-LEFT-SRC ( -- ^u8 n )
-   s" package MEMT RBT-UNMAP-LEFT ;package" ;
-
-: RBT-UNMAP-RIGHT-SRC ( -- ^u8 n )
-   s" package MEMT RBT-UNMAP-RIGHT ;package" ;
-
-: RBT-ONE-GUARDS-SRC ( -- ^u8 n )
-   s" package MEMT RBT-ONE-GUARDS ;package" ;
-
-: RBT-ONE-FAULT-SRC ( -- ^u8 n )
-   s" package MEMT RBT-ONE-FAULT ;package" ;
 
 \ Runs the source in a subject child and asserts its exit code, leaving the
 \ stdout and stderr lengths.
@@ -376,21 +280,10 @@ HB-TARGET-LINUX-X86-64? [if]
    outu LEN>N 0 T= ;
 [then]
 
-: RBT-EXPECT-CLEAN ( ^u8 n -- )
-   0 RBT-EXITS
-   0 T=
-   0 T= ;
-
 : RBT-EXACT-SPANS ( -- )
    T-RESET
    RBT-RELEASE-FIRST-SRC RBT-EXPECT-FAULT
    RBT-RELEASE-LAST-SRC RBT-EXPECT-FAULT
-   RBT-UNMAP-LEFT-SRC RBT-EXPECT-CLEAN
-   RBT-UNMAP-RIGHT-SRC RBT-EXPECT-CLEAN
-   RBT-UNMAP-FIRST-SRC RBT-EXPECT-FAULT
-   RBT-UNMAP-LAST-SRC RBT-EXPECT-FAULT
-   RBT-ONE-GUARDS-SRC RBT-EXPECT-CLEAN
-   RBT-ONE-FAULT-SRC RBT-EXPECT-FAULT
    T-REPORT ;
 
 : RBT-ACTION ( -- [ -- ] )
@@ -398,7 +291,6 @@ HB-TARGET-LINUX-X86-64? [if]
 
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
-   0 MEMT-CELLS>BYTES# 0 T=      1 MEMT-CELLS>BYTES# 0 T=
    0 MEMT-BYTES-ALLOC# E-NUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-NUM-NEGATIVE T=
    0 MEMT-CELLS-ALLOC# E-NUM-ZERO T=      -1 MEMT-CELLS-ALLOC# E-NUM-NEGATIVE T=
    1 MEMT-BYTES-ALLOC# 0 T=                  1 MEMT-CELLS-ALLOC# 0 T=
@@ -449,19 +341,11 @@ create CAP-ERR CAP allot
 : RELEASE-SRC ( -- ^u8 n )
    s" package MFR : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
 
-: UNMAP-SRC ( -- ^u8 n )
-   s" package MFU : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop 1 + MEM-64K STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
-
-: ZERO-SRC ( -- ^u8 n )
-   s" package MFZ : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop 0 STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
-
 public
 
 : RUN ( -- )
    T-RESET
    RELEASE-SRC EXPECT-FATAL
-   UNMAP-SRC EXPECT-FATAL
-   ZERO-SRC EXPECT-FATAL
    T-REPORT ;
 
 ;package
@@ -956,8 +840,6 @@ GUARDED-SIZE
 
 : STAT ( -- )
    T-RESET
-   s" G-CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
-      CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC-CELLS ( NUM:alloc-cell-count -- ^a ) MEM:ALLOC-CELLS"
@@ -972,8 +854,6 @@ GUARDED-SIZE
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-BYTE-ROLE-CELLS ( NUM:alloc-byte-len -- ^a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-RAW-CELLS>BYTES ( n -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
-      CHECK-QUIET-CANDIDATE! 0 T=
    \ RELEASE-BYTES admits only the ^u8 + alloc-byte-len ALLOC-BYTES mints, so no
    \ forged address or unvalidated size reaches munmap.
    s" G-RELEASE ( ^u8 NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
@@ -985,16 +865,6 @@ GUARDED-SIZE
    s" B-RELEASE-ZEROABLE-LEN ( ^u8 NUM:byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RELEASE-CELL-LEN ( ^u8 NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" G-UNMAP ( ^u8 NUM:byte-len -- ) MEM:UNMAP"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" B-UNMAP-BOOL-PTR ( ^bool NUM:byte-len -- ) MEM:UNMAP"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-RAW-LEN ( ^u8 n -- ) MEM:UNMAP"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-ALLOC-LEN ( ^u8 NUM:alloc-byte-len -- ) MEM:UNMAP"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-CELL-LEN ( ^u8 NUM:cell-count -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ WITH-BYTES types the body row, so a caller cannot scope a mapping over an
    \ unvalidated size or a byte/cell role swap.
