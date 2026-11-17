@@ -243,7 +243,7 @@ require src/core/rejection.f
 \ IPv4 UDP host library: -9100..-9109, declared at this file's end.
 -9100 constant E-UDP4-FIRST
 -9109 constant E-UDP4-LAST
-\ -9102 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
+\ -9101..-9103 unassigned.
 
 \ Raw serial host library: -9110..-9119, declared at this file's end.
 -9110 constant E-SERIAL-FIRST
@@ -787,8 +787,6 @@ generates: FAULT ( -- n )
 -9001 s" an offset, size or index outside the file or its program-header table" ERROR:CODE E-ELF32-BOUNDS
 -9002 s" an ELF32 form the reader does not accept: not version 1 little-endian, or PN_XNUM program headers" ERROR:CODE E-ELF32-UNSUPPORTED
 -9100 s" a UDP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-UDP4-OPERAND
--9101 s" UDP sockets run on Linux and Darwin only" ERROR:CODE E-UDP4-PLATFORM
--9103 s" the OS answered a socket call with a result it cannot give: a wrong address length or family, a short send, a cancelled wait or a failed fcntl" ERROR:FAULT E-UDP4-RESULT
 -9110 s" a serial argument out of range: a length, baud, timeout or handle" ERROR:CODE E-SERIAL-OPERAND
 -9111 s" serial ports run on Linux and Darwin only" ERROR:CODE E-SERIAL-PLATFORM
 -9113 s" the OS answered a serial read or write with a count it cannot give, or a cancelled wait" ERROR:FAULT E-SERIAL-RESULT

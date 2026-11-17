@@ -1,7 +1,6 @@
 \ udp4.f - Linux and Darwin IPv4 datagrams through exact, bounded libc
-\ bindings; no protocol, sequencing or retry policy. Another OS is E-PLATFORM
-\ before a socket opens. Calls must not nest within one task; close sockets
-\ before image capture: they are process resources.
+\ bindings; no protocol, sequencing or retry policy. Calls must not nest within
+\ one task; close sockets before image capture: they are process resources.
 \ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
 \ negative one waits with no deadline; any other is the milliseconds the call
 \ may wait in all. AIO:START must have run before the first wait.
@@ -46,8 +45,6 @@ SUMTYPE receive-result
 ;SUMTYPE
 
 E-UDP4-OPERAND constant E-OPERAND
-E-UDP4-PLATFORM constant E-PLATFORM
-E-UDP4-RESULT constant E-RESULT
 
 private
 
@@ -60,9 +57,6 @@ $FFE3 constant MAX-PAYLOAD
 $14 TASK:+USERS IO-STORAGE u8
 : SOCKADDR ( -- ^u8 ) 0 IO-STORAGE ;
 : ADDRLEN ( -- ^u8 ) $10 IO-STORAGE ;
-
-CAST: BLEN>N ( NUM:byte-len -- n )
-
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
@@ -78,10 +72,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
       bad-alignment OF E-OPERAND throw ENDOF
       misaligned OF E-OPERAND throw ENDOF
    ;MATCH ;
-
-
-: CHECK-SOCKET ( socket -- )
-   SOCKET>N 0 $7FFFFFFF WITHIN-RANGE ;
 
 
 : BE16! ( n ^u8 -- ) {: value:n target :}
@@ -108,11 +98,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
    port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
-   HB-TARGET-LINUX-KERNEL? if
-      2 SOCKADDR c!
-   else HB-TARGET-MACOS? if
+   HB-TARGET-MACOS? if
       SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
-   else E-PLATFORM throw then then
+   else 2 SOCKADDR c! then
    port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
@@ -122,13 +110,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : ENDPOINT@ ( -- address port )
-   ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   HB-TARGET-LINUX-KERNEL? if
-      SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or
-   else HB-TARGET-MACOS? if
-      SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
-   else E-PLATFORM throw then then
-   if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
@@ -226,7 +207,7 @@ public
 
 
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
-   socket CHECK-SOCKET ENDPOINT-OUTPUT
+   ENDPOINT-OUTPUT
    socket LOCAL-RAW 0 < if LAST-ERROR UDP4-ENDPOINT--RESULT:FAILED
    else ENDPOINT@ UDP4-ENDPOINT--RESULT:ENDPOINT then ;
 
@@ -235,16 +216,14 @@ public
 \ buffer is full; an interrupted send answers `failed`.
 : SEND ( socket address port ^u8 NUM:byte-len -- status )
    {: socket:socket address:address port:port bytes size:NUM:byte-len :}
-   socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
    address port ENDPOINT!
    socket SOCKET>N SOCKADDR SOCKADDR-BYTES bytes size DATAGRAM:SEND >STATUS ;
 
 
-\ A packet may be empty; capacity is 1..65507. `truncated` carries the
-\ datagram's own length, with only capacity bytes copied.
+\ A packet may be empty. `truncated` carries the datagram's own length, with
+\ only capacity bytes copied.
 : RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
-   socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
    ENDPOINT-OUTPUT
    socket SOCKET>N bytes capacity timeout SOCKADDR ADDRLEN DATAGRAM:RECEIVE
    >RECEIVE-RESULT ;
@@ -253,7 +232,7 @@ public
 \ The caller closes each socket once and never reuses it: on Linux, close
 \ consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
-   dup CHECK-SOCKET SOCKET>N DATAGRAM:CLOSE >STATUS ;
+   SOCKET>N DATAGRAM:CLOSE >STATUS ;
 
 
 ;package

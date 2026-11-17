@@ -22,8 +22,11 @@ $7F000001 constant LOOPBACK
 $40 constant PAYLOAD-N             \ the datagram every case sends
 $10 constant SMALL-CAP             \ the capacity the truncating case offers
 $80 constant BUF-CAP
+$FFE4 constant OVERSIZE-N          \ one byte past the largest IPv4 UDP payload
 1000000 constant NS-PER-MS
 -2 constant GOT-TIMEOUT            \ PARK-GOT once the parked receive answered timeout
+
+: EMSGSIZE ( -- n ) HB-TARGET-MACOS? if 40 else 90 then ;
 
 \ The deadlines the timed cases are measured against. They allow a scheduler's
 \ slack while still failing a wait that did not happen at all.
@@ -33,6 +36,7 @@ $80 constant BUF-CAP
 
 create SEND-BUF BUF-CAP allot
 create RECV-BUF BUF-CAP allot
+create OVERSIZE-BUF OVERSIZE-N allot
 create READY-POLL 0 ,
 
 : TEST-ALIGN8 ( -- )
@@ -208,6 +212,20 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    CLOSE-PAIR ;
 
 
+\ PAYLOAD-BYTES rejects this size, so the length comes straight from NUM.
+: OVERSIZE-LEN ( -- NUM:byte-len ) OVERSIZE-N NUM:BYTE-LEN MATCH NUM:numeric-result
+   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
+   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
+
+
+: T-OVERSIZE ( -- )
+   s" a datagram past the largest payload answers failed with EMSGSIZE" T-LABEL
+   OPEN-PAIR
+   SOCK-A @ UDP4:>SOCKET LOOPBACK UDP4:ADDRESS PORT-B @ UDP4:PORT
+   OVERSIZE-BUF OVERSIZE-LEN UDP4:SEND STATUS-ERRNO EMSGSIZE T=
+   CLOSE-PAIR ;
+
+
 \ A RECEIVE with nothing queued parks on the loop, not inside recvfrom: the
 \ main thread's later send answers it. The worker records; the case asserts.
 : PARK-WORK ( -- )
@@ -259,6 +277,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    T-TIMEOUT
    T-ZERO-TIMEOUT
    T-TRUNCATED
+   T-OVERSIZE
    T-PARKED-RECEIVE
    T-NO-LOOP
    AIO:STOP
