@@ -307,8 +307,9 @@ require src/core/rejection.f
 -9330 constant E-WS-FIRST
 -9339 constant E-WS-LAST
 
-\ The HTTP/1.1 server (package HTTP, src/lib/net/http.f): -9340..-9349, declared
-\ at this file's end.
+\ The HTTP/1.1 server (package HTTP, src/lib/net/http.f) and HTTP Basic
+\ credentials (src/lib/net/http-basic.f): -9340..-9349, declared at this file's
+\ end.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
 
@@ -869,6 +870,7 @@ generates: FAULT ( -- n )
 -9345 s" a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle" ERROR:CODE E-HTTP-STATIC
 -9346 s" the listener could not be bound, put to listen or asked its own address" ERROR:CODE E-HTTP-SOCKET
 -9347 s" a handler's body read that did not complete; the server answers it with the read's rejection, never as a fault" ERROR:CODE E-HTTP-BODY-READ
+-9348 s" a Basic user-id holding `:`, which RFC 7617 forbids: the server splits user-id and password at the first `:` and would read another user; use a user-id without `:`" ERROR:CODE E-HTTP-BASIC-USER
 -9350 s" a byte outside the selected alphabet" ERROR:CODE E-BASE64-CHAR
 -9351 s" misplaced/forbidden '=', or nonzero unused bits" ERROR:CODE E-BASE64-PAD
 -9352 s" padded length not divisible by four, or URL remainder one" ERROR:CODE E-BASE64-LENGTH

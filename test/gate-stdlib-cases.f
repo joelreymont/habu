@@ -471,6 +471,11 @@ SUITE http
    src/lib/net/http-test.f
 ;SUITE
 
+\ HTTP:BASIC-CREDENTIALS: RFC 7617's example, each `:` place, the rejections.
+SUITE http-basic
+   src/lib/net/http-basic-test.f
+;SUITE
+
 \ MCP:HANDLE on a loopback port: both eras' handshakes, tools/list and
 \ tools/call, and the protocol's refusals, answered to CURL.
 SUITE mcp

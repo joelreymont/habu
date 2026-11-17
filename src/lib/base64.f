@@ -123,6 +123,8 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 
 public
 
+\ A group is gathered whole before its characters are scattered, so one group
+\ may be encoded in place.
 : ENCODE ( ^u8 n SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    \ The input is compared with what the span holds, three bytes to four of
