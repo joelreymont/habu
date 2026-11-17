@@ -8,7 +8,6 @@ require src/lib/string.f
 require src/lib/fd.f
 require src/lib/task.f
 require src/lib/test.f
-require src/lib/process-path.f
 require src/lib/process.f
 require src/lib/process-reaper.f
 

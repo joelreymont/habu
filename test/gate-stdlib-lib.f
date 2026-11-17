@@ -8,7 +8,7 @@ require src/lib/process-env.f
 require test/gate-pool.f
 require test/load-graph.f
 require test/gate-entry-guard.f
-require src/lib/process-path.f
+require src/lib/process.f
 
 package STDLIB-GATE
 

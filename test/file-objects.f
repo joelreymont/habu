@@ -1102,6 +1102,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" SQ" WHICH!  false SQUAT-REFUSED
    s" SQ2" WHICH!  true SQUAT-REFUSED ;
 
+\ Guards a --repl build (SR) of spawn-main.f: its spawn.f opens PROCESS,
+\ a package that build's engine files do not make.
+: SPAWN-REPL-CASE ( CMD:command -- CMD:command )
+   s" SR" WHICH!  s" test/fixtures/file-objects/spawn-main.f" REPL-BUILD drop ;
+
 \ rollback.f's build, which catches a refused definition at its top level: it exits 74
 \ and the linker says the file gave back data space.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
@@ -2132,7 +2137,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE

@@ -10,7 +10,6 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fd.f
-require src/lib/process-path.f
 require src/lib/process.f
 
 package PROCESS-REAPER-FIXTURE

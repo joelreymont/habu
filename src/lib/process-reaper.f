@@ -10,7 +10,6 @@ require src/lib/error.f
 require src/lib/span.f
 require src/lib/fd.f
 require src/lib/fs.f
-require src/lib/process-path.f
 require src/lib/spawn.f
 require src/lib/process.f
 

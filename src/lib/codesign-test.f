@@ -12,7 +12,6 @@ require src/lib/process-argv.f
 require src/lib/le.f
 require src/lib/be.f
 require src/lib/process-env.f
-require src/lib/process-path.f
 require src/lib/codesign.f
 
 package CODESIGN-TEST

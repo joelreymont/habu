@@ -9,7 +9,7 @@
 
 require src/lib/fs.f
 require src/lib/process-env.f
-require src/lib/process-path.f
+require src/lib/engine-id.f
 
 package ENGINE-CANDIDATE
 
@@ -24,7 +24,7 @@ PATH-CAP BUFFER: JOINED
    NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
-   2drop PROCESS:OWN-PATH ;
+   2drop ENGINE-ID:OWN-PATH ;
 
 \ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.

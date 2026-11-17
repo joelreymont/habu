@@ -17,6 +17,7 @@
 \ and pty ends close-on-exec, or that child holds a writer and the parent never
 \ sees EOF. src/lib/fd-lock.f orders the mark against forks.
 
+require src/lib/engine-id.f
 s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC
@@ -48,6 +49,8 @@ private
 
 package PROCESS
 public
+EXPORT ENGINE-ID:OWN-PATH
+
 \ status - how an ended child ended: what a wait with no deadline answers.
 ENUM status
   VARIANT exited FIELD code n ;VARIANT

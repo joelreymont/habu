@@ -14,7 +14,6 @@ require src/lib/process-argv.f
 require src/lib/process-pty-io.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/process-path.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-tree.f
