@@ -351,11 +351,11 @@ def main():
                  '0 SERIAL:BYTES', '-1 SERIAL:BYTES', '$7FFFF001 SERIAL:BYTES'):
         assert native(habu, output, f': RUN ( -- ) [: {expr} drop ;] catch . ; RUN') == ['-9110']
         checks += 1
-    # A negative timeout is no deadline, so (1, -1, 0) passes the operand checks
-    # and its wait, with no AIO:START, is E-AIO-STATE (-9292).
-    for length, timeout, handle, code in ((0, 0, 0, -9110), (0x7FFFF001, 0, 0, -9110),
-                                           (1, -1, 0, -9292), (1, 0x80000000, 0, -9110),
-                                           (1, 0, -1, -9110), (1, 0, 0x80000000, -9110)):
+    # A zero-byte request transfers nothing at once. A negative timeout is no
+    # deadline, so (1, -1, 0)'s wait, with no AIO:START, is E-AIO-STATE (-9292);
+    # a timeout past INT32_MAX is E-SERIAL-OPERAND.
+    for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'), (1, -1, 0, '-9292'),
+                                           (1, 0x80000000, 0, '-9110')):
         for operation in ('READ', 'WRITE'):
             body = f'''
 : RUN ( -- )
@@ -365,7 +365,7 @@ def main():
       bad-alignment OF -1 throw ENDOF misaligned OF -1 throw ENDOF
    ;MATCH {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
 '''
-            assert native(habu, output, body) == [str(code)]
+            assert native(habu, output, body) == code.split()
             checks += 1
     for path, expected in (('/no/such/habu-serial-port', '2'), ('/dev/null', '25')):
         body = f'''

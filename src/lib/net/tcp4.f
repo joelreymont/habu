@@ -1,7 +1,6 @@
 \ tcp4.f - Linux and Darwin IPv4 stream sockets through exact, bounded libc
-\ bindings; no protocol, framing, name resolution or connection policy. Another
-\ OS is E-PLATFORM before a socket opens. Every connection is non-blocking. Not
-\ run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and UNSENT.
+\ bindings; no protocol, framing, name resolution or connection policy. Every
+\ connection this module makes is non-blocking.
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row; the
 \ payload spans the transfers take are caller-owned.
 require src/lib/error.f
@@ -102,7 +101,6 @@ SUMTYPE queue-result
 ;SUMTYPE
 
 E-TCP4-OPERAND constant E-OPERAND
-E-TCP4-PLATFORM constant E-PLATFORM
 E-TCP4-RESULT constant E-RESULT
 
 \ The longest a send slice waits for room. A slice returns within this and two
@@ -117,20 +115,11 @@ $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
 $1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
-: SOCKET-FLAGS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $80001 exit then
-   HB-TARGET-MACOS? if 1 exit then
-   E-PLATFORM throw ;                    \ SOCK_STREAM | SOCK_CLOEXEC.
+: SOCKET-FLAGS ( -- n ) HB-TARGET-LINUX-KERNEL? if $80001 else 1 then ;   \ SOCK_STREAM, with SOCK_CLOEXEC on Linux.
 $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepted connection.
-: MSG-NOSIGNAL ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $4000 exit then
-   HB-TARGET-MACOS? if $80000 exit then
-   E-PLATFORM throw ;                    \ A write to a closed peer never signals.
+: MSG-NOSIGNAL ( -- n ) HB-TARGET-LINUX-KERNEL? if $4000 else $80000 then ;   \ A write to a closed peer never signals.
 4 constant F-SETFL
-: O-NONBLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $800 exit then
-   HB-TARGET-MACOS? if 4 exit then
-   E-PLATFORM throw ;                    \ Linux's SOCK_NONBLOCK is the same bit.
+: O-NONBLOCK ( -- n ) HB-TARGET-LINUX-KERNEL? if $800 else 4 then ;   \ Linux's SOCK_NONBLOCK is the same bit.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
 $01 constant POLLIN                \ a receive will not block, on both.
 $04 constant POLLOUT               \ a send will not block, on both.
@@ -144,32 +133,14 @@ $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 12 constant ENOMEM
 23 constant ENFILE
 24 constant EMFILE
-: EAGAIN ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 11 exit then
-   HB-TARGET-MACOS? if 35 exit then
-   E-PLATFORM throw ;                    \ EWOULDBLOCK on both.
-: ECONNABORTED ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 103 exit then
-   HB-TARGET-MACOS? if 53 exit then
-   E-PLATFORM throw ;
-: ENOBUFS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 105 exit then
-   HB-TARGET-MACOS? if 55 exit then
-   E-PLATFORM throw ;
+: EAGAIN ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 35 then ;   \ EWOULDBLOCK on both.
+: ECONNABORTED ( -- n ) HB-TARGET-LINUX-KERNEL? if 103 else 53 then ;
+: ENOBUFS ( -- n ) HB-TARGET-LINUX-KERNEL? if 105 else 55 then ;
 6 constant IPPROTO-TCP
 1 constant TCP-NODELAY
-: SOL-SOCKET ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 1 exit then
-   HB-TARGET-MACOS? if $FFFF exit then
-   E-PLATFORM throw ;
-: SO-REUSEADDR ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 2 exit then
-   HB-TARGET-MACOS? if 4 exit then
-   E-PLATFORM throw ;
-: FIONREAD ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $541B exit then
-   HB-TARGET-MACOS? if $4004667F exit then
-   E-PLATFORM throw ;                    \ bytes received and not yet read.
+: SOL-SOCKET ( -- n ) HB-TARGET-LINUX-KERNEL? if 1 else $FFFF then ;
+: SO-REUSEADDR ( -- n ) HB-TARGET-LINUX-KERNEL? if 2 else 4 then ;
+: FIONREAD ( -- n ) HB-TARGET-LINUX-KERNEL? if $541B else $4004667F then ;   \ bytes received and not yet read.
 $5411 constant SIOCOUTQ            \ Linux: bytes written and not yet acknowledged.
 $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option rather than an ioctl.
 0 constant SHUT-RD
@@ -205,18 +176,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: CHECK-FD ( n -- )
-   0 $7FFFFFFF WITHIN-RANGE ;
-
-
-: LISTENER-FD ( listener -- n )
-   LISTENER>N dup CHECK-FD ;
-
-
-: CONNECTION-FD ( connection -- n )
-   CONNECTION>N dup CHECK-FD ;
-
-
 : BE16! ( n ^u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
@@ -243,9 +202,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    CLEAR-ENDPOINT
    HB-TARGET-LINUX-KERNEL? if
       2 SOCKADDR c!
-   else HB-TARGET-MACOS? if
+   else
       SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
-   else E-PLATFORM throw then then
+   then
    port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
@@ -255,13 +214,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : ENDPOINT@ ( -- address port )
-   ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   HB-TARGET-LINUX-KERNEL? if
-      SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or
-   else HB-TARGET-MACOS? if
-      SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
-   else E-PLATFORM throw then then
-   if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
@@ -312,7 +264,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : OWN-SOCKET ( n -- n ) {: fd:n :}
    HB-TARGET-LINUX-KERNEL? if fd exit then
-   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
    fd 0 < if fd exit then
    fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
    fd ;
@@ -348,7 +299,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    HB-TARGET-LINUX-KERNEL? if
       fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL exit
    then
-   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
    fd SOCKADDR ADDRLEN DARWIN-ACCEPT OWN-SOCKET
    dup 0 < if exit then NONBLOCK ;
 
@@ -414,14 +364,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-\ A transfer longer than the span handed to the OS is not a short answer this
-\ module can report, so it is refused as a broken foreign result rather than
-\ trusted as a length.
-: RECEIVED ( n n -- NUM:byte-len ) {: actual:n size:n :}
-   actual size > if E-RESULT throw then
-   actual LENGTH ;
-
-
 \ One poll(2) of the descriptor for the events, on this task's own thread with
 \ no AIO loop: how many descriptors are ready, 0 once the timeout in
 \ milliseconds has passed, or the errno negated.
@@ -446,7 +388,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ empty message.
 : TRY-CHUNK ( n ^u8 n -- try-read-result ) {: fd:n bytes size:n :}
    begin
-      fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:DATA exit then
+      fd bytes size RECEIVE-RAW dup 0 > if LENGTH TCP4-TRY--READ--RESULT:DATA exit then
       0= if 0 LENGTH TCP4-TRY--READ--RESULT:CLOSED exit then
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:FAILED exit then drop
@@ -475,13 +417,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : EXACT-STEP ( n connection ^u8 NUM:byte-len -- read-result )
    {: got:n conn:connection bytes want:NUM:byte-len :}
-   conn CONNECTION-FD bytes got + want BLEN>N got - READ-CHUNK ;
-
-
-\ A count past the span is a broken foreign result.
-: SEND-STEP ( n ^u8 n -- n ) {: fd:n bytes size:n :}
-   fd bytes size SEND-RAW
-   dup size > if E-RESULT throw then ;
+   conn CONNECTION>N bytes got + want BLEN>N got - READ-CHUNK ;
 
 
 \ One send that never waits: `moved`, `empty` when there was no room, or
@@ -490,7 +426,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ retries every interrupt.
 : SEND-BY ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
-      fd bytes size SEND-STEP
+      fd bytes size SEND-RAW
       dup 0 > if LENGTH TCP4-SLICE--RESULT:MOVED exit then
       0= if E-RESULT throw then
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:EMPTY exit then
@@ -609,11 +545,11 @@ public
 
 : LISTEN ( listener n -- status ) {: lis:listener backlog:n :}
    backlog 1 MAX-BACKLOG WITHIN-RANGE
-   lis LISTENER-FD backlog LISTEN-RAW RC>STATUS ;
+   lis LISTENER>N backlog LISTEN-RAW RC>STATUS ;
 
 
 : LOCAL ( listener -- endpoint-result )
-   LISTENER-FD ENDPOINT-OUTPUT
+   LISTENER>N ENDPOINT-OUTPUT
    LOCAL-RAW 0 < if LAST-ERROR TCP4-ENDPOINT--RESULT:FAILED
    else ENDPOINT@ TCP4-ENDPOINT--RESULT:ENDPOINT then ;
 
@@ -621,7 +557,7 @@ public
 \ Blocks until a connection arrives. The accepted connection is owned by the
 \ caller and closed separately from the listener.
 : ACCEPT ( listener -- accept-result )
-   LISTENER-FD ACCEPT-LOOP ;
+   LISTENER>N ACCEPT-LOOP ;
 
 
 : >ACCEPT-FAULT ( errno -- accept-fault )
@@ -649,7 +585,7 @@ public
 : READ ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
-   conn CONNECTION-FD bytes capacity BLEN>N READ-CHUNK ;
+   conn CONNECTION>N bytes capacity BLEN>N READ-CHUNK ;
 
 
 \ One receive of 1..capacity bytes that never waits: `empty` when the stream
@@ -660,7 +596,7 @@ public
 : TRY-READ ( connection ^u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
-   conn CONNECTION-FD bytes capacity BLEN>N TRY-CHUNK ;
+   conn CONNECTION>N bytes capacity BLEN>N TRY-CHUNK ;
 
 
 \ Blocks until the whole span is filled. An end of stream before that is
@@ -694,7 +630,7 @@ public
 : SEND-SLICE ( connection ^u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
-   conn CONNECTION-FD {: fd:n :}
+   conn CONNECTION>N {: fd:n :}
    mono-ns SEND-SLICE-MS NS-PER-MS * + {: deadline:n :}
    fd bytes span deadline SEND-BY
    MATCH slice-result
@@ -710,7 +646,7 @@ public
 : TRY-SEND ( connection ^u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
-   conn CONNECTION-FD bytes span NO-DEADLINE SEND-BY ;
+   conn CONNECTION>N bytes span NO-DEADLINE SEND-BY ;
 
 
 \ Blocks until every byte is accepted by the OS, which is not delivery. A failed
@@ -739,41 +675,40 @@ public
 \ at once instead of waiting for the previous segment's acknowledgement.
 : NODELAY! ( connection bool -- status ) {: conn:connection on:bool :}
    on if 1 else 0 then OPTION LE:U32!
-   conn CONNECTION-FD IPPROTO-TCP TCP-NODELAY OPTION 4 OPTION-CALL RC>STATUS ;
+   conn CONNECTION>N IPPROTO-TCP TCP-NODELAY OPTION 4 OPTION-CALL RC>STATUS ;
 
 
 : UNREAD ( connection -- queue-result )
-   CONNECTION-FD {: fd:n :}
+   CONNECTION>N {: fd:n :}
    fd FIONREAD OPTION QUEUE-CALL QUEUED ;
 
 
 \ The bytes this end has written that the connection still holds, unsent or
 \ sent and not yet acknowledged: Darwin's SO_NWRITE, Linux's SIOCOUTQ.
 : UNSENT ( connection -- queue-result )
-   CONNECTION-FD {: fd:n :}
+   CONNECTION>N {: fd:n :}
    HB-TARGET-MACOS? if
       4 ADDRLEN LE:U32!
       fd SOL-SOCKET SO-NWRITE OPTION ADDRLEN OPTION-GET-CALL QUEUED exit
    then
-   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    fd SIOCOUTQ OPTION QUEUE-CALL QUEUED ;
 
 
 \ Answers whether a READ would return at once. `ready` includes the end of
 \ stream and a failed connection, whose answers the following READ reports.
 : READABLE? ( connection -- ready-result )
-   CONNECTION-FD 0 >MS WAIT-READY ;
+   CONNECTION>N 0 >MS WAIT-READY ;
 
 
 \ Parks the task on the AIO loop until the stream would answer a READ or the
 \ deadline passes, which is `idle`; ms -1 parks it with no deadline.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
-   conn CONNECTION-FD timeout WAIT-READY ;
+   conn CONNECTION>N timeout WAIT-READY ;
 
 
 : PENDING? ( listener -- ready-result )
-   LISTENER-FD 0 >MS WAIT-READY ;
+   LISTENER>N 0 >MS WAIT-READY ;
 
 
 \ The same wait for an arriving connection: `ready` means ACCEPT answers at
@@ -781,13 +716,13 @@ public
 \ it with no deadline.
 : PENDING-WITHIN? ( listener ms -- ready-result )
    {: lis:listener timeout:ms :}
-   lis LISTENER-FD timeout WAIT-READY ;
+   lis LISTENER>N timeout WAIT-READY ;
 
 
 \ Half-closes the stream in one or both directions; the descriptor stays open
 \ until CLOSE. Shutting down sending sends the peer the end of stream.
 : SHUTDOWN ( connection direction -- status ) {: conn:connection how:direction :}
-   conn CONNECTION-FD how SHUT-CODE SHUTDOWN-RAW RC>STATUS ;
+   conn CONNECTION>N how SHUT-CODE SHUTDOWN-RAW RC>STATUS ;
 
 
 \ The caller closes each handle once and never reuses it, even after an
@@ -795,20 +730,20 @@ public
 \ Descriptors are process resources: close them and stop concurrent use before
 \ image capture.
 : CLOSE ( connection -- status )
-   CONNECTION-FD CLOSE-RAW RC>STATUS ;
+   CONNECTION>N CLOSE-RAW RC>STATUS ;
 
 
 : CLOSE-LISTENER ( listener -- status )
-   LISTENER-FD CLOSE-RAW RC>STATUS ;
+   LISTENER>N CLOSE-RAW RC>STATUS ;
 
 \ The descriptor under a listener or a connection, for a readiness or completion
 \ loop. A descriptor read out still belongs to its handle; CLOSE or
 \ CLOSE-LISTENER ends it.
 : LISTENER-FD ( listener -- fd )
-   LISTENER-FD >FD ;
+   LISTENER>N >FD ;
 
 : CONNECTION-FD ( connection -- fd )
-   CONNECTION-FD >FD ;
+   CONNECTION>N >FD ;
 
 \ A fresh AF_INET stream socket, bound to nothing and connected to nothing, with
 \ the flags this module's own BIND and CONNECT ask for, and non-blocking like

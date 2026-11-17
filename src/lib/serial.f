@@ -1,7 +1,8 @@
 \ serial.f - raw serial byte streams on Linux and macOS through bounded libc
-\ bindings. Ordinary OS failures are result variants; operands, an unsupported
-\ OS and impossible foreign results throw. Calls must not nest within one task;
-\ close live descriptors before an image is prepared.
+\ bindings. OS failures, a bad handle's included, are result variants; a baud,
+\ length or timeout out of range and an impossible foreign result throw. Calls
+\ must not nest within one task; close live descriptors before an image is
+\ prepared.
 \ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are one row per task,
 \ so separate tasks drive separate ports; byte spans are caller-owned.
 require src/lib/error.f
@@ -39,27 +40,14 @@ SUMTYPE io-result
 ;SUMTYPE
 
 E-SERIAL-OPERAND constant E-OPERAND
-E-SERIAL-PLATFORM constant E-PLATFORM
 E-SERIAL-RESULT constant E-RESULT
 
 private
 
-: TERM-BYTES ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $2C exit then
-   HB-TARGET-MACOS? if 72 exit then
-   E-PLATFORM throw ;
-: OPEN-FLAGS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $80902 exit then
-   HB-TARGET-MACOS? if $1020006 exit then
-   E-PLATFORM throw ;                    \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
-: GET-TERM ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $802C542A exit then
-   HB-TARGET-MACOS? if $40487413 exit then
-   E-PLATFORM throw ;                    \ TIOCGETA / TCGETS2.
-: SET-TERM ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $402C542B exit then
-   HB-TARGET-MACOS? if $80487414 exit then
-   E-PLATFORM throw ;                    \ TIOCSETA / TCSETS2, no queue flush.
+: TERM-BYTES ( -- n ) HB-TARGET-LINUX-KERNEL? if $2C else 72 then ;
+: OPEN-FLAGS ( -- n ) HB-TARGET-LINUX-KERNEL? if $80902 else $1020006 then ;   \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
+: GET-TERM ( -- n ) HB-TARGET-LINUX-KERNEL? if $802C542A else $40487413 then ;   \ TIOCGETA / TCGETS2.
+: SET-TERM ( -- n ) HB-TARGET-LINUX-KERNEL? if $402C542B else $80487414 then ;   \ TIOCSETA / TCSETS2, no queue flush.
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
@@ -86,9 +74,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
       bad-alignment OF E-OPERAND throw ENDOF
       misaligned OF E-OPERAND throw ENDOF
    ;MATCH ;
-
-
-: CHECK-HANDLE ( handle -- ) HANDLE>N 0 $7FFFFFFF RANGE ;
 
 
 : LE32! ( n ^u8 -- ) {: value:n target :}
@@ -166,7 +151,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RAW! ( baud -- ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW! exit then
-   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    \ Preserve HUPCL; all other framing and flow settings are explicit.
    TERM-BYTES 0 do SAVED i + c@ TERM i + c! loop
    0 TERM LE32! 0 TERM $04 + LE32! 0 TERM $0C + LE32!
@@ -177,7 +161,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RAW? ( baud -- bool ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW? exit then
-   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    TERM LE32@ 0= TERM $04 + LE32@ 0= and TERM $0C + LE32@ 0= and
    TERM $08 + LE32@ BAUD-MASK invert and $400 invert and $8B0 = and
    TERM $10 + c@ 0= and
@@ -215,9 +198,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RETRY? ( errno -- bool )
    ERRNO>N dup 4 = swap
-   HB-TARGET-LINUX-KERNEL? if 11 else
-      HB-TARGET-MACOS? if 35 else E-PLATFORM throw then
-   then = or ;
+   HB-TARGET-LINUX-KERNEL? if 11 else 35 then = or ;
 
 
 \ Positive event bits, zero for the deadline, or a negative errno. One POLL on
@@ -238,13 +219,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-: TRANSFERRED ( n NUM:byte-len -- io-result ) {: actual:n capacity:NUM:byte-len :}
-   actual 0 <= actual capacity BLEN>N > or if E-RESULT throw then
-   actual LENGTH SERIAL-IO--RESULT:TRANSFERRED ;
-
-
-: CHECK-IO ( handle NUM:byte-len -- )
-   BLEN>N 1 $7FFFF000 RANGE CHECK-HANDLE ;
+: TRANSFERRED ( n -- io-result )
+   LENGTH SERIAL-IO--RESULT:TRANSFERRED ;
 
 
 public
@@ -269,18 +245,19 @@ public
    ;MATCH ;
 
 
-\ One available chunk, up to capacity, possibly short; a zero-byte request is
-\ refused.
+\ One available chunk, up to capacity, possibly short; a zero-byte request
+\ transfers nothing at once.
 \ Timeout is 0..INT32_MAX milliseconds, negative for no deadline; zero never
 \ waits for future readiness.
 : READ ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
-   handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
+   capacity BLEN>N 0= if capacity SERIAL-IO--RESULT:TRANSFERRED exit then
+   timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:READABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
       events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
-      handle bytes capacity READ-RAW dup 0 > if capacity TRANSFERRED exit then
+      handle bytes capacity READ-RAW dup 0 > if TRANSFERRED exit then
       0= if SERIAL-IO--RESULT:CLOSED exit then
       LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
       events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then
@@ -289,17 +266,18 @@ public
 
 
 \ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
-\ is refused. Success does not prove bytes reached the device. Input is
+\ transfers nothing at once. Success does not prove bytes reached the device. Input is
 \ borrowed for this call. Timeout is 0..INT32_MAX milliseconds, negative for no
 \ deadline.
 : WRITE ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
-   handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
+   size BLEN>N 0= if size SERIAL-IO--RESULT:TRANSFERRED exit then
+   timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:WRITABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
       events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
-      handle bytes size WRITE-RAW dup 0 > if size TRANSFERRED exit then
+      handle bytes size WRITE-RAW dup 0 > if TRANSFERRED exit then
       0= if SERIAL-IO--RESULT:CLOSED exit then
       LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
       events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then
@@ -310,7 +288,7 @@ public
 \ Consumes the handle even when it fails (Linux consumes the fd even on EINTR):
 \ never retry CLOSE or reuse the handle. The terminal's settings persist.
 : CLOSE ( handle -- status )
-   dup CHECK-HANDLE CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:FAILED else SERIAL-STATUS:OK then ;
+   CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:FAILED else SERIAL-STATUS:OK then ;
 
 
 ;package

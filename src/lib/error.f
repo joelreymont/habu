@@ -248,6 +248,7 @@ require src/core/rejection.f
 \ Raw serial host library: -9110..-9119, declared at this file's end.
 -9110 constant E-SERIAL-FIRST
 -9119 constant E-SERIAL-LAST
+\ -9111 unassigned.
 \ -9112 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 
 \ XMODEM packet codec and serial transfer: -9120..-9139, declared at this file's
@@ -267,6 +268,7 @@ require src/core/rejection.f
 \ IPv4 TCP host library: -9180..-9189, declared at this file's end.
 -9180 constant E-TCP4-FIRST
 -9189 constant E-TCP4-LAST
+\ -9181 unassigned.
 \ -9182 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 
 \ Bounded task queues: -9190..-9199, declared at this file's end.
@@ -787,9 +789,8 @@ generates: FAULT ( -- n )
 -9001 s" an offset, size or index outside the file or its program-header table" ERROR:CODE E-ELF32-BOUNDS
 -9002 s" an ELF32 form the reader does not accept: not version 1 little-endian, or PN_XNUM program headers" ERROR:CODE E-ELF32-UNSUPPORTED
 -9100 s" a UDP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-UDP4-OPERAND
--9110 s" a serial argument out of range: a length, baud, timeout or handle" ERROR:CODE E-SERIAL-OPERAND
--9111 s" serial ports run on Linux and Darwin only" ERROR:CODE E-SERIAL-PLATFORM
--9113 s" the OS answered a serial read or write with a count it cannot give, or a cancelled wait" ERROR:FAULT E-SERIAL-RESULT
+-9110 s" a serial argument out of range: a length, baud or timeout" ERROR:CODE E-SERIAL-OPERAND
+-9113 s" the OS cancelled a serial wait, which nothing here asks for" ERROR:FAULT E-SERIAL-RESULT
 -9120 s" an XMODEM argument out of range: a sequence past 255, a block other than 128 or 1024 bytes, an unknown check kind, or a payload longer than its block" ERROR:CODE E-XMODEM-OPERAND
 -9121 s" a received XMODEM frame is malformed: a bad header byte, length, sequence complement or check value" ERROR:CODE E-XMODEM-FRAME
 -9122 s" an XMODEM transfer argument out of range: a wait outside 1..2147483647 ms, a negative length or a bad serial handle" ERROR:CODE E-SXMODEM-OPERAND
@@ -808,9 +809,8 @@ generates: FAULT ( -- n )
 -9172 s" a directory entry is malformed, or its name holds a newline" ERROR:CODE E-FS-LIST-ENTRY
 -9173 s" the listed names or the listing's storage do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
 -9174 s" a context already owns an active listing" ERROR:CODE E-FS-LIST-ACTIVE
--9180 s" a TCP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-TCP4-OPERAND
--9181 s" TCP sockets run on Linux and Darwin only" ERROR:CODE E-TCP4-PLATFORM
--9183 s" the OS answered a socket call with a result it cannot give: a wrong address length or family, a count past the span, a cancelled wait or a failed fcntl" ERROR:FAULT E-TCP4-RESULT
+-9180 s" a TCP argument out of range: a length, port, timeout, address or backlog" ERROR:CODE E-TCP4-OPERAND
+-9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait or a failed fcntl" ERROR:FAULT E-TCP4-RESULT
 -9190 s" a queue index or capacity out of range" ERROR:CODE E-QUEUE-OPERAND
 -9191 s" a queue used before it is initialized, or initialized while live" ERROR:CODE E-QUEUE-STATE
 -9192 s" more queue definitions than the package table holds" ERROR:CODE E-QUEUE-TABLE
