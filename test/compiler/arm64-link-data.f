@@ -259,14 +259,14 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" unended" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
 \ The data child on the object at name, refused by its read for the reason err
-\ before it arms, exits 74.
+\ before it arms, exits 65.
 : BAD-OBJECT ( CMD:command ^u8 n ^u8 n -- CMD:command )
    {: name:^ name-n:n err:^ err-n:n :}
    s" data"  name name-n PROG$ CHILD-RC {: rc:n :}
    name name-n s" nothing on stdout" CHILD-LABEL  CMD:OUT$ nip 0 T=
    name name-n s" the read's reason" CHILD-LABEL
    CMD:ERR$ err err-n CONTAINS? TTRUE
-   name name-n s" the read exits 74" CHILD-LABEL  rc 74 T= ;
+   name name-n s" the read exits 65" CHILD-LABEL  rc 65 T= ;
 
 : BAD-FLIPPED ( CMD:command -- CMD:command )
    s" flipped"  s" link: the kernel object fails its checksum" BAD-OBJECT ;
@@ -279,7 +279,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : BAD-DP-AT-START ( CMD:command -- CMD:command )
    s" header"  s" dp-at-start" PROG$  s" dp-at-start"
-   s" link: the kernel object is cut short or malformed" 74 BAD-LINK ;
+   s" link: the kernel object is cut short or malformed" 65 BAD-LINK ;
 
 
 public

@@ -67,7 +67,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 : ROW-BYTES ( ^u8 n -- n )
    ROW-LEN dup 0 < if
-      s" image-names: a row's length is not a length" EXIT-STATUS:FAILURE die then ;
+      s" image-names: a row's length is not a length" EXIT-STATUS:DATAERR die then ;
 
 : KIND? ( ^u8 n ^u8 n -- bool )
    {: row:^ rowu:n kind:^ kindu:n :}
@@ -123,7 +123,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : UNKNOWN-KIND ( ^u8 n -- )
    {: kind:^ kindu:n :}
    SB-RESET s" image-names: a map row of unknown kind " SB-APPEND
-   kind kindu 64 min SB-APPEND SB$ EXIT-STATUS:FAILURE die ;
+   kind kindu 64 min SB-APPEND SB$ EXIT-STATUS:DATAERR die ;
 
 public
 
@@ -222,7 +222,7 @@ public
       begin POS @ USED @ < while
          LINE$ {: row:^ rowu:n :}
          row rowu kind kindu KIND? if
-            if s" image-names: two rows of one region" EXIT-STATUS:FAILURE die then
+            if s" image-names: two rows of one region" EXIT-STATUS:DATAERR die then
             2drop row rowu COL-START @ NUM-COL row rowu ROW-BYTES true
          then
       repeat

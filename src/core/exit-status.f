@@ -5,6 +5,7 @@ public
 0 constant SUCCESS              \ the process did what it was asked
 1 constant FAILURE              \ a check the process ran failed: a test, a lint finding, a tool's comparison or child
 64 constant USAGE               \ the command line is wrong
+65 constant DATAERR             \ an input file is not in the form its reader expects
 66 constant NOINPUT             \ an input the command line names does not exist
 67 constant UNCAUGHT            \ a throw of a code outside 1..255 that nothing caught
 69 constant UNAVAILABLE         \ a program or service the process needs is missing or did not answer

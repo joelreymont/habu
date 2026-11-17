@@ -42,7 +42,7 @@ CAST: MAP>BYTES ( n -- ^u8 )
 : IMGD-READ ( ^u8 n -- )
    FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" EXIT-STATUS:IOERR die THEN
    IMGD-LEN !  FD>N IMGD-FD !
-   IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" EXIT-STATUS:FAILURE die THEN
+   IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" EXIT-STATUS:DATAERR die THEN
    0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap IMGD-MMAP-PTR IMGD-IMG!
    IMGD-FD @ close ;
 

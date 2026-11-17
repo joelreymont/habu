@@ -299,7 +299,7 @@ variable RELA-ENT
 variable RELA-BYTES
 
 : CHECK ( bool ^u8 n -- ) {: ok:bool why:^ whyu:n :}
-   ok 0= if why whyu EXIT-STATUS:IOERR die then ;
+   ok 0= if why whyu EXIT-STATUS:DATAERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and

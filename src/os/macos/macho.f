@@ -352,7 +352,7 @@ variable SIGN-CMD
 variable CURSOR
 
 : CHECK ( bool -- )
-   0= if s" macho: invalid Habu Mach-O container" EXIT-STATUS:IOERR die then ;
+   0= if s" macho: invalid Habu Mach-O container" EXIT-STATUS:DATAERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and CHECK

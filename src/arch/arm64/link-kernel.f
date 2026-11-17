@@ -87,7 +87,7 @@ variable PATH-U
 
 : BAD ( -- )
    SAY-OBJECT
-   s" link: the kernel object is cut short or malformed" EXIT-STATUS:IOERR die ;
+   s" link: the kernel object is cut short or malformed" EXIT-STATUS:DATAERR die ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -147,7 +147,7 @@ variable PATH-U
    2 TABLE PRESETS-N ! PRESETS-AT !
    AT @ KOBJ-U @ = if
       SAY-OBJECT
-      s" link: the kernel object has no checker rows: its tree is older than this hb" EXIT-STATUS:IOERR die
+      s" link: the kernel object has no checker rows: its tree is older than this hb" EXIT-STATUS:DATAERR die
    then
    IMPORTS MACHO-U ! MACHO-AT !
    IMPORTS ELF-U ! ELF-AT !
@@ -161,7 +161,7 @@ variable PATH-U
    SHA-CTX  0 KOBJ 40 +  KOBJ-U @ 40 -  SUM SHA256-IN
    SUM 32  0 KOBJ 8 + 32  STR= 0= if
       SAY-OBJECT
-      s" link: the kernel object fails its checksum" EXIT-STATUS:IOERR die
+      s" link: the kernel object fails its checksum" EXIT-STATUS:DATAERR die
    then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
@@ -220,7 +220,7 @@ public
    drop
    SAY-OBJECT
    s" link: the kernel object has no symbol " SAY a u SAY SAY-CR
-   s" link: the kernel object lacks a symbol the link reads" EXIT-STATUS:IOERR die ;
+   s" link: the kernel object lacks a symbol the link reads" EXIT-STATUS:DATAERR die ;
 
 : SYM-LABEL ( ^u8 n -- label ) SYM >LABEL ;
 
@@ -249,7 +249,7 @@ public
 \ from 2 to 8.
 : SCOPE-SITE ( n -- label )
    2 - {: j:n :}
-   j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" EXIT-STATUS:IOERR die then
+   j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" EXIT-STATUS:DATAERR die then
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
 \ The Mach-O and the ELF import sections' bytes.
@@ -305,7 +305,7 @@ public
    path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if
       s" link: no kernel object at " SAY path pathu SAY SAY-CR
-      s" link: the kernel object is missing" EXIT-STATUS:IOERR die
+      s" link: the kernel object is missing" EXIT-STATUS:NOINPUT die
    then
    size 1 max KOBJ-RESERVE
    file 0 KOBJ size FS:READ-SIZED
@@ -316,7 +316,7 @@ public
       SAY-OBJECT
       s" link: its DATA-START is " SAY theirs SAY-INT
       s" , hb's is " SAY DATA-START SAY-INT SAY-CR
-      s" link: a target may not raise DATA-START above the running hb's" EXIT-STATUS:IOERR die
+      s" link: a target may not raise DATA-START above the running hb's" EXIT-STATUS:DATAERR die
    then
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 

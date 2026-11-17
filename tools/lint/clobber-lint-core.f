@@ -676,7 +676,7 @@ variable USING#
    USING# @ 1+ USING# ! ;
 
 : USING-DROP ( -- )
-   USING# @ 0= if s" clobber-lint: ;using with no using open" EXIT-STATUS:FAILURE die then
+   USING# @ 0= if s" clobber-lint: ;using with no using open" EXIT-STATUS:DATAERR die then
    USING# @ 1- USING# ! ;
 
 : USINGS-CLOSE ( -- )
@@ -1034,11 +1034,11 @@ variable HIDDEN
    k TOK s" ;package" LINT-STR=CI if 0 PKG-U !  USINGS-CLOSE k exit then
    k TOK s" ;using" LINT-STR=CI if USING-DROP k exit then
    k TOK s" using" LINT-STR=CI if
-      k 1+ TN# @ >= if s" clobber-lint: missing using name" EXIT-STATUS:FAILURE die then
+      k 1+ TN# @ >= if s" clobber-lint: missing using name" EXIT-STATUS:DATAERR die then
       k 1+ TOK USING+  k 1+ exit
    then
    k TOK s" package" LINT-STR=CI 0= if k exit then
-   k 1+ TN# @ >= if s" clobber-lint: missing package name" EXIT-STATUS:FAILURE die then
+   k 1+ TN# @ >= if s" clobber-lint: missing package name" EXIT-STATUS:DATAERR die then
    k 1+ TOK PKG-U ! PKG-A ! k 1+ ;
 
 \ def takes a definition's `:` token and its end, in the package and usings

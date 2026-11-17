@@ -94,7 +94,7 @@ CAST: MAP>BYTES ( n -- ^u8 )
 : READ-IMG-PATH ( ^u8 n -- )
    FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" EXIT-STATUS:IOERR die THEN
    ISZ !  FD>N IFD !
-   ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" EXIT-STATUS:FAILURE die THEN
+   ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" EXIT-STATUS:DATAERR die THEN
    0 ISZ @ 1 2 IFD @ 0 mmap
    IMG-MMAP-PTR IB!
    IFD @ close
@@ -260,7 +260,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    off ;
 : E-NAME ( n -- ^u8 n )
    {: o:n :}
-   o E-NAME-OFF dup 0 < if s" imgdump: name out of range" EXIT-STATUS:FAILURE die then
+   o E-NAME-OFF dup 0 < if s" imgdump: name out of range" EXIT-STATUS:DATAERR die then
    IB@ +  o E-L ;
 \ The name length floor is 0: a name length is a record field, not a
 \ plausibility test.
@@ -301,11 +301,11 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 : FIND-X64-DICT ( -- )
    X64-REG-PHDR {: p:n :}
-   p 0 < if s" imgdump: no x86 dictionary LOAD" EXIT-STATUS:FAILURE die then
+   p 0 < if s" imgdump: no x86 dictionary LOAD" EXIT-STATUS:DATAERR die then
    p 16 + I@ ELF-VA>OFF {: off:n :}
-   off 0 < if s" imgdump: no file-backed x86 dictionary" EXIT-STATUS:FAILURE die then
+   off 0 < if s" imgdump: no file-backed x86 dictionary" EXIT-STATUS:DATAERR die then
    off off p 32 + I@ DICT-SIZE min + RUN#-TO {: count:n :}
-   count 0= if s" imgdump: no dict found" EXIT-STATUS:FAILURE die then
+   count 0= if s" imgdump: no dict found" EXIT-STATUS:DATAERR die then
    off BESTO !  count BESTN ! ;
 
 : FIND-DICT ( -- )
@@ -318,7 +318,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
       then
       4 +
    repeat drop
-   BESTN @ 0= if s" imgdump: no dict found" EXIT-STATUS:FAILURE die then ;
+   BESTN @ 0= if s" imgdump: no dict found" EXIT-STATUS:DATAERR die then ;
 
 \ ---- dump ----
 : .ENT {: o :}
@@ -334,7 +334,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : DUMP-DICT
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
       dup .ENT  DREC +
    repeat drop ;
 
@@ -346,7 +346,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    PCV !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
       dup PC-HIT? if .ENT exit then
       DREC +
    repeat drop
@@ -371,7 +371,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" EXIT-STATUS:FAILURE die
+      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" EXIT-STATUS:DATAERR die
    then
    X64-IMAGE @ if 0 exit then                  \ x86 records hold absolute xts
    ELF-ENTRY-OFF I@ ;
@@ -447,7 +447,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    0 A-N !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
       dup A-N @ CAPTURE-A-ENTRY
       A-N @ 1 + A-N !
       DREC +
@@ -503,7 +503,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    0 CMP-IDX !
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
+      dup ENT? 0= if s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
       dup CMP-IDX @ CMP-ENTRY
       CMP-IDX @ 1 + CMP-IDX !
       DREC +
@@ -551,7 +551,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
    DICT-START
    begin dup DICT-END < while
-      dup ENT? 0= if drop s" imgdump: corrupt dict entry" EXIT-STATUS:FAILURE die then
+      dup ENT? 0= if drop s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
       dup E-NAME 2 SCRIPT-ARGV$ CORE-STR=CI if
          dup E-NAME type s"  wid " type E-WID . cr exit
       then
