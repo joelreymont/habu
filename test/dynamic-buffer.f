@@ -1,5 +1,4 @@
 \ Dynamic typed storage uses the real compiler, allocator and accessor.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/adt/option.f
 
@@ -58,7 +57,7 @@ variable DB-EVAL-U
    0 BYTES c@ 7 T=
    99 BYTES c@ 9 T=
    s" BAD-BYTE-FETCH ( n -- n ) BYTES @" CHECK! 0 T=
-   s" DYNAMIC-BUFFER BAD-U16 u16" DB-EVAL EXIT-STATUS:REJECTED T=
+   s" DYNAMIC-BUFFER BAD-U16 u16" DB-EVAL 70 T=
    s" BAD-U16" 0 search-wl 0= TTRUE
    BYTES-RELEASE
    1 BYTES-RESERVE

@@ -1,7 +1,6 @@
 \ workspace.f - CWORK storage: the declaring package's own words capture none
 \ of its accessors, and no checked source reaches the mapping's cells.
 
-require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -84,10 +83,10 @@ CWKT:CWK-B T=
 CWKT:CWK-S T=
 CWKW:HITS @ 0 T=
 
-s" : CWK-MEM ( -- ) CWKT:CWK-FOOB CWORK:MEM#base ! ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
-s" : CWK-CTL ( -- ) 0 CWORK:MEM#ctl ! ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
-s" : CWK-OFF ( -- ) 0 CWKC:V#base ! ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
-s" 0 CWORK-VARIABLE CWK-U8 u8" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+s" : CWK-MEM ( -- ) CWKT:CWK-FOOB CWORK:MEM#base ! ;" TEST-EVAL:RC 70 T=
+s" : CWK-CTL ( -- ) 0 CWORK:MEM#ctl ! ;" TEST-EVAL:RC 70 T=
+s" : CWK-OFF ( -- ) 0 CWKC:V#base ! ;" TEST-EVAL:RC 70 T=
+s" 0 CWORK-VARIABLE CWK-U8 u8" TEST-EVAL:RC 70 T=
 
 CWKT:CWK-FULL
 

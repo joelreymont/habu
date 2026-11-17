@@ -1,5 +1,4 @@
 \ Checker and package boundaries of the append-only producer.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
@@ -79,7 +78,7 @@ EXPORT REPLACE-R-CALLBACK
    \ The engine refuses `package C2-MEM` by name, exit 70, before the checker
    \ sees a body.
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
-   s" package C2-MEM ;package" EXIT-STATUS:REJECTED s" C2-MEM" SUBJECT:REFUSED? TTRUE
+   s" package C2-MEM ;package" 70 s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT
    s" c2-owner-producer-refusals: ok" type cr ;
 

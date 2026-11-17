@@ -3,7 +3,6 @@
 \ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
 \ one mention would come back from the next as an address `@`, `c@`, `!` or
 \ `0 ptr-field` accepts.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/task.f
@@ -74,21 +73,21 @@ private
 : CASE-VARIABLE ( -- )
    s" a plain variable cannot answer an address it was never given" T-LABEL
    ARM
-   [: s" : RCP-PEEK ( n -- n ) RCP-V ! RCP-V @ @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-PEEK ( n -- n ) RCP-V ! RCP-V @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-VARIABLE-STORE ( -- )
    s" and the write half of the same pun is refused at the store" T-LABEL
    ARM
-   [: s" : RCP-POKE ( n n -- ) RCP-V ! RCP-V @ ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-POKE ( n n -- ) RCP-V ! RCP-V @ ! ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-CREATE ( -- )
    s" a create'd cell is the same cell and gets the same answer" T-LABEL
    ARM
-   [: s" : RCP-CPEEK ( n -- n ) RCP-C ! RCP-C @ @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-CPEEK ( n -- n ) RCP-C ! RCP-C @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -97,14 +96,14 @@ private
 : CASE-CONSTANT ( -- )
    s" a constant's value is not an address either, with no store in sight" T-LABEL
    ARM
-   [: s" : RCP-KPEEK ( -- n ) RCP-K @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-KPEEK ( -- n ) RCP-K @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-HERE ( -- )
    s" here's cell is raw storage and answers the same refusal" T-LABEL
    ARM
-   [: s" : RCP-HPEEK ( n -- n ) here ! here @ @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-HPEEK ( n -- n ) here ! here @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -113,7 +112,7 @@ private
 : CASE-BYTE-FETCH ( -- )
    s" the byte view of the pun is refused where the cell view is" T-LABEL
    ARM
-   [: s" : RCP-BPEEK ( n -- u8 ) RCP-V ! RCP-V @ c@ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-BPEEK ( n -- u8 ) RCP-V ! RCP-V @ c@ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -122,7 +121,7 @@ private
 : CASE-POINTER-IN ( -- )
    s" and a real pointer cannot be put into a plain cell in the first place" T-LABEL
    ARM
-   [: s" : RCP-PSTORE ( ^a -- ) RCP-V ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-PSTORE ( ^a -- ) RCP-V ! ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -134,7 +133,7 @@ private
    s" the field of a raw cell is refused, so the seal cannot be walked around" T-LABEL
    ARM
    [: s" : RCP-FORGE ( n -- n ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    CODE$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
@@ -146,7 +145,7 @@ private
    s" and the nominal forgery through that field is refused at the same token" T-LABEL
    ARM
    [: s" : RCP-FORGE-N ( n -- rcpthing ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    CODE$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
@@ -156,7 +155,7 @@ private
 : CASE-SIGNATURE-BOUNDARY ( -- )
    s" the declared output row refuses it too, and names the same rule" T-LABEL
    ARM
-   [: s" : RCP-VBASE ( -- ^u8 ) RCP-V @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-VBASE ( -- ^u8 ) RCP-V @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -168,7 +167,7 @@ private
    s" a branch join on the return row names it as well" T-LABEL
    ARM
    [: s" : RCP-VJOIN ( n -- ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN r> drop ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    NAMED
    DISARM ;
 
@@ -181,14 +180,14 @@ private
 : CASE-VARIABLE-AS-XT-CELL ( -- )
    s" a plain variable cannot be declared to hold an execution token" T-LABEL
    ARM
-   [: s" : RCP-QCELL ( -- ^[ -- n ] ) RCP-V ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-QCELL ( -- ^[ -- n ] ) RCP-V ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
 : CASE-CREATE-AS-XT-CELL ( -- )
    s" a create'd cell gets the same answer" T-LABEL
    ARM
-   [: s" : RCP-QCELLC ( -- ^[ -- n ] ) RCP-C ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-QCELLC ( -- ^[ -- n ] ) RCP-C ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -197,7 +196,7 @@ private
 : CASE-QUOTATION-STORE ( -- )
    s" a quotation cannot be stored into an undeclared cell either" T-LABEL
    ARM
-   [: s" : RCP-QPUT ( -- ) [: 1 ;] RCP-V ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-QPUT ( -- ) [: 1 ;] RCP-V ! ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -205,7 +204,7 @@ private
    s" a compiled opaque tick cannot enter raw storage" T-LABEL
    ARM
    [: s" : RCP-OPAQUEPUT ( -- ) ['] execute RCP-V ! ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -214,7 +213,7 @@ private
 : CASE-RETURN-BALANCE ( -- )
    s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
    ARM
-   [: s" : RCP-RBAL ( -- ) 1 >r ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-RBAL ( -- ) 1 >r ;" evaluate-closed ;] 70 TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REASON$ HAS?
    DISARM ;
 
@@ -232,7 +231,7 @@ private
 : CASE-ABANDONED-CANDIDATE ( -- )
    s" a candidate row that was abandoned does not name the real refusal" T-LABEL
    ARM
-   [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" evaluate-closed ;] 70 TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 
@@ -271,7 +270,7 @@ private
    s" and the window it opens does not outlive its own token" T-LABEL
    ARM
    [: s" : RCP-XTTHEN ( -- ^[ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -280,7 +279,7 @@ private
 : CASE-TASK-SLOT ( -- )
    s" a TASK:+USER slot's refusal is not the raw-cell one" T-LABEL
    ARM
-   [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 

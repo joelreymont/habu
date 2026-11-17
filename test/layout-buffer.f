@@ -1,6 +1,5 @@
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
-require src/core/exit-status.f
 require src/lib/test.f
 
 T-RESET
@@ -76,11 +75,11 @@ variable LB-EVAL-U
    LB-EVAL-U ! LB-EVAL-A !
    [: LB-EVAL-RUN ;] catch ;
 
-s" 0 LAYOUT-BUFFER LB-ZERO lb-res<n,n>" LB-EVAL EXIT-STATUS:REJECTED T=
-s" -1 LAYOUT-BUFFER LB-NEG lb-res<n,n>" LB-EVAL EXIT-STATUS:REJECTED T=
-s" $7FFFFFFFFFFFFFFF LAYOUT-BUFFER LB-EXTENT lb-res<n,n>" LB-EVAL EXIT-STATUS:REJECTED T=
-s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL EXIT-STATUS:REJECTED T=
-s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL EXIT-STATUS:REJECTED T=
+s" 0 LAYOUT-BUFFER LB-ZERO lb-res<n,n>" LB-EVAL 70 T=
+s" -1 LAYOUT-BUFFER LB-NEG lb-res<n,n>" LB-EVAL 70 T=
+s" $7FFFFFFFFFFFFFFF LAYOUT-BUFFER LB-EXTENT lb-res<n,n>" LB-EVAL 70 T=
+s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL 70 T=
+s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL 70 T=
 
 \ A second peek at a token on the next line reads none either, and the token
 \ runs as the next statement.
@@ -105,11 +104,11 @@ PTR-VARIABLE LB-DP
    1 REJECTION:QUIET +!  [: LB-DUPLICATE ;] catch  -1 REJECTION:QUIET +! ;
 
 here LB-DP 0 ptr-field !
-LB-DUP-RC EXIT-STATUS:REJECTED T=
+LB-DUP-RC 70 T=
 here LB-DP 0 ptr-field @ = TTRUE
 
 here LB-DP 0 ptr-field !
-s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL EXIT-STATUS:REJECTED T=
+s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL 70 T=
 
 \ Nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction.
 NEWTYPE lbtk
@@ -173,11 +172,11 @@ s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
    1 REJECTION:QUIET +!  [: LBTK-DUP-DECL ;] catch  -1 REJECTION:QUIET +! ;
 : LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
 here LB-DP 0 ptr-field !
-LBTK-ZERO-RC EXIT-STATUS:REJECTED T=
+LBTK-ZERO-RC 70 T=
 here LB-DP 0 ptr-field @ = TTRUE
 LBTK-ZERO-ABSENT? TTRUE
 here LB-DP 0 ptr-field !
-LBTK-DUP-RC EXIT-STATUS:REJECTED T=
+LBTK-DUP-RC 70 T=
 here LB-DP 0 ptr-field @ = TTRUE
 
 \ STRUCTURE positive: MAKE, typed store, fetch and UNMAKE round-trip through

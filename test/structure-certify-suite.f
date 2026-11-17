@@ -5,7 +5,6 @@
 \     bin/hb < test/structure-certify-suite.f
 \ test/structure-decl-suite.f owns the declaration and rollback front end.
 
-require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 
@@ -107,7 +106,7 @@ SCG-END
 \    undefining a generated word or deferring a new word into it is rejected
 \    with E-CTOR-PROTECTED, as for sum and product constructors.
 : SC-PROTECTED ( ^u8 n -- )   \ the text is rejected with E-CTOR-PROTECTED
-   REJECTION:CAPTURE  TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+   REJECTION:CAPTURE  TEST-EVAL:RC 70 T=
    REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed

@@ -3,7 +3,6 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/source.f tools/source-discovery.f tools/source-discovery-test.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -149,10 +148,10 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
-\ Q's walk is rejected as KIND: it stops with EXIT-STATUS:REJECTED and
+\ Q's walk is rejected as KIND: it stops with 70 and
 \ VERIFY:DISCOVERY-STOPPED holds the kind.
 : SDT-STOPS ( [ -- ] n -- ) {: q kind:n :}
-   q EXIT-STATUS:REJECTED TTHROWSQ
+   q 70 TTHROWSQ
    VERIFY:DISCOVERY-STOPPED @ kind T= ;
 
 \ The entry walked with its bytes armed as the rejection source, as the checker
@@ -453,7 +452,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ loader's E-PATH-RANGE record, status 70.
 : SDT-RANGE-STOP ( -- )
    REJECTION:CAPTURE
-   [: SDT-RUN-ENTRY ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: SDT-RUN-ENTRY ;] 70 TTHROWSQ
    REJECTION:BUFFER$ s" E-PATH-RANGE" CONTAINS? TTRUE
    REJECTION:BUFFER$ s" `required` got a path" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;

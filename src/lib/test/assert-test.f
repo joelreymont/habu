@@ -124,7 +124,7 @@ variable TAT-SCRIPT-U
    s" habu-assert-line" s" fail.f" TAT-PREPARE
    TAT-SCRIPT$ TAT-FAIL-SRC$ FS:WRITE-ALL
    TAT-RUN
-   EXIT-STATUS:FAILURE s" assert-line rc" GT-RC=
+   1 s" assert-line rc" GT-RC=
    s" assert: expected 3 got 9" s" assert-line one line" GT-STDOUT-HAS
    GT-CLEANUP
    GT-FAILURES 0 T= ;

@@ -8,7 +8,6 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   test/xt-cell-test.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -104,11 +103,11 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 \ and what it read is the checker's to refuse.
 : XC-SECTION-ADMISSIBILITY ( -- )
    \ missing -- : not a well-formed effect
-   s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL 70 T=
    \ unterminated quotation: the input ends before its closer
-   s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL 70 T=
    \ bogus pointee type inside the quotation body
-   s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL 70 T=
    \ none of the rejected names ever reached the dictionary
    s" BADQ1" 0 search-wl 0= TTRUE
    s" BADQ2" 0 search-wl 0= TTRUE
@@ -161,7 +160,7 @@ defer XC-DF ( n -- n )
 \ one, directly or in a field; a quotation row may name it.
 : XC-EVAL< ( ^u8 n -- )   \ evaluate with JSON diags captured; assert reject
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
-   XC-EVAL EXIT-STATUS:REJECTED T= ;
+   XC-EVAL 70 T= ;
 : XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one
    s\" \"code\":\"E-BAD-STORAGE\"" XC-CODE?
    s" xt in a stored type" XC-CODE? ;
@@ -189,7 +188,7 @@ defer XC-DF ( n -- n )
    \ value-record refusal exits the process, so it runs as a subject, before the
    \ family whose admission would refuse it as a duplicate.
    s" VALUE-RECORD xt value n END-VALUE-RECORD"
-   EXIT-STATUS:REJECTED s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REFUSED? TTRUE
+   70 s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REFUSED? TTRUE
    s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL<
    s\" \"code\":\"E-BAD-DECLARATION\"" XC-CODE?
    s\" \"token\":\"xt\"" XC-CODE?

@@ -183,9 +183,9 @@ variable GE-EVAL-SRC-U
    GT-ERR$ type
    \ A child whose deadline expired failed no check of its own: rethrow the
    \ deadline instead of failing this check. That is this capture's deadline, or
-   \ one inside the child, which then exits EXIT-STATUS:TIMEOUT.
+   \ one inside the child, which then exits 124.
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
-   GT-RC@ EXIT-STATUS:TIMEOUT = if E-PROC-TIMEOUT throw then
+   GT-RC@ 124 = if E-PROC-TIMEOUT throw then
    s" native test failed" EXIT-STATUS:FAILURE die ;
 
 \ The entry's exit status for an rc check. A timed-out entry has none, and

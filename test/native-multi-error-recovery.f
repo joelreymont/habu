@@ -1,6 +1,5 @@
 \ A counted native checker refusal ends its pending definition without
 \ publishing it, and the surrounding source keeps its earlier definitions.
-require src/core/exit-status.f
 require src/habu/layout.f
 require src/habu/xref.f
 
@@ -148,7 +147,7 @@ public
    REJECTION:CAPTURE
    [: s" cast: CAST-WIDE ( n -- ^u8 n )" evaluate-closed ;] catch
    REJECTION:BUFFER-OFF
-   EXIT-STATUS:REJECTED <> if s" native cast rejection status" 1 die then
+   70 <> if s" native cast rejection status" 1 die then
    REJECTION:BUFFER$ s" error[E-CAST-ARITY]" CONTAINS? 0= if s" native cast refusal code" 1 die then
    FINISH 1 <> if s" native cast refusal count" 1 die then
    s" CAST-WIDE" get-current search-wl 0<> if s" native refused cast published" 1 die then ;

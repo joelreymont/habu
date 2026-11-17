@@ -1,11 +1,10 @@
 \ seal.f - seal regressions: post-seal FORGET and HIDE of engine words are
 \ rejected (E-SEAL-VIOLATION, status 70), post-seal cp! and record writes stop
-\ with EXIT-STATUS:SEAL-VIOLATION, and a sealed package rejects a definition
+\ with status 83, and a sealed package rejects a definition
 \ into it, under --load and in an evaluated source.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -21,7 +20,6 @@ require src/lib/engine-candidate.f
 package SEAL-SUITE
 
 2048 constant SLV-CAP
-EXIT-STATUS:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
 variable SLV-CHILD-U
@@ -153,14 +151,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-RC @ rc T= ;
 
 : SLV-ASSERT-SEAL ( -- )
-   SLV-SEAL-RC SLV-ASSERT-RC ;
+   83 SLV-ASSERT-RC ;
 
 : SLV-ERR$ ( -- ^u8 n )  SLV-ERR SLV-ERR-U @ ;
 
 \ The child's record opens with the line L and holds the help line H.
 : SLV-ASSERT-REJECT ( ^u8 n ^u8 n -- )
    {: l:^ lu:n h:^ hu:n :}
-   EXIT-STATUS:REJECTED SLV-ASSERT-RC
+   70 SLV-ASSERT-RC
    SLV-ERR$ l lu STARTS-WITH? TTRUE
    SLV-ERR$ h hu CONTAINS? TTRUE ;
 
@@ -178,7 +176,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ bitmap's bound, and exits 84 rather than writing outside it, printing the id.
 : SLV-ASSERT-PWID-OOR ( ^u8 n -- ) {: want:^ wantu:n :}
    SLV-EXITED @ TTRUE
-   SLV-RC @ EXIT-STATUS:SEAL-WORDLIST T=
+   SLV-RC @ 84 T=
    SLV-ERR$ want wantu CONTAINS? TTRUE ;
 
 : SLV-PWID-BOUND ( -- )
@@ -195,7 +193,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ E-SEALED-PACKAGE record naming the word it would add.
 : SLV-ASSERT-PROT-PUBLISH ( ^u8 n -- ) {: prose:^ proseu:n :}
    SLV-EXITED @ TTRUE
-   SLV-RC @ EXIT-STATUS:REJECTED T=
+   SLV-RC @ 70 T=
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
    SLV-ERR$ prose proseu CONTAINS? TTRUE ;
 

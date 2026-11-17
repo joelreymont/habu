@@ -264,7 +264,7 @@ create RBT-ERR RBT-CAP allot
 \ line on fd 2.
 HB-TARGET-LINUX-X86-64? 0= [if]
 : RBT-EXPECT-FAULT ( ^u8 n -- )
-   EXIT-STATUS:MEMORY-FAULT RBT-EXITS
+   110 RBT-EXITS
    0 > TTRUE
    0 T= ;
 [then]
@@ -334,7 +334,7 @@ create CAP-ERR CAP allot
 : EXPECT-FATAL ( ^u8 n -- ) {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc EXIT-STATUS:SYSTEM T-ENDING-EXITED=
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc 78 T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
@@ -372,7 +372,7 @@ HB-TARGET-LINUX-X86-64? 0= [if]
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
    MATCH PROCESS:status
-      exited OF EXIT-STATUS:MEMORY-FAULT <> if E-PRIMARY throw then ENDOF
+      exited OF 110 <> if E-PRIMARY throw then ENDOF
       signaled OF drop E-PRIMARY throw ENDOF
    ;MATCH ;
 [then]

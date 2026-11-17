@@ -27,8 +27,6 @@ PATH-CAP BUFFER: PROG-BUF
    BUILD-OUT:BASE$ s" prog" PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
-70 constant REFUSED   \ the checker's rejection (EXIT-STATUS:REJECTED)
-
 : PAD ( -- ) s" test/fixtures/file-objects/pad.f" included ;
 : RESIDUE ( -- ) s" test/fixtures/file-objects/residue.f" included ;
 : LOAD-AGAIN ( -- ) s" test/fixtures/file-objects/again.f" included ;
@@ -66,14 +64,14 @@ PATH-CAP BUFFER: PROG-BUF
 
 : STOP-FILE ( -- )
    s" test/fixtures/file-objects/count.f" included
-   ['] RESIDUE catch REFUSED s" build: STOP-FILE: residue.f not refused" EXPECT
+   ['] RESIDUE catch 70 s" build: STOP-FILE: residue.f not refused" EXPECT
    ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-FILE: a load after a refused file ran" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED
    s" build: STOP-FILE: a write after a refused file ran" EXPECT ;
 
 : STOP-BODY ( -- )
    [: s" : FOB-BAD ( -- n ) dup ;" evaluate-closed ;] catch
-   REFUSED s" build: STOP-BODY: the definition was not refused" EXPECT
+   70 s" build: STOP-BODY: the definition was not refused" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED s" build: STOP-BODY: a write after a rollback ran" EXPECT
    ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-BODY: a load after a rollback ran" EXPECT ;
 
@@ -596,7 +594,9 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    t CRAFT-TAIL tu BYTE-COPY  tu CRAFT-TAIL-U !
    0 CRAFT-PATH-U !
    s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
-   CRAFT-PATH-U @ 0= if s" build: CRAFT-FIND: no object ends with the tail" EXIT-STATUS:FAILURE die then
+   CRAFT-PATH-U @ 0= if
+      s" build: CRAFT-FIND: no object ends with the tail" EXIT-STATUS:FAILURE die
+   then
    CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
 
 
@@ -635,7 +635,9 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 \ past k moves and one holding k grows (SPAN-GROW): EXTENT-CK finds each extent at its span. Past CRAFT-CAP, rc 1.
 : CRAFT-GROW ( n n -- )
    {: k:n u:n :}
-   CRAFT-U @ u + CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" EXIT-STATUS:FAILURE die then
+   CRAFT-U @ u + CRAFT-CAP > if
+      s" build: CRAFTS: the grown object exceeds CRAFT-CAP" EXIT-STATUS:FAILURE die
+   then
    CRAFT-FIRST k +  CRAFT-OBJ k u + +  CRAFT-U @ k -  BYTE-COPY
    PIECES-FIELD 8 + {: len-at:n :}
    len-at OBJ@ u + len-at OBJ!
@@ -704,7 +706,9 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 : FIRST-WORD-ROW ( -- n )
    s" /words/b.f.hfo" CRAFT-FIND
    CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
-   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if s" build: BY-WORD: b.f's object lists no word" EXIT-STATUS:FAILURE die then
+   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if
+      s" build: BY-WORD: b.f's object lists no word" EXIT-STATUS:FAILURE die
+   then
    WORDS-FIELD OBJ@ ;
 
 \ b.f's first WORDS row with its time one more; then a build.

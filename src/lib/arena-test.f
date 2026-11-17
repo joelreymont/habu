@@ -13,7 +13,6 @@
 \ bytes when it shrinks, or loses a block's bytes or leaves stale ones in it
 \ when its allocator resizes it.
 
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/span.f
 require src/lib/allocator.f
@@ -270,7 +269,7 @@ HB-TARGET-LINUX-X86-64? 0= [if]
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
-   EXIT-STATUS:MEMORY-FAULT T-ENDING-EXITED= ;
+   110 T-ENDING-EXITED= ;
 [then]
 \ The x86-64 engine has no memory-fault throw.
 HB-TARGET-LINUX-X86-64? [if]

@@ -8,7 +8,6 @@
 \ A rejected definition prints its one diagnostic and nothing else.
 \ A bare word a global and a used package both define is rejected in that form.
 \ A SOURCE-ROOT word's uncaught throw on a path prints the record it carries.
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -1303,7 +1302,7 @@ undefine include
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
    70 ASSERT-REJECTED ;
 
-\ SRC as the body exits EXIT-STATUS:UNCAUGHT, its stderr opening with the line
+\ SRC as the body exits 67, its stderr opening with the line
 \ SB holds and then its help: the record has no place.
 : PATH-PASS-NOWHERE ( ^u8 n -- ) {: src:^ srcu:n :}
    S\" \n  = help: " SB-APPEND
@@ -1312,7 +1311,7 @@ undefine include
    ERR$ SB$ STARTS-WITH? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ EXIT-STATUS:UNCAUGHT T= ;
+   RC @ 67 T= ;
 
 \ The record on stderr helps with a path of 1 to INCLUDE-PATH-CAP bytes.
 : HELP-MOST ( -- )

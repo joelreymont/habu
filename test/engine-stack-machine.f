@@ -1,6 +1,6 @@
 \ A machine-stack overflow ends named, as a VM stack's does: the record `the
-\ machine stack ran past its bounds` on fd 2 and the EXIT-STATUS:STACK-BOUNDS
-\ exit, from the crash handler on the thread's alternate signal stack. Control:
+\ machine stack ran past its bounds` on fd 2 and the exit
+\ status 102, from the crash handler on the thread's alternate signal stack. Control:
 \ a data-stack overflow's record is the one package REJECTION writes for the
 \ same parts, byte for byte, in prose and in JSON; so is a memory fault's JSON
 \ record, which has notes and no help.
@@ -9,7 +9,6 @@
 require src/lib/process.f
 require test/gate-common.f
 require src/lib/engine-candidate.f
-require src/core/exit-status.f
 require src/core/rejection.f
 
 package MACHINE-STACK-TEST
@@ -48,7 +47,7 @@ variable IMAGE-U
    GE-HB$ src srcu PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 : MACHINE-EXIT ( ^u8 n -- ) {: label:^ labelu:n :}
-   EXIT-STATUS:STACK-BOUNDS label labelu GE-EXPECT-RC
+   102 label labelu GE-EXPECT-RC
    MACHINE$ label labelu EXPECT-LINE ;
 
 : MACHINE ( ^u8 n ^u8 n -- ) {: src:^ srcu:n label:^ labelu:n :}
@@ -95,12 +94,12 @@ variable IMAGE-U
    IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    S\" 110\n" s" a stripped application's caught fault" GE-EXPECT-OUT
    s" a stripped application's caught fault" FAULT-LINE
-   EXIT-STATUS:STACK-BOUNDS s" a stripped application" GE-EXPECT-RC
+   102 s" a stripped application" GE-EXPECT-RC
    MACHINE$ s" a stripped application" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    IMAGE$ GE-ARGV+ s" uncaught" GE-ARG+
    IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
-   EXIT-STATUS:MEMORY-FAULT s" a stripped application's uncaught fault"
+   110 s" a stripped application's uncaught fault"
    GE-EXPECT-RC
    s" a stripped application's uncaught fault" FAULT-LINE
    s" PASS: a stripped application, its fault caught and uncaught" type cr ;
@@ -123,7 +122,7 @@ variable IMAGE-U
 : CONTROL ( ^u8 n bool ^u8 n -- )
    {: src:^ srcu:n json:bool label:^ labelu:n :}
    src srcu RUN-SRC
-   EXIT-STATUS:STACK-BOUNDS label labelu GE-EXPECT-RC
+   102 label labelu GE-EXPECT-RC
    json RECORD$ label labelu GE-EXPECT-ERR ;
 
 : CONTROLS ( -- )
@@ -150,7 +149,7 @@ variable IMAGE-U
 : FAULT-CONTROL ( -- )
    s" a memory fault under REJECTION:JSON" {: label:^ labelu:n :}
    FAULT$ RUN-SRC
-   EXIT-STATUS:MEMORY-FAULT label labelu GE-EXPECT-RC
+   110 label labelu GE-EXPECT-RC
    FAULT-RECORD$ label labelu GE-EXPECT-ERR
    GT-ERR$ S\" }}\n" ENDS-WITH? 0= if label labelu GE-FAIL then
    s" PASS: a memory fault's JSON record, notes and no help" type cr ;

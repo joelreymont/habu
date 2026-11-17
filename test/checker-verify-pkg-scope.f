@@ -7,7 +7,6 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f
 \   src/habu/verify-source.f test/checker-verify-pkg-scope.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -154,7 +153,7 @@ CVPS-NEST:SEEN @ 1 T=
 s" top level: a candidate binds a global" T-LABEL
 s" CVPS-R1 ( -- n ) E-STR-BOUNDS" CHECK-QUIET-CANDIDATE! -1 T=
 s" top level: redefining a global is a duplicate" T-LABEL
-s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+s" : E-STR-BOUNDS ( -- n ) 1 ;" TEST-EVAL:RC 70 T=
 
 package CVPS-SCOPE
 private
@@ -179,7 +178,7 @@ s" : CVPS-NO-SUCH-WORD ( -- n ) 3 ;" TEST-EVAL:RC 0 T=
 \ duplicate probes do not pass on an answer that is always no.
 : CVPS-OWN-TAIL ( -- n ) 9 ;
 s" in a package: redefining its own tail is a duplicate" T-LABEL
-s" : CVPS-OWN-TAIL ( -- n ) 2 ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+s" : CVPS-OWN-TAIL ( -- n ) 2 ;" TEST-EVAL:RC 70 T=
 s" in a package: a candidate binds its own tail" T-LABEL
 s" CVPS-R4 ( -- n ) CVPS-OWN-TAIL" CHECK-QUIET-CANDIDATE! -1 T=
 

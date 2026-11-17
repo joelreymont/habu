@@ -1,7 +1,6 @@
 \ native-hookless-reject.f - a definition the checker refuses is refused naming
 \ it and the token refused, and keeps no row.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -52,7 +51,7 @@ create TEXT CAP allot                  variable TEXT-U
 : AMBIGUOUS-CALLEE ( -- )
    s" an ambiguous bare callee is refused naming the callee" T-LABEL
    s" package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    s" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package" SAYS
    s" = packages: UA, UC" SAYS ;
 
@@ -61,7 +60,7 @@ create TEXT CAP allot                  variable TEXT-U
 : SHADOWING-CALLEE ( -- )
    s" a bare callee a used public shadows is refused naming the callee" T-LABEL
    s" : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `US`" SAYS
    s" = package: US:SW" SAYS ;
 
@@ -70,7 +69,7 @@ create TEXT CAP allot                  variable TEXT-U
 : BAD-SIGNATURE ( -- )
    s" a refused stored signature is refused naming its token" T-LABEL
    s" TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `TB8` cannot be recorded" SAYS
    s" = evaluated: TRUSTED: TB8 ( -- nosuch:fam )" SAYS
    s" no type has this name" SAYS ;
@@ -80,7 +79,7 @@ create TEXT CAP allot                  variable TEXT-U
 : SHADOWED-ARITY ( -- )
    s" a public its private tail shadows is refused naming the definition" T-LABEL
    s" package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    s" error[E-SHADOWED-ARITY]: public `SAT-A:F` has a different stack effect" SAYS
    s" = evaluated: package SAT-A" SAYS
    s" its name binds the private word" SAYS ;
@@ -97,7 +96,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" HR-TRY . " TEXT+
    s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
    TEXT$ SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    s" error[E-MISMATCH]: `@` takes ^a; the stack holds hr-v" SAYS
    S\" 70\n" PRINTS
    s" error[E-NELAB-BUNDLE]: the body of `HR-LOST` loses the width of a multi-cell value" SAYS
@@ -107,7 +106,7 @@ create TEXT CAP allot                  variable TEXT-U
 : P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
 : Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
 
-\ TRY-FORGET prints the refusal's code, 70 (EXIT-STATUS:REJECTED). A row kept
+\ TRY-FORGET prints the refusal's code, 70. A row kept
 \ from the refused ( -- n n ) would certify a T-FORGET ( -- n n ) over
 \ W-FORGET.
 : REFUSED+ ( -- )
@@ -120,7 +119,7 @@ create TEXT CAP allot                  variable TEXT-U
    TEXT-U BUF-RESET P-W+ Q-USING-P+ REFUSED+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
-   RC @ EXIT-STATUS:REJECTED T=
+   RC @ 70 T=
    S\" 70\n" PRINTS
    s" error[E-MISMATCH]: T-FORGET ends with n on the stack; its signature promises n n" SAYS
    s" = evaluated: ...; TRY-FORGET . cr : T-FORGET ( -- n n ) W-FORGET ;" SAYS ;

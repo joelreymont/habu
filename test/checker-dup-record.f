@@ -5,7 +5,6 @@
 \ CHECK-REC-ADMIT). A scan under no checker scope takes back its rows when it
 \ ends.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -81,7 +80,7 @@ T-RESET
 : CDR-ONE ( -- n ) 1 ;
 
 s" a certified word redefined with a signature is refused" T-LABEL
-s" : CDR-ONE ( -- n ) 2 ;" CDR:VERIFY-QUIET EXIT-STATUS:REJECTED T=
+s" : CDR-ONE ( -- n ) 2 ;" CDR:VERIFY-QUIET 70 T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-ONE-USE ( -- n ) CDR-ONE ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
@@ -89,7 +88,7 @@ CDR:DIAG$ nip 0 T=
 : CDR-TWO ( -- n ) 2 ;
 
 s" a certified word redefined without a signature is refused" T-LABEL
-s" : CDR-TWO 3 ;" CDR:VERIFY-QUIET EXIT-STATUS:REJECTED T=
+s" : CDR-TWO 3 ;" CDR:VERIFY-QUIET 70 T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-TWO-USE ( -- n ) CDR-TWO ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=

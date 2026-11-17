@@ -1,7 +1,6 @@
 \ file-objects.f - builds of the files in test/fixtures/file-objects/, each in a fresh hb: an object must be
 \ a function of the files, not of the process.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -888,9 +887,9 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:ERR$ s" error[E-THROW-ZERO]" STARTS-WITH? {: opened:bool :}
    CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" CONTAINS?
    opened and {: said:bool :}
-   said  rc EXIT-STATUS:UNCAUGHT =  and 0= if rc SHOW then
+   said  rc 67 =  and 0= if rc SHOW then
    s" the program prints E-THROW-ZERO's record" LABEL  said TTRUE
-   s" the program exits 67" LABEL  rc EXIT-STATUS:UNCAUGHT T= ;
+   s" the program exits 67" LABEL  rc 67 T= ;
 
 \ Z is a stripped program; ZR, built with --repl, is hb running MAIN before its REPL.
 : ZERO-CASE ( CMD:command -- CMD:command )
@@ -1082,8 +1081,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
-   named placed and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
+   named placed and  rc 70 =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
    s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
 
@@ -1100,8 +1099,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
-   named placed and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
+   named placed and  rc 70 =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
    s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
 
@@ -1964,8 +1963,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" HT2" WHICH!  s" top.f" s" prog-top" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-LAYOUT-VALUE]" CONTAINS? {: said:bool :}
    CMD:ERR$ s" top.f" NEST-PATH$ CONTAINS? {: named:bool :}
-   said named and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
+   said named and  rc 70 =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc 70 T=
    s" the rejection gives the moved member's reason" LABEL  said TTRUE
    s" the rejection names top.f" LABEL  named TTRUE ;
 

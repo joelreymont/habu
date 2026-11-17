@@ -1,6 +1,5 @@
 \ Run: bin/hb --load src/lib/error-test.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/process.f
@@ -67,7 +66,7 @@ package PB
 : AGAIN-CASE ( -- )
    s" the same name declared again in its package is rejected as E-DUPLICATE-DEFINITION" T-LABEL
    REJECTION:CAPTURE
-   [: s" test/fixtures/error/again.f" included ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: s" test/fixtures/error/again.f" included ;] 70 TTHROWSQ
    REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]: `E-AGAIN`" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 

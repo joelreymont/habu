@@ -4,7 +4,6 @@
 \ build/ffi-callback-transcript.txt, read back and compared whole. A callback
 \ body that defines ends the process; that is a case of its own.
 \ Run: bin/hb --load src/lib/ffi-callback-test.f
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -257,14 +256,14 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ The quotation stops with the rejection status after a record of code c cu.
 : REJECTS? ( [ -- ] ^u8 n -- bool ) {: q c:^ cu:n :}
    REJECTION:CAPTURE
-   q catch EXIT-STATUS:REJECTED =
+   q catch 70 =
    REJECTION:BUFFER$ c cu CONTAINS? and
    REJECTION:BUFFER-OFF ;
 
 \ Whether Q stops with the rejection status after a record holding HEAD and HELP.
 : RECORD? ( [ -- ] ^u8 n ^u8 n -- bool )
    {: q h:^ hu:n p:^ pu:n :}
-   DECL-DIAG:PROSE  q catch EXIT-STATUS:REJECTED =
+   DECL-DIAG:PROSE  q catch 70 =
    h hu DECL-DIAG:HAS? and  p pu DECL-DIAG:HAS? and
    DECL-DIAG:OFF ;
 

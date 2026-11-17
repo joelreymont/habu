@@ -10,7 +10,6 @@
 \ file that stores one is rejected at its storage, before a requirer reads it.
 \ The file calls the running checker's words, so it is loaded, never built.
 
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/adt/nullable.f
 require src/lib/adt/option.f
@@ -111,7 +110,7 @@ s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
 : ROOT-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
    REJECTION:CAPTURE
-   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] 70 TTHROWSQ
    S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-ROOT+` was given a transient node outside transient mode\n"
    SAID-BAD ;
 ROOT-PERSIST
@@ -120,7 +119,7 @@ ROOT-PERSIST
 : PTR-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
    REJECTION:CAPTURE
-   [: node SCHEMA-REG:SCHEMA-PTR drop ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: node SCHEMA-REG:SCHEMA-PTR drop ;] 70 TTHROWSQ
    S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-PTR` was given a transient node outside transient mode\n"
    SAID-BAD ;
 PTR-PERSIST

@@ -1121,7 +1121,7 @@ variable OPEN-N
    src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
-   ERR-SPAN SPAN:$ drop erru LEN>N r EXIT-STATUS:UNCAUGHT T-ENDING-EXITED=
+   ERR-SPAN SPAN:$ drop erru LEN>N r 67 T-ENDING-EXITED=
    OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE

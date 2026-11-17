@@ -1,5 +1,4 @@
 \ Refusal cases run in fresh evaluators of the admitted native C2 image.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/adt/option.f
@@ -68,7 +67,7 @@ public
    \ The bad stored signature is rendered before its code is thrown, so it exits 70.
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
-   s" package C2-MEM ;package" EXIT-STATUS:REJECTED s" C2-MEM" SUBJECT:REFUSED? TTRUE
+   s" package C2-MEM ;package" 70 s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT
    s" c2-memory-refusals: ok" type cr ;
 

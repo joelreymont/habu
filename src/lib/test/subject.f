@@ -10,7 +10,6 @@ require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/fd.f
-require src/core/exit-status.f
 
 package SUBJECT
 
@@ -86,12 +85,12 @@ public
    E-PROC-TIMEOUT throw ;
 
 \ A throw code cannot cross a process boundary, so a child that met a deadline
-\ exits EXIT-STATUS:TIMEOUT. Its parent passes the program, the captured stdout and
+\ exits 124. Its parent passes the program, the captured stdout and
 \ stderr and the exit code; on that code TIMED-OUT prints them and throws
 \ E-PROC-TIMEOUT. Any other code is the caller's to assert.
 : RC-TIMED-OUT ( ^u8 n ^u8 n ^u8 n n -- )
    {: src:^ srcu:n out:^ outu:n err:^ erru:n rc:n :}
-   rc EXIT-STATUS:TIMEOUT = if src srcu out outu err erru TIMED-OUT then ;
+   rc 124 = if src srcu out outu err erru TIMED-OUT then ;
 
 private
 

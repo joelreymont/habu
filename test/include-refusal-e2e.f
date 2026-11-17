@@ -4,7 +4,6 @@
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
 \ and streams go in a temporary cases/ tree, which no missing path lies below
 \ and the process removes at exit.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -104,7 +103,7 @@ variable RC
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-WITH:RUN" PLINE
    name nameu LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
    s" `SOURCE-ROOT:WITH` got `" rel relu SB-NAMES SB$ ERR-HAS
    s" does not resolve to a searchable directory" ERR-HAS ;
@@ -125,7 +124,7 @@ variable RC
    S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
    S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' INNER SOURCE-ROOT:WITH" PLINE
    s" with-nested" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" `SOURCE-ROOT:WITH` got `" s" absent" SB-NAMES SB$ ERR-HAS
    ERR$ s" with-nested.f:2:" CONTAINS? TFALSE ;
 
@@ -139,7 +138,7 @@ variable RC
    s" include " PROG+ s" cases/close-outer-inc.f" AT PLINE
    s" ;package ;package" PLINE
    s" close-outer" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" error[E-PKG-CONTEXT]" ERR-HAS
    s" closes `INCLUDE-REFUSAL-OUTER:B`," ERR-HAS
    SB-RESET s" cases/close-outer-inc.f" AT SB-APPEND s" :1:1" SB-APPEND SB$ ERR-HAS ;
@@ -155,7 +154,7 @@ variable RC
    s" : GO ( -- ) P required ;" PLINE
    S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' GO SOURCE-ROOT:WITH" PLINE
    s" with-required" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" cannot open `" s" absent/x.f" SB-NAMES SB$ ERR-HAS
    ERR$ s"  --> " CONTAINS? TFALSE ;
 
@@ -170,7 +169,7 @@ variable RC
    S\" s\q " PROG+ s" cases" AT PROG+
    S\" \q ' INNER ' NOP SOURCE-ROOT:POLICY-WITH-ROOT" PLINE
    s" policy-nested" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" `SOURCE-ROOT:POLICY-WITH-ROOT` got `" s" absent" SB-NAMES SB$ ERR-HAS
    ERR$ s" policy-nested.f:3:" CONTAINS? TFALSE ;
 
@@ -181,7 +180,7 @@ variable RC
    0 PROG-U !
    s" require " PROG+ rel relu AT PLINE
    name nameu LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" error[E-MISSING-SOURCE]" ERR-HAS
    s" cannot open `" rel relu SB-NAMES SB$ ERR-HAS ;
 
@@ -204,7 +203,7 @@ variable RC
    s" INCLUDE-REFUSAL-CANON:CANON" PLINE
    s" canon-none" LOAD-CASE
    s" a path with no directory above it resolving is rejected by name" T-LABEL
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
    s" `SOURCE-INPUT:CANON` got `/absent/x`" ERR-HAS
    s" has no directory above it" ERR-HAS ;
@@ -222,7 +221,7 @@ variable RC
    s" INCLUDE-REFUSAL-READ:RUN" PLINE
    s" read-os-word" LOAD-CASE
    s" a word's SOURCE-ROOT:READ-OS of another file is rejected by name" T-LABEL
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
    s" `SOURCE-ROOT:READ-OS` got `" s" plain.f" SB-NAMES SB$ ERR-HAS
    s" not the file a load is opening" ERR-HAS ;
@@ -240,7 +239,7 @@ $1A4 constant MODE-FILE
    s" require locked.f" PLINE
    [: s" require-unreadable" LOAD-CASE ;]
    [: s" cases/locked.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
-   EXIT-STATUS:IOERR EXITS
+   74 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]: cannot read `locked.f`" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
@@ -260,7 +259,7 @@ $1A4 constant MODE-FILE
    S\" s\q " PROG+ s" cases/sp ace'q.f" AT PROG+ S\" \q included" PLINE
    [: s" load-unreadable-quoted" LOAD-CASE ;]
    [: s" cases/sp ace'q.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
-   EXIT-STATUS:IOERR EXITS
+   74 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]" ERR-HAS
    SB-RESET s" = help: if the file is yours, make it readable with `chmod u+r '" SB-APPEND
@@ -274,7 +273,7 @@ $1A4 constant MODE-FILE
    0 PROG-U !
    S\" s\q \q required" PLINE
    s" required-empty" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `required` got an empty path" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/required-empty.f" AT SB-APPEND
@@ -294,7 +293,7 @@ $1A4 constant MODE-FILE
    0 PROG-U !
    s" INCLUDE " PROG+ LONG+ S\" \n" PROG+
    s" include-long" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `INCLUDE` got" ERR-HAS
    s" an exported required names the export as written" T-LABEL
@@ -302,7 +301,7 @@ $1A4 constant MODE-FILE
    s" package INCLUDE-REFUSAL-RVX public EXPORT required ;package" PLINE
    S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REFUSAL-RVX:required" PLINE
    s" required-export" LOAD-CASE
-   EXIT-STATUS:REJECTED EXITS
+   70 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `INCLUDE-REFUSAL-RVX:required` got" ERR-HAS ;
 

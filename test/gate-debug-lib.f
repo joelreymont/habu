@@ -1,7 +1,6 @@
 \ gate-debug-lib.f - profiler and debugger gate cases, included by
 \ test/gate-debug.f.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require tools/code-dump-core.f
@@ -359,7 +358,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" -1 prof-rate" GE-SRC-LINE
    S\" s\" prof-rate took -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
-   EXIT-STATUS:UNCAUGHT s" an uncaught prof-rate -1 exits EXIT-STATUS:UNCAUGHT" GE-EXPECT-RC
+   67 s" an uncaught prof-rate -1 exits 67" GE-EXPECT-RC
    E-PROF-RATE s" <input>:1:4" GDB-THROWN$
    s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
@@ -381,7 +380,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
 
 \ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
-\ setitimer refuses it, and the refusal is named and exits EXIT-STATUS:SYSTEM.
+\ setitimer refuses it, and the refusal is named and exits 78.
 : GDB-PROFILER-ARM-REFUSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -389,7 +388,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" 250 prof-rate -1 PROF-ABI:ARN-USEC GDB-ARENA ! 0 prof-on" GE-SRC-LINE
    S\" s\" prof-on armed -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
-   EXIT-STATUS:SYSTEM s" a refused arm exits SYSTEM" GE-EXPECT-RC
+   78 s" a refused arm exits 78" GE-EXPECT-RC
    PROF-ABI:PROFARMMSG$ s" a refused arm is named on fd 2" GE-EXPECT-ERR
    s" PASS: a setitimer that refuses the arm is named and fatal" type cr ;
 

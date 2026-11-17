@@ -1,6 +1,5 @@
 \ xref-test-fixture.f - focused tests for live dictionary xref words.
 
-require src/core/exit-status.f
 require src/lib/test.f
 
 : XRT-SAMPLE ( -- n )
@@ -65,11 +64,11 @@ public
    REJECTION:BUFFER-OFF ;
 : XRT-NULL ( -- )
    REJECTION:CAPTURE
-   [: XREF-NULL XREF:SEALED? drop ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: XREF-NULL XREF:SEALED? drop ;] 70 TTHROWSQ
    XRT-SAID-NULL
-   REJECTION:CAPTURE [: XREF-NULL XREF-FLAGS drop ;] EXIT-STATUS:REJECTED TTHROWSQ
+   REJECTION:CAPTURE [: XREF-NULL XREF-FLAGS drop ;] 70 TTHROWSQ
    XRT-SAID-NULL
-   REJECTION:CAPTURE [: XREF-NULL XREF-NAME$ 2drop ;] EXIT-STATUS:REJECTED TTHROWSQ
+   REJECTION:CAPTURE [: XREF-NULL XREF-NAME$ 2drop ;] 70 TTHROWSQ
    XRT-SAID-NULL ;
 
 : XRT-UNDEFINE ( -- )

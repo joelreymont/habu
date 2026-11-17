@@ -260,7 +260,7 @@ package MAMB-A public SUMTYPE mamb VARIANT a1 n ;VARIANT ;SUMTYPE ;package
 package MAMB-B public SUMTYPE mamb VARIANT b1 n ;VARIANT ;SUMTYPE ;package
 REJECTION:CAPTURE
 s" package MAMB-C using MAMB-A using MAMB-B : MAMB1 ( MAMB-A:mamb -- n ) MATCH mamb a1 OF ENDOF ;MATCH ; ;package"
-TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+TEST-EVAL:RC 70 T=
 REJECTION:BUFFER$ s\" error[E-USING-AMBIGUOUS]: bad match: ambiguous type family\n" STARTS-WITH? TTRUE
 SB-RESET  s" --> " SB-APPEND  SOURCE-ROOT:CWD$ SB-APPEND  s" /test/type-match-suite.f:" SB-APPEND
 REJECTION:BUFFER$ SB$ CONTAINS? TTRUE

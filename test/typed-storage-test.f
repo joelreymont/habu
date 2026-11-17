@@ -7,7 +7,6 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-test.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -147,15 +146,15 @@ TYPED-VARIABLE TSL tsres<n,n>
 \ 5. Define-time admissibility rejects — a stored type is the checker's refusal,
 \    and a count outside the buffer's extent is rejected at its token
 : TS-SECTION-ADMISSIBILITY ( -- )
-   s" TYPED-VARIABLE BAD-OPEN ^a" TS-EVAL EXIT-STATUS:REJECTED T=
-   s" TYPED-VARIABLE BAD-VAR a" TS-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BAD-OPEN ^a" TS-EVAL 70 T=
+   s" TYPED-VARIABLE BAD-VAR a" TS-EVAL 70 T=
    \ a well-formed xt<effect> quotation cell is admissible
    \ (test/xt-cell-test.f); a malformed one (missing --) rejects
-   s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL EXIT-STATUS:REJECTED T=
-   s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL 70 T=
+   s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL 70 T=
    \ overflow: non-positive counts reject
-   s" 0 TYPED-BUFFER BAD-ZERO tsk" TS-EVAL EXIT-STATUS:REJECTED T=
-   s" -1 TYPED-BUFFER BAD-NEG tsk" TS-EVAL EXIT-STATUS:REJECTED T=
+   s" 0 TYPED-BUFFER BAD-ZERO tsk" TS-EVAL 70 T=
+   s" -1 TYPED-BUFFER BAD-NEG tsk" TS-EVAL 70 T=
    \ none of the rejected names ever reached the dictionary
    s" BAD-OPEN" 0 search-wl 0= TTRUE
    s" BAD-QUOT" 0 search-wl 0= TTRUE
@@ -170,14 +169,14 @@ PTR-VARIABLE TS-DP
 : TS-SECTION-DUP-ROLLBACK ( -- )
    \ redefining an existing name rejects and rolls the allocation back
    here TS-DP 0 ptr-field !
-   REJECTION:CAPTURE  TS-DUP-RC EXIT-STATUS:REJECTED T=
+   REJECTION:CAPTURE  TS-DUP-RC 70 T=
    REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
    REJECTION:BUFFER$ s" `TSV`" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    here TS-DP 0 ptr-field @ = TTRUE
    \ a rejected admissibility decl also defines nothing and rolls back
    here TS-DP 0 ptr-field !
-   s" TYPED-VARIABLE BAD-RB ^a" TS-EVAL EXIT-STATUS:REJECTED T=
+   s" TYPED-VARIABLE BAD-RB ^a" TS-EVAL 70 T=
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 

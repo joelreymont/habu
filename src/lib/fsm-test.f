@@ -1,4 +1,3 @@
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/fsm.f
@@ -542,7 +541,7 @@ variable SRC-LEN
    s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
    TEST-EVAL:RC 0 T=
    s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB using FSM DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;using ;using ;package"
-   TEST-EVAL:RC EXIT-STATUS:REJECTED T=
+   TEST-EVAL:RC 70 T=
    14 VALID 2 T= ;
 
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so

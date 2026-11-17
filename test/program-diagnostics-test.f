@@ -1,6 +1,5 @@
 \ program-diagnostics-test.f - direct production-load diagnostic contracts.
 
-require src/core/exit-status.f
 require test/gate-common.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -88,13 +87,13 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ s" error[" COUNT-SUB ;
 
 : NEGATIVES ( -- )
-   s" test/address-cell-kind-bad.f" EXIT-STATUS:SNAPSHOT s" ADDRESS-CELL-KIND-ARMED"
+   s" test/address-cell-kind-bad.f" 96 s" ADDRESS-CELL-KIND-ARMED"
       s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
-   s" test/address-cell-cap-bad.f" EXIT-STATUS:SNAPSHOT s" ADDRESS-CELL-CAP-ARMED"
+   s" test/address-cell-cap-bad.f" 96 s" ADDRESS-CELL-CAP-ARMED"
       s" E-XTCELL habu: invalid address-cell storage header" NEGATIVE-LINE
-   s" test/xt-cell-band-bad.f" EXIT-STATUS:SNAPSHOT s" XT-CELL-BAND-ARMED"
+   s" test/xt-cell-band-bad.f" 96 s" XT-CELL-BAND-ARMED"
       s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
-   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:18:1" DIAGNOSTIC
+   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:17:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" ^ generated declaration already defined" s" test/enum-ctor-collide-bad.f"
       GE-EXPECT-ERR-HAS
@@ -270,9 +269,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:26:18" HABU-DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:26:18" DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" error[E-USING-UNKNOWN]" DIAGNOSTIC

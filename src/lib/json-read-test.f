@@ -13,7 +13,6 @@ require src/lib/byte-buffer.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/test/subject.f
-require src/core/exit-status.f
 
 package JSON-TEST
 private
@@ -1162,7 +1161,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu JRT-SUBJECT-OUT outu LEN>N JRT-SUBJECT-ERR erru LEN>N
-   oc EXIT-STATUS:REJECTED T-ENDING-EXITED= ;
+   oc 70 T-ENDING-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
    s" JRT-BAD-MINT ( ^n -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED

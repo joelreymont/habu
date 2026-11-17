@@ -4,7 +4,6 @@
 \ no one-cell value of it. The refusals land at the call, never at the word.
 \ A cast's stored variable takes any such type but one that may hold a linear
 \ value, an atom or a width, at every binding, through a generic caller too.
-require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/core/bytes.f
@@ -193,7 +192,7 @@ private
    s" a top-level member call whose instance moves the member is rejected" T-LABEL
    ARM
    [: s" 0 STORED:HELDS STORED-HELD:SET drop" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-LAYOUT-VALUE\"" HAS?
    S\" \"token\":\"STORED-HELD:SET\"" HAS?
    s" move the call inside a definition, which uses the receiver's layout" HAS?
@@ -204,9 +203,9 @@ private
    STORED-RUN:BYTES 16 T=  STORED-RUN:CELLS 2 T=
    ARM
    [: s" STORED-HELD:BYTES drop" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    [: s" STORED-HELD:CELLS drop" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"E-UNDEFINED\",\"message\":\"cannot find word `STORED-HELD:BYTES`" HAS?
    S\" \"E-UNDEFINED\",\"message\":\"cannot find word `STORED-HELD:CELLS`" HAS?
    DISARM ;
@@ -215,7 +214,7 @@ private
    s" a generic member call through an open receiver takes no record" T-LABEL
    ARM
    [: s" : STORED-R21 ( ^STORED:held<STORED:turn> -- ^bool ) STORED:SET-OF ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:SET-OF\"" MISMATCH-AT
    s" `stored:turn` is 2 cells" HAS?
    DISARM ;
@@ -224,7 +223,7 @@ private
    s" nor does a one-cell fetch through ^t" T-LABEL
    ARM
    [: s" : STORED-R22 ( ^STORED:turn -- n ) STORED:FETCH-ONE ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:FETCH-ONE\"" MISMATCH-AT
    s" `stored:turn` is 2 cells" HAS?
    DISARM ;
@@ -233,7 +232,7 @@ private
    s" nor a declared type that fits one cell" T-LABEL
    ARM
    [: s" : STORED-R23 ( ^STORED:dir -- n ) STORED:FETCH-ONE ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:FETCH-ONE\"" MISMATCH-AT
    s" `stored:dir` is a declared type, not a plain cell" HAS?
    DISARM ;
@@ -247,7 +246,7 @@ private
    LOCAL-TURN TTRUE
    ARM
    [: s" : STORED-R11 ( ^STORED:turn -- ^STORED:turn ) STORED:LOCAL-READ ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:LOCAL-READ\"" MISMATCH-AT
    DISARM ;
 
@@ -259,7 +258,7 @@ private
    s" a body that fetches a t takes no record" T-LABEL
    ARM
    [: s" : STORED-R1 ( ^STORED:turn -- STORED:turn ) STORED:READ ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:READ\"" MISMATCH-AT
    DISARM ;
 
@@ -267,7 +266,7 @@ private
    s" nor one that stores a t" T-LABEL
    ARM
    [: s" : STORED-R2 ( STORED:turn ^STORED:turn -- ) STORED:POKE ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:POKE\"" MISMATCH-AT
    DISARM ;
 
@@ -275,7 +274,7 @@ private
    s" nor one that steps the pointer" T-LABEL
    ARM
    [: s" : STORED-R3 ( ^STORED:turn -- ^STORED:turn ) STORED:STEP ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:STEP\"" MISMATCH-AT
    DISARM ;
 
@@ -283,7 +282,7 @@ private
    s" nor one that hands it to a one-cell variable" T-LABEL
    ARM
    [: s" : STORED-R4 ( ^STORED:turn -- ^STORED:turn ) STORED:VIA ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:VIA\"" MISMATCH-AT
    DISARM ;
 
@@ -291,7 +290,7 @@ private
    s" nor one that does so before a stored-type call" T-LABEL
    ARM
    [: s" : STORED-R5 ( ^STORED:turn -- ^STORED:turn ) STORED:VIA2 ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:VIA2\"" MISMATCH-AT
    DISARM ;
 
@@ -299,12 +298,12 @@ private
    s" a recursive call takes an ordinary variable" T-LABEL
    ARM
    [: s" : STORED-R9 ( ^t ^t n -- ) dup 0 > IF drop 2drop STORED:TA STORED:TA 0 RECURSE EXIT THEN drop swap @ swap ! ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"RECURSE\"" MISMATCH-AT
    DISARM
    ARM
    [: s" : STORED-R10 ( ^t ^t n -- ) dup 0 = IF drop swap @ swap ! EXIT THEN drop 2drop STORED:TA STORED:TA 0 RECURSE ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"RECURSE\"" MISMATCH-AT
    DISARM ;
 
@@ -312,7 +311,7 @@ private
    s" a slot the family's width reads takes no record" T-LABEL
    ARM
    [: s" : STORED-R6 ( STORED:box<STORED:turn> -- STORED:box<STORED:turn> ) STORED:IN-BOX ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:IN-BOX\"" MISMATCH-AT
    DISARM ;
 
@@ -320,7 +319,7 @@ private
    s" a record with a linear member is not a stored type" T-LABEL
    ARM
    [: s" : STORED-R7 ( ^STORED:lrec -- ^STORED:lrec ) STORED:SAME ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
    DISARM ;
 
@@ -328,7 +327,7 @@ private
    s" nor is a record open in the caller's own variable" T-LABEL
    ARM
    [: s" : STORED-R8 ( ^STORED:box<a> -- ^STORED:box<a> ) STORED:SAME ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
    DISARM ;
 
@@ -349,12 +348,12 @@ private
    s" a quotation's own row takes no record, nor does a defer's field" T-LABEL
    ARM
    [: s" : STORED-R19 ( [ -- STORED:turn ] -- [ -- STORED:turn ] ) STORED:Q-ROW ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:Q-ROW\"" MISMATCH-AT
    DISARM
    ARM
    [: s" : STORED-R20 ( STORED:qb<STORED:turn> -- n ) STORED:Q-DEFER ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:Q-DEFER\"" MISMATCH-AT
    DISARM ;
 
@@ -370,13 +369,13 @@ private
    s" nor a type that may hold a linear value, through a generic word" T-LABEL
    ARM
    [: s" : STORED-R12 ( ^u8 -- ^stored-type-lin ) STORED:AT ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" CAST-AT
    DISARM
    \ The stored kind refuses lrec before the cast does, as it does in CASE-LINEAR.
    ARM
    [: s" : STORED-R13 ( ^u8 -- ^STORED:lrec ) STORED:AT ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"token\":\"STORED:AT\"" MISMATCH-AT
    DISARM ;
 
@@ -384,12 +383,12 @@ private
    s" nor an atom or a width" T-LABEL
    ARM
    [: s" : STORED-R14 ( ^u8 -- ^xt ) STORED:AT ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-CLASS\"" CAST-AT
    DISARM
    ARM
    [: s" : STORED-R15 ( ^u8 -- ^width<n> ) STORED:AT ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-CLASS\"" CAST-AT
    DISARM ;
 
@@ -397,7 +396,7 @@ private
    s" is keeps a cast's stored-type restriction" T-LABEL
    ARM
    [: s" : STORED-QC1 ( -- ) [: STORED:QC-AT ;] is STORED:QC-D ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
    DISARM
    [: s" : STORED-QC2 ( -- ) [: STORED:QC-ANY ;] is STORED:QC-D ;" evaluate-closed ;]
@@ -434,7 +433,7 @@ variable RC-LEN
    s" a recursive call meets the restriction the body adds later" T-LABEL
    ARM
    [: s" RC-FORGE" s" TOK-STEP" RC-RECURSE$ evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
    S\" \"token\":\"RECURSE\"" HAS?
    DISARM
@@ -448,17 +447,17 @@ variable RC-LEN
    s" nor a quotation whose rows end in different tails" T-LABEL
    ARM
    [: s" : STORED-R16 ( ^u8 -- ^[ R -- S ] ) STORED:AT ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
    DISARM
    ARM
    [: s" : STORED-R17 ( ^u8 -- n ) STORED:AT @ STORED:RUN-Q ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
    DISARM
    ARM
    [: s" : STORED-R18 ( -- ) [: STORED:AT ;] is STORED:QR-D ;" evaluate-closed ;]
-      EXIT-STATUS:REJECTED TTHROWSQ
+      70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
    DISARM
    [: s" : STORED-QOK1 ( ^u8 -- ^[ -- n ] ) STORED:AT ;" evaluate-closed ;]
