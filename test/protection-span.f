@@ -10,7 +10,6 @@ package PROTECTION-TEST
 
 $800 constant CAP
 EXIT-STATUS:SEAL-VIOLATION constant VIOLATION-RC
-76 constant CODE-FULL-RC
 
 create OUT CAP allot
 create ERR CAP allot
@@ -34,9 +33,9 @@ create ERR CAP allot
    s" dbase@ DICT-SIZE + cp!" ACCEPTS
    s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp! create PST-END" CODE-FULL-RC EXPECT
+   s" dbase@ REGION + 4 - cp! create PST-END" EXIT-STATUS:FULL EXPECT
    s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT ;
+   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" EXIT-STATUS:FULL EXPECT ;
 
 : TEST-TASK-USER ( -- )
    s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" EXIT-STATUS:UNCAUGHT EXPECT ;

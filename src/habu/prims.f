@@ -68,8 +68,6 @@ public
 
 private
 
-$4C constant SPEC-RC
-
 \ Rows hold offsets into NAMES and CODES, not addresses, so the table can be
 \ walked by index from any consumer.
 $180 constant ROW-CAP
@@ -113,12 +111,12 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    row ROW-CELLS * field + cells ROWS + ;
 
 : ROW-FIELD ( n n -- ^n ) {: row:n field:n :}
-   row 0 < row ROW-N @ >= or IF s" prims: row index out of range" SPEC-RC die THEN
+   row 0 < row ROW-N @ >= or IF s" prims: row index out of range" EXIT-STATUS:INTERNAL die THEN
    row field SLOT ;
 
 : NAME-SPAN, ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 < IF s" prims: negative name length" SPEC-RC die THEN
-   NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" SPEC-RC die THEN
+   u 0 < IF s" prims: negative name length" EXIT-STATUS:INTERNAL die THEN
+   NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" EXIT-STATUS:INTERNAL die THEN
    0 BI !
    BEGIN BI @ u < WHILE
       BI @ a + c@   NAMES NAME-U @ + BI @ + c!
@@ -127,7 +125,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    NAME-U @ u + NAME-U ! ;
 
 : CODE, ( n -- ) {: code:n :}
-   CODE-U @ CODE-CAP >= IF s" prims: atom buffer full" SPEC-RC die THEN
+   CODE-U @ CODE-CAP >= IF s" prims: atom buffer full" EXIT-STATUS:INTERNAL die THEN
    code CODES CODE-U @ + c!
    CODE-U @ 1 + CODE-U ! ;
 
@@ -179,7 +177,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    parse-name dup CUR-NAME-LEN ! NAME-SPAN, ;
 
 : ROW-WRITE ( -- )
-   ROW-N @ ROW-CAP >= IF s" prims: specification table full" SPEC-RC die THEN
+   ROW-N @ ROW-CAP >= IF s" prims: specification table full" EXIT-STATUS:INTERNAL die THEN
    CUR-KIND @      ROW-N @ F-KIND SLOT !
    CUR-NAME-OFF @  ROW-N @ F-NAME-OFF SLOT !
    CUR-NAME-LEN @  ROW-N @ F-NAME-LEN SLOT !
@@ -223,17 +221,17 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 \ The just-written row's checker row is a trust boundary: a CHECKED caller is
 \ refused, while a TRUSTED: body may use it.
 : ETRUSTED-ONLY! ( -- )
-   ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
+   ROW-N @ 0 <= IF s" prims: trusted-only before any row" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
 \ The just-written row's primitive is immediate.
 : EIMMEDIATE! ( -- )
-   ROW-N @ 0 <= IF s" prims: immediate before any row" SPEC-RC die THEN
+   ROW-N @ 0 <= IF s" prims: immediate before any row" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-IMMEDIATE or swap ! ;
 
 \ The machine body uses the row's widths and glue without instantiating them.
 : EFIXED-ABI! ( -- )
-   ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
+   ROW-N @ 0 <= IF s" prims: fixed ABI before any row" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
 : REACH-CODE ( ^u8 n -- n ) {: a:^ u:n :}
@@ -244,12 +242,12 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    a u s" dict" CORE-STR= IF R-DICT EXIT THEN
    a u s" run" CORE-STR= IF R-RUN EXIT THEN
    a u s" exit" CORE-STR= IF R-EXIT EXIT THEN
-   s" prims: unknown reach" SPEC-RC die ;
+   s" prims: unknown reach" EXIT-STATUS:INTERNAL die ;
 
 : REACH ( -- )
-   ROW-N @ 0 <= IF s" prims: reach before any row" SPEC-RC die THEN
+   ROW-N @ 0 <= IF s" prims: reach before any row" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ 1 - F-REACH ROW-FIELD @ R-NONE <>
-      IF s" prims: second reach on one row" SPEC-RC die THEN
+      IF s" prims: second reach on one row" EXIT-STATUS:INTERNAL die THEN
    parse-name REACH-CODE ROW-N @ 1 - F-REACH ROW-FIELD ! ;
 
 : ELAB: ( -- )
@@ -289,7 +287,7 @@ public
 
 : CODE@ ( n n -- n ) {: row:n idx:n :}
    idx 0 < idx row F-CODE-LEN ROW-FIELD @ >= or
-      IF s" prims: atom index out of range" SPEC-RC die THEN
+      IF s" prims: atom index out of range" EXIT-STATUS:INTERNAL die THEN
    CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
 \ Exact spelling: a body registered under a different case is a different row

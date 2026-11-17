@@ -4,6 +4,7 @@
 \ no body answered. Code positions arrive only as `label` values and no code is
 \ emitted, so it loads without an instruction set. Names are offsets, so growing
 \ either buffer cannot invalidate an earlier row.
+require src/core/exit-status.f
 require src/core/layout-buffer.f
 require src/core/bytes.f
 require src/core/roles.f
@@ -15,8 +16,6 @@ package ENGINE-PRIMS
 
 6 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
-\ Both specification gates exit with the table's own refusal status.
-76 constant SPEC-RC
 DYNAMIC-BUFFER ROWS n
 DYNAMIC-BUFFER NAMES n
 variable USED
@@ -39,7 +38,7 @@ variable NAME-BYTES
 
 : SPEC-MISSING ( ^u8 n -- )
    s" prims: primitive with no row in src/habu/prims.f: " type type cr
-   s" prims: engine primitive absent from the specification table" SPEC-RC die ;
+   s" prims: engine primitive absent from the specification table" EXIT-STATUS:INTERNAL die ;
 
 public
 
@@ -134,7 +133,7 @@ private
 
 : NO-BODY ( ^u8 n -- )
    s" prims: no backend body for specified primitive " type type cr
-   s" prims: specification row without a backend body" SPEC-RC die ;
+   s" prims: specification row without a backend body" EXIT-STATUS:INTERNAL die ;
 
 : CHECK-ROW ( n -- )
    PRIM-SPEC:NAME$

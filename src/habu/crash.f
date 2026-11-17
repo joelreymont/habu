@@ -877,7 +877,7 @@ public
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
-      s" hb: the system refused to register the signal stack (sigaltstack)" STACK-ABI:MAP-FAIL-RC DIE-LINE,
+      s" hb: the system refused to register the signal stack (sigaltstack)" EXIT-STATUS:SYSTEM DIE-LINE,
    ok LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives

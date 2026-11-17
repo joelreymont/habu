@@ -22,8 +22,6 @@ private
 
 EXPORT INTERPRETER:REPL
 
-64 constant RC-USAGE             \ an unknown flag or no file (USAGE, NO-FILES)
-74 constant RC-SOURCE            \ the source cannot be had
 $2D constant DASH
 $23 constant HASH
 $21 constant BANG
@@ -55,13 +53,13 @@ ENUM route load plain ;ENUM
 : USAGE ( ^u8 n -- ) {: a:^ u:n :}
    s" E-HB-USAGE" REJECTION:OPEN
    s" unknown flag `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   USAGE-HELP  RC-USAGE REJECT ;
+   USAGE-HELP  EXIT-STATUS:USAGE REJECT ;
 
 \ No file to load: `--load` with nothing before the end or a `--`.
 : NO-FILES ( -- )
    s" E-HB-USAGE" REJECTION:OPEN
    s" no source file to load" REJECTION:EMIT-STR
-   USAGE-HELP  RC-USAGE REJECT ;
+   USAGE-HELP  EXIT-STATUS:USAGE REJECT ;
 
 \ A read of the program on stdin failed with errno e, 0 for none.
 : CANNOT-READ ( n -- ) {: e:n :}
@@ -72,7 +70,7 @@ ENUM route load plain ;ENUM
    then
    REJECTION:HELP
    s" give hb a readable program on stdin, or name a file: `hb file.f`" REJECTION:EMIT-STR
-   RC-SOURCE REJECT ;
+   EXIT-STATUS:IOERR REJECT ;
 
 \ argv[1] picks it. `--load` takes the files after it up to the first `--`;
 \ what follows is the program's arguments (src/os/script-argv.f).

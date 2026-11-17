@@ -1,6 +1,7 @@
 \ rt.f - native runtime routines for the ARM64 engine builder: data-stack ops,
 \ guarded stack mapping and the output and printer sequences. Encoders are
 \ package A64ASM (src/arch/arm64/asm.f).
+require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/habu/crash.f
 require src/arch/arm64/icode.f
@@ -70,7 +71,7 @@ public
    MAP-BAD LABEL@ LBL,
    3 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
    s" hb: the system refused a guarded VM stack; raise the address-space limit (ulimit -v) above its size in bytes:"
-   STACK-ABI:MAP-FAIL-RC 3 DIE-LINE-VALUE,
+   EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
    MAP-DONE LABEL@ LBL, ;
 
 ;package

@@ -1,6 +1,7 @@
 \ image-bytes-test.f - shared executable image byte writer regression.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f tools/image-bytes-test.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -100,22 +101,22 @@ using IMAGE-BYTES
 \ measured against the room left: `>LEN` is a cast, not a validator, and a length
 \ near the maximum cell would wrap the sum back under MSIZE. A refused write
 \ leaves the cursor in place, so the exact write after it fills the buffer; a
-\ cursor at MSIZE throws M-BOUNDS-RC.
+\ cursor at MSIZE throws EXIT-STATUS:IMAGE-BOUNDS.
 : IBT-TEST-ROOM ( -- )
    M-RESET  MSIZE 1- M-OFF M-PAD-OFF
-   [: IBT-FILL-OVER ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-FILL-OVER ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    IBT-FILL-EXACT M-HERE MSIZE T=
-   [: IBT-CURSOR-OVER ;] M-BOUNDS-RC TTHROWSQ
-   [: IBT-WRITE-NEG ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-CURSOR-OVER ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-WRITE-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    M-HERE 1 T=
-   [: IBT-WRITE-MAX ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-WRITE-MAX ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    M-HERE 1 T= ;
 
 : IBT-TEST-REFINE-ERRORS ( -- )
-   [: IBT-LEN-NEG ;] M-BOUNDS-RC TTHROWSQ
-   [: IBT-OFF-NEG ;] M-BOUNDS-RC TTHROWSQ
-   [: IBT-PAD-BACK ;] M-BOUNDS-RC TTHROWSQ
-   [: IBT-NAME-LONG ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-LEN-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-OFF-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-PAD-BACK ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-NAME-LONG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    s" BAD-M-LE32 ( len -- n ) M-LE32@" IBT-CHECK-REJECTS
    s" BAD-M-PAD ( len -- ) M-PAD-OFF" IBT-CHECK-REJECTS ;
 

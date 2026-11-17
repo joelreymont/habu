@@ -2,6 +2,7 @@
 \ It names no machine's code package, so it compiles the same under every
 \ target writer and links as any file does; the writer sizes the buffer.
 
+require src/core/exit-status.f
 require src/core/bytes.f
 require src/lib/span.f
 
@@ -10,7 +11,6 @@ package IMAGE-BYTES
 variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
-75 constant M-BOUNDS-RC
 \ The image cursors hold addresses in the creating process's mapped buffer, so
 \ they are pointer cells; a snapshot builder clears them in a named reset.
 PTR-VARIABLE MBUF-A
@@ -93,7 +93,7 @@ create M-FAIL-NL 1 allot
    2 a u write drop
    10 M-FAIL-NL c!
    2 M-FAIL-NL 1 write drop
-   M-BOUNDS-RC throw ;
+   EXIT-STATUS:IMAGE-BOUNDS throw ;
 
 : M-CHECK-N ( n -- )
    dup 0 < if s" image-bytes: negative span" M-FAIL then

@@ -4,6 +4,7 @@
 \ a branch or ADR distance reaches its asm.f encoder in bytes. Every label
 \ reference, DLBL, cells included, and every BYTES, run is recorded until
 \ ARESET; CUT removes code and re-encodes the references that stay.
+require src/core/exit-status.f
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
@@ -26,7 +27,6 @@ CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS
 $2000 constant ICODE-TAB-CELLS
 $3 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
-72 constant ICODE-EXIT-RC
 PTR-VARIABLE CODE-A
 PTR-VARIABLE ICODE-TAB-A
 variable ASM-CP
@@ -41,7 +41,7 @@ variable I-W
 
 : CODE-ALLOC ( -- ^u8 )
    CODE-CAP-BYTES map-anon 0 <> if
-      drop s" icode: code mmap failed" ICODE-EXIT-RC die then ;
+      drop s" icode: code mmap failed" EXIT-STATUS:SYSTEM die then ;
 
 : CODE ( -- ^u8 )
    CODE-A @ NULL-PTR = IF CODE-ALLOC CODE-A ! THEN
@@ -49,7 +49,7 @@ variable I-W
 
 : ICODE-TAB-ALLOC ( -- ^n )
    ICODE-TAB-BYTES map-anon 0 <> if
-      drop s" icode: table mmap failed" ICODE-EXIT-RC die then ;
+      drop s" icode: table mmap failed" EXIT-STATUS:SYSTEM die then ;
 
 : ICODE-TABS ( -- ^n )
    ICODE-TAB-A @ NULL-PTR = IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
@@ -109,7 +109,7 @@ public
    $4 * CODE swap CODE-BYTE+ ;
 
 : ASM-CP? ( n -- )
-   ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" ICODE-EXIT-RC die then ;
+   ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" EXIT-STATUS:ENCODE die then ;
 PTR-VARIABLE EP
 : EP@ ( -- ^u8 ) EP @ ;
 
@@ -152,7 +152,7 @@ variable FX-NEW
 private
 
 : ICODE-UNMAP ( ^a n -- )
-   munmap 0 <> if s" icode: unmap failed" ICODE-EXIT-RC die then ;
+   munmap 0 <> if s" icode: unmap failed" EXIT-STATUS:SYSTEM die then ;
 
 : BUFFERS-RELEASE ( -- )
    LBLP-RELEASE FXH-RELEASE
@@ -186,11 +186,11 @@ public
    then ;
 
 : FX? ( -- )
-   NFX @ 0 < if s" icode: fixup count corrupt" ICODE-EXIT-RC die then
+   NFX @ 0 < if s" icode: fixup count corrupt" EXIT-STATUS:ENCODE die then
    NFX @ ICODE-TAB-CELLS 1 - > if
-      s" icode: out of fixups" ICODE-EXIT-RC die
+      s" icode: out of fixups" EXIT-STATUS:ENCODE die
    then
-   FX-FREE-BAD? if s" icode: fixup free list corrupt" ICODE-EXIT-RC die then ;
+   FX-FREE-BAD? if s" icode: fixup free list corrupt" EXIT-STATUS:ENCODE die then ;
 
 : LBL ( -- label )
    NLBL @ dup 1 + LBLP-RESERVE
@@ -207,7 +207,7 @@ public
    LABEL>N LBLP @ 0 >= ;
 
 : ?LBL-UNBOUND ( label -- )
-   LBL-BOUND? if s" icode: label redefined" ICODE-EXIT-RC die then ;
+   LBL-BOUND? if s" icode: label redefined" EXIT-STATUS:ENCODE die then ;
 
 \ Records ascend by site: each is appended at ASM-CP or, by an adopting link, in
 \ the object's order, and CUT keeps their order below its new end.
@@ -248,7 +248,7 @@ public
 
 : ?FX-KIND ( -- )
    I-KIND @ FX-KIND-OK? if exit then
-   s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
+   s" icode: invalid fixup kind" EXIT-STATUS:ENCODE die ;
 
 : FX+ ( n label n -- )
    I-KIND ! LABEL>N I-LBL ! I-SITE !
@@ -320,7 +320,7 @@ variable IMSG-V
    \ Any source can call IMSG+, so the length is compared with the room left: in
    \ a sum, a length near the maximum cell wraps back under the capacity.
    IMSG-U @ 0 <  IMSG-U @ IMSG-CAP IMSG-N @ - >  or if
-      s" icode: a reach refusal outgrew its own message buffer" ICODE-EXIT-RC die
+      s" icode: a reach refusal outgrew its own message buffer" EXIT-STATUS:ENCODE die
    then
    0 BEGIN dup IMSG-U @ < WHILE
       dup IMSG-A@ swap CODE-BYTE+ c@  IMSG-BUF IMSG-N @ CODE-BYTE+ c!
@@ -337,7 +337,7 @@ variable IMSG-V
    s"  target=" I-RTARGET @ IMSG-FIELD
    s"  delta="  I-RDELTA  @ IMSG-FIELD
    s"  limit="  I-RLIMIT  @ IMSG-FIELD
-   IMSG-BUF IMSG-N @ ICODE-EXIT-RC die ;
+   IMSG-BUF IMSG-N @ EXIT-STATUS:ENCODE die ;
 
 private
 
@@ -350,7 +350,7 @@ variable I-RBITS                    \ the field bits FX-BITS packs for I-RDELTA
    I-RKIND @ FX-B26 = if I-RDELTA @ ENC-B  0 ENC-B xor I-RBITS ! exit then
    I-RKIND @ FX-B19 = if 0 I-RDELTA @ ENC-CBZ  0 0 ENC-CBZ xor I-RBITS ! exit then
    I-RKIND @ FX-ADR = if 0 I-RDELTA @ ENC-ADR  0 0 ENC-ADR xor I-RBITS ! exit then
-   s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
+   s" icode: invalid fixup kind" EXIT-STATUS:ENCODE die ;
 
 
 \ A distance the field cannot hold dies with REACH-DIE's report: E-A64EMIT-REACH
@@ -380,7 +380,7 @@ $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
 
 : LOFF-OK? ( n -- bool )  dup LOFF-LO >=  swap LOFF-HI <  and ;
 
-: ?LOFF ( n -- n )  dup LOFF-OK? if exit then  s" icode: label offset out of reach" ICODE-EXIT-RC die ;
+: ?LOFF ( n -- n )  dup LOFF-OK? if exit then  s" icode: label offset out of reach" EXIT-STATUS:ENCODE die ;
 \ BR-EMIT expects BBASE, the branch encoded with a zero delta, and BKIND.
 variable BBASE  variable BKIND
 
@@ -532,17 +532,17 @@ PTR-VARIABLE CUT-SRC
 
 \ A range may start where the previous one ends.
 : ?RANGES ( -- )
-   CUT-N @ 0 <  CUT-FROM @ 0 < or if s" icode: cut ranges malformed" ICODE-EXIT-RC die then
+   CUT-N @ 0 <  CUT-FROM @ 0 < or if s" icode: cut ranges malformed" EXIT-STATUS:ENCODE die then
    CUT-FROM @ CUT-W !                            \ the previous range's end
    0 CUT-I !
    BEGIN CUT-I @ CUT-N @ < WHILE
       CUT-I @ RANGE-START CUT-W @ <
       CUT-I @ RANGE-START CUT-I @ RANGE-END >= or
-      if s" icode: cut ranges malformed" ICODE-EXIT-RC die then
+      if s" icode: cut ranges malformed" EXIT-STATUS:ENCODE die then
       CUT-I @ RANGE-END CUT-W !
       CUT-I @ 1 + CUT-I !
    REPEAT
-   CUT-W @ ASM-CP @ > if s" icode: cut ranges malformed" ICODE-EXIT-RC die then ;
+   CUT-W @ ASM-CP @ > if s" icode: cut ranges malformed" EXIT-STATUS:ENCODE die then ;
 
 
 : MAP-BUILD ( -- )
@@ -574,14 +574,14 @@ PTR-VARIABLE CUT-SRC
    0 CUT-I !
    BEGIN CUT-I @ NREF @ < WHILE
       CUT-I @ REF-SITES @ CUT-FROM @ >=  CUT-I @ REF-POS 0 <  and if
-         s" icode: a pending reference lies in the cut region" ICODE-EXIT-RC die
+         s" icode: a pending reference lies in the cut region" EXIT-STATUS:ENCODE die
       then
       CUT-I @ REF-SITES @ SITE-KEPT?  CUT-I @ REF-POS 0 >=  and
       CUT-I @ REF-POS >MOVED 0 <  and if
-         s" icode: a kept reference names cut code" ICODE-EXIT-RC die
+         s" icode: a kept reference names cut code" EXIT-STATUS:ENCODE die
       then
       CUT-I @ TWO-WORD?  CUT-I @ REF-SITES @ PAIR-SPLIT?  and if
-         s" icode: a cut splits a two-word reference" ICODE-EXIT-RC die
+         s" icode: a cut splits a two-word reference" EXIT-STATUS:ENCODE die
       then
       CUT-I @ 1 + CUT-I !
    REPEAT ;
@@ -601,7 +601,7 @@ PTR-VARIABLE CUT-SRC
 : ?SPANS ( -- )
    NSPAN @ 0 ?do
       i SPAN-SPLIT? if
-         s" icode: a cut splits a data span" ICODE-EXIT-RC die
+         s" icode: a cut splits a data span" EXIT-STATUS:ENCODE die
       then
    loop ;
 
@@ -678,7 +678,7 @@ public
    dup $FFFFFFFF and EMITW  $20 rshift EMITW ;   \ one 64-bit cell, LE
 
 : DLBL, ( label -- )                                  \ cell = label's byte offset
-   dup LABEL>N LBLP @ 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then
+   dup LABEL>N LBLP @ 0 < if s" icode: DLBL forward ref" EXIT-STATUS:ENCODE die then
    ASM-CP @ over FX-CELL REF+
    LABEL>N LBLP @ $4 * DCQ, ;
 PTR-VARIABLE BYP

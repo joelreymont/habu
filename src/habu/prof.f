@@ -73,6 +73,7 @@
 \ exclusive sample, and the walk names its callers from there. ARN-FCALLED
 \ counts that weight; PROF-FOREIGN counts only the foreign samples for which
 \ neither names a Habu word.
+require src/core/exit-status.f
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -833,7 +834,7 @@ public
    17 pleave CBZ,
    LPROFDUMP LABEL@ BL,
    7 PROF-BAND-VA LIT64,  -1 C-PROF-IN-ADD
-   0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   0 EXIT-STATUS:PROF-LIMIT MOVZ,  NR-EXIT-GROUP SYS,
    pfwd LBL,  C-PROF-FORWARD
    pleave LBL,  -1 C-PROF-IN-ADD
    pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS,  BRK, ;
@@ -897,7 +898,7 @@ private
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    C-CC ok BCOND,
       1 msg ADR,  2 PROFARMMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-      0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  PROFARMMSG$ BYTES,
    ok LBL, ;
 
@@ -929,7 +930,7 @@ private
       NR-MMAP SYS,
       C-CC mok BCOND,
          1 amsg ADR,  2 PROFARNMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-         0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+         0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
       amsg LBL,  PROFARNMSG$ BYTES,
       mok LBL,
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
@@ -938,7 +939,7 @@ private
 : C-PROF-DIE ( ^u8 n -- ) {: a:^ u:n :}
    LBL {: msg :}
    0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
-   0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+   0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  a u BYTES, ;
 
 \ x5 = dictionary record; x1/x2 = raw name pointer/length. The external

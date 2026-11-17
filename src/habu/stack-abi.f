@@ -8,9 +8,6 @@
 package STACK-ABI
 public
 
-\ The rc a refused stack mapping or signal-stack registration exits with.
-78 constant MAP-FAIL-RC
-
 \ The live data-stack allocation changes when a closed text, a loaded file or a task
 \ starts, and at unwind.
 $1D0 constant BASE-CELL

@@ -265,7 +265,6 @@ EXPORT CHECK:UNDEFINED-RECORD
 EXPORT CHECK:KEYWORD-RECORD
 EXPORT CHECKER-TAPE:COUNTED-MAX
 
-79 constant RC-TASK-THREAD       \ source read on a task's thread
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
 $5C constant LINE-COMMENT        \ a backslash
@@ -1358,8 +1357,6 @@ DYNAMIC-BUFFER BODY-LOCAL-DEPTH n
 DYNAMIC-BUFFER LOCAL-NAMES u8
 DYNAMIC-BUFFER LOCAL-END n
 
-72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
-
 : DEF-TRUST-SIG ( ^u8 n -- ) trust-sig! ;
 
 \ The block BODY-ITEMS describes. Each opener zeroes CAP-CELL, so a
@@ -1502,7 +1499,7 @@ private
       TOKEN$ REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
       REJECTION:HELP
       s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
-      CODE-SPACE:FULL-RC REJECTION:STOP
+      EXIT-STATUS:FULL REJECTION:STOP
    then ;
 
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
@@ -2664,7 +2661,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    REJECTION:HELP
    s" declare this defer after the checker's trust declarations, or shorten its name and signature"
    REJECTION:EMIT-STR
-   DEF-RC-PD-FULL KEEP-DIE ;
+   EXIT-STATUS:FULL KEEP-DIE ;
 
 : PD-PUT ( ^u8 n n n n -- ) {: a:^ u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
@@ -2908,7 +2905,7 @@ private
    REJECTION:HELP
    s" run `evaluate`, `include` and `require` on the main thread only"
    REJECTION:EMIT-STR
-   RC-TASK-THREAD KEEP-DIE ;
+   EXIT-STATUS:TASK-COMPILE KEEP-DIE ;
 
 : RUN-TOKENS ( -- )
    TASK-GUARD  begin TOKEN-MARK TOKEN while STEP repeat ;

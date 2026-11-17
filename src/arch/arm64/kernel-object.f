@@ -22,6 +22,7 @@
 \               trusted-only, fixed-ABI, name, package name, atom count and
 \               atoms
 
+require src/core/exit-status.f
 require src/lib/le.f
 require src/lib/string.f
 require src/core/bytes.f
@@ -140,7 +141,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
             i A64ICODE:IDEC$ SB-APPEND
             s"  site=" SB-APPEND
             i A64ICODE:FXH @ cells A64ICODE:FXS + @ A64ICODE:IDEC$ SB-APPEND
-            SB$ A64ICODE:ICODE-EXIT-RC die
+            SB$ EXIT-STATUS:ENCODE die
          then
       then
    loop ;

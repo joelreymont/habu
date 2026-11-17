@@ -13515,8 +13515,6 @@ $4000 constant RESERVE
    HB-TARGET-LINUX-X86-64? IF 16 ELSE 4 THEN ;
 
 public
-\ The status for a long name past the code ceiling.
-76 constant FULL-RC
 
 : CEILING ( -- n ) dbase@ REGION + RESERVE - ;
 
@@ -13547,7 +13545,7 @@ public
    t tu REJECTION:AT  s" no code room" REJECTION:EMIT-STR
    REJECTION:HELP
    s" shorten the name, or define fewer words in this load" REJECTION:EMIT-STR
-   FULL-RC REJECTION:STOP ;
+   EXIT-STATUS:FULL REJECTION:STOP ;
 ;package
 
 \ ---- the checker overlay ------------------------------------------------------

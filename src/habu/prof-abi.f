@@ -4,6 +4,7 @@
 \ meet only in memory (the band at the top of DATA, the arena whose base the
 \ band holds); every offset, size, signal fact, exit status and message of that
 \ meeting is here once. Each handler's frame layout stays with its emitter.
+require src/core/exit-status.f
 require src/habu/layout.f
 
 package PROF-ABI
@@ -17,7 +18,7 @@ variable LPROFRECLAIM
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.
 : PROF-BAND-AT ( n n -- n ) {: base:n size:n :} size PROF-CNT-BYTES - base + ;
 0  constant PROF-TOT        \ sample intervals elapsed: aarch64 weighs each sample (ARN-LAST)
-8  constant PROF-LIM        \ report + exit(PROF-LIMIT-RC) at this many, 0 = sample until prof-off
+8  constant PROF-LIM        \ report + exit(EXIT-STATUS:PROF-LIMIT) at this many, 0 = sample until prof-off
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
 24 constant PROF-FOREIGN    \ samples in a context that is not Habu code, charged to no word
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
@@ -168,11 +169,9 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 40 constant DICT-WL-OFF                   \ the record's wordlist cell (habu1.f BSWL reads the same 40)
 
 \ A resource prof-on cannot get is fatal: its message goes to fd 2 and it exits
-\ PROF-MAP-RC. A refused setitimer is such a resource: it would leave a phase
+\ EXIT-STATUS:SYSTEM. A refused setitimer is such a resource: it would leave a phase
 \ that samples nothing and reports zeros. The sample that reaches a non-zero
-\ PROF-LIM prints the report and exits PROF-LIMIT-RC.
-78 constant PROF-MAP-RC
-99 constant PROF-LIMIT-RC
+\ PROF-LIM prints the report and exits EXIT-STATUS:PROF-LIMIT.
 : PROFARNMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
 : PROFARMMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
 : PROFIDMSG$ ( -- ^u8 n ) S\" hb: profiler profile IDs exhausted\n" ;

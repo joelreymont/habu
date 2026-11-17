@@ -381,7 +381,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
 
 \ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
-\ setitimer refuses it, and the refusal is named and exits PROF-MAP-RC.
+\ setitimer refuses it, and the refusal is named and exits EXIT-STATUS:SYSTEM.
 : GDB-PROFILER-ARM-REFUSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -389,7 +389,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" 250 prof-rate -1 PROF-ABI:ARN-USEC GDB-ARENA ! 0 prof-on" GE-SRC-LINE
    S\" s\" prof-on armed -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
-   PROF-ABI:PROF-MAP-RC s" a refused arm exits PROF-MAP-RC" GE-EXPECT-RC
+   EXIT-STATUS:SYSTEM s" a refused arm exits SYSTEM" GE-EXPECT-RC
    PROF-ABI:PROFARMMSG$ s" a refused arm is named on fd 2" GE-EXPECT-ERR
    s" PASS: a setitimer that refuses the arm is named and fatal" type cr ;
 

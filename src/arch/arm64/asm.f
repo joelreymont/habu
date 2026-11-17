@@ -1,6 +1,7 @@
 \ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
 \ Every encoder screens its operands before packing a bit: an operand dies with
-\ ASM-EXIT-RC, a branch or ADR distance throws E-A64EMIT-REACH.
+\ EXIT-STATUS:ENCODE, a branch or ADR distance throws E-A64EMIT-REACH.
+require src/core/exit-status.f
 require src/lib/error.f
 
 package A64ASM
@@ -8,10 +9,6 @@ package A64ASM
 $FFFFFFFF constant ARM64-W32
 
 : MSK ( n -- n ) ARM64-W32 and ;
-
-\ An operand refusal here, and every refusal in src/arch/arm64/icode.f, exits
-\ with this status.
-72 constant ASM-EXIT-RC
 
 public
 
@@ -63,39 +60,39 @@ private
 : OUT? ( n n -- bool )  swap dup 0 < swap rot >= or ;
 
 : ?REG ( n -- n )
-   dup REG-LIM OUT? IF s" asm: register number out of range" ASM-EXIT-RC die THEN ;
+   dup REG-LIM OUT? IF s" asm: register number out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?IMM16 ( n -- n )
-   dup IMM16-LIM OUT? IF s" asm: 16-bit immediate out of range" ASM-EXIT-RC die THEN ;
+   dup IMM16-LIM OUT? IF s" asm: 16-bit immediate out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?IMM8 ( n -- n )
-   dup IMM8-LIM OUT? IF s" asm: 8-bit immediate out of range" ASM-EXIT-RC die THEN ;
+   dup IMM8-LIM OUT? IF s" asm: 8-bit immediate out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?IMM12 ( n -- n )
-   dup IMM12-LIM OUT? IF s" asm: 12-bit immediate out of range" ASM-EXIT-RC die THEN ;
+   dup IMM12-LIM OUT? IF s" asm: 12-bit immediate out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?NIS ( n -- n )
-   dup NIS-LIM OUT? IF s" asm: logical immediate out of range" ASM-EXIT-RC die THEN ;
+   dup NIS-LIM OUT? IF s" asm: logical immediate out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?SHIFT ( n -- n )
-   dup SHIFT-LIM OUT? IF s" asm: shift amount out of range" ASM-EXIT-RC die THEN ;
+   dup SHIFT-LIM OUT? IF s" asm: shift amount out of range" EXIT-STATUS:ENCODE die THEN ;
 
 \ Signed nine-bit field, -256 .. 255, counted in bytes, not access widths.
 1 8 lshift constant SIMM9-LIM
 
 : ?SIMM9 ( n -- n )
    dup dup SIMM9-LIM negate < swap SIMM9-LIM >= or
-   IF s" asm: 9-bit signed offset out of range" ASM-EXIT-RC die THEN ;
+   IF s" asm: 9-bit signed offset out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?SIMM7 ( n -- n )
    dup dup -64 < swap 64 >= or
-   IF s" asm: 7-bit signed offset out of range" ASM-EXIT-RC die THEN ;
+   IF s" asm: 7-bit signed offset out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?COND ( n -- n )
-   dup COND-LIM OUT? IF s" asm: condition code out of range" ASM-EXIT-RC die THEN ;
+   dup COND-LIM OUT? IF s" asm: condition code out of range" EXIT-STATUS:ENCODE die THEN ;
 
 : ?HW ( n -- n )
-   dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
+   dup HW-LIM OUT? IF s" asm: move-wide half out of range" EXIT-STATUS:ENCODE die THEN ;
 
 31 constant ARM-ZERO-REG
 
@@ -103,8 +100,8 @@ private
    ?REG
    dup ARM-X18 <> IF exit THEN
    HB-TARGET-LINUX? IF exit THEN
-   HB-TARGET-MACOS? IF s" asm: x18 is Darwin-reserved" ASM-EXIT-RC die THEN
-   s" asm: unknown target" ASM-EXIT-RC die ;
+   HB-TARGET-MACOS? IF s" asm: x18 is Darwin-reserved" EXIT-STATUS:ENCODE die THEN
+   s" asm: unknown target" EXIT-STATUS:ENCODE die ;
 
 : XR2 ( n n -- n n )  XREG? swap XREG? swap ;
 
@@ -191,7 +188,7 @@ private
    rot 6 lshift or
    e 2 * 1 - $3F and $3F xor  ones 1 - or or ;
 
-: LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
+: LIMM-BAD ( -- )  s" asm: bad logical immediate" EXIT-STATUS:ENCODE die ;
 
 \ This file is loaded as bare source by the encoder gate, without src/lib/prelude.f,
 \ so `true` and `false` are spelled here as the comparisons the prelude uses.
@@ -213,7 +210,7 @@ private
 public
 
 : SCALE/ ( n n -- n )
-   2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" ASM-EXIT-RC die THEN
+   2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" EXIT-STATUS:ENCODE die THEN
    / ;
 
 private
@@ -306,15 +303,15 @@ public
 
 : ENC-LDP ( n n n n -- n )
    {: rt:n rt2:n rn:n off:n :}
-   rt rt2 = IF s" asm: load pair repeats a destination" ASM-EXIT-RC die THEN
+   rt rt2 = IF s" asm: load pair repeats a destination" EXIT-STATUS:ENCODE die THEN
    rt rt2 rn off $A9400000 PAIR-WORD ;
 
 : ENC-LDPPRE ( n n n n -- n )
    {: rt:n rt2:n rn:n off:n :}
-   rt rt2 = IF s" asm: load pair repeats a destination" ASM-EXIT-RC die THEN
+   rt rt2 = IF s" asm: load pair repeats a destination" EXIT-STATUS:ENCODE die THEN
    \ Register 31 is SP as a base and XZR as a destination.
    rn 31 <> rt rn = rt2 rn = or and IF
-      s" asm: pair writeback overlaps a destination" ASM-EXIT-RC die
+      s" asm: pair writeback overlaps a destination" EXIT-STATUS:ENCODE die
    THEN
    rt rt2 rn off $A9C00000 PAIR-WORD ;
 
@@ -324,7 +321,7 @@ public
 : ENC-STPPOST ( n n n n -- n )
    {: rt:n rt2:n rn:n off:n :}
    rt rn = rt2 rn = or IF
-      s" asm: pair writeback overlaps a source" ASM-EXIT-RC die
+      s" asm: pair writeback overlaps a source" EXIT-STATUS:ENCODE die
    THEN
    rt rt2 rn off $A8800000 PAIR-WORD ;
 
@@ -441,7 +438,7 @@ public
 \ and NV from this alias.
 : ENC-CSETM ( n n -- n )
    XR2ND
-   dup C-AL OUT? IF s" asm: mask condition out of range" ASM-EXIT-RC die THEN
+   dup C-AL OUT? IF s" asm: mask condition out of range" EXIT-STATUS:ENCODE die THEN
    {: rd:n cond:n :}
    $DA9F03E0 rd or  cond 1 xor 12 lshift or MSK ;
 
