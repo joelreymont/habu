@@ -1,6 +1,7 @@
 \ gate-debug-lib.f - profiler and debugger gate cases, included by
 \ test/gate-debug.f.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require tools/code-dump-core.f
@@ -358,7 +359,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" -1 prof-rate" GE-SRC-LINE
    S\" s\" prof-rate took -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
-   UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
+   EXIT-STATUS:UNCAUGHT s" an uncaught prof-rate -1 exits EXIT-STATUS:UNCAUGHT" GE-EXPECT-RC
    E-PROF-RATE s" <input>:1:4" GDB-THROWN$
    s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then

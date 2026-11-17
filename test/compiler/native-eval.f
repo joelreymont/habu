@@ -1,7 +1,7 @@
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
 \ stack of its own and rejects residue with a record, which is what lets a
 \ checked word evaluate source.
-require src/core/engine-error.f
+require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/lib/error.f
 require src/lib/string.f
@@ -279,7 +279,7 @@ create ERR IO-CAP allot
 : OVERFLOW ( -- )
    s" an overflow inside a closed text exits STACK-BOUNDS" T-LABEL
    OVERFLOW$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
+   PROCESS:ENDING>RC RC>N EXIT-STATUS:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
    ERR erru S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"

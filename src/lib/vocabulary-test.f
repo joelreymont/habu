@@ -5,6 +5,7 @@
 \ Each child leaves one line in build/vocabulary-run.txt,
 \ `<harness> <case> rc=<n> <first stderr line>`.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -131,7 +132,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ notes span, the stdout.
 : STOPS ( ^u8 n ^u8 n ^u8 n -- )
    {: line:^ lu:n notes:^ nu:n out:^ ou:n :}
-   s" " ENGINE-ERROR:POLICY line lu notes nu out ou SAYS ;
+   s" " EXIT-STATUS:POLICY line lu notes nu out ou SAYS ;
 
 : SEALED$ ( -- ^u8 n ) s" error[E-POLICY]: the vocabulary is sealed" ;
 : KEYWORD$ ( -- ^u8 n ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
@@ -247,7 +248,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ cannot be admitted, and a record in it is never in the vocabulary.
 : BOUND ( -- )
    s" allow-bound" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
+   s" " EXIT-STATUS:POLICY s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
    s" far" s" error[E-POLICY]: `PBIG:FAR` is not in the vocabulary this source may use" s" test/policy/far.f:2:" REFUSES ;
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in

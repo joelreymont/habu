@@ -707,6 +707,7 @@
 \ then begun and reads what is written next by the time its first check is
 \ over.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -1119,7 +1120,7 @@ variable OPEN-N
    src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
-   ERR-SPAN SPAN:$ drop erru LEN>N r UNCAUGHT-RC T-ENDING-EXITED=
+   ERR-SPAN SPAN:$ drop erru LEN>N r EXIT-STATUS:UNCAUGHT T-ENDING-EXITED=
    OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE

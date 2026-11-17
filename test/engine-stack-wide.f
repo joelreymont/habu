@@ -18,7 +18,7 @@ package STACK-LIFECYCLE-TEST
 \ level leaves the stack one cell deeper while the transfer runs whole and
 \ unwinds. The body is live, and every transfer below is wider than one cell, so
 \ the first write past the capacity is the transfer's own. The child dies on the
-\ data guard page: ENGINE-ERROR:STACK-BOUNDS (102) after the record "the data
+\ data guard page: EXIT-STATUS:STACK-BOUNDS (102) after the record "the data
 \ stack ran past its bounds".
 : RATCHET-TAIL ( ^u8 n -- ) {: name:^ nameu:n :}
    s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name nameu SB-APPEND

@@ -6,6 +6,7 @@
 \ A device write that faults is caught with the output state its catch saved,
 \ so the next write reaches its device rather than fd 1.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/task.f
@@ -179,7 +180,7 @@ TASK:MIN-STACK TASK:TASK READER
    GENIO:TERMINAL SINK-DEV @ GENIO:>DEVICE [: SINK-TYPE ;] GENIO:WITH-IO
    FAULTY-DEV @ GENIO:>DEVICE GENIO:CLOSE
    SINK-DEV @ GENIO:>DEVICE GENIO:CLOSE
-   GOT-CODE @ ENGINE-ERROR:MEMORY-FAULT T=
+   GOT-CODE @ EXIT-STATUS:MEMORY-FAULT T=
    self GENIO:TERMINAL GENIO:DEVICE>N T=
    SINK SINK-N @ s" y" T$= ;
 

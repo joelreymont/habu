@@ -527,7 +527,7 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \   and a site below it costs a move of the rows above it. No site is refused
 \   for being below the last row, so a caller records its sites in any order
 \   and merges nothing. The same row again changes nothing; the other kind at a
-\   recorded offset, or a row past SITE-CAP, exits SITE-RC. `code-publish`
+\   recorded offset, or a row past SITE-CAP, exits EXIT-STATUS:SITE. `code-publish`
 \   removes the rows of both kinds in [dst, slot), the span and its int3 fill,
 \   and `reloc-maps-clear` those of its span; sites are recorded after
 \   `code-publish`, so an x86-64 publication drops the stale rows in the bytes
@@ -542,7 +542,7 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ and `namespace-record`, `alias-record` and `def-open` move it past a long
 \ name to the next slot, x86-64 padding with zeros.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
-\ ENGINE-ERROR:SEAL-VIOLATION.
+\ EXIT-STATUS:SEAL-VIOLATION.
 \
 \ THE PUBLISHER OWNS ITS PRIMITIVES. The rows closed ECLOSE-PRIVATE for NPUB
 \ resolve only inside that package, so the publisher's own words are checked

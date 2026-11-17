@@ -58,7 +58,7 @@ CAST: REC-CELLS ( ^u8 -- ^^u8 )
 
 : UNMAP ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
-   a u munmap 0 < if s" compile reads: cannot release a recording" INCLUDE-IO-RC die then ;
+   a u munmap 0 < if s" compile reads: cannot release a recording" EXIT-STATUS:IOERR die then ;
 
 : EMPTY ( -- )
    NULL-PTR MAP !  0 CAP !  0 USED !
@@ -131,7 +131,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 
 : FRESH ( n ^u8 n -- ^u8 )
    {: bytes:n m:^ mu:n :}
-   bytes map-anon 0= 0= if drop m mu INCLUDE-IO-RC die then ;
+   bytes map-anon 0= 0= if drop m mu EXIT-STATUS:IOERR die then ;
 
 \ APPEND grows the index before a read would fill over half its slots, so
 \ VACANT and PROBE always reach an empty slot.

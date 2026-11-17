@@ -192,7 +192,7 @@ public
 \ Publishes the dispatch table into the main region and binds the slot before
 \ answering the stub's address. A call on an unbound slot, on a context busy on
 \ another thread or on one with no outbound call in flight fails closed: the
-\ thunk exits 106 (ENGINE-ERROR:CALLBACK). A context admits one thread at a
+\ thunk exits 106 (EXIT-STATUS:CALLBACK). A context admits one thread at a
 \ time; a second is rejected, never made to wait. TASK:SELF-CONTEXT is the
 \ calling task's region (C calls back inside a foreign call it made),
 \ TASK:MAIN-BASE FFI:>CELL the main region (main thread only).

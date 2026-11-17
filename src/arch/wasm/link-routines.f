@@ -2,7 +2,7 @@
 \ program reaches its word and shaped as tier 0's code is (src/habu/t0-wasm.f).
 require src/lib/string.f
 require src/lib/span.f
-require src/core/engine-error.f
+require src/core/exit-status.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/code.f
@@ -276,11 +276,11 @@ variable BUF-U
 
 \ ---- map-anon and munmap
 \ Room for n bytes of cells past SP, as src/habu/t0-wasm.f ROOM: an end above
-\ WPROF:STACK-END records ENGINE-ERROR:STACK-BOUNDS with that address and traps.
+\ WPROF:STACK-END records EXIT-STATUS:STACK-BOUNDS with that address and traps.
 : STACK-ROOM, ( n -- )
    {: n:n :}
    L-SP GET,  n I32,  OP-I32-ADD B,  WPROF:STACK-END I32,  OP-I32-GT-U B,  IF,
-      L-CTX GET,  ENGINE-ERROR:STACK-BOUNDS I32,
+      L-CTX GET,  EXIT-STATUS:STACK-BOUNDS I32,
       OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
       L-CTX GET,  L-SP GET,  n I32,  OP-I32-ADD B,  OP-I64-EXTEND-I32-U B,
       OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
@@ -464,10 +464,10 @@ variable BUF-U
    L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  OP-I64-GT-U B,  OP-SELECT B,
    L-BYTES SET, ;
 
-\ A refused growth records ENGINE-ERROR:STREAM-GROW with STREAM-END, and traps.
+\ A refused growth records EXIT-STATUS:STREAM-GROW with STREAM-END, and traps.
 : STREAM-REFUSED, ( -- )
    L-IOR GET,  OP-I32-WRAP-I64 B,  IF,
-      L-CTX GET,  ENGINE-ERROR:STREAM-GROW I32,
+      L-CTX GET,  EXIT-STATUS:STREAM-GROW I32,
       OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
       L-CTX GET,  STREAM-END,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
       OP-UNREACHABLE B,

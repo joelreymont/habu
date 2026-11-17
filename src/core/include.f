@@ -369,7 +369,7 @@ private
    REJECTION:HELP
    s" run hb from a directory that exists, that you may search, and whose path fits the limit"
    REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 
 : CWD-READ ( -- )
@@ -419,7 +419,7 @@ variable PROGRAM-U
    a PROGRAM-BUF PATH-BYTES realpath {: n:n :}
    n 0 <= if
       s" source root: the program file does not resolve within PATH-CAP bytes"
-      INCLUDE-IO-RC die
+      EXIT-STATUS:IOERR die
    then
    n PROGRAM-U ! ;
 
@@ -766,7 +766,7 @@ private
 
 : MAP-COPY ( ^u8 n -- ^u8 )
    {: a:^ u:n :}
-   u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" INCLUDE-IO-RC die then
+   u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" EXIT-STATUS:IOERR die then
    {: fresh:^ :}
    a fresh u 1+ BYTE-COPY
    fresh ;
@@ -786,7 +786,7 @@ private
    ix SLOT-U@ {: u:n :}
    u 0 > if
       ix SLOT-FIELD @ u 1+ munmap 0 < if
-         s" source root: cannot release a saved path" INCLUDE-IO-RC die
+         s" source root: cannot release a saved path" EXIT-STATUS:IOERR die
       then
    then
    NULL$ drop ix SLOT-FIELD !
@@ -807,7 +807,7 @@ private
    CURRENT@ {: cur:^ curu:n :}
    old oldu CURRENT!
    cur curu 1+ munmap 0 < if
-      s" source root: cannot release a root mapping" INCLUDE-IO-RC die
+      s" source root: cannot release a root mapping" EXIT-STATUS:IOERR die
    then
    SLOT-N @ SLOT-BASE @ ?do i SLOT-RELEASE loop
    SLOT-BASE @ SLOT-N !
@@ -838,7 +838,7 @@ private
 : RELEASE-CURRENT ( -- )
    CURRENT-U @ 0 > if
       CURRENT-PTR CURRENT-U @ 1+ munmap 0 < if
-         s" source root: cannot release the current path" INCLUDE-IO-RC die
+         s" source root: cannot release the current path" EXIT-STATUS:IOERR die
       then
    then
    NULL$ CURRENT! ;
@@ -952,7 +952,7 @@ ROOT-MOVER
 using SOURCE-ROOT
 
 : INCLUDE-DIE ( ^u8 n -- )
-   INCLUDE-IO-RC die ;
+   EXIT-STATUS:IOERR die ;
 
 : INCLUDE-CLOSE ( -- )
    INCLUDE-FD @ dup 0 >= if
@@ -1560,21 +1560,21 @@ public
    path pathu e SOURCE-ERRNO {: why:n :}
    t tu path pathu why ERRNO-WHY$ s" resolved" UNREAD-OS-RECORD
    path pathu why OPEN-HELP
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 \ The file path changed while it was read, so its bytes may be no single
 \ version of it. Placed as UNREADABLE-SOURCE places its record.
 : CHANGED-SOURCE ( ^u8 n ^u8 n -- )
    s" changed while it was read" UNREAD-RECORD
    s" load it again once nothing is writing it" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 \ The file path is a stream, not a regular file, so a reader that stamps what
 \ it reads cannot stamp it. Placed as UNREADABLE-SOURCE places its record.
 : UNSTAMPED-SOURCE ( ^u8 n ^u8 n -- )
    s" is not a regular file" UNREAD-RECORD
    s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 private
 
@@ -1641,7 +1641,7 @@ private
    s" ` is yours, make it searchable with `chmod u+x " REJECTION:EMIT-STR
    dir diru SH-QUOTED
    s" `; else ask its owner to let you search it" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 public
 
@@ -2347,7 +2347,7 @@ private
    READ-SOURCE {: a:^ u:n :}
    u 2 >= if
       a c@ $23 = a 1 + c@ $21 = and if
-         u 1 max map-anon 0= 0= if drop INCLUDE-IO-RC throw then
+         u 1 max map-anon 0= 0= if drop EXIT-STATUS:IOERR throw then
          {: copy:^ :}
          a copy u BYTE-COPY
          copy u SHEBANG-COMMENT
@@ -2826,7 +2826,7 @@ private
    CANON-U @ POLICY-ROOT-U ! ;
 
 : POLICY-ROOT-RELEASE ( ^u8 n -- )
-   1+ munmap 0 < if s" policy: cannot release a root copy" INCLUDE-IO-RC die then ;
+   1+ munmap 0 < if s" policy: cannot release a root copy" EXIT-STATUS:IOERR die then ;
 
 public
 
@@ -2916,7 +2916,7 @@ public
    REJECTION:HELP
    s" build this file only for a target its test admits, or widen the test"
    REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   EXIT-STATUS:IOERR REJECTION:STOP ;
 
 
 ;using

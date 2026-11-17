@@ -1,10 +1,11 @@
-\ A load through a bad address in Habu code throws ENGINE-ERROR:MEMORY-FAULT
+\ A load through a bad address in Habu code throws EXIT-STATUS:MEMORY-FAULT
 \ on the faulting thread: a catch receives it and the program runs on, a task
 \ ends with it, and uncaught it exits 110 after its record on fd 2, with no
 \ register dump. A fault in foreign code, a jump to an unmapped address or into
 \ a guard page and a fault in a signal handler still dump the registers and die
 \ by the signal. Each case is its own child: its process's end is what it
 \ checks.
+require src/core/exit-status.f
 require test/gate-common.f
 require src/lib/process.f
 
@@ -39,7 +40,7 @@ private
    s" TRUSTED: W ( -- ) 0 @ drop ;" GE-SRC-LINE
    s" W" GE-SRC-LINE
    RUN-BUF
-   ENGINE-ERROR:MEMORY-FAULT s" an uncaught load from address 0" GE-EXPECT-RC
+   EXIT-STATUS:MEMORY-FAULT s" an uncaught load from address 0" GE-EXPECT-RC
    RECORD-0$ s" an uncaught load from address 0" GE-EXPECT-ERR
    s" PASS: an uncaught fault exits 110 after its record" type cr ;
 

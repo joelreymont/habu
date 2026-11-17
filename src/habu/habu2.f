@@ -31,6 +31,7 @@
 \ definition pends in an open overlay only through a raw store to PEND-CELL,
 \ which reaches the pending-definition refusals, as a raw ndict! reaches the
 \ HW one.
+require src/core/exit-status.f
 require src/lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -954,7 +955,7 @@ variable LREPLAYTRAP
    9 NDICT 1 SUBI,  9 G-PUSH
    done B,
    s" E-SEAL-VIOLATION habu: namespace-record with a definition pending, no record room, an empty name or one reaching the code ceiling, a colon at an edge or twice, or a name already recorded"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ namespace-private ( n -- )
@@ -974,7 +975,7 @@ variable LREPLAYTRAP
    14 14 1 ADDI,  14 DATA WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: namespace-private index not a live package row below NDICT, or a row that has a private wordlist"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ alias-record ( ^u8 n n n -- ) name, source index, wid
@@ -1012,9 +1013,9 @@ variable LREPLAYTRAP
    PUBLISH,
    done B,
    s" E-SEAL-VIOLATION habu: alias-record with a marker wid, a definition pending, a source that is no live definition or is internal, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    s" E-SEAL-WORDLIST habu: alias-record into a wordlist protected by the seal"
-   prot ENGINE-ERROR:SEAL-WORDLIST REFUSE-AT
+   prot EXIT-STATUS:SEAL-WORDLIST REFUSE-AT
    done LBL, ;
 
 \ package-scope! ( n n -- )
@@ -1063,7 +1064,7 @@ variable LREPLAYTRAP
    1 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: package-scope! row not a live package row below NDICT with a private wordlist, a part outside a package or inside a part, or -1 with a parent"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-open ( -- )
@@ -1086,7 +1087,7 @@ variable LREPLAYTRAP
    14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-open with an overlay open, or a definition pending while a task is live"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-record ( ^u8 n n -- ) name, wid: a codeless record, whose entry
@@ -1114,7 +1115,7 @@ variable LREPLAYTRAP
    HW-RAISE,
    done B,
    s" E-SEAL-VIOLATION habu: replay-record with a marker wid, no overlay, a definition pending, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
@@ -1147,7 +1148,7 @@ variable LREPLAYTRAP
    HIDX-EMIT:LREKEY LABEL@ BL,
    done B,
    s" E-SEAL-VIOLATION habu: record-wid! with no overlay, an index at or past NDICT, or an old or new wid neither a wordlist nor a retired marker"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-private ( n bool -- ) namespace index, flag: true gives the row a
@@ -1179,7 +1180,7 @@ variable LREPLAYTRAP
    14 14 1 ADDI,  14 DATA WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-private with no overlay, an index not a live package row below NDICT, a grant to a row that has one, or a take-back below the saved WIDN"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-close ( -- ): every check comes before the first store, and the parked
@@ -1224,7 +1225,7 @@ variable LREPLAYTRAP
    DREC 0 do  14 DATA REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
    done B,
    s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, a parked definition while a task is live, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
@@ -1245,7 +1246,7 @@ variable LREPLAYTRAP
    13 DATA WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-widn! with no overlay, or a mark below the saved WIDN or above WIDN"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ def-open ( ^u8 n n n -- ) name, wid, kind
@@ -1280,9 +1281,9 @@ variable LREPLAYTRAP
    14 COMP-LATCH  14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    s" E-SEAL-WORDLIST habu: def-open into a wordlist protected by the seal"
-   prot ENGINE-ERROR:SEAL-WORDLIST REFUSE-AT
+   prot EXIT-STATUS:SEAL-WORDLIST REFUSE-AT
    done LBL, ;
 
 \ body-capture ( ^u8 n -- ): LBCS is the capture `:` appends through; it grows
@@ -1297,7 +1298,7 @@ variable LREPLAYTRAP
    LBCS LABEL@ BL,
    done B,
    s" E-SEAL-VIOLATION habu: body-capture past the body text capacity or wrapping"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ ( ^u8 n -- ): the span into the cells aoff and uoff while a
@@ -1308,7 +1309,7 @@ variable LREPLAYTRAP
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    11 DATA aoff STR,  12 DATA uoff STR,
    done B,
-   a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   a u bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ trust-sig! ( ^u8 n -- )
@@ -1339,7 +1340,7 @@ variable LREPLAYTRAP
    NATIVE-CLOSE
    done B,
    s" E-SEAL-VIOLATION habu: def-close with no definition pending or no compiler latched"
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 ;package
@@ -1494,7 +1495,7 @@ public
    9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
    5 BL-REACH LIT64,  9 5 CMP,
    C-CC rvok BCOND,
-      s" E-BL-RANGE habu: code region out of BL range" BL-RANGE-RC DIE-LINE,
+      s" E-BL-RANGE habu: code region out of BL range" EXIT-STATUS:BL-RANGE DIE-LINE,
    rvok LBL,
    \ The region's two views: code runs from this base, which turns RX here, and
    \ stores go through a RW alias of [base, base+REGION). x21 carries alias -
@@ -1843,11 +1844,11 @@ ardone LBL,
       MARK-HEADER MARK-UNLOCK
       9 -9855 LIT64,  LFAULTREC LABEL@ B,
    shape LBL,
-      s" E-XTCELL habu: invalid address-cell storage header" SNAP-RELOC:XTCELL-RC DIE-LINE,
+      s" E-XTCELL habu: invalid address-cell storage header" EXIT-STATUS:SNAPSHOT DIE-LINE,
    band LBL,
-      s" E-XTBAND habu: snapshot address cell out of range" SNAP-RELOC:XTBAND-RC DIE-LINE,
+      s" E-XTBAND habu: snapshot address cell out of range" EXIT-STATUS:SNAPSHOT DIE-LINE,
    kind LBL,
-      s" E-XTKIND habu: snapshot address cell kind mismatch" SNAP-RELOC:XTKIND-RC DIE-LINE,
+      s" E-XTKIND habu: snapshot address cell kind mismatch" EXIT-STATUS:SNAPSHOT DIE-LINE,
    ret LBL, MARK-UNLOCK MARK-RESTORE
    end LBL, ;
 
@@ -2207,9 +2208,9 @@ private
    \ BTHROW reaches LUNCAUGHT through UNCGH-CELL. A code in [1,255] is a
    \ deliberate exit contract and exits as itself with no output. Any other code
    \ would be masked to `code & 0xFF`, so it is reported as "hb: uncaught throw
-   \ code <n>\n" on fd 2 and exits UNCAUGHT-RC. x15 keeps the code across the
-   \ write (the kernel preserves x2-x15). Never returns: no RET keeps the
-   \ FPRIM-L throw leaf-safe.
+   \ code <n>\n" on fd 2 and exits EXIT-STATUS:UNCAUGHT. x15 keeps the code
+   \ across the write (the kernel preserves x2-x15). Never returns: no RET keeps
+   \ the FPRIM-L throw leaf-safe.
      LUNCAUGHT LABEL@ LBL,
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    0 9 0 ADDI,
@@ -2239,7 +2240,7 @@ private
    LUNCDONE LABEL@ LBL,
    0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                                       \ write(2, digits, len)
-   0 UNCAUGHT-RC MOVZ,
+   0 EXIT-STATUS:UNCAUGHT MOVZ,
    NR-EXIT-GROUP SYS, ;
 
 : EM-RECOVER-EXITS ( -- )

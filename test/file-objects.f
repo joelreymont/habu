@@ -1,6 +1,7 @@
 \ file-objects.f - builds of the files in test/fixtures/file-objects/, each in a fresh hb: an object must be
 \ a function of the files, not of the process.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -887,9 +888,9 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:ERR$ s" error[E-THROW-ZERO]" STARTS-WITH? {: opened:bool :}
    CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" CONTAINS?
    opened and {: said:bool :}
-   said  rc UNCAUGHT-RC =  and 0= if rc SHOW then
+   said  rc EXIT-STATUS:UNCAUGHT =  and 0= if rc SHOW then
    s" the program prints E-THROW-ZERO's record" LABEL  said TTRUE
-   s" the program exits 67" LABEL  rc UNCAUGHT-RC T= ;
+   s" the program exits 67" LABEL  rc EXIT-STATUS:UNCAUGHT T= ;
 
 \ Z is a stripped program; ZR, built with --repl, is hb running MAIN before its REPL.
 : ZERO-CASE ( CMD:command -- CMD:command )

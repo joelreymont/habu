@@ -12,9 +12,6 @@
 \ Both targets' registers are declared on every target: this file cannot branch
 \ at top level and an ARM64 engine emits x86-64 code.
 package ENGINE-GPR
-
-$4C constant UNKNOWN-TARGET-RC
-
 public
 
 19 constant A64-DSTACK
@@ -46,7 +43,7 @@ constant X64-MASK
 : DSTACK ( -- n )
    HB-TARGET-LINUX-X86-64? if X64-DSTACK exit then
    HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-DSTACK exit then
-   s" layout: ENGINE-GPR: unknown target" UNKNOWN-TARGET-RC die ;
+   s" layout: ENGINE-GPR: unknown target" EXIT-STATUS:INTERNAL die ;
 
 ;package
 
@@ -56,10 +53,10 @@ $2300000 constant REGION
 \ Canonical code-region hint past __text. The engine clamps it after the loaded
 \ image and checks the resulting mapping against BL-REACH at boot.
 $1000000 constant REGION-OFF
-\ BL-REACH: AArch64 BL imm26 reach (+/-128 MiB). The boot dies BL-RANGE-RC when
-\ the mapped region falls outside it from __text; direct-BL emission relies on it.
+\ BL-REACH: AArch64 BL imm26 reach (+/-128 MiB). The boot dies
+\ EXIT-STATUS:BL-RANGE when the mapped region falls outside it from __text;
+\ direct-BL emission relies on it.
 $8000000 constant BL-REACH
-81 constant BL-RANGE-RC
 $48425350414E5321 constant SNAP-MAGIC
 
 \ The trailer ends the authenticated text extent: its base is (the header's
@@ -184,9 +181,6 @@ $2DD0 constant TOKRAW-CELL
 \ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it.
 $A8 constant SEAL-NDICT-CELL
 
-67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW):
-                                        \ the kernel masks a raw code to 8 bits, so a multiple
-                                        \ of 256 would exit 0.
 $28 constant CUR-CELL
 $30 constant WIDN-CELL             \ the next wordlist id the engine hands out
 $38 constant HOOK-CELL
@@ -788,23 +782,22 @@ $2848 constant STAMP-CELL
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: `die`, the uncaught
-\ top-level throw and the exit(0) after the entry returns. The
-\ engine's fail-closed exits - every ENGINE-ERROR:* rc and the 70/74/75/76
-\ band - do NOT call it: a broken engine must not run program code. Clearing
-\ before the call is what stops a hook that dies or throws from re-entering
-\ itself; the exit path it lands in finds the vector empty. The catch handler
-\ chain (HND-CELL) is emptied with it, so a throw from the hook is uncaught and
-\ ends the process with the hook's code: `die` runs inside the program's
-\ catches, and a hook's throw caught there would return from `die`. A stripped
-\ image's exit follows its root's return, when the chain is already empty. The
-\ hook's effect is ( -- ) and it runs on the data stack as it stands, because
-\ `die` may be running on a task thread whose stack is its own. A stripped
-\ program that reaches at-exit.f starts with the vector its load armed, as a
-\ file the program reaches keeps its header stores; one that does not starts
-\ with it empty.
-\ $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
-\ below $7FF8 so the engine names it with a 12-bit scaled LDR/STR immediate off
-\ a region base, and below DATA-START so no compiled source reaches it by allot.
+\ top-level throw and the exit(0) after the entry returns. The exits the engine
+\ takes itself, when it rejects the program or finds itself broken, do NOT call
+\ it: a broken engine must not run program code. Clearing before the call is
+\ what stops a hook that dies or throws from re-entering itself; the exit path
+\ it lands in finds the vector empty. The catch handler chain (HND-CELL) is
+\ emptied with it, so a throw from the hook is uncaught and ends the process
+\ with the hook's code: `die` runs inside the program's catches, and a hook's
+\ throw caught there would return from `die`. A stripped image's exit follows
+\ its root's return, when the chain is already empty. The hook's effect is
+\ ( -- ) and it runs on the data stack as it stands, because `die` may be
+\ running on a task thread whose stack is its own. A stripped program that
+\ reaches at-exit.f starts with the vector its load armed, as a file the program
+\ reaches keeps its header stores; one that does not starts with it empty. $2818
+\ follows SRCLOC's three cells in the $2800..$3000 header band, below $7FF8 so
+\ the engine names it with a 12-bit scaled LDR/STR immediate off a region base,
+\ and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
 \ EXIT-OWNER-CELL: the DATA base of the thread that owns the process exit, 0
 \ while none does; below DATA-START so no allot reaches it.
@@ -1147,20 +1140,6 @@ USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 package SNAP-RELOC
 public
 
-\ These exit statuses live here beside BL-RANGE-RC, not in
-\ src/core/engine-error.f: the engine emitter reads them from this file one
-\ generation before a new src/core constant is reachable. That registry leaves
-\ 96, 98, 99 and 103 to this file.
-\
-\ Exit status when address-cell storage cannot be allocated or is malformed.
-96 constant XTCELL-RC
-\ Exit status for a declared address cell whose offset lies outside
-\ [0, XTCELL-OFF-MAX].
-98 constant XTBAND-RC
-\ Exit status for one address cell declared with two kinds: either kind, kept
-\ alone, would relocate the cell wrongly.
-99 constant XTKIND-RC
-
 \ Call-site map: one bit per four-byte word of the code region, marking every call
 \ whose callee is in the engine's loaded __text. A site is recorded when the call
 \ is published, because region bytes cannot be decoded soundly: a compiled word
@@ -1200,7 +1179,7 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ kind.
 \
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
-\ more with SITE-RC, which lives here for the reason XTCELL-RC does.
+\ more with EXIT-STATUS:SITE.
 \
 \ Snapshot relocation does not apply on x86-64: the region and DATA are mapped
 \ at fixed addresses there.
@@ -1211,7 +1190,6 @@ SITE-KIND-OFF 1 + constant SITE-ROW-BYTES
 ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 1 constant SITE-CALL
 2 constant SITE-ADDR
-103 constant SITE-RC
 
 \ Address-cell table: the DATA offset and kind of every cell declared
 \ to hold an address. XT cells hold code-region addresses, DATA-pointer cells

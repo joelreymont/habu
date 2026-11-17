@@ -10,6 +10,7 @@
 \ and command context. The ordinary batch parser is restored and run on the
 \ calling task, in subject order, after every capture has joined.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -550,7 +551,7 @@ variable VFY-EXE-U
       VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-REFUSED = if CHECKER-REJECT-RC RESULT:OK exit then
       VFY-ANSWER @ VFY-MISSING = if CHECKER-REJECT-RC RESULT:OK exit then
-      VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR RESULT:OK exit then
       VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC RESULT:OK exit then
    then
    o RESULT:ERR ;
@@ -1120,7 +1121,7 @@ public
 \ rejection, a missing source among them, 74 for a source found but not
 \ readable, 77 for a full dictionary, 0 when nothing was rejected.
 : VERIFY-STATUS ( -- n )
-   VFY-ANSWER @ VFY-UNREAD = if INCLUDE-IO-RC exit then
+   VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR exit then
    VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC exit then
    VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if CHECKER-REJECT-RC exit then
    0 ;

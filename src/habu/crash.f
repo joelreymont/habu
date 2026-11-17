@@ -21,6 +21,7 @@
 \ The dump, which every other signal takes too, writes sig, x0..x28 and
 \ fp/lr/sp/pc as hex lines to stderr, and the process dies by the signal
 \ itself (C-CRASH-RERAISE).
+require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
 using SYSCALL
@@ -606,7 +607,7 @@ variable CRS-THROW
 \ Never returns.
 : C-CRASH-GUARD-RECORD ( ^u8 n -- ) {: a:^ u:n :}
    s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
-   CRS-HELP$ ENGINE-ERROR:STACK-BOUNDS FAULT-STOP, ;
+   CRS-HELP$ EXIT-STATUS:STACK-BOUNDS FAULT-STOP, ;
 
 \ The record for the guard page hit at the label, which Habu code hit.
 : C-CRASH-GUARD-REPORT ( ^u8 n label -- )
@@ -697,7 +698,7 @@ variable CRS-THROW
    s" address" 25 FAULT-ADDRESS,
    C-CRASH-OWNER>R3  FAULT-IN,
    s" " FAULT-KEEP,
-   10 ENGINE-ERROR:MEMORY-FAULT MOVZ,
+   10 EXIT-STATUS:MEMORY-FAULT MOVZ,
    HB-TARGET-LINUX? IF
       10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,
    ELSE

@@ -242,12 +242,12 @@ public
    STATUS>ENDING ENDING>RC ;
 
 \ A throw code does not cross a process boundary: `die` and the uncaught-throw
-\ exit turn every negative code into UNCAUGHT-RC (67). A tool whose work can end
-\ on a deadline exits TIMEOUT-RC for E-PROC-TIMEOUT, and the process that
-\ runs it throws E-PROC-TIMEOUT again on that status, so the verdict reaches the
-\ top of a chain of tools. 124 is coreutils `timeout`'s status; no exit-status
-\ constant, `die` literal or positive throw code in src/ or tools/ is 124, and
-\ a signal death reads as 128 + signal.
+\ exit turn every negative code into EXIT-STATUS:UNCAUGHT (67). A tool whose
+\ work can end on a deadline exits TIMEOUT-RC for E-PROC-TIMEOUT, and the
+\ process that runs it throws E-PROC-TIMEOUT again on that status, so the
+\ verdict reaches the top of a chain of tools. 124 is coreutils `timeout`'s
+\ status; no exit-status constant, `die` literal or positive throw code in src/
+\ or tools/ is 124, and a signal death reads as 128 + signal.
 124 constant TIMEOUT-RC
 
 : EXIT-RC ( n n -- n ) {: code:n fail:n :}

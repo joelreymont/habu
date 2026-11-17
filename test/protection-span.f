@@ -1,5 +1,6 @@
 \ protection-span.f - code-area bounds and long-body regressions.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -8,8 +9,7 @@ require src/lib/test/subject.f
 package PROTECTION-TEST
 
 $800 constant CAP
-ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
-67 constant UNCAUGHT-RC
+EXIT-STATUS:SEAL-VIOLATION constant VIOLATION-RC
 76 constant CODE-FULL-RC
 
 create OUT CAP allot
@@ -39,7 +39,7 @@ create ERR CAP allot
    s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT ;
 
 : TEST-TASK-USER ( -- )
-   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" UNCAUGHT-RC EXPECT ;
+   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" EXIT-STATUS:UNCAUGHT EXPECT ;
 
 \ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
 \ word with a 59-byte name 350 times, 60 bytes of text each with its separator.

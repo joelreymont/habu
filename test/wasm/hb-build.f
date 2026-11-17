@@ -18,7 +18,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fs-list.f
 require src/lib/test.f
-require src/core/engine-error.f
+require src/core/exit-status.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/leb.f
 require test/wasm/harness.f
@@ -145,7 +145,7 @@ variable TEXT-U
    s" a die ERR cannot grow for traps and records STREAM-GROW at ERR's end past it" T-LABEL
    s" huge.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STREAM-GROW T=
+   WASM-HARNESS:FAULT-KIND EXIT-STATUS:STREAM-GROW T=
    WASM-HARNESS:FAULT-ADDR WPROF:ERR-BASE 1 32 lshift + 1+ T= ;
 
 
@@ -182,7 +182,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
    s" low.wasm" BUILD 0 T=
    RAN 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:THROW-CODE EXIT-STATUS:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T=
    SB-RESET
@@ -205,7 +205,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a finally body's fault stands after a cleanup that catches its own throw" T-LABEL
    s" finally.wasm" BUILD 0 T=
    RAN 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:THROW-CODE EXIT-STATUS:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 [then]
@@ -623,7 +623,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a data stack past its region faults with STACK-BOUNDS above its end and traps" T-LABEL
    s" sdata.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-KIND EXIT-STATUS:STACK-BOUNDS T=
    WASM-HARNESS:FAULT-ADDR WPROF:STACK-END > TTRUE
    SB-RESET
    S\" : DEEP ( n -- ) dup >r dup >r dup >r dup >r dup >r dup >r dup >r dup >r " SB-APPEND
@@ -635,13 +635,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a return stack past its region faults with STACK-BOUNDS at its end and traps" T-LABEL
    s" sret.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-KIND EXIT-STATUS:STACK-BOUNDS T=
    WASM-HARNESS:FAULT-ADDR WPROF:LOOP-BASE T=
    S\" : DEEP ( -- ) 1 0 do recurse loop ;\n: MAIN ( -- ) DEEP ;\n" s" sloop.f" SOURCE!
    s" a loop stack past its region faults with STACK-BOUNDS at its end and traps" T-LABEL
    s" sloop.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-KIND EXIT-STATUS:STACK-BOUNDS T=
    WASM-HARNESS:FAULT-ADDR WPROF:DATA-BASE T= ;
 
 
@@ -805,11 +805,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a cell at an upper-bit pointer, $100031000, fails its check and throws" T-LABEL
    $100031000 true s" upper.f" ACCESS!
    s" upper.wasm" ACCESS 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:THROW-CODE EXIT-STATUS:MEMORY-FAULT T=
    s" a byte in the null region, $FFFF, fails its check and throws" T-LABEL
    $FFFF false s" null.f" ACCESS!
    s" null.wasm" ACCESS 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T= ;
+   WASM-HARNESS:THROW-CODE EXIT-STATUS:MEMORY-FAULT T= ;
 [then]
 
 \ Memory ends at the memory section's minimum pages, not the image; the

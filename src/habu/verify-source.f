@@ -172,7 +172,7 @@ EXPORT TYPE-DECL:CHECKER-NOMINAL-REPLAY
 public
 
 \ Never thrown by the verifier: a loaded file the system does not read to its
-\ end is recorded where the read fails, which then stops with INCLUDE-IO-RC.
+\ end is recorded where the read fails, which then stops with EXIT-STATUS:IOERR.
 7201 s" a source file changed while a tool read it" ERROR:CODE E-SOURCE-READ
 
 \ The E-DISC kind of the discovery rejection that stopped the last walk or

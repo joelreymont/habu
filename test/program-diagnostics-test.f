@@ -1,5 +1,6 @@
 \ program-diagnostics-test.f - direct production-load diagnostic contracts.
 
+require src/core/exit-status.f
 require test/gate-common.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -87,11 +88,11 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ s" error[" COUNT-SUB ;
 
 : NEGATIVES ( -- )
-   s" test/address-cell-kind-bad.f" 99 s" ADDRESS-CELL-KIND-ARMED"
+   s" test/address-cell-kind-bad.f" EXIT-STATUS:SNAPSHOT s" ADDRESS-CELL-KIND-ARMED"
       s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
-   s" test/address-cell-cap-bad.f" 96 s" ADDRESS-CELL-CAP-ARMED"
+   s" test/address-cell-cap-bad.f" EXIT-STATUS:SNAPSHOT s" ADDRESS-CELL-CAP-ARMED"
       s" E-XTCELL habu: invalid address-cell storage header" NEGATIVE-LINE
-   s" test/xt-cell-band-bad.f" 98 s" XT-CELL-BAND-ARMED"
+   s" test/xt-cell-band-bad.f" EXIT-STATUS:SNAPSHOT s" XT-CELL-BAND-ARMED"
       s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
    s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:17:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS

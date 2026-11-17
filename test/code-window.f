@@ -7,6 +7,7 @@
 \ CP, the live code and dictionary below it, the control-flow stack. The read
 \ control pins that the refusal is about writability, not an unmapped address.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -35,7 +36,7 @@ create ERR CAP allot
 HB-TARGET-LINUX-X86-64? 0= [if]
 : TRAPS ( ^u8 n -- ) {: src:^ u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc ENGINE-ERROR:MEMORY-FAULT
+   src u OUT outu LEN>N ERR erru LEN>N oc EXIT-STATUS:MEMORY-FAULT
    T-ENDING-EXITED=
    ERR erru LEN>N FAULT-RECORD$ STARTS-WITH? TTRUE ;
 [then]

@@ -63,6 +63,7 @@
 s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
+require src/core/exit-status.f
 require src/lib/le.f
 s" src/lib/adt/result.f" required
 require src/core/rollback-cells.f
@@ -910,7 +911,7 @@ ROW-N ROLLBACK-CELLS:MARK
       else
          k reg seen ROW-INSIDE? if
             s" task: a callback slot naming the ending task is in flight"
-            ENGINE-ERROR:CALLBACK die
+            EXIT-STATUS:CALLBACK die
          then
       then
    repeat ;

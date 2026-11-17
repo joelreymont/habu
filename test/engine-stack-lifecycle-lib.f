@@ -1,5 +1,6 @@
 \ engine-stack-lifecycle-lib.f - the active stack allocation follows stack
 \ switches and nonlocal frame restoration.
+require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/lib/error.f
 require src/lib/test.f
@@ -77,20 +78,20 @@ variable STATUS
    T-LABEL-CLEAR ;
 
 \ A push past the capacity and a return/loop frame past its region both exit
-\ ENGINE-ERROR:STACK-BOUNDS (102); only the message says which, so every call
+\ EXIT-STATUS:STACK-BOUNDS (102); only the message says which, so every call
 \ site names the stack it expects.
 : REFUSED-DATA ( ^u8 n -- )
-   CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+   CHILD-RC EXIT-STATUS:STACK-BOUNDS T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    T-PREFIX= ;
 
 : REFUSED-RETURN ( ^u8 n -- )
-   CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+   CHILD-RC EXIT-STATUS:STACK-BOUNDS T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
    T-PREFIX= ;
 
 : REFUSED-LOOP ( ^u8 n -- )
-   CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+   CHILD-RC EXIT-STATUS:STACK-BOUNDS T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
    T-PREFIX= ;
 
@@ -127,7 +128,7 @@ variable STATUS
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
    \ x86-64's guard handler writes an `hb:` line with no code and no lr.
    HB-TARGET-LINUX-X86-64? if
-      CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+      CHILD-RC EXIT-STATUS:STACK-BOUNDS T=
       ERR ERRLEN @ S\" hb: stack bounds exceeded (loop)\n" T$=
    else REFUSED-LOOP then ;
 

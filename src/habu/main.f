@@ -4,6 +4,7 @@
 \ loader reads and runs (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
 \ process's argv and stdin.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f

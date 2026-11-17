@@ -3,6 +3,7 @@
 \ src/lib/engine-candidate.f names, its output captured and replayed under the
 \ subject's name. --verify-only stops before the run stage.
 
+require src/core/exit-status.f
 require src/lib/date.f
 require src/lib/error.f
 require src/lib/string.f
@@ -1177,7 +1178,7 @@ private
    rc 0 >= rc 256 < and if rc exit then
    s" --json-errors" CHK-OPT? REJECTION:JSON !
    rc ERROR:UNCAUGHT
-   UNCAUGHT-RC ;
+   EXIT-STATUS:UNCAUGHT ;
 
 public
 

@@ -4,6 +4,7 @@
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
 \ and streams go in a temporary cases/ tree, which no missing path lies below
 \ and the process removes at exit.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -239,7 +240,7 @@ $1A4 constant MODE-FILE
    s" require locked.f" PLINE
    [: s" require-unreadable" LOAD-CASE ;]
    [: s" cases/locked.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
-   INCLUDE-IO-RC EXITS
+   EXIT-STATUS:IOERR EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]: cannot read `locked.f`" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
@@ -259,7 +260,7 @@ $1A4 constant MODE-FILE
    S\" s\q " PROG+ s" cases/sp ace'q.f" AT PROG+ S\" \q included" PLINE
    [: s" load-unreadable-quoted" LOAD-CASE ;]
    [: s" cases/sp ace'q.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
-   INCLUDE-IO-RC EXITS
+   EXIT-STATUS:IOERR EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]" ERR-HAS
    SB-RESET s" = help: if the file is yours, make it readable with `chmod u+r '" SB-APPEND

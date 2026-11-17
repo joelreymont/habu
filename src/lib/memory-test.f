@@ -1,5 +1,6 @@
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -263,7 +264,7 @@ create RBT-ERR RBT-CAP allot
 \ line on fd 2.
 HB-TARGET-LINUX-X86-64? 0= [if]
 : RBT-EXPECT-FAULT ( ^u8 n -- )
-   ENGINE-ERROR:MEMORY-FAULT RBT-EXITS
+   EXIT-STATUS:MEMORY-FAULT RBT-EXITS
    0 > TTRUE
    0 T= ;
 [then]
@@ -372,7 +373,7 @@ HB-TARGET-LINUX-X86-64? 0= [if]
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
    MATCH PROCESS:status
-      exited OF ENGINE-ERROR:MEMORY-FAULT <> if E-PRIMARY throw then ENDOF
+      exited OF EXIT-STATUS:MEMORY-FAULT <> if E-PRIMARY throw then ENDOF
       signaled OF drop E-PRIMARY throw ENDOF
    ;MATCH ;
 [then]

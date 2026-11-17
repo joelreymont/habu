@@ -17,6 +17,7 @@ ENTRY-ORDER !
 \ own tree's root, so on an engine that does not carry it the verifier comes from
 \ that tree, not the client's.
 require src/habu/verify-source.f
+require src/core/exit-status.f
 
 package CHECK-VERIFY-CHILD
 
@@ -488,7 +489,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ is not there, `unread` for a file found but not readable, and `full` for a
 \ full dictionary. Any other code goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
-   rc INCLUDE-IO-RC = if s" unread" TARGET-RESULT exit then
+   rc EXIT-STATUS:IOERR = if s" unread" TARGET-RESULT exit then
    rc REJECTION:DICT-FULL-RC = if s" full" RESULT exit then
    rc CHECKER-REJECT-RC = 0= if rc throw then
    VERIFY:FAULT-TARGET$ nip 0 > if s" missing" TARGET-RESULT exit then

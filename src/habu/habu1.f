@@ -37,6 +37,7 @@
 \ is closed. POSIX_SPAWN_SETPGROUP puts the child in the request's PGROUP, and
 \ a BLOCKED set takes POSIX_SPAWN_SETSIGMASK with this thread's mask and that
 \ set.
+require src/core/exit-status.f
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/data-claims.f
@@ -1416,7 +1417,7 @@ private
    A 14 CMP,  C-CS floor-ok BCOND,
       0 CALLER-LR,
       s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count:"
-      ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+      EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    floor-ok LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    A NDICT CMP,  C-LE keep BCOND,
@@ -1460,7 +1461,7 @@ private
    done B,
    bad LBL,  0 CALLER-LR,
    s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, at or past DICT-CAP, or below the sealed record count:"
-   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    done LBL, ;
 
 : BEPOCHSECONDS ( -- )
@@ -1844,14 +1845,14 @@ private
    0 7 0 ADDI, ;
 
 \ exit_group with the rc in x0 and x7. An rc outside [0,255] maps to
-\ UNCAUGHT-RC: the kernel masks rc & 0xFF, and a negative throw code reused as
-\ rc could exit 0.
+\ EXIT-STATUS:UNCAUGHT: the kernel masks rc & 0xFF, and a negative throw code
+\ reused as rc could exit 0.
 : DIE-EXIT, ( -- )
    LBL {: lfixed:label :}
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
-   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
+   lfixed LBL,  0 EXIT-STATUS:UNCAUGHT MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : BDIE ( -- )
    DIE-TEXT,
@@ -1999,7 +2000,7 @@ private
       FAULT-OPEN,
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
    s" call C from one thread at a time in a context, and bind callbacks other threads call to `TASK:CALLER-CONTEXT`"
-      ENGINE-ERROR:CALLBACK FAULT-STOP,
+      EXIT-STATUS:CALLBACK FAULT-STOP,
    go LBL, ;
 
 \ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
@@ -2167,7 +2168,7 @@ $50 constant CBT-FP                     \ C's x29
 $58 constant CBT-LR                     \ C's x30
 
 \ A callback rejection at the label, sp at the thunk's frame: its record with
-\ the slot and C's lr, which no word owns, then exit ENGINE-ERROR:CALLBACK.
+\ the slot and C's lr, which no word owns, then exit EXIT-STATUS:CALLBACK.
 \ FAULT-OPEN, moves sp and the record writes no x3 or x4, so both are read first.
 : CBT-DIE, ( ^u8 n ^u8 n label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
    at LBL,
@@ -2175,7 +2176,7 @@ $58 constant CBT-LR                     \ C's x30
    s" E-CALLBACK" msg mu FAULT-OPEN,
    s" slot" 3 FAULT-NUMBER,
    s" caller" 4 FAULT-ADDRESS,
-   help hu ENGINE-ERROR:CALLBACK FAULT-STOP, ;
+   help hu EXIT-STATUS:CALLBACK FAULT-STOP, ;
 
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; a thread already nested through this
@@ -2824,7 +2825,7 @@ public
    9 SP 8 LDR,  10 SP 16 LDR,
    10 CP CMP,  C-EQ atcp BCOND,
       s" E-SEAL-VIOLATION habu: code-publish destination is not CP:"
-      ENGINE-ERROR:SEAL-VIOLATION 10 DIE-LINE-VALUE,
+      EXIT-STATUS:SEAL-VIOLATION 10 DIE-LINE-VALUE,
    atcp LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
@@ -2859,7 +2860,7 @@ public
    inreg B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: callmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
-   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    inreg LBL,
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
@@ -2881,7 +2882,7 @@ public
    inreg B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: addrmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
-   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    inreg LBL,
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
@@ -2908,10 +2909,10 @@ public
    checked B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: xref-retarget record index above NDICT:"
-   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    badlen LBL,
    s" E-SEAL-VIOLATION habu: xref-retarget length above CODE-SPAN:RAW-MAX, not whole instructions or an empty exact span:"
-   ENGINE-ERROR:SEAL-VIOLATION B DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION B DIE-LINE-VALUE,
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
    9 NDICT CMP,  C-EQ pending BCOND,
@@ -3072,7 +3073,7 @@ private
    9 1 CMPI,    C-LT THROW-NOREC-FB2 LABEL@ BCOND,
    9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
    NR-EXIT-GROUP SYS,
-   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
+   THROW-NOREC-FB2 LABEL@ LBL,  0 EXIT-STATUS:UNCAUGHT MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Adds 1 to THROWS-CELL, at each entry that begins a throw. It writes x10.
 : BTHROW-COUNT ( -- )
@@ -3647,7 +3648,7 @@ package ENGINE-EMIT
    done B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: record-facts! index past NDICT, at or past DICT-CAP, or below the sealed record count:"
-   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    done LBL, ;
 
 \ SHA-256's 64 round constants (FIPS 180-4, 4.2.2).
@@ -3750,7 +3751,7 @@ private
 
 \ The design seal's two writers. The harness admits packages and seals before
 \ it loads the design; once POLICY-NDICT-CELL is set either prim writes the
-\ sealed record and exits ENGINE-ERROR:POLICY, so nothing the design can reach
+\ sealed record and exits EXIT-STATUS:POLICY, so nothing the design can reach
 \ widens its own vocabulary.
 : POLICY-BOUND$ ( -- ^u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
 
@@ -3760,7 +3761,7 @@ private
 \ Note `in` and help, the dictionary read through x26/x27; never returns.
 : POLICY-STOP, ( ^u8 n -- ) {: h:^ hu:n :}
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
-   h hu ENGINE-ERROR:POLICY FAULT-STOP, ;
+   h hu EXIT-STATUS:POLICY FAULT-STOP, ;
 
 \ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
@@ -3789,7 +3790,7 @@ private
    found LBL,
    15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
       0 CALLER-LR,                                   \ WLFIND's BL replaced x30
-      POLICY-BOUND$ ENGINE-ERROR:POLICY DIE-LINE,
+      POLICY-BOUND$ EXIT-STATUS:POLICY DIE-LINE,
    bounded LBL,
    \ A public word spelled like a keyword would mean the keyword in one place and
    \ the word in another.
@@ -4481,7 +4482,7 @@ package ENGINE-EMIT
    13 done CBNZ,
    15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
       16 CALLER-LR,           \ BPROTWIDADD, the one caller, holds the frame
-      s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX:" ENGINE-ERROR:SEAL-WORDLIST 9
+      s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX:" EXIT-STATUS:SEAL-WORDLIST 9
       DIE-LINE-VALUE,
    ok LBL,
    DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask

@@ -31,7 +31,7 @@
 require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/lib/span.f
-require src/core/engine-error.f
+require src/core/exit-status.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/wasm/leb.f
@@ -157,7 +157,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ move's cells past it.
 : ROOM ( -- )
    L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
-   ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
+   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
 \ A unit is a function (i32 ctx) -> (i32 status): four i32 locals, SP, AT, ENV
@@ -460,7 +460,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ Wasm memory has no guard page, so a push checks before its stores.
 : BOUND ( n -- ) {: most:n :}
    L-AT GET,  most I32,  OP-I32-GT-U B,  OP-IF OPENER,
-   ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
+   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
 : TOR ( ^vreg n -- ) {: p:^ n:n :}

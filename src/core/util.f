@@ -77,10 +77,6 @@ public
 
 ;package
 
-\ A loader refusal's exit status, always after a line naming the refusal: an
-\ uncaught throw of a code below 256 ends the process with no word at all.
-$4A constant INCLUDE-IO-RC
-
 package KERNEL-SEARCH
 public
 \ The first index of [lo, hi) where q answers false, hi when none does: q answers

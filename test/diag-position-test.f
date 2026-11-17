@@ -3,6 +3,7 @@
 \ Semantic checks call LSP-CHECK's public words in process; the verifier and run
 \ stages use HABU_UNDER_TEST when set, else this engine.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -951,7 +952,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET  s" 1 drop" SB-APPEND LF+
    s" all-locked.f" FIXTURE!
    FX-PATH$ 0 FS:CHMOD-MODE
-   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;]
+   [: s" --all-errors" EXIT-STATUS:IOERR CHECK-EXIT ;]
    [: FX-PATH$ $1A4 FS:CHMOD-MODE ;] finally
    s" E-UNREADABLE-SOURCE" REJECTED-AS
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ CANON$ SB-APPEND
@@ -996,7 +997,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: s" " CHECK ;] LOCKED
    s" E-UNDEFINED" REJECTED-AS
    0 s" nosuchone" 1 13 12 21 AT
-   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
+   [: s" --all-errors" EXIT-STATUS:IOERR CHECK-EXIT ;] LOCKED
    GJA-LINE# @ 2 T=
    0 s" code" s" E-UNDEFINED" FIELD=
    0 s" nosuchone" 1 13 12 21 AT
@@ -2031,8 +2032,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : DIR-REJECTED ( -- )
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is a directory\n  = help: name a source file, not a directory\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   SB$ EXIT-STATUS:IOERR LOADED  GT-ERR$ SB$ T$=
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is a directory" SB-APPEND
    0 s" message" SB$ FIELD=
@@ -2055,7 +2056,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a required path that is a directory" T-LABEL
    s" required-dir.f" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" require required-dir.f" s" require-dir.f" LINE-FIXTURE
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    0 s" message" s" cannot read `required-dir.f`" FIELD=
@@ -2067,7 +2068,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" help" s" name a source file, not a directory" FIELD=
    SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `required-dir.f`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
-   SB$ INCLUDE-IO-RC LOADED ;
+   SB$ EXIT-STATUS:IOERR LOADED ;
 
 \ The fixture path names a FIFO, which a load's open would wait on.
 : FIFO! ( -- )
@@ -2081,9 +2082,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
    S\" `: is not a regular file\n  = help: load a regular file, whose bytes a stamp" SB-APPEND
    S\"  can name\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC RAN  GT-ERR$ SB$ T$=
-   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   SB$ EXIT-STATUS:IOERR RAN  GT-ERR$ SB$ T$=
+   SB$ EXIT-STATUS:IOERR LOADED  GT-ERR$ SB$ T$=
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is not a regular file" SB-APPEND
    0 s" message" SB$ FIELD=
@@ -2106,10 +2107,10 @@ HB-TARGET-LINUX? [if]
    SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `/proc/version`" SB-APPEND
    S\" : changed while it was read\n  = help: load it again once nothing" SB-APPEND
    S\"  is writing it\n\n" SB-APPEND
-   SB$ INCLUDE-IO-RC RAN  GT-ERR$ SB$ T$=
-   SB$ INCLUDE-IO-RC LOADED  GT-ERR$ SB$ T$=
-   s" " INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD
-   s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  PROCFS-RECORD ;
+   SB$ EXIT-STATUS:IOERR RAN  GT-ERR$ SB$ T$=
+   SB$ EXIT-STATUS:IOERR LOADED  GT-ERR$ SB$ T$=
+   s" " EXIT-STATUS:IOERR CHECK-EXIT  PROCFS-RECORD
+   s" --all-errors" EXIT-STATUS:IOERR CHECK-EXIT  PROCFS-RECORD ;
 
 \ A stop ends the check, --all-errors included, before a later listed file is
 \ read, as it ends the load.
@@ -2151,11 +2152,11 @@ HB-TARGET-LINUX? 0= [if]
    s" a required path that is a FIFO" T-LABEL
    s" required-fifo.f" NAMED!  FIFO!
    s" require required-fifo.f" s" require-fifo.f" LINE-FIXTURE
-   s" " INCLUDE-IO-RC CHECK-EXIT  REQUIRED-FIFO-AT
-   s" --all-errors" INCLUDE-IO-RC CHECK-EXIT  REQUIRED-FIFO-AT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT  REQUIRED-FIFO-AT
+   s" --all-errors" EXIT-STATUS:IOERR CHECK-EXIT  REQUIRED-FIFO-AT
    SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `required-fifo.f`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
-   SB$ INCLUDE-IO-RC LOADED ;
+   SB$ EXIT-STATUS:IOERR LOADED ;
 
 \ The fixture directory TEST-REQUIRED-UNSEARCHABLE makes unsearchable.
 : UNSEARCHABLE$ ( -- ^u8 n )
@@ -2182,7 +2183,7 @@ HB-TARGET-LINUX? 0= [if]
 \ unreadable file's, placed at the request, its help naming the directory.
 : UNSEARCHABLE-REJECTED ( -- )
    UNSEARCHABLE-HELP
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
    0 s" help" SB$ FIELD=
@@ -2192,7 +2193,7 @@ HB-TARGET-LINUX? 0= [if]
    SB-RESET  UNSEARCHABLE-NOTE  0 s" searched" SB$ NOTE=
    SB-RESET  S\" error[E-UNREADABLE-SOURCE]: cannot read `unsearchable/x.f`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  s" :1:9" SB-APPEND
-   SB$ INCLUDE-IO-RC LOADED
+   SB$ EXIT-STATUS:IOERR LOADED
    UNSEARCHABLE-LOADED ;
 
 \ A request of 4096 bytes or more, `./` repeated before `lnk/x.f`, gets the help
@@ -2203,12 +2204,12 @@ HB-TARGET-LINUX? 0= [if]
    4096 2 / 0 ?do s" ./" FX+ loop
    S\" lnk/x.f\n" FX+  FX-PATH$ FX$ FS:WRITE-ALL
    UNSEARCHABLE-HELP
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" help" SB$ FIELD=
    SB-RESET  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND
    0 s" searched" SB$ NOTE=
-   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   s" error[E-UNREADABLE-SOURCE]" EXIT-STATUS:IOERR LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND  LF+
    GT-ERR$ SB$ CONTAINS? TTRUE ;
@@ -2218,22 +2219,22 @@ HB-TARGET-LINUX? 0= [if]
 : LINKED-REJECTED ( -- )
    s" require lnk/x.f" s" require-lnk.f" LINE-FIXTURE
    UNSEARCHABLE-HELP
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" help" SB$ FIELD=
    SB-RESET  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND
    0 s" searched" SB$ NOTE=
-   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   s" error[E-UNREADABLE-SOURCE]" EXIT-STATUS:IOERR LOADED
    UNSEARCHABLE-LOADED ;
 
 \ `..` after `alnk`, a link with an absolute target, leaves through it into
 \ UNSEARCHABLE$, which the load names; the searched note keeps that `..`.
 : PARENT-LINK-REJECTED ( -- )
    s" require alnk/../x.f" s" require-lnk-up.f" LINE-FIXTURE
-   s" " INCLUDE-IO-RC CHECK-EXIT
+   s" " EXIT-STATUS:IOERR CHECK-EXIT
    SB-RESET  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND
    0 s" searched" SB$ NOTE=
-   s" error[E-UNREADABLE-SOURCE]" INCLUDE-IO-RC LOADED
+   s" error[E-UNREADABLE-SOURCE]" EXIT-STATUS:IOERR LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND  LF+
    GT-ERR$ SB$ CONTAINS? TTRUE ;
