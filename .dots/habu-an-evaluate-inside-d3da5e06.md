@@ -13,8 +13,7 @@ Causes (hunts), still open on master:
 (2) ROWS-ARM (src/core/check-hook.f :31) arms no source map for an evaluated string, whose bytes lie outside the file's;
 (3) the does> clause check (check-walk.f CHECK-DOES! :1919) is never mapped, so JLOC-ORIGIN (src/core/render.f :1660) adds the token's offset in the clause to the name's place, in file text too: 'create does> ( a -- ) MADE 1 ;' answers 3/19 for 3/39;
 (4) DFILE$ (render.f :1729) names the run's label, REJECTION:FILE$, for every definition packet, where TOP-FILE$ uses the label only while the load reads that file, so a refusal in a required file names the subject;
-(5) the check tool's stdin and SOURCE runs read the subject inlined after a prefix (tools/check-core.f CHK-BUILD-PREFIX, CHK-RUN-SOURCE+), so a place counted in the bytes the engine reads (the cast place, PLACE-AT) is the copy's.
-Remaining fix, in this order: a packet names the file the token lies in; the does> clause check gets its own arming over the whole body; the stdin run's places are the subject's. A token in an evaluated string has no bytes in the file: its packet shape is a public item, not yet settled.
+Remaining fix, in this order: a packet names the file the token lies in; the does> clause check gets its own arming over the whole body. A token in an evaluated string has no bytes in the file: its packet shape is a public item, not yet settled.
 
 Acceptance: the packet's line, column and byte range name the token in the text it lies in, and say which text that is; a case in test/diag-position-test.f fails before. Cases:
 - 's" : MYK ( n -- ) drop does> ( -- ) ;" evaluate' gives ';' at 1/10 bytes 9-10 under the check tool, inside the engine's copied text; the non-empty '... cr ;' puts cr at 1/10 the same way. habu-delete-the-trusted-42b30edd holds the TRUSTED: form of this case; this one stays after TRUSTED: goes.
@@ -24,4 +23,4 @@ Acceptance: the packet's line, column and byte range name the token in the text 
 - An evaluated string: 's" : Q ( -- ) ( c ) 1 drop drop ;" evaluate' is refused at 1/17/16-20, inside '( c )'; the refusal names the token's own line, column and bytes in the file, or carries no place where none is true.
 - A does> clause: under evaluate-closed with REJECTION:JSON !, and through tools/hb-build.f --json-errors, a refused does> clause's packet gives its position from the start of the clause text (line 1, column 18) and its definition_source includes the signature; tools/check.f gives the true position (line 2, column 48) and the body. All three paths give the same position and definition_source for a clause.
 
-Depends: none. Claim: cause (5) agent=worker workspace=.jj-ws.noindex/carl-b1; the rest unassigned.
+Depends: none. Claim: unassigned.
