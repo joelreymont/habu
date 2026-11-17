@@ -547,6 +547,23 @@ TASK:MIN-STACK TASK:TASK FAN7
    ;MATCH
    MEM:RELEASE-BYTES ;
 
+\ AIO reads a descriptor as the kernel does, its low 32 bits sign-extended: this
+\ one is -1, EBADF, and a later read still works. Linux passes either way.
+: CASE-XFER-WIDE-FD ( -- )
+   $1FFFFFFFFFFFFFFF >FD XFER-ALLOC 1 0 AIO:READ AIO:AWAIT-XFER
+   MATCH AIO:outcome
+      ready OF drop false TTRUE ENDOF
+      timed-out OF false TTRUE ENDOF
+      cancelled OF false TTRUE ENDOF
+      refused OF 9 T= ENDOF
+   ;MATCH
+   MEM:RELEASE-BYTES
+   P-R P-W PIPE-OPEN
+   P-R @ >FD XFER-ALLOC 1 0 AIO:READ
+   P-W @ POKE
+   AIO:AWAIT-XFER OUTCOME>N 1 T= MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
 : STATUS-OK ( TCP4:status -- )
    MATCH TCP4:status
       ok OF ENDOF
@@ -964,6 +981,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-XFER-EMPTY
    CASE-XFER-ALIASES
    CASE-XFER-BAD-FD
+   CASE-XFER-WIDE-FD
    CASE-XFER-BOUNDS
    CASE-XFER-FORGOTTEN
    CASE-OWN-EXIT

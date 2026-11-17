@@ -675,8 +675,6 @@ private
    lo dst len 8 min REG-STORE
    len 8 > if hi dst 8 + len 8 - REG-STORE then ;
 
-: I32-RESULT ( n -- n )
-   $FFFFFFFF and $80000000 xor $80000000 - ;
 \ The stored symbol's length decides along with its bytes, so neither a prefix
 \ nor a name holding a 0 byte matches a row.
 : SAME-FN? ( ^u8 n n n n n n -- bool )
@@ -721,6 +719,10 @@ private
    idx ;
 
 public
+\ n as the C int a foreign call reads or answers: its low 32 bits, sign-extended.
+: >I32 ( n -- n )
+   $FFFFFFFF and $80000000 xor $80000000 - ;
+
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined below it, in this package. libc's location is thread-local and the
 \ value is a four-byte C int.
@@ -1527,7 +1529,7 @@ private
 : RESULT-TAIL ( -- )
    RES-NULLABLE @ 0<> if postpone NULLABLE:SOME exit then
    RES-KIND @ R-NONE = if postpone drop exit then
-   RES-KIND @ R-I32 = if postpone I32-RESULT exit then
+   RES-KIND @ R-I32 = if postpone >I32 exit then
    RES-KIND @ R-U32 = if $FFFFFFFF literal postpone and exit then
    RES-KIND @ R-U16 = if $FFFF literal postpone and exit then
    RES-KIND @ R-U8 = if $FF literal postpone and then ;

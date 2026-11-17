@@ -1106,6 +1106,10 @@ INSTALL-HOST
    g [: GROUP-LOOP ;] [: GROUP-GIVE-BACK ;] finally {: at:n :}
    g at G-TAKE-AT ;
 
+\ The fd as the kernel's int reads it: Darwin's row table sees at most 31 bits.
+: FD-INT ( fd -- n )
+   FD>N FFI:>I32 ;
+
 public
 
 \ The two event masks a POLL takes; they are POLLIN and POLLOUT, so they
@@ -1157,7 +1161,7 @@ public
 \ leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
-   f FD>N events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
+   f FD-INT events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
 
 \ Fires once, after ms milliseconds. The outcome is timed-out, or cancelled when
 \ a CANCEL reached it first.
@@ -1248,7 +1252,7 @@ public
 \ transfer, and zero from a READ is the end of the file.
 : READ ( fd ^u8 NUM:alloc-byte-len n n -- xfer )
    {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
-   f FD>N buf cap count off KIND-READ XFER-SUBMIT ;
+   f FD-INT buf cap count off KIND-READ XFER-SUBMIT ;
 
 \ This is the only word that gives the bytes back. Only the task that submitted
 \ the transfer may await it, and only once, as for a ticket.
