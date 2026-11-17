@@ -22,10 +22,27 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
 7 constant BLOCK-MASK
 56 constant LEN-SHIFT              \ the message length's low byte tops the last block
 
-\ State layout: v0..v3 in cells 0..3, the partial block in cell 4, the
-\ message length in bytes in cell 5.
-: TAIL-AT ( ^n -- ^n ) 4 cells + ;
-: LEN-AT ( ^n -- ^n ) 5 cells + ;
+public
+STRUCTURE state OPAQUE DERIVE addr
+   FIELD v0 n
+   FIELD v1 n
+   FIELD v2 n
+   FIELD v3 n
+   FIELD tail n
+   FIELD len n
+;STRUCTURE
+EXPORT STATE-CELLS
+private
+
+NULL-PTR STATE-V0 NULL-PTR - constant V0-OFF
+NULL-PTR STATE-V1 NULL-PTR - constant V1-OFF
+NULL-PTR STATE-V2 NULL-PTR - constant V2-OFF
+NULL-PTR STATE-V3 NULL-PTR - constant V3-OFF
+NULL-PTR STATE-TAIL NULL-PTR - constant TAIL-OFF
+NULL-PTR STATE-LEN NULL-PTR - constant LEN-OFF
+
+: TAIL-AT ( ^n -- ^n ) TAIL-OFF + ;
+: LEN-AT ( ^n -- ^n ) LEN-OFF + ;
 
 : ROTL ( n n -- n )
    {: x:n k:n :}
@@ -70,12 +87,12 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
 
 : V@ ( ^n -- n n n n )
    {: s:^ :}
-   s @  s cell+ @  s 2 cells + @  s 3 cells + @ ;
+   s V0-OFF + @  s V1-OFF + @  s V2-OFF + @  s V3-OFF + @ ;
 
 
 : V! ( n n n n ^n -- )
    {: v0:n v1:n v2:n v3:n s:^ :}
-   v0 s !  v1 s cell+ !  v2 s 2 cells + !  v3 s 3 cells + ! ;
+   v0 s V0-OFF + !  v1 s V1-OFF + !  v2 s V2-OFF + !  v3 s V3-OFF + ! ;
 
 
 : PARTIAL@ ( ^u8 n -- n )
@@ -83,9 +100,6 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
    0 bytes 0 ?do p i + c@ i 8 * lshift or loop ;
 
 public
-
-6 constant STATE-CELLS
-
 
 : INIT ( ^n n n -- )
    {: s:^ k0:n k1:n :}

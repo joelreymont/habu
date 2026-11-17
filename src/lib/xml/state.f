@@ -3,7 +3,6 @@
 \ stream, a BOM included. Open frames' names and live bindings are copied once into
 \ scope storage, so releasing consumed bytes never revisits them.
 
-require src/core/exit-status.f
 require src/lib/xml/source.f
 require src/lib/byte-buffer.f
 require src/lib/siphash.f
@@ -19,13 +18,8 @@ CAST: KIND>N ( kind -- n )
 \ Views the token kind cell, which holds only KIND>N values.
 CAST: >KIND-CELL ( ^n -- ^kind )
 
-\ The reader's whole fixed state lives in the caller's XML:cursor record: the
-\ header cells below, ending with the reader's SipHash key drawn by
-\ READER-TABLES, then a SipHash state as scratch for src/lib/xml/names.f. The
-\ frame, attribute and namespace tables are mappings the reader owns and the
-\ header points to; each starts at TABLE-START records and doubles when full.
-\ An input reader's stream is a reader-owned mapping too. A zero-filled record
-\ owns nothing; CLOSE and DISPOSE leave it owning nothing.
+\ The reader's whole fixed state. The tables and an input reader's stream it
+\ points to are mappings the reader owns; sip is scratch for one hash.
 public
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD source ^u8
@@ -60,12 +54,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD namespaces ^n
    FIELD hash-k0 n
    FIELD hash-k1 n
-   FIELD sip0 n
-   FIELD sip1 n
-   FIELD sip2 n
-   FIELD sip3 n
-   FIELD sip4 n
-   FIELD sip5 n
+   FIELD sip SIPHASH:state
 ;STRUCTURE
 
 \ The record's size in bytes, for a caller that allocates it as bytes and makes
@@ -74,11 +63,6 @@ EXPORT CURSOR-BYTES
 
 private
 CAST: >STATE ( ^cursor -- ^n )
-32 constant HEADER-CELLS
-HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
-: LAYOUT-CHECK ( -- )
-   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" EXIT-STATUS:INTERNAL die then ;
-LAYOUT-CHECK
 8 constant TABLE-START
 5 constant FRAME-CELLS
 \ An attribute is name, value and raw spans and URI, then its name hash, the
@@ -93,39 +77,39 @@ LAYOUT-CHECK
 4 cells constant NS-HASH
 5 cells constant NS-LINK
 6 cells constant NS-HEAD
-0 constant SOURCE-IDX
-1 cells constant SOURCE-LEN
-2 cells constant POSITION
-3 cells constant FRAME-CAP
-4 cells constant OPEN-DEPTH
-5 cells constant NS-COUNT
-6 cells constant ATTR-COUNT
-7 cells constant ATTR-INDEX
-8 cells constant RAW-OFF
-9 cells constant RAW-LEN
-10 cells constant TOKEN-KIND
-11 cells constant NAME-OFF
-12 cells constant NAME-LEN
-13 cells constant VALUE-OFF
-14 cells constant VALUE-LEN
-15 cells constant URI-OFF
-16 cells constant URI-LEN
-17 cells constant PENDING
-18 cells constant ROOT-COUNT
-19 cells constant FAILED
-20 cells constant ATTR-CAP
-21 cells constant SOURCE-MODE
-22 constant WIRE-ORIGINAL-IDX
-23 cells constant WIRE-ORIGINAL-LEN
-24 constant WIRE-STORAGE-IDX
-25 cells constant WIRE-STORAGE-LEN
-26 cells constant NS-CAP
-27 constant FRAMES-IDX
-28 constant ATTRS-IDX
-29 constant NS-IDX
-30 cells constant HASH-K0
-31 cells constant HASH-K1
-HEADER-CELLS cells constant SIP-STATE
+NULL-PTR CURSOR-SOURCE NULL-PTR - CELL / constant SOURCE-IDX
+NULL-PTR CURSOR-SOURCE-LEN NULL-PTR - constant SOURCE-LEN
+NULL-PTR CURSOR-POSITION NULL-PTR - constant POSITION
+NULL-PTR CURSOR-FRAME-CAP NULL-PTR - constant FRAME-CAP
+NULL-PTR CURSOR-OPEN-DEPTH NULL-PTR - constant OPEN-DEPTH
+NULL-PTR CURSOR-NS-COUNT NULL-PTR - constant NS-COUNT
+NULL-PTR CURSOR-ATTR-COUNT NULL-PTR - constant ATTR-COUNT
+NULL-PTR CURSOR-ATTR-INDEX NULL-PTR - constant ATTR-INDEX
+NULL-PTR CURSOR-RAW-OFF NULL-PTR - constant RAW-OFF
+NULL-PTR CURSOR-RAW-LEN NULL-PTR - constant RAW-LEN
+NULL-PTR CURSOR-TOKEN-KIND NULL-PTR - constant TOKEN-KIND
+NULL-PTR CURSOR-NAME-OFF NULL-PTR - constant NAME-OFF
+NULL-PTR CURSOR-NAME-LEN NULL-PTR - constant NAME-LEN
+NULL-PTR CURSOR-VALUE-OFF NULL-PTR - constant VALUE-OFF
+NULL-PTR CURSOR-VALUE-LEN NULL-PTR - constant VALUE-LEN
+NULL-PTR CURSOR-URI-OFF NULL-PTR - constant URI-OFF
+NULL-PTR CURSOR-URI-LEN NULL-PTR - constant URI-LEN
+NULL-PTR CURSOR-PENDING NULL-PTR - constant PENDING
+NULL-PTR CURSOR-ROOT-COUNT NULL-PTR - constant ROOT-COUNT
+NULL-PTR CURSOR-FAILED NULL-PTR - constant FAILED
+NULL-PTR CURSOR-ATTR-CAP NULL-PTR - constant ATTR-CAP
+NULL-PTR CURSOR-SOURCE-MODE NULL-PTR - constant SOURCE-MODE
+NULL-PTR CURSOR-WIRE-ORIGINAL NULL-PTR - CELL / constant WIRE-ORIGINAL-IDX
+NULL-PTR CURSOR-WIRE-ORIGINAL-LEN NULL-PTR - constant WIRE-ORIGINAL-LEN
+NULL-PTR CURSOR-WIRE-STORAGE NULL-PTR - CELL / constant WIRE-STORAGE-IDX
+NULL-PTR CURSOR-WIRE-STORAGE-LEN NULL-PTR - constant WIRE-STORAGE-LEN
+NULL-PTR CURSOR-NS-CAP NULL-PTR - constant NS-CAP
+NULL-PTR CURSOR-FRAMES NULL-PTR - CELL / constant FRAMES-IDX
+NULL-PTR CURSOR-ATTRS NULL-PTR - CELL / constant ATTRS-IDX
+NULL-PTR CURSOR-NAMESPACES NULL-PTR - CELL / constant NS-IDX
+NULL-PTR CURSOR-HASH-K0 NULL-PTR - constant HASH-K0
+NULL-PTR CURSOR-HASH-K1 NULL-PTR - constant HASH-K1
+NULL-PTR CURSOR-SIP NULL-PTR - constant SIP-STATE
 
 0 constant LEGACY-UTF8
 1 constant SOURCE-UTF8
@@ -212,7 +196,7 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
 -1 constant XML-URI
 -2 constant XMLNS-URI
 
-\ A reader token is its record's header cells; only these rows cross it.
+\ A reader token is its cursor record; only these rows cross it.
 LINEAR: MINT ( ^n -- XML:reader )
 LINEAR: ERASE ( XML:reader -- ^n )
 
@@ -227,7 +211,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : ATTRIBUTE ( ^n n -- ^n ) ATTRS-IDX swap ATTR-CELLS RECORD ;
 : NAMESPACE ( ^n n -- ^n ) NS-IDX swap NS-CELLS RECORD ;
 
-\ Release a table and leave the header owning none, so a second release is a
+\ Release a table and leave the record owning none, so a second release is a
 \ no-op.
 : TABLE-RELEASE ( ^n n n n -- )
    {: state table:n cap-off:n size:n :}
@@ -541,15 +525,15 @@ LINEAR: ERASE ( XML:reader -- ^n )
 \ Refuse bytes that overlap the record: the reader writes it on every event.
 : RECORD-CHECK ( ^n ^u8 n -- )
    {: state bytes size:n :}
-   state BYTE-VIEW FIXED-CELLS cells bytes size OVERLAP? if E-ALIAS throw then ;
+   state BYTE-VIEW CURSOR-BYTES bytes size OVERLAP? if E-ALIAS throw then ;
 
 
 \ A record a caller's throw abandoned still holds its tables: release them,
-\ then zero the header, so a failed build releases exactly what it made.
+\ then zero the record, so a failed build releases exactly what it made.
 : INIT-STATE ( ^n -- )
    {: state :}
    state RECORD-FREE
-   HEADER-CELLS 0 ?do 0 state i cells + ! loop ;
+   CURSOR-CELLS 0 ?do 0 state i cells + ! loop ;
 
 
 : READER-TABLES ( ^n -- )
@@ -588,7 +572,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    state source size ;
 
 
-\ The stream goes into the header before the tables, so a failed table step
+\ The stream goes into the record before the tables, so a failed table step
 \ leaves RECORD-FREE to release both.
 : INPUT-BODY ( ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> )
    {: state ctx fill input :}
