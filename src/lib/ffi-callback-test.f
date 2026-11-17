@@ -302,7 +302,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: DECL-STRAY-CLOSE ;] s" E-FFI-SYNTAX" REJECTS? s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-STRAY-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-NESTED ;]
-      s" error[E-UNCLOSED]: `CALLBACK:` is still open when `CALLBACK:` opens"
+      s" error[E-UNCLOSED]: `CALLBACK:` is still open at `CALLBACK:`"
       s" = help: close it with `;CALLBACK` before `CALLBACK:`" RECORD?
       s" CALLBACK: inside an open declaration: E-UNCLOSED" FACT
    [: DECL-SEVENTEENTH ;] catch 0=

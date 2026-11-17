@@ -124,6 +124,20 @@ s" a neutral replay reopening an engine-held part binds its words" T-LABEL
 s" package CVPS-HOST package CVPS-PART : CVPS-X2 ( -- n ) CVPS-PW ; ;package ;package"
 CVPS:REPLAY-NEUTRAL 0 T=
 
+\ ---- sections inside a structure -------------------------------------------
+\ `public` inside an open structure switches the section at the run, so the
+\ fields and the constant after it are public.
+s" package CVPS-SE private BEGIN-STRUCTURE REC-SIZE public CELL +FIELD REC.A PTR-FIELD: REC.B 40 +FIELD REC.C CELL +FIELD REC.D END-STRUCTURE REC-SIZE constant REC-BYTES NULL-PTR REC.D NULL-PTR - constant D-OFF ;package package CVPS-SF private : SHOW ( -- ) CVPS-SE:D-OFF . CVPS-SE:REC-BYTES . NULL-PTR CVPS-SE:REC.B NULL-PTR - . cr ; ;package"
+CVPS:REPLAY-QUIET drop
+s" a section switch inside a structure moves the words after it" T-LABEL
+CVPS:DIAG$ s" E-UNDEFINED" CONTAINS? TFALSE
+
+\ A structure closes in the package scope it opened in.
+s" package CVPS-SG private BEGIN-STRUCTURE REC-SIZE CELL +FIELD REC.A ;package END-STRUCTURE"
+CVPS:REPLAY-QUIET drop
+s" a package closing inside a structure rejects the structure" T-LABEL
+CVPS:DIAG$ s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open at `;package`" CONTAINS? TTRUE
+
 \ ---- nested neutral scopes ---------------------------------------------------
 \ The inner scope's replay starts at using depth 0, so its `using` fills the slot
 \ the outer source's `using` holds; leaving the inner scope puts that slot back.

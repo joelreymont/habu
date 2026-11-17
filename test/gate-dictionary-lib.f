@@ -1123,7 +1123,7 @@ variable LABEL-U
    GE-SRC-RESET
    s" BEGIN-STRUCTURE OUTER" GE-SRC-LINE
    s" BEGIN-STRUCTURE INNER" GE-SRC-LINE
-   70 s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open when `BEGIN-STRUCTURE` opens" s" structures reject nesting" RUN-BAD-SOURCE
+   70 s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open at `BEGIN-STRUCTURE`" s" structures reject nesting" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
    s" CFIELD: POINT.FLAGS" GE-SRC-LINE

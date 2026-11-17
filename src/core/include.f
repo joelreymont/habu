@@ -2424,10 +2424,10 @@ variable DECL-SERIAL
    96 REJECTION:EMIT1  REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ Opens the E-UNCLOSED record of the declaration t tu opened, through "is still
-\ open when ".
+\ open ".
 : UNCLOSED-HEAD ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-UNCLOSED" REJECTION:OPEN
-   t tu TICKED  s"  is still open when " REJECTION:EMIT-STR ;
+   t tu TICKED  s"  is still open " REJECTION:EMIT-STR ;
 
 \ Places the record at t tu and opens its help, through "close it with `c` ".
 : UNCLOSED-HELP ( ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n :}
@@ -2437,14 +2437,15 @@ variable DECL-SERIAL
 
 public
 
-\ The record of the declaration t tu opened, which c cu closes, still open when
-\ the token o ou opens another or, with ou 0, when its source ends; not stopped.
+\ The record of the declaration t tu opened, which c cu closes, still open at the
+\ token o ou, which may not come inside it, or, with ou 0, when its source ends;
+\ not stopped.
 : UNCLOSED ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n o:^ ou:n :}
    t tu UNCLOSED-HEAD
    ou 0= if
-      s" the source ends" REJECTION:EMIT-STR
+      s" when the source ends" REJECTION:EMIT-STR
    else
-      o ou TICKED  s"  opens" REJECTION:EMIT-STR
+      s" at " REJECTION:EMIT-STR  o ou TICKED
    then
    t tu c cu UNCLOSED-HELP
    ou 0= if
@@ -2457,7 +2458,7 @@ public
 \ the load word w wu loads a file; not stopped.
 : UNCLOSED-LOAD ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n w:^ wu:n :}
    t tu UNCLOSED-HEAD
-   w wu TICKED  s"  loads a file" REJECTION:EMIT-STR
+   s" when " REJECTION:EMIT-STR  w wu TICKED  s"  loads a file" REJECTION:EMIT-STR
    t tu c cu UNCLOSED-HELP
    s" before " REJECTION:EMIT-STR  w wu TICKED ;
 

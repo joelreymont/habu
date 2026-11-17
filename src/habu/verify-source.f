@@ -421,8 +421,9 @@ variable FLAG-N
    t tu t tu INTERPRETER:UNCLOSED-REJECT
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ The declaration t tu opened, which c cu closes, is still open when the token
-\ o ou opens another or, with ou 0, when the source ends: the load's record.
+\ The declaration t tu opened, which c cu closes, is still open at the token o ou,
+\ which may not come inside it, or, with ou 0, when the source ends: the load's
+\ record.
 : UNCLOSED-DECL-STOP ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n c:^ cu:n o:^ ou:n :}
    t tu c cu o ou SOURCE-ROOT:UNCLOSED
@@ -3485,16 +3486,26 @@ private
    FFI-OPEN-HERE? 0= IF EXIT THEN
    FFI:OPENER$ s" ;FUNCTION" o ou UNCLOSED-DECL-STOP ;
 
-\ A declaration opening inside the structure rejects the structure.
+\ A declaration opening, or a package scope opening or closing, inside the
+\ structure rejects the structure.
 : STRUCTURE-OPENED ( ^u8 n -- ) {: o:^ ou:n :}
    o ou s" BEGIN-STRUCTURE" STR=CI  o ou s" FUNCTION:" STR=CI or
-   o ou s" CALLBACK:" STR=CI or 0= IF EXIT THEN
+   o ou s" CALLBACK:" STR=CI or
+   o ou s" package" STR=CI or  o ou s" ;package" STR=CI or
+   o ou s" using" STR=CI or  o ou s" ;using" STR=CI or
+   o ou s" seal-package" STR=CI or 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" o ou UNCLOSED-DECL-STOP ;
 
 \ A load word inside the structure rejects the structure.
 : STRUCTURE-LOADS ( ^u8 n -- ) {: w:^ wu:n :}
    w wu LOADS? 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" w wu UNCLOSED-LOAD-STOP ;
+
+\ A section word inside the structure switches the section, as at top level.
+: STRUCTURE-SECTION ( ^u8 n -- ) {: w:^ wu:n :}
+   w wu s" public" STR=CI IF RECORD-PUBLIC EXIT THEN
+   w wu s" private" STR=CI IF RECORD-PRIVATE EXIT THEN
+   w wu s" global" STR=CI IF RECORD-GLOBAL THEN ;
 
 : RECORD-STRUCTURE ( -- )
    TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
@@ -3507,6 +3518,7 @@ private
       dup 0= IF TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" NULL-PTR 0 UNCLOSED-DECL-STOP THEN
       2dup STRUCTURE-OPENED
       2dup STRUCTURE-LOADS
+      2dup STRUCTURE-SECTION
       2dup STRUCTURE-USE
       TICK-REMAINDER @ IF 2drop EXIT THEN
       2dup STRUCTURE-END? IF

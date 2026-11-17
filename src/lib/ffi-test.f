@@ -880,7 +880,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=
 
    [: FFI-T-BAD-UNCLOSED ;]
-   s" error[E-UNCLOSED]: `FUNCTION:` is still open when `FUNCTION:` opens"
+   s" error[E-UNCLOSED]: `FUNCTION:` is still open at `FUNCTION:`"
    FFI-T-RECORD
    [: FFI-T-REDECLARE ;] 0 TTHROWSQ
    [: FFI-T-CLOSE-DANGLING ;]

@@ -257,7 +257,7 @@ variable FFI-SV-SRC-U
    s" FUNCTION: FFI-SV no_symbol ( -- ) FUNCTION: FFI-SW no_symbol ( -- ) ;FUNCTION"
    2dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
-   S\" \"message\":\"`FUNCTION:` is still open when `FUNCTION:` opens\""
+   S\" \"message\":\"`FUNCTION:` is still open at `FUNCTION:`\""
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
    S\" \"help\":\"close it with `;FUNCTION` before `FUNCTION:`\"" FFI-SV-SAYS
