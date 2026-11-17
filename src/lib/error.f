@@ -481,7 +481,7 @@ create NL $0A c,
 
 \ Ends the process, exit 70 and one line on fd 2 that starts with the declaring
 \ word, for a missing name, a name past 255 bytes, an empty text, or a code
-\ outside 0..255 another name holds.
+\ another name holds.
 : CHECK ( n ^u8 n ^u8 n n bool -- )
    {: code:n p:^ pu:n name:^ nameu:n textu:n fault:bool :}
    nameu 0= if
@@ -494,7 +494,6 @@ create NL $0A c,
    textu 0= if
       fault SAY-WORD p pu name nameu SAY-NAME s"  has an empty text" SAY REFUSE
    then
-   code 0 < code 255 > or 0= if exit then
    code FIND {: at:^ :}
    at NULL-PTR = if exit then
    at p pu name nameu SAME-NAME? if exit then
@@ -576,13 +575,13 @@ generates: CODE ( -- n )
 : FAULT ( n ^u8 n -- )  true DECLARE ;
 generates: FAULT ( -- n )
 
-\ True when the newest declaration of a code was by FAULT; false when it was by
-\ CODE or when there is none.
+\ True when a code's declaration was by FAULT; false when it was by CODE or
+\ when there is none.
 : FAULT? ( n -- bool )
    FIND dup NULL-PTR = if drop false exit then
    ROW-FAULT? ;
 
-\ The newest declaration's name or text for a code, empty when none.
+\ The name or text a code's declaration gave it, empty when none.
 : NAME$ ( n -- ^u8 n )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-NAME$ ;

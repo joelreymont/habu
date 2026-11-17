@@ -16,8 +16,6 @@ package ERROR-TEST
 private
 
 -9670 s" the packaged test code" ERROR:CODE E-PACKAGED
-201 s" the first 201" ERROR:FAULT E-STATUS-OLD
-201 s" the second 201" ERROR:CODE E-STATUS-NEW
 1 63 lshift s" the smallest test code" ERROR:CODE E-MIN
 -9681 s" the longest name" ERROR:CODE E-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRS
 s" test/fixtures/error/again.f" included
@@ -88,15 +86,6 @@ package PB
    UNDECLARED ERROR:FAULT? TFALSE ;
 
 
-: STATUS-CASE ( -- )
-   s" a repeated code in 0..255 is named, and a fault or not, by its newest declaration" T-LABEL
-   E-STATUS-OLD 201 T=
-   E-STATUS-NEW 201 T=
-   201 ERROR:NAME$ s" ERROR-TEST:E-STATUS-NEW" T$=
-   201 ERROR:TEXT$ s" the second 201" T$=
-   201 ERROR:FAULT? TFALSE ;
-
-
 \ A refusal ends the process, so each fixture runs in a fresh hb: that exit is
 \ the boundary under test.
 : FIXTURE-RUN ( CMD:command ^u8 n -- CMD:command ) {: path:^ pathu:n :}
@@ -111,7 +100,7 @@ package PB
 
 
 : TAKEN-CASE ( -- )
-   s" a taken code outside 0..255 ends the process naming both constants" T-LABEL
+   s" a taken code ends the process naming both constants" T-LABEL
    [: TAKEN-RUN ;] CMD:WITH-COMMAND ;
 
 
@@ -194,7 +183,6 @@ package PB
    PACKAGED-CASE
    GLOBAL-CASE
    UNDECLARED-CASE
-   STATUS-CASE
    MIN-CASE
    PART-CASE
    MAX-NAME-CASE

@@ -2063,8 +2063,8 @@ answers alike.
   may reuse blocks. Re-export an existing error through its owner's constant.
   This is an allocation convention: the checker does not enforce it, and Habu's
   error-code lint scans this repository, not external dependency trees.
-- Engine process failures use only the sealed `ENGINE-ERROR` package, whose
-  names and values are `src/core/engine-error.f`. No global `E-*` aliases.
+- Process exit statuses use only the `EXIT-STATUS` package, whose names and
+  values are `src/core/exit-status.f`. No global `E-*` aliases.
 - **Fallible words `throw` a named code** (`src/lib/error.f` or the owning
   module's package, e.g. `E-FS-PATH`), never a silent failure or an
   out-of-band flag.
@@ -2073,13 +2073,13 @@ answers alike.
   `-9701 s" the provider refused the key" ERROR:CODE E-KEY` defines `E-KEY` as
   a constant, as `constant` would, and records its name qualified by the open
   package (`MODEL:E-KEY` inside package MODEL) and the text. `ERROR:NAME$` and
-  `ERROR:TEXT$` answer the newest declaration of a code, empty when there is
+  `ERROR:TEXT$` answer the declaration of a code, empty when there is
   none; `LOG:CODE+` writes both after the number. `src/lib/error.f` states the
   refusals (CODE, CHECK). Codes minted in files that load before
   `src/lib/error.f` are plain constants and have no name or text.
 - **`ERROR:FAULT` declares a code as `ERROR:CODE` does and marks it a fault**,
   a defect in the program or its environment rather than in what its caller
-  gave; `ERROR:FAULT?` answers whether the newest declaration of a code was
+  gave; `ERROR:FAULT?` answers whether the declaration of a code was
   by `ERROR:FAULT`, so a program decides from the declaration, not a list,
   which throws to report as its own failure.
 - **`REASON:THROW` throws a code with a text the thrower states**, the numbers
@@ -2105,7 +2105,7 @@ answers alike.
   (unmapped or unwritable memory) in a word's code writes the record
   `error[E-MEMORY-FAULT]: a read or write faulted`, with notes `address` and
   `in`, to fd 2 and throws
-  `ENGINE-ERROR:MEMORY-FAULT`, 110, on the faulting thread: a `catch` answers
+  `EXIT-STATUS:MEMORY-FAULT`, 110, on the faulting thread: a `catch` answers
   110, a task ends with 110 recorded while the others run, and an uncaught one
   exits 110. A fault in C code, a jump to an address outside Habu code and a
   second fault while one is delivered still dump the registers and die by the
@@ -2176,7 +2176,7 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
 
 - **Named constants, no magic numbers.** Limits and codes are named
   constants in the module that owns them, stdlib throw codes in
-  `src/lib/error.f`; a literal is acceptable only for a true primitive of the
+  `src/lib/error.f`, exit statuses in `EXIT-STATUS`; a literal is acceptable only for a true primitive of the
   encoding (the `3`/`7` of the 3-bit tag), with a comment.
 - **`$hex` for bit patterns, addresses, offsets and encodings; decimal for
   counts and quantities.** A format's constants keep its spec's spelling.

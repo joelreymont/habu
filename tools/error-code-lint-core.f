@@ -30,11 +30,6 @@ public
 
 private
 
-\ Exit statuses are not claims: an uncaught throw of 0..EXIT-MAX exits with that
-\ status, so E-USAGE 64 means the same in every tool by design. A larger positive value is a throw identity, held to the same
-\ uniqueness and reserved ranges as a negative one.
-255 constant EXIT-MAX
-
 2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims
 1024 constant MAX-RES
 48 constant ZERO-C
@@ -158,7 +153,7 @@ variable JX
    a u MAG? ;
 
 : THROW-CODE? ( n -- bool ) {: code:n :}
-   code 0 <  code EXIT-MAX > or ;
+   code 0<> ;
 
 \ ---- claim table ------------------------------------------------------------
 : SENTINEL? ( ^u8 n -- bool ) {: a:^ u:n :}

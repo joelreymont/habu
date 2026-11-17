@@ -538,9 +538,9 @@ holds an address**.
   blocks: package names do not distinguish thrown numbers. The application
   integrator resolves collisions; the checker does not enforce this convention.
 - Library codes are named constants in `src/lib/error.f`; checker throws also use
-  positive codes above 255 in their owning source. Codes 0..255 serve as
-  process exit statuses and may be shared. Every other code, negative or above
-  255, has one `E-` name across the tree; a file that needs it under its own
+  positive codes above 255 in their owning source. Codes 0..255 are exit
+  statuses, each named once in `EXIT-STATUS` (`src/core/exit-status.f`). Every
+  other code, negative or above 255, has one `E-` name across the tree; a file that needs it under its own
   name reads the owner's constant (`E-OWNER constant E-LOCAL`). A library owns
   one inclusive block of about a hundred bounded by its own `E-X-FIRST` /
   `E-X-LAST` (arrays, filesystem, strings, …) and
@@ -600,7 +600,7 @@ holds an address**.
   another value, a word's input or output, a field, a variable, a local
   read in a quotation) is a new throw, placed at the word that threw it
   in the innermost text it left.
-- A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
+- A read or write that faults in Habu code throws `EXIT-STATUS:MEMORY-FAULT`
   (110) on the faulting thread, after the record `error[E-MEMORY-FAULT]: a
   read or write faulted` with notes `address` and `in` on fd 2: `catch`
   answers 110, a task ends with 110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
@@ -709,7 +709,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Stack effects | the effect grammar, the return-stack clause, types, widening, `DEFTYPE`/`DEFLINEAR`, pointers, escape hatches |
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
-| Errors | the `ENGINE-ERROR` ABI, `die` divergence |
+| Errors | the `EXIT-STATUS` statuses, `die` divergence |
 | Integer arithmetic | the wrapping contract, the signed bounds |
 | Engine limits … | the REPL-line, `[:` and control-flow nesting, effect-depth and data-space ceilings; a definition's text and name have none |
 | Constants | hex versus decimal, where codes live |

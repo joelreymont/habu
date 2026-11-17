@@ -14,7 +14,7 @@ require src/lib/test/stderr.f
 package STDERR-TEST
 
 64 constant FILE-CAP
-77 constant E-THROWN                \ a code 0..255, which packages may share
+77 constant E-THROWN                \ a code 0..255
 
 create PATH-BUF PATH-CAP allot      \ the capture file's path
 variable PATH-U
