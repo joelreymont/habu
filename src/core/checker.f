@@ -13440,6 +13440,16 @@ private
    s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    s" : a keyword needs no export" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ Writes the record of a `;package`, the token t tu, that closes package a u,
+\ which its file or string did not open, through its help; the caller ends it.
+: PKG-OUTSIDE-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   s" `;package` closes `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `, which this file or string did not open" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" opened outside this file or string" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close a package in the file or string that opens it"
+   REJECTION:EMIT-STR ;
 ;package
 package CHECK
 EXPORT CHECKER-RESOLVE:DEF-NAME-REJECT?
@@ -14011,10 +14021,18 @@ ROW-CELLS cells constant SCOPE-BYTES
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
    BOOT:GLOBAL-WL CUR-CELL DATA! ;
 
+EXPORT CHECKER-RESOLVE:PKG-OUTSIDE-REJECT
+EXPORT CHECKER-RESOLVE:REC-AT
+EXPORT CHECKER-RESOLVE:CK-REC-NAME$
+
 \ `;package`: the enclosing package open again after a part and none after any
-\ other.
+\ other; a package open before the replayed file or string began is rejected.
 : CLOSE-PACKAGE ( -- )
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
+   PKG-OUTSIDE-CELL DATA@ 0 <> IF
+      PKG-REC-CELL SCOPE-IX REC-AT CK-REC-NAME$  NULL-PTR 0 PKG-OUTSIDE-REJECT
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    PKG-PARENT-CELL DATA@ CUR-CELL DATA!
    ENCLOSING:REC SCOPE-IX {: outer:n :}
    outer 0 < IF -1 0 ELSE outer ENCLOSING:PARENT DATA@ THEN package-scope!

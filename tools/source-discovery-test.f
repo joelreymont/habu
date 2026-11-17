@@ -34,7 +34,9 @@ variable SDT-ENTRY-U
 variable SDT-SRC-U
 
 : SDT-ROOT$ ( -- ^u8 n )   SDT-ROOT SDT-ROOT-U @ ;
+public
 : SDT-ENTRY$ ( -- ^u8 n )  SDT-ENTRY SDT-ENTRY-U @ ;
+private
 
 : SDT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    a dst u BYTE-COPY
@@ -376,20 +378,20 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" family-shadow.f"
    S\" package DEMO : structure ( -- ) ; structure require dep.f ;package\n"
    SDT-WRITE-ENTRY
-   s" SDT-ENTRY$ ;package included"
+   s" SD-TEST:SDT-ENTRY$ included"
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   s" SDT-ENTRY$ ;package included"
+   s" SD-TEST:SDT-ENTRY$ included"
    SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
    E-DISC-SHADOW 34 9 SDT-STOPS-AT
    s" family-qualified-shadow.f"
    S\" package DEMO : DEMO:structure ( -- ) ; structure require dep.f ;package\n"
    SDT-WRITE-ENTRY
-   s" SDT-ENTRY$ ;package included"
+   s" SD-TEST:SDT-ENTRY$ included"
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: qoutu:len qerru:len qoc :}
-   s" SDT-ENTRY$ ;package included"
+   s" SD-TEST:SDT-ENTRY$ included"
    SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
    [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS
@@ -843,6 +845,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" cycle-use.f" s" SDT-CYC:W required" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC SDT-STOPS ;
 
+public
 : SDT-MAIN ( -- )
    T-RESET
    SDT-PREP
@@ -899,7 +902,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    T-REPORT
    s" source-discovery-test: ok" type cr ;
 
-SDT-MAIN
-
 ;using
 ;package
+
+SD-TEST:SDT-MAIN

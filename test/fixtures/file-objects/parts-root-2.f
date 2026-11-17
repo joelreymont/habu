@@ -1,5 +1,5 @@
-\ parts-root-2.f - parts-root-1.f's MAIN and files, with mid-w2.f for mid-w1.f, flip-a.f before flip.f
-\ and no cut-stack-a.f: flip.f's require of flip-a.f cuts no part, cut-stack.f's of cut-stack-a.f does.
+\ parts-root-2.f - parts-root-1.f's MAIN over other files: flip.f's require of flip-a.f cuts no part,
+\ cut-stack.f's of cut-stack-a.f does, and inside-i.f loads at top level.
 
 require test/fixtures/file-objects/mid-w2.f
 require test/fixtures/file-objects/mid-four.f
@@ -9,6 +9,9 @@ require test/fixtures/file-objects/unclean.f
 require test/fixtures/file-objects/redo.f
 require test/fixtures/file-objects/root-set.f
 require test/fixtures/file-objects/cut-stack.f
+require test/fixtures/file-objects/scope.f
+require test/fixtures/file-objects/scope-use.f
+require test/fixtures/file-objects/inside-i.f
 
 : MAIN ( -- )
    FILE-OBJECTS-MID-FOUR:A .  FILE-OBJECTS-MID-FOUR:B .  FILE-OBJECTS-MID-FOUR:C .

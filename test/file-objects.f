@@ -54,14 +54,11 @@ package FILE-OBJECTS-TEST
 38 constant MUTUAL-TYPES                 \ the MUTUAL sequence's mt.f's
 39 constant MUTUAL-MAIN                  \ and mt-main.f's
 40 constant FOLDED-LAST                  \ the folded sequence's main.f's last part's
-41 constant TAILS                        \ TAIL$'s tails
-68 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
-                                         \ never link included, the twins', the order sequence's four,
-                                         \ the header, same and held sequences' three each, e.f's, the
-                                         \ words sequence's five, the ran and stores sequences' four each,
-                                         \ the gain sequence's three, the own and own-cold builds' two
-                                         \ each, the through and through-cold builds' four each, the full
-                                         \ builds' two and the full-cold build's a.f's
+41 constant SCOPE-OPEN                   \ scope-open.f's, which leaves its package open,
+42 constant SCOPE-USE                    \ scope-use.f's, which names its SEVEN,
+43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
+44 constant TAILS                        \ TAIL$'s tails
+62 constant FILES-C                     \ build C's objects
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -243,6 +240,9 @@ variable CLASS-N                        \ the class CLASS+ read
    i MUTUAL-TYPES = if s" /mutual/mt.f.hfo" exit then
    i MUTUAL-MAIN = if s" /mutual/mt-main.f.hfo" exit then
    i FOLDED-LAST = if s" /folded/main.f+2.hfo" exit then
+   i SCOPE-OPEN = if s" /test/fixtures/file-objects/scope-open.f.hfo" exit then
+   i SCOPE-USE = if s" /test/fixtures/file-objects/scope-use.f.hfo" exit then
+   i INSIDE-I = if s" /test/fixtures/file-objects/inside-i.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
@@ -322,7 +322,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote sixty-eight objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote sixty-two objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -354,10 +354,6 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" private: compiled 2 1 0\n" CONTAINS? TTRUE
    s" the parts builds compile 3, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" parts: compiled 3 2 0\n" CONTAINS? TTRUE
-   s" the scope builds compile 3, 3 and 2 files" LABEL
-   STATE-W STATE-W-U @ s\" scope: compiled 3 3 2\n" CONTAINS? TTRUE
-   s" the inside builds compile 3, 1, 3 and 1 files" LABEL
-   STATE-W STATE-W-U @ s\" inside: compiled 3 1 3 1\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
@@ -1041,7 +1037,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO KEEP
-   ROOT-SET-LAST KEEP
+   ROOT-SET-LAST KEEP  SCOPE-OPEN KEEP  SCOPE-USE KEEP  INSIDE-I KEEP
    s" Y2" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
    s" the build links unclean.f's last part after an unclean request and a clean one"
@@ -1050,13 +1046,20 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND COMPILED
    s" the build links redo.f's part" REDO LINKED
    s" the build links root-set.f's last part, after its first part sets the root" ROOT-SET-LAST LINKED
+   s" scope-open.f, which leaves its package open, never links" SCOPE-OPEN COMPILED
+   s" the build links scope-use.f, which names scope-open.f's SEVEN" SCOPE-USE LINKED
+   s" inside-i.f's object from a load inside a package never links" INSIDE-I COMPILED
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
    s" the program prints MAIN's numbers: mid-four.f's with mid-w2.f's W, redo.f's X with its second Y" PRINTS-RUN
-   FLIP-SECOND KEEP
+   FLIP-SECOND KEEP  INSIDE-I KEEP
    s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links the part that starts at [then]" FLIP-SECOND LINKED
+   s" the build links inside-i.f's object from a load alone" INSIDE-I LINKED
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
-   s" the program prints MAIN's numbers with flip.f's part at [then] linked" PRINTS-RUN ;
+   s" the program prints MAIN's numbers with flip.f's part at [then] linked" PRINTS-RUN
+   INSIDE-I KEEP
+   s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
+   s" a load inside a package never links inside-i.f's object from a load alone" INSIDE-I COMPILED ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
 \ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.

@@ -6,6 +6,9 @@ require test/fixtures/file-objects/redo.f
 require test/fixtures/file-objects/root-set.f
 require test/fixtures/file-objects/cut-stack-a.f
 require test/fixtures/file-objects/cut-stack.f
+require test/fixtures/file-objects/scope.f
+require test/fixtures/file-objects/scope-use.f
+require test/fixtures/file-objects/inside-p.f
 
 : MAIN ( -- )
    FILE-OBJECTS-MID-FOUR:A .  FILE-OBJECTS-MID-FOUR:B .  FILE-OBJECTS-MID-FOUR:C .

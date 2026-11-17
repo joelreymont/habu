@@ -50,7 +50,7 @@ create TEXT CAP allot                  variable TEXT-U
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : AMBIGUOUS-CALLEE ( -- )
    s" an ambiguous bare callee is refused naming the callee" T-LABEL
-   s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
+   s" package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package" SAYS
    s" = packages: UA, UC" SAYS ;
@@ -59,7 +59,7 @@ create TEXT CAP allot                  variable TEXT-U
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : SHADOWING-CALLEE ( -- )
    s" a bare callee a used public shadows is refused naming the callee" T-LABEL
-   s" ;package : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
+   s" : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `US`" SAYS
    s" = package: US:SW" SAYS ;
@@ -68,20 +68,20 @@ create TEXT CAP allot                  variable TEXT-U
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : BAD-SIGNATURE ( -- )
    s" a refused stored signature is refused naming its token" T-LABEL
-   s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
+   s" TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `TB8` cannot be recorded" SAYS
-   s" = evaluated: ;package TRUSTED: TB8 ( -- nosuch:fam )" SAYS
+   s" = evaluated: TRUSTED: TB8 ( -- nosuch:fam )" SAYS
    s" no type has this name" SAYS ;
 
 \ A public whose private twin moves other cells is refused at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : SHADOWED-ARITY ( -- )
    s" a public its private tail shadows is refused naming the definition" T-LABEL
-   s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
+   s" package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ CHECKER-REJECT-RC T=
    s" error[E-SHADOWED-ARITY]: public `SAT-A:F` has a different stack effect" SAYS
-   s" = evaluated: ;package package SAT-A" SAYS
+   s" = evaluated: package SAT-A" SAYS
    s" its name binds the private word" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
@@ -103,10 +103,6 @@ create TEXT CAP allot                  variable TEXT-U
    s" = family: hr-v" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------
-\ `;package` first makes the texts global.
-: REFUSED-TEXT ( -- )
-   TEXT-U BUF-RESET  s" ;package " TEXT+ ;
-
 : P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
 : Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
 
@@ -120,7 +116,7 @@ create TEXT CAP allot                  variable TEXT-U
 \ The refused W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
 : REFUSED-CAUGHT ( -- )
    s" a caught refusal leaves a call to the used package's word" T-LABEL
-   REFUSED-TEXT P-W+ Q-USING-P+ REFUSED+
+   TEXT-U BUF-RESET P-W+ Q-USING-P+ REFUSED+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ CHECKER-REJECT-RC T=
@@ -128,6 +124,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" error[E-MISMATCH]: T-FORGET ends with n on the stack; its signature promises n n" SAYS
    s" = evaluated: ...; TRY-FORGET . cr : T-FORGET ( -- n n ) W-FORGET ;" SAYS ;
 
+public
 : RUN ( -- )
    T-RESET
    AMBIGUOUS-CALLEE
@@ -138,5 +135,5 @@ create TEXT CAP allot                  variable TEXT-U
    REFUSED-CAUGHT
    T-REPORT ;
 
-RUN
 ;package
+HOOKLESS-REJECT-TEST:RUN

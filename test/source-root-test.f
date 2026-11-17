@@ -286,7 +286,7 @@ public
 
 : EVAL-FAIL ( -- )
    EVAL-N @ 0= if
-      s" ;package package EVAL-ESCAPED using FMT 9133 throw" evaluate-closed
+      s" package EVAL-ESCAPED using FMT 9133 throw" evaluate-closed
    then
    -1 EVAL-N +!
    s" SOURCE-ROOT-TEST:EVAL-FAIL" evaluate-closed ;
@@ -330,8 +330,7 @@ private
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T=
    [: 40 EVAL-N ! EVAL-FAIL ;] 9133 TTHROWSQ
    RESTORED
-   s" public : AFTER-DEEP-EVAL ( -- n ) 17 ;" evaluate-closed
-   s" SOURCE-ROOT-TEST:AFTER-DEEP-EVAL 17 T=" evaluate-closed
+   s" [package] nip 0 T=" evaluate-closed
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T= ;
 
 : DEEP-LOADS ( -- )
@@ -415,6 +414,7 @@ create JOIN-SRC JOIN-WORK allot
    s" /stamp" DIRNAME s" /" T$=
    s" /" DIRNAME s" /" T$= ;
 
+public
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED READ-NUL
@@ -423,6 +423,6 @@ create JOIN-SRC JOIN-WORK allot
    ENGINE-ALIASES JOIN-ROOM DIRNAMES
    FS:CLEANUP-RUN T-REPORT ;
 
-RUN
 ;package
+SOURCE-ROOT-TEST:RUN
 ;using

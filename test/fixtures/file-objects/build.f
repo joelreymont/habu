@@ -208,12 +208,6 @@ PATH-CAP BUFFER: FIFTH-BUF
 : PARTS-A$ ( -- ^u8 n ) s" parts" s" a.f" FIRST-BUF FILE-IN ;
 : PARTS-B$ ( -- ^u8 n ) s" parts" s" b.f" SECOND-BUF FILE-IN ;
 : PARTS-C$ ( -- ^u8 n ) s" parts" s" c.f" THIRD-BUF FILE-IN ;
-: SCOPE-A$ ( -- ^u8 n ) s" scope" s" a.f" FIRST-BUF FILE-IN ;
-: SCOPE-B$ ( -- ^u8 n ) s" scope" s" b.f" SECOND-BUF FILE-IN ;
-: SCOPE-C$ ( -- ^u8 n ) s" scope" s" c.f" THIRD-BUF FILE-IN ;
-: INSIDE-P$ ( -- ^u8 n ) s" inside" s" p.f" FIRST-BUF FILE-IN ;
-: INSIDE-I$ ( -- ^u8 n ) s" inside" s" i.f" SECOND-BUF FILE-IN ;
-: INSIDE-Q$ ( -- ^u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
 : TWIN-X$ ( -- ^u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
 : TWIN-Y$ ( -- ^u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
 : ORDER-M$ ( -- ^u8 n ) s" order" s" m.f" FIRST-BUF FILE-IN ;
@@ -350,42 +344,6 @@ PATH-CAP BUFFER: FIFTH-BUF
    PARTS-BUILD {: two:n :}
    PARTS-BUILD {: three:n :}
    s" parts: compiled " one two three RESULTS. cr ;
-
-: SCOPE-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: SCOPE-A$ included  SCOPE-B$ included  SCOPE-C$ included ;] LINKER:WITH ;]
-   catch RESULT ;
-
-\ a.f leaves its package open for b.f, which closes it and is edited: neither links (linker.f
-\ TOP-SCOPE?), and c.f, which names b.f's SEVEN, links once b.f's piece keeps its time.
-: SCOPES ( -- )
-   s" scope" DIR$ FS:MAKE-DIR
-   SCOPE-A$ s\" package FILE-OBJECTS-SCOPE : HIDDEN ( -- n ) 7 ;\n" FS:WRITE-ALL
-   SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN ;\n;package\n" FS:WRITE-ALL
-   SCOPE-C$ s\" : FILE-OBJECTS-EIGHT ( -- n ) FILE-OBJECTS-SCOPE:SEVEN 1 + ;\n" FS:WRITE-ALL
-   SCOPE-BUILD {: one:n :}
-   SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN 1 + ;\n;package\n" FS:WRITE-ALL
-   SCOPE-BUILD {: two:n :}
-   SCOPE-BUILD {: three:n :}
-   s" scope: compiled " one two three RESULTS. cr ;
-
-: INSIDE-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: INSIDE-P$ included  INSIDE-I$ included  INSIDE-Q$ included ;] LINKER:WITH ;]
-   catch RESULT ;
-
-: OUTSIDE-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: INSIDE-I$ included ;] LINKER:WITH ;] catch RESULT ;
-
-\ i.f inside the package p.f leaves open and q.f closes, alone, inside, alone: a load inside never
-\ links and its object replaces the one a load alone wrote, so each build alone compiles i.f.
-: INSIDES ( -- )
-   s" inside" DIR$ FS:MAKE-DIR
-   INSIDE-P$ s\" package FILE-OBJECTS-INSIDE\n" FS:WRITE-ALL
-   INSIDE-I$ s\" : FILE-OBJECTS-INNER ( -- n ) 1 ;\n" FS:WRITE-ALL
-   INSIDE-Q$ s\" ;package\n" FS:WRITE-ALL
-   INSIDE-BUILD {: one:n :}
-   OUTSIDE-BUILD {: two:n :}
-   INSIDE-BUILD {: three:n :}
-   OUTSIDE-BUILD {: four:n :}
-   s" inside: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 : TWIN-X-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
 : TWIN-Y-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
@@ -1075,7 +1033,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
    BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
    s" stopped" type cr ;
 

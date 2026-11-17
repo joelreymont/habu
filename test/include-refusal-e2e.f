@@ -128,6 +128,21 @@ variable RC
    s" `SOURCE-ROOT:WITH` got `" s" absent" SB-NAMES SB$ ERR-HAS
    ERR$ s" with-nested.f:2:" CONTAINS? TFALSE ;
 
+\ A loaded file is a closed program: its `;package` of the package its includer
+\ opened is rejected where it stands, not at the includer's own `;package`.
+: CLOSE-OUTER ( -- )
+   s" a file's ;package of its includer's package is rejected in that file" T-LABEL
+   s" cases/close-outer-inc.f" AT s" ;package" FS:WRITE-ALL
+   0 PROG-U !
+   s" package INCLUDE-REFUSAL-OUTER private package B" PLINE
+   s" include " PROG+ s" cases/close-outer-inc.f" AT PLINE
+   s" ;package ;package" PLINE
+   s" close-outer" LOAD-CASE
+   CHECKER-REJECT-RC EXITS
+   s" error[E-PKG-CONTEXT]" ERR-HAS
+   s" closes `INCLUDE-REFUSAL-OUTER:B`," ERR-HAS
+   SB-RESET s" cases/close-outer-inc.f" AT SB-APPEND s" :1:1" SB-APPEND SB$ ERR-HAS ;
+
 \ A loader a scope's callback runs on bytes no source holds: its record stands
 \ at no call, the one that opened the scope included.
 : WITH-REQUIRED ( -- )
@@ -294,8 +309,8 @@ public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED WITH-NESTED WITH-REQUIRED POLICY-NESTED REQUIRE-ABSENT CANON-NONE READ-OS-WORD
-   REQUIRE-UNREADABLE LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY SPELLED-LOADERS
+   WITH-REFUSED WITH-NESTED CLOSE-OUTER WITH-REQUIRED POLICY-NESTED REQUIRE-ABSENT CANON-NONE
+   READ-OS-WORD REQUIRE-UNREADABLE LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY SPELLED-LOADERS
    T-REPORT ;
 
 ;package

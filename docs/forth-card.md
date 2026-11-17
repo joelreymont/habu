@@ -57,7 +57,8 @@ public
   that family is refused while the name exists (for `NEWTYPE x`, `bad newtype
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
   private section. `package` anywhere else inside a package is rejected
-  `E-PKG-CONTEXT`, rc 70.
+  `E-PKG-CONTEXT`, rc 70, and so is a `;package` in an included file or
+  `evaluate` buffer that would close its includer's package.
 - `global` in a package sends the definitions after it to the global
   wordlist; their bodies still call the package's private words (`: P-GO ( --
   n ) HELP ;` is called `P-GO`; `P:P-GO` is `E-UNDEFINED`). Outside a

@@ -901,6 +901,11 @@ private
 : PKG-CONTEXT-FAIL ( -- )
    TOKEN$ PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
+EXPORT CHECKER-RESOLVE:PKG-OUTSIDE-REJECT
+: PKG-OUTSIDE-FAIL ( -- )
+   PKG-REC-CELL CELL@ XREF-ADDR>REC XREF-NAME$ TOKEN$ PKG-OUTSIDE-REJECT
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 EXPORT CHECK:REJECT-DUPLICATE
 : PKG-DUPLICATE ( ^u8 n -- )   2dup REJECT-DUPLICATE ;
 
@@ -1075,6 +1080,7 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
 
 : PKG-END-PACKAGE ( -- )
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+   PKG-OUTSIDE-CELL CELL@ 0<> if PKG-OUTSIDE-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
    PKG-PARENT-CELL CELL@ CUR-CELL CELL!
    ENCLOSING:REC CELL@ {: outer:n :}
@@ -3226,8 +3232,8 @@ public
       a u REPL-LINE REPL-OK !
    again ;
 
-\ The input base stays the buffer's first byte, so a rejection's line counts
-\ from the start of the whole source.
+\ The input base stays the buffer's first byte, so lines count from it. A range
+\ starting past it continues a run of the buffer and keeps its PKG-OUTSIDE-CELL.
 : EVAL-FRAMED-RANGE ( ^u8 n n n -- ) {: a:^ u:n first:n end:n :}
    depth FRAME-OPEN {: f:^ :}
    USE-FLOOR @ {: outer:n :}
@@ -3238,7 +3244,7 @@ public
    entry ENTRY-PEND !
    SOURCE-ROOT:TEXT-MARK DECL-MARK !
    USE-DEPTH-CELL CELL@ USE-FLOOR !
-   1 PKG-OUTSIDE-CELL CELL!
+   first 0= if 1 PKG-OUTSIDE-CELL CELL! then
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK [: RUN ;] ERROR:CAUGHT LEFT ;]

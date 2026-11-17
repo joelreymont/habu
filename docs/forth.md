@@ -146,7 +146,9 @@ private
   containing `:`, opens NAME's private wordlist and saves the caller's current
   wordlist; definitions are private by default. `;package`, valid only inside a
   package, restores the saved wordlist and leaves no package open in the engine
-  or the checker, except after a part.
+  or the checker, except after a part. It closes only a package its file or
+  evaluated string opened, or one a file or string it ran left open; closing
+  its includer's package is rejected `E-PKG-CONTEXT`, rc 70.
 - In package A's private section, under no `using` A opened, in the file or
   evaluated string A is open in, `package B` opens B as a part of A, whose row
   is named by the path `A:B`. Anywhere else inside a package `package` is

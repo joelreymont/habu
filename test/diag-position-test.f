@@ -3815,6 +3815,27 @@ HB-TARGET-LINUX? 0= [if]
    s" `using DP-HOLD` … `;using`" SB-APPEND
    0 s" help" SB$ FIELD= ;
 
+\ A file's `;package` of the package its includer opened is rejected in that
+\ file, at its own line, by the check, --verify-only and the load alike.
+: TEST-CLOSE-OUTER ( -- )
+   s" an included file's ;package of its includer's package" T-LABEL
+   s" ;package" s" close-outer-inc.f" LINE-FIXTURE
+   DEP!
+   SB-RESET
+   s" package DP-OUTER" SB-APPEND LF+
+   s" include close-outer-inc.f" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" close-outer.f" FIXTURE!
+   s" " REJECT-RC CHECK-EXIT
+   s" E-PKG-CONTEXT" REJECTED-AS
+   0 s" ;package" 1 1 0 8 DEP-AT
+   s" --verify-only" REJECT-RC CHECK-EXIT
+   s" E-PKG-CONTEXT" REJECTED-AS
+   0 s" ;package" 1 1 0 8 DEP-AT
+   s" error[E-PKG-CONTEXT]" REJECT-RC LOADED
+   SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :1:1" SB-APPEND
+   GT-ERR$ SB$ CONTAINS? TTRUE ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -3833,6 +3854,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TOP-DEP
    TEST-TOP-TRUSTED
    TEST-UNDEF-HOLDER
+   TEST-CLOSE-OUTER
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW

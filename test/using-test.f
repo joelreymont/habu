@@ -142,49 +142,18 @@ s" package UQ using UA AW drop ;using ;package" UCE-CATCH 0 T=
 s" using UA package UQ AW drop ;package AW drop ;using" UCE-CATCH 0 T=
 s" package UQ using UA public : UT-Q2 ( -- n ) AW ; ;using ;package" VS-CATCH 0 T=
 s" using UA package UQ public : UT-Q3 ( -- n ) AW ; ;package : UT-Q4 ( -- n ) AW ; ;using" VS-CATCH 0 T=
-\ A package an included buffer leaves open keeps none of the buffer's usings,
-\ and the verifier's inherited replay reads the engine's using floor: a using
-\ opened in the package closes, and past `;package` AW is unresolved.
+\ a buffer lowers the package floor at its end: `;package` closes UQF, not UA
 s" using UA package UQF" UCE-CATCH 0 T=
-s" ;package : UT-QF ( -- n ) AW ;" VS-CATCH E-REJECT T=
-s" using UB BW drop ;using" UCE-CATCH 0 T=
-s" using UB ;using" VS-CATCH 0 T=
-s" ;package AW drop" UCE-CATCH E-REJECT T=
-\ A throw puts back the package scope its buffer entered with, and the checker's
-\ package mirror follows: UQF is open again, the verifier's inherited replay
-\ agrees, and a clean buffer in between changes nothing. A mirror left at the
-\ top level the `;package` left would refuse every replay E-PKG-CONTEXT.
-s" 1 drop" VS-CATCH 0 T=
-s" 2 drop" UCE-CATCH 0 T=
-s" 1 drop" VS-CATCH 0 T=
-;package
-
-\ The mirror follows before the throw reaches its handler, so a handler may ask
-\ the verifier at once: one compiled word catches the buffer and replays. The
-\ first reopens the package the buffer closed, the second closes the one it
-\ opened.
-package USING-TEST
-public
-: REOPEN ( -- n n )  s" ;package AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
-: RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
-;package
-s" package UQS" UCE-CATCH 0 T=
-USING-TEST:REOPEN 0 T= E-REJECT T=
-;package
-USING-TEST:RECLOSE 0 T= E-REJECT T=
-s" package UQU ;package" UCE-CATCH 0 T=
-
-\ The package's using floor comes back with it. The buffer closes UQP, opens a
-\ using and UQR, and throws. Were UQP to keep UQR's floor, one above its depth,
-\ its own `;using` would be refused as outer, the replay would seed that floor,
-\ and `;package` would reopen the using a failed buffer left in that slot (here
-\ the refused one's UA).
-package UQP
-s" ;package using UB package UQR AW drop" UCE-CATCH E-REJECT T=
-s" using UA ;using" UCE-CATCH 0 T=
-s" using UA ;using" VS-CATCH 0 T=
 ;package
 s" AW drop" UCE-CATCH E-REJECT T=
+\ A throw closes the package its buffer opened, and the checker's mirror follows
+\ before the throw reaches its handler: one compiled word catches the buffer and
+\ replays at once.
+package USING-TEST
+public
+: RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+;package
+USING-TEST:RECLOSE 0 T= E-REJECT T=
 
 \ === global-vs-used-public shadow ===
 \ A bare tail inside a using scope that resolves to a global and a used public
@@ -352,49 +321,14 @@ S\" = help: close each using in the file that opens it\n" UCE-SAID  REJECTION:BU
 s" using UB ;using" VS-CATCH 0 T=
 ;using
 
-\ A buffer that closes its includer's package closes the usings opened in it,
-\ and the includer gets back the depth that `;package` restored: a using the
-\ buffer opened after it ends with the buffer, and a using the includer opened
-\ before the package stays. Restoring the includer's entry depth instead would
-\ reopen UA, or show the buffer's UB in the slot UA had held. The buffer may
-\ close its own using there but not UP; the verifier's replay agrees.
-using UP
-package UQK using UA
+\ === a buffer closes only the packages it opens ===
+package UQK
 REJECTION:CAPTURE
-s" ;package ;using" VS-CATCH E-REJECT T=
-S\" error[E-USING-OUTER]: `;using` would close a using opened outside this file\n" UCE-SAID
-S\"  ^^^^^^ using opened outside\n" UCE-SAID
-S\" = help: close each using in the file that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
-s" ;package using UB BW drop ;using" VS-CATCH 0 T=
-s" ;package ;using" UCE-CATCH E-REJECT T=
-s" ;package" UCE-CATCH 0 T=
-s" AW drop" UCE-CATCH E-REJECT T=
-package UQK using UA
-s" ;package using UB" UCE-CATCH 0 T=
-s" BW drop" UCE-CATCH E-REJECT T=
-s" AW drop" UCE-CATCH E-REJECT T=
-s" PUBW drop" UCE-CATCH 0 T=
-;using
-s" ;using" UCE-CATCH E-REJECT T=
-
-\ === a throw puts back the includer's used publics ===
-\ A buffer that closes its includer's package and opens a using writes that
-\ using into a slot the includer keeps. The throw puts back the slot with the
-\ depth and the package, and the checker names it from its wid. Without the
-\ slot the includer would resolve BW where AW had been, and with UD there the
-\ checker would certify a caller against UD:AW ( n -- n ). UA:AW is ( -- n ), so
-\ a caller declaring ( n -- n ) is refused and one declaring ( -- n ) runs UA's.
-package UD public : AW ( n -- n ) 100 + ; ;package
-package USING-TEST public variable UQX-V ;package
-package UQX using UA
-s" ;package using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
-s" AW drop" UCE-CATCH 0 T=
-s" BW drop" UCE-CATCH E-REJECT T=
-s" ;package using UD NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
-s" : UQX-R1 ( n -- n ) AW ;" UCE-CATCH E-REJECT T=
-s" : UQX-R2 ( -- n ) AW ; UQX-R2 USING-TEST:UQX-V !" UCE-CATCH 0 T=
-USING-TEST:UQX-V @ 11 T=
-;using ;package
+s" ;package" UCE-CATCH E-REJECT T=
+S\" error[E-PKG-CONTEXT]: `;package` closes `UQK`, which this file or string did not open\n" UCE-SAID
+s" ;package" VS-CATCH E-REJECT T=
+REJECTION:BUFFER-OFF
+;package
 
 \ === a retired used public is no candidate ===
 \ `undefine` retires a used package's public. The engine's used-search skips it
