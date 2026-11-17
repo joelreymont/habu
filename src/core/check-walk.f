@@ -3338,20 +3338,19 @@ variable TG-GEN    variable TG-TERM-NAME
    w v REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ A keyword takes the top cell with no word event, so the row is not saved:
-\ the next event fits it to the live depth.
+\ Then the keyword's own row judges the cell it takes.
 : TOP-TAKE-STEP ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
    DCUR @ ROW-CELLS 0= IF a u w v TOP-EMPTY-TAKE-REJECT THEN
-   DCUR @ 1 TOP-WIDE-IN-K? 0= IF EXIT THEN
-   a u w v TOP-CONSTANT-REJECT ;
+   DCUR @ 1 TOP-WIDE-IN-K? IF a u w v TOP-CONSTANT-REJECT THEN
+   TOP-WORD-STEP ;
 
+\ A keyword takes the top cell with no word event, so the row is not saved:
+\ the next event fits it to the live depth.
 : CHECKER-TOP-TAKE ( ^u8 n ^u8 n n -- )
    {: a:^ u:n w:^ v:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !
-   live CHECKER-TOP-LOAD
-   [: a u w v TOP-TAKE-STEP ;] catch {: rc:n :}
-   TOP-RELEASE
-   rc 0 <> IF rc throw THEN ;
+   [: a u w v TOP-TAKE-STEP ;] live TOP-STEP-LOAD
+   TOP-RELEASE ;
 
 variable TOP-DROP-N
 

@@ -11,7 +11,6 @@ package DEBUGGER-RESUME
    s" package BPR" GE-SRC-LINE
    s" variable WV 17 WV !" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) WV @ + ;" GE-SRC-LINE
-   s" ' SUBJECT constant TARGET-XT" GE-SRC-LINE
    \ Move the live compile cursor past a 64 KiB protection unit, whatever the
    \ initial alignment, so the one-shot restore must reopen a span the compiler
    \ is not holding. PAD-WORDS is tuned, not assumed: CHECK-PAGES proves the
@@ -25,7 +24,7 @@ package DEBUGGER-RESUME
       GE-SRC-LINE
    loop
    \ The address comparison only establishes the test's page separation.
-   s" TRUSTED: PAGES? ( -- bool ) cp@ $FFFF invert and TARGET-XT $FFFF invert and <> ;" GE-SRC-LINE
+   s" TRUSTED: PAGES? ( -- bool ) cp@ $FFFF invert and ['] SUBJECT $FFFF invert and <> ;" GE-SRC-LINE
    s" : CHECK-PAGES ( -- ) PAGES? 0= if 99 throw then ; CHECK-PAGES" GE-SRC-LINE
    s" WV DEBUG:BPW+ ' SUBJECT DEBUG:BP+" GE-SRC-LINE
    s" 2 SUBJECT . 2 SUBJECT ." GE-SRC-LINE

@@ -12670,9 +12670,8 @@ variable PE-EFF-ID
 : PE-D ( -- n ) $64 VAR-OF ;
 : PE-E ( -- n ) $65 VAR-OF ;
 : PE-F ( -- n ) CC-BOOL MK-CON ;
-\ RAW-kinds a prototype var, for the raw storage-definer prims (here/data-base):
-\ the minted pointee is TVK-RAW, so a fetch through it yields a RAW value that
-\ cannot launder into a nominal atom/family.
+\ RAW-kinds a prototype var: the pointee `here` mints, or the cell `constant`
+\ takes; RAW-OK? judges every type that meets it.
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
 \ Base-kinds a prototype var for the two base-address rows, `NULL-PTR` and
@@ -12800,7 +12799,7 @@ PTABLE-START
    s" char" PE-OPEN PE-N PE-OUT PE-CLOSE PRIM-TOP-ONLY!
    s" [char]" PE-OPEN PE-N PE-OUT PE-CLOSE
    s" [package]" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
-   s" constant" PE-OPEN PE-N PE-IN PE-CLOSE
+   s" constant" PE-OPEN PE-A PE-RAW! PE-IN PE-CLOSE
    s" >r" PE-SYM-OF drop
    s" r>" PE-SYM-OF drop
    s" r@" PE-SYM-OF drop
@@ -18198,9 +18197,9 @@ variable TSEEN  variable TSOK  variable TFA
    BODY-TEXT? ;
 
 \ `variable` and `constant` are top-level keywords, undefined in any walk but a
-\ definer's phrase, whose `constant` takes its row.
+\ definer's phrase or a top-level step, where `constant` takes its row.
 : DEFINER-TOK ( n -- bool ) {: id:n :}
-   DEF-PHRASE? 0= IF
+   DEF-PHRASE? 0=  TOP-STEP @ 0=  and IF
       id INTRINSIC-VARIABLE =  id INTRINSIC-CONSTANT = or IF
          -1 UNDEFERR !  0 OK !  -1 FAILSET !  RES-TRUE EXIT
       THEN

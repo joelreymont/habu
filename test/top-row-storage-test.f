@@ -26,6 +26,15 @@ TYPED-VARIABLE TS-HK [ -- ]
 : TS-RR ( r -- ) drop ;
 : TS-NN ( n -- ) drop ;
 
+package TS-NT
+public
+NEWTYPE tk
+private
+CAST: >TK ( n -- tk )
+public
+: MK ( -- tk ) 5 >TK ;
+;package
+
 \ TS-R1 leaves a dead segment two levels deep on a pool stack; TS-R2's text gets that
 \ stack one level deep, and TS-EVD under its catch must not select the dead segment.
 TRUSTED: TS-EVD ( -- ) s" 1 drop" evaluate ;
@@ -84,6 +93,7 @@ variable ERR-U
 : AT-STORE ( -- )   S\" \"token\":\"!\"" HAS? ;
 : AT-ADD ( -- )     S\" \"token\":\"+!\"" HAS? ;
 : AT-CSTORE ( -- )  S\" \"token\":\"c!\"" HAS? ;
+: AT-CONSTANT ( -- ) S\" \"token\":\"constant\"" HAS? ;
 : GOT-PTR ( -- )    S\" \"found\":\"^" HAS? ;
 : GOT-XT ( -- )     S\" \"found\":\"xt" HAS? ;
 
@@ -130,6 +140,27 @@ variable ERR-U
    [: s" variable TS-NW ' DUP TS-NW !" evaluate-closed ;] CHECK-RC TTHROWSQ
    RAW-XT AT-STORE
    DISARM ;                 \ the refused program's TS-NW goes with its rollback
+
+: CASE-CONSTANT-PTR ( -- )
+   s" here constant C : refused by the raw-cell rule, as here V ! is" T-LABEL
+   ARM
+   [: s" here constant TS-HC" evaluate-closed ;] CHECK-RC TTHROWSQ
+   RAW-PTR AT-CONSTANT
+   DISARM ;
+
+: CASE-CONSTANT-XT ( -- )
+   s" ' DUP constant C : refused by the raw-cell xt rule, as ' DUP V ! is" T-LABEL
+   ARM
+   [: s" ' DUP constant TS-XC" evaluate-closed ;] CHECK-RC TTHROWSQ
+   RAW-XT AT-CONSTANT
+   DISARM ;
+
+: CASE-CONSTANT-FAMILY ( -- )
+   s" a NEWTYPE value to constant is refused, as one stored into V is" T-LABEL
+   ARM
+   [: s" TS-NT:MK constant TS-NC" evaluate-closed ;] CHECK-RC TTHROWSQ
+   MISMATCH AT-CONSTANT  S\" \"found\":\"ts-nt:tk\"" HAS?
+   DISARM ;
 
 : CASE-TYPED-N-PTR ( -- )
    s" here BN ! through a ( -- ^n ) accessor is refused as in a body" T-LABEL
@@ -417,6 +448,12 @@ variable ERR-U
    [: s" : TS-B9 ( -- ) 0.5 TS-RR ;" evaluate-closed ;] 0 TTHROWSQ
    [: s" 0.5 TS-RR  -1.25 TS-RR" evaluate-closed ;] 0 TTHROWSQ ;
 
+: CASE-CONSTANT-ADMITTED ( -- )
+   s" bool and role operands to constant are admitted and kept" T-LABEL
+   [: s" true constant TS-KB  5 >LEN constant TS-KL" evaluate-closed ;] 0 TTHROWSQ
+   s" TS-KB" TEST-EVAL:N -1 T=
+   s" TS-KL" TEST-EVAL:N 5 T= ;
+
 : CASE-DECLARED ( -- )
    s" a PTR-VARIABLE takes a pointer and a TYPED-VARIABLE [ -- ] an xt" T-LABEL
    CLEAR
@@ -514,6 +551,9 @@ public
    CASE-CREATE-HERE
    CASE-VARIABLE-HERE
    CASE-VARIABLE-XT
+   CASE-CONSTANT-PTR
+   CASE-CONSTANT-XT
+   CASE-CONSTANT-FAMILY
    CASE-TYPED-N-PTR
    CASE-TYPED-N-XT
    CASE-ADD-STORE
@@ -534,6 +574,7 @@ public
    CASE-SHORT-ROW
    CASE-SCOPES
    CASE-NUMERIC
+   CASE-CONSTANT-ADMITTED
    CASE-REAL
    CASE-DECLARED
    CASE-NESTED-EVAL

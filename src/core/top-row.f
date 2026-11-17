@@ -24,8 +24,8 @@ package CHECK
    cls TOP-EV-WORD = IF a u live CHECKER-TOP-WORD ELSE a u live CHECKER-TOP-TICK THEN
    CHECKER-TOP-SAVE ;
 
-\ Before a keyword spelled a u takes the program's top cell for the name w v:
-\ an empty stack or a multi-cell value there is rejected, rc 70, before any cell is taken.
+\ Before keyword a u takes the top cell for the name w v: an empty stack, a
+\ multi-cell value or a cell its row rejects is rejected, rc 70, before it is taken.
 : TOP-TAKE ( ^u8 n ^u8 n -- )
    {: a:^ u:n w:^ v:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
