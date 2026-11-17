@@ -13,11 +13,11 @@ require src/lib/memory.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
-require src/lib/codegen.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/fd.f
 require src/lib/adt/result.f
+require src/lib/log.f
 
 package AIO
 public
@@ -242,7 +242,6 @@ END-STRUCTURE
 CHUNK-HEAD RECS-FIRST REC-BYTES * + SCRATCH-BUFFER: AIO-RECS
 CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
 PARAMS-BYTES BUFFER: PARAMS
-create NL-BYTE $0A c,
 
 \ The records the grown chunks hold, so zero is the first chunk alone. Grown
 \ under the facility, after the chunk's link; read with atomic@ by an owner
@@ -298,8 +297,6 @@ TASK:+USER AIO-REGISTERED n
 \ alone leaves it set for the finally to cancel: a group returns with more live.
 TASK:+USER AIO-PARKED n
 
-CODEGEN:BUFFER DIAG
-
 \ ---- the two system calls ----------------------------------------------------
 \ Linux passes these integer arguments in ordinary registers, and the x86-64
 \ FFI sets al for every foreign call.
@@ -311,14 +308,14 @@ FUNCTION: URING-SETUP-CALL syscall ( n n ^u8 -- n )
 FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 ;FUNCTION
 
-\ One line to stderr before a refused system call throws, so the errno the
-\ kernel gave is not lost behind a named code.
+\ Logs a refused system call's errno before it throws, so the errno the kernel
+\ gave is not lost behind a named code.
 : DIAG-ERRNO ( ^u8 n -- ) {: label:^ labelu:n :}
-   DIAG CODEGEN:RESET
-   label labelu DIAG CODEGEN:APPEND-STRING
-   FFI:ERRNO DIAG CODEGEN:APPEND-DECIMAL
-   2 DIAG CODEGEN:CONTENTS write drop
-   2 NL-BYTE 1 write drop ;
+   FFI:ERRNO {: errno:n :}
+   LOG:ERROR s" aio" LOG:LINE
+   label labelu LOG:TEXT+
+   errno LOG:INT+
+   LOG:;LINE ;
 
 \ ---- little-endian field access ----------------------------------------------
 \ A CQE's res is signed: a negative res is the negated errno.
@@ -578,7 +575,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : ENTER-SUBMIT ( -- n )
    SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
    SQ-PENDING 0= if 0 exit then
-   rc 0 < if s" aio: io_uring_enter errno " DIAG-ERRNO then
+   rc 0 < if s" io_uring_enter errno " DIAG-ERRNO then
    E-AIO-ENTER ;
 
 \ An entry the enter did not take is still in the ring, and this record's entry
@@ -598,7 +595,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    begin
       0 1 ENTER-GETEVENTS ENTER-CALL 0 >= if exit then
       FFI:ERRNO ERR-INTR <> if
-         s" aio: io_uring_enter errno " DIAG-ERRNO
+         s" io_uring_enter errno " DIAG-ERRNO
          E-AIO-ENTER throw
       then
    again ;
@@ -746,15 +743,15 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 : RING-MAPS ( -- )
    SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if
-      drop s" aio: mmap of the submission ring errno " 0 MAP-REFUSED
+      drop s" mmap of the submission ring errno " 0 MAP-REFUSED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR SQ-BASE !
    CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if
-      drop s" aio: mmap of the completion ring errno " 1 MAP-REFUSED
+      drop s" mmap of the completion ring errno " 1 MAP-REFUSED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR CQ-BASE !
    SQES-LEN @ OFF-SQES RING-MAP dup 0 < if
-      drop s" aio: mmap of the submission entries errno " 2 MAP-REFUSED
+      drop s" mmap of the submission entries errno " 2 MAP-REFUSED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR SQE-BASE ! ;
 
@@ -763,7 +760,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    SETUP-CQSIZE PARAMS P-FLAGS + LE:U32!
    AIO-CQ-ENTRIES PARAMS P-CQ-ENTRIES + LE:U32!
    NR-SETUP AIO-ENTRIES PARAMS URING-SETUP-CALL {: fd:n :}
-   fd 0 < if s" aio: io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
+   fd 0 < if s" io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
    fd RING-FD !
    RING-LENGTHS
    RING-MAPS
