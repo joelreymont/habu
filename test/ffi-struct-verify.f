@@ -38,14 +38,19 @@ variable FFI-SV-SRC-U
       deferred OF 2 ENDOF
    ;MATCH ;
 
-\ Check the source SB holds as the tree's test/ffi-sv.f.
-: FFI-SV-CHECK ( -- n )
+\ Check the source SB holds as the tree's test/ffi-sv.f, the records packets
+\ when JSON is true and prose otherwise.
+: FFI-SV-CHECK-AS ( bool -- n )
+   {: json:bool :}
    SB$ {: a:^ u:n :}
    u 1 max FFI-SV-SRC-RESERVE
    a 0 FFI-SV-SRC u BYTE-COPY
    u FFI-SV-SRC-U !
    FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] FFI-SV-MS >MS
-   true LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
+   json LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
+
+: FFI-SV-CHECK ( -- n )
+   true FFI-SV-CHECK-AS ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
 : FFI-SV-RUN ( ^u8 n -- n )
@@ -366,6 +371,26 @@ variable FFI-SV-SRC-U
    FFI-SV-ORDINARY ;
 
 
+\ A declaration is read before its library is checked, so one that cannot be
+\ read and selects none gets the same record from the load and the check.
+: FFI-SV-UNSELECTED-HAS ( ^u8 n -- )
+   {: out:^ outu:n :}
+   out outu s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" CONTAINS? TTRUE
+   out outu s" ffi-sv.f:2:20" CONTAINS? TTRUE
+   out outu s" = help: write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
+   CONTAINS? TTRUE ;
+
+: FFI-SV-UNSELECTED ( -- )
+   s" an unreadable declaration with no library selected" T-LABEL
+   SB-RESET S\" require src/lib/ffi-abi.f\nFUNCTION: FFI-SV ( -- )\n" SB-APPEND
+   false FFI-SV-CHECK-AS 1 T=
+   LSP-CHECK:VERIFY-OUT$ FFI-SV-UNSELECTED-HAS
+   FFI-SV-WRITE
+   s" test/ffi-sv.f" E2E-TREE:ARGS
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+   E2E-TREE:RC@ 70 T=
+   E2E-TREE:ERR$ FFI-SV-UNSELECTED-HAS ;
+
 : FFI-T-STRUCT-VERIFY ( -- )
    FFI-SV-SETUP
    FFI-SV-ACCEPTED
@@ -375,6 +400,7 @@ variable FFI-SV-SRC-U
    FFI-SV-DEFERRED
    FFI-SV-SHADOWED
    FFI-SV-REEXPORTED
-   FFI-SV-EXPORTED ;
+   FFI-SV-EXPORTED
+   FFI-SV-UNSELECTED ;
 
 FFI-T-STRUCT-VERIFY

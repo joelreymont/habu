@@ -1643,8 +1643,11 @@ private
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
 
+\ The record is placed at the declaration's FUNCTION: token, which the
+\ declaration was read past.
 : SCOPE-REJECT ( ^u8 n -- )
    {: m:^ mu:n :}
+   OPENER-A @ OPENER-U @ SRCLOC:TOKEN!
    s" E-FFI-LIBRARY" REJECTION:OPEN  m mu REJECTION:EMIT-STR
    s" select one before it in its own package section, or at top level for a top-level declaration, with LIBRARY, VERSIONED-LIBRARY or PROCESS-SYMBOLS"
    HELP-STOP ;
@@ -1697,9 +1700,12 @@ public
       src EFFECT
       construct decl-state open DECL !  t OPENER-A !  tu OPENER-U ! ;] KEEP-REST ;
 
+\ The declaration is read before its library is checked: one that cannot be
+\ read is a syntax record whatever library it has.
 : OPEN-FUNCTION ( -- )
-   CHECK-SCOPE [: parse-name ;] READ-FUNCTION 2drop
-   OPENER$ s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED ;
+   [: parse-name ;] READ-FUNCTION 2drop
+   OPENER$ s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED
+   CHECK-SCOPE ;
 : CLOSE-FUNCTION ( -- )
    [: CLOSE-STATE if SOURCE-ROOT:CLOSED PLAN-CALL EMIT then ;] KEEP-REST ;
 
