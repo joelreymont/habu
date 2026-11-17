@@ -243,10 +243,8 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 \ when every thread of it shows one of the four.
 \
 \ A stat file or a task directory that will not open is taken to be a process
-\ or thread that ended since it was listed. That is the one reading open
-\ allows here: the engine's open answers a bare -1 with no errno, so a refusal
-\ - /proc mounted with hidepid, say - cannot be told from an absence as it is
-\ on macOS.
+\ or thread that ended since it was listed, a refusal (/proc mounted with
+\ hidepid, say) included.
 
 512 constant STAT-CAP
 64 constant STAT-PATH-CAP           \ /proc/<pid>/task/<tid>/stat, each id at most seven digits
