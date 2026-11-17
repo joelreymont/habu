@@ -2,6 +2,9 @@
 \ bindings; no protocol, sequencing or retry policy. Another OS is E-PLATFORM
 \ before a socket opens. Calls must not nest within one task; close sockets
 \ before image capture: they are process resources.
+\ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
+\ negative one waits with no deadline; any other is the milliseconds the call
+\ may wait in all. AIO:START must have run before the first wait.
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row
 \ (IO-STORAGE); the datagram spans are caller-owned.
 require src/lib/error.f
@@ -237,13 +240,8 @@ public
    socket SOCKET>N SOCKADDR SOCKADDR-BYTES bytes size DATAGRAM:SEND >STATUS ;
 
 
-\ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
-\ writable span. A truncated result carries the ORIGINAL datagram byte length,
-\ while only capacity bytes were copied. Source filtering and reordering are the
-\ caller's. Timeout zero makes one immediate try and never reaches the loop; a
-\ negative one waits on the AIO loop with no deadline; any other is a deadline
-\ from the call that every wait on the AIO loop shares. AIO:START must have run before the
-\ first wait.
+\ A packet may be empty; capacity is 1..65507. `truncated` carries the
+\ datagram's own length, with only capacity bytes copied.
 : RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE

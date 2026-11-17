@@ -8,31 +8,28 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f
 require src/lib/codegen.f
-require src/lib/ffi-abi.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/string-roles.f
+require src/lib/net/udp.f
 
 package SYSTEMD-TEST
 private
 
 $1000 constant IO-CAP
 $40 constant GOT-CAP
-110 constant SOCKADDR-BYTES
-1 constant AF-UNIX
-\ SOCK_DGRAM | SOCK_CLOEXEC
-$80002 constant SOCKET-FLAGS
-$40 constant MSG-DONTWAIT
 2 constant ENOENT
 22 constant EINVAL
+
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 CODEGEN:BUFFER PROG
 create SOCKETS PATH-CAP allot   variable SOCKETS-U
 create BOUND PATH-CAP allot   variable BOUND-U
 create MISSING PATH-CAP allot   variable MISSING-U
 create ABSTRACT PATH-CAP allot   variable ABSTRACT-U
-create ADDR SOCKADDR-BYTES allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 create GOT GOT-CAP allot
@@ -43,13 +40,6 @@ variable ABSTRACT-FD
 : BOUND$ ( -- ^u8 n ) BOUND BOUND-U @ ;
 : MISSING$ ( -- ^u8 n ) MISSING MISSING-U @ ;
 : ABSTRACT$ ( -- ^u8 n ) ABSTRACT ABSTRACT-U @ ;
-
-PROCESS-SYMBOLS
-
-FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: RECV-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 
 : P+ ( ^u8 n -- )
    PROG CODEGEN:APPEND-STRING
@@ -66,22 +56,13 @@ FUNCTION: RECV-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
    s"    ;MATCH FMT:INT$ type cr ;" P+
    s" GO" P+ ;
 
-\ The address NOTIFY_SOCKET's value names; answers its length.
-: ADDRESS! ( ^u8 n -- n )
-   {: name:^ size:n :}
-   SOCKADDR-BYTES 0 do 0 ADDR i + c! loop
-   AF-UNIX ADDR c!
-   name ADDR 2 + size BYTE-COPY
-   name c@ $40 = if 0 ADDR 2 + c! size 2 + exit then
-   size 3 + ;
-
 : BIND-AT ( ^u8 n -- n )
-   {: name:^ size:n :}
-   AF-UNIX SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
-   fd 0 < if s" systemd-test: socket failed" T-EX-FAIL die then
-   fd ADDR name size ADDRESS! BIND-CALL 0 < if
-      s" systemd-test: bind failed" T-EX-FAIL die
-   then fd ;
+   UDP:BIND MATCH UDP:open-result
+      opened OF UDP:SOCKET>N ENDOF
+      failed OF
+         drop s" systemd-test: bind failed" T-EX-FAIL die
+      ENDOF
+   ;MATCH ;
 
 : NAMED ( ^u8 n ^u8 -- n )
    {: prefix:^ prefixu:n dst:^ :}
@@ -137,9 +118,13 @@ FUNCTION: RECV-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 
 \ A unix datagram is queued before sendto returns, so nothing waits.
 : RECEIVED$ ( n -- ^u8 n )
-   {: fd:n :}
-   fd GOT GOT-CAP MSG-DONTWAIT RECV-CALL {: got:n :}
-   GOT got 0 max ;
+   UDP:>SOCKET GOT GOT-CAP STR:LENGTH 0 >MS UDP:RECEIVE
+   MATCH UDP:receive-result
+      packet OF BLEN>N ENDOF
+      truncated OF BLEN>N ENDOF
+      timeout OF 0 ENDOF
+      failed OF drop 0 ENDOF
+   ;MATCH GOT swap ;
 
 : PATH-CASE ( -- )
    s" a bound path socket: the child answers ok" T-LABEL
@@ -170,8 +155,8 @@ FUNCTION: RECV-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
    MISSING$ ENOENT ANSWERS ;
 
 : TEARDOWN ( -- )
-   BOUND-FD @ CLOSE-CALL drop
-   ABSTRACT-FD @ CLOSE-CALL drop
+   BOUND-FD @ UDP:>SOCKET UDP:CLOSE drop
+   ABSTRACT-FD @ UDP:>SOCKET UDP:CLOSE drop
    BOUND$ FS:REMOVE-FILE
    FS:CLEANUP-RUN ;
 

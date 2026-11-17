@@ -1,7 +1,9 @@
-\ datagram.f - datagram sockets of any address family, on Linux and macOS
-\ (src/lib/ffi-abi.f admits no other), through exact libc bindings. A socket
-\ is blocking and close-on-exec; a receive try never blocks, and RECEIVE waits
-\ between tries on the AIO loop.
+\ datagram.f - datagram sockets of any address family, on Linux and macOS,
+\ through exact libc bindings. A socket is blocking and close-on-exec; a
+\ receive try never blocks, and RECEIVE waits between tries on the AIO loop.
+\ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
+\ negative one waits with no deadline; any other is the milliseconds the call
+\ may wait in all. AIO:START must have run before the first wait.
 \ STORAGE CLASS. TASK-LOCAL on macOS: one 8-byte TASK:+USERS row holds
 \ getsockopt's answer; none on Linux. The data and address buffers are
 \ caller-owned.
@@ -101,9 +103,8 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    4 OPTION-LEN LE:U32!
    fd $FFFF $1002 OPTION-VALUE OPTION-LEN OPTION-CALL ;
 
-\ BSD recvfrom does not report the original size after truncation. Read the
-\ whole datagram, then copy the prefix promised to the caller. $80 is
-\ MSG_DONTWAIT.
+\ BSD recvfrom answers only the bytes copied: read the whole datagram, then
+\ copy the caller's prefix. $80 is MSG_DONTWAIT.
 : TRY ( n ^u8 NUM:byte-len ^u8 ^u8 -- n errno )
    {: fd:n bytes capacity:NUM:byte-len from from-len :}
    OPTION-VALUE LE:U32@ {: size:n :}
@@ -140,10 +141,8 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    dup 0 < if drop 0 then >MS ;
 
 
-\ The wait between two tries: one poll on the AIO loop for the time RECEIVE
-\ has left. `cancelled` cannot arrive - nothing here cancels, the ticket never
-\ leaves this word, and the cleanup AIO registers on a submitting task runs
-\ only after that task has ended - so it is a broken foreign result.
+\ One poll on the AIO loop. `cancelled` cannot arrive: nothing here cancels
+\ and the ticket never leaves this word.
 : WAIT-READABLE ( n ms -- AIO:outcome ) {: fd:n left:ms :}
    fd >FD AIO:READABLE left AIO:POLL AIO:AWAIT ;
 
@@ -191,13 +190,8 @@ public
    else DATAGRAM-STATUS:OK then ;
 
 
-\ Receives one datagram into the first capacity bytes of the span; `truncated`
-\ carries the datagram's own length. The sender's sockaddr goes to from, its
-\ length to the cell from-len, which the caller sets to from's size; NULL-PTR
-\ for both wants no sender. Timeout zero makes one immediate try and never
-\ reaches the loop; a negative timeout waits on the AIO loop with no deadline;
-\ any other is the milliseconds the call may wait in all. AIO:START must have
-\ run before the first wait.
+\ `truncated` carries the datagram's own length. The cell from-len enters as
+\ from's size; NULL-PTR for from and from-len wants no sender.
 : RECEIVE ( n ^u8 NUM:byte-len ms ^u8 ^u8 -- receive-result )
    {: fd:n bytes capacity:NUM:byte-len timeout:ms from from-len :}
    fd PREPARE 0 < if LAST-ERROR DATAGRAM-RECEIVE--RESULT:FAILED exit then

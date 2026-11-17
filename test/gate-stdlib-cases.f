@@ -1131,6 +1131,11 @@ SUITE udp4
    src/lib/net/udp4-test.f
 ;SUITE
 
+\ Unix datagrams: sockets at paths and, on Linux, abstract names.
+SUITE udp
+   src/lib/net/udp-test.f
+;SUITE
+
 \ The RFC 6455 frame codec: bytes in and bytes out, no socket.
 SUITE websocket-frame
    src/lib/net/ws-frame-test.f

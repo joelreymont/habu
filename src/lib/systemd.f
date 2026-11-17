@@ -2,13 +2,12 @@
 \ sd_notify(3) protocol: the datagram READY=1 to the unix datagram socket
 \ NOTIFY_SOCKET names, a leading @ naming an abstract socket. With the variable
 \ unset or empty, or off Linux, nothing is sent; no other message is spoken.
-\ STORAGE CLASS. TASK-LOCAL: the socket address is one TASK:+USERS row.
+\ STORAGE CLASS. None of its own.
 require src/lib/error.f
-require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
-require src/lib/task.f
-require src/lib/le.f
+require src/lib/string-roles.f
 require src/os/env-base.f
+require src/lib/net/udp.f
 
 package SYSTEMD
 public
@@ -22,27 +21,9 @@ SUMTYPE status
 
 private
 
-\ Linux sockaddr_un: a u16 sun_family, then sun_path.
-110 constant SOCKADDR-BYTES
+\ Linux's sun_path.
 108 constant PATH-BYTES
-1 constant AF-UNIX
-\ SOCK_DGRAM | SOCK_CLOEXEC
-$80002 constant SOCKET-FLAGS
-$4000 constant MSG-NOSIGNAL
 22 constant EINVAL
-
-SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
-: SOCKADDR ( -- ^u8 ) 0 ADDRESS-ROW ;
-: SUN-PATH ( -- ^u8 ) SOCKADDR 2 + ;
-
-PROCESS-SYMBOLS
-
-FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
-
-: LAST-ERROR ( -- errno )
-   FFI:ERRNO >ERRNO ;
 
 : INVALID ( -- status )
    EINVAL >ERRNO SYSTEMD-STATUS:FAILED ;
@@ -54,27 +35,24 @@ FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
    size 2 <  size PATH-BYTES >=  or if false exit then
    name c@ $2F =  name c@ $40 =  or ;
 
-\ Answers the address length. A path ends in a NUL, which the length counts;
-\ an abstract name's @ becomes the NUL that marks it.
-: ADDRESS! ( ^u8 n -- n )
+: >STATUS ( UDP:status -- status )
+   MATCH UDP:status
+      ok OF SYSTEMD-STATUS:OK ENDOF
+      failed OF UDP:ERRNO>N >ERRNO SYSTEMD-STATUS:FAILED ENDOF
+   ;MATCH ;
+
+\ The notice went or did not: a failed close changes neither.
+: SENT ( UDP:socket ^u8 n -- status )
+   {: socket:UDP:socket name:^ size:n :}
+   socket name size s" READY=1" STR:LENGTH UDP:SEND >STATUS
+   socket UDP:CLOSE drop ;
+
+: NOTIFY ( ^u8 n -- status )
    {: name:^ size:n :}
-   AF-UNIX SOCKADDR LE:U16!
-   name SUN-PATH size BYTE-COPY
-   name c@ $40 = if 0 SUN-PATH c! size 2 + exit then
-   0 SUN-PATH size + c! size 3 + ;
-
-\ Reads errno before the caller's close can change it.
-: SEND ( n n -- status )
-   {: fd:n size:n :}
-   fd s" READY=1" MSG-NOSIGNAL SOCKADDR size SEND-CALL
-   0 < if LAST-ERROR SYSTEMD-STATUS:FAILED exit then
-   SYSTEMD-STATUS:OK ;
-
-: NOTIFY ( n -- status )
-   {: size:n :}
-   AF-UNIX SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
-   fd 0 < if LAST-ERROR SYSTEMD-STATUS:FAILED exit then
-   fd size SEND fd CLOSE-CALL drop ;
+   UDP:OPEN MATCH UDP:open-result
+      opened OF name size SENT ENDOF
+      failed OF UDP:ERRNO>N >ERRNO SYSTEMD-STATUS:FAILED ENDOF
+   ;MATCH ;
 
 public
 
@@ -84,6 +62,6 @@ public
    s" NOTIFY_SOCKET" GETENV {: name:^ size:n :}
    size 0= if SYSTEMD-STATUS:OK exit then
    name size NAME? 0= if INVALID exit then
-   name size ADDRESS! NOTIFY ;
+   name size NOTIFY ;
 
 ;package
