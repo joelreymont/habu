@@ -2175,7 +2175,6 @@ private
       9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
       9 13 EVAL-FRAME:PKG-OUTSIDE LDR,  9 DATA PKG-OUTSIDE-CELL STR,   \ and whether the includer opened it
       9 13 EVAL-FRAME:SECTION LDR,  9 DATA SECTION-CELL STR,   \ and the section in force when it began
-      13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,

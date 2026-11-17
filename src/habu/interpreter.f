@@ -1141,15 +1141,13 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    s"  before opening another" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ The using depth the buffer may close down to: its entry depth, lowered to the
-\ first using it opens after a `;package` closes a package opened before it.
+\ The using depth the buffer may close down to: its entry depth.
 variable USE-FLOOR
 
 : PKG-USING ( -- )
    PKG-USED-WID {: wid:n :}
    USE-DEPTH-CELL CELL@ {: d:n :}
    d USE-MAX >= if USING-OVERFLOW then
-   d USE-FLOOR @ < if d USE-FLOOR ! then
    wid  d cells USE-WIDS-OFF +  CELL!
    PKG-NOTIFY-USING
    d 1+ USE-DEPTH-CELL CELL! ;
@@ -2930,7 +2928,7 @@ private
 
 \ A `package` in the buffer leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
 : CLEAN-END ( n -- ) {: outside:n :}
-   USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
+   USE-FLOOR @ {: back:n :}
    back USE-DEPTH-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
@@ -3003,9 +3001,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    USE-PKG-SAVE-CELL CELL@ snap PKGSNAP:FLOOR FR!
    PKG-OUTSIDE-CELL CELL@ f EVAL-FRAME:PKG-OUTSIDE FR!
    SECTION-CELL CELL@ f EVAL-FRAME:SECTION FR!
-   USE-MAX 0 ?do
-      i cells USE-WIDS-OFF + CELL@  f EVAL-FRAME:USE-WIDS i cells + FR!
-   loop
    ROWS-MARK f EVAL-FRAME:ROWS FR!
    f FRAME-CELLS ROLLBACK-CELLS:SAVE
    f ;
@@ -3068,10 +3063,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ PKG-OUTSIDE-CELL CELL!
    f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
-   USE-MAX 0 ?do
-      f EVAL-FRAME:USE-WIDS i cells + FR@
-      i cells USE-WIDS-OFF + CELL!
-   loop
    f EVAL-FRAME:ENCLOSING ENCLOSING:REC ENCLOSING:PUB - + FR@
    f EVAL-FRAME:ENCLOSING ENCLOSING:PARENT ENCLOSING:PUB - + FR@
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
@@ -3113,6 +3104,12 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ stack, pending definition, package and usings remain for the next line.
 create REPL-QNL 63 c, 10 c,
 variable REPL-OK
+\ The used publics as a line began, which a failed line puts back: lines share
+\ one source, so a line may close an earlier line's using and fill its slot.
+USE-MAX TYPED-BUFFER REPL-WIDS n
+
+: REPL-WIDS-BACK ( -- )
+   USE-MAX 0 ?do  i REPL-WIDS @  i cells USE-WIDS-OFF +  CELL!  loop ;
 
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
@@ -3124,6 +3121,7 @@ variable REPL-OK
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
    f EVAL-TKA FR@ TKA-CELL CELL!
    f EVAL-TKL FR@ TKL-CELL CELL!
+   REPL-WIDS-BACK
    f FRAME-RESTORE-SCOPE
    prior USE-FLOOR !
    found REC ! ;
@@ -3174,6 +3172,7 @@ variable OPENER-U
    \ line, yet a failed line abandons it through this savepoint's full rollback.
    0 f EVAL-FRAME:PEND FR!
    USE-FLOOR @ {: prior:n :}
+   USE-MAX 0 ?do  i cells USE-WIDS-OFF + CELL@  i REPL-WIDS !  loop
    REC @ {: found:^ :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
@@ -3193,6 +3192,8 @@ variable OPENER-U
          f FRAME-CELLS-RESTORE
       endof
       FRAME-UNWOUND of
+         \ The checker last read the using slots before they came back.
+         REPL-WIDS-BACK  NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY
          prior USE-FLOOR !  found REC !
          f FRAME-CELLS-RESTORE
       endof
@@ -3216,9 +3217,6 @@ variable OPENER-U
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
-
-public
-
 \ Each line calls REPL-READ anew: genio may replace its reader. A definition
 \ may span lines; EOF refuses one still open.
 : REPL ( -- )
@@ -3231,6 +3229,8 @@ public
       a 0= if REPL-END exit then
       a u REPL-LINE REPL-OK !
    again ;
+
+public
 
 \ The input base stays the buffer's first byte, so lines count from it. A range
 \ starting past it continues a run of the buffer and keeps its PKG-OUTSIDE-CELL.

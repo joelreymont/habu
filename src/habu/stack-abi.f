@@ -55,9 +55,8 @@ $58 constant CATCH-ACTIVE
 $60 constant CATCH-BYTES
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-\ $90..$170 are layout.f's: its frame map says which offset holds what.
-\ A multiple of 16, for the machine stack.
-$170 constant EVAL-BYTES
+\ From $90 up to EVAL-BYTES the frame is layout.f's: its frame map says which offset holds what.
+$F0 constant EVAL-BYTES
 
 \ THE MACHINE STACK IS THE OS THREAD'S OWN, so its guard is the kernel's and its
 \ overflow faults with sp at or in that guard, where the kernel cannot build a

@@ -1489,10 +1489,6 @@ private
 package ENGINE-EMIT
 public
 
-: USE-WIDS-RESTORE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
-   band USE-WIDS-OFF LIT64,  band DATA band ADD,
-   USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
-
 : ENCLOSING-RESTORE, ( n n n -- ) {: base:n off:n tmp:n :}
    ENCLOSING:END ENCLOSING:PUB - 0 do
       tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,

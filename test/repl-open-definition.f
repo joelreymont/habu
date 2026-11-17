@@ -144,7 +144,8 @@ using PTY-HARNESS
    s" neg" IN-BUF? TTRUE
    s" neg" s" habu> " AFTER? TFALSE ;
 
-\ A using opened on one line remains active after an unrelated rejected line.
+\ A using opened on one line remains active after an unrelated rejected line; a
+\ rejected line that closed it and filled its slot with another puts both back.
 : USING-CASE ( -- )
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR TTRUE
@@ -162,6 +163,16 @@ using PTY-HARNESS
    s" 0" IN-BUF? TTRUE
    s" 22 TWICE ." STEP TTRUE
    s" 44" IN-BUF? TTRUE
+   s" ;using" STEP TTRUE
+   s" package RA public : AW ( -- n ) 11 ; ;package" STEP TTRUE
+   s" package RB public : AW ( n -- n ) 22 + ; : BW ( -- n ) 33 ; ;package" STEP TTRUE
+   s" using RA" STEP TTRUE
+   s" ;using using RB NO-SUCH-WORDX" STEP TFALSE
+   s" `NO-SUCH-WORDX`" IN-BUF? TTRUE
+   s" AW . cr" STEP TTRUE
+   s" 11" IN-BUF? TTRUE
+   s" BW . cr" STEP TFALSE
+   s" error[E-UNDEFINED]" s" `BW`" AFTER? TTRUE
    s" ;using" STEP TTRUE
    4 SEND-BYTE
    0 EXIT= ;

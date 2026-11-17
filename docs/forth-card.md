@@ -576,8 +576,8 @@ holds an address**.
   main thread defines and allots`` with the note `in`; `evaluate`,
   `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and `allot` reach it
   first, so a definition or keyword in a text is rejected before the text is
-  read. Calling `INTERPRETER:EVAL-FRAMED`, `INTERPRETER:EVAL-FRAMED-RANGE` or
-  `INTERPRETER:REPL` on a task's thread is rejected as `E-TASK-COMPILE` too.
+  read. Calling `INTERPRETER:EVAL-FRAMED` or `INTERPRETER:EVAL-FRAMED-RANGE`
+  on a task's thread is rejected as `E-TASK-COMPILE` too.
   The main thread compiles while tasks run; `cp!` and `ndict!` exit 79 on it
   too while any task is live (``error[E-TASK-COMPILE]: `cp!` ran while a task
   is live``).

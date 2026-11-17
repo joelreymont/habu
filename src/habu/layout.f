@@ -235,11 +235,10 @@ $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. EVAL-PREV links
 \ each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
-STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
+STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE    \ its one free cell is $E8
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
-\ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores. The frame
-\ ends at STACK-ABI:EVAL-BYTES ($170), a multiple of 16; $128 is held for WIDN.
+\ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores.
 $90 constant EVAL-INB
 \ EVAL-INP, EVAL-INE: the outer input's read position and end, which the evaluate
 \ puts back as it ends.
@@ -248,30 +247,26 @@ $90 constant EVAL-INB
 \ EVAL-TKA, EVAL-TKL: the outer input's last token (TKA-CELL, TKL-CELL), which
 \ the evaluate puts back as it ends, so the token never names a buffer released
 \ after it.
-$130 constant EVAL-TKA
-$168 constant EVAL-TKL
+$A8 constant EVAL-TKA
+$E0 constant EVAL-TKL
 package EVAL-FRAME
 public
-\ USE-WIDS: the includer's USE-MAX used-public wids, which a throw puts back
-\ with the depth and the floor. A buffer that closes its includer's package and
-\ then opens a using writes that using into a slot the includer keeps.
-$A0 constant USE-WIDS
 \ PEND: PEND-CELL as the buffer began. A definition the buffer opened must
 \ close in it, so its end refuses one still open; one already open here belongs
 \ to an outer buffer, whose immediate word's evaluate compiles into it, and a
 \ throw that unwinds this buffer leaves it compiling.
-$120 constant PEND
+$A0 constant PEND
 \ ROWS: the checker's record end as the buffer began, plus one, read through
 \ the source owner; 0 when no owner records. A throw that unwinds a buffer
 \ owning the compile cuts the records back to it as it rolls the dictionary
 \ back, so no definition the rollback drops keeps a record or a pending window.
-$138 constant ROWS
+$B0 constant ROWS
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
-$140 constant ENCLOSING
+$B8 constant ENCLOSING
 \ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
 \ A clean exit does too unless a `package` ran; one left open is the includer's.
-$160 constant PKG-OUTSIDE
+$D8 constant PKG-OUTSIDE
 \ SECTION: SECTION-CELL as the buffer began, which its end puts back.
 $98 constant SECTION
 ;package
@@ -1115,9 +1110,8 @@ PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF \ in-slot: sig bytes
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
 
-\ Fields of each evaluate frame. Clean exit restores the using depth to the
-\ buffer's floor; throw recovery restores the entry depth
-\ (PKGSNAP-USE), the used-public wids and the package scope.
+\ Fields of each evaluate frame: the package scope and using depth (PKGSNAP-USE)
+\ as its text began, which a throw puts back.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
@@ -1126,9 +1120,8 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 40 constant PKGSNAP-USE
 package PKGSNAP
 public
-\ FLOOR saves the open package's using floor (USE-PKG-SAVE-CELL): a buffer that
-\ closes the package, opens another and throws has set that cell to the other
-\ package's floor.
+\ FLOOR saves the open package's using floor (USE-PKG-SAVE-CELL): a REPL line may
+\ close an earlier line's package and open another, which rewrites it.
 48 constant FLOOR
 ;package
 

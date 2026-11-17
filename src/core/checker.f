@@ -1775,11 +1775,8 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ The using depth the replayed source may close down to, as the engine's
-\ evaluate frame keeps it for a buffer:
-\ the verifier window seeds it with the depth the source starts at, and the
-\ source's first `using` below it, after a `;package` closed the inherited
-\ package, lowers it to meet that using (CHECKER-OVERLAY:OPEN-USING).
+\ The using depth the replayed source may close down to: the depth it starts at,
+\ as for an engine buffer.
 ;package
 package CHECKER-USE
 variable SOURCE-FLOOR
@@ -13164,8 +13161,7 @@ EXPORT CHECK:CK-USE-NAMES
 EXPORT CHECK:CK-USE-SCAN-N
 EXPORT CHECK:USE-SLOT-XT
 EXPORT CHECKER-USE:NAME!
-\ A throw's recovery restores the engine's wids, not the names here, so each
-\ slot's name is read back from its wid.
+\ The engine's wid is each slot's truth, so the slot's name is read back from it.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:^ u:n ok:bool :}
    ok IF a u d NAME! EXIT THEN
@@ -13624,6 +13620,8 @@ variable HIDDEN-N
 7 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
 8 constant S-ENCLOSING-PARENT
 9 constant S-OUTSIDE
+\ A neutral scope starts at depth 0, so its replay writes slots below the
+\ depth this row puts back.
 10 constant S-WIDS                         \ the used publics, USE-MAX cells
 S-WIDS USE-MAX + constant ROW-CELLS
 \ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
@@ -13932,7 +13930,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 : SAVE-SCOPE ( ^u8 -- ) SNAP-SAVE  1 PKG-OUTSIDE-CELL DATA! ;
 : RESTORE-SCOPE ( ^u8 -- ) SNAP-RESTORE MIRROR ;
 : FILE-DONE ( ^u8 -- ) {: p:^ :}
-   USE-DEPTH-CELL DATA@ SOURCE-FLOOR @ min {: d:n :}
+   SOURCE-FLOOR @ {: d:n :}
    d USE-DEPTH-CELL DATA!
    USE-PKG-SAVE-CELL DATA@ d min USE-PKG-SAVE-CELL DATA!
    p S-SOURCE ROW@ SOURCE-FLOOR !
@@ -14050,7 +14048,6 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    a u HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a u RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
    USE-DEPTH-CELL DATA@ {: d:n :}
-   d SOURCE-FLOOR @ < IF d SOURCE-FLOOR ! THEN
    rec @ d cells USE-WIDS-OFF + DATA!
    d 1 + USE-DEPTH-CELL DATA! ;
 

@@ -19,6 +19,8 @@ package COMMAND-LINE
 
 private
 
+EXPORT INTERPRETER:REPL
+
 64 constant RC-USAGE             \ an unknown flag or no file (USAGE, NO-FILES)
 74 constant RC-SOURCE            \ the source cannot be had
 $2D constant DASH
@@ -198,19 +200,19 @@ CAST: APP-ACTION ( n -- [ -- ] )
 : ROUTED ( -- )
    APP? if
       [: APP-RUN ;] ERROR:TOP-LEVEL
-      TTY? if INTERPRETER:REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then
+      TTY? if REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then
       exit
    then
    ARGC 1 > if [: ARGV-BASE ARGC RUN ;] ERROR:TOP-LEVEL exit then
-   TTY? if INTERPRETER:REPL exit then
+   TTY? if REPL exit then
    [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL ;
-
-public
 
 \ Normal completion follows die's deliberate exit path, which runs the hook.
 : MAIN ( -- )
    ROUTED
    NULL$ 0 die ;
+
+public
 
 \ Install MAIN as the entry the engine boot calls.
 : INSTALL ( -- )

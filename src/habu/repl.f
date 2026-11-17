@@ -1,6 +1,6 @@
-\ repl.f - the terminal line reader for INTERPRETER:REPL
+\ repl.f - the terminal line reader for the REPL
 \ (src/habu/interpreter.f). INSTALL makes RD-LINE the default REPL-READ defer;
-\ genio may replace the defer, so INTERPRETER:REPL calls it again before each
+\ genio may replace the defer, so the REPL calls it again before each
 \ line. The session owns prompts, pending definitions and recovery; this file
 \ owns editing, with the tty raw per line and canonical while the line executes.
 \ A line longer than LLINE-MAX is refused by name and read again, never
