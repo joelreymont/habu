@@ -208,8 +208,6 @@ TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
 FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
-1 TYPED-BUFFER PIN-TICKET AIO:ticket \ a poll on HTTP's listener
-variable PINNED                   \ whether PIN-TICKET holds a poll in flight
 variable FILL-N                   \ the polls in flight
 variable FILL-CODE                \ what AIO refused the poll past them with
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
@@ -1674,12 +1672,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    1 FILL-N +! ;
 
 \ Polls that never fire, each on its own pipe, until AIO refuses one at its
-\ ceiling: Darwin's poll bound, or Linux's records. The first is on HTTP's
-\ listener, which keeps that descriptor counted while the listener's own poll
-\ times out and is made again, so only WS's task meets the bound.
+\ ceiling: Darwin's poll bound, or Linux's records. HTTP's listener's accept
+\ poll stands throughout, so its descriptor stays counted.
 : FILL ( -- )
-   WS-TEST:LISTEN-FD AIO:READABLE -1 >MS AIO:POLL 0 PIN-TICKET !
-   true PINNED !
    begin
       FILL-CODE @ 0= FILL-N @ FILL-CAP < and
    while
@@ -1707,12 +1702,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       i FILL-R @ close-rc drop
       i FILL-W @ close-rc drop
    loop
-   0 FILL-N !
-   PINNED @ 0= if exit then
-   0 PIN-TICKET @ {: t:AIO:ticket :}
-   t AIO:CANCEL
-   t AIO:AWAIT OUTCOME-GONE
-   false PINNED ! ;
+   0 FILL-N ! ;
 
 \ The line WS logs after its stamp when its task ends on this code.
 : TASK-LINE ( n -- )
@@ -1751,7 +1741,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 ERR-WANT-U !
    0 FILL-N !
    0 FILL-CODE !
-   false PINNED !
    2 WS:START
    ERR-PATH$ STDERR:CAPTURE
    [: FAULTING ;] [: UNFILL STDERR:;CAPTURE ;] finally

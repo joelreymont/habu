@@ -45,6 +45,7 @@ package HTTP
    ACCEPTED-COUNT atomic@ ;
 : HTTP-TEST:QUEUED ( -- n ) JOB-SLOTS 1+ ;
 : HTTP-TEST:STOP-MARGIN-MS ( -- n ) STOP-MARGIN-MS ;
+: HTTP-TEST:ACCEPT-WAIT-MS ( -- n ) ACCEPT-WAIT-MS ;
 \ Whether the first worker's slot holds a connection: the one-worker server
 \ sets it just before READ-REQUEST starts that connection's deadline.
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
@@ -88,6 +89,7 @@ $2E constant DOT-BYTE
 -9992 constant E-RENDER
 -9993 constant E-HOOK-OTHER
 -9994 constant E-EXIT-HOOK
+-9995 constant E-FILL-PIPE
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -3018,6 +3020,122 @@ $32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
    HTTP:KILLED-TASKS 0 T= ;
 
 
+$2800 constant FILL-CAP           \ Darwin's poll bound (OPEN_MAX), past Linux's AIO-RECS-MAX records: the most polls that fill AIO
+FILL-CAP 2 * $40 + constant FDS-WANT \ both ends of each fill pipe, the server's and the case's own
+$1388 constant SERVED-MS          \ a dial's deadline: far past the listener's pause
+
+FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
+FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
+FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
+variable FILL-N                   \ the polls in flight
+variable FILL-CODE                \ what AIO refused the poll past them with
+
+\ The soft descriptor limit raised to FDS-WANT when it is lower: a login
+\ shell's soft limit (launchd's 256 on macOS) is under what the fill holds open.
+\ Linux's RLIM_INFINITY reads as -1 here, and is left as it is.
+PROCESS-SYMBOLS
+FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
+
+create FD-LIMIT 16 allot
+
+: NOFILE ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
+
+: RAISE-FDS ( -- )
+   NOFILE FD-LIMIT GET-LIMIT 0 T=
+   FD-LIMIT @ {: soft:n :}
+   soft 0< soft FDS-WANT >= or if exit then
+   FDS-WANT FD-LIMIT !
+   NOFILE FD-LIMIT SET-LIMIT 0 T= ;
+
+
+: FILL-ONE ( -- )
+   FILL-N @ {: idx:n :}
+   idx FILL-R @ >FD AIO:READABLE -1 >MS AIO:POLL idx FILL-TICKET !
+   1 FILL-N +! ;
+
+
+\ Polls that never fire, each on its own pipe, until AIO refuses one at its
+\ ceiling: Darwin's poll bound, or Linux's records.
+: FILL ( -- )
+   0 FILL-N !
+   0 FILL-CODE !
+   begin
+      FILL-CODE @ 0= FILL-N @ FILL-CAP < and
+   while
+      pipe {: r:n w:n rc:n :}
+      rc 0 <> if E-FILL-PIPE throw then
+      r FILL-N @ FILL-R !
+      w FILL-N @ FILL-W !
+      [: FILL-ONE ;] catch FILL-CODE !
+      FILL-CODE @ 0 <> if r close-rc drop w close-rc drop then
+   repeat ;
+
+
+: OUTCOME-GONE ( AIO:outcome -- )
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
+
+
+: UNFILL ( -- )
+   FILL-N @ 0 ?do
+      i FILL-TICKET @ {: t:AIO:ticket :}
+      t AIO:CANCEL
+      t AIO:AWAIT OUTCOME-GONE
+      i FILL-R @ close-rc drop
+      i FILL-W @ close-rc drop
+   loop
+   0 FILL-N ! ;
+
+
+: CEILING ( -- n )
+   HB-TARGET-MACOS? if E-AIO-POLL-BOUND else E-AIO-FULL then ;
+
+
+\ A ping on a new connection, answered within SERVED-MS.
+: SERVED? ( -- bool )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   conn SERVED-MS >MS TCP4:READABLE-WITHIN?
+   MATCH TCP4:ready-result
+      ready OF conn RAW-DRAIN s" HTTP/1.1 200 OK" BEGINS? ENDOF
+      idle OF false ENDOF
+      failed OF drop false ENDOF
+   ;MATCH
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+\ AIO full for three of the listener's pauses, and a peer dialed while it is
+\ full, whose accept leaves the listener's next poll to that ceiling: once the
+\ fill is gone, a ping is served.
+: CEILING-CASE ( -- )
+   RAISE-FDS
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   FILL
+   s" AIO refuses the poll past its ceiling" T-LABEL
+   FILL-CODE @ CEILING T=
+   HTTP-TEST:ACCEPT-WAIT-MS 3 * >MS TASK:SLEEP
+   UNFILL
+   s" the listener outlives AIO held at its ceiling" T-LABEL
+   SERVED? TTRUE
+   HTTP-TEST:TAKEN {: before:n :}
+   FILL
+   FILL-CODE @ CEILING T=
+   RAW-OPEN {: held:TCP4:connection :}
+   held s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   before 1+ TAKEN-AWAIT
+   UNFILL
+   s" the listener outlives a peer accepted at the ceiling" T-LABEL
+   SERVED? TTRUE
+   held TCP4:CLOSE DROP-TCP-STATUS
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T= ;
+
+
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
@@ -3083,6 +3201,7 @@ $32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
    PARKED-WORKER-CASE
    IDLE-STOP-CASE
    IDLE-CALL-CASE
+   CEILING-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE

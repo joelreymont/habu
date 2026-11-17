@@ -31,7 +31,7 @@ $40 constant PARK-SLOTS           \ kept-alive connections parked at once
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
 $100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
-$C8 constant ACCEPT-WAIT-MS       \ how long the listener waits before reading the stop flag
+$C8 constant ACCEPT-WAIT-MS       \ the listener's pause when starved, and how often a waiting worker reads the stop flag
 $C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
@@ -82,7 +82,8 @@ PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket
 TASK:FACILITY PARK-LOCK
 variable PARK-OPEN                \ set while the listener takes rows; under PARK-LOCK
 
-\ What a worker wakes once it has handed a row, which the listener polls.
+\ What a worker wakes once it has handed a row, and STOP once it has raised the
+\ flag; the listener polls it.
 TYPED-VARIABLE WAKER AIO:waker
 variable PIPED                    \ set while the waker is open
 
@@ -761,18 +762,18 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ Nothing cancels the pause, so it ends timed out.
+\ A sleep, not an AIO timer: the pause also waits out an AIO that refuses
+\ records.
 : ACCEPT-PAUSE ( -- )
-   ACCEPT-WAIT-MS >MS AIO:TIMEOUT SETTLE ;
+   ACCEPT-WAIT-MS >MS TASK:SLEEP ;
 
 
 \ A failed accept stops the server only when the listener itself is broken. A
 \ pending connection that failed before accept took it (`aborted`) costs nothing:
 \ the listener polls again at once. Running out of descriptors or memory
 \ (`starved`) leaves the connection queued on Linux and drops it on macOS; the
-\ listener says so on stderr and parks ACCEPT-WAIT-MS, the same bound as its
-\ poll, so it neither spins nor delays a stop, and accepts again once something
-\ has been freed.
+\ listener says so on stderr and pauses, so it does not spin, and accepts again
+\ once something has been freed.
 : ACCEPT-FAILED ( TCP4:errno -- ) {: cause:TCP4:errno :}
    cause TCP4:>ACCEPT-FAULT
    MATCH TCP4:accept-fault
@@ -790,10 +791,10 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ Polled for ACCEPT-WAIT-MS at most, so the listener reads the stop flag at
-\ least that often and needs nobody to connect to it to be let go.
+\ The poll stands until a connection is pending: a stop reaches the listener
+\ through its wake poll.
 : ARM-ACCEPT ( -- )
-   LISTENER@ TCP4:LISTENER-FD AIO:READABLE ACCEPT-WAIT-MS >MS AIO:POLL
+   LISTENER@ TCP4:LISTENER-FD AIO:READABLE -1 >MS AIO:POLL
    {: t:AIO:ticket :}
    t ACCEPT-TAG LISTENING AIO:GROUP+
    t ACCEPT-TICKET !
@@ -805,6 +806,22 @@ variable EXIT-HOOK-N
    t WAKE-TAG LISTENING AIO:GROUP+
    t WAKE-TICKET !
    1 WAKE-ARMED ! ;
+
+
+\ One of the listener's own polls armed. One AIO refuses at its ceiling
+\ (E-AIO-FULL at Linux's records, E-AIO-POLL-BOUND on Darwin) is a warning: the
+\ listener pauses and tries again until it is armed or a stop is raised.
+: ARM-PATIENTLY ( [ -- ] -- ) {: arm :}
+   begin
+      STOPPING? if exit then
+      arm catch {: code:n :}
+      code 0= if exit then
+      code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
+      LOG:WARN s" http" LOG:LINE
+      s" poll refused, throw " LOG:TEXT+  code LOG:INT+
+      LOG:;LINE
+      ACCEPT-PAUSE
+   again ;
 
 
 : HANDED? ( n -- bool )
@@ -856,7 +873,7 @@ variable EXIT-HOOK-N
    WAKER AIO:WOKE
    PARK-LOCK TASK:GET
    [: ARM-HANDED ;] [: PARK-UNLOCK ;] finally
-   ARM-WAKE ;
+   ['] ARM-WAKE ARM-PATIENTLY ;
 
 
 \ The row vacated, its connection read out first: a worker may take the row
@@ -877,7 +894,8 @@ variable EXIT-HOOK-N
 
 
 \ A pending connection is accepted, and a poll that failed stops the server,
-\ as a broken listener does. Only UNWAIT cancels, and it awaits its own.
+\ as a broken listener does. The poll has no deadline, and only UNWAIT
+\ cancels, which awaits its own.
 : ACCEPT-HEARD ( AIO:outcome -- )
    MATCH AIO:outcome
       ready OF drop ACCEPT-ONE ENDOF
@@ -885,7 +903,7 @@ variable EXIT-HOOK-N
       cancelled OF 1 STOPPING atomic-add drop ENDOF
       refused OF drop 1 STOPPING atomic-add drop ENDOF
    ;MATCH
-   ARM-ACCEPT ;
+   ['] ARM-ACCEPT ARM-PATIENTLY ;
 
 
 \ The wait AWAIT-ANY answered has left the group, so its flag is cleared first.
@@ -898,8 +916,8 @@ variable EXIT-HOOK-N
 \ The listener waits in one AIO:AWAIT-ANY on its accept, its wake and every
 \ parked connection.
 : LISTEN-LOOP ( -- )
-   ARM-ACCEPT
-   ARM-WAKE
+   ['] ARM-ACCEPT ARM-PATIENTLY
+   ['] ARM-WAKE ARM-PATIENTLY
    begin
       STOPPING? if exit then
       LISTENING AIO:AWAIT-ANY HEARD
@@ -1166,11 +1184,13 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    kept 1+ ;
 
 
-\ Under JOB-LOCK: the flag raised, every connection queued closed unserved,
-\ and a stop job for each worker queued behind the calls, which keep their
-\ order. The counts of the connections dropped stay in ITEMS (NEXT-JOB).
+\ Under JOB-LOCK: the flag raised and the listener woken to read it, every
+\ connection queued closed unserved, and a stop job for each worker queued
+\ behind the calls, which keep their order. The counts of the connections
+\ dropped stay in ITEMS (NEXT-JOB).
 : STOP-QUEUE ( -- )
    1 STOPPING atomic-add drop
+   WAKER AIO:WAKE
    0
    JOB-AT @ JOB-N @ + JOB-AT @ ?do i SIFT loop
    JOB-N !
