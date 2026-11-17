@@ -10,7 +10,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fd.f
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/process.f
 
 package PROCESS-REAPER-FIXTURE
@@ -26,7 +26,7 @@ private
 \ This file again as `child`, in the reaper's group.
 : HB-CHILD ( PROCESS:reaper -- pid )
    {: rp :}
-   ENGINE-ID:PATH$ PROCESS:NEW
+   PROCESS:OWN-PATH PROCESS:NEW
    s" --load" PROCESS:ARG
    s" src/lib/process-reaper-fixture.f" PROCESS:ARG
    s" --" PROCESS:ARG

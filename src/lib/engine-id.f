@@ -1,9 +1,9 @@
-\ engine-id.f - the running engine's path and stamp. PATH$ is the
-\ kernel-reported pathname, which can be replaced after it resolves, so KEY$
-\ fstats a descriptor bound to the running image (/proc/self/exe on Linux, on
-\ macOS one whose vnode matches the main executable's mapped vnode): decimal
-\ `<ctime seconds>.<nanoseconds>-<size>`. The caches and query buffers are
-\ scratch, so a build leaves them out.
+\ engine-id.f - the running engine's stamp. KEY$ is decimal
+\ `<ctime seconds>.<nanoseconds>-<size>`, read by fstat from a descriptor bound
+\ to the running image (/proc/self/exe on Linux, on macOS one whose vnode
+\ matches the main executable's mapped vnode), never from the pathname, which
+\ another file can take. The cache and query buffers are scratch, so a build
+\ leaves them out.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -11,28 +11,18 @@ require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fmt.f
+require src/lib/process-path.f
 
 package ENGINE-ID
 
-PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
-\ The caches belong to the process that filled them; a zero DONE flag means
-\ nothing is cached yet.
-EID-PATH-CAP SCRATCH-BUFFER: EID-PATH
-SCRATCH-VARIABLE EID-PATH-U
-SCRATCH-VARIABLE EID-PATH-DONE
 EID-KEY-LEN SCRATCH-BUFFER: EID-KEY
 SCRATCH-VARIABLE EID-KEY-U
 SCRATCH-VARIABLE EID-KEY-DONE
-EID-PATH-CAP SCRATCH-BUFFER: EID-PATHZ
+FS:PATHZ-CAP SCRATCH-BUFFER: EID-PATHZ
 
-\ Linux follows the process's executable mapping, even after its old pathname
-\ has been renamed and another file has appeared there.
-create EID-PROC-EXE
-   char / c, char p c, char r c, char o c, char c c, char / c,
-   char s c, char e c, char l c, char f c, char / c,
-   char e c, char x c, char e c, 0 c,
+EXPORT PROCESS:PROC-SELF-EXE
 
 \ sys/proc_info.h in the local macOS SDK: PROC_PIDREGIONPATHINFO returns a
 \ proc_regionwithpathinfo (1272 bytes), with prp_vip.vip_vi.vi_stat dev/ino at
@@ -51,41 +41,17 @@ EID-REGION-BYTES SCRATCH-BUFFER: EID-MAPPED
 EID-FD-BYTES SCRATCH-BUFFER: EID-OPENED
 
 PROCESS-SYMBOLS
-FUNCTION: SELF-PATH proc_pidpath ( n ^u8 n -- n ) ;FUNCTION
 \ dyld image 0 is the first inserted library when DYLD_INSERT_LIBRARIES names one.
 FUNCTION: MAIN-HEADER _NSGetMachExecuteHeader ( -- n ) ;FUNCTION
 FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 
-\ The kernel's byte count for the engine's pathname in EID-PATH; zero or
-\ negative when it refuses.
-: ENGINE-SELF-PATH ( -- n )
-   HB-TARGET-MACOS? if getpid EID-PATH EID-PATH-CAP SELF-PATH exit then
-   HB-TARGET-LINUX-KERNEL? if
-      EID-PROC-EXE EID-PATH EID-PATH-CAP readlink exit
-   then
-   0 ;
-
-\ Throws E-ENGINE-PATH while the kernel will not report the pathname: a sandbox
-\ that refuses proc_pidpath, a Linux without /proc, or a pathname longer than
-\ PATH-CAP. EID-PATH holds one byte more than PATH-CAP, so a count that fills it
-\ is a truncated pathname: readlink stops at the buffer's size without saying
-\ so. Only a reported, whole pathname is cached.
-: CACHED-PATH ( -- ^u8 n )
-   EID-PATH-DONE @ 0= if
-      ENGINE-SELF-PATH dup 0 <= over EID-PATH-CAP >= or if
-         drop E-ENGINE-PATH throw
-      then
-      EID-PATH-U !  -1 EID-PATH-DONE !
-   then
-   EID-PATH EID-PATH-U @ ;
-
 : OPEN-RUNNING ( -- n )
    HB-TARGET-LINUX-KERNEL? if
-      EID-PROC-EXE open-rd exit
+      PROC-SELF-EXE open-rd exit
    then
    HB-TARGET-MACOS? if
-      CACHED-PATH EID-PATHZ EID-PATH-CAP SPAN:MAKE FFI:CSTR
+      PROCESS:OWN-PATH EID-PATHZ FS:PATHZ-CAP SPAN:MAKE FFI:CSTR
       open-rd exit
    then
    E-ENGINE-KEY throw ;
@@ -125,8 +91,6 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
    fd ;
 
 public
-
-: PATH$ ( -- ^u8 n ) CACHED-PATH ;
 
 : KEY$ ( -- ^u8 n )
    EID-KEY-DONE @ 0= if

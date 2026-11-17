@@ -12,7 +12,7 @@ require src/lib/process-argv.f
 require src/lib/le.f
 require src/lib/be.f
 require src/lib/process-env.f
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/codesign.f
 
 package CODESIGN-TEST
@@ -208,7 +208,7 @@ variable CST-ERR-U
 : CST-CHILD ( -- n )
    SB-BUF SB-LEN @ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
-   ENGINE-ID:PATH$ CST-IN CST-CAPTURE ;
+   PROCESS:OWN-PATH CST-IN CST-CAPTURE ;
 
 : CST-ERR-HAS? ( ^u8 n -- bool )
    {: a:^ u :}

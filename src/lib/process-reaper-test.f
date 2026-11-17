@@ -8,7 +8,7 @@ require src/lib/string.f
 require src/lib/fd.f
 require src/lib/task.f
 require src/lib/test.f
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/process.f
 require src/lib/process-reaper.f
 
@@ -91,7 +91,7 @@ variable ACC
 
 : FIXTURE ( fd -- PROCESS:request )
    {: w:fd :}
-   ENGINE-ID:PATH$ PROCESS:NEW
+   PROCESS:OWN-PATH PROCESS:NEW
    s" --load" PROCESS:ARG
    s" src/lib/process-reaper-fixture.f" PROCESS:ARG
    1 >FD w PROCESS:FD ;

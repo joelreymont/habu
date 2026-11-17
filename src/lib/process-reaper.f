@@ -10,7 +10,7 @@ require src/lib/error.f
 require src/lib/span.f
 require src/lib/fd.f
 require src/lib/fs.f
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/spawn.f
 require src/lib/process.f
 
@@ -31,7 +31,7 @@ private
 
 \ The program under the tree above the engine's bin directory.
 : MAIN-PATH ( -- ^u8 n )
-   ENGINE-ID:PATH$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME
+   OWN-PATH SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME
    MAIN$ PATHZ-BUF PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO
    PATHZ-BUF swap ;
 
@@ -45,7 +45,7 @@ private
 \ The engine on the program, the pipe's read end its fd 3, fds 0 and 1 closed.
 : REAPER-REQUEST ( ^u8 n fd -- PROCESS:request )
    {: main:^ mainu r:fd :}
-   ENGINE-ID:PATH$ NEW BLOCK-HUP
+   OWN-PATH NEW BLOCK-HUP
    main mainu ARG
    3 >FD r FD
    0 >FD CLOSED

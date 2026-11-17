@@ -2,8 +2,8 @@
 \ invocation directory is the copied tree's parent: the copy holds the first
 \ boot file, src/core/util.f, so it is the engine's root (src/core/include.f
 \ SOURCE-ROOT:ENGINE$). On macOS the child reruns in a sandbox denying
-\ process-info-pidinfo: the tree is still found and ENGINE-ID:PATH$ throws
-\ E-ENGINE-PATH. src/lib/engine-id.f is not baked, so the copy holds it.
+\ process-info-pidinfo: the tree is still found and PROCESS:OWN-PATH throws
+\ E-ENGINE-PATH.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -49,9 +49,9 @@ variable RC
 \ it its path, so the sandboxed case cannot pass on a host that answers.
 : WRITE-ENTRY ( -- )
    s" entry.f" PATH!
-   S\" require src/lib/c2-memory.f\nrequire src/lib/engine-id.f\n" ENTRY+
+   S\" require src/lib/c2-memory.f\nrequire src/lib/process-path.f\n" ENTRY+
    S\" package BOOT-RELOCATION-CHILD\npublic\n: RUN ( -- )\n" ENTRY+
-   S\" SCRIPT-ARGC 0 > if [: ENGINE-ID:PATH$ 2drop ;] catch E-ENGINE-PATH <> if 77 throw then then\n" ENTRY+
+   S\" SCRIPT-ARGC 0 > if [: PROCESS:OWN-PATH 2drop ;] catch E-ENGINE-PATH <> if 77 throw then then\n" ENTRY+
    S\" SOURCE-ROOT:CURRENT$ s\q src/lib/c2-memory.f\q SOURCE-ROOT:JOIN ENGINE-PROVIDES? 0= if 76 throw then\n" ENTRY+
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
@@ -69,7 +69,6 @@ variable RC
    s" src/lib/error.f" COPY-SOURCE
    s" src/lib/c2-memory.f" COPY-SOURCE
    s" src/core/util.f" COPY-SOURCE
-   s" src/lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;
 
 : SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}

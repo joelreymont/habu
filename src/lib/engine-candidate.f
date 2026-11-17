@@ -1,20 +1,15 @@
 \ engine-candidate.f - the validated engine binary nested tooling trusts and
 \ spawns: HABU_UNDER_TEST from the child-env default table a gate exports, then
-\ from the live environment, else the running engine's own path
-\ (ENGINE-ID:PATH$), so a standalone tool replays through the binary that
-\ launched it. The path is absolute, a relative override joined to this
-\ process's working directory, so it names the same file to a child spawned in
-\ another directory. It is validated as an executable here, so a bad override
-\ is rejected with its record (E-ENGINE-NOT-EXECUTABLE) before any spawn.
+\ from the live environment, else the running program's own path, so a
+\ standalone tool replays through the binary that launched it. The path is
+\ absolute, a relative override joined to this process's working directory, so
+\ it names the same file to a child spawned in another directory. It is
+\ validated as an executable here, so a bad override is rejected with its record
+\ (E-ENGINE-NOT-EXECUTABLE) before any spawn.
 
 require src/lib/fs.f
 require src/lib/process-env.f
-require src/lib/engine-id.f
-
-\ GETENV (src/os/env-base.f), the >LEN/LEN>N role coercions (src/core/roles.f)
-\ and SOURCE-ROOT:CWD$ (src/core/include.f) are engine-provided;
-\ PROC-ENV-DEFAULT$? is src/lib/process-env.f, FS:EXECUTABLE? and FS:JOIN-PATH
-\ are src/lib/fs.f, ENGINE-ID:PATH$ is src/lib/engine-id.f.
+require src/lib/process-path.f
 
 package ENGINE-CANDIDATE
 
@@ -29,7 +24,7 @@ PATH-CAP BUFFER: JOINED
    NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
-   2drop ENGINE-ID:PATH$ ;
+   2drop PROCESS:OWN-PATH ;
 
 \ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.

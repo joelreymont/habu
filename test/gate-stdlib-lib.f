@@ -8,7 +8,7 @@ require src/lib/process-env.f
 require test/gate-pool.f
 require test/load-graph.f
 require test/gate-entry-guard.f
-require src/lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
+require src/lib/process-path.f
 
 package STDLIB-GATE
 
@@ -35,7 +35,7 @@ package STDLIB-GATE
    s" bin/hb" ;
 
 : PRODUCT-ENGINE$ ( -- ^u8 n )
-   ENGINE-ID:PATH$ ;
+   PROCESS:OWN-PATH ;
 
 \ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) names the product engine to an
 \ item's children; set before the inherit, which skips a name already present.

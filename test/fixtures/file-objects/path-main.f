@@ -1,15 +1,15 @@
-\ path-main.f - a program whose top level fills ENGINE-ID's path cache and makes
+\ path-main.f - a program whose top level fills PROCESS's path cache and makes
 \ the main task's park, built by tools/hb-build.f before and after bare-main.f.
 
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/task.f
 
 package FILE-OBJECTS-PATH-MAIN
-ENGINE-ID:PATH$ drop drop
+PROCESS:OWN-PATH drop drop
 TASK:SELF TASK:WAKE
 public
 : SHOW ( -- )
-   ENGINE-ID:PATH$ type cr
+   PROCESS:OWN-PATH type cr
    TASK:SELF TASK:WAKE ;
 ;package
 

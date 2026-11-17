@@ -14,7 +14,7 @@ require src/lib/process-argv.f
 require src/lib/process-pty-io.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/engine-id.f
+require src/lib/process-path.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-tree.f
@@ -335,9 +335,9 @@ variable IDLE-COPY-U
 
 : RUNS-BODY ( -- )
    RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
-   ENGINE-ID:PATH$ IDLE-COPY$ FS:COPY-FILE-STREAM
+   PROCESS:OWN-PATH IDLE-COPY$ FS:COPY-FILE-STREAM
    s" runs: the running engine runs its own path" T-LABEL
-   ENGINE-ID:PATH$ PROC-TREE:RUNS? TTRUE
+   PROCESS:OWN-PATH PROC-TREE:RUNS? TTRUE
    s" runs: nothing runs a byte copy of the engine" T-LABEL
    IDLE-COPY$ PROC-TREE:RUNS? TFALSE ;
 
