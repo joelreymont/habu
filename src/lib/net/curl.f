@@ -1671,14 +1671,19 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    >CODE ERROR$ LOG:TEXT+ LOOP-FAILED ;
 
 
+\ `: ` and the host's text for errno e; nothing for 0, no host reason.
+: CAUSE+ ( n -- ) {: e:n :}
+   e 0 <> if s" : " LOG:TEXT+ e FS:ERRNO$ LOG:TEXT+ then ;
+
+
 : PIPE-FAILED ( n n -- ) {: code:n e:n :}
    s" the host refused the wake pipe: " LOOP-LINE
-   code LOG:CODE+ s" : " LOG:TEXT+ e FS:ERRNO$ LOG:TEXT+ LOOP-FAILED ;
+   code LOG:CODE+ e CAUSE+ LOOP-FAILED ;
 
 
-: THREAD-FAILED ( n -- )
+: THREAD-FAILED ( n n -- ) {: code:n e:n :}
    s" the loop's thread did not start: " LOOP-LINE
-   LOG:CODE+ LOOP-FAILED ;
+   code LOG:CODE+ e CAUSE+ LOOP-FAILED ;
 
 
 \ Gives the multi handle and the wake pipe back, answering curl_multi_cleanup's
@@ -1701,7 +1706,7 @@ public
    0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
    GLOBAL-READY dup CURLE-OK <> if GLOBAL-FAILED then drop
    LOCK-READY @ 0= if CURL-LOCK TASK:FACILITY-INIT 1 LOCK-READY ! then
-   [: WAKER AIO:WAKER-OPEN ;] catch FS:ERRNO {: pcode:n e:n :}
+   FS:CAUSE-CLEAR [: WAKER AIO:WAKER-OPEN ;] catch FS:ERRNO {: pcode:n e:n :}
    pcode 0 <> if pcode e PIPE-FAILED then
    MULTI-INIT dup 0= if drop WAKER AIO:WAKER-CLOSE MULTI-FAILED then
    MULTI-CELL atomic!
@@ -1710,8 +1715,8 @@ public
    -1 TIMER-MS !
    0 LOOP-THROW !
    0 STOP-FLAG atomic!
-   [: ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE ;] catch {: tcode:n :}
-   tcode 0 <> if LOOP-RELEASE drop tcode THREAD-FAILED then
+   FS:CAUSE-CLEAR [: ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE ;] catch FS:ERRNO {: tcode:n te:n :}
+   tcode 0 <> if LOOP-RELEASE drop tcode te THREAD-FAILED then
    1 LOOP-LIVE atomic! ;
 
 

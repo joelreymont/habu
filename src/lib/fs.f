@@ -90,7 +90,8 @@ $2F constant SLASH
    HB-TARGET-MACOS? if 96 else 61 then ;
 
 \ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f, fs-anchored.f or
-\ an fs-mutate.f word that says so: the throw's host errno, or 0 for a semantic refusal.
+\ an fs-mutate.f word that says so, or an E-TASK-THREAD from task.f: the throw's host
+\ errno, or 0 for a semantic refusal.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 

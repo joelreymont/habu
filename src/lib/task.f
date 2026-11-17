@@ -218,9 +218,23 @@ FUNCTION: KEY-DELETE-CALL pthread_key_delete ( n -- i32 ) ;FUNCTION
 FUNCTION: SETSPECIFIC-CALL pthread_setspecific ( n n -- i32 ) ;FUNCTION
 FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
 
+\ Sets the host errno FS:ERRNO answers after an E-TASK-THREAD, 0 when the
+\ refused call gave none.
+: TASK-CAUSE! ( n -- )
+   data-base FS-ABI:ERRNO-OFF + ! ;
+
+\ For a call that answers the error number itself: the pthread_* calls.
 : TASK-RC0 ( n -- )
-   dup 0 <> if E-TASK-THREAD throw then
+   dup 0 <> if dup TASK-CAUSE! E-TASK-THREAD throw then
    drop ;
+
+\ For a call that answers -1 and sets errno.
+: TASK-RC-ERRNO ( n -- )
+   0 <> if FFI:ERRNO TASK-CAUSE! E-TASK-THREAD throw then ;
+
+\ For a Mach semaphore call, whose kern_return_t is no errno.
+: MACH-RC0 ( n -- )
+   0 <> if 0 TASK-CAUSE! E-TASK-THREAD throw then ;
 
 : TASK-CHECK-SIZE ( n -- )
    dup TASK-MIN-STACK < if E-TASK-SIZE throw then
@@ -283,9 +297,9 @@ host
    value SEM-COUNT-CHECK
    s SEM-LIVE? if E-TASK-SEM-STATE throw then
    HB-TARGET-MACOS? if
-      MACH-TASK s SEM-OBJ MACH-FIFO value MACH-SEM-CREATE TASK-RC0
+      MACH-TASK s SEM-OBJ MACH-FIFO value MACH-SEM-CREATE MACH-RC0
    else
-      s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
+      s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC-ERRNO
    then
    s SEM>N s SEM-GUARD atomic! ;
 
@@ -295,9 +309,9 @@ host
    s SEM-LIVE? 0= if exit then
    0 s SEM-GUARD atomic!
    HB-TARGET-MACOS? if
-      MACH-TASK s SEM-OBJ LE:U32@ MACH-SEM-DESTROY TASK-RC0
+      MACH-TASK s SEM-OBJ LE:U32@ MACH-SEM-DESTROY MACH-RC0
       0 s SEM-OBJ LE:U32!
-   else s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 then ;
+   else s SEM-OBJ SEM-DESTROY-CALL TASK-RC-ERRNO then ;
 
 \ Observes no TASK:HALT until signalled. A signal interrupts the wait without
 \ consuming a count, so an aborted wait retries.
@@ -305,19 +319,19 @@ host
    begin
       s SEM-OBJ LE:U32@ MACH-SEM-WAIT
       dup 0= if drop exit then
-      MACH-ABORTED <> if E-TASK-THREAD throw then
+      MACH-ABORTED <> if 0 TASK-CAUSE! E-TASK-THREAD throw then
    again ;
 
 : SEM-WAIT ( sem -- ) {: s:sem :}
    HB-TARGET-MACOS? if s MACH-WAIT exit then
    begin
       s SEM-OBJ SEM-WAIT-CALL 0= if exit then
-      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
+      FFI:ERRNO TASK-EINTR <> if FFI:ERRNO TASK-CAUSE! E-TASK-THREAD throw then
    again ;
 
 : SEM-SIGNAL ( sem -- ) {: s:sem :}
-   HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL
-   else s SEM-OBJ SEM-POST-CALL then TASK-RC0 ;
+   HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL MACH-RC0
+   else s SEM-OBJ SEM-POST-CALL TASK-RC-ERRNO then ;
 
 \ True when it took a count. A timeout means the count was zero; an aborted
 \ wait retries as MACH-WAIT does.
@@ -326,7 +340,7 @@ host
       s SEM-OBJ LE:U32@ 0 MACH-SEM-TIMEDWAIT
       dup 0= if drop true exit then
       dup MACH-TIMED-OUT = if drop false exit then
-      MACH-ABORTED <> if E-TASK-THREAD throw then
+      MACH-ABORTED <> if 0 TASK-CAUSE! E-TASK-THREAD throw then
    again ;
 
 : SEM-TRY-WAIT ( sem -- bool ) {: s:sem :}
@@ -334,7 +348,7 @@ host
    begin
       s SEM-OBJ SEM-TRYWAIT-CALL 0= if 0 0= exit then
       FFI:ERRNO TASK-EAGAIN = if 0 0= 0= exit then
-      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
+      FFI:ERRNO TASK-EINTR <> if FFI:ERRNO TASK-CAUSE! E-TASK-THREAD throw then
    again ;
 
 \ ---- the semaphore pool ------------------------------------------------------
@@ -856,7 +870,7 @@ ROW-N ROLLBACK-CELLS:MARK
          exit
       then
       seen CB-ROW-BUSY = if
-         SCHED-YIELD-CALL TASK-RC0
+         SCHED-YIELD-CALL TASK-RC-ERRNO
       else
          k reg seen ROW-INSIDE? if
             s" task: a callback slot naming the ending task is in flight"
@@ -885,7 +899,7 @@ ROW-N ROLLBACK-CELLS:MARK
    -1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
 : TASK-MUNMAP-SPAN ( ^u8 n -- )
-   MUNMAP-CALL TASK-RC0 ;
+   MUNMAP-CALL TASK-RC-ERRNO ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
 \ release (PARK-CREATE). The five cells cleared last are what the run
@@ -1255,7 +1269,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 : PAUSE ( -- )
    0 HALT-UNWIND
-   SCHED-YIELD-CALL TASK-RC0 ;
+   SCHED-YIELD-CALL TASK-RC-ERRNO ;
 
 \ The request is observed at TASK:PAUSE, so HALT wakes a task parked in
 \ TASK:WAIT itself: the task re-checks its state as the hint protocol requires
@@ -1313,7 +1327,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
       dup 0<>
    while
       CB-ROW-BUSY <> if E-TASK-STATE throw then
-      SCHED-YIELD-CALL TASK-RC0
+      SCHED-YIELD-CALL TASK-RC-ERRNO
    repeat
    drop
    k ROW ROW-REGION atomic@ 0 <> if
@@ -1703,7 +1717,7 @@ TASK-SLEEP-BYTES TASK:+USERS SLEEP-SPECS u8
    timeout MS>N TASK-NS-PER-MS * SLEEP-REQ SPEC!
    begin
       SLEEP-CALL dup 0= if drop exit then
-      TASK-EINTR <> if E-TASK-THREAD throw then
+      dup TASK-EINTR <> if dup TASK-CAUSE! E-TASK-THREAD throw then drop
       SLEEP-REM SPEC@ deadline SLEEP-LEFT-NS min {: next:n :}
       next 0 <= if exit then
       next SLEEP-REQ SPEC!
@@ -1720,7 +1734,7 @@ TASK-SLEEP-BYTES TASK:+USERS SLEEP-SPECS u8
    s SEM-OBJ LE:U32@ ns MACH-SPEC MACH-SEM-TIMEDWAIT
    dup 0= if drop true exit then
    dup MACH-TIMED-OUT = swap MACH-ABORTED = or if false exit then
-   E-TASK-THREAD throw ;
+   0 TASK-CAUSE! E-TASK-THREAD throw ;
 
 \ The deadline is CLOCK_MONOTONIC's own now plus ns, written into SLEEP's
 \ request: a task is in SLEEP or here, never both. The caller measured ns
@@ -1728,13 +1742,13 @@ TASK-SLEEP-BYTES TASK:+USERS SLEEP-SPECS u8
 \ there; the caller judges its deadline by mono-ns and waits again if the
 \ clamped wait ends before it.
 : POSIX-WAIT-NS ( n sem -- bool ) {: ns:n s:sem :}
-   TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW CLOCK-GETTIME-CALL TASK-RC0
+   TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW CLOCK-GETTIME-CALL TASK-RC-ERRNO
    SLEEP-REQ SPEC@ {: now:n :}
    ns TASK-NS-MAX now - min now + SLEEP-REQ SPEC!
    s SEM-OBJ TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW SEM-CLOCKWAIT-CALL
    0= if true exit then
    FFI:ERRNO dup TASK-ETIMEDOUT = swap TASK-EINTR = or if false exit then
-   E-TASK-THREAD throw ;
+   FFI:ERRNO TASK-CAUSE! E-TASK-THREAD throw ;
 
 \ One bounded wait on a semaphore: true when it took a count, false when the
 \ time ran out or a signal cut the wait short. Either false sends the caller
