@@ -20,10 +20,10 @@ create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 package REQUIRE-REG
 private
 
-\ FROZEN holds a DATA block of (offset,length) pairs followed by path bytes.
-\ Process rows use two movable columns: ROWS holds row i's path pointer and
-\ ROW-LENS its length. The paths live in chunks that never move.
+\ A DATA block of (offset,length) pairs followed by path bytes.
 PERSISTED-PTR-VARIABLE FROZEN
+\ One movable mapping: row i's path pointer, then ROW-CAP cells on, at ROW-LENS,
+\ its length. The paths live in chunks that never move.
 PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
 PERSISTED-PTR-VARIABLE ROW-LENS
 variable ROW-CAP
@@ -761,11 +761,21 @@ public
 : CONFINE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u a u NULL-PTR 0 CONFINE-AS ;
 
+\ Prints the record of n bytes the system refused for w wu while loading f fu,
+\ if any, and throws SYSTEM, which a program may catch: map before publishing.
+: MAP-DIE ( n ^u8 n ^u8 n -- ) {: bytes:n w:^ wu:n f:^ fu:n :}
+   bytes w wu REJECTION:MAP-REFUSED
+   fu 0 > if s" file" REJECTION:NOTE  f fu REJECTION:EMIT-STR then
+   REJECTION:HELP
+   s" raise the process's address-space limit (ulimit -v), or load smaller sources"
+   REJECTION:EMIT-STR
+   EXIT-STATUS:SYSTEM REJECTION:STOP ;
+
 private
 
 : MAP-COPY ( ^u8 n -- ^u8 )
    {: a:^ u:n :}
-   u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" EXIT-STATUS:IOERR die then
+   u 1+ map-anon 0= 0= if drop u 1+ s" a path copy" s" " MAP-DIE then
    {: fresh:^ :}
    a fresh u 1+ BYTE-COPY
    fresh ;
@@ -1018,15 +1028,14 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    need $40 max
    ROW-CAP @ ROW-LIMIT 2 / <= if ROW-CAP @ 2 * max then ;
 
-: COL-MAP ( n -- ^a )
-   cells map-anon 0 <> if
-      drop s" require: cannot map the row table" INCLUDE-DIE
+: COLS-MAP ( n -- ^^u8 )
+   2 * cells {: bytes:n :}
+   bytes map-anon 0 <> if
+      drop bytes s" the loader's row table" s" " MAP-DIE
    then ;
 
-: COLS-UNMAP ( ^^u8 ^n n -- ) {: rows:^ lens:^ cap:n :}
-   rows cap cells munmap {: rowsrc:n :}
-   lens cap cells munmap {: lensrc:n :}
-   rowsrc 0 < lensrc 0 < or if
+: COLS-UNMAP ( ^^u8 n -- ) {: rows:^ cap:n :}
+   rows cap 2 * cells munmap 0 < if
       s" require: cannot release the row table" INCLUDE-DIE
    then ;
 
@@ -1034,16 +1043,16 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    need ROW-LIMIT > if SIZE-DIE then
    need ROW-NEW-CAP {: cap:n :}
    ROWS @ ROW-LENS @ ROW-CAP @ {: old:^ oldlens:^ oldcap:n :}
-   cap COL-MAP ROWS !
-   cap COL-MAP ROW-LENS !
+   cap COLS-MAP {: base:^ :}
+   base BYTE-VIEW cap cells + CELL-VIEW {: lens:^ :}
+   oldcap 0 ?do
+      old i ptr-field @ base i ptr-field !
+      oldlens i cells + @ lens i cells + !
+   loop
+   base ROWS !
+   lens ROW-LENS !
    cap ROW-CAP !
-   oldcap 0 > if
-      oldcap 0 ?do
-         old i ptr-field @ ROWS @ i ptr-field !
-         oldlens i cells + @ ROW-LENS @ i cells + !
-      loop
-      old oldlens oldcap COLS-UNMAP
-   then ;
+   oldcap 0 > if old oldcap COLS-UNMAP then ;
 
 : ROW-ENSURE ( n -- ) {: need:n :}
    need ROW-LIMIT > if SIZE-DIE then
@@ -1051,7 +1060,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : ROWS-RELEASE ( -- )
    ROW-CAP @ 0= if exit then
-   ROWS @ ROW-LENS @ ROW-CAP @ COLS-UNMAP
+   ROWS @ ROW-CAP @ COLS-UNMAP
    NULL-PTR ROWS !
    NULL-PTR ROW-LENS !
    0 ROW-CAP ! ;
@@ -1084,7 +1093,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    room CHUNK-LIMIT > if SIZE-DIE then
    CHUNK @ {: prev:^ :}
    room CHUNK-HEAD + map-anon 0 <> if
-      drop s" require: cannot map a path chunk" INCLUDE-DIE
+      drop room CHUNK-HEAD + s" a path chunk" s" " MAP-DIE
    then
    {: fresh:^ :}
    fresh CHUNK !
@@ -1855,12 +1864,11 @@ variable DISC-PATH-U
    u 0= if exit then
    a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
 
-\ A fresh mapping of CAP bytes holding the first USED bytes of OLD, which maps
-\ OLDCAP bytes and is released first; the caller then publishes the answer and
-\ CAP, so a refusal ends the process while OLD is still the one published.
+\ The caller publishes the answer and CAP once this returns, so a refusal
+\ throws while OLD is still the one published.
 : EVENT-REMAP ( ^u8 n n n -- ^u8 )
    {: old:^ oldcap:n used:n cap:n :}
-   cap map-anon 0= 0= if drop s" events: cannot map an event table" INCLUDE-DIE then
+   cap map-anon 0= 0= if drop cap s" an event table" s" " MAP-DIE then
    {: fresh:^ :}
    old fresh used BYTE-COPY
    old oldcap EVENT-UNMAP
@@ -2098,8 +2106,15 @@ variable LAST-LOAD-EVAL-OK
 
 : ROOM ( -- n ) TOP@ FR-ROOM + CELL-VIEW @ ;
 
+: TOP-PATH$ ( -- ^u8 n )
+   TOP@ {: frame:^ :}
+   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ ;
+
 : PUSH ( -- )
-   HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
+   HEADER-BYTES ROOM-MIN + {: bytes:n :}
+   bytes map-anon 0= 0= if
+      drop bytes s" a source frame" INCLUDE-PATH INCLUDE-PATH-U @ MAP-DIE
+   then
    {: frame:^ :}
    TOP@ frame FRAME-PREV !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
@@ -2137,16 +2152,15 @@ variable LAST-LOAD-EVAL-OK
 
 : SOURCE ( -- ^u8 ) s" SOURCE-ROOT:SOURCE" CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
-\ The header and the first KEEP source bytes move to a fresh mapping; once the
-\ old one is released, the fresh one becomes TOP and the published location,
-\ the only two that point into a frame while it fills. Only memory refuses, by
-\ name: a refusal ends the process while the old frame is still the one
-\ published.
+\ TOP and the published location, the only pointers into a filling frame, move
+\ only once the fresh mapping is made: a refusal leaves the old one published.
 : GROW ( n n -- )
    {: want:n keep:n :}
    TOP@ {: frame:^ :}
    ROOM 2 * want max {: room:n :}
-   HEADER-BYTES room + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
+   HEADER-BYTES room + map-anon 0= 0= if
+      drop HEADER-BYTES room + s" a source frame" TOP-PATH$ MAP-DIE
+   then
    {: fresh:^ :}
    frame fresh HEADER-BYTES keep + BYTE-COPY
    room fresh FR-ROOM + CELL-VIEW !
@@ -2346,7 +2360,9 @@ private
    READ-SOURCE {: a:^ u:n :}
    u 2 >= if
       a c@ $23 = a 1 + c@ $21 = and if
-         u 1 max map-anon 0= 0= if drop EXIT-STATUS:IOERR throw then
+         u 1 max map-anon 0= 0= if
+            drop u 1 max s" a copy of the source" TOP-PATH$ MAP-DIE
+         then
          {: copy:^ :}
          a copy u BYTE-COPY
          copy u SHEBANG-COMMENT
@@ -2550,14 +2566,12 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ loads.
 : READ-FOR ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] )
    {: q :}
-   READ-SOURCE TOP@ {: frame:^ :}
-   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+   READ-SOURCE TOP-PATH$ q execute
    q ;
 
 : COPY-FOR ( ^u8 n [ ^u8 n ^u8 n -- ] -- ^u8 n [ ^u8 n ^u8 n -- ] )
    {: a:^ u:n q :}
-   a u HOLD TOP@ {: frame:^ :}
-   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+   a u HOLD TOP-PATH$ q execute
    a u q ;
 
 : WITH-BYTES-CURRENT ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] ) {: q :}
@@ -2843,10 +2857,14 @@ public
 : POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- ] -- )
    {: path:^ u:n q require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
-   s" SOURCE-ROOT:POLICY-WITH-ROOT" path u ROOT-ENTER {: prior:^ prioru:n prior-base:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:^ :}
+   s" SOURCE-ROOT:POLICY-WITH-ROOT" {: w:^ wu:n :}
+   NULL$ 0 [: 2drop drop w wu path u ROOT-ENTER ;] catch
+   {: p pu pbase rc:n :}
+   rc 0= if p pu pbase else old old-u POLICY-ROOT-RELEASE rc throw then
+   {: prior:^ prioru:n prior-base:n :}
    require-xt POLICY-ROOT-SET
    TOKEN-CLEAR {: t:^ tu:n :}
    q catch {: rc:n :}

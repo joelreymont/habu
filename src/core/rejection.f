@@ -992,6 +992,15 @@ public
    THEN
    cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 
+\ Opens the E-MAP record of n bytes the system refused for what a u names, if
+\ anything; the caller adds its notes and help and ends the record.
+: MAP-REFUSED ( n ^u8 n -- ) {: bytes:n a:^ u:n :}
+   s" E-MAP" OPEN
+   s" the system refused " EMIT-STR  bytes EMIT-U
+   s"  bytes of storage" EMIT-STR
+   u 0 > if s"  for " EMIT-STR  a u EMIT-STR then
+   s" bytes" NOTE  bytes EMIT-U ;
+
 private
 : DUPLICATE-OPEN ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-DUPLICATE-DEFINITION" OPEN

@@ -129,15 +129,23 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    {: off:n :}
    off 1+  off HASH-AT VACANT SLOT ! ;
 
+\ A refused map marks the recording missed and throws SYSTEM after its E-MAP
+\ record, which a program may catch.
 : FRESH ( n ^u8 n -- ^u8 )
    {: bytes:n m:^ mu:n :}
-   bytes map-anon 0= 0= if drop m mu EXIT-STATUS:IOERR die then ;
+   bytes map-anon 0= 0= if
+      ST-MISSED STATUS !
+      drop bytes m mu REJECTION:MAP-REFUSED
+      REJECTION:HELP
+      s" raise the process's address-space limit (ulimit -v)" REJECTION:EMIT-STR
+      EXIT-STATUS:SYSTEM REJECTION:STOP
+   then ;
 
 \ APPEND grows the index before a read would fill over half its slots, so
 \ VACANT and PROBE always reach an empty slot.
 : GROW ( -- )
    SLOTS @ 2 * SLOTS-MIN max {: want:n :}
-   want cells s" compile reads: cannot map an index" FRESH
+   want cells s" an index of a compile's reads" FRESH
    {: fresh:^ :}
    IDX @ SLOTS @ cells UNMAP
    fresh IDX !  want SLOTS !
@@ -146,7 +154,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 : ROOM ( n -- ) {: need:n :}
    need CAP @ <= if exit then
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
-   cap s" compile reads: cannot map a recording" FRESH
+   cap s" a recording of a compile's reads" FRESH
    {: fresh:^ :}
    MAP @ fresh USED @ BYTE-COPY
    MAP @ CAP @ UNMAP

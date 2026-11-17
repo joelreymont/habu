@@ -253,6 +253,69 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       S\" refused 2305843009213693952 bytes of storage\n  = bytes: 2305843009213693952\n"
       MAP-REJECT-CASE ;
 
+create BIG-PATH PATH-CAP allot
+variable BIG-U
+
+: BIG$ ( -- ^u8 n ) BIG-PATH BIG-U @ ;
+
+\ The offset of k in a u, or u when a u lacks it.
+: KEY-AT ( ^u8 n ^u8 n -- n ) {: a:^ u:n k:^ ku:n :}
+   a u k ku FIND-SUB MATCH option
+      none OF u ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ The VmPeak, in kB, of the /proc/self/status the probe printed.
+: VM-PEAK ( -- n )
+   GT-OUT$ {: out:^ outu:n :}
+   out outu s" VmPeak:" KEY-AT 7 + outu min {: at:n :}
+   out at +  outu at - {: a:^ u:n :}
+   a  a u s"  kB" KEY-AT  TRIM STR>NUMBER? MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ The address space, in kB, a child hb peaks at loading src/lib/fs.f.
+: PROBE-PEAK ( -- n )
+   s" map-die-probe" {: label:^ labelu:n :}
+   GE-HB-RESET  GE-SRC-RESET
+   s" require src/lib/fs.f" GE-SRC-LINE
+   s" 4096 BUFFER: PD-STATUS" GE-SRC-LINE
+   s" /proc/self/status" GE-SRC-S"
+   s"  PD-STATUS 4096 FS:READ-ALL PD-STATUS swap type" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   label labelu GE-EXPECT-OK
+   VM-PEAK {: kb:n :}
+   kb 0= if label labelu GE-FAIL then
+   kb ;
+
+\ A 32 MB source of 64-byte comment lines at path.
+: BIG-SOURCE ( ^u8 n -- ) {: path:^ pathu:n :}
+   GE-SRC-RESET
+   GE-SRC-CAP 64 / 0 ?do
+      s" \ " GE-SRC+  61 $78 GE-SRC-REPEAT-C  GE-SRC-LF
+   loop
+   path pathu GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL
+   $2000000 GE-SRC-CAP / 1- 0 ?do path pathu GE-SRC-BUF GE-SRC-U @ FS:APPEND-FILE loop ;
+
+\ A refused source frame is one E-MAP record naming the file (Linux's ulimit -v).
+\ 8 MB over the probe's peak holds hb, not the frame a 32 MB source grows to.
+: MAP-DIE-FRAME ( -- )
+   s" map-die-frame" {: label:^ labelu:n :}
+   PROBE-PEAK 8192 + {: limit:n :}
+   s" map-die-big.f" BIG-PATH GT-PATH BIG-U !
+   BIG$ BIG-SOURCE
+   SB-RESET  s" ulimit -v " SB-APPEND  limit FMT:SB-U
+   s" ; exec bin/hb --load '" SB-APPEND  BIG$ SB-APPEND  s" '" SB-APPEND
+   GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   RECORDS 1 <> if label labelu GE-FAIL then
+   s" error[E-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
+   s"  for a source frame" label labelu GE-EXPECT-ERR-HAS
+   SB-RESET  S\" \n  = file: " SB-APPEND  BIG$ SB-APPEND  S\" \n" SB-APPEND
+   SB$ label labelu GE-EXPECT-ERR-HAS
+   EXIT-STATUS:SYSTEM label labelu GE-EXPECT-RC ;
+
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    THROW-ZERO-STOPS
@@ -262,6 +325,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    PUBLIC-DUPLICATE
    QUIET-COUNT-ONCE
    MAP-REJECTS
+   HB-TARGET-LINUX? if MAP-DIE-FRAME then
    s" test/program-diagnostic-long-row.f" 70 s" LONG-ROW-ARMED"
       s" error[E-MISMATCH]: LONG-ROW ends with (904 more) n n" NEGATIVE
    s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"

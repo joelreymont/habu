@@ -66,10 +66,7 @@ variable MUTEX
 \ The record of a map of n bytes the system refused, thrown as E-MAP: a caller
 \ that can go on without the storage catches it, and nothing prints.
 : MAP-REJECT ( n -- ) {: bytes:n :}
-   s" E-MAP" REJECTION:OPEN
-   s" the system refused " REJECTION:EMIT-STR  bytes REJECTION:EMIT-U
-   s"  bytes of storage" REJECTION:EMIT-STR
-   s" bytes" REJECTION:NOTE  bytes REJECTION:EMIT-U
+   bytes s" " REJECTION:MAP-REFUSED
    REJECTION:HELP
    s" reserve fewer elements, or release storage the program no longer needs"
    REJECTION:EMIT-STR
