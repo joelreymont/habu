@@ -389,6 +389,8 @@ require src/os/env-base.f
 \ package XATTR.
 \ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
 \ which owns package STUDIO.
+\ OData: -9930..-9939, minted in src/lib/odata/metadata.f, a file of package
+\ ODATA (src/lib/odata.f).
 
 \ T0 (src/habu/t0.f): -9600..-9609, declared at this file's end.
 -9600 constant E-T0-FIRST

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:DataServices>
+    <Schema Namespace="keys">
+      <EntityType Name="String">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.String" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Boolean">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Boolean" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Byte">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Byte" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="SByte">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.SByte" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Int16">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Int16" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Int32">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Int32" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Int64">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Int64" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Decimal">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Decimal" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Double">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Double" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Single">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Single" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Guid">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Guid" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="DateTimeOffset">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.DateTimeOffset" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Date">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Date" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="TimeOfDay">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.TimeOfDay" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Duration">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Duration" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Binary">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Binary" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="DateTime">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.DateTime" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="Time">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.Time" Nullable="false"/>
+      </EntityType>
+      <EntityContainer Name="Keys">
+        <EntitySet Name="String" EntityType="keys.String"/>
+        <EntitySet Name="Boolean" EntityType="keys.Boolean"/>
+        <EntitySet Name="Byte" EntityType="keys.Byte"/>
+        <EntitySet Name="SByte" EntityType="keys.SByte"/>
+        <EntitySet Name="Int16" EntityType="keys.Int16"/>
+        <EntitySet Name="Int32" EntityType="keys.Int32"/>
+        <EntitySet Name="Int64" EntityType="keys.Int64"/>
+        <EntitySet Name="Decimal" EntityType="keys.Decimal"/>
+        <EntitySet Name="Double" EntityType="keys.Double"/>
+        <EntitySet Name="Single" EntityType="keys.Single"/>
+        <EntitySet Name="Guid" EntityType="keys.Guid"/>
+        <EntitySet Name="DateTimeOffset" EntityType="keys.DateTimeOffset"/>
+        <EntitySet Name="Date" EntityType="keys.Date"/>
+        <EntitySet Name="TimeOfDay" EntityType="keys.TimeOfDay"/>
+        <EntitySet Name="Duration" EntityType="keys.Duration"/>
+        <EntitySet Name="Binary" EntityType="keys.Binary"/>
+        <EntitySet Name="DateTime" EntityType="keys.DateTime"/>
+        <EntitySet Name="Time" EntityType="keys.Time"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

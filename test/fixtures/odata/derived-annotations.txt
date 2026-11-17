@@ -1,0 +1,9 @@
+set As
+ type
+ key K
+ property K Edm.String not-null Common.Label=Key
+set Bs
+ type
+ key K
+ property K Edm.String not-null Common.Label=Key
+ property Y Edm.String nullable

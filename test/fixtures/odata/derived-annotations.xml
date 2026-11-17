@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:Reference Uri="/vocabularies/common">
+    <edmx:Include Namespace="com.sap.vocabularies.Common.v1" Alias="Common"/>
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="N">
+      <EntityType Name="A">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="Edm.String" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="B" BaseType="N.A">
+        <Property Name="Y" Type="Edm.String"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="As" EntityType="N.A"/>
+        <EntitySet Name="Bs" EntityType="N.B"/>
+      </EntityContainer>
+      <Annotations Target="N.B/K">
+        <Annotation Term="Common.Label" String="Read past: a base type's property"/>
+      </Annotations>
+      <Annotations Target="N.A/K">
+        <Annotation Term="Common.Label" String="Key"/>
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

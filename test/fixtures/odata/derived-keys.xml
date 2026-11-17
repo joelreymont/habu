@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:DataServices>
+    <Schema Namespace="N">
+      <EntityType Name="A" Abstract="true">
+        <Property Name="K" Type="Edm.String" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="A1" BaseType="N.A">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="X" Type="Edm.Int32"/>
+      </EntityType>
+      <EntityType Name="A2" BaseType="N.A">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="A1s" EntityType="N.A1"/>
+        <EntitySet Name="A2s" EntityType="N.A2"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

@@ -1,0 +1,37 @@
+set Orders
+ type sap:label=Sales Order
+ key Year OrderID
+ property OrderID Edm.String not-null
+ property Year Edm.Int16 not-null
+ property Amount Edm.Decimal nullable Common.Label=Net Amount
+ property Placed Edm.DateTimeOffset nullable
+ property Shipped Edm.DateTime nullable
+ navigation Buyer to-one Customers
+set ArchivedOrders
+ type sap:label=Sales Order
+ key Year OrderID
+ property OrderID Edm.String not-null
+ property Year Edm.Int16 not-null
+ property Amount Edm.Decimal nullable Common.Label=Net Amount
+ property Placed Edm.DateTimeOffset nullable
+ property Shipped Edm.DateTime nullable
+ navigation Buyer to-one FormerCustomers
+set Customers
+ type sap:label=Customer
+ key PartyID
+ property PartyID Edm.String not-null sap:label=Party
+ property Name Edm.String nullable sap:label=Name & Title
+ property Region Edm.String nullable
+ property Home SHOP.Address nullable
+ property Branches Collection(SHOP.Address) nullable
+ navigation Orders to-many Orders
+set FormerCustomers
+ type sap:label=Customer
+ key PartyID
+ property PartyID Edm.String not-null sap:label=Party
+ property Name Edm.String nullable sap:label=Name & Title
+ property Region Edm.String nullable
+ property Home SHOP.Address nullable
+ property Branches Collection(SHOP.Address) nullable
+ navigation Orders to-many ArchivedOrders
+ReleaseOrder none

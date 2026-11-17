@@ -1,0 +1,9 @@
+set A1s
+ type
+ key K
+ property K Edm.String not-null
+ property X Edm.Int32 nullable
+set A2s
+ type
+ key K
+ property K Edm.String not-null

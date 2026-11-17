@@ -1,0 +1,1 @@
+{"d":{"__metadata":{"uri":"https://h.example/svc/Orders(Year=2023,OrderID='1001')","type":"SHOP.Order"},"OrderID":"1001","Year":2023,"Amount":"12.50","Placed":"\/Date(1700000000000+0060)\/","Shipped":"\/Date(1700003600123)\/","Buyer":{"__deferred":{"uri":"https://h.example/svc/Orders(Year=2023,OrderID='1001')/Buyer"}}}}

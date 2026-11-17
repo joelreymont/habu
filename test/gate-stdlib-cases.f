@@ -493,6 +493,10 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+SUITE odata
+   src/lib/odata-test.f
+;SUITE
+
 \ SECRET:DIR-BIND over a directory under TMPDIR. Its own suite: the bind holds
 \ SECRET's store for the whole process.
 SUITE secret-dir
