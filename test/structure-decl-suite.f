@@ -1166,14 +1166,12 @@ STRUCTURE sdagen<a>
 s" SDAG1 ( ^sdagen<a> -- ^a ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDAG2 ( ^sdagen<a> -- ^n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ...but a type argument that is itself a FAMILY is not an instantiation of the
-\ accessor at all, whatever its width: the parameter binds no family term
-\ (measured: `expected: ^sdagen<a> actual: ^sdagen<sdaw1>`), so the call
-\ is refused at the accessor's own token before any address arithmetic is judged.
+\ A family argument instantiates the accessor too, at the instance's layout:
+\ K lies past a two-cell V.
 STRUCTURE sdaw1 FIELD z n ;STRUCTURE                 \ one cell
 STRUCTURE sdaw2 FIELD z n FIELD w n ;STRUCTURE       \ two cells
-s" SDAW1 ( ^sdagen<sdaw1> -- ^sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
-s" SDAW2 ( ^sdagen<sdaw2> -- ^n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW1 ( ^sdagen<sdaw1> -- ^sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW2 ( ^sdagen<sdaw2> -- ^n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ `record-at` scales by the caller's count, so it refuses a pointee whose
 \ instantiated width is not the committed width: an argument wider than one

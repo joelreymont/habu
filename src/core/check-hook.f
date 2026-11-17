@@ -277,7 +277,8 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
-\ stored TYPE, lays its facts, and answers its body value and effect handle.
+\ stored TYPE, records NAME as the generic member SHAPE PARAM names if any, lays
+\ its facts, and answers its body value and effect handle.
 \ TYPE is read only for the shapes that answer `^t`, and not for a STORED
 \ child whose PARAM is its type's node.
 : CHILD ( ^u8 n n n ^u8 n -- n n )
@@ -287,6 +288,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
       shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
    else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
    na nu din dout RES-FALSE CHECKER-CHILD-ROWS {: h:n :}
+   shape param  CHECKER-REC-SYM @  TFAM:MEMBER-SYM!
    na nu PENDING-FACTS
    val h ;
 

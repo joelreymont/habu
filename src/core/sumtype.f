@@ -96,6 +96,7 @@ EXPORT CHECK:CHECKER-DEFINED-HERE?
 EXPORT CHECK:CHECKER-GLOBAL
 EXPORT CHECK:CHECKER-PRIVATE
 EXPORT CHECK:CHECKER-PUBLIC
+EXPORT CHECK:CHECKER-REC-SYM
 EXPORT CHECK:CHECKER-RECORD-SYM
 EXPORT CHECK:CHECKER-SIG-UNRES-TAKE
 EXPORT CHECK:CON-OF
@@ -155,6 +156,7 @@ EXPORT CHECK:SQUOT-N
 EXPORT CHECK:T-RES
 EXPORT CHECK:TAG
 EXPORT CHECK:TDECL-TITLE
+EXPORT CHECK:TFAM-WIDTH-SLOT-XT
 EXPORT CHECK:UNSTORED-REASON
 EXPORT CHECK:UPKG-HELP
 EXPORT CHECK:WRITE-WINDOW-CK
@@ -2077,14 +2079,21 @@ public
 \ parameter: no text, so no word of the declaring package can capture one. A
 \ field's parameter is its committed field id, a BUFFER field's child a SPAN
 \ and any other's a FIELD; AT's parameter is the family id; BYTES and
-\ CELLS are numbers. Generation runs at commit: a field id is an authority only
-\ once TYPE-FIELD has committed the row, which the runner's commit order
-\ (DECL-EVENT before the address surface) guarantees.
+\ CELLS are numbers, and a family whose width reads a parameter has neither,
+\ since its width is the instance's. Generation runs at commit: a field id is
+\ an authority only once TYPE-FIELD has committed the row, which the runner's
+\ commit order (DECL-EVENT before the address surface) guarantees.
 
 private
 
 : TDECL-ADDR-NAME ( n ^u8 n -- ^u8 n ) {: fam:n ta:^ tu:n :}
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF  TDGEN-BUF TDGEN-U @ ;
+
+\ Whether FAM's width is one number: it reads none of the family's parameters.
+: TDECL-ADDR-SIZED? ( n -- bool ) {: fam:n :}
+   fam TFAM-ARITY@ 0 ?do
+      fam i TFAM-WIDTH-SLOT-XT IF RES-FALSE unloop EXIT THEN
+   loop RES-TRUE ;
 
 \ Runs XT on each child of FAM, with its name, shape and parameter.
 : TDECL-ADDR-EACH ( n [ ^u8 n n n -- ] -- ) {: fam:n xt :}
@@ -2095,6 +2104,7 @@ private
       fs i +  xt execute
    loop
    fam s" at" TDECL-ADDR-NAME  CHILD-ABI:INDEX fam  xt execute
+   fam TDECL-ADDR-SIZED? 0= IF EXIT THEN
    fam s" bytes" TDECL-ADDR-NAME
    CHILD-ABI:VALUE  fam TFAM-SLOTS@ CELL *  xt execute
    fam s" cells" TDECL-ADDR-NAME
@@ -2115,10 +2125,12 @@ private
 \ Replay makes no word: it registers each child's effect, as CHILD-RUN would.
 : TDECL-ADDR-REG ( ^u8 n n n -- ) {: na:^ nu:n shape:n param:n :}
    shape param TFAM-CHILD-ROWS {: din:n dout:n val:n :}
-   na nu din dout RES-FALSE CHECKER-CHILD-ROWS drop ;
+   na nu din dout RES-FALSE CHECKER-CHILD-ROWS drop
+   shape param  CHECKER-REC-SYM @  MEMBER-SYM! ;
 
 : TDECL-ADDR-ROOM ( n -- ) {: fam:n :}
-   fam s" at" TDECL-ADDR-NAME  fam TFAM-FLD-COUNT@ 3 +
+   fam s" at" TDECL-ADDR-NAME
+   fam TFAM-FLD-COUNT@ 1 +  fam TDECL-ADDR-SIZED? IF 2 + THEN
    TDECL-CAPACITY-PREFLIGHT-XT ;
 
 : TDECL-ADDR-LIVE ( n -- n )

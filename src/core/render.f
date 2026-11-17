@@ -968,6 +968,8 @@ variable MDV-I   variable MDV-F
       MD-FINALLY-CLEANUP of s" E-FINALLY-CLEANUP" endof
       MD-CALLABLE-NARROW of s" E-CALLABLE-NARROW" endof
       MD-RECORD-AT-WIDE of s" E-RECORD-AT-WIDE" endof
+      MD-MEMBER-TOP of s" E-LAYOUT-VALUE" endof
+      MD-ONE-CELL   of s" E-MISMATCH" endof
       MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       MD-C2-BINDER    of s" E-C2-BINDER" endof
       MD-C2-RECORDS-BINDER of s" E-C2-BINDER" endof
@@ -1083,6 +1085,8 @@ variable MDV-I   variable MDV-F
       MD-FINALLY-CLEANUP of s" put a cleanup of effect `[ -- ]` on top, as `[: body ;] [: cleanup ;] finally`" endof
       MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
       MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
+      MD-MEMBER-TOP of s" move the call inside a definition, which uses the receiver's layout" endof
+      MD-ONE-CELL   of s" call it with a plain one-cell type (`n`, a pointer), or do the work in a word whose effect names" endof
       MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `^`" endof
       MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
@@ -1183,6 +1187,8 @@ variable MDV-I   variable MDV-F
       MD-FINALLY-CLEANUP of s" the cleanup `finally` runs must take and leave nothing" endof
       MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
       MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
+      MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
+      MD-ONE-CELL   of s" the word's code reads one cell through this pointer" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
       MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1259,6 +1265,8 @@ variable MDV-I   variable MDV-F
       MD-FINALLY-CLEANUP of s" cleanup not stack-neutral" endof
       MD-CALLABLE-NARROW of s" callable narrower than the cell" endof
       MD-RECORD-AT-WIDE of s" wide instantiation" endof
+      MD-MEMBER-TOP of s" runs with its declared layout" endof
+      MD-ONE-CELL   of s" takes one cell" endof
       MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       MD-LINEAR-DROP  of s" linear value dropped" endof
       MD-LINEAR-COPY  of s" linear value copied" endof
@@ -1355,6 +1363,18 @@ variable MDV-I   variable MDV-F
    THEN
    ;AT-PIN ;
 
+\ The declared type a one-cell variable met, after the reason's prose: its
+\ cells, or that it is a declared type where it fits one cell.
+: ONE-CELL-COUNTS ( -- )
+   AT-PIN
+   s" ; `" EMIT-STR  MDIAG-CELL @ REND-TYPE
+   MDIAG-CELL @ T-WIDTH 1 > IF
+      s" ` is " EMIT-STR  MDIAG-CELL @ T-WIDTH EMIT-U  s"  cells" EMIT-STR
+   ELSE
+      s" ` is a declared type, not a plain cell" EMIT-STR
+   THEN
+   ;AT-PIN ;
+
 
 \ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
@@ -1365,6 +1385,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-LOCAL-UNBOUND = IF LOCAL-UNBOUND-COUNTS EXIT THEN
    MDIAG @ MD-DIV-ZERO =  MDIAG @ MD-THROW-ZERO = or IF ZERO-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
+   MDIAG @ MD-ONE-CELL = IF ONE-CELL-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
@@ -2028,6 +2049,10 @@ PTR-VARIABLE HOLDER-FIRST
    s" call " EMIT-STR  TOK-SPAN
    s"  directly where the checker proves its scope instead of ticking it" EMIT-STR ;
 
+: ONE-CELL-HELP ( -- )
+   MD-ONE-CELL MD-SUGGEST$ EMIT-STR
+   AT-PIN  s"  `" EMIT-STR  MDIAG-CELL @ REND-TYPE  s" `" EMIT-STR  ;AT-PIN ;
+
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
    EMIT-STR ;
@@ -2087,6 +2112,7 @@ PTR-VARIABLE HOLDER-FIRST
    k RF-LINLOCAL = IF LINLOCAL-HELP EXIT THEN
    k RF-REASON = IF
       MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
+      MDIAG @ MD-ONE-CELL = IF ONE-CELL-HELP EXIT THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN

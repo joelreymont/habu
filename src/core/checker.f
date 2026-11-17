@@ -4191,33 +4191,10 @@ variable NMOFF                           \ its token's offset in the checked tex
    t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
    t LAYOUT-MEM-OK? ;
 
-\ A MOVED var takes a one-cell layout value its body never reads, the hidden
-\ cell a signature expands it to included: that cell is the whole value.
-: MOVED-TAKES? ( n n -- bool ) {: v:n t:n :}
-   v ISVAR 0= IF RES-FALSE EXIT THEN
-   v PAY TVK@ TVK-MOVED <> IF RES-FALSE EXIT THEN
-   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
-   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
-   t T-WIDTH 1 = ;
-
-: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
-   a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
-   \ Let RAW-BLOCK? apply the literal null's existing pointee exception.
-   CUR-STRICT @ 0 <> IF
-      a ISVAR IF a PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
-      b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
-   THEN
-   a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   a ADDR-VAR? b ADDR-VAR? or IF RES-FALSE EXIT THEN
-   a b STORED-TAKES? IF RES-FALSE EXIT THEN
-   b a STORED-TAKES? IF RES-FALSE EXIT THEN
-   a b MOVED-TAKES? IF RES-FALSE EXIT THEN
-   b a MOVED-TAKES? IF RES-FALSE EXIT THEN
-   RES-TRUE ;
-
 SCRATCH{
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
+\ The layout type a one-cell variable met in this token's unify, 0 for none.
+variable ONE-CELL-HIT
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
@@ -4232,6 +4209,40 @@ variable STALE-HIT
 \ token and the token's latches close it.
 variable XT-DECL
 }SCRATCH
+
+\ A MOVED var takes a one-cell layout value its body never reads, the hidden
+\ cell a signature expands it to included: that cell is the whole value.
+: MOVED-TAKES? ( n n -- bool ) {: v:n t:n :}
+   v ISVAR 0= IF RES-FALSE EXIT THEN
+   v PAY TVK@ TVK-MOVED <> IF RES-FALSE EXIT THEN
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   t T-WIDTH 1 = ;
+
+\ A one-cell var met declared type t: latch t, which a plain cell is not.
+: ONE-CELL-MET ( n n -- ) {: v:n t:n :}
+   v ISVAR 0= IF EXIT THEN
+   v PAY TVK@ TVK-CELL <> IF EXIT THEN
+   t TAG T-PARAM <> IF EXIT THEN
+   t ONE-CELL-HIT ! ;
+
+: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
+   a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
+   \ Let RAW-BLOCK? apply the literal null's existing pointee exception.
+   CUR-STRICT @ 0 <> IF
+      a ISVAR IF a PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
+      b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
+   THEN
+   a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
+   a ADDR-VAR? b ADDR-VAR? or IF RES-FALSE EXIT THEN
+   a b STORED-TAKES? IF RES-FALSE EXIT THEN
+   b a STORED-TAKES? IF RES-FALSE EXIT THEN
+   a b MOVED-TAKES? IF RES-FALSE EXIT THEN
+   b a MOVED-TAKES? IF RES-FALSE EXIT THEN
+   a b ONE-CELL-MET  b a ONE-CELL-MET
+   RES-TRUE ;
+
 
 0 constant FENCE-OK       \ the cell may absorb the term
 1 constant FENCE-FAMILY   \ a nominal family or a layout value (the mint)
@@ -4347,7 +4358,8 @@ variable XT-DECL
       term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
       \ A generic ! or atomic! still reads its one-cell value.
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
-      T-WIDTH 1 <> EXIT
+      dup T-WIDTH 1 = IF drop RES-FALSE EXIT THEN
+      ONE-CELL-HIT ! RES-TRUE EXIT
    THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
@@ -5296,6 +5308,8 @@ private
 98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
+101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?); E-LAYOUT-VALUE
+102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT); E-MISMATCH
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; each other reason has its own code (MD-CODE$).
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5353,6 +5367,7 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
+variable MDIAG-CELL   \ one-cell rule: the layout type a one-cell variable met
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5435,6 +5450,9 @@ TAIL-CAPTURE-DEFAULT
    \ cell alike
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
+   ONE-CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
+      MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF ONE-CELL-HIT @ MDIAG-CELL ! THEN
+   THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
    TAIL-HIT @ IF   \ captured only when this refusal latches the reason
@@ -9521,16 +9539,19 @@ global
 \ HT-SVX belongs to the variant store: the FIRST variant id (+1) whose
 \ generated constructor is that symbol.
 12 constant HT-SVX
+\ HT-MBX belongs to the family and field stores: the generic member whose
+\ generated word is that symbol.
+13 constant HT-MBX
 private
 \ The package-only chains share spellings across visibility and name keys.
 \ They contain every live symbol, so the same LIFO retirement removes them.
-13 constant HT-PKG-BKT
-14 constant HT-PKG-NEXT
+14 constant HT-PKG-BKT
+15 constant HT-PKG-NEXT
 \ The name-only chains reuse folded name bytes across package and visibility
 \ keys. Every row is linked so a scope can retire its rows newest-first.
-15 constant HT-NAME-BKT
-16 constant HT-NAME-NEXT
-17 constant HIDX-TABLES
+16 constant HT-NAME-BKT
+17 constant HT-NAME-NEXT
+18 constant HIDX-TABLES
 PTR-VARIABLE HIDX-MEM
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. Starts at 1
 \ so a never-built index recorded as 0 can never look current.
@@ -9566,8 +9587,8 @@ variable HIDX-CUR
 : HIDX-GEN+ ( -- )
    HIDX-GEN @ 1 + HIDX-GEN ! ;
 
-\ Unmapping drops the HT-USX, HT-NRX and HT-SVX indexes that live in it, so
-\ this is the one place HIDX-GEN moves.
+\ Unmapping drops the HT-USX, HT-NRX, HT-SVX and HT-MBX indexes that live in
+\ it, so this is the one place HIDX-GEN moves.
 : HIDX-MEM-CLEAR ( -- )
    HIDX-GEN+
    HIDX-MEM@ HIDX-MEM-U @ ARENA-UNMAP  0 HIDX-MEM-U !
@@ -15341,6 +15362,9 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -5 constant CW-INIT-WIDTH            \ initialized record width and byte extent
 -6 constant CW-INIT-EXTENT           \ initialized byte extent and alignment
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
+-8 constant CW-MEMBER-OFFSET         \ a generic field accessor's offset in the receiver's instance
+-9 constant CW-MEMBER-SPAN           \ a BUFFER field's offset there and its byte extent
+-10 constant CW-MEMBER-STRIDE        \ a generic AT's stride in the receiver's instance
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
 
@@ -15470,6 +15494,10 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
+\ A token's generic member number for its receiver's instance, -1 for none.
+: EFFECT-MEMBER-OFFSET ( n -- n ) CW-MEMBER-OFFSET CWIN-FIND drop ;
+: EFFECT-MEMBER-SPAN ( n -- n n ) CW-MEMBER-SPAN CWIN-FIND ;
+: EFFECT-MEMBER-STRIDE ( n -- n ) CW-MEMBER-STRIDE CWIN-FIND drop ;
 
 \ Copy only the fixed row spine. Its fresh tail never participates in
 \ unification; the shared type terms can still acquire their final widths.
@@ -22857,7 +22885,7 @@ variable POST-A0
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -22872,7 +22900,7 @@ variable POST-A0
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
@@ -22970,8 +22998,11 @@ variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
    at 1 <> id TVK@ TVK-STORED = and IF TVK-ANY id TVK! THEN
    at 0 <> id TVK@ TVK-MOVED = and IF TVK-CELL id TVK! THEN ;
 
+\ Under a pointer every family argument is stored. By value an argument the
+\ family's width reads sizes the value on the stack, so it is any other
+\ position; one the width does not read is stored.
 : SD-ARG-AT ( n n n -- n ) {: x:n slot:n at:n :}
-   at 2 = IF 2 EXIT THEN
+   at 0 <> IF at EXIT THEN
    x PARAM>FAM dup 0 < IF drop 2 EXIT THEN
    slot TFAM-WIDTH-SLOT-XT IF 2 ELSE 1 THEN ;
 
@@ -23471,7 +23502,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !

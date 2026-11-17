@@ -1907,9 +1907,10 @@ EXPORT CHECK:WF-FACT@
 EXPORT CHECK:WF-N@
 \ ---- one token ---------------------------------------------------------------
 \ THE EVENTS. A token is what the checker filed it as (CHECKER-TAPE's kinds). A
-\ name inlines only when its bound record is the engine's seeded primitive of
-\ the operation (THE INLINED OPERATIONS); a package's own word named like a
-\ primitive is a call. A word whose definer fixed a value pushes it
+\ name inlines when its bound record is the engine's seeded primitive of the
+\ operation (THE INLINED OPERATIONS); a package's own word named like a
+\ primitive is a call. A word whose definer fixed a value pushes it, and a
+\ generic member call the checker gave its instance's number adds that number
 \ (WORD-CALL). Anything else is E-T0-UNSUPPORTED. A name compiled code cannot
 \ reach is rejected as undefined, even in an unchecked body whose scan did not
 \ reject it.
@@ -1920,6 +1921,19 @@ EXPORT CHECK:WF-N@
    a u NEUTRAL-PARSE-IMM? if exit then
    a u UNMODELED ;
 
+\ A generic member call at token AT whose receiver's instance the checker knew
+\ adds that instance's number inline, as FIXED-BODY adds the declared one.
+: MEMBER-INLINE? ( n -- bool ) {: at:n :}
+   at NDICT:MEMBER-OFFSET {: off:n :}
+   off 0 >= if off PUSH-CONST  [: + ;] OP-ADD true ALU2  true exit then
+   at NDICT:MEMBER-SPAN {: boff:n extent:n :}
+   boff 0 >= if
+      boff PUSH-CONST  [: + ;] OP-ADD true ALU2  extent PUSH-CONST  true exit
+   then
+   at NDICT:MEMBER-STRIDE {: stride:n :}
+   stride 0 >= if stride PUSH-CONST  MUL2  [: + ;] OP-ADD true ALU2  true exit then
+   false ;
+
 \ A fixed word is its stamped value; r files a DATA address so publication
 \ relocates it.
 : WORD-CALL ( n n n n -- )
@@ -1929,6 +1943,7 @@ EXPORT CHECK:WF-N@
       to COMP-BODY:ADDRESS NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
    ORD @ 1- {: at:n :}
+   at MEMBER-INLINE? if exit then
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 

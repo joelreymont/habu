@@ -37,6 +37,10 @@ STRUCTURE box<a> DERIVE addr FIELD item a FIELD rest n ;STRUCTURE
 STRUCTURE lrec DERIVE addr FIELD hold stored-type-lin ;STRUCTURE
 \ A quotation argument: qb's width is the quotation's one cell.
 STRUCTURE qb<a> FIELD f [ -- a ] ;STRUCTURE
+\ A width argument `mark`'s and `set`'s offsets and the stride read.
+STRUCTURE held<a> DERIVE addr FIELD value a BUFFER mark 5 FIELD set bool ;STRUCTURE
+\ A declared type of one cell.
+ENUM dir north south ;ENUM
 
 : SAME ( ^t -- ^t ) ;
 : READ ( ^t -- t ) @ ;
@@ -60,6 +64,10 @@ defer P ( ^a -- ^a )
 : Q-ROW ( [ -- t ] -- [ -- t ] ) ;
 defer Q-DEFER ( qb<t> -- n )
 TYPED-VARIABLE TA turn
+4 TYPED-BUFFER HELDS held<turn>
+\ Each reads one cell through its open receiver.
+: SET-OF ( ^held<b> -- ^bool ) STORED-HELD:SET ;
+: FETCH-ONE ( ^t -- n ) @ drop 0 ;
 
 private
 
@@ -134,6 +142,21 @@ private
    0.25 ELEMS >ELEM STORED-TURN:ANGLE !
    ELEMS >ELEM ELEM> >ELEM TURN? ;
 
+\ Each reaches a held<turn> through the generic accessors and AT, at the
+\ numbers turn's two cells give.
+: HELD-FILL ( -- )
+   1 HELDS {: h :}
+   true h STORED-HELD:VALUE STORED-TURN:ALIVE !
+   0.25 h STORED-HELD:VALUE STORED-TURN:ANGLE !
+   true h STORED-HELD:SET ! ;
+: HELD-READ ( -- bool )
+   0 HELDS 1 STORED-HELD:AT {: h :}
+   h STORED-HELD:SET @  h STORED-HELD:VALUE TURN?  and ;
+: HELD-ADDR ( ^held<turn> -- n ) NULL-PTR - ;
+: HELD-STEP ( -- bool ) 0 HELDS 1 STORED-HELD:AT HELD-ADDR  1 HELDS HELD-ADDR = ;
+\ The offset of mark's span in a held<turn>.
+: MARK-AT ( -- n ) 0 HELDS STORED-HELD:MARK SPAN:$ drop NULL-PTR -  0 HELDS HELD-ADDR - ;
+
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
 
@@ -158,6 +181,63 @@ private
    s" ^t, ^run<t> and ^^t take a two-cell record" T-LABEL
    SAME-TURN TTRUE  COUNT-TURN 5 T=  COUNT-N 6 T=  KEEP-TURN TTRUE
    OUTER-TURN TTRUE ;
+
+: CASE-HELD ( -- )
+   s" a generic member call adds its instance's offset or stride" T-LABEL
+   HELD-FILL  HELD-READ TTRUE  HELD-STEP TTRUE ;
+
+: CASE-HELD-SPAN ( -- )
+   s" a generic BUFFER member's span starts at its instance's offset" T-LABEL
+   MARK-AT  [type] turn width>n T= ;
+
+: CASE-HELD-TOP ( -- )
+   s" a top-level member call whose instance moves the member is rejected" T-LABEL
+   ARM
+   [: s" 0 STORED:HELDS STORED-HELD:SET drop" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-LAYOUT-VALUE\"" HAS?
+   S\" \"token\":\"STORED-HELD:SET\"" HAS?
+   s" move the call inside a definition, which uses the receiver's layout" HAS?
+   DISARM ;
+
+: CASE-HELD-SIZE ( -- )
+   s" a family whose width reads a parameter has no BYTES or CELLS" T-LABEL
+   STORED-RUN:BYTES 16 T=  STORED-RUN:CELLS 2 T=
+   ARM
+   [: s" STORED-HELD:BYTES drop" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   [: s" STORED-HELD:CELLS drop" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"E-UNDEFINED\",\"message\":\"cannot find word `STORED-HELD:BYTES`" HAS?
+   S\" \"E-UNDEFINED\",\"message\":\"cannot find word `STORED-HELD:CELLS`" HAS?
+   DISARM ;
+
+: CASE-ONE-CELL-MEMBER ( -- )
+   s" a generic member call through an open receiver takes no record" T-LABEL
+   ARM
+   [: s" : STORED-R21 ( ^STORED:held<STORED:turn> -- ^bool ) STORED:SET-OF ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:SET-OF\"" MISMATCH-AT
+   s" `stored:turn` is 2 cells" HAS?
+   DISARM ;
+
+: CASE-ONE-CELL-FETCH ( -- )
+   s" nor does a one-cell fetch through ^t" T-LABEL
+   ARM
+   [: s" : STORED-R22 ( ^STORED:turn -- n ) STORED:FETCH-ONE ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:FETCH-ONE\"" MISMATCH-AT
+   s" `stored:turn` is 2 cells" HAS?
+   DISARM ;
+
+: CASE-ONE-CELL-ENUM ( -- )
+   s" nor a declared type that fits one cell" T-LABEL
+   ARM
+   [: s" : STORED-R23 ( ^STORED:dir -- n ) STORED:FETCH-ONE ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:FETCH-ONE\"" MISMATCH-AT
+   s" `stored:dir` is a declared type, not a plain cell" HAS?
+   DISARM ;
 
 : CASE-NULL ( -- )
    s" a ^t compared with the null takes a record pointer" T-LABEL
@@ -396,6 +476,13 @@ public
    T-RESET
    CASE-PASS
    CASE-POINTER
+   CASE-HELD
+   CASE-HELD-SPAN
+   CASE-HELD-TOP
+   CASE-HELD-SIZE
+   CASE-ONE-CELL-MEMBER
+   CASE-ONE-CELL-FETCH
+   CASE-ONE-CELL-ENUM
    CASE-NULL
    CASE-LOCAL
    CASE-OLD-STEP

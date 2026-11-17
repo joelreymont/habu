@@ -595,13 +595,17 @@ multi-cell type rationale is `docs/design.md` "Types".
   family header;
   repeating a feature rejects; `OPAQUE` is `STRUCTURE`-only, once, and needs a
   package and a field. `DERIVE addr` on a structure with fields
-  generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
-  global public `point` with `FIELD x n` gains `POINT:X ( ^point -- ^n )`,
+  generates typed field-address accessors plus `AT`, and `BYTES` and `CELLS`
+  when the family's width reads none of its parameters; otherwise
+  `[type] F<args> width>n` gives an instance's size. A global public `point`
+  with `FIELD x n` gains `POINT:X ( ^point -- ^n )`,
   read and written with the field type's ordinary checked operations; a
   `BUFFER b N` field's accessor answers its bytes as a span,
   `( ^point -- SPAN:span<u8> )` of N bytes
   (`docs/design.md` "Families and layout policies" gives the layout
-  policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
+  policies). A call of a field accessor or `AT` on a known instance uses that
+  instance's layout, while a generic word that calls one on an open receiver
+  takes one-cell types. `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
   never raw `=`. `DERIVE tag` on an arity-0 enum whose variants carry no
   payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the

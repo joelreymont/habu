@@ -1877,10 +1877,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" : MAKE-BOX ( -- box<turn> ) 1 2 " SRC+  wide if s" 9 " SRC+ then
    s\" TURN:MAKE 3 BOX:MAKE ;\n" SRC+  s" turn.f" NEST-WRITE ;
 
-\ stride.f and effect.f spell turn only inside box<turn>: a typed buffer's
-\ stride and an effect. blob.f, which no turn changes, holds a BUFFER record
-\ whose DERIVE addr accessor effect.f calls: its span's length and its offset
-\ in the record.
+\ stride.f and effect.f spell turn only inside box<turn>: a stride, rest's offset
+\ and an effect. blob.f, unchanged by turn, holds a BUFFER record effect.f reads.
 : WRITE-SPELLED ( -- )
    L$ s" spelled" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
@@ -1889,20 +1887,18 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    false WRITE-TURN
    s\" 4 TYPED-BUFFER BT box<turn>\n" SRC+
    s\" : B-STEP ( -- n ) 1 BT NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
+   s\" : R-AT ( -- n ) 0 BT BOX:REST NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
    s" stride.f" NEST-WRITE
    s\" : W ( box<turn> -- n ) drop 7 ;\n" SRC+
    s\" : B-LEN ( -- n ) 0 BB BLOB:B SPAN:LEN ;\n" SRC+
    s\" : B-AT ( -- n ) 0 BB BLOB:B SPAN:$ drop NULL-PTR -  0 BB NULL-PTR -  - ;\n" SRC+
    s" effect.f" NEST-WRITE
    s" blob.f" REQUIRE+  s" turn.f" REQUIRE+  s" stride.f" REQUIRE+  s" effect.f" REQUIRE+
-   s\" : MAIN ( -- ) B-STEP . 11 MAKE-BOX W . .  B-LEN . B-AT . ;\n" SRC+
+   s\" : MAIN ( -- ) B-STEP . 11 MAKE-BOX W . .  B-LEN . B-AT . R-AT . ;\n" SRC+
    s" main.f" NEST-WRITE ;
 
-\ Guards a type named only inside `<...>`: after turn gains a field, J2 compiles
-\ stride.f and effect.f, and its program prints a cold build's stride, W's 7 and
-\ the 11 under the box W drops. It guards a BUFFER accessor a warm build replays:
-\ J2 links blob.f's object and compiles effect.f's call of its accessor to the
-\ cold build's span, 13 bytes one cell into the record.
+\ After turn gains a field J2 compiles stride.f and effect.f, which spell it only
+\ in <...>, links blob.f, and prints a cold build's numbers (rest at 24, J's 16).
 : SPELLED-CASE ( CMD:command -- CMD:command )
    WRITE-SPELLED
    s" J" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
@@ -1912,7 +1908,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build compiles stride.f" SPELLED-STRIDE COMPILED
    s" the build compiles effect.f" SPELLED-EFFECT COMPILED
    s" the build links blob.f" SPELLED-BLOB LINKED
-   s\" 32\n7\n11\n13\n8\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
+   s\" 32\n7\n11\n13\n8\n24\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
 
 \ The packaged sequence's t.f: package TURNS's record turn, with a third field
 \ when the flag is true, and box<a>.

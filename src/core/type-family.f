@@ -208,6 +208,10 @@ EXPORT CHECK:CTOR-EXTEND?-XT
 EXPORT CHECK:CTOR-PKG?-XT
 EXPORT CHECK:CTOR-ROW?-XT
 EXPORT CHECK:CTOR-WORD?-XT
+EXPORT CHECK:CW-MEMBER-OFFSET
+EXPORT CHECK:CW-MEMBER-SPAN
+EXPORT CHECK:CW-MEMBER-STRIDE
+EXPORT CHECK:CWIN-ADD
 EXPORT CHECK:DCUR
 EXPORT CHECK:EFFECT-TYPE-FAM
 EXPORT CHECK:ENTRIES-PENDING
@@ -254,6 +258,7 @@ EXPORT CHECK:PARAM>ARG
 EXPORT CHECK:PARAM>ARGC
 EXPORT CHECK:PARAM>FAM
 EXPORT CHECK:PAY
+EXPORT CHECK:PTR>INNER
 EXPORT CHECK:PTX-CPCOMMITTED-FAM
 EXPORT CHECK:PTX-CPREADY-FAM
 EXPORT CHECK:PTX-TILE-FAM
@@ -262,6 +267,8 @@ EXPORT CHECK:PUSH-LOGICAL
 EXPORT CHECK:PUSH-TERM
 EXPORT CHECK:Q>BLOCK
 EXPORT CHECK:R-RES
+EXPORT CHECK:REC-IX
+EXPORT CHECK:REC-ON
 EXPORT CHECK:RECORDED-STEP
 EXPORT CHECK:REG-EXT-AOT-FAMILY-NAME-XT
 EXPORT CHECK:REG-GROW1
@@ -293,6 +300,8 @@ EXPORT CHECK:TFAM-WIDTH-XT
 EXPORT CHECK:TKF
 EXPORT CHECK:TKFU
 EXPORT CHECK:TOKFOLD
+EXPORT CHECK:TOP-STEP
+EXPORT CHECK:TVK-CELL!
 EXPORT CHECK:TVK-REGION!
 EXPORT CHECK:TVK-SCOPE!
 EXPORT CHECK:TYPE-MAY-ARRIVE-XT
@@ -383,10 +392,12 @@ private
 18 cells constant TF.OPAQUE-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
 19 cells constant TF.ENTRY-OFF
+\ TF.AT-SYM: the checker symbol of the family's generated AT, 0 when it has none.
+20 cells constant TF.AT-SYM-OFF
 
 public
 
-20 cells constant TF-REC
+21 cells constant TF-REC
 private
 
 : TF.PKG-OFF ( ^a -- ^a ) TF.PKG-OFF-AT + ;
@@ -415,6 +426,7 @@ private
 : TF.TAILNEXT ( ^a -- ^a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ^a -- ^a ) TF.OPAQUE-OFF + ;
 : TF.ENTRY ( ^a -- ^a ) TF.ENTRY-OFF + ;
+: TF.AT-SYM ( ^a -- ^a ) TF.AT-SYM-OFF + ;
 
 
 \ Each boot store holds the built-in families this file declares, so a written
@@ -789,6 +801,7 @@ public
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
    0 r TF.ENTRY !
+   0 r TF.AT-SYM !
    id TFX-ADD                             \ the row's tail is written: it can be found now
    arity TFAM-PK-RESERVE
    id ;
@@ -1400,10 +1413,13 @@ private
 8 cells constant PF.BYTES-OFF
 9 cells constant PF.ALIGN-OFF
 10 cells constant PF.FLAGS-OFF
+\ PF.ACCESSOR-SYM: the checker symbol of the field's generated accessor, 0 when
+\ it has none.
+11 cells constant PF.ACCESSOR-SYM-OFF
 
 public
 
-11 cells constant PF-REC
+12 cells constant PF-REC
 : PF.FAM ( ^a -- ^a ) PF.FAM-OFF + ;
 : PF.VAR ( ^a -- ^a ) PF.VAR-OFF + ;
 : PF.NAME-OFF ( ^a -- ^a ) PF.NAME-OFF-AT + ;
@@ -1416,8 +1432,9 @@ public
 : PF.ALIGN ( ^a -- ^a ) PF.ALIGN-OFF + ;
 : PF.FLAGS ( ^a -- ^a ) PF.FLAGS-OFF + ;
 
-
 private
+
+: PF.ACCESSOR-SYM ( ^a -- ^a ) PF.ACCESSOR-SYM-OFF + ;
 
 16 constant PF-CAP-INIT            \ holds the built-ins' fields (TF-CAP-INIT)
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
@@ -2551,12 +2568,94 @@ public
    noff r PF.NAME-OFF !   nu r PF.NAME-U !   sch r PF.SCH !
    slot r PF.SLOT !   cellsn r PF.CELLS !
    boff r PF.BYTE-OFF !   bytesn r PF.BYTES !
-   al r PF.ALIGN !   flags r PF.FLAGS !
+   al r PF.ALIGN !   flags r PF.FLAGS !   0 r PF.ACCESSOR-SYM !
    id PF-LINK                       \ chain the row under its owner before publishing it
    id 1 + PF-N !
    TFM-EPOCH+ ;
 
 : PF-COMMIT ( -- ) WRITE-WINDOW-CK  PF-N @ PF-COMMIT-N !  TFM-EPOCH+ ;
+
+\ --- generic member symbols (MBX). A field row holds its generated accessor's
+\ symbol and a family row its AT's. A symbol's head is the row it was last
+\ written to, field id * 2 + 2 or family id * 2 + 1, and is believed only
+\ while that row is live and still holds the symbol: a retired row is out of
+\ range and a row added again starts with none, so a rewind unlinks nothing.
+
+private
+
+variable MBX-GEN   0 MBX-GEN !
+
+: MBX-LINK ( n n -- ) {: head:n sym:n :}
+   sym IDX-SYM-OK
+   head sym HT-MBX IDX-HEAD! ;
+
+: MBX-BUILD ( -- )
+   HT-MBX IDX-HEADS-CLEAR
+   PF-N @ 0 ?do
+      i PF-ROW PF.ACCESSOR-SYM @ {: sym:n :}
+      sym 0 <> IF i 2 * 2 + sym MBX-LINK THEN
+   loop
+   TFAM-N @ 0 ?do
+      i TF-REC@ TF.AT-SYM @ {: sym:n :}
+      sym 0 <> IF i 2 * 1 + sym MBX-LINK THEN
+   loop
+   HIDX-GEN @ MBX-GEN ! ;
+
+: MBX-ENSURE ( -- )
+   HIDX-ENSURE
+   MBX-GEN @ HIDX-GEN @ <> IF MBX-BUILD THEN ;
+
+\ A member has one generated word: a second symbol for its row is a defect.
+: SYM-ONCE ( n n -- ) {: old:n sym:n :}
+   old 0 <>  old sym <>  and IF s" tfam: a member's symbol is already set" 76 die THEN ;
+
+: FIELD-SYM! ( n n -- ) {: fid:n sym:n :}
+   sym 0= IF EXIT THEN
+   fid PF-ROW PF.ACCESSOR-SYM @ sym SYM-ONCE
+   sym fid PF-ROW PF.ACCESSOR-SYM !
+   MBX-ENSURE
+   fid 2 * 2 + sym MBX-LINK ;
+
+: AT-SYM! ( n n -- ) {: fam:n sym:n :}
+   sym 0= IF EXIT THEN
+   fam TF-REC@ TF.AT-SYM @ sym SYM-ONCE
+   sym fam TF-REC@ TF.AT-SYM !
+   MBX-ENSURE
+   fam 2 * 1 + sym MBX-LINK ;
+
+public
+
+\ Records SYM as the generated word of member SHAPE PARAM: a field's accessor
+\ (FIELD, SPAN, PARAM its field id) or a family's AT (INDEX, PARAM its id). Any
+\ other shape is no member.
+: MEMBER-SYM! ( n n n -- ) {: shape:n param:n sym:n :}
+   shape CHILD-ABI:FIELD =  shape CHILD-ABI:SPAN = or IF param sym FIELD-SYM! EXIT THEN
+   shape CHILD-ABI:INDEX = IF param sym AT-SYM! THEN ;
+
+private
+
+\ The shape and param of the member whose generated word is SYM; false for
+\ any other symbol.
+: SYM-MEMBER ( n -- n n bool ) {: sym:n :}
+   sym 0 <= IF 0 0 RES-FALSE EXIT THEN
+   MBX-ENSURE
+   sym HT-MBX IDX-HEAD@ {: head:n :}
+   head 0= IF 0 0 RES-FALSE EXIT THEN
+   head 1 and 0 <> IF
+      head 2 / {: fam:n :}
+      fam TFAM-N @ < IF
+         fam TF-REC@ TF.AT-SYM @ sym = IF CHILD-ABI:INDEX fam RES-TRUE EXIT THEN
+      THEN
+      0 0 RES-FALSE EXIT
+   THEN
+   head 2 / 1 - {: fid:n :}
+   fid PF-N @ < IF
+      fid PF-ROW PF.ACCESSOR-SYM @ sym = IF
+         fid PF-ROW PF.FLAGS @ PF-FLAG-BUFFER = IF CHILD-ABI:SPAN ELSE CHILD-ABI:FIELD THEN
+         fid RES-TRUE EXIT
+      THEN
+   THEN
+   0 0 RES-FALSE ;
 
 ;package
 
@@ -3357,12 +3456,12 @@ REGISTER-STR
 \
 \ The text is tokens split by one blank, `-` for an empty name, a family
 \ written `pkg:tail`:
-\   kind vis arity pk... layout slots tagw derive opaque
+\   kind vis arity pk... layout slots tagw derive opaque at-sym
 \   ndeps family...   (every other family its schemas name, read first)
 \   nvar (name tag paycells ctor-pkg ctor-sym nroots node...)...
-\   nfld (name variant slot cells byte-off bytes align flags node)...
+\   nfld (name variant slot cells byte-off bytes align flags accessor-sym node)...
 \   nlay (policy size align tagw)...
-\ A ctor-sym is `-` or `vis pkg tail`; a field's variant is its ordinal, -1
+\ A ctor-sym, at-sym or accessor-sym is `-` or `vis pkg tail`; a field's variant is its ordinal, -1
 \ for none. A node is `P index`, `C con`, `* node`, `A family count node...`,
 \ `Q hasr node node node node` or `R count node...`.
 
@@ -3514,6 +3613,7 @@ create ET-CH 8 allot
    f PF-VAR@ dup PF-NO-VARIANT = IF ELSE vstart - THEN ET-NUM
    f PF-SLOT@ ET-NUM  f PF-CELLS@ ET-NUM  f PF-BYTE-OFF@ ET-NUM
    f PF-BYTES@ ET-NUM  f PF-ALIGN@ ET-NUM  f PF-FLAGS@ ET-NUM
+   f PF-ROW PF.ACCESSOR-SYM @ ET-SYM
    f PF-SCH@ SCHEMA-ROOT@ ET-NODE ;
 
 
@@ -3534,6 +3634,7 @@ public
    id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
    id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM  id TFAM-TAGW@ ET-NUM
    id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
+   id TF-REC@ TF.AT-SYM @ ET-SYM
    ED-N @ ET-NUM
    ED-N @ 0 ?do ED-BUF @ i cells + @ ET-FAM loop
    id TFAM-VAR-COUNT@ ET-NUM
@@ -3550,7 +3651,8 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 200 constant ER-MSG-CAP
 create ER-MSG ER-MSG-CAP allot
 
-\ A text this tree's writer did not write: the build is broken.
+\ A text this tree's writer did not write: a broken build, or a first-generation
+\ engine whose host laid its entries in an older ENTRY-TEXT$ text.
 : ER-BAD ( -- )
    s" tfam: bad type entry " {: a:^ u:n :}
    u 0 ?do a i + c@ ER-MSG i + c! loop
@@ -3709,8 +3811,11 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM {: nb:n :}
    ER-NUM {: al:n :}
    ER-NUM {: flags:n :}
+   ER-SYM {: sym:n :}
    ER-NODE SCHEMA-ROOT+ {: root:n :}
-   id var na nu root slot nc boff nb al flags PF-ADD ;
+   PF-N @ {: fid:n :}
+   id var na nu root slot nc boff nb al flags PF-ADD
+   fid sym FIELD-SYM! ;
 
 
 \ The family's declaration and its scalar rows, before the families it names.
@@ -3726,6 +3831,7 @@ create ER-MSG ER-MSG-CAP allot
    id ER-NUM TFAM-TAGW!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
+   id ER-SYM AT-SYM!
    id ;
 
 
@@ -4128,6 +4234,50 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
+\ A generic member's number: the bytes a field's accessor (FIELD, SPAN) adds to
+\ the record's address, or AT's stride (INDEX). The declaration fixes it with
+\ every parameter one cell; an instance with a wide argument moves it.
+: MEMBER-FAM ( n n -- n ) {: shape:n param:n :}
+   shape CHILD-ABI:INDEX = IF param EXIT THEN
+   shape CHILD-ABI:FIELD =  shape CHILD-ABI:SPAN = or IF param PF-FAM@ EXIT THEN
+   s" tfam: a member shape names no member" 76 die ;
+
+: SLOT-OPEN? ( n n -- bool ) {: term:n slot:n :}
+   term slot PARAM>ARG T-UNSTALE {: arg:n :}
+   arg ISVAR IF RES-TRUE EXIT THEN
+   arg TAG T-PARAM = IF arg LAYOUT-WIDTH-OPEN? EXIT THEN
+   RES-FALSE ;
+
+\ Whether member SHAPE PARAM's number reads argument slot SLOT: an offset reads
+\ the widths of the fields before it, a BUFFER field's none.
+: MEMBER-READS? ( n n n -- bool ) {: shape:n param:n slot:n :}
+   shape param MEMBER-FAM {: fam:n :}
+   shape CHILD-ABI:INDEX = IF fam slot TFAM-WIDTH-SLOT? EXIT THEN
+   param fam TFAM-FLD-START@ ?do
+      i PF-FLAGS@ PF-FLAG-BUFFER <> IF
+         i PF-SCH@ SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT? IF RES-TRUE unloop EXIT THEN
+      THEN
+   loop RES-FALSE ;
+
+\ Member SHAPE PARAM's number for the instance TERM, false when TERM is no
+\ instance of the member's family or a slot the number reads is open.
+: MEMBER-AT ( n n n -- n bool ) {: shape:n param:n term0:n :}
+   shape param MEMBER-FAM {: fam:n :}
+   term0 T-UNSTALE {: term:n :}
+   term TAG T-PARAM <> IF 0 RES-FALSE EXIT THEN
+   term PARAM>FAM fam <> IF 0 RES-FALSE EXIT THEN
+   term PARAM>ARGC {: count:n :}
+   count fam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN
+   count 0 ?do
+      shape param i MEMBER-READS? IF
+         term i SLOT-OPEN? IF 0 RES-FALSE unloop EXIT THEN
+      THEN
+   loop
+   shape CHILD-ABI:INDEX = IF term TFAM-INST-WIDTH@ CELL * RES-TRUE EXIT THEN
+   term 0 count TERM-FRAME
+   0  param fam TFAM-FLD-START@ ?do i 0 count TFW-FIELD + loop
+   CELL * RES-TRUE ;
+
 \ The initialized-record surface is a bounded view of a product family's
 \ committed fields. The physical record is canonical cell storage, and each
 \ substituted field must still occupy the cells and byte range its committed id
@@ -4137,12 +4287,13 @@ TFC-QUOT-ROW-INSTALL
 : INIT-NO-RECORD ( -- n n n bool ) 0 0 0 RES-FALSE ;
 : INIT-NO-FIELD ( -- n n n n bool ) 0 0 0 0 RES-FALSE ;
 
-: INIT-FIELD-WIDTH? ( n n n -- n bool ) {: fid:n fam:n used:n :}
+: INIT-FIELD-WIDTH? ( n n n -- n bool ) {: fid:n fam:n record:n :}
    fid PF-FAM@ fam <> IF 0 RES-FALSE EXIT THEN
    fid PF-VAR@ PF-NO-VARIANT <> IF 0 RES-FALSE EXIT THEN
    fid PF-FLAGS@ PF-FLAGS-NONE <> IF 0 RES-FALSE EXIT THEN
-   fid PF-SLOT@ used <> IF 0 RES-FALSE EXIT THEN
-   fid PF-BYTE-OFF@ used CELL * <> IF 0 RES-FALSE EXIT THEN
+   CHILD-ABI:FIELD fid record MEMBER-AT 0= IF drop 0 RES-FALSE EXIT THEN {: off:n :}
+   fid PF-SLOT@ CELL * off <> IF 0 RES-FALSE EXIT THEN
+   fid PF-BYTE-OFF@ off <> IF 0 RES-FALSE EXIT THEN
    fid PF-ALIGN@ CELL <> IF 0 RES-FALSE EXIT THEN
    fid PF-SCH@ SCHEMA-ROOT@ TFC-ASK TFC-SCH-TERM T-RES {: field:n :}
    field ISVAR IF 0 RES-FALSE EXIT THEN
@@ -4177,7 +4328,7 @@ public
    record TFC-ARGS!
    0
    count 0 ?do
-      dup base i + fam rot INIT-FIELD-WIDTH?
+      base i + fam record INIT-FIELD-WIDTH?
       IF + ELSE 2drop unloop INIT-NO-RECORD EXIT THEN
    loop
    dup fam TFAM-SLOTS@ <> IF drop INIT-NO-RECORD EXIT THEN
@@ -4444,11 +4595,26 @@ private
    FRESH MK-ROW {: base:n :}
    term MK-PTR base MK-PUSH  base  term ;
 
+\ A variable member SHAPE PARAM's number reads stays one cell, the width the
+\ number counts it as: the stored kinds a pointer gives promote only ANY.
+: MEMBER-CELLS ( n n n -- ) {: shape:n param:n term:n :}
+   term PARAM>ARGC 0 ?do
+      shape param i MEMBER-READS? IF term i PARAM>ARG PAY TVK-CELL! THEN
+   loop ;
+
+: SPAN-U8 ( -- n )
+   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" 76 die THEN
+   {: fam:n :}
+   PARAM-SCR-N @ {: pbase:n :}
+   CC-U8 MK-CON PARAM-SCR+
+   pbase fam TFAM-NAME$ fam MK-PARAM ;
+
 \ A plain field accessor's rows and byte offset, from the committed field id
 \ FID: it takes `^F<..>` and answers `^T`, T the field's type over the
 \ same arguments.
 : TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
-   fid PF-FLAGS-NONE FIELD-IN drop {: din:n base:n :}
+   fid PF-FLAGS-NONE FIELD-IN {: din:n base:n term:n :}
+   CHILD-ABI:FIELD fid term MEMBER-CELLS
    fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    din  ft MK-PTR base MK-PUSH  fid TYPE-FIELD:BYTE-OFF@ ;
 
@@ -4456,18 +4622,15 @@ private
 \ FID: it takes `^F<..>` and answers the field's bytes as `SPAN:span<u8>`,
 \ laid base below len as SPAN:MAKE lays it.
 : TFAM-SPAN-ROWS ( n -- n n n ) {: fid:n :}
-   fid PF-FLAG-BUFFER FIELD-IN drop {: din:n base:n :}
-   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" 76 die THEN
-   {: fam:n :}
-   PARAM-SCR-N @ {: pbase:n :}
-   CC-U8 MK-CON PARAM-SCR+
-   pbase fam TFAM-NAME$ fam MK-PARAM {: span:n :}
-   din  span base PUSH-LOGICAL  fid ;
+   fid PF-FLAG-BUFFER FIELD-IN {: din:n base:n term:n :}
+   CHILD-ABI:SPAN fid term MEMBER-CELLS
+   din  SPAN-U8 base PUSH-LOGICAL  fid ;
 
 \ AT's rows and stride in bytes, from the family id FAM: it takes `^F<..> n`
 \ and answers `^F<..>`, the count an integer as `record-at` takes it.
 : TFAM-AT-ROWS ( n -- n n n ) {: fam:n :}
    fam TFAM-FRESH-TERM {: term:n :}
+   CHILD-ABI:INDEX fam term MEMBER-CELLS
    FRESH MK-ROW {: base:n :}
    term MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH
    term MK-PTR base MK-PUSH
@@ -4650,6 +4813,7 @@ private
 
 EXPORT CHECK:MD-CONSTRUCT-WIDE
 EXPORT CHECK:MD-FAM-AMBIG
+EXPORT CHECK:MD-MEMBER-TOP
 EXPORT CHECK:MDIAG!
 EXPORT CHECK:OK
 \ Extra pads = instantiated pads - declared pads; instantiated pads =
@@ -4882,6 +5046,68 @@ public
    fam vid TFC-SEED {: dt:n seeded:bool :}
    seeded 0= IF RES-FALSE EXIT THEN
    fam vid dt seeded TFC-CONSTRUCT-STEP-VID
+   RES-TRUE ;
+
+private
+
+\ The family term of the `^F<..>` DEPTH cells below the live top; false for
+\ any other cell, an open or stale one included.
+: LIVE-RECEIVER ( n -- n bool ) {: depth:n :}
+   DCUR @ depth 0 ?do
+      R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE unloop EXIT THEN
+      P>REST
+   loop
+   R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE EXIT THEN
+   P>TYPE T-RES dup TAG T-PTR <> IF drop 0 RES-FALSE EXIT THEN
+   PTR>INNER T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ Member SHAPE PARAM's rows over the instance TERM: its published rows with the
+\ family's variables replaced by TERM's arguments.
+: MEMBER-ROWS ( n n n -- n n ) {: shape:n param:n term:n :}
+   term TFC-ARGS!
+   FRESH MK-ROW {: base:n :}
+   term MK-PTR base MK-PUSH {: din:n :}
+   shape CHILD-ABI:INDEX = IF
+      CC-N MK-CON din MK-PUSH  term MK-PTR base MK-PUSH EXIT
+   THEN
+   shape CHILD-ABI:SPAN = IF din  SPAN-U8 base PUSH-LOGICAL EXIT THEN
+   param TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
+   din  ft MK-PTR base MK-PUSH ;
+
+\ Files member SHAPE PARAM's number NUM on the token, which T0 adds in place of
+\ calling the member's word.
+: MEMBER-FACT ( n n n -- ) {: shape:n param:n num:n :}
+   REC-ON @ 0= IF EXIT THEN
+   shape CHILD-ABI:INDEX = IF REC-IX @ num 0 CW-MEMBER-STRIDE CWIN-ADD EXIT THEN
+   shape CHILD-ABI:SPAN = IF
+      REC-IX @ num param TYPE-FIELD:BYTES@ CW-MEMBER-SPAN CWIN-ADD EXIT
+   THEN
+   REC-IX @ num 0 CW-MEMBER-OFFSET CWIN-ADD ;
+
+\ Whether NUM differs from the number member SHAPE PARAM's own word adds: a
+\ field's or span's declared offset, AT's declared stride.
+: MEMBER-MOVED? ( n n n -- bool ) {: shape:n param:n num:n :}
+   shape CHILD-ABI:INDEX = IF param TFAM-SLOTS@ CELL * ELSE param TYPE-FIELD:BYTE-OFF@ THEN
+   num <> ;
+
+public
+
+\ TFAM-MEMBER-STEP? ( sym -- bool ): a generic member's call whose receiver's
+\ instance fixes the member's number steps over that instance and, in a body,
+\ files the number; any other runs DO-TOK's word call, over the one-cell
+\ published row. At top level the word itself runs, so an instance that moves
+\ the number is rejected there.
+: TFAM-MEMBER-STEP? ( n -- bool ) {: sym:n :}
+   sym SYM-MEMBER 0= IF 2drop RES-FALSE EXIT THEN {: shape:n param:n :}
+   shape CHILD-ABI:INDEX = IF 1 ELSE 0 THEN LIVE-RECEIVER
+   0= IF drop RES-FALSE EXIT THEN {: term:n :}
+   shape param term MEMBER-AT 0= IF drop RES-FALSE EXIT THEN {: num:n :}
+   TOP-STEP @ 0 <>  shape param num MEMBER-MOVED?  and IF
+      MD-MEMBER-TOP MDIAG!  0 OK !  -1 FAILSET !  RES-TRUE EXIT
+   THEN
+   shape param term MEMBER-ROWS RECORDED-STEP
+   TOP-STEP @ 0= IF shape param num MEMBER-FACT THEN
    RES-TRUE ;
 
 \ MATCH resolution (docs/forth.md "Structures And Enums") follows signature

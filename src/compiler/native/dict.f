@@ -207,6 +207,9 @@ EXPORT CHECK:EFFECT-DOUT-CELLS
 EXPORT CHECK:EFFECT-FIELD-SPAN
 EXPORT CHECK:EFFECT-INIT-LAYOUT
 EXPORT CHECK:EFFECT-MATCH-CELLS
+EXPORT CHECK:EFFECT-MEMBER-OFFSET
+EXPORT CHECK:EFFECT-MEMBER-SPAN
+EXPORT CHECK:EFFECT-MEMBER-STRIDE
 EXPORT CHECK:EFFECT-QUERY
 public
 \ ---- and how many cells a call to it moves --------------------------------
@@ -309,6 +312,12 @@ public
    EFFECT-MATCH-CELLS {: w:n :}
    w 0 < if 0 exit then
    w ;
+
+\ ---- and the number a generic member call adds for its receiver's instance --
+\ Each is -1 when the checker did not know the instance: the call runs the word.
+: MEMBER-OFFSET ( n -- n ) EFFECT-MEMBER-OFFSET ;
+: MEMBER-SPAN ( n -- n n ) EFFECT-MEMBER-SPAN ;
+: MEMBER-STRIDE ( n -- n ) EFFECT-MEMBER-STRIDE ;
 
 \ ---- and the literal inputs a call takes on top of its checked site inputs ---
 \ Tier 0 pushes them, deepest first, just before the call.

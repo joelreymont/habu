@@ -1,6 +1,5 @@
-\ bytes.f - core byte-buffer helpers, loaded in the engine's core prelude
-\ (a src/habu/boot-files.f CORE row) so low-level code needs no library
-\ require. BYTE-VIEW ( ^a -- ^u8 ) is an engine word: checked code refuses
+\ bytes.f - core byte-buffer helpers every engine loads at startup, so
+\ low-level code needs no library require. BYTE-VIEW ( ^a -- ^u8 ) is an engine word: checked code refuses
 \ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
 
 : BYTE+ ( ^u8 n -- ^u8 )
