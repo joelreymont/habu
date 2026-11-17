@@ -26,7 +26,7 @@ public
 \ Both converters are private,
 \ so no caller can mint a ticket for a record it did not submit. Only the
 \ submitting task may AWAIT it, once.
-NEWTYPE ticket
+NEWTYPE ticket SCRATCH-ONLY
 
 \ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
 \ was given.
@@ -37,7 +37,7 @@ NEWTYPE group
 \ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
 \ GROUP+ and GROUP- cannot name one and no checked code can read, write or
 \ release the bytes while the kernel is still moving them.
-NEWTYPE xfer
+NEWTYPE xfer SCRATCH-ONLY
 
 \ What an operation ended as. `ready` carries the poll revents the kernel
 \ reported (or zero for an operation with no mask); `refused` carries the errno
@@ -377,15 +377,11 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : CHUNK-LAST ( -- n )
    CHUNK-FIRST begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
 
-\ An index past the published chunks is this module's own defect.
-: CHUNK-AFTER ( n -- n )
-   CHUNK-NEXT dup 0= if s" aio: record index" E-AIO-STATE die then ;
-
 : REC ( n -- ^n ) {: idx:n :}
    CHUNK-FIRST idx RECS-FIRST
    begin 2dup >= while
       swap over - swap 2 *
-      rot CHUNK-AFTER -rot
+      rot CHUNK-NEXT -rot
    repeat
    drop CHUNK-REC ;
 

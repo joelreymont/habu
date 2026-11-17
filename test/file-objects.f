@@ -57,7 +57,8 @@ package FILE-OBJECTS-TEST
 41 constant SCOPE-OPEN                   \ scope-open.f's, which leaves its package open,
 42 constant SCOPE-USE                    \ scope-use.f's, which names its SEVEN,
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
-44 constant TAILS                        \ TAIL$'s tails
+44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
+45 constant TAILS                        \ TAIL$'s tails
 62 constant FILES-C                     \ build C's objects
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
@@ -243,6 +244,7 @@ variable CLASS-N                        \ the class CLASS+ read
    i SCOPE-OPEN = if s" /test/fixtures/file-objects/scope-open.f.hfo" exit then
    i SCOPE-USE = if s" /test/fixtures/file-objects/scope-use.f.hfo" exit then
    i INSIDE-I = if s" /test/fixtures/file-objects/inside-i.f.hfo" exit then
+   i AIO-OBJ = if s" /src/lib/aio.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
@@ -733,7 +735,7 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n0\n0\n0\n0\n0\n" T$= ;
+   s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n" T$= ;
 
 \ kept-main.f's program, run in its own process: the boundary under test is the written file.
 : KEPT-RUN ( CMD:command -- CMD:command )
@@ -1061,13 +1063,28 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    s" a load inside a package never links inside-i.f's object from a load alone" INSIDE-I COMPILED ;
 
+\ kept-aio.f's build: it exits 70 with E-BAD-STORAGE naming OLD and kept-aio.f's line 7.
+: KEPT-AIO-REJECTED ( CMD:command -- CMD:command )
+   s" test/fixtures/file-objects/kept-aio.f" false BUILD-RC {: rc:n :}
+   CMD:ERR$ s" error[E-BAD-STORAGE]" CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" the type of `OLD` holds a value valid only in the process that made it" CONTAINS? classed and
+   {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:7" CONTAINS? {: placed:bool :}
+   named placed and  rc 70 =  and 0= if rc SHOW then
+   s" the build rejects OLD" LABEL  named TTRUE
+   s" the rejection names kept-aio.f's line 7" LABEL  placed TTRUE
+   s" the build exits 70" LABEL  rc 70 T= ;
+
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
-\ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.
-\ N, the one engine build, reports its sizes.
+\ a kept aio ticket in the build, word docs keep no address of a freed text, a task left running or a run word that loads,
+\ provides or reads a file fails it. N, the one engine build, reports its sizes.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
    s" Q" WHICH!  s" test/fixtures/file-objects/kept-main.f" FIXTURE-BUILD 0= if exit then  KEPT-RUN
+   s" QA" WHICH!  KEPT-AIO-REJECTED  AIO-OBJ KEEP
+   \ QA2 links aio.f's object: the ticket's SCRATCH-ONLY flag comes from its type entry.
+   s" QA2" WHICH!  KEPT-AIO-REJECTED  s" the warm build links aio.f" AIO-OBJ LINKED
    s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then
    REPORT-RUN  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD

@@ -729,7 +729,7 @@ MSG-BYTES BUFFER: MSG-BUF
 \ Every descriptor comes from the fd_sets, so FD-SETSIZE slots hold them all.
 FD-SETSIZE TYPED-BUFFER FD-FDS n
 FD-SETSIZE TYPED-BUFFER FD-MASKS n
-FD-SETSIZE TYPED-BUFFER FD-TICKETS AIO:ticket
+FD-SETSIZE TYPED-BUFFER FD-TICKETS AIO:ticket SCRATCH-ONLY
 
 variable MULTI-CELL                       \ the CURLM* the loop drives
 variable LOOP-LIVE                        \ atomic: a loop is running
@@ -743,8 +743,8 @@ variable TIMER-MS                         \ the ms the pending timer holds, -1 f
 TASK:FACILITY CURL-LOCK
 TASK:MIN-STACK TASK:TASK LOOP-TASK
 AIO:GROUP LOOP-GROUP
-TYPED-VARIABLE WAKE-TICKET AIO:ticket
-TYPED-VARIABLE TIMER-TICKET AIO:ticket
+TYPED-VARIABLE WAKE-TICKET AIO:ticket SCRATCH-ONLY
+TYPED-VARIABLE TIMER-TICKET AIO:ticket SCRATCH-ONLY
 
 \ The numbers LOOP-GROUP's own waits carry, outside the fd slots an fd's wait
 \ carries.

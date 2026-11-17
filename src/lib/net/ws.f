@@ -248,7 +248,7 @@ TASK-STACK TASK:TASK WS-TASK
 AIO:GROUP WAITERS
 \ The task's own: its one timer, in WAITERS under TIMER-WAIT, and when that
 \ fires, 0 while none is outstanding.
-TYPED-VARIABLE TIMER AIO:ticket
+TYPED-VARIABLE TIMER AIO:ticket SCRATCH-ONLY
 variable TIMER-DUE
 1 TYPED-BUFFER STOPPER ^n                \ the task STOP waits in
 TYPED-VARIABLE WAKER AIO:waker              \ the wake pipe the task is poked through

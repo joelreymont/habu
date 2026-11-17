@@ -20,9 +20,12 @@ E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
 
 \ ---- families under test ----------------------------------------------------
 \ tsk / tsk2 are arity-0 nominal scalars; tsres a closed non-linear layout
-\ family; tsowned a linear layout (inadmissible for storage).
+\ family; tsowned a linear layout (inadmissible for storage); tsscr a nominal
+\ scalar valid only in the process that made it, and tsscrw a family over it.
 NEWTYPE tsk
 NEWTYPE tsk2
+NEWTYPE tsscr SCRATCH-ONLY
+NEWTYPE tsscrw tsscr
 SUMTYPE tsres<a,b>
    VARIANT ok a ;VARIANT
    VARIANT err b ;VARIANT
@@ -160,7 +163,26 @@ TYPED-VARIABLE TSL tsres<n,n>
    s" BAD-QUOT" 0 search-wl 0= TTRUE
    s" BAD-ZERO" 0 search-wl 0= TTRUE ;
 
-\ 6. Duplicate + transactional rollback
+\ 6. A SCRATCH-ONLY family is stored only where a build leaves it out: the
+\    clause on TYPED-VARIABLE and TYPED-BUFFER, or behind a pointer
+TYPED-VARIABLE TSS tsscr SCRATCH-ONLY
+2 TYPED-BUFFER TSSB tsscr SCRATCH-ONLY
+TYPED-VARIABLE TSSP ^tsscr
+
+CAST: N>TSSCR ( n -- tsscr )
+CAST: TSSCR>N ( tsscr -- n )
+: TS-SCR-NODE ( -- n )
+   [: s" BAD-SCR-NODE" s" tsscr" EFFECT:READ-TYPE EFFECT:VARIABLE-OF ;] catch ;
+
+: TS-SECTION-SCRATCH ( -- )
+   5 N>TSSCR TSS !  TSS @ TSSCR>N 5 T=
+   6 N>TSSCR 1 TSSB !  1 TSSB @ TSSCR>N 6 T=
+   s" 2 TYPED-BUFFER BAD-SCR-APP tsres<tsscr,n>" TS-EVAL 70 T=
+   s" TYPED-VARIABLE BAD-SCR-FLD tsscrw" TS-EVAL 70 T=
+   s" DEFER-LAYOUT-BUFFER BAD-SCR-DL tsscr" TS-EVAL 70 T=
+   TS-SCR-NODE 70 T= ;
+
+\ 7. Duplicate + transactional rollback
 PTR-VARIABLE TS-DP
 
 : TS-DUP-DECL ( -- ) s" TYPED-VARIABLE TSV tsk" evaluate-closed ;
@@ -180,7 +202,7 @@ PTR-VARIABLE TS-DP
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 
-\ 7. Distinct capability pin #1: numeric-result over a nominal keeps working
+\ 8. Distinct capability pin #1: numeric-result over a nominal keeps working
 \    through the LANDED LAYOUT-BUFFER (the existing capability is untouched)
 3 LAYOUT-BUFFER RES-K-BUF tsres<tsk,n>
 
@@ -196,7 +218,7 @@ PTR-VARIABLE TS-DP
    0 RES-K-GET 77 T=
    2 RES-K-GET 88 T= ;
 
-\ 8. Distinct capability pin #2: a raw variable/create/constant still cannot
+\ 9. Distinct capability pin #2: a raw variable/create/constant still cannot
 \    mint a nominal family (TVK-RAW), while TYPED-VARIABLE is the sound path.
 \    The raw definers are registered through the verify-source RAW gate — the
 \    enforcing path. That scan compiles nothing: RAWV, RAWC and RAWK bind
@@ -261,6 +283,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-SECTION-POINTER
    TS-SECTION-LAYOUT
    TS-SECTION-ADMISSIBILITY
+   TS-SECTION-SCRATCH
    TS-SECTION-DUP-ROLLBACK
    TS-SECTION-PIN-LAYOUT-BUFFER
    TS-SECTION-PIN-RAW-REJECT

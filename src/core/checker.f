@@ -14291,6 +14291,8 @@ private
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 17 constant STG-EFFECT-TYPE     \ the type parses and holds a definer's type, which no storage holds
 18 constant STG-LAYOUT-TYPE     \ the type parses but a layout buffer cannot hold it: no nominal scalar, and no layout family whose members it lays out
+20 constant STG-SCRATCH-TYPE    \ the type holds a SCRATCH-ONLY family and the storage lacks the clause
+21 constant STG-SCRATCH-SAVED   \ the type holds a SCRATCH-ONLY family, which this definer's saved storage cannot keep out
 
 \ The message names the declared word: the definer for STG-NO-NAME, the name
 \ itself for STG-MALFORMED-NAME and STG-COLON-END.
@@ -14341,6 +14343,9 @@ private
    why STG-LAYOUT-TYPE = IF
       s"  is no type a layout buffer can lay out" REJECTION:EMIT-STR EXIT
    THEN
+   why STG-SCRATCH-TYPE =  why STG-SCRATCH-SAVED =  or IF
+      s"  holds a value valid only in the process that made it" REJECTION:EMIT-STR EXIT
+   THEN
    s"  is one its definer cannot store" REJECTION:EMIT-STR ;
 
 : STGR-REASON$ ( n -- ^u8 n ) {: why:n :}
@@ -14352,6 +14357,9 @@ private
    why STG-WIDTH-TYPE = IF s" width in a stored type" EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
    why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
+   why STG-SCRATCH-TYPE =  why STG-SCRATCH-SAVED =  or IF
+      s" process-only value in saved storage" EXIT
+   THEN
    why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2drop EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-COLON-END = IF s" name ends in ':'" EXIT THEN
@@ -14442,6 +14450,14 @@ private
       REJECTION:EMIT-STR
       s"  ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value"
       REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-SCRATCH-TYPE = IF
+      s" write `SCRATCH-ONLY` after the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" , which keeps it out of the saved image" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-SCRATCH-SAVED = IF
+      s" keep the values of " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s"  in a TYPED-VARIABLE or TYPED-BUFFER declared `SCRATCH-ONLY`" REJECTION:EMIT-STR EXIT
    THEN
    s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;

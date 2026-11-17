@@ -78,7 +78,7 @@ ENUM parking vacant handed polled ;ENUM
 PARK-SLOTS TYPED-BUFFER PARK-PHASE parking
 PARK-SLOTS TYPED-BUFFER PARK-CONN TCP4:connection
 PARK-SLOTS TYPED-BUFFER PARK-DUE n          \ mono-ns past which the row is closed
-PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket
+PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket SCRATCH-ONLY
 TASK:FACILITY PARK-LOCK
 variable PARK-OPEN                \ set while the listener takes rows; under PARK-LOCK
 
@@ -93,8 +93,8 @@ variable PIPED                    \ set while the waker is open
 AIO:GROUP LISTENING
 -1 constant ACCEPT-TAG
 -2 constant WAKE-TAG
-TYPED-VARIABLE ACCEPT-TICKET AIO:ticket
-TYPED-VARIABLE WAKE-TICKET AIO:ticket
+TYPED-VARIABLE ACCEPT-TICKET AIO:ticket SCRATCH-ONLY
+TYPED-VARIABLE WAKE-TICKET AIO:ticket SCRATCH-ONLY
 variable ACCEPT-ARMED
 variable WAKE-ARMED
 

@@ -176,6 +176,9 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   quotation may read the locals of the word it is written in while that word
   runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive
   them (`E-LOCAL-ESCAPE`) and binds no group of its own.
+- `SCRATCH-ONLY` after a `NEWTYPE`'s name or base (`NEWTYPE ticket
+  SCRATCH-ONLY`) declares a family whose values are valid only in the process
+  that made them.
 
 forth.md: **Stack comments**, **Stack effects**, **Words & factoring**,
 **Structures And Enums**.
@@ -216,7 +219,7 @@ before the word runs, and `--load` exits 70.
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line, or a type that holds a `SCRATCH-ONLY` family in storage a build saves | `E-BAD-STORAGE` |
 | `( -- ^a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `^a` (a pointer to cells): `: RUN ( ^a [ ^a -- ] -- ) execute ;`, `: GO ( ^box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | a generic word whose code reads one cell through its pointer, called on a wider or structure instance: `: G ( ^held<b> -- ^bool ) HELD-SET ;` on a `^held<thing2>`, `: P ( ^t -- n ) @ drop 0 ;` on a `^thing2` | `E-MISMATCH` at the call, "the word's code reads one cell through this pointer; `thing2` is 2 cells"; call it with a one-cell type, or do the work in a word whose effect names the type |
@@ -391,6 +394,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `TYPED-VARIABLE V t` | one typed cell or record | `( -- ^t )` |
 | `TYPED-VARIABLE V ^t` | a cell holding an address of `t` | `( -- ^^t )` |
 | `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ^t )` |
+| `TYPED-VARIABLE V t SCRATCH-ONLY`, `n TYPED-BUFFER TB t SCRATCH-ONLY` | typed storage a build leaves out, which a `SCRATCH-ONLY` family needs | `( -- ^t )`, `( n -- ^t )` |
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ^^u8 )`, indexed with `ptr-field` |
 | `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ^^u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ^t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
@@ -450,7 +454,8 @@ an `xt`, which `compile,` rejects), and `; ( -- )` ends the word.
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ^^^u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
-addresses, and so do the pointer fields of typed storage. A pointer into memory
+addresses, and so do the pointer fields of typed storage not declared
+`SCRATCH-ONLY`. A pointer into memory
 the build mapped is refused at save, naming the cell. Scratch storage belongs to
 the process that fills it: a build leaves it out and the program reads it as
 zero, and it is declared where it is made, as `create R n SCRATCH-ALLOT` for a

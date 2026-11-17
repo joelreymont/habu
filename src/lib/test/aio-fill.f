@@ -27,7 +27,7 @@ private
 
 variable FILL-N                   \ the polls in flight
 variable FILL-CODE
-FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket
+FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket SCRATCH-ONLY
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
 FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe make each AIO turn take 2-3 s
 

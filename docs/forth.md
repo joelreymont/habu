@@ -559,7 +559,10 @@ multi-cell type rationale is `docs/design.md` "Types".
 - `NEWTYPE name` registers an opaque nominal cell family, with no
   closer. `NEWTYPE name base`, the base spelled on the name's line, makes the
   family as wide as the base and a type apart from it (`NEWTYPE path str`).
-  `NEWTYPE name<a,b>` declares two type parameters and takes no base. `SUMTYPE`,
+  `NEWTYPE name<a,b>` declares two type parameters and takes no base.
+  `SCRATCH-ONLY` last on the line, after the name or base (`NEWTYPE ticket
+  SCRATCH-ONLY`), declares a family whose values are valid only in the process
+  that made them. `SUMTYPE`,
   `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
@@ -1506,7 +1509,14 @@ refuses an address of one: `PTR-VARIABLE X : F ( -- ^u8 ) X @ ;` certifies
 while `( -- ^^u8 )` does not. An image save writes the scratch forms
 (`PTR-VARIABLE`, `PTR-U8-TABLE`, `PTR-U8-TABLE-VARIABLE`) as null; their
 `PERSISTED-` siblings keep their addresses, and so do the pointer fields of
-typed storage.
+typed storage not declared `SCRATCH-ONLY`.
+
+**A value valid only in its process stays out of the saved image.** Storage
+whose type holds a `SCRATCH-ONLY` family, through a field or a payload, is
+`TYPED-VARIABLE V t SCRATCH-ONLY` or `n TYPED-BUFFER TB t SCRATCH-ONLY`, which
+a build saves as zeros, or storage no build saves (`DYNAMIC-BUFFER`, `ARENA`,
+`HEAP`, a task's `USER`); any other is rejected `E-BAD-STORAGE`. A pointer
+`^t` does not hold `t`.
 
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:

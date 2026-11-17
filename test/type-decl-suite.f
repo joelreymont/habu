@@ -65,6 +65,14 @@ NEWTYPE tdzero
 s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ SCRATCH-ONLY last on the line marks the family, after a base or a parametrised
+\ name, in either case and before a comment.
+NEWTYPE tdscrb n scratch-only \ a comment after the clause
+NEWTYPE tdscrp<a> SCRATCH-ONLY
+: TDT-SCRATCH? ( ^u8 n -- bool ) s" " 2swap TFAM-FIND-IN TTRUE TFAM-SCRATCH? ;
+s" tdscrb" TDT-SCRATCH? TTRUE
+s" tdscrp" TDT-SCRATCH? TTRUE
+
 \ TYPEFAMILY is not a word: in a line comment, paren comment or string literal
 \ it throws nothing (TDT-NEG).
 s" \ TYPEFAMILY tdtombline 0" 0 TDT-NEG
@@ -1191,6 +1199,14 @@ s" fresh-mask-x" s" reserved name" TDT-AT
 s" NEWTYPE ptr"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`\n"
 s" ptr" s" reserved name" TDT-AT
+\ `scratch-only` is NEWTYPE's clause, so no family takes the name.
+: TDT-SCRATCH-NAME ( -- )
+   REJECTION:CAPTURE
+   s" NEWTYPE scratch-only" TDT-EVAL-CATCH {: rc:n :}
+   s\" error[E-BAD-DECLARATION]: bad newtype declaration `scratch-only`\n" TDT-HAS
+   s" scratch-only" s" reserved name" DECL-DIAG:CAUSE? TTRUE
+   rc 70 T= ;
+TDT-SCRATCH-NAME
 \ Nor can a keyword of the match protocol.
 s" SUMTYPE tdcn<a> VARIANT construct a ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `construct` is a keyword and cannot name a definition\n"

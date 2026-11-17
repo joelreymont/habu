@@ -390,14 +390,17 @@ private
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
 18 cells constant TF.OPAQUE-OFF
+\ TF.SCRATCH: nonzero when the family was declared SCRATCH-ONLY: its values are
+\ valid only in the process that made them.
+19 cells constant TF.SCRATCH-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
-19 cells constant TF.ENTRY-OFF
+20 cells constant TF.ENTRY-OFF
 \ TF.AT-SYM: the checker symbol of the family's generated AT, 0 when it has none.
-20 cells constant TF.AT-SYM-OFF
+21 cells constant TF.AT-SYM-OFF
 
 public
 
-21 cells constant TF-REC
+22 cells constant TF-REC
 private
 
 : TF.PKG-OFF ( ^a -- ^a ) TF.PKG-OFF-AT + ;
@@ -425,6 +428,7 @@ private
 : TF.DERIVE ( ^a -- ^a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ^a -- ^a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ^a -- ^a ) TF.OPAQUE-OFF + ;
+: TF.SCRATCH ( ^a -- ^a ) TF.SCRATCH-OFF + ;
 : TF.ENTRY ( ^a -- ^a ) TF.ENTRY-OFF + ;
 : TF.AT-SYM ( ^a -- ^a ) TF.AT-SYM-OFF + ;
 
@@ -539,6 +543,9 @@ public
 \ before the field commit that moves the epoch, so no answer predates it.
 : TFAM-OPAQUE! ( n -- ) TF-REC@ TF.OPAQUE -1 swap ! ;
 : TFAM-OPAQUE? ( n -- bool ) TF-REC@ TF.OPAQUE @ 0 <> ;
+\ The SCRATCH-ONLY clause, set as NEWTYPE declares the family.
+: TFAM-SCRATCH! ( n -- ) TF-REC@ TF.SCRATCH -1 swap ! ;
+: TFAM-SCRATCH? ( n -- bool ) TF-REC@ TF.SCRATCH @ 0 <> ;
 : TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-PUBLIC? fam TFAM-OPAQUE? 0= and ;
 
@@ -802,6 +809,7 @@ public
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
+   0 r TF.SCRATCH !
    0 r TF.ENTRY !
    0 r TF.AT-SYM !
    id TFX-ADD                             \ the row's tail is written: it can be found now
@@ -2131,7 +2139,8 @@ public
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" derive" CORE-STR=CI ;
+   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" scratch-only" CORE-STR=CI ;
 
 ;package
 
@@ -3483,7 +3492,7 @@ REGISTER-STR
 \
 \ The text is tokens split by one blank, `-` for an empty name, a family
 \ written `pkg:tail`:
-\   kind vis arity pk... layout slots tagw derive opaque at-sym
+\   kind vis arity pk... layout slots tagw derive opaque scratch at-sym
 \   ndeps family...   (every other family its schemas name, read first)
 \   nvar (name tag paycells ctor-pkg ctor-sym nroots node...)...
 \   nfld (name variant slot cells byte-off bytes align flags accessor-sym node)...
@@ -3660,7 +3669,7 @@ public
    id TFAM-KIND@ ET-NUM  id TFAM-VIS@ ET-NUM  id TFAM-ARITY@ ET-NUM
    id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
    id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM  id TFAM-TAGW@ ET-NUM
-   id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
+   id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM  id TF-REC@ TF.SCRATCH @ ET-NUM
    id TF-REC@ TF.AT-SYM @ ET-SYM
    ED-N @ ET-NUM
    ED-N @ 0 ?do ED-BUF @ i cells + @ ET-FAM loop
@@ -3858,6 +3867,7 @@ create ER-MSG ER-MSG-CAP allot
    id ER-NUM TFAM-TAGW!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
+   ER-NUM id TF-REC@ TF.SCRATCH !
    id ER-SYM AT-SYM!
    id ;
 
@@ -5216,6 +5226,34 @@ public
 : HAS-ADDRESS? ( n -- bool ) {: term:n :}
    term TFAM-STORAGE-QUOT? IF RES-TRUE EXIT THEN
    term T-RES TAG T-PTR = IF RES-TRUE EXIT THEN
+   term TFAM-STORAGE-PRODUCT? IF
+      {: fam:n :}
+      fam TFAM-FLD-COUNT@ 0 ?do
+         fam TFAM-FLD-START@ i + {: field:n :}
+         term field TFAM-STORAGE-FIELD drop recurse IF
+            RES-TRUE unloop EXIT
+         THEN
+      loop RES-FALSE EXIT
+   THEN drop
+   term TFAM-STORAGE-SUM? IF
+      {: fam:n :}
+      fam TFAM-VAR-COUNT@ 0 ?do
+         fam TFAM-VAR-START@ i + {: vid:n :}
+         vid SUMV-PAY-N 0 ?do
+            term vid i TFAM-STORAGE-PAY drop recurse IF
+               RES-TRUE unloop unloop EXIT
+            THEN
+         loop
+      loop RES-FALSE EXIT
+   THEN drop
+   RES-FALSE ;
+
+\ Whether any cell of the type holds a SCRATCH-ONLY family, through a field or a
+\ payload (in every sum alternative); a pointer or a quotation holds nothing.
+: HOLDS-SCRATCH? ( n -- bool ) {: term:n :}
+   term T-RES dup TAG T-PARAM = IF
+      PARAM>FAM TFAM-SCRATCH? IF RES-TRUE EXIT THEN
+   ELSE drop THEN
    term TFAM-STORAGE-PRODUCT? IF
       {: fam:n :}
       fam TFAM-FLD-COUNT@ 0 ?do

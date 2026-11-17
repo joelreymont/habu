@@ -74,6 +74,8 @@ EXPORT CHECK:LBI-CELLS
 EXPORT CHECK:LBI-T
 EXPORT CHECK:LBI-TERM
 EXPORT CHECK:STG-NO-NAME
+EXPORT CHECK:STG-SCRATCH-SAVED
+EXPORT CHECK:STG-SCRATCH-TYPE
 EXPORT CHECK:STORAGE-RESET
 EXPORT CHECK:T-RES
 EXPORT CHECK:T-WIDTH
@@ -217,6 +219,10 @@ private
 
 : NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM TFAM:HAS-ADDRESS? ;
 
+: NODE-SCRATCH-REJECT ( ^u8 n -- ) {: name:^ nameu:n :}
+   LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
+   name nameu LBUF-GEN LBUF-GEN-U @ STG-SCRATCH-SAVED CHECKER-STORAGE-REJECT ;
+
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
 : STORAGE-BIND ( n ^n n ^u8 n bool -- )
@@ -254,6 +260,22 @@ public
       at data-base INP-CELL + !  a 0 exit
    then
    a u ;
+
+\ Whether the next token on the line is the SCRATCH-ONLY clause, consumed; any
+\ other is left unread.
+: SCRATCH-CLAUSE? ( -- bool )
+   STORAGE-LINE-TOKEN {: ta:^ tu:n :}
+   tu 0= IF 0 0= 0= EXIT THEN
+   ta tu s" scratch-only" CORE-STR=CI IF 0 0= EXIT THEN
+   ta STORAGE-UNREAD  0 0= 0= ;
+
+\ Rejects the storage name, of type text, with the STG- reason why when the
+\ type holds a SCRATCH-ONLY family; a type the checker cannot read answers false.
+: SCRATCH-HELD? ( ^u8 n ^u8 n n -- bool )
+   {: name:^ nameu:n type:^ typeu:n why:n :}
+   type typeu CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
+   TFAM:HOLDS-SCRATCH? 0= if LBUF-FALSE exit then
+   name nameu type typeu why CHECKER-STORAGE-REJECT LBUF-TRUE ;
 
 private
 
@@ -398,12 +420,12 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
 \ Makes the buffer child NAME and lays its block: the header, bound to LBUF-N
 \ elements of LBUF-W cells, then the elements, which the checker binds.
-: LBUF-CHILD ( ^u8 n ^u8 n bool -- )
-   {: name:^ nameu:n type:^ typeu:n hasaddr:bool :}
+: LBUF-CHILD ( ^u8 n ^u8 n bool bool -- )
+   {: name:^ nameu:n type:^ typeu:n hasaddr:bool scratch:bool :}
    name nameu type typeu BUFFER-CHILD {: handle:n :}
    here {: v:^ :}
    HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
-   LBUF-BYTES @ allot
+   scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then
    v HEAD-CELLS cells + {: base:^ :}
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
@@ -418,8 +440,9 @@ global
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
+   name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu type typeu hasaddr LBUF-CHILD ;
+   name nameu type typeu hasaddr LBUF-FALSE LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
 : DEFER-LAYOUT-BUFFER ( -- )
@@ -436,6 +459,7 @@ INTRINSIC-DECLARATION INTRINSIC
       2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT exit
    then
    LBUF-W !  drop
+   name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
    name nameu type typeu BUFFER-CHILD {: handle:n :}
    here {: v:^ :}
    0 ,  0 ,  0 ,  LBUF-W @ ,
@@ -482,10 +506,14 @@ global
       s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
+   SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
-   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu type typeu hasaddr LBUF-CHILD ;
+   scratch 0= if
+      name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
+   then
+   scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
+   name nameu type typeu hasaddr scratch LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
 \ A missing name is rejected at the token that ran the definer, which the
@@ -497,12 +525,16 @@ INTRINSIC-DECLARATION INTRINSIC
       s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
+   SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
-   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
+   scratch 0= if
+      name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
+   then
+   scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
    name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
    here {: v:^ :}
-   LBUF-BYTES @ allot
+   scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then
    handle v 1 type typeu hasaddr STORAGE-BIND ;
 INTRINSIC-DECLARATION INTRINSIC
 
@@ -514,6 +546,7 @@ public
    nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
+   node NODE-TERM TFAM:HOLDS-SCRATCH? if name nameu NODE-SCRATCH-REJECT exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu node TDECL-NODE-CHILD {: handle:n :}
    here {: v:^ :}

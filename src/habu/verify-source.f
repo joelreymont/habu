@@ -582,11 +582,14 @@ EXPORT CHECK:PROW-ADD-TEXT
 EXPORT CHECK:PROW-FIND
 EXPORT CHECK:SIG-RAW-MODE
 EXPORT CHECK:SPLIT-STR-FILE?
+EXPORT CHECK:STG-SCRATCH-SAVED
+EXPORT CHECK:STG-SCRATCH-TYPE
 EXPORT CHECK:TYPE-RESERVED?
 EXPORT CHECK:TYPE-SPAN-END?
 EXPORT CHECK:UNSEEN-COVERS?
 EXPORT CHECK:USIG-NEWEST
 EXPORT CHECK:VREC-TOKEN
+EXPORT TYPE-DECL:SCRATCH-MARK
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
 \ whether every escape in it is one the engine reads. An escape is spelt
 \ with more bytes than it decodes to, so a decode as long as its payload met no
@@ -2594,6 +2597,16 @@ variable STG-TYPE-U
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
 
+\ Whether the next token on the line is the SCRATCH-ONLY clause, consumed; any
+\ other is left unread.
+: SCAN-SCRATCH-CLAUSE? ( -- bool )
+   SCAN-I @ {: mark:n :}
+   SCAN-LINE-TOKEN s" scratch-only" STR=CI IF 0 0= EXIT THEN
+   mark SCAN-I !  0 0= 0= ;
+
+: NEWTYPE-CELL ( ^u8 n bool -- ) {: name:^ nameu:n scratch:bool :}
+   name nameu 2dup s" newtype" CHECKER-DEFFAMILY  scratch SCRATCH-MARK ;
+
 \ CHECKER-DEFFAMILY's record rejects a missing name, at the keyword, or a
 \ malformed header; a base on the name's line replays as NEWTYPE registers it.
 : RECORD-NEWTYPE ( -- )
@@ -2603,14 +2616,17 @@ variable STG-TYPE-U
    nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ s" newtype" CHECKER-DEFFAMILY EXIT THEN
    name nameu at SEALED-FAMILY
    0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
-   IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
+   IF name nameu SCAN-SCRATCH-CLAUSE? NEWTYPE-CELL EXIT THEN
+   SCAN-SCRATCH-CLAUSE? IF name nameu 0 0= NEWTYPE-CELL EXIT THEN
    SCAN-I @ {: mark:n :}
    SCAN-LINE-TOKEN {: ta:^ tu:n :}
    mark SCAN-I !
-   tu 0= IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN
-   tu 1 = IF ta c@ 92 = IF name nameu 2dup s" newtype" CHECKER-DEFFAMILY EXIT THEN THEN
-   name nameu 2dup SCAN-STORAGE-TYPE s" newtype" TYPE-DECL:SD-WRAP-OUTCOME
-   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+   tu 0= IF name nameu 0 0= 0= NEWTYPE-CELL EXIT THEN
+   tu 1 = IF ta c@ 92 = IF name nameu 0 0= 0= NEWTYPE-CELL EXIT THEN THEN
+   name nameu 2dup SCAN-STORAGE-TYPE SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
+   s" newtype" TYPE-DECL:SD-WRAP-OUTCOME
+   IF DW-TYPE DEFER-AT EXIT THEN 2drop
+   scratch SCRATCH-MARK ;
 
 \ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
 \ left unread, is `n`, and the bool says whether one was spelled.
@@ -2689,6 +2705,7 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
+   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? drop
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
@@ -2704,26 +2721,31 @@ variable STG-TYPE-U
    name nameu s" -GROW" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
+   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? drop
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:^ countu:n :}
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
-   nameu 0= IF EXIT THEN
+   nameu 0= IF SCAN-SCRATCH-CLAUSE? drop EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
+   SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
+   scratch 0= IF name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? drop THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
-   nameu 0= IF EXIT THEN
+   nameu 0= IF SCAN-SCRATCH-CLAUSE? drop EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
+   SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
+   scratch 0= IF name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? drop THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 

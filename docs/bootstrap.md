@@ -96,7 +96,10 @@ copy of the open package, and stops E-UNDEFINED), a new intrinsic id the tree's
 source tags a word with (the running checker cannot write that word's facts
 text and stops `no facts text says the amended effect of`), a facts-text tag the running checker writes
 and the tree no longer reads (the build rejects its own stored signatures,
-E-BAD-STORED-SIGNATURE), an existing atom code given a new meaning (the running
+E-BAD-STORED-SIGNATURE), a type-entry field the tree reads and the running hb
+does not write (the running hb writes the image's type entries, so the engine
+it builds stops at start-up with `tfam: bad type entry`), an existing atom code
+given a new meaning (the running
 checker replays the rows with the old meaning and says nothing), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
 it, or a change to which files a build

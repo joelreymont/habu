@@ -1,6 +1,6 @@
 \ scratch-main.f - built by tools/hb-build.f after scratch-first.f and
-\ scratch-second.f; its top level keeps the three scratch stores as constants,
-\ and MAIN prints them and then reads each again: six times 0, since the stores
+\ scratch-second.f; its top level keeps the five scratch stores as constants,
+\ and MAIN prints them and then reads each again: ten times 0, since the stores
 \ ended with scratch-second.f.
 
 require test/fixtures/file-objects/scratch-first.f
@@ -12,7 +12,11 @@ public
 FETCH constant SEEN
 VAR-FETCH constant VAR-SEEN
 BUF-FETCH constant BUF-SEEN
-: SHOW ( -- ) SEEN . VAR-SEEN . BUF-SEEN . FETCH . VAR-FETCH . BUF-FETCH . ;
+TVAR-FETCH constant TVAR-SEEN
+TBUF-FETCH constant TBUF-SEEN
+: SHOW ( -- )
+   SEEN . VAR-SEEN . BUF-SEEN . TVAR-SEEN . TBUF-SEEN .
+   FETCH . VAR-FETCH . BUF-FETCH . TVAR-FETCH . TBUF-FETCH . ;
 ;using
 ;package
 

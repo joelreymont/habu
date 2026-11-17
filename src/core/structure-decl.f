@@ -1247,6 +1247,18 @@ EXPORT STRUCTURE-DECL:DECLARE-STRUCTURE
 EXPORT STRUCTURE-DECL:DECLARE-MUTUAL
 EXPORT STRUCTURE-DECL:SD-WRAP
 
+\ Marks the family the last NEWTYPE registered
+\ scratch-only when the clause was spelled.
+: SCRATCH-MARK ( bool -- ) {: scratch:bool :}
+   scratch 0= IF EXIT THEN
+   TYPE-DECL:TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TFAM-SCRATCH! ;
+
+\ The one-cell family NAME, with the SCRATCH-ONLY clause when SCRATCH.
+: NEWTYPE-CELL ( ^u8 n bool -- ) {: na:^ nu:n scratch:bool :}
+   na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY  scratch SCRATCH-MARK ;
+
 public
 
 EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
@@ -1270,21 +1282,22 @@ INTRINSIC-DECLARATION INTRINSIC
 : MUTUAL ( -- ) DECLARE-MUTUAL ;
 INTRINSIC-DECLARATION INTRINSIC
 
-\ NEWTYPE is a documented global. A base is the type on the name's line; a \
-\ there, or a parametrised name, leaves the one-cell family. A missing name is
-\ rejected at the keyword.
+\ NEWTYPE is a documented global: a base is the type on the name's line, and a \ there or a
+\ parametrised name leaves the one-cell family; SCRATCH-ONLY, last on the line, marks the family.
 : NEWTYPE ( -- )
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
    nu 0= IF na nu kw ku s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    0 0= 0= nu 0 ?do na i + c@ 60 = or loop
-   IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   IF na nu LBUF:SCRATCH-CLAUSE? NEWTYPE-CELL EXIT THEN
+   LBUF:SCRATCH-CLAUSE? IF na nu 0 0= NEWTYPE-CELL EXIT THEN
    LBUF:STORAGE-LINE-TOKEN {: ta:^ tu:n :}
-   tu 0= IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   tu 0= IF na nu 0 0= 0= NEWTYPE-CELL EXIT THEN
    ta LBUF:STORAGE-UNREAD
-   tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu 2dup LBUF:STORAGE-PARSE-TYPE s" newtype" SD-WRAP drop ;
+   tu 1 = IF ta c@ 92 = IF na nu 0 0= 0= NEWTYPE-CELL EXIT THEN THEN
+   na nu 2dup LBUF:STORAGE-PARSE-TYPE  LBUF:SCRATCH-CLAUSE? {: scratch:bool :}
+   s" newtype" SD-WRAP drop  scratch SCRATCH-MARK ;
 INTRINSIC-DECLARATION INTRINSIC
 
 ;package
