@@ -115,6 +115,7 @@ create FMT-ERR-BUF FMT-ERR-CAP allot
 $16D constant FMT-MODE-0555
 13 constant FMT-EACCES                  \ a denied mkdir's errno on both targets
 20 constant FMT-ENOTDIR                 \ ENOTDIR on both targets
+: FMT-ELOOP ( -- n ) HB-TARGET-MACOS? if 62 else 40 then ;
 $1000 constant FMT-S-IFIFO              \ S_IFIFO on both targets
 $FFF constant FMT-MODE-PERM             \ st_mode's permission bits
 $49 constant FMT-MODE-EXEC              \ 0111, execute for all
@@ -553,7 +554,7 @@ public
    file FD>N close
    s" lock.file" LOCK-PATH$ s" lock.link" LOCK-LINK$ FS:MAKE-SYMLINK
    s" a no-follow open of a link is ELOOP" T-LABEL
-   [: OPEN-LINK ;] FS:ELOOP OPEN-REFUSED
+   [: OPEN-LINK ;] FMT-ELOOP OPEN-REFUSED
    s" a no-follow open of a missing path is ENOENT" T-LABEL
    [: OPEN-MISSING ;] FS:ENOENT OPEN-REFUSED
    T-LABEL-CLEAR
