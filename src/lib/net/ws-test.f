@@ -26,6 +26,7 @@ require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
 require src/lib/test/stderr.f
+require src/lib/test/aio-fill.f
 require src/lib/date.f
 
 \ ACCEPT-STALLED is ACCEPT with a stall run once the handshake holds its slot,
@@ -73,8 +74,7 @@ $10 constant SOCKADDR-N          \ sockaddr_in
 $2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
 $101 constant CROWD               \ WS:START's limit: one socket past a one-byte slot field
 $400 constant LOG-CAP             \ the sockets one run may close
-$2800 constant FILL-CAP              \ Darwin's poll bound (OPEN_MAX), past Linux's AIO-RECS-MAX records: the most polls that fill AIO
-CROWD 2 * $40 + FILL-CAP 2 * + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's, the files' and the fill's
+CROWD 2 * $40 + AIO-FILL:FILL-CAP 2 * + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's, the files' and the fill's
 8 constant STRAYS                 \ the wake pipe's two, the only ones a stale send's POKE writes, with room to spare
 $12000 constant BUF-CAP           \ the longest frame a case sends or is sent, with its header
 $11170 constant BIG               \ 70000 bytes: past the 16-bit length form
@@ -205,11 +205,6 @@ variable ROUTE-CODE               \ what the route threw before it posted ACCEPT
 TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 TASK:SEMAPHORE UNHELD             \ lets the handler of `hold` return
 TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
-FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
-FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
-FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
-variable FILL-N                   \ the polls in flight
-variable FILL-CODE                \ what AIO refused the poll past them with
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
 
 
@@ -1666,53 +1661,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    ['] RESTARTED AWAITED drop
    WS:STOP ;
 
-: FILL-ONE ( -- )
-   FILL-N @ {: idx:n :}
-   idx FILL-R @ >FD AIO:READABLE -1 >MS AIO:POLL idx FILL-TICKET !
-   1 FILL-N +! ;
-
-\ Polls that never fire, each on its own pipe, until AIO refuses one at its
-\ ceiling: Darwin's poll bound, or Linux's records. HTTP's listener's accept
-\ poll stands throughout, so its descriptor stays counted.
-: FILL ( -- )
-   begin
-      FILL-CODE @ 0= FILL-N @ FILL-CAP < and
-   while
-      pipe {: r:n w:n rc:n :}
-      rc 0 <> if E-SILENT throw then
-      r FILL-N @ FILL-R !
-      w FILL-N @ FILL-W !
-      [: FILL-ONE ;] catch FILL-CODE !
-      FILL-CODE @ 0 <> if r close-rc drop w close-rc drop then
-   repeat ;
-
-: OUTCOME-GONE ( AIO:outcome -- )
-   MATCH AIO:outcome
-      ready OF drop ENDOF
-      timed-out OF ENDOF
-      cancelled OF ENDOF
-      refused OF drop ENDOF
-   ;MATCH ;
-
-: UNFILL ( -- )
-   FILL-N @ 0 ?do
-      i FILL-TICKET @ {: t:AIO:ticket :}
-      t AIO:CANCEL
-      t AIO:AWAIT OUTCOME-GONE
-      i FILL-R @ close-rc drop
-      i FILL-W @ close-rc drop
-   loop
-   0 FILL-N ! ;
-
 \ The line WS logs after its stamp when its task ends on this code.
 : TASK-LINE ( n -- )
    {: code:n :}
    SB-RESET
    s"  error ws: task failed, throw " SB-APPEND
    code ERR-THROW ;
-
-: CEILING ( -- n )
-   HB-TARGET-MACOS? if E-AIO-POLL-BOUND else E-AIO-FULL then ;
 
 \ AIO is filled while a handshake holds its slot, so the poll WS's task makes
 \ for the new socket is refused.
@@ -1722,14 +1676,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    DIAL {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
    [: STALLING @ ;] AWAITED drop
-   FILL
+   AIO-FILL:FILL {: code:n :}
    s" AIO refuses the poll past its ceiling" T-LABEL
-   FILL-CODE @ CEILING T=
-   FILL-CODE @ TASK-LINE
+   code AIO-FILL:CEILING T=
+   code TASK-LINE
    FILLED TASK:SIGNAL-SEM
    AWAIT-ROUTE
    [: ERR-WRITTEN ;] AWAITED drop
-   UNFILL
+   AIO-FILL:UNFILL
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
 
@@ -1739,11 +1693,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a task that fails" T-LABEL
    s" build" FS:MAKE-DIRS
    0 ERR-WANT-U !
-   0 FILL-N !
-   0 FILL-CODE !
    2 WS:START
    ERR-PATH$ STDERR:CAPTURE
-   [: FAULTING ;] [: UNFILL STDERR:;CAPTURE ;] finally
+   [: FAULTING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
    [: WS:STOP ;] catch 0 T=
    s" the task's fault reported once" T-LABEL
    ERR-READ UNSTAMP
@@ -2086,24 +2038,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       RETRY-MS >MS TASK:SLEEP
    again ;
 
-\ The soft descriptor limit raised to FDS-WANT when it is lower: a login
-\ shell's soft limit (launchd's 256 on macOS) is under what CROWD holds open.
-\ Linux's RLIM_INFINITY reads as -1 here, and is left as it is.
-PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
-FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
-
-create FD-LIMIT 16 allot
-
-: NOFILE ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
-
-: RAISE-FDS ( -- )
-   NOFILE FD-LIMIT GET-LIMIT 0 T=
-   FD-LIMIT @ {: soft:n :}
-   soft 0< soft FDS-WANT >= or if exit then
-   FDS-WANT FD-LIMIT !
-   NOFILE FD-LIMIT SET-LIMIT 0 T= ;
-
 : FILL-BUFFERS ( -- )
    BUF-CAP 0 ?do i 31 * 7 + $FF and PATTERN i SPAN:U8! loop
    PUSH-BYTE PUSH-BUF SPAN:FILL
@@ -2129,7 +2063,7 @@ public
 \ socket holds a worker.
 : RUN ( -- )
    T-RESET
-   RAISE-FDS
+   FDS-WANT AIO-FILL:RAISE-FDS
    0 SCRIPT-U !
    0 CLOSED-N !
    CLOSED-LOCK TASK:FACILITY-INIT
