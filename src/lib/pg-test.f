@@ -492,6 +492,47 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
+256 BUFFER: EVERY-BYTE
+
+: EVERY-BYTE! ( -- )
+   256 0 ?do i EVERY-BYTE i + c! loop ;
+
+
+\ The bytea 00 01 .. ff, built by the server; a text; and the int4 whose
+\ binary form is the bytes "1234", which a text parse would read as digits.
+: EVERY-BYTE-SQL$ ( -- ^u8 n )
+   s" select decode(string_agg(lpad(to_hex(g), 2, '0'), '' order by g), 'hex'), 'kept'::text, 825373492 from generate_series(0, 255) g" ;
+
+
+: BINARY-ANSWER ( PG:result -- PG:result )
+   0 >ROW 0 >COL TEXT$ EVERY-BYTE 256 T$=
+   0 >ROW 1 >COL TEXT$ s" kept" T$=
+   0 >ROW 2 >COL INT drop ;
+
+
+: READ-BINARY ( PG:connection -- PG:connection )
+   dup BINARY-RESULT
+   dup EVERY-BYTE-SQL$ [: BINARY-ANSWER ;] WITH-RESULT ;
+
+
+: BINARY-RESULT-CASES ( PG:connection -- PG:connection )
+   {: c :}
+   EVERY-BYTE!
+   s" a binary result gives a bytea's and a text's bytes; INT of it is E-TYPE" T-LABEL
+   c PARAMS
+   c [: READ-BINARY ;] catch {: stale-bin bin-code:n :}
+   bin-code E-TYPE T=
+   s" the query after a binary result is text again" T-LABEL
+   c s" select 1234" [: 0 >ROW 0 >COL INT 1234 T= ;] WITH-RESULT
+   s" PARAMS after a call rejected before its send leaves no binary form staged" T-LABEL
+   c BINARY-RESULT
+   c [: dup s" " [: ;] WITH-RESULT ;] catch {: stale-unsent unsent-code:n :}
+   unsent-code E-STATEMENT T=
+   c PARAMS
+   c s" select 1234" [: 0 >ROW 0 >COL INT 1234 T= ;] WITH-RESULT
+   c ;
+
+
 \ Checked against the report the server builds: six KiB of two-byte characters,
 \ then a longer message the connection's copy must grow past the first to hold.
 : RAISED-SAME ( PG:connection ^u8 n ^u8 n -- PG:connection )
@@ -2036,6 +2077,7 @@ variable WARN-LINES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
    BINARY-CASES
+   BINARY-RESULT-CASES
    HELD-SPAN-CASES
    LONG-MESSAGE-CASES
    NESTED-SPAN-CASES

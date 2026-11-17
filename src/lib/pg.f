@@ -66,7 +66,7 @@ public
 -9251 s" transport/readiness failure, no result, rejected transaction verb or failed cancel"
    ERROR:CODE E-EXEC
 -9252 s" a row or column index outside the result" ERROR:CODE E-COLUMN
--9253 s" a column read as a type its bytes are not, including an integer read of NULL"
+-9253 s" a column read as a type its bytes are not, including an integer read of NULL, or an integer, real or bool read of a binary column"
    ERROR:CODE E-TYPE
 -9254 s" a result used after CLEAR or its connection's close" ERROR:CODE E-CLEARED
 -9255 s" a WITH-TRANSACTION, NOTIFIED? or NOTIFIED inside a transaction on the same connection"
@@ -136,6 +136,7 @@ $43 constant PG-DIAG-SQLSTATE             \ 'C'
 0 constant NOTIFY-RELNAME                 \ PGnotify.relname's cell, libpq-fe.h
 2 constant NOTIFY-EXTRA                   \ PGnotify.extra's cell, libpq-fe.h: past the C int be_pid, padded to a cell
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
+1 constant BINARY-FORMAT                  \ resultFormat and PQfformat: binary
 
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
@@ -176,6 +177,7 @@ DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-BOUND n
 DYNAMIC-BUFFER CONN-COPY-ROW ^u8
+DYNAMIC-BUFFER CONN-RESULT-FORMAT n
 
 DYNAMIC-BUFFER RES-PG ^u8
 DYNAMIC-BUFFER RES-GEN n
@@ -252,6 +254,7 @@ FUNCTION: LIB-FNAME PQfname ( ^u8 n -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-FTYPE PQftype ( ^u8 n -- u32 ) ;FUNCTION
 FUNCTION: LIB-FTABLE PQftable ( ^u8 n -- u32 ) ;FUNCTION
 FUNCTION: LIB-FTABLECOL PQftablecol ( ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-FFORMAT PQfformat ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETVALUE PQgetvalue ( ^u8 n n -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-GETISNULL PQgetisnull ( ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETLENGTH PQgetlength ( ^u8 n n -- i32 ) ;FUNCTION
@@ -353,6 +356,8 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 : PARAM-OFFS-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-PARAM-OFFS-CAP ! ;
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
 : BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
+: FORMAT@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-RESULT-FORMAT @ ;
+: FORMAT! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-RESULT-FORMAT ! ;
 
 : VERB-BUF ( n -- ^u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
 
@@ -516,7 +521,9 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    off ;
 
 
-: RESET-PARAMS ( n -- ) {: slot:n :}
+\ What a call stages: the parameters and BINARY-RESULT's form.
+: RESET-STAGED ( n -- ) {: slot:n :}
+   TEXT-RESULT slot FORMAT!
    0 slot PARAM-N!
    slot ARENA-RELEASE ;
 
@@ -731,6 +738,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    CONN-VERB-RELEASE
    CONN-BOUND-RELEASE
    CONN-COPY-ROW-RELEASE
+   CONN-RESULT-FORMAT-RELEASE
    RES-PG-RELEASE
    RES-GEN-RELEASE
    RES-LIVE-RELEASE
@@ -762,6 +770,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
    CONN-CAP CONN-COPY-ROW-RESERVE
+   CONN-CAP CONN-RESULT-FORMAT-RESERVE
    RESULT-CAP RES-PG-RESERVE
    RESULT-CAP RES-GEN-RESERVE
    RESULT-CAP RES-LIVE-RESERVE
@@ -825,7 +834,7 @@ REGISTER-CHILD-RESET
    0 slot CONNECTING!
    0 slot CONN-TX!
    0 slot BOUND!
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 : CONN-HANDLE ( n -- connection ) {: slot:n :}
@@ -1312,10 +1321,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
    slot lens-off ARENA-ARG slot fmts-off ARENA-ARG
-   TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
+   slot FORMAT@ LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 : PREPARED-START ( n ^u8 n -- )
@@ -1328,10 +1337,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
    slot lens-off ARENA-ARG slot fmts-off ARENA-ARG
-   TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
+   slot FORMAT@ LIB-SEND-QUERY-PREPARED {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 \ The empty name is the unnamed statement, which only DESCRIBE sends.
@@ -1347,7 +1356,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 : PREPARE-START ( n ^u8 n ^u8 n -- )
@@ -1365,7 +1374,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot CONN-PG@ slot ARENA-BASE name-off + LIB-SEND-DESCRIBE-PREPARED {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
@@ -1380,7 +1389,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot RESET-PARAMS ;
+   slot RESET-STAGED ;
 
 
 : RESULT-STATUS ( n -- n ) {: slot:n :}
@@ -1464,6 +1473,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 : CELL-NULL? ( n n n -- bool ) {: slot:n ri:n ci:n :}
    slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
+
+
+: BINARY-COLUMN? ( n n -- bool ) {: slot:n ci:n :}
+   slot RES-PG@ ci LIB-FFORMAT BINARY-FORMAT = ;
 
 
 : COLUMN-AT ( n col -- ^u8 n )
@@ -1670,10 +1683,24 @@ public
    CONN-SLOT FINISH-SLOT ;
 
 
-\ PARAMS empties the list; TEXT+, INT+, NULL+ and BINARY+ append $1, $2, ...;
-\ WITH-RESULT and WITH-PREPARED consume it, so no call inherits another's.
+\ PARAMS empties the list and sets the result form back to text; TEXT+, INT+,
+\ NULL+ and BINARY+ append $1, $2, ...; a send that goes out consumes both,
+\ but a call rejected before its send leaves them for the next call that does
+\ not begin with PARAMS.
 : PARAMS ( connection -- )
-   CONN-SLOT dup IDLE-CHECK RESET-PARAMS ;
+   CONN-SLOT dup IDLE-CHECK RESET-STAGED ;
+
+
+\ BINARY-RESULT, staged after PARAMS as TEXT+ is, makes the connection's next
+\ SEND, SEND-PREPARED, WITH-RESULT or WITH-PREPARED ask for its result in
+\ binary form. PARAMS and every send that goes out set the form back to text;
+\ a transaction's verbs leave it staged. TEXT$ then gives each value's binary
+\ form: a bytea's bytes and a text's bytes as they are, an integer's
+\ big-endian bytes. INT and pg-rows.f's typed readers of it are E-TYPE.
+: BINARY-RESULT ( connection -- )
+   CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
+   BINARY-FORMAT slot FORMAT! ;
 
 
 : TEXT+ ( connection ^u8 n -- ) {: handle:connection a u:n :}
@@ -1938,8 +1965,11 @@ public
    PEEK r c CELL-AT CELL-NULL? ;
 
 
+\ A NULL is E-TYPE, and so is a column BINARY-RESULT made binary: its bytes
+\ could parse as digits, as an int4's 825373492 reads 1234.
 : INT ( PG:result row col -- PG:result n ) {: r:row c:col :}
    PEEK r c CELL-AT {: slot:n ri:n ci:n :}
+   slot ci BINARY-COLUMN? if E-TYPE throw then
    slot ri ci CELL-NULL? if E-TYPE throw then
    slot ri ci VALUE$ STR>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF

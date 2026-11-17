@@ -176,6 +176,13 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    MY-ARENA drop RECORD-NONE ;
 
 
+\ E-TYPE on a column BINARY-RESULT made binary, INT's check, for the readers
+\ that parse a cell's text: a binary bool's 01 would read as false.
+: NOT-BINARY ( PG:result row col -- PG:result ) {: r:row c:col :}
+   PEEK r c CELL-AT {: slot:n ri:n ci:n :}
+   slot ci BINARY-COLUMN? if E-TYPE throw then ;
+
+
 : CELL$ ( PG:result n -- PG:result ^u8 n ) {: c:n :}
    0 >ROW c >COL NULL? if E-ROW throw then
    0 >ROW c >COL TEXT$ ;
@@ -347,8 +354,9 @@ public
 
 
 \ A number with a fraction. The server renders it as text, so this is where it
-\ becomes one again; SQL NULL is zero.
+\ becomes one again; SQL NULL is zero, a binary column E-TYPE.
 : COL-REAL ( PG:result n -- PG:result r ) {: c:n :}
+   0 >ROW c >COL NOT-BINARY
    0 >ROW c >COL NULL? if 0.0 exit then
    c CELL$ STR>FLOAT MATCH option
       none OF E-ROW throw ENDOF
@@ -356,14 +364,18 @@ public
    ;MATCH ;
 
 
-\ A nullable reference: SQL NULL is zero, which an identity column never holds.
+\ A nullable reference: SQL NULL is zero, which an identity column
+\ never holds; a binary column is E-TYPE.
 : COL-ID ( PG:result n -- PG:result n ) {: c:n :}
+   0 >ROW c >COL NOT-BINARY
    0 >ROW c >COL NULL? if 0 exit then
    c COL-INT ;
 
 
-: COL-BOOL ( PG:result n -- PG:result bool )
-   CELL$ BOOL$ ;
+\ SQL NULL is E-ROW, a binary column E-TYPE.
+: COL-BOOL ( PG:result n -- PG:result bool ) {: c:n :}
+   0 >ROW c >COL NOT-BINARY
+   c CELL$ BOOL$ ;
 
 
 \ These answer libpq's own bytes, valid until the result's scope ends: a page
@@ -382,13 +394,18 @@ public
    at >ROW col >COL INT ;
 
 
-: AT-BOOL ( PG:result n n -- PG:result bool )
-   AT$ BOOL$ ;
+\ A binary column is E-TYPE.
+: AT-BOOL ( PG:result n n -- PG:result bool ) {: at:n col:n :}
+   at >ROW col >COL NOT-BINARY
+   at col AT$ BOOL$ ;
 
 private
 
+\ A binary column is E-TYPE, as INT's is; a NULL or a fraction stays ONE-INT's
+\ E-ROW.
 : FIRST-INT ( PG:result -- n PG:result )
    FIRST-ROW
+   0 >ROW 0 >COL NOT-BINARY
    0 0 AT$ STR>NUMBER? MATCH option
       none OF E-ROW throw ENDOF
       some OF ENDOF
@@ -398,7 +415,8 @@ public
 
 
 \ The one integer a count or an aggregate answers, run in its own scope on
-\ the parameters the caller staged. A NULL, a fraction or no row is E-ROW.
+\ the parameters the caller staged. A NULL, a fraction or no row is E-ROW; a
+\ result BINARY-RESULT made binary is E-TYPE.
 \ Like EXEC, it takes the task's reader row before the statement is sent.
 : ONE-INT ( PG:connection ^u8 n -- n )
    NOT-REFUSED

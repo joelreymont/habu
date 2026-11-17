@@ -220,6 +220,13 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s" select 1 where false" PG:ONE-INT drop ;
 
 
+\ A binary bool is the one byte 01, which a text read would take for false.
+: BINARY-BOOL ( -- )
+   CONN @ PG:PARAMS
+   CONN @ PG:BINARY-RESULT
+   CONN @ s" select true" [: 0 PG:COL-BOOL drop ;] PG:WITH-RESULT ;
+
+
 \ The decoder throws inside BY-ID's scope, which still clears the result.
 : BAD-DECODE ( -- )
    CONN @ 1 PERSON-SQL$
@@ -238,7 +245,9 @@ TYPED-VARIABLE CONN PG:connection
    s" ONE-INT refuses no row" T-LABEL
    [: EMPTY-COUNT ;] PG:E-ROW EACH-REFUSES
    s" a decoder's refusal inside BY-ID" T-LABEL
-   [: BAD-DECODE ;] PG:E-ROW EACH-REFUSES ;
+   [: BAD-DECODE ;] PG:E-ROW EACH-REFUSES
+   s" COL-BOOL of a binary column is PG's E-TYPE" T-LABEL
+   [: BINARY-BOOL ;] PG:E-TYPE EACH-REFUSES ;
 
 
 : REFUSAL-NAMES ( ^u8 n -- ) {: a:^ u:n :}
